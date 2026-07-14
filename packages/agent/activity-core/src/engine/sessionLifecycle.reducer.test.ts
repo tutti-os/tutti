@@ -62,6 +62,27 @@ test("snapshot restores a settled latest turn without an active turn", () => {
   );
 });
 
+test("bounded snapshots preserve page-loaded session entities omitted from the response", () => {
+  const pageLoaded = {
+    ...session(null, 2),
+    agentSessionId: "page-loaded"
+  };
+  let state = reduce(createInitialSessionLifecycleState(), {
+    type: "session/upserted",
+    session: pageLoaded
+  }).state;
+  state = reduce(state, {
+    type: "session/snapshotReceived",
+    sessions: [session(null, 3)]
+  }).state;
+
+  assert.equal(
+    state.sessionsById["page-loaded"]?.agentSessionId,
+    "page-loaded"
+  );
+  assert.equal(state.sessionsById["session-1"]?.updatedAtUnixMs, 3);
+});
+
 test("send command result atomically upserts its scoped session and turn", () => {
   const turn = activeTurn(4);
   const result = reduce(createInitialSessionLifecycleState(), {

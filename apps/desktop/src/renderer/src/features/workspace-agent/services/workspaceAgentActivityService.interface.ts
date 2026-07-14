@@ -52,6 +52,8 @@ export interface WorkspaceAgentActivityListGeneratedFilesInput {
 }
 
 export interface WorkspaceAgentActivityListSessionsPageInput {
+  agentTargetId?: string | null;
+  cursor?: string;
   limit?: number;
   searchQuery?: string;
   signal?: AbortSignal;

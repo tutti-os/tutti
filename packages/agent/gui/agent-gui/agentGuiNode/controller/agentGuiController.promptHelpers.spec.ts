@@ -17,7 +17,6 @@ describe("createOptimisticPromptMessage", () => {
     turnId: "pending:submit-1",
     clientSubmitId: "submit-1",
     userId: "user-1",
-    prompt: "Ask",
     content: [{ type: "text" as const, text: "Ask" }],
     occurredAtUnixMs: 1_750_000_000_000
   };
@@ -25,6 +24,19 @@ describe("createOptimisticPromptMessage", () => {
   it("mints the echo outside the durable version domain", () => {
     const echo = createOptimisticPromptMessage(echoInput);
     expect(echo.version).toBe(0);
+  });
+
+  it("keeps presentation text separate from runtime content", () => {
+    const echo = createOptimisticPromptMessage({
+      ...echoInput,
+      displayPrompt: "/browser",
+      content: [{ type: "text", text: "runtime instructions" }]
+    });
+    expect(echo.payload).toMatchObject({
+      content: [{ type: "text", text: "runtime instructions" }],
+      displayPrompt: "/browser",
+      text: "/browser"
+    });
   });
 
   it("lets the durable twin replace the echo in an id-keyed merge", () => {

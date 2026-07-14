@@ -1858,11 +1858,23 @@ paths:
         - agent-session
       summary: List agent sessions for one workspace
       parameters:
+        - name: agentTargetId
+          in: query
+          required: false
+          schema:
+            type: string
+            minLength: 1
         - name: searchQuery
           in: query
           required: false
           schema:
             type: string
+        - name: cursor
+          in: query
+          required: false
+          schema:
+            type: string
+            minLength: 1
         - name: limit
           in: query
           required: false
@@ -2036,7 +2048,7 @@ paths:
         - name: cursor
           in: query
           required: false
-          description: Cursor for the next older page, encoded as updatedAtUnixMs|agentSessionId.
+          description: Cursor for the next older page, encoded as conversationSortTimeUnixMs|agentSessionId.
           schema:
             type: string
             minLength: 1
@@ -7649,6 +7661,7 @@ components:
       required:
         - workspaceId
         - sessions
+        - hasMore
       properties:
         workspaceId:
           type: string
@@ -7657,12 +7670,18 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/WorkspaceAgentSession"
+        hasMore:
+          type: boolean
+        nextCursor:
+          type: string
+          description: Cursor for the next older matching session page, encoded as conversationSortTimeUnixMs|agentSessionId.
     WorkspaceAgentSessionPage:
       type: object
       additionalProperties: false
       required:
         - sessions
         - hasMore
+        - totalCount
       properties:
         sessions:
           type: array
@@ -7670,6 +7689,10 @@ components:
             $ref: "#/components/schemas/WorkspaceAgentSession"
         hasMore:
           type: boolean
+        totalCount:
+          type: integer
+          minimum: 0
+          description: Total visible sessions in this page scope before cursor pagination.
         nextCursor:
           type: string
           description: Cursor for the next older page, encoded as pinnedAtUnixMs|agentSessionId for pinned pages.
@@ -7687,6 +7710,7 @@ components:
         - sectionKey
         - sessions
         - hasMore
+        - totalCount
       properties:
         kind:
           $ref: "#/components/schemas/WorkspaceAgentSessionSectionKind"
@@ -7701,9 +7725,13 @@ components:
             $ref: "#/components/schemas/WorkspaceAgentSession"
         hasMore:
           type: boolean
+        totalCount:
+          type: integer
+          minimum: 0
+          description: Total visible sessions in this section before cursor pagination.
         nextCursor:
           type: string
-          description: Cursor for the next older page, encoded as updatedAtUnixMs|agentSessionId.
+          description: Cursor for the next older page, encoded as conversationSortTimeUnixMs|agentSessionId.
           minLength: 1
     WorkspaceAgentSessionSectionsResponse:
       type: object

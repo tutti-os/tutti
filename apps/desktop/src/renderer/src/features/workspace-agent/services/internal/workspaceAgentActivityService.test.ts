@@ -1019,6 +1019,132 @@ test("WorkspaceAgentActivityService fetches combined reconcile state after messa
   );
 });
 
+test("WorkspaceAgentActivityService loads the newest history page first", async () => {
+  const requests: unknown[] = [];
+  const session = workspaceAgentSession({ status: "ready" });
+  const service = new WorkspaceAgentActivityService({
+    tuttidClient: {
+      getWorkspaceAgentSession: async () => session,
+      listWorkspaceAgentSessions: async () => ({
+        hasMore: false,
+        sessions: [session],
+        workspaceId: "ws-1"
+      }),
+      listWorkspaceAgentSessionMessages: async (
+        _workspaceId: string,
+        _agentSessionId: string,
+        request: unknown
+      ) => {
+        requests.push(request);
+        return { hasMore: true, latestVersion: 200, messages: [] };
+      }
+    } as unknown as TuttidClient,
+    runtimeApi: { logTerminalDiagnostic: async () => {} }
+  });
+
+  await service.load("ws-1");
+  service.ensureSessionSynchronized({
+    agentSessionId: "session-1",
+    workspaceId: "ws-1"
+  });
+  await new Promise((resolve) => setImmediate(resolve));
+
+  assert.deepEqual(requests, [
+    { afterVersion: 0, beforeVersion: undefined, limit: 100, order: "desc" }
+  ]);
+});
+
+test("WorkspaceAgentActivityService drains every incremental history page", async () => {
+  const requests: Array<Record<string, unknown>> = [];
+  const session = workspaceAgentSession({ status: "ready" });
+  let mode: "idle" | "incremental" | "seed" = "idle";
+  const message = (version: number) => ({
+    agentSessionId: "session-1",
+    kind: "text",
+    messageId: `message-${version}`,
+    occurredAtUnixMs: version,
+    payload: { text: String(version) },
+    role: "user",
+    turnId: `turn-${version}`,
+    version
+  });
+  const service = new WorkspaceAgentActivityService({
+    tuttidClient: {
+      getWorkspaceAgentSession: async () => session,
+      listWorkspaceAgentSessions: async () => ({
+        hasMore: false,
+        sessions: [session],
+        workspaceId: "ws-1"
+      }),
+      listWorkspaceAgentSessionMessages: async (
+        _workspaceId: string,
+        _agentSessionId: string,
+        request: Record<string, unknown>
+      ) => {
+        requests.push(request);
+        if (mode === "seed") {
+          return {
+            hasMore: false,
+            latestVersion: 100,
+            messages: [message(100)]
+          };
+        }
+        if (mode === "incremental" && request.afterVersion === 100) {
+          return {
+            hasMore: true,
+            latestVersion: 200,
+            messages: [message(200)]
+          };
+        }
+        if (mode === "incremental" && request.afterVersion === 200) {
+          return {
+            hasMore: false,
+            latestVersion: 300,
+            messages: [message(300)]
+          };
+        }
+        return { hasMore: false, latestVersion: 0, messages: [] };
+      }
+    } as unknown as TuttidClient,
+    runtimeApi: { logTerminalDiagnostic: async () => {} }
+  });
+
+  await service.load("ws-1");
+  await new Promise((resolve) => setImmediate(resolve));
+  mode = "seed";
+  await service.listSessionMessages({
+    agentSessionId: "session-1",
+    workspaceId: "ws-1"
+  });
+  assert.deepEqual(
+    service
+      .getSnapshot("ws-1")
+      .sessionMessagesById["session-1"]?.map((item) => item.version),
+    [100]
+  );
+  mode = "incremental";
+  requests.length = 0;
+  await (
+    service as unknown as {
+      reconcileAgentSessionMessages(
+        workspaceId: string,
+        agentSessionId: string
+      ): Promise<unknown>;
+    }
+  ).reconcileAgentSessionMessages("ws-1", "session-1");
+
+  assert.deepEqual(
+    requests.map((request) => request.afterVersion),
+    [100, 200]
+  );
+  assert.deepEqual(
+    service
+      .getSnapshot("ws-1")
+      .sessionMessagesById["session-1"]?.map((item) => item.version),
+    [100, 200, 300]
+  );
+});
+
 test("WorkspaceAgentActivityService.listAgentGeneratedFiles delegates to tuttid workspace aggregate", async () => {
   const calls: unknown[] = [];
   const service = new WorkspaceAgentActivityService({
@@ -1061,6 +1187,56 @@ test("WorkspaceAgentActivityService.listAgentGeneratedFiles delegates to tuttid 
   ]);
 });
 
+test("WorkspaceAgentActivityService.listSessionsPage forwards backend search pagination", async () => {
+  const abortController = new AbortController();
+  const listCalls: unknown[] = [];
+  const service = new WorkspaceAgentActivityService({
+    tuttidClient: {
+      listWorkspaceAgentSessions: async (
+        workspaceId: string,
+        request: Parameters<TuttidClient["listWorkspaceAgentSessions"]>[1],
+        options: Parameters<TuttidClient["listWorkspaceAgentSessions"]>[2]
+      ) => {
+        listCalls.push({ options, request, workspaceId });
+        return {
+          hasMore: true,
+          nextCursor: "10|session-1",
+          sessions: [workspaceAgentSession({ status: "completed" })],
+          workspaceId
+        };
+      }
+    } as unknown as TuttidClient,
+    runtimeApi: {
+      logTerminalDiagnostic: async () => {}
+    }
+  });
+
+  const result = await service.listSessionsPage({
+    agentTargetId: " target-1 ",
+    cursor: " 20|session-2 ",
+    limit: 100,
+    searchQuery: " backend result ",
+    signal: abortController.signal,
+    workspaceId: " ws-1 "
+  });
+
+  assert.deepEqual(listCalls, [
+    {
+      options: { signal: abortController.signal },
+      request: {
+        agentTargetId: "target-1",
+        cursor: "20|session-2",
+        limit: 100,
+        searchQuery: "backend result"
+      },
+      workspaceId: "ws-1"
+    }
+  ]);
+  assert.equal(result.hasMore, true);
+  assert.equal(result.nextCursor, "10|session-1");
+  assert.equal(result.sessions[0]?.agentSessionId, "session-1");
+});
+
 test("WorkspaceAgentActivityService.listSessionSectionPage forwards abort signal to tuttid", async () => {
   const abortController = new AbortController();
   const listCalls: unknown[] = [];
@@ -1081,7 +1257,8 @@ test("WorkspaceAgentActivityService.listSessionSectionPage forwards abort signal
             hasMore: false,
             kind: "project",
             sectionKey: "project:/workspace",
-            sessions: []
+            sessions: [],
+            totalCount: 4
           },
           workspaceId
         };
@@ -1092,7 +1269,7 @@ test("WorkspaceAgentActivityService.listSessionSectionPage forwards abort signal
     }
   });
 
-  await service.listSessionSectionPage({
+  const result = await service.listSessionSectionPage({
     workspaceId: "ws-1",
     agentTargetId: "claude-target",
     cursor: "10|session-1",
@@ -1113,6 +1290,7 @@ test("WorkspaceAgentActivityService.listSessionSectionPage forwards abort signal
       options: { signal: abortController.signal }
     }
   ]);
+  assert.equal(result.totalCount, 4);
 });
 
 test("WorkspaceAgentActivityService.listSessionSections forwards agent target filter to tuttid", async () => {
@@ -1133,6 +1311,7 @@ test("WorkspaceAgentActivityService.listSessionSections forwards agent target fi
         return {
           pinned: {
             hasMore: false,
+            totalCount: 1,
             sessions: [
               {
                 ...{
@@ -1178,34 +1357,7 @@ test("WorkspaceAgentActivityService.listSessionSections forwards agent target fi
   ]);
   assert.equal(result.pinned?.sessions[0]?.agentSessionId, "pinned-session");
   assert.equal(result.pinned?.sessions[0]?.pinnedAtUnixMs, 2000);
-});
-
-test("WorkspaceAgentActivityService.listSessionSections tolerates missing pinned page", async () => {
-  const service = new WorkspaceAgentActivityService({
-    tuttidClient: {
-      listWorkspaceAgentSessionSections: async (workspaceId: string) =>
-        ({
-          sections: [],
-          workspaceId
-        }) as unknown as Awaited<
-          ReturnType<TuttidClient["listWorkspaceAgentSessionSections"]>
-        >
-    } as unknown as TuttidClient,
-    runtimeApi: {
-      logTerminalDiagnostic: async () => {}
-    }
-  });
-
-  const result = await service.listSessionSections({
-    workspaceId: "ws-1",
-    limitPerSection: 5
-  });
-
-  assert.deepEqual(result.pinned, {
-    hasMore: false,
-    nextCursor: undefined,
-    sessions: []
-  });
+  assert.equal(result.pinned?.totalCount, 1);
 });
 
 test("WorkspaceAgentActivityService lists deletion candidates with exact section filters", async () => {
@@ -1319,6 +1471,7 @@ test("WorkspaceAgentActivityService.listPinnedSessionsPage forwards cursor to tu
         return {
           page: {
             hasMore: false,
+            totalCount: 1,
             sessions: [
               {
                 ...{
@@ -1365,6 +1518,7 @@ test("WorkspaceAgentActivityService.listPinnedSessionsPage forwards cursor to tu
   ]);
   assert.equal(result.sessions[0]?.agentSessionId, "pinned-session");
   assert.equal(result.sessions[0]?.pinnedAtUnixMs, 2000);
+  assert.equal(result.totalCount, 1);
 });
 
 test("WorkspaceAgentActivityService treats missing reconcile sessions as tombstones", async () => {

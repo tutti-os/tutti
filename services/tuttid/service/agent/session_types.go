@@ -121,8 +121,10 @@ type Session struct {
 }
 
 type ListSessionsInput struct {
-	SearchQuery string
-	Limit       int
+	AgentTargetID string
+	Cursor        string
+	SearchQuery   string
+	Limit         int
 }
 
 type SessionListPage struct {
@@ -182,6 +184,7 @@ type SessionSectionsPage struct {
 type SessionPage struct {
 	Sessions   []Session
 	HasMore    bool
+	TotalCount int
 	NextCursor string
 }
 
@@ -191,6 +194,7 @@ type SessionSection struct {
 	UserProject *userprojectbiz.Project
 	Sessions    []Session
 	HasMore     bool
+	TotalCount  int
 	NextCursor  string
 }
 
@@ -236,6 +240,7 @@ type SessionMessage struct {
 type SessionReader interface {
 	GetSession(workspaceID string, agentSessionID string) (PersistedSession, bool)
 	ListSessions(workspaceID string) ([]PersistedSession, bool)
+	SessionDeleted(workspaceID string, agentSessionID string) (bool, error)
 }
 
 type SessionSectionReader interface {

@@ -76,12 +76,26 @@ WHERE workspace_id = ? AND agent_session_id = ?
 }
 
 func scanAgentSession(scanner rowScanner) (Session, error) {
+	session, err := scanAgentSessionWithTrailingValues(scanner)
+	return session, err
+}
+
+func scanAgentSessionWithSortTime(scanner rowScanner) (Session, int64, error) {
+	var sortTimeUnixMS int64
+	session, err := scanAgentSessionWithTrailingValues(scanner, &sortTimeUnixMS)
+	return session, sortTimeUnixMS, err
+}
+
+func scanAgentSessionWithTrailingValues(
+	scanner rowScanner,
+	trailingValues ...any,
+) (Session, error) {
 	var session Session
 	var agentTargetID sql.NullString
 	var activeTurnID sql.NullString
 	var settingsJSON string
 	var metadataJSON, internalRuntimeContextJSON string
-	err := scanner.Scan(
+	destinations := []any{
 		&session.WorkspaceID,
 		&session.ID,
 		&session.Origin,
@@ -103,7 +117,9 @@ func scanAgentSession(scanner rowScanner) (Session, error) {
 		&session.CreatedAtUnixMS,
 		&session.UpdatedAtUnixMS,
 		&activeTurnID,
-	)
+	}
+	destinations = append(destinations, trailingValues...)
+	err := scanner.Scan(destinations...)
 	if err != nil {
 		return Session{}, err
 	}

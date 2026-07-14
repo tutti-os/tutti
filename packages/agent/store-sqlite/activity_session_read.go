@@ -40,6 +40,34 @@ WHERE workspace_id = ? AND agent_session_id = ? AND deleted_at_unix_ms = 0
 	return session, true, nil
 }
 
+func (s *Store) SessionDeleted(
+	ctx context.Context,
+	workspaceID string,
+	agentSessionID string,
+) (bool, error) {
+	if s == nil || s.db == nil {
+		return false, errors.New("workspace database is not initialized")
+	}
+	workspaceID = strings.TrimSpace(workspaceID)
+	agentSessionID = strings.TrimSpace(agentSessionID)
+	if workspaceID == "" || agentSessionID == "" {
+		return false, nil
+	}
+	var deletedAtUnixMS int64
+	err := s.db.QueryRowContext(ctx, `
+SELECT deleted_at_unix_ms
+FROM workspace_agent_sessions
+WHERE workspace_id = ? AND agent_session_id = ?
+`, workspaceID, agentSessionID).Scan(&deletedAtUnixMS)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return false, nil
+		}
+		return false, fmt.Errorf("read workspace agent session tombstone: %w", err)
+	}
+	return deletedAtUnixMS > 0, nil
+}
+
 func (s *Store) ListSessions(
 	ctx context.Context,
 	workspaceID string,

@@ -74,6 +74,12 @@ export function ApprovalPromptSurface({
   }, [prompt.requestId]);
 
   useEffect(() => {
+    if (!isSubmitting) {
+      setSubmittingOptionId(null);
+    }
+  }, [isSubmitting]);
+
+  useEffect(() => {
     if (pendingFeedbackOptionId !== null) {
       feedbackTextareaRef.current?.focus();
     }
@@ -338,6 +344,12 @@ export function ExitPlanPromptSurface({
   useEffect(() => {
     setSubmittingOptionId(null);
   }, [prompt.requestId]);
+
+  useEffect(() => {
+    if (!isSubmitting) {
+      setSubmittingOptionId(null);
+    }
+  }, [isSubmitting]);
 
   return (
     <section className={interactivePromptClassName(embedded)}>

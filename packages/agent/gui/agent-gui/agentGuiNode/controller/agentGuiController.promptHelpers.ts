@@ -29,10 +29,11 @@ export function createOptimisticPromptMessage(input: {
   turnId: string;
   clientSubmitId?: string;
   userId: string;
-  prompt: string;
+  displayPrompt?: string;
   content: AgentPromptContentBlock[];
   occurredAtUnixMs: number;
 }): AgentActivityMessage {
+  const displayPrompt = input.displayPrompt?.trim() || undefined;
   const clientSubmitMessageId = input.clientSubmitId
     ? createWorkspaceAgentActivityUserMessageIdFromClientSubmitId(
         input.clientSubmitId
@@ -56,7 +57,8 @@ export function createOptimisticPromptMessage(input: {
       actorId: input.userId,
       ...(input.clientSubmitId ? { clientSubmitId: input.clientSubmitId } : {}),
       content: input.content,
-      text: input.prompt
+      ...(displayPrompt ? { displayPrompt } : {}),
+      text: displayPrompt ?? promptContentDisplayText(input.content)
     },
     occurredAtUnixMs: input.occurredAtUnixMs,
     startedAtUnixMs: input.occurredAtUnixMs

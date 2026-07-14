@@ -239,8 +239,7 @@ export function useAgentGUINodeController({
     conversationFilter,
     conversationListQuery,
     conversationListState,
-    conversations,
-    pendingNewActivationProjection
+    conversations
   } = conversationList;
   const isNoProjectPath = agentHostApi.userProjects?.isNoProjectPath;
   const hasLoadedConversations = conversationListState?.initialized ?? false;
@@ -255,10 +254,8 @@ export function useAgentGUINodeController({
     activePendingSubmits,
     activeQueuedPrompts,
     activeSessionState,
-    hasPendingNewActivation
+    isCreatingConversation
   } = sessionEngineState;
-  const latestPendingNewActivation = pendingNewActivationProjection;
-  const isCreatingConversation = hasPendingNewActivation;
   // Bridges submitInteractivePrompt
   // updateComposerSettings (defined later); assigned right after the
   // callback's definition.
@@ -319,7 +316,6 @@ export function useAgentGUINodeController({
     conversationIdsRef,
     conversationsRef,
     dataRef,
-    draftByScopeKeyRef,
     draftSettingsBySessionIdRef,
     handledOpenSessionSequenceRef,
     isComposerHomeRef,
@@ -483,11 +479,9 @@ export function useAgentGUINodeController({
     currentUserId,
     data,
     dataRef,
-    draftByScopeKeyRef,
     intent,
     isComposerHomeRef,
     isMountedRef,
-    latestPendingNewActivation,
     loadDraftComposerOptions: () => loadDraftComposerOptionsRef.current(),
     markSelectedConversationDetailPending,
     onDataChangeRef,
@@ -495,11 +489,9 @@ export function useAgentGUINodeController({
     sessionEngine,
     setActiveConversationId,
     setDetailError,
-    setDraftByScopeKey: localState.setDraftByScopeKey,
     setIntent,
     setIsComposerHome,
     setIsLoadingMessages,
-    submittedDraftSnapshotsRef: localState.submittedDraftSnapshotsRef,
     workspaceId
   });
   const persistActiveConversation =
@@ -643,7 +635,6 @@ export function useAgentGUINodeController({
     data,
     defaultAgentTargetId,
     isExplicitAgentGUIAgentTarget,
-    latestPendingNewActivation,
     loadDraftComposerOptions,
     normalizedExplicitProviderTargets,
     normalizedProviderTargets,
@@ -712,7 +703,6 @@ export function useAgentGUINodeController({
     isLoadingConversations,
     isLoadingMessages,
     loadComposerOptionsForTarget,
-    latestPendingNewActivation,
     normalizedComingSoonProviders,
     operationActions,
     persistActiveConversation,

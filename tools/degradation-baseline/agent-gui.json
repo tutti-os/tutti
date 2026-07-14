@@ -7,14 +7,14 @@
     "packages/agent/gui/shared/workspaceAgentProviderLabel.ts"
   ],
   "metrics": {
-    "effectCount": 153,
+    "effectCount": 151,
     "fileLines": {
       "packages/agent/gui/app/renderer/i18n/locales/en.ts": 1893,
       "packages/agent/gui/app/renderer/i18n/locales/zh-CN.ts": 1773
     },
     "goFileLengthExemptions": 2,
     "identityProviderBranches": 2,
-    "memoCount": 437,
+    "memoCount": 436,
     "moduleMutableGlobals": 6,
     "overlayStores": 4,
     "providerBranches": 1,

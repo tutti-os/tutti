@@ -56,6 +56,8 @@ export interface AgentActivityRuntimeListGeneratedFilesInput {
 }
 
 export interface AgentActivityRuntimeListSessionsPageInput {
+  agentTargetId?: string | null;
+  cursor?: string;
   limit?: number;
   searchQuery?: string;
   signal?: AbortSignal;
@@ -109,12 +111,14 @@ export interface AgentActivityRuntimeSessionSection {
   userProject?: AgentActivityRuntimeUserProject;
   sessions: AgentActivitySession[];
   hasMore: boolean;
+  totalCount: number;
   nextCursor?: string;
 }
 
 export interface AgentActivityRuntimeSessionPage {
   sessions: AgentActivitySession[];
   hasMore: boolean;
+  totalCount: number;
   nextCursor?: string;
 }
 

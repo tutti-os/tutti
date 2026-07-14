@@ -6,6 +6,7 @@ import {
   type SetStateAction
 } from "react";
 import type { AgentActivityRuntime } from "../../../agentActivityRuntime";
+import type { PendingActivationIntentRecord } from "@tutti-os/agent-activity-core";
 import type { AgentGUIConversationFilter } from "../model/agentGuiConversationFilter";
 import type { AgentComposerDraft } from "../model/agentGuiNodeTypes";
 import { buildAgentComposerDraft } from "../model/agentComposerDraft";
@@ -20,6 +21,7 @@ import type {
 } from "../../../types";
 import { resolveAgentGUIAgentTarget } from "../../../agentTargets";
 import type { AgentGUIComposerTargetData } from "./agentGuiController.composerPresentation";
+import { isPendingNewConversationActivation } from "./useAgentGUIActivation";
 
 export interface AgentGUIPrefillPromptRequest {
   agentTargetId?: string | null;
@@ -32,6 +34,7 @@ export interface AgentGUIPrefillPromptRequest {
 
 export interface UseAgentGUIConversationHomeInput {
   activeConversationIdRef: RefObject<string | null>;
+  activePendingActivation: PendingActivationIntentRecord | null;
   agentActivityRuntime: AgentActivityRuntime;
   currentProvider: AgentGUIProvider;
   composerTargetDataFromProviderTarget: (input: {
@@ -89,6 +92,7 @@ export interface UseAgentGUIConversationHomeInput {
 /** Owns transitions from an active conversation back to the home composer. */
 export function useAgentGUIConversationHome({
   activeConversationIdRef,
+  activePendingActivation,
   agentActivityRuntime,
   composerTargetDataFromProviderTarget,
   conversationFilterRef,
@@ -136,7 +140,12 @@ export function useAgentGUIConversationHome({
         runtime: agentActivityRuntime,
         workspaceId
       });
-      if (previous) void unactivate(previous);
+      if (
+        previous &&
+        !isPendingNewConversationActivation(activePendingActivation)
+      ) {
+        void unactivate(previous);
+      }
       setIntent({ tag: "home" });
       isComposerHomeRef.current = true;
       setIsComposerHome(true);
@@ -147,6 +156,7 @@ export function useAgentGUIConversationHome({
     },
     [
       activeConversationIdRef,
+      activePendingActivation,
       agentActivityRuntime,
       isComposerHomeRef,
       reportActiveConversationCleared,

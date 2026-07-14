@@ -440,6 +440,15 @@ func (s *Service) LocalAttachmentPath(ctx context.Context, workspaceID string, a
 }
 
 func (s *Service) get(ctx context.Context, workspaceID string, agentSessionID string, _ bool) (Session, error) {
+	if s.SessionReader != nil {
+		deleted, err := s.SessionReader.SessionDeleted(workspaceID, agentSessionID)
+		if err != nil {
+			return Session{}, err
+		}
+		if deleted {
+			return Session{}, ErrSessionNotFound
+		}
+	}
 	session, ok := s.controller().Session(workspaceID, agentSessionID)
 	if ok {
 		resumable := s.controller().CanResume(runtimeResumeInputFromRuntimeSession(session))

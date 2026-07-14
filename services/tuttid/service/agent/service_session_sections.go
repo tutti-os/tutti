@@ -248,12 +248,12 @@ func (s *Service) sessionSectionPage(
 		}
 	}
 	page, ok := reader.ListSessionSection(ctx, agentactivitybiz.ListSessionSectionInput{
-		WorkspaceID:       workspaceID,
-		SectionKey:        sectionKey,
-		AgentTargetID:     strings.TrimSpace(agentTargetID),
-		CursorUpdatedAtMS: parsedCursor.UpdatedAtUnixMS,
-		CursorSessionID:   parsedCursor.ID,
-		Limit:             limit,
+		WorkspaceID:          workspaceID,
+		SectionKey:           sectionKey,
+		AgentTargetID:        strings.TrimSpace(agentTargetID),
+		CursorSortTimeUnixMS: parsedCursor.SortTimeUnixMS,
+		CursorSessionID:      parsedCursor.ID,
+		Limit:                limit,
 	})
 	if !ok {
 		return SessionSection{}, ErrInvalidArgument
@@ -268,6 +268,7 @@ func (s *Service) sessionSectionPage(
 		UserProject: project,
 		Sessions:    sessions,
 		HasMore:     page.HasMore,
+		TotalCount:  page.TotalCount,
 		NextCursor:  page.NextCursor,
 	}, nil
 }
@@ -316,12 +317,12 @@ func (s *Service) sessionPinnedPage(
 		}
 	}
 	page, ok := reader.ListSessionSection(ctx, agentactivitybiz.ListSessionSectionInput{
-		WorkspaceID:       workspaceID,
-		SectionKey:        agentactivitybiz.PinnedSessionPageKey,
-		AgentTargetID:     strings.TrimSpace(agentTargetID),
-		CursorUpdatedAtMS: parsedCursor.UpdatedAtUnixMS,
-		CursorSessionID:   parsedCursor.ID,
-		Limit:             limit,
+		WorkspaceID:          workspaceID,
+		SectionKey:           agentactivitybiz.PinnedSessionPageKey,
+		AgentTargetID:        strings.TrimSpace(agentTargetID),
+		CursorSortTimeUnixMS: parsedCursor.SortTimeUnixMS,
+		CursorSessionID:      parsedCursor.ID,
+		Limit:                limit,
 	})
 	if !ok {
 		return SessionPage{}, ErrInvalidArgument
@@ -333,6 +334,7 @@ func (s *Service) sessionPinnedPage(
 	return SessionPage{
 		Sessions:   sessions,
 		HasMore:    page.HasMore,
+		TotalCount: page.TotalCount,
 		NextCursor: page.NextCursor,
 	}, nil
 }

@@ -375,38 +375,44 @@ Turn state, loading, cancel, restore, rail projection, event updates, imports, a
 
 - Symptom:
   Switching the Agent GUI aggregation rail between All, Cursor, Codex, or Claude
-  leaves the middle list and right detail panel out of sync. A provider tab can
-  still show other providers' sessions, or the right panel keeps the previous
-  agent after the middle list already changed.
+  makes the selected row disappear, collapses a loaded page, or briefly flashes
+  missing Show more controls. Five page rows plus one selected overlay may show
+  Show more/Show less even when only six sessions exist, or a nine-session
+  section may ignore the first Show more click. Restart can reproduce the same
+  selected-row loss.
 - Quick checks:
-  Inspect `workspace_agent_sessions.agent_target_id` for legacy Cursor rows. Old
-  Cursor imports may be missing `agent_target_id` while still carrying
-  `provider=cursor`. Confirm the active `conversationFilter` in the controller
-  and the per-query `agentGuiConversationListStore` projection for the selected
-  `local:<provider>` target.
+  Inspect `workspace_agent_sessions.agent_target_id` and `rail_section_key`.
+  Confirm section requests carry the selected `agentTargetId` before pagination
+  and responses preserve `totalCount`, `hasMore`, and `nextCursor`. In the
+  renderer, distinguish daemon-owned section membership ids from engine-owned
+  session entities; activating or hydrating one session must not rewrite the
+  loaded membership page.
 - Root cause:
-  Conversation retention in `agentGuiConversationListStore` previously kept
-  every targetless session under any agent-target tab. The rail also merged
-  unfiltered store conversations into runtime sections, and filter switches did
-  not always re-project the shared list or clear an active conversation outside
-  the new filter.
+  A second React summary cache mixed entity data, section membership, active
+  selection, and visible-item limits. Effects manually patched section rows
+  from changing conversation summaries, so provider/detail reconciliation could
+  collapse pages or synthesize membership. Counting the active overlay as a
+  pageable row also corrupted Show more decisions. Bounded engine snapshots can
+  recreate the loss if omission is treated as deletion.
 - Fix:
-  Match agent-target tabs with `matchesAgentGUIConversationSummaryFilter`, using
-  `session.provider` as a fallback for legacy `local:<provider>` targets.
-  Backfill Cursor `agent_target_id` in daemon storage, re-project the list store
-  when `conversationFilter` changes, filter rail merges in `AgentGUINodeView`,
-  and open the selected target home composer when the active conversation no
-  longer matches the tab.
+  Keep page sessions in the workspace engine. Cache only ordered membership ids,
+  cursor, `hasMore`, and `totalCount` in the controller query, then join ids to
+  engine entities with a pure model projection. Keep active and pending sessions
+  as display overlays outside pagination. Preserve old scope chrome and metadata
+  atomically while a provider refetch is pending. Engine snapshots merge
+  monotonically; only explicit `session/removed` owns deletion.
 - Validation:
-  Run
-  `pnpm --dir packages/agent/gui exec vitest run --environment jsdom agent-gui/agentGuiNode/model/agentGuiConversationFilter.spec.ts contexts/workspace/presentation/renderer/agentGuiConversationList/agentGuiConversationListStore.spec.ts agent-gui/agentGuiNode/controller/useAgentGUINodeController.spec.tsx -t "opens the selected target home composer when the active conversation is outside the new rail filter"`,
-  then `cd services/tuttid && go test ./data/workspace/...`.
+  Run `pnpm --filter @tutti-os/agent-gui test`,
+  `pnpm --filter @tutti-os/agent-activity-core test`, and
+  `pnpm check:agent-activity-runtime-boundaries`. Cover Codex -> All -> Codex,
+  client restart restore, active row outside first page, five-plus-active totals,
+  nine-session Show more, slow provider refetch, and bounded snapshot omission.
 - References:
-  [agentGuiConversationFilter.ts](../../../packages/agent/gui/agent-gui/agentGuiNode/model/agentGuiConversationFilter.ts)
-  [agentGuiConversationListStore.ts](../../../packages/agent/gui/contexts/workspace/presentation/renderer/agentGuiConversationList/agentGuiConversationListStore.ts)
-  [useAgentGUINodeController.ts](../../../packages/agent/gui/agent-gui/agentGuiNode/controller/useAgentGUINodeController.ts)
-  [AgentGUINodeView.tsx](../../../packages/agent/gui/agent-gui/agentGuiNode/AgentGUINodeView.tsx)
-  [agent_store.go](../../../services/tuttid/data/workspace/agent_store.go)
+  [useAgentGUIConversationRailQuery.ts](../../../packages/agent/gui/agent-gui/agentGuiNode/controller/useAgentGUIConversationRailQuery.ts)
+  [agentGuiConversationRail.ts](../../../packages/agent/gui/agent-gui/agentGuiNode/model/agentGuiConversationRail.ts)
+  [AgentGUIConversationRailSection.tsx](../../../packages/agent/gui/agent-gui/agentGuiNode/view/AgentGUIConversationRailSection.tsx)
+  [sessionEntities.reducer.ts](../../../packages/agent/activity-core/src/engine/sessionEntities.reducer.ts)
+  [service_session_sections.go](../../../services/tuttid/service/agent/service_session_sections.go)
 
 ### Agent GUI no-project sessions appear under a user project
 

@@ -13,7 +13,7 @@ describe("useAgentConversationSelection", () => {
       useAgentConversationSelection({
         activation: {
           forget: vi.fn(),
-          getPendingSessionId: () => null
+          isPending: () => false
         },
         conversations: { contains: () => true },
         detail: {
@@ -61,7 +61,7 @@ describe("useAgentConversationSelection", () => {
       useAgentConversationSelection({
         activation: {
           forget: vi.fn(),
-          getPendingSessionId: () => null
+          isPending: () => false
         },
         conversations: { contains: () => true },
         detail: {
@@ -97,5 +97,50 @@ describe("useAgentConversationSelection", () => {
       reloadConversations: true,
       reloadDetail: false
     });
+  });
+
+  it("selects an optimistic pending session without reloading durable detail", () => {
+    const active = { current: "session-b" as string | null };
+    const reload = vi.fn();
+    const setLoading = vi.fn();
+    const setIntent = vi.fn();
+    const { result } = renderHook(() =>
+      useAgentConversationSelection({
+        activation: {
+          forget: vi.fn(),
+          isPending: (agentSessionId) => agentSessionId === "session-a"
+        },
+        conversations: { contains: () => true },
+        detail: {
+          hasRenderableMessages: () => false,
+          markPending: vi.fn(),
+          reload,
+          setLoading
+        },
+        hasConversationListQuery: () => true,
+        isMounted: () => true,
+        onMissingConversationListQuery: vi.fn(),
+        persistence: { update: vi.fn() },
+        selection: {
+          clearDetailError: vi.fn(),
+          getActiveSessionId: () => active.current,
+          setActiveSessionId: (agentSessionId) => {
+            active.current = agentSessionId;
+          },
+          setComposerHome: vi.fn(),
+          setIntent
+        }
+      })
+    );
+
+    act(() => result.current.selectConversation("session-a"));
+
+    expect(active.current).toBe("session-a");
+    expect(setIntent).toHaveBeenCalledWith({
+      tag: "active",
+      id: "session-a"
+    });
+    expect(setLoading).toHaveBeenCalledWith(false);
+    expect(reload).not.toHaveBeenCalled();
   });
 });

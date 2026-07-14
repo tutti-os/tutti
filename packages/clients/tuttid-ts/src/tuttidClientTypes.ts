@@ -502,6 +502,8 @@ export interface TuttidClient {
   listWorkspaceAgentSessions(
     workspaceID: string,
     request?: {
+      agentTargetId?: string;
+      cursor?: string;
       limit?: number;
       searchQuery?: string;
     },

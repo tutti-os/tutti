@@ -60,6 +60,9 @@ type UseAgentGUIViewAssemblyInput = ConversationPresentationInput &
     updateSelectedProjectPath: Parameters<
       typeof useAgentGUIControllerActions
     >[0]["updateSelectedProjectPath"];
+    selectConversation: Parameters<
+      typeof useAgentGUIControllerActions
+    >[0]["selectConversation"];
     providerRailMode: AgentGUIProviderRailMode | undefined;
   };
 

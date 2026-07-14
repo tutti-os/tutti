@@ -4018,6 +4018,10 @@ type WorkspaceAgentSessionGoalControlResponse struct {
 
 // WorkspaceAgentSessionListResponse defines model for WorkspaceAgentSessionListResponse.
 type WorkspaceAgentSessionListResponse struct {
+	HasMore bool `json:"hasMore"`
+
+	// NextCursor Cursor for the next older matching session page, encoded as conversationSortTimeUnixMs|agentSessionId.
+	NextCursor  *string                 `json:"nextCursor,omitempty"`
 	Sessions    []WorkspaceAgentSession `json:"sessions"`
 	WorkspaceId string                  `json:"workspaceId"`
 }
@@ -4057,6 +4061,9 @@ type WorkspaceAgentSessionPage struct {
 	// NextCursor Cursor for the next older page, encoded as pinnedAtUnixMs|agentSessionId for pinned pages.
 	NextCursor *string                 `json:"nextCursor,omitempty"`
 	Sessions   []WorkspaceAgentSession `json:"sessions"`
+
+	// TotalCount Total visible sessions in this page scope before cursor pagination.
+	TotalCount int `json:"totalCount"`
 }
 
 // WorkspaceAgentSessionPageResponse defines model for WorkspaceAgentSessionPageResponse.
@@ -4075,11 +4082,14 @@ type WorkspaceAgentSessionSection struct {
 	HasMore bool                             `json:"hasMore"`
 	Kind    WorkspaceAgentSessionSectionKind `json:"kind"`
 
-	// NextCursor Cursor for the next older page, encoded as updatedAtUnixMs|agentSessionId.
-	NextCursor  *string                 `json:"nextCursor,omitempty"`
-	SectionKey  string                  `json:"sectionKey"`
-	Sessions    []WorkspaceAgentSession `json:"sessions"`
-	UserProject *UserProject            `json:"userProject,omitempty"`
+	// NextCursor Cursor for the next older page, encoded as conversationSortTimeUnixMs|agentSessionId.
+	NextCursor *string                 `json:"nextCursor,omitempty"`
+	SectionKey string                  `json:"sectionKey"`
+	Sessions   []WorkspaceAgentSession `json:"sessions"`
+
+	// TotalCount Total visible sessions in this section before cursor pagination.
+	TotalCount  int          `json:"totalCount"`
+	UserProject *UserProject `json:"userProject,omitempty"`
 }
 
 // WorkspaceAgentSessionSectionDeletionCandidatesResponse defines model for WorkspaceAgentSessionSectionDeletionCandidatesResponse.
@@ -4817,7 +4827,7 @@ type ListWorkspaceAgentSessionSectionDeletionCandidatesParams struct {
 type ListWorkspaceAgentSessionSectionPageParams struct {
 	SectionKey string `form:"sectionKey" json:"sectionKey"`
 
-	// Cursor Cursor for the next older page, encoded as updatedAtUnixMs|agentSessionId.
+	// Cursor Cursor for the next older page, encoded as conversationSortTimeUnixMs|agentSessionId.
 	Cursor *string `form:"cursor,omitempty" json:"cursor,omitempty"`
 	Limit  *int    `form:"limit,omitempty" json:"limit,omitempty"`
 
@@ -4837,8 +4847,10 @@ type ListWorkspaceAgentPinnedSessionPageParams struct {
 
 // ListWorkspaceAgentSessionsParams defines parameters for ListWorkspaceAgentSessions.
 type ListWorkspaceAgentSessionsParams struct {
-	SearchQuery *string `form:"searchQuery,omitempty" json:"searchQuery,omitempty"`
-	Limit       *int    `form:"limit,omitempty" json:"limit,omitempty"`
+	AgentTargetId *string `form:"agentTargetId,omitempty" json:"agentTargetId,omitempty"`
+	SearchQuery   *string `form:"searchQuery,omitempty" json:"searchQuery,omitempty"`
+	Cursor        *string `form:"cursor,omitempty" json:"cursor,omitempty"`
+	Limit         *int    `form:"limit,omitempty" json:"limit,omitempty"`
 }
 
 // ListWorkspaceAgentSessionMessagesParams defines parameters for ListWorkspaceAgentSessionMessages.

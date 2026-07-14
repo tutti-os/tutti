@@ -101,7 +101,11 @@ func (s *Service) ListMessages(
 		}
 	}
 
-	if !s.sessionExists(workspaceID, agentSessionID) {
+	exists, err := s.sessionExists(workspaceID, agentSessionID)
+	if err != nil {
+		return SessionMessagesPage{}, err
+	}
+	if !exists {
 		return SessionMessagesPage{}, ErrSessionNotFound
 	}
 	return emptySessionMessagesPage(agentSessionID, input), nil
@@ -147,20 +151,28 @@ func (s *Service) ListGeneratedFiles(
 	return files, nil
 }
 
-func (s *Service) sessionExists(workspaceID string, agentSessionID string) bool {
+func (s *Service) sessionExists(workspaceID string, agentSessionID string) (bool, error) {
 	workspaceID = strings.TrimSpace(workspaceID)
 	agentSessionID = strings.TrimSpace(agentSessionID)
 	if workspaceID == "" || agentSessionID == "" {
-		return false
-	}
-	if _, ok := s.controller().Session(workspaceID, agentSessionID); ok {
-		return true
+		return false, nil
 	}
 	if s.SessionReader == nil {
-		return false
+		_, ok := s.controller().Session(workspaceID, agentSessionID)
+		return ok, nil
+	}
+	deleted, err := s.SessionReader.SessionDeleted(workspaceID, agentSessionID)
+	if err != nil {
+		return false, err
+	}
+	if deleted {
+		return false, nil
+	}
+	if _, ok := s.controller().Session(workspaceID, agentSessionID); ok {
+		return true, nil
 	}
 	_, ok := s.SessionReader.GetSession(workspaceID, agentSessionID)
-	return ok
+	return ok, nil
 }
 
 func emptySessionMessagesPage(agentSessionID string, input ListMessagesInput) SessionMessagesPage {

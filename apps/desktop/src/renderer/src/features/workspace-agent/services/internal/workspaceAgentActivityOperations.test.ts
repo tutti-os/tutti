@@ -15,7 +15,7 @@ test("activity query operations own directory request normalization and response
     ) => {
       calls.push({ options, request, workspaceId });
       return {
-        pinned: undefined,
+        pinned: { hasMore: false, sessions: [], totalCount: 0 },
         sections: [
           {
             hasMore: false,
@@ -23,6 +23,7 @@ test("activity query operations own directory request normalization and response
             nextCursor: undefined,
             sectionKey: "chats",
             sessions: [],
+            totalCount: 4,
             userProject: null
           }
         ],
@@ -46,7 +47,12 @@ test("activity query operations own directory request normalization and response
     }
   ]);
   assert.deepEqual(result, {
-    pinned: { hasMore: false, nextCursor: undefined, sessions: [] },
+    pinned: {
+      hasMore: false,
+      nextCursor: undefined,
+      sessions: [],
+      totalCount: 0
+    },
     sections: [
       {
         hasMore: false,
@@ -54,6 +60,7 @@ test("activity query operations own directory request normalization and response
         nextCursor: undefined,
         sectionKey: "chats",
         sessions: [],
+        totalCount: 4,
         userProject: null
       }
     ],

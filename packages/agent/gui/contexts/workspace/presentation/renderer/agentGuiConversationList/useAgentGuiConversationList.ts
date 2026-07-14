@@ -13,12 +13,14 @@ import {
   type AgentGUIConversationFilter
 } from "../../../../../agent-gui/agentGuiNode/model/agentGuiConversationFilter";
 import type { AgentGUIProvider } from "../../../../../types";
+import type { AgentGUIAgentTarget } from "../../../../../types";
 import type { AgentGUIConversationSummary } from "../../../../../agent-gui/agentGuiNode/model/agentGuiConversationModel";
 import {
   isAgentGUIProviderUnresolved,
   resolveAgentGUIConversationTitle,
   resolveAgentGUIProviderIdentity
 } from "../../../../../shared/agentConversationTitleProjection.ts";
+import { resolveWorkspaceAgentSessionSortTimeUnixMs } from "../../../../../shared/workspaceAgentSessionSortTime.ts";
 
 export interface AgentGUIConversationListQuery {
   conversationFilter?: AgentGUIConversationFilter | null;
@@ -28,9 +30,43 @@ export interface AgentGUIConversationListQuery {
   sessionOrigin: string;
 }
 
+export function projectCanonicalAgentGUIConversationSummaries(
+  sessions: ReturnType<typeof selectWorkspaceAgentConsumerSessions>
+): AgentGUIConversationSummary[] {
+  return sessions.map((item): AgentGUIConversationSummary => {
+    const provider = resolveAgentGUIProviderIdentity({
+      sessionProvider: item.session.provider
+    });
+    const { title, titleFallback } = resolveAgentGUIConversationTitle(
+      item.session.title,
+      provider
+    );
+    const canonicalUpdatedAtUnixMs =
+      item.session.updatedAtUnixMs ?? item.session.createdAtUnixMs ?? 0;
+    return {
+      agentTargetId: item.session.agentTargetId ?? null,
+      cwd: item.session.cwd,
+      id: item.session.agentSessionId,
+      pinnedAtUnixMs: item.session.pinnedAtUnixMs ?? null,
+      provider,
+      resumable: item.session.resumable,
+      sortTimeUnixMs: resolveWorkspaceAgentSessionSortTimeUnixMs({
+        createdAtUnixMs: item.session.createdAtUnixMs,
+        latestTurn: item.latestTurn
+      }),
+      status: item.displayStatus === "idle" ? "ready" : item.displayStatus,
+      title,
+      titleFallback,
+      updatedAtUnixMs: canonicalUpdatedAtUnixMs,
+      userId: item.session.userId?.trim() ?? ""
+    };
+  });
+}
+
 export function useAgentGuiConversationList(
   engine: AgentSessionEngine,
-  query: AgentGUIConversationListQuery | null
+  query: AgentGUIConversationListQuery | null,
+  agentTargets: readonly AgentGUIAgentTarget[] = []
 ) {
   const workspaceReconcile = useEngineSelector(
     engine,
@@ -67,8 +103,11 @@ export function useAgentGuiConversationList(
           !canonicalIds.has(activation.agentSessionId)
       )
       .map((activation): AgentGUIConversationSummary => {
+        const target = agentTargets.find(
+          (candidate) => candidate.agentTargetId === activation.agentTargetId
+        );
         const provider = resolveAgentGUIProviderIdentity({
-          sessionProvider: query.provider
+          sessionProvider: target?.provider ?? query.provider
         });
         const { title, titleFallback } = resolveAgentGUIConversationTitle(
           activation.title ?? "",
@@ -81,6 +120,7 @@ export function useAgentGuiConversationList(
           provider,
           sortTimeUnixMs: activation.requestedAtUnixMs,
           status: "working",
+          projectionSource: "pending_activation",
           title,
           titleFallback,
           updatedAtUnixMs: activation.requestedAtUnixMs,
@@ -88,46 +128,38 @@ export function useAgentGuiConversationList(
         };
       });
     const conversations = [
-      ...sessions
-        .filter((item) => item.session.workspaceId === query.workspaceId)
-        .map((item): AgentGUIConversationSummary => {
-          const provider = resolveAgentGUIProviderIdentity({
-            sessionProvider: item.session.provider
-          });
-          const canonicalUpdatedAtUnixMs =
-            item.session.updatedAtUnixMs ?? item.session.createdAtUnixMs ?? 0;
-          const activation = latestNewActivationBySessionId.get(
-            item.session.agentSessionId
-          );
-          const activationIsNewer =
-            activation !== undefined &&
-            activation.requestedAtUnixMs > canonicalUpdatedAtUnixMs;
-          const { title, titleFallback } = resolveAgentGUIConversationTitle(
-            activationIsNewer && activation.title
-              ? activation.title
-              : item.session.title,
-            provider
-          );
-          return {
-            agentTargetId: item.session.agentTargetId ?? null,
-            cwd: item.session.cwd,
-            id: item.session.agentSessionId,
-            pinnedAtUnixMs: item.session.pinnedAtUnixMs ?? null,
-            provider,
-            resumable: item.session.resumable,
-            sortTimeUnixMs: activationIsNewer
-              ? activation.requestedAtUnixMs
-              : (item.latestTurn?.updatedAtUnixMs ?? canonicalUpdatedAtUnixMs),
-            status:
-              item.displayStatus === "idle" ? "ready" : item.displayStatus,
-            title,
-            titleFallback,
-            updatedAtUnixMs: activationIsNewer
-              ? activation.requestedAtUnixMs
-              : canonicalUpdatedAtUnixMs,
-            userId: item.session.userId?.trim() ?? ""
-          };
-        }),
+      ...projectCanonicalAgentGUIConversationSummaries(
+        sessions.filter(
+          (item) => item.session.workspaceId === query.workspaceId
+        )
+      ).map((conversation): AgentGUIConversationSummary => {
+        const canonicalUpdatedAtUnixMs = conversation.updatedAtUnixMs;
+        const activation = latestNewActivationBySessionId.get(conversation.id);
+        const activationIsNewer =
+          activation !== undefined &&
+          activation.requestedAtUnixMs > canonicalUpdatedAtUnixMs;
+        const activationIsPending =
+          activation?.status === "requested" ||
+          activation?.status === "uncertain";
+        const { title, titleFallback } = resolveAgentGUIConversationTitle(
+          activationIsNewer && activation.title
+            ? activation.title
+            : conversation.title,
+          conversation.provider
+        );
+        return {
+          ...conversation,
+          sortTimeUnixMs: activationIsNewer
+            ? activation.requestedAtUnixMs
+            : conversation.sortTimeUnixMs,
+          status: activationIsPending ? "working" : conversation.status,
+          title,
+          titleFallback,
+          updatedAtUnixMs: activationIsNewer
+            ? activation.requestedAtUnixMs
+            : canonicalUpdatedAtUnixMs
+        };
+      }),
       ...pendingConversations
     ]
       .filter((conversation) => {
@@ -166,7 +198,7 @@ export function useAgentGuiConversationList(
         query.sessionOrigin
       ].join("::")
     };
-  }, [pendingActivations, query, sessions, workspaceReconcile]);
+  }, [agentTargets, pendingActivations, query, sessions, workspaceReconcile]);
 }
 
 function pendingActivationsEqual(

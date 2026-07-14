@@ -384,7 +384,7 @@ function createWorkspaceAgentActivityService(): IWorkspaceAgentActivityService {
       workspaceId: "workspace-1"
     }),
     listSessionSections: async () => ({
-      pinned: { hasMore: false, sessions: [] },
+      pinned: { hasMore: false, sessions: [], totalCount: 0 },
       sections: [],
       workspaceId: "workspace-1"
     }),
@@ -392,7 +392,8 @@ function createWorkspaceAgentActivityService(): IWorkspaceAgentActivityService {
       kind: "conversations",
       sectionKey: input.sectionKey,
       sessions: [],
-      hasMore: false
+      hasMore: false,
+      totalCount: 0
     }),
     listSessionSectionDeletionCandidates: async (input) => ({
       excludePinned: input.excludePinned ?? false,
@@ -407,7 +408,8 @@ function createWorkspaceAgentActivityService(): IWorkspaceAgentActivityService {
     }),
     listPinnedSessionsPage: async () => ({
       hasMore: false,
-      sessions: []
+      sessions: [],
+      totalCount: 0
     }),
     scanExternalSessionImports: async () => {
       throw new Error("not implemented");

@@ -1,4 +1,5 @@
 import { useCallback, useRef, type Dispatch, type SetStateAction } from "react";
+import type { PendingActivationIntentRecord } from "@tutti-os/agent-activity-core";
 import type { AgentActivityRuntime } from "../../../agentActivityRuntime";
 import { translate } from "../../../i18n/index";
 import type { AgentHostAccountUserProfile } from "../../../shared/contracts/dto";
@@ -13,6 +14,7 @@ import {
 import { resolveAgentComposerDraftScopeKey } from "../model/agentComposerDraftScope";
 import { buildContinueInNewConversationPrompt } from "./agentGuiController.conversationHelpers";
 import { reportAgentGUIActiveConversationCleared } from "./agentGuiController.reporting";
+import { isPendingNewConversationActivation } from "./useAgentGUIActivation";
 import {
   resolveConversationSummaryById,
   type ConversationIntent
@@ -27,6 +29,7 @@ interface UseAgentGUIContinueConversationInput {
     Record<string, AgentHostAccountUserProfile>
   >;
   activeConversationIdRef: CurrentValue<string | null>;
+  activePendingActivation: PendingActivationIntentRecord | null;
   agentActivityRuntime: AgentActivityRuntime;
   conversations: readonly AgentGUIConversationSummary[];
   createConversation(): void;
@@ -98,7 +101,9 @@ export function useAgentGUIContinueConversation(
       runtime: current.agentActivityRuntime,
       workspaceId: current.workspaceId
     });
-    void current.unactivate(currentConversationId);
+    if (!isPendingNewConversationActivation(current.activePendingActivation)) {
+      void current.unactivate(currentConversationId);
+    }
     current.setIntent({ tag: "home" });
     current.isComposerHomeRef.current = true;
     current.setIsComposerHome(true);

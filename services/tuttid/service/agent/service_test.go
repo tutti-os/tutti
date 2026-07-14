@@ -4322,7 +4322,20 @@ func TestServiceFallsBackToPersistedSessions(t *testing.T) {
 	}
 }
 
-func TestServiceListFilteredMatchesSearchVisibilityLimitAndUpdatedOrder(t *testing.T) {
+type conversationOrderTurnStore struct {
+	failingTurnStore
+	latestTurns map[string]agentactivitybiz.Turn
+}
+
+func (s conversationOrderTurnStore) ListLatestTurns(
+	context.Context,
+	string,
+	[]string,
+) (map[string]agentactivitybiz.Turn, error) {
+	return s.latestTurns, nil
+}
+
+func TestServiceListPageMatchesSearchVisibilityTargetCursorAndTurnStartOrder(t *testing.T) {
 	runtime := newFakeRuntime()
 	olderUpdatedAt := time.UnixMilli(2000)
 	newerUpdatedAt := time.UnixMilli(4000)
@@ -4341,6 +4354,7 @@ func TestServiceListFilteredMatchesSearchVisibilityLimitAndUpdatedOrder(t *testi
 	runtime.sessions["ws-1:session-older"] = ProviderRuntimeSession{
 		ID:              "session-older",
 		WorkspaceID:     "ws-1",
+		AgentTargetID:   "local:codex",
 		Provider:        "codex",
 		Cwd:             "/workspace/older",
 		Status:          "completed",
@@ -4352,6 +4366,7 @@ func TestServiceListFilteredMatchesSearchVisibilityLimitAndUpdatedOrder(t *testi
 	runtime.sessions["ws-1:session-newer"] = ProviderRuntimeSession{
 		ID:              "session-newer",
 		WorkspaceID:     "ws-1",
+		AgentTargetID:   "local:codex",
 		Provider:        "codex",
 		Cwd:             "/workspace/newer",
 		Status:          "working",
@@ -4360,20 +4375,66 @@ func TestServiceListFilteredMatchesSearchVisibilityLimitAndUpdatedOrder(t *testi
 		CreatedAtUnixMS: time.UnixMilli(1000).UnixMilli(),
 		UpdatedAtUnixMS: newerUpdatedAt.UnixMilli(),
 	}
+	runtime.sessions["ws-1:session-other-target"] = ProviderRuntimeSession{
+		ID:              "session-other-target",
+		WorkspaceID:     "ws-1",
+		AgentTargetID:   "local:claude-code",
+		Provider:        "claude-code",
+		Cwd:             "/workspace/other",
+		Status:          "completed",
+		Visible:         true,
+		Title:           "Mention other target",
+		CreatedAtUnixMS: time.UnixMilli(1000).UnixMilli(),
+		UpdatedAtUnixMS: time.UnixMilli(6000).UnixMilli(),
+	}
 
 	service := newIsolatedAgentService(runtime)
-	list, err := service.ListFiltered(context.Background(), "ws-1", ListSessionsInput{
-		SearchQuery: "mention",
-		Limit:       1,
+	service.TurnStore = conversationOrderTurnStore{
+		latestTurns: map[string]agentactivitybiz.Turn{
+			"session-older": {
+				WorkspaceID:     "ws-1",
+				AgentSessionID:  "session-older",
+				TurnID:          "turn-older",
+				Phase:           agentactivitybiz.TurnPhaseSettled,
+				StartedAtUnixMS: 2_000,
+				UpdatedAtUnixMS: 9_000,
+			},
+			"session-newer": {
+				WorkspaceID:     "ws-1",
+				AgentSessionID:  "session-newer",
+				TurnID:          "turn-newer",
+				Phase:           agentactivitybiz.TurnPhaseSettled,
+				StartedAtUnixMS: 4_000,
+				UpdatedAtUnixMS: 4_000,
+			},
+		},
+	}
+	page, err := service.ListPage(context.Background(), "ws-1", ListSessionsInput{
+		AgentTargetID: "local:codex",
+		SearchQuery:   "mention",
+		Limit:         1,
 	})
 	if err != nil {
-		t.Fatalf("ListFiltered returned error: %v", err)
+		t.Fatalf("ListPage returned error: %v", err)
 	}
-	if len(list) != 1 {
-		t.Fatalf("len(list) = %d, want 1", len(list))
+	if len(page.Sessions) != 1 {
+		t.Fatalf("len(page.Sessions) = %d, want 1", len(page.Sessions))
 	}
-	if list[0].ID != "session-newer" {
-		t.Fatalf("list[0].ID = %q, want session-newer", list[0].ID)
+	if page.Sessions[0].ID != "session-newer" || !page.HasMore || page.NextCursor == "" {
+		t.Fatalf("first page = %#v, want newer session with next cursor", page)
+	}
+
+	nextPage, err := service.ListPage(context.Background(), "ws-1", ListSessionsInput{
+		AgentTargetID: "local:codex",
+		Cursor:        page.NextCursor,
+		SearchQuery:   "mention",
+		Limit:         1,
+	})
+	if err != nil {
+		t.Fatalf("ListPage(next) returned error: %v", err)
+	}
+	if len(nextPage.Sessions) != 1 || nextPage.Sessions[0].ID != "session-older" || nextPage.HasMore {
+		t.Fatalf("next page = %#v, want final older session", nextPage)
 	}
 }
 
@@ -4426,6 +4487,7 @@ func TestServiceListSessionSectionsUsesCurrentProjectsAndConversations(t *testin
 					UpdatedAtUnixMS: 5000,
 				}},
 				HasMore:    true,
+				TotalCount: 7,
 				NextCursor: "5000|project-session",
 			},
 			"conversations": {
@@ -4450,6 +4512,7 @@ func TestServiceListSessionSectionsUsesCurrentProjectsAndConversations(t *testin
 					UpdatedAtUnixMS: 3000,
 				}},
 				HasMore:    true,
+				TotalCount: 3,
 				NextCursor: "6000|pinned-session",
 			},
 		},
@@ -4478,6 +4541,9 @@ func TestServiceListSessionSectionsUsesCurrentProjectsAndConversations(t *testin
 	if !page.Pinned.HasMore || page.Pinned.NextCursor != "6000|pinned-session" {
 		t.Fatalf("pinned page state = hasMore %v cursor %q", page.Pinned.HasMore, page.Pinned.NextCursor)
 	}
+	if page.Pinned.TotalCount != 3 {
+		t.Fatalf("pinned total count = %d, want 3", page.Pinned.TotalCount)
+	}
 	if page.Sections[0].Kind != "project" || page.Sections[0].SectionKey != "project:/workspace/project" {
 		t.Fatalf("project section = %#v", page.Sections[0])
 	}
@@ -4486,6 +4552,9 @@ func TestServiceListSessionSectionsUsesCurrentProjectsAndConversations(t *testin
 	}
 	if !page.Sections[0].HasMore || page.Sections[0].NextCursor != "5000|project-session" {
 		t.Fatalf("project page state = hasMore %v cursor %q", page.Sections[0].HasMore, page.Sections[0].NextCursor)
+	}
+	if page.Sections[0].TotalCount != 7 {
+		t.Fatalf("project total count = %d, want 7", page.Sections[0].TotalCount)
 	}
 	if page.Sections[1].Kind != "conversations" || page.Sections[1].SectionKey != "conversations" {
 		t.Fatalf("conversations section = %#v", page.Sections[1])
@@ -4519,7 +4588,7 @@ func TestServiceListSessionSectionPageForwardsStableCursor(t *testing.T) {
 		t.Fatalf("section = %#v", section)
 	}
 	if reader.lastInput.SectionKey != "project:/workspace/project" ||
-		reader.lastInput.CursorUpdatedAtMS != 4000 ||
+		reader.lastInput.CursorSortTimeUnixMS != 4000 ||
 		reader.lastInput.CursorSessionID != "middle" ||
 		reader.lastInput.Limit != 2 ||
 		reader.lastInput.AgentTargetID != "claude-target" {
@@ -4544,7 +4613,7 @@ func TestServiceListPinnedSessionPageForwardsStableCursor(t *testing.T) {
 		t.Fatalf("page = %#v, want empty page without hasMore", page)
 	}
 	if reader.lastInput.SectionKey != agentactivitybiz.PinnedSessionPageKey ||
-		reader.lastInput.CursorUpdatedAtMS != 6000 ||
+		reader.lastInput.CursorSortTimeUnixMS != 6000 ||
 		reader.lastInput.CursorSessionID != "pinned-session" ||
 		reader.lastInput.Limit != 2 ||
 		reader.lastInput.AgentTargetID != "claude-target" {
@@ -5565,7 +5634,8 @@ func (f *fakeProviderAvailabilityChecker) ListProviderAvailability(_ context.Con
 }
 
 type fakeSessionReader struct {
-	sessions map[string]PersistedSession
+	sessions   map[string]PersistedSession
+	tombstoned map[string]bool
 }
 
 type fakeSectionReader struct {
@@ -5814,6 +5884,10 @@ func (f fakeSessionReader) GetSession(workspaceID string, agentSessionID string)
 	return session, ok
 }
 
+func (f fakeSessionReader) SessionDeleted(workspaceID string, agentSessionID string) (bool, error) {
+	return f.tombstoned[workspaceID+":"+agentSessionID], nil
+}
+
 func (f fakeSessionReader) ListSessions(workspaceID string) ([]PersistedSession, bool) {
 	result := make([]PersistedSession, 0)
 	for _, session := range f.sessions {
@@ -5939,6 +6013,10 @@ func (*activityProjectionRepoStub) DeleteSession(context.Context, string, string
 
 func (*activityProjectionRepoStub) GetSession(context.Context, string, string) (agentactivitybiz.Session, bool, error) {
 	return agentactivitybiz.Session{}, false, nil
+}
+
+func (*activityProjectionRepoStub) SessionDeleted(context.Context, string, string) (bool, error) {
+	return false, nil
 }
 
 func (*activityProjectionRepoStub) ListSessions(context.Context, string) ([]agentactivitybiz.Session, bool, error) {

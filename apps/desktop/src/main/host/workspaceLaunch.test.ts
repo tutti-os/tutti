@@ -423,11 +423,11 @@ function createTransportClient(
       return { terminals: [], workspaceId: workspaceID };
     },
     async listWorkspaceAgentSessions(workspaceID) {
-      return { sessions: [], workspaceId: workspaceID };
+      return { hasMore: false, sessions: [], workspaceId: workspaceID };
     },
     async listWorkspaceAgentSessionSections(workspaceID) {
       return {
-        pinned: { hasMore: false, sessions: [] },
+        pinned: { hasMore: false, sessions: [], totalCount: 0 },
         sections: [],
         workspaceId: workspaceID
       };

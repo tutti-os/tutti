@@ -1,4 +1,10 @@
-import { act, fireEvent, render, screen } from "@testing-library/react";
+import {
+  act,
+  fireEvent,
+  render,
+  screen,
+  waitFor
+} from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { AgentInteractivePromptSurface } from "./AgentInteractivePromptSurface";
 import { setAgentGuiI18nTestLocale } from "../../i18n/testUtils";
@@ -101,6 +107,76 @@ describe("AgentInteractivePromptSurface", () => {
       requestId: "request-approval",
       optionId: "allow_once"
     });
+  });
+
+  it("clears approval option loading when external submission settles", async () => {
+    const onSubmit = vi.fn();
+    const prompt = {
+      kind: "approval" as const,
+      id: "approval:request-approval",
+      turnId: "turn-1",
+      requestId: "request-approval",
+      callId: "request-approval",
+      title: "Run command",
+      status: "waiting_approval" as const,
+      toolName: "Bash",
+      input: null,
+      options: [
+        {
+          id: "allow_once",
+          label: "Allow once",
+          kind: "allow_once" as const,
+          description: "Run this tool a single time."
+        }
+      ],
+      output: null,
+      occurredAtUnixMs: 1
+    };
+    const { rerender } = render(
+      <AgentInteractivePromptSurface
+        prompt={prompt}
+        isSubmitting={false}
+        onSubmit={onSubmit}
+        labels={labels}
+      />
+    );
+
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: "Yes, proceed Run this tool a single time."
+      })
+    );
+    expect(screen.getByTestId("agent-interactive-option-spinner")).toBeTruthy();
+
+    rerender(
+      <AgentInteractivePromptSurface
+        prompt={prompt}
+        isSubmitting={true}
+        onSubmit={onSubmit}
+        labels={labels}
+      />
+    );
+    expect(screen.getByTestId("agent-interactive-option-spinner")).toBeTruthy();
+
+    rerender(
+      <AgentInteractivePromptSurface
+        prompt={prompt}
+        isSubmitting={false}
+        onSubmit={onSubmit}
+        labels={labels}
+      />
+    );
+
+    await waitFor(() => {
+      expect(
+        screen.queryByTestId("agent-interactive-option-spinner")
+      ).toBeNull();
+    });
+    expect(
+      screen.getByRole("button", {
+        name: "Yes, proceed Run this tool a single time."
+      })
+    ).not.toBeDisabled();
   });
 
   it("submits abort approval options with optional feedback", () => {

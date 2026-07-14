@@ -16,6 +16,7 @@ export interface PendingActivationIntentRecord {
   agentTargetId: string | null;
   clientSubmitId: string | null;
   content: readonly AgentPromptContentBlock[];
+  displayPrompt?: string;
   cwd: string;
   errorCode: string | null;
   errorMessage: string | null;
@@ -70,6 +71,7 @@ interface SessionActivationRequestedIntentBase {
   cwd?: string;
   expiresAtUnixMs: number;
   initialDisplayPrompt?: string;
+  runtimeContent?: readonly AgentPromptContentBlock[];
   submitDiagnostics?: Readonly<AgentActivitySubmitDiagnostics>;
   requestedAtUnixMs: number;
   requestId: string;

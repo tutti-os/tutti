@@ -1788,11 +1788,11 @@ func TestSQLiteStoreListSessionSectionPagesByRailSectionKey(t *testing.T) {
 	}
 
 	nextProjectPage, ok, err := store.ListSessionSection(ctx, agentactivitybiz.ListSessionSectionInput{
-		WorkspaceID:       "ws-agent-section-page",
-		SectionKey:        "project:/workspace/app",
-		CursorUpdatedAtMS: projectPage.Sessions[0].UpdatedAtUnixMS,
-		CursorSessionID:   "project-older",
-		Limit:             2,
+		WorkspaceID:          "ws-agent-section-page",
+		SectionKey:           "project:/workspace/app",
+		CursorSortTimeUnixMS: projectPage.Sessions[0].CreatedAtUnixMS,
+		CursorSessionID:      "project-older",
+		Limit:                2,
 	})
 	if err != nil {
 		t.Fatalf("ListSessionSection(project next) error = %v", err)

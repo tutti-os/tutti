@@ -1,5 +1,5 @@
 import {
-  selectEngineSession,
+  selectEngineSessionReconcile,
   selectWorkspaceAgentConsumerSession,
   type AgentSessionEngine
 } from "@tutti-os/agent-activity-core";
@@ -78,6 +78,17 @@ export function useAgentGUIConversationRouting(
         normalizedAgentSessionId
       );
       if (consumerSession && consumerSession.session.visible !== false) return;
+      const reconcile = selectEngineSessionReconcile(
+        sessionEngine.getSnapshot(),
+        normalizedAgentSessionId
+      );
+      if (
+        reconcile?.inFlightCommandId ||
+        reconcile?.pendingMessages ||
+        reconcile?.pendingState
+      ) {
+        return;
+      }
       sessionEngine.dispatch({
         agentSessionId: normalizedAgentSessionId,
         needsMessages: true,
@@ -114,11 +125,6 @@ export function useAgentGUIConversationRouting(
       ) !== null;
     const resolveCanonicalId = (id: string) =>
       resolveConversationSummaryById(conversations, id, null) !== null;
-    const inSnapshot = (id: string) => {
-      const session = selectEngineSession(sessionEngine.getSnapshot(), id);
-      return Boolean(session && session.visible !== false);
-    };
-
     if (hasExplicitOpenSessionRequest) {
       const requestedId = pendingOpenSessionRequest!.agentSessionId.trim();
       if (!hasLoadedConversations) return;
@@ -143,23 +149,11 @@ export function useAgentGUIConversationRouting(
         return;
       case "requested":
         if (!hasLoadedConversations) return;
-        if (resolveId(intent.id)) {
-          if (activeConversationIdRef.current === intent.id) {
-            setIntent({ tag: "active", id: intent.id });
-            return;
-          }
-          selectConversation(intent.id, { reloadConversations: false });
-          return;
-        }
-        if (inSnapshot(intent.id)) {
-          if (activeConversationIdRef.current === intent.id) {
-            ensureTransientOpenSessionConversation(intent.id);
-            setIntent({ tag: "active", id: intent.id });
-          }
-          return;
-        }
-        setIntent({ tag: "resolving", id: intent.id });
-        void syncConversationListProjection(intent.id);
+        // Persisted/external selection is authoritative. The bounded list may
+        // not contain it after restart, so activate it and reconcile detail
+        // instead of replacing it with the first visible rail row.
+        selectConversation(intent.id, { reloadConversations: false });
+        ensureTransientOpenSessionConversation(intent.id);
         return;
       case "resolving": {
         if (resolveId(intent.id)) {

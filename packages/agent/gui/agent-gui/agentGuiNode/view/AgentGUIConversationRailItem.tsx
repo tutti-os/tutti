@@ -56,7 +56,9 @@ interface AgentGUIConversationRailItemProps {
   onMarkConversationUnread: (agentSessionId: string) => void;
   onOpenConversationWindow?: (agentSessionId: string) => void;
   onRequestDeleteConversation: (agentSessionId: string) => void;
-  onRequestRenameConversation: (agentSessionId: string) => void;
+  onRequestRenameConversation: (
+    conversation: AgentGUINodeViewModel["rail"]["conversations"][number]
+  ) => void;
   onCancelDeleteConversation: () => void;
   onConfirmDeleteConversation: () => void;
 }
@@ -128,8 +130,8 @@ export const AgentGUIConversationRailItem = memo(
       onRequestDeleteConversation(item.id);
     }, [item.id, onRequestDeleteConversation]);
     const handleRequestRename = useCallback(() => {
-      onRequestRenameConversation(item.id);
-    }, [item.id, onRequestRenameConversation]);
+      onRequestRenameConversation(item);
+    }, [item, onRequestRenameConversation]);
     const handleContextMenuRename = useCallback(() => {
       if (contextMenuRenameRequestedRef.current) {
         return;

@@ -103,6 +103,10 @@ func (s *SQLiteStore) GetSession(ctx context.Context, workspaceID string, agentS
 	return s.agentStore().GetSession(ctx, workspaceID, agentSessionID)
 }
 
+func (s *SQLiteStore) SessionDeleted(ctx context.Context, workspaceID string, agentSessionID string) (bool, error) {
+	return s.agentStore().SessionDeleted(ctx, workspaceID, agentSessionID)
+}
+
 func (s *SQLiteStore) ListSessions(ctx context.Context, workspaceID string) ([]agentactivitybiz.Session, bool, error) {
 	return s.agentStore().ListSessions(ctx, workspaceID)
 }

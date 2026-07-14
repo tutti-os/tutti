@@ -227,10 +227,3 @@ func timeFromUnixMSPointer(value int64) *time.Time {
 	t := timeFromUnixMS(value)
 	return &t
 }
-
-func sessionUpdatedAtUnixMS(session Session) int64 {
-	if session.UpdatedAt != nil {
-		return session.UpdatedAt.UnixMilli()
-	}
-	return session.CreatedAt.UnixMilli()
-}

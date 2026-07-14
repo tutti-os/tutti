@@ -27,6 +27,12 @@ func (api DaemonAPI) ListWorkspaceAgentSessions(ctx context.Context, request tut
 		}, nil
 	}
 	input := agentservice.ListSessionsInput{}
+	if request.Params.AgentTargetId != nil {
+		input.AgentTargetID = strings.TrimSpace(*request.Params.AgentTargetId)
+	}
+	if request.Params.Cursor != nil {
+		input.Cursor = strings.TrimSpace(*request.Params.Cursor)
+	}
 	if request.Params.SearchQuery != nil {
 		input.SearchQuery = strings.TrimSpace(*request.Params.SearchQuery)
 	}
@@ -37,19 +43,24 @@ func (api DaemonAPI) ListWorkspaceAgentSessions(ctx context.Context, request tut
 		input.Limit = int(*request.Params.Limit)
 	}
 	workspaceID := string(request.WorkspaceID)
-	sessions, err := api.AgentSessionService.ListFiltered(ctx, workspaceID, input)
+	page, err := api.AgentSessionService.ListPage(ctx, workspaceID, input)
 	if err != nil {
 		return writeListWorkspaceAgentSessionsError(err), nil
 	}
 	slog.Info("workspace agent sessions list completed",
 		"event", "workspace.agent_session.api.list_completed",
 		"workspace_id", workspaceID,
-		"session_count", len(sessions),
+		"session_count", len(page.Sessions),
 	)
-	return tuttigenerated.ListWorkspaceAgentSessions200JSONResponse{
-		Sessions:    generatedAgentSessions(sessions),
+	response := tuttigenerated.ListWorkspaceAgentSessions200JSONResponse{
+		HasMore:     page.HasMore,
+		Sessions:    generatedAgentSessions(page.Sessions),
 		WorkspaceId: workspaceID,
-	}, nil
+	}
+	if page.NextCursor != "" {
+		response.NextCursor = &page.NextCursor
+	}
+	return response, nil
 }
 
 func (api DaemonAPI) ListWorkspaceAgentSessionSections(ctx context.Context, request tuttigenerated.ListWorkspaceAgentSessionSectionsRequestObject) (tuttigenerated.ListWorkspaceAgentSessionSectionsResponseObject, error) {

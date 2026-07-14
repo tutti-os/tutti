@@ -1704,6 +1704,19 @@ func (siw *ServerInterfaceWrapper) ListWorkspaceAgentSessions(w http.ResponseWri
 	// Parameter object where we will unmarshal all parameters from the context
 	var params ListWorkspaceAgentSessionsParams
 
+	// ------------- Optional query parameter "agentTargetId" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "agentTargetId", r.URL.Query(), &params.AgentTargetId, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "agentTargetId"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "agentTargetId", Err: err})
+		}
+		return
+	}
+
 	// ------------- Optional query parameter "searchQuery" -------------
 
 	err = runtime.BindQueryParameterWithOptions("form", true, false, "searchQuery", r.URL.Query(), &params.SearchQuery, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
@@ -1713,6 +1726,19 @@ func (siw *ServerInterfaceWrapper) ListWorkspaceAgentSessions(w http.ResponseWri
 			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "searchQuery"})
 		} else {
 			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "searchQuery", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "cursor" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "cursor", r.URL.Query(), &params.Cursor, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "cursor"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "cursor", Err: err})
 		}
 		return
 	}

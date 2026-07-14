@@ -128,6 +128,27 @@ describe("groupConversations", () => {
     expect(groups[0]?.label).toBe("Chats");
   });
 
+  it("omits user project sections without matching conversations", () => {
+    const matching = conversation("weather", 100, {
+      project: project("/workspace/proj2", "proj2")
+    });
+
+    const groups = groupConversations(
+      [matching],
+      labels,
+      [
+        project("/workspace/proj2", "proj2"),
+        project("/workspace/empty", "empty")
+      ],
+      { includeEmptyConversations: false }
+    );
+
+    expect(groups.map((group) => group.id)).toEqual([
+      "project:/workspace/proj2"
+    ]);
+    expect(groups[0]?.items.map((item) => item.id)).toEqual(["weather"]);
+  });
+
   it("removes empty rail sections after applying search matches", () => {
     const nowMs = new Date("2026-06-05T12:00:00Z").getTime();
     const matching = conversation("hello-friend", nowMs, {

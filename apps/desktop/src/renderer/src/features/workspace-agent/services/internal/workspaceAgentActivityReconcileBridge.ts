@@ -1,7 +1,9 @@
-import type {
-  AgentActivitySession,
-  AgentActivitySnapshot,
-  AgentActivityUpdatedEvent
+import {
+  loadAllAgentSessionMessages,
+  type AgentActivityMessagePage,
+  type AgentActivitySession,
+  type AgentActivitySnapshot,
+  type AgentActivityUpdatedEvent
 } from "@tutti-os/agent-activity-core";
 import {
   createAgentActivitySnapshotProjector,
@@ -521,11 +523,10 @@ export abstract class WorkspaceAgentActivityReconcileBridge {
       workspaceId,
       fields: { afterVersion }
     });
-    const page = await entry.adapter.listSessionMessages({
+    const page = await this.reconcileAgentSessionMessagePages(
       workspaceId,
-      agentSessionId,
-      afterVersion
-    });
+      agentSessionId
+    );
     if (this.isSessionTombstoned(workspaceId, agentSessionId)) {
       return;
     }
@@ -634,11 +635,10 @@ export abstract class WorkspaceAgentActivityReconcileBridge {
       workspaceId,
       fields: { afterVersion }
     });
-    const page = await entry.adapter.listSessionMessages({
+    const page = await this.reconcileAgentSessionMessagePages(
       workspaceId,
-      agentSessionId,
-      afterVersion
-    });
+      agentSessionId
+    );
     if (this.isSessionTombstoned(workspaceId, agentSessionId)) {
       return;
     }
@@ -660,6 +660,45 @@ export abstract class WorkspaceAgentActivityReconcileBridge {
       type: "message/snapshotReceived",
       workspaceId
     });
+  }
+
+  private async reconcileAgentSessionMessagePages(
+    workspaceId: string,
+    agentSessionId: string
+  ): Promise<AgentActivityMessagePage> {
+    const entry = this.entry(workspaceId);
+    const cached =
+      this.activitySnapshot(workspaceId).sessionMessagesById[agentSessionId] ??
+      [];
+    if (cached.length === 0) {
+      return entry.adapter.listSessionMessages({
+        workspaceId,
+        agentSessionId,
+        limit: 100,
+        order: "desc"
+      });
+    }
+
+    const afterVersion = reconcileAfterVersion(cached);
+    const result = await loadAllAgentSessionMessages({
+      afterVersion,
+      listPage: (cursor) =>
+        entry.adapter.listSessionMessages({
+          workspaceId,
+          agentSessionId,
+          afterVersion: cursor,
+          order: "asc"
+        }),
+      shouldAbort: () => this.isSessionTombstoned(workspaceId, agentSessionId)
+    });
+    return {
+      hasMore: false,
+      latestVersion: result.messages.reduce(
+        (latest, message) => Math.max(latest, message.version),
+        afterVersion
+      ),
+      messages: result.messages
+    };
   }
 
   private async reconcileAgentSessionState(

@@ -150,13 +150,14 @@ test("desktop agent activity adapter maps tuttid sessions and messages", async (
     tuttidClient: createTuttidClient({
       async listWorkspaceAgentSessions(
         requestWorkspaceId: string,
-        request?: { limit?: number }
+        request?: { limit?: number; searchQuery?: string }
       ) {
         calls.push({
           args: [requestWorkspaceId, request],
           method: "listSessions"
         });
         return {
+          hasMore: false,
           sessions: [
             createSession({
               cwd: "/repo",
@@ -1507,7 +1508,7 @@ function createTuttidClient(
       };
     },
     async listWorkspaceAgentSessions() {
-      return { sessions: [createSession()], workspaceId };
+      return { hasMore: false, sessions: [createSession()], workspaceId };
     },
     async getAgentProviderComposerOptions() {
       return {

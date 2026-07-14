@@ -207,6 +207,9 @@ export function groupConversations(
   }
   groups.push(
     ...[...projectGroups.values()]
+      .filter(
+        (group) => options.includeEmptyConversations || group.items.length > 0
+      )
       .sort(
         (left, right) =>
           left.sectionOrder - right.sectionOrder ||

@@ -534,9 +534,9 @@ func TestStoreListSessionSectionFiltersHiddenSessionsBeforePagination(t *testing
 	}
 	if _, err := store.db.ExecContext(ctx, `
 UPDATE workspace_agent_sessions
-SET updated_at_unix_ms = 1000
+SET created_at_unix_ms = 1000, updated_at_unix_ms = 1000
 WHERE workspace_id = ?`, "ws-rail-visible"); err != nil {
-		t.Fatalf("normalize updated_at_unix_ms error = %v", err)
+		t.Fatalf("normalize session timestamps error = %v", err)
 	}
 
 	page, ok, err := store.ListSessionSection(ctx, ListSessionSectionInput{
@@ -553,13 +553,16 @@ WHERE workspace_id = ?`, "ws-rail-visible"); err != nil {
 	if !page.HasMore || !strings.HasSuffix(page.NextCursor, "|bbb-visible-newer") {
 		t.Fatalf("first page state = hasMore %v cursor %q, want visible cursor with more", page.HasMore, page.NextCursor)
 	}
+	if page.TotalCount != 2 {
+		t.Fatalf("first page total count = %d, want 2 visible sessions", page.TotalCount)
+	}
 
 	next, ok, err := store.ListSessionSection(ctx, ListSessionSectionInput{
-		WorkspaceID:       "ws-rail-visible",
-		SectionKey:        RailSectionKeyForProject("/workspace/app"),
-		CursorUpdatedAtMS: page.Sessions[0].UpdatedAtUnixMS,
-		CursorSessionID:   page.Sessions[0].ID,
-		Limit:             1,
+		WorkspaceID:          "ws-rail-visible",
+		SectionKey:           RailSectionKeyForProject("/workspace/app"),
+		CursorSortTimeUnixMS: page.Sessions[0].CreatedAtUnixMS,
+		CursorSessionID:      page.Sessions[0].ID,
+		Limit:                1,
 	})
 	if err != nil || !ok {
 		t.Fatalf("ListSessionSection(next) ok=%v error=%v", ok, err)
@@ -569,6 +572,92 @@ WHERE workspace_id = ?`, "ws-rail-visible"); err != nil {
 	}
 	if next.HasMore || next.NextCursor != "" {
 		t.Fatalf("next page state = hasMore %v cursor %q, want exhausted", next.HasMore, next.NextCursor)
+	}
+	if next.TotalCount != 2 {
+		t.Fatalf("next page total count = %d, want stable total 2", next.TotalCount)
+	}
+}
+
+func TestStoreListSessionSectionOrdersAndPagesByLatestTurnStart(t *testing.T) {
+	t.Parallel()
+
+	store := openTestStore(t, testOptions(&staticProjectPaths{paths: []string{"/workspace/app"}}))
+	ctx := context.Background()
+	for _, report := range []ActivityStateReport{
+		{
+			Session: SessionStateReport{
+				WorkspaceID:      "ws-turn-order",
+				AgentSessionID:   "older-start-newer-update",
+				Origin:           "runtime",
+				Provider:         "codex",
+				Cwd:              "/workspace/app",
+				Status:           "working",
+				OccurredAtUnixMS: 9_000,
+			},
+			Turn: &TurnTransition{
+				WorkspaceID:      "ws-turn-order",
+				AgentSessionID:   "older-start-newer-update",
+				TurnID:           "turn-older",
+				Phase:            TurnPhaseRunning,
+				StartedAtUnixMS:  2_000,
+				OccurredAtUnixMS: 9_000,
+			},
+		},
+		{
+			Session: SessionStateReport{
+				WorkspaceID:      "ws-turn-order",
+				AgentSessionID:   "newer-start-older-update",
+				Origin:           "runtime",
+				Provider:         "codex",
+				Cwd:              "/workspace/app",
+				Status:           "working",
+				OccurredAtUnixMS: 4_000,
+			},
+			Turn: &TurnTransition{
+				WorkspaceID:      "ws-turn-order",
+				AgentSessionID:   "newer-start-older-update",
+				TurnID:           "turn-newer",
+				Phase:            TurnPhaseRunning,
+				StartedAtUnixMS:  3_000,
+				OccurredAtUnixMS: 4_000,
+			},
+		},
+	} {
+		if _, err := store.ReportActivityState(ctx, report); err != nil {
+			t.Fatalf("ReportActivityState(%s) error = %v", report.Session.AgentSessionID, err)
+		}
+	}
+
+	page, ok, err := store.ListSessionSection(ctx, ListSessionSectionInput{
+		WorkspaceID: "ws-turn-order",
+		SectionKey:  RailSectionKeyForProject("/workspace/app"),
+		Limit:       1,
+	})
+	if err != nil || !ok {
+		t.Fatalf("ListSessionSection(first) ok=%v error=%v", ok, err)
+	}
+	if len(page.Sessions) != 1 || page.Sessions[0].ID != "newer-start-older-update" {
+		t.Fatalf("first page sessions = %#v, want latest turn start", page.Sessions)
+	}
+	if !page.HasMore || page.NextCursor != "3000|newer-start-older-update" {
+		t.Fatalf("first page hasMore=%v cursor=%q", page.HasMore, page.NextCursor)
+	}
+
+	next, ok, err := store.ListSessionSection(ctx, ListSessionSectionInput{
+		WorkspaceID:          "ws-turn-order",
+		SectionKey:           RailSectionKeyForProject("/workspace/app"),
+		CursorSortTimeUnixMS: 3_000,
+		CursorSessionID:      "newer-start-older-update",
+		Limit:                1,
+	})
+	if err != nil || !ok {
+		t.Fatalf("ListSessionSection(next) ok=%v error=%v", ok, err)
+	}
+	if len(next.Sessions) != 1 || next.Sessions[0].ID != "older-start-newer-update" {
+		t.Fatalf("next page sessions = %#v, want older turn start", next.Sessions)
+	}
+	if next.HasMore || next.NextCursor != "" {
+		t.Fatalf("next page hasMore=%v cursor=%q, want exhausted", next.HasMore, next.NextCursor)
 	}
 }
 
@@ -619,7 +708,20 @@ WHERE workspace_id = ? AND agent_session_id = ?`, pinnedAt, "ws-pinned-page", se
 			t.Fatalf("set pinned_at_unix_ms(%s) error = %v", sessionID, err)
 		}
 	}
-
+	conversations, ok, err := store.ListSessionSection(ctx, ListSessionSectionInput{
+		WorkspaceID: "ws-pinned-page",
+		SectionKey:  RailSectionKeyConversations,
+		Limit:       10,
+	})
+	if err != nil || !ok {
+		t.Fatalf("ListSessionSection(conversations) ok=%v error=%v", ok, err)
+	}
+	if len(conversations.Sessions) != 1 || conversations.Sessions[0].ID != "unpinned" {
+		t.Fatalf("ordinary conversations = %#v, want only unpinned", conversations.Sessions)
+	}
+	if conversations.TotalCount != 1 {
+		t.Fatalf("ordinary conversations total count = %d, want 1", conversations.TotalCount)
+	}
 	page, ok, err := store.ListSessionSection(ctx, ListSessionSectionInput{
 		WorkspaceID: "ws-pinned-page",
 		SectionKey:  PinnedSessionPageKey,
@@ -634,13 +736,16 @@ WHERE workspace_id = ? AND agent_session_id = ?`, pinnedAt, "ws-pinned-page", se
 	if !page.HasMore || page.NextCursor != "2000|newer-pinned" {
 		t.Fatalf("pinned first page state = hasMore %v cursor %q", page.HasMore, page.NextCursor)
 	}
+	if page.TotalCount != 2 {
+		t.Fatalf("pinned first page total count = %d, want 2", page.TotalCount)
+	}
 
 	next, ok, err := store.ListSessionSection(ctx, ListSessionSectionInput{
-		WorkspaceID:       "ws-pinned-page",
-		SectionKey:        PinnedSessionPageKey,
-		CursorUpdatedAtMS: page.Sessions[0].PinnedAtUnixMS,
-		CursorSessionID:   page.Sessions[0].ID,
-		Limit:             2,
+		WorkspaceID:          "ws-pinned-page",
+		SectionKey:           PinnedSessionPageKey,
+		CursorSortTimeUnixMS: page.Sessions[0].PinnedAtUnixMS,
+		CursorSessionID:      page.Sessions[0].ID,
+		Limit:                2,
 	})
 	if err != nil || !ok {
 		t.Fatalf("ListSessionSection(pinned next) ok=%v error=%v", ok, err)
@@ -650,6 +755,9 @@ WHERE workspace_id = ? AND agent_session_id = ?`, pinnedAt, "ws-pinned-page", se
 	}
 	if next.HasMore || next.NextCursor != "" {
 		t.Fatalf("pinned next page state = hasMore %v cursor %q, want exhausted", next.HasMore, next.NextCursor)
+	}
+	if next.TotalCount != 2 {
+		t.Fatalf("pinned next page total count = %d, want stable total 2", next.TotalCount)
 	}
 }
 

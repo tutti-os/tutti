@@ -5,6 +5,7 @@ import {
   type AgentActivityMessage,
   type AgentActivityTurn,
   type CanonicalAgentSession,
+  type PendingActivationIntentRecord,
   type AgentSessionEngine
 } from "@tutti-os/agent-activity-core";
 import { useEffect, useMemo } from "react";
@@ -56,6 +57,7 @@ interface UseAgentGUISessionPresentationInput {
   activeLatestPendingSubmitTurnId: string | null;
   activeLiveState: "inactive" | "activating" | "active" | "failed";
   activeMessages: readonly AgentActivityMessage[];
+  activePendingActivation: PendingActivationIntentRecord | null;
   activeSessionState: AgentSessionState | null;
   activeTimelineItems: ReturnType<
     typeof projectAgentGUIMessagesToTimelineItems
@@ -74,7 +76,6 @@ interface UseAgentGUISessionPresentationInput {
   isSubmitting: boolean;
   lastActiveModelByProviderRef: CurrentValue<Record<string, string>>;
   lastRenderStateDiagnosticKeyRef: CurrentValue<string | null>;
-  latestPendingNewActivation: { agentSessionId: string } | null;
   pendingApproval: AgentApprovalItemVM | null;
   planImplementationTurnIdRef: CurrentValue<string | null>;
   agentTargetsLoading: boolean;
@@ -201,8 +202,7 @@ export function useAgentGUISessionPresentation(
       approval: input.pendingApproval,
       recovery:
         input.activeLiveState === "activating" &&
-        input.latestPendingNewActivation?.agentSessionId !==
-          input.activeConversationId
+        input.activePendingActivation?.mode !== "new"
           ? {
               kind: "activating",
               message: translate("messages.agentSessionReconnecting")
@@ -231,7 +231,7 @@ export function useAgentGUISessionPresentation(
     input.activeEngineSession,
     input.activeLiveState,
     input.activeSessionState,
-    input.latestPendingNewActivation?.agentSessionId,
+    input.activePendingActivation?.mode,
     input.pendingApproval
   ]);
   const canSubmit =

@@ -6,7 +6,6 @@ import {
 } from "@tutti-os/agent-activity-core";
 import { useMemo } from "react";
 import { mergeWorkspaceAgentMessages } from "../../../host/workspaceAgentSessionMessages";
-import { agentPromptContentDisplayText } from "../model/agentComposerDraft";
 import { createPendingOptimisticTurnId } from "./agentGuiController.draftMessageHelpers";
 import {
   createOptimisticPromptMessage,
@@ -52,10 +51,8 @@ export function useAgentGUIActiveMessages(input: {
           agentSessionId: pending.agentSessionId,
           clientSubmitId: pending.clientSubmitId,
           content: [...pending.content],
+          displayPrompt: pending.displayPrompt,
           occurredAtUnixMs: pending.requestedAtUnixMs,
-          prompt:
-            pending.displayPrompt ??
-            agentPromptContentDisplayText([...pending.content]),
           turnId:
             pending.turnId ??
             createPendingOptimisticTurnId(pending.clientSubmitId),
@@ -72,10 +69,8 @@ export function useAgentGUIActiveMessages(input: {
             agentSessionId: activePendingActivation.agentSessionId,
             clientSubmitId: activePendingActivation.clientSubmitId,
             content: [...activePendingActivation.content],
+            displayPrompt: activePendingActivation.displayPrompt,
             occurredAtUnixMs: activePendingActivation.requestedAtUnixMs,
-            prompt: agentPromptContentDisplayText([
-              ...activePendingActivation.content
-            ]),
             turnId: createPendingOptimisticTurnId(
               activePendingActivation.clientSubmitId
             ),

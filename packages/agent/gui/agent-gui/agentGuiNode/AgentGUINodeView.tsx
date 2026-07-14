@@ -33,10 +33,8 @@ import {
   AgentGUIConfigMenu
 } from "./view/AgentGUIAccountConfig";
 import { AgentGUIProviderRail } from "./view/AgentGUIProviderRail";
-import {
-  AgentGUIConversationRailPane,
-  type AgentGUIConversationRailState
-} from "./view/AgentGUIConversationRailPane";
+import { type AgentGUIConversationRailState } from "./view/AgentGUIConversationRailPane";
+import { AgentGUIConversationRailController } from "./controller/AgentGUIConversationRailController";
 import {
   AgentGUIDetailPane,
   mergeWorkspaceAppIconsFromCommands
@@ -67,7 +65,6 @@ export {
   resolveSlashStatus,
   useStableSlashStatus
 } from "./view/agentGUIDetailModelHelpers";
-export { updateConversationSectionsFromSummaries } from "./view/agentGUIConversationRailData";
 export {
   resolveAgentGUIHeroIconUrl,
   shouldEmphasizeEmptyHeroProvider
@@ -169,7 +166,6 @@ export function AgentGUINodeView({
     workspaceFileReferenceCopy
   });
   const createConversationDisabled =
-    viewModel.composer.isCreatingConversation ||
     viewModel.rail.selectedAgentTarget.disabled === true;
   const createConversationAction = useStableEventCallback(
     actions.createConversation
@@ -457,23 +453,15 @@ export function AgentGUINodeView({
   const [renameConversationDialogOpen, setRenameConversationDialogOpen] =
     useState(false);
   const requestRenameConversation = useCallback(
-    (agentSessionId: string) => {
-      const target =
-        viewModel.rail.conversations.find(
-          (conversation) => conversation.id === agentSessionId
-        ) ??
-        (viewModel.rail.activeConversation?.id === agentSessionId
-          ? viewModel.rail.activeConversation
-          : null);
-      if (target) {
-        setRenameConversationTarget(target);
-        setRenameConversationDialogOpen(true);
-      }
+    (conversation: AgentGUINodeViewModel["rail"]["conversations"][number]) => {
+      setRenameConversationTarget(conversation);
+      setRenameConversationDialogOpen(true);
     },
-    [viewModel.rail.activeConversation, viewModel.rail.conversations]
+    []
   );
   const conversationRailStoreState = useMemo<AgentGUIConversationRailState>(
     () => ({
+      activeConversation: viewModel.rail.activeConversation,
       activeConversationId: viewModel.rail.activeConversationId,
       pendingDeleteConversationId:
         viewModel.operations.pendingDeleteConversation?.id ?? null,
@@ -533,6 +521,7 @@ export function AgentGUINodeView({
       toggleConversationPinned,
       uiLanguage,
       viewModel.rail.conversationFilter,
+      viewModel.rail.activeConversation,
       viewModel.rail.activeConversationId,
       viewModel.operations.isDeletingConversation,
       viewModel.operations.isDeletingProjectConversations,
@@ -668,7 +657,7 @@ export function AgentGUINodeView({
           aria-hidden={conversationRailCollapsed ? "true" : undefined}
           inert={conversationRailCollapsed ? true : undefined}
         >
-          <AgentGUIConversationRailPane
+          <AgentGUIConversationRailController
             {...conversationRailStoreState}
             conversations={viewModel.rail.conversations}
             userProjects={viewModel.rail.userProjects}

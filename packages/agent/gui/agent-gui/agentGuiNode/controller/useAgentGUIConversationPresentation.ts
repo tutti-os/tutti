@@ -58,11 +58,18 @@ export function useAgentGUIConversationPresentation(
   input: UseAgentGUIConversationPresentationInput
 ) {
   const activeConversation = useMemo(() => {
-    const resolved = resolveConversationSummaryById(
+    const resolvedConversation = resolveConversationSummaryById(
       input.conversations,
       input.activeConversationId,
       input.transientConversation
     );
+    const resolved = resolvedConversation
+      ? (applyAgentGUIConversationProjects(
+          [resolvedConversation],
+          input.userProjects,
+          { isNoProjectPath: input.isNoProjectPath }
+        )[0] ?? resolvedConversation)
+      : null;
     if (resolved) {
       const activityDisplayStatus = input.activityDisplayStatuses.get(
         resolved.id

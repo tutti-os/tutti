@@ -15,6 +15,7 @@ type Repository interface {
 	DeleteSession(context.Context, string, string) (bool, error)
 	DeleteSessionsBatch(context.Context, DeleteSessionsBatchInput) (DeleteSessionsBatchResult, error)
 	GetSession(context.Context, string, string) (Session, bool, error)
+	SessionDeleted(context.Context, string, string) (bool, error)
 	GetLatestTurn(context.Context, string, string) (Turn, bool, error)
 	GetTurn(context.Context, string, string, string) (Turn, bool, error)
 	ListSessionInteractions(context.Context, ListSessionInteractionsInput) ([]Interaction, error)
@@ -87,12 +88,12 @@ type GeneratedFileList struct {
 }
 
 type ListSessionSectionInput struct {
-	WorkspaceID       string
-	SectionKey        string
-	AgentTargetID     string
-	CursorUpdatedAtMS int64
-	CursorSessionID   string
-	Limit             int
+	WorkspaceID          string
+	SectionKey           string
+	AgentTargetID        string
+	CursorSortTimeUnixMS int64
+	CursorSessionID      string
+	Limit                int
 }
 
 type ListSessionSectionDeletionCandidatesInput struct {
@@ -128,6 +129,7 @@ type SessionSectionPage struct {
 	SectionKey    string
 	Sessions      []Session
 	HasMore       bool
+	TotalCount    int
 	NextCursor    string
 	NextUpdatedAt int64
 }

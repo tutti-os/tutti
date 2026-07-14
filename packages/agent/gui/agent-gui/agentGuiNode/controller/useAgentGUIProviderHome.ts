@@ -6,6 +6,7 @@ import {
   type SetStateAction
 } from "react";
 import type { AgentActivityRuntime } from "../../../agentActivityRuntime";
+import type { PendingActivationIntentRecord } from "@tutti-os/agent-activity-core";
 import {
   agentGUIAgentTargetRefsEqual,
   resolveAgentGUIAgentTarget
@@ -23,12 +24,13 @@ import {
 } from "../model/agentGuiConversationFilter";
 import type { AgentGUIConversationSummary } from "../model/agentGuiConversationModel";
 import { type AgentGUIComposerTargetData } from "./agentGuiController.composerPresentation";
-import { mergeVisibleConversations } from "./agentGuiController.conversationHelpers";
 import {
   agentGUINodeDataHasComposerTarget,
-  composerTargetDataFromProviderTarget
+  composerTargetDataFromProviderTarget,
+  resolveAgentGUIProviderRailTargetSelection
 } from "./agentGuiController.providerHelpers";
 import { reportAgentGUIConversationFilterTargetUnresolved } from "./agentGuiController.reporting";
+import { isPendingNewConversationActivation } from "./useAgentGUIActivation";
 import {
   resolveConversationSummaryById,
   type ConversationIntent
@@ -41,6 +43,7 @@ interface CurrentValue<T> {
 interface UseAgentGUIProviderHomeInput {
   activeConversationId: string | null;
   activeConversationIdRef: CurrentValue<string | null>;
+  activePendingActivation: PendingActivationIntentRecord | null;
   agentActivityRuntime: AgentActivityRuntime;
   conversationFilter: AgentGUIConversationFilter;
   conversationFilterRef: CurrentValue<AgentGUIConversationFilter>;
@@ -71,10 +74,6 @@ interface UseAgentGUIProviderHomeInput {
   > | null;
   agentTargetsLoading: boolean;
   selectedComposerTargetDataRef: CurrentValue<AgentGUIComposerTargetData>;
-  selectConversation(
-    agentSessionId: string,
-    options?: { reloadConversations?: boolean }
-  ): void;
   setActiveConversationId: Dispatch<SetStateAction<string | null>>;
   setConversationFilter: Dispatch<SetStateAction<AgentGUIConversationFilter>>;
   setDetailError: Dispatch<SetStateAction<string | null>>;
@@ -212,7 +211,14 @@ export function useAgentGUIProviderHome(input: UseAgentGUIProviderHomeInput) {
         );
       }
       const previous = currentInput.activeConversationIdRef.current;
-      if (previous) void currentInput.unactivate(previous);
+      if (
+        previous &&
+        !isPendingNewConversationActivation(
+          currentInput.activePendingActivation
+        )
+      ) {
+        void currentInput.unactivate(previous);
+      }
       currentInput.setIntent({ tag: "home" });
       currentInput.isComposerHomeRef.current = true;
       currentInput.setIsComposerHome(true);
@@ -333,42 +339,19 @@ export function useAgentGUIProviderHome(input: UseAgentGUIProviderHomeInput) {
       const nextFilter = agentTargetId
         ? { kind: "agentTarget" as const, agentTargetId }
         : { kind: "all" as const };
-      const previousFilter = current.conversationFilterRef.current;
-      const isSameFilterTarget =
-        nextFilter.kind === "agentTarget"
-          ? previousFilter.kind === "agentTarget" &&
-            previousFilter.agentTargetId === nextFilter.agentTargetId
-          : previousFilter.kind === "all";
       current.setConversationFilter(nextFilter);
       const activeId = current.activeConversationIdRef.current;
-      if (activeId) {
-        const activeSummary = resolveConversationSummaryById(
-          current.conversationsRef.current,
-          activeId,
-          current.transientConversation
-        );
-        if (
-          activeSummary &&
-          matchesAgentGUIConversationSummaryFilter(activeSummary, nextFilter)
-        ) {
-          return;
-        }
-      } else if (isSameFilterTarget) {
-        selectHomeComposerAgentTarget(selection);
-        return;
-      }
-      const recentConversation = agentTargetId
-        ? mergeVisibleConversations(
-            current.conversationsRef.current,
-            current.transientConversation
-          ).find((conversation) =>
-            matchesAgentGUIConversationSummaryFilter(conversation, nextFilter)
-          )
-        : null;
-      if (recentConversation) {
-        current.selectConversation(recentConversation.id, {
-          reloadConversations: false
-        });
+      const activeSummary = resolveConversationSummaryById(
+        current.conversationsRef.current,
+        activeId,
+        current.transientConversation
+      );
+      if (
+        resolveAgentGUIProviderRailTargetSelection({
+          activeConversation: activeSummary,
+          nextFilter
+        }) === "keep-active-conversation"
+      ) {
         return;
       }
       selectHomeComposerAgentTarget(selection);

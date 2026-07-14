@@ -94,6 +94,10 @@ Hosts must pass those calls through to the daemon section endpoints so project
 sections come from current user projects and session membership comes from
 persisted `rail_section_key`, not frontend cwd grouping or project-root
 filters.
+Section and pinned-page results include required `totalCount` for the complete
+target-filtered scope before cursor pagination. AgentGUI uses it to subtract a
+transient active-row overlay from remaining unseen rows; hosts must preserve the
+field end to end instead of recomputing it from the bounded `sessions` array.
 The `listSessionSections` bootstrap also carries the first pinned session page,
 and pinned Show more uses the dedicated pinned page endpoint/runtime method.
 Pinned is not a section kind; it is a session/rail-record projection derived
@@ -103,11 +107,28 @@ When AgentGUI's provider rail is narrowed to one target, the runtime request
 must include `agentTargetId`; hosts and the daemon apply it before section
 pagination so `hasMore` describes the target-filtered rail, not the unfiltered
 workspace history.
+Conversation search uses the optional `listSessionsPage` runtime query backed
+by `GET /v1/workspaces/{workspaceID}/agent-sessions`. The daemon applies
+`searchQuery` and `agentTargetId` to the complete visible workspace session set
+before cursor pagination; this is not a filter over already-loaded section
+pages. Search pages follow the same normalized ownership rule as section pages:
+returned sessions are upserted into the workspace engine, while the search
+query retains only ordered ids, cursor, and request state. The UI joins those
+ids to canonical engine entities. Hosts without this optional query may keep a
+loaded-row-only local title filter for previews, but desktop hosts must pass the
+backend query and pagination fields through unchanged.
 Activating a conversation must not by itself call `listSessionSections` again.
 Likewise, active detail provider changes should not reload section first pages.
-AgentGUI may merge updated props for already-rendered rows from the activity
-snapshot, but section first-page reloads should be tied to workspace, rail
-filter, user project, or session membership changes.
+Page sessions must be upserted into the workspace engine, while the rail query
+cache retains only ordered session ids, cursors, totals, and section metadata.
+Section first-page reloads should be tied to workspace, rail filter, user
+project, or session membership changes.
+Historical rows already owned by loaded section pages can be absent from a
+later bounded list response. Snapshot omission is not deletion: the engine
+keeps those entities until an explicit removal event. Hydrating or updating one
+is an entity-detail change, not a rail membership change; loaded pages and
+cursors must remain intact. Do not use raw engine session order or count as the
+section query invalidation key.
 
 `AgentActivity*` types are the canonical frontend agent activity data model.
 Agent GUI must import `AgentActivitySession`, `AgentActivitySnapshot`, and

@@ -12,8 +12,12 @@ func filterSessions(
 		return sessions
 	}
 	filtered := make([]Session, 0, len(sessions))
+	agentTargetID := strings.TrimSpace(input.AgentTargetID)
 	for _, session := range sessions {
 		if !sessionVisibleInLists(session) {
+			continue
+		}
+		if agentTargetID != "" && strings.TrimSpace(session.AgentTargetID) != agentTargetID {
 			continue
 		}
 		if !matchesSessionSearch(session, input.SearchQuery) {

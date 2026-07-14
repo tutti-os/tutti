@@ -5,9 +5,11 @@ import type {
 } from "@tutti-os/agent-activity-core";
 import {
   composerOptionsForTarget,
-  composerOptionsLoadingForTarget
+  composerOptionsLoadingForTarget,
+  resolveAgentGUIProviderRailTargetSelection
 } from "./agentGuiController.providerHelpers";
 import type { AgentGUIComposerTargetData } from "./agentGuiController.composerPresentation";
+import type { AgentGUIConversationSummary } from "../model/agentGuiConversationModel";
 
 const target = {
   agentTargetId: "target-1"
@@ -50,6 +52,52 @@ describe("composer options target state", () => {
   });
 });
 
+describe("provider rail target selection", () => {
+  it("keeps an active conversation that belongs to the selected target", () => {
+    expect(
+      resolveAgentGUIProviderRailTargetSelection({
+        activeConversation: conversation(
+          "claude-session",
+          "local:claude-code",
+          "claude-code"
+        ),
+        nextFilter: {
+          kind: "agentTarget",
+          agentTargetId: "local:claude-code"
+        }
+      })
+    ).toBe("keep-active-conversation");
+  });
+
+  it("opens the selected target home when the active conversation belongs elsewhere", () => {
+    expect(
+      resolveAgentGUIProviderRailTargetSelection({
+        activeConversation: conversation(
+          "codex-session",
+          "local:codex",
+          "codex"
+        ),
+        nextFilter: {
+          kind: "agentTarget",
+          agentTargetId: "local:claude-code"
+        }
+      })
+    ).toBe("open-home-composer");
+  });
+
+  it("opens the selected target home when there is no active conversation", () => {
+    expect(
+      resolveAgentGUIProviderRailTargetSelection({
+        activeConversation: null,
+        nextFilter: {
+          kind: "agentTarget",
+          agentTargetId: "local:claude-code"
+        }
+      })
+    ).toBe("open-home-composer");
+  });
+});
+
 function snapshot(
   overrides: Partial<AgentActivitySnapshot>
 ): AgentActivitySnapshot {
@@ -59,5 +107,21 @@ function snapshot(
     presences: [],
     sessionMessagesById: {},
     ...overrides
+  };
+}
+
+function conversation(
+  id: string,
+  agentTargetId: string,
+  provider: AgentGUIConversationSummary["provider"]
+): AgentGUIConversationSummary {
+  return {
+    id,
+    agentTargetId,
+    cwd: "/repo",
+    provider,
+    status: "completed",
+    title: id,
+    updatedAtUnixMs: 1
   };
 }

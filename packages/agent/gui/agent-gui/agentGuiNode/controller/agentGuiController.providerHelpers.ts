@@ -12,6 +12,11 @@ import type {
 import type { AgentProviderId } from "../../../shared/contracts/dto";
 import type { AgentGUINodeData, AgentGUIAgentTarget } from "../../../types";
 import { agentGUIAgentTargetRefsEqual } from "../../../agentTargets";
+import {
+  matchesAgentGUIConversationSummaryFilter,
+  type AgentGUIConversationFilter
+} from "../model/agentGuiConversationFilter";
+import type { AgentGUIConversationSummary } from "../model/agentGuiConversationModel";
 import { normalizeOptionalText } from "./agentGuiController.promptHelpers";
 import type { AgentGUIComposerTargetData } from "./agentGuiController.composerPresentation";
 
@@ -20,6 +25,23 @@ export const EMPTY_AGENT_GUI_AVAILABLE_COMMANDS: AgentSessionCommand[] = [];
 export const ACTIVITY_STREAM_STATE_RELOAD_DEBOUNCE_MS = 150;
 export const AGENT_GUI_SUBMIT_RETARGET_EARLY_MESSAGE_TOLERANCE_MS = 5_000;
 export const GOAL_CLEAR_PROMPT = "/goal clear";
+
+export type AgentGUIProviderRailTargetSelection =
+  | "keep-active-conversation"
+  | "open-home-composer";
+
+export function resolveAgentGUIProviderRailTargetSelection(input: {
+  activeConversation: AgentGUIConversationSummary | null;
+  nextFilter: AgentGUIConversationFilter;
+}): AgentGUIProviderRailTargetSelection {
+  return input.activeConversation &&
+    matchesAgentGUIConversationSummaryFilter(
+      input.activeConversation,
+      input.nextFilter
+    )
+    ? "keep-active-conversation"
+    : "open-home-composer";
+}
 
 export function agentActivityInteractionListsEqual(
   left: readonly AgentActivityInteraction[],

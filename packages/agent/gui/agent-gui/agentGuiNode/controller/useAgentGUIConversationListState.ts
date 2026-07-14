@@ -1,6 +1,5 @@
 import {
   selectAttentionReadState,
-  selectPendingActivations,
   type AgentActivitySnapshot,
   type AgentSessionEngine
 } from "@tutti-os/agent-activity-core";
@@ -66,26 +65,15 @@ export function useAgentGUIConversationListState({
     ]);
   const conversationListState = useAgentGuiConversationList(
     sessionEngine,
-    conversationListQuery
+    conversationListQuery,
+    normalizedProviderTargets
   );
   const canonicalConversations = conversationListState?.conversations ?? [];
   const attentionReadState = useEngineSelector(sessionEngine, (state) =>
     selectAttentionReadState(state, currentUserId)
   );
-  const pendingNewActivationProjection = useEngineSelector(
-    sessionEngine,
-    (state) =>
-      selectPendingActivations(state)
-        .filter(
-          (activation) =>
-            activation.mode === "new" &&
-            (activation.status === "requested" ||
-              activation.status === "uncertain")
-        )
-        .at(-1) ?? null
-  );
   const conversations = useMemo(() => {
-    const projected = canonicalConversations.map((conversation) => {
+    return canonicalConversations.map((conversation) => {
       const projectedTitle = resolveAgentGUIConversationTitleFromTimelineItems({
         conversation,
         timelineItems: projectAgentGUIMessagesToTimelineItems(
@@ -106,40 +94,10 @@ export function useAgentGUIConversationListState({
           }
         : conversation;
     });
-    const pending = pendingNewActivationProjection;
-    if (
-      !pending ||
-      projected.some((item) => item.id === pending.agentSessionId)
-    ) {
-      return projected;
-    }
-    const target = normalizedProviderTargets.find(
-      (candidate) => candidate.agentTargetId === pending.agentTargetId
-    );
-    return [
-      ...projected,
-      {
-        id: pending.agentSessionId,
-        userId: currentUserId?.trim() ?? "",
-        provider: target?.provider ?? data.provider,
-        agentTargetId: pending.agentTargetId,
-        title: pending.title ?? "",
-        titleFallback: null,
-        status: "working" as const,
-        cwd: pending.cwd,
-        project: null,
-        sortTimeUnixMs: pending.requestedAtUnixMs,
-        updatedAtUnixMs: pending.requestedAtUnixMs
-      }
-    ];
   }, [
     agentActivitySnapshot.sessionMessagesById,
     attentionReadState.recordsBySessionId,
-    canonicalConversations,
-    currentUserId,
-    data.provider,
-    normalizedProviderTargets,
-    pendingNewActivationProjection
+    canonicalConversations
   ]);
 
   return {
@@ -149,7 +107,6 @@ export function useAgentGUIConversationListState({
     conversationListQuery,
     conversationListState,
     conversations,
-    pendingNewActivationProjection,
     setConversationFilter
   };
 }

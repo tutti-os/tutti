@@ -1,4 +1,4 @@
-import { memo, useCallback, useMemo, useState } from "react";
+import { memo, useCallback, useState } from "react";
 import { ChevronRight } from "lucide-react";
 import {
   DropdownMenu,
@@ -22,12 +22,16 @@ import type { ConversationSection } from "../agentGuiNodeViewConversation";
 import type { AgentGUIViewLabels } from "../AgentGUINodeView";
 import type { AgentGUIProjectActionDialog } from "./AgentGUIConversationRailPane";
 import { AgentGUIConversationRailItem } from "./AgentGUIConversationRailItem";
+import { insertConversationRailSectionOverlay } from "../model/agentGuiConversationRail";
 import styles from "../AgentGUINode.styles";
 
 const AGENT_GUI_CONVERSATION_RAIL_SECTION_PAGE_SIZE = 5;
 
 interface AgentGUIConversationRailSectionProps {
   section: ConversationSection;
+  activeConversation: ConversationSection["items"][number] | null;
+  activeConversationCountsTowardTotal: boolean;
+  paginationScopeKey: string;
   projectPath: string;
   projectLabel: string;
   isSectionCollapsed: boolean;
@@ -40,6 +44,7 @@ interface AgentGUIConversationRailSectionProps {
   isConversationSearchActive: boolean;
   isLoadingMoreConversations: boolean;
   sectionHasMore: boolean;
+  sectionTotalCount: number;
   createConversationDisabled: boolean;
   currentTimeMs: number;
   labels: AgentGUIViewLabels;
@@ -60,7 +65,9 @@ interface AgentGUIConversationRailSectionProps {
   onOpenProjectFiles?: ((action: WorkspaceLinkAction) => void) | null;
   onOpenConversationWindow?: (agentSessionId: string) => void;
   onRequestDeleteConversation: (agentSessionId: string) => void;
-  onRequestRenameConversation: (agentSessionId: string) => void;
+  onRequestRenameConversation: (
+    conversation: ConversationSection["items"][number]
+  ) => void;
   onCancelDeleteConversation: () => void;
   onConfirmDeleteConversation: () => void;
 }
@@ -68,6 +75,9 @@ interface AgentGUIConversationRailSectionProps {
 export const AgentGUIConversationRailSection = memo(
   function AgentGUIConversationRailSection({
     section,
+    activeConversation,
+    activeConversationCountsTowardTotal,
+    paginationScopeKey,
     projectPath,
     projectLabel,
     isSectionCollapsed,
@@ -80,6 +90,7 @@ export const AgentGUIConversationRailSection = memo(
     isConversationSearchActive,
     isLoadingMoreConversations,
     sectionHasMore,
+    sectionTotalCount,
     createConversationDisabled,
     currentTimeMs,
     labels,
@@ -103,59 +114,101 @@ export const AgentGUIConversationRailSection = memo(
   }: AgentGUIConversationRailSectionProps): React.JSX.Element {
     "use memo";
     const isProjectSection = section.kind === "project";
-    const [visibleItemLimit, setVisibleItemLimit] = useState(
-      AGENT_GUI_CONVERSATION_RAIL_SECTION_PAGE_SIZE
+    const [visibleItemLimitState, setVisibleItemLimitState] = useState(() => ({
+      limit: AGENT_GUI_CONVERSATION_RAIL_SECTION_PAGE_SIZE,
+      scopeKey: paginationScopeKey
+    }));
+    const visibleItemLimit =
+      visibleItemLimitState.scopeKey === paginationScopeKey
+        ? visibleItemLimitState.limit
+        : AGENT_GUI_CONVERSATION_RAIL_SECTION_PAGE_SIZE;
+    const pageableItems = section.items.filter(
+      (item) => item.projectionSource !== "pending_activation"
     );
     const visibleItemCount = isSectionCollapsed
       ? 0
-      : Math.min(visibleItemLimit, section.items.length);
-    const visibleItems = useMemo(() => {
-      if (isSectionCollapsed) {
-        return [];
-      }
-      const baseItems = section.items.slice(0, visibleItemCount);
-      const activeId = activeConversationId?.trim() ?? "";
-      if (!activeId || baseItems.some((item) => item.id === activeId)) {
-        return baseItems;
-      }
-      const activeItem = section.items.find((item) => item.id === activeId);
-      return activeItem ? [...baseItems, activeItem] : baseItems;
-    }, [
-      activeConversationId,
-      isSectionCollapsed,
-      section.items,
-      visibleItemCount
-    ]);
+      : Math.min(visibleItemLimit, pageableItems.length);
+    const baseItems = isSectionCollapsed
+      ? []
+      : section.items
+          .filter((item) => item.projectionSource !== "pending_activation")
+          .slice(0, visibleItemCount);
+    let visibleItems = isSectionCollapsed
+      ? []
+      : [
+          ...section.items.filter(
+            (item) => item.projectionSource === "pending_activation"
+          ),
+          ...baseItems
+        ];
+    const activeId = activeConversation?.id.trim() ?? "";
+    if (
+      activeConversation &&
+      activeId &&
+      activeId === (activeConversationId?.trim() ?? "") &&
+      !visibleItems.some((item) => item.id === activeId)
+    ) {
+      visibleItems = insertConversationRailSectionOverlay(
+        section.kind,
+        visibleItems,
+        activeConversation
+      );
+    }
+    const visiblePageableIds = new Set(
+      pageableItems.slice(0, visibleItemCount).map((item) => item.id)
+    );
+    const visibleCountTowardTotal =
+      visiblePageableIds.size +
+      (activeConversationCountsTowardTotal &&
+      activeConversation &&
+      visibleItems.some((item) => item.id === activeConversation.id) &&
+      !visiblePageableIds.has(activeConversation.id)
+        ? 1
+        : 0);
     const canShowMore =
       !isSectionCollapsed &&
-      (visibleItemCount < section.items.length || sectionHasMore);
+      visibleCountTowardTotal < sectionTotalCount &&
+      (visibleItemCount < pageableItems.length || sectionHasMore);
     const canShowLess =
       !isSectionCollapsed &&
       visibleItemCount > AGENT_GUI_CONVERSATION_RAIL_SECTION_PAGE_SIZE;
     const showMoreConversations = useCallback(() => {
-      if (visibleItemCount >= section.items.length && sectionHasMore) {
+      if (visibleItemCount >= pageableItems.length && sectionHasMore) {
         onLoadMoreConversations(section);
-        setVisibleItemLimit(
-          (current) => current + AGENT_GUI_CONVERSATION_RAIL_SECTION_PAGE_SIZE
-        );
+        setVisibleItemLimitState((current) => ({
+          limit:
+            (current.scopeKey === paginationScopeKey
+              ? current.limit
+              : AGENT_GUI_CONVERSATION_RAIL_SECTION_PAGE_SIZE) +
+            AGENT_GUI_CONVERSATION_RAIL_SECTION_PAGE_SIZE,
+          scopeKey: paginationScopeKey
+        }));
         return;
       }
-      setVisibleItemLimit((current) =>
-        Math.min(
-          section.items.length,
-          current + AGENT_GUI_CONVERSATION_RAIL_SECTION_PAGE_SIZE
-        )
-      );
+      setVisibleItemLimitState((current) => ({
+        limit: Math.min(
+          pageableItems.length,
+          (current.scopeKey === paginationScopeKey
+            ? current.limit
+            : AGENT_GUI_CONVERSATION_RAIL_SECTION_PAGE_SIZE) +
+            AGENT_GUI_CONVERSATION_RAIL_SECTION_PAGE_SIZE
+        ),
+        scopeKey: paginationScopeKey
+      }));
     }, [
       onLoadMoreConversations,
+      pageableItems.length,
+      paginationScopeKey,
       section,
-      section.items.length,
       sectionHasMore,
       visibleItemCount
     ]);
     const showLessConversations = useCallback(() => {
-      setVisibleItemLimit(AGENT_GUI_CONVERSATION_RAIL_SECTION_PAGE_SIZE);
-    }, []);
+      setVisibleItemLimitState({
+        limit: AGENT_GUI_CONVERSATION_RAIL_SECTION_PAGE_SIZE,
+        scopeKey: paginationScopeKey
+      });
+    }, [paginationScopeKey]);
 
     const canCreateConversationFromSection =
       section.kind === "conversations" || Boolean(projectPath);
@@ -420,7 +473,7 @@ export const AgentGUIConversationRailSection = memo(
           aria-hidden={isSectionCollapsed ? "true" : undefined}
         >
           <div className={styles.conversationSectionItemsInner}>
-            {!isSectionCollapsed && section.items.length === 0 ? (
+            {!isSectionCollapsed && visibleItems.length === 0 ? (
               <div className={styles.conversationSectionEmpty}>
                 {labels.emptyProjectConversations}
               </div>

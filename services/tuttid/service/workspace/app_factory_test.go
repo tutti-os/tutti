@@ -89,6 +89,10 @@ func (s factoryAgentSessionReaderStub) ListSessions(workspaceID string) ([]agent
 	return result, true
 }
 
+func (factoryAgentSessionReaderStub) SessionDeleted(string, string) (bool, error) {
+	return false, nil
+}
+
 func (s factoryAgentMessageReaderStub) ListSessionMessages(input agentactivitybiz.ListSessionMessagesInput) (agentservice.SessionMessagesPage, bool) {
 	page, ok := s.pages[appFactoryJobStoreKey(input.WorkspaceID, input.AgentSessionID)]
 	return page, ok

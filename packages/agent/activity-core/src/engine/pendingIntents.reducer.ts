@@ -185,6 +185,10 @@ function requestActivation(
     return unchanged(state);
   }
   const content = (intent.content ?? []).map((block) => ({ ...block }));
+  const displayPrompt = intent.initialDisplayPrompt?.trim() || undefined;
+  const runtimeContent = (intent.runtimeContent ?? content).map((block) => ({
+    ...block
+  }));
   const supersededRequestIds = Object.values(state.activationsByRequestId)
     .filter(
       (record) =>
@@ -198,6 +202,7 @@ function requestActivation(
     clientSubmitId,
     content,
     cwd: intent.cwd?.trim() ?? "",
+    ...(displayPrompt ? { displayPrompt } : {}),
     errorCode: null,
     errorMessage: null,
     expiresAtUnixMs: intent.expiresAtUnixMs,
@@ -231,10 +236,10 @@ function requestActivation(
             clientSubmitId: clientSubmitId!,
             correlationId: requestId,
             ...(intent.cwd !== undefined ? { cwd: intent.cwd } : {}),
-            ...(content.length > 0 ? { initialContent: content } : {}),
-            ...(intent.initialDisplayPrompt?.trim()
-              ? { initialDisplayPrompt: intent.initialDisplayPrompt.trim() }
+            ...(runtimeContent.length > 0
+              ? { initialContent: runtimeContent }
               : {}),
+            ...(displayPrompt ? { initialDisplayPrompt: displayPrompt } : {}),
             ...(intent.submitDiagnostics
               ? { submitDiagnostics: { ...intent.submitDiagnostics } }
               : {}),
@@ -254,10 +259,10 @@ function requestActivation(
             commandId: `activate:${requestId}`,
             correlationId: requestId,
             ...(intent.cwd !== undefined ? { cwd: intent.cwd } : {}),
-            ...(content.length > 0 ? { initialContent: content } : {}),
-            ...(intent.initialDisplayPrompt?.trim()
-              ? { initialDisplayPrompt: intent.initialDisplayPrompt.trim() }
+            ...(runtimeContent.length > 0
+              ? { initialContent: runtimeContent }
               : {}),
+            ...(displayPrompt ? { initialDisplayPrompt: displayPrompt } : {}),
             ...(intent.submitDiagnostics
               ? { submitDiagnostics: { ...intent.submitDiagnostics } }
               : {}),
