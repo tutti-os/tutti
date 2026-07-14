@@ -25,7 +25,7 @@ var sessionActionColumns = []cliservice.TableColumn{
 }
 
 type startInput struct {
-	AgentID         string   `cli:"agent-id" validate:"required" hint:"Use agent list --json to discover available agents."`
+	AgentID         string   `cli:"agent-id" advertise-required:"true" hint:"Use agent list --json to discover available agents."`
 	Cwd             string   `cli:"cwd"`
 	DisplayPrompt   string   `cli:"display-prompt"`
 	Hidden          bool     `cli:"hidden"`
@@ -33,6 +33,7 @@ type startInput struct {
 	Model           string   `cli:"model"`
 	PermissionMode  string   `cli:"permission-mode"`
 	Prompt          string   `cli:"prompt" validate:"required"`
+	Provider        string   `cli:"provider" hidden:"true"`
 	ReasoningEffort string   `cli:"reasoning-effort"`
 	Show            bool     `cli:"show"`
 	Speed           string   `cli:"speed"`
@@ -68,7 +69,7 @@ func (p Provider) newStartCommand() cliservice.Command {
 		Inputs:      framework.FromStruct[startInput](),
 		Output:      sessionActionOutputSpec(),
 		Run: func(ctx context.Context, invoke framework.InvokeContext, input startInput) (any, error) {
-			target, err := p.resolveEnabledAgentTarget(ctx, input.AgentID)
+			target, _, err := p.resolveAgentSelector(ctx, input.AgentID, input.Provider)
 			if err != nil {
 				return nil, err
 			}

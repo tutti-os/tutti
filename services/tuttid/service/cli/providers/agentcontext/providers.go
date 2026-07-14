@@ -2,6 +2,7 @@ package agentcontext
 
 import (
 	"context"
+	"fmt"
 	"strings"
 
 	agentproviderbiz "github.com/tutti-os/tutti/services/tuttid/biz/agentprovider"
@@ -86,18 +87,22 @@ func (p Provider) runAgents(ctx context.Context, _ framework.InvokeContext, inpu
 			}
 		}
 		if len(filtered) == 0 {
-			return nil, agentservice.ErrInvalidArgument
+			return nil, fmt.Errorf("%w: enabled agent %q was not found; run agent list --json", cliservice.ErrInvalidInput, requestedAgentID)
 		}
 		targets = filtered
 	}
 
-	availabilityInput := agentservice.ProviderAvailabilityInput{}
-	if len(targets) == 1 && requestedAgentID != "" {
-		availabilityInput.Provider = targets[0].Provider
-	}
-	availability, err := p.sessions.ListProviderAvailability(ctx, availabilityInput)
-	if err != nil {
-		return nil, err
+	availability := []agentservice.ProviderAvailability{}
+	builtinTargets := builtinAgentTargets(targets)
+	if len(builtinTargets) > 0 {
+		availabilityInput := agentservice.ProviderAvailabilityInput{}
+		if len(builtinTargets) == 1 && len(targets) == 1 && requestedAgentID != "" {
+			availabilityInput.Provider = builtinTargets[0].Provider
+		}
+		availability, err = p.sessions.ListProviderAvailability(ctx, availabilityInput)
+		if err != nil {
+			return nil, err
+		}
 	}
 	items := agentCatalogItems(targets, availability)
 	return agentsResult{Items: items}, nil
@@ -114,6 +119,10 @@ func agentCatalogItems(targets []agenttargetbiz.Target, availability []agentserv
 	}
 	items := make([]agentCatalogItem, 0, len(targets))
 	for _, target := range targets {
+		if isExtensionAgentTarget(target) {
+			items = append(items, agentCatalogItem{Target: target, Availability: extensionTargetAvailability(target)})
+			continue
+		}
 		item, ok := byProvider[target.Provider]
 		if !ok {
 			item = agentservice.ProviderAvailability{
@@ -128,6 +137,36 @@ func agentCatalogItems(targets []agenttargetbiz.Target, availability []agentserv
 		items = append(items, agentCatalogItem{Target: target, Availability: item})
 	}
 	return items
+}
+
+func builtinAgentTargets(targets []agenttargetbiz.Target) []agenttargetbiz.Target {
+	result := make([]agenttargetbiz.Target, 0, len(targets))
+	for _, target := range targets {
+		if !isExtensionAgentTarget(target) {
+			result = append(result, target)
+		}
+	}
+	return result
+}
+
+func isExtensionAgentTarget(target agenttargetbiz.Target) bool {
+	ref, err := agenttargetbiz.RuntimeProviderTargetRef(target)
+	return err == nil && ref["kind"] == agenttargetbiz.LaunchRefTypeAgentExtension
+}
+
+func extensionTargetAvailability(target agenttargetbiz.Target) agentservice.ProviderAvailability {
+	status := agentservice.ProviderAvailabilityUnknown
+	switch strings.TrimSpace(target.AvailabilityStatus) {
+	case "ready":
+		status = agentservice.ProviderAvailabilityAvailable
+	case "not_installed", "auth_required", "unsupported":
+		status = agentservice.ProviderAvailabilityUnavailable
+	}
+	result := agentservice.ProviderAvailability{Provider: target.Provider, Status: status}
+	if reason := strings.TrimSpace(target.AvailabilityReason); reason != "" {
+		result.LastError = &agentservice.ProviderAvailabilityError{Code: reason, Message: reason}
+	}
+	return result
 }
 
 func agentCatalogRows(items []agentCatalogItem) []map[string]any {

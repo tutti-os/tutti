@@ -2469,10 +2469,10 @@ func TestServiceGetSkillBundleUsesRuntimeRenderer(t *testing.T) {
 func TestServiceGetSkillBundleRequiresRenderer(t *testing.T) {
 	runtime := newFakeRuntime()
 	service := newIsolatedAgentService(runtime)
-	service.AgentTargetStore = fakeAgentTargetStore{targets: defaultTestAgentTargets()}
+	service.AgentTargetStore = fakeAgentTargetStore{targets: map[string]agenttargetbiz.Target{}}
 	service.RuntimePreparer = fakeRuntimePreparer{}
 
-	_, err := service.GetSkillBundle(context.Background(), "ws-1", SkillBundleInput{AgentTargetID: agenttargetbiz.IDLocalCodex})
+	_, err := service.GetSkillBundle(context.Background(), "ws-1", SkillBundleInput{AgentTargetID: "missing:agent"})
 	if !errors.Is(err, ErrSkillBundleUnavailable) {
 		t.Fatalf("GetSkillBundle error = %v, want ErrSkillBundleUnavailable", err)
 	}

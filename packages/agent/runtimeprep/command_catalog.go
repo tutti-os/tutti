@@ -102,6 +102,10 @@ func runtimeCommandFromCapability(cliName string, capability CommandCapability) 
 	if id == "agent-context.agent.skill-bundle" || id == "agent-context.agent.tutti-cli-skill-bundle" {
 		return runtimeCommand{}, false
 	}
+	if legacyAgentCompatibilityCommand(id, capability.Path) {
+		return runtimeCommand{}, false
+	}
+	capability.InputSchema = agentFacingInputSchema(id, capability.InputSchema)
 	if capability.Source.Kind != CommandSourceApp &&
 		id != "workspace-apps.app.open" &&
 		!strings.HasPrefix(id, "issue-manager.") &&
@@ -164,6 +168,50 @@ func runtimeCommandFromCapability(cliName string, capability CommandCapability) 
 		InputDetails: inputDetailsForCommand(id, capability.InputSchema),
 		Rank:         commandRank(id),
 	}, true
+}
+
+func legacyAgentCompatibilityCommand(id string, path []string) bool {
+	switch strings.TrimSpace(id) {
+	case "agent-context.agent.providers", "agent-context.codex.start", "agent-context.claude.start":
+		return true
+	}
+	joined := commandPath(path)
+	return joined == "agent providers" || joined == "codex start" || joined == "claude start"
+}
+
+func agentFacingInputSchema(id string, schema map[string]any) map[string]any {
+	switch strings.TrimSpace(id) {
+	case "agent-context.agent.start", "agent-context.agent.composer-options":
+	default:
+		return schema
+	}
+	projected := make(map[string]any, len(schema))
+	for key, value := range schema {
+		projected[key] = value
+	}
+	properties := mapSchemaValue(schema["properties"])
+	projectedProperties := make(map[string]any, len(properties))
+	for key, value := range properties {
+		if key != "provider" {
+			projectedProperties[key] = value
+		}
+	}
+	projected["properties"] = projectedProperties
+	required := stringSliceSchemaValue(schema["required"])
+	if !containsSchemaString(required, "agent-id") {
+		required = append(required, "agent-id")
+	}
+	projected["required"] = required
+	return projected
+}
+
+func containsSchemaString(values []string, target string) bool {
+	for _, value := range values {
+		if strings.TrimSpace(value) == target {
+			return true
+		}
+	}
+	return false
 }
 
 func appCapabilityIsOpenCommand(capability CommandCapability) bool {
@@ -409,12 +457,12 @@ func commandRank(id string) int {
 		return 90
 	case "issue-manager.issue.task.run.complete":
 		return 100
-	case "agent-context.agent.sessions":
-		return 110
 	case "agent-context.agent.list":
 		return 105
 	case "agent-context.agent.start":
 		return 107
+	case "agent-context.agent.sessions":
+		return 110
 	case "agent-context.agent.wait":
 		return 115
 	case "agent-context.agent.session-summary":

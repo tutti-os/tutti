@@ -2,6 +2,7 @@ package agentcontext
 
 import (
 	"context"
+	"fmt"
 	"strings"
 
 	"github.com/tutti-os/tutti/services/tuttid/biz/agentgui"
@@ -85,8 +86,11 @@ func (Provider) AppID() string {
 func (p Provider) Commands() []cliservice.Command {
 	return []cliservice.Command{
 		p.newAgentsCommand(),
+		p.newLegacyProvidersCommand(),
 		p.newComposerOptionsCommand(),
 		p.newSkillBundleCommand(),
+		p.newLegacyCodexStartCommand(),
+		p.newLegacyClaudeStartCommand(),
 		p.newStartCommand(),
 		p.newGetCommand(),
 		p.newOpenCommand(),
@@ -121,7 +125,7 @@ func (p Provider) enabledAgentTargets(ctx context.Context) ([]agenttargetbiz.Tar
 func (p Provider) resolveEnabledAgentTarget(ctx context.Context, agentID string) (agenttargetbiz.Target, error) {
 	agentID = strings.TrimSpace(agentID)
 	if agentID == "" {
-		return agenttargetbiz.Target{}, agentservice.ErrInvalidArgument
+		return agenttargetbiz.Target{}, fmt.Errorf("%w: agent id is required; run agent list --json", cliservice.ErrInvalidInput)
 	}
 	targets, err := p.enabledAgentTargets(ctx)
 	if err != nil {
@@ -132,5 +136,5 @@ func (p Provider) resolveEnabledAgentTarget(ctx context.Context, agentID string)
 			return target, nil
 		}
 	}
-	return agenttargetbiz.Target{}, agentservice.ErrInvalidArgument
+	return agenttargetbiz.Target{}, fmt.Errorf("%w: enabled agent %q was not found; run agent list --json", cliservice.ErrInvalidInput, agentID)
 }

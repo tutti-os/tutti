@@ -53,11 +53,15 @@ type FieldSpec struct {
 	Name        string
 	Type        string
 	Description string
-	Required    bool
-	Hint        string
-	Min         *int64
-	Max         *int64
-	Enum        []string
+	Hidden      bool
+	// AdvertisedRequired keeps the canonical capability contract strict while
+	// allowing a hidden compatibility selector to satisfy runtime validation.
+	AdvertisedRequired bool
+	Required           bool
+	Hint               string
+	Min                *int64
+	Max                *int64
+	Enum               []string
 }
 
 type InputSpec struct {

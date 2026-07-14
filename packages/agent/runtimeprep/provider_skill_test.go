@@ -12,6 +12,9 @@ func TestTuttiHandoffSkillUsesCurrentAgentCatalog(t *testing.T) {
 	for _, want := range []string{
 		"tutti-dev agent list --json",
 		"tutti-dev agent start --agent-id <agent-id>",
+		"tutti-dev agent session-summary --session-id <caller-session-id> --json",
+		"tutti-dev agent turn-resources --session-id <caller-session-id> --turn-id <turnId> --json",
+		"--image <localPath>",
 		"selected agent id and failure reason",
 		"another currently available agent",
 	} {
@@ -35,21 +38,13 @@ func TestTuttiHandoffSkillUsesCurrentAgentCatalog(t *testing.T) {
 	}
 }
 
-func TestWorkspaceAppSkillUsesPreparedCLICommandForAgentHandoffs(t *testing.T) {
+func TestWorkspaceAppSkillDefersAgentHandoffs(t *testing.T) {
 	skill := workspaceAppSkill(PrepareInput{CLICommand: "tutti-dev"})
 
 	for _, want := range []string{
 		"Agent launching is not a workspace-app workflow",
 		"mention://agent-target/...",
 		"never translate an app id into a provider-specific agent command",
-		"turn-resources",
-		"tutti-dev agent session-summary --session-id <caller-session-id> --json",
-		"discover candidate turn ids",
-		"tutti-dev agent turn-resources --session-id <caller-session-id> --turn-id <turnId> --json",
-		"Images remain grouped under their source message",
-		"the calling agent decides which turn ids to query",
-		"`--image <localPath>`",
-		"Do not scan the workspace",
 		"tutti-dev app open --app-id <appId> --json",
 		"Do not call `app open` or app-specific open commands",
 		"If `appId` is `issue-manager` and the user asks issue/task work",
@@ -75,6 +70,9 @@ func TestWorkspaceAppSkillUsesPreparedCLICommandForAgentHandoffs(t *testing.T) {
 		if !strings.Contains(skill, want) {
 			t.Fatalf("workspace app skill missing %q: %q", want, skill)
 		}
+	}
+	if strings.Contains(skill, "turn-resources") || strings.Contains(skill, "--image <localPath>") {
+		t.Fatalf("workspace app skill owns agent image handoff guidance: %q", skill)
 	}
 	if strings.Contains(skill, "read the materialized sibling `tutti-cli/SKILL.md`") {
 		t.Fatalf("workspace app skill should not ask agents to guess sibling skill paths: %q", skill)
@@ -233,7 +231,7 @@ func TestDefaultPreparerRenderSkillBundleUsesDynamicGuide(t *testing.T) {
 	if catalog.context.Source != "agent-runtime" || catalog.context.WorkspaceID != "workspace-1" {
 		t.Fatalf("catalog context = %#v", catalog.context)
 	}
-	if bundle.SchemaVersion != 1 ||
+	if bundle.SchemaVersion != 2 ||
 		bundle.AgentTargetID != "local:codex" ||
 		bundle.Provider != "codex" ||
 		bundle.AgentSessionID != "run-1" ||

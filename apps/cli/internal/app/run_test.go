@@ -180,6 +180,59 @@ func TestRunHelpDoesNotIncludeIntegrationCapabilitiesWithoutAppCLIContract(t *te
 	}
 }
 
+func TestRunExactLegacyAgentCommandRetriesIntegrationDiscovery(t *testing.T) {
+	capabilityRequests := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case "/v1/cli/capabilities":
+			capabilityRequests++
+			if r.URL.Query().Get("includeIntegration") != "true" {
+				_, _ = w.Write([]byte(`{"commands":[]}`))
+				return
+			}
+			_, _ = w.Write([]byte(`{"commands":[{"id":"agent-context.codex.start","path":["codex","start"],"summary":"Legacy start","visibility":"integration","inputSchema":{"type":"object","properties":{"prompt":{"type":"string"}},"required":["prompt"]},"output":{"defaultMode":"json","json":true},"source":{"kind":"builtin"}}]}`))
+		case "/v1/cli/commands/agent-context.codex.start/invoke":
+			_, _ = w.Write([]byte(`{"ok":true,"output":{"kind":"json","value":{"agentSessionId":"SESSION-1"}}}`))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	writeEndpoint(t, server.URL, "token-1")
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	if code := runDefaultProgram(t, []string{"--json", "codex", "start", "--prompt", "review"}, &stdout, &stderr); code != 0 {
+		t.Fatalf("code = %d, stderr = %s", code, stderr.String())
+	}
+	if capabilityRequests != 2 || !strings.Contains(stdout.String(), "SESSION-1") {
+		t.Fatalf("requests = %d, stdout = %q", capabilityRequests, stdout.String())
+	}
+}
+
+func TestLegacyAgentCompatibilityInvocationIsExactAllowlist(t *testing.T) {
+	for _, args := range [][]string{
+		{"agent", "providers"},
+		{"codex", "start", "--prompt", "review"},
+		{"claude", "start", "--prompt", "review"},
+	} {
+		if !legacyAgentCompatibilityInvocation(args) {
+			t.Fatalf("expected compatibility path for %#v", args)
+		}
+	}
+	for _, args := range [][]string{
+		{"agent", "start"},
+		{"agent", "tutti-cli-skill-bundle"},
+		{"diagnostics", "ping"},
+		{"codex"},
+	} {
+		if legacyAgentCompatibilityInvocation(args) {
+			t.Fatalf("unexpected compatibility path for %#v", args)
+		}
+	}
+}
+
 func TestRunStatusJSON(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/v1/health" {

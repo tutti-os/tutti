@@ -2624,7 +2624,7 @@ Agent launch mentions use the external rich-text `agent-target` provider. The
 `workspace-app` provider is reserved for real workspace apps and must not return
 legacy `agent-codex` or `agent-claude-code` pseudo apps. New agent mentions
 must serialize the exact current Agent Target id, for example
-`mention://agent-target/local:codex`, with workspace scope only. Examples are
+`mention://agent-target/local:codex?workspaceId=<workspace-id>`. Examples are
 non-exhaustive; callers must discover the current target list instead of
 assuming a fixed provider catalog. Mentions must not serialize provider ids or
 icon hints into the href. Renderer display code

@@ -25,6 +25,10 @@ func (s *Service) GetSkillBundle(ctx context.Context, workspaceID string, input 
 	if workspaceID == "" || agentTargetID == "" {
 		return SkillBundle{}, ErrInvalidArgument
 	}
+	renderer, ok := s.RuntimePreparer.(runtimeprep.SkillBundleRenderer)
+	if s.RuntimePreparer == nil || !ok {
+		return SkillBundle{}, ErrSkillBundleUnavailable
+	}
 	launch, err := s.resolveCreateSessionLaunch(ctx, CreateSessionInput{
 		AgentTargetID: agentTargetID,
 	})
@@ -32,10 +36,6 @@ func (s *Service) GetSkillBundle(ctx context.Context, workspaceID string, input 
 		return SkillBundle{}, err
 	}
 	provider := launch.Provider
-	renderer, ok := s.RuntimePreparer.(runtimeprep.SkillBundleRenderer)
-	if s.RuntimePreparer == nil || !ok {
-		return SkillBundle{}, ErrSkillBundleUnavailable
-	}
 	return renderer.RenderSkillBundle(ctx, runtimeprep.PrepareInput{
 		WorkspaceID:    workspaceID,
 		AgentSessionID: strings.TrimSpace(input.AgentSessionID),

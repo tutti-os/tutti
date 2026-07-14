@@ -26,6 +26,11 @@ type optionalInput struct {
 	DueAt  *int64  `cli:"due-at-unix"`
 }
 
+type hiddenInput struct {
+	AgentID  string `cli:"agent-id" advertise-required:"true"`
+	Provider string `cli:"provider" hidden:"true"`
+}
+
 func TestFromStructGeneratesInputSchema(t *testing.T) {
 	schema := Schema(FromStruct[sampleInput]())
 	properties := schema["properties"].(map[string]any)
@@ -54,6 +59,32 @@ func TestFromStructGeneratesInputSchema(t *testing.T) {
 	}
 	if required := schema["required"].([]string); !reflect.DeepEqual(required, []string{"topic-id"}) {
 		t.Fatalf("required = %#v", required)
+	}
+}
+
+func TestHiddenInputBindsWithoutAppearingInSchema(t *testing.T) {
+	spec := FromStruct[hiddenInput]()
+	schema := Schema(spec)
+	properties := schema["properties"].(map[string]any)
+	if _, ok := properties["provider"]; ok {
+		t.Fatalf("hidden provider field leaked into schema: %#v", schema)
+	}
+	if required := schema["required"].([]string); !reflect.DeepEqual(required, []string{"agent-id"}) {
+		t.Fatalf("required = %#v", required)
+	}
+	input, err := BindInput[hiddenInput](spec, map[string]any{
+		"agent-id": "local:codex",
+		"provider": "codex",
+	})
+	if err != nil {
+		t.Fatalf("BindInput: %v", err)
+	}
+	if input.AgentID != "local:codex" || input.Provider != "codex" {
+		t.Fatalf("input = %#v", input)
+	}
+	legacy, err := BindInput[hiddenInput](spec, map[string]any{"provider": "codex"})
+	if err != nil || legacy.Provider != "codex" || legacy.AgentID != "" {
+		t.Fatalf("legacy input = %#v, err = %v", legacy, err)
 	}
 }
 

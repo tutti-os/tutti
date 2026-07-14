@@ -173,7 +173,21 @@ enabled Agent Target in stable target order, including its exact agent id,
 display name, provider metadata, and current runtime availability. It must not
 collapse several agents that share one provider. Callers select an exact id and
 start it with `agent start --agent-id <agent-id> ...`; provider-specific command
-families such as `codex start` and `claude start` are not part of the public CLI.
+families such as `codex start` and `claude start` are not part of the
+agent-facing CLI contract.
+
+During the agent-id migration window, old app integrations may continue to
+invoke `agent providers`, provider-based composer/skill inputs, and the exact
+`codex start` / `claude start` aliases. These are compatibility adapters, not
+agent-facing discovery: generated runtime skills and command guides must omit
+them. A provider selector may resolve only when exactly one enabled target uses
+that provider; zero or multiple matches must fail with recovery guidance to
+run `agent list --json`. Target-first composer-options and skill-bundle
+responses use schema version 2 and carry `agentTargetId`; compatibility
+responses preserve their prior schema version.
+Remove this window only after released kit consumers and organization-owned
+apps have migrated and old materialized skills have crossed the support
+window.
 
 `--model` remains optional on `agent start`. When omitted, tuttid resolves the
 model from the selected agent's composer defaults or its runtime provider

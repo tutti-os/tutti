@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"regexp"
 	"sort"
 	"strings"
 
@@ -32,8 +33,9 @@ const (
 )
 
 var (
-	ErrInvalidTarget    = errors.New("invalid agent target")
-	ErrInvalidLaunchRef = errors.New("invalid agent target launch ref")
+	ErrInvalidTarget     = errors.New("invalid agent target")
+	ErrInvalidLaunchRef  = errors.New("invalid agent target launch ref")
+	agentTargetIDPattern = regexp.MustCompile(`^[a-z0-9][a-z0-9._:-]{0,127}$`)
 )
 
 type Target struct {
@@ -185,8 +187,8 @@ func NormalizeTarget(value Target) (Target, error) {
 	value.Source = normalizeSource(value.Source)
 	value.AvailabilityStatus = strings.TrimSpace(value.AvailabilityStatus)
 	value.AvailabilityReason = strings.TrimSpace(value.AvailabilityReason)
-	if value.ID == "" {
-		return Target{}, fmt.Errorf("%w: id is required", ErrInvalidTarget)
+	if !agentTargetIDPattern.MatchString(value.ID) {
+		return Target{}, fmt.Errorf("%w: id must match %s", ErrInvalidTarget, agentTargetIDPattern.String())
 	}
 	if value.Provider == "" {
 		return Target{}, fmt.Errorf("%w: provider is unsupported", ErrInvalidTarget)

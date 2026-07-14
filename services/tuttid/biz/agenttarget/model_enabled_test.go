@@ -55,6 +55,30 @@ func TestEnabledTargetsByProviderPreservesOrderAndCanonicalizes(t *testing.T) {
 	}
 }
 
+func TestEnabledTargetsPreservesEveryValidEnabledTargetInOrder(t *testing.T) {
+	targets := DefaultSystemTargets(1)
+	duplicate := targets[0]
+	duplicate.ID = "user:reviewer"
+	duplicate.Name = "Reviewer"
+	duplicate.Source = SourceUser
+	disabled := duplicate
+	disabled.ID = "user:disabled"
+	disabled.Enabled = false
+	invalid := duplicate
+	invalid.ID = "invalid target"
+
+	enabled := EnabledTargets([]Target{duplicate, disabled, invalid, targets[0], targets[1]})
+	if len(enabled) != 3 {
+		t.Fatalf("len(enabled) = %d, want 3: %#v", len(enabled), enabled)
+	}
+	if enabled[0].ID != "user:reviewer" || enabled[1].ID != targets[0].ID || enabled[2].ID != targets[1].ID {
+		t.Fatalf("enabled order = %#v", enabled)
+	}
+	if enabled[0].Provider != enabled[1].Provider {
+		t.Fatalf("same-provider targets were not preserved: %#v", enabled)
+	}
+}
+
 func TestEnabledTargetForProviderAcceptsLegacyInputAndReturnsCanonical(t *testing.T) {
 	target, ok := EnabledTargetForProvider(DefaultSystemTargets(1), "claude")
 	if !ok {

@@ -28,7 +28,12 @@ import { createDefaultLocalAgentRuntime } from "@tutti-os/agent-acp-kit";
 export const localAgentRuntime = createDefaultLocalAgentRuntime();
 ```
 
-Provider IDs are canonical opaque strings. First-party local providers are `codex`, `claude-code`, and `tutti-agent`. The runtime accepts legacy `claude` input internally. `nexight` is historical activity compatibility only: apps must not register it as a new provider or map it to/from `tutti-agent`.
+Provider IDs are canonical opaque strings. Built-in runtime examples include
+`codex`, `claude-code`, and `tutti-agent`, but this is not an exhaustive agent
+catalog: discover selectable agents and their exact ids from the current Tutti
+catalog. The runtime accepts legacy `claude` input internally. `nexight` is
+historical activity compatibility only: apps must not register it as a new
+provider or map it to/from `tutti-agent`.
 
 Read `references/dynamic-agent-providers.md` for catalog, composer, persistence, UI, and standalone behavior.
 
@@ -212,7 +217,7 @@ Add tests for:
 - configured-but-failing CLI returning a typed error without standalone fallback;
 - disabled Agent Targets staying absent without SDK detection adding them back;
 - full dynamic provider projection and lazy composer loading;
-- canonical IDs and one-time `claude -> claude-code` state migration;
+- exact agent ids and provider-only legacy state migration only when the current catalog has one unambiguous matching target;
 - direct awaited managed run context creation, with no app credential precheck;
 - no managed secret/cwd leakage;
 - event normalization, cancellation, and resume metadata;
@@ -220,4 +225,4 @@ Add tests for:
 - absence of raw Agent catalog clients, provider alias helpers, and dependency patch scripts.
 - absence of app permission selectors, permission persistence, and run-level permission arguments.
 
-For a real smoke test inside Tutti, load the catalog, one provider's composer options, and skill context before running a narrow cancellable prompt with no irreversible side effects.
+For a real smoke test inside Tutti, load the catalog, one agent's composer options, and skill context before running a narrow cancellable prompt with no irreversible side effects.

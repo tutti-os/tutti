@@ -216,7 +216,7 @@ func renderProviderSkillBundle(input PrepareInput) SkillBundle {
 		records = append(records, providerSkillSpecRecord(skill))
 	}
 	return SkillBundle{
-		SchemaVersion:           1,
+		SchemaVersion:           2,
 		AgentTargetID:           strings.TrimSpace(input.AgentTargetID),
 		Provider:                strings.TrimSpace(input.Provider),
 		AgentSessionID:          strings.TrimSpace(input.AgentSessionID),

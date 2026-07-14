@@ -218,6 +218,29 @@ func TestCommandGuideFromCatalogPassesAgentRuntimeContext(t *testing.T) {
 	}
 }
 
+func TestCommandGuideHidesLegacyAgentCompatibilityAndRequiresAgentID(t *testing.T) {
+	guide := commandGuideFromCapabilities("tutti", []CommandCapability{
+		{ID: "agent-context.agent.providers", Path: []string{"agent", "providers"}, Summary: "Legacy providers"},
+		{ID: "agent-context.codex.start", Path: []string{"codex", "start"}, Summary: "Legacy Codex"},
+		{ID: "agent-context.claude.start", Path: []string{"claude", "start"}, Summary: "Legacy Claude"},
+		{
+			ID: "agent-context.agent.start", Path: []string{"agent", "start"}, Summary: "Start agent",
+			InputSchema: map[string]any{
+				"properties": map[string]any{"agent-id": map[string]any{"type": "string"}, "provider": map[string]any{"type": "string"}, "prompt": map[string]any{"type": "string"}},
+				"required":   []any{"prompt"},
+			},
+		},
+	})
+	for _, forbidden := range []string{"agent providers", "codex start", "claude start", "--provider"} {
+		if strings.Contains(guide, forbidden) {
+			t.Fatalf("guide exposed %q: %q", forbidden, guide)
+		}
+	}
+	if !strings.Contains(guide, "agent start --agent-id <agent-id> --prompt <prompt>") {
+		t.Fatalf("guide missing target-first start: %q", guide)
+	}
+}
+
 func TestCommandGuideFromCatalogUsesProvidedCLIName(t *testing.T) {
 	catalog := fakeCommandCatalog{}
 

@@ -202,7 +202,7 @@ func (f *fakeAgentSessions) GetSkillBundle(_ context.Context, workspaceID string
 	f.workspaceID = workspaceID
 	f.skillBundleIn = input
 	return agentservice.SkillBundle{
-		SchemaVersion:  1,
+		SchemaVersion:  2,
 		AgentTargetID:  input.AgentTargetID,
 		Provider:       "codex",
 		AgentSessionID: input.AgentSessionID,
@@ -387,23 +387,6 @@ func commandByID(t *testing.T, commands []cliservice.Command, commandID string) 
 	}
 	t.Fatalf("command %q not found", commandID)
 	return cliservice.Command{}
-}
-
-func capabilityIDs(capabilities []cliservice.Capability) []string {
-	ids := make([]string, 0, len(capabilities))
-	for _, capability := range capabilities {
-		ids = append(ids, capability.ID)
-	}
-	return ids
-}
-
-func containsString(values []string, target string) bool {
-	for _, value := range values {
-		if value == target {
-			return true
-		}
-	}
-	return false
 }
 
 func equalStrings(left []string, right []string) bool {
@@ -834,7 +817,7 @@ func TestStartCommandPassesDisplayPrompt(t *testing.T) {
 	}
 }
 
-func TestStartCommandRequiresProviderAndPrompt(t *testing.T) {
+func TestStartCommandRequiresOneSelectorAndPrompt(t *testing.T) {
 	sessions := &fakeAgentSessions{}
 	command := newTestProvider(fakeWorkspaceCatalog{startup: workspacebiz.Summary{ID: "workspace-1"}}, sessions).newStartCommand()
 	required, ok := command.Capability.InputSchema["required"].([]string)
@@ -1075,7 +1058,7 @@ func TestSkillBundleCommandReturnsAgentACPKitShape(t *testing.T) {
 	if !ok {
 		t.Fatalf("recommendedSystemPrompt = %#v", output.Value["recommendedSystemPrompt"])
 	}
-	if output.Value["schemaVersion"] != 1 ||
+	if output.Value["schemaVersion"] != 2 ||
 		output.Value["provider"] != "codex" ||
 		output.Value["agentSessionId"] != "run-1" ||
 		output.Value["cliCommand"] != "tutti-dev" ||
@@ -1403,17 +1386,31 @@ func TestStartCommandMissingCallerSessionLeavesCwdForAllocator(t *testing.T) {
 	}
 }
 
-func TestProviderCommandsExposeOnlyGenericAgentLauncher(t *testing.T) {
+func TestProviderCommandsKeepExactDeprecatedLaunchAdapters(t *testing.T) {
 	provider := newTestProvider(fakeWorkspaceCatalog{startup: workspacebiz.Summary{ID: "workspace-1"}}, &fakeAgentSessions{})
 	commands := provider.Commands()
 	start := commandByID(t, commands, "agent-context.agent.start")
 	if strings.Join(start.Capability.Path, " ") != "agent start" {
 		t.Fatalf("agent start capability = %#v", start.Capability)
 	}
+	for id, path := range map[string]string{
+		"agent-context.codex.start":  "codex start",
+		"agent-context.claude.start": "claude start",
+	} {
+		command := commandByID(t, commands, id)
+		if strings.Join(command.Capability.Path, " ") != path ||
+			!strings.Contains(command.Capability.Description, "Deprecated") ||
+			command.Capability.Visibility != cliservice.CapabilityVisibilityIntegration {
+			t.Fatalf("legacy adapter = %#v", command.Capability)
+		}
+	}
+	providers := commandByID(t, commands, "agent-context.agent.providers")
+	if providers.Capability.Visibility != cliservice.CapabilityVisibilityIntegration {
+		t.Fatalf("legacy provider catalog visibility = %q", providers.Capability.Visibility)
+	}
 	for _, command := range commands {
-		path := strings.Join(command.Capability.Path, " ")
-		if path == "codex start" || path == "claude start" || path == "tutti-agent start" {
-			t.Fatalf("provider-specific launcher still registered: %#v", command.Capability)
+		if strings.Join(command.Capability.Path, " ") == "tutti-agent start" {
+			t.Fatalf("never-supported launcher registered: %#v", command.Capability)
 		}
 	}
 }
@@ -1709,8 +1706,7 @@ func TestSessionSummaryIncludesCompactSession(t *testing.T) {
 func TestProviderCommandsExcludeRemovedSessionAliases(t *testing.T) {
 	commands := newTestProvider(fakeWorkspaceCatalog{startup: workspacebiz.Summary{ID: "workspace-1"}}, &fakeAgentSessions{}).Commands()
 	for _, command := range commands {
-		switch command.Capability.ID {
-		case "agent-context.agent.session.messages":
+		if command.Capability.ID == "agent-context.agent.session.messages" {
 			t.Fatalf("removed command still registered: %q", command.Capability.ID)
 		}
 	}

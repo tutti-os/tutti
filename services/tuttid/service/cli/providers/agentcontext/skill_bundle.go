@@ -9,10 +9,16 @@ import (
 )
 
 type skillBundleInput struct {
-	AgentID        string `cli:"agent-id" validate:"required" hint:"Use agent list --json to discover available agents."`
+	AgentID        string `cli:"agent-id" advertise-required:"true" hint:"Use agent list --json to discover available agents."`
 	AgentSessionID string `cli:"agent-session-id"`
 	BrowserUse     bool   `cli:"browser-use"`
 	ComputerUse    bool   `cli:"computer-use"`
+	Provider       string `cli:"provider" hidden:"true"`
+}
+
+type skillBundleResult struct {
+	Bundle agentservice.SkillBundle
+	Legacy bool
 }
 
 func (p Provider) newSkillBundleCommand() cliservice.Command {
@@ -32,7 +38,8 @@ func (p Provider) newSkillBundleCommand() cliservice.Command {
 			JSON:        true,
 			JSONViews: map[framework.OutputView]func(any) map[string]any{
 				framework.ViewDetail: func(result any) map[string]any {
-					return skillBundleValue(result.(agentservice.SkillBundle))
+					value := result.(skillBundleResult)
+					return skillBundleValue(value.Bundle, value.Legacy)
 				},
 			},
 		},
@@ -44,32 +51,42 @@ func (p Provider) runSkillBundle(ctx context.Context, invoke framework.InvokeCon
 	if err := p.requireSessions(); err != nil {
 		return nil, err
 	}
-	target, err := p.resolveEnabledAgentTarget(ctx, input.AgentID)
+	target, legacy, err := p.resolveAgentSelector(ctx, input.AgentID, input.Provider)
 	if err != nil {
 		return nil, err
 	}
-	return p.sessions.GetSkillBundle(ctx, invoke.WorkspaceID, agentservice.SkillBundleInput{
+	bundle, err := p.sessions.GetSkillBundle(ctx, invoke.WorkspaceID, agentservice.SkillBundleInput{
 		AgentTargetID:  target.ID,
 		AgentSessionID: input.AgentSessionID,
 		BrowserUse:     input.BrowserUse,
 		ComputerUse:    input.ComputerUse,
 	})
+	if err != nil {
+		return nil, err
+	}
+	return skillBundleResult{Bundle: bundle, Legacy: legacy}, nil
 }
 
-func skillBundleValue(bundle agentservice.SkillBundle) map[string]any {
+func skillBundleValue(bundle agentservice.SkillBundle, legacy bool) map[string]any {
 	value := map[string]any{
-		"schemaVersion":  bundle.SchemaVersion,
-		"agentTargetId":  bundle.AgentTargetID,
-		"provider":       bundle.Provider,
-		"agentSessionId": bundle.AgentSessionID,
-		"cliCommand":     bundle.CLICommand,
-		"skills":         skillBundleSkillsValue(bundle.Skills),
+		"schemaVersion": bundle.SchemaVersion,
+		"agentTargetId": bundle.AgentTargetID,
+		"provider":      bundle.Provider,
+		"cliCommand":    bundle.CLICommand,
+		"skills":        skillBundleSkillsValue(bundle.Skills),
+	}
+	if bundle.AgentSessionID != "" {
+		value["agentSessionId"] = bundle.AgentSessionID
 	}
 	if bundle.RecommendedSystemPrompt != nil {
 		value["recommendedSystemPrompt"] = map[string]any{
 			"format":  bundle.RecommendedSystemPrompt.Format,
 			"content": bundle.RecommendedSystemPrompt.Content,
 		}
+	}
+	if legacy {
+		value["schemaVersion"] = 1
+		delete(value, "agentTargetId")
 	}
 	return value
 }

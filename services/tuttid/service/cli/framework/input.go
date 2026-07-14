@@ -35,10 +35,12 @@ func FromStruct[T any]() InputSpec {
 			name = kebabCase(field.Name)
 		}
 		fieldSpec := FieldSpec{
-			Name:        name,
-			Type:        schemaType(field.Type),
-			Description: strings.TrimSpace(field.Tag.Get("description")),
-			Hint:        strings.TrimSpace(field.Tag.Get("hint")),
+			Name:               name,
+			Type:               schemaType(field.Type),
+			Description:        strings.TrimSpace(field.Tag.Get("description")),
+			Hidden:             field.Tag.Get("hidden") == "true",
+			AdvertisedRequired: field.Tag.Get("advertise-required") == "true",
+			Hint:               strings.TrimSpace(field.Tag.Get("hint")),
 		}
 		applyValidateTag(&fieldSpec, field.Tag.Get("validate"))
 		fieldSpec.Enum = parseCSVTag(field.Tag.Get("enum"))
@@ -56,6 +58,9 @@ func Schema(input InputSpec) map[string]any {
 	properties := schema["properties"].(map[string]any)
 	required := []string{}
 	for _, field := range input.Fields {
+		if field.Hidden {
+			continue
+		}
 		propertyType := field.Type
 		if propertyType == "" {
 			propertyType = "string"
@@ -77,7 +82,7 @@ func Schema(input InputSpec) map[string]any {
 			property["enum"] = field.Enum
 		}
 		properties[field.Name] = property
-		if field.Required {
+		if field.Required || field.AdvertisedRequired {
 			required = append(required, field.Name)
 		}
 	}

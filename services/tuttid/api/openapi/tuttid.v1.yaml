@@ -5020,6 +5020,8 @@ components:
       properties:
         id:
           type: string
+          maxLength: 128
+          pattern: "^[a-z0-9][a-z0-9._:-]{0,127}$"
         provider:
           $ref: "#/components/schemas/AgentTargetProvider"
         launchRef:

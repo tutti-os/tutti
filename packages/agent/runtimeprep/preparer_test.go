@@ -276,12 +276,11 @@ func TestDefaultPreparerCodexWritesInstructionsSkillManifestAndEnv(t *testing.T)
 		!strings.Contains(string(workspaceAppSkill), "use injected `$tutti-cli`") ||
 		!strings.Contains(string(workspaceAppSkill), "command-guide.md") ||
 		!strings.Contains(string(workspaceAppSkill), "Do not derive filesystem paths from the plugin directory, plugin name, or skill slug") ||
-		!strings.Contains(string(workspaceAppSkill), "inherits the caller agent session working directory") ||
-		!strings.Contains(string(workspaceAppSkill), "turn-resources") ||
-		!strings.Contains(string(workspaceAppSkill), "specific caller session turn") ||
-		!strings.Contains(string(workspaceAppSkill), "agent turn-resources --session-id <caller-session-id> --turn-id <turnId> --json") ||
-		!strings.Contains(string(workspaceAppSkill), "`--image <localPath>`") {
+		!strings.Contains(string(workspaceAppSkill), "inherits the caller agent session working directory") {
 		t.Fatalf("workspace-app skill content = %q", string(workspaceAppSkill))
+	}
+	if strings.Contains(string(workspaceAppSkill), "turn-resources") || strings.Contains(string(workspaceAppSkill), "--image <localPath>") {
+		t.Fatalf("workspace-app skill owns agent image handoff guidance: %q", string(workspaceAppSkill))
 	}
 	if strings.Contains(string(workspaceAppSkill), "read the materialized sibling `tutti-cli/SKILL.md`") {
 		t.Fatalf("workspace-app skill should not ask agents to guess sibling skill paths: %q", string(workspaceAppSkill))

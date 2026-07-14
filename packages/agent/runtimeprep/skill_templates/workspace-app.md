@@ -39,20 +39,6 @@ After reading the mention query, recover the smallest useful app context through
 
 If the mentioned app has no visible CLI commands after checking the injected `$tutti-cli` command guide and any refreshed capability reference that preserves `App id:` metadata, explain that the app is not currently exposing usable CLI capabilities instead of guessing an app-specific command.
 
-## Helpers
-
-### turn-resources
-
-Use this helper when a generic agent handoff may need resources from a specific caller session turn.
-
-Input: the current caller agent session id from runtime context and one selected `turnId`. Use `{{CLI_COMMAND}} agent session-summary --session-id <caller-session-id> --json` only to discover candidate turn ids such as `session.turnLifecycle.activeTurnId` or recent user message `turnId` values.
-
-Command: `{{CLI_COMMAND}} agent turn-resources --session-id <caller-session-id> --turn-id <turnId> --json`.
-
-Output: the matching turn's resource-bearing user messages, preserving message fields such as `messageId`, `turnId`, `text`, and each message's `images[]` array with `attachmentId`, `mimeType`, `name`, and `localPath` when present. Images remain grouped under their source message.
-
-For `agent start`, the calling agent decides which turn ids to query and how to represent each returned image. Add one `--image <localPath>` argument for each image chosen for structured visual input. If preserving prompt/turn ordering is more useful for an image reference, mention it in the prompt as `[@filename](/absolute/path)` instead. Do not send the same image both ways unless the user explicitly asks. If no selected image objects have usable `localPath` values, continue without image arguments. Do not scan the workspace, inspect attachment directories, or hand-build paths from `attachmentId`; `agent turn-resources` is the source of truth for turn resource metadata.
-
 ## Invocation Rules
 
 Read command summaries and required inputs before invoking an app command. Ask for missing required inputs when the user did not provide enough information.
