@@ -71,6 +71,7 @@ export function groupAgentGUINodeViewModelFixture(
       goalPauseSupported: flat.goalPauseSupported,
       canSubmit: flat.canSubmit,
       composerSettings: flat.composerSettings,
+      queueStatus: flat.queueStatus,
       queuedPrompts: flat.queuedPrompts,
       drainingQueuedPromptId: flat.drainingQueuedPromptId,
       canQueueWhileBusy: flat.canQueueWhileBusy

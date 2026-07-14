@@ -7914,7 +7914,7 @@ html[data-theme="light"] [data-message-center-item-id].agent-gui-edge-glow {
 
 .agent-gui-node__composer-queued-prompt-header {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: flex-start;
   gap: 4px;
   min-height: 20px;
@@ -7993,10 +7993,17 @@ html[data-theme="light"] [data-message-center-item-id].agent-gui-edge-glow {
 }
 
 .agent-gui-node__composer-queued-prompt-label {
+  min-width: 0;
   font-size: 13px;
   font-weight: 600;
   color: var(--agent-gui-accent-strong);
   line-height: 20px;
+}
+
+.agent-gui-node__composer-queued-prompt-panel[data-queue-status="paused_by_user"]
+  .agent-gui-node__composer-queued-prompt-label {
+  overflow-wrap: anywhere;
+  white-space: normal;
 }
 
 .agent-gui-node__composer-queued-prompt-count {
@@ -8907,7 +8914,16 @@ html[data-theme="light"] [data-message-center-item-id].agent-gui-edge-glow {
 }
 
 .agent-gui-node__provider-rail-sidebar-footer {
+  padding-bottom: 0;
+}
+
+.agent-gui-node__provider-rail-sidebar-footer:last-child {
   padding-bottom: 12px;
+}
+
+.agent-gui-node__provider-rail-sidebar-footer
+  + .agent-gui-node__provider-rail-config-footer {
+  margin-top: 8px;
 }
 
 .agent-gui-node__provider-rail-config-button {

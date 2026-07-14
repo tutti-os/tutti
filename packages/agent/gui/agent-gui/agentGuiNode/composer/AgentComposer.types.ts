@@ -14,6 +14,7 @@ import type {
   AgentComposerDraft,
   AgentGUIComposerSettingsVM,
   AgentGUIProviderSkillOption,
+  AgentGUIQueueStatus,
   AgentGUIQueuedPromptVM
 } from "../model/agentGuiNodeTypes";
 import type { AgentGUIProvider, AgentGUIAgentTarget } from "../../../types";
@@ -40,6 +41,7 @@ export interface AgentComposerProps {
   submitDisabled: boolean;
   placeholder: string;
   composerSettings: AgentGUIComposerSettingsVM;
+  queueStatus?: AgentGUIQueueStatus;
   queuedPrompts: readonly AgentGUIQueuedPromptVM[];
   drainingQueuedPromptId: string | null;
   workspaceAppIcons?: readonly AgentMessageMarkdownWorkspaceAppIcon[];
@@ -131,6 +133,7 @@ export interface AgentComposerProps {
     computerUseCapabilitySettingsLabel: string;
     computerUseCapabilitySettingsDescription: string;
     queuedLabel: string;
+    queuePausedByUserLabel: string;
     sendQueuedPromptNext: string;
     editQueuedPrompt: string;
     deleteQueuedPrompt: string;

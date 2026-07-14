@@ -286,9 +286,11 @@ function enqueueSubmit(
     current?.inFlight ||
     availability?.state !== "available"
   );
-  const resumed = resumeQueue(state, intent.agentSessionId).state;
-  return enqueuePrompt(
-    resumed,
+  const resumed = startImmediately
+    ? resumeQueue(state, intent.agentSessionId)
+    : unchanged(state);
+  const enqueued = enqueuePrompt(
+    resumed.state,
     {
       agentSessionId: intent.agentSessionId,
       prompt: {
@@ -318,6 +320,10 @@ function enqueueSubmit(
     },
     startImmediately
   );
+  return {
+    commands: [...resumed.commands, ...enqueued.commands],
+    state: enqueued.state
+  };
 }
 
 function removePrompt(

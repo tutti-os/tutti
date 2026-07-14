@@ -118,6 +118,7 @@ function createViewModel(): AgentGUINodeViewModel {
       composerSettings:
         {} as AgentGUINodeViewModel["composer"]["composerSettings"],
       queuedPrompts: [],
+      queueStatus: "active",
       drainingQueuedPromptId: null,
       canQueueWhileBusy: false
     },

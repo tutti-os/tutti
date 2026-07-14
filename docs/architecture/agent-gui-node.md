@@ -2031,6 +2031,22 @@ hold — composer submit resumes the queue, and a send-now intent clears the
 suspension in the queue core. The send-now cancel path never suspends: intent is
 captured at its source, never inferred from the cancel outcome.
 
+Queue suspension must also remain visible in the presentation projection.
+AgentGUI controllers map the queue record's `suspendReason` to the internal
+`queueStatus` (`active` or `paused_by_user`) and carry it through the composer
+view model. React queue components render that projection directly; they must
+not infer a paused queue from cancel request state or turn settlement. A paused
+queue keeps its count, expansion, edit, delete, and send-now controls available,
+and returns to the ordinary queued label as soon as the queue core resumes it.
+
+Reducer transitions that resume and then enqueue are compositional: the final
+state and every command from both stages must be preserved. In particular, a
+normal submit after a user stop sends the existing FIFO head and appends the new
+prompt at the tail; it must not retain an `inFlight` claim after dropping the
+corresponding `queue/sendPrompt` command. Send-now continues to use its atomic
+promotion transition so it clears suspension, preserves priority semantics, and
+emits only one delivery command.
+
 Preview-mode AgentGUI surfaces are read-only for this runtime: they may render an
 existing queue if injected into the same context, but they must not enqueue,
 send now, edit, or delete queued prompts.

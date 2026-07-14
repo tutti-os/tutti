@@ -184,6 +184,8 @@ export const enAgentGui = {
   planModeOffLabel: "Off",
   planUnavailable: "Plan unavailable",
   queuedLabel: "Queued",
+  queuePausedByUserLabel:
+    "The queue is paused because you interrupted the current response.",
   sendQueuedPromptNext: "Send next",
   editQueuedPrompt: "Edit",
   deleteQueuedPrompt: "Delete",

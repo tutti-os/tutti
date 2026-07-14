@@ -103,6 +103,7 @@ export function AgentComposerView(input: Props): React.JSX.Element {
     draftContent,
     availableSkills = EMPTY_PROVIDER_SKILLS,
     composerSettings,
+    queueStatus = "active",
     queuedPrompts,
     drainingQueuedPromptId,
     workspaceAppIcons = EMPTY_WORKSPACE_APP_ICONS,
@@ -263,10 +264,12 @@ export function AgentComposerView(input: Props): React.JSX.Element {
           data-testid="agent-gui-composer-queued-prompts"
         >
           <AgentQueuedPromptPanel
+            queueStatus={queueStatus}
             queuedPrompts={queuedPrompts}
             drainingQueuedPromptId={drainingQueuedPromptId}
             labels={{
               queuedLabel: labels.queuedLabel,
+              queuePausedByUserLabel: labels.queuePausedByUserLabel,
               sendQueuedPromptNext: labels.sendQueuedPromptNext,
               editQueuedPrompt: labels.editQueuedPrompt,
               deleteQueuedPrompt: labels.deleteQueuedPrompt,

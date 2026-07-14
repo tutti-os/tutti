@@ -64,6 +64,7 @@ export function useAgentGUIViewModel(
       candidate.composer.isInterrupting,
       candidate.composer.isSubmitting,
       candidate.composer.promptImagesSupported,
+      candidate.composer.queueStatus,
       candidate.composer.queuedPrompts
     ]
   );

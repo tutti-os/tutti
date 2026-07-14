@@ -168,6 +168,7 @@ export const zhCNAgentGui = {
   planModeOffLabel: "关闭",
   planUnavailable: "规划模式不可用",
   queuedLabel: "排队中",
+  queuePausedByUserLabel: "由于你中断了当前响应，队列已暂停",
   sendQueuedPromptNext: "直接发送",
   editQueuedPrompt: "编辑",
   deleteQueuedPrompt: "删除",

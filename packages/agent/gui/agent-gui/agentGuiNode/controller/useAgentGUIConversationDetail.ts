@@ -23,6 +23,7 @@ import {
 } from "../model/agentGuiConversationModel";
 import type {
   AgentComposerDraft,
+  AgentGUIQueueStatus,
   AgentGUIQueuedPromptVM
 } from "../model/agentGuiNodeTypes";
 import type { AgentGUIComposerTargetData } from "./agentGuiController.composerPresentation";
@@ -58,6 +59,7 @@ interface UseAgentGUIConversationDetailInput {
   activePendingInteractions: readonly AgentActivityInteraction[];
   activeQueuedPromptInFlight: PromptQueueInFlightCommand | null;
   activeQueuedPrompts: readonly EngineQueuedPrompt[];
+  activeQueueStatus: AgentGUIQueueStatus;
   activeSessionReconcileError: string | null;
   activeSessionView: {
     hasOlderMessages: boolean;
@@ -301,6 +303,7 @@ export function useAgentGUIConversationDetail(
     pendingApproval: hasProviderSessionNotFoundError
       ? null
       : rawPendingApproval,
+    queueStatus: input.activeQueueStatus,
     queuedPrompts,
     serverInteractivePrompt: hasProviderSessionNotFoundError
       ? null

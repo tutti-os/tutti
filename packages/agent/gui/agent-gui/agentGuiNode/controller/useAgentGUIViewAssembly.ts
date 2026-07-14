@@ -164,6 +164,7 @@ export function useAgentGUIViewAssembly(input: UseAgentGUIViewAssemblyInput) {
       goalPauseSupported: input.goalPauseSupported,
       canSubmit: session.canSubmit,
       composerSettings: stableComposerSettings,
+      queueStatus: detail.queueStatus,
       queuedPrompts: detail.queuedPrompts,
       drainingQueuedPromptId: detail.drainingQueuedPromptId,
       canQueueWhileBusy: session.canQueueWhileBusy

@@ -19,7 +19,10 @@ import {
   type AgentMessageMarkdownWorkspaceAppIcon
 } from "../../shared/AgentMessageMarkdown";
 import type { AgentPromptContentBlock } from "../../shared/contracts/dto/agentSession";
-import type { AgentGUIQueuedPromptVM } from "./model/agentGuiNodeTypes";
+import type {
+  AgentGUIQueueStatus,
+  AgentGUIQueuedPromptVM
+} from "./model/agentGuiNodeTypes";
 import {
   agentPromptContentDisplayText,
   agentPromptContentImageBlocks
@@ -55,10 +58,12 @@ type QueuedPromptImageBlock = AgentPromptContentBlock & {
 };
 
 interface AgentQueuedPromptPanelProps {
+  queueStatus?: AgentGUIQueueStatus;
   queuedPrompts: readonly AgentGUIQueuedPromptVM[];
   drainingQueuedPromptId: string | null;
   labels: {
     queuedLabel: string;
+    queuePausedByUserLabel: string;
     sendQueuedPromptNext: string;
     editQueuedPrompt: string;
     deleteQueuedPrompt: string;
@@ -251,6 +256,7 @@ function queuedPromptTitle(queuedPrompt: AgentGUIQueuedPromptVM): string {
 }
 
 export function AgentQueuedPromptPanel({
+  queueStatus = "active",
   queuedPrompts,
   drainingQueuedPromptId,
   labels,
@@ -387,6 +393,7 @@ export function AgentQueuedPromptPanel({
       className={styles.composerQueuedPromptPanel}
       data-expanded={isExpanded ? "true" : "false"}
       data-expandable={canExpand ? "true" : "false"}
+      data-queue-status={queueStatus}
       style={panelStyle}
       tabIndex={canExpand ? 0 : -1}
       onClick={toggleExpanded}
@@ -394,7 +401,9 @@ export function AgentQueuedPromptPanel({
     >
       <div className={styles.composerQueuedPromptHeader}>
         <span className={styles.composerQueuedPromptLabel}>
-          {labels.queuedLabel}
+          {queueStatus === "paused_by_user"
+            ? labels.queuePausedByUserLabel
+            : labels.queuedLabel}
         </span>
         <span className={styles.composerQueuedPromptCount}>
           {queuedPrompts.length}

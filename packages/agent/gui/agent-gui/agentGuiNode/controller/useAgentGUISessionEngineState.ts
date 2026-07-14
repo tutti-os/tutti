@@ -32,6 +32,7 @@ import type {
 import { useEngineSelector } from "../../../shared/engine/useEngineSelector";
 import { EMPTY_QUEUED_PROMPTS } from "./agentGuiController.draftMessageHelpers";
 import { agentActivityInteractionListsEqual } from "./agentGuiController.providerHelpers";
+import { agentGUIQueueStatusFromPromptQueue } from "./agentGuiQueueStatus";
 import { isPendingNewConversationActivation } from "./useAgentGUIActivation";
 
 export function useAgentGUISessionEngineState(input: {
@@ -195,6 +196,9 @@ export function useAgentGUISessionEngineState(input: {
     activePendingSubmits,
     activeQueuedPromptInFlight: activeQueuedPromptSnapshot?.inFlight ?? null,
     activeQueuedPrompts,
+    activeQueueStatus: agentGUIQueueStatusFromPromptQueue(
+      activeQueuedPromptSnapshot
+    ),
     activeSessionState,
     activeSessionReconcilePending,
     activeSessionReconcileError: activeSessionReconcile?.errorMessage ?? null,

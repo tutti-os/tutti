@@ -10,6 +10,8 @@ import { AgentQueuedPromptPanel } from "./AgentQueuedPromptPanel";
 
 const labels = {
   queuedLabel: "Queued",
+  queuePausedByUserLabel:
+    "The queue is paused because you interrupted the current response.",
   sendQueuedPromptNext: "Send next",
   editQueuedPrompt: "Edit",
   deleteQueuedPrompt: "Delete",
@@ -29,6 +31,46 @@ function textQueuedPrompt(id: string, text: string, createdAtUnixMs = 1) {
 }
 
 describe("AgentQueuedPromptPanel", () => {
+  it("switches between the paused and active queue labels while preserving actions", async () => {
+    const onSendQueuedPromptNext = vi.fn();
+    const onRemoveQueuedPrompt = vi.fn();
+    const onEditQueuedPrompt = vi.fn();
+    const createPanel = (queueStatus: "active" | "paused_by_user") => (
+      <AgentQueuedPromptPanel
+        queueStatus={queueStatus}
+        queuedPrompts={[
+          textQueuedPrompt("queued-1", "first queued prompt"),
+          textQueuedPrompt("queued-2", "second queued prompt", 2)
+        ]}
+        drainingQueuedPromptId={null}
+        labels={labels}
+        onSendQueuedPromptNext={onSendQueuedPromptNext}
+        onRemoveQueuedPrompt={onRemoveQueuedPrompt}
+        onEditQueuedPrompt={onEditQueuedPrompt}
+      />
+    );
+    const { rerender } = render(createPanel("paused_by_user"));
+
+    expect(screen.getByText(labels.queuePausedByUserLabel)).toBeInTheDocument();
+    expect(screen.getByText("2")).toBeInTheDocument();
+    fireEvent.click(screen.getAllByRole("button", { name: "Send next" })[1]!);
+    fireEvent.click(screen.getAllByRole("button", { name: "Delete" })[0]!);
+    const moreButton = screen.getAllByRole("button", { name: "More" })[1]!;
+    fireEvent.pointerDown(moreButton, { button: 0, ctrlKey: false });
+    fireEvent.click(moreButton);
+    const editItem = await screen.findByRole("menuitem", { name: "Edit" });
+    fireEvent.pointerDown(editItem, { button: 0, ctrlKey: false });
+    fireEvent.click(editItem);
+
+    expect(onSendQueuedPromptNext).toHaveBeenCalledWith("queued-2");
+    expect(onRemoveQueuedPrompt).toHaveBeenCalledWith("queued-1");
+    expect(onEditQueuedPrompt).toHaveBeenCalledWith("queued-2");
+
+    rerender(createPanel("active"));
+    expect(screen.getByText(labels.queuedLabel)).toBeInTheDocument();
+    expect(screen.queryByText(labels.queuePausedByUserLabel)).toBeNull();
+  });
+
   it("shows an expand cue only when queued content can expand", () => {
     const { rerender } = render(
       <AgentQueuedPromptPanel

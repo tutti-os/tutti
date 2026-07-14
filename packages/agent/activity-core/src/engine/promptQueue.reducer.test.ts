@@ -230,6 +230,126 @@ test("user stop suspends automatic drain until an explicit resume", () => {
   assert.equal(resumed.commands[0]?.type, "queue/sendPrompt");
 });
 
+test("ordinary submit resumes a paused queue without losing the existing FIFO head command", () => {
+  let state = reduce(createInitialPromptQueueState(), {
+    type: "session/snapshotReceived",
+    sessions: [session("running", 1)]
+  }).state;
+  state = reduce(state, enqueue("prompt-1")).state;
+  state = reduce(state, enqueue("prompt-2")).state;
+  state = reduce(state, {
+    type: "queue/suspended",
+    agentSessionId: "session-1",
+    reason: "user_stop"
+  }).state;
+  state = reduce(state, {
+    type: "session/snapshotReceived",
+    sessions: [session("settled", 2)]
+  }).state;
+
+  const submitted = reduce(state, submit("prompt-3"));
+
+  assert.equal(submitted.commands.length, 1);
+  assert.equal(submitted.commands[0]?.type, "queue/sendPrompt");
+  assert.equal(
+    submitted.commands[0]?.type === "queue/sendPrompt"
+      ? submitted.commands[0].promptId
+      : null,
+    "prompt-1"
+  );
+  assert.deepEqual(
+    submitted.state.recordsBySessionId["session-1"]?.prompts.map(
+      (prompt) => prompt.id
+    ),
+    ["prompt-1", "prompt-2", "prompt-3"]
+  );
+  assert.equal(
+    submitted.state.recordsBySessionId["session-1"]?.inFlight?.promptId,
+    "prompt-1"
+  );
+  assert.equal(
+    submitted.state.recordsBySessionId["session-1"]?.suspendReason,
+    null
+  );
+});
+
+test("ordinary submit only resumes and enqueues until the interrupted turn settles", () => {
+  let state = reduce(createInitialPromptQueueState(), {
+    type: "session/snapshotReceived",
+    sessions: [session("running", 1)]
+  }).state;
+  state = reduce(state, enqueue("prompt-1")).state;
+  state = reduce(state, {
+    type: "queue/suspended",
+    agentSessionId: "session-1",
+    reason: "user_stop"
+  }).state;
+
+  const submitted = reduce(state, submit("prompt-2"));
+
+  assert.equal(submitted.commands.length, 0);
+  assert.equal(
+    submitted.state.recordsBySessionId["session-1"]?.suspendReason,
+    null
+  );
+  assert.deepEqual(
+    submitted.state.recordsBySessionId["session-1"]?.prompts.map(
+      (prompt) => prompt.id
+    ),
+    ["prompt-1", "prompt-2"]
+  );
+
+  const settled = reduce(submitted.state, {
+    type: "session/snapshotReceived",
+    sessions: [session("settled", 2)]
+  });
+  assert.equal(settled.commands.length, 1);
+  assert.equal(
+    settled.commands[0]?.type === "queue/sendPrompt"
+      ? settled.commands[0].promptId
+      : null,
+    "prompt-1"
+  );
+});
+
+test("send now resumes a paused queue and emits only the promoted prompt command", () => {
+  let state = reduce(createInitialPromptQueueState(), {
+    type: "session/snapshotReceived",
+    sessions: [session("running", 1)]
+  }).state;
+  state = reduce(state, enqueue("prompt-1")).state;
+  state = reduce(state, enqueue("prompt-2")).state;
+  state = reduce(state, {
+    type: "queue/suspended",
+    agentSessionId: "session-1",
+    reason: "user_stop"
+  }).state;
+  state = reduce(state, {
+    type: "session/snapshotReceived",
+    sessions: [session("settled", 2)]
+  }).state;
+
+  const promoted = reduce(state, sendNow("prompt-2"));
+
+  assert.equal(promoted.commands.length, 1);
+  assert.equal(
+    promoted.commands[0]?.type === "queue/sendPrompt"
+      ? promoted.commands[0].promptId
+      : null,
+    "prompt-2"
+  );
+  assert.deepEqual(
+    promoted.state.recordsBySessionId["session-1"]?.prompts.map(
+      (prompt) => prompt.id
+    ),
+    ["prompt-2", "prompt-1"]
+  );
+  assert.equal(
+    promoted.state.recordsBySessionId["session-1"]?.suspendReason,
+    null
+  );
+});
+
 test("send now uses native guidance without cancel when the provider supports it", () => {
   let state = reduce(createInitialPromptQueueState(), {
     type: "session/snapshotReceived",

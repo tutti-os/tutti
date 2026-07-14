@@ -293,6 +293,8 @@ export interface AgentGUIQueuedPromptVM {
   createdAtUnixMs: number;
 }
 
+export type AgentGUIQueueStatus = "active" | "paused_by_user";
+
 export interface AgentGUIShellViewModel {
   workspaceId: string;
   workspacePath?: string | null;
@@ -347,6 +349,7 @@ export interface AgentGUIComposerViewModel {
   canSubmit: boolean;
   composerSettings: AgentGUIComposerSettingsVM;
   queuedPrompts: AgentGUIQueuedPromptVM[];
+  queueStatus: AgentGUIQueueStatus;
   drainingQueuedPromptId: string | null;
   canQueueWhileBusy: boolean;
 }

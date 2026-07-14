@@ -3847,6 +3847,34 @@ describe("AgentGUINode", () => {
     expect(queuedPromptPanel).toHaveAttribute("data-expanded", "true");
   });
 
+  it("shows the paused-by-user queue status from the composer view model", () => {
+    mockViewModel = createViewModel({
+      activeConversationId: "session-1",
+      queueStatus: "paused_by_user",
+      queuedPrompts: [textQueuedPrompt("queued-1", "follow-up after stop")],
+      canQueueWhileBusy: true,
+      canSubmit: true,
+      hasSentUserMessage: true
+    });
+    renderAgentGUINode();
+
+    const queuedPromptList = screen.getByTestId(
+      "agent-gui-composer-queued-prompts"
+    );
+    expect(queuedPromptList).toHaveTextContent(
+      "agentHost.agentGui.queuePausedByUserLabel"
+    );
+    expect(queuedPromptList).not.toHaveTextContent(
+      "agentHost.agentGui.queuedLabel"
+    );
+    expect(within(queuedPromptList).getByText("1")).toBeTruthy();
+    expect(
+      within(queuedPromptList).getByRole("button", {
+        name: "agentHost.agentGui.sendQueuedPromptNext"
+      })
+    ).toBeEnabled();
+  });
+
   it("forwards queued prompt mention link actions through the composer", async () => {
     const onLinkAction = vi.fn<(action: WorkspaceLinkAction) => void>();
     mockViewModel = createViewModel({
@@ -7662,6 +7690,7 @@ function createViewModel(
       ]
     },
     queuedPrompts: [],
+    queueStatus: "active",
     drainingQueuedPromptId: null,
     avoidGroupingEdits: false,
     conversationDetail: null,

@@ -261,6 +261,7 @@ function createViewModel(
     },
     pendingInteractivePrompt: null,
     queuedPrompts: [],
+    queueStatus: "active",
     canSubmit: true,
     canQueueWhileBusy: false,
     isSubmitting: false,

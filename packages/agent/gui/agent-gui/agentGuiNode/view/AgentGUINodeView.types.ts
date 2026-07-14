@@ -113,6 +113,7 @@ export interface AgentGUIViewLabels {
   planModeOffLabel: string;
   planUnavailable: string;
   queuedLabel: string;
+  queuePausedByUserLabel: string;
   sendQueuedPromptNext: string;
   editQueuedPrompt: string;
   deleteQueuedPrompt: string;

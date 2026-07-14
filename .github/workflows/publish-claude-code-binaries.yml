@@ -108,45 +108,74 @@ jobs:
             key="${prefix}/${relative_path}"
             local_size="$(wc -c < "${artifact}" | tr -d ' ')"
             local_sha256="$(sha256sum "${artifact}" | awk '{print $1}')"
-            # Keys are immutable: skip only when the object exists AND matches
-            # the staged bytes — the sha256 stored as object metadata at upload
-            # time when available, the size otherwise (e.g. a manually mirrored
-            # object). A mismatch means a corrupted or foreign publish and must
-            # stop the job. Any head-object failure other than a plain 404
-            # (auth, throttling, outage) must also stop the job instead of
-            # being treated as "missing".
-            if head_json="$(aws s3api head-object --bucket "${S3_BUCKET_VALUE}" --key "${key}" \
-                --output json 2>head-error.txt)"; then
-              remote_size="$(node -e "process.stdout.write(String(JSON.parse(process.argv[1]).ContentLength))" "${head_json}")"
-              remote_sha256="$(node -e "process.stdout.write(JSON.parse(process.argv[1]).Metadata?.['claude-sha256'] ?? '')" "${head_json}")"
-              # The size check is unconditional: the sha256 metadata is
-              # caller-supplied at upload time, not derived from the stored
-              # body, so matching metadata alone cannot vouch for the bytes.
-              if [ "${remote_size}" != "${local_size}" ]; then
-                echo "immutable key already exists with different content: s3://${S3_BUCKET_VALUE}/${key} (remote ${remote_size} bytes, staged ${local_size} bytes)" >&2
-                exit 1
-              fi
-              if [ -n "${remote_sha256}" ] && [ "${remote_sha256}" != "${local_sha256}" ]; then
-                echo "immutable key already exists with different content: s3://${S3_BUCKET_VALUE}/${key} (remote sha256 ${remote_sha256}, staged ${local_sha256})" >&2
-                exit 1
-              fi
-              echo "exists with matching content, skipping: s3://${S3_BUCKET_VALUE}/${key}"
-              skipped=$((skipped + 1))
-              continue
-            fi
-            if ! grep -qiE 'Not Found|NoSuchKey|404' head-error.txt; then
-              echo "head-object failed for s3://${S3_BUCKET_VALUE}/${key}:" >&2
-              cat head-error.txt >&2
-              exit 1
-            fi
             content_type="application/zstd"
             case "${artifact}" in
               *.json) content_type="application/json" ;;
             esac
-            aws s3 cp "${artifact}" "s3://${S3_BUCKET_VALUE}/${key}" \
-              --content-type "${content_type}" \
-              --cache-control "public, max-age=31536000, immutable" \
-              --metadata "claude-sha256=${local_sha256}"
-            uploaded=$((uploaded + 1))
+            # Keys are immutable. A conditional create (If-None-Match: *) has
+            # S3 itself enforce that: the object is written only when the key
+            # does not exist yet, atomically even across racing publishers. It
+            # also avoids probing missing keys with head-object, which reports
+            # 403 instead of 404 when the role lacks s3:ListBucket and would
+            # abort the job on a key that simply is not published yet.
+            outcome=""
+            for attempt in 1 2 3; do
+              if aws s3api put-object \
+                  --bucket "${S3_BUCKET_VALUE}" \
+                  --key "${key}" \
+                  --body "${artifact}" \
+                  --if-none-match '*' \
+                  --content-type "${content_type}" \
+                  --cache-control "public, max-age=31536000, immutable" \
+                  --metadata "claude-sha256=${local_sha256}" \
+                  >/dev/null 2>put-error.txt; then
+                outcome="uploaded"
+                break
+              fi
+              if grep -qiE 'PreconditionFailed' put-error.txt; then
+                outcome="exists"
+                break
+              fi
+              # 409 ConditionalRequestConflict: a concurrent publisher is
+              # writing this key right now. Wait for its create to land, then
+              # re-probe — the retry turns into a plain 412 once it exists.
+              if grep -qiE 'ConditionalRequestConflict' put-error.txt && [ "${attempt}" -lt 3 ]; then
+                sleep 15
+                continue
+              fi
+              echo "put-object failed for s3://${S3_BUCKET_VALUE}/${key}:" >&2
+              cat put-error.txt >&2
+              exit 1
+            done
+            if [ "${outcome}" = "uploaded" ]; then
+              echo "uploaded: s3://${S3_BUCKET_VALUE}/${key}"
+              uploaded=$((uploaded + 1))
+              continue
+            fi
+            # The key already exists: only treat it as published when it holds
+            # the staged bytes — a mismatch means a corrupted or foreign
+            # publish and must stop the job. head-object is reliable here
+            # regardless of s3:ListBucket because the object exists.
+            if ! head_json="$(aws s3api head-object --bucket "${S3_BUCKET_VALUE}" --key "${key}" \
+                --output json 2>head-error.txt)"; then
+              echo "existing object could not be verified for s3://${S3_BUCKET_VALUE}/${key} (does the role have s3:GetObject on this prefix?):" >&2
+              cat head-error.txt >&2
+              exit 1
+            fi
+            remote_size="$(node -e "process.stdout.write(String(JSON.parse(process.argv[1]).ContentLength))" "${head_json}")"
+            remote_sha256="$(node -e "process.stdout.write(JSON.parse(process.argv[1]).Metadata?.['claude-sha256'] ?? '')" "${head_json}")"
+            # The size check is unconditional: the sha256 metadata is
+            # caller-supplied at upload time, not derived from the stored
+            # body, so matching metadata alone cannot vouch for the bytes.
+            if [ "${remote_size}" != "${local_size}" ]; then
+              echo "immutable key already exists with different content: s3://${S3_BUCKET_VALUE}/${key} (remote ${remote_size} bytes, staged ${local_size} bytes)" >&2
+              exit 1
+            fi
+            if [ -n "${remote_sha256}" ] && [ "${remote_sha256}" != "${local_sha256}" ]; then
+              echo "immutable key already exists with different content: s3://${S3_BUCKET_VALUE}/${key} (remote sha256 ${remote_sha256}, staged ${local_sha256})" >&2
+              exit 1
+            fi
+            echo "exists with matching content, skipping: s3://${S3_BUCKET_VALUE}/${key}"
+            skipped=$((skipped + 1))
           done < <(find "${version_dir}" -type f | sort)
           echo "uploaded=${uploaded} skipped=${skipped} version=${CLAUDE_VERSION}"

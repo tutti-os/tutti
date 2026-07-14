@@ -1797,6 +1797,14 @@ describe("agent GUI workbench contribution copy", () => {
     );
   });
 
+  it("separates the injected provider rail footer from settings", () => {
+    const css = readFileSync(resolve("app/renderer/agentactivity.css"), "utf8");
+
+    expect(css).toMatch(
+      /\.agent-gui-node__provider-rail-sidebar-footer\s*\+\s*\.agent-gui-node__provider-rail-config-footer\s*\{[^}]*margin-top:\s*8px;/s
+    );
+  });
+
   it("keeps provider manager drag hit boxes stable while previewing insertion", () => {
     const css = readFileSync(resolve("app/renderer/agentactivity.css"), "utf8");
 

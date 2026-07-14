@@ -236,6 +236,7 @@ export function useAgentGUIViewLabels(input: {
       planModeOffLabel: t("agentHost.agentGui.planModeOffLabel"),
       planUnavailable: t("agentHost.agentGui.planUnavailable"),
       queuedLabel: t("agentHost.agentGui.queuedLabel"),
+      queuePausedByUserLabel: t("agentHost.agentGui.queuePausedByUserLabel"),
       sendQueuedPromptNext: t("agentHost.agentGui.sendQueuedPromptNext"),
       editQueuedPrompt: t("agentHost.agentGui.editQueuedPrompt"),
       deleteQueuedPrompt: t("agentHost.agentGui.deleteQueuedPrompt"),

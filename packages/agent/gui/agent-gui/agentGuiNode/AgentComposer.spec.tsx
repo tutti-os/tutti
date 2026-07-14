@@ -5926,6 +5926,7 @@ function createLabels(): Parameters<typeof AgentComposer>[0]["labels"] {
     computerUseCapabilitySettingsLabel: "电脑控制设置",
     computerUseCapabilitySettingsDescription: "安装、移除或授权电脑控制。",
     queuedLabel: "排队",
+    queuePausedByUserLabel: "由于你中断了当前响应，队列已暂停",
     sendQueuedPromptNext: "下一条发送",
     editQueuedPrompt: "编辑",
     deleteQueuedPrompt: "删除",
