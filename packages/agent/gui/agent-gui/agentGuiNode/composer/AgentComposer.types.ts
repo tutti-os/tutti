@@ -254,6 +254,7 @@ export interface AgentComposerProps {
   onCapabilitySettingsRequest?: (
     capability: AgentComposerCapabilitySettingsTarget
   ) => void;
+  onSlashStatusOpen?: () => void;
   onSubmit: (
     content: AgentPromptContentBlock[],
     displayPrompt?: string,
@@ -329,6 +330,7 @@ export interface AgentComposerSlashStatus {
   } | null;
   limits?: readonly AgentComposerSlashStatusLimit[];
   limitsLoading?: boolean;
+  limitsUnavailable?: boolean;
 }
 
 export interface AgentComposerSlashStatusLimit {

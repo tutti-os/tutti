@@ -9,6 +9,7 @@ export interface AgentSlashStatusPanelStatus {
   } | null;
   limits?: readonly AgentSlashStatusPanelLimit[];
   limitsLoading?: boolean;
+  limitsUnavailable?: boolean;
 }
 
 export interface AgentSlashStatusPanelLimit {
@@ -164,7 +165,7 @@ export function AgentSlashStatusPanel({
             </dd>
           </Fragment>
         ))}
-        {limits.length === 0 && status?.limitsLoading ? (
+        {limits.length === 0 && status?.limitsUnavailable ? (
           <>
             <dt className="text-muted-foreground">
               {labels.slashStatusLimits}:

@@ -73,18 +73,28 @@ export function resolveConversationDetailStatus(
 export function resolveSlashStatus({
   rawState,
   limits,
-  limitsLoading
+  limitsLoading,
+  limitsUnavailable,
+  usage
 }: {
   rawState: AgentGUISessionChrome["rawState"];
   limits: readonly AgentComposerSlashStatusLimit[];
   limitsLoading: boolean;
+  limitsUnavailable: boolean;
+  usage: AgentGUINodeViewModel["detail"]["usage"];
 }): AgentComposerSlashStatus {
+  const usedTokens = usage?.usedTokens ?? null;
+  const totalTokens = usage?.totalTokens ?? null;
   return {
     agentSessionId: rawState?.agentSessionId ?? null,
     baseUrl: null,
     limits,
     limitsLoading,
-    contextWindow: null
+    limitsUnavailable,
+    contextWindow:
+      usedTokens !== null && totalTokens !== null
+        ? { usedTokens, totalTokens }
+        : null
   };
 }
 
@@ -121,7 +131,8 @@ function slashStatusesEqual(
     (left.contextWindow?.totalTokens ?? null) ===
       (right.contextWindow?.totalTokens ?? null) &&
     slashStatusLimitsEqual(left.limits, right.limits) &&
-    Boolean(left.limitsLoading) === Boolean(right.limitsLoading)
+    Boolean(left.limitsLoading) === Boolean(right.limitsLoading) &&
+    Boolean(left.limitsUnavailable) === Boolean(right.limitsUnavailable)
   );
 }
 

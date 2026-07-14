@@ -44,7 +44,8 @@ import {
 } from "./AgentGUINode.labels";
 import {
   resolveAgentGUIRailStatusProvider,
-  slashStatusLimitsFromQuotas
+  slashStatusLimitsFromQuotas,
+  slashStatusQuotasFromCanonicalUsage
 } from "./AgentGUINode.usage";
 
 export type { AgentGUINodeProps } from "./AgentGUINode.types";
@@ -378,10 +379,16 @@ export const AgentGUINode = memo(function AgentGUINode({
       ) === "installed"
     );
   }, [activeReadinessProvider, managedAgentsState]);
+  const canonicalSlashStatusQuotas = slashStatusQuotasFromCanonicalUsage(
+    viewModel.detail.usage
+  );
   const slashStatusQuotaSource =
-    activeAgentProbe?.usage?.quotas && activeAgentProbe.usage.quotas.length > 0
-      ? activeAgentProbe.usage.quotas
-      : [];
+    canonicalSlashStatusQuotas.length > 0
+      ? canonicalSlashStatusQuotas
+      : activeAgentProbe?.usage?.quotas &&
+          activeAgentProbe.usage.quotas.length > 0
+        ? activeAgentProbe.usage.quotas
+        : [];
   const slashStatusLimits = useMemo(
     () =>
       slashStatusLimitsFromQuotas(
@@ -397,6 +404,11 @@ export const AgentGUINode = memo(function AgentGUINode({
       viewModel.composer.composerSettings.selectedModelValue
     ]
   );
+  const slashStatusLimitsUnavailable =
+    slashStatusLimits.length === 0 &&
+    canonicalSlashStatusQuotas.length === 0 &&
+    !(workspaceAgentProbes?.isLoadingUsage ?? false) &&
+    (Boolean(activeAgentProbe?.usage) || Boolean(activeAgentProbe?.lastError));
   const railSlashStatusQuotaSource =
     railStatusProvider &&
     railAgentProbe?.usage?.quotas &&
@@ -610,6 +622,7 @@ export const AgentGUINode = memo(function AgentGUINode({
             slashStatusLimitsLoading={
               workspaceAgentProbes?.isLoadingUsage ?? false
             }
+            slashStatusLimitsUnavailable={slashStatusLimitsUnavailable}
             railConfigProvider={railStatusProvider}
             railSlashStatusLimits={railSlashStatusLimits}
             slashStatusUsageCapturedAtUnixMs={slashStatusUsageCapturedAtUnixMs}
@@ -618,6 +631,7 @@ export const AgentGUINode = memo(function AgentGUINode({
             providerAuthAccountLabels={providerAuthAccountLabels}
             onAgentConfigMenuOpen={handleAgentConfigMenuOpen}
             onAgentUsageRefresh={handleAgentUsageRefresh}
+            onSlashStatusOpen={handleAgentProbeInfoOpen}
             previewMode={previewMode}
             onLinkAction={handleLinkAction}
             onHandoffConversation={onHandoffConversation}

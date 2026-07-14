@@ -1406,6 +1406,91 @@ describe("AgentGUINode", () => {
     ).toHaveLength(3);
   });
 
+  it("shows canonical session usage in slash status without a provider probe", () => {
+    mockViewModel = createViewModel({
+      activeConversationId: "session-1",
+      draftPrompt: "/status",
+      usage: {
+        usedTokens: 27_685,
+        totalTokens: 121_600,
+        percentUsed: 23,
+        quotas: [
+          {
+            quotaType: "session",
+            percentRemaining: 100,
+            resetText: "5h reset"
+          }
+        ]
+      },
+      sessionChrome: {
+        auth: null,
+        approval: null,
+        recovery: null,
+        rawState: normalizeAgentActivitySession({
+          activeTurnId: null,
+          latestTurnInteractions: [],
+          pendingInteractions: [],
+          workspaceId: "room-1",
+          agentSessionId: "session-1",
+          provider: "codex",
+          cwd: "/workspace",
+          title: "Codex",
+          updatedAtUnixMs: 1
+        })
+      }
+    });
+
+    const { container } = renderAgentGUINode();
+    fireEvent.submit(container.querySelector("form")!);
+
+    const panel = screen.getByTestId("agent-gui-slash-status-panel");
+    expect(panel).toHaveTextContent("77% left (27,685 used / 121,600)");
+    expect(panel).toHaveTextContent("5h limit");
+    expect(panel).toHaveTextContent("100% left");
+  });
+
+  it("requests provider usage when slash status opens before a session exists", () => {
+    const onAgentProbeRefreshRequest = vi.fn();
+    mockViewModel = createViewModel({ draftPrompt: "/status" });
+
+    const { container } = renderAgentGUINode({
+      onAgentProbeRefreshRequest
+    });
+    fireEvent.submit(container.querySelector("form")!);
+
+    expect(onAgentProbeRefreshRequest).toHaveBeenCalledWith(
+      "codex",
+      "agent-gui:agent-gui-1"
+    );
+  });
+
+  it("keeps unavailable limits visible after an empty usage probe resolves", () => {
+    mockViewModel = createViewModel({ draftPrompt: "/status" });
+
+    const { container } = renderAgentGUINode({
+      workspaceAgentProbes: {
+        isLoadingAvailability: false,
+        isLoadingUsage: false,
+        snapshot: {
+          workspaceId: "room-1",
+          capturedAtUnixMs: 1,
+          providers: [
+            {
+              provider: "codex",
+              availability: { status: "available", detailsVisible: false },
+              usage: { capturedAtUnixMs: 1, quotas: [] }
+            }
+          ]
+        }
+      }
+    });
+    fireEvent.submit(container.querySelector("form")!);
+
+    expect(
+      screen.getByTestId("agent-gui-slash-status-panel")
+    ).toHaveTextContent("Rate limits unavailable");
+  });
+
   it("shows Claude Code slash status limits from provider probes", () => {
     mockViewModel = createViewModel({
       activeConversationId: "session-1",

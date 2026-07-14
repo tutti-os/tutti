@@ -25,6 +25,7 @@ interface Input {
   labels: AgentGUIViewLabels;
   slashStatusLimits: readonly AgentComposerSlashStatusLimit[];
   slashStatusLimitsLoading: boolean;
+  slashStatusLimitsUnavailable: boolean;
   viewModel: AgentGUINodeViewModel;
 }
 
@@ -35,6 +36,7 @@ export function useAgentGUIDetailModel(input: Input) {
     labels,
     slashStatusLimits,
     slashStatusLimitsLoading,
+    slashStatusLimitsUnavailable,
     viewModel
   } = input;
   const conversation = useProjectedAgentConversation({
@@ -63,11 +65,15 @@ export function useAgentGUIDetailModel(input: Input) {
       resolveSlashStatus({
         rawState: viewModel.interaction.sessionChrome.rawState,
         limits: slashStatusLimits,
-        limitsLoading: slashStatusLimitsLoading
+        limitsLoading: slashStatusLimitsLoading,
+        limitsUnavailable: slashStatusLimitsUnavailable,
+        usage: viewModel.detail.usage
       }),
     [
       slashStatusLimits,
       slashStatusLimitsLoading,
+      slashStatusLimitsUnavailable,
+      viewModel.detail.usage,
       viewModel.interaction.sessionChrome.rawState
     ]
   );

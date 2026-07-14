@@ -1,3 +1,4 @@
+import type { AgentActivityUsage } from "@tutti-os/agent-activity-core";
 import type { TranslateFn } from "../../i18n/index";
 import { toLocalShortDateTime } from "../../app/renderer/shell/utils/format";
 import type { AgentUsageQuota } from "../../shared/contracts/dto";
@@ -89,15 +90,13 @@ export function slashStatusLimitsFromQuotas(
     .filter((limit): limit is AgentComposerSlashStatusLimit => limit !== null);
 }
 
-export function slashStatusQuotasFromRuntimeUsage(
-  value: unknown
+export function slashStatusQuotasFromCanonicalUsage(
+  usage: AgentActivityUsage | null
 ): AgentUsageQuota[] {
-  const usage = objectRecord(value);
-  const quotas = usage?.quotas;
-  if (!Array.isArray(quotas)) {
+  if (!usage) {
     return [];
   }
-  return quotas
+  return usage.quotas
     .map((quota): AgentUsageQuota | null => {
       const record = objectRecord(quota);
       const quotaType = agentUsageQuotaTypeValue(record?.quotaType);

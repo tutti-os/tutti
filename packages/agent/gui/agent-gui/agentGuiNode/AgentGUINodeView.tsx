@@ -92,6 +92,7 @@ export function AgentGUINodeView({
   isAgentProviderReady,
   slashStatusLimits = [],
   slashStatusLimitsLoading = false,
+  slashStatusLimitsUnavailable = false,
   providerAuthAccountLabels,
   railConfigProvider,
   railSlashStatusLimits,
@@ -100,6 +101,7 @@ export function AgentGUINodeView({
   slashStatusUsageAttempted = false,
   onAgentConfigMenuOpen,
   onAgentUsageRefresh,
+  onSlashStatusOpen,
   accountMenuState = null,
   previewMode = false,
   onAgentProviderLogin,
@@ -725,6 +727,8 @@ export function AgentGUINodeView({
             isAgentProviderReady={isAgentProviderReady}
             slashStatusLimits={slashStatusLimits}
             slashStatusLimitsLoading={slashStatusLimitsLoading}
+            slashStatusLimitsUnavailable={slashStatusLimitsUnavailable}
+            onSlashStatusOpen={onSlashStatusOpen}
             onLinkAction={onLinkAction}
             onHandoffConversation={onHandoffConversation}
             capabilityMenuState={capabilityMenuState}
