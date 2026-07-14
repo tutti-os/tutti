@@ -8,8 +8,8 @@ import (
 )
 
 type SkillBundleInput struct {
+	AgentTargetID  string
 	AgentSessionID string
-	Provider       string
 	BrowserUse     bool
 	ComputerUse    bool
 }
@@ -21,10 +21,17 @@ type RecommendedSystemPrompt = runtimeprep.RecommendedSystemPrompt
 
 func (s *Service) GetSkillBundle(ctx context.Context, workspaceID string, input SkillBundleInput) (SkillBundle, error) {
 	workspaceID = strings.TrimSpace(workspaceID)
-	provider := strings.TrimSpace(input.Provider)
-	if workspaceID == "" || provider == "" {
+	agentTargetID := strings.TrimSpace(input.AgentTargetID)
+	if workspaceID == "" || agentTargetID == "" {
 		return SkillBundle{}, ErrInvalidArgument
 	}
+	launch, err := s.resolveCreateSessionLaunch(ctx, CreateSessionInput{
+		AgentTargetID: agentTargetID,
+	})
+	if err != nil {
+		return SkillBundle{}, err
+	}
+	provider := launch.Provider
 	renderer, ok := s.RuntimePreparer.(runtimeprep.SkillBundleRenderer)
 	if s.RuntimePreparer == nil || !ok {
 		return SkillBundle{}, ErrSkillBundleUnavailable
@@ -32,6 +39,7 @@ func (s *Service) GetSkillBundle(ctx context.Context, workspaceID string, input 
 	return renderer.RenderSkillBundle(ctx, runtimeprep.PrepareInput{
 		WorkspaceID:    workspaceID,
 		AgentSessionID: strings.TrimSpace(input.AgentSessionID),
+		AgentTargetID:  agentTargetID,
 		Provider:       provider,
 		BrowserUse:     input.BrowserUse,
 		ComputerUse:    input.ComputerUse,

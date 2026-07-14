@@ -1,6 +1,6 @@
 ---
 name: tutti-agent-workspace-app
-description: "Build or evolve a complex agent-enabled Tutti workspace app repository. Use for Tutti apps with web/server/shared monorepos, @tutti-os/agent-acp-kit local agent runtimes, kit-owned TUTTI_CLI provider/composer discovery, dynamic provider catalogs, run-scoped MCP tool gateways, app-owned package builders, web-first debugging, i18n harnesses, and production package validation. For simple package creation or repair, use tutti-workspace-app-factory instead."
+description: "Build or evolve a complex agent-enabled Tutti workspace app repository. Use for Tutti apps with web/server/shared monorepos, @tutti-os/agent-acp-kit local agent runtimes, kit-owned TUTTI_CLI agent/composer discovery, dynamic agent catalogs, run-scoped MCP tool gateways, app-owned package builders, web-first debugging, i18n harnesses, and production package validation. For simple package creation or repair, use tutti-workspace-app-factory instead."
 ---
 
 # Tutti Agent Workspace App
@@ -29,7 +29,7 @@ Read only the references needed for the task:
 
 - `references/app-architecture.md` for repository layout, web/server/shared boundaries, and dependency choices.
 - `references/agent-acp-kit.md` when implementing local agent providers, ACP event mapping, or run-scoped MCP tools.
-- `references/dynamic-agent-providers.md` when implementing provider catalog/composer endpoints, standalone behavior, provider pickers, default selection, or canonical provider persistence. Read this before hard-coding any provider list.
+- `references/dynamic-agent-providers.md` when implementing agent catalog/composer endpoints, standalone behavior, agent pickers, default selection, or canonical agent-id persistence. Read this before hard-coding any agent or provider list.
 - `references/package-builder.md` when adding `scripts/package-tutti-app.mjs`, `bootstrap.sh`, Tutti CLI output docs, or package validation.
 - `references/github-actions-release.md` when creating or changing `.github/workflows/publish-tutti-app.yml`, `.github/workflows/publish-tutti-app-staging.yml`, release variables, or catalog publishing.
 - `references/i18n-and-web-debugging.md` when changing UI copy, language handling, web-first debug flow, or smoke/e2e checks.
@@ -43,7 +43,7 @@ Also read `$tutti-workspace-app-factory` before changing final package files or 
 3. Define shared contracts before wiring web/server calls. Keep domain DTOs, WebSocket messages, CLI-visible shapes, and runtime profile types in `packages/shared`.
 4. Build the web UI as the primary development surface. Keep the server as local API/static host and app orchestration layer.
 5. If agents are needed, add an exact released `@tutti-os/agent-acp-kit`, use its default app-owned runtime, call the `/tutti` auto facade for catalog/composer/skill context, normalize events, and add a run-scoped tool gateway.
-   Follow `references/dynamic-agent-providers.md`: do not pass mode, check `TUTTI_CLI`, call Agent catalog HTTP routes, read app ID/token/API environment, parse CLI JSON, or maintain provider aliases. Render every facade provider, keep unavailable entries disabled with their reason, choose one usable default, and never maintain a Codex/Claude-only app catalog.
+   Follow `references/dynamic-agent-providers.md`: do not pass mode, check `TUTTI_CLI`, call Agent catalog HTTP routes, read app ID/token/API environment, parse CLI JSON, or maintain provider aliases. Render every facade agent, persist exact agent target ids, keep unavailable entries disabled with their reason, and never maintain a fixed provider catalog.
    For apps that must run both locally and in cloud/managed Tutti, follow `references/agent-acp-kit.md` exactly: managed credentials come from request headers on the server, never from browser JSB fallback or request body fields.
 6. Add package generation only after the local dev app runs. Package the built web assets, bundled server, `tutti.app.json`, optional `tutti.cli.json`, executable `bootstrap.sh`, assets, locales, and package-local `AGENTS.md`.
 7. If the user asks to connect to the Tutti app ecosystem, treat ecosystem integration as required: expose app capabilities through `tutti.cli.json`, make the app callable by other Tutti apps and agents, and use `TUTTI_CLI` for any calls to other installed Tutti apps.
@@ -56,10 +56,10 @@ Keep Tutti-hosted and standalone behavior behind the kit's fixed auto facade whi
 
 1. Pin an exact kit version that exports the auto catalog/composer/skill facade and managed header context helper.
 2. Call `loadTuttiAgentProviderCatalog({ runtime })`; do not pass mode or inspect `TUTTI_CLI`.
-3. Load composer options lazily for one canonical provider and expose only app/domain DTO projections.
-4. Persist only canonical provider IDs returned by the facade. Migrate legacy `claude` once to `claude-code`. Treat persisted `nexight` as stale state and select an available catalog provider; never map it to or register it alongside `tutti-agent`.
+3. Load composer options lazily for one exact agent target id and expose only app/domain DTO projections.
+4. Persist only canonical agent target ids returned by the facade. Migrate legacy provider-only state only when it maps unambiguously to one current agent; never retain provider as selection identity.
 5. Await `createManagedAgentRunContextFromHeaders(...)` directly. Do not pre-read credentials or pre-check provider support in app code.
-6. Without a managed header, use an app-owned local cwd. Pass the same canonical provider ID, selected cwd, and optional `managedAgentInvocation` into runtime execution.
+6. Without a managed header, use an app-owned local cwd. Pass the provider derived from the selected agent entry, selected cwd, and optional `managedAgentInvocation` into runtime execution.
 7. Delete raw Agent HTTP/CLI clients, browser credential fallbacks, request-body credential fields, alias maps, and dependency patch scripts.
 8. Never persist managed credentials or expose managed cwd and credentials through frontend events, logs, status APIs, or stored app state.
 9. Do not hard-code `/workspace`, `.agent-runs`, or `CODEX_HOME`; the kit derives managed context.

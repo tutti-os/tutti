@@ -726,7 +726,7 @@ func TestRunRootHelpListsDynamicCommandScopes(t *testing.T) {
 		if r.URL.Path == "/v1/cli/capabilities" {
 			_, _ = w.Write([]byte(`{"commands":[
         {"id":"app.automation.automation.list","path":["automation","list"],"summary":"List automations","description":"List automation definitions.","output":{"defaultMode":"table","json":true},"source":{"kind":"app","appId":"automation","appName":"Automation","cliDescription":"Manage automations.","appDescription":"Create and run automations."}},
-        {"id":"agent-context.agent.providers","path":["agent","providers"],"summary":"List agent providers","output":{"defaultMode":"table","json":true},"source":{"kind":"builtin"}}
+        {"id":"agent-context.agent.list","path":["agent","list"],"summary":"List available agents","output":{"defaultMode":"table","json":true},"source":{"kind":"builtin"}}
       ]}`))
 			return
 		}

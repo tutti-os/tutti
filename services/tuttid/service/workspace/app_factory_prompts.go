@@ -74,8 +74,8 @@ func writeAppFactoryMentionContext(workspace workspacebiz.Summary, physicalRoot 
 			"Do not assume hidden Tutti daemon internals, preload APIs, tokens, or desktop APIs.",
 			"Validate against the App Factory skill before finishing.",
 			"Default new apps to a Node server; use Python only for existing Python projects or explicit Python requests.",
-			"If the app needs local agent or local LLM execution, Tutti agent providers, or app-owned MCP/tooling, follow the tutti-agent-workspace-app skill and use @tutti-os/agent-acp-kit instead of TUTTI_CLI agent/codex/session polling.",
-			"Agent-enabled app main flows must derive provider options from Tutti workspace-app scoped agent APIs and references/dynamic-agent-providers.md; expose every returned provider, disable unavailable ones, and choose one available provider by default. Do not hard-code Codex/Claude-only provider catalogs.",
+			"If the app needs local agent or local LLM execution, the Tutti agent catalog, or app-owned MCP/tooling, follow the tutti-agent-workspace-app skill and use @tutti-os/agent-acp-kit instead of raw TUTTI_CLI agent commands or session polling.",
+			"Agent-enabled app main flows must derive agent options from the current Tutti Agent Target catalog and references/dynamic-agent-providers.md; expose every returned agent, keep exact agent ids as selection identity, and treat provider as derived runtime metadata. Do not hard-code a fixed provider catalog.",
 		},
 		Metadata: appFactoryMentionMetadata{
 			AppID:       strings.TrimSpace(job.AppID),

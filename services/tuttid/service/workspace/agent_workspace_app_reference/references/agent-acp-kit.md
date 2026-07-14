@@ -46,7 +46,7 @@ import {
 
 Do not pass a mode. When `TUTTI_CLI` is absent, catalog/composer use standalone runtime discovery and skill context is empty with `source: "standalone"`. When `TUTTI_CLI` exists, the kit uses it. A configured CLI failure is a typed error and never silently falls back.
 
-In a Tutti-hosted process, daemon Agent Targets own provider visibility. A disabled target is omitted by the CLI catalog, and the kit must not add that provider back from local runtime detection. Composer and Skill requests for a disabled provider fail before discovery or materialization. Standalone detection is used only when Tutti CLI is genuinely absent.
+In a Tutti-hosted process, daemon Agent Targets own agent visibility. A disabled target is omitted by the CLI catalog, and the kit must not add it back from local runtime detection. Composer and Skill requests for a disabled agent id fail before discovery or materialization. Standalone detection is used only when Tutti CLI is genuinely absent.
 
 The app does not use daemon URL, server credential, workspace identity, or app identity for Agent catalog/composer queries. Those values may still be required for unrelated app-scoped resources.
 
@@ -54,7 +54,7 @@ The app does not use daemon URL, server credential, workspace identity, or app i
 
 For each run:
 
-1. Generate a stable run ID and use the canonical provider ID returned by the facade.
+1. Generate a stable run ID, select an exact agent target id from the facade, and derive its runtime provider from that catalog entry.
 2. Await `createManagedAgentRunContextFromHeaders(...)` directly. It reads and validates the managed credential, canonicalizes supported legacy input internally, creates a safe managed cwd, and rejects unsupported managed providers. The app must not pre-read the credential or perform a separate provider-support precheck.
 3. When no managed header exists, use an app-owned local cwd.
 4. Load Tutti skill context when platform skills are useful. Omit browser/computer capability flags unless the app actually wires those tools and trusted server-side policy enables them.
@@ -85,7 +85,7 @@ const runContext = await createManagedAgentRunContextFromHeaders(req.headers, {
 const cwd = runContext?.cwd ?? appLocalRunCwd;
 
 const tuttiContext = await loadTuttiAgentSkillContext({
-  provider: providerId,
+  agentTargetId,
   agentSessionId: runId,
   cwd,
   signal
@@ -139,7 +139,7 @@ the Skill bundle loader:
 
 ```ts
 const tuttiContext = await loadTuttiAgentSkillContext({
-  provider: providerId,
+  agentTargetId,
   agentSessionId: runId,
   cwd,
   browserUse: browserToolsAreWiredAndAllowed,

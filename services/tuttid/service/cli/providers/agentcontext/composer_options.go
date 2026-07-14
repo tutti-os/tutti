@@ -3,14 +3,13 @@ package agentcontext
 import (
 	"context"
 
-	preferencesbiz "github.com/tutti-os/tutti/services/tuttid/biz/preferences"
 	agentservice "github.com/tutti-os/tutti/services/tuttid/service/agent"
 	cliservice "github.com/tutti-os/tutti/services/tuttid/service/cli"
 	"github.com/tutti-os/tutti/services/tuttid/service/cli/framework"
 )
 
 type composerOptionsInput struct {
-	Provider        string `cli:"provider" validate:"required"`
+	AgentID         string `cli:"agent-id" validate:"required" hint:"Use agent list --json to discover available agents."`
 	Cwd             string `cli:"cwd"`
 	Locale          string `cli:"locale"`
 	Model           string `cli:"model"`
@@ -23,7 +22,7 @@ func (p Provider) newComposerOptionsCommand() cliservice.Command {
 		ID:          appID + ".agent.composer-options",
 		Path:        []string{"agent", "composer-options"},
 		Summary:     "Get agent composer options",
-		Description: "Get provider-specific model and reasoning options without starting an agent session. Claude Code may spin up a hidden live discovery session.",
+		Description: "Get model, reasoning, and permission options for one agent without starting a session. Some runtimes may spin up a hidden discovery session.",
 		Kind:        framework.KindGet,
 		Workspace:   framework.WorkspaceOptional,
 		Inputs:      framework.FromStruct[composerOptionsInput](),
@@ -45,12 +44,12 @@ func (p Provider) runComposerOptions(ctx context.Context, invoke framework.Invok
 	if err := p.requireSessions(); err != nil {
 		return nil, err
 	}
-	target, err := p.resolveEnabledAgentTarget(ctx, input.Provider)
+	target, err := p.resolveEnabledAgentTarget(ctx, input.AgentID)
 	if err != nil {
 		return nil, err
 	}
 	canonicalProvider := target.Provider
-	defaults := p.composerDefaultsForProvider(ctx, canonicalProvider)
+	defaults := p.composerDefaultsForAgent(ctx, target.ID)
 	locale := input.Locale
 	if locale == "" {
 		locale = p.composerDefaultLocale(ctx)
@@ -71,6 +70,7 @@ func (p Provider) runComposerOptions(ctx context.Context, invoke framework.Invok
 	// discovery off here so a catalog scan is never paid for and discarded.
 	includeCapabilityCatalog := false
 	return p.sessions.GetComposerOptions(ctx, agentservice.ComposerOptionsInput{
+		AgentTargetID:            target.ID,
 		Cwd:                      input.Cwd,
 		Locale:                   locale,
 		Provider:                 canonicalProvider,
@@ -95,7 +95,7 @@ func (p Provider) composerDefaultLocale(ctx context.Context) string {
 	return preferences.Locale
 }
 
-func (p Provider) composerDefaultsForProvider(ctx context.Context, provider string) agentservice.ComposerSettings {
+func (p Provider) composerDefaultsForAgent(ctx context.Context, agentID string) agentservice.ComposerSettings {
 	if p.preferences == nil {
 		return agentservice.ComposerSettings{}
 	}
@@ -103,9 +103,7 @@ func (p Provider) composerDefaultsForProvider(ctx context.Context, provider stri
 	if err != nil {
 		return agentservice.ComposerSettings{}
 	}
-	// Legacy provider-keyed defaults were copied onto local agent target ids
-	// by a one-time sqlite data migration, so this lookup covers old data too.
-	defaults := preferences.AgentComposerDefaultsByAgentTarget[preferencesbiz.LocalAgentTargetIDForProvider(provider)]
+	defaults := preferences.AgentComposerDefaultsByAgentTarget[agentID]
 	return agentservice.ComposerSettings{
 		Model:                  defaults.Model,
 		PermissionModeID:       defaults.PermissionModeID,

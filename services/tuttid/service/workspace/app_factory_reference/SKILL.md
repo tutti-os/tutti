@@ -14,7 +14,7 @@ When the user selected a directory in App Center and Tutti reports that it canno
 
 For a full agent-enabled Tutti app repository with `apps/web`, `apps/server`, `packages/shared`, `@tutti-os/agent-acp-kit`, kit-owned `TUTTI_CLI` provider/composer discovery, dynamic local agent runtimes, MCP tool gateways, and an app-owned package builder, use `$tutti-agent-workspace-app` first. Return to this skill for the final package contract and validation. Do not invent managed-agent credential, cwd, JSB fallback, request-body credential, `CODEX_HOME`, CLI argv, app ID, token, or provider alias behavior in this factory skill; the agent app skill keeps those concerns in server-side kit calls.
 
-If the user request needs local agent or local LLM execution, Tutti agent providers, or app-owned MCP/tooling, load `$tutti-agent-workspace-app` and read its `references/dynamic-agent-providers.md` and `references/agent-acp-kit.md`. Agent-enabled apps must use a Node server and `@tutti-os/agent-acp-kit`; do not implement app-owned local agent execution by shelling out to `$TUTTI_CLI agent ...`, `$TUTTI_CLI codex ...`, or session polling.
+If the user request needs local agent or local LLM execution, the Tutti agent catalog, or app-owned MCP/tooling, load `$tutti-agent-workspace-app` and read its `references/dynamic-agent-providers.md` and `references/agent-acp-kit.md`. Agent-enabled apps must use a Node server and `@tutti-os/agent-acp-kit`; do not implement app-owned local agent execution by shelling out to raw `$TUTTI_CLI agent ...` commands, provider-specific command families, or session polling.
 
 ## Version Check And Update Reminder
 
@@ -134,15 +134,15 @@ The runtime must:
 
 For a full agent-enabled app repository, prefer `$tutti-agent-workspace-app` first. When this skill still needs to package or repair an app that already uses `@tutti-os/agent-acp-kit`, keep the app in control of agent policy:
 
-- Keep the generic `@tutti-os/agent-acp-kit` runtime path product-neutral. Tutti-specific provider catalog, composer, and skill discovery stays behind the explicit `@tutti-os/agent-acp-kit/tutti` subpath; app code owns only product policy and DTO projection.
+- Keep the generic `@tutti-os/agent-acp-kit` runtime path product-neutral. Tutti-specific agent catalog, composer, and skill discovery stays behind the explicit `@tutti-os/agent-acp-kit/tutti` subpath; app code owns only product policy and DTO projection.
 - Use a Node server for the app host process. Do not start with a Python server and plan to migrate later.
 - To give the app's local agent runs access to Tutti's dynamic CLI skills, prefer the `@tutti-os/agent-acp-kit/tutti` helper instead of hand-writing `$TUTTI_CLI agent tutti-cli-skill-bundle` execution and response parsing in each app.
-- Use `loadTuttiAgentSkillContext(...)` from the app host process. Pass the selected provider, run id, workspace cwd, and optional Tutti CLI command configuration such as `commandEnvNames`.
+- Use `loadTuttiAgentSkillContext(...)` from the app host process. Pass the selected agent target id, run id, workspace cwd, and optional Tutti CLI command configuration such as `commandEnvNames`; provider is derived from the selected catalog entry.
 - Pass `tuttiContext.skillManifest` into `runtime.run({ ..., skillManifest })`, merging it with app-owned skills when needed.
 - Treat `tuttiContext.recommendedSystemPrompt?.content` as advisory raw prompt content. The app may merge it into its own `systemPrompt`, edit it, place it elsewhere, or ignore it. Do not inject it silently, and do not reintroduce duplicated CLI parsing unless the installed kit lacks the helper.
 - Keep run-scoped app tools and MCP credentials app-owned. Do not pass broad Tutti daemon credentials or app secrets directly to the agent process.
 
-Agent app main flows must call `loadTuttiAgentProviderCatalog` and lazy `loadTuttiAgentComposerOptions` from `@tutti-os/agent-acp-kit/tutti`. The kit automatically uses `TUTTI_CLI` inside Tutti and standalone runtime detection when the CLI is absent. App code must not pass a mode, app ID, daemon URL, token, provider alias map, or CLI arguments. Follow `$tutti-agent-workspace-app` and its `references/dynamic-agent-providers.md`. Show every returned provider, keep unavailable providers disabled with a reason, and choose a usable default. A configured CLI failure is explicit; never synthesize a fixed provider catalog.
+Agent app main flows must call `loadTuttiAgentProviderCatalog` and lazy `loadTuttiAgentComposerOptions` from `@tutti-os/agent-acp-kit/tutti`. The kit automatically uses `TUTTI_CLI` inside Tutti and standalone runtime detection when the CLI is absent. App code must not pass a mode, app ID, daemon URL, token, provider alias map, or CLI arguments. Follow `$tutti-agent-workspace-app` and its `references/dynamic-agent-providers.md`. Show every returned agent, persist exact agent target ids, keep unavailable agents disabled with a reason, and treat provider as derived runtime metadata. A configured CLI failure is explicit; never synthesize a fixed catalog.
 
 Do not assume a Tutti API token, browser extension, daemon internals, or broad desktop APIs. The only browser-side host surface a generated app may optionally consume is the app context described in `references/runtime-env.md`.
 

@@ -28,7 +28,7 @@ func TestDefaultPreparerResolvesInjectedPackAcrossPolicySkillsAndEnv(t *testing.
 	preparer.Profile = profile
 
 	bundle, err := preparer.RenderSkillBundle(t.Context(), PrepareInput{
-		WorkspaceID: "workspace-1", AgentSessionID: "session-1", Provider: "codex",
+		WorkspaceID: "workspace-1", AgentSessionID: "session-1", AgentTargetID: "local:codex", Provider: "codex",
 	})
 	if err != nil {
 		t.Fatalf("RenderSkillBundle() error = %v", err)
@@ -97,7 +97,7 @@ func TestDefaultPreparerIncludesHostSkillSources(t *testing.T) {
 		ID: "host/reviewer", Name: "reviewer", Files: map[string]string{"SKILL.md": "# Reviewer\n"},
 	}}}
 	bundle, err := preparer.RenderSkillBundle(t.Context(), PrepareInput{
-		WorkspaceID: "workspace-1", AgentSessionID: "session-1", Provider: "claude-code",
+		WorkspaceID: "workspace-1", AgentSessionID: "session-1", AgentTargetID: "local:claude-code", Provider: "claude-code",
 	})
 	if err != nil {
 		t.Fatalf("RenderSkillBundle() error = %v", err)

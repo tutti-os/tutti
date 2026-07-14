@@ -110,7 +110,7 @@ Claude Code mention routing:
 - If the current user turn contains ` + "`mention://workspace-app/<appId>?workspaceId=...`" + `, first use $workspace-app. Call the exact visible Skill tool when available and successful; if no exact visible Skill tool is available or it fails, fall back to that materialized skill file before any Bash, WebFetch, browser, MCP lookup, file search, or raw CLI commands.
 - If the current user turn contains ` + "`mention://workspace-reference/<id>?source=...&workspaceId=...`" + `, first use $reference. Call the exact visible Skill tool when available and successful; if no exact visible Skill tool is available or it fails, fall back to that materialized skill file before any Bash, WebFetch, browser, MCP lookup, file search, or raw CLI commands.
 - If the current user turn contains ` + "`mention://agent-session/<sessionId>?workspaceId=...`" + `, first use $tutti-cli. Call the exact visible Skill tool when available and successful; if no exact visible Skill tool is available or it fails, fall back to that materialized skill file before any Bash, WebFetch, browser, MCP lookup, file search, or raw CLI commands.
-- If the current user turn contains ` + "`mention://agent-target/<targetId>?workspaceId=...`" + `, first use $tutti-cli. Call the exact visible Skill tool when available and successful; if no exact visible Skill tool is available or it fails, fall back to that materialized skill file before any Bash, WebFetch, browser, MCP lookup, file search, or raw CLI commands. Choose ` + "`agent`" + `, ` + "`codex`" + `, or ` + "`claude`" + ` CLI workflow from the user's prompt; this is not launch-only.`)
+- If the current user turn contains ` + "`mention://agent-target/<targetId>?workspaceId=...`" + `, first use $tutti-handoff. Call the exact visible Skill tool when available and successful; if no exact visible Skill tool is available or it fails, fall back to that materialized skill file before any Bash, WebFetch, browser, MCP lookup, file search, or raw CLI commands. Verify the target with ` + "`agent list --agent-id <targetId> --json`" + `, then use the generic agent workflow; do not infer provider-specific commands or assume a fixed agent catalog.`)
 	default:
 		return ""
 	}
@@ -223,15 +223,13 @@ func commandScopeDescription(scope string, info *commandScopeInfo) string {
 
 	switch strings.TrimSpace(scope) {
 	case "agent":
-		return "agent sessions, waits, summaries, turn resources, active peers."
+		return "agent discovery, launches, sessions, waits, summaries, turn resources, active peers."
 	case "app":
 		return "open/show installed app windows only when explicitly requested."
 	case "browser":
 		return "daemon-owned browser automation."
-	case "claude":
-		return "start/manage Claude Code agent sessions."
-	case codexCommandScope:
-		return "start/manage Codex agent sessions."
+	case "claude", codexCommandScope, "tutti-agent":
+		return "legacy provider-specific commands."
 	case "computer":
 		return "daemon-owned macOS desktop automation."
 	case "issue":

@@ -168,16 +168,21 @@ grouped under their source message. Do not flatten images across turns in this
 command; the calling agent decides which turns to inspect and which returned
 `localPath` values to pass to provider launchers as `--image`.
 
-Provider launcher commands such as `codex start`, `claude start`, and
-`tutti-agent start` should keep `--model` optional. When omitted, tuttid
-resolves the model from composer defaults or the provider configured/default
-model before starting the session. These provider launchers must create sessions
-through their fixed local agent targets (`local:codex`, `local:claude-code`,
-and `local:tutti-agent`). Generic provider-shaped launch commands such as
-`agent start --provider ...` must not create a provider-only session when no
-agent target is available; return a CLI invalid-input error that points callers
-to the provider launcher commands or a target-first launch path.
-`--show` on provider launchers requests AgentGUI activation only; it must not
+Agent discovery and launch are target-first. `agent list --json` returns every
+enabled Agent Target in stable target order, including its exact agent id,
+display name, provider metadata, and current runtime availability. It must not
+collapse several agents that share one provider. Callers select an exact id and
+start it with `agent start --agent-id <agent-id> ...`; provider-specific command
+families such as `codex start` and `claude start` are not part of the public CLI.
+
+`--model` remains optional on `agent start`. When omitted, tuttid resolves the
+model from the selected agent's composer defaults or its runtime provider
+default. `agent start` must reject unknown or disabled agent ids and point the
+caller back to `agent list`; it must never create a provider-only session.
+Provider is retained as derived runtime and diagnostic metadata, not launch
+identity.
+
+`--show` on `agent start` requests AgentGUI activation only; it must not
 change the created session's visibility. User-started sessions should stay on
 the normal visible default; only an explicit `--hidden` launcher input should
 create a hidden session.
@@ -244,8 +249,8 @@ created from `--prompt`. Keep this compatibility conversion in the CLI provider
 layer; downstream agent session services should receive structured prompt
 content, not raw CLI image flags.
 
-When an agent delegates work through `codex start`, `claude start`, or
-`tutti-agent start`, local file references in the handoff prompt should use
+When an agent delegates work through `agent start --agent-id <agent-id>`, local
+file references in the handoff prompt should use
 `[@filename](/absolute/path)` instead of bare paths. Images have two valid
 representations, and the delegating agent should choose one per image: pass
 `--image <localPath>` for structured visual input, or use

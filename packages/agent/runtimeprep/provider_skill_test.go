@@ -6,19 +6,44 @@ import (
 	"testing"
 )
 
-func TestWorkspaceAppSkillUsesPreparedCLICommandForAgentLaunchers(t *testing.T) {
+func TestTuttiHandoffSkillUsesCurrentAgentCatalog(t *testing.T) {
+	skill := tuttiHandoffSkill(PrepareInput{CLICommand: "tutti-dev"})
+
+	for _, want := range []string{
+		"tutti-dev agent list --json",
+		"tutti-dev agent start --agent-id <agent-id>",
+		"selected agent id and failure reason",
+		"another currently available agent",
+	} {
+		if !strings.Contains(skill, want) {
+			t.Fatalf("tutti handoff skill missing %q: %q", want, skill)
+		}
+	}
+
+	lowerSkill := strings.ToLower(skill)
+	for _, forbidden := range []string{
+		"codex start",
+		"claude start",
+		"tutti-agent start",
+		"provider is unavailable",
+		"@codex",
+		"@claude",
+	} {
+		if strings.Contains(lowerSkill, forbidden) {
+			t.Fatalf("tutti handoff skill retains fixed provider guidance %q: %q", forbidden, skill)
+		}
+	}
+}
+
+func TestWorkspaceAppSkillUsesPreparedCLICommandForAgentHandoffs(t *testing.T) {
 	skill := workspaceAppSkill(PrepareInput{CLICommand: "tutti-dev"})
 
 	for _, want := range []string{
-		"tutti-dev codex start --prompt <task> --show --json",
-		"tutti-dev claude start --prompt <task> --show --json",
-		"tutti-dev tutti-agent start --prompt <task> --show --json",
-		"tutti-dev agent wait --session-id <session-id> --json",
-		"full compact context helper or turn discovery is needed",
-		"When image context may be useful",
+		"Agent launching is not a workspace-app workflow",
+		"mention://agent-target/...",
+		"never translate an app id into a provider-specific agent command",
 		"turn-resources",
 		"tutti-dev agent session-summary --session-id <caller-session-id> --json",
-		"full compact context helper",
 		"discover candidate turn ids",
 		"tutti-dev agent turn-resources --session-id <caller-session-id> --turn-id <turnId> --json",
 		"Images remain grouped under their source message",
@@ -26,11 +51,7 @@ func TestWorkspaceAppSkillUsesPreparedCLICommandForAgentLaunchers(t *testing.T) 
 		"`--image <localPath>`",
 		"Do not scan the workspace",
 		"tutti-dev app open --app-id <appId> --json",
-		"Built-in app ids include",
-		"agent-tutti-agent",
-		"tutti-onboarding",
 		"Do not call `app open` or app-specific open commands",
-		"Do not ask for a missing model",
 		"If `appId` is `issue-manager` and the user asks issue/task work",
 		"`tutti-dev <scope> <command>`",
 		"render it inline with Markdown instead of opening the app",
@@ -65,7 +86,10 @@ func TestWorkspaceAppSkillUsesPreparedCLICommandForAgentLaunchers(t *testing.T) 
 	if strings.Contains(skill, "plugin root `tutti-cli/SKILL.md`") {
 		t.Fatalf("workspace app skill should not anchor agents to plugin-root paths: %q", skill)
 	}
-	if strings.Contains(skill, "{{") || strings.Contains(skill, "tutti codex start") {
+	if strings.Contains(skill, "{{") ||
+		strings.Contains(skill, "tutti-dev codex start") ||
+		strings.Contains(skill, "tutti-dev claude start") ||
+		strings.Contains(skill, "tutti-dev tutti-agent start") {
 		t.Fatalf("workspace app skill used unresolved or production CLI command: %q", skill)
 	}
 	if strings.Contains(skill, "ask for missing `model`") ||
@@ -75,7 +99,7 @@ func TestWorkspaceAppSkillUsesPreparedCLICommandForAgentLaunchers(t *testing.T) 
 	}
 }
 
-func TestTuttiCLIPolicyUsesPreparedCLICommandForAgentLauncherFallback(t *testing.T) {
+func TestTuttiCLIPolicyUsesPreparedCLICommandForAgentCatalogHandoff(t *testing.T) {
 	policy := tuttiCLIPolicy(PrepareInput{
 		AgentSessionID: "session-1",
 		CLICommand:     "tutti-dev",
@@ -83,20 +107,20 @@ func TestTuttiCLIPolicyUsesPreparedCLICommandForAgentLauncherFallback(t *testing
 	})
 
 	for _, want := range []string{
-		"tutti-dev codex start --prompt <task> --show --json",
-		"tutti-dev claude start --prompt <task> --show --json",
-		"tutti-dev tutti-agent start --prompt <task> --show --json",
+		"tutti-dev agent list --json",
+		"agents[].id",
+		"tutti-dev agent start --agent-id <agent-id> --prompt <task> --show --json",
 		"tutti-dev agent wait",
 		"tutti-dev agent session-summary",
 		"does not fetch execution messages",
 		"full compact context helper or turn discovery",
 		"tutti-dev agent turn-resources",
 		"`mention://agent-target/<targetId>?workspaceId=...`",
-		"agent`/`codex`/`claude`/`tutti-agent`",
+		"verify with `agent list`",
 		"hand off, do not do it yourself",
 		"--image <localPath>",
 		"tutti-dev app open --app-id <appId> --json",
-		"Ask for task prompt, not model.",
+		"Ask for the task prompt, not a provider or model.",
 		"download to readable local file",
 		"Do not invent `tutti-dev workspace-app ...`.",
 		"match `App id: <appId>` in command guide",
@@ -123,7 +147,10 @@ func TestTuttiCLIPolicyUsesPreparedCLICommandForAgentLauncherFallback(t *testing
 		strings.Contains(policy, "bounded shell/script") {
 		t.Fatalf("codex Tutti CLI policy should not include Claude Code Monitor guidance: %q", policy)
 	}
-	if strings.Contains(policy, "{{CLI_COMMAND}}") || strings.Contains(policy, "tutti codex start") {
+	if strings.Contains(policy, "{{CLI_COMMAND}}") ||
+		strings.Contains(policy, "tutti-dev codex start") ||
+		strings.Contains(policy, "tutti-dev claude start") ||
+		strings.Contains(policy, "tutti-dev tutti-agent start") {
 		t.Fatalf("tutti CLI policy used unresolved or production CLI command: %q", policy)
 	}
 	if strings.Contains(policy, "Ask for missing `model`") ||
@@ -197,6 +224,7 @@ func TestDefaultPreparerRenderSkillBundleUsesDynamicGuide(t *testing.T) {
 	bundle, err := preparer.RenderSkillBundle(t.Context(), PrepareInput{
 		WorkspaceID:    "workspace-1",
 		AgentSessionID: "run-1",
+		AgentTargetID:  "local:codex",
 		Provider:       "codex",
 	})
 	if err != nil {
@@ -206,6 +234,7 @@ func TestDefaultPreparerRenderSkillBundleUsesDynamicGuide(t *testing.T) {
 		t.Fatalf("catalog context = %#v", catalog.context)
 	}
 	if bundle.SchemaVersion != 1 ||
+		bundle.AgentTargetID != "local:codex" ||
 		bundle.Provider != "codex" ||
 		bundle.AgentSessionID != "run-1" ||
 		bundle.CLICommand != "tutti-dev" {
@@ -305,6 +334,7 @@ func TestRenderProviderSkillBundleGatesOptionalSkills(t *testing.T) {
 	withoutOptional, err := preparer.RenderSkillBundle(t.Context(), PrepareInput{
 		WorkspaceID:    "workspace-1",
 		AgentSessionID: "run-1",
+		AgentTargetID:  "local:codex",
 		CLICommand:     "tutti-dev",
 		Provider:       "codex",
 	})
@@ -318,6 +348,7 @@ func TestRenderProviderSkillBundleGatesOptionalSkills(t *testing.T) {
 	withOptional, err := preparer.RenderSkillBundle(t.Context(), PrepareInput{
 		WorkspaceID:    "workspace-1",
 		AgentSessionID: "run-1",
+		AgentTargetID:  "local:codex",
 		BrowserUse:     true,
 		CLICommand:     "tutti-dev",
 		ComputerUse:    true,
@@ -358,6 +389,7 @@ func TestRenderProviderSkillBundleOmitsComputerUseWhenUnavailable(t *testing.T) 
 	bundle, err := preparer.RenderSkillBundle(t.Context(), PrepareInput{
 		WorkspaceID:    "workspace-1",
 		AgentSessionID: "run-1",
+		AgentTargetID:  "local:codex",
 		BrowserUse:     true,
 		CLICommand:     "tutti-dev",
 		ComputerUse:    true,

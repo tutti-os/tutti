@@ -217,6 +217,7 @@ func renderProviderSkillBundle(input PrepareInput) SkillBundle {
 	}
 	return SkillBundle{
 		SchemaVersion:           1,
+		AgentTargetID:           strings.TrimSpace(input.AgentTargetID),
 		Provider:                strings.TrimSpace(input.Provider),
 		AgentSessionID:          strings.TrimSpace(input.AgentSessionID),
 		CLICommand:              normalizeCLICommandName(input.CLICommand),

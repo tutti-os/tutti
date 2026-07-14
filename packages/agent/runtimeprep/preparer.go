@@ -140,13 +140,15 @@ func (p *DefaultPreparer) Prepare(ctx context.Context, input PrepareInput) (Prep
 
 func (p *DefaultPreparer) RenderSkillBundle(ctx context.Context, input PrepareInput) (SkillBundle, error) {
 	workspaceID := strings.TrimSpace(input.WorkspaceID)
+	agentTargetID := strings.TrimSpace(input.AgentTargetID)
 	providerID := strings.TrimSpace(input.Provider)
-	if workspaceID == "" || providerID == "" {
-		return SkillBundle{}, errors.New("agent skill bundle render requires workspace and provider")
+	if workspaceID == "" || agentTargetID == "" || providerID == "" {
+		return SkillBundle{}, errors.New("agent skill bundle render requires workspace, agent target, and provider")
 	}
 
 	input.WorkspaceID = workspaceID
 	input.AgentSessionID = strings.TrimSpace(input.AgentSessionID)
+	input.AgentTargetID = agentTargetID
 	input.Provider = providerID
 	input.CLICommand = firstNonEmptyText(input.CLICommand, p.CLICommand, resolveCLICommand(p.StateDir))
 	input = p.normalizeCapabilities(input)

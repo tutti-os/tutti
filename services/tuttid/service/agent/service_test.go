@@ -2427,10 +2427,12 @@ func TestServiceGetSkillBundleUsesRuntimeRenderer(t *testing.T) {
 	runtime := newFakeRuntime()
 	var renderInput runtimeprep.PrepareInput
 	service := newIsolatedAgentService(runtime)
+	service.AgentTargetStore = fakeAgentTargetStore{targets: defaultTestAgentTargets()}
 	service.RuntimePreparer = fakeSkillBundleRenderer{
 		input: &renderInput,
 		bundle: runtimeprep.SkillBundle{
 			SchemaVersion:  1,
+			AgentTargetID:  agenttargetbiz.IDLocalCodex,
 			Provider:       "codex",
 			AgentSessionID: "run-1",
 			CLICommand:     "tutti-dev",
@@ -2442,14 +2444,15 @@ func TestServiceGetSkillBundleUsesRuntimeRenderer(t *testing.T) {
 
 	bundle, err := service.GetSkillBundle(context.Background(), "ws-1", SkillBundleInput{
 		AgentSessionID: "run-1",
+		AgentTargetID:  agenttargetbiz.IDLocalCodex,
 		BrowserUse:     true,
-		Provider:       " codex ",
 	})
 	if err != nil {
 		t.Fatalf("GetSkillBundle returned error: %v", err)
 	}
 	if renderInput.WorkspaceID != "ws-1" ||
 		renderInput.AgentSessionID != "run-1" ||
+		renderInput.AgentTargetID != agenttargetbiz.IDLocalCodex ||
 		renderInput.Provider != "codex" ||
 		!renderInput.BrowserUse ||
 		renderInput.ComputerUse {
@@ -2466,9 +2469,10 @@ func TestServiceGetSkillBundleUsesRuntimeRenderer(t *testing.T) {
 func TestServiceGetSkillBundleRequiresRenderer(t *testing.T) {
 	runtime := newFakeRuntime()
 	service := newIsolatedAgentService(runtime)
+	service.AgentTargetStore = fakeAgentTargetStore{targets: defaultTestAgentTargets()}
 	service.RuntimePreparer = fakeRuntimePreparer{}
 
-	_, err := service.GetSkillBundle(context.Background(), "ws-1", SkillBundleInput{Provider: "codex"})
+	_, err := service.GetSkillBundle(context.Background(), "ws-1", SkillBundleInput{AgentTargetID: agenttargetbiz.IDLocalCodex})
 	if !errors.Is(err, ErrSkillBundleUnavailable) {
 		t.Fatalf("GetSkillBundle error = %v, want ErrSkillBundleUnavailable", err)
 	}

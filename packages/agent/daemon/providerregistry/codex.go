@@ -136,11 +136,6 @@ func codexDescriptor() ProviderDescriptor {
 		},
 		Sidecar: SidecarDescriptor{ExecutionEnvironment: SidecarExecutionEnvironmentCodexSandbox},
 		Desktop: DesktopIntegrationDescriptor{Managed: true, ManagedOrder: 2, StatusProbePriority: 1, UsageProbeKind: DesktopUsageProbeCodex, DeveloperLogs: true, DefaultProviderEligible: true, DefaultProviderPriority: 1},
-		CLI: CLIIntegrationDescriptor{StartAlias: CLIStartAliasDescriptor{
-			AppID: "agent-codex", CommandName: "codex",
-			Description: "Start a Codex agent session in the current workspace. Use --show to request AgentGUI activation.",
-			Summary:     "Start a Codex agent session",
-		}},
 		ExternalImport: ExternalImportDescriptor{
 			Enabled:                  true,
 			RootEnvVar:               "CODEX_HOME",

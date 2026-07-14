@@ -51,6 +51,7 @@ type PreparedRuntime struct {
 
 type SkillBundle struct {
 	SchemaVersion           int                          `json:"schemaVersion"`
+	AgentTargetID           string                       `json:"agentTargetId"`
 	Provider                string                       `json:"provider"`
 	AgentSessionID          string                       `json:"agentSessionId"`
 	CLICommand              string                       `json:"cliCommand"`

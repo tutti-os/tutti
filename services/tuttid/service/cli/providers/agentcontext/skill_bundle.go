@@ -9,10 +9,10 @@ import (
 )
 
 type skillBundleInput struct {
+	AgentID        string `cli:"agent-id" validate:"required" hint:"Use agent list --json to discover available agents."`
 	AgentSessionID string `cli:"agent-session-id"`
 	BrowserUse     bool   `cli:"browser-use"`
 	ComputerUse    bool   `cli:"computer-use"`
-	Provider       string `cli:"provider" validate:"required"`
 }
 
 func (p Provider) newSkillBundleCommand() cliservice.Command {
@@ -44,21 +44,22 @@ func (p Provider) runSkillBundle(ctx context.Context, invoke framework.InvokeCon
 	if err := p.requireSessions(); err != nil {
 		return nil, err
 	}
-	target, err := p.resolveEnabledAgentTarget(ctx, input.Provider)
+	target, err := p.resolveEnabledAgentTarget(ctx, input.AgentID)
 	if err != nil {
 		return nil, err
 	}
 	return p.sessions.GetSkillBundle(ctx, invoke.WorkspaceID, agentservice.SkillBundleInput{
+		AgentTargetID:  target.ID,
 		AgentSessionID: input.AgentSessionID,
 		BrowserUse:     input.BrowserUse,
 		ComputerUse:    input.ComputerUse,
-		Provider:       target.Provider,
 	})
 }
 
 func skillBundleValue(bundle agentservice.SkillBundle) map[string]any {
 	value := map[string]any{
 		"schemaVersion":  bundle.SchemaVersion,
+		"agentTargetId":  bundle.AgentTargetID,
 		"provider":       bundle.Provider,
 		"agentSessionId": bundle.AgentSessionID,
 		"cliCommand":     bundle.CLICommand,

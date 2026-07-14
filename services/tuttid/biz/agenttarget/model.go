@@ -101,15 +101,26 @@ func systemTargetFromProviderDescriptor(descriptor providerregistry.ProviderDesc
 func EnabledTargetsByProvider(targets []Target) []Target {
 	result := make([]Target, 0, len(targets))
 	seen := make(map[string]struct{}, len(targets))
+	for _, normalized := range EnabledTargets(targets) {
+		if _, ok := seen[normalized.Provider]; ok {
+			continue
+		}
+		seen[normalized.Provider] = struct{}{}
+		result = append(result, normalized)
+	}
+	return result
+}
+
+// EnabledTargets returns every valid enabled agent target in catalog order.
+// Agent-first launch surfaces use this instead of collapsing targets by
+// provider because multiple agents may intentionally share one runtime.
+func EnabledTargets(targets []Target) []Target {
+	result := make([]Target, 0, len(targets))
 	for _, target := range targets {
 		normalized, err := NormalizeTarget(target)
 		if err != nil || !normalized.Enabled {
 			continue
 		}
-		if _, ok := seen[normalized.Provider]; ok {
-			continue
-		}
-		seen[normalized.Provider] = struct{}{}
 		result = append(result, normalized)
 	}
 	return result

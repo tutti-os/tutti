@@ -52,7 +52,7 @@ types/
 - `tuttid` owns agent provider availability, agent session workflows, and AgentGUI launch intent publication.
 - `apps/cli` must remain a thin daemon client for `tutti agent`; it should parse terminal shape and render daemon output, not call desktopd, renderer-private APIs, or agent runtimes directly.
 - AgentGUI launch requests from CLI or other local integrations should enter `tuttid` first and be published as business events on `/v1/events/ws`.
-- Keep provider availability naming separate from session status naming; CLI-facing provider checks should use `agent providers` or equivalent availability language.
+- Keep provider availability naming separate from session status naming. CLI launch surfaces use `agent list` and exact agent ids; provider availability is derived diagnostic metadata on each catalog entry, not the launch identity.
 
 ## Complexity guidance
 

@@ -231,69 +231,34 @@ func TestCommandGuideFromCatalogUsesProvidedCLIName(t *testing.T) {
 	}
 }
 
-func TestCommandGuideFromCapabilitiesIncludesProviderAgentApps(t *testing.T) {
+func TestCommandGuideFromCapabilitiesUsesAgentCatalogAndGenericStart(t *testing.T) {
 	guide := commandGuideFromCapabilities("tutti-dev", []CommandCapability{
 		{
-			ID:          "agent-context.codex.start",
-			Path:        []string{"codex", "start"},
-			Summary:     "Start a Codex agent session",
-			Description: "Start a Codex agent session in the current workspace.",
-			InputSchema: map[string]any{
-				"required": []string{"model", "prompt"},
-				"properties": map[string]any{
-					"image": map[string]any{"type": "array", "items": map[string]any{"type": "string"}},
-				},
-			},
-			Source: CommandSource{
-				Kind:    CommandSourceApp,
-				AppID:   "agent-codex",
-				AppName: "Codex",
-			},
+			ID:          "agent-context.agent.list",
+			Path:        []string{"agent", "list"},
+			Summary:     "List available agents",
+			Description: "List every enabled agent.",
 		},
 		{
-			ID:          "agent-context.claude.start",
-			Path:        []string{"claude", "start"},
-			Summary:     "Start a Claude Code agent session",
-			Description: "Start a Claude Code agent session in the current workspace.",
+			ID:          "agent-context.agent.start",
+			Path:        []string{"agent", "start"},
+			Summary:     "Start an agent session",
+			Description: "Start an agent session by agent id.",
 			InputSchema: map[string]any{
-				"required": []string{"model", "prompt"},
+				"required": []string{"agent-id", "prompt"},
 				"properties": map[string]any{
-					"image": map[string]any{"type": "array", "items": map[string]any{"type": "string"}},
+					"agent-id": map[string]any{"type": "string"},
+					"prompt":   map[string]any{"type": "string"},
+					"model":    map[string]any{"type": "string"},
+					"image":    map[string]any{"type": "array", "items": map[string]any{"type": "string"}},
 				},
-			},
-			Source: CommandSource{
-				Kind:    CommandSourceApp,
-				AppID:   "agent-claude-code",
-				AppName: "Claude Code",
-			},
-		},
-		{
-			ID:          "agent-context.tutti-agent.start",
-			Path:        []string{"tutti-agent", "start"},
-			Summary:     "Start a Tutti Agent session",
-			Description: "Start a Tutti Agent session in the current workspace.",
-			InputSchema: map[string]any{
-				"required": []string{"model", "prompt"},
-				"properties": map[string]any{
-					"image": map[string]any{"type": "array", "items": map[string]any{"type": "string"}},
-				},
-			},
-			Source: CommandSource{
-				Kind:    CommandSourceApp,
-				AppID:   "agent-tutti-agent",
-				AppName: "Tutti Agent",
 			},
 		},
 	})
 
-	if !strings.Contains(guide, "tutti-dev codex start --prompt <prompt>") {
-		t.Fatalf("guide missing codex start: %q", guide)
-	}
-	if !strings.Contains(guide, "tutti-dev claude start --prompt <prompt>") {
-		t.Fatalf("guide missing claude start: %q", guide)
-	}
-	if !strings.Contains(guide, "tutti-dev tutti-agent start --prompt <prompt>") {
-		t.Fatalf("guide missing tutti-agent start: %q", guide)
+	if !strings.Contains(guide, "tutti-dev agent list") ||
+		!strings.Contains(guide, "tutti-dev agent start --agent-id <agent-id> --prompt <prompt>") {
+		t.Fatalf("guide missing agent catalog workflow: %q", guide)
 	}
 	if strings.Contains(guide, "start --model <model>") {
 		t.Fatalf("guide should omit agent launcher model requirement: %q", guide)
@@ -304,10 +269,8 @@ func TestCommandGuideFromCapabilitiesIncludesProviderAgentApps(t *testing.T) {
 	if !strings.Contains(guide, "Pass --image <path> multiple times") {
 		t.Fatalf("guide missing image guidance: %q", guide)
 	}
-	if !strings.Contains(guide, "App id: agent-codex.") ||
-		!strings.Contains(guide, "App id: agent-claude-code.") ||
-		!strings.Contains(guide, "App id: agent-tutti-agent.") {
-		t.Fatalf("guide missing app ids: %q", guide)
+	if strings.Contains(guide, "codex start") || strings.Contains(guide, "claude start") || strings.Contains(guide, "tutti-agent start") {
+		t.Fatalf("guide still exposes provider-specific launchers: %q", guide)
 	}
 }
 
@@ -346,7 +309,7 @@ func TestCommandGuideSummaryIncludesScopeDescriptions(t *testing.T) {
 	})
 
 	for _, want := range []string{
-		"- `tutti-dev agent ...` - agent sessions, waits, summaries, turn resources, active peers.",
+		"- `tutti-dev agent ...` - agent discovery, launches, sessions, waits, summaries, turn resources, active peers.",
 		"- `tutti-dev app ...` - open/show installed app windows only when explicitly requested.",
 		"- `tutti-dev issue ...` - issue/topic/task/run inspection and execution state.",
 		"- `tutti-dev aimc ...` - workspace app commands for AI Canvas (App id: ai-media-canvas).",
@@ -404,8 +367,9 @@ func TestFallbackCommandGuideUsesProvidedCLIName(t *testing.T) {
 		!strings.Contains(guide, "use `agent session-summary` when you need the full compact session context") {
 		t.Fatalf("guide = %q, want tutti-dev await fallback command", guide)
 	}
-	if !strings.Contains(guide, "tutti-dev tutti-agent start --prompt <prompt> --json") {
-		t.Fatalf("guide = %q, want tutti-agent start fallback command", guide)
+	if !strings.Contains(guide, "tutti-dev agent list --json") ||
+		!strings.Contains(guide, "tutti-dev agent start --agent-id <agent-id> --prompt <prompt> --json") {
+		t.Fatalf("guide = %q, want agent catalog/start fallback commands", guide)
 	}
 	if !strings.Contains(guide, "tutti-dev agent turn-resources --session-id <session-id> --turn-id <turn-id> --json") {
 		t.Fatalf("guide = %q, want tutti-dev turn resources fallback command", guide)

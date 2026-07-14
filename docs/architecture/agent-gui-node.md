@@ -2457,8 +2457,7 @@ provider identity stays `tutti-agent`.
 `nexight` remains a historical/runtime provider identity for old activity data
 and compatibility code, but it is no longer a desktop new-entry AgentGUI
 provider. Do not reintroduce `agent-nexight` or the old "Tutti" pseudo-app as a
-launch surface; use the first-party `agent-tutti-agent` / `local:tutti-agent`
-path instead.
+launch surface; use the first-party `local:tutti-agent` Agent Target instead.
 
 ### Conversation Projection
 
@@ -2624,9 +2623,11 @@ path-backed source into the session attachment store before runtime execution.
 Agent launch mentions use the external rich-text `agent-target` provider. The
 `workspace-app` provider is reserved for real workspace apps and must not return
 legacy `agent-codex` or `agent-claude-code` pseudo apps. New agent mentions
-should serialize as `mention://agent-target/local:codex` or
-`mention://agent-target/local:claude-code` with workspace scope only; they must
-not serialize provider ids or icon hints into the href. Renderer display code
+must serialize the exact current Agent Target id, for example
+`mention://agent-target/local:codex`, with workspace scope only. Examples are
+non-exhaustive; callers must discover the current target list instead of
+assuming a fixed provider catalog. Mentions must not serialize provider ids or
+icon hints into the href. Renderer display code
 must resolve labels, providers, and icons by looking up the current
 `agentTargetId` in `AgentsService`-derived presentation data, so future
 user-defined icons and editable targets have one renderer source of truth.

@@ -6,70 +6,69 @@ import (
 
 	agentproviderbiz "github.com/tutti-os/tutti/services/tuttid/biz/agentprovider"
 	agenttargetbiz "github.com/tutti-os/tutti/services/tuttid/biz/agenttarget"
-	preferencesbiz "github.com/tutti-os/tutti/services/tuttid/biz/preferences"
 	agentservice "github.com/tutti-os/tutti/services/tuttid/service/agent"
 	cliservice "github.com/tutti-os/tutti/services/tuttid/service/cli"
 	"github.com/tutti-os/tutti/services/tuttid/service/cli/framework"
 )
 
-const agentProviderCatalogSchemaVersion = 2
+const agentCatalogSchemaVersion = 1
 
-var providerColumns = []cliservice.TableColumn{
+var agentColumns = []cliservice.TableColumn{
+	{Key: "id", Label: "Agent ID"},
+	{Key: "name", Label: "Name"},
 	{Key: "provider", Label: "Provider"},
 	{Key: "status", Label: "Status"},
 	{Key: "detail", Label: "Detail"},
 }
 
-type providersInput struct {
-	Provider string `cli:"provider"`
+type agentsInput struct {
+	AgentID string `cli:"agent-id"`
 }
 
-type providerCatalogItem struct {
+type agentCatalogItem struct {
 	Target       agenttargetbiz.Target
 	Availability agentservice.ProviderAvailability
 }
 
-type providersResult struct {
-	DefaultProviderID string
-	Items             []providerCatalogItem
+type agentsResult struct {
+	Items []agentCatalogItem
 }
 
-func (p Provider) newProvidersCommand() cliservice.Command {
-	return framework.Register(framework.CommandSpec[providersInput]{
-		ID:          appID + ".agent.providers",
-		Path:        []string{"agent", "providers"},
-		Summary:     "List available agent providers",
-		Description: "List enabled Agent Targets and whether tuttid can start their local runtime command.",
+func (p Provider) newAgentsCommand() cliservice.Command {
+	return framework.Register(framework.CommandSpec[agentsInput]{
+		ID:          appID + ".agent.list",
+		Path:        []string{"agent", "list"},
+		Summary:     "List available agents",
+		Description: "List every enabled agent and whether tuttid can start its runtime. Multiple agents may share one provider.",
 		Kind:        framework.KindList,
 		Workspace:   framework.WorkspaceOptional,
-		Inputs:      framework.FromStruct[providersInput](),
+		Inputs:      framework.FromStruct[agentsInput](),
 		Output: framework.OutputSpec{
 			DefaultMode: cliservice.OutputModeTable,
 			DefaultView: framework.ViewSummary,
 			JSON:        true,
 			Table: &framework.TableOutputSpec{
-				Columns: providerColumns,
+				Columns: agentColumns,
 				Rows: func(result any) []map[string]any {
-					return providerCatalogRows(result.(providersResult).Items)
+					return agentCatalogRows(result.(agentsResult).Items)
 				},
 			},
 			JSONViews: map[framework.OutputView]func(any) map[string]any{
 				framework.ViewSummary: func(result any) map[string]any {
-					providers := result.(providersResult)
+					agents := result.(agentsResult)
 					return map[string]any{
-						"schemaVersion":     agentProviderCatalogSchemaVersion,
-						"defaultProviderId": providers.DefaultProviderID,
-						"providers":         providerCatalogValues(providers.Items),
+						"schemaVersion": agentCatalogSchemaVersion,
+						"agents":        agentCatalogValues(agents.Items),
 					}
 				},
 			},
 			ListCompact: true,
 		},
-		Run: p.runProviders,
+		Run: p.runAgents,
 	})
 }
 
-func (p Provider) runProviders(ctx context.Context, _ framework.InvokeContext, input providersInput) (any, error) {
+func (p Provider) runAgents(ctx context.Context, _ framework.InvokeContext, input agentsInput) (any, error) {
 	if err := p.requireSessions(); err != nil {
 		return nil, err
 	}
@@ -77,60 +76,34 @@ func (p Provider) runProviders(ctx context.Context, _ framework.InvokeContext, i
 	if err != nil {
 		return nil, err
 	}
-	requestedProvider := agentproviderbiz.Normalize(input.Provider)
-	if strings.TrimSpace(input.Provider) != "" && requestedProvider == "" {
-		return nil, agentservice.ErrInvalidArgument
-	}
-	if requestedProvider != "" {
+	requestedAgentID := strings.TrimSpace(input.AgentID)
+	if requestedAgentID != "" {
 		filtered := make([]agenttargetbiz.Target, 0, 1)
 		for _, target := range targets {
-			if target.Provider == requestedProvider {
+			if target.ID == requestedAgentID {
 				filtered = append(filtered, target)
 				break
 			}
+		}
+		if len(filtered) == 0 {
+			return nil, agentservice.ErrInvalidArgument
 		}
 		targets = filtered
 	}
 
 	availabilityInput := agentservice.ProviderAvailabilityInput{}
-	if len(targets) == 1 && requestedProvider != "" {
-		availabilityInput.Provider = requestedProvider
+	if len(targets) == 1 && requestedAgentID != "" {
+		availabilityInput.Provider = targets[0].Provider
 	}
 	availability, err := p.sessions.ListProviderAvailability(ctx, availabilityInput)
 	if err != nil {
 		return nil, err
 	}
-	items := providerCatalogItems(targets, availability)
-	defaultProvider, err := p.defaultAgentProvider(ctx, targets)
-	if err != nil {
-		return nil, err
-	}
-	return providersResult{DefaultProviderID: defaultProvider, Items: items}, nil
+	items := agentCatalogItems(targets, availability)
+	return agentsResult{Items: items}, nil
 }
 
-func (p Provider) defaultAgentProvider(ctx context.Context, targets []agenttargetbiz.Target) (string, error) {
-	defaultProvider := preferencesbiz.DefaultDesktopPreferences().DefaultAgentProvider
-	if p.preferences != nil {
-		preferences, err := p.preferences.Get(ctx)
-		if err != nil {
-			return "", err
-		}
-		if normalized := agentproviderbiz.Normalize(preferences.DefaultAgentProvider); normalized != "" {
-			defaultProvider = normalized
-		}
-	}
-	for _, target := range targets {
-		if target.Provider == defaultProvider {
-			return defaultProvider, nil
-		}
-	}
-	if len(targets) > 0 {
-		return targets[0].Provider, nil
-	}
-	return "", nil
-}
-
-func providerCatalogItems(targets []agenttargetbiz.Target, availability []agentservice.ProviderAvailability) []providerCatalogItem {
+func agentCatalogItems(targets []agenttargetbiz.Target, availability []agentservice.ProviderAvailability) []agentCatalogItem {
 	byProvider := make(map[string]agentservice.ProviderAvailability, len(availability))
 	for _, item := range availability {
 		provider := agentproviderbiz.Normalize(item.Provider)
@@ -139,7 +112,7 @@ func providerCatalogItems(targets []agenttargetbiz.Target, availability []agents
 			byProvider[provider] = item
 		}
 	}
-	items := make([]providerCatalogItem, 0, len(targets))
+	items := make([]agentCatalogItem, 0, len(targets))
 	for _, target := range targets {
 		item, ok := byProvider[target.Provider]
 		if !ok {
@@ -152,15 +125,17 @@ func providerCatalogItems(targets []agenttargetbiz.Target, availability []agents
 				},
 			}
 		}
-		items = append(items, providerCatalogItem{Target: target, Availability: item})
+		items = append(items, agentCatalogItem{Target: target, Availability: item})
 	}
 	return items
 }
 
-func providerCatalogRows(items []providerCatalogItem) []map[string]any {
+func agentCatalogRows(items []agentCatalogItem) []map[string]any {
 	rows := make([]map[string]any, 0, len(items))
 	for _, item := range items {
 		rows = append(rows, map[string]any{
+			"id":       item.Target.ID,
+			"name":     item.Target.Name,
 			"provider": item.Target.Provider,
 			"status":   item.Availability.Status,
 			"detail":   providerAvailabilityDetail(item.Availability),
@@ -169,13 +144,13 @@ func providerCatalogRows(items []providerCatalogItem) []map[string]any {
 	return rows
 }
 
-func providerCatalogValues(items []providerCatalogItem) []any {
+func agentCatalogValues(items []agentCatalogItem) []any {
 	values := make([]any, 0, len(items))
 	for _, item := range items {
 		values = append(values, map[string]any{
-			"providerId":    item.Target.Provider,
-			"displayName":   item.Target.Name,
-			"agentTargetId": item.Target.ID,
+			"id":       item.Target.ID,
+			"name":     item.Target.Name,
+			"provider": item.Target.Provider,
 			"availability": map[string]any{
 				"status":     item.Availability.Status,
 				"reasonCode": providerAvailabilityReasonCode(item.Availability),

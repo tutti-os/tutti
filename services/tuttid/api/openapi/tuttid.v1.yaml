@@ -988,7 +988,7 @@ paths:
         Read-only subset of desktop agent preferences for one workspace app
         runtime. Intended for workspace app server tokens; exposes default
         provider selection and developer-gated provider visibility only. Deprecated
-        for Agent integrations: use `tutti --json agent providers` through
+        for Agent integrations: use the current agent catalog (`tutti --json agent list`) through
         `@tutti-os/agent-acp-kit/tutti`. Removal is gated by the production-usage
         telemetry and release criteria in
         `docs/conventions/deprecated-workspace-app-agent-apis.md`.
@@ -1027,7 +1027,8 @@ paths:
         for enabled daemon-owned Agent Targets visible to Agent GUI. When
         `providers` is supplied, it narrows that Agent Target set and cannot
         expose providers outside it. Deprecated for Agent integrations: use
-        `tutti --json agent providers` through `@tutti-os/agent-acp-kit/tutti`.
+        the current agent catalog (`tutti --json agent list`) through
+        `@tutti-os/agent-acp-kit/tutti`.
         Removal is gated by the production-usage telemetry and release criteria
         in `docs/conventions/deprecated-workspace-app-agent-apis.md`.
       parameters:
@@ -1083,7 +1084,7 @@ paths:
         Workspace-app scoped alias of
         `POST /v1/agent-providers/{provider}/composer-options` for app server
         tokens. Deprecated for Agent integrations: use
-        `tutti --json agent composer-options --provider <providerId>` through
+        `tutti --json agent composer-options --agent-id <agentId>` through
         `@tutti-os/agent-acp-kit/tutti`. Removal is gated by the production-usage
         telemetry and release criteria in
         `docs/conventions/deprecated-workspace-app-agent-apis.md`.

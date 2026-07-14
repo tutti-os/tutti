@@ -5,15 +5,17 @@ description: Use for any turn that mentions another agent (`mention://agent-targ
 
 # Tutti Agent Handoff
 
-This skill is the handoff contract between agents: who executes, what gets handed off, how results return, and where follow-ups go. Use `$tutti-cli` for command syntax and the command guide; this skill decides behavior, not flags. When you report a handoff to the user, say it plainly — the agent name and its session id (e.g. "Handed off to Claude Code — session id: ...") — and do not coin labels for it.
+This skill is the handoff contract between agents: who executes, what gets handed off, how results return, and where follow-ups go. Use `$tutti-cli` for command syntax and the command guide; this skill decides behavior, not flags. When you report a handoff to the user, say it plainly — the selected agent name from the current agent catalog and its session id — and do not coin labels for it.
+
+Before starting a new agent session, run `{{CLI_COMMAND}} agent list --json`. Select the exact agent id from the current result or verify the id carried by an `agent-target` mention. Do not choose from a memorized provider list, infer an id from a provider name, or assume that only a fixed set of built-in agents exists. Start the selected agent with `{{CLI_COMMAND}} agent start --agent-id <agent-id> --prompt <task> --show --json`.
 
 ## Decide Who Executes
 
 When a message mentions another agent, decide who the message is addressed to before doing anything:
 
-- Agent mention + an instruction ("@codex look up today's trending topics"): the message is addressed to the mentioned agent — it executes. Package and hand off. Do not do the task yourself just because you can — the mention is the user's explicit choice of executor, and task difficulty is not a reason to override it.
-- Agent mention that is only talked about ("the code @codex wrote last time"): no task transfers. Handle the turn yourself, reading the mentioned session as context if useful.
-- A question about the mentioned agent itself ("which of @codex and @claude is better for frontend work"): answer directly. Do not start a session or send anything.
+- Agent mention + an instruction ("@reviewer inspect this change"): the message is addressed to the mentioned agent — it executes. Package and hand off. Do not do the task yourself just because you can — the mention is the user's explicit choice of executor, and task difficulty is not a reason to override it.
+- Agent mention that is only talked about ("the code @reviewer wrote last time"): no task transfers. Handle the turn yourself, reading the mentioned session as context if useful.
+- A question about available agents or which agent fits a task: query the current agent list and answer from it. Do not start a session unless the user also asks for work to be handed off.
 
 ## Decide What to Hand Off
 
@@ -35,7 +37,7 @@ Decide from the user's intent how results should return, before starting anythin
 
 ## Handle Launch Failures
 
-After starting or messaging an agent, confirm it succeeded (session id / ack) and report it. If the launch fails or the provider is unavailable (not installed, auth expired), tell the user what failed and offer options: retry, another agent, or doing it here yourself. Do not silently do the task yourself, and do not silently drop it.
+After starting or messaging an agent, confirm it succeeded (session id / ack) and report it. If starting fails or the selected agent is unavailable, report the selected agent id and failure reason, refresh the current catalog with `{{CLI_COMMAND}} agent list --json`, then offer retrying, another currently available agent, or doing the work here yourself. If messaging an existing session fails, report that session id and failure reason. Do not silently do the task yourself, and do not silently drop it.
 
 ## Route Follow-ups After a Handoff
 

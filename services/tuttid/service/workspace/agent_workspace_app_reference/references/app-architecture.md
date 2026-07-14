@@ -47,7 +47,7 @@ Use `pnpm` workspaces by default. Common choices:
 
 - Server: Node built-ins for tiny apps; Fastify, `@fastify/static`, `@fastify/websocket`, zod or ajv for larger API servers. Express is acceptable when the existing project already uses it.
 - Web: React with Vite, Next, or TanStack Start, matching the repo's current stack. For React/Tailwind apps, use shadcn/ui components and Tailwind CSS utilities as the default UI/component styling system.
-- Agent runtime: `@tutti-os/agent-acp-kit` for app-owned execution and `@tutti-os/agent-acp-kit/tutti` for auto CLI-backed/standalone provider catalog, composer, and skill context. Use the default runtime and do not hard-code provider catalogs, CLI protocol, app ID, token, or aliases.
+- Agent runtime: `@tutti-os/agent-acp-kit` for app-owned execution and `@tutti-os/agent-acp-kit/tutti` for auto CLI-backed/standalone agent catalog, composer, and skill context. Use the default runtime, keep exact agent target ids as selection identity, and do not hard-code agent/provider catalogs, CLI protocol, app ID, token, or aliases.
 - I18n: `i18next`, `react-i18next`, and `i18next-cli` for larger web apps.
 - Tests: Vitest or Node test runner for packages, Playwright only for cross-boundary UI flows.
 

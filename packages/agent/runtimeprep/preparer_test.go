@@ -953,7 +953,7 @@ func TestDefaultPreparerClaudeCodeUsesSessionScopedSystemPrompt(t *testing.T) {
 		!strings.Contains(string(systemPrompt), "bounded shell/script") ||
 		!strings.Contains(string(systemPrompt), "agent wait --session-id <session-id> --json") ||
 		!strings.Contains(string(systemPrompt), "agent session-summary --session-id <session-id> --json") ||
-		!strings.Contains(string(systemPrompt), "hand off, do not do it yourself") {
+		!strings.Contains(string(systemPrompt), "verify with `agent list`; hand off, do not do it yourself") {
 		t.Fatalf("claude system prompt content = %q, want mention handoff fallback guidance", string(systemPrompt))
 	}
 	if !strings.Contains(string(systemPrompt), "# Host App Context") ||

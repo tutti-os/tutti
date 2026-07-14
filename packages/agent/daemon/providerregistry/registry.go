@@ -72,7 +72,6 @@ func ValidateMigrated() error {
 	defaultProviderPriorities := map[int]string{}
 	statusProbePriorities := map[int]string{}
 	managedOrders := map[int]string{}
-	cliAppIDs := map[string]string{}
 	for _, descriptor := range Migrated() {
 		if err := Validate(descriptor); err != nil {
 			return err
@@ -116,12 +115,6 @@ func ValidateMigrated() error {
 				return fmt.Errorf("desktop managed order %d is shared by %q and %q", order, owner, providerID)
 			}
 			managedOrders[order] = providerID
-		}
-		if appID := strings.TrimSpace(descriptor.CLI.StartAlias.AppID); appID != "" {
-			if owner, exists := cliAppIDs[appID]; exists {
-				return fmt.Errorf("CLI start alias app id %q is shared by %q and %q", appID, owner, providerID)
-			}
-			cliAppIDs[appID] = providerID
 		}
 	}
 	return nil
@@ -206,12 +199,6 @@ func Validate(descriptor ProviderDescriptor) error {
 	}
 	if descriptor.Desktop.DefaultProviderEligible != (descriptor.Desktop.DefaultProviderPriority > 0) {
 		return fmt.Errorf("provider %q desktop default eligibility and priority must be declared together", providerID)
-	}
-	alias := descriptor.CLI.StartAlias
-	if alias.AppID != "" || alias.CommandName != "" || alias.Description != "" || alias.Summary != "" {
-		if strings.TrimSpace(alias.AppID) == "" || strings.TrimSpace(alias.CommandName) == "" || strings.TrimSpace(alias.Description) == "" || strings.TrimSpace(alias.Summary) == "" {
-			return fmt.Errorf("provider %q CLI start alias is incomplete", providerID)
-		}
 	}
 	if err := validateExternalImportDescriptor(descriptor.ExternalImport); err != nil {
 		return fmt.Errorf("provider %q external import: %w", providerID, err)

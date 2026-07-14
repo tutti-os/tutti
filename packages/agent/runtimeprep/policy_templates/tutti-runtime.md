@@ -19,7 +19,7 @@
 | `mention://workspace-app/<appId>?workspaceId=...`               | `$workspace-app` | match `App id: <appId>` in command guide                                                   |
 | `mention://workspace-reference/<id>?source=...&workspaceId=...` | `$reference`     | `{{CLI_COMMAND}} reference list --source <source> --id <id> [--group-id <groupId>] --json` |
 | `mention://agent-session/<sessionId>?workspaceId=...`           | `$tutti-handoff` | `{{CLI_COMMAND}} agent wait --session-id <session-id> --json`                              |
-| `mention://agent-target/<targetId>?workspaceId=...`             | `$tutti-handoff` | use `agent`/`codex`/`claude`/`tutti-agent` from intent; hand off, do not do it yourself    |
+| `mention://agent-target/<targetId>?workspaceId=...`             | `$tutti-handoff` | verify with `agent list`; hand off, do not do it yourself                                  |
 
 ### Rules
 
@@ -49,11 +49,12 @@
 
 ## Agent Launchers
 
-- Use `{{CLI_COMMAND}} codex start --prompt <task> --show --json`, `{{CLI_COMMAND}} claude start --prompt <task> --show --json`, or `{{CLI_COMMAND}} tutti-agent start --prompt <task> --show --json`.
+- Before starting an agent, run `{{CLI_COMMAND}} agent list --json` and choose an exact `agents[].id` from the current result. Do not infer an agent id from a provider name or assume a fixed provider set.
+- Start work with `{{CLI_COMMAND}} agent start --agent-id <agent-id> --prompt <task> --show --json`.
 - Before starting or messaging another agent, follow `$tutti-handoff`.
 - After `agent start`, prefer `{{CLI_COMMAND}} agent wait --session-id <session-id> --json`.
 - After `agent send`, prefer `{{CLI_COMMAND}} agent wait --session-id <session-id> --json`.
-- `agent wait` does not fetch execution messages; use `{{CLI_COMMAND}} agent session-summary --session-id <session-id> --json` only for the full compact context helper or turn discovery. Ask for task prompt, not model.
+- `agent wait` does not fetch execution messages; use `{{CLI_COMMAND}} agent session-summary --session-id <session-id> --json` only for the full compact context helper or turn discovery. Ask for the task prompt, not a provider or model.
 
 ### Image Context
 

@@ -56,7 +56,7 @@ pnpm package:tutti
 
 When local agents are involved:
 
-1. Load the provider catalog through `@tutti-os/agent-acp-kit/tutti`; it automatically uses Tutti CLI or standalone detection.
+1. Load the agent catalog through `@tutti-os/agent-acp-kit/tutti`; it automatically uses Tutti CLI or standalone detection.
 2. Verify the web settings/runtime panel or equivalent status UI.
 3. Run isolated smoke tests for one available catalog provider turn.
 4. Inspect run events, tool calls, generated files, and package-local data writes.
