@@ -555,13 +555,13 @@ func normalizedInteractivePrompt(toolCall map[string]any, options []map[string]a
 	}
 }
 
-func normalizedApprovalInput(toolCall map[string]any, options []map[string]any, requestID string) map[string]any {
+func normalizedApprovalInput(toolCall map[string]any, options []map[string]any, requestID string, knownInput map[string]any) map[string]any {
 	input := map[string]any{
 		"requestId": requestID,
 		"toolCall":  clonePayload(toolCall),
 		"options":   cloneOptionMaps(options),
 	}
-	for key, value := range normalizedApprovalDisplayInput(toolCall) {
+	for key, value := range normalizedApprovalDisplayInput(toolCall, knownInput) {
 		if _, exists := input[key]; !exists {
 			input[key] = clonePayloadValue(value)
 		}
@@ -569,8 +569,14 @@ func normalizedApprovalInput(toolCall map[string]any, options []map[string]any, 
 	return input
 }
 
-func normalizedApprovalDisplayInput(toolCall map[string]any) map[string]any {
-	if len(toolCall) == 0 {
+// normalizedApprovalDisplayInput builds the preview detail (command, path,
+// query, ...) shown on an approval card. Some ACP providers (Cursor) omit
+// `rawInput` on the permission request's own `toolCall` and only repeat
+// `toolCallId`/`title`/`kind`, so `knownInput` — the input captured from an
+// earlier `tool_call`/`tool_call_update` for the same call id, when available
+// — is used as a last-resort fallback per field.
+func normalizedApprovalDisplayInput(toolCall map[string]any, knownInput map[string]any) map[string]any {
+	if len(toolCall) == 0 && len(knownInput) == 0 {
 		return nil
 	}
 	displayInput := clonePayload(payloadObject(toolCall["input"]))
@@ -607,6 +613,10 @@ func normalizedApprovalDisplayInput(toolCall map[string]any) map[string]any {
 			continue
 		}
 		if value, exists := toolCall[key]; exists {
+			displayInput[key] = clonePayloadValue(value)
+			continue
+		}
+		if value, exists := knownInput[key]; exists {
 			displayInput[key] = clonePayloadValue(value)
 		}
 	}

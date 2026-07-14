@@ -177,6 +177,7 @@ describe("composer target presentation", () => {
       capabilities: null,
       models: [{ value: "current-model", label: "Current" }],
       reasoningEfforts: [{ value: "high", label: "High" }],
+      reasoningConfigurable: true,
       speeds: [],
       skills: [],
       behavior: {
@@ -204,5 +205,29 @@ describe("composer target presentation", () => {
         }
       }).model
     ).toBeNull();
+  });
+
+  it("clears reasoning effort when the target does not advertise it", () => {
+    const settings = { model: "gpt-5.2", reasoningEffort: "high" };
+    const cleared = sanitizeComposerSettingsForOptions(settings, {
+      provider: "cursor",
+      capabilities: null,
+      models: [{ value: "gpt-5.2", label: "gpt-5.2" }],
+      reasoningEfforts: [],
+      reasoningConfigurable: false,
+      speeds: [],
+      skills: [],
+      behavior: {
+        collapseModelOptionsToLatest: true,
+        modelOptionsAuthoritative: false,
+        refreshModelOptionsAfterSettings: false,
+        prewarmDraftSession: false,
+        planModeExclusiveWithPermissionMode: false
+      },
+      loadedAtUnixMs: 1
+    });
+
+    expect(cleared.model).toBe("gpt-5.2");
+    expect(cleared.reasoningEffort).toBeNull();
   });
 });

@@ -110,7 +110,7 @@ func (a *CodexAppServerAdapter) appServerApprovalRequested(
 	title := firstNonEmpty(asString(toolCall["title"]), "Permission requested")
 	callID := firstNonEmpty(asString(toolCall["toolCallId"]), newID())
 	status := string(activityshared.TurnPhaseWaitingApproval)
-	input := normalizedApprovalInput(toolCall, options, requestID)
+	input := normalizedApprovalInput(toolCall, options, requestID, nil)
 	payload := map[string]any{
 		"callId":   callID,
 		"callType": "approval",

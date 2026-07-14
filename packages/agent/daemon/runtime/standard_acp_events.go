@@ -274,6 +274,7 @@ func standardACPPermissionRequested(
 	turnID string,
 	rawRequestID json.RawMessage,
 	raw json.RawMessage,
+	normalizer *acpTurnNormalizer,
 ) ([]activityshared.Event, *pendingACPApproval, error) {
 	var params struct {
 		ToolCall map[string]any   `json:"toolCall"`
@@ -308,7 +309,8 @@ func standardACPPermissionRequested(
 	callID := firstNonEmpty(asString(params.ToolCall["toolCallId"]), asString(params.ToolCall["id"]), newID())
 	callType := "approval"
 	status := string(activityshared.TurnPhaseWaitingApproval)
-	input := normalizedApprovalInput(params.ToolCall, params.Options, requestID)
+	knownInput := normalizer.KnownToolCallInput(asString(params.ToolCall["toolCallId"]))
+	input := normalizedApprovalInput(params.ToolCall, params.Options, requestID, knownInput)
 	payload := map[string]any{
 		"callId":   callID,
 		"callType": "approval",

@@ -1,6 +1,6 @@
 import {
   createBrowserNodeFeature,
-  type BrowserNodeEvent,
+  isBrowserNodeSurfaceEvent,
   type BrowserNodeFeature,
   type BrowserNodeHostApi
 } from "@tutti-os/browser-node";
@@ -93,16 +93,12 @@ function createStandaloneAgentBrowserHostApi(
     ...browserApi,
     onEvent(listener) {
       return browserApi.onEvent((event) => {
-        if (getBrowserEventNodeId(event) === nodeId) {
+        if (isBrowserNodeSurfaceEvent(nodeId, event)) {
           listener(event);
         }
       });
     }
   };
-}
-
-function getBrowserEventNodeId(event: BrowserNodeEvent): string {
-  return event.type === "open-url" ? event.sourceNodeId : event.nodeId;
 }
 
 export interface StandaloneAgentToolHostGroup {

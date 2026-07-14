@@ -1,8 +1,6 @@
 export {
-  IssueManagerEmbeddedToolbar,
   IssueManagerNode,
   IssueManagerNodeHeader,
-  type IssueManagerEmbeddedToolbarProps,
   type IssueManagerNodeProps
 } from "./IssueManagerNode.tsx";
 export type {

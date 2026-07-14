@@ -1037,7 +1037,7 @@ func TestDefaultPreparerClaudeCodeUsesSessionScopedSystemPrompt(t *testing.T) {
 	}
 }
 
-func TestDefaultPreparerClaudeCodeSetsClaudeCodeExecutableFromPath(t *testing.T) {
+func TestDefaultPreparerClaudeCodeSetsFallbackExecutableFromPath(t *testing.T) {
 	binDir := t.TempDir()
 	claudePath := filepath.Join(binDir, "claude")
 	if err := os.WriteFile(claudePath, []byte("#!/bin/sh\n"), 0o755); err != nil {
@@ -1055,8 +1055,41 @@ func TestDefaultPreparerClaudeCodeSetsClaudeCodeExecutableFromPath(t *testing.T)
 	if err != nil {
 		t.Fatalf("Prepare() error = %v", err)
 	}
-	if got := envValue(prepared.Env, "CLAUDE_CODE_EXECUTABLE"); got != claudePath {
-		t.Fatalf("CLAUDE_CODE_EXECUTABLE = %q, want %q", got, claudePath)
+	// A PATH-installed claude is only a fallback: the sidecar prefers a native
+	// SDK binary and the tuttid-provisioned one, so it must arrive via the
+	// fallback env, not the always-wins override.
+	if got := envValue(prepared.Env, claudeCodeFallbackExecutableEnvName); got != claudePath {
+		t.Fatalf("%s = %q, want %q", claudeCodeFallbackExecutableEnvName, got, claudePath)
+	}
+	if got := envValue(prepared.Env, claudeCodeExecutableEnvName); got != "" {
+		t.Fatalf("%s = %q, want empty", claudeCodeExecutableEnvName, got)
+	}
+}
+
+func TestDefaultPreparerClaudeCodePrefersManagedBinaryOverPath(t *testing.T) {
+	binDir := t.TempDir()
+	claudePath := filepath.Join(binDir, "claude")
+	if err := os.WriteFile(claudePath, []byte("#!/bin/sh\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", binDir)
+	t.Setenv("CLAUDE_CODE_EXECUTABLE", "")
+	stateDir := t.TempDir()
+	managed := filepath.Join(stateDir, "agent-providers", "claude-code", "versions", "2.1.201", "claude")
+	writeFakeExecutable(t, managed)
+	writeManagedClaudePointer(t, stateDir, managed)
+
+	prepared, err := NewDefaultPreparer(stateDir).Prepare(t.Context(), PrepareInput{
+		WorkspaceID:    "workspace-1",
+		AgentSessionID: "session-1",
+		Provider:       "claude-code",
+		Cwd:            t.TempDir(),
+	})
+	if err != nil {
+		t.Fatalf("Prepare() error = %v", err)
+	}
+	if got := envValue(prepared.Env, claudeCodeFallbackExecutableEnvName); got != managed {
+		t.Fatalf("%s = %q, want managed binary %q", claudeCodeFallbackExecutableEnvName, got, managed)
 	}
 }
 

@@ -152,11 +152,13 @@ export function sanitizeComposerSettingsForOptions(
         ? null
         : model,
     reasoningEffort:
-      reasoningEffort &&
-      reasoningValues.size > 0 &&
-      !reasoningValues.has(reasoningEffort)
+      options.reasoningConfigurable !== true
         ? null
-        : (reasoningEffort as AgentSessionReasoningEffort | null),
+        : reasoningEffort &&
+            reasoningValues.size > 0 &&
+            !reasoningValues.has(reasoningEffort)
+          ? null
+          : (reasoningEffort as AgentSessionReasoningEffort | null),
     speed:
       speed && speedValues.size > 0 && !speedValues.has(speed)
         ? null

@@ -352,6 +352,62 @@ func TestCursorAdapterAgentTierPromptsForPermission(t *testing.T) {
 	}
 }
 
+// TestCursorPermissionRequestFallsBackToKnownToolCallInput reproduces a real
+// Cursor CLI ACP trace: `session/update` streams a `tool_call` with
+// `rawInput.command`, then `session/request_permission` repeats only
+// `toolCallId`/`title`/`kind` for that same call (no `rawInput`). Without a
+// fallback to the earlier tool_call, the approval card has no command detail
+// to show — only the title and options.
+func TestCursorPermissionRequestFallsBackToKnownToolCallInput(t *testing.T) {
+	t.Parallel()
+
+	transport := newStandardACPTransport("Cursor Agent", "cursor-session-fallback")
+	adapter := newCursorAdapterWithHostMetadata(transport, LegacyHostMetadata(), nil)
+	session := standardTestSession(ProviderCursor)
+	normalizer := newACPTurnNormalizer()
+
+	started := standardACPUpdateEvents(standardACPConfig{provider: ProviderCursor}, session, "turn-1", json.RawMessage(`{
+		"update": {
+			"sessionUpdate": "tool_call",
+			"toolCallId": "toolu_bdrk_01Q5tgfQbZyrAVBAUp71Eq8A",
+			"title": "`+"`echo hello-from-permission-probe`"+`",
+			"kind": "execute",
+			"status": "pending",
+			"rawInput": {"command": "echo hello-from-permission-probe"}
+		}
+	}`), normalizer)
+	if len(started) != 1 || started[0].Type != activityshared.EventCallStarted {
+		t.Fatalf("started events = %#v, want one call.started", started)
+	}
+
+	events, pending, err := standardACPPermissionRequested(adapter, session, "turn-1", json.RawMessage(`2`), json.RawMessage(`{
+		"toolCall": {
+			"toolCallId": "toolu_bdrk_01Q5tgfQbZyrAVBAUp71Eq8A",
+			"title": "`+"`echo hello-from-permission-probe`"+`",
+			"kind": "execute",
+			"status": "pending",
+			"content": [{"type": "content", "content": {"type": "text", "text": "Not in allowlist: echo"}}]
+		},
+		"options": [
+			{"optionId": "allow-once", "name": "Allow once", "kind": "allow_once"},
+			{"optionId": "allow-always", "name": "Allow always", "kind": "allow_always"},
+			{"optionId": "reject-once", "name": "Reject", "kind": "reject_once"}
+		]
+	}`), normalizer)
+	if err != nil {
+		t.Fatalf("standardACPPermissionRequested: %v", err)
+	}
+	if len(events) == 0 {
+		t.Fatal("events = empty, want at least the waiting-approval turn event")
+	}
+	if pending == nil {
+		t.Fatal("pending = nil, want a stored pending approval")
+	}
+	if got := asString(pending.input["command"]); got != "echo hello-from-permission-probe" {
+		t.Fatalf("pending.input[command] = %q, want the command captured from the earlier tool_call", got)
+	}
+}
+
 func TestCursorAutoApprovePermissionDecision(t *testing.T) {
 	t.Parallel()
 
@@ -2249,6 +2305,9 @@ type standardACPConnection struct {
 	// cursor-agent's transient-failure shape: an "Error: RetriableError: ..."
 	// text chunk followed by a normal end_turn result.
 	retriableErrorPrompts int
+	// planLimitPromptError makes session/prompt fail with Cursor's plan-gate
+	// copy so the adapter can soft-settle instead of emitting a red failure.
+	planLimitPromptError bool
 	// omitAssistantTextInPromptResults drops the agent_message_chunk from
 	// normal prompt results, emulating a tool-calls-only turn.
 	omitAssistantTextInPromptResults bool
@@ -2463,6 +2522,17 @@ func (c *standardACPConnection) Send(data []byte) error {
 			c.promptCallCount++
 			promptCall := c.promptCallCount
 			c.mu.Unlock()
+			if c.planLimitPromptError {
+				c.sendJSON(map[string]any{
+					"jsonrpc": "2.0",
+					"id":      message.ID,
+					"error": map[string]any{
+						"code":    -32000,
+						"message": "Upgrade your plan to continue",
+					},
+				})
+				return nil
+			}
 			if promptCall <= c.retriableErrorPrompts {
 				c.sendJSON(map[string]any{
 					"jsonrpc": "2.0",

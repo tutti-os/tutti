@@ -9,6 +9,7 @@ import {
 import type {
   AgentActivityRuntime,
   AgentGUIProvider,
+  AgentGUIProviderReadinessGate,
   AgentGUIProviderReadinessGateAction,
   AgentGUIProps
 } from "@tutti-os/agent-gui";
@@ -31,6 +32,10 @@ import {
 import { projectDesktopAgentProviderReadinessGates } from "../services/internal/desktopAgentProviderReadinessGate.ts";
 import { useAccountService } from "../../workspace-workbench/ui/useAccountService.ts";
 import { isDesktopAgentAccountLoginAction } from "./desktopAgentAccountLoginAction.ts";
+import {
+  activeProviderNotReadyRecheckKey,
+  shouldSuppressAgentProviderNotReadyProjection
+} from "./desktopAgentProviderNotReadyRecheck.ts";
 import { useDesktopManagedAgentsState } from "./useDesktopManagedAgentsState.ts";
 import {
   getEmptyProviderStatusSnapshot,
@@ -84,19 +89,70 @@ export function useDesktopAgentGUIReadiness(input: {
     !providerStatusSnapshot.capturedAt && providerStatusBootstrapSnapshot
       ? providerStatusBootstrapSnapshot
       : providerStatusSnapshot;
-  const effectiveManagedAgentsState = useMemo(
-    () =>
-      !providerStatusSnapshot.capturedAt && providerStatusBootstrapSnapshot
-        ? projectDesktopManagedAgentsStateForAgentGUI(
-            providerStatusBootstrapSnapshot
-          )
-        : managedAgentsState,
-    [
-      managedAgentsState,
-      providerStatusBootstrapSnapshot,
-      providerStatusSnapshot
-    ]
-  );
+  const activeProviderAvailabilityStatus =
+    effectiveProviderStatusSnapshot.statuses.find(
+      (status) => status.provider === provider
+    )?.availability.status ?? null;
+  const activeProviderRecheckKey = activeProviderNotReadyRecheckKey({
+    availabilityStatus: activeProviderAvailabilityStatus,
+    provider
+  });
+  const [settledActiveProviderRecheckKey, setSettledActiveProviderRecheckKey] =
+    useState<string | null>(null);
+  const activeProviderRecheckGenerationRef = useRef(0);
+  const suppressNotReadyProjection =
+    !previewMode &&
+    shouldSuppressAgentProviderNotReadyProjection({
+      recheckKey: activeProviderRecheckKey,
+      settledRecheckKey: settledActiveProviderRecheckKey
+    });
+  useEffect(() => {
+    if (previewMode || !agentProviderStatusService) {
+      setSettledActiveProviderRecheckKey(null);
+      return;
+    }
+    if (activeProviderRecheckKey === null) {
+      setSettledActiveProviderRecheckKey(null);
+      return;
+    }
+    if (settledActiveProviderRecheckKey === activeProviderRecheckKey) {
+      return;
+    }
+    const generation = ++activeProviderRecheckGenerationRef.current;
+    const recheckKey = activeProviderRecheckKey;
+    void agentProviderStatusService.refresh([provider]).finally(() => {
+      if (activeProviderRecheckGenerationRef.current === generation) {
+        setSettledActiveProviderRecheckKey(recheckKey);
+      }
+    });
+    return () => {
+      activeProviderRecheckGenerationRef.current += 1;
+    };
+  }, [
+    activeProviderRecheckKey,
+    agentProviderStatusService,
+    previewMode,
+    provider,
+    settledActiveProviderRecheckKey
+  ]);
+  const effectiveManagedAgentsState = useMemo(() => {
+    if (suppressNotReadyProjection) {
+      // Match the uncaptured-status policy: unknown readiness keeps the
+      // composer usable and hides the false "connect provider" notice while a
+      // stale not-ready cache is being rechecked.
+      return null;
+    }
+    return !providerStatusSnapshot.capturedAt && providerStatusBootstrapSnapshot
+      ? projectDesktopManagedAgentsStateForAgentGUI(
+          providerStatusBootstrapSnapshot
+        )
+      : managedAgentsState;
+  }, [
+    managedAgentsState,
+    providerStatusBootstrapSnapshot,
+    providerStatusSnapshot,
+    suppressNotReadyProjection
+  ]);
   // Activation funnel stage ③ "saw a chattable surface": the agent workbench
   // body is mounted (not a dock preview) and the active provider is ready, so
   // the composer is interactive. reportProviderReady (stage ②) can fire while
@@ -286,20 +342,32 @@ export function useDesktopAgentGUIReadiness(input: {
       workspaceId
     ]
   );
-  const providerReadinessGates = useMemo(
-    () =>
-      previewMode
-        ? null
-        : projectDesktopAgentProviderReadinessGates({
-            snapshot: effectiveProviderStatusSnapshot,
-            onAction: handleProviderReadinessGateAction
-          }),
-    [
-      effectiveProviderStatusSnapshot,
-      handleProviderReadinessGateAction,
-      previewMode
-    ]
-  );
+  const providerReadinessGates = useMemo(() => {
+    if (previewMode) {
+      return null;
+    }
+    const gates = projectDesktopAgentProviderReadinessGates({
+      snapshot: effectiveProviderStatusSnapshot,
+      onAction: handleProviderReadinessGateAction
+    });
+    if (!suppressNotReadyProjection) {
+      return gates;
+    }
+    const checkingGate: AgentGUIProviderReadinessGate = {
+      status: "checking",
+      pendingAction: null
+    };
+    return {
+      ...gates,
+      [provider]: checkingGate
+    };
+  }, [
+    effectiveProviderStatusSnapshot,
+    handleProviderReadinessGateAction,
+    previewMode,
+    provider,
+    suppressNotReadyProjection
+  ]);
   return {
     computerUseStatus,
     effectiveManagedAgentsState,

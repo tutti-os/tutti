@@ -1,6 +1,7 @@
 package agentstatus
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
@@ -122,18 +123,28 @@ func (l installCommandLock) Acquire(ctx context.Context) (func(), error) {
 	}
 }
 
+// claudeCodeBinaryLockCommand serializes claude runtime binary provisioning
+// (EnsureClaudeCodeBinary) across processes; it shares the download/staging
+// paths under the state dir, so concurrent runs must not interleave.
+const claudeCodeBinaryLockCommand = "claude-code-runtime-binary"
+
 func requiresInstallCommandLock(command string) bool {
 	command = strings.TrimSpace(command)
 	return strings.HasPrefix(command, "npm install -g") ||
 		strings.HasPrefix(command, "npm i -g") ||
-		strings.HasPrefix(command, string(InstallerKindExternalAgentRegistryNPM)+":")
+		strings.HasPrefix(command, string(InstallerKindExternalAgentRegistryNPM)+":") ||
+		command == claudeCodeBinaryLockCommand
 }
 
 func installCommandLockPath(command string) string {
 	lockFile := "npm-global-install.lock"
-	if strings.HasPrefix(strings.TrimSpace(command), string(InstallerKindExternalAgentRegistryNPM)+":") {
-		sum := sha256.Sum256([]byte(strings.TrimSpace(command)))
+	trimmed := strings.TrimSpace(command)
+	switch {
+	case strings.HasPrefix(trimmed, string(InstallerKindExternalAgentRegistryNPM)+":"):
+		sum := sha256.Sum256([]byte(trimmed))
 		lockFile = "agent-provider-install-" + hex.EncodeToString(sum[:8]) + ".lock"
+	case trimmed == claudeCodeBinaryLockCommand:
+		lockFile = "claude-code-runtime-binary.lock"
 	}
 	return filepath.Join(tuttitypes.TuttidRunDir(), "locks", lockFile)
 }
@@ -173,6 +184,22 @@ func (l installCommandLock) Recover() (InstallCommandLockRecoveryResult, error) 
 		processExists = tuttitypes.ProcessExists
 	}
 	if processExists(pid) {
+		return result, nil
+	}
+
+	// Re-verify identity immediately before deletion: between the first read
+	// and this point another process may have recovered the same orphan and
+	// created its own live lock at this path. Only remove the file when it
+	// still holds the exact bytes observed as stale, so a freshly created
+	// lock is never deleted out from under its owner.
+	current, err := readFile(lockPath)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return result, nil
+		}
+		return result, fmt.Errorf("re-read install lock before removal: %w", err)
+	}
+	if !bytes.Equal(current, body) {
 		return result, nil
 	}
 

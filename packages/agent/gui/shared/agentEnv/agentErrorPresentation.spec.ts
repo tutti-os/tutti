@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   classifyFailedAgentMessage,
+  isProviderPlanLimitMessage,
   resolveAgentErrorPresentation
 } from "./agentErrorPresentation";
 
@@ -30,6 +31,28 @@ describe("classifyFailedAgentMessage", () => {
     expect(classifyFailedAgentMessage("request timed out")).toBeNull();
     expect(classifyFailedAgentMessage("here is your answer")).toBeNull();
     expect(classifyFailedAgentMessage(null)).toBeNull();
+  });
+
+  it("recovers Cursor plan-limit copy into the quota bucket", () => {
+    expect(classifyFailedAgentMessage("Upgrade your plan to continue")).toBe(
+      "quota_or_rate_limit"
+    );
+    expect(classifyFailedAgentMessage("Add a payment method to continue")).toBe(
+      "quota_or_rate_limit"
+    );
+  });
+});
+
+describe("isProviderPlanLimitMessage", () => {
+  it("matches Cursor plan/payment gate copy only", () => {
+    expect(isProviderPlanLimitMessage("Upgrade your plan to continue")).toBe(
+      true
+    );
+    expect(isProviderPlanLimitMessage("Add a payment method to continue")).toBe(
+      true
+    );
+    expect(isProviderPlanLimitMessage("rate limit exceeded")).toBe(false);
+    expect(isProviderPlanLimitMessage("")).toBe(false);
   });
 });
 

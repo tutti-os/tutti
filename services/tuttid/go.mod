@@ -8,6 +8,7 @@ require (
 	github.com/coder/websocket v1.8.14
 	github.com/creack/pty v1.1.24
 	github.com/google/uuid v1.6.0
+	github.com/klauspost/compress v1.17.7
 	github.com/oapi-codegen/runtime v1.4.1
 	github.com/tutti-os/tutti/packages/agent/daemon v0.0.0
 	github.com/tutti-os/tutti/packages/agent/runtimeprep v0.0.0
@@ -20,6 +21,7 @@ require (
 	github.com/tutti-os/tutti/packages/workspace/issues v0.0.0
 	github.com/volcengine/datarangers-sdk-go v1.1.8
 	golang.org/x/mod v0.33.0
+	golang.org/x/sync v0.19.0
 	golang.org/x/sys v0.41.0
 	modernc.org/sqlite v1.45.0
 )
@@ -51,7 +53,6 @@ require (
 	github.com/go-openapi/jsonpointer v0.22.4 // indirect
 	github.com/go-openapi/swag/jsonname v0.25.4 // indirect
 	github.com/golang/snappy v0.0.4 // indirect
-	github.com/google/go-cmp v0.7.0 // indirect
 	github.com/hashicorp/errwrap v1.0.0 // indirect
 	github.com/hashicorp/go-multierror v1.1.1 // indirect
 	github.com/hashicorp/go-uuid v1.0.2 // indirect
@@ -61,7 +62,6 @@ require (
 	github.com/jcmturner/gokrb5/v8 v8.4.2 // indirect
 	github.com/jcmturner/rpc/v2 v2.0.3 // indirect
 	github.com/josharian/intern v1.0.0 // indirect
-	github.com/klauspost/compress v1.17.7 // indirect
 	github.com/mailru/easyjson v0.9.1 // indirect
 	github.com/mattn/go-isatty v0.0.20 // indirect
 	github.com/mohae/deepcopy v0.0.0-20170929034955-c48cc78d4826 // indirect
@@ -85,7 +85,6 @@ require (
 	golang.org/x/crypto v0.48.0 // indirect
 	golang.org/x/exp v0.0.0-20251023183803-a4bb9ffd2546 // indirect
 	golang.org/x/net v0.50.0 // indirect
-	golang.org/x/sync v0.19.0 // indirect
 	golang.org/x/text v0.34.0 // indirect
 	golang.org/x/tools v0.42.0 // indirect
 	gopkg.in/natefinch/lumberjack.v2 v2.0.0 // indirect

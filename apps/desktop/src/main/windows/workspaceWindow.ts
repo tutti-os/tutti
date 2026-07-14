@@ -25,8 +25,8 @@ import {
 } from "../../shared/contracts/ipc";
 import { installWorkspaceWindowDevelopmentReloadShortcut } from "./workspaceWindowReload.ts";
 import { resolvePackagedWorkspaceRendererIndexPath } from "./workspaceWindowPaths.ts";
-import { resolveCenteredWindowBounds } from "./workspaceWindowBounds.ts";
 import { createPrimaryWindowAnalyticsClaim } from "./primaryWindowAnalyticsClaim.ts";
+import { resolveStandaloneAgentWindowBounds } from "./standaloneAgentWindowBounds.ts";
 
 export const workspaceAppBrowserPartitionPrefix = "persist:tutti-app:";
 
@@ -37,6 +37,7 @@ export interface CreateWorkspaceWindowOptions {
   preloadPath: string;
   rendererUrl?: string;
   theme: DesktopThemeState;
+  openerBounds?: Electron.Rectangle | null;
   windowKind?: "agent" | "workspace";
   workspaceAppPreloadPath?: string;
   workspaceID: string;
@@ -53,11 +54,9 @@ const workspaceWindowMacTrafficLightInsetPx = 16;
 const workspaceWindowMacTrafficLightSizePx = 12;
 const workspaceWindowMacTrafficLightPositionY =
   (workspaceWindowHeaderHeightPx - workspaceWindowMacTrafficLightSizePx) / 2;
-const agentWindowDefaultWidthPx = 1340;
-const agentWindowDefaultHeightPx = 830;
 const agentWindowMinWidthPx = 760;
 const agentWindowMinHeightPx = 520;
-const agentWindowWorkAreaMarginPx = 48;
+const agentWindowWorkAreaScale = 0.9;
 
 export function createWorkspaceWindow(
   options: CreateWorkspaceWindowOptions
@@ -66,13 +65,14 @@ export function createWorkspaceWindow(
   const windowKind = options.windowKind ?? "workspace";
   const agentWindowBounds =
     windowKind === "agent"
-      ? resolveCenteredWindowBounds({
-          defaultHeight: agentWindowDefaultHeightPx,
-          defaultWidth: agentWindowDefaultWidthPx,
-          margin: agentWindowWorkAreaMarginPx,
+      ? resolveStandaloneAgentWindowBounds({
+          scale: agentWindowWorkAreaScale,
           minHeight: agentWindowMinHeightPx,
           minWidth: agentWindowMinWidthPx,
-          workArea: screen.getPrimaryDisplay().workArea
+          workArea: (options.openerBounds
+            ? screen.getDisplayMatching(options.openerBounds)
+            : screen.getPrimaryDisplay()
+          ).workArea
         })
       : null;
   const workspaceWindow = new BrowserWindow({

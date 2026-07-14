@@ -9,7 +9,11 @@ import {
   useSyncExternalStore,
   type ReactNode
 } from "react";
-import { AGENT_GUI_DETAIL_MIN_WIDTH_PX } from "@tutti-os/agent-gui";
+import {
+  AGENT_GUI_DETAIL_MIN_WIDTH_PX,
+  AGENT_GUI_STANDALONE_AUTO_COLLAPSE_WIDTH_PX,
+  shouldAutoCollapseAgentGUIConversationRail
+} from "@tutti-os/agent-gui";
 import { AgentGuiWorkbenchHeader } from "@tutti-os/agent-gui/workbench";
 import type { WorkspaceSummary } from "@tutti-os/client-tuttid-ts";
 import {
@@ -452,6 +456,14 @@ export function StandaloneAgentWindow({
     Number.isFinite(nodeState.conversationRailWidthPx)
       ? nodeState.conversationRailWidthPx
       : standaloneAgentDefaultConversationRailWidthPx;
+  const isConversationRailAutoCollapsed =
+    shouldAutoCollapseAgentGUIConversationRail(
+      frame.width,
+      AGENT_GUI_STANDALONE_AUTO_COLLAPSE_WIDTH_PX
+    );
+  const isConversationRailCollapsed =
+    nodeState.conversationRailCollapsed === true ||
+    isConversationRailAutoCollapsed;
   const host = useMemo(
     () =>
       createStandaloneAgentHost({
@@ -639,7 +651,7 @@ export function StandaloneAgentWindow({
         fileOpenRequest={fileOpenRequest}
         issueManagerOpenRequest={issueManagerOpenRequest}
         mainContentMinWidthPx={
-          nodeState.conversationRailCollapsed
+          isConversationRailCollapsed
             ? AGENT_GUI_DETAIL_MIN_WIDTH_PX
             : headerConversationRailWidthPx +
               agentGuiWorkbenchProviderRailWidthPx
@@ -671,10 +683,8 @@ export function StandaloneAgentWindow({
             displayMode={isWindowMaximized ? "fullscreen" : "floating"}
             data-agent-gui-standalone-window-header="true"
             data-workbench-drag-handle="true"
-            isConversationRailAutoCollapsed={false}
-            isConversationRailCollapsed={
-              nodeState.conversationRailCollapsed === true
-            }
+            isConversationRailAutoCollapsed={isConversationRailAutoCollapsed}
+            isConversationRailCollapsed={isConversationRailCollapsed}
             nodeId={standaloneAgentNodeId}
             providerRailWidthPx={agentGuiWorkbenchProviderRailWidthPx}
             primaryAccessory={<AppUpdateStatus presentation="standalone" />}
@@ -713,6 +723,9 @@ export function StandaloneAgentWindow({
               agentProviderStatusService={agentProviderStatusService}
               context={context}
               computerUseApi={desktopApi.computerUse}
+              conversationRailAutoCollapseWidthPx={
+                AGENT_GUI_STANDALONE_AUTO_COLLAPSE_WIDTH_PX
+              }
               dockPreviewCache={dockPreviewCache}
               onLinkAction={handleLinkAction}
               onCapabilitySettingsRequest={handleCapabilitySettingsRequest}

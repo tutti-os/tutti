@@ -4,8 +4,24 @@ export {
   type BrowserNodeFeature,
   type CreateBrowserNodeFeatureInput
 } from "./core/feature.ts";
+export {
+  getBrowserNodeEventNodeId,
+  isBrowserNodeSurfaceEvent,
+  isBrowserNodeSurfaceNodeId
+} from "./core/eventScope.ts";
 export { resolveBrowserNavigationUrl } from "./core/url.ts";
 export { resolveBrowserSessionPartition } from "./core/session.ts";
+export {
+  createBrowserNodeTabsStore,
+  type BrowserNodeTab,
+  type BrowserNodeTabsState,
+  type BrowserNodeTabsStore
+} from "./core/tabsStore.ts";
+export {
+  closeBrowserNodeTab,
+  closeBrowserNodeTabSurface,
+  retainBrowserNodeTabSurface
+} from "./core/tabsLifecycle.ts";
 export type {
   BrowserNodeActivationInput,
   BrowserNodeClosedEvent,

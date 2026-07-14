@@ -171,8 +171,10 @@ export function useAgentGUIComposerPresentation(
   const draftModel = usesPlaceholderDraftModel
     ? (liveConfigModel ?? persistedDraftModel)
     : persistedDraftModel;
-  const draftReasoningEffort = normalizeOptionalText(
-    draftSettings.reasoningEffort
+  const draftReasoningEffort = (
+    input.composerSupport.reasoning
+      ? normalizeOptionalText(draftSettings.reasoningEffort)
+      : null
   ) as AgentSessionReasoningEffort | null;
   const draftSpeed = normalizeOptionalText(
     draftSettings.speed

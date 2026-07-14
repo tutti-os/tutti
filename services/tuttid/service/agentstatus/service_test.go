@@ -1904,6 +1904,48 @@ func TestInstallCommandLockRecoverRemovesLockWhenPIDIsDead(t *testing.T) {
 	}
 }
 
+func TestInstallCommandLockRecoverKeepsRecreatedLock(t *testing.T) {
+	lockPath := filepath.Join(t.TempDir(), "run", "locks", "claude-code-runtime-binary.lock")
+	if err := os.MkdirAll(filepath.Dir(lockPath), 0o755); err != nil {
+		t.Fatalf("MkdirAll() error = %v", err)
+	}
+	recreated := []byte("pid=4242\ncommand=claude-code-runtime-binary\n")
+	if err := os.WriteFile(lockPath, recreated, 0o600); err != nil {
+		t.Fatalf("WriteFile() error = %v", err)
+	}
+
+	// First read observes a stale dead-pid lock; before removal a concurrent
+	// process recovers it and creates its own live lock at the same path. The
+	// identity re-check must keep the recreated lock intact.
+	reads := 0
+	result, err := (installCommandLock{
+		lockPath: lockPath,
+		readFile: func(path string) ([]byte, error) {
+			reads++
+			if reads == 1 {
+				return []byte("pid=999999999\ncommand=claude-code-runtime-binary\n"), nil
+			}
+			return os.ReadFile(path)
+		},
+		processExists: func(_ int) bool {
+			return false
+		},
+	}).Recover()
+	if err != nil {
+		t.Fatalf("Recover() error = %v", err)
+	}
+	if result.Removed {
+		t.Fatalf("Removed = true, want false; result=%#v", result)
+	}
+	content, err := os.ReadFile(lockPath)
+	if err != nil {
+		t.Fatalf("recreated lock missing after recovery: %v", err)
+	}
+	if string(content) != string(recreated) {
+		t.Fatalf("recreated lock content = %q, want untouched", string(content))
+	}
+}
+
 func TestInstallCommandLockRecoverKeepsLockWhenPIDIsLive(t *testing.T) {
 	lockPath := filepath.Join(t.TempDir(), "run", "locks", "npm-global-install.lock")
 	if err := os.MkdirAll(filepath.Dir(lockPath), 0o755); err != nil {

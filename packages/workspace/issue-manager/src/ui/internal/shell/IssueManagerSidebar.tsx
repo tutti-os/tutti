@@ -6,6 +6,7 @@ import {
   IssueManagerSidebarStandalonePane,
   IssueManagerSidebarStatusTabs
 } from "./IssueManagerSidebarSections.tsx";
+import { IssueManagerTopicSelector } from "./IssueManagerTopicSelector.tsx";
 import { resolveIssueManagerSidebarPresentationState } from "./IssueManagerSidebarState.ts";
 import type { IssueManagerController } from "../../react/index.ts";
 import { resolveIssueManagerSubtaskProgressByIssueId } from "./IssueManagerShellState.ts";
@@ -23,6 +24,7 @@ export interface IssueManagerSidebarProps {
   isCollapsed: boolean;
   isNarrowLayout: boolean;
   showStandaloneState: boolean;
+  showTopicSelector?: boolean;
   sidebarViewState: IssueManagerSidebarViewState;
   statusCounts: Record<(typeof issueManagerStatusFilters)[number], number>;
 }
@@ -32,6 +34,7 @@ export function IssueManagerSidebar({
   isCollapsed,
   isNarrowLayout,
   showStandaloneState,
+  showTopicSelector = false,
   sidebarViewState,
   statusCounts
 }: IssueManagerSidebarProps): JSX.Element {
@@ -79,6 +82,27 @@ export function IssueManagerSidebar({
       )}
       inert={isCollapsed ? true : undefined}
     >
+      {showTopicSelector ? (
+        <div className="flex min-w-0 items-center px-2.5 pt-2 pb-1">
+          <IssueManagerTopicSelector
+            activeTopicId={controller.nodeState.activeTopicId ?? null}
+            className="max-w-full"
+            copy={copy}
+            topics={controller.topics.value}
+            onCreateTopic={(input) => {
+              void controller.createTopic(input);
+            }}
+            onDeleteTopic={(topicId) => {
+              void controller.deleteTopic(topicId);
+            }}
+            onSelectTopic={controller.selectTopic}
+            onUpdateTopic={(input) => {
+              void controller.updateTopic(input);
+            }}
+          />
+        </div>
+      ) : null}
+
       <IssueManagerSidebarHeader
         copy={copy}
         issueSearchQuery={controller.nodeState.issueSearchQuery}

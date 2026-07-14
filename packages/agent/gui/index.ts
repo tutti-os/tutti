@@ -57,6 +57,7 @@ export type { AgentGuiI18nLocale } from "./i18n/index";
 export { agentGuiDockIconUrl, agentGuiDockIconUrls } from "./dockIcons";
 export {
   AGENT_GUI_DETAIL_MIN_WIDTH_PX,
+  AGENT_GUI_STANDALONE_AUTO_COLLAPSE_WIDTH_PX,
   resolveAgentGUIExpandedWindowFrame,
   shouldAutoCollapseAgentGUIConversationRail
 } from "./agent-gui/agentGuiNode/model/agentGuiRailLayout";

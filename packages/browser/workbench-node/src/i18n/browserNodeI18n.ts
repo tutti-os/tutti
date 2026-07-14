@@ -111,6 +111,11 @@ const browserNodeEn = {
     title: "Browser settings",
     zoomLabel: "Page zoom"
   },
+  tabs: {
+    close: "Close tab",
+    new: "New tab",
+    untitled: "New tab"
+  },
   zoom: {
     decrease: "Zoom out",
     increase: "Zoom in",
@@ -209,6 +214,11 @@ const browserNodeZhCN = {
     title: "浏览器设置",
     zoomLabel: "页面缩放"
   },
+  tabs: {
+    close: "关闭标签页",
+    new: "新建标签页",
+    untitled: "新标签页"
+  },
   zoom: {
     decrease: "缩小",
     increase: "放大",
@@ -288,6 +298,9 @@ export type BrowserNodeI18nKey =
   | "settings.screenshotLabel"
   | "settings.title"
   | "settings.zoomLabel"
+  | "tabs.close"
+  | "tabs.new"
+  | "tabs.untitled"
   | "zoom.decrease"
   | "zoom.increase"
   | "zoom.label"

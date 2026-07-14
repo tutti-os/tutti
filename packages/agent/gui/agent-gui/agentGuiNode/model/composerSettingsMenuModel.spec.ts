@@ -380,6 +380,43 @@ describe("buildComposerModelMenuModel", () => {
     expect(menu.model.show).toBe(true);
     expect(menu.reasoning.show).toBe(false);
     expect(menu.speed.show).toBe(false);
+    expect(menu.trigger.reasoningLabel).toBe("");
+    expect(menu.trigger.showCombined).toBe(true);
+  });
+
+  it("does not show a stale default effort when reasoning is not configurable", () => {
+    // Cursor-like: draft still carries the GUI default "high", but the
+    // provider does not expose a reasoning selector.
+    const menu = buildComposerModelMenuModel(
+      vm({
+        supportsReasoningEffort: false,
+        availableReasoningEfforts: [],
+        draftSettings: {
+          model: "gpt-5.2[reasoning=medium,fast=false]",
+          reasoningEffort: "high",
+          speed: null,
+          planMode: false,
+          permissionModeId: "agent"
+        },
+        availableModels: [
+          {
+            value: "gpt-5.2[reasoning=medium,fast=false]",
+            label: "gpt-5.2"
+          }
+        ],
+        supportsSpeed: false,
+        availableSpeeds: []
+      }),
+      labels
+    );
+
+    expect(menu.reasoning.show).toBe(false);
+    expect(menu.trigger).toMatchObject({
+      modelLabel: "GPT-5.2",
+      reasoningLabel: "",
+      combinedLabel: "GPT-5.2",
+      showCombined: true
+    });
   });
 
   it("shows the loading copy on the trigger while options load", () => {

@@ -84,6 +84,12 @@ export interface AgentGUINodeFrameLayout {
   isActive: boolean;
   embedded?: boolean;
   previewMode?: boolean;
+  /**
+   * Container width at or below which the conversation rail auto-hides.
+   * Hosts with roomier layouts (e.g. the standalone agent window) raise this
+   * above the default AGENT_GUI_AUTO_COLLAPSE_WIDTH_PX.
+   */
+  conversationRailAutoCollapseWidthPx?: number | null;
 }
 
 export interface AgentGUINodeRuntimeRequests {
@@ -290,6 +296,8 @@ export function areAgentGUINodePropsEqual(
     pf.isActive === nf.isActive &&
     pf.embedded === nf.embedded &&
     pf.previewMode === nf.previewMode &&
+    pf.conversationRailAutoCollapseWidthPx ===
+      nf.conversationRailAutoCollapseWidthPx &&
     pr.composerFocusSequence === nr.composerFocusSequence &&
     pr.newConversationSequence === nr.newConversationSequence &&
     pr.openSession === nr.openSession &&

@@ -9,6 +9,7 @@
     "src/compaction.ts",
     "src/errors.ts",
     "src/eventSink.ts",
+    "src/executablePath.ts",
     "src/interactive.ts",
     "src/main.ts",
     "src/messageProjection.ts",

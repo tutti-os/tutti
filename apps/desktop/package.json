@@ -58,8 +58,7 @@
       "binaries": [
         "Contents/Resources/bin/tuttid",
         "Contents/Resources/bin/tutti"
-      ],
-      "x64ArchFiles": "Contents/Resources/bin/claude-sdk-sidecar/node_modules/@anthropic-ai/claude-agent-sdk-darwin-*/claude"
+      ]
     },
     "dmg": {
       "sign": true,

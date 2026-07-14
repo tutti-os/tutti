@@ -4,6 +4,36 @@
 
 Provider discovery, installation, authentication, models, configuration, and runtime reachability.
 
+### Provider setup notice flashes after switching to an already-connected agent
+
+- Symptom:
+  Opening Tutti and switching to Cursor (or another managed provider) shows the
+  toast-like "connect provider before sending" notice even though auto-connect
+  already succeeded and messages can be sent. The notice stays until a later
+  status refresh finally marks the provider ready.
+- Quick checks:
+  Compare the desktop provider-status snapshot for the active provider with the
+  AgentGUI setup notice. If `ensureLoaded` reused a cached `auth_required` /
+  `not_installed` row while a session prompt still works, the notice is projecting
+  stale not-ready readiness. Confirm whether switching the provider triggered a
+  scoped `refresh` or only a cache-hit `ensureLoaded`.
+- Root cause:
+  Startup may capture a not-ready provider status during the background catalog
+  scan. Selecting that provider later reuses the cache, so AgentGUI immediately
+  treats the provider as not installed/connected. The notice only clears when a
+  slower follow-up refresh upgrades availability to `ready`.
+- Fix:
+  When the active Agent GUI provider has a cached not-ready status, refresh that
+  provider once and keep readiness unknown while the recheck is pending. Do not
+  project the setup notice from a stale not-ready row during that window.
+- Validation:
+  Add coverage for the not-ready recheck key/suppress helper, then run the
+  focused desktop test for that helper and `pnpm --filter @tutti-os/desktop typecheck`.
+- References:
+  [useDesktopAgentGUIReadiness.ts](../../../apps/desktop/src/renderer/src/features/workspace-agent/ui/useDesktopAgentGUIReadiness.ts)
+  [desktopAgentProviderNotReadyRecheck.ts](../../../apps/desktop/src/renderer/src/features/workspace-agent/ui/desktopAgentProviderNotReadyRecheck.ts)
+  [agent-gui-node.md](../../architecture/agent-gui-node.md)
+
 ### Agent provider picker shows only Claude Code and Codex
 
 - Symptom:
@@ -799,6 +829,37 @@ invalid_grant`. Daemon logs may also show an extra `claude-code` process start
   `credentials.effectiveSource` only tracks OAuth material (keychain or
   `.credentials.json`). For API-key/proxy users it stays `"none"` even
   after the fix; a connected session is the success signal, not that field.
+
+### Cursor free plan shows a red error on the next send after upgrade copy
+
+- Symptom:
+  A Cursor free / exhausted account first returns plain assistant text
+  `Upgrade your plan to continue`. Sending again shows a scary red turn-failed
+  card (often with an “Open setup” escape hatch) instead of the same calm
+  plan-gate copy.
+- Root cause:
+  `cursor-agent` soft-surfaces the first plan gate as an assistant chunk +
+  `end_turn`. Later attempts may fail `session/prompt` with the same fixed
+  copy (`upgrade` / `payment` actions). Tutti previously treated that ACP call
+  failure as a generic `turn.failed` / `provider_error` danger card, and the
+  visible-error classifier did not recognize the Cursor phrases as a quota /
+  plan limit.
+- Invariants:
+  When ACP `session/prompt` fails with Cursor plan/payment gate copy, soft-settle
+  the turn: emit a warning system notice with that copy and complete the turn
+  (`planLimit=true`) so the composer stays usable without a danger card. Keep
+  residual visible-error classification of those phrases in the
+  `quota_or_rate_limit` bucket, and render that bucket with warning tone rather
+  than danger. Do not route plan gates into the env-wizard “Open setup” path.
+- Validation:
+  Run `go test ./packages/agent/daemon/runtime -run 'PlanLimit|VisibleFailureCodeRecognizesCursorPlanLimit'`
+  and the AgentGUI visible-error / `classifyFailedAgentMessage` specs that cover
+  `Upgrade your plan to continue`.
+- References:
+  [acp_plan_limit.go](../../../packages/agent/daemon/runtime/acp_plan_limit.go)
+  [standard_acp_turn.go](../../../packages/agent/daemon/runtime/standard_acp_turn.go)
+  [visible_error.go](../../../packages/agent/daemon/runtime/visible_error.go)
+  [AgentMessageBlock.tsx](../../../packages/agent/gui/shared/agentConversation/components/AgentMessageBlock.tsx)
 
 ### Tutti Agent retries a 402 and shows generic provider setup
 

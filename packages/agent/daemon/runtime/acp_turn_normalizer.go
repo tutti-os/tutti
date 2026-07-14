@@ -432,6 +432,33 @@ func (n *acpTurnNormalizer) toolItemID(update map[string]any) string {
 	return id
 }
 
+// KnownToolCallInput returns the last recorded normalized input for a raw ACP
+// toolCallId, if the normalizer has already seen a `tool_call`/`tool_call_update`
+// for it in this turn. Some ACP providers (Cursor) omit `rawInput` on the
+// `toolCall` embedded in `session/request_permission`, repeating only
+// `toolCallId`/`title`/`kind`; the earlier tool_call notification for the same
+// id is the only place the command/path/query detail exists. This lookup does
+// not create a new id mapping, so it must not be used before the tool_call it
+// targets has actually streamed.
+func (n *acpTurnNormalizer) KnownToolCallInput(rawToolCallID string) map[string]any {
+	if n == nil {
+		return nil
+	}
+	rawToolCallID = strings.TrimSpace(rawToolCallID)
+	if rawToolCallID == "" || n.toolItemIDs == nil {
+		return nil
+	}
+	eventID, ok := n.toolItemIDs[rawToolCallID]
+	if !ok {
+		return nil
+	}
+	pending, ok := n.pendingToolCalls[eventID]
+	if !ok {
+		return nil
+	}
+	return payloadMap(pending.payload, "input")
+}
+
 func (n *acpTurnNormalizer) trackToolCallEvent(event activityshared.Event) {
 	if n == nil || strings.TrimSpace(event.EventID) == "" {
 		return

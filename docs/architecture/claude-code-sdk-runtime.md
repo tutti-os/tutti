@@ -122,6 +122,17 @@ after production dependencies are vendored, and again from the final Electron
 Resources directory after symlinks have been replaced. Both checks must complete
 `start`, `exec`, and `close` without reading repository sources.
 
+The vendored bundle excludes the native `claude` executable (it still carries
+the SDK's JS, type metadata, and `manifest.json`). The binary the SDK spawns
+is provisioned at runtime by tuttid from the CDN (npm mirrors as fallback),
+pinned and verified against the vendored SDK's `manifest.json` (see
+`services/tuttid/service/agentstatus/claude_binary.go`). The sidecar picks the
+executable in `src/executablePath.ts`: an explicit `CLAUDE_CODE_EXECUTABLE`
+always wins, a native package next to the SDK (dev tree) comes next, and
+`TUTTI_CLAUDE_CODE_FALLBACK_EXECUTABLE` — the provisioned binary or a
+PATH-installed claude, chosen by `runtimeprep.ClaudeCodePreparer` — covers the
+packaged app.
+
 `close` is a request/ack boundary, not a fire-and-forget signal. The sidecar
 awaits SDK query shutdown before replying `ok`; the daemon only then closes
 stdin and the process. Transport reads are context-aware so a request timeout

@@ -1,5 +1,8 @@
+export { BrowserNode, type BrowserNodeProps } from "./BrowserNode.tsx";
 export {
-  BrowserNode,
+  BrowserNodeChrome,
   BrowserNodeHeader,
-  type BrowserNodeProps
-} from "./BrowserNode.tsx";
+  BrowserNodeWorkbenchHeader,
+  type BrowserNodeChromeProps,
+  type BrowserNodeWorkbenchHeaderProps
+} from "./BrowserNodeChrome.tsx";

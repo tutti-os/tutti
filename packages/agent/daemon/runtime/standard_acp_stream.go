@@ -94,7 +94,7 @@ func (a *standardACPAdapter) handleACPMessage(
 				"synthetic": true,
 			})})
 		}
-		events, pending, err := standardACPPermissionRequested(a, session, turnID, message.ID, message.Params)
+		events, pending, err := standardACPPermissionRequested(a, session, turnID, message.ID, message.Params, normalizer)
 		if err != nil {
 			if sessionLevelEmit {
 				emit(events)

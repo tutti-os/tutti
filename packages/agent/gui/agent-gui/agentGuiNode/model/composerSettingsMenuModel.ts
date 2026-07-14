@@ -135,10 +135,13 @@ export function buildComposerModelMenuModel(
   const selectedSpeedValue = selectedComposerSpeedValue(composerSettings) ?? "";
 
   const modelLabel = resolveSelectedModelLabel(composerSettings, labels);
-  const reasoningLabel = resolveSelectedReasoningLabel(
-    composerSettings,
-    labels
-  );
+  // Only surface an effort label when the reasoning control is actually shown.
+  // Providers such as Cursor keep a stale/default draft effort ("high") even
+  // though reasoning is not configurable; showing it next to the model name
+  // reads like a real selection the user cannot change.
+  const reasoningLabel = showReasoning
+    ? resolveSelectedReasoningLabel(composerSettings, labels)
+    : "";
 
   const disabled =
     composerSettings.isSettingsLoading ||

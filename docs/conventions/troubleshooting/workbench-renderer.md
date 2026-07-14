@@ -2,6 +2,68 @@
 
 [Back to troubleshooting index](./README.md)
 
+### Tabbed standalone Browser remains in `Sleeping` state
+
+- Symptom:
+  A standalone Browser shows its default URL and tab title, but the guest area
+  stays blank and the navigation bar keeps showing `Sleeping` after multi-tab
+  support is enabled. The same Browser may work in an OS-mode Workbench window.
+- Quick checks:
+  Compare the surface node ID with the node ID in Browser runtime events. A
+  tabbed surface owns a parent such as `browser:surface` while its controller
+  and guest emit events for child IDs such as `browser:surface:tab:1`.
+- Root cause:
+  A host event adapter still accepts only exact parent-node matches. Activation
+  succeeds for the child guest, but its returned `active` event is discarded,
+  leaving the renderer runtime at its default cold lifecycle. The address bar
+  can still show the configured default URL, which makes this look like a
+  webview loading failure rather than an event-scope mismatch.
+- Fix:
+  Use the Browser Node package-owned surface-event predicate. It accepts the
+  exact parent ID and the parent's `:tab:*` children while rejecting sibling
+  Browser surfaces. Do not restore a second manual activation path or duplicate
+  the child-ID convention in the host.
+- Validation:
+  Cover parent and child state events, sibling rejection, and `open-url` events
+  whose ownership comes from `sourceNodeId`. Then run Browser Node tests and the
+  host's focused Browser lifecycle test.
+- References:
+  [eventScope.ts](../../../packages/browser/workbench-node/src/core/eventScope.ts)
+  [standaloneAgentToolWorkbench.ts](../../../apps/desktop/src/renderer/src/features/workspace-workbench/ui/standaloneAgentToolWorkbench.ts)
+  [browser-node-package.md](../../architecture/browser-node-package.md)
+
+### Inline custom-header menu is clipped to the Workbench title bar
+
+- Symptom:
+  A shared header menu works in a standalone surface but appears empty, only a
+  few pixels tall, or completely hidden when the same header renders inside an
+  OS-mode Workbench window. Dialogs opened from the menu may be unreachable
+  because the menu item that opens them is clipped.
+- Quick checks:
+  Confirm both shells render the same menu component, then inspect ancestor
+  boxes between the trigger and the Workbench node body. In particular, check
+  `.workbench-window__header--custom`, whose default `overflow: hidden` keeps
+  ordinary custom-header content inside the title-bar row.
+- Root cause:
+  An inline menu extends below the custom-header row, but the Workbench row
+  clips descendants before stacking order can place the menu over the node
+  body. Raising the menu z-index cannot escape ancestor overflow clipping.
+- Fix:
+  Keep the shared inline menu and mark only headers that own intentional inline
+  overlays with `data-workbench-custom-header-overflow="visible"`. Workbench
+  uses that semantic opt-in to allow overflow on the custom-header row; do not
+  copy the menu into the OS shell or globally disable clipping for every custom
+  header. The outer `.workbench-window` remains the window-bounds clip.
+- Validation:
+  Run the Browser Node and Workbench Surface package tests, typecheck the
+  affected packages, and build the desktop renderer. In both Agent-only and OS
+  modes, open the Browser three-dot menu and verify the same nested actions and
+  Browser settings dialog are usable above the guest webview.
+- References:
+  [BrowserNodeChrome.tsx](../../../packages/browser/workbench-node/src/react/BrowserNodeChrome.tsx)
+  [workbench.css](../../../packages/workbench/surface/src/styles/workbench.css)
+  [browser-node-package.md](../../architecture/browser-node-package.md)
+
 ### Standalone Agent dev window stays black during cold startup
 
 - Symptom:

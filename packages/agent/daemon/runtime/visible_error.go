@@ -237,6 +237,10 @@ func visibleFailureCode(detail string) string {
 		// and none of the other markers here, so it must be matched explicitly or it
 		// falls through to a generic "request failed".
 		strings.Contains(normalized, "usage limit") ||
+		// cursor-agent plan/payment gates use fixed copy without "quota"/"usage limit"
+		// markers; keep them in the quota bucket so residual failure cards stay calm.
+		strings.Contains(normalized, "upgrade your plan to continue") ||
+		strings.Contains(normalized, "add a payment method to continue") ||
 		strings.Contains(normalized, "resource_exhausted") ||
 		strings.Contains(normalized, "too many requests") ||
 		strings.Contains(normalized, " 429"):

@@ -37,6 +37,47 @@ Approval gates, plan exits, parent/child event attribution, background agents, a
   [.github/workflows/external-pr-review-gate-review-signal.yml](../../../.github/workflows/external-pr-review-gate-review-signal.yml)
   [.github/workflows/external-pr-review-gate-review-refresh.yml](../../../.github/workflows/external-pr-review-gate-review-refresh.yml)
 
+### Cursor approval card shows only title and options, no command/path detail
+
+- Symptom:
+  A Cursor provider approval prompt renders its title (for example "Cursor
+  requests your authorization") and the allow/reject options, but the detail
+  row that should show the command, file path, or query is empty — unlike the
+  same prompt for Codex or Claude Code.
+- Quick checks:
+  Speak ACP directly to a local `cursor-agent acp` process (initialize,
+  `session/new`, `session/set_mode` to `agent`, then a prompt that requires a
+  shell/file tool) and inspect the raw `session/request_permission` payload.
+  Cursor's permission `toolCall` repeats only `toolCallId`/`title`/`kind`/
+  `status`/`content` for a call that already streamed via an earlier
+  `session/update` `tool_call`; it does not repeat `rawInput`. Compare against
+  the preceding `tool_call` notification for the same `toolCallId`, which does
+  carry `rawInput.command`.
+- Root cause:
+  `normalizedApprovalDisplayInput` only read the permission request's own
+  inline `toolCall`. Codex and Claude Code repeat enough of the original input
+  on their approval-equivalent requests for that to work, but Cursor's ACP
+  implementation does not, so the approval projection had no command/path/
+  query fields to show and the card fell back to title-only.
+- Fix:
+  Track per-turn tool-call state in `acpTurnNormalizer` (already recorded from
+  `tool_call`/`tool_call_update`) and expose it by raw `toolCallId` via
+  `KnownToolCallInput`. `standardACPPermissionRequested` now passes the
+  normalizer through, and `normalizedApprovalDisplayInput` fills any field
+  (`command`, `file_path`, `query`, ...) missing from the permission request's
+  own `toolCall` from that known prior input before giving up. Other ACP-style
+  interactive paths (Codex app-server, Claude SDK) keep passing `nil` for this
+  fallback since they do not need it.
+- Validation:
+  `cd packages/agent/daemon && go test ./runtime/... -run
+TestCursorPermissionRequestFallsBackToKnownToolCallInput`. For a live check,
+  run the same direct ACP probe from Quick checks with a tier-"agent" session
+  and confirm the emitted approval payload's `input` carries the command.
+- References:
+  [acp_turn_normalizer.go](../../../packages/agent/daemon/runtime/acp_turn_normalizer.go)
+  [interactive_projection.go](../../../packages/agent/daemon/runtime/interactive_projection.go)
+  [standard_acp_events.go](../../../packages/agent/daemon/runtime/standard_acp_events.go)
+
 ### Agent approval controls submit stale permission requests after restart
 
 - Symptom:

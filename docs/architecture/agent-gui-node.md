@@ -1658,6 +1658,10 @@ User-visible rules:
   change must reload options with the active session settings. ACP owns option
   values and ordering; the relevant locale catalog owns user-visible labels and
   descriptions, including when live runtime options are the fresher source.
+  When a provider does not advertise configurable reasoning (for example
+  Cursor, which embeds effort inside parameterized model ids), the composer
+  must clear draft/default `reasoningEffort` for that target and must not
+  render a stale effort label next to the model trigger.
 - Shift+Tab plan mode is a provider capability, not a frontend allowlist. The
   daemon's typed pre-session composer capabilities and typed live session
   capabilities must both advertise `planMode` before AgentGUI enables the
@@ -1820,17 +1824,17 @@ User-visible rules:
 
 ### Loading State Taxonomy
 
-| Visible state                  | Primary owner                    | Starts when                                                    | Clears when                                                                    |
-| ------------------------------ | -------------------------------- | -------------------------------------------------------------- | ------------------------------------------------------------------------------ |
-| Rail skeleton or empty loading | conversation list query/store    | runtime list load starts                                       | list load resolves or errors                                                   |
-| Selected detail skeleton       | session view store/controller    | active session messages load starts                            | `listSessionMessages` resolves or active session changes                       |
-| Home first-create busy         | controller local create state    | home `startConversation` begins                                | new-session activation succeeds, fails, or is abandoned as stale               |
-| "Connecting conversation"      | existing-session activation      | existing session open/retry calls `activate`                   | activation succeeds, fails, or is abandoned as stale                           |
-| Transcript processing row      | transcript/session projection    | runtime reports working/turn phase                             | runtime reports ready/completed/failed or newer message projection replaces it |
-| Send button spinner            | controller local submit state    | `executePrompt` or approval submit begins                      | command promise settles                                                        |
-| Composer settings loading      | composer options/settings model  | provider options load starts or settings source missing        | options/settings resolve or fallback state is applied                          |
-| Provider setup notice          | desktop provider status adapter  | captured provider status says the active provider is not ready | captured status says provider is ready or user fixes setup                     |
-| Approval response spinner      | controller approval submit state | prompt/approval option submit begins                           | runtime command settles and prompt projection updates                          |
+| Visible state                  | Primary owner                    | Starts when                                                                            | Clears when                                                                    |
+| ------------------------------ | -------------------------------- | -------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------ |
+| Rail skeleton or empty loading | conversation list query/store    | runtime list load starts                                                               | list load resolves or errors                                                   |
+| Selected detail skeleton       | session view store/controller    | active session messages load starts                                                    | `listSessionMessages` resolves or active session changes                       |
+| Home first-create busy         | controller local create state    | home `startConversation` begins                                                        | new-session activation succeeds, fails, or is abandoned as stale               |
+| "Connecting conversation"      | existing-session activation      | existing session open/retry calls `activate`                                           | activation succeeds, fails, or is abandoned as stale                           |
+| Transcript processing row      | transcript/session projection    | runtime reports working/turn phase                                                     | runtime reports ready/completed/failed or newer message projection replaces it |
+| Send button spinner            | controller local submit state    | `executePrompt` or approval submit begins                                              | command promise settles                                                        |
+| Composer settings loading      | composer options/settings model  | provider options load starts or settings source missing                                | options/settings resolve or fallback state is applied                          |
+| Provider setup notice          | desktop provider status adapter  | captured provider status says the active provider is not ready after a settled recheck | captured status says provider is ready or user fixes setup                     |
+| Approval response spinner      | controller approval submit state | prompt/approval option submit begins                                                   | runtime command settles and prompt projection updates                          |
 
 When a loading state is wrong, first identify which row in this table is
 visible. Then debug that owner and clearing condition. Avoid moving a spinner
@@ -1839,6 +1843,11 @@ Desktop restore must not project "not ready" from an uncaptured provider-status
 snapshot. Until the first captured provider status exists, pass unknown provider
 readiness into AgentGUI so startup does not flash a false "configure provider"
 notice before local Codex or other provider detection returns.
+When the active Agent GUI provider already has a cached not-ready status (for
+example a background catalog probe that raced ahead of Cursor auth), desktop
+must refresh that provider once and keep readiness unknown while the recheck is
+pending. Otherwise switching into the provider flashes the setup notice even
+though the composer can already send after auto-connect settles.
 
 ### Error, Retry, And Recovery
 

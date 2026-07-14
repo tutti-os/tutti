@@ -217,6 +217,23 @@ describe("AgentVisibleErrorMessage", () => {
     });
   });
 
+  it("shows Cursor plan-limit cards as a calm warning status, not a danger alert", () => {
+    const { getByText, getByRole, queryByText } = renderBlock(
+      buildRow({
+        code: "quota_or_rate_limit",
+        phase: "turn",
+        provider: "cursor",
+        detail: "Upgrade your plan to continue",
+        retryable: false
+      })
+    );
+
+    expect(getByText("Upgrade your plan to continue")).toBeTruthy();
+    expect(getByRole("status")).toBeTruthy();
+    expect(queryByText("Open setup")).toBeNull();
+    expect(queryByText("Sign in")).toBeNull();
+  });
+
   it("recovers a failed plain auth message into the wizard card (Claude 401)", () => {
     const { getByText, getAllByRole } = renderBlock(
       buildFailedTextRow(

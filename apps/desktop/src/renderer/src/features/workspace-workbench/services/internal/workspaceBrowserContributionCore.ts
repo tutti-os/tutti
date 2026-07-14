@@ -16,6 +16,10 @@ export function createWorkspaceBrowserNodeExternalStateSource(input: {
     getSnapshot(): Record<string, BrowserNodeRuntimeState | undefined>;
     subscribe(listener: () => void): () => void;
   };
+  tabsStore: {
+    getActiveNodeId(surfaceNodeId: string): string;
+    subscribe(listener: () => void): () => void;
+  };
 }): WorkbenchHostExternalStateSource<
   WorkspaceBrowserNodeExternalState | null,
   null
@@ -27,7 +31,7 @@ export function createWorkspaceBrowserNodeExternalStateSource(input: {
       }
       return readWorkspaceBrowserRuntimeNodeState(
         input.runtimeStore.getSnapshot(),
-        request.nodeId
+        input.tabsStore.getActiveNodeId(request.nodeId)
       );
     },
     getSnapshotNodeState(request) {
@@ -36,14 +40,19 @@ export function createWorkspaceBrowserNodeExternalStateSource(input: {
       }
       return readWorkspaceBrowserRuntimeNodeState(
         input.runtimeStore.getSnapshot(),
-        request.nodeId
+        input.tabsStore.getActiveNodeId(request.nodeId)
       );
     },
     getWorkspaceState() {
       return null;
     },
     subscribe(listener) {
-      return input.runtimeStore.subscribe(listener);
+      const unsubscribeRuntime = input.runtimeStore.subscribe(listener);
+      const unsubscribeTabs = input.tabsStore.subscribe(listener);
+      return () => {
+        unsubscribeRuntime();
+        unsubscribeTabs();
+      };
     }
   };
 }

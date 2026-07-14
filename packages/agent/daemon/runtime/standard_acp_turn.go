@@ -138,6 +138,29 @@ execLoop:
 					"error": err.Error(),
 				}))
 				emitEvents(terminalEvents)
+			} else if planLimitMessage, ok := acpProviderPlanLimitMessage(err); ok {
+				// Match cursor-agent's soft plan-gate path: show the provider
+				// copy as a warning notice and settle the turn successfully so
+				// the next send is not a scary red turn-failed card.
+				if notice, ok := acpPlanLimitNoticeEvent(session, turnID, planLimitMessage); ok {
+					emitEvents([]activityshared.Event{notice})
+				}
+				terminalEvents := normalizer.FinishCompleted(session, turnID)
+				terminalEvents = append(terminalEvents, newTurnActivityEvent(session, EventTurnCompleted, turnID, SessionStatusReady, "", "", map[string]any{
+					"stopReason": "end_turn",
+					"planLimit":  true,
+				}))
+				emitEvents(terminalEvents)
+				slog.Info("agent session ACP exec settled plan-limit without failure card",
+					"event", "agent_session.acp.exec.plan_limit",
+					"provider", a.config.provider,
+					"adapter", a.config.adapterName,
+					"room_id", session.RoomID,
+					"agent_session_id", session.AgentSessionID,
+					"provider_session_id", session.ProviderSessionID,
+					"turn_id", turnID,
+					"plan_limit_message", planLimitMessage,
+				)
 			} else {
 				terminalEvents := normalizer.FinishFailed(session, turnID)
 				terminalEvents = append(terminalEvents, newTurnActivityEvent(session, EventTurnFailed, turnID, SessionStatusFailed, "", "", map[string]any{

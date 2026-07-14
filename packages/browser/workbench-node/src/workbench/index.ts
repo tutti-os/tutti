@@ -11,10 +11,8 @@ import type {
   WorkbenchHostNodeDefinition
 } from "@tutti-os/workbench-surface";
 import type { BrowserNodeFeature } from "../core/feature.ts";
-import {
-  BrowserNode,
-  BrowserNodeWorkbenchHeader
-} from "../react/BrowserNode.tsx";
+import { BrowserNode } from "../react/BrowserNode.tsx";
+import { BrowserNodeWorkbenchHeader } from "../react/BrowserNodeChrome.tsx";
 
 export interface BrowserNodeOpenUrlActivationPayload {
   title?: string;
@@ -107,7 +105,8 @@ export function createBrowserNodeDefinition({
               })
           : undefined,
         showHeader: false,
-        syncDefaultUrl: true
+        syncDefaultUrl: true,
+        tabs: true
       }),
     renderHeader: (headerContext) =>
       createElement(BrowserNodeWorkbenchHeader, {
@@ -139,7 +138,9 @@ export function createBrowserNodeDefinition({
       defaultOpen: false,
       minimizedDock: {
         capturePreview: ({ node }) =>
-          feature.hostApi.capturePreview?.({ nodeId: node.id }) ?? null,
+          feature.hostApi.capturePreview?.({
+            nodeId: feature.tabsStore.getActiveNodeId(node.id)
+          }) ?? null,
         kind: "snapshot"
       },
       minimizable: true,
@@ -153,7 +154,9 @@ export function createBrowserDockEntry(
 ): WorkbenchHostDockEntry {
   return {
     capturePopupItemPreview: ({ node }) =>
-      input.feature.hostApi.capturePreview?.({ nodeId: node.id }) ?? null,
+      input.feature.hostApi.capturePreview?.({
+        nodeId: input.feature.tabsStore.getActiveNodeId(node.id)
+      }) ?? null,
     icon: input.dockIcon ?? null,
     id: input.id ?? defaultBrowserNodeTypeId,
     label: input.feature.i18n.t("dockLabel"),
@@ -162,7 +165,9 @@ export function createBrowserDockEntry(
       node.data.typeId === (input.typeId ?? defaultBrowserNodeTypeId),
     order: input.order,
     resolvePopupItem: ({ node }) => {
-      const runtime = input.feature.runtimeStore.getNodeState(node.id);
+      const runtime = input.feature.runtimeStore.getNodeState(
+        input.feature.tabsStore.getActiveNodeId(node.id)
+      );
       const title = runtime.title?.trim() || node.title;
       const url = runtime.url?.trim() || node.data.instanceId;
       return {

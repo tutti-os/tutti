@@ -99,7 +99,7 @@ apps/desktop/build/tuttid/
 
 For macOS packages, the bundled `tuttid` daemon and `tutti` CLI must be universal binaries. Build both `darwin/arm64` and `darwin/amd64`, merge them with `lipo`, and verify the resulting binary contains `arm64` and `x86_64` slices before packaging.
 
-Vendored Node runtimes that bring their own Mach-O binaries, such as `claude-sdk-sidecar`, must not inherit the build runner architecture through npm optional dependency selection. macOS packaging must vendor and verify both Claude native packages before `electron-builder` runs. Keep only the matching package in x64 and arm64 artifacts, keep both in universal merge inputs and artifacts, and cover their paths with `build.mac.x64ArchFiles` so `@electron/universal` can skip merging duplicate resources.
+Vendored Node bundles (`claude-sdk-sidecar`, `browser-mcp`) must stay free of platform-specific Mach-O binaries so every architecture ships identical resources. The Claude native binary (`@anthropic-ai/claude-agent-sdk-<platform>`, ~230MB per platform) is deliberately excluded from the bundle: `vendor-claude-sdk-sidecar.mjs` installs with `--omit=optional`, and tuttid provisions the binary at runtime from the CDN published by `publish-claude-code-binaries.yml` (npm mirrors as fallback; see `services/tuttid/service/agentstatus/claude_binary.go`). When the pinned `@anthropic-ai/claude-agent-sdk` version changes, that workflow must publish the matching binaries before the release ships.
 
 `electron-builder` then packages that daemon into the desktop app as:
 

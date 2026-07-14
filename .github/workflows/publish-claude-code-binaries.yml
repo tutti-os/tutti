@@ -1,0 +1,152 @@
+name: Publish Claude Code Binaries
+
+# Publishes zstd-compressed Claude Code native binaries to the app-runtime
+# CDN bucket. The desktop bundle no longer vendors the ~230MB-per-platform
+# @anthropic-ai/claude-agent-sdk-<platform> packages; tuttid downloads them at
+# runtime from <cdn>/claude-code/<claudeVersion>/claude-<platform>.zst (see
+# services/tuttid/service/agentstatus/claude_binary.go). Runs automatically
+# whenever the sidecar bumps its pinned SDK version; uploads are immutable and
+# skipped when the version is already published, so re-runs are safe.
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - packages/agent/claude-sdk-sidecar/package.json
+  workflow_dispatch:
+    inputs:
+      aws_region:
+        description: AWS region. Defaults to runtime vars, then release vars.
+        required: false
+        type: string
+      aws_role_arn:
+        description: AWS role ARN. Defaults to runtime vars, then release vars.
+        required: false
+        type: string
+      s3_bucket:
+        description: S3 bucket. Defaults to runtime vars, then release vars.
+        required: false
+        type: string
+      s3_prefix:
+        description: S3 prefix. Defaults to claude-code.
+        required: false
+        type: string
+
+permissions:
+  contents: read
+  id-token: write
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  publish:
+    name: Stage and publish binaries
+    runs-on: ubuntu-latest
+    env:
+      AWS_REGION_VALUE: ${{ inputs.aws_region || vars.TUTTI_APP_RUNTIME_AWS_REGION || vars.TUTTI_APP_RELEASES_AWS_REGION }}
+      AWS_ROLE_ARN_VALUE: ${{ inputs.aws_role_arn || vars.TUTTI_APP_RUNTIME_AWS_ROLE_ARN || vars.TUTTI_APP_RELEASES_AWS_ROLE_ARN }}
+      S3_BUCKET_VALUE: ${{ inputs.s3_bucket || vars.TUTTI_APP_RUNTIME_S3_BUCKET || vars.TUTTI_APP_RELEASES_S3_BUCKET }}
+      S3_PREFIX_VALUE: ${{ inputs.s3_prefix || 'claude-code' }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version-file: .node-version
+
+      - name: Validate AWS configuration
+        shell: bash
+        run: |
+          missing=()
+          for name in AWS_REGION_VALUE AWS_ROLE_ARN_VALUE S3_BUCKET_VALUE; do
+            if [ -z "${!name:-}" ]; then
+              missing+=("${name}")
+            fi
+          done
+          if [ "${#missing[@]}" -gt 0 ]; then
+            printf 'Missing required AWS configuration: %s\n' "${missing[*]}" >&2
+            exit 1
+          fi
+
+      - name: Stage claude binaries
+        id: stage
+        shell: bash
+        run: |
+          node tools/scripts/stage-claude-code-binaries.mjs \
+            --out "${GITHUB_WORKSPACE}/dist/claude-code" | tee stage-summary.json
+          claude_version="$(node -e "process.stdout.write(JSON.parse(require('fs').readFileSync('stage-summary.json','utf8')).claudeVersion)")"
+          # The version becomes an S3 key segment; reject anything that is not
+          # a plain semver so a malformed manifest cannot steer paths.
+          if ! [[ "${claude_version}" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "staged claude version is not a plain semver: ${claude_version}" >&2
+            exit 1
+          fi
+          echo "claude_version=${claude_version}" >> "$GITHUB_OUTPUT"
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-region: ${{ env.AWS_REGION_VALUE }}
+          role-to-assume: ${{ env.AWS_ROLE_ARN_VALUE }}
+
+      - name: Upload binaries to S3
+        shell: bash
+        env:
+          CLAUDE_VERSION: ${{ steps.stage.outputs.claude_version }}
+        run: |
+          prefix="${S3_PREFIX_VALUE%/}"
+          version_dir="dist/claude-code/${CLAUDE_VERSION}"
+          uploaded=0
+          skipped=0
+          while IFS= read -r artifact; do
+            relative_path="${artifact#dist/claude-code/}"
+            key="${prefix}/${relative_path}"
+            local_size="$(wc -c < "${artifact}" | tr -d ' ')"
+            local_sha256="$(sha256sum "${artifact}" | awk '{print $1}')"
+            # Keys are immutable: skip only when the object exists AND matches
+            # the staged bytes — the sha256 stored as object metadata at upload
+            # time when available, the size otherwise (e.g. a manually mirrored
+            # object). A mismatch means a corrupted or foreign publish and must
+            # stop the job. Any head-object failure other than a plain 404
+            # (auth, throttling, outage) must also stop the job instead of
+            # being treated as "missing".
+            if head_json="$(aws s3api head-object --bucket "${S3_BUCKET_VALUE}" --key "${key}" \
+                --output json 2>head-error.txt)"; then
+              remote_size="$(node -e "process.stdout.write(String(JSON.parse(process.argv[1]).ContentLength))" "${head_json}")"
+              remote_sha256="$(node -e "process.stdout.write(JSON.parse(process.argv[1]).Metadata?.['claude-sha256'] ?? '')" "${head_json}")"
+              # The size check is unconditional: the sha256 metadata is
+              # caller-supplied at upload time, not derived from the stored
+              # body, so matching metadata alone cannot vouch for the bytes.
+              if [ "${remote_size}" != "${local_size}" ]; then
+                echo "immutable key already exists with different content: s3://${S3_BUCKET_VALUE}/${key} (remote ${remote_size} bytes, staged ${local_size} bytes)" >&2
+                exit 1
+              fi
+              if [ -n "${remote_sha256}" ] && [ "${remote_sha256}" != "${local_sha256}" ]; then
+                echo "immutable key already exists with different content: s3://${S3_BUCKET_VALUE}/${key} (remote sha256 ${remote_sha256}, staged ${local_sha256})" >&2
+                exit 1
+              fi
+              echo "exists with matching content, skipping: s3://${S3_BUCKET_VALUE}/${key}"
+              skipped=$((skipped + 1))
+              continue
+            fi
+            if ! grep -qiE 'Not Found|NoSuchKey|404' head-error.txt; then
+              echo "head-object failed for s3://${S3_BUCKET_VALUE}/${key}:" >&2
+              cat head-error.txt >&2
+              exit 1
+            fi
+            content_type="application/zstd"
+            case "${artifact}" in
+              *.json) content_type="application/json" ;;
+            esac
+            aws s3 cp "${artifact}" "s3://${S3_BUCKET_VALUE}/${key}" \
+              --content-type "${content_type}" \
+              --cache-control "public, max-age=31536000, immutable" \
+              --metadata "claude-sha256=${local_sha256}"
+            uploaded=$((uploaded + 1))
+          done < <(find "${version_dir}" -type f | sort)
+          echo "uploaded=${uploaded} skipped=${skipped} version=${CLAUDE_VERSION}"

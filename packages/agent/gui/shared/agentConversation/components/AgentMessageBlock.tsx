@@ -6,9 +6,7 @@ import {
   type JSX,
   type ReactNode
 } from "react";
-import { ChevronRight } from "lucide-react";
 import { CheckIcon, CopyIcon } from "@tutti-os/ui-system/icons";
-import { Button } from "../../../app/renderer/components/ui/button";
 import { formatAgentMessageTimestamp } from "../../../app/renderer/shell/utils/format";
 import { AgentPlanCard } from "./AgentPlanCard";
 import { translate } from "../../../i18n/index";
@@ -20,18 +18,16 @@ import {
 } from "../../AgentMessageMarkdown";
 import { AgentRichTextReadonly } from "../../AgentRichTextReadonly";
 import { resolveAgentConversationLinkAction } from "../actions/agentConversationLinkActions";
-import { workspaceAgentProviderLabel } from "../../workspaceAgentProviderLabel";
-import { openAgentEnvPanel } from "../../agentEnv/agentEnvPanelStore";
-import {
-  classifyFailedAgentMessage,
-  resolveAgentErrorPresentation
-} from "../../agentEnv/agentErrorPresentation";
 import type { AgentGUIProviderSkillOption } from "../../../agent-gui/agentGuiNode/model/agentGuiNodeTypes";
 import type {
   AgentMessageContentVM,
   AgentMessageRowVM
 } from "../contracts/agentMessageRowVM";
-import { CollapsibleReveal } from "./CollapsibleReveal";
+import { AgentMessageDetailsDisclosure } from "./AgentMessageDetailsDisclosure";
+import {
+  AgentVisibleErrorMessage,
+  recoverVisibleErrorFromFailedMessage
+} from "./AgentVisibleErrorMessage";
 import { AgentThinkingDisclosure } from "./AgentThinkingDisclosure";
 import { RawTimelineJsonDisclosure } from "./RawTimelineJsonDisclosure";
 import styles from "../../../agent-gui/agentGuiNode/AgentGUIConversation.styles";
@@ -604,192 +600,4 @@ function systemNoticeTitle(message: AgentMessageContentVM): string {
         translate("agentHost.agentGui.systemNoticeDefault")
       );
   }
-}
-
-// Builds a synthetic visibleError from a plain failed message whose text is a
-// recognizable env failure, so it renders as the structured remediation card.
-function recoverVisibleErrorFromFailedMessage(
-  message: AgentMessageContentVM,
-  provider: string | null | undefined
-): AgentMessageContentVM | null {
-  const code = classifyFailedAgentMessage(message.body);
-  if (!code) {
-    return null;
-  }
-  return {
-    ...message,
-    visibleError: {
-      code,
-      phase: null,
-      provider: provider ?? null,
-      detail: message.body,
-      retryable: null
-    }
-  };
-}
-
-function AgentVisibleErrorMessage({
-  message,
-  onExternalLink
-}: {
-  message: AgentMessageContentVM;
-  onAuthLogin?: (provider?: string | null) => void;
-  onExternalLink?: (href: string) => void;
-}): JSX.Element {
-  "use memo";
-  const error = message.visibleError;
-  const detail = error?.detail?.trim() ?? "";
-
-  // One card for every run-failure code. The presentation (keyed on the codes
-  // the daemon actually emits — see agentErrorPresentation) supplies a granular,
-  // provider-aware message and, when the failure is something the env wizard can
-  // detect or repair, a single deep-linking call-to-action. Transient/server-side
-  // failures resolve to no focus, so no (misleading) wizard button is shown.
-  const providerLabel = workspaceAgentProviderLabel(
-    error?.provider ?? "unknown"
-  );
-  const presentation = resolveAgentErrorPresentation(error?.code);
-  const headline = presentation?.messageKey
-    ? translate(presentation.messageKey, { provider: providerLabel })
-    : visibleErrorTitle(message);
-  const focus = presentation?.focus ?? null;
-  const actionKey = presentation?.actionKey ?? null;
-  const externalUrl = presentation?.externalUrl ?? null;
-  const hint = visibleErrorHint(message);
-  return (
-    <section
-      role="alert"
-      className="box-border w-full min-w-0 rounded-[8px] border border-[var(--on-danger-hover)] bg-[var(--on-danger)] p-3 text-[13px] leading-5 text-[var(--state-danger)]"
-    >
-      <div className="flex min-w-0 items-start gap-3">
-        <div className="min-w-0 flex-1">
-          <div className="font-medium text-[var(--text-primary)]">
-            {headline}
-          </div>
-          {hint ? (
-            <div className="mt-1 text-[11px] text-[var(--text-secondary)]">
-              {hint}
-            </div>
-          ) : null}
-          {detail ? (
-            <AgentMessageDetailsDisclosure
-              detail={detail}
-              className="mt-1"
-              label={translate("agentHost.agentGui.visibleErrorRawDetails")}
-            />
-          ) : null}
-        </div>
-        {actionKey && (focus || (externalUrl && onExternalLink)) ? (
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            className="mt-0.5 shrink-0"
-            onClick={() => {
-              if (externalUrl) {
-                onExternalLink?.(externalUrl);
-                return;
-              }
-              if (focus) {
-                openAgentEnvPanel({
-                  provider: error?.provider ?? null,
-                  focus
-                });
-              }
-            }}
-          >
-            {translate(actionKey)}
-          </Button>
-        ) : null}
-      </div>
-    </section>
-  );
-}
-
-function AgentMessageDetailsDisclosure({
-  detail,
-  className = "",
-  label
-}: {
-  detail: string;
-  className?: string;
-  label?: string;
-}): JSX.Element {
-  "use memo";
-  const [expanded, setExpanded] = useState(false);
-  return (
-    <div className={`${className} text-[11px] text-[var(--state-danger)]`}>
-      <button
-        type="button"
-        className="inline-flex w-fit max-w-full min-w-0 cursor-pointer select-none items-center gap-1.5 border-0 bg-transparent p-0 text-left font-[inherit] text-[inherit] transition-colors duration-150 hover:text-[var(--state-danger-hover)]"
-        aria-expanded={expanded}
-        onClick={() => setExpanded((value) => !value)}
-      >
-        {label ?? translate("agentHost.agentGui.visibleErrorDetails")}
-        <ChevronRight
-          size={12}
-          strokeWidth={2.2}
-          aria-hidden="true"
-          className="shrink-0 text-[var(--state-danger)]"
-          style={{
-            transform: expanded ? "rotate(90deg)" : "rotate(0deg)",
-            transformOrigin: "center",
-            transition: "transform 200ms cubic-bezier(0.22, 1.18, 0.36, 1)",
-            willChange: "transform"
-          }}
-        />
-      </button>
-      <CollapsibleReveal expanded={expanded} preMountOnIdle>
-        <pre className="mt-2 max-h-[220px] overflow-auto whitespace-pre-wrap break-words rounded-[6px] bg-[var(--on-danger)] px-3 py-2 font-[var(--tsh-font-mono)] text-[11px] leading-5 text-[var(--state-danger)]">
-          {detail}
-        </pre>
-      </CollapsibleReveal>
-    </div>
-  );
-}
-
-function visibleErrorTitle(message: AgentMessageContentVM): string {
-  const error = message.visibleError;
-  const provider = workspaceAgentProviderLabel(error?.provider ?? "unknown");
-  switch (error?.code) {
-    case "auth_required":
-      return translate("agentHost.agentGui.visibleErrorAuthRequired", {
-        provider
-      });
-    case "request_timed_out":
-      return translate("agentHost.agentGui.visibleErrorRequestTimedOut", {
-        provider
-      });
-    case "runtime_unavailable":
-      return translate("agentHost.agentGui.visibleErrorRuntimeUnavailable", {
-        provider
-      });
-    case "quota_or_rate_limit":
-      return translate("agentHost.agentGui.visibleErrorQuotaOrRateLimit", {
-        provider
-      });
-    default:
-      if (error?.phase === "start") {
-        return translate("agentHost.agentGui.visibleErrorStartFailed", {
-          provider
-        });
-      }
-      return (
-        message.body ||
-        translate("agentHost.agentGui.visibleErrorRequestFailed", { provider })
-      );
-  }
-}
-
-function visibleErrorHint(message: AgentMessageContentVM): string | null {
-  const error = message.visibleError;
-  if (error?.code !== "auth_required") {
-    return null;
-  }
-  return translate(
-    "agentHost.agentGui.visibleErrorAuthRequiredLocalAgentHint",
-    {
-      provider: workspaceAgentProviderLabel(error.provider ?? "unknown")
-    }
-  );
 }

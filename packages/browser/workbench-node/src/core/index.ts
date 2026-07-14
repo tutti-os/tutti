@@ -3,9 +3,25 @@ export {
   type BrowserNodeFeature
 } from "./feature.ts";
 export {
+  getBrowserNodeEventNodeId,
+  isBrowserNodeSurfaceEvent,
+  isBrowserNodeSurfaceNodeId
+} from "./eventScope.ts";
+export {
   createBrowserNodeRuntimeStore,
   type BrowserNodeRuntimeStore
 } from "./runtimeStore.ts";
+export {
+  createBrowserNodeTabsStore,
+  type BrowserNodeTab,
+  type BrowserNodeTabsState,
+  type BrowserNodeTabsStore
+} from "./tabsStore.ts";
+export {
+  closeBrowserNodeTab,
+  closeBrowserNodeTabSurface,
+  retainBrowserNodeTabSurface
+} from "./tabsLifecycle.ts";
 export {
   normalizeBrowserComparableUrl,
   resolveBrowserAddressInput,

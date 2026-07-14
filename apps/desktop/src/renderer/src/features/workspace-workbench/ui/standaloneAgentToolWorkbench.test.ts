@@ -380,9 +380,13 @@ test("standalone Agent toolbar exposes task management in the unified panel", ()
     standaloneAgentIssueManagerToolPanelSource,
     /candidate\.id === "workspace-issue-manager"/
   );
+  assert.doesNotMatch(
+    standaloneAgentIssueManagerToolPanelSource,
+    /IssueManagerEmbeddedToolbar/
+  );
   assert.match(
     standaloneAgentIssueManagerToolPanelSource,
-    /<IssueManagerEmbeddedToolbar[\s\S]*?resolved\.definition\.renderBody\(context\)/
+    /\[issueManagerTopicSelectorPlacementDataKey\]: "sidebar"[\s\S]*?resolved\.definition\.renderBody\(context\)/
   );
   assert.match(
     standaloneAgentIssueManagerToolPanelSource,
@@ -541,13 +545,14 @@ test("standalone Agent browser tool uses the BrowserNode event lifecycle for its
     isLoading: false,
     isOccluded: false,
     lifecycle: "active",
-    nodeId: "browser:standalone-agent-tool:one",
+    nodeId: "browser:standalone-agent-tool:one:tab:1",
     title: "Tutti",
     type: "state",
     url: "https://tutti.app/"
   });
   assert.equal(
-    feature.runtimeStore.getNodeState("browser:standalone-agent-tool:one").url,
+    feature.runtimeStore.getNodeState("browser:standalone-agent-tool:one:tab:1")
+      .url,
     "https://tutti.app/"
   );
   assert.equal(

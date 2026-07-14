@@ -309,7 +309,7 @@ func (a *ClaudeCodeSDKAdapter) claudeSDKInteractiveRequested(
 	callID := "approval:" + requestID
 	callType := "approval"
 	status := string(activityshared.TurnPhaseWaitingApproval)
-	input := normalizedApprovalInput(toolCall, options, requestID)
+	input := normalizedApprovalInput(toolCall, options, requestID, nil)
 	eventPayload := map[string]any{
 		"callId":   callID,
 		"callType": "approval",

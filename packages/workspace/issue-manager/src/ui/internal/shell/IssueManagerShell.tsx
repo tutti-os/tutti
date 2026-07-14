@@ -41,6 +41,8 @@ export interface IssueManagerShellProps {
   renderLatestRunStatus?: IssueManagerLatestRunStatusRenderer;
   selectedIssue: IssueManagerIssueSummary | null;
   selectedTask: IssueManagerTaskSummary | null;
+  disableSidebarAutoCollapse?: boolean;
+  topicSelectorPlacement?: "sidebar";
 }
 
 export function IssueManagerShell({
@@ -50,10 +52,13 @@ export function IssueManagerShell({
   onDismissIssueCreate,
   renderLatestRunStatus,
   selectedIssue,
-  selectedTask
+  selectedTask,
+  disableSidebarAutoCollapse = false,
+  topicSelectorPlacement
 }: IssueManagerShellProps): JSX.Element {
   const shellView = useIssueManagerShellView({
     controller,
+    disableSidebarAutoCollapse,
     selectedIssue,
     selectedTask
   });
@@ -245,6 +250,7 @@ export function IssueManagerShell({
         isCollapsed={shellView.sidebar.isCollapsed}
         isNarrowLayout={shellView.isNarrowLayout}
         showStandaloneState={shellView.sidebar.showStandaloneState}
+        showTopicSelector={topicSelectorPlacement === "sidebar"}
         sidebarViewState={shellView.sidebar.viewState}
         statusCounts={shellView.sidebar.statusCounts}
       />

@@ -51,6 +51,33 @@ Business hosts should consume a Browser Node capability, not copy a set of TSH
 or Tutti implementation files. The package owns browser behavior; each host
 only provides product adapters.
 
+The ordinary Browser surface and the Workbench Browser node render the same
+`BrowserNodeChrome` and `BrowserNodeActionsMenu`. The chrome has a shared tab
+strip above a navigation row, so the broad top-row blank area is the window
+drag target while the address bar remains fully interactive below it. The
+Workbench adapter does not recreate either row: it renders the same component
+and opts its custom header into the Browser-owned 76-pixel layout through
+`data-workbench-custom-header-layout="browser-tabs"`.
+
+The menu stays inline so its Electron guest-overlay coordination is identical
+in both shells. The shared Browser header also marks itself with
+`data-workbench-custom-header-overflow="visible"`; Workbench honors that opt-in
+on its otherwise clipping custom-header row, allowing the menu to extend over
+the node body while the outer Workbench window still clips content to the
+window bounds.
+
+Tabbed Browser surfaces keep a feature-owned tab store keyed by the Workbench
+surface node ID. Each tab receives a stable child Browser Node ID and owns its
+own controller, guest webview, navigation history, runtime title, and actions.
+Inactive tab guests remain mounted but hidden so switching tabs does not reload
+their pages. Closing a tab closes and clears only that child guest; closing the
+surface closes all remaining child guests. Snapshot titles, URLs, Dock labels,
+and previews resolve through the active child ID while the Workbench shell
+continues to persist the parent surface ID. Hosts that scope Browser events to
+one surface must use the package-owned surface-event predicate so both the
+parent ID and its `:tab:*` child IDs are accepted without admitting events from
+other Browser surfaces.
+
 ## Package Entry Points
 
 The package uses multiple exports from one package rather than several small
@@ -84,6 +111,8 @@ packages/browser/workbench-node/
 The Browser Node package owns:
 
 - browser node state and lifecycle
+- feature-scoped multi-tab state, active-tab resolution, and child guest
+  cleanup
 - navigation, back, forward, reload, close, and URL normalization
 - page find, printing, zoom, visible-area and full-page screenshot capture,
   fixed device emulation, Cookie import, and browsing-data clearing against the
@@ -96,7 +125,7 @@ The Browser Node package owns:
   actions
 - address bar rendering and generic input resolution
 - session, profile, and incognito partition logic
-- React body and optional header surface
+- React body and shared two-row tab/header surface
 - workbench node definition helpers
 - Electron webview registration and unregistration coordination
 - Electron guest `webContents` state synchronization

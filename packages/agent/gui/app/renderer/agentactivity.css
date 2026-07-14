@@ -7421,8 +7421,21 @@ button.agent-gui-node__conversation-section-toggle:hover
   margin-inline: 4px;
 }
 
+.agent-gui-node__composer[data-layout="dock"] {
+  /* Opaque backdrop for the footer strip: the timeline can slide beneath the
+     dock, and a transparent footer would show message rows behind the
+     toolbar controls. */
+  background: var(--agent-gui-session-flow-background);
+}
+
 .agent-gui-node__composer[data-layout="dock"]
   .agent-gui-node__composer-input-shell {
+  /* Reserve only the collapsed input height (56px, keep in sync with
+     DOCK_COMPOSER_INPUT_MIN_HEIGHT) in the layout flow. A growing draft
+     (long paste, attachments) expands the text box upward over the
+     conversation instead of enlarging the dock and pushing the message
+     stream up. */
+  grid-template-rows: 56px auto;
   gap: 6px;
   padding: 0;
   border: 0;
@@ -7439,6 +7452,7 @@ button.agent-gui-node__conversation-section-toggle:hover
   min-height: 56px;
   max-height: var(--agent-gui-composer-input-max-height, 110px);
   align-items: end;
+  align-self: end;
   overflow: hidden;
   padding: 0 12px;
   border: 1px solid var(--line-2);
@@ -8568,7 +8582,10 @@ html[data-theme="light"] [data-message-center-item-id].agent-gui-edge-glow {
 }
 
 .agent-gui-node__composer[data-layout="dock"] .agent-gui-node__composer-footer {
-  padding: 0 2px;
+  position: relative;
+  margin: 0 -12px -12px;
+  padding: 0 14px 12px;
+  background: var(--agent-gui-session-flow-background);
 }
 
 .agent-gui-node__composer-footer-left,

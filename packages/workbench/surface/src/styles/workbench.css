@@ -192,6 +192,10 @@
     box-shadow 0.16s ease;
 }
 
+.workbench-window:has([data-workbench-custom-header-layout="browser-tabs"]) {
+  --workbench-header-height: 76px;
+}
+
 .workbench-window[data-display-mode="floating"] {
   background: var(--background-panel);
 }
@@ -223,6 +227,12 @@
   overflow: hidden;
   cursor: default;
   user-select: auto;
+}
+
+.workbench-window__header--custom:has(
+  [data-workbench-custom-header-overflow="visible"]
+) {
+  overflow: visible;
 }
 
 .workbench-window__header--custom:has(

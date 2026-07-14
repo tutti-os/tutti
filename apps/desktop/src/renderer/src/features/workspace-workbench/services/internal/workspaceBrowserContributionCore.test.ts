@@ -20,13 +20,16 @@ test("createWorkspaceBrowserNodeExternalStateSource exposes runtime state for wo
     const listenerRef: { current: (() => void) | null } = {
       current: null
     };
+    const tabsListenerRef: { current: (() => void) | null } = {
+      current: null
+    };
     const runtimeSnapshot: Record<string, BrowserNodeRuntimeState | undefined> =
       {
-        "browser:node-1": createBrowserRuntimeState({
+        "browser:node-1:tab:1": createBrowserRuntimeState({
           title: " Example ",
           url: " https://example.com "
         }),
-        "browser:node-2": createBrowserRuntimeState({
+        "browser:node-2:tab:1": createBrowserRuntimeState({
           title: "   ",
           url: "   "
         })
@@ -40,6 +43,17 @@ test("createWorkspaceBrowserNodeExternalStateSource exposes runtime state for wo
           listenerRef.current = nextListener;
           return () => {
             listenerRef.current = null;
+          };
+        }
+      },
+      tabsStore: {
+        getActiveNodeId(surfaceNodeId) {
+          return `${surfaceNodeId}:tab:1`;
+        },
+        subscribe(nextListener) {
+          tabsListenerRef.current = nextListener;
+          return () => {
+            tabsListenerRef.current = null;
           };
         }
       }
@@ -89,7 +103,7 @@ test("createWorkspaceBrowserNodeExternalStateSource exposes runtime state for wo
     );
 
     const dispose = source.subscribe?.(() => {});
-    runtimeSnapshot["browser:node-2"] = createBrowserRuntimeState({
+    runtimeSnapshot["browser:node-2:tab:1"] = createBrowserRuntimeState({
       title: "Tutti",
       url: "https://tutti.example"
     });
@@ -110,6 +124,7 @@ test("createWorkspaceBrowserNodeExternalStateSource exposes runtime state for wo
 
     dispose?.();
     assert.equal(listenerRef.current, null);
+    assert.equal(tabsListenerRef.current, null);
   } finally {
     restoreStorage();
   }

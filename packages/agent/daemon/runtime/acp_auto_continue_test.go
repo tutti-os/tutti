@@ -237,3 +237,49 @@ func TestStandardACPAdapterWithoutOptInDoesNotAutoContinue(t *testing.T) {
 		}
 	}
 }
+
+// Cursor free-plan / payment gates may fail session/prompt with fixed copy.
+// Soft-settle as a warning notice + completed turn so retries are not a red
+// turn-failed card.
+func TestCursorAdapterSoftSettlesPlanLimitPromptError(t *testing.T) {
+	t.Parallel()
+
+	transport := newStandardACPTransport("Cursor Agent", "cursor-session-plan-limit")
+	transport.conn.planLimitPromptError = true
+	adapter := newCursorAdapterWithHostMetadata(transport, LegacyHostMetadata(), nil)
+	session := standardTestSession(ProviderCursor)
+	if _, err := adapter.Start(context.Background(), session); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	session.ProviderSessionID = "cursor-session-plan-limit"
+
+	events, err := adapter.Exec(context.Background(), session, textPrompt("hello"), "", "turn-1", nil, nil)
+	if err != nil {
+		t.Fatalf("Exec: %v", err)
+	}
+
+	var sawCompleted bool
+	var sawFailed bool
+	var noticeTitle string
+	for _, event := range events {
+		switch event.Type {
+		case activityshared.EventTurnCompleted:
+			sawCompleted = true
+			if event.Payload.Metadata["planLimit"] != true {
+				t.Fatalf("completed metadata = %#v, want planLimit true", event.Payload.Metadata)
+			}
+		case activityshared.EventTurnFailed:
+			sawFailed = true
+		case activityshared.EventMessageAppended:
+			if asString(event.Payload.Metadata["kind"]) == "agent_system_notice" {
+				noticeTitle = asString(event.Payload.Metadata["title"])
+			}
+		}
+	}
+	if !sawCompleted || sawFailed {
+		t.Fatalf("turn terminal completed=%v failed=%v, want completed only", sawCompleted, sawFailed)
+	}
+	if noticeTitle != "Upgrade your plan to continue" {
+		t.Fatalf("plan-limit notice title = %q", noticeTitle)
+	}
+}

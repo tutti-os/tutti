@@ -145,7 +145,7 @@ export function registerHostWindowIpc(deps: HostWindowIpcDependencies): void {
     async (event, input) => {
       const ownerWindow = resolveOwnerWindowFromEvent(event);
       await deps.workspaceLaunch.showAgentWindow(
-        normalizeAgentWindowInput(input)
+        normalizeAgentWindowInput(input, ownerWindow?.getBounds() ?? null)
       );
       if (!ownerWindow || ownerWindow.isDestroyed()) {
         return;
@@ -214,7 +214,10 @@ export function registerHostWindowIpc(deps: HostWindowIpcDependencies): void {
   );
 }
 
-function normalizeAgentWindowInput(input: DesktopHostOpenAgentWindowInput) {
+function normalizeAgentWindowInput(
+  input: DesktopHostOpenAgentWindowInput,
+  openerBounds: Electron.Rectangle | null
+) {
   const workspaceID = input.workspaceId.trim();
   if (!workspaceID) {
     throw new Error("workspaceId is required to open an agent window");
@@ -225,6 +228,7 @@ function normalizeAgentWindowInput(input: DesktopHostOpenAgentWindowInput) {
     agentTargetID: input.agentTargetId?.trim() || null,
     autoSubmit: input.autoSubmit === true,
     draftPrompt: input.draftPrompt?.trim() || null,
+    openerBounds,
     providerStatusSnapshot: input.providerStatusSnapshot ?? null,
     provider: input.provider?.trim() || null,
     userProjectPath: input.userProjectPath?.trim() || null,
