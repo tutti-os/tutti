@@ -100,62 +100,6 @@ function normalizeKind(value: string): AgentMentionNodeViewKind {
   return "file";
 }
 
-function normalizeSessionTitle(value: string): string {
-  const trimmed = value.trim();
-  const withoutMentionPrefix = trimmed.replace(/^@+/, "").trim();
-  return withoutMentionPrefix || trimmed;
-}
-
-function parseDottedSessionText(
-  value: string
-): { participant: string; summary: string } | null {
-  const parts = value
-    .split("·")
-    .map((part) => part.trim())
-    .filter(Boolean);
-  if (parts.length < 3) {
-    return null;
-  }
-  return {
-    participant: `${parts[0]} & ${parts[1]}`,
-    summary: normalizeSessionTitle(parts.slice(2).join(" "))
-  };
-}
-
-function sessionPresentation(attrs: Record<string, unknown>): {
-  label: string;
-  summary: string;
-} {
-  const name = attrString(attrs, "name").trim();
-  const initiatorName = attrString(attrs, "initiatorName").trim();
-  const agentName = attrString(attrs, "agentName").trim();
-  const title = normalizeSessionTitle(attrString(attrs, "title") || name);
-  const inputPreview = attrString(attrs, "inputPreview").trim();
-
-  if (initiatorName && agentName) {
-    const dottedTitle = parseDottedSessionText(title);
-    return {
-      // i18n-check-ignore: Dynamic participant display names.
-      label: `${initiatorName} & ${agentName}`,
-      summary:
-        dottedTitle?.summary || (title && title !== name ? title : inputPreview)
-    };
-  }
-
-  const dottedName = parseDottedSessionText(name);
-  if (dottedName) {
-    return {
-      label: dottedName.participant,
-      summary: dottedName.summary
-    };
-  }
-
-  return {
-    label: name,
-    summary: title && title !== name ? title : inputPreview
-  };
-}
-
 function dirnameFromPath(path: string): string {
   const parts = path.split("/").filter(Boolean);
   if (parts.length <= 1) {
@@ -173,17 +117,15 @@ function mentionViewModel(
   const href = attrString(attrs, "href");
 
   if (kind === "session") {
-    const presentation = sessionPresentation(attrs);
-    const primary = `${presentation.label} ${presentation.summary}`.trim();
+    const label = attrString(attrs, "title").trim() || name.trim();
     return {
       ariaLabel:
-        `${t("agentHost.agentGui.mentionKindSession")} ${primary}`.trim(),
+        `${t("agentHost.agentGui.mentionKindSession")} ${label}`.trim(),
       directoryPath: "",
       entryKind: "",
       href,
       kind,
-      label: presentation.label,
-      summary: presentation.summary
+      label
     };
   }
 

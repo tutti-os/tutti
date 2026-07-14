@@ -449,9 +449,7 @@ export interface ParsedMentionLink {
   kind: MentionKind;
   label: string;
   iconUrl?: string;
-  participant: string;
   referenceSource?: string;
-  summary: string;
   /** 引用文件数量(workspace-reference 专用,来自 href 的 count 参数)。 */
   fileCount?: number;
 }
@@ -503,7 +501,7 @@ export function parseMentionLink(
     rawLabel.trim().replace(/^@+/, "").trim() ||
     (kind === "workspace-app-factory" ? appFactoryFallbackLabel : "");
   if (kind === "pasted-text") {
-    return { kind, label, participant: label, summary: "" };
+    return { kind, label };
   }
   if (kind === "workspace-app" || kind === "workspace-app-factory") {
     const appId = kind === "workspace-app" ? entityId : "";
@@ -520,9 +518,7 @@ export function parseMentionLink(
               workspaceId
             })
           }
-        : {}),
-      participant: label,
-      summary: ""
+        : {})
     };
   }
   if (kind === "agent-target") {
@@ -539,9 +535,7 @@ export function parseMentionLink(
       kind,
       label: targetLabel,
       iconUrl:
-        target?.iconUrl?.trim() || managedAgentRoundedIconUrl(agentProviderId),
-      participant: targetLabel,
-      summary: ""
+        target?.iconUrl?.trim() || managedAgentRoundedIconUrl(agentProviderId)
     };
   }
   if (kind === "workspace-reference") {
@@ -560,25 +554,18 @@ export function parseMentionLink(
       label,
       iconUrl: mention.scope?.icon?.trim() || appIconUrl,
       fileCount: referenceFileCountFromParam(mention.scope?.count ?? null),
-      participant: label,
-      referenceSource: source || undefined,
-      summary: ""
+      referenceSource: source || undefined
     };
   }
   if (kind === "workspace-issue") {
     return {
       kind,
-      label,
-      participant: label,
-      summary: ""
+      label
     };
   }
-  const sessionLabel = parseSessionMentionLabel(label);
   return {
     kind,
-    label,
-    participant: sessionLabel.participant,
-    summary: sessionLabel.summary
+    label
   };
 }
 
@@ -614,26 +601,6 @@ export function resolveWorkspaceAppMentionIconUrl(input: {
   return (
     exactMatch?.iconUrl?.trim() || fallbackMatch?.iconUrl?.trim() || undefined
   );
-}
-
-export function parseSessionMentionLabel(label: string): {
-  participant: string;
-  summary: string;
-} {
-  const dottedParts = label
-    .split("·")
-    .map((part) => part.trim())
-    .filter(Boolean);
-  if (dottedParts.length >= 3) {
-    return {
-      participant: `${dottedParts[0]} & ${dottedParts[1]}`,
-      summary: dottedParts.slice(2).join(" ")
-    };
-  }
-  return {
-    participant: label,
-    summary: ""
-  };
 }
 
 export function markdownLinkEndIndex(content: string, index: number): number {

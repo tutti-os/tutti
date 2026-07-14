@@ -1290,14 +1290,14 @@ describe("AgentMessageMarkdown", () => {
     const { container } = render(
       <AgentMessageMarkdown
         content={
-          "回复 [@sunhello135-png & Nexight 长标题会话]\n(mention://agent-session/session-with-long-title?workspaceId=room-1)"
+          "回复 [@长标题会话]\n(mention://agent-session/session-with-long-title?workspaceId=room-1)"
         }
       />
     );
 
     const mention = container.querySelector('[data-agent-file-mention="true"]');
     expect(mention).toHaveAttribute("data-agent-mention-kind", "session");
-    expect(mention).toHaveTextContent("sunhello135-png & Nexight 长标题会话");
+    expect(mention).toHaveTextContent("长标题会话");
     expect(screen.queryByText(/mention:\/\/session/)).toBeNull();
   });
 

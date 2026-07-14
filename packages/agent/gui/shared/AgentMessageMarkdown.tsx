@@ -652,10 +652,7 @@ function MentionLink({
   "use memo";
   // 标签截断时,hover 用设计系统 Tooltip 展示完整文本。trigger = 整个 chip(<a>),
   // 截断发生在内部 __main span,故在那上面测溢出。
-  const tooltipText =
-    mention.kind === "session"
-      ? `${mention.participant}${mention.summary ? ` ${mention.summary}` : ""}`.trim()
-      : mention.label;
+  const tooltipText = mention.label;
   const { ref: mainRef, overflowing } =
     useTextOverflow<HTMLSpanElement>(tooltipText);
   const link = (
@@ -721,23 +718,9 @@ function MentionLink({
           />
         </span>
       )}
-      {mention.kind === "session" ? (
-        <span className="tsh-agent-object-token__main" ref={mainRef}>
-          <span className="tsh-agent-object-token__participant">
-            {mention.participant}
-          </span>
-          {mention.summary ? (
-            <span className="tsh-agent-object-token__summary">
-              {" "}
-              {mention.summary}
-            </span>
-          ) : null}
-        </span>
-      ) : (
-        <span className="tsh-agent-object-token__main" ref={mainRef}>
-          {mention.label}
-        </span>
-      )}
+      <span className="tsh-agent-object-token__main" ref={mainRef}>
+        {mention.label}
+      </span>
     </a>
   );
 

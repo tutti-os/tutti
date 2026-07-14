@@ -19,10 +19,7 @@ import {
   parseAgentMentionHTMLElementAttrs
 } from "./agentMentionAttrs";
 import { formatAgentMentionMarkdown } from "./agentMentionMarkdown";
-import {
-  mentionVisual,
-  sessionMentionVisual
-} from "./agentMentionPresentation";
+import { mentionVisual } from "./agentMentionPresentation";
 
 export type {
   AgentContextMentionItem,
@@ -219,8 +216,6 @@ export function createAgentFileMentionExtension(
       const href = item.href;
       const tagName = options.renderAsLink ? "a" : "span";
       const visual = mentionVisual(item);
-      const sessionVisual =
-        item.kind === "session" ? sessionMentionVisual(item) : null;
       const sharedAttributes = {
         "data-agent-file-mention": "true",
         "data-agent-mention-href": href,
@@ -295,60 +290,28 @@ export function createAgentFileMentionExtension(
                 visual.primary
               ]
             ]
-          : item.kind === "session"
-            ? [
+          : [
+              [
+                "span",
+                {
+                  class: "tsh-agent-object-token__kind",
+                  "aria-hidden": "true"
+                },
                 [
                   "span",
                   {
-                    class: "tsh-agent-object-token__kind",
+                    class: "tsh-agent-object-token__kind-icon",
                     "aria-hidden": "true"
                   },
-                  [
-                    "span",
-                    {
-                      class: "tsh-agent-object-token__kind-icon",
-                      "aria-hidden": "true"
-                    },
-                    ""
-                  ]
-                ],
-                [
-                  "span",
-                  { class: "tsh-agent-object-token__main" },
-                  [
-                    "span",
-                    { class: "tsh-agent-object-token__participant" },
-                    sessionVisual?.participant ?? ""
-                  ],
-                  [
-                    "span",
-                    { class: "tsh-agent-object-token__summary" },
-                    sessionVisual?.summary ? ` ${sessionVisual.summary}` : ""
-                  ]
+                  ""
                 ]
+              ],
+              [
+                "span",
+                { class: "tsh-agent-object-token__main" },
+                visual.primary
               ]
-            : [
-                [
-                  "span",
-                  {
-                    class: "tsh-agent-object-token__kind",
-                    "aria-hidden": "true"
-                  },
-                  [
-                    "span",
-                    {
-                      class: "tsh-agent-object-token__kind-icon",
-                      "aria-hidden": "true"
-                    },
-                    ""
-                  ]
-                ],
-                [
-                  "span",
-                  { class: "tsh-agent-object-token__main" },
-                  visual.primary
-                ]
-              ])
+            ])
       ];
     },
 

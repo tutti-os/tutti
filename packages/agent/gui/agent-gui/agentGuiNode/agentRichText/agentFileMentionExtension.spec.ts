@@ -448,7 +448,7 @@ describe("agent session mention links", () => {
         workspaceId: "room-1",
         targetId: "session-1",
         agentTargetId: "local:claude-code",
-        name: "Session 1",
+        name: "Taylor & Claude Code Session 1",
         title: "Session 1",
         scope: "my_sessions",
         initiatorName: "Taylor",

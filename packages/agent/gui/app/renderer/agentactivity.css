@@ -4212,10 +4212,6 @@ aside.workspace-agents-status-panel
   -webkit-mask-size: 16px 16px;
 }
 
-.tsh-agent-object-token--entity .tsh-agent-object-token__summary {
-  color: inherit;
-}
-
 .agent-gui-node__composer-textarea .agent-rich-text-mention-node {
   display: inline-flex;
   align-items: center;
@@ -8089,9 +8085,6 @@ html[data-theme="light"] [data-message-center-item-id].agent-gui-edge-glow {
 .agent-gui-node__composer-queued-prompt-markdown
   [data-agent-file-mention="true"]
   .tsh-agent-object-token__kind,
-.agent-gui-node__composer-queued-prompt-markdown
-  [data-agent-file-mention="true"]
-  .tsh-agent-object-token__summary,
 .agent-gui-node__composer-queued-prompt-markdown
   [data-agent-file-mention="true"]
   [data-agent-mention-app-icon="true"] {

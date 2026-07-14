@@ -113,7 +113,7 @@ export function formatAgentMentionMarkdown(
       agentSessionId: item.targetId,
       agentTargetId:
         item.agentTargetId ?? agentSessionTargetIdFromHref(item.href),
-      label: item.name,
+      label: item.title.trim() || item.name,
       workspaceId: item.workspaceId,
       withAtPrefix: true
     });

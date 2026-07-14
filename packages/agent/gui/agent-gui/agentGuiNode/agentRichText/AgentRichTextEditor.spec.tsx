@@ -1149,7 +1149,7 @@ describe("AgentRichTextEditor", () => {
     render(
       <AgentRichTextEditor
         value={
-          "继续 [@wang jomes · Codex · @README.md 看看项目文件](mention://agent-session/session-1?workspaceId=room-1) " +
+          "继续 [@README.md 看看项目文件](mention://agent-session/session-1?workspaceId=room-1) " +
           "再处理 [@修复 room status 批量接口](mention://workspace-issue/issue-1?workspaceId=room-1)"
         }
         disabled={false}
@@ -1173,15 +1173,13 @@ describe("AgentRichTextEditor", () => {
     );
     expect(sessionMention).toHaveAttribute(
       "aria-label",
-      "Session wang jomes & Codex README.md 看看项目文件"
+      "Session README.md 看看项目文件"
     );
     expect(sessionMention).toHaveAttribute("data-slot", "mention-pill");
     expect(
       sessionMention.querySelector('button[aria-label="Remove mention"]')
     ).not.toBeNull();
-    expect(sessionMention).toHaveTextContent(
-      "wang jomes & Codex README.md 看看项目文件"
-    );
+    expect(sessionMention).toHaveTextContent("README.md 看看项目文件");
     expect(sessionMention.textContent).not.toContain("·");
     expect(sessionMention.textContent).not.toContain("@");
     expect(sessionMention.textContent).not.toContain("Session");
@@ -1209,7 +1207,7 @@ describe("AgentRichTextEditor", () => {
       <AgentGuiI18nProvider locale="zh-CN">
         <AgentRichTextEditor
           value={
-            "继续 [@wang jomes · Codex · @README.md 看看项目文件](mention://agent-session/session-1?workspaceId=room-1) " +
+            "继续 [@README.md 看看项目文件](mention://agent-session/session-1?workspaceId=room-1) " +
             "再处理 [@修复 room status 批量接口](mention://workspace-issue/issue-1?workspaceId=room-1)"
           }
           disabled={false}
@@ -1228,7 +1226,7 @@ describe("AgentRichTextEditor", () => {
 
     expect(mentions[0]).toHaveAttribute(
       "aria-label",
-      "会话 wang jomes & Codex README.md 看看项目文件"
+      "会话 README.md 看看项目文件"
     );
     expect(mentions[1]).toHaveAttribute(
       "aria-label",
@@ -1548,6 +1546,66 @@ describe("AgentRichTextEditor", () => {
     expect(
       editor.querySelector('[data-agent-mention-file-thumb="true"]')
     ).toBeNull();
+  });
+
+  it("renders inserted session mentions with only the canonical title", async () => {
+    let suggestionState: AgentFileMentionSuggestionState | null = null;
+    const onChange = vi.fn();
+    render(
+      <AgentRichTextEditor
+        value="@"
+        disabled={false}
+        placeholder="Prompt"
+        onChange={onChange}
+        onSubmit={vi.fn()}
+        onFileMentionSuggestionChange={(state) => {
+          suggestionState = state;
+        }}
+      />
+    );
+
+    const editor = await screen.findByRole("textbox", { name: "Prompt" });
+    await waitFor(() => expect(suggestionState).not.toBeNull());
+
+    act(() => {
+      suggestionState?.command({
+        kind: "session",
+        href: "mention://agent-session/session-1?workspaceId=room-1",
+        workspaceId: "room-1",
+        targetId: "session-1",
+        name: "@我打算去泰国旅游，你制定下旅游计划",
+        title: "我打算去泰国旅游，你制定下旅游计划",
+        scope: "my_sessions",
+        initiatorName: "User",
+        agentName: "Codex",
+        inputPreview: "我打算去泰国旅游，你制定下旅游计划"
+      });
+    });
+
+    const sessionMention = await waitFor(() => {
+      const mention = editor.querySelector(
+        '[data-slot="mention-pill"][data-agent-mention-kind="session"]'
+      );
+      expect(mention).not.toBeNull();
+      return mention!;
+    });
+    expect(sessionMention).toHaveTextContent(
+      "我打算去泰国旅游，你制定下旅游计划"
+    );
+    expect(sessionMention.textContent).toBe(
+      "我打算去泰国旅游，你制定下旅游计划"
+    );
+    const ariaLabel = sessionMention.getAttribute("aria-label") ?? "";
+    expect(ariaLabel).toContain("我打算去泰国旅游，你制定下旅游计划");
+    expect(
+      ariaLabel.match(/我打算去泰国旅游，你制定下旅游计划/gu)
+    ).toHaveLength(1);
+    expect(ariaLabel).not.toContain("User");
+    expect(ariaLabel).not.toContain("Codex");
+    await waitFor(() => expect(onChange).toHaveBeenCalled());
+    expect(onChange.mock.calls.at(-1)?.[0]).toContain(
+      "[@我打算去泰国旅游，你制定下旅游计划](mention://agent-session/session-1?workspaceId=room-1)"
+    );
   });
 
   it("renders workspace app mention chips with the app icon", async () => {
