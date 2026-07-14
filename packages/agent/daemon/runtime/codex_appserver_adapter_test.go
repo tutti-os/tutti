@@ -4182,6 +4182,41 @@ func TestCodexAppServerAdapterRateLimitNotificationUpdatesUsage(t *testing.T) {
 	}
 }
 
+func TestCodexAppServerAdapterClassifiesPrimaryWeeklyRateLimitFromDuration(t *testing.T) {
+	t.Parallel()
+
+	adapter, transport, session := startedAppServerAdapter(t)
+	transport.conn.notify(appServerNotifyRateLimitsUpdated, map[string]any{
+		"rateLimits": map[string]any{
+			"primary": map[string]any{
+				"resetsAt":           1784604546,
+				"usedPercent":        14,
+				"windowDurationMins": 7 * 24 * 60,
+			},
+			"secondary": nil,
+		},
+	})
+	waitForCondition(t, func() bool {
+		state := adapter.SessionState(session)
+		usage, _ := state.RuntimeContext["usage"].(map[string]any)
+		quotas, _ := usage["quotas"].([]map[string]any)
+		if len(quotas) != 1 || asString(quotas[0]["quotaType"]) != "weekly" {
+			return false
+		}
+		remaining, _ := acpFloatValue(quotas[0]["percentRemaining"])
+		return remaining == 86
+	})
+	state := adapter.SessionState(session)
+	usage, _ := state.RuntimeContext["usage"].(map[string]any)
+	quotas, _ := usage["quotas"].([]map[string]any)
+	if len(quotas) != 1 {
+		t.Fatalf("quotas = %#v, want one weekly quota", quotas)
+	}
+	if resetsAt, _ := int64Value(quotas[0]["resetsAtUnixMs"]); resetsAt != 1784604546000 {
+		t.Fatalf("weekly quota resetsAt = %#v", quotas[0])
+	}
+}
+
 func TestCodexAppServerAdapterApplySessionSettings(t *testing.T) {
 	t.Parallel()
 
