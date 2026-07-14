@@ -258,14 +258,21 @@ TestCursorPermissionRequestFallsBackToKnownToolCallInput`. For a live check,
   resumes parent work after a background agent, the sidecar must emit
   `turn_started` for the synthetic continuation and the Go adapter must map it
   to `EventTurnStarted`; keep the background-agent wait banner separate from
-  this turn lifecycle. Top-level assistant text and thinking must be keyed by
-  SDK message/content-block segments rather than by turn id. Treat the live
-  `content_block.index` as a stream locator only, not as durable message
-  identity. Consolidated assistant messages are fallback/tail compensation only,
-  because their content array indexes can differ from live `stream_event` block
-  indexes when thinking or tools are present. Projection code that merges
-  repeated tool-message updates should remove stale `error` data when the
-  canonical status becomes completed.
+  this turn lifecycle. The adapter must also forward that synthetic turn's
+  `turn_completed` / `turn_failed` / `turn_canceled` through the same session
+  event sink. Synthetic turns never register an Exec waiter; treating every
+  waiter-less terminal as an untracked orphan drops the close event, leaves
+  durable `activeTurn.phase=running`, and keeps AgentGUI on
+  "正在规划下一步" after the final assistant message is already complete. Only
+  terminals for turns that never published `EventTurnStarted` on the session
+  sink should stay dropped (true queued orphans). Top-level assistant text and
+  thinking must be keyed by SDK message/content-block segments rather than by
+  turn id. Treat the live `content_block.index` as a stream locator only, not
+  as durable message identity. Consolidated assistant messages are
+  fallback/tail compensation only, because their content array indexes can
+  differ from live `stream_event` block indexes when thinking or tools are
+  present. Projection code that merges repeated tool-message updates should
+  remove stale `error` data when the canonical status becomes completed.
 - Validation:
   Add sidecar normalizer coverage for `parentToolUseId`/task steps and adapter
   coverage that terminal-after events still reach DB/UI through the session
@@ -274,8 +281,10 @@ TestCursorPermissionRequestFallsBackToKnownToolCallInput`. For a live check,
   copy clears when the background agent finishes. Add service coverage that
   runtime `backgroundAgents.count > 0` suppresses stale resume reconciliation
   even when there is no active parent turn. Add sidecar/adapter coverage for
-  synthetic continuation `turn_started`, plus projection coverage that a
-  completed tool update drops an earlier failed `error` payload. For alias
+  synthetic continuation `turn_started` plus the matching waiter-less
+  `turn_completed` closing through the session sink, and projection coverage
+  that a completed tool update drops an earlier failed `error` payload. Keep
+  coverage that never-started queued orphan terminals still drop. For alias
   binding, keep sidecar coverage that an unknown `task_id` racing ahead of its
   own launch does not bind to another running task, and Go adapter coverage
   that an alias conflict with a different recorded parent tool call keeps two

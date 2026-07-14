@@ -279,17 +279,16 @@ func (a *ClaudeCodeSDKAdapter) dispatchClaudeSDKEvent(agentSessionID string, ada
 		return
 	}
 	if terminal {
-		// No daemon-registered Exec()/ExecAsync() waiter is tracking this
-		// turnID's outcome: either its terminal event was already delivered
-		// once (the waiter already completed and was unregistered) or this
-		// turn never became the tracked active turn in the first place (for
-		// example an internal/queued Claude SDK turn — see turnQueue /
-		// settleQueuedTurn in the sidecar — that got settled without ever
-		// being submitted through Exec). Publishing it here would surface a
-		// stray, possibly contradictory outcome notification for the session:
-		// a phantom completed/failed toast landing alongside the real turn's
-		// own outcome toast for the same agent session. Drop it instead.
-		return
+		// No Exec()/ExecAsync() waiter is tracking this turnID. Drop only
+		// terminals for turns we never started on the session sink (queued
+		// orphans from sidecar turnQueue / settleQueuedTurn). Synthetic
+		// background continuations publish turn_started without a waiter;
+		// their completed/failed/canceled must close that same lifecycle.
+		if !a.consumeOpenSessionTurn(adapterSession, turnID) {
+			return
+		}
+	} else {
+		a.rememberOpenSessionTurns(adapterSession, next)
 	}
 	if err != nil {
 		next = append(next, newSessionActivityEvent(session, EventSessionFailed, SessionStatusFailed, map[string]any{
@@ -297,6 +296,59 @@ func (a *ClaudeCodeSDKAdapter) dispatchClaudeSDKEvent(agentSessionID string, ada
 		}))
 	}
 	a.emitClaudeSDKSessionEvents(agentSessionID, next)
+}
+
+// rememberOpenSessionTurns records turn IDs whose start was published through
+// the session event sink so a later waiter-less terminal can close them.
+func (a *ClaudeCodeSDKAdapter) rememberOpenSessionTurns(
+	adapterSession *claudeSDKAdapterSession,
+	events []activityshared.Event,
+) {
+	if a == nil || adapterSession == nil || len(events) == 0 {
+		return
+	}
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	for _, event := range events {
+		if event.Type != activityshared.EventTurnStarted {
+			continue
+		}
+		turnID := strings.TrimSpace(event.Payload.TurnID)
+		if turnID == "" {
+			continue
+		}
+		if adapterSession.openSessionTurns == nil {
+			adapterSession.openSessionTurns = make(map[string]struct{})
+		}
+		// Sessions are long-lived; keep the guard bounded rather than growing
+		// one entry per synthetic continuation forever.
+		if len(adapterSession.openSessionTurns) > 64 {
+			adapterSession.openSessionTurns = make(map[string]struct{})
+		}
+		adapterSession.openSessionTurns[turnID] = struct{}{}
+	}
+}
+
+// consumeOpenSessionTurn reports whether turnID was started on the session
+// sink and removes it so the matching terminal can be emitted once.
+func (a *ClaudeCodeSDKAdapter) consumeOpenSessionTurn(
+	adapterSession *claudeSDKAdapterSession,
+	turnID string,
+) bool {
+	if a == nil || adapterSession == nil {
+		return false
+	}
+	turnID = strings.TrimSpace(turnID)
+	if turnID == "" {
+		return false
+	}
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if _, ok := adapterSession.openSessionTurns[turnID]; !ok {
+		return false
+	}
+	delete(adapterSession.openSessionTurns, turnID)
+	return true
 }
 
 func (a *ClaudeCodeSDKAdapter) registerClaudeSDKTurn(adapterSession *claudeSDKAdapterSession, turnID string, emit EventSink) *claudeSDKTurnWaiter {

@@ -63,6 +63,12 @@ type claudeSDKAdapterSession struct {
 	// fabricating a competing terminal transition. Guarded by the adapter
 	// mutex.
 	settledTurns map[string]string
+	// openSessionTurns remembers turn IDs whose EventTurnStarted was published
+	// through the session event sink without an Exec()/ExecAsync() waiter
+	// (synthetic background continuations). Their completed/failed/canceled
+	// terminal must close through the same sink; otherwise durable state stays
+	// running after the sidecar has finished. Guarded by the adapter mutex.
+	openSessionTurns map[string]struct{}
 	// goalArmTurnID is the sidecar turn carrying a queued /goal set command
 	// that has not settled yet; until it does, other turns settling must not
 	// be read as goal completion. Guarded by the adapter mutex.

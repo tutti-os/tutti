@@ -926,6 +926,12 @@ work is a new synthetic turn for AgentGUI lifecycle purposes. The sidecar and
 runtime adapter must publish a turn-start lifecycle patch before transcript or
 tool updates for that synthetic turn; otherwise AgentGuiNode will correctly keep
 the composer idle because the authoritative runtime state is still settled.
+The same adapter path must also publish that synthetic turn's
+completed/failed/canceled terminal through the session event sink. Synthetic
+turns are not submitted through `Exec()`/`ExecAsync()`, so they have no turn
+waiter; dropping waiter-less terminals as "untracked orphans" leaves durable
+`activeTurn` stuck in `running` and AgentGUI keeps showing the processing row
+after the assistant content has already finished.
 
 Do not persist the UI button state. A successful Undo only flips the local
 button to Reapply for the current render. If the page reloads, the source of

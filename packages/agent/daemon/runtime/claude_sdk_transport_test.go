@@ -304,6 +304,78 @@ func TestClaudeCodeSDKAdapterDropsUntrackedTurnTerminalEvent(t *testing.T) {
 	}
 }
 
+// TestClaudeCodeSDKAdapterClosesSyntheticTurnLifecycleWithoutExecWaiter covers
+// the stuck "正在规划下一步" report: after a Claude SDK background Agent finishes,
+// the sidecar opens a synthetic continuation turn (turn_started, no Exec waiter)
+// and later settles it. Start and completed/failed/canceled must share the same
+// session-sink lifecycle; dropping the terminal left durable activeTurn running.
+func TestClaudeCodeSDKAdapterClosesSyntheticTurnLifecycleWithoutExecWaiter(t *testing.T) {
+	adapter := NewClaudeCodeSDKAdapter(nil)
+	session := standardTestSession(ProviderClaudeCode)
+	adapterSession := &claudeSDKAdapterSession{
+		session:           session,
+		providerSessionID: "provider-session-1",
+		pendingRequests:   make(map[string]*pendingInteractiveRequest),
+		pendingResponses:  make(map[string]chan claudeSDKSidecarEvent),
+		turns:             make(map[string]*claudeSDKTurnWaiter),
+		liveState:         newClaudeSDKLiveState(),
+	}
+	adapter.storeSession(session.AgentSessionID, adapterSession)
+
+	var published []activityshared.Event
+	adapter.SetSessionEventSink(func(agentSessionID string, events []activityshared.Event) {
+		if agentSessionID == session.AgentSessionID {
+			published = append(published, events...)
+		}
+	})
+
+	adapter.dispatchClaudeSDKEvent(session.AgentSessionID, adapterSession, claudeSDKSidecarEvent{
+		Type: "turn_started",
+		Payload: map[string]any{
+			"turnId":    "synthetic-continuation-1",
+			"synthetic": true,
+		},
+	})
+	adapter.dispatchClaudeSDKEvent(session.AgentSessionID, adapterSession, claudeSDKSidecarEvent{
+		Type: "assistant_completed",
+		Payload: map[string]any{
+			"turnId":  "synthetic-continuation-1",
+			"content": "background agent summary",
+		},
+	})
+	adapter.dispatchClaudeSDKEvent(session.AgentSessionID, adapterSession, claudeSDKSidecarEvent{
+		Type: "turn_completed",
+		Payload: map[string]any{
+			"turnId":     "synthetic-continuation-1",
+			"stopReason": "end_turn",
+		},
+	})
+
+	var sawStarted, sawMessage, sawCompleted bool
+	for _, event := range published {
+		switch event.Type {
+		case activityshared.EventTurnStarted:
+			sawStarted = true
+			if event.Payload.TurnID != "synthetic-continuation-1" {
+				t.Fatalf("start turn id = %q", event.Payload.TurnID)
+			}
+			if event.Payload.Metadata["synthetic"] != true {
+				t.Fatalf("start metadata = %#v, want synthetic=true", event.Payload.Metadata)
+			}
+		case activityshared.EventMessageAppended:
+			sawMessage = true
+		case activityshared.EventTurnCompleted:
+			sawCompleted = true
+			if event.Payload.TurnID != "synthetic-continuation-1" {
+				t.Fatalf("completed turn id = %q", event.Payload.TurnID)
+			}
+		}
+	}
+	if !sawStarted || !sawMessage || !sawCompleted {
+		t.Fatalf("published = %#v, want synthetic start + message + completed", published)
+	}
+}
+
 func TestClaudeCodeSDKAdapterRoundTripUsesReaderDispatcherAfterExec(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
