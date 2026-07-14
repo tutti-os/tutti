@@ -27,6 +27,7 @@ function WorkspaceFilesNodeBody({
         className="min-h-0 flex-1 text-[13px]"
         restoredState={externalNodeState}
         revealIntent={toWorkspaceFilesRevealIntent(activation)}
+        showPreviewPanel
         workspaceID={workspaceId}
       />
     </div>

@@ -29,6 +29,7 @@ interface WorkspaceFileManagerPaneProps {
     requestID: string;
   } | null;
   restoredState?: WorkspaceFileManagerPersistedState | null;
+  showPreviewPanel?: boolean;
   workspaceID: string;
 }
 
@@ -36,6 +37,7 @@ export function WorkspaceFileManagerPane({
   className,
   revealIntent = null,
   restoredState = null,
+  showPreviewPanel = true,
   workspaceID
 }: WorkspaceFileManagerPaneProps) {
   const { i18n: appI18n, locale } = useTranslation();
@@ -169,7 +171,7 @@ export function WorkspaceFileManagerPane({
       resolveEntryIconUrl={resolveEntryIconUrl}
       renderExternalLocationContent={renderExternalLocationContent}
       session={session}
-      showPreviewPanel={false}
+      showPreviewPanel={showPreviewPanel}
       surface="embedded"
     />
   );

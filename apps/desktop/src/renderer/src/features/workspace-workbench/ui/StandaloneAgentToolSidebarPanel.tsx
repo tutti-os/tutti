@@ -105,6 +105,7 @@ export function StandaloneAgentToolSidebarPanel({
         <LazyWorkspaceFileManagerPane
           className="h-full"
           revealIntent={fileOpenRequest}
+          showPreviewPanel={false}
           workspaceID={workspaceId}
         />
       </Suspense>
