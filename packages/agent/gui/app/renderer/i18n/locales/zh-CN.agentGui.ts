@@ -328,6 +328,8 @@ export const zhCNAgentGui = {
   loadingConversation: "正在加载会话...",
   scrollToBottom: "滚动至底部",
   searchNoConversations: "暂无相关会话",
+  searchFailed: "无法搜索会话",
+  retrySearch: "重试搜索",
   conversationUnavailable: "会话不可用。",
   contextPickerBrowseHint: "根据你输入的内容搜索工作区文件",
   contextPickerBrowseFileHint:

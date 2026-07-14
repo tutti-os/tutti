@@ -5884,7 +5884,7 @@ func (f fakeSessionReader) GetSession(workspaceID string, agentSessionID string)
 	return session, ok
 }
 
-func (f fakeSessionReader) SessionDeleted(workspaceID string, agentSessionID string) (bool, error) {
+func (f fakeSessionReader) SessionDeleted(_ context.Context, workspaceID string, agentSessionID string) (bool, error) {
 	return f.tombstoned[workspaceID+":"+agentSessionID], nil
 }
 

@@ -580,7 +580,6 @@ export function useAgentGUINodeController({
     selectConversation,
     sessionEngine,
     setIntent,
-    syncConversationListProjection,
     transientConversation,
     workspaceId
   });

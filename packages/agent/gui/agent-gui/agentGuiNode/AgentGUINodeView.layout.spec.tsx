@@ -3189,6 +3189,35 @@ describe("AgentGUINodeView layout persistence", () => {
     ).toHaveAttribute("data-disabled");
   });
 
+  it("shows a retry action when backend conversation search fails", async () => {
+    let requestCount = 0;
+    const activityRuntime: AgentActivityRuntime = {
+      ...createNoopAgentActivityRuntime(),
+      async listSessionsPage(input) {
+        requestCount += 1;
+        if (requestCount === 1) throw new Error("search unavailable");
+        return {
+          hasMore: false,
+          sessions: [],
+          workspaceId: input.workspaceId
+        };
+      }
+    };
+    renderAgentGUINodeView({ activityRuntime });
+
+    fireEvent.change(
+      screen.getByRole("searchbox", { name: "searchPlaceholder" }),
+      { target: { value: "backend" } }
+    );
+
+    expect(await screen.findByText("searchFailed")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "retrySearch" }));
+    await waitFor(() => expect(requestCount).toBe(2));
+    expect(
+      await screen.findByText("searchNoConversations")
+    ).toBeInTheDocument();
+  });
+
   it("uses the immutable backend candidate snapshot for one Chats batch delete", async () => {
     const requestCandidates = vi.fn(async () => [
       "loaded-session",
@@ -4767,7 +4796,7 @@ describe("AgentGUINodeView layout persistence", () => {
       showLessConversations: "Show less"
     };
     const baseViewModel = createViewModel({
-      agentTargets: [codexTarget, claudeTarget],
+      agentTargets: [claudeTarget],
       conversationFilter: {
         kind: "agentTarget",
         agentTargetId: claudeAgentTargetId
@@ -4818,6 +4847,57 @@ describe("AgentGUINodeView layout persistence", () => {
     ).not.toBeInTheDocument();
     expect(
       screen.queryByTestId("agent-gui-conversation-item-filter-session-6")
+    ).not.toBeInTheDocument();
+
+    rendered.rerender(
+      buildAgentGUINodeViewElement({ labels, viewModel: baseViewModel })
+    );
+    expect(
+      screen.queryByRole("button", { name: "Show less" })
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByTestId("agent-gui-conversation-item-filter-session-6")
+    ).not.toBeInTheDocument();
+  });
+
+  it("resets local section expansion when the all-filter fallback target changes", () => {
+    const codexTarget = createLocalAgentGUIAgentTarget("codex");
+    const claudeTarget = createLocalAgentGUIAgentTarget("claude-code");
+    const labels = {
+      ...createLabels(),
+      showMoreConversations: "Show more",
+      showLessConversations: "Show less"
+    };
+    const baseViewModel = createViewModel({
+      agentTargets: [codexTarget, claudeTarget],
+      conversationFilter: { kind: "all" },
+      conversations: Array.from({ length: 10 }, (_, index) =>
+        createConversationSummary(`fallback-session-${index + 1}`)
+      ),
+      selectedAgentTarget: claudeTarget
+    });
+    const rendered = renderAgentGUINodeView({
+      labels,
+      viewModel: baseViewModel
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Show more" }));
+    expect(
+      screen.getByTestId("agent-gui-conversation-item-fallback-session-10")
+    ).toBeInTheDocument();
+
+    rendered.rerender(
+      buildAgentGUINodeViewElement({
+        labels,
+        viewModel: {
+          ...baseViewModel,
+          agentTargets: [codexTarget],
+          selectedAgentTarget: codexTarget
+        }
+      })
+    );
+    expect(
+      screen.queryByTestId("agent-gui-conversation-item-fallback-session-6")
     ).not.toBeInTheDocument();
   });
 
@@ -7246,6 +7326,8 @@ function createLabels(): AgentGUIViewLabels {
     loadingConversation: "loadingConversation",
     scrollToBottom: "scrollToBottom",
     searchNoConversations: "searchNoConversations",
+    searchFailed: "searchFailed",
+    retrySearch: "retrySearch",
     conversationUnavailable: "conversationUnavailable",
     fallbackAgentTitle: "Agent",
     searchPlaceholder: "searchPlaceholder",

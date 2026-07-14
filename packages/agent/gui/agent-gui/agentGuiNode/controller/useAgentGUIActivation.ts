@@ -60,6 +60,21 @@ export function isPendingNewConversationActivation(
   );
 }
 
+export function isPendingNewConversationActivationForSession(
+  activation:
+    | Pick<PendingActivationIntentRecord, "agentSessionId" | "mode" | "status">
+    | null
+    | undefined,
+  agentSessionId: string | null | undefined
+): boolean {
+  const normalizedSessionId = agentSessionId?.trim() ?? "";
+  return Boolean(
+    normalizedSessionId &&
+    activation?.agentSessionId.trim() === normalizedSessionId &&
+    isPendingNewConversationActivation(activation)
+  );
+}
+
 export function useAgentGUIActivation({
   engine,
   workspaceId,

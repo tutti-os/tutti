@@ -5,7 +5,6 @@ import type { AgentGUIConversationSummary } from "../model/agentGuiConversationM
 export type ConversationIntent =
   | { tag: "home" }
   | { tag: "requested"; id: string }
-  | { tag: "resolving"; id: string }
   | { tag: "active"; id: string };
 
 export function resolveConversationSummaryById(

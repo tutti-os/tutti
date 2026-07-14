@@ -642,6 +642,9 @@ func TestStoreListSessionSectionOrdersAndPagesByLatestTurnStart(t *testing.T) {
 	if !page.HasMore || page.NextCursor != "3000|newer-start-older-update" {
 		t.Fatalf("first page hasMore=%v cursor=%q", page.HasMore, page.NextCursor)
 	}
+	if page.TotalCount != 2 {
+		t.Fatalf("first page total count = %d, want 2", page.TotalCount)
+	}
 
 	next, ok, err := store.ListSessionSection(ctx, ListSessionSectionInput{
 		WorkspaceID:          "ws-turn-order",
@@ -658,6 +661,9 @@ func TestStoreListSessionSectionOrdersAndPagesByLatestTurnStart(t *testing.T) {
 	}
 	if next.HasMore || next.NextCursor != "" {
 		t.Fatalf("next page hasMore=%v cursor=%q, want exhausted", next.HasMore, next.NextCursor)
+	}
+	if next.TotalCount != 2 {
+		t.Fatalf("next page total count = %d, want stable total 2", next.TotalCount)
 	}
 }
 

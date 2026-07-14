@@ -357,7 +357,19 @@ INSERT INTO workspace_agent_messages_v2 (
   deleted_at_unix_ms, created_at_unix_ms, updated_at_unix_ms
 )
 SELECT
-  id, workspace_id, agent_session_id, message_id, version, NULLIF(TRIM(turn_id), ''), role, kind, status,
+  id, workspace_id, agent_session_id, message_id, version,
+  CASE
+    WHEN NULLIF(TRIM(turn_id), '') IS NULL THEN NULL
+    WHEN EXISTS (
+      SELECT 1
+      FROM workspace_agent_turns turn_parent
+      WHERE turn_parent.workspace_id = workspace_agent_messages.workspace_id
+        AND turn_parent.agent_session_id = workspace_agent_messages.agent_session_id
+        AND turn_parent.turn_id = TRIM(workspace_agent_messages.turn_id)
+    ) THEN TRIM(turn_id)
+    ELSE NULL
+  END,
+  role, kind, status,
   payload_json, occurred_at_unix_ms, started_at_unix_ms, completed_at_unix_ms,
   deleted_at_unix_ms, created_at_unix_ms, updated_at_unix_ms
 FROM workspace_agent_messages
@@ -381,6 +393,58 @@ CREATE INDEX IF NOT EXISTS idx_workspace_agent_messages_session_display
 		}
 		return recordMigrationTx(ctx, tx, schemaMigrationWorkspaceAgentActivityMessagesV2)
 	})
+}
+
+// applyWorkspaceAgentActivityTurnIntegrityV1 repairs child references written
+// by the original messages-v2 rebuild and adds the index used by conversation
+// rail latest-turn ordering.
+func (s *Store) applyWorkspaceAgentActivityTurnIntegrityV1(ctx context.Context) error {
+	applied, err := s.hasMigration(ctx, schemaMigrationWorkspaceAgentActivityTurnIntegrityV1)
+	if err != nil || applied {
+		return err
+	}
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin workspace agent activity turn integrity v1: %w", err)
+	}
+	committed := false
+	defer func() {
+		if !committed {
+			_ = tx.Rollback()
+		}
+	}()
+	if _, err := tx.ExecContext(ctx, `
+UPDATE workspace_agent_messages
+SET turn_id = NULL
+WHERE turn_id IS NOT NULL
+  AND NOT EXISTS (
+    SELECT 1
+    FROM workspace_agent_turns turn_parent
+    WHERE turn_parent.workspace_id = workspace_agent_messages.workspace_id
+      AND turn_parent.agent_session_id = workspace_agent_messages.agent_session_id
+      AND turn_parent.turn_id = workspace_agent_messages.turn_id
+  );
+
+CREATE INDEX IF NOT EXISTS idx_workspace_agent_turns_session_latest
+  ON workspace_agent_turns(
+    workspace_id,
+    agent_session_id,
+    updated_at_unix_ms DESC,
+    created_at_unix_ms DESC,
+    started_at_unix_ms DESC,
+    turn_id DESC
+  );
+`); err != nil {
+		return fmt.Errorf("apply workspace agent activity turn integrity v1: %w", err)
+	}
+	if err := recordMigrationTx(ctx, tx, schemaMigrationWorkspaceAgentActivityTurnIntegrityV1); err != nil {
+		return err
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit workspace agent activity turn integrity v1: %w", err)
+	}
+	committed = true
+	return nil
 }
 
 func runInConnTx(ctx context.Context, conn *sql.Conn, fn func(*sql.Tx) error) error {

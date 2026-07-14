@@ -80,7 +80,7 @@ func (s *Service) listFilteredSortedSessions(ctx context.Context, workspaceID st
 	sessions := s.controller().Sessions(workspaceID)
 	for _, session := range sessions {
 		if s.SessionReader != nil {
-			deleted, err := s.SessionReader.SessionDeleted(workspaceID, session.ID)
+			deleted, err := s.SessionReader.SessionDeleted(ctx, workspaceID, session.ID)
 			if err != nil {
 				return nil, err
 			}

@@ -16,6 +16,7 @@ import {
 import { sessionHasRenderableMessages } from "./useAgentConversationMessagePaging";
 import {
   isPendingNewConversationActivation,
+  isPendingNewConversationActivationForSession,
   type useAgentGUIActivation
 } from "./useAgentGUIActivation";
 import {
@@ -65,6 +66,16 @@ interface UseAgentGUIConversationSelectionControllerInput {
   setIsComposerHome: Dispatch<SetStateAction<boolean>>;
   setIsLoadingMessages: Dispatch<SetStateAction<boolean>>;
   workspaceId: string;
+}
+
+export function clearFailedAgentGUIActivationSelection(
+  current: AgentGUINodeData,
+  failedAgentSessionId: string
+): AgentGUINodeData {
+  return current.lastActiveAgentSessionId?.trim() ===
+    failedAgentSessionId.trim()
+    ? { ...current, lastActiveAgentSessionId: null }
+    : current;
 }
 
 export function useAgentGUIConversationSelectionController(
@@ -123,9 +134,10 @@ export function useAgentGUIConversationSelectionController(
       setIsComposerHome(true);
       setIntent({ tag: "home" });
       onDataChangeRef.current((current) =>
-        current.lastActiveAgentSessionId === null
-          ? current
-          : { ...current, lastActiveAgentSessionId: null }
+        clearFailedAgentGUIActivationSelection(
+          current,
+          activePendingActivation.agentSessionId
+        )
       );
       setDetailError(
         activePendingActivation.errorMessage ||
@@ -170,7 +182,10 @@ export function useAgentGUIConversationSelectionController(
       });
       if (
         previous &&
-        !isPendingNewConversationActivation(activePendingActivation)
+        !isPendingNewConversationActivationForSession(
+          activePendingActivation,
+          previous
+        )
       ) {
         void activation.unactivate(previous);
       }
@@ -191,7 +206,7 @@ export function useAgentGUIConversationSelectionController(
       ) {
         return current;
       }
-      if (current.tag === "requested" || current.tag === "resolving") {
+      if (current.tag === "requested") {
         return current;
       }
       return { tag: "requested", id: externalId };

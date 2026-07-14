@@ -6,6 +6,7 @@ import type { AgentMessageMarkdownWorkspaceAppIcon } from "../../shared/AgentMes
 import type { AgentHomeSuggestionCategory } from "./model/agentGuiNodeTypes";
 import { resolveAgentGUIProviderDisplayLabel } from "./model/agentGuiProviderIdentity";
 import type { AgentGUIViewLabels } from "./AgentGUINodeView";
+import { agentGUIConversationRailLabels } from "./view/agentGUIConversationRailLabels";
 import { agentGUIProviderManagerLabels } from "./view/agentGUIProviderManagerLabels";
 
 const TASK_CENTER_WORKSPACE_APP_ID = "issue-manager";
@@ -410,10 +411,7 @@ export function useAgentGUIViewLabels(input: {
       agentSettingsMenu: t("agentHost.agentGui.agentSettingsMenu"),
       agentEnvSetup: t("agentHost.agentGui.agentEnvSetup"),
       ...agentGUIProviderManagerLabels(t),
-      noConversations: t("agentHost.agentGui.noConversations"),
-      emptyProjectConversations: t(
-        "agentHost.agentGui.emptyProjectConversations"
-      ),
+      ...agentGUIConversationRailLabels(t),
       conversationFilterAll: t("agentHost.agentGui.conversationFilterAll"),
       conversationFilterCodex: t("agentHost.agentGui.conversationFilterCodex"),
       conversationFilterClaudeCode: t(
@@ -421,17 +419,9 @@ export function useAgentGUIViewLabels(input: {
       ),
       conversationFilterTutti: t("agentHost.agentGui.conversationFilterTutti"),
       providerSwitchLabel: t("agentHost.agentGui.providerSwitchLabel"),
-      startConversation: t("agentHost.agentGui.startConversation"),
-      selectConversation: t("agentHost.agentGui.selectConversation"),
-      loadingConversations: t("agentHost.agentGui.loadingConversations"),
       loadingConversation: t("agentHost.agentGui.loadingConversation"),
       scrollToBottom: t("agentHost.agentGui.scrollToBottom"),
-      searchNoConversations: t("agentHost.agentGui.searchNoConversations"),
-      conversationUnavailable: t("agentHost.agentGui.conversationUnavailable"),
       fallbackAgentTitle,
-      searchPlaceholder: t("agentHost.agentGui.searchPlaceholder"),
-      sectionPinned: t("agentHost.agentGui.sectionPinned"),
-      sectionConversations: t("agentHost.agentGui.sectionConversations"),
       sectionToday: t("agentHost.agentGui.sectionToday"),
       sectionYesterday: t("agentHost.agentGui.sectionYesterday"),
       sectionEarlier: t("agentHost.agentGui.sectionEarlier"),

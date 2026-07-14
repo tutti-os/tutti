@@ -89,7 +89,7 @@ func (s factoryAgentSessionReaderStub) ListSessions(workspaceID string) ([]agent
 	return result, true
 }
 
-func (factoryAgentSessionReaderStub) SessionDeleted(string, string) (bool, error) {
+func (factoryAgentSessionReaderStub) SessionDeleted(context.Context, string, string) (bool, error) {
 	return false, nil
 }
 

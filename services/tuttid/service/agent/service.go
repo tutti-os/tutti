@@ -441,7 +441,7 @@ func (s *Service) LocalAttachmentPath(ctx context.Context, workspaceID string, a
 
 func (s *Service) get(ctx context.Context, workspaceID string, agentSessionID string, _ bool) (Session, error) {
 	if s.SessionReader != nil {
-		deleted, err := s.SessionReader.SessionDeleted(workspaceID, agentSessionID)
+		deleted, err := s.SessionReader.SessionDeleted(ctx, workspaceID, agentSessionID)
 		if err != nil {
 			return Session{}, err
 		}

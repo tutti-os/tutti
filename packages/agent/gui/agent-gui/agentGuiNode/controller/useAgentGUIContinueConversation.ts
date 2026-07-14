@@ -14,7 +14,7 @@ import {
 import { resolveAgentComposerDraftScopeKey } from "../model/agentComposerDraftScope";
 import { buildContinueInNewConversationPrompt } from "./agentGuiController.conversationHelpers";
 import { reportAgentGUIActiveConversationCleared } from "./agentGuiController.reporting";
-import { isPendingNewConversationActivation } from "./useAgentGUIActivation";
+import { isPendingNewConversationActivationForSession } from "./useAgentGUIActivation";
 import {
   resolveConversationSummaryById,
   type ConversationIntent
@@ -101,7 +101,12 @@ export function useAgentGUIContinueConversation(
       runtime: current.agentActivityRuntime,
       workspaceId: current.workspaceId
     });
-    if (!isPendingNewConversationActivation(current.activePendingActivation)) {
+    if (
+      !isPendingNewConversationActivationForSession(
+        current.activePendingActivation,
+        currentConversationId
+      )
+    ) {
       void current.unactivate(currentConversationId);
     }
     current.setIntent({ tag: "home" });
