@@ -44,15 +44,10 @@ func (a *standardACPAdapter) Exec(
 		}
 	}
 
-	startEvents := make([]activityshared.Event, 0, 3)
-	if fallbackTitle := fallbackStandardSessionTitle(a.config, session.Title, visibleText); fallbackTitle != "" {
-		startEvents = append(startEvents, newSessionTitleActivityEvent(session, fallbackTitle))
-		session.Title = fallbackTitle
-	}
-	startEvents = append(startEvents,
+	startEvents := []activityshared.Event{
 		newTurnActivityEvent(session, EventMessage, turnID, "", RoleUser, visibleText, userPromptActivityPayload(content, explicitDisplayPrompt, userPromptActivityPayloadExtraFromExecMetadata(ctx, nil))),
 		newTurnActivityEvent(session, EventTurnStarted, turnID, SessionStatusWorking, "", "", nil),
-	)
+	}
 	emitEvents(startEvents)
 	slog.Info("agent session ACP exec started",
 		"event", "agent_session.acp.exec.start",

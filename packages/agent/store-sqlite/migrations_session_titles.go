@@ -2,7 +2,9 @@ package storesqlite
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"strings"
 
 	"github.com/tutti-os/tutti/packages/agent/daemon/titletext"
 )
@@ -79,4 +81,109 @@ WHERE workspace_id = ? AND agent_session_id = ?
 	}
 	committed = true
 	return nil
+}
+
+func (s *Store) applyWorkspaceAgentSessionTitlesV2(ctx context.Context) error {
+	const migrationID = schemaMigrationWorkspaceAgentSessionTitlesV2
+	applied, err := s.hasMigration(ctx, migrationID)
+	if err != nil {
+		return err
+	}
+	if applied {
+		return nil
+	}
+
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin workspace agent initial title backfill: %w", err)
+	}
+	committed := false
+	defer func() {
+		if !committed {
+			_ = tx.Rollback()
+		}
+	}()
+
+	rows, err := tx.QueryContext(ctx, `
+SELECT s.workspace_id, s.agent_session_id, s.provider, s.title, m.payload_json
+FROM workspace_agent_sessions AS s
+JOIN workspace_agent_messages AS m
+  ON m.workspace_id = s.workspace_id
+ AND m.agent_session_id = s.agent_session_id
+WHERE s.deleted_at_unix_ms = 0
+  AND m.deleted_at_unix_ms = 0
+  AND LOWER(TRIM(m.role)) = 'user'
+ORDER BY s.workspace_id, s.agent_session_id, m.version, m.id
+`)
+	if err != nil {
+		return fmt.Errorf("list workspace agent sessions for initial title backfill: %w", err)
+	}
+	type sessionTitleBackfill struct {
+		workspaceID    string
+		agentSessionID string
+		provider       string
+		currentTitle   string
+		payloadJSON    string
+	}
+	seen := make(map[string]struct{})
+	var updates []sessionTitleBackfill
+	for rows.Next() {
+		var value sessionTitleBackfill
+		if err := rows.Scan(&value.workspaceID, &value.agentSessionID, &value.provider, &value.currentTitle, &value.payloadJSON); err != nil {
+			_ = rows.Close()
+			return fmt.Errorf("scan workspace agent session for initial title backfill: %w", err)
+		}
+		key := value.workspaceID + "\x00" + value.agentSessionID
+		if _, ok := seen[key]; ok {
+			continue
+		}
+		if !titletext.IsPlaceholder(value.currentTitle, value.provider) {
+			seen[key] = struct{}{}
+			continue
+		}
+		prompt := workspaceAgentMessageVisibleText(value.payloadJSON)
+		value.currentTitle = titletext.DeriveInitial(value.currentTitle, value.provider, prompt)
+		if value.currentTitle != "" {
+			seen[key] = struct{}{}
+			updates = append(updates, value)
+		}
+	}
+	if err := rows.Err(); err != nil {
+		_ = rows.Close()
+		return fmt.Errorf("iterate workspace agent sessions for initial title backfill: %w", err)
+	}
+	if err := rows.Close(); err != nil {
+		return fmt.Errorf("close workspace agent sessions for initial title backfill: %w", err)
+	}
+
+	for _, update := range updates {
+		if _, err := tx.ExecContext(ctx, `
+UPDATE workspace_agent_sessions
+SET title = ?
+WHERE workspace_id = ? AND agent_session_id = ?
+`, update.currentTitle, update.workspaceID, update.agentSessionID); err != nil {
+			return fmt.Errorf("backfill workspace agent initial session title: %w", err)
+		}
+	}
+	if err := recordMigrationTx(ctx, tx, migrationID); err != nil {
+		return err
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit workspace agent initial title backfill: %w", err)
+	}
+	committed = true
+	return nil
+}
+
+func workspaceAgentMessageVisibleText(payloadJSON string) string {
+	var payload map[string]any
+	if err := json.Unmarshal([]byte(payloadJSON), &payload); err != nil {
+		return ""
+	}
+	for _, key := range []string{"displayPrompt", "text", "content"} {
+		if value, ok := payload[key].(string); ok && strings.TrimSpace(value) != "" {
+			return value
+		}
+	}
+	return ""
 }

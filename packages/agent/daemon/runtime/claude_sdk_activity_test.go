@@ -105,7 +105,7 @@ func TestClaudeCodeSDKAdapterMapsGoalUpdatedSidecarEvent(t *testing.T) {
 	}
 }
 
-func TestClaudeCodeSDKAdapterExecEmitsPromptFallbackTitle(t *testing.T) {
+func TestClaudeCodeSDKAdapterExecLeavesInitialTitleToController(t *testing.T) {
 	adapter := NewClaudeCodeSDKAdapter(nil)
 	session := standardTestSession(ProviderClaudeCode)
 	conn := &scriptedClaudeSDKConnection{
@@ -130,8 +130,8 @@ func TestClaudeCodeSDKAdapterExecEmitsPromptFallbackTitle(t *testing.T) {
 		t.Fatalf("Exec: %v", err)
 	}
 	titleEvents := activityEventsWithType(emitted, activityshared.EventSessionUpdated)
-	if len(titleEvents) != 1 || titleEvents[0].Payload.Title != "inspect repo" {
-		t.Fatalf("title events = %#v, want prompt fallback title", titleEvents)
+	if len(titleEvents) != 0 {
+		t.Fatalf("title events = %#v, want adapter to leave initial title to controller", titleEvents)
 	}
 	if !hasActivityMessage(events, activityshared.MessageRoleUser, "inspect repo") {
 		t.Fatalf("events = %#v, missing user prompt", events)

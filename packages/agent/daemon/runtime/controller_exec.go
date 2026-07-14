@@ -6,6 +6,9 @@ import (
 	"fmt"
 	"log/slog"
 	"strings"
+
+	activityshared "github.com/tutti-os/tutti/packages/agent/daemon/activity/events"
+	"github.com/tutti-os/tutti/packages/agent/daemon/titletext"
 )
 
 func (c *Controller) Exec(ctx context.Context, input ExecInput) (ExecResult, error) {
@@ -46,6 +49,13 @@ func (c *Controller) Exec(ctx context.Context, input ExecInput) (ExecResult, err
 	if input.Guidance {
 		return c.guideActiveTurn(ctx, session, adapter, content, displayPrompt, metadata)
 	}
+	titleUpdated := false
+	if initialTitle := strings.TrimSpace(input.InitialTitle); initialTitle != "" &&
+		titletext.IsPlaceholder(session.Title, session.Provider) {
+		session.Title = initialTitle
+		session.UpdatedAtUnixMS = unixMS(now())
+		titleUpdated = true
+	}
 	turnID := newID()
 	runCtx, cancel := context.WithCancel(context.Background())
 	if len(metadata) > 0 {
@@ -75,6 +85,9 @@ func (c *Controller) Exec(ctx context.Context, input ExecInput) (ExecResult, err
 	}
 	c.mu.Unlock()
 	submitEvents := submittedTurnActivityEvents(session, turnID)
+	if titleUpdated {
+		submitEvents = append([]activityshared.Event{newSessionTitleActivityEvent(session, session.Title)}, submitEvents...)
+	}
 	if len(submitEvents) > 0 {
 		c.publish(session, submitEvents)
 		c.enqueueSessionReport(ctx, session, submitEvents)

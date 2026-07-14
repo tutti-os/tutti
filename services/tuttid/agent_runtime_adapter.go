@@ -105,6 +105,7 @@ func (a agentRuntimeAdapter) Exec(ctx context.Context, input agentservice.Runtim
 		AgentSessionID: input.AgentSessionID,
 		Content:        runtimePromptContentFromService(input.Content),
 		DisplayPrompt:  input.DisplayPrompt,
+		InitialTitle:   input.InitialTitle,
 		Guidance:       input.Guidance,
 		Metadata:       cloneRuntimeContext(input.Metadata),
 	})

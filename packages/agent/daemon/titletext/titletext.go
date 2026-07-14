@@ -2,7 +2,14 @@
 // session titles.
 package titletext
 
-import "strings"
+import (
+	"strings"
+	"unicode/utf8"
+
+	"github.com/tutti-os/tutti/packages/agent/daemon/providerregistry"
+)
+
+const MaxSessionTitleRunes = 120
 
 // Normalize converts rich-text Markdown links to their human-readable labels
 // and collapses whitespace. It intentionally does not apply UI-local labels or
@@ -29,6 +36,53 @@ func Normalize(value string) string {
 		index = hrefEnd + 1
 	}
 	return strings.Join(strings.Fields(strings.TrimSpace(output.String())), " ")
+}
+
+// DeriveInitial converts the first user-visible prompt into the canonical
+// title for a session that still has no real conversation title. It returns an
+// empty string once the current title is no longer a provider placeholder, so
+// callers can safely use the result as a compare-and-set candidate.
+func DeriveInitial(currentTitle string, provider string, visiblePrompt string) string {
+	if !IsPlaceholder(currentTitle, provider) {
+		return ""
+	}
+	title := Normalize(visiblePrompt)
+	if title == "" {
+		return ""
+	}
+	if utf8.RuneCountInString(title) <= MaxSessionTitleRunes {
+		return title
+	}
+	const suffix = "..."
+	runes := []rune(title)
+	return strings.TrimSpace(string(runes[:MaxSessionTitleRunes-len(suffix)])) + suffix
+}
+
+// IsPlaceholder reports whether a title is the empty/provider identity used
+// before the first user prompt establishes a conversation title.
+func IsPlaceholder(value string, provider string) bool {
+	title := normalizeIdentity(value)
+	provider = normalizeIdentity(provider)
+	if title == "" || title == provider {
+		return true
+	}
+	descriptor, ok := providerregistry.Find(provider)
+	if !ok {
+		return false
+	}
+	for _, candidate := range append(
+		[]string{descriptor.Identity.ID, descriptor.Identity.DisplayName},
+		descriptor.Identity.Aliases...,
+	) {
+		if title == normalizeIdentity(candidate) {
+			return true
+		}
+	}
+	return false
+}
+
+func normalizeIdentity(value string) string {
+	return strings.ToLower(strings.TrimSpace(value))
 }
 
 func markdownLinkAt(value string, start int) (labelStart, hrefStart, hrefEnd int, ok bool) {

@@ -378,6 +378,7 @@ type RuntimeExecInput struct {
 	AgentSessionID string
 	Content        []PromptContentBlock
 	DisplayPrompt  string
+	InitialTitle   string
 	Metadata       map[string]any
 	Guidance       bool
 }

@@ -1,6 +1,10 @@
 package titletext
 
-import "testing"
+import (
+	"strings"
+	"testing"
+	"unicode/utf8"
+)
 
 func TestNormalize(t *testing.T) {
 	tests := []struct {
@@ -20,5 +24,47 @@ func TestNormalize(t *testing.T) {
 				t.Fatalf("Normalize(%q) = %q, want %q", test.input, got, test.want)
 			}
 		})
+	}
+}
+
+func TestDeriveInitialCanonicalizesVisiblePrompt(t *testing.T) {
+	t.Parallel()
+
+	got := DeriveInitial("Claude Code", "claude-code", "  [@task](mention://workspace-issue/1)   inspect repo.  ")
+	if got != "@task inspect repo." {
+		t.Fatalf("DeriveInitial() = %q, want canonical prompt title", got)
+	}
+}
+
+func TestDeriveInitialDoesNotReplaceConversationTitle(t *testing.T) {
+	t.Parallel()
+
+	if got := DeriveInitial("Existing title", "codex", "new prompt"); got != "" {
+		t.Fatalf("DeriveInitial() = %q, want no replacement", got)
+	}
+}
+
+func TestDeriveInitialLimitsCanonicalTitleLength(t *testing.T) {
+	t.Parallel()
+
+	got := DeriveInitial("", "codex", strings.Repeat("春", MaxSessionTitleRunes+10))
+	if runes := utf8.RuneCountInString(got); runes != MaxSessionTitleRunes {
+		t.Fatalf("DeriveInitial() rune count = %d, want %d", runes, MaxSessionTitleRunes)
+	}
+	if !strings.HasSuffix(got, "...") {
+		t.Fatalf("DeriveInitial() = %q, want ellipsis", got)
+	}
+}
+
+func TestIsPlaceholderUsesProviderDescriptorIdentity(t *testing.T) {
+	t.Parallel()
+
+	for _, title := range []string{"", "claude-code", "Claude Code", " claude "} {
+		if !IsPlaceholder(title, "claude-code") {
+			t.Fatalf("IsPlaceholder(%q) = false, want true", title)
+		}
+	}
+	if IsPlaceholder("Inspect repository", "claude-code") {
+		t.Fatal("IsPlaceholder() accepted a conversation title")
 	}
 }

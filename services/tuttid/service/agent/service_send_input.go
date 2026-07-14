@@ -4,6 +4,8 @@ import (
 	"context"
 	"strings"
 	"time"
+
+	"github.com/tutti-os/tutti/packages/agent/daemon/titletext"
 )
 
 func (s *Service) SendInput(ctx context.Context, workspaceID string, agentSessionID string, input SendInput) (SendInputResult, error) {
@@ -24,7 +26,7 @@ func (s *Service) SendInput(ctx context.Context, workspaceID string, agentSessio
 		}
 	}()
 	nodeStartedAt := time.Now()
-	normalizedContent, _, err := normalizePromptContent(input.Content)
+	normalizedContent, normalizedPromptText, err := normalizePromptContent(input.Content)
 	if err != nil {
 		s.reportAgentServiceNodeFailure(ctx, agentSessionID, "message_send", "content_normalized", "", nodeStartedAt, err)
 		return SendInputResult{}, err
@@ -50,7 +52,7 @@ func (s *Service) SendInput(ctx context.Context, workspaceID string, agentSessio
 	s.reportAgentServiceNodeSuccess(ctx, agentSessionID, "message_send", "prompt_validated", provider, nodeStartedAt)
 	logAgentSubmitTrace("service.send.prompt_validated", workspaceID, agentSessionID, input.Metadata, nil)
 	nodeStartedAt = time.Now()
-	content, _, err := s.prepareNormalizedPromptContentForExec(workspaceID, agentSessionID, normalizedContent, "")
+	content, preparedDisplayPrompt, err := s.prepareNormalizedPromptContentForExec(workspaceID, agentSessionID, normalizedContent, "")
 	if err != nil {
 		s.reportAgentServiceNodeFailure(ctx, agentSessionID, "message_send", "prompt_prepared", provider, nodeStartedAt, err)
 		return SendInputResult{}, err
@@ -60,6 +62,11 @@ func (s *Service) SendInput(ctx context.Context, workspaceID string, agentSessio
 		"content_block_count": len(content),
 	})
 	displayPrompt := strings.TrimSpace(input.DisplayPrompt)
+	initialTitle := ""
+	if !input.Guidance {
+		visiblePrompt := firstNonEmptyString(displayPrompt, preparedDisplayPrompt, normalizedPromptText)
+		initialTitle = titletext.DeriveInitial(runtimeSession.Title, runtimeSession.Provider, visiblePrompt)
+	}
 	logAgentSubmitTrace("service.send.exec_requested", workspaceID, agentSessionID, input.Metadata, nil)
 	nodeStartedAt = time.Now()
 	// Exec may have to resume an idle-released Claude process inside the runtime
@@ -77,6 +84,7 @@ func (s *Service) SendInput(ctx context.Context, workspaceID string, agentSessio
 			AgentSessionID: agentSessionID,
 			Content:        content,
 			DisplayPrompt:  displayPrompt,
+			InitialTitle:   initialTitle,
 			Guidance:       input.Guidance,
 			Metadata:       cloneMetadata(input.Metadata),
 		})

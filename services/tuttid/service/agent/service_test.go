@@ -2120,6 +2120,9 @@ func TestServiceCreatePassesInitialDisplayPromptToRuntime(t *testing.T) {
 	if call.DisplayPrompt != "Run Automation" {
 		t.Fatalf("runtime display prompt = %q", call.DisplayPrompt)
 	}
+	if call.InitialTitle != "Run Automation" {
+		t.Fatalf("runtime initial title = %q, want display prompt", call.InitialTitle)
+	}
 	if call.Metadata["clientSubmitId"] != "submit-create-1" || call.Metadata["spacedDiagnosticKey"] != "trimmed" {
 		t.Fatalf("runtime metadata = %#v", call.Metadata)
 	}
@@ -2202,6 +2205,9 @@ func TestServiceCreateDoesNotPassDerivedPromptToRuntime(t *testing.T) {
 	if runtime.execCalls[0].DisplayPrompt != "" {
 		t.Fatalf("runtime display prompt = %q, want empty explicit display prompt", runtime.execCalls[0].DisplayPrompt)
 	}
+	if runtime.execCalls[0].InitialTitle != "ordinary prompt" {
+		t.Fatalf("runtime initial title = %q, want normalized visible prompt", runtime.execCalls[0].InitialTitle)
+	}
 }
 
 func TestServiceUpdateVisibleUpdatesRuntimeSession(t *testing.T) {
@@ -2280,6 +2286,32 @@ func TestServiceSendInputPassesDisplayPromptToRuntime(t *testing.T) {
 	}
 	if _, ok := call.Metadata[""]; ok {
 		t.Fatalf("runtime metadata includes blank key: %#v", call.Metadata)
+	}
+}
+
+func TestServiceSendInputDerivesMissingInitialTitle(t *testing.T) {
+	runtime := newFakeRuntime()
+	service := newIsolatedAgentService(runtime)
+	runtime.sessions["ws-1:session-1"] = ProviderRuntimeSession{
+		ID:          "session-1",
+		WorkspaceID: "ws-1",
+		Provider:    "codex",
+		Title:       "Codex",
+		Status:      "ready",
+		Visible:     true,
+	}
+
+	_, err := service.SendInput(context.Background(), "ws-1", "session-1", SendInput{
+		Content: TextPromptContent("[@task](mention://workspace-issue/1) inspect repo"),
+	})
+	if err != nil {
+		t.Fatalf("SendInput error = %v", err)
+	}
+	if len(runtime.execCalls) != 1 {
+		t.Fatalf("exec calls = %d, want 1", len(runtime.execCalls))
+	}
+	if got := runtime.execCalls[0].InitialTitle; got != "@task inspect repo" {
+		t.Fatalf("runtime initial title = %q, want canonical visible prompt", got)
 	}
 }
 
