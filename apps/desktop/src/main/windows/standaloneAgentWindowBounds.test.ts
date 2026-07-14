@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  resolveStandaloneAgentWindowBounds,
   resolveStandaloneAgentWindowContentWidth,
   shouldAnimateStandaloneAgentWindowResize
 } from "./standaloneAgentWindowBounds.ts";
@@ -9,6 +10,42 @@ test("standalone agent window avoids native resize animation on every platform",
   assert.equal(shouldAnimateStandaloneAgentWindowResize("darwin"), false);
   assert.equal(shouldAnimateStandaloneAgentWindowResize("win32"), false);
   assert.equal(shouldAnimateStandaloneAgentWindowResize("linux"), false);
+});
+
+test("standalone agent window opens at 90 percent of the active work area", () => {
+  assert.deepEqual(
+    resolveStandaloneAgentWindowBounds({
+      minHeight: 520,
+      minWidth: 760,
+      scale: 0.9,
+      workArea: { height: 1000, width: 1600, x: 0, y: 24 }
+    }),
+    { height: 900, width: 1440, x: 80, y: 74 }
+  );
+});
+
+test("standalone agent window centers within a non-primary work area", () => {
+  assert.deepEqual(
+    resolveStandaloneAgentWindowBounds({
+      minHeight: 520,
+      minWidth: 760,
+      scale: 0.9,
+      workArea: { height: 1080, width: 1600, x: 1440, y: 0 }
+    }),
+    { height: 972, width: 1440, x: 1520, y: 54 }
+  );
+});
+
+test("standalone agent window keeps minimums when 90 percent is too small", () => {
+  assert.deepEqual(
+    resolveStandaloneAgentWindowBounds({
+      minHeight: 520,
+      minWidth: 760,
+      scale: 0.9,
+      workArea: { height: 480, width: 700, x: 10, y: 30 }
+    }),
+    { height: 520, width: 760, x: 10, y: 30 }
+  );
 });
 
 test("standalone agent window grows to the right when the display has room", () => {

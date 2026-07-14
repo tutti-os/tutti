@@ -43,6 +43,7 @@ export interface DesktopAgentGUIWorkbenchBodyProps {
   agentProviderStatusService?: IAgentProviderStatusService;
   context: WorkbenchHostNodeBodyContext;
   computerUseApi?: Pick<DesktopComputerUseApi, "checkStatus">;
+  conversationRailAutoCollapseWidthPx?: number | null;
   dockPreviewCache: WorkbenchDockPreviewCache;
   onLinkAction?: (action: WorkspaceLinkAction) => void;
   onCapabilitySettingsRequest?: AgentGUIProps["hostActions"]["onCapabilitySettingsRequest"];
@@ -131,6 +132,8 @@ export function areDesktopAgentGUIWorkbenchBodyPropsEqual(
     previous.appCenterService === next.appCenterService &&
     previous.agentProviderStatusService === next.agentProviderStatusService &&
     previous.computerUseApi === next.computerUseApi &&
+    previous.conversationRailAutoCollapseWidthPx ===
+      next.conversationRailAutoCollapseWidthPx &&
     previous.dockPreviewCache === next.dockPreviewCache &&
     previous.onLinkAction === next.onLinkAction &&
     previous.onCapabilitySettingsRequest === next.onCapabilitySettingsRequest &&

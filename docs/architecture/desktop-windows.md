@@ -109,8 +109,9 @@ When a user opens the Agent-only window from a workspace window:
 2. desktop passes the source window's Agent provider target and provider status
    snapshots as bootstrap data so the detached window does not start from an
    unknown availability state
-3. desktop sizes the Agent-only window to fit the current display work area,
-   then centers it horizontally and vertically
+3. desktop sizes the Agent-only window to 90% of the source window display's
+   work area, excluding system UI such as the macOS menu bar and Dock, then
+   centers it horizontally and vertically
 4. once the Agent-only window is ready and shown, desktop minimizes the source
    workspace window
 

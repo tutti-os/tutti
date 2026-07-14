@@ -90,7 +90,7 @@ export function IssueManagerTopicSelector({
 
   return (
     <>
-      <DropdownMenu open={menuOpen} onOpenChange={setMenuOpen}>
+      <DropdownMenu modal={false} open={menuOpen} onOpenChange={setMenuOpen}>
         <DropdownMenuTrigger asChild>
           <Button
             aria-label={topicLabel}
@@ -106,7 +106,11 @@ export function IssueManagerTopicSelector({
             <ChevronDownIcon className="size-4 shrink-0 text-[var(--text-tertiary)] transition-transform duration-200" />
           </Button>
         </DropdownMenuTrigger>
-        <DropdownMenuContent align="start" className="w-[200px] px-1">
+        <DropdownMenuContent
+          align="start"
+          className="w-[200px] px-1"
+          style={{ zIndex: "var(--z-panel-popover)" }}
+        >
           {topics.map((topic) => {
             const isPinned = (topic.pinnedAtUnix ?? 0) > 0;
             const isActive = topic.topicId === activeTopicId;
@@ -180,6 +184,7 @@ export function IssueManagerTopicSelector({
                       align="end"
                       className="w-32"
                       sideOffset={6}
+                      style={{ zIndex: "var(--z-panel-popover)" }}
                     >
                       <DropdownMenuItem
                         onSelect={(event) => {

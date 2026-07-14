@@ -46,12 +46,14 @@ interface ShellContentDiagnosticSnapshot {
 
 export interface UseIssueManagerShellViewInput {
   controller: IssueManagerController;
+  disableSidebarAutoCollapse?: boolean;
   selectedIssue: IssueManagerIssueSummary | null;
   selectedTask: IssueManagerTaskSummary | null;
 }
 
 export function useIssueManagerShellView({
   controller,
+  disableSidebarAutoCollapse = false,
   selectedIssue,
   selectedTask
 }: UseIssueManagerShellViewInput) {
@@ -77,7 +79,10 @@ export function useIssueManagerShellView({
       setSidebarWidth((current) =>
         clampIssueManagerSidebarWidth(current, width)
       );
-      setIsNarrowLayout(shouldAutoCollapseIssueManagerSidebar(width));
+      setIsNarrowLayout(
+        !disableSidebarAutoCollapse &&
+          shouldAutoCollapseIssueManagerSidebar(width)
+      );
     };
 
     const layout = layoutRef.current;
@@ -94,7 +99,7 @@ export function useIssueManagerShellView({
       observer?.disconnect();
       window.removeEventListener("resize", publishLayout);
     };
-  }, []);
+  }, [disableSidebarAutoCollapse]);
 
   useEffect(() => {
     if (!floatingNotice) {

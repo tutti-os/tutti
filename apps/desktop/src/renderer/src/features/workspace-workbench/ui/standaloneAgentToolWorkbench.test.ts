@@ -380,9 +380,13 @@ test("standalone Agent toolbar exposes task management in the unified panel", ()
     standaloneAgentIssueManagerToolPanelSource,
     /candidate\.id === "workspace-issue-manager"/
   );
+  assert.doesNotMatch(
+    standaloneAgentIssueManagerToolPanelSource,
+    /IssueManagerEmbeddedToolbar/
+  );
   assert.match(
     standaloneAgentIssueManagerToolPanelSource,
-    /<IssueManagerEmbeddedToolbar[\s\S]*?resolved\.definition\.renderBody\(context\)/
+    /\[issueManagerTopicSelectorPlacementDataKey\]: "sidebar"[\s\S]*?resolved\.definition\.renderBody\(context\)/
   );
   assert.match(
     standaloneAgentIssueManagerToolPanelSource,

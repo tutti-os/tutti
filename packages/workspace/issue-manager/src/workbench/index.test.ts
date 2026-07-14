@@ -70,3 +70,10 @@ test("issue-manager sidebar expansion resizes only from auto-collapsed layout", 
     /if \(\s*isSidebarCollapsed\s*&&\s*nextCollapsed === false\s*&&\s*node\.displayMode !== "fullscreen"\s*\) \{[\s\S]*windowActions\.resize\(/m
   );
 });
+
+test("standalone issue manager disables sidebar auto-collapse", () => {
+  assert.match(
+    issueManagerWorkbenchSource,
+    /disableSidebarAutoCollapse:\s*readIssueManagerTopicSelectorPlacement\(context\.node\.data\) ===\s*"sidebar"/
+  );
+});

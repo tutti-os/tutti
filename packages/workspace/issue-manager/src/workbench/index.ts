@@ -31,7 +31,8 @@ import {
 import type { IssueManagerLatestRunStatusRenderer } from "../ui/latestRunStatusRenderer.ts";
 export {
   defaultIssueManagerNodeFrame,
-  defaultIssueManagerWorkbenchTypeId
+  defaultIssueManagerWorkbenchTypeId,
+  issueManagerTopicSelectorPlacementDataKey
 } from "./constants.ts";
 export {
   issueManagerOpenActivationType,
@@ -40,7 +41,8 @@ export {
 } from "./openActivation.ts";
 import {
   defaultIssueManagerNodeFrame,
-  defaultIssueManagerWorkbenchTypeId
+  defaultIssueManagerWorkbenchTypeId,
+  issueManagerTopicSelectorPlacementDataKey
 } from "./constants.ts";
 import { readIssueManagerOpenActivationPayload } from "./openActivation.ts";
 
@@ -145,6 +147,12 @@ export function createIssueManagerWorkbenchNodeDefinition<
         resolveRichTextTriggerProviders,
         service,
         state: context.externalNodeState,
+        disableSidebarAutoCollapse:
+          readIssueManagerTopicSelectorPlacement(context.node.data) ===
+          "sidebar",
+        topicSelectorPlacement: readIssueManagerTopicSelectorPlacement(
+          context.node.data
+        ),
         workspaceId: context.externalWorkspaceState.workspaceId ?? ""
       }),
     renderHeader: ({
@@ -237,6 +245,15 @@ export function createIssueManagerWorkbenchNodeDefinition<
       restoreOnLoad: true
     }
   };
+}
+
+function readIssueManagerTopicSelectorPlacement(
+  data: unknown
+): "sidebar" | undefined {
+  const placement = (data as Record<string, unknown> | null | undefined)?.[
+    issueManagerTopicSelectorPlacementDataKey
+  ];
+  return placement === "sidebar" ? "sidebar" : undefined;
 }
 
 function resolveIssueManagerOpenSource(

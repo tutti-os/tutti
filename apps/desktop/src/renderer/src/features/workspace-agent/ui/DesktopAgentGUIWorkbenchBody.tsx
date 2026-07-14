@@ -73,6 +73,7 @@ function DesktopAgentGUIWorkbenchBodyImpl({
   agentProviderStatusService,
   context,
   computerUseApi,
+  conversationRailAutoCollapseWidthPx = null,
   dockPreviewCache,
   onLinkAction,
   onCapabilitySettingsRequest,
@@ -735,7 +736,8 @@ function DesktopAgentGUIWorkbenchBodyImpl({
           isMaximized: context.displayMode === "fullscreen",
           isActive: context.isFocused,
           embedded: true,
-          previewMode
+          previewMode,
+          conversationRailAutoCollapseWidthPx
         }}
         state={nodeState}
         runtimeRequests={{

@@ -128,7 +128,30 @@ test("standalone Agent handles task and app Agent launch requests", () => {
 test("standalone Agent recalculates the right sidebar layout when the conversation rail collapses", () => {
   assert.match(
     standaloneWindowSource,
-    /mainContentMinWidthPx=\{\s*nodeState\.conversationRailCollapsed\s*\? AGENT_GUI_DETAIL_MIN_WIDTH_PX\s*:\s*headerConversationRailWidthPx\s*\+\s*agentGuiWorkbenchProviderRailWidthPx\s*\}/
+    /mainContentMinWidthPx=\{\s*isConversationRailCollapsed\s*\? AGENT_GUI_DETAIL_MIN_WIDTH_PX\s*:\s*headerConversationRailWidthPx\s*\+\s*agentGuiWorkbenchProviderRailWidthPx\s*\}/
+  );
+});
+
+test("standalone Agent auto-hides the conversation rail below the standalone width threshold", () => {
+  assert.match(
+    standaloneWindowSource,
+    /const isConversationRailAutoCollapsed =\s*shouldAutoCollapseAgentGUIConversationRail\(\s*frame\.width,\s*AGENT_GUI_STANDALONE_AUTO_COLLAPSE_WIDTH_PX\s*\)/
+  );
+  assert.match(
+    standaloneWindowSource,
+    /const isConversationRailCollapsed =\s*nodeState\.conversationRailCollapsed === true \|\|\s*isConversationRailAutoCollapsed/
+  );
+  assert.match(
+    standaloneWindowSource,
+    /isConversationRailAutoCollapsed=\{isConversationRailAutoCollapsed\}/
+  );
+  assert.match(
+    standaloneWindowSource,
+    /isConversationRailCollapsed=\{isConversationRailCollapsed\}/
+  );
+  assert.match(
+    standaloneWindowSource,
+    /conversationRailAutoCollapseWidthPx=\{\s*AGENT_GUI_STANDALONE_AUTO_COLLAPSE_WIDTH_PX\s*\}/
   );
 });
 

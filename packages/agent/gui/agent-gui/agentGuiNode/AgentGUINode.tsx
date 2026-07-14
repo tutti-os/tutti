@@ -83,8 +83,11 @@ export const AgentGUINode = memo(function AgentGUINode({
     isMaximized = false,
     isActive,
     embedded = false,
-    previewMode = false
+    previewMode = false,
+    conversationRailAutoCollapseWidthPx = null
   } = frame;
+  const railAutoCollapseWidthPx =
+    conversationRailAutoCollapseWidthPx ?? undefined;
   const {
     composerFocusSequence: composerFocusRequestSequence = null,
     newConversationSequence: newConversationRequestSequence = null,
@@ -207,7 +210,7 @@ export const AgentGUINode = memo(function AgentGUINode({
   const isConversationRailManuallyCollapsed =
     state.conversationRailCollapsed === true;
   const isConversationRailAutoCollapsed =
-    shouldAutoCollapseAgentGUIConversationRail(width);
+    shouldAutoCollapseAgentGUIConversationRail(width, railAutoCollapseWidthPx);
   const isConversationRailCollapsed =
     isConversationRailManuallyCollapsed || isConversationRailAutoCollapsed;
   const minSize = useMemo(
@@ -586,7 +589,10 @@ export const AgentGUINode = memo(function AgentGUINode({
         const renderedWidth = renderFrame.size.width;
         const isRenderedConversationRailCollapsed =
           isConversationRailCollapsed ||
-          shouldAutoCollapseAgentGUIConversationRail(renderedWidth);
+          shouldAutoCollapseAgentGUIConversationRail(
+            renderedWidth,
+            railAutoCollapseWidthPx
+          );
 
         return (
           <AgentGUINodeView

@@ -206,6 +206,13 @@ export function useAgentGUIDetailScroll(input: Input) {
         if (element.closest(`.${styles.bottomDockScrollToBottom}`)) {
           return;
         }
+        // The prompt input box expands upward past the dock top while the
+        // user drafts a long prompt. That transient overhang must not grow
+        // the timeline's reserved bottom space: reserving for it re-pins the
+        // scroll position and visibly pushes the message stream up.
+        if (element.closest(`.${styles.composerInputShell}`)) {
+          return;
+        }
         const rect = element.getBoundingClientRect();
         if (rect.width > 0 && rect.height > 0) {
           visualTop = Math.min(visualTop, rect.top);

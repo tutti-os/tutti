@@ -1,11 +1,9 @@
-import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import {
-  normalizeIssueManagerNodeState,
-  shouldAutoCollapseIssueManagerSidebar
-} from "@tutti-os/workspace-issue-manager/core";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import type { IssueManagerNodeState } from "@tutti-os/workspace-issue-manager/contracts";
-import { IssueManagerEmbeddedToolbar } from "@tutti-os/workspace-issue-manager/ui";
-import { defaultIssueManagerWorkbenchTypeId } from "@tutti-os/workspace-issue-manager/workbench/constants";
+import {
+  defaultIssueManagerWorkbenchTypeId,
+  issueManagerTopicSelectorPlacementDataKey
+} from "@tutti-os/workspace-issue-manager/workbench/constants";
 import type {
   WorkbenchContribution,
   WorkbenchHostNodeBodyContext,
@@ -36,18 +34,6 @@ export function StandaloneAgentIssueManagerToolPanel({
     [contributions]
   );
   const directHost = useMemo(createStandaloneAgentDirectToolHost, []);
-  const surfaceRef = useRef<HTMLDivElement | null>(null);
-  const [surfaceWidth, setSurfaceWidth] = useState(0);
-  const lookup = useMemo(
-    () => ({
-      instanceId: standaloneAgentIssueManagerNodeId,
-      instanceKey: standaloneAgentIssueManagerNodeId,
-      nodeId: standaloneAgentIssueManagerNodeId,
-      typeId: defaultIssueManagerWorkbenchTypeId,
-      workspaceId
-    }),
-    [workspaceId]
-  );
   const [externalNodeState, setExternalNodeState] =
     useState<Partial<IssueManagerNodeState> | null>(null);
 
@@ -59,28 +45,18 @@ export function StandaloneAgentIssueManagerToolPanel({
     }
     const updateState = () => {
       setExternalNodeState(
-        (source.getNodeState(
-          lookup
-        ) as Partial<IssueManagerNodeState> | null) ?? null
+        (source.getNodeState({
+          instanceId: standaloneAgentIssueManagerNodeId,
+          instanceKey: standaloneAgentIssueManagerNodeId,
+          nodeId: standaloneAgentIssueManagerNodeId,
+          typeId: defaultIssueManagerWorkbenchTypeId,
+          workspaceId
+        }) as Partial<IssueManagerNodeState> | null) ?? null
       );
     };
     updateState();
     return source.subscribe?.(updateState);
-  }, [lookup, resolved]);
-
-  useEffect(() => {
-    const surface = surfaceRef.current;
-    if (!surface || typeof ResizeObserver === "undefined") {
-      return;
-    }
-    const updateWidth = () => {
-      setSurfaceWidth(surface.getBoundingClientRect().width);
-    };
-    const observer = new ResizeObserver(updateWidth);
-    observer.observe(surface);
-    updateWidth();
-    return () => observer.disconnect();
-  }, [resolved]);
+  }, [resolved, workspaceId]);
 
   useEffect(() => {
     directHost.setNode(
@@ -107,15 +83,15 @@ export function StandaloneAgentIssueManagerToolPanel({
     );
   }
 
-  const nodeState = normalizeIssueManagerNodeState(externalNodeState);
   const node: WorkbenchNode<WorkbenchHostNodeData> = {
     data: {
       dockEntryId: defaultIssueManagerWorkbenchTypeId,
       instanceId: standaloneAgentIssueManagerNodeId,
       instanceKey: standaloneAgentIssueManagerNodeId,
       launchSource: activation ? "agent_command" : null,
-      typeId: defaultIssueManagerWorkbenchTypeId
-    },
+      typeId: defaultIssueManagerWorkbenchTypeId,
+      [issueManagerTopicSelectorPlacementDataKey]: "sidebar"
+    } as WorkbenchHostNodeData,
     displayMode: "fullscreen",
     frame: resolved.definition.frame,
     id: standaloneAgentIssueManagerNodeId,
@@ -146,18 +122,7 @@ export function StandaloneAgentIssueManagerToolPanel({
     <div
       className="flex h-full min-h-0 flex-col overflow-hidden"
       data-standalone-agent-issue-manager-surface="true"
-      ref={surfaceRef}
     >
-      <IssueManagerEmbeddedToolbar
-        activeTopicId={nodeState.activeTopicId}
-        copy={resolved.runtime.feature.i18n}
-        isSidebarAutoCollapsed={shouldAutoCollapseIssueManagerSidebar(
-          surfaceWidth
-        )}
-        isSidebarCollapsed={nodeState.taskListCollapsed === true}
-        nodeId={standaloneAgentIssueManagerNodeId}
-        workspaceId={workspaceId}
-      />
       <div className="min-h-0 flex-1 overflow-hidden">
         {resolved.definition.renderBody(context)}
       </div>
