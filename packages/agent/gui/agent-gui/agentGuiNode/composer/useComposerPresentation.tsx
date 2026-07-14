@@ -9,7 +9,12 @@ import { createPortal } from "react-dom";
 import { Spinner } from "@tutti-os/ui-system";
 import { cn } from "../../../app/renderer/lib/utils";
 import type { AgentConversationPromptVM } from "../../../shared/agentConversation/contracts/agentConversationVM";
-import { agentComposerDraftHasContent } from "../model/agentComposerDraft";
+import {
+  agentComposerDraftFiles,
+  agentComposerDraftHasContent,
+  agentComposerDraftImages,
+  agentComposerDraftLargeTexts
+} from "../model/agentComposerDraft";
 import type { AgentComposerDraft } from "../model/agentGuiNodeTypes";
 import type { AgentFileMentionSuggestionState } from "../agentRichText/agentFileMentionExtension";
 import type { AgentMentionSearchController } from "../AgentMentionSearchController";
@@ -87,9 +92,9 @@ export function useComposerPresentation(input: Input) {
     promptImagesSupported
   } = input;
   const agentActivityRuntime = useOptionalAgentActivityRuntime();
-  const draftImages = draftContent.images;
-  const draftFiles = draftContent.files ?? [];
-  const draftLargeTexts = draftContent.largeTexts ?? [];
+  const draftImages = agentComposerDraftImages(draftContent);
+  const draftFiles = agentComposerDraftFiles(draftContent);
+  const draftLargeTexts = agentComposerDraftLargeTexts(draftContent);
   const hasDraftContent = agentComposerDraftHasContent(draftContent);
   const hasUploadingDraftImages = draftImages.some((image) => image.uploading);
   const hasFailedDraftImages = draftImages.some((image) => image.uploadError);

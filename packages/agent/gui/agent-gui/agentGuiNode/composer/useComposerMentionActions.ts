@@ -24,6 +24,7 @@ import { isAgentRichTextImeComposing } from "../agentRichText/agentRichTextIme";
 import { AGENT_MENTION_FILTER_TAB_ORDER } from "../agentMentionSearchHelpers";
 import { agentMentionItemKey } from "../AgentFileMentionPalette";
 import { MENTION_PALETTE_DISMISS_INTERACTION_SELECTOR } from "./AgentComposerChrome";
+import { updateAgentComposerDraft } from "../model/agentComposerDraft";
 import {
   type AgentMentionFilterId,
   type AgentMentionGroupId,
@@ -155,7 +156,9 @@ export function useComposerMentionActions(input: Input) {
     }
     draftPromptRef.current = nextDraft;
     setPaletteDraftPrompt(nextDraft);
-    onDraftContentChange({ ...draftContent, prompt: nextDraft });
+    onDraftContentChange(
+      updateAgentComposerDraft(draftContent, { prompt: nextDraft })
+    );
   }, [draftContent, fileMentionSuggestion, onDraftContentChange]);
   const closeOpenPalette = useCallback((): void => {
     if (showFileMentionPalette) {

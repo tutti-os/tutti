@@ -27,6 +27,12 @@ import type { AgentSlashCommandPolicy } from "./agentSlashCommandProviderPolicy"
 import type { AgentConversationVM } from "../../../shared/agentConversation/contracts/agentConversationVM";
 import type { WorkspaceAgentSessionDetailViewModel } from "../../../shared/workspaceAgentSessionDetailViewModel";
 import type { AgentPromptContentBlock } from "../../../shared/contracts/dto";
+import { AGENT_PASTED_TEXT_BLOCK_KIND } from "../../../shared/pastedTextKinds";
+
+export {
+  AGENT_PASTED_TEXT_BLOCK_KIND,
+  AGENT_PASTED_TEXT_MENTION_KIND
+} from "../../../shared/pastedTextKinds";
 
 export interface AgentGUISessionChrome {
   auth: {
@@ -89,7 +95,13 @@ export interface AgentGUIProviderSkillOption {
   kind?: "skill" | "connector";
 }
 
-export interface AgentComposerDraftImage {
+export interface AgentComposerTextBlock {
+  type: "text";
+  text: string;
+}
+
+export interface AgentComposerImageBlock {
+  type: "image";
   id: string;
   name: string;
   mimeType: "image/png" | "image/jpeg" | "image/webp";
@@ -102,7 +114,8 @@ export interface AgentComposerDraftImage {
   uploadError?: string;
 }
 
-export interface AgentComposerDraftFile {
+interface AgentComposerFileBlockBase {
+  type: "file";
   id: string;
   name: string;
   mimeType?: string;
@@ -114,39 +127,54 @@ export interface AgentComposerDraftFile {
   uploadError?: string;
 }
 
-export interface AgentComposerDraftLargeText {
-  id: string;
-  name: string;
+export interface AgentComposerRegularFileBlock extends AgentComposerFileBlockBase {
+  kind: "file";
+  text?: never;
+}
+
+export interface AgentComposerPastedTextBlock extends AgentComposerFileBlockBase {
+  kind: typeof AGENT_PASTED_TEXT_BLOCK_KIND;
+  /** Empty only when a queued pasted-text attachment is restored by path. */
   text: string;
-  sizeBytes?: number;
-  path?: string;
-  uploading?: boolean;
-  uploadError?: string;
 }
 
-/**
- * Marks a prompt `file` content block as a pasted-text attachment (as opposed
- * to a user-attached file). Carried on the block `kind` so the round-trip
- * (submit → queue → edit-restore) can rebuild a large-text chip instead of a
- * regular file chip, and so the codex-style "read this file" instruction is
- * materialized only for these blocks at send time.
- */
-export { AGENT_PASTED_TEXT_BLOCK_KIND } from "../../../shared/pastedTextKinds";
+export type AgentComposerFileBlock =
+  | AgentComposerRegularFileBlock
+  | AgentComposerPastedTextBlock;
 
-/**
- * Provider id of the custom mention kind used to render a pasted-text chip in
- * the conversation flow. The mention href (`mention://pasted-text/...`) carries
- * the landed archive path + size so the host can render the chip and open a
- * preview on click. Registered via registerAgentCustomMentionKind.
- */
-export { AGENT_PASTED_TEXT_MENTION_KIND } from "../../../shared/pastedTextKinds";
+export type AgentComposerAttachmentBlock =
+  | AgentComposerImageBlock
+  | AgentComposerFileBlock;
 
-export interface AgentComposerDraft {
-  prompt: string;
-  images: AgentComposerDraftImage[];
-  files?: AgentComposerDraftFile[];
-  largeTexts?: AgentComposerDraftLargeText[];
+export type AgentComposerDraftBlock =
+  | AgentComposerTextBlock
+  | AgentComposerAttachmentBlock;
+
+export type AgentComposerDraftContent = [
+  AgentComposerTextBlock,
+  ...AgentComposerAttachmentBlock[]
+];
+
+/** One atomic, unsent composer message. */
+export type AgentComposerDraft = AgentComposerDraftContent;
+
+export interface SubmittedDraftSnapshot {
+  sourceScopeKey: string;
+  content: AgentComposerDraftContent;
+  /** Existing-session destination; may differ from source after recovery. */
+  targetAgentSessionId?: string;
 }
+
+/** UI aliases retained for focused attachment components. */
+export type AgentComposerDraftImage = Omit<AgentComposerImageBlock, "type">;
+export type AgentComposerDraftFile = Omit<
+  AgentComposerRegularFileBlock,
+  "type" | "kind"
+>;
+export type AgentComposerDraftLargeText = Omit<
+  AgentComposerPastedTextBlock,
+  "type" | "kind"
+>;
 
 /**
  * Built-in glyph for a home-suggestion category chip. Keeps the localized data

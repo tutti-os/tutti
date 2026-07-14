@@ -29,6 +29,8 @@ import type {
   AgentHomeSuggestionAction,
   AgentGUINodeViewModel
 } from "../model/agentGuiNodeTypes";
+import { updateAgentComposerDraft } from "../model/agentComposerDraft";
+import { resolveAgentComposerDraftScopeKey } from "../model/agentComposerDraftScope";
 import { projectAgentGUIManagedHomeTargets } from "../model/agentGuiProviderRailOrder";
 import type {
   AgentGUINodeViewProps,
@@ -66,7 +68,6 @@ const AGENT_GUI_TIMELINE_SCROLL_AREA_CONTENT_STYLE: CSSProperties = {
 };
 const EMPTY_WORKSPACE_APP_ICONS: readonly AgentMessageMarkdownWorkspaceAppIcon[] =
   [];
-
 export interface AgentGUIDetailPaneProps {
   viewModel: AgentGUINodeViewModel;
   actions: AgentGUINodeViewProps["actions"];
@@ -293,7 +294,9 @@ export const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
       // Don't request focus here: replacing the draft already makes the composer
       // focus the filled prompt (focusAtStart). A second focus (focusAtEnd) would
       // race it and make the cursor/scroll jump — a visible flicker on fill.
-      updateDraftContent({ ...viewModel.composer.draftContent, prompt });
+      updateDraftContent(
+        updateAgentComposerDraft(viewModel.composer.draftContent, { prompt })
+      );
     },
     [updateDraftContent, viewModel.composer.draftContent]
   );
@@ -423,6 +426,10 @@ export const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
       onSlashStatusOpen,
       usage: viewModel.detail.usage,
       draftContent: viewModel.composer.draftContent,
+      draftScopeKey: resolveAgentComposerDraftScopeKey({
+        agentSessionId: viewModel.rail.activeConversationId,
+        projectPath: viewModel.composer.composerSettings.selectedProjectPath
+      }),
       availableCommands: viewModel.composer.availableCommands,
       hasCompactableContext: viewModel.detail.hasSentUserMessage,
       compactSupported: viewModel.composer.compactSupported,

@@ -1,11 +1,16 @@
 import { describe, expect, it } from "vitest";
 import {
   agentComposerDraftDisplayPrompt,
+  agentComposerDraftFiles,
   agentComposerDraftHasContent,
+  agentComposerDraftImages,
+  agentComposerDraftLargeTexts,
+  agentComposerDraftPrompt,
   agentComposerDraftSubmittedText,
   agentComposerDraftToPromptContent,
   agentPromptContentDisplayText,
   agentPromptContentToComposerDraft,
+  buildAgentComposerDraft,
   emptyAgentComposerDraft,
   extractPastedTextArchivePaths,
   linkifyPastedTextReferences,
@@ -13,6 +18,37 @@ import {
 } from "./agentComposerDraft";
 
 describe("agentComposerDraft", () => {
+  it("stores text, images, files, and pasted text in one ordered content array", () => {
+    const draft = buildAgentComposerDraft({
+      prompt: "Inspect this",
+      images: [
+        {
+          id: "image-1",
+          name: "screen.png",
+          mimeType: "image/png",
+          previewUrl: "blob:image-1"
+        }
+      ],
+      files: [{ id: "file-1", name: "notes.md" }],
+      largeTexts: [
+        { id: "paste-1", name: "pasted-text.txt", text: "long body" }
+      ]
+    });
+
+    expect(draft.map((block) => block.type)).toEqual([
+      "text",
+      "image",
+      "file",
+      "file"
+    ]);
+    expect(draft[2]).toMatchObject({ type: "file", kind: "file" });
+    expect(draft[3]).toMatchObject({
+      type: "file",
+      kind: "pasted-text",
+      text: "long body"
+    });
+  });
+
   it("preserves safe URL-only image blocks and rejects unsafe or ambiguous sources", () => {
     const signedUrl = "https://bucket.example/image.png?token=secret";
     expect(
@@ -66,7 +102,7 @@ describe("agentComposerDraft", () => {
   it("converts text-only drafts into prompt content", () => {
     expect(
       agentComposerDraftToPromptContent({
-        draft: { prompt: "  run tests  ", images: [] },
+        draft: buildAgentComposerDraft({ prompt: "  run tests  " }),
         skills: []
       })
     ).toEqual([{ type: "text", text: "run tests" }]);
@@ -75,7 +111,9 @@ describe("agentComposerDraft", () => {
   it("builds prompt-item blocks from the skill invocation contract", () => {
     expect(
       agentComposerDraftToPromptContent({
-        draft: { prompt: "/review-code inspect this", images: [] },
+        draft: buildAgentComposerDraft({
+          prompt: "/review-code inspect this"
+        }),
         skills: [
           {
             name: "review-code",
@@ -97,7 +135,7 @@ describe("agentComposerDraft", () => {
   });
 
   it("submits a landed pasted-text draft as a structured file block", () => {
-    const draft = {
+    const draft = buildAgentComposerDraft({
       prompt: "Summarize this",
       images: [],
       largeTexts: [
@@ -109,7 +147,7 @@ describe("agentComposerDraft", () => {
           path: "/archive/aa/deadbeef.txt"
         }
       ]
-    };
+    });
 
     expect(agentComposerDraftHasContent(draft)).toBe(true);
     // The conversation-flow display prompt encodes the landed pasted text as a
@@ -140,7 +178,7 @@ describe("agentComposerDraft", () => {
   });
 
   it("keeps an uploading or errored pasted-text draft out of submit content", () => {
-    const uploading = {
+    const uploading = buildAgentComposerDraft({
       prompt: "",
       images: [],
       largeTexts: [
@@ -151,8 +189,8 @@ describe("agentComposerDraft", () => {
           uploading: true
         }
       ]
-    };
-    const errored = {
+    });
+    const errored = buildAgentComposerDraft({
       prompt: "",
       images: [],
       largeTexts: [
@@ -163,7 +201,7 @@ describe("agentComposerDraft", () => {
           uploadError: "disk full"
         }
       ]
-    };
+    });
 
     // A pending/errored chip still counts as content (so the composer is not
     // treated as empty) but never lands in the submitted prompt content.
@@ -197,10 +235,15 @@ describe("agentComposerDraft", () => {
       "restore-1"
     );
 
-    expect(draft.prompt).toBe("Summarize this");
-    expect(draft.files ?? []).toEqual([]);
-    expect(draft.largeTexts).toHaveLength(1);
-    expect(draft.largeTexts?.[0]).toMatchObject({
+    expect(agentComposerDraftPrompt(draft)).toBe("Summarize this");
+    expect(agentComposerDraftFiles(draft)).toEqual([]);
+    expect(agentComposerDraftLargeTexts(draft)).toHaveLength(1);
+    expect(agentComposerDraftLargeTexts(draft)[0]).toMatchObject({
+      text: "",
+      path: "/archive/aa/deadbeef.txt"
+    });
+    expect(agentComposerDraftHasContent(draft)).toBe(true);
+    expect(agentComposerDraftLargeTexts(draft)[0]).toMatchObject({
       name: "pasted-text.txt",
       path: "/archive/aa/deadbeef.txt",
       sizeBytes: 22,
@@ -249,7 +292,9 @@ describe("agentComposerDraft", () => {
   it("adds codex app-server prompt items for referenced skills and connectors", () => {
     expect(
       agentComposerDraftToPromptContent({
-        draft: { prompt: "$review $github check this", images: [] },
+        draft: buildAgentComposerDraft({
+          prompt: "$review $github check this"
+        }),
         skills: [
           {
             name: "review",
@@ -279,7 +324,7 @@ describe("agentComposerDraft", () => {
   it("converts image-only drafts into prompt content", () => {
     expect(
       agentComposerDraftToPromptContent({
-        draft: {
+        draft: buildAgentComposerDraft({
           prompt: "",
           images: [
             {
@@ -290,7 +335,7 @@ describe("agentComposerDraft", () => {
               previewUrl: "data:image/png;base64,aW1hZ2U="
             }
           ]
-        },
+        }),
         skills: []
       })
     ).toEqual([
@@ -318,7 +363,7 @@ describe("agentComposerDraft", () => {
       "remote"
     );
 
-    expect(draft.images).toEqual([
+    expect(agentComposerDraftImages(draft)).toEqual([
       {
         id: "remote:image:0",
         name: "screen.webp",
@@ -358,7 +403,7 @@ describe("agentComposerDraft", () => {
       "queued"
     );
 
-    expect(draft.images).toEqual([
+    expect(agentComposerDraftImages(draft)).toEqual([
       {
         id: "queued:image:0",
         name: "queued.png",
@@ -385,7 +430,7 @@ describe("agentComposerDraft", () => {
   it("converts attachment-backed image-only drafts into prompt content", () => {
     expect(
       agentComposerDraftToPromptContent({
-        draft: {
+        draft: buildAgentComposerDraft({
           prompt: "",
           images: [
             {
@@ -396,7 +441,7 @@ describe("agentComposerDraft", () => {
               previewUrl: "data:image/png;base64,aW1hZ2U="
             }
           ]
-        },
+        }),
         skills: []
       })
     ).toEqual([
@@ -412,7 +457,7 @@ describe("agentComposerDraft", () => {
   it("converts staged image drafts into path prompt content", () => {
     expect(
       agentComposerDraftToPromptContent({
-        draft: {
+        draft: buildAgentComposerDraft({
           prompt: "",
           images: [
             {
@@ -423,7 +468,7 @@ describe("agentComposerDraft", () => {
               previewUrl: "data:image/png;base64,aW1hZ2U="
             }
           ]
-        },
+        }),
         skills: []
       })
     ).toEqual([
@@ -439,7 +484,7 @@ describe("agentComposerDraft", () => {
   it("does not emit image drafts that are still uploading or failed", () => {
     expect(
       agentComposerDraftToPromptContent({
-        draft: {
+        draft: buildAgentComposerDraft({
           prompt: "",
           images: [
             {
@@ -459,7 +504,7 @@ describe("agentComposerDraft", () => {
               uploadError: "failed"
             }
           ]
-        },
+        }),
         skills: []
       })
     ).toEqual([]);
@@ -479,19 +524,21 @@ describe("agentComposerDraft", () => {
       "restore-queued-1"
     );
 
-    expect(draft).toEqual({
-      prompt: "describe this",
-      files: [],
-      images: [
-        {
-          id: "restore-queued-1:image:0",
-          name: "panel.png",
-          mimeType: "image/png",
-          data: "aW1hZ2U=",
-          previewUrl: "data:image/png;base64,aW1hZ2U="
-        }
-      ]
-    });
+    expect(draft).toEqual(
+      buildAgentComposerDraft({
+        prompt: "describe this",
+        files: [],
+        images: [
+          {
+            id: "restore-queued-1:image:0",
+            name: "panel.png",
+            mimeType: "image/png",
+            data: "aW1hZ2U=",
+            previewUrl: "data:image/png;base64,aW1hZ2U="
+          }
+        ]
+      })
+    );
   });
 
   it("restores path image content into stable draft ids", () => {
@@ -507,19 +554,22 @@ describe("agentComposerDraft", () => {
       "restore-queued-1"
     );
 
-    expect(draft).toEqual({
-      prompt: "",
-      files: [],
-      images: [
-        {
-          id: "restore-queued-1:image:0",
-          name: "panel.png",
-          mimeType: "image/png",
-          path: "/var/cache/tsh/local-assets/workspace-1/user-1/panel.png",
-          previewUrl: "/var/cache/tsh/local-assets/workspace-1/user-1/panel.png"
-        }
-      ]
-    });
+    expect(draft).toEqual(
+      buildAgentComposerDraft({
+        prompt: "",
+        files: [],
+        images: [
+          {
+            id: "restore-queued-1:image:0",
+            name: "panel.png",
+            mimeType: "image/png",
+            path: "/var/cache/tsh/local-assets/workspace-1/user-1/panel.png",
+            previewUrl:
+              "/var/cache/tsh/local-assets/workspace-1/user-1/panel.png"
+          }
+        ]
+      })
+    );
   });
 
   it("restores attachment-backed image content into stable draft ids", () => {
@@ -535,25 +585,27 @@ describe("agentComposerDraft", () => {
       "restore-queued-1"
     );
 
-    expect(draft).toEqual({
-      prompt: "",
-      files: [],
-      images: [
-        {
-          id: "restore-queued-1:image:0",
-          name: "panel.png",
-          mimeType: "image/png",
-          attachmentId: "attachment-1",
-          previewUrl: ""
-        }
-      ]
-    });
+    expect(draft).toEqual(
+      buildAgentComposerDraft({
+        prompt: "",
+        files: [],
+        images: [
+          {
+            id: "restore-queued-1:image:0",
+            name: "panel.png",
+            mimeType: "image/png",
+            attachmentId: "attachment-1",
+            previewUrl: ""
+          }
+        ]
+      })
+    );
   });
 
   it("converts local file drafts into prompt content", () => {
     expect(
       agentComposerDraftToPromptContent({
-        draft: {
+        draft: buildAgentComposerDraft({
           prompt: "",
           images: [],
           files: [
@@ -567,7 +619,7 @@ describe("agentComposerDraft", () => {
               sizeBytes: 42
             }
           ]
-        },
+        }),
         skills: []
       })
     ).toEqual([

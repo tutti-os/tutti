@@ -17,20 +17,17 @@ import type {
   AgentGUIAgentTarget
 } from "../../../types";
 import {
-  agentComposerDraftSubmittedText,
-  agentPromptContentDisplayText,
   emptyAgentComposerDraft,
-  isPastedTextPromptBlock,
   materializePastedTextInstructions
 } from "../model/agentComposerDraft";
 import { type AgentGUIConversationSummary } from "../model/agentGuiConversationModel";
 import type {
   AgentComposerDraft,
-  AgentGUIQueuedPromptVM
+  AgentGUIQueuedPromptVM,
+  SubmittedDraftSnapshot
 } from "../model/agentGuiNodeTypes";
+import { resolveAgentComposerDraftScopeKey } from "../model/agentComposerDraftScope";
 import {
-  NODE_DEFAULT_DRAFT_KEY,
-  nodeDefaultDraftKey,
   normalizePermissionModeId,
   readNodeDefaultDraftSettings,
   resolveEffectiveComposerSettings
@@ -282,78 +279,81 @@ export function areAgentComposerDraftsEqual(
   left: AgentComposerDraft,
   right: AgentComposerDraft
 ): boolean {
-  const leftFiles = left.files ?? [];
-  const rightFiles = right.files ?? [];
-  const leftLargeTexts = left.largeTexts ?? [];
-  const rightLargeTexts = right.largeTexts ?? [];
+  return areDraftValuesStructurallyEqual(left, right);
+}
+
+function areDraftValuesStructurallyEqual(
+  left: unknown,
+  right: unknown
+): boolean {
+  if (Object.is(left, right)) return true;
+  if (Array.isArray(left) || Array.isArray(right)) {
+    return (
+      Array.isArray(left) &&
+      Array.isArray(right) &&
+      left.length === right.length &&
+      left.every((value, index) =>
+        areDraftValuesStructurallyEqual(value, right[index])
+      )
+    );
+  }
+  if (
+    left === null ||
+    right === null ||
+    typeof left !== "object" ||
+    typeof right !== "object"
+  ) {
+    return false;
+  }
+  const leftRecord = left as Record<string, unknown>;
+  const rightRecord = right as Record<string, unknown>;
+  const leftKeys = Object.keys(leftRecord);
+  const rightKeys = Object.keys(rightRecord);
   return (
-    left.prompt === right.prompt &&
-    left.images.length === right.images.length &&
-    left.images.every((image, index) => {
-      const other = right.images[index];
-      if (!other) {
-        return false;
-      }
-      return (
-        image.id === other.id &&
-        image.name === other.name &&
-        image.mimeType === other.mimeType &&
-        image.data === other.data &&
-        image.path === other.path &&
-        image.previewUrl === other.previewUrl &&
-        image.uploading === other.uploading &&
-        image.uploadError === other.uploadError
-      );
-    }) &&
-    leftFiles.length === rightFiles.length &&
-    leftFiles.every((file, index) => {
-      const other = rightFiles[index];
-      if (!other) {
-        return false;
-      }
-      return (
-        file.id === other.id &&
-        file.name === other.name &&
-        file.mimeType === other.mimeType &&
-        file.path === other.path &&
-        file.hostPath === other.hostPath &&
-        file.assetId === other.assetId &&
-        file.sizeBytes === other.sizeBytes &&
-        file.uploading === other.uploading &&
-        file.uploadError === other.uploadError
-      );
-    }) &&
-    leftLargeTexts.length === rightLargeTexts.length &&
-    leftLargeTexts.every((item, index) => {
-      const other = rightLargeTexts[index];
-      if (!other) {
-        return false;
-      }
-      // Stable identity + landing state only. The text body and any display
-      // label are excluded from the equality key; upload lifecycle fields are
-      // kept so the chip re-renders as it moves uploading → landed / errored.
-      return (
-        item.id === other.id &&
-        item.path === other.path &&
-        item.uploading === other.uploading &&
-        item.uploadError === other.uploadError &&
-        item.sizeBytes === other.sizeBytes
-      );
-    })
+    leftKeys.length === rightKeys.length &&
+    leftKeys.every(
+      (key) =>
+        Object.hasOwn(rightRecord, key) &&
+        areDraftValuesStructurallyEqual(leftRecord[key], rightRecord[key])
+    )
   );
 }
 
-export function readNodeDefaultDraftContent(input: {
-  data: AgentGUINodeData;
+export function deleteSubmittedDraftSnapshotsForScopes(input: {
+  snapshots: Record<string, SubmittedDraftSnapshot>;
+  scopeKeys: ReadonlySet<string>;
+  targetAgentSessionIds?: ReadonlySet<string>;
+}): void {
+  for (const [clientSubmitId, snapshot] of Object.entries(input.snapshots)) {
+    if (
+      input.scopeKeys.has(snapshot.sourceScopeKey) ||
+      (snapshot.targetAgentSessionId != null &&
+        input.targetAgentSessionIds?.has(snapshot.targetAgentSessionId))
+    ) {
+      delete input.snapshots[clientSubmitId];
+    }
+  }
+}
+
+export function deleteUnacceptedSubmittedDraftSnapshot(input: {
+  snapshots: Record<string, SubmittedDraftSnapshot>;
+  clientSubmitId: string;
+  accepted: boolean;
+  queued: boolean;
+}): void {
+  if (!input.accepted && !input.queued) {
+    delete input.snapshots[input.clientSubmitId];
+  }
+}
+
+export function readAgentComposerDraftContent(input: {
+  projectPath: string | null;
   drafts: Record<string, AgentComposerDraft>;
 }): AgentComposerDraft {
   return (
     input.drafts[
-      nodeDefaultDraftKey(input.data.provider, input.data.agentTargetId)
-    ] ??
-    input.drafts[nodeDefaultDraftKey(input.data.provider)] ??
-    input.drafts[NODE_DEFAULT_DRAFT_KEY] ??
-    EMPTY_AGENT_COMPOSER_DRAFT
+      resolveAgentComposerDraftScopeKey({ projectPath: input.projectPath })
+    ] ?? EMPTY_AGENT_COMPOSER_DRAFT
   );
 }
 
@@ -469,93 +469,28 @@ export function toRuntimeSendContent(
 
 export function shouldClearSubmittedDraft(input: {
   currentDraft: AgentComposerDraft | undefined;
-  submittedContent: readonly AgentPromptContentBlock[];
+  submittedDraft: AgentComposerDraft;
 }): boolean {
-  const currentDraft = input.currentDraft;
-  if (!currentDraft) {
-    return false;
-  }
-  const submittedPrompt = agentPromptContentDisplayText(
-    input.submittedContent
-  ).trim();
+  return Boolean(
+    input.currentDraft &&
+    areAgentComposerDraftsEqual(input.currentDraft, input.submittedDraft)
+  );
+}
+
+export function clearSubmittedDraftIfUnchanged(input: {
+  drafts: Record<string, AgentComposerDraft>;
+  snapshot: SubmittedDraftSnapshot;
+}): Record<string, AgentComposerDraft> {
   if (
-    agentComposerDraftSubmittedText(currentDraft).trim() !== submittedPrompt
+    !shouldClearSubmittedDraft({
+      currentDraft: input.drafts[input.snapshot.sourceScopeKey],
+      submittedDraft: input.snapshot.content
+    })
   ) {
-    return false;
+    return input.drafts;
   }
-  const submittedImages = input.submittedContent.filter(
-    (block): block is AgentPromptContentBlock & { type: "image" } =>
-      block.type === "image"
-  );
-  if (currentDraft.images.length !== submittedImages.length) {
-    return false;
-  }
-  const imagesMatch = currentDraft.images.every((image, index) => {
-    const submittedImage = submittedImages[index];
-    if (!submittedImage || image.mimeType !== submittedImage.mimeType) {
-      return false;
-    }
-    const draftPath = image.path?.trim() ?? "";
-    const submittedPath = submittedImage.path?.trim() ?? "";
-    const draftData = image.data?.trim() ?? "";
-    const submittedData = submittedImage.data?.trim() ?? "";
-    const draftName = image.name.trim();
-    const submittedName = submittedImage.name?.trim() ?? "";
-    return (
-      draftPath === submittedPath &&
-      draftData === submittedData &&
-      draftName === submittedName
-    );
-  });
-  if (!imagesMatch) {
-    return false;
-  }
-  const currentFiles = currentDraft.files ?? [];
-  const submittedFiles = input.submittedContent.filter(
-    (block): block is AgentPromptContentBlock & { type: "file" } =>
-      block.type === "file" && !isPastedTextPromptBlock(block)
-  );
-  if (currentFiles.length !== submittedFiles.length) {
-    return false;
-  }
-  const filesMatch = currentFiles.every((file, index) => {
-    const submittedFile = submittedFiles[index];
-    if (!submittedFile) {
-      return false;
-    }
-    const draftPath = file.path?.trim() ?? "";
-    const submittedPath = submittedFile.path?.trim() ?? "";
-    const draftHostPath = file.hostPath?.trim() ?? "";
-    const submittedHostPath = submittedFile.hostPath?.trim() ?? "";
-    const draftAssetId = file.assetId?.trim() ?? "";
-    const submittedAssetId = submittedFile.assetId?.trim() ?? "";
-    const draftMimeType = file.mimeType?.trim() ?? "";
-    const submittedMimeType = submittedFile.mimeType?.trim() ?? "";
-    const draftName = file.name.trim();
-    const submittedName = submittedFile.name?.trim() ?? "";
-    return (
-      draftPath === submittedPath &&
-      draftHostPath === submittedHostPath &&
-      draftAssetId === submittedAssetId &&
-      draftMimeType === submittedMimeType &&
-      draftName === submittedName &&
-      file.sizeBytes === submittedFile.sizeBytes
-    );
-  });
-  if (!filesMatch) {
-    return false;
-  }
-  const currentLargeTextPaths = (currentDraft.largeTexts ?? [])
-    .map((item) => item.path?.trim() ?? "")
-    .filter(Boolean);
-  const submittedLargeTextPaths = input.submittedContent
-    .filter(isPastedTextPromptBlock)
-    .map((block) => block.path?.trim() ?? "")
-    .filter(Boolean);
-  if (currentLargeTextPaths.length !== submittedLargeTextPaths.length) {
-    return false;
-  }
-  return currentLargeTextPaths.every(
-    (path, index) => path === submittedLargeTextPaths[index]
-  );
+  return {
+    ...input.drafts,
+    [input.snapshot.sourceScopeKey]: emptyAgentComposerDraft()
+  };
 }

@@ -39,12 +39,14 @@ import {
 } from "./agentGuiController.stableHelpers";
 import {
   EMPTY_AGENT_COMPOSER_DRAFT,
-  readNodeDefaultDraftContent
+  readAgentComposerDraftContent
 } from "./agentGuiController.draftMessageHelpers";
 import {
   maxFiniteMessageVersion,
   minFiniteMessageVersion
 } from "./useAgentConversationMessagePaging";
+import { resolveAgentComposerDraftScopeKey } from "../model/agentComposerDraftScope";
+import { agentComposerDraftPrompt } from "../model/agentComposerDraft";
 
 interface UseAgentGUIConversationDetailInput {
   activeCancelStatus: string | null;
@@ -71,12 +73,13 @@ interface UseAgentGUIConversationDetailInput {
   avoidGroupingEdits: boolean;
   codeFor(agentSessionId: string | null): AppErrorCode | null;
   detailError: string | null;
-  draftBySessionId: Record<string, AgentComposerDraft>;
+  draftByScopeKey: Record<string, AgentComposerDraft>;
   errorFor(agentSessionId: string | null): string | null;
   providerComposerOptions: Parameters<
     typeof providerSkillsFromComposerOptions
   >[0];
   selectedComposerTargetData: AgentGUIComposerTargetData;
+  selectedProjectPath: string | null;
   sessionEngine: AgentSessionEngine;
   workspaceId: string;
   workspacePath: string;
@@ -127,11 +130,14 @@ export function useAgentGUIConversationDetail(
     }, [input.activeConversation, input.activeTurn]);
 
   const draftContent = input.activeConversationId
-    ? (input.draftBySessionId[input.activeConversationId] ??
-      EMPTY_AGENT_COMPOSER_DRAFT)
-    : readNodeDefaultDraftContent({
-        data: input.selectedComposerTargetData.data,
-        drafts: input.draftBySessionId
+    ? (input.draftByScopeKey[
+        resolveAgentComposerDraftScopeKey({
+          agentSessionId: input.activeConversationId
+        })
+      ] ?? EMPTY_AGENT_COMPOSER_DRAFT)
+    : readAgentComposerDraftContent({
+        projectPath: input.selectedProjectPath,
+        drafts: input.draftByScopeKey
       });
   const engineAvailableCommands = useEngineSelector(
     input.sessionEngine,
@@ -277,7 +283,7 @@ export function useAgentGUIConversationDetail(
     conversation,
     conversationDetail,
     draftContent,
-    draftPrompt: draftContent.prompt,
+    draftPrompt: agentComposerDraftPrompt(draftContent),
     drainingQueuedPromptId:
       input.activeQueuedPromptInFlight?.kind === "send"
         ? input.activeQueuedPromptInFlight.promptId

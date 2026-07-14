@@ -8,7 +8,6 @@ import {
   nodeDataFromComposerSettings,
   permissionModeOptions,
   providerSkillsFromComposerOptions,
-  readNodeDefaultDraftPrompt,
   readNodeDefaultDraftSettings,
   reasoningSelectionFromComposerOptions
 } from "./agentGuiController.composerHelpers";
@@ -289,16 +288,7 @@ describe("target-keyed composer defaults", () => {
     expect(next.composerOverrides?.model ?? null).toBeNull();
   });
 
-  it("reads target draft defaults before provider legacy defaults", () => {
-    expect(
-      readNodeDefaultDraftPrompt({
-        data: baseNodeData,
-        drafts: {
-          "__agent_gui_node_defaults__:codex": "provider draft",
-          "__agent_gui_node_defaults__:target:local:codex": "target draft"
-        }
-      })
-    ).toBe("target draft");
+  it("reads target draft settings before provider legacy defaults", () => {
     expect(
       readNodeDefaultDraftSettings({
         data: baseNodeData,

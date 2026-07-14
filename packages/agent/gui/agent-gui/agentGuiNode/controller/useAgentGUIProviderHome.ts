@@ -16,21 +16,14 @@ import type {
   AgentGUIProviderReadinessGate,
   AgentGUIAgentTarget
 } from "../../../types";
-import type { AgentComposerDraft } from "../model/agentGuiNodeTypes";
 import {
   matchesAgentGUIConversationSummaryFilter,
   normalizeAgentGUIConversationFilter,
   type AgentGUIConversationFilter
 } from "../model/agentGuiConversationFilter";
 import type { AgentGUIConversationSummary } from "../model/agentGuiConversationModel";
-import { agentComposerDraftHasContent } from "../model/agentComposerDraft";
-import { nodeDefaultDraftKey } from "./agentGuiController.composerHelpers";
 import { type AgentGUIComposerTargetData } from "./agentGuiController.composerPresentation";
 import { mergeVisibleConversations } from "./agentGuiController.conversationHelpers";
-import {
-  EMPTY_AGENT_COMPOSER_DRAFT,
-  readNodeDefaultDraftContent
-} from "./agentGuiController.draftMessageHelpers";
 import {
   agentGUINodeDataHasComposerTarget,
   composerTargetDataFromProviderTarget
@@ -57,7 +50,6 @@ interface UseAgentGUIProviderHomeInput {
   data: AgentGUINodeData;
   dataRef: CurrentValue<AgentGUINodeData>;
   defaultAgentTargetId: string | null;
-  draftBySessionIdRef: CurrentValue<Record<string, AgentComposerDraft>>;
   effectiveSelectedProviderTarget: AgentGUIAgentTarget;
   firstReadyHomeComposerProviderTarget: AgentGUIAgentTarget | null;
   homeComposerTargetOverride: AgentGUIAgentTarget | null;
@@ -86,9 +78,6 @@ interface UseAgentGUIProviderHomeInput {
   setActiveConversationId: Dispatch<SetStateAction<string | null>>;
   setConversationFilter: Dispatch<SetStateAction<AgentGUIConversationFilter>>;
   setDetailError: Dispatch<SetStateAction<string | null>>;
-  setDraftBySessionId: Dispatch<
-    SetStateAction<Record<string, AgentComposerDraft>>
-  >;
   setHomeComposerTargetOverride: Dispatch<
     SetStateAction<AgentGUIAgentTarget | null>
   >;
@@ -211,44 +200,6 @@ export function useAgentGUIProviderHome(input: UseAgentGUIProviderHomeInput) {
         isExplicit: nextTargetIsExplicit,
         target: nextTarget
       });
-      if (currentInput.activeConversationIdRef.current === null) {
-        const currentTargetData =
-          currentInput.selectedComposerTargetDataRef.current;
-        const currentDraftKey = nodeDefaultDraftKey(
-          currentTargetData.provider,
-          currentTargetData.agentTargetId
-        );
-        const nextDraftKey = nodeDefaultDraftKey(
-          nextTargetData.provider,
-          nextTargetData.agentTargetId
-        );
-        if (currentDraftKey !== nextDraftKey) {
-          const drafts = currentInput.draftBySessionIdRef.current;
-          const currentDraft =
-            drafts[currentDraftKey] ?? EMPTY_AGENT_COMPOSER_DRAFT;
-          const nextDraft = readNodeDefaultDraftContent({
-            data: {
-              ...currentInput.dataRef.current,
-              provider: nextTargetData.provider,
-              agentTargetId: nextTargetData.agentTargetId
-            },
-            drafts
-          });
-          if (
-            agentComposerDraftHasContent(currentDraft) &&
-            !agentComposerDraftHasContent(nextDraft)
-          ) {
-            currentInput.draftBySessionIdRef.current = {
-              ...drafts,
-              [nextDraftKey]: currentDraft
-            };
-            currentInput.setDraftBySessionId((current) => ({
-              ...current,
-              [nextDraftKey]: currentDraft
-            }));
-          }
-        }
-      }
       const shouldSyncScopedRailFilter =
         currentInput.conversationFilterRef.current.kind === "agentTarget";
       currentInput.setHomeComposerTargetOverride(nextTarget);

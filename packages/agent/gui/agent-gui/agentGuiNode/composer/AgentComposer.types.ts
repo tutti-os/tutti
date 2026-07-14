@@ -29,6 +29,8 @@ export interface AgentComposerProps {
   slashStatus?: AgentComposerSlashStatus | null;
   usage?: AgentComposerUsage | null;
   draftContent: AgentComposerDraft;
+  /** Stable project/session owner for async draft attachment work. */
+  draftScopeKey?: string;
   availableCommands: readonly AgentSessionCommand[];
   hasCompactableContext?: boolean;
   compactSupported?: boolean | null;
@@ -236,7 +238,10 @@ export interface AgentComposerProps {
     };
   };
   workspaceUserProjectI18n: WorkspaceUserProjectI18nRuntime;
-  onDraftContentChange: (draftContent: AgentComposerDraft) => void;
+  onDraftContentChange: (
+    draftContent: AgentComposerDraft,
+    sourceScopeKey?: string
+  ) => void;
   onProjectPathChange?: (
     path: string | null,
     metadata?: AgentProjectPathChangeMetadata

@@ -5,7 +5,9 @@ import { translate } from "../../../i18n/index";
 import type { AgentPromptContentBlock } from "../../../shared/contracts/dto";
 import {
   agentPromptContentDisplayText,
+  emptyAgentComposerDraft,
   normalizeAgentPromptContentBlocks,
+  snapshotAgentComposerDraft,
   textPromptContent
 } from "../model/agentComposerDraft";
 import { readNodeDefaultDraftSettings } from "./agentGuiController.composerHelpers";
@@ -30,6 +32,7 @@ import {
 import { draftAgentSessionIdFromComposerOptions } from "./agentGuiController.stableHelpers";
 import { type UseAgentGUINewConversationActivationInput } from "./agentGuiNewConversationActivation.types";
 import { resolveConversationSummaryById } from "./useAgentConversationSelection";
+import { resolveAgentComposerDraftScopeKey } from "../model/agentComposerDraftScope";
 
 export function useAgentGUINewConversationActivation(
   input: UseAgentGUINewConversationActivationInput
@@ -45,6 +48,8 @@ export function useAgentGUINewConversationActivation(
     isCreatingConversationRef,
     onDataChangeRef,
     selectedProjectPathRef,
+    draftByScopeKeyRef,
+    submittedDraftSnapshotsRef,
     draftSettingsBySessionIdRef,
     agentActivityRuntime,
     workspaceId,
@@ -175,6 +180,15 @@ export function useAgentGUINewConversationActivation(
         queued: false,
         startedAtUnixMs: Date.now()
       });
+      const sourceScopeKey = resolveAgentComposerDraftScopeKey({
+        projectPath: selectedProjectPath
+      });
+      const submittedDraft =
+        draftByScopeKeyRef.current[sourceScopeKey] ?? emptyAgentComposerDraft();
+      submittedDraftSnapshotsRef.current[submitTrace.clientSubmitId] = {
+        sourceScopeKey,
+        content: snapshotAgentComposerDraft(submittedDraft)
+      };
       reportAgentSubmitTraceDiagnostic({
         event: "activation.requested",
         runtime: agentActivityRuntime,

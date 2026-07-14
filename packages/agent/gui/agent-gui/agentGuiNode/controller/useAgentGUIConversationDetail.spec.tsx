@@ -25,7 +25,7 @@ describe("useAgentGUIConversationDetail", () => {
         avoidGroupingEdits: false,
         codeFor: () => null,
         detailError: null,
-        draftBySessionId: {},
+        draftByScopeKey: {},
         errorFor: () => null,
         providerComposerOptions: null,
         selectedComposerTargetData: {
@@ -38,6 +38,7 @@ describe("useAgentGUIConversationDetail", () => {
           provider: "codex",
           targetId: "local:codex"
         },
+        selectedProjectPath: "/workspace",
         sessionEngine: createTestAgentSessionEngine("workspace-1"),
         workspaceId: "workspace-1",
         workspacePath: "/workspace"

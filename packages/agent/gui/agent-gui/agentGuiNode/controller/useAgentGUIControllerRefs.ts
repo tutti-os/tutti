@@ -15,7 +15,7 @@ interface UseAgentGUIControllerRefsInput {
   agentActivitySnapshot: AgentActivitySnapshot;
   conversations: AgentGUIConversationSummary[];
   data: AgentGUINodeData;
-  draftBySessionId: Record<string, AgentComposerDraft>;
+  draftByScopeKey: Record<string, AgentComposerDraft>;
   draftSettingsBySessionId: Record<string, AgentSessionComposerSettings>;
   effectiveSelectedProviderTarget: AgentGUIAgentTarget;
   homeComposerTargetOverride: AgentGUIAgentTarget | null;
@@ -61,7 +61,7 @@ export function useAgentGUIControllerRefs(
   const selectedComposerTargetDataRef = useRef(
     input.selectedComposerTargetData
   );
-  const draftBySessionIdRef = useRef(input.draftBySessionId);
+  const draftByScopeKeyRef = useRef(input.draftByScopeKey);
   const draftSettingsBySessionIdRef = useRef(input.draftSettingsBySessionId);
   const onDataChangeRef = useRef(input.onDataChange);
   const onRememberComposerDefaultsRef = useRef(
@@ -83,7 +83,12 @@ export function useAgentGUIControllerRefs(
       agentSessionId: string,
       content: AgentPromptContentBlock[],
       displayPrompt?: string,
-      options?: { immediate?: boolean; sendNow?: boolean }
+      options?: {
+        immediate?: boolean;
+        sendNow?: boolean;
+        sourceScopeKey?: string;
+        trackDraft?: boolean;
+      }
     ) => void
   >(() => {});
   const submitPromptRef = useRef<
@@ -114,7 +119,7 @@ export function useAgentGUIControllerRefs(
     : input.selectedAgentTargetIsExplicit;
   agentTargetsProvidedRef.current = input.agentTargetsProvided;
   selectedComposerTargetDataRef.current = input.selectedComposerTargetData;
-  draftBySessionIdRef.current = input.draftBySessionId;
+  draftByScopeKeyRef.current = input.draftByScopeKey;
   draftSettingsBySessionIdRef.current = input.draftSettingsBySessionId;
   onDataChangeRef.current = input.onDataChange;
   onRememberComposerDefaultsRef.current = input.onRememberComposerDefaults;
@@ -132,7 +137,7 @@ export function useAgentGUIControllerRefs(
     conversationIdsRef,
     conversationsRef,
     dataRef,
-    draftBySessionIdRef,
+    draftByScopeKeyRef,
     draftSettingsBySessionIdRef,
     executePromptRef,
     handledOpenSessionSequenceRef,

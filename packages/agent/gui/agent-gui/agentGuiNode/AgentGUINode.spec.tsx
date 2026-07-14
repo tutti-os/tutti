@@ -54,6 +54,10 @@ import type { AgentGUINodeData } from "../../types";
 import { createLocalAgentGUIAgentTarget } from "../../agentTargets";
 import { writeWorkspaceFileDropData } from "../terminalNode/workspaceFileDrop";
 import { createTestAgentSessionEngine } from "../../shared/testing/createTestAgentSessionEngine";
+import {
+  agentComposerDraftPrompt,
+  buildAgentComposerDraft
+} from "./model/agentComposerDraft";
 
 const mockCreateConversation = vi.fn();
 const mockSelectConversation = vi.fn();
@@ -99,7 +103,7 @@ const mockPreflightUpload = vi.fn();
 let mockViewModel: AgentGUINodeViewModel;
 
 function createDraft(prompt: string): AgentComposerDraft {
-  return { prompt, images: [], files: [] };
+  return buildAgentComposerDraft({ prompt });
 }
 
 function createHostLocalReferenceAggregator(
@@ -7465,7 +7469,8 @@ function createViewModel(
 ): AgentGUINodeViewModel {
   const draftContent =
     overrides.draftContent ?? createDraft(overrides.draftPrompt ?? "");
-  const draftPrompt = overrides.draftPrompt ?? draftContent.prompt;
+  const draftPrompt =
+    overrides.draftPrompt ?? agentComposerDraftPrompt(draftContent);
   const flat: FlatAgentGUINodeViewModelFixture = {
     workspaceId: "room-1",
     data: {

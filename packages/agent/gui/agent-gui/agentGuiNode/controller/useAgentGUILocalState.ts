@@ -5,7 +5,8 @@ import type { AgentGUINodeData } from "../../../types";
 import type { AgentGUIConversationSummary } from "../model/agentGuiConversationModel";
 import type {
   AgentComposerDraft,
-  AgentGUIProjectConversationDeleteTarget
+  AgentGUIProjectConversationDeleteTarget,
+  SubmittedDraftSnapshot
 } from "../model/agentGuiNodeTypes";
 import { readAgentGUIUserProjectSnapshot } from "./agentGuiController.interactiveHelpers";
 import type { ConversationIntent } from "./useAgentConversationSelection";
@@ -36,11 +37,12 @@ export function useAgentGUILocalState({
   const [isComposerHome, setIsComposerHome] = useState(
     data.lastActiveAgentSessionId === null
   );
-  const [draftBySessionId, setDraftBySessionId] = useState<
+  const [draftByScopeKey, setDraftByScopeKey] = useState<
     Record<string, AgentComposerDraft>
   >({});
-  const draftBySessionIdRef = useRef(draftBySessionId);
-  draftBySessionIdRef.current = draftBySessionId;
+  const submittedDraftSnapshotsRef = useRef<
+    Record<string, SubmittedDraftSnapshot>
+  >({});
   const [draftSettingsBySessionId, setDraftSettingsBySessionId] = useState<
     Record<string, AgentSessionComposerSettings>
   >({});
@@ -60,8 +62,7 @@ export function useAgentGUILocalState({
   return {
     activeConversationId,
     detailError,
-    draftBySessionId,
-    draftBySessionIdRef,
+    draftByScopeKey,
     draftSettingsBySessionId,
     intent,
     isComposerHome,
@@ -74,7 +75,7 @@ export function useAgentGUILocalState({
     selectedProjectPath,
     setActiveConversationId,
     setDetailError,
-    setDraftBySessionId,
+    setDraftByScopeKey,
     setDraftSettingsBySessionId,
     setIntent,
     setIsComposerHome,
@@ -86,6 +87,7 @@ export function useAgentGUILocalState({
     setPendingDeleteProjectConversations,
     setSelectedProjectPath,
     setUserProjects,
+    submittedDraftSnapshotsRef,
     userProjects
   };
 }

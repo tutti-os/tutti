@@ -16,6 +16,7 @@ import {
 import type { WorkspaceAgentSessionDetailViewModel } from "../../shared/workspaceAgentSessionDetailViewModel";
 import type { AgentPromptContentBlock } from "../../shared/contracts/dto";
 import type { AgentGUINodeViewModel } from "./model/agentGuiNodeTypes";
+import { buildAgentComposerDraft } from "./model/agentComposerDraft";
 import {
   flattenAgentGUINodeViewModelFixture,
   groupAgentGUINodeViewModelFixture,
@@ -388,7 +389,7 @@ describe("AgentGUINodeView layout persistence", () => {
           ...initial,
           composer: {
             ...initial.composer,
-            draftContent: { prompt: "x", images: [] },
+            draftContent: buildAgentComposerDraft({ prompt: "x" }),
             draftPrompt: "x"
           }
         }
@@ -6145,7 +6146,7 @@ function createViewModel(
     availableCommands: [],
     availableSkills: [],
     draftPrompt: "",
-    draftContent: { prompt: "", images: [] },
+    draftContent: buildAgentComposerDraft({ prompt: "" }),
     availability: "ready",
     isLoadingConversations: false,
     isLoadingMessages: false,
@@ -6719,17 +6720,19 @@ describe("AgentGUINodeView home suggestions", () => {
       actions: { ...createActions(), updateDraftContent },
       labels: createLabelsWithHomeSuggestions(),
       viewModel: createViewModel({
-        draftContent: { prompt: "", images: [image] }
+        draftContent: buildAgentComposerDraft({ prompt: "", images: [image] })
       })
     });
 
     fireEvent.click(screen.getByRole("button", { name: "Write" }));
     fireEvent.click(screen.getByText("Draft an announcement"));
 
-    expect(updateDraftContent).toHaveBeenCalledWith({
-      prompt: "Draft an announcement",
-      images: [image]
-    });
+    expect(updateDraftContent).toHaveBeenCalledWith(
+      buildAgentComposerDraft({
+        prompt: "Draft an announcement",
+        images: [image]
+      })
+    );
   });
 
   it("inserts the handoff prompt text rather than its display label", () => {
@@ -6745,10 +6748,9 @@ describe("AgentGUINodeView home suggestions", () => {
     );
     fireEvent.click(screen.getByText("Prepare a handoff summary"));
 
-    expect(updateDraftContent).toHaveBeenCalledWith({
-      prompt: "Write a concise handoff summary.",
-      images: []
-    });
+    expect(updateDraftContent).toHaveBeenCalledWith(
+      buildAgentComposerDraft({ prompt: "Write a concise handoff summary." })
+    );
   });
 
   it("does not render the suggestions section when none are provided", () => {

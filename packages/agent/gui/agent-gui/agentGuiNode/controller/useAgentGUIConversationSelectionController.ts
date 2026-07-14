@@ -2,11 +2,18 @@ import type {
   AgentActivitySnapshot,
   AgentSessionEngine
 } from "@tutti-os/agent-activity-core";
+import { selectPendingActivations } from "@tutti-os/agent-activity-core";
 import type { Dispatch, RefObject, SetStateAction } from "react";
 import { useEffect } from "react";
 import type { AgentActivityRuntime } from "../../../agentActivityRuntime";
 import { translate } from "../../../i18n/index";
 import type { AgentGUINodeData } from "../../../types";
+import type {
+  AgentComposerDraft,
+  SubmittedDraftSnapshot
+} from "../model/agentGuiNodeTypes";
+import { useEngineSelector } from "../../../shared/engine/useEngineSelector";
+import { clearSubmittedDraftIfUnchanged } from "./agentGuiController.draftMessageHelpers";
 import {
   reportAgentGUIActiveConversationCleared,
   reportAgentGUIConversationListProjectionSkipped
@@ -41,6 +48,7 @@ interface UseAgentGUIConversationSelectionControllerInput {
   currentUserId: string | null | undefined;
   data: AgentGUINodeData;
   dataRef: RefObject<AgentGUINodeData>;
+  draftByScopeKeyRef: RefObject<Record<string, AgentComposerDraft>>;
   intent: ConversationIntent;
   isComposerHomeRef: RefObject<boolean>;
   isMountedRef: RefObject<boolean>;
@@ -59,9 +67,13 @@ interface UseAgentGUIConversationSelectionControllerInput {
   sessionEngine: AgentSessionEngine;
   setActiveConversationId: Dispatch<SetStateAction<string | null>>;
   setDetailError: Dispatch<SetStateAction<string | null>>;
+  setDraftByScopeKey: Dispatch<
+    SetStateAction<Record<string, AgentComposerDraft>>
+  >;
   setIntent: Dispatch<SetStateAction<ConversationIntent>>;
   setIsComposerHome: Dispatch<SetStateAction<boolean>>;
   setIsLoadingMessages: Dispatch<SetStateAction<boolean>>;
+  submittedDraftSnapshotsRef: RefObject<Record<string, SubmittedDraftSnapshot>>;
   workspaceId: string;
 }
 
@@ -81,6 +93,7 @@ export function useAgentGUIConversationSelectionController(
     currentUserId,
     data,
     dataRef,
+    draftByScopeKeyRef,
     intent,
     isComposerHomeRef,
     isMountedRef,
@@ -92,11 +105,20 @@ export function useAgentGUIConversationSelectionController(
     sessionEngine,
     setActiveConversationId,
     setDetailError,
+    setDraftByScopeKey,
     setIntent,
     setIsComposerHome,
     setIsLoadingMessages,
+    submittedDraftSnapshotsRef,
     workspaceId
   } = input;
+  const activationRecords = useEngineSelector(
+    sessionEngine,
+    selectPendingActivations,
+    (left, right) =>
+      left.length === right.length &&
+      left.every((record, index) => record === right[index])
+  );
 
   useEffect(() => {
     const userId = currentUserId?.trim() ?? "";
@@ -262,6 +284,29 @@ export function useAgentGUIConversationSelectionController(
   }, [latestPendingNewActivation, selection.persistActiveConversation]);
 
   useEffect(() => {
+    for (const record of activationRecords) {
+      const clientSubmitId = record.clientSubmitId?.trim() ?? "";
+      if (
+        record.mode !== "new" ||
+        !clientSubmitId ||
+        (record.status !== "confirmed" && record.status !== "failed")
+      ) {
+        continue;
+      }
+      const snapshot = submittedDraftSnapshotsRef.current[clientSubmitId];
+      if (!snapshot) continue;
+      if (record.status === "confirmed") {
+        setDraftByScopeKey((current) => {
+          const next = clearSubmittedDraftIfUnchanged({
+            drafts: current,
+            snapshot
+          });
+          draftByScopeKeyRef.current = next;
+          return next;
+        });
+      }
+      delete submittedDraftSnapshotsRef.current[clientSubmitId];
+    }
     if (
       activePendingActivation?.mode !== "new" ||
       activePendingActivation.status !== "failed" ||
@@ -279,7 +324,14 @@ export function useAgentGUIConversationSelectionController(
       activePendingActivation.errorMessage ||
         translate("agentHost.agentGui.sessionActivationFailed")
     );
-  }, [activePendingActivation, selection.persistActiveConversation]);
+  }, [
+    activationRecords,
+    activePendingActivation,
+    draftByScopeKeyRef,
+    selection.persistActiveConversation,
+    setDraftByScopeKey,
+    submittedDraftSnapshotsRef
+  ]);
 
   return selection;
 }

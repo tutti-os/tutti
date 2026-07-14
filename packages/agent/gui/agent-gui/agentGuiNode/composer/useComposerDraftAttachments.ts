@@ -14,7 +14,13 @@ import type {
   AgentComposerDraftImage,
   AgentComposerDraftLargeText
 } from "../model/agentGuiNodeTypes";
-import { MAX_AGENT_COMPOSER_DRAFT_IMAGES } from "../model/agentComposerDraft";
+import {
+  agentComposerDraftImages,
+  agentComposerDraftLargeTexts,
+  buildAgentComposerDraft,
+  MAX_AGENT_COMPOSER_DRAFT_IMAGES,
+  updateAgentComposerDraft
+} from "../model/agentComposerDraft";
 import type {
   AgentRichTextEditorHandle,
   AgentRichTextPastedImage
@@ -51,6 +57,8 @@ interface UseComposerDraftAttachmentsInput {
   workspaceId: string;
   workspacePath?: string | null;
   draftContent: AgentComposerDraft;
+  draftScopeKey: string;
+  draftByScopeKeyRef: RefObject<Record<string, AgentComposerDraft>>;
   goalDraftObjective: string | null;
   isGoalModeActive: boolean;
   promptImagesSupported: boolean;
@@ -65,7 +73,10 @@ interface UseComposerDraftAttachmentsInput {
   setPaletteDraftPrompt: Dispatch<SetStateAction<string>>;
   setIsPaletteOpen: Dispatch<SetStateAction<boolean>>;
   clearActiveFileMentionTrigger: () => void;
-  onDraftContentChange: (draft: AgentComposerDraft) => void;
+  onDraftContentChange: (
+    draft: AgentComposerDraft,
+    sourceScopeKey?: string
+  ) => void;
   onPromptImagesUnsupported?: () => void;
   onRequestWorkspaceReferences?:
     | ((
@@ -80,6 +91,8 @@ export function useComposerDraftAttachments({
   workspaceId,
   workspacePath,
   draftContent,
+  draftScopeKey,
+  draftByScopeKeyRef,
   goalDraftObjective,
   isGoalModeActive,
   promptImagesSupported,
@@ -101,6 +114,28 @@ export function useComposerDraftAttachments({
   onLinkAction
 }: UseComposerDraftAttachmentsInput) {
   const agentActivityRuntime = useOptionalAgentActivityRuntime();
+  const publishScopedDraft = useStableEventCallback(
+    (sourceScopeKey: string, nextDraft: AgentComposerDraft): void => {
+      draftByScopeKeyRef.current[sourceScopeKey] = nextDraft;
+      if (sourceScopeKey === draftScopeKey) {
+        onDraftContentChange(nextDraft);
+      } else {
+        onDraftContentChange(nextDraft, sourceScopeKey);
+      }
+    }
+  );
+  const updateScopedDraft = useStableEventCallback(
+    (
+      sourceScopeKey: string,
+      update: (current: AgentComposerDraft) => AgentComposerDraft
+    ): AgentComposerDraft | null => {
+      const current = draftByScopeKeyRef.current[sourceScopeKey];
+      if (!current) return null;
+      const next = update(current);
+      publishScopedDraft(sourceScopeKey, next);
+      return next;
+    }
+  );
   const openReferencesForEntityRef = useRef<
     ((entity: AgentContextMentionItem) => void) | null
   >(null);
@@ -111,7 +146,10 @@ export function useComposerDraftAttachments({
         draftPromptRef.current = nextGoalPrompt;
         setPaletteDraftPrompt(nextDraft);
         setIsPaletteOpen(true);
-        onDraftContentChange({ ...draftContent, prompt: nextGoalPrompt });
+        publishScopedDraft(
+          draftScopeKey,
+          updateAgentComposerDraft(draftContent, { prompt: nextGoalPrompt })
+        );
         return;
       }
       const nextGoalObjective = goalDraftObjectiveFromPrompt(nextDraft);
@@ -120,13 +158,19 @@ export function useComposerDraftAttachments({
         draftPromptRef.current = nextGoalPrompt;
         setPaletteDraftPrompt(nextGoalObjective);
         setIsPaletteOpen(true);
-        onDraftContentChange({ ...draftContent, prompt: nextGoalPrompt });
+        publishScopedDraft(
+          draftScopeKey,
+          updateAgentComposerDraft(draftContent, { prompt: nextGoalPrompt })
+        );
         return;
       }
       draftPromptRef.current = nextDraft;
       setPaletteDraftPrompt(nextDraft);
       setIsPaletteOpen(true);
-      onDraftContentChange({ ...draftContent, prompt: nextDraft });
+      publishScopedDraft(
+        draftScopeKey,
+        updateAgentComposerDraft(draftContent, { prompt: nextDraft })
+      );
     }
   );
 
@@ -137,12 +181,16 @@ export function useComposerDraftAttachments({
     const nextPrompt = goalDraftObjective ?? "";
     draftPromptRef.current = nextPrompt;
     setPaletteDraftPrompt(nextPrompt);
-    onDraftContentChange({ ...draftContent, prompt: nextPrompt });
+    publishScopedDraft(
+      draftScopeKey,
+      updateAgentComposerDraft(draftContent, { prompt: nextPrompt })
+    );
   }, [
     draftContent,
+    draftScopeKey,
     goalDraftObjective,
     isGoalModeActive,
-    onDraftContentChange
+    publishScopedDraft
   ]);
 
   const addDraftImages = useCallback(
@@ -191,12 +239,15 @@ export function useComposerDraftAttachments({
       }));
       const nextDraftImages = [...currentDraftImages, ...nextImages];
       draftImagesRef.current = nextDraftImages;
-      onDraftContentChange({
-        prompt: draftPromptRef.current,
-        images: nextDraftImages,
-        files: draftFilesRef.current,
-        largeTexts: draftLargeTextsRef.current
-      });
+      publishScopedDraft(
+        draftScopeKey,
+        buildAgentComposerDraft({
+          prompt: draftPromptRef.current,
+          images: nextDraftImages,
+          files: draftFilesRef.current,
+          largeTexts: draftLargeTextsRef.current
+        })
+      );
       if (!uploadPromptContent) {
         return;
       }
@@ -242,33 +293,32 @@ export function useComposerDraftAttachments({
                 "Prompt image upload completed without usable image reference."
               );
             }
-            const uploadedDraftImages = draftImagesRef.current.map((image) =>
-              image.id === draftImage.id
-                ? {
-                    id: image.id,
-                    name: image.name,
-                    mimeType: image.mimeType,
-                    ...(uploadedImage.attachmentId
-                      ? { attachmentId: uploadedImage.attachmentId }
-                      : {}),
-                    ...(uploadedUrl
-                      ? { url: uploadedUrl }
-                      : uploadedImage.data
-                        ? { data: uploadedImage.data }
-                        : {}),
-                    ...(uploadedImage.path ? { path: uploadedImage.path } : {}),
-                    previewUrl: image.previewUrl,
-                    uploading: false
-                  }
-                : image
+            updateScopedDraft(draftScopeKey, (currentDraft) =>
+              updateAgentComposerDraft(currentDraft, {
+                images: agentComposerDraftImages(currentDraft).map((image) =>
+                  image.id === draftImage.id
+                    ? {
+                        id: image.id,
+                        name: image.name,
+                        mimeType: image.mimeType,
+                        ...(uploadedImage.attachmentId
+                          ? { attachmentId: uploadedImage.attachmentId }
+                          : {}),
+                        ...(uploadedUrl
+                          ? { url: uploadedUrl }
+                          : uploadedImage.data
+                            ? { data: uploadedImage.data }
+                            : {}),
+                        ...(uploadedImage.path
+                          ? { path: uploadedImage.path }
+                          : {}),
+                        previewUrl: image.previewUrl,
+                        uploading: false
+                      }
+                    : image
+                )
+              })
             );
-            draftImagesRef.current = uploadedDraftImages;
-            onDraftContentChange({
-              prompt: draftPromptRef.current,
-              images: uploadedDraftImages,
-              files: draftFilesRef.current,
-              largeTexts: draftLargeTextsRef.current
-            });
           })
           .catch((error: unknown) => {
             const message =
@@ -283,30 +333,29 @@ export function useComposerDraftAttachments({
               source: "agent-gui",
               workspaceId
             });
-            const failedDraftImages = draftImagesRef.current.map((image) =>
-              image.id === draftImage.id
-                ? {
-                    ...image,
-                    uploading: false,
-                    uploadError: message
-                  }
-                : image
+            updateScopedDraft(draftScopeKey, (currentDraft) =>
+              updateAgentComposerDraft(currentDraft, {
+                images: agentComposerDraftImages(currentDraft).map((image) =>
+                  image.id === draftImage.id
+                    ? {
+                        ...image,
+                        uploading: false,
+                        uploadError: message
+                      }
+                    : image
+                )
+              })
             );
-            draftImagesRef.current = failedDraftImages;
-            onDraftContentChange({
-              prompt: draftPromptRef.current,
-              images: failedDraftImages,
-              files: draftFilesRef.current,
-              largeTexts: draftLargeTextsRef.current
-            });
           });
       }
     },
     [
       agentActivityRuntime,
-      onDraftContentChange,
+      draftScopeKey,
       onPromptImagesUnsupported,
+      publishScopedDraft,
       promptImagesSupported,
+      updateScopedDraft,
       workspaceId
     ]
   );
@@ -317,14 +366,17 @@ export function useComposerDraftAttachments({
         (image) => image.id !== id
       );
       draftImagesRef.current = nextDraftImages;
-      onDraftContentChange({
-        prompt: draftPromptRef.current,
-        images: nextDraftImages,
-        files: draftFilesRef.current,
-        largeTexts: draftLargeTextsRef.current
-      });
+      publishScopedDraft(
+        draftScopeKey,
+        buildAgentComposerDraft({
+          prompt: draftPromptRef.current,
+          images: nextDraftImages,
+          files: draftFilesRef.current,
+          largeTexts: draftLargeTextsRef.current
+        })
+      );
     },
-    [onDraftContentChange]
+    [draftScopeKey, publishScopedDraft]
   );
 
   const removeDraftFile = useCallback(
@@ -333,14 +385,17 @@ export function useComposerDraftAttachments({
         (file) => file.id !== id
       );
       draftFilesRef.current = nextDraftFiles;
-      onDraftContentChange({
-        prompt: draftPromptRef.current,
-        images: draftImagesRef.current,
-        files: nextDraftFiles,
-        largeTexts: draftLargeTextsRef.current
-      });
+      publishScopedDraft(
+        draftScopeKey,
+        buildAgentComposerDraft({
+          prompt: draftPromptRef.current,
+          images: draftImagesRef.current,
+          files: nextDraftFiles,
+          largeTexts: draftLargeTextsRef.current
+        })
+      );
     },
-    [onDraftContentChange]
+    [draftScopeKey, publishScopedDraft]
   );
 
   const removeDraftLargeText = useCallback(
@@ -349,14 +404,17 @@ export function useComposerDraftAttachments({
         (item) => item.id !== id
       );
       draftLargeTextsRef.current = nextDraftLargeTexts;
-      onDraftContentChange({
-        prompt: draftPromptRef.current,
-        images: draftImagesRef.current,
-        files: draftFilesRef.current,
-        largeTexts: nextDraftLargeTexts
-      });
+      publishScopedDraft(
+        draftScopeKey,
+        buildAgentComposerDraft({
+          prompt: draftPromptRef.current,
+          images: draftImagesRef.current,
+          files: draftFilesRef.current,
+          largeTexts: nextDraftLargeTexts
+        })
+      );
     },
-    [onDraftContentChange]
+    [draftScopeKey, publishScopedDraft]
   );
 
   // "Show in text field": dissolve a pasted-text chip back into the composer as
@@ -379,17 +437,20 @@ export function useComposerDraftAttachments({
       draftPromptRef.current = nextPrompt;
       draftLargeTextsRef.current = nextDraftLargeTexts;
       setPaletteDraftPrompt(nextPrompt);
-      onDraftContentChange({
-        prompt: nextPrompt,
-        images: draftImagesRef.current,
-        files: draftFilesRef.current,
-        largeTexts: nextDraftLargeTexts
-      });
+      publishScopedDraft(
+        draftScopeKey,
+        buildAgentComposerDraft({
+          prompt: nextPrompt,
+          images: draftImagesRef.current,
+          files: draftFilesRef.current,
+          largeTexts: nextDraftLargeTexts
+        })
+      );
       window.requestAnimationFrame(() => {
         editorHandleRef.current?.focusAtEnd();
       });
     },
-    [onDraftContentChange]
+    [draftScopeKey, publishScopedDraft]
   );
 
   const handlePastedLargeText = useCallback(
@@ -421,12 +482,15 @@ export function useComposerDraftAttachments({
         }
       ];
       draftLargeTextsRef.current = nextDraftLargeTexts;
-      onDraftContentChange({
-        prompt: draftPromptRef.current,
-        images: draftImagesRef.current,
-        files: draftFilesRef.current,
-        largeTexts: nextDraftLargeTexts
-      });
+      publishScopedDraft(
+        draftScopeKey,
+        buildAgentComposerDraft({
+          prompt: draftPromptRef.current,
+          images: draftImagesRef.current,
+          files: draftFilesRef.current,
+          largeTexts: nextDraftLargeTexts
+        })
+      );
       if (!stagePastedText) {
         return;
       }
@@ -440,47 +504,44 @@ export function useComposerDraftAttachments({
           if (!uploadedPath) {
             throw new Error("Pasted text staging completed without path.");
           }
-          const uploadedDraftLargeTexts = draftLargeTextsRef.current.map(
-            (item) =>
-              item.id === id
-                ? {
-                    ...item,
-                    path: uploadedPath,
-                    name: result.name || item.name,
-                    sizeBytes: result.sizeBytes,
-                    uploading: false
-                  }
-                : item
+          updateScopedDraft(draftScopeKey, (currentDraft) =>
+            updateAgentComposerDraft(currentDraft, {
+              largeTexts: agentComposerDraftLargeTexts(currentDraft).map(
+                (item) =>
+                  item.id === id
+                    ? {
+                        ...item,
+                        path: uploadedPath,
+                        name: result.name || item.name,
+                        sizeBytes: result.sizeBytes,
+                        uploading: false
+                      }
+                    : item
+              )
+            })
           );
-          draftLargeTextsRef.current = uploadedDraftLargeTexts;
-          onDraftContentChange({
-            prompt: draftPromptRef.current,
-            images: draftImagesRef.current,
-            files: draftFilesRef.current,
-            largeTexts: uploadedDraftLargeTexts
-          });
         })
         .catch((error: unknown) => {
           const message =
             error instanceof Error ? error.message : String(error);
-          const failedDraftLargeTexts = draftLargeTextsRef.current.map((item) =>
-            item.id === id
-              ? { ...item, uploading: false, uploadError: message }
-              : item
+          updateScopedDraft(draftScopeKey, (currentDraft) =>
+            updateAgentComposerDraft(currentDraft, {
+              largeTexts: agentComposerDraftLargeTexts(currentDraft).map(
+                (item) =>
+                  item.id === id
+                    ? { ...item, uploading: false, uploadError: message }
+                    : item
+              )
+            })
           );
-          draftLargeTextsRef.current = failedDraftLargeTexts;
-          onDraftContentChange({
-            prompt: draftPromptRef.current,
-            images: draftImagesRef.current,
-            files: draftFilesRef.current,
-            largeTexts: failedDraftLargeTexts
-          });
         });
     },
     [
       agentActivityRuntime,
-      onDraftContentChange,
+      draftScopeKey,
       pastedTextStagingSupported,
+      publishScopedDraft,
+      updateScopedDraft,
       workspaceId
     ]
   );

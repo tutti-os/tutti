@@ -10,13 +10,14 @@ import {
 } from "@tutti-os/agent-activity-core";
 import type { AgentComposerDraft } from "../model/agentGuiNodeTypes";
 import { agentPromptContentToComposerDraft } from "../model/agentComposerDraft";
+import { resolveAgentComposerDraftScopeKey } from "../model/agentComposerDraftScope";
 import { createAgentGUIConversationId } from "./agentGuiController.promptHelpers";
 
 export interface UseAgentGUIQueueActionsInput {
   activeConversationIdRef: RefObject<string | null>;
   previewMode: boolean;
   sessionEngine: AgentSessionEngine;
-  setDraftBySessionId: Dispatch<
+  setDraftByScopeKey: Dispatch<
     SetStateAction<Record<string, AgentComposerDraft>>
   >;
 }
@@ -26,7 +27,7 @@ export function useAgentGUIQueueActions({
   activeConversationIdRef,
   previewMode,
   sessionEngine,
-  setDraftBySessionId
+  setDraftByScopeKey
 }: UseAgentGUIQueueActionsInput) {
   const removeQueuedPrompt = useCallback(
     (queuedPromptId: string) => {
@@ -88,15 +89,16 @@ export function useAgentGUIQueueActions({
               type: "queue/removed"
             }
       );
-      setDraftBySessionId((current) => ({
+      setDraftByScopeKey((current) => ({
         ...current,
-        [agentSessionId]: agentPromptContentToComposerDraft(
-          queuedPrompt.content,
-          `restore-${queuedPrompt.id}`
-        )
+        [resolveAgentComposerDraftScopeKey({ agentSessionId })]:
+          agentPromptContentToComposerDraft(
+            queuedPrompt.content,
+            `restore-${queuedPrompt.id}`
+          )
       }));
     },
-    [activeConversationIdRef, previewMode, sessionEngine, setDraftBySessionId]
+    [activeConversationIdRef, previewMode, sessionEngine, setDraftByScopeKey]
   );
 
   const sendQueuedPromptNext = useCallback(

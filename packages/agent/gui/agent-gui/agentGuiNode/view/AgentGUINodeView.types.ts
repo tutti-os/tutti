@@ -439,7 +439,10 @@ export interface AgentGUINodeViewProps {
       payload?: Record<string, unknown>;
     }) => void;
     interruptCurrentTurn: (noRunningResponseMessage: string) => void;
-    updateDraftContent: (draftContent: AgentComposerDraft) => void;
+    updateDraftContent: (
+      draftContent: AgentComposerDraft,
+      sourceScopeKey?: string
+    ) => void;
     updateSelectedProjectPath?: AgentComposerProps["onProjectPathChange"];
     updateComposerSettings: (settings: {
       model?: string | null;

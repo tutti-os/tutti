@@ -579,34 +579,6 @@ export function nodeDefaultDraftKey(
   return `${NODE_DEFAULT_DRAFT_KEY}:${agentProvider}`;
 }
 
-export function nodeDefaultDraftPromptKey(
-  agentProvider: AgentGUINodeData["provider"],
-  agentTargetId?: string | null
-): string {
-  return nodeDefaultDraftKey(agentProvider, agentTargetId);
-}
-
-export function normalizeProjectDraftPath(
-  value: string | null | undefined
-): string | null {
-  const normalized = value?.trim().replaceAll("\\", "/").replace(/\/+$/, "");
-  return normalized ? normalized : null;
-}
-
-export function readNodeDefaultDraftPrompt(input: {
-  data: AgentGUINodeData;
-  drafts: Record<string, string>;
-}): string {
-  return (
-    input.drafts[
-      nodeDefaultDraftPromptKey(input.data.provider, input.data.agentTargetId)
-    ] ??
-    input.drafts[nodeDefaultDraftPromptKey(input.data.provider)] ??
-    input.drafts[NODE_DEFAULT_DRAFT_KEY] ??
-    ""
-  );
-}
-
 export function readNodeDefaultDraftSettings(input: {
   data: AgentGUINodeData;
   defaultReasoningEffort?: AgentSessionReasoningEffort | null;

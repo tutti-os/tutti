@@ -7,7 +7,7 @@
     "packages/agent/gui/shared/workspaceAgentProviderLabel.ts"
   ],
   "metrics": {
-    "effectCount": 155,
+    "effectCount": 153,
     "fileLines": {
       "packages/agent/gui/app/renderer/i18n/locales/en.ts": 1893,
       "packages/agent/gui/app/renderer/i18n/locales/zh-CN.ts": 1773

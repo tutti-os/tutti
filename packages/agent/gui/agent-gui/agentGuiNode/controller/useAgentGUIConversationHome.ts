@@ -8,17 +8,17 @@ import {
 import type { AgentActivityRuntime } from "../../../agentActivityRuntime";
 import type { AgentGUIConversationFilter } from "../model/agentGuiConversationFilter";
 import type { AgentComposerDraft } from "../model/agentGuiNodeTypes";
-import { emptyAgentComposerDraft } from "../model/agentComposerDraft";
+import { buildAgentComposerDraft } from "../model/agentComposerDraft";
+import {
+  normalizeAgentComposerDraftProjectPath,
+  resolveAgentComposerDraftScopeKey
+} from "../model/agentComposerDraftScope";
 import type {
   AgentGUINodeData,
   AgentGUIProvider,
   AgentGUIAgentTarget
 } from "../../../types";
 import { resolveAgentGUIAgentTarget } from "../../../agentTargets";
-import {
-  nodeDefaultDraftKey,
-  normalizeProjectDraftPath
-} from "./agentGuiController.composerHelpers";
 import type { AgentGUIComposerTargetData } from "./agentGuiController.composerPresentation";
 
 export interface AgentGUIPrefillPromptRequest {
@@ -67,10 +67,11 @@ export interface UseAgentGUIConversationHomeInput {
   }) => void;
   selectedComposerTargetDataRef: RefObject<AgentGUIComposerTargetData>;
   selectedProjectPathRef: RefObject<string | null>;
+  draftByScopeKeyRef: RefObject<Record<string, AgentComposerDraft>>;
   setActiveConversationId: Dispatch<SetStateAction<string | null>>;
   setConversationFilter: Dispatch<SetStateAction<AgentGUIConversationFilter>>;
   setDetailError: Dispatch<SetStateAction<string | null>>;
-  setDraftBySessionId: Dispatch<
+  setDraftByScopeKey: Dispatch<
     SetStateAction<Record<string, AgentComposerDraft>>
   >;
   setHomeComposerTargetOverride: Dispatch<
@@ -108,10 +109,11 @@ export function useAgentGUIConversationHome({
   reportActiveConversationCleared,
   selectedComposerTargetDataRef,
   selectedProjectPathRef,
+  draftByScopeKeyRef,
   setActiveConversationId,
   setConversationFilter,
   setDetailError,
-  setDraftBySessionId,
+  setDraftByScopeKey,
   setHomeComposerTargetOverride,
   setIntent,
   setIsComposerHome,
@@ -161,7 +163,9 @@ export function useAgentGUIConversationHome({
   const createConversation = useCallback(
     (options?: { projectPath?: string | null; source?: string }) => {
       if (options && "projectPath" in options) {
-        const projectPath = normalizeProjectDraftPath(options.projectPath);
+        const projectPath = normalizeAgentComposerDraftProjectPath(
+          options.projectPath
+        );
         selectedProjectPathRef.current = projectPath;
         setSelectedProjectPath(projectPath);
       }
@@ -171,7 +175,7 @@ export function useAgentGUIConversationHome({
         projectPathPresent: Boolean(
           options &&
           "projectPath" in options &&
-          normalizeProjectDraftPath(options.projectPath)
+          normalizeAgentComposerDraftProjectPath(options.projectPath)
         ),
         source: options?.source ?? "controller"
       });
@@ -222,7 +226,7 @@ export function useAgentGUIConversationHome({
     handledPrefillPromptSequenceRef.current = prefillPromptRequest.sequence;
     const draftPrompt = prefillPromptRequest.draftPrompt.trim();
     if (!draftPrompt) return;
-    const projectPath = normalizeProjectDraftPath(
+    const projectPath = normalizeAgentComposerDraftProjectPath(
       prefillPromptRequest.userProjectPath
     );
     selectedProjectPathRef.current = projectPath;
@@ -277,12 +281,15 @@ export function useAgentGUIConversationHome({
         return nextData;
       });
     }
-    setDraftBySessionId((current) => ({
+    const sourceScopeKey = resolveAgentComposerDraftScopeKey({ projectPath });
+    const prefilledDraft = buildAgentComposerDraft({ prompt: draftPrompt });
+    draftByScopeKeyRef.current = {
+      ...draftByScopeKeyRef.current,
+      [sourceScopeKey]: prefilledDraft
+    };
+    setDraftByScopeKey((current) => ({
       ...current,
-      [nodeDefaultDraftKey(targetData.provider, targetData.agentTargetId)]: {
-        ...emptyAgentComposerDraft(),
-        prompt: draftPrompt
-      }
+      [sourceScopeKey]: prefilledDraft
     }));
     if (prefillPromptRequest.autoSubmit) {
       submitPrefillPrompt(draftPrompt);
@@ -291,6 +298,7 @@ export function useAgentGUIConversationHome({
     loadDraftComposerOptions();
   }, [
     dataRef,
+    draftByScopeKeyRef,
     defaultAgentTargetId,
     enterHome,
     handledPrefillPromptSequenceRef,
@@ -304,7 +312,7 @@ export function useAgentGUIConversationHome({
     selectedComposerTargetDataRef,
     selectedProjectPathRef,
     setConversationFilter,
-    setDraftBySessionId,
+    setDraftByScopeKey,
     setHomeComposerTargetOverride,
     setSelectedProjectPath,
     submitPrefillPrompt,

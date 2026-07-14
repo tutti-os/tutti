@@ -11,6 +11,10 @@ import type {
 } from "../../../shared/agentSessionTypes";
 import type { AgentGUINodeData, AgentGUIAgentTarget } from "../../../types";
 import { type AgentGUIConversationSummary } from "../model/agentGuiConversationModel";
+import type {
+  AgentComposerDraft,
+  SubmittedDraftSnapshot
+} from "../model/agentGuiNodeTypes";
 import { type AgentGUIComposerTargetData } from "./agentGuiController.composerPresentation";
 import type { useAgentGUIActivation } from "./useAgentGUIActivation";
 
@@ -29,6 +33,8 @@ export interface UseAgentGUINewConversationActivationInput {
     (updater: (current: AgentGUINodeData) => AgentGUINodeData) => void
   >;
   selectedProjectPathRef: RefObject<string | null>;
+  draftByScopeKeyRef: RefObject<Record<string, AgentComposerDraft>>;
+  submittedDraftSnapshotsRef: RefObject<Record<string, SubmittedDraftSnapshot>>;
   draftSettingsBySessionIdRef: RefObject<
     Record<string, AgentSessionComposerSettings>
   >;

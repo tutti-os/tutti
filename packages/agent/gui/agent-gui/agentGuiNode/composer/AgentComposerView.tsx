@@ -52,6 +52,7 @@ import type { useComposerPresentation } from "./useComposerPresentation";
 import type { useComposerProviderTargets } from "./useComposerProviderTargets";
 import type { useComposerSlashActions } from "./useComposerSlashActions";
 import type { useMentionPaletteFrame } from "./useMentionPaletteFrame";
+import { agentComposerDraftImages } from "../model/agentComposerDraft";
 
 interface Props {
   props: AgentComposerProps;
@@ -127,7 +128,7 @@ export function AgentComposerView(input: Props): React.JSX.Element {
     compactSupported = null,
     hasCompactableContext = true
   } = input.props;
-  const draftImages = draftContent.images;
+  const draftImages = agentComposerDraftImages(draftContent);
   const { availableCapabilities, slashPaletteEntries, slashQuery } =
     input.paletteCatalog;
   const { mentionPaletteFrame, mentionPaletteHeightPx, mentionPaletteStyle } =
