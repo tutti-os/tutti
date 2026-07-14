@@ -631,13 +631,8 @@ function EmptyHeroTitle({
   const selectedAgentTargetId =
     selectedAgentTarget?.targetId ??
     `local:${selectedAgentTarget?.provider ?? ""}`;
-  const enabledProviderTargets = agentTargets.filter(
-    (target) => target.disabled !== true
-  );
   const canSwitchProvider =
-    enabledProviderTargets.length > 1 &&
-    selectedAgentTarget &&
-    onProviderSelect;
+    agentTargets.length > 1 && selectedAgentTarget && onProviderSelect;
   const providerName = label.slice(providerStart, providerEnd);
 
   return (
@@ -647,7 +642,7 @@ function EmptyHeroTitle({
         <Select
           value={selectedAgentTargetId}
           onValueChange={(nextTargetId) => {
-            const target = enabledProviderTargets.find(
+            const target = agentTargets.find(
               (candidate) => candidate.targetId === nextTargetId
             );
             if (!target) {
@@ -671,7 +666,7 @@ function EmptyHeroTitle({
             align="center"
             className={cn(styles.composerMenuContent, "min-w-[190px]")}
           >
-            {enabledProviderTargets.map((target) => (
+            {agentTargets.map((target) => (
               <SelectItem
                 key={`${target.provider}:${target.targetId}`}
                 value={target.targetId}

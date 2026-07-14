@@ -1966,7 +1966,7 @@ describe("AgentGUINodeView layout persistence", () => {
     ).toBeInTheDocument();
   });
 
-  it("omits disabled provider options in the empty hero provider select", async () => {
+  it("keeps unavailable Agent options visible and selectable in the empty hero provider select", async () => {
     const actions = createActions();
     const disabledTuttiTarget = {
       ...createLocalAgentGUIAgentTarget("nexight"),
@@ -2009,13 +2009,19 @@ describe("AgentGUINodeView layout persistence", () => {
     expect(await screen.findByRole("option", { name: "Codex" })).toBeVisible();
     expect(screen.getByRole("option", { name: "Claude Code" })).toBeVisible();
     expect(
-      screen.queryByRole("option", { name: "Tutti Agent" })
-    ).not.toBeInTheDocument();
+      screen.getByRole("option", { name: disabledTuttiTarget.label })
+    ).toBeVisible();
     expect(
-      screen.queryByRole("option", { name: "Hermes" })
-    ).not.toBeInTheDocument();
+      screen.getByRole("option", { name: disabledHermesTarget.label })
+    ).toBeVisible();
 
-    expect(actions.selectHomeComposerAgentTarget).not.toHaveBeenCalled();
+    fireEvent.click(
+      screen.getByRole("option", { name: disabledTuttiTarget.label })
+    );
+    expect(actions.selectHomeComposerAgentTarget).toHaveBeenCalledWith({
+      provider: disabledTuttiTarget.provider,
+      agentTargetId: disabledTuttiTarget.targetId
+    });
   });
 
   it("keeps the empty-home carousel and provider select in sync with Agent management", async () => {

@@ -51,10 +51,6 @@ export function useComposerProviderTargets(input: Input) {
     () => agentTargets.filter(Boolean),
     [agentTargets]
   );
-  const enabledProviderSwitchTargets = useMemo(
-    () => providerSwitchTargets.filter((target) => target.disabled !== true),
-    [providerSwitchTargets]
-  );
   const selectedAgentTargetId =
     selectedAgentTarget?.targetId ?? `local:${provider}`;
   const selectedProviderSwitchTarget =
@@ -65,11 +61,11 @@ export function useComposerProviderTargets(input: Input) {
     selectedAgentTarget;
   const providerMenuTargets =
     selectedProviderSwitchTarget &&
-    !enabledProviderSwitchTargets.some(
+    !providerSwitchTargets.some(
       (target) => target.targetId === selectedProviderSwitchTarget.targetId
     )
-      ? [selectedProviderSwitchTarget, ...enabledProviderSwitchTargets]
-      : enabledProviderSwitchTargets;
+      ? [selectedProviderSwitchTarget, ...providerSwitchTargets]
+      : providerSwitchTargets;
   const enabledHandoffProviderTargets = useMemo(
     () =>
       (handoffAgentTargets ?? providerMenuTargets).filter(

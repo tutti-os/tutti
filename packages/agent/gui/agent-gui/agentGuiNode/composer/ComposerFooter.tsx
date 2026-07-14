@@ -317,7 +317,7 @@ export function ComposerFooter({
                 const target = providerMenuTargets.find(
                   (candidate) => candidate.targetId === nextTargetId
                 );
-                if (!target || target.disabled === true) {
+                if (!target) {
                   return;
                 }
                 onProviderSelect?.({
@@ -359,7 +359,6 @@ export function ComposerFooter({
                     key={`${target.provider}:${target.targetId}`}
                     value={target.targetId}
                     className={cn(styles.composerMenuItem, "gap-2")}
-                    disabled={target.disabled === true}
                   >
                     <span className="flex min-w-0 items-center gap-1.5">
                       <img

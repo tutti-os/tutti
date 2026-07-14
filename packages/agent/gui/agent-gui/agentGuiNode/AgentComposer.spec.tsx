@@ -1554,7 +1554,7 @@ describe("AgentComposer", () => {
     expect(handoffIcon).toHaveAttribute("data-disabled", "true");
   });
 
-  it("omits disabled targets from the provider switch menu", async () => {
+  it("keeps unavailable targets visible and selectable in the provider switch menu", async () => {
     const codexTarget = {
       targetId: "local:codex",
       agentTargetId: "local:codex",
@@ -1596,6 +1596,8 @@ describe("AgentComposer", () => {
       }
     ];
 
+    const onProviderSelect = vi.fn();
+
     render(
       <AgentComposer
         workspaceId="workspace-1"
@@ -1604,6 +1606,7 @@ describe("AgentComposer", () => {
         selectedAgentTarget={claudeTarget}
         agentTargets={[codexTarget, claudeTarget, ...disabledTargets]}
         providerSelectLabel="切换 Provider"
+        onProviderSelect={onProviderSelect}
         draftContent={createDraft("")}
         availableCommands={[] satisfies readonly AgentHostAgentSessionCommand[]}
         disabled={false}
@@ -1637,15 +1640,15 @@ describe("AgentComposer", () => {
 
     expect(await screen.findByRole("option", { name: "Codex" })).toBeVisible();
     expect(screen.getByRole("option", { name: "Claude Code" })).toBeVisible();
-    expect(
-      screen.queryByRole("option", { name: "Tutti Agent" })
-    ).not.toBeInTheDocument();
-    expect(
-      screen.queryByRole("option", { name: "Hermes" })
-    ).not.toBeInTheDocument();
-    expect(
-      screen.queryByRole("option", { name: "OpenClaw" })
-    ).not.toBeInTheDocument();
+    expect(screen.getByRole("option", { name: "Tutti Agent" })).toBeVisible();
+    expect(screen.getByRole("option", { name: "Hermes" })).toBeVisible();
+    expect(screen.getByRole("option", { name: "OpenClaw" })).toBeVisible();
+
+    fireEvent.click(screen.getByRole("option", { name: "Tutti Agent" }));
+    expect(onProviderSelect).toHaveBeenCalledWith({
+      provider: disabledTargets[0]!.provider,
+      agentTargetId: disabledTargets[0]!.targetId
+    });
   });
 
   it("honors target artwork in the provider switch menu", async () => {
