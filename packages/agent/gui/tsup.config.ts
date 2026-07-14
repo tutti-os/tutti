@@ -6,6 +6,7 @@ export default defineConfig({
   entry: {
     index: "index.ts",
     "agent-gui": "AgentGUI.tsx",
+    "startup-shell": "AgentGUIStartupShell.tsx",
     agents: "agents.ts",
     "custom-mention": "custom-mention.ts",
     "dock-icons": "dockIcons.ts",

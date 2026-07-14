@@ -7,6 +7,7 @@
   "exports": {
     ".": "./index.ts",
     "./agent-gui": "./AgentGUI.tsx",
+    "./startup-shell": "./AgentGUIStartupShell.tsx",
     "./agents": "./agents.ts",
     "./custom-mention": "./custom-mention.ts",
     "./dock-icons": "./dockIcons.ts",
@@ -115,6 +116,10 @@
         "types": "./dist/agent-gui.d.ts",
         "import": "./dist/agent-gui.js"
       },
+      "./startup-shell": {
+        "types": "./dist/startup-shell.d.ts",
+        "import": "./dist/startup-shell.js"
+      },
       "./agents": {
         "types": "./dist/agents.d.ts",
         "import": "./dist/agents.js"
@@ -210,6 +215,9 @@
       "*": {
         "agent-gui": [
           "./dist/agent-gui.d.ts"
+        ],
+        "startup-shell": [
+          "./dist/startup-shell.d.ts"
         ],
         "agents": [
           "./dist/agents.d.ts"

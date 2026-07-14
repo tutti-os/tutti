@@ -1,10 +1,4 @@
-import {
-  createElement,
-  lazy,
-  Suspense,
-  type CSSProperties,
-  type ReactNode
-} from "react";
+import { createElement, type CSSProperties, type ReactNode } from "react";
 import type {
   AgentGUIProvider,
   AgentGUIAllAgentsPresentation,
@@ -50,6 +44,7 @@ import { createDesktopAgentGUIWorkbenchHostInput } from "@renderer/features/work
 import { requestWorkspaceAgentGuiLaunch } from "@renderer/features/workspace-agent/services/workspaceAgentGuiLaunchCoordinator.ts";
 import type { IAgentProviderStatusService as AgentProviderStatusService } from "@renderer/features/workspace-agent/services/agentProviderStatusService.interface.ts";
 import type { DesktopAgentGUIWorkbenchBodyProps } from "@renderer/features/workspace-agent/ui/desktopAgentGUIWorkbenchModel.ts";
+import { DesktopAgentGUIWorkbenchBody } from "@renderer/features/workspace-agent/ui/DesktopAgentGUIWorkbenchBody.tsx";
 import { runDesktopAgentGUILinkAction } from "@renderer/features/workspace-agent/services/desktopAgentGUILinkActions.ts";
 import {
   workspaceWorkbenchDesktopI18nKeys,
@@ -61,12 +56,6 @@ import { requestWorkspaceIssueManagerLaunch } from "../workspaceIssueManagerLaun
 import { requestGroupChatLaunch } from "../groupChatLaunchCoordinator.ts";
 import { useExternalStoreValue } from "../../ui/useExternalStoreValue.ts";
 import { workspaceAgentGuiNodeFrame } from "./workspaceWorkbenchComposition.ts";
-
-const LazyDesktopAgentGUIWorkbenchBody = lazy(() =>
-  import("@renderer/features/workspace-agent/ui/DesktopAgentGUIWorkbenchBody.tsx").then(
-    (module) => ({ default: module.DesktopAgentGUIWorkbenchBody })
-  )
-);
 
 export function createWorkspaceAgentGuiContribution(input: {
   agentProviderStatusService: AgentProviderStatusService;
@@ -146,8 +135,9 @@ export function createWorkspaceAgentGuiContribution(input: {
       Parameters<typeof createAgentGuiWorkbenchContribution>[0]["renderBody"]
     >[1],
     options?: { previewMode?: boolean }
-  ) =>
-    createElement(DesktopWorkspaceAgentGUIWorkbenchBody, {
+  ) => {
+    const previewMode = options?.previewMode === true;
+    return createElement(DesktopWorkspaceAgentGUIWorkbenchBody, {
       agentActivityRuntime: agentGUIWorkbenchHostInput.agentActivityRuntime,
       agentHostApi: agentGUIWorkbenchHostInput.agentHostApi,
       appCenterService: input.appCenterService,
@@ -164,7 +154,7 @@ export function createWorkspaceAgentGuiContribution(input: {
         });
       },
       onStateChange: (...args) => helpers.onStateChange(...args),
-      previewMode: options?.previewMode,
+      previewMode,
       agentsService: helpers.agentDirectory,
       allAgentsPresentation: input.allAgentsPresentation,
       renderAgentsEmpty: input.renderAgentsEmpty,
@@ -192,6 +182,7 @@ export function createWorkspaceAgentGuiContribution(input: {
         agentGUIWorkbenchHostInput.resolveWorkspaceReferenceInitialTarget,
       workspaceId: input.workspaceId
     });
+  };
 
   return createAgentGuiWorkbenchContribution({
     copy: {
@@ -287,22 +278,14 @@ function DesktopWorkspaceAgentGUIWorkbenchBody({
     () => agentsService.getSnapshot(),
     () => agentsService.getSnapshot()
   );
-  return createElement(
-    Suspense,
-    {
-      fallback: createElement("div", {
-        className: "h-full min-h-0 bg-background"
-      })
-    },
-    createElement(LazyDesktopAgentGUIWorkbenchBody, {
-      ...props,
-      agentDirectory: snapshot,
-      defaultAgentTargetId: resolveDefaultAgentTargetId({
-        agents: snapshot.agents,
-        defaultProvider: defaultAgentProvider
-      })
+  return createElement(DesktopAgentGUIWorkbenchBody, {
+    ...props,
+    agentDirectory: snapshot,
+    defaultAgentTargetId: resolveDefaultAgentTargetId({
+      agents: snapshot.agents,
+      defaultProvider: defaultAgentProvider
     })
-  );
+  });
 }
 
 function resolveDefaultAgentTargetId(input: {

@@ -9,6 +9,13 @@ const startupShellSource = readFileSync(
   resolve(currentDirectory, "StandaloneAgentStartupShell.tsx"),
   "utf8"
 );
+const startupBodyShellSource = readFileSync(
+  resolve(
+    currentDirectory,
+    "../../../../../../../../packages/agent/gui/AgentGUIStartupShell.tsx"
+  ),
+  "utf8"
+);
 const standaloneWorkbenchSource = readFileSync(
   resolve(currentDirectory, "StandaloneAgentWorkbench.tsx"),
   "utf8"
@@ -44,8 +51,15 @@ const workspaceWindowSource = readFileSync(
   ),
   "utf8"
 );
+const workspaceAgentGuiContributionSource = readFileSync(
+  resolve(
+    currentDirectory,
+    "../services/internal/workspaceAgentGuiContribution.ts"
+  ),
+  "utf8"
+);
 
-test("standalone Agent renders a structured startup shell at every blocking boundary", () => {
+test("Agent surfaces render a structured startup shell at every blocking boundary", () => {
   assert.match(
     workspaceWindowSource,
     /routeView === "agent" \? \(\s*<StandaloneAgentStartupShell \/>/
@@ -55,9 +69,28 @@ test("standalone Agent renders a structured startup shell at every blocking boun
       ?.length,
     2
   );
-  assert.match(
+  assert.doesNotMatch(
     standaloneWindowSource,
-    /fallback=\{<StandaloneAgentStartupShell scope="body" \/>\}/
+    /LazyDesktopAgentGUIWorkbenchBody/
+  );
+  assert.match(
+    workspaceAgentGuiContributionSource,
+    /import \{ DesktopAgentGUIWorkbenchBody \} from "@renderer\/features\/workspace-agent\/ui\/DesktopAgentGUIWorkbenchBody\.tsx"/
+  );
+});
+
+test("OS and standalone Agent routes statically own the AgentGUI body", () => {
+  assert.doesNotMatch(
+    workspaceAgentGuiContributionSource,
+    /React\.lazy|lazy\(/
+  );
+  assert.doesNotMatch(
+    workspaceAgentGuiContributionSource,
+    /import\("@renderer\/features\/workspace-agent\/ui\/DesktopAgentGUIWorkbenchBody\.tsx"\)/
+  );
+  assert.match(
+    workspaceAgentGuiContributionSource,
+    /createElement\(DesktopAgentGUIWorkbenchBody, \{/
   );
 });
 
@@ -65,43 +98,49 @@ test("standalone Agent startup shell keeps the rail and new-conversation hero vi
   assert.match(startupShellSource, /data-agent-gui-startup-shell="window"/);
   assert.match(
     startupShellSource,
+    /<AgentGUIStartupShell loadingLabel=\{loadingLabel\} \/>/
+  );
+  assert.doesNotMatch(startupBodyShellSource, /AgentGUIStartupSource|source:/);
+  assert.doesNotMatch(startupBodyShellSource, /data-agent-gui-source/);
+  assert.match(
+    startupBodyShellSource,
     /gridTemplateColumns: "52px 280px minmax\(0, 1fr\)"/
   );
   assert.match(
-    startupShellSource,
+    startupBodyShellSource,
     /agent-gui-node__conversation-list-skeleton-row/
   );
   assert.match(
-    startupShellSource,
+    startupBodyShellSource,
     /agent-gui-node__empty-hero[\s\S]*?agent-gui-node__empty-hero-title/
   );
   assert.match(
-    startupShellSource,
+    startupBodyShellSource,
     /agent-gui-node__timeline agent-gui-node__timeline-centered[\s\S]*?data-agent-gui-startup-timeline-content="true"/
   );
   assert.match(
-    startupShellSource,
+    startupBodyShellSource,
     /agent-gui-node__empty-hero-icon-slot[\s\S]*?data-carousel-placeholder=\{true\}[\s\S]*?h-28/
   );
   assert.match(
-    startupShellSource,
+    startupBodyShellSource,
     /agent-gui-node__composer-hero[\s\S]*?data-layout="hero"[\s\S]*?agent-gui-node__composer-hero-prompt-input-area[\s\S]*?<textarea[\s\S]*?disabled/
   );
   assert.match(
-    startupShellSource,
+    startupBodyShellSource,
     /agent-gui-node__composer-footer[\s\S]*?agent-gui-node__composer-footer-left[\s\S]*?agent-gui-node__composer-footer-right/
   );
   assert.match(
-    startupShellSource,
+    startupBodyShellSource,
     /agent-gui-node__composer-project-row[\s\S]*?agent-gui-node__composer-prompt-tips[\s\S]*?agent-gui-node__composer-prompt-tip/
   );
   assert.match(
-    startupShellSource,
+    startupBodyShellSource,
     /agent-gui-node__empty-hero-suggestions[\s\S]*?agent-gui-node__empty-hero-suggestions-chips/
   );
-  assert.doesNotMatch(startupShellSource, /agent-gui-node__bottom-dock/);
-  assert.doesNotMatch(startupShellSource, /data-layout="dock"/);
-  assert.match(startupShellSource, /<Spinner/);
+  assert.doesNotMatch(startupBodyShellSource, /agent-gui-node__bottom-dock/);
+  assert.doesNotMatch(startupBodyShellSource, /data-layout="dock"/);
+  assert.match(startupBodyShellSource, /<Spinner/);
 });
 
 test("standalone Agent tool panels expose loading UI while deferred modules start", () => {

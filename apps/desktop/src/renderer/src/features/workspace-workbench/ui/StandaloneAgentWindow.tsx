@@ -56,12 +56,12 @@ import type { TuttiExternalFileOpenInput } from "@tutti-os/workspace-external-co
 import type { IReporterService } from "@renderer/features/analytics";
 import type { IDesktopRichTextAtService } from "@renderer/features/rich-text-at";
 import type { IWorkspaceUserProjectService } from "@renderer/features/workspace-user-project";
+import { DesktopAgentGUIWorkbenchBody } from "@renderer/features/workspace-agent/ui/DesktopAgentGUIWorkbenchBody.tsx";
 import { useTranslation } from "@renderer/i18n";
 import { AppUpdateStatus } from "@renderer/features/app-update";
 import { StandaloneAgentToolSidebar } from "./StandaloneAgentToolSidebar";
 import type { StandaloneAgentFileOpenRequest } from "./StandaloneAgentToolSidebar";
 import { WorkspaceAppExternalBridge } from "./WorkspaceAppExternalBridge";
-import { StandaloneAgentStartupShell } from "./StandaloneAgentStartupShell.tsx";
 import {
   createStandaloneAgentDockPreviewCache,
   createStandaloneAgentHost,
@@ -89,13 +89,6 @@ const LazyStandaloneAgentWindowPanelHosts = lazy(() =>
 const standaloneAgentNodeId = "standalone-agent-window-node";
 const standaloneAgentInstanceKey = "standalone-agent-window";
 const standaloneAgentDefaultConversationRailWidthPx = 280;
-const desktopAgentGUIWorkbenchBodyModulePromise =
-  import("@renderer/features/workspace-agent/ui/DesktopAgentGUIWorkbenchBody.tsx");
-const LazyDesktopAgentGUIWorkbenchBody = lazy(() =>
-  desktopAgentGUIWorkbenchBodyModulePromise.then((module) => ({
-    default: module.DesktopAgentGUIWorkbenchBody
-  }))
-);
 function renderStandaloneAgentSidebarFooter(): ReactNode {
   return (
     <Suspense fallback={null}>
@@ -714,71 +707,67 @@ export function StandaloneAgentWindow({
         resizeWindowContentWidth={resizeStandaloneAgentWindowContentWidth}
         workspaceId={workspaceId}
       >
-        <Suspense fallback={<StandaloneAgentStartupShell scope="body" />}>
-          <StandaloneAgentWindowContentReady onReady={handleContentReady}>
-            <LazyDesktopAgentGUIWorkbenchBody
-              agentActivityRuntime={agentGuiHostInput.agentActivityRuntime}
-              agentHostApi={agentGuiHostInput.agentHostApi}
-              appCenterService={workspaceAppCenterService}
-              agentProviderStatusService={agentProviderStatusService}
-              context={context}
-              computerUseApi={desktopApi.computerUse}
-              conversationRailAutoCollapseWidthPx={
-                AGENT_GUI_STANDALONE_AUTO_COLLAPSE_WIDTH_PX
-              }
-              dockPreviewCache={dockPreviewCache}
-              onLinkAction={handleLinkAction}
-              onCapabilitySettingsRequest={handleCapabilitySettingsRequest}
-              onOpenAgentConversationWindow={({ agentSessionId, provider }) => {
-                // Duplicate the complete live snapshot so the new window can
-                // hydrate before its first local refresh.
-                void hostWindowApi.openAgentWindow({
-                  agentSessionId,
-                  providerStatusSnapshot:
-                    agentProviderStatusService.getSnapshot(),
-                  agentDirectorySnapshot,
-                  provider,
-                  workspaceId
-                });
-              }}
-              onStateChange={setNodeState}
-              prefillPromptBootstrapRequest={prefillPromptBootstrapRequest}
-              providerStatusBootstrapSnapshot={providerStatusBootstrapSnapshot}
-              agentDirectory={agentDirectorySnapshot}
-              contextMentionProviders={
-                agentGuiHostInput.contextMentionProviders
-              }
-              runtimeApi={desktopApi.runtime}
-              trackAgentProviderChatReady={
-                agentGuiHostInput.trackAgentProviderChatReady
-              }
-              trackWorkspaceFileReferences={
-                agentGuiHostInput.trackWorkspaceFileReferences
-              }
-              workspaceFileReferenceAdapter={
-                agentGuiHostInput.workspaceFileReferenceAdapter
-              }
-              resolveDroppedFileReferences={
-                agentGuiHostInput.resolveDroppedFileReferences
-              }
-              onRequestGitBranches={agentGuiHostInput.onRequestGitBranches}
-              referenceSourceAggregator={
-                agentGuiHostInput.referenceSourceAggregator
-              }
-              renderSidebarFooter={renderStandaloneAgentSidebarFooter}
-              resolveWorkspaceReferenceEntryIconUrl={
-                agentGuiHostInput.resolveWorkspaceReferenceEntryIconUrl
-              }
-              resolveMentionReferenceTarget={
-                agentGuiHostInput.resolveMentionReferenceTarget
-              }
-              resolveWorkspaceReferenceInitialTarget={
-                agentGuiHostInput.resolveWorkspaceReferenceInitialTarget
-              }
-              workspaceId={workspaceId}
-            />
-          </StandaloneAgentWindowContentReady>
-        </Suspense>
+        <StandaloneAgentWindowContentReady onReady={handleContentReady}>
+          <DesktopAgentGUIWorkbenchBody
+            agentActivityRuntime={agentGuiHostInput.agentActivityRuntime}
+            agentHostApi={agentGuiHostInput.agentHostApi}
+            appCenterService={workspaceAppCenterService}
+            agentProviderStatusService={agentProviderStatusService}
+            context={context}
+            computerUseApi={desktopApi.computerUse}
+            conversationRailAutoCollapseWidthPx={
+              AGENT_GUI_STANDALONE_AUTO_COLLAPSE_WIDTH_PX
+            }
+            dockPreviewCache={dockPreviewCache}
+            onLinkAction={handleLinkAction}
+            onCapabilitySettingsRequest={handleCapabilitySettingsRequest}
+            onOpenAgentConversationWindow={({ agentSessionId, provider }) => {
+              // Duplicate the complete live snapshot so the new window can
+              // hydrate before its first local refresh.
+              void hostWindowApi.openAgentWindow({
+                agentSessionId,
+                providerStatusSnapshot:
+                  agentProviderStatusService.getSnapshot(),
+                agentDirectorySnapshot,
+                provider,
+                workspaceId
+              });
+            }}
+            onStateChange={setNodeState}
+            prefillPromptBootstrapRequest={prefillPromptBootstrapRequest}
+            providerStatusBootstrapSnapshot={providerStatusBootstrapSnapshot}
+            agentDirectory={agentDirectorySnapshot}
+            contextMentionProviders={agentGuiHostInput.contextMentionProviders}
+            runtimeApi={desktopApi.runtime}
+            trackAgentProviderChatReady={
+              agentGuiHostInput.trackAgentProviderChatReady
+            }
+            trackWorkspaceFileReferences={
+              agentGuiHostInput.trackWorkspaceFileReferences
+            }
+            workspaceFileReferenceAdapter={
+              agentGuiHostInput.workspaceFileReferenceAdapter
+            }
+            resolveDroppedFileReferences={
+              agentGuiHostInput.resolveDroppedFileReferences
+            }
+            onRequestGitBranches={agentGuiHostInput.onRequestGitBranches}
+            referenceSourceAggregator={
+              agentGuiHostInput.referenceSourceAggregator
+            }
+            renderSidebarFooter={renderStandaloneAgentSidebarFooter}
+            resolveWorkspaceReferenceEntryIconUrl={
+              agentGuiHostInput.resolveWorkspaceReferenceEntryIconUrl
+            }
+            resolveMentionReferenceTarget={
+              agentGuiHostInput.resolveMentionReferenceTarget
+            }
+            resolveWorkspaceReferenceInitialTarget={
+              agentGuiHostInput.resolveWorkspaceReferenceInitialTarget
+            }
+            workspaceId={workspaceId}
+          />
+        </StandaloneAgentWindowContentReady>
       </StandaloneAgentToolSidebar>
       {panelHostsReady ? (
         <Suspense fallback={null}>

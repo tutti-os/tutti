@@ -473,13 +473,20 @@ Agent window are separate dynamic entries; neither route may statically import
 the other route's body through a feature barrel. Workbench Agent contribution
 registration keeps only its lightweight node and dock descriptor on the OS
 cold path. The full `DesktopAgentGUIWorkbenchBody`, rich-text editor, mention
-search controller, and AgentGUI presentation graph load when an Agent surface
-is required. Entering standalone Agent mode starts a dynamic preload of that
-body while allowing the lightweight standalone shell to render independently;
-the body fetch must not block the shell, and OS mode must not trigger it.
+search controller, and AgentGUI presentation graph remain outside the common
+desktop shell entry. Both the OS workspace route and standalone Agent route
+statically own the body inside their already-lazy route chunks. This avoids a
+second body-level import waterfall after either route begins rendering while
+keeping non-workspace desktop routes outside the AgentGUI graph.
 Every blocking boundary before the real AgentGUI controller mounts uses that
 same startup-shell geometry: the route-level Suspense fallback, workspace
-catalog hydration, workbench host-session binding, and the lazy AgentGUI body.
+catalog hydration, and workbench host-session binding.
+The reusable body geometry is owned by the narrow
+`@tutti-os/agent-gui/startup-shell` entry. The primitive is runtime-source
+agnostic: local/shared ownership, directory loading, and launch routing remain
+host concerns. Desktop owns the optional standalone-window chrome around that
+body; another host may compose the same primitive at its own loading boundary
+without adding host identity to the AgentGUI presentation package.
 The full-window variant keeps the header, provider rail, conversation-rail
 skeleton, and empty-home hero composer visible; after the real header mounts,
 the body-only variant preserves that new-conversation geometry without
@@ -506,6 +513,9 @@ conversation-rail and right-panel toggles hidden; reveal them only after the
 body commits so loading chrome cannot target unavailable content.
 Startup optimizations such as mention browse warming must begin from the
 mounted AgentGUI lifecycle, never from workspace contribution registration.
+Local AgentGUI startup before the body module evaluates is module loading, not
+workspace or session hydration. Reserve hydration terminology for injecting or
+reconciling runtime state after the relevant controller exists.
 File activation in the standalone Agent window must use the host-owned right
 Files sidebar. Conversation links and workspace-reference preview requests open
 that panel and pass a reveal intent so the reusable file manager selects and

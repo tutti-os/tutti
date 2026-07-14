@@ -82,18 +82,30 @@
 - Root cause:
   Development Vite transforms source modules on demand. An Agent-only route can
   therefore remain on a black Suspense fallback while nested lazy boundaries
-  discover large dependency graphs. Static imports for Browser, Terminal, File
+  discover large dependency graphs. In the desktop renderer, enabling Babel
+  React Compiler during `serve` makes every cold TSX request substantially more
+  expensive; a body import that reaches hundreds of TSX modules can spend
+  several seconds compiling even though all source files are local. A warm
+  request completing quickly distinguishes this from disk or loopback HTTP
+  throughput. Static imports for Browser, Terminal, File
   Manager, App Center, Message Center, settings/import panels, or account UI
   enlarge the shell graph even when those surfaces are closed. Starting
   Workspace App polling at mount can also prepare every app runtime during the
   same cold compile. Separately, a single global in-flight provider-status
   promise makes the active provider wait behind a slow all-provider scan.
 - Fix:
-  Keep workspace and standalone Agent routes separate. Dynamically preload the
-  full AgentGUI body without blocking the lightweight standalone shell. Render
+  Keep workspace and standalone Agent routes separate. Let both already-lazy
+  routes statically own the full AgentGUI body so neither adds a second import
+  waterfall beneath its route fallback. Render
   the same structured shell at the route Suspense, workspace hydration,
   host-session binding, and AgentGUI-body boundaries; a plain background at any
   one of those boundaries brings the apparent black screen back. Keep the
+  reusable body shell in the narrow `@tutti-os/agent-gui/startup-shell` entry;
+  let desktop compose standalone window chrome around it. Keep React Compiler
+  settings aligned between development and production; do not hide a cold
+  transform bottleneck by changing compiler semantics only in development.
+  Reduce the initial module graph, precompile a stable package boundary, or
+  schedule non-blocking preload work instead. Keep the
   right side shaped like the empty-home/new-conversation hero, not a selected
   conversation timeline with a bottom dock. Keep the fallback hero composer
   non-interactive until the real controller owns its draft.
@@ -113,7 +125,9 @@
   pre-controller return path renders the structured startup shell and every
   deferred tool body has a non-empty loading fallback.
   Finally cold-start local dev and compare the same timestamp landmarks; this
-  manual renderer verification requires explicit user approval.
+  manual renderer verification requires explicit user approval. If the dynamic
+  import still dominates, compare cold and warm module-graph timings before
+  investigating daemon hydration or provider discovery.
 - References:
   [agent-gui-node.md](../../architecture/agent-gui-node.md)
   [WorkspaceWindow.tsx](../../../apps/desktop/src/renderer/src/app/windows/workspace/WorkspaceWindow.tsx)
