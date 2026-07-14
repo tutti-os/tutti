@@ -28,7 +28,7 @@ func NewDefaultPreparer(stateDir string) *DefaultPreparer {
 		providers: make(map[string]ProviderPreparer),
 	}
 	preparer.RegisterProvider(CodexPreparer{})
-	preparer.RegisterProvider(ClaudeCodePreparer{})
+	preparer.RegisterProvider(ClaudeCodePreparer{StateDir: stateDir})
 	preparer.RegisterProvider(GeminiPreparer{})
 	preparer.RegisterProvider(InstructionFilePreparer{ProviderID: "nexight", FileName: "AGENTS.md"})
 	preparer.RegisterProvider(InstructionFilePreparer{ProviderID: "hermes", FileName: "AGENTS.md"})

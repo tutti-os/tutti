@@ -15,6 +15,7 @@ import type {
   SDKMessage,
   SDKUserMessage
 } from "@anthropic-ai/claude-agent-sdk";
+import { resolveClaudeCodeExecutablePath } from "./executablePath.ts";
 import {
   answersFromInteractivePayload,
   commandEntries,
@@ -974,14 +975,25 @@ export class SessionRuntime {
     const permissionMode = effectivePermissionMode(this.settings);
     const allowBypassPermissions = canBypassPermissions();
     const querySettings = querySettingsFromSessionSettings(this.settings);
+    // One settings snapshot feeds both executable resolution and the SDK env,
+    // so the two cannot disagree and the settings hierarchy is read once.
+    const settingsEnv = claudeSettingsEnv(this.cwd || process.cwd());
+    const claudeExecutablePath = resolveClaudeCodeExecutablePath({
+      ...process.env,
+      ...settingsEnv,
+      ...this.env
+    });
     const queryOptions: ClaudeQueryOptions = {
       cwd: this.cwd || process.cwd(),
       env: {
         ...process.env,
-        ...claudeSettingsEnv(this.cwd || process.cwd()),
+        ...settingsEnv,
         ...this.env,
         CLAUDE_CODE_EMIT_SESSION_STATE_EVENTS: "1"
       },
+      ...(claudeExecutablePath
+        ? { pathToClaudeCodeExecutable: claudeExecutablePath }
+        : {}),
       includePartialMessages: true,
       canUseTool: (toolName, toolInput, callbackOptions) =>
         this.handleToolPermission(
@@ -1041,6 +1053,7 @@ export class SessionRuntime {
       initialize: startOptions.initialize === true,
       restore: this.restore,
       permissionMode,
+      hasExecutablePathOverride: Boolean(claudeExecutablePath),
       hasModel: Boolean(modelOptionValue(this.settings.model)),
       hasResumeCursor: Boolean(this.resumeCursor),
       querySettingsKeys: Object.keys(querySettings),
