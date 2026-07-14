@@ -66,23 +66,61 @@ test("rejects duplicate target ids before generating", () => {
   );
 });
 
-test("requires every migrated provider in each OpenAPI provider registry", () => {
+test("keeps AgentTargetProvider open while checking closed provider registries", () => {
   const openapi = providerOpenAPI(["example"]);
   validateRegistryCatalogAgainstOpenAPI(catalog, openapi);
 
-  openapi.components.schemas.AgentTargetProvider.enum = [];
+  openapi.components.schemas.AgentTargetProvider.enum = ["example"];
   assert.throws(
     () => validateRegistryCatalogAgainstOpenAPI(catalog, openapi),
-    /AgentTargetProvider/u
+    /must remain an open/u
   );
 });
 
-test("rejects unregistered OpenAPI provider entries", () => {
+test("rejects an AgentTargetProvider pattern that excludes extensions", () => {
   const openapi = providerOpenAPI(["example"]);
-  openapi.components.schemas.WorkspaceAgentProvider.enum.push("ghost");
+  openapi.components.schemas.AgentTargetProvider.pattern = "^[a-z]+$";
   assert.throws(
     () => validateRegistryCatalogAgainstOpenAPI(catalog, openapi),
-    /WorkspaceAgentProvider/u
+    /AgentTargetProvider must remain an open/u
+  );
+});
+
+test("rejects a WorkspaceAgentProvider pattern outside canonical grammar", () => {
+  const openapi = providerOpenAPI(["example"]);
+  openapi.components.schemas.WorkspaceAgentProvider.pattern =
+    "^[a-z][a-z0-9._:/-]*$";
+  assert.throws(
+    () => validateRegistryCatalogAgainstOpenAPI(catalog, openapi),
+    /WorkspaceAgentProvider must remain an open/u
+  );
+});
+
+test("requires provider-keyed preference schemas to remain closed", () => {
+  const openapi = providerOpenAPI(["example"]);
+  openapi.components.schemas.DesktopAgentComposerDefaultsByProvider.additionalProperties = true;
+  assert.throws(
+    () => validateRegistryCatalogAgainstOpenAPI(catalog, openapi),
+    /must remain a closed object/u
+  );
+});
+
+test("rejects provider-keyed preference schema key drift", () => {
+  const openapi = providerOpenAPI(["example"]);
+  openapi.components.schemas.DesktopAgentGuiConversationRailCollapsedByProvider.properties.ghost =
+    { type: "boolean" };
+  assert.throws(
+    () => validateRegistryCatalogAgainstOpenAPI(catalog, openapi),
+    /provider schema drift/u
+  );
+});
+
+test("keeps WorkspaceAgentProvider open", () => {
+  const openapi = providerOpenAPI(["example"]);
+  openapi.components.schemas.WorkspaceAgentProvider.enum = ["example"];
+  assert.throws(
+    () => validateRegistryCatalogAgainstOpenAPI(catalog, openapi),
+    /WorkspaceAgentProvider must remain an open/u
   );
 });
 
@@ -94,19 +132,29 @@ function providerOpenAPI(migratedProviderIds) {
     components: {
       schemas: {
         AgentTargetProvider: {
-          enum: [...migratedProviderIds]
+          type: "string",
+          minLength: 1,
+          maxLength: 128,
+          pattern: "^[a-z][a-z0-9._:-]*$"
         },
         DesktopAgentComposerDefaultsByProvider: {
+          type: "object",
+          additionalProperties: false,
           properties: preferenceProperties
         },
         DesktopAgentGuiConversationRailCollapsedByProvider: {
+          type: "object",
+          additionalProperties: false,
           properties: preferenceProperties
         },
         DesktopDefaultAgentProvider: {
           enum: [migratedProviderIds[0]]
         },
         WorkspaceAgentProvider: {
-          enum: [...migratedProviderIds]
+          type: "string",
+          minLength: 1,
+          maxLength: 128,
+          pattern: "^[a-z][a-z0-9._:-]*$"
         }
       }
     }

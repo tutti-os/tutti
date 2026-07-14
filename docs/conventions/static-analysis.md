@@ -69,8 +69,9 @@ daemon provider registry. `pnpm check:agent-gui-provider-catalog-generated`
 fails when the checked-in TypeScript catalog drifts from the descriptor source
 of truth, when a generated locale key is absent from any AgentGUI locale, or
 when a generated icon key has no complete asset set. The same check also keeps
-the descriptor set equal to the OpenAPI provider, target, and provider-keyed
-preference schemas. It runs as part of
+the descriptor set equal to closed OpenAPI provider-keyed preference schemas
+while verifying that `AgentTargetProvider` and `WorkspaceAgentProvider` remain
+open, bounded identifier contracts that accept extension providers. It runs as part of
 `pnpm check:full`. Change provider identity, locale keys, icons, and target metadata in the registry, then run
 `pnpm generate:agent-gui-provider-catalog`; do not hand-edit the generated
 catalog.

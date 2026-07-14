@@ -31,11 +31,10 @@ const { default: prettierConfig } = await import(
 );
 
 const openapiProviderSchemaNames = [
-  "AgentTargetProvider",
   "DesktopAgentComposerDefaultsByProvider",
-  "DesktopAgentGuiConversationRailCollapsedByProvider",
-  "WorkspaceAgentProvider"
+  "DesktopAgentGuiConversationRailCollapsedByProvider"
 ];
+const openProviderIDPattern = "^[a-z][a-z0-9._:-]*$";
 
 if (isMainModule()) {
   const catalog = readRegistryCatalog();
@@ -201,14 +200,32 @@ export function validateRegistryCatalog(catalog) {
 export function validateRegistryCatalogAgainstOpenAPI(catalog, openapi) {
   validateRegistryCatalog(catalog);
   const migratedProviderIds = catalog.map((entry) => entry.providerId);
+  validateOpenProviderSchema(
+    openapi,
+    "AgentTargetProvider",
+    migratedProviderIds
+  );
+  validateOpenProviderSchema(
+    openapi,
+    "WorkspaceAgentProvider",
+    migratedProviderIds
+  );
   for (const schemaName of openapiProviderSchemaNames) {
     const schema = openapi?.components?.schemas?.[schemaName];
-    if (!schema || typeof schema !== "object") {
-      throw new TypeError(`openapi provider schema is missing: ${schemaName}`);
+    if (
+      !schema ||
+      typeof schema !== "object" ||
+      schema.type !== "object" ||
+      schema.additionalProperties !== false ||
+      !schema.properties ||
+      typeof schema.properties !== "object" ||
+      Array.isArray(schema.properties)
+    ) {
+      throw new TypeError(
+        `openapi provider-keyed schema must remain a closed object: ${schemaName}`
+      );
     }
-    const actualProviderIds = Array.isArray(schema.enum)
-      ? schema.enum
-      : Object.keys(schema.properties ?? {});
+    const actualProviderIds = Object.keys(schema.properties);
     assertSameStringSet(
       actualProviderIds,
       migratedProviderIds,
@@ -238,6 +255,38 @@ export function validateRegistryCatalogAgainstOpenAPI(catalog, openapi) {
     defaultProviderIds,
     "desktop default provider descriptor drift"
   );
+}
+
+function validateOpenProviderSchema(openapi, schemaName, migratedProviderIds) {
+  const schema = openapi?.components?.schemas?.[schemaName];
+  if (
+    !schema ||
+    typeof schema !== "object" ||
+    schema.type !== "string" ||
+    schema.enum !== undefined ||
+    schema.minLength !== 1 ||
+    schema.maxLength !== 128 ||
+    schema.pattern !== openProviderIDPattern
+  ) {
+    throw new TypeError(
+      `openapi ${schemaName} must remain an open, bounded string schema`
+    );
+  }
+  const pattern = new RegExp(schema.pattern, "u");
+  for (const providerId of [...migratedProviderIds, "acp:extension-example"]) {
+    if (!pattern.test(providerId)) {
+      throw new TypeError(
+        `openapi ${schemaName} rejects valid provider id: ${providerId}`
+      );
+    }
+  }
+  for (const invalid of ["BadProvider", "bad provider", "$(provider)"]) {
+    if (pattern.test(invalid)) {
+      throw new TypeError(
+        `openapi ${schemaName} accepts unsafe provider id: ${invalid}`
+      );
+    }
+  }
 }
 
 export function validateCapabilityKeysAgainstOpenAPI(keys, openapi) {
