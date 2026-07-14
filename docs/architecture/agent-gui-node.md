@@ -605,8 +605,10 @@ session reconcile lifecycle and request state plus messages as one semantic
 load. Detail availability is explicit: `loading`, `ready`, `not_found`, or
 `error`. The skeleton follows the reconcile record, `ready` with zero rows is a
 valid empty detail, and only an authoritative tombstone/not-found result may
-show the unavailable state. An empty message projection is not evidence that
-loading finished or that the session is gone.
+show the unavailable state. Once authoritative not-found wins, presentation
+must suppress any previously projected transcript rows instead of mixing stale
+content with unavailable-state layout. An empty message projection is not
+evidence that loading finished or that the session is gone.
 
 Agent GUI is organized by vertical behavior rather than one controller with
 horizontal helper piles. A vertical module owns its projection, commands,

@@ -55,6 +55,14 @@ export function selectEngineSession(
   return state.sessionLifecycle.sessionsById[id] ?? null;
 }
 
+export function selectEngineSessionDeleted(
+  state: AgentSessionEngineState,
+  agentSessionId: string | null | undefined
+): boolean {
+  const id = agentSessionId?.trim() ?? "";
+  return Boolean(id && state.sessionLifecycle.deletedSessionIds[id]);
+}
+
 export function selectEngineTurnsForSession(
   state: AgentSessionEngineState,
   agentSessionId: string | null | undefined

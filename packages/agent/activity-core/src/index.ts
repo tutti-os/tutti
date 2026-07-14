@@ -97,6 +97,7 @@ export {
   selectEngineLatestTurn,
   selectEnginePendingInteractions,
   selectEngineSession,
+  selectEngineSessionDeleted,
   selectEngineSessionIsRespondingToInteraction,
   selectEngineSessionSettingsUpdate,
   selectEngineSessionError,
@@ -108,6 +109,7 @@ export {
   selectWorkspaceAgentConsumerSession,
   selectWorkspaceAgentConsumerSessions
 } from "./engine/sessionLifecycle.selectors.ts";
+export { selectEngineSessionReconcile } from "./engine/sessionReconcile.selectors.ts";
 export {
   canonicalInteractionKey,
   canonicalTurnKey

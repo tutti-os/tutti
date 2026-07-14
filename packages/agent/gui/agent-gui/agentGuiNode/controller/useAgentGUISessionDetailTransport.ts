@@ -1,10 +1,11 @@
 import {
   selectLatestActivationForSession,
+  type SessionReconcileScope,
   type AgentActivitySnapshot,
   type AgentSessionEngine
 } from "@tutti-os/agent-activity-core";
 import type { RefObject } from "react";
-import { useCallback } from "react";
+import { useCallback, useMemo } from "react";
 import type { AgentActivityRuntime } from "../../../agentActivityRuntime";
 import { useAgentSessionControllerState } from "../../../contexts/workspace/presentation/renderer/agentSessions/useAgentSessionControllerState";
 import { mergeWorkspaceAgentMessages } from "../../../host/workspaceAgentSessionMessages";
@@ -85,45 +86,34 @@ export function useAgentGUISessionDetailTransport(input: {
     },
     [agentActivitySnapshot.sessionMessagesById, sessionViewRef, state]
   );
-  const refreshMessagesFromSnapshot = useCallback(
-    (agentSessionId: string) => {
+  const {
+    loadSessionState,
+    reconcileSessionDetail,
+    refreshMessagesFromSnapshot
+  } = useMemo(() => {
+    const reconcileSession = (
+      agentSessionId: string,
+      scope: SessionReconcileScope
+    ) => {
       const normalized = agentSessionId.trim();
       if (!normalized) return;
       sessionEngine.dispatch({
         agentSessionId: normalized,
-        needsMessages: true,
-        needsState: false,
+        needsMessages: scope !== "state",
+        needsState: scope !== "messages",
         type: "session/reconcileRequested",
         workspaceId
       });
-    },
-    [sessionEngine, workspaceId]
-  );
-  const loadSessionState = useCallback(
-    (agentSessionId: string, _cause?: unknown) => {
-      const normalized = agentSessionId.trim();
-      if (!normalized) return;
-      sessionEngine.dispatch({
-        agentSessionId: normalized,
-        needsMessages: false,
-        needsState: true,
-        type: "session/reconcileRequested",
-        workspaceId
-      });
-    },
-    [sessionEngine, workspaceId]
-  );
-  const reconcileSessionDetail = (agentSessionId: string) => {
-    const normalized = agentSessionId.trim();
-    if (!normalized) return;
-    sessionEngine.dispatch({
-      agentSessionId: normalized,
-      needsMessages: true,
-      needsState: true,
-      type: "session/reconcileRequested",
-      workspaceId
-    });
-  };
+    };
+    return {
+      loadSessionState: (agentSessionId: string, _cause?: unknown) =>
+        reconcileSession(agentSessionId, "state"),
+      reconcileSessionDetail: (agentSessionId: string) =>
+        reconcileSession(agentSessionId, "state_and_messages"),
+      refreshMessagesFromSnapshot: (agentSessionId: string) =>
+        reconcileSession(agentSessionId, "messages")
+    };
+  }, [sessionEngine, workspaceId]);
   const paging = useAgentConversationMessagePaging({
     diagnostics: {
       error: ({ agentSessionId, context, error, phase }) =>

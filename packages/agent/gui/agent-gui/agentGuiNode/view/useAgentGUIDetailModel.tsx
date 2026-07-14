@@ -39,11 +39,15 @@ export function useAgentGUIDetailModel(input: Input) {
     slashStatusLimitsUnavailable,
     viewModel
   } = input;
-  const conversation = useProjectedAgentConversation({
+  const projectedConversation = useProjectedAgentConversation({
     conversation: viewModel.detail.conversation,
     detail: viewModel.detail.conversationDetail,
     avoidGroupingEdits: viewModel.detail.avoidGroupingEdits
   });
+  const conversation =
+    viewModel.detail.availability === "not_found"
+      ? null
+      : projectedConversation;
   const hasActiveConversation = viewModel.rail.activeConversationId !== null;
   const selectedAgentTargetComingSoon =
     viewModel.rail.selectedAgentTarget?.disabled === true;

@@ -5,9 +5,21 @@ import {
   rootEngineReducer
 } from "./rootReducer.ts";
 import {
+  selectEngineSessionDeleted,
   selectWorkspaceAgentConsumerCounts,
   selectWorkspaceAgentConsumerSession
 } from "./sessionLifecycle.selectors.ts";
+
+test("deleted session selector normalizes ids and hides tombstone storage", () => {
+  const state = rootEngineReducer(createInitialAgentSessionEngineState(), {
+    agentSessionId: "session-1",
+    type: "session/removed"
+  }).state;
+
+  assert.equal(selectEngineSessionDeleted(state, " session-1 "), true);
+  assert.equal(selectEngineSessionDeleted(state, "missing"), false);
+  assert.equal(selectEngineSessionDeleted(state, null), false);
+});
 
 test("consumer status is derived only from canonical turn and interaction entities", () => {
   let state = createInitialAgentSessionEngineState();
