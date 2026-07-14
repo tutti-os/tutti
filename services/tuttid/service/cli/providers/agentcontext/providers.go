@@ -81,29 +81,42 @@ func (p Provider) runAgents(ctx context.Context, _ framework.InvokeContext, inpu
 		return nil, err
 	}
 	requestedAgentID := strings.TrimSpace(input.AgentID)
+	var requestedTarget *agenttargetbiz.Target
 	if requestedAgentID != "" {
-		found := false
-		for _, target := range targets {
+		for index := range targets {
+			target := &targets[index]
 			if target.ID == requestedAgentID {
-				found = true
+				requestedTarget = target
 				break
 			}
 		}
-		if !found {
+		if requestedTarget == nil {
 			return nil, fmt.Errorf("%w: enabled agent %q was not found; run agent list --json", cliservice.ErrInvalidInput, requestedAgentID)
 		}
 	}
+	preferredProvider := p.preferredAgentProvider(ctx)
+	defaultAgentTargetID := preferredAgentTargetID(targets, preferredProvider)
 
 	availability := []agentservice.ProviderAvailability{}
 	builtinTargets := builtinAgentTargets(targets)
-	if len(builtinTargets) > 0 {
-		availability, err = p.sessions.ListProviderAvailability(ctx, agentservice.ProviderAvailabilityInput{})
+	needsAvailability := len(builtinTargets) > 0
+	if requestedTarget != nil && defaultAgentTargetID != "" && isExtensionAgentTarget(*requestedTarget) {
+		needsAvailability = false
+	}
+	if needsAvailability {
+		availabilityInput := agentservice.ProviderAvailabilityInput{}
+		if requestedTarget != nil && defaultAgentTargetID != "" && !isExtensionAgentTarget(*requestedTarget) {
+			availabilityInput.Provider = requestedTarget.Provider
+		}
+		availability, err = p.sessions.ListProviderAvailability(ctx, availabilityInput)
 		if err != nil {
 			return nil, err
 		}
 	}
 	items := agentCatalogItems(targets, availability)
-	defaultAgentTargetID := p.defaultAgentTargetID(ctx, items)
+	if defaultAgentTargetID == "" {
+		defaultAgentTargetID = fallbackDefaultAgentTargetID(items, preferredProvider)
+	}
 	if requestedAgentID != "" {
 		filtered := make([]agentCatalogItem, 0, 1)
 		for _, item := range items {
@@ -117,7 +130,7 @@ func (p Provider) runAgents(ctx context.Context, _ framework.InvokeContext, inpu
 	return agentsResult{DefaultAgentTargetID: defaultAgentTargetID, Items: items}, nil
 }
 
-func (p Provider) defaultAgentTargetID(ctx context.Context, items []agentCatalogItem) string {
+func (p Provider) preferredAgentProvider(ctx context.Context) string {
 	preferredProvider := preferencesbiz.DefaultDesktopPreferences().DefaultAgentProvider
 	if p.preferences != nil {
 		preferences, err := p.preferences.Get(ctx)
@@ -127,12 +140,20 @@ func (p Provider) defaultAgentTargetID(ctx context.Context, items []agentCatalog
 			}
 		}
 	}
+	return preferredProvider
+}
+
+func preferredAgentTargetID(targets []agenttargetbiz.Target, preferredProvider string) string {
 	preferredTargetID := preferencesbiz.LocalAgentTargetIDForProvider(preferredProvider)
-	for _, item := range items {
-		if item.Target.ID == preferredTargetID {
-			return item.Target.ID
+	for _, target := range targets {
+		if target.ID == preferredTargetID {
+			return target.ID
 		}
 	}
+	return ""
+}
+
+func fallbackDefaultAgentTargetID(items []agentCatalogItem, preferredProvider string) string {
 	for _, item := range items {
 		if item.Target.Provider == preferredProvider && item.Availability.Status == agentservice.ProviderAvailabilityAvailable {
 			return item.Target.ID

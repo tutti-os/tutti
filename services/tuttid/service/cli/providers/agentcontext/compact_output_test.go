@@ -114,6 +114,9 @@ func TestSessionSummaryValueOmitsRuntimeContext(t *testing.T) {
 	if value["agentSessionId"] != "SESSION-1" {
 		t.Fatalf("value = %#v", value)
 	}
+	if value["agentTargetId"] != "local:codex" {
+		t.Fatalf("agentTargetId = %#v", value["agentTargetId"])
+	}
 	if _, ok := value["id"]; ok {
 		t.Fatalf("session JSON should use typed id key: %#v", value)
 	}
@@ -156,6 +159,13 @@ func TestSessionInspectValueIncludesTurnEntities(t *testing.T) {
 	}
 }
 
+func TestSessionActionValueIncludesExactAgentTarget(t *testing.T) {
+	value := sessionActionValue(agentserviceSessionWithRuntime())
+	if value["agentTargetId"] != "local:codex" {
+		t.Fatalf("agentTargetId = %#v", value["agentTargetId"])
+	}
+}
+
 func TestSessionSummaryValueOmitsOptionalEmptyRuntimeProtocolFields(t *testing.T) {
 	value := sessionSummaryValue(agentservice.Session{
 		ID:           "SESSION-1",
@@ -173,9 +183,10 @@ func TestSessionSummaryValueOmitsOptionalEmptyRuntimeProtocolFields(t *testing.T
 func agentserviceSessionWithRuntime() agentservice.Session {
 	title := "Work"
 	return agentservice.Session{
-		ID:       "SESSION-1",
-		Provider: "codex",
-		Title:    &title,
+		ID:            "SESSION-1",
+		AgentTargetID: "local:codex",
+		Provider:      "codex",
+		Title:         &title,
 	}
 }
 

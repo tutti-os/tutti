@@ -120,8 +120,11 @@ returned. The command kind chooses the stable JSON view: list/action commands
 return concise summaries, and get commands return detail with nearby context.
 
 Action commands should return the smallest useful confirmation payload. For
-agent session actions, this normally means session id, provider, status, and
-whether a launch/open request was published.
+agent session actions, this normally means session id, exact `agentTargetId`,
+provider runtime metadata, status, and whether a launch/open request was
+published. Existing-session consumers must validate `agentTargetId` before
+sending or attaching; provider equality is not sufficient because several
+Agent Targets may share one provider.
 
 Agent session detail JSON uses the same protocol-v2 entities as HTTP/OpenAPI:
 `activeTurnId`, `activeTurn`, `latestTurn`, and pending Interaction records.
@@ -141,7 +144,9 @@ input is a JSON array of task objects, and the daemon appends tasks in array
 order with contiguous issue-local `sortIndex` values.
 
 `agent session-summary --json` returns compact message records for agent-session
-mentions. When a compact message contains image prompt content, include an
+mentions. Its session record includes exact `agentTargetId` alongside provider
+runtime metadata so callers can safely validate attach/resume identity. When a
+compact message contains image prompt content, include an
 `images` array with `attachmentId`, `mimeType`, `name`, and a daemon-local
 `localPath` when the attachment file is available on disk. Keep `payload`
 omitted from this compact shape; expose only fields useful for agent context

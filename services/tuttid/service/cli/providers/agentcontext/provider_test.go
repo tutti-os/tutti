@@ -908,6 +908,9 @@ func TestAgentsCommandReturnsAvailability(t *testing.T) {
 	if output.Value["defaultAgentTargetId"] != agenttargetbiz.IDLocalCodex {
 		t.Fatalf("defaultAgentTargetId = %#v, want global default %q", output.Value["defaultAgentTargetId"], agenttargetbiz.IDLocalCodex)
 	}
+	if len(sessions.availabilityIn) != 1 || sessions.availabilityIn[0].Provider != "codex" {
+		t.Fatalf("availability inputs = %#v, want only requested provider", sessions.availabilityIn)
+	}
 }
 
 func TestComposerOptionsCommandReturnsProviderOptions(t *testing.T) {

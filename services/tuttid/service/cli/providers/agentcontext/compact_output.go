@@ -14,6 +14,7 @@ type imageLocalPathResolver func(agentSessionID string, attachmentID string, mim
 func sessionSummaryValue(session agentservice.Session) map[string]any {
 	value := map[string]any{
 		"agentSessionId":  strings.TrimSpace(session.ID),
+		"agentTargetId":   strings.TrimSpace(session.AgentTargetID),
 		"provider":        strings.TrimSpace(session.Provider),
 		"cwd":             strings.TrimSpace(session.Cwd),
 		"visible":         session.Visible,
@@ -54,6 +55,7 @@ func sessionInspectValue(session agentservice.Session) map[string]any {
 func sessionActionValue(session agentservice.Session) map[string]any {
 	value := map[string]any{
 		"agentSessionId": strings.TrimSpace(session.ID),
+		"agentTargetId":  strings.TrimSpace(session.AgentTargetID),
 		"provider":       strings.TrimSpace(session.Provider),
 		"activeTurnId":   strings.TrimSpace(session.ActiveTurnID),
 	}
