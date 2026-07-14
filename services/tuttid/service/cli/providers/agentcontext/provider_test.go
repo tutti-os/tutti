@@ -33,6 +33,7 @@ func (fakeWorkspaceCatalog) Get(_ context.Context, workspaceID string) (workspac
 
 type fakeDesktopPreferencesReader struct {
 	preferences preferencesbiz.DesktopPreferences
+	err         error
 }
 
 type fakeAgentTargetLister struct{}
@@ -50,7 +51,7 @@ func (f fakeAgentTargetList) List(context.Context) ([]agenttargetbiz.Target, err
 }
 
 func (f fakeDesktopPreferencesReader) Get(context.Context) (preferencesbiz.DesktopPreferences, error) {
-	return f.preferences, nil
+	return f.preferences, f.err
 }
 
 type fakeAgentSessions struct {
@@ -904,6 +905,9 @@ func TestAgentsCommandReturnsAvailability(t *testing.T) {
 	if len(agents) != 1 || agents[0].(map[string]any)["id"] != agenttargetbiz.IDLocalCodex {
 		t.Fatalf("agents = %#v", agents)
 	}
+	if output.Value["defaultAgentTargetId"] != agenttargetbiz.IDLocalCodex {
+		t.Fatalf("defaultAgentTargetId = %#v, want global default %q", output.Value["defaultAgentTargetId"], agenttargetbiz.IDLocalCodex)
+	}
 }
 
 func TestComposerOptionsCommandReturnsProviderOptions(t *testing.T) {
@@ -1416,16 +1420,15 @@ func TestProviderCommandsKeepExactDeprecatedLaunchAdapters(t *testing.T) {
 }
 
 func TestAgentListKeepsMultipleAgentsForOneProvider(t *testing.T) {
-	targets := agenttargetbiz.DefaultSystemTargets(1)
-	targets = append(targets, agenttargetbiz.Target{
+	targets := append([]agenttargetbiz.Target{{
 		ID:            "user:reviewer",
 		Provider:      "codex",
 		LaunchRefJSON: agenttargetbiz.MustLocalCLILaunchRefJSON("codex"),
 		Name:          "Reviewer",
 		Enabled:       true,
 		Source:        agenttargetbiz.SourceUser,
-		SortOrder:     100,
-	})
+		SortOrder:     0,
+	}}, agenttargetbiz.DefaultSystemTargets(1)...)
 	provider := NewProviderWithAgentTargets(
 		fakeWorkspaceCatalog{startup: workspacebiz.Summary{ID: "workspace-1"}},
 		&fakeAgentSessions{}, nil, fakeAgentTargetList{targets: targets},
@@ -1442,8 +1445,79 @@ func TestAgentListKeepsMultipleAgentsForOneProvider(t *testing.T) {
 			codexAgentIDs = append(codexAgentIDs, agent["id"].(string))
 		}
 	}
-	if !equalStrings(codexAgentIDs, []string{agenttargetbiz.IDLocalCodex, "user:reviewer"}) {
+	if !equalStrings(codexAgentIDs, []string{"user:reviewer", agenttargetbiz.IDLocalCodex}) {
 		t.Fatalf("codex agent ids = %#v", codexAgentIDs)
+	}
+	if output.Value["defaultAgentTargetId"] != agenttargetbiz.IDLocalCodex {
+		t.Fatalf("defaultAgentTargetId = %#v, want exact built-in target %q", output.Value["defaultAgentTargetId"], agenttargetbiz.IDLocalCodex)
+	}
+}
+
+func TestAgentListPreservesPreferredProviderAsExactDefaultAgent(t *testing.T) {
+	provider := NewProviderWithAgentTargets(
+		fakeWorkspaceCatalog{startup: workspacebiz.Summary{ID: "workspace-1"}},
+		&fakeAgentSessions{}, nil, fakeAgentTargetLister{},
+		fakeDesktopPreferencesReader{preferences: preferencesbiz.DesktopPreferences{
+			DefaultAgentProvider: "claude-code",
+		}},
+	)
+	output, err := provider.newAgentsCommand().Handler(context.Background(), cliservice.InvokeRequest{OutputMode: cliservice.OutputModeJSON})
+	if err != nil {
+		t.Fatalf("Handler: %v", err)
+	}
+	if output.Value["defaultAgentTargetId"] != agenttargetbiz.IDLocalClaudeCode {
+		t.Fatalf("defaultAgentTargetId = %#v, want %q", output.Value["defaultAgentTargetId"], agenttargetbiz.IDLocalClaudeCode)
+	}
+}
+
+func TestAgentListKeepsGlobalDefaultWhenFilteringAnotherAgent(t *testing.T) {
+	provider := NewProviderWithAgentTargets(
+		fakeWorkspaceCatalog{startup: workspacebiz.Summary{ID: "workspace-1"}},
+		&fakeAgentSessions{}, nil, fakeAgentTargetLister{},
+		fakeDesktopPreferencesReader{preferences: preferencesbiz.DesktopPreferences{DefaultAgentProvider: "codex"}},
+	)
+	output, err := provider.newAgentsCommand().Handler(context.Background(), cliservice.InvokeRequest{
+		Input:      map[string]any{"agent-id": agenttargetbiz.IDLocalClaudeCode},
+		OutputMode: cliservice.OutputModeJSON,
+	})
+	if err != nil {
+		t.Fatalf("Handler: %v", err)
+	}
+	if output.Value["defaultAgentTargetId"] != agenttargetbiz.IDLocalCodex {
+		t.Fatalf("defaultAgentTargetId = %#v, want global default %q", output.Value["defaultAgentTargetId"], agenttargetbiz.IDLocalCodex)
+	}
+}
+
+func TestAgentListKeepsUnavailablePreferredTargetAsDefault(t *testing.T) {
+	provider := NewProviderWithAgentTargets(
+		fakeWorkspaceCatalog{startup: workspacebiz.Summary{ID: "workspace-1"}},
+		&fakeAgentSessions{availability: []agentservice.ProviderAvailability{
+			providerAvailability("codex", agentservice.ProviderAvailabilityUnavailable),
+			availableProvider("claude-code"),
+		}}, nil, fakeAgentTargetLister{},
+		fakeDesktopPreferencesReader{preferences: preferencesbiz.DesktopPreferences{DefaultAgentProvider: "codex"}},
+	)
+	output, err := provider.newAgentsCommand().Handler(context.Background(), cliservice.InvokeRequest{OutputMode: cliservice.OutputModeJSON})
+	if err != nil {
+		t.Fatalf("Handler: %v", err)
+	}
+	if output.Value["defaultAgentTargetId"] != agenttargetbiz.IDLocalCodex {
+		t.Fatalf("defaultAgentTargetId = %#v, want unavailable preferred target %q", output.Value["defaultAgentTargetId"], agenttargetbiz.IDLocalCodex)
+	}
+}
+
+func TestAgentListFallsBackWhenDesktopPreferencesCannotBeRead(t *testing.T) {
+	provider := NewProviderWithAgentTargets(
+		fakeWorkspaceCatalog{startup: workspacebiz.Summary{ID: "workspace-1"}},
+		&fakeAgentSessions{}, nil, fakeAgentTargetLister{},
+		fakeDesktopPreferencesReader{err: errors.New("preferences unavailable")},
+	)
+	output, err := provider.newAgentsCommand().Handler(context.Background(), cliservice.InvokeRequest{OutputMode: cliservice.OutputModeJSON})
+	if err != nil {
+		t.Fatalf("Handler: %v", err)
+	}
+	if output.Value["defaultAgentTargetId"] != agenttargetbiz.IDLocalCodex {
+		t.Fatalf("defaultAgentTargetId = %#v, want built-in fallback %q", output.Value["defaultAgentTargetId"], agenttargetbiz.IDLocalCodex)
 	}
 }
 

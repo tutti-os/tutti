@@ -170,9 +170,17 @@ command; the calling agent decides which turns to inspect and which returned
 
 Agent discovery and launch are target-first. `agent list --json` returns every
 enabled Agent Target in stable target order, including its exact agent id,
-display name, provider metadata, and current runtime availability. It must not
-collapse several agents that share one provider. Callers select an exact id and
-start it with `agent start --agent-id <agent-id> ...`; provider-specific command
+display name, provider metadata, current runtime availability, and an explicit
+`defaultAgentTargetId` resolved from the current desktop preference. The
+preference resolves to the exact built-in target id before considering another
+target that shares its provider, so a user-created agent cannot silently replace
+the desktop default. Preference-read failures use the built-in default instead
+of failing discovery. The default identifies preference, not readiness: it may
+be unavailable. An `--agent-id` filter narrows only `agents`; it does not rewrite
+the global default, so the default id may be absent from a filtered response.
+The command must not collapse several agents that share one provider or make
+callers guess a default from list order. Callers select an exact id and start it with
+`agent start --agent-id <agent-id> ...`; provider-specific command
 families such as `codex start` and `claude start` are not part of the
 agent-facing CLI contract.
 

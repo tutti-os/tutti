@@ -7,6 +7,7 @@ import (
 
 	agentproviderbiz "github.com/tutti-os/tutti/services/tuttid/biz/agentprovider"
 	agenttargetbiz "github.com/tutti-os/tutti/services/tuttid/biz/agenttarget"
+	preferencesbiz "github.com/tutti-os/tutti/services/tuttid/biz/preferences"
 	agentservice "github.com/tutti-os/tutti/services/tuttid/service/agent"
 	cliservice "github.com/tutti-os/tutti/services/tuttid/service/cli"
 	"github.com/tutti-os/tutti/services/tuttid/service/cli/framework"
@@ -32,7 +33,8 @@ type agentCatalogItem struct {
 }
 
 type agentsResult struct {
-	Items []agentCatalogItem
+	DefaultAgentTargetID string
+	Items                []agentCatalogItem
 }
 
 func (p Provider) newAgentsCommand() cliservice.Command {
@@ -58,8 +60,9 @@ func (p Provider) newAgentsCommand() cliservice.Command {
 				framework.ViewSummary: func(result any) map[string]any {
 					agents := result.(agentsResult)
 					return map[string]any{
-						"schemaVersion": agentCatalogSchemaVersion,
-						"agents":        agentCatalogValues(agents.Items),
+						"schemaVersion":        agentCatalogSchemaVersion,
+						"defaultAgentTargetId": agents.DefaultAgentTargetID,
+						"agents":               agentCatalogValues(agents.Items),
 					}
 				},
 			},
@@ -79,33 +82,76 @@ func (p Provider) runAgents(ctx context.Context, _ framework.InvokeContext, inpu
 	}
 	requestedAgentID := strings.TrimSpace(input.AgentID)
 	if requestedAgentID != "" {
-		filtered := make([]agenttargetbiz.Target, 0, 1)
+		found := false
 		for _, target := range targets {
 			if target.ID == requestedAgentID {
-				filtered = append(filtered, target)
+				found = true
 				break
 			}
 		}
-		if len(filtered) == 0 {
+		if !found {
 			return nil, fmt.Errorf("%w: enabled agent %q was not found; run agent list --json", cliservice.ErrInvalidInput, requestedAgentID)
 		}
-		targets = filtered
 	}
 
 	availability := []agentservice.ProviderAvailability{}
 	builtinTargets := builtinAgentTargets(targets)
 	if len(builtinTargets) > 0 {
-		availabilityInput := agentservice.ProviderAvailabilityInput{}
-		if len(builtinTargets) == 1 && len(targets) == 1 && requestedAgentID != "" {
-			availabilityInput.Provider = builtinTargets[0].Provider
-		}
-		availability, err = p.sessions.ListProviderAvailability(ctx, availabilityInput)
+		availability, err = p.sessions.ListProviderAvailability(ctx, agentservice.ProviderAvailabilityInput{})
 		if err != nil {
 			return nil, err
 		}
 	}
 	items := agentCatalogItems(targets, availability)
-	return agentsResult{Items: items}, nil
+	defaultAgentTargetID := p.defaultAgentTargetID(ctx, items)
+	if requestedAgentID != "" {
+		filtered := make([]agentCatalogItem, 0, 1)
+		for _, item := range items {
+			if item.Target.ID == requestedAgentID {
+				filtered = append(filtered, item)
+				break
+			}
+		}
+		items = filtered
+	}
+	return agentsResult{DefaultAgentTargetID: defaultAgentTargetID, Items: items}, nil
+}
+
+func (p Provider) defaultAgentTargetID(ctx context.Context, items []agentCatalogItem) string {
+	preferredProvider := preferencesbiz.DefaultDesktopPreferences().DefaultAgentProvider
+	if p.preferences != nil {
+		preferences, err := p.preferences.Get(ctx)
+		if err == nil {
+			if normalized := agentproviderbiz.Normalize(preferences.DefaultAgentProvider); normalized != "" {
+				preferredProvider = normalized
+			}
+		}
+	}
+	preferredTargetID := preferencesbiz.LocalAgentTargetIDForProvider(preferredProvider)
+	for _, item := range items {
+		if item.Target.ID == preferredTargetID {
+			return item.Target.ID
+		}
+	}
+	for _, item := range items {
+		if item.Target.Provider == preferredProvider && item.Availability.Status == agentservice.ProviderAvailabilityAvailable {
+			return item.Target.ID
+		}
+	}
+	for _, item := range items {
+		if item.Target.Provider == preferredProvider {
+			return item.Target.ID
+		}
+	}
+	for _, item := range items {
+		if item.Availability.Status == agentservice.ProviderAvailabilityAvailable {
+			return item.Target.ID
+		}
+	}
+	if len(items) > 0 {
+		return items[0].Target.ID
+	}
+	return ""
 }
 
 func agentCatalogItems(targets []agenttargetbiz.Target, availability []agentservice.ProviderAvailability) []agentCatalogItem {
