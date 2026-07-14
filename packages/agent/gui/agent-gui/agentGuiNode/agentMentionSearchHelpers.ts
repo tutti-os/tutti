@@ -1,12 +1,8 @@
 import type { AgentHostUserInfo } from "../../shared/contracts/dto";
 import { translate } from "../../i18n/index";
 import { agentMentionEmptyGroupLabel } from "./AgentMentionLabels";
-import {
-  resolveWorkspaceAgentActivityTitle,
-  resolveWorkspaceAgentActivityStatus
-} from "../../shared/workspaceAgentActivityListViewModel";
+import { resolveWorkspaceAgentActivityStatus } from "../../shared/workspaceAgentActivityListViewModel";
 import { workspaceAgentProviderLabel } from "../../shared/workspaceAgentProviderLabel";
-import { resolveDisplayableWorkspaceAgentSessionTitle } from "../../shared/workspaceAgentSessionTitle";
 import { extractPlainTextWithoutFilesFromContent } from "../../shared/richText/richTextDocument";
 import type {
   AgentContextMentionItem,
@@ -20,10 +16,7 @@ import type {
   AgentMentionGroup,
   AgentMentionGroupId
 } from "./AgentMentionSearchController";
-import type {
-  AgentActivityMessage,
-  AgentActivitySession
-} from "@tutti-os/agent-activity-core";
+import type { AgentActivitySession } from "@tutti-os/agent-activity-core";
 import type { WorkspaceAgentActivitySessionSummary } from "../../shared/workspaceAgentSessionSummaryTypes";
 
 export function buildSessionMentionItem(input: {
@@ -32,7 +25,6 @@ export function buildSessionMentionItem(input: {
   session: AgentActivitySession;
   summary: WorkspaceAgentActivitySessionSummary | null;
   userProfiles: Record<string, Pick<AgentHostUserInfo, "name" | "avatar">>;
-  fallbackTitle?: string | null;
 }): AgentMentionSessionItem | null {
   const sessionUserId = input.session.userId?.trim() ?? "";
   const scope: AgentMentionScope =
@@ -59,16 +51,7 @@ export function buildSessionMentionItem(input: {
     compactText(input.summary?.recentAgentReplies?.[0]) ||
     firstSummaryItemText(input.summary?.latestTurn?.agentItems) ||
     "";
-  const sessionTitle = resolveDisplayableWorkspaceAgentSessionTitle(
-    input.session
-  );
-  const fallbackTitle = compactText(input.fallbackTitle);
-  const title =
-    fallbackTitle ||
-    sessionTitle ||
-    inputPreview ||
-    summaryPreview ||
-    input.session.agentSessionId;
+  const title = input.session.title.trim() || input.session.agentSessionId;
   if (!title) {
     return null;
   }
@@ -107,15 +90,6 @@ export function buildSessionMentionItem(input: {
 function normalizeSessionInitiatorDisplayName(value: string): string {
   const trimmed = value.trim();
   return trimmed.toLowerCase() === "local" ? "User" : trimmed;
-}
-
-export function resolveSessionMentionMessageTitle(
-  session: AgentActivitySession,
-  messages: readonly AgentActivityMessage[]
-): string {
-  return compactText(
-    resolveWorkspaceAgentActivityTitle(session, [...messages])
-  );
 }
 
 function resolveSessionDisplayStatus(

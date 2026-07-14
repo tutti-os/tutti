@@ -15,7 +15,6 @@ import {
   conversationSummaryFromAgentSession,
   applyAgentGUIConversationProjects,
   mergeAgentGUITimelineItems,
-  resolveAgentGUIConversationTitleFromTimelineItems,
   buildAgentGUITimelineRows,
   mergeAgentGUITimelineRows,
   selectAgentGUIConversationId,
@@ -556,7 +555,7 @@ describe("agentGuiConversationModel", () => {
     ]);
   });
 
-  it("builds restored conversation titles from cached runtime timelines", () => {
+  it("uses canonical restored conversation titles with cached runtime timelines", () => {
     const snapshot: AgentActivitySnapshot = {
       workspaceId: "workspace-1",
       sessionMessagesById: {},
@@ -566,7 +565,7 @@ describe("agentGuiConversationModel", () => {
           agentSessionId: "nexight-session",
           provider: "nexight",
           sessionOrigin: AGENT_GUI_RUNTIME_SESSION_ORIGIN,
-          title: "Nexight",
+          title: "AAA",
           updatedAtUnixMs: 30
         })
       ]
@@ -743,81 +742,6 @@ describe("agentGuiConversationModel", () => {
         updatedAtUnixMs: 20
       })
     );
-  });
-
-  it("derives a restored conversation title from the first user timeline message", () => {
-    expect(
-      resolveAgentGUIConversationTitleFromTimelineItems({
-        conversation: {
-          id: "session-1",
-          provider: "nexight",
-          title: "Nexight",
-          titleFallback: null,
-          status: "completed",
-          cwd: "/workspace",
-          updatedAtUnixMs: 30
-        },
-        timelineItems: [
-          timelineItem({
-            id: 2,
-            eventId: "assistant-1",
-            actorType: "agent",
-            actorId: "nexight",
-            itemType: "message.assistant",
-            role: "assistant",
-            content: "Done",
-            occurredAtUnixMs: 20
-          }),
-          timelineItem({
-            id: 1,
-            eventId: "user-1",
-            actorType: "user",
-            actorId: "user-1",
-            itemType: "message.user",
-            role: "user",
-            payload: {
-              displayPrompt: "Run Automation",
-              text: "long automation prompt",
-              content: "long automation prompt"
-            },
-            occurredAtUnixMs: 10
-          })
-        ]
-      })
-    ).toEqual({
-      title: "Run Automation",
-      titleFallback: null
-    });
-  });
-
-  it("keeps an explicit conversation title when timeline messages load", () => {
-    expect(
-      resolveAgentGUIConversationTitleFromTimelineItems({
-        conversation: {
-          id: "session-1",
-          provider: "codex",
-          title: "Create App: System Monitor",
-          titleFallback: null,
-          status: "completed",
-          cwd: "/workspace",
-          updatedAtUnixMs: 30
-        },
-        timelineItems: [
-          timelineItem({
-            id: 1,
-            eventId: "user-1",
-            actorType: "user",
-            actorId: "user-1",
-            itemType: "message.user",
-            role: "user",
-            payload: {
-              text: "Create a local system dashboard inspired by btop. <tutti_app_factory_context>..."
-            },
-            occurredAtUnixMs: 10
-          })
-        ]
-      })
-    ).toBeNull();
   });
 
   it("keeps explicit conversation titles in detail and conversation projections", () => {

@@ -137,6 +137,7 @@ test("workspace agent prompt session service creates a new session with initial 
 
 test("workspace agent prompt session service reports successful node results", async () => {
   const reporterCalls: ReporterEventInput[][] = [];
+  let capturedActivation: Record<string, unknown> = {};
   const service = new WorkspaceAgentPromptSessionService({
     reporterNow: () => 1749124800000,
     reporterService: {
@@ -146,6 +147,7 @@ test("workspace agent prompt session service reports successful node results", a
     },
     workspaceAgentActivityService: {
       async activateSession(input) {
+        capturedActivation = input as unknown as Record<string, unknown>;
         return {
           activation: { mode: "new", status: "attached" },
           session: activatedSession(input)
@@ -160,6 +162,8 @@ test("workspace agent prompt session service reports successful node results", a
     prompt: "Build the feature",
     workspaceId: "workspace-1"
   });
+
+  assert.equal(capturedActivation?.title, undefined);
 
   const nodeResults = reporterCalls
     .flat()

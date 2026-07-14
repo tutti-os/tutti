@@ -4,10 +4,7 @@ import {
   buildWorkspaceAgentSessionDetailViewModel,
   type WorkspaceAgentSessionDetailToolCall
 } from "../../../shared/workspaceAgentSessionDetailViewModel";
-import {
-  firstAgentGUIUserMessageTitle,
-  resolveAgentGUIProviderIdentity
-} from "../../../shared/agentConversationTitleProjection.ts";
+import { resolveAgentGUIProviderIdentity } from "../../../shared/agentConversationTitleProjection.ts";
 import { type WorkspaceAgentActivityTimelineItem } from "../../../shared/workspaceAgentTimelineTypes";
 import {
   normalizeAgentActivitySession,
@@ -192,24 +189,6 @@ export function timelineSessionFromItems(
       latestTimelineTime(timelineItems) || conversation?.updatedAtUnixMs || 0,
     pinnedAtUnixMs: conversation?.pinnedAtUnixMs ?? null
   });
-}
-
-export function firstUserMessageTitleFromTimelineItems(
-  timelineItems: readonly WorkspaceAgentActivityTimelineItem[]
-): string {
-  const userMessage = [...timelineItems]
-    .filter(
-      (item) =>
-        timelineItemRole(item) === "user" && timelineItemText(item).length > 0
-    )
-    .sort(compareTimelineItemsAscending)[0];
-  return userMessage ? timelineItemText(userMessage) : "";
-}
-
-export function firstUserMessageTitleFromMessages(
-  messages: readonly AgentActivityMessage[]
-): string {
-  return firstAgentGUIUserMessageTitle(messages);
 }
 
 export function workspaceAgentMessagesFromTimelineItems(

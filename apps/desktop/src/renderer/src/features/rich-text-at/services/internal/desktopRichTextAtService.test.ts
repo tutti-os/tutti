@@ -393,8 +393,7 @@ test("desktop rich text @ service assembles agent session providers by capabilit
               cwd: null,
               id: "session-1",
               provider: "codex",
-              title:
-                "[@wang jomes & Codex hi](mention://agent-session/session-2?workspaceId=workspace-1)",
+              title: "@wang jomes & Codex hi",
               updatedAtUnixMs: 1780272000000
             }
           ]
@@ -437,8 +436,7 @@ test("desktop rich text @ service assembles agent session providers by capabilit
       scope: "my_sessions",
       sessionOrigin: "WORKSPACE_AGENT_SESSION_ORIGIN_RUNTIME",
       status: "working",
-      title:
-        "[@wang jomes & Codex hi](mention://agent-session/session-2?workspaceId=workspace-1)",
+      title: "@wang jomes & Codex hi",
       updatedAtUnixMs: 1780272000000,
       userId: "local",
       workspaceId: "workspace-1"

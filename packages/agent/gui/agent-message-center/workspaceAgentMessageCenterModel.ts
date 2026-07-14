@@ -130,11 +130,7 @@ export function buildWorkspaceAgentMessageCenterItem({
     messages
   );
   const lastAgentMessage = messageAnalysis.latestAgentMessage;
-  const title = resolveSessionTitle(
-    session,
-    messageAnalysis.latestUserMessageSummary,
-    messageAnalysis.firstUserMessageSummary
-  );
+  const title = session.title.trim();
   const digest = buildWorkspaceAgentMessageCenterDigest({
     fallbackTitle: resolveDigestFallbackTitle(session),
     latestAgentMessage: messageAnalysis.latestDigestAgentMessage,
@@ -231,31 +227,13 @@ function isImportedMessageCenterSession(
   return "imported" in session && session.imported === true;
 }
 
-function resolveSessionTitle(
-  session: WorkspaceAgentMessageCenterSession,
-  latestUserMessageSummary: string,
-  firstUserMessageSummary: string
-): string {
-  const title = session.title.trim();
-  if (title) {
-    return title;
-  }
-  const latest = latestUserMessageSummary.trim();
-  if (latest) {
-    return latest;
-  }
-  return firstUserMessageSummary || session.provider || session.agentSessionId;
-}
-
 function resolveDigestFallbackTitle(
   session: WorkspaceAgentMessageCenterSession
 ): string {
-  return session.title.trim() || session.provider || session.agentSessionId;
+  return session.title.trim();
 }
 
 interface MessageCenterSessionMessageAnalysis {
-  firstUserMessageSummary: string;
-  latestUserMessageSummary: string;
   latestDigestAgentMessage: WorkspaceAgentMessageCenterDigestAgentSummary | null;
   latestAgentMessage: WorkspaceAgentMessageCenterDigestAgentSummary | null;
   latestTurnOutcome: WorkspaceAgentMessageCenterTurnOutcome | null;
@@ -276,9 +254,6 @@ function analyzeMessageCenterSessionMessages(
   agentSessionId: string,
   messages: readonly AgentActivityMessage[]
 ): MessageCenterSessionMessageAnalysis {
-  let firstUserMessageSummary = "";
-  let latestUserMessageSummary = "";
-  let latestUserMessageAtUnixMs = Number.NEGATIVE_INFINITY;
   let latestAgentMessage: WorkspaceAgentMessageCenterDigestAgentSummary | null =
     null;
   let latestDigestAgentMessage: WorkspaceAgentMessageCenterDigestAgentSummary | null =
@@ -287,19 +262,6 @@ function analyzeMessageCenterSessionMessages(
   let latestOutcome: TurnOutcomeCandidate | null = null;
 
   for (const message of messages) {
-    if (isUserMessageRole(message.role)) {
-      const summary = messageSummary(message);
-      if (!firstUserMessageSummary && summary) {
-        firstUserMessageSummary = summary;
-      }
-      if (summary) {
-        const occurredAtUnixMs = messageTimeUnixMs(message);
-        if (occurredAtUnixMs >= latestUserMessageAtUnixMs) {
-          latestUserMessageSummary = summary;
-          latestUserMessageAtUnixMs = occurredAtUnixMs;
-        }
-      }
-    }
     if (
       isAgentMessageRole(message.role) &&
       !isReasoningMessageKind(message.kind)
@@ -352,8 +314,6 @@ function analyzeMessageCenterSessionMessages(
   }
 
   return {
-    firstUserMessageSummary,
-    latestUserMessageSummary,
     latestDigestAgentMessage,
     latestAgentMessage,
     latestTurnOutcome: latestOutcome?.outcome ?? null,
@@ -584,10 +544,6 @@ function isAgentMessageRole(role: string): boolean {
  */
 function isReasoningMessageKind(kind: string): boolean {
   return kind.trim().toLowerCase() === "reasoning";
-}
-
-function isUserMessageRole(role: string): boolean {
-  return role.trim().toLowerCase() === "user";
 }
 
 function isTerminalMessageStatus(status: string | null | undefined): boolean {

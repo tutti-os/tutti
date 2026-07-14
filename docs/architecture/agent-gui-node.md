@@ -1791,7 +1791,7 @@ User-visible rules:
 ### Conversation Titles Across Surfaces
 
 ```text
-runtime snapshot session + cached messages
+runtime snapshot session
   -> canonical session.title from the daemon
   -> rail row / detail header / workbench header / dock popup / toast title
 ```
@@ -1799,14 +1799,17 @@ runtime snapshot session + cached messages
 User-visible rules:
 
 - `session.title` is a shared, user-visible canonical plain-text field. The
-  daemon converts rich title input once before session state is persisted, and
-  the SQLite store backfills existing rows during migration without changing
-  session creation/update timestamps. CLI, Agent, and desktop surfaces consume
-  this same field and must not independently parse title Markdown or add
-  mention prefixes.
-- AgentGUI projection may still handle UI-local concerns such as provider-only
-  placeholders and localized fallback labels, but it must not be the source of
-  title syntax normalization.
+  daemon converts rich title input once before session state is persisted. When
+  a session has no real title, the first accepted user submit establishes the
+  canonical title in the same controller event/report batch as the submitted
+  turn lifecycle. The SQLite store backfills historical
+  empty/provider-placeholder rows from their earliest visible user message
+  without changing session creation/update timestamps.
+- CLI, AgentGUI, message-center, notification, and desktop surfaces consume
+  `session.title` directly. They must not parse title Markdown, add mention
+  prefixes, or reconstruct a title from transcript messages. A localized label
+  is allowed only as presentation for a genuinely empty, message-less session;
+  it is not written back as session data.
 - Live runtime snapshot data is the source for workbench and dock titles. Do
   not persist or restore `lastActiveConversationTitle` from workbench node
   state.
@@ -1815,10 +1818,9 @@ User-visible rules:
   authoritative session into the runtime snapshot. Do not update only the rail
   list, otherwise the rail row, active detail header, workbench title, and dock
   surfaces can diverge.
-- Title projection strips provider-only and untitled placeholders from workbench
-  chrome. First-user-message fallback is compatibility behavior for snapshots
-  that predate the canonical title write boundary; new session writes should
-  establish the title before persistence.
+- Provider adapters must not synthesize prompt-derived title events. Initial
+  title derivation belongs to the shared service/runtime submit boundary so all
+  providers and consumers observe the same value.
 
 ### Detail Pane And Transcript
 

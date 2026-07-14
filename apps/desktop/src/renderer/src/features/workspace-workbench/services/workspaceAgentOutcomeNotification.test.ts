@@ -17,7 +17,6 @@ import {
 test("outcome builder projects canonical completed and failed settled turns", () => {
   assert.deepEqual(
     buildWorkspaceAgentOutcomeNotificationFromSettledTurn({
-      conversationTitle: "Build feature",
       session: canonicalSession(),
       turn: canonicalTurn("settled", "completed")
     }),

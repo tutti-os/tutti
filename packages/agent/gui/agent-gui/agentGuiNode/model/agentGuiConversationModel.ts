@@ -1,5 +1,4 @@
 import type { AgentSessionEvent } from "../../../shared/agentSessionTypes";
-import type { AgentActivityMessage } from "@tutti-os/agent-activity-core";
 import {
   buildWorkspaceAgentActivityListViewModel,
   type WorkspaceAgentActivityCard,
@@ -24,8 +23,7 @@ import type { AgentConversationVM } from "../../../shared/agentConversation/cont
 import {
   resolveAgentGUIConversationTitle,
   resolveAgentGUIExplicitConversationTitle,
-  resolveAgentGUIProviderIdentity,
-  type AgentGUIConversationTitleFallback
+  resolveAgentGUIProviderIdentity
 } from "../../../shared/agentConversationTitleProjection.ts";
 import type {
   AgentActivitySession,
@@ -52,8 +50,6 @@ import type {
   BuildAgentGUIConversationsInput
 } from "./agentGuiConversationTypes";
 import {
-  firstUserMessageTitleFromMessages,
-  firstUserMessageTitleFromTimelineItems,
   timelineRowsFromActivityTimelineItems,
   timelineSessionFromItems,
   workspaceAgentMessagesFromTimelineItems
@@ -356,53 +352,6 @@ export function applyAgentGUIConversationProjects(
     };
   });
   return changed ? next : (conversations as AgentGUIConversationSummary[]);
-}
-
-export function resolveAgentGUIConversationTitleFromTimelineItems({
-  timelineItems,
-  conversation
-}: {
-  timelineItems: readonly WorkspaceAgentActivityTimelineItem[];
-  conversation: AgentGUIConversationSummary;
-}): {
-  title: string;
-  titleFallback: AgentGUIConversationTitleFallback;
-} | null {
-  if (resolveAgentGUIExplicitConversationTitle(conversation) !== null) {
-    return null;
-  }
-  const userMessageTitle =
-    firstUserMessageTitleFromTimelineItems(timelineItems);
-  if (!userMessageTitle) {
-    return null;
-  }
-  return resolveAgentGUIConversationTitle(
-    userMessageTitle,
-    conversation.provider
-  );
-}
-
-export function resolveAgentGUIConversationTitleFromMessages({
-  messages,
-  conversation
-}: {
-  messages: readonly AgentActivityMessage[];
-  conversation: AgentGUIConversationSummary;
-}): {
-  title: string;
-  titleFallback: AgentGUIConversationTitleFallback;
-} | null {
-  if (resolveAgentGUIExplicitConversationTitle(conversation) !== null) {
-    return null;
-  }
-  const userMessageTitle = firstUserMessageTitleFromMessages(messages);
-  if (!userMessageTitle) {
-    return null;
-  }
-  return resolveAgentGUIConversationTitle(
-    userMessageTitle,
-    conversation.provider
-  );
 }
 
 function filterAgentGUIRuntimeSnapshot(
