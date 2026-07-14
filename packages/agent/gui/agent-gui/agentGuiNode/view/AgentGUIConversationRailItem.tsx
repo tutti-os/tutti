@@ -50,8 +50,9 @@ function agentGUIConversationIconUrl(
     workspaceId
   });
   return (
+    resolveAgentGuiSessionProviderFlatIconUrl(provider) ||
     targetPresentation?.iconUrl?.trim() ||
-    resolveAgentGuiSessionProviderFlatIconUrl(provider)
+    null
   );
 }
 

@@ -28,6 +28,7 @@ import {
   createLocalAgentGUIAgentTarget,
   createLocalAgentGUIAgentTargets
 } from "../../agentTargets";
+import { resolveAgentGuiSessionProviderFlatIconUrl } from "../../agentGuiSessionProviderIconUrls";
 import {
   agentGUIProviderRailOrderStorageKey,
   parseAgentGUIProviderRailPreferences
@@ -6988,6 +6989,39 @@ function createViewModel(
 }
 
 describe("AgentGUINodeView conversation presentation", () => {
+  it("keeps the flat provider icon for a built-in Agent conversation", () => {
+    const targetIconUrl = "data:image/svg+xml;base64,codex-square";
+    const codexTarget = {
+      ...createLocalAgentGUIAgentTarget("codex"),
+      iconUrl: targetIconUrl
+    };
+    const agentTargetId = codexTarget.agentTargetId ?? "";
+    const conversation = createConversationSummary("codex-session", {
+      agentTargetId,
+      provider: "codex"
+    });
+    renderAgentGUINodeView({
+      viewModel: createViewModel({
+        selectedAgentTarget: codexTarget,
+        agentTargets: [codexTarget],
+        conversations: [conversation]
+      })
+    });
+
+    const row = screen.getByTestId("agent-gui-conversation-item-codex-session");
+    const icon = row.querySelector(
+      ".agent-gui-node__conversation-provider-icon"
+    );
+    const providerIconUrl = resolveAgentGuiSessionProviderFlatIconUrl("codex");
+    expect(providerIconUrl).not.toBeNull();
+    expect(icon).toHaveStyle({
+      "--agent-gui-conversation-provider-icon-url": `url("${providerIconUrl}")`
+    });
+    expect(icon).not.toHaveStyle({
+      "--agent-gui-conversation-provider-icon-url": `url("${targetIconUrl}")`
+    });
+  });
+
   it("uses the signed Agent Target icon for an extension conversation", () => {
     const iconUrl = "data:image/svg+xml;base64,gemini";
     const agentTargetId = "extension:gemini";

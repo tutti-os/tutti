@@ -2369,10 +2369,12 @@ the resolved icon, label, and optional owner badge. The DOM rail, single-agent
 empty state, and WebGL empty-home carousel consume that same presentation;
 renderer adapters may differ, but they must not create parallel icon-only
 models that can silently discard badge or identity fields.
-Conversation rail rows resolve their icon from the conversation's
-`agentTargetId` through that same Target presentation. A provider-catalog icon
-is only a compatibility path for historical sessions without a resolvable
-Target; open extension providers must not require a renderer icon catalog entry.
+Conversation rail rows render icons through a monochrome CSS mask. Built-in
+providers therefore use their mask-safe flat catalog artwork before consulting
+the Target presentation; using a square colorful Target asset there collapses
+to a solid block. When an open extension provider has no built-in flat asset,
+the row resolves the signed Target `iconUrl` through the conversation's
+`agentTargetId`. Open providers must not require a renderer icon catalog entry.
 One carousel image-load owner fetches and decodes icon, vinyl-cover, and badge
 images for a complete item generation. Remote badge images must be requested
 with anonymous CORS before assigning `src`, and the asset host must return an
