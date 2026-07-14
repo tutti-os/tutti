@@ -21,7 +21,6 @@ interface UseAgentGUIConversationRoutingInput {
   conversationListQuery: unknown | null;
   conversations: readonly AgentGUIConversationSummary[];
   conversationsRef: RefObject<AgentGUIConversationSummary[]>;
-  explicitlyOpenedConversationIdsRef: RefObject<Set<string>>;
   handledOpenSessionSequenceRef: RefObject<number | null>;
   hasLoadedConversations: boolean;
   intent: ConversationIntent;
@@ -47,7 +46,6 @@ export function useAgentGUIConversationRouting(
     conversationListQuery,
     conversations,
     conversationsRef,
-    explicitlyOpenedConversationIdsRef,
     handledOpenSessionSequenceRef,
     hasLoadedConversations,
     intent,
@@ -124,7 +122,6 @@ export function useAgentGUIConversationRouting(
     if (hasExplicitOpenSessionRequest) {
       const requestedId = pendingOpenSessionRequest!.agentSessionId.trim();
       if (!hasLoadedConversations) return;
-      explicitlyOpenedConversationIdsRef.current.add(requestedId);
       pendingOpenSessionRequestRef.current = null;
       selectConversation(requestedId, { reloadConversations: false });
       ensureTransientOpenSessionConversation(requestedId);
@@ -135,10 +132,7 @@ export function useAgentGUIConversationRouting(
       case "home":
         return;
       case "active":
-        if (resolveCanonicalId(intent.id)) {
-          explicitlyOpenedConversationIdsRef.current.delete(intent.id);
-          return;
-        }
+        if (resolveCanonicalId(intent.id)) return;
         if (resolveId(intent.id)) return;
         // An active intent is produced by an explicit user/session selection.
         // Rail pages are bounded and may not contain that selected session yet;

@@ -78,7 +78,6 @@ export function useAgentGUIControllerRefs(
   const handledOpenSessionSequenceRef = useRef<number | null>(null);
   const pendingOpenSessionRequestRef =
     useRef<AgentGUIOpenSessionRequest | null>(null);
-  const explicitlyOpenedConversationIdsRef = useRef(new Set<string>());
   const executePromptRef = useRef<
     (
       agentSessionId: string,
@@ -136,7 +135,6 @@ export function useAgentGUIControllerRefs(
     draftBySessionIdRef,
     draftSettingsBySessionIdRef,
     executePromptRef,
-    explicitlyOpenedConversationIdsRef,
     handledOpenSessionSequenceRef,
     handledPrefillPromptSequenceRef,
     isComposerHomeRef,

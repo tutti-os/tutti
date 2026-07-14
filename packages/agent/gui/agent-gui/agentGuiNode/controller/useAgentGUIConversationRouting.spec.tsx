@@ -21,7 +21,6 @@ describe("useAgentGUIConversationRouting", () => {
         conversationListQuery: {},
         conversations: [],
         conversationsRef: { current: [] },
-        explicitlyOpenedConversationIdsRef: { current: new Set() },
         handledOpenSessionSequenceRef: { current: null },
         hasLoadedConversations: true,
         intent: { tag: "active", id: "historical-session" },

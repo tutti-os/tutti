@@ -56,6 +56,7 @@ interface UseAgentGUIConversationDetailInput {
   activePendingInteractions: readonly AgentActivityInteraction[];
   activeQueuedPromptInFlight: PromptQueueInFlightCommand | null;
   activeQueuedPrompts: readonly EngineQueuedPrompt[];
+  activeSessionReconcileError: string | null;
   activeSessionView: {
     hasOlderMessages: boolean;
     isLoadingOlderMessages: boolean;
@@ -283,6 +284,7 @@ export function useAgentGUIConversationDetail(
         : null,
     effectiveDetailError:
       input.detailError ??
+      input.activeSessionReconcileError ??
       (input.activeConversationId !== null ? input.activeEngineError : null),
     hasProviderSessionNotFoundError,
     isCancelPending: input.activeCancelStatus === "awaitingTurn",
