@@ -29,7 +29,7 @@ test("standalone agent window opens at 90 percent of the active work area", () =
   assert.deepEqual(
     resolveStandaloneAgentWindowBounds({
       minHeight: 520,
-      minWidth: 760,
+      minWidth: 420,
       scale: 0.9,
       workArea: { height: 1000, width: 1600, x: 0, y: 24 }
     }),
@@ -41,7 +41,7 @@ test("standalone agent window centers within a non-primary work area", () => {
   assert.deepEqual(
     resolveStandaloneAgentWindowBounds({
       minHeight: 520,
-      minWidth: 760,
+      minWidth: 420,
       scale: 0.9,
       workArea: { height: 1080, width: 1600, x: 1440, y: 0 }
     }),
@@ -53,11 +53,11 @@ test("standalone agent window keeps minimums when 90 percent is too small", () =
   assert.deepEqual(
     resolveStandaloneAgentWindowBounds({
       minHeight: 520,
-      minWidth: 760,
+      minWidth: 420,
       scale: 0.9,
-      workArea: { height: 480, width: 700, x: 10, y: 30 }
+      workArea: { height: 480, width: 460, x: 10, y: 30 }
     }),
-    { height: 520, width: 760, x: 10, y: 30 }
+    { height: 520, width: 420, x: 30, y: 30 }
   );
 });
 

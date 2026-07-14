@@ -37,6 +37,45 @@ test("workspace settings panel lists appearance below general", () => {
 test("workspace settings panel uses a large desktop frame", () => {
   assert.match(source, /h-\[min\(640px,calc\(100vh-40px\)\)\]/);
   assert.match(source, /w-\[min\(960px,calc\(100vw-40px\)\)\]/);
+  assert.match(source, /max-\[1279px\]:h-\[min\(500px,calc\(100vh-40px\)\)\]/);
+  assert.match(source, /max-\[1279px\]:w-\[min\(760px,calc\(100vw-40px\)\)\]/);
+  assert.match(source, /max-\[959px\]:h-\[min\(480px,calc\(100vh-40px\)\)\]/);
+  assert.match(source, /max-\[959px\]:w-\[min\(640px,calc\(100vw-40px\)\)\]/);
+  assert.match(source, /min-\[420px\]:max-\[640px\]:!w-\[480px\]/);
+});
+
+test("workspace settings keeps its two-column layout at narrow widths", () => {
+  assert.doesNotMatch(source, /max-\[760px\]:grid-cols-1/);
+  assert.doesNotMatch(source, /max-\[760px\]:grid-rows-/);
+  assert.doesNotMatch(source, /max-\[760px\]:border-r-0/);
+  assert.doesNotMatch(source, /max-\[760px\]:col-start-1/);
+});
+
+test("workspace settings keeps file opener removal beside the select on narrow widths", () => {
+  const fileOpenersStart = source.indexOf("fileDefaultOpeners.map");
+  const portalStart = source.indexOf("function WorkspaceSettingsPanelPortal");
+  assert.ok(fileOpenersStart >= 0);
+  assert.ok(portalStart > fileOpenersStart);
+  assert.doesNotMatch(
+    source.slice(fileOpenersStart, portalStart),
+    /max-\[560px\]:grid-cols-\[1fr\]/
+  );
+});
+
+test("workspace settings keeps the titlebar drag region above the backdrop", () => {
+  assert.match(
+    source,
+    /data-workspace-settings-backdrop="true"[\s\S]*?data-workspace-settings-window-drag-region="true"/
+  );
+  assert.match(source, /style=\{\{ zIndex: "var\(--z-panel-popover\)" \}\}/);
+  assert.match(
+    source,
+    /className="pointer-events-auto absolute inset-x-0 top-0 z-0 h-\[52px\] \[-webkit-app-region:drag\]"/
+  );
+  assert.match(
+    source,
+    /className="relative z-\[1\] grid[\s\S]*?\[-webkit-app-region:no-drag\]/
+  );
 });
 
 test("workspace settings gates account behind Tutti Agent Switch", () => {

@@ -11,6 +11,7 @@ import {
 } from "react";
 import {
   AGENT_GUI_DETAIL_MIN_WIDTH_PX,
+  AGENT_GUI_EXPANDED_TARGET_WIDTH_PX,
   AGENT_GUI_STANDALONE_AUTO_COLLAPSE_WIDTH_PX,
   shouldAutoCollapseAgentGUIConversationRail
 } from "@tutti-os/agent-gui";
@@ -538,6 +539,11 @@ export function StandaloneAgentWindow({
   }, [agentsService]);
   const handleConversationRailToggle = useCallback(
     (collapsed: boolean) => {
+      if (!collapsed && frame.width < 640) {
+        void hostWindowApi.resizeContentWidth({
+          width: AGENT_GUI_EXPANDED_TARGET_WIDTH_PX
+        });
+      }
       setNodeState((current) => ({
         ...current,
         conversationRailCollapsed: collapsed
@@ -554,7 +560,7 @@ export function StandaloneAgentWindow({
         )
       );
     },
-    [instanceId]
+    [frame.width, hostWindowApi, instanceId]
   );
   const handleCreateConversation = useCallback(() => {
     window.dispatchEvent(

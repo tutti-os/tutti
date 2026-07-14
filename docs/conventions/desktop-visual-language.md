@@ -246,8 +246,8 @@ Use these rules:
 - use `--background-panel` for the settings dialog shell and sidebar; reserve `--background-fronted` for frontmost menus and select popovers
 - use the shared `--backdrop` token for the settings overlay instead of raw overlay colors
 - use `--shadow-elevated` for settings panel elevation and keep the shadow balanced around the panel; avoid large positive y-axis offsets that make the bottom edge look heavier than the shell
-- use a `760px` desktop width cap, `500px` height cap, `16px` outer radius, and a `54px` title bar
-- use a fixed two-column structure on desktop: `160px` section navigation on the left, settings content on the right
+- use a `960px` width cap and `640px` height cap on wide windows (`>=1280px`), a compact `760px` width cap and `500px` height cap from `960px` to `1279px`, and a `640px` width cap and `480px` height cap below `960px`; use a `16px` outer radius and a `54px` title bar
+- use a fixed two-column structure at all supported window widths: `160px` section navigation on the left, settings content on the right
 - keep navigation items compact and scannable, with selected state from the shared accent surface
 - align compact setting rows as label/content pairs; labels use semibold `13px`, values use `11px`
 - keep routine select/input controls around `200px` wide on desktop and full-width only on narrow responsive layouts

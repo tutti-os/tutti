@@ -59,7 +59,7 @@ const workspaceWindowMacTrafficLightSizePx = 12;
 const workspaceWindowMacTrafficLightPositionY =
   (workspaceWindowHeaderHeightPx - workspaceWindowMacTrafficLightSizePx) / 2;
 const workspaceWindowDockHeightPx = 64;
-const agentWindowMinWidthPx = 760;
+const agentWindowMinWidthPx = 420;
 const agentWindowMinHeightPx = 520;
 const agentWindowWorkAreaScale = 0.9;
 const workspaceWindowKinds = new WeakMap<

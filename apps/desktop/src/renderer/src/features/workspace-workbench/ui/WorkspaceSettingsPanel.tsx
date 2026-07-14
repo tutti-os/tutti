@@ -240,12 +240,12 @@ export function WorkspaceSettingsPanel({
       <section
         aria-labelledby="workspace-settings-title"
         aria-modal="true"
-        className="relative z-[1] grid h-[min(640px,calc(100vh-40px))] w-[min(960px,calc(100vw-40px))] origin-center grid-cols-[160px_minmax(0,1fr)] grid-rows-[auto_minmax(0,1fr)] overflow-hidden rounded-2xl border border-[var(--border-1)] bg-[var(--background-fronted)] text-[var(--text-primary)] shadow-panel transition-[background,opacity] duration-[180ms] ease-[cubic-bezier(0.22,1,0.36,1)] [-webkit-app-region:no-drag] motion-safe:animate-in motion-safe:fade-in-0 motion-safe:zoom-in-[0.96] motion-safe:duration-[250ms] motion-safe:ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:animate-none max-[760px]:h-[min(100vh-24px,640px)] max-[760px]:w-[min(calc(100vw-24px),640px)] max-[760px]:grid-cols-1 max-[760px]:grid-rows-[auto_auto_minmax(0,1fr)]"
+        className="relative z-[1] grid h-[min(640px,calc(100vh-40px))] w-[min(960px,calc(100vw-40px))] origin-center grid-cols-[160px_minmax(0,1fr)] grid-rows-[auto_minmax(0,1fr)] overflow-hidden rounded-2xl border border-[var(--border-1)] bg-[var(--background-fronted)] text-[var(--text-primary)] shadow-panel transition-[background,opacity] duration-[180ms] ease-[cubic-bezier(0.22,1,0.36,1)] [-webkit-app-region:no-drag] motion-safe:animate-in motion-safe:fade-in-0 motion-safe:zoom-in-[0.96] motion-safe:duration-[250ms] motion-safe:ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:animate-none max-[1279px]:h-[min(500px,calc(100vh-40px))] max-[1279px]:w-[min(760px,calc(100vw-40px))] max-[959px]:h-[min(480px,calc(100vh-40px))] max-[959px]:w-[min(640px,calc(100vw-40px))] max-[760px]:h-[min(100vh-24px,480px)] max-[760px]:w-[min(calc(100vw-24px),640px)] min-[420px]:max-[640px]:!w-[480px]"
         data-workspace-settings-panel="true"
         role="dialog"
         onClick={(event) => event.stopPropagation()}
       >
-        <div className="col-[1/-1] row-start-1 flex h-[54px] min-h-[54px] items-center justify-between border-b border-[var(--border-1)] px-[22px] py-[13px] max-[760px]:px-5">
+        <div className="col-[1/-1] row-start-1 flex h-[54px] min-h-[54px] items-center justify-between border-b border-[var(--border-1)] px-[22px] py-[13px]">
           <h2
             id="workspace-settings-title"
             className="m-0 text-[15px] font-semibold leading-[1.3] text-[var(--text-primary)]"
@@ -268,7 +268,7 @@ export function WorkspaceSettingsPanel({
 
         <aside
           aria-label={t("workspace.settings.nav.sectionsLabel")}
-          className="col-start-1 row-start-2 flex min-h-0 flex-col gap-2 overflow-y-auto border-r border-[var(--border-1)] bg-[var(--background-fronted)] px-3 pb-4 pt-3 max-[760px]:row-start-2 max-[760px]:overflow-x-auto max-[760px]:border-b max-[760px]:border-r-0 max-[760px]:px-3 max-[760px]:pb-3.5 max-[760px]:pt-5"
+          className="col-start-1 row-start-2 flex min-h-0 flex-col gap-2 overflow-y-auto border-r border-[var(--border-1)] bg-[var(--background-fronted)] px-3 pb-4 pt-3"
         >
           {[
             {
@@ -336,8 +336,8 @@ export function WorkspaceSettingsPanel({
           })}
         </aside>
 
-        <div className="col-start-2 row-start-2 flex min-h-0 flex-col max-[760px]:col-start-1 max-[760px]:row-start-3">
-          <div className="flex min-h-0 flex-1 flex-col gap-0 overflow-y-auto px-[22px] pb-[22px] pt-0 max-[760px]:px-5 max-[760px]:pb-6">
+        <div className="col-start-2 row-start-2 flex min-h-0 flex-col">
+          <div className="flex min-h-0 flex-1 flex-col gap-0 overflow-y-auto px-[22px] pb-[22px] pt-0">
             {settingsState.activeSection === "general" ? (
               <WorkspaceGeneralSettingsSection
                 changingFeatureFlags={
@@ -1948,7 +1948,7 @@ function WorkspaceDeveloperSettingsSection({
           {fileDefaultOpeners.map(([extension, opener]) => (
             <div
               key={extension}
-              className="grid grid-cols-[minmax(70px,0.7fr)_minmax(130px,1fr)_auto] items-center gap-2 max-[560px]:grid-cols-[1fr]"
+              className="grid grid-cols-[minmax(70px,0.7fr)_minmax(130px,1fr)_auto] items-center gap-2"
             >
               <span className="min-w-0 truncate text-[13px] text-[var(--text-primary)]">
                 .{extension}
@@ -1999,7 +1999,7 @@ function WorkspaceDeveloperSettingsSection({
               </Button>
             </div>
           ))}
-          <div className="grid grid-cols-[minmax(70px,0.7fr)_minmax(130px,1fr)_auto] items-center gap-2 max-[560px]:grid-cols-[1fr]">
+          <div className="grid grid-cols-[minmax(70px,0.7fr)_minmax(130px,1fr)_auto] items-center gap-2">
             <Input
               aria-label={t(
                 "workspace.settings.developer.fileDefaultOpenerExtensionLabel"
@@ -2297,7 +2297,7 @@ function WorkspaceSettingsPanelPortal({
     <div
       className="fixed inset-0 grid place-items-center bg-[var(--backdrop)] supports-backdrop-filter:backdrop-blur-sm transition-[background] duration-[180ms] ease-[cubic-bezier(0.22,1,0.36,1)] [-webkit-app-region:no-drag] motion-safe:animate-in motion-safe:fade-in-0 motion-safe:duration-[180ms] motion-safe:ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:animate-none"
       data-workspace-settings-backdrop="true"
-      style={{ zIndex: "var(--z-panel)" }}
+      style={{ zIndex: "var(--z-panel-popover)" }}
       onClick={onClose}
     >
       <div
