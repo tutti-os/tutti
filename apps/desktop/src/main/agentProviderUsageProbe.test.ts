@@ -60,12 +60,12 @@ test("listDesktopWorkspaceAgentProbes maps Codex OAuth usage windows", async () 
           rate_limit: {
             primary_window: {
               used_percent: 7,
-              limit_window_seconds: 18000,
+              limit_window_seconds: 604800,
               reset_at: 1781182502
             },
             secondary_window: {
               used_percent: 12,
-              limit_window_seconds: 604800,
+              limit_window_seconds: 18000,
               reset_at: 1781750585
             }
           },
@@ -107,12 +107,12 @@ test("listDesktopWorkspaceAgentProbes maps Codex OAuth usage windows", async () 
     assert.deepEqual(provider?.usage?.quotas, [
       {
         percentRemaining: 93,
-        quotaType: "session",
+        quotaType: "weekly",
         resetsAtUnixMs: 1781182502000
       },
       {
         percentRemaining: 88,
-        quotaType: "weekly",
+        quotaType: "session",
         resetsAtUnixMs: 1781750585000
       },
       {

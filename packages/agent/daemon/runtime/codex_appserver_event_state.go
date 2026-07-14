@@ -185,6 +185,9 @@ func appServerRateLimitQuotas(snapshot map[string]any) []map[string]any {
 	return quotas
 }
 
+// Keep duration semantics aligned with codexUsageQuotaType in
+// apps/desktop/src/main/agentProviderUsageProbe.ts. Active sessions use this
+// daemon mapper; empty-session /status uses the desktop probe.
 func appServerRateLimitQuotaType(entry map[string]any, fallback string) string {
 	durationMins, ok := int64Value(entry["windowDurationMins"])
 	if !ok {

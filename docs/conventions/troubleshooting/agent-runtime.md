@@ -8,6 +8,7 @@ Open only the area that matches the symptom:
 
 Provider discovery, installation, authentication, models, configuration, and runtime reachability.
 
+- [Codex `/status` shows a 5h limit for a weekly-only account window](./agent-provider-setup.md#codex-status-shows-a-5h-limit-for-a-weekly-only-account-window)
 - [Agent provider picker shows only Claude Code and Codex](./agent-provider-setup.md#agent-provider-picker-shows-only-claude-code-and-codex)
 - [Claude composer model list stays stale after credential switch](./agent-provider-setup.md#claude-composer-model-list-stays-stale-after-credential-switch)
 - [Claude SDK context window shows 200k for 1M models](./agent-provider-setup.md#claude-sdk-context-window-shows-200k-for-1m-models)

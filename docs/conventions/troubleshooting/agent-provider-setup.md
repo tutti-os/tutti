@@ -4,6 +4,35 @@
 
 Provider discovery, installation, authentication, models, configuration, and runtime reachability.
 
+### Codex `/status` shows a 5h limit for a weekly-only account window
+
+- Symptom:
+  Opening `/status` before starting a Codex conversation labels the only quota
+  as `5h limit`, while the upstream usage response reports a seven-day window.
+  An active conversation may show a different label.
+- Quick checks:
+  Inspect `agent.usage_probe.result` in desktop logs, then inspect the Codex
+  `/wham/usage` response shape. If `primary_window.limit_window_seconds` is
+  `604800` and `secondary_window` is absent, the primary slot is carrying the
+  weekly window. Compare this with daemon app-server telemetry, where the same
+  duration is `windowDurationMins: 10080`.
+- Root cause:
+  Empty-session `/status` loads account quotas through the desktop provider
+  probe, while active sessions receive canonical runtime usage from the daemon.
+  Both paths once inferred quota type from `primary`/`secondary` position, but
+  Codex may put the weekly-only quota in `primary`.
+- Fix:
+  Classify known Codex windows by duration in both mappers: five hours is
+  `session`, seven days is `weekly`. Use the positional type only when duration
+  is missing or unknown. Keep additional named rate limits typed as `model`.
+- Validation:
+  Cover a desktop probe response whose primary and secondary durations are
+  opposite their conventional positions, plus daemon mapper cases for a
+  weekly-only primary window. Verify both empty and active `/status` views.
+- References:
+  [agentProviderUsageProbe.ts](../../../apps/desktop/src/main/agentProviderUsageProbe.ts)
+  [codex_appserver_event_state.go](../../../packages/agent/daemon/runtime/codex_appserver_event_state.go)
+
 ### Provider setup notice flashes after switching to an already-connected agent
 
 - Symptom:

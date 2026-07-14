@@ -20,6 +20,8 @@ export { setClaudeOAuthKeychainReaderForTesting } from "./claudeProviderUsagePro
 const CODEX_DEFAULT_CHATGPT_BASE_URL = "https://chatgpt.com/backend-api/";
 const CODEX_CHATGPT_USAGE_PATH = "/wham/usage";
 const CODEX_API_USAGE_PATH = "/api/codex/usage";
+const CODEX_SESSION_USAGE_WINDOW_SECONDS = 5 * 60 * 60;
+const CODEX_WEEKLY_USAGE_WINDOW_SECONDS = 7 * 24 * 60 * 60;
 
 interface CodexCredentials {
   accessToken: string;
@@ -452,16 +454,18 @@ function normalizeCodexChatGPTBaseUrl(value: string): string {
 
 function codexUsageQuotas(response: CodexUsageResponse): AgentUsageQuota[] {
   const quotas: AgentUsageQuota[] = [];
+  const primaryWindow = response.rate_limit?.primary_window;
   const primary = codexUsageWindowToQuota(
-    response.rate_limit?.primary_window,
-    "session"
+    primaryWindow,
+    codexUsageQuotaType(primaryWindow, "session")
   );
   if (primary) {
     quotas.push(primary);
   }
+  const secondaryWindow = response.rate_limit?.secondary_window;
   const secondary = codexUsageWindowToQuota(
-    response.rate_limit?.secondary_window,
-    "weekly"
+    secondaryWindow,
+    codexUsageQuotaType(secondaryWindow, "weekly")
   );
   if (secondary) {
     quotas.push(secondary);
@@ -490,6 +494,24 @@ function codexAdditionalRateLimitQuotas(
   return [primary, secondary].filter(
     (quota): quota is AgentUsageQuota => quota !== null
   );
+}
+
+// Keep duration semantics aligned with appServerRateLimitQuotaType in
+// packages/agent/daemon/runtime/codex_appserver_event_state.go. Empty-session
+// /status uses this desktop probe; active sessions use the daemon mapper.
+function codexUsageQuotaType(
+  window: CodexUsageWindow | null | undefined,
+  fallback: AgentUsageQuota["quotaType"]
+): AgentUsageQuota["quotaType"] {
+  const durationSeconds = numberValue(window?.limit_window_seconds);
+  switch (durationSeconds) {
+    case CODEX_SESSION_USAGE_WINDOW_SECONDS:
+      return "session";
+    case CODEX_WEEKLY_USAGE_WINDOW_SECONDS:
+      return "weekly";
+    default:
+      return fallback;
+  }
 }
 
 function codexUsageWindowToQuota(
