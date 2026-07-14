@@ -8,7 +8,7 @@ Depend on a released exact version of `@tutti-os/agent-acp-kit`. The kit owns pr
 
 The app owns product orchestration, its backend endpoint, prompt policy, app tools, persistence, and UI. It must not patch kit build output or copy platform protocol code.
 
-Daemon-owned Agent Session apps are a different execution model: they may use Tutti CLI session commands and must not instantiate an app-owned local runtime merely for consistency. They must begin discovery with `tutti agent list --json`, select an exact returned `agentTargetId`, and pass it to `tutti agent start --agent-id <agentTargetId> ...` for starts or handoffs. Provider-specific launch families and provider-only starts are legacy compatibility, not new-session authority.
+Daemon-owned Agent Session apps are a different execution model: they may use Tutti CLI session commands and must not instantiate an app-owned local runtime merely for consistency. They must begin discovery with `tutti agent list --json`, select an exact returned `agents[].id`, and pass it to `tutti agent start --agent-id <agent-id> ...` for starts or handoffs. Provider-specific launch families and provider-only starts are legacy compatibility, not new-session authority.
 
 ## Runtime shape
 

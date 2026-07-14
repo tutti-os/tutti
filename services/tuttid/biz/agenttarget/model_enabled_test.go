@@ -60,6 +60,7 @@ func TestEnabledTargetsPreservesEveryValidEnabledTargetInOrder(t *testing.T) {
 	duplicate := targets[0]
 	duplicate.ID = "user:reviewer"
 	duplicate.Name = "Reviewer"
+	duplicate.Provider = "CODEX"
 	duplicate.Source = SourceUser
 	disabled := duplicate
 	disabled.ID = "user:disabled"
@@ -76,6 +77,9 @@ func TestEnabledTargetsPreservesEveryValidEnabledTargetInOrder(t *testing.T) {
 	}
 	if enabled[0].Provider != enabled[1].Provider {
 		t.Fatalf("same-provider targets were not preserved: %#v", enabled)
+	}
+	if enabled[0].Provider != "codex" {
+		t.Fatalf("provider = %q, want canonical codex", enabled[0].Provider)
 	}
 }
 

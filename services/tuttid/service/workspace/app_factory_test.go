@@ -374,6 +374,7 @@ func TestAppFactoryServiceCreateUsesDraftDirAndReferenceContext(t *testing.T) {
 	}
 	for _, want := range []string{
 		"kit owns provider plugins",
+		"agents[].id",
 		"dynamic-agent-providers.md",
 		"loadTuttiAgentCatalog",
 		"loadTuttiAgentComposerOptions",
