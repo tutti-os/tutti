@@ -1,6 +1,12 @@
 import type {
   AgentActivitySession,
+  AgentActivitySnapshot,
   AgentActivityUpdatedEvent
+} from "@tutti-os/agent-activity-core";
+import {
+  createAgentActivitySnapshotProjector,
+  parseInlineActivityMessages,
+  selectEngineSession
 } from "@tutti-os/agent-activity-core";
 import type {
   TuttidClient,
@@ -14,7 +20,6 @@ import type {
 import type { WorkspaceAgentSessionEngineHost } from "./workspaceAgentSessionEngineHost.ts";
 import {
   agentActivitySessionReconcileDiagnosticDetails,
-  hasInlineMessagesData,
   hostMessageEventFromCore,
   isWorkspaceAgentSessionNotFoundError,
   normalizeWorkspaceId,
@@ -40,11 +45,14 @@ type WorkspaceAgentActivityBridgeEvent =
 
 export abstract class WorkspaceAgentActivityReconcileBridge {
   private readonly reconcileDependencies: WorkspaceAgentActivityReconcileDependencies;
-  private readonly controllerEntries = new Map<
+  private readonly entries = new Map<string, WorkspaceAgentSessionEngineHost>();
+  private readonly entryCreationInProgress = new Set<string>();
+  private readonly snapshotProjectors = new Map<
     string,
-    WorkspaceAgentSessionEngineHost
+    ReturnType<typeof createAgentActivitySnapshotProjector>
   >();
-  private readonly controllerEntryCreationInProgress = new Set<string>();
+  private readonly liveReconcileSessionKeys = new Set<string>();
+  private readonly liveReconcileInFlightSessionKeys = new Set<string>();
   private readonly sessionEventListenersByWorkspaceId = new Map<
     string,
     Set<(event: unknown) => void>
@@ -64,20 +72,18 @@ export abstract class WorkspaceAgentActivityReconcileBridge {
     this.reconcileDependencies = dependencies;
   }
 
-  protected abstract createControllerEntry(
+  protected abstract createEntry(
     workspaceId: string
   ): WorkspaceAgentSessionEngineHost;
 
-  protected controllerEntry(
-    workspaceId: string
-  ): WorkspaceAgentSessionEngineHost {
+  protected entry(workspaceId: string): WorkspaceAgentSessionEngineHost {
     const normalizedWorkspaceId = normalizeWorkspaceId(workspaceId);
-    const existing = this.controllerEntries.get(normalizedWorkspaceId);
+    const existing = this.entries.get(normalizedWorkspaceId);
     if (existing) return existing;
-    this.controllerEntryCreationInProgress.add(normalizedWorkspaceId);
+    this.entryCreationInProgress.add(normalizedWorkspaceId);
     try {
-      const entry = this.createControllerEntry(normalizedWorkspaceId);
-      this.controllerEntries.set(normalizedWorkspaceId, entry);
+      const entry = this.createEntry(normalizedWorkspaceId);
+      this.entries.set(normalizedWorkspaceId, entry);
       this.subscribeWorkspaceEventStream(normalizedWorkspaceId);
       this.startEventStreamConnection();
       entry.engine.dispatch({
@@ -86,8 +92,18 @@ export abstract class WorkspaceAgentActivityReconcileBridge {
       });
       return entry;
     } finally {
-      this.controllerEntryCreationInProgress.delete(normalizedWorkspaceId);
+      this.entryCreationInProgress.delete(normalizedWorkspaceId);
     }
+  }
+
+  protected activitySnapshot(workspaceId: string): AgentActivitySnapshot {
+    const normalizedWorkspaceId = normalizeWorkspaceId(workspaceId);
+    let projector = this.snapshotProjectors.get(normalizedWorkspaceId);
+    if (!projector) {
+      projector = createAgentActivitySnapshotProjector(normalizedWorkspaceId);
+      this.snapshotProjectors.set(normalizedWorkspaceId, projector);
+    }
+    return projector(this.entry(normalizedWorkspaceId).engine.getSnapshot());
   }
 
   ensureSessionSynchronized(
@@ -96,7 +112,7 @@ export abstract class WorkspaceAgentActivityReconcileBridge {
     const workspaceId = normalizeWorkspaceId(input.workspaceId);
     const agentSessionId = input.agentSessionId.trim();
     if (agentSessionId) {
-      this.controllerEntry(workspaceId).engine.dispatch({
+      this.entry(workspaceId).engine.dispatch({
         agentSessionId,
         needsMessages: true,
         needsState: true,
@@ -124,10 +140,10 @@ export abstract class WorkspaceAgentActivityReconcileBridge {
     }
     listeners.add(listener);
     if (
-      !this.controllerEntries.has(normalizedWorkspaceId) &&
-      !this.controllerEntryCreationInProgress.has(normalizedWorkspaceId)
+      !this.entries.has(normalizedWorkspaceId) &&
+      !this.entryCreationInProgress.has(normalizedWorkspaceId)
     ) {
-      this.controllerEntry(normalizedWorkspaceId);
+      this.entry(normalizedWorkspaceId);
     }
     return () => listeners?.delete(listener);
   }
@@ -175,7 +191,7 @@ export abstract class WorkspaceAgentActivityReconcileBridge {
     session: AgentActivitySession,
     source: string
   ): void {
-    this.upsertControllerSession({
+    this.upsertEngineSession({
       agentSessionId: session.agentSessionId,
       session,
       source,
@@ -231,16 +247,21 @@ export abstract class WorkspaceAgentActivityReconcileBridge {
     const workspaceId = normalizeWorkspaceId(input.workspaceId);
     const agentSessionId = input.agentSessionId.trim();
     if (!agentSessionId) return;
-    const entry = this.controllerEntry(workspaceId);
+    const entry = this.entry(workspaceId);
     entry.engine.dispatch({ agentSessionId, type: "session/removed" });
-    entry.controller.removeSession(agentSessionId);
+    this.liveReconcileSessionKeys.delete(
+      this.sessionKey(workspaceId, agentSessionId)
+    );
+    this.liveReconcileInFlightSessionKeys.delete(
+      this.sessionKey(workspaceId, agentSessionId)
+    );
   }
 
   protected isSessionTombstoned(
     workspaceId: string,
     agentSessionId: string
   ): boolean {
-    const entry = this.controllerEntries.get(normalizeWorkspaceId(workspaceId));
+    const entry = this.entries.get(normalizeWorkspaceId(workspaceId));
     return Boolean(
       entry?.engine.getSnapshot().sessionLifecycle.deletedSessionIds[
         agentSessionId.trim()
@@ -256,19 +277,18 @@ export abstract class WorkspaceAgentActivityReconcileBridge {
     return this.executeSessionReconcileCommandSafely(command);
   }
 
-  private upsertControllerSession(input: {
+  private upsertEngineSession(input: {
     agentSessionId: string;
+    live?: boolean;
     session: AgentActivitySession;
     source: string;
     workspaceId: string;
   }): void {
-    const entry = this.controllerEntry(input.workspaceId);
+    const entry = this.entry(input.workspaceId);
     const beforeSession =
-      entry.controller
-        .getSnapshot()
-        .sessions.find(
-          (session) => session.agentSessionId === input.agentSessionId
-        ) ?? null;
+      this.activitySnapshot(input.workspaceId).sessions.find(
+        (session) => session.agentSessionId === input.agentSessionId
+      ) ?? null;
     this.reportReconcileTrace({
       agentSessionId: input.agentSessionId,
       traceEvent: input.source,
@@ -281,13 +301,23 @@ export abstract class WorkspaceAgentActivityReconcileBridge {
         )
       }
     });
-    entry.controller.upsertSession(input.session);
+    entry.engine.dispatch({
+      session: input.session,
+      type: "session/upserted"
+    });
+    if (input.live && input.session.latestTurn) {
+      // Session identity must exist before attention observes the live turn so
+      // its user partition can be resolved. session/upserted itself is neutral
+      // to provenance and cannot consume the completion marker.
+      entry.engine.dispatch({
+        turn: input.session.latestTurn,
+        type: "turn/upserted"
+      });
+    }
     const afterSession =
-      entry.controller
-        .getSnapshot()
-        .sessions.find(
-          (session) => session.agentSessionId === input.agentSessionId
-        ) ?? null;
+      this.activitySnapshot(input.workspaceId).sessions.find(
+        (session) => session.agentSessionId === input.agentSessionId
+      ) ?? null;
     this.reportReconcileTrace({
       agentSessionId: input.agentSessionId,
       traceEvent: `${input.source}.applied`,
@@ -297,6 +327,11 @@ export abstract class WorkspaceAgentActivityReconcileBridge {
           agentActivitySessionReconcileDiagnosticDetails(afterSession)
       }
     });
+    if (input.live) {
+      this.liveReconcileInFlightSessionKeys.delete(
+        this.sessionKey(input.workspaceId, input.agentSessionId)
+      );
+    }
   }
 
   private emitSessionEvent(workspaceId: string, event: unknown): void {
@@ -308,9 +343,10 @@ export abstract class WorkspaceAgentActivityReconcileBridge {
   private handleModelCatalogInvalidated(
     event: WorkspaceAgentModelCatalogInvalidatedEvent
   ): void {
-    for (const entry of this.controllerEntries.values()) {
-      entry.controller.invalidateComposerOptions({
-        providers: event.providers
+    for (const entry of this.entries.values()) {
+      entry.engine.dispatch({
+        providers: event.providers,
+        type: "composerOptions/invalidated"
       });
     }
     for (const listener of this.modelCatalogInvalidatedListeners) {
@@ -347,7 +383,7 @@ export abstract class WorkspaceAgentActivityReconcileBridge {
     });
     eventStreamClient.subscribeConnectionState((state) => {
       if (state !== "connected" && state !== "disconnected") return;
-      for (const [workspaceId, entry] of this.controllerEntries) {
+      for (const [workspaceId, entry] of this.entries) {
         entry.engine.dispatch({
           status: state,
           type: "engine/connectionChanged",
@@ -384,7 +420,7 @@ export abstract class WorkspaceAgentActivityReconcileBridge {
     }
     if (this.isSessionTombstoned(workspaceId, agentSessionId)) return;
     if (input.eventType === "session_reconcile_required") {
-      this.controllerEntry(workspaceId).engine.dispatch({
+      this.entry(workspaceId).engine.dispatch({
         agentSessionId,
         eventType: input.eventType,
         hasCachedSession: this.hasCachedSession(workspaceId, agentSessionId),
@@ -396,11 +432,12 @@ export abstract class WorkspaceAgentActivityReconcileBridge {
       return;
     }
     if (input.eventType === "state_patch") {
+      this.markNextReconcileLive(workspaceId, agentSessionId);
       this.latestStateEventBySessionKey.set(
         this.stateEventKey(workspaceId, agentSessionId),
         { data: input.data, eventType: "state_patch" }
       );
-      this.controllerEntry(workspaceId).engine.dispatch({
+      this.entry(workspaceId).engine.dispatch({
         agentSessionId,
         needsMessages: false,
         needsState: true,
@@ -410,13 +447,32 @@ export abstract class WorkspaceAgentActivityReconcileBridge {
       return;
     }
     const hasCachedSession = this.hasCachedSession(workspaceId, agentSessionId);
-    const inlineApplied =
-      hasCachedSession && this.applyInlineActivityUpdatedEvent(input);
-    this.controllerEntry(workspaceId).engine.dispatch({
+    const messages = parseInlineActivityMessages(input);
+    if (messages.length > 0) {
+      this.entry(workspaceId).engine.dispatch(
+        {
+          messages,
+          type: "message/snapshotReceived",
+          workspaceId
+        },
+        { batch: true }
+      );
+      for (const message of messages) {
+        this.emitSessionEvent(workspaceId, hostMessageEventFromCore(message));
+      }
+    }
+    if (
+      input.eventType === "turn_update" ||
+      input.eventType === "interaction_update"
+    ) {
+      this.markNextReconcileLive(workspaceId, agentSessionId);
+    }
+    const inlineApplied = hasCachedSession && messages.length > 0;
+    this.entry(workspaceId).engine.dispatch({
       agentSessionId,
       eventType: input.eventType,
       hasCachedSession,
-      hasInlineMessages: hasInlineMessagesData(input.data),
+      hasInlineMessages: messages.length > 0,
       inlineApplied,
       type: "session/activityObserved",
       workspaceId
@@ -441,9 +497,12 @@ export abstract class WorkspaceAgentActivityReconcileBridge {
     workspaceId: string,
     agentSessionId: string
   ): boolean {
-    return this.controllerEntry(workspaceId)
-      .controller.getSnapshot()
-      .sessions.some((session) => session.agentSessionId === agentSessionId);
+    return Boolean(
+      selectEngineSession(
+        this.entry(workspaceId).engine.getSnapshot(),
+        agentSessionId
+      )
+    );
   }
 
   private async reconcileAgentSession(
@@ -451,9 +510,10 @@ export abstract class WorkspaceAgentActivityReconcileBridge {
     agentSessionId: string
   ): Promise<void> {
     if (this.isSessionTombstoned(workspaceId, agentSessionId)) return;
-    const entry = this.controllerEntry(workspaceId);
+    const entry = this.entry(workspaceId);
+    const live = this.consumeNextReconcileLive(workspaceId, agentSessionId);
     const messages =
-      entry.controller.getSnapshot().sessionMessagesById[agentSessionId];
+      this.activitySnapshot(workspaceId).sessionMessagesById[agentSessionId];
     const afterVersion = reconcileAfterVersion(messages ?? []);
     this.reportReconcileTrace({
       agentSessionId,
@@ -461,12 +521,12 @@ export abstract class WorkspaceAgentActivityReconcileBridge {
       workspaceId,
       fields: { afterVersion }
     });
-    const page = await entry.controller.listSessionMessages({
+    const page = await entry.adapter.listSessionMessages({
+      workspaceId,
       agentSessionId,
       afterVersion
     });
     if (this.isSessionTombstoned(workspaceId, agentSessionId)) {
-      entry.controller.removeSession(agentSessionId);
       return;
     }
     this.reportReconcileTrace({
@@ -488,13 +548,18 @@ export abstract class WorkspaceAgentActivityReconcileBridge {
       "reconcile.combined.state_fetch"
     );
     if (this.isSessionTombstoned(workspaceId, agentSessionId)) {
-      entry.controller.removeSession(agentSessionId);
       return;
     }
-    this.upsertControllerSession({
+    this.upsertEngineSession({
       agentSessionId,
+      live,
       session,
       source: "reconcile.combined.state_upsert",
+      workspaceId
+    });
+    entry.engine.dispatch({
+      messages: page.messages,
+      type: "message/snapshotReceived",
       workspaceId
     });
     this.emitLatestStateEvent(workspaceId, agentSessionId);
@@ -523,6 +588,10 @@ export abstract class WorkspaceAgentActivityReconcileBridge {
         );
       }
     } catch (error: unknown) {
+      this.restoreLiveReconcileAfterFailure(
+        command.workspaceId,
+        command.agentSessionId
+      );
       if (isWorkspaceAgentSessionNotFoundError(error)) {
         this.markSessionDeleted({
           agentSessionId: command.agentSessionId,
@@ -555,9 +624,9 @@ export abstract class WorkspaceAgentActivityReconcileBridge {
     agentSessionId: string
   ): Promise<void> {
     if (this.isSessionTombstoned(workspaceId, agentSessionId)) return;
-    const entry = this.controllerEntry(workspaceId);
+    const entry = this.entry(workspaceId);
     const messages =
-      entry.controller.getSnapshot().sessionMessagesById[agentSessionId];
+      this.activitySnapshot(workspaceId).sessionMessagesById[agentSessionId];
     const afterVersion = reconcileAfterVersion(messages ?? []);
     this.reportReconcileTrace({
       agentSessionId,
@@ -565,12 +634,12 @@ export abstract class WorkspaceAgentActivityReconcileBridge {
       workspaceId,
       fields: { afterVersion }
     });
-    const page = await entry.controller.listSessionMessages({
+    const page = await entry.adapter.listSessionMessages({
+      workspaceId,
       agentSessionId,
       afterVersion
     });
     if (this.isSessionTombstoned(workspaceId, agentSessionId)) {
-      entry.controller.removeSession(agentSessionId);
       return;
     }
     this.reportReconcileTrace({
@@ -586,6 +655,11 @@ export abstract class WorkspaceAgentActivityReconcileBridge {
     for (const message of page.messages) {
       this.emitSessionEvent(workspaceId, hostMessageEventFromCore(message));
     }
+    entry.engine.dispatch({
+      messages: page.messages,
+      type: "message/snapshotReceived",
+      workspaceId
+    });
   }
 
   private async reconcileAgentSessionState(
@@ -593,19 +667,18 @@ export abstract class WorkspaceAgentActivityReconcileBridge {
     agentSessionId: string
   ): Promise<void> {
     if (this.isSessionTombstoned(workspaceId, agentSessionId)) return;
+    const live = this.consumeNextReconcileLive(workspaceId, agentSessionId);
     const session = await this.fetchActivitySession(
       workspaceId,
       agentSessionId,
       "reconcile.state_fetch"
     );
     if (this.isSessionTombstoned(workspaceId, agentSessionId)) {
-      this.controllerEntry(workspaceId).controller.removeSession(
-        agentSessionId
-      );
       return;
     }
-    this.upsertControllerSession({
+    this.upsertEngineSession({
       agentSessionId,
+      live,
       session,
       source: "reconcile.state_upsert",
       workspaceId
@@ -628,41 +701,40 @@ export abstract class WorkspaceAgentActivityReconcileBridge {
     this.emitSessionEvent(normalizeWorkspaceId(workspaceId), event);
   }
 
-  private applyInlineActivityUpdatedEvent(
-    input: AgentActivityUpdatedEvent
+  private sessionKey(workspaceId: string, agentSessionId: string): string {
+    return `${normalizeWorkspaceId(workspaceId)}:${agentSessionId.trim()}`;
+  }
+
+  private markNextReconcileLive(
+    workspaceId: string,
+    agentSessionId: string
+  ): void {
+    this.liveReconcileSessionKeys.add(
+      this.sessionKey(workspaceId, agentSessionId)
+    );
+  }
+
+  private consumeNextReconcileLive(
+    workspaceId: string,
+    agentSessionId: string
   ): boolean {
-    if (this.isSessionTombstoned(input.workspaceId, input.agentSessionId)) {
-      return true;
+    const key = this.sessionKey(workspaceId, agentSessionId);
+    const live = this.liveReconcileSessionKeys.has(key);
+    if (live) {
+      this.liveReconcileSessionKeys.delete(key);
+      this.liveReconcileInFlightSessionKeys.add(key);
     }
-    const result = this.controllerEntry(
-      input.workspaceId
-    ).controller.applyActivityUpdatedEvent(input);
-    if (!result.applied) {
-      this.reportReconcileTrace({
-        agentSessionId: input.agentSessionId,
-        traceEvent: "inline.not_applied",
-        workspaceId: input.workspaceId,
-        fields: { eventType: input.eventType }
-      });
-      return false;
+    return live;
+  }
+
+  private restoreLiveReconcileAfterFailure(
+    workspaceId: string,
+    agentSessionId: string
+  ): void {
+    const key = this.sessionKey(workspaceId, agentSessionId);
+    if (!this.liveReconcileInFlightSessionKeys.delete(key)) return;
+    if (!this.isSessionTombstoned(workspaceId, agentSessionId)) {
+      this.liveReconcileSessionKeys.add(key);
     }
-    this.reportReconcileTrace({
-      agentSessionId: input.agentSessionId,
-      traceEvent: "inline.applied",
-      workspaceId: input.workspaceId,
-      fields: {
-        eventType: input.eventType,
-        incomingSession: agentActivitySessionReconcileDiagnosticDetails(
-          result.session
-        )
-      }
-    });
-    for (const message of result.messages) {
-      this.emitSessionEvent(
-        input.workspaceId,
-        hostMessageEventFromCore(message)
-      );
-    }
-    return true;
   }
 }

@@ -12,7 +12,6 @@ import type {
   AgentActivitySendInput,
   AgentActivitySendInputResult,
   AgentActivitySession,
-  AgentActivitySessionEventEnvelope,
   AgentActivitySessionList,
   AgentActivitySubmitInteractiveInput,
   AgentActivitySubmitInteractiveResult
@@ -37,15 +36,6 @@ export interface AgentActivityAdapter {
   loadComposerOptions(
     input: AgentActivityLoadComposerOptionsInput
   ): Promise<AgentActivityComposerOptions>;
-
-  subscribeSessionEvents?(input: {
-    workspaceId: string;
-    agentSessionId: string;
-    afterVersion?: number;
-    signal: AbortSignal;
-    onEvent(event: AgentActivitySessionEventEnvelope): void;
-    onError?(error: unknown): void;
-  }): Promise<() => void>;
 
   createSession(
     input: AgentActivityCreateSessionInput

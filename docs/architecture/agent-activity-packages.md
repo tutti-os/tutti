@@ -40,11 +40,10 @@ It owns:
 
 - agent activity contracts used by UI packages and host adapters
 - the host adapter interface
-- session and message snapshot state
-- optional live event subscription lifecycle for hosts that let the core
-  controller manage per-session streams
-- retained stream reference counting when multiple consumers watch the same
-  session through the optional adapter stream capability
+- canonical session, turn, interaction, message, composer-option, prompt-queue,
+  and attention state inside one workspace engine
+- memoized projection from engine state to the `AgentActivitySnapshot` runtime
+  contract
 - message merge, version ordering, and duplicate handling
 - selectors for reusable derived state
 - `selectNeedsAttentionCount`
@@ -287,19 +286,23 @@ It owns:
 agent activity snapshots. Desktop chrome MessageCenter and AgentGUI workbench
 nodes must subscribe to the same service instance for the same workspace.
 
-## Core Adapter Shape
+## Core Engine And Adapter Shape
 
-The core package should be constructed from a host adapter rather than from
-desktop-specific objects:
+The host creates one engine for each workspace and runtime origin and supplies
+its external command port. The adapter remains a transport boundary owned by
+the host; it is not another state owner:
 
 ```ts
-createAgentActivityController({
-  workspaceId,
-  adapter
+createAgentSessionEngine({
+  identity: { workspaceId, origin },
+  clock,
+  scheduler,
+  commandPort
 });
 ```
 
-The adapter should expose the host operations needed by the controller:
+The adapter exposes the HTTP operations used by that command port and by the
+desktop reconcile bridge:
 
 ```ts
 export interface AgentActivityAdapter {
@@ -321,15 +324,6 @@ export interface AgentActivityAdapter {
   loadComposerOptions(
     input: AgentActivityLoadComposerOptionsInput
   ): Promise<AgentActivityComposerOptions>;
-
-  subscribeSessionEvents?(input: {
-    workspaceId: string;
-    agentSessionId: string;
-    afterVersion?: number;
-    signal: AbortSignal;
-    onEvent(event: AgentActivitySessionEventEnvelope): void;
-    onError?(error: unknown): void;
-  }): Promise<() => void>;
 
   createSession(
     input: AgentActivityCreateSessionInput
@@ -374,8 +368,12 @@ Composer options use one cache key space: the resolved `agentTargetId` is passed
 to activity-core as an opaque `targetKey`, round-tripped verbatim, and forwarded
 to the daemon as `agentTargetId`. Activity-core must not parse or rewrite the
 key. There is no provider-keyed fallback cache: two targets under the same
-provider remain isolated. Provider-based invalidation filters on the `provider`
-stored in each cached value rather than deriving provider identity from the key.
+provider remain isolated. Provider-based invalidation filters on the provider
+recorded for the active or most recent request rather than deriving provider
+identity from the key or from possibly stale cached options. Invalidation
+clears cache validity but must not detach an in-flight command from its caller:
+that caller still receives a terminal result, and the next request performs a
+fresh load.
 While a live session refreshes its catalog, UI may continue presenting an
 already loaded target snapshot, but a genuinely missing target snapshot remains
 loading until target-scoped options arrive.
@@ -411,51 +409,59 @@ launchers must re-authenticate and resolve it before using any concrete provider
 invocation. UI packages must keep `provider` as the real provider identity and
 must not synthesize providers for shared or remote targets.
 
-The adapter decides how to connect. The controller decides when to connect,
-when to disconnect, and how to merge the resulting events.
-`subscribeSessionEvents` is optional because some hosts own real-time delivery
-at a service/runtime layer and apply events to the controller from that layer.
-Those hosts should omit the adapter method instead of providing a throwing
-stub.
+The desktop service owns the event-stream connection. Its reconcile bridge
+maps normalized events to engine intents: append-only messages are folded
+inline, while turn, interaction, and state changes schedule authoritative HTTP
+reconciliation through the engine command port. UI consumers never retain a
+second per-session stream or merge canonical entities themselves.
 
 Hosts may accept older provider/runtime reports with missing transcript
 ownership or ordering fields, but those gaps must be filled before events enter
 `agent-activity-core` or `@tutti-os/agent-gui`. Session-level notices and
 statuses should use state patches or explicit notice semantics; they should not
 be published as ordinary assistant transcript messages without a turn scope.
-Activity reports may carry a host-defined user id in the activity source before
-they reach durable session projection. Local single-user hosts should leave the
-field empty instead of deriving it from account login state; cloud
-collaboration hosts may inject real account user ids so downstream views can
-distinguish self-owned and peer-owned sessions. Reporters run on the streaming
-persistence hot path, so identity enrichment there must use host-provided local
-state; it must not call account refresh or user-info APIs that perform network
-round-trips or write refreshed auth state.
+Activity reports may carry a host-defined user id before they reach the engine.
+The local desktop adapter injects its stable local AgentGUI identity so
+attention/read state has a deterministic partition without consulting account
+login state. Cloud collaboration hosts may inject real account user ids so
+downstream views can distinguish self-owned and peer-owned sessions. Identity
+enrichment must use host-provided local state; it must not call account refresh
+or user-info APIs that perform network round-trips or write refreshed auth
+state.
 
-## Stream Lifecycle
+## Event And Reconcile Lifecycle
 
-SSE lifecycle belongs in `agent-activity-core` at the semantic level:
+Realtime transport lifecycle belongs to the host. Engine semantics define how
+the normalized event is applied:
 
-- subscribe when a session is visible, active, or explicitly retained by a UI
-- retain one stream for multiple consumers of the same session
-- abort and unsubscribe when the last consumer releases the session
-- merge live message events into the cached snapshot
-- keep persisted message pages and live events ordered by version
+- keep one workspace event-stream subscription independent of mounted panels
+- apply `message_update` messages inline and batch them by engine frame
+- reconcile `turn_update` and `interaction_update` through a full session pull
+- preserve whether a reconcile was realtime-triggered until its authoritative
+  session is applied; if the authoritative fetch fails, restore that provenance
+  for the retry rather than silently downgrading it to historical
+- dispatch `session/upserted` before realtime `turn/upserted` so attention can
+  resolve the session identity
+- apply historical list pulls through `session/snapshotReceived`, which never
+  creates a new unread completion
+- let identity-dependent reducers observe both authoritative shapes: a pending
+  activation is confirmed by either `session/snapshotReceived` or
+  `session/upserted`, and message buckets are canonicalized as soon as either
+  shape reveals a provider-session alias
+- when a session is removed, use its pre-removal identity to delete both the
+  canonical message bucket and any provider-session alias bucket
 - deduplicate messages by stable message identity and version
 - treat transcript `message_update` messages as normalized input: each message
-  must have `messageId`, positive `version`/`seq`, `turnId`, and
+  must have `messageId`, positive `version`/`seq`, nullable `turnId`, and
   `occurredAtUnixMs` before core merges it
 
-SSE implementation belongs in the host adapter:
+The host owns:
 
 - URL construction
 - token or cookie usage
 - `EventSource`, `fetch`, IPC, or another transport
 - raw protocol decoding
 - host-specific retry capability
-
-Generic retry and backoff can live in core only when the adapter exposes enough
-transport-neutral error information.
 
 ## Needs Attention Contract
 

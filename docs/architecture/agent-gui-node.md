@@ -91,6 +91,16 @@ All reads go through exported selectors; all writes go through engine commands.
 The engine reconciles optimistic intent with authoritative events by correlation
 ID.
 
+Historical pull and realtime push are distinct engine inputs. Workspace/session
+list pulls dispatch `session/snapshotReceived`; these hydrate history without
+creating unread completion attention. Realtime `message_update` events may fold
+their normalized append-only messages inline. Realtime turn, interaction, and
+legacy state invalidations perform an authoritative session pull, then dispatch
+`session/upserted` followed by `turn/upserted` for the realtime turn. The desktop
+bridge keeps the one-shot realtime provenance outside reducer state while that
+pull is in flight. `AgentActivitySnapshot` is a memoized projection of the
+engine state, not a separately mutable controller snapshot.
+
 Actionable interaction UI has one read path:
 
 ```text
@@ -1036,12 +1046,13 @@ AgentGUI / AgentGuiNode mount
   -> useAgentActivitySnapshot(workspaceId)
   -> AgentActivityRuntime.load(workspaceId)
   -> WorkspaceAgentActivityService.load
-  -> AgentActivityController.load
+  -> AgentSessionEngine workspace/reconcileRequested
   -> desktopAgentActivityAdapter.listSessions
   -> tuttid ListWorkspaceAgentSessions
   -> agent.Service.ListFiltered
   -> live RuntimeController sessions + persisted ActivityProjection sessions
-  -> AgentActivityController snapshot
+  -> AgentSessionEngine session/snapshotReceived (historical)
+  -> memoized AgentActivitySnapshot projection
   -> conversation-list projection/store
   -> rail and active-session fallback selection
 ```
@@ -1131,11 +1142,11 @@ activeConversationId changes
   -> session view store / controller detail load
   -> AgentActivityRuntime.listSessionMessages
   -> WorkspaceAgentActivityService.listSessionMessages
-  -> AgentActivityController.listSessionMessages
   -> desktopAgentActivityAdapter.listSessionMessages
   -> tuttid ListWorkspaceAgentSessionMessages
   -> ActivityProjection.ListSessionMessages
-  -> AgentActivityController merges messages into snapshot
+  -> AgentSessionEngine message/snapshotReceived
+  -> memoized AgentActivitySnapshot projection
   -> transcript projection
   -> AgentGUINodeView / AgentConversationFlow
 ```
@@ -1186,7 +1197,7 @@ composer submit with no activeConversationId
   -> clear the submitted home draft if it was not edited in flight
   -> ActivityProjection receives runtime reports
   -> agent.activity.updated events
-  -> AgentActivityController snapshot update
+  -> AgentSessionEngine intents and canonical state update
   -> projection + UI refresh
 ```
 
@@ -1309,8 +1320,9 @@ tuttid agent.Service.Create or SendInput
   -> AgentActivityPublisher.PublishAgentActivityUpdated
   -> event stream topic agent.activity.updated
   -> desktop WorkspaceAgentActivityService event handler
-  -> AgentActivityController.applyActivityUpdatedEvent
-  -> snapshot listener notification
+  -> inline message intent or authoritative session reconcile
+  -> AgentSessionEngine listener notification
+  -> memoized AgentActivitySnapshot projection
   -> AgentGUI projection and render
 ```
 
@@ -1410,20 +1422,23 @@ contract from the ACP path.
 
 ```text
 agent.activity.updated
-  -> WorkspaceAgentActivityService batches update briefly
-  -> state_patch can apply inline to AgentActivityController
-  -> message_update/session_update triggers reconcile fetch when needed
-  -> listSessionMessages and/or getSession updates snapshot
+  -> message_update parses and batches append-only messages inline
+  -> turn_update / interaction_update triggers authoritative session reconcile
+  -> legacy state_patch triggers authoritative state reconcile
+  -> live reconcile dispatches session/upserted then turn/upserted
+  -> historical pull dispatches session/snapshotReceived
+  -> engine projection updates the runtime snapshot
   -> conversation list projection updates rail
   -> session view store updates transcript loading/live state
   -> shared transcript projection updates rows/cards
   -> AgentGUINodeView renders the new view model
 ```
 
-Inline state patches are fast-path updates; message and session updates may
-require a fetch so the controller snapshot remains authoritative. UI code
-should debug both the event payload and the reconcile fetch before treating a
-missing transcript row as a rendering-only bug.
+Only append-only `message_update` payloads use the inline fast path. Turn,
+interaction, and state changes reconcile through the authoritative session
+endpoint so `activeTurnId`, pending interactions, and turn provenance stay
+consistent. UI code should debug both the event payload and the reconcile fetch
+before treating a missing transcript row as a rendering-only bug.
 
 Live display-only clocks in transcript rows, such as running sub-agent elapsed
 time, are UI-local interaction state. Do not derive a running timer solely from
@@ -1479,7 +1494,7 @@ failures on the transcript row that produced them.
 
 ```text
 AgentActivityMessage payloads
-  -> AgentActivityController merge/dedupe by message identity/version
+  -> AgentSessionEngine merge/dedupe by message identity/version
   -> sessionMessagesById snapshot bucket
   -> shared/agentConversation/projection
   -> transcript rows, tool calls, plans, approvals, interactive prompts

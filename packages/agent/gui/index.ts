@@ -130,7 +130,6 @@ export {
 } from "@tutti-os/agent-activity-core";
 export type {
   AgentActivityAdapter,
-  AgentActivityController,
   AgentActivityMessage,
   AgentActivityNeedsAttentionItem,
   AgentActivitySnapshot

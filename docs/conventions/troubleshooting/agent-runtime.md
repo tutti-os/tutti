@@ -55,6 +55,8 @@ Turn state, loading, cancel, restore, rail projection, event updates, imports, a
 - [AgentGUI freezes when session history is large](./agent-session-lifecycle.md#agentgui-freezes-when-session-history-is-large)
 - [Agent diagnostics flood while a turn is streaming](./agent-session-lifecycle.md#agent-diagnostics-flood-while-a-turn-is-streaming)
 - [Imported sessions trigger fresh-completion indicators](./agent-session-lifecycle.md#imported-sessions-trigger-fresh-completion-indicators)
+- [Realtime agent completion does not show unread attention](./agent-session-lifecycle.md#realtime-agent-completion-does-not-show-unread-attention)
+- [Completed agent session stays activating and disables the composer](./agent-session-lifecycle.md#completed-agent-session-stays-activating-and-disables-the-composer)
 
 ## [Agent Approvals And Sub-Agents](./agent-approvals-subagents.md)
 

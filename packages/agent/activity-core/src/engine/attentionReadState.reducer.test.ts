@@ -22,7 +22,7 @@ test("a live canonical completion becomes unread and read intent clears it", () 
       type: "turn/upserted",
       turn
     },
-    { sessionsById: { "session-1": { userId: "user-1" } }, turnsById: {} }
+    { sessionsById: { "session-1": { userId: "user-1" } } }
   ).state;
   assert.deepEqual(
     state.partitionsByUserId["user-1"]?.recordsBySessionId["session-1"],
@@ -42,6 +42,56 @@ test("a live canonical completion becomes unread and read intent clears it", () 
       ?.isUnread,
     false
   );
+});
+
+test("a new completion re-lights a session that was already read", () => {
+  const context = { sessionsById: { "session-1": { userId: "user-1" } } };
+  const turn2 = {
+    ...turn,
+    turnId: "turn-2",
+    settledAtUnixMs: 4,
+    updatedAtUnixMs: 4
+  };
+  // Hydrate empty so the durable read set is active for this run.
+  let state = attentionReadStateReducer(createInitialAttentionReadState(), {
+    type: "attention/readStateHydrated",
+    userId: "user-1",
+    completed: { readIds: [], unreadIds: [] },
+    failed: { readIds: [], unreadIds: [] }
+  }).state;
+  // First completion lights, user reads it.
+  state = attentionReadStateReducer(
+    state,
+    { type: "turn/upserted", turn },
+    context
+  ).state;
+  state = attentionReadStateReducer(state, {
+    type: "attention/read",
+    agentSessionId: "session-1",
+    userId: "user-1"
+  }).state;
+  assert.equal(
+    state.partitionsByUserId["user-1"]?.recordsBySessionId["session-1"]
+      ?.isUnread,
+    false
+  );
+  // A brand new completion on the same session must re-light the lamp.
+  state = attentionReadStateReducer(
+    state,
+    { type: "turn/upserted", turn: turn2 },
+    context
+  ).state;
+  assert.equal(
+    state.partitionsByUserId["user-1"]?.recordsBySessionId["session-1"]
+      ?.isUnread,
+    true
+  );
+  // The durable set keeps only the latest completion key for the session.
+  const hydrated = state.partitionsByUserId["user-1"]?.hydrated;
+  assert.deepEqual(hydrated?.completedUnreadIds, [
+    "turn:session-1:turn-2:completed"
+  ]);
+  assert.deepEqual(hydrated?.completedReadIds, []);
 });
 
 test("historical snapshot completion stays read unless persistence says unread", () => {
@@ -74,7 +124,7 @@ test("historical snapshot completion stays read unless persistence says unread",
   let hydrated = attentionReadStateReducer(createInitialAttentionReadState(), {
     type: "attention/readStateHydrated",
     userId: "user-1",
-    completed: { readIds: [], unreadIds: ["session-1"] },
+    completed: { readIds: [], unreadIds: ["turn:session-1:turn-1:completed"] },
     failed: { readIds: [], unreadIds: [] }
   }).state;
   hydrated = attentionReadStateReducer(hydrated, {
@@ -112,12 +162,12 @@ test("late hydration authoritatively clears an already observed unread completio
       type: "turn/upserted",
       turn
     },
-    { sessionsById: { "session-1": { userId: "user-1" } }, turnsById: {} }
+    { sessionsById: { "session-1": { userId: "user-1" } } }
   ).state;
   state = attentionReadStateReducer(state, {
     type: "attention/readStateHydrated",
     userId: "user-1",
-    completed: { readIds: ["session-1"], unreadIds: [] },
+    completed: { readIds: ["turn:session-1:turn-1:completed"], unreadIds: [] },
     failed: { readIds: [], unreadIds: [] }
   }).state;
   assert.equal(
@@ -140,7 +190,7 @@ test("read state is isolated between users in one workspace engine", () => {
   let state = attentionReadStateReducer(
     createInitialAttentionReadState(),
     { type: "turn/upserted", turn },
-    { sessionsById: { "session-1": { userId: "user-1" } }, turnsById: {} }
+    { sessionsById: { "session-1": { userId: "user-1" } } }
   ).state;
   state = attentionReadStateReducer(state, {
     type: "attention/read",
@@ -150,7 +200,7 @@ test("read state is isolated between users in one workspace engine", () => {
   state = attentionReadStateReducer(state, {
     type: "attention/readStateHydrated",
     userId: "user-2",
-    completed: { readIds: [], unreadIds: ["session-1"] },
+    completed: { readIds: [], unreadIds: ["turn:session-1:turn-1:completed"] },
     failed: { readIds: [], unreadIds: [] }
   }).state;
   assert.equal(
@@ -168,15 +218,17 @@ test("reading one observed session preserves hydrated ids for unloaded sessions"
   let state = attentionReadStateReducer(createInitialAttentionReadState(), {
     type: "attention/readStateHydrated",
     userId: "user-1",
-    completed: { readIds: ["historical-read"], unreadIds: ["session-1"] },
-    failed: { readIds: [], unreadIds: ["historical-failed"] }
+    completed: {
+      readIds: ["turn:other-a:turn-9:completed"],
+      unreadIds: ["turn:session-1:turn-1:completed"]
+    },
+    failed: { readIds: [], unreadIds: ["turn:other-b:turn-8:failed"] }
   }).state;
   state = attentionReadStateReducer(
     state,
     { type: "turn/upserted", turn },
     {
-      sessionsById: { "session-1": { userId: "user-1" } },
-      turnsById: {}
+      sessionsById: { "session-1": { userId: "user-1" } }
     }
   ).state;
   state = attentionReadStateReducer(state, {
@@ -186,68 +238,46 @@ test("reading one observed session preserves hydrated ids for unloaded sessions"
   }).state;
   const hydrated = state.partitionsByUserId["user-1"]?.hydrated;
   assert.deepEqual(hydrated?.completedReadIds, [
-    "historical-read",
-    "session-1"
+    "turn:other-a:turn-9:completed",
+    "turn:session-1:turn-1:completed"
   ]);
-  assert.deepEqual(hydrated?.failedUnreadIds, ["historical-failed"]);
+  assert.deepEqual(hydrated?.failedUnreadIds, ["turn:other-b:turn-8:failed"]);
 });
 
-test("a turn that arrives before its session is replayed when user ownership arrives", () => {
-  let state = attentionReadStateReducer(
+test("session upserts do not drive attention; the turn signal does", () => {
+  // Attention is driven by turn provenance (`turn/upserted` = live realtime,
+  // `session/snapshotReceived` = historical), not by session metadata upserts.
+  // A `session/upserted` carrying a settled latest turn is metadata only and
+  // must not create an attention record on its own.
+  const upserted = attentionReadStateReducer(
     createInitialAttentionReadState(),
-    { type: "turn/upserted", turn },
-    { sessionsById: {}, turnsById: { turn: turn } }
-  ).state;
-  assert.deepEqual(state.partitionsByUserId, {});
-  state = attentionReadStateReducer(
-    state,
     {
       type: "session/upserted",
       session: {
-        activeTurnId: null,
         workspaceId: "workspace-1",
         agentSessionId: "session-1",
         userId: "user-1",
         provider: "codex",
-        latestTurnInteractions: [],
-        pendingInteractions: [],
         cwd: "/workspace",
-        title: "Session"
+        title: "Session",
+        activeTurnId: null,
+        activeTurn: null,
+        latestTurnInteractions: [],
+        latestTurn: turn,
+        pendingInteractions: []
       }
-    },
-    {
-      sessionsById: { "session-1": { userId: "user-1" } },
-      turnsById: { turn: turn }
     }
   ).state;
+  assert.deepEqual(upserted.partitionsByUserId, {});
+  // Once the session identity is known, the live turn signal lights it.
+  const lit = attentionReadStateReducer(
+    upserted,
+    { type: "turn/upserted", turn },
+    { sessionsById: { "session-1": { userId: "user-1" } } }
+  ).state;
   assert.equal(
-    state.partitionsByUserId["user-1"]?.recordsBySessionId["session-1"]
-      ?.isUnread,
+    lit.partitionsByUserId["user-1"]?.recordsBySessionId["session-1"]?.isUnread,
     true
-  );
-});
-
-test("a settled latest turn on a session upsert is historical until persistence says unread", () => {
-  const state = attentionReadStateReducer(createInitialAttentionReadState(), {
-    type: "session/upserted",
-    session: {
-      workspaceId: "workspace-1",
-      agentSessionId: "session-1",
-      userId: "user-1",
-      provider: "codex",
-      cwd: "/workspace",
-      title: "Session",
-      activeTurnId: null,
-      activeTurn: null,
-      latestTurnInteractions: [],
-      latestTurn: turn,
-      pendingInteractions: []
-    }
-  }).state;
-  assert.equal(
-    state.partitionsByUserId["user-1"]?.recordsBySessionId["session-1"]
-      ?.isUnread,
-    false
   );
 });
 
@@ -274,16 +304,18 @@ test("hydration and writes cross the engine command port without dropping unload
     correlationId: "user-1",
     outcome: "succeeded",
     value: {
-      completed: { readIds: ["historical"], unreadIds: ["session-1"] },
-      failed: { readIds: [], unreadIds: ["failed-historical"] }
+      completed: {
+        readIds: ["turn:other:turn-9:completed"],
+        unreadIds: ["turn:session-1:turn-1:completed"]
+      },
+      failed: { readIds: [], unreadIds: ["turn:other:turn-8:failed"] }
     }
   });
   result = attentionReadStateReducer(
     result.state,
     { type: "turn/upserted", turn },
     {
-      sessionsById: { "session-1": { userId: "user-1" } },
-      turnsById: {}
+      sessionsById: { "session-1": { userId: "user-1" } }
     }
   );
   assert.equal(result.commands[0]?.type, "attention/readState/write");
@@ -307,10 +339,13 @@ test("hydration and writes cross the engine command port without dropping unload
       userId: "user-1",
       workspaceId: "workspace-1",
       completed: {
-        readIds: ["historical", "session-1"],
+        readIds: [
+          "turn:other:turn-9:completed",
+          "turn:session-1:turn-1:completed"
+        ],
         unreadIds: []
       },
-      failed: { readIds: [], unreadIds: ["failed-historical"] }
+      failed: { readIds: [], unreadIds: ["turn:other:turn-8:failed"] }
     }
   ]);
 });
@@ -320,8 +355,7 @@ test("a completion observed before empty hydration is merged and persisted", () 
     createInitialAttentionReadState(),
     { type: "turn/upserted", turn },
     {
-      sessionsById: { "session-1": { userId: "user-1" } },
-      turnsById: {}
+      sessionsById: { "session-1": { userId: "user-1" } }
     }
   );
   result = attentionReadStateReducer(result.state, {
@@ -348,7 +382,10 @@ test("a completion observed before empty hydration is merged and persisted", () 
       correlationId: "user-1",
       userId: "user-1",
       workspaceId: "workspace-1",
-      completed: { readIds: [], unreadIds: ["session-1"] },
+      completed: {
+        readIds: [],
+        unreadIds: ["turn:session-1:turn-1:completed"]
+      },
       failed: { readIds: [], unreadIds: [] }
     }
   ]);
@@ -376,8 +413,7 @@ test("rapid attention changes serialize full snapshot writes", () => {
     result.state,
     { type: "turn/upserted", turn },
     {
-      sessionsById: { "session-1": { userId: "user-1" } },
-      turnsById: {}
+      sessionsById: { "session-1": { userId: "user-1" } }
     }
   );
   assert.deepEqual(
@@ -404,7 +440,10 @@ test("rapid attention changes serialize full snapshot writes", () => {
       correlationId: "user-1",
       userId: "user-1",
       workspaceId: "workspace-1",
-      completed: { readIds: ["session-1"], unreadIds: [] },
+      completed: {
+        readIds: ["turn:session-1:turn-1:completed"],
+        unreadIds: []
+      },
       failed: { readIds: [], unreadIds: [] }
     }
   ]);
@@ -441,8 +480,7 @@ test("write failure is visible and an explicit retry emits the latest snapshot",
     result.state,
     { type: "turn/upserted", turn },
     {
-      sessionsById: { "session-1": { userId: "user-1" } },
-      turnsById: {}
+      sessionsById: { "session-1": { userId: "user-1" } }
     }
   );
   result = attentionReadStateReducer(result.state, {

@@ -105,7 +105,8 @@ export type EngineIntent =
   | PromptQueueIntent
   | SessionReconcileIntent
   | SessionCommandsIntent
-  | SessionLifecycleIntent;
+  | SessionLifecycleIntent
+  | ComposerOptionsIntent;
 
 // ---------------------------------------------------------------------------
 // Commands: descriptions returned by reducers. Internal commands are handled
@@ -153,7 +154,8 @@ export type EngineExternalCommand =
   | SessionUpdateSettingsCommand
   | SessionUnactivateCommand
   | SessionReconcileCommand
-  | TurnCancelCommand;
+  | TurnCancelCommand
+  | ComposerOptionsCommand;
 
 export type EngineCommand = EngineExternalCommand | EngineInternalCommand;
 
@@ -199,6 +201,8 @@ export interface AgentSessionEngineState {
   sessionReconcile: SessionReconcileState;
   sessionCommands: SessionCommandsState;
   sessionLifecycle: SessionLifecycleState;
+  sessionMessages: SessionMessagesState;
+  composerOptions: ComposerOptionsState;
 }
 
 export interface EngineReducerResult<TState> {
@@ -301,3 +305,9 @@ import type {
   SessionCommandsIntent,
   SessionCommandsState
 } from "./sessionCommands.types.ts";
+import type { SessionMessagesState } from "./sessionMessages.types.ts";
+import type {
+  ComposerOptionsCommand,
+  ComposerOptionsIntent,
+  ComposerOptionsState
+} from "./composerOptions.types.ts";

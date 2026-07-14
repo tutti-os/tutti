@@ -24,6 +24,7 @@ import {
 } from "./desktopAgentActivityMessageNormalization.ts";
 import { agentActivityComposerOptionsFromTuttidResult } from "../../../lib/agentComposerOptionsProjection.ts";
 import { reportAgentSubmitTraceDiagnostic as reportDesktopAgentSubmitTrace } from "./desktopAgentRuntimeSubmitDiagnostics.ts";
+import { DESKTOP_AGENT_GUI_CURRENT_USER_ID } from "./desktopAgentGuiIdentity.ts";
 
 export interface CreateDesktopAgentActivityAdapterInput {
   composerOptionsRequestTimeoutMs?: number;
@@ -469,6 +470,7 @@ export function agentActivitySessionFromTuttidSession(
     agentTargetId: session.agentTargetId ?? null,
     provider: session.provider,
     providerSessionId: session.providerSessionId ?? session.id,
+    userId: DESKTOP_AGENT_GUI_CURRENT_USER_ID,
     cwd: session.cwd ?? "/",
     title: session.title ?? "",
     activeTurnId: session.activeTurnId,

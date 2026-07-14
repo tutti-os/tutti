@@ -1,7 +1,6 @@
 import {
   type AgentActivityAdapter,
   type AgentActivityGoalControlResult,
-  type AgentActivityController,
   type AgentActivityMessagePage,
   type AgentActivitySession,
   type AgentSessionEngine,
@@ -33,12 +32,12 @@ import {
 import { WorkspaceAgentActivityReconcileBridge } from "./workspaceAgentActivityReconcileBridge.ts";
 import {
   agentActivitySessionReconcileDiagnosticDetails,
-  normalizeWorkspaceId,
-  registerAgentActivityStoreDiagnostics
+  normalizeWorkspaceId
 } from "./workspaceAgentActivityDiagnostics.ts";
 import { reportAgentSubmitTraceDiagnostic } from "../desktopAgentRuntimeSubmitDiagnostics.ts";
 import { WorkspaceAgentActivityQueryOperations } from "./workspaceAgentActivityQueryOperations.ts";
 import { WorkspaceAgentActivityImportOperations } from "./workspaceAgentActivityImportOperations.ts";
+import { loadWorkspaceAgentComposerOptions } from "./workspaceAgentComposerOptions.ts";
 
 function waitForPromiseWithSignal<T>(
   promise: Promise<T>,
@@ -80,7 +79,7 @@ export interface WorkspaceAgentActivityServiceDependencies {
   workspaceUserProjectService?: IWorkspaceUserProjectService;
 }
 
-type WorkspaceAgentActivityControllerEntry = WorkspaceAgentSessionEngineHost;
+type WorkspaceAgentActivityEntry = WorkspaceAgentSessionEngineHost;
 
 export class WorkspaceAgentActivityService
   extends WorkspaceAgentActivityReconcileBridge
@@ -95,16 +94,9 @@ export class WorkspaceAgentActivityService
     string,
     Promise<AgentActivitySnapshot>
   >();
+  private composerOptionsCommandSequence = 1;
   constructor(dependencies: WorkspaceAgentActivityServiceDependencies) {
     super(dependencies);
-    // Temporary instrumentation: surface activity-store anomalies (version
-    // regressions on unguarded write paths, stale-patch drops) in the desktop
-    // log so field exports show which channel overwrote what. The sink slot
-    // is process-global, so register once and take the workspace id from the
-    // event details (the store stamps it at the emit site) — a per-workspace
-    // closure would be overwritten by the next workspace and misattribute
-    // diagnostics.
-    registerAgentActivityStoreDiagnostics(dependencies.runtimeApi);
     this.dependencies = dependencies;
     this.queryOperations = new WorkspaceAgentActivityQueryOperations(
       dependencies.tuttidClient
@@ -119,18 +111,21 @@ export class WorkspaceAgentActivityService
   }
 
   getSnapshot(workspaceId: string): AgentActivitySnapshot {
-    return this.controllerEntry(workspaceId).controller.getSnapshot();
+    return this.activitySnapshot(workspaceId);
   }
 
   getSessionEngine(workspaceId: string): AgentSessionEngine {
-    return this.controllerEntry(workspaceId).engine;
+    return this.entry(workspaceId).engine;
   }
 
   subscribe(
     workspaceId: string,
-    listener: Parameters<AgentActivityController["subscribe"]>[0]
+    listener: (snapshot: AgentActivitySnapshot) => void
   ): () => void {
-    return this.controllerEntry(workspaceId).controller.subscribe(listener);
+    const entry = this.entry(workspaceId);
+    return entry.engine.subscribe(() =>
+      listener(this.activitySnapshot(workspaceId))
+    );
   }
 
   load(
@@ -141,13 +136,14 @@ export class WorkspaceAgentActivityService
     const inFlight = this.workspaceLoadsInFlight.get(normalizedWorkspaceId);
     if (inFlight) return waitForPromiseWithSignal(inFlight, signal);
 
-    const entry = this.controllerEntry(normalizedWorkspaceId);
+    const entry = this.entry(normalizedWorkspaceId);
     this.reportReconcileTrace({
       agentSessionId: null,
       traceEvent: "load.requested",
       workspaceId: normalizedWorkspaceId,
       fields: {
-        cachedSessionCount: entry.controller.getSnapshot().sessions.length
+        cachedSessionCount: this.activitySnapshot(normalizedWorkspaceId)
+          .sessions.length
       }
     });
     if (
@@ -187,7 +183,7 @@ export class WorkspaceAgentActivityService
   }
 
   private waitForWorkspaceReconcile(
-    entry: WorkspaceAgentActivityControllerEntry
+    entry: WorkspaceAgentActivityEntry
   ): Promise<AgentActivitySnapshot> {
     return new Promise((resolve, reject) => {
       let unsubscribe = () => {};
@@ -196,7 +192,7 @@ export class WorkspaceAgentActivityService
           entry.engine.getSnapshot().engineRuntime.workspaceReconcile;
         if (reconcile.status === "ready") {
           unsubscribe();
-          resolve(entry.controller.getSnapshot());
+          resolve(this.activitySnapshot(entry.engine.identity.workspaceId));
         } else if (
           reconcile.status === "failed" ||
           reconcile.status === "unknown"
@@ -219,17 +215,28 @@ export class WorkspaceAgentActivityService
   listSessionMessages(
     input: WorkspaceAgentActivityListMessagesInput
   ): Promise<AgentActivityMessagePage> {
-    return this.controllerEntry(
-      input.workspaceId
-    ).controller.listSessionMessages({
-      agentSessionId: input.agentSessionId,
-      afterVersion: input.afterVersion,
-      beforeVersion: input.beforeVersion,
-      cache: input.cache,
-      limit: input.limit,
-      order: input.order,
-      signal: input.signal
-    });
+    const workspaceId = normalizeWorkspaceId(input.workspaceId);
+    const entry = this.entry(workspaceId);
+    return entry.adapter
+      .listSessionMessages({
+        workspaceId,
+        agentSessionId: input.agentSessionId,
+        afterVersion: input.afterVersion,
+        beforeVersion: input.beforeVersion,
+        limit: input.limit,
+        order: input.order,
+        signal: input.signal
+      })
+      .then((page) => {
+        if (input.cache !== false) {
+          entry.engine.dispatch({
+            messages: page.messages,
+            type: "message/snapshotReceived",
+            workspaceId
+          });
+        }
+        return page;
+      });
   }
 
   async listAgentGeneratedFiles(
@@ -287,7 +294,6 @@ export class WorkspaceAgentActivityService
         },
         { signal: input.signal }
       );
-    const entry = this.controllerEntry(workspaceId);
     const removedSessionIds = response.removedSessionIds
       .map((id) => id.trim())
       .filter(Boolean);
@@ -299,12 +305,7 @@ export class WorkspaceAgentActivityService
       });
     }
     if (removedSessionIds.length > 0) {
-      await entry.controller.load(input.signal);
-      for (const agentSessionId of removedSessionIds) {
-        if (this.isSessionTombstoned(workspaceId, agentSessionId)) {
-          entry.controller.removeSession(agentSessionId);
-        }
-      }
+      await this.load(workspaceId, input.signal);
     }
     return {
       agentTargetId: response.agentTargetId,
@@ -370,7 +371,7 @@ export class WorkspaceAgentActivityService
       workspaceId: input.workspaceId,
       fields: { agentTargetId: input.agentTargetId ?? null }
     });
-    const entry = this.controllerEntry(input.workspaceId);
+    const entry = this.entry(input.workspaceId);
     reportAgentSubmitTraceDiagnostic(this.dependencies.runtimeApi, {
       agentSessionId: input.agentSessionId?.trim() ?? null,
       clientSubmitId: input.clientSubmitId,
@@ -532,7 +533,7 @@ export class WorkspaceAgentActivityService
       submitDiagnostics: input.submitDiagnostics,
       workspaceId
     });
-    const entry = this.controllerEntry(workspaceId);
+    const entry = this.entry(workspaceId);
     reportAgentSubmitTraceDiagnostic(this.dependencies.runtimeApi, {
       agentSessionId,
       clientSubmitId: input.clientSubmitId,
@@ -591,7 +592,7 @@ export class WorkspaceAgentActivityService
   async goalControl(
     input: Parameters<AgentActivityAdapter["goalControl"]>[0]
   ): Promise<AgentActivityGoalControlResult> {
-    const entry = this.controllerEntry(input.workspaceId);
+    const entry = this.entry(input.workspaceId);
     const result = await entry.adapter.goalControl(input);
     this.upsertAuthoritativeSession(result.session, "goal_control_result");
     return result;
@@ -600,9 +601,7 @@ export class WorkspaceAgentActivityService
   async submitInteractive(
     input: Parameters<AgentActivityAdapter["submitInteractive"]>[0]
   ): ReturnType<IWorkspaceAgentActivityService["submitInteractive"]> {
-    return this.controllerEntry(input.workspaceId).adapter.submitInteractive(
-      input
-    );
+    return this.entry(input.workspaceId).adapter.submitInteractive(input);
   }
 
   async submitPlanDecision(
@@ -626,7 +625,7 @@ export class WorkspaceAgentActivityService
   ) {
     const workspaceId = normalizeWorkspaceId(input.workspaceId);
     const agentSessionId = input.agentSessionId.trim();
-    const entry = this.controllerEntry(workspaceId);
+    const entry = this.entry(workspaceId);
     const result = await entry.adapter.deleteSession(input);
     if (result.removed) {
       this.markSessionDeleted({
@@ -634,10 +633,7 @@ export class WorkspaceAgentActivityService
         data: { deletedAtUnixMs: Date.now() },
         workspaceId
       });
-      await entry.controller.load(input.signal);
-      if (this.isSessionTombstoned(workspaceId, agentSessionId)) {
-        entry.controller.removeSession(agentSessionId);
-      }
+      await this.load(workspaceId, input.signal);
     }
     return result;
   }
@@ -647,7 +643,7 @@ export class WorkspaceAgentActivityService
   ): Promise<AgentActivitySession> {
     const workspaceId = normalizeWorkspaceId(input.workspaceId);
     const agentSessionId = input.agentSessionId.trim();
-    const entry = this.controllerEntry(workspaceId);
+    const entry = this.entry(workspaceId);
     const session = await entry.adapter.renameSession({
       ...input,
       agentSessionId,
@@ -680,15 +676,18 @@ export class WorkspaceAgentActivityService
     workspaceId: string;
   }): Promise<unknown> {
     const provider = resolveDesktopAgentGUIProvider(input.provider);
-    return this.controllerEntry(
-      input.workspaceId
-    ).controller.loadComposerOptions({
-      targetKey: input.agentTargetId,
+    const workspaceId = normalizeWorkspaceId(input.workspaceId);
+    const entry = this.entry(workspaceId);
+    return loadWorkspaceAgentComposerOptions({
+      agentTargetId: input.agentTargetId,
+      commandId: `composer-options:${this.composerOptionsCommandSequence++}`,
+      engine: entry.engine,
       provider,
       cwd: input.cwd,
       force: input.force,
+      settings: normalizeComposerSettings(input.settings),
       signal: input.signal,
-      settings: normalizeComposerSettings(input.settings)
+      workspaceId
     });
   }
 
@@ -750,9 +749,7 @@ export class WorkspaceAgentActivityService
     return { cwd: response.root, noProject: false };
   }
 
-  protected createControllerEntry(
-    workspaceId: string
-  ): WorkspaceAgentActivityControllerEntry {
+  protected createEntry(workspaceId: string): WorkspaceAgentActivityEntry {
     return createWorkspaceAgentSessionEngineHost({
       activateSession: (input) => this.activateSession(input),
       cancelTurn: (input) => this.cancelTurn(input),

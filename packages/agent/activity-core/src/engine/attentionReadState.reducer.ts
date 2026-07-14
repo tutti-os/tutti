@@ -22,8 +22,7 @@ export function attentionReadStateReducer(
   intent: EngineIntent,
   context: {
     sessionsById: Readonly<Record<string, { userId?: string }>>;
-    turnsById: Readonly<Record<string, AgentActivityTurn>>;
-  } = { sessionsById: {}, turnsById: {} }
+  } = { sessionsById: {} }
 ): EngineReducerResult<AttentionReadState> {
   switch (intent.type) {
     case "attention/hydrateRequested":
@@ -67,22 +66,6 @@ export function attentionReadStateReducer(
       }
       return next === state ? unchanged(state) : changed(next);
     }
-    case "session/upserted": {
-      const userId = intent.session.userId?.trim() ?? "";
-      if (intent.session.latestTurn?.phase === "settled") {
-        return observeTurn(state, userId, intent.session.latestTurn, false);
-      }
-      const latestSettledTurn = Object.values(context.turnsById)
-        .filter(
-          (turn) =>
-            turn.agentSessionId === intent.session.agentSessionId &&
-            turn.phase === "settled"
-        )
-        .sort((left, right) => right.updatedAtUnixMs - left.updatedAtUnixMs)[0];
-      return latestSettledTurn
-        ? observeTurn(state, userId, latestSettledTurn, true)
-        : unchanged(state);
-    }
     case "session/removed": {
       const id = intent.agentSessionId.trim();
       let next = state;
@@ -119,8 +102,14 @@ function observeTurn(
   const completionKey = `turn:${id}:${turnId}:${kind}`;
   const current = partition.recordsBySessionId[id];
   if (current?.completionKey === completionKey) return unchanged(state);
-  const isUnread = hydratedUnread(partition, id, kind) ?? live;
-  const durablePartition = updateDurableMarker(partition, id, kind, isUnread);
+  const isUnread = hydratedUnread(partition, completionKey, kind) ?? live;
+  const durablePartition = updateDurableMarker(
+    partition,
+    id,
+    completionKey,
+    kind,
+    isUnread
+  );
   const nextPartition = {
     ...durablePartition,
     recordsBySessionId: {
@@ -148,7 +137,7 @@ function completionKind(
 
 function hydratedUnread(
   state: AttentionReadPartition,
-  id: string,
+  completionKey: string,
   kind: AttentionCompletionKind
 ): boolean | null {
   const hydrated = state.hydrated;
@@ -159,8 +148,8 @@ function hydratedUnread(
       : hydrated.failedUnreadIds;
   const read =
     kind === "completed" ? hydrated.completedReadIds : hydrated.failedReadIds;
-  if (unread.includes(id)) return true;
-  if (read.includes(id)) return false;
+  if (unread.includes(completionKey)) return true;
+  if (read.includes(completionKey)) return false;
   return null;
 }
 
@@ -181,6 +170,7 @@ function setUnread(
   const durablePartition = updateDurableMarker(
     partition,
     id,
+    current.completionKey,
     current.kind,
     isUnread
   );
@@ -200,84 +190,110 @@ function setUnread(
 
 function updateDurableMarker(
   partition: AttentionReadPartition,
-  id: string,
+  sessionId: string,
+  completionKey: string,
   kind: AttentionCompletionKind,
   isUnread: boolean
 ): AttentionReadPartition {
   if (!partition.hydrated) return partition;
-  const readKey = kind === "completed" ? "completedReadIds" : "failedReadIds";
-  const unreadKey =
-    kind === "completed" ? "completedUnreadIds" : "failedUnreadIds";
-  const readIds = new Set(partition.hydrated[readKey]);
-  const unreadIds = new Set(partition.hydrated[unreadKey]);
   const completedReadIds = new Set(partition.hydrated.completedReadIds);
   const completedUnreadIds = new Set(partition.hydrated.completedUnreadIds);
   const failedReadIds = new Set(partition.hydrated.failedReadIds);
   const failedUnreadIds = new Set(partition.hydrated.failedUnreadIds);
-  for (const bucket of [
+  // Only the latest completion per session drives the lamp, so evict any prior
+  // completion key for this session across every bucket before recording the new
+  // one. This keeps the durable set bounded to one key per session (per kind)
+  // while still keying on the exact completion so a new turn re-lights.
+  evictSessionCompletionKeys(sessionId, [
     completedReadIds,
     completedUnreadIds,
     failedReadIds,
     failedUnreadIds
-  ]) {
-    bucket.delete(id);
-  }
-  readIds.delete(id);
-  unreadIds.delete(id);
-  (isUnread ? unreadIds : readIds).add(id);
+  ]);
+  const read = kind === "completed" ? completedReadIds : failedReadIds;
+  const unread = kind === "completed" ? completedUnreadIds : failedUnreadIds;
+  (isUnread ? unread : read).add(completionKey);
   return {
     ...partition,
     hydrated: {
       completedReadIds: [...completedReadIds],
       completedUnreadIds: [...completedUnreadIds],
       failedReadIds: [...failedReadIds],
-      failedUnreadIds: [...failedUnreadIds],
-      [readKey]: [...readIds],
-      [unreadKey]: [...unreadIds]
+      failedUnreadIds: [...failedUnreadIds]
     }
   };
+}
+
+function evictSessionCompletionKeys(
+  sessionId: string,
+  buckets: readonly Set<string>[]
+): void {
+  const prefix = `turn:${sessionId}:`;
+  for (const bucket of buckets) {
+    for (const key of bucket) {
+      if (key.startsWith(prefix)) bucket.delete(key);
+    }
+  }
+}
+
+function sanitizeCompletionKeys(ids: readonly string[]): string[] {
+  // Durable buckets hold completion keys (`turn:<session>:<turn>:<kind>`). Drop
+  // any legacy per-session id left by older builds so it cannot linger; a stale
+  // session id never matches a completion-key lookup anyway, and dropping it now
+  // keeps the persisted set clean without a bespoke migration.
+  return ids.filter((id) => id.startsWith("turn:"));
 }
 
 function hydrate(
   state: AttentionReadState,
   intent: Extract<EngineIntent, { type: "attention/readStateHydrated" }>
 ): EngineReducerResult<AttentionReadState> {
-  const hydrated = {
-    completedReadIds: [...intent.completed.readIds],
-    completedUnreadIds: [...intent.completed.unreadIds],
-    failedReadIds: [...intent.failed.readIds],
-    failedUnreadIds: [...intent.failed.unreadIds]
-  };
   const userId = intent.userId.trim();
   if (!userId) return unchanged(state);
   const partition = partitionFor(state, userId);
+  const completedReadIds = new Set(
+    sanitizeCompletionKeys(intent.completed.readIds)
+  );
+  const completedUnreadIds = new Set(
+    sanitizeCompletionKeys(intent.completed.unreadIds)
+  );
+  const failedReadIds = new Set(sanitizeCompletionKeys(intent.failed.readIds));
+  const failedUnreadIds = new Set(
+    sanitizeCompletionKeys(intent.failed.unreadIds)
+  );
   const recordsBySessionId = { ...partition.recordsBySessionId };
   let mergedObservedRecord = false;
   for (const [id, record] of Object.entries(recordsBySessionId)) {
-    const unreadIds =
-      record.kind === "completed"
-        ? hydrated.completedUnreadIds
-        : hydrated.failedUnreadIds;
-    const readIds =
-      record.kind === "completed"
-        ? hydrated.completedReadIds
-        : hydrated.failedReadIds;
-    if (unreadIds.includes(id)) {
+    const key = record.completionKey;
+    const unread =
+      record.kind === "completed" ? completedUnreadIds : failedUnreadIds;
+    const read = record.kind === "completed" ? completedReadIds : failedReadIds;
+    if (unread.has(key)) {
       recordsBySessionId[id] = { ...record, isUnread: true };
-    } else if (readIds.includes(id)) {
+    } else if (read.has(key)) {
       recordsBySessionId[id] = { ...record, isUnread: false };
     } else {
-      const readKey =
-        record.kind === "completed" ? "completedReadIds" : "failedReadIds";
-      const unreadKey =
-        record.kind === "completed" ? "completedUnreadIds" : "failedUnreadIds";
-      hydrated[record.isUnread ? unreadKey : readKey].push(id);
+      // The durable store predates this session's current completion. Evict any
+      // prior key for the session so the set stays bounded, then persist the
+      // observed provenance on the next write.
+      evictSessionCompletionKeys(id, [
+        completedReadIds,
+        completedUnreadIds,
+        failedReadIds,
+        failedUnreadIds
+      ]);
+      (record.isUnread ? unread : read).add(key);
       mergedObservedRecord = true;
     }
   }
   const nextPartition = {
     ...partition,
-    hydrated,
+    hydrated: {
+      completedReadIds: [...completedReadIds],
+      completedUnreadIds: [...completedUnreadIds],
+      failedReadIds: [...failedReadIds],
+      failedUnreadIds: [...failedUnreadIds]
+    },
     lastError: null,
     recordsBySessionId
   };

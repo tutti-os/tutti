@@ -1,10 +1,3 @@
-export function cloneJSONRecord<T extends Record<string, unknown> | undefined>(
-  value: T
-): T {
-  if (value === undefined) return value;
-  return cloneJSONValue(value) as T;
-}
-
 export function cloneJSONValue(value: unknown): unknown {
   if (Array.isArray(value)) return value.map(cloneJSONValue);
   if (value !== null && typeof value === "object") {
@@ -40,8 +33,4 @@ export function numberValue(value: unknown): number | undefined {
 
 export function messageVersionValue(source: Record<string, unknown>): number {
   return numberValue(source.version) ?? numberValue(source.seq) ?? 0;
-}
-
-export function booleanValue(value: unknown): boolean | undefined {
-  return typeof value === "boolean" ? value : undefined;
 }

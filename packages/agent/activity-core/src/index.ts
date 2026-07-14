@@ -11,21 +11,16 @@ export {
   type AgentCapabilityKey
 } from "./capabilities.ts";
 export {
-  cloneAgentActivitySnapshot,
-  createAgentActivityController,
-  createEmptyAgentActivitySnapshot,
-  setAgentActivityStoreDiagnosticSink,
-  type AgentActivityController,
-  type AgentActivitySnapshotListener,
-  type CreateAgentActivityControllerInput
-} from "./controller.ts";
-export type { AgentActivityLoadComposerOptionsControllerInput } from "./controllerComposerOptions.ts";
+  createAgentActivitySnapshotProjector,
+  createEmptyAgentActivitySnapshot
+} from "./engine/agentActivitySnapshot.projector.ts";
 export {
   cloneAgentActivityMessage,
   compareAgentActivityMessages,
   latestAgentActivityMessageVersion,
   mergeAgentActivityMessages
 } from "./merge.ts";
+export { parseInlineActivityMessages } from "./inlineActivityMessages.ts";
 export {
   loadAllAgentSessionMessages,
   type AgentActivityMessagePageLike,
@@ -78,6 +73,20 @@ export {
   selectAttentionReadState,
   selectSessionAttention
 } from "./engine/attentionReadState.selectors.ts";
+export {
+  selectSessionMessages,
+  selectSessionMessagesById
+} from "./engine/sessionMessages.selectors.ts";
+export type { SessionMessagesState } from "./engine/sessionMessages.types.ts";
+export {
+  selectComposerOptions,
+  selectComposerOptionsLoadStatus
+} from "./engine/composerOptions.selectors.ts";
+export type {
+  ComposerOptionsIntent,
+  ComposerOptionsCommand,
+  ComposerOptionsState
+} from "./engine/composerOptions.types.ts";
 export type {
   AttentionCompletionKind,
   AttentionReadCommand,
@@ -253,6 +262,7 @@ export type {
   AgentActivitySubmitInteractiveInput,
   AgentActivitySubmitInteractiveResult,
   AgentActivitySnapshot,
+  AgentActivitySnapshotListener,
   AgentActivitySubmitDiagnostics,
   AgentActivityTurn,
   AgentActivityTurnCancelResponse,

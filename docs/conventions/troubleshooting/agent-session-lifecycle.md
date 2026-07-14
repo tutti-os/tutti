@@ -702,6 +702,78 @@ Turn state, loading, cancel, restore, rail projection, event updates, imports, a
   [workspaceAgentMessageCenterModel.ts](../../../packages/agent/gui/agent-message-center/workspaceAgentMessageCenterModel.ts)
   [workspaceAgentMessageCenterViewModel.ts](../../../packages/agent/gui/agent-message-center/workspaceAgentMessageCenterViewModel.ts)
 
+### Realtime agent completion does not show unread attention
+
+- Symptom:
+  A turn settles while Agent GUI is open, but its conversation row never shows
+  unread-completion attention. Historical sessions may behave correctly and
+  must not acquire attention merely because their snapshot was loaded.
+- Quick checks:
+  Trace the event path into the activity engine. A realtime `turn_update`
+  should trigger an authoritative session fetch and reduce `session/upserted`
+  before `turn/upserted`. Initial, restored, and imported history should enter
+  through `session/snapshotReceived` only. Also confirm the projected desktop
+  session carries the shared local Agent GUI user id used by read-state actions.
+- Root cause:
+  Realtime and historical data lost their provenance when both were folded into
+  a mutable controller snapshot and re-emitted as `session/snapshotReceived`.
+  The attention reducer correctly treats snapshots as non-live, so it recorded
+  the settled completion without producing unread attention; a later live
+  update with the same completion key could no longer recover the transition.
+- Fix:
+  Keep the activity engine as the single mutable owner. Feed pull/bootstrap
+  results through `session/snapshotReceived`, feed authoritative realtime
+  reconciliation through `session/upserted` followed by `turn/upserted`, and
+  use inline message events only for message deltas. Preserve the realtime
+  marker outside the fetched snapshot, and use one shared local identity for
+  session projection and read-state commands.
+- Validation:
+  Run
+  `pnpm --filter @tutti-os/desktop test -- workspaceAgentActivityService.test.ts`
+  and verify the service integration coverage proves that realtime completion
+  becomes unread while a settled historical load remains read.
+- References:
+  [workspaceAgentActivityReconcileBridge.ts](../../../apps/desktop/src/renderer/src/features/workspace-agent/services/internal/workspaceAgentActivityReconcileBridge.ts)
+  [workspaceAgentActivityService.test.ts](../../../apps/desktop/src/renderer/src/features/workspace-agent/services/internal/workspaceAgentActivityService.test.ts)
+  [attentionReadState.reducer.ts](../../../packages/agent/activity-core/src/engine/attentionReadState.reducer.ts)
+
+### Completed agent session stays activating and disables the composer
+
+- Symptom:
+  A new conversation visibly completes and its assistant reply is present, but
+  opening it leaves the composer disabled. Roughly one activation-expiry window
+  later, AgentGUI reports that the agent session could not be started.
+- Quick checks:
+  Correlate activation diagnostics with the authoritative session updates. If
+  the session create and turn both succeeded while the presentation remains
+  `activating` until `engine/intentExpired`, inspect which session intent
+  reached the pending-activation reducer. Also check that a failed realtime
+  session fetch does not consume the live-reconcile marker before a retry.
+- Root cause:
+  An engine migration introduced `session/upserted` for authoritative mutation
+  and realtime results, while pending activation still confirmed only from the
+  historical `session/snapshotReceived` path. The canonical session therefore
+  existed and could render, but the independent activation intent expired and
+  overrode the composer with a false failure. Consuming realtime provenance
+  before a fallible fetch can produce a related retry-only mismatch.
+- Fix:
+  Confirm activation from both authoritative session intents. Preserve the
+  semantic distinction only where it matters: historical snapshots remain
+  neutral for unread attention, while realtime reconciliation additionally
+  emits the live turn update. Move a consumed realtime marker to an in-flight
+  state and restore it after fetch failure until a live session is applied or
+  the session is deleted.
+- Validation:
+  Cover the reducer with a pending activation followed by `session/upserted`.
+  At the desktop service boundary, run a real engine activation through the
+  create result, manually expire its old deadline, and verify the presentation
+  remains active. Also fail the first realtime reconciliation, retry it, and
+  verify the settled turn still gains unread attention.
+- References:
+  [pendingIntents.reducer.ts](../../../packages/agent/activity-core/src/engine/pendingIntents.reducer.ts)
+  [workspaceAgentActivityReconcileBridge.ts](../../../apps/desktop/src/renderer/src/features/workspace-agent/services/internal/workspaceAgentActivityReconcileBridge.ts)
+  [workspaceAgentActivityService.test.ts](../../../apps/desktop/src/renderer/src/features/workspace-agent/services/internal/workspaceAgentActivityService.test.ts)
+
 ### AgentGUI submit clears the composer but creates no session or turn
 
 - Symptom:

@@ -91,6 +91,8 @@ export function pendingIntentsReducer(
       return confirmFromMessages(state, intent.messages);
     case "session/snapshotReceived":
       return receiveSessionSnapshot(state, intent.sessions, context.turnsById);
+    case "session/upserted":
+      return confirmActivationsFromSessions(state, [intent.session]);
     case "turn/upserted":
       return confirmFromSessions(state, context.turnsById);
     case "engine/commandResult":

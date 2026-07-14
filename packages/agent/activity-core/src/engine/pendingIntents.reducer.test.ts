@@ -263,6 +263,18 @@ test("timed out activation remains uncertain until its exact session appears", (
   );
 });
 
+test("a realtime session upsert confirms its pending activation", () => {
+  const state = reduce(createInitialPendingIntentsState(), activation()).state;
+  const confirmed = reduce(state, {
+    session: { ...session("session-new"), createdAtUnixMs: 1 },
+    type: "session/upserted"
+  });
+  assert.equal(
+    confirmed.state.activationsByRequestId["activation-1"]?.status,
+    "confirmed"
+  );
+});
+
 test("authoritative activation failure is retained for the view to dismiss", () => {
   let state = reduce(createInitialPendingIntentsState(), activation()).state;
   state = reduce(state, {

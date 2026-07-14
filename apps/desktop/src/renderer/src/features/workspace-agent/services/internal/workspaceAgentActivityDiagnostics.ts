@@ -2,35 +2,7 @@ import type {
   AgentActivityMessage,
   AgentActivitySession
 } from "@tutti-os/agent-activity-core";
-import { setAgentActivityStoreDiagnosticSink } from "@tutti-os/agent-activity-core";
 import { normalizeTuttidError } from "@tutti-os/client-tuttid-ts";
-import type { DesktopRuntimeApi } from "@preload/types";
-
-export function registerAgentActivityStoreDiagnostics(
-  runtimeApi: Pick<DesktopRuntimeApi, "logTerminalDiagnostic">
-): void {
-  setAgentActivityStoreDiagnosticSink((event, details) => {
-    const flatDetails: Record<string, string | number | boolean | null> = {};
-    for (const [key, value] of Object.entries(details)) {
-      flatDetails[key] =
-        value === null ||
-        typeof value === "string" ||
-        typeof value === "number" ||
-        typeof value === "boolean"
-          ? value
-          : JSON.stringify(value);
-    }
-    void runtimeApi
-      .logTerminalDiagnostic({
-        details: flatDetails,
-        event: `agent.activity.store.${event}`,
-        level: "warn",
-        workspaceId:
-          typeof details.workspaceId === "string" ? details.workspaceId : null
-      })
-      .catch(() => {});
-  });
-}
 
 export function agentActivitySessionReconcileDiagnosticDetails(
   session: AgentActivitySession | null

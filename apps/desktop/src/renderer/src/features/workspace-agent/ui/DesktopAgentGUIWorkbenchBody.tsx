@@ -65,6 +65,7 @@ export type { DesktopAgentGUIConversationRailToggleDetail } from "./desktopAgent
 import { useDesktopAgentGUIContextMentions } from "./useDesktopAgentGUIContextMentions.ts";
 import { useDesktopAgentGUIReadiness } from "./useDesktopAgentGUIReadiness.ts";
 import { preloadDesktopAgentGuiMentionBrowse } from "../services/preloadDesktopAgentGuiMentionBrowse.ts";
+import { DESKTOP_AGENT_GUI_CURRENT_USER_ID } from "../services/desktopAgentGuiIdentity.ts";
 
 function DesktopAgentGUIWorkbenchBodyImpl({
   agentActivityRuntime,
@@ -699,7 +700,7 @@ function DesktopAgentGUIWorkbenchBodyImpl({
         identity={{
           nodeId: context.node.id,
           workspaceId,
-          currentUserId: "local",
+          currentUserId: DESKTOP_AGENT_GUI_CURRENT_USER_ID,
           title: context.node.title
         }}
         workspace={{

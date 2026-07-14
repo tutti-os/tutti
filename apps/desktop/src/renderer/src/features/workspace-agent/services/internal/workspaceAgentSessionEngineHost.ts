@@ -1,9 +1,7 @@
 import {
   AGENT_SESSION_ENGINE_LOCAL_ORIGIN,
-  createAgentActivityController,
   createAgentSessionEngine,
   type AgentActivityAdapter,
-  type AgentActivityController,
   type AgentSessionEngine,
   type SessionActivateCommand,
   type SessionReconcileCommand
@@ -20,7 +18,6 @@ import {
 
 export interface WorkspaceAgentSessionEngineHost {
   adapter: AgentActivityAdapter;
-  controller: AgentActivityController;
   engine: AgentSessionEngine;
 }
 
@@ -71,15 +68,10 @@ export function createWorkspaceAgentSessionEngineHost(
     tuttidClient: input.tuttidClient,
     runtimeApi: input.runtimeApi
   });
-  const controller = createAgentActivityController({
-    adapter,
-    autoRetainSessionEvents: false,
-    workspaceId: input.workspaceId
-  });
   const engine = createAgentSessionEngine({
     clock: { nowUnixMs: () => Date.now() },
     commandPort: {
-      execute: (command, options) => {
+      execute: async (command, options) => {
         switch (command.type) {
           case "attention/readState/read":
             return readDesktopWorkspaceAgentReadState({
@@ -103,6 +95,17 @@ export function createWorkspaceAgentSessionEngineHost(
                 unreadIds: [...command.failed.unreadIds]
               })
             ]);
+          case "composerOptions/load":
+            return adapter.loadComposerOptions({
+              agentTargetId: command.targetKey,
+              ...(command.cwd !== undefined ? { cwd: command.cwd } : {}),
+              provider: command.provider,
+              ...(command.settings !== undefined
+                ? { settings: command.settings }
+                : {}),
+              signal: options?.signal,
+              workspaceId: command.workspaceId
+            });
           case "turn/cancel":
             return input.cancelTurn({
               agentSessionId: command.agentSessionId,
@@ -154,8 +157,20 @@ export function createWorkspaceAgentSessionEngineHost(
             });
           case "engine/probe":
             return Promise.resolve({ ok: true });
-          case "engine/reconcileWorkspace":
-            return controller.load();
+          case "engine/reconcileWorkspace": {
+            // Historical/pull path: fetch the authoritative session list over
+            // HTTP and hand it to the engine as a historical snapshot. This
+            // never lights attention (live=false); realtime completions come in
+            // via turn/upserted on the reconcile push path instead.
+            const list = await adapter.listSessions({
+              workspaceId: command.workspaceId
+            });
+            engine.dispatch({
+              sessions: list.sessions,
+              type: "session/snapshotReceived"
+            });
+            return list;
+          }
           case "session/reconcile":
             return input.reconcileSession(command);
           case "session/unactivate":
@@ -177,20 +192,6 @@ export function createWorkspaceAgentSessionEngineHost(
       }
     }
   });
-  controller.subscribe((snapshot) => {
-    engine.dispatch(
-      { sessions: snapshot.sessions, type: "session/snapshotReceived" },
-      { batch: true }
-    );
-    engine.dispatch(
-      {
-        messages: Object.values(snapshot.sessionMessagesById).flat(),
-        type: "message/snapshotReceived",
-        workspaceId: input.workspaceId
-      },
-      { batch: true }
-    );
-  });
   input.subscribeSessionEvents(input.workspaceId, (event) => {
     if (!event || typeof event !== "object") return;
     const candidate = event as {
@@ -210,7 +211,7 @@ export function createWorkspaceAgentSessionEngineHost(
       workspaceId: input.workspaceId
     });
   });
-  return { adapter, controller, engine };
+  return { adapter, engine };
 }
 
 function activationInput(

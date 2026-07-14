@@ -15,7 +15,7 @@ recur and the repository now has implementation or debugging evidence for it.
 Use the focused runtime index or open one area directly:
 
 - [Agent Providers And Setup](./agent-provider-setup.md): Provider discovery, installation, authentication, models, configuration, and runtime reachability.
-- [Agent Sessions And Lifecycle](./agent-session-lifecycle.md): Turn state, loading, cancel, restore, rail projection, event updates, imports, and performance.
+- [Agent Sessions And Lifecycle](./agent-session-lifecycle.md): Turn state, activation, loading, cancel, restore, rail projection, realtime completion provenance, event updates, imports, and performance.
 - [Agent Approvals And Sub-Agents](./agent-approvals-subagents.md): Approval gates, plan exits, parent/child event attribution, background agents, and Message Center.
 
 ## [Desktop And Release](./desktop-release.md)

@@ -1,9 +1,8 @@
 import type { EngineIntent } from "./types.ts";
 
 // Instance-level diagnostics: the sink is a factory input, never a
-// module-level global (the legacy setAgentActivityStoreDiagnosticSink pattern
-// is the counterexample). Desktop and external hosts each wire their own
-// receiving end.
+// module-level global. Desktop and external hosts each wire their own receiving
+// end instead of sharing a process-wide store sink.
 
 export type EngineDiagnosticEvent =
   | {

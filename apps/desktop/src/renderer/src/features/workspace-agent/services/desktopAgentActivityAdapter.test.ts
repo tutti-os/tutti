@@ -527,7 +527,7 @@ test("desktop agent activity adapter leaves session event subscription to the se
     runtimeApi: createRuntimeApi(diagnostics)
   });
 
-  assert.equal(adapter.subscribeSessionEvents, undefined);
+  assert.equal("subscribeSessionEvents" in adapter, false);
   assert.deepEqual(diagnostics, []);
 });
 

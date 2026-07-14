@@ -33,7 +33,6 @@ export function agentActivitySnapshotDiagnosticDetails(
     activeOrRecentSessions,
     busySessionCount: snapshot.sessions.filter(agentActivitySessionIsBusy)
       .length,
-    presenceCount: snapshot.presences.length,
     sessionCount: snapshot.sessions.length,
     workspaceId: snapshot.workspaceId
   };

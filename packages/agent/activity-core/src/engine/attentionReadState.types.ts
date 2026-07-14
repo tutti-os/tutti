@@ -13,6 +13,11 @@ export interface AttentionReadPartition {
   writeDirty: boolean;
   writeInFlightCommandId: string | null;
   writeRevision: number;
+  // Durable read state, keyed by completion key (`turn:<session>:<turn>:<kind>`)
+  // rather than bare session id, so a new turn on an already-read session is a
+  // distinct entry and re-lights the lamp. Kept bounded to the latest completion
+  // per session. The `*Ids` naming is retained only because it is the serialized
+  // persistence field name; the values are completion keys, not session ids.
   hydrated: {
     completedReadIds: readonly string[];
     completedUnreadIds: readonly string[];
