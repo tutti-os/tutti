@@ -375,7 +375,7 @@ func TestAppFactoryServiceCreateUsesDraftDirAndReferenceContext(t *testing.T) {
 	for _, want := range []string{
 		"kit owns provider plugins",
 		"dynamic-agent-providers.md",
-		"loadTuttiAgentProviderCatalog",
+		"loadTuttiAgentCatalog",
 		"loadTuttiAgentComposerOptions",
 		"loadTuttiAgentSkillContext",
 		"Do not pass a mode",
@@ -405,7 +405,7 @@ func TestAppFactoryServiceCreateUsesDraftDirAndReferenceContext(t *testing.T) {
 		}
 	}
 	for _, want := range []string{
-		"loadTuttiAgentProviderCatalog",
+		"loadTuttiAgentCatalog",
 		"loadTuttiAgentComposerOptions",
 		"source: \"standalone\"",
 		"TuttiIntegrationError",

@@ -44,7 +44,7 @@ The `@tutti-os/agent-acp-kit/tutti` subpath exposes three auto-detecting server-
 ```ts
 import {
   loadTuttiAgentComposerOptions,
-  loadTuttiAgentProviderCatalog,
+  loadTuttiAgentCatalog,
   loadTuttiAgentSkillContext
 } from "@tutti-os/agent-acp-kit/tutti";
 ```

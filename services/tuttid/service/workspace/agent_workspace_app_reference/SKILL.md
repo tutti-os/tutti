@@ -55,7 +55,7 @@ Also read `$tutti-workspace-app-factory` before changing final package files or 
 Keep Tutti-hosted and standalone behavior behind the kit's fixed auto facade while sharing the same runtime execution layer:
 
 1. Pin an exact kit version that exports the auto catalog/composer/skill facade and managed header context helper.
-2. Call `loadTuttiAgentProviderCatalog({ runtime })`; do not pass mode or inspect `TUTTI_CLI`.
+2. Call `loadTuttiAgentCatalog({ runtime })`; do not use the deprecated provider-catalog projection, pass mode, or inspect `TUTTI_CLI`.
 3. Load composer options lazily for one exact agent target id and expose only app/domain DTO projections.
 4. Persist only canonical agent target ids returned by the facade. Migrate legacy provider-only state only when it maps unambiguously to one current agent; never retain provider as selection identity.
 5. Await `createManagedAgentRunContextFromHeaders(...)` directly. Do not pre-read credentials or pre-check provider support in app code.

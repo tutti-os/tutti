@@ -8,10 +8,10 @@ Do not use `$TUTTI_CLI agent ...`, provider-specific command families, or Agent 
 
 ```ts
 import { createDefaultLocalAgentRuntime } from "@tutti-os/agent-acp-kit";
-import { loadTuttiAgentProviderCatalog } from "@tutti-os/agent-acp-kit/tutti";
+import { loadTuttiAgentCatalog } from "@tutti-os/agent-acp-kit/tutti";
 
 const localAgentRuntime = createDefaultLocalAgentRuntime();
-const catalog = await loadTuttiAgentProviderCatalog({
+const catalog = await loadTuttiAgentCatalog({
   runtime: localAgentRuntime
 });
 ```

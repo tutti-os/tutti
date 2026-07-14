@@ -33,11 +33,11 @@ Only construct a custom plugin list when the app has a documented provider trans
 The app server exposes an app-owned endpoint such as `GET /api/agents/providers`. Its implementation calls the SDK facade directly:
 
 ```ts
-import { loadTuttiAgentProviderCatalog } from "@tutti-os/agent-acp-kit/tutti";
+import { loadTuttiAgentCatalog } from "@tutti-os/agent-acp-kit/tutti";
 import { localAgentRuntime } from "./local-agent-runtime.js";
 
-export async function getAgentProviderCatalog() {
-  return await loadTuttiAgentProviderCatalog({
+export async function getAgentCatalog() {
+  return await loadTuttiAgentCatalog({
     runtime: localAgentRuntime
   });
 }
@@ -53,8 +53,8 @@ The app may project the returned browser-safe DTO into product-specific fields, 
 
 ```ts
 import {
-  isTuttiAgentProviderCatalog,
-  type TuttiAgentProviderCatalog
+  isTuttiAgentCatalog,
+  type TuttiAgentCatalog
 } from "@tutti-os/agent-acp-kit/tutti/contracts";
 ```
 
@@ -63,7 +63,7 @@ UI rules:
 - render every returned agent, including several agents backed by the same provider;
 - key selection and persistence by `agentTargetId` and disable entries whose `availability.status` is not `available`;
 - localize `availability.reasonCode` instead of displaying raw codes;
-- prefer the last persisted available agent id, then the first available agent; do not use provider identity to break ties;
+- prefer the last persisted available agent id, then the available `defaultAgentTargetId`, then the first available agent; do not use provider identity to break ties;
 - use `displayName` for presentation, with app-owned icon overrides only;
 - never use kit registration to add an agent omitted by the Tutti CLI catalog.
 
