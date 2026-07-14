@@ -426,6 +426,7 @@ func (p Provider) publishLaunchRequested(
 	return p.launchPublisher.PublishAgentGUILaunchRequested(ctx, agentgui.NormalizeLaunchRequest(agentgui.LaunchRequest{
 		WorkspaceID:    workspaceID,
 		AgentSessionID: session.ID,
+		AgentTargetID:  session.AgentTargetID,
 		Provider:       session.Provider,
 		Source:         source,
 		Reason:         reason,

@@ -119,10 +119,11 @@ func (f *fakeAgentSessions) Create(_ context.Context, workspaceID string, input 
 		visible = *input.Visible
 	}
 	return agentservice.Session{
-		ID:       "SESSION-NEW",
-		Provider: input.Provider,
-		Cwd:      cwd,
-		Visible:  visible,
+		ID:            "SESSION-NEW",
+		AgentTargetID: input.AgentTargetID,
+		Provider:      input.Provider,
+		Cwd:           cwd,
+		Visible:       visible,
 	}, nil
 }
 
@@ -1134,7 +1135,7 @@ func TestStartCommandLeavesVisibilityUnsetAndShowPublishesLaunch(t *testing.T) {
 	if sessions.createInput.Visible != nil {
 		t.Fatalf("Visible = %#v, want nil", sessions.createInput.Visible)
 	}
-	if len(publisher.requests) != 1 || publisher.requests[0].AgentSessionID != "SESSION-NEW" || publisher.requests[0].Source != "cli" {
+	if len(publisher.requests) != 1 || publisher.requests[0].AgentSessionID != "SESSION-NEW" || publisher.requests[0].AgentTargetID != agenttargetbiz.IDLocalCodex || publisher.requests[0].Source != "cli" {
 		t.Fatalf("launch requests = %#v", publisher.requests)
 	}
 }
@@ -1596,7 +1597,12 @@ func TestAgentStartCommandUsesComposerDefaults(t *testing.T) {
 }
 
 func TestOpenCommandPublishesLaunchIntent(t *testing.T) {
-	sessions := &fakeAgentSessions{}
+	sessions := &fakeAgentSessions{getSession: agentservice.Session{
+		ID:            "SESSION-1",
+		AgentTargetID: "extension:gemini",
+		Provider:      "gemini",
+		Visible:       true,
+	}}
 	publisher := &fakeAgentGUILaunchPublisher{}
 	command := NewProviderWithLaunchPublisher(
 		fakeWorkspaceCatalog{startup: workspacebiz.Summary{ID: "workspace-1"}},
@@ -1616,7 +1622,7 @@ func TestOpenCommandPublishesLaunchIntent(t *testing.T) {
 	if output.Rows[0]["launchRequested"] != true {
 		t.Fatalf("output = %#v", output)
 	}
-	if len(publisher.requests) != 1 || publisher.requests[0].AgentSessionID != "SESSION-1" || publisher.requests[0].Reason != "open" {
+	if len(publisher.requests) != 1 || publisher.requests[0].AgentSessionID != "SESSION-1" || publisher.requests[0].AgentTargetID != "extension:gemini" || publisher.requests[0].Provider != "gemini" || publisher.requests[0].Reason != "open" {
 		t.Fatalf("launch requests = %#v", publisher.requests)
 	}
 }

@@ -5,6 +5,7 @@ import "strings"
 type LaunchRequest struct {
 	WorkspaceID    string
 	AgentSessionID string
+	AgentTargetID  string
 	Provider       string
 	Source         string
 	Reason         string
@@ -19,6 +20,7 @@ func NormalizeLaunchRequest(input LaunchRequest) LaunchRequest {
 	return LaunchRequest{
 		WorkspaceID:    strings.TrimSpace(input.WorkspaceID),
 		AgentSessionID: strings.TrimSpace(input.AgentSessionID),
+		AgentTargetID:  strings.TrimSpace(input.AgentTargetID),
 		Provider:       strings.TrimSpace(input.Provider),
 		Source:         source,
 		Reason:         strings.TrimSpace(input.Reason),

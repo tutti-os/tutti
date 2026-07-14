@@ -27,6 +27,7 @@ func (p AgentGUILaunchPublisher) PublishAgentGUILaunchRequested(
 	}
 	payload, err := json.Marshal(agentGUIWorkbenchLaunchPayload{
 		AgentSessionID: request.AgentSessionID,
+		AgentTargetID:  request.AgentTargetID,
 		Provider:       request.Provider,
 	})
 	if err != nil {
@@ -44,6 +45,7 @@ func (p AgentGUILaunchPublisher) PublishAgentGUILaunchRequested(
 
 type agentGUIWorkbenchLaunchPayload struct {
 	AgentSessionID string `json:"agentSessionId"`
+	AgentTargetID  string `json:"agentTargetId,omitempty"`
 	Provider       string `json:"provider"`
 }
 

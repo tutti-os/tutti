@@ -25,6 +25,7 @@ func TestAgentGUILaunchPublisherPublishesWorkbenchNodeLaunch(t *testing.T) {
 	publisher := AgentGUILaunchPublisher{Service: service}
 	if err := publisher.PublishAgentGUILaunchRequested(context.Background(), agentgui.LaunchRequest{
 		AgentSessionID: "session-1",
+		AgentTargetID:  " extension:gemini ",
 		Provider:       "codex",
 		RequestID:      "request-1",
 		Source:         "cli",
@@ -45,6 +46,7 @@ func TestAgentGUILaunchPublisherPublishesWorkbenchNodeLaunch(t *testing.T) {
 		LaunchSource string `json:"launchSource"`
 		Payload      struct {
 			AgentSessionID string `json:"agentSessionId"`
+			AgentTargetID  string `json:"agentTargetId"`
 			Provider       string `json:"provider"`
 		} `json:"payload"`
 		RequestID string `json:"requestId"`
@@ -63,7 +65,7 @@ func TestAgentGUILaunchPublisherPublishesWorkbenchNodeLaunch(t *testing.T) {
 	if payload.RequestID != "request-1" {
 		t.Fatalf("payload requestId = %q, want request-1", payload.RequestID)
 	}
-	if payload.Payload.AgentSessionID != "session-1" || payload.Payload.Provider != "codex" {
-		t.Fatalf("payload nested launch = %#v, want session/provider", payload.Payload)
+	if payload.Payload.AgentSessionID != "session-1" || payload.Payload.AgentTargetID != "extension:gemini" || payload.Payload.Provider != "codex" {
+		t.Fatalf("payload nested launch = %#v, want session/target/provider", payload.Payload)
 	}
 }
