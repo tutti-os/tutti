@@ -58,5 +58,5 @@ When local agents are involved:
 
 1. Load the agent catalog through `@tutti-os/agent-acp-kit/tutti`; it automatically uses Tutti CLI or standalone detection.
 2. Verify the web settings/runtime panel or equivalent status UI.
-3. Run isolated smoke tests for one available catalog agent turn.
+3. Run an isolated smoke-test turn with one available catalog agent.
 4. Inspect run events, tool calls, generated files, and package-local data writes.

@@ -8,7 +8,7 @@ Depend on a released exact version of `@tutti-os/agent-acp-kit`. The kit owns pr
 
 The app owns product orchestration, its backend endpoint, prompt policy, app tools, persistence, and UI. It must not patch kit build output or copy platform protocol code.
 
-Daemon-owned Agent Session apps are a different execution model: they may use Tutti CLI start/get/cancel commands and must not instantiate an app-owned local runtime merely for consistency.
+Daemon-owned Agent Session apps are a different execution model: they may use Tutti CLI session commands and must not instantiate an app-owned local runtime merely for consistency. They must begin discovery with `tutti agent list --json`, select an exact returned `agentTargetId`, and pass it to `tutti agent start --agent-id <agentTargetId> ...` for starts or handoffs. Provider-specific launch families and provider-only starts are legacy compatibility, not new-session authority.
 
 ## Runtime shape
 
@@ -216,7 +216,7 @@ Add tests for:
 - auto CLI-backed and standalone catalog/composer/skill behavior without a mode input;
 - configured-but-failing CLI returning a typed error without standalone fallback;
 - disabled Agent Targets staying absent without SDK detection adding them back;
-- full dynamic provider projection and lazy composer loading;
+- full dynamic Agent Target projection and lazy composer loading;
 - exact agent ids and provider-only legacy state migration only when the current catalog has one unambiguous matching target;
 - direct awaited managed run context creation, with no app credential precheck;
 - no managed secret/cwd leakage;

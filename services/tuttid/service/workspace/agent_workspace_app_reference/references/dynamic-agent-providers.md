@@ -14,7 +14,7 @@ Tutti CLI owns platform capability and enabled Agent Target visibility
 
 An app must not call workspace-app Agent catalog HTTP routes, build daemon URLs, read an Agent catalog bearer token, pass an app ID to agent discovery, spawn `TUTTI_CLI`, parse CLI JSON, or maintain provider ID mappings. The kit does all of that.
 
-Agent ids are the selection identity and are an open string set. Persist and return the exact `agentTargetId` supplied by the kit; do not reconstruct it from a provider name. `providerId` is derived runtime metadata and may be shared by several agents. Do not define closed agent or provider unions such as `"codex" | "claude-code"`.
+Agent IDs are the selection identity and are an open string set. Persist and return the exact `agentTargetId` supplied by the kit; do not reconstruct it from a provider name. `providerId` is derived runtime metadata and may be shared by several agents. Do not define closed agent or provider unions such as `"codex" | "claude-code"`.
 
 ## Runtime registration
 
@@ -30,7 +30,7 @@ Only construct a custom plugin list when the app has a documented provider trans
 
 ## Agent catalog
 
-The app server exposes an app-owned endpoint such as `GET /api/agents/providers`. Its implementation calls the SDK facade directly:
+The app server exposes an app-owned endpoint such as `GET /api/agent-targets`. Its implementation calls the SDK facade directly:
 
 ```ts
 import { loadTuttiAgentCatalog } from "@tutti-os/agent-acp-kit/tutti";
@@ -92,7 +92,7 @@ Do not eagerly load composer options for every agent. A failure belongs to the s
 
 ## Persistence and host bridge
 
-Persist the canonical `agentTargetId`. Legacy provider-only state may be used once to select a matching current catalog entry, but the migrated value must be an exact agent id. If several agents share that provider, do not guess; choose through explicit product policy or user input.
+Persist the canonical `agentTargetId`. Legacy provider-only state may be used once to select a matching current catalog entry only when exactly one target in the full current catalog uses that provider. The migrated value must be that exact agent id. For zero or multiple matches, leave the legacy preference unresolved and require an explicit exact Agent Target selection; product defaults must not guess the identity.
 
 When invoking a host feature such as:
 
@@ -104,14 +104,17 @@ window.tuttiExternal?.workspace?.openFeature({
 ```
 
 derive the legacy bridge provider from the selected catalog entry. Do not use that provider value as the app's persisted agent selection.
+Use a provider-only bridge only when exactly one target in the full current catalog uses that provider. If the provider is shared, require an exact-agent host API instead of collapsing several Agent Targets into one launch identity.
 
 ## Model IDs
 
-If an app needs globally unique model IDs, store the canonical provider separately or prefix the provider model:
+If an app needs model IDs that remain unique across Agent Targets, include the selection identity and store the canonical provider separately:
 
 ```ts
-const appModelId = `${providerId}:${providerModelId}`;
+const appModelId = JSON.stringify([agentTargetId, providerModelId]);
 ```
+
+The tuple encoding stays unambiguous even when either open-string component contains punctuation. Use `JSON.stringify([providerId, providerModelId])` only when the product intentionally treats the same provider model from multiple Agent Targets as one shared choice.
 
 Do not infer a provider from a model name or assume a fixed model/provider catalog.
 

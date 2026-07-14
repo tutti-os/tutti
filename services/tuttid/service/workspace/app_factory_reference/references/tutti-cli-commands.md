@@ -56,7 +56,7 @@ The command set can differ by workspace and installed apps. Discover commands at
 
 - `status`: show local `tuttid` health.
 - `doctor`: daemon and command-routing diagnostics.
-- `agent`: start, list, send to, open, cancel, and inspect agent sessions and providers.
+- `agent`: discover the current Agent Targets with `agent list`, start an exact target with `agent start --agent-id`, and send to, open, cancel, or inspect sessions.
 - `issue`: create, list, update, delete, and manage issue topics, tasks, and runs.
 - App-provided groups such as `weather`, `automation`, or `news` may appear when those apps are installed and enabled in the workspace.
 
