@@ -5,6 +5,77 @@ import { createLocalAgentGUIAgentTarget } from "../../../../../agentTargets";
 import { useAgentGuiConversationList } from "./useAgentGuiConversationList";
 
 describe("useAgentGuiConversationList", () => {
+  it("keeps a pending activation untitled until canonical title arrives", () => {
+    const engine = createAgentSessionEngine({
+      clock: { nowUnixMs: () => 1 },
+      commandPort: { execute: async () => ({}) },
+      identity: { origin: "test", workspaceId: "workspace-1" },
+      scheduler: { schedule: () => ({ cancel() {} }) }
+    });
+    const query = {
+      workspaceId: "workspace-1",
+      userId: "user-1",
+      provider: "codex" as const,
+      sessionOrigin: "test"
+    };
+    const { result } = renderHook(() =>
+      useAgentGuiConversationList(engine, query)
+    );
+
+    act(() => {
+      engine.dispatch({
+        type: "activation/requested",
+        agentSessionId: "session-1",
+        agentTargetId: "local:codex",
+        clientSubmitId: "submit-1",
+        cwd: "/workspace",
+        expiresAtUnixMs: 100,
+        mode: "new",
+        requestedAtUnixMs: 1,
+        requestId: "activation-1",
+        title: "",
+        workspaceId: "workspace-1"
+      });
+    });
+
+    expect(result.current?.conversations).toEqual([
+      expect.objectContaining({
+        id: "session-1",
+        provider: "codex",
+        title: "",
+        titleFallback: "untitled-conversation"
+      })
+    ]);
+
+    act(() => {
+      engine.dispatch({
+        type: "session/snapshotReceived",
+        sessions: [
+          {
+            activeTurnId: null,
+            agentSessionId: "session-1",
+            createdAtUnixMs: 2,
+            cwd: "/workspace",
+            latestTurnInteractions: [],
+            pendingInteractions: [],
+            provider: "codex",
+            title: "test1",
+            updatedAtUnixMs: 2,
+            workspaceId: "workspace-1"
+          }
+        ]
+      });
+    });
+
+    expect(result.current?.conversations).toEqual([
+      expect.objectContaining({
+        id: "session-1",
+        title: "test1",
+        titleFallback: null
+      })
+    ]);
+  });
+
   it("projects canonical sessions and pending activation records without a list store", () => {
     const engine = createAgentSessionEngine({
       clock: { nowUnixMs: () => 1 },

@@ -57,52 +57,22 @@ describe("agentGuiProviderIdentity", () => {
     ).toBe("unknown");
   });
 
-  it("marks unknown-provider titles for generic-agent fallback instead of translating in the model", () => {
-    expect(resolveAgentGUIConversationTitle("", "unknown")).toEqual({
+  it("marks empty titles as an untitled conversation without translating in the model", () => {
+    expect(resolveAgentGUIConversationTitle("")).toEqual({
       title: "",
-      titleFallback: "generic-agent"
-    });
-  });
-
-  it("keeps known-provider fallback titles in the model", () => {
-    expect(resolveAgentGUIConversationTitle("", "codex")).toEqual({
-      title: "Codex",
-      titleFallback: null
-    });
-    expect(resolveAgentGUIConversationTitle("", "claude-code")).toEqual({
-      title: "Claude Code",
-      titleFallback: null
-    });
-    expect(resolveAgentGUIConversationTitle("", "hermes")).toEqual({
-      title: "Hermes Agent",
-      titleFallback: null
-    });
-    expect(resolveAgentGUIConversationTitle("", "nexight")).toEqual({
-      title: "Nexight",
-      titleFallback: null
-    });
-    expect(resolveAgentGUIConversationTitle("", "hermes")).toEqual({
-      title: "Hermes Agent",
-      titleFallback: null
-    });
-    expect(resolveAgentGUIConversationTitle("", "openclaw")).toEqual({
-      title: "OpenClaw",
-      titleFallback: null
+      titleFallback: "untitled-conversation"
     });
   });
 
   it("strips trailing periods from agent GUI conversation titles", () => {
+    expect(resolveAgentGUIConversationTitle("Build the landing page.")).toEqual(
+      {
+        title: "Build the landing page",
+        titleFallback: null
+      }
+    );
     expect(
-      resolveAgentGUIConversationTitle("Build the landing page.", "codex")
-    ).toEqual({
-      title: "Build the landing page",
-      titleFallback: null
-    });
-    expect(
-      resolveAgentGUIConversationTitle(
-        "开始一个 Claude Code GUI 会话。",
-        "claude-code"
-      )
+      resolveAgentGUIConversationTitle("开始一个 Claude Code GUI 会话。")
     ).toEqual({
       title: "开始一个 Claude Code GUI 会话",
       titleFallback: null
@@ -110,33 +80,29 @@ describe("agentGuiProviderIdentity", () => {
   });
 
   it("accepts canonical mention titles", () => {
-    expect(
-      resolveAgentGUIConversationTitle("@wang jomes & Codex hi", "codex")
-    ).toEqual({
+    expect(resolveAgentGUIConversationTitle("@wang jomes & Codex hi")).toEqual({
       title: "@wang jomes & Codex hi",
       titleFallback: null
     });
   });
 
   it("accepts canonical workspace link labels", () => {
-    expect(
-      resolveAgentGUIConversationTitle("@aa.md 这是什么内容", "codex")
-    ).toEqual({
+    expect(resolveAgentGUIConversationTitle("@aa.md 这是什么内容")).toEqual({
       title: "@aa.md 这是什么内容",
       titleFallback: null
     });
   });
 
-  it("resolves generic-agent fallback labels in the view layer", () => {
+  it("resolves localized untitled-conversation fallback labels in the view layer", () => {
     expect(
       resolveAgentGUIConversationDisplayTitle(
         {
           title: "",
-          titleFallback: "generic-agent"
+          titleFallback: "untitled-conversation"
         },
-        "Agent"
+        "未命名对话"
       )
-    ).toBe("Agent");
+    ).toBe("未命名对话");
   });
 
   it("strips trailing periods from agent GUI display fallback labels", () => {
@@ -144,11 +110,11 @@ describe("agentGuiProviderIdentity", () => {
       resolveAgentGUIConversationDisplayTitle(
         {
           title: "",
-          titleFallback: "generic-agent"
+          titleFallback: "untitled-conversation"
         },
-        "Agent."
+        "Untitled conversation."
       )
-    ).toBe("Agent");
+    ).toBe("Untitled conversation");
   });
 
   it("resolves provider display labels with unknown falling back to Agent", () => {
@@ -172,7 +138,7 @@ describe("agentGuiProviderIdentity", () => {
       resolveAgentGUIDockConversationTitle({
         provider: "unknown",
         title: "",
-        titleFallback: "generic-agent"
+        titleFallback: "untitled-conversation"
       })
     ).toBeNull();
     expect(

@@ -305,8 +305,7 @@ export function conversationSummaryFromAgentSession(
     sessionProvider: session.provider
   });
   const { title, titleFallback } = resolveAgentGUIConversationTitle(
-    session.title,
-    provider
+    session.title
   );
   return {
     id: session.agentSessionId.trim(),
@@ -376,10 +375,7 @@ export function resolveAgentGUIConversationTitleFromTimelineItems({
   if (!userMessageTitle) {
     return null;
   }
-  return resolveAgentGUIConversationTitle(
-    userMessageTitle,
-    conversation.provider
-  );
+  return resolveAgentGUIConversationTitle(userMessageTitle);
 }
 
 export function resolveAgentGUIConversationTitleFromMessages({
@@ -403,10 +399,7 @@ export function resolveAgentGUIConversationTitleFromMessages({
   if (!projectedTitle) {
     return null;
   }
-  return resolveAgentGUIConversationTitle(
-    projectedTitle,
-    conversation.provider
-  );
+  return resolveAgentGUIConversationTitle(projectedTitle);
 }
 
 function filterAgentGUIRuntimeSnapshot(
@@ -442,8 +435,7 @@ function conversationSummaryFromActivity(
       })
     : null;
   const { title, titleFallback } = resolveAgentGUIConversationTitle(
-    explicitSessionTitle ?? activity.title,
-    provider
+    explicitSessionTitle ?? activity.title
   );
   return {
     id: activity.sessionId,

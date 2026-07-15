@@ -1,8 +1,6 @@
 import type { AgentActivityDisplayStatus } from "@tutti-os/agent-activity-core";
 import { useEffect, useMemo, useRef } from "react";
-import { AGENT_PROVIDER_LABEL } from "../../../contexts/settings/domain/agentSettings";
 import type { AgentHostUserProject } from "../../../host/agentHostApi";
-import { translate } from "../../../i18n/index";
 import {
   agentGUIAgentTargetRefsEqual,
   resolveAgentGUIAgentTarget
@@ -144,10 +142,6 @@ export function useAgentGUIConversationPresentation(
       );
     }
     if (!input.activeConversationId) return stabilize(null);
-    const providerLabel =
-      (AGENT_PROVIDER_LABEL as Record<string, string>)[input.data.provider] ??
-      input.data.provider ??
-      translate("sidebar.fallbackAgentLabel");
     const fallbackStatus =
       input.isSubmitting ||
       input.isCreatingConversation ||
@@ -172,8 +166,8 @@ export function useAgentGUIConversationPresentation(
       id: input.activeConversationId,
       userId: input.currentUserId?.trim() || undefined,
       provider: input.data.provider,
-      title: providerLabel,
-      titleFallback: null,
+      title: "",
+      titleFallback: "untitled-conversation",
       status: activityBusyStatus ?? fallbackStatus,
       cwd: input.workspacePath,
       project: resolveAgentGUIConversationProject(

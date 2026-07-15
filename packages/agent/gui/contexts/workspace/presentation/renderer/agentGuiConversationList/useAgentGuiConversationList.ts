@@ -38,8 +38,7 @@ export function projectCanonicalAgentGUIConversationSummaries(
       sessionProvider: item.session.provider
     });
     const { title, titleFallback } = resolveAgentGUIConversationTitle(
-      item.session.title,
-      provider
+      item.session.title
     );
     const canonicalUpdatedAtUnixMs =
       item.session.updatedAtUnixMs ?? item.session.createdAtUnixMs ?? 0;
@@ -110,8 +109,7 @@ export function useAgentGuiConversationList(
           sessionProvider: target?.provider ?? query.provider
         });
         const { title, titleFallback } = resolveAgentGUIConversationTitle(
-          activation.title ?? "",
-          provider
+          activation.title ?? ""
         );
         return {
           agentTargetId: activation.agentTargetId,
@@ -144,8 +142,7 @@ export function useAgentGuiConversationList(
         const { title, titleFallback } = resolveAgentGUIConversationTitle(
           activationIsNewer && activation.title
             ? activation.title
-            : conversation.title,
-          conversation.provider
+            : conversation.title
         );
         return {
           ...conversation,
