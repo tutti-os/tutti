@@ -72,6 +72,7 @@ func TestTuttidDerivedPathsUseDevelopmentRoot(t *testing.T) {
 }
 
 func TestTuttidDerivedPathsUseOverrides(t *testing.T) {
+	t.Setenv("TUTTI_STATE_DIR", "/tmp/tutti-custom")
 	t.Setenv("TUTTID_DB_PATH", "/tmp/tuttid-custom.db")
 	t.Setenv("TUTTID_LOG_PATH", "/tmp/tuttid.log")
 	t.Setenv("TUTTID_RUN_DIR", "/tmp/tuttid-run")
@@ -92,5 +93,8 @@ func TestTuttidDerivedPathsUseOverrides(t *testing.T) {
 	}
 	if got := TuttidPIDPath(); got != "/tmp/tuttid.pid" {
 		t.Fatalf("TuttidPIDPath() = %q", got)
+	}
+	if got, want := TuttidStateOwnershipLockPath(), filepath.Join("/tmp/tutti-custom", "run", "tuttid.pid.lock"); got != want {
+		t.Fatalf("TuttidStateOwnershipLockPath() = %q", got)
 	}
 }

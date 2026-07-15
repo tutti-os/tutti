@@ -1,5 +1,7 @@
 package types
 
+import "path/filepath"
+
 func TuttidDBPath() string {
 	return ResolveDefaultsFromEnv().State.TuttidDBPath
 }
@@ -22,6 +24,14 @@ func TuttidListenerInfoPath() string {
 
 func TuttidPIDPath() string {
 	return ResolveDefaultsFromEnv().State.TuttidPIDPath
+}
+
+func TuttidStateOwnershipLockPath() string {
+	return filepath.Join(
+		DefaultStateDir(),
+		generatedDefaults.State.RunDirName,
+		generatedDefaults.State.PIDFileName+".lock",
+	)
 }
 
 func DefaultStateDir() string {

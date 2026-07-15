@@ -15,17 +15,19 @@ var errPIDFileLocked = errors.New("pid file is locked")
 
 type pidFileLease struct {
 	lockFile *os.File
-	pidPath  string
-	body     []byte
 }
 
 func acquirePIDFile() (*pidFileLease, error) {
+	return acquirePIDFileWithProcessLookup(processExecutablePath)
+}
+
+func acquirePIDFileWithProcessLookup(lookup processExecutablePathLookup) (*pidFileLease, error) {
 	pidPath := tuttitypes.TuttidPIDPath()
-	if err := os.MkdirAll(filepath.Dir(pidPath), 0o755); err != nil {
-		return nil, fmt.Errorf("create pid file directory: %w", err)
+	lockPath := tuttitypes.TuttidStateOwnershipLockPath()
+	if err := os.MkdirAll(filepath.Dir(lockPath), 0o755); err != nil {
+		return nil, fmt.Errorf("create state ownership lock directory: %w", err)
 	}
 
-	lockPath := pidPath + ".lock"
 	file, err := os.OpenFile(lockPath, os.O_CREATE|os.O_RDWR, 0o600)
 	if err != nil {
 		return nil, fmt.Errorf("open state ownership lock: %w", err)
@@ -33,9 +35,13 @@ func acquirePIDFile() (*pidFileLease, error) {
 	if err := lockPIDFile(file); err != nil {
 		_ = file.Close()
 		if errors.Is(err, errPIDFileLocked) {
-			return nil, existingDaemonError(pidPath)
+			return nil, existingDaemonError(pidPath, lookup)
 		}
 		return nil, fmt.Errorf("lock state ownership file: %w", err)
+	}
+	if err := os.MkdirAll(filepath.Dir(pidPath), 0o755); err != nil {
+		unlockAndClosePIDFile(file)
+		return nil, fmt.Errorf("create pid file directory: %w", err)
 	}
 
 	existingBody, err := os.ReadFile(pidPath)
@@ -43,7 +49,7 @@ func acquirePIDFile() (*pidFileLease, error) {
 		unlockAndClosePIDFile(file)
 		return nil, fmt.Errorf("read pid file: %w", err)
 	}
-	if existingPID, ok := parsePID(existingBody); ok && tuttitypes.ProcessExists(existingPID) {
+	if existingPID, ok := parsePID(existingBody); ok && isLiveTuttidProcess(existingPID, lookup) {
 		unlockAndClosePIDFile(file)
 		return nil, fmt.Errorf("state directory is already owned by live tuttid process %d", existingPID)
 	}
@@ -54,13 +60,13 @@ func acquirePIDFile() (*pidFileLease, error) {
 		return nil, fmt.Errorf("write pid file: %w", err)
 	}
 
-	return &pidFileLease{lockFile: file, pidPath: pidPath, body: body}, nil
+	return &pidFileLease{lockFile: file}, nil
 }
 
-func existingDaemonError(pidPath string) error {
+func existingDaemonError(pidPath string, lookup processExecutablePathLookup) error {
 	body, err := os.ReadFile(pidPath)
 	if err == nil {
-		if pid, ok := parsePID(body); ok && tuttitypes.ProcessExists(pid) {
+		if pid, ok := parsePID(body); ok && isLiveTuttidProcess(pid, lookup) {
 			return fmt.Errorf("state directory is already owned by live tuttid process %d", pid)
 		}
 	}
@@ -69,7 +75,7 @@ func existingDaemonError(pidPath string) error {
 
 func parsePID(body []byte) (int, bool) {
 	pid, err := strconv.Atoi(strings.TrimSpace(string(body)))
-	return pid, err == nil && pid > 1
+	return pid, err == nil && pid > 0
 }
 
 func unlockAndClosePIDFile(file *os.File) {
@@ -80,10 +86,6 @@ func unlockAndClosePIDFile(file *os.File) {
 func (l *pidFileLease) Release() {
 	if l == nil || l.lockFile == nil {
 		return
-	}
-	currentBody, err := os.ReadFile(l.pidPath)
-	if err == nil && string(currentBody) == string(l.body) {
-		_ = os.Remove(l.pidPath)
 	}
 	unlockAndClosePIDFile(l.lockFile)
 	l.lockFile = nil

@@ -120,7 +120,9 @@
   PID sidecar as an exclusive operating-system lease before logging, lock
   recovery, database wiring, migrations, or listener publication. Keep the PID
   text check so a new daemon also refuses a state root owned by a live older
-  daemon.
+  daemon, but validate process identity so PID reuse by an unrelated process
+  does not block recovery. Leave the marker for stale-owner recovery instead of
+  deleting it through a read/remove race with an older lockless daemon.
 - Validation:
   Run focused daemon tests. Verify `tuttid --help` exits successfully without
   creating the selected state root, invalid arguments exit nonzero without

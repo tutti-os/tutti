@@ -26,6 +26,10 @@ They are not the primary source of product defaults.
 
 Per-file overrides such as `TUTTID_DB_PATH` are still allowed for narrow operational needs, but new local storage code should derive paths from the shared generated defaults and shared state root first.
 
+`TUTTID_RUN_DIR` and `TUTTID_PID_PATH` redirect runtime metadata only. They do
+not redirect the state ownership lock, which is always derived from
+`TUTTI_STATE_DIR` as `<state-dir>/run/tuttid.pid.lock`.
+
 ## Allowed Override Surface
 
 Current supported override surface for local state and closely-related runtime paths:
@@ -92,9 +96,15 @@ One state root has exactly one live `tuttid` owner. The daemon must acquire and
 hold an exclusive operating-system lock on `<state-dir>/run/tuttid.pid.lock` before
 initializing logging, recovering runtime locks, opening SQLite, running
 migrations, seeding system records, or publishing listener metadata. A second
-daemon targeting the same root must fail before touching durable state. The PID
+daemon targeting the same root must fail before touching durable state, even if
+its pid or runtime metadata path is overridden. The PID
 text remains available for desktop supervision and also protects upgrades from
-an older live daemon that did not yet hold the operating-system lock.
+an older live daemon that did not yet hold the operating-system lock. Before a
+legacy PID blocks startup, the daemon verifies that the positive PID still
+identifies a `tuttid` executable; a reused PID owned by an unrelated process is
+stale metadata. Shutdown leaves the PID marker in place instead of racing a
+legacy writer with a non-atomic read-then-remove. The next owner validates and
+replaces that stale marker while holding the state-root lock.
 
 Arguments that only inspect the daemon executable, such as `--help`, must exit
 before state-path creation or ownership acquisition. Unknown arguments must
