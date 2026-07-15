@@ -7969,13 +7969,14 @@ html[data-theme="light"] [data-message-center-item-id].agent-gui-edge-glow {
 
 .agent-gui-node__composer-queued-prompt-header {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   justify-content: flex-start;
   gap: 4px;
   min-height: 20px;
 }
 
 .agent-gui-node__composer-queued-prompt-expand-cue {
+  display: block;
   flex: 0 0 auto;
   color: var(--agent-gui-accent-strong);
   opacity: 0;
