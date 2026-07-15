@@ -2,6 +2,37 @@
 
 [Back to troubleshooting index](./README.md)
 
+### Temporary Git fixture turns a linked worktree bare
+
+- Symptom:
+  A test run leaves the shared repository config with `core.bare=true`, writes
+  fixture author identity into `.git/config`, or creates an `init` commit that
+  deletes most tracked files from a linked-worktree branch.
+- Quick checks:
+  Run `git config --show-origin --get core.bare`, inspect local `user.name` and
+  `user.email`, then inspect the affected branch reflog for a fixture-authored
+  commit. Search the responsible test for temporary-repository Git commands
+  whose child environment inherits `GIT_DIR` or `GIT_WORK_TREE`.
+- Root cause:
+  `mkdtemp` isolates files, not Git repository selection. An inherited
+  linked-worktree `GIT_DIR` overrides the fixture cwd, so `git init` reinitializes
+  the caller's private worktree metadata and updates its shared common config.
+  Later fixture `add` and `commit` commands can then stage the fixture tree
+  against the real branch.
+- Fix:
+  Remove repository-local Git environment variables for every fixture Git
+  command, set `GIT_CEILING_DIRECTORIES` to the fixture root, stop on any command
+  failure, verify `--absolute-git-dir` after initialization, and pass fixture
+  author identity through commit-local `-c` arguments instead of `git config`.
+- Validation:
+  Run the fixture tests with poisoned `GIT_DIR`, `GIT_WORK_TREE`, and
+  `GIT_CONFIG_*` inputs that point only at disposable paths. Confirm the fixture
+  initializes its own `.git`, then verify the caller's config, index, branch,
+  and worktree remain unchanged.
+- References:
+  [check-agent-gui-degradation.test.mjs](../../../tools/scripts/check-agent-gui-degradation.test.mjs)
+  [static-analysis.md](../static-analysis.md)
+
 ### Dynamic CLI input rejects plausible flags
 
 - Symptom:

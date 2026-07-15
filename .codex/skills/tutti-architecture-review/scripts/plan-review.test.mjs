@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, realpath, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -416,6 +416,7 @@ async function createFixtureRepo() {
   );
 
   runGit(workspaceRoot, ["init"]);
+  await assertFixtureGitRoot(workspaceRoot);
   runGit(workspaceRoot, ["add", "."]);
   runGit(workspaceRoot, [
     "-c",
@@ -462,16 +463,59 @@ function sampleTask(id) {
 function runPlanner(workspaceRoot, args) {
   return spawnSync(process.execPath, [scriptPath, ...args], {
     cwd: workspaceRoot,
-    encoding: "utf8"
+    encoding: "utf8",
+    env: isolatedFixtureGitEnvironment(workspaceRoot)
   });
 }
 
 function runGit(workspaceRoot, args) {
   const result = spawnSync("git", args, {
     cwd: workspaceRoot,
-    encoding: "utf8"
+    encoding: "utf8",
+    env: isolatedFixtureGitEnvironment(workspaceRoot)
   });
 
   assert.equal(result.status, 0, result.stderr || result.stdout);
   return result;
+}
+
+const gitRepositoryEnvironmentVariables = [
+  "GIT_ALTERNATE_OBJECT_DIRECTORIES",
+  "GIT_COMMON_DIR",
+  "GIT_CONFIG",
+  "GIT_CONFIG_COUNT",
+  "GIT_CONFIG_PARAMETERS",
+  "GIT_DIR",
+  "GIT_GRAFT_FILE",
+  "GIT_IMPLICIT_WORK_TREE",
+  "GIT_INDEX_FILE",
+  "GIT_INTERNAL_SUPER_PREFIX",
+  "GIT_NO_REPLACE_OBJECTS",
+  "GIT_OBJECT_DIRECTORY",
+  "GIT_PREFIX",
+  "GIT_REPLACE_REF_BASE",
+  "GIT_SHALLOW_FILE",
+  "GIT_WORK_TREE"
+];
+
+function isolatedFixtureGitEnvironment(workspaceRoot) {
+  const env = { ...process.env };
+  for (const name of gitRepositoryEnvironmentVariables) {
+    delete env[name];
+  }
+  for (const name of Object.keys(env)) {
+    if (/^GIT_CONFIG_(?:KEY|VALUE)_\d+$/u.test(name)) {
+      delete env[name];
+    }
+  }
+  env.GIT_CEILING_DIRECTORIES = workspaceRoot;
+  return env;
+}
+
+async function assertFixtureGitRoot(workspaceRoot) {
+  const result = runGit(workspaceRoot, ["rev-parse", "--absolute-git-dir"]);
+  assert.equal(
+    await realpath(result.stdout.trim()),
+    await realpath(join(workspaceRoot, ".git"))
+  );
 }

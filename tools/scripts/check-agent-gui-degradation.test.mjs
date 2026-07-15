@@ -1,6 +1,12 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { mkdtemp, mkdir, readFile, writeFile } from "node:fs/promises";
+import {
+  mkdtemp,
+  mkdir,
+  readFile,
+  realpath,
+  writeFile
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -347,6 +353,30 @@ test("staged check flags new module-level mutable globals", () => {
   assert.equal(violations[0].rule, "no-module-mutable-global");
 });
 
+test("temporary Git fixtures discard inherited repository selectors", () => {
+  const workspaceRoot = "/tmp/tutti-git-fixture";
+  const inheritedEnvironment = Object.fromEntries(
+    gitRepositoryEnvironmentVariables.map((name) => [name, `/poison/${name}`])
+  );
+  inheritedEnvironment.GIT_CEILING_DIRECTORIES = "/poison/ceiling";
+  inheritedEnvironment.GIT_CONFIG_KEY_0 = "core.bare";
+  inheritedEnvironment.GIT_CONFIG_VALUE_0 = "true";
+  inheritedEnvironment.PRESERVED_FIXTURE_VALUE = "preserved";
+
+  const env = isolatedFixtureGitEnvironment(
+    workspaceRoot,
+    inheritedEnvironment
+  );
+
+  for (const name of gitRepositoryEnvironmentVariables) {
+    assert.equal(env[name], undefined, `${name} must not reach fixture Git`);
+  }
+  assert.equal(env.GIT_CONFIG_KEY_0, undefined);
+  assert.equal(env.GIT_CONFIG_VALUE_0, undefined);
+  assert.equal(env.GIT_CEILING_DIRECTORIES, workspaceRoot);
+  assert.equal(env.PRESERVED_FIXTURE_VALUE, "preserved");
+});
+
 test("full mode generates a baseline and then detects regressions", async () => {
   const workspaceRoot = await mkdtemp(join(tmpdir(), "agent-gui-degradation-"));
   const sourcePath = join(
@@ -383,11 +413,8 @@ test("full mode generates a baseline and then detects regressions", async () => 
 
 test("staged mode flags violations on staged added lines end to end", async () => {
   const workspaceRoot = await mkdtemp(join(tmpdir(), "agent-gui-degradation-"));
-  const run = (command, args) =>
-    spawnSync(command, args, { cwd: workspaceRoot, encoding: "utf8" });
-  run("git", ["init", "--quiet"]);
-  run("git", ["config", "user.email", "test@example.com"]);
-  run("git", ["config", "user.name", "Test"]);
+  runFixtureGit(workspaceRoot, ["init", "--quiet"]);
+  await assertFixtureGitRoot(workspaceRoot);
 
   const sourcePath = join(
     workspaceRoot,
@@ -395,14 +422,23 @@ test("staged mode flags violations on staged added lines end to end", async () =
   );
   await mkdir(dirname(sourcePath), { recursive: true });
   await writeFile(sourcePath, "export const before = 1;\n");
-  run("git", ["add", "."]);
-  run("git", ["commit", "--quiet", "-m", "init"]);
+  runFixtureGit(workspaceRoot, ["add", "."]);
+  runFixtureGit(workspaceRoot, [
+    "-c",
+    "user.email=test@example.com",
+    "-c",
+    "user.name=Test",
+    "commit",
+    "--quiet",
+    "-m",
+    "init"
+  ]);
 
   await writeFile(
     sourcePath,
     "export const before = 1;\nsetTimeout(retry, 100);\n"
   );
-  run("git", ["add", "."]);
+  runFixtureGit(workspaceRoot, ["add", "."]);
 
   const baselinePath = join(workspaceRoot, "baseline/agent-gui.json");
   const result = runScript(workspaceRoot, baselinePath, ["--staged"]);
@@ -413,7 +449,7 @@ test("staged mode flags violations on staged added lines end to end", async () =
     sourcePath,
     "export const before = 1;\n// timing: retry with visible reason\nsetTimeout(retry, 100);\n"
   );
-  run("git", ["add", "."]);
+  runFixtureGit(workspaceRoot, ["add", "."]);
   const pass = runScript(workspaceRoot, baselinePath, ["--staged"]);
   assert.equal(pass.status, 0, pass.stderr || pass.stdout);
 });
@@ -450,9 +486,66 @@ function runScript(workspaceRoot, baselinePath, args) {
   return spawnSync(process.execPath, [scriptPath, ...args], {
     encoding: "utf8",
     env: {
-      ...process.env,
+      ...isolatedFixtureGitEnvironment(workspaceRoot),
       TUTTI_AGENT_GUI_DEGRADATION_BASELINE: baselinePath,
       TUTTI_WORKSPACE_ROOT: workspaceRoot
     }
   });
+}
+
+const gitRepositoryEnvironmentVariables = [
+  "GIT_ALTERNATE_OBJECT_DIRECTORIES",
+  "GIT_COMMON_DIR",
+  "GIT_CONFIG",
+  "GIT_CONFIG_COUNT",
+  "GIT_CONFIG_PARAMETERS",
+  "GIT_DIR",
+  "GIT_GRAFT_FILE",
+  "GIT_IMPLICIT_WORK_TREE",
+  "GIT_INDEX_FILE",
+  "GIT_INTERNAL_SUPER_PREFIX",
+  "GIT_NO_REPLACE_OBJECTS",
+  "GIT_OBJECT_DIRECTORY",
+  "GIT_PREFIX",
+  "GIT_REPLACE_REF_BASE",
+  "GIT_SHALLOW_FILE",
+  "GIT_WORK_TREE"
+];
+
+function isolatedFixtureGitEnvironment(
+  workspaceRoot,
+  inheritedEnvironment = process.env
+) {
+  const env = { ...inheritedEnvironment };
+  for (const name of gitRepositoryEnvironmentVariables) {
+    delete env[name];
+  }
+  for (const name of Object.keys(env)) {
+    if (/^GIT_CONFIG_(?:KEY|VALUE)_\d+$/u.test(name)) {
+      delete env[name];
+    }
+  }
+  env.GIT_CEILING_DIRECTORIES = workspaceRoot;
+  return env;
+}
+
+function runFixtureGit(workspaceRoot, args) {
+  const result = spawnSync("git", args, {
+    cwd: workspaceRoot,
+    encoding: "utf8",
+    env: isolatedFixtureGitEnvironment(workspaceRoot)
+  });
+  assert.equal(result.status, 0, result.stderr || result.stdout);
+  return result;
+}
+
+async function assertFixtureGitRoot(workspaceRoot) {
+  const result = runFixtureGit(workspaceRoot, [
+    "rev-parse",
+    "--absolute-git-dir"
+  ]);
+  assert.equal(
+    await realpath(result.stdout.trim()),
+    await realpath(join(workspaceRoot, ".git"))
+  );
 }
