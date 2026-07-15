@@ -40,7 +40,8 @@ package-manager shims can differ from the repository pin.
 Tests and checks that create temporary Git repositories must also isolate
 repository-local Git environment variables before invoking Git. In particular,
 remove inherited `GIT_DIR`, `GIT_WORK_TREE`, `GIT_COMMON_DIR`, index/object
-overrides, and command-scoped `GIT_CONFIG_*` entries; set
+overrides, and command-scoped `GIT_CONFIG_*` entries using case-insensitive
+name matching for Windows compatibility; set
 `GIT_CEILING_DIRECTORIES` to the fixture root; fail immediately when fixture Git
 commands fail; and verify the initialized Git directory before staging,
 committing, fetching, or checking out. A temporary cwd alone is not isolation

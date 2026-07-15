@@ -6,6 +6,8 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import test from "node:test";
 
+import { createIsolatedGitEnvironment } from "../../../../tools/scripts/git-environment.mjs";
+
 const scriptPath = resolve(
   dirname(fileURLToPath(import.meta.url)),
   "plan-review.mjs"
@@ -464,7 +466,7 @@ function runPlanner(workspaceRoot, args) {
   return spawnSync(process.execPath, [scriptPath, ...args], {
     cwd: workspaceRoot,
     encoding: "utf8",
-    env: isolatedFixtureGitEnvironment(workspaceRoot)
+    env: createIsolatedGitEnvironment(workspaceRoot)
   });
 }
 
@@ -472,44 +474,11 @@ function runGit(workspaceRoot, args) {
   const result = spawnSync("git", args, {
     cwd: workspaceRoot,
     encoding: "utf8",
-    env: isolatedFixtureGitEnvironment(workspaceRoot)
+    env: createIsolatedGitEnvironment(workspaceRoot)
   });
 
   assert.equal(result.status, 0, result.stderr || result.stdout);
   return result;
-}
-
-const gitRepositoryEnvironmentVariables = [
-  "GIT_ALTERNATE_OBJECT_DIRECTORIES",
-  "GIT_COMMON_DIR",
-  "GIT_CONFIG",
-  "GIT_CONFIG_COUNT",
-  "GIT_CONFIG_PARAMETERS",
-  "GIT_DIR",
-  "GIT_GRAFT_FILE",
-  "GIT_IMPLICIT_WORK_TREE",
-  "GIT_INDEX_FILE",
-  "GIT_INTERNAL_SUPER_PREFIX",
-  "GIT_NO_REPLACE_OBJECTS",
-  "GIT_OBJECT_DIRECTORY",
-  "GIT_PREFIX",
-  "GIT_REPLACE_REF_BASE",
-  "GIT_SHALLOW_FILE",
-  "GIT_WORK_TREE"
-];
-
-function isolatedFixtureGitEnvironment(workspaceRoot) {
-  const env = { ...process.env };
-  for (const name of gitRepositoryEnvironmentVariables) {
-    delete env[name];
-  }
-  for (const name of Object.keys(env)) {
-    if (/^GIT_CONFIG_(?:KEY|VALUE)_\d+$/u.test(name)) {
-      delete env[name];
-    }
-  }
-  env.GIT_CEILING_DIRECTORIES = workspaceRoot;
-  return env;
 }
 
 async function assertFixtureGitRoot(workspaceRoot) {

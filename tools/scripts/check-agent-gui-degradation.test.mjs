@@ -28,6 +28,7 @@ import {
   measureFileMetrics,
   parseStagedAddedLines
 } from "./check-agent-gui-degradation.mjs";
+import { createIsolatedGitEnvironment } from "./git-environment.mjs";
 
 const scriptPath = resolve(
   dirname(fileURLToPath(import.meta.url)),
@@ -353,30 +354,6 @@ test("staged check flags new module-level mutable globals", () => {
   assert.equal(violations[0].rule, "no-module-mutable-global");
 });
 
-test("temporary Git fixtures discard inherited repository selectors", () => {
-  const workspaceRoot = "/tmp/tutti-git-fixture";
-  const inheritedEnvironment = Object.fromEntries(
-    gitRepositoryEnvironmentVariables.map((name) => [name, `/poison/${name}`])
-  );
-  inheritedEnvironment.GIT_CEILING_DIRECTORIES = "/poison/ceiling";
-  inheritedEnvironment.GIT_CONFIG_KEY_0 = "core.bare";
-  inheritedEnvironment.GIT_CONFIG_VALUE_0 = "true";
-  inheritedEnvironment.PRESERVED_FIXTURE_VALUE = "preserved";
-
-  const env = isolatedFixtureGitEnvironment(
-    workspaceRoot,
-    inheritedEnvironment
-  );
-
-  for (const name of gitRepositoryEnvironmentVariables) {
-    assert.equal(env[name], undefined, `${name} must not reach fixture Git`);
-  }
-  assert.equal(env.GIT_CONFIG_KEY_0, undefined);
-  assert.equal(env.GIT_CONFIG_VALUE_0, undefined);
-  assert.equal(env.GIT_CEILING_DIRECTORIES, workspaceRoot);
-  assert.equal(env.PRESERVED_FIXTURE_VALUE, "preserved");
-});
-
 test("full mode generates a baseline and then detects regressions", async () => {
   const workspaceRoot = await mkdtemp(join(tmpdir(), "agent-gui-degradation-"));
   const sourcePath = join(
@@ -486,54 +463,18 @@ function runScript(workspaceRoot, baselinePath, args) {
   return spawnSync(process.execPath, [scriptPath, ...args], {
     encoding: "utf8",
     env: {
-      ...isolatedFixtureGitEnvironment(workspaceRoot),
+      ...createIsolatedGitEnvironment(workspaceRoot),
       TUTTI_AGENT_GUI_DEGRADATION_BASELINE: baselinePath,
       TUTTI_WORKSPACE_ROOT: workspaceRoot
     }
   });
 }
 
-const gitRepositoryEnvironmentVariables = [
-  "GIT_ALTERNATE_OBJECT_DIRECTORIES",
-  "GIT_COMMON_DIR",
-  "GIT_CONFIG",
-  "GIT_CONFIG_COUNT",
-  "GIT_CONFIG_PARAMETERS",
-  "GIT_DIR",
-  "GIT_GRAFT_FILE",
-  "GIT_IMPLICIT_WORK_TREE",
-  "GIT_INDEX_FILE",
-  "GIT_INTERNAL_SUPER_PREFIX",
-  "GIT_NO_REPLACE_OBJECTS",
-  "GIT_OBJECT_DIRECTORY",
-  "GIT_PREFIX",
-  "GIT_REPLACE_REF_BASE",
-  "GIT_SHALLOW_FILE",
-  "GIT_WORK_TREE"
-];
-
-function isolatedFixtureGitEnvironment(
-  workspaceRoot,
-  inheritedEnvironment = process.env
-) {
-  const env = { ...inheritedEnvironment };
-  for (const name of gitRepositoryEnvironmentVariables) {
-    delete env[name];
-  }
-  for (const name of Object.keys(env)) {
-    if (/^GIT_CONFIG_(?:KEY|VALUE)_\d+$/u.test(name)) {
-      delete env[name];
-    }
-  }
-  env.GIT_CEILING_DIRECTORIES = workspaceRoot;
-  return env;
-}
-
 function runFixtureGit(workspaceRoot, args) {
   const result = spawnSync("git", args, {
     cwd: workspaceRoot,
     encoding: "utf8",
-    env: isolatedFixtureGitEnvironment(workspaceRoot)
+    env: createIsolatedGitEnvironment(workspaceRoot)
   });
   assert.equal(result.status, 0, result.stderr || result.stdout);
   return result;

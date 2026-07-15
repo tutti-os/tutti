@@ -12,6 +12,8 @@ import { dirname, join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createHash } from "node:crypto";
 
+import { createIsolatedGitEnvironment } from "./git-environment.mjs";
+
 const codexRepoUrl = "https://github.com/openai/codex.git";
 const codexSourceCommit = "6d2168f06ae275d5e1f73cabf935d2bcc8549998";
 const schemaSubdir = "codex-rs/app-server-protocol/schema/json";
@@ -21,7 +23,7 @@ const workspaceRoot = join(scriptDirectory, "..", "..");
 const daemonRoot = join(workspaceRoot, "packages", "agent", "daemon");
 const codexprotoRoot = join(daemonRoot, "runtime", "codexproto");
 const vendoredSchemaRoot = join(codexprotoRoot, "schema", "json");
-const workspaceEnv = isolatedGitEnvironment(workspaceRoot);
+const workspaceEnv = createIsolatedGitEnvironment(workspaceRoot);
 
 // The upstream re-fetch against the pinned Codex commit is CI's job
 // (ADR 0002): local check:full runs must not block on cloning
@@ -55,7 +57,7 @@ function compareVendoredSchemaAgainstUpstream() {
   const tempRoot = mkdtempSync(join(tmpdir(), "tutti-codexproto-"));
   try {
     const upstreamRoot = join(tempRoot, "codex");
-    const gitEnv = isolatedGitEnvironment(upstreamRoot);
+    const gitEnv = createIsolatedGitEnvironment(upstreamRoot);
     run("git", ["init", upstreamRoot], workspaceRoot, gitEnv);
     const gitDir = output(
       "git",
@@ -210,36 +212,4 @@ function output(command, args, cwd, env = process.env) {
     );
   }
   return result.stdout.trim();
-}
-
-function isolatedGitEnvironment(fixtureRoot) {
-  const env = { ...process.env };
-  const repositoryVariables = new Set([
-    "GIT_ALTERNATE_OBJECT_DIRECTORIES",
-    "GIT_COMMON_DIR",
-    "GIT_CONFIG",
-    "GIT_CONFIG_COUNT",
-    "GIT_CONFIG_PARAMETERS",
-    "GIT_DIR",
-    "GIT_GRAFT_FILE",
-    "GIT_IMPLICIT_WORK_TREE",
-    "GIT_INDEX_FILE",
-    "GIT_INTERNAL_SUPER_PREFIX",
-    "GIT_NO_REPLACE_OBJECTS",
-    "GIT_OBJECT_DIRECTORY",
-    "GIT_PREFIX",
-    "GIT_REPLACE_REF_BASE",
-    "GIT_SHALLOW_FILE",
-    "GIT_WORK_TREE"
-  ]);
-  for (const name of Object.keys(env)) {
-    if (
-      repositoryVariables.has(name) ||
-      /^GIT_CONFIG_(?:KEY|VALUE)_\d+$/u.test(name)
-    ) {
-      delete env[name];
-    }
-  }
-  env.GIT_CEILING_DIRECTORIES = fixtureRoot;
-  return env;
 }

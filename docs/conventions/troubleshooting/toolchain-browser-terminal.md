@@ -21,15 +21,17 @@
   against the real branch.
 - Fix:
   Remove repository-local Git environment variables for every fixture Git
-  command, set `GIT_CEILING_DIRECTORIES` to the fixture root, stop on any command
-  failure, verify `--absolute-git-dir` after initialization, and pass fixture
-  author identity through commit-local `-c` arguments instead of `git config`.
+  command using case-insensitive name matching, set `GIT_CEILING_DIRECTORIES` to
+  the fixture root, stop on any command failure, verify `--absolute-git-dir`
+  after initialization, and pass fixture author identity through commit-local
+  `-c` arguments instead of `git config`.
 - Validation:
   Run the fixture tests with poisoned `GIT_DIR`, `GIT_WORK_TREE`, and
   `GIT_CONFIG_*` inputs that point only at disposable paths. Confirm the fixture
   initializes its own `.git`, then verify the caller's config, index, branch,
   and worktree remain unchanged.
 - References:
+  [git-environment.mjs](../../../tools/scripts/git-environment.mjs)
   [check-agent-gui-degradation.test.mjs](../../../tools/scripts/check-agent-gui-degradation.test.mjs)
   [static-analysis.md](../static-analysis.md)
 
