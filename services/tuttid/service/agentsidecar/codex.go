@@ -8,6 +8,8 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+
+	agentsidecarbiz "github.com/tutti-os/tutti/services/tuttid/biz/agentsidecar"
 )
 
 const (
@@ -23,7 +25,7 @@ func (CodexPreparer) Provider() string {
 func (CodexPreparer) Prepare(_ context.Context, input ProviderPrepareInput) (ProviderPrepareResult, error) {
 	codexHome := filepath.Join(input.RuntimeRoot, "codex-home")
 	logRuntimePrepareTrace("runtime_prepare.codex.entered", input.PrepareInput, nil)
-	if err := prepareCodexHome(codexHome, input.PrepareInput); err != nil {
+	if err := prepareCodexHome(codexHome, input.PrepareInput, input.Manifest); err != nil {
 		return ProviderPrepareResult{}, err
 	}
 	logRuntimePrepareTrace("runtime_prepare.codex.home_prepared", input.PrepareInput, nil)
@@ -49,14 +51,14 @@ func (CodexPreparer) Prepare(_ context.Context, input ProviderPrepareInput) (Pro
 	}, nil
 }
 
-func prepareCodexHome(codexHome string, input PrepareInput) error {
+func prepareCodexHome(codexHome string, input PrepareInput, manifest *agentsidecarbiz.Manifest) error {
 	logRuntimePrepareTrace("runtime_prepare.codex.home_dir_requested", input, nil)
 	if err := os.MkdirAll(codexHome, 0o700); err != nil {
 		return fmt.Errorf("create codex home: %w", err)
 	}
 	logRuntimePrepareTrace("runtime_prepare.codex.home_dir_resolved", input, nil)
 	logRuntimePrepareTrace("runtime_prepare.codex.user_files_requested", input, nil)
-	if err := exposeUserCodexFiles(codexHome); err != nil {
+	if err := exposeUserCodexFiles(codexHome, manifest); err != nil {
 		return err
 	}
 	logRuntimePrepareTrace("runtime_prepare.codex.user_files_resolved", input, nil)
@@ -108,7 +110,7 @@ func codexApprovalRules(cliCommand string) string {
 	return "prefix_rule(pattern=[" + strconv.Quote(command) + "], decision=\"allow\")\n"
 }
 
-func exposeUserCodexFiles(codexHome string) error {
+func exposeUserCodexFiles(codexHome string, manifest *agentsidecarbiz.Manifest) error {
 	userHome, err := os.UserHomeDir()
 	if err != nil || strings.TrimSpace(userHome) == "" {
 		return nil
@@ -135,7 +137,7 @@ func exposeUserCodexFiles(codexHome string) error {
 	if err := exposeUserCodexConfig(codexHome, userCodexHome); err != nil {
 		return err
 	}
-	return exposeUserCodexModelCatalog(codexHome, userCodexHome)
+	return exposeUserCodexConfigDependencies(codexHome, userCodexHome, manifest)
 }
 
 // exposeCodexImportedRolloutFile symlinks the single Codex CLI rollout
@@ -236,25 +238,40 @@ func exposeUserCodexConfig(codexHome string, userCodexHome string) error {
 	return nil
 }
 
-// exposeUserCodexModelCatalog mirrors a relative model_catalog_json path into
-// the run-scoped CODEX_HOME. Tutti copies config.toml alone; tools such as
-// CC Switch write model_catalog_json = "cc-switch-model-catalog.json", which
-// Codex resolves against CODEX_HOME. Without the catalog file, thread/start
-// fails with ENOENT and Tutti surfaces "agent session is not connected".
-//
-// Absolute catalog paths stay readable from the host filesystem and need no
-// mirror. Missing keys or missing source files are no-ops.
-func exposeUserCodexModelCatalog(codexHome string, userCodexHome string) error {
+// exposeUserCodexConfigDependencies preserves file references Codex resolves
+// relative to CODEX_HOME after Tutti copies config.toml into a run-scoped home.
+func exposeUserCodexConfigDependencies(codexHome string, userCodexHome string, manifest *agentsidecarbiz.Manifest) error {
 	configPath := filepath.Join(codexHome, "config.toml")
 	contentBytes, err := os.ReadFile(configPath)
 	if err != nil {
 		if os.IsNotExist(err) {
 			return nil
 		}
-		return fmt.Errorf("read codex config for model catalog path: %w", err)
+		return fmt.Errorf("read codex config dependencies: %w", err)
 	}
-	lines := strings.Split(strings.ReplaceAll(string(contentBytes), "\r\n", "\n"), "\n")
-	for _, line := range lines {
+	content := string(contentBytes)
+	for _, configKey := range []string{"model_catalog_json", "model_instructions_file"} {
+		value, found, valid := codexTopLevelStringConfigValue(content, configKey)
+		if !found {
+			continue
+		}
+		input := configDependencyMaterializeInput{
+			Provider: "codex", ConfigKey: configKey, RawPath: value,
+			SourceRoot: userCodexHome, TargetRoot: codexHome, Manifest: manifest,
+		}
+		if !valid {
+			return configDependencyError(input, "", ConfigDependencyFailureInvalid, nil)
+		}
+		if err := materializeConfigDependency(input); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func codexTopLevelStringConfigValue(content string, key string) (string, bool, bool) {
+	lines := strings.Split(strings.ReplaceAll(content, "\r\n", "\n"), "\n")
+	for index, line := range lines {
 		trimmed := strings.TrimSpace(line)
 		if trimmed == "" || strings.HasPrefix(trimmed, "#") {
 			continue
@@ -262,39 +279,13 @@ func exposeUserCodexModelCatalog(codexHome string, userCodexHome string) error {
 		if strings.HasPrefix(trimmed, "[") {
 			break
 		}
-		value, ok := codexConfigStringAssignmentValue(trimmed, "model_catalog_json")
-		if !ok {
+		if !codexConfigLineHasKey(trimmed, key) {
 			continue
 		}
-		value = strings.TrimSpace(value)
-		if value == "" || filepath.IsAbs(value) {
-			return nil
-		}
-		cleanRel := filepath.Clean(value)
-		if cleanRel == "." || cleanRel == ".." || strings.HasPrefix(cleanRel, ".."+string(filepath.Separator)) {
-			return nil
-		}
-		source := filepath.Join(userCodexHome, cleanRel)
-		if info, err := os.Stat(source); err != nil || info.IsDir() {
-			return nil
-		}
-		target := filepath.Join(codexHome, cleanRel)
-		if _, err := os.Lstat(target); err == nil {
-			return nil
-		} else if !os.IsNotExist(err) {
-			return fmt.Errorf("inspect codex model catalog: %w", err)
-		}
-		if err := os.MkdirAll(filepath.Dir(target), 0o700); err != nil {
-			return fmt.Errorf("create codex model catalog parent: %w", err)
-		}
-		if err := os.Symlink(source, target); err != nil {
-			if copyErr := copyFile(source, target, 0o600); copyErr != nil {
-				return fmt.Errorf("expose codex model catalog %s: symlink failed: %v; copy failed: %w", cleanRel, err, copyErr)
-			}
-		}
-		return nil
+		value, _, ok := codexConfigStringAssignmentValueAt(lines, index, key)
+		return value, true, ok
 	}
-	return nil
+	return "", false, false
 }
 
 func ensureCodexSessionConfig(configPath string, input PrepareInput) error {

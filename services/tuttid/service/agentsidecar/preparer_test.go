@@ -400,6 +400,33 @@ func TestDefaultPreparerCodexExposesRelativeModelCatalogJSON(t *testing.T) {
 	}
 }
 
+func TestDefaultPreparerCodexFailsForMissingModelInstructionsFile(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	userCodexHome := filepath.Join(home, ".codex")
+	if err := os.MkdirAll(userCodexHome, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(userCodexHome, "config.toml"), []byte(`model_instructions_file = "profiles/missing.md"`+"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	_, err := NewDefaultPreparer(t.TempDir()).Prepare(t.Context(), PrepareInput{
+		WorkspaceID:    "workspace-1",
+		AgentSessionID: "session-missing-instructions",
+		AgentTargetID:  "local:codex",
+		Provider:       "codex",
+		Cwd:            t.TempDir(),
+	})
+	var dependencyErr *ConfigDependencyUnavailableError
+	if !errors.As(err, &dependencyErr) {
+		t.Fatalf("Prepare() error = %T %v, want ConfigDependencyUnavailableError", err, err)
+	}
+	if dependencyErr.FailureKind != ConfigDependencyFailureMissing || dependencyErr.DependencyPath != filepath.Join("profiles", "missing.md") {
+		t.Fatalf("dependency error = %#v", dependencyErr)
+	}
+}
+
 func TestDefaultPreparerCodexUserSkillNameWinsBeforeTuttiInjection(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)

@@ -3518,6 +3518,18 @@ components:
                   code: workspace_operation_failed
                   reason: workspace_operation_failed
                   developerMessage: workspace operation failed
+            agentConfigDependencyUnavailable:
+              value:
+                error:
+                  code: workspace_operation_failed
+                  reason: agent.config_dependency_unavailable
+                  params:
+                    provider: codex
+                    configKey: model_instructions_file
+                    dependencyPath: instructions.md
+                    failureKind: missing
+                  retryable: false
+                  developerMessage: codex configuration dependency model_instructions_file is unavailable
     PreferencesOperationError:
       description: Desktop preferences operation failed in an upstream adapter or command
       content:

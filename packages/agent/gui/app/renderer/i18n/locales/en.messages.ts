@@ -9,6 +9,8 @@ export const enMessages = {
     "This conversation was imported successfully. Start a new session and @this conversation to keep going.",
   agentSettingsRequireNewSession:
     "This model can only be used in a new session to preserve context.",
+  agentConfigDependencyUnavailable:
+    "{{provider}} configuration references a file that is unavailable. Check its local configuration and try again.",
   agentPermissionModeAppliesNextTurn:
     "Permission mode will apply starting with your next message.",
   agentThisSessionMentionLabel: "this session",

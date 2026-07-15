@@ -8,6 +8,8 @@ export const zhCNMessages = {
   agentImportedSessionResumeUnavailable:
     "这段对话已导入成功，新开会话并 @ 这段对话，接着继续聊。",
   agentSettingsRequireNewSession: "为了保留上下文，这个模型只能在新会话中使用",
+  agentConfigDependencyUnavailable:
+    "{{provider}} 的配置引用了当前不可用的文件。请检查本机配置后重试。",
   agentPermissionModeAppliesNextTurn: "权限模式将从你的下一条消息开始生效。",
   agentThisSessionMentionLabel: "本 session",
   terminalLaunchFailed: "终端启动失败：{{message}}",

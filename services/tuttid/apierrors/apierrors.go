@@ -72,6 +72,7 @@ const (
 	ReasonWorkspaceFileServiceUnavailable                = "workspace_file_service_unavailable"
 	ReasonWorkspaceAgentSessionNotFound                  = "workspace_agent_session_not_found"
 	ReasonWorkspaceAgentSessionUnavailable               = "workspace_agent_session_service_unavailable"
+	ReasonAgentConfigDependencyUnavailable               = "agent.config_dependency_unavailable"
 	ReasonAgentProviderUnavailable                       = "agent_provider_unavailable"
 	ReasonWorkspaceAppNotFound                           = "workspace_app_not_found"
 	ReasonWorkspaceAppDeleteForbidden                    = "workspace_app_delete_forbidden"
@@ -291,6 +292,23 @@ func AgentProviderUnavailable(err *agentservice.ProviderUnavailableError) *Proto
 	)
 }
 
+func AgentConfigDependencyUnavailable(err *agentsidecarservice.ConfigDependencyUnavailableError) *ProtocolError {
+	params := map[string]any{}
+	if err != nil {
+		params["provider"] = strings.TrimSpace(err.Provider)
+		params["configKey"] = strings.TrimSpace(err.ConfigKey)
+		params["dependencyPath"] = strings.TrimSpace(err.DependencyPath)
+		params["failureKind"] = strings.TrimSpace(err.FailureKind)
+	}
+	return New(
+		StatusWorkspaceOperationFailed,
+		tuttigenerated.WorkspaceOperationFailed,
+		ReasonAgentConfigDependencyUnavailable,
+		WithCause(err),
+		WithParams(params),
+	)
+}
+
 func PreferencesOperationFailed(options ...Option) *ProtocolError {
 	return New(StatusPreferencesOperationFailed, tuttigenerated.PreferencesOperationFailed, ReasonPreferencesOperationFailed, options...)
 }
@@ -314,6 +332,10 @@ func Classify(err error) *ProtocolError {
 	var providerUnavailableErr *agentservice.ProviderUnavailableError
 	if errors.As(err, &providerUnavailableErr) {
 		return AgentProviderUnavailable(providerUnavailableErr)
+	}
+	var configDependencyErr *agentsidecarservice.ConfigDependencyUnavailableError
+	if errors.As(err, &configDependencyErr) {
+		return AgentConfigDependencyUnavailable(configDependencyErr)
 	}
 	var invalidModelErr *agentservice.InvalidModelError
 	if errors.As(err, &invalidModelErr) {

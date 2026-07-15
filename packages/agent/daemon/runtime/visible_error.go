@@ -33,7 +33,8 @@ func visibleFailureTimelineItem(
 		return agentsessionstore.WorkspaceAgentTimelineItem{}, false
 	}
 	eventID := strings.TrimSpace(event.EventID)
-	if strings.TrimSpace(sessionID) == "" || eventID == "" {
+	turnID := strings.TrimSpace(event.Payload.TurnID)
+	if strings.TrimSpace(sessionID) == "" || eventID == "" || turnID == "" {
 		return agentsessionstore.WorkspaceAgentTimelineItem{}, false
 	}
 	phase := "turn"
@@ -61,7 +62,7 @@ func visibleFailureTimelineItem(
 	return agentsessionstore.WorkspaceAgentTimelineItem{
 		RoomID:           strings.TrimSpace(roomID),
 		AgentSessionID:   strings.TrimSpace(sessionID),
-		TurnID:           strings.TrimSpace(event.Payload.TurnID),
+		TurnID:           turnID,
 		EventSource:      "runtime",
 		EventID:          "visible-error:" + eventID,
 		ActorType:        "agent",
