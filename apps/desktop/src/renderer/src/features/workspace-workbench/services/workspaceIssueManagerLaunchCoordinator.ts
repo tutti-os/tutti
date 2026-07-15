@@ -1,3 +1,5 @@
+import { WorkspaceScopedPresenterRegistry } from "./internal/workspaceScopedPresenterRegistry.ts";
+
 export interface WorkspaceIssueManagerLaunchRequest {
   issueId?: string | null;
   mode?: "breakdown" | "execute";
@@ -8,30 +10,20 @@ export interface WorkspaceIssueManagerLaunchRequest {
   workspaceId: string;
 }
 
-export type WorkspaceIssueManagerLaunchHandler = (
-  request: WorkspaceIssueManagerLaunchRequest
-) => Promise<boolean> | boolean;
+export interface WorkspaceIssueManagerLaunchPresenter {
+  present(
+    request: WorkspaceIssueManagerLaunchRequest
+  ): Promise<boolean> | boolean;
+}
 
-const launchHandlersByWorkspaceId = new Map<
-  string,
-  WorkspaceIssueManagerLaunchHandler
->();
+const presenters =
+  new WorkspaceScopedPresenterRegistry<WorkspaceIssueManagerLaunchPresenter>();
 
-export function registerWorkspaceIssueManagerLaunchHandler(
+export function registerWorkspaceIssueManagerLaunchPresenter(
   workspaceId: string,
-  handler: WorkspaceIssueManagerLaunchHandler
+  presenter: WorkspaceIssueManagerLaunchPresenter
 ): () => void {
-  const normalizedWorkspaceId = workspaceId.trim();
-  if (!normalizedWorkspaceId) {
-    return noop;
-  }
-
-  launchHandlersByWorkspaceId.set(normalizedWorkspaceId, handler);
-  return () => {
-    if (launchHandlersByWorkspaceId.get(normalizedWorkspaceId) === handler) {
-      launchHandlersByWorkspaceId.delete(normalizedWorkspaceId);
-    }
-  };
+  return presenters.register(workspaceId, presenter);
 }
 
 export async function requestWorkspaceIssueManagerLaunch(
@@ -42,12 +34,12 @@ export async function requestWorkspaceIssueManagerLaunch(
     return false;
   }
 
-  const handler = launchHandlersByWorkspaceId.get(normalized.workspaceId);
-  if (!handler) {
+  const presenter = presenters.get(normalized.workspaceId);
+  if (!presenter) {
     return false;
   }
 
-  return handler(normalized);
+  return presenter.present(normalized);
 }
 
 function normalizeWorkspaceIssueManagerLaunchRequest(
@@ -88,5 +80,3 @@ function normalizeOptionalString(
   const normalized = value?.trim() || "";
   return normalized || undefined;
 }
-
-function noop(): void {}

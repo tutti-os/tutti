@@ -1,18 +1,20 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
-  registerWorkspaceIssueManagerLaunchHandler,
+  registerWorkspaceIssueManagerLaunchPresenter,
   requestWorkspaceIssueManagerLaunch,
   type WorkspaceIssueManagerLaunchRequest
 } from "./workspaceIssueManagerLaunchCoordinator.ts";
 
 test("workspace issue-manager launch coordinator dispatches normalized requests", async () => {
   const requests: WorkspaceIssueManagerLaunchRequest[] = [];
-  const dispose = registerWorkspaceIssueManagerLaunchHandler(
+  const dispose = registerWorkspaceIssueManagerLaunchPresenter(
     " workspace-1 ",
-    (request) => {
-      requests.push(request);
-      return true;
+    {
+      present(request) {
+        requests.push(request);
+        return true;
+      }
     }
   );
 
@@ -51,13 +53,12 @@ test("workspace issue-manager launch coordinator dispatches normalized requests"
 
 test("workspace issue-manager launch coordinator dispatches workspace-only requests", async () => {
   const requests: WorkspaceIssueManagerLaunchRequest[] = [];
-  const dispose = registerWorkspaceIssueManagerLaunchHandler(
-    "workspace-1",
-    (request) => {
+  const dispose = registerWorkspaceIssueManagerLaunchPresenter("workspace-1", {
+    present(request) {
       requests.push(request);
       return true;
     }
-  );
+  });
 
   assert.equal(
     await requestWorkspaceIssueManagerLaunch({
@@ -75,10 +76,12 @@ test("workspace issue-manager launch coordinator dispatches workspace-only reque
 });
 
 test("workspace issue-manager launch coordinator rejects incomplete requests", async () => {
-  const dispose = registerWorkspaceIssueManagerLaunchHandler(
+  const dispose = registerWorkspaceIssueManagerLaunchPresenter(
     "workspace-issue-manager",
-    () => {
-      throw new Error("incomplete requests should not launch");
+    {
+      present() {
+        throw new Error("incomplete requests should not launch");
+      }
     }
   );
 
@@ -90,4 +93,78 @@ test("workspace issue-manager launch coordinator rejects incomplete requests", a
     false
   );
   dispose();
+});
+
+test("workspace issue-manager launch coordinator isolates workspace presenters", async () => {
+  const calls: string[] = [];
+  const disposeFirst = registerWorkspaceIssueManagerLaunchPresenter(
+    "workspace-1",
+    {
+      present() {
+        calls.push("workspace-1");
+        return true;
+      }
+    }
+  );
+  const disposeSecond = registerWorkspaceIssueManagerLaunchPresenter(
+    "workspace-2",
+    {
+      present() {
+        calls.push("workspace-2");
+        return true;
+      }
+    }
+  );
+
+  assert.equal(
+    await requestWorkspaceIssueManagerLaunch({ workspaceId: "workspace-2" }),
+    true
+  );
+  assert.deepEqual(calls, ["workspace-2"]);
+
+  disposeFirst();
+  disposeSecond();
+});
+
+test("workspace issue-manager launch coordinator keeps replacement after stale disposal", async () => {
+  const disposeFirst = registerWorkspaceIssueManagerLaunchPresenter(
+    "workspace-replaced",
+    { present: () => false }
+  );
+  const disposeReplacement = registerWorkspaceIssueManagerLaunchPresenter(
+    "workspace-replaced",
+    { present: () => true }
+  );
+
+  disposeFirst();
+
+  assert.equal(
+    await requestWorkspaceIssueManagerLaunch({
+      workspaceId: "workspace-replaced"
+    }),
+    true
+  );
+  disposeReplacement();
+});
+
+test("workspace issue-manager launch coordinator distinguishes repeated presenter registrations", async () => {
+  const presenter = { present: () => true };
+  const disposeFirst = registerWorkspaceIssueManagerLaunchPresenter(
+    "workspace-repeated",
+    presenter
+  );
+  const disposeReplacement = registerWorkspaceIssueManagerLaunchPresenter(
+    "workspace-repeated",
+    presenter
+  );
+
+  disposeFirst();
+
+  assert.equal(
+    await requestWorkspaceIssueManagerLaunch({
+      workspaceId: "workspace-repeated"
+    }),
+    true
+  );
+  disposeReplacement();
 });

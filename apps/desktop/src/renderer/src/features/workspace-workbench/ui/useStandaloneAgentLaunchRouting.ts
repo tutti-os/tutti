@@ -1,6 +1,7 @@
 import {
   useCallback,
   useEffect,
+  useMemo,
   useRef,
   useState,
   type Dispatch,
@@ -25,12 +26,10 @@ import {
   type DesktopAgentGUIWorkbenchState
 } from "@renderer/features/workspace-agent/desktopAgentGUINodeState.ts";
 import { handleStandaloneAgentGuiLaunch } from "../services/standaloneAgentGuiLaunchHandler.ts";
+import type { StandaloneAgentIssueManagerOpenRequest } from "../services/standaloneAgentIssueManagerLaunch.ts";
+import { createStandaloneAgentWorkspaceIssueManagerPresenter } from "../services/standaloneAgentWorkspaceIssueManagerPresenter.ts";
 import {
-  createStandaloneAgentIssueManagerOpenRequest,
-  type StandaloneAgentIssueManagerOpenRequest
-} from "../services/standaloneAgentIssueManagerLaunch.ts";
-import {
-  registerWorkspaceIssueManagerLaunchHandler,
+  registerWorkspaceIssueManagerLaunchPresenter,
   requestWorkspaceIssueManagerLaunch
 } from "../services/workspaceIssueManagerLaunchCoordinator.ts";
 
@@ -76,9 +75,15 @@ export function useStandaloneAgentLaunchRouting({
   issueManagerOpenRequest: StandaloneAgentIssueManagerOpenRequest | null;
 } {
   const activationSequenceRef = useRef(1);
-  const issueManagerOpenRequestSequenceRef = useRef(0);
   const [issueManagerOpenRequest, setIssueManagerOpenRequest] =
     useState<StandaloneAgentIssueManagerOpenRequest | null>(null);
+  const issueManagerPresenter = useMemo(
+    () =>
+      createStandaloneAgentWorkspaceIssueManagerPresenter({
+        open: setIssueManagerOpenRequest
+      }),
+    []
+  );
   const handleActivateAgentSession = useCallback(
     (input: {
       agentSessionId: string;
@@ -129,16 +134,11 @@ export function useStandaloneAgentLaunchRouting({
   );
   useEffect(
     () =>
-      registerWorkspaceIssueManagerLaunchHandler(workspaceId, (request) => {
-        setIssueManagerOpenRequest(
-          createStandaloneAgentIssueManagerOpenRequest(
-            request,
-            ++issueManagerOpenRequestSequenceRef.current
-          )
-        );
-        return true;
-      }),
-    [workspaceId]
+      registerWorkspaceIssueManagerLaunchPresenter(
+        workspaceId,
+        issueManagerPresenter
+      ),
+    [issueManagerPresenter, workspaceId]
   );
 
   const handleLinkAction = useCallback<

@@ -11,11 +11,7 @@ import type {
   WorkspaceAgentProvider,
   WorkspaceSummary
 } from "@tutti-os/client-tuttid-ts";
-import {
-  defaultIssueManagerWorkbenchTypeId,
-  issueManagerOpenActivationType,
-  type IssueManagerOpenActivationPayload
-} from "@tutti-os/workspace-issue-manager/workbench";
+import { defaultIssueManagerWorkbenchTypeId } from "@tutti-os/workspace-issue-manager/workbench";
 import {
   isEditableShortcutTarget,
   type WorkbenchContribution,
@@ -68,10 +64,8 @@ import {
   type WorkspaceFilesLaunchRequest
 } from "../services/workspaceFilesLaunchCoordinator.ts";
 import { showWorkspaceFileMissingToast } from "../services/workspaceFilesLaunchFeedback.ts";
-import {
-  registerWorkspaceIssueManagerLaunchHandler,
-  type WorkspaceIssueManagerLaunchRequest
-} from "../services/workspaceIssueManagerLaunchCoordinator.ts";
+import { registerWorkspaceIssueManagerLaunchPresenter } from "../services/workspaceIssueManagerLaunchCoordinator.ts";
+import { createWorkbenchWorkspaceIssueManagerPresenter } from "../services/workbenchWorkspaceIssueManagerPresenter.ts";
 import { registerWorkspaceWorkbenchNodeLaunchHandler } from "../services/workspaceWorkbenchNodeLaunchCoordinator.ts";
 import {
   buildGroupChatDeepLinkUrl,
@@ -411,11 +405,9 @@ function ReadyWorkspaceWorkbenchWithSession({
         }
       );
       unregisterIssueManagerLaunchRef.current =
-        registerWorkspaceIssueManagerLaunchHandler(
+        registerWorkspaceIssueManagerLaunchPresenter(
           state.workspace.id,
-          async (request) => {
-            return openWorkspaceIssueManagerNode(host, request);
-          }
+          createWorkbenchWorkspaceIssueManagerPresenter({ host })
         );
       unregisterGroupChatLaunchRef.current = registerGroupChatLaunchHandler(
         state.workspace.id,
@@ -1091,40 +1083,6 @@ async function openGroupChatNode(
         url: deepLinkUrl
       },
       type: "open-url"
-    }
-  );
-  return true;
-}
-
-async function openWorkspaceIssueManagerNode(
-  host: WorkbenchHostHandle,
-  request: WorkspaceIssueManagerLaunchRequest
-): Promise<boolean> {
-  const nodeId = await host.launchNode({
-    launchSource: "agent_command",
-    reason: "host",
-    typeId: defaultIssueManagerWorkbenchTypeId
-  });
-  if (!nodeId) {
-    return false;
-  }
-  if (!request.issueId) {
-    return true;
-  }
-
-  const payload: IssueManagerOpenActivationPayload = {
-    issueId: request.issueId,
-    ...(request.mode ? { mode: request.mode } : {}),
-    ...(request.outputDir ? { outputDir: request.outputDir } : {}),
-    ...(request.runId ? { runId: request.runId } : {}),
-    ...(request.taskId ? { taskId: request.taskId } : {}),
-    ...(request.topicId ? { topicId: request.topicId } : {})
-  };
-  host.activateNode(
-    { nodeId },
-    {
-      payload,
-      type: issueManagerOpenActivationType
     }
   );
   return true;

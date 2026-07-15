@@ -128,7 +128,11 @@ test("standalone Agent handles task and app Agent launch requests", () => {
   );
   assert.match(
     standaloneLaunchRoutingSource,
-    /registerWorkspaceIssueManagerLaunchHandler\(workspaceId, \(request\) => \{[\s\S]*?createStandaloneAgentIssueManagerOpenRequest/
+    /const issueManagerPresenter = useMemo\([\s\S]*?createStandaloneAgentWorkspaceIssueManagerPresenter\(\{[\s\S]*?open: setIssueManagerOpenRequest/
+  );
+  assert.match(
+    standaloneLaunchRoutingSource,
+    /registerWorkspaceIssueManagerLaunchPresenter\([\s\S]*?workspaceId,[\s\S]*?issueManagerPresenter/
   );
   assert.match(
     standaloneWindowSource,

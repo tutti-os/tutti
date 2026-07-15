@@ -240,6 +240,13 @@ window with the draft bootstrap intent, while existing-session navigation
 reuses the current Agent-only window unless the caller explicitly requests a
 new one. Issue Manager launches open the Tasks sidebar and forward the standard
 issue activation so the embedded surface selects the requested issue and task.
+Issue Manager placement is selected through a workspace-scoped presenter
+coordinator rather than by mode checks in the request source. The OS shell
+registers a presenter that launches and activates the Workbench Node, while the
+standalone Agent shell registers a presenter that opens the Tasks sidebar
+inline. Presenter registrations use registration identity for cleanup, so an
+old shell disposer cannot remove a newer presenter, including when both
+registrations reuse the same presenter object.
 The OS Files floating window opens wide by default so its location, list, and
 detail columns begin at approximately 26%, 55%, and 19% of the content width;
 each splitter remains user-resizable within its minimum-content constraints.
