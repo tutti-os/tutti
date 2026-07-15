@@ -4,6 +4,15 @@ import { describe, expect, it } from "vitest";
 import { AgentRichTextReadonly } from "./AgentRichTextReadonly";
 
 describe("AgentRichTextReadonly", () => {
+  it("renders readonly user content on the first commit", () => {
+    const { container } = render(
+      <AgentRichTextReadonly value="First-frame user message" />
+    );
+
+    expect(container).toHaveTextContent("First-frame user message");
+    expect(container.querySelector(".ProseMirror")).not.toBeNull();
+  });
+
   it("hydrates workspace app mention icons without putting icon data in the href", async () => {
     const iconUrl = "data:image/png;base64,weather";
     const { container } = render(

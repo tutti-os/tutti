@@ -2,6 +2,7 @@ import {
   useCallback,
   useEffect,
   useLayoutEffect,
+  useRef,
   useState,
   type MutableRefObject,
   type RefObject
@@ -29,12 +30,9 @@ interface Input {
     scrollHeight: number;
     scrollTop: number;
   } | null>;
-  pendingRestoreScrollRef: MutableRefObject<{
-    conversationId: string;
-    scrollTop: number;
-  } | null>;
   showTimelineSkeleton: boolean;
   submittedPromptScrollConversationRef: MutableRefObject<string | null>;
+  timelineConversationId: string | null;
   timelineRef: RefObject<HTMLDivElement | null>;
   timelineScrollAnchorRef: MutableRefObject<{
     conversationId: string;
@@ -42,9 +40,6 @@ interface Input {
     scrollTop: number;
     clientHeight: number;
   } | null>;
-  timelineScrollPositionsRef: MutableRefObject<
-    Map<string, { scrollTop: number; atBottom: boolean }>
-  >;
   viewModel: AgentGUINodeViewModel;
 }
 
@@ -55,27 +50,30 @@ export function useAgentGUIDetailScroll(input: Input) {
     bottomDockStoreRevision,
     conversation,
     pendingPrependScrollAnchorRef,
-    pendingRestoreScrollRef,
     showTimelineSkeleton,
     submittedPromptScrollConversationRef,
+    timelineConversationId,
     timelineRef,
     timelineScrollAnchorRef,
-    timelineScrollPositionsRef,
     viewModel
   } = input;
   const [isTimelineScrolledToTop, setIsTimelineScrolledToTop] = useState(true);
   const [isTimelineScrolledToBottom, setIsTimelineScrolledToBottom] =
     useState(true);
+  const bottomLockOwnerRef = useRef<string | null>(null);
+  const userScrollAwayIntentConversationRef = useRef<string | null>(null);
   useLayoutEffect(() => {
     const timeline = timelineRef.current;
     if (!timeline) {
       return;
     }
-    const activeConversationId = viewModel.rail.activeConversationId;
+    const activeConversationId = timelineConversationId;
     if (!activeConversationId) {
       timelineScrollAnchorRef.current = null;
+      bottomLockOwnerRef.current = null;
       pendingPrependScrollAnchorRef.current = null;
       submittedPromptScrollConversationRef.current = null;
+      userScrollAwayIntentConversationRef.current = null;
       setIsTimelineScrolledToTop(true);
       setIsTimelineScrolledToBottom(true);
       return;
@@ -90,59 +88,25 @@ export function useAgentGUIDetailScroll(input: Input) {
     const shouldScrollSubmittedPromptToBottom =
       submittedPromptScrollConversationRef.current === activeConversationId;
     let nextScrollTop = timeline.scrollTop;
-
-    const savedScrollPosition = shouldScrollSubmittedPromptToBottom
-      ? undefined
-      : timelineScrollPositionsRef.current.get(activeConversationId);
+    const conversationChanged =
+      !anchor || anchor.conversationId !== activeConversationId;
+    if (conversationChanged || shouldScrollSubmittedPromptToBottom) {
+      bottomLockOwnerRef.current = activeConversationId;
+      userScrollAwayIntentConversationRef.current = null;
+    }
+    const shouldKeepBottomLocked =
+      bottomLockOwnerRef.current === activeConversationId;
 
     if (
-      !anchor ||
-      anchor.conversationId !== activeConversationId ||
-      shouldScrollSubmittedPromptToBottom
+      conversationChanged ||
+      shouldScrollSubmittedPromptToBottom ||
+      shouldKeepBottomLocked
     ) {
-      if (
-        savedScrollPosition &&
-        !savedScrollPosition.atBottom &&
-        !showTimelineSkeleton
-      ) {
-        // Returning to a conversation the user had manually scrolled away
-        // from: restore that position instead of snapping to the bottom.
-        nextScrollTop = Math.min(maxScrollTop, savedScrollPosition.scrollTop);
-        timeline.scrollTop = nextScrollTop;
-        pendingRestoreScrollRef.current = null;
-      } else if (savedScrollPosition && !savedScrollPosition.atBottom) {
-        // Content isn't rendered yet (skeleton) so scrollHeight is not final:
-        // defer the restore until the real messages have laid out.
-        pendingRestoreScrollRef.current = {
-          conversationId: activeConversationId,
-          scrollTop: savedScrollPosition.scrollTop
-        };
-        setTimelineScrollTopInstantly(timeline, maxScrollTop);
-        nextScrollTop = maxScrollTop;
-      } else {
-        setTimelineScrollTopInstantly(timeline, maxScrollTop);
-        nextScrollTop = maxScrollTop;
-        pendingRestoreScrollRef.current = null;
-      }
+      setTimelineScrollTopInstantly(timeline, maxScrollTop);
+      nextScrollTop = maxScrollTop;
       submittedPromptScrollConversationRef.current = null;
       if (shouldScrollSubmittedPromptToBottom) {
         pendingPrependScrollAnchorRef.current = null;
-      }
-    } else if (
-      pendingRestoreScrollRef.current?.conversationId === activeConversationId
-    ) {
-      if (showTimelineSkeleton) {
-        // Still loading: keep pinned to the bottom until content is ready so
-        // the deferred restore can target the final scrollHeight.
-        setTimelineScrollTopInstantly(timeline, maxScrollTop);
-        nextScrollTop = maxScrollTop;
-      } else {
-        nextScrollTop = Math.min(
-          maxScrollTop,
-          pendingRestoreScrollRef.current.scrollTop
-        );
-        timeline.scrollTop = nextScrollTop;
-        pendingRestoreScrollRef.current = null;
       }
     } else if (prependAnchor?.conversationId === activeConversationId) {
       const nextScrollHeight = timeline.scrollHeight;
@@ -185,14 +149,14 @@ export function useAgentGUIDetailScroll(input: Input) {
   }, [
     conversation,
     showTimelineSkeleton,
-    viewModel.rail.activeConversationId,
+    timelineConversationId,
     viewModel.detail.isLoadingOlderMessages
   ]);
 
   useLayoutEffect(() => {
     const timeline = timelineRef.current;
     const bottomDock = bottomDockRef.current;
-    const activeConversationId = viewModel.rail.activeConversationId;
+    const activeConversationId = timelineConversationId;
     if (!timeline || !bottomDock || !activeConversationId) {
       return;
     }
@@ -235,14 +199,22 @@ export function useAgentGUIDetailScroll(input: Input) {
     const syncBottomDockSpace = (): void => {
       syncBottomDockSafeArea();
 
+      if (activeConversationId !== viewModel.rail.activeConversationId) {
+        return;
+      }
+
       const anchor = timelineScrollAnchorRef.current;
+      const bottomLocked = bottomLockOwnerRef.current === activeConversationId;
       if (!anchor || anchor.conversationId !== activeConversationId) {
         return;
       }
 
       const distanceFromBottom =
         anchor.scrollHeight - anchor.scrollTop - anchor.clientHeight;
-      if (distanceFromBottom > AGENT_GUI_STICK_TO_BOTTOM_THRESHOLD_PX) {
+      if (
+        !bottomLocked &&
+        distanceFromBottom > AGENT_GUI_STICK_TO_BOTTOM_THRESHOLD_PX
+      ) {
         return;
       }
 
@@ -251,6 +223,25 @@ export function useAgentGUIDetailScroll(input: Input) {
       }
       animationFrameId = window.requestAnimationFrame(() => {
         animationFrameId = null;
+        const latestAnchor = timelineScrollAnchorRef.current;
+        if (
+          !latestAnchor ||
+          latestAnchor.conversationId !== activeConversationId
+        ) {
+          return;
+        }
+        const latestDistanceFromBottom =
+          latestAnchor.scrollHeight -
+          latestAnchor.scrollTop -
+          latestAnchor.clientHeight;
+        const latestBottomLocked =
+          bottomLockOwnerRef.current === activeConversationId;
+        if (
+          !latestBottomLocked &&
+          latestDistanceFromBottom > AGENT_GUI_STICK_TO_BOTTOM_THRESHOLD_PX
+        ) {
+          return;
+        }
         const maxScrollTop = Math.max(
           0,
           timeline.scrollHeight - timeline.clientHeight
@@ -300,17 +291,49 @@ export function useAgentGUIDetailScroll(input: Input) {
       }
       observer.disconnect();
     };
-  }, [bottomDockStoreRevision, viewModel.rail.activeConversationId]);
+  }, [
+    bottomDockStoreRevision,
+    timelineConversationId,
+    viewModel.rail.activeConversationId
+  ]);
 
   useEffect(() => {
     const timeline = timelineRef.current;
-    const activeConversationId = viewModel.rail.activeConversationId;
+    const activeConversationId = timelineConversationId;
     if (!timeline || !activeConversationId) {
       return;
     }
 
     const captureScrollAnchor = (): void => {
-      const scrollTop = timeline.scrollTop;
+      let scrollTop = timeline.scrollTop;
+      const previousAnchor = timelineScrollAnchorRef.current;
+      const geometryChanged =
+        previousAnchor?.conversationId !== activeConversationId ||
+        previousAnchor.scrollHeight !== timeline.scrollHeight ||
+        previousAnchor.clientHeight !== timeline.clientHeight;
+      const inferredUserScrollAway =
+        previousAnchor?.conversationId === activeConversationId &&
+        !geometryChanged &&
+        scrollTop < previousAnchor.scrollTop - 1;
+      const explicitUserScrollAway =
+        userScrollAwayIntentConversationRef.current === activeConversationId;
+      if (explicitUserScrollAway || inferredUserScrollAway) {
+        bottomLockOwnerRef.current = null;
+        userScrollAwayIntentConversationRef.current = null;
+      }
+      if (
+        geometryChanged &&
+        bottomLockOwnerRef.current === activeConversationId
+      ) {
+        const maxScrollTop = Math.max(
+          0,
+          timeline.scrollHeight - timeline.clientHeight
+        );
+        if (maxScrollTop - scrollTop > AGENT_GUI_STICK_TO_BOTTOM_THRESHOLD_PX) {
+          setTimelineScrollTopInstantly(timeline, maxScrollTop);
+          scrollTop = maxScrollTop;
+        }
+      }
       timelineScrollAnchorRef.current = {
         conversationId: activeConversationId,
         scrollHeight: timeline.scrollHeight,
@@ -320,22 +343,17 @@ export function useAgentGUIDetailScroll(input: Input) {
       const atBottom =
         timeline.scrollHeight - scrollTop - timeline.clientHeight <=
         AGENT_GUI_STICK_TO_BOTTOM_THRESHOLD_PX;
+      if (atBottom) {
+        bottomLockOwnerRef.current = activeConversationId;
+      }
+      const effectiveAtBottom =
+        atBottom || bottomLockOwnerRef.current === activeConversationId;
       setIsTimelineScrolledToTop(
         scrollTop <= AGENT_GUI_TOP_MASK_SCROLL_EPSILON_PX
       );
-      setIsTimelineScrolledToBottom(atBottom);
-      // Remember where the user left off so returning to this conversation can
-      // restore the position. Skip while a deferred restore is pending so the
-      // synchronous jump-to-bottom (during skeleton) doesn't clobber it.
+      setIsTimelineScrolledToBottom(effectiveAtBottom);
       if (
-        pendingRestoreScrollRef.current?.conversationId !== activeConversationId
-      ) {
-        timelineScrollPositionsRef.current.set(activeConversationId, {
-          scrollTop,
-          atBottom
-        });
-      }
-      if (
+        activeConversationId === viewModel.rail.activeConversationId &&
         viewModel.detail.hasOlderMessages &&
         !viewModel.detail.isLoadingOlderMessages &&
         scrollTop <= AGENT_GUI_TOP_HISTORY_PREFETCH_THRESHOLD_PX
@@ -349,13 +367,33 @@ export function useAgentGUIDetailScroll(input: Input) {
       }
     };
 
+    const captureWheelIntent = (event: WheelEvent): void => {
+      if (event.deltaY < 0) {
+        userScrollAwayIntentConversationRef.current = activeConversationId;
+      }
+    };
+    const captureKeyboardIntent = (event: KeyboardEvent): void => {
+      if (
+        event.key === "ArrowUp" ||
+        event.key === "Home" ||
+        event.key === "PageUp"
+      ) {
+        userScrollAwayIntentConversationRef.current = activeConversationId;
+      }
+    };
+
     captureScrollAnchor();
     timeline.addEventListener("scroll", captureScrollAnchor, { passive: true });
+    timeline.addEventListener("wheel", captureWheelIntent, { passive: true });
+    timeline.addEventListener("keydown", captureKeyboardIntent);
     return () => {
       timeline.removeEventListener("scroll", captureScrollAnchor);
+      timeline.removeEventListener("wheel", captureWheelIntent);
+      timeline.removeEventListener("keydown", captureKeyboardIntent);
     };
   }, [
     actions,
+    timelineConversationId,
     viewModel.rail.activeConversationId,
     viewModel.detail.hasOlderMessages,
     viewModel.detail.isLoadingOlderMessages
@@ -363,8 +401,11 @@ export function useAgentGUIDetailScroll(input: Input) {
 
   const scrollTimelineToBottom = useCallback(() => {
     const timeline = timelineRef.current;
-    const activeConversationId = viewModel.rail.activeConversationId;
+    const activeConversationId = timelineConversationId;
     if (!timeline || !activeConversationId) {
+      return;
+    }
+    if (activeConversationId !== viewModel.rail.activeConversationId) {
       return;
     }
 
@@ -372,6 +413,8 @@ export function useAgentGUIDetailScroll(input: Input) {
       0,
       timeline.scrollHeight - timeline.clientHeight
     );
+    bottomLockOwnerRef.current = activeConversationId;
+    userScrollAwayIntentConversationRef.current = null;
     setTimelineScrollTopWithUserTransition(timeline, maxScrollTop);
     timelineScrollAnchorRef.current = {
       conversationId: activeConversationId,
@@ -383,7 +426,7 @@ export function useAgentGUIDetailScroll(input: Input) {
       maxScrollTop <= AGENT_GUI_TOP_MASK_SCROLL_EPSILON_PX
     );
     setIsTimelineScrolledToBottom(true);
-  }, [viewModel.rail.activeConversationId]);
+  }, [timelineConversationId, viewModel.rail.activeConversationId]);
 
   return {
     isTimelineScrolledToBottom,

@@ -7210,41 +7210,6 @@ button.agent-gui-node__conversation-section-toggle:hover
   outline: none;
 }
 
-.agent-gui-node__provider-setup-notice {
-  position: absolute;
-  top: 56px;
-  left: 50%;
-  transform: translateX(-50%);
-  z-index: 2;
-  box-sizing: border-box;
-  width: max-content;
-  max-width: min(calc(100% - (var(--agent-gui-detail-padding-x) * 2)), 420px);
-  margin: 0;
-  /* The pill sizes to its content (width: max-content), so the action button's
-     margin-left:auto has no free space to absorb and the message text would butt
-     directly against "Set up". Space the message and action explicitly. */
-  column-gap: 6px;
-  pointer-events: none;
-}
-
-.agent-gui-node__detail-header + .agent-gui-node__provider-setup-notice {
-  top: calc(64px + 16px);
-}
-
-.agent-gui-node__provider-setup-notice-action {
-  flex: 0 0 auto;
-  margin-left: auto;
-  border: 0;
-  padding: 0;
-  background: transparent;
-  color: currentColor;
-  font: inherit;
-  text-decoration: underline;
-  cursor: pointer;
-  pointer-events: auto;
-  -webkit-app-region: no-drag;
-}
-
 .agent-gui-node__layout [data-slot="status-dot"],
 [data-testid="workspace-agent-message-center"] [data-slot="status-dot"] {
   --agent-gui-status-dot-color: var(

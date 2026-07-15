@@ -46,7 +46,10 @@ export function AgentRichTextReadonly({
   );
   const isMentionOnly = isMentionOnlyRichTextDoc(contentDoc);
   const editor = useEditor({
-    immediatelyRender: false,
+    // AgentGUI is client-only. Deferring editor creation leaves every user
+    // message blank for one commit, then changes each transcript turn's
+    // measured height when TipTap mounts.
+    immediatelyRender: true,
     editable: false,
     extensions: createAgentRichTextReadonlyExtensions({
       skills: availableSkills

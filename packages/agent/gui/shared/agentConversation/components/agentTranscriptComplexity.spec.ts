@@ -24,7 +24,7 @@ describe("assessAgentTranscriptComplexity", () => {
     expect(assessment.turnCount).toBe(30);
   });
 
-  it("virtualizes a single complex turn before many turns accumulate", () => {
+  it("does not virtualize a single complex turn that cannot elide any turns", () => {
     const assessment = assessAgentTranscriptComplexity([
       {
         rows: [
@@ -51,9 +51,20 @@ describe("assessAgentTranscriptComplexity", () => {
       }
     ]);
 
-    expect(assessment.shouldVirtualize).toBe(true);
+    expect(assessment.shouldVirtualize).toBe(false);
     expect(assessment.turnCount).toBe(1);
     expect(assessment.maxTurnScore).toBeGreaterThanOrEqual(24);
+  });
+
+  it("virtualizes complex transcripts once enough turns can be elided", () => {
+    const assessment = assessAgentTranscriptComplexity(
+      Array.from({ length: 8 }, (_, index) => ({
+        rows: [{ row: messageRow(index, longText(9000)) }]
+      }))
+    );
+
+    expect(assessment.shouldVirtualize).toBe(true);
+    expect(assessment.turnCount).toBe(8);
   });
 
   it("virtualizes accumulated moderate complexity before thirty turns", () => {

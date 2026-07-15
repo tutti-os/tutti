@@ -667,7 +667,7 @@ export function useAgentGUINodeController({
               localState.detailError
             ? "error"
             : "ready";
-  return useAgentGUIViewAssembly({
+  const viewAssembly = useAgentGUIViewAssembly({
     ...providerCatalogSelection,
     ...localState,
     ...conversationList,
@@ -722,4 +722,5 @@ export function useAgentGUINodeController({
     workspaceId,
     workspacePath
   });
+  return viewAssembly;
 }

@@ -1987,6 +1987,44 @@ User-visible rules:
   active session is selected or a retry begins.
 - Auto-scroll, bottom anchoring, and pending-row placement are visual behaviors
   layered on top of projected rows; they must not affect message merge/dedupe.
+- Selecting a different conversation starts its detail timeline at the bottom.
+  Scroll-position preservation applies only while the same conversation remains
+  active, including streaming updates and older-history prepends.
+- A newly selected conversation remains bottom-locked across skeleton, content,
+  and virtual measurement geometry changes. Release that lock only for upward
+  user scroll intent; layout-driven `scroll` events are not reader navigation.
+- Keep the transcript virtualizer bound to the stable detail viewport while
+  switching between short and long conversations. Clearing that binding for a
+  short transcript forces a fallback render and a second height correction on
+  the next long transcript.
+- Reveal a selected-detail skeleton only after 300 ms. A coherent target
+  timeline still commits immediately when it becomes available; fast local
+  loads briefly retain the previous timeline instead of flashing a skeleton.
+- The retained timeline is a non-interactive transition frame. Lock detail
+  interaction, including composer submission, until the selected conversation
+  timeline is coherent; do not rewrite engine submit/queue capabilities for
+  this presentation-only interval.
+- While that previous timeline remains visible, it also retains scroll
+  ownership. Changing the rail's active conversation alone must not bottom-dock
+  or otherwise mutate the retained timeline. Scroll ownership transfers to the
+  selected conversation only when its skeleton or coherent timeline commits.
+- Deferred bottom-anchor callbacks must revalidate the current conversation and
+  near-bottom anchor when they execute. The user or a newer layout commit may
+  move away from the bottom before an older animation frame runs, and that stale
+  frame must not pull the transcript back to the bottom.
+- Virtualized transcripts use end anchoring while measuring turn heights. A
+  measurement correction must preserve a timeline that was already at the end;
+  it must not surface as user scroll intent and disable later bottom docking.
+- Complexity alone must not virtualize fewer than eight turn groups. With no
+  meaningful off-screen window to elide, virtualization only replaces natural
+  first-layout height with an estimate and adds a corrective layout pass.
+- Transcript messages render as Markdown on their first visible render. Long
+  messages must not expose raw Markdown source or a message-level loading
+  placeholder before replacing it with formatted content; that intermediate
+  layout changes row height and destabilizes timeline anchoring.
+- Read-only user messages must also render their rich-text content on the first
+  client commit. An empty editor shell followed by TipTap initialization changes
+  every affected turn height after the virtualizer has measured it.
 - A local composer submit is an explicit user navigation intent: after a normal
   or guidance prompt submit, the detail timeline should force one bottom scroll
   so the user's newly submitted message is visible even if the reader was
@@ -2269,30 +2307,27 @@ User-visible rules:
 
 ### Loading State Taxonomy
 
-| Visible state                  | Primary owner                    | Starts when                                                                            | Clears when                                                                    |
-| ------------------------------ | -------------------------------- | -------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------ |
-| Rail skeleton or empty loading | conversation list query/store    | runtime list load starts                                                               | list load resolves or errors                                                   |
-| Selected detail skeleton       | session view store/controller    | active session messages load starts                                                    | `listSessionMessages` resolves or active session changes                       |
-| Home first-create busy         | active session activation record | home `startConversation` begins                                                        | that new-session activation succeeds, fails, or is abandoned as stale          |
-| "Connecting conversation"      | existing-session activation      | existing session open/retry calls `activate`                                           | activation succeeds, fails, or is abandoned as stale                           |
-| Transcript processing row      | transcript/session projection    | runtime reports working/turn phase                                                     | runtime reports ready/completed/failed or newer message projection replaces it |
-| Send button spinner            | controller local submit state    | `executePrompt` or approval submit begins                                              | command promise settles                                                        |
-| Composer settings loading      | composer options/settings model  | provider options load starts or settings source missing                                | options/settings resolve or fallback state is applied                          |
-| Provider setup notice          | desktop provider status adapter  | captured provider status says the active provider is not ready after a settled recheck | captured status says provider is ready or user fixes setup                     |
-| Approval response spinner      | controller approval submit state | prompt/approval option submit begins                                                   | runtime command settles and prompt projection updates                          |
+| Visible state                  | Primary owner                    | Starts when                                             | Clears when                                                                    |
+| ------------------------------ | -------------------------------- | ------------------------------------------------------- | ------------------------------------------------------------------------------ |
+| Rail skeleton or empty loading | conversation list query/store    | runtime list load starts                                | list load resolves or errors                                                   |
+| Selected detail skeleton       | session view store/controller    | active session messages load starts                     | `listSessionMessages` resolves or active session changes                       |
+| Home first-create busy         | active session activation record | home `startConversation` begins                         | that new-session activation succeeds, fails, or is abandoned as stale          |
+| "Connecting conversation"      | existing-session activation      | existing session open/retry calls `activate`            | activation succeeds, fails, or is abandoned as stale                           |
+| Transcript processing row      | transcript/session projection    | runtime reports working/turn phase                      | runtime reports ready/completed/failed or newer message projection replaces it |
+| Send button spinner            | controller local submit state    | `executePrompt` or approval submit begins               | command promise settles                                                        |
+| Composer settings loading      | composer options/settings model  | provider options load starts or settings source missing | options/settings resolve or fallback state is applied                          |
+| Approval response spinner      | controller approval submit state | prompt/approval option submit begins                    | runtime command settles and prompt projection updates                          |
 
 When a loading state is wrong, first identify which row in this table is
 visible. Then debug that owner and clearing condition. Avoid moving a spinner
 between surfaces to hide a state-source mismatch.
 Desktop restore must not project "not ready" from an uncaptured provider-status
-snapshot. Until the first captured provider status exists, pass unknown provider
-readiness into AgentGUI so startup does not flash a false "configure provider"
-notice before local Codex or other provider detection returns.
-When the active Agent GUI provider already has a cached not-ready status (for
-example a background catalog probe that raced ahead of Cursor auth), desktop
-must refresh that provider once and keep readiness unknown while the recheck is
-pending. Otherwise switching into the provider flashes the setup notice even
-though the composer can already send after auto-connect settles.
+snapshot. Provider setup readiness owns only the empty new-conversation surface,
+where it gates creating a session for the selected target. An active session is
+owned by its canonical runtime/session recovery state; provider catalog probes
+must not block its composer or render a setup notice. Desktop may refresh stale
+provider status for the empty surface, but that catalog reconciliation must not
+become a second active-session readiness model.
 
 ### Error, Retry, And Recovery
 

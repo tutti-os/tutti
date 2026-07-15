@@ -8,7 +8,7 @@
   ],
   "metrics": {
     "componentMemoOverages": {
-      "packages/agent/gui/agent-gui/agentGuiNode/AgentGUINode.tsx": 23,
+      "packages/agent/gui/agent-gui/agentGuiNode/AgentGUINode.tsx": 22,
       "packages/agent/gui/agent-gui/agentGuiNode/AgentGUINodeView.tsx": 12,
       "packages/agent/gui/agent-gui/agentGuiNode/agentRichText/AgentRichTextEditor.tsx": 6,
       "packages/agent/gui/agent-gui/agentGuiNode/composer/AgentComposerChrome.tsx": 8,
@@ -18,7 +18,7 @@
       "packages/agent/gui/agent-gui/agentGuiNode/view/AgentGUIProviderRail.tsx": 12,
       "packages/agent/gui/agent-message-center/WorkspaceAgentMessageCenterPanel.tsx": 22,
       "packages/agent/gui/app/renderer/components/ZoomableImage.tsx": 9,
-      "packages/agent/gui/shared/AgentMessageMarkdown.tsx": 8,
+      "packages/agent/gui/shared/AgentMessageMarkdown.tsx": 7,
       "packages/agent/gui/shared/agentConversation/components/AgentTranscriptView.tsx": 10
     },
     "effectCount": 151,

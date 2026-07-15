@@ -14,6 +14,7 @@ export interface AgentTranscriptComplexityAssessment extends AgentTranscriptComp
 const AGENT_TRANSCRIPT_COMPLEXITY_VIRTUALIZATION_SCORE = 40;
 const AGENT_TRANSCRIPT_COMPLEXITY_SINGLE_TURN_SCORE = 24;
 const AGENT_TRANSCRIPT_COMPLEXITY_TURN_COUNT = 30;
+const AGENT_TRANSCRIPT_COMPLEXITY_MINIMUM_TURN_COUNT = 8;
 
 export function assessAgentTranscriptComplexity(
   turnGroups: ReadonlyArray<{
@@ -49,6 +50,9 @@ export function shouldVirtualizeAgentTranscript(input: {
   turnCount: number;
   complexity: AgentTranscriptComplexity;
 }): boolean {
+  if (input.turnCount < AGENT_TRANSCRIPT_COMPLEXITY_MINIMUM_TURN_COUNT) {
+    return false;
+  }
   return (
     input.turnCount >= AGENT_TRANSCRIPT_COMPLEXITY_TURN_COUNT ||
     input.complexity.totalScore >=

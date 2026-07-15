@@ -186,11 +186,13 @@ export const AgentTranscriptView = memo(function AgentTranscriptView({
     [turnGroups]
   );
   const rowVirtualizer = useVirtualizer({
+    anchorTo: "end",
     count: turnGroups.length,
     estimateSize: () => AGENT_TRANSCRIPT_ESTIMATED_TURN_HEIGHT_PX,
     getItemKey: (index) => turnGroups[index]?.key ?? index,
     getScrollElement: () => virtualScrollElement,
-    overscan: AGENT_TRANSCRIPT_VIRTUALIZATION_OVERSCAN
+    overscan: AGENT_TRANSCRIPT_VIRTUALIZATION_OVERSCAN,
+    scrollEndThreshold: 24
   });
   const handleLocateUserMessage = useCallback(
     (item: AgentMessageLocatorItem) => {
@@ -228,7 +230,6 @@ export const AgentTranscriptView = memo(function AgentTranscriptView({
 
   useLayoutEffect(() => {
     if (!shouldVirtualize) {
-      setVirtualScrollElement(null);
       return;
     }
     setVirtualScrollElement(

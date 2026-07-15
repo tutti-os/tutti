@@ -26,8 +26,8 @@ import type {
 } from "../services/agentProviderStatusService.interface";
 import {
   desktopAccountRefreshProviders,
-  isDesktopManagedAgentProvider,
-  projectDesktopManagedAgentsStateForAgentGUI
+  ensureDesktopManagedAgentProviderStatuses,
+  isDesktopManagedAgentProvider
 } from "../services/internal/desktopManagedAgentProviders.ts";
 import { projectDesktopAgentProviderReadinessGates } from "../services/internal/desktopAgentProviderReadinessGate.ts";
 import { useAccountService } from "../../workspace-workbench/ui/useAccountService.ts";
@@ -36,7 +36,6 @@ import {
   activeProviderNotReadyRecheckKey,
   shouldSuppressAgentProviderNotReadyProjection
 } from "./desktopAgentProviderNotReadyRecheck.ts";
-import { useDesktopManagedAgentsState } from "./useDesktopManagedAgentsState.ts";
 import {
   getEmptyProviderStatusSnapshot,
   noopSubscribe,
@@ -71,11 +70,14 @@ export function useDesktopAgentGUIReadiness(input: {
   const [computerUseStatus, setComputerUseStatus] =
     useState<DesktopComputerUseStatus | null>(null);
   const provider = desktopAgentGUIProviderFromInstanceId(instanceId);
-  const requiredProviders = useMemo(() => [provider], [provider]);
-  const managedAgentsState = useDesktopManagedAgentsState(
-    agentProviderStatusService,
-    { ensureLoaded: !previewMode, requiredProviders }
-  );
+  useEffect(() => {
+    if (previewMode || !agentProviderStatusService) {
+      return;
+    }
+    void ensureDesktopManagedAgentProviderStatuses(agentProviderStatusService, [
+      provider
+    ]);
+  }, [agentProviderStatusService, previewMode, provider]);
   const providerStatusSnapshot = useSyncExternalStore(
     agentProviderStatusService && !previewMode
       ? (listener) => agentProviderStatusService.subscribe(listener)
@@ -134,24 +136,6 @@ export function useDesktopAgentGUIReadiness(input: {
     previewMode,
     provider,
     settledActiveProviderRecheckKey
-  ]);
-  const effectiveManagedAgentsState = useMemo(() => {
-    if (suppressNotReadyProjection) {
-      // Match the uncaptured-status policy: unknown readiness keeps the
-      // composer usable and hides the false "connect provider" notice while a
-      // stale not-ready cache is being rechecked.
-      return null;
-    }
-    return !providerStatusSnapshot.capturedAt && providerStatusBootstrapSnapshot
-      ? projectDesktopManagedAgentsStateForAgentGUI(
-          providerStatusBootstrapSnapshot
-        )
-      : managedAgentsState;
-  }, [
-    managedAgentsState,
-    providerStatusBootstrapSnapshot,
-    providerStatusSnapshot,
-    suppressNotReadyProjection
   ]);
   // Activation funnel stage ③ "saw a chattable surface": the agent workbench
   // body is mounted (not a dock preview) and the active provider is ready, so
@@ -370,7 +354,6 @@ export function useDesktopAgentGUIReadiness(input: {
   ]);
   return {
     computerUseStatus,
-    effectiveManagedAgentsState,
     handleAgentProviderLogin,
     provider,
     providerReadinessGates,

@@ -34,6 +34,10 @@ import type {
   AgentGUINodeViewModel,
   AgentGUISessionChrome
 } from "../model/agentGuiNodeTypes";
+import {
+  resolveAgentGUIProviderReadinessAction,
+  resolveAgentGUIProviderReadinessContent
+} from "../model/agentGuiProviderReadiness";
 import type {
   AgentGUINodeViewProps,
   AgentGUIViewLabels
@@ -371,14 +375,18 @@ export const AgentGUIProviderReadinessGatePane = memo(
     const isPending = pendingAction !== null;
     const showAllProvidersChecking =
       showAllProviders && gate.status === "checking";
-    const content = providerGateContent(gate.status, labels, {
-      showAllProviders: showAllProvidersChecking
-    });
+    const content = resolveAgentGUIProviderReadinessContent(
+      gate.status,
+      labels,
+      {
+        showAllProviders: showAllProvidersChecking
+      }
+    );
     const titleLabel =
       gate.status === "not_installed" || gate.status === "auth_required"
         ? emptyLabel
         : content.title;
-    const action = providerGateAction(gate.status);
+    const action = resolveAgentGUIProviderReadinessAction(gate.status);
     const pendingLabel =
       pendingAction === "install"
         ? labels.providerGatePendingInstall
@@ -475,63 +483,6 @@ export const AgentGUIProviderReadinessGatePane = memo(
     );
   }
 );
-
-function providerGateContent(
-  status: AgentGUIProviderReadinessGate["status"],
-  labels: AgentGUIProviderReadinessGatePaneProps["labels"],
-  options: { showAllProviders?: boolean } = {}
-): { title: string; description: string; actionLabel?: string } {
-  switch (status) {
-    case "checking":
-      return {
-        title: labels.providerGateCheckingTitle,
-        description:
-          options.showAllProviders === true
-            ? labels.providerGateCheckingAgentsDescription
-            : labels.providerGateCheckingDescription
-      };
-    case "not_installed":
-      return {
-        title: labels.providerGateInstallTitle,
-        description: labels.providerGateInstallDescription,
-        actionLabel: labels.providerGateInstallAction
-      };
-    case "auth_required":
-      return {
-        title: labels.providerGateLoginTitle,
-        description: labels.providerGateLoginDescription,
-        actionLabel: labels.providerGateLoginAction
-      };
-    case "coming_soon":
-      return {
-        title: labels.providerGateComingSoonTitle,
-        description: labels.providerGateComingSoonDescription,
-        actionLabel: labels.providerGateComingSoonAction
-      };
-    case "unavailable":
-      return {
-        title: labels.providerGateUnavailableTitle,
-        description: labels.providerGateUnavailableDescription,
-        actionLabel: labels.providerGateRetryAction
-      };
-  }
-}
-
-function providerGateAction(
-  status: AgentGUIProviderReadinessGate["status"]
-): AgentGUIProviderReadinessGate["pendingAction"] {
-  switch (status) {
-    case "not_installed":
-      return "install";
-    case "auth_required":
-      return "login";
-    case "unavailable":
-      return "refresh";
-    case "coming_soon":
-    case "checking":
-      return null;
-  }
-}
 
 export function AgentGUIUnifiedProviderIcon({
   presentation

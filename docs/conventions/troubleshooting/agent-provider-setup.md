@@ -36,29 +36,35 @@ Provider discovery, installation, authentication, models, configuration, and run
 ### Provider setup notice flashes after switching to an already-connected agent
 
 - Symptom:
-  Opening Tutti and switching to Cursor (or another managed provider) shows the
-  toast-like "connect provider before sending" notice even though auto-connect
-  already succeeded and messages can be sent. The notice stays until a later
-  status refresh finally marks the provider ready.
+  Opening or restarting Tutti, then switching to an existing Claude Code,
+  Cursor, or other managed-provider session, briefly shows the toast-like
+  "connect provider before sending" notice even though automatic readiness
+  recovery succeeds and messages can be sent after the status refresh settles.
 - Quick checks:
   Compare the desktop provider-status snapshot for the active provider with the
-  AgentGUI setup notice. If `ensureLoaded` reused a cached `auth_required` /
-  `not_installed` row while a session prompt still works, the notice is projecting
-  stale not-ready readiness. Confirm whether switching the provider triggered a
-  scoped `refresh` or only a cache-hit `ensureLoaded`.
+  AgentGUI view model. An active conversation must project no provider-readiness
+  gate. If provider `checking`, `auth_required`, or `not_installed` disables its
+  composer or renders a setup notice, catalog readiness leaked into session
+  recovery ownership.
 - Root cause:
-  Startup may capture a not-ready provider status during the background catalog
-  scan. Selecting that provider later reuses the cache, so AgentGUI immediately
-  treats the provider as not installed/connected. The notice only clears when a
-  slower follow-up refresh upgrades availability to `ready`.
+  Startup or daemon restart may temporarily expose an uncaptured or stale
+  provider catalog status. AgentGUI projected that target-creation readiness
+  into an already-open session, creating a second owner beside canonical
+  session/runtime recovery. Transient catalog reconciliation then blocked the
+  active composer and rendered a misleading connect action.
 - Fix:
-  When the active Agent GUI provider has a cached not-ready status, refresh that
-  provider once and keep readiness unknown while the recheck is pending. Do not
-  project the setup notice from a stale not-ready row during that window.
+  Keep the structured readiness gate only on the empty new-conversation surface.
+  Active sessions always project a null provider gate; canonical session/runtime
+  state owns recovery, submit, queue, and cancel capability. Remove active setup
+  notices and all composer conditions derived from provider catalog readiness.
+  Desktop may still refresh stale catalog status for future session creation.
 - Validation:
-  Add coverage for the not-ready recheck key/suppress helper, then run the
-  focused desktop test for that helper and `pnpm --filter @tutti-os/desktop typecheck`.
+  Cover active-session null gate, empty-surface gate selection, and explicit
+  install/login action mapping. Also run desktop readiness-gate tests, AgentGUI
+  tests, and desktop/AgentGUI typechecks.
 - References:
+  [agentGuiProviderReadiness.ts](../../../packages/agent/gui/agent-gui/agentGuiNode/model/agentGuiProviderReadiness.ts)
+  [useAgentGUIViewAssembly.ts](../../../packages/agent/gui/agent-gui/agentGuiNode/controller/useAgentGUIViewAssembly.ts)
   [useDesktopAgentGUIReadiness.ts](../../../apps/desktop/src/renderer/src/features/workspace-agent/ui/useDesktopAgentGUIReadiness.ts)
   [desktopAgentProviderNotReadyRecheck.ts](../../../apps/desktop/src/renderer/src/features/workspace-agent/ui/desktopAgentProviderNotReadyRecheck.ts)
   [agent-gui-node.md](../../architecture/agent-gui-node.md)

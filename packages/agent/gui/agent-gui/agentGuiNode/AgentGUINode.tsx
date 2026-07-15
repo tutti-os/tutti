@@ -22,10 +22,6 @@ import {
   findWorkspaceAgentProbeForDockProvider
 } from "../workspaceDesktop/view/desktopDockAgentProbeTooltipModel";
 import { AgentProbeInfoPopover } from "../workspaceDesktop/view/AgentProbeInfoPopover";
-import {
-  getAgentHostManagedToolchainAgentByName,
-  resolveAgentHostManagedToolchainAgentAction
-} from "../../shared/utils/managedToolchainAgents";
 import styles from "./AgentGUINode.styles";
 import {
   AGENT_GUI_COLLAPSED_MIN_WIDTH_PX,
@@ -113,7 +109,6 @@ export const AgentGUINode = memo(function AgentGUINode({
     providerReadinessGates = null,
     defaultAgentTargetId = null,
     providerAuthAccountLabels,
-    managedAgentsState,
     contextMentionProviders,
     workspaceAppIcons,
     disabledHomeSuggestions,
@@ -339,10 +334,6 @@ export const AgentGUINode = memo(function AgentGUINode({
   const fallbackAgentTitle = t("sidebar.fallbackAgentLabel");
   const activeProvider =
     viewModel.rail.activeConversation?.provider ?? state.provider;
-  const activeReadinessProvider =
-    viewModel.rail.activeConversationId !== null
-      ? activeProvider
-      : viewModel.rail.selectedAgentTarget.provider;
   const selectedAgentTargetLabel =
     viewModel.rail.selectedAgentTarget?.label ??
     resolveAgentGUIProviderDisplayLabel(state.provider, fallbackAgentTitle);
@@ -386,23 +377,6 @@ export const AgentGUINode = memo(function AgentGUINode({
         : null,
     [railStatusProvider, workspaceAgentProbes?.snapshot]
   );
-  const isActiveAgentProviderReady = useMemo(() => {
-    const managedAgent = getAgentHostManagedToolchainAgentByName(
-      activeReadinessProvider
-    );
-    if (!managedAgent) {
-      return true;
-    }
-    if (!managedAgentsState) {
-      return true;
-    }
-    return (
-      resolveAgentHostManagedToolchainAgentAction(
-        managedAgent,
-        managedAgentsState
-      ) === "installed"
-    );
-  }, [activeReadinessProvider, managedAgentsState]);
   const canonicalSlashStatusQuotas =
     viewModel.detail.usage?.quotas ?? EMPTY_SLASH_STATUS_QUOTAS;
   const slashStatusQuotaSource =
@@ -642,7 +616,6 @@ export const AgentGUINode = memo(function AgentGUINode({
             onEngagementEvent={onEngagementEvent}
             composerFocusRequestSequence={composerFocusRequestSequence}
             newConversationRequestSequence={newConversationRequestSequence}
-            isAgentProviderReady={isActiveAgentProviderReady}
             slashStatusLimits={slashStatusLimits}
             slashStatusLimitsLoading={
               workspaceAgentProbes?.isLoadingUsage ?? false

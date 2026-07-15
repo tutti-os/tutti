@@ -47,8 +47,7 @@ import {
   hashMarkdownProfilerContent,
   isLikelyLongerThanLineLimit,
   resolveMarkdownAnchorHref,
-  splitStreamingMarkdownBlocks,
-  useDeferredMarkdownRenderReady
+  splitStreamingMarkdownBlocks
 } from "./agentMessageMarkdownRuntime";
 import {
   isClickableMarkdownHref,
@@ -78,8 +77,6 @@ export { resetCachedMarkdownImagesForTests } from "./AgentMessageMarkdownMedia";
 export type { StreamingMarkdownBlock } from "./agentMessageMarkdownRuntime";
 export { splitStreamingMarkdownBlocks } from "./agentMessageMarkdownRuntime";
 
-const DEFERRED_LONG_MARKDOWN_CHAR_THRESHOLD = 4096;
-const STREAMING_MARKDOWN_EMERGENCY_PLAIN_CHAR_THRESHOLD = 96_000;
 const STREAMING_MARKDOWN_FRAME_MS = 24;
 const STREAMING_MARKDOWN_MAX_CHARS_PER_SECOND = 6_000;
 const STREAMING_MARKDOWN_TAIL_FLUSH_CHARS = 0;
@@ -128,7 +125,6 @@ interface AgentMessageMarkdownProps {
   className?: string;
   inline?: boolean;
   normalizePlainIssueMentionTitle?: boolean;
-  deferLongContentRender?: boolean;
   enableImageZoom?: boolean;
   previewMode?: boolean;
   streaming?: boolean;
@@ -165,7 +161,6 @@ export function AgentMessageMarkdown({
   className,
   inline = false,
   normalizePlainIssueMentionTitle = false,
-  deferLongContentRender = false,
   enableImageZoom = false,
   previewMode = false,
   streaming = false
@@ -197,10 +192,6 @@ export function AgentMessageMarkdown({
     collapsible && isLikelyLongerThanLineLimit(stabilizedContent);
   const isCollapsed = shouldCollapse && !isExpanded;
   const ContainerTag = inline ? "span" : "div";
-  const contentSignature = useMemo(
-    () => hashMarkdownProfilerContent(stabilizedContent),
-    [stabilizedContent]
-  );
   const normalizedContent = useMemo(
     () =>
       linkBareLocalAbsolutePaths(
@@ -217,18 +208,6 @@ export function AgentMessageMarkdown({
     [normalizePlainIssueMentionTitle, stabilizedContent]
   );
   const isMentionOnly = isMentionOnlyMarkdownContent(normalizedContent);
-  const shouldDeferMarkdownRender =
-    deferLongContentRender &&
-    !inline &&
-    content.length >=
-      (streaming
-        ? STREAMING_MARKDOWN_EMERGENCY_PLAIN_CHAR_THRESHOLD
-        : DEFERRED_LONG_MARKDOWN_CHAR_THRESHOLD) &&
-    !isExpanded;
-  const markdownRenderReady = useDeferredMarkdownRenderReady(
-    contentSignature,
-    shouldDeferMarkdownRender
-  );
   const handleLinkClick = useCallback(
     (href: string): void => {
       if (workspaceLinkSource && onLinkAction && (workspaceRoot || basePath)) {
@@ -332,29 +311,20 @@ export function AgentMessageMarkdown({
         data-collapsed={isCollapsed ? "true" : "false"}
         onClickCapture={handleAnchorClickCapture}
       >
-        {markdownRenderReady ? (
-          streaming ? (
-            <StreamingMarkdownBlocks
-              content={normalizedContent}
-              components={markdownComponents}
-            />
-          ) : (
-            <ReactMarkdown
-              remarkPlugins={[remarkGfm]}
-              rehypePlugins={[[rehypeSanitize, MARKDOWN_SANITIZE_SCHEMA]]}
-              urlTransform={markdownUrlTransform}
-              components={markdownComponents}
-            >
-              {normalizedContent}
-            </ReactMarkdown>
-          )
+        {streaming ? (
+          <StreamingMarkdownBlocks
+            content={normalizedContent}
+            components={markdownComponents}
+          />
         ) : (
-          <div
-            className="whitespace-pre-wrap [overflow-wrap:anywhere]"
-            data-workspace-agent-markdown-deferred="true"
+          <ReactMarkdown
+            remarkPlugins={[remarkGfm]}
+            rehypePlugins={[[rehypeSanitize, MARKDOWN_SANITIZE_SCHEMA]]}
+            urlTransform={markdownUrlTransform}
+            components={markdownComponents}
           >
             {normalizedContent}
-          </div>
+          </ReactMarkdown>
         )}
       </ContainerTag>
       {shouldCollapse && !isExpanded ? (

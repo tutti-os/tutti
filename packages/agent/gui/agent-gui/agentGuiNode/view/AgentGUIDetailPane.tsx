@@ -7,14 +7,12 @@ import {
   useState,
   type CSSProperties
 } from "react";
-import { cn, toastVariants } from "@tutti-os/ui-system";
 import { ScrollArea } from "@tutti-os/ui-system/components";
 import type { WorkspaceUserProjectI18nRuntime } from "@tutti-os/workspace-user-project/i18n";
 import type { WorkspaceLinkAction } from "../../../actions/workspaceLinkActions";
 import type { UiLanguage } from "../../../contexts/settings/domain/agentSettings";
 import type { AgentPromptContentBlock } from "../../../shared/contracts/dto";
 import type { AgentMessageMarkdownWorkspaceAppIcon } from "../../../shared/AgentMessageMarkdown";
-import { openAgentEnvPanel } from "../../../shared/agentEnv/agentEnvPanelStore";
 import { AGENT_GUI_WORKBENCH_OPEN_EXTERNAL_IMPORT_EVENT } from "../../../workbench/contribution";
 import { resolveAgentGuiWorkbenchProviderLabel } from "../../../workbench/providerCatalog";
 import type {
@@ -84,7 +82,6 @@ export interface AgentGUIDetailPaneProps {
   previewMode: boolean;
   workspaceReferencePickerOpen: boolean;
   composerFocusRequestSequence: number | null;
-  isAgentProviderReady: boolean;
   slashStatusLimits: readonly AgentComposerSlashStatusLimit[];
   slashStatusLimitsLoading: boolean;
   slashStatusLimitsUnavailable: boolean;
@@ -167,7 +164,6 @@ export const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
   previewMode,
   workspaceReferencePickerOpen,
   composerFocusRequestSequence,
-  isAgentProviderReady,
   slashStatusLimits,
   slashStatusLimitsLoading,
   slashStatusLimitsUnavailable,
@@ -201,18 +197,6 @@ export const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
     scrollHeight: number;
     scrollTop: number;
   } | null>(null);
-  // Remembers, per conversation, the last scroll position the user left off at
-  // so switching back to a conversation the user had manually scrolled away
-  // from restores that position instead of snapping to the bottom.
-  const timelineScrollPositionsRef = useRef<
-    Map<string, { scrollTop: number; atBottom: boolean }>
-  >(new Map());
-  // Deferred restore target used when a conversation is switched to while its
-  // content is still loading (skeleton) and scrollHeight is not yet final.
-  const pendingRestoreScrollRef = useRef<{
-    conversationId: string;
-    scrollTop: number;
-  } | null>(null);
   const [
     bottomDockDismissedPromptRequestId,
     setBottomDockDismissedPromptRequestId
@@ -238,15 +222,15 @@ export const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
     isComposerSending,
     selectedAgentTargetComingSoon,
     sessionChrome,
-    showProviderSetupNotice,
     showStopButton,
     showTimelineSkeleton,
     showUnavailableChatEmpty,
     slashStatus,
-    submitDisabled
+    submitDisabled,
+    timelineConversationId,
+    timelineInteractionLocked
   } = useAgentGUIDetailModel({
     bottomDockDismissedPromptRequestId,
-    isAgentProviderReady,
     labels,
     slashStatusLimits,
     slashStatusLimitsLoading,
@@ -459,9 +443,9 @@ export const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
         viewModel.rail.activeConversationId === null
           ? selectHomeComposerAgentTargetAndFocus
           : undefined,
-      disabled: composerDisabled,
+      disabled: composerDisabled || timelineInteractionLocked,
       disabledReason: composerDisabledReason,
-      submitDisabled,
+      submitDisabled: submitDisabled || timelineInteractionLocked,
       composerSettings: viewModel.composer.composerSettings,
       queueStatus: viewModel.composer.queueStatus,
       queuedPrompts: viewModel.composer.queuedPrompts,
@@ -526,6 +510,7 @@ export const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
       composerLabels,
       composerProviderTargets,
       composerSelectedProviderTarget,
+      timelineInteractionLocked,
       handleInterruptCurrentTurn,
       isActive,
       isComposerSending,
@@ -635,17 +620,20 @@ export const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
     bottomDockStoreRevision,
     conversation,
     pendingPrependScrollAnchorRef,
-    pendingRestoreScrollRef,
     showTimelineSkeleton,
     submittedPromptScrollConversationRef,
+    timelineConversationId,
     timelineRef,
     timelineScrollAnchorRef,
-    timelineScrollPositionsRef,
     viewModel
   });
 
   return (
-    <main className={styles.detail}>
+    <main
+      className={styles.detail}
+      aria-busy={timelineInteractionLocked || undefined}
+      inert={timelineInteractionLocked}
+    >
       <AgentGUIDetailHeader
         activeConversation={viewModel.rail.activeConversation}
         hidden={hideDetailHeader}
@@ -653,40 +641,6 @@ export const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
         uiLanguage={uiLanguage}
         previewMode={previewMode}
       />
-      {showProviderSetupNotice ? (
-        <div
-          className={cn(
-            toastVariants({ variant: "default" }),
-            styles.providerSetupNotice
-          )}
-          data-slot="toast"
-          data-testid="agent-gui-provider-setup-notice"
-          role="status"
-        >
-          <span className="inline-flex max-w-full items-center justify-center gap-[6px] text-center text-[13px] font-normal leading-normal">
-            <span className="min-w-0 break-words">
-              {labels.installRequiredPlaceholder}
-            </span>
-          </span>
-          <button
-            type="button"
-            className={cn(
-              styles.providerSetupNoticeAction,
-              "nodrag tsh-desktop-no-drag [-webkit-app-region:no-drag]"
-            )}
-            data-testid="agent-gui-provider-setup-notice-action"
-            onPointerDown={(event) => event.stopPropagation()}
-            onClick={() =>
-              openAgentEnvPanel({
-                provider: viewModel.shell.data.provider,
-                focus: "detect"
-              })
-            }
-          >
-            {labels.installRequiredAction}
-          </button>
-        </div>
-      ) : null}
       <ScrollArea
         scrollbarMode="native"
         className="flex h-full min-h-0 flex-1 flex-col [&_[data-orientation=vertical][data-slot=scroll-area-scrollbar]]:opacity-100"

@@ -114,7 +114,6 @@ function DesktopAgentGUIWorkbenchBodyImpl({
     useDesktopPreferencesService();
   const {
     computerUseStatus,
-    effectiveManagedAgentsState,
     handleAgentProviderLogin,
     provider,
     providerReadinessGates,
@@ -794,7 +793,6 @@ function DesktopAgentGUIWorkbenchBodyImpl({
           providerReadinessGates,
           defaultAgentTargetId,
           providerAuthAccountLabels,
-          managedAgentsState: effectiveManagedAgentsState,
           contextMentionProviders: previewMode
             ? []
             : effectiveContextMentionProviders,

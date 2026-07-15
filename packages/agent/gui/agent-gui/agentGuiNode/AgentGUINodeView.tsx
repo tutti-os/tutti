@@ -41,6 +41,7 @@ import { AgentGUIReferencePickerSurface } from "./view/AgentGUIReferencePickerSu
 import { useAgentGUIWorkspaceReferencePicker } from "./view/useAgentGUIWorkspaceReferencePicker";
 import type { AgentGUINodeViewProps } from "./view/AgentGUINodeView.types";
 import { useAgentGUINodeEngagement } from "./engagement/useAgentGUINodeEngagement";
+import { isAgentGUIProviderReady } from "./model/agentGuiProviderReadiness";
 export type {
   AgentGUINodeViewProps,
   AgentGUIAgentsEmptyRenderer,
@@ -84,7 +85,6 @@ export function AgentGUINodeView({
   onEngagementEvent,
   composerFocusRequestSequence = null,
   newConversationRequestSequence = null,
-  isAgentProviderReady,
   slashStatusLimits = [],
   slashStatusLimitsLoading = false,
   slashStatusLimitsUnavailable = false,
@@ -126,6 +126,9 @@ export function AgentGUINodeView({
   workspaceAppIcons = EMPTY_WORKSPACE_APP_ICONS
 }: AgentGUINodeViewProps): React.JSX.Element {
   "use memo";
+  const isAgentProviderReady = isAgentGUIProviderReady(
+    viewModel.readiness.providerReadinessGate
+  );
   const { composerEngagement, layoutElementRef } = useAgentGUINodeEngagement({
     composerReady: isAgentProviderReady,
     isActive,
@@ -723,7 +726,6 @@ export function AgentGUINodeView({
             isActive={isActive}
             workspaceReferencePickerOpen={workspaceReferencePickerOpen}
             composerFocusRequestSequence={detailComposerFocusRequestSequence}
-            isAgentProviderReady={isAgentProviderReady}
             slashStatusLimits={slashStatusLimits}
             slashStatusLimitsLoading={slashStatusLimitsLoading}
             slashStatusLimitsUnavailable={slashStatusLimitsUnavailable}

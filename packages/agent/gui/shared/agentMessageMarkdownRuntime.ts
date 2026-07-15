@@ -1,16 +1,7 @@
-import {
-  startTransition,
-  useEffect,
-  useState,
-  type KeyboardEvent,
-  type MouseEvent,
-  type PointerEvent
-} from "react";
+import type { KeyboardEvent, MouseEvent, PointerEvent } from "react";
 
 const COLLAPSED_LINE_LIMIT = 8;
 const APPROX_CHARS_PER_LINE = 34;
-const DEFERRED_LONG_MARKDOWN_FALLBACK_DELAY_MS = 80;
-const DEFERRED_LONG_MARKDOWN_IDLE_TIMEOUT_MS = 700;
 
 export interface StreamingMarkdownBlock {
   content: string;
@@ -145,59 +136,6 @@ export function activateMarkdownLinkFromPointer(
     return;
   }
   activateMarkdownLink(event, href, onLinkClick);
-}
-
-export function useDeferredMarkdownRenderReady(
-  contentSignature: string,
-  shouldDefer: boolean
-): boolean {
-  const [readySignature, setReadySignature] = useState<string | null>(
-    shouldDefer ? null : contentSignature
-  );
-  const renderReady = !shouldDefer || readySignature === contentSignature;
-
-  useEffect(() => {
-    if (!shouldDefer) {
-      setReadySignature(contentSignature);
-      return;
-    }
-
-    let canceled = false;
-    let timeoutId: ReturnType<typeof setTimeout> | null = null;
-    let idleCallbackId: number | null = null;
-    const markReady = (): void => {
-      if (canceled) {
-        return;
-      }
-      startTransition(() => {
-        setReadySignature(contentSignature);
-      });
-    };
-
-    if ("requestIdleCallback" in window) {
-      idleCallbackId = window.requestIdleCallback(markReady, {
-        timeout: DEFERRED_LONG_MARKDOWN_IDLE_TIMEOUT_MS
-      });
-    } else {
-      // timing: requestIdleCallback fallback for runtimes that lack it
-      timeoutId = setTimeout(
-        markReady,
-        DEFERRED_LONG_MARKDOWN_FALLBACK_DELAY_MS
-      );
-    }
-
-    return () => {
-      canceled = true;
-      if (idleCallbackId !== null) {
-        window.cancelIdleCallback(idleCallbackId);
-      }
-      if (timeoutId !== null) {
-        clearTimeout(timeoutId);
-      }
-    };
-  }, [contentSignature, shouldDefer]);
-
-  return renderReady;
 }
 
 export function hashMarkdownProfilerContent(content: string): string {

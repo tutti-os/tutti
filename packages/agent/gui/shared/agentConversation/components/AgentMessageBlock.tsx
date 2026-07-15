@@ -201,7 +201,6 @@ export function AgentMessageBlock({
                 source: "agent-markdown"
               }}
               workspaceAppIcons={workspaceAppIcons}
-              deferLongContentRender
               enableImageZoom
               previewMode={previewMode}
               streaming={message.statusKind === "working"}
@@ -566,7 +565,6 @@ function AgentPlanCardMessage({
           source: "agent-markdown"
         }}
         workspaceAppIcons={workspaceAppIcons}
-        deferLongContentRender
         enableImageZoom
         previewMode={previewMode}
       />

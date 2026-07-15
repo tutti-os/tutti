@@ -17,11 +17,11 @@ import {
   resolveSlashStatus,
   useStableSlashStatus
 } from "./agentGUIDetailModelHelpers";
+import { useAgentGUITimelineTransition } from "./useAgentGUITimelineTransition";
 import styles from "../AgentGUINode.styles";
 
 interface Input {
   bottomDockDismissedPromptRequestId: string | null;
-  isAgentProviderReady: boolean;
   labels: AgentGUIViewLabels;
   slashStatusLimits: readonly AgentComposerSlashStatusLimit[];
   slashStatusLimitsLoading: boolean;
@@ -32,7 +32,6 @@ interface Input {
 export function useAgentGUIDetailModel(input: Input) {
   const {
     bottomDockDismissedPromptRequestId,
-    isAgentProviderReady,
     labels,
     slashStatusLimits,
     slashStatusLimitsLoading,
@@ -44,10 +43,20 @@ export function useAgentGUIDetailModel(input: Input) {
     detail: viewModel.detail.conversationDetail,
     avoidGroupingEdits: viewModel.detail.avoidGroupingEdits
   });
-  const conversation =
+  const targetConversation =
     viewModel.detail.availability === "not_found"
       ? null
       : projectedConversation;
+  const {
+    conversation,
+    showTimelineSkeleton,
+    timelineConversationId,
+    transitionPending: timelineTransitionPending
+  } = useAgentGUITimelineTransition({
+    activeConversationId: viewModel.rail.activeConversationId,
+    availability: viewModel.detail.availability,
+    conversation: targetConversation
+  });
   const hasActiveConversation = viewModel.rail.activeConversationId !== null;
   const selectedAgentTargetComingSoon =
     viewModel.rail.selectedAgentTarget?.disabled === true;
@@ -155,9 +164,6 @@ export function useAgentGUIDetailModel(input: Input) {
     activePromptIsPlanDecision || shouldLiftActivePromptAboveInlineNotice
       ? null
       : activePrompt;
-  const showTimelineSkeleton =
-    viewModel.detail.availability === "loading" &&
-    (!conversation || conversation.rows.length === 0);
   const showUnavailableChatEmpty =
     hasActiveConversation && viewModel.detail.availability === "not_found";
   const activeDetailStatus = resolveConversationDetailStatus(
@@ -166,7 +172,7 @@ export function useAgentGUIDetailModel(input: Input) {
   const derivedBusyStatus = resolveActiveConversationBusyStatus({
     conversationStatus: viewModel.rail.activeConversation?.status,
     detailStatus: activeDetailStatus,
-    conversation
+    conversation: targetConversation
   });
   const activeConversationTurnBusy =
     viewModel.composer.isSubmitting ||
@@ -181,18 +187,10 @@ export function useAgentGUIDetailModel(input: Input) {
     currentUserId: viewModel.shell.currentUserId
   });
   const canQueueWhileBusy =
-    viewModel.composer.canQueueWhileBusy &&
-    isAgentProviderReady &&
-    !isCollaboratorConversation;
+    viewModel.composer.canQueueWhileBusy && !isCollaboratorConversation;
   const composerDisabledReason = isCollaboratorConversation
     ? labels.collaboratorSessionReadOnlyPlaceholder
-    : isAgentProviderReady
-      ? null
-      : labels.installRequiredPlaceholder;
-  const showProviderSetupNotice =
-    !emptyProviderReadinessGate &&
-    !isAgentProviderReady &&
-    !isCollaboratorConversation;
+    : null;
   const hasNonRetryableRecoveryFailure =
     (sessionChrome.recovery?.kind === "failed" &&
       sessionChrome.recovery.canRetry === false) ||
@@ -200,12 +198,10 @@ export function useAgentGUIDetailModel(input: Input) {
   const submitDisabled =
     hasNonRetryableRecoveryFailure ||
     isCollaboratorConversation ||
-    !isAgentProviderReady ||
     (!viewModel.composer.canSubmit && !canQueueWhileBusy);
   const composerDisabled =
     hasNonRetryableRecoveryFailure ||
     isCollaboratorConversation ||
-    !isAgentProviderReady ||
     (!canQueueWhileBusy &&
       (viewModel.interaction.pendingApproval !== null ||
         viewModel.interaction.pendingInteractivePrompt !== null ||
@@ -621,11 +617,12 @@ export function useAgentGUIDetailModel(input: Input) {
     isComposerSending,
     selectedAgentTargetComingSoon,
     sessionChrome,
-    showProviderSetupNotice,
     showStopButton,
     showTimelineSkeleton,
     showUnavailableChatEmpty,
     slashStatus,
-    submitDisabled
+    submitDisabled,
+    timelineConversationId,
+    timelineInteractionLocked: timelineTransitionPending
   };
 }

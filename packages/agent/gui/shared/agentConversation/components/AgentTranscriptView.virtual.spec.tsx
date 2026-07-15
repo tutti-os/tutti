@@ -87,7 +87,11 @@ describe("AgentTranscriptView virtual rendering", () => {
     );
 
     expect(useVirtualizer).toHaveBeenCalledWith(
-      expect.objectContaining({ count: 40 })
+      expect.objectContaining({
+        anchorTo: "end",
+        count: 40,
+        scrollEndThreshold: 24
+      })
     );
     await waitFor(() => {
       expect(screen.getByText("turn 10 user row")).toBeTruthy();
@@ -120,7 +124,7 @@ describe("AgentTranscriptView virtual rendering", () => {
     expect(useVirtualizer).toHaveBeenCalled();
   });
 
-  it("enables virtualization for one complex turn", () => {
+  it("keeps one complex turn in normal flow because virtualization cannot elide it", () => {
     virtualizerMockState.virtualIndexes = [0];
 
     render(
@@ -157,7 +161,7 @@ describe("AgentTranscriptView virtual rendering", () => {
 
     expect(
       document.querySelector("[data-agent-transcript-virtualized='true']")
-    ).toBeTruthy();
+    ).toBeNull();
     expect(
       document.querySelector("[data-agent-transcript-row='row-0']")
     ).toBeTruthy();
@@ -233,6 +237,68 @@ describe("AgentTranscriptView virtual rendering", () => {
     expect(virtualizerMockState.scrollToIndex).toHaveBeenCalledWith(0, {
       align: "center"
     });
+  });
+
+  it("keeps the timeline viewport bound across long-short-long switches", async () => {
+    virtualizerMockState.virtualIndexes = [10];
+    const labels = {
+      thinkingLabel: "Thought process",
+      toolCallsLabel: (count: number) => `Tool calls (${count})`,
+      processing: "Planning next moves",
+      turnSummary: "Changed files"
+    };
+    const { rerender } = render(
+      <div
+        data-testid="agent-gui-timeline"
+        style={{ height: "480px", overflow: "auto" }}
+      >
+        <AgentTranscriptView
+          conversation={conversationWithMultiRowTurns(40)}
+          labels={labels}
+        />
+      </div>
+    );
+    const timeline = screen.getByTestId("agent-gui-timeline");
+
+    await waitFor(() => {
+      expect(
+        vi.mocked(useVirtualizer).mock.calls.at(-1)?.[0].getScrollElement()
+      ).toBe(timeline);
+    });
+
+    rerender(
+      <div
+        data-testid="agent-gui-timeline"
+        style={{ height: "480px", overflow: "auto" }}
+      >
+        <AgentTranscriptView
+          conversation={conversationWithRows(2)}
+          labels={labels}
+        />
+      </div>
+    );
+
+    await waitFor(() => {
+      expect(
+        vi.mocked(useVirtualizer).mock.calls.at(-1)?.[0].getScrollElement()
+      ).toBe(timeline);
+    });
+
+    rerender(
+      <div
+        data-testid="agent-gui-timeline"
+        style={{ height: "480px", overflow: "auto" }}
+      >
+        <AgentTranscriptView
+          conversation={conversationWithMultiRowTurns(40)}
+          labels={labels}
+        />
+      </div>
+    );
+
+    expect(
+      vi.mocked(useVirtualizer).mock.calls.at(-1)?.[0].getScrollElement()
+    ).toBe(timeline);
   });
 });
 

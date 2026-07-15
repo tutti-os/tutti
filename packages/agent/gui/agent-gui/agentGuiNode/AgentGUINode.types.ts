@@ -5,7 +5,6 @@ import type {
   WorkspaceFileReference
 } from "@tutti-os/workspace-file-reference/contracts";
 import type { ReferenceSourceAggregator } from "@tutti-os/workspace-file-reference/core";
-import type { AgentHostManagedAgentsState } from "../../shared/contracts/dto";
 import type { AgentSettings } from "../../contexts/settings/domain/agentSettings";
 import type { WorkspaceLinkAction } from "../../actions/workspaceLinkActions";
 import type {
@@ -119,7 +118,6 @@ export interface AgentGUINodeHostCapabilities {
   > | null;
   defaultAgentTargetId?: string | null;
   providerAuthAccountLabels?: Partial<Record<string, string>>;
-  managedAgentsState?: AgentHostManagedAgentsState | null;
   contextMentionProviders?: readonly AgentContextMentionProvider[];
   workspaceAppIcons?: readonly AgentMessageMarkdownWorkspaceAppIcon[];
   disabledHomeSuggestions?: readonly AgentGUIHomeSuggestionId[];
@@ -326,7 +324,6 @@ export function areAgentGUINodePropsEqual(
     pc.providerReadinessGates === nc.providerReadinessGates &&
     pc.defaultAgentTargetId === nc.defaultAgentTargetId &&
     pc.providerAuthAccountLabels === nc.providerAuthAccountLabels &&
-    pc.managedAgentsState === nc.managedAgentsState &&
     pc.contextMentionProviders === nc.contextMentionProviders &&
     pc.workspaceAppIcons === nc.workspaceAppIcons &&
     pc.disabledHomeSuggestions === nc.disabledHomeSuggestions &&

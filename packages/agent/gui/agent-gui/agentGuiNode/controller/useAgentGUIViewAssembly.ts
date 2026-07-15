@@ -13,6 +13,7 @@ import type { useAgentGUIProviderCatalogSelection } from "./useAgentGUIProviderC
 import type { useAgentGUILocalState } from "./useAgentGUILocalState";
 import type { useAgentGUIComposerCapabilities } from "./useAgentGUIComposerCapabilities";
 import type { useAgentGUISessionDetailTransport } from "./useAgentGUISessionDetailTransport";
+import { resolveAgentGUIProviderReadinessGateForView } from "../model/agentGuiProviderReadiness";
 
 type ConversationPresentationInput = Parameters<
   typeof useAgentGUIConversationPresentation
@@ -123,12 +124,11 @@ export function useAgentGUIViewAssembly(input: UseAgentGUIViewAssemblyInput) {
     input.activeConversationId === null
       ? input.selectedComposerTargetData.data
       : input.data;
-  const providerReadinessGate =
-    input.activeConversationId === null
-      ? (input.providerReadinessGates?.[
-          input.effectiveSelectedProviderTarget.provider
-        ] ?? null)
-      : null;
+  const providerReadinessGate = resolveAgentGUIProviderReadinessGateForView({
+    activeConversationId: input.activeConversationId,
+    providerReadinessGates: input.providerReadinessGates,
+    selectedProvider: input.effectiveSelectedProviderTarget.provider
+  });
   const viewModel = useAgentGUIViewModel({
     shell: {
       workspaceId: input.workspaceId,

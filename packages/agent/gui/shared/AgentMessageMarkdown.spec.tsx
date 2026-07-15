@@ -1,11 +1,5 @@
 import "@testing-library/jest-dom/vitest";
-import {
-  act,
-  fireEvent,
-  render,
-  screen,
-  waitFor
-} from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   AgentMessageMarkdown,
@@ -1589,35 +1583,13 @@ describe("AgentMessageMarkdown", () => {
     expect(screen.queryByRole("button", { name: "展开全部" })).toBeNull();
   });
 
-  it("defers full markdown rendering for long messages when requested", () => {
-    vi.useFakeTimers();
-    try {
-      const content = `请看 [README.md](README.md)\n\n${"x".repeat(4096)}`;
-      const { container } = render(
-        <AgentMessageMarkdown content={content} deferLongContentRender />
-      );
+  it("renders long messages as markdown on the first render", () => {
+    const content = `# Long answer\n\n${"x".repeat(4096)}`;
+    render(<AgentMessageMarkdown content={content} />);
 
-      expect(
-        container.querySelector(
-          '[data-workspace-agent-markdown-deferred="true"]'
-        )
-      ).toBeTruthy();
-      expect(screen.queryByRole("link", { name: "README.md" })).toBeNull();
-
-      act(() => {
-        vi.advanceTimersByTime(80);
-      });
-
-      expect(screen.queryByRole("link", { name: "README.md" })).toBeNull();
-      expect(screen.getByText("README.md")).toBeInTheDocument();
-      expect(
-        container.querySelector(
-          '[data-workspace-agent-markdown-deferred="true"]'
-        )
-      ).toBeNull();
-    } finally {
-      vi.useRealTimers();
-    }
+    expect(
+      screen.getByRole("heading", { level: 1, name: "Long answer" })
+    ).toBeInTheDocument();
   });
 });
 
