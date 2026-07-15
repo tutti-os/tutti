@@ -579,7 +579,11 @@ func (s *Service) UpdatePin(ctx context.Context, workspaceID string, agentSessio
 			runtime,
 			s.controller().CanResume(runtimeResumeInputFromRuntimeSession(runtime)),
 		)
-		return mergePersistedSessionState(service, persisted), nil
+		return s.withProtocolV2TurnState(
+			ctx,
+			workspaceID,
+			mergePersistedSessionState(service, persisted),
+		)
 	}
 	return sessionFromPersisted(
 		persisted,

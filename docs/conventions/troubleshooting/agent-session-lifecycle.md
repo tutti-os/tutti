@@ -321,6 +321,41 @@ Turn state, loading, cancel, restore, file-change undo, rail projection, event u
   [service.go](../../../services/tuttid/service/agent/service.go)
   [service_session_list.go](../../../services/tuttid/service/agent/service_session_list.go)
 
+### AgentGUI pin or unpin appears stuck for a live session
+
+- Symptom:
+  Pinning or unpinning a conversation backed by a live runtime succeeds in the
+  daemon, but the rail does not move the row or update its action until a later
+  list refresh. Old conversations without a live runtime update immediately.
+- Quick checks:
+  Correlate `pin_result` with `agent.activity.store.session_version_regression`.
+  Compare the command response's `updatedAtUnixMs` with the engine's current
+  session version, then inspect the exported session for a newer
+  `pinnedAtUnixMs`. A fast command carrying the new pin value but an older
+  `updatedAtUnixMs` identifies a stale runtime projection, not a slow database
+  write.
+- Root cause:
+  Durable metadata updates advance the persisted session timestamp. When a live
+  runtime session is also present, the service merges persisted metadata such
+  as `pinnedAtUnixMs` into the runtime projection. If that merge keeps the older
+  runtime timestamp, the frontend's monotonic session reducer correctly rejects
+  the whole stale response, including the new pin value.
+- Fix:
+  Merge session freshness monotonically across runtime and persistence using
+  the newer timestamp. Pin responses that advance the session version must also
+  include protocol-v2 active/latest turn state so accepting the metadata update
+  cannot clear a running turn. Do not weaken frontend version checks or hide the
+  mismatch behind delayed refetches.
+- Validation:
+  Cover a live runtime session whose persisted pin update is newer, a newer
+  runtime snapshot that must not regress, and a running turn that remains
+  attached to the pin response. Run `go test ./services/tuttid/service/agent`
+  plus daemon lint, tests, and build.
+- References:
+  [service.go](../../../services/tuttid/service/agent/service.go)
+  [service_session.go](../../../services/tuttid/service/agent/service_session.go)
+  [sessionEntities.reducer.ts](../../../packages/agent/activity-core/src/engine/sessionEntities.reducer.ts)
+
 ### AgentGUI model switch changes defaults but not the active session
 
 - Symptom:

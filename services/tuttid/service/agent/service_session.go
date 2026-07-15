@@ -177,6 +177,10 @@ func mergePersistedSessionState(session Session, persisted PersistedSession) Ses
 	}
 	session.PermissionConfig = composerPermissionConfig(session.Provider, permissionModeIDFromSettings(session.Settings), preferencesbiz.DefaultDesktopLocale)
 	session.PinnedAtUnixMS = persisted.PinnedAtUnixMS
+	if persisted.UpdatedAtUnixMS > 0 &&
+		(session.UpdatedAt == nil || persisted.UpdatedAtUnixMS > session.UpdatedAt.UnixMilli()) {
+		session.UpdatedAt = timeFromUnixMSPointer(persisted.UpdatedAtUnixMS)
+	}
 	session.Metadata = persisted.Metadata
 	return session
 }
