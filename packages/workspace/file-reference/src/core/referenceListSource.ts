@@ -68,8 +68,6 @@ export interface ReferenceListRequest {
 export interface ReferenceListResult {
   items: ReferenceListItem[];
   nextCursor?: string | null;
-  /** backend 已按业务语义排序时置 true，picker 将保留返回顺序。 */
-  ordered?: boolean;
 }
 
 /** 递归搜索请求(跨整源,非当前层 filter)。 */
@@ -126,6 +124,8 @@ export interface CreateReferenceListSourceInput {
   capabilities: ReferenceSourceCapabilities;
   isAvailable: (scope: ReferenceScope) => boolean | Promise<boolean>;
   backend: ReferenceListBackend;
+  /** 保留 backend.list 返回的数组顺序，禁止 picker 按名称重新排序。 */
+  preserveBackendOrder?: boolean;
   /** open/preview 复用 host 链路(协议返回的 path 可被解析打开)。 */
   adapter: WorkspaceFileReferenceAdapter;
 }
@@ -172,7 +172,7 @@ export function createReferenceListSource(
       return {
         entries: result.items.map((item) => itemToNode(sourceId, item)),
         nextCursor: result.nextCursor ?? null,
-        ...(result.ordered ? { ordered: true } : {})
+        ...(input.preserveBackendOrder ? { ordered: true } : {})
       };
     },
 
