@@ -57,6 +57,7 @@ func TestScoreSearchCandidatesRanksExactBasenameBeforeParentPathMatch(t *testing
 func TestScoreSearchCandidatesTreatsDotQueryAsLiteralFilenameFragment(t *testing.T) {
 	entries := ScoreSearchCandidates("/workspace", ".dmg", []SearchCandidate{
 		{Kind: EntryKindFile, RelativePath: ".agents/skills/baoyu-slide-deck/scripts/merge-to-pdf.ts"},
+		{Kind: EntryKindFile, RelativePath: ".dmg/readme.md"},
 		{Kind: EntryKindFile, RelativePath: "Downloads/googlechrome.dmg"},
 	}, 10)
 
@@ -68,6 +69,16 @@ func TestScoreSearchCandidatesTreatsDotQueryAsLiteralFilenameFragment(t *testing
 	}
 	if entries[0].MatchTarget != SearchMatchTargetBasename {
 		t.Fatalf("matchTarget = %q, want %q", entries[0].MatchTarget, SearchMatchTargetBasename)
+	}
+}
+
+func TestScoreSearchCandidatesRejectsEscapingHomeRelativePath(t *testing.T) {
+	entries := ScoreSearchCandidates("/workspace", "~//../secret", []SearchCandidate{
+		{Kind: EntryKindFile, RelativePath: "secret"},
+	}, 10)
+
+	if len(entries) != 0 {
+		t.Fatalf("entries = %#v, want no matches outside logical root", entries)
 	}
 }
 
@@ -306,6 +317,29 @@ func TestScoreSearchCandidatesLimitsAndFiltersInvalidCandidates(t *testing.T) {
 	}
 	if entries[0].Kind != EntryKindDirectory && entries[0].Kind != EntryKindFile {
 		t.Fatalf("unexpected kind %q", entries[0].Kind)
+	}
+}
+
+func TestSubsequenceMatchUsesUnicodeCodePointsAndByteOffsets(t *testing.T) {
+	if _, _, _, _, ok := subsequenceMatch("义市字", "中"); ok {
+		t.Fatal("subsequenceMatch() matched UTF-8 bytes across unrelated code points")
+	}
+
+	start, span, gaps, indices, ok := subsequenceMatch("甲中文", "中")
+	if !ok {
+		t.Fatal("subsequenceMatch() did not match an exact Unicode code point")
+	}
+	if start != 3 || span != 3 || gaps != 0 {
+		t.Fatalf("match metrics = (%d, %d, %d), want UTF-8 byte offsets (3, 3, 0)", start, span, gaps)
+	}
+	wantIndices := []int{3, 4, 5}
+	if len(indices) != len(wantIndices) {
+		t.Fatalf("indices = %#v, want %#v", indices, wantIndices)
+	}
+	for index := range wantIndices {
+		if indices[index] != wantIndices[index] {
+			t.Fatalf("indices = %#v, want %#v", indices, wantIndices)
+		}
 	}
 }
 

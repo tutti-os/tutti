@@ -266,13 +266,13 @@ func normalizeSearchQuery(root LogicalPath, query string) normalizedSearchQuery 
 		return normalizedSearchQuery{}
 	}
 
-	hasPathIntent := strings.Contains(normalizedPath, "/") || isWindowsAbsoluteSearchPath(normalizedPath)
+	hasPathIntent := strings.Contains(normalizedPath, "/")
 	trailingSlash := strings.HasSuffix(normalizedPath, "/")
 	outsideRoot := false
 	pathQuery := normalizedPath
 
 	if strings.HasPrefix(pathQuery, "~/") {
-		pathQuery = strings.TrimPrefix(pathQuery, "~/")
+		pathQuery = strings.TrimLeft(strings.TrimPrefix(pathQuery, "~/"), "/")
 	} else if isAbsoluteSearchPath(pathQuery) {
 		logicalRoot := strings.ToLower(NormalizeLogicalRoot(root.String()).String())
 		canonicalQuery := canonicalAbsoluteSearchPath(pathQuery)
@@ -400,6 +400,9 @@ func trimSearchStem(value string) string {
 func scoreNameIntentCandidate(query normalizedSearchQuery, candidate searchCandidateContext) (scoredSearchMatch, bool) {
 	if match, ok := scoreFilenameCandidate(query.term, candidate); ok {
 		return match, true
+	}
+	if searchTermContainsFilenameDotLiteral(query.term) {
+		return scoredSearchMatch{}, false
 	}
 
 	match, ok := scoreBestParentPathSegment(query.term, candidate)
@@ -763,6 +766,15 @@ func isFilenameDotLiteralToken(token string) bool {
 	}
 	_, isNoiseSegment := searchNoiseSegments[token]
 	return !isNoiseSegment
+}
+
+func searchTermContainsFilenameDotLiteral(term normalizedSearchTerm) bool {
+	for _, token := range term.tokens {
+		if isFilenameDotLiteralToken(token) {
+			return true
+		}
+	}
+	return false
 }
 
 func normalizeCandidateRelativePath(value string) string {

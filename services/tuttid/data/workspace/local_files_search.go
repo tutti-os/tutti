@@ -144,7 +144,14 @@ func normalizePhysicalSearchQuery(root workspacefiles.WorkspaceRoot, query strin
 		return query
 	}
 
-	physicalRoot := filepath.Clean(strings.TrimSpace(root.PhysicalRoot))
+	physicalRootValue := strings.TrimSpace(root.PhysicalRoot)
+	if physicalRootValue == "" {
+		return query
+	}
+	physicalRoot, err := filepath.Abs(physicalRootValue)
+	if err != nil {
+		return query
+	}
 	physicalQuery := filepath.Clean(trimmed)
 	relative, err := filepath.Rel(physicalRoot, physicalQuery)
 	if err != nil || relative == ".." || strings.HasPrefix(relative, ".."+string(filepath.Separator)) {

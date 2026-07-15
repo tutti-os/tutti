@@ -3,6 +3,7 @@ package workspacefiles
 import (
 	"sort"
 	"strings"
+	"unicode/utf8"
 )
 
 func orderedTokenMatch(target string, tokens []string) (int, int, []int, bool) {
@@ -35,31 +36,38 @@ func subsequenceMatch(target string, query string) (int, int, int, []int, bool) 
 	if query == "" {
 		return 0, 0, 0, nil, false
 	}
+	queryRunes := []rune(query)
 	first := -1
-	last := -1
-	previous := -1
+	lastEnd := -1
+	previousEnd := -1
 	gaps := 0
 	queryIndex := 0
 	indices := make([]int, 0, len(query))
-	for targetIndex := 0; targetIndex < len(target) && queryIndex < len(query); targetIndex++ {
-		if target[targetIndex] != query[queryIndex] {
+	for targetIndex, targetRune := range target {
+		if queryIndex >= len(queryRunes) {
+			break
+		}
+		if targetRune != queryRunes[queryIndex] {
 			continue
 		}
+		_, runeWidth := utf8.DecodeRuneInString(target[targetIndex:])
 		if first < 0 {
 			first = targetIndex
 		}
-		if previous >= 0 {
-			gaps += targetIndex - previous - 1
+		if previousEnd >= 0 {
+			gaps += targetIndex - previousEnd
 		}
-		previous = targetIndex
-		last = targetIndex
-		indices = append(indices, targetIndex)
+		for offset := 0; offset < runeWidth; offset++ {
+			indices = append(indices, targetIndex+offset)
+		}
+		previousEnd = targetIndex + runeWidth
+		lastEnd = previousEnd
 		queryIndex++
 	}
-	if queryIndex != len(query) {
+	if queryIndex != len(queryRunes) {
 		return 0, 0, 0, nil, false
 	}
-	return first, (last - first) + 1, gaps, indices, true
+	return first, lastEnd - first, gaps, indices, true
 }
 
 func pathIndicesForSegment(segments []string, segmentIndex int, segmentIndices []int) []int {

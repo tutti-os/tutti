@@ -938,6 +938,36 @@ func TestLocalFilesAdapterSearchNormalizesPhysicalAbsolutePathQuery(t *testing.T
 	}
 }
 
+func TestLocalFilesAdapterSearchNormalizesPhysicalAbsolutePathWithRelativeRoot(t *testing.T) {
+	t.Parallel()
+
+	rootDir := t.TempDir()
+	target := filepath.Join(rootDir, "src", "user")
+	if err := os.MkdirAll(target, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	workingDirectory, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	relativeRoot, err := filepath.Rel(workingDirectory, rootDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	root := localFilesRoot(relativeRoot)
+
+	result, err := (LocalFilesAdapter{}).Search(context.Background(), root, workspacefiles.SearchInput{
+		Query: target,
+		Limit: 20,
+	})
+	if err != nil {
+		t.Fatalf("Search() error = %v", err)
+	}
+	if len(result.Entries) == 0 || result.Entries[0].Path != "/workspace/src/user" {
+		t.Fatalf("entries = %#v, want physical absolute-path target first", result.Entries)
+	}
+}
+
 func TestLocalFilesAdapterSearchReturnsPartialResultsWhenDeadlineExpires(t *testing.T) {
 	t.Parallel()
 
