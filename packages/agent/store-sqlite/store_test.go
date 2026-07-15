@@ -334,6 +334,57 @@ func TestStoreReportAndListSessionLifecycle(t *testing.T) {
 	}
 }
 
+func TestStoreMessageVersionsAreSnapshotCursorsAndMayHaveGaps(t *testing.T) {
+	t.Parallel()
+
+	store := openTestStore(t, testOptions(&staticProjectPaths{}))
+	ctx := context.Background()
+	if _, err := store.ReportSessionState(ctx, SessionStateReport{
+		WorkspaceID: "ws-1", AgentSessionID: "session-1", Origin: "runtime",
+		Provider: "codex", ProviderSessionID: "provider-1", Status: "running", OccurredAtUnixMS: 100,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	for _, report := range []SessionMessageReport{
+		{WorkspaceID: "ws-1", AgentSessionID: "session-1", Messages: []MessageUpdate{{
+			MessageID: "message-a", TurnID: "turn-1", Role: "user", Kind: "text", Status: "completed", Payload: map[string]any{"text": "a"},
+		}}},
+		{WorkspaceID: "ws-1", AgentSessionID: "session-1", Messages: []MessageUpdate{{
+			MessageID: "message-b", Role: "assistant", Kind: "text", Status: "running", Payload: map[string]any{"text": "b"},
+		}}},
+		{WorkspaceID: "ws-1", AgentSessionID: "session-1", Messages: []MessageUpdate{{
+			MessageID: "message-b", Status: "completed", ContentDelta: " done",
+		}}},
+	} {
+		if result, err := store.ReportSessionMessages(ctx, report); err != nil || result.AcceptedCount != 1 {
+			t.Fatalf("ReportSessionMessages() result=%#v error=%v", result, err)
+		}
+	}
+
+	page, ok, err := store.ListSessionMessages(ctx, ListSessionMessagesInput{WorkspaceID: "ws-1", AgentSessionID: "session-1", Limit: 10})
+	if err != nil || !ok || page.LatestVersion != 3 || len(page.Messages) != 2 {
+		t.Fatalf("ListSessionMessages() page=%#v ok=%v error=%v", page, ok, err)
+	}
+	if page.Messages[0].MessageID != "message-a" || page.Messages[0].Version != 1 || page.Messages[1].MessageID != "message-b" || page.Messages[1].Version != 3 {
+		t.Fatalf("current message snapshot versions=%#v, want message-a@1 and message-b@3", page.Messages)
+	}
+	incremental, ok, err := store.ListSessionMessages(ctx, ListSessionMessagesInput{WorkspaceID: "ws-1", AgentSessionID: "session-1", AfterVersion: 1, Limit: 10})
+	if err != nil || !ok || len(incremental.Messages) != 1 || incremental.Messages[0].MessageID != "message-b" || incremental.LatestVersion != 3 {
+		t.Fatalf("incremental page=%#v ok=%v error=%v", incremental, ok, err)
+	}
+
+	rejected, err := store.ReportSessionMessages(ctx, SessionMessageReport{WorkspaceID: "ws-1", AgentSessionID: "session-1", Messages: []MessageUpdate{{
+		MessageID: "message-a", TurnID: "turn-2", Status: "completed",
+	}}})
+	if err != nil || rejected.AcceptedCount != 0 {
+		t.Fatalf("rejected update result=%#v error=%v", rejected, err)
+	}
+	session, ok, err := store.GetSession(ctx, "ws-1", "session-1")
+	if err != nil || !ok || session.MessageVersion != 3 {
+		t.Fatalf("session after rejected update=%#v ok=%v error=%v", session, ok, err)
+	}
+}
+
 func TestStoreClearSessionsTxJoinsCallerTransaction(t *testing.T) {
 	t.Parallel()
 
