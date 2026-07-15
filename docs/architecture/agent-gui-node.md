@@ -995,23 +995,29 @@ output into `fileChanges.files` and emit a `turn.updated` patch carrying those
 source for the response-tail changed-file list; tool-only payloads are not a
 substitute for that state.
 
-Approval tool calls may wrap the pending Edit/Write input so the transcript can
-preview what the user approved. Treat that nested input as preview-only data:
-Approval rows must not contribute edit diff counts, changed-file summaries, or
-undo/reapply patch batches. The executed file-change tool output remains the
-source of truth for edit statistics and reversible patches.
+Approval transport calls may wrap pending Edit/Write input, but they are
+interaction plumbing rather than transcript content. Preserve that nested input
+in durable activity for correlation and diagnostics only. Conversation
+projection removes top-level and delegated-task calls identified by
+`callType=approval` or `toolName=Approval` before they reach React. Those calls
+must not contribute edit diff counts, changed-file summaries, or undo/reapply
+patch batches. The executed file-change tool output remains the source of truth
+for edit statistics and reversible patches. Actionable approval surfaces read
+canonical Interaction state, so filtering working, completed, and failed
+Approval tool rows must not remove a pending approval.
 
 Claude SDK interactive tools must preserve `callType: "interactive"` on the
-top-level durable tool payload, not only inside `metadata`. Agent GUI and
-Message Center both project approvals and prompts from the normalized top-level
-call type. For `AskUserQuestion`, renderer payloads may keep
+top-level durable tool payload, not only inside `metadata`, so historical
+display-only prompt rows can be classified consistently. Actionable Agent GUI
+and Message Center approvals and prompts come from canonical Interaction state,
+not transcript tool rows. For `AskUserQuestion`, renderer payloads may keep
 `answersByQuestionId` keyed by stable UI question ids, but the Claude SDK
 permission callback must return `updatedInput.answers` keyed by the full
 question text because current Claude SDK result rendering looks up answers by
 question text. Legacy Claude ACP `AskUserQuestion` failures may be hidden only
 when the recorded failure says the tool is unavailable; waiting or completed
-Claude SDK `AskUserQuestion` calls must remain in the Agent GUI detail
-projection so the composer prompt can render.
+Claude SDK `AskUserQuestion` calls may remain in the Agent GUI detail projection
+as display-only history without becoming an actionable prompt source.
 
 Runtime interactive prompts also travel through session state. Provider
 adapters expose them as `SessionStateSnapshot.pendingInteractive`; runtime
@@ -2899,23 +2905,18 @@ hosts. Tutti personal edition must not enable member or group-chat filtering.
 ### Approval Or Ask-User Prompt
 
 ```text
-runtime messages
-  -> timeline projection
+provider interaction request
+  -> durable Interaction(pending)
+  -> interaction_update
+  -> AgentSessionEngine pendingInteractions selector
   -> prompt view model
   -> AgentInteractivePromptSurface or approval card
   -> runtime submitInteractive
-  -> snapshot/message update
+  -> durable Interaction(answered or superseded)
 ```
 
 Check stale prompt IDs, answered prompt filtering, bottom dock state, and
 selected conversation synchronization together.
-
-Approval transport calls are interaction plumbing, not transcript content.
-Conversation projection must remove top-level and delegated-task tool calls
-identified by `callType=approval` or `toolName=Approval` before they reach
-React. Pending approvals remain sourced from canonical Interaction state, so
-hiding running, completed, and failed Approval tool cards must not remove the
-actionable approval surfaces.
 
 ### Composer Settings
 
