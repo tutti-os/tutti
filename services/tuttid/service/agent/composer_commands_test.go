@@ -1,6 +1,9 @@
 package agent
 
-import "testing"
+import (
+	"context"
+	"testing"
+)
 
 type composerCommandSessionReaderStub struct {
 	sessions []PersistedSession
@@ -14,7 +17,7 @@ func (s composerCommandSessionReaderStub) ListSessions(string) ([]PersistedSessi
 	return s.sessions, true
 }
 
-func (composerCommandSessionReaderStub) SessionDeleted(string, string) (bool, error) {
+func (composerCommandSessionReaderStub) SessionDeleted(context.Context, string, string) (bool, error) {
 	return false, nil
 }
 
