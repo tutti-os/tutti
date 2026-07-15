@@ -486,6 +486,39 @@ file or directory`. If the CLI path exists but `codex app-server` cannot
   [codex.go](../../../packages/agent/runtimeprep/codex.go)
   [preparer_test.go](../../../packages/agent/runtimeprep/preparer_test.go)
 
+### Codex model picker collapses to the configured model
+
+- Symptom:
+  With the default OpenAI provider, the composer model picker contains only the
+  top-level `model` from `~/.codex/config.toml`, while a directly initialized
+  `codex app-server` connection returns multiple models from `model/list`.
+- Quick checks:
+  Confirm `model_provider` is empty or `openai`. A non-default provider without
+  `model_catalog_json` is intentionally limited to its configured model; use
+  the custom-provider entry below when a catalog is configured. Search daemon
+  logs for `composer model catalog lookup failed`, `Not initialized`, or a
+  Codex `model/list` timeout, then compare the request sequence with the
+  app-server initialization contract.
+- Root cause:
+  Model discovery sent `initialize` and `model/list` back to back without
+  reading the initialize response or sending the `initialized` notification.
+  An app-server that enforces the connection handshake can reject or withhold
+  `model/list`. The failed catalog then falls back to the configured model,
+  making the protocol failure look like a valid one-option picker.
+- Fix:
+  Keep one stdout scanner for the exchange: send `initialize`, read and
+  validate the matching response, send `initialized`, and only then send
+  `model/list`. Preserve the configured-model fallback for genuine discovery
+  failures.
+- Validation:
+  Use a fake app-server that rejects `model/list` until it has returned the
+  initialize response and received `initialized`. Run
+  `cd services/tuttid && go test ./service/agent -run TestCodexCLIModelLister`
+  plus `pnpm lint:go`.
+- References:
+  [codex_model_catalog.go](../../../services/tuttid/service/agent/codex_model_catalog.go)
+  [codex_model_catalog_test.go](../../../services/tuttid/service/agent/codex_model_catalog_test.go)
+
 ### Codex custom model_provider mixes models, duplicates replies, or shows metadata warnings
 
 - Symptom:
@@ -494,25 +527,32 @@ file or directory`. If the CLI path exists but `codex app-server` cannot
   turn may show the same assistant reply twice, or the transcript repeatedly
   displays `Model metadata for ... not found. Defaulting to fallback metadata`.
 - Quick checks:
-  Inspect top-level `model_provider` and `model` in `~/.codex/config.toml`.
+  Inspect top-level `model_provider`, `model`, and `model_catalog_json` in
+  `~/.codex/config.toml`.
   In persisted session messages, look for two completed assistant rows with
-  equivalent text but different message ids in one turn. The composer model
-  options should contain only the configured model after the fix.
+  equivalent text but different message ids in one turn. Without a configured
+  catalog, the composer model options should contain only the configured model.
+  With a configured catalog, `codex app-server` should return that catalog from
+  `model/list`, including the top-level configured model.
 - Root cause:
-  The model catalog appended the configured custom model to Codex's official
-  `model/list`, even though the custom endpoint cannot serve those official
-  ids. Separately, Codex can finalize an assistant item after an early stream
-  boundary and replay the answer again in `turn/completed`, sometimes with
-  whitespace polish; treating each report as a new segment creates duplicate
-  bubbles. The model-metadata warning is runtime diagnostic noise rather than
-  an actionable user error.
+  The model catalog either appended the configured custom model to Codex's
+  official `model/list`, or unconditionally collapsed a valid
+  `model_catalog_json` response to one configured model. Separately, Codex can
+  finalize an assistant item after an early stream boundary and replay the
+  answer again in `turn/completed`, sometimes with whitespace polish; treating
+  each report as a new segment creates duplicate bubbles. The model-metadata
+  warning is runtime diagnostic noise rather than an actionable user error.
 - Fix:
-  When a non-default `model_provider` and a top-level `model` are configured,
-  expose only that model in the Codex catalog. Preserve the assistant message
-  id for whitespace-equivalent item-finalization text and ignore turn-final
-  text after an assistant segment has already completed. Filter the metadata
-  fallback warning through the same AgentGUI diagnostic-notice projection used
-  for skills-context-budget warnings.
+  When a non-default `model_provider` and top-level `model` are configured
+  without `model_catalog_json`, expose only that model in the Codex catalog.
+  When `model_catalog_json` is configured and `model/list` includes the
+  configured model, preserve the returned catalog and mark that model as the
+  default. Continue falling back to the configured model if the returned list
+  is unrelated. Preserve the assistant message id for whitespace-equivalent
+  item-finalization text and ignore turn-final text after an assistant segment
+  has already completed. Filter the metadata fallback warning through the same
+  AgentGUI diagnostic-notice projection used for skills-context-budget
+  warnings.
 - Validation:
   Run
   `go test ./packages/agent/daemon/runtime -run 'TestApplyAssistantFinalText|TestApplyAssistantTurnFinalText|TestCodexAppServerAdapterExecStreamsTurn'`,

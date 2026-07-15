@@ -2,18 +2,33 @@ package agent
 
 import (
 	"context"
+	"encoding/json"
+	"errors"
+	"io"
 	"os"
 	"path/filepath"
+	"reflect"
 	"testing"
 	"time"
 )
 
-func TestCodexCLIModelListerReadsModelListFromAppServer(t *testing.T) {
+func TestCodexCLIModelListerCompletesInitializeHandshakeBeforeModelList(t *testing.T) {
 	scriptPath := filepath.Join(t.TempDir(), "codex")
 	script := `#!/bin/sh
+initialized=false
 while IFS= read -r line; do
   case "$line" in
+    *'"method":"initialize"'*)
+      echo '{"id":"1","result":{}}'
+      ;;
+    *'"method":"initialized"'*)
+      initialized=true
+      ;;
     *model/list*)
+      if [ "$initialized" != true ]; then
+        echo '{"id":"2","error":{"code":-32600,"message":"Not initialized"}}'
+        exit 0
+      fi
       echo '{"id":"2","result":{"data":[{"id":"gpt-5","displayName":"GPT-5","description":"default","isDefault":true,"defaultReasoningEffort":"medium","supportedReasoningEfforts":[{"reasoningEffort":"medium","description":"Balanced"},{"reasoningEffort":"ultra","description":"Maximum reasoning with automatic task delegation"}]},{"model":"gpt-5.1"}]}}'
       sleep 10
       exit 0
@@ -58,6 +73,86 @@ done
 	}
 }
 
+func TestRequestCodexModelListReadsInitializeResponseBeforeFollowingRequests(t *testing.T) {
+	transport := &strictCodexHandshakeTransport{}
+
+	models, err := requestCodexModelList(transport, transport, "tuttid-test")
+	if err != nil {
+		t.Fatalf("requestCodexModelList returned error: %v", err)
+	}
+	if len(models) != 1 || models[0].ID != "gpt-5" {
+		t.Fatalf("models = %#v, want gpt-5", models)
+	}
+	wantMethods := []string{"initialize", "initialized", "model/list"}
+	if !reflect.DeepEqual(transport.methods, wantMethods) {
+		t.Fatalf("request methods = %#v, want %#v", transport.methods, wantMethods)
+	}
+}
+
+type strictCodexHandshakeTransport struct {
+	methods                []string
+	initializeRequested    bool
+	initializeResponseRead bool
+	initializedReceived    bool
+	modelListRequested     bool
+	responseStage          int
+}
+
+func (t *strictCodexHandshakeTransport) Write(p []byte) (int, error) {
+	var request struct {
+		ID     json.RawMessage `json:"id"`
+		Method string          `json:"method"`
+	}
+	if err := json.Unmarshal(p, &request); err != nil {
+		return 0, err
+	}
+	t.methods = append(t.methods, request.Method)
+	switch request.Method {
+	case "initialize":
+		t.initializeRequested = true
+	case "initialized":
+		if !t.initializeResponseRead {
+			return 0, errors.New("initialized sent before initialize response was read")
+		}
+		if len(request.ID) != 0 {
+			return 0, errors.New("initialized must be a notification without an id")
+		}
+		t.initializedReceived = true
+	case "model/list":
+		if !t.initializeResponseRead {
+			return 0, errors.New("model/list sent before initialize response was read")
+		}
+		if !t.initializedReceived {
+			return 0, errors.New("model/list sent before initialized")
+		}
+		t.modelListRequested = true
+	default:
+		return 0, errors.New("unexpected Codex app-server method")
+	}
+	return len(p), nil
+}
+
+func (t *strictCodexHandshakeTransport) Read(p []byte) (int, error) {
+	var response string
+	switch t.responseStage {
+	case 0:
+		if !t.initializeRequested {
+			return 0, errors.New("initialize response read before initialize request")
+		}
+		t.initializeResponseRead = true
+		response = `{"id":"1","result":{}}` + "\n"
+	case 1:
+		if !t.modelListRequested {
+			return 0, errors.New("model/list response read before model/list request")
+		}
+		response = `{"id":"2","result":{"data":[{"id":"gpt-5"}]}}` + "\n"
+	default:
+		return 0, io.EOF
+	}
+	t.responseStage += 1
+	return copy(p, response), nil
+}
+
 func TestNormalizeCodexModelPreservesAdvertisedEmptyReasoningEfforts(t *testing.T) {
 	model, ok := normalizeCodexModel([]byte(`{"id":"no-reasoning","supportedReasoningEfforts":[]}`))
 	if !ok {
@@ -81,6 +176,9 @@ func TestCodexCLIModelListerResolvesCodexFromKnownUserBin(t *testing.T) {
 	script := `#!/bin/sh
 while IFS= read -r line; do
   case "$line" in
+    *'"method":"initialize"'*)
+      echo '{"id":"1","result":{}}'
+      ;;
     *model/list*)
       echo '{"id":"2","result":{"data":[{"id":"gpt-5","displayName":"GPT-5"}]}}'
       exit 0

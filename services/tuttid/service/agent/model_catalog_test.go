@@ -22,8 +22,9 @@ func writeCodexModelCatalogConfig(t *testing.T, contents string) {
 	}
 }
 
-// A custom model_provider cannot serve the official Codex model/list ids. The
-// composer must expose only the model configured for that provider.
+// A custom model_provider without a configured catalog cannot safely serve the
+// official Codex model/list ids. The composer must expose only its configured
+// model.
 func TestAgentModelCatalogCustomModelProviderExposesOnlyConfiguredModel(t *testing.T) {
 	writeCodexModelCatalogConfig(t,
 		"model_provider = \"openrouter\"\n"+
@@ -53,6 +54,76 @@ func TestAgentModelCatalogCustomModelProviderExposesOnlyConfiguredModel(t *testi
 	}
 	if result.Models[0].ID != "minimax/minimax-m2.5" || !result.Models[0].IsDefault {
 		t.Fatalf("model = %#v, want configured minimax/minimax-m2.5 as default", result.Models[0])
+	}
+	if result.Source != "codex-configured-model" {
+		t.Fatalf("source = %q, want codex-configured-model", result.Source)
+	}
+}
+
+func TestAgentModelCatalogCustomModelProviderKeepsConfiguredCatalog(t *testing.T) {
+	writeCodexModelCatalogConfig(t,
+		"model_provider = \"openrouter\"\n"+
+			"model = \"~moonshotai/kimi-latest\"\n"+
+			"model_catalog_json = \"cc-switch-model-catalog.json\"\n\n"+
+			"[model_providers.openrouter]\n"+
+			"base_url = \"https://openrouter.ai/api/v1\"\n")
+	lister := &fakeAgentModelLister{
+		models: []AgentModelOption{
+			{ID: "~moonshotai/kimi-latest", DisplayName: "Kimi Latest"},
+			{ID: "~x-ai/grok-latest", DisplayName: "Grok Latest", IsDefault: true},
+		},
+	}
+	catalog := &CachedAgentModelCatalog{
+		Codex: lister,
+		Now: func() time.Time {
+			return time.UnixMilli(1000)
+		},
+	}
+
+	result, err := catalog.ListModels(context.Background(), "codex")
+	if err != nil {
+		t.Fatalf("ListModels returned error: %v", err)
+	}
+	if len(result.Models) != 2 {
+		t.Fatalf("models = %#v, want configured custom-provider catalog", result.Models)
+	}
+	if result.Models[0].ID != "~moonshotai/kimi-latest" || !result.Models[0].IsDefault {
+		t.Fatalf("first model = %#v, want configured model marked default", result.Models[0])
+	}
+	if result.Models[1].ID != "~x-ai/grok-latest" || result.Models[1].IsDefault {
+		t.Fatalf("second model = %#v, want non-default catalog model", result.Models[1])
+	}
+	if result.Source != "codex-cli" {
+		t.Fatalf("source = %q, want codex-cli", result.Source)
+	}
+}
+
+func TestAgentModelCatalogCustomModelProviderRejectsUnrelatedConfiguredCatalog(t *testing.T) {
+	writeCodexModelCatalogConfig(t,
+		"model_provider = \"openrouter\"\n"+
+			"model = \"~moonshotai/kimi-latest\"\n"+
+			"model_catalog_json = \"cc-switch-model-catalog.json\"\n\n"+
+			"[model_providers.openrouter]\n"+
+			"base_url = \"https://openrouter.ai/api/v1\"\n")
+	lister := &fakeAgentModelLister{
+		models: []AgentModelOption{
+			{ID: "gpt-5.5", DisplayName: "GPT-5.5", IsDefault: true},
+			{ID: "gpt-5.4", DisplayName: "GPT-5.4"},
+		},
+	}
+	catalog := &CachedAgentModelCatalog{
+		Codex: lister,
+		Now: func() time.Time {
+			return time.UnixMilli(1000)
+		},
+	}
+
+	result, err := catalog.ListModels(context.Background(), "codex")
+	if err != nil {
+		t.Fatalf("ListModels returned error: %v", err)
+	}
+	if len(result.Models) != 1 || result.Models[0].ID != "~moonshotai/kimi-latest" || !result.Models[0].IsDefault {
+		t.Fatalf("models = %#v, want only configured model for unrelated catalog", result.Models)
 	}
 	if result.Source != "codex-configured-model" {
 		t.Fatalf("source = %q, want codex-configured-model", result.Source)
