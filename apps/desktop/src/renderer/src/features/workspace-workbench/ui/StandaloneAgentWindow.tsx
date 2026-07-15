@@ -182,9 +182,10 @@ export function StandaloneAgentWindow({
     () => resolveDesktopWindowIntent(window.location.search),
     []
   );
-  const launchProvider = normalizeDesktopAgentGUIProvider(
-    windowIntent.kind === "agent" ? windowIntent.provider : null
-  );
+  const launchProvider =
+    windowIntent.kind === "agent" && windowIntent.provider
+      ? normalizeDesktopAgentGUIProvider(windowIntent.provider)
+      : "codex";
   const launchDraftPrompt =
     windowIntent.kind === "agent" ? (windowIntent.draftPrompt ?? null) : null;
   const launchAutoSubmit =
