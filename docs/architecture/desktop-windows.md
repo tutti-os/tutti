@@ -247,6 +247,12 @@ standalone Agent shell registers a presenter that opens the Tasks sidebar
 inline. Presenter registrations use registration identity for cleanup, so an
 old shell disposer cannot remove a newer presenter, including when both
 registrations reuse the same presenter object.
+Other simple workspace launch coordinators keep their domain-specific request
+normalization and public handler APIs, but share the same private registration
+primitive for workspace key normalization, latest-registration routing, and
+identity-safe disposal. This applies to Browser, Files, Message Center,
+Workbench Node, and Group Chat routing without turning those distinct handlers
+into a generic Shell service.
 The OS Files floating window opens wide by default so its location, list, and
 detail columns begin at approximately 26%, 55%, and 19% of the content width;
 each splitter remains user-resizable within its minimum-content constraints.

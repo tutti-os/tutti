@@ -1,3 +1,5 @@
+import { WorkspaceScopedRegistrationRegistry } from "./internal/workspaceScopedRegistrationRegistry.ts";
+
 export interface WorkspaceWorkbenchNodeLaunchRequest {
   dockEntryId?: string;
   launchSource?: string;
@@ -10,26 +12,14 @@ export type WorkspaceWorkbenchNodeLaunchHandler = (
   request: WorkspaceWorkbenchNodeLaunchRequest
 ) => Promise<boolean> | boolean;
 
-const launchHandlersByWorkspaceId = new Map<
-  string,
-  WorkspaceWorkbenchNodeLaunchHandler
->();
+const launchHandlers =
+  new WorkspaceScopedRegistrationRegistry<WorkspaceWorkbenchNodeLaunchHandler>();
 
 export function registerWorkspaceWorkbenchNodeLaunchHandler(
   workspaceId: string,
   handler: WorkspaceWorkbenchNodeLaunchHandler
 ): () => void {
-  const normalizedWorkspaceId = workspaceId.trim();
-  if (!normalizedWorkspaceId) {
-    return noop;
-  }
-
-  launchHandlersByWorkspaceId.set(normalizedWorkspaceId, handler);
-  return () => {
-    if (launchHandlersByWorkspaceId.get(normalizedWorkspaceId) === handler) {
-      launchHandlersByWorkspaceId.delete(normalizedWorkspaceId);
-    }
-  };
+  return launchHandlers.register(workspaceId, handler);
 }
 
 export async function requestWorkspaceWorkbenchNodeLaunch(
@@ -40,7 +30,7 @@ export async function requestWorkspaceWorkbenchNodeLaunch(
   if (!normalizedWorkspaceId || !normalizedTypeId) {
     return false;
   }
-  const handler = launchHandlersByWorkspaceId.get(normalizedWorkspaceId);
+  const handler = launchHandlers.get(normalizedWorkspaceId);
   if (!handler) {
     return false;
   }
@@ -57,5 +47,3 @@ export async function requestWorkspaceWorkbenchNodeLaunch(
     workspaceId: normalizedWorkspaceId
   });
 }
-
-function noop(): void {}

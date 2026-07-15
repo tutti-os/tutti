@@ -1,3 +1,5 @@
+import { WorkspaceScopedRegistrationRegistry } from "./internal/workspaceScopedRegistrationRegistry.ts";
+
 export interface GroupChatLaunchRequest {
   conversationId?: string | null;
   messageId?: string | null;
@@ -9,23 +11,14 @@ export type GroupChatLaunchHandler = (
   request: GroupChatLaunchRequest
 ) => Promise<boolean> | boolean;
 
-const launchHandlersByWorkspaceId = new Map<string, GroupChatLaunchHandler>();
+const launchHandlers =
+  new WorkspaceScopedRegistrationRegistry<GroupChatLaunchHandler>();
 
 export function registerGroupChatLaunchHandler(
   workspaceId: string,
   handler: GroupChatLaunchHandler
 ): () => void {
-  const normalizedWorkspaceId = workspaceId.trim();
-  if (!normalizedWorkspaceId) {
-    return noop;
-  }
-
-  launchHandlersByWorkspaceId.set(normalizedWorkspaceId, handler);
-  return () => {
-    if (launchHandlersByWorkspaceId.get(normalizedWorkspaceId) === handler) {
-      launchHandlersByWorkspaceId.delete(normalizedWorkspaceId);
-    }
-  };
+  return launchHandlers.register(workspaceId, handler);
 }
 
 export async function requestGroupChatLaunch(
@@ -36,7 +29,7 @@ export async function requestGroupChatLaunch(
     return false;
   }
 
-  const handler = launchHandlersByWorkspaceId.get(normalized.workspaceId);
+  const handler = launchHandlers.get(normalized.workspaceId);
   if (!handler) {
     return false;
   }
@@ -94,5 +87,3 @@ function normalizeOptionalString(
   const normalized = value?.trim() || "";
   return normalized || undefined;
 }
-
-function noop(): void {}

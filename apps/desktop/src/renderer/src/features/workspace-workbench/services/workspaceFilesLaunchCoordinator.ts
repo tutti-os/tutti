@@ -1,3 +1,5 @@
+import { WorkspaceScopedRegistrationRegistry } from "./internal/workspaceScopedRegistrationRegistry.ts";
+
 export interface WorkspaceFilesLaunchRequest {
   homeDirectory?: string | null;
   mode?: WorkspaceFilesLaunchMode;
@@ -15,26 +17,14 @@ export type WorkspaceFilesLaunchHandler = (
   request: WorkspaceFilesLaunchRequest
 ) => Promise<boolean> | boolean;
 
-const launchHandlersByWorkspaceId = new Map<
-  string,
-  WorkspaceFilesLaunchHandler
->();
+const launchHandlers =
+  new WorkspaceScopedRegistrationRegistry<WorkspaceFilesLaunchHandler>();
 
 export function registerWorkspaceFilesLaunchHandler(
   workspaceId: string,
   handler: WorkspaceFilesLaunchHandler
 ): () => void {
-  const normalizedWorkspaceId = workspaceId.trim();
-  if (!normalizedWorkspaceId) {
-    return noop;
-  }
-
-  launchHandlersByWorkspaceId.set(normalizedWorkspaceId, handler);
-  return () => {
-    if (launchHandlersByWorkspaceId.get(normalizedWorkspaceId) === handler) {
-      launchHandlersByWorkspaceId.delete(normalizedWorkspaceId);
-    }
-  };
+  return launchHandlers.register(workspaceId, handler);
 }
 
 export async function requestWorkspaceFilesLaunch(
@@ -49,7 +39,7 @@ export async function requestWorkspaceFilesLaunch(
     return false;
   }
 
-  const handler = launchHandlersByWorkspaceId.get(normalizedWorkspaceId);
+  const handler = launchHandlers.get(normalizedWorkspaceId);
   if (!handler) {
     return false;
   }
@@ -183,5 +173,3 @@ function hasWindowsNulSegment(path: string): boolean {
     return deviceName === "NUL";
   });
 }
-
-function noop(): void {}

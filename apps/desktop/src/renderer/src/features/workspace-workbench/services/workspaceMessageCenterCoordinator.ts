@@ -1,11 +1,9 @@
+import { WorkspaceScopedRegistrationRegistry } from "./internal/workspaceScopedRegistrationRegistry.ts";
+
 export type WorkspaceMessageCenterOpenHandler = () => void;
 
-const openHandlersByWorkspaceId = new Map<
-  string,
-  WorkspaceMessageCenterOpenHandler
->();
-
-function noop(): void {}
+const openHandlers =
+  new WorkspaceScopedRegistrationRegistry<WorkspaceMessageCenterOpenHandler>();
 
 /**
  * Lets the workspace chrome (which owns the message center drawer state) register
@@ -17,23 +15,13 @@ export function registerWorkspaceMessageCenterOpenHandler(
   workspaceId: string,
   handler: WorkspaceMessageCenterOpenHandler
 ): () => void {
-  const normalizedWorkspaceId = workspaceId.trim();
-  if (!normalizedWorkspaceId) {
-    return noop;
-  }
-
-  openHandlersByWorkspaceId.set(normalizedWorkspaceId, handler);
-  return () => {
-    if (openHandlersByWorkspaceId.get(normalizedWorkspaceId) === handler) {
-      openHandlersByWorkspaceId.delete(normalizedWorkspaceId);
-    }
-  };
+  return openHandlers.register(workspaceId, handler);
 }
 
 export function requestWorkspaceMessageCenterOpen(
   workspaceId: string
 ): boolean {
-  const handler = openHandlersByWorkspaceId.get(workspaceId.trim());
+  const handler = openHandlers.get(workspaceId);
   if (!handler) {
     return false;
   }

@@ -1,4 +1,4 @@
-import { WorkspaceScopedPresenterRegistry } from "./internal/workspaceScopedPresenterRegistry.ts";
+import { WorkspaceScopedRegistrationRegistry } from "./internal/workspaceScopedRegistrationRegistry.ts";
 
 export interface WorkspaceIssueManagerLaunchRequest {
   issueId?: string | null;
@@ -17,7 +17,7 @@ export interface WorkspaceIssueManagerLaunchPresenter {
 }
 
 const presenters =
-  new WorkspaceScopedPresenterRegistry<WorkspaceIssueManagerLaunchPresenter>();
+  new WorkspaceScopedRegistrationRegistry<WorkspaceIssueManagerLaunchPresenter>();
 
 export function registerWorkspaceIssueManagerLaunchPresenter(
   workspaceId: string,

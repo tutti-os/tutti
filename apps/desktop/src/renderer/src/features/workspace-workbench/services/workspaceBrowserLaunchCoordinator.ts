@@ -1,3 +1,5 @@
+import { WorkspaceScopedRegistrationRegistry } from "./internal/workspaceScopedRegistrationRegistry.ts";
+
 export interface WorkspaceBrowserLaunchRequest {
   reuseIfOpen?: boolean;
   source?:
@@ -14,27 +16,15 @@ export type WorkspaceBrowserLaunchHandler = (
   request: WorkspaceBrowserLaunchRequest
 ) => Promise<boolean> | boolean;
 
-const launchHandlersByWorkspaceId = new Map<
-  string,
-  WorkspaceBrowserLaunchHandler
->();
+const launchHandlers =
+  new WorkspaceScopedRegistrationRegistry<WorkspaceBrowserLaunchHandler>();
 const allowedBrowserLaunchProtocols = new Set(["http:", "https:"]);
 
 export function registerWorkspaceBrowserLaunchHandler(
   workspaceId: string,
   handler: WorkspaceBrowserLaunchHandler
 ): () => void {
-  const normalizedWorkspaceId = workspaceId.trim();
-  if (!normalizedWorkspaceId) {
-    return noop;
-  }
-
-  launchHandlersByWorkspaceId.set(normalizedWorkspaceId, handler);
-  return () => {
-    if (launchHandlersByWorkspaceId.get(normalizedWorkspaceId) === handler) {
-      launchHandlersByWorkspaceId.delete(normalizedWorkspaceId);
-    }
-  };
+  return launchHandlers.register(workspaceId, handler);
 }
 
 export async function requestWorkspaceBrowserLaunch(
@@ -47,7 +37,7 @@ export async function requestWorkspaceBrowserLaunch(
   }
 
   return dispatchWorkspaceBrowserLaunch({
-    handler: launchHandlersByWorkspaceId.get(normalizedWorkspaceId),
+    handler: launchHandlers.get(normalizedWorkspaceId),
     request: {
       reuseIfOpen: request.reuseIfOpen,
       ...(request.source ? { source: request.source } : {}),
@@ -67,7 +57,7 @@ export async function requestWorkspaceBrowserHostFileLaunch(
   }
 
   return dispatchWorkspaceBrowserLaunch({
-    handler: launchHandlersByWorkspaceId.get(normalizedWorkspaceId),
+    handler: launchHandlers.get(normalizedWorkspaceId),
     request: {
       reuseIfOpen: request.reuseIfOpen,
       source: request.source ?? "file_manager",
@@ -117,5 +107,3 @@ function normalizeWorkspaceBrowserHostFileLaunchUrl(
     return null;
   }
 }
-
-function noop(): void {}
