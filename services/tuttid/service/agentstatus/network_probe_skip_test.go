@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net/http"
 	"net/url"
+	"sync/atomic"
 	"testing"
 )
 
@@ -22,13 +23,15 @@ func TestListNetworkProbeIsOptIn(t *testing.T) {
 	claimActiveAction(resetCtx, provider, ActiveAction{})
 	clearActiveAction(resetCtx, provider)
 
-	var networkCalls int
+	// Atomic because the registry ranking probe hits the transport from one
+	// goroutine per registry concurrently.
+	var networkCalls atomic.Int64
 	newService := func() Service {
 		s := testService(func(_ string) (string, error) {
 			return "", errors.New("not found")
 		}, map[string]bool{})
 		s.HTTPClient = &http.Client{Transport: networkRoundTripFunc(func(*http.Request) (*http.Response, error) {
-			networkCalls++
+			networkCalls.Add(1)
 			return &http.Response{StatusCode: http.StatusNoContent, Body: http.NoBody}, nil
 		})}
 		s.ResolveProxy = func(*http.Request) (*url.URL, error) { return nil, nil }
@@ -37,7 +40,7 @@ func TestListNetworkProbeIsOptIn(t *testing.T) {
 
 	// Default (IncludeNetwork=false): local-only. No network call, no Network,
 	// but full local availability is still resolved.
-	networkCalls = 0
+	networkCalls.Store(0)
 	local, err := newService().List(context.Background(), ListInput{Providers: []string{provider}})
 	if err != nil {
 		t.Fatalf("List() error = %v", err)
@@ -45,8 +48,8 @@ func TestListNetworkProbeIsOptIn(t *testing.T) {
 	if len(local.Providers) != 1 {
 		t.Fatalf("local: providers = %#v, want 1", local.Providers)
 	}
-	if networkCalls != 0 {
-		t.Fatalf("local: network probed %d times, want 0", networkCalls)
+	if calls := networkCalls.Load(); calls != 0 {
+		t.Fatalf("local: network probed %d times, want 0", calls)
 	}
 	if local.Providers[0].Network != nil {
 		t.Fatalf("local: Network = %#v, want nil (probe not requested)", local.Providers[0].Network)
@@ -56,7 +59,7 @@ func TestListNetworkProbeIsOptIn(t *testing.T) {
 	}
 
 	// IncludeNetwork=true, not installing: List probes the network.
-	networkCalls = 0
+	networkCalls.Store(0)
 	probed, err := newService().List(context.Background(), ListInput{
 		Providers:      []string{provider},
 		IncludeNetwork: true,
@@ -67,7 +70,7 @@ func TestListNetworkProbeIsOptIn(t *testing.T) {
 	if probed.Providers[0].Network == nil {
 		t.Fatalf("opted-in: Network = nil, want probed")
 	}
-	if networkCalls == 0 {
+	if networkCalls.Load() == 0 {
 		t.Fatal("opted-in: expected the network to be probed")
 	}
 
@@ -80,7 +83,7 @@ func TestListNetworkProbeIsOptIn(t *testing.T) {
 	})
 	t.Cleanup(func() { clearActiveAction(installCtx, provider) })
 
-	networkCalls = 0
+	networkCalls.Store(0)
 	installing, err := newService().List(context.Background(), ListInput{
 		Providers:      []string{provider},
 		IncludeNetwork: true,
@@ -91,8 +94,8 @@ func TestListNetworkProbeIsOptIn(t *testing.T) {
 	if installing.Providers[0].Network != nil {
 		t.Fatalf("installing: Network = %#v, want nil (probe skipped)", installing.Providers[0].Network)
 	}
-	if networkCalls != 0 {
-		t.Fatalf("installing: network probed %d times, want 0", networkCalls)
+	if calls := networkCalls.Load(); calls != 0 {
+		t.Fatalf("installing: network probed %d times, want 0", calls)
 	}
 	if installing.Providers[0].ActiveAction == nil {
 		t.Fatal("installing: ActiveAction = nil, want the running install action surfaced")
