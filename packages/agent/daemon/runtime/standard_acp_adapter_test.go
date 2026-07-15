@@ -433,6 +433,71 @@ func TestCursorPermissionRequestFallsBackToKnownToolCallInput(t *testing.T) {
 	}
 }
 
+func TestACPPermissionRequestFallsBackToKnownFileChanges(t *testing.T) {
+	t.Parallel()
+
+	transport := newStandardACPTransport("Cursor Agent", "cursor-session-file-changes")
+	adapter := newCursorAdapterWithHostMetadata(transport, LegacyHostMetadata(), nil)
+	session := standardTestSession(ProviderCursor)
+	normalizer := newACPTurnNormalizer()
+	config := standardACPConfig{provider: ProviderCursor}
+
+	started := standardACPUpdateEvents(config, session, "turn-1", json.RawMessage(`{
+		"update": {
+			"sessionUpdate": "tool_call",
+			"toolCallId": "file-change-1",
+			"title": "Apply file changes",
+			"kind": "edit",
+			"status": "pending",
+			"rawInput": {
+				"changes": [
+					{"path": "/workspace/src/app.ts", "kind": {"type": "update"}},
+					{"path": "/workspace/src/game.ts", "kind": {"type": "create"}}
+				]
+			}
+		}
+	}`), normalizer)
+	if len(started) != 1 || started[0].Type != activityshared.EventCallStarted {
+		t.Fatalf("started events = %#v, want one call.started", started)
+	}
+
+	updated := standardACPUpdateEvents(config, session, "turn-1", json.RawMessage(`{
+		"update": {
+			"sessionUpdate": "tool_call_update",
+			"toolCallId": "file-change-1",
+			"title": "Apply file changes",
+			"kind": "edit",
+			"status": "pending"
+		}
+	}`), normalizer)
+	if len(updated) == 0 {
+		t.Fatal("empty tool-call update was not projected")
+	}
+
+	_, pending, err := standardACPPermissionRequested(adapter, session, "turn-1", json.RawMessage(`3`), json.RawMessage(`{
+		"toolCall": {
+			"toolCallId": "file-change-1",
+			"title": "Apply file changes",
+			"kind": "edit",
+			"status": "pending"
+		},
+		"options": [
+			{"optionId": "allow-once", "name": "Allow once", "kind": "allow_once"},
+			{"optionId": "reject-once", "name": "Reject", "kind": "reject_once"}
+		]
+	}`), normalizer)
+	if err != nil {
+		t.Fatalf("standardACPPermissionRequested: %v", err)
+	}
+	if pending == nil {
+		t.Fatal("pending approval is nil")
+	}
+	changes, ok := pending.input["changes"].([]any)
+	if !ok || len(changes) != 2 {
+		t.Fatalf("pending approval changes = %#v, want both known file changes", pending.input["changes"])
+	}
+}
+
 // TestCursorPermissionRequestKeepsKnownInputAfterEmptyToolCallUpdate reproduces
 // the live Cursor sequence behind blank approval cards: tool_call carries
 // rawInput.command, a later tool_call_update for the same id repeats only

@@ -41,7 +41,7 @@ func (s *Service) validateComposerModelForCreate(
 	model string,
 ) error {
 	provider = agentprovider.Normalize(provider)
-	model = normalizeComposerModelForProvider(provider, clampComposerModelForProvider(provider, model))
+	model = clampComposerModelForProvider(provider, model)
 	if model == "" {
 		return nil
 	}

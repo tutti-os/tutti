@@ -16,6 +16,7 @@ func (a *CodexAppServerAdapter) appServerServerRequest(
 	session Session,
 	turnID string,
 	message acpMessage,
+	normalizer *acpTurnNormalizer,
 	emit EventSink,
 ) ([]activityshared.Event, error) {
 	if strings.TrimSpace(turnID) == "" || emit == nil {
@@ -30,7 +31,7 @@ func (a *CodexAppServerAdapter) appServerServerRequest(
 			return nil, fmt.Errorf("invalid approval request: %w", err)
 		}
 	}
-	events, pending, err := a.appServerApprovalRequested(session, turnID, message.ID, message.Method, params)
+	events, pending, err := a.appServerApprovalRequested(session, turnID, message.ID, message.Method, params, normalizer)
 	if err != nil {
 		_ = client.Respond(ctx, message.ID, nil, &acpError{Code: -32602, Message: err.Error()})
 		return events, err
@@ -97,6 +98,7 @@ func (a *CodexAppServerAdapter) appServerApprovalRequested(
 	rawRequestID json.RawMessage,
 	method string,
 	params map[string]any,
+	normalizer *acpTurnNormalizer,
 ) ([]activityshared.Event, *pendingInteractiveRequest, error) {
 	requestID := acpRequestID(rawRequestID)
 	if requestID == "" {
@@ -110,7 +112,8 @@ func (a *CodexAppServerAdapter) appServerApprovalRequested(
 	title := firstNonEmpty(asString(toolCall["title"]), "Permission requested")
 	callID := firstNonEmpty(asString(toolCall["toolCallId"]), newID())
 	status := string(activityshared.TurnPhaseWaitingApproval)
-	input := normalizedApprovalInput(toolCall, options, requestID, nil)
+	knownInput := normalizer.KnownToolCallInput(asString(toolCall["toolCallId"]))
+	input := normalizedApprovalInput(toolCall, options, requestID, knownInput)
 	payload := map[string]any{
 		"callId":   callID,
 		"callType": "approval",

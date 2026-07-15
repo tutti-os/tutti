@@ -21,6 +21,7 @@ import { AgentActivityHostProvider } from "./agentActivityHost";
 import { AgentGuiI18nProvider, type AgentGuiI18nLocale } from "./i18n/index";
 
 export type { AgentGUIHomeSuggestionId } from "./types";
+export type { ReferenceProvenanceCatalog as AgentGUIReferenceProvenanceFilterCatalog } from "@tutti-os/workspace-file-reference/contracts";
 
 type AgentGUIPublicHostCapabilities = Omit<
   AgentGUINodeProps["hostCapabilities"],

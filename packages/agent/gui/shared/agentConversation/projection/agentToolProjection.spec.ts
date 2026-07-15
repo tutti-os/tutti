@@ -126,6 +126,39 @@ describe("projectAgentToolCall", () => {
     });
     expect(askUser.askUserQuestion?.questions[0]?.question).toBe("Pick one");
 
+    const answeredAskUser = projectAgentToolCall({
+      ...baseCall(),
+      toolName: "AskUserQuestion",
+      callType: "interactive",
+      status: "completed",
+      payload: {
+        input: {
+          requestId: "prompt-2",
+          questions: [
+            {
+              header: "Test scope",
+              question: "Which modules should we test?",
+              options: [{ label: "Code editing", description: "Edit code" }]
+            }
+          ]
+        },
+        output: {
+          action: "submit",
+          payload: {
+            answers: ["Code editing"],
+            answersByQuestionId: {
+              "question-1": ["Code editing"]
+            }
+          },
+          requestId: "prompt-2",
+          text: "Your questions have been answered."
+        }
+      }
+    });
+    expect(answeredAskUser.askUserQuestion?.questions[0]?.answer).toEqual([
+      "Code editing"
+    ]);
+
     const task = projectAgentToolCall({
       ...baseCall(),
       toolName: "Task",

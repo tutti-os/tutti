@@ -78,6 +78,12 @@ type claudeSDKAdapterSession struct {
 	// that has not settled yet; until it does, other turns settling must not
 	// be read as goal completion. Guarded by the adapter mutex.
 	goalArmTurnID string
+	// goalClearControlTurns identifies the provider turns created only to carry
+	// a native /goal clear command. Claude emits an assistant acknowledgement
+	// for those turns, but goal control is thread metadata rather than
+	// transcript content, so their assistant/thinking projection is suppressed
+	// before persistence. Guarded by the adapter mutex.
+	goalClearControlTurns map[string]struct{}
 }
 
 type claudeSDKBackgroundAgent struct {

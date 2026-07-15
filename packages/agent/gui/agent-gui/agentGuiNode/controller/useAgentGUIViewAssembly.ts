@@ -204,6 +204,7 @@ export function useAgentGUIViewAssembly(input: UseAgentGUIViewAssemblyInput) {
       providerReadinessGate
     },
     operations: {
+      goalClearNoticeSequence: input.goalClearNoticeSequence,
       isDeletingConversation: input.isDeletingConversation,
       isDeletingProjectConversations: input.isDeletingProjectConversations,
       pendingDeleteConversation: input.pendingDeleteConversation,

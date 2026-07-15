@@ -370,6 +370,7 @@ export interface AgentGUIReadinessViewModel {
 }
 
 export interface AgentGUIOperationsViewModel {
+  goalClearNoticeSequence: number;
   isDeletingConversation: boolean;
   isDeletingProjectConversations: boolean;
   pendingDeleteConversation: AgentGUIConversationSummary | null;

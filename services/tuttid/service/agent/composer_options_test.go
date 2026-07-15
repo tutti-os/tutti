@@ -1,6 +1,7 @@
 package agent
 
 import (
+	"context"
 	"slices"
 	"testing"
 )
@@ -142,8 +143,22 @@ func TestNormalizeComposerSettingsClampsByProviderSupport(t *testing.T) {
 	claude := normalizeComposerSettingsForProvider("claude-code", ComposerSettings{
 		Model: "opus",
 	})
-	if claude.Model != "default" {
-		t.Fatalf("claude legacy opus model = %q, want default", claude.Model)
+	if claude.Model != "opus" {
+		t.Fatalf("claude model = %q, want opus", claude.Model)
+	}
+}
+
+func TestResolveCreateSessionModelPreservesClaudeAliases(t *testing.T) {
+	t.Parallel()
+	service := &Service{}
+	for _, want := range []string{"opus", "opusplan"} {
+		got := service.resolveCreateSessionModel(context.Background(), "claude-code", nil, stringPointer(want))
+		if got == nil {
+			t.Fatalf("resolveCreateSessionModel(%q) = nil, want %q", want, want)
+		}
+		if *got != want {
+			t.Fatalf("resolveCreateSessionModel(%q) = %q, want %q", want, *got, want)
+		}
 	}
 }
 

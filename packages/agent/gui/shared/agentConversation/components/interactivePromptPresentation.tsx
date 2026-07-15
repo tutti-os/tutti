@@ -198,12 +198,18 @@ export function promptToolDetailLabel(kind: PromptToolDetail["kind"]): string {
   switch (kind) {
     case "command":
       return translate("agentHost.agentTool.details.command");
+    case "directory":
+      return translate("agentHost.agentTool.details.scope");
+    case "files":
+      return translate("workspaceCanvas.nodeDockLabel.files");
     case "mcp":
       return translate("agentHost.agentTool.details.mcp");
     case "path":
       return translate("agentHost.agentTool.details.path");
     case "query":
       return translate("agentHost.agentTool.details.query");
+    case "reason":
+      return translate("agentHost.agentTool.details.summary");
   }
 }
 

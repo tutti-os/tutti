@@ -1,15 +1,76 @@
-import { describe, expect, it } from "vitest";
+import { act, renderHook, waitFor } from "@testing-library/react";
+import { createAgentSessionEngine } from "@tutti-os/agent-activity-core";
+import { describe, expect, it, vi } from "vitest";
+import type { AgentActivityRuntime } from "../../../agentActivityRuntime";
 import type { AgentComposerDraft } from "../model/agentGuiNodeTypes";
 import { agentComposerDraftPrompt } from "../model/agentComposerDraft";
 import {
   clearSubmittedAgentGUIHomeDraft,
   restoreFailedAgentGUIHomeDraft
 } from "./agentGuiController.homeDraftHelpers";
+import { useAgentGUISubmitInteractionActions } from "./useAgentGUISubmitInteractionActions";
 
 const draftKey = "node-default:codex:local:codex";
 
 function draft(prompt: string): AgentComposerDraft {
   return [{ type: "text", text: prompt }];
+}
+
+function createGoalControlInput(
+  goalControl: AgentActivityRuntime["goalControl"]
+) {
+  const sessionEngine = createAgentSessionEngine({
+    clock: { nowUnixMs: () => 1 },
+    commandPort: { execute: async () => undefined },
+    identity: { origin: "test", workspaceId: "workspace-1" },
+    scheduler: { schedule: () => ({ cancel() {} }) }
+  });
+  const setDetailError = vi.fn();
+  const setGoalClearNoticeSequence = vi.fn();
+  const input = {
+    activation: {
+      activate: vi.fn(),
+      codeFor: vi.fn(() => null),
+      errorFor: vi.fn(() => null)
+    },
+    activeConversationIdRef: { current: "session-1" },
+    activeEngineActiveTurn: null,
+    activeEnginePendingInteractions: [],
+    agentActivityRuntime: { goalControl } as AgentActivityRuntime,
+    conversationListQuery: {},
+    conversationsRef: { current: [] },
+    dataRef: { current: {} },
+    draftByScopeKeyRef: { current: {} },
+    executePromptRef: { current: vi.fn() },
+    isComposerHomeRef: { current: false },
+    isCurrentConversation: (agentSessionId: string) =>
+      agentSessionId === "session-1",
+    isRespondingToInteraction: false,
+    isSessionMarkedNonResumable: () => false,
+    persistActiveConversation: vi.fn(),
+    planActionsRef: {
+      current: { implement: vi.fn(), feedback: vi.fn(), skip: vi.fn() }
+    },
+    previewMode: false,
+    promptImagesSupported: true,
+    sessionEngine,
+    setActiveConversationId: vi.fn(),
+    setDetailError,
+    setDraftByScopeKey: vi.fn(),
+    setGoalClearNoticeSequence,
+    setIntent: vi.fn(),
+    submittedDraftSnapshotsRef: { current: {} },
+    startConversation: vi.fn(() => null),
+    submitPromptRef: { current: vi.fn() },
+    transientConversation: null,
+    workspaceId: "workspace-1"
+  } as unknown as Parameters<typeof useAgentGUISubmitInteractionActions>[0];
+  return {
+    input,
+    sessionEngine,
+    setDetailError,
+    setGoalClearNoticeSequence
+  };
 }
 
 describe("new-conversation home draft lifecycle", () => {
@@ -53,5 +114,45 @@ describe("new-conversation home draft lifecycle", () => {
     expect(
       restoreFailedAgentGUIHomeDraft({ ...failure, drafts: changed })
     ).toBe(changed);
+  });
+});
+
+describe("goal controls", () => {
+  it("clears through the control API without creating a prompt submit", async () => {
+    const goalControl = vi.fn(async () => undefined);
+    const { input, sessionEngine, setGoalClearNoticeSequence } =
+      createGoalControlInput(goalControl as never);
+    const dispatch = vi.spyOn(sessionEngine, "dispatch");
+    const { result } = renderHook(() =>
+      useAgentGUISubmitInteractionActions(input)
+    );
+
+    act(() => result.current.goalControl("clear"));
+
+    await waitFor(() => expect(goalControl).toHaveBeenCalledTimes(1));
+    expect(goalControl).toHaveBeenCalledWith({
+      action: "clear",
+      agentSessionId: "session-1",
+      workspaceId: "workspace-1"
+    });
+    expect(setGoalClearNoticeSequence).toHaveBeenCalledTimes(1);
+    expect(dispatch).not.toHaveBeenCalled();
+  });
+
+  it("reports a clear failure without showing a success toast", async () => {
+    const error = new Error("clear failed");
+    const goalControl = vi.fn(async () => Promise.reject(error));
+    const { input, setDetailError, setGoalClearNoticeSequence } =
+      createGoalControlInput(goalControl as never);
+    const { result } = renderHook(() =>
+      useAgentGUISubmitInteractionActions(input)
+    );
+
+    act(() => result.current.goalControl("clear"));
+
+    await waitFor(() =>
+      expect(setDetailError).toHaveBeenCalledWith("clear failed")
+    );
+    expect(setGoalClearNoticeSequence).not.toHaveBeenCalled();
   });
 });

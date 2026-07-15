@@ -48,6 +48,7 @@ import {
   resolveAgentGUIHeroIconUrl
 } from "./AgentGUIEmptyState";
 import { AgentGUIDetailHeader } from "./AgentGUIDetailHeader";
+import { AgentGUIContentToast } from "./AgentGUIContentToast";
 import { AgentGUIConversationTimelinePane } from "./AgentGUIConversationTimelinePane";
 import {
   stringValue,
@@ -634,6 +635,13 @@ export const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
       aria-busy={timelineInteractionLocked || undefined}
       inert={timelineInteractionLocked}
     >
+      {viewModel.operations.goalClearNoticeSequence > 0 ? (
+        <AgentGUIContentToast
+          key={viewModel.operations.goalClearNoticeSequence}
+          insetTopPx={hideDetailHeader ? 16 : 80}
+          message={labels.goalRemoved}
+        />
+      ) : null}
       <AgentGUIDetailHeader
         activeConversation={viewModel.rail.activeConversation}
         hidden={hideDetailHeader}

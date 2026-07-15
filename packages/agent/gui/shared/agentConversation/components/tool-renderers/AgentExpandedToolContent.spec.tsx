@@ -244,6 +244,52 @@ describe("AgentExpandedToolContent", () => {
     expect(screen.getByText("Answer: Keep the shared renderer")).toBeTruthy();
   });
 
+  it("renders an ask-user answer from the provider response payload", async () => {
+    setAgentGuiI18nTestLocale("en");
+
+    render(
+      <AgentExpandedToolContent
+        call={projectAgentToolCall(
+          toolCall({
+            callType: "interactive",
+            status: "completed",
+            toolName: "AskUserQuestion",
+            payload: {
+              input: {
+                questions: [
+                  {
+                    header: "Test scope",
+                    question: "Which modules should we test?",
+                    options: [
+                      {
+                        label: "Code editing",
+                        description: "Test code editing."
+                      }
+                    ]
+                  }
+                ]
+              },
+              output: {
+                action: "submit",
+                payload: {
+                  answers: ["Code editing"],
+                  answersByQuestionId: {
+                    "question-1": ["Code editing"]
+                  }
+                },
+                text: "Your questions have been answered."
+              }
+            }
+          })
+        )}
+      />
+    );
+
+    expect(screen.getByText("Answer: Code editing")).toBeTruthy();
+    expect(screen.getByText("Your questions have been answered.")).toBeTruthy();
+    expect(screen.queryByText("Waiting for answer…")).toBeNull();
+  });
+
   it("renders task steps through the new task renderer path", async () => {
     setAgentGuiI18nTestLocale("en");
 

@@ -35,7 +35,7 @@ func (a *CodexAppServerAdapter) handleAppServerMessage(
 			appServerMethodRequestUserInput,
 			appServerMethodExecApprovalV1,
 			appServerMethodPatchApprovalV1:
-			return a.appServerServerRequest(ctx, client, session, turnID, message, emit)
+			return a.appServerServerRequest(ctx, client, session, turnID, message, normalizer, emit)
 		default:
 			err := fmt.Errorf("server request method %q is not supported", message.Method)
 			if codexproto.IsKnownServerRequestMethod(message.Method) {

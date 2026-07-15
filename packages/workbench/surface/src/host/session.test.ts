@@ -430,6 +430,288 @@ test("load can restart after dispose without reusing the disposed lifecycle", as
   session.dispose();
 });
 
+test("late final save completion cannot replace a restarted lifecycle snapshot", async () => {
+  const lifecycleSnapshot = (lifecycle: string) =>
+    createWorkbenchSnapshotFromState(
+      {
+        nodeStack: [],
+        nodes: []
+      },
+      {
+        activeSpaceId: `space-${lifecycle}`,
+        metadata: {
+          workbenchHostInitialized: true
+        },
+        spaces: [
+          {
+            id: `space-${lifecycle}`,
+            name: lifecycle,
+            nodeIds: []
+          }
+        ]
+      }
+    );
+  let loadCount = 0;
+  let saveCount = 0;
+  let resolveFirstSave!: (
+    snapshot: ReturnType<typeof lifecycleSnapshot>
+  ) => void;
+  const firstSave = new Promise<ReturnType<typeof lifecycleSnapshot>>(
+    (resolve) => {
+      resolveFirstSave = resolve;
+    }
+  );
+  const savedSnapshots: Array<ReturnType<typeof lifecycleSnapshot>> = [];
+  const session = createWorkbenchHostSession({
+    nodes: [browserNodeDefinition],
+    snapshotRepository: {
+      async load() {
+        loadCount += 1;
+        return lifecycleSnapshot(loadCount === 1 ? "first" : "second");
+      },
+      save(_workspaceId, snapshot) {
+        saveCount += 1;
+        savedSnapshots.push(snapshot);
+        if (saveCount === 1) {
+          return firstSave;
+        }
+        return snapshot;
+      }
+    },
+    workspaceId: "workspace-1"
+  });
+
+  await session.load();
+  await session.launchNode({ reason: "dock", typeId: "browser" });
+  session.dispose();
+  assert.equal(saveCount, 1);
+
+  await session.load();
+  const firstSavedSnapshot = savedSnapshots[0];
+  assert.ok(firstSavedSnapshot);
+  resolveFirstSave(firstSavedSnapshot);
+  await Promise.resolve();
+
+  await session.launchNode({ reason: "dock", typeId: "browser" });
+  session.dispose();
+
+  const secondSavedSnapshot = savedSnapshots[1];
+  assert.ok(secondSavedSnapshot);
+  assert.equal(secondSavedSnapshot.activeSpaceId, "space-second");
+});
+
+test("late save completion cannot replace a newer save in the same lifecycle", async () => {
+  type Snapshot = ReturnType<typeof createWorkbenchSnapshotFromState>;
+  const deferredSaves: Array<{
+    resolve(snapshot: Snapshot): void;
+    snapshot: Snapshot;
+  }> = [];
+  const savedSnapshots: Snapshot[] = [];
+  const session = createWorkbenchHostSession({
+    nodes: [browserNodeDefinition],
+    snapshotRepository: {
+      async load() {
+        return createWorkbenchSnapshotFromState(
+          { nodeStack: [], nodes: [] },
+          {
+            activeSpaceId: "space-initial",
+            metadata: { workbenchHostInitialized: true },
+            spaces: [{ id: "space-initial", name: "Initial", nodeIds: [] }]
+          }
+        );
+      },
+      save(_workspaceId, snapshot) {
+        savedSnapshots.push(snapshot);
+        if (savedSnapshots.length > 2) {
+          return snapshot;
+        }
+        let resolve!: (savedSnapshot: Snapshot) => void;
+        const promise = new Promise<Snapshot>((promiseResolve) => {
+          resolve = promiseResolve;
+        });
+        deferredSaves.push({ resolve, snapshot });
+        return promise;
+      }
+    },
+    workspaceId: "workspace-1"
+  });
+
+  await session.load();
+  await session.launchNode({ reason: "dock", typeId: "browser" });
+  await new Promise((resolve) => globalThis.setTimeout(resolve, 450));
+  session.setNodeTitle("browser", "Second save");
+  await new Promise((resolve) => globalThis.setTimeout(resolve, 450));
+
+  const firstSave = deferredSaves[0];
+  const secondSave = deferredSaves[1];
+  assert.ok(firstSave);
+  assert.ok(secondSave);
+  secondSave.resolve({
+    ...secondSave.snapshot,
+    activeSpaceId: "space-second",
+    spaces: [{ id: "space-second", name: "Second", nodeIds: [] }]
+  });
+  await Promise.resolve();
+  firstSave.resolve({
+    ...firstSave.snapshot,
+    activeSpaceId: "space-first",
+    spaces: [{ id: "space-first", name: "First", nodeIds: [] }]
+  });
+  await Promise.resolve();
+
+  session.setNodeTitle("browser", "Third save");
+  await new Promise((resolve) => globalThis.setTimeout(resolve, 450));
+
+  assert.equal(savedSnapshots[2]?.activeSpaceId, "space-second");
+  session.dispose();
+});
+
+test("a synchronous repository save failure does not escape session disposal", async () => {
+  const session = createWorkbenchHostSession({
+    nodes: [browserNodeDefinition],
+    snapshotRepository: {
+      async load() {
+        return createWorkbenchSnapshotFromState(
+          { nodeStack: [], nodes: [] },
+          { metadata: { workbenchHostInitialized: true } }
+        );
+      },
+      save() {
+        throw new Error("synchronous save failure");
+      }
+    },
+    workspaceId: "workspace-1"
+  });
+
+  await session.load();
+  await session.launchNode({ reason: "dock", typeId: "browser" });
+
+  assert.doesNotThrow(() => session.dispose());
+  await Promise.resolve();
+});
+
+test("a newer synchronous save failure does not invalidate an older pending save", async () => {
+  type Snapshot = ReturnType<typeof createWorkbenchSnapshotFromState>;
+  let saveCount = 0;
+  let resolveFirstSave!: (snapshot: Snapshot) => void;
+  const savedSnapshots: Snapshot[] = [];
+  const firstSave = new Promise<Snapshot>((resolve) => {
+    resolveFirstSave = resolve;
+  });
+  const session = createWorkbenchHostSession({
+    nodes: [browserNodeDefinition],
+    snapshotRepository: {
+      async load() {
+        return createWorkbenchSnapshotFromState(
+          { nodeStack: [], nodes: [] },
+          {
+            activeSpaceId: "space-initial",
+            metadata: { workbenchHostInitialized: true },
+            spaces: [{ id: "space-initial", name: "Initial", nodeIds: [] }]
+          }
+        );
+      },
+      save(_workspaceId, snapshot) {
+        saveCount += 1;
+        savedSnapshots.push(snapshot);
+        if (saveCount === 1) {
+          return firstSave;
+        }
+        if (saveCount === 2) {
+          throw new Error("newer save failed synchronously");
+        }
+        return snapshot;
+      }
+    },
+    workspaceId: "workspace-1"
+  });
+
+  await session.load();
+  await session.launchNode({ reason: "dock", typeId: "browser" });
+  await new Promise((resolve) => globalThis.setTimeout(resolve, 450));
+  session.setNodeTitle("browser", "Second save");
+  await new Promise((resolve) => globalThis.setTimeout(resolve, 450));
+
+  const firstSnapshot = savedSnapshots[0];
+  assert.ok(firstSnapshot);
+  resolveFirstSave({
+    ...firstSnapshot,
+    activeSpaceId: "space-first",
+    spaces: [{ id: "space-first", name: "First", nodeIds: [] }]
+  });
+  await Promise.resolve();
+
+  session.setNodeTitle("browser", "Third save");
+  await new Promise((resolve) => globalThis.setTimeout(resolve, 450));
+
+  assert.equal(savedSnapshots[2]?.activeSpaceId, "space-first");
+  session.dispose();
+});
+
+test("a newer asynchronous save failure does not invalidate an older successful save", async () => {
+  type Snapshot = ReturnType<typeof createWorkbenchSnapshotFromState>;
+  let saveCount = 0;
+  let resolveFirstSave!: (snapshot: Snapshot) => void;
+  let rejectSecondSave!: (error: Error) => void;
+  const savedSnapshots: Snapshot[] = [];
+  const firstSave = new Promise<Snapshot>((resolve) => {
+    resolveFirstSave = resolve;
+  });
+  const secondSave = new Promise<Snapshot>((_resolve, reject) => {
+    rejectSecondSave = reject;
+  });
+  const session = createWorkbenchHostSession({
+    nodes: [browserNodeDefinition],
+    snapshotRepository: {
+      async load() {
+        return createWorkbenchSnapshotFromState(
+          { nodeStack: [], nodes: [] },
+          {
+            activeSpaceId: "space-initial",
+            metadata: { workbenchHostInitialized: true },
+            spaces: [{ id: "space-initial", name: "Initial", nodeIds: [] }]
+          }
+        );
+      },
+      save(_workspaceId, snapshot) {
+        saveCount += 1;
+        savedSnapshots.push(snapshot);
+        if (saveCount === 1) {
+          return firstSave;
+        }
+        if (saveCount === 2) {
+          return secondSave;
+        }
+        return snapshot;
+      }
+    },
+    workspaceId: "workspace-1"
+  });
+
+  await session.load();
+  await session.launchNode({ reason: "dock", typeId: "browser" });
+  await new Promise((resolve) => globalThis.setTimeout(resolve, 450));
+  session.setNodeTitle("browser", "Second save");
+  await new Promise((resolve) => globalThis.setTimeout(resolve, 450));
+
+  const firstSnapshot = savedSnapshots[0];
+  assert.ok(firstSnapshot);
+  resolveFirstSave({
+    ...firstSnapshot,
+    activeSpaceId: "space-first",
+    spaces: [{ id: "space-first", name: "First", nodeIds: [] }]
+  });
+  await Promise.resolve();
+  rejectSecondSave(new Error("newer save failed asynchronously"));
+  await Promise.resolve();
+
+  session.setNodeTitle("browser", "Third save");
+  await new Promise((resolve) => globalThis.setTimeout(resolve, 450));
+
+  assert.equal(savedSnapshots[2]?.activeSpaceId, "space-first");
+  session.dispose();
+});
+
 test("queued launch from a disposed lifecycle does not run in a restarted load", async () => {
   let resolveFirstLoad!: (
     snapshot: ReturnType<typeof createWorkbenchSnapshotFromState>

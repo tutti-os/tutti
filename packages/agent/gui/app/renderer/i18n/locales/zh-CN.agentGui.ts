@@ -410,6 +410,7 @@ export const zhCNAgentGui = {
   goalPauseAction: "暂停目标",
   goalResumeAction: "继续目标",
   goalClearAction: "删除目标",
+  goalRemoved: "目标已移除",
   processing: "正在规划下一步",
   agentTargetRequired: "请先选择可用的 Agent 目标。",
   sessionActivationFailed: "Agent 会话启动失败。",

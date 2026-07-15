@@ -439,6 +439,7 @@ export const enAgentGui = {
   goalPauseAction: "Pause goal",
   goalResumeAction: "Resume goal",
   goalClearAction: "Delete goal",
+  goalRemoved: "Goal removed",
   processing: "Planning next moves",
   agentTargetRequired:
     "Select an available agent target before starting a session.",

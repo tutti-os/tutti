@@ -1,7 +1,6 @@
 package agentruntime
 
 import (
-	"log/slog"
 	"sort"
 	"strings"
 
@@ -472,13 +471,6 @@ func (n *acpTurnNormalizer) KnownToolCallInput(rawToolCallID string) map[string]
 	return payloadMap(pending.payload, "input")
 }
 
-func (n *acpTurnNormalizer) pendingToolCallCount() int {
-	if n == nil {
-		return 0
-	}
-	return len(n.pendingToolCalls)
-}
-
 func (n *acpTurnNormalizer) trackToolCallEvent(event activityshared.Event) {
 	if n == nil || strings.TrimSpace(event.EventID) == "" {
 		return
@@ -494,7 +486,6 @@ func (n *acpTurnNormalizer) trackToolCallEvent(event activityshared.Event) {
 			// tool_call_update that repeats only title/kind/status (no input).
 			// Replacing the snapshot wholesale dropped command/path/query and
 			// left session/request_permission with nothing to backfill.
-			logACPPendingToolCallDetailPreservation(event, previous.payload, incoming)
 			incoming = mergePendingToolCallPayload(previous.payload, incoming)
 		}
 		n.pendingToolCalls[event.EventID] = pendingToolCallSnapshot{
@@ -504,56 +495,6 @@ func (n *acpTurnNormalizer) trackToolCallEvent(event activityshared.Event) {
 	case activityshared.EventCallCompleted, activityshared.EventCallFailed:
 		delete(n.pendingToolCalls, event.EventID)
 	}
-}
-
-func logACPPendingToolCallDetailPreservation(
-	event activityshared.Event,
-	previousPayload map[string]any,
-	incomingPayload map[string]any,
-) {
-	previousInput := payloadMap(previousPayload, "input")
-	incomingInput := payloadMap(incomingPayload, "input")
-	if !acpApprovalDetailPresent(previousInput) || acpApprovalDetailPresent(incomingInput) {
-		return
-	}
-	slog.Info("agent session ACP pending tool call preserved detail across empty update",
-		"event", "agent_session.acp.pending_tool_call.preserved_detail",
-		"provider", event.Provider,
-		"agent_session_id", strings.TrimSpace(event.AgentSessionID),
-		"turn_id", strings.TrimSpace(event.Payload.TurnID),
-		"event_id", strings.TrimSpace(event.EventID),
-		"call_id", firstNonEmpty(
-			asString(incomingPayload["callId"]),
-			asString(previousPayload["callId"]),
-			strings.TrimSpace(event.Payload.CallID),
-		),
-		"previous_input_keys", sortedACPDiagnosticKeys(previousInput),
-		"incoming_input_keys", sortedACPDiagnosticKeys(incomingInput),
-		"previous_command", truncateACPDiagnosticText(
-			firstNonEmpty(asString(previousInput["command"]), asString(previousInput["cmd"])),
-			160,
-		),
-	)
-}
-
-func acpApprovalDetailPresent(input map[string]any) bool {
-	if len(input) == 0 {
-		return false
-	}
-	return firstNonEmpty(
-		asString(input["command"]),
-		asString(input["cmd"]),
-		asString(input["file_path"]),
-		asString(input["filePath"]),
-		asString(input["path"]),
-		asString(input["notebook_path"]),
-		asString(input["query"]),
-		asString(input["search_query"]),
-		asString(input["searchQuery"]),
-		asString(input["pattern"]),
-		asString(input["glob_pattern"]),
-		asString(input["globPattern"]),
-	) != ""
 }
 
 func (n *acpTurnNormalizer) mergePendingToolCallSnapshot(event *activityshared.Event) {

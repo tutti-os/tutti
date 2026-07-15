@@ -257,6 +257,10 @@ func TestClaudeSDKGoalControlSetAndClear(t *testing.T) {
 	if goal := adapter.localGoal(adapterSession); len(goal) != 0 {
 		t.Fatalf("local goal not cleared: %#v", goal)
 	}
+	clearTurnID := payloadString(clearRequest.Payload, "turnId")
+	if !adapter.isGoalClearControlTurn(adapterSession, clearTurnID) {
+		t.Fatalf("clear turn %q was not registered as a control turn", clearTurnID)
+	}
 }
 
 // A failed /goal send must leave the mirror untouched — the GUI must never
@@ -274,6 +278,12 @@ func TestClaudeSDKGoalControlSendFailureRollsBackMirror(t *testing.T) {
 	}
 	if goal := adapter.localGoal(adapterSession); goal["objective"] != "ship it" || goal["status"] != "active" {
 		t.Fatalf("mirror mutated by failed clear: %#v", goal)
+	}
+	adapter.mu.Lock()
+	clearControlTurnCount := len(adapterSession.goalClearControlTurns)
+	adapter.mu.Unlock()
+	if clearControlTurnCount != 0 {
+		t.Fatalf("failed clear left %d control turns registered", clearControlTurnCount)
 	}
 
 	if _, _, err := adapter.GoalControl(context.Background(), session, GoalControlSet, "new objective"); err == nil {

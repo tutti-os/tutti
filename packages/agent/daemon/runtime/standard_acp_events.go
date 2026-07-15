@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
-	"sort"
 	"strings"
 
 	activityshared "github.com/tutti-os/tutti/packages/agent/daemon/activity/events"
@@ -308,7 +307,6 @@ func standardACPPermissionRequested(
 	rawToolCallID := asString(params.ToolCall["toolCallId"])
 	knownInput := normalizer.KnownToolCallInput(rawToolCallID)
 	input := normalizedApprovalInput(params.ToolCall, params.Options, requestID, knownInput)
-	logACPPermissionApprovalDiagnostic(session, turnID, requestID, params.ToolCall, knownInput, input, normalizer)
 	payload := map[string]any{
 		"callId":   callID,
 		"callType": "approval",
@@ -374,78 +372,4 @@ func standardACPPermissionRequested(
 		),
 		normalizedInteractionRequestedEvent(session, turnID, pending),
 	}, pending, nil
-}
-
-// logACPPermissionApprovalDiagnostic records whether Cursor-style permission
-// requests recovered structured approval detail (command/path/query). The GUI
-// only renders those fields; title/content alone leave the approval card blank.
-func logACPPermissionApprovalDiagnostic(
-	session Session,
-	turnID string,
-	requestID string,
-	toolCall map[string]any,
-	knownInput map[string]any,
-	approvalInput map[string]any,
-	normalizer *acpTurnNormalizer,
-) {
-	displayCommand := firstNonEmpty(
-		asString(approvalInput["command"]),
-		asString(approvalInput["cmd"]),
-	)
-	displayPath := firstNonEmpty(
-		asString(approvalInput["file_path"]),
-		asString(approvalInput["filePath"]),
-		asString(approvalInput["path"]),
-		asString(approvalInput["notebook_path"]),
-	)
-	displayQuery := firstNonEmpty(
-		asString(approvalInput["query"]),
-		asString(approvalInput["search_query"]),
-		asString(approvalInput["searchQuery"]),
-		asString(approvalInput["pattern"]),
-	)
-	hasDisplayDetail := displayCommand != "" || displayPath != "" || displayQuery != ""
-	slog.Info("agent session ACP permission approval projected",
-		"event", "agent_session.acp.permission_approval.projected",
-		"provider", session.Provider,
-		"room_id", strings.TrimSpace(session.RoomID),
-		"agent_session_id", strings.TrimSpace(session.AgentSessionID),
-		"provider_session_id", strings.TrimSpace(session.ProviderSessionID),
-		"turn_id", strings.TrimSpace(turnID),
-		"request_id", strings.TrimSpace(requestID),
-		"tool_call_id", asString(toolCall["toolCallId"]),
-		"tool_call_kind", asString(toolCall["kind"]),
-		"tool_call_title", truncateACPDiagnosticText(asString(toolCall["title"]), 160),
-		"tool_call_has_raw_input", payloadObject(toolCall["rawInput"]) != nil || payloadObject(toolCall["input"]) != nil,
-		"tool_call_content_text", truncateACPDiagnosticText(acpContentText(toolCall["content"]), 160),
-		"known_input_hit", len(knownInput) > 0,
-		"known_input_keys", sortedACPDiagnosticKeys(knownInput),
-		"known_input_has_command", strings.TrimSpace(asString(knownInput["command"])) != "" || strings.TrimSpace(asString(knownInput["cmd"])) != "",
-		"pending_tool_call_count", normalizer.pendingToolCallCount(),
-		"approval_input_keys", sortedACPDiagnosticKeys(approvalInput),
-		"display_command", truncateACPDiagnosticText(displayCommand, 160),
-		"display_path", truncateACPDiagnosticText(displayPath, 160),
-		"display_query", truncateACPDiagnosticText(displayQuery, 160),
-		"has_display_detail", hasDisplayDetail,
-	)
-}
-
-func sortedACPDiagnosticKeys(payload map[string]any) []string {
-	if len(payload) == 0 {
-		return nil
-	}
-	keys := make([]string, 0, len(payload))
-	for key := range payload {
-		keys = append(keys, key)
-	}
-	sort.Strings(keys)
-	return keys
-}
-
-func truncateACPDiagnosticText(value string, limit int) string {
-	value = strings.TrimSpace(value)
-	if limit <= 0 || len(value) <= limit {
-		return value
-	}
-	return value[:limit] + "…"
 }

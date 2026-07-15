@@ -1894,6 +1894,20 @@ describe("agent GUI workbench contribution copy", () => {
     );
   });
 
+  it("keeps slash mention fields aligned and transparent by default", () => {
+    const css = readFileSync(resolve("app/renderer/agentactivity.css"), "utf8");
+
+    expect(css).toMatch(
+      /\[data-agent-mention-kind="skill"\]\.tsh-agent-object-token--entity\s+\.tsh-agent-object-token__main,\s*\[data-agent-mention-kind="capability"\]\.tsh-agent-object-token--entity\s+\.tsh-agent-object-token__main\s*{[^}]*background:\s*transparent;/s
+    );
+    expect(css).toMatch(
+      /\.agent-gui-node__composer-textarea\s+\[data-agent-mention-kind="skill"\]\.tsh-agent-object-token--entity\s+\.tsh-agent-object-token__main,\s*\.agent-gui-node__composer-textarea\s+\[data-agent-mention-kind="capability"\]\.tsh-agent-object-token--entity\s+\.tsh-agent-object-token__main\s*{[^}]*transform:\s*translateY\(-2px\);/s
+    );
+    expect(css).toMatch(
+      /\.agent-gui-node__composer-textarea\s+\[data-agent-file-mention="true"\]\.tsh-agent-object-token:hover\s*{[^}]*background:\s*color-mix\(in srgb, currentColor 16%, transparent\);/s
+    );
+  });
+
   it("keeps interactive feedback scrolling above the send button", () => {
     const css = readFileSync(resolve("app/renderer/agentactivity.css"), "utf8");
 

@@ -1350,10 +1350,19 @@ describe("AgentFileMentionPalette", () => {
               iconUrl: "data:image/png;base64,automation",
               description:
                 "Schedule and review recurring automation runs for this workspace."
+            },
+            {
+              kind: "workspace-app",
+              href: "mention://workspace-app/tasks?workspaceId=room-1",
+              workspaceId: "room-1",
+              targetId: "tasks",
+              appId: "tasks",
+              name: "任务管理",
+              description: "管理工作区任务和运行记录。"
             }
           ],
-          totalCount: 1,
-          visibleCount: 1,
+          totalCount: 2,
+          visibleCount: 2,
           hasMore: false
         }
       ],
@@ -1388,7 +1397,7 @@ describe("AgentFileMentionPalette", () => {
     ).toHaveClass("rich-text-at-mention-app-icon");
     expect(
       screen.getByText(
-        "Schedule and review recurring automation runs for this workspace."
+        "Schedule and review recurring automation runs for this workspace"
       )
     ).toBeVisible();
     expect(screen.getByText("Automation").parentElement).toHaveClass(
@@ -1401,14 +1410,21 @@ describe("AgentFileMentionPalette", () => {
     );
     expect(
       screen.getByText(
-        "Schedule and review recurring automation runs for this workspace."
+        "Schedule and review recurring automation runs for this workspace"
       )
     ).toHaveClass("rich-text-at-mention-row__app-description");
     expect(
       screen.getByText(
-        "Schedule and review recurring automation runs for this workspace."
+        "Schedule and review recurring automation runs for this workspace"
       )
     ).toHaveClass("rich-text-at-mention-row__entity-description");
+    expect(
+      screen.queryByText(
+        "Schedule and review recurring automation runs for this workspace."
+      )
+    ).toBeNull();
+    expect(screen.getByText("管理工作区任务和运行记录")).toBeVisible();
+    expect(screen.queryByText("管理工作区任务和运行记录。")).toBeNull();
     expect(screen.queryByText("automation")).toBeNull();
     expect(
       document.querySelector("section")?.textContent?.match(/\bApps\b/g) ?? []

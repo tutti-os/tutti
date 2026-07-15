@@ -124,6 +124,8 @@ class WorkbenchHostSessionController implements WorkbenchHostRuntimeHandle {
   private readyPromise: Promise<void>;
   private resolveReady: () => void = noop;
   private saveTimer: ReturnType<typeof globalThis.setTimeout> | null = null;
+  private appliedSaveSequence = 0;
+  private saveSequence = 0;
   private externalStateUnsubscribe: (() => void) | null = null;
   private leaseUnsubscribe: (() => void) | null = null;
   private unsubscribe: (() => void) | null = null;
@@ -945,6 +947,8 @@ class WorkbenchHostSessionController implements WorkbenchHostRuntimeHandle {
       return;
     }
 
+    const generation = this.loadGeneration;
+
     const snapshot = sanitizeWorkbenchHostSnapshot(
       createWorkbenchSnapshotFromState(
         this.applyExternalSnapshotNodeState(
@@ -969,10 +973,25 @@ class WorkbenchHostSessionController implements WorkbenchHostRuntimeHandle {
     if (workbenchSnapshotSaveKey(snapshot) === this.loadedSnapshotSaveKey()) {
       return;
     }
-    void Promise.resolve(
-      this.input.snapshotRepository.save(this.input.workspaceId, snapshot)
-    ).then((savedSnapshot) => {
-      this.loadedSnapshot = savedSnapshot;
+    let saveResult: Promise<WorkbenchSnapshot> | WorkbenchSnapshot;
+    try {
+      saveResult = this.input.snapshotRepository.save(
+        this.input.workspaceId,
+        snapshot
+      );
+    } catch {
+      return;
+    }
+    const saveSequence = ++this.saveSequence;
+    void Promise.resolve(saveResult).then((savedSnapshot) => {
+      if (
+        !this.isDisposed &&
+        generation === this.loadGeneration &&
+        saveSequence > this.appliedSaveSequence
+      ) {
+        this.appliedSaveSequence = saveSequence;
+        this.loadedSnapshot = savedSnapshot;
+      }
     }, noop);
   }
 

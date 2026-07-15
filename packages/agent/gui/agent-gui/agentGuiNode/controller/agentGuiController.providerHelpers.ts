@@ -24,7 +24,6 @@ export const EMPTY_AGENT_GUI_MESSAGES: readonly AgentActivityMessage[] = [];
 export const EMPTY_AGENT_GUI_AVAILABLE_COMMANDS: AgentSessionCommand[] = [];
 export const ACTIVITY_STREAM_STATE_RELOAD_DEBOUNCE_MS = 150;
 export const AGENT_GUI_SUBMIT_RETARGET_EARLY_MESSAGE_TOLERANCE_MS = 5_000;
-export const GOAL_CLEAR_PROMPT = "/goal clear";
 
 export type AgentGUIProviderRailTargetSelection =
   | "keep-active-conversation"

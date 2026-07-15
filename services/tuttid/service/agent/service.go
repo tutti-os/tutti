@@ -327,10 +327,7 @@ func (s *Service) resolveCreateSessionLaunch(ctx context.Context, input CreateSe
 }
 
 func (s *Service) resolveCreateSessionModel(ctx context.Context, provider string, providerTargetRef map[string]any, model *string) *string {
-	resolved := normalizeComposerModelForProvider(
-		provider,
-		clampComposerModelForLaunch(provider, providerTargetRef, value(model)),
-	)
+	resolved := clampComposerModelForLaunch(provider, providerTargetRef, value(model))
 	if resolved == "" {
 		resolved = composerDefaultModel(ctx, provider, s.ModelCatalog)
 	}

@@ -34,6 +34,13 @@ func (a *ClaudeCodeSDKAdapter) sidecarTurnEvents(adapterSession *claudeSDKAdapte
 		turnID = eventTurnID
 	}
 	turnID = adapterSession.backgroundAgentTurnID(event.Payload, turnID)
+	goalClearControlTurn := a.isGoalClearControlTurn(adapterSession, turnID)
+	if goalClearControlTurn && isClaudeSDKGoalClearTranscriptEvent(event.Type) {
+		return nil, false, nil
+	}
+	if goalClearControlTurn && isClaudeSDKTerminalEvent(event.Type) {
+		defer a.forgetGoalClearControlTurn(adapterSession, turnID)
+	}
 	switch event.Type {
 	case "ok":
 		return nil, false, nil
@@ -174,6 +181,24 @@ func (a *ClaudeCodeSDKAdapter) sidecarTurnEvents(adapterSession *claudeSDKAdapte
 		return events, true, nil
 	default:
 		return nil, false, nil
+	}
+}
+
+func isClaudeSDKGoalClearTranscriptEvent(eventType string) bool {
+	switch eventType {
+	case "assistant_delta", "assistant_completed", "thinking_delta", "thinking_completed":
+		return true
+	default:
+		return false
+	}
+}
+
+func isClaudeSDKTerminalEvent(eventType string) bool {
+	switch eventType {
+	case "turn_completed", "turn_canceled", "turn_failed":
+		return true
+	default:
+		return false
 	}
 }
 

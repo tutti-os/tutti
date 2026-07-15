@@ -641,7 +641,7 @@
 .rich-text-at-mention-row__app-text,
 .rich-text-at-mention-row__entity-text {
   align-items: baseline;
-  gap: 4px;
+  gap: 8px;
 }
 
 .rich-text-at-mention-row__file-text {

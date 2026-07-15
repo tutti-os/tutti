@@ -66,17 +66,25 @@ Approval gates, plan exits, parent/child event attribution, background agents, a
   or partial updates into the prior `input` instead of replacing it, expose the
   preserved input via `KnownToolCallInput`, and let
   `normalizedApprovalDisplayInput` fill missing `command`/`file_path`/`query`
-  fields from that known input. Other ACP-style interactive paths (Codex
-  app-server, Claude SDK) keep passing `nil` for this fallback.
+  fields from that known input. Codex app-server file-change approvals follow
+  the same correlation rule: `item/started` carries `changes`, while the later
+  `item/fileChange/requestApproval` may carry only the matching `itemId`; the
+  active turn normalizer must supply that known input to the approval
+  projection. AgentGUI approval prompts render structured `changes` or
+  `fileChanges` details as file paths, treat `grantRoot` as a path-like
+  approval scope, and surface `reason` text when that is the only descriptive
+  content available, so approval cards no longer collapse to a generic empty
+  shell when the provider omits command/path/query fields.
 - Validation:
   `cd packages/agent/daemon && go test ./runtime/... -run
-'TestCursorPermissionRequestFallsBackToKnownToolCallInput|TestCursorPermissionRequestKeepsKnownInputAfterEmptyToolCallUpdate'`.
-  For a live check, restart tuttidi, trigger a Cursor ask-for-approval shell
-  command, and confirm `~/.tutti-dev/logs/tuttid.log` shows
-  `agent_session.acp.permission_approval.projected` with
-  `has_display_detail=true` and `known_input_has_command=true`. An empty update
-  that would previously wipe detail now logs
-  `agent_session.acp.pending_tool_call.preserved_detail`.
+'TestAppServerFileChangeApprovalUsesStartedItemChanges|TestACPPermissionRequestFallsBackToKnownFileChanges|TestCursorPermissionRequestFallsBackToKnownToolCallInput|TestCursorPermissionRequestKeepsKnownInputAfterEmptyToolCallUpdate'`.
+  For a live check, restart tuttidi and trigger both Codex app-server and ACP
+  file-change approvals. AgentGUI should render structured file changes as
+  changed-file paths. When absolute changed-file paths share a directory, the
+  file list uses paths relative to that directory and renders the common
+  directory once; a duplicate single-file `path` is suppressed. A
+  lone `grantRoot` still renders as a path and a lone `reason` renders as the
+  explanation.
 - References:
   [acp_turn_normalizer.go](../../../packages/agent/daemon/runtime/acp_turn_normalizer.go)
   [interactive_projection.go](../../../packages/agent/daemon/runtime/interactive_projection.go)

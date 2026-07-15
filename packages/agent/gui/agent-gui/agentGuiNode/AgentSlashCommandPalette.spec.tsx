@@ -71,11 +71,56 @@ describe("AgentSlashCommandPalette", () => {
 
     const option = screen.getByRole("option", { name: /tutti-cli/i });
     expect(option).toHaveAttribute("data-highlighted", "");
-    expect(screen.getByText("tutti-cli")).toBeInTheDocument();
+    expect(screen.getByText("tutti-cli")).toHaveClass("text-[13px]");
+    expect(screen.getByText("Inspect tasks and agent context")).toHaveClass(
+      "text-[13px]"
+    );
     expect(
-      screen.getByText("Inspect tasks and agent context.")
-    ).toBeInTheDocument();
+      screen.getByText("tutti-cli").parentElement?.parentElement
+    ).toHaveClass("gap-[8px]");
     expect(screen.queryByText("[issue description]")).toBeNull();
+  });
+
+  it("removes terminal periods from every description", () => {
+    render(
+      <AgentSlashCommandPalette
+        label="Slash commands"
+        commandsGroupLabel="Commands"
+        capabilitiesGroupLabel="Capabilities"
+        skillsGroupLabel="Skills"
+        pluginsGroupLabel="Plugins"
+        connectorsGroupLabel="Connectors"
+        mcpGroupLabel="MCP"
+        highlightedIndex={0}
+        entries={[
+          {
+            type: "command",
+            key: "command:english",
+            label: "english",
+            description: "Keep internal e.g. punctuation.",
+            command: { name: "english" }
+          },
+          {
+            type: "command",
+            key: "command:chinese",
+            label: "chinese",
+            description: "保留内部标点，移除末尾句号。",
+            command: { name: "chinese" }
+          }
+        ]}
+        onHighlightChange={vi.fn()}
+        onSelect={vi.fn()}
+        onSelectCapability={vi.fn()}
+        onSelectSkill={vi.fn()}
+      />
+    );
+
+    expect(screen.getByText("Keep internal e.g. punctuation")).toHaveClass(
+      "text-[13px]"
+    );
+    expect(screen.getByText("保留内部标点，移除末尾句号")).toBeInTheDocument();
+    expect(screen.queryByText("Keep internal e.g. punctuation.")).toBeNull();
+    expect(screen.queryByText("保留内部标点，移除末尾句号。")).toBeNull();
   });
 
   it("renders a capability section and dispatches capability selection", () => {
@@ -170,10 +215,10 @@ describe("AgentSlashCommandPalette", () => {
     expect(icon).toBeTruthy();
     // The svg carries its own size class so the option's
     // `[&_svg:not([class*='size-'])]:size-4` fallback does not override it.
-    expect(icon).toHaveClass("size-3");
+    expect(icon).toHaveClass("size-4");
     expect(icon?.parentElement).toHaveClass(
       "flex",
-      "w-3",
+      "w-4",
       "shrink-0",
       "items-center",
       "justify-center",
@@ -214,7 +259,12 @@ describe("AgentSlashCommandPalette", () => {
     );
 
     expect(screen.getByText("状态")).toBeInTheDocument();
-    expect(screen.getByText("status")).toBeInTheDocument();
+    expect(screen.getByText("status")).toHaveClass(
+      "text-[13px]",
+      "font-normal",
+      "text-[var(--text-secondary)]"
+    );
+    expect(screen.getByText("status").parentElement).toHaveClass("gap-[8px]");
   });
 
   it("uses distinct icons for plan and review commands", () => {
@@ -349,7 +399,13 @@ describe("AgentSlashCommandPalette", () => {
     );
 
     expect(screen.getByText("Plugins")).toBeInTheDocument();
-    expect(screen.getByText("Connectors")).toBeInTheDocument();
+    expect(screen.getByText("Connectors")).toHaveClass(
+      "mt-3",
+      "pt-3",
+      "before:inset-x-3",
+      "before:border-t",
+      "before:border-[var(--border-1)]"
+    );
     expect(screen.queryByText("Skills")).toBeNull();
   });
 });

@@ -2,7 +2,8 @@ import type { ReactNode } from "react";
 import type { WorkspaceFileEntry } from "@tutti-os/workspace-file-manager/services";
 import type {
   WorkspaceFileReferenceAdapter,
-  WorkspaceFileReference
+  WorkspaceFileReference,
+  ReferenceProvenanceCatalog
 } from "@tutti-os/workspace-file-reference/contracts";
 import type { ReferenceSourceAggregator } from "@tutti-os/workspace-file-reference/core";
 import type { AgentSettings } from "../../contexts/settings/domain/agentSettings";
@@ -105,6 +106,14 @@ export interface AgentGUINodeRuntimeRequests {
 }
 
 export interface AgentGUINodeHostCapabilities {
+  /**
+   * Complete host-owned catalog for reference provenance filtering. Supplying
+   * it explicitly opts the host into the dimensions declared by the catalog.
+   * Omit it to keep filtering disabled unless the legacy Agent-only flag is
+   * enabled.
+   */
+  referenceProvenanceFilterCatalog?: ReferenceProvenanceCatalog | null;
+  /** Legacy Tutti Agent-only opt-in. Prefer an explicit catalog in new hosts. */
   referenceProvenanceFilterEnabled?: boolean;
   capabilityMenuState?: AgentComposerCapabilityMenuState;
   accountMenuState?: AgentGUIAccountMenuState | null;
@@ -289,6 +298,8 @@ export function areAgentGUINodePropsEqual(
     pw.onFileReferencesAdded === nw.onFileReferencesAdded &&
     pw.agentSettings.avoidGroupingEdits ===
       nw.agentSettings.avoidGroupingEdits &&
+    pc.referenceProvenanceFilterCatalog ===
+      nc.referenceProvenanceFilterCatalog &&
     pc.referenceProvenanceFilterEnabled ===
       nc.referenceProvenanceFilterEnabled &&
     agentGuiStateEquals(previous.state, next.state) &&

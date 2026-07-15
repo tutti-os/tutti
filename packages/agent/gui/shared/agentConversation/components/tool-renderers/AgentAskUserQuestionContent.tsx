@@ -2,15 +2,18 @@ import type { JSX } from "react";
 import { MessageSquareMoreIcon } from "../../../../app/renderer/components/icons/MessageSquareMoreIcon";
 import { translate } from "../../../../i18n/index";
 import {
+  ToolMarkdownBlock,
   ToolSection,
   type AgentToolRendererProps
 } from "./agentToolContentShared";
 
 export function AgentAskUserQuestionContent({
-  call
+  call,
+  onLinkClick
 }: AgentToolRendererProps): JSX.Element | null {
   "use memo";
   const questions = call.askUserQuestion?.questions ?? [];
+  const outputText = stringValue(call.output?.text);
   if (questions.length === 0) {
     return null;
   }
@@ -77,6 +80,15 @@ export function AgentAskUserQuestionContent({
           })}
         </div>
       </ToolSection>
+      {outputText ? (
+        <ToolSection title={translate("agentHost.agentTool.details.output")}>
+          <ToolMarkdownBlock
+            content={outputText}
+            onLinkClick={onLinkClick}
+            collapsible
+          />
+        </ToolSection>
+      ) : null}
     </div>
   );
 }
@@ -88,4 +100,8 @@ function formatAnswer(
     return answer.filter((value) => value.trim()).join(", ") || null;
   }
   return typeof answer === "string" && answer.trim() ? answer.trim() : null;
+}
+
+function stringValue(value: unknown): string | null {
+  return typeof value === "string" && value.trim() ? value.trim() : null;
 }

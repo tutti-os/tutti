@@ -69,19 +69,20 @@ const paletteStyles = {
     "nodrag agent-gui-node__mention-palette flex h-full min-h-0 flex-col gap-0.5 overflow-y-auto px-1 pb-1 pt-2 [-webkit-app-region:no-drag]",
   option:
     "nodrag relative flex h-7 min-h-7 w-full min-w-0 cursor-pointer select-none items-center gap-2 overflow-hidden rounded-[6px] border-0 bg-transparent px-2.5 py-0 text-left text-[13px] text-[var(--text-primary)] outline-hidden transition-colors duration-200 [-webkit-app-region:no-drag] hover:bg-[var(--transparency-block)] focus-visible:bg-[var(--transparency-block)] focus-visible:outline-none active:bg-[var(--transparency-active)] data-[highlighted]:bg-[var(--transparency-block)] data-[highlighted]:text-[var(--text-primary)] [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
-  icon: "flex w-3 shrink-0 items-center justify-center self-center text-[var(--text-secondary)]",
-  copy: "flex min-w-0 flex-1 items-center gap-1 overflow-hidden leading-[16px]",
-  name: "flex min-w-0 max-w-[48%] shrink-0 items-center gap-1 overflow-hidden",
+  icon: "flex w-4 shrink-0 items-center justify-center self-center text-[var(--text-secondary)]",
+  copy: "flex min-w-0 flex-1 items-center gap-[8px] overflow-hidden leading-[16px]",
+  name: "flex min-w-0 max-w-[48%] shrink-0 items-center gap-[8px] overflow-hidden",
   primaryName:
-    "min-w-0 truncate text-[11px] font-semibold text-[var(--text-primary)]",
+    "min-w-0 truncate text-[13px] font-semibold text-[var(--text-primary)]",
   secondaryName:
-    "shrink-0 text-[10px] font-normal text-[var(--text-secondary)]",
+    "shrink-0 text-[13px] font-normal text-[var(--text-secondary)]",
   descriptionText:
-    "min-w-0 flex-1 truncate text-[11px] font-normal text-[var(--text-secondary)]",
+    "min-w-0 flex-1 truncate text-[13px] font-normal text-[var(--text-secondary)]",
   groupHeader:
     "select-none px-2.5 pb-0.5 text-[11px] font-normal text-[var(--text-secondary)]",
   groupHeaderFirst: "pt-1.5",
-  groupHeaderSeparated: "mt-1 border-t border-[var(--border-1)] pt-2",
+  groupHeaderSeparated:
+    "relative mt-3 pt-3 before:absolute before:inset-x-3 before:top-0 before:border-t before:border-[var(--border-1)] before:content-['']",
   settingsButton:
     "nodrag ml-1 flex h-5 min-h-5 shrink-0 items-center rounded-[4px] border-0 bg-[var(--transparency-hover)] px-2 py-0 text-[11px] font-semibold leading-[14px] text-[var(--text-secondary)] outline-none transition-colors duration-150 hover:bg-[var(--transparency-active)] hover:text-[var(--text-primary)] focus-visible:ring-2 focus-visible:ring-[var(--agent-gui-focus-ring,var(--border-focus))]",
   loading:
@@ -241,7 +242,7 @@ export function AgentSlashCommandPalette({
                 </span>
                 {entry.description ? (
                   <span className={paletteStyles.descriptionText}>
-                    {entry.description}
+                    {descriptionWithoutTerminalPeriod(entry.description)}
                   </span>
                 ) : null}
               </span>
@@ -274,6 +275,10 @@ export function AgentSlashCommandPalette({
         : null}
     </div>
   );
+}
+
+function descriptionWithoutTerminalPeriod(description: string): string {
+  return description.trimEnd().replace(/[。.]+$/u, "");
 }
 
 type AgentSlashPaletteEntryGroup =
@@ -348,7 +353,7 @@ function labelForEntryGroupType(
 
 // Keep the explicit `size-*` class on each icon so the palette option's
 // `[&_svg:not([class*='size-'])]:size-4` fallback does not override it.
-const SLASH_PALETTE_ICON_CLASS = "size-3";
+const SLASH_PALETTE_ICON_CLASS = "size-4";
 
 function slashPaletteEntryIcon(entry: AgentSlashPaletteEntry): ReactNode {
   if (entry.type === "capability") {

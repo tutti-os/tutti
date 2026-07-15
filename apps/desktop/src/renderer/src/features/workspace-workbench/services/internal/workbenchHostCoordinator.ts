@@ -64,7 +64,6 @@ export function createWorkbenchHostSessionConfiguration<
 }
 
 export class WorkbenchHostCoordinator {
-  readonly _serviceBrand = undefined;
   private disposed = false;
   private readonly options: WorkbenchHostCoordinatorOptions;
   private readonly sessionsByScope = new Map<

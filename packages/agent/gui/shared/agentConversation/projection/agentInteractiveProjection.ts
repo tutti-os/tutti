@@ -109,7 +109,11 @@ function answerForQuestion(
   answersByQuestionId: Record<string, unknown>,
   output: Record<string, unknown> | null
 ): string | string[] | null {
-  const value = answersByQuestionId[questionId];
+  const responsePayload = objectValue(output?.payload);
+  const responseAnswersByQuestionId =
+    objectValue(responsePayload?.answersByQuestionId) ?? {};
+  const value =
+    answersByQuestionId[questionId] ?? responseAnswersByQuestionId[questionId];
   if (Array.isArray(value)) {
     return value.flatMap((item) =>
       typeof item === "string" && item.trim() ? [item.trim()] : []
@@ -118,7 +122,8 @@ function answerForQuestion(
   if (typeof value === "string" && value.trim()) {
     return value.trim();
   }
-  const answers = arrayValue(output?.answers);
+  const answers =
+    arrayValue(output?.answers) ?? arrayValue(responsePayload?.answers);
   return answers && answers.length > 0
     ? answers.filter(
         (item): item is string =>

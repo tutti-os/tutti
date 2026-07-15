@@ -205,6 +205,58 @@ func TestClaudeCodeSDKAdapterMapsThinkingEvents(t *testing.T) {
 	}
 }
 
+func TestClaudeCodeSDKAdapterSuppressesGoalClearControlTranscript(t *testing.T) {
+	adapter := NewClaudeCodeSDKAdapter(nil)
+	adapterSession := &claudeSDKAdapterSession{
+		liveState: newClaudeSDKLiveState(),
+		goalClearControlTurns: map[string]struct{}{
+			"turn-clear": {},
+		},
+	}
+	session := standardTestSession(ProviderClaudeCode)
+
+	for _, event := range []claudeSDKSidecarEvent{
+		{Type: "assistant_delta", Payload: map[string]any{"turnId": "turn-clear", "snapshot": "Goal cleared: ship it"}},
+		{Type: "assistant_completed", Payload: map[string]any{"turnId": "turn-clear", "content": "Goal cleared: ship it"}},
+		{Type: "thinking_delta", Payload: map[string]any{"turnId": "turn-clear", "snapshot": "Clearing goal"}},
+		{Type: "thinking_completed", Payload: map[string]any{"turnId": "turn-clear", "content": "Clearing goal"}},
+	} {
+		events, terminal, err := adapter.sidecarTurnEvents(adapterSession, session, "", event)
+		if err != nil || terminal || len(events) != 0 {
+			t.Fatalf("%s events=%#v terminal=%v err=%v, want suppressed transcript", event.Type, events, terminal, err)
+		}
+	}
+
+	ordinary, terminal, err := adapter.sidecarTurnEvents(adapterSession, session, "turn-normal", claudeSDKSidecarEvent{
+		Type: "assistant_completed",
+		Payload: map[string]any{
+			"turnId":  "turn-normal",
+			"content": "Goal cleared: ship it",
+		},
+	})
+	if err != nil || terminal || !hasActivityMessage(ordinary, activityshared.MessageRoleAssistant, "Goal cleared: ship it") {
+		t.Fatalf("ordinary assistant events=%#v terminal=%v err=%v, want visible matching text", ordinary, terminal, err)
+	}
+
+	for index, terminalType := range []string{"turn_completed", "turn_canceled", "turn_failed"} {
+		turnID := "turn-clear"
+		if index > 0 {
+			turnID += "-" + terminalType
+		}
+		adapterSession.goalClearControlTurns[turnID] = struct{}{}
+		_, terminal, terminalErr := adapter.sidecarTurnEvents(adapterSession, session, "", claudeSDKSidecarEvent{
+			Type:    terminalType,
+			Payload: map[string]any{"turnId": turnID, "error": "failed"},
+		})
+		if terminalErr != nil || !terminal {
+			t.Fatalf("%s terminal=%v err=%v, want terminal", terminalType, terminal, terminalErr)
+		}
+		if adapter.isGoalClearControlTurn(adapterSession, turnID) {
+			t.Fatalf("%s clear control turn remained registered", terminalType)
+		}
+	}
+}
+
 func TestClaudeCodeSDKAdapterMapsToolLifecycleAndFileMetadata(t *testing.T) {
 	adapter := NewClaudeCodeSDKAdapter(nil)
 	adapterSession := &claudeSDKAdapterSession{}

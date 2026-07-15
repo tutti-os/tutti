@@ -158,7 +158,67 @@ describe("useAgentGUIDetailScroll", () => {
 
     expect(harness.timeline.scrollTop).toBe(4_000);
   });
+
+  it("moves floating dock controls above a growing composer without reserving timeline space", () => {
+    const harness = createHarness({ scrollHeight: 5_000 });
+    const composerInputShell = document.createElement("div");
+    const promptInputArea = document.createElement("div");
+    const clippedEditorContent = document.createElement("div");
+    composerInputShell.className = "agent-gui-node__composer-input-shell";
+    promptInputArea.className = "agent-gui-node__composer-prompt-input-area";
+    promptInputArea.appendChild(clippedEditorContent);
+    composerInputShell.appendChild(promptInputArea);
+    harness.bottomDock.appendChild(composerInputShell);
+    harness.bottomDock.getBoundingClientRect = vi.fn(() =>
+      mockRect({ top: 400, bottom: 500, width: 600, height: 100 })
+    );
+    composerInputShell.getBoundingClientRect = vi.fn(() =>
+      mockRect({ top: 320, bottom: 500, width: 600, height: 180 })
+    );
+    promptInputArea.getBoundingClientRect = vi.fn(() =>
+      mockRect({ top: 320, bottom: 450, width: 600, height: 130 })
+    );
+    clippedEditorContent.getBoundingClientRect = vi.fn(() =>
+      mockRect({ top: 240, bottom: 440, width: 560, height: 200 })
+    );
+
+    renderHook(() =>
+      useAgentGUIDetailScroll(
+        harness.input({
+          activeConversationId: "conversation-growing-composer",
+          showTimelineSkeleton: false
+        })
+      )
+    );
+
+    expect(
+      harness.timeline.style.getPropertyValue(
+        "--agent-gui-bottom-dock-safe-area"
+      )
+    ).toBe("0px");
+    expect(
+      harness.bottomDock.style.getPropertyValue(
+        "--agent-gui-bottom-dock-floating-safe-area"
+      )
+    ).toBe("80px");
+  });
 });
+
+function mockRect(input: {
+  top: number;
+  bottom: number;
+  width: number;
+  height: number;
+}): DOMRect {
+  return {
+    ...input,
+    left: 0,
+    right: input.width,
+    x: 0,
+    y: input.top,
+    toJSON: () => ({})
+  } as DOMRect;
+}
 
 function createHarness(input: { scrollHeight: number }) {
   const timeline = document.createElement("div");
@@ -189,6 +249,7 @@ function createHarness(input: { scrollHeight: number }) {
   const submittedPromptScrollConversationRef = mutableRef<string | null>(null);
 
   return {
+    bottomDock,
     timeline,
     setScrollHeight(value: number) {
       scrollHeight = value;

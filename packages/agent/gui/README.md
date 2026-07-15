@@ -98,6 +98,37 @@ pnpm check:agent-activity-runtime-boundaries
 `hostCapabilities`, `hostActions`, and `renderSlots`. Extend the owning object;
 do not restore flat compatibility props.
 
+## Reference Provenance Filtering
+
+Reference provenance filtering is disabled by default. Collaboration hosts can
+opt in by injecting the complete catalog through
+`hostCapabilities.referenceProvenanceFilterCatalog`:
+
+```tsx
+<AgentGUI
+  {...props}
+  hostCapabilities={{
+    referenceProvenanceFilterCatalog: {
+      enabledDimensions: ["agent", "member"],
+      agentOptions: [{ id: "agent-1", label: "Agent 1" }],
+      memberOptions: [{ id: "member-1", label: "Member 1" }]
+    }
+  }}
+/>
+```
+
+The catalog is host-owned: option IDs must be durable identities understood by
+the host's injected reference/search providers. Active dimensions are passed
+to those providers as query metadata and must be enforced before pagination.
+Sources that cannot enforce an active dimension must fail closed instead of
+returning unfiltered results.
+
+`referenceProvenanceFilterEnabled` remains as the legacy Tutti personal-edition
+switch. When enabled without an explicit catalog, AgentGUI derives only the
+Agent options from the Agent directory and keeps `memberOptions` empty. Omitting
+both properties keeps the filter off. An explicitly supplied catalog (including
+`null`) takes precedence over the legacy switch.
+
 ## Home Suggestions
 
 The five starter entries below the empty new-session composer are enabled by

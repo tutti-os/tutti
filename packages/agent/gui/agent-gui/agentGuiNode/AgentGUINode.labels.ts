@@ -443,6 +443,7 @@ export function useAgentGUIViewLabels(input: {
       goalPauseAction: t("agentHost.agentGui.goalPauseAction"),
       goalResumeAction: t("agentHost.agentGui.goalResumeAction"),
       goalClearAction: t("agentHost.agentGui.goalClearAction"),
+      goalRemoved: t("agentHost.agentGui.goalRemoved"),
       processing: t("agentHost.agentGui.processing"),
       turnSummary: t("agentHost.agentGui.turnSummary"),
       userMessageLocator: t("agentHost.agentGui.userMessageLocator"),

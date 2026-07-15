@@ -90,6 +90,7 @@ export function useAgentGUIViewModel(
   const operations = useMemo(
     () => candidate.operations,
     [
+      candidate.operations.goalClearNoticeSequence,
       candidate.operations.isDeletingConversation,
       candidate.operations.isDeletingProjectConversations,
       candidate.operations.pendingDeleteConversation,

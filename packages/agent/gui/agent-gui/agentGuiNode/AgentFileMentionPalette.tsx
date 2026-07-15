@@ -477,7 +477,7 @@ function agentMentionItemToRowItem(
     return {
       kind: "app",
       name: item.name,
-      description: item.description ?? null,
+      description: mentionDescriptionWithoutTerminalPeriod(item.description),
       iconUrl: item.iconUrl ?? null
     };
   }
@@ -486,7 +486,7 @@ function agentMentionItemToRowItem(
     return {
       kind: "app",
       name: item.name,
-      description: item.description ?? null,
+      description: mentionDescriptionWithoutTerminalPeriod(item.description),
       iconUrl: item.iconUrl ?? managedAgentRoundedIconUrl(item.agentProviderId),
       statusTag: agentTargetAvailableStatusTag()
     };
@@ -525,6 +525,15 @@ function agentMentionItemToRowItem(
     creatorName: item.creatorName ?? null,
     statusTag: agentIssueStatusTag(item.status)
   };
+}
+
+function mentionDescriptionWithoutTerminalPeriod(
+  description: string | null | undefined
+): string | null {
+  const normalizedDescription = description?.trimEnd();
+  return normalizedDescription
+    ? normalizedDescription.replace(/[。.]+$/u, "")
+    : null;
 }
 
 /**

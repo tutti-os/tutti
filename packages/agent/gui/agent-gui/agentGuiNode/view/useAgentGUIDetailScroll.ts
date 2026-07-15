@@ -165,34 +165,47 @@ export function useAgentGUIDetailScroll(input: Input) {
 
     const syncBottomDockSafeArea = (): void => {
       const bottomDockRect = bottomDock.getBoundingClientRect();
-      let visualTop = bottomDockRect.top;
+      let timelineVisualTop = bottomDockRect.top;
+      let floatingVisualTop = bottomDockRect.top;
       bottomDock.querySelectorAll("*").forEach((element) => {
         if (element.closest(`.${styles.bottomDockScrollToBottom}`)) {
+          return;
+        }
+        const rect = element.getBoundingClientRect();
+        if (rect.width <= 0 || rect.height <= 0) {
           return;
         }
         // The prompt input box expands upward past the dock top while the
         // user drafts a long prompt. That transient overhang must not grow
         // the timeline's reserved bottom space: reserving for it re-pins the
-        // scroll position and visibly pushes the message stream up.
+        // scroll position and visibly pushes the message stream up. Only the
+        // input area's own box contributes to the floating controls' offset;
+        // clipped editor descendants can have layout positions above that box
+        // and would otherwise create an oversized gap.
         if (element.closest(`.${styles.composerInputShell}`)) {
+          if (element.matches(".agent-gui-node__composer-prompt-input-area")) {
+            floatingVisualTop = Math.min(floatingVisualTop, rect.top);
+          }
           return;
         }
-        const rect = element.getBoundingClientRect();
-        if (rect.width > 0 && rect.height > 0) {
-          visualTop = Math.min(visualTop, rect.top);
-        }
+        floatingVisualTop = Math.min(floatingVisualTop, rect.top);
+        timelineVisualTop = Math.min(timelineVisualTop, rect.top);
       });
-      const overflowHeight = Math.max(
+      const timelineOverflowHeight = Math.max(
         0,
-        Math.ceil(bottomDockRect.top - visualTop)
+        Math.ceil(bottomDockRect.top - timelineVisualTop)
+      );
+      const floatingOverflowHeight = Math.max(
+        0,
+        Math.ceil(bottomDockRect.top - floatingVisualTop)
       );
       timeline.style.setProperty(
         "--agent-gui-bottom-dock-safe-area",
-        `${overflowHeight}px`
+        `${timelineOverflowHeight}px`
       );
       bottomDock.style.setProperty(
         "--agent-gui-bottom-dock-floating-safe-area",
-        `${overflowHeight}px`
+        `${floatingOverflowHeight}px`
       );
     };
 

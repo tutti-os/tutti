@@ -458,7 +458,6 @@ func normalizeComposerSettingsForProvider(provider string, settings ComposerSett
 	settings.Speed = normalizeSpeedForProvider(provider, settings.Speed)
 	settings.ConversationDetailMode = normalizeComposerConversationDetailMode(settings.ConversationDetailMode)
 	settings.Model = clampComposerModelForProvider(provider, settings.Model)
-	settings.Model = normalizeComposerModelForProvider(provider, settings.Model)
 	settings.PlanMode = clampComposerPlanModeForProvider(provider, settings.PlanMode)
 	return settings
 }
@@ -485,19 +484,6 @@ func normalizeComposerConversationDetailMode(value string) string {
 		return ""
 	}
 	return preferencesbiz.NormalizeDesktopAgentConversationDetailMode(value)
-}
-
-func normalizeComposerModelForProvider(provider string, model string) string {
-	if !isClaudeSDKLiveModelProvider(provider) {
-		return strings.TrimSpace(model)
-	}
-	switch strings.TrimSpace(model) {
-	case "opus", "opusplan":
-		// Retired Claude Code aliases map to the SDK's default Opus selection.
-		return "default"
-	default:
-		return strings.TrimSpace(model)
-	}
 }
 
 // clampComposerModelForProvider clears model overrides for providers without

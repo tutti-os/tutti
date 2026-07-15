@@ -287,6 +287,56 @@ Turn state, loading, cancel, restore, file-change undo, rail projection, event u
   [codex_appserver_events.go](../../../packages/agent/daemon/runtime/codex_appserver_events.go)
   [codex_appserver_adapter_test.go](../../../packages/agent/daemon/runtime/codex_appserver_adapter_test.go)
 
+### Clearing a goal hides Stop or appends a provider acknowledgement
+
+- Symptom:
+  Clearing a goal while its current turn is still running leaves the composer
+  on a non-clickable send spinner. The transcript shows `/goal clear` followed
+  by a new processing row even though no new user turn started. Claude Code may
+  instead append a native `Goal cleared: …` assistant message at the bottom of
+  the transcript after the interrupted turn.
+- Quick checks:
+  Inspect the AgentGUI clear handler and the engine pending-submit records. If
+  clear calls `executePrompt` with an immediate `/goal clear`, the control has
+  entered the normal message pipeline and received a pseudo turn identity. For
+  Claude Code, correlate the bottom assistant message's turn ID with the
+  adapter-generated turn carrying the native clear command.
+- Root cause:
+  Goal clear changes thread metadata rather than submitting user work. For a
+  provider such as Codex that leaves the active turn running, submitting clear
+  as a prompt creates a pending submit without a real provider turn. That local
+  submit owns the send spinner and its visible user message becomes the last
+  timeline turn, so canonical processing is projected under the wrong item.
+  Claude Code instead interrupts the live goal turn and requires a separate
+  native command turn to execute clear; projecting that control turn's provider
+  acknowledgement as ordinary assistant content creates an unrelated transcript
+  row at the bottom.
+- Fix:
+  Route every goal action, including clear, through the dedicated runtime
+  goal-control API. Do not create a user message, pending submit, or pseudo turn.
+  If the provider needs an internal clear-command turn, register its generated
+  turn ID and suppress only that turn's assistant/thinking acknowledgement at
+  the runtime-adapter boundary before persistence. Do not filter by localized
+  acknowledgement text and do not move the message into the interrupted turn.
+  Preserve goal/session updates and terminal cleanup.
+  Keep Stop and processing derived from the canonical active turn, and report a
+  successful clear with a localized transient toast. Render that toast in an
+  AgentGUI detail-scoped viewport and use UI System themed surface, foreground,
+  and border tokens so it centers within the content area and follows the
+  active light or dark theme instead of using the inverted neutral toast style.
+- Validation:
+  Clear a goal while a turn is running and verify the goal-control API is called
+  without an engine submit dispatch. The clear command must not appear in the
+  transcript, the original processing row must remain in place, and Stop must
+  remain clickable until the active turn settles or is interrupted. For Claude
+  Code, verify the native acknowledgement is absent both live and after reload,
+  while identical text from an ordinary assistant turn remains visible.
+- References:
+  [useAgentGUISubmitInteractionActions.ts](../../../packages/agent/gui/agent-gui/agentGuiNode/controller/useAgentGUISubmitInteractionActions.ts)
+  [claude_sdk_goal.go](../../../packages/agent/daemon/runtime/claude_sdk_goal.go)
+  [claude_sdk_events.go](../../../packages/agent/daemon/runtime/claude_sdk_events.go)
+  [agent-gui-node.md](../../architecture/agent-gui-node.md)
+
 ### Agent session stays loading after a completed turn
 
 - Symptom:

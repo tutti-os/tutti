@@ -12,11 +12,13 @@ import type {
 } from "./workspaceLaunch";
 import {
   createWorkspaceWindow,
+  findWorkspaceWindow,
   loadAgentWindowContent,
   loadWorkspaceWindowContent
 } from "../windows/workspaceWindow";
 import { awaitWorkspaceWindowReady } from "./workspaceWindowReady.ts";
 import type { WorkspaceLaunchWindowKind } from "./workspaceLaunchMode.ts";
+import { createDurableWorkspaceWindowCoordinator } from "./durableWorkspaceWindowCoordinator.ts";
 
 export interface WorkspaceLaunchDesktopAdapterOptions {
   browserNodeGuestPreloadPath?: string;
@@ -33,6 +35,13 @@ export interface WorkspaceLaunchDesktopAdapterOptions {
 export function createWorkspaceLaunchDesktopAdapters(
   options: WorkspaceLaunchDesktopAdapterOptions
 ): WorkspaceLaunchAdapters {
+  const durableWorkspaceWindows = createDurableWorkspaceWindowCoordinator({
+    activate: activateWorkspaceWindow,
+    find: (workspaceID: string) =>
+      findWorkspaceWindow(workspaceID, "workspace"),
+    open: (workspaceID: string) =>
+      createAndShowWorkspaceWindow(options, workspaceID)
+  });
   return {
     async showAgentWindow(input) {
       await showStandaloneAgentWindow(options, input);
@@ -42,29 +51,9 @@ export function createWorkspaceLaunchDesktopAdapters(
       const windowKind =
         input?.windowKind ?? options.getPrimaryWorkspaceWindowKind();
       if (windowKind === "agent") {
-        await showStandaloneAgentWindow(options, { workspaceID });
-        return;
+        return await showStandaloneAgentWindow(options, { workspaceID });
       }
-      const workspaceWindow = createWorkspaceWindow({
-        browserNodeGuestPreloadPath: options.browserNodeGuestPreloadPath,
-        enableDevelopmentReloadShortcut:
-          options.enableDevelopmentReloadShortcut === true,
-        locale: options.getLocale(),
-        preloadPath: options.preloadPath,
-        rendererUrl: options.rendererUrl,
-        theme: options.getTheme(),
-        workspaceAppPreloadPath: options.workspaceAppPreloadPath,
-        workspaceID
-      });
-      await awaitWorkspaceWindowReady(workspaceWindow, () => {
-        loadWorkspaceWindowContent(workspaceWindow, {
-          dockPlacement: options.getDockPlacement(),
-          locale: options.getLocale(),
-          rendererUrl: options.rendererUrl,
-          theme: options.getTheme(),
-          workspaceID
-        });
-      });
+      return await durableWorkspaceWindows.show(workspaceID);
     },
 
     warnStartupWindowResolutionFailure(error) {
@@ -76,10 +65,49 @@ export function createWorkspaceLaunchDesktopAdapters(
   };
 }
 
+async function createAndShowWorkspaceWindow(
+  options: WorkspaceLaunchDesktopAdapterOptions,
+  workspaceID: string
+): Promise<Electron.BrowserWindow> {
+  const workspaceWindow = createWorkspaceWindow({
+    browserNodeGuestPreloadPath: options.browserNodeGuestPreloadPath,
+    enableDevelopmentReloadShortcut:
+      options.enableDevelopmentReloadShortcut === true,
+    locale: options.getLocale(),
+    preloadPath: options.preloadPath,
+    rendererUrl: options.rendererUrl,
+    theme: options.getTheme(),
+    workspaceAppPreloadPath: options.workspaceAppPreloadPath,
+    workspaceID
+  });
+  await awaitWorkspaceWindowReady(workspaceWindow, () => {
+    loadWorkspaceWindowContent(workspaceWindow, {
+      dockPlacement: options.getDockPlacement(),
+      locale: options.getLocale(),
+      rendererUrl: options.rendererUrl,
+      theme: options.getTheme(),
+      workspaceID
+    });
+  });
+  return workspaceWindow;
+}
+
+function activateWorkspaceWindow(
+  workspaceWindow: Electron.BrowserWindow
+): void {
+  if (workspaceWindow.isMinimized()) {
+    workspaceWindow.restore();
+  }
+  if (!workspaceWindow.isVisible()) {
+    workspaceWindow.show();
+  }
+  workspaceWindow.focus();
+}
+
 async function showStandaloneAgentWindow(
   options: WorkspaceLaunchDesktopAdapterOptions,
   input: WorkspaceLaunchAgentWindowInput
-): Promise<void> {
+): Promise<Electron.BrowserWindow> {
   const agentWindow = createWorkspaceWindow({
     browserNodeGuestPreloadPath: options.browserNodeGuestPreloadPath,
     enableDevelopmentReloadShortcut:
@@ -116,4 +144,5 @@ async function showStandaloneAgentWindow(
     },
     { maximizeOnShow: false }
   );
+  return agentWindow;
 }

@@ -18,8 +18,7 @@ import {
   agentPromptContentHasImage,
   emptyAgentComposerDraft,
   normalizeAgentPromptContentBlocks,
-  snapshotAgentComposerDraft,
-  textPromptContent
+  snapshotAgentComposerDraft
 } from "../model/agentComposerDraft";
 import type {
   AgentComposerDraft,
@@ -36,7 +35,6 @@ import {
 import {
   clearSubmittedDraftIfUnchanged,
   deleteUnacceptedSubmittedDraftSnapshot,
-  GOAL_CLEAR_PROMPT,
   toRuntimeSendContent
 } from "./agentGuiController.draftMessageHelpers";
 import { clearSubmittedAgentGUIHomeDraft } from "./agentGuiController.homeDraftHelpers";
@@ -106,6 +104,7 @@ interface UseAgentGUISubmitInteractionActionsInput {
   setDraftByScopeKey: Dispatch<
     SetStateAction<Record<string, AgentComposerDraft>>
   >;
+  setGoalClearNoticeSequence: Dispatch<SetStateAction<number>>;
   setIntent: Dispatch<SetStateAction<ConversationIntent>>;
   submittedDraftSnapshotsRef: RefObject<Record<string, SubmittedDraftSnapshot>>;
   startConversation(
@@ -150,6 +149,7 @@ export function useAgentGUISubmitInteractionActions(
     setActiveConversationId,
     setDetailError,
     setDraftByScopeKey,
+    setGoalClearNoticeSequence,
     setIntent,
     submittedDraftSnapshotsRef,
     startConversation,
@@ -385,16 +385,10 @@ export function useAgentGUISubmitInteractionActions(
     [activation, executePrompt, isSessionMarkedNonResumable, workspaceId]
   );
 
-  // Goal control commands (/goal clear|paused|active) act on the running
-  // thread immediately; the local prompt queue would defer them until the
-  // turn ends, defeating their purpose (e.g. stopping a runaway goal).
-  // Clearing sends a visible "/goal clear" prompt so the transcript shows
-  // what was sent: executePrompt skips the local queue (and its resume
-  // side effect), and mid-turn the daemon steers the command as a
-  // thread-level exec instead of opening a competing turn. The remaining
-  // controls (set/pause/resume) stay on the dedicated control API — no
-  // prompt, no queue, no transcript entry — matching the codex desktop
-  // goal bar.
+  // Goal controls act on the thread immediately through the dedicated runtime
+  // API. They must not enter the normal prompt pipeline: doing so creates a
+  // pending submit and pseudo turn that can hide the active turn's stop control
+  // and attach its processing indicator to a control message.
   const goalControl = useCallback(
     (action: AgentActivityGoalControlAction, objective?: string) => {
       if (previewMode) {
@@ -405,21 +399,18 @@ export function useAgentGUISubmitInteractionActions(
         return;
       }
       setDetailError(null);
-      if (action === "clear") {
-        executePrompt(
-          agentSessionId,
-          textPromptContent(GOAL_CLEAR_PROMPT),
-          GOAL_CLEAR_PROMPT,
-          { immediate: true }
-        );
-        return;
-      }
       void agentActivityRuntime
         .goalControl({
           workspaceId,
           agentSessionId,
           action,
           ...(objective !== undefined ? { objective } : {})
+        })
+        .then(() => {
+          if (action !== "clear" || !isCurrentConversation(agentSessionId)) {
+            return;
+          }
+          setGoalClearNoticeSequence((current) => current + 1);
         })
         .catch((error: unknown) => {
           if (!isCurrentConversation(agentSessionId)) {
@@ -430,10 +421,10 @@ export function useAgentGUISubmitInteractionActions(
     },
     [
       agentActivityRuntime,
-      executePrompt,
       isCurrentConversation,
       previewMode,
       setDetailError,
+      setGoalClearNoticeSequence,
       workspaceId
     ]
   );

@@ -24,7 +24,6 @@ var claudeCodeBuiltInModelAliases = map[string]bool{
 	"opus":       true,
 	"haiku":      true,
 	"sonnet[1m]": true,
-	"opusplan":   true,
 }
 
 func claudeSystemPromptAppend(env []string) (string, error) {

@@ -44,7 +44,6 @@ import type {
   TuttidEventStreamClient
 } from "@tutti-os/client-tuttid-ts";
 import type { DesktopWorkspaceWorkbenchRepository } from "./adapters/desktopWorkspaceWorkbenchRepository";
-import { createDesktopWorkspaceWorkbenchRepository } from "./adapters/desktopWorkspaceWorkbenchRepository";
 import { IDesktopRichTextAtService } from "../../../rich-text-at/services/richTextAtService.interface.ts";
 import {
   IAgentProviderStatusService,
@@ -193,6 +192,7 @@ export interface WorkspaceWorkbenchHostExternalDependencies {
   >;
   reporterService?: Pick<IReporterService, "trackEvents">;
   runtimeApi: DesktopRuntimeApi;
+  snapshotRepository: DesktopWorkspaceWorkbenchRepository;
   wallpaperApi: DesktopWallpaperApi;
 }
 
@@ -240,9 +240,7 @@ export class WorkspaceWorkbenchHostService implements IWorkspaceWorkbenchHostSer
     workspaceFileManagerService: IWorkspaceFileManagerService,
     workspaceUserProjectService: IWorkspaceUserProjectService
   ) {
-    const repository = createDesktopWorkspaceWorkbenchRepository(
-      externalDependencies.tuttidClient
-    );
+    const repository = externalDependencies.snapshotRepository;
     this.dependencies = {
       agentProviderStatusService,
       agentsService,
@@ -423,9 +421,10 @@ export class WorkspaceWorkbenchHostService implements IWorkspaceWorkbenchHostSer
     const snapshot = cachedSnapshot
       ? cachedSnapshot
       : await this.dependencies.repository.load(workspaceId);
-    await this.dependencies.repository.save(
+    await this.dependencies.repository.saveProductMetadata(
       workspaceId,
-      writeWorkspaceOnboardingAutoOpenedToSnapshot(snapshot)
+      writeWorkspaceOnboardingAutoOpenedToSnapshot(snapshot),
+      "onboarding"
     );
   }
 
@@ -723,10 +722,12 @@ export class WorkspaceWorkbenchHostService implements IWorkspaceWorkbenchHostSer
       );
     }
 
-    const savedSnapshot = await this.dependencies.repository.save(
-      workspaceId,
-      snapshot
-    );
+    const savedSnapshot =
+      await this.dependencies.repository.saveProductMetadata(
+        workspaceId,
+        snapshot,
+        "wallpaper"
+      );
 
     if (
       wallpaperId !== undefined &&

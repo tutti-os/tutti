@@ -299,10 +299,15 @@ func (a *ClaudeCodeSDKAdapter) sendGoalCommandExec(
 	}
 	turnID := newID()
 	args := strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(command), appServerSlashGoal))
+	isClear := isGoalClearCommandArgs(args)
 	a.mu.Lock()
 	previousArm := adapterSession.goalArmTurnID
-	if isGoalClearCommandArgs(args) {
+	if isClear {
 		adapterSession.goalArmTurnID = ""
+		if adapterSession.goalClearControlTurns == nil {
+			adapterSession.goalClearControlTurns = make(map[string]struct{})
+		}
+		adapterSession.goalClearControlTurns[turnID] = struct{}{}
 	} else {
 		adapterSession.goalArmTurnID = turnID
 	}
@@ -324,9 +329,37 @@ func (a *ClaudeCodeSDKAdapter) sendGoalCommandExec(
 	if err != nil {
 		a.mu.Lock()
 		adapterSession.goalArmTurnID = previousArm
+		if isClear {
+			delete(adapterSession.goalClearControlTurns, turnID)
+		}
 		a.mu.Unlock()
 	}
 	return err
+}
+
+func (a *ClaudeCodeSDKAdapter) isGoalClearControlTurn(
+	adapterSession *claudeSDKAdapterSession,
+	turnID string,
+) bool {
+	if a == nil || adapterSession == nil {
+		return false
+	}
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	_, ok := adapterSession.goalClearControlTurns[strings.TrimSpace(turnID)]
+	return ok
+}
+
+func (a *ClaudeCodeSDKAdapter) forgetGoalClearControlTurn(
+	adapterSession *claudeSDKAdapterSession,
+	turnID string,
+) {
+	if a == nil || adapterSession == nil {
+		return
+	}
+	a.mu.Lock()
+	delete(adapterSession.goalClearControlTurns, strings.TrimSpace(turnID))
+	a.mu.Unlock()
 }
 
 // goalEventsOnTurnSettled reconciles the goal mirror when a turn settles.

@@ -478,7 +478,10 @@ export function AgentComposerView(input: Props): React.JSX.Element {
               : null}
             <ComposerFloatingMenuSurface
               anchorRef={input.inputShellRef}
-              className="max-h-[320px] border-0 p-0"
+              className={cn(
+                composerStyles.dropdownSurface,
+                "max-h-[320px] overflow-hidden border-[var(--line-1)] p-0"
+              )}
               contentClassName="h-full min-h-0"
               dismissBoundaryRef={input.promptInputAreaRef}
               maxHeight={SLASH_PALETTE_HEIGHT_PX}

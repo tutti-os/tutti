@@ -4241,7 +4241,7 @@ aside.workspace-agents-status-panel
   .tsh-agent-object-token__main {
   padding: 0 6px;
   border-radius: 6px;
-  background: var(--tutti-purple-bg);
+  background: transparent;
 }
 
 [data-agent-mention-kind="skill"].tsh-agent-object-token--entity.ProseMirror-selectednode
@@ -4340,7 +4340,7 @@ aside.workspace-agents-status-panel
   border-radius: 4px;
   font-size: 13px;
   line-height: 24px;
-  transform: translateY(1px);
+  transform: translateY(-2px);
 }
 
 .agent-gui-node__composer-textarea
@@ -7515,6 +7515,9 @@ button.agent-gui-node__conversation-section-toggle:hover
 .agent-gui-node__composer[data-layout="dock"]
   .agent-gui-node__composer-prompt-input-area {
   display: grid;
+  /* Keep the input shadow above the following footer row. Both rows otherwise
+     share z-index: 1, so the later-painted footer visually clips the shadow. */
+  z-index: 2;
   grid-template-rows: minmax(0, 1fr);
   box-sizing: border-box;
   height: var(--agent-gui-composer-input-height, 56px);
@@ -8768,6 +8771,14 @@ html[data-theme="light"] [data-message-center-item-id].agent-gui-edge-glow {
 .agent-gui-node__composer-menu-item > span:last-child > span {
   width: 100%;
   min-width: 0;
+}
+
+.agent-gui-node__composer-menu-trigger[data-agent-plan-mode-badge="true"] {
+  color: var(--state-warning);
+}
+
+.agent-gui-node__composer-menu-trigger[data-agent-goal-badge="true"] {
+  color: var(--tutti-purple);
 }
 
 .agent-gui-node__composer-menu-trigger:hover:not(:disabled) {

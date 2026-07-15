@@ -23,6 +23,7 @@ import { registerWorkspaceUserProjectServices } from "@renderer/features/workspa
 import { createAgentProviderTerminalCommandRunner } from "@renderer/features/workspace-workbench/services/createAgentProviderTerminalCommandRunner";
 import { createWorkspaceAgentOutcomeNotificationController } from "@renderer/features/workspace-workbench/services/workspaceAgentOutcomeNotification";
 import { registerWorkspaceWorkbenchServices } from "@renderer/features/workspace-workbench/services/registerWorkspaceWorkbenchServices";
+import { createWorkspaceWorkbenchSnapshotRepository } from "@renderer/features/workspace-workbench/services/createWorkspaceWorkbenchSnapshotRepository.ts";
 import { createWorkspaceAgentOutcomeForegroundNotificationPresenter } from "@renderer/features/workspace-workbench/ui/WorkspaceAgentOutcomeNotificationToast";
 import {
   managedAgentRoundedIconUrl,
@@ -76,9 +77,8 @@ export interface WorkspaceWindowContainerResult {
 export function createWorkspaceWindowContainer(): WorkspaceWindowContainerResult {
   const environment = resolveDesktopEnvironment(window.tutti);
   const desktopApi = environment.desktopApi;
-  const routeWorkspaceID = new URLSearchParams(window.location.search).get(
-    "workspaceId"
-  );
+  const routeParameters = new URLSearchParams(window.location.search);
+  const routeWorkspaceID = routeParameters.get("workspaceId");
   const activeWorkspaceID =
     routeWorkspaceID || environment.startupWorkspaceID || "__default__";
   const tuttidClient = createDesktopTuttidClient(desktopApi.runtime);
@@ -289,6 +289,10 @@ export function createWorkspaceWindowContainer(): WorkspaceWindowContainerResult
     platformApi: desktopApi.platform,
     reporterService,
     runtimeApi: desktopApi.runtime,
+    snapshotRepository: createWorkspaceWorkbenchSnapshotRepository({
+      tuttidClient,
+      windowSearch: window.location.search
+    }),
     wallpaperApi: desktopApi.wallpaper,
     onAgentTargetsChanged: async () => {
       await workspaceAgentServices.agentsService.refresh();
