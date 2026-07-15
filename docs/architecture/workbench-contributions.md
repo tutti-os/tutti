@@ -369,12 +369,13 @@ services, not through React components.
 
 The desktop workspace workbench currently uses these modules:
 
-- `services/internal/workbenchProductProfile.ts` and
-  `services/internal/workbenchCapabilityRegistry.ts` define the product-neutral
-  private seam that will move to `@tutti-os/workbench-host`. The profile declares
-  a product ID, scope kind, and bound capability descriptors; the registry owns
-  `order` then `id` resolution and rejects duplicate factory, contribution, node
-  type, and dock entry ownership before host input is published.
+- `@tutti-os/workbench-host` owns the public capability descriptor and registry
+  contracts. The registry resolves by `order` then `id` and rejects duplicate
+  factory, contribution, node type, and dock entry ownership before host input
+  is published. `services/internal/workbenchProductProfile.ts` keeps Tutti's
+  product ID and scope kind private because the shared kernel does not yet
+  consume or enforce those fields; the old desktop registry path is only a
+  compatibility re-export during package cutover.
 - `services/internal/tuttiWorkbenchProductProfile.ts` owns the Tutti capability
   selection. It binds each desktop contribution factory to a newly projected,
   capability-specific context so factories do not receive the full product
@@ -384,10 +385,12 @@ The desktop workspace workbench currently uses these modules:
   declare only the subset of host adapters, i18n runtimes, renderer callbacks,
   and workspace context their capability uses, then return the existing
   `WorkbenchContribution` contract.
-- `services/internal/workbenchHostPorts.ts` defines the private snapshot and
-  lifecycle-diagnostics ports. Desktop implementations remain under
-  `services/internal/adapters`; Tutti transport and diagnostic payload mapping
-  do not move into the neutral kernel.
+- `@tutti-os/workbench-host` owns the lifecycle-diagnostics contract used by
+  coordinator/session disposal. `services/internal/workbenchHostPorts.ts`
+  retains the private snapshot repository port because snapshot transport is
+  still product-owned and is not consumed by the shared kernel. Desktop
+  implementations remain under `services/internal/adapters`; Tutti transport
+  and diagnostic payload mapping do not move into the neutral kernel.
 - `services/internal/contributions/*` owns concrete desktop-local adapters for
   browser, terminal, issue-manager, files, and other workspace capabilities
   that have not yet moved into a shared package factory.

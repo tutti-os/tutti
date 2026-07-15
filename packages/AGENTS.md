@@ -26,7 +26,7 @@ If you are editing `packages/ui/*`, also read [packages/ui/AGENTS.md](ui/AGENTS.
 - `browser/*`: reusable browser/workbench node mechanics for desktop hosts
 - `configs/*`: shared TypeScript and formatting config
 - `ui/*`: shared frontend-foundation packages
-- `workbench/*`: shared workbench snapshot contract and reusable workbench surface packages for the open-source desktop and TSH
+- `workbench/*`: shared Workbench host lifecycle, snapshot contract, and reusable surface packages for the open-source desktop and TSH
 - `workspace/*`: narrow workspace-domain contracts and feature surfaces intended for reuse across the open-source desktop, TSH, and TACH
 
 ## Package rules
@@ -37,7 +37,7 @@ If you are editing `packages/ui/*`, also read [packages/ui/AGENTS.md](ui/AGENTS.
 - keep `events/*` focused on repository-owned business event protocol contracts, topic catalogs, generated validators, and transport metadata rather than socket lifecycle or daemon business workflows
 - keep `browser/*` focused on browser mechanics, workbench node integration, bridge shape, Electron webview guest management, and package-local i18n defaults; host product globals, backend-token access, preview proxy behavior, and business bridge methods stay in host adapters
 - keep `ui/*` focused on shared frontend-foundation concerns such as tokens, icons, styles, primitives, and host-agnostic i18n runtime support
-- keep `workbench/*` focused on snapshot compatibility and workbench interaction mechanics, not product-specific node UI or app workflows
+- keep `workbench/*` focused on product-neutral host lifecycle, snapshot compatibility, and Workbench interaction mechanics, not product-specific node UI or app workflows
 - keep `workspace/*` focused on reusable workspace-domain semantics and state; concrete host adapters stay in the owning service, app, or integration
 - a reusable frontend workspace-domain package may still own shared session orchestration, view-model derivation, and React-facing interaction state when those behaviors are intentionally shared across hosts
 - a reusable frontend package that owns optional UI may also own narrow default i18n resources for that shared surface; keep those defaults in the owning package and let hosts override them through their app-level i18n or i18n runtime

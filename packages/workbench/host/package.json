@@ -1,0 +1,50 @@
+{
+  "name": "@tutti-os/workbench-host",
+  "version": "0.1.0",
+  "private": false,
+  "type": "module",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts",
+    "./conformance": "./src/conformance/index.ts"
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/tutti-os/tutti.git",
+    "directory": "packages/workbench/host"
+  },
+  "scripts": {
+    "build": "tsup --config tsup.config.ts && node ./scripts/check-built-boundaries.mjs",
+    "test": "node --test --experimental-strip-types ./src/*.test.ts",
+    "typecheck": "node ../../../tools/scripts/run-tsgo-typecheck.mjs"
+  },
+  "devDependencies": {
+    "@tutti-os/config-tsconfig": "workspace:*",
+    "@tutti-os/workbench-surface": "workspace:*",
+    "@types/node": "^24.0.1",
+    "@types/react": "^19.1.6",
+    "@types/react-dom": "^19.1.5",
+    "typescript": "^5.8.3"
+  },
+  "peerDependencies": {
+    "@tutti-os/workbench-surface": "workspace:*"
+  },
+  "publishConfig": {
+    "access": "public",
+    "exports": {
+      ".": {
+        "types": "./dist/index.d.ts",
+        "import": "./dist/index.js"
+      },
+      "./conformance": {
+        "types": "./dist/conformance/index.d.ts",
+        "import": "./dist/conformance/index.js"
+      }
+    },
+    "types": "./dist/index.d.ts"
+  }
+}
