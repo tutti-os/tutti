@@ -24,6 +24,18 @@ func (s *Service) ensureRuntimeSessionResult(
 	workspaceID string,
 	agentSessionID string,
 ) (ensuredRuntimeSession, error) {
+	workspaceID = strings.TrimSpace(workspaceID)
+	agentSessionID = strings.TrimSpace(agentSessionID)
+	release := s.acquireSessionSettingsLock(workspaceID, agentSessionID)
+	defer release()
+	return s.ensureRuntimeSessionResultLocked(ctx, workspaceID, agentSessionID)
+}
+
+func (s *Service) ensureRuntimeSessionResultLocked(
+	ctx context.Context,
+	workspaceID string,
+	agentSessionID string,
+) (ensuredRuntimeSession, error) {
 	if session, ok := s.controller().Session(workspaceID, agentSessionID); ok {
 		if !externalImportResumeSupported(session.RuntimeContext) {
 			return ensuredRuntimeSession{}, ErrSessionNotFound

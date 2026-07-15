@@ -90,3 +90,48 @@ WHERE workspace_id = ? AND agent_session_id = ? AND deleted_at_unix_ms = 0
 	}
 	return session, ok, nil
 }
+
+func (s *Store) UpdateSessionSettings(
+	ctx context.Context,
+	workspaceID string,
+	agentSessionID string,
+	model string,
+	settings map[string]any,
+) (Session, bool, error) {
+	if s == nil || s.db == nil {
+		return Session{}, false, errors.New("workspace database is not initialized")
+	}
+	workspaceID = strings.TrimSpace(workspaceID)
+	agentSessionID = strings.TrimSpace(agentSessionID)
+	if workspaceID == "" || agentSessionID == "" {
+		return Session{}, false, nil
+	}
+	settingsJSON, err := marshalJSONMap(settings)
+	if err != nil {
+		return Session{}, false, err
+	}
+
+	now := unixMs(time.Now().UTC())
+	result, err := s.db.ExecContext(ctx, `
+UPDATE workspace_agent_sessions
+SET model = ?,
+    settings_json = ?,
+    updated_at_unix_ms = ?
+WHERE workspace_id = ? AND agent_session_id = ? AND deleted_at_unix_ms = 0
+`, strings.TrimSpace(model), settingsJSON, now, workspaceID, agentSessionID)
+	if err != nil {
+		return Session{}, false, fmt.Errorf("update workspace agent session settings: %w", err)
+	}
+	updated, err := rowsWereAffected(result, "update workspace agent session settings")
+	if err != nil {
+		return Session{}, false, err
+	}
+	if !updated {
+		return Session{}, false, nil
+	}
+	session, ok, err := s.GetSession(ctx, workspaceID, agentSessionID)
+	if err != nil {
+		return Session{}, false, err
+	}
+	return session, ok, nil
+}

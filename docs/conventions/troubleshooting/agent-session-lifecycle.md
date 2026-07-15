@@ -529,6 +529,44 @@ Turn state, loading, cancel, restore, file-change undo, rail projection, event u
   [controller.go](../../../packages/agent/daemon/runtime/controller.go)
   [codex_appserver_adapter.go](../../../packages/agent/daemon/runtime/codex_appserver_adapter.go)
 
+### Historical AgentGUI permission changes time out or stop responding
+
+- Symptom:
+  Changing permission mode in a historical conversation appears to do nothing,
+  or the first selection times out and later selections are ignored. Logs may
+  show a 30-second settings request with no provider settings application.
+- Quick checks:
+  Confirm the selected session is absent from the live runtime but present in
+  `workspace_agent_sessions`. Check whether one menu choice emitted two settings
+  requests. After a timeout, inspect the engine settings operation: `unknown`
+  plus a later request without `retry` explains a silent drop.
+- Root cause:
+  Historical settings were routed through runtime preparation, so a metadata
+  change could block on provider resume and sidecar startup. The permission
+  menu also handled both item pointer-down and Select value-change, duplicating
+  one user action. When the first command timed out, the engine correctly kept
+  uncertainty but the controller did not mark a later explicit choice as a
+  retry.
+- Fix:
+  Send one settings intent from Select value-change. Read the current engine
+  operation at action time and mark an explicit choice as retry when its status
+  is `unknown`. In the daemon, update inactive-session settings through the
+  durable activity projection and publish reconciliation; reserve provider
+  runtime updates for sessions that are already live. Serialize runtime resume
+  with durable settings read-modify-write per session, preventing stale resume
+  inputs and lost concurrent partial patches. Do not copy an active session
+  setting into target defaults.
+- Validation:
+  Cover one pointer selection producing one callback, timeout followed by an
+  explicit retry, and a historical Claude Code settings update that persists
+  while runtime resume and live adapter update counts remain zero. Run the
+  AgentGUI, activity-core, store-sqlite, and agent-service focused tests.
+- References:
+  [AgentComposerSettingsMenus.tsx](../../../packages/agent/gui/agent-gui/agentGuiNode/AgentComposerSettingsMenus.tsx)
+  [useAgentGUIComposerSettingsActions.ts](../../../packages/agent/gui/agent-gui/agentGuiNode/controller/useAgentGUIComposerSettingsActions.ts)
+  [service_settings.go](../../../services/tuttid/service/agent/service_settings.go)
+  [agent-gui-node.md](../../architecture/agent-gui-node.md)
+
 ### Agent GUI provider tab shows fused or stale conversations
 
 - Symptom:

@@ -45,6 +45,7 @@ type Repository interface {
 	MarkRuntimeOperationEventPublished(context.Context, string, int64, int64) (bool, error)
 	SettleStaleTurns(context.Context) ([]StaleTurnSettlement, error)
 	UpdateSessionPinned(context.Context, string, string, bool) (Session, bool, error)
+	UpdateSessionSettings(context.Context, string, string, string, map[string]any) (Session, bool, error)
 	UpdateSessionTitle(context.Context, string, string, string) (Session, bool, error)
 }
 

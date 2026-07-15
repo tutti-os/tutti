@@ -172,6 +172,12 @@ func (s *Service) executePlanImplementationRuntimeOperation(
 ) (agentactivitybiz.RuntimeOperation, error) {
 	step := payloadText(operation.Payload, "step")
 	if step == "prepared" {
+		// Plan implementation continues the same provider conversation. Restore
+		// that runtime explicitly before applying the live plan-mode transition;
+		// generic historical settings updates intentionally remain persistence-only.
+		if _, err := s.ensureRuntimeSessionResult(ctx, operation.WorkspaceID, operation.AgentSessionID); err != nil {
+			return s.releaseRuntimeOperation(ctx, operation, owner, normalizeRuntimeError(err), !isRetryableRuntimeOperationError(err))
+		}
 		planMode := false
 		if _, err := s.UpdateSettings(ctx, operation.WorkspaceID, operation.AgentSessionID, ComposerSettingsPatch{PlanMode: &planMode}); err != nil {
 			return s.releaseRuntimeOperation(ctx, operation, owner, normalizeRuntimeError(err), !isRetryableRuntimeOperationError(err))

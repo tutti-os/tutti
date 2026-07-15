@@ -36,3 +36,15 @@ export function resolvePermissionModeControlsDisabled(options: {
     options.showStopButton
   );
 }
+
+/**
+ * A settings timeout means delivery is uncertain, so the engine blocks a new
+ * command until the caller explicitly identifies a user retry. A fresh menu
+ * selection is that explicit retry; ordinary idle/in-flight/failed updates are
+ * not.
+ */
+export function shouldRetrySessionSettingsUpdate(
+  status: string | null | undefined
+): boolean {
+  return status === "unknown";
+}

@@ -52,6 +52,8 @@ type Service struct {
 	liveModelInvalidatedAtUnixMS   map[string]int64
 	liveModelDiscoverySessions     map[string]liveModelDiscoverySessionRef
 	liveModelDiscoveryGroup        singleflight.Group
+	sessionSettingsMu              sync.Mutex
+	sessionSettingsLocks           map[string]*serviceSessionSettingsLock
 	// liveModelPersistedScanMissAtUnixMS memoizes, per live-model cache key,
 	// when the persisted-session fallback scan last found nothing, so the
 	// full session scan is not repeated on every composer-options fetch.
@@ -316,6 +318,10 @@ type SessionDeleter interface {
 
 type SessionPinUpdater interface {
 	UpdateSessionPinned(context.Context, string, string, bool) (PersistedSession, bool, error)
+}
+
+type SessionSettingsUpdater interface {
+	UpdateSessionSettings(context.Context, string, string, ComposerSettings) (PersistedSession, bool, error)
 }
 
 type SessionTitleUpdater interface {

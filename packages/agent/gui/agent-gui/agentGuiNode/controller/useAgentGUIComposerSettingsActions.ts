@@ -1,5 +1,6 @@
 import {
   selectEngineSession,
+  selectEngineSessionSettingsUpdate,
   type AgentActivityTurn,
   type AgentSessionEngine
 } from "@tutti-os/agent-activity-core";
@@ -20,6 +21,7 @@ import {
   readNodeDefaultDraftSettings,
   resolveEffectiveComposerSettings
 } from "./agentGuiController.composerHelpers";
+import { shouldRetrySessionSettingsUpdate } from "../model/composerModeSelection";
 import {
   sanitizeComposerSettingsForTarget,
   type AgentGUIComposerTargetData
@@ -31,7 +33,6 @@ import {
 import {
   composerDefaultsPatchFromSettings,
   composerOptionsForTarget,
-  rememberComposerDefaultsFields,
   type AgentGUIRememberComposerDefaultsInput
 } from "./agentGuiController.providerHelpers";
 import type { useAgentGUIActivation } from "./useAgentGUIActivation";
@@ -43,7 +44,6 @@ interface UseAgentGUIComposerSettingsActionsInput {
   activeEngineActiveTurn: AgentActivityTurn | null;
   agentActivityRuntime: AgentActivityRuntime;
   composerSupportPermissionModeChangeDeferred: boolean;
-  dataRef: RefObject<AgentGUINodeData>;
   defaultReasoningEffort: AgentSessionReasoningEffort | null;
   draftSettingsBySessionIdRef: RefObject<
     Record<string, AgentSessionComposerSettings>
@@ -79,7 +79,6 @@ export function useAgentGUIComposerSettingsActions(
     activeConversationIdRef,
     activeEngineActiveTurn,
     agentActivityRuntime,
-    dataRef,
     defaultReasoningEffort,
     draftSettingsBySessionIdRef,
     loadDraftComposerOptions,
@@ -273,56 +272,6 @@ export function useAgentGUIComposerSettingsActions(
         Object.keys(sessionSettingsPatch).length > 0 &&
         (canonicalSession !== null || isPreActivationSession)
       ) {
-        // A switch inside an active session also becomes the remembered
-        // default for this agent target. Only the fields the user changed
-        // are passed; the consumer merges them field-wise so untouched
-        // remembered fields stay intact, and explicit clears propagate as
-        // null tombstones.
-        void onRememberComposerDefaultsRef.current?.({
-          agentTargetId: normalizeOptionalText(dataRef.current.agentTargetId),
-          provider: dataRef.current.provider,
-          defaults: composerDefaultsPatchFromSettings(
-            sessionSettingsPatch,
-            sessionSettingsPatch
-          )
-        });
-        // The node-level default drafts take precedence over the remembered
-        // preferences on the read path, so sync the durable fields into them
-        // as well or this node's next composer would keep showing its stale
-        // draft.
-        const durableNodeDefaultsPatch: Partial<AgentSessionComposerSettings> =
-          {};
-        for (const field of rememberComposerDefaultsFields) {
-          if (sessionSettingsPatch[field] !== undefined) {
-            durableNodeDefaultsPatch[field] = sessionSettingsPatch[field];
-          }
-        }
-        if (Object.keys(durableNodeDefaultsPatch).length > 0) {
-          const defaultDraftKey = nodeDefaultDraftKey(
-            dataRef.current.provider,
-            dataRef.current.agentTargetId
-          );
-          const storedNodeDefaults = readNodeDefaultDraftSettings({
-            data: dataRef.current,
-            defaultReasoningEffort,
-            drafts: draftSettingsBySessionIdRef.current
-          });
-          const nextNodeDefaults = {
-            ...storedNodeDefaults,
-            ...durableNodeDefaultsPatch
-          };
-          draftSettingsBySessionIdRef.current = {
-            ...draftSettingsBySessionIdRef.current,
-            [defaultDraftKey]: nextNodeDefaults
-          };
-          setDraftSettingsBySessionId((current) => ({
-            ...current,
-            [defaultDraftKey]: nextNodeDefaults
-          }));
-          onDataChangeRef.current((current) =>
-            nodeDataFromComposerSettings(current, nextNodeDefaults)
-          );
-        }
         if (isPreActivationSession) {
           sessionEngine.dispatch({
             type: "activation/settingsPatched",
@@ -330,9 +279,14 @@ export function useAgentGUIComposerSettingsActions(
             settings: { ...sessionSettingsPatch }
           });
         } else {
+          const settingsUpdate = selectEngineSessionSettingsUpdate(
+            sessionEngine.getSnapshot(),
+            agentSessionId
+          );
           sessionEngine.dispatch({
             agentSessionId,
             commandId: `settings:${createAgentGUIConversationId()}`,
+            retry: shouldRetrySessionSettingsUpdate(settingsUpdate?.status),
             settings: { ...sessionSettingsPatch },
             timeoutMs: 30_000,
             type: "session/settingsUpdateRequested",

@@ -62,6 +62,30 @@ test("snapshot restores a settled latest turn without an active turn", () => {
   );
 });
 
+test("settings timeout requires an explicit retry before sending again", () => {
+  let state = reduce(createInitialSessionLifecycleState(), {
+    type: "session/snapshotReceived",
+    sessions: [session(null, 1)]
+  }).state;
+  const requested = reduce(state, settingsUpdateRequested("settings-1"));
+  assert.equal(requested.commands[0]?.type, "session/updateSettings");
+  state = reduce(requested.state, {
+    commandId: "settings-1",
+    commandType: "session/updateSettings",
+    correlationId: "session-1",
+    outcome: "timedOut",
+    type: "engine/commandResult"
+  }).state;
+
+  const dropped = reduce(state, settingsUpdateRequested("settings-2"));
+  assert.deepEqual(dropped.commands, []);
+  const retried = reduce(state, {
+    ...settingsUpdateRequested("settings-2"),
+    retry: true
+  });
+  assert.equal(retried.commands[0]?.type, "session/updateSettings");
+});
+
 test("bounded snapshots preserve page-loaded session entities omitted from the response", () => {
   const pageLoaded = {
     ...session(null, 2),
@@ -1021,6 +1045,16 @@ function interactionResponseRequested(commandId: string) {
     requestId: "request-1",
     turnId: "turn-1",
     timeoutMs: 30_000,
+    workspaceId: "workspace-1"
+  };
+}
+
+function settingsUpdateRequested(commandId: string) {
+  return {
+    type: "session/settingsUpdateRequested" as const,
+    agentSessionId: "session-1",
+    commandId,
+    settings: { permissionModeId: "acceptEdits" },
     workspaceId: "workspace-1"
   };
 }

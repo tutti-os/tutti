@@ -6143,6 +6143,10 @@ func (*activityProjectionRepoStub) UpdateSessionPinned(context.Context, string, 
 	return agentactivitybiz.Session{}, false, nil
 }
 
+func (*activityProjectionRepoStub) UpdateSessionSettings(context.Context, string, string, string, map[string]any) (agentactivitybiz.Session, bool, error) {
+	return agentactivitybiz.Session{}, false, nil
+}
+
 func (*activityProjectionRepoStub) UpdateSessionTitle(context.Context, string, string, string) (agentactivitybiz.Session, bool, error) {
 	return agentactivitybiz.Session{}, false, nil
 }

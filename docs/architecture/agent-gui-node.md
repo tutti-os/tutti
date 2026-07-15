@@ -3110,7 +3110,8 @@ provider capability/options
   -> composer support model
   -> node default settings
   -> per-session settings
-  -> runtime settings update or draft settings tracking
+  -> AgentSessionEngine settings-update intent
+  -> live runtime update or historical durable projection update
   -> menu rendering
 ```
 
@@ -3118,10 +3119,24 @@ Avoid fixing a menu label or disabled state without checking whether the same
 setting is also used by prompt creation, session continuation, and runtime
 tracking.
 Active-session settings are first-class session state, not composer defaults.
-The controller should submit the runtime settings patch and let the provider
-adapter decide whether the change can be applied live or requires a new
-session. Provider capability differences belong in the daemon runtime adapter:
-for example, OpenCode model and reasoning-effort changes are live ACP
+The controller should submit exactly one engine intent for one menu selection;
+it must not also promote the active value into target defaults. The engine owns
+the operation state. A timed-out update remains `unknown`, and the next explicit
+user selection carries retry intent instead of being silently dropped.
+
+The daemon selects the mutation path from session liveness. A live session
+updates through its provider adapter. A historical session updates the durable
+activity projection directly and publishes reconciliation without resuming the
+provider runtime or starting a sidecar. This keeps historical settings available
+for the next explicit continuation while avoiding hidden startup latency and
+provider side effects. Runtime resume and durable settings read-modify-write
+share a per-session daemon serialization boundary, so a concurrent continuation
+cannot restore stale settings and partial patches cannot overwrite one another.
+Workflows that must continue the same provider
+conversation, such as plan implementation, explicitly resume first and then use
+the live settings path; they must not depend on a generic settings call to wake
+the runtime. Provider capability differences belong in the daemon runtime
+adapter: for example, OpenCode model and reasoning-effort changes are live ACP
 `session/set_config_option` updates, while spawn-time-only provider settings may
 return the `agent.settings_require_new_session` reason. The UI should surface
 that reason as guidance, not as an unhandled runtime error.
