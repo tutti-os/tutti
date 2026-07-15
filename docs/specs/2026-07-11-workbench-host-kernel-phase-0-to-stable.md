@@ -1,7 +1,8 @@
 # Workbench Host Kernel: Phase 0 To Stable
 
 - Date: 2026-07-11
-- Status: Active; ADR accepted, PRs 1–3 merged, and PRs 4–6 approved
+- Status: Active; ADR accepted, PRs 1–3 and pre-extraction hardening merged,
+  PRs 4–6 approved, and PR 4 ready to start
 - Architecture decision:
   [ADR 0009](../adr/0009-cross-product-workbench-host-kernel.md)
 - Scope: Tutti-first implementation, npm beta, read-only/downstream TSH
@@ -40,6 +41,7 @@ Approval recorded on 2026-07-11 remains deliberately incremental:
 | PR 1 characterization fixtures/tests        | Merged in #1043                          |
 | PR 2 private coordinator/session            | Merged in #1044                          |
 | PR 3 Product Profile/Ports/adapters split   | Merged in #1050                          |
+| Pre-extraction writer/save hardening        | Merged in #1184                          |
 | Public package extraction and Tutti cutover | Approved after PR 3                      |
 | npm beta publication                        | Approved after PRs 3–5 and validation    |
 | TSH renderer DI/host migration              | Deferred; no TSH changes in current work |
@@ -104,6 +106,28 @@ package API review:
 PR 3 does not create a package, change public Workbench or daemon contracts,
 modify TSH, or publish the approved beta. Those remain the independent PR 4–6
 steps.
+
+### Pre-extraction hardening evidence
+
+The durable-writer and stale-save ownership stop condition was resolved before
+package extraction in #1184:
+
+- Electron main enforces one durable OS workspace window per `workspaceId`,
+  coalesces concurrent creation, and restores or focuses the registered owner;
+- standalone Agent renderer composition uses a read-seeded, window-local
+  repository and issues no Workbench PUT for host, wallpaper, or onboarding
+  writes;
+- one workspace repository serializes load and save invocations while keeping
+  different workspaces independent;
+- product metadata merges from the latest serialized cache at write execution
+  time; and
+- the surface ignores stale save completions from an older lifecycle or an
+  older successful save sequence.
+
+Focused coordinator, repository, composition-root, Electron main, and surface
+tests cover these guarantees. PR 4 may therefore proceed without another
+durable-writer hardening phase; the same cases remain required product
+conformance evidence for package beta.
 
 ## Baseline evidence
 
@@ -595,6 +619,13 @@ The TSH PR must report:
 - Keep concurrent distinct partitions available internally, but do not promise
   multi-view UX in the first public API.
 
+## Resolved beta API choice
+
+`@tutti-os/workbench-host/conformance` is a public development/test subpath for
+beta. It lets the external TSH repository run the exact conformance cases from
+the published package without a filesystem link or copied source. The subpath
+is not an application runtime entrypoint.
+
 ## Open questions requiring an approval or measured evidence
 
 1. **Tutti user partition:** is `workspaceId` sufficient under the current local
@@ -604,14 +635,12 @@ The TSH PR must report:
 2. **Product metadata:** should wallpaper/onboarding metadata remain in Tutti's
    repository adapter or move to a dedicated metadata contribution?
    Recommendation: preserve current adapter behavior through beta.
-3. **Conformance subpath:** public `./conformance` versus repository-only shared
-   test package? Recommendation: public dev/test subpath so the external TSH
-   repository runs the exact suite shipped with the beta.
 
 ## Approval gates
 
 ADR 0009 is accepted; PR 1 merged as #1043, PR 2 merged as #1044, and PR 3
-merged as #1050. PRs 4–5 and the fixed-group beta in PR 6 are approved in
-sequence. TSH integration is deferred until later business adoption and remains
-outside the current Tutti implementation scope. Stable publication remains
-separately unapproved.
+merged as #1050. Pre-extraction durable-writer and stale-save hardening merged
+as #1184. PRs 4–5 and the fixed-group beta in PR 6 are approved in sequence,
+and PR 4 is ready to start. TSH integration is deferred until later business
+adoption and remains outside the current Tutti implementation scope. Stable
+publication remains separately unapproved.
