@@ -637,7 +637,7 @@ describe("agent GUI workbench contribution copy", () => {
     );
   });
 
-  it("opens at the default width and 70 percent height when the workbench area can fit the default frame", () => {
+  it("opens at 80 percent width and 90 percent height of the visible workbench area", () => {
     const frame = resolveAgentGuiWorkbenchDefaultLaunchFrame({
       frame: { height: 560, width: 1040, x: 140, y: 48 },
       request: {
@@ -660,14 +660,14 @@ describe("agent GUI workbench contribution copy", () => {
     });
 
     expect(frame).toEqual({
-      height: 538,
-      width: 1040,
-      x: 140,
-      y: 48
+      height: 692,
+      width: 1152,
+      x: 144,
+      y: 91
     });
   });
 
-  it("opens at 90 percent of the visible workbench area when the window cannot fit the default frame", () => {
+  it("keeps the 80 percent width on compact visible workbench areas", () => {
     const frame = resolveAgentGuiWorkbenchDefaultLaunchFrame({
       frame: { height: 560, width: 1040, x: 140, y: 48 },
       request: {
@@ -691,8 +691,8 @@ describe("agent GUI workbench contribution copy", () => {
 
     expect(frame).toEqual({
       height: 512,
-      width: 882,
-      x: 49,
+      width: 784,
+      x: 98,
       y: 81
     });
   });
@@ -721,13 +721,13 @@ describe("agent GUI workbench contribution copy", () => {
 
     expect(frame).toEqual({
       height: 554,
-      width: 1040,
-      x: 200,
+      width: 1152,
+      x: 144,
       y: 83
     });
   });
 
-  it("preserves the 90 percent visible-area frame during compact launches", () => {
+  it("preserves the visible-area frame during compact launches", () => {
     const contribution = createTestAgentGuiWorkbenchContribution({
       renderBody: () => null,
       workspaceId: "workspace-1"
@@ -758,8 +758,8 @@ describe("agent GUI workbench contribution copy", () => {
     expect(launchResult).toMatchObject({
       defaultFrame: {
         height: 512,
-        width: 882,
-        x: 49,
+        width: 784,
+        x: 98,
         y: 81
       },
       framePolicy: "absolute"
@@ -956,8 +956,8 @@ describe("agent GUI workbench contribution copy", () => {
       cascadeOffset: agentGuiWorkbenchNewWindowCascadeOffset,
       defaultFrame: {
         height: 512,
-        width: 882,
-        x: 49,
+        width: 784,
+        x: 98,
         y: 81
       },
       framePolicy: "cascade-same-type-centered"

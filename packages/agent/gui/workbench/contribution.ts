@@ -56,7 +56,8 @@ export const agentGuiWorkbenchDefaultNodeFrame: WorkbenchFrame = {
   y: 48
 };
 
-export const agentGuiWorkbenchDefaultUsableHeightRatio = 0.7;
+export const agentGuiWorkbenchDefaultUsableWidthRatio = 0.8;
+export const agentGuiWorkbenchDefaultUsableHeightRatio = 0.9;
 export const agentGuiWorkbenchCompactVisibleAreaRatio = 0.9;
 export const agentGuiWorkbenchNewWindowCascadeOffset = { x: 180, y: 88 };
 
@@ -584,30 +585,16 @@ export function resolveAgentGuiWorkbenchDefaultLaunchFrame(input: {
   const defaultHeight = Math.round(
     layoutFrame.height * agentGuiWorkbenchDefaultUsableHeightRatio
   );
-  const shouldUseCompactWidth = layoutFrame.width < input.frame.width;
-  const shouldUseCompactHeight =
-    layoutFrame.height <
-    input.frame.height / agentGuiWorkbenchCompactVisibleAreaRatio;
-
-  if (shouldUseCompactWidth || shouldUseCompactHeight) {
-    const width = shouldUseCompactWidth
-      ? Math.round(layoutFrame.width * agentGuiWorkbenchCompactVisibleAreaRatio)
-      : input.frame.width;
-    const height = Math.round(
-      layoutFrame.height * agentGuiWorkbenchCompactVisibleAreaRatio
-    );
-
-    return {
-      height,
-      width,
-      x: Math.round(layoutFrame.x + (layoutFrame.width - width) / 2),
-      y: Math.round(layoutFrame.y + (layoutFrame.height - height) / 2)
-    };
-  }
+  const defaultWidth = Math.round(
+    layoutFrame.width * agentGuiWorkbenchDefaultUsableWidthRatio
+  );
 
   return {
     ...input.frame,
-    height: defaultHeight
+    height: defaultHeight,
+    width: defaultWidth,
+    x: Math.round(layoutFrame.x + (layoutFrame.width - defaultWidth) / 2),
+    y: Math.round(layoutFrame.y + (layoutFrame.height - defaultHeight) / 2)
   };
 }
 
