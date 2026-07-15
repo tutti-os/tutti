@@ -24,7 +24,6 @@ export const AgentGUIConversationRailController = memo(
         {...props}
         conversationQuery={conversationQuery}
         railQuery={railQuery}
-        railSearch={railQuery.railSearch}
         onConversationQueryChange={setConversationQuery}
       />
     );

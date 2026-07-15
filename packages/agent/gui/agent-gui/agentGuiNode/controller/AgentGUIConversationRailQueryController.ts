@@ -172,8 +172,7 @@ export class AgentGUIConversationRailQueryController {
     this.queryState = {
       ...this.queryState,
       pending: this.runtimeSectionsEnabled(),
-      reconcilingSessionIds: [],
-      resolvedScopeKey: nextScopeKey
+      reconcilingSessionIds: []
     };
     this.emit();
     if (this.attached) this.refreshFirstPages();
@@ -371,6 +370,11 @@ export class AgentGUIConversationRailQueryController {
       });
   }
 
+  retrySearchResults(): void {
+    if (!this.searchQuery || !this.searchEnabled()) return;
+    this.requestSearch();
+  }
+
   private handleEngineState(state: AgentSessionEngineState): void {
     const next = membershipRecords(state);
     if (this.ingestingSessions || !this.runtimeSectionsEnabled()) {
@@ -406,13 +410,15 @@ export class AgentGUIConversationRailQueryController {
     }
     this.pagingRequestSequence += 1;
     const requestSequence = this.pagingRequestSequence;
+    const wasResolvedForScope =
+      this.queryState.resolvedScopeKey === scopeKey &&
+      this.queryState.sections !== null;
     this.cancelPagingRequests(false);
     const abortController = new AbortController();
     this.pagingAbortControllers.set("__first_pages__", abortController);
     this.queryState = {
       ...this.queryState,
-      pending: true,
-      resolvedScopeKey: scopeKey
+      pending: true
     };
     this.emit();
     void listSections({
@@ -464,13 +470,19 @@ export class AgentGUIConversationRailQueryController {
         ) {
           return;
         }
-        this.queryState = {
-          ...this.queryState,
-          pending: false,
-          resolvedScopeKey: scopeKey,
-          sectionPageStates: new Map(),
-          sections: []
-        };
+        this.queryState = wasResolvedForScope
+          ? {
+              ...this.queryState,
+              pending: false,
+              reconcilingSessionIds: []
+            }
+          : {
+              pending: false,
+              reconcilingSessionIds: [],
+              resolvedScopeKey: scopeKey,
+              sectionPageStates: new Map(),
+              sections: []
+            };
         this.emit();
       })
       .finally(() => {

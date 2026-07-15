@@ -1137,7 +1137,9 @@ cover every visible session in the workspace rather than only the loaded rail
 sections. Each returned session is upserted into the same workspace engine;
 the search controller stores only result ids, cursor, and request state, then
 the rail joins those ids to canonical entities. It must not recreate the old
-conversation-summary cache. Search grouping renders only sections containing
+conversation-summary cache. An initial backend-search failure renders a
+localized retry action; retry reissues the current target-scoped query instead
+of presenting the failure as an empty result. Search grouping renders only sections containing
 matching rows; empty user-project and Chats sections remain hidden. Hosts without `listSessionsPage`, including
 preview-only hosts, may fall back to local title filtering of loaded rows.
 Ordinary section pages and backend search pages share one deterministic order:
@@ -1151,6 +1153,9 @@ Every section page and pinned page also carries `totalCount` for the full
 target-filtered scope before cursor pagination. Ordinary section pages exclude
 pinned sessions because those rows belong only to the dedicated pinned page;
 filtering pinned rows after section pagination corrupts page size and totals.
+If a refresh of an already-resolved section scope fails, keep its membership,
+cursor, and totals; only an unresolved or newly selected scope may resolve to an
+empty failure state.
 The active conversation is a
 display overlay, not a pageable row: it may render beside the first five rows,
 but it must not consume the local visible-item limit or advance the cursor.

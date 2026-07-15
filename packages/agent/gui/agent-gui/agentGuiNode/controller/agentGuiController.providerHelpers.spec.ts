@@ -96,6 +96,19 @@ describe("provider rail target selection", () => {
       })
     ).toBe("open-home-composer");
   });
+
+  it("opens the selected target home when it has no agent target id", () => {
+    expect(
+      resolveAgentGUIProviderRailTargetSelection({
+        activeConversation: conversation(
+          "codex-session",
+          "local:codex",
+          "codex"
+        ),
+        nextFilter: { kind: "all" }
+      })
+    ).toBe("open-home-composer");
+  });
 });
 
 function snapshot(

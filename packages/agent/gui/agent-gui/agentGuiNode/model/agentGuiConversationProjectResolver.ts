@@ -168,7 +168,9 @@ function lookupAgentGUIConversationProject(
   return null;
 }
 
-function normalizeAgentGUIProjectPath(path: string | null | undefined): string {
+export function normalizeAgentGUIProjectPath(
+  path: string | null | undefined
+): string {
   const normalized = path?.trim().replaceAll("\\", "/") ?? "";
   if (!normalized) {
     return "";

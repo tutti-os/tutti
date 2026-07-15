@@ -58,7 +58,6 @@ func (s *Service) ListMessages(
 	agentSessionID string,
 	input ListMessagesInput,
 ) (SessionMessagesPage, error) {
-	_ = ctx
 	workspaceID = strings.TrimSpace(workspaceID)
 	agentSessionID = strings.TrimSpace(agentSessionID)
 	if workspaceID == "" || agentSessionID == "" {
@@ -101,7 +100,7 @@ func (s *Service) ListMessages(
 		}
 	}
 
-	exists, err := s.sessionExists(workspaceID, agentSessionID)
+	exists, err := s.sessionExists(ctx, workspaceID, agentSessionID)
 	if err != nil {
 		return SessionMessagesPage{}, err
 	}
@@ -151,7 +150,7 @@ func (s *Service) ListGeneratedFiles(
 	return files, nil
 }
 
-func (s *Service) sessionExists(workspaceID string, agentSessionID string) (bool, error) {
+func (s *Service) sessionExists(ctx context.Context, workspaceID string, agentSessionID string) (bool, error) {
 	workspaceID = strings.TrimSpace(workspaceID)
 	agentSessionID = strings.TrimSpace(agentSessionID)
 	if workspaceID == "" || agentSessionID == "" {
@@ -161,7 +160,7 @@ func (s *Service) sessionExists(workspaceID string, agentSessionID string) (bool
 		_, ok := s.controller().Session(workspaceID, agentSessionID)
 		return ok, nil
 	}
-	deleted, err := s.SessionReader.SessionDeleted(workspaceID, agentSessionID)
+	deleted, err := s.SessionReader.SessionDeleted(ctx, workspaceID, agentSessionID)
 	if err != nil {
 		return false, err
 	}

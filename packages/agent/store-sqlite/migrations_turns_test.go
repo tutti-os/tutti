@@ -113,7 +113,7 @@ UPDATE workspace_agent_messages SET deleted_at_unix_ms = 130 WHERE workspace_id 
 
 	// Simulate a legacy database that has messages but predates the turns
 	// migration, then re-run Migrate so the backfill executes against them.
-	if _, err := store.db.ExecContext(ctx, `DELETE FROM `+schemaMigrationsTable+` WHERE id = ?`, schemaMigrationWorkspaceAgentActivityTurnsV1); err != nil {
+	if _, err := store.db.ExecContext(ctx, `DELETE FROM `+schemaMigrationsTable+` WHERE id IN (?, ?)`, schemaMigrationWorkspaceAgentActivityTurnsV1, schemaMigrationWorkspaceAgentActivityTurnIntegrityV1); err != nil {
 		t.Fatalf("reset turns migration ledger: %v", err)
 	}
 	if _, err := store.db.ExecContext(ctx, `PRAGMA foreign_keys = OFF`); err != nil {
@@ -163,6 +163,28 @@ UPDATE workspace_agent_messages SET deleted_at_unix_ms = 130 WHERE workspace_id 
 	}
 	if len(deletedTurns) != 0 {
 		t.Fatalf("deleted session turns = %#v, want none", deletedTurns)
+	}
+	var deletedMessageTurnID *string
+	if err := store.db.QueryRowContext(ctx, `
+SELECT turn_id
+FROM workspace_agent_messages
+WHERE workspace_id = 'ws-1' AND agent_session_id = 'session-deleted' AND message_id = 'msg-deleted'
+`).Scan(&deletedMessageTurnID); err != nil {
+		t.Fatalf("read deleted message turn id: %v", err)
+	}
+	if deletedMessageTurnID != nil {
+		t.Fatalf("deleted message turn id = %q, want NULL", *deletedMessageTurnID)
+	}
+	var foreignKeyViolationCount int
+	if err := store.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM pragma_foreign_key_check`).Scan(&foreignKeyViolationCount); err != nil {
+		t.Fatalf("check foreign keys: %v", err)
+	}
+	if foreignKeyViolationCount != 0 {
+		t.Fatalf("foreign key violations = %d, want 0", foreignKeyViolationCount)
+	}
+	var latestTurnIndexCount int
+	if err := store.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM sqlite_master WHERE type = 'index' AND name = 'idx_workspace_agent_turns_session_latest'`).Scan(&latestTurnIndexCount); err != nil || latestTurnIndexCount != 1 {
+		t.Fatalf("latest-turn index count = %d, error = %v", latestTurnIndexCount, err)
 	}
 
 	failedTurns, err := store.ListSessionTurns(ctx, "ws-1", "session-failed")

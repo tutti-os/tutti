@@ -92,6 +92,48 @@ describe("useAgentGUIConversationRailQuery search", () => {
       engine.getSnapshot().sessionLifecycle.sessionsById["session-2"]?.title
     ).toBe("backend older result");
   });
+
+  it("exposes retry after an initial backend search failure", async () => {
+    const engine = createTestAgentSessionEngine("workspace-1");
+    let requestCount = 0;
+    const runtime = {
+      getSessionEngine: () => engine,
+      async listSessionsPage(input: AgentActivityRuntimeListSessionsPageInput) {
+        requestCount += 1;
+        if (requestCount === 1) throw new Error("search unavailable");
+        return {
+          hasMore: false,
+          sessions: [searchSession("session-retried", "retried result", 1)],
+          workspaceId: input.workspaceId
+        };
+      }
+    } as unknown as AgentActivityRuntime;
+    const wrapper = ({ children }: PropsWithChildren) => (
+      <AgentActivityRuntimeProvider runtime={runtime}>
+        {children}
+      </AgentActivityRuntimeProvider>
+    );
+    const { result } = renderHook(
+      () =>
+        useAgentGUIConversationRailQuery({
+          activeConversationId: null,
+          conversationFilter: { kind: "all" },
+          conversationQuery: "backend",
+          previewMode: false,
+          sectionAgentTargetFallbackId: null,
+          userProjects: [],
+          workspaceId: "workspace-1"
+        }),
+      { wrapper }
+    );
+
+    await waitFor(() => expect(result.current.railSearch.failed).toBe(true));
+    act(() => result.current.railSearch.retry());
+    await waitFor(() =>
+      expect(result.current.railSearch.sessionIds).toEqual(["session-retried"])
+    );
+    expect(result.current.railSearch.failed).toBe(false);
+  });
 });
 
 function searchSession(

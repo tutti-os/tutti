@@ -30,7 +30,7 @@ import {
   resolveAgentGUIProviderRailTargetSelection
 } from "./agentGuiController.providerHelpers";
 import { reportAgentGUIConversationFilterTargetUnresolved } from "./agentGuiController.reporting";
-import { isPendingNewConversationActivation } from "./useAgentGUIActivation";
+import { isPendingNewConversationActivationForSession } from "./useAgentGUIActivation";
 import {
   resolveConversationSummaryById,
   type ConversationIntent
@@ -213,8 +213,9 @@ export function useAgentGUIProviderHome(input: UseAgentGUIProviderHomeInput) {
       const previous = currentInput.activeConversationIdRef.current;
       if (
         previous &&
-        !isPendingNewConversationActivation(
-          currentInput.activePendingActivation
+        !isPendingNewConversationActivationForSession(
+          currentInput.activePendingActivation,
+          previous
         )
       ) {
         void currentInput.unactivate(previous);

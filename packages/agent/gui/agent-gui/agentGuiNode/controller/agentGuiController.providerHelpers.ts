@@ -34,7 +34,8 @@ export function resolveAgentGUIProviderRailTargetSelection(input: {
   activeConversation: AgentGUIConversationSummary | null;
   nextFilter: AgentGUIConversationFilter;
 }): AgentGUIProviderRailTargetSelection {
-  return input.activeConversation &&
+  return input.nextFilter.kind === "agentTarget" &&
+    input.activeConversation &&
     matchesAgentGUIConversationSummaryFilter(
       input.activeConversation,
       input.nextFilter

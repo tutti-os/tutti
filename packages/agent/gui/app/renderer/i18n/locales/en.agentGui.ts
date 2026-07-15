@@ -354,6 +354,8 @@ export const enAgentGui = {
   loadingConversation: "Loading session...",
   scrollToBottom: "Scroll to bottom",
   searchNoConversations: "No related sessions",
+  searchFailed: "Could not search sessions",
+  retrySearch: "Retry search",
   conversationUnavailable: "Session unavailable.",
   contextPickerBrowseHint: "Search workspace files based on your input",
   contextPickerBrowseFileHint:

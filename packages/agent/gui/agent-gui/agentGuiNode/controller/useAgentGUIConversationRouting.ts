@@ -6,7 +6,6 @@ import {
 import type { Dispatch, RefObject, SetStateAction } from "react";
 import { useCallback, useEffect } from "react";
 import type { AgentGUIConversationSummary } from "../model/agentGuiConversationModel";
-import { selectAgentGUIConversationId } from "../model/agentGuiConversationModel";
 import {
   normalizeAgentGUIOpenSessionRequest,
   type AgentGUIOpenSessionRequest
@@ -33,7 +32,6 @@ interface UseAgentGUIConversationRoutingInput {
   ): void;
   sessionEngine: AgentSessionEngine;
   setIntent: Dispatch<SetStateAction<ConversationIntent>>;
-  syncConversationListProjection(agentSessionId: string): Promise<void>;
   transientConversation: AgentGUIConversationSummary | null;
   workspaceId: string;
 }
@@ -55,7 +53,6 @@ export function useAgentGUIConversationRouting(
     selectConversation,
     sessionEngine,
     setIntent,
-    syncConversationListProjection,
     transientConversation,
     workspaceId
   } = input;
@@ -155,21 +152,6 @@ export function useAgentGUIConversationRouting(
         selectConversation(intent.id, { reloadConversations: false });
         ensureTransientOpenSessionConversation(intent.id);
         return;
-      case "resolving": {
-        if (resolveId(intent.id)) {
-          selectConversation(intent.id, { reloadConversations: false });
-          return;
-        }
-        const fallback = selectAgentGUIConversationId(
-          conversations,
-          activeConversationIdRef.current
-        );
-        if (fallback) {
-          selectConversation(fallback, { reloadConversations: false });
-        } else {
-          setIntent({ tag: "home" });
-        }
-      }
     }
   }, [
     conversationListQuery,
@@ -180,7 +162,6 @@ export function useAgentGUIConversationRouting(
     openSessionRequest,
     previewMode,
     selectConversation,
-    syncConversationListProjection,
     transientConversation
   ]);
 }

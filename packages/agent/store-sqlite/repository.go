@@ -125,13 +125,12 @@ type DeleteSessionsBatchResult struct {
 const PinnedSessionPageKey = "pinned"
 
 type SessionSectionPage struct {
-	WorkspaceID   string
-	SectionKey    string
-	Sessions      []Session
-	HasMore       bool
-	TotalCount    int
-	NextCursor    string
-	NextUpdatedAt int64
+	WorkspaceID string
+	SectionKey  string
+	Sessions    []Session
+	HasMore     bool
+	TotalCount  int
+	NextCursor  string
 }
 
 type Session struct {

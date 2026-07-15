@@ -21,7 +21,7 @@ import type {
 } from "../../../types";
 import { resolveAgentGUIAgentTarget } from "../../../agentTargets";
 import type { AgentGUIComposerTargetData } from "./agentGuiController.composerPresentation";
-import { isPendingNewConversationActivation } from "./useAgentGUIActivation";
+import { isPendingNewConversationActivationForSession } from "./useAgentGUIActivation";
 
 export interface AgentGUIPrefillPromptRequest {
   agentTargetId?: string | null;
@@ -142,7 +142,10 @@ export function useAgentGUIConversationHome({
       });
       if (
         previous &&
-        !isPendingNewConversationActivation(activePendingActivation)
+        !isPendingNewConversationActivationForSession(
+          activePendingActivation,
+          previous
+        )
       ) {
         void unactivate(previous);
       }

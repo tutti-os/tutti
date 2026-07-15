@@ -118,6 +118,12 @@ export const AgentGUIConversationRailSection = memo(
       limit: AGENT_GUI_CONVERSATION_RAIL_SECTION_PAGE_SIZE,
       scopeKey: paginationScopeKey
     }));
+    if (visibleItemLimitState.scopeKey !== paginationScopeKey) {
+      setVisibleItemLimitState({
+        limit: AGENT_GUI_CONVERSATION_RAIL_SECTION_PAGE_SIZE,
+        scopeKey: paginationScopeKey
+      });
+    }
     const visibleItemLimit =
       visibleItemLimitState.scopeKey === paginationScopeKey
         ? visibleItemLimitState.limit

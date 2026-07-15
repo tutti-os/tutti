@@ -16,7 +16,6 @@ describe("useAgentGUIConversationRouting", () => {
     });
     const selectConversation = vi.fn();
     const setIntent = vi.fn();
-    const syncConversationListProjection = vi.fn(async () => {});
 
     renderHook(() =>
       useAgentGUIConversationRouting({
@@ -33,7 +32,6 @@ describe("useAgentGUIConversationRouting", () => {
         selectConversation,
         sessionEngine,
         setIntent,
-        syncConversationListProjection,
         transientConversation: null,
         workspaceId: "workspace-1"
       })
@@ -41,7 +39,6 @@ describe("useAgentGUIConversationRouting", () => {
 
     expect(setIntent).not.toHaveBeenCalled();
     expect(selectConversation).not.toHaveBeenCalled();
-    expect(syncConversationListProjection).not.toHaveBeenCalled();
   });
 
   it("reconciles a persisted selection outside the bounded list after restart", () => {
@@ -53,7 +50,6 @@ describe("useAgentGUIConversationRouting", () => {
     });
     const selectConversation = vi.fn();
     const setIntent = vi.fn();
-    const syncConversationListProjection = vi.fn(async () => {});
 
     renderHook(() =>
       useAgentGUIConversationRouting({
@@ -70,7 +66,6 @@ describe("useAgentGUIConversationRouting", () => {
         selectConversation,
         sessionEngine,
         setIntent,
-        syncConversationListProjection,
         transientConversation: null,
         workspaceId: "workspace-1"
       })
@@ -85,10 +80,6 @@ describe("useAgentGUIConversationRouting", () => {
         "persisted-session"
       )
     ).not.toBeNull();
-    expect(setIntent).not.toHaveBeenCalledWith({
-      tag: "resolving",
-      id: "persisted-session"
-    });
-    expect(syncConversationListProjection).not.toHaveBeenCalled();
+    expect(setIntent).not.toHaveBeenCalled();
   });
 });

@@ -260,7 +260,7 @@ type SessionMessage struct {
 type SessionReader interface {
 	GetSession(workspaceID string, agentSessionID string) (PersistedSession, bool)
 	ListSessions(workspaceID string) ([]PersistedSession, bool)
-	SessionDeleted(workspaceID string, agentSessionID string) (bool, error)
+	SessionDeleted(ctx context.Context, workspaceID string, agentSessionID string) (bool, error)
 }
 
 type SessionSectionReader interface {

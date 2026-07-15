@@ -8,6 +8,7 @@ import {
   type ConversationSection
 } from "../agentGuiNodeViewConversation";
 import { resolveAgentGUIConversationSortTimeUnixMs } from "./agentGuiConversationModel";
+import { normalizeAgentGUIProjectPath } from "./agentGuiConversationProjectResolver";
 
 export interface ConversationRailLabels {
   sectionConversations: string;
@@ -17,11 +18,7 @@ export interface ConversationRailLabels {
 export function normalizeConversationRailProjectPath(
   path: string | null | undefined
 ): string {
-  const normalized = path?.trim().replaceAll("\\", "/") ?? "";
-  if (!normalized) {
-    return "";
-  }
-  return normalized.replace(/\/+$/, "") || "/";
+  return normalizeAgentGUIProjectPath(path);
 }
 
 export interface ConversationRailSectionPageState {
@@ -367,6 +364,7 @@ export function projectRuntimeSectionsToConversationRailMemberships(input: {
           label: section.userProject.label,
           lastUsedAtUnixMs: section.userProject.lastUsedAtUnixMs,
           path: section.userProject.path,
+          sectionKey: section.userProject.sectionKey,
           updatedAtUnixMs: section.userProject.updatedAtUnixMs
         }
       : null;
@@ -581,6 +579,7 @@ export function conversationProjectsRenderEqual(
         left.label === right.label &&
         left.createdAtUnixMs === right.createdAtUnixMs &&
         left.updatedAtUnixMs === right.updatedAtUnixMs &&
-        left.lastUsedAtUnixMs === right.lastUsedAtUnixMs)
+        left.lastUsedAtUnixMs === right.lastUsedAtUnixMs &&
+        left.sectionKey === right.sectionKey)
   );
 }

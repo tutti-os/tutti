@@ -5,6 +5,7 @@ import {
   insertConversationRailSectionOverlay,
   projectConversationRailSectionsWithActiveConversation,
   planRuntimeRailMembershipRefresh,
+  projectRuntimeSectionsToConversationRailMemberships,
   projectConversationRailSectionsWithTransientConversations,
   resolveConversationRailActiveConversation
 } from "./agentGuiConversationRail";
@@ -170,6 +171,32 @@ describe("planRuntimeRailMembershipRefresh", () => {
       kind: "refresh_first_pages",
       reconcilingSessionIds: ["new-session"]
     });
+  });
+});
+
+describe("projectRuntimeSectionsToConversationRailMemberships", () => {
+  it("preserves the daemon-owned project section key", () => {
+    const memberships = projectRuntimeSectionsToConversationRailMemberships({
+      sections: [
+        {
+          hasMore: false,
+          kind: "project",
+          sectionKey: "project:authoritative",
+          sessions: [],
+          totalCount: 0,
+          userProject: {
+            createdAtUnixMs: 1,
+            id: "project-1",
+            label: "Workspace",
+            path: "/workspace",
+            sectionKey: "project:authoritative",
+            updatedAtUnixMs: 2
+          }
+        }
+      ]
+    });
+
+    expect(memberships[0]?.project?.sectionKey).toBe("project:authoritative");
   });
 });
 

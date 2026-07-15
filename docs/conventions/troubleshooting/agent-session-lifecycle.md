@@ -418,7 +418,11 @@ Turn state, loading, cancel, restore, rail projection, event updates, imports, a
 - Validation:
   Run `pnpm --filter @tutti-os/agent-gui test`,
   `pnpm --filter @tutti-os/agent-activity-core test`, and
-  `pnpm check:agent-activity-runtime-boundaries`. Cover Codex -> All -> Codex,
+  `pnpm check:agent-activity-runtime-boundaries`. Also run
+  `cd packages/agent/store-sqlite && go test ./... -run 'SessionSection|TurnsBackfill'`
+  and
+  `cd services/tuttid && go test ./service/agent ./api -run 'ListPage|SessionList|SessionSection'`
+  so cursor metadata and daemon ordering are covered. Cover Codex -> All -> Codex,
   client restart restore, active row outside first page, five-plus-active totals,
   nine-session Show more, slow provider refetch, and bounded snapshot omission.
 - References:

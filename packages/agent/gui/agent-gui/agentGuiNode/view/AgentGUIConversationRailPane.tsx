@@ -8,7 +8,10 @@ import {
   useRef,
   useState
 } from "react";
-import { ConfirmationDialog } from "@tutti-os/ui-system";
+import {
+  Button as SystemButton,
+  ConfirmationDialog
+} from "@tutti-os/ui-system";
 import { ScrollArea } from "@tutti-os/ui-system/components";
 import { CreateChatIcon } from "@tutti-os/ui-system/icons";
 import { Button } from "../../../app/renderer/components/ui/button";
@@ -117,9 +120,6 @@ export type AgentGUIConversationRailPaneProps =
     conversationQuery: string;
     onConversationQueryChange: (query: string) => void;
     railQuery: ReturnType<typeof useAgentGUIConversationRailQuery>;
-    railSearch: ReturnType<
-      typeof useAgentGUIConversationRailQuery
-    >["railSearch"];
   };
 
 export type AgentGUIProjectActionDialog =
@@ -173,7 +173,6 @@ export const AgentGUIConversationRailPane = memo(
     sectionAgentTargetFallbackId,
     conversationQuery,
     railQuery,
-    railSearch,
     onCreateConversation,
     onSelectConversation,
     onToggleConversationPinned,
@@ -198,6 +197,7 @@ export const AgentGUIConversationRailPane = memo(
       useState<AgentGUIProjectActionDialog | null>(null);
     const [isRequestingBatchDeletion, setIsRequestingBatchDeletion] =
       useState(false);
+    const { railSearch } = railQuery;
     const railElementRef = useRef<HTMLElement | null>(null);
     const conversationListRef = useRef<HTMLDivElement | null>(null);
     const conversationItemElementsRef = useRef(
@@ -384,7 +384,7 @@ export const AgentGUIConversationRailPane = memo(
     const sectionPaginationScopeKey = `${
       conversationFilter.kind === "agentTarget"
         ? `${workspaceId}:agentTarget:${conversationFilter.agentTargetId.trim()}`
-        : `${workspaceId}:all`
+        : `${workspaceId}:all:${sectionAgentTargetFallbackId?.trim() ?? ""}`
     }:search:${conversationQuery.trim()}`;
     const toggleProjectSectionCollapsed = useCallback((sectionId: string) => {
       setCollapsedProjectSectionIds((current) => {
@@ -457,6 +457,10 @@ export const AgentGUIConversationRailPane = memo(
     );
     const shouldShowConversationEmptyState =
       !isConversationRailListLoading && groupedConversations.length === 0;
+    const shouldShowConversationSearchError =
+      backendSearchActive &&
+      railSearch.failed &&
+      railSearch.sessionIds.length === 0;
     const registerConversationItemElement = useCallback(
       (itemId: string, element: HTMLDivElement | null) => {
         if (element) {
@@ -525,6 +529,18 @@ export const AgentGUIConversationRailPane = memo(
             <AgentConversationListSkeleton
               label={labels.loadingConversations}
             />
+          ) : shouldShowConversationSearchError ? (
+            <div className={styles.emptyState}>
+              <span>{labels.searchFailed}</span>
+              <SystemButton
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={railSearch.retry}
+              >
+                {labels.retrySearch}
+              </SystemButton>
+            </div>
           ) : shouldShowConversationEmptyState ? (
             <div className={styles.emptyState}>
               <span>

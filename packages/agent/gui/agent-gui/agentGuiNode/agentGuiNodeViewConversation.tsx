@@ -1,4 +1,5 @@
 import { Spinner } from "@tutti-os/ui-system";
+import { normalizeAgentGUIProjectPath } from "./model/agentGuiConversationProjectResolver";
 import { AskLinedIcon } from "@tutti-os/ui-system/icons";
 import { resolveAgentGUIConversationSortTimeUnixMs } from "./model/agentGuiConversationModel";
 import type { AgentGUINodeViewModel } from "./model/agentGuiNodeTypes";
@@ -267,10 +268,6 @@ function resolveConversationProjectUpdatedAtUnixMs(
   );
 }
 
-export function normalizeConversationProjectPath(path: string): string {
-  return path.trim().replaceAll("\\", "/").replace(/\/+$/, "") || "/";
-}
-
 function normalizeConversationProjectPathCached(
   path: string,
   normalizedPathByPath: Map<string, string>
@@ -279,7 +276,7 @@ function normalizeConversationProjectPathCached(
   if (cached !== undefined) {
     return cached;
   }
-  const normalized = normalizeConversationProjectPath(path);
+  const normalized = normalizeAgentGUIProjectPath(path);
   normalizedPathByPath.set(path, normalized);
   return normalized;
 }

@@ -89,7 +89,8 @@ export function useAgentGUIConversationRailQuery({
       ) => controller.loadMoreSectionConversations(section),
       railSearch: {
         ...querySnapshot.railSearch,
-        loadMore: () => controller.loadMoreSearchResults()
+        loadMore: () => controller.loadMoreSearchResults(),
+        retry: () => controller.retrySearchResults()
       },
       runtimeRailConversations
     }),

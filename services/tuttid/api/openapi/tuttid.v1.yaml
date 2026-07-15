@@ -7708,6 +7708,7 @@ components:
           type: boolean
         nextCursor:
           type: string
+          minLength: 1
           description: Cursor for the next older matching session page, encoded as conversationSortTimeUnixMs|agentSessionId.
     WorkspaceAgentSessionPage:
       type: object

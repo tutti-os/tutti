@@ -175,6 +175,8 @@ export interface AgentGUIViewLabels {
   loadingConversation: string;
   scrollToBottom: string;
   searchNoConversations: string;
+  searchFailed: string;
+  retrySearch: string;
   conversationUnavailable: string;
   fallbackAgentTitle: string;
   searchPlaceholder: string;
