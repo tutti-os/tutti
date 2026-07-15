@@ -133,23 +133,25 @@ test("desktop agent GUI workbench host input reuses workspace runtime services",
   );
 });
 
-test("desktop agent GUI resolves dropped system files as host-local references", async () => {
+test("desktop agent GUI preserves dropped system file and folder references", async () => {
   const droppedFileA = new File(["a"], "report.pdf", {
     type: "application/pdf"
   });
   const droppedFileB = new File(["b"], "notes.txt", {
     type: "text/plain"
   });
+  const droppedFolder = new File([], "assets");
   const resolvedFiles: File[][] = [];
   const hostInput = createDesktopAgentGUIWorkbenchHostInput({
     hostFilesApi: createHostFilesApi(),
     tuttidClient: createTuttidClient(),
     platformApi: createPlatformApi({
-      resolveDroppedPaths(files) {
+      resolveDroppedEntries(files) {
         resolvedFiles.push([...files]);
         return [
-          "/Users/local/Downloads/report.pdf",
-          "/Users/local/Downloads/notes.txt"
+          { kind: "file", path: "/Users/local/Downloads/report.pdf" },
+          { kind: "file", path: "/Users/local/Downloads/notes.txt" },
+          { kind: "folder", path: "/Users/local/Downloads/assets" }
         ];
       }
     }),
@@ -160,7 +162,11 @@ test("desktop agent GUI resolves dropped system files as host-local references",
   });
 
   assert.deepEqual(
-    await hostInput.resolveDroppedFileReferences([droppedFileA, droppedFileB]),
+    await hostInput.resolveDroppedFileReferences([
+      droppedFileA,
+      droppedFileB,
+      droppedFolder
+    ]),
     [
       {
         displayName: "report.pdf",
@@ -175,10 +181,18 @@ test("desktop agent GUI resolves dropped system files as host-local references",
         kind: "file",
         path: "/Users/local/Downloads/notes.txt",
         sourceId: "host-local-file"
+      },
+      {
+        displayName: "assets",
+        kind: "folder",
+        path: "/Users/local/Downloads/assets",
+        sourceId: "host-local-file"
       }
     ]
   );
-  assert.deepEqual(resolvedFiles, [[droppedFileA, droppedFileB]]);
+  assert.deepEqual(resolvedFiles, [
+    [droppedFileA, droppedFileB, droppedFolder]
+  ]);
 });
 
 test("desktop agent GUI workbench host input creates the default agent host api", async () => {
