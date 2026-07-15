@@ -1799,20 +1799,29 @@ runtime snapshot session
 User-visible rules:
 
 - `session.title` is a shared, user-visible canonical plain-text field. The
-  daemon converts rich title input once before session state is persisted. When
-  a session has no real title, the first accepted user submit establishes the
-  canonical title through an exact compare-and-set against the title observed
-  by the submit service, in the same controller event/report batch as the
-  submitted turn lifecycle. Built-in provider identities and the selected
-  Agent Target display name are placeholders only before that first durable
-  submit. The SQLite store backfills historical
-  empty/provider-placeholder rows from their earliest visible user message
-  without changing session creation/update timestamps.
+  daemon converts rich title input once before session state is persisted. A
+  new empty session keeps this field empty; provider identities and Agent Target
+  display names are never canonical conversation titles. The UI renders the
+  localized `Untitled conversation` label without writing it back as session
+  data. The first accepted user submit establishes the canonical title through
+  an exact compare-and-set against the empty title observed by the submit
+  service, in the same controller event/report batch as the submitted turn
+  lifecycle.
+- The normal first-submit command creates the session and executes its initial
+  prompt through one daemon request. Independent empty-session creation remains
+  available for prewarming and recovery, but callers must not implement the
+  normal first submit as a client-side create-then-send sequence.
+- Older clients wrote provider or Agent Target display names before the first
+  prompt. Recognizing those values is migration-only compatibility: SQLite
+  backfills rows with messages from their earliest visible user message and
+  clears message-less legacy values without changing session creation/update
+  timestamps. Live submit logic must not classify CodeBuddy or another target
+  display name as a title placeholder.
 - CLI, AgentGUI, message-center, notification, and desktop surfaces consume
   `session.title` directly. They must not parse title Markdown, add mention
-  prefixes, or reconstruct a title from transcript messages. A localized label
-  is allowed only as presentation for a genuinely empty, message-less session;
-  it is not written back as session data.
+  prefixes, or reconstruct a title from transcript messages. The localized
+  untitled label is presentation only and is never written back as session
+  data.
 - Live runtime snapshot data is the source for workbench and dock titles. Do
   not persist or restore `lastActiveConversationTitle` from workbench node
   state.

@@ -136,3 +136,60 @@ WHERE workspace_id = 'ws-initial-title' AND agent_session_id = 'session-initial-
 		)
 	}
 }
+
+func TestSessionTitleMigrationClearsLegacyTargetTitleWithoutMessages(t *testing.T) {
+	t.Parallel()
+
+	store := openTestStore(t, testOptions(&staticProjectPaths{}))
+	ctx := context.Background()
+	if _, err := store.db.ExecContext(ctx, `
+INSERT INTO agent_targets (
+  id, provider, launch_ref_json, name, enabled, source, created_at_ms, updated_at_ms
+)
+VALUES (
+  'extension:codebuddy', 'acp:codebuddy',
+  '{"type":"agent_extension","provider":"acp:codebuddy"}',
+  'CodeBuddy', 1, 'extension', 1, 1
+);
+INSERT INTO workspace_agent_sessions (
+  workspace_id, agent_session_id, agent_target_id, provider, title,
+  created_at_unix_ms, updated_at_unix_ms
+)
+VALUES (
+  'ws-legacy-empty', 'session-legacy-empty', 'extension:codebuddy',
+  'acp:codebuddy', 'CodeBuddy', 10, 20
+);
+`); err != nil {
+		t.Fatalf("insert legacy target-title session: %v", err)
+	}
+	if _, err := store.db.ExecContext(ctx, `DELETE FROM agent_store_schema_migrations WHERE id = ?`, schemaMigrationWorkspaceAgentSessionTitlesV2); err != nil {
+		t.Fatalf("reset initial title migration marker: %v", err)
+	}
+	if err := store.Migrate(ctx); err != nil {
+		t.Fatalf("rerun initial title migration: %v", err)
+	}
+
+	var (
+		title             string
+		migratedCreatedAt int64
+		migratedUpdatedAt int64
+	)
+	if err := store.db.QueryRowContext(ctx, `
+SELECT title, created_at_unix_ms, updated_at_unix_ms
+FROM workspace_agent_sessions
+WHERE workspace_id = 'ws-legacy-empty'
+  AND agent_session_id = 'session-legacy-empty'
+`).Scan(&title, &migratedCreatedAt, &migratedUpdatedAt); err != nil {
+		t.Fatalf("read migrated legacy target-title session: %v", err)
+	}
+	if title != "" {
+		t.Fatalf("migrated title = %q, want empty canonical title", title)
+	}
+	if migratedCreatedAt != 10 || migratedUpdatedAt != 20 {
+		t.Fatalf(
+			"migrated timestamps = created %d, updated %d; want 10, 20",
+			migratedCreatedAt,
+			migratedUpdatedAt,
+		)
+	}
+}

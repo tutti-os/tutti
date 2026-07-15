@@ -68,9 +68,7 @@ func (s *Service) SendInput(ctx context.Context, workspaceID string, agentSessio
 		visiblePrompt := firstNonEmptyString(displayPrompt, normalizedPromptText, preparedDisplayPrompt)
 		initialTitle = titletext.DeriveInitial(
 			runtimeSession.Title,
-			runtimeSession.Provider,
 			visiblePrompt,
-			s.sessionTitlePlaceholderAliases(ctx, runtimeSession.AgentTargetID)...,
 		)
 	}
 	logAgentSubmitTrace("service.send.exec_requested", workspaceID, agentSessionID, input.Metadata, nil)

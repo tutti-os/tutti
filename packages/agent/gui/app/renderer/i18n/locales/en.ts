@@ -521,7 +521,7 @@ export const en = {
     workspaceAgentMessageCenterOpenChat: "Open session",
     workspaceAgentsNoSessions: "No sessions",
     workspaceAgentsNoActivities: "No current activity",
-    workspaceAgentsUntitledTask: "Current task",
+    workspaceAgentsUntitledConversation: "Untitled conversation",
     workspaceAgentsGenericAgentName: "Agent",
     workspaceAgentsSessionCount_one: "{{count}} session",
     workspaceAgentsSessionCount_other: "{{count}} sessions",

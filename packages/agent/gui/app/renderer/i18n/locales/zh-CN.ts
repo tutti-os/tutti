@@ -488,7 +488,7 @@ export const zhCN = {
     workspaceAgentMessageCenterOpenChat: "打开会话",
     workspaceAgentsNoSessions: "暂无会话",
     workspaceAgentsNoActivities: "暂无进行中的操作",
-    workspaceAgentsUntitledTask: "当前任务",
+    workspaceAgentsUntitledConversation: "未命名对话",
     workspaceAgentsGenericAgentName: "智能体",
     workspaceAgentsSessionCount_one: "{{count}} 个会话",
     workspaceAgentsSessionCount_other: "{{count}} 个会话",

@@ -2,6 +2,7 @@ package storesqlite
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"strings"
@@ -106,16 +107,16 @@ func (s *Store) applyWorkspaceAgentSessionTitlesV2(ctx context.Context) error {
 
 	rows, err := tx.QueryContext(ctx, `
 SELECT s.workspace_id, s.agent_session_id, s.provider, s.title,
-       COALESCE(t.name, ''), m.payload_json
+       COALESCE(t.name, ''), m.id, m.payload_json
 FROM workspace_agent_sessions AS s
-JOIN workspace_agent_messages AS m
+LEFT JOIN workspace_agent_messages AS m
   ON m.workspace_id = s.workspace_id
  AND m.agent_session_id = s.agent_session_id
+ AND m.deleted_at_unix_ms = 0
+ AND LOWER(TRIM(m.role)) = 'user'
 LEFT JOIN agent_targets AS t
   ON t.id = s.agent_target_id
 WHERE s.deleted_at_unix_ms = 0
-  AND m.deleted_at_unix_ms = 0
-  AND LOWER(TRIM(m.role)) = 'user'
 ORDER BY s.workspace_id, s.agent_session_id,
   CASE
     WHEN m.occurred_at_unix_ms > 0 THEN m.occurred_at_unix_ms
@@ -136,7 +137,8 @@ ORDER BY s.workspace_id, s.agent_session_id,
 		provider       string
 		currentTitle   string
 		targetName     string
-		payloadJSON    string
+		messageID      sql.NullInt64
+		payloadJSON    sql.NullString
 	}
 	seen := make(map[string]struct{})
 	var updates []sessionTitleBackfill
@@ -148,6 +150,7 @@ ORDER BY s.workspace_id, s.agent_session_id,
 			&value.provider,
 			&value.currentTitle,
 			&value.targetName,
+			&value.messageID,
 			&value.payloadJSON,
 		); err != nil {
 			_ = rows.Close()
@@ -157,21 +160,17 @@ ORDER BY s.workspace_id, s.agent_session_id,
 		if _, ok := seen[key]; ok {
 			continue
 		}
-		if !titletext.IsPlaceholder(value.currentTitle, value.provider, value.targetName) {
+		if !titletext.IsLegacyPlaceholder(value.currentTitle, value.provider, value.targetName) {
 			seen[key] = struct{}{}
 			continue
 		}
-		prompt := workspaceAgentMessageVisibleText(value.payloadJSON)
-		value.currentTitle = titletext.DeriveInitial(
-			value.currentTitle,
-			value.provider,
-			prompt,
-			value.targetName,
-		)
-		if value.currentTitle != "" {
-			seen[key] = struct{}{}
-			updates = append(updates, value)
+		prompt := ""
+		if value.messageID.Valid && value.payloadJSON.Valid {
+			prompt = workspaceAgentMessageVisibleText(value.payloadJSON.String)
 		}
+		value.currentTitle = titletext.DeriveInitial("", prompt)
+		seen[key] = struct{}{}
+		updates = append(updates, value)
 	}
 	if err := rows.Err(); err != nil {
 		_ = rows.Close()

@@ -98,6 +98,8 @@ describe("useAgentGUINewConversationActivation", () => {
     const secondSessionId = activate.mock.calls[1]?.[0].agentSessionId;
 
     expect(activate).toHaveBeenCalledTimes(2);
+    expect(activate.mock.calls[0]?.[0]).not.toHaveProperty("title");
+    expect(activate.mock.calls[1]?.[0]).not.toHaveProperty("title");
     expect(firstSessionId).toBeTruthy();
     expect(secondSessionId).toBeTruthy();
     expect(secondSessionId).not.toBe(firstSessionId);

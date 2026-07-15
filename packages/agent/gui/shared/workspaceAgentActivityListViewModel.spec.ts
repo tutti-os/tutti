@@ -2523,7 +2523,7 @@ describe("buildWorkspaceAgentActivityListViewModel", () => {
       }
     });
 
-    expect(view.activities[0]?.title).toBe("当前任务");
+    expect(view.activities[0]?.title).toBe("未命名对话");
   });
 
   it("does not replace a session title from user messages", () => {

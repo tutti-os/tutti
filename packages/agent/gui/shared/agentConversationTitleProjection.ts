@@ -5,7 +5,7 @@ import type { AgentGUIProvider } from "../types.ts";
 import type { WorkspaceAgentActivityTimelineItem } from "./workspaceAgentTimelineTypes.ts";
 
 export type AgentGUIResolvedProvider = AgentGUIProvider | "unknown";
-export type AgentGUIConversationTitleFallback = "generic-agent" | null;
+export type AgentGUIConversationTitleFallback = "untitled-conversation" | null;
 
 const AGENT_GUI_UNRESOLVED_PROVIDER: AgentGUIResolvedProvider = "unknown";
 
@@ -55,8 +55,7 @@ export function resolveAgentGUIProviderIdentity(input: {
 }
 
 export function resolveAgentGUIConversationTitle(
-  title: string | null | undefined,
-  provider: AgentGUIResolvedProvider
+  title: string | null | undefined
 ): {
   title: string;
   titleFallback: AgentGUIConversationTitleFallback;
@@ -68,15 +67,9 @@ export function resolveAgentGUIConversationTitle(
       titleFallback: null
     };
   }
-  if (provider === "unknown") {
-    return {
-      title: "",
-      titleFallback: "generic-agent"
-    };
-  }
   return {
-    title: providerLabel(provider),
-    titleFallback: null
+    title: "",
+    titleFallback: "untitled-conversation"
   };
 }
 
@@ -85,13 +78,13 @@ export function resolveAgentGUIConversationDisplayTitle(
     title: string;
     titleFallback?: AgentGUIConversationTitleFallback;
   },
-  fallbackAgentLabel: string
+  untitledConversationLabel: string
 ): string {
   if (input.title) {
     return input.title.trim();
   }
-  if (input.titleFallback === "generic-agent") {
-    return stripAgentGUITitleTrailingPeriod(fallbackAgentLabel);
+  if (input.titleFallback === "untitled-conversation") {
+    return untitledConversationLabel.trim();
   }
   return "";
 }
@@ -139,13 +132,6 @@ export function resolveAgentGUIProviderDisplayLabel(
   return providerLabel(resolvedProvider);
 }
 
-function stripAgentGUITitleTrailingPeriod(title: string): string {
-  return title
-    .trimEnd()
-    .replace(/[.。]+$/u, "")
-    .trimEnd();
-}
-
 function isAgentGUIUntitledTaskTitle(title: string): boolean {
   return localizedAgentGUIUntitledTaskLabels().has(compactTitleText(title));
 }
@@ -157,7 +143,7 @@ function localizedAgentGUIUntitledTaskLabels(): Set<string> {
         compactTitleText(
           translateInUiLanguage(
             language,
-            "agentHost.workspaceAgentsUntitledTask"
+            "agentHost.workspaceAgentsUntitledConversation"
           )
         )
       )

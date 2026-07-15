@@ -35,11 +35,11 @@ func Normalize(value string) string {
 }
 
 // DeriveInitial converts the first user-visible prompt into the canonical
-// title for a session that still has no real conversation title. It returns an
-// empty string once the current title is no longer a provider placeholder, so
-// callers can safely use the result as a compare-and-set candidate.
-func DeriveInitial(currentTitle string, provider string, visiblePrompt string, placeholderAliases ...string) string {
-	if !IsPlaceholder(currentTitle, provider, placeholderAliases...) {
+// title for a session that still has no title. It returns an empty string once
+// a title has already been established, so callers can safely use the result as
+// a compare-and-set candidate.
+func DeriveInitial(currentTitle string, visiblePrompt string) string {
+	if strings.TrimSpace(currentTitle) != "" {
 		return ""
 	}
 	title := Normalize(visiblePrompt)
@@ -55,15 +55,17 @@ func DeriveInitial(currentTitle string, provider string, visiblePrompt string, p
 	return strings.TrimSpace(string(runes[:MaxSessionTitleRunes-suffixRunes])) + suffix
 }
 
-// IsPlaceholder reports whether a title is the empty/provider identity used
-// before the first user prompt establishes a conversation title.
-func IsPlaceholder(value string, provider string, placeholderAliases ...string) bool {
+// IsLegacyPlaceholder reports whether a historical title contains the
+// provider or Agent Target identity that older clients wrote before the first
+// prompt. New sessions keep title empty and must not use this compatibility
+// classifier in their live submit path.
+func IsLegacyPlaceholder(value string, provider string, targetAliases ...string) bool {
 	title := normalizeIdentity(value)
 	provider = normalizeIdentity(provider)
 	if title == "" || title == provider {
 		return true
 	}
-	for _, candidate := range placeholderAliases {
+	for _, candidate := range targetAliases {
 		if title == normalizeIdentity(candidate) {
 			return true
 		}

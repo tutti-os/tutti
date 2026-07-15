@@ -301,8 +301,7 @@ export function conversationSummaryFromAgentSession(
     sessionProvider: session.provider
   });
   const { title, titleFallback } = resolveAgentGUIConversationTitle(
-    session.title,
-    provider
+    session.title
   );
   return {
     id: session.agentSessionId.trim(),
@@ -387,8 +386,7 @@ function conversationSummaryFromActivity(
       })
     : null;
   const { title, titleFallback } = resolveAgentGUIConversationTitle(
-    explicitSessionTitle ?? activity.title,
-    provider
+    explicitSessionTitle ?? activity.title
   );
   return {
     id: activity.sessionId,

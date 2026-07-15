@@ -100,7 +100,7 @@ function compactText(value: string): string {
 
 function workspaceAgentUntitledTaskLabel(): string {
   return normalizeAgentTitleText(
-    translate("agentHost.workspaceAgentsUntitledTask")
+    translate("agentHost.workspaceAgentsUntitledConversation")
   );
 }
 

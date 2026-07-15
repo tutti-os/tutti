@@ -30,7 +30,7 @@ func TestNormalize(t *testing.T) {
 func TestDeriveInitialCanonicalizesVisiblePrompt(t *testing.T) {
 	t.Parallel()
 
-	got := DeriveInitial("Claude Code", "claude-code", "  [@task](mention://workspace-issue/1)   inspect repo.  ")
+	got := DeriveInitial("", "  [@task](mention://workspace-issue/1)   inspect repo.  ")
 	if got != "@task inspect repo." {
 		t.Fatalf("DeriveInitial() = %q, want canonical prompt title", got)
 	}
@@ -39,7 +39,7 @@ func TestDeriveInitialCanonicalizesVisiblePrompt(t *testing.T) {
 func TestDeriveInitialDoesNotReplaceConversationTitle(t *testing.T) {
 	t.Parallel()
 
-	if got := DeriveInitial("Existing title", "codex", "new prompt"); got != "" {
+	if got := DeriveInitial("Existing title", "new prompt"); got != "" {
 		t.Fatalf("DeriveInitial() = %q, want no replacement", got)
 	}
 }
@@ -47,7 +47,7 @@ func TestDeriveInitialDoesNotReplaceConversationTitle(t *testing.T) {
 func TestDeriveInitialLimitsCanonicalTitleLength(t *testing.T) {
 	t.Parallel()
 
-	got := DeriveInitial("", "codex", strings.Repeat("春", MaxSessionTitleRunes+10))
+	got := DeriveInitial("", strings.Repeat("春", MaxSessionTitleRunes+10))
 	if runes := utf8.RuneCountInString(got); runes != MaxSessionTitleRunes {
 		t.Fatalf("DeriveInitial() rune count = %d, want %d", runes, MaxSessionTitleRunes)
 	}
@@ -56,26 +56,26 @@ func TestDeriveInitialLimitsCanonicalTitleLength(t *testing.T) {
 	}
 }
 
-func TestIsPlaceholderUsesProviderDescriptorIdentity(t *testing.T) {
+func TestIsLegacyPlaceholderUsesProviderDescriptorIdentity(t *testing.T) {
 	t.Parallel()
 
 	for _, title := range []string{"", "claude-code", "Claude Code", " claude "} {
-		if !IsPlaceholder(title, "claude-code") {
-			t.Fatalf("IsPlaceholder(%q) = false, want true", title)
+		if !IsLegacyPlaceholder(title, "claude-code") {
+			t.Fatalf("IsLegacyPlaceholder(%q) = false, want true", title)
 		}
 	}
-	if IsPlaceholder("Inspect repository", "claude-code") {
-		t.Fatal("IsPlaceholder() accepted a conversation title")
+	if IsLegacyPlaceholder("Inspect repository", "claude-code") {
+		t.Fatal("IsLegacyPlaceholder() accepted a conversation title")
 	}
 }
 
-func TestIsPlaceholderUsesDynamicProviderAliases(t *testing.T) {
+func TestIsLegacyPlaceholderUsesDynamicTargetAliases(t *testing.T) {
 	t.Parallel()
 
-	if !IsPlaceholder("Gemini", "acp:gemini", "Gemini") {
-		t.Fatal("IsPlaceholder() did not accept the dynamic provider display name")
+	if !IsLegacyPlaceholder("Gemini", "acp:gemini", "Gemini") {
+		t.Fatal("IsLegacyPlaceholder() did not accept the historical target display name")
 	}
-	if IsPlaceholder("Inspect repository", "acp:gemini", "Gemini") {
-		t.Fatal("IsPlaceholder() accepted a dynamic provider conversation title")
+	if IsLegacyPlaceholder("Inspect repository", "acp:gemini", "Gemini") {
+		t.Fatal("IsLegacyPlaceholder() accepted a conversation title")
 	}
 }

@@ -821,7 +821,6 @@ func TestControllerHiddenSessionPublishesLiveEventsAndReportsActivity(t *testing
 		RoomID:   "room-1",
 		Provider: ProviderCodex,
 		CWD:      "/workspace",
-		Title:    "Codex",
 		Visible:  boolPtr(false),
 	})
 	if err != nil {
@@ -856,7 +855,7 @@ func TestControllerHiddenSessionPublishesLiveEventsAndReportsActivity(t *testing
 		AgentSessionID:   started.Session.AgentSessionID,
 		Content:          textPrompt("hello"),
 		InitialTitle:     "hello",
-		InitialTitleBase: "Codex",
+		InitialTitleBase: "",
 	})
 	if err != nil {
 		t.Fatalf("Exec: %v", err)
@@ -883,7 +882,6 @@ func TestControllerStartExecCancelPublishesAndReports(t *testing.T) {
 		RoomID:   "room-1",
 		Provider: ProviderCodex,
 		CWD:      "/workspace",
-		Title:    "Codex",
 	})
 	if err != nil {
 		t.Fatalf("Start: %v", err)
@@ -906,7 +904,7 @@ func TestControllerStartExecCancelPublishesAndReports(t *testing.T) {
 		AgentSessionID:   started.Session.AgentSessionID,
 		Content:          textPrompt("hello"),
 		InitialTitle:     "hello",
-		InitialTitleBase: "Codex",
+		InitialTitleBase: "",
 	})
 	if err != nil {
 		t.Fatalf("Exec: %v", err)

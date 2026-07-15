@@ -243,9 +243,7 @@ func (s *Service) Create(ctx context.Context, workspaceID string, input CreateSe
 	visiblePrompt := firstNonEmptyString(displayPrompt, normalizedPromptText, preparedDisplayPrompt)
 	initialTitle := titletext.DeriveInitial(
 		session.Title,
-		session.Provider,
 		visiblePrompt,
-		launch.TitlePlaceholderAliases...,
 	)
 	logAgentSubmitTrace("service.create.exec_requested", workspaceID, session.ID, input.Metadata, nil)
 	nodeStartedAt = time.Now()
@@ -286,9 +284,8 @@ func (s *Service) Create(ctx context.Context, workspaceID string, input CreateSe
 }
 
 type resolvedCreateSessionLaunch struct {
-	Provider                string
-	ProviderTargetRef       map[string]any
-	TitlePlaceholderAliases []string
+	Provider          string
+	ProviderTargetRef map[string]any
 }
 
 func (s *Service) resolveCreateSessionLaunch(ctx context.Context, input CreateSessionInput) (resolvedCreateSessionLaunch, error) {
@@ -324,26 +321,9 @@ func (s *Service) resolveCreateSessionLaunch(ctx context.Context, input CreateSe
 		return resolvedCreateSessionLaunch{}, fmt.Errorf("%w: provider does not match agent target", ErrInvalidArgument)
 	}
 	return resolvedCreateSessionLaunch{
-		Provider:                derivedProvider,
-		ProviderTargetRef:       derivedRef,
-		TitlePlaceholderAliases: []string{normalized.Name},
+		Provider:          derivedProvider,
+		ProviderTargetRef: derivedRef,
 	}, nil
-}
-
-func (s *Service) sessionTitlePlaceholderAliases(ctx context.Context, agentTargetID string) []string {
-	agentTargetID = strings.TrimSpace(agentTargetID)
-	if s.AgentTargetStore == nil || agentTargetID == "" {
-		return nil
-	}
-	target, err := s.AgentTargetStore.GetAgentTarget(ctx, agentTargetID)
-	if err != nil {
-		return nil
-	}
-	name := strings.TrimSpace(target.Name)
-	if name == "" {
-		return nil
-	}
-	return []string{name}
 }
 
 func (s *Service) resolveCreateSessionModel(ctx context.Context, provider string, providerTargetRef map[string]any, model *string) *string {

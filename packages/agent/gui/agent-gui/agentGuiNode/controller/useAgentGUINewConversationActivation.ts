@@ -1,6 +1,5 @@
 import { selectLatestActivationForSession } from "@tutti-os/agent-activity-core";
 import { useCallback } from "react";
-import { AGENT_PROVIDER_LABEL } from "../../../contexts/settings/domain/agentSettings";
 import { translate } from "../../../i18n/index";
 import type { AgentPromptContentBlock } from "../../../shared/contracts/dto";
 import {
@@ -108,10 +107,6 @@ export function useAgentGUINewConversationActivation(
       const normalizedInitialPrompt =
         initialDisplayPrompt ??
         agentPromptContentDisplayText(normalizedInitialContent);
-      const initialConversationTitle =
-        normalizedInitialPrompt ||
-        (AGENT_PROVIDER_LABEL as Record<string, string>)[targetData.provider] ||
-        targetData.provider;
       isCreatingConversationRef.current = true;
       setDetailError(null);
       const provider = targetData.provider;
@@ -216,7 +211,6 @@ export function useAgentGUINewConversationActivation(
         initialDisplayPrompt,
         runtimeContent: toRuntimeSendContent(normalizedInitialContent),
         submitDiagnostics: agentSubmitTraceDiagnostics(submitTrace),
-        title: initialConversationTitle,
         settings
       });
       if (requestId === null) return null;

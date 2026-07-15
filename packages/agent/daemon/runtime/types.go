@@ -229,8 +229,8 @@ type Session struct {
 	// LifecycleSeq is the sequence of the last applied lifecycle snapshot;
 	// lower-seq snapshots arriving over a slower channel are dropped.
 	LifecycleSeq uint64 `json:"-"`
-	// InitialTitleEstablished prevents a provider-shaped first prompt title
-	// from being mistaken for a placeholder on a later turn in this runtime.
+	// InitialTitleEstablished prevents a first-submit title candidate from
+	// overwriting a title that was established concurrently in this runtime.
 	InitialTitleEstablished bool `json:"-"`
 }
 

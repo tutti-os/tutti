@@ -2318,7 +2318,6 @@ func TestServiceSendInputDerivesMissingInitialTitle(t *testing.T) {
 		ID:          "session-1",
 		WorkspaceID: "ws-1",
 		Provider:    "codex",
-		Title:       "Codex",
 		Status:      "ready",
 		Visible:     true,
 	}
@@ -2335,8 +2334,8 @@ func TestServiceSendInputDerivesMissingInitialTitle(t *testing.T) {
 	if got := runtime.execCalls[0].InitialTitle; got != "@task inspect repo" {
 		t.Fatalf("runtime initial title = %q, want canonical visible prompt", got)
 	}
-	if got := runtime.execCalls[0].InitialTitleBase; got != "Codex" {
-		t.Fatalf("runtime initial title base = %q, want provider placeholder", got)
+	if got := runtime.execCalls[0].InitialTitleBase; got != "" {
+		t.Fatalf("runtime initial title base = %q, want empty title", got)
 	}
 }
 
@@ -2366,7 +2365,7 @@ func TestServiceSendInputPrefersTextForMixedContentInitialTitle(t *testing.T) {
 	}
 }
 
-func TestServiceSendInputUsesDynamicAgentTargetNameAsPlaceholder(t *testing.T) {
+func TestServiceSendInputDoesNotClassifyDynamicTargetNameAtRuntime(t *testing.T) {
 	runtime := newFakeRuntime()
 	service := newIsolatedAgentService(runtime)
 	service.AgentTargetStore = fakeAgentTargetStore{targets: map[string]agenttargetbiz.Target{
@@ -2388,8 +2387,8 @@ func TestServiceSendInputUsesDynamicAgentTargetNameAsPlaceholder(t *testing.T) {
 	if err != nil {
 		t.Fatalf("SendInput error = %v", err)
 	}
-	if got := runtime.execCalls[0].InitialTitle; got != "inspect repo" {
-		t.Fatalf("runtime initial title = %q, want dynamic-provider prompt title", got)
+	if got := runtime.execCalls[0].InitialTitle; got != "" {
+		t.Fatalf("runtime initial title = %q, want target title preserved for migration-only compatibility", got)
 	}
 }
 
