@@ -110,9 +110,7 @@ export function createAppReferenceListBackend(
         items: response.items.map((item) =>
           appItemToProtocol(appId, item, appMetadata.label, appMetadata.iconUrl)
         ),
-        nextCursor: response.nextCursor ?? null,
-        // 应用负责定义项目/产物的业务顺序（如更新时间倒序），前端不得按名称重排。
-        ordered: true
+        nextCursor: response.nextCursor ?? null
       };
     },
 

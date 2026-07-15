@@ -8,6 +8,7 @@ import {
   createAppReferenceListBackend,
   listReferenceSupportingApps
 } from "./appReferenceListBackend.ts";
+import { createAppArtifactReferenceSource } from "./appArtifactReferenceSource.ts";
 
 const scope: ReferenceScope = { workspaceId: "workspace-1" };
 
@@ -71,7 +72,6 @@ test("app backend describeHandle resolves the app handle", async () => {
   const apps = await backend.list(scope, { parentGroupId: null });
   const appGroupId = firstGroupId(apps.items);
 
-  assert.equal(apps.ordered, undefined);
   assert.deepEqual(backend.describeHandle?.(appGroupId), {
     source: "app",
     id: "app-7"
@@ -122,7 +122,7 @@ test("app backend labels child groups with app and project names", async () => {
   );
 });
 
-test("app backend preserves the application reference order", async () => {
+test("app source renders application references in the returned order", async () => {
   const tuttidClient = {
     listWorkspaceApps: async () => ({
       apps: [
@@ -154,19 +154,21 @@ test("app backend preserves the application reference order", async () => {
       nextCursor: null
     })
   } as unknown as TuttidClient;
-  const backend = createAppReferenceListBackend(tuttidClient);
-
-  const result = await backend.list(scope, {
-    parentGroupId: "app:ai-media-canvas",
-    cursor: null,
-    filter: null
+  const source = createAppArtifactReferenceSource({
+    tuttidClient,
+    adapter: {},
+    label: "应用文件"
   });
 
+  const root = await source.listChildren(scope, { node: null });
+  const appGroup = root.entries[0];
+  assert.ok(appGroup);
+  const result = await source.listChildren(scope, { node: appGroup.ref });
+
+  assert.equal(root.ordered, true);
   assert.equal(result.ordered, true);
   assert.deepEqual(
-    result.items.map((item) =>
-      item.type === "group" ? item.displayName : item.reference.displayName
-    ),
+    result.entries.map((item) => item.displayName),
     ["Untitled", "Alpha"]
   );
 });
