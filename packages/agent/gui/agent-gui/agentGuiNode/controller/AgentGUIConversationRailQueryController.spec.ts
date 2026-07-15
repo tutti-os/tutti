@@ -45,6 +45,12 @@ describe("AgentGUIConversationRailQueryController", () => {
       expect(listSessionsPage).toHaveBeenCalledWith(
         expect.objectContaining({ searchQuery: "second" })
       );
+      expect(controller.getSnapshot().railSearch.pending).toBe(false);
+
+      controller.setSearchQuery("transient");
+      controller.setSearchQuery("second");
+      expect(controller.getSnapshot().railSearch.pending).toBe(true);
+      expect(listSessionsPage).toHaveBeenCalledTimes(1);
 
       controller.setSearchQuery("");
       expect(controller.getSnapshot().railSearch.pending).toBe(false);

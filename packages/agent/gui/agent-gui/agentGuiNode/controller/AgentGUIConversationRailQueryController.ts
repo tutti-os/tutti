@@ -596,6 +596,7 @@ export class AgentGUIConversationRailQueryController {
       return;
     }
 
+    this.searchRequestKey = null;
     this.emit();
     // timing: wait for a quiet input window before querying conversation history
     this.searchDebounceTask = this.scheduler.schedule(
