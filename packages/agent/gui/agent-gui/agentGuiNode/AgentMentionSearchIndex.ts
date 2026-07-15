@@ -67,18 +67,19 @@ export async function fetchAgentMentionFilterResult(input: {
             diagnostics: providerDiagnostics,
             provenanceFilter: input.provenanceFilter
           });
-      const agentGeneratedFileQuery = input.includeAgentGeneratedFiles
-        ? input.queryProviderMentionItemsById({
-            providerId: AGENT_GENERATED_FILE_PROVIDER_ID,
-            workspaceId: input.workspaceId,
-            currentUserId: input.currentUserId,
-            query: input.query,
-            limit: input.fileLimit,
-            sessionCwd: input.sessionCwd,
-            diagnostics: providerDiagnostics,
-            provenanceFilter: input.provenanceFilter
-          })
-        : Promise.resolve([] as AgentContextMentionItem[]);
+      const agentGeneratedFileQuery =
+        input.includeAgentGeneratedFiles || agentFilterActive
+          ? input.queryProviderMentionItemsById({
+              providerId: AGENT_GENERATED_FILE_PROVIDER_ID,
+              workspaceId: input.workspaceId,
+              currentUserId: input.currentUserId,
+              query: input.query,
+              limit: input.fileLimit,
+              sessionCwd: input.sessionCwd,
+              diagnostics: providerDiagnostics,
+              provenanceFilter: input.provenanceFilter
+            })
+          : Promise.resolve([] as AgentContextMentionItem[]);
       const [fileItems, agentGeneratedFileItems] = await Promise.all([
         fileQuery,
         agentGeneratedFileQuery

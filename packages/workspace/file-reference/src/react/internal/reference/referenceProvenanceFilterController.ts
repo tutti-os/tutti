@@ -6,8 +6,9 @@ import type {
 import { EMPTY_REFERENCE_PROVENANCE_FILTER } from "../../../contracts/referenceProvenance.ts";
 import {
   normalizeReferenceProvenanceFilter,
-  referenceProvenanceFilterIds,
-  withReferenceProvenanceFilterIds
+  normalizeReferenceProvenanceCatalog,
+  toggleAllReferenceProvenanceFilterIds,
+  toggleReferenceProvenanceFilterId
 } from "../../../core/referenceProvenance.ts";
 
 export interface ReferenceProvenanceFilterSnapshot {
@@ -34,23 +35,20 @@ const EMPTY_CATALOG: ReferenceProvenanceCatalog = {
 export function createReferenceProvenanceFilterController(
   initialCatalog: ReferenceProvenanceCatalog = EMPTY_CATALOG
 ): ReferenceProvenanceFilterController {
+  const normalizedInitialCatalog =
+    normalizeReferenceProvenanceCatalog(initialCatalog);
   let snapshot: ReferenceProvenanceFilterSnapshot = {
-    catalog: initialCatalog,
+    catalog: normalizedInitialCatalog,
     value: normalizeReferenceProvenanceFilter(
       EMPTY_REFERENCE_PROVENANCE_FILTER,
-      initialCatalog
+      normalizedInitialCatalog
     )
   };
   const listeners = new Set<() => void>();
   const publish = (next: ReferenceProvenanceFilterSnapshot) => {
-    if (snapshot === next) return;
     snapshot = next;
     listeners.forEach((listener) => listener());
   };
-  const optionsFor = (dimension: ReferenceProvenanceDimension) =>
-    dimension === "agent"
-      ? snapshot.catalog.agentOptions
-      : snapshot.catalog.memberOptions;
   const setValue = (value: ReferenceProvenanceFilter) => {
     publish({
       ...snapshot,
@@ -65,33 +63,34 @@ export function createReferenceProvenanceFilterController(
       return () => listeners.delete(listener);
     },
     setCatalog(catalog) {
+      const normalizedCatalog = normalizeReferenceProvenanceCatalog(catalog);
       publish({
-        catalog,
-        value: normalizeReferenceProvenanceFilter(snapshot.value, catalog)
+        catalog: normalizedCatalog,
+        value: normalizeReferenceProvenanceFilter(
+          snapshot.value,
+          normalizedCatalog
+        )
       });
     },
     setValue(value) {
       setValue(value);
     },
     toggle(dimension, id) {
-      const current = referenceProvenanceFilterIds(snapshot.value, dimension);
-      const allIds = optionsFor(dimension)
-        .filter((option) => !option.disabled)
-        .map((option) => option.id);
-      const next = new Set(current ?? allIds);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
       setValue(
-        withReferenceProvenanceFilterIds(snapshot.value, dimension, [...next])
+        toggleReferenceProvenanceFilterId(
+          snapshot.value,
+          snapshot.catalog,
+          dimension,
+          id
+        )
       );
     },
     toggleAll(dimension) {
-      const current = referenceProvenanceFilterIds(snapshot.value, dimension);
       setValue(
-        withReferenceProvenanceFilterIds(
+        toggleAllReferenceProvenanceFilterIds(
           snapshot.value,
-          dimension,
-          current === null ? [] : null
+          snapshot.catalog,
+          dimension
         )
       );
     },

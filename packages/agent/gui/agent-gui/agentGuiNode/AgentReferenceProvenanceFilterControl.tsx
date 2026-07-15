@@ -3,9 +3,11 @@ import { translate } from "../../i18n/index";
 import type { AgentComposerReferenceProvenanceFilter } from "./composer/AgentComposer.types";
 
 export function AgentReferenceProvenanceFilterControl({
-  filter
+  filter,
+  popoverElevation = "default"
 }: {
   filter: AgentComposerReferenceProvenanceFilter;
+  popoverElevation?: "default" | "panel";
 }): React.JSX.Element {
   return (
     <ReferenceProvenanceFilterControl
@@ -23,6 +25,7 @@ export function AgentReferenceProvenanceFilterControl({
         reset: translate("agentHost.agentGui.provenanceFilterReset")
       }}
       memberOptions={filter.snapshot.catalog.memberOptions}
+      popoverElevation={popoverElevation}
       value={filter.snapshot.value}
       onReset={filter.controller.reset}
       onToggle={filter.controller.toggle}

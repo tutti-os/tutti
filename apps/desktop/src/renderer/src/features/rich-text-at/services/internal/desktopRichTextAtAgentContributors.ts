@@ -408,11 +408,12 @@ async function listAgentSessionsByProvenance(input: {
       .map((session) => [session.id, session] as const)
   );
   const sessions = [...sessionsById.values()]
-    .sort(
-      (left, right) =>
-        (right.updatedAtUnixMs ?? right.createdAtUnixMs ?? 0) -
-        (left.updatedAtUnixMs ?? left.createdAtUnixMs ?? 0)
-    )
+    .sort((left, right) => {
+      const timeDifference =
+        agentSessionConversationSortTime(right) -
+        agentSessionConversationSortTime(left);
+      return timeDifference || left.id.localeCompare(right.id);
+    })
     .slice(0, input.limit && input.limit > 0 ? input.limit : undefined);
   return {
     ...responses[0],
@@ -420,6 +421,14 @@ async function listAgentSessionsByProvenance(input: {
     workspaceId: responses[0]?.workspaceId || input.workspaceId,
     sessions
   };
+}
+
+function agentSessionConversationSortTime(
+  session: Awaited<
+    ReturnType<TuttidClient["listWorkspaceAgentSessions"]>
+  >["sessions"][number]
+): number {
+  return session.latestTurn?.startedAtUnixMs || session.createdAtUnixMs || 0;
 }
 
 function resolveAgentSessionScope(

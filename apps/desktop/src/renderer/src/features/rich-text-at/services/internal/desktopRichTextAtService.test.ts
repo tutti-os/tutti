@@ -484,13 +484,15 @@ test("desktop agent session mentions query each selected Agent before merging", 
               createdAtUnixMs: agentTargetId === "agent-b" ? 2 : 1,
               cwd: null,
               id: `session-${agentTargetId}`,
-              latestTurn: null,
+              latestTurn: {
+                startedAtUnixMs: agentTargetId === "agent-a" ? 10 : 5
+              },
               latestTurnInteractions: [],
               pendingInteractions: [],
               provider: "codex",
               providerSessionId: null,
               title: agentTargetId,
-              updatedAtUnixMs: agentTargetId === "agent-b" ? 2 : 1
+              updatedAtUnixMs: agentTargetId === "agent-b" ? 100 : 1
             }
           ]
         };
@@ -522,7 +524,7 @@ test("desktop agent session mentions query each selected Agent before merging", 
   assert.deepEqual(agentTargetIds, ["agent-a", "agent-b"]);
   assert.deepEqual(
     items.map((item) => (item as { agentTargetId?: string }).agentTargetId),
-    ["agent-b", "agent-a"]
+    ["agent-a", "agent-b"]
   );
 });
 

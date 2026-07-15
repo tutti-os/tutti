@@ -40,6 +40,7 @@ export class AgentMentionSearchController extends AgentMentionSearchControllerBa
       ? referenceProvenanceFilterCacheKey(filter)
       : "disabled";
     if (previousKey === nextKey) return;
+    this.cancelPendingPreload();
     this.currentProvenanceFilter = filter;
     this.updateQuery({
       workspaceId: this.activeWorkspaceId,
@@ -176,12 +177,11 @@ export class AgentMentionSearchController extends AgentMentionSearchControllerBa
     const filter = input.filter ?? DEFAULT_AGENT_MENTION_FILTER;
     const currentUserId = input.currentUserId?.trim() ?? "";
     const sessionCwd = input.sessionCwd?.trim() ?? "";
-    const cacheKey = this.browseCacheKey({
-      currentUserId,
-      filter,
-      sessionCwd,
-      workspaceId
-    });
+    const provenanceFilter = this.currentProvenanceFilter;
+    const cacheKey = this.browseCacheKey(
+      { currentUserId, filter, sessionCwd, workspaceId },
+      provenanceFilter
+    );
     if (this.readBrowseCache(cacheKey).isFresh) {
       return;
     }
@@ -200,6 +200,7 @@ export class AgentMentionSearchController extends AgentMentionSearchControllerBa
         cacheKey,
         currentUserId,
         filter,
+        provenanceFilter,
         sessionCwd,
         workspaceId
       });
@@ -210,10 +211,18 @@ export class AgentMentionSearchController extends AgentMentionSearchControllerBa
     cacheKey: string;
     currentUserId: string;
     filter: AgentMentionFilterId;
+    provenanceFilter: ReferenceProvenanceFilter | null;
     sessionCwd: string;
     workspaceId: string;
   }): void {
-    const { cacheKey, currentUserId, filter, sessionCwd, workspaceId } = input;
+    const {
+      cacheKey,
+      currentUserId,
+      filter,
+      provenanceFilter,
+      sessionCwd,
+      workspaceId
+    } = input;
     this.logLifecycle("browse.preload", {
       filter,
       providerIds: this.providerIdsForDiagnostics(),
@@ -239,7 +248,8 @@ export class AgentMentionSearchController extends AgentMentionSearchControllerBa
         sessionCwd
       },
       cacheKey,
-      "preload"
+      "preload",
+      provenanceFilter
     ).catch((error) => {
       this.logLifecycle("browse.fetch.error", {
         errorKind: diagnosticErrorKind(error),
@@ -250,7 +260,7 @@ export class AgentMentionSearchController extends AgentMentionSearchControllerBa
     });
   }
 
-  private cancelPendingPreload(): void {
+  protected cancelPendingPreload(): void {
     if (this.preloadCancel) {
       this.preloadCancel();
       this.preloadCancel = null;

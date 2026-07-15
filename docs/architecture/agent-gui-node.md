@@ -2837,6 +2837,15 @@ carry durable Agent provenance and therefore fail closed when an Agent
 constraint is active. Existing result groups remain unchanged; the filter
 narrows their contents and does not introduce a second grouping layer.
 
+Only catalog entries with a durable `agentTargetId` participate in filtering;
+host target ids are not substitutes. Catalogs and filters are normalized at the
+shared boundary, and cache identity uses collision-free semantic serialization.
+Provider replacement must reapply the current filter. Idle preload captures the
+filter value used to build its cache key, and an interactive filter change
+aborts or invalidates the active request before the replacement debounce is
+scheduled. Typed `@` queries in the File category continue to query the
+Agent-generated-file provider whenever an Agent constraint is active.
+
 The filter popover is portal-mounted and must mark its content as `nodrag`.
 Portal content is not a DOM descendant of the Agent window trigger, so the
 window's click-capture guard otherwise treats the option click as a draggable

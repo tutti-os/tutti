@@ -526,7 +526,7 @@ export function WorkspaceSettingsPanel({
                   pendingFeatureFlags,
                   AGENT_REFERENCE_PROVENANCE_FILTER_FLAG
                 )}
-                referenceProvenanceFilterUpdating={
+                featureFlagsUpdating={
                   desktopPreferencesState.changingFeatureFlags !== null
                 }
                 showAppDeveloperSources={
@@ -559,13 +559,13 @@ export function WorkspaceSettingsPanel({
                 }}
                 onLabEnabledChange={(enabled) => {
                   void settingsService.changeFeatureFlags({
-                    ...desktopPreferencesState.featureFlags,
+                    ...pendingFeatureFlags,
                     [LAB_ENABLED_FLAG]: enabled
                   });
                 }}
                 onReferenceProvenanceFilterEnabledChange={(enabled) => {
                   void settingsService.changeFeatureFlags({
-                    ...desktopPreferencesState.featureFlags,
+                    ...pendingFeatureFlags,
                     [AGENT_REFERENCE_PROVENANCE_FILTER_FLAG]: enabled
                   });
                 }}
@@ -1777,7 +1777,7 @@ function WorkspaceDeveloperSettingsSection({
   fileDefaultOpenersByExtension,
   labEnabled,
   referenceProvenanceFilterEnabled,
-  referenceProvenanceFilterUpdating,
+  featureFlagsUpdating,
   showAppDeveloperSources,
   tuttiAgentSwitchEnabled,
   updateChannel,
@@ -1808,7 +1808,7 @@ function WorkspaceDeveloperSettingsSection({
   fileDefaultOpenersByExtension: DesktopFileDefaultOpenersByExtension;
   labEnabled: boolean;
   referenceProvenanceFilterEnabled: boolean;
-  referenceProvenanceFilterUpdating: boolean;
+  featureFlagsUpdating: boolean;
   showAppDeveloperSources: boolean;
   tuttiAgentSwitchEnabled: boolean;
   updateChannel: DesktopUpdateChannel;
@@ -1966,7 +1966,7 @@ function WorkspaceDeveloperSettingsSection({
             "workspace.settings.developer.referenceProvenanceFilterLabel"
           )}
           checked={referenceProvenanceFilterEnabled}
-          disabled={referenceProvenanceFilterUpdating}
+          disabled={featureFlagsUpdating}
           onCheckedChange={onReferenceProvenanceFilterEnabledChange}
         />
       </div>
@@ -1983,6 +1983,7 @@ function WorkspaceDeveloperSettingsSection({
         <Switch
           aria-label={t("workspace.settings.developer.labVisibilityLabel")}
           checked={labEnabled}
+          disabled={featureFlagsUpdating}
           onCheckedChange={onLabEnabledChange}
         />
       </div>

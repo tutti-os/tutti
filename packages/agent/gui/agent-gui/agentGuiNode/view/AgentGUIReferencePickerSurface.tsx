@@ -55,7 +55,10 @@ export function AgentGUIReferencePickerSurface({
       provenanceFilter={provenanceFilter?.snapshot.value}
       provenanceFilterControl={
         provenanceFilter ? (
-          <AgentReferenceProvenanceFilterControl filter={provenanceFilter} />
+          <AgentReferenceProvenanceFilterControl
+            filter={provenanceFilter}
+            popoverElevation="panel"
+          />
         ) : undefined
       }
       resolveEntryIconUrl={resolveEntryIconUrl}

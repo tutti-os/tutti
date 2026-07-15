@@ -393,6 +393,12 @@ export function ReferenceSourcePicker({
     if (event.key !== "Escape") {
       return;
     }
+    if (
+      event.target instanceof Node &&
+      !event.currentTarget.contains(event.target)
+    ) {
+      return;
+    }
     event.preventDefault();
     event.stopPropagation();
     onClose();

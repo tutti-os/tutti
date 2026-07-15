@@ -72,6 +72,7 @@ test("provenance filter handles row clicks and disabled option visibility", asyn
         reset: "Reset"
       },
       memberOptions: [],
+      popoverElevation: "panel",
       onReset() {},
       onToggle(_dimension, id) {
         calls.push(id);
@@ -103,22 +104,24 @@ test("provenance filter handles row clicks and disabled option visibility", asyn
     });
 
     assert.doesNotMatch(dom.window.document.body.textContent ?? "", /Cursor/);
-    assert.ok(dom.window.document.querySelector(".nodrag"));
+    const popover = dom.window.document.querySelector<HTMLElement>(".nodrag");
+    assert.ok(popover);
+    assert.equal(popover.style.zIndex, "var(--z-panel-popover)");
 
-    const allAgentsLabel = [
-      ...dom.window.document.querySelectorAll("span")
+    const allAgentsRow = [
+      ...dom.window.document.querySelectorAll<HTMLElement>('[role="checkbox"]')
     ].find((element) => element.textContent === "All agents");
-    assert.ok(allAgentsLabel);
+    assert.ok(allAgentsRow);
     await act(async () => {
-      allAgentsLabel.click();
+      allAgentsRow.click();
     });
 
-    const codexLabel = [...dom.window.document.querySelectorAll("span")].find(
-      (element) => element.textContent === "Codex"
-    );
-    assert.ok(codexLabel);
+    const codexRow = [
+      ...dom.window.document.querySelectorAll<HTMLElement>('[role="checkbox"]')
+    ].find((element) => element.textContent === "Codex");
+    assert.ok(codexRow);
     await act(async () => {
-      codexLabel.click();
+      codexRow.click();
     });
 
     assert.deepEqual(calls, ["all:agent", "codex"]);
@@ -132,14 +135,11 @@ test("provenance filter handles row clicks and disabled option visibility", asyn
       );
     });
 
-    const cursorLabel = [...dom.window.document.querySelectorAll("span")].find(
-      (element) => element.textContent === "Cursor"
-    );
-    assert.ok(cursorLabel);
-    assert.equal(
-      cursorLabel.closest('[role="checkbox"]')?.getAttribute("aria-disabled"),
-      "true"
-    );
+    const cursorRow = [
+      ...dom.window.document.querySelectorAll<HTMLElement>('[role="checkbox"]')
+    ].find((element) => element.textContent === "Cursor");
+    assert.ok(cursorRow);
+    assert.equal(cursorRow.getAttribute("aria-disabled"), "true");
   } finally {
     if (root) {
       await act(async () => {

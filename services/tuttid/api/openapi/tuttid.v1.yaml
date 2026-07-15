@@ -2470,6 +2470,7 @@ paths:
           explode: true
           schema:
             type: array
+            maxItems: 100
             items:
               type: string
               minLength: 1

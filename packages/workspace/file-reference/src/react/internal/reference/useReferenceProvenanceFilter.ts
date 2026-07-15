@@ -6,9 +6,10 @@ import type {
 } from "../../../contracts/referenceProvenance.ts";
 import { EMPTY_REFERENCE_PROVENANCE_FILTER } from "../../../contracts/referenceProvenance.ts";
 import {
+  normalizeReferenceProvenanceCatalog,
   normalizeReferenceProvenanceFilter,
-  referenceProvenanceFilterIds,
-  withReferenceProvenanceFilterIds
+  toggleAllReferenceProvenanceFilterIds,
+  toggleReferenceProvenanceFilterId
 } from "../../../core/referenceProvenance.ts";
 import type { ReferenceProvenanceFilterController } from "./referenceProvenanceFilterController.ts";
 
@@ -23,8 +24,9 @@ export function useReferenceProvenanceFilter(
 }
 
 export function useReferenceProvenanceFilterCatalog(
-  catalog: ReferenceProvenanceCatalog
+  injectedCatalog: ReferenceProvenanceCatalog
 ) {
+  const catalog = normalizeReferenceProvenanceCatalog(injectedCatalog);
   const catalogKey = [...catalog.enabledDimensions].sort().join("|");
   const [stored, setStored] = useState<{
     catalogKey: string;
@@ -49,40 +51,18 @@ export function useReferenceProvenanceFilterCatalog(
     }));
   };
   const value = normalizeReferenceProvenanceFilter(storedValue, catalog);
-  const setDimensionIds = (
-    dimension: ReferenceProvenanceDimension,
-    ids: readonly string[] | null
-  ) => {
-    setStoredValue((current) =>
-      withReferenceProvenanceFilterIds(
-        normalizeReferenceProvenanceFilter(current, catalog),
-        dimension,
-        ids
-      )
-    );
-  };
   return {
     snapshot: { catalog, value },
     controller: {
       reset: () => setStoredValue(() => EMPTY_REFERENCE_PROVENANCE_FILTER),
       toggle(dimension: ReferenceProvenanceDimension, id: string) {
-        const current = referenceProvenanceFilterIds(value, dimension);
-        const options =
-          dimension === "agent" ? catalog.agentOptions : catalog.memberOptions;
-        const next = new Set(
-          current ??
-            options
-              .filter((option) => !option.disabled)
-              .map((option) => option.id)
+        setStoredValue((current) =>
+          toggleReferenceProvenanceFilterId(current, catalog, dimension, id)
         );
-        if (next.has(id)) next.delete(id);
-        else next.add(id);
-        setDimensionIds(dimension, [...next]);
       },
       toggleAll(dimension: ReferenceProvenanceDimension) {
-        setDimensionIds(
-          dimension,
-          referenceProvenanceFilterIds(value, dimension) === null ? [] : null
+        setStoredValue((current) =>
+          toggleAllReferenceProvenanceFilterIds(current, catalog, dimension)
         );
       }
     }

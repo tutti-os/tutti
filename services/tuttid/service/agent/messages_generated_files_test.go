@@ -3,6 +3,7 @@ package agent
 import (
 	"context"
 	"errors"
+	"fmt"
 	"reflect"
 	"testing"
 
@@ -49,6 +50,22 @@ func TestListGeneratedFilesRejectsEmptyAgentTargetFilters(t *testing.T) {
 	service := &Service{MessageReader: &generatedFileReaderStub{}}
 	_, err := service.ListGeneratedFiles(context.Background(), "workspace-1", ListGeneratedFilesInput{
 		AgentTargetIDs: []string{" ", ""},
+	})
+	if !errors.Is(err, ErrInvalidArgument) {
+		t.Fatalf("ListGeneratedFiles() error = %v, want ErrInvalidArgument", err)
+	}
+}
+
+func TestListGeneratedFilesRejectsTooManyAgentTargetFilters(t *testing.T) {
+	t.Parallel()
+
+	ids := make([]string, MaxGeneratedFileAgentTargetFilters+1)
+	for index := range ids {
+		ids[index] = fmt.Sprintf("agent-%d", index)
+	}
+	service := &Service{MessageReader: &generatedFileReaderStub{}}
+	_, err := service.ListGeneratedFiles(context.Background(), "workspace-1", ListGeneratedFilesInput{
+		AgentTargetIDs: ids,
 	})
 	if !errors.Is(err, ErrInvalidArgument) {
 		t.Fatalf("ListGeneratedFiles() error = %v, want ErrInvalidArgument", err)

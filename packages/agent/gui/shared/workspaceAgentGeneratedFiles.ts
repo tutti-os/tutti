@@ -19,10 +19,6 @@ export function collectWorkspaceAgentGeneratedFiles(
   options: CollectWorkspaceAgentGeneratedFilesOptions = {}
 ): WorkspaceAgentChangedFile[] {
   const sessionCwdFilter = normalizeComparablePath(options.sessionCwd ?? "");
-  const workspaceRoot =
-    sessionCwdFilter ||
-    normalizeComparablePath(options.workspaceRoot ?? "") ||
-    resolveWorkspaceRootFromSessions(source.sessions);
   const allowedAgentTargetIds = options.agentTargetIds
     ? new Set(options.agentTargetIds.map((id) => id.trim()).filter(Boolean))
     : null;
@@ -33,6 +29,10 @@ export function collectWorkspaceAgentGeneratedFiles(
           allowedAgentTargetIds.has(session.agentTargetId)
       )
     : source.sessions;
+  const workspaceRoot =
+    sessionCwdFilter ||
+    normalizeComparablePath(options.workspaceRoot ?? "") ||
+    resolveWorkspaceRootFromSessions(provenanceSessions);
   const sessions = sessionCwdFilter
     ? provenanceSessions.filter(
         (session) =>

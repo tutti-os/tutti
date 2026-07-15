@@ -41,6 +41,7 @@ interface FakeOptions {
   children: Record<string, ListChildrenResult>; // key = `${sourceId}:${nodeId}`
   search?: Record<string, SearchResult>; // key = `${sourceId}:${query}`
   onSearch?: (input: SearchInput) => void;
+  searchImpl?: (input: SearchInput) => Promise<SearchResult>;
   /** navigable=true 的源(app/issue):confirm 时文件夹递归展开成文件。 */
   navigable?: Record<string, boolean>;
   /** locateTarget 返回的 NodeRef 路径(root → leaf),key = sourceId。 */
@@ -61,6 +62,9 @@ function fakeAggregator(options: FakeOptions): ReferenceSourceAggregator {
     },
     async search(_scope, sourceId, input): Promise<SearchResult> {
       options.onSearch?.(input);
+      if (options.searchImpl) {
+        return options.searchImpl(input);
+      }
       return (
         options.search?.[`${sourceId}:${input.query}`] ?? {
           entries: [],
@@ -592,6 +596,88 @@ test("provenance-only filtering enters query mode and reaches the source before 
   });
   assert.equal(searchInput?.query, "");
   assert.equal(searchInput?.limit, SEARCH_PAGE_SIZE);
+});
+
+test("semantically equal provenance filters do not repeat the active search", async () => {
+  const searchInputs: SearchInput[] = [];
+  const controller = createReferenceSourcePickerController({
+    aggregator: fakeAggregator({
+      tabs: tabsTwo,
+      children: {},
+      onSearch: (input) => searchInputs.push(input)
+    }),
+    scope,
+    searchDebounceMs: 0
+  });
+  controller.open();
+  await flush();
+
+  controller.setProvenanceFilter({
+    agentTargetIds: ["agent-b", "agent-a"],
+    memberIds: null
+  });
+  await flush();
+  assert.equal(searchInputs.length, 1);
+
+  controller.setProvenanceFilter({
+    agentTargetIds: ["agent-a", "agent-b"],
+    memberIds: null
+  });
+  await flush();
+
+  assert.equal(searchInputs.length, 1);
+});
+
+test("changing provenance filters aborts the stale request before debounce", async () => {
+  let resolveFirst: ((result: SearchResult) => void) | undefined;
+  const searchInputs: SearchInput[] = [];
+  const controller = createReferenceSourcePickerController({
+    aggregator: fakeAggregator({
+      tabs: tabsTwo,
+      children: {},
+      searchImpl: (input) => {
+        searchInputs.push(input);
+        if (searchInputs.length === 1) {
+          return new Promise((resolve) => {
+            resolveFirst = resolve;
+          });
+        }
+        return Promise.resolve({ entries: [], nextCursor: null });
+      }
+    }),
+    scope,
+    searchDebounceMs: 0
+  });
+  controller.open();
+  await flush();
+
+  controller.setProvenanceFilter({
+    agentTargetIds: ["agent-a"],
+    memberIds: null
+  });
+  await flush();
+  assert.equal(searchInputs.length, 1);
+  assert.equal(searchInputs[0]?.signal?.aborted, false);
+
+  controller.setProvenanceFilter({
+    agentTargetIds: ["agent-b"],
+    memberIds: null
+  });
+  assert.equal(searchInputs[0]?.signal?.aborted, true);
+
+  resolveFirst?.({ entries: [file("workspace-file", "/stale.md")] });
+  await flush();
+  assert.equal(searchInputs.length, 2);
+  assert.deepEqual(searchInputs[1]?.provenanceFilter, {
+    agentTargetIds: ["agent-b"],
+    memberIds: null
+  });
+  assert.deepEqual(
+    controller
+      .getSnapshot()
+      .bySource["workspace-file"]?.searchEntries.map((node) => node.ref.nodeId),
+    []
+  );
 });
 
 test("search 保留 source 返回的相关性顺序", async () => {

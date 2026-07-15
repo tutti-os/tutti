@@ -121,6 +121,9 @@
 .rich-text-at-mention-palette__header {
   position: relative;
   z-index: 10;
+  display: flex;
+  align-items: center;
+  gap: 8px;
   box-sizing: border-box;
   width: 100%;
   max-width: 100%;
@@ -128,13 +131,18 @@
   flex-shrink: 0;
 }
 
+.rich-text-at-mention-palette__tabs-layout {
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
 .rich-text-at-mention-palette__header-actions {
-  position: absolute;
-  top: 10px;
-  right: 12px;
+  position: relative;
   z-index: 1;
   display: flex;
+  flex: 0 0 auto;
   align-items: center;
+  padding-right: 12px;
 }
 
 .rich-text-at-mention-palette__footer {

@@ -41,6 +41,8 @@ type ListGeneratedFilesInput struct {
 	Limit          int
 }
 
+const MaxGeneratedFileAgentTargetFilters = 100
+
 type MessageReader interface {
 	ListSessionMessages(
 		input agentactivitybiz.ListSessionMessagesInput,
@@ -129,6 +131,9 @@ func (s *Service) ListGeneratedFiles(
 	}
 	agentTargetIDs := uniqueNonEmptyStrings(input.AgentTargetIDs)
 	if input.AgentTargetIDs != nil && len(agentTargetIDs) == 0 {
+		return GeneratedFileList{}, ErrInvalidArgument
+	}
+	if len(agentTargetIDs) > MaxGeneratedFileAgentTargetFilters {
 		return GeneratedFileList{}, ErrInvalidArgument
 	}
 	reader, ok := s.MessageReader.(GeneratedFileReader)

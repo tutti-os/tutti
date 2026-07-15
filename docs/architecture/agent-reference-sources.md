@@ -95,6 +95,17 @@ actual filtering. An active filter is part of the query and cache identity and
 must be applied before pagination. Picker result grouping remains source-owned;
 the filter option list itself is flat.
 
+Catalog option identity is host-owned and normalized at the shared-package
+boundary. Agent options require a durable `agentTargetId`; product-local target
+ids are not provenance fallbacks. Filter cache keys use a collision-free
+semantic serialization of normalized dimensions, not delimiter-joined ids.
+Repeated injection of an equivalent filter is a no-op. A real filter change
+invalidates and aborts the active query before scheduling its replacement, so a
+late response cannot repopulate the picker with the previous constraint.
+An explicitly supplied Agent dimension that normalizes to no ids fails closed;
+the generated-file HTTP contract caps a request at 100 target ids and both the
+daemon API and agent service enforce that boundary.
+
 A `ReferenceSourceService` must declare the dimensions it can enforce through
 `capabilities.provenanceDimensions`. The aggregator fails closed for an active
 dimension that a source does not declare, rather than returning unfiltered
@@ -121,6 +132,8 @@ registries do not acquire this capability implicitly.
   order are distinct contracts.
 - Treat provenance constraints as source query inputs, never as a post-page UI
   filter.
+- Capture the provenance constraint with speculative preload and provider-query
+  inputs; do not read mutable controller state after an async boundary.
 - Append cursor pages without reordering already loaded entries.
 - Hide unavailable sources before rendering their tabs or sidebar groups.
 - Expose only running workspace apps in the app-artifact sidebar; installed or

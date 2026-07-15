@@ -121,12 +121,19 @@ export const AgentGUINode = memo(function AgentGUINode({
   const referenceProvenanceFilterBinding = useReferenceProvenanceFilterCatalog({
     enabledDimensions: referenceProvenanceFilterEnabled ? ["agent"] : [],
     agentOptions: referenceProvenanceFilterEnabled
-      ? (agentTargets ?? []).map((target) => ({
-          disabled: target.disabled,
-          iconUrl: target.iconUrl,
-          id: target.agentTargetId?.trim() || target.targetId,
-          label: target.label
-        }))
+      ? (agentTargets ?? []).flatMap((target) => {
+          const agentTargetId = target.agentTargetId?.trim();
+          return agentTargetId
+            ? [
+                {
+                  disabled: target.disabled,
+                  iconUrl: target.iconUrl,
+                  id: agentTargetId,
+                  label: target.label
+                }
+              ]
+            : [];
+        })
       : [],
     memberOptions: []
   });

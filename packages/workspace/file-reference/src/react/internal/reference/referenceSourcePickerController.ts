@@ -19,7 +19,10 @@ import {
   nodeRefKey,
   sortReferenceNodes
 } from "../../../core/referenceSourceUtils.ts";
-import { referenceProvenanceFilterIsActive } from "../../../core/referenceProvenance.ts";
+import {
+  referenceProvenanceFilterCacheKey,
+  referenceProvenanceFilterIsActive
+} from "../../../core/referenceProvenance.ts";
 
 /**
  * node-keyed 多源 picker 的逻辑层 controller(顶部分源 tab)。
@@ -221,6 +224,7 @@ export function createReferenceSourcePickerController(
   input: CreateReferenceSourcePickerControllerInput
 ): ReferenceSourcePickerController {
   let provenanceFilter: ReferenceProvenanceFilter | null = null;
+  let provenanceFilterKey = "disabled";
   const { aggregator, scope } = input;
   const searchDebounceMs = input.searchDebounceMs ?? defaultSearchDebounceMs;
 
@@ -867,13 +871,26 @@ export function createReferenceSourcePickerController(
       }
     },
     setProvenanceFilter(filter, scopeNodeId = null) {
-      provenanceFilter = filter;
+      const nextFilterKey = filter
+        ? referenceProvenanceFilterCacheKey(filter)
+        : "disabled";
       const sourceId = snapshot.activeSourceId;
+      const tab = sourceId ? snapshot.bySource[sourceId] : undefined;
+      const scopeId = scopeNodeId ?? tab?.searchScopeNodeId ?? null;
+      const nextFilterActive = referenceProvenanceFilterIsActive(filter);
+      if (
+        nextFilterKey === provenanceFilterKey &&
+        scopeId === (tab?.searchScopeNodeId ?? null) &&
+        (!nextFilterActive || tab?.mode === "search")
+      ) {
+        return;
+      }
+      cancelSearch();
+      provenanceFilter = filter;
+      provenanceFilterKey = nextFilterKey;
       if (!sourceId) return;
-      const tab = snapshot.bySource[sourceId];
       const query = tab?.searchQuery.trim() ?? "";
       const filters = tab?.searchFilters ?? [];
-      const scopeId = scopeNodeId ?? tab?.searchScopeNodeId ?? null;
       const active = referenceProvenanceFilterIsActive(provenanceFilter);
       updateTab(sourceId, (current) => ({
         ...current,

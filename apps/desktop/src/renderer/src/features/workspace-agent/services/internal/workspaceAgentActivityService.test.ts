@@ -1189,6 +1189,29 @@ test("WorkspaceAgentActivityService.listAgentGeneratedFiles delegates to tuttid 
   ]);
 });
 
+test("WorkspaceAgentActivityService.listAgentGeneratedFiles fails closed for an empty target constraint", async () => {
+  let requestCount = 0;
+  const service = new WorkspaceAgentActivityService({
+    tuttidClient: {
+      listWorkspaceAgentGeneratedFiles: async () => {
+        requestCount += 1;
+        return { entries: [], workspaceId: "ws-1" };
+      }
+    } as unknown as TuttidClient,
+    runtimeApi: {
+      logTerminalDiagnostic: async () => {}
+    }
+  });
+
+  const result = await service.listAgentGeneratedFiles({
+    agentTargetIds: [" ", ""],
+    workspaceId: " ws-1 "
+  });
+
+  assert.equal(requestCount, 0);
+  assert.deepEqual(result, { entries: [], workspaceId: "ws-1" });
+});
+
 test("WorkspaceAgentActivityService.listSessionsPage forwards backend search pagination", async () => {
   const abortController = new AbortController();
   const listCalls: unknown[] = [];

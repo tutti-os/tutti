@@ -22,11 +22,6 @@ export interface ReferenceProvenanceCatalog {
   memberOptions: readonly ReferenceProvenanceOption[];
 }
 
-export interface ReferenceProvenance {
-  agentTargetId?: string | null;
-  memberId?: string | null;
-}
-
 export const EMPTY_REFERENCE_PROVENANCE_FILTER: ReferenceProvenanceFilter = {
   agentTargetIds: null,
   memberIds: null

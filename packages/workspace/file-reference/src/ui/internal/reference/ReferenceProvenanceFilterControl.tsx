@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, type CSSProperties } from "react";
 import {
   Button,
   Checkbox,
@@ -33,6 +33,7 @@ export interface ReferenceProvenanceFilterControlProps {
   enabledDimensions: readonly ReferenceProvenanceDimension[];
   labels: ReferenceProvenanceFilterLabels;
   memberOptions: readonly ReferenceProvenanceOption[];
+  popoverElevation?: "default" | "panel";
   /** Disabled options stay in the injected catalog but are hidden by default. */
   showDisabledOptions?: boolean;
   value: ReferenceProvenanceFilter;
@@ -46,6 +47,7 @@ export function ReferenceProvenanceFilterControl({
   enabledDimensions,
   labels,
   memberOptions,
+  popoverElevation = "default",
   showDisabledOptions = false,
   value,
   onReset,
@@ -92,7 +94,15 @@ export function ReferenceProvenanceFilterControl({
             />
           </Button>
         </PopoverTrigger>
-        <PopoverContent align="end" className="nodrag w-60 p-0">
+        <PopoverContent
+          align="end"
+          className="nodrag w-60 p-0"
+          style={
+            popoverElevation === "panel"
+              ? ({ zIndex: "var(--z-panel-popover)" } as CSSProperties)
+              : undefined
+          }
+        >
           {enabledDimensions.length > 1 ? (
             <div
               className="flex border-b border-[var(--line-1)] px-1"

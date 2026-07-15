@@ -1610,6 +1610,63 @@ describe("buildWorkspaceAgentActivityListViewModel", () => {
     ]);
   });
 
+  it("derives the fallback root after applying the agent provenance filter", () => {
+    const snapshot = {
+      workspaceId: "workspace-1",
+      presences: [],
+      sessions: [
+        {
+          agentSessionId: "session-a",
+          agentTargetId: "agent-a",
+          cwd: "/Users/demo/project-a",
+          provider: "codex",
+          status: "completed",
+          title: "Project A",
+          workspaceId: "workspace-1"
+        },
+        {
+          agentSessionId: "session-b",
+          agentTargetId: "agent-b",
+          cwd: "/Users/demo/project-b",
+          provider: "codex",
+          status: "completed",
+          title: "Project B",
+          workspaceId: "workspace-1"
+        }
+      ],
+      sessionMessagesById: {
+        "session-b": [
+          {
+            agentSessionId: "session-b",
+            kind: "tool_call",
+            messageId: "message-b",
+            payload: {
+              toolName: "Write",
+              status: "completed",
+              fileChanges: { files: [{ path: "output/report.md" }] }
+            },
+            role: "assistant",
+            status: "completed",
+            turnId: "turn-b",
+            occurredAtUnixMs: 1,
+            version: 1
+          }
+        ]
+      }
+    };
+
+    expect(
+      collectWorkspaceAgentGeneratedFiles(canonicalSource(snapshot), {
+        agentTargetIds: ["agent-b"]
+      })
+    ).toEqual([
+      {
+        path: "/Users/demo/project-b/output/report.md",
+        label: "report.md"
+      }
+    ]);
+  });
+
   it("collects agent-generated files from Codex Edit changes arrays", () => {
     const snapshot = {
       workspaceId: "workspace-1",

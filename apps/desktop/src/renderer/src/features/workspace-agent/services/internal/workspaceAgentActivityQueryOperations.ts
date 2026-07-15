@@ -15,17 +15,22 @@ export class WorkspaceAgentActivityQueryOperations {
       IWorkspaceAgentActivityService["listAgentGeneratedFiles"]
     >[0]
   ): ReturnType<IWorkspaceAgentActivityService["listAgentGeneratedFiles"]> {
-    return this.tuttidClient.listWorkspaceAgentGeneratedFiles(
-      normalizeWorkspaceId(input.workspaceId),
-      {
-        agentTargetIds: input.agentTargetIds
-          ?.map((agentTargetId) => agentTargetId.trim())
-          .filter(Boolean),
-        limit: input.limit,
-        query: input.query?.trim() || undefined,
-        sessionCwd: input.sessionCwd?.trim() || undefined
-      }
-    );
+    const workspaceId = normalizeWorkspaceId(input.workspaceId);
+    const agentTargetIds = input.agentTargetIds
+      ?.map((agentTargetId) => agentTargetId.trim())
+      .filter(Boolean);
+    if (input.agentTargetIds && agentTargetIds?.length === 0) {
+      return {
+        entries: [],
+        workspaceId
+      };
+    }
+    return this.tuttidClient.listWorkspaceAgentGeneratedFiles(workspaceId, {
+      agentTargetIds,
+      limit: input.limit,
+      query: input.query?.trim() || undefined,
+      sessionCwd: input.sessionCwd?.trim() || undefined
+    });
   }
 
   async listSessionsPage(
