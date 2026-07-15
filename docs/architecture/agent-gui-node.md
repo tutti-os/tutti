@@ -2813,6 +2813,34 @@ file-change tool messages should contribute paths, and failed, canceled,
 running, or read-only tool calls must be ignored even when their payloads carry
 `path`, `filePath`, `fileChanges`, or `changes` fields.
 
+### Reference Source Filtering
+
+The desktop product may enable Agent provenance filtering through the
+default-off `agent.referenceProvenanceFilter` developer feature flag. The flag
+is projected into AgentGUI as a host capability; AgentGUI does not read desktop
+preferences directly. Preview mode keeps the capability disabled.
+
+AgentGUI creates one controlled provenance controller for both the composer
+`@` palette and the `+` reference picker. The desktop host injects the current
+Agent target catalog, while the query providers apply selected
+`agentTargetId` values before pagination. Session search merges target-scoped
+queries, and the generated-file fallback filters sessions before collecting
+file changes. In the `+` picker, desktop project/local sources switch to that
+same generated-file provider for an active Agent constraint, then apply file
+type filters and the result limit. Ordinary opened-file and issue-summary
+records do not currently carry durable Agent provenance and therefore fail
+closed when an Agent constraint is active. Existing result groups remain
+unchanged; the filter narrows their contents and does not introduce a second
+grouping layer.
+
+The filter popover is portal-mounted and must mark its content as `nodrag`.
+Portal content is not a DOM descendant of the Agent window trigger, so the
+window's click-capture guard otherwise treats the option click as a draggable
+window interaction and stops it before the filter row receives the event.
+
+The shared contracts reserve a separate member dimension for collaboration
+hosts. Tutti personal edition must not enable member or group-chat filtering.
+
 ### Approval Or Ask-User Prompt
 
 ```text

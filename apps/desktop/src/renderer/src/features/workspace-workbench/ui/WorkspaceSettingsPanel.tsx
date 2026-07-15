@@ -105,6 +105,7 @@ import {
   type DesktopWorkbenchWindowSnappingShortcutPreset
 } from "../../../../../shared/preferences/index.ts";
 import {
+  AGENT_REFERENCE_PROVENANCE_FILTER_FLAG,
   isFeatureEnabled,
   LAB_ENABLED_FLAG,
   LAB_WORKBENCH_SHORTCUTS_FLAG,
@@ -521,6 +522,13 @@ export function WorkspaceSettingsPanel({
                   pendingFeatureFlags,
                   LAB_ENABLED_FLAG
                 )}
+                referenceProvenanceFilterEnabled={isFeatureEnabled(
+                  pendingFeatureFlags,
+                  AGENT_REFERENCE_PROVENANCE_FILTER_FLAG
+                )}
+                referenceProvenanceFilterUpdating={
+                  desktopPreferencesState.changingFeatureFlags !== null
+                }
                 showAppDeveloperSources={
                   desktopPreferencesState.showAppDeveloperSources
                 }
@@ -553,6 +561,12 @@ export function WorkspaceSettingsPanel({
                   void settingsService.changeFeatureFlags({
                     ...desktopPreferencesState.featureFlags,
                     [LAB_ENABLED_FLAG]: enabled
+                  });
+                }}
+                onReferenceProvenanceFilterEnabledChange={(enabled) => {
+                  void settingsService.changeFeatureFlags({
+                    ...desktopPreferencesState.featureFlags,
+                    [AGENT_REFERENCE_PROVENANCE_FILTER_FLAG]: enabled
                   });
                 }}
                 onTuttiAgentSwitchEnabledChange={(enabled) => {
@@ -1762,6 +1776,8 @@ function WorkspaceDeveloperSettingsSection({
   enableOpenCodeAgent,
   fileDefaultOpenersByExtension,
   labEnabled,
+  referenceProvenanceFilterEnabled,
+  referenceProvenanceFilterUpdating,
   showAppDeveloperSources,
   tuttiAgentSwitchEnabled,
   updateChannel,
@@ -1775,6 +1791,7 @@ function WorkspaceDeveloperSettingsSection({
   onExportLogs,
   onFileDefaultOpenersChange,
   onLabEnabledChange,
+  onReferenceProvenanceFilterEnabledChange,
   onShowAppDeveloperSourcesChange,
   onTuttiAgentSwitchEnabledChange,
   onUpdateChannelChange
@@ -1790,6 +1807,8 @@ function WorkspaceDeveloperSettingsSection({
   enableOpenCodeAgent: boolean;
   fileDefaultOpenersByExtension: DesktopFileDefaultOpenersByExtension;
   labEnabled: boolean;
+  referenceProvenanceFilterEnabled: boolean;
+  referenceProvenanceFilterUpdating: boolean;
   showAppDeveloperSources: boolean;
   tuttiAgentSwitchEnabled: boolean;
   updateChannel: DesktopUpdateChannel;
@@ -1805,6 +1824,7 @@ function WorkspaceDeveloperSettingsSection({
     openersByExtension: DesktopFileDefaultOpenersByExtension
   ) => void;
   onLabEnabledChange: (enabled: boolean) => void;
+  onReferenceProvenanceFilterEnabledChange: (enabled: boolean) => void;
   onShowAppDeveloperSourcesChange: (show: boolean) => void;
   onTuttiAgentSwitchEnabledChange: (enabled: boolean) => void;
   onUpdateChannelChange: (channel: DesktopUpdateChannel) => void;
@@ -1927,6 +1947,27 @@ function WorkspaceDeveloperSettingsSection({
           aria-label={t("workspace.settings.developer.visibilityLabel")}
           checked={developerPanelVisible}
           onCheckedChange={onDeveloperPanelVisibleChange}
+        />
+      </div>
+
+      <div className="flex w-full items-center justify-between gap-4 max-[560px]:flex-col max-[560px]:items-stretch">
+        <div className="flex min-w-0 flex-1 flex-col gap-1 max-[560px]:w-full">
+          <strong className="text-[13px] font-semibold text-[var(--text-primary)]">
+            {t("workspace.settings.developer.referenceProvenanceFilterLabel")}
+          </strong>
+          <p className="m-0 text-[13px] leading-[1.3] text-[var(--text-secondary)]">
+            {t(
+              "workspace.settings.developer.referenceProvenanceFilterDescription"
+            )}
+          </p>
+        </div>
+        <Switch
+          aria-label={t(
+            "workspace.settings.developer.referenceProvenanceFilterLabel"
+          )}
+          checked={referenceProvenanceFilterEnabled}
+          disabled={referenceProvenanceFilterUpdating}
+          onCheckedChange={onReferenceProvenanceFilterEnabledChange}
         />
       </div>
 

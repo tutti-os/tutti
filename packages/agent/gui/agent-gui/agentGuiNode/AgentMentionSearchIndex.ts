@@ -19,6 +19,7 @@ import {
   WORKSPACE_ISSUE_PROVIDER_ID
 } from "./AgentMentionSearchContracts";
 import type { AgentMentionBrowseFetchResult } from "./AgentMentionSearchCache";
+import type { ReferenceProvenanceFilter } from "@tutti-os/workspace-file-reference/contracts";
 
 export interface AgentMentionProviderQueryInput {
   diagnostics: AgentMentionProviderQueryDiagnostic[];
@@ -28,6 +29,7 @@ export interface AgentMentionProviderQueryInput {
   query: string;
   limit?: number;
   sessionCwd?: string;
+  provenanceFilter: ReferenceProvenanceFilter | null;
 }
 
 export async function fetchAgentMentionFilterResult(input: {
@@ -40,22 +42,31 @@ export async function fetchAgentMentionFilterResult(input: {
   fileLimit: number;
   currentFileSearchLimit: number;
   currentIssueSearchLimit: number;
+  provenanceFilter: ReferenceProvenanceFilter | null;
   queryProviderMentionItemsById: (
     input: AgentMentionProviderQueryInput
   ) => Promise<AgentContextMentionItem[]>;
 }): Promise<AgentMentionBrowseFetchResult> {
   const providerDiagnostics: AgentMentionProviderQueryDiagnostic[] = [];
+  const agentFilterActive =
+    input.provenanceFilter !== null &&
+    input.provenanceFilter.agentTargetIds !== null;
   switch (input.filter) {
     case "file": {
-      const fileQuery = input.queryProviderMentionItemsById({
-        providerId: FILE_PROVIDER_ID,
-        workspaceId: input.workspaceId,
-        currentUserId: input.currentUserId,
-        query: input.query,
-        limit: input.query ? input.currentFileSearchLimit : input.fileLimit,
-        sessionCwd: input.sessionCwd,
-        diagnostics: providerDiagnostics
-      });
+      // Opened/local files have no Agent provenance. Never silently return
+      // them while the UI says an Agent filter is active.
+      const fileQuery = agentFilterActive
+        ? Promise.resolve([] as AgentContextMentionItem[])
+        : input.queryProviderMentionItemsById({
+            providerId: FILE_PROVIDER_ID,
+            workspaceId: input.workspaceId,
+            currentUserId: input.currentUserId,
+            query: input.query,
+            limit: input.query ? input.currentFileSearchLimit : input.fileLimit,
+            sessionCwd: input.sessionCwd,
+            diagnostics: providerDiagnostics,
+            provenanceFilter: input.provenanceFilter
+          });
       const agentGeneratedFileQuery = input.includeAgentGeneratedFiles
         ? input.queryProviderMentionItemsById({
             providerId: AGENT_GENERATED_FILE_PROVIDER_ID,
@@ -64,7 +75,8 @@ export async function fetchAgentMentionFilterResult(input: {
             query: input.query,
             limit: input.fileLimit,
             sessionCwd: input.sessionCwd,
-            diagnostics: providerDiagnostics
+            diagnostics: providerDiagnostics,
+            provenanceFilter: input.provenanceFilter
           })
         : Promise.resolve([] as AgentContextMentionItem[]);
       const [fileItems, agentGeneratedFileItems] = await Promise.all([
@@ -90,7 +102,8 @@ export async function fetchAgentMentionFilterResult(input: {
         query: input.query,
         limit: DEFAULT_SESSION_LIMIT,
         sessionCwd: input.sessionCwd,
-        diagnostics: providerDiagnostics
+        diagnostics: providerDiagnostics,
+        provenanceFilter: input.provenanceFilter
       });
       const rawGroups = emptyAgentMentionRawGroups();
       rawGroups.my_sessions = normalizeSessionMentionItemsForMySessions({
@@ -104,15 +117,20 @@ export async function fetchAgentMentionFilterResult(input: {
       };
     }
     case "issue": {
-      const issueItems = await input.queryProviderMentionItemsById({
-        providerId: WORKSPACE_ISSUE_PROVIDER_ID,
-        workspaceId: input.workspaceId,
-        currentUserId: input.currentUserId,
-        query: input.query,
-        limit: input.currentIssueSearchLimit,
-        sessionCwd: input.sessionCwd,
-        diagnostics: providerDiagnostics
-      });
+      // Issue summaries do not yet carry durable Agent provenance. Fail closed
+      // rather than displaying unfiltered issues under an active filter.
+      const issueItems = agentFilterActive
+        ? []
+        : await input.queryProviderMentionItemsById({
+            providerId: WORKSPACE_ISSUE_PROVIDER_ID,
+            workspaceId: input.workspaceId,
+            currentUserId: input.currentUserId,
+            query: input.query,
+            limit: input.currentIssueSearchLimit,
+            sessionCwd: input.sessionCwd,
+            diagnostics: providerDiagnostics,
+            provenanceFilter: input.provenanceFilter
+          });
       const rawGroups = emptyAgentMentionRawGroups();
       rawGroups.issues = issueItems.filter(
         (item) => item.kind === "workspace-issue"
@@ -130,7 +148,8 @@ export async function fetchAgentMentionFilterResult(input: {
         currentUserId: input.currentUserId,
         query: input.query,
         sessionCwd: input.sessionCwd,
-        diagnostics: providerDiagnostics
+        diagnostics: providerDiagnostics,
+        provenanceFilter: input.provenanceFilter
       });
       const rawGroups = emptyAgentMentionRawGroups();
       rawGroups.agents = agentItems.filter(
@@ -149,7 +168,8 @@ export async function fetchAgentMentionFilterResult(input: {
         currentUserId: input.currentUserId,
         query: input.query,
         sessionCwd: input.sessionCwd,
-        diagnostics: providerDiagnostics
+        diagnostics: providerDiagnostics,
+        provenanceFilter: input.provenanceFilter
       });
       const rawGroups = emptyAgentMentionRawGroups();
       rawGroups.apps = appItems.filter((item) => item.kind === "workspace-app");
@@ -170,6 +190,7 @@ export async function queryAgentMentionProviderItems(input: {
   limit?: number;
   sessionCwd: string;
   abortSignal: AbortSignal;
+  provenanceFilter: ReferenceProvenanceFilter | null;
 }): Promise<AgentContextMentionItem[]> {
   const items = await input.provider.query({
     keyword: input.query,
@@ -181,7 +202,8 @@ export async function queryAgentMentionProviderItems(input: {
         currentUserId: input.currentUserId,
         sessionCwd: input.sessionCwd || undefined,
         target: "agent-gui",
-        workspaceId: input.workspaceId
+        workspaceId: input.workspaceId,
+        referenceProvenanceFilter: input.provenanceFilter ?? undefined
       }
     }
   });

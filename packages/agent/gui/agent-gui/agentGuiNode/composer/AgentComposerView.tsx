@@ -28,6 +28,7 @@ import {
   type AgentRichTextEditorHandle
 } from "../agentRichText/AgentRichTextEditor";
 import { AgentFileMentionPalette } from "../AgentFileMentionPalette";
+import { AgentReferenceProvenanceFilterControl } from "../AgentReferenceProvenanceFilterControl";
 import type { AgentMentionSearchController } from "../AgentMentionSearchController";
 import { AgentSlashCommandPalette } from "../AgentSlashCommandPalette";
 import { AgentSlashStatusPanel } from "../AgentSlashStatusPanel";
@@ -127,6 +128,7 @@ export function AgentComposerView(input: Props): React.JSX.Element {
     onEditQueuedPrompt,
     onPromptImagesUnsupported,
     onRequestWorkspaceReferences,
+    referenceProvenanceFilter,
     selectProjectDirectory,
     onProjectPathChange = () => {},
     onSettingsChange,
@@ -461,6 +463,13 @@ export function AgentComposerView(input: Props): React.JSX.Element {
                         onRequestWorkspaceReferences
                           ? handleOpenReferencesForEntity
                           : undefined
+                      }
+                      provenanceFilterControl={
+                        referenceProvenanceFilter ? (
+                          <AgentReferenceProvenanceFilterControl
+                            filter={referenceProvenanceFilter}
+                          />
+                        ) : undefined
                       }
                     />
                   </div>,

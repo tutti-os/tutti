@@ -1,4 +1,4 @@
-import { fileChangePathsFromChanges } from "./workspaceAgentFileChangePayload";
+import { fileChangePathsFromChanges } from "./workspaceAgentFileChangePayload.ts";
 import type {
   AgentActivityMessage,
   AgentActivitySession
@@ -7,7 +7,7 @@ import type {
   CollectWorkspaceAgentGeneratedFilesOptions,
   WorkspaceAgentChangedFile
 } from "./workspaceAgentActivityListTypes";
-import { workspaceAgentSessionMessageAliases } from "./workspaceAgentActivityListOrdering";
+import { workspaceAgentSessionMessageAliases } from "./workspaceAgentSessionMessageAliases.ts";
 
 export interface WorkspaceAgentGeneratedFilesSource {
   sessionMessagesById: Readonly<Record<string, AgentActivityMessage[]>>;
@@ -23,12 +23,22 @@ export function collectWorkspaceAgentGeneratedFiles(
     sessionCwdFilter ||
     normalizeComparablePath(options.workspaceRoot ?? "") ||
     resolveWorkspaceRootFromSessions(source.sessions);
-  const sessions = sessionCwdFilter
+  const allowedAgentTargetIds = options.agentTargetIds
+    ? new Set(options.agentTargetIds.map((id) => id.trim()).filter(Boolean))
+    : null;
+  const provenanceSessions = allowedAgentTargetIds
     ? source.sessions.filter(
+        (session) =>
+          session.agentTargetId !== null &&
+          allowedAgentTargetIds.has(session.agentTargetId)
+      )
+    : source.sessions;
+  const sessions = sessionCwdFilter
+    ? provenanceSessions.filter(
         (session) =>
           normalizeComparablePath(session.cwd ?? "") === sessionCwdFilter
       )
-    : source.sessions;
+    : provenanceSessions;
   const filesByPath = new Map<string, WorkspaceAgentChangedFile>();
 
   for (const session of sessions) {

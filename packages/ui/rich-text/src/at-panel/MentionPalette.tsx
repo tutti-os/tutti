@@ -122,6 +122,7 @@ export function MentionPalette<TItem>(
     onMoveSelection,
     onNavigateHierarchy,
     renderListFooter,
+    headerActions,
     loadingBanner,
     scrollHighlightedIntoViewCentered = false,
     theme: themeProp
@@ -280,6 +281,11 @@ export function MentionPalette<TItem>(
           className={theme.classNames.tabs}
           preventMouseDownDefault
         />
+        {headerActions ? (
+          <div className="rich-text-at-mention-palette__header-actions">
+            {headerActions}
+          </div>
+        ) : null}
         {showLoadingBanner ? loadingBanner : null}
       </div>
       <div className={paletteStyles.scrollShell}>

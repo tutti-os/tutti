@@ -81,6 +81,33 @@ The UI may display only the basename to conserve space. That presentation
 choice does not narrow the searchable fields and must not become a second
 ranking implementation.
 
+## Source Provenance Filtering
+
+`@tutti-os/workspace-file-reference` owns the host-neutral provenance model and
+controlled filter UI. The model has independent `agent` and `member`
+dimensions so collaboration products can reuse the package, but a host decides
+which dimensions and options are enabled. Tutti personal edition injects only
+Agent options; member and group-chat behavior are outside its product surface.
+
+The controller owns only ephemeral selection state. The host injects the
+catalog, and concrete providers or `ReferenceSourceService.search()` own the
+actual filtering. An active filter is part of the query and cache identity and
+must be applied before pagination. Picker result grouping remains source-owned;
+the filter option list itself is flat.
+
+A `ReferenceSourceService` must declare the dimensions it can enforce through
+`capabilities.provenanceDimensions`. The aggregator fails closed for an active
+dimension that a source does not declare, rather than returning unfiltered
+results under a filtered UI. Sources should add a dimension only when their
+backend or source-owned query can enforce it before applying `limit` or cursor
+pagination.
+
+The AgentGUI desktop registry equips its `user-project` and `workspace-file`
+sources with an Agent-generated-file query adapter. With an active Agent
+constraint those sources return files produced by matching Agent sessions;
+without a constraint they retain the ordinary filesystem browse/search path.
+Other desktop registries do not acquire this capability implicitly.
+
 ## Invariants
 
 - Route every operation by `sourceId`; reject unknown sources.
@@ -89,6 +116,8 @@ ranking implementation.
   deduplicate safely.
 - Preserve source relevance order for search results; browsing order and search
   order are distinct contracts.
+- Treat provenance constraints as source query inputs, never as a post-page UI
+  filter.
 - Append cursor pages without reordering already loaded entries.
 - Hide unavailable sources before rendering their tabs or sidebar groups.
 - Expose only running workspace apps in the app-artifact sidebar; installed or

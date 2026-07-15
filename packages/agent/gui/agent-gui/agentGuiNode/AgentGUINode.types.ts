@@ -104,6 +104,7 @@ export interface AgentGUINodeRuntimeRequests {
 }
 
 export interface AgentGUINodeHostCapabilities {
+  referenceProvenanceFilterEnabled?: boolean;
   capabilityMenuState?: AgentComposerCapabilityMenuState;
   accountMenuState?: AgentGUIAccountMenuState | null;
   agentTargets?: readonly AgentGUIAgentTarget[];
@@ -288,6 +289,8 @@ export function areAgentGUINodePropsEqual(
     pw.onFileReferencesAdded === nw.onFileReferencesAdded &&
     pw.agentSettings.avoidGroupingEdits ===
       nw.agentSettings.avoidGroupingEdits &&
+    pc.referenceProvenanceFilterEnabled ===
+      nc.referenceProvenanceFilterEnabled &&
     agentGuiStateEquals(previous.state, next.state) &&
     pf.position.x === nf.position.x &&
     pf.position.y === nf.position.y &&

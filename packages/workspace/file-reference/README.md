@@ -10,3 +10,11 @@ product-specific integration stay in the consuming host adapter.
 
 The package uses logical workspace paths and keeps reference picking reusable
 across shared workspace features such as the agent GUI and issue manager.
+
+It also provides host-neutral provenance filter contracts, an external-store
+controller, and a controlled filter view. Hosts inject available Agent/member
+options; source implementations declare which dimensions they can enforce and
+apply active constraints before pagination. The package does not fetch a
+catalog or infer product-specific membership itself. Disabled catalog options
+remain available to host logic but are hidden by the controlled filter view by
+default; a host can opt into rendering them with `showDisabledOptions`.

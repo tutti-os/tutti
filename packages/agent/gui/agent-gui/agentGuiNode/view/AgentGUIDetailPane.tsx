@@ -73,6 +73,7 @@ export const EMPTY_WORKSPACE_APP_ICONS: readonly AgentMessageMarkdownWorkspaceAp
   [];
 export interface AgentGUIDetailPaneProps {
   viewModel: AgentGUINodeViewModel;
+  referenceProvenanceFilter?: AgentComposerProps["referenceProvenanceFilter"];
   composerEngagement?: AgentGUIComposerEngagement;
   actions: AgentGUINodeViewProps["actions"];
   labels: AgentGUIViewLabels;
@@ -155,6 +156,7 @@ export function mergeWorkspaceAppIconsFromCommands(input: {
 
 export const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
   viewModel,
+  referenceProvenanceFilter = null,
   composerEngagement,
   actions,
   labels,
@@ -468,6 +470,7 @@ export const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
       showStopButton,
       previewMode,
       workspaceReferencePickerOpen,
+      referenceProvenanceFilter,
       // Plan decisions replace the composer; approval / ask-user embed here.
       activePrompt: composerActivePrompt,
       backgroundAgentStatusText,
@@ -576,6 +579,7 @@ export const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
       viewModel.detail.usage,
       viewModel.shell.workspaceId,
       viewModel.shell.workspacePath,
+      referenceProvenanceFilter,
       workspaceUserProjectI18n,
       workspaceAppIcons,
       selectHomeComposerAgentTargetAndFocus

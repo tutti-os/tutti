@@ -42,6 +42,7 @@ import {
 } from "./AgentMentionSearchController";
 import { agentGeneratedMentionItemKey } from "./agentMentionAgentGeneratedFilesPresentation";
 import type { AgentContextMentionItem } from "./agentRichText/agentFileMentionExtension";
+import type { ReactNode } from "react";
 
 export interface AgentMentionPaletteEntry {
   key: string;
@@ -73,6 +74,8 @@ export interface AgentFileMentionPaletteProps {
    * 仅 workspace-issue / workspace-app 行渲染该入口。
    */
   onOpenReferences?: (item: AgentContextMentionItem) => void;
+  /** Controlled provenance filter supplied by the AgentGUI orchestration layer. */
+  provenanceFilterControl?: ReactNode;
 }
 
 const AGENT_MENTION_PALETTE_THEME: MentionPaletteTheme = {
@@ -193,7 +196,8 @@ export function AgentFileMentionPalette({
   onExpandGroup,
   onNavigateHierarchy,
   onNavigateIntoItem,
-  onOpenReferences
+  onOpenReferences,
+  provenanceFilterControl
 }: AgentFileMentionPaletteProps): React.JSX.Element {
   "use memo";
   const openReferencesLabel = translate(
@@ -294,6 +298,11 @@ export function AgentFileMentionPalette({
         )
       }}
       maxHeightPx={maxHeightPx}
+      headerActions={
+        filter === "session" || filter === "file" || filter === "issue"
+          ? provenanceFilterControl
+          : undefined
+      }
       scrollHighlightedIntoViewCentered={shouldCenterHighlightedItem}
       theme={AGENT_MENTION_PALETTE_THEME}
       callbacks={{

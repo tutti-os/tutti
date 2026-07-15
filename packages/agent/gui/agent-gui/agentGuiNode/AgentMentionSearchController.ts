@@ -19,6 +19,8 @@ import {
 } from "./AgentMentionSearchCache";
 import { diagnosticErrorKind } from "./AgentMentionSearchModel";
 import { AgentMentionSearchControllerBase } from "./AgentMentionSearchControllerBase";
+import type { ReferenceProvenanceFilter } from "@tutti-os/workspace-file-reference/contracts";
+import { referenceProvenanceFilterCacheKey } from "@tutti-os/workspace-file-reference/core";
 
 export type {
   AgentMentionBrowseCategory,
@@ -30,6 +32,23 @@ export type {
 export { MAX_BROWSE_CACHE_ENTRIES, resetAgentMentionSearchBrowseCacheForTests };
 
 export class AgentMentionSearchController extends AgentMentionSearchControllerBase {
+  setProvenanceFilter(filter: ReferenceProvenanceFilter | null): void {
+    const previousKey = this.currentProvenanceFilter
+      ? referenceProvenanceFilterCacheKey(this.currentProvenanceFilter)
+      : "disabled";
+    const nextKey = filter
+      ? referenceProvenanceFilterCacheKey(filter)
+      : "disabled";
+    if (previousKey === nextKey) return;
+    this.currentProvenanceFilter = filter;
+    this.updateQuery({
+      workspaceId: this.activeWorkspaceId,
+      currentUserId: this.currentUserId,
+      query: this.currentQuery,
+      sessionCwd: this.currentSessionCwd
+    });
+  }
+
   subscribe(listener: AgentMentionSearchListener): () => void {
     this.listeners.add(listener);
     listener(this.state);

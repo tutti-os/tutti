@@ -57,6 +57,7 @@ import type {
   ReferenceLocateTarget,
   ReferenceNode
 } from "../../../contracts/referenceSource.ts";
+import type { ReferenceProvenanceFilter } from "../../../contracts/referenceProvenance.ts";
 import type {
   WorkspaceFileReference,
   WorkspaceFileReferenceCopy
@@ -101,6 +102,8 @@ export interface ReferenceSourcePickerProps {
    */
   onConfirmBundles?: (result: ReferenceGroupedSelection) => void;
   open: boolean;
+  provenanceFilter?: ReferenceProvenanceFilter | null;
+  provenanceFilterControl?: ReactNode;
   workspaceId: string;
 }
 
@@ -172,6 +175,8 @@ export function ReferenceSourcePicker({
   onConfirm,
   onConfirmBundles,
   open,
+  provenanceFilter = null,
+  provenanceFilterControl,
   resolveEntryIconUrl,
   resolveOpenWithApplicationIcon,
   workspaceId
@@ -186,7 +191,8 @@ export function ReferenceSourcePicker({
     isNodeSelectable,
     onClose,
     onConfirm,
-    onConfirmBundles
+    onConfirmBundles,
+    provenanceFilter
   });
   const hasVisibleContent = view.isQuery
     ? view.searchResults.length > 0
@@ -499,6 +505,7 @@ export function ReferenceSourcePicker({
                         onToggle={toggleFilter}
                       />
                     ) : null}
+                    {provenanceFilterControl}
                   </div>
                   <ScrollArea
                     className="min-h-0 flex-1"

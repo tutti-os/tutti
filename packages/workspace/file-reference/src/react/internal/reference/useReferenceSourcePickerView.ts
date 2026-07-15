@@ -8,10 +8,12 @@ import type {
   SelectedReference,
   WorkspaceFileReference
 } from "../../../contracts/index.ts";
+import type { ReferenceProvenanceFilter } from "../../../contracts/referenceProvenance.ts";
 import {
   REFERENCE_FILTER_CATEGORIES,
   WORKSPACE_ROOT_GROUP_NODE_ID,
   nodeRefKey,
+  referenceProvenanceFilterIsActive,
   selectedReferenceToWorkspaceFileReference
 } from "../../../core/index.ts";
 import type { ReferenceSourceAggregator } from "../../../core/referenceSourceAggregator.ts";
@@ -127,6 +129,7 @@ export interface UseReferenceSourcePickerViewInput {
    * navigable 源的选中文件夹折叠成一个 bundle,其余仍作为单条文件。
    */
   onConfirmBundles?: (result: ReferenceGroupedSelection) => void;
+  provenanceFilter?: ReferenceProvenanceFilter | null;
 }
 
 /**
@@ -142,7 +145,8 @@ export function useReferenceSourcePickerView({
   onClose,
   onConfirm,
   isNodeSelectable,
-  onConfirmBundles
+  onConfirmBundles,
+  provenanceFilter = null
 }: UseReferenceSourcePickerViewInput) {
   const readSnapshot = useSnapshot as <T extends object>(store: T) => T;
   const scope = useMemo<ReferenceScope>(() => ({ workspaceId }), [workspaceId]);
@@ -277,7 +281,9 @@ export function useReferenceSourcePickerView({
   // 查询态 = 关键词或筛选任一非空(controller 已据此置 mode)。命中即平铺结果。
   const isQuery =
     activeTabState?.mode === "search" &&
-    (activeTabState.searchQuery.trim() !== "" || activeFilters.length > 0);
+    (activeTabState.searchQuery.trim() !== "" ||
+      activeFilters.length > 0 ||
+      referenceProvenanceFilterIsActive(provenanceFilter));
 
   const currentChildren = activeTabState?.childrenByKey[currentKey];
   const contentError = isQuery
@@ -393,8 +399,10 @@ export function useReferenceSourcePickerView({
   // 搜索进行中切换左栏分组(选中应用变化)时,把搜索限定范围同步给 controller 并重搜。
   // controller 内部仅在范围实际变化且处于搜索态时才重搜,浏览态/范围未变为 no-op。
   useEffect(() => {
+    if (!open) return;
+    controller.setProvenanceFilter(provenanceFilter, searchScopeNodeId);
     controller.setSearchScope(searchScopeNodeId);
-  }, [controller, searchScopeNodeId]);
+  }, [activeSourceId, controller, open, provenanceFilter, searchScopeNodeId]);
 
   const setActiveSource = useCallback(
     (sourceId: string) => {

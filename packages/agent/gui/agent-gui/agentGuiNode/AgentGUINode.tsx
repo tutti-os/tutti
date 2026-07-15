@@ -1,6 +1,7 @@
 import { memo, useCallback, useEffect, useMemo } from "react";
 import { createWorkspaceUserProjectI18nRuntime } from "@tutti-os/workspace-user-project/i18n";
 import { createWorkspaceFileManagerI18nRuntime } from "@tutti-os/workspace-file-manager";
+import { useReferenceProvenanceFilterCatalog } from "@tutti-os/workspace-file-reference/react";
 import type { WorkspaceFileReference } from "@tutti-os/workspace-file-reference/contracts";
 import { useTranslation } from "../../i18n/index";
 import type { AgentProvider } from "../../contexts/settings/domain/agentSettings";
@@ -114,8 +115,24 @@ export const AgentGUINode = memo(function AgentGUINode({
     managedAgentsState,
     contextMentionProviders,
     workspaceAppIcons,
-    disabledHomeSuggestions
+    disabledHomeSuggestions,
+    referenceProvenanceFilterEnabled = false
   } = hostCapabilities;
+  const referenceProvenanceFilterBinding = useReferenceProvenanceFilterCatalog({
+    enabledDimensions: referenceProvenanceFilterEnabled ? ["agent"] : [],
+    agentOptions: referenceProvenanceFilterEnabled
+      ? (agentTargets ?? []).map((target) => ({
+          disabled: target.disabled,
+          iconUrl: target.iconUrl,
+          id: target.agentTargetId?.trim() || target.targetId,
+          label: target.label
+        }))
+      : [],
+    memberOptions: []
+  });
+  const referenceProvenanceFilter = referenceProvenanceFilterEnabled
+    ? referenceProvenanceFilterBinding
+    : null;
   const {
     onLinkAction,
     onHandoffConversation,
@@ -678,6 +695,7 @@ export const AgentGUINode = memo(function AgentGUINode({
             workspaceFileReferenceCopy={workspaceFileReferenceCopy}
             contextMentionProviders={contextMentionProviders}
             workspaceAppIcons={workspaceAppIcons}
+            referenceProvenanceFilter={referenceProvenanceFilter}
           />
         );
       }}

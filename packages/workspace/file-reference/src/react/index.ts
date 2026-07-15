@@ -23,3 +23,12 @@ export {
   type ReferenceSourcePickerSnapshot,
   type ReferenceSourceTabState
 } from "./internal/reference/referenceSourcePickerController.ts";
+export {
+  createReferenceProvenanceFilterController,
+  type ReferenceProvenanceFilterController,
+  type ReferenceProvenanceFilterSnapshot
+} from "./internal/reference/referenceProvenanceFilterController.ts";
+export {
+  useReferenceProvenanceFilter,
+  useReferenceProvenanceFilterCatalog
+} from "./internal/reference/useReferenceProvenanceFilter.ts";

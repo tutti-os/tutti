@@ -463,6 +463,69 @@ test("desktop rich text @ service assembles agent session providers by capabilit
   });
 });
 
+test("desktop agent session mentions query each selected Agent before merging", async () => {
+  const agentTargetIds: Array<string | undefined> = [];
+  const service = new DesktopRichTextAtService({
+    tuttidClient: {
+      async listWorkspaceAgentSessions(
+        workspaceId: string,
+        request?: { agentTargetId?: string }
+      ) {
+        agentTargetIds.push(request?.agentTargetId);
+        const agentTargetId = request?.agentTargetId ?? "all";
+        return {
+          hasMore: false,
+          workspaceId,
+          sessions: [
+            {
+              activeTurn: null,
+              activeTurnId: null,
+              agentTargetId,
+              createdAtUnixMs: agentTargetId === "agent-b" ? 2 : 1,
+              cwd: null,
+              id: `session-${agentTargetId}`,
+              latestTurn: null,
+              latestTurnInteractions: [],
+              pendingInteractions: [],
+              provider: "codex",
+              providerSessionId: null,
+              title: agentTargetId,
+              updatedAtUnixMs: agentTargetId === "agent-b" ? 2 : 1
+            }
+          ]
+        };
+      }
+    } as unknown as TuttidClient
+  });
+  const [provider] = service.getProviders({
+    capabilities: ["agent-session"],
+    surface: "agent-composer",
+    target: "agent-gui",
+    workspaceId: "workspace-1"
+  });
+  assert.ok(provider);
+
+  const items = await provider.query({
+    context: {
+      metadata: {
+        referenceProvenanceFilter: {
+          agentTargetIds: ["agent-a", "agent-b"],
+          memberIds: null
+        }
+      }
+    },
+    keyword: "",
+    maxResults: 5,
+    trigger: "@"
+  });
+
+  assert.deepEqual(agentTargetIds, ["agent-a", "agent-b"]);
+  assert.deepEqual(
+    items.map((item) => (item as { agentTargetId?: string }).agentTargetId),
+    ["agent-b", "agent-a"]
+  );
+});
+
 test("desktop rich text @ service presents extension sessions with Agent Target identity", async () => {
   const extensionTarget = createAgentTarget({
     iconUrl: "data:image/svg+xml;base64,gemini",

@@ -66,6 +66,10 @@ import { useDesktopAgentGUIContextMentions } from "./useDesktopAgentGUIContextMe
 import { useDesktopAgentGUIReadiness } from "./useDesktopAgentGUIReadiness.ts";
 import { preloadDesktopAgentGuiMentionBrowse } from "../services/preloadDesktopAgentGuiMentionBrowse.ts";
 import { DESKTOP_AGENT_GUI_CURRENT_USER_ID } from "../services/desktopAgentGuiIdentity.ts";
+import {
+  AGENT_REFERENCE_PROVENANCE_FILTER_FLAG,
+  isFeatureEnabled
+} from "../../../../../shared/featureFlags/catalog.ts";
 
 function DesktopAgentGUIWorkbenchBodyImpl({
   agentActivityRuntime,
@@ -677,6 +681,12 @@ function DesktopAgentGUIWorkbenchBodyImpl({
     }),
     [computerUseStatus, desktopPreferencesState.browserUseConnectionMode]
   );
+  const referenceProvenanceFilterEnabled =
+    !previewMode &&
+    isFeatureEnabled(
+      desktopPreferencesState.featureFlags,
+      AGENT_REFERENCE_PROVENANCE_FILTER_FLAG
+    );
   const providerAuthAccountLabels = useMemo(() => {
     const labels: Partial<Record<WorkspaceAgentProvider, string>> = {};
     for (const status of providerStatusSnapshot.statuses) {
@@ -774,6 +784,7 @@ function DesktopAgentGUIWorkbenchBodyImpl({
             : handleAgentProbeRefreshRequest
         }}
         hostCapabilities={{
+          referenceProvenanceFilterEnabled,
           capabilityMenuState,
           accountMenuState: null,
           comingSoonProviders: comingSoonAgentProviders,

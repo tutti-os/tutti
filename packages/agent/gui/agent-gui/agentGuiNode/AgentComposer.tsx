@@ -82,6 +82,7 @@ export type {
   AgentComposerGitBranchLoader,
   AgentComposerGitBranches,
   AgentComposerPromptTip,
+  AgentComposerReferenceProvenanceFilter,
   AgentComposerProps,
   AgentComposerSlashStatus,
   AgentComposerSlashStatusLimit,
@@ -147,7 +148,8 @@ export function AgentComposer(props: AgentComposerProps): React.JSX.Element {
     onRequestWorkspaceReferences = null,
     resolveDroppedFileReferences = null,
     onRequestGitBranches = null,
-    contextMentionProviders = EMPTY_CONTEXT_MENTION_PROVIDERS
+    contextMentionProviders = EMPTY_CONTEXT_MENTION_PROVIDERS,
+    referenceProvenanceFilter = null
   } = props;
   const draftPrompt = agentComposerDraftPrompt(draftContent);
   const goalDraftObjective = canGoalControl
@@ -373,10 +375,13 @@ export function AgentComposer(props: AgentComposerProps): React.JSX.Element {
   }, [draftPrompt, goalDraftObjective]);
 
   useEffect(() => {
+    mentionControllerRef.current?.setProvenanceFilter(
+      referenceProvenanceFilter?.snapshot.value ?? null
+    );
     draftImagesRef.current = agentComposerDraftImages(draftContent);
     draftFilesRef.current = agentComposerDraftFiles(draftContent);
     draftLargeTextsRef.current = agentComposerDraftLargeTexts(draftContent);
-  }, [draftContent]);
+  }, [draftContent, referenceProvenanceFilter?.snapshot.value]);
 
   useEffect(() => {
     if (

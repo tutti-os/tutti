@@ -12,3 +12,8 @@ export type {
   ReferenceBundleSelection,
   ReferenceGroupedSelection
 } from "../react/internal/reference/useReferenceSourcePickerView.ts";
+export {
+  ReferenceProvenanceFilterControl,
+  type ReferenceProvenanceFilterControlProps,
+  type ReferenceProvenanceFilterLabels
+} from "./internal/reference/ReferenceProvenanceFilterControl.tsx";

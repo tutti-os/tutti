@@ -21,6 +21,7 @@ export interface MentionPaletteFromStateProps<
     ctx: { active: boolean; group: MentionPaletteGroup<TItem> }
   ) => ReactNode;
   renderListFooter?: () => ReactNode;
+  headerActions?: ReactNode;
   loadingBanner?: ReactNode;
   scrollHighlightedIntoViewCentered?: boolean;
   theme?: MentionPaletteTheme;
@@ -37,6 +38,7 @@ export function MentionPaletteFromState<TItem>(
     maxHeightPx,
     renderItem,
     renderListFooter,
+    headerActions,
     loadingBanner,
     scrollHighlightedIntoViewCentered,
     theme,
@@ -53,6 +55,7 @@ export function MentionPaletteFromState<TItem>(
       maxHeightPx={maxHeightPx}
       renderItem={renderItem}
       renderListFooter={renderListFooter}
+      headerActions={headerActions}
       loadingBanner={loadingBanner}
       scrollHighlightedIntoViewCentered={scrollHighlightedIntoViewCentered}
       theme={theme}

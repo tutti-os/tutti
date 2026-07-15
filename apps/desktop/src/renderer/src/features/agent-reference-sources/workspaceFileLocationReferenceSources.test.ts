@@ -109,6 +109,50 @@ test("location reference source searches recent from recent references", async (
   );
 });
 
+test("local source delegates Agent provenance filtering before type filtering and limit", async () => {
+  const calls: string[][] = [];
+  const [projectSource, localSource] =
+    createWorkspaceFileLocationReferenceSources({
+      adapter: {},
+      getLocationSections: () => locationSections,
+      localLabel: "Local",
+      projectLabel: "Project",
+      async searchByProvenance(_scope, input) {
+        calls.push([...(input.provenanceFilter?.agentTargetIds ?? [])]);
+        return [
+          { kind: "file", path: "/workspace/report.md" },
+          { kind: "file", path: "/workspace/image.png" }
+        ];
+      }
+    });
+
+  const result = await localSource?.search?.(
+    { workspaceId: "workspace-1" },
+    {
+      filters: ["image"],
+      limit: 1,
+      provenanceFilter: {
+        agentTargetIds: ["agent-a"],
+        memberIds: null
+      },
+      query: ""
+    }
+  );
+
+  assert.deepEqual(projectSource?.capabilities.provenanceDimensions, ["agent"]);
+  assert.deepEqual(localSource?.capabilities.provenanceDimensions, ["agent"]);
+  assert.deepEqual(calls, [["agent-a"]]);
+  assert.deepEqual(
+    result?.entries.map((entry) => entry.ref.nodeId),
+    ["/workspace/image.png"]
+  );
+  await localSource?.search?.(
+    { workspaceId: "workspace-1" },
+    { query: "report" }
+  );
+  assert.deepEqual(calls, [["agent-a"]]);
+});
+
 test("location reference source lists up to 100 recent references", async () => {
   let observedRecentLimit: number | undefined;
   const adapter: WorkspaceFileReferenceAdapter = {

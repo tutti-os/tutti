@@ -5,6 +5,7 @@ import type {
   ListChildrenResult,
   NodeRef,
   ReferenceNode,
+  SearchInput,
   SearchResult,
   SelectedReference
 } from "../../../contracts/referenceSource.ts";
@@ -17,6 +18,7 @@ import { SOURCE_ROOT_NODE_ID } from "../../../core/referenceSourceAggregator.ts"
 import { nodeRefKey } from "../../../core/referenceSourceUtils.ts";
 import {
   ROOT_CHILDREN_KEY,
+  SEARCH_PAGE_SIZE,
   createReferenceSourcePickerController
 } from "./referenceSourcePickerController.ts";
 
@@ -38,6 +40,7 @@ interface FakeOptions {
   tabs: ReferenceSourceTab[];
   children: Record<string, ListChildrenResult>; // key = `${sourceId}:${nodeId}`
   search?: Record<string, SearchResult>; // key = `${sourceId}:${query}`
+  onSearch?: (input: SearchInput) => void;
   /** navigable=true 的源(app/issue):confirm 时文件夹递归展开成文件。 */
   navigable?: Record<string, boolean>;
   /** locateTarget 返回的 NodeRef 路径(root → leaf),key = sourceId。 */
@@ -57,6 +60,7 @@ function fakeAggregator(options: FakeOptions): ReferenceSourceAggregator {
       );
     },
     async search(_scope, sourceId, input): Promise<SearchResult> {
+      options.onSearch?.(input);
       return (
         options.search?.[`${sourceId}:${input.query}`] ?? {
           entries: [],
@@ -553,6 +557,41 @@ test("search 在当前 tab 生效", async () => {
     controller.getSnapshot().bySource["workspace-file"]?.mode,
     "browse"
   );
+});
+
+test("provenance-only filtering enters query mode and reaches the source before paging", async () => {
+  const searchInputs: SearchInput[] = [];
+  const controller = createReferenceSourcePickerController({
+    aggregator: fakeAggregator({
+      tabs: tabsTwo,
+      children: {},
+      onSearch: (input) => {
+        searchInputs.push(input);
+      }
+    }),
+    scope,
+    searchDebounceMs: 0
+  });
+  controller.open();
+  await flush();
+
+  controller.setProvenanceFilter({
+    agentTargetIds: ["agent-a"],
+    memberIds: null
+  });
+  await flush();
+
+  assert.equal(
+    controller.getSnapshot().bySource["workspace-file"]?.mode,
+    "search"
+  );
+  const searchInput = searchInputs.at(-1);
+  assert.deepEqual(searchInput?.provenanceFilter, {
+    agentTargetIds: ["agent-a"],
+    memberIds: null
+  });
+  assert.equal(searchInput?.query, "");
+  assert.equal(searchInput?.limit, SEARCH_PAGE_SIZE);
 });
 
 test("search 保留 source 返回的相关性顺序", async () => {

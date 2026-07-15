@@ -7,6 +7,7 @@ import { workspaceAgentSessionStatus } from "@tutti-os/agent-activity-core";
 import { AGENT_CONTEXT_MENTION_PROVIDER_IDS } from "@tutti-os/agent-gui/context-mention-provider";
 import { resolveAgentGUIProviderCatalogIdentity } from "@tutti-os/agent-gui/provider-catalog";
 import { resolveAgentGUIProviderIdentity } from "@tutti-os/agent-gui/provider-identity";
+import type { ReferenceProvenanceFilter } from "@tutti-os/workspace-file-reference/contracts";
 import type {
   AgentTargetPresentation,
   IAgentsService
@@ -147,14 +148,19 @@ export function createAgentSessionAtContributor(contributorInput: {
               searchInput.context.metadata,
               "currentUserId"
             );
+            const provenanceFilter = metadataReferenceProvenanceFilter(
+              searchInput.context.metadata
+            );
+            const agentTargetIds = provenanceFilter?.agentTargetIds ?? null;
+            if (agentTargetIds?.length === 0) return [];
             const [response, agentDirectory] = await Promise.all([
-              contributorInput.tuttidClient.listWorkspaceAgentSessions(
-                input.workspaceId,
-                {
-                  limit: searchInput.maxResults,
-                  searchQuery: searchInput.keyword.trim()
-                }
-              ),
+              listAgentSessionsByProvenance({
+                agentTargetIds,
+                client: contributorInput.tuttidClient,
+                limit: searchInput.maxResults,
+                searchQuery: searchInput.keyword.trim(),
+                workspaceId: input.workspaceId
+              }),
               contributorInput.agentsService?.load(searchInput.abortSignal) ??
                 null
             ]);
@@ -347,6 +353,73 @@ function metadataString(
 ): string {
   const value = metadata?.[key];
   return typeof value === "string" ? value.trim() : "";
+}
+
+function metadataReferenceProvenanceFilter(
+  metadata: Readonly<Record<string, unknown>> | undefined
+): ReferenceProvenanceFilter | null {
+  const value = metadata?.referenceProvenanceFilter;
+  if (!value || typeof value !== "object") return null;
+  const filter = value as Partial<ReferenceProvenanceFilter>;
+  return {
+    agentTargetIds: stringArrayOrNull(filter.agentTargetIds),
+    memberIds: stringArrayOrNull(filter.memberIds)
+  };
+}
+
+function stringArrayOrNull(value: unknown): readonly string[] | null {
+  if (value === null || value === undefined) return null;
+  if (!Array.isArray(value)) return null;
+  return Array.from(
+    new Set(
+      value
+        .filter((item): item is string => typeof item === "string")
+        .map((item) => item.trim())
+        .filter(Boolean)
+    )
+  );
+}
+
+async function listAgentSessionsByProvenance(input: {
+  agentTargetIds: readonly string[] | null;
+  client: TuttidClient;
+  limit?: number;
+  searchQuery: string;
+  workspaceId: string;
+}): Promise<Awaited<ReturnType<TuttidClient["listWorkspaceAgentSessions"]>>> {
+  if (input.agentTargetIds === null) {
+    return input.client.listWorkspaceAgentSessions(input.workspaceId, {
+      limit: input.limit,
+      searchQuery: input.searchQuery
+    });
+  }
+  const responses = await Promise.all(
+    input.agentTargetIds.map((agentTargetId) =>
+      input.client.listWorkspaceAgentSessions(input.workspaceId, {
+        agentTargetId,
+        limit: input.limit,
+        searchQuery: input.searchQuery
+      })
+    )
+  );
+  const sessionsById = new Map(
+    responses
+      .flatMap((response) => response.sessions)
+      .map((session) => [session.id, session] as const)
+  );
+  const sessions = [...sessionsById.values()]
+    .sort(
+      (left, right) =>
+        (right.updatedAtUnixMs ?? right.createdAtUnixMs ?? 0) -
+        (left.updatedAtUnixMs ?? left.createdAtUnixMs ?? 0)
+    )
+    .slice(0, input.limit && input.limit > 0 ? input.limit : undefined);
+  return {
+    ...responses[0],
+    hasMore: responses.some((response) => response.hasMore),
+    workspaceId: responses[0]?.workspaceId || input.workspaceId,
+    sessions
+  };
 }
 
 function resolveAgentSessionScope(

@@ -3,6 +3,10 @@ import type {
   WorkspaceFileReferenceScope
 } from "./index.ts";
 import type { WorkspaceFileOpenWithApplication } from "@tutti-os/workspace-file-manager/services";
+import type {
+  ReferenceProvenanceDimension,
+  ReferenceProvenanceFilter
+} from "./referenceProvenance.ts";
 
 /**
  * Reference Source Services 契约。
@@ -71,6 +75,8 @@ export interface ListChildrenResult {
 
 export interface SearchInput {
   query: string;
+  /** Host-controlled provenance constraint. Sources must filter before paging. */
+  provenanceFilter?: ReferenceProvenanceFilter | null;
   /**
    * 已选「文件类型筛选分类」id 数组(全局统一口径,见 core/referenceFilterCategories)。
    * 筛选与搜索在底层是同一能力:query 可空、filters 非空时即「仅按类型查」。
@@ -158,6 +164,8 @@ export interface ReferenceSourceCapabilities {
    * 已选分类作为 search() 的 filters 下钻到 daemon 过滤。三源(本地/应用/任务)均为 true。
    */
   filterable?: boolean;
+  /** Provenance dimensions this source can enforce before pagination. */
+  provenanceDimensions?: readonly ReferenceProvenanceDimension[];
 }
 
 /**

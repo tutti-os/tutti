@@ -128,6 +128,15 @@
   flex-shrink: 0;
 }
 
+.rich-text-at-mention-palette__header-actions {
+  position: absolute;
+  top: 10px;
+  right: 12px;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+}
+
 .rich-text-at-mention-palette__footer {
   box-sizing: border-box;
   width: 100%;

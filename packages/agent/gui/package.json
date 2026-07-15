@@ -24,7 +24,7 @@
     "./provider-catalog": "./provider-catalog.ts",
     "./provider-icons": "./provider-icons.ts",
     "./agentGuiSessionProviderIconUrls": "./agentGuiSessionProviderIconUrls.ts",
-    "./workspace-agent-generated-files": "./shared/workspaceAgentActivityListViewModel.ts",
+    "./workspace-agent-generated-files": "./shared/workspaceAgentGeneratedFiles.ts",
     "./i18n": "./i18n/index.ts",
     "./workbench": "./workbench/index.ts",
     "./workbench/contribution": "./workbench/contribution.ts",

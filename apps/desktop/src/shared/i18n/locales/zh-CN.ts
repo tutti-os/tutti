@@ -807,6 +807,9 @@ export const zhCN = {
         removeFileDefaultOpener: "移除 .{{extension}}",
         releaseChannelDescription: "选择稳定版更新；需要提前验收时可切到预览版",
         releaseChannelLabel: "发布渠道",
+        referenceProvenanceFilterDescription:
+          "在 Agent 对话的引用选择器中启用智能体来源筛选。",
+        referenceProvenanceFilterLabel: "智能体来源筛选",
         releaseChannelOptions: {
           rc: "预览版",
           stable: "稳定版"

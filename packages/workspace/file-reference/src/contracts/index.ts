@@ -126,4 +126,5 @@ export interface WorkspaceFileReferenceCopy {
   t(key: string, values?: Record<string, number | string>): string;
 }
 
+export type * from "./referenceProvenance.ts";
 export type * from "./referenceSource.ts";

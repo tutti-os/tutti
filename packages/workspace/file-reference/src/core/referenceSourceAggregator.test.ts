@@ -185,3 +185,55 @@ test("aggregator 委派 resolveSelection 到对应源", async () => {
     sourceId: "workspace-file"
   });
 });
+
+test("aggregator only delegates active provenance filters to capable sources", async () => {
+  let unsupportedCalls = 0;
+  let supportedInput: unknown = null;
+  const registry = createStaticReferenceSourceRegistry([
+    fakeSource({
+      id: "unsupported",
+      capabilities: {
+        paginated: false,
+        previewable: false,
+        searchable: true
+      },
+      search: async () => {
+        unsupportedCalls += 1;
+        return { entries: [fileNode("unsupported", "wrong")] };
+      }
+    }),
+    fakeSource({
+      id: "supported",
+      capabilities: {
+        paginated: false,
+        previewable: false,
+        provenanceDimensions: ["agent"],
+        searchable: true
+      },
+      search: async (_scope, input) => {
+        supportedInput = input.provenanceFilter;
+        return { entries: [fileNode("supported", "right")] };
+      }
+    })
+  ]);
+  const aggregator = createReferenceSourceAggregator(registry);
+  await aggregator.listRoot(scope);
+  const provenanceFilter = {
+    agentTargetIds: ["agent-a"],
+    memberIds: null
+  };
+
+  const unsupported = await aggregator.search(scope, "unsupported", {
+    provenanceFilter,
+    query: ""
+  });
+  const supported = await aggregator.search(scope, "supported", {
+    provenanceFilter,
+    query: ""
+  });
+
+  assert.equal(unsupportedCalls, 0);
+  assert.deepEqual(unsupported.entries, []);
+  assert.deepEqual(supportedInput, provenanceFilter);
+  assert.equal(supported.entries[0]?.ref.nodeId, "right");
+});

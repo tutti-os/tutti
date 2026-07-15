@@ -50,6 +50,8 @@ import {
   fetchAgentMentionFilterResult,
   queryAgentMentionProviderItems
 } from "./AgentMentionSearchIndex";
+import type { ReferenceProvenanceFilter } from "@tutti-os/workspace-file-reference/contracts";
+import { referenceProvenanceFilterCacheKey } from "@tutti-os/workspace-file-reference/core";
 
 export class AgentMentionSearchControllerBase {
   protected readonly contextMentionProviders: ReadonlyMap<
@@ -81,6 +83,7 @@ export class AgentMentionSearchControllerBase {
   protected currentFilter: AgentMentionFilterId = DEFAULT_AGENT_MENTION_FILTER;
   protected currentQuery = "";
   protected currentSessionCwd = "";
+  protected currentProvenanceFilter: ReferenceProvenanceFilter | null = null;
   protected currentFileSearchLimit: number;
   protected currentIssueSearchLimit: number;
   protected agentGeneratedBrowsePath: string | null = null;
@@ -429,7 +432,8 @@ export class AgentMentionSearchControllerBase {
               query: input.query,
               limit: input.limit,
               sessionCwd: input.sessionCwd ?? this.currentSessionCwd,
-              abortSignal
+              abortSignal,
+              provenanceFilter: this.currentProvenanceFilter
             })
         : null,
       resultCount: (result) => result.length
@@ -577,7 +581,10 @@ export class AgentMentionSearchControllerBase {
       ...input,
       fileLimit: this.fileLimit,
       issueLimit: this.currentIssueSearchLimit,
-      providerIds: [...this.contextMentionProviders.keys()].sort()
+      providerIds: [...this.contextMentionProviders.keys()].sort(),
+      provenanceFilterKey: this.currentProvenanceFilter
+        ? referenceProvenanceFilterCacheKey(this.currentProvenanceFilter)
+        : "disabled"
     });
   }
 
@@ -623,6 +630,7 @@ export class AgentMentionSearchControllerBase {
       fileLimit: this.fileLimit,
       currentFileSearchLimit: this.currentFileSearchLimit,
       currentIssueSearchLimit: this.currentIssueSearchLimit,
+      provenanceFilter: this.currentProvenanceFilter,
       queryProviderMentionItemsById: (queryInput) =>
         this.queryProviderMentionItemsById(queryInput)
     });

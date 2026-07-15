@@ -855,6 +855,9 @@ export const en = {
         releaseChannelDescription:
           "Choose stable release updates, or opt in to preview builds for internal verification.",
         releaseChannelLabel: "Release channel",
+        referenceProvenanceFilterDescription:
+          "Enable Agent source filtering in Agent conversation reference pickers.",
+        referenceProvenanceFilterLabel: "Agent source filter",
         releaseChannelOptions: {
           rc: "Preview",
           stable: "Stable"

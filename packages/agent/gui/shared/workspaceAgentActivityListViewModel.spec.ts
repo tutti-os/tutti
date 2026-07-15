@@ -1523,6 +1523,7 @@ describe("buildWorkspaceAgentActivityListViewModel", () => {
       sessions: [
         {
           agentSessionId: "session-20",
+          agentTargetId: "agent-a",
           cwd: "/Users/demo/project",
           provider: "codex",
           status: "completed",
@@ -1531,6 +1532,7 @@ describe("buildWorkspaceAgentActivityListViewModel", () => {
         },
         {
           agentSessionId: "session-21",
+          agentTargetId: "agent-b",
           cwd: "/Users/demo/project",
           provider: "codex",
           status: "completed",
@@ -1590,6 +1592,17 @@ describe("buildWorkspaceAgentActivityListViewModel", () => {
         path: "/Users/demo/project/output/report.md",
         label: "report.md"
       },
+      {
+        path: "/workspace/output/image.png",
+        label: "image.png"
+      }
+    ]);
+    expect(
+      collectWorkspaceAgentGeneratedFiles(canonicalSource(snapshot), {
+        agentTargetIds: ["agent-b"],
+        workspaceRoot: "/Users/demo/project"
+      })
+    ).toEqual([
       {
         path: "/workspace/output/image.png",
         label: "image.png"
