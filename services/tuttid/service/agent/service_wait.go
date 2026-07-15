@@ -17,10 +17,12 @@ func (s *Service) Wait(ctx context.Context, input WaitInput) (WaitResult, error)
 		return WaitResult{}, ErrInvalidArgument
 	}
 	messageLimit := input.MessageLimit
-	if messageLimit < 0 {
+	if messageLimit < 0 && !input.SkipMessages {
 		return WaitResult{}, ErrInvalidArgument
 	}
-	if messageLimit == 0 {
+	if input.SkipMessages {
+		messageLimit = -1
+	} else if messageLimit == 0 {
 		messageLimit = defaultWaitMessageLimit
 	}
 	timeout := input.Timeout
@@ -183,6 +185,19 @@ func (s *Service) waitResult(
 	effectiveAfter uint64,
 	messageLimit int,
 ) (WaitResult, error) {
+	if messageLimit < 0 {
+		latestVersion, err := s.latestSessionVersion(ctx, workspaceID, agentSessionID)
+		if err != nil {
+			return WaitResult{}, err
+		}
+		return WaitResult{
+			Session:        cloneSession(session),
+			LatestVersion:  latestVersion,
+			Reason:         reason,
+			TimedOut:       timedOut,
+			EffectiveAfter: effectiveAfter,
+		}, nil
+	}
 	messages, latestVersion, hasMore, err := s.recentAgentExecutionMessages(ctx, workspaceID, agentSessionID, effectiveAfter, messageLimit)
 	if err != nil {
 		return WaitResult{}, err
