@@ -74,6 +74,7 @@ export interface AgentGuiWorkbenchContributionCopy {
   nodeTitle: string;
   openDetachedWindow: string;
   restore: string;
+  untitledConversation: string;
 }
 
 export type AgentGuiWorkbenchContributionCopyOverrides =
@@ -230,21 +231,24 @@ export function createAgentGuiWorkbenchContribution(
             conversationIdentity?.title ??
             input.resolveDockPopupTitle?.(workbenchState) ??
             null;
-          // Resolve the icon from a *known* provider only. During a freshly
-          // created session the provider is not encoded yet; falling back to
-          // `provider` (which defaults to "codex") would flash the wrong icon,
-          // so we leave the URL empty and let the header render a neutral
-          // placeholder until the real provider resolves.
+          // The empty new-conversation home has no session identity, so it
+          // must not inherit the provider icon from the workbench instance.
+          // Once a local session id exists, keep the provider icon available
+          // while the canonical conversation title is still being persisted.
           const iconProvider =
             providerFromActivation(activation) ??
             agentGuiWorkbenchProviderFromInstanceIdOrNull(instanceId);
-          const conversationIconFallbackUrl = iconProvider
-            ? (resolveAgentGuiSessionProviderIconUrl(iconProvider) ??
-              resolveAgentGuiWorkbenchProviderIconUrl({
-                dockIconUrls: input.dockIconUrls,
-                provider: iconProvider
-              }))
-            : null;
+          const hasConversation = Boolean(
+            workbenchState.lastActiveAgentSessionId?.trim()
+          );
+          const conversationIconFallbackUrl =
+            hasConversation && iconProvider
+              ? (resolveAgentGuiSessionProviderIconUrl(iconProvider) ??
+                resolveAgentGuiWorkbenchProviderIconUrl({
+                  dockIconUrls: input.dockIconUrls,
+                  provider: iconProvider
+                }))
+              : null;
           const conversationIconUrl =
             conversationIdentity?.iconUrl ?? conversationIconFallbackUrl;
           const persistConversationRailCollapsed = (collapsed: boolean) => {
@@ -289,6 +293,7 @@ export function createAgentGuiWorkbenchContribution(
             conversationIconFallbackUrl,
             conversationRailWidthPx,
             displayMode,
+            hasConversation,
             isConversationRailAutoCollapsed,
             isConversationRailCollapsed,
             nodeId: node.id,

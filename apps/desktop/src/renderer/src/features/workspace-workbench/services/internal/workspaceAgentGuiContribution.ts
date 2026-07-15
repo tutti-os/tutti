@@ -209,6 +209,9 @@ export function createWorkspaceAgentGuiContribution(input: {
       nodeTitle: input.i18n.t(workspaceWorkbenchDesktopI18nKeys.nodes.agent),
       openDetachedWindow: input.appI18n.t(
         "workspace.agentGui.openDetachedWindow"
+      ),
+      untitledConversation: input.appI18n.t(
+        "workspace.agentGui.untitledConversation"
       )
     },
     dockIconUrls: input.dockIconUrls,

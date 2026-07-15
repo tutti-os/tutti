@@ -70,7 +70,8 @@ export const agentGuiWorkbenchDefaultCopy: AgentGuiWorkbenchContributionCopy = {
   newConversation: "New conversation",
   nodeTitle: "Agent",
   openDetachedWindow: "Open in detached window",
-  restore: "Restore"
+  restore: "Restore",
+  untitledConversation: "Untitled conversation"
 };
 export type AgentGuiWorkbenchProviderAvailability = Partial<
   Record<

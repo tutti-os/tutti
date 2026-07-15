@@ -72,6 +72,9 @@ export function AgentGuiWorkbenchReactiveHeader({
         conversationIdentity?.iconUrl ?? headerProps.conversationIconFallbackUrl
       }
       conversationTitle={conversationIdentity?.title}
+      hasConversation={Boolean(
+        workbenchState?.lastActiveAgentSessionId?.trim()
+      )}
     />
   );
 }

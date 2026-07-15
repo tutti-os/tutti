@@ -197,7 +197,9 @@ wait for provider-side session creation or conversation-title persistence. An
 empty new-conversation home does not show this header identity. The conversation
 title remains the detail title while the rail is expanded and the identity used
 by Dock previews; after submission, the expanded detail title area shows the
-agent icon immediately even before conversation-title persistence.
+agent icon immediately even before conversation-title persistence. During that
+gap, the rail and header use the same localized untitled presentation fallback;
+the canonical `session.title` remains empty until the daemon establishes it.
 
 AgentGuiNode may expose agent selection in multiple UI-local entry points,
 including the conversation rail agent grid and the agent select next to the

@@ -673,12 +673,18 @@ export function StandaloneAgentWindow({
                 "workspace.agentGui.fallbackAgentLabel"
               ),
               newConversation: i18n.t("workspace.agentGui.newConversation"),
-              openDetachedWindow: i18n.t("workspace.agentGui.openNewWindow")
+              openDetachedWindow: i18n.t("workspace.agentGui.openNewWindow"),
+              untitledConversation: i18n.t(
+                "workspace.agentGui.untitledConversation"
+              )
             }}
             conversationRailWidthPx={headerConversationRailWidthPx}
             conversationIconUrl={headerConversationIconUrl}
             conversationIconFallbackUrl={headerConversationIconFallbackUrl}
             conversationTitle={headerConversationTitle}
+            hasConversation={Boolean(
+              nodeState.lastActiveAgentSessionId?.trim()
+            )}
             data-agent-gui-standalone-window-content-loading={
               isContentLoading ? "true" : "false"
             }
