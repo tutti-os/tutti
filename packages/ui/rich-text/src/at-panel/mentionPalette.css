@@ -854,6 +854,8 @@
   gap: 4px;
   width: fit-content;
   border: 1px solid transparent;
+  padding-inline: 4px;
+  font-size: 11px;
   white-space: nowrap;
 }
 
@@ -892,7 +894,6 @@
 }
 
 .rich-text-at-mention-status--activity {
-  padding-inline: 0;
   background: transparent;
 }
 
