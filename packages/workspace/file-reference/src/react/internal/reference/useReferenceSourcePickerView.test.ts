@@ -197,6 +197,89 @@ test("reference source picker shows html source as text", async () => {
   }
 });
 
+test("reference source picker keeps search relevance independent of browse arrangement", async () => {
+  const dom = new JSDOM('<!doctype html><div id="root"></div>');
+  const previousWindow = globalThis.window;
+  const previousDocument = globalThis.document;
+  const previousHTMLElement = globalThis.HTMLElement;
+  const previousActEnvironment = (
+    globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }
+  ).IS_REACT_ACT_ENVIRONMENT;
+  globalThis.window = dom.window;
+  globalThis.document = dom.window.document;
+  globalThis.HTMLElement = dom.window.HTMLElement;
+  (
+    globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }
+  ).IS_REACT_ACT_ENVIRONMENT = true;
+
+  let root: Root | null = null;
+  try {
+    const container = dom.window.document.getElementById("root");
+    assert.ok(container);
+
+    const exactFile = file("/workspace/load_log", "load_log");
+    const fuzzyFolder: ReferenceNode = {
+      displayName: "downloaded_catalog_data",
+      kind: "folder",
+      ref: {
+        nodeId: "/workspace/downloaded_catalog_data",
+        sourceId: "workspace-file"
+      }
+    };
+    const baseAggregator = createOpenWithAggregator(async () => []);
+    const aggregator: ReferenceSourceAggregator = {
+      ...baseAggregator,
+      search: async () => ({
+        entries: [exactFile, fuzzyFolder],
+        nextCursor: null
+      })
+    };
+    let latestView: PickerView | null = null;
+
+    function Harness() {
+      latestView = useReferenceSourcePickerView({
+        aggregator,
+        onClose() {},
+        onConfirm() {},
+        open: true,
+        workspaceId: "workspace-reference-search-order",
+        workspaceRootGroupLabel: "Workspace"
+      });
+      return null;
+    }
+
+    root = createRoot(container);
+    await act(async () => {
+      root?.render(createElement(Harness));
+    });
+    await act(async () => {
+      const view = requireLatestView(latestView);
+      view.setArrangeMode("name");
+      view.setSearchQuery("load_log");
+      await new Promise((resolve) => setTimeout(resolve, 220));
+    });
+
+    assert.deepEqual(
+      requireLatestView(latestView).searchResults.map(
+        (node) => node.ref.nodeId
+      ),
+      [exactFile.ref.nodeId, fuzzyFolder.ref.nodeId]
+    );
+  } finally {
+    if (root) {
+      await act(async () => {
+        root?.unmount();
+      });
+    }
+    globalThis.window = previousWindow;
+    globalThis.document = previousDocument;
+    globalThis.HTMLElement = previousHTMLElement;
+    (
+      globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }
+    ).IS_REACT_ACT_ENVIRONMENT = previousActEnvironment;
+  }
+});
+
 function createOpenWithAggregator(
   listOpenWithApplications: ReferenceSourceAggregator["listOpenWithApplications"]
 ): ReferenceSourceAggregator {

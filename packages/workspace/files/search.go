@@ -18,6 +18,12 @@ const (
 	searchDepthPenalty         = 120
 	searchHiddenSegmentPenalty = 8000
 	searchNoiseSegmentPenalty  = 16000
+
+	// Ranking compares the discrete match tier before fuzzy quality. The
+	// transport score encodes that tuple only after ordering has been decided.
+	searchRankScoreStep  = 1_000_000
+	searchRankQualityMax = searchRankScoreStep - 1
+	searchRankTierCount  = 8
 )
 
 var searchNoiseSegments = map[string]struct{}{
@@ -46,6 +52,8 @@ type normalizedSearchTerm struct {
 type normalizedSearchQuery struct {
 	term          normalizedSearchTerm
 	hasPathIntent bool
+	outsideRoot   bool
+	path          string
 	pathTerms     []normalizedSearchTerm
 	trailingSlash bool
 }
@@ -63,13 +71,31 @@ type searchCandidateContext struct {
 
 type scoredSearchMatch struct {
 	indices []int
-	score   int
+	quality int
 	target  SearchMatchTarget
+	tier    int
 }
 
 type textMatchResult struct {
 	indices []int
-	score   int
+	quality int
+	kind    textMatchKind
+}
+
+type textMatchKind int
+
+const (
+	textMatchExact textMatchKind = iota
+	textMatchPrefix
+	textMatchSubstring
+	textMatchFuzzy
+)
+
+type pathSequenceChoice struct {
+	indices          []int
+	lastSegmentIndex int
+	ok               bool
+	quality          int
 }
 
 func NormalizeSearchLimit(limit int) int {
@@ -170,15 +196,15 @@ func NormalizeSearchKinds(kinds []EntryKind) ([]EntryKind, error) {
 }
 
 func ScoreSearchCandidates(root LogicalPath, query string, candidates []SearchCandidate, limit int) []SearchEntry {
-	normalizedQuery := normalizeSearchQuery(query)
-	if normalizedQuery.term.normalized == "" {
+	normalizedQuery := normalizeSearchQuery(root, query)
+	if normalizedQuery.outsideRoot || normalizedQuery.term.normalized == "" {
 		return []SearchEntry{}
 	}
 
 	limit = NormalizeSearchLimit(limit)
 	type scoredEntry struct {
 		entry SearchEntry
-		score int
+		rank  scoredSearchMatch
 	}
 	scored := make([]scoredEntry, 0, len(candidates))
 	for _, candidate := range candidates {
@@ -197,8 +223,9 @@ func ScoreSearchCandidates(root LogicalPath, query string, candidates []SearchCa
 			continue
 		}
 		logicalPath := LogicalPath(path.Join(root.String(), relativePath))
+		transportScore := searchScoreForRank(match)
 		scored = append(scored, scoredEntry{
-			score: match.score,
+			rank: match,
 			entry: SearchEntry{
 				Path:          logicalPath,
 				Name:          path.Base(relativePath),
@@ -206,14 +233,17 @@ func ScoreSearchCandidates(root LogicalPath, query string, candidates []SearchCa
 				DirectoryPath: LogicalPathDir(logicalPath),
 				MatchIndices:  match.indices,
 				MatchTarget:   match.target,
-				Score:         match.score,
+				Score:         transportScore,
 			},
 		})
 	}
 
 	sort.SliceStable(scored, func(i, j int) bool {
-		if scored[i].score != scored[j].score {
-			return scored[i].score > scored[j].score
+		if scored[i].rank.tier != scored[j].rank.tier {
+			return scored[i].rank.tier < scored[j].rank.tier
+		}
+		if scored[i].rank.quality != scored[j].rank.quality {
+			return scored[i].rank.quality > scored[j].rank.quality
 		}
 		if scored[i].entry.Name != scored[j].entry.Name {
 			return scored[i].entry.Name < scored[j].entry.Name
@@ -230,11 +260,43 @@ func ScoreSearchCandidates(root LogicalPath, query string, candidates []SearchCa
 	return entries
 }
 
-func normalizeSearchQuery(query string) normalizedSearchQuery {
+func normalizeSearchQuery(root LogicalPath, query string) normalizedSearchQuery {
 	normalizedPath := strings.ToLower(strings.TrimSpace(strings.ReplaceAll(query, "\\", "/")))
-	term := normalizeSearchTerm(strings.ReplaceAll(normalizedPath, "/", " "))
-	pathTerms := make([]normalizedSearchTerm, 0, strings.Count(normalizedPath, "/")+1)
-	for _, part := range strings.Split(normalizedPath, "/") {
+	if normalizedPath == "" {
+		return normalizedSearchQuery{}
+	}
+
+	hasPathIntent := strings.Contains(normalizedPath, "/")
+	trailingSlash := strings.HasSuffix(normalizedPath, "/")
+	outsideRoot := false
+	pathQuery := normalizedPath
+
+	if strings.HasPrefix(pathQuery, "~/") {
+		pathQuery = strings.TrimLeft(strings.TrimPrefix(pathQuery, "~/"), "/")
+	} else if isAbsoluteSearchPath(pathQuery) {
+		logicalRoot := strings.ToLower(NormalizeLogicalRoot(root.String()).String())
+		canonicalQuery := canonicalAbsoluteSearchPath(pathQuery)
+		if logicalRoot == "/" {
+			pathQuery = strings.TrimPrefix(canonicalQuery, "/")
+		} else if canonicalQuery == logicalRoot {
+			pathQuery = ""
+		} else if strings.HasPrefix(canonicalQuery, logicalRoot+"/") {
+			pathQuery = strings.TrimPrefix(canonicalQuery, logicalRoot+"/")
+		} else {
+			outsideRoot = true
+		}
+	}
+
+	pathQuery = path.Clean(pathQuery)
+	if pathQuery == "." {
+		pathQuery = ""
+	} else if pathQuery == ".." || strings.HasPrefix(pathQuery, "../") {
+		outsideRoot = true
+	}
+	pathQuery = strings.Trim(pathQuery, "/")
+	term := normalizeSearchTerm(strings.ReplaceAll(pathQuery, "/", " "))
+	pathTerms := make([]normalizedSearchTerm, 0, strings.Count(pathQuery, "/")+1)
+	for _, part := range strings.Split(pathQuery, "/") {
 		termPart := normalizeSearchTerm(part)
 		if termPart.normalized == "" {
 			continue
@@ -243,9 +305,11 @@ func normalizeSearchQuery(query string) normalizedSearchQuery {
 	}
 	return normalizedSearchQuery{
 		term:          term,
-		hasPathIntent: strings.Contains(normalizedPath, "/"),
+		hasPathIntent: hasPathIntent,
+		outsideRoot:   outsideRoot,
+		path:          pathQuery,
 		pathTerms:     pathTerms,
-		trailingSlash: strings.HasSuffix(normalizedPath, "/"),
+		trailingSlash: trailingSlash,
 	}
 }
 
@@ -254,13 +318,47 @@ func scoreSearchCandidate(query normalizedSearchQuery, candidate SearchCandidate
 
 	var match scoredSearchMatch
 	var ok bool
-	match, ok = scoreFilenameCandidate(query.term, context)
+	if query.hasPathIntent {
+		match, ok = scorePathIntentCandidate(query, context)
+	} else {
+		match, ok = scoreNameIntentCandidate(query, context)
+	}
 	if !ok {
 		return scoredSearchMatch{}, false
 	}
-	match.score = applySearchPenalties(query, context, match.score)
+	match.quality = applySearchPenalties(query, context, match.quality)
 	match.indices = compactSortedIndices(match.indices)
 	return match, true
+}
+
+func searchScoreForRank(match scoredSearchMatch) int {
+	quality := match.quality
+	if quality < 0 {
+		quality = 0
+	}
+	if quality > searchRankQualityMax {
+		quality = searchRankQualityMax
+	}
+	tierWeight := searchRankTierCount - match.tier
+	if tierWeight < 0 {
+		tierWeight = 0
+	}
+	return tierWeight*searchRankScoreStep + quality
+}
+
+func isAbsoluteSearchPath(value string) bool {
+	return strings.HasPrefix(value, "/") || isWindowsAbsoluteSearchPath(value)
+}
+
+func isWindowsAbsoluteSearchPath(value string) bool {
+	return len(value) >= 3 && value[1] == ':' && value[2] == '/'
+}
+
+func canonicalAbsoluteSearchPath(value string) string {
+	if isWindowsAbsoluteSearchPath(value) {
+		value = "/" + value
+	}
+	return path.Clean(value)
 }
 
 func createSearchCandidateContext(candidate SearchCandidate) searchCandidateContext {
@@ -299,118 +397,293 @@ func trimSearchStem(value string) string {
 	return stem
 }
 
-func scoreFilenameCandidate(term normalizedSearchTerm, candidate searchCandidateContext) (scoredSearchMatch, bool) {
-	if isDotLiteralSearchTerm(term) {
-		return scoreDotLiteralFilenameCandidate(term.tokens[0], candidate)
+func scoreNameIntentCandidate(query normalizedSearchQuery, candidate searchCandidateContext) (scoredSearchMatch, bool) {
+	if match, ok := scoreFilenameCandidate(query.term, candidate); ok {
+		return match, true
 	}
+	if searchTermContainsFilenameDotLiteral(query.term) {
+		return scoredSearchMatch{}, false
+	}
+
+	match, ok := scoreBestParentPathSegment(query.term, candidate)
+	if !ok {
+		return scoredSearchMatch{}, false
+	}
+	switch textMatchKind(match.tier) {
+	case textMatchExact:
+		match.tier = 5
+	case textMatchPrefix, textMatchSubstring:
+		match.tier = 6
+	default:
+		match.tier = 7
+	}
+	return match, true
+}
+
+func scorePathIntentCandidate(query normalizedSearchQuery, candidate searchCandidateContext) (scoredSearchMatch, bool) {
+	if query.path == "" {
+		return scoredSearchMatch{}, false
+	}
+	if candidate.relativePath == query.path && (!query.trailingSlash || candidate.kind == EntryKindDirectory) {
+		return scoredSearchMatch{
+			indices: sequentialSearchIndices(len(query.path)),
+			quality: searchRankQualityMax - len(candidate.relativePath),
+			target:  SearchMatchTargetPath,
+			tier:    0,
+		}, true
+	}
+	if strings.HasPrefix(candidate.relativePath, query.path) &&
+		(!query.trailingSlash || strings.HasPrefix(candidate.relativePath, query.path+"/")) {
+		return scoredSearchMatch{
+			indices: sequentialSearchIndices(len(query.path)),
+			quality: searchRankQualityMax - len(candidate.relativePath),
+			target:  SearchMatchTargetPath,
+			tier:    1,
+		}, true
+	}
+	if choice, ok := scorePathTermSequence(query.pathTerms, candidate.segments, query.trailingSlash); ok {
+		if query.trailingSlash &&
+			candidate.kind != EntryKindDirectory &&
+			choice.lastSegmentIndex == len(candidate.segments)-1 {
+			return scoredSearchMatch{}, false
+		}
+		return scoredSearchMatch{
+			indices: choice.indices,
+			quality: choice.quality / len(query.pathTerms),
+			target:  SearchMatchTargetPath,
+			tier:    2,
+		}, true
+	}
+	if !query.trailingSlash {
+		compactQuery := strings.ReplaceAll(query.path, "/", "")
+		if start, span, gaps, indices, ok := subsequenceMatch(candidate.relativePath, compactQuery); ok {
+			return scoredSearchMatch{
+				indices: indices,
+				quality: fuzzySearchQuality(start, span, gaps, len(candidate.relativePath)),
+				target:  SearchMatchTargetPath,
+				tier:    3,
+			}, true
+		}
+	}
+	return scoredSearchMatch{}, false
+}
+
+func scoreFilenameCandidate(term normalizedSearchTerm, candidate searchCandidateContext) (scoredSearchMatch, bool) {
 	if !candidateContainsFilenameDotLiteralTokens(term, candidate) {
 		return scoredSearchMatch{}, false
 	}
 
-	best := scoredSearchMatch{}
-	bestOk := false
-
-	if result, ok := scoreTextMatch(term, candidate.stem, 1000000, 930000, 60000); ok {
-		best = scoredSearchMatch{
-			indices: result.indices,
-			score:   result.score,
+	if searchTermEqualsTarget(term, candidate.basename) {
+		return scoredSearchMatch{
+			indices: sequentialSearchIndices(len(candidate.basename)),
+			quality: searchRankQualityMax - len(candidate.basename),
 			target:  SearchMatchTargetBasename,
-		}
-		bestOk = true
+			tier:    0,
+		}, true
 	}
-	if candidate.basename != candidate.stem {
-		if result, ok := scoreTextMatch(term, candidate.basename, 970000, 900000, 45000); ok && (!bestOk || result.score > best.score) {
-			best = scoredSearchMatch{
-				indices: result.indices,
-				score:   result.score,
-				target:  SearchMatchTargetBasename,
-			}
-			bestOk = true
-		}
+	if candidate.basename != candidate.stem && searchTermEqualsTarget(term, candidate.stem) {
+		return scoredSearchMatch{
+			indices: sequentialSearchIndices(len(candidate.stem)),
+			quality: searchRankQualityMax - len(candidate.basename),
+			target:  SearchMatchTargetBasename,
+			tier:    1,
+		}, true
 	}
 
-	return best, bestOk
+	best := scoredSearchMatch{}
+	bestOK := false
+	for _, target := range []string{candidate.stem, candidate.basename} {
+		result, ok := classifyTextMatch(term, target)
+		if !ok || result.kind == textMatchExact {
+			continue
+		}
+		tier := 4
+		switch result.kind {
+		case textMatchPrefix:
+			tier = 2
+		case textMatchSubstring:
+			tier = 3
+		case textMatchFuzzy:
+			tier = 4
+		}
+		match := scoredSearchMatch{
+			indices: result.indices,
+			quality: result.quality,
+			target:  SearchMatchTargetBasename,
+			tier:    tier,
+		}
+		if !bestOK || match.tier < best.tier || (match.tier == best.tier && match.quality > best.quality) {
+			best = match
+			bestOK = true
+		}
+	}
+	return best, bestOK
 }
 
-func scoreDotLiteralFilenameCandidate(literal string, candidate searchCandidateContext) (scoredSearchMatch, bool) {
-	index := strings.Index(candidate.basename, literal)
-	if index < 0 {
+func scoreBestParentPathSegment(term normalizedSearchTerm, candidate searchCandidateContext) (scoredSearchMatch, bool) {
+	if len(candidate.segments) <= 1 {
 		return scoredSearchMatch{}, false
 	}
-
-	score := 980000 - (index * 1000) - len(candidate.basename)
-	if strings.HasSuffix(candidate.basename, literal) {
-		score += 30000
+	best := scoredSearchMatch{}
+	bestOK := false
+	for index, segment := range candidate.segments[:len(candidate.segments)-1] {
+		result, ok := classifyTextMatch(term, segment)
+		if !ok {
+			continue
+		}
+		match := scoredSearchMatch{
+			indices: pathIndicesForSegment(candidate.segments, index, result.indices),
+			quality: result.quality - index*3000,
+			target:  SearchMatchTargetPath,
+			tier:    int(result.kind),
+		}
+		if !bestOK || match.tier < best.tier || (match.tier == best.tier && match.quality > best.quality) {
+			best = match
+			bestOK = true
+		}
 	}
-	if candidate.basename == literal {
-		score += 60000
-	}
-	if index == 0 {
-		score += 15000
-	}
-
-	indices := make([]int, 0, len(literal))
-	for offset := 0; offset < len(literal); offset++ {
-		indices = append(indices, index+offset)
-	}
-	return scoredSearchMatch{
-		indices: indices,
-		score:   score,
-		target:  SearchMatchTargetBasename,
-	}, true
+	return best, bestOK
 }
 
-func scoreTextMatch(term normalizedSearchTerm, target string, orderedBase int, subsequenceBase int, prefixBonus int) (textMatchResult, bool) {
+func scorePathTermSequence(terms []normalizedSearchTerm, segments []string, requireFinalExact bool) (pathSequenceChoice, bool) {
+	if len(terms) == 0 {
+		return pathSequenceChoice{}, false
+	}
+	memo := map[[2]int]pathSequenceChoice{}
+	var visit func(termIndex int, segmentIndex int) pathSequenceChoice
+	visit = func(termIndex int, segmentIndex int) pathSequenceChoice {
+		if termIndex == len(terms) {
+			return pathSequenceChoice{lastSegmentIndex: -1, ok: true}
+		}
+		key := [2]int{termIndex, segmentIndex}
+		if cached, ok := memo[key]; ok {
+			return cached
+		}
+
+		best := pathSequenceChoice{}
+		for index := segmentIndex; index < len(segments); index++ {
+			result, ok := scorePathSegmentTerm(
+				terms[termIndex],
+				segments[index],
+				requireFinalExact && termIndex == len(terms)-1,
+			)
+			if !ok {
+				continue
+			}
+			next := visit(termIndex+1, index+1)
+			if !next.ok {
+				continue
+			}
+			quality := result.quality + next.quality - (index-segmentIndex)*4000
+			choice := pathSequenceChoice{
+				indices: append(
+					pathIndicesForSegment(segments, index, result.indices),
+					next.indices...,
+				),
+				lastSegmentIndex: index,
+				ok:               true,
+				quality:          quality,
+			}
+			if next.lastSegmentIndex >= 0 {
+				choice.lastSegmentIndex = next.lastSegmentIndex
+			}
+			if !best.ok || choice.quality > best.quality {
+				best = choice
+			}
+		}
+		memo[key] = best
+		return best
+	}
+	result := visit(0, 0)
+	return result, result.ok
+}
+
+func scorePathSegmentTerm(term normalizedSearchTerm, segment string, requireExact bool) (textMatchResult, bool) {
+	best := textMatchResult{}
+	bestOK := false
+	targets := []string{trimSearchStem(segment), segment}
+	if requireExact {
+		targets = []string{segment}
+	}
+	for _, target := range targets {
+		result, ok := classifyTextMatch(term, target)
+		if !ok || (requireExact && result.kind != textMatchExact) {
+			continue
+		}
+		if !bestOK || result.kind < best.kind || (result.kind == best.kind && result.quality > best.quality) {
+			best = result
+			bestOK = true
+		}
+	}
+	return best, bestOK
+}
+
+func classifyTextMatch(term normalizedSearchTerm, target string) (textMatchResult, bool) {
 	if term.normalized == "" || target == "" {
 		return textMatchResult{}, false
 	}
-
-	best := textMatchResult{}
-	bestOk := false
+	if searchTermEqualsTarget(term, target) {
+		return textMatchResult{
+			indices: sequentialSearchIndices(len(target)),
+			quality: searchRankQualityMax - len(target),
+			kind:    textMatchExact,
+		}, true
+	}
 	if start, span, indices, ok := orderedTokenMatch(target, term.tokens); ok {
-		score := orderedBase - (start * 1200) - (span * 25) - len(target)
+		kind := textMatchSubstring
 		if start == 0 {
-			score += prefixBonus
+			kind = textMatchPrefix
 		}
-		if term.normalized == target || term.compact == target {
-			score += prefixBonus / 2
-		}
-		if span == len(target) {
-			score += prefixBonus / 3
-		}
-		best = textMatchResult{
+		return textMatchResult{
 			indices: indices,
-			score:   score,
-		}
-		bestOk = true
+			quality: orderedSearchQuality(start, span, len(target)),
+			kind:    kind,
+		}, true
 	}
 	if start, span, gaps, indices, ok := subsequenceMatch(target, term.compact); ok {
-		score := subsequenceBase - (start * 1000) - (gaps * 160) - (span * 35) - len(target)
-		if start == 0 {
-			score += prefixBonus / 2
-		}
-		if !bestOk || score > best.score {
-			best = textMatchResult{
-				indices: indices,
-				score:   score,
-			}
-			bestOk = true
-		}
+		return textMatchResult{
+			indices: indices,
+			quality: fuzzySearchQuality(start, span, gaps, len(target)),
+			kind:    textMatchFuzzy,
+		}, true
 	}
-	return best, bestOk
+	return textMatchResult{}, false
 }
 
-func applySearchPenalties(query normalizedSearchQuery, candidate searchCandidateContext, score int) int {
+func searchTermEqualsTarget(term normalizedSearchTerm, target string) bool {
+	return term.normalized == target || term.compact == target
+}
+
+func orderedSearchQuality(start int, span int, targetLength int) int {
+	return searchRankQualityMax - start*1200 - span*25 - targetLength
+}
+
+func fuzzySearchQuality(start int, span int, gaps int, targetLength int) int {
+	return 750000 - start*1000 - gaps*160 - span*35 - targetLength
+}
+
+func sequentialSearchIndices(length int) []int {
+	indices := make([]int, length)
+	for index := range indices {
+		indices[index] = index
+	}
+	return indices
+}
+
+func applySearchPenalties(query normalizedSearchQuery, candidate searchCandidateContext, quality int) int {
 	hiddenPenalty := candidate.hiddenSegments * searchHiddenSegmentPenalty
 	noisePenalty := candidate.noiseSegments * searchNoiseSegmentPenalty
 	if searchQueryTargetsHiddenOrNoise(query) {
 		hiddenPenalty /= 4
 		noisePenalty /= 4
 	}
-	score -= candidate.depth * searchDepthPenalty
-	score -= hiddenPenalty
-	score -= noisePenalty
-	return score
+	quality -= candidate.depth * searchDepthPenalty
+	quality -= hiddenPenalty
+	quality -= noisePenalty
+	if quality < 0 {
+		return 0
+	}
+	return quality
 }
 
 func searchQueryTargetsHiddenOrNoise(query normalizedSearchQuery) bool {
@@ -449,11 +722,11 @@ func searchPathTermTargetsHiddenOrNoiseDirectory(term normalizedSearchTerm, inde
 }
 
 func SearchQueryTargetsHiddenOrNoise(query string) bool {
-	return searchQueryTargetsHiddenOrNoise(normalizeSearchQuery(query))
+	return searchQueryTargetsHiddenOrNoise(normalizeSearchQuery(DefaultLogicalRoot, query))
 }
 
 func SearchQueryTargetsHiddenFile(query string) bool {
-	normalizedQuery := normalizeSearchQuery(query)
+	normalizedQuery := normalizeSearchQuery(DefaultLogicalRoot, query)
 	for _, token := range normalizedQuery.term.tokens {
 		if isDotLiteralToken(token) {
 			return true
@@ -469,10 +742,6 @@ func normalizeSearchTerm(value string) normalizedSearchTerm {
 		compact:    strings.Join(tokens, ""),
 		tokens:     tokens,
 	}
-}
-
-func isDotLiteralSearchTerm(term normalizedSearchTerm) bool {
-	return len(term.tokens) == 1 && isDotLiteralToken(term.tokens[0])
 }
 
 func isDotLiteralToken(token string) bool {
@@ -499,77 +768,13 @@ func isFilenameDotLiteralToken(token string) bool {
 	return !isNoiseSegment
 }
 
-func orderedTokenMatch(target string, tokens []string) (int, int, []int, bool) {
-	if len(tokens) == 0 {
-		return 0, 0, nil, false
-	}
-	cursor := 0
-	first := -1
-	last := -1
-	indices := make([]int, 0, len(target))
-	for _, token := range tokens {
-		index := strings.Index(target[cursor:], token)
-		if index < 0 {
-			return 0, 0, nil, false
+func searchTermContainsFilenameDotLiteral(term normalizedSearchTerm) bool {
+	for _, token := range term.tokens {
+		if isFilenameDotLiteralToken(token) {
+			return true
 		}
-		position := cursor + index
-		if first < 0 {
-			first = position
-		}
-		last = position + len(token)
-		for tokenIndex := 0; tokenIndex < len(token); tokenIndex++ {
-			indices = append(indices, position+tokenIndex)
-		}
-		cursor = last
 	}
-	return first, last - first, indices, true
-}
-
-func subsequenceMatch(target string, query string) (int, int, int, []int, bool) {
-	if query == "" {
-		return 0, 0, 0, nil, false
-	}
-	first := -1
-	last := -1
-	previous := -1
-	gaps := 0
-	queryIndex := 0
-	indices := make([]int, 0, len(query))
-	for targetIndex := 0; targetIndex < len(target) && queryIndex < len(query); targetIndex++ {
-		if target[targetIndex] != query[queryIndex] {
-			continue
-		}
-		if first < 0 {
-			first = targetIndex
-		}
-		if previous >= 0 {
-			gaps += targetIndex - previous - 1
-		}
-		previous = targetIndex
-		last = targetIndex
-		indices = append(indices, targetIndex)
-		queryIndex++
-	}
-	if queryIndex != len(query) {
-		return 0, 0, 0, nil, false
-	}
-	return first, (last - first) + 1, gaps, indices, true
-}
-
-func compactSortedIndices(indices []int) []int {
-	if len(indices) == 0 {
-		return []int{}
-	}
-
-	sort.Ints(indices)
-	result := indices[:0]
-	for _, index := range indices {
-		if len(result) > 0 && result[len(result)-1] == index {
-			continue
-		}
-		result = append(result, index)
-	}
-	return append([]int(nil), result...)
+	return false
 }
 
 func normalizeCandidateRelativePath(value string) string {

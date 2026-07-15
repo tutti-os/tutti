@@ -66,24 +66,24 @@ test("wrapDesktopFileMentionProviderWithDockFiles returns dock files for blank q
   ]);
 });
 
-test("wrapDesktopFileMentionProviderWithDockFiles prioritizes matching dock files in search", async () => {
+test("wrapDesktopFileMentionProviderWithDockFiles preserves provider relevance for non-blank searches", async () => {
   const provider = wrapDesktopFileMentionProviderWithDockFiles(
-    createTestFileProvider(async ({ keyword }) =>
-      keyword.includes("notes")
-        ? [
-            {
-              displayName: "notes.md",
-              path: "/workspace/docs/notes.md"
-            }
-          ]
-        : []
-    ),
+    createTestFileProvider(async () => [
+      {
+        displayName: "user",
+        path: "/Users/Sun/user"
+      },
+      {
+        displayName: "USER.md",
+        path: "/Users/Sun/docs/USER.md"
+      }
+    ]),
     {
       resolveDockFiles: () => [
         {
-          displayName: "README.md",
+          displayName: "renderer.js",
           kind: "file",
-          path: "/workspace/README.md",
+          path: "/Users/Sun/project/renderer.js",
           previewCacheKey
         }
       ]
@@ -91,17 +91,19 @@ test("wrapDesktopFileMentionProviderWithDockFiles prioritizes matching dock file
   );
 
   const items = await provider.query({
-    keyword: "readme",
+    keyword: "user",
     context: {},
     trigger: "@"
   });
 
   assert.deepEqual(items, [
     {
-      displayName: "README.md",
-      kind: "file",
-      path: "/workspace/README.md",
-      previewCacheKey
+      displayName: "user",
+      path: "/Users/Sun/user"
+    },
+    {
+      displayName: "USER.md",
+      path: "/Users/Sun/docs/USER.md"
     }
   ]);
 });

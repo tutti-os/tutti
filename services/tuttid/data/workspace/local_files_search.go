@@ -6,6 +6,7 @@ import (
 	"io/fs"
 	"log/slog"
 	"os"
+	"path"
 	"path/filepath"
 	"strings"
 	"time"
@@ -111,9 +112,10 @@ func (a LocalFilesAdapter) Search(
 	logicalRoot := workspacefiles.NormalizeLogicalRoot(root.LogicalRoot)
 	var entries []workspacefiles.SearchEntry
 	if strings.TrimSpace(input.Query) != "" {
+		scoreQuery := normalizePhysicalSearchQuery(root, input.Query)
 		entries = workspacefiles.ScoreSearchCandidates(
 			logicalRoot,
-			input.Query,
+			scoreQuery,
 			candidates,
 			input.Limit,
 		)
@@ -134,6 +136,40 @@ func (a LocalFilesAdapter) Search(
 		Root:        workspacefiles.NormalizeLogicalRoot(root.LogicalRoot),
 		Entries:     entries,
 	}, nil
+}
+
+func normalizePhysicalSearchQuery(root workspacefiles.WorkspaceRoot, query string) string {
+	trimmed := strings.TrimSpace(query)
+	if trimmed == "" || !filepath.IsAbs(trimmed) {
+		return query
+	}
+
+	physicalRootValue := strings.TrimSpace(root.PhysicalRoot)
+	if physicalRootValue == "" {
+		return query
+	}
+	physicalRoot, err := filepath.Abs(physicalRootValue)
+	if err != nil {
+		return query
+	}
+	physicalQuery := filepath.Clean(trimmed)
+	relative, err := filepath.Rel(physicalRoot, physicalQuery)
+	if err != nil || relative == ".." || strings.HasPrefix(relative, ".."+string(filepath.Separator)) {
+		// ScoreSearchCandidates still handles logical absolute paths and rejects
+		// absolute paths outside that root.
+		return query
+	}
+	if relative == "." {
+		return ""
+	}
+	normalized := path.Join(
+		workspacefiles.NormalizeLogicalRoot(root.LogicalRoot).String(),
+		filepath.ToSlash(relative),
+	)
+	if strings.HasSuffix(trimmed, "/") || strings.HasSuffix(trimmed, "\\") {
+		normalized += "/"
+	}
+	return normalized
 }
 
 type searchWalkOptions struct {

@@ -58,12 +58,37 @@ shared `ReferenceListBackend` / `createReferenceListSource` protocol. Local
 files wrap `WorkspaceFileReferenceAdapter` directly. Open, reveal, open-with,
 and preview operations remain source-owned and are delegated back to the host.
 
+## Search Relevance
+
+The daemon-backed source owns the ranked order for a non-empty local-file
+query. Shared picker controllers may deduplicate that response but must not
+re-sort it by node kind or label. Host-only collections such as open Dock files
+may provide the empty-query browse list and presentation metadata, but must not
+be prepended to ranked query results.
+
+Local-file queries are field-aware:
+
+- A query without path separators ranks exact basename, exact stem, name
+  prefix/substring/fuzzy matches, and only then parent-path matches.
+- A query with path separators is path intent. It ranks exact relative path,
+  path prefix, ordered path-segment matches, and then path fuzzy matches.
+- Logical or physical absolute paths inside the active local root are
+  normalized to that root before ranking. Paths outside the root are rejected.
+- A trailing separator denotes directory intent; it must not turn a same-stem
+  file into a directory match.
+
+The UI may display only the basename to conserve space. That presentation
+choice does not narrow the searchable fields and must not become a second
+ranking implementation.
+
 ## Invariants
 
 - Route every operation by `sourceId`; reject unknown sources.
 - Never derive hierarchy by splitting an opaque `nodeId`.
 - Keep node ids stable across repeated listings so selection and pagination can
   deduplicate safely.
+- Preserve source relevance order for search results; browsing order and search
+  order are distinct contracts.
 - Append cursor pages without reordering already loaded entries.
 - Hide unavailable sources before rendering their tabs or sidebar groups.
 - Expose only running workspace apps in the app-artifact sidebar; installed or

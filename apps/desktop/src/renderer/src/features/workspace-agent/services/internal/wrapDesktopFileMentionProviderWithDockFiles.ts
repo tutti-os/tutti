@@ -31,24 +31,14 @@ export function wrapDesktopFileMentionProviderWithDockFiles<TItem>(
       });
 
       if (!keyword) {
-        return filterDockFiles(allDockFiles, input.maxResults) as unknown as
+        return limitDockFiles(allDockFiles, input.maxResults) as unknown as
           | readonly TItem[]
           | Promise<readonly TItem[]>;
       }
 
-      const [dockMatches, searchResults] = await Promise.all([
-        Promise.resolve(
-          filterDockFiles(allDockFiles, input.maxResults, keyword)
-        ),
-        Promise.resolve(provider.query(input))
-      ]);
-      const merged = mergeDockAndSearchResults({
-        dockMatches: dockMatches as unknown as readonly TItem[],
-        getItemKey: provider.getItemKey,
-        maxResults: input.maxResults,
-        searchResults
-      });
-      return merged;
+      // The daemon-backed provider owns ranked search results. Dock files are
+      // a browse source and thumbnail cache, not a second relevance model.
+      return provider.query(input);
     },
     getItemIconUrl(item) {
       const path = provider.getItemKey(item);
@@ -89,51 +79,9 @@ async function hydrateDockFileThumbnails(input: {
   );
 }
 
-function filterDockFiles(
+function limitDockFiles(
   dockFiles: readonly WorkbenchDockFileMentionItem[],
-  maxResults?: number,
-  keyword?: string
+  maxResults?: number
 ): WorkbenchDockFileMentionItem[] {
-  const normalizedKeyword = keyword?.trim().toLowerCase() ?? "";
-  const filtered = normalizedKeyword
-    ? dockFiles.filter((item) =>
-        matchesDockFileKeyword(item, normalizedKeyword)
-      )
-    : dockFiles;
-  return filtered.slice(0, maxResults ?? filtered.length);
-}
-
-function matchesDockFileKeyword(
-  item: WorkbenchDockFileMentionItem,
-  keyword: string
-): boolean {
-  const haystack = `${item.displayName}\n${item.path}`.toLowerCase();
-  return keyword
-    .split(/\s+/)
-    .filter(Boolean)
-    .every((token) => haystack.includes(token));
-}
-
-function mergeDockAndSearchResults<TItem>(input: {
-  dockMatches: readonly TItem[];
-  getItemKey: (item: TItem) => string;
-  maxResults?: number;
-  searchResults: readonly TItem[];
-}): readonly TItem[] {
-  const seen = new Set<string>();
-  const merged: TItem[] = [];
-
-  for (const item of [...input.dockMatches, ...input.searchResults]) {
-    const key = input.getItemKey(item);
-    if (!key || seen.has(key)) {
-      continue;
-    }
-    seen.add(key);
-    merged.push(item);
-    if (input.maxResults !== undefined && merged.length >= input.maxResults) {
-      break;
-    }
-  }
-
-  return merged;
+  return dockFiles.slice(0, maxResults ?? dockFiles.length);
 }

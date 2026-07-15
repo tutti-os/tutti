@@ -522,6 +522,47 @@ test("search 在当前 tab 生效", async () => {
   );
 });
 
+test("search 保留 source 返回的相关性顺序", async () => {
+  const controller = createReferenceSourcePickerController({
+    aggregator: fakeAggregator({
+      tabs: tabsTwo,
+      children: {
+        [`workspace-file:${SOURCE_ROOT_NODE_ID}`]: {
+          entries: [],
+          nextCursor: null
+        }
+      },
+      search: {
+        "workspace-file:load_log": {
+          entries: [
+            file("workspace-file", "/Movies/load_log", "load_log"),
+            folder(
+              "workspace-file",
+              "/Music/downloaded_catalog_data",
+              "downloaded_catalog_data"
+            )
+          ],
+          nextCursor: null
+        }
+      }
+    }),
+    scope,
+    searchDebounceMs: 0
+  });
+
+  controller.open();
+  await flush();
+  controller.setSearchQuery("load_log");
+  await flush();
+
+  assert.deepEqual(
+    controller
+      .getSnapshot()
+      .bySource["workspace-file"]?.searchEntries.map((node) => node.ref.nodeId),
+    ["/Movies/load_log", "/Music/downloaded_catalog_data"]
+  );
+});
+
 test("setSearchQuery 把选中分组 nodeId 作为 withinNodeId 透传给 aggregator.search", async () => {
   const searchInputs: Array<{
     sourceId: string;

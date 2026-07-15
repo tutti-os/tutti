@@ -291,8 +291,10 @@ export function useReferenceSourcePickerView({
     [currentChildren?.entries, sortNodes]
   );
   const searchResults = useMemo(
-    () => sortNodes(activeTabState?.searchEntries ?? []),
-    [activeTabState?.searchEntries, sortNodes]
+    // Browse arrangement is a presentation preference. Search results keep the
+    // source-owned relevance order regardless of that preference.
+    () => [...(activeTabState?.searchEntries ?? [])] as ReferenceNode[],
+    [activeTabState?.searchEntries]
   );
 
   // 每个源的左栏二级分组(左栏可多源同时展开,故按源全量计算):
