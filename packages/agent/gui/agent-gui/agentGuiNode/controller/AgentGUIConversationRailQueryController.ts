@@ -94,6 +94,9 @@ type Listener = (snapshot: AgentGUIConversationRailQuerySnapshot) => void;
 export class AgentGUIConversationRailQueryController {
   readonly getSnapshot = (): AgentGUIConversationRailQuerySnapshot =>
     this.snapshot;
+  readonly isInteractionLocked = (): boolean =>
+    this.snapshot.runtimeRailSectionsPending &&
+    !(this.searchQuery && this.snapshot.railSearch.enabled);
   readonly subscribe = (listener: Listener): (() => void) => {
     this.listeners.add(listener);
     return () => this.listeners.delete(listener);

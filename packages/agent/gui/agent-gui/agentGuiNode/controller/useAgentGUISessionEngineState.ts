@@ -20,7 +20,8 @@ import {
   selectPendingSubmitsForSession,
   selectSessionHasUnconfirmedSubmit,
   selectSessionIsSubmitting,
-  type AgentSessionEngine
+  type AgentSessionEngine,
+  type EngineQueuedPrompt
 } from "@tutti-os/agent-activity-core";
 import { useMemo } from "react";
 import type {
@@ -43,13 +44,16 @@ export function useAgentGUISessionEngineState(input: {
   const activeQueuedPromptSnapshot = useEngineSelector(sessionEngine, (state) =>
     selectEnginePromptQueue(state, activeConversationId)
   );
-  const activeQueuedPrompts =
-    activeQueuedPromptSnapshot?.prompts.filter(
-      (prompt) =>
-        prompt.visibleInQueue !== false &&
-        prompt.id !== activeQueuedPromptSnapshot.inFlight?.promptId &&
-        prompt.id !== activeQueuedPromptSnapshot.sendNextPromptId
-    ) ?? EMPTY_QUEUED_PROMPTS;
+  const activeQueuedPrompts = useMemo<readonly EngineQueuedPrompt[]>(
+    () =>
+      activeQueuedPromptSnapshot?.prompts.filter(
+        (prompt) =>
+          prompt.visibleInQueue !== false &&
+          prompt.id !== activeQueuedPromptSnapshot.inFlight?.promptId &&
+          prompt.id !== activeQueuedPromptSnapshot.sendNextPromptId
+      ) ?? EMPTY_QUEUED_PROMPTS,
+    [activeQueuedPromptSnapshot]
+  );
   const activePendingSubmits = useEngineSelector(
     sessionEngine,
     (state) => selectPendingSubmitsForSession(state, activeConversationId),

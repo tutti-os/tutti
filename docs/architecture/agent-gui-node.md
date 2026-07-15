@@ -339,6 +339,10 @@ Provider-scoped rail footer affordances, such as usage limits and environment
 setup, follow the rail's active provider filter target in multi-provider scope;
 when the rail filter is `All`, they should stay hidden because there is no
 single provider target to inspect.
+Runtime session usage is normalized once at the activity-core boundary,
+including quota type and numeric/text fields. AgentGUI read hooks may memoize
+that canonical projection, but views consume the typed quota array directly;
+they must not rebuild or stabilize quota DTOs with render-time refs.
 AgentGuiNode may also receive a neutral `renderSidebarFooter` slot for host or
 product affordances that belong at the bottom of the far-left provider/sidebar
 rail, below the system-settings control and not below the conversation-list
@@ -1264,6 +1268,11 @@ previous section page metadata paired with that stale chrome until the new
 first page resolves; clearing `hasMore` independently makes the pagination row
 disappear and reappear. Disable paging actions while the replacement request is
 pending so a stale cursor cannot enter the new provider scope.
+The rail query controller owns this interaction lock and exposes a live query
+method for row and portaled-menu actions. Views must not mirror the pending flag
+through value refs or manufacture a stable callback around such refs; deferred
+actions query the controller at execution time so an already-open menu cannot
+cross a newly entered replacement state.
 Conversation-list read-state metadata is notification-style UI state. Historical
 imports that carry `runtimeContext.imported === true` should remain visible in
 the rail, but they must not seed unread completion lamps as though they just
@@ -1307,6 +1316,11 @@ record that failed cursor and suppress automatic retries until the detail page
 is reloaded or a different oldest durable version is reached. Do not let scroll
 position and `isLoadingOlderMessages=false` form an immediate retry loop against
 the same failing backend page.
+Older-page request coordination is an explicit controller state machine keyed
+by session and cursor. Its phases are `in_flight`, `exhausted`, and `failed`;
+reset invalidates an outstanding request, stale results cannot merge or clear a
+newer loading flag, and cursor advance starts a new request. Do not represent
+these transitions as parallel render refs or independent maps.
 
 The selected detail window is a UI-local page cache, not proof that the full
 durable transcript has loaded. If live updates or snapshot reconciliation seed a

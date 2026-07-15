@@ -2,8 +2,14 @@ import {
   normalizeAgentActivitySession,
   type AgentActivityTurn
 } from "@tutti-os/agent-activity-core";
-import { act, renderHook, waitFor } from "@testing-library/react";
-import type { PropsWithChildren } from "react";
+import {
+  act,
+  render,
+  renderHook,
+  screen,
+  waitFor
+} from "@testing-library/react";
+import { Profiler, type PropsWithChildren } from "react";
 import { describe, expect, it } from "vitest";
 import {
   AgentActivityRuntimeProvider,
@@ -12,6 +18,9 @@ import {
 } from "../../../agentActivityRuntime";
 import { createTestAgentSessionEngine } from "../../../shared/testing/createTestAgentSessionEngine";
 import { useAgentGUIConversationRailQuery } from "./useAgentGUIConversationRailQuery";
+import { AgentGUIConversationRailPane } from "../view/AgentGUIConversationRailPane";
+import type { AgentGUIViewLabels } from "../view/AgentGUINodeView.types";
+import { createDefaultWorkspaceUserProjectI18nRuntime } from "@tutti-os/workspace-user-project/i18n";
 
 describe("useAgentGUIConversationRailQuery search", () => {
   it("searches every backend page and stores returned entities in the workspace engine", async () => {
@@ -203,7 +212,133 @@ describe("useAgentGUIConversationRailQuery search", () => {
     expect(renderCount).toBe(previousRenderCount);
     expect(result.current).toBe(previousResult);
   });
+
+  it("keeps the mounted rail idle for render-irrelevant engine updates", async () => {
+    const engine = createTestAgentSessionEngine("workspace-1");
+    engine.dispatch({
+      type: "session/upserted",
+      session: normalizeAgentActivitySession({
+        activeTurnId: "turn-1",
+        agentSessionId: "session-1",
+        agentTargetId: "target-1",
+        cwd: "/workspace",
+        latestTurnInteractions: [],
+        pendingInteractions: [],
+        provider: "codex",
+        title: "streaming session",
+        updatedAtUnixMs: 1,
+        workspaceId: "workspace-1"
+      })
+    });
+    engine.dispatch({ type: "turn/upserted", turn: runningTurn(1) });
+    const runtime = {
+      getSessionEngine: () => engine
+    } as unknown as AgentActivityRuntime;
+    let railCommitCount = 0;
+
+    function RailHarness(): React.JSX.Element {
+      const railQuery = useAgentGUIConversationRailQuery({
+        activeConversationId: "session-1",
+        conversationFilter: { kind: "all" },
+        conversationQuery: "streaming",
+        previewMode: true,
+        sectionAgentTargetFallbackId: null,
+        userProjects: [],
+        workspaceId: "workspace-1"
+      });
+      const activeConversation = railQuery.runtimeRailConversations[0] ?? null;
+      return (
+        <Profiler
+          id="conversation-rail"
+          onRender={() => {
+            railCommitCount += 1;
+          }}
+        >
+          <AgentGUIConversationRailPane
+            activeConversation={activeConversation}
+            activeConversationId="session-1"
+            agentTargets={[]}
+            agentTargetsLoading={false}
+            conversationFilter={{ kind: "all" }}
+            conversationQuery="streaming"
+            conversations={railQuery.runtimeRailConversations}
+            createConversationDisabled={false}
+            isCollapsed={false}
+            isDeletingConversation={false}
+            isDeletingProjectConversations={false}
+            isLoadingConversations={false}
+            labels={RAIL_LABELS}
+            pendingDeleteConversationId={null}
+            previewMode
+            railQuery={railQuery}
+            sectionAgentTargetFallbackId={null}
+            uiLanguage="en"
+            userProjects={[]}
+            workspaceId="workspace-1"
+            workspaceUserProjectI18n={RAIL_PROJECT_I18N}
+            onCancelDeleteConversation={() => {}}
+            onConfirmDeleteConversation={() => {}}
+            onConfirmDeleteConversations={() => {}}
+            onConfirmDeleteProjectConversations={async () => []}
+            onConversationQueryChange={() => {}}
+            onCreateConversation={() => {}}
+            onMarkConversationUnread={() => {}}
+            onRemoveProject={() => {}}
+            onRequestDeleteConversation={() => {}}
+            onRequestRenameConversation={() => {}}
+            onSelectConversation={() => {}}
+            onSelectConversationFilterTarget={() => {}}
+            onToggleConversationPinned={() => {}}
+            onUpdateConversationFilter={() => {}}
+          />
+        </Profiler>
+      );
+    }
+
+    render(
+      <AgentActivityRuntimeProvider runtime={runtime}>
+        <RailHarness />
+      </AgentActivityRuntimeProvider>
+    );
+    await screen.findByText("streaming session");
+    const previousRailCommitCount = railCommitCount;
+
+    act(() => {
+      engine.dispatch({ type: "turn/upserted", turn: runningTurn(2) });
+    });
+
+    expect(railCommitCount).toBe(previousRailCommitCount);
+  });
 });
+
+const RAIL_LABELS = {
+  conversationUnavailable: "Conversation unavailable",
+  conversationsSectionMoreActions: "Conversation actions",
+  deleteSession: "Delete",
+  deleteSessionConfirm: "Confirm delete",
+  emptyProjectConversations: "No conversations",
+  fallbackAgentTitle: "Agent",
+  loadingConversations: "Loading conversations",
+  markSessionUnread: "Mark unread",
+  newConversation: "New conversation",
+  noConversations: "No conversations",
+  openConversationWindow: "Open in window",
+  pinSession: "Pin",
+  projectRailCreateProject: "Create project",
+  projectRailLinkExistingProject: "Link project",
+  renameSession: "Rename",
+  retrySearch: "Retry",
+  searchFailed: "Search failed",
+  searchNoConversations: "No search results",
+  searchPlaceholder: "Search",
+  sectionConversations: "Conversations",
+  sectionPinned: "Pinned",
+  showLessConversations: "Show less",
+  showMoreConversations: "Show more",
+  unpinSession: "Unpin"
+} as AgentGUIViewLabels;
+
+const RAIL_PROJECT_I18N = createDefaultWorkspaceUserProjectI18nRuntime();
 
 function runningTurn(updatedAtUnixMs: number): AgentActivityTurn {
   return {

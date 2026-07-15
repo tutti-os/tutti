@@ -1,4 +1,3 @@
-import type { AgentActivityUsage } from "@tutti-os/agent-activity-core";
 import type { TranslateFn } from "../../i18n/index";
 import { toLocalShortDateTime } from "../../app/renderer/shell/utils/format";
 import type { AgentUsageQuota } from "../../shared/contracts/dto";
@@ -88,82 +87,6 @@ export function slashStatusLimitsFromQuotas(
       };
     })
     .filter((limit): limit is AgentComposerSlashStatusLimit => limit !== null);
-}
-
-export function slashStatusQuotasFromCanonicalUsage(
-  usage: AgentActivityUsage | null
-): AgentUsageQuota[] {
-  if (!usage) {
-    return [];
-  }
-  return usage.quotas
-    .map((quota): AgentUsageQuota | null => {
-      const record = objectRecord(quota);
-      const quotaType = agentUsageQuotaTypeValue(record?.quotaType);
-      if (!record || !quotaType) {
-        return null;
-      }
-      const normalized: AgentUsageQuota = { quotaType };
-      const percentRemaining = numberValue(record.percentRemaining);
-      if (percentRemaining !== null) {
-        normalized.percentRemaining = percentRemaining;
-      }
-      const resetsAtUnixMs = numberValue(record.resetsAtUnixMs);
-      if (resetsAtUnixMs !== null) {
-        normalized.resetsAtUnixMs = resetsAtUnixMs;
-      }
-      const resetText = stringValue(record.resetText);
-      if (resetText) {
-        normalized.resetText = resetText;
-      }
-      const dollarRemaining = numberValue(record.dollarRemaining);
-      if (dollarRemaining !== null) {
-        normalized.dollarRemaining = dollarRemaining;
-      }
-      const modelName = stringValue(record.modelName);
-      if (modelName) {
-        normalized.modelName = modelName;
-      }
-      return normalized;
-    })
-    .filter((quota): quota is AgentUsageQuota => quota !== null);
-}
-
-function agentUsageQuotaTypeValue(
-  value: unknown
-): AgentUsageQuota["quotaType"] | null {
-  switch (stringValue(value)) {
-    case "session":
-    case "weekly":
-    case "monthly":
-    case "daily":
-    case "model":
-    case "cost":
-      return stringValue(value) as AgentUsageQuota["quotaType"];
-    default:
-      return null;
-  }
-}
-
-function objectRecord(value: unknown): Record<string, unknown> | null {
-  return value && typeof value === "object"
-    ? (value as Record<string, unknown>)
-    : null;
-}
-
-function numberValue(value: unknown): number | null {
-  if (typeof value === "number" && Number.isFinite(value)) {
-    return value;
-  }
-  if (typeof value === "string" && value.trim()) {
-    const parsed = Number(value);
-    return Number.isFinite(parsed) ? parsed : null;
-  }
-  return null;
-}
-
-function stringValue(value: unknown): string {
-  return typeof value === "string" ? value.trim() : "";
 }
 
 function filterSlashStatusQuotasForModel(

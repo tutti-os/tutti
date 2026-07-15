@@ -59,7 +59,9 @@ export function useAgentSessionControllerState(
         ...storedActiveView,
         hasOlderMessages:
           storedActiveView.hasOlderMessages ||
-          (canonicalOldestVersion !== null && canonicalOldestVersion > 1),
+          (storedActiveView.oldestLoadedVersion === null &&
+            canonicalOldestVersion !== null &&
+            canonicalOldestVersion > 1),
         oldestLoadedVersion:
           storedActiveView.oldestLoadedVersion === null
             ? canonicalOldestVersion

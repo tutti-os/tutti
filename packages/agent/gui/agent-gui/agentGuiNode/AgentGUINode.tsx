@@ -44,11 +44,12 @@ import {
 } from "./AgentGUINode.labels";
 import {
   resolveAgentGUIRailStatusProvider,
-  slashStatusLimitsFromQuotas,
-  slashStatusQuotasFromCanonicalUsage
+  slashStatusLimitsFromQuotas
 } from "./AgentGUINode.usage";
 
 export type { AgentGUINodeProps } from "./AgentGUINode.types";
+
+const EMPTY_SLASH_STATUS_QUOTAS = [] as const;
 
 export const AgentGUINode = memo(function AgentGUINode({
   identity,
@@ -376,16 +377,15 @@ export const AgentGUINode = memo(function AgentGUINode({
       ) === "installed"
     );
   }, [activeReadinessProvider, managedAgentsState]);
-  const canonicalSlashStatusQuotas = slashStatusQuotasFromCanonicalUsage(
-    viewModel.detail.usage
-  );
+  const canonicalSlashStatusQuotas =
+    viewModel.detail.usage?.quotas ?? EMPTY_SLASH_STATUS_QUOTAS;
   const slashStatusQuotaSource =
     canonicalSlashStatusQuotas.length > 0
       ? canonicalSlashStatusQuotas
       : activeAgentProbe?.usage?.quotas &&
           activeAgentProbe.usage.quotas.length > 0
         ? activeAgentProbe.usage.quotas
-        : [];
+        : EMPTY_SLASH_STATUS_QUOTAS;
   const slashStatusLimits = useMemo(
     () =>
       slashStatusLimitsFromQuotas(
@@ -411,7 +411,7 @@ export const AgentGUINode = memo(function AgentGUINode({
     railAgentProbe?.usage?.quotas &&
     railAgentProbe.usage.quotas.length > 0
       ? railAgentProbe.usage.quotas
-      : [];
+      : EMPTY_SLASH_STATUS_QUOTAS;
   const railSlashStatusLimits = useMemo(
     () => slashStatusLimitsFromQuotas(railSlashStatusQuotaSource, null, t),
     [railSlashStatusQuotaSource, t]

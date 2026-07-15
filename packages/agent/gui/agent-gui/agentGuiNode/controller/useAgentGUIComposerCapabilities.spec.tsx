@@ -39,7 +39,7 @@ describe("useAgentGUIComposerCapabilities", () => {
       lastActiveAgentSessionId: "session-1"
     };
 
-    const { result } = renderHook(() =>
+    const { result, rerender } = renderHook(() =>
       useAgentGUIComposerCapabilities({
         activeConversationId: "session-1",
         activeEngineSession: activeEngineSession as CanonicalAgentSession,
@@ -62,5 +62,10 @@ describe("useAgentGUIComposerCapabilities", () => {
       percentUsed: 8,
       quotas: []
     });
+    const previousUsage = result.current.usage;
+
+    rerender();
+
+    expect(result.current.usage).toBe(previousUsage);
   });
 });

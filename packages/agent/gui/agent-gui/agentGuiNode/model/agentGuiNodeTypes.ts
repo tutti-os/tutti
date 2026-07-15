@@ -53,7 +53,7 @@ export interface AgentGUISessionChrome {
         canRetry?: never;
       }
     | null;
-  rawState: CanonicalAgentSession | null;
+  rawState: Pick<CanonicalAgentSession, "agentSessionId" | "goal"> | null;
 }
 
 export interface AgentGUIInlineNotice {

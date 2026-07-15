@@ -31,9 +31,16 @@ export const scanRootPrefixes = [
   "packages/agent/activity-core/"
 ];
 
+const renderBoundaryFiles = [
+  "apps/desktop/src/renderer/src/features/workspace-agent/ui/DesktopAgentGUIWorkbenchBody.tsx"
+];
+
+const stagedScanPrefixes = [...scanRootPrefixes, ...renderBoundaryFiles];
+
 const goExemptionRootPrefix = "packages/agent/daemon/";
 
 export const businessFileLineLimit = 800;
+export const componentMemoLimit = 5;
 
 export const knownProviderIds = [
   "claude-code",
@@ -89,6 +96,9 @@ const useSyncExternalStorePattern = () => /\buseSyncExternalStore\b/g;
 
 const moduleMutableGlobalPattern = () => /^(?:export\s+)?(?:let|var)\s/gm;
 
+const renderMirrorRefNamePattern =
+  /(?:\w*(?:Projection|Cache|Props|WorkspaceId|Locked)Ref|(?!drag)\w*StateRef|handle(?!d)\w+Ref)/i;
+
 export function isScannedSourceFile(relativePath) {
   if (!/\.[cm]?[tj]sx?$/.test(relativePath)) {
     return false;
@@ -102,6 +112,17 @@ export function isScannedSourceFile(relativePath) {
 
 export function isInScanRoots(relativePath) {
   return scanRootPrefixes.some((prefix) => relativePath.startsWith(prefix));
+}
+
+export function isComponentModule(relativePath) {
+  return (
+    relativePath.endsWith(".tsx") &&
+    !/(?:^|\/)use[A-Z][^/]*\.tsx$/.test(relativePath)
+  );
+}
+
+function isInStagedScanRoots(relativePath) {
+  return stagedScanPrefixes.some((prefix) => relativePath.startsWith(prefix));
 }
 
 export function isSubscriptionBindingFile(relativePath) {
@@ -138,6 +159,21 @@ export function countEffects(source) {
 
 export function countMemoization(source) {
   return countMatches(source, /\buse(?:Memo|Callback)\s*\(|\bmemo\s*\(/g);
+}
+
+export function countRenderMirrorRefs(source) {
+  const namedMirrorCount = countMatches(
+    source,
+    new RegExp(
+      `\\b(?:const|let)\\s+${renderMirrorRefNamePattern.source}\\b[\\s\\S]{0,160}?\\buseRef\\b`,
+      "gi"
+    )
+  );
+  const wholeInputMirrorCount = countMatches(
+    source,
+    /\b(?:const|let)\s+inputRef\s*=\s*useRef\s*\(\s*input\s*\)/g
+  );
+  return namedMirrorCount + wholeInputMirrorCount;
 }
 
 export function countProviderBranches(source) {
@@ -346,6 +382,7 @@ export function measureFileMetrics(relativePath, source, identityExemptFiles) {
     memoCount: countMemoization(source),
     moduleMutableGlobals: countModuleMutableGlobals(source),
     providerBranches: isIdentityExempt ? 0 : providerBranches,
+    renderMirrorRefs: countRenderMirrorRefs(source),
     setTimeoutCount: countTimerCalls(source),
     storeCreations: countStoreCreations(source),
     swallowedCatches: countSwallowedCatches(source),
@@ -357,14 +394,15 @@ export function measureFileMetrics(relativePath, source, identityExemptFiles) {
 
 export function aggregateMetrics(fileMetricsByPath) {
   const metrics = {
+    componentMemoOverages: {},
     effectCount: 0,
     fileLines: {},
     goFileLengthExemptions: 0,
     identityProviderBranches: 0,
-    memoCount: 0,
     moduleMutableGlobals: 0,
     overlayStores: 0,
     providerBranches: 0,
+    renderMirrorRefs: 0,
     setTimeoutCount: 0,
     swallowedCatch: 0,
     useSyncExternalStoreCount: 0
@@ -375,16 +413,19 @@ export function aggregateMetrics(fileMetricsByPath) {
     if (file.lineCount > businessFileLineLimit) {
       metrics.fileLines[path] = file.lineCount;
     }
-    // Effects and memoization move with a vertical module when a monolith is
-    // decomposed. Track their package-wide totals so moving an existing hook
-    // into a focused file is neutral while adding more orchestration still
-    // fails the ratchet. File length remains a per-file map below.
+    if (isComponentModule(path) && file.memoCount > componentMemoLimit) {
+      metrics.componentMemoOverages[path] = file.memoCount;
+    }
+    // Effects move with a vertical module when a monolith is decomposed, so
+    // their package-wide total remains neutral. Memoization is different:
+    // only component modules have a budget; read/controller hooks may own
+    // stable projections without consuming the view budget.
     metrics.effectCount += file.effectCount;
-    metrics.memoCount += file.memoCount;
     metrics.identityProviderBranches += file.identityProviderBranches;
     metrics.moduleMutableGlobals += file.moduleMutableGlobals;
     metrics.overlayStores += file.storeCreations;
     metrics.providerBranches += file.providerBranches;
+    metrics.renderMirrorRefs += file.renderMirrorRefs;
     metrics.setTimeoutCount += file.setTimeoutCount;
     metrics.swallowedCatch += file.swallowedCatches;
     metrics.useSyncExternalStoreCount += file.useSyncExternalStoreCount;
@@ -490,7 +531,7 @@ export function checkStagedFile({
   const contentLines = stagedContent.split("\n");
   const swallowedRanges = findSwallowedCatchRanges(stagedContent);
   const timerForbidden = isTimerForbiddenFile(relativePath);
-  const isComponentFile = relativePath.endsWith(".tsx");
+  const isComponentFile = isComponentModule(relativePath);
   const identityExempt = identityExemptFiles.includes(relativePath);
   const bindingFile = isSubscriptionBindingFile(relativePath);
   const usesValtio = importsValtio(stagedContent);
@@ -498,6 +539,33 @@ export function checkStagedFile({
 
   for (const added of addedLines) {
     const { content, line } = added;
+
+    if (
+      new RegExp(
+        `\\b(?:const|let)\\s+${renderMirrorRefNamePattern.source}\\b`,
+        "i"
+      ).test(content) ||
+      /\b(?:const|let)\s+inputRef\s*=\s*useRef\s*\(\s*input\s*\)/.test(content)
+    ) {
+      violations.push({
+        line,
+        message:
+          "new render-time ref mirrors/caches are forbidden; move business state to the engine/controller, stabilize projections in selectors/read hooks, and reserve refs for imperative external lifecycles",
+        rule: "no-render-ref-mirror"
+      });
+    }
+
+    if (
+      isComponentFile &&
+      countMemoization(stagedContent) > componentMemoLimit &&
+      /\buse(?:Memo|Callback)\s*\(|\bmemo\s*\(/.test(content)
+    ) {
+      violations.push({
+        line,
+        message: `component memoization budget is ${componentMemoLimit}; move stable projections to engine selectors/read hooks instead of adding leaf caches`,
+        rule: "component-memo-budget"
+      });
+    }
 
     if (timerCallPattern().test(content)) {
       if (timerForbidden) {
@@ -611,6 +679,13 @@ export function collectMetrics({ workspaceRoot, identityExemptFiles }) {
     }
   }
   const metrics = aggregateMetrics(fileMetricsByPath);
+  for (const relativePath of renderBoundaryFiles) {
+    const absolutePath = join(workspaceRoot, relativePath);
+    if (!existsSync(absolutePath)) continue;
+    metrics.renderMirrorRefs += countRenderMirrorRefs(
+      readFileSync(absolutePath, "utf8")
+    );
+  }
   metrics.goFileLengthExemptions = countGoFileLengthExemptions(workspaceRoot);
   return metrics;
 }
@@ -730,6 +805,7 @@ function runFullMode({ workspaceRoot, baselinePath, updateBaseline }) {
     }
     console.error(
       "\nFix the regression at its source instead of raising the baseline." +
+        "\nFor render churn: move business state to the engine/controller, keep stable projections in selectors/read hooks, and do not hide unstable inputs behind component refs or leaf memoization." +
         "\nSee docs/architecture/agent-gui-refactor-plan.md section 5.2."
     );
     return 1;
@@ -759,25 +835,21 @@ function runStagedMode({ workspaceRoot, baselinePath }) {
     return 1;
   }
 
-  const diffOutput = execFileSync(
-    "git",
-    [
-      "diff",
-      "--cached",
-      "-U0",
-      "--no-color",
-      "--diff-filter=ACMR",
-      "--",
-      ...scanRootPrefixes
-    ],
-    { cwd: workspaceRoot, encoding: "utf8", maxBuffer: 64 * 1024 * 1024 }
-  );
+  const mergeHead = readMergeHead(workspaceRoot);
+  const diffOutput = execFileSync("git", stagedDiffArgs(mergeHead), {
+    cwd: workspaceRoot,
+    encoding: "utf8",
+    maxBuffer: 64 * 1024 * 1024
+  });
 
   const addedLinesByFile = parseStagedAddedLines(diffOutput);
   const violations = [];
 
   for (const [relativePath, addedLines] of addedLinesByFile) {
-    if (!isScannedSourceFile(relativePath) || !isInScanRoots(relativePath)) {
+    if (
+      !isScannedSourceFile(relativePath) ||
+      !isInStagedScanRoots(relativePath)
+    ) {
       continue;
     }
     let stagedContent;
@@ -815,6 +887,30 @@ function runStagedMode({ workspaceRoot, baselinePath }) {
 
   console.log("agent-gui degradation staged check passed");
   return 0;
+}
+
+export function stagedDiffArgs(mergeHead = null) {
+  return [
+    "diff",
+    "--cached",
+    ...(mergeHead ? [mergeHead] : []),
+    "-U0",
+    "--no-color",
+    "--diff-filter=ACMR",
+    "--",
+    ...stagedScanPrefixes
+  ];
+}
+
+function readMergeHead(workspaceRoot) {
+  try {
+    return execFileSync("git", ["rev-parse", "--verify", "MERGE_HEAD"], {
+      cwd: workspaceRoot,
+      encoding: "utf8"
+    }).trim();
+  } catch {
+    return null;
+  }
 }
 
 function main() {

@@ -18,7 +18,10 @@ import {
 import { isAgentGUIProviderUnresolved } from "../../../shared/agentConversationTitleProjection.ts";
 import { normalizeOptionalText } from "./agentGuiController.promptHelpers";
 import { composerTargetDataFromProviderTarget } from "./agentGuiController.providerHelpers";
-import { stableConversationSummaryList } from "./agentGuiController.stableHelpers";
+import {
+  conversationSummariesRenderEqual,
+  stableConversationSummaryList
+} from "./agentGuiController.stableHelpers";
 import { conversationBusyStatusFromAgentActivityDisplayStatus } from "./agentGuiController.draftMessageHelpers";
 import { mergeVisibleConversations } from "./agentGuiController.conversationHelpers";
 import { resolveConversationSummaryById } from "./useAgentConversationSelection";
@@ -60,7 +63,7 @@ export function useAgentGUIConversationPresentation(
   const visibleConversationsRef = useRef<AgentGUIConversationSummary[] | null>(
     null
   );
-  const visibleConversations = useMemo(() => {
+  const conversationProjection = useMemo(() => {
     const source = mergeVisibleConversations(
       input.conversations,
       input.transientConversation
@@ -77,12 +80,12 @@ export function useAgentGUIConversationPresentation(
     const next = applyAgentGUIConversationProjects(mapped, input.userProjects, {
       isNoProjectPath: input.isNoProjectPath
     });
-    const stableNext = stableConversationSummaryList(
+    const visibleConversations = stableConversationSummaryList(
       visibleConversationsRef.current,
       next
     );
-    visibleConversationsRef.current = stableNext;
-    return stableNext;
+    visibleConversationsRef.current = visibleConversations;
+    return { semanticConversations: next, visibleConversations };
   }, [
     input.activityDisplayStatuses,
     input.conversations,
@@ -90,6 +93,7 @@ export function useAgentGUIConversationPresentation(
     input.transientConversation,
     input.userProjects
   ]);
+  const visibleConversations = conversationProjection.visibleConversations;
   const activeConversationRef = useRef<AgentGUIConversationSummary[] | null>(
     null
   );
@@ -98,15 +102,19 @@ export function useAgentGUIConversationPresentation(
     const stabilize = (
       next: AgentGUIConversationSummary | null
     ): AgentGUIConversationSummary | null => {
-      const stable = stableConversationSummaryList(
-        activeConversationRef.current,
-        next ? [next] : []
-      );
+      const previous = activeConversationRef.current?.[0] ?? null;
+      const canReusePrevious =
+        previous !== null &&
+        next !== null &&
+        conversationSummariesRenderEqual(previous, next) &&
+        previous.agentTargetId === next.agentTargetId &&
+        previous.resumable === next.resumable;
+      const stable = next ? [canReusePrevious ? previous : next] : [];
       activeConversationRef.current = stable;
       return stable[0] ?? null;
     };
     const resolved = resolveConversationSummaryById(
-      visibleConversations,
+      conversationProjection.semanticConversations,
       input.activeConversationId
     );
     if (resolved) {
@@ -188,7 +196,7 @@ export function useAgentGUIConversationPresentation(
     input.isNoProjectPath,
     input.isSubmitting,
     input.userProjects,
-    visibleConversations,
+    conversationProjection.semanticConversations,
     input.workspacePath
   ]);
 

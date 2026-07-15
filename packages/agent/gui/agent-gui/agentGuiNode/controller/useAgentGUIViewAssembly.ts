@@ -21,6 +21,9 @@ type ConversationDetailInput = Omit<
   Parameters<typeof useAgentGUIConversationDetail>[0],
   "activeConversation" | "activeSessionView"
 >;
+type ActiveSessionViewProjection = Parameters<
+  typeof useAgentGUIConversationDetail
+>[0]["activeSessionView"];
 type ComposerPresentationInput = Omit<
   Parameters<typeof useAgentGUIComposerPresentation>[0],
   "activeConversation"
@@ -69,18 +72,29 @@ type UseAgentGUIViewAssemblyInput = ConversationPresentationInput &
 export function useAgentGUIViewAssembly(input: UseAgentGUIViewAssemblyInput) {
   const { activeConversation, visibleConversations } =
     useAgentGUIConversationPresentation(input);
+  const stableActiveSessionViewProjection =
+    useMemo<ActiveSessionViewProjection>(
+      () =>
+        input.activeSessionView
+          ? {
+              hasOlderMessages: input.activeSessionView.hasOlderMessages,
+              isLoadingOlderMessages:
+                input.activeSessionView.isLoadingOlderMessages,
+              olderMessageCount: input.activeSessionView.olderMessages.length,
+              oldestLoadedVersion: input.activeSessionView.oldestLoadedVersion
+            }
+          : null,
+      [
+        input.activeSessionView?.hasOlderMessages,
+        input.activeSessionView?.isLoadingOlderMessages,
+        input.activeSessionView?.olderMessages.length,
+        input.activeSessionView?.oldestLoadedVersion
+      ]
+    );
   const detail = useAgentGUIConversationDetail({
     ...input,
     activeConversation,
-    activeSessionView: input.activeSessionView
-      ? {
-          hasOlderMessages: input.activeSessionView.hasOlderMessages,
-          isLoadingOlderMessages:
-            input.activeSessionView.isLoadingOlderMessages,
-          olderMessageCount: input.activeSessionView.olderMessages.length,
-          oldestLoadedVersion: input.activeSessionView.oldestLoadedVersion
-        }
-      : null
+    activeSessionView: stableActiveSessionViewProjection
   });
   const { stableComposerSettings } = useAgentGUIComposerPresentation({
     ...input,
@@ -130,7 +144,7 @@ export function useAgentGUIViewAssembly(input: UseAgentGUIViewAssemblyInput) {
       comingSoonProviders: input.normalizedComingSoonProviders,
       conversationFilter: input.conversationFilter,
       conversations: visibleConversations,
-      userProjects: [...input.userProjects],
+      userProjects: input.userProjects,
       activeConversation,
       activeConversationId: input.activeConversationId,
       isLoadingConversations: input.isLoadingConversations,

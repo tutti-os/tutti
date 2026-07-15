@@ -33,6 +33,32 @@ describe("useAgentGUIConversationPresentation", () => {
       previous.activeConversation
     );
   });
+
+  it("updates active semantic metadata without invalidating the rail list", () => {
+    const conversation = createConversation();
+    const input = createInput(conversation);
+    const rendered = renderHook(
+      ({ value }: { value: PresentationInput }) =>
+        useAgentGUIConversationPresentation(value),
+      { initialProps: { value: input } }
+    );
+    const previous = rendered.result.current;
+
+    rendered.rerender({
+      value: {
+        ...input,
+        conversations: [{ ...conversation, resumable: false }]
+      }
+    });
+
+    expect(rendered.result.current.visibleConversations).toBe(
+      previous.visibleConversations
+    );
+    expect(rendered.result.current.activeConversation).not.toBe(
+      previous.activeConversation
+    );
+    expect(rendered.result.current.activeConversation?.resumable).toBe(false);
+  });
 });
 
 function createInput(
