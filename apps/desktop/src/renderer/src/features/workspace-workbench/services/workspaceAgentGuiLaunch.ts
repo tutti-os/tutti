@@ -1,5 +1,4 @@
 import {
-  agentGuiWorkbenchDockEntryId,
   agentGuiWorkbenchInstanceId,
   agentGuiWorkbenchProviderFromIdentifier,
   agentGuiWorkbenchProviderFromLaunchRequest,
@@ -12,7 +11,6 @@ import {
 } from "@tutti-os/agent-gui/workbench/launch";
 
 export {
-  agentGuiWorkbenchDockEntryId as workspaceAgentGuiDockEntryId,
   agentGuiWorkbenchInstanceId as workspaceAgentGuiInstanceId,
   agentGuiWorkbenchProviderFromIdentifier as workspaceAgentGuiProviderFromIdentifier,
   agentGuiWorkbenchProviderFromLaunchRequest as workspaceAgentGuiProviderFromLaunchRequest,
@@ -23,24 +21,6 @@ export {
   createAgentGuiWorkbenchLaunchDescriptor as createWorkspaceAgentGuiLaunchDescriptor,
   createAgentGuiWorkbenchSessionLaunchRequest as createWorkspaceAgentGuiSessionLaunchRequest
 };
-
-export function createWorkspaceAgentGuiUnifiedDraftLaunchRequest(
-  input: Parameters<typeof createAgentGuiWorkbenchDraftLaunchRequest>[0]
-): ReturnType<typeof createAgentGuiWorkbenchDraftLaunchRequest> {
-  return {
-    ...createAgentGuiWorkbenchDraftLaunchRequest(input),
-    dockEntryId: agentGuiWorkbenchUnifiedDockEntryId()
-  };
-}
-
-export function createWorkspaceAgentGuiUnifiedSessionLaunchRequest(
-  input: Parameters<typeof createAgentGuiWorkbenchSessionLaunchRequest>[0]
-): ReturnType<typeof createAgentGuiWorkbenchSessionLaunchRequest> {
-  return {
-    ...createAgentGuiWorkbenchSessionLaunchRequest(input),
-    dockEntryId: agentGuiWorkbenchUnifiedDockEntryId()
-  };
-}
 
 export { normalizeAgentGuiWorkbenchProvider as normalizeWorkspaceAgentGuiProvider } from "@tutti-os/agent-gui/workbench/providerCatalog";
 

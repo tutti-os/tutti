@@ -83,9 +83,7 @@ import {
   hasWorkspaceOnboardingAutoOpened,
   writeWorkspaceOnboardingAutoOpenedToSnapshot
 } from "../workspaceOnboarding.ts";
-import { createWorkspaceAgentProviderDockStateSource } from "./workspaceAgentProviderDockStateSource.ts";
 import { createWindowCloseRequestTracker } from "../windowCloseRequestTracker";
-import { runWorkspaceAgentProviderDockAction } from "./workspaceAgentProviderDockActions.ts";
 import { createWindowCloseDialogRequest } from "./workspaceCloseDialogRequests.ts";
 import { assignWorkspaceTaskDockSection } from "./workspaceDockSections.ts";
 import { createWorkspaceDynamicDockSignature } from "./workspaceDynamicDockSignature.ts";
@@ -891,18 +889,6 @@ export class WorkspaceWorkbenchHostService implements IWorkspaceWorkbenchHostSer
         input.workspaceId
       ),
       dockPreviewCache,
-      dockStateSource: createWorkspaceAgentProviderDockStateSource({
-        agentProviderStatusService:
-          this.dependencies.agentProviderStatusService,
-        agentsService: this.dependencies.agentsService,
-        i18n: input.i18n,
-        isAgentProviderHidden: this.dependencies.isAgentProviderHidden,
-        subscribeAgentProviderVisibility:
-          this.dependencies.subscribeAgentProviderVisibility,
-        workspaceAgentActivityService:
-          this.dependencies.workspaceAgentActivityService,
-        workspaceId: input.workspaceId
-      }),
       prepareHostClose: resolveWorkbenchHostPrepareClose(
         contributionRegistry.contributions
       ),
@@ -910,15 +896,6 @@ export class WorkspaceWorkbenchHostService implements IWorkspaceWorkbenchHostSer
         createWindowCloseDialogRequest({
           effects,
           i18n: input.i18n
-        }),
-      onDockEntryAction: ({ actionId, entryId, host }) =>
-        runWorkspaceAgentProviderDockAction({
-          actionId,
-          agentProviderStatusService:
-            this.dependencies.agentProviderStatusService,
-          entryId,
-          host,
-          workspaceId: input.workspaceId
         }),
       onDockEntryClick: ({ entryId }) =>
         reportWorkspaceAppOpenedFromDockEntry({

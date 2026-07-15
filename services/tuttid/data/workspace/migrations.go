@@ -12,6 +12,7 @@ const schemaMigrationWorkspacesV1 = "workspaces_v1"
 const schemaMigrationWorkspacesV2 = "workspaces_v2"
 const schemaMigrationWorkspacesV3 = "workspaces_v3"
 const schemaMigrationWorkspacesV4 = "workspaces_v4"
+const schemaMigrationWorkspaceWorkbenchAgentGUIUnifiedDockV1 = "workspace_workbench_agent_gui_unified_dock_v1"
 const schemaMigrationWorkspaceIssuesV1 = "workspace_issues_v1"
 const schemaMigrationWorkspaceIssuesV2 = "workspace_issues_v2"
 const schemaMigrationWorkspaceIssuesV3 = "workspace_issues_v3"
@@ -83,6 +84,10 @@ INSERT OR IGNORE INTO tuttid_schema_migrations (id, applied_at_unix_ms)
 	}
 
 	if err := s.applyWorkspacesV4(ctx); err != nil {
+		return err
+	}
+
+	if err := s.applyWorkspaceWorkbenchAgentGUIUnifiedDockV1(ctx); err != nil {
 		return err
 	}
 

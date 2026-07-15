@@ -11,13 +11,11 @@ import {
 import { defaultWorkspaceTerminalWorkbenchTypeId } from "./workspaceTerminalWorkbenchConstants.ts";
 import {
   createWorkspaceAgentGuiDraftLaunchRequest,
-  createWorkspaceAgentGuiUnifiedDraftLaunchRequest,
-  createWorkspaceAgentGuiUnifiedSessionLaunchRequest,
   createWorkspaceAgentGuiLaunchDescriptor,
+  createWorkspaceAgentGuiSessionLaunchRequest,
   createWorkspaceAgentGuiInstanceId,
   createWorkspaceFilesDockEntry,
   toWorkspaceFilesActivation,
-  workspaceAgentGuiDockEntryId,
   workspaceAgentGuiInstanceId,
   workspaceAgentGuiNodeID,
   workspaceAgentGuiNodeFrame,
@@ -72,12 +70,7 @@ test("createWorkspaceFilesDockEntry configures the files dock entry", () => {
   );
 });
 
-test("workspace agent GUI identifiers require explicit provider identities", () => {
-  assert.equal(workspaceAgentGuiDockEntryId("codex"), "agent-gui:codex");
-  assert.equal(
-    workspaceAgentGuiDockEntryId("claude-code"),
-    "agent-gui:claude-code"
-  );
+test("workspace agent GUI identifiers keep providers in instance identities", () => {
   assert.equal(workspaceAgentGuiInstanceId("codex"), "agent-gui:codex");
   assert.equal(workspaceAgentGuiInstanceId("hermes"), "agent-gui:hermes");
   assert.equal(workspaceAgentGuiProviderFromIdentifier("agent-gui"), null);
@@ -136,7 +129,7 @@ test("workspace Agent GUI keeps its focused default size", () => {
   });
 });
 
-test("workspaceAgentGuiProviderFromLaunchRequest prefers launch payloads before dock identifiers", () => {
+test("workspaceAgentGuiProviderFromLaunchRequest requires launch payload providers", () => {
   assert.equal(
     workspaceAgentGuiProviderFromLaunchRequest({
       dockEntryId: "agent-gui:codex",
@@ -145,13 +138,14 @@ test("workspaceAgentGuiProviderFromLaunchRequest prefers launch payloads before 
     }),
     "claude-code"
   );
-  assert.equal(
-    workspaceAgentGuiProviderFromLaunchRequest({
-      dockEntryId: "agent-gui:hermes",
-      payload: {},
-      typeId: "agent-gui"
-    }),
-    "hermes"
+  assert.throws(
+    () =>
+      workspaceAgentGuiProviderFromLaunchRequest({
+        dockEntryId: "agent-gui:hermes",
+        payload: {},
+        typeId: "agent-gui"
+      }),
+    /agent_gui_workbench\.launch_provider_required/
   );
   assert.throws(
     () =>
@@ -197,8 +191,8 @@ test("workspace agent GUI draft launches prefill prompts without binding session
 
   assert.equal(descriptor.provider, "codex");
   assert.equal(descriptor.targetAgentSessionId, null);
-  assert.equal(descriptor.dockEntryId, "agent-gui:codex");
-  assert.equal(descriptor.reuseDockEntryNode, true);
+  assert.equal(descriptor.dockEntryId, "agent-gui:unified");
+  assert.equal(descriptor.reuseDockEntryNode, false);
   assert.deepEqual(descriptor.activation, {
     payload: {
       draftPrompt: "Review this issue",
@@ -209,12 +203,12 @@ test("workspace agent GUI draft launches prefill prompts without binding session
   });
 });
 
-test("workspace agent GUI unified launch requests keep All-launched nodes on the unified dock entry", () => {
-  const sessionRequest = createWorkspaceAgentGuiUnifiedSessionLaunchRequest({
+test("workspace agent GUI launch requests always use the unified dock entry", () => {
+  const sessionRequest = createWorkspaceAgentGuiSessionLaunchRequest({
     agentSessionId: "session-2",
     provider: "claude-code"
   });
-  const draftRequest = createWorkspaceAgentGuiUnifiedDraftLaunchRequest({
+  const draftRequest = createWorkspaceAgentGuiDraftLaunchRequest({
     draftPrompt: "Review this issue",
     provider: "codex"
   });

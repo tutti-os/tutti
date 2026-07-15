@@ -156,6 +156,16 @@ describe("agent gui workbench state", () => {
       agentGuiWorkbenchProviderFromInstanceId("agent-gui:hermes:panel:abc")
     ).toBe("hermes");
     expect(
+      agentGuiWorkbenchProviderFromInstanceId(
+        "agent-gui:acp%3Agemini:target:extension%3Agemini"
+      )
+    ).toBe("acp:gemini");
+    expect(
+      agentGuiWorkbenchProviderFromInstanceId(
+        "agent-gui:acp:gemini:target:extension%3Agemini"
+      )
+    ).toBe("acp:gemini");
+    expect(
       agentGuiWorkbenchProviderFromInstanceId("agent-gui:unsupported")
     ).toBe("unsupported");
   });

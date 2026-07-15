@@ -101,6 +101,42 @@ test("dock entries can recover existing nodes through matchNode fallback", () =>
   );
 });
 
+test("canonical AgentGUI and workspace app affinities expose open and minimized states", () => {
+  const entries = resolveWorkbenchDockEntries({
+    dockEntries: [
+      {
+        icon: null,
+        id: "agent-gui:unified",
+        label: "Agent",
+        typeId: "agent-gui"
+      },
+      {
+        icon: null,
+        id: "workspace-app:calendar",
+        label: "Calendar",
+        typeId: "workspace-app-webview"
+      }
+    ],
+    minimizedNodeIds: new Set(["workspace-app-webview:app:calendar"]),
+    nodes: [
+      makeNode("agent-gui:codex:panel:1", "agent-gui", "agent-gui:unified"),
+      makeNode(
+        "app:calendar",
+        "workspace-app-webview",
+        "workspace-app:calendar"
+      )
+    ]
+  });
+
+  assert.deepEqual(
+    entries.map((entry) => [entry.entry.id, entry.dockNodeState]),
+    [
+      ["agent-gui:unified", "open"],
+      ["workspace-app:calendar", "minimized"]
+    ]
+  );
+});
+
 test("dock click resolution follows instance strategy for existing nodes", () => {
   const entry: WorkbenchHostDockEntry = {
     icon: null,

@@ -341,8 +341,38 @@
   [docs/architecture/workbench-dock-model.md](../../architecture/workbench-dock-model.md)
   [packages/workbench/surface/src/host/types.ts](../../../packages/workbench/surface/src/host/types.ts)
   [packages/workbench/surface/src/host/WorkbenchHostDock.tsx](../../../packages/workbench/surface/src/host/WorkbenchHostDock.tsx)
-  [workspaceAgentProviderDockStateSource.ts](../../../apps/desktop/src/renderer/src/features/workspace-workbench/services/internal/workspaceAgentProviderDockStateSource.ts)
   [useWorkspaceWorkbenchShellRuntime.tsx](../../../apps/desktop/src/renderer/src/features/workspace-workbench/ui/useWorkspaceWorkbenchShellRuntime.tsx)
+
+### Dock entry is open but its state indicator is missing
+
+- Symptom:
+  A Dock icon is visible and its application window is open or minimized, but
+  the state dot is absent. The problem may affect one migrated node family or
+  every application in one Dock placement.
+- Quick checks:
+  Inspect the slot's `data-node-state`. If it is `closed`, compare the node's
+  persisted `dockEntryId` with the rendered entry id before inspecting CSS. If
+  it is `open` or `minimized`, inspect placement selectors for rules that hide
+  or clip the shared `::before` indicator. Reproduce with both an internal entry
+  and a `workspace-app:<appId>` entry to separate identity from presentation.
+- Root cause:
+  `dockEntryId` is exact durable affinity. A historical or provider-specific
+  value does not match a newer aggregate entry and therefore resolves to
+  `closed`. Separately, a placement-specific CSS override can suppress a
+  correctly resolved indicator for every application in that layout.
+- Fix:
+  Normalize stale durable affinity through an idempotent daemon migration and
+  make all new launch paths write the canonical entry id. Keep Workbench exact
+  matching intact. Render the shared indicator for both `open` and `minimized`
+  in every supported placement, changing only its position.
+- Validation:
+  Cover migrated snapshots, canonical new launches, third-party Workspace App
+  affinity, and bottom/left indicator selectors. Verify `closed` has no dot and
+  both `open` and `minimized` do.
+- References:
+  [docs/architecture/workbench-dock-model.md](../../architecture/workbench-dock-model.md)
+  [packages/workbench/surface/src/host/dockEntries.ts](../../../packages/workbench/surface/src/host/dockEntries.ts)
+  [packages/workbench/surface/src/styles/workbench.css](../../../packages/workbench/surface/src/styles/workbench.css)
 
 ### Effect cleanup leaves mounted refs false in React development
 

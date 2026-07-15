@@ -171,11 +171,16 @@ its workspace and runtime origin; module-global runtime slots and hidden origin
 registries are forbidden.
 `agentDockLayout` remains in the daemon desktop-preferences wire contract for
 older stored values, but the desktop host pins it to `unified`. Unified is the
-only Agent dock presentation: it exposes one Agent dock entry that matches Codex
-and Claude Code AgentGUI nodes, while launches still create provider-specific
-multi-instance AgentGUI nodes. The unified entry may choose a default target or
-provider for its launch payload; that selection must not synthesize a provider
-or replace the provider identity recorded on the node/session.
+only Agent dock presentation: it exposes one Agent dock entry, and every
+AgentGUI launch result and persisted Workbench node uses
+`agent-gui:unified` as its stable `dockEntryId`. Launches still create
+provider-specific multi-instance AgentGUI nodes; provider identity belongs in
+the launch payload, `agentTargetId`, provider-specific `instanceId`, and node or
+session state rather than the Dock identity. The unified entry may choose a
+default target or provider for its launch payload; that selection must not
+synthesize a provider or replace the provider identity recorded on the
+node/session. Legacy persisted AgentGUI Dock identities are normalized by the
+daemon snapshot migration instead of renderer-side fallback matching.
 Workspace Launchpad is a broad launcher surface, not a mirror of the dock
 entry list; it should show one generic Agent tile that resolves to the default
 or first ready provider instead of duplicating provider-specific Agent dock
@@ -184,8 +189,8 @@ Agent launches from Launchpad/All must still use the unified Agent dock entry
 identity (`agent-gui:unified`) so the resulting AgentGUI node appears under the
 same Dock icon as direct Dock launches.
 The unified dock identity is a reserved aggregate identifier, not a provider
-identifier. Provider extraction must recognize and exclude reserved aggregate
-identities before parsing the `agent-gui:<provider>` instance namespace, even
+identifier. Provider extraction parses the provider-specific
+`agent-gui:<provider>` instance namespace and must not use `dockEntryId`, even
 though provider metadata accepts extension-defined strings. Provider-specific
 dock status must never override the unified entry's visibility; an aggregate
 status, if needed, must be modeled explicitly instead of synthesizing an

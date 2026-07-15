@@ -19,7 +19,6 @@ import {
 } from "./header.ts";
 import type { AgentGuiWorkbenchConversationIdentity } from "./conversationIdentity.ts";
 import {
-  agentGuiWorkbenchProviderFromIdentifier,
   agentGuiWorkbenchTypeId,
   createAgentGuiWorkbenchLaunchDescriptor
 } from "./launch.ts";
@@ -406,10 +405,7 @@ export function createAgentGuiWorkbenchContribution(
       ) {
         return null;
       }
-      if (
-        !providerFromState(launchPayload) &&
-        !agentGuiWorkbenchProviderFromIdentifier(request.dockEntryId)
-      ) {
+      if (!providerFromState(launchPayload)) {
         return null;
       }
       const {

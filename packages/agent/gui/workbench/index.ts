@@ -47,7 +47,8 @@ export {
   createAgentGuiWorkbenchDraftLaunchRequest,
   createAgentGuiWorkbenchInstanceId,
   createAgentGuiWorkbenchLaunchDescriptor,
-  createAgentGuiWorkbenchSessionLaunchRequest
+  createAgentGuiWorkbenchSessionLaunchRequest,
+  resolveAgentGuiWorkbenchLaunchDockEntryId
 } from "./launch.ts";
 export type { AgentGuiWorkbenchLaunchDescriptor } from "./launch.ts";
 export {

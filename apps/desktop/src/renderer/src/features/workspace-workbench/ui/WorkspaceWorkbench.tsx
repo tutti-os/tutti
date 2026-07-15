@@ -46,8 +46,8 @@ import { useService } from "@tutti-os/infra/di";
 import { useTranslation } from "@renderer/i18n";
 import { cn } from "@renderer/lib/format";
 import {
-  createWorkspaceAgentGuiUnifiedDraftLaunchRequest,
-  createWorkspaceAgentGuiUnifiedSessionLaunchRequest
+  createWorkspaceAgentGuiDraftLaunchRequest,
+  createWorkspaceAgentGuiSessionLaunchRequest
 } from "../services/workspaceAgentGuiLaunch.ts";
 import {
   resolveWorkspaceAgentChatProvider,
@@ -383,7 +383,7 @@ function ReadyWorkspaceWorkbenchWithSession({
             const normalizedDraftPrompt = draftPrompt?.trim() ?? "";
             await host.launchNode(
               normalizedDraftPrompt
-                ? createWorkspaceAgentGuiUnifiedDraftLaunchRequest({
+                ? createWorkspaceAgentGuiDraftLaunchRequest({
                     agentTargetId,
                     autoSubmit,
                     draftPrompt: normalizedDraftPrompt,
@@ -391,7 +391,7 @@ function ReadyWorkspaceWorkbenchWithSession({
                     provider,
                     userProjectPath
                   })
-                : createWorkspaceAgentGuiUnifiedSessionLaunchRequest({
+                : createWorkspaceAgentGuiSessionLaunchRequest({
                     agentTargetId,
                     agentSessionId,
                     openInNewWindow,

@@ -227,46 +227,15 @@ describe("agent GUI workbench contribution copy", () => {
     });
   });
 
-  it("matches unified dock nodes across provider-specific and historical agent GUI identities", () => {
+  it("uses canonical dock affinity without fallback node matchers", () => {
     const [entry] = buildAgentGuiDockEntries({
       agentDirectory: createTestAgentDirectory([]),
       defaultProvider: "codex",
       providerAvailability: {}
     });
 
-    expect(
-      entry?.matchNode?.({
-        data: {
-          instanceId: "agent-gui:codex:panel:test-1",
-          typeId: agentGuiWorkbenchTypeId
-        }
-      } as never)
-    ).toBe(true);
-    expect(
-      entry?.matchNode?.({
-        data: {
-          instanceId: "agent-gui:claude-code:session:session-1",
-          typeId: agentGuiWorkbenchTypeId
-        }
-      } as never)
-    ).toBe(true);
-    expect(
-      entry?.matchNode?.({
-        data: {
-          dockEntryId: "agent-gui",
-          instanceId: "agent-gui",
-          typeId: agentGuiWorkbenchTypeId
-        }
-      } as never)
-    ).toBe(true);
-    expect(
-      entry?.matchNode?.({
-        data: {
-          instanceId: "agent-gui:removed-provider:panel:test-1",
-          typeId: agentGuiWorkbenchTypeId
-        }
-      } as never)
-    ).toBe(false);
+    expect(entry?.id).toBe(agentGuiWorkbenchUnifiedDockEntryId());
+    expect(entry?.matchNode).toBeUndefined();
   });
 
   it("keeps unified launch payload provider priority when opening a session", () => {
@@ -1245,7 +1214,7 @@ describe("agent GUI workbench contribution copy", () => {
 
     const node = {
       data: {
-        dockEntryId: agentGuiWorkbenchTypeId,
+        dockEntryId: agentGuiWorkbenchUnifiedDockEntryId(),
         instanceId: "agent-gui:codex:panel:test-1",
         typeId: agentGuiWorkbenchTypeId
       },
@@ -1253,7 +1222,7 @@ describe("agent GUI workbench contribution copy", () => {
       title: "Codex"
     };
 
-    expect(dockEntry?.matchNode?.(node as never)).toBe(true);
+    expect(dockEntry?.matchNode).toBeUndefined();
     expect(
       dockEntry?.providePopupItemPreview?.({
         externalNodeState: {

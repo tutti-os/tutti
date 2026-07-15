@@ -114,7 +114,6 @@ export function buildAgentGuiDockEntries(
   return [
     createAgentGuiWorkbenchDockEntry({
       agentDirectory: input.agentDirectory,
-      aggregateProviders: agentGuiWorkbenchDefaultDockProviders,
       icon: input.unifiedDockIconUrl
         ? createAgentGuiWorkbenchUnifiedDockIcon({
             iconUrl: input.unifiedDockIconUrl
@@ -201,7 +200,6 @@ export function resolveAgentGuiWorkbenchContributionCopy(
 
 function createAgentGuiWorkbenchDockEntry(input: {
   agentDirectory: AgentGUIAgentDirectoryPort;
-  aggregateProviders?: readonly AgentGuiWorkbenchProvider[];
   icon: ReactNode;
   label: string;
   launchPayload?: Record<string, unknown>;
@@ -223,28 +221,6 @@ function createAgentGuiWorkbenchDockEntry(input: {
     newWindowLaunchPayload: {
       ...(input.launchPayload ?? { provider: input.provider }),
       openInNewWindow: true
-    },
-    matchNode: (node) => {
-      if (node.data.typeId !== agentGuiWorkbenchTypeId) {
-        return false;
-      }
-      if (
-        input.aggregateProviders &&
-        (agentGuiWorkbenchDockIdentityFromIdentifier(node.data.instanceId)
-          ?.kind === "unifiedAggregate" ||
-          agentGuiWorkbenchDockIdentityFromIdentifier(node.data.dockEntryId)
-            ?.kind === "unifiedAggregate")
-      ) {
-        return true;
-      }
-      const provider =
-        resolveAgentGuiWorkbenchProviderFromNodeIdentityOrNull(node);
-      if (!provider) {
-        return false;
-      }
-      return input.aggregateProviders
-        ? input.aggregateProviders.includes(provider)
-        : provider === input.provider;
     },
     order: input.order,
     providePopupItemPreview: (item) =>
@@ -336,17 +312,6 @@ function createAgentGuiWorkbenchUnifiedDockIcon(input: {
       draggable: false,
       src: input.iconUrl
     })
-  );
-}
-
-function resolveAgentGuiWorkbenchProviderFromNodeIdentityOrNull(
-  node: Parameters<NonNullable<WorkbenchHostDockEntry["matchNode"]>>[0]
-): AgentGuiWorkbenchProvider | null {
-  return (
-    agentGuiWorkbenchProviderFromIdentifier(node.data.instanceId) ??
-    agentGuiWorkbenchProviderFromIdentifier(node.data.dockEntryId) ??
-    providerFromState(node.data.snapshotNodeState) ??
-    providerFromState(node.data.runtimeNodeState)
   );
 }
 

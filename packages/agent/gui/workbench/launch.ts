@@ -30,10 +30,14 @@ export interface AgentGuiWorkbenchDockIdentity {
   kind: "unifiedAggregate";
 }
 
+/**
+ * @deprecated AgentGUI has one canonical Dock entry. Use
+ * {@link agentGuiWorkbenchUnifiedDockEntryId} instead.
+ */
 export function agentGuiWorkbenchDockEntryId(
-  provider: AgentGuiWorkbenchProvider
+  _provider: AgentGuiWorkbenchProvider
 ): string {
-  return `${agentGuiWorkbenchDockEntryPrefix}${provider}`;
+  return agentGuiWorkbenchUnifiedDockEntryId();
 }
 
 export function agentGuiWorkbenchUnifiedDockEntryId(): string {
@@ -43,7 +47,9 @@ export function agentGuiWorkbenchUnifiedDockEntryId(): string {
 export function agentGuiWorkbenchInstanceId(
   provider: AgentGuiWorkbenchProvider
 ): string {
-  return `${agentGuiWorkbenchDockEntryPrefix}${provider}`;
+  return `${agentGuiWorkbenchDockEntryPrefix}${encodeAgentGuiWorkbenchInstanceSegment(
+    provider
+  )}`;
 }
 
 export function createAgentGuiWorkbenchInstanceId(input: {
@@ -83,9 +89,14 @@ export function agentGuiWorkbenchProviderFromIdentifier(
   if (!normalized?.startsWith(agentGuiWorkbenchDockEntryPrefix)) {
     return null;
   }
-  const provider = normalized
-    .slice(agentGuiWorkbenchDockEntryPrefix.length)
-    .split(":", 1)[0];
+  const identifier = normalized.slice(agentGuiWorkbenchDockEntryPrefix.length);
+  const structuredSuffix = identifier.match(
+    /:(?:panel|session|target):[^:]*$/u
+  );
+  const encodedProvider = structuredSuffix
+    ? identifier.slice(0, structuredSuffix.index)
+    : identifier;
+  const provider = decodeAgentGuiWorkbenchInstanceSegment(encodedProvider);
   return isAgentGuiWorkbenchProvider(provider) ? provider : null;
 }
 
@@ -97,9 +108,6 @@ export function agentGuiWorkbenchDockIdentityFromIdentifier(
     return null;
   }
   if (normalized === agentGuiWorkbenchUnifiedDockEntryId()) {
-    return { kind: "unifiedAggregate" };
-  }
-  if (normalized === agentGuiWorkbenchTypeId) {
     return { kind: "unifiedAggregate" };
   }
   return null;
@@ -117,13 +125,7 @@ export function agentGuiWorkbenchProviderFromLaunchRequest(
   if (isAgentGuiWorkbenchProvider(payloadProvider)) {
     return payloadProvider;
   }
-  const provider =
-    agentGuiWorkbenchProviderFromIdentifier(request.dockEntryId) ??
-    agentGuiWorkbenchProviderFromIdentifier(request.typeId);
-  if (!provider) {
-    throw new Error("agent_gui_workbench.launch_provider_required");
-  }
-  return provider;
+  throw new Error("agent_gui_workbench.launch_provider_required");
 }
 
 export function createAgentGuiWorkbenchSessionLaunchRequest(input: {
@@ -134,7 +136,7 @@ export function createAgentGuiWorkbenchSessionLaunchRequest(input: {
 }) {
   const provider = normalizeAgentGuiWorkbenchProvider(input.provider);
   return {
-    dockEntryId: agentGuiWorkbenchDockEntryId(provider),
+    dockEntryId: agentGuiWorkbenchUnifiedDockEntryId(),
     payload: {
       ...(input.agentTargetId?.trim()
         ? { agentTargetId: input.agentTargetId.trim() }
@@ -161,7 +163,7 @@ export function createAgentGuiWorkbenchDraftLaunchRequest(input: {
     input.userProjectPath
   );
   return {
-    dockEntryId: agentGuiWorkbenchDockEntryId(provider),
+    dockEntryId: agentGuiWorkbenchUnifiedDockEntryId(),
     payload: {
       draftPrompt: input.draftPrompt,
       provider,
@@ -203,10 +205,7 @@ export function createAgentGuiWorkbenchLaunchDescriptor(
   request: AgentGuiWorkbenchLaunchRequestInput
 ): AgentGuiWorkbenchLaunchDescriptor {
   const provider = agentGuiWorkbenchProviderFromLaunchRequest(request);
-  const dockEntryId = resolveAgentGuiWorkbenchLaunchDockEntryId({
-    provider,
-    requestedDockEntryId: request.dockEntryId
-  });
+  const dockEntryId = agentGuiWorkbenchUnifiedDockEntryId();
   const prefillPrompt = prefillPromptFromLaunchPayload(request.payload);
   if (prefillPrompt) {
     const openInNewWindow = openInNewWindowFromLaunchPayload(request.payload);
@@ -269,19 +268,6 @@ export function createAgentGuiWorkbenchLaunchDescriptor(
   };
 }
 
-export function resolveAgentGuiWorkbenchLaunchDockEntryId(input: {
-  provider: AgentGuiWorkbenchProvider;
-  requestedDockEntryId?: string | null;
-}): string {
-  const requestedIdentity = agentGuiWorkbenchDockIdentityFromIdentifier(
-    input.requestedDockEntryId
-  );
-  if (requestedIdentity?.kind === "unifiedAggregate") {
-    return agentGuiWorkbenchUnifiedDockEntryId();
-  }
-  return agentGuiWorkbenchDockEntryId(input.provider);
-}
-
 export function shouldReuseAgentGuiWorkbenchDockEntryNode(input: {
   dockEntryId: string;
   launchKind: "empty" | "prefill" | "session";
@@ -298,8 +284,27 @@ export function shouldReuseAgentGuiWorkbenchDockEntryNode(input: {
   );
 }
 
+/**
+ * @deprecated AgentGUI launch results always use the unified Dock entry. Use
+ * {@link agentGuiWorkbenchUnifiedDockEntryId} instead.
+ */
+export function resolveAgentGuiWorkbenchLaunchDockEntryId(_input: {
+  provider: AgentGuiWorkbenchProvider;
+  requestedDockEntryId?: string | null;
+}): string {
+  return agentGuiWorkbenchUnifiedDockEntryId();
+}
+
 function encodeAgentGuiWorkbenchInstanceSegment(value: string): string {
   return encodeURIComponent(value.trim());
+}
+
+function decodeAgentGuiWorkbenchInstanceSegment(value: string): string | null {
+  try {
+    return decodeURIComponent(value).trim();
+  } catch {
+    return null;
+  }
 }
 
 function prefillPromptFromLaunchPayload(

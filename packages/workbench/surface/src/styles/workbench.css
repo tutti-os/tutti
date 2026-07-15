@@ -1362,9 +1362,15 @@
   box-shadow: 0 0 0 0.5px rgb(255 255 255 / 58%);
 }
 
-.desktop-dock[data-dock-placement="left"] .desktop-dock__slot::before {
-  content: none !important;
-  display: none !important;
+.desktop-dock[data-dock-placement="left"]
+  .desktop-dock__slot[data-node-state="open"]::before,
+.desktop-dock[data-dock-placement="left"]
+  .desktop-dock__slot[data-node-state="minimized"]::before {
+  top: 50%;
+  right: auto;
+  bottom: auto;
+  left: calc(var(--desktop-dock-indicator-offset) - 2px);
+  transform: translateY(-50%);
 }
 
 .desktop-dock__btn {

@@ -4,9 +4,9 @@ import type {
 } from "@tutti-os/workbench-surface";
 import {
   agentGuiWorkbenchProviders,
-  isAgentGuiWorkbenchProvider,
   normalizeAgentGuiWorkbenchProvider
 } from "./providerCatalog.ts";
+import { agentGuiWorkbenchProviderFromIdentifier } from "./launch.ts";
 import type {
   AgentGuiWorkbenchComposerOverrides,
   AgentGuiWorkbenchComposerOverridesByAgentTargetId,
@@ -191,12 +191,7 @@ export function agentGuiWorkbenchProviderFromInstanceId(
 export function agentGuiWorkbenchProviderFromInstanceIdOrNull(
   instanceId: string | null | undefined
 ): AgentGuiWorkbenchProvider | null {
-  const normalized = instanceId?.trim();
-  if (!normalized || normalized === "agent-gui") {
-    return null;
-  }
-  const [, provider] = normalized.split(":", 3);
-  return isAgentGuiWorkbenchProvider(provider) ? provider : null;
+  return agentGuiWorkbenchProviderFromIdentifier(instanceId);
 }
 
 export function createAgentGuiWorkbenchNodeStateSource(input: {
