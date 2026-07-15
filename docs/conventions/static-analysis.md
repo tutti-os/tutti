@@ -135,6 +135,17 @@ Renderer feature implementation boundaries are checked by `pnpm check:renderer-b
 That check also enforces the Workbench-specific rule that
 `workspace-workbench/ui/**` imports public service or controller seams instead
 of `workspace-workbench/services/internal/**`.
+Workspace Workbench launch coordinators must also route workspace-keyed Shell
+registrations through the private `WorkspaceScopedRegistrationRegistry` rather
+than declaring their own `Map`. The rule covers top-level
+`*LaunchCoordinator.ts` services and the Message Center coordinator, while
+leaving non-launch coordinator state such as Agent GUI open-session reference
+counts outside this registration-specific policy. Because the rule is part of
+`check:renderer-boundaries`, it runs for staged renderer changes, the
+renderer-boundary lane selected by `check:changed`, and `check:full`. Changes
+to the renderer-boundary checker or its fixture suite also select that
+`check:changed` lane, so policy edits validate both their fixtures and the live
+renderer tree.
 
 `pnpm check:ui-boundaries` has a package-scoped temporary migration exception
 for `packages/agent/gui` while the carried agent activity renderer is

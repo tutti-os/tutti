@@ -99,7 +99,43 @@ function inspectCodeFile(relativePath, content) {
     }
 
     inspectWindowTuttiAccess(relativePath, lines[index], index + 1);
+    inspectWorkspaceLaunchCoordinatorMap(relativePath, lines[index], index + 1);
   }
+}
+
+function inspectWorkspaceLaunchCoordinatorMap(relativePath, lineContent, line) {
+  if (!isWorkspaceLaunchCoordinator(relativePath)) {
+    return;
+  }
+
+  if (!/\bnew\s+Map\s*(?:<|\()/u.test(lineContent)) {
+    return;
+  }
+
+  violations.push({
+    file: relativePath,
+    line,
+    message:
+      "workspace launch coordinators must use WorkspaceScopedRegistrationRegistry instead of owning a Map",
+    rule: "workspace-launch-coordinator-private-map"
+  });
+}
+
+function isWorkspaceLaunchCoordinator(relativePath) {
+  const servicesRoot = `${rendererRoot}/features/workspace-workbench/services/`;
+  if (!relativePath.startsWith(servicesRoot)) {
+    return false;
+  }
+
+  const servicePath = relativePath.slice(servicesRoot.length);
+  if (servicePath.includes("/")) {
+    return false;
+  }
+
+  return (
+    servicePath.endsWith("LaunchCoordinator.ts") ||
+    servicePath === "workspaceMessageCenterCoordinator.ts"
+  );
 }
 
 function inspectImport(importerPath, specifier, line) {

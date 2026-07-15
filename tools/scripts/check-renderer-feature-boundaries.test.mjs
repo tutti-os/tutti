@@ -120,6 +120,56 @@ test("rejects feature service direct access to the preload API", async () => {
   assert.match(result.stderr, /renderer-window-tutti-access/);
 });
 
+test("rejects private Maps in workspace launch coordinators", async () => {
+  const workspaceRoot = await createFixtureWorkspace({
+    "features/workspace-workbench/services/workspaceExampleLaunchCoordinator.ts":
+      "const handlersByWorkspaceId = new Map<string, () => void>();\n"
+  });
+
+  const result = runBoundaryCheck(workspaceRoot);
+
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /workspace-launch-coordinator-private-map/);
+  assert.match(result.stderr, /WorkspaceScopedRegistrationRegistry/);
+});
+
+test("rejects private Maps in the workspace message center coordinator", async () => {
+  const workspaceRoot = await createFixtureWorkspace({
+    "features/workspace-workbench/services/workspaceMessageCenterCoordinator.ts":
+      "const handlersByWorkspaceId = new Map<string, () => void>();\n"
+  });
+
+  const result = runBoundaryCheck(workspaceRoot);
+
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /workspace-launch-coordinator-private-map/);
+});
+
+test("allows workspace launch coordinators to use the shared registration registry", async () => {
+  const workspaceRoot = await createFixtureWorkspace({
+    "features/workspace-workbench/services/internal/workspaceScopedRegistrationRegistry.ts":
+      "export class WorkspaceScopedRegistrationRegistry<T> {}\n",
+    "features/workspace-workbench/services/workspaceExampleLaunchCoordinator.ts":
+      'import { WorkspaceScopedRegistrationRegistry } from "./internal/workspaceScopedRegistrationRegistry";\nconst handlers = new WorkspaceScopedRegistrationRegistry<() => void>();\n'
+  });
+
+  const result = runBoundaryCheck(workspaceRoot);
+
+  assert.equal(result.status, 0, result.stderr || result.stdout);
+  assert.match(result.stdout, /renderer feature boundary check passed/);
+});
+
+test("allows non-launch coordinator Maps outside the Shell registration rule", async () => {
+  const workspaceRoot = await createFixtureWorkspace({
+    "features/workspace-workbench/services/workspaceAgentGuiOpenSessionCoordinator.ts":
+      "const refCountsByWorkspaceId = new Map<string, number>();\n"
+  });
+
+  const result = runBoundaryCheck(workspaceRoot);
+
+  assert.equal(result.status, 0, result.stderr || result.stdout);
+});
+
 async function createFixtureWorkspace(files) {
   const workspaceRoot = await mkdtemp(
     join(tmpdir(), "tutti-renderer-boundaries-")

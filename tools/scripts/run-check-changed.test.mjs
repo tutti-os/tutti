@@ -5,10 +5,25 @@ import { join } from "node:path";
 import test from "node:test";
 import {
   isAgentActivityRuntimeBoundaryRelevant,
+  isRendererBoundaryRelevant,
   printSummary,
   runLanes,
   selectExistingLintFiles
 } from "./run-check-changed.mjs";
+
+test("renderer boundary lane covers renderer and checker changes", () => {
+  for (const file of [
+    "apps/desktop/src/renderer/src/features/workspace-workbench/services/coordinator.ts",
+    "tools/scripts/check-renderer-feature-boundaries.mjs",
+    "tools/scripts/check-renderer-feature-boundaries.test.mjs"
+  ]) {
+    assert.equal(isRendererBoundaryRelevant(file), true, file);
+  }
+  assert.equal(
+    isRendererBoundaryRelevant("apps/desktop/src/main/index.ts"),
+    false
+  );
+});
 
 test("activity runtime boundary lane covers package, desktop adapter, and checker changes", () => {
   for (const file of [

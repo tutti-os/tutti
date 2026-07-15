@@ -142,11 +142,7 @@ function buildChangedLanes() {
     });
   }
 
-  if (
-    changedFiles.some((file) =>
-      file.startsWith("apps/desktop/src/renderer/src/")
-    )
-  ) {
+  if (changedFiles.some(isRendererBoundaryRelevant)) {
     addLane({
       key: "boundary:renderer",
       label: "boundary:renderer",
@@ -578,6 +574,14 @@ export function isAgentActivityRuntimeBoundaryRelevant(file) {
     file === "tools/scripts/check-agent-activity-runtime-boundaries.mjs" ||
     file === "tools/scripts/check-agent-activity-runtime-boundaries.test.mjs" ||
     file.startsWith("tools/fixtures/agent-activity-runtime-boundaries/")
+  );
+}
+
+export function isRendererBoundaryRelevant(file) {
+  return (
+    file.startsWith("apps/desktop/src/renderer/src/") ||
+    file === "tools/scripts/check-renderer-feature-boundaries.mjs" ||
+    file === "tools/scripts/check-renderer-feature-boundaries.test.mjs"
   );
 }
 
