@@ -7948,6 +7948,8 @@ html[data-theme="light"] [data-message-center-item-id].agent-gui-edge-glow {
 
 .agent-gui-node__composer-queued-prompt-list {
   display: grid;
+  width: 100%;
+  min-width: 0;
   gap: 0;
   max-height: 36px;
   overflow: hidden;
@@ -7958,6 +7960,7 @@ html[data-theme="light"] [data-message-center-item-id].agent-gui-edge-glow {
 
 .agent-gui-node__composer-queued-prompt-panel {
   display: grid;
+  min-width: 0;
   gap: 4px;
   position: relative;
   z-index: 1;
@@ -8021,6 +8024,9 @@ html[data-theme="light"] [data-message-center-item-id].agent-gui-edge-glow {
 
 .agent-gui-node__composer-queued-prompt-row {
   display: grid;
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
   grid-template-columns: minmax(0, 1fr) auto;
   gap: 8px;
   align-items: center;
@@ -8033,13 +8039,16 @@ html[data-theme="light"] [data-message-center-item-id].agent-gui-edge-glow {
 
 .agent-gui-node__composer-queued-prompt-main {
   display: block;
+  width: 100%;
   min-width: 0;
 }
 
 .agent-gui-node__composer-queued-prompt-body {
   display: flex;
+  width: 100%;
   align-items: center;
   min-width: 0;
+  overflow: hidden;
   gap: 6px;
 }
 
@@ -8086,32 +8095,52 @@ html[data-theme="light"] [data-message-center-item-id].agent-gui-edge-glow {
 }
 
 .agent-gui-node__composer-queued-prompt-text {
+  position: relative;
+  width: 0;
+  max-width: 100%;
+  flex: 1 1 0;
   min-width: 0;
   margin: 0;
   color: var(--agent-gui-text-secondary, var(--text-secondary));
   font-size: 13px;
   line-height: 28px;
   overflow: hidden;
-  text-overflow: ellipsis;
+  text-overflow: clip;
   word-break: break-word;
   white-space: nowrap;
 }
 
+.agent-gui-node__composer-queued-prompt-text[data-overflowing="true"]::after {
+  content: "…";
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 28px;
+  height: 28px;
+  background: linear-gradient(90deg, transparent, var(--background-panel) 52%);
+  color: var(--agent-gui-text-secondary, var(--text-secondary));
+  line-height: 28px;
+  text-align: right;
+  pointer-events: none;
+}
+
 .agent-gui-node__composer-queued-prompt-markdown {
   display: block;
+  width: 100%;
   min-width: 0;
   max-width: 100%;
   color: inherit;
   font-size: inherit;
   line-height: inherit;
   overflow: hidden;
-  text-overflow: ellipsis;
+  text-overflow: clip;
   white-space: nowrap;
 }
 
 .agent-gui-node__composer-queued-prompt-markdown
   [data-workspace-agent-markdown-shell="true"] {
   display: block;
+  width: 100%;
   min-width: 0;
   max-width: 100%;
   overflow: hidden;
@@ -8122,7 +8151,7 @@ html[data-theme="light"] [data-message-center-item-id].agent-gui-edge-glow {
   [data-workspace-agent-markdown="true"] {
   display: block;
   overflow: hidden;
-  text-overflow: ellipsis;
+  text-overflow: clip;
   white-space: nowrap;
 }
 
@@ -8133,7 +8162,8 @@ html[data-theme="light"] [data-message-center-item-id].agent-gui-edge-glow {
 
 .agent-gui-node__composer-queued-prompt-markdown
   [data-agent-file-mention="true"] {
-  max-width: 100%;
+  width: max-content;
+  max-width: min(100%, var(--agent-mention-max-width, 16rem));
   color: inherit;
   vertical-align: baseline;
 }
@@ -8142,20 +8172,20 @@ html[data-theme="light"] [data-message-center-item-id].agent-gui-edge-glow {
   [data-agent-file-mention="true"].tsh-agent-object-token--entity {
   color: inherit;
   top: 3px;
+  max-width: min(100%, var(--agent-mention-max-width, 16rem));
   min-height: 24px;
   padding: 2px 4px;
   border: 1px solid transparent;
   border-radius: 4px;
   line-height: 20px;
-  transition:
-    background-color 140ms ease-in-out,
-    border-color 140ms ease-in-out;
+  transition: none;
 }
 
 .agent-gui-node__composer-queued-prompt-markdown
-  [data-agent-file-mention="true"].tsh-agent-object-token--entity:hover {
+  [data-agent-file-mention="true"].tsh-agent-object-token:hover {
   border-color: transparent;
-  background: color-mix(in srgb, var(--text-primary) 10%, transparent);
+  background: transparent;
+  text-decoration: none;
 }
 
 .agent-gui-node__composer-queued-prompt-markdown
@@ -8193,7 +8223,7 @@ html[data-theme="light"] [data-message-center-item-id].agent-gui-edge-glow {
 .agent-gui-node__composer-queued-prompt-panel[data-expanded="true"]
   .agent-gui-node__composer-queued-prompt-text {
   overflow: hidden;
-  text-overflow: ellipsis;
+  text-overflow: clip;
   white-space: nowrap;
 }
 
@@ -8206,12 +8236,14 @@ html[data-theme="light"] [data-message-center-item-id].agent-gui-edge-glow {
   .agent-gui-node__composer-queued-prompt-markdown
   [data-workspace-agent-markdown="true"] {
   overflow: hidden;
-  text-overflow: ellipsis;
+  text-overflow: clip;
   white-space: nowrap;
 }
 
 .agent-gui-node__composer-queued-prompt-actions {
   display: inline-flex;
+  justify-self: end;
+  flex: 0 0 auto;
   align-items: center;
   gap: 4px;
 }

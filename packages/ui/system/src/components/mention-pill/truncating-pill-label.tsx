@@ -9,28 +9,42 @@ import {
 } from "../tooltip/tooltip";
 
 /**
- * 监测元素是否因 overflow 被省略号截断(scrollWidth > clientWidth)。
+ * 监测元素或指定后代是否因 overflow 被截断(scrollWidth > clientWidth)。
  * 返回要挂到「截断元素」上的 ref,以及是否正在溢出。随容器尺寸变化实时更新。
  */
 export function useTextOverflow<T extends HTMLElement = HTMLElement>(
-  watch: unknown
+  watch: unknown,
+  descendantSelector?: string
 ): { ref: React.RefObject<T | null>; overflowing: boolean } {
   const ref = React.useRef<T>(null);
   const [overflowing, setOverflowing] = React.useState(false);
 
   React.useEffect(() => {
     const element = ref.current;
-    if (!element || typeof ResizeObserver === "undefined") {
+    if (!element) {
       return;
     }
+    const overflowCandidates = (): HTMLElement[] => [
+      element,
+      ...(descendantSelector
+        ? element.querySelectorAll<HTMLElement>(descendantSelector)
+        : [])
+    ];
     const measure = (): void => {
-      setOverflowing(element.scrollWidth - element.clientWidth > 1);
+      setOverflowing(
+        overflowCandidates().some(
+          (candidate) => candidate.scrollWidth - candidate.clientWidth > 1
+        )
+      );
     };
     measure();
+    if (typeof ResizeObserver === "undefined") {
+      return;
+    }
     const observer = new ResizeObserver(measure);
-    observer.observe(element);
+    for (const candidate of overflowCandidates()) observer.observe(candidate);
     return () => observer.disconnect();
-  }, [watch]);
+  }, [descendantSelector, watch]);
 
   return { ref, overflowing };
 }

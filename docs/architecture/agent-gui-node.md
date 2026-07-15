@@ -2179,6 +2179,12 @@ Preview-mode AgentGUI surfaces are read-only for this runtime: they may render a
 existing queue if injected into the same context, but they must not enqueue,
 send now, edit, or delete queued prompts.
 
+Collapsed queued-prompt summaries own truncation disclosure for the whole row.
+Mention chips inside a queued summary keep their presentation and link behavior
+but do not use independent hover highlighting or open mention tooltips. When the
+rendered row actually overflows, one row-level tooltip shows the complete prompt
+as plain text; rows that fit do not show that tooltip.
+
 Queued prompt previews must treat prompt image blocks as the same send contract
 used by the composer and runtime: an image may be inline `data`, a staged
 `path`, or an HTTPS `url`. Do not cast queued images to data-only blocks or build

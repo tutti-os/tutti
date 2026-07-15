@@ -12,8 +12,14 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
-  DropdownMenuTrigger
+  DropdownMenuTrigger,
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+  useTextOverflow
 } from "@tutti-os/ui-system";
+import { extractPlainTextFromContent } from "@tutti-os/ui-rich-text";
 import {
   AgentMessageMarkdown,
   type AgentMessageMarkdownWorkspaceAppIcon
@@ -47,6 +53,8 @@ import {
 
 const EMPTY_WORKSPACE_APP_ICONS: readonly AgentMessageMarkdownWorkspaceAppIcon[] =
   [];
+const QUEUED_PROMPT_OVERFLOW_DESCENDANTS =
+  '[data-workspace-agent-markdown="true"], .tsh-agent-object-token__main';
 
 type QueuedPromptImageBlock = AgentPromptContentBlock & {
   type: "image";
@@ -247,12 +255,69 @@ function queuedPromptDisplayText(queuedPrompt: AgentGUIQueuedPromptVM): string {
 function queuedPromptTitle(queuedPrompt: AgentGUIQueuedPromptVM): string {
   const prompt = queuedPromptDisplayText(queuedPrompt);
   if (prompt) {
-    return prompt;
+    return extractPlainTextFromContent(prompt);
   }
   return queuedPromptImages(queuedPrompt)
     .map((image) => image.name?.trim() ?? "")
     .filter(Boolean)
     .join(", ");
+}
+
+interface AgentQueuedPromptTextProps {
+  displayText: string;
+  measurementRef?: React.RefObject<HTMLDivElement | null>;
+  onLinkClick?: (href: string) => void;
+  title: string;
+  workspaceAppIcons: readonly AgentMessageMarkdownWorkspaceAppIcon[];
+}
+
+function AgentQueuedPromptText({
+  displayText,
+  measurementRef,
+  onLinkClick,
+  title,
+  workspaceAppIcons
+}: AgentQueuedPromptTextProps): React.JSX.Element {
+  const { ref: overflowRef, overflowing } = useTextOverflow<HTMLDivElement>(
+    displayText,
+    QUEUED_PROMPT_OVERFLOW_DESCENDANTS
+  );
+  const content = (
+    <div
+      ref={(element) => {
+        overflowRef.current = element;
+        if (measurementRef) measurementRef.current = element;
+      }}
+      className={styles.composerQueuedPromptText}
+      data-overflowing={overflowing ? "true" : "false"}
+      onClick={(event) => {
+        if (event.target instanceof Element && event.target.closest("a")) {
+          event.stopPropagation();
+        }
+      }}
+    >
+      <AgentMessageMarkdown
+        content={displayText}
+        className="agent-gui-node__composer-queued-prompt-markdown"
+        inline
+        onLinkClick={onLinkClick}
+        previewMode
+        workspaceAppIcons={workspaceAppIcons}
+      />
+    </div>
+  );
+  return (
+    <TooltipProvider delayDuration={200}>
+      <Tooltip>
+        <TooltipTrigger asChild>{content}</TooltipTrigger>
+        {overflowing && title ? (
+          <TooltipContent className="max-w-[min(520px,calc(100vw-32px))] whitespace-pre-wrap text-left [overflow-wrap:anywhere]">
+            {title}
+          </TooltipContent>
+        ) : null}
+      </Tooltip>
+    </TooltipProvider>
+  );
 }
 
 export function AgentQueuedPromptPanel({
@@ -435,32 +500,19 @@ export function AgentQueuedPromptPanel({
               data-draining={isDraining ? "true" : "false"}
             >
               <div className={styles.composerQueuedPromptMain}>
-                <div className={styles.composerQueuedPromptBody} title={title}>
+                <div className={styles.composerQueuedPromptBody}>
                   {displayText ? (
-                    <div
-                      ref={
+                    <AgentQueuedPromptText
+                      displayText={displayText}
+                      measurementRef={
                         queuedPrompts.length === 1
                           ? singlePromptTextRef
                           : undefined
                       }
-                      className={styles.composerQueuedPromptText}
-                      onClick={(event) => {
-                        if (
-                          event.target instanceof Element &&
-                          event.target.closest("a")
-                        ) {
-                          event.stopPropagation();
-                        }
-                      }}
-                    >
-                      <AgentMessageMarkdown
-                        content={displayText}
-                        className="agent-gui-node__composer-queued-prompt-markdown"
-                        inline
-                        onLinkClick={onLinkClick}
-                        workspaceAppIcons={workspaceAppIcons}
-                      />
-                    </div>
+                      onLinkClick={onLinkClick}
+                      title={title}
+                      workspaceAppIcons={workspaceAppIcons}
+                    />
                   ) : null}
                   {images.length > 0 ? (
                     <div className={styles.composerQueuedPromptImages}>

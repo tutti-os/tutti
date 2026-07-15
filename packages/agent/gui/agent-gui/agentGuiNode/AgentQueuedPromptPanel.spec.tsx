@@ -141,6 +141,47 @@ describe("AgentQueuedPromptPanel", () => {
     clientWidth.mockRestore();
   });
 
+  it("shows one plain-text tooltip for a truncated queue row instead of mention tooltips", async () => {
+    const scrollWidth = vi
+      .spyOn(HTMLElement.prototype, "scrollWidth", "get")
+      .mockImplementation(function (this: HTMLElement) {
+        return this.classList.contains("tsh-agent-object-token__main")
+          ? 240
+          : 120;
+      });
+    const clientWidth = vi
+      .spyOn(HTMLElement.prototype, "clientWidth", "get")
+      .mockReturnValue(120);
+    const { container } = render(
+      <AgentQueuedPromptPanel
+        queuedPrompts={[
+          textQueuedPrompt(
+            "queued-1",
+            "Before [@long session](mention://agent-session/session-1?workspaceId=room-1) after **details**"
+          )
+        ]}
+        drainingQueuedPromptId={null}
+        labels={labels}
+        onSendQueuedPromptNext={vi.fn()}
+        onRemoveQueuedPrompt={vi.fn()}
+        onEditQueuedPrompt={vi.fn()}
+      />
+    );
+
+    const mention = container.querySelector('[data-agent-file-mention="true"]');
+    expect(mention).not.toBeNull();
+    expect(screen.queryByRole("tooltip")).toBeNull();
+
+    fireEvent.pointerMove(mention as Element, { pointerType: "mouse" });
+
+    const tooltips = await screen.findAllByRole("tooltip");
+    expect(tooltips).toHaveLength(1);
+    expect(tooltips[0]).toHaveTextContent("Before @long session after details");
+
+    scrollWidth.mockRestore();
+    clientWidth.mockRestore();
+  });
+
   it("renders queued mention prompts as entity tokens instead of raw markdown links", () => {
     const { container } = render(
       <AgentQueuedPromptPanel
