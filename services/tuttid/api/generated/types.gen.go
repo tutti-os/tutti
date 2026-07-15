@@ -1836,13 +1836,19 @@ func (e WorkspaceFileUploadConflictKind) Valid() bool {
 
 // Defines values for WorkspaceGitPatchErrorCode.
 const (
-	NotGitRepo WorkspaceGitPatchErrorCode = "not-git-repo"
+	InvalidPatch      WorkspaceGitPatchErrorCode = "invalid-patch"
+	NotGitRepo        WorkspaceGitPatchErrorCode = "not-git-repo"
+	PatchDoesNotApply WorkspaceGitPatchErrorCode = "patch-does-not-apply"
 )
 
 // Valid indicates whether the value is a known member of the WorkspaceGitPatchErrorCode enum.
 func (e WorkspaceGitPatchErrorCode) Valid() bool {
 	switch e {
+	case InvalidPatch:
+		return true
 	case NotGitRepo:
+		return true
+	case PatchDoesNotApply:
 		return true
 	default:
 		return false

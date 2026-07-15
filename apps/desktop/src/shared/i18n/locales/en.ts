@@ -382,7 +382,7 @@ export const en = {
       settingsAction: "Import",
       settingsDescription:
         "Bring local Codex and Claude Code history or Claude export conversations into Tutti",
-      settingsLabel: "Import AI chats",
+      settingsLabel: "Import session history",
       title: "Import from AI apps"
     },
     analyticsDebug: {
@@ -519,7 +519,7 @@ export const en = {
         workspaceUiModeSaveFailed:
           "We couldn't update the startup interface right now.",
         defaultAgentProviderDescription:
-          "Used for new app factory jobs, issue tasks, and workspace apps that ask for the host default",
+          "Used when a task or workspace app does not specify a provider",
         defaultAgentProviderLabel: "Default provider",
         defaultAgentProviderSaveFailed:
           "We couldn't update the default provider right now.",
@@ -654,7 +654,7 @@ export const en = {
         computerUseWizardDoneBody:
           "Computer use is ready — the agent can now operate your desktop.",
         browserUseConnectionModeDescription:
-          "Choose which browser the agent controls when it runs web tasks — the Chrome on your computer, or a separate browser Tutti launches for it.",
+          "Choose which browser the agent controls when it runs web tasks",
         browserUseConnectionModeLabel: "Browser connection",
         browserUseConnectionModeOptions: {
           autoConnect: "Reuse my Chrome",
@@ -760,7 +760,7 @@ export const en = {
           loadFailed: "We couldn't load model providers.",
           modelId: "Model ID",
           modelIdPlaceholder: "model-id",
-          models: "Models",
+          models: "{{provider}} models",
           presetLabels: {
             agnes: "Agnes",
             anthropicClaude: "Anthropic (Claude)",

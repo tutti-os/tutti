@@ -8,27 +8,32 @@ import type { AgentGUIComposerTargetData } from "./agentGuiController.composerPr
 import { useAgentGUIComposerPresentation } from "./useAgentGUIComposerPresentation";
 
 describe("useAgentGUIComposerPresentation", () => {
-  it("switches to the selected model reasoning profile", () => {
+  it("switches reasoning visibility and values with the selected model profile", () => {
     const data: AgentGUINodeData = {
-      provider: "codex",
-      agentTargetId: "local:codex",
+      provider: "opencode",
+      agentTargetId: "local:opencode",
       lastActiveAgentSessionId: "session-1"
     };
     const target: AgentGUIComposerTargetData = {
-      agentTargetId: "local:codex",
+      agentTargetId: "local:opencode",
       data,
-      provider: "codex",
-      targetId: "local:codex"
+      provider: "opencode",
+      targetId: "local:opencode"
     };
     const options: AgentActivityComposerOptions = {
-      provider: "codex",
+      provider: "opencode",
       capabilities: null,
       models: [
+        { value: "opencode/big-pickle", label: "Big Pickle" },
         { value: "gpt-5.6-sol", label: "GPT-5.6 Sol" },
         { value: "gpt-5.6-luna", label: "GPT-5.6 Luna" }
       ],
       reasoningEfforts: [{ value: "high", label: "High" }],
       reasoningOptionsByModel: {
+        "opencode/big-pickle": {
+          defaultValue: null,
+          options: []
+        },
         "gpt-5.6-sol": {
           defaultValue: "medium",
           options: [
@@ -49,7 +54,7 @@ describe("useAgentGUIComposerPresentation", () => {
       },
       speeds: [],
       modelConfigurable: true,
-      reasoningConfigurable: true,
+      reasoningConfigurable: false,
       skills: [],
       behavior: {
         collapseModelOptionsToLatest: false,
@@ -78,7 +83,7 @@ describe("useAgentGUIComposerPresentation", () => {
           } as AgentActivityRuntime,
           composerSupport: composerSettingsSupportFromOptions(options, null),
           composerOptionsLoading: false,
-          composerTargetProvider: "codex",
+          composerTargetProvider: "opencode",
           data,
           defaultReasoningEffort: "high",
           draftSettingsBySessionId,
@@ -90,8 +95,20 @@ describe("useAgentGUIComposerPresentation", () => {
           setDraftSettingsBySessionId: vi.fn()
         });
       },
-      { initialProps: { model: "gpt-5.6-sol" } }
+      { initialProps: { model: "opencode/big-pickle" } }
     );
+
+    expect(
+      result.current.stableComposerSettings.availableReasoningEfforts
+    ).toEqual([]);
+    expect(
+      result.current.stableComposerSettings.selectedReasoningEffortValue
+    ).toBeNull();
+    expect(
+      result.current.stableComposerSettings.draftSettings.reasoningEffort
+    ).toBeNull();
+
+    rerender({ model: "gpt-5.6-sol" });
 
     expect(
       result.current.stableComposerSettings.availableReasoningEfforts.map(
@@ -112,5 +129,14 @@ describe("useAgentGUIComposerPresentation", () => {
     expect(
       result.current.stableComposerSettings.selectedReasoningEffortValue
     ).toBe("medium");
+
+    rerender({ model: "opencode/big-pickle" });
+
+    expect(
+      result.current.stableComposerSettings.availableReasoningEfforts
+    ).toEqual([]);
+    expect(
+      result.current.stableComposerSettings.selectedReasoningEffortValue
+    ).toBeNull();
   });
 });

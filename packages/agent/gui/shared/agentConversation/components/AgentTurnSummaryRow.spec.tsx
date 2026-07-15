@@ -501,6 +501,7 @@ describe("AgentTurnSummaryRow", () => {
       async (): Promise<AgentHostApplyWorkspaceGitPatchResult> => ({
         appliedPaths: [],
         conflictedPaths: [],
+        errorCode: "invalid-patch",
         skippedPaths: [],
         status: "error"
       })
@@ -554,7 +555,7 @@ describe("AgentTurnSummaryRow", () => {
 
     await waitFor(() => {
       expect(hostToastError).toHaveBeenCalledWith(
-        "agentHost.agentGui.turnSummaryUndoFailed"
+        "agentHost.agentGui.turnSummaryInvalidPatch"
       );
     });
     expect(toast.error).not.toHaveBeenCalled();

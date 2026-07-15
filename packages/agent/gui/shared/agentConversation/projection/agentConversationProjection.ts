@@ -33,15 +33,11 @@ export function projectAgentConversationVM(
 ): AgentConversationVM {
   const rows: AgentTranscriptRowVM[] = [];
   const turns = detail.turns;
-  const allowTrailingToolGrouping = !isSessionWorking(detail);
 
   turns.forEach((turn, index) => {
     rows.push(
       ...projectTurnConversationRows(turn, detail.session.workspaceId, {
         agentSessionId: detail.session.agentSessionId,
-        turnIndex: index,
-        allowTrailingFinalization:
-          allowTrailingToolGrouping || index < turns.length - 1,
         avoidGroupingEdits: options.avoidGroupingEdits
       })
     );
@@ -544,19 +540,11 @@ function isLatestTurnSettled(
   return detail.showProcessingIndicator !== true && !canonicalTurnUnsettled;
 }
 
-function isSessionWorking(
-  detail: WorkspaceAgentSessionDetailViewModel
-): boolean {
-  return detail.showProcessingIndicator === true;
-}
-
 function projectTurnConversationRows(
   turn: WorkspaceAgentSessionDetailTurn,
   workspaceId: string | null | undefined,
   options: {
     agentSessionId: string;
-    turnIndex: number;
-    allowTrailingFinalization: boolean;
     avoidGroupingEdits?: boolean;
   }
 ): AgentTranscriptRowVM[] {
@@ -566,5 +554,11 @@ function projectTurnConversationRows(
     options
   );
   const skippedIndices = new Set([...groupedIndices, ...suppressedIndices]);
-  return projectTurnRows(sequence, groups, skippedIndices, turn.id);
+  return projectTurnRows(
+    sequence,
+    groups,
+    skippedIndices,
+    turn.id,
+    options.agentSessionId
+  );
 }

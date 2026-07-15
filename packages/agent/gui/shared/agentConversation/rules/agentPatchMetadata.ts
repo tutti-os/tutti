@@ -8,10 +8,19 @@ export function normalizeAgentPatchText(text: string): string {
   if (contentField) {
     return normalizeAgentPatchText(contentField);
   }
-  if (!text.includes("\n") && text.includes("\\n")) {
-    return text.replace(/\\n/g, "\n");
-  }
-  return text;
+  const expanded =
+    !text.includes("\n") && text.includes("\\n")
+      ? text.replace(/\\n/g, "\n")
+      : text;
+  return expanded
+    .replace(/\r\n/g, "\n")
+    .split("\n")
+    .map((line) =>
+      line.trimStart() === "\\ No newline at end of file"
+        ? "\\ No newline at end of file"
+        : line
+    )
+    .join("\n");
 }
 
 export function extractAgentPatchPath(patchText: string | null): string | null {

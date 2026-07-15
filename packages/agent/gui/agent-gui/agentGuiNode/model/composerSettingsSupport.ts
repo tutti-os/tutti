@@ -28,9 +28,14 @@ export function composerSettingsSupportFromOptions(
   composerOptions: AgentActivityComposerOptions | null,
   sessionCapabilities: Partial<AgentActivitySessionCapabilities> | null
 ): AgentComposerSettingsSupport {
+  const hasModelReasoningOptions = Object.values(
+    composerOptions?.reasoningOptionsByModel ?? {}
+  ).some((profile) => profile.options.length > 0);
   return {
     model: composerOptions?.modelConfigurable ?? false,
-    reasoning: composerOptions?.reasoningConfigurable ?? false,
+    reasoning:
+      (composerOptions?.reasoningConfigurable ?? false) ||
+      hasModelReasoningOptions,
     speed: composerOptions?.speedConfigurable ?? false,
     permission: composerOptions?.permissionConfig?.configurable ?? false,
     plan:

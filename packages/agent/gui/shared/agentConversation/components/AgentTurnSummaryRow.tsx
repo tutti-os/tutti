@@ -210,7 +210,10 @@ export function AgentTurnSummaryRow({
           changed = true;
         }
         if (result.status !== "success") {
-          showPatchFailureToast(agentHostApi, failureMessage);
+          showPatchFailureToast(
+            agentHostApi,
+            patchFailureMessage(result.errorCode, failureMessage)
+          );
           return;
         }
       }
@@ -382,6 +385,22 @@ export function AgentTurnSummaryRow({
       </div>
     </section>
   );
+}
+
+function patchFailureMessage(
+  errorCode: string | undefined,
+  fallback: string
+): string {
+  switch (errorCode) {
+    case "invalid-patch":
+      return translate("agentHost.agentGui.turnSummaryInvalidPatch");
+    case "patch-does-not-apply":
+      return translate("agentHost.agentGui.turnSummaryPatchDoesNotApply");
+    case "not-git-repo":
+      return translate("agentHost.agentGui.turnSummaryGitRequired");
+    default:
+      return fallback;
+  }
 }
 
 function TurnSummaryFileCard({

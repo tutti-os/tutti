@@ -435,6 +435,8 @@ export const zhCNAgentGui = {
   turnSummaryCheckingGit: "正在检查 Git 仓库...",
   turnSummaryGitRequired: "当前目录不是 Git 仓库，无法撤销变更",
   turnSummaryPatchUnavailable: "当前变更缺少可撤销的补丁数据",
+  turnSummaryInvalidPatch: "变更记录中的补丁格式无效，无法安全撤销",
+  turnSummaryPatchDoesNotApply: "文件在此次变更后已发生变化，无法安全撤销",
   turnSummaryUndoFailed: "撤销变更失败",
   turnSummaryReapplyFailed: "重新应用变更失败",
   turnSummaryShowMoreFiles: "再显示 {{count}} 个文件",

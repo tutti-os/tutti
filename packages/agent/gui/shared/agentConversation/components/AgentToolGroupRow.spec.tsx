@@ -109,69 +109,6 @@ describe("AgentToolGroupRow", () => {
     ).toHaveLength(2);
   });
 
-  it("emphasizes the grouped tool call count before the completed status", () => {
-    render(
-      <AgentToolGroupRow
-        row={toolGroupRow()}
-        label={(count) => `${count} 次工具调用 已完成`}
-        thinkingLabel="思考"
-      />
-    );
-
-    expect(
-      screen.getByRole("button", { name: "2 次工具调用 已完成" })
-    ).toBeInTheDocument();
-    expect(screen.getByText("2 次工具调用")).toHaveClass(
-      "workspace-agents-status-panel__detail-tool-count-primary"
-    );
-    const status = document.querySelector(
-      ".workspace-agents-status-panel__detail-tool-count-status"
-    );
-    expect(status).toHaveTextContent("已完成");
-    expect(status).toHaveClass(
-      "workspace-agents-status-panel__detail-tool-count-status"
-    );
-  });
-
-  it("renders grouped tool calls without displayable detail as non-collapsible", () => {
-    const calls = [
-      toolCall({ id: "call:1", name: "Read file" }),
-      toolCall({ id: "call:2", name: "Read file" })
-    ];
-
-    render(
-      <AgentToolGroupRow
-        row={{
-          ...toolGroupRow(),
-          calls,
-          entries: calls.map((call) => ({ kind: "tool-call", call }))
-        }}
-        label={(count) => `${count} tool calls completed`}
-        thinkingLabel="Thought process"
-        expanded
-      />
-    );
-
-    expect(screen.getByText("2 tool calls")).toBeInTheDocument();
-    expect(screen.getByText("completed")).toBeInTheDocument();
-    expect(
-      screen.queryByRole("button", { name: /2 tool calls completed/ })
-    ).toBeNull();
-    expect(
-      document.querySelector(
-        ".workspace-agents-status-panel__detail-tool-count-chevron"
-      )
-    ).not.toBeInTheDocument();
-    expect(
-      document.querySelector(".workspace-agents-status-panel__detail-tool-list")
-    ).not.toBeInTheDocument();
-    expect(
-      document.querySelector(
-        ".workspace-agents-status-panel__detail-tool-section"
-      )
-    ).not.toHaveAttribute("data-tool-group-expanded");
-  });
-
   it("does not render grouped file-change summaries under the tool-call count", () => {
     render(
       <AgentToolGroupRow

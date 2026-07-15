@@ -1162,11 +1162,22 @@ describe("AgentFileMentionPalette", () => {
       .getByText("agentGuiNode")
       .closest('[data-agent-file-mention="true"]');
     const enterButton = screen.getByRole("button", { name: "进入文件夹" });
+    const fileCount = folderRow?.querySelector(
+      ".rich-text-at-mention-row__file-count"
+    );
 
     expect(folderRow).toHaveAttribute(
       "data-agent-mention-navigation",
       "agent-generated-folder"
     );
+    expect(fileCount).not.toBeNull();
+    if (!fileCount) {
+      throw new Error("Expected the generated-folder file count");
+    }
+    expect(
+      fileCount.compareDocumentPosition(enterButton) &
+        Node.DOCUMENT_POSITION_FOLLOWING
+    ).toBeTruthy();
     expect(enterButton).toHaveAttribute(
       "data-agent-mention-navigate-into",
       "true"
@@ -1489,6 +1500,10 @@ describe("AgentFileMentionPalette", () => {
     );
 
     const hint = screen.getByTestId("agent-gui-mention-palette-hint");
+    expect(within(hint).getByText("切换分类").parentElement).toHaveAttribute(
+      "data-tooltip",
+      "切换分类"
+    );
 
     fireEvent.click(within(hint).getByRole("button", { name: "Tab 切换分类" }));
     fireEvent.click(within(hint).getByRole("button", { name: "↑ 切换选中" }));

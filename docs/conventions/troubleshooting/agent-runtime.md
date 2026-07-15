@@ -51,6 +51,7 @@ Turn state, loading, cancel, restore, rail projection, event updates, imports, a
 - [Agent GUI no-project sessions appear under a user project](./agent-session-lifecycle.md#agent-gui-no-project-sessions-appear-under-a-user-project)
 - [Agent session restore breaks when durable snapshot ownership is split](./agent-session-lifecycle.md#agent-session-restore-breaks-when-durable-snapshot-ownership-is-split)
 - [Agent activity live updates fail after event schema changes](./agent-session-lifecycle.md#agent-activity-live-updates-fail-after-event-schema-changes)
+- [AgentGUI file-change undo reports a generic failure](./agent-session-lifecycle.md#agentgui-file-change-undo-reports-a-generic-failure)
 - [AgentActivity replication repeatedly rejects message batches as invalid](./agent-session-lifecycle.md#agentactivity-replication-repeatedly-rejects-message-batches-as-invalid)
 - [Remote agent cancel does not stop the local turn](./agent-session-lifecycle.md#remote-agent-cancel-does-not-stop-the-local-turn)
 - [Claude Code cancel leaves Write/tool cards stuck in progress](./agent-session-lifecycle.md#claude-code-cancel-leaves-writetool-cards-stuck-in-progress)

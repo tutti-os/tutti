@@ -8,6 +8,7 @@ import type {
 } from "../../../shared/agentSessionTypes";
 import type { AgentGUINodeData, AgentGUIProvider } from "../../../types";
 import type { ACPConfigOptionSelection } from "./agentGuiController.types";
+import { reasoningSelectionForModelFromComposerOptions } from "./agentGuiController.composerHelpers";
 import { normalizeOptionalText } from "./agentGuiController.promptHelpers";
 
 export interface AgentGUIComposerTargetData {
@@ -142,12 +143,11 @@ export function sanitizeComposerSettingsForOptions(
   const reasoningEffort = normalizeOptionalText(settings.reasoningEffort);
   const speed = normalizeOptionalText(settings.speed);
   const permissionModeId = normalizeOptionalText(settings.permissionModeId);
-  const modelReasoningProfile = model
-    ? options.reasoningOptionsByModel?.[model]
-    : undefined;
-  const modelReasoningValues = modelReasoningProfile
-    ? composerOptionValues(modelReasoningProfile.options)
-    : null;
+  const modelReasoningSelection = reasoningSelectionForModelFromComposerOptions(
+    options,
+    reasoningEffort as AgentSessionReasoningEffort | null,
+    model
+  );
   return {
     ...settings,
     model:
@@ -158,12 +158,10 @@ export function sanitizeComposerSettingsForOptions(
         ? null
         : model,
     reasoningEffort:
-      options.reasoningConfigurable !== true
-        ? null
-        : reasoningEffort && modelReasoningValues !== null
-          ? modelReasoningValues.has(reasoningEffort)
-            ? (reasoningEffort as AgentSessionReasoningEffort)
-            : null
+      modelReasoningSelection !== null
+        ? modelReasoningSelection.currentValue
+        : options.reasoningConfigurable !== true
+          ? null
           : reasoningEffort &&
               reasoningValues.size > 0 &&
               !reasoningValues.has(reasoningEffort)

@@ -188,6 +188,9 @@ export function useAgentGUIComposerPresentation(
       ),
     [draftModel, draftReasoningEffort, input.providerComposerOptions]
   );
+  const presentedReasoningEffort = activeSessionReasoningSelection
+    ? activeSessionReasoningSelection.currentValue
+    : draftReasoningEffort;
   const activeSessionModelSelection = useMemo(
     () =>
       modelSelectionFromComposerOptions(
@@ -224,7 +227,7 @@ export function useAgentGUIComposerPresentation(
       sessionSettings,
       draftSettings: {
         model: draftModel,
-        reasoningEffort: draftReasoningEffort,
+        reasoningEffort: presentedReasoningEffort,
         speed: draftSpeed,
         planMode: Boolean(draftSettings.planMode),
         browserUse: draftSettings.browserUse ?? true,
@@ -276,8 +279,7 @@ export function useAgentGUIComposerPresentation(
         supportsPermissionMode &&
         selectedPermissionModeValue === null,
       selectedModelValue: draftModel,
-      selectedReasoningEffortValue:
-        activeSessionReasoningSelection?.currentValue ?? draftReasoningEffort,
+      selectedReasoningEffortValue: presentedReasoningEffort,
       selectedSpeedValue: draftSpeed,
       selectedPermissionModeValue,
       permissionConfig,
@@ -328,6 +330,7 @@ export function useAgentGUIComposerPresentation(
     input.composerTargetProvider,
     input.providerComposerOptions,
     input.selectedProjectPath,
+    presentedReasoningEffort,
     sessionSettings
   ]);
 

@@ -6,6 +6,16 @@ import {
 } from "./agentPatchMetadata";
 
 describe("agentPatchMetadata", () => {
+  it("canonicalizes provider no-newline markers with leading whitespace", () => {
+    expect(
+      normalizeAgentPatchText(
+        "@@ -1 +1 @@\n-old\n \\ No newline at end of file\n+new\n \\ No newline at end of file"
+      )
+    ).toBe(
+      "@@ -1 +1 @@\n-old\n\\ No newline at end of file\n+new\n\\ No newline at end of file"
+    );
+  });
+
   it("extracts metadata from modified git diffs", () => {
     const diffText = [
       "diff --git a/src/a.ts b/src/a.ts",

@@ -15,7 +15,13 @@ export function createDesktopTuttidEventStreamClient(
     onInvalidFrame: (error, context) => {
       void runtimeApi
         .logTerminalDiagnostic({
-          details: { error: error.message, ready: context.ready },
+          details: {
+            payload: JSON.stringify({
+              error: error.message,
+              ready: context.ready,
+              summary: context.summary
+            })
+          },
           event: "agent.events.stream.invalid_frame",
           level: "warn"
         })

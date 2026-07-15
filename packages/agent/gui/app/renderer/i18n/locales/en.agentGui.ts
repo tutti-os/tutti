@@ -467,6 +467,10 @@ export const enAgentGui = {
   turnSummaryGitRequired: "This directory is not a Git repository",
   turnSummaryPatchUnavailable:
     "No reversible patch data is available for this change",
+  turnSummaryInvalidPatch:
+    "The recorded patch is invalid and cannot be safely applied",
+  turnSummaryPatchDoesNotApply:
+    "The file changed after this edit and cannot be safely restored",
   turnSummaryUndoFailed: "Failed to undo changes",
   turnSummaryReapplyFailed: "Failed to reapply changes",
   turnSummaryShowMoreFiles: "Show {{count}} more file",

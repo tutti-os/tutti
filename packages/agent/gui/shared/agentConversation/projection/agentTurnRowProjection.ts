@@ -112,14 +112,19 @@ export function toRenderUnits(
  */
 export function renderRun(
   run: readonly AgentRenderUnit[],
-  turnId: string
+  turnId: string,
+  agentSessionId?: string
 ): AgentTranscriptRowVM {
   const last = run.at(-1);
   if (!last) {
     throw new Error("renderRun received an empty run");
   }
   if (last.tag === "tool-group") {
-    return projectAgentToolGroupRowFromGroup(turnId, last.group);
+    return projectAgentToolGroupRowFromGroup(
+      turnId,
+      last.group,
+      agentSessionId
+    );
   }
   if (last.tag === "tool") {
     return projectAgentSingleToolRow(last.call, turnId);
@@ -161,10 +166,11 @@ export function projectTurnRows(
   sequence: readonly AgentTurnSequenceItemVM[],
   groups: ReadonlyMap<number, AgentComputedToolGroupVM>,
   skippedIndices: ReadonlySet<number>,
-  turnId: string
+  turnId: string,
+  agentSessionId?: string
 ): AgentTranscriptRowVM[] {
   const units = toRenderUnits(sequence, groups, skippedIndices);
   return chunkBy(units, thinkingAbsorbedByMessage).map((run) =>
-    renderRun(run, turnId)
+    renderRun(run, turnId, agentSessionId)
   );
 }

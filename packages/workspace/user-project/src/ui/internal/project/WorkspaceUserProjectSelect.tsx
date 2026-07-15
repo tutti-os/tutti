@@ -320,11 +320,13 @@ export function WorkspaceUserProjectSelect({
     visibleProjects.length > 0 && hasProjectActions;
 
   useEffect(() => {
-    if (!disabled || !isSelectOpen) {
-      return;
+    if (!disabled) return;
+    if (isSelectOpen) setIsSelectOpen(false);
+    if (isProjectDialogOpen) {
+      setIsProjectDialogOpen(false);
+      setProjectCreationError(null);
     }
-    setIsSelectOpen(false);
-  }, [disabled, isSelectOpen]);
+  }, [disabled, isProjectDialogOpen, isSelectOpen]);
 
   useEffect(() => {
     onProjectMissingChange?.(shouldShowMissingProjectNotice);
@@ -460,6 +462,7 @@ export function WorkspaceUserProjectSelect({
   );
 
   const createProject = useCallback(async (): Promise<void> => {
+    if (disabled) return;
     const name = draftProjectName.trim();
     if (!effectiveApi?.create) {
       setProjectCreationError(resolvedLabels.createProjectFailed);
@@ -488,6 +491,7 @@ export function WorkspaceUserProjectSelect({
       setIsCreatingProject(false);
     }
   }, [
+    disabled,
     effectiveApi,
     draftProjectName,
     onProjectPathChange,
@@ -698,7 +702,7 @@ export function WorkspaceUserProjectSelect({
                 <Input
                   autoFocus
                   className="h-10"
-                  disabled={isCreatingProject}
+                  disabled={disabled || isCreatingProject}
                   placeholder={resolvedLabels.createProjectNamePlaceholder}
                   value={draftProjectName}
                   onChange={(event) => {
@@ -716,7 +720,7 @@ export function WorkspaceUserProjectSelect({
               ) : null}
               <DialogFooter>
                 <Button
-                  disabled={isCreatingProject}
+                  disabled={disabled || isCreatingProject}
                   size="dialog"
                   type="button"
                   variant="secondary"
@@ -730,7 +734,9 @@ export function WorkspaceUserProjectSelect({
                   {resolvedLabels.createProjectCancel}
                 </Button>
                 <Button
-                  disabled={isCreatingProject || !draftProjectName.trim()}
+                  disabled={
+                    disabled || isCreatingProject || !draftProjectName.trim()
+                  }
                   size="dialog"
                   type="submit"
                 >

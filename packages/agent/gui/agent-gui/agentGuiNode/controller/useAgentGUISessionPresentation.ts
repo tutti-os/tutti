@@ -169,6 +169,16 @@ export function useAgentGUISessionPresentation(
     input.activeConversationId !== null && input.activationState !== "active";
   const activeConversationResumeUnavailable =
     activeConversationRequiresResume && activeSessionResumable === false;
+  const sessionChromeRawState = useMemo<AgentGUISessionChrome["rawState"]>(
+    () =>
+      input.activeEngineSession
+        ? {
+            agentSessionId: input.activeEngineSession.agentSessionId,
+            goal: input.activeEngineSession.goal
+          }
+        : null,
+    [input.activeEngineSession?.agentSessionId, input.activeEngineSession?.goal]
+  );
   const sessionChrome = useMemo<AgentGUISessionChrome>(() => {
     const normalizedError = input.activationError?.trim() ?? "";
     const authState = input.activeSessionState?.authState?.trim() ?? "";
@@ -220,7 +230,7 @@ export function useAgentGUISessionPresentation(
                   canRetry: !providerSessionMissing
                 }
             : null,
-      rawState: input.activeEngineSession
+      rawState: sessionChromeRawState
     };
   }, [
     activeConversationResumeUnavailable,
@@ -228,11 +238,11 @@ export function useAgentGUISessionPresentation(
     input.activationError,
     input.activationErrorCode,
     input.activeConversationId,
-    input.activeEngineSession,
     input.activeLiveState,
     input.activeSessionState,
     input.activePendingActivation?.mode,
-    input.pendingApproval
+    input.pendingApproval,
+    sessionChromeRawState
   ]);
   const canSubmit =
     !input.agentTargetsLoading &&

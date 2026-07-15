@@ -180,6 +180,49 @@ func TestApplyGitPatchNonRepo(t *testing.T) {
 	}
 }
 
+func TestApplyGitPatchRejectsCorruptPatchBeforeMutation(t *testing.T) {
+	dir := initGitPatchRepo(t)
+	filePath := filepath.Join(dir, "README.md")
+	if err := os.WriteFile(filePath, []byte("new"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	result, err := applyGitPatchWithOptions(context.Background(), ApplyGitPatchInput{
+		Cwd:    dir,
+		Diff:   "diff --git a/README.md b/README.md\n--- a/README.md\n+++ b/README.md\n@@ -1 +1 @@\n-old\n \\ No newline at end of file\n+new\n \\ No newline at end of file\n",
+		Revert: true,
+	}, applyGitPatchOptions{TempParent: t.TempDir()})
+	if err != nil {
+		t.Fatalf("applyGitPatchWithOptions returned error: %v", err)
+	}
+	if result.Status != ApplyGitPatchStatusError || result.ErrorCode != ApplyGitPatchErrorInvalidPatch {
+		t.Fatalf("result = %#v, want invalid-patch error", result)
+	}
+	content, readErr := os.ReadFile(filePath)
+	if readErr != nil || string(content) != "new" {
+		t.Fatalf("README.md = %q, err=%v, want unchanged", content, readErr)
+	}
+}
+
+func TestApplyGitPatchReportsPatchDoesNotApply(t *testing.T) {
+	dir := initGitPatchRepo(t)
+	filePath := filepath.Join(dir, "README.md")
+	if err := os.WriteFile(filePath, []byte("different\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	result, err := applyGitPatchWithOptions(context.Background(), ApplyGitPatchInput{
+		Cwd:  dir,
+		Diff: "diff --git a/README.md b/README.md\n--- a/README.md\n+++ b/README.md\n@@ -1 +1 @@\n-old\n+new\n",
+	}, applyGitPatchOptions{TempParent: t.TempDir()})
+	if err != nil {
+		t.Fatalf("applyGitPatchWithOptions returned error: %v", err)
+	}
+	if result.Status != ApplyGitPatchStatusError || result.ErrorCode != ApplyGitPatchErrorPatchDoesNotApply {
+		t.Fatalf("result = %#v, want patch-does-not-apply error", result)
+	}
+}
+
 func TestResolveGitPatchSupportForPath(t *testing.T) {
 	t.Parallel()
 	requireGitForPatchTest(t)
@@ -228,6 +271,17 @@ func requireGitForPatchTest(t *testing.T) {
 	if _, err := exec.LookPath("git"); err != nil {
 		t.Skip("git not available")
 	}
+}
+
+func initGitPatchRepo(t *testing.T) string {
+	t.Helper()
+	requireGitForPatchTest(t)
+	dir := t.TempDir()
+	runGitForTest(t, dir, "init", "-q", "-b", "main")
+	writeTextForPatchTest(t, filepath.Join(dir, "README.md"), "old\n")
+	runGitForTest(t, dir, "add", "README.md")
+	runGitForTest(t, dir, "commit", "-q", "-m", "init")
+	return dir
 }
 
 func gitOutputForPatchTest(t *testing.T, dir string, args ...string) string {

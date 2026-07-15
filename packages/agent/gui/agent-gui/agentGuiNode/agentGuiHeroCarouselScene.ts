@@ -42,10 +42,11 @@ const RECORD_FADE_CURVE = 1.45;
 // the adjacent records and reaches zero just after two slots.
 const RECORD_EDGE_KILL_START_SLOTS = 1.2;
 const RECORD_EDGE_KILL_END_SLOTS = 2.05;
-// A lightly underdamped spring keeps the wheel tactile without the delayed,
-// low-velocity ramp that made clicks feel unresponsive.
+// Keep the wheel tactile while giving each click or gesture a more deliberate
+// settle. A near-critical spring preserves a hint of physical follow-through
+// without the loose overshoot of the previous setting.
 const SPRING_STIFFNESS = 120;
-const SPRING_DAMPING_RATIO = 0.78;
+const SPRING_DAMPING_RATIO = 0.92;
 const SPRING_MIN_LAUNCH_VELOCITY = 2.6;
 const SPRING_SETTLE_EPSILON = 0.001;
 const SPRING_SETTLE_VELOCITY = 0.02;
@@ -279,7 +280,10 @@ export class AgentGuiHeroCarouselScene {
     this.renderer.setSize(width, height, false);
     this.camera.aspect = width / height;
     this.camera.updateProjectionMatrix();
-    this.requestRender();
+    // setSize clears the drawing buffer. Render synchronously so a window
+    // resize never exposes that cleared frame while the next animation frame
+    // is pending during interactive window dragging.
+    this.renderer.render(this.scene, this.camera);
   }
 
   // Agent index of the tile slot the wheel is heading to.

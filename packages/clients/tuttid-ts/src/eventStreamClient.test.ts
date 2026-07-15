@@ -591,6 +591,64 @@ test("tuttid event stream client fails handshake on an invalid server frame", as
   await assert.rejects(connectPromise, /invalid server frame/);
 });
 
+test("tuttid event stream client reports a redacted invalid-frame summary", async () => {
+  const sockets: FakeEventStreamSocket[] = [];
+  const invalidFrames: unknown[] = [];
+  const client = createTuttidEventStreamClient({
+    onInvalidFrame(error, context) {
+      invalidFrames.push({ error: error.message, context });
+    },
+    resolveUrl: () => "ws://127.0.0.1:4545/v1/events/ws?access_token=token-1",
+    webSocketFactory(url) {
+      const socket = new FakeEventStreamSocket(url);
+      sockets.push(socket);
+      return socket;
+    }
+  });
+
+  const connectPromise = client.connect();
+  await Promise.resolve();
+  const socket = sockets[0];
+  assert.ok(socket);
+  socket.emitMessage({
+    catalogRevision: businessEventCatalogRevision,
+    kind: "ready",
+    protocolVersion: 1,
+    serverTime: "2026-05-30T08:00:00Z"
+  });
+  await connectPromise;
+
+  socket.emitMessage({
+    event: {
+      emittedAt: "2026-05-30T08:00:00Z",
+      id: "evt-invalid",
+      payload: { unexpected: true },
+      topic: "preferences.desktop.updated",
+      version: 1
+    },
+    kind: "event"
+  });
+
+  assert.equal(invalidFrames.length, 1);
+  const summary = (
+    invalidFrames[0] as {
+      context: {
+        summary: {
+          dataBytes: number | null;
+          frameKind: string | null;
+          payloadKeys: string[];
+          topic: string | null;
+        };
+      };
+    }
+  ).context.summary;
+  assert.ok((summary.dataBytes ?? 0) > 0);
+  assert.equal(summary.frameKind, "event");
+  assert.deepEqual(summary.payloadKeys, ["unexpected"]);
+  assert.equal(summary.topic, "preferences.desktop.updated");
+  client.dispose();
+});
+
 test("tuttid event stream client fails handshake on a protocol version mismatch", async () => {
   const sockets: FakeEventStreamSocket[] = [];
   const client = createTuttidEventStreamClient({

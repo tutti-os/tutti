@@ -1836,4 +1836,15 @@ describe("agent GUI workbench contribution copy", () => {
     );
     expect(providerGateRule).not.toMatch(/(?:min-)?(?:block-size|height):/);
   });
+
+  it("scales the empty-home vinyl carousel down for short AgentGUI windows", () => {
+    const css = readFileSync(resolve("app/renderer/agentactivity.css"), "utf8");
+
+    expect(css).toMatch(
+      /\.agent-gui-node__empty-hero-carousel-layer\s*\{[^}]*--agent-gui-hero-carousel-scale:\s*0\.8;[^}]*transform:\s*translateX\(-50%\)\s*scale\(var\(--agent-gui-hero-carousel-scale\)\);/s
+    );
+    expect(css).toMatch(
+      /@media\s*\(max-height:\s*639px\)\s*\{\s*\.agent-gui-node__empty-hero-carousel-layer\s*\{[^}]*--agent-gui-hero-carousel-scale:\s*0\.64;[^}]*top:\s*calc\(\s*var\(--agent-gui-hero-carousel-slot-top,\s*calc\(50%\s*-\s*210px\)\)\s*-\s*16px\s*\);/s
+    );
+  });
 });

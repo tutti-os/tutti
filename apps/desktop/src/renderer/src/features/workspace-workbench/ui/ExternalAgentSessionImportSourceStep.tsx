@@ -67,7 +67,7 @@ export function ExternalAgentSessionImportSourceStep({
           disabled={disabled}
           size="sm"
           type="button"
-          variant="outline"
+          variant="secondary"
           onClick={onSelectArchive}
         >
           <UploadIcon className="size-4" />

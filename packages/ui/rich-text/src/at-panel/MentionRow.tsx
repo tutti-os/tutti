@@ -404,12 +404,12 @@ function MentionFileRow({
       />
       <span className="rich-text-at-mention-row__file-text">
         <span className="rich-text-at-mention-row__title">{item.name}</span>
-        {item.childCountLabel ? (
-          <span className="rich-text-at-mention-row__file-count">
-            {item.childCountLabel}
-          </span>
-        ) : null}
       </span>
+      {item.childCountLabel ? (
+        <span className="rich-text-at-mention-row__file-count">
+          {item.childCountLabel}
+        </span>
+      ) : null}
       {onNavigateInto ? (
         <MentionNavigateIntoButton
           label={navigateIntoLabel}

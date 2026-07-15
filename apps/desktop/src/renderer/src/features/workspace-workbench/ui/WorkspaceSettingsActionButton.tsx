@@ -14,7 +14,7 @@ type WorkspaceSettingsActionButtonProps = Omit<
   label: string;
   progress?: number | null;
   progressAriaLabel?: string;
-  variant?: "default" | "secondary" | "destructive";
+  variant?: "default" | "secondary" | "destructive" | "destructive-secondary";
 };
 
 export const WorkspaceSettingsActionButton = forwardRef<
@@ -59,7 +59,9 @@ export const WorkspaceSettingsActionButton = forwardRef<
             "absolute inset-y-0 left-0 z-0 transition-[width] duration-200 ease-out",
             variant === "destructive"
               ? "bg-[color-mix(in_srgb,var(--white-stationary)_24%,transparent)]"
-              : "bg-[color-mix(in_srgb,var(--text-primary)_14%,transparent)]"
+              : variant === "destructive-secondary"
+                ? "bg-[color-mix(in_srgb,var(--state-danger)_14%,transparent)]"
+                : "bg-[color-mix(in_srgb,var(--text-primary)_14%,transparent)]"
           )}
           style={{ width: `${Math.max(0, Math.min(100, progress))}%` }}
         />

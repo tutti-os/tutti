@@ -66,7 +66,7 @@ export type DesktopFeatureFlags = Record<string, boolean>;
 
 export const defaultDesktopFeatureFlags: DesktopFeatureFlags = {};
 
-export const desktopWorkspaceUiModes = ["agent", "os"] as const;
+export const desktopWorkspaceUiModes = ["os", "agent"] as const;
 
 export type DesktopWorkspaceUiMode = (typeof desktopWorkspaceUiModes)[number];
 

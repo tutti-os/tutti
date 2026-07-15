@@ -282,3 +282,21 @@ func TestClaudeCodeSDKAdapterMapsToolLifecycleAndFileMetadata(t *testing.T) {
 		t.Fatalf("completed metadata = %#v, want structuredPatch", completed[0].Payload.Metadata)
 	}
 }
+
+func TestNormalizeClaudeSDKToolPayloadCanonicalizesNoNewlineMarkers(t *testing.T) {
+	payload := normalizeClaudeSDKToolPayload(map[string]any{
+		"output": map[string]any{
+			"changes": []any{map[string]any{
+				"path": "/tmp/a.txt",
+				"diff": "@@ -1 +1 @@\n-old\n \\ No newline at end of file\n+new\n \\ No newline at end of file",
+			}},
+		},
+	})
+	output := payloadMap(payload, "output")
+	changes, _ := output["changes"].([]any)
+	change := payloadObject(changes[0])
+	want := "@@ -1 +1 @@\n-old\n\\ No newline at end of file\n+new\n\\ No newline at end of file"
+	if change["diff"] != want {
+		t.Fatalf("normalized diff = %q, want %q", change["diff"], want)
+	}
+}

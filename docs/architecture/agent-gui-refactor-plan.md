@@ -650,7 +650,7 @@ overlay 符号扫描为零；切片 3 的旧 `AgentHostWorkspaceAgentSession/Mes
 
 第 0 步：立规矩（1~2 天）。✅ 检查脚本 `tools/scripts/check-agent-gui-degradation.mjs`（全量基线对比 + `--staged` 增量拦截）与基线 `tools/degradation-baseline/agent-gui.json` 已入库并接入 pre-commit、`check:changed`、`check:full` 与 PR CI；修复体量软门禁 `tools/scripts/check-fix-scope.mjs` 与 PR 模板兜底三问已接入；渲染预算基建 `packages/agent/gui/shared/testing/renderBudget.tsx` 已落地；约定文档已同步。5.3 节编辑器钩子即时反馈未交付。
 
-- 新增 `tools/scripts/check-agent-gui-degradation.mjs`，实现 5.2 节全部检查项（禁同步定时器、禁静默吞错、缓存预算、禁视图内建 store、provider 行为分支冻结、禁模块级可变全局、订阅只走唯一绑定），首跑输出生成指标基线 JSON（口径以脚本为准，不照抄本文数字）；
+- 新增 `tools/scripts/check-agent-gui-degradation.mjs`，实现 5.2 节检查项（禁同步定时器、禁静默吞错、组件缓存预算、禁 render-time ref 镜像、禁视图内建 store、provider 行为分支冻结、禁模块级可变全局、订阅只走唯一绑定）；组件缓存与 ref 镜像报错会明确要求业务状态下沉 engine/controller、稳定投影进入 selector/read hook，首跑输出生成指标基线 JSON（口径以脚本为准，不照抄本文数字）；
 - 800 行规则对 agent 域生效，存量豁免清单只减不增；
 - 修复体量软门禁与提交模板"兜底三问"接入（5.2 四、5.3）；
 - 渲染次数预算测试的基建（Profiler `onRender` 断言工具）先行落地，预算用例随各功能模块切片交付；
@@ -894,6 +894,8 @@ flowchart TB
 - 延时修复在 `reducer` 里写不出来。`reducer` 是纯函数，没有地方塞`setTimeout`；时序问题必须被命名为状态机转移（等待哪个事件到达哪个状态）。兜底覆盖层也创建不出来：待确认意图的类型强制要求声明确认条件与超时策略，没有确认条件的"临时防御状态"无法通过编译。
 - 缓存失去必要性。层层加码的根因是宽订阅：56 字段的视图模型从单个 12.7k 行控制器灌进 8.3k 行视图，任何字段变化全树重渲染，于是只能逐点加缓存止血。读取函数细粒度订阅后，组件天然只在自己那份数据变化时渲染；必要的记忆化集中在读取函数层（可单元测试、身份稳定），功能模块的组件层原则上零 `useMemo`。
 
+这里的“天然”只覆盖状态传播边界，不表示任意投影都会自动获得稳定引用。读取函数若每次返回新数组，controller 若复制 canonical 数组，host 若内联 callback，依然会把一次真实更新放大到无关子树。完成后的实现要求在数据拥有者处稳定 selector / projection 输出，并用真实 engine 事件的 render-budget 测试锁住引用语义；禁止用叶组件 `memo` 掩盖上游 churn。组件层可为局部计算使用必要的 `useMemo`，但它不能成为替代细粒度订阅的第二套缓存架构。
+
 ### 5.2 机械护栏：基线、检查、预算
 
 全部挂在已有基建上：提交前钩子、`check:changed` 泳道、推送前钩子、持续集成。按仓库惯例新增 `tools/scripts/check-agent-gui-degradation.mjs`（参照 `check-agent-activity-runtime-boundaries.mjs` 的模式）。
@@ -921,15 +923,16 @@ flowchart TB
 
 （二）劣化模式检查（增量、暂存区级，提交前即拦截）：
 
-| 规则              | 内容                                                                                                |
-| ----------------- | --------------------------------------------------------------------------------------------------- |
-| 禁同步定时器      | 引擎、`reducer`、`selector` 内禁止 `setTimeout`；其余位置数值字面量定时器必须带说明原因的注释才放行 |
-| 禁静默吞错        | `catch` 块必须上报诊断或重新抛出；静默吞错报错                                                      |
-| 缓存预算          | 功能模块组件文件的 `useMemo`、`useCallback` 上限（建议 5）；读取函数层不限                          |
-| 禁视图内建 store  | 组件文件禁止创建 valtio 或 zustand store（现状视图内嵌 proxy 即反例）                               |
-| provider 分支冻结 | 按 provider 名字的行为分支新增即报错（存量在基线里递减）；身份展示分支走豁免清单，清单只减不增      |
-| 禁模块级可变全局  | 发包公共接口中禁止新增模块级可变全局（见 3.3 节外部宿主约束）                                       |
-| 订阅只走唯一绑定  | 组件文件禁止直接调用 `useSyncExternalStore`，引擎订阅一律经 `useEngineSelector`（唯一绑定文件豁免） |
+| 规则              | 内容                                                                                                                                                                                |
+| ----------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 禁同步定时器      | 引擎、`reducer`、`selector` 内禁止 `setTimeout`；其余位置数值字面量定时器必须带说明原因的注释才放行                                                                                 |
+| 禁静默吞错        | `catch` 块必须上报诊断或重新抛出；静默吞错报错                                                                                                                                      |
+| 缓存预算          | 功能模块组件文件的 `useMemo`、`useCallback` 上限（建议 5）；读取函数层不限                                                                                                          |
+| 禁 ref 镜像缓存   | 禁止用 render-time ref 镜像 props/state 或手写 projection cache；业务状态进 engine/controller，稳定投影进 selector/read hook；DOM、timer、abort 等 imperative 生命周期 ref 不在此列 |
+| 禁视图内建 store  | 组件文件禁止创建 valtio 或 zustand store（现状视图内嵌 proxy 即反例）                                                                                                               |
+| provider 分支冻结 | 按 provider 名字的行为分支新增即报错（存量在基线里递减）；身份展示分支走豁免清单，清单只减不增                                                                                      |
+| 禁模块级可变全局  | 发包公共接口中禁止新增模块级可变全局（见 3.3 节外部宿主约束）                                                                                                                       |
+| 订阅只走唯一绑定  | 组件文件禁止直接调用 `useSyncExternalStore`，引擎订阅一律经 `useEngineSelector`（唯一绑定文件豁免）                                                                                 |
 
 （三）渲染性能回归测试——用预算取代缓存直觉。
 

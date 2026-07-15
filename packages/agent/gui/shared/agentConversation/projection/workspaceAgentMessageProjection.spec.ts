@@ -106,8 +106,7 @@ describe("projectWorkspaceAgentMessagesToConversationVM", () => {
       })
     ).toEqual([
       "I will inspect the repo.",
-      "List,Read file",
-      "读取网页",
+      "List,Read file,读取网页",
       "Thinking after the active tool update."
     ]);
   });

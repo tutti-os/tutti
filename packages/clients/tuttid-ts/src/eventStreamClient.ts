@@ -10,6 +10,7 @@ import {
   createEventStreamClient,
   type EventStreamConnectionState,
   type EventStreamHeartbeatConfig,
+  type EventStreamInvalidFrameSummary,
   type EventStreamProtocol,
   type EventStreamReconnectConfig,
   type EventStreamSocketFactory
@@ -32,7 +33,10 @@ export interface CreateTuttidEventStreamClientInput {
   webSocketFactory?: EventStreamSocketFactory;
   heartbeat?: Partial<EventStreamHeartbeatConfig>;
   reconnect?: false | Partial<EventStreamReconnectConfig>;
-  onInvalidFrame?: (error: Error, context: { ready: boolean }) => void;
+  onInvalidFrame?: (
+    error: Error,
+    context: { ready: boolean; summary: EventStreamInvalidFrameSummary }
+  ) => void;
 }
 
 type ClientEventByTopic = {

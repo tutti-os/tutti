@@ -2,7 +2,7 @@
 
 [Agent runtime index](./agent-runtime.md) · [All troubleshooting](./README.md)
 
-Turn state, loading, cancel, restore, rail projection, event updates, imports, and performance.
+Turn state, loading, cancel, restore, file-change undo, rail projection, event updates, imports, and performance.
 
 ### AgentGUI turn actions return plain-text route 404s
 
@@ -569,6 +569,41 @@ Turn state, loading, cancel, restore, rail projection, event updates, imports, a
 - References:
   [catalog.go](../../../services/tuttid/service/eventstream/catalog.go)
   [activity.updated.event.json](../../../packages/events/protocol/definitions/agent/activity.updated.event.json)
+
+### AgentGUI file-change undo reports a generic failure
+
+- Symptom:
+  Clicking Undo on a changed-files summary shows a failure even though the
+  target directory is a Git repository and the file appears unchanged since
+  the agent edit.
+- Quick checks:
+  Search desktop and daemon logs for the `agent-git-patch` diagnostic family.
+  Inspect `errorCode`, Git `stderr`, the diff byte count and hash, and the
+  affected paths. For `invalid-patch`, inspect the durable tool output for
+  malformed unified-diff control markers. A no-newline marker must begin with
+  `\`, not a leading context-space followed by `\`. For
+  `patch-does-not-apply`, compare the recorded after-state with the current
+  file rather than assuming the original turn is still the latest writer.
+- Root cause:
+  Provider display diffs can contain syntax that a viewer tolerates but
+  `git apply` rejects. Treating that display payload as executable patch data
+  produces corrupt hunks. A separate failure occurs when the patch is valid
+  but later edits changed its context.
+- Fix:
+  Canonicalize provider file-change metadata at the runtime adapter boundary
+  before persistence, and canonicalize historical no-newline markers on read.
+  The daemon must preflight with `git apply --check` using the same execution
+  options, return `invalid-patch` for syntax failures and
+  `patch-does-not-apply` for state mismatch, and avoid mutating the worktree on
+  either result.
+- Validation:
+  Cover leading-whitespace no-newline markers, historical activity projection,
+  corrupt-patch preflight without mutation, worktree divergence, reverse
+  application, and the existing untracked-created-file behavior.
+- References:
+  [claude_sdk_activity.go](../../../packages/agent/daemon/runtime/claude_sdk_activity.go)
+  [agentPatchMetadata.ts](../../../packages/agent/gui/shared/agentConversation/rules/agentPatchMetadata.ts)
+  [git_patch.go](../../../services/tuttid/service/agent/git_patch.go)
 
 ### Remote agent cancel does not stop the local turn
 

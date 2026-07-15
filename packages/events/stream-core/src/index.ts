@@ -5,6 +5,7 @@ export {
   type EventStreamClientFrame,
   type EventStreamConnectionState,
   type EventStreamHeartbeatConfig,
+  type EventStreamInvalidFrameSummary,
   type EventStreamProtocol,
   type EventStreamReconnectConfig,
   type EventStreamServerEvent,

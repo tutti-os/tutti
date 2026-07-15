@@ -938,9 +938,13 @@ func TestDefaultPreparerClaudeCodeUsesSessionScopedSystemPrompt(t *testing.T) {
 		!strings.Contains(string(systemPrompt), "Skill missing/fails -> read matching materialized `SKILL.md`") ||
 		!strings.Contains(string(systemPrompt), "Claude Code mention routing") ||
 		!strings.Contains(string(systemPrompt), "Claude Code skill names may be namespaced") ||
+		!strings.Contains(string(systemPrompt), "`tutti-cli:tutti-handoff`") ||
 		!strings.Contains(string(systemPrompt), "`tutti-cli:issue-manager`") ||
 		!strings.Contains(string(systemPrompt), "`tutti-cli:workspace-app`") ||
 		!strings.Contains(string(systemPrompt), `Skill(skill="tutti-cli:workspace-app")`) ||
+		!strings.Contains(string(systemPrompt), `Skill(skill="tutti-cli:tutti-handoff")`) ||
+		!strings.Contains(string(systemPrompt), "Do not use `ToolSearch` to select Claude Code's native `SendMessage`") ||
+		!strings.Contains(string(systemPrompt), "never pass a Tutti agent target id such as `local:opencode` to native `SendMessage`") ||
 		!strings.Contains(string(systemPrompt), "Do not call a plain skill name that is not visible") ||
 		!strings.Contains(string(systemPrompt), "Do not pass arguments to Skill") ||
 		!strings.Contains(string(systemPrompt), "the skill reads the mention URI from the current user turn") ||

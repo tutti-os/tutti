@@ -427,7 +427,11 @@ func TestRenderProviderSkillBundleIncludesClaudeRoutingForAlias(t *testing.T) {
 		!strings.Contains(bundle.RecommendedSystemPrompt.Content, "Claude Code mention routing") ||
 		!strings.Contains(bundle.RecommendedSystemPrompt.Content, "mention://agent-target/<targetId>?workspaceId=...") ||
 		!strings.Contains(bundle.RecommendedSystemPrompt.Content, "handed off, not absorbed") ||
+		!strings.Contains(bundle.RecommendedSystemPrompt.Content, "`tutti-cli:tutti-handoff`") ||
 		!strings.Contains(bundle.RecommendedSystemPrompt.Content, `Skill(skill="tutti-cli:workspace-app")`) ||
+		!strings.Contains(bundle.RecommendedSystemPrompt.Content, `Skill(skill="tutti-cli:tutti-handoff")`) ||
+		!strings.Contains(bundle.RecommendedSystemPrompt.Content, "Do not use `ToolSearch` to select Claude Code's native `SendMessage`") ||
+		!strings.Contains(bundle.RecommendedSystemPrompt.Content, "never pass a Tutti agent target id such as `local:opencode` to native `SendMessage`") ||
 		!strings.Contains(bundle.RecommendedSystemPrompt.Content, "Do not call a plain skill name that is not visible") ||
 		!strings.Contains(bundle.RecommendedSystemPrompt.Content, "Do not pass arguments to Skill") ||
 		!strings.Contains(bundle.RecommendedSystemPrompt.Content, "the skill reads the mention URI from the current user turn") ||

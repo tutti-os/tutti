@@ -44,6 +44,25 @@ function optionsFixture(input: {
 }
 
 describe("composerSettingsSupportFromOptions", () => {
+  it("keeps reasoning available when another model profile supports it", () => {
+    const options = optionsFixture({
+      model: true,
+      reasoning: false,
+      permission: false
+    });
+    options.reasoningOptionsByModel = {
+      "opencode/big-pickle": { defaultValue: null, options: [] },
+      "openai/gpt-5": {
+        defaultValue: "medium",
+        options: [{ value: "medium", label: "Medium" }]
+      }
+    };
+
+    expect(composerSettingsSupportFromOptions(options, null).reasoning).toBe(
+      true
+    );
+  });
+
   // Equivalence truth table: must match the deleted composerSupportForProvider
   // hardcoded table column by column (except plan, which intentionally moves
   // from a hardcoded false to capability negotiation). The backend flag values

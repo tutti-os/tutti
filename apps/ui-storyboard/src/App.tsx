@@ -28,6 +28,7 @@ import {
   PopoverClose,
   PopoverContent,
   PopoverTrigger,
+  RadioIndicator,
   ResizableHandle,
   ResizablePanel,
   ResizablePanelGroup,
@@ -316,6 +317,11 @@ const sections = [
   ),
   ...componentSection("popover", "Popover", "锚定浮层与轻量设置面板"),
   ...componentSection(
+    "radio-indicator",
+    "RadioIndicator",
+    "单选项的圆环选中态表达"
+  ),
+  ...componentSection(
     "resizable-panel-group",
     "Resizable Panel Group",
     "可拖拽 split pane 布局 primitive",
@@ -456,6 +462,10 @@ const sectionCopy: Record<
       summary: "富文本字段中的 issue、session、file 引用 token"
     },
     popover: { label: "Popover", summary: "锚定浮层与轻量设置面板" },
+    "radio-indicator": {
+      label: "RadioIndicator",
+      summary: "单选项的圆环选中态表达"
+    },
     "resizable-panel-group": {
       label: "Resizable Panel Group",
       summary: "可拖拽 split pane 布局 primitive"
@@ -531,6 +541,10 @@ const sectionCopy: Record<
     popover: {
       label: "Popover",
       summary: "Anchored overlays and lightweight panels."
+    },
+    "radio-indicator": {
+      label: "RadioIndicator",
+      summary: "Circular selected-state expression for single-choice options."
     },
     "resizable-panel-group": {
       label: "Resizable Panel Group",
@@ -1787,6 +1801,49 @@ function CheckboxStoryboard() {
                 )
               )}
             </div>
+          </div>
+        </ExampleCard>
+      </div>
+    </DocsSection>
+  );
+}
+
+function RadioIndicatorStoryboard() {
+  const [selected, setSelected] = useState("immersive");
+  const options = [
+    { id: "standalone", label: "独立 Agent 窗口模式" },
+    { id: "immersive", label: "沉浸 OS 模式" }
+  ];
+
+  return (
+    <DocsSection
+      id="radio-indicator"
+      title="RadioIndicator"
+      description="16px 圆环单选态表达，选中时使用 tutti-purple 外环和中心圆点"
+      componentId={metadataFor("RadioIndicator")?.id}
+    >
+      <div className="grid gap-1 lg:grid-cols-2">
+        <ExampleCard title="States" description="未选、已选与禁用选中态">
+          <div className="flex items-center gap-5">
+            <RadioIndicator />
+            <RadioIndicator checked />
+            <RadioIndicator checked disabled />
+          </div>
+        </ExampleCard>
+        <ExampleCard title="Usage" description="单选卡片右侧的选中态表达">
+          <div className="grid gap-2">
+            {options.map((option) => (
+              <button
+                key={option.id}
+                type="button"
+                className="flex items-center justify-between rounded-[var(--radius-md)] border border-[var(--border-1)] px-3 py-2 text-left text-[13px] text-[var(--text-primary)] data-[selected=true]:border-[var(--border-focus)]"
+                data-selected={selected === option.id}
+                onClick={() => setSelected(option.id)}
+              >
+                <span>{option.label}</span>
+                <RadioIndicator checked={selected === option.id} />
+              </button>
+            ))}
           </div>
         </ExampleCard>
       </div>
@@ -3625,6 +3682,7 @@ export function App() {
           <InputStoryboard />
           <MentionPillStoryboard />
           <PopoverStoryboard />
+          <RadioIndicatorStoryboard />
           <ResizableStoryboard />
           <SelectStoryboard />
           <ShortcutBadgeStoryboard />

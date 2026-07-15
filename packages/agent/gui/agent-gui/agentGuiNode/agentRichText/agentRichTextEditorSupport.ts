@@ -179,6 +179,64 @@ export function moveSelectionOverCaretAnchor(
   return false;
 }
 
+export function deleteLineStartMentionWithCaretAnchor(
+  state: EditorState,
+  dispatch: (transaction: Transaction) => void,
+  key: string
+): boolean {
+  const { doc, selection } = state;
+  if (!selection.empty) {
+    return false;
+  }
+
+  if (key === "Backspace") {
+    const mention = selection.$from.nodeBefore;
+    if (mention?.type.name !== "agentFileMention") {
+      return false;
+    }
+    const mentionFrom = selection.from - mention.nodeSize;
+    const anchorFrom = mentionFrom - AGENT_RICH_TEXT_CARET_ANCHOR.length;
+    if (
+      anchorFrom < 1 ||
+      doc.textBetween(anchorFrom, mentionFrom) !== AGENT_RICH_TEXT_CARET_ANCHOR
+    ) {
+      return false;
+    }
+    const nextNode = selection.$from.nodeAfter;
+    dispatch(
+      state.tr.delete(
+        nextNode?.type.name === "agentFileMention" ? mentionFrom : anchorFrom,
+        selection.from
+      )
+    );
+    return true;
+  }
+
+  if (key !== "Delete") {
+    return false;
+  }
+  const anchorFrom = selection.from;
+  const mentionFrom = anchorFrom + AGENT_RICH_TEXT_CARET_ANCHOR.length;
+  if (
+    doc.textBetween(anchorFrom, mentionFrom) !== AGENT_RICH_TEXT_CARET_ANCHOR
+  ) {
+    return false;
+  }
+  const mention = doc.resolve(mentionFrom).nodeAfter;
+  if (mention?.type.name !== "agentFileMention") {
+    return false;
+  }
+  const mentionTo = mentionFrom + mention.nodeSize;
+  const nextNode = doc.resolve(mentionTo).nodeAfter;
+  dispatch(
+    state.tr.delete(
+      nextNode?.type.name === "agentFileMention" ? mentionFrom : anchorFrom,
+      mentionTo
+    )
+  );
+  return true;
+}
+
 export function createAgentRichTextPlaceholderExtension(
   getPlaceholder: () => string
 ): Extension {
@@ -224,13 +282,26 @@ export function createAgentRichTextCaretAnchorExtension(): Extension {
           props: {
             handleKeyDown(view, event) {
               if (
-                (event.key !== "ArrowLeft" && event.key !== "ArrowRight") ||
+                (event.key !== "ArrowLeft" &&
+                  event.key !== "ArrowRight" &&
+                  event.key !== "Backspace" &&
+                  event.key !== "Delete") ||
                 event.shiftKey ||
                 event.metaKey ||
                 event.ctrlKey ||
                 event.altKey
               ) {
                 return false;
+              }
+              if (
+                deleteLineStartMentionWithCaretAnchor(
+                  view.state,
+                  (transaction) => view.dispatch(transaction),
+                  event.key
+                )
+              ) {
+                event.preventDefault();
+                return true;
               }
               if (
                 moveSelectionOverCaretAnchor(

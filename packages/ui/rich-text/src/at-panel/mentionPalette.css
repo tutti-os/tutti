@@ -218,7 +218,7 @@
   width: 100%;
   min-width: 0;
   min-height: 36px;
-  padding: 8px 10px;
+  padding: 8px 4px 8px 10px;
   overflow: hidden;
   border-radius: 6px;
   color: var(--rich-text-at-mention-text-primary);
@@ -254,12 +254,12 @@
 .rich-text-at-mention-palette__expand-button {
   display: flex;
   align-items: center;
-  justify-content: center;
+  justify-content: flex-start;
   width: 100%;
-  padding: 8px 12px;
+  padding: 8px 4px 8px 12px;
   border-radius: 6px;
   color: var(--rich-text-at-mention-text-secondary);
-  font-size: 13px;
+  font-size: 11px;
   font-weight: 500;
   transition:
     background-color 160ms ease,
@@ -520,7 +520,7 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  height: 20px;
+  height: 24px;
   min-width: 20px;
   border: 1px solid var(--rich-text-at-mention-line-2);
   border-radius: 5px;
@@ -591,15 +591,10 @@
   gap: 12px;
 }
 
-.rich-text-at-mention-row--issue {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto auto;
-}
-
+.rich-text-at-mention-row--issue,
 .rich-text-at-mention-row--app,
 .rich-text-at-mention-row--file {
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto;
+  display: flex;
 }
 
 .rich-text-at-mention-row--plain > :not(.rich-text-at-mention-row__text-stack) {
@@ -719,6 +714,7 @@
 
 .rich-text-at-mention-row__file-count {
   flex: 0 0 auto;
+  font-size: 11px;
 }
 
 .rich-text-at-mention-row__session-title,
@@ -763,20 +759,26 @@
 }
 
 .rich-text-at-mention-row__open-references {
+  height: 20px;
   width: auto;
   min-width: max-content;
   flex: 0 0 auto;
   padding-inline: 8px;
   color: var(--text-secondary);
-  font-size: 12px;
-  font-weight: 600;
-  line-height: 24px;
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 20px;
   white-space: nowrap;
 }
 
 .rich-text-at-mention-row__navigate-into {
   width: 24px;
   flex: 0 0 24px;
+}
+
+.rich-text-at-mention-row__file-count
+  + .rich-text-at-mention-row__navigate-into {
+  margin-left: -6px;
 }
 
 .rich-text-at-mention-row__open-references:hover,
@@ -858,6 +860,8 @@
   gap: 4px;
   width: fit-content;
   border: 1px solid transparent;
+  padding-inline: 4px;
+  font-size: 11px;
   white-space: nowrap;
 }
 
@@ -896,7 +900,6 @@
 }
 
 .rich-text-at-mention-status--activity {
-  padding-inline: 0;
   background: transparent;
 }
 

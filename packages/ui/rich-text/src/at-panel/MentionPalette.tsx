@@ -561,7 +561,7 @@ function MentionPaletteHint({
       aria-label={ariaLabel}
       data-testid={testId}
     >
-      <span className={classNames.hintItem}>
+      <span className={classNames.hintItem} data-tooltip={cycleFilterLabel}>
         <span className={classNames.shortcutGroup}>
           <button
             className={cn(classNames.shortcut, classNames.shortcutButton)}
@@ -611,7 +611,10 @@ function MentionPaletteHint({
           <span className={classNames.hintSeparator} aria-hidden="true">
             ｜
           </span>
-          <span className={classNames.hintItem}>
+          <span
+            className={classNames.hintItem}
+            data-tooltip={navigateHierarchyLabel}
+          >
             <span className={classNames.shortcutGroup}>
               <button
                 className={cn(
@@ -647,7 +650,7 @@ function MentionPaletteHint({
       <span className={classNames.hintSeparator} aria-hidden="true">
         ｜
       </span>
-      <span className={classNames.hintItem}>
+      <span className={classNames.hintItem} data-tooltip={moveSelectionLabel}>
         <span className={classNames.shortcutGroup}>
           <button
             className={cn(

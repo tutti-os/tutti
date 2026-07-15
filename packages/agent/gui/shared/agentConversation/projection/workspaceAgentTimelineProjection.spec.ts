@@ -213,7 +213,10 @@ describe("projectWorkspaceAgentTimelineToConversationVM", () => {
         { kind: "tool-group" }
       > => row.kind === "tool-group" && row.grouped
     );
-    expect(groupedRows).toHaveLength(0);
+    expect(groupedRows).toHaveLength(1);
+    expect(groupedRows[0]?.calls.map((call) => call.id)).toEqual([
+      "call:read-1"
+    ]);
     expect(
       conversation.rows.some(
         (

@@ -108,7 +108,20 @@ export interface CreateEventStreamClientInput<TClientEvent, TScope> {
    * ready handshake such frames are dropped without disconnecting; without
    * this hook the drop is invisible, which hides producer/schema drift.
    */
-  onInvalidFrame?: (error: Error, context: { ready: boolean }) => void;
+  onInvalidFrame?: (
+    error: Error,
+    context: { ready: boolean; summary: EventStreamInvalidFrameSummary }
+  ) => void;
+}
+
+export interface EventStreamInvalidFrameSummary {
+  dataBytes: number | null;
+  dataType: string;
+  eventKeys: string[];
+  frameKind: string | null;
+  payloadKeys: string[];
+  payloadType: string | null;
+  topic: string | null;
 }
 
 export interface EventStreamClient<TServerEvent, TScope> {
@@ -138,7 +151,7 @@ interface EventSubscriptionEntry<TServerEvent, TScope> {
 
 type ParsedServerFrame<TServerEvent> =
   | { frame: EventStreamServerFrame<TServerEvent>; ok: true }
-  | { error: Error; ok: false };
+  | { error: Error; ok: false; summary: EventStreamInvalidFrameSummary };
 
 interface SocketListeners {
   close: (event: CloseEvent) => void;
@@ -337,7 +350,10 @@ export function createEventStreamClient<
           const parsedFrame = parseServerFrame(event.data);
           if (!parsedFrame.ok) {
             try {
-              onInvalidFrame?.(parsedFrame.error, { ready });
+              onInvalidFrame?.(parsedFrame.error, {
+                ready,
+                summary: parsedFrame.summary
+              });
             } catch {
               // Diagnostics must never affect the transport.
             }
@@ -647,17 +663,20 @@ export function createEventStreamClient<
         error: new Error(
           "Event stream received a non-text server frame during handshake."
         ),
-        ok: false
+        ok: false,
+        summary: summarizeInvalidServerFrame(data)
       };
     }
 
+    let frame: unknown;
     try {
-      const frame = JSON.parse(data) as unknown;
+      frame = JSON.parse(data) as unknown;
       const readyMismatchError = getReadyCompatibilityError(frame);
       if (readyMismatchError) {
         return {
           error: readyMismatchError,
-          ok: false
+          ok: false,
+          summary: summarizeInvalidServerFrame(frame, data)
         };
       }
 
@@ -674,7 +693,8 @@ export function createEventStreamClient<
         error: new Error(
           `Event stream received an invalid server frame: ${cause}`
         ),
-        ok: false
+        ok: false,
+        summary: summarizeInvalidServerFrame(frame ?? data, data)
       };
     }
   }
@@ -698,6 +718,36 @@ export function createEventStreamClient<
 
     return null;
   }
+}
+
+function summarizeInvalidServerFrame(
+  value: unknown,
+  rawData?: unknown
+): EventStreamInvalidFrameSummary {
+  const frame = isRecord(value) ? value : null;
+  const event = isRecord(frame?.event) ? frame.event : null;
+  const payload = event?.payload;
+  return {
+    dataBytes:
+      typeof rawData === "string"
+        ? new TextEncoder().encode(rawData).byteLength
+        : typeof value === "string"
+          ? new TextEncoder().encode(value).byteLength
+          : null,
+    dataType: Array.isArray(value) ? "array" : typeof value,
+    eventKeys: event ? Object.keys(event).sort().slice(0, 40) : [],
+    frameKind: typeof frame?.kind === "string" ? frame.kind : null,
+    payloadKeys: isRecord(payload)
+      ? Object.keys(payload).sort().slice(0, 40)
+      : [],
+    payloadType:
+      payload === undefined
+        ? null
+        : Array.isArray(payload)
+          ? "array"
+          : typeof payload,
+    topic: typeof event?.topic === "string" ? event.topic : null
+  };
 }
 
 function defaultEventStreamSocketFactory(url: string): EventStreamSocket {

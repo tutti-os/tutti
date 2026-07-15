@@ -21,6 +21,8 @@ const buttonVariants = cva(
           "border border-transparent bg-transparent text-[var(--text-tertiary)] shadow-none hover:border-transparent hover:bg-[var(--transparency-hover)] hover:text-[var(--text-primary)] active:bg-[var(--transparency-active)] active:text-[var(--text-primary)] aria-expanded:border-transparent aria-expanded:bg-[var(--transparency-block)] aria-expanded:text-[var(--text-primary)] disabled:pointer-events-auto disabled:cursor-not-allowed disabled:opacity-45",
         destructive:
           "bg-[var(--state-danger)] text-[var(--white-stationary)] hover:bg-[var(--state-danger-hover)] focus-visible:border-[var(--state-danger)] focus-visible:ring-[color-mix(in_srgb,var(--state-danger)_25%,transparent)]",
+        "destructive-secondary":
+          "bg-[var(--on-danger)] text-[var(--state-danger)] hover:bg-[var(--on-danger-hover)] focus-visible:border-[var(--state-danger)] focus-visible:ring-[color-mix(in_srgb,var(--state-danger)_25%,transparent)]",
         link: "text-primary underline-offset-4 hover:underline"
       },
       size: {

@@ -1855,7 +1855,10 @@ export type WorkspaceGitPatchRequest = {
 
 export type WorkspaceGitPatchStatus = "success" | "partial-success" | "error";
 
-export type WorkspaceGitPatchErrorCode = "not-git-repo";
+export type WorkspaceGitPatchErrorCode =
+  | "not-git-repo"
+  | "invalid-patch"
+  | "patch-does-not-apply";
 
 export type WorkspaceGitPatchSupportResponse = {
   supported: boolean;

@@ -12,7 +12,6 @@ import { AgentTaskCallCard } from "./AgentTaskCallCard";
 import { AgentSubAgentCards } from "./AgentSubAgentCards";
 import { AgentToolCallCard } from "./AgentToolCallCard";
 import { RawTimelineJsonDisclosure } from "./RawTimelineJsonDisclosure";
-import { hasAgentToolContent } from "./tool-renderers/agentToolContentShared";
 
 interface AgentToolGroupRowProps {
   row: AgentToolGroupRowVM;
@@ -41,7 +40,7 @@ export const AgentToolGroupRow = memo(function AgentToolGroupRow({
 }: AgentToolGroupRowProps): JSX.Element {
   "use memo";
   const [localExpanded, setLocalExpanded] = useState(false);
-  const hasDetail = hasGroupDetail(row);
+  const hasDetail = row.entries.length > 0;
   const isExpanded = hasDetail && (expanded ?? localExpanded);
   const setNextExpanded = (nextExpanded: boolean) => {
     if (expanded === undefined) {
@@ -155,40 +154,12 @@ function ToolGroupLabel({ label }: { label: string }): JSX.Element {
   );
 }
 
-function hasGroupDetail(row: AgentToolGroupRowVM): boolean {
-  return row.entries.some((entry) =>
-    entry.kind === "thinking"
-      ? Boolean(entry.thinking.body.trim())
-      : hasAgentToolContent(entry.call)
-  );
-}
-
 function renderToolCountLabel(label: string): JSX.Element {
-  const statusMatch = label.match(/^(.+?)(\s+(?:已完成|completed))$/i);
-  const primary = statusMatch?.[1];
-  const status = statusMatch?.[2];
-  if (!primary || !status) {
-    return (
-      <span className="workspace-agents-status-panel__detail-tool-count-primary">
-        {label}
-      </span>
-    );
-  }
-
   return (
-    <>
-      <span className="workspace-agents-status-panel__detail-tool-count-primary">
-        {primary}
-      </span>
-      <span className="workspace-agents-status-panel__detail-tool-count-status">
-        {formatInlineStatusLabel(status)}
-      </span>
-    </>
+    <span className="workspace-agents-status-panel__detail-tool-count-primary">
+      {label}
+    </span>
   );
-}
-
-function formatInlineStatusLabel(label: string): string {
-  return /^[\sA-Z]+[a-z]+$/.test(label) ? label.toLowerCase() : label;
 }
 
 function renderToolCard(

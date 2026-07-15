@@ -599,7 +599,7 @@ export const en = {
     roomExitActiveAgentLead:
       "An agent is still working in this room. Leaving will stop the agent process and mark the task as interrupted.",
     roomExitActiveAgentConfirm: "Leave and interrupt",
-    workspaceAgentSessionDetailToolCalls: "{{count}} tool calls completed",
+    workspaceAgentSessionDetailToolCalls: "{{count}} tool calls",
     workspaceAgentSessionDetailThinking: "Thinking",
     workspaceAgentSessionDetailWorking: "Running...",
     workspaceClosingBanner:

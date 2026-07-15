@@ -8384,6 +8384,8 @@ components:
       type: string
       enum:
         - not-git-repo
+        - invalid-patch
+        - patch-does-not-apply
     WorkspaceGitPatchSupportResponse:
       type: object
       additionalProperties: false

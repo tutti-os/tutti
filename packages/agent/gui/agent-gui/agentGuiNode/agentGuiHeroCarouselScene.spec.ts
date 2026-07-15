@@ -373,6 +373,18 @@ describe("AgentGuiHeroCarouselScene", () => {
     scene?.dispose();
   });
 
+  it("renders immediately after resizing to avoid a cleared frame", () => {
+    const scene = createSceneWithBadge(null);
+
+    expect(scene).not.toBeNull();
+    expect(threeState.renderCount).toBe(0);
+
+    scene?.setSize(320, 112);
+
+    expect(threeState.renderCount).toBe(1);
+    scene?.dispose();
+  });
+
   it("disposes a rejected texture and keeps the fallback when WebGL upload fails", () => {
     threeState.failTextureUpload = true;
     const scene = createSceneWithBadge(createLoadedImage());

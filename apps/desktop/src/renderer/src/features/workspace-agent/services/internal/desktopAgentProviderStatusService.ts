@@ -5,14 +5,7 @@ import type {
   WorkspaceAgentProvider
 } from "@tutti-os/client-tuttid-ts";
 import type { DesktopRuntimeApi } from "@preload/types";
-import { AgentEnvDetectedReporter } from "../../../analytics/reporters/agent-env-detected/agentEnvDetectedReporter.ts";
-import { AgentEnvIssueReportedReporter } from "../../../analytics/reporters/agent-env-issue-reported/agentEnvIssueReportedReporter.ts";
 import type { IReporterService } from "../../../analytics/services/reporterService.interface.ts";
-import {
-  buildEnvDetectedParams,
-  buildEnvIssueParams,
-  envDetectedSignature
-} from "./agentEnvTelemetry.ts";
 import type {
   AgentProviderStatusActionContext,
   AgentProviderStatusSnapshot,
@@ -26,17 +19,7 @@ import {
 import { translate } from "../../../../i18n/appRuntime.ts";
 import { getActiveLocale } from "../../../../i18n/runtime.ts";
 import { resolveDesktopErrorMessage } from "../../../../lib/desktopErrors.ts";
-import {
-  getAgentDiagnosticsConsent,
-  setAgentDiagnosticsConsent
-} from "../../../../lib/agentDiagnosticsConsent.ts";
 import { AgentAnalyticsErrorCode } from "../../../analytics/reporters/agent-error-fields.ts";
-import {
-  createAgentNodeResultTracker,
-  safeTrackAgentNodeResult,
-  type AgentAnalyticsFlow,
-  type AgentAnalyticsNode
-} from "./agentNodeResultAnalytics.ts";
 import { applyDesktopAgentProviderRuntimeProbeFallbacks } from "./desktopAgentProviderRuntimeProbeFallback.ts";
 import {
   DesktopAgentProviderAccountLifecycle,
@@ -48,7 +31,12 @@ import {
   shouldTrackPendingAction
 } from "./desktopAgentProviderInstall.ts";
 import { reconcileProviderStatuses } from "./desktopAgentProviderStatusCatalog.ts";
-import { latestProviderStatusLogLine } from "./desktopAgentProviderStatusLog.ts";
+import {
+  DesktopAgentProviderStatusDiagnostics,
+  type DiagnosticsConsentStore
+} from "./desktopAgentProviderStatusDiagnostics.ts";
+
+export type { DiagnosticsConsentStore } from "./desktopAgentProviderStatusDiagnostics.ts";
 
 export interface DesktopAgentProviderStatusServiceDependencies {
   loginStatusPollDurationMs?: number;
@@ -58,15 +46,10 @@ export interface DesktopAgentProviderStatusServiceDependencies {
   reporterNow?: () => number;
   reporterService?: Pick<IReporterService, "trackEvents">;
   diagnosticsConsentStore?: DiagnosticsConsentStore;
+  diagnosticNow?: () => number;
   requestTimeoutMs?: number;
   runtimeApi?: Pick<DesktopRuntimeApi, "logRendererDiagnostic">;
   terminalCommandRunner: AgentProviderTerminalCommandRunner;
-}
-
-/** Persists whether the user agreed to send fuller diagnostics via "上报异常". */
-export interface DiagnosticsConsentStore {
-  get(): boolean;
-  set(value: boolean): void;
 }
 
 type AgentProviderStatusPollTimer = number | { unref?: () => void };
@@ -93,6 +76,7 @@ export class DesktopAgentProviderStatusService implements IAgentProviderStatusSe
   readonly _serviceBrand = undefined;
 
   private readonly dependencies: DesktopAgentProviderStatusServiceDependencies;
+  private readonly diagnostics: DesktopAgentProviderStatusDiagnostics;
   private readonly notifications: NotificationService;
   private readonly inflightRequests = new Map<
     string,
@@ -113,13 +97,6 @@ export class DesktopAgentProviderStatusService implements IAgentProviderStatusSe
   private revision = 0;
   private snapshot: AgentProviderStatusSnapshot = emptySnapshot;
   private readonly transientDowngradeCounts = new Map<string, number>();
-  // Last env-detection fingerprint per provider, so `agent.env_detected` fires
-  // only when the outcome changes instead of on every status poll.
-  private readonly lastEnvSignatures = new Map<
-    WorkspaceAgentProvider,
-    string
-  >();
-  private readonly consentStore: DiagnosticsConsentStore;
 
   constructor(
     dependencies: DesktopAgentProviderStatusServiceDependencies,
@@ -127,14 +104,19 @@ export class DesktopAgentProviderStatusService implements IAgentProviderStatusSe
   ) {
     this.dependencies = dependencies;
     this.notifications = notifications;
-    this.consentStore =
-      dependencies.diagnosticsConsentStore ?? createSharedConsentStore();
+    this.diagnostics = new DesktopAgentProviderStatusDiagnostics({
+      consentStore: dependencies.diagnosticsConsentStore,
+      now: dependencies.diagnosticNow,
+      reporterNow: dependencies.reporterNow,
+      reporterService: dependencies.reporterService,
+      runtimeApi: dependencies.runtimeApi
+    });
     this.accountLifecycle = new DesktopAgentProviderAccountLifecycle({
       loginStatusPollDurationMs: dependencies.loginStatusPollDurationMs,
       loginStatusPollIntervalMs: dependencies.loginStatusPollIntervalMs,
       loginStatusPollScheduler: dependencies.loginStatusPollScheduler,
       refresh: async (provider) => this.refresh([provider]),
-      reportNodeResult: (input) => this.reportNodeResult(input),
+      reportNodeResult: (input) => this.diagnostics.reportNodeResult(input),
       reporterNow: dependencies.reporterNow,
       reporterService: dependencies.reporterService
     });
@@ -178,12 +160,17 @@ export class DesktopAgentProviderStatusService implements IAgentProviderStatusSe
     } = {}
   ): Promise<AgentProviderStatusListResponse | null> {
     if (this.hasLoadedProviderSnapshot(input.providers)) {
+      this.diagnostics.logStatusRequestCacheHit(
+        input,
+        this.snapshot.statuses.length
+      );
       return this.snapshotResponse();
     }
 
     const requestKey = providerStatusRequestKey(input);
     const inflightRequest = this.inflightRequests.get(requestKey);
     if (inflightRequest) {
+      this.diagnostics.logStatusRequestReused(input);
       await inflightRequest;
       if (this.hasLoadedProviderSnapshot(input.providers)) {
         return this.snapshotResponse();
@@ -202,6 +189,7 @@ export class DesktopAgentProviderStatusService implements IAgentProviderStatusSe
     const requestKey = providerStatusRequestKey(input);
     const inflightRequest = this.inflightRequests.get(requestKey);
     if (inflightRequest) {
+      this.diagnostics.logStatusRequestReused(input);
       return inflightRequest;
     }
 
@@ -214,6 +202,10 @@ export class DesktopAgentProviderStatusService implements IAgentProviderStatusSe
     const requestId = this.requestSequence + 1;
     this.requestSequence = requestId;
     this.markLatestStatusRequest(input.providers, requestId);
+    const requestStartedAt = this.diagnostics.logStatusRequestStarted({
+      request: input,
+      requestId
+    });
     const request = withTimeout(
       this.dependencies.tuttidClient.getAgentProviderStatuses(input),
       this.dependencies.requestTimeoutMs ?? defaultRequestTimeoutMs
@@ -253,7 +245,10 @@ export class DesktopAgentProviderStatusService implements IAgentProviderStatusSe
             pendingActions: this.snapshot.pendingActions,
             statuses: reconciledStatuses
           });
-          this.logActiveActionSnapshotDiagnostics(reconciledStatuses);
+          this.diagnostics.logActiveActionSnapshotDiagnostics(
+            reconciledStatuses,
+            (provider) => this.isActionPending(provider, "install")
+          );
           // Report provider_ready before reportCompletedLoginResults so the
           // pendingLoginResults set is still populated when we classify how a
           // provider became ready (login vs. already-ready vs. external).
@@ -261,12 +256,22 @@ export class DesktopAgentProviderStatusService implements IAgentProviderStatusSe
             previousStatuses,
             reconciledStatuses
           );
-          this.reportEnvDetectedChanges(reconciledStatuses);
+          this.diagnostics.reportEnvDetectedChanges(reconciledStatuses);
           void this.accountLifecycle.reportCompletedLoginResults(
             response.providers
           );
         }
-        await this.reportNodeResult({
+        const durationMs = this.diagnostics.logStatusRequestResolved({
+          appliedProviderCount: currentResponseStatuses.length,
+          request: input,
+          requestId,
+          responseProviderCount: response.providers.length,
+          staleProviderCount:
+            response.providers.length - currentResponseStatuses.length,
+          startedAt: requestStartedAt
+        });
+        await this.diagnostics.reportNodeResult({
+          durationMs,
           flow: "provider_setup",
           node: "provider_status_request",
           provider: input.providers?.[0] ?? response.defaultProvider ?? null,
@@ -285,7 +290,14 @@ export class DesktopAgentProviderStatusService implements IAgentProviderStatusSe
             isLoading: this.inflightRequests.size > 1
           });
         }
-        await this.reportNodeResult({
+        const durationMs = this.diagnostics.logStatusRequestFailed({
+          error,
+          request: input,
+          requestId,
+          startedAt: requestStartedAt
+        });
+        await this.diagnostics.reportNodeResult({
+          durationMs,
           error,
           fallbackErrorCode: AgentAnalyticsErrorCode.ProviderStatusFailed,
           flow: "provider_setup",
@@ -361,7 +373,7 @@ export class DesktopAgentProviderStatusService implements IAgentProviderStatusSe
           provider
         );
         await this.refresh([provider]);
-        await this.reportNodeResult({
+        await this.diagnostics.reportNodeResult({
           flow: "provider_setup",
           node: "install_action_requested",
           provider,
@@ -390,7 +402,7 @@ export class DesktopAgentProviderStatusService implements IAgentProviderStatusSe
           context
         );
       if (isLoginAction) {
-        await this.reportNodeResult({
+        await this.diagnostics.reportNodeResult({
           durationMs: this.accountLifecycle.now() - terminalLaunchStartedAt,
           flow: "provider_setup",
           node: "login_terminal_launch",
@@ -408,7 +420,7 @@ export class DesktopAgentProviderStatusService implements IAgentProviderStatusSe
             "workspace.workbenchDesktop.agentProviders.installFailed"
           )
         });
-        await this.reportNodeResult({
+        await this.diagnostics.reportNodeResult({
           error,
           fallbackErrorCode: AgentAnalyticsErrorCode.InstallFailed,
           flow: "provider_setup",
@@ -432,7 +444,7 @@ export class DesktopAgentProviderStatusService implements IAgentProviderStatusSe
           error,
           AgentAnalyticsErrorCode.LoginLaunchFailed
         );
-        await this.reportNodeResult({
+        await this.diagnostics.reportNodeResult({
           error,
           fallbackErrorCode: AgentAnalyticsErrorCode.LoginLaunchFailed,
           flow: "provider_setup",
@@ -568,10 +580,13 @@ export class DesktopAgentProviderStatusService implements IAgentProviderStatusSe
     if (this.isActionPending(provider, actionId)) {
       return;
     }
-    this.logRendererDiagnostic("agent_provider_status.pending_action_added", {
-      actionId,
-      provider
-    });
+    this.diagnostics.logRendererDiagnostic(
+      "agent_provider_status.pending_action_added",
+      {
+        actionId,
+        provider
+      }
+    );
     this.setSnapshot({
       ...this.snapshot,
       pendingActions: [...this.snapshot.pendingActions, { actionId, provider }]
@@ -589,10 +604,13 @@ export class DesktopAgentProviderStatusService implements IAgentProviderStatusSe
     if (pendingActions.length === this.snapshot.pendingActions.length) {
       return;
     }
-    this.logRendererDiagnostic("agent_provider_status.pending_action_removed", {
-      actionId,
-      provider
-    });
+    this.diagnostics.logRendererDiagnostic(
+      "agent_provider_status.pending_action_removed",
+      {
+        actionId,
+        provider
+      }
+    );
     this.stopPendingActionStatusPolling(provider, actionId);
     this.setSnapshot({
       ...this.snapshot,
@@ -660,123 +678,18 @@ export class DesktopAgentProviderStatusService implements IAgentProviderStatusSe
     this.pendingActionStatusPolls.delete(key);
   }
 
-  // Always-on, privacy-safe: fire `agent.env_detected` once per provider per
-  // distinct detection outcome, so we can see how users' environments resolve
-  // without spamming on routine polls.
-  private reportEnvDetectedChanges(
-    statuses: readonly AgentProviderStatus[]
-  ): void {
-    for (const status of statuses) {
-      const signature = envDetectedSignature(status);
-      if (this.lastEnvSignatures.get(status.provider) === signature) {
-        continue;
-      }
-      this.lastEnvSignatures.set(status.provider, signature);
-      void this.reportEnvDetected(status);
-    }
-  }
-
-  private async reportEnvDetected(status: AgentProviderStatus): Promise<void> {
-    try {
-      await new AgentEnvDetectedReporter(buildEnvDetectedParams(status), {
-        now: this.dependencies.reporterNow,
-        reporterService: createOptionalReporterService(
-          this.dependencies.reporterService
-        )
-      }).report();
-    } catch {
-      // Analytics must not block agent provider actions.
-    }
-  }
-
   getDiagnosticsConsent(): boolean {
-    return this.consentStore.get();
+    return this.diagnostics.getDiagnosticsConsent();
   }
 
   setDiagnosticsConsent(value: boolean): void {
-    this.consentStore.set(value);
+    this.diagnostics.setDiagnosticsConsent(value);
   }
 
   // The consent-gated "report problem" action: sends the fuller diagnostic
   // payload, but only when the user has agreed.
   async reportEnvIssue(provider: WorkspaceAgentProvider): Promise<void> {
-    if (!this.consentStore.get()) {
-      return;
-    }
-    const status = this.getStatus(provider);
-    if (!status) {
-      return;
-    }
-    try {
-      await new AgentEnvIssueReportedReporter(buildEnvIssueParams(status), {
-        now: this.dependencies.reporterNow,
-        reporterService: createOptionalReporterService(
-          this.dependencies.reporterService
-        )
-      }).report();
-    } catch {
-      // Analytics must not block agent provider actions.
-    }
-  }
-
-  private async reportNodeResult(input: {
-    agentSessionId?: string | null;
-    durationMs?: number | null;
-    error?: unknown;
-    fallbackErrorCode?: AgentAnalyticsErrorCode;
-    flow: AgentAnalyticsFlow;
-    node: AgentAnalyticsNode;
-    provider?: string | null;
-    success: boolean;
-  }): Promise<void> {
-    await safeTrackAgentNodeResult(
-      createAgentNodeResultTracker({
-        reporterNow: this.dependencies.reporterNow,
-        reporterService: this.dependencies.reporterService
-      }),
-      input
-    );
-  }
-
-  private logActiveActionSnapshotDiagnostics(
-    statuses: readonly AgentProviderStatus[]
-  ): void {
-    for (const status of statuses) {
-      const activeAction = status.activeAction ?? null;
-      const installPending = this.isActionPending(status.provider, "install");
-      if (!activeAction && !installPending) {
-        continue;
-      }
-      const log = activeAction?.log ?? [];
-      this.logRendererDiagnostic(
-        "agent_provider_status.active_action_snapshot",
-        {
-          activeActionPresent: activeAction !== null,
-          availability: status.availability.status,
-          installPending,
-          latestLogPresent: latestProviderStatusLogLine(log) !== null,
-          logLines: log.length,
-          phase: activeAction?.phase ?? null,
-          provider: status.provider,
-          reasonCode: status.availability.reasonCode ?? null,
-          registryPresent: Boolean(activeAction?.registry)
-        }
-      );
-    }
-  }
-
-  private logRendererDiagnostic(
-    event: string,
-    details: Record<string, unknown>
-  ): void {
-    void this.dependencies.runtimeApi
-      ?.logRendererDiagnostic({
-        details,
-        event,
-        level: "info",
-        source: "agent-provider-status"
-      })
-      .catch(() => {});
+    await this.diagnostics.reportEnvIssue(this.getStatus(provider));
   }
 }
 
@@ -796,23 +709,6 @@ function providerStatusRequestKey(input: {
     includeNetwork: input.includeNetwork === true,
     providers: providers.length > 0 ? providers : null
   });
-}
-
-function createOptionalReporterService(
-  reporterService: Pick<IReporterService, "trackEvents"> | undefined
-): Pick<IReporterService, "trackEvents"> {
-  return (
-    reporterService ?? {
-      async trackEvents() {}
-    }
-  );
-}
-
-function createSharedConsentStore(): DiagnosticsConsentStore {
-  return {
-    get: getAgentDiagnosticsConsent,
-    set: setAgentDiagnosticsConsent
-  };
 }
 
 function unrefPollTimer(timer: AgentProviderStatusPollTimer): void {

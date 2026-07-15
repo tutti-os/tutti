@@ -13,6 +13,7 @@ export * from "./input";
 export * from "./mention-pill";
 export * from "./menu-surface";
 export * from "./popover";
+export * from "./radio-indicator";
 export * from "./resizable";
 export * from "./scroll-area";
 export * from "./select";

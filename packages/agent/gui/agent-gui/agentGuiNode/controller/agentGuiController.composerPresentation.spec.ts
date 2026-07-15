@@ -238,6 +238,47 @@ describe("composer target presentation", () => {
     );
   });
 
+  it("uses the selected model reasoning default when the provider-level config reflects another model", () => {
+    const settings = {
+      model: "openai/gpt-5.6-sol-pro",
+      reasoningEffort: null
+    };
+    const options = {
+      provider: "opencode",
+      capabilities: null,
+      models: [{ value: "openai/gpt-5.6-sol-pro", label: "GPT-5.6 Sol Pro" }],
+      reasoningEfforts: [],
+      reasoningConfigurable: false,
+      reasoningOptionsByModel: {
+        "openai/gpt-5.6-sol-pro": {
+          defaultValue: "high",
+          options: [
+            { value: "off", label: "Off" },
+            { value: "low", label: "Low" },
+            { value: "high", label: "High" }
+          ]
+        }
+      },
+      speeds: [],
+      skills: [],
+      behavior: {
+        collapseModelOptionsToLatest: false,
+        modelOptionsAuthoritative: false,
+        refreshModelOptionsAfterSettings: true,
+        prewarmDraftSession: false,
+        planModeExclusiveWithPermissionMode: false
+      },
+      loadedAtUnixMs: 1
+    };
+
+    expect(sanitizeComposerSettingsForOptions(settings, options)).toMatchObject(
+      {
+        model: "openai/gpt-5.6-sol-pro",
+        reasoningEffort: "high"
+      }
+    );
+  });
+
   it("clears reasoning effort when the target does not advertise it", () => {
     const settings = { model: "gpt-5.2", reasoningEffort: "high" };
     const cleared = sanitizeComposerSettingsForOptions(settings, {

@@ -469,6 +469,7 @@ func claudeSDKPlanEvents(session Session, turnID string, payload map[string]any)
 }
 
 func claudeSDKToolActivityEvent(session Session, turnID string, payload map[string]any, eventType string, status string) activityshared.Event {
+	payload = normalizeClaudeSDKToolPayload(payload)
 	callID := firstNonEmpty(
 		payloadString(payload, "toolCallId"),
 		payloadString(payload, "callId"),
@@ -520,6 +521,55 @@ func claudeSDKToolActivityEvent(session Session, turnID string, payload map[stri
 		body = payloadMap(payload, "input")
 	}
 	return newTurnActivityEventWithID(session, "claude-sdk:tool:"+callID, eventType, turnID, status, "", name, payloadWithCallBody(claudeSDKCallBodyKey(eventType), body, metadata))
+}
+
+func normalizeClaudeSDKToolPayload(payload map[string]any) map[string]any {
+	normalized, _ := normalizeClaudeSDKToolPayloadValue(payload, "").(map[string]any)
+	return normalized
+}
+
+func normalizeClaudeSDKToolPayloadValue(value any, field string) any {
+	switch typed := value.(type) {
+	case map[string]any:
+		normalized := make(map[string]any, len(typed))
+		for key, entry := range typed {
+			normalized[key] = normalizeClaudeSDKToolPayloadValue(entry, key)
+		}
+		return normalized
+	case []any:
+		normalized := make([]any, len(typed))
+		for index, entry := range typed {
+			normalized[index] = normalizeClaudeSDKToolPayloadValue(entry, field)
+		}
+		return normalized
+	case string:
+		if !claudeSDKDiffField(field) {
+			return typed
+		}
+		return normalizeClaudeSDKUnifiedDiff(typed)
+	default:
+		return value
+	}
+}
+
+func claudeSDKDiffField(field string) bool {
+	switch strings.ToLower(strings.TrimSpace(field)) {
+	case "diff", "patch", "unifieddiff", "unified_diff":
+		return true
+	default:
+		return false
+	}
+}
+
+func normalizeClaudeSDKUnifiedDiff(diff string) string {
+	const noNewlineMarker = `\ No newline at end of file`
+	lines := strings.Split(strings.ReplaceAll(diff, "\r\n", "\n"), "\n")
+	for index, line := range lines {
+		if strings.TrimLeft(line, " \t") == noNewlineMarker {
+			lines[index] = noNewlineMarker
+		}
+	}
+	return strings.Join(lines, "\n")
 }
 
 func claudeSDKCallBodyKey(eventType string) string {

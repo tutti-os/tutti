@@ -138,6 +138,18 @@ Timeline-specific parsing may produce display-only card content, while request
 identity, options, and response commands come only from canonical pending
 Interaction projections.
 
+Ordinary consecutive tool calls project into one stable transcript disclosure
+starting with the first call. Working, waiting, completed, and failed updates
+change the calls and accumulated count inside that disclosure; they must not
+split, finalize, replace, expand, or collapse it. The disclosure identity is
+scoped by session, turn, and first call so incremental calls preserve the same
+UI state without leaking it across conversations. It starts collapsed, and
+only an explicit user toggle changes whether it is expanded. The group header
+reports the accumulated call count without claiming a lifecycle state; each
+call row owns its working, completed, or failed presentation. Interactive
+approval, question, plan-mode, task, and delegated-agent surfaces remain
+independent boundaries rather than ordinary grouped tool calls.
+
 Protocol-v2 host adapters must require `activeTurnId`,
 `latestTurnInteractions`, and `pendingInteractions`. Missing fields are a
 contract error at the desktop boundary, not an empty-list/default-value case.
@@ -282,7 +294,11 @@ When a model catalog advertises model-specific reasoning profiles, the composer
 must derive the reasoning options from the currently presented model and
 re-resolve an unsupported prior effort to that model's advertised default.
 Do not render the provider-level reasoning list when a profile exists for the
-selected model.
+selected model. The presence of any non-empty model profile keeps the reasoning
+dimension available across model switches even when the initially selected
+model has no options. An advertised empty profile for the selected model is
+authoritative: hide the reasoning control and do not reinsert a stale selected
+or draft effort as a synthetic option.
 Reasoning values are an extensible provider vocabulary. Known shared values may
 use AgentGUI's canonical labels, while unrecognized values must preserve the
 localized option label supplied by the composer-options contract instead of
@@ -339,6 +355,10 @@ Provider-scoped rail footer affordances, such as usage limits and environment
 setup, follow the rail's active provider filter target in multi-provider scope;
 when the rail filter is `All`, they should stay hidden because there is no
 single provider target to inspect.
+Runtime session usage is normalized once at the activity-core boundary,
+including quota type and numeric/text fields. AgentGUI read hooks may memoize
+that canonical projection, but views consume the typed quota array directly;
+they must not rebuild or stabilize quota DTOs with render-time refs.
 AgentGuiNode may also receive a neutral `renderSidebarFooter` slot for host or
 product affordances that belong at the bottom of the far-left provider/sidebar
 rail, below the system-settings control and not below the conversation-list
@@ -917,7 +937,12 @@ Claude SDK sidecars must not treat Edit/Write input text as authoritative patch
 data. They should collect the `PostToolUse` `tool_response.structuredPatch`
 hunks, convert them into file-level `changes[].diff` payloads, and only use
 input-derived file metadata for optimistic display before the tool response
-arrives.
+arrives. Provider diff metadata must be canonicalized at this adapter boundary
+before it becomes durable activity data. In particular, unified-diff control
+markers such as `\ No newline at end of file` must use Git's exact syntax;
+provider display formatting must not flow unchanged into executable
+`patchBatches`. AgentGUI also canonicalizes this marker while reading older
+persisted activity so pre-fix sessions remain reversible.
 
 Provider adapters that receive successful write/edit/apply_patch tool calls
 without a native turn-level diff event must still normalize the executed tool
@@ -1031,8 +1056,12 @@ repository by resolving from the nearest existing parent directory.
 The Git mutation belongs in `services/tuttid`, not `apps/desktop` or
 `@tutti-os/agent-gui`. The daemon creates a temporary `tutti-apply-*`
 directory, writes `patch.diff`, optionally copies the Git index into that
-directory for non-atomic unstaged `--3way` operations, executes `git apply` or
-`git apply -R`, and removes the temporary directory on every exit path.
+directory for non-atomic unstaged `--3way` operations, runs `git apply --check`
+with the same target, reverse, binary, directory, and temporary-index options,
+then executes `git apply` or `git apply -R` only after preflight succeeds. A
+syntax failure returns `invalid-patch`; a valid patch that no longer matches the
+worktree returns `patch-does-not-apply`. The daemon removes the temporary
+directory on every exit path.
 When reversing an added-file patch, the daemon has one narrow fallback for
 less-structured summary diffs: if Git rejects the patch, the target is still
 untracked, and the current file content only differs from the patch by trailing
@@ -1050,7 +1079,10 @@ AgentGUI shared components should not call the sonner `toast.error` entrypoint
 directly except as a last-resort fallback when no host toast capability exists.
 The summary card does not keep an inline failure row or durable error state
 because the source of truth remains the recorded diff plus the current worktree
-state.
+state. The desktop and daemon record the same `agent-git-patch` diagnostic
+family with JSON payloads, including the action, result, error code, paths, and
+Git stderr. Diagnostics record a diff hash and byte count rather than raw file
+content.
 
 Codex invalidates Git query caches after this operation. Tutti currently has no
 equivalent renderer Git cache group. The AgentGUI row emits a lightweight
@@ -1264,6 +1296,11 @@ previous section page metadata paired with that stale chrome until the new
 first page resolves; clearing `hasMore` independently makes the pagination row
 disappear and reappear. Disable paging actions while the replacement request is
 pending so a stale cursor cannot enter the new provider scope.
+The rail query controller owns this interaction lock and exposes a live query
+method for row and portaled-menu actions. Views must not mirror the pending flag
+through value refs or manufacture a stable callback around such refs; deferred
+actions query the controller at execution time so an already-open menu cannot
+cross a newly entered replacement state.
 Conversation-list read-state metadata is notification-style UI state. Historical
 imports that carry `runtimeContext.imported === true` should remain visible in
 the rail, but they must not seed unread completion lamps as though they just
@@ -1307,6 +1344,11 @@ record that failed cursor and suppress automatic retries until the detail page
 is reloaded or a different oldest durable version is reached. Do not let scroll
 position and `isLoadingOlderMessages=false` form an immediate retry loop against
 the same failing backend page.
+Older-page request coordination is an explicit controller state machine keyed
+by session and cursor. Its phases are `in_flight`, `exhausted`, and `failed`;
+reset invalidates an outstanding request, stale results cannot merge or clear a
+newer loading flag, and cursor advance starts a new request. Do not represent
+these transitions as parallel render refs or independent maps.
 
 The selected detail window is a UI-local page cache, not proof that the full
 durable transcript has loaded. If live updates or snapshot reconciliation seed a
@@ -2616,6 +2658,15 @@ trigger text through `AgentRichTextEditor` at the current selection and let the
 Tiptap suggestion plugin publish `AgentRichTextEditor` suggestion state. Do not
 open the mention palette as a separate UI-only state path; the trigger range
 still owns command replacement, keyboard handling, and panel anchoring.
+
+Line-start mention chips may use an editor-only zero-width caret anchor so the
+caret can move to both sides of an atomic Tiptap node. That anchor is not prompt
+content and is removed during prompt serialization. Its lifecycle therefore
+belongs to the rich-text document layer: deleting the last adjacent line-start
+mention with Backspace or Delete must remove the mention and anchor in the same
+transaction. If another adjacent mention remains at line start, retain the
+anchor for that node. Never leave an anchor-only document whose serialized
+prompt is empty while its editor DOM is not.
 
 Pasting text that contains an `@` must not be treated as active mention input
 unless the paste leaves the caret immediately after the `@` trigger. A bare

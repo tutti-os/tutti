@@ -1116,6 +1116,26 @@
       "storyboard": true
     },
     {
+      "id": "radio-indicator",
+      "layer": "base",
+      "name": "RadioIndicator",
+      "export": "RadioIndicator",
+      "from": "@tutti-os/ui-system/components",
+      "category": "primitive",
+      "status": "stable",
+      "source": "src/components/radio-indicator/index.tsx",
+      "description": "Circular presentational indicator for single-selection states.",
+      "useCases": [
+        "Single-select option cards",
+        "Settings choices",
+        "Selected list rows"
+      ],
+      "migrationHints": [
+        "Use this presentational indicator inside the existing selection target; keep group state and click handling in the consumer."
+      ],
+      "storyboard": true
+    },
+    {
       "id": "switch",
       "layer": "base",
       "name": "Switch",
@@ -2214,6 +2234,20 @@
       "useCases": ["Preview actions", "Visibility controls"],
       "migrationHints": [],
       "iconVariant": "lined"
+    },
+    {
+      "id": "close-eyes-filled-icon",
+      "layer": "base",
+      "name": "CloseEyesIcon",
+      "export": "CloseEyesIcon",
+      "from": "@tutti-os/ui-system/icons",
+      "category": "icon",
+      "status": "stable",
+      "source": "src/icons/system-icons.tsx",
+      "description": "System icon for hiding or masking sensitive content.",
+      "useCases": ["Password visibility controls", "Sensitive content masking"],
+      "migrationHints": [],
+      "iconVariant": "filled"
     },
     {
       "id": "file-filled-icon",

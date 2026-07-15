@@ -564,7 +564,7 @@ export const zhCN = {
     roomExitActiveAgentLead:
       "这个房间里仍有 Agent 在工作。离开会停止 Agent 进程，并将任务标记为已中断。",
     roomExitActiveAgentConfirm: "离开并中断",
-    workspaceAgentSessionDetailToolCalls: "{{count}} 次工具调用 已完成",
+    workspaceAgentSessionDetailToolCalls: "{{count}} 次工具调用",
     workspaceAgentSessionDetailThinking: "思考",
     workspaceAgentSessionDetailWorking: "工作中...",
     workspaceClosingBanner: "这个工作区正在关闭，连接即将断开。",

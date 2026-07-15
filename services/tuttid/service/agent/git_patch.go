@@ -3,8 +3,12 @@ package agent
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -15,6 +19,8 @@ import (
 
 	"github.com/tutti-os/tutti/packages/agent/daemon/runtimecmd"
 )
+
+const agentGitPatchLogPrefix = "[agent-git-patch]"
 
 type ApplyGitPatchStatus string
 
@@ -27,8 +33,10 @@ const (
 type ApplyGitPatchErrorCode string
 
 const (
-	ApplyGitPatchErrorNone       ApplyGitPatchErrorCode = ""
-	ApplyGitPatchErrorNotGitRepo ApplyGitPatchErrorCode = "not-git-repo"
+	ApplyGitPatchErrorNone              ApplyGitPatchErrorCode = ""
+	ApplyGitPatchErrorNotGitRepo        ApplyGitPatchErrorCode = "not-git-repo"
+	ApplyGitPatchErrorInvalidPatch      ApplyGitPatchErrorCode = "invalid-patch"
+	ApplyGitPatchErrorPatchDoesNotApply ApplyGitPatchErrorCode = "patch-does-not-apply"
 )
 
 type ApplyGitPatchTarget string
@@ -81,10 +89,50 @@ type gitPatchRepo struct {
 func (*Service) ApplyGitPatchForPath(ctx context.Context, workspaceID string, input ApplyGitPatchInput) (ApplyGitPatchResult, error) {
 	workspaceID = strings.TrimSpace(workspaceID)
 	input.Cwd = strings.TrimSpace(input.Cwd)
+	logAgentGitPatch("requested", map[string]any{
+		"workspaceId": workspaceID,
+		"cwd":         input.Cwd,
+		"revert":      input.Revert,
+		"atomic":      input.Atomic,
+		"target":      input.Target,
+		"allowBinary": input.AllowBinary,
+		"diffBytes":   len(input.Diff),
+		"diffSha256":  gitPatchDiffHash(input.Diff),
+	})
 	if workspaceID == "" || input.Cwd == "" || strings.TrimSpace(input.Diff) == "" {
+		logAgentGitPatch("rejected", map[string]any{"reason": "invalid-argument"})
 		return emptyApplyGitPatchResult(ApplyGitPatchStatusError), ErrInvalidArgument
 	}
-	return applyGitPatchWithOptions(ctx, input, applyGitPatchOptions{})
+	result, err := applyGitPatchWithOptions(ctx, input, applyGitPatchOptions{})
+	if err != nil {
+		logAgentGitPatch("failed", map[string]any{"error": err.Error()})
+		return result, err
+	}
+	logAgentGitPatch("completed", map[string]any{
+		"status":          result.Status,
+		"errorCode":       result.ErrorCode,
+		"appliedPaths":    result.AppliedPaths,
+		"skippedPaths":    result.SkippedPaths,
+		"conflictedPaths": result.ConflictedPaths,
+		"command":         result.ExecOutput.Command,
+		"stderr":          result.ExecOutput.Stderr,
+	})
+	return result, nil
+}
+
+func gitPatchDiffHash(diff string) string {
+	sum := sha256.Sum256([]byte(diff))
+	return hex.EncodeToString(sum[:])
+}
+
+func logAgentGitPatch(event string, payload map[string]any) {
+	payload["event"] = event
+	encoded, err := json.Marshal(payload)
+	if err != nil {
+		slog.Warn(agentGitPatchLogPrefix, "payload_json", `{"event":"log-encode-failed"}`)
+		return
+	}
+	slog.Info(agentGitPatchLogPrefix, "payload_json", string(encoded))
 }
 
 func (*Service) ResolveGitPatchSupportForPath(ctx context.Context, workspaceID string, cwd string) (GitPatchSupport, error) {
@@ -142,7 +190,31 @@ func applyGitPatchWithOptions(ctx context.Context, input ApplyGitPatchInput, opt
 		}
 	}
 
+	preflightResult := runGitPatchCommand(ctx, repo.Root, env, gitPatchArgs(input, repo, patchPath, true)...)
+	if preflightResult.ExitCode != 0 {
+		result := classifyGitPatchResult(ApplyGitPatchStatusError, diffPaths, preflightResult)
+		result.ErrorCode = applyGitPatchPreflightErrorCode(preflightResult)
+		if fallback, ok := tryApplyCreatedFileRevertFallback(ctx, repo, input, diffPaths, baseEnv, result); ok {
+			return fallback, nil
+		}
+		return result, nil
+	}
+
+	args := gitPatchArgs(input, repo, patchPath, false)
+	execResult := runGitPatchCommand(ctx, repo.Root, env, args...)
+	status := applyGitPatchStatus(execResult.ExitCode, input.Atomic)
+	result := classifyGitPatchResult(status, diffPaths, execResult)
+	if fallback, ok := tryApplyCreatedFileRevertFallback(ctx, repo, input, diffPaths, baseEnv, result); ok {
+		return fallback, nil
+	}
+	return result, nil
+}
+
+func gitPatchArgs(input ApplyGitPatchInput, repo gitPatchRepo, patchPath string, check bool) []string {
 	args := []string{"apply"}
+	if check {
+		args = append(args, "--check")
+	}
 	if input.Revert {
 		args = append(args, "-R")
 	}
@@ -161,15 +233,14 @@ func applyGitPatchWithOptions(ctx context.Context, input ApplyGitPatchInput, opt
 	if repo.DirectoryPrefix != "" {
 		args = append(args, "--directory="+repo.DirectoryPrefix)
 	}
-	args = append(args, patchPath)
+	return append(args, patchPath)
+}
 
-	execResult := runGitPatchCommand(ctx, repo.Root, env, args...)
-	status := applyGitPatchStatus(execResult.ExitCode, input.Atomic)
-	result := classifyGitPatchResult(status, diffPaths, execResult)
-	if fallback, ok := tryApplyCreatedFileRevertFallback(ctx, repo, input, diffPaths, baseEnv, result); ok {
-		return fallback, nil
+func applyGitPatchPreflightErrorCode(result gitPatchCommandResult) ApplyGitPatchErrorCode {
+	if result.ExitCode == 128 || strings.Contains(strings.ToLower(result.Stderr), "corrupt patch") {
+		return ApplyGitPatchErrorInvalidPatch
 	}
-	return result, nil
+	return ApplyGitPatchErrorPatchDoesNotApply
 }
 
 func resolveGitPatchRepo(ctx context.Context, cwd string) (gitPatchRepo, bool) {

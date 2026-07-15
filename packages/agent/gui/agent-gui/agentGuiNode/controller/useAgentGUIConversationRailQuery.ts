@@ -83,6 +83,7 @@ export function useAgentGUIConversationRailQuery({
   return useMemo(
     () => ({
       ...querySnapshot,
+      isInteractionLocked: controller.isInteractionLocked,
       loadMoreSectionConversations: controller.loadMoreSectionConversations,
       railSearch: {
         ...querySnapshot.railSearch,

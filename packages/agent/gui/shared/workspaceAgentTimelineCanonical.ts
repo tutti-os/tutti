@@ -194,14 +194,9 @@ export function buildCanonicalWorkspaceAgentDetailView({
   );
   nestDelegatedToolCallsAcrossTurns(visibleTurns);
   visibleTurns.forEach(mergeBackgroundTerminalContinuations);
-  const allowTrailingToolGrouping = !isSessionWorking(session);
-
-  visibleTurns.forEach((turn, index) => {
+  visibleTurns.forEach((turn) => {
     turn.rawAgentItems = [...turn.agentItems];
-    turn.agentItems = regroupAgentItems(
-      turn.agentItems,
-      allowTrailingToolGrouping || index < visibleTurns.length - 1
-    );
+    turn.agentItems = regroupAgentItems(turn.agentItems);
   });
 
   return {
@@ -404,20 +399,19 @@ function refreshToolCallAgentItem(
 }
 
 function regroupAgentItems(
-  items: readonly WorkspaceAgentSessionDetailAgentItem[],
-  allowTrailingFinalization: boolean
+  items: readonly WorkspaceAgentSessionDetailAgentItem[]
 ): WorkspaceAgentSessionDetailAgentItem[] {
   const regrouped: WorkspaceAgentSessionDetailAgentItem[] = [];
   let pending: Array<
     Extract<WorkspaceAgentSessionDetailAgentItem, { kind: "tool-calls" }>
   > = [];
 
-  const flushPending = (finalize: boolean) => {
+  const flushPending = () => {
     if (pending.length === 0) {
       return;
     }
     const groupedCalls = pending.flatMap((item) => item.toolCalls);
-    if (finalize && groupedCalls.length >= 2) {
+    if (groupedCalls.length >= 2) {
       regrouped.push({
         kind: "tool-calls",
         id: pending.map((item) => item.id).join("+"),
@@ -443,11 +437,11 @@ function regroupAgentItems(
       pending.push(item);
       continue;
     }
-    flushPending(true);
+    flushPending();
     regrouped.push(item);
   }
 
-  flushPending(allowTrailingFinalization);
+  flushPending();
   return regrouped;
 }
 
@@ -456,10 +450,7 @@ function isGroupableToolCallItem(
 ): boolean {
   return (
     item.toolCalls.length === 1 &&
-    item.toolCalls.every((call) => isGroupableToolCall(call)) &&
-    item.toolCalls.every(
-      (call) => call.statusKind !== "working" && call.statusKind !== "waiting"
-    )
+    item.toolCalls.every((call) => isGroupableToolCall(call))
   );
 }
 
@@ -785,10 +776,4 @@ function normalizeToolName(name: string | null): string {
     .trim()
     .replace(/[_\s-]+/g, "")
     .toLowerCase();
-}
-
-function isSessionWorking(
-  session: BuildWorkspaceAgentSessionDetailInput["session"]
-): boolean {
-  return session.activeTurn ? session.activeTurn.phase !== "settled" : false;
 }

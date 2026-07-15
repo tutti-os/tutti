@@ -85,6 +85,16 @@
   transformation/evaluation rather than SQLite or workspace hydration. Also
   time provider statuses per provider; one slow CLI probe can dominate a serial
   all-provider scan.
+  For provider-status startup, correlate the same `session_id` across
+  `tutti-desktop.log` and `tuttid.log`. Renderer events
+  `agent_provider_status.request.started`, `.resolved`, `.failed`,
+  `.cache_hit`, and `.reused` show request scope, provider IDs, request ID, and
+  total elapsed time. Daemon event
+  `tutti.agent_provider.status_list.completed` shows the batch total; per-provider
+  `tutti.agent_provider.status_detection.completed` events split runtime
+  resolution, adapter probe, auth, CLI version, and post-check time. Concurrent
+  step times overlap, so compare the largest step with the provider total rather
+  than summing every step.
 - Root cause:
   For the permanent-black variant, an optional startup provider can be passed
   directly to the strict workbench provider normalizer. The generic primary
@@ -146,11 +156,21 @@
   manual renderer verification requires explicit user approval. If the dynamic
   import still dominates, compare cold and warm module-graph timings before
   investigating daemon hydration or provider discovery.
+  When a provider-status request is slow, compare Renderer `durationMs` with the
+  daemon batch `durationMs`. A large daemon total points to provider detection;
+  a large Renderer-only gap points to transport, timeout handling, or Renderer
+  runtime-probe fallback. Within the daemon, compare each provider total and its
+  largest phase. Logs intentionally record provider IDs, counts, outcomes, and
+  durations, but not executable paths, command output, environment values, or
+  error messages.
 - References:
   [agent-gui-node.md](../../architecture/agent-gui-node.md)
   [WorkspaceWindow.tsx](../../../apps/desktop/src/renderer/src/app/windows/workspace/WorkspaceWindow.tsx)
   [StandaloneAgentToolSidebar.tsx](../../../apps/desktop/src/renderer/src/features/workspace-workbench/ui/StandaloneAgentToolSidebar.tsx)
   [desktopAgentProviderStatusService.ts](../../../apps/desktop/src/renderer/src/features/workspace-agent/services/internal/desktopAgentProviderStatusService.ts)
+  [desktopAgentProviderStatusDiagnostics.ts](../../../apps/desktop/src/renderer/src/features/workspace-agent/services/internal/desktopAgentProviderStatusDiagnostics.ts)
+  [service.go](../../../services/tuttid/service/agentstatus/service.go)
+  [service_status.go](../../../services/tuttid/service/agentstatus/service_status.go)
 
 ### Renderer body requests fail with `ERR_H2_OR_QUIC_REQUIRED`
 
@@ -419,8 +439,13 @@
   values from bidirectional state. For external/workbench state, only sync
   canonical identifiers and derive display text from the owning service. In
   AgentGUI, select the narrow render projection with a render-field equality
-  function, keep command callbacks stable, and derive the active row from the
-  same stabilized conversation list.
+  function, keep command callbacks stable, and separate Rail render equality
+  from active-session semantic equality. Stabilize usage, commands, prompt
+  queue, quota, session-chrome, and host callback projections at their owning
+  selector/controller boundary; do not clone canonical arrays while assembling
+  the view model. During Rail reconciliation, expose a stable lock reader so
+  portaled menu actions can check current state without passing a changing
+  boolean through every section.
 - Validation:
   With why-did-you-render enabled, reproduce once and confirm the noisy
   component lists the expected prop or hook difference. Then disable the tool
@@ -516,14 +541,19 @@
   suppress the synthesized `click` even though the button receives the pointer
   sequence. A handler wired only to `onClick` therefore never runs.
 - Fix:
-  Handle the primary `pointerup` as the pointer activation boundary. Preserve
-  keyboard activation explicitly, retain an assistive-technology click path,
-  and guard the async action with a synchronous in-flight ref so multiple event
-  paths cannot dispatch the command twice.
+  Handle `pointerup` only after a matching primary-button `pointerdown`; clear
+  the armed action on `pointerleave` and `pointercancel`. If the button instead
+  establishes pointer capture explicitly, also clear on lost capture and
+  validate that the release coordinates remain inside the action before
+  executing it. Preserve keyboard activation explicitly, retain an
+  assistive-technology click-only path, and guard the async action with a
+  synchronous in-flight ref so multiple event paths cannot dispatch the command
+  twice.
 - Validation:
   Cover pointer activation, the following synthesized mouse click, keyboard
-  activation, blank input, and cancellation. Assert the command runs exactly
-  once for each accepted action.
+  activation, assistive click-only activation, unmatched pointerup, canceled
+  pointer sequences, blank input, and cancellation. Assert the command runs
+  exactly once for each accepted action.
 - References:
   [AgentGUIRenameConversationDialog.tsx](../../../packages/agent/gui/agent-gui/agentGuiNode/view/AgentGUIRenameConversationDialog.tsx)
 

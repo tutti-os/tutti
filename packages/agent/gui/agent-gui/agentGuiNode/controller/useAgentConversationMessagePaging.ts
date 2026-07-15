@@ -1,8 +1,9 @@
-import { useCallback, useRef } from "react";
+import { useCallback, useMemo, useRef } from "react";
 import type { AgentActivityRuntime } from "../../../agentActivityRuntime";
 import type { AgentActivityMessage } from "@tutti-os/agent-activity-core";
 import { isWorkspaceAgentActivityOptimisticMessage } from "../../../shared/workspaceAgentMessageOverlay";
 import type { AgentSessionViewRef } from "../../../contexts/workspace/presentation/renderer/agentSessions/useAgentSessionTransport";
+import { AgentConversationOlderPagingState } from "./AgentConversationOlderPagingState";
 
 const PAGE_SIZE = 100;
 
@@ -243,15 +244,21 @@ export function useAgentConversationMessagePaging(
 ) {
   const inputRef = useRef(input);
   inputRef.current = input;
-  const olderLoadSequenceRef = useRef(0);
-  const failedOlderCursorBySessionIdRef = useRef(new Map<string, number>());
+  const olderPagingState = useMemo(
+    () => new AgentConversationOlderPagingState(),
+    []
+  );
 
-  const loadInitialMessages = useCallback(async (agentSessionId: string) => {
-    const normalized = agentSessionId.trim();
-    if (!normalized) return;
-    const current = inputRef.current;
-    current.reload.reconcileDetail(normalized);
-  }, []);
+  const loadInitialMessages = useCallback(
+    async (agentSessionId: string) => {
+      const normalized = agentSessionId.trim();
+      if (!normalized) return;
+      olderPagingState.reset(normalized);
+      const current = inputRef.current;
+      current.reload.reconcileDetail(normalized);
+    },
+    [olderPagingState]
+  );
 
   const loadOlderMessages = useCallback(
     async (agentSessionId?: string | null) => {
@@ -271,7 +278,9 @@ export function useAgentConversationMessagePaging(
         view?.oldestLoadedVersion ?? canonicalOldestVersion;
       const hasOlderMessages =
         view?.hasOlderMessages === true ||
-        (canonicalOldestVersion !== null && canonicalOldestVersion > 1);
+        (view?.oldestLoadedVersion == null &&
+          canonicalOldestVersion !== null &&
+          canonicalOldestVersion > 1);
       if (
         !hasOlderMessages ||
         view?.isLoadingOlderMessages === true ||
@@ -292,19 +301,41 @@ export function useAgentConversationMessagePaging(
         return;
       }
       const beforeVersion = oldestLoadedVersion;
-      if (
-        failedOlderCursorBySessionIdRef.current.get(normalized) ===
-        beforeVersion
-      ) {
+      const beginResult = olderPagingState.begin(normalized, beforeVersion);
+      if (beginResult.kind === "suppressed") {
+        const { entry } = beginResult;
+        const suppression =
+          entry.phase === "in_flight"
+            ? {
+                details: {
+                  beforeVersion,
+                  inFlightBeforeVersion: entry.beforeVersion,
+                  inFlightRequestId: entry.requestId,
+                  reason: "in_flight_request"
+                },
+                event: "agent.gui.messages.older.suppressed_in_flight",
+                level: undefined
+              }
+            : entry.phase === "exhausted"
+              ? {
+                  details: { beforeVersion, reason: "exhausted_cursor" },
+                  event: "agent.gui.messages.older.suppressed_exhausted_cursor",
+                  level: undefined
+                }
+              : {
+                  details: { beforeVersion, reason: "previous_cursor_error" },
+                  event: "agent.gui.messages.older.suppressed_after_error",
+                  level: "warn" as const
+                };
         current.diagnostics.page({
           agentSessionId: normalized,
-          details: { beforeVersion, reason: "previous_cursor_error" },
-          event: "agent.gui.messages.older.suppressed_after_error",
-          level: "warn"
+          details: suppression.details,
+          event: suppression.event,
+          level: suppression.level
         });
         return;
       }
-      const requestId = ++olderLoadSequenceRef.current;
+      const { request } = beginResult;
       current.view.setOlderMessagesLoading(ref, true);
       try {
         current.diagnostics.page({
@@ -313,7 +344,7 @@ export function useAgentConversationMessagePaging(
             beforeVersion,
             limit: PAGE_SIZE,
             order: "desc",
-            requestId
+            requestId: request.requestId
           },
           event: "agent.gui.messages.older.requested"
         });
@@ -327,10 +358,11 @@ export function useAgentConversationMessagePaging(
         });
         if (
           !current.isMounted() ||
-          current.getActiveSessionId() !== normalized ||
-          olderLoadSequenceRef.current !== requestId
+          current.getActiveSessionId() !== normalized
         ) {
-          current.view.setOlderMessagesLoading(ref, false);
+          if (olderPagingState.abandon(request)) {
+            current.view.setOlderMessagesLoading(ref, false);
+          }
           return;
         }
         current.diagnostics.page({
@@ -339,35 +371,44 @@ export function useAgentConversationMessagePaging(
             beforeVersion,
             hasMore: page.hasMore,
             latestVersion: page.latestVersion,
-            requestId
+            requestId: request.requestId
           },
           event: "agent.gui.messages.older.resolved",
           messages: page.messages
         });
-        failedOlderCursorBySessionIdRef.current.delete(normalized);
+        if (
+          !olderPagingState.resolve(
+            request,
+            !page.hasMore || page.messages.length === 0
+          )
+        ) {
+          return;
+        }
         current.view.mergeOlder(ref, page.messages, {
           hasOlderMessages: page.hasMore && page.messages.length > 0
         });
+        current.view.setOlderMessagesLoading(ref, false);
       } catch (error) {
         if (
           !current.isMounted() ||
-          current.getActiveSessionId() !== normalized ||
-          olderLoadSequenceRef.current !== requestId
+          current.getActiveSessionId() !== normalized
         ) {
-          current.view.setOlderMessagesLoading(ref, false);
+          if (olderPagingState.abandon(request)) {
+            current.view.setOlderMessagesLoading(ref, false);
+          }
           return;
         }
-        failedOlderCursorBySessionIdRef.current.set(normalized, beforeVersion);
+        if (!olderPagingState.fail(request)) return;
         current.diagnostics.error({
           agentSessionId: normalized,
-          context: { beforeVersion, requestId },
+          context: { beforeVersion, requestId: request.requestId },
           error,
           phase: "load_session_messages"
         });
         current.view.setOlderMessagesLoading(ref, false);
       }
     },
-    []
+    [olderPagingState]
   );
 
   const reloadSelectedConversation = useCallback(

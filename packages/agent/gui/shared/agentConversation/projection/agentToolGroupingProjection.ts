@@ -23,25 +23,14 @@ export interface AgentComputedToolGroupInfoVM {
 export function computeAgentToolGroups(
   sequence: readonly AgentTurnSequenceItemVM[],
   {
-    allowTrailingFinalization,
     avoidGroupingEdits = AVOID_GROUPING_EDITS
   }: {
-    allowTrailingFinalization: boolean;
     avoidGroupingEdits?: boolean;
   }
 ): AgentComputedToolGroupInfoVM {
   const groups = new Map<number, AgentComputedToolGroupVM>();
   const groupedIndices = new Set<number>();
-  // Nothing is hidden anymore. While a session streams a burst of sequential
-  // tool calls (e.g. Codex), the trailing run whose newest tool is still active
-  // is rendered as individual, always-visible rows instead of grouping or
-  // collapsing it. Grouping that run while the tail tool kept changing was what
-  // made the transcript flicker between "one tool" and "many" as the burst
-  // advanced. Items before the active trailing run still group as usual.
   const suppressedIndices = new Set<number>();
-  const splitFromIndex = allowTrailingFinalization
-    ? -1
-    : findUnfinalizedTailRunStartIndex(sequence);
 
   let currentCalls: AgentToolCallVM[] = [];
   let currentEntries: AgentToolGroupEntryVM[] = [];
@@ -52,7 +41,7 @@ export function computeAgentToolGroups(
 
   const finalizeGroup = () => {
     if (
-      currentCalls.length >= 2 &&
+      currentCalls.length >= 1 &&
       startIndex >= 0 &&
       currentIndices.length > 0
     ) {
@@ -78,20 +67,8 @@ export function computeAgentToolGroups(
     if (!item) {
       continue;
     }
-    // Once we reach the still-streaming trailing run, stop grouping: close any
-    // open group and let every remaining item fall through to its own visible
-    // row so the live view only ever appends.
-    if (splitFromIndex >= 0 && index >= splitFromIndex) {
-      finalizeGroup();
-      continue;
-    }
     if (item.kind === "tool-call" && isGroupableToolCall(item.call)) {
       if (avoidGroupingEdits && isEditBoundaryToolCall(item.call)) {
-        finalizeGroup();
-        startIndex = index;
-        currentCalls = [item.call];
-        currentEntries = [{ kind: "tool-call", call: item.call }];
-        currentIndices = [index];
         finalizeGroup();
         continue;
       }
@@ -123,9 +100,7 @@ export function computeAgentToolGroups(
     finalizeGroup();
   }
 
-  if (allowTrailingFinalization) {
-    finalizeGroup();
-  }
+  finalizeGroup();
 
   return {
     groups,
@@ -136,13 +111,16 @@ export function computeAgentToolGroups(
 
 export function projectAgentToolGroupRowFromGroup(
   turnId: string,
-  group: AgentComputedToolGroupVM
+  group: AgentComputedToolGroupVM,
+  agentSessionId?: string
 ): AgentToolGroupRowVM {
   const firstCallId = group.calls[0]?.id ?? "unknown";
   return {
     kind: "tool-group",
     id: `tool-group:${turnId}:${group.calls.map((call) => call.id).join("+")}`,
-    expansionKey: `tool-group:${turnId}:${firstCallId}`,
+    expansionKey: ["tool-group", agentSessionId, turnId, firstCallId]
+      .filter(Boolean)
+      .join(":"),
     turnId,
     grouped: true,
     calls: group.calls,
@@ -173,9 +151,6 @@ export function projectAgentSingleToolRow(
 }
 
 function isGroupableToolCall(call: AgentToolCallVM): boolean {
-  if (call.statusKind === "working" || call.statusKind === "waiting") {
-    return false;
-  }
   switch (call.rendererKind) {
     case "approval":
     case "ask-user":
@@ -186,30 +161,6 @@ function isGroupableToolCall(call: AgentToolCallVM): boolean {
     default:
       return true;
   }
-}
-
-/**
- * Index where the unfinalized turn's trailing tool chain begins, or -1 when
- * there is none. Completion of an individual tool does not finalize the turn:
- * while the canonical turn is still active, every tool since the last
- * assistant message remains individually visible. Thinking entries may bridge
- * those calls and must remain visible too.
- */
-function findUnfinalizedTailRunStartIndex(
-  sequence: readonly AgentTurnSequenceItemVM[]
-): number {
-  let startIndex = -1;
-  let hasToolCall = false;
-  for (let index = sequence.length - 1; index >= 0; index -= 1) {
-    const item = sequence[index];
-    if (!item) continue;
-    if (item.kind === "assistant-message" || item.kind === "user-message") {
-      break;
-    }
-    if (item.kind === "tool-call") hasToolCall = true;
-    startIndex = index;
-  }
-  return hasToolCall ? startIndex : -1;
 }
 
 function isEditBoundaryToolCall(call: AgentToolCallVM): boolean {

@@ -185,7 +185,7 @@ describe("computeAgentToolGroups", () => {
         toolItem("c2"),
         toolItem("c3")
       ],
-      { allowTrailingFinalization: true }
+      {}
     );
 
     expect(
