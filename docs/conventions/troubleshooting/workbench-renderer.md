@@ -85,6 +85,16 @@
   transformation/evaluation rather than SQLite or workspace hydration. Also
   time provider statuses per provider; one slow CLI probe can dominate a serial
   all-provider scan.
+  For provider-status startup, correlate the same `session_id` across
+  `tutti-desktop.log` and `tuttid.log`. Renderer events
+  `agent_provider_status.request.started`, `.resolved`, `.failed`,
+  `.cache_hit`, and `.reused` show request scope, provider IDs, request ID, and
+  total elapsed time. Daemon event
+  `tutti.agent_provider.status_list.completed` shows the batch total; per-provider
+  `tutti.agent_provider.status_detection.completed` events split runtime
+  resolution, adapter probe, auth, CLI version, and post-check time. Concurrent
+  step times overlap, so compare the largest step with the provider total rather
+  than summing every step.
 - Root cause:
   For the permanent-black variant, an optional startup provider can be passed
   directly to the strict workbench provider normalizer. The generic primary
@@ -146,11 +156,21 @@
   manual renderer verification requires explicit user approval. If the dynamic
   import still dominates, compare cold and warm module-graph timings before
   investigating daemon hydration or provider discovery.
+  When a provider-status request is slow, compare Renderer `durationMs` with the
+  daemon batch `durationMs`. A large daemon total points to provider detection;
+  a large Renderer-only gap points to transport, timeout handling, or Renderer
+  runtime-probe fallback. Within the daemon, compare each provider total and its
+  largest phase. Logs intentionally record provider IDs, counts, outcomes, and
+  durations, but not executable paths, command output, environment values, or
+  error messages.
 - References:
   [agent-gui-node.md](../../architecture/agent-gui-node.md)
   [WorkspaceWindow.tsx](../../../apps/desktop/src/renderer/src/app/windows/workspace/WorkspaceWindow.tsx)
   [StandaloneAgentToolSidebar.tsx](../../../apps/desktop/src/renderer/src/features/workspace-workbench/ui/StandaloneAgentToolSidebar.tsx)
   [desktopAgentProviderStatusService.ts](../../../apps/desktop/src/renderer/src/features/workspace-agent/services/internal/desktopAgentProviderStatusService.ts)
+  [desktopAgentProviderStatusDiagnostics.ts](../../../apps/desktop/src/renderer/src/features/workspace-agent/services/internal/desktopAgentProviderStatusDiagnostics.ts)
+  [service.go](../../../services/tuttid/service/agentstatus/service.go)
+  [service_status.go](../../../services/tuttid/service/agentstatus/service_status.go)
 
 ### Renderer body requests fail with `ERR_H2_OR_QUIC_REQUIRED`
 

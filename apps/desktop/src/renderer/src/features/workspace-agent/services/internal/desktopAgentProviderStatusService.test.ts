@@ -10,6 +10,7 @@ import type {
   WorkspaceAgentProvider
 } from "@tutti-os/client-tuttid-ts";
 import type { NotificationService } from "@tutti-os/ui-notifications";
+import type { DesktopRendererDiagnosticPayload } from "@shared/contracts/ipc";
 import type { ReporterEventInput } from "../../../analytics/services/reporterService.interface.ts";
 import { DesktopAgentProviderStatusService } from "./desktopAgentProviderStatusService.ts";
 
@@ -1181,6 +1182,118 @@ test("ensureLoaded reuses loaded provider statuses and only loads missing provid
   await service.ensureLoaded({ providers: ["claude-code"] });
 
   assert.deepEqual(statusCalls, [["codex"], ["claude-code"]]);
+});
+
+test("provider status requests log duration, scope, and cache hits", async () => {
+  const diagnostics: DesktopRendererDiagnosticPayload[] = [];
+  let now = 100;
+  const service = new DesktopAgentProviderStatusService({
+    diagnosticNow: () => now,
+    runtimeApi: {
+      async logRendererDiagnostic(payload) {
+        diagnostics.push(payload);
+      }
+    },
+    tuttidClient: {
+      async getAgentProviderStatuses() {
+        now = 145;
+        return createStatusResponse([
+          createProviderStatus({
+            actions: [],
+            availability: "ready",
+            provider: "codex"
+          })
+        ]);
+      }
+    } as Partial<TuttidClient> as TuttidClient,
+    terminalCommandRunner: {
+      async runTerminalCommand() {}
+    }
+  });
+
+  await service.ensureLoaded({ providers: ["codex"] });
+  await service.ensureLoaded({ providers: ["codex"] });
+
+  assert.deepEqual(
+    diagnostics.map(({ details, event }) => ({ details, event })),
+    [
+      {
+        details: {
+          includeNetwork: false,
+          providerCount: 1,
+          providers: ["codex"],
+          requestId: 1,
+          requestScope: "providers"
+        },
+        event: "agent_provider_status.request.started"
+      },
+      {
+        details: {
+          appliedProviderCount: 1,
+          durationMs: 45,
+          includeNetwork: false,
+          providerCount: 1,
+          providers: ["codex"],
+          requestId: 1,
+          requestScope: "providers",
+          responseProviderCount: 1,
+          staleProviderCount: 0
+        },
+        event: "agent_provider_status.request.resolved"
+      },
+      {
+        details: {
+          cachedProviderCount: 1,
+          includeNetwork: false,
+          providerCount: 1,
+          providers: ["codex"],
+          requestScope: "providers"
+        },
+        event: "agent_provider_status.request.cache_hit"
+      }
+    ]
+  );
+});
+
+test("failed provider status requests log duration without the error message", async () => {
+  const diagnostics: DesktopRendererDiagnosticPayload[] = [];
+  let now = 200;
+  const service = new DesktopAgentProviderStatusService({
+    diagnosticNow: () => now,
+    runtimeApi: {
+      async logRendererDiagnostic(payload) {
+        diagnostics.push(payload);
+      }
+    },
+    tuttidClient: {
+      async getAgentProviderStatuses() {
+        now = 260;
+        throw new TypeError("sensitive local detail");
+      }
+    } as Partial<TuttidClient> as TuttidClient,
+    terminalCommandRunner: {
+      async runTerminalCommand() {}
+    }
+  });
+
+  await service.refresh(["codex"]);
+
+  const failure = diagnostics.find(
+    ({ event }) => event === "agent_provider_status.request.failed"
+  );
+  assert.deepEqual(failure?.details, {
+    durationMs: 60,
+    errorType: "TypeError",
+    includeNetwork: false,
+    providerCount: 1,
+    providers: ["codex"],
+    requestId: 1,
+    requestScope: "providers"
+  });
+  assert.equal(
+    JSON.stringify(failure).includes("sensitive local detail"),
+    false
+  );
 });
 
 test("hydrate seeds the snapshot for an instance that has not captured its own data yet", () => {

@@ -3,6 +3,7 @@ package agentstatus
 import (
 	"context"
 	"errors"
+	"log/slog"
 	"net/http"
 	"net/url"
 	"strings"
@@ -254,7 +255,21 @@ const externalRegistryNPMProbeTimeoutPadding = 100 * time.Millisecond
 // bound keeps the subprocess fan-out small on constrained machines.
 const statusDetectionConcurrency = 4
 
-func (s Service) List(ctx context.Context, input ListInput) (Snapshot, error) {
+func (s Service) List(ctx context.Context, input ListInput) (snapshot Snapshot, err error) {
+	startedAt := time.Now()
+	defer func() {
+		slog.Info(
+			"agent provider status list completed",
+			"event", "tutti.agent_provider.status_list.completed",
+			"durationMs", time.Since(startedAt).Milliseconds(),
+			"includeNetwork", input.IncludeNetwork,
+			"providerCount", len(snapshot.Providers),
+			"requestedProviderCount", len(input.Providers),
+			"requestedProviders", input.Providers,
+			"success", err == nil,
+		)
+	}()
+
 	now := s.now()
 	specs, err := s.selectProviderSpecs(ctx, input.Providers, false)
 	if err != nil {
@@ -323,10 +338,11 @@ func (s Service) List(ctx context.Context, input ListInput) (Snapshot, error) {
 		statuses[i].ActiveAction = activeActionForProvider(statuses[i].Provider)
 	}
 
-	return Snapshot{
+	snapshot = Snapshot{
 		CapturedAt: now,
 		Providers:  statuses,
-	}, nil
+	}
+	return snapshot, nil
 }
 
 func (s Service) Probe(ctx context.Context, input ProbeInput) (ProbeResult, error) {

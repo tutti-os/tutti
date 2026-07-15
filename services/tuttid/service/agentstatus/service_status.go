@@ -13,11 +13,42 @@ import (
 // concurrently for different specs: it only reads Service configuration, and
 // the shared stores it touches (RunOutcomes, the active-action table) are
 // internally synchronized.
-func (s Service) statusForSpec(ctx context.Context, spec ProviderSpec, now time.Time) ProviderStatus {
-	if status, ok := unsupportedProviderStatus(spec, now); ok {
-		return status
+func (s Service) statusForSpec(ctx context.Context, spec ProviderSpec, now time.Time) (status ProviderStatus) {
+	startedAt := time.Now()
+	var runtimeResolutionDuration time.Duration
+	var adapterProbeDuration time.Duration
+	var authDuration time.Duration
+	var cliVersionDuration time.Duration
+	var postChecksDuration time.Duration
+	adapterProbeRan := false
+	cliVersionRan := false
+	unsupported := false
+	defer func() {
+		slog.Info(
+			"agent provider status detection completed",
+			"event", "tutti.agent_provider.status_detection.completed",
+			"provider", spec.Provider,
+			"availability", status.Availability.Status,
+			"reasonCode", status.Availability.ReasonCode,
+			"durationMs", time.Since(startedAt).Milliseconds(),
+			"runtimeResolutionMs", runtimeResolutionDuration.Milliseconds(),
+			"adapterProbeRan", adapterProbeRan,
+			"adapterProbeMs", adapterProbeDuration.Milliseconds(),
+			"authMs", authDuration.Milliseconds(),
+			"cliVersionRan", cliVersionRan,
+			"cliVersionMs", cliVersionDuration.Milliseconds(),
+			"postChecksMs", postChecksDuration.Milliseconds(),
+			"unsupported", unsupported,
+		)
+	}()
+
+	if unsupportedStatus, ok := unsupportedProviderStatus(spec, now); ok {
+		unsupported = true
+		return unsupportedStatus
 	}
+	runtimeResolutionStartedAt := time.Now()
 	runtimeResolution := s.resolveProviderRuntime(ctx, spec)
+	runtimeResolutionDuration = time.Since(runtimeResolutionStartedAt)
 	installed := strings.TrimSpace(runtimeResolution.CLIPath) != ""
 	adapterInstalled := strings.TrimSpace(runtimeResolution.AdapterPath) != ""
 	adapterReady := adapterInstalled && adapterPackageRequirementSatisfied(spec.AdapterPackage, runtimeResolution.AdapterVersion)
@@ -31,25 +62,34 @@ func (s Service) statusForSpec(ctx context.Context, spec ProviderSpec, now time.
 	cliVersion := ""
 	var checks errgroup.Group
 	if installed && adapterReady && s.shouldProbeAdapterCommandForStatus(spec, runtimeResolution) {
+		adapterProbeRan = true
 		checks.Go(func() error {
+			probeStartedAt := time.Now()
 			if probe := s.probeAdapterRuntimeCommand(ctx, spec, runtimeResolution, now); probe.Status == ProbeFailed {
 				adapterReady = false
 				adapterLaunchFailed = true
 			}
+			adapterProbeDuration = time.Since(probeStartedAt)
 			return nil
 		})
 	}
 	checks.Go(func() error {
+		authStartedAt := time.Now()
 		auth = s.resolveAuth(ctx, spec, installed, runtimeResolution.CLIPath)
+		authDuration = time.Since(authStartedAt)
 		return nil
 	})
 	if installed {
+		cliVersionRan = true
 		checks.Go(func() error {
+			cliVersionStartedAt := time.Now()
 			cliVersion = s.cliVersion(ctx, runtimeResolution.CLIPath, runtimeResolution.Env)
+			cliVersionDuration = time.Since(cliVersionStartedAt)
 			return nil
 		})
 	}
 	_ = checks.Wait()
+	postChecksStartedAt := time.Now()
 
 	codexPlatformOK := true
 	if isCodexStatusSpec(spec) && installed {
@@ -121,7 +161,7 @@ func (s Service) statusForSpec(ctx context.Context, spec ProviderSpec, now time.
 		}
 	}
 
-	status := ProviderStatus{
+	status = ProviderStatus{
 		Provider:     spec.Provider,
 		Availability: availability,
 		CLI: CLIStatus{
@@ -181,6 +221,7 @@ func (s Service) statusForSpec(ctx context.Context, spec ProviderSpec, now time.
 			"missingPlatformPath", s.codexPlatformPackageMissingPath(runtimeResolution.CLIPath),
 		)
 	}
+	postChecksDuration = time.Since(postChecksStartedAt)
 	return status
 }
 

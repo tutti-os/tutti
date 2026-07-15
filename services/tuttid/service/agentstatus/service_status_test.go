@@ -1,7 +1,11 @@
 package agentstatus
 
 import (
+	"bytes"
 	"context"
+	"errors"
+	"log/slog"
+	"strings"
 	"testing"
 	"time"
 )
@@ -72,6 +76,42 @@ func TestServiceListDetectsProvidersConcurrently(t *testing.T) {
 	for _, status := range result.snapshot.Providers {
 		if status.Auth.Status != AuthAuthenticated {
 			t.Fatalf("Auth.Status for %q = %q, want %q", status.Provider, status.Auth.Status, AuthAuthenticated)
+		}
+	}
+}
+
+func TestServiceListLogsProviderDetectionTimings(t *testing.T) {
+	var output bytes.Buffer
+	previousLogger := slog.Default()
+	slog.SetDefault(slog.New(slog.NewTextHandler(&output, nil)))
+	t.Cleanup(func() {
+		slog.SetDefault(previousLogger)
+	})
+
+	service := testService(func(string) (string, error) {
+		return "", errors.New("not found")
+	}, map[string]bool{})
+	if _, err := service.List(t.Context(), ListInput{Providers: []string{"codex"}}); err != nil {
+		t.Fatalf("List() error = %v", err)
+	}
+
+	logOutput := output.String()
+	for _, field := range []string{
+		"event=tutti.agent_provider.status_detection.completed",
+		"provider=codex",
+		"durationMs=",
+		"runtimeResolutionMs=",
+		"adapterProbeMs=",
+		"authMs=",
+		"cliVersionMs=",
+		"postChecksMs=",
+		"event=tutti.agent_provider.status_list.completed",
+		"requestedProviderCount=1",
+		"providerCount=1",
+		"success=true",
+	} {
+		if !strings.Contains(logOutput, field) {
+			t.Fatalf("status timing log missing %q:\n%s", field, logOutput)
 		}
 	}
 }
