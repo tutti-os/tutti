@@ -14,6 +14,7 @@ import type {
 import { SOURCE_ROOT_NODE_ID } from "../../../core/referenceSourceAggregator.ts";
 import {
   appendReferencePage,
+  dedupeReferenceNodes,
   nodeRefKey,
   sortReferenceNodes
 } from "../../../core/referenceSourceUtils.ts";
@@ -461,7 +462,9 @@ export function createReferenceSourcePickerController(
         ...tab,
         isSearchLoading: false,
         isSearchLoadingMore: false,
-        searchEntries: sortReferenceNodes(result.entries),
+        // Search sources own relevance order. Browsing may group folders and
+        // sort names, but search must only deduplicate the ranked response.
+        searchEntries: dedupeReferenceNodes(result.entries),
         searchNextCursor: result.nextCursor ?? null,
         searchLimit: limit,
         // 本页返回数达到请求上限、且未触全局上限 → 认为可能还有更多(增长式分页启发式)。
