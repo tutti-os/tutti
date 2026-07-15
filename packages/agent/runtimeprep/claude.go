@@ -103,6 +103,9 @@ func installClaudeTuttiPlugin(pluginDir string, input PrepareInput) error {
 	if _, err := installProviderNativeSkills(filepath.Join(pluginDir, "skills"), input); err != nil {
 		return fmt.Errorf("install claude tutti skill plugin: %w", err)
 	}
+	if _, err := installTokenSaverSystemSkill(filepath.Join(pluginDir, "skills", ".system")); err != nil {
+		return fmt.Errorf("install claude token saver system skill: %w", err)
+	}
 	return nil
 }
 

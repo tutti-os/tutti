@@ -26,6 +26,10 @@ var hiddenTuttiProviderSkills = map[string]struct{}{
 	"tutti-cli":     {},
 	"issue-manager": {},
 	"workspace-app": {},
+	"tutti-handoff":  {},
+	"reference":     {},
+	"browser-use":   {},
+	"computer-use":  {},
 }
 
 func discoverComposerSkillOptions(provider string, cwd string, env []string) []ComposerSkillOption {
@@ -110,6 +114,10 @@ func claudeCodeComposerSkillRoots(cwd string, env []string) []composerSkillRoot 
 			path:       filepath.Join(pluginDir, "skills"),
 			sourceKind: composerSkillSourcePlugin,
 			pluginName: claudePluginName(pluginDir),
+		})
+		roots = append(roots, composerSkillRoot{
+			path:       filepath.Join(pluginDir, "skills", ".system"),
+			sourceKind: composerSkillSourceSystem,
 		})
 	}
 	return roots
@@ -567,9 +575,6 @@ func openCodeSkillTrigger(_ composerSkillRoot, name string) string {
 }
 
 func shouldHideComposerSkill(root composerSkillRoot, name string) bool {
-	if root.sourceKind == composerSkillSourceTuttiInjected {
-		return true
-	}
 	if _, ok := hiddenTuttiProviderSkills[strings.TrimSpace(name)]; ok {
 		return true
 	}
@@ -666,14 +671,16 @@ func composerCapabilityOptionsRuntimeContext(options []ComposerCapabilityOption)
 
 func skillSourceRank(sourceKind string) int {
 	switch sourceKind {
-	case composerSkillSourceProject:
-		return 0
-	case composerSkillSourcePersonal:
-		return 1
-	case composerSkillSourcePlugin:
-		return 2
 	case composerSkillSourceSystem:
+		return 0
+	case composerSkillSourceTuttiInjected:
+		return 1
+	case composerSkillSourceProject:
+		return 2
+	case composerSkillSourcePersonal:
 		return 3
+	case composerSkillSourcePlugin:
+		return 4
 	default:
 		return 9
 	}

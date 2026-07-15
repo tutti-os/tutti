@@ -80,6 +80,11 @@ func prepareCodexHome(codexHome string, input PrepareInput) error {
 	if err != nil {
 		return err
 	}
+	tokenSaverPath, err := installTokenSaverSystemSkill(filepath.Join(codexHome, "skills", ".system"))
+	if err != nil {
+		return err
+	}
+	skillPaths = append(skillPaths, tokenSaverPath...)
 	logRuntimePrepareTrace("runtime_prepare.codex.native_skills_resolved", input, map[string]any{
 		"skill_count": len(skillPaths),
 	})
