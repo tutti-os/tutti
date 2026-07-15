@@ -1099,3 +1099,37 @@ Turn state, loading, cancel, restore, rail projection, event updates, imports, a
   [main.ts](../../packages/agent/claude-sdk-sidecar/src/main.ts)
   [main.test.ts](../../packages/agent/claude-sdk-sidecar/src/main.test.ts)
   [claude_sdk_adapter.go](../../packages/agent/daemon/runtime/claude_sdk_adapter.go)
+
+### AgentActivity replication repeatedly rejects message batches as invalid
+
+- Symptom:
+  A downstream AgentActivity replica repeatedly returns `INVALID_ARGUMENT` for
+  the same message batch. The source session has a higher `messageVersion`, but
+  the destination has no messages or stops at an earlier version.
+- Quick checks:
+  Compare the session watermark with the current message rows. Values such as
+  `1,3` or `1,5` are valid when an intermediate snapshot of the same
+  `messageId` was overwritten. Check whether the destination requires
+  `incomingVersion == maxStoredVersion + 1` or treats a message version as
+  immutable identity.
+- Root cause:
+  `Message.Version` is a per-session change cursor on a mutable snapshot. Each
+  accepted update advances the cursor, and updating the same `messageId`
+  replaces its prior row. Current rows therefore need not contain every cursor
+  value, and the same message identity legitimately moves to a higher version.
+- Fix:
+  Replicas must accept any positive version for a new message, accept a higher
+  version for an existing `messageId`, and ignore or reject only stale lower
+  versions. Use a version-guarded atomic upsert so concurrent stale snapshots
+  cannot overwrite newer state. Do not add an event-history table merely to
+  make the current snapshot appear contiguous.
+- Validation:
+  Record message A at v1, message B at v2, then update B to v3. Verify the
+  current snapshot is `A@1,B@3`, `afterVersion=1` returns B at v3, and a
+  rejected projection does not consume another cursor. Downstream replication
+  coverage should also accept an initial v3, update it to v5, and preserve v5
+  when v4 arrives later.
+- References:
+  [activity_messages.go](../../../packages/agent/store-sqlite/activity_messages.go)
+  [activity_message_read.go](../../../packages/agent/store-sqlite/activity_message_read.go)
+  [repository.go](../../../packages/agent/store-sqlite/repository.go)

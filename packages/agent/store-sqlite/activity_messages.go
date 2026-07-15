@@ -38,7 +38,6 @@ func (s *Store) upsertAgentMessageTx(
 	tx *sql.Tx,
 	workspaceID string,
 	agentSessionID string,
-	version uint64,
 	input MessageUpdate,
 	now int64,
 ) (Message, bool, error) {
@@ -61,7 +60,7 @@ func (s *Store) upsertAgentMessageTx(
 			StartedAtUnixMS:   input.StartedAtUnixMS,
 			CompletedAtUnixMS: input.CompletedAtUnixMS,
 		},
-		version,
+		0,
 		now,
 	)
 	if !accepted {
@@ -81,6 +80,11 @@ func (s *Store) upsertAgentMessageTx(
 			}
 		}
 	}
+	version, err := incrementAgentSessionMessageVersion(ctx, tx, workspaceID, agentSessionID)
+	if err != nil {
+		return Message{}, false, err
+	}
+	message.Version = version
 	payloadJSON, err := json.Marshal(message.Payload)
 	if err != nil {
 		return Message{}, false, fmt.Errorf("encode workspace agent message payload: %w", err)
