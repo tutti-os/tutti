@@ -236,6 +236,7 @@ function normalizeAgentWindowInput(
     draftPrompt: input.draftPrompt?.trim() || null,
     openerBounds,
     openerWindowKind,
+    offsetFromSourceWindow: input.offsetFromSourceWindow === true,
     providerStatusSnapshot: input.providerStatusSnapshot ?? null,
     provider: input.provider?.trim() || null,
     userProjectPath: input.userProjectPath?.trim() || null,

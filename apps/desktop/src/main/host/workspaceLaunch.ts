@@ -28,6 +28,7 @@ export interface WorkspaceLaunchAgentWindowInput {
   draftPrompt?: string | null;
   openerBounds?: Electron.Rectangle | null;
   openerWindowKind?: "agent" | "workspace" | null;
+  offsetFromSourceWindow?: boolean;
   providerStatusSnapshot?: DesktopAgentProviderStatusSnapshot | null;
   provider?: string | null;
   userProjectPath?: string | null;

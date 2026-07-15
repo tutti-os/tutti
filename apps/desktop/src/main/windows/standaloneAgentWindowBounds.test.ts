@@ -3,6 +3,7 @@ import test from "node:test";
 import {
   resolveStandaloneAgentWindowBounds,
   resolveStandaloneAgentWindowContentWidth,
+  resolveStandaloneAgentWindowOffsetBounds,
   resolveStandaloneAgentWindowWorkArea,
   shouldAnimateStandaloneAgentWindowResize
 } from "./standaloneAgentWindowBounds.ts";
@@ -58,6 +59,30 @@ test("standalone agent window keeps minimums when 90 percent is too small", () =
       workArea: { height: 480, width: 460, x: 10, y: 30 }
     }),
     { height: 520, width: 420, x: 30, y: 30 }
+  );
+});
+
+test("standalone agent window offsets a duplicate right and down", () => {
+  assert.deepEqual(
+    resolveStandaloneAgentWindowOffsetBounds({
+      offset: 25,
+      sourceBounds: { height: 800, width: 1200, x: 100, y: 80 },
+      targetBounds: { height: 900, width: 1440, x: 80, y: 74 },
+      workArea: { height: 1080, width: 1920, x: 0, y: 24 }
+    }),
+    { height: 900, width: 1440, x: 125, y: 105 }
+  );
+});
+
+test("standalone agent window keeps an offset duplicate inside the display", () => {
+  assert.deepEqual(
+    resolveStandaloneAgentWindowOffsetBounds({
+      offset: 25,
+      sourceBounds: { height: 900, width: 1440, x: 500, y: 180 },
+      targetBounds: { height: 900, width: 1440, x: 80, y: 74 },
+      workArea: { height: 1080, width: 1920, x: 0, y: 24 }
+    }),
+    { height: 900, width: 1440, x: 480, y: 204 }
   );
 });
 

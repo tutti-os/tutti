@@ -28,6 +28,7 @@ import { resolvePackagedWorkspaceRendererIndexPath } from "./workspaceWindowPath
 import { createPrimaryWindowAnalyticsClaim } from "./primaryWindowAnalyticsClaim.ts";
 import {
   resolveStandaloneAgentWindowBounds,
+  resolveStandaloneAgentWindowOffsetBounds,
   resolveStandaloneAgentWindowWorkArea
 } from "./standaloneAgentWindowBounds.ts";
 
@@ -42,6 +43,7 @@ export interface CreateWorkspaceWindowOptions {
   theme: DesktopThemeState;
   openerBounds?: Electron.Rectangle | null;
   openerWindowKind?: "agent" | "workspace" | null;
+  offsetFromSourceWindow?: boolean;
   windowKind?: "agent" | "workspace";
   workspaceAppPreloadPath?: string;
   workspaceID: string;
@@ -62,6 +64,7 @@ const workspaceWindowDockHeightPx = 64;
 const agentWindowMinWidthPx = 420;
 const agentWindowMinHeightPx = 520;
 const agentWindowWorkAreaScale = 0.9;
+const agentWindowDuplicateOffsetPx = 25;
 const workspaceWindowKinds = new WeakMap<
   BrowserWindow,
   "agent" | "workspace"
@@ -75,7 +78,7 @@ export function createWorkspaceWindow(
   const agentDisplay = options.openerBounds
     ? screen.getDisplayMatching(options.openerBounds)
     : screen.getPrimaryDisplay();
-  const agentWindowBounds =
+  const defaultAgentWindowBounds =
     windowKind === "agent"
       ? resolveStandaloneAgentWindowBounds({
           scale: agentWindowWorkAreaScale,
@@ -92,6 +95,17 @@ export function createWorkspaceWindow(
           })
         })
       : null;
+  const agentWindowBounds =
+    defaultAgentWindowBounds &&
+    options.offsetFromSourceWindow === true &&
+    options.openerBounds
+      ? resolveStandaloneAgentWindowOffsetBounds({
+          offset: agentWindowDuplicateOffsetPx,
+          sourceBounds: options.openerBounds,
+          targetBounds: defaultAgentWindowBounds,
+          workArea: agentDisplay.workArea
+        })
+      : defaultAgentWindowBounds;
   const workspaceWindow = new BrowserWindow({
     backgroundColor: resolveDesktopWindowBackgroundColor(),
     frame: windowKind === "agent" ? false : undefined,

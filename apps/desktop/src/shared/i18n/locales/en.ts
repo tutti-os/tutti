@@ -144,6 +144,7 @@ export const en = {
       fallbackAgentLabel: "Agent",
       newConversation: "New session",
       openDetachedWindow: "Open in detached window",
+      openNewWindow: "Open new window",
       openSessionUnavailableDescription:
         "This agent session no longer exists or cannot be opened.",
       openSessionUnavailableTitle: "Session unavailable",

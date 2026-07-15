@@ -231,7 +231,7 @@ test("standalone Agent loads its body with the route instead of adding a second 
 test("standalone Agent duplicates the active window without minimizing its source", () => {
   assert.match(
     standaloneWindowSource,
-    /openDetachedWindow: i18n\.t\(\s*"workspace\.agentGui\.openDetachedWindow"\s*\)/
+    /openDetachedWindow: i18n\.t\(\s*"workspace\.agentGui\.openNewWindow"\s*\)/
   );
   assert.match(
     standaloneWindowSource,
@@ -239,7 +239,7 @@ test("standalone Agent duplicates the active window without minimizing its sourc
   );
   assert.match(
     standaloneWindowSource,
-    /handleDuplicateStandaloneWindow[\s\S]*?openAgentWindow\(\{[\s\S]*?agentDirectorySnapshot[\s\S]*?agentSessionId: nodeState\.lastActiveAgentSessionId[\s\S]*?agentTargetId: activeAgentTargetId[\s\S]*?minimizeSourceWindow: false[\s\S]*?provider: headerProvider[\s\S]*?workspaceId/
+    /handleDuplicateStandaloneWindow[\s\S]*?openAgentWindow\(\{[\s\S]*?agentDirectorySnapshot[\s\S]*?agentSessionId: nodeState\.lastActiveAgentSessionId[\s\S]*?agentTargetId: activeAgentTargetId[\s\S]*?minimizeSourceWindow: false[\s\S]*?offsetFromSourceWindow: true[\s\S]*?provider: headerProvider[\s\S]*?workspaceId/
   );
 });
 
