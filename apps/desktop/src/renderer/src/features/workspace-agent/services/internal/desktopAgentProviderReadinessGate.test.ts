@@ -50,6 +50,22 @@ test("projectDesktopAgentProviderReadinessGates gates missing provider statuses 
   assert.equal(gates["claude-code"]?.status, "checking");
 });
 
+test("projectDesktopAgentProviderReadinessGates keeps missing providers checking in partial snapshots", () => {
+  const gates = projectDesktopAgentProviderReadinessGates({
+    snapshot: {
+      capturedAt: "2026-07-15T00:00:00.000Z",
+      defaultProvider: "codex",
+      error: null,
+      isLoading: false,
+      pendingActions: [],
+      statuses: [providerStatus("codex", "ready")]
+    }
+  });
+
+  assert.equal(gates.codex, null);
+  assert.equal(gates["claude-code"]?.status, "checking");
+});
+
 test("projectDesktopAgentProviderReadinessGates lets users retry missing statuses after a failed first check", () => {
   const gates = projectDesktopAgentProviderReadinessGates({
     snapshot: {

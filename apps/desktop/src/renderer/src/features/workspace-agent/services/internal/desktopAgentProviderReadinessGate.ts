@@ -31,7 +31,6 @@ export function projectDesktopAgentProviderReadinessGates(input: {
   for (const provider of desktopManagedAgentProviders) {
     const agentGuiProvider = provider as AgentGUIProvider;
     const gate = projectDesktopAgentProviderReadinessGate({
-      captured: Boolean(input.snapshot.capturedAt),
       hasError: Boolean(input.snapshot.error),
       isLoading: input.snapshot.isLoading,
       pendingActions: input.snapshot.pendingActions,
@@ -55,7 +54,6 @@ export function projectDesktopAgentProviderReadinessGates(input: {
 }
 
 function projectDesktopAgentProviderReadinessGate(input: {
-  captured: boolean;
   hasError: boolean;
   isLoading: boolean;
   pendingActions: AgentProviderStatusSnapshot["pendingActions"];
@@ -64,10 +62,7 @@ function projectDesktopAgentProviderReadinessGate(input: {
 }): AgentGUIProviderReadinessGate | null {
   if (!input.status) {
     return {
-      status:
-        input.isLoading || (!input.captured && !input.hasError)
-          ? "checking"
-          : "unavailable",
+      status: input.hasError && !input.isLoading ? "unavailable" : "checking",
       pendingAction: pendingActionForProvider(
         input.pendingActions,
         input.provider

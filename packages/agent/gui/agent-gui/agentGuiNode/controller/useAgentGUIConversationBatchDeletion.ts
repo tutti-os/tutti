@@ -4,6 +4,7 @@ import {
   type RefObject,
   type SetStateAction
 } from "react";
+import { flushSync } from "react-dom";
 import type { AgentSessionEngine } from "@tutti-os/agent-activity-core";
 import type { AgentActivityRuntime } from "../../../agentActivityRuntime";
 import type { useAgentHostApi } from "../../../agentActivityHost";
@@ -51,10 +52,6 @@ export interface UseAgentGUIConversationBatchDeletionInput {
   removeConversations: (conversationIds: readonly string[]) => void;
   workspaceId: string;
   setIsDeletingProjectConversations: Dispatch<SetStateAction<boolean>>;
-  setAgentSessionViewMessagesLoading: (
-    ref: AgentSessionViewRef,
-    value: boolean
-  ) => void;
   agentActivityRuntime: AgentActivityRuntime;
   dataRef: RefObject<AgentGUINodeData>;
   agentHostApi: ReturnType<typeof useAgentHostApi>;
@@ -82,7 +79,6 @@ export function useAgentGUIConversationBatchDeletion(
     removeConversations,
     workspaceId,
     setIsDeletingProjectConversations,
-    setAgentSessionViewMessagesLoading,
     agentActivityRuntime,
     dataRef,
     agentHostApi
@@ -112,31 +108,15 @@ export function useAgentGUIConversationBatchDeletion(
           type: "queue/sessionCleaned"
         });
       }
-      const nextConversations = conversationsRef.current.filter(
-        (conversation) => !targetIds.has(conversation.id)
-      );
-      const currentActiveId = activeConversationIdRef.current;
-      if (currentActiveId && targetIds.has(currentActiveId)) {
-        const nextActive = nextConversations[0]?.id ?? null;
-        if (nextActive) {
-          markSelectedConversationDetailPending(nextActive);
-          setIntent({ tag: "active", id: nextActive });
-        } else {
-          setIsLoadingMessages(false);
-          setIntent({ tag: "home" });
-        }
-        activeConversationIdRef.current = nextActive;
-        setActiveConversationId(nextActive);
-        persistActiveConversation(nextActive);
-      }
       removeConversations([...targetIds]);
     },
     [
-      markSelectedConversationDetailPending,
-      persistActiveConversation,
+      deleteAgentSessionView,
+      removeConversations,
       sessionEngine,
       sessionViewRef,
-      removeConversations
+      setDraftByScopeKey,
+      submittedDraftSnapshotsRef
     ]
   );
 
@@ -214,11 +194,24 @@ export function useAgentGUIConversationBatchDeletion(
         activeDeletedConversationId &&
         targetIds.has(activeDeletedConversationId)
       ) {
-        setIsLoadingMessages(true);
-        setAgentSessionViewMessagesLoading(
-          sessionViewRef(activeDeletedConversationId),
-          true
-        );
+        const nextActive =
+          conversationsRef.current.find(
+            (conversation) => !targetIds.has(conversation.id)
+          )?.id ?? null;
+        if (nextActive) {
+          markSelectedConversationDetailPending(nextActive);
+        }
+        activeConversationIdRef.current = nextActive;
+        flushSync(() => {
+          if (nextActive) {
+            setIntent({ tag: "active", id: nextActive });
+          } else {
+            setIsLoadingMessages(false);
+            setIntent({ tag: "home" });
+          }
+          setActiveConversationId(nextActive);
+        });
+        persistActiveConversation(nextActive);
       }
       void deleteSessionsBatch({
         sessionIds: [...targetIds],
@@ -243,27 +236,27 @@ export function useAgentGUIConversationBatchDeletion(
           });
           setListError(message);
           showAgentGUIControllerErrorToast(agentHostApi.toast, message);
-          if (
-            activeDeletedConversationId &&
-            activeConversationIdRef.current === activeDeletedConversationId
-          ) {
-            setIsLoadingMessages(false);
-            setAgentSessionViewMessagesLoading(
-              sessionViewRef(activeDeletedConversationId),
-              false
-            );
-          }
         })
         .finally(() => {
           setIsDeletingProjectConversations(false);
         });
     },
     [
+      activeConversationIdRef,
       agentActivityRuntime,
+      agentHostApi.toast,
+      conversationsRef,
+      dataRef,
       finalizeConversationBatchDeletion,
       isDeletingProjectConversations,
-      sessionViewRef,
-      agentHostApi.toast,
+      markSelectedConversationDetailPending,
+      persistActiveConversation,
+      setActiveConversationId,
+      setDetailError,
+      setIntent,
+      setIsDeletingProjectConversations,
+      setIsLoadingMessages,
+      setListError,
       workspaceId
     ]
   );

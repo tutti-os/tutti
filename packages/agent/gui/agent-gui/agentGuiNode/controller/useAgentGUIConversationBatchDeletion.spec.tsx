@@ -1,12 +1,13 @@
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
+import { useState } from "react";
 import type { AgentSessionEngine } from "@tutti-os/agent-activity-core";
 import type { AgentActivityRuntime } from "../../../agentActivityRuntime";
 import { useAgentGUIConversationBatchDeletion } from "./useAgentGUIConversationBatchDeletion";
 
 function createInput(agentActivityRuntime: AgentActivityRuntime) {
   return {
-    activeConversationIdRef: { current: null },
+    activeConversationIdRef: { current: null as string | null },
     agentActivityRuntime,
     agentHostApi: { toast: { error: vi.fn() } } as never,
     conversationsRef: {
@@ -37,7 +38,6 @@ function createInput(agentActivityRuntime: AgentActivityRuntime) {
       workspaceId: "workspace-1"
     }),
     setActiveConversationId: vi.fn(),
-    setAgentSessionViewMessagesLoading: vi.fn(),
     setDetailError: vi.fn(),
     setDraftByScopeKey: vi.fn(),
     setIntent: vi.fn(),
@@ -133,5 +133,62 @@ describe("useAgentGUIConversationBatchDeletion", () => {
     expect(sessionIds).toEqual([]);
     await waitFor(() => expect(load).toHaveBeenCalledWith("workspace-1"));
     expect(runtime.deleteSessionsBatch).not.toHaveBeenCalled();
+  });
+
+  it("commits a surviving conversation before deleting a batch containing the active session", async () => {
+    let committedActiveConversationId: string | null = "loaded-session";
+    let activeConversationIdObservedByDelete: string | null = null;
+    const deleteSessionsBatch = vi.fn(async () => {
+      activeConversationIdObservedByDelete = committedActiveConversationId;
+      return {
+        removedMessages: 0,
+        removedSessionIds: ["loaded-session"],
+        removedSessions: 1
+      };
+    });
+    const runtime = {
+      deleteSession: vi.fn(),
+      deleteSessionsBatch
+    } as unknown as AgentActivityRuntime;
+    const input = createInput(runtime);
+    input.activeConversationIdRef.current = "loaded-session";
+    input.conversationsRef.current = [
+      ...input.conversationsRef.current,
+      {
+        cwd: "/workspace",
+        id: "surviving-session",
+        provider: "codex" as const,
+        sortTimeUnixMs: 2,
+        status: "completed" as const,
+        title: "Surviving",
+        titleFallback: null,
+        updatedAtUnixMs: 2,
+        userId: "user-1"
+      }
+    ];
+    const { result } = renderHook(() => {
+      const [activeConversationId, setActiveConversationId] = useState<
+        string | null
+      >("loaded-session");
+      committedActiveConversationId = activeConversationId;
+      return {
+        activeConversationId,
+        ...useAgentGUIConversationBatchDeletion({
+          ...input,
+          setActiveConversationId
+        })
+      };
+    });
+
+    act(() => result.current.confirmDeleteConversations(["loaded-session"]));
+
+    expect(result.current.activeConversationId).toBe("surviving-session");
+    expect(activeConversationIdObservedByDelete).toBe("surviving-session");
+    expect(input.persistActiveConversation).toHaveBeenCalledWith(
+      "surviving-session"
+    );
+    await waitFor(() =>
+      expect(input.removeConversations).toHaveBeenCalledWith(["loaded-session"])
+    );
   });
 });

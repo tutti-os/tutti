@@ -4,12 +4,12 @@ import {
   type RefObject,
   type SetStateAction
 } from "react";
+import { flushSync } from "react-dom";
 import type { AgentSessionEngine } from "@tutti-os/agent-activity-core";
 import type { AgentActivityRuntime } from "../../../agentActivityRuntime";
 import type { useAgentHostApi } from "../../../agentActivityHost";
 import type { AgentSessionViewRef } from "../../../contexts/workspace/presentation/renderer/agentSessions/useAgentSessionTransport";
 import type { useAgentGUIActivation } from "./useAgentGUIActivation";
-import { type AgentGUIConversationListQuery } from "../../../contexts/workspace/presentation/renderer/agentGuiConversationList/useAgentGuiConversationList";
 import { type AgentGUIConversationSummary } from "../model/agentGuiConversationModel";
 import type {
   AgentComposerDraft,
@@ -35,10 +35,6 @@ export interface UseAgentGUIConversationDeletionInput {
   setIsDeletingConversation: Dispatch<SetStateAction<boolean>>;
   activeConversationIdRef: RefObject<string | null>;
   setIsLoadingMessages: Dispatch<SetStateAction<boolean>>;
-  setAgentSessionViewMessagesLoading: (
-    ref: AgentSessionViewRef,
-    value: boolean
-  ) => void;
   sessionViewRef: (agentSessionId: string | null | undefined) => {
     workspaceId: string;
     agentSessionId: string | null | undefined;
@@ -61,7 +57,6 @@ export interface UseAgentGUIConversationDeletionInput {
   persistActiveConversation: (agentSessionId: string | null) => void;
   removeConversations: (conversationIds: readonly string[]) => void;
   agentHostApi: ReturnType<typeof useAgentHostApi>;
-  conversationListQuery: AgentGUIConversationListQuery | null;
   workspaceId: string;
 }
 
@@ -77,7 +72,6 @@ export function useAgentGUIConversationDeletion(
     setIsDeletingConversation,
     activeConversationIdRef,
     setIsLoadingMessages,
-    setAgentSessionViewMessagesLoading,
     sessionViewRef,
     activation,
     agentActivityRuntime,
@@ -92,10 +86,8 @@ export function useAgentGUIConversationDeletion(
     persistActiveConversation,
     removeConversations,
     agentHostApi,
-    conversationListQuery,
     workspaceId
   } = input;
-
   const requestDeleteConversation = useCallback(
     (agentSessionId: string) => {
       const normalized = agentSessionId.trim();
@@ -129,8 +121,31 @@ export function useAgentGUIConversationDeletion(
     setIsDeletingConversation(true);
     setDetailError(null);
     if (activeConversationIdRef.current === target.id) {
-      setIsLoadingMessages(true);
-      setAgentSessionViewMessagesLoading(sessionViewRef(target.id), true);
+      const currentConversations = conversationsRef.current;
+      const targetIndex = currentConversations.findIndex(
+        (conversation) => conversation.id === target.id
+      );
+      const nextConversations = currentConversations.filter(
+        (conversation) => conversation.id !== target.id
+      );
+      const nextActive =
+        nextConversations[Math.max(0, targetIndex)]?.id ??
+        nextConversations[Math.max(0, targetIndex - 1)]?.id ??
+        null;
+      if (nextActive) {
+        markSelectedConversationDetailPending(nextActive);
+      }
+      activeConversationIdRef.current = nextActive;
+      flushSync(() => {
+        if (nextActive) {
+          setIntent({ tag: "active", id: nextActive });
+        } else {
+          setIsLoadingMessages(false);
+          setIntent({ tag: "home" });
+        }
+        setActiveConversationId(nextActive);
+      });
+      persistActiveConversation(nextActive);
     }
     void activation
       .unactivate(target.id)
@@ -159,29 +174,6 @@ export function useAgentGUIConversationDeletion(
           type: "queue/sessionCleaned"
         });
         deleteAgentSessionView(sessionViewRef(target.id));
-        const currentConversations = conversationsRef.current;
-        const targetIndex = currentConversations.findIndex(
-          (conversation) => conversation.id === target.id
-        );
-        const nextConversations = currentConversations.filter(
-          (conversation) => conversation.id !== target.id
-        );
-        if (activeConversationIdRef.current === target.id) {
-          const nextActive =
-            nextConversations[Math.max(0, targetIndex)]?.id ??
-            nextConversations[Math.max(0, targetIndex - 1)]?.id ??
-            null;
-          if (nextActive) {
-            markSelectedConversationDetailPending(nextActive);
-            setIntent({ tag: "active", id: nextActive });
-          } else {
-            setIsLoadingMessages(false);
-            setIntent({ tag: "home" });
-          }
-          activeConversationIdRef.current = nextActive;
-          setActiveConversationId(nextActive);
-          persistActiveConversation(nextActive);
-        }
         removeConversations([target.id]);
         setPendingDeleteConversation(null);
       })
@@ -196,27 +188,33 @@ export function useAgentGUIConversationDeletion(
           workspaceId
         });
         showAgentGUIControllerErrorToast(agentHostApi.toast, message);
-        if (activeConversationIdRef.current === target.id) {
-          setIsLoadingMessages(false);
-          setAgentSessionViewMessagesLoading(sessionViewRef(target.id), false);
-        }
       })
       .finally(() => {
         setIsDeletingConversation(false);
       });
   }, [
     activation,
-    conversationListQuery,
-    isDeletingConversation,
-    pendingDeleteConversation,
-    markSelectedConversationDetailPending,
-    persistActiveConversation,
-    workspaceId,
-    sessionViewRef,
+    activeConversationIdRef,
     agentActivityRuntime,
     agentHostApi.toast,
+    conversationsRef,
+    deleteAgentSessionView,
+    isDeletingConversation,
+    markSelectedConversationDetailPending,
+    pendingDeleteConversation,
+    persistActiveConversation,
+    removeConversations,
     sessionEngine,
-    removeConversations
+    sessionViewRef,
+    setActiveConversationId,
+    setDetailError,
+    setDraftByScopeKey,
+    setIntent,
+    setIsDeletingConversation,
+    setIsLoadingMessages,
+    setPendingDeleteConversation,
+    submittedDraftSnapshotsRef,
+    workspaceId
   ]);
 
   return {

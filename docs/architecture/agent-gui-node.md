@@ -2211,6 +2211,10 @@ User-visible rules:
   retry path that silently creates another session.
 - Deleted or filtered sessions should clear selection only through the
   selection fallback path; do not let a hidden row leave a stale detail pane.
+  User-confirmed deletion of the active session must commit that fallback
+  selection before dispatching the runtime deletion that tombstones the old
+  session. Do not suppress authoritative `not_found` presentation to hide a
+  selection/tombstone ordering bug.
 - Event-stream disconnect should not erase current transcript state. It should
   make live freshness uncertain until reconciliation succeeds.
 
