@@ -62,6 +62,7 @@ Production:
   run/
     tuttid.listener.json
     tuttid.pid
+    tuttid.pid.lock
 ```
 
 Local development:
@@ -78,11 +79,33 @@ Local development:
   run/
     tuttid.listener.json
     tuttid.pid
+    tuttid.pid.lock
 ```
 
 `tuttid.listener.json` is runtime endpoint metadata. It contains the loopback
 address and per-run bearer auth needed by local clients such as the bundled
 CLI, and should be written with restrictive file permissions.
+
+## Daemon State Ownership
+
+One state root has exactly one live `tuttid` owner. The daemon must acquire and
+hold an exclusive operating-system lock on `<state-dir>/run/tuttid.pid.lock` before
+initializing logging, recovering runtime locks, opening SQLite, running
+migrations, seeding system records, or publishing listener metadata. A second
+daemon targeting the same root must fail before touching durable state. The PID
+text remains available for desktop supervision and also protects upgrades from
+an older live daemon that did not yet hold the operating-system lock.
+
+Arguments that only inspect the daemon executable, such as `--help`, must exit
+before state-path creation or ownership acquisition. Unknown arguments must
+also fail without starting a daemon. Building or probing `tuttid` from an agent
+or terminal therefore cannot silently become another production daemon.
+
+Bare daemon execution defaults to production state. Development commands must
+set `TUTTI_ENV=development`, set an explicit `TUTTI_STATE_DIR`, or use the
+repository's managed development entry points. Environment separation and
+single-owner locking are complementary: separation prevents unintended access;
+locking prevents concurrent mutation after a root has been selected.
 
 Migrated agent runtime state should derive from the same root:
 
@@ -189,6 +212,7 @@ Tutti provider startup.
 - desktop-managed local development starts `tuttid` with `TUTTI_ENV=development`
 - packaged desktop builds start `tuttid` with `TUTTI_ENV=production`
 - path helpers reserve `<state-dir>/logs` and `<state-dir>/run` for daemon log, listener-info, and pid files
+- `tuttid` holds an exclusive lock on `<state-dir>/run/tuttid.pid.lock` for its full state-owning lifetime
 - desktop main-process operational logging defaults to `<state-dir>/logs/tutti-desktop.log`
 - desktop-to-daemon listener publication defaults to `<state-dir>/run/tuttid.listener.json`
 - the bundled CLI discovers the managed daemon by reading `<state-dir>/run/tuttid.listener.json`

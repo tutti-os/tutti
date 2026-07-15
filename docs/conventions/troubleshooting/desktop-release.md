@@ -86,6 +86,51 @@
   [bootstrap.ts](../../../apps/desktop/src/main/bootstrap.ts)
   [defaults.ts](../../../apps/desktop/src/main/defaults.ts)
 
+### Running a development tuttid breaks the production Agent session
+
+- Symptom:
+  Production Tutti is used to develop Tutti itself. After an Agent runs a newly
+  built `tuttid` command, sending in a new conversation fails and the workspace
+  returns to the previously selected conversation. Daemon logs may report an
+  unsupported Agent Target launch-ref type immediately after a second daemon
+  starts.
+- Quick checks:
+  List live `tuttid` processes and compare their command paths. Inspect
+  `~/.tutti/logs/tuttid.log` for overlapping startup records, then check the
+  command run by the Agent for a bare daemon binary without
+  `TUTTI_ENV=development` or `TUTTI_STATE_DIR`. A historical `tuttid --help`
+  invocation is significant because older binaries treated it as normal
+  startup.
+- Root cause:
+  Bare daemon execution selects the production root. Older `tuttid` binaries
+  did not parse `--help` and overwrote the shared PID file instead of claiming
+  exclusive state ownership. The second process could open the production
+  SQLite database and reseed system Agent Targets with a newer launch-ref
+  discriminator while the packaged daemon still expected the older value.
+  Session creation then failed, and renderer recovery restored the previous
+  conversation.
+- Immediate recovery:
+  Quit Tutti completely, terminate any remaining `tuttid` processes after
+  verifying their command paths, then reopen production Tutti. Do not delete
+  `tuttid.db`; normal daemon startup reseeds its own system records. For further
+  local daemon work, use the managed development command or explicitly set
+  `TUTTI_ENV=development`/`TUTTI_STATE_DIR`.
+- Fix:
+  Parse help and reject unknown arguments before creating state. Acquire the
+  PID sidecar as an exclusive operating-system lease before logging, lock
+  recovery, database wiring, migrations, or listener publication. Keep the PID
+  text check so a new daemon also refuses a state root owned by a live older
+  daemon.
+- Validation:
+  Run focused daemon tests. Verify `tuttid --help` exits successfully without
+  creating the selected state root, invalid arguments exit nonzero without
+  state, a live legacy PID is rejected, a stale PID is recovered, and a second
+  lease cannot be acquired while the first is held.
+- References:
+  [main.go](../../../services/tuttid/main.go)
+  [pid_file.go](../../../services/tuttid/pid_file.go)
+  [local-state-storage.md](../local-state-storage.md)
+
 ### macOS updates fail from a mounted DMG
 
 - Symptom:

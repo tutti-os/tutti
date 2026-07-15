@@ -3,10 +3,10 @@ package main
 import (
 	"context"
 	"fmt"
+	"io"
 	"log/slog"
 	"os"
 	"os/signal"
-	"path/filepath"
 	"strconv"
 	"strings"
 	"syscall"
@@ -18,27 +18,36 @@ import (
 )
 
 func main() {
+	os.Exit(run(os.Args[1:], os.Stdout, os.Stderr))
+}
+
+func run(args []string, stdout io.Writer, stderr io.Writer) int {
+	if exitCode, shouldExit := handleArguments(args, stdout, stderr); shouldExit {
+		return exitCode
+	}
+
 	signal.Ignore(syscall.SIGPIPE)
+
+	pidLease, err := acquirePIDFile()
+	if err != nil {
+		fmt.Fprintf(stderr, "acquire tuttid pid file: %v\n", err)
+		return 1
+	}
+	defer pidLease.Release()
 
 	loggerSetup, err := tuttiapp.SetupLoggerFromEnv()
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "configure tuttid logger: %v\n", err)
-		os.Exit(1)
+		fmt.Fprintf(stderr, "configure tuttid logger: %v\n", err)
+		return 1
 	}
 	defer func() {
 		if closeErr := loggerSetup.Close(); closeErr != nil {
-			fmt.Fprintf(os.Stderr, "close tuttid logger: %v\n", closeErr)
+			fmt.Fprintf(stderr, "close tuttid logger: %v\n", closeErr)
 		}
 	}()
 
 	slog.SetDefault(loggerSetup.Logger)
 	recoverInstallCommandLock(slog.Default())
-
-	if err := writePIDFile(); err != nil {
-		fmt.Fprintf(os.Stderr, "write tuttid pid file: %v\n", err)
-		os.Exit(1)
-	}
-	defer removePIDFile()
 
 	parentCtx, cancelParentMonitor := contextWithDesktopParentMonitor(context.Background(), slog.Default())
 	defer cancelParentMonitor()
@@ -48,32 +57,39 @@ func main() {
 
 	srv, listener, wiring, err := buildTuttiServer()
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "build tuttid server: %v\n", err)
-		os.Exit(1)
+		fmt.Fprintf(stderr, "build tuttid server: %v\n", err)
+		return 1
 	}
 	defer func() {
 		_ = wiring.Close()
 	}()
 
 	if err := tuttiapp.New(srv, listener, loggerSetup.LogFilePath).Run(ctx); err != nil {
-		fmt.Fprintf(os.Stderr, "tuttid exited: %v\n", err)
-		os.Exit(1)
+		fmt.Fprintf(stderr, "tuttid exited: %v\n", err)
+		return 1
 	}
+	return 0
 }
 
-func writePIDFile() error {
-	pidPath := tuttitypes.TuttidPIDPath()
-	if err := os.MkdirAll(filepath.Dir(pidPath), 0o755); err != nil {
-		return fmt.Errorf("create pid file directory: %w", err)
-	}
-	if err := os.WriteFile(pidPath, []byte(fmt.Sprintf("%d\n", os.Getpid())), 0o644); err != nil {
-		return fmt.Errorf("write pid file: %w", err)
-	}
-	return nil
-}
+const tuttidUsage = `Usage: tuttid [options]
 
-func removePIDFile() {
-	_ = os.Remove(tuttitypes.TuttidPIDPath())
+Runs the Tutti local daemon. Tutti Desktop normally manages this process.
+
+Options:
+  -h, --help  Show this help.
+`
+
+func handleArguments(args []string, stdout io.Writer, stderr io.Writer) (int, bool) {
+	if len(args) == 0 {
+		return 0, false
+	}
+	if len(args) == 1 && (args[0] == "-h" || args[0] == "--help") {
+		fmt.Fprint(stdout, tuttidUsage)
+		return 0, true
+	}
+
+	fmt.Fprintf(stderr, "tuttid: unexpected arguments: %s\n\n%s", strings.Join(args, " "), tuttidUsage)
+	return 2, true
 }
 
 func recoverInstallCommandLock(logger *slog.Logger) {
