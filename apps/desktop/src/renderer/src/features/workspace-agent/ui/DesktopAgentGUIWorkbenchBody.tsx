@@ -686,6 +686,25 @@ function DesktopAgentGUIWorkbenchBodyImpl({
     }
     return labels;
   }, [providerStatusSnapshot.statuses]);
+  const handoffWorkspaceIdRef = useRef(workspaceId);
+  handoffWorkspaceIdRef.current = workspaceId;
+  const handleHandoffConversationRef =
+    useRef<NonNullable<AgentGUIProps["hostActions"]["onHandoffConversation"]>>(
+      null
+    );
+  if (!handleHandoffConversationRef.current) {
+    handleHandoffConversationRef.current = async (request) => {
+      await requestWorkspaceAgentGuiLaunch({
+        agentTargetId: request.agentTargetId,
+        draftPrompt: request.draftPrompt,
+        openInNewWindow: true,
+        provider: normalizeDesktopAgentGUIProvider(request.provider),
+        userProjectPath: request.userProjectPath,
+        workspaceId: handoffWorkspaceIdRef.current
+      });
+    };
+  }
+  const handleHandoffConversation = handleHandoffConversationRef.current;
 
   return (
     <>
@@ -779,16 +798,7 @@ function DesktopAgentGUIWorkbenchBodyImpl({
           onLinkAction: previewMode ? undefined : onLinkAction,
           onHandoffConversation: previewMode
             ? undefined
-            : async (request) => {
-                await requestWorkspaceAgentGuiLaunch({
-                  agentTargetId: request.agentTargetId,
-                  draftPrompt: request.draftPrompt,
-                  openInNewWindow: true,
-                  provider: normalizeDesktopAgentGUIProvider(request.provider),
-                  userProjectPath: request.userProjectPath,
-                  workspaceId
-                });
-              },
+            : handleHandoffConversation,
           onResize: DESKTOP_AGENT_GUI_NOOP,
           onShowMessage: handleDesktopAgentGUIShowMessage,
           onUpdateNode: handleUpdateNode,

@@ -2,9 +2,10 @@ import {
   resolveAgentActivityCapability,
   resolveAgentActivityUsage,
   type AgentActivitySnapshot,
+  type AgentActivityUsage,
   type CanonicalAgentSession
 } from "@tutti-os/agent-activity-core";
-import { useMemo } from "react";
+import { useMemo, useRef } from "react";
 import type {
   AgentSessionComposerSettings,
   AgentSessionReasoningEffort,
@@ -105,6 +106,18 @@ export function useAgentGUIComposerCapabilities(
     };
   }, [providerComposerOptions, sessionCapabilities]);
 
+  const usageSource = input.activeEngineSession?.usage ?? null;
+  const usageProjectionRef = useRef<{
+    source: typeof usageSource;
+    value: AgentActivityUsage | null;
+  } | null>(null);
+  if (usageProjectionRef.current?.source !== usageSource) {
+    usageProjectionRef.current = {
+      source: usageSource,
+      value: resolveAgentActivityUsage({ sessionUsage: usageSource })
+    };
+  }
+
   return {
     backgroundAgentCount:
       input.activeEngineSession?.backgroundAgents?.count ?? 0,
@@ -129,8 +142,6 @@ export function useAgentGUIComposerCapabilities(
       (resolvedPromptImagesSupported ?? true) &&
       selectedModelImageInputSupported,
     providerComposerOptions,
-    usage: resolveAgentActivityUsage({
-      sessionUsage: input.activeEngineSession?.usage ?? null
-    })
+    usage: usageProjectionRef.current.value
   };
 }

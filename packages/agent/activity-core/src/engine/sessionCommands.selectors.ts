@@ -1,5 +1,7 @@
 import type { AgentSessionEngineState } from "./types.ts";
 
+const EMPTY_ENGINE_AVAILABLE_COMMANDS: never[] = [];
+
 export function selectEngineAvailableCommands(
   state: AgentSessionEngineState,
   agentSessionId: string | null | undefined
@@ -9,5 +11,5 @@ export function selectEngineAvailableCommands(
   const session = state.sessionLifecycle.sessionsById[id];
   return entry && session?.workspaceId === entry.workspaceId
     ? entry.commands
-    : [];
+    : EMPTY_ENGINE_AVAILABLE_COMMANDS;
 }

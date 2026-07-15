@@ -415,6 +415,26 @@ export const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
             target.agentTargetId === agentTargetId
           );
         }) ?? viewModel.rail.selectedAgentTarget);
+  const stableHandoffConversation = useOptionalStableEventCallback(
+    onHandoffConversation && viewModel.rail.activeConversationId !== null
+      ? (target: (typeof composerHandoffProviderTargets)[number]) =>
+          onHandoffConversation({
+            agentTargetId: target.agentTargetId ?? target.targetId,
+            draftPrompt: buildAgentConversationHandoffPrompt({
+              activeConversation: viewModel.rail.activeConversation,
+              currentUserId: viewModel.shell.currentUserId,
+              labels,
+              selectedAgentTarget: composerSelectedProviderTarget,
+              uiLanguage,
+              workspaceId: viewModel.shell.workspaceId
+            }),
+            provider: target.provider,
+            userProjectPath: handoffProjectPathForConversation(
+              viewModel.rail.activeConversation
+            )
+          })
+      : undefined
+  );
   const bottomDockComposerProps = useMemo<AgentComposerProps>(
     () => ({
       workspaceId: viewModel.shell.workspaceId,
@@ -458,8 +478,7 @@ export const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
       showStopButton,
       previewMode,
       workspaceReferencePickerOpen,
-      // Plan decisions replace the composer via bottomDockReplacementPrompt;
-      // approval / ask-user embed here (composerActivePrompt encodes that).
+      // Plan decisions replace the composer; approval / ask-user embed here.
       activePrompt: composerActivePrompt,
       backgroundAgentStatusText,
       activePromptKeyboardShortcutsEnabled: isActive,
@@ -490,25 +509,7 @@ export const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
       onSubmitInteractivePrompt: submitInteractivePrompt,
       onCapabilitySettingsRequest,
       onLinkAction: stableLinkAction,
-      onHandoffConversation:
-        onHandoffConversation && viewModel.rail.activeConversationId !== null
-          ? (target) =>
-              onHandoffConversation({
-                agentTargetId: target.agentTargetId ?? target.targetId,
-                draftPrompt: buildAgentConversationHandoffPrompt({
-                  activeConversation: viewModel.rail.activeConversation,
-                  currentUserId: viewModel.shell.currentUserId,
-                  labels,
-                  selectedAgentTarget: composerSelectedProviderTarget,
-                  uiLanguage,
-                  workspaceId: viewModel.shell.workspaceId
-                }),
-                provider: target.provider,
-                userProjectPath: handoffProjectPathForConversation(
-                  viewModel.rail.activeConversation
-                )
-              })
-          : undefined,
+      onHandoffConversation: stableHandoffConversation,
       onRequestWorkspaceReferences: stableRequestWorkspaceReferences,
       resolveDroppedFileReferences,
       selectProjectDirectory: stableSelectProjectDirectory,
@@ -538,7 +539,7 @@ export const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
       labels.promptTips,
       labels.providerSwitchLabel,
       labels,
-      onHandoffConversation,
+      stableHandoffConversation,
       onSlashStatusOpen,
       previewMode,
       workspaceReferencePickerOpen,

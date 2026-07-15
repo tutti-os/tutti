@@ -8,7 +8,7 @@ import {
   type PendingActivationIntentRecord,
   type AgentSessionEngine
 } from "@tutti-os/agent-activity-core";
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import type { AgentActivityRuntime } from "../../../agentActivityRuntime";
 import { translate } from "../../../i18n/index";
 import type { AgentConversationVM } from "../../../shared/agentConversation/contracts/agentConversationVM";
@@ -169,6 +169,22 @@ export function useAgentGUISessionPresentation(
     input.activeConversationId !== null && input.activationState !== "active";
   const activeConversationResumeUnavailable =
     activeConversationRequiresResume && activeSessionResumable === false;
+  const sessionChromeRawStateRef =
+    useRef<AgentGUISessionChrome["rawState"]>(null);
+  const currentSessionChromeRawState = sessionChromeRawStateRef.current;
+  if (!input.activeEngineSession) {
+    sessionChromeRawStateRef.current = null;
+  } else if (
+    currentSessionChromeRawState?.agentSessionId !==
+      input.activeEngineSession.agentSessionId ||
+    currentSessionChromeRawState.goal !== input.activeEngineSession.goal
+  ) {
+    sessionChromeRawStateRef.current = {
+      agentSessionId: input.activeEngineSession.agentSessionId,
+      goal: input.activeEngineSession.goal
+    };
+  }
+  const sessionChromeRawState = sessionChromeRawStateRef.current;
   const sessionChrome = useMemo<AgentGUISessionChrome>(() => {
     const normalizedError = input.activationError?.trim() ?? "";
     const authState = input.activeSessionState?.authState?.trim() ?? "";
@@ -220,7 +236,7 @@ export function useAgentGUISessionPresentation(
                   canRetry: !providerSessionMissing
                 }
             : null,
-      rawState: input.activeEngineSession
+      rawState: sessionChromeRawState
     };
   }, [
     activeConversationResumeUnavailable,
@@ -228,11 +244,11 @@ export function useAgentGUISessionPresentation(
     input.activationError,
     input.activationErrorCode,
     input.activeConversationId,
-    input.activeEngineSession,
     input.activeLiveState,
     input.activeSessionState,
     input.activePendingActivation?.mode,
-    input.pendingApproval
+    input.pendingApproval,
+    sessionChromeRawState
   ]);
   const canSubmit =
     !input.agentTargetsLoading &&

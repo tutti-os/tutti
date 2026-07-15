@@ -43,6 +43,7 @@ interface AgentGUIConversationRailSectionProps {
   isRequestingBatchDeletion: boolean;
   isConversationSearchActive: boolean;
   isLoadingMoreConversations: boolean;
+  isRailInteractionLocked: () => boolean;
   sectionHasMore: boolean;
   sectionTotalCount: number;
   createConversationDisabled: boolean;
@@ -89,6 +90,7 @@ export const AgentGUIConversationRailSection = memo(
     isRequestingBatchDeletion,
     isConversationSearchActive,
     isLoadingMoreConversations,
+    isRailInteractionLocked,
     sectionHasMore,
     sectionTotalCount,
     createConversationDisabled,
@@ -179,6 +181,7 @@ export const AgentGUIConversationRailSection = memo(
       !isSectionCollapsed &&
       visibleItemCount > AGENT_GUI_CONVERSATION_RAIL_SECTION_PAGE_SIZE;
     const showMoreConversations = useCallback(() => {
+      if (isRailInteractionLocked()) return;
       if (visibleItemCount >= pageableItems.length && sectionHasMore) {
         onLoadMoreConversations(section);
         setVisibleItemLimitState((current) => ({
@@ -203,6 +206,7 @@ export const AgentGUIConversationRailSection = memo(
       }));
     }, [
       onLoadMoreConversations,
+      isRailInteractionLocked,
       pageableItems.length,
       paginationScopeKey,
       section,
@@ -210,11 +214,12 @@ export const AgentGUIConversationRailSection = memo(
       visibleItemCount
     ]);
     const showLessConversations = useCallback(() => {
+      if (isRailInteractionLocked()) return;
       setVisibleItemLimitState({
         limit: AGENT_GUI_CONVERSATION_RAIL_SECTION_PAGE_SIZE,
         scopeKey: paginationScopeKey
       });
-    }, [paginationScopeKey]);
+    }, [isRailInteractionLocked, paginationScopeKey]);
 
     const canCreateConversationFromSection =
       section.kind === "conversations" || Boolean(projectPath);
@@ -222,6 +227,7 @@ export const AgentGUIConversationRailSection = memo(
       ? labels.projectSectionEdit
       : labels.newConversation;
     const handleCreateConversation = useCallback(() => {
+      if (isRailInteractionLocked()) return;
       if (projectPath) {
         onCreateConversation({ projectPath, source: "project_section" });
         return;
@@ -230,7 +236,7 @@ export const AgentGUIConversationRailSection = memo(
         projectPath: null,
         source: "unscoped_section"
       });
-    }, [onCreateConversation, projectPath]);
+    }, [isRailInteractionLocked, onCreateConversation, projectPath]);
 
     return (
       <section
@@ -244,7 +250,11 @@ export const AgentGUIConversationRailSection = memo(
               type="button"
               className={styles.conversationSectionToggle}
               aria-expanded={!isSectionCollapsed}
-              onClick={() => onToggleProjectSectionCollapsed(section.id)}
+              onClick={() => {
+                if (!isRailInteractionLocked()) {
+                  onToggleProjectSectionCollapsed(section.id);
+                }
+              }}
             >
               <ChevronRight
                 aria-hidden="true"
@@ -365,6 +375,7 @@ export const AgentGUIConversationRailSection = memo(
                       className={`${styles.composerMenuItem} nodrag [-webkit-app-region:no-drag]`}
                       disabled={!onOpenProjectFiles}
                       onSelect={() => {
+                        if (isRailInteractionLocked()) return;
                         onOpenProjectFiles?.({
                           directoryPath: projectPath,
                           mode: "open-directory",
@@ -385,13 +396,18 @@ export const AgentGUIConversationRailSection = memo(
                         isDeletingProjectConversations ||
                         isRequestingBatchDeletion
                       }
-                      onSelect={() => onRequestSectionBatchDeletion(section)}
+                      onSelect={() => {
+                        if (!isRailInteractionLocked()) {
+                          onRequestSectionBatchDeletion(section);
+                        }
+                      }}
                     >
                       <span>{labels.batchDeleteProjectSessions}</span>
                     </DropdownMenuItem>
                     <DropdownMenuItem
                       className={`${styles.composerMenuItem} nodrag [-webkit-app-region:no-drag]`}
                       onSelect={() => {
+                        if (isRailInteractionLocked()) return;
                         const label = projectLabel || projectPath;
                         setPendingProjectAction({
                           kind: "remove",
@@ -464,7 +480,11 @@ export const AgentGUIConversationRailSection = memo(
                         isDeletingProjectConversations ||
                         isRequestingBatchDeletion
                       }
-                      onSelect={() => onRequestSectionBatchDeletion(section)}
+                      onSelect={() => {
+                        if (!isRailInteractionLocked()) {
+                          onRequestSectionBatchDeletion(section);
+                        }
+                      }}
                     >
                       <span>{labels.batchDeleteConversations}</span>
                     </DropdownMenuItem>
@@ -493,6 +513,7 @@ export const AgentGUIConversationRailSection = memo(
                 isPendingDeleteConversation={
                   pendingDeleteConversationId === item.id
                 }
+                isRailInteractionLocked={isRailInteractionLocked}
                 item={item}
                 labels={labels}
                 previewMode={previewMode}

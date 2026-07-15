@@ -2534,25 +2534,7 @@ describe("AgentGUINode", () => {
 
   it("opens rename dialog from rail double-click and saves through controller action", async () => {
     mockRenameConversation.mockResolvedValue(undefined);
-    mockViewModel = createViewModel({
-      conversations: [
-        {
-          id: "session-1",
-          provider: "codex",
-          title: "Session 1",
-          status: "ready",
-          cwd: "/workspace",
-          updatedAtUnixMs: 1
-        }
-      ],
-      activeConversationId: "session-1"
-    });
-    renderAgentGUINode();
-
-    fireEvent.doubleClick(screen.getByRole("button", { name: /Session 1/ }));
-    const input = screen.getByRole("textbox", {
-      name: "agentHost.agentGui.renameSessionTitle"
-    });
+    const input = openRenameConversationDialog();
     fireEvent.change(input, { target: { value: "Renamed session" } });
     fireEvent.keyDown(input, { key: "Enter" });
 
@@ -2566,29 +2548,12 @@ describe("AgentGUINode", () => {
 
   it("saves from pointer up without duplicating the following mouse click", async () => {
     mockRenameConversation.mockResolvedValue(undefined);
-    mockViewModel = createViewModel({
-      conversations: [
-        {
-          id: "session-1",
-          provider: "codex",
-          title: "Session 1",
-          status: "ready",
-          cwd: "/workspace",
-          updatedAtUnixMs: 1
-        }
-      ],
-      activeConversationId: "session-1"
-    });
-    renderAgentGUINode();
-
-    fireEvent.doubleClick(screen.getByRole("button", { name: /Session 1/ }));
-    const input = screen.getByRole("textbox", {
-      name: "agentHost.agentGui.renameSessionTitle"
-    });
+    const input = openRenameConversationDialog();
     fireEvent.change(input, { target: { value: "Clicked rename" } });
     const saveButton = screen.getByRole("button", {
       name: "agentHost.agentGui.renameSessionSave"
     });
+    fireEvent.pointerDown(saveButton, { button: 0, pointerType: "mouse" });
     fireEvent.pointerUp(saveButton, { button: 0, pointerType: "mouse" });
     fireEvent.click(saveButton, { detail: 1 });
 
@@ -2601,30 +2566,39 @@ describe("AgentGUINode", () => {
     expect(mockRenameConversation).toHaveBeenCalledTimes(1);
   });
 
+  it("ignores rename pointer up without a matching pointer down", () => {
+    fireEvent.change(openRenameConversationDialog(), {
+      target: { value: "Ignored rename" }
+    });
+    fireEvent.pointerUp(
+      screen.getByRole("button", {
+        name: "agentHost.agentGui.renameSessionSave"
+      }),
+      { button: 0, pointerType: "mouse" }
+    );
+
+    expect(mockRenameConversation).not.toHaveBeenCalled();
+  });
+
+  it("disarms rename save when the pointer sequence is canceled", () => {
+    fireEvent.change(openRenameConversationDialog(), {
+      target: { value: "Canceled rename" }
+    });
+    const saveButton = screen.getByRole("button", {
+      name: "agentHost.agentGui.renameSessionSave"
+    });
+    fireEvent.pointerDown(saveButton, { button: 0 });
+    fireEvent.pointerCancel(saveButton, { button: 0 });
+    fireEvent.pointerUp(saveButton, { button: 0 });
+
+    expect(mockRenameConversation).not.toHaveBeenCalled();
+  });
+
   it("keeps keyboard activation on the rename save button", async () => {
     mockRenameConversation.mockResolvedValue(undefined);
-    mockViewModel = createViewModel({
-      conversations: [
-        {
-          id: "session-1",
-          provider: "codex",
-          title: "Session 1",
-          status: "ready",
-          cwd: "/workspace",
-          updatedAtUnixMs: 1
-        }
-      ],
-      activeConversationId: "session-1"
+    fireEvent.change(openRenameConversationDialog(), {
+      target: { value: "Keyboard rename" }
     });
-    renderAgentGUINode();
-
-    fireEvent.doubleClick(screen.getByRole("button", { name: /Session 1/ }));
-    fireEvent.change(
-      screen.getByRole("textbox", {
-        name: "agentHost.agentGui.renameSessionTitle"
-      }),
-      { target: { value: "Keyboard rename" } }
-    );
     fireEvent.keyDown(
       screen.getByRole("button", {
         name: "agentHost.agentGui.renameSessionSave"
@@ -2642,25 +2616,7 @@ describe("AgentGUINode", () => {
 
   it("does not submit a blank rename title", async () => {
     mockRenameConversation.mockResolvedValue(undefined);
-    mockViewModel = createViewModel({
-      conversations: [
-        {
-          id: "session-1",
-          provider: "codex",
-          title: "Session 1",
-          status: "ready",
-          cwd: "/workspace",
-          updatedAtUnixMs: 1
-        }
-      ],
-      activeConversationId: "session-1"
-    });
-    renderAgentGUINode();
-
-    fireEvent.doubleClick(screen.getByRole("button", { name: /Session 1/ }));
-    const input = screen.getByRole("textbox", {
-      name: "agentHost.agentGui.renameSessionTitle"
-    });
+    const input = openRenameConversationDialog();
     fireEvent.change(input, { target: { value: "   " } });
     fireEvent.keyDown(input, { key: "Enter" });
 
@@ -2673,29 +2629,13 @@ describe("AgentGUINode", () => {
   });
 
   it("closes the rename dialog from cancel", async () => {
-    mockViewModel = createViewModel({
-      conversations: [
-        {
-          id: "session-1",
-          provider: "codex",
-          title: "Session 1",
-          status: "ready",
-          cwd: "/workspace",
-          updatedAtUnixMs: 1
-        }
-      ],
-      activeConversationId: "session-1"
+    expect(openRenameConversationDialog()).toBeInTheDocument();
+
+    const cancelButton = screen.getByRole("button", { name: "common.cancel" });
+    fireEvent.pointerDown(cancelButton, {
+      button: 0
     });
-    renderAgentGUINode();
-
-    fireEvent.doubleClick(screen.getByRole("button", { name: /Session 1/ }));
-    expect(
-      await screen.findByRole("textbox", {
-        name: "agentHost.agentGui.renameSessionTitle"
-      })
-    ).toBeInTheDocument();
-
-    fireEvent.pointerUp(screen.getByRole("button", { name: "common.cancel" }), {
+    fireEvent.pointerUp(cancelButton, {
       button: 0
     });
 
@@ -2742,20 +2682,7 @@ describe("AgentGUINode", () => {
   });
 
   it("opens rename dialog from the rail context menu", async () => {
-    mockViewModel = createViewModel({
-      conversations: [
-        {
-          id: "session-1",
-          provider: "codex",
-          title: "Session 1",
-          status: "ready",
-          cwd: "/workspace",
-          updatedAtUnixMs: 1
-        }
-      ],
-      activeConversationId: "session-1"
-    });
-    renderAgentGUINode();
+    renderRenameConversationNode();
 
     fireEvent.contextMenu(
       screen.getByTestId("agent-gui-conversation-item-session-1")
@@ -7261,6 +7188,31 @@ function wrapAgentGUINodeWithRuntime(
       {node}
     </AgentActivityRuntimeProvider>
   );
+}
+
+function renderRenameConversationNode(): void {
+  mockViewModel = createViewModel({
+    conversations: [
+      {
+        id: "session-1",
+        provider: "codex",
+        title: "Session 1",
+        status: "ready",
+        cwd: "/workspace",
+        updatedAtUnixMs: 1
+      }
+    ],
+    activeConversationId: "session-1"
+  });
+  renderAgentGUINode();
+}
+
+function openRenameConversationDialog(): HTMLElement {
+  renderRenameConversationNode();
+  fireEvent.doubleClick(screen.getByRole("button", { name: /Session 1/ }));
+  return screen.getByRole("textbox", {
+    name: "agentHost.agentGui.renameSessionTitle"
+  });
 }
 
 function renderAgentGUINode({

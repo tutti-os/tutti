@@ -1,4 +1,4 @@
-import { memo, useCallback, useEffect, useMemo } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef } from "react";
 import { createWorkspaceUserProjectI18nRuntime } from "@tutti-os/workspace-user-project/i18n";
 import { createWorkspaceFileManagerI18nRuntime } from "@tutti-os/workspace-file-manager";
 import type { WorkspaceFileReference } from "@tutti-os/workspace-file-reference/contracts";
@@ -49,6 +49,8 @@ import {
 } from "./AgentGUINode.usage";
 
 export type { AgentGUINodeProps } from "./AgentGUINode.types";
+
+const EMPTY_SLASH_STATUS_QUOTAS = [] as const;
 
 export const AgentGUINode = memo(function AgentGUINode({
   identity,
@@ -374,16 +376,27 @@ export const AgentGUINode = memo(function AgentGUINode({
       ) === "installed"
     );
   }, [activeReadinessProvider, managedAgentsState]);
-  const canonicalSlashStatusQuotas = slashStatusQuotasFromCanonicalUsage(
-    viewModel.detail.usage
-  );
+  const canonicalSlashStatusProjectionRef = useRef<{
+    usage: typeof viewModel.detail.usage;
+    quotas: ReturnType<typeof slashStatusQuotasFromCanonicalUsage>;
+  } | null>(null);
+  if (
+    canonicalSlashStatusProjectionRef.current?.usage !== viewModel.detail.usage
+  ) {
+    canonicalSlashStatusProjectionRef.current = {
+      usage: viewModel.detail.usage,
+      quotas: slashStatusQuotasFromCanonicalUsage(viewModel.detail.usage)
+    };
+  }
+  const canonicalSlashStatusQuotas =
+    canonicalSlashStatusProjectionRef.current.quotas;
   const slashStatusQuotaSource =
     canonicalSlashStatusQuotas.length > 0
       ? canonicalSlashStatusQuotas
       : activeAgentProbe?.usage?.quotas &&
           activeAgentProbe.usage.quotas.length > 0
         ? activeAgentProbe.usage.quotas
-        : [];
+        : EMPTY_SLASH_STATUS_QUOTAS;
   const slashStatusLimits = useMemo(
     () =>
       slashStatusLimitsFromQuotas(
@@ -409,7 +422,7 @@ export const AgentGUINode = memo(function AgentGUINode({
     railAgentProbe?.usage?.quotas &&
     railAgentProbe.usage.quotas.length > 0
       ? railAgentProbe.usage.quotas
-      : [];
+      : EMPTY_SLASH_STATUS_QUOTAS;
   const railSlashStatusLimits = useMemo(
     () => slashStatusLimitsFromQuotas(railSlashStatusQuotaSource, null, t),
     [railSlashStatusQuotaSource, t]

@@ -200,6 +200,7 @@ export const AgentGUIConversationRailPane = memo(
       useState(false);
     const { railSearch } = railQuery;
     const railElementRef = useRef<HTMLElement | null>(null);
+    const railInteractionsLockedRef = useRef(false);
     const conversationListRef = useRef<HTMLDivElement | null>(null);
     const conversationItemElementsRef = useRef(
       new Map<string, HTMLDivElement>()
@@ -232,6 +233,15 @@ export const AgentGUIConversationRailPane = memo(
     const railConversationEntities = [...railConversationEntitiesById.values()];
     const hasConversationQuery = conversationQuery.trim().length > 0;
     const backendSearchActive = hasConversationQuery && railSearch.enabled;
+    const railInteractionsLocked =
+      runtimeRailSectionsPending && !backendSearchActive;
+    railInteractionsLockedRef.current = railInteractionsLocked;
+    const isRailInteractionLockedRef = useRef<() => boolean>(null);
+    if (!isRailInteractionLockedRef.current) {
+      isRailInteractionLockedRef.current = () =>
+        railInteractionsLockedRef.current;
+    }
+    const isRailInteractionLocked = isRailInteractionLockedRef.current;
     const backendSearchConversations = backendSearchActive
       ? railSearch.sessionIds.flatMap((id) => {
           const conversation = railConversationEntitiesById.get(id);
@@ -633,6 +643,7 @@ export const AgentGUIConversationRailPane = memo(
                   <Fragment key={section.id}>
                     {showProjectRailHeader ? (
                       <AgentGUIProjectRailHeader
+                        disabled={railInteractionsLocked}
                         labels={labels}
                         selectProjectDirectory={selectProjectDirectory}
                         workspaceUserProjectI18n={workspaceUserProjectI18n}
@@ -659,6 +670,7 @@ export const AgentGUIConversationRailPane = memo(
                           ? railSearch.loadingMore
                           : (sectionPageState?.isLoading ?? false)
                       }
+                      isRailInteractionLocked={isRailInteractionLocked}
                       isSectionCollapsed={isSectionCollapsed}
                       labels={labels}
                       pendingDeleteConversationId={pendingDeleteConversationId}

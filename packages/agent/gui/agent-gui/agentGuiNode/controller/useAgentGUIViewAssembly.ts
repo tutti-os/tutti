@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useMemo, useRef } from "react";
 import { useAgentGUIViewModel } from "../model/useAgentGUIViewModel";
 import type { AgentGUIProviderRailMode } from "../../../types";
 import type { AgentGUIDetailViewModel } from "../model/agentGuiNodeTypes";
@@ -21,6 +21,9 @@ type ConversationDetailInput = Omit<
   Parameters<typeof useAgentGUIConversationDetail>[0],
   "activeConversation" | "activeSessionView"
 >;
+type ActiveSessionViewProjection = Parameters<
+  typeof useAgentGUIConversationDetail
+>[0]["activeSessionView"];
 type ComposerPresentationInput = Omit<
   Parameters<typeof useAgentGUIComposerPresentation>[0],
   "activeConversation"
@@ -69,18 +72,34 @@ type UseAgentGUIViewAssemblyInput = ConversationPresentationInput &
 export function useAgentGUIViewAssembly(input: UseAgentGUIViewAssemblyInput) {
   const { activeConversation, visibleConversations } =
     useAgentGUIConversationPresentation(input);
+  const activeSessionViewProjectionRef =
+    useRef<ActiveSessionViewProjection>(null);
+  const activeSessionViewProjection = activeSessionViewProjectionRef.current;
+  if (!input.activeSessionView) {
+    activeSessionViewProjectionRef.current = null;
+  } else if (
+    activeSessionViewProjection?.hasOlderMessages !==
+      input.activeSessionView.hasOlderMessages ||
+    activeSessionViewProjection?.isLoadingOlderMessages !==
+      input.activeSessionView.isLoadingOlderMessages ||
+    activeSessionViewProjection?.olderMessageCount !==
+      input.activeSessionView.olderMessages.length ||
+    activeSessionViewProjection?.oldestLoadedVersion !==
+      input.activeSessionView.oldestLoadedVersion
+  ) {
+    activeSessionViewProjectionRef.current = {
+      hasOlderMessages: input.activeSessionView.hasOlderMessages,
+      isLoadingOlderMessages: input.activeSessionView.isLoadingOlderMessages,
+      olderMessageCount: input.activeSessionView.olderMessages.length,
+      oldestLoadedVersion: input.activeSessionView.oldestLoadedVersion
+    };
+  }
+  const stableActiveSessionViewProjection =
+    activeSessionViewProjectionRef.current;
   const detail = useAgentGUIConversationDetail({
     ...input,
     activeConversation,
-    activeSessionView: input.activeSessionView
-      ? {
-          hasOlderMessages: input.activeSessionView.hasOlderMessages,
-          isLoadingOlderMessages:
-            input.activeSessionView.isLoadingOlderMessages,
-          olderMessageCount: input.activeSessionView.olderMessages.length,
-          oldestLoadedVersion: input.activeSessionView.oldestLoadedVersion
-        }
-      : null
+    activeSessionView: stableActiveSessionViewProjection
   });
   const { stableComposerSettings } = useAgentGUIComposerPresentation({
     ...input,
@@ -130,7 +149,7 @@ export function useAgentGUIViewAssembly(input: UseAgentGUIViewAssemblyInput) {
       comingSoonProviders: input.normalizedComingSoonProviders,
       conversationFilter: input.conversationFilter,
       conversations: visibleConversations,
-      userProjects: [...input.userProjects],
+      userProjects: input.userProjects,
       activeConversation,
       activeConversationId: input.activeConversationId,
       isLoadingConversations: input.isLoadingConversations,

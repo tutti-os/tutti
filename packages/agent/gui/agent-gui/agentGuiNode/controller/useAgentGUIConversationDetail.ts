@@ -150,7 +150,7 @@ export function useAgentGUIConversationDetail(
         ? engineAvailableCommands
         : (input.providerComposerOptions?.commands ?? [])
       ).map((command) => ({ ...command })),
-    [engineAvailableCommands, input.providerComposerOptions]
+    [engineAvailableCommands, input.providerComposerOptions?.commands]
   );
   const availableSkills = useStableProviderSkillOptions(
     useMemo(
@@ -268,16 +268,32 @@ export function useAgentGUIConversationDetail(
           .find((candidate) => candidate.kind !== "approval") ?? null;
       return interactivePromptFromInteraction(interaction);
     }, [input.activePendingInteractions]);
-  const queuedPrompts: AgentGUIQueuedPromptVM[] = input.activeConversationId
-    ? input.activeQueuedPrompts.map((prompt) => ({
-        id: prompt.id,
-        content: [...prompt.content] as AgentPromptContentBlock[],
-        ...(prompt.displayPrompt
-          ? { displayPrompt: prompt.displayPrompt }
-          : {}),
-        createdAtUnixMs: prompt.createdAtUnixMs
-      }))
-    : [];
+  const queuedPromptsProjectionRef = useRef<{
+    activeConversationId: string | null;
+    source: readonly EngineQueuedPrompt[];
+    value: AgentGUIQueuedPromptVM[];
+  } | null>(null);
+  if (
+    queuedPromptsProjectionRef.current?.activeConversationId !==
+      input.activeConversationId ||
+    queuedPromptsProjectionRef.current?.source !== input.activeQueuedPrompts
+  ) {
+    queuedPromptsProjectionRef.current = {
+      activeConversationId: input.activeConversationId,
+      source: input.activeQueuedPrompts,
+      value: input.activeConversationId
+        ? input.activeQueuedPrompts.map((prompt) => ({
+            id: prompt.id,
+            content: [...prompt.content] as AgentPromptContentBlock[],
+            ...(prompt.displayPrompt
+              ? { displayPrompt: prompt.displayPrompt }
+              : {}),
+            createdAtUnixMs: prompt.createdAtUnixMs
+          }))
+        : []
+    };
+  }
+  const queuedPrompts = queuedPromptsProjectionRef.current.value;
 
   return {
     activeLiveState,
