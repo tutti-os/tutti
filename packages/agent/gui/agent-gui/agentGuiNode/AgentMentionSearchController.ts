@@ -105,7 +105,7 @@ export class AgentMentionSearchController extends AgentMentionSearchControllerBa
       groups: this.groupsFromRawGroups(),
       error: null
     });
-    this.timer = setTimeout(() => {
+    this.timer = this.scheduler.schedule(this.debounceMs, () => {
       void this.runSearch({
         workspaceId: this.activeWorkspaceId,
         currentUserId: this.currentUserId,
@@ -113,7 +113,7 @@ export class AgentMentionSearchController extends AgentMentionSearchControllerBa
         requestId,
         filter: this.currentFilter
       });
-    }, this.debounceMs);
+    });
   }
 
   setFilter(filter: AgentMentionFilterId): void {

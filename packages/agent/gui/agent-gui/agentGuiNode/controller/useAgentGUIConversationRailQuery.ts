@@ -2,7 +2,7 @@ import {
   selectWorkspaceAgentConsumerSessions,
   type AgentSessionEngineState
 } from "@tutti-os/agent-activity-core";
-import { useDeferredValue, useEffect, useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import { useAgentActivityRuntime } from "../../../agentActivityRuntime";
 import { projectCanonicalAgentGUIConversationSummaries } from "../../../contexts/workspace/presentation/renderer/agentGuiConversationList/useAgentGuiConversationList";
 import { useEngineSelector } from "../../../shared/engine/useEngineSelector";
@@ -40,7 +40,6 @@ export function useAgentGUIConversationRailQuery({
   );
   const activeConversationIdRef = useRef(activeConversationId);
   activeConversationIdRef.current = activeConversationId;
-  const deferredConversationQuery = useDeferredValue(conversationQuery);
   const controller = useMemo(
     () =>
       new AgentGUIConversationRailQueryController({
@@ -60,11 +59,11 @@ export function useAgentGUIConversationRailQuery({
       sectionAgentTargetFallbackId,
       userProjects
     });
-    controller.setSearchQuery(deferredConversationQuery);
+    controller.setSearchQuery(conversationQuery);
   }, [
     controller,
     conversationFilter,
-    deferredConversationQuery,
+    conversationQuery,
     previewMode,
     sectionAgentTargetFallbackId,
     userProjects

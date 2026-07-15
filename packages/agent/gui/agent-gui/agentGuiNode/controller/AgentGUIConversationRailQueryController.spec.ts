@@ -2,10 +2,60 @@ import { describe, expect, it, vi } from "vitest";
 import { createTestAgentSessionEngine } from "../../../shared/testing/createTestAgentSessionEngine";
 import {
   AgentGUIConversationRailQueryController,
+  CONVERSATION_SEARCH_DEBOUNCE_MS,
   type ConversationRailQueryRuntime
 } from "./AgentGUIConversationRailQueryController";
 
 describe("AgentGUIConversationRailQueryController", () => {
+  it("debounces conversation searches and immediately clears an active query", async () => {
+    vi.useFakeTimers();
+    try {
+      const engine = createTestAgentSessionEngine();
+      const listSessionsPage = vi.fn<
+        NonNullable<ConversationRailQueryRuntime["listSessionsPage"]>
+      >(async (input) => ({
+        hasMore: false,
+        sessions: [],
+        workspaceId: input.workspaceId
+      }));
+      const controller = new AgentGUIConversationRailQueryController({
+        engine,
+        getActiveConversationId: () => null,
+        runtime: { listSessionsPage },
+        workspaceId: "test-workspace"
+      });
+      controller.configure({
+        conversationFilter: { kind: "all" },
+        previewMode: false,
+        sectionAgentTargetFallbackId: null,
+        userProjects: []
+      });
+
+      const detach = controller.attach();
+      controller.setSearchQuery("first");
+      expect(controller.getSnapshot().railSearch.pending).toBe(true);
+      expect(listSessionsPage).not.toHaveBeenCalled();
+
+      await vi.advanceTimersByTimeAsync(CONVERSATION_SEARCH_DEBOUNCE_MS - 1);
+      expect(listSessionsPage).not.toHaveBeenCalled();
+
+      controller.setSearchQuery("second");
+      await vi.advanceTimersByTimeAsync(CONVERSATION_SEARCH_DEBOUNCE_MS);
+      expect(listSessionsPage).toHaveBeenCalledTimes(1);
+      expect(listSessionsPage).toHaveBeenCalledWith(
+        expect.objectContaining({ searchQuery: "second" })
+      );
+
+      controller.setSearchQuery("");
+      expect(controller.getSnapshot().railSearch.pending).toBe(false);
+
+      detach();
+      engine.dispose();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("owns the latest rail interaction lock instead of mirroring it in view refs", async () => {
     const engine = createTestAgentSessionEngine();
     let resolveSections!: () => void;

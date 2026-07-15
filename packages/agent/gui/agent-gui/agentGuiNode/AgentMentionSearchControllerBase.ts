@@ -52,6 +52,10 @@ import {
 } from "./AgentMentionSearchIndex";
 import type { ReferenceProvenanceFilter } from "@tutti-os/workspace-file-reference/contracts";
 import { referenceProvenanceFilterCacheKey } from "@tutti-os/workspace-file-reference/core";
+import {
+  agentGuiScheduler,
+  type AgentGuiScheduledTask
+} from "./agentGuiScheduler";
 
 export class AgentMentionSearchControllerBase {
   protected readonly contextMentionProviders: ReadonlyMap<
@@ -73,7 +77,8 @@ export class AgentMentionSearchControllerBase {
     Record<AgentMentionGroupId, number>
   > = {};
   protected readonly totalCounts: AgentMentionTotalCounts = {};
-  protected timer: ReturnType<typeof setTimeout> | null = null;
+  protected readonly scheduler = agentGuiScheduler;
+  protected timer: AgentGuiScheduledTask | null = null;
   protected preloadCancel: (() => void) | null = null;
   protected pendingPreloadKey: string | null = null;
   protected requestId = 0;
@@ -514,7 +519,7 @@ export class AgentMentionSearchControllerBase {
 
   protected clearTimer(): void {
     if (this.timer !== null) {
-      clearTimeout(this.timer);
+      this.timer.cancel();
       this.timer = null;
     }
   }

@@ -7,6 +7,11 @@ import {
 } from "@tutti-os/agent-activity-core";
 import type { AgentActivityRuntime } from "../../../agentActivityRuntime";
 import type { ConversationSection } from "../agentGuiNodeViewConversation";
+import {
+  agentGuiScheduler,
+  type AgentGuiScheduledTask,
+  type AgentGuiScheduler
+} from "../agentGuiScheduler";
 import type { AgentGUINodeViewModel } from "../model/agentGuiNodeTypes";
 import {
   mergeConversationRailSessionIds,
@@ -19,6 +24,7 @@ import {
 
 const SECTION_PAGE_SIZE = 5;
 const SEARCH_PAGE_SIZE = 100;
+export const CONVERSATION_SEARCH_DEBOUNCE_MS = 300;
 
 interface ConversationSearchQueryState {
   failed: boolean;
@@ -78,6 +84,7 @@ interface ControllerInput {
   engine: AgentSessionEngine;
   getActiveConversationId(): string | null;
   runtime: ConversationRailQueryRuntime;
+  scheduler?: AgentGuiScheduler;
   workspaceId: string;
 }
 
@@ -106,6 +113,7 @@ export class AgentGUIConversationRailQueryController {
   private readonly getActiveConversationId: () => string | null;
   private readonly listeners = new Set<Listener>();
   private readonly runtime: ConversationRailQueryRuntime;
+  private readonly scheduler: AgentGuiScheduler;
   private readonly workspaceId: string;
   private readonly pagingAbortControllers = new Map<string, AbortController>();
   private queryState = EMPTY_QUERY_STATE;
@@ -117,6 +125,7 @@ export class AgentGUIConversationRailQueryController {
   private searchQuery = "";
   private searchRequestKey: string | null = null;
   private searchAbortController: AbortController | null = null;
+  private searchDebounceTask: AgentGuiScheduledTask | null = null;
   private pagingRequestSequence = 0;
   private searchRequestSequence = 0;
   private attached = false;
@@ -128,6 +137,7 @@ export class AgentGUIConversationRailQueryController {
     this.engine = input.engine;
     this.getActiveConversationId = input.getActiveConversationId;
     this.runtime = input.runtime;
+    this.scheduler = input.scheduler ?? agentGuiScheduler;
     this.workspaceId = input.workspaceId;
     this.previousMembershipRecords = membershipRecords(
       this.engine.getSnapshot()
@@ -186,7 +196,7 @@ export class AgentGUIConversationRailQueryController {
     const query = value.trim();
     if (query === this.searchQuery) return;
     this.searchQuery = query;
-    this.requestSearch();
+    this.scheduleSearch();
   }
 
   readonly loadMoreSectionConversations = (
@@ -500,6 +510,7 @@ export class AgentGUIConversationRailQueryController {
   }
 
   private requestSearch(): void {
+    this.clearSearchDebounceTimer();
     this.searchRequestKey =
       this.searchEnabled() && this.searchQuery
         ? JSON.stringify([
@@ -574,6 +585,33 @@ export class AgentGUIConversationRailQueryController {
       });
   }
 
+  private scheduleSearch(): void {
+    this.clearSearchDebounceTimer();
+    this.searchRequestSequence += 1;
+    this.searchAbortController?.abort();
+    this.searchAbortController = null;
+
+    if (!this.searchQuery || !this.searchEnabled()) {
+      this.requestSearch();
+      return;
+    }
+
+    this.emit();
+    // timing: wait for a quiet input window before querying conversation history
+    this.searchDebounceTask = this.scheduler.schedule(
+      CONVERSATION_SEARCH_DEBOUNCE_MS,
+      () => {
+        this.searchDebounceTask = null;
+        this.requestSearch();
+      }
+    );
+  }
+
+  private clearSearchDebounceTimer(): void {
+    this.searchDebounceTask?.cancel();
+    this.searchDebounceTask = null;
+  }
+
   private upsertSessions(sessions: readonly AgentActivitySession[]): void {
     this.ingestingSessions = true;
     try {
@@ -643,6 +681,7 @@ export class AgentGUIConversationRailQueryController {
     this.unsubscribeEngine?.();
     this.unsubscribeEngine = null;
     this.cancelPagingRequests();
+    this.clearSearchDebounceTimer();
     this.searchRequestSequence += 1;
     this.searchAbortController?.abort();
     this.searchAbortController = null;
