@@ -257,6 +257,7 @@ export function WorkspaceAppExternalBridge({
       openFileSelect,
       settingsService,
       userProjectsApi,
+      workspaceAgentActivityService,
       workspaceId
     ]
   );

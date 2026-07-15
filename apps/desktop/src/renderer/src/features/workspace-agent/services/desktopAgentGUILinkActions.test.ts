@@ -181,6 +181,29 @@ test("desktop agent gui link actions launch agent sessions in the same workspace
   ]);
 });
 
+test("desktop agent gui link actions safely reject unavailable session mentions", async () => {
+  const handled = await runDesktopAgentGUILinkAction(
+    {
+      agentSessionId: "missing-session",
+      source: "agent-markdown",
+      type: "open-agent-session",
+      workspaceId: "workspace-1"
+    },
+    {
+      async getAgentSession() {
+        throw new Error("session not found");
+      },
+      launchAgentGui: failLaunchAgentGui,
+      launchWorkspaceIssueManager: failLaunchWorkspaceIssueManager,
+      launchWorkspaceFiles: failLaunchWorkspaceFiles,
+      openBrowserUrl: failOpenBrowserUrl,
+      workspaceId: "workspace-1"
+    }
+  );
+
+  assert.equal(handled, false);
+});
+
 test("desktop agent gui link actions launch workspace issue manager in the same workspace", async () => {
   const launchedIssues: unknown[] = [];
 

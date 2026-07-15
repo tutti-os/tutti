@@ -61,6 +61,13 @@ test("workspace chrome deck submit dispatches plan decisions through the canonic
   assert.doesNotMatch(messageCenterSource, /PLAN_IMPLEMENTATION_PROMPT/);
 });
 
+test("workspace message center forwards canonical session identity into AgentGUI launches", () => {
+  assert.match(
+    messageCenterSource,
+    /createWorkspaceAgentGuiSessionLaunchRequest\(\{[\s\S]*?agentSessionId: input\.agentSessionId,[\s\S]*?agentTargetId: input\.agentTargetId,[\s\S]*?provider: input\.provider/
+  );
+});
+
 test("workspace chrome does not call updateSessionSettings or sendInput from the deck submit handler", () => {
   // Ensure the old branching logic in onSubmitPrompt is removed
   // (toast notification path at line 484 uses submitInteractive — that is expected to stay)

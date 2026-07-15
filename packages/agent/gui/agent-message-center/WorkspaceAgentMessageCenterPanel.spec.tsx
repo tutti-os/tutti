@@ -722,7 +722,7 @@ describe("WorkspaceAgentMessageCenterCard", () => {
     });
   });
 
-  it("preserves the card agent target for targetless session links", () => {
+  it("does not apply the card agent target to linked sessions", () => {
     const onLinkAction = vi.fn();
     render(
       <TooltipProvider>
@@ -747,7 +747,6 @@ describe("WorkspaceAgentMessageCenterCard", () => {
       type: "open-agent-session",
       workspaceId: "workspace-1",
       agentSessionId: "session-2",
-      agentTargetId: "local:claude-code",
       source: "agent-markdown"
     });
   });

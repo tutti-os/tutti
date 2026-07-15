@@ -90,14 +90,21 @@ export async function runDesktopAgentGUILinkAction(
         url: action.url,
         workspaceId: dependencies.workspaceId
       });
-    case "open-agent-session":
+    case "open-agent-session": {
       if (action.workspaceId !== dependencies.workspaceId) {
         return false;
       }
-      const session = await dependencies.getAgentSession({
-        agentSessionId: action.agentSessionId,
-        workspaceId: dependencies.workspaceId
-      });
+      let session: Awaited<
+        ReturnType<DesktopAgentGUILinkActionDependencies["getAgentSession"]>
+      >;
+      try {
+        session = await dependencies.getAgentSession({
+          agentSessionId: action.agentSessionId,
+          workspaceId: dependencies.workspaceId
+        });
+      } catch {
+        return false;
+      }
       const provider = session.provider.trim();
       if (!provider) {
         return false;
@@ -108,6 +115,7 @@ export async function runDesktopAgentGUILinkAction(
         provider,
         workspaceId: dependencies.workspaceId
       });
+    }
     case "open-workspace-issue": {
       if (action.workspaceId !== dependencies.workspaceId) {
         return false;

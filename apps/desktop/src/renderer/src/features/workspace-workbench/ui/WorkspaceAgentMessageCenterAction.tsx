@@ -301,6 +301,7 @@ export function WorkspaceAgentMessageCenterAction({
           const nodeId = await launchNode?.(
             createWorkspaceAgentGuiSessionLaunchRequest({
               agentSessionId: input.agentSessionId,
+              agentTargetId: input.agentTargetId,
               provider: input.provider
             })
           );

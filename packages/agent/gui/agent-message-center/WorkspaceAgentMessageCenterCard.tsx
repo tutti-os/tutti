@@ -587,20 +587,6 @@ export function MessageCenterSummary({
     summaryRef,
     shouldRenderRichSummary
   );
-  const handleLinkAction = useCallback(
-    (action: WorkspaceLinkAction): void => {
-      const agentTargetId = item.agentTargetId?.trim() || null;
-      onLinkAction?.(
-        action.type === "open-agent-session" &&
-          !action.agentTargetId &&
-          agentTargetId
-          ? { ...action, agentTargetId }
-          : action
-      );
-    },
-    [item.agentTargetId, onLinkAction]
-  );
-
   useEffect(() => {
     if (!shouldMeasureOverflow) {
       setIsOverflowing(false);
@@ -643,7 +629,7 @@ export function MessageCenterSummary({
         <AgentMessageMarkdown
           content={summary}
           className="[&_a]:text-[var(--tutti-purple)] [&_code]:text-[var(--text-secondary)] [&_hr]:border-t-[color-mix(in_srgb,var(--text-primary)_14%,transparent)] [&_ol]:!bg-transparent [&_p]:m-0 [&_th]:bg-[color-mix(in_srgb,var(--background-panel)_94%,var(--text-primary))] [&_th]:text-[var(--text-primary)] [&_ul]:!bg-transparent text-[var(--text-primary)]"
-          onLinkAction={handleLinkAction}
+          onLinkAction={onLinkAction}
           workspaceLinkContext={{
             workspaceRoot: item.cwd || null,
             basePath: item.cwd,
