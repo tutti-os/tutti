@@ -68,7 +68,7 @@ pnpm generate:defaults
 pnpm check:defaults-generated
 ```
 
-Run the main validation entrypoint before pushing:
+Full validation entrypoint:
 
 ```sh
 pnpm check:full
@@ -122,10 +122,9 @@ This appends a `Signed-off-by: Your Name <your@email>` line to the commit messag
 
 1. Fork the repository and create a branch from `main`. Suggested branch naming: `feat/...`, `fix/...`, `docs/...`
 2. Make your changes; keep each PR focused on a single concern
-3. Run `pnpm check:full` locally — `pre-push` hooks run it as well
-4. Open a PR with a clear description of the motivation and changes
-5. CI runs TypeScript linting, Go linting, typechecking, tests, and tooling consistency checks; all checks must pass
-6. A maintainer reviews your PR; please respond to feedback and keep the conversation in the PR
+3. Open a PR with a clear description of the motivation and changes
+4. CI runs TypeScript linting, Go linting, typechecking, tests, and tooling consistency checks; all checks must pass
+5. A maintainer reviews your PR; please respond to feedback and keep the conversation in the PR
 
 Local hooks use `husky`:
 

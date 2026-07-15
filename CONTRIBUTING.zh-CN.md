@@ -68,7 +68,7 @@ pnpm generate:defaults
 pnpm check:defaults-generated
 ```
 
-推送前运行主验证入口：
+完整验证入口：
 
 ```sh
 pnpm check:full
@@ -122,10 +122,9 @@ git commit -s -m "feat(scope): add something"
 
 1. Fork 仓库并从 `main` 创建分支。建议的分支命名：`feat/...`、`fix/...`、`docs/...`
 2. 完成你的改动；每个 PR 只关注一件事
-3. 本地运行 `pnpm check:full`——`pre-push` 钩子也会执行它
-4. 提交 PR，清晰描述动机与改动内容
-5. CI 会运行 TypeScript lint、Go lint、类型检查、测试和工具一致性检查；所有检查必须通过
-6. 维护者会 review 你的 PR；请回应反馈，并把讨论保留在 PR 中
+3. 提交 PR，清晰描述动机与改动内容
+4. CI 会运行 TypeScript lint、Go lint、类型检查、测试和工具一致性检查；所有检查必须通过
+5. 维护者会 review 你的 PR；请回应反馈，并把讨论保留在 PR 中
 
 本地钩子使用 `husky`：
 
