@@ -24,6 +24,7 @@ import type { AgentConversationVM } from "../../../shared/agentConversation/cont
 import {
   resolveAgentGUIConversationTitle,
   resolveAgentGUIExplicitConversationTitle,
+  resolveAgentGUIExplicitConversationTitleFromMessages,
   resolveAgentGUIProviderIdentity,
   type AgentGUIConversationTitleFallback
 } from "../../../shared/agentConversationTitleProjection.ts";
@@ -52,7 +53,6 @@ import type {
   BuildAgentGUIConversationsInput
 } from "./agentGuiConversationTypes";
 import {
-  firstUserMessageTitleFromMessages,
   firstUserMessageTitleFromTimelineItems,
   timelineRowsFromActivityTimelineItems,
   timelineSessionFromItems,
@@ -395,12 +395,16 @@ export function resolveAgentGUIConversationTitleFromMessages({
   if (resolveAgentGUIExplicitConversationTitle(conversation) !== null) {
     return null;
   }
-  const userMessageTitle = firstUserMessageTitleFromMessages(messages);
-  if (!userMessageTitle) {
+  const projectedTitle = resolveAgentGUIExplicitConversationTitleFromMessages({
+    messages,
+    provider: conversation.provider,
+    title: conversation.title
+  });
+  if (!projectedTitle) {
     return null;
   }
   return resolveAgentGUIConversationTitle(
-    userMessageTitle,
+    projectedTitle,
     conversation.provider
   );
 }

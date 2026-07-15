@@ -7,13 +7,11 @@ import type {
   AgentGUIAgentDirectoryPort
 } from "@tutti-os/agent-gui";
 import { resolveAgentGUIProviderCatalogIdentity } from "@tutti-os/agent-gui/provider-catalog";
-import { resolveAgentGuiSessionProviderIconUrl } from "@tutti-os/agent-gui/agentGuiSessionProviderIconUrls";
 import {
   createAgentGuiWorkbenchContribution,
   type AgentGuiWorkbenchConversationIdentity
 } from "@tutti-os/agent-gui/workbench/contribution";
-import { resolveAgentGuiWorkbenchHeaderTitle } from "@tutti-os/agent-gui/workbench/sessionTitle";
-import { selectWorkspaceAgentConsumerSession } from "@tutti-os/agent-activity-core";
+import { resolveAgentGuiWorkbenchConversationIdentity } from "@tutti-os/agent-gui/workbench";
 import type {
   AgentGuiWorkbenchProvider,
   AgentGuiWorkbenchState
@@ -113,6 +111,9 @@ export function createWorkspaceAgentGuiContribution(input: {
   });
   const trackWorkspaceAgentGUIEngagement =
     agentGUIWorkbenchHostInput.createAgentGUIEngagementEventSink("workspace");
+  const sessionEngine = input.workspaceAgentActivityService.getSessionEngine(
+    input.workspaceId
+  );
   const handleLinkAction: NonNullable<
     DesktopAgentGUIWorkbenchBodyProps["onLinkAction"]
   > = (action) => {
@@ -253,18 +254,13 @@ export function createWorkspaceAgentGuiContribution(input: {
         renderAgentGuiWorkbenchBody(context, helpers, { previewMode: true })
       );
     },
-    resolveDockPopupTitle: (state) =>
-      resolveWorkspaceAgentGuiDockPopupTitle(state, {
-        workspaceAgentActivityService: input.workspaceAgentActivityService,
-        workspaceId: input.workspaceId
-      }),
     resolveDockPopupIdentity: (state) =>
       resolveWorkspaceAgentGuiDockPopupIdentity(state, {
         dockIconUrls: input.dockIconUrls,
         agents: input.agentsService.getSnapshot().agents,
-        workspaceAgentActivityService: input.workspaceAgentActivityService,
-        workspaceId: input.workspaceId
+        sessionEngine
       }),
+    sessionEngine,
     workspaceId: input.workspaceId
   });
 }
@@ -346,26 +342,6 @@ function resolveWorkspaceAgentGuiProviderAvailability(
   return availability;
 }
 
-function resolveWorkspaceAgentGuiDockPopupTitle(
-  state: AgentGuiWorkbenchState | null,
-  input: {
-    workspaceAgentActivityService: IWorkspaceAgentActivityService;
-    workspaceId: string;
-  }
-): string | null {
-  const agentSessionId = state?.lastActiveAgentSessionId?.trim() ?? "";
-  if (!agentSessionId) {
-    return null;
-  }
-  const session = selectWorkspaceAgentConsumerSession(
-    input.workspaceAgentActivityService
-      .getSessionEngine(input.workspaceId)
-      .getSnapshot(),
-    agentSessionId
-  )?.session;
-  return session?.title?.trim() || null;
-}
-
 function resolveWorkspaceAgentGuiDockPopupIdentity(
   state: AgentGuiWorkbenchState | null,
   input: {
@@ -373,56 +349,17 @@ function resolveWorkspaceAgentGuiDockPopupIdentity(
       typeof createAgentGuiWorkbenchContribution
     >[0]["dockIconUrls"];
     agents?: readonly AgentGUIAgent[];
-    workspaceAgentActivityService: IWorkspaceAgentActivityService;
-    workspaceId: string;
+    sessionEngine: ReturnType<
+      IWorkspaceAgentActivityService["getSessionEngine"]
+    >;
   }
 ): AgentGuiWorkbenchConversationIdentity | null {
-  const agentSessionId = state?.lastActiveAgentSessionId?.trim() ?? "";
-  if (!agentSessionId) {
-    return null;
-  }
-  const session = selectWorkspaceAgentConsumerSession(
-    input.workspaceAgentActivityService
-      .getSessionEngine(input.workspaceId)
-      .getSnapshot(),
-    agentSessionId
-  )?.session;
-  // Prefer the target the workbench state already committed to when the session
-  // was created. The activity snapshot lags a few frames behind session
-  // creation, so relying on it alone briefly reports an unknown provider and
-  // flashes the wrong (codex) icon; the committed agentTargetId is correct
-  // immediately.
-  const agentTargetId = session?.agentTargetId ?? state?.agentTargetId ?? null;
-  const agent = agentTargetId
-    ? (input.agents?.find((target) => target.agentTargetId === agentTargetId) ??
-      null)
-    : null;
-  const resolvedProvider = isAgentGuiWorkbenchProvider(session?.provider)
-    ? session.provider
-    : isAgentGuiWorkbenchProvider(agent?.provider)
-      ? agent.provider
-      : null;
-  const title = session?.title?.trim() || null;
-  const agentTitle = resolveAgentGuiWorkbenchHeaderTitle({
-    agentName: agent?.name,
-    conversationTitle: title,
-    provider: resolvedProvider
+  return resolveAgentGuiWorkbenchConversationIdentity({
+    agents: input.agents ?? [],
+    dockIconUrls: input.dockIconUrls,
+    engineState: input.sessionEngine.getSnapshot(),
+    workbenchState: state
   });
-  // Never fall back to a concrete provider's icon (e.g. codex) while the real
-  // provider is still unknown — leave iconUrl null so the header renders a
-  // neutral placeholder until the provider resolves.
-  const iconUrl =
-    agent?.iconUrl ??
-    (resolvedProvider
-      ? (resolveAgentGuiSessionProviderIconUrl(resolvedProvider) ??
-        input.dockIconUrls?.[resolvedProvider] ??
-        null)
-      : null);
-  return {
-    agentTitle,
-    iconUrl,
-    title
-  };
 }
 
 const dockPopupPreviewViewport = {

@@ -141,7 +141,6 @@ function liveSettledTurnKeyFromEvent(event: unknown): string | null {
     : null;
 }
 export function buildWorkspaceAgentOutcomeNotificationFromSettledTurn(input: {
-  conversationTitle?: string;
   session: CanonicalAgentSession;
   turn: AgentActivityTurn;
 }): WorkspaceAgentOutcomeNotification | null {
@@ -153,8 +152,7 @@ export function buildWorkspaceAgentOutcomeNotificationFromSettledTurn(input: {
   if (!status || !workspaceId || !agentSessionId || !provider) return null;
   return {
     agentSessionId,
-    conversationTitle:
-      stringValue(input.conversationTitle) || input.session.title,
+    conversationTitle: input.session.title,
     level: status === "completed" ? "success" : "error",
     provider,
     status,

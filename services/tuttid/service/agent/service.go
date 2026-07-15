@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/tutti-os/tutti/packages/agent/daemon/titletext"
 	runtimeprep "github.com/tutti-os/tutti/packages/agent/runtimeprep"
 	agentactivitybiz "github.com/tutti-os/tutti/services/tuttid/biz/agentactivity"
 	agenttargetbiz "github.com/tutti-os/tutti/services/tuttid/biz/agenttarget"
@@ -70,10 +71,11 @@ func (s *Service) Create(ctx context.Context, workspaceID string, input CreateSe
 		"provider": provider,
 	})
 	var normalizedContent []PromptContentBlock
+	var normalizedPromptText string
 	if len(input.InitialContent) > 0 {
 		var err error
 		nodeStartedAt := time.Now()
-		normalizedContent, _, err = normalizePromptContent(input.InitialContent)
+		normalizedContent, normalizedPromptText, err = normalizePromptContent(input.InitialContent)
 		if err != nil {
 			s.reportAgentServiceNodeFailure(ctx, input.AgentSessionID, "session_create", "content_normalized", provider, nodeStartedAt, err)
 			return Session{}, err
@@ -168,16 +170,17 @@ func (s *Service) Create(ctx context.Context, workspaceID string, input CreateSe
 	session, err := func() (ProviderRuntimeSession, error) {
 		defer releaseStartup()
 		return s.controller().Start(ctx, RuntimeStartInput{
-			WorkspaceID:      workspaceID,
-			AgentSessionID:   strings.TrimSpace(input.AgentSessionID),
-			AgentTargetID:    input.AgentTargetID,
-			Provider:         provider,
-			Cwd:              prepared.Cwd,
-			Env:              prepared.Env,
-			Title:            value(input.Title),
-			PermissionModeID: value(input.PermissionModeID),
-			Model:            clampComposerModelForLaunch(provider, input.ProviderTargetRef, value(input.Model)),
-			PlanMode:         clampComposerPlanModeForProvider(provider, valueBool(input.PlanMode)),
+			WorkspaceID:             workspaceID,
+			AgentSessionID:          strings.TrimSpace(input.AgentSessionID),
+			AgentTargetID:           input.AgentTargetID,
+			Provider:                provider,
+			Cwd:                     prepared.Cwd,
+			Env:                     prepared.Env,
+			Title:                   value(input.Title),
+			InitialTitleEstablished: strings.TrimSpace(value(input.Title)) != "",
+			PermissionModeID:        value(input.PermissionModeID),
+			Model:                   clampComposerModelForLaunch(provider, input.ProviderTargetRef, value(input.Model)),
+			PlanMode:                clampComposerPlanModeForProvider(provider, valueBool(input.PlanMode)),
 			ReasoningEffort: normalizeReasoningEffortForProvider(
 				provider,
 				value(input.ReasoningEffort),
@@ -223,7 +226,7 @@ func (s *Service) Create(ctx context.Context, workspaceID string, input CreateSe
 	s.reportAgentServiceNodeSuccess(ctx, session.ID, "session_create", "prompt_validated", session.Provider, nodeStartedAt)
 	logAgentSubmitTrace("service.create.prompt_validated", workspaceID, session.ID, input.Metadata, nil)
 	nodeStartedAt = time.Now()
-	content, _, err := s.prepareNormalizedPromptContentForExec(workspaceID, session.ID, normalizedContent, "")
+	content, preparedDisplayPrompt, err := s.prepareNormalizedPromptContentForExec(workspaceID, session.ID, normalizedContent, "")
 	if err != nil {
 		s.reportAgentServiceNodeFailure(ctx, session.ID, "session_create", "prompt_prepared", session.Provider, nodeStartedAt, err)
 		closeErr := s.controller().Close(ctx, RuntimeCloseInput{
@@ -237,14 +240,18 @@ func (s *Service) Create(ctx context.Context, workspaceID string, input CreateSe
 		"content_block_count": len(content),
 	})
 	displayPrompt := strings.TrimSpace(input.InitialDisplayPrompt)
+	visiblePrompt := firstNonEmptyString(displayPrompt, normalizedPromptText, preparedDisplayPrompt)
+	initialTitle := titletext.DeriveInitial(session.Title, visiblePrompt)
 	logAgentSubmitTrace("service.create.exec_requested", workspaceID, session.ID, input.Metadata, nil)
 	nodeStartedAt = time.Now()
 	execResult, err := s.controller().Exec(ctx, RuntimeExecInput{
-		WorkspaceID:    workspaceID,
-		AgentSessionID: session.ID,
-		Content:        content,
-		DisplayPrompt:  displayPrompt,
-		Metadata:       cloneMetadata(input.Metadata),
+		WorkspaceID:      workspaceID,
+		AgentSessionID:   session.ID,
+		Content:          content,
+		DisplayPrompt:    displayPrompt,
+		InitialTitle:     initialTitle,
+		InitialTitleBase: session.Title,
+		Metadata:         cloneMetadata(input.Metadata),
 	})
 	if err != nil {
 		normalizedErr := normalizeRuntimeError(err)

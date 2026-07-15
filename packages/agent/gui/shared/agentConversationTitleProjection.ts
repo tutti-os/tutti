@@ -145,6 +145,24 @@ export function resolveAgentGUIExplicitConversationTitle(input: {
   return title;
 }
 
+export function resolveAgentGUIExplicitConversationTitleFromMessages(input: {
+  messages: readonly AgentGUIConversationTitleMessage[];
+  provider: AgentGUIResolvedProvider;
+  title: string | null | undefined;
+}): string | null {
+  const explicitTitle = resolveAgentGUIExplicitConversationTitle({
+    provider: input.provider,
+    title: input.title?.trim() ?? ""
+  });
+  if (explicitTitle) {
+    return explicitTitle;
+  }
+  return resolveAgentGUIExplicitConversationTitle({
+    provider: input.provider,
+    title: firstAgentGUIUserMessageTitle(input.messages)
+  });
+}
+
 export function resolveAgentGUIProviderDisplayLabel(
   provider: string | null | undefined,
   fallbackAgentLabel: string
@@ -247,7 +265,7 @@ function localizedAgentGUIUntitledTaskLabels(): Set<string> {
         compactTitleText(
           translateInUiLanguage(
             language,
-            "agentHost.workspaceAgentsUntitledTask"
+            "agentHost.workspaceAgentsUntitledConversation"
           )
         )
       )

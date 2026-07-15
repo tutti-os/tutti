@@ -1,7 +1,8 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it, vi } from "vitest";
-import { fireEvent, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen } from "@testing-library/react";
+import { normalizeAgentActivitySession } from "@tutti-os/agent-activity-core";
 import {
   Children,
   createElement,
@@ -31,6 +32,7 @@ import {
   agentGuiWorkbenchTypeId
 } from "./launch.ts";
 import type { AgentGuiWorkbenchState } from "./types.ts";
+import { createTestAgentSessionEngine } from "../shared/testing/createTestAgentSessionEngine.ts";
 
 function createAgent(
   provider: AgentGUIProvider,
@@ -1538,6 +1540,71 @@ describe("agent GUI workbench contribution copy", () => {
     expect(toggleDisplayMode).toHaveBeenCalledTimes(1);
   });
 
+  it("refreshes the workbench header when the canonical session title changes", () => {
+    const sessionEngine = createTestAgentSessionEngine("workspace-1");
+    sessionEngine.dispatch({
+      session: createWorkbenchSession("Initial session title", 1),
+      type: "session/upserted"
+    });
+    const contribution = createTestAgentGuiWorkbenchContribution({
+      renderBody: () => null,
+      sessionEngine,
+      workspaceId: "workspace-1"
+    });
+
+    render(
+      contribution.nodes?.[0]?.renderHeader?.({
+        activation: null,
+        defaultActions: null,
+        displayMode: "floating",
+        dragHandleProps: {},
+        externalNodeState: {
+          agentTargetId: "local:codex",
+          conversationRailCollapsed: false,
+          lastActiveAgentSessionId: "session-1"
+        },
+        externalWorkspaceState: null,
+        instanceId: "agent-gui:codex:panel:test-1",
+        instanceKey: null,
+        isFocused: true,
+        node: {
+          data: {
+            runtimeNodeState: null
+          },
+          displayMode: "floating",
+          frame: { height: 560, width: 1040, x: 0, y: 0 },
+          id: "agent-gui-node-1",
+          title: "Codex"
+        },
+        surfaceSize: { height: 800, width: 1200 },
+        windowActions: {
+          applyQuickLayout: () => {},
+          close: () => {},
+          focus: () => {},
+          minimize: () => {},
+          resize: () => {},
+          toggleDisplayMode: () => {}
+        }
+      } as never) ?? null
+    );
+
+    expect(
+      screen.getByTestId("agent-gui-window-detail-title")
+    ).toHaveTextContent("Initial session title");
+
+    act(() => {
+      sessionEngine.dispatch({
+        session: createWorkbenchSession("Updated session title", 2),
+        type: "session/upserted"
+      });
+    });
+
+    expect(
+      screen.getByTestId("agent-gui-window-detail-title")
+    ).toHaveTextContent("Updated session title");
+    expect(screen.queryByText("Initial session title")).toBeNull();
+  });
+
   it("keeps unified header chrome free of provider window titles", () => {
     const contribution = createTestAgentGuiWorkbenchContribution({
       renderBody: () => null,
@@ -1848,3 +1915,18 @@ describe("agent GUI workbench contribution copy", () => {
     );
   });
 });
+
+function createWorkbenchSession(title: string, updatedAtUnixMs: number) {
+  return normalizeAgentActivitySession({
+    activeTurnId: null,
+    agentSessionId: "session-1",
+    agentTargetId: "local:codex",
+    cwd: "/workspace",
+    latestTurnInteractions: [],
+    pendingInteractions: [],
+    provider: "codex",
+    title,
+    updatedAtUnixMs,
+    workspaceId: "workspace-1"
+  });
+}

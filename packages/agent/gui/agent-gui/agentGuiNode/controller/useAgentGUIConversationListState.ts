@@ -1,6 +1,5 @@
 import {
   selectAttentionReadState,
-  type AgentActivitySnapshot,
   type AgentSessionEngine
 } from "@tutti-os/agent-activity-core";
 import { useMemo, useRef, useState } from "react";
@@ -14,12 +13,9 @@ import {
   createAgentGUIConversationFilterState,
   type AgentGUIConversationFilter
 } from "../model/agentGuiConversationFilter";
-import { resolveAgentGUIConversationTitleFromTimelineItems } from "../model/agentGuiConversationModel";
-import { projectAgentGUIMessagesToTimelineItems } from "./agentGuiController.promptHelpers";
 
 interface UseAgentGUIConversationListStateInput {
   agentActivityRuntimeOrigin: string;
-  agentActivitySnapshot: AgentActivitySnapshot;
   currentUserId?: string | null;
   data: AgentGUINodeData;
   normalizedProviderTargets: readonly AgentGUIAgentTarget[];
@@ -29,7 +25,6 @@ interface UseAgentGUIConversationListStateInput {
 
 export function useAgentGUIConversationListState({
   agentActivityRuntimeOrigin,
-  agentActivitySnapshot,
   currentUserId,
   data,
   normalizedProviderTargets,
@@ -74,31 +69,16 @@ export function useAgentGUIConversationListState({
   );
   const conversations = useMemo(() => {
     return canonicalConversations.map((conversation) => {
-      const projectedTitle = resolveAgentGUIConversationTitleFromTimelineItems({
-        conversation,
-        timelineItems: projectAgentGUIMessagesToTimelineItems(
-          agentActivitySnapshot.sessionMessagesById[conversation.id] ?? []
-        )
-      });
       const attention = attentionReadState.recordsBySessionId[conversation.id];
-      return projectedTitle || attention
+      return attention
         ? {
             ...conversation,
-            ...(projectedTitle ?? {}),
-            ...(attention
-              ? {
-                  hasUnreadCompletion: attention.isUnread,
-                  unreadCompletionKey: attention.completionKey
-                }
-              : {})
+            hasUnreadCompletion: attention.isUnread,
+            unreadCompletionKey: attention.completionKey
           }
         : conversation;
     });
-  }, [
-    agentActivitySnapshot.sessionMessagesById,
-    attentionReadState.recordsBySessionId,
-    canonicalConversations
-  ]);
+  }, [attentionReadState.recordsBySessionId, canonicalConversations]);
 
   return {
     attentionReadState,

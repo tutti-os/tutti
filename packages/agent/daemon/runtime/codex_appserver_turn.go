@@ -274,15 +274,10 @@ func (a *CodexAppServerAdapter) execBlocking(
 		defer eventsMu.Unlock()
 		return append([]activityshared.Event(nil), events...)
 	}
-	startEvents := make([]activityshared.Event, 0, 3)
-	if fallbackTitle := fallbackAgentSessionTitle(session.Title, visibleText, "", a.config.provider); fallbackTitle != "" {
-		startEvents = append(startEvents, newSessionTitleActivityEvent(session, fallbackTitle))
-		session.Title = fallbackTitle
-	}
-	startEvents = append(startEvents,
+	startEvents := []activityshared.Event{
 		newTurnActivityEvent(session, EventMessage, turnID, "", RoleUser, visibleText, userPromptActivityPayload(content, explicitDisplayPrompt, userPromptActivityPayloadExtraFromExecMetadata(ctx, nil))),
 		newTurnActivityEvent(session, EventTurnStarted, turnID, SessionStatusWorking, "", "", nil),
-	)
+	}
 	emitEvents(startEvents)
 
 	appTurn := &codexAppServerActiveTurn{

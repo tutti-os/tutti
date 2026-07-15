@@ -4,39 +4,14 @@ import type {
 } from "@tutti-os/agent-activity-core";
 import { translate } from "../i18n/index";
 import { normalizeAgentTitleText } from "./utils/agentTitleText";
-import { workspaceAgentProviderLabel } from "./workspaceAgentProviderLabel";
-import { resolveDisplayableWorkspaceAgentSessionTitle } from "./workspaceAgentSessionTitle";
 import { fallbackSummary } from "./workspaceAgentLatestActivitySummary";
 import { isWorkspaceAgentSyntheticControlMessage } from "./workspaceAgentSyntheticMessages";
 import type { WorkspaceAgentActivityStatus } from "./workspaceAgentActivityListTypes";
 
 export function resolveWorkspaceAgentActivityTitle(
-  session: AgentActivitySession,
-  messages: readonly AgentActivityMessage[] = []
-): string {
-  const sessionTitle = resolveDisplayableWorkspaceAgentSessionTitle(session);
-  const userMessageTitle = firstUserMessageText(messages);
-  if (
-    sessionTitle &&
-    !isProviderPlaceholderTitleForSession(sessionTitle, session)
-  ) {
-    return sessionTitle;
-  }
-  return userMessageTitle || sessionTitle || workspaceAgentUntitledTaskLabel();
-}
-
-function isProviderPlaceholderTitleForSession(
-  title: string,
   session: AgentActivitySession
-): boolean {
-  const provider = normalizeProvider(session.provider);
-  if (!provider) {
-    return false;
-  }
-  const normalizedTitle = title.trim().toLowerCase();
-  return (
-    workspaceAgentProviderLabel(provider).toLowerCase() === normalizedTitle
-  );
+): string {
+  return session.title.trim() || workspaceAgentUntitledTaskLabel();
 }
 
 export function resolveLatestActivity(
@@ -58,29 +33,6 @@ export function resolveLatestActivity(
     actorName: actors.agentName,
     summary: fallbackSummary(status)
   };
-}
-
-function firstUserMessageText(
-  messages: readonly AgentActivityMessage[]
-): string {
-  const firstUserMessage = messages
-    .map((message) => ({
-      message,
-      text: messageDisplayText(message),
-      time: messageTime(message)
-    }))
-    .filter(
-      (item) => messageRole(item.message) === "user" && item.text.length > 0
-    )
-    .sort((left, right) => {
-      const timeDiff = (left.time ?? 0) - (right.time ?? 0);
-      if (timeDiff !== 0) {
-        return timeDiff;
-      }
-      return left.message.messageId.localeCompare(right.message.messageId);
-    })[0];
-
-  return firstUserMessage?.text ?? "";
 }
 
 function latestDisplayableMessage(messages: readonly AgentActivityMessage[]): {
@@ -148,13 +100,8 @@ function compactText(value: string): string {
 
 function workspaceAgentUntitledTaskLabel(): string {
   return normalizeAgentTitleText(
-    translate("agentHost.workspaceAgentsUntitledTask")
+    translate("agentHost.workspaceAgentsUntitledConversation")
   );
-}
-
-function normalizeProvider(provider: string | undefined): string | null {
-  const trimmed = provider?.trim();
-  return trimmed ? trimmed.toLowerCase() : null;
 }
 
 function stringValue(value: unknown): string | null {

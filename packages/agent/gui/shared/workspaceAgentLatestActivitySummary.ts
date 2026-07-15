@@ -82,7 +82,7 @@ export function isWorkspaceAgentIdleSummary(summary: string): boolean {
 
 export function isWorkspaceAgentUntitledTask(title: string): boolean {
   return localizedWorkspaceAgentLabelSet(
-    "agentHost.workspaceAgentsUntitledTask"
+    "agentHost.workspaceAgentsUntitledConversation"
   ).has(compactText(title));
 }
 
@@ -290,7 +290,7 @@ function compactText(value: string): string {
 }
 
 function workspaceAgentUntitledTaskLabel(): string {
-  return translate("agentHost.workspaceAgentsUntitledTask");
+  return translate("agentHost.workspaceAgentsUntitledConversation");
 }
 
 function localizedWorkspaceAgentLabelSet(key: string): Set<string> {

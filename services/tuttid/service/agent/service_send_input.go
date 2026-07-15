@@ -4,6 +4,9 @@ import (
 	"context"
 	"strings"
 	"time"
+
+	"github.com/tutti-os/tutti/packages/agent/daemon/titletext"
+	agentactivitybiz "github.com/tutti-os/tutti/services/tuttid/biz/agentactivity"
 )
 
 func (s *Service) SendInput(ctx context.Context, workspaceID string, agentSessionID string, input SendInput) (SendInputResult, error) {
@@ -24,7 +27,7 @@ func (s *Service) SendInput(ctx context.Context, workspaceID string, agentSessio
 		}
 	}()
 	nodeStartedAt := time.Now()
-	normalizedContent, _, err := normalizePromptContent(input.Content)
+	normalizedContent, normalizedPromptText, err := normalizePromptContent(input.Content)
 	if err != nil {
 		s.reportAgentServiceNodeFailure(ctx, agentSessionID, "message_send", "content_normalized", "", nodeStartedAt, err)
 		return SendInputResult{}, err
@@ -50,7 +53,7 @@ func (s *Service) SendInput(ctx context.Context, workspaceID string, agentSessio
 	s.reportAgentServiceNodeSuccess(ctx, agentSessionID, "message_send", "prompt_validated", provider, nodeStartedAt)
 	logAgentSubmitTrace("service.send.prompt_validated", workspaceID, agentSessionID, input.Metadata, nil)
 	nodeStartedAt = time.Now()
-	content, _, err := s.prepareNormalizedPromptContentForExec(workspaceID, agentSessionID, normalizedContent, "")
+	content, preparedDisplayPrompt, err := s.prepareNormalizedPromptContentForExec(workspaceID, agentSessionID, normalizedContent, "")
 	if err != nil {
 		s.reportAgentServiceNodeFailure(ctx, agentSessionID, "message_send", "prompt_prepared", provider, nodeStartedAt, err)
 		return SendInputResult{}, err
@@ -60,6 +63,11 @@ func (s *Service) SendInput(ctx context.Context, workspaceID string, agentSessio
 		"content_block_count": len(content),
 	})
 	displayPrompt := strings.TrimSpace(input.DisplayPrompt)
+	initialTitle := ""
+	if !input.Guidance && !s.sessionHasDurableMessages(workspaceID, agentSessionID) {
+		visiblePrompt := firstNonEmptyString(displayPrompt, normalizedPromptText, preparedDisplayPrompt)
+		initialTitle = titletext.DeriveInitial(runtimeSession.Title, visiblePrompt)
+	}
 	logAgentSubmitTrace("service.send.exec_requested", workspaceID, agentSessionID, input.Metadata, nil)
 	nodeStartedAt = time.Now()
 	// Exec may have to resume an idle-released Claude process inside the runtime
@@ -73,12 +81,14 @@ func (s *Service) SendInput(ctx context.Context, workspaceID string, agentSessio
 	result, err := func() (RuntimeExecResult, error) {
 		defer releaseStartup()
 		return s.controller().Exec(ctx, RuntimeExecInput{
-			WorkspaceID:    workspaceID,
-			AgentSessionID: agentSessionID,
-			Content:        content,
-			DisplayPrompt:  displayPrompt,
-			Guidance:       input.Guidance,
-			Metadata:       cloneMetadata(input.Metadata),
+			WorkspaceID:      workspaceID,
+			AgentSessionID:   agentSessionID,
+			Content:          content,
+			DisplayPrompt:    displayPrompt,
+			InitialTitle:     initialTitle,
+			InitialTitleBase: runtimeSession.Title,
+			Guidance:         input.Guidance,
+			Metadata:         cloneMetadata(input.Metadata),
 		})
 	}()
 	if err != nil {
@@ -111,6 +121,19 @@ func (s *Service) SendInput(ctx context.Context, workspaceID string, agentSessio
 		TurnLifecycle:      result.TurnLifecycle,
 		SubmitAvailability: result.SubmitAvailability,
 	}, nil
+}
+
+func (s *Service) sessionHasDurableMessages(workspaceID string, agentSessionID string) bool {
+	if s.MessageReader == nil {
+		return false
+	}
+	page, ok := s.MessageReader.ListSessionMessages(agentactivitybiz.ListSessionMessagesInput{
+		WorkspaceID:    workspaceID,
+		AgentSessionID: agentSessionID,
+		Limit:          1,
+		Order:          agentactivitybiz.MessageOrderAsc,
+	})
+	return ok && len(page.Messages) > 0
 }
 
 func (s *Service) validatePromptContentForExec(ctx context.Context, workspaceID, agentSessionID string, content []PromptContentBlock) error {

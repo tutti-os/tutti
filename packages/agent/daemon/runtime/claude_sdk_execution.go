@@ -35,19 +35,14 @@ func (a *ClaudeCodeSDKAdapter) Exec(
 			emit(next)
 		}
 	}
-	startEvents := make([]activityshared.Event, 0, 3)
-	if fallbackTitle := fallbackAgentSessionTitle(session.Title, visibleText, "", ProviderClaudeCode); fallbackTitle != "" {
-		startEvents = append(startEvents, newSessionTitleActivityEvent(session, fallbackTitle))
-		session.Title = fallbackTitle
-	}
-	startEvents = append(startEvents,
+	startEvents := []activityshared.Event{
 		newTurnActivityEvent(session, EventMessage, turnID, "", RoleUser, visibleText, userPromptActivityPayload(content, explicitDisplayPrompt, userPromptActivityPayloadExtraFromExecMetadata(ctx, map[string]any{
 			"adapter": claudeSDKSidecarAdapterName,
 		}))),
 		newTurnActivityEvent(session, EventTurnStarted, turnID, SessionStatusWorking, "", "", map[string]any{
 			"adapter": claudeSDKSidecarAdapterName,
 		}),
-	)
+	}
 	if event, ok := adapterSession.mirrorGoalSlashPrompt(session, visibleText); ok {
 		startEvents = append(startEvents, event)
 	}

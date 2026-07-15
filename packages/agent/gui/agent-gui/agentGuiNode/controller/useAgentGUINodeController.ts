@@ -227,7 +227,6 @@ export function useAgentGUINodeController({
   } = localState;
   const conversationList = useAgentGUIConversationListState({
     agentActivityRuntimeOrigin,
-    agentActivitySnapshot,
     currentUserId,
     data,
     normalizedProviderTargets,

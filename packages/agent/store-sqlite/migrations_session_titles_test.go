@@ -64,3 +64,132 @@ WHERE workspace_id = 'ws-title' AND agent_session_id = 'session-title'
 		)
 	}
 }
+
+func TestSessionTitleMigrationBackfillsFirstUserPrompt(t *testing.T) {
+	t.Parallel()
+
+	store := openTestStore(t, testOptions(&staticProjectPaths{}))
+	ctx := context.Background()
+	const createdAtUnixMS int64 = 123456789
+	const updatedAtUnixMS int64 = 987654321
+	if _, err := store.db.ExecContext(ctx, `
+INSERT INTO workspace_agent_sessions (
+  workspace_id, agent_session_id, provider, title, created_at_unix_ms, updated_at_unix_ms
+)
+VALUES ('ws-initial-title', 'session-initial-title', 'codex', 'Codex', ?, ?)
+`, createdAtUnixMS, updatedAtUnixMS); err != nil {
+		t.Fatalf("insert session without conversation title: %v", err)
+	}
+	if _, err := store.db.ExecContext(ctx, `
+INSERT INTO workspace_agent_messages (
+  workspace_id, agent_session_id, message_id, version, role, kind, payload_json,
+  occurred_at_unix_ms, created_at_unix_ms, updated_at_unix_ms
+)
+VALUES (
+  'ws-initial-title', 'session-initial-title', 'message-1', 3, 'user', 'text',
+  '{"content":[{"type":"text","text":"[@file](file:///tmp/a_(final).md) inspect repo"}]}',
+  100, ?, ?
+)
+`, createdAtUnixMS, updatedAtUnixMS); err != nil {
+		t.Fatalf("insert first user message: %v", err)
+	}
+	if _, err := store.db.ExecContext(ctx, `
+INSERT INTO workspace_agent_messages (
+  workspace_id, agent_session_id, message_id, version, role, kind, payload_json,
+  occurred_at_unix_ms, created_at_unix_ms, updated_at_unix_ms
+)
+VALUES (
+  'ws-initial-title', 'session-initial-title', 'message-2', 2, 'user', 'text',
+  '{"text":"later prompt"}', 200, ?, ?
+)
+`, createdAtUnixMS+1, updatedAtUnixMS+1); err != nil {
+		t.Fatalf("insert later user message: %v", err)
+	}
+	if _, err := store.db.ExecContext(ctx, `DELETE FROM agent_store_schema_migrations WHERE id = ?`, schemaMigrationWorkspaceAgentSessionTitlesV2); err != nil {
+		t.Fatalf("reset initial title migration marker: %v", err)
+	}
+	if err := store.Migrate(ctx); err != nil {
+		t.Fatalf("rerun initial title migration: %v", err)
+	}
+
+	var (
+		title             string
+		migratedCreatedAt int64
+		migratedUpdatedAt int64
+	)
+	if err := store.db.QueryRowContext(ctx, `
+SELECT title, created_at_unix_ms, updated_at_unix_ms FROM workspace_agent_sessions
+WHERE workspace_id = 'ws-initial-title' AND agent_session_id = 'session-initial-title'
+`).Scan(&title, &migratedCreatedAt, &migratedUpdatedAt); err != nil {
+		t.Fatalf("read backfilled title: %v", err)
+	}
+	if title != "@file inspect repo" {
+		t.Fatalf("backfilled title = %q, want @file inspect repo", title)
+	}
+	if migratedCreatedAt != createdAtUnixMS || migratedUpdatedAt != updatedAtUnixMS {
+		t.Fatalf(
+			"backfilled timestamps = created %d, updated %d; want %d, %d",
+			migratedCreatedAt,
+			migratedUpdatedAt,
+			createdAtUnixMS,
+			updatedAtUnixMS,
+		)
+	}
+}
+
+func TestSessionTitleMigrationClearsLegacyTargetTitleWithoutMessages(t *testing.T) {
+	t.Parallel()
+
+	store := openTestStore(t, testOptions(&staticProjectPaths{}))
+	ctx := context.Background()
+	if _, err := store.db.ExecContext(ctx, `
+INSERT INTO agent_targets (
+  id, provider, launch_ref_json, name, enabled, source, created_at_ms, updated_at_ms
+)
+VALUES (
+  'extension:codebuddy', 'acp:codebuddy',
+  '{"type":"agent_extension","provider":"acp:codebuddy"}',
+  'CodeBuddy', 1, 'extension', 1, 1
+);
+INSERT INTO workspace_agent_sessions (
+  workspace_id, agent_session_id, agent_target_id, provider, title,
+  created_at_unix_ms, updated_at_unix_ms
+)
+VALUES (
+  'ws-legacy-empty', 'session-legacy-empty', 'extension:codebuddy',
+  'acp:codebuddy', 'CodeBuddy', 10, 20
+);
+`); err != nil {
+		t.Fatalf("insert legacy target-title session: %v", err)
+	}
+	if _, err := store.db.ExecContext(ctx, `DELETE FROM agent_store_schema_migrations WHERE id = ?`, schemaMigrationWorkspaceAgentSessionTitlesV2); err != nil {
+		t.Fatalf("reset initial title migration marker: %v", err)
+	}
+	if err := store.Migrate(ctx); err != nil {
+		t.Fatalf("rerun initial title migration: %v", err)
+	}
+
+	var (
+		title             string
+		migratedCreatedAt int64
+		migratedUpdatedAt int64
+	)
+	if err := store.db.QueryRowContext(ctx, `
+SELECT title, created_at_unix_ms, updated_at_unix_ms
+FROM workspace_agent_sessions
+WHERE workspace_id = 'ws-legacy-empty'
+  AND agent_session_id = 'session-legacy-empty'
+`).Scan(&title, &migratedCreatedAt, &migratedUpdatedAt); err != nil {
+		t.Fatalf("read migrated legacy target-title session: %v", err)
+	}
+	if title != "" {
+		t.Fatalf("migrated title = %q, want empty canonical title", title)
+	}
+	if migratedCreatedAt != 10 || migratedUpdatedAt != 20 {
+		t.Fatalf(
+			"migrated timestamps = created %d, updated %d; want 10, 20",
+			migratedCreatedAt,
+			migratedUpdatedAt,
+		)
+	}
+}

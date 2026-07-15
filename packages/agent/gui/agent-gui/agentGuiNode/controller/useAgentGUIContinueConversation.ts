@@ -91,7 +91,7 @@ export function useAgentGUIContinueConversation(
       agentTargetId: activeConversation.agentTargetId,
       conversationTitle:
         resolveAgentGUIExplicitConversationTitle(activeConversation) ??
-        translate("agentHost.workspaceAgentsUntitledTask"),
+        translate("agentHost.workspaceAgentsUntitledConversation"),
       existingDraftPrompt: agentComposerDraftPrompt(sourceDraft)
     });
     reportAgentGUIActiveConversationCleared({

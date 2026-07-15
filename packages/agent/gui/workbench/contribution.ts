@@ -1,4 +1,5 @@
 import { createElement, type ReactNode } from "react";
+import type { AgentSessionEngine } from "@tutti-os/agent-activity-core";
 import {
   type WorkbenchContribution,
   type WorkbenchFrame,
@@ -10,8 +11,13 @@ import {
   shouldAutoCollapseAgentGUIConversationRail
 } from "../agent-gui/agentGuiNode/model/agentGuiRailLayout.ts";
 import { resolveAgentGuiSessionProviderIconUrl } from "../agentGuiSessionProviderIconUrls.ts";
+import { AgentGuiWorkbenchReactiveHeader } from "./AgentGuiWorkbenchReactiveHeader.tsx";
 import { setAgentGuiWorkbenchBodyRenderError } from "./bodyRenderErrorRegistry.ts";
-import { AgentGuiWorkbenchHeader } from "./header.ts";
+import {
+  AgentGuiWorkbenchHeader,
+  type AgentGuiWorkbenchHeaderProps
+} from "./header.ts";
+import type { AgentGuiWorkbenchConversationIdentity } from "./conversationIdentity.ts";
 import {
   agentGuiWorkbenchProviderFromIdentifier,
   agentGuiWorkbenchTypeId,
@@ -55,11 +61,7 @@ export interface AgentGuiWorkbenchNewConversationDetail {
   instanceId: string;
 }
 
-export interface AgentGuiWorkbenchConversationIdentity {
-  agentTitle?: string | null;
-  iconUrl?: string | null;
-  title: string | null;
-}
+export type { AgentGuiWorkbenchConversationIdentity } from "./conversationIdentity.ts";
 
 export interface AgentGuiWorkbenchContributionCopy {
   collapseConversationRail: string;
@@ -120,6 +122,7 @@ export interface CreateAgentGuiWorkbenchContributionInput {
   resolveDockPopupIdentity?: (
     state: AgentGuiWorkbenchState | null
   ) => AgentGuiWorkbenchConversationIdentity | null;
+  sessionEngine?: AgentSessionEngine;
   onOpenDetachedWindow?: (input: {
     agentSessionId?: string | null;
     agentTargetId?: string | null;
@@ -220,8 +223,9 @@ export function createAgentGuiWorkbenchContribution(
             nodeState.conversationRailWidthPx,
             node.frame.width
           );
-          const conversationIdentity =
-            input.resolveDockPopupIdentity?.(workbenchState) ?? null;
+          const conversationIdentity = input.sessionEngine
+            ? null
+            : (input.resolveDockPopupIdentity?.(workbenchState) ?? null);
           const conversationTitle =
             conversationIdentity?.title ??
             input.resolveDockPopupTitle?.(workbenchState) ??
@@ -280,12 +284,9 @@ export function createAgentGuiWorkbenchContribution(
             );
           };
 
-          return createElement(AgentGuiWorkbenchHeader, {
-            agentTitle: conversationIdentity?.agentTitle,
+          const headerProps = {
             copy,
-            conversationIconUrl,
             conversationIconFallbackUrl,
-            conversationTitle,
             conversationRailWidthPx,
             displayMode,
             isConversationRailAutoCollapsed,
@@ -345,7 +346,21 @@ export function createAgentGuiWorkbenchContribution(
 
               persistConversationRailCollapsed(nextCollapsed);
             }
-          });
+          } satisfies AgentGuiWorkbenchHeaderProps;
+          return input.sessionEngine
+            ? createElement(AgentGuiWorkbenchReactiveHeader, {
+                ...headerProps,
+                agentDirectory: input.agentDirectory,
+                dockIconUrls: input.dockIconUrls,
+                sessionEngine: input.sessionEngine,
+                workbenchState
+              })
+            : createElement(AgentGuiWorkbenchHeader, {
+                ...headerProps,
+                agentTitle: conversationIdentity?.agentTitle,
+                conversationIconUrl,
+                conversationTitle
+              });
         },
         title: copy.nodeTitle,
         typeId: agentGuiWorkbenchTypeId,

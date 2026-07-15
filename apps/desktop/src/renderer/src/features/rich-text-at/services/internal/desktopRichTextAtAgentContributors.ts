@@ -7,7 +7,6 @@ import { workspaceAgentSessionStatus } from "@tutti-os/agent-activity-core";
 import { AGENT_CONTEXT_MENTION_PROVIDER_IDS } from "@tutti-os/agent-gui/context-mention-provider";
 import { resolveAgentGUIProviderCatalogIdentity } from "@tutti-os/agent-gui/provider-catalog";
 import { resolveAgentGUIProviderIdentity } from "@tutti-os/agent-gui/provider-identity";
-import { normalizeAgentTitleText } from "@tutti-os/agent-gui/agent-title-text";
 import type {
   AgentTargetPresentation,
   IAgentsService
@@ -363,7 +362,7 @@ function resolveAgentSessionScope(
 }
 
 function resolveAgentSessionLabel(item: AgentSessionAtItem): string {
-  const title = normalizeAgentTitleText(item.title);
+  const title = item.title?.trim() ?? "";
   if (title) return title;
   const provider = item.provider?.trim();
   return provider ? `${provider} session` : item.id;

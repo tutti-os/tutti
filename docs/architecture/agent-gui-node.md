@@ -1833,34 +1833,45 @@ User-visible rules:
 ### Conversation Titles Across Surfaces
 
 ```text
-runtime snapshot session + cached messages
+runtime snapshot session
   -> canonical session.title from the daemon
   -> rail row / detail header / workbench header / dock popup / toast title
 ```
 
 User-visible rules:
 
-- `session.title` is a shared, user-visible canonical plain-text field. The
-  daemon converts rich title input once before session state is persisted, and
-  the SQLite store backfills existing rows during migration without changing
-  session creation/update timestamps. CLI, Agent, and desktop surfaces consume
-  this same field and must not independently parse title Markdown or add
-  mention prefixes.
-- AgentGUI projection may still handle UI-local concerns such as provider-only
-  placeholders and localized fallback labels, but it must not be the source of
-  title syntax normalization.
+- `session.title` is canonical plain text. New empty sessions keep it empty;
+  provider/Agent Target names are not conversation titles. The first accepted
+  user submit establishes it through an exact compare-and-set against the title
+  observed by the submit service, in the same controller event/report batch as
+  the submitted turn. Localized `Untitled conversation` is presentation only.
+- Normal first submit creates the session and executes its initial prompt in one
+  daemon request. Independent empty-session creation remains available for
+  prewarming/recovery; clients must not emulate first submit as create-then-send.
+- SQLite migration may recognize historical provider/Agent Target placeholders,
+  backfill them from the earliest visible user message, or clear message-less
+  placeholders without changing session timestamps. This classifier is
+  migration-only; live submit must not guess whether a target name is a title.
+- CLI, AgentGUI, message-center, notification, and desktop surfaces consume
+  `session.title` directly. They must not reconstruct titles from transcript
+  messages, parse Markdown again, or add mention prefixes.
 - Live runtime snapshot data is the source for workbench and dock titles. Do
   not persist or restore `lastActiveConversationTitle` from workbench node
   state.
+- Workbench headers and dock identity projections must subscribe to the same
+  workspace `AgentSessionEngine` used by AgentGUI. A render-time
+  `engine.getSnapshot()` read is not a reactive binding: session metadata such
+  as `title` does not change Workbench node state and therefore does not bump
+  its external-state revision. Use the shared engine selector and title
+  projection so rail, detail header, workbench header, and dock refresh from
+  one canonical update.
 - User rename flows must mutate the persisted runtime session title through
   `AgentActivityRuntime.renameSession` and then upsert the returned
   authoritative session into the runtime snapshot. Do not update only the rail
   list, otherwise the rail row, active detail header, workbench title, and dock
   surfaces can diverge.
-- Title projection strips provider-only and untitled placeholders from workbench
-  chrome. First-user-message fallback is compatibility behavior for snapshots
-  that predate the canonical title write boundary; new session writes should
-  establish the title before persistence.
+- Provider adapters must not synthesize prompt-derived title events. Initial
+  title derivation belongs to the shared service/runtime submit boundary.
 
 ### Detail Pane And Transcript
 

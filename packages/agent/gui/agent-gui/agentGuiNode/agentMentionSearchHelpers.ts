@@ -111,11 +111,9 @@ function normalizeSessionInitiatorDisplayName(value: string): string {
 
 export function resolveSessionMentionMessageTitle(
   session: AgentActivitySession,
-  messages: readonly AgentActivityMessage[]
+  _messages: readonly AgentActivityMessage[]
 ): string {
-  return compactText(
-    resolveWorkspaceAgentActivityTitle(session, [...messages])
-  );
+  return compactText(resolveWorkspaceAgentActivityTitle(session));
 }
 
 function resolveSessionDisplayStatus(
