@@ -70,6 +70,7 @@ describe("useAgentGuiConversationList", () => {
     expect(result.current?.conversations).toEqual([
       expect.objectContaining({
         id: "session-1",
+        status: "working",
         title: "test1",
         titleFallback: null
       })

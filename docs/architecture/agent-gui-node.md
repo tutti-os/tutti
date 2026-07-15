@@ -202,7 +202,11 @@ gap, the pending activation record in `AgentSessionEngine` owns one optimistic
 title projected from the submitted visible prompt; the rail and every header
 read that same record. The localized untitled label is used only when this
 projection is unavailable, while canonical `session.title` remains empty until
-the daemon establishes it and then takes precedence.
+the daemon establishes it and then takes precedence. Confirming that activation
+means the session exists; it does not prove the initial turn has reached the
+canonical entity index. Engine consumer status therefore keeps a new activation
+working until its first canonical turn is observed, then derives status from
+that turn. GUI projections must not patch this confirmation gap locally.
 
 AgentGuiNode may expose agent selection in multiple UI-local entry points,
 including the conversation rail agent grid and the agent select next to the

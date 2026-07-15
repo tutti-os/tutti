@@ -136,9 +136,6 @@ export function useAgentGuiConversationList(
         const activationIsNewer =
           activation !== undefined &&
           activation.requestedAtUnixMs > canonicalUpdatedAtUnixMs;
-        const activationIsPending =
-          activation?.status === "requested" ||
-          activation?.status === "uncertain";
         const optimisticTitle = activation?.optimisticTitle?.trim() ?? "";
         const shouldUseOptimisticTitle =
           conversation.title.trim().length === 0 && optimisticTitle.length > 0;
@@ -154,7 +151,6 @@ export function useAgentGuiConversationList(
           sortTimeUnixMs: activationIsNewer
             ? activation.requestedAtUnixMs
             : conversation.sortTimeUnixMs,
-          status: activationIsPending ? "working" : conversation.status,
           title,
           titleFallback,
           updatedAtUnixMs: activationIsNewer
