@@ -143,4 +143,75 @@ describe("useAgentConversationMessagePaging", () => {
       })
     );
   });
+
+  it("keeps a non-empty terminal page authoritative after the cursor advances", async () => {
+    let oldestLoadedVersion = 446;
+    let hasOlderMessages = true;
+    const listSessionMessages = vi.fn().mockResolvedValue({
+      hasMore: false,
+      latestVersion: 445,
+      messages: [
+        {
+          agentSessionId: "historical-session",
+          kind: "text",
+          messageId: "message-1",
+          occurredAtUnixMs: 1,
+          payload: {},
+          role: "assistant",
+          turnId: "turn-1",
+          version: 1
+        }
+      ]
+    });
+    const { result } = renderHook(() =>
+      useAgentConversationMessagePaging({
+        diagnostics: { error: vi.fn(), page: vi.fn() },
+        getActiveSessionId: () => "historical-session",
+        getCanonicalMessages: () => [],
+        isMounted: () => true,
+        projection: {
+          maxVersion: () => null,
+          minVersion: () => 446,
+          windowHasTurnMissingUserPrompt: () => false
+        },
+        reload: {
+          getActivationStatus: () => null,
+          reconcileDetail: vi.fn(),
+          syncConversationList: vi.fn()
+        },
+        runtime: { listSessionMessages } as unknown as AgentActivityRuntime,
+        sessionViewRef: (agentSessionId) => ({
+          agentSessionId,
+          origin: "test",
+          workspaceId: "workspace-1"
+        }),
+        view: {
+          get: () => ({
+            hasOlderMessages,
+            isLoadingOlderMessages: false,
+            olderMessages: [],
+            oldestLoadedVersion
+          }),
+          mergeOlder: (_ref, messages, options) => {
+            oldestLoadedVersion = Math.min(
+              oldestLoadedVersion,
+              ...messages.map((message) => message.version)
+            );
+            hasOlderMessages = options?.hasOlderMessages ?? hasOlderMessages;
+          },
+          setOlderMessagesLoading: vi.fn()
+        },
+        workspaceId: "workspace-1"
+      })
+    );
+
+    await act(async () => {
+      await result.current.loadOlderMessages("historical-session");
+      await result.current.loadOlderMessages("historical-session");
+    });
+
+    expect(oldestLoadedVersion).toBe(1);
+    expect(hasOlderMessages).toBe(false);
+    expect(listSessionMessages).toHaveBeenCalledTimes(1);
+  });
 });

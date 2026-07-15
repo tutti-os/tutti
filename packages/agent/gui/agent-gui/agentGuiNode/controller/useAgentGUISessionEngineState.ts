@@ -23,7 +23,7 @@ import {
   type AgentSessionEngine,
   type EngineQueuedPrompt
 } from "@tutti-os/agent-activity-core";
-import { useMemo, useRef } from "react";
+import { useMemo } from "react";
 import type {
   AgentSessionComposerSettings,
   AgentSessionReasoningEffort,
@@ -44,26 +44,16 @@ export function useAgentGUISessionEngineState(input: {
   const activeQueuedPromptSnapshot = useEngineSelector(sessionEngine, (state) =>
     selectEnginePromptQueue(state, activeConversationId)
   );
-  const activeQueuedPromptsProjectionRef = useRef<{
-    source: typeof activeQueuedPromptSnapshot;
-    value: readonly EngineQueuedPrompt[];
-  } | null>(null);
-  if (
-    activeQueuedPromptsProjectionRef.current?.source !==
-    activeQueuedPromptSnapshot
-  ) {
-    activeQueuedPromptsProjectionRef.current = {
-      source: activeQueuedPromptSnapshot,
-      value:
-        activeQueuedPromptSnapshot?.prompts.filter(
-          (prompt) =>
-            prompt.visibleInQueue !== false &&
-            prompt.id !== activeQueuedPromptSnapshot.inFlight?.promptId &&
-            prompt.id !== activeQueuedPromptSnapshot.sendNextPromptId
-        ) ?? EMPTY_QUEUED_PROMPTS
-    };
-  }
-  const activeQueuedPrompts = activeQueuedPromptsProjectionRef.current.value;
+  const activeQueuedPrompts = useMemo<readonly EngineQueuedPrompt[]>(
+    () =>
+      activeQueuedPromptSnapshot?.prompts.filter(
+        (prompt) =>
+          prompt.visibleInQueue !== false &&
+          prompt.id !== activeQueuedPromptSnapshot.inFlight?.promptId &&
+          prompt.id !== activeQueuedPromptSnapshot.sendNextPromptId
+      ) ?? EMPTY_QUEUED_PROMPTS,
+    [activeQueuedPromptSnapshot]
+  );
   const activePendingSubmits = useEngineSelector(
     sessionEngine,
     (state) => selectPendingSubmitsForSession(state, activeConversationId),

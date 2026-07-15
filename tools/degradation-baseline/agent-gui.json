@@ -7,6 +7,20 @@
     "packages/agent/gui/shared/workspaceAgentProviderLabel.ts"
   ],
   "metrics": {
+    "componentMemoOverages": {
+      "packages/agent/gui/agent-gui/agentGuiNode/AgentGUINode.tsx": 23,
+      "packages/agent/gui/agent-gui/agentGuiNode/AgentGUINodeView.tsx": 12,
+      "packages/agent/gui/agent-gui/agentGuiNode/agentRichText/AgentRichTextEditor.tsx": 6,
+      "packages/agent/gui/agent-gui/agentGuiNode/composer/AgentComposerChrome.tsx": 8,
+      "packages/agent/gui/agent-gui/agentGuiNode/view/AgentGUIConversationRailItem.tsx": 13,
+      "packages/agent/gui/agent-gui/agentGuiNode/view/AgentGUIConversationRailPane.tsx": 8,
+      "packages/agent/gui/agent-gui/agentGuiNode/view/AgentGUIDetailPane.tsx": 9,
+      "packages/agent/gui/agent-gui/agentGuiNode/view/AgentGUIProviderRail.tsx": 12,
+      "packages/agent/gui/agent-message-center/WorkspaceAgentMessageCenterPanel.tsx": 22,
+      "packages/agent/gui/app/renderer/components/ZoomableImage.tsx": 9,
+      "packages/agent/gui/shared/AgentMessageMarkdown.tsx": 8,
+      "packages/agent/gui/shared/agentConversation/components/AgentTranscriptView.tsx": 10
+    },
     "effectCount": 151,
     "fileLines": {
       "packages/agent/gui/app/renderer/i18n/locales/en.ts": 1893,
@@ -14,10 +28,10 @@
     },
     "goFileLengthExemptions": 2,
     "identityProviderBranches": 2,
-    "memoCount": 434,
     "moduleMutableGlobals": 6,
     "overlayStores": 4,
     "providerBranches": 1,
+    "renderMirrorRefs": 7,
     "setTimeoutCount": 42,
     "swallowedCatch": 3,
     "useSyncExternalStoreCount": 4

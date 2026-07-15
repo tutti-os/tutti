@@ -6,6 +6,54 @@ import {
 } from "./AgentGUIConversationRailQueryController";
 
 describe("AgentGUIConversationRailQueryController", () => {
+  it("owns the latest rail interaction lock instead of mirroring it in view refs", async () => {
+    const engine = createTestAgentSessionEngine();
+    let resolveSections!: () => void;
+    const controller = new AgentGUIConversationRailQueryController({
+      engine,
+      getActiveConversationId: () => null,
+      runtime: {
+        listSessionSections: (input) =>
+          new Promise((resolve) => {
+            resolveSections = () =>
+              resolve({ sections: [], workspaceId: input.workspaceId });
+          }),
+        listSessionSectionPage: async (input) => ({
+          hasMore: false,
+          kind: "conversations",
+          sectionKey: input.sectionKey,
+          sessions: [],
+          totalCount: 0
+        }),
+        listSessionsPage: async (input) => ({
+          hasMore: false,
+          sessions: [],
+          workspaceId: input.workspaceId
+        })
+      },
+      workspaceId: "test-workspace"
+    });
+    controller.configure({
+      conversationFilter: { kind: "all" },
+      previewMode: false,
+      sectionAgentTargetFallbackId: null,
+      userProjects: []
+    });
+
+    const detach = controller.attach();
+    expect(controller.isInteractionLocked()).toBe(true);
+
+    controller.setSearchQuery("active search");
+    expect(controller.isInteractionLocked()).toBe(false);
+
+    resolveSections();
+    await vi.waitFor(() =>
+      expect(controller.getSnapshot().runtimeRailSectionsPending).toBe(false)
+    );
+    detach();
+    engine.dispose();
+  });
+
   it("reattaches cleanly and follows preview-mode scope changes", async () => {
     const engine = createTestAgentSessionEngine();
     const listSessionSections = vi.fn<

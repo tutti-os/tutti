@@ -268,20 +268,9 @@ export function useAgentGUIConversationDetail(
           .find((candidate) => candidate.kind !== "approval") ?? null;
       return interactivePromptFromInteraction(interaction);
     }, [input.activePendingInteractions]);
-  const queuedPromptsProjectionRef = useRef<{
-    activeConversationId: string | null;
-    source: readonly EngineQueuedPrompt[];
-    value: AgentGUIQueuedPromptVM[];
-  } | null>(null);
-  if (
-    queuedPromptsProjectionRef.current?.activeConversationId !==
-      input.activeConversationId ||
-    queuedPromptsProjectionRef.current?.source !== input.activeQueuedPrompts
-  ) {
-    queuedPromptsProjectionRef.current = {
-      activeConversationId: input.activeConversationId,
-      source: input.activeQueuedPrompts,
-      value: input.activeConversationId
+  const queuedPrompts = useMemo<AgentGUIQueuedPromptVM[]>(
+    () =>
+      input.activeConversationId
         ? input.activeQueuedPrompts.map((prompt) => ({
             id: prompt.id,
             content: [...prompt.content] as AgentPromptContentBlock[],
@@ -290,10 +279,9 @@ export function useAgentGUIConversationDetail(
               : {}),
             createdAtUnixMs: prompt.createdAtUnixMs
           }))
-        : []
-    };
-  }
-  const queuedPrompts = queuedPromptsProjectionRef.current.value;
+        : [],
+    [input.activeConversationId, input.activeQueuedPrompts]
+  );
 
   return {
     activeLiveState,

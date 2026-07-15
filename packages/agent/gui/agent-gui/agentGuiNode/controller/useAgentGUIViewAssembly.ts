@@ -1,4 +1,4 @@
-import { useMemo, useRef } from "react";
+import { useMemo } from "react";
 import { useAgentGUIViewModel } from "../model/useAgentGUIViewModel";
 import type { AgentGUIProviderRailMode } from "../../../types";
 import type { AgentGUIDetailViewModel } from "../model/agentGuiNodeTypes";
@@ -72,30 +72,25 @@ type UseAgentGUIViewAssemblyInput = ConversationPresentationInput &
 export function useAgentGUIViewAssembly(input: UseAgentGUIViewAssemblyInput) {
   const { activeConversation, visibleConversations } =
     useAgentGUIConversationPresentation(input);
-  const activeSessionViewProjectionRef =
-    useRef<ActiveSessionViewProjection>(null);
-  const activeSessionViewProjection = activeSessionViewProjectionRef.current;
-  if (!input.activeSessionView) {
-    activeSessionViewProjectionRef.current = null;
-  } else if (
-    activeSessionViewProjection?.hasOlderMessages !==
-      input.activeSessionView.hasOlderMessages ||
-    activeSessionViewProjection?.isLoadingOlderMessages !==
-      input.activeSessionView.isLoadingOlderMessages ||
-    activeSessionViewProjection?.olderMessageCount !==
-      input.activeSessionView.olderMessages.length ||
-    activeSessionViewProjection?.oldestLoadedVersion !==
-      input.activeSessionView.oldestLoadedVersion
-  ) {
-    activeSessionViewProjectionRef.current = {
-      hasOlderMessages: input.activeSessionView.hasOlderMessages,
-      isLoadingOlderMessages: input.activeSessionView.isLoadingOlderMessages,
-      olderMessageCount: input.activeSessionView.olderMessages.length,
-      oldestLoadedVersion: input.activeSessionView.oldestLoadedVersion
-    };
-  }
   const stableActiveSessionViewProjection =
-    activeSessionViewProjectionRef.current;
+    useMemo<ActiveSessionViewProjection>(
+      () =>
+        input.activeSessionView
+          ? {
+              hasOlderMessages: input.activeSessionView.hasOlderMessages,
+              isLoadingOlderMessages:
+                input.activeSessionView.isLoadingOlderMessages,
+              olderMessageCount: input.activeSessionView.olderMessages.length,
+              oldestLoadedVersion: input.activeSessionView.oldestLoadedVersion
+            }
+          : null,
+      [
+        input.activeSessionView?.hasOlderMessages,
+        input.activeSessionView?.isLoadingOlderMessages,
+        input.activeSessionView?.olderMessages.length,
+        input.activeSessionView?.oldestLoadedVersion
+      ]
+    );
   const detail = useAgentGUIConversationDetail({
     ...input,
     activeConversation,

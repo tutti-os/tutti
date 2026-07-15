@@ -167,15 +167,19 @@ is protected by a degradation ratchet:
 
 - `pnpm check:agent-gui-degradation` measures entropy metrics over
   `packages/agent/gui` and `packages/agent/activity-core` (per-file line counts
-  over the business limit, package-wide effect and memoization totals, provider behavior
+  over the business limit, package-wide effect totals, per-component
+  memoization overages, render-time ref mirrors/caches, provider behavior
   branches, timers, swallowed catch blocks, view-embedded stores, direct
   `useSyncExternalStore` calls, module-level mutable globals, and daemon Go
   file-length exemptions) and compares them against the committed baseline in
-  `tools/degradation-baseline/agent-gui.json`.
-- Effect and memoization counts are package-wide totals because hooks move with
-  their vertical module during decomposition. Counting them per path would
-  falsely reject moving an existing hook out of a monolith. The per-file line
-  limit and render-budget tests continue to enforce module and render shape.
+  `tools/degradation-baseline/agent-gui.json`. Render-mirror counting also
+  covers Desktop's `DesktopAgentGUIWorkbenchBody` host boundary because
+  unstable host callbacks can invalidate the entire Agent GUI subtree.
+- Effect counts remain package-wide because hooks move with a vertical module
+  during decomposition. Memoization follows the architecture boundary instead:
+  `.tsx` component modules have a five-call budget, while controller/read hooks
+  may own stable projections. Read-layer memoization must stabilize data-owner
+  output; it must not become a second view cache.
 - Any metric increase fails. Any decrease also fails until the same change
   updates the baseline with
   `node tools/scripts/check-agent-gui-degradation.mjs --update-baseline`, so
@@ -191,9 +195,13 @@ is protected by a degradation ratchet:
   new degradation patterns on staged added lines: uncommented timers (a
   `// timing: <reason>` comment is required outside engine/reducer/selector
   code, where timers are forbidden entirely), silently swallowed catch blocks,
-  store creation in component files, new provider behavior branches, direct
+  component memoization beyond budget, render-time ref mirrors/caches, store
+  creation in component files, new provider behavior branches, direct
   `useSyncExternalStore` calls outside the single engine binding file, and new
-  module-level mutable globals.
+  module-level mutable globals. Ref-mirror and component-cache diagnostics
+  explicitly route business state to the engine/controller and stable
+  projections to selectors/read hooks; refs remain valid for imperative DOM,
+  timer, abort, and external-lifecycle handles.
 
 The business file size limit below also applies to TypeScript under
 `packages/agent/gui` and `packages/agent/activity-core` through this ratchet:

@@ -650,7 +650,7 @@ overlay 符号扫描为零；切片 3 的旧 `AgentHostWorkspaceAgentSession/Mes
 
 第 0 步：立规矩（1~2 天）。✅ 检查脚本 `tools/scripts/check-agent-gui-degradation.mjs`（全量基线对比 + `--staged` 增量拦截）与基线 `tools/degradation-baseline/agent-gui.json` 已入库并接入 pre-commit、`check:changed`、`check:full` 与 PR CI；修复体量软门禁 `tools/scripts/check-fix-scope.mjs` 与 PR 模板兜底三问已接入；渲染预算基建 `packages/agent/gui/shared/testing/renderBudget.tsx` 已落地；约定文档已同步。5.3 节编辑器钩子即时反馈未交付。
 
-- 新增 `tools/scripts/check-agent-gui-degradation.mjs`，实现 5.2 节全部检查项（禁同步定时器、禁静默吞错、缓存预算、禁视图内建 store、provider 行为分支冻结、禁模块级可变全局、订阅只走唯一绑定），首跑输出生成指标基线 JSON（口径以脚本为准，不照抄本文数字）；
+- 新增 `tools/scripts/check-agent-gui-degradation.mjs`，实现 5.2 节检查项（禁同步定时器、禁静默吞错、组件缓存预算、禁 render-time ref 镜像、禁视图内建 store、provider 行为分支冻结、禁模块级可变全局、订阅只走唯一绑定）；组件缓存与 ref 镜像报错会明确要求业务状态下沉 engine/controller、稳定投影进入 selector/read hook，首跑输出生成指标基线 JSON（口径以脚本为准，不照抄本文数字）；
 - 800 行规则对 agent 域生效，存量豁免清单只减不增；
 - 修复体量软门禁与提交模板"兜底三问"接入（5.2 四、5.3）；
 - 渲染次数预算测试的基建（Profiler `onRender` 断言工具）先行落地，预算用例随各功能模块切片交付；
@@ -923,15 +923,16 @@ flowchart TB
 
 （二）劣化模式检查（增量、暂存区级，提交前即拦截）：
 
-| 规则              | 内容                                                                                                |
-| ----------------- | --------------------------------------------------------------------------------------------------- |
-| 禁同步定时器      | 引擎、`reducer`、`selector` 内禁止 `setTimeout`；其余位置数值字面量定时器必须带说明原因的注释才放行 |
-| 禁静默吞错        | `catch` 块必须上报诊断或重新抛出；静默吞错报错                                                      |
-| 缓存预算          | 功能模块组件文件的 `useMemo`、`useCallback` 上限（建议 5）；读取函数层不限                          |
-| 禁视图内建 store  | 组件文件禁止创建 valtio 或 zustand store（现状视图内嵌 proxy 即反例）                               |
-| provider 分支冻结 | 按 provider 名字的行为分支新增即报错（存量在基线里递减）；身份展示分支走豁免清单，清单只减不增      |
-| 禁模块级可变全局  | 发包公共接口中禁止新增模块级可变全局（见 3.3 节外部宿主约束）                                       |
-| 订阅只走唯一绑定  | 组件文件禁止直接调用 `useSyncExternalStore`，引擎订阅一律经 `useEngineSelector`（唯一绑定文件豁免） |
+| 规则              | 内容                                                                                                                                                                                |
+| ----------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 禁同步定时器      | 引擎、`reducer`、`selector` 内禁止 `setTimeout`；其余位置数值字面量定时器必须带说明原因的注释才放行                                                                                 |
+| 禁静默吞错        | `catch` 块必须上报诊断或重新抛出；静默吞错报错                                                                                                                                      |
+| 缓存预算          | 功能模块组件文件的 `useMemo`、`useCallback` 上限（建议 5）；读取函数层不限                                                                                                          |
+| 禁 ref 镜像缓存   | 禁止用 render-time ref 镜像 props/state 或手写 projection cache；业务状态进 engine/controller，稳定投影进 selector/read hook；DOM、timer、abort 等 imperative 生命周期 ref 不在此列 |
+| 禁视图内建 store  | 组件文件禁止创建 valtio 或 zustand store（现状视图内嵌 proxy 即反例）                                                                                                               |
+| provider 分支冻结 | 按 provider 名字的行为分支新增即报错（存量在基线里递减）；身份展示分支走豁免清单，清单只减不增                                                                                      |
+| 禁模块级可变全局  | 发包公共接口中禁止新增模块级可变全局（见 3.3 节外部宿主约束）                                                                                                                       |
+| 订阅只走唯一绑定  | 组件文件禁止直接调用 `useSyncExternalStore`，引擎订阅一律经 `useEngineSelector`（唯一绑定文件豁免）                                                                                 |
 
 （三）渲染性能回归测试——用预算取代缓存直觉。
 

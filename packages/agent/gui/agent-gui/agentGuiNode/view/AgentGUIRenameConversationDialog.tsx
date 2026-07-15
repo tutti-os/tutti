@@ -106,6 +106,11 @@ export const AgentGUIRenameConversationDialog = memo(
                   armedPointerActionRef.current = "cancel";
                 }
               }}
+              onPointerLeave={() => {
+                if (armedPointerActionRef.current === "cancel") {
+                  armedPointerActionRef.current = null;
+                }
+              }}
               onPointerUp={(event) => {
                 const isArmed = armedPointerActionRef.current === "cancel";
                 armedPointerActionRef.current = null;
@@ -150,6 +155,11 @@ export const AgentGUIRenameConversationDialog = memo(
               onPointerDown={(event) => {
                 if (event.button === 0) {
                   armedPointerActionRef.current = "confirm";
+                }
+              }}
+              onPointerLeave={() => {
+                if (armedPointerActionRef.current === "confirm") {
+                  armedPointerActionRef.current = null;
                 }
               }}
               onPointerUp={(event) => {

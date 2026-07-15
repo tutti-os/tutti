@@ -15,9 +15,11 @@ import {
   countMemoization,
   countModuleMutableGlobals,
   countProviderBranches,
+  countRenderMirrorRefs,
   countStoreCreations,
   countSwallowedCatches,
   isScannedSourceFile,
+  isComponentModule,
   isTimerForbiddenFile,
   measureFileMetrics,
   parseStagedAddedLines
@@ -38,6 +40,20 @@ test("counts effects and memoization hooks", () => {
   ].join("\n");
   assert.equal(countEffects(source), 2);
   assert.equal(countMemoization(source), 3);
+});
+
+test("counts render-time ref mirrors but ignores imperative refs", () => {
+  const source = [
+    "const usageProjectionRef = useRef(null);",
+    "const inputRef = useRef(input);",
+    "const handleHandoffRef = useRef(null);",
+    "const elementRef = useRef<HTMLDivElement | null>(null);",
+    "const timeoutRef = useRef<number | null>(null);",
+    "const searchInputRef = useRef<HTMLInputElement | null>(null);",
+    "const dragStateRef = useRef<DragState | null>(null);",
+    "const handledSequenceRef = useRef<number | null>(null);"
+  ].join("\n");
+  assert.equal(countRenderMirrorRefs(source), 3);
 });
 
 test("counts provider behavior branches with the wide ruleset", () => {
@@ -125,6 +141,17 @@ test("skips test, generated, and dist files from scanning", () => {
   assert.equal(isScannedSourceFile("packages/agent/gui/README.md"), false);
 });
 
+test("separates component modules from TSX read hooks", () => {
+  assert.equal(
+    isComponentModule("packages/agent/gui/agent-gui/View.tsx"),
+    true
+  );
+  assert.equal(
+    isComponentModule("packages/agent/gui/agent-gui/useDetailModel.tsx"),
+    false
+  );
+});
+
 test("marks engine, reducer, and selector paths as timer-forbidden", () => {
   assert.equal(
     isTimerForbiddenFile("packages/agent/activity-core/src/engine/loop.ts"),
@@ -155,24 +182,26 @@ test("routes provider branches of identity-exempt files to the identity bucket",
   assert.equal(regular.identityProviderBranches, 0);
 });
 
-test("aggregates hook totals and applies the per-file 800-line threshold", () => {
+test("aggregates effects and applies component memo and line budgets", () => {
   const longFile = measureFileMetrics(
     "packages/agent/gui/long.ts",
     `${"line\n".repeat(801)}`,
     []
   );
   const shortFile = measureFileMetrics(
-    "packages/agent/gui/short.ts",
-    "useEffect(() => {}, []);\n",
+    "packages/agent/gui/short.tsx",
+    `${"useMemo(() => 1, []);\n".repeat(6)}useEffect(() => {}, []);\n`,
     []
   );
   const metrics = aggregateMetrics({
     "packages/agent/gui/long.ts": longFile,
-    "packages/agent/gui/short.ts": shortFile
+    "packages/agent/gui/short.tsx": shortFile
   });
   assert.deepEqual(metrics.fileLines, { "packages/agent/gui/long.ts": 801 });
   assert.equal(metrics.effectCount, 1);
-  assert.equal(metrics.memoCount, 0);
+  assert.deepEqual(metrics.componentMemoOverages, {
+    "packages/agent/gui/short.tsx": 6
+  });
 });
 
 test("flags increases as regressions and decreases as unlocked improvements", () => {
@@ -301,6 +330,32 @@ test("staged check flags store creation in component files", () => {
   });
   assert.equal(violations.length, 1);
   assert.equal(violations[0].rule, "no-store-in-view");
+});
+
+test("staged check rejects component cache overages with layer guidance", () => {
+  const stagedContent = "useMemo(() => 1, []);\n".repeat(6);
+  const violations = checkStagedFile({
+    addedLines: [{ content: "useMemo(() => 1, []);", line: 6 }],
+    identityExemptFiles: [],
+    relativePath: "packages/agent/gui/agent-gui/View.tsx",
+    stagedContent
+  });
+  assert.equal(violations.length, 1);
+  assert.equal(violations[0].rule, "component-memo-budget");
+  assert.match(violations[0].message, /engine selectors\/read hooks/);
+});
+
+test("staged check rejects render ref mirrors with engine guidance", () => {
+  const line = "const usageProjectionRef = useRef(null);";
+  const violations = checkStagedFile({
+    addedLines: [{ content: line, line: 1 }],
+    identityExemptFiles: [],
+    relativePath: "packages/agent/gui/agent-gui/View.tsx",
+    stagedContent: line
+  });
+  assert.equal(violations.length, 1);
+  assert.equal(violations[0].rule, "no-render-ref-mirror");
+  assert.match(violations[0].message, /engine\/controller/);
 });
 
 test("staged check flags direct useSyncExternalStore outside the binding file", () => {

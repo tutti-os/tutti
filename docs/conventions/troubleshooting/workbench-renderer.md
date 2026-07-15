@@ -504,10 +504,13 @@
   sequence. A handler wired only to `onClick` therefore never runs.
 - Fix:
   Handle `pointerup` only after a matching primary-button `pointerdown`; clear
-  the armed action on `pointercancel` or lost capture. Preserve keyboard
-  activation explicitly, retain an assistive-technology click-only path, and
-  guard the async action with a synchronous in-flight ref so multiple event
-  paths cannot dispatch the command twice.
+  the armed action on `pointerleave` and `pointercancel`. If the button instead
+  establishes pointer capture explicitly, also clear on lost capture and
+  validate that the release coordinates remain inside the action before
+  executing it. Preserve keyboard activation explicitly, retain an
+  assistive-technology click-only path, and guard the async action with a
+  synchronous in-flight ref so multiple event paths cannot dispatch the command
+  twice.
 - Validation:
   Cover pointer activation, the following synthesized mouse click, keyboard
   activation, assistive click-only activation, unmatched pointerup, canceled
