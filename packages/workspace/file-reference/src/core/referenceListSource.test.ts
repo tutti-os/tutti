@@ -84,6 +84,27 @@ test("根层级:协议 group/reference 映射成 folder/file 节点", async () =
   assert.ok(file.ref.nodeId.startsWith("f:"));
 });
 
+test("backend 声明 ordered 时透传给 picker", async () => {
+  const { source } = makeSource({
+    __root__: {
+      items: [
+        { type: "group", id: "project-new", displayName: "Untitled" },
+        { type: "group", id: "project-old", displayName: "Alpha" }
+      ],
+      nextCursor: null,
+      ordered: true
+    }
+  });
+
+  const result = await source.listChildren(scope, { node: null });
+
+  assert.equal(result.ordered, true);
+  assert.deepEqual(
+    result.entries.map((entry) => entry.displayName),
+    ["Untitled", "Alpha"]
+  );
+});
+
 test("reference.parentLabel 透传为节点 contextLabel,缺省时不带", async () => {
   const { source } = makeSource({
     __root__: {
