@@ -710,6 +710,12 @@ engine pending record、typed command 和 selector 持有；旧 session-view/lis
 激活与普通提交共用同一 prompt envelope：pending record 保留用于投影的
 `content`/`displayPrompt`，物化后的 `runtimeContent` 只进入 typed transport
 command，不能覆盖乐观消息的展示语义。
+乐观消息准入同时认文本与可渲染的结构化 `content`；纯图片 prompt 即使派生文本
+为空，也必须沿 canonical 用户消息投影立即显示，并按 `clientSubmitId`/事件身份
+去重，禁止用 `[Image]` 占位或另建图片覆盖层。后续 `PendingBootstrapIntent` 必须
+复用这条投影契约，不能随 bootstrap submit 再造一套首消息展示逻辑。图片展示身份
+必须由稳定消息身份与内容位置派生；`path` 提升为 durable `attachmentId` 只更新读取
+定位，不能触发图片节点重挂载。
 Codex 合成的“实施计划”决策已收敛为 tuttid 语义 API 与 durable
 `plan_decision` saga：严格绑定 workspace/session/plan-turn/request/idempotency，
 设置目标值与发送步骤持久 checkpoint，发送未知结果只按稳定

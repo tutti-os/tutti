@@ -1488,6 +1488,16 @@ content in the pending record. Activation and existing-session submit share this
 contract. Their optimistic user messages use the authoritative payload shape:
 `content`, optional `displayPrompt`, and `text` resolved from `displayPrompt`
 before content-derived text.
+Timeline admission must treat renderable structured prompt content as a user
+message even when that derived text is empty. In particular, an image-only
+pending prompt projects through the same canonical user-message path and
+renders its image grid before the durable twin arrives; the GUI must not invent
+an `[Image]` text placeholder. Empty-text structured prompts use stable submit
+or event identity for duplicate suppression instead of sharing an empty-text
+key. Image presentation identity derives from the stable message identity and
+content position, never from a transport locator such as a prompt-asset path or
+durable attachment ID; locator promotion must not remount an already rendered
+image.
 After activation succeeds, the controller attaches the durable conversation and
 reconciles the optimistic user message before loading runtime projection. For
 Claude Code,

@@ -113,6 +113,23 @@ export function normalizedMessageBody(body: string): string {
   return body.trim().replace(/\s+/g, " ");
 }
 
+export function userMessageProjectionKey(
+  item: WorkspaceAgentActivityTimelineItem,
+  body: string
+): string | null {
+  const normalizedBody = normalizedMessageBody(body);
+  if (normalizedBody) {
+    return `text:${normalizedBody}`;
+  }
+  if (!hasRenderableUserPromptContent(item.payload?.content)) {
+    return null;
+  }
+  const clientSubmitId = stringRecordValue(item.payload, "clientSubmitId");
+  return clientSubmitId
+    ? `client-submit:${clientSubmitId}`
+    : `event:${item.eventId}`;
+}
+
 export function isRecentDuplicateUserMessage(
   previous: WorkspaceAgentActivityTimelineItem | undefined,
   current: WorkspaceAgentActivityTimelineItem
@@ -143,6 +160,30 @@ export function isRecentDuplicateUserMessage(
   }
 
   return false;
+}
+
+function hasRenderableUserPromptContent(content: unknown): boolean {
+  if (!Array.isArray(content)) {
+    return false;
+  }
+  return content.some((candidate) => {
+    if (
+      !candidate ||
+      typeof candidate !== "object" ||
+      Array.isArray(candidate)
+    ) {
+      return false;
+    }
+    const block = candidate as Record<string, unknown>;
+    if (block.type === "text") {
+      return typeof block.text === "string" && block.text.trim().length > 0;
+    }
+    return (
+      block.type === "image" &&
+      typeof block.mimeType === "string" &&
+      block.mimeType.trim().length > 0
+    );
+  });
 }
 
 function stringRecordValue(record: unknown, key: string): string | null {

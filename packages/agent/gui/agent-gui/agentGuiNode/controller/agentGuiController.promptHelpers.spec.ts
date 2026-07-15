@@ -39,6 +39,32 @@ describe("createOptimisticPromptMessage", () => {
     });
   });
 
+  it("keeps image-only content without synthesizing presentation text", () => {
+    const echo = createOptimisticPromptMessage({
+      ...echoInput,
+      content: [
+        {
+          type: "image",
+          mimeType: "image/png",
+          path: "/prompt-assets/screen.png",
+          name: "screen.png"
+        }
+      ]
+    });
+
+    expect(echo.payload).toMatchObject({
+      content: [
+        {
+          type: "image",
+          mimeType: "image/png",
+          path: "/prompt-assets/screen.png",
+          name: "screen.png"
+        }
+      ],
+      text: ""
+    });
+  });
+
   it("lets the durable twin replace the echo in an id-keyed merge", () => {
     const echo = createOptimisticPromptMessage(echoInput);
     const durableTwin: AgentActivityMessage = {

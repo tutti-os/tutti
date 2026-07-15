@@ -348,6 +348,96 @@ describe("AgentTranscriptItemView render stability", () => {
     delete (window as { agentActivityRuntime?: unknown }).agentActivityRuntime;
   });
 
+  it("keeps a loaded optimistic image mounted when its durable attachment arrives", async () => {
+    const readPromptAsset = vi.fn(async () => ({
+      attachmentId: "prompt-asset-1",
+      data: "b3B0aW1pc3RpYw==",
+      mimeType: "image/png" as const,
+      name: "screen.png",
+      path: "/prompt-assets/screen.png"
+    }));
+    const readSessionAttachment = vi.fn(async () => ({
+      attachmentId: "attachment-1",
+      data: "ZHVyYWJsZQ==",
+      mimeType: "image/png" as const,
+      name: "screen.png"
+    }));
+    Object.defineProperty(window, "agentActivityRuntime", {
+      configurable: true,
+      value: {
+        readPromptAsset,
+        readSessionAttachment
+      } as Partial<AgentActivityRuntime>
+    });
+    const stableImageId = "client-submit:user:submit-1:image:0";
+    const optimisticMessage: AgentMessageContentVM = {
+      kind: "message-content",
+      id: "client-submit:user:submit-1:images:0",
+      turnId: "turn-1",
+      body: "",
+      contentKind: "image-grid",
+      images: [
+        {
+          id: stableImageId,
+          workspaceId: "room-1",
+          agentSessionId: "session-1",
+          mimeType: "image/png",
+          name: "screen.png",
+          path: "/prompt-assets/screen.png"
+        }
+      ],
+      occurredAtUnixMs: 1
+    };
+    const durableMessage: AgentMessageContentVM = {
+      ...optimisticMessage,
+      images: [
+        {
+          id: stableImageId,
+          workspaceId: "room-1",
+          agentSessionId: "session-1",
+          attachmentId: "attachment-1",
+          mimeType: "image/png",
+          name: "screen.png"
+        }
+      ],
+      occurredAtUnixMs: 2
+    };
+    const { rerender } = render(
+      <AgentMessageBlock
+        workspaceRoot="/workspace/demo"
+        basePath="/workspace/demo"
+        row={userMessageRow(optimisticMessage)}
+        thinkingLabel="Thought process"
+      />
+    );
+
+    const optimisticImage = await screen.findByRole("img", {
+      name: "screen.png"
+    });
+    expect(optimisticImage).toHaveAttribute(
+      "src",
+      "data:image/png;base64,b3B0aW1pc3RpYw=="
+    );
+
+    rerender(
+      <AgentMessageBlock
+        workspaceRoot="/workspace/demo"
+        basePath="/workspace/demo"
+        row={userMessageRow(durableMessage)}
+        thinkingLabel="Thought process"
+      />
+    );
+
+    expect(screen.getByRole("img", { name: "screen.png" })).toBe(
+      optimisticImage
+    );
+    expect(screen.queryByTestId("agent-gui-message-image-loading")).toBeNull();
+    expect(readPromptAsset).toHaveBeenCalledTimes(1);
+    expect(readSessionAttachment).not.toHaveBeenCalled();
+
+    delete (window as { agentActivityRuntime?: unknown }).agentActivityRuntime;
+  });
+
   it("renders a user prompt image directly from its remote HTTPS URL", () => {
     const readPromptAsset = vi.fn();
     Object.defineProperty(window, "agentActivityRuntime", {

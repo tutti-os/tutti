@@ -43,8 +43,7 @@ function projectUserMessageContentParts(
       body: "",
       contentKind: "image-grid",
       images: imageBlocks.map((image, index) => ({
-        id:
-          image.path || image.attachmentId || `${message.id}:image:0:${index}`,
+        id: `${message.id}:image:${index}`,
         workspaceId: image.workspaceId,
         agentSessionId: image.agentSessionId,
         attachmentId: image.attachmentId,

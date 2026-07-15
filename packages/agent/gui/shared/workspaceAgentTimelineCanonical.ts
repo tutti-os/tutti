@@ -19,7 +19,8 @@ import {
   messageStatusKind,
   normalizedMessageBody,
   stripReviewProcessSummaryTitle,
-  thinkingStatusKind
+  thinkingStatusKind,
+  userMessageProjectionKey
 } from "./workspaceAgentTimelineMessageHelpers";
 import { timelineItemOwnerThreadId } from "./agentConversation/projection/subAgentTimelinePartition";
 import {
@@ -72,12 +73,13 @@ export function buildCanonicalWorkspaceAgentDetailView({
 
     if (role === "user") {
       const turnId = explicitTurnId || `seq:${item.seq || item.id}`;
-      if (!body) {
+      const projectionKey = userMessageProjectionKey(item, body);
+      if (!projectionKey) {
         continue;
       }
       if (
         isRecentDuplicateUserMessage(
-          recentUserMessages.get(normalizedMessageBody(body)),
+          recentUserMessages.get(projectionKey),
           item
         )
       ) {
@@ -97,7 +99,7 @@ export function buildCanonicalWorkspaceAgentDetailView({
       );
       turn.userMessages.push(message);
       turn.userMessage ??= message;
-      recentUserMessages.set(normalizedMessageBody(body), item);
+      recentUserMessages.set(projectionKey, item);
       continue;
     }
 

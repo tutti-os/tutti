@@ -551,6 +551,93 @@ describe("projectWorkspaceAgentMessagesToConversationVM", () => {
     );
   });
 
+  it("renders an image-only optimistic prompt without synthetic text", () => {
+    const conversation = projectWorkspaceAgentMessagesToConversationVM({
+      activity: activity(),
+      session: session(),
+      workspaceRoot: "/workspace/demo",
+      messages: [
+        message({
+          messageId: "client-submit:user:submit-image-1",
+          id: 0,
+          role: "user",
+          kind: "text",
+          payload: {
+            __agentGuiOptimisticPrompt: true,
+            clientSubmitId: "submit-image-1",
+            text: "",
+            content: [
+              {
+                type: "image",
+                mimeType: "image/png",
+                path: "/prompt-assets/screen.png",
+                name: "screen.png"
+              }
+            ]
+          }
+        })
+      ]
+    });
+
+    const userRow = conversation.rows.find(
+      (row) => row.kind === "message" && row.speaker === "user"
+    );
+
+    expect(userRow?.kind === "message" ? userRow.messages : null).toEqual([
+      expect.objectContaining({
+        body: "",
+        contentKind: "image-grid",
+        images: [
+          expect.objectContaining({
+            id: "client-submit:user:submit-image-1:image:0",
+            mimeType: "image/png",
+            name: "screen.png",
+            path: "/prompt-assets/screen.png"
+          })
+        ]
+      })
+    ]);
+
+    const durableConversation = projectWorkspaceAgentMessagesToConversationVM({
+      activity: activity(),
+      session: session(),
+      workspaceRoot: "/workspace/demo",
+      messages: [
+        message({
+          messageId: "client-submit:user:submit-image-1",
+          id: 1,
+          version: 1,
+          role: "user",
+          kind: "text",
+          payload: {
+            clientSubmitId: "submit-image-1",
+            text: "[Image]",
+            content: [
+              {
+                type: "image",
+                mimeType: "image/png",
+                attachmentId: "attachment-1",
+                name: "screen.png"
+              }
+            ]
+          }
+        })
+      ]
+    });
+    const durableUserRow = durableConversation.rows.find(
+      (row) => row.kind === "message" && row.speaker === "user"
+    );
+
+    expect(
+      durableUserRow?.kind === "message"
+        ? durableUserRow.messages[0]?.images?.[0]
+        : null
+    ).toMatchObject({
+      id: "client-submit:user:submit-image-1:image:0",
+      attachmentId: "attachment-1"
+    });
+  });
+
   it("renders displayPrompt instead of rich content text while preserving prompt images", () => {
     const conversation = projectWorkspaceAgentMessagesToConversationVM({
       activity: activity(),
