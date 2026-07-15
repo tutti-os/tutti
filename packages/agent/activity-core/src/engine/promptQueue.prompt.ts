@@ -1,5 +1,11 @@
 import type { EngineQueuedPrompt } from "./promptQueue.types.ts";
 
+export function clonePromptRequiredSettingsPatch(
+  patch: EngineQueuedPrompt["requiredSettingsPatch"]
+): Pick<EngineQueuedPrompt, "requiredSettingsPatch"> {
+  return patch ? { requiredSettingsPatch: { ...patch } } : {};
+}
+
 export function normalizeQueuedPrompt(
   prompt: EngineQueuedPrompt
 ): EngineQueuedPrompt | null {
@@ -16,6 +22,7 @@ export function normalizeQueuedPrompt(
       : {}),
     ...(prompt.guidance === true ? { guidance: true } : {}),
     id,
+    ...clonePromptRequiredSettingsPatch(prompt.requiredSettingsPatch),
     ...(prompt.submitDiagnostics
       ? { submitDiagnostics: { ...prompt.submitDiagnostics } }
       : {}),

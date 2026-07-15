@@ -3,6 +3,7 @@ import {
   createAgentSessionEngine,
   type AgentActivityAdapter,
   type AgentSessionEngine,
+  type PromptQueueSendCommand,
   type SessionActivateCommand,
   type SessionReconcileCommand
 } from "@tutti-os/agent-activity-core";
@@ -61,6 +62,35 @@ interface CreateWorkspaceAgentSessionEngineHostInput {
   workspaceId: string;
 }
 
+type WorkspaceAgentPromptCommandPort = Pick<
+  CreateWorkspaceAgentSessionEngineHostInput,
+  "sendInput" | "updateSessionSettings"
+>;
+
+export async function executeWorkspaceAgentPromptSendCommand(
+  input: WorkspaceAgentPromptCommandPort,
+  command: PromptQueueSendCommand
+): Promise<unknown> {
+  if (command.requiredSettingsPatch) {
+    await input.updateSessionSettings({
+      agentSessionId: command.agentSessionId,
+      settings: { ...command.requiredSettingsPatch },
+      workspaceId: command.workspaceId
+    });
+  }
+  return input.sendInput({
+    agentSessionId: command.agentSessionId,
+    clientSubmitId: command.clientSubmitId,
+    content: [...command.content],
+    displayPrompt: command.displayPrompt ?? null,
+    ...(command.guidance === true ? { guidance: true } : {}),
+    ...(command.submitDiagnostics
+      ? { submitDiagnostics: { ...command.submitDiagnostics } }
+      : {}),
+    workspaceId: command.workspaceId
+  });
+}
+
 export function createWorkspaceAgentSessionEngineHost(
   input: CreateWorkspaceAgentSessionEngineHostInput
 ): WorkspaceAgentSessionEngineHost {
@@ -113,17 +143,7 @@ export function createWorkspaceAgentSessionEngineHost(
               workspaceId: command.workspaceId
             });
           case "queue/sendPrompt":
-            return input.sendInput({
-              agentSessionId: command.agentSessionId,
-              clientSubmitId: command.clientSubmitId,
-              content: [...command.content],
-              displayPrompt: command.displayPrompt ?? null,
-              ...(command.guidance === true ? { guidance: true } : {}),
-              ...(command.submitDiagnostics
-                ? { submitDiagnostics: { ...command.submitDiagnostics } }
-                : {}),
-              workspaceId: command.workspaceId
-            });
+            return executeWorkspaceAgentPromptSendCommand(input, command);
           case "interaction/respond":
             return input.submitInteractive({
               ...(command.action ? { action: command.action } : {}),

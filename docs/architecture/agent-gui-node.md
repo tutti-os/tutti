@@ -2601,6 +2601,21 @@ snapshot. This mode controls command-list synthesis, not the semantics of
 advertised commands: when the owner explicitly advertises a built-in name such
 as `/plan`, `/fast`, or `/status`, AgentGUI may still handle it with the same
 local composer behavior used for local sessions.
+Local capability entries such as `/browser` and `/computer` are composer
+commands, not provider-native slash commands. Palette selection and manual
+submission must converge on the same local effect: enable the negotiated
+capability, preserve the slash invocation as the visible prompt, and send the
+capability handoff prompt to the provider. A recognized local capability must
+never fall through as raw slash text to the provider's command parser.
+Capability syntax and handoff projection belong to the pure AgentGUI model,
+shared by all local capability commands. The composer hook must dispatch one
+semantic submit carrying runtime content, visible prompt, and a
+`requiredSettingsPatch`; it must not orchestrate a settings mutation followed
+by a separate submit. For a new session, activation folds that patch into the
+initial settings. For an existing session, the activity engine retains it with
+the queued prompt, and the host command port applies the patch successfully
+before delivering the prompt. Queue waiting, promotion, and retry must preserve
+the patch so capability activation and prompt delivery remain one operation.
 Desktop workbench may apply product entry gates before passing target data into
 AgentGUI. The Tutti Agent settings switch writes only the daemon-owned
 `local:tutti-agent.Enabled` field, then refreshes the shared Agent Target

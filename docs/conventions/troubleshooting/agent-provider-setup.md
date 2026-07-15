@@ -980,6 +980,41 @@ invalid_grant`. Daemon logs may also show an extra `claude-code` process start
   [useAgentGUIComposerOptionsSync.ts](../../packages/agent/gui/agent-gui/agentGuiNode/controller/useAgentGUIComposerOptionsSync.ts)
   [opencode.go](../../packages/agent/daemon/providerregistry/opencode.go)
 
+### Local capability slash command reaches the provider as unknown
+
+- Symptom:
+  A local capability command appears in the Agent slash palette and updates its
+  composer setting, but submitting text such as `/computer click Confirm`
+  produces a provider response such as `Unknown command: /computer`.
+- Quick checks:
+  Confirm the resolved slash catalog contains a capability entry rather than a
+  provider command. Then trace both palette selection and form submission; the
+  latter must resolve a local capability submit effect before the generic
+  provider slash-command path.
+- Root cause:
+  The palette selection path enabled the capability and filled the canonical
+  token, but the form submission path had no matching local interceptor. The
+  raw slash invocation therefore crossed the runtime boundary and was parsed as
+  a provider-native command.
+- Fix:
+  Route every local capability entry through the shared capability submission
+  parser and handoff projection. Preserve the slash invocation as
+  `displayPrompt`, then dispatch one semantic submit carrying the handoff prompt
+  plus a `requiredSettingsPatch`. New-session activation merges the patch into
+  initial settings; existing-session delivery retains it in the activity queue
+  and applies it at the host command port before sending. Do not sequence a
+  settings mutation and a submit in a React hook. Keep provider-native command
+  behavior descriptor authoritative; do not add provider-name branches.
+- Validation:
+  Cover slash and alias forms, capability-disabled rejection, visible prompt
+  normalization, handoff prompt construction, new-session setting activation,
+  queued-prompt patch retention, and settings-before-prompt host ordering.
+- References:
+  [agent-gui-node.md](../../architecture/agent-gui-node.md)
+  [agentCapabilityUseSubmit.ts](../../../packages/agent/gui/agent-gui/agentGuiNode/model/agentCapabilityUseSubmit.ts)
+  [agentSlashCommandProviderPolicy.ts](../../../packages/agent/gui/agent-gui/agentGuiNode/model/agentSlashCommandProviderPolicy.ts)
+  [promptQueue.reducer.ts](../../../packages/agent/activity-core/src/engine/promptQueue.reducer.ts)
+
 ### Standard ACP tools show generic cards and no-project file links do nothing
 
 - Symptom:

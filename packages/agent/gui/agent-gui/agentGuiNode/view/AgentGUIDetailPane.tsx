@@ -315,13 +315,17 @@ export const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
     pendingPrependScrollAnchorRef.current = null;
   }, [viewModel.rail.activeConversationId]);
   const submitPromptAndScrollToBottom = useCallback(
-    (content: AgentPromptContentBlock[], displayPrompt?: string): void => {
+    (
+      content: AgentPromptContentBlock[],
+      displayPrompt?: string,
+      options?: Parameters<AgentComposerProps["onSubmit"]>[2]
+    ): void => {
       requestSubmittedPromptScrollToBottom();
       if (displayPrompt === undefined) {
-        submitPrompt(content);
+        submitPrompt(content, undefined, options);
         return;
       }
-      submitPrompt(content, displayPrompt);
+      submitPrompt(content, displayPrompt, options);
     },
     [requestSubmittedPromptScrollToBottom, submitPrompt]
   );

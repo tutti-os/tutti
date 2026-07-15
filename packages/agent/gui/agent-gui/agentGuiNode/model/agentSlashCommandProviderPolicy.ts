@@ -1,12 +1,15 @@
 import type { AgentSessionCommand } from "../../../shared/agentSessionTypes";
 import type {
   AgentActivityComposerOptions,
+  AgentActivitySubmitSettingsPatch,
   AgentActivitySlashCommandPolicy
 } from "@tutti-os/agent-activity-core";
 import {
-  buildTuttiBrowserUseSubmitPrompt,
-  parseTuttiBrowserUseInvocation
-} from "./agentBrowserUseSubmit";
+  agentCapabilityUseDisplayPrompt,
+  buildAgentCapabilityUseSubmitPrompt,
+  parseAgentCapabilityUseInvocation
+} from "./agentCapabilityUseSubmit";
+import type { AgentCapabilityUse } from "./agentCapabilityUseSubmit";
 import {
   draftForSlashCommand,
   mergeSlashCommands,
@@ -18,7 +21,7 @@ export type AgentSlashCommandProvider = string;
 
 export interface AgentSlashCommandCapability {
   aliases?: readonly string[];
-  capability: "browserUse" | "computerUse";
+  capability: AgentCapabilityUse;
   kind: "capability";
   name: string;
 }
@@ -41,7 +44,7 @@ export type SlashCommandSelectionEffect =
       kind: "submitPrompt";
       prompt: string;
       displayPrompt?: string;
-      enableBrowserUse?: boolean;
+      requiredSettingsPatch?: AgentActivitySubmitSettingsPatch;
     }
   | {
       kind: "showStatus";
@@ -72,6 +75,8 @@ interface ResolveSlashCommandSelectionEffectInput {
 }
 
 interface ResolveSlashCommandSubmitEffectInput {
+  browserSupported?: boolean;
+  computerSupported?: boolean;
   provider: AgentSlashCommandProvider;
   policy?: AgentSlashCommandPolicy | null;
   commands: readonly AgentSlashCommand[];
@@ -248,43 +253,28 @@ export function resolveSlashCommandSelectionEffect({
   };
 }
 
-export function resolveTuttiBrowserUseSubmitEffect(input: {
-  browserSupported: boolean;
-  commands: readonly AgentSlashCommand[];
-  draft: string;
-}): SlashCommandSelectionEffect | null {
-  if (!input.browserSupported) {
-    return null;
-  }
-  const invocation = parseTuttiBrowserUseInvocation(input.draft);
-  if (!invocation) {
-    return null;
-  }
-  const command = input.commands.find((candidate) =>
-    slashCommandMatchesInvocation(candidate, invocation.commandName)
-  );
-  if (!command || !isBrowserUseCapability(command)) {
-    return null;
-  }
-  return {
-    kind: "submitPrompt",
-    prompt: buildTuttiBrowserUseSubmitPrompt(invocation.args),
-    displayPrompt: browserUseDisplayPrompt(invocation),
-    enableBrowserUse: true
-  };
-}
-
-function browserUseDisplayPrompt({ args }: { args: string }): string {
-  const trimmedArgs = args.trim();
-  return trimmedArgs ? `/browser ${trimmedArgs}` : "/browser";
-}
-
 export function resolveSlashCommandSubmitEffect({
+  browserSupported = false,
+  computerSupported = false,
   provider: _provider,
   policy,
   commands,
   draft
 }: ResolveSlashCommandSubmitEffectInput): SlashCommandSelectionEffect | null {
+  for (const [capability, supported] of [
+    ["browserUse", browserSupported],
+    ["computerUse", computerSupported]
+  ] as const) {
+    const capabilityEffect = resolveCapabilitySubmitEffect({
+      capability,
+      commands,
+      draft,
+      supported
+    });
+    if (capabilityEffect) {
+      return capabilityEffect;
+    }
+  }
   const invocation = parseSlashCommandInvocation(draft);
   if (!invocation) {
     return null;
@@ -295,7 +285,7 @@ export function resolveSlashCommandSubmitEffect({
   if (!command) {
     return null;
   }
-  if (isBrowserUseCapability(command)) {
+  if (isAgentSlashCommandCapability(command)) {
     return null;
   }
   const commandName = normalizedCommandName(command);
@@ -323,6 +313,38 @@ export function resolveSlashCommandSubmitEffect({
     };
   }
   return null;
+}
+
+function resolveCapabilitySubmitEffect({
+  capability,
+  commands,
+  draft,
+  supported
+}: {
+  capability: AgentSlashCommandCapability["capability"];
+  commands: readonly AgentSlashCommand[];
+  draft: string;
+  supported: boolean;
+}): SlashCommandSelectionEffect | null {
+  if (!supported) {
+    return null;
+  }
+  const invocation = parseAgentCapabilityUseInvocation(draft, capability);
+  if (!invocation) {
+    return null;
+  }
+  const command = commands.find((candidate) =>
+    slashCommandMatchesInvocation(candidate, invocation.commandName)
+  );
+  if (!command || !isCapabilityCommand(command, capability)) {
+    return null;
+  }
+  return {
+    kind: "submitPrompt",
+    prompt: buildAgentCapabilityUseSubmitPrompt(capability, invocation.args),
+    displayPrompt: agentCapabilityUseDisplayPrompt(capability, invocation.args),
+    requiredSettingsPatch: { [capability]: true }
+  };
 }
 
 function isLocalTogglePlanCommand(
@@ -440,6 +462,23 @@ function isComputerUseCapability(
     command.kind === "capability" &&
     command.capability === "computerUse"
   );
+}
+
+function isCapabilityCommand(
+  command: AgentSlashCommand,
+  capability: AgentSlashCommandCapability["capability"]
+): command is AgentSlashCommandCapability {
+  return (
+    "kind" in command &&
+    command.kind === "capability" &&
+    command.capability === capability
+  );
+}
+
+function isAgentSlashCommandCapability(
+  command: AgentSlashCommand
+): command is AgentSlashCommandCapability {
+  return "kind" in command && command.kind === "capability";
 }
 
 function slashCommandMatchesInvocation(

@@ -435,6 +435,11 @@ export interface AgentActivitySendInput {
   signal?: AbortSignal;
 }
 
+export interface AgentActivitySubmitSettingsPatch {
+  browserUse?: boolean;
+  computerUse?: boolean;
+}
+
 export interface AgentActivitySubmitDiagnostics {
   submittedAtUnixMs?: number;
   blockCount?: number;
@@ -584,6 +589,7 @@ export type AgentActivitySessionSettings = {
   permissionModeId?: string | null;
   planMode?: boolean | null;
   browserUse?: boolean | null;
+  computerUse?: boolean | null;
   reasoningEffort?: string | null;
   speed?: string | null;
 };

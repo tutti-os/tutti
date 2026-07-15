@@ -24,8 +24,7 @@ import type {
 } from "../model/agentSlashCommandProviderPolicy";
 import {
   resolveSlashCommandSelectionEffect,
-  resolveSlashCommandSubmitEffect,
-  resolveTuttiBrowserUseSubmitEffect
+  resolveSlashCommandSubmitEffect
 } from "../model/agentSlashCommandProviderPolicy";
 import {
   draftForProviderSkillTrigger,
@@ -215,13 +214,17 @@ export function useComposerSlashActions(input: UseComposerSlashActionsInput) {
     (effect: SlashCommandSelectionEffect): void => {
       if (effect.kind === "submitPrompt") {
         clearSlashCommandDraft();
-        if (effect.enableBrowserUse && !settingsControlsDisabled) {
-          onSettingsChange({ browserUse: true });
-        }
+        const submitOptions = effect.requiredSettingsPatch
+          ? { requiredSettingsPatch: effect.requiredSettingsPatch }
+          : undefined;
         if (effect.displayPrompt) {
-          onSubmit(textPromptContent(effect.prompt), effect.displayPrompt);
+          onSubmit(
+            textPromptContent(effect.prompt),
+            effect.displayPrompt,
+            submitOptions
+          );
         } else {
-          onSubmit(textPromptContent(effect.prompt));
+          onSubmit(textPromptContent(effect.prompt), undefined, submitOptions);
         }
         return;
       }
@@ -439,20 +442,13 @@ export function useComposerSlashActions(input: UseComposerSlashActionsInput) {
         return;
       }
       if (options?.guidance !== true) {
-        const browserUseEffect = resolveTuttiBrowserUseSubmitEffect({
-          browserSupported: Boolean(composerSettings.supportsBrowser),
-          commands: resolvedSlashCommands,
-          draft: nextPrompt
-        });
-        if (browserUseEffect) {
-          executeSlashCommandEffect(browserUseEffect);
-          return;
-        }
         const slashCommandEffect = resolveSlashCommandSubmitEffect({
-          provider,
-          policy: slashCommandPolicy,
+          browserSupported: Boolean(composerSettings.supportsBrowser),
+          computerSupported: Boolean(composerSettings.supportsComputerUse),
           commands: resolvedSlashCommands,
-          draft: nextPrompt
+          draft: nextPrompt,
+          provider,
+          policy: slashCommandPolicy
         });
         if (slashCommandEffect) {
           executeSlashCommandEffect(slashCommandEffect);
