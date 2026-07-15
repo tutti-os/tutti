@@ -5,9 +5,11 @@ import (
 	"fmt"
 	"strings"
 	"unicode/utf8"
+
+	"github.com/tutti-os/tutti/packages/agent/daemon/titletext"
 )
 
-const MaxSessionTitleRunes = 120
+const MaxSessionTitleRunes = titletext.MaxSessionTitleRunes
 
 var ErrSessionTitleTooLong = fmt.Errorf(
 	"%w: title must be at most %d characters",

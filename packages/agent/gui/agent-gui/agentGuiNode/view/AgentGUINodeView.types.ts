@@ -180,6 +180,7 @@ export interface AgentGUIViewLabels {
   retrySearch: string;
   conversationUnavailable: string;
   fallbackAgentTitle: string;
+  untitledConversationTitle: string;
   searchPlaceholder: string;
   sectionConversations: string;
   sectionToday: string;

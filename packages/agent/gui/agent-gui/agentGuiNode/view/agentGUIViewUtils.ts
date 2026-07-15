@@ -68,13 +68,13 @@ export function conversationPlainTitle(
     AgentGUINodeViewModel["rail"]["conversations"][number],
     "title" | "titleFallback"
   >,
-  labels: Pick<AgentGUIViewLabels, "fallbackAgentTitle">,
+  labels: Pick<AgentGUIViewLabels, "untitledConversationTitle">,
   uiLanguage: UiLanguage
 ): string {
   void uiLanguage;
   return resolveAgentGUIConversationDisplayTitle(
     conversation,
-    labels.fallbackAgentTitle
+    labels.untitledConversationTitle
   );
 }
 import { useCallback, useLayoutEffect, useMemo, useRef } from "react";

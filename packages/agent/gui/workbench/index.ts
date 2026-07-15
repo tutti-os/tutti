@@ -19,6 +19,11 @@ export type {
   CreateAgentGuiWorkbenchContributionInput
 } from "./contribution.ts";
 export {
+  agentGuiWorkbenchConversationIdentitiesEqual,
+  resolveAgentGuiWorkbenchConversationIdentity
+} from "./conversationIdentity.ts";
+export type { AgentGuiWorkbenchConversationIdentity } from "./conversationIdentity.ts";
+export {
   agentGuiWorkbenchComingSoonProviders,
   agentGuiWorkbenchDefaultDockProviders,
   agentGuiWorkbenchDockSuppressedProviders,

@@ -27,7 +27,7 @@
       "packages/agent/gui/app/renderer/i18n/locales/zh-CN.ts": 1773
     },
     "goFileLengthExemptions": 2,
-    "identityProviderBranches": 2,
+    "identityProviderBranches": 1,
     "moduleMutableGlobals": 6,
     "overlayStores": 4,
     "providerBranches": 1,

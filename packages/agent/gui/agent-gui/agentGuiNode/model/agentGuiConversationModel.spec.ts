@@ -556,7 +556,7 @@ describe("agentGuiConversationModel", () => {
     ]);
   });
 
-  it("builds restored conversation titles from cached runtime timelines", () => {
+  it("uses canonical restored conversation titles with cached runtime timelines", () => {
     const snapshot: AgentActivitySnapshot = {
       workspaceId: "workspace-1",
       sessionMessagesById: {},
@@ -566,7 +566,7 @@ describe("agentGuiConversationModel", () => {
           agentSessionId: "nexight-session",
           provider: "nexight",
           sessionOrigin: AGENT_GUI_RUNTIME_SESSION_ORIGIN,
-          title: "Nexight",
+          title: "AAA",
           updatedAtUnixMs: 30
         })
       ]
@@ -595,6 +595,33 @@ describe("agentGuiConversationModel", () => {
       expect.objectContaining({
         id: "nexight-session",
         title: "AAA"
+      })
+    ]);
+  });
+
+  it("keeps an empty canonical session title as a localized fallback", () => {
+    const snapshot: AgentActivitySnapshot = {
+      workspaceId: "workspace-1",
+      sessionMessagesById: {},
+      presences: [],
+      sessions: [
+        workspaceAgentSession({
+          agentSessionId: "untitled-session",
+          provider: "codex",
+          sessionOrigin: AGENT_GUI_RUNTIME_SESSION_ORIGIN,
+          title: "",
+          updatedAtUnixMs: 10
+        })
+      ]
+    };
+
+    expect(
+      buildAgentGUIConversationSummaries({ snapshot, provider: "codex" })
+    ).toEqual([
+      expect.objectContaining({
+        id: "untitled-session",
+        title: "",
+        titleFallback: "untitled-conversation"
       })
     ]);
   });

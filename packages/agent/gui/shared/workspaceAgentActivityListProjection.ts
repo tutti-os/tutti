@@ -71,7 +71,7 @@ export function buildWorkspaceAgentActivityListViewModel(
         ...(user.userAvatarUrl ? { userAvatarUrl: user.userAvatarUrl } : {}),
         agentProvider,
         agentName,
-        title: resolveWorkspaceAgentActivityTitle(session, messages),
+        title: resolveWorkspaceAgentActivityTitle(session),
         status,
         latestActivitySummary: latestActivity.summary,
         latestActivityActorName: latestActivity.actorName,

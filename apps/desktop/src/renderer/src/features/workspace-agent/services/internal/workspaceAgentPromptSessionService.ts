@@ -99,7 +99,7 @@ export class WorkspaceAgentPromptSessionService implements IWorkspaceAgentPrompt
       input,
       this.dependencies.workspaceUserProjectService
     );
-    const title = input.title?.trim() || prompt;
+    const title = input.title?.trim();
     await safeTrackAgentNodeResult(this.nodeResultTracker, {
       agentSessionId,
       flow: "session_create",
@@ -119,7 +119,7 @@ export class WorkspaceAgentPromptSessionService implements IWorkspaceAgentPrompt
           ...(cwd ? { cwd } : {}),
           initialContent: textPromptContent(prompt),
           mode: "new",
-          title,
+          ...(title ? { title } : {}),
           visible: input.visible ?? true,
           workspaceId: input.workspaceId
         });

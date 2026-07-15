@@ -2432,7 +2432,7 @@ describe("AgentMentionSearchController", () => {
     });
   });
 
-  it("uses session messages instead of timeline for missing runtime session titles", async () => {
+  it("uses the canonical session title without loading message fallback", async () => {
     const loadSessionMessages = vi.fn().mockResolvedValue({
       messages: [
         {
@@ -2474,7 +2474,7 @@ describe("AgentMentionSearchController", () => {
             userId: "user-1",
             provider: "codex",
             sessionOrigin: "WORKSPACE_AGENT_SESSION_ORIGIN_RUNTIME",
-            title: "",
+            title: "Canonical title",
             createdAtUnixMs: 1,
             updatedAtUnixMs: 10
           }
@@ -2518,21 +2518,14 @@ describe("AgentMentionSearchController", () => {
               expect.objectContaining({
                 kind: "session",
                 targetId: "runtime-session-1",
-                title: "这个会话里面做了什么事情"
+                title: "Canonical title"
               })
             ]
           }
         ]
       })
     );
-    expect(loadSessionMessages).toHaveBeenCalledWith({
-      workspaceId: "room-1",
-
-      agentSessionId: "runtime-session-1",
-      sessionOrigin: "WORKSPACE_AGENT_SESSION_ORIGIN_RUNTIME",
-      afterVersion: 0,
-      limit: 20
-    });
+    expect(loadSessionMessages).not.toHaveBeenCalled();
   });
 
   it("loads default issue items in browse mode when switching to the issue tab", async () => {

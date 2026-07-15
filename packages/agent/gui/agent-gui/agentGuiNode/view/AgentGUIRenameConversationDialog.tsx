@@ -3,14 +3,11 @@ import { ConfirmationDialog } from "@tutti-os/ui-system";
 import { Button } from "../../../app/renderer/components/ui/button";
 import type { AgentGUINodeViewModel } from "../model/agentGuiNodeTypes";
 import type { AgentGUIViewLabels } from "./AgentGUINodeView.types";
-import { conversationPlainTitle } from "./agentGUIViewUtils";
-import type { UiLanguage } from "../../../contexts/settings/domain/uiSettings";
 
 interface AgentGUIRenameConversationDialogProps {
   conversation: AgentGUINodeViewModel["rail"]["conversations"][number] | null;
   open: boolean;
   labels: AgentGUIViewLabels;
-  uiLanguage: UiLanguage;
   onOpenChange: (open: boolean) => void;
   onRename: (agentSessionId: string, title: string) => Promise<void>;
 }
@@ -20,7 +17,6 @@ export const AgentGUIRenameConversationDialog = memo(
     conversation,
     open,
     labels,
-    uiLanguage,
     onOpenChange,
     onRename
   }: AgentGUIRenameConversationDialogProps): React.JSX.Element {
@@ -39,8 +35,8 @@ export const AgentGUIRenameConversationDialog = memo(
         setIsSaving(false);
         return;
       }
-      setTitle(conversationPlainTitle(conversation, labels, uiLanguage));
-    }, [conversation, labels, open, uiLanguage]);
+      setTitle(conversation.title);
+    }, [conversation, open]);
     useEffect(() => {
       if (!open) {
         return;

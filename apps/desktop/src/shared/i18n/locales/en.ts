@@ -145,6 +145,7 @@ export const en = {
       newConversation: "New session",
       openDetachedWindow: "Open in detached window",
       openNewWindow: "Open new window",
+      untitledConversation: "Untitled conversation",
       openSessionUnavailableDescription:
         "This agent session no longer exists or cannot be opened.",
       openSessionUnavailableTitle: "Session unavailable",

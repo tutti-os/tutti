@@ -38,13 +38,6 @@ func defaultACPInitializeParams(host HostMetadata) map[string]any {
 	}
 }
 
-func fallbackStandardSessionTitle(config standardACPConfig, currentTitle string, prompt string) string {
-	if isStandardACPPlaceholderTitle(config, currentTitle) {
-		return promptTitleSnippet(prompt)
-	}
-	return ""
-}
-
 func standardACPUpdateEvents(config standardACPConfig, session Session, turnID string, raw json.RawMessage, normalizer *acpTurnNormalizer) []activityshared.Event {
 	var params struct {
 		Update map[string]any `json:"update"`
@@ -269,17 +262,6 @@ func acpContainsImageContent(value any) bool {
 
 func shouldIgnoreStandardACPTitle(_ standardACPConfig, _ string, title string) bool {
 	return isInternalMentionRoutingTitle(title)
-}
-
-func isStandardACPPlaceholderTitle(config standardACPConfig, title string) bool {
-	normalizedTitle := strings.ToLower(strings.TrimSpace(title))
-	placeholderTitles := append([]string{"", config.defaultTitle}, config.defaultTitleAliases...)
-	for _, placeholderTitle := range placeholderTitles {
-		if normalizedTitle == strings.ToLower(strings.TrimSpace(placeholderTitle)) {
-			return true
-		}
-	}
-	return false
 }
 
 func standardACPPermissionRequested(

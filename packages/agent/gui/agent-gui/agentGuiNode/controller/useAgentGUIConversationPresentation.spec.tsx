@@ -8,6 +8,25 @@ type PresentationInput = Parameters<
 >[0];
 
 describe("useAgentGUIConversationPresentation", () => {
+  it("does not project the provider name as a fallback conversation title", () => {
+    const conversation = createConversation();
+    const input = createInput(conversation);
+    const rendered = renderHook(() =>
+      useAgentGUIConversationPresentation({
+        ...input,
+        conversations: []
+      })
+    );
+
+    expect(rendered.result.current.activeConversation).toEqual(
+      expect.objectContaining({
+        provider: "codex",
+        title: "",
+        titleFallback: "untitled-conversation"
+      })
+    );
+  });
+
   it("reuses visible and active conversation references for render-equal input", () => {
     const conversation = createConversation();
     const input = createInput(conversation);

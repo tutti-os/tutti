@@ -17,6 +17,10 @@ const standaloneHeaderIdentitySource = readFileSync(
   resolve(currentDirectory, "standaloneAgentHeaderIdentity.ts"),
   "utf8"
 );
+const standaloneWindowHeaderSource = readFileSync(
+  resolve(currentDirectory, "StandaloneAgentWindowHeader.tsx"),
+  "utf8"
+);
 const standaloneLaunchRoutingSource = readFileSync(
   resolve(currentDirectory, "useStandaloneAgentLaunchRouting.ts"),
   "utf8"
@@ -184,7 +188,11 @@ test("standalone Agent widens a narrow window before expanding the conversation 
 test("standalone Agent hides home identity and shows it after local session start", () => {
   assert.match(
     standaloneWindowSource,
-    /resolveStandaloneAgentHeaderIdentity\(\{[\s\S]*?agentTargetId: activeAgentTargetId,[\s\S]*?lastActiveAgentSessionId: nodeState\.lastActiveAgentSessionId,[\s\S]*?sessions: activitySnapshot\.sessions/
+    /useStandaloneAgentWindowHeaderIdentity\(\{[\s\S]*?activeAgentTargetId,[\s\S]*?nodeState,[\s\S]*?sessions: activitySnapshot\.sessions/
+  );
+  assert.match(
+    standaloneWindowHeaderSource,
+    /resolveStandaloneAgentHeaderIdentity\(\{[\s\S]*?agentTargetId: input\.activeAgentTargetId,[\s\S]*?lastActiveAgentSessionId: input\.nodeState\.lastActiveAgentSessionId,[\s\S]*?sessions: input\.sessions/
   );
   assert.match(
     standaloneHeaderIdentitySource,
@@ -194,10 +202,13 @@ test("standalone Agent hides home identity and shows it after local session star
     standaloneHeaderIdentitySource,
     /agentTitle: resolveAgentGuiWorkbenchHeaderTitle\(\{[\s\S]*?agentName: agent\?\.name,[\s\S]*?conversationTitle,[\s\S]*?provider/
   );
-  assert.match(standaloneWindowSource, /agentTitle=\{headerAgentTitle\}/);
   assert.match(
-    standaloneWindowSource,
-    /conversationTitle=\{headerConversationTitle\}/
+    standaloneWindowHeaderSource,
+    /agentTitle=\{identity\.agentTitle\}/
+  );
+  assert.match(
+    standaloneWindowHeaderSource,
+    /conversationTitle=\{identity\.conversationTitle\}/
   );
 });
 

@@ -781,7 +781,6 @@ export function AgentGUINodeView({
         conversation={renameConversationTarget}
         open={renameConversationDialogOpen && renameConversationTarget !== null}
         labels={labels}
-        uiLanguage={uiLanguage}
         onOpenChange={(open) => {
           setRenameConversationDialogOpen(open);
           if (!open) {
