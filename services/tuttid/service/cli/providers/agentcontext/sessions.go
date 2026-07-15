@@ -32,7 +32,6 @@ type sessionSummaryInput struct {
 type waitInput struct {
 	SessionID    string `cli:"session-id" validate:"required" description:"Agent session id to await."`
 	AfterVersion *int64 `cli:"after-version" validate:"min=0" description:"Wait for a stop point after this message version."`
-	Limit        int    `cli:"limit" validate:"min=0" description:"Maximum number of recent messages to return."`
 	TimeoutMS    int    `cli:"timeout-ms" validate:"min=0" description:"Maximum time to wait in milliseconds before returning a timeout result."`
 }
 
@@ -49,8 +48,7 @@ type sessionSummaryResult struct {
 }
 
 type waitCommandResult struct {
-	ImageLocalPath imageLocalPathResolver
-	Result         agentservice.WaitResult
+	Result agentservice.WaitResult
 }
 
 type turnResourcesResult struct {
@@ -202,16 +200,13 @@ func (p Provider) runWait(ctx context.Context, invoke framework.InvokeContext, i
 		WorkspaceID:    invoke.WorkspaceID,
 		AgentSessionID: input.SessionID,
 		AfterVersion:   afterVersion,
-		MessageLimit:   input.Limit,
+		SkipMessages:   true,
 		Timeout:        timeout,
 	})
 	if err != nil {
 		return nil, err
 	}
-	return waitCommandResult{
-		ImageLocalPath: p.imageLocalPathResolver(ctx, invoke.WorkspaceID),
-		Result:         result,
-	}, nil
+	return waitCommandResult{Result: result}, nil
 }
 
 func (p Provider) runTurnResources(ctx context.Context, invoke framework.InvokeContext, input turnResourcesInput) (any, error) {
@@ -271,9 +266,7 @@ func waitJSONValue(result any) map[string]any {
 	return map[string]any{
 		"agentSessionId": waited.Result.Session.ID,
 		"session":        sessionSummaryValue(waited.Result.Session),
-		"messages":       messageCompactValues(waited.Result.Messages, waited.ImageLocalPath),
 		"latestVersion":  waited.Result.LatestVersion,
-		"hasMore":        waited.Result.HasMore,
 		"effectiveAfter": waited.Result.EffectiveAfter,
 		"timedOut":       waited.Result.TimedOut,
 		"reason":         string(waited.Result.Reason),

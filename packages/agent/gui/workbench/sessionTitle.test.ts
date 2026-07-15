@@ -36,7 +36,6 @@ describe("agent GUI workbench session titles", () => {
     const title = resolveAgentGuiWorkbenchSessionTitle({
       agentSessionId: "session-1",
       fallbackTitle: "Stale session title",
-      provider: "codex",
       ...sessionState({
         agentSessionId: "session-1",
         title: "@automation 发布 帮我跟进"
@@ -54,7 +53,6 @@ describe("agent GUI workbench session titles", () => {
     const title = resolveAgentGuiWorkbenchSessionTitle({
       agentSessionId: "session-1",
       fallbackTitle: null,
-      provider: "codex",
       ...sessionState({
         agentSessionId: "session-1",
         title: "@调研 spool 仓库 这个任务"
@@ -68,11 +66,40 @@ describe("agent GUI workbench session titles", () => {
     });
   });
 
-  it("does not expose provider-only session titles as conversation titles", () => {
+  it("uses the engine optimistic title while the canonical title is empty", () => {
     const title = resolveAgentGuiWorkbenchSessionTitle({
       agentSessionId: "session-1",
       fallbackTitle: null,
-      provider: "codex",
+      optimisticTitle: "test1",
+      ...sessionState({ agentSessionId: "session-1", title: "" })
+    });
+
+    expect(title).toEqual({
+      agentSessionId: "session-1",
+      source: "optimistic",
+      title: "test1"
+    });
+  });
+
+  it("prefers the canonical title over the engine optimistic title", () => {
+    const title = resolveAgentGuiWorkbenchSessionTitle({
+      agentSessionId: "session-1",
+      fallbackTitle: null,
+      optimisticTitle: "test1",
+      ...sessionState({ agentSessionId: "session-1", title: "Canonical title" })
+    });
+
+    expect(title).toEqual({
+      agentSessionId: "session-1",
+      source: "snapshot",
+      title: "Canonical title"
+    });
+  });
+
+  it("uses the canonical snapshot title without provider interpretation", () => {
+    const title = resolveAgentGuiWorkbenchSessionTitle({
+      agentSessionId: "session-1",
+      fallbackTitle: null,
       ...sessionState({
         agentSessionId: "session-1",
         title: "Codex"
@@ -81,16 +108,15 @@ describe("agent GUI workbench session titles", () => {
 
     expect(title).toEqual({
       agentSessionId: "session-1",
-      source: "none",
-      title: null
+      source: "snapshot",
+      title: "Codex"
     });
   });
 
-  it("does not expose localized untitled placeholders as conversation titles", () => {
+  it("uses the canonical snapshot title without localized interpretation", () => {
     const title = resolveAgentGuiWorkbenchSessionTitle({
       agentSessionId: "session-1",
       fallbackTitle: null,
-      provider: "codex",
       ...sessionState({
         agentSessionId: "session-1",
         title: "Current task"
@@ -99,38 +125,36 @@ describe("agent GUI workbench session titles", () => {
 
     expect(title).toEqual({
       agentSessionId: "session-1",
-      source: "none",
-      title: null
+      source: "snapshot",
+      title: "Current task"
     });
   });
 
-  it("uses the first user message when the snapshot title is not displayable", () => {
+  it("does not derive a title from snapshot messages", () => {
     const title = resolveAgentGuiWorkbenchSessionTitle({
       agentSessionId: "session-1",
       fallbackTitle: null,
-      provider: "codex",
       ...sessionState({
         agentSessionId: "session-1",
         messages: [
           message({ role: "assistant", text: "Working on it", version: 1 }),
           message({ role: "user", text: "Ship the title fix.", version: 2 })
         ],
-        title: "Codex"
+        title: "Canonical title"
       })
     });
 
     expect(title).toEqual({
       agentSessionId: "session-1",
       source: "snapshot",
-      title: "Ship the title fix"
+      title: "Canonical title"
     });
   });
 
   it("uses the persisted canonical title only as a hydration fallback", () => {
     const title = resolveAgentGuiWorkbenchSessionTitle({
       agentSessionId: "session-1",
-      fallbackTitle: "@automation 发布 帮我跟进",
-      provider: "codex"
+      fallbackTitle: "@automation 发布 帮我跟进"
     });
 
     expect(title).toEqual({
@@ -140,11 +164,10 @@ describe("agent GUI workbench session titles", () => {
     });
   });
 
-  it("does not reuse the persisted fallback after live snapshot data exists", () => {
+  it("prefers live snapshot titles over persisted hydration fallback", () => {
     const title = resolveAgentGuiWorkbenchSessionTitle({
       agentSessionId: "session-1",
       fallbackTitle: "Stale session title",
-      provider: "codex",
       ...sessionState({
         agentSessionId: "session-1",
         title: "Codex"
@@ -153,8 +176,8 @@ describe("agent GUI workbench session titles", () => {
 
     expect(title).toEqual({
       agentSessionId: "session-1",
-      source: "none",
-      title: null
+      source: "snapshot",
+      title: "Codex"
     });
   });
 });

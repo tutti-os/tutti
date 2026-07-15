@@ -3,6 +3,8 @@ import type {
   AgentActivitySession
 } from "@tutti-os/agent-activity-core";
 import { resolveDisplayableWorkspaceAgentSessionTitle } from "./workspaceAgentSessionTitle";
+import { workspaceAgentSessionMessageAliases } from "./workspaceAgentSessionMessageAliases.ts";
+export { workspaceAgentSessionMessageAliases } from "./workspaceAgentSessionMessageAliases.ts";
 import type {
   BuildWorkspaceAgentActivityListOptions,
   WorkspaceAgentActivityCard,
@@ -54,23 +56,6 @@ export function compareActivities(
     return timeDiff;
   }
   return left.sessionId.localeCompare(right.sessionId);
-}
-
-export function workspaceAgentSessionMessageAliases(
-  session: AgentActivitySession
-): string[] {
-  const values = [session.agentSessionId, session.providerSessionId];
-  const seen = new Set<string>();
-  const aliases: string[] = [];
-  for (const value of values) {
-    const normalized = value?.trim() ?? "";
-    if (!normalized || seen.has(normalized)) {
-      continue;
-    }
-    seen.add(normalized);
-    aliases.push(normalized);
-  }
-  return aliases;
 }
 
 /** Remove trailing ` (user@host...)` that some APIs pack into names. */

@@ -251,6 +251,12 @@ func (api DaemonAPI) ListWorkspaceAgentGeneratedFiles(ctx context.Context, reque
 	if request.Params.SessionCwd != nil {
 		input.SessionCwd = strings.TrimSpace(*request.Params.SessionCwd)
 	}
+	if request.Params.AgentTargetIds != nil {
+		if len(*request.Params.AgentTargetIds) > agentservice.MaxGeneratedFileAgentTargetFilters {
+			return writeListWorkspaceAgentGeneratedFilesError(agentservice.ErrInvalidArgument), nil
+		}
+		input.AgentTargetIDs = append([]string(nil), (*request.Params.AgentTargetIds)...)
+	}
 	if request.Params.Limit != nil {
 		if *request.Params.Limit <= 0 || *request.Params.Limit > 100 {
 			return writeListWorkspaceAgentGeneratedFilesError(agentservice.ErrInvalidArgument), nil

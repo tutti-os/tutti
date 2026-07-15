@@ -1,0 +1,82 @@
+import {
+  ReferenceSourcePicker,
+  WorkspaceFileReferencePicker,
+  type ReferenceSourcePickerProps
+} from "@tutti-os/workspace-file-reference/ui";
+import type {
+  WorkspaceFileReferenceAdapter,
+  WorkspaceFileReferenceCopy
+} from "@tutti-os/workspace-file-reference/contracts";
+import type { WorkspaceFileManagerI18nRuntime } from "@tutti-os/workspace-file-manager";
+import type { AgentComposerReferenceProvenanceFilter } from "../composer/AgentComposer.types";
+import { AgentReferenceProvenanceFilterControl } from "../AgentReferenceProvenanceFilterControl";
+
+export interface AgentGUIReferencePickerSurfaceProps {
+  aggregator: ReferenceSourcePickerProps["aggregator"] | null;
+  copy: WorkspaceFileReferenceCopy;
+  fileAdapter: WorkspaceFileReferenceAdapter | null;
+  fileManagerCopy: WorkspaceFileManagerI18nRuntime | null;
+  initialPath: string | null | undefined;
+  initialTarget: ReferenceSourcePickerProps["initialTarget"];
+  isNodeSelectable: ReferenceSourcePickerProps["isNodeSelectable"];
+  open: boolean;
+  provenanceFilter: AgentComposerReferenceProvenanceFilter | null;
+  resolveEntryIconUrl: ReferenceSourcePickerProps["resolveEntryIconUrl"];
+  workspaceId: string;
+  onClose: ReferenceSourcePickerProps["onClose"];
+  onConfirm: ReferenceSourcePickerProps["onConfirm"];
+  onConfirmBundles: ReferenceSourcePickerProps["onConfirmBundles"];
+}
+
+export function AgentGUIReferencePickerSurface({
+  aggregator,
+  copy,
+  fileAdapter,
+  fileManagerCopy,
+  initialPath,
+  initialTarget,
+  isNodeSelectable,
+  open,
+  provenanceFilter,
+  resolveEntryIconUrl,
+  workspaceId,
+  onClose,
+  onConfirm,
+  onConfirmBundles
+}: AgentGUIReferencePickerSurfaceProps): React.JSX.Element {
+  return aggregator ? (
+    <ReferenceSourcePicker
+      aggregator={aggregator}
+      copy={copy}
+      initialTarget={initialTarget}
+      isNodeSelectable={isNodeSelectable}
+      fileManagerCopy={fileManagerCopy ?? undefined}
+      open={open}
+      provenanceFilter={provenanceFilter?.snapshot.value}
+      provenanceFilterControl={
+        provenanceFilter ? (
+          <AgentReferenceProvenanceFilterControl
+            filter={provenanceFilter}
+            popoverElevation="panel"
+          />
+        ) : undefined
+      }
+      resolveEntryIconUrl={resolveEntryIconUrl}
+      workspaceId={workspaceId}
+      onClose={onClose}
+      onConfirm={onConfirm}
+      onConfirmBundles={onConfirmBundles}
+    />
+  ) : (
+    <WorkspaceFileReferencePicker
+      copy={copy}
+      fileAdapter={fileAdapter ?? undefined}
+      initialPath={initialPath}
+      open={open}
+      scoped
+      workspaceId={workspaceId}
+      onClose={onClose}
+      onConfirm={onConfirm}
+    />
+  );
+}

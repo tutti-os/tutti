@@ -43,6 +43,7 @@ export interface AgentGuiWorkbenchHeaderCopy {
   newConversation: string;
   openDetachedWindow?: string;
   restore?: string;
+  untitledConversation?: string;
 }
 
 export interface AgentGuiWorkbenchHeaderProps extends HTMLAttributes<HTMLElement> {
@@ -55,6 +56,7 @@ export interface AgentGuiWorkbenchHeaderProps extends HTMLAttributes<HTMLElement
   conversationRailWidthPx?: number | null;
   conversationIconUrl?: string | null;
   conversationIconFallbackUrl?: string | null;
+  hasConversation?: boolean;
   providerRailWidthPx?: number | null;
   primaryAccessory?: ReactNode;
   secondaryAccessory?: ReactNode;
@@ -84,6 +86,7 @@ export function AgentGuiWorkbenchHeader({
   conversationRailWidthPx,
   conversationIconUrl,
   conversationIconFallbackUrl,
+  hasConversation = false,
   providerRailWidthPx,
   primaryAccessory,
   secondaryAccessory,
@@ -106,7 +109,9 @@ export function AgentGuiWorkbenchHeader({
   const appTitle = _title?.trim() || copy.fallbackAgentLabel;
   const sessionTitle = hasBodyRenderError
     ? ""
-    : conversationTitle?.trim() || "";
+    : conversationTitle?.trim() ||
+      (hasConversation ? copy.untitledConversation?.trim() : "") ||
+      "";
   const collapsedTitle = agentTitle?.trim() || sessionTitle;
   const sessionIconUrl = conversationIconUrl?.trim() || "";
   const sessionIconFallbackUrl = conversationIconFallbackUrl?.trim() || "";

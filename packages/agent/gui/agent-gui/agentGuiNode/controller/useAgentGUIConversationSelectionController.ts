@@ -1,6 +1,6 @@
 import {
+  selectEngineSessionDetailHydrated,
   selectLatestActivationForSession,
-  type AgentActivitySnapshot,
   type AgentSessionEngine,
   type PendingActivationIntentRecord
 } from "@tutti-os/agent-activity-core";
@@ -13,7 +13,6 @@ import {
   reportAgentGUIActiveConversationCleared,
   reportAgentGUIConversationListProjectionSkipped
 } from "./agentGuiController.reporting";
-import { sessionHasRenderableMessages } from "./useAgentConversationMessagePaging";
 import {
   isPendingNewConversationActivation,
   isPendingNewConversationActivationForSession,
@@ -35,7 +34,6 @@ interface UseAgentGUIConversationSelectionControllerInput {
   activeConversationIdRef: RefObject<string | null>;
   activePendingActivation: ActivationRecord | null;
   agentActivityRuntime: AgentActivityRuntime;
-  agentActivitySnapshotRef: RefObject<AgentActivitySnapshot>;
   attentionReadRecordsBySessionId: Record<
     string,
     { isUnread?: boolean } | undefined
@@ -87,7 +85,6 @@ export function useAgentGUIConversationSelectionController(
     activeConversationIdRef,
     activePendingActivation,
     agentActivityRuntime,
-    agentActivitySnapshotRef,
     attentionReadRecordsBySessionId,
     conversationIdsRef,
     conversationListQuery,
@@ -231,12 +228,11 @@ export function useAgentGUIConversationSelectionController(
         conversationIdsRef.current.has(agentSessionId)
     },
     detail: {
-      hasRenderableMessages: (agentSessionId) =>
-        sessionHasRenderableMessages({
-          agentSessionId,
-          snapshotMessagesById:
-            agentActivitySnapshotRef.current.sessionMessagesById
-        }),
+      isHydrated: (agentSessionId) =>
+        selectEngineSessionDetailHydrated(
+          sessionEngine.getSnapshot(),
+          agentSessionId
+        ),
       markPending: markSelectedConversationDetailPending,
       reload: (agentSessionId, options) =>
         reloadSelectedConversationRef.current(agentSessionId, options),

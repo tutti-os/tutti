@@ -25,7 +25,6 @@ describe("projectWorkspaceAgentTimelineToConversationVM", () => {
       "message",
       "tool-group",
       "tool-group",
-      "tool-group",
       "turn-summary"
     ]);
 
@@ -170,7 +169,6 @@ describe("projectWorkspaceAgentTimelineToConversationVM", () => {
     expect(conversation.rows.map((row) => row.kind)).toEqual([
       "message",
       "message",
-      "tool-group",
       "tool-group",
       "tool-group",
       "turn-summary"

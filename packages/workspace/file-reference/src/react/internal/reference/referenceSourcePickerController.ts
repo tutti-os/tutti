@@ -7,6 +7,7 @@ import type {
   ReferenceScope,
   SelectedReference
 } from "../../../contracts/referenceSource.ts";
+import type { ReferenceProvenanceFilter } from "../../../contracts/referenceProvenance.ts";
 import type {
   ReferenceSourceAggregator,
   ReferenceSourceTab
@@ -18,6 +19,10 @@ import {
   nodeRefKey,
   sortReferenceNodes
 } from "../../../core/referenceSourceUtils.ts";
+import {
+  referenceProvenanceFilterCacheKey,
+  referenceProvenanceFilterIsActive
+} from "../../../core/referenceProvenance.ts";
 
 /**
  * node-keyed 多源 picker 的逻辑层 controller(顶部分源 tab)。
@@ -133,6 +138,10 @@ export interface ReferenceSourcePickerController {
    * 与现有关键词一起构成查询并(去抖)重搜;query 与 filters 同时为空才回浏览态。
    */
   setSearchFilters(filters: string[], scopeNodeId?: string | null): void;
+  setProvenanceFilter(
+    filter: ReferenceProvenanceFilter | null,
+    scopeNodeId?: string | null
+  ): void;
   /** 搜索进行中切换左栏分组时更新限定范围并以现有关键词/筛选重搜。 */
   setSearchScope(scopeNodeId: string | null): void;
   /**
@@ -214,6 +223,8 @@ function emptyChildrenState(): ReferenceSourceNodeChildrenState {
 export function createReferenceSourcePickerController(
   input: CreateReferenceSourcePickerControllerInput
 ): ReferenceSourcePickerController {
+  let provenanceFilter: ReferenceProvenanceFilter | null = null;
+  let provenanceFilterKey = "disabled";
   const { aggregator, scope } = input;
   const searchDebounceMs = input.searchDebounceMs ?? defaultSearchDebounceMs;
 
@@ -451,6 +462,7 @@ export function createReferenceSourcePickerController(
       const result = await aggregator.search(scope, sourceId, {
         query,
         limit,
+        provenanceFilter,
         signal: abortController.signal,
         ...(filters.length > 0 ? { filters } : {}),
         ...(scopeNodeId == null ? {} : { withinNodeId: scopeNodeId })
@@ -533,7 +545,12 @@ export function createReferenceSourcePickerController(
   ) => {
     clearSearchTimer();
     // query 与 filters 同时为空才跳过 —— 仅选了筛选(query 空)也要发起查询。
-    if (!retained || (!query && filters.length === 0)) {
+    if (
+      !retained ||
+      (!query &&
+        filters.length === 0 &&
+        !referenceProvenanceFilterIsActive(provenanceFilter))
+    ) {
       return;
     }
     // 新查询恒从首页(SEARCH_PAGE_SIZE)起。
@@ -614,7 +631,11 @@ export function createReferenceSourcePickerController(
           : (snapshot.bySource[sourceId]?.searchScopeNodeId ?? null);
       cancelSearch();
       setSnapshot({ activeSourceId: sourceId });
-      if (trimmed === "" && carriedFilters.length === 0) {
+      if (
+        trimmed === "" &&
+        carriedFilters.length === 0 &&
+        !referenceProvenanceFilterIsActive(provenanceFilter)
+      ) {
         // 全局查询为空:目标源回浏览态(清掉其可能残留的旧查询/结果),加载源根。
         updateTab(sourceId, (tab) =>
           tab.mode === "browse" &&
@@ -796,7 +817,11 @@ export function createReferenceSourcePickerController(
       const trimmed = query.trim();
       // 查询态 = 关键词或筛选任一非空。
       const nextMode: ReferenceSourcePickerMode =
-        trimmed || filters.length > 0 ? "search" : "browse";
+        trimmed ||
+        filters.length > 0 ||
+        referenceProvenanceFilterIsActive(provenanceFilter)
+          ? "search"
+          : "browse";
       updateTab(sourceId, (tab) => ({
         ...tab,
         searchQuery: query,
@@ -824,7 +849,11 @@ export function createReferenceSourcePickerController(
       const trimmed = tab?.searchQuery.trim() ?? "";
       const scopeId = scopeNodeId ?? tab?.searchScopeNodeId ?? null;
       const nextMode: ReferenceSourcePickerMode =
-        trimmed || filters.length > 0 ? "search" : "browse";
+        trimmed ||
+        filters.length > 0 ||
+        referenceProvenanceFilterIsActive(provenanceFilter)
+          ? "search"
+          : "browse";
       updateTab(sourceId, (current) => ({
         ...current,
         searchFilters: filters,
@@ -836,6 +865,43 @@ export function createReferenceSourcePickerController(
       }));
       if (nextMode === "search") {
         scheduleSearch(sourceId, trimmed, filters, scopeId);
+      } else {
+        cancelSearch();
+        ensureRootLoaded(sourceId);
+      }
+    },
+    setProvenanceFilter(filter, scopeNodeId = null) {
+      const nextFilterKey = filter
+        ? referenceProvenanceFilterCacheKey(filter)
+        : "disabled";
+      const sourceId = snapshot.activeSourceId;
+      const tab = sourceId ? snapshot.bySource[sourceId] : undefined;
+      const scopeId = scopeNodeId ?? tab?.searchScopeNodeId ?? null;
+      const nextFilterActive = referenceProvenanceFilterIsActive(filter);
+      if (
+        nextFilterKey === provenanceFilterKey &&
+        scopeId === (tab?.searchScopeNodeId ?? null) &&
+        (!nextFilterActive || tab?.mode === "search")
+      ) {
+        return;
+      }
+      cancelSearch();
+      provenanceFilter = filter;
+      provenanceFilterKey = nextFilterKey;
+      if (!sourceId) return;
+      const query = tab?.searchQuery.trim() ?? "";
+      const filters = tab?.searchFilters ?? [];
+      const active = referenceProvenanceFilterIsActive(provenanceFilter);
+      updateTab(sourceId, (current) => ({
+        ...current,
+        searchScopeNodeId: scopeId,
+        mode: query || filters.length > 0 || active ? "search" : "browse",
+        ...(query || filters.length > 0 || active
+          ? { isSearchLoading: true, searchError: null }
+          : { isSearchLoading: false, searchEntries: [], searchError: null })
+      }));
+      if (query || filters.length > 0 || active) {
+        scheduleSearch(sourceId, query, filters, scopeId);
       } else {
         cancelSearch();
         ensureRootLoaded(sourceId);
@@ -857,7 +923,12 @@ export function createReferenceSourcePickerController(
       }));
       const trimmed = tab.searchQuery.trim();
       const filters = tab.searchFilters;
-      if (tab.mode === "search" && (trimmed || filters.length > 0)) {
+      if (
+        tab.mode === "search" &&
+        (trimmed ||
+          filters.length > 0 ||
+          referenceProvenanceFilterIsActive(provenanceFilter))
+      ) {
         scheduleSearch(sourceId, trimmed, filters, scopeNodeId);
       }
     },
@@ -876,7 +947,11 @@ export function createReferenceSourcePickerController(
         return;
       }
       const trimmed = tab.searchQuery.trim();
-      if (!trimmed && tab.searchFilters.length === 0) {
+      if (
+        !trimmed &&
+        tab.searchFilters.length === 0 &&
+        !referenceProvenanceFilterIsActive(provenanceFilter)
+      ) {
         return;
       }
       const nextLimit = Math.min(

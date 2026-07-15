@@ -1328,6 +1328,19 @@ func (siw *ServerInterfaceWrapper) ListWorkspaceAgentGeneratedFiles(w http.Respo
 		return
 	}
 
+	// ------------- Optional query parameter "agentTargetIds" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "agentTargetIds", r.URL.Query(), &params.AgentTargetIds, runtime.BindQueryParameterOptions{Type: "array", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "agentTargetIds"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "agentTargetIds", Err: err})
+		}
+		return
+	}
+
 	// ------------- Optional query parameter "limit" -------------
 
 	err = runtime.BindQueryParameterWithOptions("form", true, false, "limit", r.URL.Query(), &params.Limit, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})

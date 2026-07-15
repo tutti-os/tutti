@@ -35,10 +35,13 @@ type GeneratedFileList struct {
 }
 
 type ListGeneratedFilesInput struct {
-	Query      string
-	SessionCwd string
-	Limit      int
+	Query          string
+	SessionCwd     string
+	AgentTargetIDs []string
+	Limit          int
 }
+
+const MaxGeneratedFileAgentTargetFilters = 100
 
 type MessageReader interface {
 	ListSessionMessages(
@@ -126,6 +129,13 @@ func (s *Service) ListGeneratedFiles(
 	if input.Limit > 100 {
 		input.Limit = 100
 	}
+	agentTargetIDs := uniqueNonEmptyStrings(input.AgentTargetIDs)
+	if input.AgentTargetIDs != nil && len(agentTargetIDs) == 0 {
+		return GeneratedFileList{}, ErrInvalidArgument
+	}
+	if len(agentTargetIDs) > MaxGeneratedFileAgentTargetFilters {
+		return GeneratedFileList{}, ErrInvalidArgument
+	}
 	reader, ok := s.MessageReader.(GeneratedFileReader)
 	if !ok || reader == nil {
 		return GeneratedFileList{
@@ -134,10 +144,11 @@ func (s *Service) ListGeneratedFiles(
 		}, nil
 	}
 	files, ok := reader.ListWorkspaceGeneratedFiles(agentactivitybiz.ListWorkspaceGeneratedFilesInput{
-		WorkspaceID: workspaceID,
-		Query:       strings.TrimSpace(input.Query),
-		SessionCwd:  strings.TrimSpace(input.SessionCwd),
-		Limit:       input.Limit,
+		WorkspaceID:    workspaceID,
+		Query:          strings.TrimSpace(input.Query),
+		SessionCwd:     strings.TrimSpace(input.SessionCwd),
+		AgentTargetIDs: agentTargetIDs,
+		Limit:          input.Limit,
 	})
 	if !ok {
 		return GeneratedFileList{
@@ -148,6 +159,23 @@ func (s *Service) ListGeneratedFiles(
 	files.WorkspaceID = workspaceID
 	files.Files = cloneGeneratedFiles(files.Files)
 	return files, nil
+}
+
+func uniqueNonEmptyStrings(values []string) []string {
+	result := make([]string, 0, len(values))
+	seen := make(map[string]struct{}, len(values))
+	for _, raw := range values {
+		value := strings.TrimSpace(raw)
+		if value == "" {
+			continue
+		}
+		if _, ok := seen[value]; ok {
+			continue
+		}
+		seen[value] = struct{}{}
+		result = append(result, value)
+	}
+	return result
 }
 
 func (s *Service) sessionExists(ctx context.Context, workspaceID string, agentSessionID string) (bool, error) {

@@ -36,6 +36,7 @@ func (c *Controller) Start(ctx context.Context, input StartInput) (StartResult, 
 		firstNonEmpty(input.PermissionModeID, defaultPermissionModeIDForProvider(provider)),
 	)
 	title := titletext.Normalize(input.Title)
+	initialTitleEstablished := input.InitialTitleEstablished || title != ""
 	permissionModeID := settings.PermissionModeID
 	if agentSessionID == "" {
 		if existing, ok := c.findStartSession(roomID, strings.TrimSpace(input.AgentTargetID), provider, input.CWD, title, settings, input.ProviderTargetRef); ok {
@@ -47,17 +48,21 @@ func (c *Controller) Start(ctx context.Context, input StartInput) (StartResult, 
 		return StartResult{Session: existing}, nil
 	}
 	session := Session{
-		RoomID:            roomID,
-		AgentSessionID:    agentSessionID,
-		AgentTargetID:     strings.TrimSpace(input.AgentTargetID),
-		Provider:          provider,
-		ProviderSessionID: "",
-		CWD:               strings.TrimSpace(input.CWD),
-		Env:               append([]string(nil), input.Env...),
-		Status:            SessionStatusReady,
-		Title:             firstNonEmpty(title, provider),
-		Visible:           sessionVisible(input.Visible),
-		RuntimeContext:    clonePayload(input.RuntimeContext),
+		RoomID:                  roomID,
+		AgentSessionID:          agentSessionID,
+		AgentTargetID:           strings.TrimSpace(input.AgentTargetID),
+		Provider:                provider,
+		ProviderSessionID:       "",
+		CWD:                     strings.TrimSpace(input.CWD),
+		Env:                     append([]string(nil), input.Env...),
+		Status:                  SessionStatusReady,
+		Title:                   title,
+		InitialTitleEstablished: initialTitleEstablished,
+		Visible:                 sessionVisible(input.Visible),
+		RuntimeContext: runtimeContextWithInitialTitleEstablished(
+			input.RuntimeContext,
+			initialTitleEstablished,
+		),
 		ProviderTargetRef: clonePayload(input.ProviderTargetRef),
 		PermissionModeID:  permissionModeID,
 		Settings:          cloneSessionSettings(settings),
@@ -141,18 +146,26 @@ func (c *Controller) Resume(ctx context.Context, input ResumeInput) (Session, er
 	if updatedAtUnixMS <= 0 {
 		updatedAtUnixMS = timestamp
 	}
+	initialTitleEstablished := initialTitleEstablishedFromRuntimeContext(
+		input.RuntimeContext,
+		input.Title,
+	)
 	session := Session{
-		RoomID:            roomID,
-		AgentSessionID:    agentSessionID,
-		AgentTargetID:     strings.TrimSpace(input.AgentTargetID),
-		Provider:          provider,
-		ProviderSessionID: providerSessionID,
-		CWD:               strings.TrimSpace(input.CWD),
-		Env:               append([]string(nil), input.Env...),
-		Status:            firstNonEmpty(normalizeSessionStatus(input.Status), SessionStatusReady),
-		Title:             firstNonEmpty(strings.TrimSpace(input.Title), provider),
-		Visible:           sessionVisible(input.Visible),
-		RuntimeContext:    clonePayload(input.RuntimeContext),
+		RoomID:                  roomID,
+		AgentSessionID:          agentSessionID,
+		AgentTargetID:           strings.TrimSpace(input.AgentTargetID),
+		Provider:                provider,
+		ProviderSessionID:       providerSessionID,
+		CWD:                     strings.TrimSpace(input.CWD),
+		Env:                     append([]string(nil), input.Env...),
+		Status:                  firstNonEmpty(normalizeSessionStatus(input.Status), SessionStatusReady),
+		Title:                   strings.TrimSpace(input.Title),
+		InitialTitleEstablished: initialTitleEstablished,
+		Visible:                 sessionVisible(input.Visible),
+		RuntimeContext: runtimeContextWithInitialTitleEstablished(
+			input.RuntimeContext,
+			initialTitleEstablished,
+		),
 		ProviderTargetRef: clonePayload(input.ProviderTargetRef),
 		PermissionModeID:  normalizePermissionModeIDWithFallback(provider, input.PermissionModeID, defaultPermissionModeIDForProvider(provider)),
 		Settings:          normalizeOptionalSessionSettings(input.Settings, provider, firstNonEmpty(input.PermissionModeID, defaultPermissionModeIDForProvider(provider))),
@@ -271,15 +284,34 @@ func (c *Controller) SetVisible(ctx context.Context, roomID, agentSessionID stri
 }
 
 func (c *Controller) SetTitle(ctx context.Context, roomID, agentSessionID string, title string) (Session, error) {
-	session, ok := c.get(strings.TrimSpace(roomID), strings.TrimSpace(agentSessionID))
+	roomID = strings.TrimSpace(roomID)
+	agentSessionID = strings.TrimSpace(agentSessionID)
+	releaseLifecycleLock := c.acquireLifecycleLock(roomID, agentSessionID)
+	defer releaseLifecycleLock()
+
+	session, ok := c.get(roomID, agentSessionID)
 	if !ok {
 		return Session{}, ErrSessionNotFound
 	}
 	title = strings.TrimSpace(title)
 	if session.Title == title {
+		if !session.InitialTitleEstablished {
+			session = markInitialTitleEstablished(session)
+			session.UpdatedAtUnixMS = unixMS(now())
+			c.store(session)
+			c.enqueueSessionReport(ctx, session, []activityshared.Event{
+				newSessionActivityEvent(
+					session,
+					EventSessionUpdated,
+					session.Status,
+					nil,
+				),
+			})
+		}
 		return session, nil
 	}
 	session.Title = title
+	session = markInitialTitleEstablished(session)
 	session.UpdatedAtUnixMS = unixMS(now())
 	c.store(session)
 	events := []activityshared.Event{newSessionTitleActivityEvent(session, title)}

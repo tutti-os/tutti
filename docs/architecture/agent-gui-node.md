@@ -194,10 +194,30 @@ standalone native Agent window headers omit that redundant app title. When the
 conversation rail is collapsed, the title area shows the active conversation's
 agent icon and directory name as soon as a local session id exists; it must not
 wait for provider-side session creation or conversation-title persistence. An
-empty new-conversation home does not show this header identity. The conversation
+empty new-conversation home does not show this header identity. The standalone
+window keeps engine subscription, identity projection, and header rendering in
+its header vertical module rather than growing the window shell. The conversation
 title remains the detail title while the rail is expanded and the identity used
 by Dock previews; after submission, the expanded detail title area shows the
-agent icon immediately even before conversation-title persistence.
+agent icon immediately even before conversation-title persistence. During that
+gap, the pending activation record in `AgentSessionEngine` owns one optimistic
+title projected from the submitted visible prompt; the rail and every header
+read that same record. Optimistic projection and daemon persistence use the same
+whitespace and Markdown-link-label normalization so engine reconciliation does
+not visibly rewrite valid rich-prompt titles. The localized untitled label is
+used only when this projection is unavailable, while canonical `session.title`
+remains empty until the daemon establishes it and then takes precedence. Runtime
+owns the initial-title-established bit and persists it in private runtime
+context; service submit paths consult that canonical runtime state instead of
+inferring eligibility from transcript availability. Explicit rename/clear and
+the first accepted initial-title compare-and-set establish the bit. Sessions
+without the marker fail closed on resume so a later prompt cannot retitle a
+legacy conversation. Confirming activation means the session exists; it does
+not prove submitted initial content has reached the canonical turn index. Engine
+consumer status therefore bridges a new activation to `working` only when that
+activation submitted initial content, then derives status from its first
+canonical turn. Empty new sessions become `idle` after confirmation. GUI
+projections must not patch this confirmation gap locally.
 
 AgentGuiNode may expose agent selection in multiple UI-local entry points,
 including the conversation rail agent grid and the agent select next to the
@@ -376,10 +396,19 @@ availability, quota, or authorization live entirely inside the React node
 supplied by the host.
 Standalone Agent windows keep right-side tools as UI-local panel tabs. The
 window chrome exposes one right-panel toggle plus quick actions for apps and
-messages while the panel is closed; those quick actions open the right panel
-and mount/select the corresponding tab. Once open, the panel header owns the
+messages while the panel is closed; each quick action exposes its localized
+tooltip, opens the right panel, and mounts/selects the corresponding tab. Once
+open, the panel header owns the
 active tab strip and its add menu for files, terminal, browser, apps, and
-messages.
+messages. If the panel opens without any mounted child tab, its body first
+shows a compact picker for Files, Terminal, and Browser; selecting one of those
+entries creates and activates the corresponding tool tab. The empty picker is
+not itself a tool tab, and the closed-panel quick actions stay hidden while it
+is visible. Its default width is 60% of the Files panel default; selecting an
+entry replaces that compact width with the chosen tool's normal panel width.
+While the picker is visible, its sole header toggle remains right-anchored to
+the same window edge as the collapsed sidebar control, so opening the empty
+panel does not make the icon jump horizontally.
 Opening a tool mounts it as a tab and selecting another tab only changes the
 visible projection; this state is not durable AgentGUI session data.
 The Files tool tab remains the file-navigation surface. Double-clicking a file
@@ -514,15 +543,17 @@ and the sidebar remains adjacent; it must not become an absolutely positioned
 overlay above the transcript. Width added from the panel's left separator is
 also reserved by layout and does not change the native window bounds. Closing
 the panel restores the captured baseline width.
-Opening must be renderer-first: update the active panel immediately, let the
-clipped width transition begin, and defer the host-window resize request until
-the next animation frame. Do not await native IPC before showing the panel.
-Files, Browser, Apps, and other expensive first-use bodies mount after the
-outer width transition, then remain mounted while hidden for instant later
-switches. macOS may use Electron's native bounds animation in parallel; other
-platforms apply the same resolved bounds without requesting unsupported native
-animation. Respect `prefers-reduced-motion` by removing the CSS transition and
-the content-mount delay.
+Opening must be renderer-first: update the active panel immediately and defer
+the host-window resize request until the next animation frame. Do not await
+native IPC before showing the panel. Commit the sidebar's final layout width in
+one step; do not animate `width`, `flex-basis`, or another layout property,
+because that repeatedly reflows both the panel and the adjacent conversation.
+The sidebar may animate only its fixed-size inner surface with a short
+right-to-left `transform` and opacity entrance. Files, Browser, Apps, and other expensive first-use
+bodies mount after that short compositor entrance, then remain mounted while
+hidden for instant later switches. Native bounds changes are applied without a
+parallel window animation. Respect `prefers-reduced-motion` by removing the
+inner entrance and the content-mount delay.
 Lazy mounting also applies to module loading. The standalone shell may derive a
 small reminder count from the activity engine, but it must not statically import
 BrowserNode, TerminalNode, File Manager, App Center, or the full Message Center
@@ -539,6 +570,12 @@ they cannot collide with Files, Tools, Apps, or Message Center launch buttons.
 The outer right-sidebar container owns the shared panel stacking level for its
 separator and panel-local popovers, while the panel body remains a normal
 sibling of the message flow rather than relying on stacking to cover it.
+Portaled conversation modals, including the image preview, must use the UI
+System dialog stacking token above that panel layer so their backdrop covers
+both the standalone header and right-side tool chrome. While such a modal is
+open, Escape handling belongs at the window capture boundary because focus may
+remain in host chrome outside the portaled dialog; remove that listener when the
+modal closes or unmounts.
 The Files panel uses the same roomy adjacent default width as Browser and Apps,
 then keeps its wider resize range for the embedded location, list, and detail
 columns. On the minimum native window width, preserving the standalone
@@ -700,12 +737,15 @@ pagination until the session arrives or reconcile proves it unavailable.
 Selecting any rail row whose detail is not cached must enter the engine-owned
 session reconcile lifecycle and request state plus messages as one semantic
 load. Detail availability is explicit: `loading`, `ready`, `not_found`, or
-`error`. The skeleton follows the reconcile record, `ready` with zero rows is a
-valid empty detail, and only an authoritative tombstone/not-found result may
-show the unavailable state. Once authoritative not-found wins, presentation
-must suppress any previously projected transcript rows instead of mixing stale
-content with unavailable-state layout. An empty message projection is not
-evidence that loading finished or that the session is gone.
+`error`. The skeleton follows a blocking reconcile record. A completed message
+reconcile establishes engine-owned detail hydration even when it returns zero
+messages; later selection and background refresh keep that valid empty detail
+`ready` instead of degrading it back to `loading`. Only an authoritative
+tombstone/not-found result may show the unavailable state. Once authoritative
+not-found wins, presentation must suppress any previously projected transcript
+rows instead of mixing stale content with unavailable-state layout. An empty
+message projection without the hydration fact is not evidence that loading
+finished or that the session is gone.
 
 Agent GUI is organized by vertical behavior rather than one controller with
 horizontal helper piles. A vertical module owns its projection, commands,
@@ -1837,34 +1877,45 @@ User-visible rules:
 ### Conversation Titles Across Surfaces
 
 ```text
-runtime snapshot session + cached messages
+runtime snapshot session
   -> canonical session.title from the daemon
   -> rail row / detail header / workbench header / dock popup / toast title
 ```
 
 User-visible rules:
 
-- `session.title` is a shared, user-visible canonical plain-text field. The
-  daemon converts rich title input once before session state is persisted, and
-  the SQLite store backfills existing rows during migration without changing
-  session creation/update timestamps. CLI, Agent, and desktop surfaces consume
-  this same field and must not independently parse title Markdown or add
-  mention prefixes.
-- AgentGUI projection may still handle UI-local concerns such as provider-only
-  placeholders and localized fallback labels, but it must not be the source of
-  title syntax normalization.
+- `session.title` is canonical plain text. New empty sessions keep it empty;
+  provider/Agent Target names are not conversation titles. The first accepted
+  user submit establishes it through an exact compare-and-set against the title
+  observed by the submit service, in the same controller event/report batch as
+  the submitted turn. Localized `Untitled conversation` is presentation only.
+- Normal first submit creates the session and executes its initial prompt in one
+  daemon request. Independent empty-session creation remains available for
+  prewarming/recovery; clients must not emulate first submit as create-then-send.
+- SQLite migration may recognize historical provider/Agent Target placeholders,
+  backfill them from the earliest visible user message, or clear message-less
+  placeholders without changing session timestamps. This classifier is
+  migration-only; live submit must not guess whether a target name is a title.
+- CLI, AgentGUI, message-center, notification, and desktop surfaces consume
+  `session.title` directly. They must not reconstruct titles from transcript
+  messages, parse Markdown again, or add mention prefixes.
 - Live runtime snapshot data is the source for workbench and dock titles. Do
   not persist or restore `lastActiveConversationTitle` from workbench node
   state.
+- Workbench headers and dock identity projections must subscribe to the same
+  workspace `AgentSessionEngine` used by AgentGUI. A render-time
+  `engine.getSnapshot()` read is not a reactive binding: session metadata such
+  as `title` does not change Workbench node state and therefore does not bump
+  its external-state revision. Use the shared engine selector and title
+  projection so rail, detail header, workbench header, and dock refresh from
+  one canonical update.
 - User rename flows must mutate the persisted runtime session title through
   `AgentActivityRuntime.renameSession` and then upsert the returned
   authoritative session into the runtime snapshot. Do not update only the rail
   list, otherwise the rail row, active detail header, workbench title, and dock
   surfaces can diverge.
-- Title projection strips provider-only and untitled placeholders from workbench
-  chrome. First-user-message fallback is compatibility behavior for snapshots
-  that predate the canonical title write boundary; new session writes should
-  establish the title before persistence.
+- Provider adapters must not synthesize prompt-derived title events. Initial
+  title derivation belongs to the shared service/runtime submit boundary.
 
 ### Detail Pane And Transcript
 
@@ -2771,7 +2822,7 @@ corepack pnpm --filter @tutti-os/agent-gui exec vitest run shared/AgentRichTextR
 
 ```text
 Agent activity messages
-  -> generated-file collector in tuttid or AgentGUI fallback
+  -> target-filtered generated-file collector in tuttid or AgentGUI fallback
   -> desktop mention provider
   -> mention palette grouping/count presentation
   -> composer file mention insertion
@@ -2782,6 +2833,47 @@ rendering state. The collector owns the semantic filter: only successful
 file-change tool messages should contribute paths, and failed, canceled,
 running, or read-only tool calls must be ignored even when their payloads carry
 `path`, `filePath`, `fileChanges`, or `changes` fields.
+
+### Reference Source Filtering
+
+The desktop product may enable Agent provenance filtering through the
+default-off `agent.referenceProvenanceFilter` developer feature flag. The flag
+is projected into AgentGUI as a host capability; AgentGUI does not read desktop
+preferences directly. Preview mode keeps the capability disabled.
+
+AgentGUI creates one controlled provenance controller for both the composer
+`@` palette and the `+` reference picker. The desktop host injects the current
+Agent target catalog, while the query providers apply selected
+`agentTargetId` values before pagination. Session search merges target-scoped
+queries, and the generated-file fallback filters sessions before collecting
+file changes. Tutti's daemon-backed generated-file query accepts multiple
+`agentTargetIds` and filters persisted sessions in SQLite before applying its
+message scan limit; the renderer must not filter a capped session snapshot.
+In the `+` picker, desktop project/local sources switch to that same
+generated-file provider for an active Agent constraint, then apply file type
+filters and the result limit. This provenance constraint does not imply a file
+path constraint, so picker location ids must not be mapped to session working
+directories. Ordinary opened-file and issue-summary records do not currently
+carry durable Agent provenance and therefore fail closed when an Agent
+constraint is active. Existing result groups remain unchanged; the filter
+narrows their contents and does not introduce a second grouping layer.
+
+Only catalog entries with a durable `agentTargetId` participate in filtering;
+host target ids are not substitutes. Catalogs and filters are normalized at the
+shared boundary, and cache identity uses collision-free semantic serialization.
+Provider replacement must reapply the current filter. Idle preload captures the
+filter value used to build its cache key, and an interactive filter change
+aborts or invalidates the active request before the replacement debounce is
+scheduled. Typed `@` queries in the File category continue to query the
+Agent-generated-file provider whenever an Agent constraint is active.
+
+The filter popover is portal-mounted and must mark its content as `nodrag`.
+Portal content is not a DOM descendant of the Agent window trigger, so the
+window's click-capture guard otherwise treats the option click as a draggable
+window interaction and stops it before the filter row receives the event.
+
+The shared contracts reserve a separate member dimension for collaboration
+hosts. Tutti personal edition must not enable member or group-chat filtering.
 
 ### Approval Or Ask-User Prompt
 
@@ -2796,6 +2888,13 @@ runtime messages
 
 Check stale prompt IDs, answered prompt filtering, bottom dock state, and
 selected conversation synchronization together.
+
+Approval transport calls are interaction plumbing, not transcript content.
+Conversation projection must remove top-level and delegated-task tool calls
+identified by `callType=approval` or `toolName=Approval` before they reach
+React. Pending approvals remain sourced from canonical Interaction state, so
+hiding running, completed, and failed Approval tool cards must not remove the
+actionable approval surfaces.
 
 ### Composer Settings
 
@@ -2840,7 +2939,10 @@ absolute paths. Relative markdown links remain display text unless another
 structured reference contract marks them as a workspace reference. Host adapters
 that open workspace file nodes should validate explicit agent-command file
 targets before launching the files surface, so a speculative or stale agent
-path does not open a misleading workbench node.
+path does not open a misleading workbench node. Both workspace and standalone
+Agent window host routes must honor that validation intent and surface the same
+localized missing-target feedback instead of opening an empty files surface or
+silently doing nothing.
 
 Provider host-app-context prompts should mirror that contract: when agents
 reference code or workspace files in responses, instruct them to emit Markdown

@@ -32,11 +32,13 @@ type AgentGUIActivateInput =
       agentTargetId: string;
       clientSubmitId: string;
       mode: "new";
+      optimisticTitle?: string;
     })
   | (AgentGUIActivateInputBase & {
       agentTargetId?: string | null;
       clientSubmitId?: never;
       mode: "existing";
+      optimisticTitle?: never;
     });
 
 interface UseAgentGUIActivationInput {
@@ -141,7 +143,10 @@ export function useAgentGUIActivation({
           ...sharedIntent,
           agentTargetId,
           clientSubmitId,
-          mode: "new"
+          mode: "new",
+          ...(input.optimisticTitle
+            ? { optimisticTitle: input.optimisticTitle }
+            : {})
         });
       } else {
         engine.dispatch({

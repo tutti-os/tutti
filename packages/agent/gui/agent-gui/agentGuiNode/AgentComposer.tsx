@@ -82,6 +82,7 @@ export type {
   AgentComposerGitBranchLoader,
   AgentComposerGitBranches,
   AgentComposerPromptTip,
+  AgentComposerReferenceProvenanceFilter,
   AgentComposerProps,
   AgentComposerSlashStatus,
   AgentComposerSlashStatusLimit,
@@ -147,7 +148,8 @@ export function AgentComposer(props: AgentComposerProps): React.JSX.Element {
     onRequestWorkspaceReferences = null,
     resolveDroppedFileReferences = null,
     onRequestGitBranches = null,
-    contextMentionProviders = EMPTY_CONTEXT_MENTION_PROVIDERS
+    contextMentionProviders = EMPTY_CONTEXT_MENTION_PROVIDERS,
+    referenceProvenanceFilter = null
   } = props;
   const draftPrompt = agentComposerDraftPrompt(draftContent);
   const goalDraftObjective = canGoalControl
@@ -348,6 +350,11 @@ export function AgentComposer(props: AgentComposerProps): React.JSX.Element {
     const controller = new AgentMentionSearchController({
       contextMentionProviders
     });
+    // A provider replacement creates a fresh controller, so seed it with the
+    // filter captured by the same render before exposing it through the ref.
+    controller.setProvenanceFilter(
+      referenceProvenanceFilter?.snapshot.value ?? null
+    );
     mentionControllerRef.current = controller;
     const unsubscribe = controller.subscribe(setMentionSearchState);
     return () => {
@@ -358,6 +365,9 @@ export function AgentComposer(props: AgentComposerProps): React.JSX.Element {
   }, [contextMentionProviders]);
 
   useEffect(() => {
+    draftImagesRef.current = agentComposerDraftImages(draftContent);
+    draftFilesRef.current = agentComposerDraftFiles(draftContent);
+    draftLargeTextsRef.current = agentComposerDraftLargeTexts(draftContent);
     const isExternalDraftReplacement = draftPromptRef.current !== draftPrompt;
     draftPromptRef.current = draftPrompt;
     setPaletteDraftPrompt(goalDraftObjective ?? draftPrompt);
@@ -370,13 +380,13 @@ export function AgentComposer(props: AgentComposerProps): React.JSX.Element {
         });
       });
     }
-  }, [draftPrompt, goalDraftObjective]);
+  }, [draftContent, draftPrompt, goalDraftObjective]);
 
   useEffect(() => {
-    draftImagesRef.current = agentComposerDraftImages(draftContent);
-    draftFilesRef.current = agentComposerDraftFiles(draftContent);
-    draftLargeTextsRef.current = agentComposerDraftLargeTexts(draftContent);
-  }, [draftContent]);
+    mentionControllerRef.current?.setProvenanceFilter(
+      referenceProvenanceFilter?.snapshot.value ?? null
+    );
+  }, [referenceProvenanceFilter?.snapshot.value]);
 
   useEffect(() => {
     if (

@@ -8,15 +8,7 @@ import {
   ToastViewport,
   Toaster
 } from "@tutti-os/ui-system";
-
-type DesktopToastTone = "default" | "destructive" | "success";
-
-interface DesktopToastItem {
-  description?: string;
-  id: string;
-  title: string;
-  tone: DesktopToastTone;
-}
+import { enqueueDesktopToast, type DesktopToastItem } from "./toastQueue";
 
 const toastLimit = 4;
 const workspaceChromeHeightPx = 52;
@@ -104,7 +96,11 @@ export function DesktopToastProvider({
 
 function pushToast(input: Omit<DesktopToastItem, "id">): void {
   const id = `desktop-toast-${++nextToastID}`;
-  toasts = [{ ...input, id }, ...toasts].slice(0, toastLimit);
+  const nextToasts = enqueueDesktopToast(toasts, { ...input, id }, toastLimit);
+  if (nextToasts === toasts) {
+    return;
+  }
+  toasts = nextToasts;
   emitToastChange();
 }
 

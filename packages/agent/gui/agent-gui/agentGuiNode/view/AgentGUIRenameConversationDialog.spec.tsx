@@ -18,7 +18,6 @@ describe("AgentGUIRenameConversationDialog", () => {
         }}
         labels={RENAME_LABELS}
         open
-        uiLanguage="en"
         onOpenChange={() => {}}
         onRename={onRename}
       />
@@ -49,7 +48,6 @@ describe("AgentGUIRenameConversationDialog", () => {
         }}
         labels={RENAME_LABELS}
         open
-        uiLanguage="en"
         onOpenChange={() => {}}
         onRename={onRename}
       />
@@ -66,11 +64,35 @@ describe("AgentGUIRenameConversationDialog", () => {
       expect(onRename).toHaveBeenCalledWith("session-1", "Assistive rename")
     );
   });
+
+  it("does not place the untitled display fallback in the editable value", () => {
+    render(
+      <AgentGUIRenameConversationDialog
+        conversation={{
+          cwd: "/workspace",
+          id: "session-1",
+          provider: "codex",
+          status: "ready",
+          title: "",
+          titleFallback: "untitled-conversation",
+          updatedAtUnixMs: 1
+        }}
+        labels={RENAME_LABELS}
+        open
+        onOpenChange={() => {}}
+        onRename={vi.fn()}
+      />
+    );
+
+    expect(screen.getByRole("textbox", { name: "Rename" })).toHaveValue("");
+    expect(screen.getByRole("button", { name: "Save" })).toBeDisabled();
+  });
 });
 
 const RENAME_LABELS = {
   cancel: "Cancel",
   fallbackAgentTitle: "Agent",
+  untitledConversationTitle: "Host untitled override",
   renameSessionDescription: "Rename conversation",
   renameSessionPlaceholder: "Conversation title",
   renameSessionSave: "Save",

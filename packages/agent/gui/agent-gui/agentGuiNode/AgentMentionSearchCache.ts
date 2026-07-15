@@ -183,6 +183,7 @@ export function buildAgentMentionBrowseCacheKey(input: {
   fileLimit: number;
   issueLimit: number;
   providerIds: readonly string[];
+  provenanceFilterKey?: string;
 }): string {
   return JSON.stringify({
     workspaceId: input.workspaceId,
@@ -191,6 +192,7 @@ export function buildAgentMentionBrowseCacheKey(input: {
     filter: input.filter,
     fileLimit: input.fileLimit,
     issueLimit: input.issueLimit,
-    providerIds: input.providerIds
+    providerIds: input.providerIds,
+    provenanceFilterKey: input.provenanceFilterKey ?? "disabled"
   });
 }

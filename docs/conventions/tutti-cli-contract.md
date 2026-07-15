@@ -155,11 +155,11 @@ recovery.
 `agent wait --json` is the blocking progress helper for launched or continued
 agent sessions. It should wait for the next meaningful stop point such as turn
 completion, failure, cancellation, waiting for approval, waiting for user
-input, or timeout. Its JSON result should stay narrow: `activeTurnId`, latest
-Turn phase/outcome,
-wait reason, latest version, timeout flag, and only the most recent agent
-execution messages from the wait window. It must not return a full transcript;
-callers that need broader context should follow with `agent session-summary`.
+input, or timeout. Its JSON result should stay narrow: compact session status,
+wait reason, latest version, effective wait cursor, and timeout flag. It must
+not return execution messages, pagination state, or a full transcript; callers
+that need broader context should follow with `agent session-summary`. Keep
+message window controls such as `limit` out of the public wait command shape.
 When a caller continues an existing session with `agent send`, the send action
 should return a `waitAfterVersion` cursor, and the next wait call should pass
 that cursor as `agent wait --after-version <waitAfterVersion> ...` so the wait

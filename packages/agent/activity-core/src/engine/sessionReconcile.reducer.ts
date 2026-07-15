@@ -77,6 +77,8 @@ function requestReconcile(
     agentSessionId,
     errorMessage: null,
     inFlightCommandId: null,
+    inFlightScope: null,
+    messagesHydrated: false,
     pendingMessages: false,
     pendingState: false,
     workspaceId
@@ -109,7 +111,13 @@ function settleReconcile(
       intent.outcome === "succeeded"
         ? null
         : intent.errorMessage?.trim() || null,
-    inFlightCommandId: null
+    inFlightCommandId: null,
+    inFlightScope: null,
+    messagesHydrated:
+      record.messagesHydrated ||
+      (intent.outcome === "succeeded" &&
+        (record.inFlightScope === "messages" ||
+          record.inFlightScope === "state_and_messages"))
   };
   const next = replaceRecord(state, settled);
   return settled.pendingMessages || settled.pendingState
@@ -143,6 +151,7 @@ function startReconcile(
       {
         ...record,
         inFlightCommandId: commandId,
+        inFlightScope: scope,
         pendingMessages: false,
         pendingState: false
       }

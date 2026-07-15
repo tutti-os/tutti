@@ -38,8 +38,7 @@ export function projectCanonicalAgentGUIConversationSummaries(
       sessionProvider: item.session.provider
     });
     const { title, titleFallback } = resolveAgentGUIConversationTitle(
-      item.session.title,
-      provider
+      item.session.title
     );
     const canonicalUpdatedAtUnixMs =
       item.session.updatedAtUnixMs ?? item.session.createdAtUnixMs ?? 0;
@@ -110,8 +109,7 @@ export function useAgentGuiConversationList(
           sessionProvider: target?.provider ?? query.provider
         });
         const { title, titleFallback } = resolveAgentGUIConversationTitle(
-          activation.title ?? "",
-          provider
+          activation.optimisticTitle ?? activation.title ?? ""
         );
         return {
           agentTargetId: activation.agentTargetId,
@@ -138,21 +136,21 @@ export function useAgentGuiConversationList(
         const activationIsNewer =
           activation !== undefined &&
           activation.requestedAtUnixMs > canonicalUpdatedAtUnixMs;
-        const activationIsPending =
-          activation?.status === "requested" ||
-          activation?.status === "uncertain";
-        const { title, titleFallback } = resolveAgentGUIConversationTitle(
-          activationIsNewer && activation.title
+        const optimisticTitle = activation?.optimisticTitle?.trim() ?? "";
+        const shouldUseOptimisticTitle =
+          conversation.title.trim().length === 0 && optimisticTitle.length > 0;
+        const projectedTitle = shouldUseOptimisticTitle
+          ? optimisticTitle
+          : activationIsNewer && activation?.title
             ? activation.title
-            : conversation.title,
-          conversation.provider
-        );
+            : conversation.title;
+        const { title, titleFallback } =
+          resolveAgentGUIConversationTitle(projectedTitle);
         return {
           ...conversation,
           sortTimeUnixMs: activationIsNewer
             ? activation.requestedAtUnixMs
             : conversation.sortTimeUnixMs,
-          status: activationIsPending ? "working" : conversation.status,
           title,
           titleFallback,
           updatedAtUnixMs: activationIsNewer

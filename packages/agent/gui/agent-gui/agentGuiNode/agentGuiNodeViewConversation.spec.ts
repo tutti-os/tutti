@@ -180,6 +180,24 @@ describe("groupConversations", () => {
 });
 
 describe("ConversationMeta", () => {
+  it("uses a prominent spinner stroke for working conversations", () => {
+    const nowMs = new Date("2026-06-05T12:00:00Z").getTime();
+    const item = conversation("working", nowMs, { status: "working" });
+
+    render(
+      createElement(ConversationMeta, {
+        item,
+        nowMs,
+        labels: relativeLabels
+      })
+    );
+
+    const spinner = screen.getByTestId("agent-gui-conversation-spinner");
+    expect(
+      spinner.querySelectorAll('circle[stroke-width="2.25"]')
+    ).toHaveLength(2);
+  });
+
   it("displays the same sort time used by conversation ordering", () => {
     const nowMs = new Date("2026-06-05T12:00:00Z").getTime();
     const item = conversation("updated-newer-sort-older", nowMs - 60 * 1000, {

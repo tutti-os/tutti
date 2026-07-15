@@ -627,7 +627,7 @@ func TestSessionSummaryCommandRejectsInvalidOrder(t *testing.T) {
 	}
 }
 
-func TestWaitCommandReturnsRecentAgentMessages(t *testing.T) {
+func TestWaitCommandReturnsStopPointWithoutMessages(t *testing.T) {
 	sessions := &fakeAgentSessions{
 		waitResult: agentservice.WaitResult{
 			Session: agentservice.Session{
@@ -658,6 +658,7 @@ func TestWaitCommandReturnsRecentAgentMessages(t *testing.T) {
 				},
 			},
 			LatestVersion:  9,
+			HasMore:        true,
 			Reason:         agentservice.WaitReasonWaitingInput,
 			EffectiveAfter: 7,
 		},
@@ -665,7 +666,7 @@ func TestWaitCommandReturnsRecentAgentMessages(t *testing.T) {
 	command := newTestProvider(fakeWorkspaceCatalog{startup: workspacebiz.Summary{ID: "workspace-1"}}, sessions).newWaitCommand()
 
 	output, err := command.Handler(context.Background(), cliservice.InvokeRequest{
-		Input:      map[string]any{"session-id": "SESSION-1", "after-version": "7", "limit": "5", "timeout-ms": "2500"},
+		Input:      map[string]any{"session-id": "SESSION-1", "after-version": "7", "timeout-ms": "2500"},
 		OutputMode: cliservice.OutputModeJSON,
 	})
 	if err != nil {
@@ -676,7 +677,8 @@ func TestWaitCommandReturnsRecentAgentMessages(t *testing.T) {
 		sessions.waitInput.AgentSessionID != "SESSION-1" ||
 		!ok ||
 		waitAfterVersion != 7 ||
-		sessions.waitInput.MessageLimit != 5 ||
+		sessions.waitInput.MessageLimit != 0 ||
+		!sessions.waitInput.SkipMessages ||
 		sessions.waitInput.Timeout != 2500*time.Millisecond {
 		t.Fatalf("wait input = %#v", sessions.waitInput)
 	}
@@ -691,17 +693,10 @@ func TestWaitCommandReturnsRecentAgentMessages(t *testing.T) {
 	if _, ok := session["settings"]; ok {
 		t.Fatalf("wait session should stay compact: %#v", session)
 	}
-	messages := output.Value["messages"].([]any)
-	if len(messages) != 2 {
-		t.Fatalf("messages = %#v", messages)
-	}
-	first := messages[0].(map[string]any)
-	if first["messageId"] != "assistant-1" || first["text"] != "First reply" {
-		t.Fatalf("first message = %#v", first)
-	}
-	second := messages[1].(map[string]any)
-	if second["messageId"] != "tool-1" || second["text"] != "call: Read files" {
-		t.Fatalf("second message = %#v", second)
+	for _, key := range []string{"messages", "hasMore"} {
+		if _, ok := output.Value[key]; ok {
+			t.Fatalf("wait output should omit %q: %#v", key, output.Value)
+		}
 	}
 }
 
@@ -721,57 +716,17 @@ func TestWaitCommandPreservesExplicitZeroAfterVersion(t *testing.T) {
 	}
 }
 
-func TestWaitCommandIncludesImageCompactMetadata(t *testing.T) {
-	sessions := &fakeAgentSessions{
-		localPaths: map[string]string{"attachment-1": "/tmp/agent/attachments/SESSION-1/attachment-1.png"},
-		waitResult: agentservice.WaitResult{
-			Session: agentservice.Session{
-				ID:           "SESSION-1",
-				Provider:     "codex",
-				ActiveTurnID: "turn-1",
-				Visible:      true,
-			},
-			Messages: []agentservice.SessionMessage{{
-				AgentSessionID: "SESSION-1",
-				MessageID:      "message-1",
-				Role:           "user",
-				Kind:           "text",
-				Status:         "completed",
-				Payload: map[string]any{
-					"content": []any{
-						map[string]any{"type": "text", "text": "look"},
-						map[string]any{
-							"type":         "image",
-							"attachmentId": "attachment-1",
-							"mimeType":     "image/png",
-							"name":         "shot.png",
-						},
-					},
-				},
-				Version: 8,
-			}},
-			LatestVersion:  8,
-			Reason:         agentservice.WaitReasonWaitingInput,
-			EffectiveAfter: 7,
-		},
-	}
-	command := newTestProvider(fakeWorkspaceCatalog{startup: workspacebiz.Summary{ID: "workspace-1"}}, sessions).newWaitCommand()
+func TestWaitCommandExposesOnlyWaitParameters(t *testing.T) {
+	command := newTestProvider(fakeWorkspaceCatalog{startup: workspacebiz.Summary{ID: "workspace-1"}}, &fakeAgentSessions{}).newWaitCommand()
 
-	output, err := command.Handler(context.Background(), cliservice.InvokeRequest{
-		Input:      map[string]any{"session-id": "SESSION-1"},
-		OutputMode: cliservice.OutputModeJSON,
-	})
-	if err != nil {
-		t.Fatalf("Handler: %v", err)
+	properties := command.Capability.InputSchema["properties"].(map[string]any)
+	for _, key := range []string{"session-id", "after-version", "timeout-ms"} {
+		if _, ok := properties[key]; !ok {
+			t.Fatalf("wait schema should include %q: %#v", key, properties)
+		}
 	}
-	messages := output.Value["messages"].([]any)
-	images := messages[0].(map[string]any)["images"].([]any)
-	image := images[0].(map[string]any)
-	if image["attachmentId"] != "attachment-1" ||
-		image["mimeType"] != "image/png" ||
-		image["name"] != "shot.png" ||
-		image["localPath"] != "/tmp/agent/attachments/SESSION-1/attachment-1.png" {
-		t.Fatalf("image = %#v", image)
+	if _, ok := properties["limit"]; ok {
+		t.Fatalf("wait schema should omit limit: %#v", properties)
 	}
 }
 
@@ -787,6 +742,9 @@ func TestWaitCommandUsesDefaultTimeout(t *testing.T) {
 	}
 	if sessions.waitInput.AfterVersion != nil {
 		t.Fatalf("after version = %#v, want nil when omitted", sessions.waitInput.AfterVersion)
+	}
+	if !sessions.waitInput.SkipMessages {
+		t.Fatalf("skip messages = false, want true")
 	}
 	if sessions.waitInput.Timeout != 5*time.Minute {
 		t.Fatalf("timeout = %v, want 5m", sessions.waitInput.Timeout)

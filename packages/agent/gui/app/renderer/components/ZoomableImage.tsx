@@ -2,7 +2,6 @@ import {
   type CSSProperties,
   type ComponentPropsWithoutRef,
   type JSX,
-  type KeyboardEvent,
   type MouseEvent,
   type WheelEvent,
   useCallback,
@@ -105,17 +104,31 @@ export function ZoomableImage({
   };
 
   useEffect(() => {
-    if (!contextMenuPosition) {
-      return;
-    }
+    const handleWindowKeyDown = (event: globalThis.KeyboardEvent): void => {
+      if (!isImagePreviewOpen || event.key !== "Escape") {
+        return;
+      }
+      event.preventDefault();
+      event.stopPropagation();
+      setIsImagePreviewClosing(true);
+      setIsWheelZooming(false);
+      setImagePreviewZoom(1);
+      closeContextMenu();
+    };
 
-    document.addEventListener("click", closeContextMenu);
-    document.addEventListener("scroll", closeContextMenu, true);
+    if (contextMenuPosition) {
+      document.addEventListener("click", closeContextMenu);
+      document.addEventListener("scroll", closeContextMenu, true);
+    }
+    if (isImagePreviewOpen) {
+      window.addEventListener("keydown", handleWindowKeyDown, true);
+    }
     return () => {
       document.removeEventListener("click", closeContextMenu);
       document.removeEventListener("scroll", closeContextMenu, true);
+      window.removeEventListener("keydown", handleWindowKeyDown, true);
     };
-  }, [closeContextMenu, contextMenuPosition]);
+  }, [closeContextMenu, contextMenuPosition, isImagePreviewOpen]);
 
   const handleContextMenu = useCallback(
     (event: MouseEvent<HTMLElement>): void => {
@@ -330,11 +343,6 @@ export function ZoomableImage({
                   event.currentTarget === event.target
                 ) {
                   finishClosePreviewImage();
-                }
-              }}
-              onKeyDown={(event: KeyboardEvent<HTMLDivElement>) => {
-                if (event.key === "Escape") {
-                  closePreviewImage();
                 }
               }}
             >

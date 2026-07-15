@@ -20,6 +20,10 @@ const standaloneAgentToolSidebarSource = readFileSync(
   new URL("./StandaloneAgentToolSidebar.tsx", import.meta.url),
   "utf8"
 );
+const standaloneAgentToolSidebarPickerSource = readFileSync(
+  new URL("./StandaloneAgentToolSidebarPicker.tsx", import.meta.url),
+  "utf8"
+);
 const standaloneAgentToolSidebarPanelSource = readFileSync(
   new URL("./StandaloneAgentToolSidebarPanel.tsx", import.meta.url),
   "utf8"
@@ -161,14 +165,37 @@ test("standalone Agent terminal tab content appears without a reveal animation",
 test("standalone Agent unified panel button uses chrome and active variants", () => {
   assert.match(
     standaloneAgentToolSidebarToolbarSource,
-    /data-standalone-agent-tool-sidebar-toggle="true"[\s\S]*?variant=\{activePanel \? "secondary" : "chrome"\}/
+    /data-standalone-agent-tool-sidebar-toggle="true"[\s\S]*?variant=\{isOpen && activePanel !== null \? "secondary" : "chrome"\}/
+  );
+  assert.match(
+    standaloneAgentToolSidebarToolbarSource,
+    /activePanel === null && isOpen && "ml-auto"/
+  );
+});
+
+test("standalone Agent opens an empty right sidebar with the core tool picker", () => {
+  assert.match(
+    standaloneAgentToolSidebarSource,
+    /const isEmptySidebar = isSidebarOpen && state\.mountedTabs\.length === 0/
+  );
+  assert.match(
+    standaloneAgentToolSidebarSource,
+    /isEmptySidebar \? \([\s\S]*?<StandaloneAgentToolSidebarPicker/
+  );
+  assert.match(
+    standaloneAgentToolSidebarPickerSource,
+    /id: "files"[\s\S]*?id: "terminal"[\s\S]*?id: "browser"/
+  );
+  assert.match(
+    standaloneAgentToolSidebarPickerSource,
+    /data-standalone-agent-tool-sidebar-picker="true"/
   );
 });
 
 test("standalone Agent quick actions open the apps and messages panel tabs", () => {
   assert.match(
     standaloneAgentToolSidebarToolbarSource,
-    /activePanel === null \? \([\s\S]*?data-standalone-agent-tool-sidebar-quick-action="apps"[\s\S]*?variant="chrome"[\s\S]*?onClick=\{\(\) => onOpenPanel\("apps"\)\}/
+    /activePanel === null && !isOpen \? \([\s\S]*?data-standalone-agent-tool-sidebar-quick-action="apps"[\s\S]*?variant="chrome"[\s\S]*?onClick=\{\(\) => onOpenPanel\("apps"\)\}/
   );
   assert.match(
     standaloneAgentToolSidebarToolbarSource,
@@ -180,7 +207,15 @@ test("standalone Agent quick actions open the apps and messages panel tabs", () 
   );
   assert.match(
     standaloneAgentToolSidebarToolbarSource,
-    /\{activePanel === null \? \([\s\S]*?\) : null\}/
+    /ToolbarQuickActionTooltip label=\{copy\.tasks\}[\s\S]*?ToolbarQuickActionTooltip label=\{copy\.apps\}[\s\S]*?ToolbarQuickActionTooltip label=\{copy\.messages\}/
+  );
+  assert.match(
+    standaloneAgentToolSidebarToolbarSource,
+    /<TooltipContent side="bottom">\{label\}<\/TooltipContent>/
+  );
+  assert.match(
+    standaloneAgentToolSidebarToolbarSource,
+    /\{activePanel === null && !isOpen \? \([\s\S]*?\) : null\}/
   );
 });
 
@@ -313,7 +348,7 @@ test("standalone Agent panel header stays within the available header width", ()
 test("standalone Agent right sidebar reserves layout space and reveals requested files", () => {
   assert.match(
     standaloneAgentToolSidebarSource,
-    /width: activePanel \? `\$\{activePanelLayoutWidth\}px` : "0px"/
+    /width: isSidebarOpen \? `\$\{activePanelLayoutWidth\}px` : "0px"/
   );
   assert.match(
     standaloneAgentToolSidebarSource,
@@ -340,14 +375,18 @@ test("standalone Agent hides internal open-with actions without changing the OS 
   );
 });
 
-test("standalone Agent right sidebar transitions renderer-first before mounting heavy content", () => {
-  assert.match(
-    standaloneAgentToolSidebarSource,
-    /overflow-hidden transition-\[width\] duration-\[260ms\] ease-in-out/
-  );
+test("standalone Agent right sidebar avoids layout animation before mounting heavy content", () => {
   assert.doesNotMatch(
     standaloneAgentToolSidebarSource,
-    /ease-\[cubic-bezier\(0\.22,1,0\.36,1\)\]/
+    /transition-\[width\]|will-change-\[width\]/
+  );
+  assert.match(
+    standaloneAgentToolSidebarSource,
+    /isSidebarOpen &&\s+"motion-safe:animate-in motion-safe:slide-in-from-right-3 motion-safe:duration-\[160ms\] motion-safe:ease-out motion-reduce:animate-none"/
+  );
+  assert.match(
+    standaloneAgentToolSidebarSource,
+    /overflow-hidden \[contain:layout_paint\]/
   );
   assert.match(
     standaloneAgentToolSidebarSource,
@@ -355,15 +394,34 @@ test("standalone Agent right sidebar transitions renderer-first before mounting 
   );
   assert.match(
     standaloneAgentToolSidebarSource,
-    /window\.requestAnimationFrame\(\(\) => \{[\s\S]*?void resizeForPanel\(panel\)/
+    /window\.requestAnimationFrame\(\(\) => \{[\s\S]*?void resizeForPanel\(panel, preferredWidth\)/
   );
   assert.match(
     standaloneAgentToolSidebarSource,
-    /standaloneAgentToolPanelContentMountDelayMs = 260/
+    /standaloneAgentToolPanelContentMountDelayMs = 80/
   );
   assert.match(
     standaloneAgentToolSidebarSource,
     /contentReadyTabIds\.includes\(tab\.id\)[\s\S]*?motion-safe:animate-in[\s\S]*?<StandaloneAgentToolSidebarPanel/
+  );
+  assert.match(
+    standaloneAgentToolSidebarPickerSource,
+    /motion-safe:slide-in-from-right-2[\s\S]*?motion-safe:duration-\[140ms\]/
+  );
+});
+
+test("standalone Agent empty sidebar uses its compact width until a tool opens", () => {
+  assert.match(
+    standaloneAgentToolSidebarSource,
+    /activePanelPreferredWidth: isEmptySidebar\s*\? standaloneAgentEmptyToolSidebarWidth\s*: undefined/
+  );
+  assert.match(
+    standaloneAgentToolSidebarSource,
+    /scheduleResizeForPanel\("files", standaloneAgentEmptyToolSidebarWidth\)/
+  );
+  assert.match(
+    standaloneAgentToolSidebarPickerSource,
+    /items-center justify-center[\s\S]*?max-w-\[340px\][\s\S]*?h-12/
   );
 });
 

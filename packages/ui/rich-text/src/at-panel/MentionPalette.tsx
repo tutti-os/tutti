@@ -122,6 +122,7 @@ export function MentionPalette<TItem>(
     onMoveSelection,
     onNavigateHierarchy,
     renderListFooter,
+    headerActions,
     loadingBanner,
     scrollHighlightedIntoViewCentered = false,
     theme: themeProp
@@ -266,20 +267,25 @@ export function MentionPalette<TItem>(
     <div
       className={mentionPaletteRootClassName(theme)}
       style={paletteMaxHeightStyle}
-      role="listbox"
-      aria-label={labels.listbox ?? labels.tabHint}
     >
       <div className={cn(theme.classNames.header, paletteStyles.header)}>
-        <UnderlineTabs
-          tabs={state.categories.map((category) => ({
-            value: category.id,
-            label: category.label
-          }))}
-          value={state.filter}
-          onValueChange={isBrowse ? onSelectCategory : onSelectFilter}
-          className={theme.classNames.tabs}
-          preventMouseDownDefault
-        />
+        <div className="rich-text-at-mention-palette__tabs-layout">
+          <UnderlineTabs
+            tabs={state.categories.map((category) => ({
+              value: category.id,
+              label: category.label
+            }))}
+            value={state.filter}
+            onValueChange={isBrowse ? onSelectCategory : onSelectFilter}
+            className={theme.classNames.tabs}
+            preventMouseDownDefault
+          />
+        </div>
+        {headerActions ? (
+          <div className="rich-text-at-mention-palette__header-actions">
+            {headerActions}
+          </div>
+        ) : null}
         {showLoadingBanner ? loadingBanner : null}
       </div>
       <div className={paletteStyles.scrollShell}>
@@ -289,6 +295,8 @@ export function MentionPalette<TItem>(
             theme.classNames.scrollRegion,
             paletteStyles.scrollBody
           )}
+          role="listbox"
+          aria-label={labels.listbox ?? labels.tabHint}
         >
           {body}
         </div>

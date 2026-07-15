@@ -104,6 +104,42 @@ test("desktop agent gui link actions reveal local asset previews in workspace fi
       homeDirectory: "/Users/local",
       path: "/var/cache/tsh/local-assets/room-1/user-1/photo.png",
       source: "agent_command",
+      validateExists: true,
+      workspaceId: "workspace-1"
+    }
+  ]);
+});
+
+test("desktop agent gui link actions validate pasted text archives before opening", async () => {
+  const launchedFiles: unknown[] = [];
+  const handled = await runDesktopAgentGUILinkAction(
+    {
+      href: "mention://pasted-text/archive-1?path=%2Farchive%2Fmissing.txt",
+      kind: "pasted-text",
+      source: "agent-markdown",
+      type: "open-custom-mention"
+    },
+    {
+      getAgentSession: failGetAgentSession,
+      homeDirectory: "/Users/local",
+      launchAgentGui: failLaunchAgentGui,
+      launchWorkspaceIssueManager: failLaunchWorkspaceIssueManager,
+      launchWorkspaceFiles(input) {
+        launchedFiles.push(input);
+        return true;
+      },
+      openBrowserUrl: failOpenBrowserUrl,
+      workspaceId: "workspace-1"
+    }
+  );
+
+  assert.equal(handled, true);
+  assert.deepEqual(launchedFiles, [
+    {
+      homeDirectory: "/Users/local",
+      path: "/archive/missing.txt",
+      source: "agent_command",
+      validateExists: true,
       workspaceId: "workspace-1"
     }
   ]);

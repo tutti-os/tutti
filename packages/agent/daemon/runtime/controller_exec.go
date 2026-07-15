@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"log/slog"
 	"strings"
+
+	activityshared "github.com/tutti-os/tutti/packages/agent/daemon/activity/events"
 )
 
 func (c *Controller) Exec(ctx context.Context, input ExecInput) (ExecResult, error) {
@@ -46,6 +48,15 @@ func (c *Controller) Exec(ctx context.Context, input ExecInput) (ExecResult, err
 	if input.Guidance {
 		return c.guideActiveTurn(ctx, session, adapter, content, displayPrompt, metadata)
 	}
+	titleUpdated := false
+	if initialTitle := strings.TrimSpace(input.InitialTitle); initialTitle != "" &&
+		!session.InitialTitleEstablished &&
+		strings.TrimSpace(session.Title) == strings.TrimSpace(input.InitialTitleBase) {
+		session.Title = initialTitle
+		session = markInitialTitleEstablished(session)
+		session.UpdatedAtUnixMS = unixMS(now())
+		titleUpdated = true
+	}
 	turnID := newID()
 	runCtx, cancel := context.WithCancel(context.Background())
 	if len(metadata) > 0 {
@@ -60,7 +71,7 @@ func (c *Controller) Exec(ctx context.Context, input ExecInput) (ExecResult, err
 			// Goal control (/goal paused|active|clear) is a thread-level
 			// operation like Cancel: it must act immediately while a turn is
 			// running, exactly when the single-turn gate would reject it.
-			if result, handled, controlErr := c.execGoalControlWithActiveTurn(ctx, session, adapter, content, displayPrompt, turnID, metadata); handled {
+			if result, handled, controlErr := c.execGoalControlWithActiveTurn(ctx, session, adapter, content, displayPrompt, turnID, metadata, titleUpdated); handled {
 				return result, controlErr
 			}
 		}
@@ -75,6 +86,9 @@ func (c *Controller) Exec(ctx context.Context, input ExecInput) (ExecResult, err
 	}
 	c.mu.Unlock()
 	submitEvents := submittedTurnActivityEvents(session, turnID)
+	if titleUpdated {
+		submitEvents = append([]activityshared.Event{newSessionTitleActivityEvent(session, session.Title)}, submitEvents...)
+	}
 	if len(submitEvents) > 0 {
 		c.publish(session, submitEvents)
 		c.enqueueSessionReport(ctx, session, submitEvents)
@@ -212,6 +226,7 @@ func (c *Controller) execGoalControlWithActiveTurn(
 	displayPrompt string,
 	turnID string,
 	metadata map[string]any,
+	titleUpdated bool,
 ) (ExecResult, bool, error) {
 	goalAdapter, ok := adapter.(GoalControlAdapter)
 	if !ok {
@@ -234,6 +249,13 @@ func (c *Controller) execGoalControlWithActiveTurn(
 			"error": err.Error(),
 		})
 		return ExecResult{}, true, err
+	}
+	if titleUpdated {
+		c.store(session)
+		events = append(
+			[]activityshared.Event{newSessionTitleActivityEvent(session, session.Title)},
+			events...,
+		)
 	}
 	c.applySessionEventsByAgentSessionID(session.AgentSessionID, events)
 	logAgentSubmitTrace("runtime.exec.goal_control", session, turnID, metadata, map[string]any{

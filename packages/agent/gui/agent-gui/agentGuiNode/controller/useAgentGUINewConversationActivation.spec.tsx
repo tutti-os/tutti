@@ -18,7 +18,7 @@ describe("useAgentGUINewConversationActivation", () => {
     const activeConversationIdRef = { current: null as string | null };
     const isComposerHomeRef = { current: true };
     const activate = vi.fn(
-      (input: { agentSessionId: string }) =>
+      (input: { agentSessionId: string; optimisticTitle?: string }) =>
         `activation:${input.agentSessionId}`
     );
     const activation = {
@@ -98,6 +98,8 @@ describe("useAgentGUINewConversationActivation", () => {
     const secondSessionId = activate.mock.calls[1]?.[0].agentSessionId;
 
     expect(activate).toHaveBeenCalledTimes(2);
+    expect(activate.mock.calls[0]?.[0].optimisticTitle).toBe("first");
+    expect(activate.mock.calls[1]?.[0].optimisticTitle).toBe("second");
     expect(firstSessionId).toBeTruthy();
     expect(secondSessionId).toBeTruthy();
     expect(secondSessionId).not.toBe(firstSessionId);

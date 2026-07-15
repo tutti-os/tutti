@@ -21,7 +21,7 @@ test("deleted session selector normalizes ids and hides tombstone storage", () =
   assert.equal(selectEngineSessionDeleted(state, null), false);
 });
 
-test("consumer status is derived only from canonical turn and interaction entities", () => {
+test("consumer status is derived from canonical entities and engine-owned initial activation", () => {
   let state = createInitialAgentSessionEngineState();
   state = rootEngineReducer(state, {
     sessions: [
@@ -74,4 +74,109 @@ test("consumer status is derived only from canonical turn and interaction entiti
     waiting: 1,
     working: 0
   });
+});
+
+test("new activation stays working between session confirmation and first canonical turn", () => {
+  let state = createInitialAgentSessionEngineState();
+  state = rootEngineReducer(state, {
+    agentSessionId: "session-1",
+    agentTargetId: "local:codex",
+    clientSubmitId: "submit-1",
+    content: [{ type: "text", text: "test1" }],
+    cwd: "/workspace",
+    expiresAtUnixMs: 1_000,
+    mode: "new",
+    requestedAtUnixMs: 10,
+    requestId: "activation-1",
+    type: "activation/requested",
+    workspaceId: "workspace-1"
+  }).state;
+  state = rootEngineReducer(state, {
+    sessions: [
+      {
+        activeTurnId: null,
+        agentSessionId: "session-1",
+        createdAtUnixMs: 20,
+        cwd: "/workspace",
+        latestTurnInteractions: [],
+        pendingInteractions: [],
+        provider: "codex",
+        title: "test1",
+        workspaceId: "workspace-1"
+      }
+    ],
+    type: "session/snapshotReceived"
+  }).state;
+
+  assert.equal(
+    selectWorkspaceAgentConsumerSession(state, "session-1")?.displayStatus,
+    "working"
+  );
+
+  state = rootEngineReducer(state, {
+    sessions: [
+      {
+        activeTurnId: null,
+        agentSessionId: "session-1",
+        createdAtUnixMs: 20,
+        cwd: "/workspace",
+        latestTurn: {
+          agentSessionId: "session-1",
+          outcome: "completed",
+          phase: "settled",
+          startedAtUnixMs: 10,
+          turnId: "turn-1",
+          updatedAtUnixMs: 30
+        },
+        latestTurnInteractions: [],
+        pendingInteractions: [],
+        provider: "codex",
+        title: "test1",
+        workspaceId: "workspace-1"
+      }
+    ],
+    type: "session/snapshotReceived"
+  }).state;
+
+  assert.equal(
+    selectWorkspaceAgentConsumerSession(state, "session-1")?.displayStatus,
+    "completed"
+  );
+});
+
+test("new activation without initial content stays idle after session confirmation", () => {
+  let state = createInitialAgentSessionEngineState();
+  state = rootEngineReducer(state, {
+    agentSessionId: "session-1",
+    agentTargetId: "local:codex",
+    clientSubmitId: "submit-1",
+    cwd: "/workspace",
+    expiresAtUnixMs: 1_000,
+    mode: "new",
+    requestedAtUnixMs: 10,
+    requestId: "activation-1",
+    type: "activation/requested",
+    workspaceId: "workspace-1"
+  }).state;
+  state = rootEngineReducer(state, {
+    sessions: [
+      {
+        activeTurnId: null,
+        agentSessionId: "session-1",
+        createdAtUnixMs: 20,
+        cwd: "/workspace",
+        latestTurnInteractions: [],
+        pendingInteractions: [],
+        provider: "codex",
+        title: "",
+        workspaceId: "workspace-1"
+      }
+    ],
+    type: "session/snapshotReceived"
+  }).state;
+
+  assert.equal(
+    selectWorkspaceAgentConsumerSession(state, "session-1")?.displayStatus,
+    "idle"
+  );
 });

@@ -937,9 +937,11 @@ describe("AgentFileMentionPalette", () => {
       />
     );
 
-    expect(screen.getByRole("listbox")).toHaveClass(
-      "rich-text-at-mention-palette__shell"
-    );
+    const listbox = screen.getByRole("listbox");
+    expect(listbox).toHaveClass("rich-text-at-mention-palette__scroll-body");
+    expect(
+      listbox.closest(".rich-text-at-mention-palette__shell")
+    ).not.toBeNull();
     expect(
       screen.queryByTestId("agent-gui-mention-palette-scrollbar")
     ).toBeNull();

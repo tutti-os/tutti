@@ -132,6 +132,16 @@ export function inferToolCallType(toolName: string | null | undefined): string {
   return "tool";
 }
 
+export function isApprovalToolCall(call: {
+  toolName: string | null | undefined;
+  callType: string | null | undefined;
+}): boolean {
+  return (
+    normalizeCallType(call.callType) === "approval" ||
+    normalizeToolName(call.toolName) === "approval"
+  );
+}
+
 export function normalizeToolName(value: string | null | undefined): string {
   return (value ?? "")
     .replace(/[_\s-]+/g, "")

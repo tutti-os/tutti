@@ -23,6 +23,7 @@ import type { AgentGUIAccountMenuState } from "../accountMenuState";
 import type {
   AgentComposerGitBranchLoader,
   AgentComposerProps,
+  AgentComposerReferenceProvenanceFilter,
   AgentComposerPromptTip,
   AgentComposerSlashStatusLimit
 } from "../AgentComposer";
@@ -180,6 +181,7 @@ export interface AgentGUIViewLabels {
   retrySearch: string;
   conversationUnavailable: string;
   fallbackAgentTitle: string;
+  untitledConversationTitle: string;
   searchPlaceholder: string;
   sectionConversations: string;
   sectionToday: string;
@@ -363,6 +365,7 @@ export interface AgentGUIViewLabels {
 
 export interface AgentGUINodeViewProps {
   viewModel: AgentGUINodeViewModel;
+  referenceProvenanceFilter?: AgentComposerReferenceProvenanceFilter | null;
   renderSidebarFooter?: AgentGUISidebarFooterRenderer;
   /** Renders the provider rail empty state in "exact" mode. See the type doc. */
   renderProviderRailEmpty?: AgentGUIAgentsEmptyRenderer;

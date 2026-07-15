@@ -9,6 +9,7 @@ import {
 } from "@tutti-os/agent-gui/context-mention-provider";
 import { collectWorkspaceAgentGeneratedFiles } from "@tutti-os/agent-gui/workspace-agent-generated-files";
 import { createRichTextMarkdownLinkInsertResult } from "@tutti-os/ui-rich-text/plugins";
+import type { ReferenceProvenanceFilter } from "@tutti-os/workspace-file-reference/contracts";
 import {
   tuttiFileAssetUrls,
   tuttiFolderAssetUrls
@@ -49,9 +50,15 @@ export function createDesktopAgentGeneratedFileMentionProvider(input: {
         ""
       );
       const keyword = searchInput.keyword.trim();
+      const provenanceFilter = metadataReferenceProvenanceFilter(
+        searchInput.context.metadata
+      );
+      const agentTargetIds = provenanceFilter?.agentTargetIds ?? null;
+      if (agentTargetIds?.length === 0) return [];
       if (input.agentActivityRuntime.listAgentGeneratedFiles) {
         const result = await input.agentActivityRuntime.listAgentGeneratedFiles(
           {
+            agentTargetIds: agentTargetIds ?? undefined,
             limit: searchInput.maxResults,
             query: keyword,
             sessionCwd: sessionCwd || undefined,
@@ -71,6 +78,7 @@ export function createDesktopAgentGeneratedFileMentionProvider(input: {
       await hydrateRecentSessionMessages({
         abortSignal: searchInput.abortSignal,
         agentActivityRuntime: input.agentActivityRuntime,
+        agentTargetIds,
         snapshot,
         workspaceId
       });
@@ -80,6 +88,7 @@ export function createDesktopAgentGeneratedFileMentionProvider(input: {
       const refreshedSnapshot =
         input.agentActivityRuntime.getSnapshot(workspaceId);
       const files = collectWorkspaceAgentGeneratedFiles(refreshedSnapshot, {
+        ...(agentTargetIds ? { agentTargetIds } : {}),
         ...(sessionCwd ? { sessionCwd } : {})
       });
       const normalizedKeyword = keyword.toLowerCase();
@@ -116,12 +125,20 @@ export function createDesktopAgentGeneratedFileMentionProvider(input: {
 async function hydrateRecentSessionMessages(input: {
   abortSignal?: AbortSignal;
   agentActivityRuntime: Pick<AgentActivityRuntime, "listSessionMessages">;
+  agentTargetIds: readonly string[] | null;
   snapshot: ReturnType<AgentActivityRuntime["getSnapshot"]>;
   workspaceId: string;
 }): Promise<void> {
   const sessionsNeedingMessages = selectCanonicalAgentActivitySessions(
     input.snapshot
   ).filter((session) => {
+    if (
+      input.agentTargetIds !== null &&
+      (session.agentTargetId === null ||
+        !input.agentTargetIds.includes(session.agentTargetId))
+    ) {
+      return false;
+    }
     const sessionId = session.agentSessionId.trim();
     if (!sessionId) {
       return false;
@@ -150,6 +167,31 @@ async function hydrateRecentSessionMessages(input: {
         })
         .catch(() => undefined);
     })
+  );
+}
+
+function metadataReferenceProvenanceFilter(
+  metadata: Readonly<Record<string, unknown>> | undefined
+): ReferenceProvenanceFilter | null {
+  const value = metadata?.referenceProvenanceFilter;
+  if (!value || typeof value !== "object") return null;
+  const filter = value as Partial<ReferenceProvenanceFilter>;
+  return {
+    agentTargetIds: stringArrayOrNull(filter.agentTargetIds),
+    memberIds: stringArrayOrNull(filter.memberIds)
+  };
+}
+
+function stringArrayOrNull(value: unknown): readonly string[] | null {
+  if (value === null || value === undefined) return null;
+  if (!Array.isArray(value)) return null;
+  return Array.from(
+    new Set(
+      value
+        .filter((item): item is string => typeof item === "string")
+        .map((item) => item.trim())
+        .filter(Boolean)
+    )
   );
 }
 

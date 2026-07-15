@@ -321,6 +321,56 @@ test("desktop agent GUI workbench host input wires project references first", as
   );
 });
 
+test("desktop provenance search sends agent filters to tuttid without deriving a session cwd", async () => {
+  const generatedFileInputs: unknown[] = [];
+  const workspaceAgentActivityService = createWorkspaceAgentActivityService([]);
+  workspaceAgentActivityService.listAgentGeneratedFiles = async (input) => {
+    generatedFileInputs.push(input);
+    return {
+      entries: [{ label: "report.md", path: "/outside/project/report.md" }],
+      workspaceId
+    };
+  };
+  const hostInput = createDesktopAgentGUIWorkbenchHostInput({
+    hostFilesApi: createHostFilesApi(),
+    tuttidClient: createTuttidClient(),
+    platformApi: createPlatformApi(),
+    richTextAtService: createRichTextAtService(),
+    runtimeApi: createRuntimeApi(),
+    workspaceAgentActivityService,
+    workspaceUserProjectService: createWorkspaceUserProjectService([
+      userProject("project-1", "/Users/local/repo", "Repo")
+    ]),
+    workspaceId
+  });
+
+  await hostInput.referenceSourceAggregator.listSources({ workspaceId });
+  const result = await hostInput.referenceSourceAggregator.search(
+    { workspaceId },
+    USER_PROJECT_REFERENCE_SOURCE_ID,
+    {
+      query: "report",
+      provenanceFilter: {
+        agentTargetIds: ["local:codex"],
+        memberIds: null
+      },
+      withinNodeId: "/Users/local/repo"
+    }
+  );
+
+  assert.deepEqual(generatedFileInputs, [
+    {
+      agentTargetIds: ["local:codex"],
+      limit: undefined,
+      query: "report",
+      sessionCwd: undefined,
+      signal: undefined,
+      workspaceId
+    }
+  ]);
+  assert.equal(result.entries[0]?.ref.nodeId, "/outside/project/report.md");
+});
+
 test("desktop agent GUI workbench host input prefers active conversation project for reference target", () => {
   const project = userProject("project-2", "/Users/local/app", "App");
   const composerProject = userProject("project-1", "/Users/local/repo", "Repo");

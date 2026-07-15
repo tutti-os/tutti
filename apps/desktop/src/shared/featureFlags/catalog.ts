@@ -8,16 +8,23 @@ export const LAB_ENABLED_FLAG = "lab.enabled";
 export const LAB_WORKBENCH_SHORTCUTS_FLAG = "lab.workbenchShortcuts";
 export const WORKSPACE_STANDALONE_AGENT_MODE_FLAG =
   "workspace.standaloneAgentMode";
+export const AGENT_REFERENCE_PROVENANCE_FILTER_FLAG =
+  "agent.referenceProvenanceFilter";
 
 export interface FeatureFlagDefinition {
   key: string;
   default: boolean;
-  group: "lab-master" | "lab";
+  group: "developer" | "lab-master" | "lab";
   labelKey?: string;
   descriptionKey?: string;
 }
 
 export const FEATURE_FLAG_DEFINITIONS: readonly FeatureFlagDefinition[] = [
+  {
+    key: AGENT_REFERENCE_PROVENANCE_FILTER_FLAG,
+    default: false,
+    group: "developer"
+  },
   { key: LAB_ENABLED_FLAG, default: false, group: "lab-master" },
   {
     key: LAB_WORKBENCH_SHORTCUTS_FLAG,

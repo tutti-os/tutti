@@ -2,7 +2,14 @@
 // session titles.
 package titletext
 
-import "strings"
+import (
+	"strings"
+	"unicode/utf8"
+
+	"github.com/tutti-os/tutti/packages/agent/daemon/providerregistry"
+)
+
+const MaxSessionTitleRunes = 120
 
 // Normalize converts rich-text Markdown links to their human-readable labels
 // and collapses whitespace. It intentionally does not apply UI-local labels or
@@ -29,6 +36,58 @@ func Normalize(value string) string {
 		index = hrefEnd + 1
 	}
 	return strings.Join(strings.Fields(strings.TrimSpace(output.String())), " ")
+}
+
+// DeriveInitial converts the first user-visible prompt into the canonical
+// title for a session that still has no title. The empty result is a safe
+// compare-and-set candidate: an established title is never overwritten.
+func DeriveInitial(currentTitle string, visiblePrompt string) string {
+	if strings.TrimSpace(currentTitle) != "" {
+		return ""
+	}
+	title := Normalize(visiblePrompt)
+	if title == "" {
+		return ""
+	}
+	if utf8.RuneCountInString(title) <= MaxSessionTitleRunes {
+		return title
+	}
+	const suffix = "..."
+	runes := []rune(title)
+	suffixRunes := utf8.RuneCountInString(suffix)
+	return strings.TrimSpace(string(runes[:MaxSessionTitleRunes-suffixRunes])) + suffix
+}
+
+// IsLegacyPlaceholder recognizes historical provider/target identity titles.
+// This is migration-only compatibility; live submit code must not use it.
+func IsLegacyPlaceholder(value string, provider string, targetAliases ...string) bool {
+	title := normalizeIdentity(value)
+	provider = normalizeIdentity(provider)
+	if title == "" || title == provider {
+		return true
+	}
+	for _, candidate := range targetAliases {
+		if title == normalizeIdentity(candidate) {
+			return true
+		}
+	}
+	descriptor, ok := providerregistry.Find(provider)
+	if !ok {
+		return false
+	}
+	for _, candidate := range append(
+		[]string{descriptor.Identity.ID, descriptor.Identity.DisplayName},
+		descriptor.Identity.Aliases...,
+	) {
+		if title == normalizeIdentity(candidate) {
+			return true
+		}
+	}
+	return false
+}
+
+func normalizeIdentity(value string) string {
+	return strings.ToLower(strings.TrimSpace(value))
 }
 
 func markdownLinkAt(value string, start int) (labelStart, hrefStart, hrefEnd int, ok bool) {

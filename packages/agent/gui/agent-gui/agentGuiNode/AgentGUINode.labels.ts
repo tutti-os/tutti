@@ -362,6 +362,9 @@ export function useAgentGUIViewLabels(input: {
       loadingConversation: t("agentHost.agentGui.loadingConversation"),
       scrollToBottom: t("agentHost.agentGui.scrollToBottom"),
       fallbackAgentTitle,
+      untitledConversationTitle: t(
+        "agentHost.workspaceAgentsUntitledConversation"
+      ),
       sectionToday: t("agentHost.agentGui.sectionToday"),
       sectionYesterday: t("agentHost.agentGui.sectionYesterday"),
       sectionEarlier: t("agentHost.agentGui.sectionEarlier"),

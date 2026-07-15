@@ -7,7 +7,7 @@ import { workspaceAgentSessionStatus } from "@tutti-os/agent-activity-core";
 import { AGENT_CONTEXT_MENTION_PROVIDER_IDS } from "@tutti-os/agent-gui/context-mention-provider";
 import { resolveAgentGUIProviderCatalogIdentity } from "@tutti-os/agent-gui/provider-catalog";
 import { resolveAgentGUIProviderIdentity } from "@tutti-os/agent-gui/provider-identity";
-import { normalizeAgentTitleText } from "@tutti-os/agent-gui/agent-title-text";
+import type { ReferenceProvenanceFilter } from "@tutti-os/workspace-file-reference/contracts";
 import type {
   AgentTargetPresentation,
   IAgentsService
@@ -40,7 +40,6 @@ interface AgentSessionAtItem {
 }
 
 interface AgentTargetAtItem {
-  description: string;
   displayName: string;
   iconUrl: string;
   provider: WorkspaceAgentProvider;
@@ -79,20 +78,15 @@ export function createAgentTargetAtContributor(contributorInput: {
           },
           getItemKey: (item) => item.targetId,
           getItemLabel: (item) => item.displayName,
-          getItemSubtitle: (item) => item.description,
           getItemIconUrl: (item) => item.iconUrl,
           toInsertResult(item) {
-            const description =
-              item.description === item.displayName ? "" : item.description;
             return createDesktopRichTextMentionInsertResult({
               entityId: item.targetId,
               label: item.displayName,
               scope: compactStringRecord({ workspaceId: item.workspaceId }),
               presentation: compactMentionPresentation({
                 agentProviderId: item.provider,
-                description,
-                iconUrl: item.iconUrl,
-                subtitle: description
+                iconUrl: item.iconUrl
               })
             });
           },
@@ -112,15 +106,11 @@ export function createAgentTargetAtContributor(contributorInput: {
                 workspaceId
               }).find((target) => target.targetId === identity.entityId);
               if (!item) return null;
-              const description =
-                item.description === item.displayName ? "" : item.description;
               return {
                 label: item.displayName,
                 presentation: compactMentionPresentation({
                   agentProviderId: item.provider,
-                  description,
-                  iconUrl: item.iconUrl,
-                  subtitle: description
+                  iconUrl: item.iconUrl
                 })
               };
             });
@@ -148,14 +138,19 @@ export function createAgentSessionAtContributor(contributorInput: {
               searchInput.context.metadata,
               "currentUserId"
             );
+            const provenanceFilter = metadataReferenceProvenanceFilter(
+              searchInput.context.metadata
+            );
+            const agentTargetIds = provenanceFilter?.agentTargetIds ?? null;
+            if (agentTargetIds?.length === 0) return [];
             const [response, agentDirectory] = await Promise.all([
-              contributorInput.tuttidClient.listWorkspaceAgentSessions(
-                input.workspaceId,
-                {
-                  limit: searchInput.maxResults,
-                  searchQuery: searchInput.keyword.trim()
-                }
-              ),
+              listAgentSessionsByProvenance({
+                agentTargetIds,
+                client: contributorInput.tuttidClient,
+                limit: searchInput.maxResults,
+                searchQuery: searchInput.keyword.trim(),
+                workspaceId: input.workspaceId
+              }),
               contributorInput.agentsService?.load(searchInput.abortSignal) ??
                 null
             ]);
@@ -310,7 +305,6 @@ function agentTargetAtItemsFromTargets(input: {
         normalizeText(target.name) ??
         resolveAgentSessionProviderLabel(provider);
       return {
-        description: normalizeText(target.name) ?? label,
         displayName: label,
         iconUrl: target.iconUrl,
         provider,
@@ -323,7 +317,7 @@ function agentTargetAtItemsFromTargets(input: {
     .filter((item) =>
       !keyword
         ? true
-        : [item.targetId, item.provider, item.displayName, item.description]
+        : [item.targetId, item.provider, item.displayName]
             .join("\n")
             .toLowerCase()
             .includes(keyword)
@@ -350,6 +344,82 @@ function metadataString(
   return typeof value === "string" ? value.trim() : "";
 }
 
+function metadataReferenceProvenanceFilter(
+  metadata: Readonly<Record<string, unknown>> | undefined
+): ReferenceProvenanceFilter | null {
+  const value = metadata?.referenceProvenanceFilter;
+  if (!value || typeof value !== "object") return null;
+  const filter = value as Partial<ReferenceProvenanceFilter>;
+  return {
+    agentTargetIds: stringArrayOrNull(filter.agentTargetIds),
+    memberIds: stringArrayOrNull(filter.memberIds)
+  };
+}
+
+function stringArrayOrNull(value: unknown): readonly string[] | null {
+  if (value === null || value === undefined) return null;
+  if (!Array.isArray(value)) return null;
+  return Array.from(
+    new Set(
+      value
+        .filter((item): item is string => typeof item === "string")
+        .map((item) => item.trim())
+        .filter(Boolean)
+    )
+  );
+}
+
+async function listAgentSessionsByProvenance(input: {
+  agentTargetIds: readonly string[] | null;
+  client: TuttidClient;
+  limit?: number;
+  searchQuery: string;
+  workspaceId: string;
+}): Promise<Awaited<ReturnType<TuttidClient["listWorkspaceAgentSessions"]>>> {
+  if (input.agentTargetIds === null) {
+    return input.client.listWorkspaceAgentSessions(input.workspaceId, {
+      limit: input.limit,
+      searchQuery: input.searchQuery
+    });
+  }
+  const responses = await Promise.all(
+    input.agentTargetIds.map((agentTargetId) =>
+      input.client.listWorkspaceAgentSessions(input.workspaceId, {
+        agentTargetId,
+        limit: input.limit,
+        searchQuery: input.searchQuery
+      })
+    )
+  );
+  const sessionsById = new Map(
+    responses
+      .flatMap((response) => response.sessions)
+      .map((session) => [session.id, session] as const)
+  );
+  const sessions = [...sessionsById.values()]
+    .sort((left, right) => {
+      const timeDifference =
+        agentSessionConversationSortTime(right) -
+        agentSessionConversationSortTime(left);
+      return timeDifference || left.id.localeCompare(right.id);
+    })
+    .slice(0, input.limit && input.limit > 0 ? input.limit : undefined);
+  return {
+    ...responses[0],
+    hasMore: responses.some((response) => response.hasMore),
+    workspaceId: responses[0]?.workspaceId || input.workspaceId,
+    sessions
+  };
+}
+
+function agentSessionConversationSortTime(
+  session: Awaited<
+    ReturnType<TuttidClient["listWorkspaceAgentSessions"]>
+  >["sessions"][number]
+): number {
+  return session.latestTurn?.startedAtUnixMs || session.createdAtUnixMs || 0;
+}
+
 function resolveAgentSessionScope(
   currentUserId: string,
   userId: string
@@ -363,7 +433,7 @@ function resolveAgentSessionScope(
 }
 
 function resolveAgentSessionLabel(item: AgentSessionAtItem): string {
-  const title = normalizeAgentTitleText(item.title);
+  const title = item.title?.trim() ?? "";
   if (title) return title;
   const provider = item.provider?.trim();
   return provider ? `${provider} session` : item.id;

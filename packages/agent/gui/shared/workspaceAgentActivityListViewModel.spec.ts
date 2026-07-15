@@ -452,6 +452,7 @@ describe("buildWorkspaceAgentActivityListViewModel", () => {
           providerSessionId: "provider-10",
           cwd: "/repo",
           effectiveStatus: "completed",
+          title: "请分析 open code 架构设计",
           updatedAtUnixMs: 2000,
           createdAtUnixMs: 2000
         }
@@ -491,7 +492,7 @@ describe("buildWorkspaceAgentActivityListViewModel", () => {
           status: "working",
           updatedAtUnixMs: 2000,
           createdAtUnixMs: 2000,
-          title: "Codex"
+          title: "Run Automation"
         }
       ]
     };
@@ -877,7 +878,7 @@ describe("buildWorkspaceAgentActivityListViewModel", () => {
     });
   });
 
-  it("uses user message as title when session title is the current issue placeholder", () => {
+  it("uses the canonical session title without consulting user messages", () => {
     const snapshot = {
       presences: [],
       sessions: [
@@ -890,7 +891,7 @@ describe("buildWorkspaceAgentActivityListViewModel", () => {
           cwd: "/repo",
           lifecycleStatus: "active",
           status: "working",
-          title: "[Request interrupted by user]"
+          title: "创建一个 txt 文件"
         }
       ]
     };
@@ -916,7 +917,7 @@ describe("buildWorkspaceAgentActivityListViewModel", () => {
     });
   });
 
-  it("does not use Claude synthetic interrupt messages as activity titles", () => {
+  it("keeps the canonical title when synthetic messages are present", () => {
     const snapshot = {
       presences: [],
       sessions: [
@@ -929,7 +930,7 @@ describe("buildWorkspaceAgentActivityListViewModel", () => {
           cwd: "/repo",
           lifecycleStatus: "active",
           status: "working",
-          title: "Current task"
+          title: "继续正常请求"
         }
       ]
     };
@@ -1522,6 +1523,7 @@ describe("buildWorkspaceAgentActivityListViewModel", () => {
       sessions: [
         {
           agentSessionId: "session-20",
+          agentTargetId: "agent-a",
           cwd: "/Users/demo/project",
           provider: "codex",
           status: "completed",
@@ -1530,6 +1532,7 @@ describe("buildWorkspaceAgentActivityListViewModel", () => {
         },
         {
           agentSessionId: "session-21",
+          agentTargetId: "agent-b",
           cwd: "/Users/demo/project",
           provider: "codex",
           status: "completed",
@@ -1592,6 +1595,74 @@ describe("buildWorkspaceAgentActivityListViewModel", () => {
       {
         path: "/workspace/output/image.png",
         label: "image.png"
+      }
+    ]);
+    expect(
+      collectWorkspaceAgentGeneratedFiles(canonicalSource(snapshot), {
+        agentTargetIds: ["agent-b"],
+        workspaceRoot: "/Users/demo/project"
+      })
+    ).toEqual([
+      {
+        path: "/workspace/output/image.png",
+        label: "image.png"
+      }
+    ]);
+  });
+
+  it("derives the fallback root after applying the agent provenance filter", () => {
+    const snapshot = {
+      workspaceId: "workspace-1",
+      presences: [],
+      sessions: [
+        {
+          agentSessionId: "session-a",
+          agentTargetId: "agent-a",
+          cwd: "/Users/demo/project-a",
+          provider: "codex",
+          status: "completed",
+          title: "Project A",
+          workspaceId: "workspace-1"
+        },
+        {
+          agentSessionId: "session-b",
+          agentTargetId: "agent-b",
+          cwd: "/Users/demo/project-b",
+          provider: "codex",
+          status: "completed",
+          title: "Project B",
+          workspaceId: "workspace-1"
+        }
+      ],
+      sessionMessagesById: {
+        "session-b": [
+          {
+            agentSessionId: "session-b",
+            kind: "tool_call",
+            messageId: "message-b",
+            payload: {
+              toolName: "Write",
+              status: "completed",
+              fileChanges: { files: [{ path: "output/report.md" }] }
+            },
+            role: "assistant",
+            status: "completed",
+            turnId: "turn-b",
+            occurredAtUnixMs: 1,
+            version: 1
+          }
+        ]
+      }
+    };
+
+    expect(
+      collectWorkspaceAgentGeneratedFiles(canonicalSource(snapshot), {
+        agentTargetIds: ["agent-b"]
+      })
+    ).toEqual([
+      {
+        path: "/Users/demo/project-b/output/report.md",
+        label: "report.md"
       }
     ]);
   });
@@ -2474,7 +2545,7 @@ describe("buildWorkspaceAgentActivityListViewModel", () => {
     expect(view.activities[0]?.latestActivityActorName).toBe("user-e");
   });
 
-  it("uses the first user message as the activity title when the session title is blank", () => {
+  it("uses the localized empty-session label when the title is blank", () => {
     const snapshot = {
       presences: [
         {
@@ -2522,10 +2593,10 @@ describe("buildWorkspaceAgentActivityListViewModel", () => {
       }
     });
 
-    expect(view.activities[0]?.title).toBe("第一轮 Issue");
+    expect(view.activities[0]?.title).toBe("未命名对话");
   });
 
-  it("uses the first user message as the activity title when the session title is a provider placeholder", () => {
+  it("does not replace a session title from user messages", () => {
     const snapshot = {
       presences: [
         {
@@ -2565,7 +2636,7 @@ describe("buildWorkspaceAgentActivityListViewModel", () => {
       }
     });
 
-    expect(view.activities[0]?.title).toBe("AAA");
+    expect(view.activities[0]?.title).toBe("Claude Code");
   });
 
   it("uses session sort time for ordering before timeline items are loaded", () => {

@@ -239,7 +239,7 @@ export function resolveActiveConversationBusyStatus(input: {
 export function buildAgentConversationHandoffPrompt(input: {
   activeConversation: AgentGUINodeViewModel["rail"]["activeConversation"];
   currentUserId?: string | null;
-  labels: Pick<AgentGUIViewLabels, "fallbackAgentTitle">;
+  labels: Pick<AgentGUIViewLabels, "untitledConversationTitle">;
   selectedAgentTarget: AgentGUIAgentTarget | null;
   uiLanguage: UiLanguage;
   workspaceId: string;

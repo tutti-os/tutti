@@ -41,6 +41,10 @@ export function createWorkspaceFileLocationReferenceSources(input: {
   localOrder?: number;
   projectLabel: string;
   projectOrder?: number;
+  searchByProvenance?: (
+    scope: ReferenceScope,
+    input: SearchInput
+  ) => Promise<WorkspaceFileReference[]>;
 }): ReferenceSourceService[] {
   return [
     createLocationReferenceSource({
@@ -48,6 +52,7 @@ export function createWorkspaceFileLocationReferenceSources(input: {
       getLocationSections: input.getLocationSections,
       label: input.projectLabel,
       order: input.projectOrder ?? -1,
+      searchByProvenance: input.searchByProvenance,
       sectionId: DESKTOP_WORKSPACE_FILE_PROJECT_SECTION_ID,
       sourceId: USER_PROJECT_REFERENCE_SOURCE_ID
     }),
@@ -56,6 +61,7 @@ export function createWorkspaceFileLocationReferenceSources(input: {
       getLocationSections: input.getLocationSections,
       label: input.localLabel,
       order: input.localOrder ?? 0,
+      searchByProvenance: input.searchByProvenance,
       sectionId: DESKTOP_WORKSPACE_FILE_LOCAL_SECTION_ID,
       sourceId: WORKSPACE_FILE_SOURCE_ID
     })
@@ -71,6 +77,10 @@ function createLocationReferenceSource(input: {
   order: number;
   sectionId: string;
   sourceId: string;
+  searchByProvenance?: (
+    scope: ReferenceScope,
+    input: SearchInput
+  ) => Promise<WorkspaceFileReference[]>;
 }): ReferenceSourceService {
   const { adapter, sourceId } = input;
 
@@ -109,7 +119,10 @@ function createLocationReferenceSource(input: {
       previewable: true,
       paginated: false,
       navigable: false,
-      filterable: true
+      filterable: true,
+      ...(input.searchByProvenance
+        ? { provenanceDimensions: ["agent"] as const }
+        : {})
     },
 
     async isAvailable() {
@@ -199,8 +212,28 @@ function createLocationReferenceSource(input: {
 
     async search(
       scope: ReferenceScope,
-      { query, filters, limit, signal, withinNodeId }: SearchInput
+      searchInput: SearchInput
     ): Promise<SearchResult> {
+      const { query, filters, limit, provenanceFilter, signal, withinNodeId } =
+        searchInput;
+      if (
+        input.searchByProvenance &&
+        provenanceFilter !== null &&
+        provenanceFilter !== undefined &&
+        provenanceFilter.agentTargetIds !== null
+      ) {
+        const refs = await input.searchByProvenance(scope, searchInput);
+        const filtered = refs.filter((ref) =>
+          matchesRecentReferenceSearch(ref, "", filters ?? [])
+        );
+        return {
+          entries: (limit === undefined
+            ? filtered
+            : filtered.slice(0, limit)
+          ).map(referenceToNode),
+          nextCursor: null
+        };
+      }
       if (withinNodeId === RECENT_GROUP_NODE_ID) {
         if (!adapter.listRecentReferences) {
           return { entries: [], nextCursor: null };

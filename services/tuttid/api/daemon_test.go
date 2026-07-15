@@ -4,8 +4,10 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"path/filepath"
 	"slices"
 	"testing"
@@ -1117,6 +1119,9 @@ func TestDaemonAPIGeneratedRoutesListAgentSessionsRejectsLimitAboveContractMaxim
 				if input.SessionCwd != "/workspace" {
 					t.Fatalf("sessionCwd = %q, want /workspace", input.SessionCwd)
 				}
+				if !slices.Equal(input.AgentTargetIDs, []string{"local:codex", "local:claude-code"}) {
+					t.Fatalf("agentTargetIDs = %#v, want selected targets", input.AgentTargetIDs)
+				}
 				if input.Limit != 25 {
 					t.Fatalf("limit = %d, want 25", input.Limit)
 				}
@@ -2060,7 +2065,7 @@ func TestDaemonAPIGeneratedRoutesListAgentGeneratedFiles(t *testing.T) {
 		t,
 		mux,
 		http.MethodGet,
-		"/v1/workspaces/ws-1/agent-generated-files?query=report&sessionCwd=/workspace&limit=25",
+		"/v1/workspaces/ws-1/agent-generated-files?query=report&sessionCwd=/workspace&agentTargetIds=local%3Acodex&agentTargetIds=local%3Aclaude-code&limit=25",
 		nil,
 	)
 	if recorder.Code != http.StatusOK {
@@ -2078,6 +2083,37 @@ func TestDaemonAPIGeneratedRoutesListAgentGeneratedFiles(t *testing.T) {
 	}
 	if response.Entries[0].Path != "/workspace/report.md" {
 		t.Fatalf("entry path = %q, want /workspace/report.md", response.Entries[0].Path)
+	}
+}
+
+func TestDaemonAPIGeneratedRoutesRejectsTooManyAgentTargetFilters(t *testing.T) {
+	mux := http.NewServeMux()
+	serviceCalls := 0
+	RegisterRoutes(mux, NewRoutes(DaemonAPI{
+		AgentSessionService: stubAgentSessionService{
+			listGeneratedFilesFn: func(context.Context, string, agentservice.ListGeneratedFilesInput) (agentservice.GeneratedFileList, error) {
+				serviceCalls++
+				return agentservice.GeneratedFileList{}, nil
+			},
+		},
+	}))
+
+	query := make(url.Values)
+	for index := 0; index <= agentservice.MaxGeneratedFileAgentTargetFilters; index++ {
+		query.Add("agentTargetIds", fmt.Sprintf("agent-%d", index))
+	}
+	recorder := performGeneratedRouteRequest(
+		t,
+		mux,
+		http.MethodGet,
+		"/v1/workspaces/ws-1/agent-generated-files?"+query.Encode(),
+		nil,
+	)
+	if recorder.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want %d; body: %s", recorder.Code, http.StatusBadRequest, recorder.Body.String())
+	}
+	if serviceCalls != 0 {
+		t.Fatalf("service calls = %d, want 0", serviceCalls)
 	}
 }
 

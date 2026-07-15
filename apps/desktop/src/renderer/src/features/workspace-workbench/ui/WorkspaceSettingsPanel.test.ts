@@ -89,6 +89,25 @@ test("workspace settings gates account behind Tutti Agent Switch", () => {
   assert.match(source, /<WorkspaceAccountSettingsSection \/>/);
 });
 
+test("workspace settings serializes feature flag updates from the pending snapshot", () => {
+  assert.match(
+    source,
+    /const pendingFeatureFlags =\s*desktopPreferencesState\.changingFeatureFlags \?\?\s*desktopPreferencesState\.featureFlags/
+  );
+  assert.match(
+    source,
+    /onLabEnabledChange[\s\S]*changeFeatureFlags\(\{\s*\.\.\.pendingFeatureFlags,\s*\[LAB_ENABLED_FLAG\]: enabled/
+  );
+  assert.match(
+    source,
+    /onReferenceProvenanceFilterEnabledChange[\s\S]*changeFeatureFlags\(\{\s*\.\.\.pendingFeatureFlags,\s*\[AGENT_REFERENCE_PROVENANCE_FILTER_FLAG\]: enabled/
+  );
+  assert.equal(
+    (source.match(/disabled=\{featureFlagsUpdating\}/g) ?? []).length,
+    2
+  );
+});
+
 test("workspace settings agent panel lists agent controls", () => {
   assert.match(
     source,

@@ -6,7 +6,6 @@ import (
 	"strings"
 
 	activityshared "github.com/tutti-os/tutti/packages/agent/daemon/activity/events"
-	"github.com/tutti-os/tutti/packages/agent/daemon/titletext"
 )
 
 func acpModeValue(update map[string]any) string {
@@ -581,35 +580,4 @@ func newSessionTitleActivityEvent(session Session, title string) activityshared.
 	}
 	ctx.Title = strings.TrimSpace(title)
 	return activityshared.NewSessionTitleUpdated(ctx)
-}
-
-func fallbackAgentSessionTitle(currentTitle string, prompt string, fallbackTitles ...string) string {
-	if !shouldUseFallbackAgentTitle(currentTitle, fallbackTitles...) {
-		return ""
-	}
-	return promptTitleSnippet(prompt)
-}
-
-func shouldUseFallbackAgentTitle(title string, fallbackTitles ...string) bool {
-	normalizedTitle := strings.ToLower(strings.TrimSpace(title))
-	for _, fallbackTitle := range fallbackTitles {
-		if normalizedTitle == strings.ToLower(strings.TrimSpace(fallbackTitle)) {
-			return true
-		}
-	}
-	return false
-}
-
-func promptTitleSnippet(prompt string) string {
-	fields := strings.Fields(titletext.Normalize(prompt))
-	if len(fields) == 0 {
-		return ""
-	}
-	title := strings.Join(fields, " ")
-	const maxRunes = 160
-	runes := []rune(title)
-	if len(runes) <= maxRunes {
-		return title
-	}
-	return strings.TrimSpace(string(runes[:maxRunes])) + "..."
 }

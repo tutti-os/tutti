@@ -1,6 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
+  AGENT_REFERENCE_PROVENANCE_FILTER_FLAG,
   isFeatureEnabled,
   labFeatureDefinitions,
   LAB_ENABLED_FLAG,
@@ -14,6 +15,10 @@ test("isFeatureEnabled falls back to catalog default when key absent", () => {
   assert.equal(
     isFeatureEnabled({ [LAB_ENABLED_FLAG]: true }, LAB_ENABLED_FLAG),
     true
+  );
+  assert.equal(
+    isFeatureEnabled({}, AGENT_REFERENCE_PROVENANCE_FILTER_FLAG),
+    false
   );
 });
 

@@ -40,7 +40,10 @@ interface StandaloneAgentLaunchRoutingInput {
   headerProvider: DesktopAgentGUIProvider;
   homeDirectory: string;
   hostWindowApi: Pick<DesktopHostWindowApi, "openAgentWindow">;
-  openFileInSidebar(path: string): boolean;
+  openFileInSidebar(
+    path: string,
+    validateExists?: boolean
+  ): Promise<boolean> | boolean;
   setActivation: Dispatch<
     SetStateAction<WorkbenchHostNodeBodyContext["activation"]>
   >;
@@ -148,7 +151,8 @@ export function useStandaloneAgentLaunchRouting({
         homeDirectory,
         launchAgentGui: requestWorkspaceAgentGuiLaunch,
         launchWorkspaceIssueManager: requestWorkspaceIssueManagerLaunch,
-        launchWorkspaceFiles: ({ path }) => openFileInSidebar(path),
+        launchWorkspaceFiles: ({ path, validateExists }) =>
+          openFileInSidebar(path, validateExists),
         launchWorkspaceApp: async ({
           appId,
           workspaceId: targetWorkspaceId

@@ -145,6 +145,7 @@ export const en = {
       newConversation: "New session",
       openDetachedWindow: "Open in detached window",
       openNewWindow: "Open new window",
+      untitledConversation: "Untitled conversation",
       openSessionUnavailableDescription:
         "This agent session no longer exists or cannot be opened.",
       openSessionUnavailableTitle: "Session unavailable",
@@ -854,6 +855,9 @@ export const en = {
         releaseChannelDescription:
           "Choose stable release updates, or opt in to preview builds for internal verification.",
         releaseChannelLabel: "Release channel",
+        referenceProvenanceFilterDescription:
+          "Enable Agent source filtering in Agent conversation reference pickers.",
+        referenceProvenanceFilterLabel: "Agent source filter",
         releaseChannelOptions: {
           rc: "Preview",
           stable: "Stable"
@@ -930,8 +934,8 @@ export const en = {
       },
       filesLaunch: {
         openFailedDescription:
-          "This session's original working directory could no longer be found on this computer.",
-        openFailedTitle: "Couldn't open folder"
+          "The referenced file or folder could not be found at its original location.",
+        openFailedTitle: "File or folder no longer exists"
       },
       agentProviders: {
         checking: "Checking local CLI status...",

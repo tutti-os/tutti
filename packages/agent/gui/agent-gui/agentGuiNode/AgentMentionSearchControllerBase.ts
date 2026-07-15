@@ -50,6 +50,8 @@ import {
   fetchAgentMentionFilterResult,
   queryAgentMentionProviderItems
 } from "./AgentMentionSearchIndex";
+import type { ReferenceProvenanceFilter } from "@tutti-os/workspace-file-reference/contracts";
+import { referenceProvenanceFilterCacheKey } from "@tutti-os/workspace-file-reference/core";
 
 export class AgentMentionSearchControllerBase {
   protected readonly contextMentionProviders: ReadonlyMap<
@@ -81,6 +83,7 @@ export class AgentMentionSearchControllerBase {
   protected currentFilter: AgentMentionFilterId = DEFAULT_AGENT_MENTION_FILTER;
   protected currentQuery = "";
   protected currentSessionCwd = "";
+  protected currentProvenanceFilter: ReferenceProvenanceFilter | null = null;
   protected currentFileSearchLimit: number;
   protected currentIssueSearchLimit: number;
   protected agentGeneratedBrowsePath: string | null = null;
@@ -273,9 +276,15 @@ export class AgentMentionSearchControllerBase {
   }): Promise<void> {
     const startedAt = this.diagnosticNow();
     let providerDiagnostics: AgentMentionProviderQueryDiagnostic[] = [];
-    const cacheKey = this.browseCacheKey(input);
+    const provenanceFilter = this.currentProvenanceFilter;
+    const cacheKey = this.browseCacheKey(input, provenanceFilter);
     try {
-      const result = await this.loadBrowseFetchResult(input, cacheKey, "open");
+      const result = await this.loadBrowseFetchResult(
+        input,
+        cacheKey,
+        "open",
+        provenanceFilter
+      );
       providerDiagnostics = result.providerDiagnostics;
       if (
         !this.canApply(input.requestId, input.workspaceId, "", input.filter)
@@ -341,17 +350,24 @@ export class AgentMentionSearchControllerBase {
     }
   }
 
-  protected async fetchBrowseResult(input: {
-    workspaceId: string;
-    currentUserId: string;
-    filter: AgentMentionFilterId;
-    sessionCwd: string;
-  }): Promise<AgentMentionBrowseFetchResult> {
-    return this.fetchFilterResult({
-      ...input,
-      query: "",
-      includeAgentGeneratedFiles: input.filter === "file"
-    });
+  protected async fetchBrowseResult(
+    input: {
+      workspaceId: string;
+      currentUserId: string;
+      filter: AgentMentionFilterId;
+      sessionCwd: string;
+    },
+    provenanceFilter: ReferenceProvenanceFilter | null = this
+      .currentProvenanceFilter
+  ): Promise<AgentMentionBrowseFetchResult> {
+    return this.fetchFilterResult(
+      {
+        ...input,
+        query: "",
+        includeAgentGeneratedFiles: input.filter === "file"
+      },
+      provenanceFilter
+    );
   }
 
   protected applyBrowseFetchResult(
@@ -412,6 +428,7 @@ export class AgentMentionSearchControllerBase {
     query: string;
     limit?: number;
     sessionCwd?: string;
+    provenanceFilter: ReferenceProvenanceFilter | null;
   }): Promise<AgentContextMentionItem[]> {
     const provider = this.contextMentionProviders.get(input.providerId);
     return queryAgentMentionProviderWithDiagnostics({
@@ -429,7 +446,8 @@ export class AgentMentionSearchControllerBase {
               query: input.query,
               limit: input.limit,
               sessionCwd: input.sessionCwd ?? this.currentSessionCwd,
-              abortSignal
+              abortSignal,
+              provenanceFilter: input.provenanceFilter
             })
         : null,
       resultCount: (result) => result.length
@@ -567,17 +585,24 @@ export class AgentMentionSearchControllerBase {
     });
   }
 
-  protected browseCacheKey(input: {
-    workspaceId: string;
-    currentUserId: string;
-    filter: AgentMentionFilterId;
-    sessionCwd: string;
-  }): string {
+  protected browseCacheKey(
+    input: {
+      workspaceId: string;
+      currentUserId: string;
+      filter: AgentMentionFilterId;
+      sessionCwd: string;
+    },
+    provenanceFilter: ReferenceProvenanceFilter | null = this
+      .currentProvenanceFilter
+  ): string {
     return buildAgentMentionBrowseCacheKey({
       ...input,
       fileLimit: this.fileLimit,
       issueLimit: this.currentIssueSearchLimit,
-      providerIds: [...this.contextMentionProviders.keys()].sort()
+      providerIds: [...this.contextMentionProviders.keys()].sort(),
+      provenanceFilterKey: provenanceFilter
+        ? referenceProvenanceFilterCacheKey(provenanceFilter)
+        : "disabled"
     });
   }
 
@@ -597,7 +622,9 @@ export class AgentMentionSearchControllerBase {
       sessionCwd: string;
     },
     cacheKey: string,
-    reason: AgentMentionBrowseLoadReason
+    reason: AgentMentionBrowseLoadReason,
+    provenanceFilter: ReferenceProvenanceFilter | null = this
+      .currentProvenanceFilter
   ): Promise<AgentMentionBrowseFetchResult> {
     return loadAgentMentionBrowseFetchResult({
       input,
@@ -605,24 +632,29 @@ export class AgentMentionSearchControllerBase {
       reason,
       diagnosticNow: this.diagnosticNow,
       providerIds: this.providerIdsForDiagnostics(),
-      fetchBrowseResult: () => this.fetchBrowseResult(input),
+      fetchBrowseResult: () => this.fetchBrowseResult(input, provenanceFilter),
       logLifecycle: (event, details) => this.logLifecycle(event, details)
     });
   }
 
-  protected fetchFilterResult(input: {
-    workspaceId: string;
-    currentUserId: string;
-    query: string;
-    filter: AgentMentionFilterId;
-    sessionCwd: string;
-    includeAgentGeneratedFiles: boolean;
-  }): Promise<AgentMentionBrowseFetchResult> {
+  protected fetchFilterResult(
+    input: {
+      workspaceId: string;
+      currentUserId: string;
+      query: string;
+      filter: AgentMentionFilterId;
+      sessionCwd: string;
+      includeAgentGeneratedFiles: boolean;
+    },
+    provenanceFilter: ReferenceProvenanceFilter | null = this
+      .currentProvenanceFilter
+  ): Promise<AgentMentionBrowseFetchResult> {
     return fetchAgentMentionFilterResult({
       ...input,
       fileLimit: this.fileLimit,
       currentFileSearchLimit: this.currentFileSearchLimit,
       currentIssueSearchLimit: this.currentIssueSearchLimit,
+      provenanceFilter,
       queryProviderMentionItemsById: (queryInput) =>
         this.queryProviderMentionItemsById(queryInput)
     });

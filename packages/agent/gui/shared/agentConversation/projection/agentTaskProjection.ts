@@ -11,6 +11,7 @@ import {
 } from "./agentInteractiveProjection";
 import {
   inferToolCallType,
+  isApprovalToolCall,
   normalizeToolName,
   resolveAgentToolRendererKind
 } from "./agentToolRendererKind";
@@ -87,6 +88,9 @@ function normalizeTaskSteps(
       stringValue(step.tool_name) ??
       stringValue(step.name);
     const callType = stringValue(step.callType) ?? stringValue(step.call_type);
+    if (isApprovalToolCall({ toolName, callType })) {
+      return [];
+    }
     const inputPayload =
       objectValue(step.toolInput) ?? objectValue(step.tool_input);
     const outputPayload =

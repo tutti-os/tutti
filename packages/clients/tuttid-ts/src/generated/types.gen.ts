@@ -6295,6 +6295,10 @@ export type ListWorkspaceAgentGeneratedFilesData = {
   query?: {
     query?: string;
     sessionCwd?: string;
+    /**
+     * Optional agent target filters applied before generated-file limiting.
+     */
+    agentTargetIds?: Array<string>;
     limit?: number;
   };
   url: "/v1/workspaces/{workspaceID}/agent-generated-files";

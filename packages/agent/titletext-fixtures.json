@@ -1,0 +1,27 @@
+[
+  {
+    "name": "plain text",
+    "input": "  hello   world ",
+    "normalized": "hello world"
+  },
+  {
+    "name": "file path with spaces",
+    "input": "[@renderer.js](/Users/Sun/first cc/renderer.js)",
+    "normalized": "@renderer.js"
+  },
+  {
+    "name": "href with parentheses",
+    "input": "[report](file:///tmp/a_(final).md)",
+    "normalized": "report"
+  },
+  {
+    "name": "escaped label",
+    "input": "[a\\[b\\]](https://example.com)",
+    "normalized": "a[b]"
+  },
+  {
+    "name": "unmatched link stays readable",
+    "input": "[not a link](missing",
+    "normalized": "[not a link](missing"
+  }
+]

@@ -393,8 +393,7 @@ test("desktop rich text @ service assembles agent session providers by capabilit
               cwd: null,
               id: "session-1",
               provider: "codex",
-              title:
-                "[@wang jomes & Codex hi](mention://agent-session/session-2?workspaceId=workspace-1)",
+              title: "@wang jomes & Codex hi",
               updatedAtUnixMs: 1780272000000
             }
           ]
@@ -437,8 +436,7 @@ test("desktop rich text @ service assembles agent session providers by capabilit
       scope: "my_sessions",
       sessionOrigin: "WORKSPACE_AGENT_SESSION_ORIGIN_RUNTIME",
       status: "working",
-      title:
-        "[@wang jomes & Codex hi](mention://agent-session/session-2?workspaceId=workspace-1)",
+      title: "@wang jomes & Codex hi",
       updatedAtUnixMs: 1780272000000,
       userId: "local",
       workspaceId: "workspace-1"
@@ -463,6 +461,71 @@ test("desktop rich text @ service assembles agent session providers by capabilit
       }
     }
   });
+});
+
+test("desktop agent session mentions query each selected Agent before merging", async () => {
+  const agentTargetIds: Array<string | undefined> = [];
+  const service = new DesktopRichTextAtService({
+    tuttidClient: {
+      async listWorkspaceAgentSessions(
+        workspaceId: string,
+        request?: { agentTargetId?: string }
+      ) {
+        agentTargetIds.push(request?.agentTargetId);
+        const agentTargetId = request?.agentTargetId ?? "all";
+        return {
+          hasMore: false,
+          workspaceId,
+          sessions: [
+            {
+              activeTurn: null,
+              activeTurnId: null,
+              agentTargetId,
+              createdAtUnixMs: agentTargetId === "agent-b" ? 2 : 1,
+              cwd: null,
+              id: `session-${agentTargetId}`,
+              latestTurn: {
+                startedAtUnixMs: agentTargetId === "agent-a" ? 10 : 5
+              },
+              latestTurnInteractions: [],
+              pendingInteractions: [],
+              provider: "codex",
+              providerSessionId: null,
+              title: agentTargetId,
+              updatedAtUnixMs: agentTargetId === "agent-b" ? 100 : 1
+            }
+          ]
+        };
+      }
+    } as unknown as TuttidClient
+  });
+  const [provider] = service.getProviders({
+    capabilities: ["agent-session"],
+    surface: "agent-composer",
+    target: "agent-gui",
+    workspaceId: "workspace-1"
+  });
+  assert.ok(provider);
+
+  const items = await provider.query({
+    context: {
+      metadata: {
+        referenceProvenanceFilter: {
+          agentTargetIds: ["agent-a", "agent-b"],
+          memberIds: null
+        }
+      }
+    },
+    keyword: "",
+    maxResults: 5,
+    trigger: "@"
+  });
+
+  assert.deepEqual(agentTargetIds, ["agent-a", "agent-b"]);
+  assert.deepEqual(
+    items.map((item) => (item as { agentTargetId?: string }).agentTargetId),
+    ["agent-a", "agent-b"]
+  );
 });
 
 test("desktop rich text @ service presents extension sessions with Agent Target identity", async () => {
@@ -725,13 +788,12 @@ test("desktop rich text @ service assembles agent target mentions", async () => 
     ["local:codex", "local:claude-code"]
   );
   assert.equal(provider.getItemIconUrl?.(items[0]), tuttiAgentAssetUrls.codex);
+  assert.equal(provider.getItemSubtitle, undefined);
   assert.deepEqual(provider.toInsertResult(items[0]), {
     kind: "mention",
     mention: {
       entityId: "local:codex",
       label: "Codex",
-      // description/subtitle are blanked when identical to the label (avoids
-      // rendering "Codex Codex"), so the compact presentation omits them.
       presentation: {
         agentProviderId: "codex",
         iconUrl: tuttiAgentAssetUrls.codex

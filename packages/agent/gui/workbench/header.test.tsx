@@ -231,9 +231,11 @@ describe("AgentGuiWorkbenchHeader", () => {
           collapseConversationRail: "Collapse conversations",
           expandConversationRail: "Expand conversations",
           fallbackAgentLabel: "Agent",
-          newConversation: "New conversation"
+          newConversation: "New conversation",
+          untitledConversation: "Untitled conversation"
         }}
         conversationIconUrl="asset://cursor.png"
+        hasConversation
         isConversationRailAutoCollapsed={false}
         isConversationRailCollapsed={false}
         nodeId="agent-gui-node-1"
@@ -244,6 +246,9 @@ describe("AgentGuiWorkbenchHeader", () => {
     expect(
       screen.getByTestId("agent-gui-window-detail-title-icon")
     ).toHaveAttribute("src", "asset://cursor.png");
+    expect(
+      screen.getByTestId("agent-gui-window-detail-title")
+    ).toHaveTextContent("Untitled conversation");
     expect(screen.queryByText("Cursor")).not.toBeInTheDocument();
   });
 

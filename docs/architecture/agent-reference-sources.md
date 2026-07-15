@@ -81,6 +81,47 @@ The UI may display only the basename to conserve space. That presentation
 choice does not narrow the searchable fields and must not become a second
 ranking implementation.
 
+## Source Provenance Filtering
+
+`@tutti-os/workspace-file-reference` owns the host-neutral provenance model and
+controlled filter UI. The model has independent `agent` and `member`
+dimensions so collaboration products can reuse the package, but a host decides
+which dimensions and options are enabled. Tutti personal edition injects only
+Agent options; member and group-chat behavior are outside its product surface.
+
+The controller owns only ephemeral selection state. The host injects the
+catalog, and concrete providers or `ReferenceSourceService.search()` own the
+actual filtering. An active filter is part of the query and cache identity and
+must be applied before pagination. Picker result grouping remains source-owned;
+the filter option list itself is flat.
+
+Catalog option identity is host-owned and normalized at the shared-package
+boundary. Agent options require a durable `agentTargetId`; product-local target
+ids are not provenance fallbacks. Filter cache keys use a collision-free
+semantic serialization of normalized dimensions, not delimiter-joined ids.
+Repeated injection of an equivalent filter is a no-op. A real filter change
+invalidates and aborts the active query before scheduling its replacement, so a
+late response cannot repopulate the picker with the previous constraint.
+An explicitly supplied Agent dimension that normalizes to no ids fails closed;
+the generated-file HTTP contract caps a request at 100 target ids and both the
+daemon API and agent service enforce that boundary.
+
+A `ReferenceSourceService` must declare the dimensions it can enforce through
+`capabilities.provenanceDimensions`. The aggregator fails closed for an active
+dimension that a source does not declare, rather than returning unfiltered
+results under a filtered UI. Sources should add a dimension only when their
+backend or source-owned query can enforce it before applying `limit` or cursor
+pagination.
+
+The AgentGUI desktop registry equips its `user-project` and `workspace-file`
+sources with an Agent-generated-file query adapter. With an active Agent
+constraint those sources pass the selected target ids to tuttid, which filters
+persisted sessions before its generated-file scan limit. Agent provenance is
+independent of file-location scope: the adapter must not reinterpret a picker
+`withinNodeId` as an Agent session working directory. Without a constraint the
+sources retain the ordinary filesystem browse/search path. Other desktop
+registries do not acquire this capability implicitly.
+
 ## Invariants
 
 - Route every operation by `sourceId`; reject unknown sources.
@@ -89,6 +130,10 @@ ranking implementation.
   deduplicate safely.
 - Preserve source relevance order for search results; browsing order and search
   order are distinct contracts.
+- Treat provenance constraints as source query inputs, never as a post-page UI
+  filter.
+- Capture the provenance constraint with speculative preload and provider-query
+  inputs; do not read mutable controller state after an async boundary.
 - Append cursor pages without reordering already loaded entries.
 - Hide unavailable sources before rendering their tabs or sidebar groups.
 - Expose only running workspace apps in the app-artifact sidebar; installed or

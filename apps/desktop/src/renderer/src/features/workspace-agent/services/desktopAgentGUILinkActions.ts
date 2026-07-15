@@ -81,6 +81,7 @@ export async function runDesktopAgentGUILinkAction(
         homeDirectory: dependencies.homeDirectory,
         path: action.path,
         source: "agent_command",
+        validateExists: true,
         workspaceId: dependencies.workspaceId
       });
     case "open-url":
@@ -186,6 +187,7 @@ export async function runDesktopAgentGUILinkAction(
         homeDirectory: dependencies.homeDirectory,
         path,
         source: "agent_command",
+        validateExists: true,
         workspaceId: dependencies.workspaceId
       });
     }

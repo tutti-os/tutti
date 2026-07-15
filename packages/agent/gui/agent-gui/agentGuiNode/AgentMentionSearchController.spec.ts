@@ -124,7 +124,8 @@ function createTestAgentGeneratedFileProvider(
       const result = await options.queryAgentGeneratedFiles({
         workspaceId: context?.metadata?.workspaceId,
         query: keyword,
-        limit: maxResults
+        limit: maxResults,
+        provenanceFilter: context?.metadata?.referenceProvenanceFilter
       });
       return (result.entries ?? []).map((entry: any) => ({
         label: entry.name,
@@ -2102,6 +2103,65 @@ describe("AgentMentionSearchController", () => {
     );
   });
 
+  it("searches agent-generated files for typed file queries under an active provenance filter", async () => {
+    const queryFiles = vi.fn().mockResolvedValue({ entries: [] });
+    const queryAgentGeneratedFiles = vi.fn().mockResolvedValue({
+      entries: [
+        {
+          path: "/workspace/output/report.md",
+          name: "report.md"
+        }
+      ]
+    });
+    const controller = new AgentMentionSearchController({
+      debounceMs: 0,
+      queryAgentGeneratedFiles,
+      queryFiles
+    });
+    const states: unknown[] = [];
+    controller.subscribe((state) => states.push(state));
+    controller.setProvenanceFilter({
+      agentTargetIds: ["agent-codex"],
+      memberIds: null
+    });
+    controller.setFilter("file");
+    controller.updateQuery({
+      workspaceId: "room-1",
+      currentUserId: "user-1",
+      query: "report"
+    });
+
+    await vi.waitFor(() =>
+      expect(states.at(-1)).toMatchObject({
+        status: "ready",
+        mode: "results",
+        filter: "file",
+        groups: [
+          {
+            id: "agent_generated_files",
+            items: [
+              expect.objectContaining({
+                kind: "file",
+                path: "/workspace/output/report.md"
+              })
+            ]
+          }
+        ]
+      })
+    );
+    expect(queryFiles).not.toHaveBeenCalled();
+    expect(queryAgentGeneratedFiles).toHaveBeenCalledWith(
+      expect.objectContaining({
+        query: "report",
+        provenanceFilter: {
+          agentTargetIds: ["agent-codex"],
+          memberIds: null
+        }
+      })
+    );
+    controller.dispose();
+  });
+
   it("groups agent-generated files by folder and supports folder drill-down", async () => {
     setAgentGuiI18nTestLocale("zh-CN");
     const queryAgentGeneratedFiles = vi.fn().mockResolvedValue({
@@ -2432,7 +2492,7 @@ describe("AgentMentionSearchController", () => {
     });
   });
 
-  it("uses session messages instead of timeline for missing runtime session titles", async () => {
+  it("uses the canonical session title without loading message fallback", async () => {
     const loadSessionMessages = vi.fn().mockResolvedValue({
       messages: [
         {
@@ -2474,7 +2534,7 @@ describe("AgentMentionSearchController", () => {
             userId: "user-1",
             provider: "codex",
             sessionOrigin: "WORKSPACE_AGENT_SESSION_ORIGIN_RUNTIME",
-            title: "",
+            title: "Canonical title",
             createdAtUnixMs: 1,
             updatedAtUnixMs: 10
           }
@@ -2518,21 +2578,14 @@ describe("AgentMentionSearchController", () => {
               expect.objectContaining({
                 kind: "session",
                 targetId: "runtime-session-1",
-                title: "这个会话里面做了什么事情"
+                title: "Canonical title"
               })
             ]
           }
         ]
       })
     );
-    expect(loadSessionMessages).toHaveBeenCalledWith({
-      workspaceId: "room-1",
-
-      agentSessionId: "runtime-session-1",
-      sessionOrigin: "WORKSPACE_AGENT_SESSION_ORIGIN_RUNTIME",
-      afterVersion: 0,
-      limit: 20
-    });
+    expect(loadSessionMessages).not.toHaveBeenCalled();
   });
 
   it("loads default issue items in browse mode when switching to the issue tab", async () => {

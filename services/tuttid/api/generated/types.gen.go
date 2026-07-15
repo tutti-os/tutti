@@ -4767,7 +4767,10 @@ type ListCliCapabilitiesParams struct {
 type ListWorkspaceAgentGeneratedFilesParams struct {
 	Query      *string `form:"query,omitempty" json:"query,omitempty"`
 	SessionCwd *string `form:"sessionCwd,omitempty" json:"sessionCwd,omitempty"`
-	Limit      *int    `form:"limit,omitempty" json:"limit,omitempty"`
+
+	// AgentTargetIds Optional agent target filters applied before generated-file limiting.
+	AgentTargetIds *[]string `form:"agentTargetIds,omitempty" json:"agentTargetIds,omitempty"`
+	Limit          *int      `form:"limit,omitempty" json:"limit,omitempty"`
 }
 
 // ListWorkspaceAgentSessionSectionsParams defines parameters for ListWorkspaceAgentSessionSections.

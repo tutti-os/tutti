@@ -27,7 +27,7 @@ interface AgentConversationSelectionInput {
   };
   conversations: { contains(agentSessionId: string): boolean };
   detail: {
-    hasRenderableMessages(agentSessionId: string): boolean;
+    isHydrated(agentSessionId: string): boolean;
     markPending(agentSessionId: string): void;
     reload(
       agentSessionId: string,
@@ -75,14 +75,13 @@ export function useAgentConversationSelection(
       if (!normalized) return;
       const current = inputRef.current;
       const previous = current.selection.getActiveSessionId();
-      const hasRenderableMessages =
-        current.detail.hasRenderableMessages(normalized);
+      const detailHydrated = current.detail.isHydrated(normalized);
       const activationPending = current.activation.isPending(normalized);
       current.selection.setComposerHome(false);
       if (previous && previous !== normalized)
         current.activation.forget(previous);
       if (previous !== normalized) {
-        if (hasRenderableMessages || activationPending) {
+        if (detailHydrated || activationPending) {
           current.detail.setLoading(false);
         } else {
           current.detail.markPending(normalized);
@@ -97,7 +96,7 @@ export function useAgentConversationSelection(
       if (!activationPending) {
         current.detail.reload(normalized, {
           reloadConversations,
-          reloadDetail: previous === normalized || !hasRenderableMessages
+          reloadDetail: previous === normalized || !detailHydrated
         });
       }
       persistActiveConversation(normalized);

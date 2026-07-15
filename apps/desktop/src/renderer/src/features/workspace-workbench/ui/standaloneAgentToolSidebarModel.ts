@@ -12,6 +12,9 @@ export type StandaloneAgentToolLauncherPanelId =
   | StandaloneAgentSharedToolPanelId;
 
 const standaloneAgentBrowserAndAppsDefaultWidth = 720;
+export const standaloneAgentEmptyToolSidebarWidth = Math.round(
+  standaloneAgentBrowserAndAppsDefaultWidth * 0.6
+);
 
 export const standaloneAgentToolPanelDefaultWidthById: Record<
   StandaloneAgentToolPanelId,
@@ -71,6 +74,33 @@ export function resolveStandaloneAgentToolPanelExpansionReset(input: {
       Number.isFinite(input.widthBeforeExpansion)
         ? input.widthBeforeExpansion
         : standaloneAgentToolPanelDefaultWidthById[input.expandedPanel]
+  };
+}
+
+export function resolveStandaloneAgentToolPanelExpansionTransfer(input: {
+  expandedPanel: StandaloneAgentToolPanelId | null;
+  nextPanel: StandaloneAgentToolPanelId | null;
+  nextPanelWidth: number;
+  widthBeforeExpansion?: number;
+}): {
+  expandedPanel: StandaloneAgentToolPanelId;
+  nextPanelWidthBeforeExpansion: number;
+  previousPanel: StandaloneAgentToolPanelId;
+  previousPanelWidth: number;
+} | null {
+  const reset = resolveStandaloneAgentToolPanelExpansionReset(input);
+  if (!reset || input.nextPanel === null) {
+    return null;
+  }
+
+  return {
+    expandedPanel: input.nextPanel,
+    nextPanelWidthBeforeExpansion:
+      Number.isFinite(input.nextPanelWidth) && input.nextPanelWidth > 0
+        ? input.nextPanelWidth
+        : standaloneAgentToolPanelDefaultWidthById[input.nextPanel],
+    previousPanel: reset.panel,
+    previousPanelWidth: reset.width
   };
 }
 

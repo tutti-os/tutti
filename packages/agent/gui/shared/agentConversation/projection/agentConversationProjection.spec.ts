@@ -703,9 +703,18 @@ describe("projectAgentConversationVM", () => {
 
     expect("pendingApproval" in conversation).toBe(false);
     expect("pendingInteractivePrompt" in conversation).toBe(false);
+    expect(
+      conversation.rows.flatMap((row) =>
+        row.kind === "tool-group" ? row.calls : []
+      )
+    ).not.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ toolName: "Approval" })
+      ])
+    );
   });
 
-  it("surfaces a pending approval nested inside a delegated subagent's steps", () => {
+  it("hides a pending approval nested inside a delegated subagent's steps", () => {
     const detail = detailViewModel({
       turns: [
         {
@@ -764,7 +773,71 @@ describe("projectAgentConversationVM", () => {
     const conversation = projectAgentConversationVM(detail);
 
     expect("pendingApproval" in conversation).toBe(false);
+    const taskCall = conversation.rows
+      .flatMap((row) => (row.kind === "tool-group" ? row.calls : []))
+      .find((call) => call.toolName === "Task");
+    expect(taskCall?.task?.steps).toEqual([]);
   });
+
+  it.each([
+    ["working", "working"],
+    ["completed", "completed"],
+    ["failed", "failed"]
+  ] as const)(
+    "hides %s approval tool calls without hiding neighboring tools",
+    (status, statusKind) => {
+      const conversation = projectAgentConversationVM(
+        detailViewModel({
+          turns: [
+            {
+              id: "turn-1",
+              userMessage: { id: "user-1", body: "Write it" },
+              userMessages: [{ id: "user-1", body: "Write it" }],
+              agentMessages: [],
+              toolCalls: [],
+              toolCallCount: 2,
+              hasFailedToolCall: statusKind === "failed",
+              agentItems: [
+                {
+                  kind: "tool-calls",
+                  id: "tools-1",
+                  toolCalls: [
+                    {
+                      id: "call:write-1",
+                      name: "Write file",
+                      toolName: "Write",
+                      callType: "tool",
+                      status: "completed",
+                      statusKind: "completed",
+                      summary: "hello.md",
+                      payload: null
+                    },
+                    {
+                      id: `call:approval-${status}`,
+                      name: "Approval",
+                      toolName: "Approval",
+                      callType: "approval",
+                      status,
+                      statusKind,
+                      summary: "/workspace/hello.md",
+                      payload: null
+                    }
+                  ],
+                  toolCallCount: 2,
+                  hasFailedToolCall: statusKind === "failed"
+                }
+              ]
+            }
+          ]
+        })
+      );
+
+      const visibleCalls = conversation.rows.flatMap((row) =>
+        row.kind === "tool-group" ? row.calls : []
+      );
+      expect(visibleCalls.map((call) => call.toolName)).toEqual(["Write"]);
+    }
+  );
 
   it("surfaces a pending ask-user prompt nested inside a delegated subagent's steps", () => {
     const detail = detailViewModel({

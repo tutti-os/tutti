@@ -144,6 +144,8 @@ AgentGUI header close, minimize, and maximize controls call typed host window
 IPC instead of relying on native traffic lights.
 The Agent-only shell places Browser and other desktop-owned auxiliary tools in
 a right sidebar, while Terminal opens in a bottom tray below the conversation.
+When the sidebar is closed, its Apps and Message Center quick actions expose
+localized hover tooltips alongside the Tasks action.
 Opening a right-sidebar tool expands the native content width first so the
 sidebar is appended beside the existing message flow. Native right-edge growth
 continues to grow the sidebar; when the screen cannot provide enough outward
@@ -152,12 +154,20 @@ message flow narrows instead of being covered. Width added from the sidebar's
 left separator follows the same adjacent layout rule. Closing the sidebar
 restores the pre-panel native width. This sizing remains renderer/main window
 presentation state and never enters AgentGUI or workbench snapshots.
-The renderer activates and animates the clipped panel shell before issuing the
+An Agent-only right sidebar with no mounted tool uses a compact picker width at
+60% of the Files panel default. Selecting a tool switches the reserved layout
+and requested native width to that tool's normal default. While the picker is
+visible, its sole header toggle stays right-anchored to the same window edge
+as the collapsed sidebar control, avoiding a horizontal jump when the panel
+opens.
+The renderer commits the panel shell's final layout width before issuing the
 native resize IPC on the next frame, so host latency cannot block visual
-feedback. Heavy first-use tool bodies mount after the shell transition and
-remain mounted for later opens. macOS requests Electron's native content-bounds
-animation in parallel, while reduced-motion preferences disable the renderer
-transition and mount delay.
+feedback. The shell must not animate layout width; any optional entrance stays
+inside the fixed-size panel and uses only compositor-friendly transform and
+opacity. Heavy first-use tool bodies mount after that brief entrance and remain
+mounted for later opens. Native content bounds change without a parallel bounds
+animation, while reduced-motion preferences disable the inner entrance and
+mount delay.
 Its Apps panel renders the App Center contribution body instead of mounting a
 catalog-only copy. The shared `openAppId` view state selects which surface is
 visible in both OS and Agent-only shells, but it does not own Browser Node

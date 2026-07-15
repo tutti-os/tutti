@@ -111,7 +111,7 @@ export class CompactionTracker {
     }
     if (compactResult === "failed" && this.inProgress) {
       this.inProgress = false;
-      const reason = stringValue(message.compact_error);
+      const reason = collapseRepeatedText(stringValue(message.compact_error));
       this.emit({
         type: "compact_failed",
         payload: {
@@ -167,4 +167,22 @@ export class CompactionTracker {
   private eventTurnId(): string {
     return this.activeTurnId() || this.commandTurnId;
   }
+}
+
+export function collapseRepeatedText(value: string): string {
+  const text = value.trim();
+  if (text.length < 2) {
+    return text;
+  }
+
+  for (let repetitions = 2; repetitions <= 4; repetitions += 1) {
+    if (text.length % repetitions !== 0) {
+      continue;
+    }
+    const unit = text.slice(0, text.length / repetitions);
+    if (unit.repeat(repetitions) === text) {
+      return unit;
+    }
+  }
+  return text;
 }

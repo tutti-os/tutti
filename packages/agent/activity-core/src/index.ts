@@ -118,7 +118,11 @@ export {
   selectWorkspaceAgentConsumerSession,
   selectWorkspaceAgentConsumerSessions
 } from "./engine/sessionLifecycle.selectors.ts";
-export { selectEngineSessionReconcile } from "./engine/sessionReconcile.selectors.ts";
+export {
+  selectEngineSessionDetailHydrated,
+  selectEngineSessionDetailLoading,
+  selectEngineSessionReconcile
+} from "./engine/sessionReconcile.selectors.ts";
 export {
   canonicalInteractionKey,
   canonicalTurnKey

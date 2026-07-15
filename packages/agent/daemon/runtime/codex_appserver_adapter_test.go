@@ -3597,7 +3597,6 @@ func TestControllerExecGoalControlWhileTurnActive(t *testing.T) {
 		RoomID:   "room-1",
 		Provider: ProviderCodex,
 		CWD:      "/workspace",
-		Title:    "Codex",
 	})
 	if err != nil {
 		t.Fatalf("Start: %v", err)
@@ -3618,12 +3617,18 @@ func TestControllerExecGoalControlWhileTurnActive(t *testing.T) {
 	waitForCondition(t, func() bool {
 		return adapter.sessionActiveTurnID(agentSessionID) == "turn-1"
 	})
+	beforeGoal, ok := controller.get("room-1", agentSessionID)
+	if !ok {
+		t.Fatal("session missing before goal control")
+	}
 
 	// Goal control succeeds while the turn slot is occupied…
 	result, err := controller.Exec(context.Background(), ExecInput{
-		RoomID:         "room-1",
-		AgentSessionID: agentSessionID,
-		Content:        textPrompt("/goal clear"),
+		RoomID:           "room-1",
+		AgentSessionID:   agentSessionID,
+		Content:          textPrompt("/goal clear"),
+		InitialTitle:     "Clear current goal",
+		InitialTitleBase: beforeGoal.Title,
 	})
 	if err != nil {
 		t.Fatalf("Exec /goal clear: %v", err)
@@ -3636,6 +3641,9 @@ func TestControllerExecGoalControlWhileTurnActive(t *testing.T) {
 	}
 	if adapter.sessionActiveTurnID(agentSessionID) != "turn-1" {
 		t.Fatalf("running turn must survive goal control")
+	}
+	if session, ok := controller.get("room-1", agentSessionID); !ok || session.Title != "Clear current goal" {
+		t.Fatalf("goal control initial title session = %#v", session)
 	}
 
 	// …while ordinary prompts still hit the single-turn gate.

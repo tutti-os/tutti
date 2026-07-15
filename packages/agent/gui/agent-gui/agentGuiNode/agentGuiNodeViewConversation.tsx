@@ -354,7 +354,7 @@ function LoadingGlyph(): React.JSX.Element {
       className={styles.conversationStatusGlyph}
       size={14}
       style={{ color: "var(--text-secondary)" }}
-      strokeWidth={1.5}
+      strokeWidth={2.25}
       trackColor="color-mix(in srgb, currentColor 24%, transparent)"
       testId="agent-gui-conversation-spinner"
     />

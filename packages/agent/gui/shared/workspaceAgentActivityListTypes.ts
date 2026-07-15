@@ -43,6 +43,8 @@ export interface BuildWorkspaceAgentActivityListOptions {
 }
 
 export interface CollectWorkspaceAgentGeneratedFilesOptions {
+  /** When set, only include files produced by these Agent targets. */
+  agentTargetIds?: readonly string[] | null;
   workspaceRoot?: string | null;
   /** When set, only include files from sessions whose cwd matches this path. */
   sessionCwd?: string | null;

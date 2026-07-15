@@ -934,6 +934,49 @@ describe("AgentMessageMarkdown", () => {
     });
   });
 
+  it("closes the zoom preview with Escape when focus is outside the dialog", async () => {
+    const readFile = vi.fn().mockResolvedValue({
+      bytes: new Uint8Array([137, 80, 78, 71])
+    });
+    window.agentHostApi = {
+      ...(window.agentHostApi ?? {}),
+      workspace: {
+        ...(window.agentHostApi?.workspace ?? {}),
+        readFile
+      }
+    } as typeof window.agentHostApi;
+    Object.defineProperty(URL, "createObjectURL", {
+      configurable: true,
+      value: vi.fn(() => "blob:tsh-markdown-image")
+    });
+    Object.defineProperty(URL, "revokeObjectURL", {
+      configurable: true,
+      value: vi.fn()
+    });
+
+    render(
+      <AgentMessageMarkdown
+        content={"![generated image](/workspace/output/imagegen/dance.png)"}
+        enableImageZoom
+      />
+    );
+
+    fireEvent.click(await screen.findByRole("button", { name: /Zoom image/ }));
+    const dialog = await screen.findByRole("dialog");
+    const backgroundButton = document.createElement("button");
+    document.body.append(backgroundButton);
+    backgroundButton.focus();
+
+    fireEvent.keyDown(window, { key: "Escape" });
+
+    expect(dialog).toHaveAttribute("data-closing", "true");
+    fireEvent.animationEnd(dialog);
+    await waitFor(() => {
+      expect(screen.queryByRole("dialog")).toBeNull();
+    });
+    backgroundButton.remove();
+  });
+
   it("closes the zoom preview when the zoomed image is clicked", async () => {
     const readFile = vi.fn().mockResolvedValue({
       bytes: new Uint8Array([137, 80, 78, 71])

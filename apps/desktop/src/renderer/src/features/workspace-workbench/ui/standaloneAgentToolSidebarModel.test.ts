@@ -7,9 +7,11 @@ import {
   isStandaloneAgentToolGroupActive,
   reduceStandaloneAgentToolSidebarState,
   resolveStandaloneAgentToolPanelExpansionReset,
+  resolveStandaloneAgentToolPanelExpansionTransfer,
   resolveStandaloneAgentToolSidebarLayoutWidth,
   resolveStandaloneAgentToolSidebarWidth,
   resolveStandaloneAgentToolPanelMaxWidth,
+  standaloneAgentEmptyToolSidebarWidth,
   standaloneAgentToolPanelDefaultWidthById
 } from "./standaloneAgentToolSidebarModel.ts";
 
@@ -205,6 +207,14 @@ test("standalone agent browser and apps open at the same roomy default width", (
   );
 });
 
+test("standalone agent empty tool sidebar uses sixty percent of the file panel width", () => {
+  assert.equal(
+    standaloneAgentEmptyToolSidebarWidth,
+    standaloneAgentToolPanelDefaultWidthById.files * 0.6
+  );
+  assert.equal(standaloneAgentEmptyToolSidebarWidth, 432);
+});
+
 test("standalone agent messages open wide enough for message cards", () => {
   assert.equal(standaloneAgentToolPanelDefaultWidthById.messages, 440);
   assert.equal(
@@ -359,5 +369,31 @@ test("standalone agent tool panel restores its width when an expanded panel clos
       viewportWidth: 1920
     }),
     720
+  );
+});
+
+test("standalone agent tool panel transfers expansion when switching tabs", () => {
+  assert.deepEqual(
+    resolveStandaloneAgentToolPanelExpansionTransfer({
+      expandedPanel: "files",
+      nextPanel: "terminal",
+      nextPanelWidth: 720,
+      widthBeforeExpansion: 680
+    }),
+    {
+      expandedPanel: "terminal",
+      nextPanelWidthBeforeExpansion: 720,
+      previousPanel: "files",
+      previousPanelWidth: 680
+    }
+  );
+  assert.equal(
+    resolveStandaloneAgentToolPanelExpansionTransfer({
+      expandedPanel: "files",
+      nextPanel: null,
+      nextPanelWidth: 720,
+      widthBeforeExpansion: 680
+    }),
+    null
   );
 });

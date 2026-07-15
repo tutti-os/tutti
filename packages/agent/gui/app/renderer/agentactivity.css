@@ -103,7 +103,7 @@
 .tsh-zoom-dialog[data-rmiz-modal] {
   position: fixed;
   inset: 0;
-  z-index: 100300;
+  z-index: var(--z-dialog);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -4820,6 +4820,20 @@ aside.workspace-agents-status-panel
   padding-right: 0;
 }
 
+/* Keep the standalone tool header on the same right edge as its body panel.
+   The body panel is right-anchored independently of the Agent header's rail
+   grid; leaving this accessory in the grid makes its left edge drift when the
+   panel expands to the available width. */
+.agent-gui-workbench-header[data-agent-gui-standalone-window-header="true"]
+  .agent-gui-workbench-header__secondary-accessory:has(
+    [data-standalone-agent-tool-sidebar-header="true"]
+  ) {
+  position: absolute;
+  top: 0;
+  right: 0;
+  margin-left: 0;
+}
+
 /*
  * In the collapsed empty state there is no session title to anchor the control
  * cluster, so the detached-window button's margin-left:auto would strand the
@@ -8004,13 +8018,14 @@ html[data-theme="light"] [data-message-center-item-id].agent-gui-edge-glow {
 
 .agent-gui-node__composer-queued-prompt-header {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   justify-content: flex-start;
   gap: 4px;
   min-height: 20px;
 }
 
 .agent-gui-node__composer-queued-prompt-expand-cue {
+  display: block;
   flex: 0 0 auto;
   color: var(--agent-gui-accent-strong);
   opacity: 0;

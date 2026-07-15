@@ -46,6 +46,7 @@ import { getDesktopAgentActivityRuntimeServices } from "./internal/desktopAgentA
 import type { IWorkspaceAgentActivityService } from "./workspaceAgentActivityService.interface";
 import type { IWorkspaceUserProjectService } from "../../workspace-user-project/index.ts";
 import { translate } from "../../../i18n/appRuntime.ts";
+import { createDesktopAgentGeneratedFileMentionProvider } from "./internal/createDesktopAgentGeneratedFileMentionProvider.ts";
 
 export interface DesktopAgentGUIWorkbenchHostInput {
   agentActivityRuntime: AgentActivityRuntime;
@@ -167,6 +168,11 @@ export function createDesktopAgentGUIWorkbenchHostInput({
       homeDirectory: platformApi.homeDirectory,
       workspaceUserProjectService
     });
+  const agentGeneratedFileMentionProvider =
+    createDesktopAgentGeneratedFileMentionProvider({
+      agentActivityRuntime,
+      workspaceId
+    });
   // 多源引用聚合:项目快捷入口 + 本地文件 + 应用产物 + 任务产物。
   // 非本地源的 open/preview 复用本地 adapter 同一条 host 链路。
   const referenceSourceAggregator = createReferenceSourceAggregator(
@@ -179,7 +185,32 @@ export function createDesktopAgentGUIWorkbenchHostInput({
         projectLabel: translate(
           "workspace.referenceSources.projectSourceLabel"
         ),
-        projectOrder: -1
+        projectOrder: -1,
+        searchByProvenance: async (scope, searchInput) => {
+          const items = await agentGeneratedFileMentionProvider.query({
+            abortSignal: searchInput.signal,
+            context: {
+              metadata: {
+                referenceProvenanceFilter: searchInput.provenanceFilter,
+                workspaceId: scope.workspaceId
+              }
+            },
+            keyword: searchInput.query,
+            trigger: "@"
+          });
+          return items.flatMap((item): WorkspaceFileReference[] => {
+            const insert =
+              agentGeneratedFileMentionProvider.toInsertResult(item);
+            if (insert.kind !== "markdown-link") return [];
+            return [
+              {
+                displayName: insert.label,
+                kind: insert.href.endsWith("/") ? "folder" : "file",
+                path: insert.href
+              }
+            ];
+          });
+        }
       }),
       createAppArtifactReferenceSource({
         tuttidClient,

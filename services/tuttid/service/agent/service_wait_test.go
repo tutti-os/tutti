@@ -147,6 +147,60 @@ func uint64Ptr(value uint64) *uint64 {
 	return &value
 }
 
+func TestWaitSkipMessagesReturnsOnlyStopPointMetadata(t *testing.T) {
+	runtime := newWaitRuntime()
+	turnID := "turn-1"
+	runtime.sessions["ws-1:session-1"] = ProviderRuntimeSession{
+		ID:          "session-1",
+		WorkspaceID: "ws-1",
+		Provider:    "codex",
+		Status:      "waiting",
+		TurnLifecycle: &TurnLifecycle{
+			ActiveTurnID: &turnID,
+			Phase:        "waiting_input",
+		},
+		Visible:         true,
+		CreatedAtUnixMS: time.Now().Add(-time.Minute).UnixMilli(),
+		UpdatedAtUnixMS: time.Now().UnixMilli(),
+	}
+	reader := &waitMessageReader{
+		list: func(input agentactivitybiz.ListSessionMessagesInput) (SessionMessagesPage, bool) {
+			if input.Order != agentactivitybiz.MessageOrderDesc || input.Limit != 1 {
+				t.Fatalf("skip-messages wait queried execution messages: %#v", input)
+			}
+			return SessionMessagesPage{
+				AgentSessionID: input.AgentSessionID,
+				LatestVersion:  7,
+			}, true
+		},
+	}
+	service := newIsolatedAgentService(runtime)
+	service.TurnStore = runtime
+	service.MessageReader = reader
+
+	result, err := service.Wait(context.Background(), WaitInput{
+		WorkspaceID:    "ws-1",
+		AgentSessionID: "session-1",
+		AfterVersion:   uint64Ptr(0),
+		SkipMessages:   true,
+	})
+	if err != nil {
+		t.Fatalf("Wait() error = %v", err)
+	}
+	if result.Reason != WaitReasonWaitingInput || result.TimedOut {
+		t.Fatalf("result = %#v", result)
+	}
+	if result.EffectiveAfter != 0 || result.LatestVersion != 7 {
+		t.Fatalf("versions = after %d latest %d, want 0/7", result.EffectiveAfter, result.LatestVersion)
+	}
+	if len(result.Messages) != 0 || result.HasMore {
+		t.Fatalf("skip-messages result should omit message pagination: %#v", result)
+	}
+	if len(reader.calls) != 2 {
+		t.Fatalf("message reads = %d, want two latest-version reads", len(reader.calls))
+	}
+}
+
 func TestWaitIgnoresStaleStopUntilNewProgressArrives(t *testing.T) {
 	runtime := newWaitRuntime()
 	turnID := "turn-1"

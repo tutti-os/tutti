@@ -35,6 +35,16 @@ func (s *Store) ListWorkspaceGeneratedFiles(
 	sessionCwd := normalizeGeneratedFileComparablePath(input.SessionCwd)
 	query := strings.ToLower(strings.TrimSpace(input.Query))
 	scanLimit := generatedFileMessageScanLimit(limit)
+	agentTargetIDs := uniqueNonBlankStrings(input.AgentTargetIDs)
+	queryArgs := []any{workspaceID, sessionCwd, sessionCwd}
+	agentTargetFilter := ""
+	if len(agentTargetIDs) > 0 {
+		agentTargetFilter = "\n  AND s.agent_target_id IN (" + strings.TrimSuffix(strings.Repeat("?,", len(agentTargetIDs)), ",") + ")"
+		for _, agentTargetID := range agentTargetIDs {
+			queryArgs = append(queryArgs, agentTargetID)
+		}
+	}
+	queryArgs = append(queryArgs, scanLimit)
 
 	rows, err := s.db.QueryContext(ctx, `
 SELECT s.cwd, m.kind, m.status, m.payload_json
@@ -45,10 +55,10 @@ JOIN workspace_agent_sessions s
 WHERE m.workspace_id = ?
   AND m.deleted_at_unix_ms = 0
   AND s.deleted_at_unix_ms = 0
-  AND (? = '' OR s.cwd = ?)
+  AND (? = '' OR s.cwd = ?)`+agentTargetFilter+`
 ORDER BY m.updated_at_unix_ms DESC, m.id DESC
 LIMIT ?
-`, workspaceID, sessionCwd, sessionCwd, scanLimit)
+`, queryArgs...)
 	if err != nil {
 		return GeneratedFileList{}, false, fmt.Errorf("list workspace agent generated file messages: %w", err)
 	}

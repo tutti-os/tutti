@@ -143,6 +143,7 @@ export const zhCN = {
       newConversation: "新建会话",
       openDetachedWindow: "独立agent窗口模式",
       openNewWindow: "打开新窗口",
+      untitledConversation: "未命名对话",
       openSessionUnavailableDescription: "这个 Agent 会话已不存在或无法打开。",
       openSessionUnavailableTitle: "会话不可用",
       toolSidebar: {
@@ -806,6 +807,9 @@ export const zhCN = {
         removeFileDefaultOpener: "移除 .{{extension}}",
         releaseChannelDescription: "选择稳定版更新；需要提前验收时可切到预览版",
         releaseChannelLabel: "发布渠道",
+        referenceProvenanceFilterDescription:
+          "在 Agent 对话的引用选择器中启用智能体来源筛选",
+        referenceProvenanceFilterLabel: "智能体来源筛选",
         releaseChannelOptions: {
           rc: "预览版",
           stable: "稳定版"
@@ -875,8 +879,8 @@ export const zhCN = {
         unsupportedFallback: "暂时不支持预览，使用本地软件打开。"
       },
       filesLaunch: {
-        openFailedDescription: "这个会话原本的工作目录在本机上已经找不到了。",
-        openFailedTitle: "无法打开文件夹"
+        openFailedDescription: "无法在对应地址找到该文件或文件夹",
+        openFailedTitle: "文件或文件夹已不存在"
       },
       agentProviders: {
         checking: "正在检测本地 CLI 状态...",
