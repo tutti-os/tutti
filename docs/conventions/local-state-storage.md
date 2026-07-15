@@ -164,6 +164,7 @@ Migrated agent runtime state should derive from the same root:
         <installation-scope>/
           runtime/
           data/
+          database/
           logs/
     factory/
       jobs/
@@ -228,8 +229,12 @@ Tutti provider startup.
 - the bundled CLI discovers the managed daemon by reading `<state-dir>/run/tuttid.listener.json`
 - packaged desktop shim install or repair uses `<state-dir>/bin/tutti` as the user-level command path and points it at the packaged CLI binary
 - local development scripts install or repair `<state-dir>/bin/tutti-dev` as the development CLI command and default it to `TUTTI_ENV=development`
-- workspace app package cache, per-installation runtime/data/log state, and
+- workspace app package cache, per-installation runtime/data/database/log state, and
   app factory job working directories live under `<state-dir>/apps`
+- each workspace app installation receives a host-local durable `database/`
+  directory for active SQLite databases and other files that require local
+  filesystem locking; uninstalling the installation removes it with the rest
+  of that installation's state
 - workspace apps receive `<state-dir>/app-toolchains` as the shared cache root
   for reusable app-managed binaries
 

@@ -116,7 +116,8 @@ The runtime must:
 - Fail startup with a clear error when `$TUTTI_APP_PORT` is absent. Do not guess, reserve, or hard-code a fallback port; the daemon owns port allocation.
 - Serve the manifest healthcheck path with a 2xx response.
 - Treat `$TUTTI_APP_PACKAGE_DIR` as read-only after startup.
-- Write durable app data only under `$TUTTI_APP_DATA_DIR`.
+- Write durable app artifacts and non-database state only under `$TUTTI_APP_DATA_DIR`.
+- Write active SQLite databases, WAL/SHM files, indexes, and other database-managed files only under `$TUTTI_APP_DATABASE_DIR`. The directory is host-local and durable for the installation; apps may create multiple databases beneath it.
 - Write scratch/runtime files only under `$TUTTI_APP_RUNTIME_DIR`.
 - Write logs only under `$TUTTI_APP_LOG_DIR` when backend/server-side file logs are needed.
 - Store reusable app-managed binaries only under `$TUTTI_APP_TOOLCHAIN_ROOT`.
