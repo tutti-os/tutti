@@ -1,7 +1,0 @@
-# yaml-language-server: $schema=https://raw.githubusercontent.com/oapi-codegen/oapi-codegen/v2.7.0/configuration-schema.json
-package: generated
-generate:
-  std-http-server: true
-  strict-server: true
-output-options:
-  skip-prune: true

@@ -1,8 +1,0 @@
-{
-  "toolCallId": "tool-current",
-  "title": "Bash",
-  "rawOutput": {
-    "status": "completed",
-    "stdout": "/workspace/app\n"
-  }
-}

@@ -1,9 +1,0 @@
-{
-  "sessionUpdate": "tool_call_update",
-  "toolCallId": "tool-1",
-  "title": "Run command",
-  "kind": "execute",
-  "rawOutput": {
-    "output": "Exit code 137"
-  }
-}

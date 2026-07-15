@@ -1,7 +1,0 @@
-interface:
-  display_name: "Tutti App Release"
-  short_description: "Publish external Tutti workspace apps"
-  default_prompt: "Use $tutti-app-release to set up or review an external repository's Tutti App Release GitHub Actions workflow."
-
-policy:
-  allow_implicit_invocation: true

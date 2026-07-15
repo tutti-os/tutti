@@ -1,5 +1,0 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Demo app icon">
-  <rect width="64" height="64" rx="14" fill="#2563eb"/>
-  <path d="M18 22h28v20H18z" fill="#ffffff" opacity="0.92"/>
-  <path d="M22 28h20M22 34h12" stroke="#2563eb" stroke-width="4" stroke-linecap="round"/>
-</svg>

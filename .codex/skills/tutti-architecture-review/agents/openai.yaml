@@ -1,7 +1,0 @@
-interface:
-  display_name: "Tutti Architecture Review"
-  short_description: "Review tutti layering and event-center ownership"
-  default_prompt: "Use $tutti-architecture-review to review the current git diff, or focus the review on a user-named tutti module when the request calls for it."
-
-policy:
-  allow_implicit_invocation: true
