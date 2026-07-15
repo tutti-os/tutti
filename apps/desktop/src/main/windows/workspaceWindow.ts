@@ -31,6 +31,7 @@ import {
   resolveStandaloneAgentWindowOffsetBounds,
   resolveStandaloneAgentWindowWorkArea
 } from "./standaloneAgentWindowBounds.ts";
+import { WorkspaceWindowRegistry } from "./workspaceWindowRegistry.ts";
 
 export const workspaceAppBrowserPartitionPrefix = "persist:tutti-app:";
 
@@ -49,10 +50,10 @@ export interface CreateWorkspaceWindowOptions {
   workspaceID: string;
 }
 
-const workspaceWindows = new Set<BrowserWindow>();
+const workspaceWindows = new WorkspaceWindowRegistry<BrowserWindow>();
 // DAU/PV belongs to the first workspace renderer for the lifetime of this main
-// process. Do not derive this from workspaceWindows.size: closing the owner
-// must not let a later window report another process-level open/pageview.
+// process. Do not derive this from current registry membership: closing the
+// owner must not let a later window report another process-level open/pageview.
 const primaryWindowAnalyticsClaim = createPrimaryWindowAnalyticsClaim();
 const reportPredefinePageviewByWindow = new WeakMap<BrowserWindow, boolean>();
 const workspaceWindowHeaderHeightPx = 52;
@@ -65,16 +66,14 @@ const agentWindowMinWidthPx = 420;
 const agentWindowMinHeightPx = 520;
 const agentWindowWorkAreaScale = 0.9;
 const agentWindowDuplicateOffsetPx = 25;
-const workspaceWindowKinds = new WeakMap<
-  BrowserWindow,
-  "agent" | "workspace"
->();
-
 export function createWorkspaceWindow(
   options: CreateWorkspaceWindowOptions
 ): BrowserWindow {
   const logger = getDesktopLogger();
   const windowKind = options.windowKind ?? "workspace";
+  if (windowKind === "workspace") {
+    workspaceWindows.assertDurableWorkspaceAvailable(options.workspaceID);
+  }
   const agentDisplay = options.openerBounds
     ? screen.getDisplayMatching(options.openerBounds)
     : screen.getPrimaryDisplay();
@@ -142,7 +141,6 @@ export function createWorkspaceWindow(
       webviewTag: true
     }
   });
-  workspaceWindowKinds.set(workspaceWindow, windowKind);
   reportPredefinePageviewByWindow.set(
     workspaceWindow,
     primaryWindowAnalyticsClaim.claim()
@@ -206,9 +204,12 @@ export function createWorkspaceWindow(
   installWorkspaceWindowDevelopmentReloadShortcut(workspaceWindow, {
     enabled: options.enableDevelopmentReloadShortcut === true
   });
-  workspaceWindows.add(workspaceWindow);
+  workspaceWindows.register(workspaceWindow, {
+    kind: windowKind,
+    workspaceID: options.workspaceID
+  });
   workspaceWindow.once("closed", () => {
-    workspaceWindows.delete(workspaceWindow);
+    workspaceWindows.unregister(workspaceWindow);
   });
 
   if (process.platform === "darwin") {
@@ -281,7 +282,14 @@ export function createWorkspaceWindow(
 export function getWorkspaceWindowKind(
   workspaceWindow: BrowserWindow
 ): "agent" | "workspace" | null {
-  return workspaceWindowKinds.get(workspaceWindow) ?? null;
+  return workspaceWindows.getKind(workspaceWindow);
+}
+
+export function findWorkspaceWindow(
+  workspaceID: string,
+  kind: "agent" | "workspace"
+): BrowserWindow | null {
+  return workspaceWindows.findWorkspaceWindow(workspaceID, kind);
 }
 
 export function loadAgentWindowContent(

@@ -12,7 +12,7 @@ export interface WorkspaceLaunchAdapters {
   showWorkspaceWindow(
     workspaceID: string,
     options?: WorkspaceLaunchWorkspaceWindowOptions
-  ): Promise<void>;
+  ): Promise<WorkspaceLaunchOwnerWindow | null | void>;
   warnStartupWindowResolutionFailure(error: unknown): void;
 }
 
@@ -87,7 +87,11 @@ export function createWorkspaceLaunch(
     ownerWindow: WorkspaceLaunchOwnerWindow | null,
     workspaceID: string
   ): Promise<void> {
-    await deps.adapters.showWorkspaceWindow(workspaceID);
+    const workspaceWindow =
+      await deps.adapters.showWorkspaceWindow(workspaceID);
+    if (workspaceWindow === ownerWindow) {
+      return;
+    }
     forceCloseWindow(ownerWindow);
   }
 
@@ -96,7 +100,15 @@ export function createWorkspaceLaunch(
     workspaceID: string,
     windowKind: "agent" | "workspace"
   ): Promise<void> {
-    await deps.adapters.showWorkspaceWindow(workspaceID, { windowKind });
+    const workspaceWindow = await deps.adapters.showWorkspaceWindow(
+      workspaceID,
+      {
+        windowKind
+      }
+    );
+    if (workspaceWindow === ownerWindow) {
+      return;
+    }
     forceCloseWindow(ownerWindow);
   }
 }

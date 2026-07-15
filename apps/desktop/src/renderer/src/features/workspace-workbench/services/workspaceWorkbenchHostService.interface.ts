@@ -48,6 +48,8 @@ import type { DesktopWorkspaceAppOpenFileResolvedPayload } from "@shared/contrac
 
 export type WorkspaceCustomWallpaperStatus = "idle" | "saving" | "removing";
 
+export type WorkspaceWorkbenchSnapshotPersistence = "durable" | "window-local";
+
 export interface WorkspaceCustomWallpaperSnapshot {
   exists: boolean;
   fullUrl: string | null;

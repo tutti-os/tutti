@@ -1,7 +1,7 @@
 # Workbench Host Kernel: Phase 0 To Stable
 
 - Date: 2026-07-11
-- Status: Active; ADR accepted, PRs 1–2 merged, and PRs 3–6 approved
+- Status: Active; ADR accepted, PRs 1–3 merged, and PRs 4–6 approved
 - Architecture decision:
   [ADR 0009](../adr/0009-cross-product-workbench-host-kernel.md)
 - Scope: Tutti-first implementation, npm beta, read-only/downstream TSH
@@ -39,7 +39,7 @@ Approval recorded on 2026-07-11 remains deliberately incremental:
 | ADR 0009 architecture boundary              | Accepted                                 |
 | PR 1 characterization fixtures/tests        | Merged in #1043                          |
 | PR 2 private coordinator/session            | Merged in #1044                          |
-| PR 3 Product Profile/Ports/adapters split   | Approved for implementation              |
+| PR 3 Product Profile/Ports/adapters split   | Merged in #1050                          |
 | Public package extraction and Tutti cutover | Approved after PR 3                      |
 | npm beta publication                        | Approved after PRs 3–5 and validation    |
 | TSH renderer DI/host migration              | Deferred; no TSH changes in current work |
@@ -78,7 +78,7 @@ This proof does not introduce Product Profile or Ports, move product adapters,
 create a package, change public Workbench contracts, or authorize any release or
 TSH change.
 
-### PR 3 implementation evidence
+### PR 3 merged implementation evidence
 
 The approved product-boundary split keeps all new seams Tutti-private until the
 package API review:
@@ -206,7 +206,43 @@ interface WorkbenchHostSession {
 
 The real API should prefer opaque canonical partition keys over exposing string
 concatenation. It must not expose product clients, React hooks, or a generic
-service locator.
+service locator. A field or port is not public merely because the private proof
+declares it: `productId`, `scopeKind`, repository ports, and similar seams must
+either be consumed and enforced by the extracted kernel or remain internal
+until downstream adoption proves the contract.
+
+## Renderer and surface isolation
+
+Isolation is rooted at the renderer/window DI container:
+
+- each renderer/window root owns its own coordinator, so two windows that open
+  the same partition receive independent sessions;
+- inside one coordinator, repeated opens of the same immutable partition return
+  leases to the same session;
+- one session has exactly one effective surface attachment;
+- React remount or shell transition may replace that attachment, but a stale
+  detach from the previous owner cannot clear the current handle; and
+- the first public API does not support two simultaneously effective Workbench
+  surfaces for one session.
+
+Session isolation is separate from durable-write ownership. Tutti's main OS
+workspace renderer is the only writer for the workspace Workbench snapshot.
+Standalone Agent renderers use a read-seeded, window-local repository: they may
+reuse host contributions and close coordination, but their shell or settings
+changes never PUT the primary workspace snapshot. Product conformance must test
+the actual composition-root repository mode, not only two manually constructed
+coordinators.
+
+Tutti's product-level enforcement lives in Electron main: OS workspace windows
+are registered by `workspaceId`, concurrent opens share one pending creation,
+and an existing window is restored/focused rather than duplicated. The
+registry rejects a second durable owner as a backstop. Executable composition
+tests encode real Agent and OS window intents, construct the production
+repository factory, and verify Agent host/wallpaper/onboarding saves issue no
+PUT while the OS path remains durable.
+
+Multiple leases are a lifecycle and handoff mechanism, not a multi-view product
+feature.
 
 ## DI and package dependency target
 
@@ -221,7 +257,12 @@ renderer products still converge on the same integration framework:
   adapters, and window/renderer lifetime wiring.
 
 This is intentional convergence at the official renderer layer, not DI coupling
-inside `@tutti-os/workbench-host`.
+inside `@tutti-os/workbench-host`. Shared coordinator/session classes and their
+emitted declarations must not contain the renderer DI convention
+`_serviceBrand`; each product's service interface or facade owns that marker.
+For Tutti, the marker stays on `IWorkspaceWorkbenchHostService`; the
+product-owned coordinator decorator may be structurally typed to the shared
+class and must not force a brand back into the kernel class.
 
 The package dependency direction is also fixed:
 
@@ -242,25 +283,26 @@ host/surface cycle.
 
 ## State owner and restart matrix
 
-| State                                   | Runtime writer                                            | Durable/restart owner                   | Session behavior                                                  |
-| --------------------------------------- | --------------------------------------------------------- | --------------------------------------- | ----------------------------------------------------------------- |
-| Workbench shell layout and stack        | Workbench surface controller                              | Tutti `tuttid`; TSH desktopd SQLite     | Load/save through repository port                                 |
-| Snapshot normalization/schema           | Shared snapshot package and Go service                    | Canonical schema sources                | Never reinterpret                                                 |
-| Contribution set and order              | Profile plus capability factories                         | Source code/package version             | Resolve once per stable configuration; update explicitly          |
-| Dynamic dock presentation               | Capability store/service                                  | Usually recomputed                      | Subscribe without session rebuild                                 |
-| Projected shell presence                | Product runtime/business service                          | Owning daemon/control plane             | Reconcile live; never recreate business entity from snapshot      |
-| Surface handle and activation sequence  | Surface session                                           | None                                    | Attach/detach; discard on session disposal                        |
-| Repository optimistic cache/save queue  | Product repository adapter or session port implementation | Daemon remains authority                | Partitioned; rollback/ignore stale completion on failure/disposal |
-| Authenticated identity partition        | Product auth authority                                    | Product auth/profile state              | Immutable snapshot for one session; replace session on change     |
-| Wallpaper/onboarding snapshot metadata  | Tutti adapter during Phase 0                              | Existing Tutti snapshot repository path | Preserve byte/semantic compatibility                              |
-| Room collaboration, shared agents, chat | TSH control plane/domain adapters                         | TSH authorities                         | Capability projection only                                        |
+| State                                   | Runtime writer                                            | Durable/restart owner                   | Session behavior                                                                                                                                                                                                 |
+| --------------------------------------- | --------------------------------------------------------- | --------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Workbench shell layout and stack        | Workbench surface controller                              | Tutti `tuttid`; TSH desktopd SQLite     | Load/save through a repository binding scoped to the immutable partition; preserve final teardown flush without stale publication; auxiliary renderer roots must be non-writing or use another durable partition |
+| Snapshot normalization/schema           | Shared snapshot package and Go service                    | Canonical schema sources                | Never reinterpret                                                                                                                                                                                                |
+| Contribution set and order              | Profile plus capability factories                         | Source code/package version             | Resolve once per stable configuration; update explicitly                                                                                                                                                         |
+| Dynamic dock presentation               | Capability store/service                                  | Usually recomputed                      | Subscribe without session rebuild                                                                                                                                                                                |
+| Projected shell presence                | Product runtime/business service                          | Owning daemon/control plane             | Reconcile live; never recreate business entity from snapshot                                                                                                                                                     |
+| Surface handle and activation sequence  | Surface session                                           | None                                    | Attach/detach; discard on session disposal                                                                                                                                                                       |
+| Repository optimistic cache/save queue  | Product repository adapter or session port implementation | Daemon remains authority                | Partitioned; rollback/ignore stale completion on failure/disposal                                                                                                                                                |
+| Authenticated identity partition        | Product auth authority                                    | Product auth/profile state              | Immutable snapshot for one session; replace session on change                                                                                                                                                    |
+| Wallpaper/onboarding snapshot metadata  | Tutti adapter during Phase 0                              | Existing Tutti snapshot repository path | Merge from the latest serialized repository cache; stale host snapshots cannot overwrite a newer product metadata write                                                                                          |
+| Room collaboration, shared agents, chat | TSH control plane/domain adapters                         | TSH authorities                         | Capability projection only                                                                                                                                                                                       |
 
 ## Required invariants and conformance assertions
 
 At minimum, implementation tests must prove:
 
-1. the coordinator returns no more than one live session for the same canonical
-   partition and disposes every owned session exactly once;
+1. one coordinator returns no more than one live session for the same canonical
+   partition and disposes every owned session exactly once, while separate
+   renderer/window coordinators never share sessions;
 2. changing a TSH authenticated-user snapshot changes the canonical partition,
    never reuses room cache, and invalidates stale async completion from the old
    session;
@@ -269,15 +311,22 @@ At minimum, implementation tests must prove:
 4. dynamic projection/dock changes preserve session, contribution identity,
    node identity, and surface handle;
 5. snapshot load/restore cannot invoke capability launch/create commands;
-6. disposed sessions cannot notify, persist, attach a handle, or accept updates;
-7. product adapters are the only imports of product transport/auth APIs; and
-8. the host kernel produces the same node definitions, dock order, close
+6. one session has one effective surface attachment; replacement handoff is
+   safe and a stale detach cannot clear the replacement handle;
+7. disposed sessions cannot notify, publish, attach a handle, or accept updates;
+   the existing final surface flush remains partition-bound, and late load/save
+   completion cannot cross partitions or overwrite newer same-partition state;
+8. product adapters are the only imports of product transport/auth APIs; and
+9. the host kernel produces the same node definitions, dock order, close
    preparation, and launch routing as the pre-migration Tutti host fixtures.
-9. both official renderers resolve their product-owned Workbench class service
-   through `@tutti-os/infra/di`, while the shared host package has no DI runtime
-   dependency.
-10. the built host package has no React runtime import, surface has no host
+10. both official renderers resolve their product-owned Workbench class service
+    through `@tutti-os/infra/di`, while the shared host package has no DI runtime
+    dependency.
+11. the built host package has no React runtime import, surface has no host
     dependency, and the package graph is acyclic.
+12. each Tutti workspace has at most one durable OS window owner, Agent window
+    composition issues no Workbench PUT for host or product metadata saves, and
+    concurrent OS open requests reuse one pending/registered window.
 
 ## Shared conformance suite
 
@@ -298,13 +347,14 @@ The harness accepts:
 Shared cases cover:
 
 - open/get/lease/release/dispose lifecycle;
+- independent renderer/window coordinators opening the same partition;
 - concurrent distinct partitions;
 - same scope/different principal isolation;
 - deterministic factory order and duplicate rejection;
 - stable host input across dynamic updates;
 - projection updates without launch side effects;
-- load/save failure and stale completion behavior;
-- attach/detach of a surface handle;
+- load/save failure, final teardown flush, and stale completion behavior;
+- single effective surface attachment, replacement handoff, and stale detach;
 - no callbacks after disposal;
 - snapshot purity using canonical snapshot fixtures; and
 - compatibility of explicit host props and contributions where the kernel
@@ -358,19 +408,19 @@ Every PR below is independently mergeable and revertible. A PR may introduce a
 dormant seam or dual-run assertion, but it may not leave two active writers or
 two launch/close authorities.
 
-| PR  | Repository              | Change                                                                                                                                              | Acceptance                                                                                                                                                                                                                             | Minimum verification                                                                                                                                                                                                        | Rollback boundary                                                                                          |
-| --- | ----------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------- |
-| 0   | Tutti                   | Land ADR, this spec, and indexes only                                                                                                               | Docs describe owners, invariants, release gates, risks, and open questions; no runtime files change                                                                                                                                    | Markdown format/link check and diff scope audit                                                                                                                                                                             | Revert docs only                                                                                           |
-| 1   | Tutti                   | Add characterization fixtures/tests around current host composition and lifecycle                                                                   | Current contribution IDs, node IDs, dock order, host-input stability, snapshot metadata, close behavior, and daemon calls are pinned without production behavior change                                                                | Workbench host/registry/repository focused tests; `pnpm --filter @tutti-os/workbench-surface test`; `pnpm check:renderer-boundaries`                                                                                        | Remove tests/fixtures                                                                                      |
-| 2   | Tutti                   | Introduce Tutti-private coordinator/session interfaces and product-neutral classes behind the current DI service                                    | One renderer coordinator creates/disposes per-workspace sessions; existing public service and UI behavior stay unchanged; no product-union context; file migration follows the mapping above                                           | New class unit tests, focused desktop host tests, `pnpm --filter @tutti-os/desktop typecheck`, `pnpm check:renderer-boundaries`                                                                                             | Switch DI registration back to existing service                                                            |
-| 3   | Tutti                   | Move Tutti-only policy into Product Profile, capability adapters, and narrow ports                                                                  | Kernel classes contain no Tutti client, preload, Electron, wallpaper, onboarding, agent, terminal, or app-center imports; existing adapter tests pass                                                                                  | Import-boundary test, characterization suite, desktop typecheck/tests, `pnpm check:electron-runtime-boundaries` where imports move                                                                                          | Restore adapter calls behind unchanged service facade                                                      |
-| 4   | Tutti                   | Extract `packages/workbench/host` as `@tutti-os/workbench-host`; add conformance harness and package docs                                           | Public exports are limited; surface use is type-only/public-contract; emitted JS has no React runtime import; surface does not import host; package graph is acyclic; pack and fixed release roster/config/scripts include the package | Package test/typecheck/build, emitted-import and dependency-cycle checks, conformance tests, `pnpm release:pack:check`, `pnpm lint:ts`, `pnpm typecheck`, `pnpm check:ui-boundaries` if package graph touches UI boundaries | Stop extraction on React runtime/cycle; otherwise revert package extraction and keep private proven kernel |
-| 5   | Tutti                   | Cut Tutti adapter fully to the package and remove private duplicate kernel                                                                          | Exactly one host coordination path; one DI coordinator per renderer/window; sessions dispose on scope/container teardown; all frozen compatibility fixtures match                                                                      | Focused host + workspace shell tests, `pnpm check:changed`, desktop build, Workbench surface tests                                                                                                                          | Revert adapter cutover to private kernel package-equivalent commit                                         |
-| 6   | Tutti release operation | Publish fixed-group npm beta after explicit approval                                                                                                | `@tutti-os/workbench-host@beta` and its exact fixed-group peers are installable; no `latest`, git tags, lockfile edits, or commits are produced                                                                                        | `pnpm release:pack:check`; dry inspection of versions/tarballs; `pnpm release:beta`; verify npm dist-tags and clean worktree                                                                                                | Deprecate bad beta; publish a new beta version, never overwrite                                            |
-| 7   | TSH                     | In a separate TSH PR, upgrade released beta dependencies, add renderer `@tutti-os/infra/di` registration, and adapt the host to coordinator/session | No filesystem links; room/user partition preserved; DI-resolved class service owns lifecycle; hook no longer owns host lifecycle; existing daemon API and business authority unchanged                                                 | Shared conformance suite, renderer DI/container disposal tests, focused TSH Workbench Vitest tests, `pnpm --dir apps/tsh-desktop check`, desktopd focused Go tests if adapters touch repository wiring                      | Revert dependency/DI/adapter PR to last released stable packages                                           |
-| 8   | Tutti                   | Resolve beta findings generically; publish further beta(s) only when approved                                                                       | Fixes are expressed as kernel contract/conformance changes, not `if (productId === ...)`; Tutti and TSH conformance both pass                                                                                                          | Package/Tutti full focused suite; TSH reports exact beta and passing suite                                                                                                                                                  | Revert individual generic fix or use next beta                                                             |
-| 9   | Tutti                   | Promote docs and prepare stable release                                                                                                             | Current Workbench architecture/conventions describe implemented kernel; active spec is removed when rollout is complete; release roster and package entrypoints are durable                                                            | Docs checks, `pnpm check:full`, package pack check, downstream evidence recorded                                                                                                                                            | Revert docs/release-prep PR; stable not yet published                                                      |
-| 10  | Tutti release operation | Publish stable fixed release group after explicit approval                                                                                          | `latest` contains the validated package set; `packages-v<version>` and all existing `packages/**/go.mod` tags are present; TSH can replace beta with exact stable versions                                                             | Stable workflow logs, npm dist-tags, package tarball smoke test, git tag audit, clean main checkout                                                                                                                         | Follow forward with a new fixed-group release; never retag or overwrite                                    |
+| PR  | Repository              | Change                                                                                                                                              | Acceptance                                                                                                                                                                                                                                                                                                                                                                                           | Minimum verification                                                                                                                                                                                                        | Rollback boundary                                                                                                                                                           |
+| --- | ----------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 0   | Tutti                   | Land ADR, this spec, and indexes only                                                                                                               | Docs describe owners, invariants, release gates, risks, and open questions; no runtime files change                                                                                                                                                                                                                                                                                                  | Markdown format/link check and diff scope audit                                                                                                                                                                             | Revert docs only                                                                                                                                                            |
+| 1   | Tutti                   | Add characterization fixtures/tests around current host composition and lifecycle                                                                   | Current contribution IDs, node IDs, dock order, host-input stability, snapshot metadata, close behavior, and daemon calls are pinned without production behavior change                                                                                                                                                                                                                              | Workbench host/registry/repository focused tests; `pnpm --filter @tutti-os/workbench-surface test`; `pnpm check:renderer-boundaries`                                                                                        | Remove tests/fixtures                                                                                                                                                       |
+| 2   | Tutti                   | Introduce Tutti-private coordinator/session interfaces and product-neutral classes behind the current DI service                                    | One renderer coordinator creates/disposes per-workspace sessions; existing public service and UI behavior stay unchanged; no product-union context; file migration follows the mapping above                                                                                                                                                                                                         | New class unit tests, focused desktop host tests, `pnpm --filter @tutti-os/desktop typecheck`, `pnpm check:renderer-boundaries`                                                                                             | Switch DI registration back to existing service                                                                                                                             |
+| 3   | Tutti                   | Move Tutti-only policy into Product Profile, capability adapters, and narrow ports                                                                  | Kernel classes contain no Tutti client, preload, Electron, wallpaper, onboarding, agent, terminal, or app-center imports; existing adapter tests pass                                                                                                                                                                                                                                                | Import-boundary test, characterization suite, desktop typecheck/tests, `pnpm check:electron-runtime-boundaries` where imports move                                                                                          | Restore adapter calls behind unchanged service facade                                                                                                                       |
+| 4   | Tutti                   | Extract `packages/workbench/host` as `@tutti-os/workbench-host`; add conformance harness and package docs                                           | Public exports are limited to enforced contracts; renderer/window isolation, one effective surface attachment, replacement handoff, and partition-bound final-flush behavior are covered; surface use is type-only/public-contract; emitted JS has no React runtime import; surface does not import host; package graph is acyclic; pack and fixed release roster/config/scripts include the package | Package test/typecheck/build, emitted-import and dependency-cycle checks, conformance tests, `pnpm release:pack:check`, `pnpm lint:ts`, `pnpm typecheck`, `pnpm check:ui-boundaries` if package graph touches UI boundaries | Stop extraction on unenforced public contracts, React runtime/cycle, or unresolved stale-save ownership; otherwise revert package extraction and keep private proven kernel |
+| 5   | Tutti                   | Cut Tutti adapter fully to the package and remove private duplicate kernel                                                                          | Exactly one host coordination path; one DI coordinator per renderer/window; sessions dispose on scope/container teardown; all frozen compatibility fixtures match                                                                                                                                                                                                                                    | Focused host + workspace shell tests, `pnpm check:changed`, desktop build, Workbench surface tests                                                                                                                          | Revert adapter cutover to private kernel package-equivalent commit                                                                                                          |
+| 6   | Tutti release operation | Publish fixed-group npm beta after explicit approval                                                                                                | `@tutti-os/workbench-host@beta` and its exact fixed-group peers are installable; no `latest`, git tags, lockfile edits, or commits are produced                                                                                                                                                                                                                                                      | `pnpm release:pack:check`; dry inspection of versions/tarballs; `pnpm release:beta`; verify npm dist-tags and clean worktree                                                                                                | Deprecate bad beta; publish a new beta version, never overwrite                                                                                                             |
+| 7   | TSH                     | In a separate TSH PR, upgrade released beta dependencies, add renderer `@tutti-os/infra/di` registration, and adapt the host to coordinator/session | No filesystem links; room/user partition preserved; DI-resolved class service owns lifecycle; hook no longer owns host lifecycle; existing daemon API and business authority unchanged                                                                                                                                                                                                               | Shared conformance suite, renderer DI/container disposal tests, focused TSH Workbench Vitest tests, `pnpm --dir apps/tsh-desktop check`, desktopd focused Go tests if adapters touch repository wiring                      | Revert dependency/DI/adapter PR to last released stable packages                                                                                                            |
+| 8   | Tutti                   | Resolve beta findings generically; publish further beta(s) only when approved                                                                       | Fixes are expressed as kernel contract/conformance changes, not `if (productId === ...)`; Tutti and TSH conformance both pass                                                                                                                                                                                                                                                                        | Package/Tutti full focused suite; TSH reports exact beta and passing suite                                                                                                                                                  | Revert individual generic fix or use next beta                                                                                                                              |
+| 9   | Tutti                   | Promote docs and prepare stable release                                                                                                             | Current Workbench architecture/conventions describe implemented kernel; active spec is removed when rollout is complete; release roster and package entrypoints are durable                                                                                                                                                                                                                          | Docs checks, `pnpm check:full`, package pack check, downstream evidence recorded                                                                                                                                            | Revert docs/release-prep PR; stable not yet published                                                                                                                       |
+| 10  | Tutti release operation | Publish stable fixed release group after explicit approval                                                                                          | `latest` contains the validated package set; `packages-v<version>` and all existing `packages/**/go.mod` tags are present; TSH can replace beta with exact stable versions                                                                                                                                                                                                                           | Stable workflow logs, npm dist-tags, package tarball smoke test, git tag audit, clean main checkout                                                                                                                         | Follow forward with a new fixed-group release; never retag or overwrite                                                                                                     |
 
 PR numbers describe dependency order, not a requirement that every concern be a
 large diff. If a PR cannot be reverted without reverting a later PR, the later
@@ -395,6 +445,8 @@ Includes PRs 0–3. Exit criteria:
 Includes PRs 4–6. Exit criteria:
 
 - public API review approves every root/subpath export;
+- renderer/window isolation, single effective surface attachment, safe handoff,
+  and partition-bound final-flush behavior pass conformance;
 - emitted host JavaScript has no React runtime import and dependency-cycle
   checks prove surface does not depend on host;
 - pack output and fixed release group are correct;
@@ -408,6 +460,9 @@ implementation requires separate approval and repository workflow.
 
 Exit criteria:
 
+- before implementation, refresh the dated TSH baseline against its current
+  main branch and record any host, repository, auth, or renderer-DI drift that
+  affects the beta contract;
 - TSH consumes npm beta from the registry, not a local path;
 - TSH resolves the Workbench class service/coordinator through a product-owned
   `@tutti-os/infra/di` renderer registration;
@@ -464,11 +519,9 @@ git diff --name-only
 git diff --stat
 ```
 
-Also confirm no TSH file changed:
-
-```sh
-git -C /Users/ryan/dev/tutti-lab/tsh status --short
-```
+Also confirm that the Tutti change contains no TSH repository files or
+filesystem links. Downstream TSH status is recorded later by its own approved
+integration change rather than through a developer-specific local path.
 
 ### Implementation PRs
 
@@ -500,21 +553,21 @@ The TSH PR must report:
 
 ## Risks and mitigations
 
-| Risk                                                             | Effect                                                            | Mitigation / stop condition                                                                       |
-| ---------------------------------------------------------------- | ----------------------------------------------------------------- | ------------------------------------------------------------------------------------------------- |
-| Public kernel becomes a renamed Tutti host                       | TSH cannot consume it without fake adapters                       | Import-boundary tests; reject Tutti product types in package exports                              |
-| Product-union context grows                                      | Every capability sees unrelated optional services                 | Narrow capability ports; API review rejects optional product bags                                 |
-| Session replacement during dynamic status update                 | Open nodes disappear or async actions target stale handle         | Stable update channel and identity assertions; dynamic dock conformance case                      |
-| Auth change reuses a TSH room cache                              | Cross-user layout disclosure or overwrite                         | Immutable principal partition; replacement/disposal tests; desktopd remains enforcement authority |
-| Disposed async save wins later                                   | Old scope overwrites current cache or snapshot                    | Generation/abort guard and queued-write conformance tests                                         |
-| Contribution ordering changes                                    | Dock or launch behavior regresses                                 | Characterization fixtures before extraction; exact expected order per product                     |
-| Snapshot restore creates business entities                       | Duplicate terminals/agents or authority inversion                 | Restore-with-zero-launch assertion and existing projection rules                                  |
-| Surface and host sessions duplicate responsibilities             | Conflicting state owners and teardown                             | Keep surface mechanics in surface; kernel coordinates only product-host lifecycle                 |
-| Host extraction imports React runtime or creates a package cycle | Headless ownership is false and package layering becomes unstable | Stop extraction; retain the private proof and re-review the boundary before beta                  |
-| TSH keeps hook lifecycle beside the DI class service             | Two host owners and incomplete product convergence                | PR 7 removes hook ownership; renderer DI/container disposal is a conformance requirement          |
-| Fixed release roster is already inconsistent                     | Wrong package set published                                       | Mandatory roster audit in extraction PR; fail closed on mismatch                                  |
-| Beta works only through local workspace resolution               | TSH fails after install                                           | Tarball consumer smoke test and registry-based TSH validation                                     |
-| Cross-repo rollout leaves a long-lived dual path                 | Behavior drift continues                                          | One active writer/launcher invariant; each cutover removes its replaced path                      |
+| Risk                                                                | Effect                                                               | Mitigation / stop condition                                                                                                                   |
+| ------------------------------------------------------------------- | -------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
+| Public kernel becomes a renamed Tutti host                          | TSH cannot consume it without fake adapters                          | Import-boundary tests; reject Tutti product types in package exports                                                                          |
+| Product-union context grows                                         | Every capability sees unrelated optional services                    | Narrow capability ports; API review rejects optional product bags                                                                             |
+| Session replacement during dynamic status update                    | Open nodes disappear or async actions target stale handle            | Stable update channel and identity assertions; dynamic dock conformance case                                                                  |
+| Auth change reuses a TSH room cache                                 | Cross-user layout disclosure or overwrite                            | Immutable principal partition; replacement/disposal tests; desktopd remains enforcement authority                                             |
+| Final teardown save or another disposed async completion wins later | Old partition overwrites current cache or newer same-partition state | Bind repository access to the immutable partition; serialize or reject stale same-partition completion; test final flush and immediate reopen |
+| Contribution ordering changes                                       | Dock or launch behavior regresses                                    | Characterization fixtures before extraction; exact expected order per product                                                                 |
+| Snapshot restore creates business entities                          | Duplicate terminals/agents or authority inversion                    | Restore-with-zero-launch assertion and existing projection rules                                                                              |
+| Surface and host sessions duplicate responsibilities                | Conflicting state owners and teardown                                | Keep surface mechanics in surface; kernel coordinates only product-host lifecycle                                                             |
+| Host extraction imports React runtime or creates a package cycle    | Headless ownership is false and package layering becomes unstable    | Stop extraction; retain the private proof and re-review the boundary before beta                                                              |
+| TSH keeps hook lifecycle beside the DI class service                | Two host owners and incomplete product convergence                   | PR 7 removes hook ownership; renderer DI/container disposal is a conformance requirement                                                      |
+| Fixed release roster is already inconsistent                        | Wrong package set published                                          | Mandatory roster audit in extraction PR; fail closed on mismatch                                                                              |
+| Beta works only through local workspace resolution                  | TSH fails after install                                              | Tarball consumer smoke test and registry-based TSH validation                                                                                 |
+| Cross-repo rollout leaves a long-lived dual path                    | Behavior drift continues                                             | One active writer/launcher invariant; each cutover removes its replaced path                                                                  |
 
 ## Non-goals
 
@@ -534,29 +587,31 @@ The TSH PR must report:
 - publishing beta/stable as part of implementation PRs; or
 - modifying TSH from this Tutti task.
 
+## Resolved Phase 0 constraints
+
+- Preserve the current `WorkbenchHost` props plus `onHandleReady` attachment for
+  Phase 0. One session has one effective surface; replacement handoff is safe,
+  stale detach is ignored, and multi-surface ownership is not supported.
+- Keep concurrent distinct partitions available internally, but do not promise
+  multi-view UX in the first public API.
+
 ## Open questions requiring an approval or measured evidence
 
-1. **Surface attachment:** keep current `WorkbenchHost` props plus
-   `onHandleReady`, or add an external surface-session input later?
-   Recommendation: preserve current props for Phase 0; measure whether the
-   attachment seam causes duplicate lifecycle.
-2. **Coordinator multiplicity:** officially support concurrent Workbench
-   sessions in one renderer, or keep it an internal capability?
-   Recommendation: test it, but do not promise multi-view UX in the first API.
-3. **Tutti user partition:** is `workspaceId` sufficient under the current local
+1. **Tutti user partition:** is `workspaceId` sufficient under the current local
    desktop authority for stable, or must account switching be part of the first
    package contract? Recommendation: keep existing Tutti mapping; require a
    follow-up ADR before multi-user local durability.
-4. **Product metadata:** should wallpaper/onboarding metadata remain in Tutti's
+2. **Product metadata:** should wallpaper/onboarding metadata remain in Tutti's
    repository adapter or move to a dedicated metadata contribution?
    Recommendation: preserve current adapter behavior through beta.
-5. **Conformance subpath:** public `./conformance` versus repository-only shared
+3. **Conformance subpath:** public `./conformance` versus repository-only shared
    test package? Recommendation: public dev/test subpath so the external TSH
    repository runs the exact suite shipped with the beta.
 
 ## Approval gates
 
-ADR 0009 is accepted; PR 1 merged as #1043 and PR 2 merged as #1044. PRs 3–5
-and the fixed-group beta in PR 6 are approved in sequence. TSH integration is
-deferred until later business adoption and remains outside the current Tutti
-implementation scope. Stable publication remains separately unapproved.
+ADR 0009 is accepted; PR 1 merged as #1043, PR 2 merged as #1044, and PR 3
+merged as #1050. PRs 4–5 and the fixed-group beta in PR 6 are approved in
+sequence. TSH integration is deferred until later business adoption and remains
+outside the current Tutti implementation scope. Stable publication remains
+separately unapproved.

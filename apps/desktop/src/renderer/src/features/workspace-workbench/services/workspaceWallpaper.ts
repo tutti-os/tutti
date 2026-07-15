@@ -272,6 +272,29 @@ export function preserveWorkspaceWallpaperSnapshotMetadata(
   };
 }
 
+export function replaceWorkspaceWallpaperSnapshotMetadata(
+  authoritativeSnapshot: WorkbenchSnapshot | null | undefined,
+  nextSnapshot: WorkbenchSnapshot
+): WorkbenchSnapshot {
+  const authoritativeMetadata =
+    authoritativeSnapshot?.metadata?.[workspaceWallpaperMetadataKey];
+  const {
+    [workspaceWallpaperMetadataKey]: _discardedWallpaperMetadata,
+    ...nextMetadata
+  } = nextSnapshot.metadata ?? {};
+
+  return {
+    ...nextSnapshot,
+    metadata:
+      authoritativeMetadata === undefined
+        ? nextMetadata
+        : {
+            ...nextMetadata,
+            [workspaceWallpaperMetadataKey]: authoritativeMetadata
+          }
+  };
+}
+
 interface WorkspaceWallpaperSnapshotMetadata {
   displayMode: WorkspaceWallpaperDisplayMode;
   schemaVersion: typeof workspaceWallpaperMetadataSchemaVersion;

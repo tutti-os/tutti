@@ -207,6 +207,16 @@ zero or more sessions, but it is not a process-global static and it does not own
 business entities. It owns only the index and lifecycle of sessions created in
 that renderer.
 
+Coordinator isolation is also the window boundary. Two renderer/window roots
+that open the same immutable partition own independent coordinators and
+independent sessions; sessions are never shared across roots. Inside one root,
+opening the same immutable partition more than once returns leases to the same
+session, but that session has exactly one effective surface attachment. A
+renderer handoff may replace the attachment during React remount or shell
+transition, and a stale detach from the previous owner must not clear the
+current handle. The first public contract does not support two simultaneously
+effective Workbench surfaces for one session.
+
 Opening the same immutable partition twice is idempotent or returns an explicit
 lease to the same session. Opening the same scope with a different immutable
 partition must dispose and replace the old session before the new session can
@@ -223,8 +233,33 @@ Each Tutti workspace or TSH room gets a disposable session. The session owns:
 - the attachment to the surface runtime handle; and
 - cleanup for all resources acquired during session construction.
 
-Disposal is idempotent. After disposal, async completions may not mutate cache,
-publish host input, save a snapshot, or call a detached surface handle.
+Disposal is idempotent. The surface shell session may preserve its existing
+behavior of initiating one final, partition-bound snapshot flush during
+teardown. After teardown begins, the host session may not accept new updates,
+publish host input, notify subscribers, or call a detached surface handle. Late
+load/save completions must remain bound to the immutable snapshot partition;
+they may not publish into the disposed session, mutate another partition's
+cache, or overwrite a newer write for the same partition. Repository adapters
+must serialize or otherwise reject stale same-partition completions.
+
+Renderer isolation does not authorize multiple durable writers for the same
+snapshot partition. A product that can open auxiliary renderer roots for the
+same logical scope must choose one durable owner or give auxiliary roots a
+different durable partition. Tutti's OS workspace renderer is the single
+durable writer for a workspace; standalone Agent renderer roots use a
+read-seeded, window-local repository and never issue workspace Workbench PUTs.
+Within the durable repository, loads and saves for one workspace are one
+invocation-ordered operation stream, while different workspaces remain
+independent. Product-owned snapshot metadata is merged from the latest cache at
+write execution time so a stale surface snapshot cannot undo a newer product
+metadata write.
+
+Tutti enforces its single durable owner in the Electron main process. The
+workspace window registry is keyed by `workspaceId` for OS windows, concurrent
+open requests share one pending creation, and later requests restore/focus the
+registered window. Registration rejects a second OS owner as a backstop.
+Agent-only windows are intentionally excluded from that uniqueness rule because
+their repositories never issue durable Workbench writes.
 
 ### Scope and snapshot partitions
 
@@ -254,18 +289,18 @@ adapter. The shared kernel must not infer that policy.
 
 ## State ownership
 
-| State                                                                    | Authoritative owner                                                       | Kernel/session role                                          | Forbidden owner             |
-| ------------------------------------------------------------------------ | ------------------------------------------------------------------------- | ------------------------------------------------------------ | --------------------------- |
-| Snapshot schema, migrations, normalization                               | `@tutti-os/workbench-snapshot`                                            | Consume unchanged                                            | Product adapter             |
-| Frame, display mode, restore frame, minimized state, stack, active shell | Workbench surface session plus daemon snapshot repository                 | Coordinate attachment and persistence port                   | Capability business service |
-| Snapshot durability                                                      | `tuttid` for Tutti; desktopd SQLite keyed by `(room_id, user_id)` for TSH | Call repository port; maintain only recoverable client cache | Renderer session            |
-| Node type/instance identity and dock affinity                            | Existing Workbench surface contracts and identity helpers                 | Preserve and validate ownership                              | Product profile remapping   |
-| Contribution ordering and duplicate capability ownership                 | Host kernel using declared factory `order` then `id`                      | Resolve deterministically                                    | React render order          |
-| Projected node presence                                                  | Owning product runtime/business service                                   | Forward live projection into the attached surface session    | Snapshot restore            |
-| Terminal, agent, chat, app, file, transfer, and collaboration state      | Product daemon/control plane/domain service                               | Read/project through capability adapter                      | Host kernel or snapshot     |
-| Dynamic dock badges, availability, and attention                         | Owning capability service/store                                           | Forward through stable state source                          | Static host-input rebuild   |
-| Authenticated principal used for partitioning                            | Product authentication authority                                          | Hold immutable identity snapshot for one session             | Capability contribution     |
-| React-only overlay/dialog/DOM state                                      | Product presentation adapter                                              | None, except commands/events across a narrow seam            | Shared kernel               |
+| State                                                                    | Authoritative owner                                                       | Kernel/session role                                                                                                                                           | Forbidden owner             |
+| ------------------------------------------------------------------------ | ------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------- |
+| Snapshot schema, migrations, normalization                               | `@tutti-os/workbench-snapshot`                                            | Consume unchanged                                                                                                                                             | Product adapter             |
+| Frame, display mode, restore frame, minimized state, stack, active shell | Workbench surface session plus daemon snapshot repository                 | Coordinate attachment and persistence port                                                                                                                    | Capability business service |
+| Snapshot durability                                                      | `tuttid` for Tutti; desktopd SQLite keyed by `(room_id, user_id)` for TSH | Bind repository/cache access to the immutable partition; allow the surface's final teardown flush without cross-partition or stale same-partition publication | Renderer session            |
+| Node type/instance identity and dock affinity                            | Existing Workbench surface contracts and identity helpers                 | Preserve and validate ownership                                                                                                                               | Product profile remapping   |
+| Contribution ordering and duplicate capability ownership                 | Host kernel using declared factory `order` then `id`                      | Resolve deterministically                                                                                                                                     | React render order          |
+| Projected node presence                                                  | Owning product runtime/business service                                   | Forward live projection into the attached surface session                                                                                                     | Snapshot restore            |
+| Terminal, agent, chat, app, file, transfer, and collaboration state      | Product daemon/control plane/domain service                               | Read/project through capability adapter                                                                                                                       | Host kernel or snapshot     |
+| Dynamic dock badges, availability, and attention                         | Owning capability service/store                                           | Forward through stable state source                                                                                                                           | Static host-input rebuild   |
+| Authenticated principal used for partitioning                            | Product authentication authority                                          | Hold immutable identity snapshot for one session                                                                                                              | Capability contribution     |
+| React-only overlay/dialog/DOM state                                      | Product presentation adapter                                              | None, except commands/events across a narrow seam                                                                                                             | Shared kernel               |
 
 ## Invariants
 
@@ -274,7 +309,7 @@ adapter. The shared kernel must not infer that policy.
    collaboration business entity.
 2. At most one live host session exists per immutable snapshot partition in one
    renderer coordinator, and every session is disposed before its partition is
-   replaced.
+   replaced. Separate renderer/window coordinators never share sessions.
 3. TSH cache and persistence access for a room is partitioned by an immutable
    authenticated-user snapshot; credentials and user IDs are never supplied by
    capability contributions or persisted inside the Workbench snapshot.
@@ -283,16 +318,24 @@ adapter. The shared kernel must not infer that policy.
    order.
 5. Dynamic business or dock state may update a stable session but may not
    recreate the coordinator, session, node definitions, or shell identities.
-6. Session disposal cancels or invalidates all later async writes and callbacks;
-   a disposed session cannot publish or persist state.
-7. Shared code depends on product-neutral ports. Tutti and TSH adapters may
+6. A session has one effective surface attachment. A replacement attachment may
+   take ownership during renderer handoff, while a stale detach cannot clear the
+   replacement handle; simultaneous multi-surface ownership is not supported.
+7. Session disposal invalidates later host callbacks and publications. The
+   surface may initiate its existing final partition-bound flush, but late
+   completions cannot publish into a disposed session, cross partitions, or
+   overwrite a newer same-partition write.
+8. Independent renderer coordinators do not imply independent durable writers:
+   each product designates one writer per durable snapshot partition or assigns
+   auxiliary roots a different or non-durable repository.
+9. Shared code depends on product-neutral ports. Tutti and TSH adapters may
    depend on the kernel, but the kernel never imports either product.
-8. Current `WorkbenchContribution`, snapshot schema, stable node identity,
-   dock ordering/affinity, daemon API shapes, and business authority remain
-   behaviorally compatible throughout Phase 0.
-9. Host may depend on surface public contracts at type/declaration level;
-   surface never depends on host, and neither a React runtime dependency nor a
-   host/surface cycle is allowed.
+10. Current `WorkbenchContribution`, snapshot schema, stable node identity,
+    dock ordering/affinity, daemon API shapes, and business authority remain
+    behaviorally compatible throughout Phase 0.
+11. Host may depend on surface public contracts at type/declaration level;
+    surface never depends on host, and neither a React runtime dependency nor a
+    host/surface cycle is allowed.
 
 ## Compatibility constraints
 
@@ -427,17 +470,17 @@ Costs and constraints:
 - a coordinator/session abstraction adds value only if its public surface stays
   smaller than either product host.
 
+## Resolved Phase 0 constraints
+
+- Keep concurrent distinct partitions available internally, but do not promise
+  multi-view UX or multiple effective surfaces for one session in the first
+  public API.
+- Preserve the current public surface props and returned handle attachment for
+  Phase 0. An externally created shell-session API requires a separate decision.
+
 ## Open questions
 
-1. Should the coordinator allow concurrent sessions in one renderer, or enforce
-   one active session with a map-shaped API for future growth? Default: support
-   a map internally and test multiple partitions without promising multi-view
-   UI behavior.
-2. Should the surface accept an externally created shell session, or should the
-   host session initially expose stable `WorkbenchHost` input and attach the
-   returned handle? Default: attach through the current public surface props and
-   handle until an external-session API is justified independently.
-3. Which Tutti snapshot metadata (currently product-owned wallpaper and
+1. Which Tutti snapshot metadata (currently product-owned wallpaper and
    onboarding fields) should remain in the snapshot repository adapter versus a
    dedicated product metadata port? Default: keep compatibility in the Tutti
    adapter during Phase 0 and extract only after conformance tests prove the

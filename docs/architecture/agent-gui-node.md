@@ -715,6 +715,15 @@ so back, forward, reload, address entry, external-open, and overflow actions use
 the same controller and runtime state as the webview. The Terminal tray's close
 control only collapses the tray; it
 must not terminate or unmount the active terminal session.
+
+The standalone Agent renderer is not a durable Workbench snapshot writer. Its
+`view=agent` composition root may read the workspace snapshot once to seed
+product chrome such as wallpaper, but its repository is window-local after
+that read: layout, stack, wallpaper, and onboarding saves update only that
+window's memory and never call the workspace Workbench PUT endpoint. The OS
+workspace renderer remains the single durable snapshot writer for a workspace.
+This keeps the synthetic close-coordination host from accidentally becoming a
+second layout owner while standalone windows coexist with the main workspace.
 Electron main may create one of two native workspace shells. `OS` mode keeps
 the existing workspace window and its `ReadyWorkspaceWorkbench`
 desktop/window/dock surface, while `Agent` mode creates the frameless Agent

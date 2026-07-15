@@ -58,6 +58,29 @@ export function preserveWorkspaceOnboardingSnapshotMetadata(
   };
 }
 
+export function replaceWorkspaceOnboardingSnapshotMetadata(
+  authoritativeSnapshot: WorkbenchSnapshot | null | undefined,
+  nextSnapshot: WorkbenchSnapshot
+): WorkbenchSnapshot {
+  const authoritativeMetadata =
+    authoritativeSnapshot?.metadata?.[workspaceOnboardingMetadataKey];
+  const {
+    [workspaceOnboardingMetadataKey]: _discardedOnboardingMetadata,
+    ...nextMetadata
+  } = nextSnapshot.metadata ?? {};
+
+  return {
+    ...nextSnapshot,
+    metadata:
+      authoritativeMetadata === undefined
+        ? nextMetadata
+        : {
+            ...nextMetadata,
+            [workspaceOnboardingMetadataKey]: authoritativeMetadata
+          }
+  };
+}
+
 function readWorkspaceOnboardingMetadata(
   snapshot: WorkbenchSnapshot | null | undefined
 ): WorkspaceOnboardingSnapshotMetadata | null {
