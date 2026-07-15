@@ -38,7 +38,10 @@ const fakeAdapter = {
   readReferencePreview: async () => null
 };
 
-function makeSource(byParent: Record<string, ReferenceListResult>) {
+function makeSource(
+  byParent: Record<string, ReferenceListResult>,
+  options: { preserveBackendOrder?: boolean } = {}
+) {
   const { backend, calls } = backendOf(byParent);
   const source = createReferenceListSource({
     sourceId: "issue-file",
@@ -52,6 +55,7 @@ function makeSource(byParent: Record<string, ReferenceListResult>) {
     },
     isAvailable: () => true,
     backend,
+    ...(options.preserveBackendOrder ? { preserveBackendOrder: true } : {}),
     adapter: fakeAdapter
   });
   return { source, calls };
@@ -84,17 +88,19 @@ test("根层级:协议 group/reference 映射成 folder/file 节点", async () =
   assert.ok(file.ref.nodeId.startsWith("f:"));
 });
 
-test("backend 声明 ordered 时透传给 picker", async () => {
-  const { source } = makeSource({
-    __root__: {
-      items: [
-        { type: "group", id: "project-new", displayName: "Untitled" },
-        { type: "group", id: "project-old", displayName: "Alpha" }
-      ],
-      nextCursor: null,
-      ordered: true
-    }
-  });
+test("source 配置保留 backend 返回顺序时阻止 picker 重排", async () => {
+  const { source } = makeSource(
+    {
+      __root__: {
+        items: [
+          { type: "group", id: "project-new", displayName: "Untitled" },
+          { type: "group", id: "project-old", displayName: "Alpha" }
+        ],
+        nextCursor: null
+      }
+    },
+    { preserveBackendOrder: true }
+  );
 
   const result = await source.listChildren(scope, { node: null });
 
