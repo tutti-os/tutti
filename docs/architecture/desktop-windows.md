@@ -191,6 +191,23 @@ Agent-only shell, only the latest attempt whose App is still selected may report
 successful presentation; stale completions cannot claim success for a newer or
 cleared inline selection.
 
+Workspace file previews use the same ownership direction without sharing the
+App Center's attempt protocol. File Manager owns file activation, preview-kind
+resolution, system fallback, and opened-file reporting. A feature-owned file
+preview surface host routes the placement decision by workspace. The OS shell
+registers a presenter that launches the matching Workbench preview Node; the
+standalone Agent shell registers a presenter that opens the file through the
+desktop system host. Unsupported-preview notification policy belongs to that
+presenter registration, so disposing the Agent shell restores the default OS
+policy automatically. Registrations use identity-checked cleanup, preventing an
+old Shell effect cleanup from removing a newer presenter. A presentation started
+under one registration may still report success after that registration is
+replaced or disposed if its presenter eventually completes successfully. Unlike
+App Center preparation, it has no reversible pending attempt, and reporting
+failure would trigger a duplicate system fallback. When presentation fails, its
+fallback notification policy also comes from the registration that started the
+attempt, rather than a replacement registered while the attempt was in flight.
+
 The Agent-only contribution keeps the catalog and one app-specific Browser Node
 for every opened app mounted for the renderer lifetime. The back action clears
 only the selection, marks every retained Browser Node hidden, and reveals the

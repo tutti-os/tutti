@@ -249,8 +249,6 @@ function createFileManagerServiceStub(
     async resolveEntryIconUrl() {
       return null;
     },
-    setCanvasFilePreviewLauncher() {},
-    setPreviewUnsupportedFallbackNotificationEnabled() {},
     subscribe(_workspaceID, listener) {
       listeners.add(listener);
       return () => listeners.delete(listener);

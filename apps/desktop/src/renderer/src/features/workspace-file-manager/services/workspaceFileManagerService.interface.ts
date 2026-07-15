@@ -10,10 +10,6 @@ import type {
 } from "@tutti-os/workspace-file-manager/services";
 export type WorkspaceFileManagerSession = SharedWorkspaceFileManagerSession;
 
-export type WorkspaceFileManagerCanvasPreviewLauncher = (
-  target: WorkspaceFileActivationTarget
-) => Promise<boolean> | boolean;
-
 export interface IWorkspaceFileManagerService {
   readonly _serviceBrand: undefined;
   readonly hostOs: NodeJS.Platform;
@@ -39,14 +35,6 @@ export interface IWorkspaceFileManagerService {
     workspaceID: string,
     entry: WorkspaceFileEntry
   ): Promise<string | null>;
-  setCanvasFilePreviewLauncher(
-    workspaceID: string,
-    launcher: WorkspaceFileManagerCanvasPreviewLauncher | null
-  ): void;
-  setPreviewUnsupportedFallbackNotificationEnabled(
-    workspaceID: string,
-    enabled: boolean
-  ): void;
   subscribe(workspaceID: string, listener: () => void): () => void;
 }
 

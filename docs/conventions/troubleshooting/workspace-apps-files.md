@@ -155,6 +155,38 @@
   [workbenchWorkspaceAppSurfacePresenter.ts](../../../apps/desktop/src/renderer/src/features/workspace-workbench/services/workbenchWorkspaceAppSurfacePresenter.ts)
   [standaloneAgentWorkspaceAppSurfacePresenter.ts](../../../apps/desktop/src/renderer/src/features/workspace-workbench/services/standaloneAgentWorkspaceAppSurfacePresenter.ts)
 
+### Agent file preview behavior leaks into the OS shell
+
+- Symptom:
+  Opening a previewable file in the OS shell uses the system default app instead
+  of creating or focusing a Workbench preview Node, or unsupported-preview
+  notifications remain suppressed after leaving the standalone Agent shell.
+- Quick checks:
+  Confirm the renderer window registered one file preview presenter for the
+  workspace: Workbench in the OS shell or standalone Agent in the Agent shell.
+  Search shared File Manager code for callback setters or direct Workbench and
+  system-host presentation calls.
+- Root cause:
+  File activation is feature behavior, but preview placement and unsupported
+  fallback notification policy are Shell behavior. Storing either as mutable
+  File Manager mode state lets one Shell overwrite behavior used by another;
+  asymmetric effect cleanup can leave the policy behind after unmount.
+- Fix:
+  Keep activation and fallback orchestration in File Manager, route preview
+  placement through the feature-owned workspace file preview surface host, and
+  register separate Workbench and standalone Agent presenters. Store fallback
+  notification policy on the presenter registration and use identity-checked
+  disposal so removing an old registration cannot affect a replacement.
+- Validation:
+  Run the file preview surface host and both presenter tests. Verify the OS
+  presenter calls `host.launchNode`, the Agent presenter calls the desktop file
+  host, absent presenters preserve system fallback, workspace registrations stay
+  isolated, and disposing the Agent presenter restores fallback notifications.
+- References:
+  [workspaceFilePreviewSurfaceHost.interface.ts](../../../apps/desktop/src/renderer/src/features/workspace-file-manager/services/workspaceFilePreviewSurfaceHost.interface.ts)
+  [workbenchWorkspaceFilePreviewPresenter.ts](../../../apps/desktop/src/renderer/src/features/workspace-workbench/services/workbenchWorkspaceFilePreviewPresenter.ts)
+  [standaloneAgentWorkspaceFilePreviewPresenter.ts](../../../apps/desktop/src/renderer/src/features/workspace-workbench/services/standaloneAgentWorkspaceFilePreviewPresenter.ts)
+
 ### Load unpacked project roots with source manifests
 
 - Symptom:

@@ -33,6 +33,7 @@ import { IReporterService } from "@renderer/features/analytics";
 import { IAgentsService } from "@renderer/features/workspace-agent/services/agentsService.interface.ts";
 import { useDesktopPreferencesService } from "@renderer/features/desktop-preferences/ui/useDesktopPreferencesService";
 import { useWorkspaceFileManagerService } from "@renderer/features/workspace-file-manager/ui/useWorkspaceFileManagerService";
+import { IWorkspaceFilePreviewSurfaceHost } from "@renderer/features/workspace-file-manager";
 import { useTranslation } from "@renderer/i18n";
 import { createWorkspaceWorkbenchDesktopI18nRuntime } from "@shared/i18n";
 import type {
@@ -67,6 +68,7 @@ import { renderWorkspaceFilesNodeBody } from "./WorkspaceFilesNodeBody";
 import { useWorkspaceSettingsService } from "./useWorkspaceSettingsService";
 import { useWorkspaceWorkbenchHostService } from "./useWorkspaceWorkbenchHostService";
 import { createWorkbenchWorkspaceAppSurfacePresenter } from "../services/workbenchWorkspaceAppSurfacePresenter.ts";
+import { createWorkbenchWorkspaceFilePreviewPresenter } from "../services/workbenchWorkspaceFilePreviewPresenter.ts";
 
 export interface WorkspaceWorkbenchShellRuntime {
   appI18n: I18nRuntime<string>;
@@ -142,6 +144,9 @@ export function useWorkspaceWorkbenchShellRuntime({
   const { service: workspaceSettingsService } = useWorkspaceSettingsService();
   const agentsService = useService(IAgentsService);
   const workspaceAppSurfaceHost = useService(IWorkspaceAppSurfaceHost);
+  const workspaceFilePreviewSurfaceHost = useService(
+    IWorkspaceFilePreviewSurfaceHost
+  );
   const workspaceFileManagerService = useWorkspaceFileManagerService();
   const workbenchHostService = useWorkspaceWorkbenchHostService();
   const comingSoonAgentProviders = useMemo<readonly AgentGUIProvider[]>(
@@ -365,22 +370,14 @@ export function useWorkspaceWorkbenchShellRuntime({
   }, [shellRuntimeController.dispose]);
 
   useEffect(() => {
-    workspaceFileManagerService.setCanvasFilePreviewLauncher(
+    if (!workbenchHost) {
+      return;
+    }
+    return workspaceFilePreviewSurfaceHost.registerPresenter(
       state.workspace.id,
-      workbenchHost
-        ? async (target) =>
-            (await workbenchHost.launchNode(
-              createWorkspaceFilePreviewLaunchRequest(target)
-            )) !== null
-        : null
+      createWorkbenchWorkspaceFilePreviewPresenter({ host: workbenchHost })
     );
-    return () => {
-      workspaceFileManagerService.setCanvasFilePreviewLauncher(
-        state.workspace.id,
-        null
-      );
-    };
-  }, [state.workspace.id, workbenchHost, workspaceFileManagerService]);
+  }, [state.workspace.id, workbenchHost, workspaceFilePreviewSurfaceHost]);
 
   useEffect(() => {
     if (!workbenchHost) {
