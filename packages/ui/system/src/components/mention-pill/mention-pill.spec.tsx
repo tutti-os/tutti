@@ -29,4 +29,23 @@ describe("MentionPill", () => {
       document.querySelector('[data-slot="tooltip-trigger"]')
     ).toBeInTheDocument();
   });
+
+  it("keeps the removable action borderless", () => {
+    render(
+      <MentionPill
+        kind="session"
+        label="Design review"
+        removable
+        removeButtonProps={{ "aria-label": "Remove" }}
+      />
+    );
+
+    expect(screen.getByRole("button", { name: "Remove" })).toHaveClass(
+      "size-5"
+    );
+    expect(screen.getByRole("button", { name: "Remove" })).not.toHaveClass(
+      "rounded-sm",
+      "hover:bg-transparency-block"
+    );
+  });
 });

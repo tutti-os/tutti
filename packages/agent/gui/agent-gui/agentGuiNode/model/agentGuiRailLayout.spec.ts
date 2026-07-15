@@ -87,7 +87,7 @@ describe("agentGuiRailLayout", () => {
   });
 
   it("auto-collapses against a host-provided threshold", () => {
-    expect(AGENT_GUI_STANDALONE_AUTO_COLLAPSE_WIDTH_PX).toBe(720);
+    expect(AGENT_GUI_STANDALONE_AUTO_COLLAPSE_WIDTH_PX).toBe(630);
     expect(
       shouldAutoCollapseAgentGUIConversationRail(
         AGENT_GUI_STANDALONE_AUTO_COLLAPSE_WIDTH_PX,

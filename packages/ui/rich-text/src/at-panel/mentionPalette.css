@@ -602,15 +602,10 @@
   overflow: hidden;
 }
 
-.rich-text-at-mention-row--session {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  gap: 12px;
-}
-
 .rich-text-at-mention-row--issue,
 .rich-text-at-mention-row--app,
-.rich-text-at-mention-row--file {
+.rich-text-at-mention-row--file,
+.rich-text-at-mention-row--session {
   display: flex;
 }
 
@@ -621,7 +616,8 @@
 .rich-text-at-mention-row__leading,
 .rich-text-at-mention-row__inline,
 .rich-text-at-mention-row__file-text,
-.rich-text-at-mention-row__app-text {
+.rich-text-at-mention-row__app-text,
+.rich-text-at-mention-row__entity-text {
   display: flex;
   min-width: 0;
   overflow: hidden;
@@ -633,11 +629,6 @@
   width: 100%;
 }
 
-.rich-text-at-mention-row--session .rich-text-at-mention-row__leading {
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr);
-}
-
 .rich-text-at-mention-row__inline {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
@@ -647,24 +638,18 @@
 }
 
 .rich-text-at-mention-row__file-text,
-.rich-text-at-mention-row__app-text {
+.rich-text-at-mention-row__app-text,
+.rich-text-at-mention-row__entity-text {
   align-items: baseline;
   gap: 4px;
-}
-
-.rich-text-at-mention-row__session-title {
-  display: grid;
-  grid-template-columns: minmax(0, max-content) minmax(0, 1fr);
-  align-items: baseline;
-  gap: 4px;
-  width: 100%;
 }
 
 .rich-text-at-mention-row__file-text {
   flex: 1 1 0;
 }
 
-.rich-text-at-mention-row__app-text {
+.rich-text-at-mention-row__app-text,
+.rich-text-at-mention-row__entity-text {
   flex: 1 1 0;
 }
 
@@ -681,13 +666,12 @@
 }
 
 .rich-text-at-mention-row__title,
+.rich-text-at-mention-row__entity-name,
+.rich-text-at-mention-row__entity-description,
 .rich-text-at-mention-row__app-name,
-.rich-text-at-mention-row__session-title,
 .rich-text-at-mention-row__description,
 .rich-text-at-mention-row__app-description,
-.rich-text-at-mention-row__file-count,
-.rich-text-at-mention-row__session-participant,
-.rich-text-at-mention-row__session-summary {
+.rich-text-at-mention-row__file-count {
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -696,14 +680,14 @@
 }
 
 .rich-text-at-mention-row__title,
-.rich-text-at-mention-row__app-name,
-.rich-text-at-mention-row__session-title,
-.rich-text-at-mention-row__session-participant {
+.rich-text-at-mention-row__entity-name,
+.rich-text-at-mention-row__app-name {
   color: var(--rich-text-at-mention-text-primary);
   font-weight: 600;
 }
 
 .rich-text-at-mention-row__title,
+.rich-text-at-mention-row__entity-name,
 .rich-text-at-mention-row__app-name {
   flex: 0 1 auto;
 }
@@ -713,14 +697,15 @@
 }
 
 .rich-text-at-mention-row__description,
+.rich-text-at-mention-row__entity-description,
 .rich-text-at-mention-row__app-description,
-.rich-text-at-mention-row__file-count,
-.rich-text-at-mention-row__session-summary {
+.rich-text-at-mention-row__file-count {
   color: var(--rich-text-at-mention-text-secondary);
   font-weight: 400;
 }
 
-.rich-text-at-mention-row__app-description {
+.rich-text-at-mention-row__app-description,
+.rich-text-at-mention-row__entity-description {
   flex: 1 1 0;
 }
 
@@ -732,16 +717,6 @@
 .rich-text-at-mention-row__file-count {
   flex: 0 0 auto;
   font-size: 11px;
-}
-
-.rich-text-at-mention-row__session-title,
-.rich-text-at-mention-row__session-participant,
-.rich-text-at-mention-row__session-summary {
-  line-height: 16px;
-}
-
-.rich-text-at-mention-row__session-participant {
-  flex: 0 0 auto;
 }
 
 .rich-text-at-mention-row__session-summary {

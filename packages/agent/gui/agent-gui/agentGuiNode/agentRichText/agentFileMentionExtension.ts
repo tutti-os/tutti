@@ -60,6 +60,20 @@ export function exitAgentFileMentionSuggestion(editor: Editor): void {
   exitSuggestion(editor.view, agentFileMentionPluginKey);
 }
 
+function mentionItemIconUrl(item: AgentContextMentionItem): string | undefined {
+  if (item.kind === "session") {
+    return item.agentIconUrl;
+  }
+  if (
+    item.kind === "workspace-app" ||
+    item.kind === "agent-target" ||
+    item.kind === "workspace-reference"
+  ) {
+    return item.iconUrl;
+  }
+  return undefined;
+}
+
 /** Non-text/leaf nodes surface as this sentinel in {@link expandRangeOverMentionPlaceholder}. */
 const MENTION_PLACEHOLDER_LEAF_SENTINEL = "￼";
 /** Upper bound (in chars) for a `{ … }` group we treat as a mention placeholder. */
@@ -214,6 +228,7 @@ export function createAgentFileMentionExtension(
           ? resolveAgentMentionFileThumbnailUrl(item)
           : undefined;
       const href = item.href;
+      const iconUrl = mentionItemIconUrl(item);
       const tagName = options.renderAsLink ? "a" : "span";
       const visual = mentionVisual(item);
       const sharedAttributes = {
@@ -238,12 +253,7 @@ export function createAgentFileMentionExtension(
               }
             : {}),
           ...(options.renderAsLink ? { href } : {}),
-          ...((item.kind === "workspace-app" ||
-            item.kind === "agent-target" ||
-            item.kind === "workspace-reference") &&
-          item.iconUrl
-            ? { "data-agent-mention-icon-url": item.iconUrl }
-            : {}),
+          ...(iconUrl ? { "data-agent-mention-icon-url": iconUrl } : {}),
           ...(item.kind === "workspace-reference"
             ? { "data-agent-mention-file-count": String(item.fileCount) }
             : {}),

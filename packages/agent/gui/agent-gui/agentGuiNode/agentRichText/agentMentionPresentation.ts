@@ -1,4 +1,26 @@
 import type { AgentContextMentionItem } from "./agentFileMentionContracts";
+import { managedAgentRoundedIconUrl } from "../../../shared/managedAgentIcons";
+import { agentSessionTargetIdFromHref } from "./agentMentionMarkdown";
+
+export function resolveAgentSessionMentionIconUrl(input: {
+  agentIconUrl?: string | null;
+  agentTargetId?: string | null;
+  href?: string | null;
+}): string | undefined {
+  const explicitIconUrl = input.agentIconUrl?.trim() ?? "";
+  if (explicitIconUrl) {
+    return explicitIconUrl;
+  }
+  const agentTargetId =
+    input.agentTargetId?.trim() ||
+    agentSessionTargetIdFromHref(input.href?.trim() ?? "") ||
+    "";
+  if (!agentTargetId.startsWith("local:")) {
+    return undefined;
+  }
+  const provider = agentTargetId.slice("local:".length).trim();
+  return provider ? managedAgentRoundedIconUrl(provider) : undefined;
+}
 
 export function mentionVisual(item: AgentContextMentionItem): {
   kindLabel: string;

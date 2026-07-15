@@ -12,6 +12,7 @@ import {
   parseMentionFileCount,
   parseMentionItemFromHref
 } from "./agentMentionMarkdown";
+import { resolveAgentSessionMentionIconUrl } from "./agentMentionPresentation";
 
 export function mentionItemToAttrs(
   item: AgentContextMentionItem
@@ -28,6 +29,11 @@ export function mentionItemToAttrs(
     };
   }
   if (item.kind === "session") {
+    const iconUrl = resolveAgentSessionMentionIconUrl({
+      agentIconUrl: item.agentIconUrl,
+      agentTargetId: item.agentTargetId,
+      href: item.href
+    });
     return {
       name: item.name,
       kind: item.kind,
@@ -41,6 +47,7 @@ export function mentionItemToAttrs(
       title: item.title,
       initiatorName: item.initiatorName,
       agentName: item.agentName,
+      ...(iconUrl ? { iconUrl } : {}),
       status: item.status ?? "",
       inputPreview: item.inputPreview ?? "",
       summaryPreview: item.summaryPreview ?? ""
@@ -160,6 +167,10 @@ export function attrsToMentionItem(
       initiatorName:
         typeof attrs.initiatorName === "string" ? attrs.initiatorName : "",
       agentName: typeof attrs.agentName === "string" ? attrs.agentName : "",
+      agentIconUrl:
+        typeof attrs.iconUrl === "string" && attrs.iconUrl.trim()
+          ? attrs.iconUrl.trim()
+          : undefined,
       status: typeof attrs.status === "string" ? attrs.status : undefined,
       inputPreview:
         typeof attrs.inputPreview === "string" ? attrs.inputPreview : undefined,

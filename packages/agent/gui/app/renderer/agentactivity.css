@@ -3523,8 +3523,15 @@ aside.workspace-agents-status-panel
 .agent-gui-conversation__interactive-feedback-composer {
   position: relative;
   display: block;
+  box-sizing: border-box;
   width: 100%;
   min-width: 0;
+  min-height: 80px;
+  overflow: hidden;
+  border: 1px solid var(--line-2);
+  border-radius: 7px;
+  background: var(--background-fronted);
+  padding-bottom: 44px;
 }
 
 .agent-gui-conversation__interactive-prompt-textarea {
@@ -3544,17 +3551,18 @@ aside.workspace-agents-status-panel
 
 .agent-gui-conversation__interactive-feedback-composer
   .agent-gui-conversation__interactive-prompt-textarea {
+  display: block;
   box-sizing: border-box;
   min-width: 0;
-  min-height: 42px;
+  min-height: 36px;
   max-height: 132px;
-  border: 1px solid var(--line-2);
-  border-radius: 7px;
-  background: var(--background-fronted);
+  border: 0;
+  border-radius: 0;
+  background: transparent;
   color: var(--text-primary);
   font-size: 13px;
   line-height: 1.45;
-  padding: 9px 48px 42px 10px;
+  padding: 9px 10px;
   resize: vertical;
 }
 
@@ -3565,14 +3573,14 @@ aside.workspace-agents-status-panel
 
 .agent-gui-conversation__interactive-feedback-send-button {
   position: absolute;
-  right: 8px;
-  bottom: 8px;
+  right: 12px;
+  bottom: 12px;
   display: grid;
   place-items: center;
-  width: 30px;
-  min-width: 30px;
-  height: 30px;
-  min-height: 30px;
+  width: 28px;
+  min-width: 28px;
+  height: 28px;
+  min-height: 28px;
   border: 0;
   border-radius: 999px;
   background: var(--text-primary);
@@ -4274,6 +4282,7 @@ aside.workspace-agents-status-panel
 .agent-gui-node__composer-textarea .agent-rich-text-mention-node {
   display: inline-flex;
   align-items: center;
+  top: 1px;
   height: 24px;
   min-height: 24px;
   line-height: 24px;
@@ -4297,7 +4306,7 @@ aside.workspace-agents-status-panel
   padding-left: 4px;
   border-radius: 4px;
   line-height: 24px;
-  transform: none;
+  transform: translateY(1px);
   transition: background-color 140ms ease-in-out;
   vertical-align: middle;
 }
@@ -4306,6 +4315,32 @@ aside.workspace-agents-status-panel
   .agent-rich-text-mention-node
   [data-slot="mention-pill"] {
   height: 24px;
+}
+
+.agent-gui-node__composer-textarea
+  [data-agent-mention-kind="skill"].tsh-agent-object-token--entity,
+.agent-gui-node__composer-textarea
+  [data-agent-mention-kind="capability"].tsh-agent-object-token--entity {
+  top: 1px;
+  height: 24px;
+  min-height: 24px;
+  box-sizing: border-box;
+  line-height: 24px;
+  vertical-align: middle;
+}
+
+.agent-gui-node__composer-textarea
+  [data-agent-mention-kind="skill"].tsh-agent-object-token--entity
+  .tsh-agent-object-token__main,
+.agent-gui-node__composer-textarea
+  [data-agent-mention-kind="capability"].tsh-agent-object-token--entity
+  .tsh-agent-object-token__main {
+  height: 24px;
+  box-sizing: border-box;
+  border-radius: 4px;
+  font-size: 13px;
+  line-height: 24px;
+  transform: translateY(1px);
 }
 
 .agent-gui-node__composer-textarea
@@ -7576,7 +7611,7 @@ button.agent-gui-node__conversation-section-toggle:hover
   min-height: 54px;
   max-height: 118px;
   min-width: 0;
-  padding: 12px 0;
+  padding: 0 0 12px;
 }
 
 .agent-gui-node__composer[data-layout="dock"]
@@ -8257,6 +8292,7 @@ html[data-theme="light"] [data-message-center-item-id].agent-gui-edge-glow {
   overflow-x: hidden;
   overflow-y: auto;
   overflow-wrap: anywhere;
+  padding-top: 12px;
   scrollbar-gutter: stable;
   /* Keep the scrollbar persistently visible (not hover/focus-only) once the
      draft overflows the visible viewport: a long pasted/dictated block of
@@ -8273,6 +8309,7 @@ html[data-theme="light"] [data-message-center-item-id].agent-gui-edge-glow {
   .agent-gui-node__composer-prompt-input-area[data-has-draft-images="true"]
   .agent-gui-node__composer-textarea {
   max-height: var(--agent-gui-composer-text-viewport-height);
+  padding-top: 0;
 }
 
 .agent-gui-node__composer[data-layout="dock"] textarea::-webkit-scrollbar,
@@ -8325,7 +8362,7 @@ html[data-theme="light"] [data-message-center-item-id].agent-gui-edge-glow {
   margin: 0;
   font-size: 13px;
   line-height: 24px;
-  min-height: 1.4em;
+  min-height: 0;
 }
 
 .agent-gui-node__composer[data-layout="dock"]
@@ -8334,7 +8371,7 @@ html[data-theme="light"] [data-message-center-item-id].agent-gui-edge-glow {
   display: block;
   width: auto;
   min-width: 0;
-  min-height: 24px;
+  min-height: 0;
   overflow: visible;
   overflow-wrap: anywhere;
   text-overflow: clip;
@@ -8354,6 +8391,19 @@ html[data-theme="light"] [data-message-center-item-id].agent-gui-edge-glow {
   p:empty:not(.agent-rich-text-placeholder-node) {
   min-height: 0;
   line-height: 0;
+}
+
+.agent-gui-node__composer-textarea
+  p:not(.agent-rich-text-placeholder-node):not(:empty) {
+  position: relative;
+  top: 0;
+  line-height: 20px;
+}
+
+.agent-gui-node__composer-textarea
+  p:not(.agent-rich-text-placeholder-node):not(:empty)
+  .agent-rich-text-mention-node {
+  transform: translateY(-2px);
 }
 
 .agent-gui-node__composer-textarea
@@ -9366,6 +9416,7 @@ html[data-theme="light"] [data-message-center-item-id].agent-gui-edge-glow {
 
   display: grid;
   width: min(820px, 100%);
+  min-width: 0;
   block-size: var(--agent-gui-empty-hero-anchor-block-size);
   align-content: start;
   gap: var(--agent-gui-empty-hero-gap);
@@ -9386,6 +9437,7 @@ html[data-theme="light"] [data-message-center-item-id].agent-gui-edge-glow {
 ),
 .agent-gui-node__empty-hero-icon-slot[data-carousel-placeholder="true"] {
   width: min(400px, 100%);
+  min-width: 320px;
   height: 112px;
 }
 
@@ -9407,6 +9459,7 @@ html[data-theme="light"] [data-message-center-item-id].agent-gui-edge-glow {
   top: var(--agent-gui-hero-carousel-slot-top, calc(50% - 210px));
   left: 50%;
   width: round(nearest, min(400px, calc(100% - 64px)), 1px);
+  min-width: 320px;
   transform: translateX(-50%) scale(var(--agent-gui-hero-carousel-scale));
   transform-origin: center center;
 }
@@ -9422,6 +9475,7 @@ html[data-theme="light"] [data-message-center-item-id].agent-gui-edge-glow {
 
 .agent-gui-node__empty-hero-carousel-placeholder {
   width: min(400px, 100%);
+  min-width: 320px;
   height: 112px;
   flex: 0 0 auto;
 }

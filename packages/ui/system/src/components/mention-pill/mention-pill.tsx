@@ -131,7 +131,7 @@ function MentionPill({
             type="button"
             {...removeButtonProps}
             className={cn(
-              "absolute top-1/2 left-1/2 inline-flex size-5 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-sm text-[var(--text-secondary)] opacity-0 transition-opacity group-hover:opacity-100 hover:bg-transparency-block hover:text-[var(--text-primary)] focus-visible:opacity-100",
+              "absolute top-1/2 left-1/2 inline-flex size-5 -translate-x-1/2 -translate-y-1/2 items-center justify-center text-[var(--text-secondary)] opacity-0 transition-opacity group-hover:opacity-100 hover:text-[var(--text-primary)] focus-visible:opacity-100",
               removeButtonProps?.className
             )}
           >

@@ -52,7 +52,7 @@ export function AgentRichTextEditorSurface({
           aria-multiline="true"
           className={cn(
             className,
-            "overflow-y-auto whitespace-pre-wrap break-words [&_p]:m-0 [&_p]:min-h-[1.45em]"
+            "overflow-y-auto whitespace-pre-wrap break-words [&_p]:m-0"
           )}
         />
       )}

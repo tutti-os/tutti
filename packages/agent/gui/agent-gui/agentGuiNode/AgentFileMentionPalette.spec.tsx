@@ -412,6 +412,17 @@ describe("AgentFileMentionPalette", () => {
       "rich-text-at-mention-row",
       "rich-text-at-mention-row--session"
     );
+    const sessionParticipant = sessionRow?.querySelector(
+      ".rich-text-at-mention-row__session-participant"
+    );
+    expect(sessionParticipant?.parentElement).toHaveClass(
+      "rich-text-at-mention-row__entity-text",
+      "rich-text-at-mention-row__session-title"
+    );
+    expect(sessionParticipant).toHaveClass(
+      "rich-text-at-mention-row__entity-name",
+      "rich-text-at-mention-row__session-participant"
+    );
     expect(statusTags[0]).toHaveClass("rich-text-at-mention-status");
     const userAvatarImage = selectedOption.querySelector(
       '[data-agent-mention-user-avatar="true"] img'
@@ -1381,9 +1392,11 @@ describe("AgentFileMentionPalette", () => {
       )
     ).toBeVisible();
     expect(screen.getByText("Automation").parentElement).toHaveClass(
+      "rich-text-at-mention-row__entity-text",
       "rich-text-at-mention-row__app-text"
     );
     expect(screen.getByText("Automation")).toHaveClass(
+      "rich-text-at-mention-row__entity-name",
       "rich-text-at-mention-row__app-name"
     );
     expect(
@@ -1391,6 +1404,11 @@ describe("AgentFileMentionPalette", () => {
         "Schedule and review recurring automation runs for this workspace."
       )
     ).toHaveClass("rich-text-at-mention-row__app-description");
+    expect(
+      screen.getByText(
+        "Schedule and review recurring automation runs for this workspace."
+      )
+    ).toHaveClass("rich-text-at-mention-row__entity-description");
     expect(screen.queryByText("automation")).toBeNull();
     expect(
       document.querySelector("section")?.textContent?.match(/\bApps\b/g) ?? []

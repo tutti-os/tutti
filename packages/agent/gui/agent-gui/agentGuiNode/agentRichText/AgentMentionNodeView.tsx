@@ -21,6 +21,7 @@ import {
 import { managedAgentRoundedIconUrl } from "../../../shared/managedAgentIcons";
 import { getAgentCustomMentionKind } from "../../../shared/agentCustomMentionKinds";
 import { AGENT_RICH_TEXT_CARET_ANCHOR } from "./agentRichTextCaretAnchor";
+import { resolveAgentSessionMentionIconUrl } from "./agentMentionPresentation";
 
 type AgentMentionNodeViewKind =
   | "file"
@@ -118,12 +119,18 @@ function mentionViewModel(
 
   if (kind === "session") {
     const label = attrString(attrs, "title").trim() || name.trim();
+    const agentTargetId = attrString(attrs, "agentTargetId").trim();
     return {
       ariaLabel:
         `${t("agentHost.agentGui.mentionKindSession")} ${label}`.trim(),
       directoryPath: "",
       entryKind: "",
       href,
+      iconUrl: resolveAgentSessionMentionIconUrl({
+        agentIconUrl: attrString(attrs, "iconUrl"),
+        agentTargetId,
+        href
+      }),
       kind,
       label
     };
@@ -343,7 +350,7 @@ function AgentMentionLegacyFileNodeView({
           {isEditable ? (
             <button
               aria-label={removeActionAriaLabel}
-              className="absolute left-1/2 top-1/2 inline-flex size-5 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-sm text-[var(--text-secondary)] opacity-0 transition-opacity hover:bg-transparency-block hover:text-[var(--text-primary)] focus-visible:opacity-100 group-hover:opacity-100"
+              className="absolute left-1/2 top-1/2 inline-flex size-5 -translate-x-1/2 -translate-y-1/2 items-center justify-center text-[var(--text-secondary)] opacity-0 transition-opacity hover:text-[var(--text-primary)] focus-visible:opacity-100 group-hover:opacity-100"
               type="button"
               onMouseDown={handleRemove}
             >
@@ -367,7 +374,7 @@ function AgentMentionLegacyFileNodeView({
           {isEditable ? (
             <button
               aria-label={removeActionAriaLabel}
-              className="absolute left-1/2 top-1/2 inline-flex size-5 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-sm text-[var(--text-secondary)] opacity-0 transition-opacity hover:bg-transparency-block hover:text-[var(--text-primary)] focus-visible:opacity-100 group-hover:opacity-100"
+              className="absolute left-1/2 top-1/2 inline-flex size-5 -translate-x-1/2 -translate-y-1/2 items-center justify-center text-[var(--text-secondary)] opacity-0 transition-opacity hover:text-[var(--text-primary)] focus-visible:opacity-100 group-hover:opacity-100"
               type="button"
               onMouseDown={handleRemove}
             >
@@ -479,7 +486,7 @@ export function AgentMentionNodeView(props: NodeViewProps): JSX.Element {
             {isEditable ? (
               <button
                 aria-label={removeActionAriaLabel}
-                className="absolute left-1/2 top-1/2 inline-flex size-5 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-sm text-[var(--text-secondary)] opacity-0 transition-opacity hover:bg-transparency-block hover:text-[var(--text-primary)] focus-visible:opacity-100 group-hover:opacity-100"
+                className="absolute left-1/2 top-1/2 inline-flex size-5 -translate-x-1/2 -translate-y-1/2 items-center justify-center text-[var(--text-secondary)] opacity-0 transition-opacity hover:text-[var(--text-primary)] focus-visible:opacity-100 group-hover:opacity-100"
                 type="button"
                 onMouseDown={handleRemove}
               >
@@ -506,7 +513,7 @@ export function AgentMentionNodeView(props: NodeViewProps): JSX.Element {
     const removeAction = isEditable ? (
       <button
         aria-label={removeActionAriaLabel}
-        className="inline-flex size-4 shrink-0 items-center justify-center rounded-sm text-[var(--text-secondary)] opacity-0 transition-opacity hover:bg-transparency-block hover:text-[var(--text-primary)] focus-visible:opacity-100 group-hover:opacity-100"
+        className="inline-flex size-4 shrink-0 items-center justify-center text-[var(--text-secondary)] opacity-0 transition-opacity hover:text-[var(--text-primary)] focus-visible:opacity-100 group-hover:opacity-100"
         type="button"
         onMouseDown={handleRemove}
       >
@@ -586,6 +593,7 @@ export function AgentMentionNodeView(props: NodeViewProps): JSX.Element {
         data-agent-mention-href={mention.href}
         data-agent-mention-kind={mention.kind}
         kind={mention.kind === "session" ? "session" : "issue"}
+        iconUrl={mention.iconUrl}
         label={mention.label}
         removable={isEditable}
         removeButtonProps={

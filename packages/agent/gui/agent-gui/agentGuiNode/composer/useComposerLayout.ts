@@ -16,11 +16,15 @@ import type {
 const DOCK_COMPOSER_INPUT_MIN_HEIGHT = 56;
 const DOCK_COMPOSER_TEXT_LINE_HEIGHT = 24;
 const DOCK_COMPOSER_MAX_VISIBLE_TEXT_LINES = 3.5;
-const DOCK_COMPOSER_INPUT_TEXT_CHROME_HEIGHT = 26;
+// The editor owns the 12px top inset so transformed rich-text nodes cannot be
+// clipped by its scroll viewport. Only the bottom inset and borders remain
+// outside editor.scrollHeight.
+const DOCK_COMPOSER_INPUT_TEXT_MEASUREMENT_CHROME_HEIGHT = 14;
+const DOCK_COMPOSER_INPUT_TEXT_MAX_HEIGHT_CHROME = 26;
 const DOCK_COMPOSER_TEXT_VIEWPORT_MAX_HEIGHT =
   DOCK_COMPOSER_TEXT_LINE_HEIGHT * DOCK_COMPOSER_MAX_VISIBLE_TEXT_LINES;
 const DOCK_COMPOSER_INPUT_MAX_HEIGHT =
-  DOCK_COMPOSER_INPUT_TEXT_CHROME_HEIGHT +
+  DOCK_COMPOSER_INPUT_TEXT_MAX_HEIGHT_CHROME +
   DOCK_COMPOSER_TEXT_VIEWPORT_MAX_HEIGHT;
 const DOCK_COMPOSER_INPUT_BORDER_HEIGHT = 2;
 const DOCK_COMPOSER_INPUT_PADDING_BLOCK_HEIGHT = 24;
@@ -193,7 +197,8 @@ export function useComposerLayout({
         DOCK_COMPOSER_INPUT_MAX_HEIGHT,
         Math.max(
           DOCK_COMPOSER_INPUT_MIN_HEIGHT,
-          editor.scrollHeight + DOCK_COMPOSER_INPUT_TEXT_CHROME_HEIGHT
+          editor.scrollHeight +
+            DOCK_COMPOSER_INPUT_TEXT_MEASUREMENT_CHROME_HEIGHT
         )
       );
       const attachmentChromeHeight =

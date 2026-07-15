@@ -66,9 +66,9 @@ interface AgentSlashCommandPaletteProps {
 
 const paletteStyles = {
   palette:
-    "nodrag agent-gui-node__mention-palette flex h-full min-h-0 flex-col gap-1 overflow-y-auto px-1 pb-1 pt-2 [-webkit-app-region:no-drag]",
+    "nodrag agent-gui-node__mention-palette flex h-full min-h-0 flex-col gap-0.5 overflow-y-auto px-1 pb-1 pt-2 [-webkit-app-region:no-drag]",
   option:
-    "nodrag relative flex min-h-9 w-full min-w-0 cursor-pointer select-none items-center gap-2 overflow-hidden rounded-[6px] border-0 bg-transparent px-2.5 py-2 text-left text-[13px] text-[var(--text-primary)] outline-hidden transition-colors duration-200 [-webkit-app-region:no-drag] hover:bg-[var(--transparency-block)] focus-visible:bg-[var(--transparency-block)] focus-visible:outline-none active:bg-[var(--transparency-active)] data-[highlighted]:bg-[var(--transparency-block)] data-[highlighted]:text-[var(--text-primary)] [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
+    "nodrag relative flex h-7 min-h-7 w-full min-w-0 cursor-pointer select-none items-center gap-2 overflow-hidden rounded-[6px] border-0 bg-transparent px-2.5 py-0 text-left text-[13px] text-[var(--text-primary)] outline-hidden transition-colors duration-200 [-webkit-app-region:no-drag] hover:bg-[var(--transparency-block)] focus-visible:bg-[var(--transparency-block)] focus-visible:outline-none active:bg-[var(--transparency-active)] data-[highlighted]:bg-[var(--transparency-block)] data-[highlighted]:text-[var(--text-primary)] [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
   icon: "flex w-3 shrink-0 items-center justify-center self-center text-[var(--text-secondary)]",
   copy: "flex min-w-0 flex-1 items-center gap-1 overflow-hidden leading-[16px]",
   name: "flex min-w-0 max-w-[48%] shrink-0 items-center gap-1 overflow-hidden",
@@ -83,7 +83,7 @@ const paletteStyles = {
   groupHeaderFirst: "pt-1.5",
   groupHeaderSeparated: "mt-1 border-t border-[var(--border-1)] pt-2",
   settingsButton:
-    "nodrag ml-1 shrink-0 rounded-[5px] border-0 bg-[var(--transparency-hover)] px-2 py-1 text-[11px] font-semibold leading-[14px] text-[var(--text-secondary)] outline-none transition-colors duration-150 hover:bg-[var(--transparency-active)] hover:text-[var(--text-primary)] focus-visible:ring-2 focus-visible:ring-[var(--agent-gui-focus-ring,var(--border-focus))]",
+    "nodrag ml-1 flex h-5 min-h-5 shrink-0 items-center rounded-[4px] border-0 bg-[var(--transparency-hover)] px-2 py-0 text-[11px] font-semibold leading-[14px] text-[var(--text-secondary)] outline-none transition-colors duration-150 hover:bg-[var(--transparency-active)] hover:text-[var(--text-primary)] focus-visible:ring-2 focus-visible:ring-[var(--agent-gui-focus-ring,var(--border-focus))]",
   loading:
     "flex min-h-9 w-full items-center gap-2 px-2.5 py-2 text-[11px] text-[var(--text-secondary)]"
 };

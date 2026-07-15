@@ -242,8 +242,12 @@ composer for that target via the existing draft prefill activation path. The
 mention's visible label must use the source conversation title without
 prefixing the source agent or provider name, because the submitted draft also
 becomes the new conversation's initial title. Source agent identity stays in
-the mention metadata instead of being duplicated into title text. The
-`agent-session` navigation path is session-authoritative: clicking a mention
+the mention metadata instead of being duplicated into title text. Composer
+session mentions use the concrete source Agent icon when presentation metadata
+provides one. A pasted local session mention may derive that icon from its
+`local:<provider>` Agent Target id; a non-local target without explicit icon
+metadata keeps the generic session glyph rather than guessing another Agent.
+The `agent-session` navigation path is session-authoritative: clicking a mention
 resolves the canonical session by workspace and session ID, then launches with
 that session's provider and Agent Target. It must not inherit the current
 AgentGUI node's target or derive a provider from the unified dock identity. The

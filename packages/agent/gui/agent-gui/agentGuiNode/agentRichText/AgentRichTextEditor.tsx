@@ -299,7 +299,7 @@ export const AgentRichTextEditor = forwardRef<
         "aria-multiline": "true",
         class: cn(
           className,
-          "overflow-y-auto whitespace-pre-wrap break-words [&_p]:m-0 [&_p]:min-h-[1.45em]"
+          "overflow-y-auto whitespace-pre-wrap break-words [&_p]:m-0"
         )
       },
       clipboardTextSerializer: (slice) =>

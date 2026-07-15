@@ -663,20 +663,6 @@ export default function App() {
             >
               {t("t_b1b")}
             </ActionButton>
-            <ActionButton
-              action="agent-connect"
-              className="btn ghost"
-              provider="cursor"
-            >
-              {t("t_b1c")}
-            </ActionButton>
-            <ActionButton
-              action="agent-connect"
-              className="btn ghost"
-              provider="opencode"
-            >
-              {t("t_b1d")}
-            </ActionButton>
           </div>
         </section>
 

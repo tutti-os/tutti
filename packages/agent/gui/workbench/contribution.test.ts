@@ -1911,6 +1911,31 @@ describe("agent GUI workbench contribution copy", () => {
     );
   });
 
+  it("lowers composer plain text without moving mention fields", () => {
+    const css = readFileSync(resolve("app/renderer/agentactivity.css"), "utf8");
+
+    expect(css).toMatch(
+      /\.agent-gui-node__composer\[data-layout="dock"\]\s+textarea,\s*\.agent-gui-node__composer\[data-layout="dock"\]\s+\.agent-gui-node__composer-textarea\s*{[^}]*padding-top:\s*12px;/s
+    );
+    expect(css).toMatch(
+      /\.agent-gui-node__composer-textarea\s+p:not\(\.agent-rich-text-placeholder-node\):not\(:empty\)\s*{[^}]*top:\s*0;/s
+    );
+    expect(css).toMatch(
+      /\.agent-gui-node__composer-textarea\s+p:not\(\.agent-rich-text-placeholder-node\):not\(:empty\)\s+\.agent-rich-text-mention-node\s*{[^}]*transform:\s*translateY\(-2px\);/s
+    );
+  });
+
+  it("keeps interactive feedback scrolling above the send button", () => {
+    const css = readFileSync(resolve("app/renderer/agentactivity.css"), "utf8");
+
+    expect(css).toMatch(
+      /\.agent-gui-conversation__interactive-feedback-composer\s*{[^}]*min-height:\s*80px;[^}]*overflow:\s*hidden;[^}]*padding-bottom:\s*44px;/s
+    );
+    expect(css).toMatch(
+      /\.agent-gui-conversation__interactive-feedback-composer\s+\.agent-gui-conversation__interactive-prompt-textarea\s*{[^}]*min-height:\s*36px;[^}]*border:\s*0;[^}]*padding:\s*9px 10px;/s
+    );
+  });
+
   it("keeps provider manager drag hit boxes stable while previewing insertion", () => {
     const css = readFileSync(resolve("app/renderer/agentactivity.css"), "utf8");
 
@@ -1947,7 +1972,7 @@ describe("agent GUI workbench contribution copy", () => {
     const css = readFileSync(resolve("app/renderer/agentactivity.css"), "utf8");
 
     expect(css).toMatch(
-      /\.agent-gui-node__empty-hero-carousel-layer\s*\{[^}]*--agent-gui-hero-carousel-scale:\s*0\.8;[^}]*transform:\s*translateX\(-50%\)\s*scale\(var\(--agent-gui-hero-carousel-scale\)\);/s
+      /\.agent-gui-node__empty-hero-carousel-layer\s*\{[^}]*--agent-gui-hero-carousel-scale:\s*0\.8;[^}]*min-width:\s*320px;[^}]*transform:\s*translateX\(-50%\)\s*scale\(var\(--agent-gui-hero-carousel-scale\)\);/s
     );
     expect(css).toMatch(
       /@media\s*\(max-height:\s*639px\)\s*\{\s*\.agent-gui-node__empty-hero-carousel-layer\s*\{[^}]*--agent-gui-hero-carousel-scale:\s*0\.64;[^}]*top:\s*calc\(\s*var\(--agent-gui-hero-carousel-slot-top,\s*calc\(50%\s*-\s*210px\)\)\s*-\s*16px\s*\);/s
