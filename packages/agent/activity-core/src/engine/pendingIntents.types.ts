@@ -23,6 +23,7 @@ export interface PendingActivationIntentRecord {
   expiresAtUnixMs: number;
   submitDiagnostics?: Readonly<AgentActivitySubmitDiagnostics>;
   mode: "existing" | "new";
+  optimisticTitle?: string;
   pendingSettingsPatch?: Readonly<Record<string, unknown>>;
   settingsUpdateStatus?: "failed" | "inFlight" | "unknown";
   requestedAtUnixMs: number;
@@ -71,6 +72,7 @@ interface SessionActivationRequestedIntentBase {
   cwd?: string;
   expiresAtUnixMs: number;
   initialDisplayPrompt?: string;
+  optimisticTitle?: string;
   runtimeContent?: readonly AgentPromptContentBlock[];
   submitDiagnostics?: Readonly<AgentActivitySubmitDiagnostics>;
   requestedAtUnixMs: number;

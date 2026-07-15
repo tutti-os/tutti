@@ -11,13 +11,14 @@ export interface ResolveAgentGuiWorkbenchHeaderTitleInput {
 export interface ResolveAgentGuiWorkbenchSessionTitleInput {
   agentSessionId?: string | null;
   fallbackTitle?: string | null;
+  optimisticTitle?: string | null;
   provider: AgentGuiWorkbenchProvider | string;
   session?: Pick<AgentActivitySession, "title"> | null;
 }
 
 export interface AgentGuiWorkbenchSessionTitleResult {
   agentSessionId: string | null;
-  source: "snapshot" | "fallback" | "none";
+  source: "snapshot" | "optimistic" | "fallback" | "none";
   title: string | null;
 }
 
@@ -37,6 +38,7 @@ export function resolveAgentGuiWorkbenchHeaderTitle({
 export function resolveAgentGuiWorkbenchSessionTitle({
   agentSessionId,
   fallbackTitle,
+  optimisticTitle,
   session = null
 }: ResolveAgentGuiWorkbenchSessionTitleInput): AgentGuiWorkbenchSessionTitleResult {
   const normalizedAgentSessionId = agentSessionId?.trim() ?? "";
@@ -50,6 +52,15 @@ export function resolveAgentGuiWorkbenchSessionTitle({
       agentSessionId: normalizedAgentSessionId,
       source: "snapshot",
       title: snapshotTitle
+    };
+  }
+
+  const projectedOptimisticTitle = stripTitle(optimisticTitle);
+  if (projectedOptimisticTitle) {
+    return {
+      agentSessionId: normalizedAgentSessionId,
+      source: "optimistic",
+      title: projectedOptimisticTitle
     };
   }
 

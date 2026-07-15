@@ -13,9 +13,14 @@ import {
   AGENT_GUI_DETAIL_MIN_WIDTH_PX,
   AGENT_GUI_EXPANDED_TARGET_WIDTH_PX,
   AGENT_GUI_STANDALONE_AUTO_COLLAPSE_WIDTH_PX,
-  shouldAutoCollapseAgentGUIConversationRail
+  shouldAutoCollapseAgentGUIConversationRail,
+  useEngineSelector
 } from "@tutti-os/agent-gui";
-import { AgentGuiWorkbenchHeader } from "@tutti-os/agent-gui/workbench";
+import {
+  AgentGuiWorkbenchHeader,
+  agentGuiWorkbenchConversationIdentitiesEqual,
+  resolveAgentGuiWorkbenchConversationIdentity
+} from "@tutti-os/agent-gui/workbench";
 import type { WorkspaceSummary } from "@tutti-os/client-tuttid-ts";
 import {
   AGENT_GUI_WORKBENCH_CONVERSATION_RAIL_TOGGLE_EVENT,
@@ -279,6 +284,20 @@ export function StandaloneAgentWindow({
       provider: launchProvider
     })
   );
+  const sessionEngine = useMemo(
+    () => workspaceAgentActivityService.getSessionEngine(workspaceId),
+    [workspaceAgentActivityService, workspaceId]
+  );
+  const engineHeaderConversationIdentity = useEngineSelector(
+    sessionEngine,
+    (engineState) =>
+      resolveAgentGuiWorkbenchConversationIdentity({
+        agents,
+        engineState,
+        workbenchState: nodeState
+      }),
+    agentGuiWorkbenchConversationIdentitiesEqual
+  );
   const [isContentLoading, setIsContentLoading] = useState(true);
   const handleContentReady = useCallback(() => {
     setIsContentLoading(false);
@@ -437,7 +456,7 @@ export function StandaloneAgentWindow({
     agentTitle: headerAgentTitle,
     conversationIconFallbackUrl: headerConversationIconFallbackUrl,
     conversationIconUrl: headerConversationIconUrl,
-    conversationTitle: headerConversationTitle,
+    conversationTitle: snapshotHeaderConversationTitle,
     provider: headerProvider
   } = resolveStandaloneAgentHeaderIdentity({
     agentTargetId: activeAgentTargetId,
@@ -446,6 +465,8 @@ export function StandaloneAgentWindow({
     lastActiveAgentSessionId: nodeState.lastActiveAgentSessionId,
     sessions: activitySnapshot.sessions
   });
+  const headerConversationTitle =
+    engineHeaderConversationIdentity?.title ?? snapshotHeaderConversationTitle;
   const headerConversationRailWidthPx =
     typeof nodeState.conversationRailWidthPx === "number" &&
     Number.isFinite(nodeState.conversationRailWidthPx)

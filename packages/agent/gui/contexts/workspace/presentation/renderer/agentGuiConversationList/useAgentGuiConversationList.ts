@@ -109,7 +109,7 @@ export function useAgentGuiConversationList(
           sessionProvider: target?.provider ?? query.provider
         });
         const { title, titleFallback } = resolveAgentGUIConversationTitle(
-          activation.title ?? ""
+          activation.optimisticTitle ?? activation.title ?? ""
         );
         return {
           agentTargetId: activation.agentTargetId,
@@ -139,11 +139,16 @@ export function useAgentGuiConversationList(
         const activationIsPending =
           activation?.status === "requested" ||
           activation?.status === "uncertain";
-        const { title, titleFallback } = resolveAgentGUIConversationTitle(
-          activationIsNewer && activation.title
+        const optimisticTitle = activation?.optimisticTitle?.trim() ?? "";
+        const shouldUseOptimisticTitle =
+          conversation.title.trim().length === 0 && optimisticTitle.length > 0;
+        const projectedTitle = shouldUseOptimisticTitle
+          ? optimisticTitle
+          : activationIsNewer && activation?.title
             ? activation.title
-            : conversation.title
-        );
+            : conversation.title;
+        const { title, titleFallback } =
+          resolveAgentGUIConversationTitle(projectedTitle);
         return {
           ...conversation,
           sortTimeUnixMs: activationIsNewer

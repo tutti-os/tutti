@@ -1,4 +1,5 @@
 export {
+  deriveAgentGUIOptimisticConversationTitle,
   normalizeAgentGUIProviderIdentity,
   resolveAgentGUIConversationDisplayTitle,
   resolveAgentGUIConversationTitle,

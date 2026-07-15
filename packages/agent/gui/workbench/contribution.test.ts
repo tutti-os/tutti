@@ -1543,6 +1543,19 @@ describe("agent GUI workbench contribution copy", () => {
   it("refreshes the workbench header when the canonical session title changes", () => {
     const sessionEngine = createTestAgentSessionEngine("workspace-1");
     sessionEngine.dispatch({
+      type: "activation/requested",
+      agentSessionId: "session-1",
+      agentTargetId: "local:codex",
+      clientSubmitId: "submit-1",
+      cwd: "/workspace",
+      expiresAtUnixMs: Date.now() + 45_000,
+      mode: "new",
+      requestedAtUnixMs: 1,
+      requestId: "activation-1",
+      optimisticTitle: "test1",
+      workspaceId: "workspace-1"
+    });
+    sessionEngine.dispatch({
       session: createWorkbenchSession("", 1),
       type: "session/upserted"
     });
@@ -1590,7 +1603,7 @@ describe("agent GUI workbench contribution copy", () => {
 
     expect(
       screen.getByTestId("agent-gui-window-detail-title")
-    ).toHaveTextContent("Untitled conversation");
+    ).toHaveTextContent("test1");
     expect(
       screen.getByTestId("agent-gui-window-detail-title-icon")
     ).toBeInTheDocument();
@@ -1605,7 +1618,7 @@ describe("agent GUI workbench contribution copy", () => {
     expect(
       screen.getByTestId("agent-gui-window-detail-title")
     ).toHaveTextContent("Updated session title");
-    expect(screen.queryByText("Untitled conversation")).toBeNull();
+    expect(screen.queryByText("test1")).toBeNull();
   });
 
   it("keeps unified header chrome free of provider window titles", () => {

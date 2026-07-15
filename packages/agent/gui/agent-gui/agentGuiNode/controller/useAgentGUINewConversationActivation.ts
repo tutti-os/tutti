@@ -2,6 +2,7 @@ import { selectLatestActivationForSession } from "@tutti-os/agent-activity-core"
 import { useCallback } from "react";
 import { translate } from "../../../i18n/index";
 import type { AgentPromptContentBlock } from "../../../shared/contracts/dto";
+import { deriveAgentGUIOptimisticConversationTitle } from "../../../shared/agentConversationTitleProjection";
 import {
   agentPromptContentDisplayText,
   emptyAgentComposerDraft,
@@ -211,7 +212,10 @@ export function useAgentGUINewConversationActivation(
         initialDisplayPrompt,
         runtimeContent: toRuntimeSendContent(normalizedInitialContent),
         submitDiagnostics: agentSubmitTraceDiagnostics(submitTrace),
-        settings
+        settings,
+        optimisticTitle: deriveAgentGUIOptimisticConversationTitle(
+          normalizedInitialPrompt
+        )
       });
       if (requestId === null) return null;
       activeConversationIdRef.current = agentSessionId;

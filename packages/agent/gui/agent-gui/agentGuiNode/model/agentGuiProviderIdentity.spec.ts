@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { WorkspaceAgentActivityTimelineItem } from "../../../shared/workspaceAgentTimelineTypes";
 import {
+  deriveAgentGUIOptimisticConversationTitle,
   normalizeAgentGUIProviderIdentity,
   resolveAgentGUIConversationDisplayTitle,
   resolveAgentGUIConversationTitle,
@@ -62,6 +63,20 @@ describe("agentGuiProviderIdentity", () => {
       title: "",
       titleFallback: "untitled-conversation"
     });
+  });
+
+  it("derives an optimistic title from the submitted visible prompt", () => {
+    expect(
+      deriveAgentGUIOptimisticConversationTitle(
+        "  [@task](mention://workspace-issue/1)   inspect repo.  "
+      )
+    ).toBe("@task inspect repo.");
+    expect(
+      Array.from(deriveAgentGUIOptimisticConversationTitle("春".repeat(130)))
+    ).toHaveLength(120);
+    expect(deriveAgentGUIOptimisticConversationTitle("春".repeat(130))).toMatch(
+      /\.\.\.$/
+    );
   });
 
   it("strips trailing periods from agent GUI conversation titles", () => {

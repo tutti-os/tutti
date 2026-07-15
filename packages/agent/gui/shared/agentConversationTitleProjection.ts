@@ -9,6 +9,8 @@ export type AgentGUIResolvedProvider = AgentGUIProvider | "unknown";
 export type AgentGUIConversationTitleFallback = "untitled-conversation" | null;
 
 const AGENT_GUI_UNRESOLVED_PROVIDER: AgentGUIResolvedProvider = "unknown";
+const AGENT_GUI_MAX_OPTIMISTIC_TITLE_CODE_POINTS = 120;
+const AGENT_GUI_TRUNCATED_TITLE_SUFFIX = "...";
 
 export function isAgentGUIProviderUnresolved(
   value: AgentGUIResolvedProvider
@@ -88,6 +90,24 @@ export function resolveAgentGUIConversationTitle(
     title: "",
     titleFallback: "untitled-conversation"
   };
+}
+
+export function deriveAgentGUIOptimisticConversationTitle(
+  visiblePrompt: string | null | undefined
+): string {
+  const normalizedTitle = normalizeAgentTitleText(visiblePrompt);
+  const codePoints = Array.from(normalizedTitle);
+  if (codePoints.length <= AGENT_GUI_MAX_OPTIMISTIC_TITLE_CODE_POINTS) {
+    return normalizedTitle;
+  }
+  return `${codePoints
+    .slice(
+      0,
+      AGENT_GUI_MAX_OPTIMISTIC_TITLE_CODE_POINTS -
+        AGENT_GUI_TRUNCATED_TITLE_SUFFIX.length
+    )
+    .join("")
+    .trimEnd()}${AGENT_GUI_TRUNCATED_TITLE_SUFFIX}`;
 }
 
 export function resolveAgentGUIConversationDisplayTitle(

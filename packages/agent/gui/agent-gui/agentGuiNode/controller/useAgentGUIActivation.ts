@@ -20,6 +20,7 @@ interface AgentGUIActivateInputBase {
   cwd?: string;
   initialContent?: AgentPromptContentBlock[];
   initialDisplayPrompt?: string;
+  optimisticTitle?: string;
   runtimeContent?: AgentPromptContentBlock[];
   submitDiagnostics?: AgentActivitySubmitDiagnostics;
   settings?: AgentSessionComposerSettings;
@@ -118,6 +119,9 @@ export function useAgentGUIActivation({
         expiresAtUnixMs: requestedAtUnixMs + ACTIVATION_EXPIRY_MS,
         ...(input.initialDisplayPrompt
           ? { initialDisplayPrompt: input.initialDisplayPrompt }
+          : {}),
+        ...(input.optimisticTitle
+          ? { optimisticTitle: input.optimisticTitle }
           : {}),
         ...(input.runtimeContent
           ? { runtimeContent: input.runtimeContent }

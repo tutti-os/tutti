@@ -5,7 +5,7 @@ import { createLocalAgentGUIAgentTarget } from "../../../../../agentTargets";
 import { useAgentGuiConversationList } from "./useAgentGuiConversationList";
 
 describe("useAgentGuiConversationList", () => {
-  it("keeps a pending activation untitled until canonical title arrives", () => {
+  it("keeps the optimistic activation title until canonical title arrives", () => {
     const engine = createAgentSessionEngine({
       clock: { nowUnixMs: () => 1 },
       commandPort: { execute: async () => ({}) },
@@ -33,7 +33,7 @@ describe("useAgentGuiConversationList", () => {
         mode: "new",
         requestedAtUnixMs: 1,
         requestId: "activation-1",
-        title: "",
+        optimisticTitle: "test1",
         workspaceId: "workspace-1"
       });
     });
@@ -42,8 +42,8 @@ describe("useAgentGuiConversationList", () => {
       expect.objectContaining({
         id: "session-1",
         provider: "codex",
-        title: "",
-        titleFallback: "untitled-conversation"
+        title: "test1",
+        titleFallback: null
       })
     ]);
 

@@ -1,4 +1,5 @@
 import {
+  selectLatestActivationForSession,
   selectWorkspaceAgentConsumerSession,
   type AgentSessionEngineState
 } from "@tutti-os/agent-activity-core";
@@ -36,6 +37,14 @@ export function resolveAgentGuiWorkbenchConversationIdentity(input: {
     input.engineState,
     agentSessionId
   )?.session;
+  const activation = selectLatestActivationForSession(
+    input.engineState,
+    agentSessionId
+  );
+  const optimisticTitle =
+    activation?.mode === "new" && activation.status !== "failed"
+      ? activation.optimisticTitle
+      : null;
   const agentTargetId =
     session?.agentTargetId ?? input.workbenchState?.agentTargetId ?? null;
   const agent = agentTargetId
@@ -47,6 +56,7 @@ export function resolveAgentGuiWorkbenchConversationIdentity(input: {
   const title = resolveAgentGuiWorkbenchSessionTitle({
     agentSessionId,
     fallbackTitle: null,
+    optimisticTitle,
     provider: provider ?? "unknown",
     session
   }).title;

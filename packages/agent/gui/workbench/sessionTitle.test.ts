@@ -68,6 +68,38 @@ describe("agent GUI workbench session titles", () => {
     });
   });
 
+  it("uses the engine optimistic title while the canonical title is empty", () => {
+    const title = resolveAgentGuiWorkbenchSessionTitle({
+      agentSessionId: "session-1",
+      fallbackTitle: null,
+      optimisticTitle: "test1",
+      provider: "codex",
+      ...sessionState({ agentSessionId: "session-1", title: "" })
+    });
+
+    expect(title).toEqual({
+      agentSessionId: "session-1",
+      source: "optimistic",
+      title: "test1"
+    });
+  });
+
+  it("prefers the canonical title over the engine optimistic title", () => {
+    const title = resolveAgentGuiWorkbenchSessionTitle({
+      agentSessionId: "session-1",
+      fallbackTitle: null,
+      optimisticTitle: "test1",
+      provider: "codex",
+      ...sessionState({ agentSessionId: "session-1", title: "Canonical title" })
+    });
+
+    expect(title).toEqual({
+      agentSessionId: "session-1",
+      source: "snapshot",
+      title: "Canonical title"
+    });
+  });
+
   it("uses the canonical snapshot title without provider interpretation", () => {
     const title = resolveAgentGuiWorkbenchSessionTitle({
       agentSessionId: "session-1",

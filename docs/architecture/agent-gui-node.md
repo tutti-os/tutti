@@ -198,8 +198,11 @@ empty new-conversation home does not show this header identity. The conversation
 title remains the detail title while the rail is expanded and the identity used
 by Dock previews; after submission, the expanded detail title area shows the
 agent icon immediately even before conversation-title persistence. During that
-gap, the rail and header use the same localized untitled presentation fallback;
-the canonical `session.title` remains empty until the daemon establishes it.
+gap, the pending activation record in `AgentSessionEngine` owns one optimistic
+title projected from the submitted visible prompt; the rail and every header
+read that same record. The localized untitled label is used only when this
+projection is unavailable, while canonical `session.title` remains empty until
+the daemon establishes it and then takes precedence.
 
 AgentGuiNode may expose agent selection in multiple UI-local entry points,
 including the conversation rail agent grid and the agent select next to the

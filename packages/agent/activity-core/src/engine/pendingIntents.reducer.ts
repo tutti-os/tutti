@@ -186,6 +186,7 @@ function requestActivation(
   }
   const content = (intent.content ?? []).map((block) => ({ ...block }));
   const displayPrompt = intent.initialDisplayPrompt?.trim() || undefined;
+  const optimisticTitle = intent.optimisticTitle?.trim() || undefined;
   const runtimeContent = (intent.runtimeContent ?? content).map((block) => ({
     ...block
   }));
@@ -210,6 +211,7 @@ function requestActivation(
       ? { submitDiagnostics: { ...intent.submitDiagnostics } }
       : {}),
     mode: intent.mode,
+    ...(optimisticTitle ? { optimisticTitle } : {}),
     requestedAtUnixMs: intent.requestedAtUnixMs,
     requestId,
     ...(intent.settings ? { settings: { ...intent.settings } } : {}),
