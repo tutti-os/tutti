@@ -199,9 +199,8 @@ export const WorkspaceAgentMessageCenterCard = memo(
           item={item}
           label={t("agentHost.workspaceAgentMessageCenterOpenChat")}
           onOpenChat={onOpenChat}
-          // Interactive deck cards only offer the primary decision inline; the
-          // jump to the conversation is the path for everything else (e.g.
-          // refining a plan), so keep it always visible rather than hover-only.
+          // Keep the conversation available for full context and as a fallback
+          // even when the compact card can complete the interaction inline.
           alwaysVisible={interactive && prompt !== null}
         />
       </article>

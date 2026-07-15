@@ -1358,6 +1358,7 @@ describe("AgentInteractivePromptSurface", () => {
     // One click submits the chosen option directly — no separate submit step,
     // no free-text box (that rich flow lives in the conversation).
     fireEvent.click(screen.getByRole("button", { name: /Health check/ }));
+    expect(onSubmit).toHaveBeenCalledOnce();
     expect(onSubmit).toHaveBeenCalledWith({
       requestId: "ask-req-1",
       action: "submit",
@@ -1372,7 +1373,7 @@ describe("AgentInteractivePromptSurface", () => {
     ).toBeNull();
   });
 
-  it("shows read-only options for a compact multi-select ask-user prompt instead of hiding them", () => {
+  it("supports selecting and removing compact multi-select answers", () => {
     const onSubmit = vi.fn();
     render(
       <AgentInteractivePromptSurface
@@ -1401,22 +1402,32 @@ describe("AgentInteractivePromptSurface", () => {
       />
     );
 
-    // Multi-select can't be answered with a single click here, but the
-    // options must still be visible (not silently dropped) as read-only
-    // context — the message-center card regression this guards against.
-    expect(screen.getByText("Backend")).toBeTruthy();
-    expect(screen.getByText("API surface")).toBeTruthy();
-    expect(screen.getByText("Frontend")).toBeTruthy();
-    expect(screen.queryByRole("button", { name: /Backend/ })).toBeNull();
-    expect(
-      screen
-        .getByText("Backend")
-        .closest(".agent-gui-conversation__interactive-option-display")
-    ).toBeTruthy();
-    expect(onSubmit).not.toHaveBeenCalled();
+    const backend = screen.getByRole("button", { name: /Backend/ });
+    const frontend = screen.getByRole("button", { name: /Frontend/ });
+    const submit = screen.getByRole("button", { name: labels.submitAnswers });
+
+    expect(backend).toHaveAttribute("aria-pressed", "false");
+    expect(submit).toBeDisabled();
+    fireEvent.click(backend);
+    fireEvent.click(frontend);
+    fireEvent.click(backend);
+    expect(backend).toHaveAttribute("aria-pressed", "false");
+    expect(frontend).toHaveAttribute("aria-pressed", "true");
+    fireEvent.click(submit);
+
+    expect(onSubmit).toHaveBeenCalledOnce();
+    expect(onSubmit).toHaveBeenCalledWith({
+      requestId: "ask-req-multi",
+      action: "submit",
+      payload: {
+        answers: ["Frontend"],
+        answersByQuestionId: { areas: ["Frontend"] }
+      }
+    });
   });
 
-  it("shows read-only options for the current compact multi-question ask-user prompt", () => {
+  it("keeps compact multi-question drafts while navigating and submits only when complete", () => {
+    const onSubmit = vi.fn();
     render(
       <AgentInteractivePromptSurface
         prompt={{
@@ -1447,16 +1458,401 @@ describe("AgentInteractivePromptSurface", () => {
         }}
         variant="compact"
         isSubmitting={false}
+        onSubmit={onSubmit}
+        labels={labels}
+      />
+    );
+
+    const previous = screen.getByRole("button", {
+      name: labels.previousQuestion
+    });
+    const next = screen.getByRole("button", { name: labels.nextQuestion });
+    expect(previous).toBeDisabled();
+    expect(next).toBeDisabled();
+
+    const small = screen.getByRole("button", { name: /Small/ });
+    fireEvent.click(small);
+    fireEvent.click(small);
+    expect(
+      screen.getByRole("button", { name: labels.nextQuestion })
+    ).toBeDisabled();
+    fireEvent.click(small);
+    fireEvent.click(next);
+    expect(onSubmit).not.toHaveBeenCalled();
+    const submit = screen.getByRole("button", { name: labels.submitAnswers });
+    expect(submit).toBeDisabled();
+    fireEvent.change(screen.getByPlaceholderText(labels.answerPlaceholder), {
+      target: { value: "Keep the compatibility path" }
+    });
+    fireEvent.click(
+      screen.getByRole("button", { name: labels.previousQuestion })
+    );
+    expect(screen.getByRole("button", { name: /Small/ })).toHaveAttribute(
+      "aria-pressed",
+      "true"
+    );
+    fireEvent.click(screen.getByRole("button", { name: labels.nextQuestion }));
+    expect(screen.getByPlaceholderText(labels.answerPlaceholder)).toHaveValue(
+      "Keep the compatibility path"
+    );
+    fireEvent.click(screen.getByRole("button", { name: labels.submitAnswers }));
+
+    expect(onSubmit).toHaveBeenCalledWith({
+      requestId: "ask-req-multi-question",
+      action: "submit",
+      payload: {
+        answers: ["Small", "Keep the compatibility path"],
+        answersByQuestionId: {
+          scope: "Small",
+          details: "Keep the compatibility path"
+        }
+      }
+    });
+  });
+
+  it("trims pure-text answers and rejects whitespace-only input", () => {
+    const onSubmit = vi.fn();
+    render(
+      <AgentInteractivePromptSurface
+        prompt={{
+          kind: "ask-user",
+          requestId: "ask-text",
+          title: "Details",
+          questions: [
+            {
+              id: "details",
+              header: "Details",
+              question: "What should the agent know?",
+              options: [],
+              multiSelect: false
+            }
+          ]
+        }}
+        variant="compact"
+        isSubmitting={false}
+        onSubmit={onSubmit}
+        labels={labels}
+      />
+    );
+
+    const textarea = screen.getByPlaceholderText(labels.answerPlaceholder);
+    const submit = screen.getByRole("button", { name: labels.submitAnswers });
+    expect(submit).toBeDisabled();
+    fireEvent.change(textarea, { target: { value: "   " } });
+    expect(submit).toBeDisabled();
+    fireEvent.change(textarea, { target: { value: "  Include tests  " } });
+    fireEvent.click(submit);
+
+    expect(onSubmit).toHaveBeenCalledWith({
+      requestId: "ask-text",
+      action: "submit",
+      payload: {
+        answers: ["Include tests"],
+        answersByQuestionId: { details: "Include tests" }
+      }
+    });
+  });
+
+  it("supports prototype-like question ids as own payload keys", () => {
+    const onSubmit = vi.fn();
+    render(
+      <AgentInteractivePromptSurface
+        prompt={{
+          kind: "ask-user",
+          requestId: "ask-prototype-ids",
+          title: "Prototype-like ids",
+          questions: [
+            {
+              id: "__proto__",
+              header: "First",
+              question: "What is the first answer?",
+              options: [],
+              multiSelect: false
+            },
+            {
+              id: "constructor",
+              header: "Second",
+              question: "What is the second answer?",
+              options: [],
+              multiSelect: false
+            }
+          ]
+        }}
+        variant="compact"
+        isSubmitting={false}
+        onSubmit={onSubmit}
+        labels={labels}
+      />
+    );
+
+    const textarea = screen.getByPlaceholderText(labels.answerPlaceholder);
+    fireEvent.change(textarea, { target: { value: "First answer" } });
+    fireEvent.click(screen.getByRole("button", { name: labels.nextQuestion }));
+    fireEvent.change(textarea, { target: { value: "Second answer" } });
+    fireEvent.click(screen.getByRole("button", { name: labels.submitAnswers }));
+
+    expect(onSubmit).toHaveBeenCalledOnce();
+    const payload = onSubmit.mock.calls[0]?.[0]?.payload;
+    expect(payload?.answers).toEqual(["First answer", "Second answer"]);
+    expect(Object.hasOwn(payload?.answersByQuestionId ?? {}, "__proto__")).toBe(
+      true
+    );
+    expect(
+      Object.hasOwn(payload?.answersByQuestionId ?? {}, "constructor")
+    ).toBe(true);
+    expect(payload?.answersByQuestionId?.["__proto__"]).toBe("First answer");
+    expect(payload?.answersByQuestionId?.constructor).toBe("Second answer");
+  });
+
+  it("uses custom text instead of a single choice and appends it to multiple choices", () => {
+    const onSubmit = vi.fn();
+    render(
+      <AgentInteractivePromptSurface
+        prompt={{
+          kind: "ask-user",
+          requestId: "ask-custom-answers",
+          title: "Custom answers",
+          questions: [
+            {
+              id: "scope",
+              header: "Scope",
+              question: "Which scope?",
+              options: [{ label: "Small", description: "Minimal" }],
+              multiSelect: false
+            },
+            {
+              id: "areas",
+              header: "Areas",
+              question: "Which areas?",
+              options: [{ label: "Renderer", description: "UI" }],
+              multiSelect: true
+            }
+          ]
+        }}
+        variant="compact"
+        isSubmitting={false}
+        onSubmit={onSubmit}
+        labels={labels}
+      />
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /Small/ }));
+    fireEvent.change(screen.getByPlaceholderText(labels.answerPlaceholder), {
+      target: { value: "  Full workspace  " }
+    });
+    fireEvent.click(screen.getByRole("button", { name: labels.nextQuestion }));
+    fireEvent.click(screen.getByRole("button", { name: /Renderer/ }));
+    fireEvent.change(screen.getByPlaceholderText(labels.answerPlaceholder), {
+      target: { value: "  Documentation  " }
+    });
+    fireEvent.click(screen.getByRole("button", { name: labels.submitAnswers }));
+
+    expect(onSubmit).toHaveBeenCalledWith({
+      requestId: "ask-custom-answers",
+      action: "submit",
+      payload: {
+        answers: ["Full workspace", "Renderer, Documentation"],
+        answersByQuestionId: {
+          scope: "Full workspace",
+          areas: ["Renderer", "Documentation"]
+        }
+      }
+    });
+  });
+
+  it("resets question position and drafts when requestId changes", () => {
+    const firstPrompt = {
+      kind: "ask-user" as const,
+      requestId: "ask-first",
+      title: "First request",
+      questions: [
+        {
+          id: "scope",
+          header: "Scope",
+          question: "Which scope?",
+          options: [{ label: "Small", description: "Minimal" }],
+          multiSelect: false
+        },
+        {
+          id: "details",
+          header: "Details",
+          question: "What else?",
+          options: [],
+          multiSelect: false
+        }
+      ]
+    };
+    const { rerender } = render(
+      <AgentInteractivePromptSurface
+        prompt={firstPrompt}
+        variant="compact"
+        isSubmitting={false}
+        onSubmit={vi.fn()}
+        labels={labels}
+      />
+    );
+    fireEvent.click(screen.getByRole("button", { name: /Small/ }));
+    fireEvent.click(screen.getByRole("button", { name: labels.nextQuestion }));
+    fireEvent.change(screen.getByPlaceholderText(labels.answerPlaceholder), {
+      target: { value: "Old draft" }
+    });
+
+    rerender(
+      <AgentInteractivePromptSurface
+        prompt={{
+          ...firstPrompt,
+          requestId: "ask-second",
+          title: "Second request"
+        }}
+        variant="compact"
+        isSubmitting={false}
         onSubmit={vi.fn()}
         labels={labels}
       />
     );
 
-    // Multiple questions also defer answering to the full conversation, but
-    // the first question's options should still surface as read-only.
-    expect(screen.getByText("Small")).toBeTruthy();
-    expect(screen.getByText("Large")).toBeTruthy();
-    expect(screen.queryByRole("button", { name: /Small/ })).toBeNull();
+    expect(screen.getByText("1/2")).toBeTruthy();
+    expect(screen.getByRole("button", { name: /Small/ })).toHaveAttribute(
+      "aria-pressed",
+      "false"
+    );
+    expect(screen.getByPlaceholderText(labels.answerPlaceholder)).toHaveValue(
+      ""
+    );
+    expect(
+      screen.getByRole("button", { name: labels.nextQuestion })
+    ).toBeDisabled();
+  });
+
+  it("disables answer writes and navigation while submitting", () => {
+    const onSubmit = vi.fn();
+    const { rerender } = render(
+      <AgentInteractivePromptSurface
+        prompt={{
+          kind: "ask-user",
+          requestId: "ask-submitting",
+          title: "Submitting",
+          questions: [
+            {
+              id: "scope",
+              header: "Scope",
+              question: "Which scope?",
+              options: [{ label: "Small", description: "Minimal" }],
+              multiSelect: false
+            },
+            {
+              id: "details",
+              header: "Details",
+              question: "What else?",
+              options: [],
+              multiSelect: false
+            }
+          ]
+        }}
+        variant="compact"
+        isSubmitting
+        onSubmit={onSubmit}
+        labels={labels}
+      />
+    );
+
+    expect(screen.getByRole("button", { name: /Small/ })).toBeDisabled();
+    expect(
+      screen.getByPlaceholderText(labels.answerPlaceholder)
+    ).toBeDisabled();
+    expect(
+      screen.getByRole("button", { name: labels.previousQuestion })
+    ).toBeDisabled();
+    expect(
+      screen.getByRole("button", { name: labels.nextQuestion })
+    ).toBeDisabled();
+    fireEvent.click(screen.getByRole("button", { name: /Small/ }));
+    fireEvent.change(screen.getByPlaceholderText(labels.answerPlaceholder), {
+      target: { value: "Blocked" }
+    });
+    expect(onSubmit).not.toHaveBeenCalled();
+    expect(screen.getByPlaceholderText(labels.answerPlaceholder)).toHaveValue(
+      ""
+    );
+
+    rerender(
+      <AgentInteractivePromptSurface
+        prompt={{
+          kind: "ask-user",
+          requestId: "ask-submitting-last",
+          title: "Submitting final answer",
+          questions: [
+            {
+              id: "areas",
+              header: "Areas",
+              question: "Which areas?",
+              options: [{ label: "Renderer", description: "UI" }],
+              multiSelect: true
+            }
+          ]
+        }}
+        variant="compact"
+        isSubmitting
+        onSubmit={onSubmit}
+        labels={labels}
+      />
+    );
+    expect(
+      screen.getByRole("button", { name: labels.submitAnswers })
+    ).toBeDisabled();
+    fireEvent.click(screen.getByRole("button", { name: labels.submitAnswers }));
+    expect(onSubmit).not.toHaveBeenCalled();
+  });
+
+  it("submits identical payloads from full and compact answer flows", () => {
+    const prompt = {
+      kind: "ask-user" as const,
+      requestId: "ask-parity",
+      title: "Parity",
+      questions: [
+        {
+          id: "scope",
+          header: "Scope",
+          question: "Which scope?",
+          options: [{ label: "Small", description: "Minimal" }],
+          multiSelect: false
+        },
+        {
+          id: "details",
+          header: "Details",
+          question: "What else?",
+          options: [],
+          multiSelect: false
+        }
+      ]
+    };
+    const submitWithVariant = (variant: "full" | "compact") => {
+      const onSubmit = vi.fn();
+      const view = render(
+        <AgentInteractivePromptSurface
+          prompt={prompt}
+          variant={variant}
+          isSubmitting={false}
+          onSubmit={onSubmit}
+          labels={labels}
+        />
+      );
+      fireEvent.click(screen.getByRole("button", { name: /Small/ }));
+      fireEvent.click(
+        screen.getByRole("button", { name: labels.nextQuestion })
+      );
+      fireEvent.change(screen.getByPlaceholderText(labels.answerPlaceholder), {
+        target: { value: "Same details" }
+      });
+      fireEvent.click(
+        screen.getByRole("button", { name: labels.submitAnswers })
+      );
+      const submitted = onSubmit.mock.calls[0]?.[0];
+      view.unmount();
+      return submitted;
+    };
+
+    expect(submitWithVariant("compact")).toEqual(submitWithVariant("full"));
   });
 
   it("offers only the implement decision for a compact plan-implementation prompt", () => {

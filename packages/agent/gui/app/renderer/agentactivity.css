@@ -8287,7 +8287,7 @@ html[data-theme="light"] [data-message-center-item-id].agent-gui-edge-glow {
   color: var(--text-secondary);
 }
 
-.agent-gui-node__composer textarea,
+.agent-gui-node__composer-prompt-input-area textarea,
 .agent-gui-node__composer-textarea {
   --agent-gui-composer-text-line-height: 24px;
   --agent-gui-composer-text-max-visible-lines: 3.5;
@@ -8314,7 +8314,9 @@ html[data-theme="light"] [data-message-center-item-id].agent-gui-edge-glow {
   -ms-overflow-style: auto;
 }
 
-.agent-gui-node__composer[data-layout="dock"] textarea,
+.agent-gui-node__composer[data-layout="dock"]
+  .agent-gui-node__composer-prompt-input-area
+  textarea,
 .agent-gui-node__composer[data-layout="dock"]
   .agent-gui-node__composer-textarea {
   display: block;
@@ -8344,7 +8346,9 @@ html[data-theme="light"] [data-message-center-item-id].agent-gui-edge-glow {
   padding-top: 0;
 }
 
-.agent-gui-node__composer[data-layout="dock"] textarea::-webkit-scrollbar,
+.agent-gui-node__composer[data-layout="dock"]
+  .agent-gui-node__composer-prompt-input-area
+  textarea::-webkit-scrollbar,
 .agent-gui-node__composer[data-layout="dock"]
   .agent-gui-node__composer-textarea::-webkit-scrollbar {
   display: block;
@@ -8352,21 +8356,21 @@ html[data-theme="light"] [data-message-center-item-id].agent-gui-edge-glow {
   height: 4px;
 }
 
-.agent-gui-node__composer textarea::-webkit-scrollbar,
+.agent-gui-node__composer-prompt-input-area textarea::-webkit-scrollbar,
 .agent-gui-node__composer-textarea::-webkit-scrollbar {
   display: block;
   width: 4px;
   height: 4px;
 }
 
-.agent-gui-node__composer textarea::-webkit-scrollbar-track,
-.agent-gui-node__composer textarea::-webkit-scrollbar-corner,
+.agent-gui-node__composer-prompt-input-area textarea::-webkit-scrollbar-track,
+.agent-gui-node__composer-prompt-input-area textarea::-webkit-scrollbar-corner,
 .agent-gui-node__composer-textarea::-webkit-scrollbar-track,
 .agent-gui-node__composer-textarea::-webkit-scrollbar-corner {
   background: transparent;
 }
 
-.agent-gui-node__composer textarea::-webkit-scrollbar-thumb,
+.agent-gui-node__composer-prompt-input-area textarea::-webkit-scrollbar-thumb,
 .agent-gui-node__composer-textarea::-webkit-scrollbar-thumb {
   border-radius: 999px;
   background: var(--transparency-hover);
@@ -8462,7 +8466,7 @@ html[data-theme="light"] [data-message-center-item-id].agent-gui-edge-glow {
   white-space: nowrap;
 }
 
-.agent-gui-node__composer textarea::placeholder,
+.agent-gui-node__composer-prompt-input-area textarea::placeholder,
 .agent-gui-node__composer-textarea::placeholder {
   color: var(--agent-gui-text-tertiary);
   line-height: 24px;

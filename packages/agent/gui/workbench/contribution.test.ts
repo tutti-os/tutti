@@ -1915,7 +1915,7 @@ describe("agent GUI workbench contribution copy", () => {
     const css = readFileSync(resolve("app/renderer/agentactivity.css"), "utf8");
 
     expect(css).toMatch(
-      /\.agent-gui-node__composer\[data-layout="dock"\]\s+textarea,\s*\.agent-gui-node__composer\[data-layout="dock"\]\s+\.agent-gui-node__composer-textarea\s*{[^}]*padding-top:\s*12px;/s
+      /\.agent-gui-node__composer\[data-layout="dock"\]\s+\.agent-gui-node__composer-prompt-input-area\s+textarea,\s*\.agent-gui-node__composer\[data-layout="dock"\]\s+\.agent-gui-node__composer-textarea\s*{[^}]*padding-top:\s*12px;/s
     );
     expect(css).toMatch(
       /\.agent-gui-node__composer-textarea\s+p:not\(\.agent-rich-text-placeholder-node\):not\(:empty\)\s*{[^}]*top:\s*0;/s
@@ -1976,6 +1976,20 @@ describe("agent GUI workbench contribution copy", () => {
     );
     expect(css).toMatch(
       /@media\s*\(max-height:\s*639px\)\s*\{\s*\.agent-gui-node__empty-hero-carousel-layer\s*\{[^}]*--agent-gui-hero-carousel-scale:\s*0\.64;[^}]*top:\s*calc\(\s*var\(--agent-gui-hero-carousel-slot-top,\s*calc\(50%\s*-\s*210px\)\)\s*-\s*16px\s*\);/s
+    );
+  });
+
+  it("scopes composer textarea resets to the primary prompt input", () => {
+    const css = readFileSync(resolve("app/renderer/agentactivity.css"), "utf8");
+
+    expect(css).not.toMatch(
+      /\.agent-gui-node__composer(?:\[data-layout="dock"\])?\s+textarea/
+    );
+    expect(css).toMatch(
+      /\.agent-gui-node__composer-prompt-input-area\s+textarea,\s*\.agent-gui-node__composer-textarea\s*\{[^}]*border:\s*0;/s
+    );
+    expect(css).toMatch(
+      /\.agent-gui-conversation__interactive-prompt-textarea\s*\{[^}]*border:\s*1px solid var\(--line-2\);/s
     );
   });
 });

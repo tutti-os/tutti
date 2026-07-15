@@ -9,6 +9,7 @@ import {
   selectWorkspaceAgentMessageCenterPresentation,
   workspaceAgentMessageCenterPresentationEqual
 } from "./workspaceAgentMessageCenterEngineModel";
+import { selectMessageCenterAttentionDeckItems } from "./workspaceAgentMessageCenterModel";
 import {
   selectWorkspaceAgentConsumerCounts,
   selectWorkspaceAgentConsumerSessions
@@ -86,6 +87,28 @@ describe("workspaceAgentConsumerSelectors", () => {
       needsAttentionSummary: "Choose an option",
       status: "waiting"
     });
+
+    engine.dispatch({
+      type: "interaction/upserted",
+      interaction: {
+        requestId: "request-1",
+        agentSessionId: "session-1",
+        turnId: "turn-1",
+        kind: "question",
+        status: "answered",
+        input: { question: "Choose an option" },
+        createdAtUnixMs: 21,
+        updatedAtUnixMs: 30
+      }
+    });
+    const resolvedModel = buildWorkspaceAgentMessageCenterModelFromEngine(
+      selectWorkspaceAgentMessageCenterPresentation(engine.getSnapshot()),
+      { workspaceId: "workspace-1", sessionMessagesById: {} }
+    );
+    expect(resolvedModel.items[0]?.pendingPrompt).toBeNull();
+    expect(selectMessageCenterAttentionDeckItems(resolvedModel.items)).toEqual(
+      []
+    );
   });
 
   it("projects signed Agent Target presentation for open-provider sessions", () => {

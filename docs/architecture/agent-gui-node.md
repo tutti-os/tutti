@@ -124,6 +124,17 @@ dispatch the same canonical
 `interaction/responseRequested` command as AgentGUI and Message Center instead
 of deriving actionability or response identity from transcript messages.
 
+AskUserQuestion uses one shared answer-flow controller in the conversation and
+Message Center. Its option drafts, free-text drafts, question navigation,
+completion rules, and `buildAskUserAnswerPayload` result are UI-local state
+scoped to the canonical `requestId`; changing that request identity remounts the
+flow and clears every draft. Full and compact layouts may differ in density,
+and compact keeps the single-question single-select one-click path, but both
+submit the same payload through the canonical
+`interaction/responseRequested` command. The always-visible Open conversation
+action is a context/fallback route, not the only way to answer multi-question,
+multi-select, or free-text prompts.
+
 Transcript messages are historical presentation only. A tool-call row with a
 `waiting_input` status must not create an approval dialog, question composer,
 exit-plan prompt, attention item, or pending-interaction view model. Session

@@ -84,6 +84,14 @@ test("workspace chrome does not call updateSessionSettings or sendInput from the
   assert.doesNotMatch(handler, /sendInput/);
   assert.doesNotMatch(handler, /submitInteractive/);
   assert.match(handler, /interaction\/responseRequested/);
+  assert.match(handler, /selectEnginePendingInteractions\(/);
+  assert.match(handler, /candidate\.requestId === input\.requestId/);
+  assert.match(handler, /requestId: input\.requestId/);
+  assert.match(handler, /turnId: interaction\.turnId/);
+  assert.match(
+    handler,
+    /input\.payload \? \{ payload: input\.payload \} : \{\}/
+  );
   assert.match(
     messageCenterSource,
     /onSubmitPrompt=\{handleMessageCenterSubmitPrompt\}/
