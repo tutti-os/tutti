@@ -5,6 +5,7 @@ import type { AgentSessionComposerSettings } from "../../../shared/agentSessionT
 import type { AgentPromptContentBlock } from "../../../shared/contracts/dto";
 import type { AgentGUINodeData, AgentGUIAgentTarget } from "../../../types";
 import type { AgentComposerDraft } from "../model/agentGuiNodeTypes";
+import type { AgentComposerSubmitOptions } from "../composer/AgentComposer.types";
 import type { AgentGUIConversationSummary } from "../model/agentGuiConversationModel";
 import type { AgentGUIComposerTargetData } from "./agentGuiController.composerPresentation";
 import type { AgentGUIOpenSessionRequest } from "./agentGuiController.draftMessageHelpers";
@@ -85,6 +86,7 @@ export function useAgentGUIControllerRefs(
       displayPrompt?: string,
       options?: {
         immediate?: boolean;
+        requiredSettingsPatch?: AgentComposerSubmitOptions["requiredSettingsPatch"];
         sendNow?: boolean;
         sourceScopeKey?: string;
         trackDraft?: boolean;
@@ -92,7 +94,11 @@ export function useAgentGUIControllerRefs(
     ) => void
   >(() => {});
   const submitPromptRef = useRef<
-    (content: AgentPromptContentBlock[], displayPrompt?: string) => void
+    (
+      content: AgentPromptContentBlock[],
+      displayPrompt?: string,
+      options?: AgentComposerSubmitOptions
+    ) => void
   >(() => {});
   const reloadSelectedConversationRef = useRef<
     (

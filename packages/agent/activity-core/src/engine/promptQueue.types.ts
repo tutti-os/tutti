@@ -1,5 +1,6 @@
 import type {
   AgentActivitySubmitDiagnostics,
+  AgentActivitySubmitSettingsPatch,
   AgentPromptContentBlock
 } from "../types.ts";
 
@@ -10,6 +11,7 @@ export interface EngineQueuedPrompt {
   displayPrompt?: string;
   guidance?: boolean;
   id: string;
+  requiredSettingsPatch?: Readonly<AgentActivitySubmitSettingsPatch>;
   submitDiagnostics?: Readonly<AgentActivitySubmitDiagnostics>;
   runtimeContent?: readonly AgentPromptContentBlock[];
   visibleInQueue?: boolean;
@@ -110,6 +112,7 @@ export interface PromptQueueSendCommand {
   guidance?: boolean;
   submitDiagnostics?: Readonly<AgentActivitySubmitDiagnostics>;
   promptId: string;
+  requiredSettingsPatch?: Readonly<AgentActivitySubmitSettingsPatch>;
   timeoutMs?: number;
   workspaceId: string;
 }

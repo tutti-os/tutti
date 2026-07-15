@@ -36,6 +36,7 @@ import {
 } from "./agentGuiNewConversationActivation.types";
 import { resolveConversationSummaryById } from "./useAgentConversationSelection";
 import { resolveAgentComposerDraftScopeKey } from "../model/agentComposerDraftScope";
+import type { AgentComposerSubmitOptions } from "../composer/AgentComposer.types";
 
 export function useAgentGUINewConversationActivation(
   input: UseAgentGUINewConversationActivationInput
@@ -81,7 +82,8 @@ export function useAgentGUINewConversationActivation(
   const startConversation = useCallback(
     (
       initialContentInput?: unknown,
-      displayPrompt?: string
+      displayPrompt?: string,
+      submitOptions?: AgentComposerSubmitOptions
     ): AgentGUINewConversationActivationResult | null => {
       const target = selectedAgentTargetRef.current;
       const targetData = selectedComposerTargetDataRef.current;
@@ -162,8 +164,15 @@ export function useAgentGUINewConversationActivation(
       const settings = sanitizeComposerSettingsForTarget({
         settings:
           inheritedModel === null
-            ? initialSettings
-            : { ...initialSettings, model: inheritedModel },
+            ? {
+                ...initialSettings,
+                ...submitOptions?.requiredSettingsPatch
+              }
+            : {
+                ...initialSettings,
+                model: inheritedModel,
+                ...submitOptions?.requiredSettingsPatch
+              },
         target: targetData,
         options: snapshotComposerOptions
       });

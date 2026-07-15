@@ -2,8 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   resolveSlashCommandsForProvider,
   resolveSlashCommandSelectionEffect,
-  resolveSlashCommandSubmitEffect,
-  resolveTuttiBrowserUseSubmitEffect
+  resolveSlashCommandSubmitEffect
 } from "./agentSlashCommandProviderPolicy";
 
 const CODEX_POLICY = {
@@ -106,23 +105,19 @@ describe("agentSlashCommandProviderPolicy", () => {
         provider: "codex",
         policy: CODEX_POLICY,
         commands,
-        draft: "/浏览器"
-      })
-    ).toBeNull();
-    expect(
-      resolveTuttiBrowserUseSubmitEffect({
-        browserSupported: true,
-        commands,
-        draft: "/browser"
+        draft: "/浏览器",
+        browserSupported: true
       })
     ).toEqual({
       kind: "submitPrompt",
       prompt: expect.stringContaining("browser-use"),
       displayPrompt: "/browser",
-      enableBrowserUse: true
+      requiredSettingsPatch: { browserUse: true }
     });
     expect(
-      resolveTuttiBrowserUseSubmitEffect({
+      resolveSlashCommandSubmitEffect({
+        provider: "codex",
+        policy: CODEX_POLICY,
         browserSupported: true,
         commands,
         draft: "$browser 帮我访问下 google.com"
@@ -131,13 +126,70 @@ describe("agentSlashCommandProviderPolicy", () => {
       kind: "submitPrompt",
       prompt: expect.stringContaining("帮我访问下 google.com"),
       displayPrompt: "/browser 帮我访问下 google.com",
-      enableBrowserUse: true
+      requiredSettingsPatch: { browserUse: true }
     });
     expect(
-      resolveTuttiBrowserUseSubmitEffect({
+      resolveSlashCommandSubmitEffect({
+        provider: "codex",
+        policy: CODEX_POLICY,
         browserSupported: false,
         commands,
         draft: "$browser test"
+      })
+    ).toBeNull();
+  });
+
+  it("routes computer capability invocations through the local computer-use handoff", () => {
+    const commands = resolveSlashCommandsForProvider({
+      provider: "claude-code",
+      policy: CLAUDE_POLICY,
+      commands: [],
+      computerSupported: true
+    });
+
+    expect(
+      resolveSlashCommandSelectionEffect({
+        provider: "claude-code",
+        policy: CLAUDE_POLICY,
+        command: commands.find((command) => command.name === "computer")!,
+        currentDraft: "/comp"
+      })
+    ).toEqual({ kind: "enableComputerUse", draft: "/computer " });
+    expect(
+      resolveSlashCommandSubmitEffect({
+        provider: "claude-code",
+        policy: CLAUDE_POLICY,
+        computerSupported: true,
+        commands,
+        draft: "/computer 你好"
+      })
+    ).toEqual({
+      kind: "submitPrompt",
+      prompt: expect.stringMatching(/computer-use[\s\S]*你好/),
+      displayPrompt: "/computer 你好",
+      requiredSettingsPatch: { computerUse: true }
+    });
+    expect(
+      resolveSlashCommandSubmitEffect({
+        provider: "claude-code",
+        policy: CLAUDE_POLICY,
+        computerSupported: true,
+        commands,
+        draft: "$电脑 点击确认"
+      })
+    ).toEqual({
+      kind: "submitPrompt",
+      prompt: expect.stringMatching(/computer-use[\s\S]*点击确认/),
+      displayPrompt: "/computer 点击确认",
+      requiredSettingsPatch: { computerUse: true }
+    });
+    expect(
+      resolveSlashCommandSubmitEffect({
+        provider: "claude-code",
+        policy: CLAUDE_POLICY,
+        computerSupported: false,
+        commands,
+        draft: "/computer test"
       })
     ).toBeNull();
   });

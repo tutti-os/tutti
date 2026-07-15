@@ -18,8 +18,11 @@ describe("useAgentGUINewConversationActivation", () => {
     const activeConversationIdRef = { current: null as string | null };
     const isComposerHomeRef = { current: true };
     const activate = vi.fn(
-      (input: { agentSessionId: string; optimisticTitle?: string }) =>
-        `activation:${input.agentSessionId}`
+      (input: {
+        agentSessionId: string;
+        optimisticTitle?: string;
+        settings?: Record<string, unknown>;
+      }) => `activation:${input.agentSessionId}`
     );
     const activation = {
       activate,
@@ -86,7 +89,11 @@ describe("useAgentGUINewConversationActivation", () => {
 
     let firstResult: ReturnType<typeof result.current> = null;
     act(() => {
-      firstResult = result.current([{ type: "text", text: "first" }]);
+      firstResult = result.current(
+        [{ type: "text", text: "first" }],
+        "/computer first",
+        { requiredSettingsPatch: { computerUse: true } }
+      );
     });
     const firstSessionId = activate.mock.calls[0]?.[0].agentSessionId;
     activeConversationIdRef.current = null;
@@ -98,7 +105,10 @@ describe("useAgentGUINewConversationActivation", () => {
     const secondSessionId = activate.mock.calls[1]?.[0].agentSessionId;
 
     expect(activate).toHaveBeenCalledTimes(2);
-    expect(activate.mock.calls[0]?.[0].optimisticTitle).toBe("first");
+    expect(activate.mock.calls[0]?.[0].optimisticTitle).toBe("/computer first");
+    expect(activate.mock.calls[0]?.[0].settings).toMatchObject({
+      computerUse: true
+    });
     expect(activate.mock.calls[1]?.[0].optimisticTitle).toBe("second");
     expect(firstSessionId).toBeTruthy();
     expect(secondSessionId).toBeTruthy();

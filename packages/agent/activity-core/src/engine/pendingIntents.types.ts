@@ -2,6 +2,7 @@ import type {
   AgentActivityMessage,
   AgentActivitySessionSettings,
   AgentActivitySubmitDiagnostics,
+  AgentActivitySubmitSettingsPatch,
   AgentPromptContentBlock
 } from "../types.ts";
 
@@ -193,6 +194,7 @@ export interface SubmitRequestedIntent {
   expiresAtUnixMs: number;
   submitDiagnostics?: Readonly<AgentActivitySubmitDiagnostics>;
   requestedAtUnixMs: number;
+  requiredSettingsPatch?: Readonly<AgentActivitySubmitSettingsPatch>;
   routing?: "auto" | "immediate" | "send_now";
   runtimeContent?: readonly AgentPromptContentBlock[];
   workspaceId: string;

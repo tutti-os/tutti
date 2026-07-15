@@ -268,6 +268,7 @@ export type {
   AgentActivitySnapshot,
   AgentActivitySnapshotListener,
   AgentActivitySubmitDiagnostics,
+  AgentActivitySubmitSettingsPatch,
   AgentActivityTurn,
   AgentActivityTurnCancelResponse,
   AgentActivityInteraction,

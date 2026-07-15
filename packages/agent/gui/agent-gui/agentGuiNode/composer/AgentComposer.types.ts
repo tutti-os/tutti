@@ -20,6 +20,7 @@ import type {
 import type { AgentGUIProvider, AgentGUIAgentTarget } from "../../../types";
 import type { WorkspaceReferencePickResult } from "./useComposerDraftAttachments";
 import type { AgentGUIComposerEngagement } from "../engagement/agentGUIEngagement.types";
+import type { AgentActivitySubmitSettingsPatch } from "@tutti-os/agent-activity-core";
 import type {
   ReferenceProvenanceFilterController,
   ReferenceProvenanceFilterSnapshot
@@ -33,7 +34,9 @@ export interface AgentComposerReferenceProvenanceFilter {
   >;
 }
 
-export interface AgentComposerSubmitOptions {}
+export interface AgentComposerSubmitOptions {
+  requiredSettingsPatch?: AgentActivitySubmitSettingsPatch;
+}
 
 export interface AgentComposerProps {
   workspaceId: string;

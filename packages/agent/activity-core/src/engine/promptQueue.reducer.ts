@@ -21,7 +21,10 @@ import {
 } from "./promptQueue.availability.ts";
 import type { CancelResultValidation } from "./commandResult.validation.ts";
 import { promptQueuePromptIdForClientSubmit } from "./promptQueue.lookup.ts";
-import { normalizeQueuedPrompt } from "./promptQueue.prompt.ts";
+import {
+  clonePromptRequiredSettingsPatch,
+  normalizeQueuedPrompt
+} from "./promptQueue.prompt.ts";
 import {
   compactQueueRecord,
   emptyQueueRecord,
@@ -269,6 +272,7 @@ function enqueueSubmit(
             ? { submitDiagnostics: intent.submitDiagnostics }
             : {}),
           promptId: intent.clientSubmitId,
+          ...clonePromptRequiredSettingsPatch(intent.requiredSettingsPatch),
           timeoutMs: QUEUE_SEND_TIMEOUT_MS,
           type: "queue/sendPrompt",
           workspaceId: intent.workspaceId
@@ -301,6 +305,7 @@ function enqueueSubmit(
           ? { displayPrompt: intent.displayPrompt }
           : {}),
         id: intent.clientSubmitId,
+        ...clonePromptRequiredSettingsPatch(intent.requiredSettingsPatch),
         submitDiagnostics: {
           ...(intent.submitDiagnostics ?? {}),
           blockCount:
@@ -620,6 +625,7 @@ function startEligibleCommand(
           ? { submitDiagnostics: head.submitDiagnostics }
           : {}),
         promptId: head.id,
+        ...clonePromptRequiredSettingsPatch(head.requiredSettingsPatch),
         timeoutMs: QUEUE_SEND_TIMEOUT_MS,
         type: "queue/sendPrompt",
         workspaceId: record.workspaceId
