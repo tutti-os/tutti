@@ -381,7 +381,8 @@ export const AgentGUINode = memo(function AgentGUINode({
     quotas: ReturnType<typeof slashStatusQuotasFromCanonicalUsage>;
   } | null>(null);
   if (
-    canonicalSlashStatusProjectionRef.current?.usage !== viewModel.detail.usage
+    !canonicalSlashStatusProjectionRef.current ||
+    canonicalSlashStatusProjectionRef.current.usage !== viewModel.detail.usage
   ) {
     canonicalSlashStatusProjectionRef.current = {
       usage: viewModel.detail.usage,
