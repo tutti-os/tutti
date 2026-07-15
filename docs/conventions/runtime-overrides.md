@@ -94,7 +94,8 @@ Use the owner documents linked below for detailed behavior. This file exists to 
 
 Agent Extension source feature gates use
 `TUTTI_AGENT_EXTENSION_<KEY>_ENABLED`. The configured Gemini source therefore
-uses `TUTTI_AGENT_EXTENSION_GEMINI_ENABLED`. Boolean values accepted by Go's
+uses `TUTTI_AGENT_EXTENSION_GEMINI_ENABLED`, and the configured CodeBuddy
+source uses `TUTTI_AGENT_EXTENSION_CODEBUDDY_ENABLED`. Boolean values accepted by Go's
 `strconv.ParseBool` override the generated default; invalid values leave the
 generated default unchanged. A disabled source never downloads or registers
 its Agent Target.
