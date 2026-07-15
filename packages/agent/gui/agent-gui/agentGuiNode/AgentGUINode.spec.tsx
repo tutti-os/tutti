@@ -1003,6 +1003,102 @@ describe("AgentGUINode", () => {
     expect(screen.queryByText("11% left")).toBeNull();
   });
 
+  it("keeps the rail config limits section visible with a retry control when usage returns no quotas", async () => {
+    // Regression: a Claude usage probe that comes back with an empty quota
+    // list (no 5h/7d windows, or a fetch error the main-process probe caught
+    // into lastError) previously made the entire "限制" section disappear from
+    // the config menu with zero feedback. It must instead show an explicit
+    // "unavailable" placeholder plus the refresh control so the user can retry.
+    const onAgentProbeRefreshRequest = vi.fn();
+    const claudeTarget = createLocalAgentGUIProviderTarget("claude-code");
+    mockViewModel = createViewModel({
+      conversationScope: "multi-provider",
+      conversationFilter: {
+        kind: "agentTarget",
+        agentTargetId: claudeTarget.agentTargetId ?? ""
+      },
+      selectedProviderTarget: claudeTarget,
+      providerTargets: [claudeTarget]
+    });
+
+    renderAgentGUINode({
+      onAgentProbeRefreshRequest,
+      workspaceAgentProbes: {
+        isLoadingAvailability: false,
+        isLoadingUsage: false,
+        snapshot: {
+          workspaceId: "workspace-1",
+          capturedAtUnixMs: 1,
+          providers: [
+            {
+              provider: "claude-code",
+              availability: { status: "available", detailsVisible: false },
+              usage: { capturedAtUnixMs: 1, quotas: [] }
+            }
+          ]
+        }
+      }
+    });
+
+    fireEvent.click(screen.getByTitle("agentHost.agentGui.agentConfig"));
+
+    await waitFor(() => {
+      expect(
+        screen.getByTestId("agent-gui-config-usage-unavailable")
+      ).toBeInTheDocument();
+    });
+    const refresh = screen.getByTestId("agent-gui-config-usage-refresh");
+    expect(refresh).toBeInTheDocument();
+
+    fireEvent.click(refresh);
+    expect(onAgentProbeRefreshRequest).toHaveBeenCalledWith(
+      "claude-code",
+      "agent-gui:agent-gui-1:usage-refresh"
+    );
+  });
+
+  it("does not show the unavailable limits placeholder while usage is still loading", async () => {
+    const claudeTarget = createLocalAgentGUIProviderTarget("claude-code");
+    mockViewModel = createViewModel({
+      conversationScope: "multi-provider",
+      conversationFilter: {
+        kind: "agentTarget",
+        agentTargetId: claudeTarget.agentTargetId ?? ""
+      },
+      selectedProviderTarget: claudeTarget,
+      providerTargets: [claudeTarget]
+    });
+
+    renderAgentGUINode({
+      workspaceAgentProbes: {
+        isLoadingAvailability: false,
+        isLoadingUsage: true,
+        snapshot: {
+          workspaceId: "workspace-1",
+          capturedAtUnixMs: 1,
+          providers: [
+            {
+              provider: "claude-code",
+              availability: { status: "available", detailsVisible: false },
+              usage: { capturedAtUnixMs: 1, quotas: [] }
+            }
+          ]
+        }
+      }
+    });
+
+    fireEvent.click(screen.getByTitle("agentHost.agentGui.agentConfig"));
+
+    await waitFor(() => {
+      expect(
+        screen.getByTestId("agent-gui-config-usage-refresh")
+      ).toHaveAttribute("data-state", "loading");
+    });
+    expect(
+      screen.queryByTestId("agent-gui-config-usage-unavailable")
+    ).toBeNull();
+  });
+
   it("requests a fresh agent probe when the title info entry opens", () => {
     const onAgentProbeRefreshRequest = vi.fn();
 

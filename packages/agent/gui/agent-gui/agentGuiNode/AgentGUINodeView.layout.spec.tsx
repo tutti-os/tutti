@@ -3734,6 +3734,13 @@ function createLabels(): AgentGUIViewLabels {
       `${percentLeft}:${usedTokens}:${totalTokens}`,
     slashStatusContextUnavailable: "slashStatusContextUnavailable",
     slashStatusLimitsUnavailable: "slashStatusLimitsUnavailable",
+    slashStatusUsageJustUpdated: "slashStatusUsageJustUpdated",
+    slashStatusUsageMinutesAgo: (count) =>
+      `slashStatusUsageMinutesAgo:${count}`,
+    slashStatusUsageHoursAgo: (count) => `slashStatusUsageHoursAgo:${count}`,
+    slashStatusUsageUpdating: "slashStatusUsageUpdating",
+    slashStatusUsageRefreshFailed: "slashStatusUsageRefreshFailed",
+    slashStatusUsageRefreshAria: "slashStatusUsageRefreshAria",
     usageChipLabel: ({ percent }) => `usageChip:${percent}`,
     usageTooltipLabel: "usageTooltipLabel",
     usagePopoverTitle: "usagePopoverTitle",

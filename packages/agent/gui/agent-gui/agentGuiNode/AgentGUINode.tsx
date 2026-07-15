@@ -1059,6 +1059,22 @@ export const AgentGUINode = memo(function AgentGUINode({
       slashStatusLimitsUnavailable: t(
         "agentHost.agentGui.slashStatusLimitsUnavailable"
       ),
+      slashStatusUsageJustUpdated: t(
+        "agentHost.agentGui.slashStatusUsageJustUpdated"
+      ),
+      slashStatusUsageMinutesAgo: (count: number) =>
+        t("agentHost.agentGui.slashStatusUsageMinutesAgo", { count }),
+      slashStatusUsageHoursAgo: (count: number) =>
+        t("agentHost.agentGui.slashStatusUsageHoursAgo", { count }),
+      slashStatusUsageUpdating: t(
+        "agentHost.agentGui.slashStatusUsageUpdating"
+      ),
+      slashStatusUsageRefreshFailed: t(
+        "agentHost.agentGui.slashStatusUsageRefreshFailed"
+      ),
+      slashStatusUsageRefreshAria: t(
+        "agentHost.agentGui.slashStatusUsageRefreshAria"
+      ),
       usageChipLabel: (input: { percent: number }) =>
         t("agentHost.agentGui.usageChipLabel", { percent: input.percent }),
       usageTooltipLabel: t("agentHost.agentGui.usageTooltipLabel"),
@@ -1534,6 +1550,26 @@ export const AgentGUINode = memo(function AgentGUINode({
     () => slashStatusLimitsFromQuotas(railSlashStatusQuotaSource, null, t),
     [railSlashStatusQuotaSource, t]
   );
+  // The provider whose limits the rail config menu renders: the rail filter
+  // provider when one is active, otherwise the active window provider. Read
+  // freshness + attempt state from this same probe so an empty or failed usage
+  // result stays coherent with the meters (or absence of them).
+  const slashStatusUsageProbe = railStatusProvider
+    ? railAgentProbe
+    : activeAgentProbe;
+  const slashStatusUsageCapturedAtUnixMs =
+    slashStatusUsageProbe?.usage?.capturedAtUnixMs ?? null;
+  const slashStatusUsageDidFail =
+    workspaceAgentProbes?.usageLoadFailed ?? false;
+  // True once a usage probe has actually run for this provider — it came back
+  // with a usage snapshot (possibly zero quotas) or a usage error. Lets the
+  // config menu show an explicit "no limits / retry" row instead of hiding the
+  // whole section when the numbers resolve empty (e.g. a Claude OAuth usage
+  // response with no 5h/7d windows, or a usage fetch the probe caught into
+  // `lastError`), which previously made the limits look like they vanished.
+  const slashStatusUsageAttempted =
+    Boolean(slashStatusUsageProbe?.usage) ||
+    Boolean(slashStatusUsageProbe?.lastError);
   const agentProbeLines = useMemo(() => {
     return buildDockAgentProbeTooltipLines(
       activeAgentProbe,
@@ -1588,6 +1624,47 @@ export const AgentGUINode = memo(function AgentGUINode({
     }
     onAgentProbeRefreshRequest(activeProbeProvider, `agent-gui:${nodeId}`);
   }, [activeProbeProvider, nodeId, onAgentProbeRefreshRequest, previewMode]);
+  // The rail's "usage & environment check" menu (AgentGUINodeView's
+  // agent-gui-config-menu popover) shows the same quota data as the window
+  // title's info tooltip above, but through a click rather than a hover. It
+  // needs the same on-open refresh (see handleAgentProbeInfoOpen) — otherwise
+  // a stale/empty probe fetched before a provider finished installing never
+  // gets a chance to refresh here, and the usage meters stay blank until some
+  // unrelated event happens to touch the info tooltip instead.
+  const handleAgentConfigMenuOpen = useCallback(() => {
+    if (previewMode || !onAgentProbeRefreshRequest) {
+      return;
+    }
+    onAgentProbeRefreshRequest(
+      railStatusProvider ?? activeProbeProvider,
+      `agent-gui:${nodeId}:config`
+    );
+  }, [
+    activeProbeProvider,
+    nodeId,
+    onAgentProbeRefreshRequest,
+    previewMode,
+    railStatusProvider
+  ]);
+  // Manual "refresh now" from the config menu's freshness control. Same probe
+  // fetch as opening the menu, but callable while the menu stays open (open-only
+  // handlers fire once on the open transition). The control disables itself
+  // while a fetch is in flight, so this cannot hammer the vendor usage API.
+  const handleAgentUsageRefresh = useCallback(() => {
+    if (previewMode || !onAgentProbeRefreshRequest) {
+      return;
+    }
+    onAgentProbeRefreshRequest(
+      railStatusProvider ?? activeProbeProvider,
+      `agent-gui:${nodeId}:usage-refresh`
+    );
+  }, [
+    activeProbeProvider,
+    nodeId,
+    onAgentProbeRefreshRequest,
+    previewMode,
+    railStatusProvider
+  ]);
 
   return (
     <WorkspaceNodeWindow
@@ -1682,6 +1759,11 @@ export const AgentGUINode = memo(function AgentGUINode({
             }
             railConfigProvider={railStatusProvider}
             railSlashStatusLimits={railSlashStatusLimits}
+            slashStatusUsageCapturedAtUnixMs={slashStatusUsageCapturedAtUnixMs}
+            slashStatusUsageDidFail={slashStatusUsageDidFail}
+            slashStatusUsageAttempted={slashStatusUsageAttempted}
+            onAgentConfigMenuOpen={handleAgentConfigMenuOpen}
+            onAgentUsageRefresh={handleAgentUsageRefresh}
             previewMode={previewMode}
             onLinkAction={handleLinkAction}
             capabilityMenuState={capabilityMenuState}
