@@ -101,13 +101,14 @@ func (a agentRuntimeAdapter) Exec(ctx context.Context, input agentservice.Runtim
 		"content_block_count": len(input.Content),
 	})
 	result, err := a.controller.Exec(ctx, agentruntime.ExecInput{
-		RoomID:         input.WorkspaceID,
-		AgentSessionID: input.AgentSessionID,
-		Content:        runtimePromptContentFromService(input.Content),
-		DisplayPrompt:  input.DisplayPrompt,
-		InitialTitle:   input.InitialTitle,
-		Guidance:       input.Guidance,
-		Metadata:       cloneRuntimeContext(input.Metadata),
+		RoomID:           input.WorkspaceID,
+		AgentSessionID:   input.AgentSessionID,
+		Content:          runtimePromptContentFromService(input.Content),
+		DisplayPrompt:    input.DisplayPrompt,
+		InitialTitle:     input.InitialTitle,
+		InitialTitleBase: input.InitialTitleBase,
+		Guidance:         input.Guidance,
+		Metadata:         cloneRuntimeContext(input.Metadata),
 	})
 	if err != nil {
 		agentservice.LogSubmitTrace("runtime_adapter.exec.failed", input.WorkspaceID, input.AgentSessionID, input.Metadata, map[string]any{
@@ -297,16 +298,17 @@ func (a agentRuntimeAdapter) Sessions(workspaceID string) []agentservice.Provide
 
 func (a agentRuntimeAdapter) Start(ctx context.Context, input agentservice.RuntimeStartInput) (agentservice.ProviderRuntimeSession, error) {
 	result, err := a.controller.Start(ctx, agentruntime.StartInput{
-		RoomID:            input.WorkspaceID,
-		AgentSessionID:    input.AgentSessionID,
-		AgentTargetID:     input.AgentTargetID,
-		Provider:          input.Provider,
-		CWD:               input.Cwd,
-		Env:               append([]string(nil), input.Env...),
-		Title:             input.Title,
-		ProviderTargetRef: cloneRuntimeContext(input.ProviderTargetRef),
-		RuntimeContext:    cloneRuntimeContext(input.RuntimeContext),
-		PermissionModeID:  input.PermissionModeID,
+		RoomID:                  input.WorkspaceID,
+		AgentSessionID:          input.AgentSessionID,
+		AgentTargetID:           input.AgentTargetID,
+		Provider:                input.Provider,
+		CWD:                     input.Cwd,
+		Env:                     append([]string(nil), input.Env...),
+		Title:                   input.Title,
+		InitialTitleEstablished: input.InitialTitleEstablished,
+		ProviderTargetRef:       cloneRuntimeContext(input.ProviderTargetRef),
+		RuntimeContext:          cloneRuntimeContext(input.RuntimeContext),
+		PermissionModeID:        input.PermissionModeID,
 		Settings: &agentruntime.SessionSettings{
 			Model:                  input.Model,
 			ReasoningEffort:        input.ReasoningEffort,

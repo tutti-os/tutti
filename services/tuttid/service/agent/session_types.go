@@ -328,25 +328,26 @@ type ProviderRuntimeSession struct {
 }
 
 type RuntimeStartInput struct {
-	WorkspaceID            string
-	AgentSessionID         string
-	AgentTargetID          string
-	Provider               string
-	Cwd                    string
-	Env                    []string
-	Title                  string
-	PermissionModeID       string
-	Model                  string
-	PlanMode               bool
-	BrowserUse             *bool
-	ComputerUse            *bool
-	ProviderTargetRef      map[string]any
-	RuntimeContext         map[string]any
-	ReasoningEffort        string
-	Speed                  string
-	ConversationDetailMode string
-	Visible                *bool
-	Provisional            bool
+	WorkspaceID             string
+	AgentSessionID          string
+	AgentTargetID           string
+	Provider                string
+	Cwd                     string
+	Env                     []string
+	Title                   string
+	InitialTitleEstablished bool
+	PermissionModeID        string
+	Model                   string
+	PlanMode                bool
+	BrowserUse              *bool
+	ComputerUse             *bool
+	ProviderTargetRef       map[string]any
+	RuntimeContext          map[string]any
+	ReasoningEffort         string
+	Speed                   string
+	ConversationDetailMode  string
+	Visible                 *bool
+	Provisional             bool
 }
 
 type RuntimeResumeInput struct {
@@ -374,13 +375,14 @@ type RuntimeResumeInput struct {
 }
 
 type RuntimeExecInput struct {
-	WorkspaceID    string
-	AgentSessionID string
-	Content        []PromptContentBlock
-	DisplayPrompt  string
-	InitialTitle   string
-	Metadata       map[string]any
-	Guidance       bool
+	WorkspaceID      string
+	AgentSessionID   string
+	Content          []PromptContentBlock
+	DisplayPrompt    string
+	InitialTitle     string
+	InitialTitleBase string
+	Metadata         map[string]any
+	Guidance         bool
 }
 
 type RuntimeExecResult struct {

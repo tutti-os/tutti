@@ -83,14 +83,27 @@ VALUES ('ws-initial-title', 'session-initial-title', 'codex', 'Codex', ?, ?)
 	if _, err := store.db.ExecContext(ctx, `
 INSERT INTO workspace_agent_messages (
   workspace_id, agent_session_id, message_id, version, role, kind, payload_json,
-  created_at_unix_ms, updated_at_unix_ms
+  occurred_at_unix_ms, created_at_unix_ms, updated_at_unix_ms
 )
 VALUES (
-  'ws-initial-title', 'session-initial-title', 'message-1', 1, 'user', 'text',
-  '{"text":"[@file](file:///tmp/a_(final).md) inspect repo"}', ?, ?
+  'ws-initial-title', 'session-initial-title', 'message-1', 3, 'user', 'text',
+  '{"content":[{"type":"text","text":"[@file](file:///tmp/a_(final).md) inspect repo"}]}',
+  100, ?, ?
 )
 `, createdAtUnixMS, updatedAtUnixMS); err != nil {
 		t.Fatalf("insert first user message: %v", err)
+	}
+	if _, err := store.db.ExecContext(ctx, `
+INSERT INTO workspace_agent_messages (
+  workspace_id, agent_session_id, message_id, version, role, kind, payload_json,
+  occurred_at_unix_ms, created_at_unix_ms, updated_at_unix_ms
+)
+VALUES (
+  'ws-initial-title', 'session-initial-title', 'message-2', 2, 'user', 'text',
+  '{"text":"later prompt"}', 200, ?, ?
+)
+`, createdAtUnixMS+1, updatedAtUnixMS+1); err != nil {
+		t.Fatalf("insert later user message: %v", err)
 	}
 	if _, err := store.db.ExecContext(ctx, `DELETE FROM agent_store_schema_migrations WHERE id = ?`, schemaMigrationWorkspaceAgentSessionTitlesV2); err != nil {
 		t.Fatalf("reset initial title migration marker: %v", err)

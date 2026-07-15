@@ -68,3 +68,14 @@ func TestIsPlaceholderUsesProviderDescriptorIdentity(t *testing.T) {
 		t.Fatal("IsPlaceholder() accepted a conversation title")
 	}
 }
+
+func TestIsPlaceholderUsesDynamicProviderAliases(t *testing.T) {
+	t.Parallel()
+
+	if !IsPlaceholder("Gemini", "acp:gemini", "Gemini") {
+		t.Fatal("IsPlaceholder() did not accept the dynamic provider display name")
+	}
+	if IsPlaceholder("Inspect repository", "acp:gemini", "Gemini") {
+		t.Fatal("IsPlaceholder() accepted a dynamic provider conversation title")
+	}
+}

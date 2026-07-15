@@ -8,7 +8,6 @@ import (
 	"strings"
 
 	activityshared "github.com/tutti-os/tutti/packages/agent/daemon/activity/events"
-	"github.com/tutti-os/tutti/packages/agent/daemon/titletext"
 )
 
 func (c *Controller) Exec(ctx context.Context, input ExecInput) (ExecResult, error) {
@@ -51,8 +50,10 @@ func (c *Controller) Exec(ctx context.Context, input ExecInput) (ExecResult, err
 	}
 	titleUpdated := false
 	if initialTitle := strings.TrimSpace(input.InitialTitle); initialTitle != "" &&
-		titletext.IsPlaceholder(session.Title, session.Provider) {
+		!session.InitialTitleEstablished &&
+		strings.TrimSpace(session.Title) == strings.TrimSpace(input.InitialTitleBase) {
 		session.Title = initialTitle
+		session.InitialTitleEstablished = true
 		session.UpdatedAtUnixMS = unixMS(now())
 		titleUpdated = true
 	}

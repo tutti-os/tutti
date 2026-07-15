@@ -2210,6 +2210,28 @@ func TestServiceCreateDoesNotPassDerivedPromptToRuntime(t *testing.T) {
 	}
 }
 
+func TestServiceCreatePrefersTextForMixedContentInitialTitle(t *testing.T) {
+	runtime := newFakeRuntime()
+	service := newTestService(runtime)
+	service.PromptAttachmentStore = PromptAttachmentStore{RootDir: t.TempDir()}
+
+	_, err := service.Create(context.Background(), "ws-1", CreateSessionInput{
+		AgentSessionID: "session-1",
+		AgentTargetID:  agenttargetbiz.IDLocalCodex,
+		Provider:       "codex",
+		InitialContent: []PromptContentBlock{
+			{Type: "text", Text: "inspect the screenshot"},
+			{Type: "image", MimeType: "image/png", Data: "aGVsbG8="},
+		},
+	})
+	if err != nil {
+		t.Fatalf("Create error = %v", err)
+	}
+	if got := runtime.execCalls[0].InitialTitle; got != "inspect the screenshot" {
+		t.Fatalf("runtime initial title = %q, want text content", got)
+	}
+}
+
 func TestServiceUpdateVisibleUpdatesRuntimeSession(t *testing.T) {
 	t.Setenv("CLAUDE_CONFIG_DIR", t.TempDir())
 	runtime := newFakeRuntime()
@@ -2312,6 +2334,93 @@ func TestServiceSendInputDerivesMissingInitialTitle(t *testing.T) {
 	}
 	if got := runtime.execCalls[0].InitialTitle; got != "@task inspect repo" {
 		t.Fatalf("runtime initial title = %q, want canonical visible prompt", got)
+	}
+	if got := runtime.execCalls[0].InitialTitleBase; got != "Codex" {
+		t.Fatalf("runtime initial title base = %q, want provider placeholder", got)
+	}
+}
+
+func TestServiceSendInputPrefersTextForMixedContentInitialTitle(t *testing.T) {
+	runtime := newFakeRuntime()
+	service := newIsolatedAgentService(runtime)
+	service.PromptAttachmentStore = PromptAttachmentStore{RootDir: t.TempDir()}
+	runtime.sessions["ws-1:session-1"] = ProviderRuntimeSession{
+		ID:          "session-1",
+		WorkspaceID: "ws-1",
+		Provider:    "codex",
+		Status:      "ready",
+		Visible:     true,
+	}
+
+	_, err := service.SendInput(context.Background(), "ws-1", "session-1", SendInput{
+		Content: []PromptContentBlock{
+			{Type: "text", Text: "inspect the screenshot"},
+			{Type: "image", MimeType: "image/png", Data: "aGVsbG8="},
+		},
+	})
+	if err != nil {
+		t.Fatalf("SendInput error = %v", err)
+	}
+	if got := runtime.execCalls[0].InitialTitle; got != "inspect the screenshot" {
+		t.Fatalf("runtime initial title = %q, want text content", got)
+	}
+}
+
+func TestServiceSendInputUsesDynamicAgentTargetNameAsPlaceholder(t *testing.T) {
+	runtime := newFakeRuntime()
+	service := newIsolatedAgentService(runtime)
+	service.AgentTargetStore = fakeAgentTargetStore{targets: map[string]agenttargetbiz.Target{
+		"extension:gemini": {ID: "extension:gemini", Name: "Gemini"},
+	}}
+	runtime.sessions["ws-1:session-1"] = ProviderRuntimeSession{
+		ID:            "session-1",
+		WorkspaceID:   "ws-1",
+		AgentTargetID: "extension:gemini",
+		Provider:      "acp:gemini",
+		Title:         "Gemini",
+		Status:        "ready",
+		Visible:       true,
+	}
+
+	_, err := service.SendInput(context.Background(), "ws-1", "session-1", SendInput{
+		Content: TextPromptContent("inspect repo"),
+	})
+	if err != nil {
+		t.Fatalf("SendInput error = %v", err)
+	}
+	if got := runtime.execCalls[0].InitialTitle; got != "inspect repo" {
+		t.Fatalf("runtime initial title = %q, want dynamic-provider prompt title", got)
+	}
+}
+
+func TestServiceSendInputDoesNotReplaceEstablishedProviderNamedTitle(t *testing.T) {
+	runtime := newFakeRuntime()
+	service := newIsolatedAgentService(runtime)
+	service.MessageReader = fakeMessageReader{page: SessionMessagesPage{
+		AgentSessionID: "session-1",
+		Messages: []SessionMessage{{
+			AgentSessionID: "session-1",
+			MessageID:      "message-1",
+			Role:           "user",
+		}},
+	}}
+	runtime.sessions["ws-1:session-1"] = ProviderRuntimeSession{
+		ID:          "session-1",
+		WorkspaceID: "ws-1",
+		Provider:    "codex",
+		Title:       "Codex",
+		Status:      "ready",
+		Visible:     true,
+	}
+
+	_, err := service.SendInput(context.Background(), "ws-1", "session-1", SendInput{
+		Content: TextPromptContent("second prompt"),
+	})
+	if err != nil {
+		t.Fatalf("SendInput error = %v", err)
+	}
+	if got := runtime.execCalls[0].InitialTitle; got != "" {
+		t.Fatalf("runtime initial title = %q, want established title preserved", got)
 	}
 }
 

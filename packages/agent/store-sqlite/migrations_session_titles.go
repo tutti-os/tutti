@@ -105,15 +105,27 @@ func (s *Store) applyWorkspaceAgentSessionTitlesV2(ctx context.Context) error {
 	}()
 
 	rows, err := tx.QueryContext(ctx, `
-SELECT s.workspace_id, s.agent_session_id, s.provider, s.title, m.payload_json
+SELECT s.workspace_id, s.agent_session_id, s.provider, s.title,
+       COALESCE(t.name, ''), m.payload_json
 FROM workspace_agent_sessions AS s
 JOIN workspace_agent_messages AS m
   ON m.workspace_id = s.workspace_id
  AND m.agent_session_id = s.agent_session_id
+LEFT JOIN agent_targets AS t
+  ON t.id = s.agent_target_id
 WHERE s.deleted_at_unix_ms = 0
   AND m.deleted_at_unix_ms = 0
   AND LOWER(TRIM(m.role)) = 'user'
-ORDER BY s.workspace_id, s.agent_session_id, m.version, m.id
+ORDER BY s.workspace_id, s.agent_session_id,
+  CASE
+    WHEN m.occurred_at_unix_ms > 0 THEN m.occurred_at_unix_ms
+    WHEN m.started_at_unix_ms > 0 THEN m.started_at_unix_ms
+    WHEN m.completed_at_unix_ms > 0 THEN m.completed_at_unix_ms
+    WHEN m.created_at_unix_ms > 0 THEN m.created_at_unix_ms
+    ELSE m.updated_at_unix_ms
+  END,
+  m.version,
+  m.id
 `)
 	if err != nil {
 		return fmt.Errorf("list workspace agent sessions for initial title backfill: %w", err)
@@ -123,13 +135,21 @@ ORDER BY s.workspace_id, s.agent_session_id, m.version, m.id
 		agentSessionID string
 		provider       string
 		currentTitle   string
+		targetName     string
 		payloadJSON    string
 	}
 	seen := make(map[string]struct{})
 	var updates []sessionTitleBackfill
 	for rows.Next() {
 		var value sessionTitleBackfill
-		if err := rows.Scan(&value.workspaceID, &value.agentSessionID, &value.provider, &value.currentTitle, &value.payloadJSON); err != nil {
+		if err := rows.Scan(
+			&value.workspaceID,
+			&value.agentSessionID,
+			&value.provider,
+			&value.currentTitle,
+			&value.targetName,
+			&value.payloadJSON,
+		); err != nil {
 			_ = rows.Close()
 			return fmt.Errorf("scan workspace agent session for initial title backfill: %w", err)
 		}
@@ -137,12 +157,17 @@ ORDER BY s.workspace_id, s.agent_session_id, m.version, m.id
 		if _, ok := seen[key]; ok {
 			continue
 		}
-		if !titletext.IsPlaceholder(value.currentTitle, value.provider) {
+		if !titletext.IsPlaceholder(value.currentTitle, value.provider, value.targetName) {
 			seen[key] = struct{}{}
 			continue
 		}
 		prompt := workspaceAgentMessageVisibleText(value.payloadJSON)
-		value.currentTitle = titletext.DeriveInitial(value.currentTitle, value.provider, prompt)
+		value.currentTitle = titletext.DeriveInitial(
+			value.currentTitle,
+			value.provider,
+			prompt,
+			value.targetName,
+		)
 		if value.currentTitle != "" {
 			seen[key] = struct{}{}
 			updates = append(updates, value)
@@ -184,6 +209,18 @@ func workspaceAgentMessageVisibleText(payloadJSON string) string {
 		if value, ok := payload[key].(string); ok && strings.TrimSpace(value) != "" {
 			return value
 		}
+	}
+	blocks, _ := payload["content"].([]any)
+	parts := make([]string, 0, len(blocks))
+	for _, block := range blocks {
+		item, _ := block.(map[string]any)
+		value, _ := item["text"].(string)
+		if value = strings.TrimSpace(value); value != "" {
+			parts = append(parts, value)
+		}
+	}
+	if len(parts) > 0 {
+		return strings.Join(parts, "\n")
 	}
 	return ""
 }

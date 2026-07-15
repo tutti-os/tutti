@@ -1801,8 +1801,11 @@ User-visible rules:
 - `session.title` is a shared, user-visible canonical plain-text field. The
   daemon converts rich title input once before session state is persisted. When
   a session has no real title, the first accepted user submit establishes the
-  canonical title in the same controller event/report batch as the submitted
-  turn lifecycle. The SQLite store backfills historical
+  canonical title through an exact compare-and-set against the title observed
+  by the submit service, in the same controller event/report batch as the
+  submitted turn lifecycle. Built-in provider identities and the selected
+  Agent Target display name are placeholders only before that first durable
+  submit. The SQLite store backfills historical
   empty/provider-placeholder rows from their earliest visible user message
   without changing session creation/update timestamps.
 - CLI, AgentGUI, message-center, notification, and desktop surfaces consume

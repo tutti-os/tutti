@@ -56,6 +56,8 @@ func (c *Controller) Start(ctx context.Context, input StartInput) (StartResult, 
 		Env:               append([]string(nil), input.Env...),
 		Status:            SessionStatusReady,
 		Title:             title,
+		InitialTitleEstablished: input.InitialTitleEstablished ||
+			(title != "" && !titletext.IsPlaceholder(title, provider)),
 		Visible:           sessionVisible(input.Visible),
 		RuntimeContext:    clonePayload(input.RuntimeContext),
 		ProviderTargetRef: clonePayload(input.ProviderTargetRef),
@@ -271,15 +273,25 @@ func (c *Controller) SetVisible(ctx context.Context, roomID, agentSessionID stri
 }
 
 func (c *Controller) SetTitle(ctx context.Context, roomID, agentSessionID string, title string) (Session, error) {
-	session, ok := c.get(strings.TrimSpace(roomID), strings.TrimSpace(agentSessionID))
+	roomID = strings.TrimSpace(roomID)
+	agentSessionID = strings.TrimSpace(agentSessionID)
+	releaseLifecycleLock := c.acquireLifecycleLock(roomID, agentSessionID)
+	defer releaseLifecycleLock()
+
+	session, ok := c.get(roomID, agentSessionID)
 	if !ok {
 		return Session{}, ErrSessionNotFound
 	}
 	title = strings.TrimSpace(title)
 	if session.Title == title {
+		if !session.InitialTitleEstablished {
+			session.InitialTitleEstablished = true
+			c.store(session)
+		}
 		return session, nil
 	}
 	session.Title = title
+	session.InitialTitleEstablished = true
 	session.UpdatedAtUnixMS = unixMS(now())
 	c.store(session)
 	events := []activityshared.Event{newSessionTitleActivityEvent(session, title)}

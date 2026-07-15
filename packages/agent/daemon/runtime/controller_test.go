@@ -315,6 +315,40 @@ func TestControllerSetTitleUpdatesLiveSession(t *testing.T) {
 	}
 }
 
+func TestControllerExecInitialTitleCompareAndSetPreservesRename(t *testing.T) {
+	t.Parallel()
+
+	controller := NewController([]Adapter{&recordingStartAdapter{provider: ProviderCodex}}, nil)
+	_, err := controller.Start(context.Background(), StartInput{
+		RoomID:         "room-1",
+		AgentSessionID: "agent-session-1",
+		Provider:       ProviderCodex,
+		CWD:            "/workspace",
+	})
+	if err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	if _, err := controller.SetTitle(context.Background(), "room-1", "agent-session-1", "Manual title"); err != nil {
+		t.Fatalf("SetTitle: %v", err)
+	}
+	if _, err := controller.Exec(context.Background(), ExecInput{
+		RoomID:           "room-1",
+		AgentSessionID:   "agent-session-1",
+		Content:          textPrompt("hello"),
+		InitialTitle:     "hello",
+		InitialTitleBase: "",
+	}); err != nil {
+		t.Fatalf("Exec: %v", err)
+	}
+	session, ok := controller.get("room-1", "agent-session-1")
+	if !ok {
+		t.Fatal("session missing after Exec")
+	}
+	if session.Title != "Manual title" {
+		t.Fatalf("session title = %q, want concurrent rename preserved", session.Title)
+	}
+}
+
 func TestControllerStartDoesNotReuseSessionWithDifferentProviderTargetRef(t *testing.T) {
 	t.Parallel()
 
@@ -818,10 +852,11 @@ func TestControllerHiddenSessionPublishesLiveEventsAndReportsActivity(t *testing
 	}
 
 	execResult, err := controller.Exec(ctx, ExecInput{
-		RoomID:         "room-1",
-		AgentSessionID: started.Session.AgentSessionID,
-		Content:        textPrompt("hello"),
-		InitialTitle:   "hello",
+		RoomID:           "room-1",
+		AgentSessionID:   started.Session.AgentSessionID,
+		Content:          textPrompt("hello"),
+		InitialTitle:     "hello",
+		InitialTitleBase: "Codex",
 	})
 	if err != nil {
 		t.Fatalf("Exec: %v", err)
@@ -867,10 +902,11 @@ func TestControllerStartExecCancelPublishesAndReports(t *testing.T) {
 	defer unsubscribe()
 
 	execResult, err := controller.Exec(ctx, ExecInput{
-		RoomID:         "room-1",
-		AgentSessionID: started.Session.AgentSessionID,
-		Content:        textPrompt("hello"),
-		InitialTitle:   "hello",
+		RoomID:           "room-1",
+		AgentSessionID:   started.Session.AgentSessionID,
+		Content:          textPrompt("hello"),
+		InitialTitle:     "hello",
+		InitialTitleBase: "Codex",
 	})
 	if err != nil {
 		t.Fatalf("Exec: %v", err)

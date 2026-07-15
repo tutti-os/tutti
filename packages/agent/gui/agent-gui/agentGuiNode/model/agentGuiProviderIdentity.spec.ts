@@ -91,11 +91,11 @@ describe("agentGuiProviderIdentity", () => {
     });
   });
 
-  it("strips trailing periods from agent GUI conversation titles", () => {
+  it("preserves punctuation in canonical agent GUI conversation titles", () => {
     expect(
       resolveAgentGUIConversationTitle("Build the landing page.", "codex")
     ).toEqual({
-      title: "Build the landing page",
+      title: "Build the landing page.",
       titleFallback: null
     });
     expect(
@@ -104,7 +104,7 @@ describe("agentGuiProviderIdentity", () => {
         "claude-code"
       )
     ).toEqual({
-      title: "开始一个 Claude Code GUI 会话",
+      title: "开始一个 Claude Code GUI 会话。",
       titleFallback: null
     });
   });
@@ -181,7 +181,7 @@ describe("agentGuiProviderIdentity", () => {
         title: "Ship the import flow.",
         titleFallback: null
       })
-    ).toBe("Ship the import flow");
+    ).toBe("Ship the import flow.");
   });
 
   it("resolves explicit conversation titles independently from dock display", () => {

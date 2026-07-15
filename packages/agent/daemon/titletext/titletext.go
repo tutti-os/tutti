@@ -11,10 +11,6 @@ import (
 
 const MaxSessionTitleRunes = 120
 
-// Normalize converts rich-text Markdown links to their human-readable labels
-// and collapses whitespace. It intentionally does not apply UI-local labels or
-// localization; session titles are shared by the daemon, CLI, Agent, and
-// desktop surfaces.
 // Normalize converts provider/Tutti rich-text serialization to a plain title.
 // Call it only at a rich-text-to-title boundary; persisted canonical titles
 // must flow through the rest of the system without being parsed again.
@@ -42,8 +38,8 @@ func Normalize(value string) string {
 // title for a session that still has no real conversation title. It returns an
 // empty string once the current title is no longer a provider placeholder, so
 // callers can safely use the result as a compare-and-set candidate.
-func DeriveInitial(currentTitle string, provider string, visiblePrompt string) string {
-	if !IsPlaceholder(currentTitle, provider) {
+func DeriveInitial(currentTitle string, provider string, visiblePrompt string, placeholderAliases ...string) string {
+	if !IsPlaceholder(currentTitle, provider, placeholderAliases...) {
 		return ""
 	}
 	title := Normalize(visiblePrompt)
@@ -55,16 +51,22 @@ func DeriveInitial(currentTitle string, provider string, visiblePrompt string) s
 	}
 	const suffix = "..."
 	runes := []rune(title)
-	return strings.TrimSpace(string(runes[:MaxSessionTitleRunes-len(suffix)])) + suffix
+	suffixRunes := utf8.RuneCountInString(suffix)
+	return strings.TrimSpace(string(runes[:MaxSessionTitleRunes-suffixRunes])) + suffix
 }
 
 // IsPlaceholder reports whether a title is the empty/provider identity used
 // before the first user prompt establishes a conversation title.
-func IsPlaceholder(value string, provider string) bool {
+func IsPlaceholder(value string, provider string, placeholderAliases ...string) bool {
 	title := normalizeIdentity(value)
 	provider = normalizeIdentity(provider)
 	if title == "" || title == provider {
 		return true
+	}
+	for _, candidate := range placeholderAliases {
+		if title == normalizeIdentity(candidate) {
+			return true
+		}
 	}
 	descriptor, ok := providerregistry.Find(provider)
 	if !ok {

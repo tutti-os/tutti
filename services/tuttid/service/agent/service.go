@@ -170,16 +170,17 @@ func (s *Service) Create(ctx context.Context, workspaceID string, input CreateSe
 	session, err := func() (ProviderRuntimeSession, error) {
 		defer releaseStartup()
 		return s.controller().Start(ctx, RuntimeStartInput{
-			WorkspaceID:      workspaceID,
-			AgentSessionID:   strings.TrimSpace(input.AgentSessionID),
-			AgentTargetID:    input.AgentTargetID,
-			Provider:         provider,
-			Cwd:              prepared.Cwd,
-			Env:              prepared.Env,
-			Title:            value(input.Title),
-			PermissionModeID: value(input.PermissionModeID),
-			Model:            clampComposerModelForLaunch(provider, input.ProviderTargetRef, value(input.Model)),
-			PlanMode:         clampComposerPlanModeForProvider(provider, valueBool(input.PlanMode)),
+			WorkspaceID:             workspaceID,
+			AgentSessionID:          strings.TrimSpace(input.AgentSessionID),
+			AgentTargetID:           input.AgentTargetID,
+			Provider:                provider,
+			Cwd:                     prepared.Cwd,
+			Env:                     prepared.Env,
+			Title:                   value(input.Title),
+			InitialTitleEstablished: strings.TrimSpace(value(input.Title)) != "",
+			PermissionModeID:        value(input.PermissionModeID),
+			Model:                   clampComposerModelForLaunch(provider, input.ProviderTargetRef, value(input.Model)),
+			PlanMode:                clampComposerPlanModeForProvider(provider, valueBool(input.PlanMode)),
 			ReasoningEffort: normalizeReasoningEffortForProvider(
 				provider,
 				value(input.ReasoningEffort),
@@ -239,16 +240,23 @@ func (s *Service) Create(ctx context.Context, workspaceID string, input CreateSe
 		"content_block_count": len(content),
 	})
 	displayPrompt := strings.TrimSpace(input.InitialDisplayPrompt)
-	visiblePrompt := firstNonEmptyString(displayPrompt, preparedDisplayPrompt, normalizedPromptText)
+	visiblePrompt := firstNonEmptyString(displayPrompt, normalizedPromptText, preparedDisplayPrompt)
+	initialTitle := titletext.DeriveInitial(
+		session.Title,
+		session.Provider,
+		visiblePrompt,
+		launch.TitlePlaceholderAliases...,
+	)
 	logAgentSubmitTrace("service.create.exec_requested", workspaceID, session.ID, input.Metadata, nil)
 	nodeStartedAt = time.Now()
 	execResult, err := s.controller().Exec(ctx, RuntimeExecInput{
-		WorkspaceID:    workspaceID,
-		AgentSessionID: session.ID,
-		Content:        content,
-		DisplayPrompt:  displayPrompt,
-		InitialTitle:   titletext.DeriveInitial(session.Title, session.Provider, visiblePrompt),
-		Metadata:       cloneMetadata(input.Metadata),
+		WorkspaceID:      workspaceID,
+		AgentSessionID:   session.ID,
+		Content:          content,
+		DisplayPrompt:    displayPrompt,
+		InitialTitle:     initialTitle,
+		InitialTitleBase: session.Title,
+		Metadata:         cloneMetadata(input.Metadata),
 	})
 	if err != nil {
 		normalizedErr := normalizeRuntimeError(err)
@@ -278,8 +286,9 @@ func (s *Service) Create(ctx context.Context, workspaceID string, input CreateSe
 }
 
 type resolvedCreateSessionLaunch struct {
-	Provider          string
-	ProviderTargetRef map[string]any
+	Provider                string
+	ProviderTargetRef       map[string]any
+	TitlePlaceholderAliases []string
 }
 
 func (s *Service) resolveCreateSessionLaunch(ctx context.Context, input CreateSessionInput) (resolvedCreateSessionLaunch, error) {
@@ -315,9 +324,26 @@ func (s *Service) resolveCreateSessionLaunch(ctx context.Context, input CreateSe
 		return resolvedCreateSessionLaunch{}, fmt.Errorf("%w: provider does not match agent target", ErrInvalidArgument)
 	}
 	return resolvedCreateSessionLaunch{
-		Provider:          derivedProvider,
-		ProviderTargetRef: derivedRef,
+		Provider:                derivedProvider,
+		ProviderTargetRef:       derivedRef,
+		TitlePlaceholderAliases: []string{normalized.Name},
 	}, nil
+}
+
+func (s *Service) sessionTitlePlaceholderAliases(ctx context.Context, agentTargetID string) []string {
+	agentTargetID = strings.TrimSpace(agentTargetID)
+	if s.AgentTargetStore == nil || agentTargetID == "" {
+		return nil
+	}
+	target, err := s.AgentTargetStore.GetAgentTarget(ctx, agentTargetID)
+	if err != nil {
+		return nil
+	}
+	name := strings.TrimSpace(target.Name)
+	if name == "" {
+		return nil
+	}
+	return []string{name}
 }
 
 func (s *Service) resolveCreateSessionModel(ctx context.Context, provider string, providerTargetRef map[string]any, model *string) *string {

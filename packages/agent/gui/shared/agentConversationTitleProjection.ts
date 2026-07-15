@@ -61,7 +61,7 @@ export function resolveAgentGUIConversationTitle(
   title: string;
   titleFallback: AgentGUIConversationTitleFallback;
 } {
-  const normalizedTitle = stripAgentGUITitleTrailingPeriod(title?.trim() ?? "");
+  const normalizedTitle = title?.trim() ?? "";
   if (normalizedTitle) {
     return {
       title: normalizedTitle,
@@ -88,7 +88,7 @@ export function resolveAgentGUIConversationDisplayTitle(
   fallbackAgentLabel: string
 ): string {
   if (input.title) {
-    return stripAgentGUITitleTrailingPeriod(input.title.trim());
+    return input.title.trim();
   }
   if (input.titleFallback === "generic-agent") {
     return stripAgentGUITitleTrailingPeriod(fallbackAgentLabel);
@@ -113,7 +113,7 @@ export function resolveAgentGUIExplicitConversationTitle(input: {
     return null;
   }
 
-  const title = stripAgentGUITitleTrailingPeriod(input.title.trim());
+  const title = input.title.trim();
   if (!title) {
     return null;
   }

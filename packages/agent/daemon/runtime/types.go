@@ -58,19 +58,20 @@ const (
 )
 
 type StartInput struct {
-	RoomID            string
-	AgentSessionID    string
-	AgentTargetID     string
-	Provider          string
-	CWD               string
-	Env               []string
-	Title             string
-	Visible           *bool
-	RuntimeContext    map[string]any
-	ProviderTargetRef map[string]any
-	PermissionModeID  string
-	Settings          *SessionSettings
-	Provisional       bool
+	RoomID                  string
+	AgentSessionID          string
+	AgentTargetID           string
+	Provider                string
+	CWD                     string
+	Env                     []string
+	Title                   string
+	InitialTitleEstablished bool
+	Visible                 *bool
+	RuntimeContext          map[string]any
+	ProviderTargetRef       map[string]any
+	PermissionModeID        string
+	Settings                *SessionSettings
+	Provisional             bool
 }
 
 type ResumeInput struct {
@@ -102,13 +103,14 @@ type CloseInput struct {
 }
 
 type ExecInput struct {
-	RoomID         string
-	AgentSessionID string
-	Content        []PromptContentBlock
-	DisplayPrompt  string
-	InitialTitle   string
-	Metadata       map[string]any
-	Guidance       bool
+	RoomID           string
+	AgentSessionID   string
+	Content          []PromptContentBlock
+	DisplayPrompt    string
+	InitialTitle     string
+	InitialTitleBase string
+	Metadata         map[string]any
+	Guidance         bool
 }
 
 type CancelInput struct {
@@ -227,6 +229,9 @@ type Session struct {
 	// LifecycleSeq is the sequence of the last applied lifecycle snapshot;
 	// lower-seq snapshots arriving over a slower channel are dropped.
 	LifecycleSeq uint64 `json:"-"`
+	// InitialTitleEstablished prevents a provider-shaped first prompt title
+	// from being mistaken for a placeholder on a later turn in this runtime.
+	InitialTitleEstablished bool `json:"-"`
 }
 
 type SessionInteractivePrompt struct {

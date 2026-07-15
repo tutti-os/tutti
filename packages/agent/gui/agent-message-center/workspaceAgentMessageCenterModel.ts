@@ -132,7 +132,7 @@ export function buildWorkspaceAgentMessageCenterItem({
   const lastAgentMessage = messageAnalysis.latestAgentMessage;
   const title = session.title.trim();
   const digest = buildWorkspaceAgentMessageCenterDigest({
-    fallbackTitle: resolveDigestFallbackTitle(session),
+    fallbackTitle: title,
     latestAgentMessage: messageAnalysis.latestDigestAgentMessage,
     needsAttention,
     pendingPrompt,
@@ -225,12 +225,6 @@ function isImportedMessageCenterSession(
   session: WorkspaceAgentMessageCenterSession
 ): boolean {
   return "imported" in session && session.imported === true;
-}
-
-function resolveDigestFallbackTitle(
-  session: WorkspaceAgentMessageCenterSession
-): string {
-  return session.title.trim();
 }
 
 interface MessageCenterSessionMessageAnalysis {
