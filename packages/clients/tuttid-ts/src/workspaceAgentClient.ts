@@ -6,6 +6,7 @@ import {
   deleteWorkspaceAgentSession,
   deleteWorkspaceAgentSessionsBatch,
   getWorkspaceAgentSession,
+  getWorkspaceAgentSessionGoal,
   goalControlWorkspaceAgentSession,
   importWorkspaceExternalAgentSessions,
   listWorkspaceAgentGeneratedFiles,
@@ -18,6 +19,7 @@ import {
   listWorkspaceAgentSessions,
   listWorkspaceGitBranches,
   readWorkspaceAgentSessionAttachment,
+  reconcileWorkspaceAgentSessionGoal,
   resolveWorkspaceGitPatchSupport,
   scanWorkspaceExternalAgentSessionImports,
   sendWorkspaceAgentSessionInput,
@@ -41,6 +43,7 @@ type WorkspaceAgentClient = Pick<
   | "deleteWorkspaceAgentSession"
   | "deleteWorkspaceAgentSessionsBatch"
   | "getWorkspaceAgentSession"
+  | "getWorkspaceAgentSessionGoal"
   | "goalControlWorkspaceAgentSession"
   | "importWorkspaceExternalAgentSessions"
   | "listWorkspaceAgentGeneratedFiles"
@@ -53,6 +56,7 @@ type WorkspaceAgentClient = Pick<
   | "listWorkspaceAgentSessions"
   | "listWorkspaceGitBranches"
   | "readWorkspaceAgentSessionAttachment"
+  | "reconcileWorkspaceAgentSessionGoal"
   | "resolveWorkspaceGitPatchSupport"
   | "scanWorkspaceExternalAgentSessionImports"
   | "sendWorkspaceAgentSessionInput"
@@ -255,6 +259,24 @@ export function createWorkspaceAgentClient(
           path: { agentSessionID, workspaceID }
         }),
         "Goal control failed."
+      );
+    },
+    async getWorkspaceAgentSessionGoal(workspaceID, agentSessionID) {
+      return unwrapData(
+        await getWorkspaceAgentSessionGoal({
+          client,
+          path: { agentSessionID, workspaceID }
+        }),
+        "Get workspace agent goal state failed."
+      );
+    },
+    async reconcileWorkspaceAgentSessionGoal(workspaceID, agentSessionID) {
+      return unwrapData(
+        await reconcileWorkspaceAgentSessionGoal({
+          client,
+          path: { agentSessionID, workspaceID }
+        }),
+        "Reconcile workspace agent goal state failed."
       );
     },
     async sendWorkspaceAgentSessionInput(workspaceID, agentSessionID, request) {

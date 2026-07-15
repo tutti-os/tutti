@@ -209,6 +209,7 @@ function createSession(id: string, status: string): WorkspaceAgentSession {
           completedCommand: null,
           error: null,
           fileChanges: null,
+          origin: "user_prompt",
           outcome: null,
           phase: "running",
           settledAtUnixMs: null,

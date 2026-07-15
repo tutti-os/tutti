@@ -301,9 +301,9 @@ INSERT OR IGNORE INTO workspace_agent_messages (
   status, payload_json, occurred_at_unix_ms, created_at_unix_ms, updated_at_unix_ms
 ) VALUES (?, ?, ?,
   COALESCE((SELECT MAX(version) + 1 FROM workspace_agent_messages WHERE workspace_id = ? AND agent_session_id = ?), 1),
-  NULL, 'system', 'system', 'running', ?, ?, ?, ?)
+  ?, 'system', 'system', 'running', ?, ?, ?, ?)
 `, operation.WorkspaceID, operation.AgentSessionID, planDecisionNoticeMessageID(operation.OperationID),
-		operation.WorkspaceID, operation.AgentSessionID, payloadJSON, now, now, now)
+		operation.WorkspaceID, operation.AgentSessionID, operation.TurnID, payloadJSON, now, now, now)
 	if err != nil {
 		return fmt.Errorf("insert plan decision unknown notice: %w", err)
 	}

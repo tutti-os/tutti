@@ -1350,3 +1350,36 @@ Turn state, loading, cancel, restore, file-change undo, rail projection, event u
   [activity_messages.go](../../../packages/agent/store-sqlite/activity_messages.go)
   [activity_message_read.go](../../../packages/agent/store-sqlite/activity_message_read.go)
   [repository.go](../../../packages/agent/store-sqlite/repository.go)
+
+### Goal clear stays planning and leaves the session running
+
+- Symptom:
+  Immediately clearing a newly set Goal leaves the first response in thinking,
+  `/goal clear` in planning, or the conversation permanently running.
+- Quick checks:
+  Inspect the Goal control response: its Turn ID must be empty. List persisted
+  Turns and verify no Turn was created solely for the clear action. Inspect the
+  Goal state endpoint for `desired`, `observed`, `revision`, `syncStatus`, and
+  `pendingOperationId`. For any real Goal Turn, verify `origin` and source Goal
+  operation/revision are present.
+- Root cause:
+  The prompt path allocated a Turn ID before classifying `/goal`. Provider Goal
+  control is session-level and did not start that Turn, but message persistence
+  manufactured a row for the unknown ID. With no real `turn_started` or
+  terminal event, loading and session-running projections never settled.
+- Fix:
+  Route Goal controls through the typed Goal API before Turn allocation. Persist
+  desired/observed Goal state and an independent operation, reject messages that
+  reference unknown Turns, and adopt only provider-started continuation Turns.
+  Use durable origin and revision correlation so clear does not cancel unrelated
+  user work and stale continuation timers cannot revive an older Goal.
+- Validation:
+  Set then immediately clear a Goal and assert that no control Turn exists, the
+  operation reaches a terminal state, and the session has no phantom active
+  Turn. Cover unknown-Turn message rejection, Claude goal-arm quiescing, Codex
+  adopted continuation provenance, stale observation protection, and revision-
+  guarded continuation nudges.
+- References:
+  [Agent Goal Control Design](../../specs/2026-07-15-agent-goal-control-design.md)
+  [controller_exec.go](../../../packages/agent/daemon/runtime/controller_exec.go)
+  [goal_state.go](../../../packages/agent/store-sqlite/goal_state.go)

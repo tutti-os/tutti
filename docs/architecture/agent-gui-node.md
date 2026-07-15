@@ -73,6 +73,16 @@ OpenAPI contracts change before daemon HTTP request or response code. Generated
 clients and event contracts are projections of that schema, not independent
 models.
 
+Goal control follows the same ownership rule but is not a Turn command. Goal is
+a durable session-level entity with desired/observed state, a monotonic
+revision, and independent control-operation records. A Goal operation may cause
+zero or more provider-created Turns; it never reserves a Turn ID. Real Turns
+carry immutable origin plus optional source Goal operation/revision. Provider
+observations update only observed state, so a late snapshot cannot erase a
+newer desired state or clear tombstone. Provider differences are normalized by
+the daemon `GoalAdapter`; GUI and service code use the typed Goal API rather
+than sending goal banner actions through the prompt pipeline.
+
 ## Workspace Engine Ownership
 
 One `AgentSessionEngine` instance owns agent state for one workspace and runtime

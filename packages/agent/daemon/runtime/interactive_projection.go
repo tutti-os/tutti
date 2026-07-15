@@ -747,6 +747,41 @@ func newTurnActivityEvent(session Session, eventType string, turnID string, stat
 	return newTurnActivityEventWithID(session, newID(), eventType, turnID, status, role, content, payload)
 }
 
+func newSessionAuditEventWithID(session Session, eventID string, role string, content string, payload map[string]any) activityshared.Event {
+	ctx, ok := activityEventContext(session, eventID, "")
+	if !ok {
+		return activityshared.Event{}
+	}
+	if strings.TrimSpace(role) == "" {
+		role = RoleUser
+	}
+	metadata := clonePayload(payload)
+	if metadata == nil {
+		metadata = map[string]any{}
+	}
+	metadata["auditId"] = strings.TrimSpace(eventID)
+	return activityshared.NewSessionAudit(ctx, activityshared.MessageRole(strings.TrimSpace(role)), content, metadata)
+}
+
+func goalControlSessionAuditEvent(session Session, input GoalApplyInput) activityshared.Event {
+	action := strings.TrimSpace(string(input.Action))
+	content := "/goal " + action
+	if input.Action == GoalControlSet {
+		content = "/goal " + strings.TrimSpace(input.Objective)
+	}
+	eventID := strings.TrimSpace(input.OperationID)
+	if eventID == "" {
+		eventID = newID()
+	}
+	return newSessionAuditEventWithID(session, "goal-control:"+eventID, RoleUser, content, map[string]any{
+		"goalControl":     true,
+		"action":          action,
+		"operationId":     strings.TrimSpace(input.OperationID),
+		"goalRevision":    input.Revision,
+		"goalRepairEpoch": input.RepairEpoch,
+	})
+}
+
 func newTurnActivityEventWithID(session Session, eventID string, eventType string, turnID string, status string, role string, content string, payload map[string]any) activityshared.Event {
 	ctx, ok := activityEventContext(session, eventID, turnID)
 	if !ok {

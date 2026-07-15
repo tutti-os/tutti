@@ -17,6 +17,32 @@ import type {
   WorkspaceAgentTurnOutcome,
   WorkspaceAgentTurnPhase
 } from "./generated/index.ts";
+import type { AgentActivityUpdatedPayloadV1 } from "@tutti-os/event-protocol";
+
+/** First-class realtime session audit, deliberately outside Turn messages. */
+export type WorkspaceAgentSessionAuditEvent = Extract<
+  AgentActivityUpdatedPayloadV1,
+  { eventType: "session_audit" }
+>;
+
+const workspaceAgentSessionAuditCompletenessExemplar = {
+  workspaceId: "workspace-1",
+  agentSessionId: "session-1",
+  eventType: "session_audit",
+  data: {
+    workspaceId: "workspace-1",
+    agentSessionId: "session-1",
+    eventType: "session_audit",
+    audit: {
+      auditId: "goal-control:operation-1",
+      role: "user",
+      payload: { text: "/goal clear" },
+      occurredAtUnixMs: 1,
+      version: 1
+    }
+  }
+} as const satisfies WorkspaceAgentSessionAuditEvent;
+void workspaceAgentSessionAuditCompletenessExemplar;
 
 /** Every closed turn phase, usable for iteration and exhaustive UI mapping. */
 export const WORKSPACE_AGENT_TURN_PHASES = [
@@ -56,6 +82,10 @@ export const WORKSPACE_AGENT_INTERACTION_STATUSES = [
 const workspaceAgentTurnCompletenessExemplar = {
   turnId: "turn-1",
   agentSessionId: "session-1",
+  origin: "user_prompt",
+  sourceGoalOperationId: null,
+  sourceGoalRevision: null,
+  sourceGoalRepairEpoch: null,
   phase: "settled",
   outcome: "completed",
   error: { message: "" },

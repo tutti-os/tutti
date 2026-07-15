@@ -32,19 +32,37 @@ type Client struct {
 }
 
 type ReportActivityInput struct {
-	WorkspaceID    string
-	Connector      *ConnectorInfo
-	Source         EventSource
-	TimelineItems  []WorkspaceAgentTimelineItem
-	StatePatches   []WorkspaceAgentStatePatch
-	MessageUpdates []WorkspaceAgentMessageUpdate
+	WorkspaceID           string
+	Connector             *ConnectorInfo
+	Source                EventSource
+	TimelineItems         []WorkspaceAgentTimelineItem
+	StatePatches          []WorkspaceAgentStatePatch
+	MessageUpdates        []WorkspaceAgentMessageUpdate
+	SessionAudits         []WorkspaceAgentSessionAuditUpdate
+	GoalReconcileRequests []WorkspaceAgentGoalReconcileRequest
 }
 
 type ReportActivityReply struct {
-	AcceptedTimelineItemCount  int `json:"acceptedTimelineItemCount"`
-	AcceptedStatePatchCount    int `json:"acceptedStatePatchCount"`
-	AcceptedMessageUpdateCount int `json:"acceptedMessageUpdateCount"`
-	RequestBodyBytes           int `json:"-"`
+	AcceptedTimelineItemCount         int `json:"acceptedTimelineItemCount"`
+	AcceptedStatePatchCount           int `json:"acceptedStatePatchCount"`
+	AcceptedMessageUpdateCount        int `json:"acceptedMessageUpdateCount"`
+	AcceptedSessionAuditCount         int `json:"acceptedSessionAuditCount"`
+	AcceptedGoalReconcileRequestCount int `json:"acceptedGoalReconcileRequestCount"`
+	RequestBodyBytes                  int `json:"-"`
+}
+
+type WorkspaceAgentGoalReconcileRequest struct {
+	RequestID           string `json:"requestId"`
+	Phase               string `json:"phase"`
+	AgentSessionID      string `json:"agentSessionId"`
+	ProviderTurnID      string `json:"providerTurnId,omitempty"`
+	Reason              string `json:"reason,omitempty"`
+	FenceMode           string `json:"fenceMode"`
+	ExpectedOperationID string `json:"expectedOperationId,omitempty"`
+	ExpectedRevision    int64  `json:"expectedRevision,omitempty"`
+	ExpectedRepairEpoch int64  `json:"expectedRepairEpoch,omitempty"`
+	QuiesceSucceeded    bool   `json:"quiesceSucceeded"`
+	QuiesceError        string `json:"quiesceError,omitempty"`
 }
 
 type ReportSessionStateInput struct {
@@ -66,6 +84,57 @@ type ReportSessionStateReply struct {
 	StateApplied      bool  `json:"stateApplied"`
 	LastEventAtUnixMS int64 `json:"lastEventAtUnixMs"`
 	RequestBodyBytes  int   `json:"-"`
+}
+
+type ReportGoalReconcileRequiredInput struct {
+	WorkspaceID string
+	Request     WorkspaceAgentGoalReconcileRequest
+}
+
+type ReportGoalReconcileRequiredReply struct {
+	Accepted bool
+}
+
+// GoalProvenanceBinding is the durable exact-key answer used by provider
+// adapters to attribute provider-authored Goal generations without relying on
+// a transient Turn id. Ambiguous is a permanent fail-closed tombstone.
+type GoalProvenanceBinding struct {
+	WorkspaceID            string `json:"workspaceId"`
+	AgentSessionID         string `json:"agentSessionId"`
+	SessionCreatedAtUnixMS int64  `json:"sessionCreatedAtUnixMs"`
+	ProviderSessionID      string `json:"providerSessionId"`
+	Fingerprint            string `json:"fingerprint"`
+	OperationID            string `json:"operationId,omitempty"`
+	Revision               int64  `json:"revision,omitempty"`
+	RepairEpoch            int64  `json:"repairEpoch,omitempty"`
+	Ambiguous              bool   `json:"ambiguous"`
+	CreatedAtUnixMS        int64  `json:"createdAtUnixMs"`
+	UpdatedAtUnixMS        int64  `json:"updatedAtUnixMs"`
+}
+
+type BindGoalProvenanceInput struct {
+	WorkspaceID            string `json:"workspaceId"`
+	AgentSessionID         string `json:"agentSessionId"`
+	SessionCreatedAtUnixMS int64  `json:"sessionCreatedAtUnixMs"`
+	ProviderSessionID      string `json:"providerSessionId"`
+	Fingerprint            string `json:"fingerprint"`
+	OperationID            string `json:"operationId"`
+	Revision               int64  `json:"revision"`
+	RepairEpoch            int64  `json:"repairEpoch"`
+	OccurredAtUnixMS       int64  `json:"occurredAtUnixMs,omitempty"`
+}
+
+type LookupGoalProvenanceInput struct {
+	WorkspaceID            string `json:"workspaceId"`
+	AgentSessionID         string `json:"agentSessionId"`
+	SessionCreatedAtUnixMS int64  `json:"sessionCreatedAtUnixMs"`
+	ProviderSessionID      string `json:"providerSessionId"`
+	Fingerprint            string `json:"fingerprint"`
+}
+
+type LookupGoalProvenanceReply struct {
+	Binding GoalProvenanceBinding `json:"binding"`
+	Found   bool                  `json:"found"`
 }
 
 func (r *ReportSessionStateReply) UnmarshalJSON(data []byte) error {
@@ -140,16 +209,20 @@ const (
 )
 
 type WorkspaceAgentTurnStateUpdate struct {
-	TurnID             string                            `json:"turnId"`
-	ActiveTurnID       *string                           `json:"activeTurnId,omitempty"`
-	Phase              string                            `json:"phase,omitempty"`
-	Outcome            string                            `json:"outcome,omitempty"`
-	Settling           bool                              `json:"settling,omitempty"`
-	CompletedCommand   *WorkspaceAgentCompletedCommand   `json:"completedCommand,omitempty"`
-	SubmitAvailability *WorkspaceAgentSubmitAvailability `json:"submitAvailability,omitempty"`
-	FileChanges        map[string]any                    `json:"fileChanges,omitempty"`
-	StartedAtUnixMS    int64                             `json:"startedAtUnixMs,omitempty"`
-	CompletedAtUnixMS  int64                             `json:"completedAtUnixMs,omitempty"`
+	TurnID                string                            `json:"turnId"`
+	Origin                string                            `json:"origin,omitempty"`
+	SourceGoalOperationID string                            `json:"sourceGoalOperationId,omitempty"`
+	SourceGoalRevision    int64                             `json:"sourceGoalRevision,omitempty"`
+	SourceGoalRepairEpoch int64                             `json:"sourceGoalRepairEpoch,omitempty"`
+	ActiveTurnID          *string                           `json:"activeTurnId,omitempty"`
+	Phase                 string                            `json:"phase,omitempty"`
+	Outcome               string                            `json:"outcome,omitempty"`
+	Settling              bool                              `json:"settling,omitempty"`
+	CompletedCommand      *WorkspaceAgentCompletedCommand   `json:"completedCommand,omitempty"`
+	SubmitAvailability    *WorkspaceAgentSubmitAvailability `json:"submitAvailability,omitempty"`
+	FileChanges           map[string]any                    `json:"fileChanges,omitempty"`
+	StartedAtUnixMS       int64                             `json:"startedAtUnixMs,omitempty"`
+	CompletedAtUnixMS     int64                             `json:"completedAtUnixMs,omitempty"`
 }
 
 type WorkspaceAgentCompletedCommand struct {
@@ -233,6 +306,17 @@ type WorkspaceAgentSessionMessageUpdate struct {
 	OccurredAtUnixMS  int64                           `json:"occurredAtUnixMs,omitempty"`
 	StartedAtUnixMS   int64                           `json:"startedAtUnixMs,omitempty"`
 	CompletedAtUnixMS int64                           `json:"completedAtUnixMs,omitempty"`
+}
+
+// WorkspaceAgentSessionAuditUpdate is a first-class session-level activity.
+// Compatibility transport may encode it in the session-message endpoint as
+// kind=session_audit, but it never owns or references a Turn.
+type WorkspaceAgentSessionAuditUpdate struct {
+	AuditID          string         `json:"auditId"`
+	Role             string         `json:"role"`
+	Content          string         `json:"content,omitempty"`
+	Payload          map[string]any `json:"payload,omitempty"`
+	OccurredAtUnixMS int64          `json:"occurredAtUnixMs,omitempty"`
 }
 
 type ListSessionMessagesInput struct {
@@ -405,16 +489,20 @@ type WorkspaceAgentStatePatch struct {
 }
 
 type WorkspaceAgentTurnPatch struct {
-	TurnID             string                            `json:"turnId"`
-	ActiveTurnID       *string                           `json:"activeTurnId,omitempty"`
-	Phase              string                            `json:"phase,omitempty"`
-	Outcome            string                            `json:"outcome,omitempty"`
-	Settling           bool                              `json:"settling,omitempty"`
-	CompletedCommand   *WorkspaceAgentCompletedCommand   `json:"completedCommand,omitempty"`
-	SubmitAvailability *WorkspaceAgentSubmitAvailability `json:"submitAvailability,omitempty"`
-	FileChanges        map[string]any                    `json:"fileChanges,omitempty"`
-	StartedAtUnixMS    int64                             `json:"startedAtUnixMs,omitempty"`
-	CompletedAtUnixMS  int64                             `json:"completedAtUnixMs,omitempty"`
+	TurnID                string                            `json:"turnId"`
+	Origin                string                            `json:"origin,omitempty"`
+	SourceGoalOperationID string                            `json:"sourceGoalOperationId,omitempty"`
+	SourceGoalRevision    int64                             `json:"sourceGoalRevision,omitempty"`
+	SourceGoalRepairEpoch int64                             `json:"sourceGoalRepairEpoch,omitempty"`
+	ActiveTurnID          *string                           `json:"activeTurnId,omitempty"`
+	Phase                 string                            `json:"phase,omitempty"`
+	Outcome               string                            `json:"outcome,omitempty"`
+	Settling              bool                              `json:"settling,omitempty"`
+	CompletedCommand      *WorkspaceAgentCompletedCommand   `json:"completedCommand,omitempty"`
+	SubmitAvailability    *WorkspaceAgentSubmitAvailability `json:"submitAvailability,omitempty"`
+	FileChanges           map[string]any                    `json:"fileChanges,omitempty"`
+	StartedAtUnixMS       int64                             `json:"startedAtUnixMs,omitempty"`
+	CompletedAtUnixMS     int64                             `json:"completedAtUnixMs,omitempty"`
 }
 
 type WorkspaceAgentEntityPatch struct {

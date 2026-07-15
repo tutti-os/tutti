@@ -185,9 +185,13 @@ func statePatchFromActivityEvent(source EventSource, event activityshared.Event,
 		event.Type != activityshared.EventRootProviderTurnStarted &&
 		event.Type != activityshared.EventRootProviderTurnCompleted {
 		patch.Turn = &WorkspaceAgentTurnPatch{
-			TurnID:  turnID,
-			Phase:   strings.TrimSpace(event.Payload.TurnPhase),
-			Outcome: strings.TrimSpace(event.Payload.TurnOutcome),
+			TurnID:                turnID,
+			Origin:                stringValueFromPayloadMap(event.Payload.Metadata, "turnOrigin"),
+			SourceGoalOperationID: stringValueFromPayloadMap(event.Payload.Metadata, "sourceGoalOperationId"),
+			SourceGoalRevision:    int64ValueFromPayloadMap(event.Payload.Metadata, "sourceGoalRevision"),
+			SourceGoalRepairEpoch: int64ValueFromPayloadMap(event.Payload.Metadata, "sourceGoalRepairEpoch"),
+			Phase:                 strings.TrimSpace(event.Payload.TurnPhase),
+			Outcome:               strings.TrimSpace(event.Payload.TurnOutcome),
 		}
 	}
 	applyExplicitTurnLifecycleToPatch(&patch, event)

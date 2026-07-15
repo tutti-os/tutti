@@ -71,6 +71,20 @@ func TestStreamingReportCoalescerFlushesBeforeTerminalReport(t *testing.T) {
 	}
 }
 
+func TestStreamingReportCoalescerNeverCoalescesSessionAudit(t *testing.T) {
+	t.Parallel()
+	coalescer := newStreamingReportCoalescer(time.Second)
+	defer coalescer.stop()
+	request := reportRequest{report: agentsessionstore.ReportActivityInput{
+		WorkspaceID: "workspace-1", Source: agentsessionstore.EventSource{AgentID: "session-1"},
+		SessionAudits: []agentsessionstore.WorkspaceAgentSessionAuditUpdate{{AuditID: "audit-1", Role: "user", OccurredAtUnixMS: 1}},
+	}}
+	flushed := coalescer.add(request)
+	if len(flushed) != 1 || len(flushed[0].report.SessionAudits) != 1 {
+		t.Fatalf("flushed = %#v", flushed)
+	}
+}
+
 func streamingReport(messageID string, seq uint64, content string) agentsessionstore.ReportActivityInput {
 	return messageReport(messageID, seq, messageStreamStateStreaming, content)
 }

@@ -105,6 +105,89 @@ test("settings timeout requires an explicit retry before sending again", () => {
   });
 });
 
+test("Turn provenance survives lifecycle upserts, reconcile snapshots, and selectors", () => {
+  const initialTurn: AgentActivityTurn = {
+    ...activeTurn(2),
+    origin: "goal_continuation",
+    sourceGoalOperationId: "goal-operation-1",
+    sourceGoalRepairEpoch: 4,
+    sourceGoalRevision: 7
+  };
+  let state = reduce(createInitialSessionLifecycleState(), {
+    sessions: [session(initialTurn, 2)],
+    type: "session/snapshotReceived"
+  }).state;
+
+  state = reduce(state, {
+    turn: {
+      ...initialTurn,
+      origin: "goal_arm",
+      phase: "waiting",
+      sourceGoalOperationId: "conflicting-operation",
+      sourceGoalRepairEpoch: 99,
+      sourceGoalRevision: 99,
+      updatedAtUnixMs: 3
+    },
+    type: "turn/upserted"
+  }).state;
+
+  const reconciled = session(null, 4);
+  reconciled.activeTurn = {
+    ...initialTurn,
+    origin: "goal_arm",
+    phase: "running",
+    sourceGoalOperationId: undefined,
+    sourceGoalRepairEpoch: undefined,
+    sourceGoalRevision: undefined,
+    updatedAtUnixMs: 4
+  };
+  reconciled.activeTurnId = initialTurn.turnId;
+  state = reduce(state, {
+    sessions: [reconciled],
+    type: "session/snapshotReceived"
+  }).state;
+
+  const engine = {
+    ...createInitialAgentSessionEngineState(),
+    sessionLifecycle: state
+  };
+  const selected = selectEngineTurn(engine, "session-1", "turn-1");
+  assert.equal(selected?.phase, "running");
+  assert.equal(selected?.origin, "goal_continuation");
+  assert.equal(selected?.sourceGoalOperationId, "goal-operation-1");
+  assert.equal(selected?.sourceGoalRevision, 7);
+  assert.equal(selected?.sourceGoalRepairEpoch, 4);
+});
+
+test("legacy_unknown Turn provenance is never inferred during reconcile", () => {
+  const legacyTurn: AgentActivityTurn = {
+    ...activeTurn(2),
+    origin: "legacy_unknown"
+  };
+  let state = reduce(createInitialSessionLifecycleState(), {
+    sessions: [session(legacyTurn, 2)],
+    type: "session/snapshotReceived"
+  }).state;
+  state = reduce(state, {
+    turn: {
+      ...legacyTurn,
+      origin: "goal_continuation",
+      sourceGoalOperationId: "goal-operation-guessed",
+      sourceGoalRepairEpoch: 1,
+      sourceGoalRevision: 1,
+      updatedAtUnixMs: 3
+    },
+    type: "turn/upserted"
+  }).state;
+
+  const stored =
+    state.turnsById[canonicalTurnKey("session-1", legacyTurn.turnId)];
+  assert.equal(stored?.origin, "legacy_unknown");
+  assert.equal(stored?.sourceGoalOperationId, undefined);
+  assert.equal(stored?.sourceGoalRevision, undefined);
+  assert.equal(stored?.sourceGoalRepairEpoch, undefined);
+});
+
 test("bounded snapshots preserve page-loaded session entities omitted from the response", () => {
   const pageLoaded = {
     ...session(null, 2),
@@ -1049,6 +1132,7 @@ function activeTurn(updatedAtUnixMs: number): AgentActivityTurn {
   return {
     turnId: "turn-1",
     agentSessionId: "session-1",
+    origin: "user_prompt",
     phase: "running",
     startedAtUnixMs: 1,
     updatedAtUnixMs

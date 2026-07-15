@@ -49,6 +49,11 @@ CREATE TABLE IF NOT EXISTS workspace_agent_turns (
   file_changes_json TEXT,
   completed_command_json TEXT,
   backfilled INTEGER NOT NULL DEFAULT 0,
+  turn_origin TEXT NOT NULL DEFAULT 'legacy_unknown'
+    CHECK (turn_origin IN ('user_prompt','goal_arm','goal_continuation','provider_initiated','legacy_unknown')),
+  source_goal_operation_id TEXT,
+  source_goal_revision INTEGER CHECK (source_goal_revision IS NULL OR source_goal_revision >= 0),
+  source_goal_repair_epoch INTEGER CHECK (source_goal_repair_epoch IS NULL OR source_goal_repair_epoch >= 0),
   started_at_unix_ms INTEGER NOT NULL DEFAULT 0,
   settled_at_unix_ms INTEGER,
   created_at_unix_ms INTEGER NOT NULL,

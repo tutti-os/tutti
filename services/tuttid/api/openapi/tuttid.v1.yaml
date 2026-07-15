@@ -2801,6 +2801,28 @@ paths:
     parameters:
       - $ref: "#/components/parameters/WorkspaceID"
       - $ref: "#/components/parameters/AgentSessionID"
+    get:
+      operationId: getWorkspaceAgentSessionGoal
+      tags:
+        - agent-session
+      summary: Get the durable desired and observed goal state
+      responses:
+        "200":
+          description: Workspace agent session goal state
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkspaceAgentSessionGoalStateResponse"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "404":
+          $ref: "#/components/responses/WorkspaceNotFoundError"
+        "405":
+          $ref: "#/components/responses/MethodNotAllowedError"
+        "502":
+          $ref: "#/components/responses/WorkspaceOperationError"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailableError"
     post:
       operationId: goalControlWorkspaceAgentSession
       tags:
@@ -2823,6 +2845,32 @@ paths:
           $ref: "#/components/responses/UnauthorizedError"
         "400":
           $ref: "#/components/responses/InvalidRequestError"
+        "404":
+          $ref: "#/components/responses/WorkspaceNotFoundError"
+        "405":
+          $ref: "#/components/responses/MethodNotAllowedError"
+        "502":
+          $ref: "#/components/responses/WorkspaceOperationError"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailableError"
+  /v1/workspaces/{workspaceID}/agent-sessions/{agentSessionID}/goal/reconcile:
+    parameters:
+      - $ref: "#/components/parameters/WorkspaceID"
+      - $ref: "#/components/parameters/AgentSessionID"
+    post:
+      operationId: reconcileWorkspaceAgentSessionGoal
+      tags:
+        - agent-session
+      summary: Reconcile the durable goal projection with provider evidence
+      responses:
+        "200":
+          description: Reconciled workspace agent session goal state
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkspaceAgentSessionGoalStateResponse"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
         "404":
           $ref: "#/components/responses/WorkspaceNotFoundError"
         "405":
@@ -7220,12 +7268,19 @@ components:
       additionalProperties: false
       required:
         - session
-        - turnId
+        - kind
       properties:
         session:
           $ref: "#/components/schemas/WorkspaceAgentSession"
+        kind:
+          type: string
+          description: Discriminates a Turn-producing input from a typed session-level Goal control.
+          enum:
+            - turn
+            - goalControl
         turnId:
           type: string
+          nullable: true
           minLength: 1
         turn:
           $ref: "#/components/schemas/WorkspaceAgentTurn"
@@ -7233,6 +7288,18 @@ components:
           description: >-
             Protocol v2. Snapshot of the turn created by this submission;
             optimistic client intents reconcile against its turnId.
+        operationId:
+          type: string
+          nullable: true
+          description: Durable GoalControlOperation identity when kind is goalControl.
+        goal:
+          allOf:
+            - $ref: "#/components/schemas/WorkspaceAgentSessionGoal"
+          nullable: true
+        goalState:
+          allOf:
+            - $ref: "#/components/schemas/WorkspaceAgentSessionGoalState"
+          nullable: true
     WorkspaceAgentTurnPhase:
       type: string
       description: >-
@@ -7300,6 +7367,7 @@ components:
         - turnId
         - agentSessionId
         - phase
+        - origin
         - outcome
         - error
         - fileChanges
@@ -7316,6 +7384,29 @@ components:
           minLength: 1
         phase:
           $ref: "#/components/schemas/WorkspaceAgentTurnPhase"
+        origin:
+          type: string
+          description: Durable business provenance; steer is input on an existing turn and is never an origin.
+          enum:
+            - user_prompt
+            - goal_arm
+            - goal_continuation
+            - provider_initiated
+            - legacy_unknown
+        sourceGoalOperationId:
+          type: string
+          nullable: true
+          minLength: 1
+        sourceGoalRevision:
+          type: integer
+          format: int64
+          nullable: true
+          minimum: 0
+        sourceGoalRepairEpoch:
+          type: integer
+          format: int64
+          nullable: true
+          minimum: 0
         outcome:
           allOf:
             - $ref: "#/components/schemas/WorkspaceAgentTurnOutcome"
@@ -7625,16 +7716,19 @@ components:
           type: string
           nullable: true
           description: >-
-            Protocol v2 message ownership is an explicit choice: a non-empty
-            turnId attaches the message to that turn; null marks a
-            session-level message (system notices, imported history). Empty
-            strings are forbidden.
+            A non-empty turnId attaches a Turn-scoped message to a real
+            persisted Turn. Null is valid only when kind is session_audit;
+            empty strings are forbidden. Legacy stored turnless rows are read
+            as compatibility data and are never assigned a guessed Turn.
         role:
           type: string
           minLength: 1
         kind:
           type: string
           minLength: 1
+          description: >-
+            session_audit is the only session-scoped kind; every other kind is
+            Turn-scoped and requires a non-null turnId.
         status:
           type: string
         semantics:
@@ -8191,6 +8285,74 @@ components:
           allOf:
             - $ref: "#/components/schemas/WorkspaceAgentSessionGoal"
           nullable: true
+        operationId:
+          type: string
+          nullable: true
+          description: Durable GoalControlOperation identity; null only for compatibility runtimes without a goal store.
+        state:
+          allOf:
+            - $ref: "#/components/schemas/WorkspaceAgentSessionGoalState"
+          nullable: true
+    WorkspaceAgentSessionGoalState:
+      type: object
+      additionalProperties: false
+      required:
+        - revision
+        - tombstoned
+        - syncStatus
+        - lastEvidence
+        - updatedAtUnixMs
+      properties:
+        desired:
+          allOf:
+            - $ref: "#/components/schemas/WorkspaceAgentSessionGoal"
+          nullable: true
+        observed:
+          allOf:
+            - $ref: "#/components/schemas/WorkspaceAgentSessionGoal"
+          nullable: true
+        revision:
+          type: integer
+          format: int64
+          minimum: 0
+        tombstoned:
+          type: boolean
+        syncStatus:
+          type: string
+          enum:
+            - pending
+            - applying
+            - synced
+            - diverged
+            - unknown
+            - failed
+        pendingOperationId:
+          type: string
+          nullable: true
+        lastEvidence:
+          type: object
+          additionalProperties: true
+        lastError:
+          type: string
+        observedAtUnixMs:
+          type: integer
+          format: int64
+          nullable: true
+        updatedAtUnixMs:
+          type: integer
+          format: int64
+          minimum: 0
+    WorkspaceAgentSessionGoalStateResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - session
+        - state
+      properties:
+        session:
+          $ref: "#/components/schemas/WorkspaceAgentSession"
+        state:
+          $ref: "#/components/schemas/WorkspaceAgentSessionGoalState"
     CreateWorkspaceAgentSessionRequest:
       type: object
       additionalProperties: false

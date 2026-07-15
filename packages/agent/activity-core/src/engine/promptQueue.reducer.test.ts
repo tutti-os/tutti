@@ -761,6 +761,7 @@ function session(
         ? {
             turnId: "turn-1",
             agentSessionId: "session-1",
+            origin: "user_prompt",
             phase,
             startedAtUnixMs: 1,
             updatedAtUnixMs

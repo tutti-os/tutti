@@ -82,6 +82,17 @@ export function settleSubmitCommand(
       };
     }
     const result = validation.result;
+    if (result.kind === "goalControl") {
+      return {
+        commands: NO_COMMANDS,
+        state: replaceSubmit(state, {
+          ...record,
+          acceptedSessionVersion: activitySessionVersion(result.session),
+          status: "confirmed",
+          turnId: null
+        })
+      };
+    }
     return {
       commands: NO_COMMANDS,
       state: replaceSubmit(state, {

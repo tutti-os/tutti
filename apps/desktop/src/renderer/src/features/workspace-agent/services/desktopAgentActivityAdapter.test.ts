@@ -41,9 +41,13 @@ test("desktop agent activity adapter preserves a settled latest turn on reload",
     completedCommand: null,
     error: null,
     fileChanges: null,
+    origin: "goal_continuation" as const,
     outcome: "failed" as const,
     phase: "settled" as const,
     settledAtUnixMs: 30,
+    sourceGoalOperationId: "goal-operation-1",
+    sourceGoalRepairEpoch: 4,
+    sourceGoalRevision: 7,
     startedAtUnixMs: 10,
     turnId: "turn-1",
     updatedAtUnixMs: 30
@@ -397,6 +401,43 @@ test("desktop agent activity adapter rejects send responses without a canonical 
     }),
     /workspace_agent\.send_response_turn_required/
   );
+});
+
+test("desktop agent activity adapter accepts typed goal input without a Turn", async () => {
+  const adapter = createDesktopAgentActivityAdapter({
+    tuttidClient: createTuttidClient({
+      async sendWorkspaceAgentSessionInput(
+        _requestWorkspaceId,
+        agentSessionId
+      ) {
+        const session = createSession({
+          id: agentSessionId,
+          goal: { objective: "ship it", status: "active" }
+        });
+        return {
+          kind: "goalControl" as const,
+          operationId: "goal-op-1",
+          session,
+          goal: session.goal
+        };
+      }
+    }),
+    runtimeApi: createRuntimeApi()
+  });
+
+  const result = await adapter.sendInput({
+    clientSubmitId: "submit-goal",
+    workspaceId,
+    agentSessionId: "agent-session-1",
+    content: [{ type: "text", text: "/goal ship it" }]
+  });
+
+  assert.equal(result.kind, "goalControl");
+  assert.equal(result.session.activeTurnId, null);
+  if (result.kind !== "goalControl") {
+    throw new Error("expected goal control result");
+  }
+  assert.equal(result.goal?.objective, "ship it");
 });
 
 test("desktop agent activity adapter marks empty-cwd creates as no-project", async () => {
@@ -1594,6 +1635,7 @@ function createSession(
           completedCommand: null,
           error: null,
           fileChanges: null,
+          origin: "user_prompt" as const,
           outcome: null,
           phase:
             status === "waiting" ? ("waiting" as const) : ("running" as const),
@@ -1610,6 +1652,7 @@ function createSession(
           completedCommand: null,
           error: null,
           fileChanges: null,
+          origin: "user_prompt" as const,
           outcome: status as "completed" | "failed" | "canceled",
           phase: "settled" as const,
           settledAtUnixMs: updatedAtUnixMs,
@@ -1654,6 +1697,7 @@ function createSession(
 
 function createSendInputResponse(session: WorkspaceAgentSession) {
   return {
+    kind: "turn" as const,
     session,
     turnId: "turn-1",
     turn: {
@@ -1661,6 +1705,7 @@ function createSendInputResponse(session: WorkspaceAgentSession) {
       completedCommand: null,
       error: null,
       fileChanges: null,
+      origin: "user_prompt" as const,
       outcome: null,
       phase: "submitted" as const,
       settledAtUnixMs: null,

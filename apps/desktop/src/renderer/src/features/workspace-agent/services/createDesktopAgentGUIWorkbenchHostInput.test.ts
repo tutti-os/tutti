@@ -1688,6 +1688,7 @@ function createWorkspaceAgentActivityService(
         turnId: "turn-1",
         turn: {
           agentSessionId: input.agentSessionId,
+          origin: "user_prompt",
           phase: "submitted",
           startedAtUnixMs: 1,
           turnId: "turn-1",

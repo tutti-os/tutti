@@ -355,12 +355,18 @@ func TestStoreMessageVersionsAreSnapshotCursorsAndMayHaveGaps(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
+	if _, accepted, err := store.RecordTurnTransition(ctx, TurnTransition{
+		WorkspaceID: "ws-1", AgentSessionID: "session-1", TurnID: "turn-1",
+		Phase: TurnPhaseSubmitted, OccurredAtUnixMS: 101,
+	}); err != nil || !accepted {
+		t.Fatalf("RecordTurnTransition() accepted=%v error=%v", accepted, err)
+	}
 	for _, report := range []SessionMessageReport{
 		{WorkspaceID: "ws-1", AgentSessionID: "session-1", Messages: []MessageUpdate{{
 			MessageID: "message-a", TurnID: "turn-1", Role: "user", Kind: "text", Status: "completed", Payload: map[string]any{"text": "a"},
 		}}},
 		{WorkspaceID: "ws-1", AgentSessionID: "session-1", Messages: []MessageUpdate{{
-			MessageID: "message-b", Role: "assistant", Kind: "text", Status: "running", Payload: map[string]any{"text": "b"},
+			MessageID: "message-b", TurnID: "turn-1", Role: "assistant", Kind: "text", Status: "running", Payload: map[string]any{"text": "b"},
 		}}},
 		{WorkspaceID: "ws-1", AgentSessionID: "session-1", Messages: []MessageUpdate{{
 			MessageID: "message-b", Status: "completed", ContentDelta: " done",
@@ -392,6 +398,87 @@ func TestStoreMessageVersionsAreSnapshotCursorsAndMayHaveGaps(t *testing.T) {
 	session, ok, err := store.GetSession(ctx, "ws-1", "session-1")
 	if err != nil || !ok || session.MessageVersion != 3 {
 		t.Fatalf("session after rejected update=%#v ok=%v error=%v", session, ok, err)
+	}
+}
+
+func TestSessionAuditIsTurnlessAndDoesNotChangeActiveTurn(t *testing.T) {
+	t.Parallel()
+	store := openTestStore(t, testOptions(&staticProjectPaths{}))
+	ctx := context.Background()
+	if _, err := store.ReportSessionState(ctx, SessionStateReport{
+		WorkspaceID: "ws-audit", AgentSessionID: "session-audit", Origin: "runtime", Provider: "codex",
+		Status: "running", CurrentPhase: "working", OccurredAtUnixMS: 100,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if _, accepted, err := store.RecordTurnTransition(ctx, TurnTransition{
+		WorkspaceID: "ws-audit", AgentSessionID: "session-audit", TurnID: "turn-active",
+		Phase: TurnPhaseRunning, Origin: TurnOriginUserPrompt, OccurredAtUnixMS: 101,
+	}); err != nil || !accepted {
+		t.Fatalf("RecordTurnTransition() accepted=%v error=%v", accepted, err)
+	}
+	result, err := store.ReportSessionMessages(ctx, SessionMessageReport{
+		WorkspaceID: "ws-audit", AgentSessionID: "session-audit", Origin: "runtime", Provider: "codex",
+		Messages: []MessageUpdate{{MessageID: "goal-control:op-1", Role: "user", Kind: "session_audit", Status: "completed", Payload: map[string]any{"text": "/goal clear"}, OccurredAtUnixMS: 102}},
+	})
+	if err != nil || result.AcceptedCount != 1 || result.Messages[0].TurnID != "" {
+		t.Fatalf("audit result=%#v error=%v", result, err)
+	}
+	turn, ok, err := store.GetTurn(ctx, "ws-audit", "session-audit", "turn-active")
+	if err != nil || !ok || turn.Phase != TurnPhaseRunning {
+		t.Fatalf("active turn=%#v ok=%v error=%v", turn, ok, err)
+	}
+	for _, invalid := range []MessageUpdate{
+		{MessageID: "ordinary-empty", Role: "assistant", Kind: "text", OccurredAtUnixMS: 103},
+		{MessageID: "audit-with-turn", TurnID: "turn-active", Role: "user", Kind: "session_audit", OccurredAtUnixMS: 104},
+	} {
+		if _, err := store.ReportSessionMessages(ctx, SessionMessageReport{WorkspaceID: "ws-audit", AgentSessionID: "session-audit", Origin: "runtime", Messages: []MessageUpdate{invalid}}); err == nil {
+			t.Fatalf("ReportSessionMessages(%s) error=nil", invalid.MessageID)
+		}
+	}
+}
+
+func TestHistoricalImportCompatibilityCannotBeForgedByOrigin(t *testing.T) {
+	t.Parallel()
+	store := openTestStore(t, testOptions(&staticProjectPaths{}))
+	ctx := context.Background()
+	input := SessionMessageReport{
+		WorkspaceID: "ws-import-boundary", AgentSessionID: "session-import", Origin: "WORKSPACE_AGENT_SESSION_ORIGIN_IMPORTED",
+		Messages: []MessageUpdate{{MessageID: "legacy", Role: "assistant", Kind: "text", OccurredAtUnixMS: 10}},
+	}
+	if _, err := store.ReportSessionMessages(ctx, input); err == nil {
+		t.Fatal("import origin alone bypassed Turn invariant")
+	}
+	input.HistoricalImport = true
+	result, err := store.ReportSessionMessages(ctx, input)
+	if err != nil || result.AcceptedCount != 1 || result.Messages[0].TurnID != "" {
+		t.Fatalf("historical import result=%#v error=%v", result, err)
+	}
+}
+
+func TestStoreRejectsMessageReferencingUnknownTurn(t *testing.T) {
+	t.Parallel()
+
+	store := openTestStore(t, testOptions(&staticProjectPaths{}))
+	ctx := context.Background()
+	if _, err := store.ReportSessionState(ctx, SessionStateReport{
+		WorkspaceID: "ws-1", AgentSessionID: "session-1", Origin: "runtime",
+		Provider: "codex", ProviderSessionID: "provider-1", Status: "running", OccurredAtUnixMS: 100,
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	_, err := store.ReportSessionMessages(ctx, SessionMessageReport{
+		WorkspaceID: "ws-1", AgentSessionID: "session-1", Messages: []MessageUpdate{{
+			MessageID: "message-1", TurnID: "missing-turn", Role: "user", Kind: "text",
+			Status: "completed", Payload: map[string]any{"text": "/goal clear"}, OccurredAtUnixMS: 110,
+		}},
+	})
+	if err == nil || !strings.Contains(err.Error(), `references unknown turn "missing-turn"`) {
+		t.Fatalf("ReportSessionMessages() error=%v, want unknown-turn rejection", err)
+	}
+	if _, ok, err := store.GetTurn(ctx, "ws-1", "session-1", "missing-turn"); err != nil || ok {
+		t.Fatalf("GetTurn(missing-turn) ok=%v error=%v, want no manufactured turn", ok, err)
 	}
 }
 
@@ -444,6 +531,159 @@ func TestStoreClearSessionsTxJoinsCallerTransaction(t *testing.T) {
 	}
 	if _, ok, err := store.GetSession(ctx, "ws-tx", "session-1"); err != nil || ok {
 		t.Fatalf("GetSession() after commit ok=%v error=%v, want cleared", ok, err)
+	}
+}
+
+func TestStoreClearSessionsDeletesGoalSagaWithForeignKeysDisabledAndSessionIDReuseStartsClean(t *testing.T) {
+	t.Parallel()
+	store := openTestStore(t, testOptions(&staticProjectPaths{}))
+	ctx := context.Background()
+	if _, err := store.ReportSessionState(ctx, SessionStateReport{
+		WorkspaceID: "ws-clear-goal", AgentSessionID: "session-reused", Provider: "codex", OccurredAtUnixMS: 10,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if _, state, created, err := store.PrepareGoalControlOperation(ctx, GoalControlOperationPrepare{
+		OperationID: "old-goal-op", WorkspaceID: "ws-clear-goal", AgentSessionID: "session-reused",
+		Action: "set", Objective: "old objective", OccurredAtUnixMS: 20,
+	}); err != nil || !created || state.Revision != 1 {
+		t.Fatalf("prepare old goal state=%#v created=%v error=%v", state, created, err)
+	}
+	if _, err := store.db.ExecContext(ctx, `PRAGMA foreign_keys = OFF`); err != nil {
+		t.Fatalf("disable foreign keys: %v", err)
+	}
+	seedRuntimeDeletionSaga(t, store, "ws-clear-goal", "session-reused")
+	result, err := store.ClearSessions(ctx, "ws-clear-goal")
+	if err != nil || result.RemovedSessions != 1 {
+		t.Fatalf("ClearSessions() result=%#v error=%v", result, err)
+	}
+	for _, table := range []string{"workspace_agent_runtime_operation_events", "workspace_agent_runtime_operations", "workspace_agent_goal_control_operations", "workspace_agent_session_goals"} {
+		var count int
+		if err := store.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM `+table+` WHERE workspace_id = ?`, "ws-clear-goal").Scan(&count); err != nil || count != 0 {
+			t.Fatalf("%s count=%d error=%v, want empty", table, count, err)
+		}
+	}
+	if _, err := store.ReportSessionState(ctx, SessionStateReport{
+		WorkspaceID: "ws-clear-goal", AgentSessionID: "session-reused", Provider: "codex", OccurredAtUnixMS: 30,
+	}); err != nil {
+		t.Fatalf("recreate session: %v", err)
+	}
+	if state, found, err := store.GetSessionGoalState(ctx, "ws-clear-goal", "session-reused"); err != nil || found {
+		t.Fatalf("recreated goal state=%#v found=%v error=%v, want absent", state, found, err)
+	}
+	if _, state, created, err := store.PrepareGoalControlOperation(ctx, GoalControlOperationPrepare{
+		OperationID: "new-goal-op", WorkspaceID: "ws-clear-goal", AgentSessionID: "session-reused",
+		Action: "set", Objective: "new objective", OccurredAtUnixMS: 40,
+	}); err != nil || !created || state.Revision != 1 {
+		t.Fatalf("prepare recreated goal state=%#v created=%v error=%v, want revision 1", state, created, err)
+	}
+	seedInteractionTurn(t, store, "ws-clear-goal", "session-reused", "turn-prepared", 50)
+	if _, result, err := store.UpsertInteraction(ctx, InteractionUpsert{
+		WorkspaceID: "ws-clear-goal", AgentSessionID: "session-reused", TurnID: "turn-prepared",
+		RequestID: "request-reused", Kind: InteractionKindQuestion, Status: InteractionStatusPending, OccurredAtUnixMS: 51,
+	}); err != nil || result != InteractionTransitionApplied {
+		t.Fatalf("recreate interaction result=%v error=%v", result, err)
+	}
+	if _, created, err := store.PrepareRuntimeOperation(ctx, RuntimeOperationPrepare{
+		OperationID: "new-runtime-op", WorkspaceID: "ws-clear-goal", AgentSessionID: "session-reused",
+		Kind: RuntimeOperationKindInteractiveResponse, TurnID: "turn-prepared", RequestID: "request-reused", OccurredAtMS: 52,
+	}); err != nil || !created {
+		t.Fatalf("prepare recreated runtime operation created=%v error=%v", created, err)
+	}
+	claimable, err := store.ListClaimableRuntimeOperations(ctx, ListClaimableRuntimeOperationsInput{WorkspaceID: "ws-clear-goal", NowUnixMS: 100, Limit: 10})
+	if err != nil || len(claimable) != 1 || claimable[0].OperationID != "new-runtime-op" {
+		t.Fatalf("claimable after recreation=%#v error=%v", claimable, err)
+	}
+}
+
+func TestStoreSessionDeleteVariantsExplicitlyDeleteGoalSagaWithForeignKeysDisabled(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		name   string
+		remove func(context.Context, *Store) error
+	}{
+		{name: "single", remove: func(ctx context.Context, store *Store) error {
+			_, err := store.DeleteSession(ctx, "ws-delete-goal", "session-1")
+			return err
+		}},
+		{name: "batch", remove: func(ctx context.Context, store *Store) error {
+			_, err := store.DeleteSessionsBatch(ctx, DeleteSessionsBatchInput{WorkspaceID: "ws-delete-goal", SessionIDs: []string{"session-1"}})
+			return err
+		}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			store := openTestStore(t, testOptions(&staticProjectPaths{}))
+			ctx := context.Background()
+			if _, err := store.ReportSessionState(ctx, SessionStateReport{
+				WorkspaceID: "ws-delete-goal", AgentSessionID: "session-1", Provider: "codex", OccurredAtUnixMS: 10,
+			}); err != nil {
+				t.Fatal(err)
+			}
+			if _, _, _, err := store.PrepareGoalControlOperation(ctx, GoalControlOperationPrepare{
+				OperationID: "goal-op-" + tc.name, WorkspaceID: "ws-delete-goal", AgentSessionID: "session-1",
+				Action: "set", Objective: "objective", OccurredAtUnixMS: 20,
+			}); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := store.db.ExecContext(ctx, `PRAGMA foreign_keys = OFF`); err != nil {
+				t.Fatal(err)
+			}
+			seedRuntimeDeletionSaga(t, store, "ws-delete-goal", "session-1")
+			if err := tc.remove(ctx, store); err != nil {
+				t.Fatal(err)
+			}
+			for _, table := range []string{"workspace_agent_runtime_operation_events", "workspace_agent_runtime_operations", "workspace_agent_goal_control_operations", "workspace_agent_session_goals"} {
+				var count int
+				if err := store.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM `+table+` WHERE workspace_id = ?`, "ws-delete-goal").Scan(&count); err != nil || count != 0 {
+					t.Fatalf("%s count=%d error=%v", table, count, err)
+				}
+			}
+		})
+	}
+}
+
+func seedRuntimeDeletionSaga(t *testing.T, store *Store, workspaceID string, sessionID string) {
+	t.Helper()
+	for _, row := range []struct {
+		operationID string
+		status      string
+		turnID      string
+		result      any
+		leaseOwner  any
+		leaseExpiry any
+		nextAttempt any
+		completedAt any
+	}{
+		{operationID: "old-runtime-prepared", status: RuntimeOperationStatusPrepared, turnID: "turn-prepared", nextAttempt: int64(10)},
+		{operationID: "old-runtime-leased", status: RuntimeOperationStatusLeased, turnID: "turn-leased", leaseOwner: "worker", leaseExpiry: int64(1000)},
+		{operationID: "old-runtime-completed", status: RuntimeOperationStatusCompleted, turnID: "turn-completed", result: RuntimeOperationResultCanceled, completedAt: int64(30)},
+	} {
+		query := `INSERT INTO workspace_agent_runtime_operations (
+operation_id, workspace_id, agent_session_id, kind, status, result, subject_id, turn_id,
+payload_json, lease_owner, lease_expires_at_unix_ms, next_attempt_at_unix_ms,
+created_at_unix_ms, updated_at_unix_ms, completed_at_unix_ms
+) VALUES (?, ?, ?, 'cancel_turn', ?, ?, ?, ?, '{}', ?, ?, ?, 20, 20, ?)`
+		if _, err := store.db.Exec(query, row.operationID, workspaceID, sessionID, row.status, row.result, row.turnID, row.turnID,
+			row.leaseOwner, row.leaseExpiry, row.nextAttempt, row.completedAt); err != nil {
+			t.Fatalf("seed runtime operation %s: %v", row.status, err)
+		}
+	}
+	if _, err := store.db.Exec(`INSERT INTO workspace_agent_runtime_operation_events (
+operation_id, workspace_id, agent_session_id, kind, payload_json, created_at_unix_ms
+) VALUES ('old-runtime-completed', ?, ?, 'turn_canceled', '{}', 30)`, workspaceID, sessionID); err != nil {
+		t.Fatalf("seed runtime operation event: %v", err)
+	}
+	if _, err := store.db.Exec(`INSERT INTO workspace_agent_runtime_operations (
+operation_id, workspace_id, agent_session_id, kind, status, result, subject_id, turn_id,
+request_id, payload_json, created_at_unix_ms, updated_at_unix_ms, completed_at_unix_ms
+) VALUES ('old-runtime-interactive', ?, ?, 'interactive_response', 'completed', 'answered',
+  'request-reused', 'turn-prepared', 'request-reused', '{}', 31, 31, 31)`, workspaceID, sessionID); err != nil {
+		t.Fatalf("seed reused interactive runtime operation: %v", err)
+	}
+	if _, err := store.db.Exec(`INSERT INTO workspace_agent_runtime_operation_events (
+operation_id, workspace_id, agent_session_id, kind, payload_json, created_at_unix_ms
+) VALUES ('old-runtime-interactive', ?, ?, 'interactive_completed', '{}', 31)`, workspaceID, sessionID); err != nil {
+		t.Fatalf("seed reused interactive runtime operation event: %v", err)
 	}
 }
 

@@ -114,15 +114,19 @@ func turnTransitionFromStateInput(
 			return agentactivitybiz.TurnTransition{}, false
 		}
 		transition := agentactivitybiz.TurnTransition{
-			WorkspaceID:      workspaceID,
-			AgentSessionID:   agentSessionID,
-			TurnID:           strings.TrimSpace(turn.TurnID),
-			Phase:            phase,
-			Outcome:          normalizeTurnOutcomeV2(turn.Outcome),
-			FileChanges:      clonePayload(turn.FileChanges),
-			StartedAtUnixMS:  turn.StartedAtUnixMS,
-			SettledAtUnixMS:  turn.CompletedAtUnixMS,
-			OccurredAtUnixMS: state.OccurredAtUnixMS,
+			WorkspaceID:           workspaceID,
+			AgentSessionID:        agentSessionID,
+			TurnID:                strings.TrimSpace(turn.TurnID),
+			Phase:                 phase,
+			Outcome:               normalizeTurnOutcomeV2(turn.Outcome),
+			FileChanges:           clonePayload(turn.FileChanges),
+			StartedAtUnixMS:       turn.StartedAtUnixMS,
+			SettledAtUnixMS:       turn.CompletedAtUnixMS,
+			OccurredAtUnixMS:      state.OccurredAtUnixMS,
+			Origin:                strings.TrimSpace(turn.Origin),
+			SourceGoalOperationID: strings.TrimSpace(turn.SourceGoalOperationID),
+			SourceGoalRevision:    turn.SourceGoalRevision,
+			SourceGoalRepairEpoch: turn.SourceGoalRepairEpoch,
 		}
 		if turn.CompletedCommand != nil {
 			transition.CompletedCommandKind = strings.TrimSpace(turn.CompletedCommand.Kind)
@@ -231,17 +235,36 @@ func GeneratedWorkspaceAgentTurn(turn agentactivitybiz.Turn) tuttigenerated.Work
 		value := turn.SettledAtUnixMS
 		settledAt = &value
 	}
+	origin := tuttigenerated.WorkspaceAgentTurnOrigin(strings.TrimSpace(turn.Origin))
+	var sourceGoalOperationID *string
+	if value := strings.TrimSpace(turn.SourceGoalOperationID); value != "" {
+		sourceGoalOperationID = &value
+	}
+	var sourceGoalRevision *int64
+	if turn.SourceGoalRevision > 0 {
+		value := turn.SourceGoalRevision
+		sourceGoalRevision = &value
+	}
+	var sourceGoalRepairEpoch *int64
+	if sourceGoalOperationID != nil {
+		value := turn.SourceGoalRepairEpoch
+		sourceGoalRepairEpoch = &value
+	}
 	return tuttigenerated.WorkspaceAgentTurn{
-		AgentSessionId:   strings.TrimSpace(turn.AgentSessionID),
-		CompletedCommand: completedCommand,
-		Error:            turnError,
-		FileChanges:      fileChanges,
-		Outcome:          outcome,
-		Phase:            tuttigenerated.WorkspaceAgentTurnPhase(turn.Phase),
-		SettledAtUnixMs:  settledAt,
-		StartedAtUnixMs:  turn.StartedAtUnixMS,
-		TurnId:           strings.TrimSpace(turn.TurnID),
-		UpdatedAtUnixMs:  turn.UpdatedAtUnixMS,
+		AgentSessionId:        strings.TrimSpace(turn.AgentSessionID),
+		CompletedCommand:      completedCommand,
+		Error:                 turnError,
+		FileChanges:           fileChanges,
+		Outcome:               outcome,
+		Origin:                origin,
+		Phase:                 tuttigenerated.WorkspaceAgentTurnPhase(turn.Phase),
+		SettledAtUnixMs:       settledAt,
+		StartedAtUnixMs:       turn.StartedAtUnixMS,
+		SourceGoalOperationId: sourceGoalOperationID,
+		SourceGoalRevision:    sourceGoalRevision,
+		SourceGoalRepairEpoch: sourceGoalRepairEpoch,
+		TurnId:                strings.TrimSpace(turn.TurnID),
+		UpdatedAtUnixMs:       turn.UpdatedAtUnixMS,
 	}
 }
 

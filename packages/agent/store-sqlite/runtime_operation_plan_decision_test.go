@@ -79,12 +79,12 @@ func TestPlanDecisionCompletionRequiresCheckpointAndCommitsOutbox(t *testing.T) 
 			t.Fatalf("checkpoint %s changed=%v err=%v", step, changed, err)
 		}
 	}
-	var noticeStatus, noticePayload string
+	var noticeStatus, noticePayload, noticeTurnID string
 	if err := store.db.QueryRow(`
-SELECT status, payload_json FROM workspace_agent_messages
+SELECT status, payload_json, COALESCE(turn_id, '') FROM workspace_agent_messages
 WHERE workspace_id = 'ws-1' AND agent_session_id = 'session-1' AND message_id = ?
-`, planDecisionNoticeMessageID("operation-1")).Scan(&noticeStatus, &noticePayload); err != nil || noticeStatus != "running" {
-		t.Fatalf("pending notice status=%q payload=%s err=%v", noticeStatus, noticePayload, err)
+`, planDecisionNoticeMessageID("operation-1")).Scan(&noticeStatus, &noticePayload, &noticeTurnID); err != nil || noticeStatus != "running" || noticeTurnID != "turn-1" {
+		t.Fatalf("pending notice status=%q turn=%q payload=%s err=%v", noticeStatus, noticeTurnID, noticePayload, err)
 	}
 	assertPlanDecisionNoticePayload(t, mustJSONMap(t, noticePayload), "plan_implementation_pending_confirmation", "warning", "")
 	pendingEvents, err := store.ListPendingRuntimeOperationEvents(context.Background(), "ws-1", 10)
@@ -111,10 +111,10 @@ WHERE workspace_id = 'ws-1' AND agent_session_id = 'session-1' AND message_id = 
 		t.Fatalf("completion=%#v changed=%v err=%v", completion, changed, err)
 	}
 	if err := store.db.QueryRow(`
-SELECT status, payload_json FROM workspace_agent_messages
+SELECT status, payload_json, COALESCE(turn_id, '') FROM workspace_agent_messages
 WHERE workspace_id = 'ws-1' AND agent_session_id = 'session-1' AND message_id = ?
-`, planDecisionNoticeMessageID("operation-1")).Scan(&noticeStatus, &noticePayload); err != nil || noticeStatus != "completed" {
-		t.Fatalf("completed notice status=%q payload=%s err=%v", noticeStatus, noticePayload, err)
+`, planDecisionNoticeMessageID("operation-1")).Scan(&noticeStatus, &noticePayload, &noticeTurnID); err != nil || noticeStatus != "completed" || noticeTurnID != "turn-1" {
+		t.Fatalf("completed notice status=%q turn=%q payload=%s err=%v", noticeStatus, noticeTurnID, noticePayload, err)
 	}
 	assertPlanDecisionNoticePayload(t, mustJSONMap(t, noticePayload), "plan_implementation_completed", "info", "implementation-turn")
 	completionEvents, err := store.ListPendingRuntimeOperationEvents(context.Background(), "ws-1", 10)

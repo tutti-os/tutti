@@ -8,6 +8,7 @@ import {
 const turn = {
   turnId: "turn-1",
   agentSessionId: "session-1",
+  origin: "user_prompt" as const,
   phase: "settled" as const,
   outcome: "completed" as const,
   startedAtUnixMs: 1,

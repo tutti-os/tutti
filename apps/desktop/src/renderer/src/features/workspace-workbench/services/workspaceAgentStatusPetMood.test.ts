@@ -125,6 +125,7 @@ function dispatchTurn(
     type: "turn/upserted",
     turn: {
       agentSessionId: "session-1",
+      origin: "user_prompt",
       ...(outcome ? { outcome } : {}),
       phase,
       startedAtUnixMs: 1,

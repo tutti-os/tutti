@@ -48,16 +48,26 @@ func (*CodexAppServerAdapter) steerActiveTurn(
 // through the prompt pipeline: no user message, no turn, no transcript entry
 // — only the goal RPC plus a goal-updated session event so the banner
 // refreshes, matching the codex desktop goal bar's in-place controls.
-func (a *CodexAppServerAdapter) GoalControl(
+func (*CodexAppServerAdapter) GoalCapabilities() GoalAdapterCapabilities {
+	return GoalAdapterCapabilities{
+		QuerySupported: true, ClearSupported: true, PauseSupported: true,
+		QuiesceGoalTurns: true, ReplaySetAfterRestart: true,
+	}
+}
+
+func (a *CodexAppServerAdapter) ApplyGoal(
 	ctx context.Context,
 	session Session,
-	action GoalControlAction,
-	objective string,
-) ([]activityshared.Event, map[string]any, error) {
+	input GoalApplyInput,
+) (GoalAdapterResult, error) {
+	action := input.Action
+	objective := input.Objective
 	appSession := a.getSession(session.AgentSessionID)
 	if appSession == nil || appSession.client == nil {
-		return nil, nil, ErrSessionDisconnected
+		return GoalAdapterResult{}, ErrSessionDisconnected
 	}
+	appSession.goalMutationMu.Lock()
+	defer appSession.goalMutationMu.Unlock()
 	session.ProviderSessionID = appSession.threadID
 	method := appServerMethodThreadGoalSet
 	params := map[string]any{"threadId": appSession.threadID}
@@ -71,13 +81,14 @@ func (a *CodexAppServerAdapter) GoalControl(
 	case GoalControlSet:
 		objective = strings.TrimSpace(objective)
 		if objective == "" {
-			return nil, nil, fmt.Errorf("goal objective is required")
+			return GoalAdapterResult{}, fmt.Errorf("goal objective is required")
 		}
 		params["objective"] = objective
 		params["status"] = "active"
 	default:
-		return nil, nil, fmt.Errorf("unsupported goal control action %q", action)
+		return GoalAdapterResult{}, fmt.Errorf("unsupported goal control action %q", action)
 	}
+	previousOperationID, previousRevision, previousRepairEpoch := a.replaceGoalOperationIdentity(session.AgentSessionID, input.OperationID, input.Revision, input.RepairEpoch)
 	slog.Info("agent session app-server goal control",
 		"event", "agent_session.app_server.goal.control",
 		"agent_session_id", session.AgentSessionID,
@@ -85,7 +96,8 @@ func (a *CodexAppServerAdapter) GoalControl(
 	)
 	result, err := appSession.callGoalNoHandler(ctx, method, params)
 	if err != nil {
-		return nil, nil, err
+		a.restoreGoalOperationIdentity(session.AgentSessionID, input.OperationID, input.Revision, input.RepairEpoch, previousOperationID, previousRevision, previousRepairEpoch)
+		return GoalAdapterResult{}, err
 	}
 	goalUpdateType := "thread_goal_update"
 	var goal map[string]any
@@ -95,7 +107,22 @@ func (a *CodexAppServerAdapter) GoalControl(
 	} else {
 		goal = appServerGoalFromResult(result)
 		if len(goal) > 0 {
+			if bindErr := a.bindGoalGeneration(ctx, session, goal, goalOperationIdentity{
+				operationID: strings.TrimSpace(input.OperationID),
+				revision:    input.Revision,
+				repairEpoch: input.RepairEpoch,
+			}); bindErr != nil {
+				return GoalAdapterResult{}, fmt.Errorf("persist goal provenance: %w", bindErr)
+			}
 			a.applyGoalUpdate(session.AgentSessionID, goal)
+		} else if action == GoalControlSet && (goalOperationIdentity{
+			operationID: strings.TrimSpace(input.OperationID),
+			revision:    input.Revision,
+			repairEpoch: input.RepairEpoch,
+		}).valid() {
+			err := errors.New("provider returned no Goal generation for durable Goal set")
+			a.failGoalProvenanceSession(session, err)
+			return GoalAdapterResult{}, err
 		} else if action == GoalControlPause || action == GoalControlResume {
 			// Status-only set may return an empty goal payload; mirror the
 			// change locally so the banner and the reducer's paused-goal
@@ -110,7 +137,7 @@ func (a *CodexAppServerAdapter) GoalControl(
 			}
 		}
 	}
-	events := []activityshared.Event{}
+	events := []activityshared.Event{goalControlSessionAuditEvent(session, input)}
 	if event, ok := normalizedGoalUpdatedEvent(session, goalUpdateType); ok {
 		events = append(events, event)
 	}
@@ -119,7 +146,51 @@ func (a *CodexAppServerAdapter) GoalControl(
 		// becomes active again; the nudge covers the case where it does not.
 		a.scheduleGoalContinuationNudge(session)
 	}
-	return events, a.sessionGoal(session.AgentSessionID), nil
+	observation := a.sessionGoal(session.AgentSessionID)
+	return GoalAdapterResult{
+		Events: events, Observation: observation,
+		Evidence:      map[string]any{"source": "codex_goal_rpc", "confidence": "authoritative", "repairEpoch": input.RepairEpoch},
+		ProviderPhase: "applied",
+	}, nil
+}
+
+// GoalControl is retained as an adapter-level compatibility shim for focused
+// provider tests; controller consumers use the semantic ApplyGoal contract.
+func (a *CodexAppServerAdapter) GoalControl(ctx context.Context, session Session, action GoalControlAction, objective string) ([]activityshared.Event, map[string]any, error) {
+	result, err := a.ApplyGoal(ctx, session, GoalApplyInput{Action: action, Objective: objective})
+	return result.Events, result.Observation, err
+}
+
+func (a *CodexAppServerAdapter) ReconcileGoal(ctx context.Context, session Session) (GoalAdapterResult, error) {
+	appSession := a.getSession(session.AgentSessionID)
+	if appSession == nil || appSession.client == nil {
+		return GoalAdapterResult{}, ErrSessionDisconnected
+	}
+	appSession.goalMutationMu.Lock()
+	defer appSession.goalMutationMu.Unlock()
+	result, err := appSession.callGoalNoHandler(ctx, appServerMethodThreadGoalGet, map[string]any{"threadId": appSession.threadID})
+	if err != nil {
+		return GoalAdapterResult{}, err
+	}
+	goal := appServerGoalFromResult(result)
+	updateType := "thread_goal_update"
+	if len(goal) == 0 {
+		a.applyGoalClear(session.AgentSessionID)
+		updateType = "thread_goal_cleared"
+	} else {
+		a.applyGoalUpdate(session.AgentSessionID, goal)
+	}
+	events := []activityshared.Event{}
+	if event, ok := normalizedGoalUpdatedEvent(session, updateType); ok {
+		events = append(events, event)
+	}
+	return GoalAdapterResult{Events: events, Observation: goal, Evidence: map[string]any{
+		"source": "codex_goal_get", "confidence": "authoritative",
+	}}, nil
+}
+
+func (*CodexAppServerAdapter) NormalizeGoalObservation(raw map[string]any) map[string]any {
+	return clonePayload(raw)
 }
 
 // ExecGoalControl executes a /goal control command as a thread-level
@@ -132,7 +203,6 @@ func (a *CodexAppServerAdapter) ExecGoalControl(
 	session Session,
 	content []PromptContentBlock,
 	displayPrompt string,
-	turnID string,
 ) ([]activityshared.Event, bool, error) {
 	explicitDisplayPrompt, visibleText := explicitAndVisiblePromptText(content, displayPrompt)
 	command, args := splitSlashCommand(visibleText)
@@ -144,16 +214,15 @@ func (a *CodexAppServerAdapter) ExecGoalControl(
 		return nil, true, ErrSessionDisconnected
 	}
 	session.ProviderSessionID = appSession.threadID
-	events, err := a.execGoalControlCommand(ctx, appSession, session, args, turnID, content, explicitDisplayPrompt, visibleText, nil)
+	events, err := a.execGoalControlCommand(ctx, appSession, session, args, "", content, explicitDisplayPrompt, visibleText, nil)
 	return events, true, err
 }
 
 // execGoalControlCommand executes /goal while another turn is running. The
-// goal RPC runs against the thread (not the turn); the submission is recorded
-// like a steered message so the controller closes this Exec's turn record
-// while the running turn keeps owning the session lifecycle. A /goal with a
-// new objective mid-turn updates the objective; continuation turns are then
-// adopted after the running turn settles.
+// goal RPC runs against the thread (not a turn); the submission is recorded
+// as a session-level audit message. A /goal with a new objective can update
+// the goal while another turn is active; continuation turns are adopted only
+// when the provider actually starts them.
 func (a *CodexAppServerAdapter) execGoalControlCommand(
 	ctx context.Context,
 	appSession *codexAppServerSession,
@@ -170,13 +239,14 @@ func (a *CodexAppServerAdapter) execGoalControlCommand(
 	// claiming the handler slot would swallow its notifications.
 	result, err := appSession.callGoalNoHandler(ctx, method, params)
 	events := []activityshared.Event{
-		newTurnActivityEvent(session, EventMessage, turnID, "", RoleUser, displayPrompt, userPromptActivityPayload(content, explicitDisplayPrompt, userPromptActivityPayloadExtraFromExecMetadata(ctx, map[string]any{
-			"steered":     true,
+		newSessionAuditEventWithID(session, newID(), RoleUser, displayPrompt, userPromptActivityPayload(content, explicitDisplayPrompt, userPromptActivityPayloadExtraFromExecMetadata(ctx, map[string]any{
 			"goalControl": true,
 		}))),
 	}
 	if err != nil {
-		events = append(events, appServerSystemNoticeEvent(session, turnID, "warning", "Goal command failed.", err.Error()))
+		if strings.TrimSpace(turnID) != "" {
+			events = append(events, appServerSystemNoticeEvent(session, turnID, "warning", "Goal command failed.", err.Error()))
+		}
 		if emit != nil {
 			emit(events)
 		}
@@ -192,7 +262,7 @@ func (a *CodexAppServerAdapter) execGoalControlCommand(
 	if event, ok := normalizedGoalUpdatedEvent(session, goalUpdateType); ok {
 		events = append(events, event)
 	}
-	if notice := appServerGoalNoticeEvent(session, turnID, method, result); notice != nil {
+	if notice := appServerGoalNoticeEvent(session, turnID, method, result); notice != nil && strings.TrimSpace(turnID) != "" {
 		events = append(events, *notice)
 	}
 	if emit != nil {
@@ -274,8 +344,10 @@ func (a *CodexAppServerAdapter) execSlashCommand(
 		method, params := appServerGoalSlashRequest(args, appSession.threadID)
 		goalObjective := strings.TrimSpace(asString(params["objective"]))
 		goalDrivesTurn := method == appServerMethodThreadGoalSet && goalObjective != ""
+		expectedGoalIdentity := goalOperationIdentity{}
 		var previousGoal map[string]any
 		if goalDrivesTurn {
+			expectedGoalIdentity = a.goalOperationIdentity(session.AgentSessionID)
 			// Mark before the RPC: the server may start (and even settle) the
 			// goal's first turn while thread/goal/set is still in flight, and
 			// the settle path only emits terminal events for marked turns. The
@@ -311,6 +383,12 @@ func (a *CodexAppServerAdapter) execSlashCommand(
 				emitEvents([]activityshared.Event{event})
 			}
 		} else if goal := appServerGoalFromResult(result); len(goal) > 0 {
+			if current := a.goalOperationIdentity(session.AgentSessionID); current == expectedGoalIdentity {
+				if bindErr := a.bindGoalGeneration(ctx, session, goal, expectedGoalIdentity); bindErr != nil {
+					emitTerminal([]activityshared.Event{newTurnActivityEvent(session, EventTurnFailed, turnID, SessionStatusFailed, "", "", acpFailureMetadata(bindErr))})
+					return true, nil
+				}
+			}
 			a.applyGoalUpdate(session.AgentSessionID, goal)
 			if event, ok := normalizedGoalUpdatedEvent(session, "thread_goal_update"); ok {
 				emitEvents([]activityshared.Event{event})
@@ -415,10 +493,10 @@ func (a *CodexAppServerAdapter) sessionGoal(agentSessionID string) map[string]an
 // notification path (settleEmits); no goroutine blocks on it. Runs on the
 // client read loop, so registration completes before the turn's first item
 // notification is processed.
-func (a *CodexAppServerAdapter) adoptServerInitiatedTurn(session Session, providerTurnID string) {
+func (a *CodexAppServerAdapter) adoptServerInitiatedTurn(session Session, providerTurnID string, identity goalOperationIdentity) bool {
 	appSession := a.getSession(session.AgentSessionID)
 	if appSession == nil || appSession.client == nil {
-		return
+		return false
 	}
 	turnID := newID()
 	normalizer := newACPTurnNormalizer()
@@ -457,13 +535,10 @@ func (a *CodexAppServerAdapter) adoptServerInitiatedTurn(session Session, provid
 		settleEmits: true,
 	}
 	appTurn.emitTerminal = emitTerminal
-	if !a.beginActiveTurn(session.AgentSessionID, appTurn) {
+	if !a.beginGoalTurnHandoff(session.AgentSessionID, providerTurnID, appTurn, identity) {
 		// A registered turn won the race; leave tracking to it.
-		return
+		return false
 	}
-	a.setSessionActiveTurnID(session.AgentSessionID, appTurn, providerTurnID)
-	// The adopted id comes from the turn/started notification itself.
-	a.confirmSessionActiveTurnStarted(session.AgentSessionID, providerTurnID)
 	slog.Info("agent session app-server goal turn adopted",
 		"event", "agent_session.app_server.goal.turn_adopted",
 		"agent_session_id", session.AgentSessionID,
@@ -472,10 +547,116 @@ func (a *CodexAppServerAdapter) adoptServerInitiatedTurn(session Session, provid
 	)
 	emitEvents([]activityshared.Event{
 		newTurnActivityEvent(session, EventTurnStarted, turnID, SessionStatusWorking, "", "", map[string]any{
-			"goalContinuation": true,
+			"goalContinuation":      true,
+			"turnOrigin":            "goal_continuation",
+			"sourceGoalOperationId": identity.operationID,
+			"sourceGoalRevision":    identity.revision,
+			"sourceGoalRepairEpoch": identity.repairEpoch,
 		}),
 	})
+	if a.goalHandoffCommittedHook != nil {
+		a.goalHandoffCommittedHook()
+	}
+	a.drainGoalTurnHandoff(session.AgentSessionID, providerTurnID, appTurn)
 	go a.watchTurnExternalTermination(appSession, appTurn)
+	return true
+}
+
+// beginGoalTurnHandoff atomically commits pending ownership, active
+// registration and provider id. Notifications remain buffered while the Turn
+// start event is emitted; drainGoalTurnHandoff then replays them in order.
+func (a *CodexAppServerAdapter) beginGoalTurnHandoff(agentSessionID, providerTurnID string, turn *codexAppServerActiveTurn, identity goalOperationIdentity) bool {
+	if a == nil || turn == nil || !identity.valid() {
+		return false
+	}
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	appSession := a.sessions[strings.TrimSpace(agentSessionID)]
+	if appSession == nil {
+		return false
+	}
+	pending := appSession.pendingGoalTurns[strings.TrimSpace(providerTurnID)]
+	if appSession.activeTurn != nil || pending == nil || pending.state != codexGoalTurnPending || appSession.provenanceDegraded {
+		return false
+	}
+	current := goalOperationIdentity{
+		operationID: appSession.goalOperationID,
+		revision:    appSession.goalRevision,
+		repairEpoch: appSession.goalRepairEpoch,
+	}
+	if current != identity {
+		return false
+	}
+	pending.state = codexGoalTurnAdopting
+	appSession.activeTurn = turn
+	appSession.activeTurnID = strings.TrimSpace(providerTurnID)
+	// Main's provider-turn lifecycle is emitted from appTurn, while Goal
+	// provenance settlement matches through the session slot. Bind both sides
+	// atomically so an adopted turn never falls back to its local Turn ID when
+	// emitting root_provider_turn.completed.
+	turn.providerTurnID = appSession.activeTurnID
+	appSession.activeTurnStartConfirmed = true
+	return true
+}
+
+func (a *CodexAppServerAdapter) drainGoalTurnHandoff(agentSessionID, providerTurnID string, appTurn *codexAppServerActiveTurn) {
+	for {
+		a.mu.Lock()
+		appSession := a.sessions[strings.TrimSpace(agentSessionID)]
+		if appSession == nil {
+			a.mu.Unlock()
+			return
+		}
+		pending := appSession.pendingGoalTurns[strings.TrimSpace(providerTurnID)]
+		if pending == nil || pending.state != codexGoalTurnAdopting {
+			a.mu.Unlock()
+			return
+		}
+		if len(pending.notifications) == 0 {
+			delete(appSession.pendingGoalTurns, strings.TrimSpace(providerTurnID))
+			// The immutable identity has already been copied onto appTurn. The
+			// durable ledger remains the exact historical source, so release this
+			// per-Turn working evidence immediately instead of accumulating it for
+			// the lifetime of a long-running Goal.
+			delete(appSession.goalTurnEvidence, strings.TrimSpace(providerTurnID))
+			a.pruneGoalProvenanceLocked(appSession)
+			a.mu.Unlock()
+			return
+		}
+		notifications := append([]acpMessage(nil), pending.notifications...)
+		pending.notifications = nil
+		client, session := appSession.client, pending.session
+		a.mu.Unlock()
+		reducer := newCodexAppServerReducer(a)
+		for _, notification := range notifications {
+			usesNormalizer := appServerNotificationUsesNormalizer(notification.Method)
+			if usesNormalizer {
+				appTurn.processMu.Lock()
+				a.mu.Lock()
+				currentSession := a.sessions[strings.TrimSpace(agentSessionID)]
+				currentPending := (*codexPendingGoalTurn)(nil)
+				if currentSession != nil {
+					currentPending = currentSession.pendingGoalTurns[strings.TrimSpace(providerTurnID)]
+				}
+				stillAdopting := currentPending != nil && currentPending.state == codexGoalTurnAdopting
+				a.mu.Unlock()
+				if !stillAdopting {
+					appTurn.processMu.Unlock()
+					return
+				}
+			}
+			reduction := reducer.reduceNotification(client, session, appTurn.turnID, notification, appTurn.normalizer, appTurn.emitCommands, true)
+			if len(reduction.Events) > 0 {
+				appTurn.emit(reduction.Events)
+			}
+			if usesNormalizer {
+				if a.goalHandoffDrainHook != nil {
+					a.goalHandoffDrainHook()
+				}
+				appTurn.processMu.Unlock()
+			}
+		}
+	}
 }
 
 // scheduleGoalContinuationNudge re-sends thread/goal/set {status: active}
@@ -490,6 +671,7 @@ func (a *CodexAppServerAdapter) scheduleGoalContinuationNudge(session Session) {
 	}
 	client := appSession.client
 	threadID := appSession.threadID
+	expectedIdentity := a.goalOperationIdentity(agentSessionID)
 	if strings.TrimSpace(asString(a.sessionGoal(agentSessionID)["status"])) != "active" {
 		return
 	}
@@ -505,8 +687,14 @@ func (a *CodexAppServerAdapter) scheduleGoalContinuationNudge(session Session) {
 			return
 		case <-timer.C:
 		}
+		appSession.goalMutationMu.Lock()
+		defer appSession.goalMutationMu.Unlock()
 		if a.sessionActiveTurn(agentSessionID) != nil || a.sessionActiveTurnID(agentSessionID) != "" {
 			// Codex already continued (adopted turn) or a user turn is running.
+			return
+		}
+		if current := a.goalOperationIdentity(agentSessionID); current != expectedIdentity {
+			// A newer set/clear superseded this timer.
 			return
 		}
 		goal := a.sessionGoal(agentSessionID)
@@ -538,7 +726,65 @@ func (a *CodexAppServerAdapter) scheduleGoalContinuationNudge(session Session) {
 			return
 		}
 		if nextGoal := appServerGoalFromResult(result); len(nextGoal) > 0 {
-			a.applyGoalUpdate(agentSessionID, nextGoal)
+			if bindErr := a.bindGoalGeneration(nudgeCtx, session, nextGoal, expectedIdentity); bindErr != nil {
+				slog.Error("agent session app-server goal continuation provenance persistence failed",
+					"event", "agent_session.app_server.goal.continuation_provenance_failed",
+					"agent_session_id", agentSessionID,
+					"error", bindErr.Error(),
+				)
+				return
+			}
+			// The RPC may be slow; a newer durable command cannot acquire this
+			// provider lock until it returns, but retain the result fence for
+			// session teardown/replacement and future lock implementations.
+			if current := a.goalOperationIdentity(agentSessionID); current == expectedIdentity {
+				a.applyGoalUpdate(agentSessionID, nextGoal)
+			}
 		}
 	}()
+}
+
+type goalOperationIdentity struct {
+	operationID string
+	revision    int64
+	repairEpoch int64
+}
+
+func (a *CodexAppServerAdapter) goalOperationIdentity(agentSessionID string) goalOperationIdentity {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	appSession := a.sessions[agentSessionID]
+	if appSession == nil {
+		return goalOperationIdentity{}
+	}
+	return goalOperationIdentity{operationID: appSession.goalOperationID, revision: appSession.goalRevision, repairEpoch: appSession.goalRepairEpoch}
+}
+
+func (a *CodexAppServerAdapter) replaceGoalOperationIdentity(agentSessionID, operationID string, revision int64, repairEpoch int64) (string, int64, int64) {
+	if revision <= 0 && strings.TrimSpace(operationID) == "" {
+		current := a.goalOperationIdentity(agentSessionID)
+		return current.operationID, current.revision, current.repairEpoch
+	}
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	appSession := a.sessions[agentSessionID]
+	if appSession == nil {
+		return "", 0, 0
+	}
+	previousOperationID, previousRevision, previousRepairEpoch := appSession.goalOperationID, appSession.goalRevision, appSession.goalRepairEpoch
+	appSession.goalOperationID, appSession.goalRevision, appSession.goalRepairEpoch = strings.TrimSpace(operationID), revision, repairEpoch
+	return previousOperationID, previousRevision, previousRepairEpoch
+}
+
+func (a *CodexAppServerAdapter) restoreGoalOperationIdentity(agentSessionID, operationID string, revision int64, repairEpoch int64, previousOperationID string, previousRevision int64, previousRepairEpoch int64) {
+	if revision <= 0 && strings.TrimSpace(operationID) == "" {
+		return
+	}
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	appSession := a.sessions[agentSessionID]
+	if appSession == nil || appSession.goalOperationID != strings.TrimSpace(operationID) || appSession.goalRevision != revision || appSession.goalRepairEpoch != repairEpoch {
+		return
+	}
+	appSession.goalOperationID, appSession.goalRevision, appSession.goalRepairEpoch = previousOperationID, previousRevision, previousRepairEpoch
 }

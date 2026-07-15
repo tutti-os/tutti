@@ -621,6 +621,7 @@ function session(
 function activeTurn(phase: "running" | "settled") {
   return {
     agentSessionId: "session-1",
+    origin: "user_prompt" as const,
     phase,
     startedAtUnixMs: 1,
     turnId: "turn-1",

@@ -191,6 +191,27 @@ func TestAgentActivityUpdatedValidationRejectsSchemaDrift(t *testing.T) {
 	}
 }
 
+func TestAgentActivityUpdatedSessionAuditProtocolBoundary(t *testing.T) {
+	t.Parallel()
+	catalog := DefaultCatalog()
+	validAudit := []byte(`{
+		"workspaceId":"workspace-1","agentSessionId":"session-1","eventType":"session_audit",
+		"data":{"workspaceId":"workspace-1","agentSessionId":"session-1","eventType":"session_audit",
+		"audit":{"auditId":"goal-control:op-1","role":"user","payload":{"text":"/goal clear"},"occurredAtUnixMs":100,"version":1}}
+	}`)
+	if err := catalog.ValidatePublish(TopicAgentActivityUpdated, DirectionServerToClient, validAudit); err != nil {
+		t.Fatalf("valid session audit rejected: %v", err)
+	}
+	turnlessMessage := []byte(`{
+		"workspaceId":"workspace-1","agentSessionId":"session-1","eventType":"message_update",
+		"data":{"workspaceId":"workspace-1","agentSessionId":"session-1","eventType":"message_update","latestVersion":1,"acceptedCount":1,
+		"messages":[{"agentSessionId":"session-1","kind":"text","messageId":"message-1","payload":{},"role":"assistant","turnId":null,"occurredAtUnixMs":100,"version":1}]}
+	}`)
+	if err := catalog.ValidatePublish(TopicAgentActivityUpdated, DirectionServerToClient, turnlessMessage); err == nil {
+		t.Fatal("turnless ordinary message passed event protocol validation")
+	}
+}
+
 func TestAgentActivityUpdatedValidationRejectsUnknownTypedEntityFields(t *testing.T) {
 	t.Parallel()
 
@@ -206,7 +227,7 @@ func TestAgentActivityUpdatedValidationRejectsUnknownTypedEntityFields(t *testin
 			"occurredAtUnixMs":1,
 			"activeTurnId":null,
 			"unexpected":true,
-			"turn":{"turnId":"turn-1","agentSessionId":"agent-session-1","phase":"settled","outcome":"completed","error":null,"fileChanges":null,"completedCommand":null,"startedAtUnixMs":1,"settledAtUnixMs":1,"updatedAtUnixMs":1}
+			"turn":{"turnId":"turn-1","agentSessionId":"agent-session-1","phase":"settled","origin":"user_prompt","outcome":"completed","error":null,"fileChanges":null,"completedCommand":null,"startedAtUnixMs":1,"settledAtUnixMs":1,"updatedAtUnixMs":1}
 		}
 	}`
 	if err := catalog.ValidatePublish(
@@ -265,14 +286,23 @@ func TestAgentActivityUpdatedValidationEnforcesFullEntityStateMachines(t *testin
 	validSettledTurn := `{
 		"workspaceId":"workspace-1","agentSessionId":"session-1","eventType":"turn_update",
 		"data":{"workspaceId":"workspace-1","agentSessionId":"session-1","eventType":"turn_update","occurredAtUnixMs":10,"activeTurnId":null,
-		"turn":{"turnId":"turn-1","agentSessionId":"session-1","phase":"settled","outcome":"completed","error":null,"fileChanges":null,"completedCommand":null,"startedAtUnixMs":1,"settledAtUnixMs":10,"updatedAtUnixMs":10}}
+		"turn":{"turnId":"turn-1","agentSessionId":"session-1","phase":"settled","origin":"user_prompt","outcome":"completed","error":null,"fileChanges":null,"completedCommand":null,"startedAtUnixMs":1,"settledAtUnixMs":10,"updatedAtUnixMs":10}}
 	}`
 	if err := catalog.ValidatePublish(TopicAgentActivityUpdated, DirectionServerToClient, []byte(validSettledTurn)); err != nil {
 		t.Fatalf("valid settled turn: %v", err)
 	}
+	validLiveTurn := `{
+		"workspaceId":"workspace-1","agentSessionId":"session-1","eventType":"turn_update",
+		"data":{"workspaceId":"workspace-1","agentSessionId":"session-1","eventType":"turn_update","occurredAtUnixMs":11,"activeTurnId":"turn-live",
+		"turn":{"turnId":"turn-live","agentSessionId":"session-1","phase":"running","origin":"goal_continuation","sourceGoalOperationId":"goal-op-1","sourceGoalRevision":1,"sourceGoalRepairEpoch":0,"outcome":null,"error":null,"fileChanges":null,"completedCommand":null,"startedAtUnixMs":11,"settledAtUnixMs":null,"updatedAtUnixMs":11}}
+	}`
+	if err := catalog.ValidatePublish(TopicAgentActivityUpdated, DirectionServerToClient, []byte(validLiveTurn)); err != nil {
+		t.Fatalf("valid live turn with nullable outcome: %v", err)
+	}
 	invalid := []string{
 		strings.Replace(validSettledTurn, `"activeTurnId":null`, `"activeTurnId":"turn-1"`, 1),
 		strings.Replace(validSettledTurn, `,"outcome":"completed"`, ``, 1),
+		strings.Replace(validLiveTurn, `"sourceGoalOperationId":"goal-op-1"`, `"sourceGoalOperationId":""`, 1),
 		`{"workspaceId":"workspace-1","agentSessionId":"session-1","eventType":"interaction_update","data":{"workspaceId":"workspace-1","agentSessionId":"session-1","eventType":"interaction_update","occurredAtUnixMs":10,"interaction":{"requestId":"request-1","agentSessionId":"session-1","turnId":"turn-1","kind":"approval","status":"pending","toolName":null,"input":null,"output":null,"createdAtUnixMs":1,"updatedAtUnixMs":2}}}`,
 	}
 	for index, payload := range invalid {

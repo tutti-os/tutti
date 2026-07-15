@@ -27,6 +27,8 @@ const (
 	EventSessionUpdated            EventType = "session.updated"
 	EventSessionCompleted          EventType = "session.completed"
 	EventSessionFailed             EventType = "session.failed"
+	EventSessionAudit              EventType = "session.audit"
+	EventGoalReconcileRequired     EventType = "goal.reconcile_required"
 	EventTurnStarted               EventType = "turn.started"
 	EventTurnUpdated               EventType = "turn.updated"
 	EventTurnCompleted             EventType = "turn.completed"
@@ -265,6 +267,28 @@ func NewSessionFailed(ctx EventContext) Event {
 		EffectiveStatus: string(SessionStatusFailed),
 		CWD:             strings.TrimSpace(ctx.CWD),
 	})
+	event.Payload.TurnID = ""
+	return event
+}
+
+// NewSessionAudit records a session-scoped user/control action. It is not a
+// message on a Turn: TurnID is always empty, and downstream projections must
+// keep it out of Turn lifecycle state.
+func NewSessionAudit(ctx EventContext, role MessageRole, content string, metadata map[string]any) Event {
+	event := eventFromContext(ctx, EventSessionAudit, EventPayload{
+		Role:     role,
+		Content:  content,
+		Metadata: cloneMap(metadata),
+	})
+	event.Payload.TurnID = ""
+	return event
+}
+
+// NewGoalReconcileRequired carries internal, session-scoped evidence from a
+// provider adapter to the durable GoalActor. It is neither transcript content
+// nor a Turn lifecycle event.
+func NewGoalReconcileRequired(ctx EventContext, metadata map[string]any) Event {
+	event := eventFromContext(ctx, EventGoalReconcileRequired, EventPayload{Metadata: cloneMap(metadata)})
 	event.Payload.TurnID = ""
 	return event
 }

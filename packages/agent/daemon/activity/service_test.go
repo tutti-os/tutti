@@ -894,6 +894,30 @@ func TestStoreMapsWaitingTurnPhaseToSessionStatus(t *testing.T) {
 	}
 }
 
+func TestGoalTurnProvenanceSurvivesEventAndCompatibilityRoundTrip(t *testing.T) {
+	t.Parallel()
+	event := activityshared.NewTurnStarted(activityshared.EventContext{
+		EventID: "turn-started", Provider: activityshared.ProviderClaudeCode,
+		ProviderSessionID: "provider-session", AgentSessionID: "agent-session",
+		OccurredAtUnixMS: 100,
+	}, "turn-1")
+	event.Payload.Metadata = map[string]any{
+		"turnOrigin": "goal_continuation", "sourceGoalOperationId": "goal-op-1",
+		"sourceGoalRevision": int64(7), "sourceGoalRepairEpoch": int64(3),
+	}
+	patch, ok := statePatchFromActivityEvent(EventSource{Provider: "claude-code"}, event, "agent-session", 100)
+	if !ok || patch.Turn == nil {
+		t.Fatalf("event patch=%#v ok=%v", patch, ok)
+	}
+	state := sessionStateUpdateFromPatch(patch)
+	roundTrip := statePatchFromSessionState("agent-session", state)
+	if roundTrip.Turn == nil || roundTrip.Turn.Origin != "goal_continuation" ||
+		roundTrip.Turn.SourceGoalOperationID != "goal-op-1" || roundTrip.Turn.SourceGoalRevision != 7 ||
+		roundTrip.Turn.SourceGoalRepairEpoch != 3 {
+		t.Fatalf("round-trip provenance=%#v", roundTrip.Turn)
+	}
+}
+
 func TestStoreAppliesRuntimeStatusEventsImmediately(t *testing.T) {
 	svc := New(nil)
 	svc.TrackRoom("room-1")

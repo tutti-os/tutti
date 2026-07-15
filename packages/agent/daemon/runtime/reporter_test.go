@@ -625,6 +625,10 @@ func TestReportActivityInputProjectsOnlyExplicitInteractionTransitions(t *testin
 		transition.ToolName != "AskUserQuestion" {
 		t.Fatalf("interaction transition = %#v", transition)
 	}
+	turn := report.StatePatches[0].Turn
+	if turn == nil || turn.TurnID != "turn-1" || turn.Phase != "waiting" || turn.Origin != "provider_initiated" || turn.ActiveTurnID == nil || *turn.ActiveTurnID != "turn-1" {
+		t.Fatalf("provider-initiated turn = %#v, want explicit atomic turn creation", turn)
+	}
 }
 
 func TestReportActivityInputPreservesToolInputFromTerminalMetadata(t *testing.T) {

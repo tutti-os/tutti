@@ -91,12 +91,44 @@ func (s *SQLiteStore) ReportSessionState(ctx context.Context, input agentactivit
 	return s.agentStore().ReportSessionState(ctx, input)
 }
 
+func (s *SQLiteStore) BindGoalProvenance(ctx context.Context, input agentactivitybiz.BindGoalProvenanceInput) (agentactivitybiz.GoalProvenanceBinding, error) {
+	return s.agentStore().BindGoalProvenance(ctx, input)
+}
+
+func (s *SQLiteStore) LookupGoalProvenance(ctx context.Context, input agentactivitybiz.LookupGoalProvenanceInput) (agentactivitybiz.GoalProvenanceBinding, bool, error) {
+	return s.agentStore().LookupGoalProvenance(ctx, input)
+}
+
 func (s *SQLiteStore) ReportActivityState(ctx context.Context, input agentactivitybiz.ActivityStateReport) (agentactivitybiz.ActivityStateReportResult, error) {
 	return s.agentStore().ReportActivityState(ctx, input)
 }
 
 func (s *SQLiteStore) ReportSessionMessages(ctx context.Context, input agentactivitybiz.SessionMessageReport) (agentactivitybiz.MessageReportResult, error) {
 	return s.agentStore().ReportSessionMessages(ctx, input)
+}
+
+func (s *SQLiteStore) PutGoalReconcileInbox(ctx context.Context, input agentactivitybiz.GoalReconcileInboxItem) (bool, error) {
+	return s.agentStore().PutGoalReconcileInbox(ctx, input)
+}
+
+func (s *SQLiteStore) ListClaimableGoalReconcileInbox(ctx context.Context, now int64, limit int) ([]agentactivitybiz.GoalReconcileInboxItem, error) {
+	return s.agentStore().ListClaimableGoalReconcileInbox(ctx, now, limit)
+}
+
+func (s *SQLiteStore) ClaimGoalReconcileInbox(ctx context.Context, input agentactivitybiz.ClaimGoalReconcileInboxInput) (agentactivitybiz.GoalReconcileInboxItem, bool, error) {
+	return s.agentStore().ClaimGoalReconcileInbox(ctx, input)
+}
+
+func (s *SQLiteStore) CompleteGoalReconcileInbox(ctx context.Context, requestID, owner string, now int64) (bool, error) {
+	return s.agentStore().CompleteGoalReconcileInbox(ctx, requestID, owner, now)
+}
+
+func (s *SQLiteStore) ReleaseGoalReconcileInbox(ctx context.Context, input agentactivitybiz.ReleaseGoalReconcileInboxInput) (bool, error) {
+	return s.agentStore().ReleaseGoalReconcileInbox(ctx, input)
+}
+
+func (s *SQLiteStore) RequeueLeasedGoalReconcileInboxOnStartup(ctx context.Context, now int64) (int64, error) {
+	return s.agentStore().RequeueLeasedGoalReconcileInboxOnStartup(ctx, now)
 }
 
 func (s *SQLiteStore) GetSession(ctx context.Context, workspaceID string, agentSessionID string) (agentactivitybiz.Session, bool, error) {
@@ -193,6 +225,62 @@ func (s *SQLiteStore) ListSessionInteractions(ctx context.Context, input agentac
 
 func (s *SQLiteStore) PrepareRuntimeOperation(ctx context.Context, input agentactivitybiz.RuntimeOperationPrepare) (agentactivitybiz.RuntimeOperation, bool, error) {
 	return s.agentStore().PrepareRuntimeOperation(ctx, input)
+}
+
+func (s *SQLiteStore) PrepareGoalControlOperation(ctx context.Context, input agentactivitybiz.GoalControlOperationPrepare) (agentactivitybiz.GoalControlOperation, agentactivitybiz.SessionGoalState, bool, error) {
+	return s.agentStore().PrepareGoalControlOperation(ctx, input)
+}
+
+func (s *SQLiteStore) MarkGoalControlOperationDispatched(ctx context.Context, workspaceID, operationID string, occurredAtUnixMS int64) (agentactivitybiz.GoalControlOperation, bool, error) {
+	return s.agentStore().MarkGoalControlOperationDispatched(ctx, workspaceID, operationID, occurredAtUnixMS)
+}
+
+func (s *SQLiteStore) AcknowledgeGoalControlOperation(ctx context.Context, input agentactivitybiz.GoalControlOperationAcknowledge) (agentactivitybiz.GoalControlOperation, agentactivitybiz.SessionGoalState, bool, error) {
+	return s.agentStore().AcknowledgeGoalControlOperation(ctx, input)
+}
+
+func (s *SQLiteStore) CompleteGoalControlOperation(ctx context.Context, input agentactivitybiz.GoalControlOperationComplete) (agentactivitybiz.GoalControlOperation, agentactivitybiz.SessionGoalState, bool, error) {
+	return s.agentStore().CompleteGoalControlOperation(ctx, input)
+}
+
+func (s *SQLiteStore) GetSessionGoalState(ctx context.Context, workspaceID, agentSessionID string) (agentactivitybiz.SessionGoalState, bool, error) {
+	return s.agentStore().GetSessionGoalState(ctx, workspaceID, agentSessionID)
+}
+
+func (s *SQLiteStore) ReconcileSessionGoalObservation(ctx context.Context, input agentactivitybiz.GoalObservationReconcile) (agentactivitybiz.SessionGoalState, error) {
+	return s.agentStore().ReconcileSessionGoalObservation(ctx, input)
+}
+
+func (s *SQLiteStore) GetGoalControlOperation(ctx context.Context, workspaceID, operationID string) (agentactivitybiz.GoalControlOperation, bool, error) {
+	return s.agentStore().GetGoalControlOperation(ctx, workspaceID, operationID)
+}
+
+func (s *SQLiteStore) ListClaimableGoalControlOperations(ctx context.Context, input agentactivitybiz.ListClaimableGoalControlOperationsInput) ([]agentactivitybiz.GoalControlOperation, error) {
+	return s.agentStore().ListClaimableGoalControlOperations(ctx, input)
+}
+
+func (s *SQLiteStore) ClaimGoalControlOperation(ctx context.Context, input agentactivitybiz.ClaimGoalControlOperationInput) (agentactivitybiz.GoalControlOperation, bool, error) {
+	return s.agentStore().ClaimGoalControlOperation(ctx, input)
+}
+
+func (s *SQLiteStore) ReleaseGoalControlOperation(ctx context.Context, input agentactivitybiz.ReleaseGoalControlOperationInput) (agentactivitybiz.GoalControlOperation, bool, error) {
+	return s.agentStore().ReleaseGoalControlOperation(ctx, input)
+}
+
+func (s *SQLiteStore) RecordGoalControlOperationEvidence(ctx context.Context, input agentactivitybiz.GoalControlOperationEvidence) (agentactivitybiz.GoalControlOperation, bool, error) {
+	return s.agentStore().RecordGoalControlOperationEvidence(ctx, input)
+}
+
+func (s *SQLiteStore) EnsureOrWakeGoalRepairOperation(ctx context.Context, input agentactivitybiz.EnsureGoalRepairOperationInput) (agentactivitybiz.GoalControlOperation, agentactivitybiz.SessionGoalState, bool, error) {
+	return s.agentStore().EnsureOrWakeGoalRepairOperation(ctx, input)
+}
+
+func (s *SQLiteStore) MarkGoalRevisionTerminalIncident(ctx context.Context, input agentactivitybiz.GoalTerminalIncidentInput) (agentactivitybiz.SessionGoalState, error) {
+	return s.agentStore().MarkGoalRevisionTerminalIncident(ctx, input)
+}
+
+func (s *SQLiteStore) RequeueLeasedGoalControlOperationsOnStartup(ctx context.Context, now int64) (int64, error) {
+	return s.agentStore().RequeueLeasedGoalControlOperationsOnStartup(ctx, now)
 }
 
 func (s *SQLiteStore) PrepareSubmitClaim(ctx context.Context, input agentactivitybiz.SubmitClaimPrepare) (agentactivitybiz.SubmitClaim, bool, error) {

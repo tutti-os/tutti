@@ -256,7 +256,17 @@ export function createDesktopAgentActivityAdapter({
         });
         throw wrapLocalizedTuttidErrorIfSpecific(error, getActiveLocale());
       }
-      if (!result.turn) {
+      if (result.kind === "goalControl") {
+        return {
+          kind: "goalControl",
+          goal: result.goal ?? result.session.goal ?? null,
+          session: agentActivitySessionFromTuttidSession(
+            input.workspaceId,
+            result.session
+          )
+        };
+      }
+      if (!result.turn || !result.turnId) {
         throw new Error("workspace_agent.send_response_turn_required");
       }
       reportDesktopAgentSubmitTrace(runtimeApi, {
@@ -273,6 +283,7 @@ export function createDesktopAgentActivityAdapter({
         }
       });
       return {
+        kind: "turn",
         session: agentActivitySessionFromTuttidSession(
           input.workspaceId,
           result.session

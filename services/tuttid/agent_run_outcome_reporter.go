@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"strings"
 
 	agentdaemon "github.com/tutti-os/tutti/packages/agent/daemon"
@@ -34,6 +35,22 @@ func (r agentRunOutcomeReporter) Report(
 		}
 	}
 	return r.inner.Report(ctx, input)
+}
+
+func (r agentRunOutcomeReporter) BindGoalProvenance(ctx context.Context, input agentsessionstore.BindGoalProvenanceInput) (agentsessionstore.GoalProvenanceBinding, error) {
+	ledger, ok := r.inner.(agentsessionstore.GoalProvenanceLedger)
+	if !ok {
+		return agentsessionstore.GoalProvenanceBinding{}, errors.New("agent activity reporter does not support goal provenance")
+	}
+	return ledger.BindGoalProvenance(ctx, input)
+}
+
+func (r agentRunOutcomeReporter) LookupGoalProvenance(ctx context.Context, input agentsessionstore.LookupGoalProvenanceInput) (agentsessionstore.GoalProvenanceBinding, bool, error) {
+	ledger, ok := r.inner.(agentsessionstore.GoalProvenanceLedger)
+	if !ok {
+		return agentsessionstore.GoalProvenanceBinding{}, false, errors.New("agent activity reporter does not support goal provenance")
+	}
+	return ledger.LookupGoalProvenance(ctx, input)
 }
 
 type runOutcome int
