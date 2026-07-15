@@ -17,7 +17,7 @@ describe("useAgentConversationSelection", () => {
         },
         conversations: { contains: () => true },
         detail: {
-          hasRenderableMessages: () => false,
+          isHydrated: () => false,
           markPending,
           reload,
           setLoading
@@ -50,6 +50,7 @@ describe("useAgentConversationSelection", () => {
 
   it("reuses cached detail when selecting another hydrated session", () => {
     const active = { current: "session-1" as string | null };
+    const markPending = vi.fn();
     const reload = vi.fn();
     const setLoading = vi.fn();
     const data: AgentGUINodeData = {
@@ -65,8 +66,8 @@ describe("useAgentConversationSelection", () => {
         },
         conversations: { contains: () => true },
         detail: {
-          hasRenderableMessages: () => true,
-          markPending: vi.fn(),
+          isHydrated: () => true,
+          markPending,
           reload,
           setLoading
         },
@@ -93,6 +94,7 @@ describe("useAgentConversationSelection", () => {
     act(() => result.current.selectConversation("session-2"));
 
     expect(setLoading).toHaveBeenCalledWith(false);
+    expect(markPending).not.toHaveBeenCalled();
     expect(reload).toHaveBeenCalledWith("session-2", {
       reloadConversations: true,
       reloadDetail: false
@@ -112,7 +114,7 @@ describe("useAgentConversationSelection", () => {
         },
         conversations: { contains: () => true },
         detail: {
-          hasRenderableMessages: () => false,
+          isHydrated: () => false,
           markPending: vi.fn(),
           reload,
           setLoading

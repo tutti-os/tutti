@@ -599,6 +599,33 @@ describe("agentGuiConversationModel", () => {
     ]);
   });
 
+  it("keeps an empty canonical session title as a localized fallback", () => {
+    const snapshot: AgentActivitySnapshot = {
+      workspaceId: "workspace-1",
+      sessionMessagesById: {},
+      presences: [],
+      sessions: [
+        workspaceAgentSession({
+          agentSessionId: "untitled-session",
+          provider: "codex",
+          sessionOrigin: AGENT_GUI_RUNTIME_SESSION_ORIGIN,
+          title: "",
+          updatedAtUnixMs: 10
+        })
+      ]
+    };
+
+    expect(
+      buildAgentGUIConversationSummaries({ snapshot, provider: "codex" })
+    ).toEqual([
+      expect.objectContaining({
+        id: "untitled-session",
+        title: "",
+        titleFallback: "untitled-conversation"
+      })
+    ]);
+  });
+
   it("keeps explicit runtime session titles when cached messages are loaded", () => {
     const snapshot: AgentActivitySnapshot = {
       workspaceId: "workspace-1",

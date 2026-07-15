@@ -390,5 +390,9 @@ function initialActivationTurnIsPending(
 ): boolean {
   if (latestTurn) return false;
   const activation = selectLatestActivationForSession(state, agentSessionId);
-  return activation?.mode === "new" && activation.status !== "failed";
+  return (
+    activation?.mode === "new" &&
+    activation.initialTurnExpected &&
+    activation.status !== "failed"
+  );
 }

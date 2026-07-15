@@ -20,7 +20,6 @@ interface AgentGUIActivateInputBase {
   cwd?: string;
   initialContent?: AgentPromptContentBlock[];
   initialDisplayPrompt?: string;
-  optimisticTitle?: string;
   runtimeContent?: AgentPromptContentBlock[];
   submitDiagnostics?: AgentActivitySubmitDiagnostics;
   settings?: AgentSessionComposerSettings;
@@ -33,11 +32,13 @@ type AgentGUIActivateInput =
       agentTargetId: string;
       clientSubmitId: string;
       mode: "new";
+      optimisticTitle?: string;
     })
   | (AgentGUIActivateInputBase & {
       agentTargetId?: string | null;
       clientSubmitId?: never;
       mode: "existing";
+      optimisticTitle?: never;
     });
 
 interface UseAgentGUIActivationInput {
@@ -120,9 +121,6 @@ export function useAgentGUIActivation({
         ...(input.initialDisplayPrompt
           ? { initialDisplayPrompt: input.initialDisplayPrompt }
           : {}),
-        ...(input.optimisticTitle
-          ? { optimisticTitle: input.optimisticTitle }
-          : {}),
         ...(input.runtimeContent
           ? { runtimeContent: input.runtimeContent }
           : {}),
@@ -145,7 +143,10 @@ export function useAgentGUIActivation({
           ...sharedIntent,
           agentTargetId,
           clientSubmitId,
-          mode: "new"
+          mode: "new",
+          ...(input.optimisticTitle
+            ? { optimisticTitle: input.optimisticTitle }
+            : {})
         });
       } else {
         engine.dispatch({

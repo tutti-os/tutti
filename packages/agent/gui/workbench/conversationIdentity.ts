@@ -57,7 +57,6 @@ export function resolveAgentGuiWorkbenchConversationIdentity(input: {
     agentSessionId,
     fallbackTitle: null,
     optimisticTitle,
-    provider: provider ?? "unknown",
     session
   }).title;
   const agentTitle = resolveAgentGuiWorkbenchHeaderTitle({

@@ -36,6 +36,7 @@ func (c *Controller) Start(ctx context.Context, input StartInput) (StartResult, 
 		firstNonEmpty(input.PermissionModeID, defaultPermissionModeIDForProvider(provider)),
 	)
 	title := titletext.Normalize(input.Title)
+	initialTitleEstablished := input.InitialTitleEstablished || title != ""
 	permissionModeID := settings.PermissionModeID
 	if agentSessionID == "" {
 		if existing, ok := c.findStartSession(roomID, strings.TrimSpace(input.AgentTargetID), provider, input.CWD, title, settings, input.ProviderTargetRef); ok {
@@ -56,14 +57,17 @@ func (c *Controller) Start(ctx context.Context, input StartInput) (StartResult, 
 		Env:                     append([]string(nil), input.Env...),
 		Status:                  SessionStatusReady,
 		Title:                   title,
-		InitialTitleEstablished: input.InitialTitleEstablished || title != "",
+		InitialTitleEstablished: initialTitleEstablished,
 		Visible:                 sessionVisible(input.Visible),
-		RuntimeContext:          clonePayload(input.RuntimeContext),
-		ProviderTargetRef:       clonePayload(input.ProviderTargetRef),
-		PermissionModeID:        permissionModeID,
-		Settings:                cloneSessionSettings(settings),
-		CreatedAtUnixMS:         timestamp,
-		UpdatedAtUnixMS:         timestamp,
+		RuntimeContext: runtimeContextWithInitialTitleEstablished(
+			input.RuntimeContext,
+			initialTitleEstablished,
+		),
+		ProviderTargetRef: clonePayload(input.ProviderTargetRef),
+		PermissionModeID:  permissionModeID,
+		Settings:          cloneSessionSettings(settings),
+		CreatedAtUnixMS:   timestamp,
+		UpdatedAtUnixMS:   timestamp,
 	}
 	events, err := adapter.Start(ctx, session)
 	if err != nil {
@@ -142,6 +146,10 @@ func (c *Controller) Resume(ctx context.Context, input ResumeInput) (Session, er
 	if updatedAtUnixMS <= 0 {
 		updatedAtUnixMS = timestamp
 	}
+	initialTitleEstablished := initialTitleEstablishedFromRuntimeContext(
+		input.RuntimeContext,
+		input.Title,
+	)
 	session := Session{
 		RoomID:                  roomID,
 		AgentSessionID:          agentSessionID,
@@ -152,14 +160,17 @@ func (c *Controller) Resume(ctx context.Context, input ResumeInput) (Session, er
 		Env:                     append([]string(nil), input.Env...),
 		Status:                  firstNonEmpty(normalizeSessionStatus(input.Status), SessionStatusReady),
 		Title:                   strings.TrimSpace(input.Title),
-		InitialTitleEstablished: strings.TrimSpace(input.Title) != "",
+		InitialTitleEstablished: initialTitleEstablished,
 		Visible:                 sessionVisible(input.Visible),
-		RuntimeContext:          clonePayload(input.RuntimeContext),
-		ProviderTargetRef:       clonePayload(input.ProviderTargetRef),
-		PermissionModeID:        normalizePermissionModeIDWithFallback(provider, input.PermissionModeID, defaultPermissionModeIDForProvider(provider)),
-		Settings:                normalizeOptionalSessionSettings(input.Settings, provider, firstNonEmpty(input.PermissionModeID, defaultPermissionModeIDForProvider(provider))),
-		CreatedAtUnixMS:         createdAtUnixMS,
-		UpdatedAtUnixMS:         updatedAtUnixMS,
+		RuntimeContext: runtimeContextWithInitialTitleEstablished(
+			input.RuntimeContext,
+			initialTitleEstablished,
+		),
+		ProviderTargetRef: clonePayload(input.ProviderTargetRef),
+		PermissionModeID:  normalizePermissionModeIDWithFallback(provider, input.PermissionModeID, defaultPermissionModeIDForProvider(provider)),
+		Settings:          normalizeOptionalSessionSettings(input.Settings, provider, firstNonEmpty(input.PermissionModeID, defaultPermissionModeIDForProvider(provider))),
+		CreatedAtUnixMS:   createdAtUnixMS,
+		UpdatedAtUnixMS:   updatedAtUnixMS,
 	}
 	if session.Settings != nil {
 		session.PermissionModeID = session.Settings.PermissionModeID
@@ -285,13 +296,22 @@ func (c *Controller) SetTitle(ctx context.Context, roomID, agentSessionID string
 	title = strings.TrimSpace(title)
 	if session.Title == title {
 		if !session.InitialTitleEstablished {
-			session.InitialTitleEstablished = true
+			session = markInitialTitleEstablished(session)
+			session.UpdatedAtUnixMS = unixMS(now())
 			c.store(session)
+			c.enqueueSessionReport(ctx, session, []activityshared.Event{
+				newSessionActivityEvent(
+					session,
+					EventSessionUpdated,
+					session.Status,
+					nil,
+				),
+			})
 		}
 		return session, nil
 	}
 	session.Title = title
-	session.InitialTitleEstablished = true
+	session = markInitialTitleEstablished(session)
 	session.UpdatedAtUnixMS = unixMS(now())
 	c.store(session)
 	events := []activityshared.Event{newSessionTitleActivityEvent(session, title)}

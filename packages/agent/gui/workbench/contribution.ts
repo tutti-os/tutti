@@ -227,10 +227,11 @@ export function createAgentGuiWorkbenchContribution(
           const conversationIdentity = input.sessionEngine
             ? null
             : (input.resolveDockPopupIdentity?.(workbenchState) ?? null);
-          const conversationTitle =
-            conversationIdentity?.title ??
-            input.resolveDockPopupTitle?.(workbenchState) ??
-            null;
+          const conversationTitle = input.sessionEngine
+            ? null
+            : (conversationIdentity?.title ??
+              input.resolveDockPopupTitle?.(workbenchState) ??
+              null);
           // The empty new-conversation home has no session identity, so it
           // must not inherit the provider icon from the workbench instance.
           // Once a local session id exists, keep the provider icon available
@@ -293,7 +294,6 @@ export function createAgentGuiWorkbenchContribution(
             conversationIconFallbackUrl,
             conversationRailWidthPx,
             displayMode,
-            hasConversation,
             isConversationRailAutoCollapsed,
             isConversationRailCollapsed,
             nodeId: node.id,
@@ -364,7 +364,8 @@ export function createAgentGuiWorkbenchContribution(
                 ...headerProps,
                 agentTitle: conversationIdentity?.agentTitle,
                 conversationIconUrl,
-                conversationTitle
+                conversationTitle,
+                hasConversation
               });
         },
         title: copy.nodeTitle,

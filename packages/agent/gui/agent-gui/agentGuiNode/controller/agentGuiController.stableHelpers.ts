@@ -8,7 +8,7 @@ import type {
 } from "../../../shared/agentSessionTypes";
 import type { AgentProviderId } from "../../../shared/contracts/dto";
 import type { WorkspaceAgentActivityCard } from "../../../shared/workspaceAgentActivityListViewModel";
-import { isWorkspaceAgentUntitledTask } from "../../../shared/workspaceAgentLatestActivitySummary";
+import { isWorkspaceAgentUntitledConversation } from "../../../shared/workspaceAgentLatestActivitySummary";
 import type { WorkspaceAgentSessionDetailViewModel } from "../../../shared/workspaceAgentSessionDetailViewModel";
 import { type AgentGUIConversationSummary } from "../model/agentGuiConversationModel";
 import type {
@@ -307,7 +307,7 @@ export function shouldPreserveExistingConversationTitle(
   if (!normalizedIncoming || !current.title.trim()) {
     return false;
   }
-  if (isWorkspaceAgentUntitledTask(normalizedIncoming)) {
+  if (isWorkspaceAgentUntitledConversation(normalizedIncoming)) {
     return true;
   }
   const providerLabel =

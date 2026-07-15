@@ -2,8 +2,51 @@ package storesqlite
 
 import (
 	"context"
+	"encoding/json"
+	"fmt"
 	"testing"
 )
+
+func TestWorkspaceAgentMessageVisibleTextPrefersStructuredTextContent(t *testing.T) {
+	payload, err := json.Marshal(map[string]any{
+		"text": "unsafe top-level fallback",
+		"content": []any{
+			map[string]any{"type": "image", "text": "unsafe image text"},
+			map[string]any{"type": "text", "text": "visible text"},
+		},
+	})
+	if err != nil {
+		t.Fatalf("marshal payload: %v", err)
+	}
+	if got := workspaceAgentMessageVisibleText(string(payload)); got != "visible text" {
+		t.Fatalf("workspaceAgentMessageVisibleText() = %q, want structured text", got)
+	}
+}
+
+func TestWorkspaceAgentMessageVisibleTextDoesNotFallbackPastStructuredContent(t *testing.T) {
+	payload, err := json.Marshal(map[string]any{
+		"text": "unsafe top-level fallback",
+		"content": []any{
+			map[string]any{"type": "image", "text": "unsafe image text"},
+		},
+	})
+	if err != nil {
+		t.Fatalf("marshal payload: %v", err)
+	}
+	if got := workspaceAgentMessageVisibleText(string(payload)); got != "" {
+		t.Fatalf("workspaceAgentMessageVisibleText() = %q, want empty", got)
+	}
+}
+
+func TestWorkspaceAgentMessageVisibleTextUsesLegacyTextWithoutStructuredContent(t *testing.T) {
+	payload, err := json.Marshal(map[string]any{"text": "legacy visible text"})
+	if err != nil {
+		t.Fatalf("marshal payload: %v", err)
+	}
+	if got := workspaceAgentMessageVisibleText(string(payload)); got != "legacy visible text" {
+		t.Fatalf("workspaceAgentMessageVisibleText() = %q, want legacy text", got)
+	}
+}
 
 func TestSessionTitleMigrationCanonicalizesExistingRows(t *testing.T) {
 	t.Parallel()
@@ -191,5 +234,71 @@ WHERE workspace_id = 'ws-legacy-empty'
 			migratedCreatedAt,
 			migratedUpdatedAt,
 		)
+	}
+}
+
+func BenchmarkSessionTitleMigrationBackfillsLargeHistory(b *testing.B) {
+	store := openTestStore(b, testOptions(&staticProjectPaths{}))
+	ctx := context.Background()
+	const (
+		sessionCount         = 100
+		messagesPerSession   = 100
+		workspaceID          = "ws-title-benchmark"
+		migrationCreatedAtMS = 1000
+		migrationUpdatedAtMS = 2000
+	)
+	tx, err := store.db.BeginTx(ctx, nil)
+	if err != nil {
+		b.Fatalf("begin benchmark seed: %v", err)
+	}
+	for sessionIndex := range sessionCount {
+		sessionID := fmt.Sprintf("session-%04d", sessionIndex)
+		if _, err := tx.ExecContext(ctx, `
+INSERT INTO workspace_agent_sessions (
+  workspace_id, agent_session_id, agent_target_id, provider, title,
+  created_at_unix_ms, updated_at_unix_ms
+)
+VALUES (?, ?, ?, 'codex', 'Codex', ?, ?)
+`, workspaceID, sessionID, testTargetIDCodex, migrationCreatedAtMS, migrationUpdatedAtMS); err != nil {
+			_ = tx.Rollback()
+			b.Fatalf("insert benchmark session: %v", err)
+		}
+		for messageIndex := range messagesPerSession {
+			messageID := fmt.Sprintf("message-%04d", messageIndex)
+			payload := fmt.Sprintf(`{"text":"prompt %04d"}`, messageIndex)
+			if _, err := tx.ExecContext(ctx, `
+INSERT INTO workspace_agent_messages (
+  workspace_id, agent_session_id, message_id, version, role, kind,
+  payload_json, occurred_at_unix_ms, created_at_unix_ms, updated_at_unix_ms
+)
+VALUES (?, ?, ?, 1, 'user', 'text', ?, ?, ?, ?)
+`, workspaceID, sessionID, messageID, payload, messageIndex+1, migrationCreatedAtMS, migrationUpdatedAtMS); err != nil {
+				_ = tx.Rollback()
+				b.Fatalf("insert benchmark message: %v", err)
+			}
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		b.Fatalf("commit benchmark seed: %v", err)
+	}
+
+	b.ReportAllocs()
+	b.ResetTimer()
+	for range b.N {
+		b.StopTimer()
+		if _, err := store.db.ExecContext(ctx, `
+UPDATE workspace_agent_sessions SET title = 'Codex' WHERE workspace_id = ?
+`, workspaceID); err != nil {
+			b.Fatalf("reset benchmark titles: %v", err)
+		}
+		if _, err := store.db.ExecContext(ctx, `
+DELETE FROM agent_store_schema_migrations WHERE id = ?
+`, schemaMigrationWorkspaceAgentSessionTitlesV2); err != nil {
+			b.Fatalf("reset benchmark migration: %v", err)
+		}
+		b.StartTimer()
+		if err := store.applyWorkspaceAgentSessionTitlesV2(ctx); err != nil {
+			b.Fatalf("run benchmark migration: %v", err)
+		}
 	}
 }

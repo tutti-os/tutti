@@ -194,19 +194,30 @@ standalone native Agent window headers omit that redundant app title. When the
 conversation rail is collapsed, the title area shows the active conversation's
 agent icon and directory name as soon as a local session id exists; it must not
 wait for provider-side session creation or conversation-title persistence. An
-empty new-conversation home does not show this header identity. The conversation
+empty new-conversation home does not show this header identity. The standalone
+window keeps engine subscription, identity projection, and header rendering in
+its header vertical module rather than growing the window shell. The conversation
 title remains the detail title while the rail is expanded and the identity used
 by Dock previews; after submission, the expanded detail title area shows the
 agent icon immediately even before conversation-title persistence. During that
 gap, the pending activation record in `AgentSessionEngine` owns one optimistic
 title projected from the submitted visible prompt; the rail and every header
-read that same record. The localized untitled label is used only when this
-projection is unavailable, while canonical `session.title` remains empty until
-the daemon establishes it and then takes precedence. Confirming that activation
-means the session exists; it does not prove the initial turn has reached the
-canonical entity index. Engine consumer status therefore keeps a new activation
-working until its first canonical turn is observed, then derives status from
-that turn. GUI projections must not patch this confirmation gap locally.
+read that same record. Optimistic projection and daemon persistence use the same
+whitespace and Markdown-link-label normalization so engine reconciliation does
+not visibly rewrite valid rich-prompt titles. The localized untitled label is
+used only when this projection is unavailable, while canonical `session.title`
+remains empty until the daemon establishes it and then takes precedence. Runtime
+owns the initial-title-established bit and persists it in private runtime
+context; service submit paths consult that canonical runtime state instead of
+inferring eligibility from transcript availability. Explicit rename/clear and
+the first accepted initial-title compare-and-set establish the bit. Sessions
+without the marker fail closed on resume so a later prompt cannot retitle a
+legacy conversation. Confirming activation means the session exists; it does
+not prove submitted initial content has reached the canonical turn index. Engine
+consumer status therefore bridges a new activation to `working` only when that
+activation submitted initial content, then derives status from its first
+canonical turn. Empty new sessions become `idle` after confirmation. GUI
+projections must not patch this confirmation gap locally.
 
 AgentGuiNode may expose agent selection in multiple UI-local entry points,
 including the conversation rail agent grid and the agent select next to the
@@ -705,12 +716,15 @@ pagination until the session arrives or reconcile proves it unavailable.
 Selecting any rail row whose detail is not cached must enter the engine-owned
 session reconcile lifecycle and request state plus messages as one semantic
 load. Detail availability is explicit: `loading`, `ready`, `not_found`, or
-`error`. The skeleton follows the reconcile record, `ready` with zero rows is a
-valid empty detail, and only an authoritative tombstone/not-found result may
-show the unavailable state. Once authoritative not-found wins, presentation
-must suppress any previously projected transcript rows instead of mixing stale
-content with unavailable-state layout. An empty message projection is not
-evidence that loading finished or that the session is gone.
+`error`. The skeleton follows a blocking reconcile record. A completed message
+reconcile establishes engine-owned detail hydration even when it returns zero
+messages; later selection and background refresh keep that valid empty detail
+`ready` instead of degrading it back to `loading`. Only an authoritative
+tombstone/not-found result may show the unavailable state. Once authoritative
+not-found wins, presentation must suppress any previously projected transcript
+rows instead of mixing stale content with unavailable-state layout. An empty
+message projection without the hydration fact is not evidence that loading
+finished or that the session is gone.
 
 Agent GUI is organized by vertical behavior rather than one controller with
 horizontal helper piles. A vertical module owns its projection, commands,

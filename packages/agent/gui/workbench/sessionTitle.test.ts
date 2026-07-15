@@ -36,7 +36,6 @@ describe("agent GUI workbench session titles", () => {
     const title = resolveAgentGuiWorkbenchSessionTitle({
       agentSessionId: "session-1",
       fallbackTitle: "Stale session title",
-      provider: "codex",
       ...sessionState({
         agentSessionId: "session-1",
         title: "@automation 发布 帮我跟进"
@@ -54,7 +53,6 @@ describe("agent GUI workbench session titles", () => {
     const title = resolveAgentGuiWorkbenchSessionTitle({
       agentSessionId: "session-1",
       fallbackTitle: null,
-      provider: "codex",
       ...sessionState({
         agentSessionId: "session-1",
         title: "@调研 spool 仓库 这个任务"
@@ -73,7 +71,6 @@ describe("agent GUI workbench session titles", () => {
       agentSessionId: "session-1",
       fallbackTitle: null,
       optimisticTitle: "test1",
-      provider: "codex",
       ...sessionState({ agentSessionId: "session-1", title: "" })
     });
 
@@ -89,7 +86,6 @@ describe("agent GUI workbench session titles", () => {
       agentSessionId: "session-1",
       fallbackTitle: null,
       optimisticTitle: "test1",
-      provider: "codex",
       ...sessionState({ agentSessionId: "session-1", title: "Canonical title" })
     });
 
@@ -104,7 +100,6 @@ describe("agent GUI workbench session titles", () => {
     const title = resolveAgentGuiWorkbenchSessionTitle({
       agentSessionId: "session-1",
       fallbackTitle: null,
-      provider: "codex",
       ...sessionState({
         agentSessionId: "session-1",
         title: "Codex"
@@ -122,7 +117,6 @@ describe("agent GUI workbench session titles", () => {
     const title = resolveAgentGuiWorkbenchSessionTitle({
       agentSessionId: "session-1",
       fallbackTitle: null,
-      provider: "codex",
       ...sessionState({
         agentSessionId: "session-1",
         title: "Current task"
@@ -140,7 +134,6 @@ describe("agent GUI workbench session titles", () => {
     const title = resolveAgentGuiWorkbenchSessionTitle({
       agentSessionId: "session-1",
       fallbackTitle: null,
-      provider: "codex",
       ...sessionState({
         agentSessionId: "session-1",
         messages: [
@@ -161,8 +154,7 @@ describe("agent GUI workbench session titles", () => {
   it("uses the persisted canonical title only as a hydration fallback", () => {
     const title = resolveAgentGuiWorkbenchSessionTitle({
       agentSessionId: "session-1",
-      fallbackTitle: "@automation 发布 帮我跟进",
-      provider: "codex"
+      fallbackTitle: "@automation 发布 帮我跟进"
     });
 
     expect(title).toEqual({
@@ -176,7 +168,6 @@ describe("agent GUI workbench session titles", () => {
     const title = resolveAgentGuiWorkbenchSessionTitle({
       agentSessionId: "session-1",
       fallbackTitle: "Stale session title",
-      provider: "codex",
       ...sessionState({
         agentSessionId: "session-1",
         title: "Codex"

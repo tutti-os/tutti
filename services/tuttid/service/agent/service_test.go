@@ -12,6 +12,7 @@ import (
 	"time"
 
 	agentsessionstore "github.com/tutti-os/tutti/packages/agent/daemon/activity"
+	"github.com/tutti-os/tutti/packages/agent/daemon/titletext"
 	runtimeprep "github.com/tutti-os/tutti/packages/agent/runtimeprep"
 	agentactivitybiz "github.com/tutti-os/tutti/services/tuttid/biz/agentactivity"
 	agenttargetbiz "github.com/tutti-os/tutti/services/tuttid/biz/agenttarget"
@@ -5813,6 +5814,11 @@ func (f *fakeRuntime) Exec(_ context.Context, input RuntimeExecInput) (RuntimeEx
 	key := input.WorkspaceID + ":" + input.AgentSessionID
 	if session, ok := f.sessions[key]; ok {
 		session.Status = "working"
+		if strings.TrimSpace(input.InitialTitle) != "" &&
+			!session.InitialTitleEstablished {
+			session.Title = strings.TrimSpace(input.InitialTitle)
+			session.InitialTitleEstablished = true
+		}
 		session.UpdatedAtUnixMS = time.Now().UnixMilli()
 		f.sessions[key] = session
 	}
@@ -5891,9 +5897,13 @@ func (f *fakeRuntime) Resume(_ context.Context, input RuntimeResumeInput) (Provi
 		Settings:          cloneComposerSettingsPointer(&input.Settings),
 		Status:            input.Status,
 		Title:             input.Title,
-		WorkspaceID:       input.WorkspaceID,
-		CreatedAtUnixMS:   input.CreatedAtUnixMS,
-		UpdatedAtUnixMS:   input.UpdatedAtUnixMS,
+		InitialTitleEstablished: initialTitleEstablishedForFakeRuntime(
+			input.RuntimeContext,
+			input.Title,
+		),
+		WorkspaceID:     input.WorkspaceID,
+		CreatedAtUnixMS: input.CreatedAtUnixMS,
+		UpdatedAtUnixMS: input.UpdatedAtUnixMS,
 	}
 	f.sessions[input.WorkspaceID+":"+input.AgentSessionID] = session
 	return session, nil
@@ -6002,6 +6012,9 @@ func (f *fakeRuntime) Start(_ context.Context, input RuntimeStartInput) (Provide
 	if id == "" {
 		id = "session-" + string(rune('0'+f.nextID))
 	}
+	if existing, ok := f.sessions[input.WorkspaceID+":"+id]; ok {
+		return existing, nil
+	}
 	session := ProviderRuntimeSession{
 		ID:            id,
 		AgentTargetID: input.AgentTargetID,
@@ -6014,8 +6027,10 @@ func (f *fakeRuntime) Start(_ context.Context, input RuntimeStartInput) (Provide
 			ReasoningEffort:        input.ReasoningEffort,
 			ConversationDetailMode: input.ConversationDetailMode,
 		},
-		Status:          "ready",
-		Title:           input.Title,
+		Status: "ready",
+		Title:  input.Title,
+		InitialTitleEstablished: input.InitialTitleEstablished ||
+			titletext.Normalize(input.Title) != "",
 		Visible:         input.Visible == nil || *input.Visible,
 		RuntimeContext:  clonePayload(input.RuntimeContext),
 		WorkspaceID:     input.WorkspaceID,
@@ -6027,6 +6042,19 @@ func (f *fakeRuntime) Start(_ context.Context, input RuntimeStartInput) (Provide
 	}
 	f.sessions[input.WorkspaceID+":"+session.ID] = session
 	return session, nil
+}
+
+func initialTitleEstablishedForFakeRuntime(
+	runtimeContext map[string]any,
+	title string,
+) bool {
+	if strings.TrimSpace(title) != "" {
+		return true
+	}
+	if established, ok := runtimeContext["tuttiInitialTitleEstablished"].(bool); ok {
+		return established
+	}
+	return true
 }
 
 func (*fakeRuntime) Subscribe(string, string) (<-chan RuntimeStreamEvent, func(), bool) {

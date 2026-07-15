@@ -20,7 +20,7 @@ import type {
 
 interface AgentGuiWorkbenchReactiveHeaderProps extends Omit<
   AgentGuiWorkbenchHeaderProps,
-  "agentTitle" | "conversationIconUrl" | "conversationTitle"
+  "agentTitle" | "conversationIconUrl" | "conversationTitle" | "hasConversation"
 > {
   agentDirectory: AgentGUIAgentDirectoryPort;
   dockIconUrls?: Partial<Record<AgentGuiWorkbenchProvider, string>>;

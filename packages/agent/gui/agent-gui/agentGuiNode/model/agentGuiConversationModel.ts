@@ -435,7 +435,7 @@ function conversationSummaryFromActivity(
       })
     : null;
   const { title, titleFallback } = resolveAgentGUIConversationTitle(
-    explicitSessionTitle ?? activity.title
+    explicitSessionTitle ?? (session ? "" : activity.title)
   );
   return {
     id: activity.sessionId,

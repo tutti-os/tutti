@@ -1,5 +1,5 @@
 import type { AgentActivitySession } from "@tutti-os/agent-activity-core";
-import { isWorkspaceAgentUntitledTask } from "./workspaceAgentLatestActivitySummary";
+import { isWorkspaceAgentUntitledConversation } from "./workspaceAgentLatestActivitySummary";
 import { workspaceAgentProviderLabel } from "./workspaceAgentProviderLabel";
 import { isWorkspaceAgentSyntheticControlMessage } from "./workspaceAgentSyntheticMessages";
 
@@ -9,7 +9,7 @@ export function resolveDisplayableWorkspaceAgentSessionTitle(
   const title = session.title.trim();
   if (
     !title ||
-    isWorkspaceAgentUntitledTask(title) ||
+    isWorkspaceAgentUntitledConversation(title) ||
     isWorkspaceAgentSyntheticControlMessage(title)
   ) {
     return "";

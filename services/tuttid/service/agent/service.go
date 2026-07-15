@@ -177,7 +177,7 @@ func (s *Service) Create(ctx context.Context, workspaceID string, input CreateSe
 			Cwd:                     prepared.Cwd,
 			Env:                     prepared.Env,
 			Title:                   value(input.Title),
-			InitialTitleEstablished: strings.TrimSpace(value(input.Title)) != "",
+			InitialTitleEstablished: titletext.Normalize(value(input.Title)) != "",
 			PermissionModeID:        value(input.PermissionModeID),
 			Model:                   clampComposerModelForLaunch(provider, input.ProviderTargetRef, value(input.Model)),
 			PlanMode:                clampComposerPlanModeForProvider(provider, valueBool(input.PlanMode)),
@@ -241,7 +241,10 @@ func (s *Service) Create(ctx context.Context, workspaceID string, input CreateSe
 	})
 	displayPrompt := strings.TrimSpace(input.InitialDisplayPrompt)
 	visiblePrompt := firstNonEmptyString(displayPrompt, normalizedPromptText, preparedDisplayPrompt)
-	initialTitle := titletext.DeriveInitial(session.Title, visiblePrompt)
+	initialTitle := ""
+	if !session.InitialTitleEstablished {
+		initialTitle = titletext.DeriveInitial(session.Title, visiblePrompt)
+	}
 	logAgentSubmitTrace("service.create.exec_requested", workspaceID, session.ID, input.Metadata, nil)
 	nodeStartedAt = time.Now()
 	execResult, err := s.controller().Exec(ctx, RuntimeExecInput{

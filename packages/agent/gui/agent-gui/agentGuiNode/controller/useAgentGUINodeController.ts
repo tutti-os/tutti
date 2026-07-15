@@ -471,7 +471,6 @@ export function useAgentGUINodeController({
     activeConversationIdRef,
     activePendingActivation,
     agentActivityRuntime,
-    agentActivitySnapshotRef,
     attentionReadRecordsBySessionId: attentionReadState.recordsBySessionId,
     conversationIdsRef,
     conversationListQuery,
@@ -651,7 +650,7 @@ export function useAgentGUINodeController({
   });
   const isLoadingMessages =
     localState.isLoadingMessages ||
-    sessionEngineState.activeSessionReconcilePending;
+    sessionEngineState.activeSessionDetailLoading;
   const detailAvailability: AgentGUIDetailViewModel["availability"] =
     activeConversationId === null
       ? "ready"

@@ -11,7 +11,7 @@ import type { WorkspaceAgentActivityStatus } from "./workspaceAgentActivityListT
 export function resolveWorkspaceAgentActivityTitle(
   session: AgentActivitySession
 ): string {
-  return session.title.trim() || workspaceAgentUntitledTaskLabel();
+  return session.title.trim() || workspaceAgentUntitledConversationLabel();
 }
 
 export function resolveLatestActivity(
@@ -98,7 +98,7 @@ function compactText(value: string): string {
   return value.replace(/\s+/g, " ").trim();
 }
 
-function workspaceAgentUntitledTaskLabel(): string {
+function workspaceAgentUntitledConversationLabel(): string {
   return normalizeAgentTitleText(
     translate("agentHost.workspaceAgentsUntitledConversation")
   );

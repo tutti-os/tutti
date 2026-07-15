@@ -1,6 +1,5 @@
 import type { AgentActivitySession } from "@tutti-os/agent-activity-core";
 import { resolveAgentGUIProviderDisplayLabel } from "../shared/agentConversationTitleProjection.ts";
-import type { AgentGuiWorkbenchProvider } from "./types.ts";
 
 export interface ResolveAgentGuiWorkbenchHeaderTitleInput {
   agentName?: string | null;
@@ -12,7 +11,6 @@ export interface ResolveAgentGuiWorkbenchSessionTitleInput {
   agentSessionId?: string | null;
   fallbackTitle?: string | null;
   optimisticTitle?: string | null;
-  provider: AgentGuiWorkbenchProvider | string;
   session?: Pick<AgentActivitySession, "title"> | null;
 }
 

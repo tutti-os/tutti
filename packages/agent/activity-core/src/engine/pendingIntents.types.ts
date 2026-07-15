@@ -11,19 +11,16 @@ export type PendingActivationStatus =
   | "uncertain"
   | "failed";
 
-export interface PendingActivationIntentRecord {
+interface PendingActivationIntentRecordBase {
   agentSessionId: string;
-  agentTargetId: string | null;
-  clientSubmitId: string | null;
   content: readonly AgentPromptContentBlock[];
   displayPrompt?: string;
   cwd: string;
   errorCode: string | null;
   errorMessage: string | null;
   expiresAtUnixMs: number;
+  initialTurnExpected: boolean;
   submitDiagnostics?: Readonly<AgentActivitySubmitDiagnostics>;
-  mode: "existing" | "new";
-  optimisticTitle?: string;
   pendingSettingsPatch?: Readonly<Record<string, unknown>>;
   settingsUpdateStatus?: "failed" | "inFlight" | "unknown";
   requestedAtUnixMs: number;
@@ -33,6 +30,20 @@ export interface PendingActivationIntentRecord {
   title: string | null;
   workspaceId: string;
 }
+
+export type PendingActivationIntentRecord =
+  | (PendingActivationIntentRecordBase & {
+      agentTargetId: string;
+      clientSubmitId: string;
+      mode: "new";
+      optimisticTitle?: string;
+    })
+  | (PendingActivationIntentRecordBase & {
+      agentTargetId: string | null;
+      clientSubmitId: null;
+      mode: "existing";
+      optimisticTitle?: never;
+    });
 
 export type PendingSubmitStatus =
   | "requested"
@@ -72,7 +83,6 @@ interface SessionActivationRequestedIntentBase {
   cwd?: string;
   expiresAtUnixMs: number;
   initialDisplayPrompt?: string;
-  optimisticTitle?: string;
   runtimeContent?: readonly AgentPromptContentBlock[];
   submitDiagnostics?: Readonly<AgentActivitySubmitDiagnostics>;
   requestedAtUnixMs: number;
@@ -88,11 +98,13 @@ export type SessionActivationRequestedIntent =
       agentTargetId: string;
       clientSubmitId: string;
       mode: "new";
+      optimisticTitle?: string;
     })
   | (SessionActivationRequestedIntentBase & {
       agentTargetId?: string | null;
       clientSubmitId?: never;
       mode: "existing";
+      optimisticTitle?: never;
     });
 
 export interface SessionActivationDismissedIntent {

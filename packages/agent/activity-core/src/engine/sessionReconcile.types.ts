@@ -4,6 +4,8 @@ export interface SessionReconcileRecord {
   agentSessionId: string;
   errorMessage: string | null;
   inFlightCommandId: string | null;
+  inFlightScope: SessionReconcileScope | null;
+  messagesHydrated: boolean;
   pendingMessages: boolean;
   pendingState: boolean;
   workspaceId: string;

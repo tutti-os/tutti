@@ -10,7 +10,7 @@ import styles from "../AgentGUINode.styles";
 interface AgentGUIDetailHeaderProps {
   activeConversation: AgentGUINodeViewModel["rail"]["activeConversation"];
   hidden: boolean;
-  labels: Pick<AgentGUIViewLabels, "fallbackAgentTitle">;
+  labels: Pick<AgentGUIViewLabels, "untitledConversationTitle">;
   uiLanguage: UiLanguage;
   previewMode: boolean;
 }

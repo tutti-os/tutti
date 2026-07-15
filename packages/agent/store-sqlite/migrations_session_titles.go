@@ -107,26 +107,11 @@ func (s *Store) applyWorkspaceAgentSessionTitlesV2(ctx context.Context) error {
 
 	rows, err := tx.QueryContext(ctx, `
 SELECT s.workspace_id, s.agent_session_id, s.provider, s.title,
-       COALESCE(t.name, ''), m.id, m.payload_json
+       COALESCE(t.name, '')
 FROM workspace_agent_sessions AS s
-LEFT JOIN workspace_agent_messages AS m
-  ON m.workspace_id = s.workspace_id
- AND m.agent_session_id = s.agent_session_id
- AND m.deleted_at_unix_ms = 0
- AND LOWER(TRIM(m.role)) = 'user'
 LEFT JOIN agent_targets AS t
   ON t.id = s.agent_target_id
 WHERE s.deleted_at_unix_ms = 0
-ORDER BY s.workspace_id, s.agent_session_id,
-  CASE
-    WHEN m.occurred_at_unix_ms > 0 THEN m.occurred_at_unix_ms
-    WHEN m.started_at_unix_ms > 0 THEN m.started_at_unix_ms
-    WHEN m.completed_at_unix_ms > 0 THEN m.completed_at_unix_ms
-    WHEN m.created_at_unix_ms > 0 THEN m.created_at_unix_ms
-    ELSE m.updated_at_unix_ms
-  END,
-  m.version,
-  m.id
 `)
 	if err != nil {
 		return fmt.Errorf("list workspace agent sessions for initial title backfill: %w", err)
@@ -137,11 +122,8 @@ ORDER BY s.workspace_id, s.agent_session_id,
 		provider       string
 		currentTitle   string
 		targetName     string
-		messageID      sql.NullInt64
-		payloadJSON    sql.NullString
 	}
-	seen := make(map[string]struct{})
-	var updates []sessionTitleBackfill
+	var candidates []sessionTitleBackfill
 	for rows.Next() {
 		var value sessionTitleBackfill
 		if err := rows.Scan(
@@ -150,27 +132,13 @@ ORDER BY s.workspace_id, s.agent_session_id,
 			&value.provider,
 			&value.currentTitle,
 			&value.targetName,
-			&value.messageID,
-			&value.payloadJSON,
 		); err != nil {
 			_ = rows.Close()
 			return fmt.Errorf("scan workspace agent session for initial title backfill: %w", err)
 		}
-		key := value.workspaceID + "\x00" + value.agentSessionID
-		if _, ok := seen[key]; ok {
-			continue
+		if titletext.IsLegacyPlaceholder(value.currentTitle, value.provider, value.targetName) {
+			candidates = append(candidates, value)
 		}
-		if !titletext.IsLegacyPlaceholder(value.currentTitle, value.provider, value.targetName) {
-			seen[key] = struct{}{}
-			continue
-		}
-		prompt := ""
-		if value.messageID.Valid && value.payloadJSON.Valid {
-			prompt = workspaceAgentMessageVisibleText(value.payloadJSON.String)
-		}
-		value.currentTitle = titletext.DeriveInitial("", prompt)
-		seen[key] = struct{}{}
-		updates = append(updates, value)
 	}
 	if err := rows.Err(); err != nil {
 		_ = rows.Close()
@@ -178,6 +146,39 @@ ORDER BY s.workspace_id, s.agent_session_id,
 	}
 	if err := rows.Close(); err != nil {
 		return fmt.Errorf("close workspace agent sessions for initial title backfill: %w", err)
+	}
+
+	updates := make([]sessionTitleBackfill, 0, len(candidates))
+	for _, value := range candidates {
+		var payloadJSON string
+		err := tx.QueryRowContext(ctx, `
+SELECT payload_json
+FROM workspace_agent_messages
+WHERE workspace_id = ?
+  AND agent_session_id = ?
+  AND deleted_at_unix_ms = 0
+  AND LOWER(TRIM(role)) = 'user'
+ORDER BY
+  CASE
+    WHEN occurred_at_unix_ms > 0 THEN occurred_at_unix_ms
+    WHEN started_at_unix_ms > 0 THEN started_at_unix_ms
+    WHEN completed_at_unix_ms > 0 THEN completed_at_unix_ms
+    WHEN created_at_unix_ms > 0 THEN created_at_unix_ms
+    ELSE updated_at_unix_ms
+  END,
+  version,
+  id
+LIMIT 1
+`, value.workspaceID, value.agentSessionID).Scan(&payloadJSON)
+		if err != nil && err != sql.ErrNoRows {
+			return fmt.Errorf("read first workspace agent user message for initial title backfill: %w", err)
+		}
+		prompt := ""
+		if err == nil {
+			prompt = workspaceAgentMessageVisibleText(payloadJSON)
+		}
+		value.currentTitle = titletext.DeriveInitial("", prompt)
+		updates = append(updates, value)
 	}
 
 	for _, update := range updates {
@@ -204,22 +205,30 @@ func workspaceAgentMessageVisibleText(payloadJSON string) string {
 	if err := json.Unmarshal([]byte(payloadJSON), &payload); err != nil {
 		return ""
 	}
-	for _, key := range []string{"displayPrompt", "text", "content"} {
-		if value, ok := payload[key].(string); ok && strings.TrimSpace(value) != "" {
-			return value
-		}
+	if displayPrompt, ok := payload["displayPrompt"].(string); ok && strings.TrimSpace(displayPrompt) != "" {
+		return displayPrompt
 	}
-	blocks, _ := payload["content"].([]any)
-	parts := make([]string, 0, len(blocks))
-	for _, block := range blocks {
-		item, _ := block.(map[string]any)
-		value, _ := item["text"].(string)
-		if value = strings.TrimSpace(value); value != "" {
-			parts = append(parts, value)
+	if content, present := payload["content"]; present {
+		if text, ok := content.(string); ok {
+			return text
 		}
-	}
-	if len(parts) > 0 {
+		blocks, _ := content.([]any)
+		parts := make([]string, 0, len(blocks))
+		for _, block := range blocks {
+			item, _ := block.(map[string]any)
+			blockType, _ := item["type"].(string)
+			if strings.TrimSpace(blockType) != "text" {
+				continue
+			}
+			value, _ := item["text"].(string)
+			if value = strings.TrimSpace(value); value != "" {
+				parts = append(parts, value)
+			}
+		}
 		return strings.Join(parts, "\n")
+	}
+	if text, ok := payload["text"].(string); ok {
+		return text
 	}
 	return ""
 }

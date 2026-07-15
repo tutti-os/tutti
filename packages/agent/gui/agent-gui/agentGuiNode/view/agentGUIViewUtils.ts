@@ -44,7 +44,6 @@ export function useOptionalStableEventCallback<Args extends unknown[], Result>(
   }, [callback != null]);
 }
 import type { UiLanguage } from "../../../contexts/settings/domain/agentSettings";
-import { translateInUiLanguage } from "../../../i18n/runtime";
 import { resolveAgentGUIConversationDisplayTitle } from "../model/agentGuiProviderIdentity";
 import type { AgentGUINodeViewModel } from "../model/agentGuiNodeTypes";
 import type { AgentGUIViewLabels } from "../AgentGUINodeView";
@@ -69,16 +68,13 @@ export function conversationPlainTitle(
     AgentGUINodeViewModel["rail"]["conversations"][number],
     "title" | "titleFallback"
   >,
-  labels: Pick<AgentGUIViewLabels, "fallbackAgentTitle">,
+  labels: Pick<AgentGUIViewLabels, "untitledConversationTitle">,
   uiLanguage: UiLanguage
 ): string {
-  void labels;
+  void uiLanguage;
   return resolveAgentGUIConversationDisplayTitle(
     conversation,
-    translateInUiLanguage(
-      uiLanguage,
-      "agentHost.workspaceAgentsUntitledConversation"
-    )
+    labels.untitledConversationTitle
   );
 }
 import { useCallback, useLayoutEffect, useMemo, useRef } from "react";

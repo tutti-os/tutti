@@ -10,6 +10,8 @@ import {
   selectEnginePromptQueueError,
   selectEngineSession,
   selectEngineSessionDeleted,
+  selectEngineSessionDetailHydrated,
+  selectEngineSessionDetailLoading,
   selectEngineSessionError,
   selectEngineSessionIsRespondingToInteraction,
   selectEngineSessionReconcile,
@@ -83,10 +85,12 @@ export function useAgentGUISessionEngineState(input: {
   const activeSessionReconcile = useEngineSelector(sessionEngine, (state) =>
     selectEngineSessionReconcile(state, activeConversationId)
   );
-  const activeSessionReconcilePending = Boolean(
-    activeSessionReconcile?.inFlightCommandId ||
-    activeSessionReconcile?.pendingMessages ||
-    activeSessionReconcile?.pendingState
+  const activeSessionDetailLoading = useEngineSelector(sessionEngine, (state) =>
+    selectEngineSessionDetailLoading(state, activeConversationId)
+  );
+  const activeSessionDetailHydrated = useEngineSelector(
+    sessionEngine,
+    (state) => selectEngineSessionDetailHydrated(state, activeConversationId)
   );
   const activeEngineSessionDeleted = useEngineSelector(sessionEngine, (state) =>
     selectEngineSessionDeleted(state, activeConversationId)
@@ -204,8 +208,10 @@ export function useAgentGUISessionEngineState(input: {
       activeQueuedPromptSnapshot
     ),
     activeSessionState,
-    activeSessionReconcilePending,
-    activeSessionReconcileError: activeSessionReconcile?.errorMessage ?? null,
+    activeSessionDetailLoading,
+    activeSessionReconcileError: activeSessionDetailHydrated
+      ? null
+      : (activeSessionReconcile?.errorMessage ?? null),
     isCreatingConversation,
     hasUnconfirmedSubmit,
     isRespondingToInteraction,

@@ -306,25 +306,26 @@ type SessionTitleUpdater interface {
 // must never be exposed as, or used to overwrite, the durable Session/Turn/
 // Interaction entities.
 type ProviderRuntimeSession struct {
-	ID                 string
-	WorkspaceID        string
-	UserID             string
-	AgentTargetID      string
-	Provider           string
-	ProviderSessionID  string
-	Cwd                string
-	Env                []string
-	Settings           *ComposerSettings
-	RuntimeContext     map[string]any
-	Status             string
-	TurnLifecycle      *TurnLifecycle
-	SubmitAvailability *SubmitAvailability
-	Visible            bool
-	Title              string
-	LastError          string
-	PinnedAtUnixMS     int64
-	CreatedAtUnixMS    int64
-	UpdatedAtUnixMS    int64
+	ID                      string
+	WorkspaceID             string
+	UserID                  string
+	AgentTargetID           string
+	Provider                string
+	ProviderSessionID       string
+	Cwd                     string
+	Env                     []string
+	Settings                *ComposerSettings
+	RuntimeContext          map[string]any
+	Status                  string
+	TurnLifecycle           *TurnLifecycle
+	SubmitAvailability      *SubmitAvailability
+	Visible                 bool
+	Title                   string
+	InitialTitleEstablished bool
+	LastError               string
+	PinnedAtUnixMS          int64
+	CreatedAtUnixMS         int64
+	UpdatedAtUnixMS         int64
 }
 
 type RuntimeStartInput struct {

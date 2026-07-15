@@ -28,6 +28,7 @@ describe("useAgentGuiConversationList", () => {
         agentSessionId: "session-1",
         agentTargetId: "local:codex",
         clientSubmitId: "submit-1",
+        content: [{ type: "text", text: "test1" }],
         cwd: "/workspace",
         expiresAtUnixMs: 100,
         mode: "new",
