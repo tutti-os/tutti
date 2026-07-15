@@ -70,6 +70,7 @@ test("app backend describeHandle resolves the app handle", async () => {
   const apps = await backend.list(scope, { parentGroupId: null });
   const appGroupId = firstGroupId(apps.items);
 
+  assert.equal(apps.ordered, undefined);
   assert.deepEqual(backend.describeHandle?.(appGroupId), {
     source: "app",
     id: "app-7"
@@ -116,6 +117,55 @@ test("app backend labels child groups with app and project names", async () => {
       ? childGroup.parentLabel
       : undefined,
     "Prototype Design / 23232"
+  );
+});
+
+test("app backend preserves the application reference order", async () => {
+  const tuttidClient = {
+    listWorkspaceApps: async () => ({
+      apps: [
+        {
+          appId: "ai-media-canvas",
+          displayName: "AI Canvas",
+          installed: true,
+          enabled: true,
+          status: "running",
+          references: { listSupported: true, searchSupported: false }
+        }
+      ]
+    }),
+    listWorkspaceAppReferences: async () => ({
+      items: [
+        {
+          type: "group",
+          id: "project-new",
+          displayName: "Untitled",
+          referenceCount: 0
+        },
+        {
+          type: "group",
+          id: "project-old",
+          displayName: "Alpha",
+          referenceCount: 0
+        }
+      ],
+      nextCursor: null
+    })
+  } as unknown as TuttidClient;
+  const backend = createAppReferenceListBackend(tuttidClient);
+
+  const result = await backend.list(scope, {
+    parentGroupId: "app:ai-media-canvas",
+    cursor: null,
+    filter: null
+  });
+
+  assert.equal(result.ordered, true);
+  assert.deepEqual(
+    result.items.map((item) =>
+      item.type === "group" ? item.displayName : item.reference.displayName
+    ),
+    ["Untitled", "Alpha"]
   );
 });
 

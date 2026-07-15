@@ -132,6 +132,39 @@ test("open 加载 tabs、默认选中首个并加载其根", async () => {
   );
 });
 
+test("首次加载保留 source 声明的业务顺序", async () => {
+  const controller = createReferenceSourcePickerController({
+    aggregator: fakeAggregator({
+      tabs: [tabsTwo[1]!],
+      children: {
+        [`app-artifact:${SOURCE_ROOT_NODE_ID}`]: {
+          entries: [
+            folder("app-artifact", "project-new", "Untitled"),
+            folder("app-artifact", "project-beta", "Beta"),
+            folder("app-artifact", "project-alpha", "Alpha")
+          ],
+          nextCursor: null,
+          ordered: true
+        }
+      }
+    }),
+    scope,
+    searchDebounceMs: 0
+  });
+
+  controller.open();
+  await flush();
+
+  const root =
+    controller.getSnapshot().bySource["app-artifact"]?.childrenByKey[
+      ROOT_CHILDREN_KEY
+    ];
+  assert.deepEqual(
+    root?.entries.map((node) => node.displayName),
+    ["Untitled", "Beta", "Alpha"]
+  );
+});
+
 test("toggleNode 展开 folder 并懒加载子节点", async () => {
   const controller = createReferenceSourcePickerController({
     aggregator: fakeAggregator({
