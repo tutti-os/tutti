@@ -10,6 +10,21 @@ const neutralKernelFiles = [
   "workbenchProductProfile.ts"
 ] as const;
 
+const extractedKernelShimFiles = [
+  "workbenchCapabilityRegistry.ts",
+  "workbenchHostCoordinator.ts",
+  "workbenchHostSession.ts"
+] as const;
+
+test("desktop private kernel paths delegate to the shared host package", () => {
+  for (const file of extractedKernelShimFiles) {
+    const source = readFileSync(new URL(`./${file}`, import.meta.url), "utf8");
+
+    assert.match(source, /from "@tutti-os\/workbench-host";/, file);
+    assert.doesNotMatch(source, /\b(?:class|function)\s+WorkbenchHost/, file);
+  }
+});
+
 test("private workbench host kernel has no product, DI, or React runtime imports", () => {
   for (const file of neutralKernelFiles) {
     const source = readFileSync(new URL(`./${file}`, import.meta.url), "utf8");
