@@ -81,8 +81,15 @@ describe("agent gui workbench launch contract", () => {
       agentGuiWorkbenchDockIdentityFromIdentifier("agent-gui:unified")
     ).toEqual({ kind: "unifiedAggregate" });
     expect(
+      agentGuiWorkbenchProviderFromIdentifier("agent-gui:unified")
+    ).toBeNull();
+    expect(agentGuiWorkbenchProviderFromIdentifier("agent-gui")).toBeNull();
+    expect(
       agentGuiWorkbenchDockIdentityFromIdentifier("agent-gui:claude-code")
     ).toBeNull();
+    expect(
+      agentGuiWorkbenchProviderFromIdentifier("agent-gui:extension-provider")
+    ).toBe("extension-provider");
   });
 
   it("launches sessions into provider panels until current session state can reuse a node", () => {

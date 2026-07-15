@@ -148,16 +148,9 @@ export const AgentGUINode = memo(function AgentGUINode({
   );
   const handleLinkAction = useCallback(
     (action: WorkspaceLinkAction) => {
-      const agentTargetId = state.agentTargetId?.trim() || null;
-      onLinkAction?.(
-        action.type === "open-agent-session" &&
-          !action.agentTargetId &&
-          agentTargetId
-          ? { ...action, agentTargetId }
-          : action
-      );
+      onLinkAction?.(action);
     },
-    [onLinkAction, state.agentTargetId]
+    [onLinkAction]
   );
   const handleAgentProviderLogin = useCallback(
     (provider?: string | null) => {

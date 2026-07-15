@@ -14,6 +14,7 @@ test("desktop agent gui link actions launch workspace files with resolved action
   };
 
   const handled = await runDesktopAgentGUILinkAction(action, {
+    getAgentSession: failGetAgentSession,
     homeDirectory: "/Users/local",
     launchAgentGui: failLaunchAgentGui,
     launchWorkspaceIssueManager: failLaunchWorkspaceIssueManager,
@@ -49,6 +50,7 @@ test("desktop agent gui project menu opens the project folder path in workspace 
   };
 
   const handled = await runDesktopAgentGUILinkAction(action, {
+    getAgentSession: failGetAgentSession,
     homeDirectory: "/Users/local",
     launchAgentGui: failLaunchAgentGui,
     launchWorkspaceIssueManager: failLaunchWorkspaceIssueManager,
@@ -83,6 +85,7 @@ test("desktop agent gui link actions reveal local asset previews in workspace fi
       type: "open-local-asset-preview"
     },
     {
+      getAgentSession: failGetAgentSession,
       homeDirectory: "/Users/local",
       launchAgentGui: failLaunchAgentGui,
       launchWorkspaceIssueManager: failLaunchWorkspaceIssueManager,
@@ -116,6 +119,7 @@ test("desktop agent gui link actions open urls through the workspace browser", a
       url: "https://example.com"
     },
     {
+      getAgentSession: failGetAgentSession,
       launchAgentGui: failLaunchAgentGui,
       launchWorkspaceIssueManager: failLaunchWorkspaceIssueManager,
       launchWorkspaceFiles: failLaunchWorkspaceFiles,
@@ -144,12 +148,17 @@ test("desktop agent gui link actions launch agent sessions in the same workspace
   const handled = await runDesktopAgentGUILinkAction(
     {
       agentSessionId: "session-1",
-      agentTargetId: "local:claude-code",
       source: "agent-markdown",
       type: "open-agent-session",
       workspaceId: "workspace-1"
     },
     {
+      async getAgentSession() {
+        return {
+          agentTargetId: "local:claude-code",
+          provider: "claude-code"
+        };
+      },
       launchAgentGui(input) {
         launchedSessions.push(input);
         return true;
@@ -166,6 +175,7 @@ test("desktop agent gui link actions launch agent sessions in the same workspace
     {
       agentSessionId: "session-1",
       agentTargetId: "local:claude-code",
+      provider: "claude-code",
       workspaceId: "workspace-1"
     }
   ]);
@@ -187,6 +197,7 @@ test("desktop agent gui link actions launch workspace issue manager in the same 
       workspaceId: "workspace-1"
     },
     {
+      getAgentSession: failGetAgentSession,
       launchAgentGui: failLaunchAgentGui,
       launchWorkspaceIssueManager(input) {
         launchedIssues.push(input);
@@ -223,6 +234,7 @@ test("desktop agent gui link actions launch workspace apps in the same workspace
       workspaceId: "workspace-1"
     },
     {
+      getAgentSession: failGetAgentSession,
       launchAgentGui: failLaunchAgentGui,
       launchWorkspaceApp(input) {
         launchedApps.push(input);
@@ -255,6 +267,7 @@ test("desktop agent gui link actions route issue-manager app mentions to issue m
       workspaceId: "workspace-1"
     },
     {
+      getAgentSession: failGetAgentSession,
       launchAgentGui: failLaunchAgentGui,
       launchWorkspaceApp: failLaunchWorkspaceApp,
       launchWorkspaceIssueManager(input) {
@@ -277,6 +290,10 @@ test("desktop agent gui link actions route issue-manager app mentions to issue m
 
 function failLaunchAgentGui(): never {
   throw new Error("agent gui should not launch");
+}
+
+function failGetAgentSession(): never {
+  throw new Error("agent session should not load");
 }
 
 function failLaunchWorkspaceApp(): never {

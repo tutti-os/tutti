@@ -3905,7 +3905,7 @@ describe("AgentGUINode", () => {
     });
   });
 
-  it("forwards composer mention link actions without provider fallback", async () => {
+  it("forwards composer mention link actions without current-target fallback", async () => {
     const onLinkAction = vi.fn<(action: WorkspaceLinkAction) => void>();
     mockViewModel = createViewModel({
       activeConversationId: "session-1",
@@ -3914,7 +3914,11 @@ describe("AgentGUINode", () => {
     });
     renderAgentGUINode({
       onLinkAction,
-      state: { ...createViewModel().shell.data, provider: "codex" }
+      state: {
+        ...createViewModel().shell.data,
+        agentTargetId: "local:codex",
+        provider: "codex"
+      }
     });
 
     const editor = getComposerEditor();

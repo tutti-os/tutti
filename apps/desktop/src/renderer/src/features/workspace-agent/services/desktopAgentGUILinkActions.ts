@@ -9,6 +9,13 @@ import type { DesktopAgentGUIProvider } from "../desktopAgentGUINodeState.ts";
 const AGENT_PASTED_TEXT_MENTION_KIND = "pasted-text";
 
 export interface DesktopAgentGUILinkActionDependencies {
+  getAgentSession(input: {
+    agentSessionId: string;
+    workspaceId: string;
+  }): Promise<{
+    agentTargetId: string | null;
+    provider: DesktopAgentGUIProvider;
+  }>;
   homeDirectory?: string | null;
   launchAgentGui(input: {
     agentSessionId: string;
@@ -87,11 +94,18 @@ export async function runDesktopAgentGUILinkAction(
       if (action.workspaceId !== dependencies.workspaceId) {
         return false;
       }
+      const session = await dependencies.getAgentSession({
+        agentSessionId: action.agentSessionId,
+        workspaceId: dependencies.workspaceId
+      });
+      const provider = session.provider.trim();
+      if (!provider) {
+        return false;
+      }
       return dependencies.launchAgentGui({
         agentSessionId: action.agentSessionId,
-        ...(action.agentTargetId
-          ? { agentTargetId: action.agentTargetId }
-          : {}),
+        agentTargetId: session.agentTargetId,
+        provider,
         workspaceId: dependencies.workspaceId
       });
     case "open-workspace-issue": {

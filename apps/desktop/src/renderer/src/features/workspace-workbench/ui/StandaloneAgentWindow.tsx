@@ -580,6 +580,7 @@ export function StandaloneAgentWindow({
     openFileInSidebar,
     setActivation,
     setNodeState,
+    workspaceAgentActivityService,
     workspaceAppCenterService,
     workspaceId
   });

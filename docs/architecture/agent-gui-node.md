@@ -160,6 +160,13 @@ entries.
 Agent launches from Launchpad/All must still use the unified Agent dock entry
 identity (`agent-gui:unified`) so the resulting AgentGUI node appears under the
 same Dock icon as direct Dock launches.
+The unified dock identity is a reserved aggregate identifier, not a provider
+identifier. Provider extraction must recognize and exclude reserved aggregate
+identities before parsing the `agent-gui:<provider>` instance namespace, even
+though provider metadata accepts extension-defined strings. Provider-specific
+dock status must never override the unified entry's visibility; an aggregate
+status, if needed, must be modeled explicitly instead of synthesizing an
+`unified` provider.
 Empty launches from the unified Agent dock entry should set dock-entry reuse so
 the second dock click restores/focuses the existing AgentGUI node; draft
 prefill launches and explicit session launches keep their narrower reuse rules
@@ -204,6 +211,10 @@ mention's visible label must use the source conversation title without
 prefixing the source agent or provider name, because the submitted draft also
 becomes the new conversation's initial title. Source agent identity stays in
 the mention metadata instead of being duplicated into title text. The
+`agent-session` navigation path is session-authoritative: clicking a mention
+resolves the canonical session by workspace and session ID, then launches with
+that session's provider and Agent Target. It must not inherit the current
+AgentGUI node's target or derive a provider from the unified dock identity. The
 prefill activation provider is authoritative for the new workbench panel's
 initial provider chrome, so choosing Codex from a Claude Code session must open
 a Codex panel before the draft prefill effect runs. The prefilled handoff panel

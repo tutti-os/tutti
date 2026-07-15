@@ -11,6 +11,7 @@ import type { DesktopAgentDirectorySnapshot } from "@shared/contracts/agentDirec
 import type { DesktopHostWindowApi } from "@preload/types";
 import type { IWorkspaceAppCenterService } from "@renderer/features/workspace-app-center";
 import type { IAgentProviderStatusService as AgentProviderStatusService } from "@renderer/features/workspace-agent/services/agentProviderStatusService.interface.ts";
+import type { IWorkspaceAgentActivityService } from "@renderer/features/workspace-agent/services/workspaceAgentActivityService.interface.ts";
 import { runDesktopAgentGUILinkAction } from "@renderer/features/workspace-agent/services/desktopAgentGUILinkActions.ts";
 import type { DesktopAgentGUIWorkbenchBodyProps } from "@renderer/features/workspace-agent/ui/desktopAgentGUIWorkbenchModel.ts";
 import {
@@ -44,6 +45,7 @@ interface StandaloneAgentLaunchRoutingInput {
     SetStateAction<WorkbenchHostNodeBodyContext["activation"]>
   >;
   setNodeState: Dispatch<SetStateAction<DesktopAgentGUIWorkbenchState>>;
+  workspaceAgentActivityService: IWorkspaceAgentActivityService;
   workspaceAppCenterService: IWorkspaceAppCenterService;
   workspaceId: string;
 }
@@ -57,6 +59,7 @@ export function useStandaloneAgentLaunchRouting({
   openFileInSidebar,
   setActivation,
   setNodeState,
+  workspaceAgentActivityService,
   workspaceAppCenterService,
   workspaceId
 }: StandaloneAgentLaunchRoutingInput): {
@@ -140,6 +143,8 @@ export function useStandaloneAgentLaunchRouting({
   >(
     (action) => {
       void runDesktopAgentGUILinkAction(action, {
+        getAgentSession: ({ agentSessionId, workspaceId }) =>
+          workspaceAgentActivityService.getSession(workspaceId, agentSessionId),
         homeDirectory,
         launchAgentGui: requestWorkspaceAgentGuiLaunch,
         launchWorkspaceIssueManager: requestWorkspaceIssueManagerLaunch,
@@ -159,7 +164,13 @@ export function useStandaloneAgentLaunchRouting({
         workspaceId
       });
     },
-    [homeDirectory, openFileInSidebar, workspaceAppCenterService, workspaceId]
+    [
+      homeDirectory,
+      openFileInSidebar,
+      workspaceAgentActivityService,
+      workspaceAppCenterService,
+      workspaceId
+    ]
   );
 
   return {

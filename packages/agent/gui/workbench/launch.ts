@@ -76,6 +76,9 @@ export function createAgentGuiWorkbenchInstanceId(input: {
 export function agentGuiWorkbenchProviderFromIdentifier(
   value: string | null | undefined
 ): AgentGuiWorkbenchProvider | null {
+  if (agentGuiWorkbenchDockIdentityFromIdentifier(value)) {
+    return null;
+  }
   const normalized = value?.trim();
   if (!normalized?.startsWith(agentGuiWorkbenchDockEntryPrefix)) {
     return null;

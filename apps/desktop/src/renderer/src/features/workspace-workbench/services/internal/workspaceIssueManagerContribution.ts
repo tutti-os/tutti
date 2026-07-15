@@ -129,6 +129,11 @@ export function createWorkspaceIssueManagerContribution(input: {
           return;
         }
         await runDesktopAgentGUILinkAction(action, {
+          getAgentSession: ({ agentSessionId, workspaceId }) =>
+            input.workspaceAgentActivityService.getSession(
+              workspaceId,
+              agentSessionId
+            ),
           homeDirectory: input.platformApi.homeDirectory,
           launchAgentGui: requestWorkspaceAgentGuiLaunch,
           launchWorkspaceIssueManager: requestWorkspaceIssueManagerLaunch,
@@ -204,6 +209,11 @@ export function createWorkspaceIssueManagerContribution(input: {
           locale: input.locale,
           onLinkAction: (action) => {
             void runDesktopAgentGUILinkAction(action, {
+              getAgentSession: ({ agentSessionId, workspaceId }) =>
+                input.workspaceAgentActivityService.getSession(
+                  workspaceId,
+                  agentSessionId
+                ),
               homeDirectory: input.platformApi.homeDirectory,
               launchAgentGui: requestWorkspaceAgentGuiLaunch,
               launchWorkspaceIssueManager: requestWorkspaceIssueManagerLaunch,

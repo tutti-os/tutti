@@ -115,6 +115,11 @@ export function createWorkspaceAgentGuiContribution(input: {
     DesktopAgentGUIWorkbenchBodyProps["onLinkAction"]
   > = (action) => {
     void runDesktopAgentGUILinkAction(action, {
+      getAgentSession: ({ agentSessionId, workspaceId }) =>
+        input.workspaceAgentActivityService.getSession(
+          workspaceId,
+          agentSessionId
+        ),
       homeDirectory: input.platformApi.homeDirectory,
       launchAgentGui: requestWorkspaceAgentGuiLaunch,
       launchWorkspaceIssueManager: requestWorkspaceIssueManagerLaunch,
