@@ -55,6 +55,63 @@ func TestACPRetriableTurnTailError(t *testing.T) {
 	}
 }
 
+func TestACPAutoContinueHasUsefulProgress(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		name          string
+		assistantText string
+		toolCallCount int
+		want          bool
+	}{
+		{
+			name:          "error-only text is zero progress",
+			assistantText: "\n\nError: RetriableError: [aborted] Client network socket disconnected before secure TLS connection was established",
+			want:          false,
+		},
+		{
+			name:          "empty text is zero progress",
+			assistantText: "",
+			want:          false,
+		},
+		{
+			name:          "prior assistant text is useful progress",
+			assistantText: "Checking the repo.\nError: RetriableError: [canceled] http/2 stream closed",
+			want:          true,
+		},
+		{
+			name:          "tool call alone is useful progress",
+			assistantText: "\n\nError: RetriableError: [canceled] http/2 stream closed",
+			toolCallCount: 1,
+			want:          true,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := acpAutoContinueHasUsefulProgress(tc.assistantText, tc.toolCallCount); got != tc.want {
+				t.Fatalf("acpAutoContinueHasUsefulProgress(...) = %v, want %v", got, tc.want)
+			}
+		})
+	}
+}
+
+func TestACPAutoContinuePromptContentBranches(t *testing.T) {
+	t.Parallel()
+
+	zero := asString(acpAutoContinuePromptContent(false)[0]["text"])
+	if !strings.Contains(zero, "Answer the user's most recent message normally") {
+		t.Fatalf("zero-progress prompt = %q", zero)
+	}
+	if strings.Contains(zero, "Continue exactly where you left off") {
+		t.Fatalf("zero-progress prompt must not use mid-task continue wording: %q", zero)
+	}
+
+	mid := asString(acpAutoContinuePromptContent(true)[0]["text"])
+	if !strings.Contains(mid, "Continue exactly where you left off") {
+		t.Fatalf("mid-task prompt = %q", mid)
+	}
+}
+
 func acpTestPromptText(params map[string]any) string {
 	blocks, _ := params["prompt"].([]any)
 	var b strings.Builder
@@ -68,8 +125,8 @@ func acpTestPromptText(params map[string]any) string {
 }
 
 // A cursor turn that ends "successfully" right after streaming a transient
-// network error must be resumed automatically with a synthetic continue
-// prompt, and the recovered turn must complete normally.
+// network error with no useful prior output must auto-continue with the
+// zero-progress prompt (answer the last user message), not mid-task continue.
 func TestCursorAdapterAutoContinuesAfterRetriableTurnError(t *testing.T) {
 	t.Parallel()
 
@@ -82,7 +139,7 @@ func TestCursorAdapterAutoContinuesAfterRetriableTurnError(t *testing.T) {
 	}
 	session.ProviderSessionID = "cursor-session-1"
 
-	events, err := adapter.Exec(context.Background(), session, textPrompt("build the report"), "", "turn-1", nil, nil)
+	events, err := adapter.Exec(context.Background(), session, textPrompt("你好"), "", "turn-1", nil, nil)
 	if err != nil {
 		t.Fatalf("Exec: %v", err)
 	}
@@ -94,8 +151,12 @@ func TestCursorAdapterAutoContinuesAfterRetriableTurnError(t *testing.T) {
 	if promptCalls != 2 {
 		t.Fatalf("prompt calls = %d, want the auto-continue to send a second prompt", promptCalls)
 	}
-	if text := acpTestPromptText(snapshots[1]); !strings.Contains(text, "transient network error") {
-		t.Fatalf("continue prompt = %q, want the synthetic continue text", text)
+	text := acpTestPromptText(snapshots[1])
+	if !strings.Contains(text, "Answer the user's most recent message normally") {
+		t.Fatalf("continue prompt = %q, want zero-progress wording", text)
+	}
+	if strings.Contains(text, "Continue exactly where you left off") {
+		t.Fatalf("zero-progress continue must not use mid-task wording: %q", text)
 	}
 
 	var sawRetryNotice, sawCompleted, sawFailed bool
@@ -116,6 +177,38 @@ func TestCursorAdapterAutoContinuesAfterRetriableTurnError(t *testing.T) {
 	}
 	if !sawCompleted || sawFailed {
 		t.Fatalf("turn terminal events completed=%v failed=%v, want completed only", sawCompleted, sawFailed)
+	}
+}
+
+// When the failed attempt already streamed useful assistant text, auto-continue
+// keeps mid-task wording so the model resumes rather than restarting.
+func TestCursorAdapterAutoContinueMidTaskUsesContinuePrompt(t *testing.T) {
+	t.Parallel()
+
+	transport := newStandardACPTransport("Cursor Agent", "cursor-session-mid")
+	transport.conn.retriableErrorPrompts = 1
+	transport.conn.retriableErrorPriorText = "Checking the repo next."
+	adapter := newCursorAdapterWithHostMetadata(transport, LegacyHostMetadata(), nil)
+	session := standardTestSession(ProviderCursor)
+	if _, err := adapter.Start(context.Background(), session); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	session.ProviderSessionID = "cursor-session-mid"
+
+	_, err := adapter.Exec(context.Background(), session, textPrompt("build the report"), "", "turn-1", nil, nil)
+	if err != nil {
+		t.Fatalf("Exec: %v", err)
+	}
+
+	transport.conn.mu.Lock()
+	snapshots := append([]map[string]any(nil), transport.conn.promptParamsSnapshots...)
+	transport.conn.mu.Unlock()
+	if len(snapshots) < 2 {
+		t.Fatalf("prompt snapshots = %d, want at least 2", len(snapshots))
+	}
+	text := acpTestPromptText(snapshots[1])
+	if !strings.Contains(text, "Continue exactly where you left off") {
+		t.Fatalf("continue prompt = %q, want mid-task wording", text)
 	}
 }
 

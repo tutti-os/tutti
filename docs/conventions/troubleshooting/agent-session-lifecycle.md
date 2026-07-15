@@ -597,44 +597,58 @@ Turn state, loading, cancel, restore, rail projection, event updates, imports, a
   [controller.go](../../../packages/agent/daemon/runtime/controller.go)
   [controller_test.go](../../../packages/agent/daemon/runtime/controller_test.go)
 
-### Claude Code cancel leaves Write/tool cards stuck in progress
+### Claude Code cancel leaves Write/tool cards or thinking stuck in progress
 
 - Symptom:
-  User stops a Claude Code turn while a tool such as Write is running. The turn
-  settles as canceled/interrupted, but the transcript still shows the tool as
-  in progress.
+  User stops a Claude Code turn while a tool such as Write is running, or while
+  the assistant is still in a thinking disclosure. The turn settles as
+  canceled/interrupted, but the transcript still shows the tool as in progress
+  or thinking as forever-"thinking".
 - Quick checks:
-  Compare durable tool-call message status with turn outcome. If the turn is
-  interrupted/canceled and the open `tool_call` is still `running`, the Claude
-  SDK turn lifecycle did not finish dangling calls. Confirm Codex/ACP cancel of
-  the same shape closes open tools via `acpTurnNormalizer.FinishInterrupted`.
+  Compare durable tool-call / `assistant_thinking` message status with turn
+  outcome. If the turn is interrupted/canceled and an open `tool_call` is still
+  `running`, or thinking is still `streaming`/`working`, the Claude SDK turn
+  lifecycle did not finish dangling normalizer-owned rows. Confirm Codex/ACP
+  cancel of the same shape closes open tools and thinking via
+  `acpTurnNormalizer.FinishInterrupted`.
 - Root cause:
-  Claude Code SDK projected tool events without owning the shared turn event
-  lifecycle (`acpTurnNormalizer`). Cancel and sidecar `turn_canceled` settled
-  the turn without `Finish*`, so open tools never received a terminal
-  `call.failed`.
+  Claude Code SDK first projected tool events without owning the shared turn
+  event lifecycle (`acpTurnNormalizer`), so cancel settled the turn without
+  `Finish*` and open tools never received terminal `call.failed`. A follow-on
+  gap kept thinking/assistant snapshots off that same normalizer: only tools
+  were tracked, so Stop could fail open Write cards while leaving an in-flight
+  thinking row at `streamState=streaming`.
 - Fix:
   Attach per-turn `acpTurnNormalizer` on the Claude SDK session. Track
-  `call.started/completed/failed` against that normalizer, and call
+  `call.started/completed/failed` against that normalizer, route thinking and
+  assistant snapshots through the same normalizer, and call
   `FinishInterrupted` / `FinishFailed` / `FinishCompleted` as part of turn
   terminalization (`Cancel`, sidecar `turn_*`, reader failure). Drop late tool
   events after the turn is already settled.
   Also: controller Cancel cancels the Exec context before `adapter.Cancel`.
   Claude Exec unregisters its waiter on that context cancel, so Cancel must
-  finish open tools from the turn-normalizer map (not only live waiters), and
-  the Exec context-canceled path must retain CallFailed events instead of
-  replacing the whole event slice with a bare turn.canceled.
+  finish open tools/streams from the turn-normalizer map (not only live
+  waiters). The controller Exec context-canceled path must retain those
+  adapter-produced close events via `retainTurnCallLifecycleEvents` — not only
+  `call.failed`, but also failed/completed assistant/thinking message
+  snapshots — instead of replacing the whole event slice with a bare
+  turn.canceled. Otherwise FinishInterrupted runs in Exec, then the controller
+  drops the thinking settlement and the durable row stays `streaming`.
 - Validation:
-  `go test ./packages/agent/daemon/runtime -run 'TestClaudeCodeSDKAdapter(CancelFailsOpenToolCalls|CancelFailsOpenToolsAfterWaiterUnregistered|TurnCanceledFailsOpenToolCalls)'`.
-  Manually: start a long Write on Claude Code, press Stop, confirm the tool
-  card leaves "in progress". Rebuild/restart desktop so the running `tuttid`
-  binary includes the fix.
+  `go test ./packages/agent/daemon/runtime -run 'TestClaudeCodeSDKAdapter(CancelFailsOpenToolCalls|CancelFailsOpenToolsAfterWaiterUnregistered|TurnCanceledFailsOpenToolCalls|CancelFailsOpenThinking|MapsThinkingEvents)|TestRetainTurnCallLifecycleEvents'`.
+  Manually: rebuild/restart desktop so `tuttid` includes the fix, then start
+  Claude Code, stop during thinking and during a long Write; confirm thinking
+  leaves the active state and the tool card leaves "in progress". In
+  `~/.tutti-dev/tuttid.db`, the reasoning message status should leave
+  `streaming` after cancel.
 - References:
   [claude_sdk_turn.go](../../../packages/agent/daemon/runtime/claude_sdk_turn.go)
   [claude_sdk_events.go](../../../packages/agent/daemon/runtime/claude_sdk_events.go)
   [claude_sdk_execution.go](../../../packages/agent/daemon/runtime/claude_sdk_execution.go)
   [controller_turn_exec.go](../../../packages/agent/daemon/runtime/controller_turn_exec.go)
+  [controller_turn_state.go](../../../packages/agent/daemon/runtime/controller_turn_state.go)
   [acp_turn_normalizer.go](../../../packages/agent/daemon/runtime/acp_turn_normalizer.go)
+  [acp_turn_normalizer_snapshots.go](../../../packages/agent/daemon/runtime/acp_turn_normalizer_snapshots.go)
 
 ### AgentGUI freezes when session history is large
 
@@ -933,6 +947,42 @@ Turn state, loading, cancel, restore, rail projection, event updates, imports, a
   [command_catalog.go](../../services/tuttid/service/agentsidecar/command_catalog.go)
   [controller_session_lifecycle.go](../../packages/agent/daemon/runtime/controller_session_lifecycle.go)
   [agent_runtime_adapter.go](../../services/tuttid/agent_runtime_adapter.go)
+
+### Cursor auto-continue invents interrupted work after a network drop
+
+- Symptom:
+  After a Cursor `RetriableError` / TLS drop and Tutti's automatic
+  `transport_retry`, the agent does not answer the user's last message
+  (for example a simple greeting). Instead it talks about recovering prior
+  context, reading transcripts, or continuing an interrupted task that never
+  started.
+- Quick checks:
+  In the session transcript, confirm the failed attempt produced only the
+  `Error: RetriableError:` / `Error: ConnectError:` tail (no useful assistant
+  text and no tool calls) before the retry notice. Check
+  `agent_session.acp.exec.auto_continue` in `tuttid` logs for
+  `has_useful_progress=false`.
+- Root cause:
+  Cursor keeps conversation history on its backend; Tutti can mainly control the
+  synthetic auto-continue `session/prompt`. Mid-task wording
+  ("Continue exactly where you left off") misleads the model when the attempt
+  died before any useful output.
+- Fix:
+  Branch the auto-continue prompt by useful progress: zero-progress retries ask
+  the model to answer the user's most recent message normally and not invent
+  interrupted work; mid-task retries keep the continue wording. Progress is
+  assistant text after stripping the retriable error tail, or any observed tool
+  call.
+- Validation:
+  `cd packages/agent/daemon && go test ./runtime/ -run
+'TestACPAutoContinueHasUsefulProgress|TestACPAutoContinuePromptContentBranches|TestCursorAdapterAutoContinuesAfterRetriableTurnError|TestCursorAdapterAutoContinueMidTaskUsesContinuePrompt'`.
+  Live: send a short Cursor message that fails before any reply, confirm the
+  retry answers the user instead of recovering a phantom task, and that
+  mid-task drops still resume in place.
+- References:
+  [acp_auto_continue.go](../../../packages/agent/daemon/runtime/acp_auto_continue.go)
+  [standard_acp_turn.go](../../../packages/agent/daemon/runtime/standard_acp_turn.go)
+  [acp_auto_continue_test.go](../../../packages/agent/daemon/runtime/acp_auto_continue_test.go)
 
 ### Canceling an old AgentGUI turn stops a newer turn
 

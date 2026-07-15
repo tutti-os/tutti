@@ -670,6 +670,55 @@ func TestClaudeCodeSDKAdapterCancelFailsOpenToolCalls(t *testing.T) {
 	}
 }
 
+func TestClaudeCodeSDKAdapterCancelFailsOpenThinking(t *testing.T) {
+	// Mirrors the open-Write cancel path: thinking must leave the shared turn
+	// normalizer so Stop does not leave a forever-"thinking" disclosure.
+	adapter := NewClaudeCodeSDKAdapter(nil)
+	session := standardTestSession(ProviderClaudeCode)
+	adapterSession := &claudeSDKAdapterSession{
+		conn:      &recordingClaudeSDKConnection{},
+		liveState: newClaudeSDKLiveState(),
+	}
+	adapter.storeSession(session.AgentSessionID, adapterSession)
+	adapter.registerClaudeSDKTurn(adapterSession, "turn-think", nil)
+
+	streaming, terminal, err := adapter.sidecarTurnEvents(adapterSession, session, "turn-think", claudeSDKSidecarEvent{
+		Type: "thinking_delta",
+		Payload: map[string]any{
+			"turnId":   "turn-think",
+			"snapshot": "Still reasoning about the change.",
+		},
+	})
+	if err != nil || terminal {
+		t.Fatalf("thinking_delta err=%v terminal=%v", err, terminal)
+	}
+	if len(streaming) != 1 ||
+		streaming[0].Payload.Role != activityshared.MessageRoleAssistantThinking ||
+		streaming[0].EventID != "claude-sdk:thinking:turn-think" ||
+		streaming[0].Payload.Metadata["streamState"] != messageStreamStateStreaming {
+		t.Fatalf("streaming thinking = %#v, want stable streaming thinking row", streaming)
+	}
+
+	events, err := adapter.Cancel(context.Background(), session, "user")
+	if err != nil {
+		t.Fatalf("Cancel: %v", err)
+	}
+	if len(events) != 2 {
+		t.Fatalf("cancel events = %#v, want failed open thinking then interrupted turn", events)
+	}
+	if events[0].Type != activityshared.EventMessageAppended ||
+		events[0].EventID != "claude-sdk:thinking:turn-think" ||
+		events[0].Payload.Role != activityshared.MessageRoleAssistantThinking ||
+		events[0].Payload.Metadata["streamState"] != messageStreamStateFailed ||
+		events[0].Payload.Content != "Still reasoning about the change." {
+		t.Fatalf("open thinking cancel event = %#v, want failed thinking snapshot", events[0])
+	}
+	if events[1].Type != activityshared.EventTurnCompleted ||
+		events[1].Payload.TurnOutcome != string(activityshared.TurnOutcomeInterrupted) {
+		t.Fatalf("cancel turn event = %#v, want interrupted turn", events[1])
+	}
+}
+
 func TestClaudeCodeSDKAdapterCancelFailsOpenToolsAfterWaiterUnregistered(t *testing.T) {
 	// Mirrors controller Cancel ordering: active.cancel() makes Exec unregister
 	// its waiter before adapter.Cancel runs. Open tools must still close.

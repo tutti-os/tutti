@@ -463,9 +463,11 @@ func unemittedActivityEvents(events []activityshared.Event, emitted []activitysh
 	return out
 }
 
-// retainTurnCallLifecycleEvents keeps call.started/completed/failed events for
-// turnID when synthesizing a context-canceled terminal. Controllers must not
-// discard adapter-produced CallFailed closes for open tools.
+// retainTurnCallLifecycleEvents keeps adapter-produced close events for turnID
+// when synthesizing a context-canceled terminal. Controllers must not discard:
+//   - CallFailed closes for open tools
+//   - failed/completed assistant or thinking snapshots that settle in-flight
+//     stream rows (Claude FinishInterrupted on ctx cancel)
 func retainTurnCallLifecycleEvents(events []activityshared.Event, turnID string) []activityshared.Event {
 	turnID = strings.TrimSpace(turnID)
 	if len(events) == 0 || turnID == "" {
@@ -473,16 +475,34 @@ func retainTurnCallLifecycleEvents(events []activityshared.Event, turnID string)
 	}
 	out := make([]activityshared.Event, 0, len(events))
 	for _, event := range events {
+		if strings.TrimSpace(event.Payload.TurnID) != turnID {
+			continue
+		}
 		switch event.Type {
 		case activityshared.EventCallStarted,
 			activityshared.EventCallCompleted,
 			activityshared.EventCallFailed:
-			if strings.TrimSpace(event.Payload.TurnID) == turnID {
+			out = append(out, event)
+		case activityshared.EventMessageAppended, activityshared.EventMessageCreated:
+			if isRetainedCancelMessageSettlement(event) {
 				out = append(out, event)
 			}
 		}
 	}
 	return out
+}
+
+func isRetainedCancelMessageSettlement(event activityshared.Event) bool {
+	role := string(event.Payload.Role)
+	if role != string(activityshared.MessageRoleAssistant) &&
+		role != string(activityshared.MessageRoleAssistantThinking) {
+		return false
+	}
+	streamState := asString(event.Payload.Metadata["streamState"])
+	if streamState == "" {
+		streamState = strings.TrimSpace(event.Payload.Status)
+	}
+	return streamState == messageStreamStateCompleted || streamState == messageStreamStateFailed
 }
 
 func activityEventIdentity(event activityshared.Event) string {

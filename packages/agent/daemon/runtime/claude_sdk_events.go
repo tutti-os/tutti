@@ -74,33 +74,31 @@ func (a *ClaudeCodeSDKAdapter) sidecarTurnEvents(adapterSession *claudeSDKAdapte
 	case "assistant_delta":
 		messageID := firstNonEmptyString(payloadString(event.Payload, "messageId"), adapterSession.assistantMessageID(turnID))
 		content := firstNonEmpty(payloadString(event.Payload, "snapshot"), payloadString(event.Payload, "content"))
-		return []activityshared.Event{newTurnActivityEventWithID(session, messageID, EventMessage, turnID, messageStreamStateStreaming, RoleAssistant, content, map[string]any{
-			"adapter":     claudeSDKSidecarAdapterName,
-			"messageId":   messageID,
-			"contentMode": messageContentModeSnapshot,
-		})}, false, nil
+		return a.claudeSDKAssistantEvents(adapterSession, session, turnID, messageID, content, false), false, nil
 	case "assistant_completed":
 		messageID := firstNonEmptyString(payloadString(event.Payload, "messageId"), adapterSession.assistantMessageID(turnID))
-		return []activityshared.Event{newTurnActivityEventWithID(session, messageID, EventMessage, turnID, messageStreamStateCompleted, RoleAssistant, payloadString(event.Payload, "content"), map[string]any{
-			"adapter":     claudeSDKSidecarAdapterName,
-			"messageId":   messageID,
-			"contentMode": messageContentModeSnapshot,
-		})}, false, nil
+		return a.claudeSDKAssistantEvents(
+			adapterSession,
+			session,
+			turnID,
+			messageID,
+			payloadString(event.Payload, "content"),
+			true,
+		), false, nil
 	case "thinking_delta":
 		messageID := firstNonEmptyString(payloadString(event.Payload, "messageId"), adapterSession.thinkingMessageID(turnID))
 		content := firstNonEmpty(payloadString(event.Payload, "snapshot"), payloadString(event.Payload, "content"))
-		return []activityshared.Event{newTurnActivityEventWithID(session, messageID, EventMessage, turnID, messageStreamStateStreaming, RoleAssistantThinking, content, map[string]any{
-			"adapter":     claudeSDKSidecarAdapterName,
-			"messageId":   messageID,
-			"contentMode": messageContentModeSnapshot,
-		})}, false, nil
+		return a.claudeSDKThinkingEvents(adapterSession, session, turnID, messageID, content, false), false, nil
 	case "thinking_completed":
 		messageID := firstNonEmptyString(payloadString(event.Payload, "messageId"), adapterSession.thinkingMessageID(turnID))
-		return []activityshared.Event{newTurnActivityEventWithID(session, messageID, EventMessage, turnID, messageStreamStateCompleted, RoleAssistantThinking, payloadString(event.Payload, "content"), map[string]any{
-			"adapter":     claudeSDKSidecarAdapterName,
-			"messageId":   messageID,
-			"contentMode": messageContentModeSnapshot,
-		})}, false, nil
+		return a.claudeSDKThinkingEvents(
+			adapterSession,
+			session,
+			turnID,
+			messageID,
+			payloadString(event.Payload, "content"),
+			true,
+		), false, nil
 	case "tool_started", "tool_updated":
 		if a.turnAlreadySettled(adapterSession, turnID) {
 			return nil, false, nil

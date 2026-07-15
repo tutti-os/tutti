@@ -54,25 +54,29 @@ Approval gates, plan exits, parent/child event attribution, background agents, a
   the preceding `tool_call` notification for the same `toolCallId`, which does
   carry `rawInput.command`.
 - Root cause:
-  `normalizedApprovalDisplayInput` only read the permission request's own
-  inline `toolCall`. Codex and Claude Code repeat enough of the original input
-  on their approval-equivalent requests for that to work, but Cursor's ACP
-  implementation does not, so the approval projection had no command/path/
-  query fields to show and the card fell back to title-only.
+  Cursor omits `rawInput` on `session/request_permission`, so approval detail
+  must be backfilled from an earlier same-id `tool_call`. A later
+  `tool_call_update` that repeats only `title`/`kind`/`status`/`content` used
+  to replace the pending snapshot wholesale and wipe `input.command`;
+  `KnownToolCallInput` then returned empty, the durable Interaction stored no
+  structured detail, and AgentGUI (which only renders command/path/query, not
+  `toolCall.title`) showed a blank approval card.
 - Fix:
-  Track per-turn tool-call state in `acpTurnNormalizer` (already recorded from
-  `tool_call`/`tool_call_update`) and expose it by raw `toolCallId` via
-  `KnownToolCallInput`. `standardACPPermissionRequested` now passes the
-  normalizer through, and `normalizedApprovalDisplayInput` fills any field
-  (`command`, `file_path`, `query`, ...) missing from the permission request's
-  own `toolCall` from that known prior input before giving up. Other ACP-style
-  interactive paths (Codex app-server, Claude SDK) keep passing `nil` for this
-  fallback since they do not need it.
+  Keep per-turn tool-call snapshots in `acpTurnNormalizer`, merge later empty
+  or partial updates into the prior `input` instead of replacing it, expose the
+  preserved input via `KnownToolCallInput`, and let
+  `normalizedApprovalDisplayInput` fill missing `command`/`file_path`/`query`
+  fields from that known input. Other ACP-style interactive paths (Codex
+  app-server, Claude SDK) keep passing `nil` for this fallback.
 - Validation:
   `cd packages/agent/daemon && go test ./runtime/... -run
-TestCursorPermissionRequestFallsBackToKnownToolCallInput`. For a live check,
-  run the same direct ACP probe from Quick checks with a tier-"agent" session
-  and confirm the emitted approval payload's `input` carries the command.
+'TestCursorPermissionRequestFallsBackToKnownToolCallInput|TestCursorPermissionRequestKeepsKnownInputAfterEmptyToolCallUpdate'`.
+  For a live check, restart tuttidi, trigger a Cursor ask-for-approval shell
+  command, and confirm `~/.tutti-dev/logs/tuttid.log` shows
+  `agent_session.acp.permission_approval.projected` with
+  `has_display_detail=true` and `known_input_has_command=true`. An empty update
+  that would previously wipe detail now logs
+  `agent_session.acp.pending_tool_call.preserved_detail`.
 - References:
   [acp_turn_normalizer.go](../../../packages/agent/daemon/runtime/acp_turn_normalizer.go)
   [interactive_projection.go](../../../packages/agent/daemon/runtime/interactive_projection.go)

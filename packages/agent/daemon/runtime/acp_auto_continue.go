@@ -54,14 +54,45 @@ func acpStopReasonEndsTurnNormally(stopReason string) bool {
 	}
 }
 
+// acpAutoContinueHasUsefulProgress reports whether the failed attempt produced
+// anything worth "continuing": assistant text besides the retriable error
+// tail, or at least one tool call. Zero-progress failures (e.g. TLS drop right
+// after the user said hello) must not use mid-task continue wording — that
+// prompts the model to invent interrupted prior work.
+func acpAutoContinueHasUsefulProgress(assistantText string, toolCallCount int) bool {
+	if toolCallCount > 0 {
+		return true
+	}
+	trimmed := strings.TrimSpace(assistantText)
+	if trimmed == "" {
+		return false
+	}
+	if errLine, ok := acpRetriableTurnTailError(trimmed); ok {
+		withoutTail := strings.TrimSpace(strings.TrimSuffix(trimmed, errLine))
+		return withoutTail != ""
+	}
+	return true
+}
+
+const (
+	acpAutoContinueMidTaskPrompt      = "The previous response was interrupted by a transient network error. Continue exactly where you left off; do not repeat work that already completed."
+	acpAutoContinueZeroProgressPrompt = "A transient network error aborted your reply before any useful output. Answer the user's most recent message normally. Do not invent interrupted prior work, recover transcripts, or continue a task that never started."
+)
+
 // acpAutoContinuePromptContent is the synthetic prompt that resumes a turn cut
 // short by a transient network error. It is deliberately not emitted as a
-// user message: the provider session retains the full prior context, so the
-// transcript shows the agent simply picking the work back up.
-func acpAutoContinuePromptContent() []map[string]any {
+// user message: the provider session retains the full prior context.
+//
+// hasUsefulProgress selects wording: mid-task continue vs "answer the last
+// user message" for attempts that died before producing useful output.
+func acpAutoContinuePromptContent(hasUsefulProgress bool) []map[string]any {
+	text := acpAutoContinueZeroProgressPrompt
+	if hasUsefulProgress {
+		text = acpAutoContinueMidTaskPrompt
+	}
 	return []map[string]any{{
 		"type": "text",
-		"text": "The previous response was interrupted by a transient network error. Continue exactly where you left off; do not repeat work that already completed.",
+		"text": text,
 	}}
 }
 

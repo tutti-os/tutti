@@ -188,9 +188,11 @@ execLoop:
 			"emitted_event_type_counts", activityEventTypeCounts(events),
 		)
 		if a.config.autoContinueRetriableTurnError && acpStopReasonEndsTurnNormally(stopReason) {
-			if errLine, ok := acpRetriableTurnTailError(normalizer.CurrentAssistantText()); ok {
+			assistantText := normalizer.CurrentAssistantText()
+			if errLine, ok := acpRetriableTurnTailError(assistantText); ok {
 				if autoContinueAttempts < acpAutoContinueMaxAttempts {
 					autoContinueAttempts++
+					hasUsefulProgress := acpAutoContinueHasUsefulProgress(assistantText, normalizer.SeenToolCallCount())
 					// Close out the error-text segment so the continuation
 					// streams into a fresh message instead of appending to it.
 					emitEvents(normalizer.Finish(session, turnID, messageStreamStateCompleted))
@@ -208,8 +210,9 @@ execLoop:
 						"attempt", autoContinueAttempts,
 						"max_attempts", acpAutoContinueMaxAttempts,
 						"error_line", errLine,
+						"has_useful_progress", hasUsefulProgress,
 					)
-					promptParams = acpAutoContinuePromptContent()
+					promptParams = acpAutoContinuePromptContent(hasUsefulProgress)
 					continue execLoop
 				}
 				// The retries were cut short too: surface the turn as failed
