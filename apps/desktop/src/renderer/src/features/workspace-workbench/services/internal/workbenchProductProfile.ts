@@ -1,7 +1,7 @@
-import type { WorkbenchCapabilityFactoryDescriptor } from "@tutti-os/workbench-host";
-import type { WorkbenchScope } from "./workbenchHostSession.ts";
-
-export type { WorkbenchCapabilityFactoryDescriptor } from "@tutti-os/workbench-host";
+import type {
+  WorkbenchCapabilityFactoryDescriptor,
+  WorkbenchScope
+} from "@tutti-os/workbench-host";
 
 export interface WorkbenchProductProfile {
   readonly productId: string;

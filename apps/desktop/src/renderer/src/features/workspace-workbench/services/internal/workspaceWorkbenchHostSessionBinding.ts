@@ -1,9 +1,9 @@
+import type { WorkbenchHostSessionLease } from "@tutti-os/workbench-host";
 import type {
   WorkspaceWorkbenchHostInput,
   WorkspaceWorkbenchHostSessionBinding,
   WorkspaceWorkbenchHostSessionUpdate
 } from "../workspaceWorkbenchHostService.interface.ts";
-import type { WorkbenchHostSessionLease } from "./workbenchHostCoordinator.ts";
 
 export function createWorkspaceWorkbenchHostSessionBinding<TState>(input: {
   bindingId: number;

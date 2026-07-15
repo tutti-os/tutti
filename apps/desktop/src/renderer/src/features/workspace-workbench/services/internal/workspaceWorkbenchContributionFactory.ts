@@ -41,7 +41,7 @@ import type {
   WorkspaceWorkbenchCapabilitySettingsTarget
 } from "../workspaceWorkbenchHostService.interface";
 import type { WorkspaceBrowserService } from "./workspaceBrowserService.ts";
-import type { WorkbenchCapabilityFactoryDescriptor } from "./workbenchProductProfile.ts";
+import type { WorkbenchCapabilityFactoryDescriptor } from "@tutti-os/workbench-host";
 
 export interface DesktopWorkbenchContributionContext {
   appI18n: I18nRuntime<string>;

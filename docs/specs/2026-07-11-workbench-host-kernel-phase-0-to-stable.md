@@ -1,8 +1,8 @@
 # Workbench Host Kernel: Phase 0 To Stable
 
 - Date: 2026-07-11
-- Status: Active; ADR accepted, PRs 1–3 and pre-extraction hardening merged,
-  PRs 4–6 approved, and PR 4 ready to start
+- Status: Active; ADR accepted, PRs 1–4 and pre-extraction hardening merged,
+  PR 5 in progress, and PR 6 approved after PR 5 validation
 - Architecture decision:
   [ADR 0009](../adr/0009-cross-product-workbench-host-kernel.md)
 - Scope: Tutti-first implementation, npm beta, read-only/downstream TSH
@@ -35,17 +35,18 @@ gate after external TSH validation.
 
 Approval recorded on 2026-07-11 remains deliberately incremental:
 
-| Scope                                       | Approval                                 |
-| ------------------------------------------- | ---------------------------------------- |
-| ADR 0009 architecture boundary              | Accepted                                 |
-| PR 1 characterization fixtures/tests        | Merged in #1043                          |
-| PR 2 private coordinator/session            | Merged in #1044                          |
-| PR 3 Product Profile/Ports/adapters split   | Merged in #1050                          |
-| Pre-extraction writer/save hardening        | Merged in #1184                          |
-| Public package extraction and Tutti cutover | Approved after PR 3                      |
-| npm beta publication                        | Approved after PRs 3–5 and validation    |
-| TSH renderer DI/host migration              | Deferred; no TSH changes in current work |
-| Stable publication                          | Not approved                             |
+| Scope                                     | Approval                                 |
+| ----------------------------------------- | ---------------------------------------- |
+| ADR 0009 architecture boundary            | Accepted                                 |
+| PR 1 characterization fixtures/tests      | Merged in #1043                          |
+| PR 2 private coordinator/session          | Merged in #1044                          |
+| PR 3 Product Profile/Ports/adapters split | Merged in #1050                          |
+| Pre-extraction writer/save hardening      | Merged in #1184                          |
+| Public package extraction                 | Merged in #1194                          |
+| Tutti direct package cutover              | Approved; PR 5 in progress               |
+| npm beta publication                      | Approved after PRs 3–5 and validation    |
+| TSH renderer DI/host migration            | Deferred; no TSH changes in current work |
+| Stable publication                        | Not approved                             |
 
 The approvals remain sequenced as independently mergeable and revertible PRs.
 They do not authorize combining PRs 3–5, modifying TSH, or publishing stable.

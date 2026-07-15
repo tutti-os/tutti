@@ -18,6 +18,14 @@ const workspaceWorkbenchHostServiceSource = readFileSync(
   new URL("./workspaceWorkbenchHostService.ts", import.meta.url),
   "utf8"
 );
+const workspaceWorkbenchHostInputResolverSource = readFileSync(
+  new URL("./workspaceWorkbenchHostInputResolver.ts", import.meta.url),
+  "utf8"
+);
+const workspaceAppExternalUserProjectApiSource = readFileSync(
+  new URL("./workspaceAppExternalUserProjectApi.ts", import.meta.url),
+  "utf8"
+);
 const workspaceWorkbenchRegistrationSource = readFileSync(
   new URL("../registerWorkspaceWorkbenchServices.ts", import.meta.url),
   "utf8"
@@ -33,19 +41,19 @@ const workspaceWorkbenchSource = readFileSync(
 
 test("workspace workbench host keeps deterministic composition and close preparation wiring", () => {
   assert.match(
-    workspaceWorkbenchHostServiceSource,
+    workspaceWorkbenchHostInputResolverSource,
     /resolveWorkbenchCapabilityRegistry\(\s+createTuttiWorkbenchProductProfile\(\{[\s\S]*?workspaceId: input\.workspaceId\s+\}\)\s+\)/
   );
   assert.match(
-    workspaceWorkbenchHostServiceSource,
+    workspaceWorkbenchHostInputResolverSource,
     /contributions: contributionRegistry\.contributions/
   );
   assert.match(
-    workspaceWorkbenchHostServiceSource,
+    workspaceWorkbenchHostInputResolverSource,
     /prepareHostClose: resolveWorkbenchHostPrepareClose\(\s+contributionRegistry\.contributions\s+\)/
   );
   assert.match(
-    workspaceWorkbenchHostServiceSource,
+    workspaceWorkbenchHostInputResolverSource,
     /snapshotRepository: this\.dependencies\.repository/
   );
 });
@@ -220,34 +228,34 @@ test("createWindowCloseDialogRequest summarizes close effects for window close",
 
 test("desktop dock preview capture avoids visible window isolation", () => {
   assert.match(
-    workspaceWorkbenchHostServiceSource,
+    workspaceWorkbenchHostInputResolverSource,
     /isForegroundWorkspaceNodeCaptureTarget\(windowElement\)/
   );
   assert.match(
-    workspaceWorkbenchHostServiceSource,
+    workspaceWorkbenchHostInputResolverSource,
     /const capturePromise = hostWindowApi\.capturePreview\(\{/
   );
   assert.doesNotMatch(
-    workspaceWorkbenchHostServiceSource,
+    workspaceWorkbenchHostInputResolverSource,
     new RegExp("data-workbench-" + "preview-capture-" + "active")
   );
   assert.doesNotMatch(
-    workspaceWorkbenchHostServiceSource,
+    workspaceWorkbenchHostInputResolverSource,
     new RegExp("captureIsolated" + "WorkspaceWindowPreview")
   );
 });
 
 test("workspace app external user project API exposes live project state", () => {
   assert.match(
-    workspaceWorkbenchHostServiceSource,
+    workspaceAppExternalUserProjectApiSource,
     /getSnapshot: \(\) =>\s+Promise\.resolve\(cloneWorkspaceUserProjectServiceSnapshot\(service\)\)/
   );
   assert.match(
-    workspaceWorkbenchHostServiceSource,
+    workspaceAppExternalUserProjectApiSource,
     /refresh: async \(\) => \{\s+await service\.refresh\(\);\s+return cloneWorkspaceUserProjectServiceSnapshot\(service\);/
   );
   assert.match(
-    workspaceWorkbenchHostServiceSource,
+    workspaceAppExternalUserProjectApiSource,
     /subscribe: \(listener\) =>\s+service\.subscribe\(\(\) => \{\s+listener\(cloneWorkspaceUserProjectServiceSnapshot\(service\)\);/
   );
 });

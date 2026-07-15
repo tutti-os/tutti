@@ -9,12 +9,10 @@ import {
 import { IWorkbenchHostCoordinator } from "../workbenchHostCoordinator.interface.ts";
 import {
   createWorkbenchHostSessionConfiguration,
-  WorkbenchHostCoordinator
-} from "./workbenchHostCoordinator.ts";
-import {
+  WorkbenchHostCoordinator,
   WorkbenchHostSession,
   type WorkbenchSnapshotPartition
-} from "./workbenchHostSession.ts";
+} from "@tutti-os/workbench-host";
 
 const configuration = createWorkbenchHostSessionConfiguration({
   createSession

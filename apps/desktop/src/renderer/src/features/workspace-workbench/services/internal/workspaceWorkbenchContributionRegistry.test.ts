@@ -1,11 +1,9 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
-import { resolveWorkbenchCapabilityRegistry } from "./workbenchCapabilityRegistry.ts";
-import type {
-  WorkbenchCapabilityFactoryDescriptor,
-  WorkbenchProductProfile
-} from "./workbenchProductProfile.ts";
+import { resolveWorkbenchCapabilityRegistry } from "@tutti-os/workbench-host";
+import type { WorkbenchCapabilityFactoryDescriptor } from "@tutti-os/workbench-host";
+import type { WorkbenchProductProfile } from "./workbenchProductProfile.ts";
 
 test("workbench contribution registry sorts factories and skips unavailable entries", () => {
   const registry = resolveWorkbenchCapabilityRegistry(

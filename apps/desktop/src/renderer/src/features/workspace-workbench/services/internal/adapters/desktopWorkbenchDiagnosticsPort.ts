@@ -1,5 +1,5 @@
 import type { DesktopRuntimeApi } from "@preload/types";
-import type { WorkbenchDiagnosticsPort } from "../workbenchHostPorts.ts";
+import type { WorkbenchDiagnosticsPort } from "@tutti-os/workbench-host";
 
 export function createDesktopWorkbenchDiagnosticsPort(input: {
   readonly runtimeApi: Pick<DesktopRuntimeApi, "logRendererDiagnostic">;

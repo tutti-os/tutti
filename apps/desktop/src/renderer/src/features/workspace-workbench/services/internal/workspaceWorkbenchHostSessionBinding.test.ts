@@ -8,9 +8,9 @@ import type {
 import {
   createWorkbenchHostSessionConfiguration,
   WorkbenchHostCoordinator,
+  WorkbenchHostSession,
   type WorkbenchHostSessionConfiguration
-} from "./workbenchHostCoordinator.ts";
-import { WorkbenchHostSession } from "./workbenchHostSession.ts";
+} from "@tutti-os/workbench-host";
 import { createWorkspaceWorkbenchHostSessionBinding } from "./workspaceWorkbenchHostSessionBinding.ts";
 
 test("workspace session bindings release only their own lease", () => {

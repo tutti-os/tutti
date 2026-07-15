@@ -4,7 +4,7 @@ import type { WorkbenchHostHandle } from "@tutti-os/workbench-surface";
 import {
   WorkbenchHostSession,
   type WorkbenchSnapshotPartition
-} from "./workbenchHostSession.ts";
+} from "@tutti-os/workbench-host";
 
 test("workbench host session captures an immutable partition snapshot", () => {
   const partition = {

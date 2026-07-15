@@ -1,10 +1,5 @@
 import type { WorkbenchSnapshot } from "@tutti-os/workbench-snapshot";
 
-export type {
-  WorkbenchDiagnosticsPort,
-  WorkbenchHostDiagnosticEvent
-} from "@tutti-os/workbench-host";
-
 export interface WorkbenchSnapshotRepositoryPort {
   hasLoaded?(scopeId: string): boolean;
   load(scopeId: string): Promise<WorkbenchSnapshot | null>;

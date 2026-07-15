@@ -374,8 +374,9 @@ The desktop workspace workbench currently uses these modules:
   factory, contribution, node type, and dock entry ownership before host input
   is published. `services/internal/workbenchProductProfile.ts` keeps Tutti's
   product ID and scope kind private because the shared kernel does not yet
-  consume or enforce those fields; the old desktop registry path is only a
-  compatibility re-export during package cutover.
+  consume or enforce those fields. Desktop production code and lifecycle tests
+  import the shared package directly; there is no private registry,
+  coordinator, or session compatibility path.
 - `services/internal/tuttiWorkbenchProductProfile.ts` owns the Tutti capability
   selection. It binds each desktop contribution factory to a newly projected,
   capability-specific context so factories do not receive the full product
@@ -394,10 +395,13 @@ The desktop workspace workbench currently uses these modules:
 - `services/internal/contributions/*` owns concrete desktop-local adapters for
   browser, terminal, issue-manager, files, and other workspace capabilities
   that have not yet moved into a shared package factory.
-- `workspaceWorkbenchHostService.ts` owns host input assembly. It may compose
-  contribution factories, snapshot repositories, close policy, wallpaper
-  persistence, and desktop IPC adapters, but it should not become a feature
-  business core.
+- `workspaceWorkbenchHostInputResolver.ts` owns product host-input assembly,
+  including contribution factories, dynamic dock entries, snapshot repository
+  wiring, close policy, and node-preview capture.
+- `workspaceWorkbenchHostService.ts` remains the desktop facade for session
+  leases, wallpaper/onboarding persistence, external bridges, and desktop IPC
+  adapters. It delegates host-input assembly to the resolver instead of
+  becoming a second feature business core.
 - `services/workspaceWorkbenchShellRuntimeController.ts` owns shell-level
   runtime state that is independent of DOM rendering: mission control, close
   guard dialog state, host close requests, wallpaper selection, and the
