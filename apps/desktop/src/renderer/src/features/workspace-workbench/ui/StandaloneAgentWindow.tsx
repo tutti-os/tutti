@@ -50,7 +50,10 @@ import {
   type IWorkspaceAppCenterService
 } from "@renderer/features/workspace-app-center";
 import { useService } from "@tutti-os/infra/di";
-import { IWorkspaceFileManagerService } from "@renderer/features/workspace-file-manager";
+import {
+  IWorkspaceFileManagerService,
+  IWorkspaceFilePreviewSurfaceHost
+} from "@renderer/features/workspace-file-manager";
 import type {
   DesktopApi,
   DesktopHostWindowApi,
@@ -85,6 +88,7 @@ import { StandaloneAgentWindowContentReady } from "./StandaloneAgentWindowConten
 import { showWorkspaceFileMissingToast } from "../services/workspaceFilesLaunchFeedback.ts";
 import { Toast } from "@renderer/lib/toast";
 import { createStandaloneAgentWorkspaceAppSurfacePresenter } from "../services/standaloneAgentWorkspaceAppSurfacePresenter.ts";
+import { createStandaloneAgentWorkspaceFilePreviewPresenter } from "../services/standaloneAgentWorkspaceFilePreviewPresenter.ts";
 
 const LazyWorkspaceAccountMenu = lazy(() =>
   import("./WorkspaceAccountMenu").then(({ WorkspaceAccountMenu }) => ({
@@ -154,6 +158,9 @@ export function StandaloneAgentWindow({
   const { i18n } = useTranslation();
   const agentsService = useService(IAgentsService);
   const workspaceAppSurfaceHost = useService(IWorkspaceAppSurfaceHost);
+  const workspaceFilePreviewSurfaceHost = useService(
+    IWorkspaceFilePreviewSurfaceHost
+  );
   const workspaceFileManagerService = useService(IWorkspaceFileManagerService);
   const { service: workspaceSettingsService } = useWorkspaceSettingsService();
   const workspaceId = workspace.id;
@@ -350,24 +357,14 @@ export function StandaloneAgentWindow({
     [openFileInSidebar]
   );
   useEffect(() => {
-    workspaceFileManagerService.setCanvasFilePreviewLauncher(
+    return workspaceFilePreviewSurfaceHost.registerPresenter(
       workspaceId,
-      async (target) => {
-        await desktopApi.host.files.openFile(workspaceId, target.path);
-        return true;
-      }
+      createStandaloneAgentWorkspaceFilePreviewPresenter({
+        hostFilesApi: desktopApi.host.files,
+        workspaceId
+      })
     );
-    workspaceFileManagerService.setPreviewUnsupportedFallbackNotificationEnabled(
-      workspaceId,
-      false
-    );
-    return () => {
-      workspaceFileManagerService.setCanvasFilePreviewLauncher(
-        workspaceId,
-        null
-      );
-    };
-  }, [desktopApi.host.files, workspaceFileManagerService, workspaceId]);
+  }, [desktopApi.host.files, workspaceFilePreviewSurfaceHost, workspaceId]);
   useEffect(() => {
     return workspaceAppSurfaceHost.registerPresenter(
       createStandaloneAgentWorkspaceAppSurfacePresenter({

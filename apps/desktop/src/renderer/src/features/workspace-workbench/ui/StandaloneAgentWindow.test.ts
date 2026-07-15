@@ -96,7 +96,7 @@ test("standalone Agent starts the app runtime lifecycle only when apps open", ()
 test("standalone Agent opens files like Finder and routes links into the right sidebar", () => {
   assert.match(
     standaloneWindowSource,
-    /setCanvasFilePreviewLauncher\([\s\S]*?desktopApi\.host\.files\.openFile\(workspaceId, target\.path\)[\s\S]*?return true/
+    /workspaceFilePreviewSurfaceHost\.registerPresenter\([\s\S]*?createStandaloneAgentWorkspaceFilePreviewPresenter\([\s\S]*?hostFilesApi: desktopApi\.host\.files/
   );
   assert.match(standaloneWindowSource, /workspaceFilePreviewMode: "canvas"/);
   assert.match(

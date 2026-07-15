@@ -14,6 +14,7 @@ import { resolveDesktopErrorMessage } from "../../../../lib/desktopErrors.ts";
 import type { DesktopLocale } from "../../../../../../shared/i18n/index.ts";
 import { extractDesktopDroppedPaths } from "../desktopDroppedPaths.ts";
 import type { WorkspaceFileManagerServiceDependencies } from "./workspaceFileManagerService.ts";
+import type { WorkspaceFilePreviewPresentationResult } from "../workspaceFilePreviewSurfaceHost.interface.ts";
 
 interface DesktopWorkspaceFileManagerAdapterDependencies extends WorkspaceFileManagerServiceDependencies {
   notifyPreviewUnsupportedFallback(): void;
@@ -26,10 +27,13 @@ export function createDesktopWorkspaceFileManagerAdapter(
   dependencies: DesktopWorkspaceFileManagerAdapterDependencies,
   getLocale: () => DesktopLocale,
   canvasPreview?: {
+    getUnsupportedFallbackNotification(
+      workspaceID: string
+    ): WorkspaceFilePreviewPresentationResult["unsupportedFallbackNotification"];
     openCanvasPreview(
       target: WorkspaceFileActivationTarget,
       workspaceID: string
-    ): Promise<boolean>;
+    ): Promise<WorkspaceFilePreviewPresentationResult>;
   }
 ): WorkspaceFileManagerHost {
   const hostFilesApi = dependencies.hostFilesApi;
@@ -135,15 +139,21 @@ export function createDesktopWorkspaceFileManagerAdapter(
       request: WorkspaceFileManagerFileActivationRequest,
       workspaceID: string
     ): Promise<WorkspaceFileManagerHostFileActivationResult> {
-      if (
-        request.target &&
-        (await canvasPreview?.openCanvasPreview(request.target, workspaceID))
-      ) {
+      const previewResult = request.target
+        ? await canvasPreview?.openCanvasPreview(request.target, workspaceID)
+        : undefined;
+      if (previewResult?.presented) {
         dependencies.reportFileOpened?.();
         return { disposition: "handled" };
       }
 
-      dependencies.notifyPreviewUnsupportedFallback();
+      const fallbackNotification =
+        previewResult?.unsupportedFallbackNotification ??
+        canvasPreview?.getUnsupportedFallbackNotification(workspaceID) ??
+        "show";
+      if (fallbackNotification === "show") {
+        dependencies.notifyPreviewUnsupportedFallback();
+      }
       await hostFilesApi.openFile(workspaceID, request.entry.path);
       dependencies.reportFileOpened?.();
       return { disposition: "handled" };
