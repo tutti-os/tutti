@@ -8,7 +8,19 @@
   - [Workbench Contributions](../architecture/workbench-contributions.md)
   - [Workbench Node Lifecycle](../architecture/workbench-node-lifecycle.md)
   - [Workbench Dock Model](../architecture/workbench-dock-model.md)
-  - [Phase 0 to stable implementation plan](../specs/2026-07-11-workbench-host-kernel-phase-0-to-stable.md)
+
+## Implementation status
+
+Tutti completed the public package extraction in
+[#1194](https://github.com/tutti-os/tutti/pull/1194) and the direct desktop
+cutover in [#1196](https://github.com/tutti-os/tutti/pull/1196). The fixed npm
+release group published `@tutti-os/workbench-host@0.0.104` under
+`packages-v0.0.104` through
+[workflow run 29440844430](https://github.com/tutti-os/tutti/actions/runs/29440844430).
+
+TSH adoption is intentionally separate downstream work. It should consume the
+stable npm package and its public conformance subpath; it does not keep a Tutti
+active spec open.
 
 ## Context
 
@@ -44,8 +56,7 @@ to rediscover the same session, disposal, cache, and conformance rules.
 ## Decision
 
 Tutti and TSH will share a **class-based, DI-friendly Workbench host kernel**.
-The target public package is `@tutti-os/workbench-host`, subject to the
-extraction gate in the implementation plan.
+The public package is `@tutti-os/workbench-host`.
 
 The kernel has two explicit lifetime levels:
 
@@ -332,7 +343,7 @@ adapter. The shared kernel must not infer that policy.
    depend on the kernel, but the kernel never imports either product.
 10. Current `WorkbenchContribution`, snapshot schema, stable node identity,
     dock ordering/affinity, daemon API shapes, and business authority remain
-    behaviorally compatible throughout Phase 0.
+    behaviorally compatible.
 11. Host may depend on surface public contracts at type/declaration level;
     surface never depends on host, and neither a React runtime dependency nor a
     host/surface cycle is allowed.
@@ -391,7 +402,7 @@ would continue to drift in disposal, partition, cache, and update semantics.
 
 ## Public package evaluation
 
-### Preferred: `@tutti-os/workbench-host`
+### Accepted: `@tutti-os/workbench-host`
 
 Benefits:
 
@@ -405,34 +416,30 @@ Benefits:
 Costs:
 
 - adds a public compatibility surface and fixed-release-group member;
-- requires pack, beta, downstream, and stable release validation; and
+- requires pack and release validation plus downstream adoption testing; and
 - requires strict export discipline to avoid publishing Tutti product types.
 
-This is the accepted target if Phase 0 proves that the public seam contains only
-coordinator/session, profiles, ports, capability descriptors, and conformance
-helpers.
+The extracted package contains only coordinator/session, profiles, ports,
+capability descriptors, and conformance helpers. Tutti's direct package cutover
+validated that boundary before stable publication.
 
 ### Alternative: `@tutti-os/workbench-surface/host`
 
-This avoids another package and may be useful as a short-lived incubation
-location. It is not preferred for stable because it couples headless host
-coordination to React/surface release and dependency shape. If Phase 0 cannot
-produce an independent package without a React runtime dependency or circular
-dependency, the work must pause and reassess boundaries rather than silently
-make this the permanent API.
+This would avoid another package, but it couples headless host coordination to
+React/surface release and dependency shape. It remains rejected because the
+independent package has no React runtime dependency or circular dependency.
 
 ### Alternative: Tutti-private kernel plus copied TSH adapter
 
-This has the lowest immediate release cost and is acceptable only for the
-Tutti-first proving step. It is not a completion state: TSH must consume a
-released package for external validation, never a filesystem link or copied
-source.
+This had the lowest immediate release cost and was acceptable only for the
+Tutti-first proving step. It is not a completion state: TSH must consume the
+released package, never a filesystem link or copied source.
 
 ## Release decision
 
-If extracted, `@tutti-os/workbench-host` joins the existing fixed npm release
-group and uses its single shared version. It does not establish an independent
-version or release workflow.
+`@tutti-os/workbench-host` belongs to the existing fixed npm release group and
+uses its single shared version. It does not establish an independent version or
+release workflow.
 
 - Local beta validation uses `pnpm release:beta`, publishes with the `beta`
   dist-tag, and creates no git tag or manifest commit.
@@ -463,25 +470,26 @@ Positive consequences:
 
 Costs and constraints:
 
-- Tutti must first separate product policy from its current large host class;
 - TSH must later replace hook-owned lifecycle with an adapter to the released
   coordinator/session;
-- package API review and downstream beta validation become mandatory; and
+- the package's public API requires compatibility discipline and downstream
+  adoption testing; and
 - a coordinator/session abstraction adds value only if its public surface stays
   smaller than either product host.
 
-## Resolved Phase 0 constraints
+## Resolved extraction constraints
 
 - Keep concurrent distinct partitions available internally, but do not promise
   multi-view UX or multiple effective surfaces for one session in the first
   public API.
 - Preserve the current public surface props and returned handle attachment for
-  Phase 0. An externally created shell-session API requires a separate decision.
+  the public API. An externally created shell-session API requires a separate
+  decision.
 
 ## Open questions
 
 1. Which Tutti snapshot metadata (currently product-owned wallpaper and
    onboarding fields) should remain in the snapshot repository adapter versus a
    dedicated product metadata port? Default: keep compatibility in the Tutti
-   adapter during Phase 0 and extract only after conformance tests prove the
+   adapter and extract only after conformance tests prove the
    ownership boundary.
