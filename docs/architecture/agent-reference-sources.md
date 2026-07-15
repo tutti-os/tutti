@@ -95,6 +95,13 @@ actual filtering. An active filter is part of the query and cache identity and
 must be applied before pagination. Picker result grouping remains source-owned;
 the filter option list itself is flat.
 
+AgentGUI exposes that host boundary as the optional complete
+`referenceProvenanceFilterCatalog` capability. Omitting it keeps the public
+surface disabled by default. Tutti's legacy boolean capability remains an
+Agent-only adapter over the current Agent directory and does not synthesize
+Member options; collaboration hosts explicitly inject both their enabled
+dimensions and catalogs.
+
 Catalog option identity is host-owned and normalized at the shared-package
 boundary. Agent options require a durable `agentTargetId`; product-local target
 ids are not provenance fallbacks. Filter cache keys use a collision-free

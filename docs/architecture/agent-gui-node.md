@@ -2935,7 +2935,13 @@ running, or read-only tool calls must be ignored even when their payloads carry
 The desktop product may enable Agent provenance filtering through the
 default-off `agent.referenceProvenanceFilter` developer feature flag. The flag
 is projected into AgentGUI as a host capability; AgentGUI does not read desktop
-preferences directly. Preview mode keeps the capability disabled.
+preferences directly. Preview mode keeps the capability disabled. Public
+AgentGUI hosts may instead opt in with
+`hostCapabilities.referenceProvenanceFilterCatalog`, which carries the full
+host-owned `enabledDimensions`, `agentOptions`, and `memberOptions` catalog. An
+explicit catalog takes precedence over the legacy boolean switch. With neither
+property, filtering remains disabled; the legacy switch continues to derive an
+Agent-only catalog and never enables members.
 
 AgentGUI creates one controlled provenance controller for both the composer
 `@` palette and the `+` reference picker. The desktop host injects the current
@@ -2950,9 +2956,12 @@ generated-file provider for an active Agent constraint, then apply file type
 filters and the result limit. This provenance constraint does not imply a file
 path constraint, so picker location ids must not be mapped to session working
 directories. Ordinary opened-file and issue-summary records do not currently
-carry durable Agent provenance and therefore fail closed when an Agent
-constraint is active. Existing result groups remain unchanged; the filter
-narrows their contents and does not introduce a second grouping layer.
+carry durable provenance and therefore fail closed when either an Agent or
+Member constraint is active. A typed File query must route to the
+provenance-aware generated-file provider for either active dimension, even when
+the ordinary generated-files group is otherwise disabled. Existing result
+groups remain unchanged; the filter narrows their contents and does not
+introduce a second grouping layer.
 
 Only catalog entries with a durable `agentTargetId` participate in filtering;
 host target ids are not substitutes. Catalogs and filters are normalized at the
@@ -2969,7 +2978,9 @@ window's click-capture guard otherwise treats the option click as a draggable
 window interaction and stops it before the filter row receives the event.
 
 The shared contracts reserve a separate member dimension for collaboration
-hosts. Tutti personal edition must not enable member or group-chat filtering.
+hosts. Collaboration hosts own Member option identity and the providers that
+enforce `memberIds` before pagination. Tutti personal edition must not inject
+that dimension and must not enable member or group-chat filtering.
 
 ### Approval Or Ask-User Prompt
 

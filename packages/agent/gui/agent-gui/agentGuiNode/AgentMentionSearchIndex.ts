@@ -20,6 +20,7 @@ import {
 } from "./AgentMentionSearchContracts";
 import type { AgentMentionBrowseFetchResult } from "./AgentMentionSearchCache";
 import type { ReferenceProvenanceFilter } from "@tutti-os/workspace-file-reference/contracts";
+import { referenceProvenanceFilterIsActive } from "@tutti-os/workspace-file-reference/core";
 
 export interface AgentMentionProviderQueryInput {
   diagnostics: AgentMentionProviderQueryDiagnostic[];
@@ -48,14 +49,14 @@ export async function fetchAgentMentionFilterResult(input: {
   ) => Promise<AgentContextMentionItem[]>;
 }): Promise<AgentMentionBrowseFetchResult> {
   const providerDiagnostics: AgentMentionProviderQueryDiagnostic[] = [];
-  const agentFilterActive =
-    input.provenanceFilter !== null &&
-    input.provenanceFilter.agentTargetIds !== null;
+  const provenanceFilterActive = referenceProvenanceFilterIsActive(
+    input.provenanceFilter
+  );
   switch (input.filter) {
     case "file": {
-      // Opened/local files have no Agent provenance. Never silently return
-      // them while the UI says an Agent filter is active.
-      const fileQuery = agentFilterActive
+      // Opened/local files have no durable provenance. Never silently return
+      // them while the UI says any provenance filter is active.
+      const fileQuery = provenanceFilterActive
         ? Promise.resolve([] as AgentContextMentionItem[])
         : input.queryProviderMentionItemsById({
             providerId: FILE_PROVIDER_ID,
@@ -68,7 +69,7 @@ export async function fetchAgentMentionFilterResult(input: {
             provenanceFilter: input.provenanceFilter
           });
       const agentGeneratedFileQuery =
-        input.includeAgentGeneratedFiles || agentFilterActive
+        input.includeAgentGeneratedFiles || provenanceFilterActive
           ? input.queryProviderMentionItemsById({
               providerId: AGENT_GENERATED_FILE_PROVIDER_ID,
               workspaceId: input.workspaceId,
@@ -118,9 +119,9 @@ export async function fetchAgentMentionFilterResult(input: {
       };
     }
     case "issue": {
-      // Issue summaries do not yet carry durable Agent provenance. Fail closed
+      // Issue summaries do not yet carry durable provenance. Fail closed
       // rather than displaying unfiltered issues under an active filter.
-      const issueItems = agentFilterActive
+      const issueItems = provenanceFilterActive
         ? []
         : await input.queryProviderMentionItemsById({
             providerId: WORKSPACE_ISSUE_PROVIDER_ID,

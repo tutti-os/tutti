@@ -12,7 +12,10 @@ export {
   AGENT_PASTED_TEXT_MENTION_KIND
 } from "./shared/pastedTextKinds";
 export { AgentGUI } from "./AgentGUI";
-export type { AgentGUIProps } from "./AgentGUI";
+export type {
+  AgentGUIProps,
+  AgentGUIReferenceProvenanceFilterCatalog
+} from "./AgentGUI";
 export type { AgentGUIComposerAppendRequest } from "./agent-gui/agentGuiNode/controller/useAgentGUIComposerAppendRequest";
 export type { AgentComposerDraftFile } from "./agent-gui/agentGuiNode/model/agentGuiNodeTypes";
 export type { AgentGUIAccountMenuState } from "./agent-gui/agentGuiNode/accountMenuState";
