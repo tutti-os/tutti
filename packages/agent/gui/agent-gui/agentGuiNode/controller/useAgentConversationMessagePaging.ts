@@ -245,10 +245,16 @@ export function useAgentConversationMessagePaging(
   inputRef.current = input;
   const olderLoadSequenceRef = useRef(0);
   const failedOlderCursorBySessionIdRef = useRef(new Map<string, number>());
+  const exhaustedOlderCursorBySessionIdRef = useRef(new Map<string, number>());
+  const inFlightOlderRequestBySessionIdRef = useRef(
+    new Map<string, { beforeVersion: number; requestId: number }>()
+  );
 
   const loadInitialMessages = useCallback(async (agentSessionId: string) => {
     const normalized = agentSessionId.trim();
     if (!normalized) return;
+    failedOlderCursorBySessionIdRef.current.delete(normalized);
+    exhaustedOlderCursorBySessionIdRef.current.delete(normalized);
     const current = inputRef.current;
     current.reload.reconcileDetail(normalized);
   }, []);
@@ -292,6 +298,32 @@ export function useAgentConversationMessagePaging(
         return;
       }
       const beforeVersion = oldestLoadedVersion;
+      const inFlightRequest =
+        inFlightOlderRequestBySessionIdRef.current.get(normalized);
+      if (inFlightRequest) {
+        current.diagnostics.page({
+          agentSessionId: normalized,
+          details: {
+            beforeVersion,
+            inFlightBeforeVersion: inFlightRequest.beforeVersion,
+            inFlightRequestId: inFlightRequest.requestId,
+            reason: "in_flight_request"
+          },
+          event: "agent.gui.messages.older.suppressed_in_flight"
+        });
+        return;
+      }
+      if (
+        exhaustedOlderCursorBySessionIdRef.current.get(normalized) ===
+        beforeVersion
+      ) {
+        current.diagnostics.page({
+          agentSessionId: normalized,
+          details: { beforeVersion, reason: "exhausted_cursor" },
+          event: "agent.gui.messages.older.suppressed_exhausted_cursor"
+        });
+        return;
+      }
       if (
         failedOlderCursorBySessionIdRef.current.get(normalized) ===
         beforeVersion
@@ -305,6 +337,10 @@ export function useAgentConversationMessagePaging(
         return;
       }
       const requestId = ++olderLoadSequenceRef.current;
+      inFlightOlderRequestBySessionIdRef.current.set(normalized, {
+        beforeVersion,
+        requestId
+      });
       current.view.setOlderMessagesLoading(ref, true);
       try {
         current.diagnostics.page({
@@ -345,9 +381,18 @@ export function useAgentConversationMessagePaging(
           messages: page.messages
         });
         failedOlderCursorBySessionIdRef.current.delete(normalized);
+        if (!page.hasMore || page.messages.length === 0) {
+          exhaustedOlderCursorBySessionIdRef.current.set(
+            normalized,
+            beforeVersion
+          );
+        } else {
+          exhaustedOlderCursorBySessionIdRef.current.delete(normalized);
+        }
         current.view.mergeOlder(ref, page.messages, {
           hasOlderMessages: page.hasMore && page.messages.length > 0
         });
+        current.view.setOlderMessagesLoading(ref, false);
       } catch (error) {
         if (
           !current.isMounted() ||
@@ -365,6 +410,13 @@ export function useAgentConversationMessagePaging(
           phase: "load_session_messages"
         });
         current.view.setOlderMessagesLoading(ref, false);
+      } finally {
+        if (
+          inFlightOlderRequestBySessionIdRef.current.get(normalized)
+            ?.requestId === requestId
+        ) {
+          inFlightOlderRequestBySessionIdRef.current.delete(normalized);
+        }
       }
     },
     []

@@ -44,4 +44,103 @@ describe("useAgentConversationMessagePaging", () => {
     expect(reconcileDetail).toHaveBeenCalledTimes(1);
     expect(reconcileDetail).toHaveBeenCalledWith("historical-session");
   });
+
+  it("clears older-message loading after a successful page", async () => {
+    const mergeOlder = vi.fn();
+    const setOlderMessagesLoading = vi.fn();
+    const pageDiagnostic = vi.fn();
+    const listSessionMessages = vi.fn().mockResolvedValue({
+      hasMore: false,
+      latestVersion: 278,
+      messages: []
+    });
+    const { result } = renderHook(() =>
+      useAgentConversationMessagePaging({
+        diagnostics: { error: vi.fn(), page: pageDiagnostic },
+        getActiveSessionId: () => "historical-session",
+        getCanonicalMessages: () => [],
+        isMounted: () => true,
+        projection: {
+          maxVersion: () => null,
+          minVersion: () => 446,
+          windowHasTurnMissingUserPrompt: () => false
+        },
+        reload: {
+          getActivationStatus: () => null,
+          reconcileDetail: vi.fn(),
+          syncConversationList: vi.fn()
+        },
+        runtime: { listSessionMessages } as unknown as AgentActivityRuntime,
+        sessionViewRef: (agentSessionId) => ({
+          agentSessionId,
+          origin: "test",
+          workspaceId: "workspace-1"
+        }),
+        view: {
+          get: () => ({
+            hasOlderMessages: true,
+            isLoadingOlderMessages: false,
+            olderMessages: [],
+            oldestLoadedVersion: 446
+          }),
+          mergeOlder,
+          setOlderMessagesLoading
+        },
+        workspaceId: "workspace-1"
+      })
+    );
+
+    await act(async () => {
+      await result.current.loadOlderMessages("historical-session");
+    });
+
+    expect(listSessionMessages).toHaveBeenCalledWith({
+      agentSessionId: "historical-session",
+      beforeVersion: 446,
+      cache: false,
+      limit: 100,
+      order: "desc",
+      workspaceId: "workspace-1"
+    });
+    expect(mergeOlder).toHaveBeenCalledWith(
+      {
+        agentSessionId: "historical-session",
+        origin: "test",
+        workspaceId: "workspace-1"
+      },
+      [],
+      { hasOlderMessages: false }
+    );
+    expect(setOlderMessagesLoading.mock.calls).toEqual([
+      [
+        {
+          agentSessionId: "historical-session",
+          origin: "test",
+          workspaceId: "workspace-1"
+        },
+        true
+      ],
+      [
+        {
+          agentSessionId: "historical-session",
+          origin: "test",
+          workspaceId: "workspace-1"
+        },
+        false
+      ]
+    ]);
+
+    await act(async () => {
+      await result.current.loadOlderMessages("historical-session");
+    });
+
+    expect(listSessionMessages).toHaveBeenCalledTimes(1);
+    expect(pageDiagnostic).toHaveBeenCalledWith(
+      expect.objectContaining({
+        agentSessionId: "historical-session",
+        details: { beforeVersion: 446, reason: "exhausted_cursor" },
+        event: "agent.gui.messages.older.suppressed_exhausted_cursor"
+      })
+    );
+  });
 });
