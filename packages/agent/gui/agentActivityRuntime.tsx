@@ -48,6 +48,7 @@ export interface AgentActivityRuntimeListSessionMessagesInput {
 }
 
 export interface AgentActivityRuntimeListGeneratedFilesInput {
+  agentTargetIds?: readonly string[];
   limit?: number;
   query?: string;
   sessionCwd?: string;

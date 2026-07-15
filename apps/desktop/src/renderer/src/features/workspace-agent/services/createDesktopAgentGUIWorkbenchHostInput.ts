@@ -187,17 +187,11 @@ export function createDesktopAgentGUIWorkbenchHostInput({
         ),
         projectOrder: -1,
         searchByProvenance: async (scope, searchInput) => {
-          const sessionCwd =
-            searchInput.withinNodeId &&
-            !searchInput.withinNodeId.startsWith("__")
-              ? searchInput.withinNodeId
-              : undefined;
           const items = await agentGeneratedFileMentionProvider.query({
             abortSignal: searchInput.signal,
             context: {
               metadata: {
                 referenceProvenanceFilter: searchInput.provenanceFilter,
-                sessionCwd,
                 workspaceId: scope.workspaceId
               }
             },

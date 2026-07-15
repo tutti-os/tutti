@@ -55,12 +55,10 @@ export function createDesktopAgentGeneratedFileMentionProvider(input: {
       );
       const agentTargetIds = provenanceFilter?.agentTargetIds ?? null;
       if (agentTargetIds?.length === 0) return [];
-      if (
-        agentTargetIds === null &&
-        input.agentActivityRuntime.listAgentGeneratedFiles
-      ) {
+      if (input.agentActivityRuntime.listAgentGeneratedFiles) {
         const result = await input.agentActivityRuntime.listAgentGeneratedFiles(
           {
+            agentTargetIds: agentTargetIds ?? undefined,
             limit: searchInput.maxResults,
             query: keyword,
             sessionCwd: sessionCwd || undefined,

@@ -548,6 +548,7 @@ export interface TuttidClient {
   listWorkspaceAgentGeneratedFiles(
     workspaceID: string,
     request?: {
+      agentTargetIds?: string[];
       limit?: number;
       query?: string;
       sessionCwd?: string;

@@ -18,6 +18,9 @@ export class WorkspaceAgentActivityQueryOperations {
     return this.tuttidClient.listWorkspaceAgentGeneratedFiles(
       normalizeWorkspaceId(input.workspaceId),
       {
+        agentTargetIds: input.agentTargetIds
+          ?.map((agentTargetId) => agentTargetId.trim())
+          .filter(Boolean),
         limit: input.limit,
         query: input.query?.trim() || undefined,
         sessionCwd: input.sessionCwd?.trim() || undefined

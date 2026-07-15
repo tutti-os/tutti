@@ -2801,7 +2801,7 @@ corepack pnpm --filter @tutti-os/agent-gui exec vitest run shared/AgentRichTextR
 
 ```text
 Agent activity messages
-  -> generated-file collector in tuttid or AgentGUI fallback
+  -> target-filtered generated-file collector in tuttid or AgentGUI fallback
   -> desktop mention provider
   -> mention palette grouping/count presentation
   -> composer file mention insertion
@@ -2825,13 +2825,17 @@ AgentGUI creates one controlled provenance controller for both the composer
 Agent target catalog, while the query providers apply selected
 `agentTargetId` values before pagination. Session search merges target-scoped
 queries, and the generated-file fallback filters sessions before collecting
-file changes. In the `+` picker, desktop project/local sources switch to that
-same generated-file provider for an active Agent constraint, then apply file
-type filters and the result limit. Ordinary opened-file and issue-summary
-records do not currently carry durable Agent provenance and therefore fail
-closed when an Agent constraint is active. Existing result groups remain
-unchanged; the filter narrows their contents and does not introduce a second
-grouping layer.
+file changes. Tutti's daemon-backed generated-file query accepts multiple
+`agentTargetIds` and filters persisted sessions in SQLite before applying its
+message scan limit; the renderer must not filter a capped session snapshot.
+In the `+` picker, desktop project/local sources switch to that same
+generated-file provider for an active Agent constraint, then apply file type
+filters and the result limit. This provenance constraint does not imply a file
+path constraint, so picker location ids must not be mapped to session working
+directories. Ordinary opened-file and issue-summary records do not currently
+carry durable Agent provenance and therefore fail closed when an Agent
+constraint is active. Existing result groups remain unchanged; the filter
+narrows their contents and does not introduce a second grouping layer.
 
 The filter popover is portal-mounted and must mark its content as `nodrag`.
 Portal content is not a DOM descendant of the Agent window trigger, so the

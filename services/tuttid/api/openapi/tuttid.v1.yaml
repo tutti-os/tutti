@@ -2463,6 +2463,17 @@ paths:
           schema:
             type: string
         - in: query
+          name: agentTargetIds
+          required: false
+          description: Optional agent target filters applied before generated-file limiting.
+          style: form
+          explode: true
+          schema:
+            type: array
+            items:
+              type: string
+              minLength: 1
+        - in: query
           name: limit
           required: false
           schema:

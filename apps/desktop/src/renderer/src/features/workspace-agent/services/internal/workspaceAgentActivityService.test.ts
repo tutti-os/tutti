@@ -1166,6 +1166,7 @@ test("WorkspaceAgentActivityService.listAgentGeneratedFiles delegates to tuttid 
   });
 
   const result = await service.listAgentGeneratedFiles({
+    agentTargetIds: [" local:codex ", "local:claude-code"],
     limit: 20,
     query: "report",
     sessionCwd: "/workspace",
@@ -1175,6 +1176,7 @@ test("WorkspaceAgentActivityService.listAgentGeneratedFiles delegates to tuttid 
   assert.deepEqual(calls, [
     {
       request: {
+        agentTargetIds: ["local:codex", "local:claude-code"],
         limit: 20,
         query: "report",
         sessionCwd: "/workspace"
