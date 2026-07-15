@@ -141,7 +141,8 @@ export const zhCN = {
       expandConversationRail: "显示侧边栏",
       fallbackAgentLabel: "Agent",
       newConversation: "新建会话",
-      openDetachedWindow: "在独立窗口打开",
+      openDetachedWindow: "独立agent窗口模式",
+      openNewWindow: "打开新窗口",
       openSessionUnavailableDescription: "这个 Agent 会话已不存在或无法打开。",
       openSessionUnavailableTitle: "会话不可用",
       toolSidebar: {

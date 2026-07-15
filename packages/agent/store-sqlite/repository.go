@@ -64,10 +64,12 @@ type ListSessionMessagesInput struct {
 	WorkspaceID    string
 	AgentSessionID string
 	TurnID         string
-	AfterVersion   uint64
-	BeforeVersion  uint64
-	Limit          int
-	Order          MessageOrder
+	// AfterVersion and BeforeVersion are per-session change cursors. Current
+	// message snapshots may skip cursor values when the same message is updated.
+	AfterVersion  uint64
+	BeforeVersion uint64
+	Limit         int
+	Order         MessageOrder
 }
 
 type ListWorkspaceGeneratedFilesInput struct {
@@ -149,7 +151,9 @@ type Session struct {
 	Title                  string
 	// ActiveTurnID is the protocol v2 turn reference: the id of the turn
 	// currently in flight, empty when the session is idle.
-	ActiveTurnID    string
+	ActiveTurnID string
+	// MessageVersion is the latest accepted per-session message change cursor.
+	// It is a high-water mark, not a count of current message rows.
 	MessageVersion  uint64
 	LastEventUnixMS int64
 	StartedAtUnixMS int64
@@ -361,9 +365,11 @@ type MessageReportResult struct {
 }
 
 type Message struct {
-	ID                uint64
-	AgentSessionID    string
-	MessageID         string
+	ID             uint64
+	AgentSessionID string
+	MessageID      string
+	// Version is a per-session change cursor for this mutable snapshot. Updating
+	// the same MessageID assigns a newer version, so current rows may have gaps.
 	Version           uint64
 	TurnID            string
 	Role              string
@@ -380,6 +386,8 @@ type Message struct {
 type MessagePage struct {
 	AgentSessionID string
 	Messages       []Message
-	LatestVersion  uint64
-	HasMore        bool
+	// LatestVersion is the largest cursor delivered by this page, or the input
+	// AfterVersion when an ascending page contains no newer snapshots.
+	LatestVersion uint64
+	HasMore       bool
 }

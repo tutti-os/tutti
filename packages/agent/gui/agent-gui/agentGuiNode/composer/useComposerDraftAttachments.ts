@@ -39,6 +39,7 @@ import {
   goalDraftObjectiveFromPrompt
 } from "./composerDraftUtils";
 import { reportAgentComposerDiagnostic } from "./agentComposerDiagnostics";
+import type { AgentGUIComposerContentType } from "../engagement/agentGUIEngagement.types";
 
 export interface WorkspaceReferencePickResult {
   files: readonly WorkspaceFileReference[];
@@ -78,6 +79,7 @@ interface UseComposerDraftAttachmentsInput {
     sourceScopeKey?: string
   ) => void;
   onPromptImagesUnsupported?: () => void;
+  onContentEntered?: (contentType: AgentGUIComposerContentType) => void;
   onRequestWorkspaceReferences?:
     | ((
         entity?: AgentContextMentionItem | null
@@ -109,11 +111,17 @@ export function useComposerDraftAttachments({
   clearActiveFileMentionTrigger,
   onDraftContentChange,
   onPromptImagesUnsupported,
+  onContentEntered,
   onRequestWorkspaceReferences,
   resolveDroppedFileReferences,
   onLinkAction
 }: UseComposerDraftAttachmentsInput) {
   const agentActivityRuntime = useOptionalAgentActivityRuntime();
+  const reportContentEntered = useStableEventCallback(
+    (contentType: AgentGUIComposerContentType): void => {
+      onContentEntered?.(contentType);
+    }
+  );
   const publishScopedDraft = useStableEventCallback(
     (sourceScopeKey: string, nextDraft: AgentComposerDraft): void => {
       draftByScopeKeyRef.current[sourceScopeKey] = nextDraft;
@@ -239,6 +247,7 @@ export function useComposerDraftAttachments({
       }));
       const nextDraftImages = [...currentDraftImages, ...nextImages];
       draftImagesRef.current = nextDraftImages;
+      reportContentEntered("image");
       publishScopedDraft(
         draftScopeKey,
         buildAgentComposerDraft({
@@ -355,6 +364,7 @@ export function useComposerDraftAttachments({
       onPromptImagesUnsupported,
       publishScopedDraft,
       promptImagesSupported,
+      reportContentEntered,
       updateScopedDraft,
       workspaceId
     ]
@@ -459,6 +469,7 @@ export function useComposerDraftAttachments({
       if (!normalizedText.trim()) {
         return;
       }
+      reportContentEntered("large_text");
       const stagePastedText = pastedTextStagingSupported
         ? agentActivityRuntime?.stagePastedText
         : undefined;
@@ -541,6 +552,7 @@ export function useComposerDraftAttachments({
       draftScopeKey,
       pastedTextStagingSupported,
       publishScopedDraft,
+      reportContentEntered,
       updateScopedDraft,
       workspaceId
     ]

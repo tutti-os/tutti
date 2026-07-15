@@ -571,6 +571,100 @@ test("desktop agent GUI workbench host input tracks agent provider chat ready", 
   ]);
 });
 
+test("desktop agent GUI workbench host input tracks privacy-safe engagement events", async () => {
+  const reporterCalls: ReporterEventInput[][] = [];
+  const hostInput = createDesktopAgentGUIWorkbenchHostInput({
+    agentHostApi: {
+      meta: { workspaceId }
+    } as unknown as AgentHostInputApi,
+    hostFilesApi: createHostFilesApi(),
+    tuttidClient: createTuttidClient(),
+    platformApi: createPlatformApi(),
+    reporterNow: () => 1749124800000,
+    reporterService: createLegacyAgentReporterService(reporterCalls),
+    richTextAtService: createRichTextAtService(),
+    runtimeApi: createRuntimeApi(),
+    workspaceAgentActivityService: createWorkspaceAgentActivityService([]),
+    workspaceId
+  });
+  const reportEngagement =
+    hostInput.createAgentGUIEngagementEventSink("standalone_agent");
+  const context = {
+    agentSessionId: "session-1",
+    agentTargetId: "codex-local",
+    composerReady: true,
+    conversationState: "existing" as const,
+    panelVisitId: "visit-1",
+    provider: "codex"
+  };
+
+  await reportEngagement({ ...context, type: "panel_exposed" });
+  await reportEngagement({
+    ...context,
+    type: "composer_focused",
+    focusMethod: "keyboard"
+  });
+  await reportEngagement({
+    ...context,
+    type: "composer_content_entered",
+    contentType: "large_text",
+    hadPrefill: true
+  });
+
+  assert.deepEqual(reporterCalls, [
+    [
+      {
+        clientTS: 1749124800000,
+        name: "agent.chat_panel_exposed",
+        params: {
+          agent_session_id: "session-1",
+          agent_target_id: "codex-local",
+          composer_ready: true,
+          conversation_state: "existing",
+          panel_visit_id: "visit-1",
+          provider: "codex",
+          surface: "standalone_agent"
+        }
+      }
+    ],
+    [
+      {
+        clientTS: 1749124800000,
+        name: "agent.chat_input_focused",
+        params: {
+          agent_session_id: "session-1",
+          agent_target_id: "codex-local",
+          composer_ready: true,
+          conversation_state: "existing",
+          focus_method: "keyboard",
+          panel_visit_id: "visit-1",
+          provider: "codex",
+          surface: "standalone_agent"
+        }
+      }
+    ],
+    [
+      {
+        clientTS: 1749124800000,
+        name: "agent.chat_input_content_entered",
+        params: {
+          agent_session_id: "session-1",
+          agent_target_id: "codex-local",
+          composer_ready: true,
+          content_type: "large_text",
+          conversation_state: "existing",
+          had_prefill: true,
+          panel_visit_id: "visit-1",
+          provider: "codex",
+          surface: "standalone_agent"
+        }
+      }
+    ]
+  ]);
+  assert.equal(JSON.stringify(reporterCalls).includes("prompt"), false);
+  assert.equal(JSON.stringify(reporterCalls).includes("path"), false);
+});
+
 test("desktop agent GUI workbench host input tracks runtime new session activation", async () => {
   const reporterCalls: ReporterEventInput[][] = [];
   const hostInput = createDesktopAgentGUIWorkbenchHostInput({

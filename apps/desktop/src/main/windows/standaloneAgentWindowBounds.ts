@@ -19,6 +19,13 @@ export interface ResolveStandaloneAgentWindowBoundsInput {
   workArea: StandaloneAgentWindowWorkArea;
 }
 
+export interface ResolveStandaloneAgentWindowOffsetBoundsInput {
+  offset: number;
+  sourceBounds: StandaloneAgentWindowContentBounds;
+  targetBounds: StandaloneAgentWindowContentBounds;
+  workArea: StandaloneAgentWindowWorkArea;
+}
+
 export interface ResolveStandaloneAgentWindowWorkAreaInput {
   bottomInset: number;
   fallbackWorkArea: StandaloneAgentWindowWorkArea;
@@ -80,6 +87,38 @@ export function resolveStandaloneAgentWindowBounds({
     width,
     x: centerAxis(workArea.x, workArea.width, width),
     y: centerAxis(workArea.y, workArea.height, height)
+  };
+}
+
+export function resolveStandaloneAgentWindowOffsetBounds({
+  offset,
+  sourceBounds,
+  targetBounds,
+  workArea
+}: ResolveStandaloneAgentWindowOffsetBoundsInput): StandaloneAgentWindowContentBounds {
+  const normalizedOffset = Number.isFinite(offset) ? Math.round(offset) : 0;
+  const minimumX = Math.round(workArea.x);
+  const minimumY = Math.round(workArea.y);
+  const maximumX = Math.max(
+    minimumX,
+    Math.round(workArea.x + workArea.width - targetBounds.width)
+  );
+  const maximumY = Math.max(
+    minimumY,
+    Math.round(workArea.y + workArea.height - targetBounds.height)
+  );
+
+  return {
+    height: targetBounds.height,
+    width: targetBounds.width,
+    x: Math.max(
+      minimumX,
+      Math.min(Math.round(sourceBounds.x) + normalizedOffset, maximumX)
+    ),
+    y: Math.max(
+      minimumY,
+      Math.min(Math.round(sourceBounds.y) + normalizedOffset, maximumY)
+    )
   };
 }
 

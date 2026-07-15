@@ -3,6 +3,7 @@ import {
   mkdtempSync,
   readdirSync,
   readFileSync,
+  realpathSync,
   rmSync,
   statSync
 } from "node:fs";
@@ -10,6 +11,8 @@ import { tmpdir } from "node:os";
 import { dirname, join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createHash } from "node:crypto";
+
+import { createIsolatedGitEnvironment } from "./git-environment.mjs";
 
 const codexRepoUrl = "https://github.com/openai/codex.git";
 const codexSourceCommit = "6d2168f06ae275d5e1f73cabf935d2bcc8549998";
@@ -20,6 +23,7 @@ const workspaceRoot = join(scriptDirectory, "..", "..");
 const daemonRoot = join(workspaceRoot, "packages", "agent", "daemon");
 const codexprotoRoot = join(daemonRoot, "runtime", "codexproto");
 const vendoredSchemaRoot = join(codexprotoRoot, "schema", "json");
+const workspaceEnv = createIsolatedGitEnvironment(workspaceRoot);
 
 // The upstream re-fetch against the pinned Codex commit is CI's job
 // (ADR 0002): local check:full runs must not block on cloning
@@ -33,11 +37,17 @@ if (process.env.CI || process.argv.includes("--upstream")) {
   );
 }
 
-run("go", ["run", "./runtime/codexproto/internal/codegen"], daemonRoot);
+run(
+  "go",
+  ["run", "./runtime/codexproto/internal/codegen"],
+  daemonRoot,
+  workspaceEnv
+);
 run(
   "git",
   ["diff", "--exit-code", "--", "packages/agent/daemon/runtime/codexproto"],
-  workspaceRoot
+  workspaceRoot,
+  workspaceEnv
 );
 assertNoUntrackedGeneratedFiles();
 
@@ -47,21 +57,34 @@ function compareVendoredSchemaAgainstUpstream() {
   const tempRoot = mkdtempSync(join(tmpdir(), "tutti-codexproto-"));
   try {
     const upstreamRoot = join(tempRoot, "codex");
-    run("git", ["init", upstreamRoot], workspaceRoot);
+    const gitEnv = createIsolatedGitEnvironment(upstreamRoot);
+    run("git", ["init", upstreamRoot], workspaceRoot, gitEnv);
+    const gitDir = output(
+      "git",
+      ["-C", upstreamRoot, "rev-parse", "--absolute-git-dir"],
+      workspaceRoot,
+      gitEnv
+    );
+    if (realpathSync(gitDir) !== realpathSync(join(upstreamRoot, ".git"))) {
+      throw new Error(`upstream Git fixture escaped ${upstreamRoot}`);
+    }
     run(
       "git",
       ["-C", upstreamRoot, "remote", "add", "origin", codexRepoUrl],
-      workspaceRoot
+      workspaceRoot,
+      gitEnv
     );
     run(
       "git",
       ["-C", upstreamRoot, "fetch", "--depth=1", "origin", codexSourceCommit],
-      workspaceRoot
+      workspaceRoot,
+      gitEnv
     );
     run(
       "git",
       ["-C", upstreamRoot, "checkout", "FETCH_HEAD", "--", schemaSubdir],
-      workspaceRoot
+      workspaceRoot,
+      gitEnv
     );
 
     compareDirectories(join(upstreamRoot, schemaSubdir), vendoredSchemaRoot);
@@ -107,7 +130,7 @@ function assertNoUntrackedGeneratedFiles() {
   const result = spawnSync(
     "git",
     ["status", "--porcelain", "--", "packages/agent/daemon/runtime/codexproto"],
-    { cwd: workspaceRoot, encoding: "utf8" }
+    { cwd: workspaceRoot, encoding: "utf8", env: workspaceEnv }
   );
   if (result.status !== 0) {
     throw new Error("git status for codexproto failed");
@@ -170,12 +193,23 @@ function walkFiles(root) {
   return out;
 }
 
-function run(command, args, cwd) {
+function run(command, args, cwd, env = process.env) {
   const result = spawnSync(command, args, {
     cwd,
+    env,
     stdio: "inherit"
   });
   if (result.status !== 0) {
     throw new Error(`${command} ${args.join(" ")} failed`);
   }
+}
+
+function output(command, args, cwd, env = process.env) {
+  const result = spawnSync(command, args, { cwd, encoding: "utf8", env });
+  if (result.status !== 0) {
+    throw new Error(
+      result.stderr.trim() || `${command} ${args.join(" ")} failed`
+    );
+  }
+  return result.stdout.trim();
 }

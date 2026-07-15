@@ -111,6 +111,8 @@ export function createWorkspaceAgentGuiContribution(input: {
     workspaceUserProjectService: input.workspaceUserProjectService,
     workspaceId: input.workspaceId
   });
+  const trackWorkspaceAgentGUIEngagement =
+    agentGUIWorkbenchHostInput.createAgentGUIEngagementEventSink("workspace");
   const handleLinkAction: NonNullable<
     DesktopAgentGUIWorkbenchBodyProps["onLinkAction"]
   > = (action) => {
@@ -171,6 +173,7 @@ export function createWorkspaceAgentGuiContribution(input: {
       runtimeApi: input.runtimeApi,
       trackAgentProviderChatReady:
         agentGUIWorkbenchHostInput.trackAgentProviderChatReady,
+      onEngagementEvent: trackWorkspaceAgentGUIEngagement,
       trackWorkspaceFileReferences:
         agentGUIWorkbenchHostInput.trackWorkspaceFileReferences,
       workspaceFileReferenceAdapter:

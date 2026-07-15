@@ -18,6 +18,25 @@ import type { AgentGUIAgentTarget } from "../../../types";
 import type { AgentGUIViewLabels } from "./AgentGUINodeView.types";
 import { conversationPlainTitle } from "./agentGUIViewUtils";
 
+export function commandAppSource(
+  command: unknown
+): Record<string, unknown> | null {
+  if (!command || typeof command !== "object" || !("source" in command)) {
+    return null;
+  }
+  const source = (command as { source?: unknown }).source;
+  if (!source || typeof source !== "object") return null;
+  const sourceRecord = source as Record<string, unknown>;
+  return sourceRecord.kind === "app" ? sourceRecord : null;
+}
+
+export function workspaceAppIconKey(
+  appId: string,
+  workspaceId: string
+): string {
+  return `${workspaceId}\u0000${appId}`;
+}
+
 export function isDifferentKnownConversationOwner(input: {
   conversationUserId?: string | null;
   currentUserId?: string | null;

@@ -37,6 +37,17 @@ Validation runners that spawn nested pnpm commands should read the root
 let runner-spawned lanes resolve a bare `pnpm` from `PATH`, because local
 package-manager shims can differ from the repository pin.
 
+Tests and checks that create temporary Git repositories must also isolate
+repository-local Git environment variables before invoking Git. In particular,
+remove inherited `GIT_DIR`, `GIT_WORK_TREE`, `GIT_COMMON_DIR`, index/object
+overrides, and command-scoped `GIT_CONFIG_*` entries using case-insensitive
+name matching for Windows compatibility; set
+`GIT_CEILING_DIRECTORIES` to the fixture root; fail immediately when fixture Git
+commands fail; and verify the initialized Git directory before staging,
+committing, fetching, or checking out. A temporary cwd alone is not isolation
+because `GIT_DIR` takes precedence and can redirect `git init` and later
+commands into a caller's linked-worktree metadata.
+
 ## TypeScript Baseline
 
 TypeScript linting uses Oxlint.
@@ -202,6 +213,10 @@ is protected by a degradation ratchet:
   explicitly route business state to the engine/controller and stable
   projections to selectors/read hooks; refs remain valid for imperative DOM,
   timer, abort, and external-lifecycle handles.
+- During a merge commit, staged mode compares the resolved index with
+  `MERGE_HEAD` instead of treating every incoming-parent line as newly added.
+  This keeps the hook focused on branch-authored degradation while the full
+  baseline check still measures the complete merged tree.
 
 The business file size limit below also applies to TypeScript under
 `packages/agent/gui` and `packages/agent/activity-core` through this ratchet:

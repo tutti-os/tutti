@@ -39,7 +39,9 @@ import type {
 } from "../AgentGUINodeView";
 import {
   buildAgentConversationHandoffPrompt,
-  handoffProjectPathForConversation
+  commandAppSource,
+  handoffProjectPathForConversation,
+  workspaceAppIconKey
 } from "./agentGUIDetailModelHelpers";
 import { AgentGUIBottomDockPane } from "./AgentGUIBottomDockPane";
 import {
@@ -58,6 +60,7 @@ import styles from "../AgentGUINode.styles";
 import { useAgentGUIDetailScroll } from "./useAgentGUIDetailScroll";
 import { useAgentGUIDetailModel } from "./useAgentGUIDetailModel";
 import { useAgentGUIProviderRailPreferences } from "./useAgentGUIProviderRailPreferences";
+import type { AgentGUIComposerEngagement } from "../engagement/agentGUIEngagement.types";
 
 const AGENT_GUI_TIMELINE_SCROLL_AREA_CONTENT_STYLE: CSSProperties = {
   width: "100%",
@@ -66,10 +69,11 @@ const AGENT_GUI_TIMELINE_SCROLL_AREA_CONTENT_STYLE: CSSProperties = {
   gridTemplateColumns: "minmax(0, 1fr)",
   gap: "24px"
 };
-const EMPTY_WORKSPACE_APP_ICONS: readonly AgentMessageMarkdownWorkspaceAppIcon[] =
+export const EMPTY_WORKSPACE_APP_ICONS: readonly AgentMessageMarkdownWorkspaceAppIcon[] =
   [];
 export interface AgentGUIDetailPaneProps {
   viewModel: AgentGUINodeViewModel;
+  composerEngagement?: AgentGUIComposerEngagement;
   actions: AgentGUINodeViewProps["actions"];
   labels: AgentGUIViewLabels;
   workspaceUserProjectI18n: WorkspaceUserProjectI18nRuntime;
@@ -149,24 +153,9 @@ export function mergeWorkspaceAppIconsFromCommands(input: {
   return next ?? input.workspaceAppIcons;
 }
 
-function commandAppSource(command: unknown): Record<string, unknown> | null {
-  if (!command || typeof command !== "object" || !("source" in command)) {
-    return null;
-  }
-  const source = (command as { source?: unknown }).source;
-  if (!source || typeof source !== "object") {
-    return null;
-  }
-  const sourceRecord = source as Record<string, unknown>;
-  return sourceRecord.kind === "app" ? sourceRecord : null;
-}
-
-function workspaceAppIconKey(appId: string, workspaceId: string): string {
-  return `${workspaceId}\u0000${appId}`;
-}
-
 export const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
   viewModel,
+  composerEngagement,
   actions,
   labels,
   workspaceUserProjectI18n,
@@ -445,6 +434,7 @@ export const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
       onSlashStatusOpen,
       usage: viewModel.detail.usage,
       draftContent: viewModel.composer.draftContent,
+      engagement: composerEngagement,
       draftScopeKey: resolveAgentComposerDraftScopeKey({
         agentSessionId: viewModel.rail.activeConversationId
       }),
@@ -524,6 +514,7 @@ export const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
       composerDisabled,
       composerDisabledReason,
       composerFocusRequestSequence,
+      composerEngagement,
       composerHandoffProviderTargets,
       composerLabels,
       composerProviderTargets,

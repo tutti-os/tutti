@@ -1,10 +1,12 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, realpath, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import test from "node:test";
+
+import { createIsolatedGitEnvironment } from "../../../../tools/scripts/git-environment.mjs";
 
 const scriptPath = resolve(
   dirname(fileURLToPath(import.meta.url)),
@@ -416,6 +418,7 @@ async function createFixtureRepo() {
   );
 
   runGit(workspaceRoot, ["init"]);
+  await assertFixtureGitRoot(workspaceRoot);
   runGit(workspaceRoot, ["add", "."]);
   runGit(workspaceRoot, [
     "-c",
@@ -462,16 +465,26 @@ function sampleTask(id) {
 function runPlanner(workspaceRoot, args) {
   return spawnSync(process.execPath, [scriptPath, ...args], {
     cwd: workspaceRoot,
-    encoding: "utf8"
+    encoding: "utf8",
+    env: createIsolatedGitEnvironment(workspaceRoot)
   });
 }
 
 function runGit(workspaceRoot, args) {
   const result = spawnSync("git", args, {
     cwd: workspaceRoot,
-    encoding: "utf8"
+    encoding: "utf8",
+    env: createIsolatedGitEnvironment(workspaceRoot)
   });
 
   assert.equal(result.status, 0, result.stderr || result.stdout);
   return result;
+}
+
+async function assertFixtureGitRoot(workspaceRoot) {
+  const result = runGit(workspaceRoot, ["rev-parse", "--absolute-git-dir"]);
+  assert.equal(
+    await realpath(result.stdout.trim()),
+    await realpath(join(workspaceRoot, ".git"))
+  );
 }

@@ -19,6 +19,7 @@ import type {
 } from "../model/agentGuiNodeTypes";
 import type { AgentGUIProvider, AgentGUIAgentTarget } from "../../../types";
 import type { WorkspaceReferencePickResult } from "./useComposerDraftAttachments";
+import type { AgentGUIComposerEngagement } from "../engagement/agentGUIEngagement.types";
 
 export interface AgentComposerSubmitOptions {}
 
@@ -30,6 +31,7 @@ export interface AgentComposerProps {
   slashStatus?: AgentComposerSlashStatus | null;
   usage?: AgentComposerUsage | null;
   draftContent: AgentComposerDraft;
+  engagement?: AgentGUIComposerEngagement;
   /** Stable project/session owner for async draft attachment work. */
   draftScopeKey?: string;
   availableCommands: readonly AgentSessionCommand[];

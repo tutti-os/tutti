@@ -197,11 +197,7 @@ func (s *Store) ReportSessionMessages(
 		if message.MessageID == "" {
 			continue
 		}
-		version, err := incrementAgentSessionMessageVersion(ctx, tx, workspaceID, agentSessionID)
-		if err != nil {
-			return MessageReportResult{}, err
-		}
-		acceptedMessage, accepted, err := s.upsertAgentMessageTx(ctx, tx, workspaceID, agentSessionID, version, message, now)
+		acceptedMessage, accepted, err := s.upsertAgentMessageTx(ctx, tx, workspaceID, agentSessionID, message, now)
 		if err != nil {
 			return MessageReportResult{}, err
 		}
@@ -209,7 +205,7 @@ func (s *Store) ReportSessionMessages(
 			continue
 		}
 		result.AcceptedCount++
-		result.LatestVersion = version
+		result.LatestVersion = acceptedMessage.Version
 		result.Messages = append(result.Messages, acceptedMessage)
 	}
 

@@ -69,8 +69,14 @@
 - Symptom:
   A local development launch creates the standalone Agent native window, but
   only the window chrome is visible for several seconds before the Agent header,
-  rail, conversation, and composer appear.
+  rail, conversation, and composer appear. A related failure leaves the window
+  black permanently because the renderer root throws before AgentGUI mounts.
 - Quick checks:
+  Check `tutti-desktop.log` for `react.uncaught` before profiling cold startup.
+  If the error is `agent_gui_workbench.invalid_provider`, compare the encoded
+  Agent window intent with the standalone route's launch-provider resolution.
+  A primary standalone Agent startup may legitimately omit both provider and
+  Agent Target metadata while the directory is still loading.
   Compare desktop-ready, first renderer diagnostic, standalone route mount,
   AgentGUI body mount, and composer-ready timestamps. Time the daemon workspace,
   session-list, rail, target, and provider-status endpoints independently. If
@@ -80,6 +86,11 @@
   time provider statuses per provider; one slow CLI probe can dominate a serial
   all-provider scan.
 - Root cause:
+  For the permanent-black variant, an optional startup provider can be passed
+  directly to the strict workbench provider normalizer. The generic primary
+  Agent window starts with workspace identity only, so normalizing that absent
+  value throws during React render even while the daemon and provider probes
+  remain healthy.
   Development Vite transforms source modules on demand. An Agent-only route can
   therefore remain on a black Suspense fallback while nested lazy boundaries
   discover large dependency graphs. In the desktop renderer, enabling Babel
@@ -94,6 +105,10 @@
   same cold compile. Separately, a single global in-flight provider-status
   promise makes the active provider wait behind a slow all-provider scan.
 - Fix:
+  Resolve the absent startup provider to the existing workbench default at the
+  standalone route boundary, then use the strict normalizer only for a supplied
+  provider. Keep malformed non-empty values as errors, and keep Agent Target
+  directory resolution authoritative once it loads.
   Keep workspace and standalone Agent routes separate. Let both already-lazy
   routes statically own the full AgentGUI body so neither adds a second import
   waterfall beneath its route fallback. Render
@@ -116,6 +131,9 @@
   per provider, and ignore stale results for a provider already refreshed by a
   newer request.
 - Validation:
+  Keep a focused regression test for an Agent window intent with no provider;
+  it must reach the startup shell without weakening extension-provider
+  validation.
   Run focused provider concurrency and standalone tool-lifecycle tests, desktop
   typecheck, renderer boundary checks, and a production desktop build. Inspect
   the generated chunks to confirm the standalone shell does not statically

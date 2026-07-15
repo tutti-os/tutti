@@ -46,6 +46,7 @@ import type {
 } from "./AgentComposer";
 import type { AgentContextMentionProvider } from "./agentContextMentionProvider";
 import type { AgentMessageMarkdownWorkspaceAppIcon } from "../../shared/AgentMessageMarkdown";
+import type { AgentGUIEngagementEventSink } from "./engagement/agentGUIEngagement.types";
 
 export interface AgentGUINodeIdentity {
   nodeId: string;
@@ -80,6 +81,8 @@ export interface AgentGUINodeFrameLayout {
   desktopSize: DesktopSize;
   isMaximized?: boolean;
   isActive: boolean;
+  /** Host-projected presentation visibility. Independent from node focus. */
+  isVisible?: boolean;
   embedded?: boolean;
   previewMode?: boolean;
   /**
@@ -147,6 +150,7 @@ export interface AgentGUINodeHostActions {
     message: string,
     tone?: "info" | "warning" | "error"
   ) => void;
+  onEngagementEvent?: AgentGUIEngagementEventSink;
 }
 
 export interface AgentGUINodeRenderSlots {
@@ -293,6 +297,7 @@ export function areAgentGUINodePropsEqual(
     pf.desktopSize.height === nf.desktopSize.height &&
     pf.isMaximized === nf.isMaximized &&
     pf.isActive === nf.isActive &&
+    pf.isVisible === nf.isVisible &&
     pf.embedded === nf.embedded &&
     pf.previewMode === nf.previewMode &&
     pf.conversationRailAutoCollapseWidthPx ===
@@ -332,6 +337,7 @@ export function areAgentGUINodePropsEqual(
     pa.onMinimize === na.onMinimize &&
     pa.onToggleMaximize === na.onToggleMaximize &&
     pa.onShowMessage === na.onShowMessage &&
+    pa.onEngagementEvent === na.onEngagementEvent &&
     ps.providerRailEmpty === ns.providerRailEmpty &&
     ps.providerUnavailableState === ns.providerUnavailableState &&
     ps.sidebarFooter === ns.sidebarFooter

@@ -59,6 +59,21 @@ test("standalone Agent defers non-critical panel hosts until after the first fra
   );
 });
 
+test("standalone Agent delegates live window focus to the engagement controller", () => {
+  assert.match(standaloneWindowSource, /isFocused: true/);
+  assert.doesNotMatch(
+    standaloneWindowSource,
+    /isFocused: document\.hasFocus\(\)/
+  );
+});
+
+test("standalone Agent accepts a startup intent without a provider", () => {
+  assert.match(
+    standaloneWindowSource,
+    /windowIntent\.kind === "agent" && windowIntent\.provider\s*\? normalizeDesktopAgentGUIProvider\(windowIntent\.provider\)\s*: "codex"/
+  );
+});
+
 test("standalone Agent starts the app runtime lifecycle only when apps open", () => {
   assert.match(
     standaloneWindowSource,
@@ -231,7 +246,7 @@ test("standalone Agent loads its body with the route instead of adding a second 
 test("standalone Agent duplicates the active window without minimizing its source", () => {
   assert.match(
     standaloneWindowSource,
-    /openDetachedWindow: i18n\.t\(\s*"workspace\.agentGui\.openDetachedWindow"\s*\)/
+    /openDetachedWindow: i18n\.t\(\s*"workspace\.agentGui\.openNewWindow"\s*\)/
   );
   assert.match(
     standaloneWindowSource,
@@ -239,7 +254,7 @@ test("standalone Agent duplicates the active window without minimizing its sourc
   );
   assert.match(
     standaloneWindowSource,
-    /handleDuplicateStandaloneWindow[\s\S]*?openAgentWindow\(\{[\s\S]*?agentDirectorySnapshot[\s\S]*?agentSessionId: nodeState\.lastActiveAgentSessionId[\s\S]*?agentTargetId: activeAgentTargetId[\s\S]*?minimizeSourceWindow: false[\s\S]*?provider: headerProvider[\s\S]*?workspaceId/
+    /handleDuplicateStandaloneWindow[\s\S]*?openAgentWindow\(\{[\s\S]*?agentDirectorySnapshot[\s\S]*?agentSessionId: nodeState\.lastActiveAgentSessionId[\s\S]*?agentTargetId: activeAgentTargetId[\s\S]*?minimizeSourceWindow: false[\s\S]*?offsetFromSourceWindow: true[\s\S]*?provider: headerProvider[\s\S]*?workspaceId/
   );
 });
 

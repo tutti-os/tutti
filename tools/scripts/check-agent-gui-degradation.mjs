@@ -835,19 +835,12 @@ function runStagedMode({ workspaceRoot, baselinePath }) {
     return 1;
   }
 
-  const diffOutput = execFileSync(
-    "git",
-    [
-      "diff",
-      "--cached",
-      "-U0",
-      "--no-color",
-      "--diff-filter=ACMR",
-      "--",
-      ...stagedScanPrefixes
-    ],
-    { cwd: workspaceRoot, encoding: "utf8", maxBuffer: 64 * 1024 * 1024 }
-  );
+  const mergeHead = readMergeHead(workspaceRoot);
+  const diffOutput = execFileSync("git", stagedDiffArgs(mergeHead), {
+    cwd: workspaceRoot,
+    encoding: "utf8",
+    maxBuffer: 64 * 1024 * 1024
+  });
 
   const addedLinesByFile = parseStagedAddedLines(diffOutput);
   const violations = [];
@@ -894,6 +887,30 @@ function runStagedMode({ workspaceRoot, baselinePath }) {
 
   console.log("agent-gui degradation staged check passed");
   return 0;
+}
+
+export function stagedDiffArgs(mergeHead = null) {
+  return [
+    "diff",
+    "--cached",
+    ...(mergeHead ? [mergeHead] : []),
+    "-U0",
+    "--no-color",
+    "--diff-filter=ACMR",
+    "--",
+    ...stagedScanPrefixes
+  ];
+}
+
+function readMergeHead(workspaceRoot) {
+  try {
+    return execFileSync("git", ["rev-parse", "--verify", "MERGE_HEAD"], {
+      cwd: workspaceRoot,
+      encoding: "utf8"
+    }).trim();
+  } catch {
+    return null;
+  }
 }
 
 function main() {

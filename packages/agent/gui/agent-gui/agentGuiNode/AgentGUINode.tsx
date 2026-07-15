@@ -84,6 +84,7 @@ export const AgentGUINode = memo(function AgentGUINode({
     desktopSize,
     isMaximized = false,
     isActive,
+    isVisible = true,
     embedded = false,
     previewMode = false,
     conversationRailAutoCollapseWidthPx = null
@@ -128,7 +129,8 @@ export const AgentGUINode = memo(function AgentGUINode({
     isMuted = false,
     onMinimize,
     onToggleMaximize,
-    onShowMessage
+    onShowMessage,
+    onEngagementEvent
   } = hostActions;
   const {
     providerRailEmpty: renderProviderRailEmpty,
@@ -610,6 +612,8 @@ export const AgentGUINode = memo(function AgentGUINode({
             providerRailAllPresentation={providerRailAllPresentation}
             actions={viewActions}
             isActive={isActive}
+            isVisible={isVisible}
+            onEngagementEvent={onEngagementEvent}
             composerFocusRequestSequence={composerFocusRequestSequence}
             newConversationRequestSequence={newConversationRequestSequence}
             isAgentProviderReady={isActiveAgentProviderReady}

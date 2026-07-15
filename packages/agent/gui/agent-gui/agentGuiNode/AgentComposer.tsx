@@ -40,8 +40,10 @@ import {
   agentComposerDraftFiles,
   agentComposerDraftImages,
   agentComposerDraftLargeTexts,
+  agentComposerDraftHasContent,
   agentComposerDraftPrompt
 } from "./model/agentComposerDraft";
+import type { AgentGUIComposerContentType } from "./engagement/agentGUIEngagement.types";
 
 export { formatSlashStatusTokenCount };
 
@@ -96,6 +98,7 @@ export function AgentComposer(props: AgentComposerProps): React.JSX.Element {
     provider,
     slashStatus = null,
     draftContent,
+    engagement,
     draftScopeKey = "current",
     availableCommands,
     hasCompactableContext = true,
@@ -170,6 +173,14 @@ export function AgentComposer(props: AgentComposerProps): React.JSX.Element {
   const pastedTextStagingSupported = Boolean(
     canUploadAttachment && agentActivityRuntime?.stagePastedText
   );
+  const reportContentEntered = (
+    contentType: AgentGUIComposerContentType
+  ): void => {
+    engagement?.contentEntered({
+      contentType,
+      hadPrefill: agentComposerDraftHasContent(draftContent)
+    });
+  };
   const [isPaletteOpen, setIsPaletteOpen] = useState(true);
   const [isReviewPickerOpen, setIsReviewPickerOpen] = useState(false);
   const [isHandoffIconPlaying, setIsHandoffIconPlaying] = useState(false);
@@ -482,6 +493,7 @@ export function AgentComposer(props: AgentComposerProps): React.JSX.Element {
     clearActiveFileMentionTrigger,
     onDraftContentChange,
     onPromptImagesUnsupported,
+    onContentEntered: reportContentEntered,
     onRequestWorkspaceReferences,
     resolveDroppedFileReferences,
     onLinkAction

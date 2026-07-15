@@ -33,6 +33,7 @@ import type {
   AgentHomeSuggestionCategory,
   AgentGUINodeViewModel
 } from "../model/agentGuiNodeTypes";
+import type { AgentGUIEngagementEventSink } from "../engagement/agentGUIEngagement.types";
 
 export type AgentMentionReferenceTargetResolver = (
   item: AgentContextMentionItem
@@ -381,6 +382,8 @@ export interface AgentGUINodeViewProps {
   capabilityMenuState?: AgentComposerProps["capabilityMenuState"];
   onCapabilitySettingsRequest?: AgentComposerProps["onCapabilitySettingsRequest"];
   isActive?: boolean;
+  isVisible?: boolean;
+  onEngagementEvent?: AgentGUIEngagementEventSink;
   composerFocusRequestSequence?: number | null;
   newConversationRequestSequence?: number | null;
   isAgentProviderReady: boolean;

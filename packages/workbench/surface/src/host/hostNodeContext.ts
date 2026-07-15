@@ -52,6 +52,7 @@ export function createWorkbenchHostNodeBodyContext<
     instanceKey: context.node.data.instanceKey ?? null,
     isFocused:
       selectFocusedWorkbenchNode(host.getSnapshot())?.id === context.node.id,
+    presentationMode: context.layout.presentation?.mode ?? null,
     node: context.node,
     setNodeRuntimeState(state) {
       host.setNodeRuntimeState(context.node.id, state);

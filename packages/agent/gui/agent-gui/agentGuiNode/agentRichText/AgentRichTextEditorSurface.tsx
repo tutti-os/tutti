@@ -1,4 +1,9 @@
-import { useCallback, useRef, type KeyboardEventHandler } from "react";
+import {
+  useCallback,
+  useRef,
+  type KeyboardEventHandler,
+  type PointerEventHandler
+} from "react";
 import { createPortal } from "react-dom";
 import type { Editor } from "@tiptap/core";
 import { EditorContent } from "@tiptap/react";
@@ -14,6 +19,7 @@ export function AgentRichTextEditorSurface({
   disabled,
   editor,
   handleKeyDownCapture,
+  handlePointerDownCapture,
   pasteClipboardText,
   placeholder,
   t
@@ -25,12 +31,17 @@ export function AgentRichTextEditorSurface({
   disabled: boolean;
   editor: Editor | null;
   handleKeyDownCapture: KeyboardEventHandler<HTMLDivElement>;
+  handlePointerDownCapture?: PointerEventHandler<HTMLDivElement>;
   pasteClipboardText: () => void | Promise<void>;
   placeholder: string;
   t: TranslateFn;
 }): React.JSX.Element {
   return (
-    <div className="relative min-w-0" onKeyDownCapture={handleKeyDownCapture}>
+    <div
+      className="relative min-w-0"
+      onKeyDownCapture={handleKeyDownCapture}
+      onPointerDownCapture={handlePointerDownCapture}
+    >
       {editor ? (
         <EditorContent editor={editor} />
       ) : (

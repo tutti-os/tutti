@@ -23,7 +23,6 @@ func acpToolCallEventWithID(session Session, eventID string, turnID string, upda
 	rawOutput := acpToolCallRawOutput(update)
 	locations := clonePayloadValue(update["locations"])
 	content := acpSanitizeImagePayload(update["content"])
-	toolName := firstNonEmpty(asString(update["toolName"]), acpToolName(callID, name, kind, rawInput))
 	eventType := EventCallStarted
 	inputBody := acpNormalizeToolInput(rawInput, kind, locations)
 	callBody := inputBody
@@ -37,6 +36,10 @@ func acpToolCallEventWithID(session Session, eventID string, turnID string, upda
 	default:
 		status = string(activityshared.ActivityStatusRunning)
 	}
+	toolName := firstNonEmpty(
+		asString(update["toolName"]),
+		acpToolNameWithOutput(callID, name, kind, rawInput, rawOutput),
+	)
 	payload := map[string]any{
 		"callId":   callID,
 		"callType": "tool",
@@ -108,11 +111,19 @@ func acpToolCallRawOutput(update map[string]any) any {
 }
 
 func acpToolName(callID string, title string, kind string, rawInput any) string {
+	return acpToolNameWithOutput(callID, title, kind, rawInput, nil)
+}
+
+func acpToolNameWithOutput(callID string, title string, kind string, rawInput any, rawOutput any) string {
 	input, _ := rawInput.(map[string]any)
 	normalizedCallID := strings.ToLower(strings.TrimSpace(callID))
 	normalizedKind := strings.ToLower(strings.TrimSpace(kind))
 	trimmedTitle := strings.TrimSpace(title)
 	normalizedTitle := strings.ToLower(trimmedTitle)
+	if isOpaqueCallIdentifierString(trimmedTitle, callID) {
+		trimmedTitle = ""
+		normalizedTitle = ""
+	}
 	if syntheticToolName := acpSyntheticToolName(normalizedTitle); syntheticToolName != "" {
 		return syntheticToolName
 	}
@@ -136,6 +147,12 @@ func acpToolName(callID string, title string, kind string, rawInput any) string 
 	if strings.HasPrefix(normalizedTitle, "searching for:") {
 		return "WebSearch"
 	}
+	// Cursor ACP uses descriptive titles ("Find `path` `*.go`", `grep "x"`)
+	// and kind=search for Glob/Grep. Prefer title/input/output shape over the
+	// historical kind=search → Bash fallback that blanked the tool card.
+	if toolName := acpToolNameFromSearchHints(normalizedTitle, normalizedKind, input, rawOutput); toolName != "" {
+		return toolName
+	}
 	switch normalizedKind {
 	case "think":
 		if normalizedTitle == "update_todo" || input != nil && input["todos"] != nil {
@@ -143,7 +160,7 @@ func acpToolName(callID string, title string, kind string, rawInput any) string 
 		}
 		return "Think"
 	case "read":
-		if input != nil && strings.TrimSpace(asString(input["pattern"])) != "" {
+		if input != nil && (strings.TrimSpace(asString(input["pattern"])) != "" || strings.TrimSpace(asString(input["glob_pattern"])) != "" || strings.TrimSpace(asString(input["globPattern"])) != "") {
 			return "Glob"
 		}
 		return "Read"
@@ -154,7 +171,9 @@ func acpToolName(callID string, title string, kind string, rawInput any) string 
 		case "grep", "rg", "ripgrep", "codebase_search":
 			return "Grep"
 		default:
-			return "Bash"
+			// Unknown search tools are not shell commands (Cursor used to fall
+			// through to Bash here, which blanked Glob/Grep cards).
+			return "Grep"
 		}
 	case "other":
 		switch normalizedTitle {
@@ -206,6 +225,73 @@ func acpToolName(callID string, title string, kind string, rawInput any) string 
 		return trimmedTitle
 	}
 	return "Tool"
+}
+
+// acpToolNameFromSearchHints maps Cursor-style Glob/Grep ACP updates.
+// Cursor sends kind=search with titles like `Find \`dir\` \`*.go\“ / `grep "x"`
+// and rawInput `{pattern}` (Glob) or `{pattern,path}` (Grep), not exact tool names.
+func acpToolNameFromSearchHints(normalizedTitle string, normalizedKind string, input map[string]any, rawOutput any) string {
+	if strings.HasPrefix(normalizedTitle, "find ") || normalizedTitle == "find" ||
+		strings.HasPrefix(normalizedTitle, "glob ") || normalizedTitle == "glob" {
+		return "Glob"
+	}
+	if strings.HasPrefix(normalizedTitle, "grep") ||
+		strings.HasPrefix(normalizedTitle, "rg ") || normalizedTitle == "rg" ||
+		strings.HasPrefix(normalizedTitle, "ripgrep") {
+		return "Grep"
+	}
+	if strings.HasPrefix(normalizedTitle, "search:") || strings.HasPrefix(normalizedTitle, "codebase search") {
+		return "Grep"
+	}
+	if strings.HasPrefix(normalizedTitle, "web search") {
+		return "WebSearch"
+	}
+	if strings.HasPrefix(normalizedTitle, "read ") || normalizedTitle == "read file" {
+		return "Read"
+	}
+	output := acpMapFromValue(rawOutput, "output")
+	if len(output) > 0 {
+		if _, ok := output["totalFiles"]; ok {
+			return "Glob"
+		}
+		if _, ok := output["totalMatches"]; ok {
+			return "Grep"
+		}
+		if _, ok := output["resultCount"]; ok {
+			return "Grep"
+		}
+	}
+	if input == nil {
+		return ""
+	}
+	globPattern := firstNonEmpty(
+		asString(input["glob_pattern"]),
+		asString(input["globPattern"]),
+		asString(input["pattern"]),
+	)
+	hasPath := firstNonEmpty(asString(input["path"]), asString(input["file_path"]), asString(input["filePath"])) != ""
+	hasQuery := firstNonEmpty(asString(input["query"]), asString(input["searchTerm"]), asString(input["search_query"])) != ""
+	if hasQuery && strings.TrimSpace(asString(input["pattern"])) == "" {
+		if normalizedKind == "search" || normalizedKind == "fetch" {
+			return "WebSearch"
+		}
+	}
+	if globPattern == "" {
+		return ""
+	}
+	// Cursor Glob rawInput is typically `{pattern}` only; Grep includes path/glob flags.
+	if hasPath || input["glob"] != nil || input["type"] != nil || input["multiline"] != nil ||
+		input["A"] != nil || input["B"] != nil || input["C"] != nil || input["headLimit"] != nil ||
+		input["outputMode"] != nil {
+		return "Grep"
+	}
+	if normalizedKind == "search" || normalizedKind == "read" || normalizedKind == "other" || normalizedKind == "" {
+		// Bare pattern on search/read is Glob from Cursor's extractToolCallInput.
+		if !hasPath {
+			return "Glob"
+		}
+	}
+	return ""
 }
 
 func acpSyntheticToolName(normalizedTitle string) string {
@@ -273,6 +359,27 @@ func acpNormalizeToolInput(rawInput any, kind string, locations any) map[string]
 	case "read":
 		if path := acpFirstLocationPath(locationList); path != "" {
 			body["file_path"] = path
+		}
+		if path := firstNonEmpty(asString(body["path"]), asString(body["file_path"]), asString(body["filePath"])); path != "" {
+			body["path"] = path
+			if strings.TrimSpace(asString(body["file_path"])) == "" {
+				body["file_path"] = path
+			}
+		}
+	case "search":
+		if path := acpFirstLocationPath(locationList); path != "" {
+			if strings.TrimSpace(asString(body["target_directory"])) == "" && strings.TrimSpace(asString(body["path"])) == "" {
+				// Cursor Glob puts the search root in locations, not rawInput.
+				if firstNonEmpty(asString(body["pattern"]), asString(body["glob_pattern"]), asString(body["globPattern"])) != "" &&
+					strings.TrimSpace(asString(body["path"])) == "" {
+					body["target_directory"] = path
+				} else if strings.TrimSpace(asString(body["path"])) == "" {
+					body["path"] = path
+				}
+			}
+		}
+		if pattern := firstNonEmpty(asString(body["glob_pattern"]), asString(body["globPattern"]), asString(body["pattern"])); pattern != "" {
+			body["pattern"] = pattern
 		}
 	case "edit", "delete", "move":
 		if path := acpFirstLocationPath(locationList); path != "" {

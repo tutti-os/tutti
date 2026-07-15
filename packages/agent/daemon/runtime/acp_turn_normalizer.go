@@ -1,6 +1,7 @@
 package agentruntime
 
 import (
+	"log/slog"
 	"sort"
 	"strings"
 
@@ -133,6 +134,16 @@ func (n *acpTurnNormalizer) CurrentAssistantText() string {
 		return ""
 	}
 	return n.assistantContent.String()
+}
+
+// SeenToolCallCount returns how many distinct tool calls this turn has
+// observed. Auto-continue uses it (with CurrentAssistantText) to decide
+// whether the failed attempt made useful progress.
+func (n *acpTurnNormalizer) SeenToolCallCount() int {
+	if n == nil {
+		return 0
+	}
+	return len(n.toolCallsSeen)
 }
 
 func (n *acpTurnNormalizer) ApplyAssistantFinalText(finalText string) {
@@ -437,8 +448,10 @@ func (n *acpTurnNormalizer) toolItemID(update map[string]any) string {
 // for it in this turn. Some ACP providers (Cursor) omit `rawInput` on the
 // `toolCall` embedded in `session/request_permission`, repeating only
 // `toolCallId`/`title`/`kind`; the earlier tool_call notification for the same
-// id is the only place the command/path/query detail exists. This lookup does
-// not create a new id mapping, so it must not be used before the tool_call it
+// id is the only place the command/path/query detail exists. Later empty
+// `tool_call_update` snapshots merge into that prior input instead of replacing
+// it, so this lookup still sees the original detail. This lookup does not
+// create a new id mapping, so it must not be used before the tool_call it
 // targets has actually streamed.
 func (n *acpTurnNormalizer) KnownToolCallInput(rawToolCallID string) map[string]any {
 	if n == nil {
@@ -459,6 +472,13 @@ func (n *acpTurnNormalizer) KnownToolCallInput(rawToolCallID string) map[string]
 	return payloadMap(pending.payload, "input")
 }
 
+func (n *acpTurnNormalizer) pendingToolCallCount() int {
+	if n == nil {
+		return 0
+	}
+	return len(n.pendingToolCalls)
+}
+
 func (n *acpTurnNormalizer) trackToolCallEvent(event activityshared.Event) {
 	if n == nil || strings.TrimSpace(event.EventID) == "" {
 		return
@@ -468,13 +488,72 @@ func (n *acpTurnNormalizer) trackToolCallEvent(event activityshared.Event) {
 		if n.pendingToolCalls == nil {
 			n.pendingToolCalls = make(map[string]pendingToolCallSnapshot)
 		}
+		incoming := clonePayload(event.Payload.Metadata)
+		if previous, ok := n.pendingToolCalls[event.EventID]; ok {
+			// Cursor often streams tool_call with rawInput, then a later
+			// tool_call_update that repeats only title/kind/status (no input).
+			// Replacing the snapshot wholesale dropped command/path/query and
+			// left session/request_permission with nothing to backfill.
+			logACPPendingToolCallDetailPreservation(event, previous.payload, incoming)
+			incoming = mergePendingToolCallPayload(previous.payload, incoming)
+		}
 		n.pendingToolCalls[event.EventID] = pendingToolCallSnapshot{
 			eventID: event.EventID,
-			payload: clonePayload(event.Payload.Metadata),
+			payload: incoming,
 		}
 	case activityshared.EventCallCompleted, activityshared.EventCallFailed:
 		delete(n.pendingToolCalls, event.EventID)
 	}
+}
+
+func logACPPendingToolCallDetailPreservation(
+	event activityshared.Event,
+	previousPayload map[string]any,
+	incomingPayload map[string]any,
+) {
+	previousInput := payloadMap(previousPayload, "input")
+	incomingInput := payloadMap(incomingPayload, "input")
+	if !acpApprovalDetailPresent(previousInput) || acpApprovalDetailPresent(incomingInput) {
+		return
+	}
+	slog.Info("agent session ACP pending tool call preserved detail across empty update",
+		"event", "agent_session.acp.pending_tool_call.preserved_detail",
+		"provider", event.Provider,
+		"agent_session_id", strings.TrimSpace(event.AgentSessionID),
+		"turn_id", strings.TrimSpace(event.Payload.TurnID),
+		"event_id", strings.TrimSpace(event.EventID),
+		"call_id", firstNonEmpty(
+			asString(incomingPayload["callId"]),
+			asString(previousPayload["callId"]),
+			strings.TrimSpace(event.Payload.CallID),
+		),
+		"previous_input_keys", sortedACPDiagnosticKeys(previousInput),
+		"incoming_input_keys", sortedACPDiagnosticKeys(incomingInput),
+		"previous_command", truncateACPDiagnosticText(
+			firstNonEmpty(asString(previousInput["command"]), asString(previousInput["cmd"])),
+			160,
+		),
+	)
+}
+
+func acpApprovalDetailPresent(input map[string]any) bool {
+	if len(input) == 0 {
+		return false
+	}
+	return firstNonEmpty(
+		asString(input["command"]),
+		asString(input["cmd"]),
+		asString(input["file_path"]),
+		asString(input["filePath"]),
+		asString(input["path"]),
+		asString(input["notebook_path"]),
+		asString(input["query"]),
+		asString(input["search_query"]),
+		asString(input["searchQuery"]),
+		asString(input["pattern"]),
+		asString(input["glob_pattern"]),
+		asString(input["globPattern"]),
+	) != ""
 }
 
 func (n *acpTurnNormalizer) mergePendingToolCallSnapshot(event *activityshared.Event) {
@@ -505,12 +584,37 @@ func mergePendingToolCallPayload(started map[string]any, completed map[string]an
 	}
 	for key, value := range completed {
 		if key == "input" {
-			if len(payloadMap(merged, "input")) == 0 {
-				merged[key] = clonePayloadValue(value)
+			if mergedInput := mergePendingToolCallInput(
+				payloadMap(merged, "input"),
+				payloadObject(value),
+			); len(mergedInput) > 0 {
+				merged[key] = mergedInput
 			}
 			continue
 		}
+		if payloadValueIsEmpty(value) {
+			continue
+		}
 		merged[key] = clonePayloadValue(value)
+	}
+	return merged
+}
+
+// mergePendingToolCallInput keeps earlier structured fields (command/path/query)
+// when a later ACP tool_call_update omits or only partially repeats input.
+func mergePendingToolCallInput(base map[string]any, incoming map[string]any) map[string]any {
+	merged := clonePayload(base)
+	if merged == nil {
+		merged = map[string]any{}
+	}
+	for key, value := range incoming {
+		if payloadValueIsEmpty(value) {
+			continue
+		}
+		merged[key] = clonePayloadValue(value)
+	}
+	if len(merged) == 0 {
+		return nil
 	}
 	return merged
 }
@@ -520,18 +624,38 @@ func normalizeMergedACPToolPayload(payload map[string]any) {
 		return
 	}
 	input := payloadMap(payload, "input")
+	output := payloadMap(payload, "output")
 	kind := firstNonEmpty(
 		asString(payload["kind"]),
 		asString(input["kind"]),
 		asString(payloadMap(payload, "acp")["kind"]),
 	)
+	callID := asString(payload["callId"])
+	priorToolName := strings.TrimSpace(asString(payload["toolName"]))
 	name := firstNonEmpty(
 		asString(input["title"]),
-		asString(payload["name"]),
-		asString(payload["toolName"]),
-		asString(payload["callId"]),
+		asString(payload["title"]),
 	)
-	if toolName := acpToolName(asString(payload["callId"]), name, kind, input); toolName != "" {
+	if candidate := strings.TrimSpace(asString(payload["name"])); candidate != "" && !isOpaqueCallIdentifierString(candidate, callID) {
+		if name == "" {
+			name = candidate
+		}
+	}
+	if name == "" && priorToolName != "" && !isOpaqueCallIdentifierString(priorToolName, callID) {
+		name = priorToolName
+	}
+	toolName := acpToolNameWithOutput(callID, name, kind, input, output)
+	if toolName == "" {
+		toolName = priorToolName
+	}
+	// Prefer a stable prior identity when re-derivation collapses to a generic
+	// Tool/Bash label but we already knew a more specific Cursor tool name.
+	if priorToolName != "" && priorToolName != "Tool" && priorToolName != "Bash" &&
+		(toolName == "" || toolName == "Tool" || toolName == "Bash") &&
+		acpToolNameLooksSpecific(priorToolName) {
+		toolName = priorToolName
+	}
+	if toolName != "" {
 		payload["toolName"] = toolName
 		payload["name"] = toolName
 	}
@@ -543,6 +667,15 @@ func normalizeMergedACPToolPayload(payload map[string]any) {
 	}
 	if fileChanges := fileChangesFromACPToolPayload(payload); fileChanges != nil {
 		payload["fileChanges"] = fileChanges
+	}
+}
+
+func acpToolNameLooksSpecific(toolName string) bool {
+	switch strings.TrimSpace(toolName) {
+	case "Glob", "Grep", "Read", "Write", "Edit", "WebSearch", "WebFetch", "TodoWrite", "Agent", "Think":
+		return true
+	default:
+		return false
 	}
 }
 

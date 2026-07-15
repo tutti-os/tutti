@@ -55,6 +55,84 @@ func (a *ClaudeCodeSDKAdapter) trackClaudeSDKTurnCallEvents(
 	}
 }
 
+// claudeSDKThinkingEvents routes Claude thinking snapshots through the shared
+// turn normalizer so cancel/fail/complete can settle an in-flight "thinking"
+// row the same way Codex/ACP do.
+func (a *ClaudeCodeSDKAdapter) claudeSDKThinkingEvents(
+	adapterSession *claudeSDKAdapterSession,
+	session Session,
+	turnID string,
+	messageID string,
+	content string,
+	completed bool,
+) []activityshared.Event {
+	if a == nil || adapterSession == nil {
+		return nil
+	}
+	turnID = strings.TrimSpace(turnID)
+	if turnID == "" {
+		return nil
+	}
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	normalizer := adapterSession.ensureClaudeSDKTurnNormalizerLocked(turnID)
+	if normalizer == nil {
+		return nil
+	}
+	var events []activityshared.Event
+	if completed {
+		events = normalizer.CompleteThinkingSnapshot(session, turnID, content, messageID)
+	} else {
+		events = normalizer.ApplyStreamingThinkingSnapshot(session, turnID, content, messageID)
+	}
+	return stampClaudeSDKAdapterMetadata(events)
+}
+
+// claudeSDKAssistantEvents routes Claude assistant snapshots through the shared
+// turn normalizer so interrupt can close a half-streamed assistant bubble.
+func (a *ClaudeCodeSDKAdapter) claudeSDKAssistantEvents(
+	adapterSession *claudeSDKAdapterSession,
+	session Session,
+	turnID string,
+	messageID string,
+	content string,
+	completed bool,
+) []activityshared.Event {
+	if a == nil || adapterSession == nil {
+		return nil
+	}
+	turnID = strings.TrimSpace(turnID)
+	if turnID == "" {
+		return nil
+	}
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	normalizer := adapterSession.ensureClaudeSDKTurnNormalizerLocked(turnID)
+	if normalizer == nil {
+		return nil
+	}
+	var events []activityshared.Event
+	if completed {
+		events = normalizer.CompleteAssistantSnapshot(session, turnID, content, messageID)
+	} else {
+		events = normalizer.ApplyStreamingAssistantSnapshot(session, turnID, content, messageID)
+	}
+	return stampClaudeSDKAdapterMetadata(events)
+}
+
+func stampClaudeSDKAdapterMetadata(events []activityshared.Event) []activityshared.Event {
+	if len(events) == 0 {
+		return events
+	}
+	for index := range events {
+		if events[index].Payload.Metadata == nil {
+			events[index].Payload.Metadata = map[string]any{}
+		}
+		events[index].Payload.Metadata["adapter"] = claudeSDKSidecarAdapterName
+	}
+	return events
+}
+
 // takeClaudeSDKTurnNormalizerLocked removes and returns the turn lifecycle
 // owner for turnID. Caller must hold the adapter mutex.
 func (s *claudeSDKAdapterSession) takeClaudeSDKTurnNormalizerLocked(turnID string) *acpTurnNormalizer {
@@ -76,8 +154,9 @@ const (
 )
 
 // finishClaudeSDKTurnLifecycle closes the Claude turn's event lifecycle:
-// dangling tool calls (and any normalizer-owned streams) are settled before the
-// caller emits the turn terminal event. Idempotent once the normalizer is taken.
+// dangling tool calls plus any normalizer-owned thinking/assistant streams are
+// settled before the caller emits the turn terminal event. Idempotent once the
+// normalizer is taken.
 func (a *ClaudeCodeSDKAdapter) finishClaudeSDKTurnLifecycle(
 	adapterSession *claudeSDKAdapterSession,
 	session Session,

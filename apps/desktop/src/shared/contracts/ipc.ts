@@ -275,6 +275,7 @@ export interface DesktopHostOpenAgentWindowInput {
   draftPrompt?: string | null;
   providerStatusSnapshot?: DesktopAgentProviderStatusSnapshot | null;
   minimizeSourceWindow?: boolean;
+  offsetFromSourceWindow?: boolean;
   provider?: string | null;
   userProjectPath?: string | null;
   workspaceId: string;

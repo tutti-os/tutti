@@ -201,10 +201,24 @@ func callMessageUpdateFromSessionEvent(
 			payload["input"] = clonePayload(event.Payload.Input)
 		}
 	case activityshared.EventCallCompleted:
+		// Cursor ACP completes with empty rawInput; the normalizer merges the
+		// earlier start input into Metadata/Input. Keep copying Payload.Input so
+		// a completed update cannot drop Glob/Grep/Read args when Metadata omit
+		// them during projection.
+		if len(event.Payload.Input) > 0 {
+			if _, exists := payload["input"]; !exists {
+				payload["input"] = clonePayload(event.Payload.Input)
+			}
+		}
 		if len(event.Payload.Output) > 0 {
 			payload["output"] = canonicalToolBodyPayload(event.Payload.Output)
 		}
 	case activityshared.EventCallFailed:
+		if len(event.Payload.Input) > 0 {
+			if _, exists := payload["input"]; !exists {
+				payload["input"] = clonePayload(event.Payload.Input)
+			}
+		}
 		if len(event.Payload.Output) > 0 {
 			payload["output"] = canonicalToolBodyPayload(event.Payload.Output)
 		}
@@ -382,10 +396,24 @@ func isOpaqueCallIdentifierString(value string, callID string) bool {
 	if normalizedCallID := strings.TrimSpace(callID); normalizedCallID != "" && trimmed == normalizedCallID {
 		return true
 	}
+	// Cursor ACP call ids are `call-<uuid>-N\nfc_<uuid>_N`. Treat any value that
+	// equals / starts as that opaque id as non-displayable so merge logic does
+	// not re-derive tool names from the call id after an empty tool_call_update.
+	if callID = strings.TrimSpace(callID); callID != "" {
+		if primary, _, ok := strings.Cut(callID, "\n"); ok && primary != "" && (trimmed == primary || strings.HasPrefix(trimmed, primary+"\n")) {
+			return true
+		}
+	}
 	lower := strings.ToLower(trimmed)
 	switch {
 	case strings.HasPrefix(lower, "call_"):
 		return isOpaqueIdentifierTail(trimmed[len("call_"):])
+	case strings.HasPrefix(lower, "call-"):
+		rest := trimmed[len("call-"):]
+		if primary, _, ok := strings.Cut(rest, "\n"); ok {
+			rest = primary
+		}
+		return len(rest) >= 12
 	case strings.HasPrefix(lower, "ws_"):
 		return isOpaqueIdentifierTail(trimmed[len("ws_"):])
 	default:

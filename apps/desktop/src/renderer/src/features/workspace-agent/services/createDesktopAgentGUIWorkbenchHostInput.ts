@@ -37,6 +37,10 @@ import {
 } from "../../workspace-file-manager/services/desktopWorkspaceFileLocations.ts";
 import { createDesktopAgentHostApi } from "./createDesktopAgentHostApi.ts";
 import { createAgentChatReadyTracker } from "./internal/agentChatReadyAnalytics.ts";
+import {
+  createAgentGUIEngagementEventSink,
+  type AgentGUIAnalyticsSurface
+} from "./internal/agentGUIEngagementAnalytics.ts";
 import { createAgentWorkspaceFileReferenceTracker } from "./internal/agentWorkspaceFileReferenceAnalytics.ts";
 import { getDesktopAgentActivityRuntimeServices } from "./internal/desktopAgentActivityRuntimeServices.ts";
 import type { IWorkspaceAgentActivityService } from "./workspaceAgentActivityService.interface";
@@ -50,6 +54,9 @@ export interface DesktopAgentGUIWorkbenchHostInput {
     AgentGUIProps["hostCapabilities"]["contextMentionProviders"]
   >;
   trackAgentProviderChatReady: (input: { provider: string }) => Promise<void>;
+  createAgentGUIEngagementEventSink: (
+    surface: AgentGUIAnalyticsSurface
+  ) => NonNullable<AgentGUIProps["hostActions"]["onEngagementEvent"]>;
   trackWorkspaceFileReferences: (input: {
     provider?: string | null;
     references: readonly WorkspaceFileReference[];
@@ -227,6 +234,12 @@ export function createDesktopAgentGUIWorkbenchHostInput({
       })
       .map(richTextTriggerProviderToContextMentionProvider),
     trackAgentProviderChatReady: (input) => chatReadyTracker.track(input),
+    createAgentGUIEngagementEventSink: (surface) =>
+      createAgentGUIEngagementEventSink({
+        reporterNow,
+        reporterService,
+        surface
+      }),
     trackWorkspaceFileReferences: (input) =>
       workspaceFileReferenceTracker.track(input),
     workspaceFileReferenceAdapter,

@@ -6,6 +6,7 @@ import type {
 import type { AgentGUIProviderSkillOption } from "../model/agentGuiNodeTypes";
 import type { AgentCapabilityTokenOption } from "./agentCapabilityTokenExtension";
 import type { AgentRichTextPromptImage } from "./agentRichTextPromptImages";
+import type { AgentGUIComposerFocusMethod } from "../engagement/agentGUIEngagement.types";
 
 export interface AgentRichTextEditorProps {
   value: string;
@@ -14,6 +15,8 @@ export interface AgentRichTextEditorProps {
   removeMentionLabel?: string;
   className?: string;
   onChange: (value: string) => void;
+  onFocus?: (method: AgentGUIComposerFocusMethod) => void;
+  onUserContentChange?: (value: string) => void;
   onSubmit: () => void;
   onSubmitGuidance?: () => void;
   availableSkills?: readonly AgentGUIProviderSkillOption[];

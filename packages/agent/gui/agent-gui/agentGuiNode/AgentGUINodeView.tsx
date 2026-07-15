@@ -22,7 +22,6 @@ import {
   type AgentMessageMarkdownAgentTarget
 } from "../../shared/AgentTargetPresentationContext";
 import type { AgentGUINodeViewModel } from "./model/agentGuiNodeTypes";
-import type { AgentMessageMarkdownWorkspaceAppIcon } from "../../shared/AgentMessageMarkdown";
 import styles from "./AgentGUINode.styles";
 import {
   fallbackWorkspaceFileReferenceCopy,
@@ -38,11 +37,13 @@ import { type AgentGUIConversationRailState } from "./view/AgentGUIConversationR
 import { AgentGUIConversationRailController } from "./controller/AgentGUIConversationRailController";
 import {
   AgentGUIDetailPane,
+  EMPTY_WORKSPACE_APP_ICONS,
   mergeWorkspaceAppIconsFromCommands
 } from "./view/AgentGUIDetailPane";
 import { AgentGUIRenameConversationDialog } from "./view/AgentGUIRenameConversationDialog";
 import { useAgentGUIWorkspaceReferencePicker } from "./view/useAgentGUIWorkspaceReferencePicker";
 import type { AgentGUINodeViewProps } from "./view/AgentGUINodeView.types";
+import { useAgentGUINodeEngagement } from "./engagement/useAgentGUINodeEngagement";
 export type {
   AgentGUINodeViewProps,
   AgentGUIAgentsEmptyRenderer,
@@ -70,9 +71,6 @@ export {
   shouldEmphasizeEmptyHeroProvider
 } from "./view/AgentGUIEmptyState";
 
-const EMPTY_WORKSPACE_APP_ICONS: readonly AgentMessageMarkdownWorkspaceAppIcon[] =
-  [];
-
 export function AgentGUINodeView({
   viewModel,
   renderSidebarFooter,
@@ -84,6 +82,8 @@ export function AgentGUINodeView({
   capabilityMenuState,
   onCapabilitySettingsRequest,
   isActive = true,
+  isVisible = true,
+  onEngagementEvent,
   composerFocusRequestSequence = null,
   newConversationRequestSequence = null,
   isAgentProviderReady,
@@ -128,7 +128,14 @@ export function AgentGUINodeView({
   workspaceAppIcons = EMPTY_WORKSPACE_APP_ICONS
 }: AgentGUINodeViewProps): React.JSX.Element {
   "use memo";
-  const layoutElementRef = useRef<HTMLDivElement | null>(null);
+  const { composerEngagement, layoutElementRef } = useAgentGUINodeEngagement({
+    composerReady: isAgentProviderReady,
+    isActive,
+    isVisible,
+    onEvent: onEngagementEvent,
+    previewMode,
+    viewModel
+  });
   const [providerManagerOpen, setProviderManagerOpen] = useState(false);
   const railResizeInteractionRef = useRef<{
     lastWidthPx: number;
@@ -709,6 +716,7 @@ export function AgentGUINodeView({
         <section id="agent-gui-detail" className={styles.detailPanel}>
           <AgentGUIDetailPane
             viewModel={viewModel}
+            composerEngagement={composerEngagement}
             actions={actions}
             labels={labels}
             uiLanguage={uiLanguage}

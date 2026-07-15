@@ -1,6 +1,12 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { mkdtemp, mkdir, readFile, writeFile } from "node:fs/promises";
+import {
+  mkdtemp,
+  mkdir,
+  readFile,
+  realpath,
+  writeFile
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -22,8 +28,10 @@ import {
   isComponentModule,
   isTimerForbiddenFile,
   measureFileMetrics,
-  parseStagedAddedLines
+  parseStagedAddedLines,
+  stagedDiffArgs
 } from "./check-agent-gui-degradation.mjs";
+import { createIsolatedGitEnvironment } from "./git-environment.mjs";
 
 const scriptPath = resolve(
   dirname(fileURLToPath(import.meta.url)),
@@ -258,6 +266,20 @@ test("parses added lines from a unified zero-context diff", () => {
   ]);
 });
 
+test("staged diff compares a merge index against the incoming parent", () => {
+  assert.deepEqual(stagedDiffArgs(null).slice(0, 3), [
+    "diff",
+    "--cached",
+    "-U0"
+  ]);
+  assert.deepEqual(stagedDiffArgs("merge-head").slice(0, 4), [
+    "diff",
+    "--cached",
+    "merge-head",
+    "-U0"
+  ]);
+});
+
 test("staged check flags uncommented timers and accepts timing-comment timers", () => {
   const stagedContent = [
     "// timing: batch daemon events into one frame",
@@ -438,11 +460,8 @@ test("full mode generates a baseline and then detects regressions", async () => 
 
 test("staged mode flags violations on staged added lines end to end", async () => {
   const workspaceRoot = await mkdtemp(join(tmpdir(), "agent-gui-degradation-"));
-  const run = (command, args) =>
-    spawnSync(command, args, { cwd: workspaceRoot, encoding: "utf8" });
-  run("git", ["init", "--quiet"]);
-  run("git", ["config", "user.email", "test@example.com"]);
-  run("git", ["config", "user.name", "Test"]);
+  runFixtureGit(workspaceRoot, ["init", "--quiet"]);
+  await assertFixtureGitRoot(workspaceRoot);
 
   const sourcePath = join(
     workspaceRoot,
@@ -450,14 +469,23 @@ test("staged mode flags violations on staged added lines end to end", async () =
   );
   await mkdir(dirname(sourcePath), { recursive: true });
   await writeFile(sourcePath, "export const before = 1;\n");
-  run("git", ["add", "."]);
-  run("git", ["commit", "--quiet", "-m", "init"]);
+  runFixtureGit(workspaceRoot, ["add", "."]);
+  runFixtureGit(workspaceRoot, [
+    "-c",
+    "user.email=test@example.com",
+    "-c",
+    "user.name=Test",
+    "commit",
+    "--quiet",
+    "-m",
+    "init"
+  ]);
 
   await writeFile(
     sourcePath,
     "export const before = 1;\nsetTimeout(retry, 100);\n"
   );
-  run("git", ["add", "."]);
+  runFixtureGit(workspaceRoot, ["add", "."]);
 
   const baselinePath = join(workspaceRoot, "baseline/agent-gui.json");
   const result = runScript(workspaceRoot, baselinePath, ["--staged"]);
@@ -468,7 +496,7 @@ test("staged mode flags violations on staged added lines end to end", async () =
     sourcePath,
     "export const before = 1;\n// timing: retry with visible reason\nsetTimeout(retry, 100);\n"
   );
-  run("git", ["add", "."]);
+  runFixtureGit(workspaceRoot, ["add", "."]);
   const pass = runScript(workspaceRoot, baselinePath, ["--staged"]);
   assert.equal(pass.status, 0, pass.stderr || pass.stdout);
 });
@@ -505,9 +533,30 @@ function runScript(workspaceRoot, baselinePath, args) {
   return spawnSync(process.execPath, [scriptPath, ...args], {
     encoding: "utf8",
     env: {
-      ...process.env,
+      ...createIsolatedGitEnvironment(workspaceRoot),
       TUTTI_AGENT_GUI_DEGRADATION_BASELINE: baselinePath,
       TUTTI_WORKSPACE_ROOT: workspaceRoot
     }
   });
+}
+
+function runFixtureGit(workspaceRoot, args) {
+  const result = spawnSync("git", args, {
+    cwd: workspaceRoot,
+    encoding: "utf8",
+    env: createIsolatedGitEnvironment(workspaceRoot)
+  });
+  assert.equal(result.status, 0, result.stderr || result.stdout);
+  return result;
+}
+
+async function assertFixtureGitRoot(workspaceRoot) {
+  const result = runFixtureGit(workspaceRoot, [
+    "rev-parse",
+    "--absolute-git-dir"
+  ]);
+  assert.equal(
+    await realpath(result.stdout.trim()),
+    await realpath(join(workspaceRoot, ".git"))
+  );
 }

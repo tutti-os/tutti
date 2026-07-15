@@ -8,6 +8,7 @@ import {
   createAppReferenceListBackend,
   listReferenceSupportingApps
 } from "./appReferenceListBackend.ts";
+import { createAppArtifactReferenceSource } from "./appArtifactReferenceSource.ts";
 
 const scope: ReferenceScope = { workspaceId: "workspace-1" };
 
@@ -118,6 +119,57 @@ test("app backend labels child groups with app and project names", async () => {
       ? childGroup.parentLabel
       : undefined,
     "Prototype Design / 23232"
+  );
+});
+
+test("app source renders application references in the returned order", async () => {
+  const tuttidClient = {
+    listWorkspaceApps: async () => ({
+      apps: [
+        {
+          appId: "ai-media-canvas",
+          displayName: "AI Canvas",
+          installed: true,
+          enabled: true,
+          status: "running",
+          references: { listSupported: true, searchSupported: false }
+        }
+      ]
+    }),
+    listWorkspaceAppReferences: async () => ({
+      items: [
+        {
+          type: "group",
+          id: "project-new",
+          displayName: "Untitled",
+          referenceCount: 0
+        },
+        {
+          type: "group",
+          id: "project-old",
+          displayName: "Alpha",
+          referenceCount: 0
+        }
+      ],
+      nextCursor: null
+    })
+  } as unknown as TuttidClient;
+  const source = createAppArtifactReferenceSource({
+    tuttidClient,
+    adapter: {},
+    label: "应用文件"
+  });
+
+  const root = await source.listChildren(scope, { node: null });
+  const appGroup = root.entries[0];
+  assert.ok(appGroup);
+  const result = await source.listChildren(scope, { node: appGroup.ref });
+
+  assert.equal(root.ordered, true);
+  assert.equal(result.ordered, true);
+  assert.deepEqual(
+    result.entries.map((item) => item.displayName),
+    ["Untitled", "Alpha"]
   );
 });
 

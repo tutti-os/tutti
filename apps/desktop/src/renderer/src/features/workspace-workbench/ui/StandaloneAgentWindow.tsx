@@ -182,9 +182,10 @@ export function StandaloneAgentWindow({
     () => resolveDesktopWindowIntent(window.location.search),
     []
   );
-  const launchProvider = normalizeDesktopAgentGUIProvider(
-    windowIntent.kind === "agent" ? windowIntent.provider : null
-  );
+  const launchProvider =
+    windowIntent.kind === "agent" && windowIntent.provider
+      ? normalizeDesktopAgentGUIProvider(windowIntent.provider)
+      : "codex";
   const launchDraftPrompt =
     windowIntent.kind === "agent" ? (windowIntent.draftPrompt ?? null) : null;
   const launchAutoSubmit =
@@ -418,6 +419,11 @@ export function StandaloneAgentWindow({
       workspaceUserProjectService
     ]
   );
+  const trackStandaloneAgentGUIEngagement = useMemo(
+    () =>
+      agentGuiHostInput.createAgentGUIEngagementEventSink("standalone_agent"),
+    [agentGuiHostInput]
+  );
   const dockPreviewCache = useMemo(
     () => createStandaloneAgentDockPreviewCache(desktopApi.dockPreviewCache),
     [desktopApi.dockPreviewCache]
@@ -478,7 +484,8 @@ export function StandaloneAgentWindow({
       host,
       instanceId,
       instanceKey: standaloneAgentInstanceKey,
-      isFocused: document.hasFocus(),
+      // Standalone has one node; document focus is tracked live by engagement.
+      isFocused: true,
       node: {
         data: {
           activation,
@@ -607,6 +614,7 @@ export function StandaloneAgentWindow({
       agentTargetId: activeAgentTargetId,
       providerStatusSnapshot: agentProviderStatusService.getSnapshot(),
       minimizeSourceWindow: false,
+      offsetFromSourceWindow: true,
       provider: headerProvider,
       workspaceId
     });
@@ -665,9 +673,7 @@ export function StandaloneAgentWindow({
                 "workspace.agentGui.fallbackAgentLabel"
               ),
               newConversation: i18n.t("workspace.agentGui.newConversation"),
-              openDetachedWindow: i18n.t(
-                "workspace.agentGui.openDetachedWindow"
-              )
+              openDetachedWindow: i18n.t("workspace.agentGui.openNewWindow")
             }}
             conversationRailWidthPx={headerConversationRailWidthPx}
             conversationIconUrl={headerConversationIconUrl}
@@ -744,6 +750,7 @@ export function StandaloneAgentWindow({
             trackAgentProviderChatReady={
               agentGuiHostInput.trackAgentProviderChatReady
             }
+            onEngagementEvent={trackStandaloneAgentGUIEngagement}
             trackWorkspaceFileReferences={
               agentGuiHostInput.trackWorkspaceFileReferences
             }

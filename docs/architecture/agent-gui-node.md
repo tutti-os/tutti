@@ -438,7 +438,10 @@ The standalone Agent header reuses that button to duplicate its current native
 window. It hands off the active session, agent target, provider, agents, and
 provider-status snapshot, and explicitly keeps the source standalone window
 visible. The duplicate reconstructs UI from the shared durable activity source;
-it must not clone or fork AgentGUI session state in the renderer.
+it must not clone or fork AgentGUI session state in the renderer. Place the
+duplicate 25 pixels to the right and 25 pixels below its source, clamped to the
+active display work area, so the new window does not completely cover the
+source window when the available work area permits.
 When the conversation rail collapses, the standalone Agent header remains a
 full-width window control surface and keeps its secondary tool actions anchored
 to the right window edge. Content-width caps belong to the conversation body,
@@ -791,6 +794,22 @@ capabilities:
 Desktop passes grouped Agent GUI props and runtime interfaces. It must not
 mirror engine entities, implement provider policy switches, or derive session
 truth to make a panel render correctly.
+
+Agent GUI engagement reporting follows the same boundary:
+
+- `AgentGUINodeView` owns DOM exposure observation and the UI-local panel visit.
+  A visit ends when the panel becomes ineligible or its active session/target
+  context changes; events from different session contexts never share a
+  `panelVisitId`.
+- Composer and rich-text modules report semantic focus and accepted user-content
+  signals. Controlled draft hydration, prefill, and programmatic mention-trigger
+  insertion are not user-content events.
+- Workbench presentation visibility enters through `frame.isVisible`. Reusable
+  Agent GUI code must not query desktop workbench class names or data attributes.
+- The package emits a discriminated engagement event through
+  `hostActions.onEngagementEvent`. Desktop owns product event names, surface
+  labels, reporter construction, and analytics transport. Prompt text, file
+  names, paths, mention URIs, and attachment payloads never cross this boundary.
 
 Opening a conversation activates a durable session through the engine. Opening
 it in another panel creates workbench presentation state around the same durable
