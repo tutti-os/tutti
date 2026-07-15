@@ -174,7 +174,10 @@ export function projectConversationRailSectionsWithActiveConversation(input: {
       activeOverlay: {
         conversation:
           loadedSection.kind === "project"
-            ? { ...activeConversation, project: loadedSection.project }
+            ? conversationWithRailProject(
+                activeConversation,
+                loadedSection.project
+              )
             : activeConversation,
         sectionId: loadedSection.id
       },
@@ -199,7 +202,10 @@ export function projectConversationRailSectionsWithActiveConversation(input: {
       activeOverlay: {
         conversation:
           matchingSection?.kind === "project"
-            ? { ...activeConversation, project: matchingSection.project }
+            ? conversationWithRailProject(
+                activeConversation,
+                matchingSection.project
+              )
             : activeConversation,
         sectionId: activeSection.id
       },
@@ -235,6 +241,15 @@ export function projectConversationRailSectionsWithActiveConversation(input: {
     },
     sections
   };
+}
+
+function conversationWithRailProject(
+  conversation: AgentGUINodeViewModel["rail"]["conversations"][number],
+  project: ConversationSection["project"]
+): AgentGUINodeViewModel["rail"]["conversations"][number] {
+  return conversationProjectsRenderEqual(conversation.project, project)
+    ? conversation
+    : { ...conversation, project };
 }
 
 export type ConversationRailMembershipRefreshPlan =

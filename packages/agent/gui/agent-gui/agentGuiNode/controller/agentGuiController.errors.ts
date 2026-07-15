@@ -8,6 +8,8 @@ export const AGENT_RESUME_SESSION_NOT_LOCAL_ERROR =
   "agent.resume_session_not_local";
 export const AGENT_SETTINGS_REQUIRE_NEW_SESSION_ERROR =
   "agent.settings_require_new_session";
+export const AGENT_SESSION_TITLE_TOO_LONG_REASON =
+  "workspace_agent_session_title_too_long";
 export const AGENT_SESSION_NOT_FOUND_ERROR = "session.not_found";
 export const AGENT_PROVIDER_SESSION_NOT_FOUND_FALLBACK_MESSAGE =
   "The previous agent session can no longer be restored.";
@@ -183,12 +185,29 @@ export function getAgentGUIErrorMessage(error: unknown): string {
     return translate("messages.agentResumeSessionNotLocal");
   if (isSettingsRequireNewSessionErrorCode(code))
     return translate("messages.agentSettingsRequireNewSession");
+  if (getAgentGUIErrorReason(error) === AGENT_SESSION_TITLE_TOO_LONG_REASON) {
+    const maxCharacters = getAgentGUIErrorNumberParam(error, "maxCharacters");
+    return maxCharacters === null
+      ? translate("messages.agentSessionTitleTooLongWithoutLimit")
+      : translate("messages.agentSessionTitleTooLong", { maxCharacters });
+  }
   if (error && typeof error === "object") {
     const debugMessage = (error as { debugMessage?: unknown }).debugMessage;
     if (typeof debugMessage === "string" && debugMessage.trim())
       return debugMessage.trim();
   }
   return error instanceof Error ? error.message : String(error);
+}
+
+function getAgentGUIErrorNumberParam(
+  error: unknown,
+  key: string
+): number | null {
+  if (!error || typeof error !== "object") return null;
+  const params = (error as { params?: unknown }).params;
+  if (!params || typeof params !== "object") return null;
+  const value = (params as Record<string, unknown>)[key];
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
 }
 
 export function getAgentGUIRawErrorMessage(error: unknown): string | null {

@@ -2186,6 +2186,8 @@ export const updateWorkspaceAgentSessionSettings = <
 
 /**
  * Update one workspace agent session title
+ *
+ * Titles longer than 120 Unicode characters return `invalid_request` with reason `workspace_agent_session_title_too_long` and `params.maxCharacters` set to 120.
  */
 export const updateWorkspaceAgentSessionTitle = <
   ThrowOnError extends boolean = false

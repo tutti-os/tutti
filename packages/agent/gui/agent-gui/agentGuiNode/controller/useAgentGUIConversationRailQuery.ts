@@ -1,8 +1,13 @@
-import { selectWorkspaceAgentConsumerSessions } from "@tutti-os/agent-activity-core";
+import {
+  selectWorkspaceAgentConsumerSessions,
+  type AgentSessionEngineState
+} from "@tutti-os/agent-activity-core";
 import { useDeferredValue, useEffect, useMemo, useRef } from "react";
 import { useAgentActivityRuntime } from "../../../agentActivityRuntime";
 import { projectCanonicalAgentGUIConversationSummaries } from "../../../contexts/workspace/presentation/renderer/agentGuiConversationList/useAgentGuiConversationList";
 import { useEngineSelector } from "../../../shared/engine/useEngineSelector";
+import type { AgentGUIConversationSummary } from "../model/agentGuiConversationModel";
+import { conversationSummariesRenderEqual } from "../model/agentGuiConversationRail";
 import type { AgentGUINodeViewModel } from "../model/agentGuiNodeTypes";
 import {
   AgentGUIConversationRailQueryController,
@@ -70,31 +75,47 @@ export function useAgentGUIConversationRailQuery({
     identitySnapshot,
     Object.is
   );
-  const engineConsumerSessions = useEngineSelector(
+  const runtimeRailConversations = useEngineSelector(
     engine,
-    selectWorkspaceAgentConsumerSessions
+    selectRuntimeRailConversations,
+    conversationSummaryListsRenderEqual
   );
-  const runtimeRailConversations = useMemo(
-    () => projectCanonicalAgentGUIConversationSummaries(engineConsumerSessions),
-    [engineConsumerSessions]
-  );
-
   return useMemo(
     () => ({
       ...querySnapshot,
-      loadMoreSectionConversations: (
-        section: Parameters<
-          AgentGUIConversationRailQueryController["loadMoreSectionConversations"]
-        >[0]
-      ) => controller.loadMoreSectionConversations(section),
+      loadMoreSectionConversations: controller.loadMoreSectionConversations,
       railSearch: {
         ...querySnapshot.railSearch,
-        loadMore: () => controller.loadMoreSearchResults(),
-        retry: () => controller.retrySearchResults()
+        loadMore: controller.loadMoreSearchResults,
+        retry: controller.retrySearchResults
       },
       runtimeRailConversations
     }),
     [controller, querySnapshot, runtimeRailConversations]
+  );
+}
+
+function selectRuntimeRailConversations(
+  state: AgentSessionEngineState
+): AgentGUIConversationSummary[] {
+  return projectCanonicalAgentGUIConversationSummaries(
+    selectWorkspaceAgentConsumerSessions(state)
+  );
+}
+
+function conversationSummaryListsRenderEqual(
+  left: readonly AgentGUIConversationSummary[],
+  right: readonly AgentGUIConversationSummary[]
+): boolean {
+  return (
+    left.length === right.length &&
+    left.every((conversation, index) => {
+      const other = right[index];
+      return (
+        other !== undefined &&
+        conversationSummariesRenderEqual(conversation, other)
+      );
+    })
   );
 }
 

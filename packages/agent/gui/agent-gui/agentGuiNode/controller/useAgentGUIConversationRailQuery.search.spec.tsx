@@ -1,4 +1,7 @@
-import { normalizeAgentActivitySession } from "@tutti-os/agent-activity-core";
+import {
+  normalizeAgentActivitySession,
+  type AgentActivityTurn
+} from "@tutti-os/agent-activity-core";
 import { act, renderHook, waitFor } from "@testing-library/react";
 import type { PropsWithChildren } from "react";
 import { describe, expect, it } from "vitest";
@@ -72,6 +75,10 @@ describe("useAgentGUIConversationRailQuery search", () => {
     expect(
       engine.getSnapshot().sessionLifecycle.sessionsById["session-1"]?.title
     ).toBe("backend first result");
+    const loadMoreSectionConversations =
+      result.current.loadMoreSectionConversations;
+    const loadMoreSearchResults = result.current.railSearch.loadMore;
+    const retrySearchResults = result.current.railSearch.retry;
 
     await act(async () => {
       result.current.railSearch.loadMore();
@@ -88,6 +95,11 @@ describe("useAgentGUIConversationRailQuery search", () => {
       "session-2"
     ]);
     expect(result.current.railSearch.hasMore).toBe(false);
+    expect(result.current.loadMoreSectionConversations).toBe(
+      loadMoreSectionConversations
+    );
+    expect(result.current.railSearch.loadMore).toBe(loadMoreSearchResults);
+    expect(result.current.railSearch.retry).toBe(retrySearchResults);
     expect(
       engine.getSnapshot().sessionLifecycle.sessionsById["session-2"]?.title
     ).toBe("backend older result");
@@ -134,7 +146,74 @@ describe("useAgentGUIConversationRailQuery search", () => {
     );
     expect(result.current.railSearch.failed).toBe(false);
   });
+
+  it("keeps the rail query idle when a streaming turn update does not change rail presentation", async () => {
+    const engine = createTestAgentSessionEngine("workspace-1");
+    engine.dispatch({
+      type: "session/upserted",
+      session: normalizeAgentActivitySession({
+        activeTurnId: "turn-1",
+        agentSessionId: "session-1",
+        agentTargetId: "target-1",
+        cwd: "/workspace",
+        latestTurnInteractions: [],
+        pendingInteractions: [],
+        provider: "codex",
+        title: "streaming session",
+        updatedAtUnixMs: 1,
+        workspaceId: "workspace-1"
+      })
+    });
+    engine.dispatch({ type: "turn/upserted", turn: runningTurn(1) });
+    const runtime = {
+      getSessionEngine: () => engine
+    } as unknown as AgentActivityRuntime;
+    const wrapper = ({ children }: PropsWithChildren) => (
+      <AgentActivityRuntimeProvider runtime={runtime}>
+        {children}
+      </AgentActivityRuntimeProvider>
+    );
+    let renderCount = 0;
+    const { result } = renderHook(
+      () => {
+        renderCount += 1;
+        return useAgentGUIConversationRailQuery({
+          activeConversationId: "session-1",
+          conversationFilter: { kind: "all" },
+          conversationQuery: "",
+          previewMode: true,
+          sectionAgentTargetFallbackId: null,
+          userProjects: [],
+          workspaceId: "workspace-1"
+        });
+      },
+      { wrapper }
+    );
+
+    await waitFor(() =>
+      expect(result.current.runtimeRailConversations).toHaveLength(1)
+    );
+    const previousResult = result.current;
+    const previousRenderCount = renderCount;
+
+    act(() => {
+      engine.dispatch({ type: "turn/upserted", turn: runningTurn(2) });
+    });
+
+    expect(renderCount).toBe(previousRenderCount);
+    expect(result.current).toBe(previousResult);
+  });
 });
+
+function runningTurn(updatedAtUnixMs: number): AgentActivityTurn {
+  return {
+    agentSessionId: "session-1",
+    phase: "running",
+    startedAtUnixMs: 1,
+    turnId: "turn-1",
+    updatedAtUnixMs
+  };
+}
 
 function searchSession(
   agentSessionId: string,

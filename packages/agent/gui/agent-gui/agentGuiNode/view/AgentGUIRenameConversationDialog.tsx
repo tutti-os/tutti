@@ -27,10 +27,14 @@ export const AgentGUIRenameConversationDialog = memo(
     "use memo";
     const [title, setTitle] = useState("");
     const [isSaving, setIsSaving] = useState(false);
+    const isSavingRef = useRef(false);
+    const keyboardActivationRef = useRef(false);
     const inputRef = useRef<HTMLInputElement | null>(null);
     const trimmedTitle = title.trim();
     useEffect(() => {
       if (!open || !conversation) {
+        isSavingRef.current = false;
+        keyboardActivationRef.current = false;
         setTitle("");
         setIsSaving(false);
         return;
@@ -49,14 +53,15 @@ export const AgentGUIRenameConversationDialog = memo(
       return () => window.clearTimeout(timer);
     }, [open, conversation?.id]);
     const closeRenameDialog = useCallback(() => {
-      if (!isSaving) {
+      if (!isSavingRef.current) {
         onOpenChange(false);
       }
-    }, [isSaving, onOpenChange]);
+    }, [onOpenChange]);
     const confirmRename = useCallback(() => {
-      if (!conversation || isSaving || !trimmedTitle) {
+      if (!conversation || isSavingRef.current || !trimmedTitle) {
         return;
       }
+      isSavingRef.current = true;
       setIsSaving(true);
       void onRename(conversation.id, trimmedTitle)
         .then(() => {
@@ -66,9 +71,11 @@ export const AgentGUIRenameConversationDialog = memo(
           inputRef.current?.focus();
         })
         .finally(() => {
+          isSavingRef.current = false;
+          keyboardActivationRef.current = false;
           setIsSaving(false);
         });
-    }, [conversation, isSaving, onOpenChange, onRename, trimmedTitle]);
+    }, [conversation, onOpenChange, onRename, trimmedTitle]);
     return (
       <ConfirmationDialog
         cancelLabel={labels.cancel}
@@ -99,7 +106,31 @@ export const AgentGUIRenameConversationDialog = memo(
               size="dialog"
               type="button"
               variant="default"
-              onClick={confirmRename}
+              onClick={(event) => {
+                if (event.detail !== 0) {
+                  return;
+                }
+                if (keyboardActivationRef.current) {
+                  keyboardActivationRef.current = false;
+                  return;
+                }
+                confirmRename();
+              }}
+              onKeyDown={(event) => {
+                if (
+                  (event.key === "Enter" || event.key === " ") &&
+                  !event.repeat
+                ) {
+                  event.preventDefault();
+                  keyboardActivationRef.current = true;
+                  confirmRename();
+                }
+              }}
+              onPointerUp={(event) => {
+                if (event.button === 0) {
+                  confirmRename();
+                }
+              }}
             >
               {labels.renameSessionSave}
             </Button>

@@ -124,9 +124,12 @@ func TestServiceUpdateTitleRejectsOverlongTitle(t *testing.T) {
 	service := newIsolatedAgentService(runtime)
 	service.SessionReader = &fakeSessionReader{}
 
-	_, err := service.UpdateTitle(context.Background(), "ws-1", "session-1", strings.Repeat("好", maxSessionTitleRunes+1))
+	_, err := service.UpdateTitle(context.Background(), "ws-1", "session-1", strings.Repeat("好", MaxSessionTitleRunes+1))
 	if !errors.Is(err, ErrInvalidArgument) {
 		t.Fatalf("UpdateTitle error = %v, want ErrInvalidArgument", err)
+	}
+	if !errors.Is(err, ErrSessionTitleTooLong) {
+		t.Fatalf("UpdateTitle error = %v, want ErrSessionTitleTooLong", err)
 	}
 }
 

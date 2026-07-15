@@ -186,7 +186,9 @@ export class AgentGUIConversationRailQueryController {
     this.requestSearch();
   }
 
-  loadMoreSectionConversations(section: ConversationSection): void {
+  readonly loadMoreSectionConversations = (
+    section: ConversationSection
+  ): void => {
     const scopeKey = this.railSectionQueryKey;
     if (
       this.scope?.previewMode ||
@@ -303,9 +305,9 @@ export class AgentGUIConversationRailQueryController {
           this.pagingAbortControllers.delete(section.id);
         }
       });
-  }
+  };
 
-  loadMoreSearchResults(): void {
+  readonly loadMoreSearchResults = (): void => {
     const listSessionsPage = this.runtime.listSessionsPage;
     if (
       !this.searchEnabled() ||
@@ -368,12 +370,12 @@ export class AgentGUIConversationRailQueryController {
         };
         this.emit();
       });
-  }
+  };
 
-  retrySearchResults(): void {
+  readonly retrySearchResults = (): void => {
     if (!this.searchQuery || !this.searchEnabled()) return;
     this.requestSearch();
-  }
+  };
 
   private handleEngineState(state: AgentSessionEngineState): void {
     const next = membershipRecords(state);

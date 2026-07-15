@@ -19,3 +19,13 @@ func TestClassifyTerminalRuntimeOperationFailureIsNotRetryable(t *testing.T) {
 		t.Fatalf("classified = %#v, want stable terminal failure reason", classified)
 	}
 }
+
+func TestClassifySessionTitleTooLongHasStableReasonAndLimit(t *testing.T) {
+	classified := Classify(agentservice.ErrSessionTitleTooLong)
+	if classified.Reason != ReasonWorkspaceAgentSessionTitleTooLong {
+		t.Fatalf("reason = %q, want %q", classified.Reason, ReasonWorkspaceAgentSessionTitleTooLong)
+	}
+	if classified.Params["maxCharacters"] != agentservice.MaxSessionTitleRunes {
+		t.Fatalf("params = %#v, want maxCharacters = %d", classified.Params, agentservice.MaxSessionTitleRunes)
+	}
+}

@@ -316,6 +316,26 @@ describe("projectConversationRailSectionsWithActiveConversation", () => {
     });
   });
 
+  it("reuses the active row when its project is render-equal to the section project", () => {
+    const active = {
+      ...conversation("active"),
+      project: {
+        id: "workspace",
+        label: "Workspace",
+        path: "/workspace",
+        sectionKey: "project:/workspace"
+      }
+    };
+
+    const projected = projectConversationRailSectionsWithActiveConversation({
+      activeConversation: active,
+      labels,
+      sections: section([active])
+    });
+
+    expect(projected.activeOverlay?.conversation).toBe(active);
+  });
+
   it("overlays only the missing active row into its matching server section", () => {
     const active = {
       ...conversation("active"),

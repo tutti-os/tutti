@@ -383,22 +383,38 @@
   Do not leave it enabled during normal development: it tracks every component
   and hook, and restoring a large AgentGUI session directory can then block the
   renderer long enough to keep Workbench hydration and the Dock non-interactive.
+  For AgentGUI render storms, trace the full
+  `engine -> selector -> projection -> controller -> section` chain. Separate
+  real summary-field changes from reference-only array, object, or callback
+  changes; a memoized leaf cannot contain churn created at the selector boundary.
 - Root cause:
   React StrictMode can intentionally replay setup/cleanup in development, but a
   continuously increasing render count usually means a parent is passing a new
   object/function every render or an effect writes state from a dependency that
-  changes on every render.
+  changes on every render. An external-store selector can also project a fresh
+  list for every unrelated engine event, after which a container rebuilds command
+  callbacks and fans one update out to every list section. A render-budget test
+  that injects an already-stable view model bypasses this production chain and
+  cannot detect that regression.
 - Fix:
   Stabilize the value at the ownership boundary, or remove derived presentation
   values from bidirectional state. For external/workbench state, only sync
-  canonical identifiers and derive display text from the owning service.
+  canonical identifiers and derive display text from the owning service. In
+  AgentGUI, select the narrow render projection with a render-field equality
+  function, keep command callbacks stable, and derive the active row from the
+  same stabilized conversation list.
 - Validation:
   With why-did-you-render enabled, reproduce once and confirm the noisy
   component lists the expected prop or hook difference. Then disable the tool
-  and run the affected renderer tests plus desktop typecheck.
+  and run the affected renderer tests plus desktop typecheck. AgentGUI budget
+  tests must dispatch a real engine update and assert the unrelated Rail subtree
+  stays at zero renders; do not replace this with a manual view-model rerender
+  that reuses the Rail reference by construction.
 - References:
   [main.tsx](../../../apps/desktop/src/renderer/src/main.tsx)
   [whyDidYouRender.ts](../../../apps/desktop/src/renderer/src/lib/whyDidYouRender.ts)
+  [useAgentGUIConversationRailQuery.ts](../../../packages/agent/gui/agent-gui/agentGuiNode/controller/useAgentGUIConversationRailQuery.ts)
+  [useAgentGUIConversationRailQuery.search.spec.tsx](../../../packages/agent/gui/agent-gui/agentGuiNode/controller/useAgentGUIConversationRailQuery.search.spec.tsx)
 
 ### Dense list panel stutters when mounted or resized
 
@@ -466,3 +482,54 @@
 - References:
   [StandaloneAgentToolSidebar.tsx](../../../apps/desktop/src/renderer/src/features/workspace-workbench/ui/StandaloneAgentToolSidebar.tsx)
   [standaloneAgentWindowBounds.ts](../../../apps/desktop/src/main/windows/standaloneAgentWindowBounds.ts)
+
+### Dialog action reacts to Enter but ignores pointer clicks
+
+- Symptom:
+  A dialog action succeeds from an input's Enter handler, but clicking its
+  visible action button does nothing. No request, caught error, or busy state is
+  produced.
+- Quick checks:
+  Trace `pointerdown`, `pointerup`, `click`, and the command boundary without
+  logging field contents. If both pointer events arrive but `click` and the
+  command do not, stop debugging the daemon or persistence layer.
+- Root cause:
+  Electron, a modal interaction layer, or surrounding Workbench chrome can
+  suppress the synthesized `click` even though the button receives the pointer
+  sequence. A handler wired only to `onClick` therefore never runs.
+- Fix:
+  Handle the primary `pointerup` as the pointer activation boundary. Preserve
+  keyboard activation explicitly, retain an assistive-technology click path,
+  and guard the async action with a synchronous in-flight ref so multiple event
+  paths cannot dispatch the command twice.
+- Validation:
+  Cover pointer activation, the following synthesized mouse click, keyboard
+  activation, blank input, and cancellation. Assert the command runs exactly
+  once for each accepted action.
+- References:
+  [AgentGUIRenameConversationDialog.tsx](../../../packages/agent/gui/agent-gui/agentGuiNode/view/AgentGUIRenameConversationDialog.tsx)
+
+### Daemon validation error appears as untranslated developer text
+
+- Symptom:
+  A renderer action shows an English daemon message such as a validation
+  failure while the UI locale is not English.
+- Quick checks:
+  Inspect the protocol error's `code`, `reason`, and `params`. If the reason is
+  generic and the UI falls through to `developerMessage`, the transport lost
+  the stable domain identity needed by i18n.
+- Root cause:
+  The daemon classified a specific business validation error as a generic
+  request failure. The renderer then had no stable key and exposed diagnostic
+  text as user-facing copy.
+- Fix:
+  Define a stable daemon error identity, publish a documented protocol `reason`
+  with interpolation-only `params`, then translate that reason in the owning UI
+  package. Never infer user-facing errors by matching developer-message text.
+- Validation:
+  Test service error identity, protocol classification and params, every locale
+  dictionary, and renderer mapping while an English `developerMessage` is
+  present. Run API-generation and i18n consistency checks.
+- References:
+  [apierrors.go](../../../services/tuttid/apierrors/apierrors.go)
+  [agentGuiController.errors.ts](../../../packages/agent/gui/agent-gui/agentGuiNode/controller/agentGuiController.errors.ts)

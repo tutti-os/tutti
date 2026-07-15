@@ -12,6 +12,9 @@ export const enMessages = {
   agentSessionReconnecting: "Reconnecting to the live agent session…",
   agentSettingsRequireNewSession:
     "This model can only be used in a new session to preserve context.",
+  agentSessionTitleTooLong:
+    "Session title must be {{maxCharacters}} characters or fewer.",
+  agentSessionTitleTooLongWithoutLimit: "Session title is too long.",
   agentPermissionModeAppliesNextTurn:
     "Permission mode will apply starting with your next message.",
   agentThisSessionMentionLabel: "this session",

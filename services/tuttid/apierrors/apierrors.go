@@ -73,6 +73,7 @@ const (
 	ReasonWorkspaceFileNotFound                          = "workspace_file_not_found"
 	ReasonWorkspaceFileServiceUnavailable                = "workspace_file_service_unavailable"
 	ReasonWorkspaceAgentSessionNotFound                  = "workspace_agent_session_not_found"
+	ReasonWorkspaceAgentSessionTitleTooLong              = "workspace_agent_session_title_too_long"
 	ReasonWorkspaceAgentSessionUnavailable               = "workspace_agent_session_service_unavailable"
 	ReasonAgentProviderUnavailable                       = "agent_provider_unavailable"
 	ReasonAgentRuntimeOperationReconciling               = "agent_runtime_operation_reconciling"
@@ -407,6 +408,12 @@ func Classify(err error) *ProtocolError {
 		return WorkspaceTerminalNotFound(WithCause(err))
 	case errors.Is(err, workspaceservice.ErrTerminalNotRunning):
 		return InvalidRequest(ReasonWorkspaceTerminalNotRunning, WithCause(err))
+	case errors.Is(err, agentservice.ErrSessionTitleTooLong):
+		return InvalidRequest(
+			ReasonWorkspaceAgentSessionTitleTooLong,
+			WithCause(err),
+			WithParams(map[string]any{"maxCharacters": agentservice.MaxSessionTitleRunes}),
+		)
 	case errors.Is(err, agentservice.ErrInvalidArgument):
 		return InvalidRequest(ReasonMalformedRequest, WithCause(err))
 	case errors.Is(err, agentservice.ErrPromptImageUnsupported):

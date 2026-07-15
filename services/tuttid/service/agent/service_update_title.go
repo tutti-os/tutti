@@ -7,7 +7,13 @@ import (
 	"unicode/utf8"
 )
 
-const maxSessionTitleRunes = 120
+const MaxSessionTitleRunes = 120
+
+var ErrSessionTitleTooLong = fmt.Errorf(
+	"%w: title must be at most %d characters",
+	ErrInvalidArgument,
+	MaxSessionTitleRunes,
+)
 
 func (s *Service) UpdateTitle(ctx context.Context, workspaceID string, agentSessionID string, title string) (Session, error) {
 	workspaceID = strings.TrimSpace(workspaceID)
@@ -19,8 +25,8 @@ func (s *Service) UpdateTitle(ctx context.Context, workspaceID string, agentSess
 	if title == "" {
 		return Session{}, fmt.Errorf("%w: title is required", ErrInvalidArgument)
 	}
-	if utf8.RuneCountInString(title) > maxSessionTitleRunes {
-		return Session{}, fmt.Errorf("%w: title must be at most %d characters", ErrInvalidArgument, maxSessionTitleRunes)
+	if utf8.RuneCountInString(title) > MaxSessionTitleRunes {
+		return Session{}, ErrSessionTitleTooLong
 	}
 	updater, ok := s.SessionReader.(SessionTitleUpdater)
 	if !ok {
