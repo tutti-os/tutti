@@ -3,14 +3,8 @@ import {
   type WorkbenchSnapshot
 } from "@tutti-os/workbench-snapshot";
 import type { TuttidClient } from "@tutti-os/client-tuttid-ts";
-import {
-  preserveWorkspaceWallpaperSnapshotMetadata,
-  replaceWorkspaceWallpaperSnapshotMetadata
-} from "../../workspaceWallpaper.ts";
-import {
-  preserveWorkspaceOnboardingSnapshotMetadata,
-  replaceWorkspaceOnboardingSnapshotMetadata
-} from "../../workspaceOnboarding.ts";
+import { replaceWorkspaceWallpaperSnapshotMetadata } from "../../workspaceWallpaper.ts";
+import { replaceWorkspaceOnboardingSnapshotMetadata } from "../../workspaceOnboarding.ts";
 import type { WorkbenchSnapshotRepositoryPort } from "../workbenchHostPorts.ts";
 
 export type DesktopWorkspaceWorkbenchProductMetadataOwner =
@@ -144,25 +138,27 @@ function mergeProductMetadata(input: {
   owner: DesktopWorkspaceWorkbenchProductMetadataOwner | null;
   snapshot: WorkbenchSnapshot;
 }): WorkbenchSnapshot {
-  const snapshotWithOnboarding =
-    input.owner === "onboarding"
-      ? preserveWorkspaceOnboardingSnapshotMetadata(
-          input.cachedSnapshot,
-          input.snapshot
-        )
-      : replaceWorkspaceOnboardingSnapshotMetadata(
-          input.cachedSnapshot,
-          input.snapshot
-        );
-  return input.owner === "wallpaper"
-    ? preserveWorkspaceWallpaperSnapshotMetadata(
-        input.cachedSnapshot,
-        snapshotWithOnboarding
-      )
-    : replaceWorkspaceWallpaperSnapshotMetadata(
-        input.cachedSnapshot,
-        snapshotWithOnboarding
-      );
+  if (input.owner === "onboarding") {
+    return replaceWorkspaceOnboardingSnapshotMetadata(
+      input.snapshot,
+      input.cachedSnapshot ?? input.snapshot
+    );
+  }
+  if (input.owner === "wallpaper") {
+    return replaceWorkspaceWallpaperSnapshotMetadata(
+      input.snapshot,
+      input.cachedSnapshot ?? input.snapshot
+    );
+  }
+
+  const snapshotWithOnboarding = replaceWorkspaceOnboardingSnapshotMetadata(
+    input.cachedSnapshot,
+    input.snapshot
+  );
+  return replaceWorkspaceWallpaperSnapshotMetadata(
+    input.cachedSnapshot,
+    snapshotWithOnboarding
+  );
 }
 
 function noop(): void {}

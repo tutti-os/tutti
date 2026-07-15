@@ -352,7 +352,7 @@ test("queued host saves cannot restore stale wallpaper metadata over a newer pro
   await repository.load("workspace-1");
   const blockingHostSave = repository.save(
     "workspace-1",
-    createSnapshot("blocking-host")
+    createSnapshot("blocking-host", "current-wallpaper-node")
   );
   await Promise.resolve();
   const wallpaperSave = repository.saveProductMetadata(
@@ -372,6 +372,11 @@ test("queued host saves cannot restore stale wallpaper metadata over a newer pro
   assert.equal(
     readWorkspaceWallpaperIdFromSnapshot(persistedSnapshots[1]),
     "ocean"
+  );
+  assert.equal(persistedSnapshots[1]?.metadata?.testRevision, "blocking-host");
+  assert.deepEqual(
+    persistedSnapshots[1]?.nodes.map((node) => node.id),
+    ["current-wallpaper-node"]
   );
   assert.equal(
     readWorkspaceWallpaperIdFromSnapshot(persistedSnapshots[2]),
@@ -406,7 +411,7 @@ test("queued host saves cannot restore stale onboarding metadata over a newer pr
   await repository.load("workspace-1");
   const blockingHostSave = repository.save(
     "workspace-1",
-    createSnapshot("blocking-host")
+    createSnapshot("blocking-host", "current-onboarding-node")
   );
   await Promise.resolve();
   const onboardingSave = repository.saveProductMetadata(
@@ -423,6 +428,11 @@ test("queued host saves cannot restore stale onboarding metadata over a newer pr
   assert.deepEqual(
     persistedSnapshots[1]?.metadata?.workspaceOnboarding,
     updatedSnapshot.metadata?.workspaceOnboarding
+  );
+  assert.equal(persistedSnapshots[1]?.metadata?.testRevision, "blocking-host");
+  assert.deepEqual(
+    persistedSnapshots[1]?.nodes.map((node) => node.id),
+    ["current-onboarding-node"]
   );
   assert.deepEqual(
     persistedSnapshots[2]?.metadata?.workspaceOnboarding,
@@ -484,12 +494,24 @@ function createDeferred<T>(): {
   return { promise, resolve };
 }
 
-function createSnapshot(testRevision?: string): WorkbenchSnapshot {
+function createSnapshot(
+  testRevision?: string,
+  nodeID?: string
+): WorkbenchSnapshot {
   return {
     ...(testRevision ? { metadata: { testRevision } } : {}),
     schemaVersion: workbenchSnapshotSchemaVersion,
-    nodes: [],
-    nodeStack: [],
-    activeNodeId: null
+    nodes: nodeID
+      ? [
+          {
+            frame: { height: 400, width: 600, x: 20, y: 20 },
+            id: nodeID,
+            kind: "test",
+            title: nodeID
+          }
+        ]
+      : [],
+    nodeStack: nodeID ? [nodeID] : [],
+    activeNodeId: nodeID ?? null
   };
 }

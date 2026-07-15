@@ -124,6 +124,7 @@ class WorkbenchHostSessionController implements WorkbenchHostRuntimeHandle {
   private readyPromise: Promise<void>;
   private resolveReady: () => void = noop;
   private saveTimer: ReturnType<typeof globalThis.setTimeout> | null = null;
+  private appliedSaveSequence = 0;
   private saveSequence = 0;
   private externalStateUnsubscribe: (() => void) | null = null;
   private leaseUnsubscribe: (() => void) | null = null;
@@ -986,8 +987,9 @@ class WorkbenchHostSessionController implements WorkbenchHostRuntimeHandle {
       if (
         !this.isDisposed &&
         generation === this.loadGeneration &&
-        saveSequence === this.saveSequence
+        saveSequence > this.appliedSaveSequence
       ) {
+        this.appliedSaveSequence = saveSequence;
         this.loadedSnapshot = savedSnapshot;
       }
     }, noop);
