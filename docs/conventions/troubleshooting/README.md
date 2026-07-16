@@ -52,6 +52,7 @@ React rendering, Workbench state, external stores, input composition, and UI per
 - [Effect cleanup leaves mounted refs false in React development](./workbench-renderer.md#effect-cleanup-leaves-mounted-refs-false-in-react-development)
 - [Workbench node body warns about updating WorkbenchNodeLayer during render](./workbench-renderer.md#workbench-node-body-warns-about-updating-workbenchnodelayer-during-render)
 - [Renderer component repeatedly re-renders without visible changes](./workbench-renderer.md#renderer-component-repeatedly-re-renders-without-visible-changes)
+- [Renderer services initialize twice and consume one event twice](./workbench-renderer.md#renderer-services-initialize-twice-and-consume-one-event-twice)
 - [Inline custom-header menu is clipped to the Workbench title bar](./workbench-renderer.md#inline-custom-header-menu-is-clipped-to-the-workbench-title-bar)
 - [Dialog action reacts to Enter but ignores pointer clicks](./workbench-renderer.md#dialog-action-reacts-to-enter-but-ignores-pointer-clicks)
 - [Daemon validation error appears as untranslated developer text](./workbench-renderer.md#daemon-validation-error-appears-as-untranslated-developer-text)

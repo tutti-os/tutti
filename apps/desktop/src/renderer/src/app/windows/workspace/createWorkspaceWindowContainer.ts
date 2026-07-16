@@ -50,6 +50,7 @@ import { createDesktopTuttidClient } from "@renderer/platform/tuttid/createDeskt
 import { startDesktopDaemonConnectionAnalytics } from "@renderer/platform/tuttid/desktopDaemonConnectionAnalytics";
 import type {
   DesktopHostWindowApi,
+  DesktopRuntimeApi,
   DesktopWorkspaceAppExternalHostApi
 } from "@preload/types";
 import type { TuttidClient } from "@tutti-os/client-tuttid-ts";
@@ -57,6 +58,10 @@ import type { IReporterService } from "@renderer/features/analytics/services/rep
 import type { IDesktopRichTextAtService } from "@renderer/features/rich-text-at/services/richTextAtService.interface.ts";
 import type { IWorkspaceUserProjectService } from "@renderer/features/workspace-user-project/services/workspaceUserProjectService.interface.ts";
 import type { IWorkspaceAppCenterService } from "@renderer/features/workspace-app-center/services/workspaceAppCenterService.interface.ts";
+
+const workspaceRendererInstanceId =
+  createWorkspaceWindowInstanceId("workspace-renderer");
+let activeWorkspaceWindowRuntimeCount = 0;
 
 export interface WorkspaceWindowContainerResult {
   agentProviderStatusService: AgentProviderStatusService;
@@ -72,6 +77,8 @@ export interface WorkspaceWindowContainerResult {
   workspaceAppExternalApi?: DesktopWorkspaceAppExternalHostApi;
   workspaceAppCenterService: IWorkspaceAppCenterService;
   workspaceUserProjectService: IWorkspaceUserProjectService;
+  dispose(): void;
+  markCommitted(): void;
 }
 
 export function createWorkspaceWindowContainer(): WorkspaceWindowContainerResult {
@@ -81,6 +88,9 @@ export function createWorkspaceWindowContainer(): WorkspaceWindowContainerResult
   const routeWorkspaceID = routeParameters.get("workspaceId");
   const activeWorkspaceID =
     routeWorkspaceID || environment.startupWorkspaceID || "__default__";
+  const routeView = routeParameters.get("view") || "workspace";
+  const runtimeInstanceId =
+    createWorkspaceWindowInstanceId("workspace-runtime");
   const tuttidClient = createDesktopTuttidClient(desktopApi.runtime);
   const tuttidEventStreamClient = createDesktopTuttidEventStreamClient(
     desktopApi.runtime
@@ -171,21 +181,6 @@ export function createWorkspaceWindowContainer(): WorkspaceWindowContainerResult
   });
   let disposeAgentOutcomeNotificationController: (() => void) | null = null;
   let disposeAgentProviderVisibilityRefresh: (() => void) | null = null;
-  let releasedWindowAnalytics = false;
-  const releaseWindowAnalytics = () => {
-    if (releasedWindowAnalytics) {
-      return;
-    }
-    releasedWindowAnalytics = true;
-    window.removeEventListener("beforeunload", releaseWindowAnalytics);
-    disposeAgentOutcomeNotificationController?.();
-    disposeAgentOutcomeNotificationController = null;
-    disposeAgentProviderVisibilityRefresh?.();
-    disposeAgentProviderVisibilityRefresh = null;
-    predefinePageviewAnalytics?.dispose();
-    daemonConnectionAnalytics.release();
-  };
-  window.addEventListener("beforeunload", releaseWindowAnalytics);
   registerAppUpdateServices(registry, desktopApi, {
     reporterService
   });
@@ -252,7 +247,21 @@ export function createWorkspaceWindowContainer(): WorkspaceWindowContainerResult
       translate,
       workspaceAgentActivityService:
         workspaceAgentServices.workspaceAgentActivityService,
-      workspaceId: activeWorkspaceID
+      workspaceId: activeWorkspaceID,
+      onNotificationEmitted(notification) {
+        logWorkspaceWindowRuntimeDiagnostic(desktopApi.runtime, {
+          details: {
+            agentSessionId: notification.agentSessionId,
+            provider: notification.provider,
+            rendererInstanceId: workspaceRendererInstanceId,
+            runtimeInstanceId,
+            status: notification.status,
+            turnId: notification.turnId,
+            workspaceId: notification.workspaceId
+          },
+          event: "agent_outcome_notification.emitted"
+        });
+      }
     });
   disposeAgentOutcomeNotificationController = () => {
     agentOutcomeNotificationController.dispose();
@@ -298,10 +307,89 @@ export function createWorkspaceWindowContainer(): WorkspaceWindowContainerResult
       await workspaceAgentServices.agentsService.refresh();
     }
   });
+  const container = new InstantiationService(registry.makeCollection());
+  let committed = false;
+  let disposed = false;
+  const dispose = () => {
+    if (disposed) {
+      return;
+    }
+    disposed = true;
+    window.removeEventListener("beforeunload", dispose);
+    logWorkspaceWindowRuntimeDiagnostic(desktopApi.runtime, {
+      details: workspaceWindowRuntimeDiagnosticDetails({
+        activeRuntimeCount: activeWorkspaceWindowRuntimeCount,
+        rendererInstanceId: workspaceRendererInstanceId,
+        routeView,
+        runtimeInstanceId,
+        workspaceId: activeWorkspaceID
+      }),
+      event: "workspace_runtime.dispose_started"
+    });
+    disposeAgentOutcomeNotificationController?.();
+    disposeAgentOutcomeNotificationController = null;
+    disposeAgentProviderVisibilityRefresh?.();
+    disposeAgentProviderVisibilityRefresh = null;
+    workspaceAgentServices.dispose();
+    predefinePageviewAnalytics?.dispose();
+    daemonConnectionAnalytics.release();
+    container.dispose();
+    tuttidEventStreamClient.dispose();
+    activeWorkspaceWindowRuntimeCount = Math.max(
+      0,
+      activeWorkspaceWindowRuntimeCount - 1
+    );
+    logWorkspaceWindowRuntimeDiagnostic(desktopApi.runtime, {
+      details: workspaceWindowRuntimeDiagnosticDetails({
+        activeRuntimeCount: activeWorkspaceWindowRuntimeCount,
+        rendererInstanceId: workspaceRendererInstanceId,
+        routeView,
+        runtimeInstanceId,
+        workspaceId: activeWorkspaceID
+      }),
+      event: "workspace_runtime.disposed"
+    });
+  };
+  const markCommitted = () => {
+    if (committed || disposed) {
+      return;
+    }
+    committed = true;
+    logWorkspaceWindowRuntimeDiagnostic(desktopApi.runtime, {
+      details: workspaceWindowRuntimeDiagnosticDetails({
+        activeRuntimeCount: activeWorkspaceWindowRuntimeCount,
+        rendererInstanceId: workspaceRendererInstanceId,
+        routeView,
+        runtimeInstanceId,
+        workspaceId: activeWorkspaceID
+      }),
+      event: "workspace_runtime.committed"
+    });
+  };
+  activeWorkspaceWindowRuntimeCount += 1;
+  window.addEventListener("beforeunload", dispose);
+  const runtimeDetails = workspaceWindowRuntimeDiagnosticDetails({
+    activeRuntimeCount: activeWorkspaceWindowRuntimeCount,
+    rendererInstanceId: workspaceRendererInstanceId,
+    routeView,
+    runtimeInstanceId,
+    workspaceId: activeWorkspaceID
+  });
+  logWorkspaceWindowRuntimeDiagnostic(desktopApi.runtime, {
+    details: runtimeDetails,
+    event: "workspace_runtime.created"
+  });
+  if (activeWorkspaceWindowRuntimeCount > 1) {
+    logWorkspaceWindowRuntimeDiagnostic(desktopApi.runtime, {
+      details: runtimeDetails,
+      event: "workspace_runtime.duplicate_detected",
+      level: "warn"
+    });
+  }
   return {
     agentProviderStatusService:
       workspaceAgentServices.agentProviderStatusService,
-    container: new InstantiationService(registry.makeCollection()),
+    container,
     desktopApi,
     environmentMode: environment.mode,
     hostWindowApi: desktopApi.host.window,
@@ -313,8 +401,50 @@ export function createWorkspaceWindowContainer(): WorkspaceWindowContainerResult
       workspaceAgentServices.workspaceAgentActivityService,
     workspaceAppCenterService,
     workspaceAppExternalApi: desktopApi.workspaceAppExternal,
-    workspaceUserProjectService
+    workspaceUserProjectService,
+    dispose,
+    markCommitted
   };
+}
+
+function createWorkspaceWindowInstanceId(prefix: string): string {
+  return typeof globalThis.crypto?.randomUUID === "function"
+    ? globalThis.crypto.randomUUID()
+    : `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+}
+
+function workspaceWindowRuntimeDiagnosticDetails(input: {
+  activeRuntimeCount: number;
+  rendererInstanceId: string;
+  routeView: string;
+  runtimeInstanceId: string;
+  workspaceId: string;
+}): Record<string, unknown> {
+  return {
+    activeRuntimeCount: input.activeRuntimeCount,
+    rendererInstanceId: input.rendererInstanceId,
+    routeView: input.routeView,
+    runtimeInstanceId: input.runtimeInstanceId,
+    workspaceId: input.workspaceId
+  };
+}
+
+function logWorkspaceWindowRuntimeDiagnostic(
+  runtimeApi: Pick<DesktopRuntimeApi, "logRendererDiagnostic">,
+  input: {
+    details: Record<string, unknown>;
+    event: string;
+    level?: "warn";
+  }
+): void {
+  void runtimeApi
+    .logRendererDiagnostic({
+      details: input.details,
+      event: input.event,
+      ...(input.level ? { level: input.level } : {}),
+      source: "workspace-window-runtime"
+    })
+    .catch(() => {});
 }
 
 function resolveWorkspaceRichTextAgentIconUrl(provider: string | undefined) {

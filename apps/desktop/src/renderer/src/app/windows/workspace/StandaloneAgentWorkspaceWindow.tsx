@@ -1,9 +1,14 @@
 import { StandaloneAgentWorkbench } from "@renderer/features/workspace-workbench/ui/StandaloneAgentWorkbench.tsx";
 import { WorkspaceWindowContainerHost } from "./WorkspaceWindowContainerHost.tsx";
+import type { WorkspaceWindowContainerResult } from "./createWorkspaceWindowContainer.ts";
 
-export function StandaloneAgentWorkspaceWindow() {
+export function StandaloneAgentWorkspaceWindow({
+  containerInput
+}: {
+  containerInput: WorkspaceWindowContainerResult;
+}) {
   return (
-    <WorkspaceWindowContainerHost>
+    <WorkspaceWindowContainerHost containerInput={containerInput}>
       {({
         agentProviderStatusService,
         desktopApi,

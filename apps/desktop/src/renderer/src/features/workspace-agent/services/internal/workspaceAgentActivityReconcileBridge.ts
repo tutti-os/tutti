@@ -50,6 +50,8 @@ export abstract class WorkspaceAgentActivityReconcileBridge {
     string,
     { data: unknown; eventType: "state_patch" }
   >();
+  private readonly eventStreamDisposables: Array<() => void> = [];
+  private disposed = false;
   private eventStreamStarted = false;
 
   protected constructor(
@@ -63,6 +65,9 @@ export abstract class WorkspaceAgentActivityReconcileBridge {
   ): WorkspaceAgentSessionEngineHost;
 
   protected entry(workspaceId: string): WorkspaceAgentSessionEngineHost {
+    if (this.disposed) {
+      throw new Error("Workspace agent activity service is disposed");
+    }
     const normalizedWorkspaceId = normalizeWorkspaceId(workspaceId);
     const existing = this.entries.get(normalizedWorkspaceId);
     if (existing) return existing;
@@ -113,6 +118,9 @@ export abstract class WorkspaceAgentActivityReconcileBridge {
     workspaceId: string,
     listener: (event: unknown) => void
   ): () => void {
+    if (this.disposed) {
+      return () => {};
+    }
     const normalizedWorkspaceId = normalizeWorkspaceId(workspaceId);
     let listeners = this.sessionEventListenersByWorkspaceId.get(
       normalizedWorkspaceId
@@ -137,8 +145,31 @@ export abstract class WorkspaceAgentActivityReconcileBridge {
   onModelCatalogInvalidated(
     listener: (event: WorkspaceAgentModelCatalogInvalidatedEvent) => void
   ): () => void {
+    if (this.disposed) {
+      return () => {};
+    }
     this.modelCatalogInvalidatedListeners.add(listener);
     return () => this.modelCatalogInvalidatedListeners.delete(listener);
+  }
+
+  dispose(): void {
+    if (this.disposed) {
+      return;
+    }
+    this.disposed = true;
+    for (const entry of this.entries.values()) {
+      entry.dispose();
+    }
+    this.entries.clear();
+    for (const dispose of this.eventStreamDisposables.splice(0)) {
+      dispose();
+    }
+    this.sessionEventListenersByWorkspaceId.clear();
+    this.modelCatalogInvalidatedListeners.clear();
+    this.snapshotProjectors.clear();
+    this.liveReconcileSessionKeys.clear();
+    this.liveReconcileInFlightSessionKeys.clear();
+    this.latestStateEventBySessionKey.clear();
   }
 
   protected async fetchActivitySessionDetail(
@@ -360,14 +391,16 @@ export abstract class WorkspaceAgentActivityReconcileBridge {
   private subscribeWorkspaceEventStream(workspaceId: string): void {
     const eventStreamClient = this.reconcileDependencies.eventStreamClient;
     if (!eventStreamClient) return;
-    eventStreamClient.subscribe(
-      "agent.activity.updated",
-      (event) => {
-        const payload = event.payload;
-        if (payload.workspaceId.trim() !== workspaceId) return;
-        this.scheduleAgentActivityUpdate(payload);
-      },
-      { scope: { workspaceId } }
+    this.eventStreamDisposables.push(
+      eventStreamClient.subscribe(
+        "agent.activity.updated",
+        (event) => {
+          const payload = event.payload;
+          if (payload.workspaceId.trim() !== workspaceId) return;
+          this.scheduleAgentActivityUpdate(payload);
+        },
+        { scope: { workspaceId } }
+      )
     );
   }
 
@@ -375,22 +408,27 @@ export abstract class WorkspaceAgentActivityReconcileBridge {
     const eventStreamClient = this.reconcileDependencies.eventStreamClient;
     if (!eventStreamClient || this.eventStreamStarted) return;
     this.eventStreamStarted = true;
-    eventStreamClient.subscribe("agent.model.catalog.invalidated", (event) => {
-      this.handleModelCatalogInvalidated({
-        providers: [...event.payload.providers],
-        occurredAtUnixMs: event.payload.occurredAtUnixMs
-      });
-    });
-    eventStreamClient.subscribeConnectionState((state) => {
-      if (state !== "connected" && state !== "disconnected") return;
-      for (const [workspaceId, entry] of this.entries) {
-        entry.engine.dispatch({
-          status: state,
-          type: "engine/connectionChanged",
-          workspaceId
-        });
-      }
-    });
+    this.eventStreamDisposables.push(
+      eventStreamClient.subscribe(
+        "agent.model.catalog.invalidated",
+        (event) => {
+          this.handleModelCatalogInvalidated({
+            providers: [...event.payload.providers],
+            occurredAtUnixMs: event.payload.occurredAtUnixMs
+          });
+        }
+      ),
+      eventStreamClient.subscribeConnectionState((state) => {
+        if (state !== "connected" && state !== "disconnected") return;
+        for (const [workspaceId, entry] of this.entries) {
+          entry.engine.dispatch({
+            status: state,
+            type: "engine/connectionChanged",
+            workspaceId
+          });
+        }
+      })
+    );
     void eventStreamClient.connect().catch((error: unknown) => {
       void this.reconcileDependencies.runtimeApi.logTerminalDiagnostic({
         details: { error: stringifyError(error) },

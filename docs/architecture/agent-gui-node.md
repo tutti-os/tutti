@@ -659,6 +659,13 @@ desktop shell entry. Both the OS workspace route and standalone Agent route
 statically own the body inside their already-lazy route chunks. This avoids a
 second body-level import waterfall after either route begins rendering while
 keeping non-workspace desktop routes outside the AgentGUI graph.
+Before `createRoot().render`, the desktop renderer bootstrap dynamically loads
+and creates exactly one workspace-window runtime for that Electron renderer
+realm. React route components only consume that runtime through props and DI
+context; render, Suspense retry, or route-body remount must not construct a
+second service graph. The runtime owns one event-stream client and releases its
+controllers, subscriptions, DI services, analytics leases, host listeners, and
+event-stream transport through one idempotent `dispose()` on window teardown.
 Every blocking boundary before the real AgentGUI controller mounts uses that
 same startup-shell geometry: the route-level Suspense fallback, workspace
 catalog hydration, and workbench host-session binding.

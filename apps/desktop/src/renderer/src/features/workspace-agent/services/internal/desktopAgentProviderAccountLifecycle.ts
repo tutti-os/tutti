@@ -72,6 +72,16 @@ export class DesktopAgentProviderAccountLifecycle {
     this.dependencies = dependencies;
   }
 
+  dispose(): void {
+    for (const provider of [...this.loginStatusPolls.keys()]) {
+      this.stopStatusPolling(provider);
+    }
+    for (const provider of [...this.pendingLoginTerminals.keys()]) {
+      this.closePendingTerminal(provider);
+    }
+    this.pendingLoginResults.clear();
+  }
+
   now(): number {
     return this.scheduler.now();
   }

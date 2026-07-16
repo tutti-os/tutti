@@ -15,6 +15,7 @@ import { createRendererDiagnosticSink } from "./app/windows/createRendererDiagno
 import { DesktopToastProvider } from "./lib/toast";
 import { registerDesktopPastedTextMention } from "./features/workspace-agent/services/registerDesktopPastedTextMention";
 import { registerDesktopBrowserElementMention } from "./features/workspace-workbench/browser-element-context/registerDesktopBrowserElementMention";
+import type { WorkspaceWindowContainerResult } from "./app/windows/workspace/createWorkspaceWindowContainer.ts";
 import "./style.css";
 
 // Register host-owned agent mention kinds before the first composer/transcript
@@ -33,12 +34,15 @@ const logRendererDiagnostic = createRendererDiagnosticSink();
 installBrowserCrashLogging({
   logRendererDiagnostic
 });
+const workspaceWindowContainer: WorkspaceWindowContainerResult = (
+  await import("./app/windows/workspace/createWorkspaceWindowContainer.ts")
+).createWorkspaceWindowContainer();
 
 const rendererApp =
   import.meta.env.DEV && import.meta.env.VITE_TUTTI_REACT_PROFILER === "1" ? (
     createProfiledRendererApp(logRendererDiagnostic)
   ) : (
-    <RendererApp />
+    <RendererApp workspaceWindowContainer={workspaceWindowContainer} />
   );
 const logReactRootError = createReactRootErrorLogger({
   captureOwnerStack: React.captureOwnerStack,
@@ -73,7 +77,7 @@ function createProfiledRendererApp(
         });
       }}
     >
-      <RendererApp />
+      <RendererApp workspaceWindowContainer={workspaceWindowContainer} />
     </React.Profiler>
   );
 }

@@ -97,6 +97,7 @@ export class DesktopAgentProviderStatusService implements IAgentProviderStatusSe
   private revision = 0;
   private snapshot: AgentProviderStatusSnapshot = emptySnapshot;
   private readonly transientDowngradeCounts = new Map<string, number>();
+  private disposed = false;
 
   constructor(
     dependencies: DesktopAgentProviderStatusServiceDependencies,
@@ -124,6 +125,20 @@ export class DesktopAgentProviderStatusService implements IAgentProviderStatusSe
 
   getRevision(): number {
     return this.revision;
+  }
+
+  dispose(): void {
+    if (this.disposed) {
+      return;
+    }
+    this.disposed = true;
+    this.requestSequence += 1;
+    for (const timer of this.pendingActionStatusPolls.values()) {
+      this.loginStatusPollScheduler.clearTimeout(timer);
+    }
+    this.pendingActionStatusPolls.clear();
+    this.accountLifecycle.dispose();
+    this.listeners.clear();
   }
 
   getSnapshot(): AgentProviderStatusSnapshot {
@@ -639,7 +654,7 @@ export class DesktopAgentProviderStatusService implements IAgentProviderStatusSe
     provider: WorkspaceAgentProvider,
     actionId: string
   ): void {
-    if (!this.isActionPending(provider, actionId)) {
+    if (this.disposed || !this.isActionPending(provider, actionId)) {
       return;
     }
     const key = pendingActionKey(provider, actionId);

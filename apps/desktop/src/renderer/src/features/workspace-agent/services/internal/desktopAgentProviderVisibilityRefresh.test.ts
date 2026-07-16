@@ -32,7 +32,7 @@ test("bindDesktopManagedAgentProviderVisibilityRefresh refreshes managed provide
     }
   };
 
-  bindDesktopManagedAgentProviderVisibilityRefresh(
+  const dispose = bindDesktopManagedAgentProviderVisibilityRefresh(
     {
       async refresh(providers) {
         refreshCalls.push(providers);
@@ -56,6 +56,9 @@ test("bindDesktopManagedAgentProviderVisibilityRefresh refreshes managed provide
   }
 
   assert.deepEqual(refreshCalls, [[...desktopManagedAgentProviders]]);
+  dispose();
+  assert.equal(listeners.get("focus")?.size, 0);
+  assert.equal(listeners.get("visibilitychange")?.size, 0);
 });
 
 test("bindDesktopManagedAgentProviderVisibilityRefresh skips hidden documents", () => {

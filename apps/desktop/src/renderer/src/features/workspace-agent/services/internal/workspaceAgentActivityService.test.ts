@@ -646,6 +646,41 @@ test("WorkspaceAgentActivityService starts session-event streams and preserves u
   assert.deepEqual(await receivedTurnEvent, turnEvent);
 });
 
+test("WorkspaceAgentActivityService dispose releases every event stream subscription", () => {
+  const activeSubscriptions = new Set<symbol>();
+  const subscribe = () => {
+    const id = Symbol("subscription");
+    activeSubscriptions.add(id);
+    return () => activeSubscriptions.delete(id);
+  };
+  const service = new WorkspaceAgentActivityService({
+    eventStreamClient: {
+      connect: async () => {},
+      dispose: () => {},
+      publishIntent: async () => {},
+      subscribe: () => subscribe(),
+      subscribeConnectionState: () => subscribe()
+    } as never,
+    tuttidClient: {
+      listWorkspaceAgentSessions: async () => ({
+        hasMore: false,
+        sessions: [],
+        workspaceId: "ws-1"
+      })
+    } as unknown as TuttidClient,
+    runtimeApi: {
+      logTerminalDiagnostic: async () => {}
+    }
+  });
+
+  service.onSessionEvent("ws-1", () => {});
+  assert.equal(activeSubscriptions.size, 3);
+
+  service.dispose();
+  service.dispose();
+  assert.equal(activeSubscriptions.size, 0);
+});
+
 test("WorkspaceAgentActivityService preserves realtime turn provenance for attention", async () => {
   const listenersByTopic = new Map<string, (event: unknown) => void>();
   const running = workspaceAgentSession({
