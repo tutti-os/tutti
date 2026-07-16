@@ -109,7 +109,9 @@ function createTerminalWorkbenchBodyTestContext({
     >["host"],
     instanceId: data.instanceId,
     instanceKey: data.instanceKey,
+    isDragging: false,
     isFocused,
+    isResizing: false,
     node: {
       data,
       displayMode: "floating",
