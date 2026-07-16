@@ -254,9 +254,11 @@ generic Agent artwork instead of provider-branded entries. Workbench Agent node
 headers show the generic Agent title while the conversation rail is expanded;
 standalone native Agent window headers omit that redundant app title. When the
 conversation rail is collapsed, the title area shows the active conversation's
-agent icon and directory name as soon as a local session id exists; it must not
-wait for provider-side session creation or conversation-title persistence. An
-empty new-conversation home does not show this header identity. The standalone
+agent icon and conversation title as soon as a local session id exists. The
+engine-owned optimistic title bridges conversation-title persistence; the
+localized untitled label, then the Agent directory name, are presentation-only
+fallbacks and must never override an available conversation title. An empty
+new-conversation home does not show this header identity. The standalone
 window keeps engine subscription, identity projection, and header rendering in
 its header vertical module rather than growing the window shell. The conversation
 title remains the detail title while the rail is expanded and the identity used
