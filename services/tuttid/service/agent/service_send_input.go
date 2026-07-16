@@ -7,10 +7,12 @@ import (
 
 	agenthost "github.com/tutti-os/tutti/packages/agent/host"
 	agentactivitybiz "github.com/tutti-os/tutti/services/tuttid/biz/agentactivity"
+	tuttimodeactivationbiz "github.com/tutti-os/tutti/services/tuttid/biz/tuttimodeactivation"
 )
 
 func (s *Service) SendInput(ctx context.Context, workspaceID string, agentSessionID string, input SendInput) (SendInputResult, error) {
-	logAgentSubmitTrace("service.send.entered", workspaceID, agentSessionID, input.Metadata, nil)
+	input.ClientSubmitID = strings.TrimSpace(input.ClientSubmitID)
+	logAgentSubmitTrace("service.send.entered", workspaceID, agentSessionID, input.ClientSubmitID, input.Metadata, nil)
 	nodeStartedAt := time.Now()
 	normalizedContent, _, err := normalizePromptContent(input.Content)
 	if err != nil {
@@ -18,17 +20,36 @@ func (s *Service) SendInput(ctx context.Context, workspaceID string, agentSessio
 		return SendInputResult{}, err
 	}
 	s.reportAgentServiceNodeSuccess(ctx, agentSessionID, "message_send", "content_normalized", "", nodeStartedAt)
-	logAgentSubmitTrace("service.send.content_normalized", workspaceID, agentSessionID, input.Metadata, map[string]any{
+	logAgentSubmitTrace("service.send.content_normalized", workspaceID, agentSessionID, input.ClientSubmitID, input.Metadata, map[string]any{
 		"content_block_count": len(normalizedContent),
 	})
+	hostInput := agenthost.SendInput{
+		CapabilityRefs: append([]CapabilityReference(nil), input.CapabilityRefs...),
+		Content:        normalizedContent, DisplayPrompt: input.DisplayPrompt,
+		Metadata: cloneMetadata(input.Metadata), ClientSubmitID: input.ClientSubmitID, Guidance: input.Guidance,
+	}
+	var preparedTurnID string
+	var preparedSnapshot tuttimodeactivationbiz.TurnSnapshot
+	if _, typedGoal := agenthost.ParseTypedGoalControl(normalizedContent, input.Guidance); !typedGoal {
+		runtimeSession, _ := s.controller().Session(workspaceID, agentSessionID)
+		preparedTurnID, preparedSnapshot, err = s.prepareTuttiModeExec(ctx, workspaceID, agentSessionID, input.Guidance, runtimeSession, "")
+		if err != nil {
+			return SendInputResult{}, err
+		}
+		hostInput.TurnID = preparedTurnID
+		hostInput.TuttiModeSnapshot = runtimeTuttiModeTurnSnapshot(preparedSnapshot)
+	}
 	hostResult, err := s.ApplicationHost().SendInput(ctx,
 		agenthost.SessionRef{WorkspaceID: workspaceID, AgentSessionID: agentSessionID},
-		agenthost.SendInput{
-			Content: normalizedContent, DisplayPrompt: input.DisplayPrompt,
-			Metadata: input.Metadata, ClientSubmitID: input.ClientSubmitID, Guidance: input.Guidance,
-		},
+		hostInput,
 	)
 	if err != nil {
+		if preparedTurnID != "" {
+			abandonErr := s.abandonPreparedTuttiModeExec(context.WithoutCancel(ctx), workspaceID, agentSessionID, preparedTurnID, preparedSnapshot, input.Guidance)
+			if abandonErr != nil {
+				return SendInputResult{}, deliveryUnknownError(abandonErr)
+			}
+		}
 		return SendInputResult{}, err
 	}
 	if hostResult.Kind == "goalControl" && hostResult.GoalControl != nil {
@@ -42,12 +63,22 @@ func (s *Service) SendInput(ctx context.Context, workspaceID string, agentSessio
 		}
 		return SendInputResult{Session: session, Kind: "goalControl", GoalControl: &goal}, nil
 	}
+	if preparedTurnID != "" {
+		if strings.TrimSpace(hostResult.TurnID) != preparedTurnID {
+			return SendInputResult{}, ErrSubmitDeliveryUnknown
+		}
+		if !input.Guidance && s.TuttiModeActivations != nil {
+			if _, err := s.TuttiModeActivations.AcceptTurnSnapshot(ctx, workspaceID, agentSessionID, preparedTurnID); err != nil {
+				return SendInputResult{}, deliveryUnknownError(err)
+			}
+		}
+	}
 	turnID := hostResult.TurnID
 	provider := strings.TrimSpace(hostResult.Session.Provider)
-	logAgentSubmitTrace("service.send.runtime_session_ready", workspaceID, agentSessionID, input.Metadata, nil)
-	logAgentSubmitTrace("service.send.prompt_validated", workspaceID, agentSessionID, input.Metadata, nil)
-	logAgentSubmitTrace("service.send.prompt_prepared", workspaceID, agentSessionID, input.Metadata, map[string]any{"content_block_count": len(normalizedContent)})
-	logAgentSubmitTrace("service.send.exec_resolved", workspaceID, agentSessionID, input.Metadata, map[string]any{
+	logAgentSubmitTrace("service.send.runtime_session_ready", workspaceID, agentSessionID, input.ClientSubmitID, input.Metadata, nil)
+	logAgentSubmitTrace("service.send.prompt_validated", workspaceID, agentSessionID, input.ClientSubmitID, input.Metadata, nil)
+	logAgentSubmitTrace("service.send.prompt_prepared", workspaceID, agentSessionID, input.ClientSubmitID, input.Metadata, map[string]any{"content_block_count": len(normalizedContent)})
+	logAgentSubmitTrace("service.send.exec_resolved", workspaceID, agentSessionID, input.ClientSubmitID, input.Metadata, map[string]any{
 		"turn_id": turnID, "session_status": hostResult.Session.Status, "turn_phase": hostResult.TurnLifecycle.Phase,
 	})
 	nodeStartedAt = time.Now()

@@ -364,6 +364,25 @@
                     "type": "string",
                     "minLength": 1
                   },
+                  "capabilityRefs": {
+                    "type": "array",
+                    "description": "Structured capability provenance attached by the controller-owned initial submission event or lifecycle-neutral native-guidance report and persisted on the canonical turn. It is never provider prompt text.",
+                    "items": {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "required": ["capability", "source"],
+                      "properties": {
+                        "capability": {
+                          "type": "string",
+                          "const": "tutti"
+                        },
+                        "source": {
+                          "type": "string",
+                          "const": "slash_command"
+                        }
+                      }
+                    }
+                  },
                   "phase": {
                     "type": "string",
                     "enum": [

@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { createAgentSessionEngine } from "@tutti-os/agent-activity-core";
+import {
+  createAgentSessionEngine,
+  type EngineCommand
+} from "@tutti-os/agent-activity-core";
 import { dispatchAgentPlanPromptAction } from "./agentPlanPromptDispatch";
 
 describe("dispatchAgentPlanPromptAction", () => {
@@ -82,5 +85,80 @@ describe("dispatchAgentPlanPromptAction", () => {
         workspaceId: "workspace-1"
       })
     ).toBe(false);
+  });
+
+  it("adds Tutti audit provenance to Plan feedback without changing Plan state", async () => {
+    const executed: EngineCommand[] = [];
+    const engine = createAgentSessionEngine({
+      clock: { nowUnixMs: () => 10 },
+      commandPort: {
+        async execute(command) {
+          executed.push(command);
+        }
+      },
+      identity: { origin: "test", workspaceId: "workspace-1" },
+      scheduler: { schedule: () => ({ cancel() {} }) }
+    });
+    engine.dispatch({
+      sessions: [
+        {
+          activeTurnId: null,
+          agentSessionId: "session-1",
+          cwd: "/workspace",
+          latestTurn: {
+            agentSessionId: "session-1",
+            outcome: "completed",
+            phase: "settled",
+            settledAtUnixMs: 2,
+            startedAtUnixMs: 1,
+            turnId: "turn-1",
+            updatedAtUnixMs: 2
+          },
+          latestTurnInteractions: [],
+          pendingInteractions: [],
+          provider: "codex",
+          settings: { planMode: true },
+          title: "Plan with Tutti",
+          tuttiModeActivation: {
+            agentSessionId: "session-1",
+            createdAtUnixMs: 1,
+            currentRevision: {
+              activationId: "tutti-1",
+              createdAtUnixMs: 1,
+              revision: 1,
+              source: "slash_command",
+              status: "active"
+            },
+            id: "tutti-1",
+            status: "active",
+            updatedAtUnixMs: 1,
+            workspaceId: "workspace-1"
+          },
+          updatedAtUnixMs: 2,
+          workspaceId: "workspace-1"
+        }
+      ],
+      type: "session/snapshotReceived"
+    });
+
+    expect(
+      dispatchAgentPlanPromptAction({
+        action: "feedback",
+        agentSessionId: "session-1",
+        engine,
+        feedbackText: "Revise it",
+        nowUnixMs: () => 20,
+        requestId: "turn-1",
+        workspaceId: "workspace-1"
+      })
+    ).toBe(true);
+    await Promise.resolve();
+
+    expect(executed[0]?.type).toBe("queue/sendPrompt");
+    expect(
+      executed[0]?.type === "queue/sendPrompt"
+        ? executed[0].capabilityRefs
+        : null
+    ).toEqual([{ capability: "tutti", source: "slash_command" }]);
   });
 });

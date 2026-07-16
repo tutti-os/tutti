@@ -196,7 +196,7 @@ export function AgentPermissionModeDropdown({
     <Fragment>
       <Select
         open={isSelectOpen}
-        value={selectedValue ?? undefined}
+        value={selectedValue ?? ""}
         disabled={selectDisabled}
         onOpenChange={setIsSelectOpen}
         onValueChange={applyPermissionModeId}

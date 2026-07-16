@@ -1,4 +1,5 @@
 import type { AgentActivitySessionInput } from "../sessionNormalization.ts";
+import { normalizeAgentActivityCapabilityReferences } from "../capabilityReferences.ts";
 import type { SendInputResultValidation } from "./commandResult.validation.ts";
 import type { ScopedSessionResultValidation } from "./commandResult.validation.ts";
 import {
@@ -206,6 +207,9 @@ function requestActivation(
   const runtimeContent = (intent.runtimeContent ?? content).map((block) => ({
     ...block
   }));
+  const capabilityRefs = normalizeAgentActivityCapabilityReferences(
+    intent.capabilityRefs
+  );
   const supersededRequestIds = Object.values(state.activationsByRequestId)
     .filter(
       (record) =>
@@ -215,6 +219,7 @@ function requestActivation(
   const baseState = supersededRequestIds.reduce(deleteActivation, state);
   const recordBase = {
     agentSessionId,
+    ...(capabilityRefs.length > 0 ? { capabilityRefs } : {}),
     ...(intent.automationRuleOverride
       ? {
           automationRuleOverride: {
@@ -248,6 +253,16 @@ function requestActivation(
           agentTargetId: agentTargetId!,
           clientSubmitId: clientSubmitId!,
           mode: "new",
+          ...(intent.initialTuttiModeActivation
+            ? {
+                initialTuttiModeActivation: {
+                  ...intent.initialTuttiModeActivation
+                }
+              }
+            : {}),
+          ...(intent.tuttiModeDraftKey?.trim()
+            ? { tuttiModeDraftKey: intent.tuttiModeDraftKey.trim() }
+            : {}),
           ...(optimisticTitle ? { optimisticTitle } : {})
         }
       : {
@@ -270,6 +285,7 @@ function requestActivation(
       intent.mode === "new"
         ? {
             agentSessionId,
+            ...(capabilityRefs.length > 0 ? { capabilityRefs } : {}),
             agentTargetId: agentTargetId!,
             ...(intent.automationRuleOverride
               ? {
@@ -291,6 +307,13 @@ function requestActivation(
               ? { submitDiagnostics: { ...intent.submitDiagnostics } }
               : {}),
             mode: "new" as const,
+            ...(intent.initialTuttiModeActivation
+              ? {
+                  initialTuttiModeActivation: {
+                    ...intent.initialTuttiModeActivation
+                  }
+                }
+              : {}),
             ...(intent.settings ? { settings: { ...intent.settings } } : {}),
             timeoutMs: NEW_SESSION_ACTIVATION_COMMAND_TIMEOUT_MS,
             ...(intent.title?.trim() ? { title: intent.title.trim() } : {}),
@@ -302,6 +325,7 @@ function requestActivation(
           }
         : {
             agentSessionId,
+            ...(capabilityRefs.length > 0 ? { capabilityRefs } : {}),
             ...(agentTargetId ? { agentTargetId } : {}),
             commandId: `activate:${requestId}`,
             correlationId: requestId,

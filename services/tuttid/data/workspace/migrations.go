@@ -24,6 +24,7 @@ const schemaMigrationWorkspaceIssuesV7 = "workspace_issues_sequential_execution_
 const schemaMigrationWorkspaceIssuesV8 = "workspace_issues_parallel_execution_v1"
 const schemaMigrationWorkspaceIssuesV9 = "workspace_issues_dispatch_paused_v1"
 const schemaMigrationWorkspaceIssuesV10 = "workspace_issues_collaboration_usage_v1"
+const schemaMigrationWorkspaceIssuesV11 = "workspace_issues_tutti_mode_plan_source_v1"
 const schemaMigrationDesktopPreferencesV1 = "desktop_preferences_v1"
 const schemaMigrationDesktopPreferencesAgentDockLayoutV1 = "desktop_preferences_agent_dock_layout_v1"
 const schemaMigrationDesktopPreferencesSleepPreventionModeV1 = "desktop_preferences_sleep_prevention_mode_v1"
@@ -65,6 +66,11 @@ const schemaMigrationCollabRunsUsageV1 = "collab_runs_usage_v1"
 const schemaMigrationAppFactoryJobsV1 = "app_factory_jobs_v1"
 const schemaMigrationAppFactoryJobsV2 = "app_factory_jobs_v2"
 const schemaMigrationAppFactoryJobsV3 = "app_factory_jobs_v3"
+const schemaMigrationWorkspaceWorkflowsV1 = "workspace_workflows_v1"
+const schemaMigrationWorkspaceWorkflowMutationsV2 = "workspace_workflow_mutations_v2"
+const schemaMigrationWorkspaceWorkflowRevisionPathReuseV3 = "workspace_workflow_revision_path_reuse_v3"
+const schemaMigrationTuttiModeActivationsV1 = "tutti_mode_activations_v1"
+const schemaMigrationTuttiModeTurnDispatchV2 = "tutti_mode_turn_dispatch_v2"
 
 func (s *SQLiteStore) Migrate(ctx context.Context) error {
 	if s == nil || s.writeDB == nil {
@@ -146,6 +152,9 @@ INSERT OR IGNORE INTO tuttid_schema_migrations (id, applied_at_unix_ms)
 		return err
 	}
 	if err := s.applyWorkspaceIssuesV10(ctx); err != nil {
+		return err
+	}
+	if err := s.applyWorkspaceIssuesV11(ctx); err != nil {
 		return err
 	}
 
@@ -288,6 +297,21 @@ INSERT OR IGNORE INTO tuttid_schema_migrations (id, applied_at_unix_ms)
 		return err
 	}
 	if err := s.applyAppFactoryJobsV3(ctx); err != nil {
+		return err
+	}
+	if err := s.applyWorkspaceWorkflowsV1(ctx); err != nil {
+		return err
+	}
+	if err := s.applyWorkspaceWorkflowMutationsV2(ctx); err != nil {
+		return err
+	}
+	if err := s.applyWorkspaceWorkflowRevisionPathReuseV3(ctx); err != nil {
+		return err
+	}
+	if err := s.applyTuttiModeActivationsV1(ctx); err != nil {
+		return err
+	}
+	if err := s.applyTuttiModeTurnDispatchV2(ctx); err != nil {
 		return err
 	}
 	return s.openReadPool(ctx)

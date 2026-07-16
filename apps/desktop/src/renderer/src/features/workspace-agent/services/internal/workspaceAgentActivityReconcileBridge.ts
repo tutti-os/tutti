@@ -35,7 +35,7 @@ import type {
   WorkspaceAgentActivityReconcileDependencies
 } from "./workspaceAgentActivityReconcileTypes.ts";
 import { WorkspaceAgentComposerOptionsInvalidationCoordinator } from "./workspaceAgentComposerOptionsInvalidationCoordinator.ts";
-import { subscribeWorkspaceAgentModelConfigurationChanges } from "./workspaceAgentModelConfigurationBridge.ts";
+import { subscribeWorkspaceAgentScopedEvents } from "./workspaceAgentActivityEventSubscriptions.ts";
 
 export abstract class WorkspaceAgentActivityReconcileBridge {
   private readonly reconcileDependencies: WorkspaceAgentActivityReconcileDependencies;
@@ -404,22 +404,12 @@ export abstract class WorkspaceAgentActivityReconcileBridge {
   }
 
   private subscribeWorkspaceEventStream(workspaceId: string): void {
-    const eventStreamClient = this.reconcileDependencies.eventStreamClient;
-    if (!eventStreamClient) return;
-    this.eventStreamDisposables.push(
-      eventStreamClient.subscribe(
-        "agent.activity.updated",
-        (event) => {
-          const payload = event.payload;
-          if (payload.workspaceId.trim() !== workspaceId) return;
-          this.scheduleAgentActivityUpdate(payload);
-        },
-        { scope: { workspaceId } }
-      )
-    );
-    subscribeWorkspaceAgentModelConfigurationChanges({
-      eventStreamClient,
-      listeners: this.modelConfigurationChangedListeners,
+    subscribeWorkspaceAgentScopedEvents({
+      eventStreamClient: this.reconcileDependencies.eventStreamClient,
+      modelConfigurationChangedListeners:
+        this.modelConfigurationChangedListeners,
+      onAgentActivityUpdated: (event) =>
+        this.scheduleAgentActivityUpdate(event),
       sessionEngineHost: this.entries.get(workspaceId),
       workspaceId
     });

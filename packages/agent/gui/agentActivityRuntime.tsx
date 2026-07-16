@@ -32,6 +32,8 @@ import type {
   AgentActivityStartAgentCollaborationInput,
   AgentActivitySubmitInteractiveInput,
   AgentActivitySubmitInteractiveResult,
+  AgentActivityUpdateTuttiModeActivationInput,
+  AgentActivityUpdateTuttiModeActivationResult,
   AgentSessionEngine
 } from "@tutti-os/agent-activity-core";
 import type {
@@ -234,6 +236,7 @@ export interface AgentActivityRuntimeDiagnosticInput {
 interface AgentActivityRuntimeActivateSessionInputBase {
   agentSessionId: string;
   automationRuleOverride?: AgentActivityAutomationRuleOverride | null;
+  capabilityRefs?: AgentActivityCreateSessionInput["capabilityRefs"];
   cwd?: string;
   initialContent?: AgentActivitySendInput["content"];
   /** 仅展示用首轮文本(bundle 折叠成一个 chip);initialContent 仍带展开后的文件。 */
@@ -250,6 +253,7 @@ export type AgentActivityRuntimeActivateSessionInput =
   | (AgentActivityRuntimeActivateSessionInputBase & {
       agentTargetId: string;
       clientSubmitId: string;
+      initialTuttiModeActivation?: AgentActivityCreateSessionInput["initialTuttiModeActivation"];
       mode: "new";
     })
   | (AgentActivityRuntimeActivateSessionInputBase & {
@@ -415,6 +419,9 @@ export interface AgentActivityRuntime {
   updateSessionSettings(
     input: AgentActivityRuntimeUpdateSessionSettingsInput
   ): Promise<AgentActivityRuntimeUpdateSessionSettingsResult>;
+  updateTuttiModeActivation(
+    input: AgentActivityUpdateTuttiModeActivationInput
+  ): Promise<AgentActivityUpdateTuttiModeActivationResult>;
   getSnapshot(workspaceId: string): AgentActivitySnapshot;
   getSessionEngine(workspaceId: string): AgentSessionEngine;
   getSessionSectionsQueryCache?(

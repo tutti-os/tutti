@@ -1,6 +1,7 @@
 import {
   isPendingActivationViable,
-  selectLatestActivationForSession
+  selectLatestActivationForSession,
+  selectTuttiModeDraftIsActive
 } from "@tutti-os/agent-activity-core";
 import { useCallback } from "react";
 import { translate } from "../../../i18n/index";
@@ -55,6 +56,7 @@ export function useAgentGUINewConversationActivation(
     isComposerHomeRef,
     activeSessionState,
     sessionEngine,
+    tuttiModeDraftKey,
     activation,
     currentUserId,
     data,
@@ -179,6 +181,10 @@ export function useAgentGUINewConversationActivation(
         workspaceId,
         fields: { mode: "new" }
       });
+      const initialTuttiModeActive = selectTuttiModeDraftIsActive(
+        sessionEngine.getSnapshot(),
+        tuttiModeDraftKey
+      );
       const requestId = activation.activate({
         mode: "new",
         agentSessionId,
@@ -186,11 +192,23 @@ export function useAgentGUINewConversationActivation(
         ...(submitOptions?.automationRuleOverride
           ? { automationRuleOverride: submitOptions.automationRuleOverride }
           : {}),
+        ...(submitOptions?.capabilityRefs?.length
+          ? { capabilityRefs: submitOptions.capabilityRefs }
+          : {}),
         clientSubmitId: submitTrace.clientSubmitId,
         cwd: selectedProjectPath ?? "",
         initialContent: normalizedInitialContent,
         ...(initialTurnExpected !== undefined ? { initialTurnExpected } : {}),
         initialDisplayPrompt,
+        ...(initialTuttiModeActive
+          ? {
+              initialTuttiModeActivation: {
+                source: "slash_command" as const,
+                status: "active" as const
+              },
+              tuttiModeDraftKey
+            }
+          : {}),
         runtimeContent: toRuntimeSendContent(normalizedInitialContent),
         submitDiagnostics: agentSubmitTraceDiagnostics(submitTrace),
         settings,
@@ -225,6 +243,8 @@ export function useAgentGUINewConversationActivation(
       isCurrentConversation,
       agentActivityRuntime,
       isConversationStale,
+      sessionEngine,
+      tuttiModeDraftKey,
       workspaceId
     ]
   );

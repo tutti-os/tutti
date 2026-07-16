@@ -21,6 +21,16 @@ type ActivityReporter interface {
 	Report(context.Context, agentsessionstore.ReportActivityInput) error
 }
 
+// DurableActivityReporter is the required host boundary for runtime
+// controllers. ReportSubmitProvenance must atomically persist the report's
+// session/turn patch and canonical client-submit message before returning.
+// Compatibility ActivityReporter implementations that split state and message
+// persistence do not satisfy this contract and cannot host a controller.
+type DurableActivityReporter interface {
+	ActivityReporter
+	ReportSubmitProvenance(context.Context, agentsessionstore.ReportActivityInput) error
+}
+
 type ActivityClient interface {
 	ReportSessionState(context.Context, canonical.ReportSessionStateInput) (canonical.ReportSessionStateReply, error)
 	ReportSessionMessages(context.Context, canonical.ReportSessionMessagesInput) (canonical.ReportSessionMessagesReply, error)

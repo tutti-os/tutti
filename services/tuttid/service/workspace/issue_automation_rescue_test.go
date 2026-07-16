@@ -52,7 +52,7 @@ func TestAutomationIssueRescueCreatesANewRunForTheFailedTask(t *testing.T) {
 			IssueID:             "issue-rescue",
 			TopicID:             workspaceissues.DefaultTopicID,
 			Title:               "Recover failed task",
-			PlanningSource:      string(workspaceissues.PlanningSourceUltraPlan),
+			PlanningSource:      string(workspaceissues.PlanningSourceTraditionalPlan),
 			ExecutionProfile:    workspaceissues.ExecutionProfile{ReasoningIntensity: 80, OrchestrationIntensity: 80},
 			HasExecutionProfile: true,
 		},

@@ -3,6 +3,7 @@ package workspace
 import (
 	"context"
 	"errors"
+	"math"
 	"strconv"
 	"testing"
 	"time"
@@ -10,6 +11,29 @@ import (
 	workspaceissues "github.com/tutti-os/tutti/packages/workspace/issues"
 	workspacebiz "github.com/tutti-os/tutti/services/tuttid/biz/workspace"
 )
+
+func TestSQLiteIssueStoreRejectsNonFinitePersistedBudgetOnRead(t *testing.T) {
+	t.Parallel()
+
+	store := openTestSQLiteStore(t)
+	ctx := context.Background()
+	if err := store.Create(ctx, workspacebiz.Summary{ID: "ws-nonfinite", Name: "Nonfinite"}); err != nil {
+		t.Fatalf("Create() workspace error = %v", err)
+	}
+	issue, err := testIssueService(store).CreateIssue(ctx, workspaceissues.CreateIssueInput{
+		WorkspaceID: "ws-nonfinite", TopicID: workspaceissues.DefaultTopicID,
+		ActorUserID: "user-1", Title: "Finite first",
+	})
+	if err != nil {
+		t.Fatalf("CreateIssue() error = %v", err)
+	}
+	if _, err := store.db.ExecContext(ctx, `UPDATE workspace_issues SET budget_quota_waterline_percent = ? WHERE workspace_id = ? AND issue_id = ?`, math.Inf(1), "ws-nonfinite", issue.IssueID); err != nil {
+		t.Fatalf("corrupt persisted budget: %v", err)
+	}
+	if _, err := store.GetIssue(ctx, "ws-nonfinite", issue.IssueID); err == nil {
+		t.Fatal("GetIssue() error = nil, want invalid persisted budget")
+	}
+}
 
 func TestSQLiteIssueStoreLifecycle(t *testing.T) {
 	t.Parallel()
@@ -964,7 +988,7 @@ func TestSQLiteIssueStoreRollsBackIssueWhenBatchTaskInsertFails(t *testing.T) {
 			ActorUserID:    "user-1",
 			IssueID:        "issue-batch-rollback",
 			Title:          "Atomic Plan issue",
-			PlanningSource: string(workspaceissues.PlanningSourceUltraPlan),
+			PlanningSource: string(workspaceissues.PlanningSourceTuttiModePlan),
 		},
 		Tasks: []workspaceissues.CreateTaskItemInput{
 			{TaskID: "duplicate-task", Title: "First"},

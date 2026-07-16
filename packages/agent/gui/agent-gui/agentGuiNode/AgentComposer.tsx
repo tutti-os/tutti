@@ -16,6 +16,7 @@ import { type AgentFileMentionSuggestionState } from "./agentRichText/agentFileM
 import { formatSlashStatusTokenCount } from "./AgentSlashStatusPanel";
 import { useOptionalAgentActivityRuntime } from "../../agentActivityRuntime";
 import { useOptionalAgentHostApi } from "../../agentActivityHost";
+import { normalizeAgentActivityCapabilityReferences } from "@tutti-os/agent-activity-core";
 import { useComposerDraftAttachments } from "./composer/useComposerDraftAttachments";
 import { goalDraftObjectiveFromPrompt } from "./composer/composerDraftUtils";
 import { useComposerLayout } from "./composer/useComposerLayout";
@@ -34,10 +35,7 @@ import {
   EMPTY_PROVIDER_SKILLS
 } from "./composer/AgentComposerChrome";
 import { useAgentMentionSearchController } from "./composer/useAgentMentionSearchController";
-import type {
-  AgentComposerExecutionMode,
-  AgentComposerProps
-} from "./composer/AgentComposer.types";
+import type { AgentComposerProps } from "./composer/AgentComposer.types";
 import {
   agentComposerDraftAttachmentProjection,
   agentComposerDraftFiles,
@@ -98,6 +96,8 @@ export function AgentComposer(props: AgentComposerProps): React.JSX.Element {
     disabled,
     disabledReason,
     submitDisabled,
+    tuttiModeActive = false,
+    tuttiModeUpdating = false,
     placeholder,
     composerSettings,
     selectedAgentTarget = null,
@@ -126,7 +126,7 @@ export function AgentComposer(props: AgentComposerProps): React.JSX.Element {
     labels,
     onDraftContentChange,
     onSettingsChange,
-    onPlanIssueBudgetPresetChange,
+    onTuttiModeChange = () => {},
     capabilityMenuState,
     onSubmit,
     onSubmitGuidance,
@@ -170,9 +170,10 @@ export function AgentComposer(props: AgentComposerProps): React.JSX.Element {
   };
   const [isPaletteOpen, setIsPaletteOpen] = useState(true);
   const [isReviewPickerOpen, setIsReviewPickerOpen] = useState(false);
+  const effectiveSubmitDisabled = submitDisabled || tuttiModeUpdating;
   const automationRules = useComposerAutomationRuleOverride({
     agentSessionId,
-    disabled: disabled || submitDisabled,
+    disabled: disabled || effectiveSubmitDisabled,
     runtime: agentActivityRuntime,
     workspaceId
   });
@@ -186,43 +187,10 @@ export function AgentComposer(props: AgentComposerProps): React.JSX.Element {
     agentTargets,
     onDraftContentChange,
     runtime: agentActivityRuntime,
-    submitDisabled,
+    submitDisabled: effectiveSubmitDisabled,
     workspaceId
   });
-  const [executionMode, setExecutionMode] =
-    useState<AgentComposerExecutionMode>(
-      composerSettings.draftSettings.planMode ? "plan" : "normal"
-    );
-  useEffect(() => {
-    setExecutionMode((currentMode) => {
-      if (
-        currentMode === "ultra_plan" &&
-        composerSettings.draftSettings.planMode &&
-        composerSettings.supportsUltraPlan === true
-      ) {
-        return currentMode;
-      }
-      return composerSettings.draftSettings.planMode ? "plan" : "normal";
-    });
-  }, [
-    composerSettings.draftSettings.planMode,
-    composerSettings.supportsUltraPlan
-  ]);
-  const effectiveExecutionMode =
-    executionMode === "ultra_plan" &&
-    composerSettings.supportsUltraPlan !== true
-      ? composerSettings.draftSettings.planMode
-        ? "plan"
-        : "normal"
-      : executionMode;
-  const selectExecutionMode = (mode: AgentComposerExecutionMode): void => {
-    if (mode === "ultra_plan" && composerSettings.supportsUltraPlan !== true) {
-      return;
-    }
-    setExecutionMode(mode);
-    onSettingsChange({ planMode: mode !== "normal" });
-  };
-  const submitWithExecutionMode: AgentComposerProps["onSubmit"] = (
+  const submitWithComposerModifiers: AgentComposerProps["onSubmit"] = (
     content,
     displayPrompt,
     options
@@ -231,28 +199,33 @@ export function AgentComposer(props: AgentComposerProps): React.JSX.Element {
       agentCollaboration.submit();
       return;
     }
-    if (effectiveExecutionMode === "ultra_plan") {
-      onSubmit(content, displayPrompt, {
-        ...options,
-        ...(automationRules.override
-          ? { automationRuleOverride: automationRules.override }
-          : {}),
-        executionMode: effectiveExecutionMode
-      });
-      return;
-    }
-    if (automationRules.override) {
-      onSubmit(content, displayPrompt, {
-        ...options,
-        automationRuleOverride: automationRules.override
-      });
-      return;
-    }
-    if (displayPrompt === undefined) {
-      onSubmit(content);
-      return;
-    }
-    onSubmit(content, displayPrompt);
+    onSubmit(content, displayPrompt, {
+      ...options,
+      ...(automationRules.override
+        ? { automationRuleOverride: automationRules.override }
+        : {}),
+      ...(tuttiModeActive
+        ? {
+            capabilityRefs: normalizeAgentActivityCapabilityReferences([
+              ...(options?.capabilityRefs ?? []),
+              { capability: "tutti", source: "slash_command" }
+            ])
+          }
+        : {})
+    });
+  };
+  const submitGuidanceWithComposerModifiers: NonNullable<
+    AgentComposerProps["onSubmitGuidance"]
+  > = (content, displayPrompt) => {
+    onSubmitGuidance?.(
+      content,
+      displayPrompt,
+      tuttiModeActive
+        ? {
+            capabilityRefs: [{ capability: "tutti", source: "slash_command" }]
+          }
+        : undefined
+    );
   };
   const [highlightedIndex, setHighlightedIndex] = useState(0);
   const [mentionHighlightedKey, setMentionHighlightedKey] = useState<
@@ -449,12 +422,13 @@ export function AgentComposer(props: AgentComposerProps): React.JSX.Element {
     composerSettings,
     onDraftContentChange,
     onSettingsChange,
-    onSubmit: submitWithExecutionMode,
-    onSubmitGuidance,
+    onSubmit: submitWithComposerModifiers,
+    onSubmitGuidance: submitGuidanceWithComposerModifiers,
     onCapabilitySettingsRequest,
     onSlashStatusOpen,
     onPromptImagesUnsupported,
     onRequestGitBranches,
+    onTuttiModeActivate: () => onTuttiModeChange(true),
     draftContent,
     selectedProjectPath,
     slashStatusAgentSessionId,
@@ -690,9 +664,11 @@ export function AgentComposer(props: AgentComposerProps): React.JSX.Element {
       setIsPaletteOpen={setIsPaletteOpen}
       setHighlightedIndex={setHighlightedIndex}
       isGoalModeActive={isGoalModeActive}
-      executionMode={effectiveExecutionMode}
-      onExecutionModeChange={selectExecutionMode}
-      onPlanIssueBudgetPresetChange={onPlanIssueBudgetPresetChange}
+      isPlanModeActive={composerSettings.draftSettings.planMode}
+      isTuttiModeActive={tuttiModeActive}
+      isTuttiModeUpdating={tuttiModeUpdating}
+      onClearPlanMode={() => onSettingsChange({ planMode: false })}
+      onClearTuttiMode={() => onTuttiModeChange(false)}
       isPromptTipOverflowing={isPromptTipOverflowing}
     />
   );

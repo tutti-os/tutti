@@ -6,6 +6,7 @@ import { useProjectedAgentConversation } from "../../../shared/agentConversation
 import type { AgentComposerSlashStatusLimit } from "../AgentComposer";
 import type { AgentGoalBannerLabels } from "../AgentGoalBanner";
 import type {
+  AgentGUIInlineNotice,
   AgentGUINodeViewModel,
   AgentGUISessionChrome
 } from "../model/agentGuiNodeTypes";
@@ -29,6 +30,22 @@ interface Input {
   slashStatusLimitsLoading: boolean;
   slashStatusLimitsUnavailable: boolean;
   viewModel: AgentGUINodeViewModel;
+}
+
+export function resolveTuttiModeUpdateInlineNotice(input: {
+  failedMessage: string;
+  status: AgentGUINodeViewModel["composer"]["tuttiModeUpdateStatus"];
+  uncertainMessage: string;
+}): AgentGUIInlineNotice | null {
+  if (input.status !== "failed" && input.status !== "uncertain") return null;
+  const localizedMessage =
+    input.status === "failed" ? input.failedMessage : input.uncertainMessage;
+  return {
+    autoDismissMs: null,
+    id: `agent-gui-tutti-mode-update-${input.status}`,
+    message: localizedMessage,
+    tone: input.status === "failed" ? "error" : "warning"
+  };
 }
 
 export function useAgentGUIDetailModel(input: Input) {
@@ -95,8 +112,22 @@ export function useAgentGUIDetailModel(input: Input) {
     ]
   );
   const slashStatus = useStableSlashStatus(rawSlashStatus);
+  const tuttiModeUpdateNotice = useMemo(
+    () =>
+      resolveTuttiModeUpdateInlineNotice({
+        failedMessage: labels.tuttiModeUpdateFailed,
+        status: viewModel.composer.tuttiModeUpdateStatus,
+        uncertainMessage: labels.tuttiModeUpdateUncertain
+      }),
+    [
+      labels.tuttiModeUpdateFailed,
+      labels.tuttiModeUpdateUncertain,
+      viewModel.composer.tuttiModeUpdateStatus
+    ]
+  );
   const displayedInlineNotice = useMemo(() => {
-    const inlineNotice = viewModel.interaction.inlineNotice;
+    const inlineNotice =
+      tuttiModeUpdateNotice ?? viewModel.interaction.inlineNotice;
     const inlineNoticeMessage = inlineNotice?.message.trim() ?? "";
     if (!inlineNotice || inlineNoticeMessage === "") {
       return null;
@@ -124,6 +155,7 @@ export function useAgentGUIDetailModel(input: Input) {
   }, [
     sessionChrome.auth?.message,
     sessionChrome.recovery?.message,
+    tuttiModeUpdateNotice,
     viewModel.rail.activeConversation?.status,
     viewModel.readiness.activeLiveState,
     viewModel.interaction.inlineNotice
@@ -138,7 +170,9 @@ export function useAgentGUIDetailModel(input: Input) {
       recovery: {
         kind: displayedInlineNotice.tone === "warning" ? "warning" : "failed",
         message: displayedInlineNotice.message,
-        canRetry: false
+        canRetry: displayedInlineNotice.id.startsWith(
+          "agent-gui-tutti-mode-update-failed"
+        )
       },
       rawState: null
     };
@@ -428,8 +462,8 @@ export function useAgentGUIDetailModel(input: Input) {
       planModeLabel: labels.planModeLabel,
       normalModeLabel: labels.normalModeLabel,
       normalModeDescription: labels.normalModeDescription,
-      ultraPlanModeLabel: labels.ultraPlanModeLabel,
-      ultraPlanModeDescription: labels.ultraPlanModeDescription,
+      tuttiModeLabel: labels.tuttiModeLabel,
+      tuttiModeDescription: labels.tuttiModeDescription,
       planModeDescription: labels.planModeDescription,
       planModeOnLabel: labels.planModeOnLabel,
       planModeOffLabel: labels.planModeOffLabel,
@@ -568,8 +602,8 @@ export function useAgentGUIDetailModel(input: Input) {
       labels.planIssuePresetLabel,
       labels.normalModeLabel,
       labels.normalModeDescription,
-      labels.ultraPlanModeLabel,
-      labels.ultraPlanModeDescription,
+      labels.tuttiModeLabel,
+      labels.tuttiModeDescription,
       labels.planModeDescription,
       labels.planModeOffLabel,
       labels.planModeOnLabel,

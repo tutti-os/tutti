@@ -154,7 +154,7 @@ export const en = {
         "Continue the source conversation and take ownership of its next steps.",
       issueFromPlanCreated: "Issue created from the approved plan.",
       issueFromTraditionalPlanCreated:
-        "Issue created. Next time, choose Ultra Plan to plan and orchestrate in one flow.",
+        "Issue created. Add /tutti when you want a durable Tutti mode planning workflow.",
       issueFromPlanDefaultTopic: "Inbox",
       issueFromPlanDefaultTitle: "Approved plan",
       issueFromPlanFailed:

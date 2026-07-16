@@ -16,13 +16,6 @@ import type {
   PlanIssueDraft
 } from "../../../shared/agentConversation/planImplementationPresentation";
 import { useEngineSelector } from "../../../shared/engine/useEngineSelector";
-import type {
-  AgentGUINodeData,
-  AgentGUIProvider,
-  AgentGUIProviderRailMode,
-  AgentGUIProviderReadinessGate,
-  AgentGUIAgentTarget
-} from "../../../types";
 import type { AgentGUIDetailViewModel } from "../model/agentGuiNodeTypes";
 import {
   AGENT_GUI_RUNTIME_SESSION_ORIGIN,
@@ -31,10 +24,7 @@ import {
 } from "../model/agentGuiConversationModel";
 import { normalizeAgentComposerDraftProjectPath } from "../model/agentComposerDraftScope";
 import { mergeVisibleConversations } from "./agentGuiController.conversationHelpers";
-import {
-  reuseAgentActivityDisplayStatusesIfUnchanged,
-  type AgentGUIOpenSessionRequest
-} from "./agentGuiController.draftMessageHelpers";
+import { reuseAgentActivityDisplayStatusesIfUnchanged } from "./agentGuiController.draftMessageHelpers";
 import {
   getAgentGUIErrorCode,
   getAgentGUIErrorMessage
@@ -52,10 +42,10 @@ import {
   type AgentGUIRememberComposerDefaultsInput,
   type AgentGUIRememberComposerDefaultsResult
 } from "./agentGuiController.providerHelpers";
+import type { UseAgentGUINodeControllerInput } from "./agentGuiController.types";
 import { reportAgentGUIActiveConversationCleared } from "./agentGuiController.reporting";
 import { useAgentGUIActivation } from "./useAgentGUIActivation";
 import { useAgentGUIActiveMessages } from "./useAgentGUIActiveMessages";
-import type { AgentGUIPrefillPromptRequest } from "./useAgentGUIConversationHome";
 import { useAgentGUIConversationRouting } from "./useAgentGUIConversationRouting";
 import { useAgentGUIConversationSelectionController } from "./useAgentGUIConversationSelectionController";
 import { useAgentGUIConversationListState } from "./useAgentGUIConversationListState";
@@ -68,7 +58,10 @@ import { useAgentGUIProviderCatalogSelection } from "./useAgentGUIProviderCatalo
 import { useAgentGUISessionEngineState } from "./useAgentGUISessionEngineState";
 import { useAgentGUISessionDetailTransport } from "./useAgentGUISessionDetailTransport";
 import { useAgentGUILocalState } from "./useAgentGUILocalState";
-import type { AgentGUIComposerAppendRequest } from "./useAgentGUIComposerAppendRequest";
+import {
+  resolveAgentGUITuttiModeDraftKey,
+  useAgentGUITuttiModeActivation
+} from "./useAgentGUITuttiModeActivation";
 export {
   normalizePermissionModeSemantic,
   permissionConfigFromComposerOptions,
@@ -114,47 +107,6 @@ export {
 export { resolveConversationSummaryById } from "./useAgentConversationSelection";
 export type { ConversationIntent } from "./useAgentConversationSelection";
 
-interface UseAgentGUINodeControllerInput {
-  nodeId?: string;
-  workspaceId: string;
-  currentUserId?: string | null;
-  workspacePath: string;
-  avoidGroupingEdits: boolean;
-  data: AgentGUINodeData;
-  agentTargets?: readonly AgentGUIAgentTarget[];
-  agentTargetsLoading?: boolean;
-  handoffAgentTargets?: readonly AgentGUIAgentTarget[];
-  handoffAgentTargetsLoading?: boolean;
-  providerRailMode?: AgentGUIProviderRailMode;
-  comingSoonProviders?: readonly AgentGUIProvider[];
-  providerReadinessGates?: Partial<
-    Record<AgentGUIProvider, AgentGUIProviderReadinessGate | null>
-  > | null;
-  defaultAgentTargetId?: string | null;
-  composerAppendRequest?: AgentGUIComposerAppendRequest | null;
-  openSessionRequest?: AgentGUIOpenSessionRequest | null;
-  prefillPromptRequest?: AgentGUIPrefillPromptRequest | null;
-  previewMode?: boolean;
-  onDataChange: (
-    updater: (current: AgentGUINodeData) => AgentGUINodeData
-  ) => void;
-  onRememberComposerDefaults?: (
-    input: AgentGUIRememberComposerDefaultsInput
-  ) => void | Promise<AgentGUIRememberComposerDefaultsResult>;
-  onCreateIssueFromPlan?: (input: {
-    agentSessionId: string;
-    creationOptions?: PlanIssueCreationOptions;
-    planTurnId: string;
-    workspaceId: string;
-  }) =>
-    | Promise<{ issueId: string; topicId: string }>
-    | { issueId: string; topicId: string };
-  onShowMessage?: (
-    message: string,
-    tone?: "info" | "warning" | "error"
-  ) => void;
-}
-
 export type { AgentGUIOpenSessionRequest } from "./agentGuiController.draftMessageHelpers";
 export type { AgentGUIPrefillPromptRequest } from "./useAgentGUIConversationHome";
 export type { AgentGUIComposerAppendRequest } from "./useAgentGUIComposerAppendRequest";
@@ -164,6 +116,7 @@ export type {
 } from "./agentGuiController.providerHelpers";
 
 export function useAgentGUINodeController({
+  nodeId,
   workspaceId,
   currentUserId,
   workspacePath,
@@ -261,6 +214,16 @@ export function useAgentGUINodeController({
     setUserProjects,
     userProjects
   } = localState;
+  const tuttiModeDraftKey = useMemo(
+    () => resolveAgentGUITuttiModeDraftKey(nodeId),
+    [nodeId]
+  );
+  const tuttiModeActivation = useAgentGUITuttiModeActivation({
+    activeConversationId,
+    draftKey: tuttiModeDraftKey,
+    engine: sessionEngine,
+    workspaceId
+  });
   const conversationList = useAgentGUIConversationListState({
     agentActivityRuntimeOrigin,
     currentUserId,
@@ -729,6 +692,7 @@ export function useAgentGUINodeController({
     sessionEngine,
     setUserProjectsSnapshot,
     transientConversation,
+    tuttiModeDraftKey,
     unactivate: activation.unactivate,
     updateComposerSettingsRef,
     workspaceId
@@ -798,6 +762,7 @@ export function useAgentGUINodeController({
     selectedComposerTargetData,
     sessionEngine,
     transientConversation,
+    tuttiModeActivation,
     unactivate: activation.unactivate,
     updateSelectedProjectPath,
     userProjects,

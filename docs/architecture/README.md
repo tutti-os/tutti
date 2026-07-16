@@ -40,6 +40,7 @@ Stable change rules live in [Conventions](../conventions/README.md).
 - [Workbench Node Lifecycle](./workbench-node-lifecycle.md)
 - [Workspace App Factory](./workspace-app-factory.md)
 - [Workspace Issue Manager](./workspace-issue-manager.md)
+- [Tutti Mode Activation And Workspace Workflows](./workspace-workflows.md)
 - [Workspace Terminal](./workspace-terminal.md)
 
 Keep this directory limited to current ownership, contracts, and data flow.

@@ -36,6 +36,14 @@ func (a *standardACPAdapter) Exec(
 	if mentionRoutingApplied {
 		acpPromptContent = appendTuttiMentionRoutingPrompt(acpPromptContent, mentionRoutingSkills)
 	}
+	// ACP v1 has no developer/system or synthetic-message channel. Keep the
+	// canonical Tutti-owned context in the provider-only prompt payload; the
+	// activity event below is still projected exclusively from the original
+	// user content.
+	acpPromptContent = appendTuttiModeHostContextPrompt(
+		acpPromptContent,
+		tuttiModeTurnSnapshotFromContext(ctx),
+	)
 	normalizer := newACPTurnNormalizer()
 	var events []activityshared.Event
 	emitEvents := func(next []activityshared.Event) {

@@ -90,7 +90,6 @@ export function typedGoalControlFromComposer(
       return { action: "set", objective: args };
   }
 }
-
 export function useAgentGUISubmitInteractionActions(
   input: UseAgentGUISubmitInteractionActionsInput
 ) {
@@ -172,6 +171,7 @@ export function useAgentGUISubmitInteractionActions(
       content: AgentPromptContentBlock[],
       displayPrompt?: string,
       options?: {
+        capabilityRefs?: AgentComposerSubmitOptions["capabilityRefs"];
         immediate?: boolean;
         requiredSettingsPatch?: AgentComposerSubmitOptions["requiredSettingsPatch"];
         sendNow?: boolean;
@@ -232,6 +232,9 @@ export function useAgentGUISubmitInteractionActions(
       });
       sessionEngine.dispatch({
         agentSessionId,
+        ...(options?.capabilityRefs?.length
+          ? { capabilityRefs: options.capabilityRefs }
+          : {}),
         clientSubmitId: submitTrace.clientSubmitId,
         content: normalizedContent,
         expiresAtUnixMs: submittedAtUnixMs + 120_000,
@@ -336,6 +339,7 @@ export function useAgentGUISubmitInteractionActions(
       normalizedContent: AgentPromptContentBlock[],
       displayPromptText?: string,
       options?: {
+        capabilityRefs?: AgentComposerSubmitOptions["capabilityRefs"];
         requiredSettingsPatch?: AgentComposerSubmitOptions["requiredSettingsPatch"];
         sendNow?: boolean;
         sourceScopeKey?: string;
@@ -364,6 +368,7 @@ export function useAgentGUISubmitInteractionActions(
         return;
       }
       executePrompt(agentSessionId, normalizedContent, displayPromptText, {
+        capabilityRefs: options?.capabilityRefs,
         requiredSettingsPatch: options?.requiredSettingsPatch,
         sendNow: options?.sendNow === true,
         sourceScopeKey: options?.sourceScopeKey,
@@ -400,13 +405,6 @@ export function useAgentGUISubmitInteractionActions(
         setDetailError(translate("agentHost.agentGui.promptImagesUnsupported"));
         return;
       }
-      const ultraPlan = options?.executionMode === "ultra_plan";
-      const effectiveContent = ultraPlan
-        ? [
-            ...textPromptContent(ULTRA_PLAN_RUNTIME_INSTRUCTION),
-            ...normalizedContent
-          ]
-        : normalizedContent;
       if (!agentSessionId) {
         if (!isComposerHomeRef.current) {
           const promptLength =
@@ -450,12 +448,10 @@ export function useAgentGUISubmitInteractionActions(
             }
             submitExistingPrompt(
               recoveredAgentSessionId,
-              effectiveContent,
-              displayPromptText ??
-                (ultraPlan
-                  ? agentPromptContentDisplayText(normalizedContent)
-                  : undefined),
+              normalizedContent,
+              displayPromptText,
               {
+                capabilityRefs: options?.capabilityRefs,
                 requiredSettingsPatch: options?.requiredSettingsPatch,
                 sourceScopeKey: resolveAgentComposerDraftScopeKey({}),
                 trackDraft: true
@@ -534,7 +530,7 @@ export function useAgentGUISubmitInteractionActions(
               { sessionUri: sourceSessionUri }
             )
           ),
-          ...effectiveContent
+          ...normalizedContent
         ];
         const activationResult = startConversation(
           crossPlanContent,
@@ -567,12 +563,10 @@ export function useAgentGUISubmitInteractionActions(
       }
       submitExistingPrompt(
         agentSessionId,
-        effectiveContent,
-        displayPromptText ??
-          (ultraPlan
-            ? agentPromptContentDisplayText(normalizedContent)
-            : undefined),
+        normalizedContent,
+        displayPromptText,
         {
+          capabilityRefs: options?.capabilityRefs,
           requiredSettingsPatch: options?.requiredSettingsPatch,
           trackDraft: true
         }
@@ -599,7 +593,11 @@ export function useAgentGUISubmitInteractionActions(
   }, [submitPrompt]);
 
   const submitGuidancePrompt = useCallback(
-    (content: AgentPromptContentBlock[], displayPrompt?: string) => {
+    (
+      content: AgentPromptContentBlock[],
+      displayPrompt?: string,
+      options?: AgentComposerSubmitOptions
+    ) => {
       const agentSessionId = activeConversationIdRef.current;
       const normalizedContent = normalizeAgentPromptContentBlocks(content);
       if (!agentSessionId || normalizedContent.length === 0) {
@@ -622,7 +620,11 @@ export function useAgentGUISubmitInteractionActions(
         agentSessionId,
         normalizedContent,
         displayPromptText,
-        { sendNow: true, trackDraft: true }
+        {
+          capabilityRefs: options?.capabilityRefs,
+          sendNow: true,
+          trackDraft: true
+        }
       );
     },
     [

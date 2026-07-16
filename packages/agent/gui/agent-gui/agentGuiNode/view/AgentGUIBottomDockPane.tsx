@@ -47,6 +47,7 @@ interface AgentGUIBottomDockPaneProps {
   onSubmitApprovalOption: AgentGUINodeViewProps["actions"]["submitApprovalOption"];
   onAuthLogin?: (provider?: string | null) => void;
   onRetryActivation: AgentGUINodeViewProps["actions"]["retryActivation"];
+  onRetryInlineNotice: () => void;
   onContinueInNewConversation: AgentGUINodeViewProps["actions"]["continueInNewConversation"];
   onSubmitBottomDockInteractivePrompt: AgentGUINodeViewProps["actions"]["submitInteractivePrompt"];
   onGoalControl: AgentGUINodeViewProps["actions"]["goalControl"];
@@ -71,6 +72,7 @@ export const AgentGUIBottomDockPane = memo(function AgentGUIBottomDockPane({
   onSubmitApprovalOption,
   onAuthLogin,
   onRetryActivation,
+  onRetryInlineNotice,
   onContinueInNewConversation,
   onSubmitBottomDockInteractivePrompt,
   onGoalControl,
@@ -135,7 +137,7 @@ export const AgentGUIBottomDockPane = memo(function AgentGUIBottomDockPane({
           isRespondingApproval={isRespondingApproval}
           onSubmitApprovalOption={onSubmitApprovalOption}
           onAuthLogin={onAuthLogin}
-          onRetryActivation={onRetryActivation}
+          onRetryActivation={onRetryInlineNotice}
           onContinueInNewConversation={onContinueInNewConversation}
           labels={chromeLabels}
         />

@@ -178,6 +178,7 @@ export interface IWorkspaceAgentActivityService {
     settings: AgentHostAgentSessionComposerSettings;
     workspaceId: string;
   }): Promise<AgentActivityRuntimeUpdateSessionSettingsResult>;
+  updateTuttiModeActivation: AgentActivityRuntime["updateTuttiModeActivation"];
   getSnapshot(workspaceId: string): AgentActivitySnapshot;
   getSessionEngine(workspaceId: string): AgentSessionEngine;
   listSessionMessages(

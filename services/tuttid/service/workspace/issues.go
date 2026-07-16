@@ -6,6 +6,7 @@ import (
 	"time"
 
 	workspaceissues "github.com/tutti-os/tutti/packages/workspace/issues"
+	workflowbiz "github.com/tutti-os/tutti/services/tuttid/biz/workspaceworkflow"
 	agentservice "github.com/tutti-os/tutti/services/tuttid/service/agent"
 	collabrunservice "github.com/tutti-os/tutti/services/tuttid/service/collabrun"
 	eventstreamservice "github.com/tutti-os/tutti/services/tuttid/service/eventstream"
@@ -104,6 +105,10 @@ func (s IssueManagerService) DeleteTopic(ctx context.Context, workspaceID string
 }
 
 func (s IssueManagerService) CreateIssue(ctx context.Context, workspaceID string, input CreateIssueManagerIssueInput) (workspaceissues.Issue, error) {
+	if workflowbiz.IsReservedTuttiModePlanIssueID(input.IssueID) ||
+		input.PlanningSource == string(workspaceissues.PlanningSourceTuttiModePlan) {
+		return workspaceissues.Issue{}, workspaceissues.ErrInvalidArgument
+	}
 	issue, err := s.domainService().CreateIssue(ctx, workspaceissues.CreateIssueInput{
 		IssueID:             input.IssueID,
 		TopicID:             input.TopicID,
@@ -132,10 +137,15 @@ func (s IssueManagerService) CreateIssue(ctx context.Context, workspaceID string
 }
 
 func (s IssueManagerService) CreateIssueFromPlan(ctx context.Context, workspaceID string, input CreateIssueManagerIssueFromPlanInput) (workspaceissues.IssueDetail, error) {
-	if input.Issue.PlanningSource != string(workspaceissues.PlanningSourceUltraPlan) && input.Issue.PlanningSource != string(workspaceissues.PlanningSourceTraditionalPlan) {
+	if input.Issue.PlanningSource != string(workspaceissues.PlanningSourceTuttiModePlan) && input.Issue.PlanningSource != string(workspaceissues.PlanningSourceTraditionalPlan) {
 		return workspaceissues.IssueDetail{}, workspaceissues.ErrInvalidArgument
 	}
 	if len(input.Tasks) == 0 {
+		return workspaceissues.IssueDetail{}, workspaceissues.ErrInvalidArgument
+	}
+	reservedTuttiID := workflowbiz.IsReservedTuttiModePlanIssueID(input.Issue.IssueID)
+	tuttiPlanningSource := input.Issue.PlanningSource == string(workspaceissues.PlanningSourceTuttiModePlan)
+	if reservedTuttiID != input.Issue.TuttiModeWorkflowOwned || tuttiPlanningSource != input.Issue.TuttiModeWorkflowOwned {
 		return workspaceissues.IssueDetail{}, workspaceissues.ErrInvalidArgument
 	}
 	if input.Issue.ParallelExecution && !parallelIssueTasksAreIsolated(input.Tasks) {

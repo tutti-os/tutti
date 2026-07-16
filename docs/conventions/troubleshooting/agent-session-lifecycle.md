@@ -2,6 +2,197 @@
 
 [Agent runtime index](./agent-runtime.md) · [All troubleshooting](./README.md)
 
+### Deleting an Agent Session leaves a Tutti plan active or emits duplicate removal events
+
+- **Symptom:** Deleting one Session removes the conversation but its pending
+  Tutti Mode Plan remains visible, or clients receive duplicate/missing
+  `session_deleted` and `workspace.workflow.updated` invalidations. A workspace
+  clear may leave orphan workflows in an active state.
+- **Quick checks:** Confirm production wiring assigns the Tutti Mode Plan
+  service as the Agent service's source-session deletion coordinator. Inspect
+  the transaction result for the complete removed Session closure and affected
+  workflow/current-checkpoint identities. Verify workflow events are published
+  only after the transaction returns and that the activity projection is not
+  also running its persistence deleter on the coordinator path.
+- **Root cause:** Session persistence, activation cleanup, and workflow
+  cancellation form one cross-aggregate use case. Letting
+  `data/workspace` choose cancellable states hides business policy in the data
+  layer and cannot publish the canonical post-commit workflow event. Calling a
+  service coordinator and the legacy projection deleter together instead
+  splits the transaction and duplicates `session_deleted` events.
+- **Fix:** Keep cancellation policy in `service/tuttimodeplan`: allowed source
+  states, canceled targets, actor, reason, and timestamp are all explicit. Pass
+  one command to the workspace store so Session closure, Tutti activation/Turn
+  snapshots, and workflow transitions commit or roll back together. Return
+  affected identities, then publish workflow and Session invalidations from
+  the respective services after commit. Reserve persistence-only deletion and
+  standalone activation cleanup for isolated tests or legacy orphan fallback.
+- **Validation:** Force the workflow update to fail and assert the Session and
+  activation still exist. Cover single, descendant batch, runtime-only, and
+  workspace-clear scopes; exact cancellation-state selection; no event on
+  rollback; one workflow event per reported change; and one
+  `session_deleted` event per unique removed Session.
+- **References:**
+  [workspace-workflows.md](../../architecture/workspace-workflows.md),
+  [source_session_deletion.go](../../../services/tuttid/service/tuttimodeplan/source_session_deletion.go),
+  [source_session_deletion.go](../../../services/tuttid/data/workspace/source_session_deletion.go)
+
+### Tutti badge is active but no Tutti Mode Plan panel opens
+
+- **Symptom:** The composer shows the Tutti badge and the Agent may even emit a
+  provider-native Plan, but no Tutti Mode Plan review panel appears.
+- **Quick checks:** Read
+  `GET /v1/workspaces/{workspaceID}/agent-sessions/{agentSessionID}/tutti-mode-activation`
+  and confirm the current revision is active. Then inspect whether the Agent
+  actually invoked `tutti plan propose` with a valid absolute Markdown file
+  and Agent Session context. Query
+  `GET /v1/workspaces/{workspaceID}/workflows?sourceSessionId=...` for a pending
+  authoritative snapshot. Do not inspect transcript markers or provider Plan
+  card or historical `capabilityRefs` as current activation or workflow
+  evidence.
+- **Root cause:** `TuttiModeActivation` and `WorkspaceWorkflow` are independent
+  Tutti-owned roots. The badge records a user preference that is snapshotted
+  into each new Turn's Host Context; it does not fabricate a proposal. Durable
+  review state begins only when the Agent invokes the always-available Tutti
+  CLI and commits a `WorkspaceWorkflow`, immutable revision, and pending
+  checkpoint. A missing CLI invocation, invalid `tutti-mode-plan/v1` document,
+  wrong source Session, or disconnected desktop workflow runtime leaves
+  nothing recoverable to render.
+- **Fix:** Keep `/plan` and `/tutti` as compatible independent modifiers. Let
+  AgentSessionEngine project the daemon activation and let the Agent freely
+  invoke the Tutti CLI. AgentGUI must list workflows by active source Session
+  and re-pull after `workspace.workflow.updated`; it must never synthesize a
+  panel from Agent text, a provider Plan card, the Tutti badge, or capability
+  audit records. User decisions go only through the checkpoint HTTP endpoint.
+- **Validation:** Cover activation create/update/reload, immutable per-Turn
+  snapshot binding before provider dispatch, CLI proposal persistence,
+  immutable revision verification, Session-scoped list recovery,
+  advisory-event refresh, accept/reject/cancel decisions, and Plan plus Tutti
+  badge coexistence. Verify an accepted task graph materializes exactly one
+  Issue and reports `issue_created` rather than asking the Agent to create it
+  again.
+- **References:**
+  [workspace-workflows.md](../../architecture/workspace-workflows.md),
+  [commands.go](../../../services/tuttid/service/cli/providers/tuttimodeplan/commands.go),
+  [useTuttiModePlanPanels.ts](../../../packages/agent/gui/workspaceWorkflow/tuttiModePlan/useTuttiModePlanPanels.ts)
+
+### Retrying a Tutti Mode Plan mutation duplicates or rejects the revision
+
+- **Symptom:** A retry after a CLI timeout creates another workflow/revision,
+  or intentionally submitting the same Markdown again with a new request ID
+  fails with a revision/document-path uniqueness error.
+- **Quick checks:** Confirm `plan propose` or `plan revise` received a stable
+  `--request-id`. Read `workspace_workflow_mutations` for the exact workspace,
+  source Session, mutation kind, workflow scope, and request ID. Compare its
+  `input_sha256` and committed result IDs. For upgraded local databases, check
+  that `workspace_workflow_plan_revisions` no longer has a unique index on
+  `document_path`.
+- **Root cause:** Transport response loss is not the same as repeated content.
+  Without a caller mutation key, the daemon cannot distinguish a retry from
+  intentional reapplication. Conversely, a content-addressed document path may
+  legitimately be shared by multiple immutable revision metadata rows, so it
+  cannot be revision identity.
+- **Fix:** Reuse the same request ID only for a retry of the same bytes. Use a
+  new request ID for an intentional mutation, even when the bytes are equal.
+  Keep the ledger claim and workflow/revision/checkpoint write in one SQLite
+  transaction. Preserve revision-ID and sequence uniqueness, and let the
+  corrective migration remove legacy document-path uniqueness.
+- **Validation:** Cover concurrent same-key claims, same key plus same digest
+  replay, same key plus different digest conflict, new key plus identical bytes
+  creating the next sequence, and upgrade fixtures that retain checkpoints,
+  operations, mutations, and a clean `PRAGMA foreign_key_check`.
+
+### One corrupt Tutti Mode Plan prevents daemon startup recovery
+
+- **Symptom:** The daemon cannot finish startup after a task graph was accepted,
+  especially when its immutable Markdown file is missing or corrupt and its
+  `create_issue` operation is pending or failed.
+- **Quick checks:** Inspect accepted workflows with pending/failed
+  `create_issue` operations, verify the referenced revision path and SHA-256,
+  and check whether the operation received a durable
+  `startup_recovery_failed` outcome. Do not require an Agent `wait` call to
+  start recovery.
+- **Root cause:** Returning the first operation-local read, parse, validation,
+  or materialization error from the startup scan makes one damaged workflow a
+  process-wide availability failure.
+- **Fix:** Run one recovery scan after workflow and Issue service composition
+  but before exposing the daemon. Isolate each operation: persist a failed
+  outcome and continue. Abort startup only when the scan fails or the daemon
+  cannot write a durable outcome. Keep deterministic Issue materialization and
+  do not add a background workflow worker.
+- **Validation:** Cover pending and failed recovery, failed-before-retry state,
+  missing/corrupt revisions, a later operation succeeding after an earlier
+  failure, second-scan non-duplication, and outcome-write failure stopping
+  startup.
+
+### Tutti capability audit persistence races the first Turn projection
+
+- **Symptom:** Create or SendInput fails with `sql: no rows in result set`
+  immediately after `runtime.submitted`, or a live `turn_update` frame is
+  rejected because its outcome is null.
+- **Quick checks:** Verify capability provenance is carried on the
+  controller-owned submitted event or a lifecycle-neutral same-Turn guidance
+  report. Check that no second post-Exec writer tries to update a Turn before
+  the asynchronous projection creates it. Confirm the event schema accepts a
+  null outcome while a Turn is live.
+- **Root cause:** `capabilityRefs` are historical submission audit data, not
+  current Tutti activation. Writing them through a second store call races the
+  canonical Turn projection. Attaching a synthetic lifecycle phase to guidance
+  can also corrupt the running Turn. A bounded reporter queue that falls back
+  to inline reporting may reorder projection work or deadlock on reporter
+  re-entry.
+- **Fix:** Persist provenance with the submitted `TurnTransition`; use a
+  lifecycle-neutral state report for same-Turn guidance. Route synchronous
+  reporter work through one non-blocking, single-consumer FIFO. Queue pressure
+  must neither report inline nor block a reporter observer that can re-enter
+  the Controller.
+- **Validation:** Verify runtime acceptance may precede Turn projection, live
+  null-outcome events validate, later transitions retain references, and a
+  backlog beyond the former bounded queue plus reporter re-entry preserves FIFO
+  order without deadlocking. Unsupported capability/source values must fail at
+  HTTP ingress and event publication without changing activation.
+
+### A Tutti submission remains `delivery is still being confirmed`
+
+- **Symptom:** Retrying the same composer submission keeps returning
+  `agent submit delivery is still being confirmed`. The Session may already
+  exist and the Tutti badge may remain active, but the daemon does not start a
+  second Turn.
+- **Quick checks:** Read the `workspace_agent_submit_claims` row for the exact
+  workspace, Session, and `clientSubmitId`. Compare its immutable
+  `canonical_turn_id` with `tutti_mode_turn_snapshots.turn_id` and with the
+  Turn found by durable message provenance for that `clientSubmitId`. Do not
+  change the claim to a runtime-returned mismatched Turn ID.
+- **Root cause:** Provider handoff crossed an ambiguity boundary: the daemon
+  reserved and snapshotted a canonical Turn before dispatch, but did not
+  durably confirm the exact accepted Turn. The ordinary reporter may have
+  persisted its Session/Turn state while the atomic client-submit message
+  barrier failed, or the process may have stopped around that barrier. A host
+  wired only to the compatibility `ActivityReporter` cannot satisfy the
+  runtime's required `DurableActivityReporter` contract. Retrying the provider
+  call would risk duplicate work.
+- **Fix:** Preserve the prepared submit claim, Tutti snapshot, activation, and
+  Session. Ensure the host supplies `DurableActivityReporter`; decorators
+  should embed or otherwise preserve that required interface instead of
+  probing an optional capability. Its provenance barrier must run outside the
+  Session lifecycle lock, after earlier same-FIFO reports, and atomically write
+  the stable user message against an existing Turn.
+  Reconcile only from exact durable `clientSubmitId` provenance. If it resolves
+  to the reserved Turn, idempotently accept the snapshot and claim; if it is
+  absent or resolves elsewhere, keep delivery unknown and never re-dispatch
+  that client submission. Definite pre-dispatch rejection is the only path
+  allowed to abandon the prepared evidence.
+- **Validation:** Cover exact acceptance, accepted Turn-ID mismatch, snapshot
+  and claim acceptance failures, message-write rollback, process interruption
+  after snapshot binding, reporter re-entry, duplicate replay without a new
+  message version, and multiple guidance submissions sharing one active Turn.
+  Assert the unknown paths execute the provider zero additional times and never
+  close the provisional Session or delete its activation.
+- **References:**
+  [workspace-workflows.md](../../architecture/workspace-workflows.md),
+  [submit_claims.go](../../../services/tuttid/service/agent/submit_claims.go),
+  [service_tutti_mode_activation.go](../../../services/tuttid/service/agent/service_tutti_mode_activation.go)
+
 Turn state, loading, cancel, restore, file-change undo, rail projection, event updates, imports, and performance.
 
 ### AgentGUI rail shows a failed Turn but the detail has no error

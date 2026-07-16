@@ -15,11 +15,15 @@ import (
 // status probe: it flips the provider's cached auth to "needs login", which the
 // stateless marker / `auth status` check would otherwise miss (the local
 // credentials file still says "logged in"). A successfully completed turn clears
-// the flag, so a re-login that works stops being reported as broken.
+// the flag, so a re-login that works stops being reported as broken. Embedding
+// the required durable reporter promotes its provenance receipt method without
+// a second, manually forwarded optional seam.
 type agentRunOutcomeReporter struct {
-	inner agentdaemon.ActivityReporter
+	agentdaemon.DurableActivityReporter
 	store *agentstatusservice.RunOutcomeStore
 }
+
+var _ agentdaemon.DurableActivityReporter = agentRunOutcomeReporter{}
 
 func (r agentRunOutcomeReporter) Report(
 	ctx context.Context,
@@ -34,7 +38,7 @@ func (r agentRunOutcomeReporter) Report(
 			r.store.RecordSuccess(provider)
 		}
 	}
-	return r.inner.Report(ctx, input)
+	return r.DurableActivityReporter.Report(ctx, input)
 }
 
 func (r agentRunOutcomeReporter) BindGoalProvenance(ctx context.Context, input agentsessionstore.BindGoalProvenanceInput) (agentsessionstore.GoalProvenanceBinding, error) {

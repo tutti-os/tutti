@@ -6,7 +6,7 @@ import "encoding/json"
 
 const (
 	BusinessEventProtocolVersion = 1
-	BusinessEventCatalogRevision = "sha256:43545267996a1447"
+	BusinessEventCatalogRevision = "sha256:4e6337f9217c8004"
 )
 
 type Topic string
@@ -26,7 +26,9 @@ const (
 	TopicWorkspaceAppUpdated                            Topic = "workspace.app.updated"
 	TopicWorkspaceAppfactoryJobUpdated                  Topic = "workspace.appfactory.job.updated"
 	TopicWorkspaceIssueUpdated                          Topic = "workspace.issue.updated"
+	TopicWorkspaceTuttimodeUpdated                      Topic = "workspace.tuttimode.updated"
 	TopicWorkspaceWorkbenchNodeLaunchRequested          Topic = "workspace.workbench.node.launch.requested"
+	TopicWorkspaceWorkflowUpdated                       Topic = "workspace.workflow.updated"
 )
 
 type Direction string
@@ -332,6 +334,14 @@ type WorkspaceIssueUpdatedPayload struct {
 	ChangeKind  string  `json:"changeKind"`
 }
 
+type WorkspaceTuttimodeUpdatedPayload struct {
+	AgentSessionId string `json:"agentSessionId"`
+	ActivationId   string `json:"activationId"`
+	Revision       int    `json:"revision"`
+	Status         string `json:"status"`
+	ChangeKind     string `json:"changeKind"`
+}
+
 type WorkspaceWorkbenchNodeLaunchRequestedPayload struct {
 	WorkspaceId  string  `json:"workspaceId"`
 	TypeId       string  `json:"typeId"`
@@ -340,6 +350,13 @@ type WorkspaceWorkbenchNodeLaunchRequestedPayload struct {
 	DockEntryId  *string `json:"dockEntryId,omitempty"`
 	RequestId    *string `json:"requestId,omitempty"`
 	Payload      any     `json:"payload,omitempty"`
+}
+
+type WorkspaceWorkflowUpdatedPayload struct {
+	WorkflowId      string `json:"workflowId"`
+	SourceSessionId string `json:"sourceSessionId"`
+	CheckpointId    string `json:"checkpointId"`
+	ChangeKind      string `json:"changeKind"`
 }
 
 type AgentActivityUpdatedEvent struct {
@@ -468,6 +485,15 @@ type WorkspaceIssueUpdatedEvent struct {
 	Payload   WorkspaceIssueUpdatedPayload `json:"payload"`
 }
 
+type WorkspaceTuttimodeUpdatedEvent struct {
+	ID        string                           `json:"id"`
+	Topic     Topic                            `json:"topic"`
+	Version   int                              `json:"version"`
+	EmittedAt string                           `json:"emittedAt"`
+	Scope     *EventScope                      `json:"scope,omitempty"`
+	Payload   WorkspaceTuttimodeUpdatedPayload `json:"payload"`
+}
+
 type WorkspaceWorkbenchNodeLaunchRequestedEvent struct {
 	ID        string                                       `json:"id"`
 	Topic     Topic                                        `json:"topic"`
@@ -475,6 +501,15 @@ type WorkspaceWorkbenchNodeLaunchRequestedEvent struct {
 	EmittedAt string                                       `json:"emittedAt"`
 	Scope     *EventScope                                  `json:"scope,omitempty"`
 	Payload   WorkspaceWorkbenchNodeLaunchRequestedPayload `json:"payload"`
+}
+
+type WorkspaceWorkflowUpdatedEvent struct {
+	ID        string                          `json:"id"`
+	Topic     Topic                           `json:"topic"`
+	Version   int                             `json:"version"`
+	EmittedAt string                          `json:"emittedAt"`
+	Scope     *EventScope                     `json:"scope,omitempty"`
+	Payload   WorkspaceWorkflowUpdatedPayload `json:"payload"`
 }
 
 type ClientSubscribeFrame struct {
@@ -635,10 +670,24 @@ var BusinessEventDefinitions = []EventDefinition{
 		Scope:     ScopeNameWorkspace,
 	},
 	{
+		Topic:     TopicWorkspaceTuttimodeUpdated,
+		Version:   1,
+		Direction: DirectionServerToClient,
+		Owner:     "workspace",
+		Scope:     ScopeNameWorkspace,
+	},
+	{
 		Topic:     TopicWorkspaceWorkbenchNodeLaunchRequested,
 		Version:   1,
 		Direction: DirectionServerToClient,
 		Owner:     "core",
+		Scope:     ScopeNameWorkspace,
+	},
+	{
+		Topic:     TopicWorkspaceWorkflowUpdated,
+		Version:   1,
+		Direction: DirectionServerToClient,
+		Owner:     "workspace",
 		Scope:     ScopeNameWorkspace,
 	},
 }
@@ -658,7 +707,9 @@ var businessEventDefinitionByTopic = map[Topic]EventDefinition{
 	TopicWorkspaceAppUpdated:                            BusinessEventDefinitions[11],
 	TopicWorkspaceAppfactoryJobUpdated:                  BusinessEventDefinitions[12],
 	TopicWorkspaceIssueUpdated:                          BusinessEventDefinitions[13],
-	TopicWorkspaceWorkbenchNodeLaunchRequested:          BusinessEventDefinitions[14],
+	TopicWorkspaceTuttimodeUpdated:                      BusinessEventDefinitions[14],
+	TopicWorkspaceWorkbenchNodeLaunchRequested:          BusinessEventDefinitions[15],
+	TopicWorkspaceWorkflowUpdated:                       BusinessEventDefinitions[16],
 }
 
 var ClientToServerTopics = []Topic{
@@ -679,7 +730,9 @@ var ServerToClientTopics = []Topic{
 	TopicWorkspaceAppUpdated,
 	TopicWorkspaceAppfactoryJobUpdated,
 	TopicWorkspaceIssueUpdated,
+	TopicWorkspaceTuttimodeUpdated,
 	TopicWorkspaceWorkbenchNodeLaunchRequested,
+	TopicWorkspaceWorkflowUpdated,
 }
 
 func LookupEventDefinition(topic Topic) (EventDefinition, bool) {
@@ -729,7 +782,11 @@ func IsServerToClientTopic(topic Topic) bool {
 		return true
 	case TopicWorkspaceIssueUpdated:
 		return true
+	case TopicWorkspaceTuttimodeUpdated:
+		return true
 	case TopicWorkspaceWorkbenchNodeLaunchRequested:
+		return true
+	case TopicWorkspaceWorkflowUpdated:
 		return true
 	default:
 		return false
@@ -766,8 +823,12 @@ func PayloadPrototypeForTopic(topic Topic) (any, bool) {
 		return &WorkspaceAppfactoryJobUpdatedPayload{}, true
 	case TopicWorkspaceIssueUpdated:
 		return &WorkspaceIssueUpdatedPayload{}, true
+	case TopicWorkspaceTuttimodeUpdated:
+		return &WorkspaceTuttimodeUpdatedPayload{}, true
 	case TopicWorkspaceWorkbenchNodeLaunchRequested:
 		return &WorkspaceWorkbenchNodeLaunchRequestedPayload{}, true
+	case TopicWorkspaceWorkflowUpdated:
+		return &WorkspaceWorkflowUpdatedPayload{}, true
 	default:
 		return nil, false
 	}
@@ -803,8 +864,12 @@ func EventPrototypeForTopic(topic Topic) (any, bool) {
 		return &WorkspaceAppfactoryJobUpdatedEvent{}, true
 	case TopicWorkspaceIssueUpdated:
 		return &WorkspaceIssueUpdatedEvent{}, true
+	case TopicWorkspaceTuttimodeUpdated:
+		return &WorkspaceTuttimodeUpdatedEvent{}, true
 	case TopicWorkspaceWorkbenchNodeLaunchRequested:
 		return &WorkspaceWorkbenchNodeLaunchRequestedEvent{}, true
+	case TopicWorkspaceWorkflowUpdated:
+		return &WorkspaceWorkflowUpdatedEvent{}, true
 	default:
 		return nil, false
 	}

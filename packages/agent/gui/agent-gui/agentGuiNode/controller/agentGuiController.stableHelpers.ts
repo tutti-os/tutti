@@ -450,7 +450,6 @@ export function areComposerSettingsVMsEqual(
       left.planIssueBudgetPreset,
       right.planIssueBudgetPreset
     ) &&
-    left.supportsUltraPlan === right.supportsUltraPlan &&
     (left.supportsBrowser ?? false) === (right.supportsBrowser ?? false) &&
     (left.supportsComputerUse ?? false) ===
       (right.supportsComputerUse ?? false) &&

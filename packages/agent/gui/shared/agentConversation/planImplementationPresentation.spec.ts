@@ -57,7 +57,7 @@ describe("plan implementation presentation", () => {
     ).toBe("turn-2");
   });
 
-  it("turns an Ultra Plan into an editable Issue-level profile and task graph", () => {
+  it("turns an provider Plan into an editable Issue-level profile and task graph", () => {
     const draft = planIssueDraftFromPlanText(
       `\`\`\`tutti-issue-plan-v1
 {"title":"Ship","reasoningIntensity":70,"orchestrationIntensity":80,"budgetMode":"auto","tasks":[{"id":"design","title":"Design"},{"id":"build","title":"Build","dependencyTaskIds":["design"]}]}
@@ -65,7 +65,7 @@ describe("plan implementation presentation", () => {
       "Approved plan"
     );
 
-    expect(draft.planningSource).toBe("ultra_plan");
+    expect(draft.planningSource).toBe("traditional_plan");
     expect(draft.stage).toBe("preview");
     expect(draft.executionProfile).toEqual({
       reasoningIntensity: 70,
@@ -82,7 +82,7 @@ describe("plan implementation presentation", () => {
     ]);
   });
 
-  it("does not treat an unrelated JSON fence as an Ultra Plan artifact", () => {
+  it("does not treat an unrelated JSON fence as an provider Plan artifact", () => {
     const draft = planIssueDraftFromPlanText(
       `Plan the migration.\n\n\`\`\`json
 {"tasks":[{"id":"accidental","title":"Example payload"}]}
@@ -96,15 +96,15 @@ describe("plan implementation presentation", () => {
     expect(draft.tasks[0]?.sourceId).toBe("plan");
   });
 
-  it("recognizes an Ultra narrative marker without prematurely creating tasks", () => {
+  it("keeps legacy provider narrative comments on the traditional path", () => {
     const draft = planIssueDraftFromPlanText(
-      "# Migration plan\n\nReview the current schema.\n\n<!-- tutti-ultra-plan-v1 -->",
+      "# Migration plan\n\nReview the current schema.\n\n<!-- legacy-provider-plan -->",
       "Approved plan"
     );
 
     expect(draft).toMatchObject({
       title: "Migration plan",
-      planningSource: "ultra_plan",
+      planningSource: "traditional_plan",
       stage: "budget"
     });
     expect(draft.tasks).toHaveLength(1);
@@ -192,7 +192,7 @@ describe("plan implementation presentation", () => {
 
   it("builds the follow-up task-graph instruction from confirmed settings", () => {
     const draft = planIssueDraftFromPlanText(
-      "Plan the migration.\n\n<!-- tutti-ultra-plan-v1 -->",
+      "Plan the migration.\n\n<!-- legacy-provider-plan -->",
       "Approved plan"
     );
     draft.executionProfile.reasoningIntensity = 73;
@@ -227,7 +227,7 @@ describe("plan implementation presentation", () => {
 
     expect(prompt).toContain('"reasoningIntensity":73');
     expect(prompt).toContain('"tokenBudget":88000');
-    expect(prompt).toContain('"planningSource":"ultra_plan"');
+    expect(prompt).toContain('"planningSource":"traditional_plan"');
     expect(prompt).toContain('"agentTargetId":"local:codex"');
     expect(prompt).toContain('"purpose":"Implement repository changes"');
     expect(prompt).toContain('"id":"plan-1"');

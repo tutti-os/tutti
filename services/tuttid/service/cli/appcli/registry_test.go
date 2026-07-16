@@ -199,6 +199,27 @@ func TestRegistryScopeConflictKeepsDeterministicWinner(t *testing.T) {
 	}
 }
 
+func TestRegistryActivateRejectsReservedPlanScope(t *testing.T) {
+	registry := NewRegistry(fakeWorkspaceCatalog{workspaceID: "ws-1"}, nil)
+	appPackage := writeTestPackage(t, "planning-app", "plan", testJSONCommand())
+
+	state := registry.Activate(context.Background(), Activation{
+		WorkspaceID: "ws-1",
+		AppPackage:  appPackage,
+		BaseURL:     "http://127.0.0.1:1",
+	})
+
+	if state.Status != workspacebiz.AppCLIStatusWarning || state.Active || state.Scope != "plan" {
+		t.Fatalf("Activate() state = %#v", state)
+	}
+	if len(state.Issues) != 1 || state.Issues[0].Code != "app_cli_scope_reserved" {
+		t.Fatalf("Activate() issues = %#v", state.Issues)
+	}
+	if capabilities := registry.Capabilities(context.Background(), cliservice.InvokeContext{WorkspaceID: "ws-1"}); len(capabilities) != 0 {
+		t.Fatalf("capabilities = %#v", capabilities)
+	}
+}
+
 func TestRegistryInvokeIgnoresUnknownInput(t *testing.T) {
 	var envelope map[string]any
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

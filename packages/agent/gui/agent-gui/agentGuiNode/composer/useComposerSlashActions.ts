@@ -73,6 +73,7 @@ type Props = Pick<
 >;
 
 interface UseComposerSlashActionsInput extends Props {
+  onTuttiModeActivate?: () => void;
   draftContent: AgentComposerDraft;
   selectedProjectPath: string;
   slashStatusAgentSessionId: string | null;
@@ -125,6 +126,7 @@ export function useComposerSlashActions(input: UseComposerSlashActionsInput) {
     onSubmit,
     onSubmitGuidance,
     onCapabilitySettingsRequest,
+    onTuttiModeActivate,
     onSlashStatusOpen,
     onPromptImagesUnsupported,
     onRequestGitBranches,
@@ -260,11 +262,16 @@ export function useComposerSlashActions(input: UseComposerSlashActionsInput) {
         );
         return;
       }
-      if (effect.kind === "togglePlanMode") {
+      if (effect.kind === "enablePlanMode") {
         clearSlashCommandDraft();
-        onSettingsChange({
-          planMode: !composerSettings.draftSettings.planMode
-        });
+        if (!settingsControlsDisabled) {
+          onSettingsChange({ planMode: true });
+        }
+        return;
+      }
+      if (effect.kind === "activateTuttiMode") {
+        clearSlashCommandDraft();
+        onTuttiModeActivate?.();
         return;
       }
       if (effect.kind === "enableBrowserUse") {
@@ -323,6 +330,7 @@ export function useComposerSlashActions(input: UseComposerSlashActionsInput) {
       draftContent,
       isSlashStatusPanelOpen,
       onDraftContentChange,
+      onTuttiModeActivate,
       onSlashStatusOpen,
       onSettingsChange,
       onSubmit,
@@ -362,7 +370,9 @@ export function useComposerSlashActions(input: UseComposerSlashActionsInput) {
 
   const selectCapabilitySettings = useCallback(
     (capability: AgentSlashCommandCapability): void => {
-      onCapabilitySettingsRequest?.(capability.capability);
+      if (capability.capability !== "tutti") {
+        onCapabilitySettingsRequest?.(capability.capability);
+      }
       setIsPaletteOpen(false);
     },
     [onCapabilitySettingsRequest]
@@ -449,6 +459,7 @@ export function useComposerSlashActions(input: UseComposerSlashActionsInput) {
         const slashCommandEffect = resolveSlashCommandSubmitEffect({
           browserSupported: Boolean(composerSettings.supportsBrowser),
           computerSupported: Boolean(composerSettings.supportsComputerUse),
+          tuttiSupported: true,
           commands: resolvedSlashCommands,
           draft: nextPrompt,
           provider,

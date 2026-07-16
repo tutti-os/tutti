@@ -1,11 +1,25 @@
 package main
 
 import (
+	"context"
 	"testing"
 
 	agentsessionstore "github.com/tutti-os/tutti/packages/agent/daemon/activity"
 	"github.com/tutti-os/tutti/packages/agent/store-sqlite/canonical"
 )
+
+type submitProvenanceCaptureReporter struct {
+	report agentsessionstore.ReportActivityInput
+}
+
+func (*submitProvenanceCaptureReporter) Report(context.Context, agentsessionstore.ReportActivityInput) error {
+	return nil
+}
+
+func (r *submitProvenanceCaptureReporter) ReportSubmitProvenance(_ context.Context, input agentsessionstore.ReportActivityInput) error {
+	r.report = input
+	return nil
+}
 
 func TestMessageLooksLikeAuthFailureMatchesRealClaude401(t *testing.T) {
 	// The exact shape seen in the field logs: a failed runtime text message.
@@ -67,5 +81,17 @@ func TestReportRunOutcomeSuccessClears(t *testing.T) {
 	}
 	if got := reportRunOutcome(input); got != runOutcomeSuccess {
 		t.Fatalf("reportRunOutcome = %v, want success", got)
+	}
+}
+
+func TestAgentRunOutcomeReporterPreservesRequiredAtomicSubmitProvenance(t *testing.T) {
+	inner := &submitProvenanceCaptureReporter{}
+	reporter := agentRunOutcomeReporter{DurableActivityReporter: inner}
+	input := agentsessionstore.ReportActivityInput{WorkspaceID: "ws-1"}
+	if err := reporter.ReportSubmitProvenance(context.Background(), input); err != nil {
+		t.Fatalf("ReportSubmitProvenance() error = %v", err)
+	}
+	if inner.report.WorkspaceID != "ws-1" {
+		t.Fatalf("forwarded report = %#v", inner.report)
 	}
 }

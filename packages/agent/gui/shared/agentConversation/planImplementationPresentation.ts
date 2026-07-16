@@ -19,7 +19,7 @@ export interface PlanIssueDraft {
   title: string;
   content: string;
   stage: "budget" | "preview";
-  planningSource: "traditional_plan" | "ultra_plan";
+  planningSource: "traditional_plan";
   executionProfile: PlanIssueExecutionProfile;
   budget: PlanIssueBudget;
   tasks: PlanIssueTaskDraft[];
@@ -247,9 +247,9 @@ export function planIssueDraftFromTimelineItems(
 }
 
 /**
- * Parses the Ultra Plan fenced block when present and otherwise turns a normal
- * Plan into one reviewable task. Invalid model output intentionally degrades
- * to the normal Plan representation instead of creating an unusable Issue.
+ * Parses an optional task-graph artifact from a provider Plan and otherwise
+ * turns the Plan into one reviewable task. Tutti mode plans use the separate
+ * durable WorkspaceWorkflow path and never enter through this projection.
  */
 export function planIssueDraftFromPlanText(
   planText: string,
@@ -318,11 +318,7 @@ export function planIssueDraftFromPlanText(
     title,
     content: stringValue(structured?.content) ?? planText,
     stage: tasks.length > 0 ? "preview" : "budget",
-    planningSource:
-      planningSourceValue(structured?.planningSource) ??
-      (tasks.length > 0 || hasUltraPlanMarker(planText)
-        ? "ultra_plan"
-        : "traditional_plan"),
+    planningSource: "traditional_plan",
     executionProfile: profile,
     budget: {
       mode,
@@ -471,25 +467,12 @@ export function autoTokenBudget(
 interface StructuredPlan {
   title?: unknown;
   content?: unknown;
-  planningSource?: unknown;
   reasoningIntensity?: unknown;
   orchestrationIntensity?: unknown;
   budgetMode?: unknown;
   tokenBudget?: unknown;
   quotaWaterlinePercent?: unknown;
   tasks?: unknown;
-}
-
-function hasUltraPlanMarker(planText: string): boolean {
-  return /<!--\s*tutti-ultra-plan-v1\s*-->/iu.test(planText);
-}
-
-function planningSourceValue(
-  value: unknown
-): PlanIssueDraft["planningSource"] | undefined {
-  return value === "traditional_plan" || value === "ultra_plan"
-    ? value
-    : undefined;
 }
 
 function parseStructuredPlan(planText: string): StructuredPlan | null {

@@ -8,6 +8,7 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/google/uuid"
 	storesqlite "github.com/tutti-os/tutti/packages/agent/store-sqlite"
 )
 
@@ -158,19 +159,32 @@ func (h *Host) CreateSession(ctx context.Context, workspaceID string, input Crea
 		initialTitle = DeriveInitialTitle(session.Title, firstNonEmpty(displayPrompt, promptText, preparedDisplay))
 	}
 	startedAt = h.now()
+	turnID := strings.TrimSpace(input.TurnID)
+	if turnID == "" {
+		turnID = uuid.NewString()
+	}
 	execResult, err := h.runtime.Exec(ctx, RuntimeExecInput{
-		WorkspaceID: workspaceID, AgentSessionID: session.ID, Content: content,
+		WorkspaceID: workspaceID, AgentSessionID: session.ID, TurnID: turnID,
+		ClientSubmitID: input.ClientSubmitID, CapabilityRefs: append([]CapabilityReference(nil), input.CapabilityRefs...), Content: content,
 		DisplayPrompt: displayPrompt, InitialTitle: initialTitle, InitialTitleBase: session.Title,
-		Metadata: cloneMap(metadata),
+		Metadata: cloneMap(metadata), TuttiModeSnapshot: input.TuttiModeSnapshot,
 	})
 	if err != nil {
 		h.observeStep(ctx, "session_create", "runtime_exec", session.ID, session.Provider, startedAt, err)
 		return CreateSessionResult{}, cleanup(err, true, true)
 	}
-	turnID := strings.TrimSpace(execResult.TurnID)
+	turnID = strings.TrimSpace(execResult.TurnID)
 	if turnID == "" {
 		h.observeStep(ctx, "session_create", "runtime_exec", session.ID, session.Provider, startedAt, ErrSubmitDeliveryUnknown)
 		return CreateSessionResult{}, cleanup(ErrSubmitDeliveryUnknown, true, true)
+	}
+	if reporter, ok := h.runtime.(RuntimeSubmitProvenanceReporter); ok {
+		if err := reporter.DurablyReportSubmitProvenance(ctx, RuntimeSubmitProvenanceInput{
+			WorkspaceID: workspaceID, AgentSessionID: session.ID, TurnID: turnID,
+			ClientSubmitID: input.ClientSubmitID, Content: content, DisplayPrompt: displayPrompt,
+		}); err != nil {
+			return CreateSessionResult{}, cleanup(err, true, true)
+		}
 	}
 	if claim.ClientSubmitID != "" {
 		claimPending = false
@@ -336,10 +350,16 @@ func (h *Host) SendInput(ctx context.Context, ref SessionRef, input SendInput) (
 	}
 	execResult, err := func() (RuntimeExecResult, error) {
 		defer releaseStartup()
+		turnID := strings.TrimSpace(input.TurnID)
+		if turnID == "" && !input.Guidance {
+			turnID = uuid.NewString()
+		}
 		return h.runtime.Exec(ctx, RuntimeExecInput{
-			WorkspaceID: ref.WorkspaceID, AgentSessionID: ref.AgentSessionID, Content: content,
+			WorkspaceID: ref.WorkspaceID, AgentSessionID: ref.AgentSessionID,
+			TurnID: turnID, ClientSubmitID: input.ClientSubmitID,
+			CapabilityRefs: append([]CapabilityReference(nil), input.CapabilityRefs...), Content: content,
 			DisplayPrompt: displayPrompt, InitialTitle: initialTitle, InitialTitleBase: session.Title,
-			Guidance: input.Guidance, Metadata: cloneMap(metadata),
+			Guidance: input.Guidance, Metadata: cloneMap(metadata), TuttiModeSnapshot: input.TuttiModeSnapshot,
 		})
 	}()
 	if err != nil {
@@ -350,6 +370,14 @@ func (h *Host) SendInput(ctx context.Context, ref SessionRef, input SendInput) (
 	if turnID == "" {
 		h.observeStep(ctx, "message_send", "runtime_exec", ref.AgentSessionID, session.Provider, startedAt, ErrSubmitDeliveryUnknown)
 		return SendInputResult{}, ErrSubmitDeliveryUnknown
+	}
+	if reporter, ok := h.runtime.(RuntimeSubmitProvenanceReporter); ok {
+		if err := reporter.DurablyReportSubmitProvenance(ctx, RuntimeSubmitProvenanceInput{
+			WorkspaceID: ref.WorkspaceID, AgentSessionID: ref.AgentSessionID, TurnID: turnID,
+			ClientSubmitID: input.ClientSubmitID, Content: content, DisplayPrompt: displayPrompt, Guidance: input.Guidance,
+		}); err != nil {
+			return SendInputResult{}, err
+		}
 	}
 	if claim.ClientSubmitID != "" {
 		claimPending = false

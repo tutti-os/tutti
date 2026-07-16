@@ -11,6 +11,7 @@ import {
   type AgentGUIConversationRailLabels
 } from "./view/agentGUIConversationRailLabels";
 import { agentGUIProviderManagerLabels } from "./view/agentGUIProviderManagerLabels";
+import { agentGUITuttiModeLabels } from "./view/agentGUITuttiModeLabels";
 
 export { buildAgentHomeSuggestions };
 
@@ -247,10 +248,7 @@ export function useAgentGUIViewLabels(input: {
       planModeLabel: t("agentHost.agentGui.planModeLabel"),
       normalModeLabel: t("agentHost.agentGui.normalModeLabel"),
       normalModeDescription: t("agentHost.agentGui.normalModeDescription"),
-      ultraPlanModeLabel: t("agentHost.agentGui.ultraPlanModeLabel"),
-      ultraPlanModeDescription: t(
-        "agentHost.agentGui.ultraPlanModeDescription"
-      ),
+      ...agentGUITuttiModeLabels(t),
       planModeDescription: t("agentHost.agentGui.planModeDescription"),
       planModeOnLabel: t("agentHost.agentGui.planModeOnLabel"),
       planModeOffLabel: t("agentHost.agentGui.planModeOffLabel"),

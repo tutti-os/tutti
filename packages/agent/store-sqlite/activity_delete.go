@@ -84,6 +84,36 @@ func (s *Store) DeleteSessionsBatch(
 	if s == nil || s.db == nil {
 		return DeleteSessionsBatchResult{}, errors.New("workspace database is not initialized")
 	}
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return DeleteSessionsBatchResult{}, fmt.Errorf("begin delete workspace agent sessions batch: %w", err)
+	}
+	committed := false
+	defer func() {
+		if !committed {
+			_ = tx.Rollback()
+		}
+	}()
+
+	result, err := s.DeleteSessionsBatchTx(ctx, tx, input)
+	if err != nil {
+		return DeleteSessionsBatchResult{}, err
+	}
+	if err := tx.Commit(); err != nil {
+		return DeleteSessionsBatchResult{}, fmt.Errorf("commit delete workspace agent sessions batch: %w", err)
+	}
+	committed = true
+	return result, nil
+}
+
+// DeleteSessionsBatchTx deletes the full root/child closure inside a host-owned
+// transaction. It lets an embedding host atomically remove domain rows that
+// are keyed by agent session without introducing package-specific foreign
+// keys into this reusable store.
+func (s *Store) DeleteSessionsBatchTx(ctx context.Context, tx *sql.Tx, input DeleteSessionsBatchInput) (DeleteSessionsBatchResult, error) {
+	if s == nil || tx == nil {
+		return DeleteSessionsBatchResult{}, errors.New("workspace database is not initialized")
+	}
 	workspaceID := strings.TrimSpace(input.WorkspaceID)
 	sessionIDs := make([]string, 0, len(input.SessionIDs))
 	seenSessionIDs := make(map[string]struct{}, len(input.SessionIDs))
@@ -101,18 +131,6 @@ func (s *Store) DeleteSessionsBatch(
 	if workspaceID == "" || len(sessionIDs) == 0 {
 		return DeleteSessionsBatchResult{}, nil
 	}
-
-	tx, err := s.db.BeginTx(ctx, nil)
-	if err != nil {
-		return DeleteSessionsBatchResult{}, fmt.Errorf("begin delete workspace agent sessions batch: %w", err)
-	}
-	committed := false
-	defer func() {
-		if !committed {
-			_ = tx.Rollback()
-		}
-	}()
-
 	removedSessionIDs, err := expandSessionTreeIDsTx(ctx, tx, workspaceID, sessionIDs)
 	if err != nil {
 		return DeleteSessionsBatchResult{}, err
@@ -135,11 +153,10 @@ func (s *Store) DeleteSessionsBatch(
 	if err != nil {
 		return DeleteSessionsBatchResult{}, err
 	}
-	delta, err := s.commitTransaction(ctx, tx, workspaceID, sessionDeleteMutations(workspaceID, removedSessionIDs, now))
+	delta, err := s.participateTransaction(ctx, tx, workspaceID, sessionDeleteMutations(workspaceID, removedSessionIDs, now))
 	if err != nil {
-		return DeleteSessionsBatchResult{}, fmt.Errorf("commit delete workspace agent sessions batch: %w", err)
+		return DeleteSessionsBatchResult{}, fmt.Errorf("participate in delete workspace agent sessions batch: %w", err)
 	}
-	committed = true
 	return DeleteSessionsBatchResult{
 		TransactionID:     delta.TransactionID,
 		CommitDelta:       delta,

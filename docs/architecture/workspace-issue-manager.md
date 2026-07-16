@@ -105,79 +105,69 @@ and persists the provider for display, filtering, and legacy compatibility.
 
 ## Plan Conversion And Execution Orchestration
 
-AgentGUI exposes `normal`, `plan`, and `ultra_plan` composer modes. Ultra Plan
-is available only when the selected Agent reports both planning and plan-
-implementation support. Traditional Plan results can use **Break into an
-Issue**. Ultra Plan requires a fenced `tutti-issue-plan-v1` JSON payload with
-Issue metadata; task dependencies; Agent/Plan/model/directory assignments; and
-the Issue-owned execution profile and budget. It plans only and does not
-implement before conversion.
+Issue Manager accepts two distinct planning origins:
 
-Before conversion, the shared AgentGUI presentation parses the structured
-payload (or derives one traditional task from unstructured Plan text) into an
-editable review surface. It provides independent Issue-level
-reasoning/orchestration controls, auto-recalculated or fixed token budget, and
-per-task assignment/directory/dependency preview. The review consumes a
-credential-free runtime catalog: Agent protocol constrains Model Plan choices,
-each Agent entry includes its name, purpose, and current availability, Plan
-selection resolves its valid default model, tiers remain visible, and a
-budget-based cost range is shown only for known pricing on an explicitly
-`api_metered` Plan. The range applies the lowest and highest published
-input/output/cache token rates because the token mix is not yet known during
-decomposition. `subscription_quota` Plans show quota-waterline semantics and
-never a fabricated monetary amount; unknown pricing remains unknown rather
-than becoming zero. The confirmed reasoning intensity is compiled twice: the
-Planning Agent receives only the credential-free available catalog and must
-select compatible economy/standard/flagship models according to the confirmed
-range, then each dispatched Session compiles the same Issue value into the
-selected provider/model's advertised reasoning-effort vocabulary. The
-confirmed orchestration intensity independently controls decomposition depth
-and daemon-owned Review/failure-rescue automation. Task preview exposes Agent,
-Model Plan, model, and readable dependency checkboxes directly; changing an
-Agent clears an incompatible Plan/model instead of preserving an impossible
-suggestion. Users can continue planning,
-create only, or create and start. Desktop re-reads the authoritative turn,
-converts the submitted review draft, and calls
-`POST /v1/workspaces/{workspaceID}/issues/from-plan`. The high-level tuttid
-service validates assignments before handing the Issue and its initial task
-graph to one domain/store transaction. The SQLite adapter commits the Issue,
-all Tasks, and topic activity atomically; task failure rolls the Issue back,
-and update events are published only after commit. `planningSource` records
-`ultra_plan` or `traditional_plan`.
+- A provider-native Plan can still be converted through the traditional
+  AgentGUI **Break into an Issue** flow. Its source is
+  `traditional_plan`.
+- An accepted Tutti Mode Plan task graph is materialized by the daemon-owned
+  workspace workflow service. Its source is `tutti_mode_plan`.
 
-`sourceSessionId` is the durable planning link. Issue and Task headers can open
-that source Session, while successful atomic creation projects one idempotent,
-credential-free workspace-Issue mention back into the source timeline. This
-is a bidirectional navigation contract, not a second Plan record: the Issue
-remains the only durable plan entity and the source Session remains the
-reasoning history.
+Tutti Mode Plan does not masquerade as a provider interaction and does not
+send an ephemeral renderer draft through the traditional conversion path.
+The Agent creates immutable `tutti-mode-plan/v1` revisions through the Tutti
+CLI; the user decides daemon-owned checkpoints; and tuttid projects tasks only
+from the accepted current task-graph revision. See
+[Workspace Workflows And Tutti Mode Plan](./workspace-workflows.md).
 
-The Plan/Ultra Plan composer exposes the same intensity and token-budget model
-before submission as an optional remembered preset. AgentGUI persists it with
-the workbench node and uses it as the initial value in mandatory decomposition
-review when the plan did not return explicit confirmed settings. Structured
-settings emitted after budget confirmation take precedence over the preset.
+For the Tutti-owned path, the Markdown revision already contains the
+Issue-level reasoning/orchestration profile, auto/fixed token budget, task
+assignments, model choices, execution directories, and dependencies. The
+workflow service derives read-only `ActionableItem`s, then invokes Issue
+Manager with one atomic Issue-and-task-graph request. The SQLite adapter commits
+the Issue, all Tasks, and topic activity atomically; task failure rolls the
+Issue back, and update events are published only after commit. A deterministic
+workflow operation and Issue ID make repeated decisions and waiters
+idempotent. The reserved Issue namespace is owned by the daemon
+`workspaceworkflow` business model rather than the reusable workspace Issue
+package, so generic Issue consumers cannot become a second Tutti workflow
+authority. AgentGUI neither parses an Agent message into this graph nor calls
+Issue creation itself.
 
-`Create only` persists the graph without dispatch. Sequential `Create and
-start` records `sequentialExecution=true`; after successful conversion, tuttid
-creates one durable Run and starts only the first stable eligible Task. The
-dispatcher is daemon-owned so progress does not depend on an open Desktop
-window. It refuses to dispatch while the Issue's explicit future-dispatch pause
-is set, a Run is active, a Task awaits acceptance, a failure needs user action,
-or the Issue budget gate is active. Pausing is durable and does not cancel or
-interrupt already-running work; clearing it immediately re-evaluates eligible
-Tasks.
+`sourceSessionId` is the durable planning link for both origins. Issue and Task
+headers can open that source Session, while successful atomic creation projects
+one idempotent, credential-free workspace-Issue mention back into the source
+timeline. Tutti Mode Plan additionally keeps its durable workflow, immutable
+revisions, checkpoints, and the operation's `issueId`; those records represent
+review provenance and do not compete with the Issue as the execution entity.
+
+On the traditional AgentGUI path, `Create only` persists the graph without
+dispatch, while sequential `Create and start` records
+`sequentialExecution=true`. On the Tutti-owned path there is no Desktop
+conversion action: accepting the task-graph revision causes the daemon
+materializer to map `execution.mode: sequential` or `parallel` to the matching
+Issue execution flag. After successful materialization, tuttid dispatches the
+eligible Tasks for either origin. In sequential mode it creates one durable Run
+and starts only the first stable eligible Task. The dispatcher is daemon-owned
+so progress does not depend on an open Desktop window. It refuses to dispatch
+while the Issue's explicit future-dispatch pause is set, a Run is active, a
+Task awaits acceptance, a failure needs user action, or the Issue budget gate
+is active. Pausing is durable and does not cancel or interrupt already-running
+work; clearing it immediately re-evaluates eligible Tasks.
 After a successful Run, no successor starts until the user explicitly accepts
 that Task. Acceptance then re-evaluates dependencies and starts at most one
 next Task in stable order.
 
-Parallel `Create and start` records `parallelExecution=true`. Desktop creates
-or reuses a distinct Git worktree for every assigned Task before it submits the
-atomic graph. The daemon rejects parallel Issues unless every assigned Task
-has a unique absolute execution directory. It then starts every stable
-DAG-ready root in the same dispatch pass, subject to a workspace-wide maximum
-of four running Issue Runs. Every completion refills the available slots. A
-successor still waits until every
+On the traditional AgentGUI path, parallel `Create and start` records
+`parallelExecution=true`; Desktop creates or reuses a distinct Git worktree for
+every assigned Task before submitting the atomic graph. On the Tutti-owned
+path, Desktop never prepares worktrees or rewrites the graph: the accepted
+immutable revision must already carry a unique absolute execution directory
+for every assigned Task. The daemon rejects parallel materialization for
+either origin unless that isolation invariant holds. It then starts every
+stable DAG-ready root in the same dispatch pass, subject to a workspace-wide
+maximum of four running Issue Runs. Every completion refills the available
+slots. A successor still waits until every
 dependency is completed and explicitly user-accepted. A failed Task blocks new
 dispatch, while already-running independent roots remain durable and visible.
 Sequential and parallel flags are mutually exclusive.
@@ -188,11 +178,13 @@ planning Session timeline when the Issue has a source Session. Target turn
 settlement updates the same collaboration card; launch failure settles both
 the Issue Run and CollaborationRun as failed.
 
-Desktop does not run a second Issue scheduler. It submits the graph once and
-projects the authoritative Task states returned by tuttid; compatibility with
-daemons that predate daemon-owned dispatch is intentionally unsupported because
-renderer fallback scheduling can bypass budget, acceptance, CollaborationRun,
-and atomic-claim rules. A Task's explicit execution directory is respected.
+Desktop does not run a second Issue scheduler. For traditional AgentGUI
+conversion it submits the graph once; for a Tutti-owned workflow it does not
+submit a graph at all. In both cases it only projects the authoritative Issue
+and Task states returned by tuttid. Compatibility with daemons that predate
+daemon-owned dispatch is intentionally unsupported because renderer fallback
+scheduling can bypass budget, acceptance, CollaborationRun, and atomic-claim
+rules. A Task's explicit execution directory is respected.
 Otherwise the daemon inherits the source planning Session directory. Launch
 failure completes the matching Run as failed and never satisfies a dependency.
 

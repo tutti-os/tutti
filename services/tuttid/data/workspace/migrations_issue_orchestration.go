@@ -7,7 +7,7 @@ import (
 )
 
 // applyWorkspaceIssuesV6 adds the durable execution profile, task assignment,
-// dependency, acceptance, and run-accounting fields used by Ultra Plan. The
+// dependency, acceptance, and run-accounting fields used by Tutti mode plan. The
 // migration is additive so existing local Issue Manager data remains valid.
 func (s *SQLiteStore) applyWorkspaceIssuesV6(ctx context.Context) error {
 	applied, err := s.hasMigration(ctx, schemaMigrationWorkspaceIssuesV6)
@@ -205,6 +205,29 @@ INSERT INTO tuttid_schema_migrations (id, applied_at_unix_ms)
   VALUES (?, ?);
 `, schemaMigrationWorkspaceIssuesV10, unixMs(time.Now().UTC())); err != nil {
 		return fmt.Errorf("migrate workspace issue collaboration usage: %w", err)
+	}
+	return nil
+}
+
+// applyWorkspaceIssuesV11 renames the legacy Ultra Plan provenance value to
+// the Tutti-owned workflow name without changing issue identity or history.
+func (s *SQLiteStore) applyWorkspaceIssuesV11(ctx context.Context) error {
+	applied, err := s.hasMigration(ctx, schemaMigrationWorkspaceIssuesV11)
+	if err != nil {
+		return err
+	}
+	if applied {
+		return nil
+	}
+	if _, err := s.writeDB.ExecContext(ctx, `
+UPDATE workspace_issues
+SET planning_source = 'tutti_mode_plan'
+WHERE planning_source = 'ultra_plan';
+
+INSERT INTO tuttid_schema_migrations (id, applied_at_unix_ms)
+  VALUES (?, ?);
+`, schemaMigrationWorkspaceIssuesV11, unixMs(time.Now().UTC())); err != nil {
+		return fmt.Errorf("migrate workspace issue Tutti mode plan source: %w", err)
 	}
 	return nil
 }

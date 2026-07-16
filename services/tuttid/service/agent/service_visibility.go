@@ -23,9 +23,9 @@ func (s *Service) UpdateVisible(ctx context.Context, workspaceID string, agentSe
 	if err != nil {
 		return Session{}, err
 	}
-	return serviceSessionWithPersistedFreshness(
+	return s.projectSessionForResponse(ctx, workspaceID, serviceSessionWithPersistedFreshness(
 		session,
 		persisted,
 		s.controller().CanResume(runtimeResumeInputFromRuntimeSession(session)),
-	), nil
+	))
 }

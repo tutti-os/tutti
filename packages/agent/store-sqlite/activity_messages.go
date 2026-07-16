@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"reflect"
 	"strings"
 	"time"
 
@@ -66,6 +67,15 @@ func (*Store) upsertAgentMessageTx(
 	)
 	if !accepted {
 		return Message{}, false, nil
+	}
+	if ok && agentMessageProjectionAlreadyApplied(existing, message) {
+		return existing, true, nil
+	}
+	if ok {
+		return Message{}, false, fmt.Errorf(
+			"workspace agent activity message %q conflicts with durable submit provenance",
+			input.MessageID,
+		)
 	}
 	messageSemantics := cloneMessageSemantics(input.Semantics)
 	turnID := strings.TrimSpace(message.TurnID)
@@ -130,6 +140,17 @@ ON CONFLICT(workspace_id, agent_session_id, message_id) DO UPDATE SET
 		return Message{}, false, fmt.Errorf("read accepted workspace agent message: %w", sql.ErrNoRows)
 	}
 	return acceptedMessage, true, nil
+}
+
+func agentMessageProjectionAlreadyApplied(
+	existing Message,
+	projected agentactivityprojection.MessageSnapshot,
+) bool {
+	return strings.TrimSpace(existing.TurnID) == strings.TrimSpace(projected.TurnID) &&
+		strings.TrimSpace(existing.Role) == strings.TrimSpace(projected.Role) &&
+		strings.TrimSpace(existing.Kind) == strings.TrimSpace(projected.Kind) &&
+		strings.TrimSpace(existing.Status) == strings.TrimSpace(projected.Status) &&
+		reflect.DeepEqual(existing.Payload, projected.Payload)
 }
 
 func getAgentMessageForUpdate(

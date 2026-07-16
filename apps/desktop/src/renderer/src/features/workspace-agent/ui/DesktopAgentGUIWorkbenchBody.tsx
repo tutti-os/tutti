@@ -76,6 +76,7 @@ import {
 function DesktopAgentGUISurfaceImpl({
   agentActivityRuntime,
   agentHostApi,
+  tuttiModePlanReviewRuntime,
   appCenterService,
   agentProviderStatusService,
   surface,
@@ -737,6 +738,7 @@ function DesktopAgentGUISurfaceImpl({
         renderAgentsEmpty={renderAgentsEmpty}
         agentActivityRuntime={agentActivityRuntime}
         agentHostApi={agentHostApiWithToast}
+        tuttiModePlanReviewRuntime={tuttiModePlanReviewRuntime}
         i18n={i18n}
         locale={locale}
         identity={agentGUIHostProps.identity}

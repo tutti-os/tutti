@@ -337,8 +337,8 @@ func (s *Service) DeleteSessionsBatch(
 	if workspaceID == "" || err != nil {
 		return DeleteSessionsBatchResult{}, ErrInvalidArgument
 	}
-	deleter, ok := s.SessionReader.(SessionBatchDeleter)
-	if !ok {
+	deleter, hasPersistenceFallback := s.SessionReader.(SessionBatchDeleter)
+	if s.SourceSessionDeletions == nil && !hasPersistenceFallback {
 		return DeleteSessionsBatchResult{}, fmt.Errorf("%w: session batch deleter is unavailable", ErrInvalidArgument)
 	}
 	runtimeClosed := make(map[string]struct{})
@@ -353,22 +353,39 @@ func (s *Service) DeleteSessionsBatch(
 			runtimeClosed[agentSessionID] = struct{}{}
 		}
 	}
-	result, err := deleter.DeleteSessionsBatch(ctx, agentactivitybiz.DeleteSessionsBatchInput{
+	deletionInput := agentactivitybiz.DeleteSessionsBatchInput{
 		WorkspaceID: workspaceID,
 		SessionIDs:  sessionIDs,
-	})
+	}
+	var result agentactivitybiz.DeleteSessionsBatchResult
+	if s.SourceSessionDeletions != nil {
+		result, err = s.SourceSessionDeletions.DeleteSourceSessionsBatch(ctx, deletionInput)
+	} else {
+		result, err = deleter.DeleteSessionsBatch(ctx, deletionInput)
+	}
 	if err != nil {
 		return DeleteSessionsBatchResult{}, err
 	}
-	removed := make(map[string]struct{}, len(result.RemovedSessionIDs))
-	for _, sessionID := range result.RemovedSessionIDs {
-		removed[sessionID] = struct{}{}
+	if s.SourceSessionDeletions != nil {
+		s.publishSessionDeletedEvents(ctx, workspaceID, result.RemovedSessionIDs)
 	}
-	for _, sessionID := range sessionIDs {
-		_, wasRemoved := removed[sessionID]
-		_, wasClosed := runtimeClosed[sessionID]
-		if wasRemoved || wasClosed {
-			if err := s.cleanupRuntime(ctx, workspaceID, sessionID); err != nil {
+	removedSessionIDs := make(map[string]struct{}, len(result.RemovedSessionIDs))
+	cleanupSessionIDs := make(map[string]struct{}, len(result.RemovedSessionIDs)+len(runtimeClosed))
+	for _, sessionID := range result.RemovedSessionIDs {
+		if sessionID = strings.TrimSpace(sessionID); sessionID != "" {
+			removedSessionIDs[sessionID] = struct{}{}
+			cleanupSessionIDs[sessionID] = struct{}{}
+		}
+	}
+	for sessionID := range runtimeClosed {
+		cleanupSessionIDs[sessionID] = struct{}{}
+	}
+	for sessionID := range cleanupSessionIDs {
+		if err := s.cleanupRuntime(ctx, workspaceID, sessionID); err != nil {
+			return DeleteSessionsBatchResult{}, err
+		}
+		if _, removed := removedSessionIDs[sessionID]; !removed && s.SourceSessionDeletions == nil {
+			if err := s.deleteTuttiModeActivationSessionState(ctx, workspaceID, sessionID); err != nil {
 				return DeleteSessionsBatchResult{}, err
 			}
 		}
@@ -565,7 +582,7 @@ func (s *Service) sessionsFromActivity(ctx context.Context, workspaceID string, 
 			s.persistedSessionCanResume(ctx, persisted),
 		))
 	}
-	return s.withProtocolV2TurnStates(ctx, workspaceID, result)
+	return s.projectSessionsForResponse(ctx, workspaceID, result)
 }
 
 func userProjectWithSectionKey(project userprojectbiz.Project) userprojectbiz.Project {

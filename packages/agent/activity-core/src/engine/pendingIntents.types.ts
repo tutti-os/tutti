@@ -1,5 +1,7 @@
 import type {
   AgentActivityAutomationRuleOverride,
+  AgentActivityCapabilityReference,
+  AgentActivityInitialTuttiModeActivation,
   AgentActivityMessage,
   AgentActivitySessionSettings,
   AgentActivitySubmitDiagnostics,
@@ -29,6 +31,7 @@ export function isPendingActivationViable(
 interface PendingActivationIntentRecordBase {
   agentSessionId: string;
   automationRuleOverride?: Readonly<AgentActivityAutomationRuleOverride>;
+  capabilityRefs?: readonly AgentActivityCapabilityReference[];
   content: readonly AgentPromptContentBlock[];
   displayPrompt?: string;
   cwd: string;
@@ -45,6 +48,8 @@ interface PendingActivationIntentRecordBase {
   status: PendingActivationStatus;
   title: string | null;
   workspaceId: string;
+  initialTuttiModeActivation?: AgentActivityInitialTuttiModeActivation;
+  tuttiModeDraftKey?: string;
 }
 
 export type PendingActivationIntentRecord =
@@ -72,6 +77,7 @@ export interface PendingSubmitIntentRecord {
   acceptedSessionVersion: number | null;
   agentSessionId: string;
   clientSubmitId: string;
+  capabilityRefs?: readonly AgentActivityCapabilityReference[];
   content: readonly AgentPromptContentBlock[];
   displayPrompt?: string;
   errorCode: string | null;
@@ -96,6 +102,7 @@ interface SessionActivationRequestedIntentBase {
   type: "activation/requested";
   agentSessionId: string;
   automationRuleOverride?: Readonly<AgentActivityAutomationRuleOverride>;
+  capabilityRefs?: readonly AgentActivityCapabilityReference[];
   content?: readonly AgentPromptContentBlock[];
   cwd?: string;
   expiresAtUnixMs: number;
@@ -109,6 +116,8 @@ interface SessionActivationRequestedIntentBase {
   title?: string;
   visible?: boolean;
   workspaceId: string;
+  initialTuttiModeActivation?: AgentActivityInitialTuttiModeActivation;
+  tuttiModeDraftKey?: string;
 }
 
 export type SessionActivationRequestedIntent =
@@ -162,11 +171,13 @@ interface SessionActivateCommandBase {
   type: "session/activate";
   agentSessionId: string;
   automationRuleOverride?: Readonly<AgentActivityAutomationRuleOverride>;
+  capabilityRefs?: readonly AgentActivityCapabilityReference[];
   commandId: string;
   correlationId: string;
   cwd?: string;
   initialContent?: readonly AgentPromptContentBlock[];
   initialDisplayPrompt?: string;
+  initialTuttiModeActivation?: AgentActivityInitialTuttiModeActivation;
   submitDiagnostics?: Readonly<AgentActivitySubmitDiagnostics>;
   settings?: AgentActivitySessionSettings;
   timeoutMs?: number;
@@ -207,6 +218,7 @@ export interface SubmitRequestedIntent {
   type: "submit/requested";
   agentSessionId: string;
   clientSubmitId: string;
+  capabilityRefs?: readonly AgentActivityCapabilityReference[];
   content: readonly AgentPromptContentBlock[];
   displayPrompt?: string;
   expiresAtUnixMs: number;

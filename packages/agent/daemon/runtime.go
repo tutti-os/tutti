@@ -28,6 +28,7 @@ const (
 )
 
 type ActivityReporter = agentruntime.ActivityReporter
+type DurableActivityReporter = agentruntime.DurableActivityReporter
 type Adapter = agentruntime.Adapter
 type ClientInfo = agentruntime.ClientInfo
 type Controller = agentruntime.Controller
@@ -44,7 +45,7 @@ type SharedAgentAccessController = agentruntime.SharedAgentAccessController
 type SharedAgentAccessAuditor = agentruntime.SharedAgentAccessAuditor
 
 type Config struct {
-	Reporter                    ActivityReporter
+	Reporter                    DurableActivityReporter
 	ProcessTransport            ProcessTransport
 	HostMetadata                HostMetadata
 	ProviderCommandResolver     ProviderCommandResolver

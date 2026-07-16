@@ -1,6 +1,7 @@
 package workspaceissues
 
 import (
+	"math"
 	"slices"
 	"strings"
 )
@@ -42,7 +43,7 @@ func NormalizePriority(raw string) Priority {
 
 func NormalizePlanningSource(raw string) (PlanningSource, bool) {
 	switch PlanningSource(strings.ToLower(strings.TrimSpace(raw))) {
-	case PlanningSourceManual, PlanningSourceUltraPlan, PlanningSourceTraditionalPlan:
+	case PlanningSourceManual, PlanningSourceTuttiModePlan, PlanningSourceTraditionalPlan:
 		return PlanningSource(strings.ToLower(strings.TrimSpace(raw))), true
 	default:
 		return "", false
@@ -82,8 +83,9 @@ func NormalizeBudget(value Budget) (Budget, bool) {
 	} else {
 		value.Status = BudgetStatus(strings.ToLower(strings.TrimSpace(string(value.Status))))
 	}
-	if value.TokenLimit < 0 || value.ConsumedTokens < 0 || value.QuotaWaterlinePercent < 0 || value.QuotaWaterlinePercent > 100 ||
-		value.HasRemainingQuota && (value.RemainingQuotaPercent < 0 || value.RemainingQuotaPercent > 100) {
+	if value.TokenLimit < 0 || value.ConsumedTokens < 0 || !finitePercentage(value.QuotaWaterlinePercent) ||
+		!finiteNumber(value.RemainingQuotaPercent) ||
+		value.HasRemainingQuota && !finitePercentage(value.RemainingQuotaPercent) {
 		return Budget{}, false
 	}
 	switch value.Mode {
@@ -103,6 +105,14 @@ func NormalizeBudget(value Budget) (Budget, bool) {
 		return Budget{}, false
 	}
 	return value, true
+}
+
+func finitePercentage(value float64) bool {
+	return finiteNumber(value) && value >= 0 && value <= 100
+}
+
+func finiteNumber(value float64) bool {
+	return !math.IsNaN(value) && !math.IsInf(value, 0)
 }
 
 func CompileAutoTokenBudget(taskCount int, profile ExecutionProfile) int64 {

@@ -18,7 +18,10 @@ import type {
 } from "@tutti-os/agent-gui/workbench/types";
 import { isAgentGuiWorkbenchProvider } from "@tutti-os/agent-gui/workbench/providerCatalog";
 import type { I18nRuntime } from "@tutti-os/ui-i18n-runtime";
-import type { TuttidClient } from "@tutti-os/client-tuttid-ts";
+import type {
+  TuttidClient,
+  TuttidEventStreamClient
+} from "@tutti-os/client-tuttid-ts";
 import type {
   WorkbenchContribution,
   WorkbenchDockPreviewCache
@@ -76,6 +79,7 @@ export function createWorkspaceAgentGuiContribution(input: {
   renderAgentsEmpty?: AgentGUIAgentsEmptyRenderer;
   comingSoonAgentProviders?: readonly AgentGUIProvider[];
   tuttidClient: TuttidClient;
+  eventStreamClient?: TuttidEventStreamClient;
   platformApi: Pick<
     DesktopPlatformApi,
     "homeDirectory" | "os" | "resolveDroppedEntries" | "resolveDroppedPaths"
@@ -97,6 +101,7 @@ export function createWorkspaceAgentGuiContribution(input: {
     : null;
   const agentGUIWorkbenchHostInput = createDesktopAgentGUIWorkbenchHostInput({
     hostFilesApi: input.hostFilesApi,
+    eventStreamClient: input.eventStreamClient,
     tuttidClient: input.tuttidClient,
     platformApi: input.platformApi,
     reporterService: input.reporterService,
@@ -147,6 +152,8 @@ export function createWorkspaceAgentGuiContribution(input: {
     return createElement(DesktopWorkspaceAgentGUIWorkbenchBody, {
       agentActivityRuntime: agentGUIWorkbenchHostInput.agentActivityRuntime,
       agentHostApi: agentGUIWorkbenchHostInput.agentHostApi,
+      tuttiModePlanReviewRuntime:
+        agentGUIWorkbenchHostInput.tuttiModePlanReviewRuntime,
       appCenterService: input.appCenterService,
       agentProviderStatusService: input.agentProviderStatusService,
       context,

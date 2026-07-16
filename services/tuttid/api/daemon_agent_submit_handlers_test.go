@@ -15,7 +15,7 @@ func TestAgentSubmitMetadataProjectsAllDiagnosticsFields(t *testing.T) {
 	queued := false
 	source := "  agent-gui  "
 
-	got := agentSubmitMetadata("  submit-1  ", &tuttigenerated.AgentSubmitDiagnostics{
+	got := agentSubmitMetadata(&tuttigenerated.AgentSubmitDiagnostics{
 		SubmittedAtUnixMs: &submittedAtUnixMs,
 		BlockCount:        &blockCount,
 		HasImage:          &hasImage,
@@ -25,7 +25,6 @@ func TestAgentSubmitMetadataProjectsAllDiagnosticsFields(t *testing.T) {
 	})
 	want := map[string]any{
 		"blockCount":              2,
-		"clientSubmitId":          "submit-1",
 		"clientSubmittedAtUnixMs": int64(1234),
 		"hasImage":                true,
 		"promptLength":            42,
@@ -37,10 +36,8 @@ func TestAgentSubmitMetadataProjectsAllDiagnosticsFields(t *testing.T) {
 	}
 }
 
-func TestAgentSubmitMetadataWithoutDiagnosticsKeepsCorrelationOnly(t *testing.T) {
-	got := agentSubmitMetadata(" submit-2 ", nil)
-	want := map[string]any{"clientSubmitId": "submit-2"}
-	if !reflect.DeepEqual(got, want) {
-		t.Fatalf("agentSubmitMetadata() = %#v, want %#v", got, want)
+func TestAgentSubmitMetadataWithoutDiagnosticsIsEmpty(t *testing.T) {
+	if got := agentSubmitMetadata(nil); got != nil {
+		t.Fatalf("agentSubmitMetadata() = %#v, want nil", got)
 	}
 }

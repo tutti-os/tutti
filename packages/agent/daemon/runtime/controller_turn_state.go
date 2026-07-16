@@ -4,10 +4,15 @@ import (
 	"fmt"
 	"strings"
 
+	agentsessionstore "github.com/tutti-os/tutti/packages/agent/daemon/activity"
 	activityshared "github.com/tutti-os/tutti/packages/agent/daemon/activity/events"
 )
 
-func submittedTurnActivityEvents(session Session, turnID string) []activityshared.Event {
+func submittedTurnActivityEvents(
+	session Session,
+	turnID string,
+	capabilityRefs []activityshared.CapabilityReference,
+) []activityshared.Event {
 	ctx, ok := activityEventContext(session, "turn-submitted:"+turnID, turnID)
 	if !ok {
 		return nil
@@ -22,7 +27,41 @@ func submittedTurnActivityEvents(session Session, turnID string) []activityshare
 		ActiveTurnID: turnID,
 		Phase:        string(activityshared.TurnPhaseSubmitted),
 	})
+	activityshared.StampTurnCapabilityReferences(&event, capabilityRefs)
 	return []activityshared.Event{event}
+}
+
+// guidanceTurnCapabilityReferenceStatePatch records provenance on the
+// already-active canonical turn without creating a second turn or claiming a
+// lifecycle transition. In particular, it carries no phase or lifecycle
+// snapshot: the durable projection merges only the references.
+func guidanceTurnCapabilityReferenceStatePatch(
+	session Session,
+	turnID string,
+	capabilityRefs []activityshared.CapabilityReference,
+) (agentsessionstore.WorkspaceAgentStatePatch, bool) {
+	capabilityRefs = activityshared.NormalizeCapabilityReferences(capabilityRefs)
+	turnID = strings.TrimSpace(turnID)
+	if turnID == "" || len(capabilityRefs) == 0 {
+		return agentsessionstore.WorkspaceAgentStatePatch{}, false
+	}
+	mapped := make([]agentsessionstore.WorkspaceAgentCapabilityReference, 0, len(capabilityRefs))
+	for _, reference := range capabilityRefs {
+		mapped = append(mapped, agentsessionstore.WorkspaceAgentCapabilityReference{
+			Capability: reference.Capability,
+			Source:     reference.Source,
+		})
+	}
+	return agentsessionstore.WorkspaceAgentStatePatch{
+		AgentSessionID:    strings.TrimSpace(session.AgentSessionID),
+		Provider:          strings.TrimSpace(session.Provider),
+		ProviderSessionID: strings.TrimSpace(session.ProviderSessionID),
+		OccurredAtUnixMS:  nextEventUnixMS(),
+		Turn: &agentsessionstore.WorkspaceAgentTurnPatch{
+			TurnID:         turnID,
+			CapabilityRefs: mapped,
+		},
+	}, true
 }
 
 // eventsCarryAdapterLifecycleSnapshot reports whether the batch contains an

@@ -396,6 +396,7 @@ func sessionStateUpdateFromPatch(patch WorkspaceAgentStatePatch) WorkspaceAgentS
 	if patch.Turn != nil {
 		out.Turn = &WorkspaceAgentTurnStateUpdate{
 			TurnID:                  strings.TrimSpace(patch.Turn.TurnID),
+			CapabilityRefs:          cloneCapabilityReferences(patch.Turn.CapabilityRefs),
 			Origin:                  strings.TrimSpace(patch.Turn.Origin),
 			SourceGoalOperationID:   strings.TrimSpace(patch.Turn.SourceGoalOperationID),
 			SourceGoalRevision:      patch.Turn.SourceGoalRevision,
@@ -413,6 +414,15 @@ func sessionStateUpdateFromPatch(patch WorkspaceAgentStatePatch) WorkspaceAgentS
 		}
 	}
 	return out
+}
+
+func cloneCapabilityReferences(
+	references []WorkspaceAgentCapabilityReference,
+) []WorkspaceAgentCapabilityReference {
+	if len(references) == 0 {
+		return nil
+	}
+	return append([]WorkspaceAgentCapabilityReference(nil), references...)
 }
 
 func cloneRootProviderTurnTransition(value *WorkspaceAgentRootProviderTurnTransition) *WorkspaceAgentRootProviderTurnTransition {

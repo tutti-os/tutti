@@ -1102,6 +1102,26 @@ export const agentActivityUpdatedPayloadSchema = {
                   type: "string",
                   minLength: 1
                 },
+                capabilityRefs: {
+                  type: "array",
+                  description:
+                    "Structured capability provenance attached by the controller-owned initial submission event or lifecycle-neutral native-guidance report and persisted on the canonical turn. It is never provider prompt text.",
+                  items: {
+                    type: "object",
+                    additionalProperties: false,
+                    required: ["capability", "source"],
+                    properties: {
+                      capability: {
+                        type: "string",
+                        const: "tutti"
+                      },
+                      source: {
+                        type: "string",
+                        const: "slash_command"
+                      }
+                    }
+                  }
+                },
                 phase: {
                   type: "string",
                   enum: [
@@ -2705,6 +2725,40 @@ export const workspaceIssueUpdatedPayloadSchema = {
   }
 } as const;
 
+export const workspaceTuttimodeUpdatedPayloadSchema = {
+  type: "object",
+  additionalProperties: false,
+  required: [
+    "agentSessionId",
+    "activationId",
+    "revision",
+    "status",
+    "changeKind"
+  ],
+  properties: {
+    agentSessionId: {
+      type: "string",
+      minLength: 1
+    },
+    activationId: {
+      type: "string",
+      format: "uuid"
+    },
+    revision: {
+      type: "integer",
+      minimum: 1
+    },
+    status: {
+      type: "string",
+      enum: ["active", "inactive"]
+    },
+    changeKind: {
+      type: "string",
+      enum: ["activated", "deactivated"]
+    }
+  }
+} as const;
+
 export const workspaceWorkbenchNodeLaunchRequestedPayloadSchema = {
   type: "object",
   additionalProperties: false,
@@ -2735,6 +2789,35 @@ export const workspaceWorkbenchNodeLaunchRequestedPayloadSchema = {
       minLength: 1
     },
     payload: true
+  }
+} as const;
+
+export const workspaceWorkflowUpdatedPayloadSchema = {
+  type: "object",
+  additionalProperties: false,
+  required: ["workflowId", "sourceSessionId", "checkpointId", "changeKind"],
+  properties: {
+    workflowId: {
+      type: "string",
+      format: "uuid"
+    },
+    sourceSessionId: {
+      type: "string",
+      minLength: 1
+    },
+    checkpointId: {
+      type: "string",
+      format: "uuid"
+    },
+    changeKind: {
+      type: "string",
+      enum: [
+        "proposal_created",
+        "revision_created",
+        "checkpoint_decided",
+        "operation_updated"
+      ]
+    }
   }
 } as const;
 
@@ -3082,6 +3165,8 @@ export const businessEventPayloadSchemas = {
   "workspace.appfactory.job.updated":
     workspaceAppfactoryJobUpdatedPayloadSchema,
   "workspace.issue.updated": workspaceIssueUpdatedPayloadSchema,
+  "workspace.tuttimode.updated": workspaceTuttimodeUpdatedPayloadSchema,
   "workspace.workbench.node.launch.requested":
-    workspaceWorkbenchNodeLaunchRequestedPayloadSchema
+    workspaceWorkbenchNodeLaunchRequestedPayloadSchema,
+  "workspace.workflow.updated": workspaceWorkflowUpdatedPayloadSchema
 } as const;

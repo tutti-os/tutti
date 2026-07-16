@@ -109,14 +109,33 @@ type RuntimeResumeInput struct {
 }
 
 type RuntimeExecInput struct {
-	WorkspaceID      string
-	AgentSessionID   string
-	Content          []PromptContentBlock
-	DisplayPrompt    string
-	InitialTitle     string
-	InitialTitleBase string
-	Metadata         map[string]any
-	Guidance         bool
+	WorkspaceID       string
+	AgentSessionID    string
+	TurnID            string
+	ClientSubmitID    string
+	CapabilityRefs    []CapabilityReference
+	Content           []PromptContentBlock
+	DisplayPrompt     string
+	InitialTitle      string
+	InitialTitleBase  string
+	Metadata          map[string]any
+	Guidance          bool
+	TuttiModeSnapshot *TuttiModeTurnSnapshot
+}
+
+type CapabilityReference struct {
+	Capability string
+	Source     string
+}
+
+// TuttiModeTurnSnapshot is the immutable activation revision observed by one
+// turn. It is an execution input, not a reconstruction from capability refs.
+type TuttiModeTurnSnapshot struct {
+	ActivationID string
+	RevisionID   string
+	Revision     int64
+	State        string
+	Source       string
 }
 
 type RuntimeExecResult struct {
@@ -127,6 +146,16 @@ type RuntimeExecResult struct {
 	SessionStatus      string
 	TurnLifecycle      TurnLifecycle
 	SubmitAvailability SubmitAvailability
+}
+
+type RuntimeSubmitProvenanceInput struct {
+	WorkspaceID    string
+	AgentSessionID string
+	TurnID         string
+	ClientSubmitID string
+	Content        []PromptContentBlock
+	DisplayPrompt  string
+	Guidance       bool
 }
 
 type CompletedCommand struct {
@@ -245,6 +274,9 @@ type CreateSessionInput struct {
 	// ClientSubmitID is the caller-owned idempotency identity for the optional
 	// initial turn and overrides legacy Metadata["clientSubmitId"].
 	ClientSubmitID         string
+	TurnID                 string
+	CapabilityRefs         []CapabilityReference
+	TuttiModeSnapshot      *TuttiModeTurnSnapshot
 	Title                  *string
 	Cwd                    *string
 	PermissionModeID       *string
@@ -261,9 +293,12 @@ type CreateSessionInput struct {
 }
 
 type SendInput struct {
-	Content       []PromptContentBlock
-	DisplayPrompt string
-	Metadata      map[string]any
+	CapabilityRefs    []CapabilityReference
+	TurnID            string
+	TuttiModeSnapshot *TuttiModeTurnSnapshot
+	Content           []PromptContentBlock
+	DisplayPrompt     string
+	Metadata          map[string]any
 	// ClientSubmitID is the caller-owned idempotency identity. When present it
 	// overrides any legacy clientSubmitId value carried in Metadata.
 	ClientSubmitID string

@@ -178,13 +178,30 @@ func (s *Service) persistedActiveTurnID(ctx context.Context, workspaceID string,
 	return strings.TrimSpace(session.ActiveTurnID), nil
 }
 
-// withProtocolV2TurnState enriches an outgoing session projection with the
+// projectSessionForResponse is the canonical boundary for every public service
+// response that contains one Session. Keep the persisted Turn projection and
+// the Tutti-owned, session-associated activation read projection here so
+// mutations cannot accidentally return a partial Session that clears newer
+// client state.
+func (s *Service) projectSessionForResponse(ctx context.Context, workspaceID string, session Session) (Session, error) {
+	return s.withProtocolV2TurnState(ctx, strings.TrimSpace(workspaceID), session)
+}
+
+// projectSessionsForResponse is the batched form of
+// projectSessionForResponse. List and section responses must use the same
+// projection contract as single-session mutations.
+func (s *Service) projectSessionsForResponse(ctx context.Context, workspaceID string, sessions []Session) ([]Session, error) {
+	return s.withProtocolV2TurnStates(ctx, strings.TrimSpace(workspaceID), sessions)
+}
+
+// withProtocolV2TurnState enriches the canonical response projection with the
 // persisted v2 turn state: activeTurnId pointer, embedded active/latest turns,
 // and pending interactions. latestTurn remains an independent turn entity
-// projection; it is never persisted on the session row.
+// projection; it is never persisted on the session row. The Tutti-owned,
+// session-associated TuttiModeActivation read projection is attached last.
 func (s *Service) withProtocolV2TurnState(ctx context.Context, workspaceID string, session Session) (Session, error) {
 	if s == nil || s.TurnStore == nil {
-		return session, nil
+		return s.withTuttiModeActivation(ctx, workspaceID, session)
 	}
 	latestTurn, ok, err := s.TurnStore.GetLatestTurn(ctx, workspaceID, session.ID)
 	if err != nil {
@@ -195,9 +212,14 @@ func (s *Service) withProtocolV2TurnState(ctx context.Context, workspaceID strin
 		return Session{}, err
 	}
 	if !ok {
-		return s.withProtocolV2TurnStateProjection(ctx, workspaceID, session, nil, latestInteractionsBySessionID[session.ID])
+		session, err = s.withProtocolV2TurnStateProjection(ctx, workspaceID, session, nil, latestInteractionsBySessionID[session.ID])
+	} else {
+		session, err = s.withProtocolV2TurnStateProjection(ctx, workspaceID, session, &latestTurn, latestInteractionsBySessionID[session.ID])
 	}
-	return s.withProtocolV2TurnStateProjection(ctx, workspaceID, session, &latestTurn, latestInteractionsBySessionID[session.ID])
+	if err != nil {
+		return Session{}, err
+	}
+	return s.withTuttiModeActivation(ctx, workspaceID, session)
 }
 
 func (s *Service) withProtocolV2TurnStateProjection(ctx context.Context, workspaceID string, session Session, latestTurn *agentactivitybiz.Turn, latestTurnInteractions []agentactivitybiz.Interaction) (Session, error) {
@@ -233,8 +255,11 @@ func (s *Service) withProtocolV2TurnStateProjection(ctx context.Context, workspa
 }
 
 func (s *Service) withProtocolV2TurnStates(ctx context.Context, workspaceID string, sessions []Session) ([]Session, error) {
-	if s == nil || s.TurnStore == nil || len(sessions) == 0 {
+	if len(sessions) == 0 {
 		return sessions, nil
+	}
+	if s == nil || s.TurnStore == nil {
+		return s.withTuttiModeActivations(ctx, workspaceID, sessions)
 	}
 	ids := make([]string, 0, len(sessions))
 	activeTurnIDBySessionID := make(map[string]string)
@@ -276,5 +301,5 @@ func (s *Service) withProtocolV2TurnStates(ctx context.Context, workspaceID stri
 		session.LatestTurnInteractions = latestInteractionsBySessionID[sessionID]
 		result[i] = session
 	}
-	return result, nil
+	return s.withTuttiModeActivations(ctx, workspaceID, result)
 }

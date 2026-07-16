@@ -97,9 +97,11 @@ interface Props {
   setIsPaletteOpen: Dispatch<SetStateAction<boolean>>;
   setHighlightedIndex: Dispatch<SetStateAction<number>>;
   isGoalModeActive: boolean;
-  executionMode: AgentComposerExecutionMode;
-  onExecutionModeChange: (mode: AgentComposerExecutionMode) => void;
-  onPlanIssueBudgetPresetChange: AgentComposerProps["onPlanIssueBudgetPresetChange"];
+  isPlanModeActive: boolean;
+  isTuttiModeActive: boolean;
+  isTuttiModeUpdating: boolean;
+  onClearPlanMode: () => void;
+  onClearTuttiMode: () => void;
   isPromptTipOverflowing: boolean;
 }
 
@@ -608,9 +610,11 @@ export function AgentComposerView(input: Props): React.JSX.Element {
             isSendingTurn={input.props.isSendingTurn}
             isHeroLayout={isHeroLayout}
             isGoalModeActive={input.isGoalModeActive}
-            executionMode={input.executionMode}
-            onExecutionModeChange={input.onExecutionModeChange}
-            onPlanIssueBudgetPresetChange={input.onPlanIssueBudgetPresetChange}
+            isPlanModeActive={input.isPlanModeActive}
+            isTuttiModeActive={input.isTuttiModeActive}
+            isTuttiModeUpdating={input.isTuttiModeUpdating}
+            onClearPlanMode={input.onClearPlanMode}
+            onClearTuttiMode={input.onClearTuttiMode}
             composerActionButton={composerActionButton}
             showHandoffSelect={showHandoffSelect}
             handoffDisabled={handoffDisabled}
