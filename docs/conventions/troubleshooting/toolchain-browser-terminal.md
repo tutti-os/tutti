@@ -355,6 +355,40 @@ emitted before this method can be called`, especially after HMR, navigation,
   [terminalImeInputGuard.ts](../../../packages/workspace/terminal/src/react/terminalImeInputGuard.ts)
   [terminalSurfaceRuntime.ts](../../../packages/workspace/terminal/src/react/terminalSurfaceRuntime.ts)
 
+### Chinese input renders replacement and control characters in workspace terminals
+
+- Symptom:
+  Chinese input reaches a local workspace terminal, but the shell prompt shows
+  replacement glyphs or control-byte markers such as `<0095>`. ASCII input and
+  commands continue to work, which can make the failure look like an xterm IME
+  composition bug.
+- Quick checks:
+  Run `locale` or `locale charmap` inside a newly created terminal. If
+  `LC_CTYPE` resolves to `C` and the character map is not UTF-8, inspect the
+  desktop and `tuttid` process environments for `LC_ALL`, `LC_CTYPE`, and
+  `LANG` before changing xterm key handlers or terminal transport encoding.
+- Root cause:
+  Finder-launched macOS applications commonly start without locale variables.
+  The daemon inherited that environment and spawned the interactive shell
+  without a character-type locale, so zsh interpreted UTF-8 IME bytes under the
+  single-byte `C` locale and rendered invalid or control characters.
+- Fix:
+  When all locale variables are absent or effectively empty on macOS, append
+  `LC_CTYPE=UTF-8` to the terminal child environment. Preserve any explicit
+  `LC_ALL`, `LC_CTYPE`, or `LANG` value. Restrict the fallback to the character
+  type so message language, sorting, dates, and other locale categories do not
+  change.
+- Validation:
+  Unit-cover missing, empty, explicit, and non-macOS environment cases. Start a
+  real macOS zsh PTY with empty locale variables and assert `locale charmap`
+  reports `UTF-8`, then manually enter Chinese text in a newly created terminal.
+  Existing terminal processes retain their original environment and must be
+  replaced for the fix to take effect.
+- References:
+  [terminal_helpers.go](../../../services/tuttid/service/workspace/terminal_helpers.go)
+  [terminal_helpers_test.go](../../../services/tuttid/service/workspace/terminal_helpers_test.go)
+  [terminal_test.go](../../../services/tuttid/service/workspace/terminal_test.go)
+
 ### Post-composition suppression window swallows real terminal input
 
 - Symptom:

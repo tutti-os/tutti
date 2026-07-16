@@ -81,11 +81,45 @@ func terminalProcessEnv(cwd string) []string {
 	// notably agent `login` flows — reach the upstream API through the same proxy
 	// as spawned agents, instead of connecting directly and hitting `403 Request
 	// not allowed` from a restricted region.
-	return runtimecmd.InjectSystemProxyEnv(append(os.Environ(),
+	env := append(os.Environ(),
 		"PWD="+cwd,
 		"TERM=xterm-256color",
 		"COLORTERM=truecolor",
-	))
+	)
+	return runtimecmd.InjectSystemProxyEnv(
+		appendTerminalUTF8LocaleFallback(env, runtime.GOOS),
+	)
+}
+
+func appendTerminalUTF8LocaleFallback(env []string, goos string) []string {
+	if goos != "darwin" {
+		return env
+	}
+
+	var lang, lcAll, lcCType string
+	for _, entry := range env {
+		key, value, ok := strings.Cut(entry, "=")
+		if !ok {
+			continue
+		}
+		switch key {
+		case "LANG":
+			lang = strings.TrimSpace(value)
+		case "LC_ALL":
+			lcAll = strings.TrimSpace(value)
+		case "LC_CTYPE":
+			lcCType = strings.TrimSpace(value)
+		}
+	}
+	if lcAll != "" || lcCType != "" || lang != "" {
+		return env
+	}
+
+	// Finder-launched macOS apps commonly have no locale variables. Without a
+	// UTF-8 character type, interactive shells treat IME bytes as invalid or
+	// control characters. LC_CTYPE fixes character decoding without changing
+	// message language, sorting, dates, or other locale categories.
+	return append(env, "LC_CTYPE=UTF-8")
 }
 
 func normalizeTerminalDimension(value *int, fallback int) int {
