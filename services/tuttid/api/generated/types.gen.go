@@ -5030,7 +5030,9 @@ type ListWorkspaceIssuesParams struct {
 	PageToken    *IssueManagerPageToken    `form:"pageToken,omitempty" json:"pageToken,omitempty"`
 	TopicId      IssueManagerTopicIDQuery  `form:"topicId" json:"topicId"`
 	StatusFilter *IssueManagerStatusFilter `form:"statusFilter,omitempty" json:"statusFilter,omitempty"`
-	SearchQuery  *IssueManagerSearchQuery  `form:"searchQuery,omitempty" json:"searchQuery,omitempty"`
+
+	// SearchQuery Case-insensitive substring search over the visible title only.
+	SearchQuery *IssueManagerSearchQuery `form:"searchQuery,omitempty" json:"searchQuery,omitempty"`
 }
 
 // ListWorkspaceIssueTasksParams defines parameters for ListWorkspaceIssueTasks.
@@ -5038,7 +5040,9 @@ type ListWorkspaceIssueTasksParams struct {
 	PageSize     *IssueManagerPageSize     `form:"pageSize,omitempty" json:"pageSize,omitempty"`
 	PageToken    *IssueManagerPageToken    `form:"pageToken,omitempty" json:"pageToken,omitempty"`
 	StatusFilter *IssueManagerStatusFilter `form:"statusFilter,omitempty" json:"statusFilter,omitempty"`
-	SearchQuery  *IssueManagerSearchQuery  `form:"searchQuery,omitempty" json:"searchQuery,omitempty"`
+
+	// SearchQuery Case-insensitive substring search over the visible title only.
+	SearchQuery *IssueManagerSearchQuery `form:"searchQuery,omitempty" json:"searchQuery,omitempty"`
 }
 
 // AttachWorkspaceTerminalParams defines parameters for AttachWorkspaceTerminal.

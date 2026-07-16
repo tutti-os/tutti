@@ -71,9 +71,9 @@ func issueListWhereForFilter(filter workspaceissues.IssueListFilter, includeStat
 		args = append(args, string(filter.StatusFilter))
 	}
 	if searchQuery := strings.TrimSpace(filter.SearchQuery); searchQuery != "" {
-		where = append(where, "(LOWER(title) LIKE ? OR LOWER(search_text) LIKE ?)")
+		where = append(where, "LOWER(title) LIKE ?")
 		like := "%" + strings.ToLower(searchQuery) + "%"
-		args = append(args, like, like)
+		args = append(args, like)
 	}
 	return where, args
 }
@@ -94,9 +94,9 @@ func taskListWhereForFilter(filter workspaceissues.TaskListFilter, includeStatus
 		args = append(args, string(filter.StatusFilter))
 	}
 	if searchQuery := strings.TrimSpace(filter.SearchQuery); searchQuery != "" {
-		where = append(where, "(LOWER(title) LIKE ? OR LOWER(search_text) LIKE ?)")
+		where = append(where, "LOWER(title) LIKE ?")
 		like := "%" + strings.ToLower(searchQuery) + "%"
-		args = append(args, like, like)
+		args = append(args, like)
 	}
 	return where, args
 }

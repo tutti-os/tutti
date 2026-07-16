@@ -3186,6 +3186,9 @@ into a dynamic `issue-topic:*` presentation key, then atomically replaces the
 ordered group list for each debounced search. Each group owns its items,
 query-scoped total, cursor, and load-more status; loading or retrying one topic
 must not replace sibling groups or put the whole palette into loading state.
+Search results in the Tasks tab match only the visible workspace-issue title.
+The daemon issue-list query owns that rule so its items, counts, and cursors all
+use the same title-only result set.
 
 ```text
 Agent mention query identity

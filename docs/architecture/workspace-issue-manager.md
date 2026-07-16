@@ -41,6 +41,7 @@ This Go package owns transport-agnostic issue-manager behavior:
 
 - issue, task, run, output, and context-reference models
 - status, priority, pagination, and search normalization
+- title-only issue and task list search; content does not produce list matches
 - task status projection onto issue summaries
 - run lifecycle orchestration
 - a `Store` interface for concrete persistence adapters

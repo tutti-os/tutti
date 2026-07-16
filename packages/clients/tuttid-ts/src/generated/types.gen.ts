@@ -2677,6 +2677,9 @@ export type IssueManagerPageToken = string;
 
 export type IssueManagerStatusFilter2 = IssueManagerStatusFilter;
 
+/**
+ * Case-insensitive substring search over the visible title only.
+ */
 export type IssueManagerSearchQuery = string;
 
 export type GetHealthData = {
@@ -8612,6 +8615,9 @@ export type ListWorkspaceIssuesData = {
     pageToken?: string;
     topicId: string;
     statusFilter?: IssueManagerStatusFilter;
+    /**
+     * Case-insensitive substring search over the visible title only.
+     */
     searchQuery?: string;
   };
   url: "/v1/workspaces/{workspaceID}/issues";
@@ -9230,6 +9236,9 @@ export type ListWorkspaceIssueTasksData = {
     pageSize?: number;
     pageToken?: string;
     statusFilter?: IssueManagerStatusFilter;
+    /**
+     * Case-insensitive substring search over the visible title only.
+     */
     searchQuery?: string;
   };
   url: "/v1/workspaces/{workspaceID}/issues/{issueID}/tasks";
