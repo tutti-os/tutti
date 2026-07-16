@@ -90,7 +90,9 @@ export interface AgentActivityMessage {
   status?: string | null;
   semantics?: AgentActivityMessageSemantics;
   payload: Record<string, unknown>;
+  sequence?: number;
   occurredAtUnixMs: number;
+  createdAtUnixMs?: number;
   startedAtUnixMs?: number;
   completedAtUnixMs?: number;
 }
@@ -372,6 +374,7 @@ export interface AgentActivityEventMessage {
   version: number;
   turnId: string | null;
   status?: string;
+  sequence?: number;
   occurredAtUnixMs: number;
   startedAtUnixMs?: number;
   completedAtUnixMs?: number;

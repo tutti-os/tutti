@@ -1575,6 +1575,10 @@ export type WorkspaceAgentSessionMessage = {
   agentSessionId: string;
   messageId: string;
   /**
+   * Stable message presentation order assigned when the durable message row is first created. Updating the same message does not change this value; version remains the mutable snapshot change cursor.
+   */
+  sequence: number;
+  /**
    * A non-empty turnId attaches a Turn-scoped message to a real persisted Turn. Null is valid only when kind is session_audit; empty strings are forbidden. Legacy stored turnless rows are read as compatibility data and are never assigned a guessed Turn.
    */
   turnId: string | null;

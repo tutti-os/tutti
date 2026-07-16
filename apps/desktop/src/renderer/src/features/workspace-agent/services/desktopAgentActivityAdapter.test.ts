@@ -10,11 +10,25 @@ import type {
 } from "@tutti-os/client-tuttid-ts";
 import { TuttidProtocolError } from "@tutti-os/client-tuttid-ts";
 import {
+  agentActivityMessageFromTuttidMessage,
   agentActivitySessionFromTuttidSession,
   createDesktopAgentActivityAdapter
 } from "./desktopAgentActivityAdapter.ts";
 
 const workspaceId = "workspace-1";
+
+test("desktop agent activity adapter preserves durable message sequence", () => {
+  const message = agentActivityMessageFromTuttidMessage(
+    workspaceId,
+    createMessage({
+      sequence: 42,
+      createdAtUnixMs: 100
+    })
+  );
+
+  assert.equal(message.sequence, 42);
+  assert.equal(message.createdAtUnixMs, 100);
+});
 
 test("desktop agent activity adapter rejects missing protocol v2 session fields", () => {
   for (const field of [
@@ -259,11 +273,13 @@ test("desktop agent activity adapter maps tuttid sessions and messages", async (
       {
         agentSessionId: "agent-session-1",
         completedAtUnixMs: 1717200003000,
+        createdAtUnixMs: undefined,
         kind: "text",
         messageId: "message-5",
         occurredAtUnixMs: 1717200001000,
         payload: { text: "hello" },
         role: "assistant",
+        sequence: 1,
         startedAtUnixMs: 1717200002000,
         status: "completed",
         turnId: "turn-1",
@@ -1741,6 +1757,7 @@ function createMessage(
     occurredAtUnixMs: 1717200001000,
     payload: {},
     role: "assistant",
+    sequence: 1,
     turnId: "turn-1",
     version: 1,
     ...overrides

@@ -84,7 +84,9 @@ test("rejects nullable turn id on ordinary realtime messages", () => {
           agentSessionId: "session-1",
           kind: "text",
           messageId: "message-1",
+          sequence: 7,
           occurredAtUnixMs: 20,
+          createdAtUnixMs: 10,
           payload: {},
           role: "assistant",
           turnId: null,
@@ -97,6 +99,42 @@ test("rejects nullable turn id on ordinary realtime messages", () => {
     workspaceId: "workspace-1"
   } as unknown as AgentActivityUpdatedEvent;
   assert.deepEqual(parseInlineActivityMessages(event), []);
+});
+
+test("preserves durable ordering fields on turn-scoped realtime messages", () => {
+  const event: AgentActivityUpdatedEvent = {
+    agentSessionId: "session-1",
+    data: {
+      acceptedCount: 1,
+      agentSessionId: "session-1",
+      eventType: "message_update",
+      latestVersion: 2,
+      messages: [
+        {
+          agentSessionId: "session-1",
+          createdAtUnixMs: 10,
+          kind: "text",
+          messageId: "message-1",
+          occurredAtUnixMs: 20,
+          payload: { text: "history" },
+          role: "assistant",
+          sequence: 7,
+          turnId: "turn-1",
+          version: 2
+        }
+      ],
+      workspaceId: "workspace-1"
+    },
+    eventType: "message_update",
+    workspaceId: "workspace-1"
+  };
+
+  const messages = parseInlineActivityMessages(event);
+  assert.equal(messages.length, 1);
+  assert.equal(messages[0]?.turnId, "turn-1");
+  assert.equal(messages[0]?.sequence, 7);
+  assert.equal(messages[0]?.createdAtUnixMs, 10);
+  assert.deepEqual(messages[0]?.payload, { text: "history" });
 });
 
 test("does not inline turn or interaction updates", () => {

@@ -589,6 +589,7 @@ export function agentActivityMessageFromTuttidMessage(
     occurredAtUnixMs: normalizedTuttidMessageOccurredAtUnixMs(message),
     payload: recordValue(message.payload),
     role: message.role,
+    sequence: message.sequence,
     ...(message.semantics != null
       ? {
           semantics: {
@@ -611,6 +612,7 @@ export function agentActivityMessageFromTuttidMessage(
         }
       : {}),
     startedAtUnixMs: message.startedAtUnixMs ?? undefined,
+    createdAtUnixMs: message.createdAtUnixMs ?? undefined,
     status: message.status ?? undefined,
     turnId: normalizedTuttidMessageTurnId(message),
     version: message.version

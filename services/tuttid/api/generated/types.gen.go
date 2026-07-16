@@ -4120,8 +4120,11 @@ type WorkspaceAgentSessionMessage struct {
 	Payload          *map[string]interface{}        `json:"payload,omitempty"`
 	Role             string                         `json:"role"`
 	Semantics        *AgentActivityMessageSemantics `json:"semantics,omitempty"`
-	StartedAtUnixMs  *int64                         `json:"startedAtUnixMs,omitempty"`
-	Status           *string                        `json:"status,omitempty"`
+
+	// Sequence Stable message presentation order assigned when the durable message row is first created. Updating the same message does not change this value; version remains the mutable snapshot change cursor.
+	Sequence        int64   `json:"sequence"`
+	StartedAtUnixMs *int64  `json:"startedAtUnixMs,omitempty"`
+	Status          *string `json:"status,omitempty"`
 
 	// TurnId A non-empty turnId attaches a Turn-scoped message to a real persisted Turn. Null is valid only when kind is session_audit; empty strings are forbidden. Legacy stored turnless rows are read as compatibility data and are never assigned a guessed Turn.
 	TurnId          *string `json:"turnId"`

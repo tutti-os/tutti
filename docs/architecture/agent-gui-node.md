@@ -42,6 +42,15 @@ provider-specific payloads.
 - goal state and long-running workflow state
 - durable event ordering and recovery
 
+Durable transcript messages carry two independent order values. `sequence` is
+assigned from the durable message row identity when that row is first created
+and never changes, so historical pulls, realtime updates, and Agent GUI
+projections use it for presentation order. `version` is the mutable per-session
+change cursor: updating an existing streaming message advances `version` but
+must not move that message in the transcript. Lifecycle timestamps describe
+when work started, occurred, or completed and are only compatibility fallbacks
+when an older producer has no durable sequence.
+
 Session and turn are separate entities. A session may exist without a running
 turn and may contain many settled turns. Running, waiting, completed, failed,
 and canceled are turn lifecycle states; they must not be copied onto the

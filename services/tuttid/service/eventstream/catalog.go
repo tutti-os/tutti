@@ -611,6 +611,9 @@ func validateAgentActivityUpdatedData(decoded agentActivityUpdatedPayload) error
 			if strings.TrimSpace(message.Role) == "" {
 				return fmt.Errorf("data.messages[%d].role is required", index)
 			}
+			if message.Sequence == nil || *message.Sequence == 0 {
+				return fmt.Errorf("data.messages[%d].sequence is required", index)
+			}
 			if message.Version == nil || *message.Version == 0 {
 				return fmt.Errorf("data.messages[%d].version is required", index)
 			}

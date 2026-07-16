@@ -107,7 +107,9 @@ function agentActivityMessageFromInlineMessage(input: {
       string,
       unknown
     >,
+    sequence: numberValue(input.message.sequence),
     occurredAtUnixMs,
+    createdAtUnixMs: numberValue(input.message.createdAtUnixMs),
     startedAtUnixMs: numberValue(input.message.startedAtUnixMs),
     completedAtUnixMs: numberValue(input.message.completedAtUnixMs)
   };

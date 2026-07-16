@@ -31,6 +31,11 @@ export function compareAgentActivityMessages(
   left: AgentActivityMessage,
   right: AgentActivityMessage
 ): number {
+  const leftSequence = positiveNumber(left.sequence);
+  const rightSequence = positiveNumber(right.sequence);
+  if (leftSequence > 0 && rightSequence > 0 && leftSequence !== rightSequence) {
+    return leftSequence - rightSequence;
+  }
   return (
     left.occurredAtUnixMs - right.occurredAtUnixMs ||
     left.version - right.version ||
@@ -76,11 +81,19 @@ export function areAgentActivityMessagesEqual(
     left.kind === right.kind &&
     Object.is(left.status, right.status) &&
     areJsonLikeValuesEqual(left.semantics, right.semantics) &&
+    Object.is(left.sequence, right.sequence) &&
     Object.is(left.occurredAtUnixMs, right.occurredAtUnixMs) &&
+    Object.is(left.createdAtUnixMs, right.createdAtUnixMs) &&
     Object.is(left.startedAtUnixMs, right.startedAtUnixMs) &&
     Object.is(left.completedAtUnixMs, right.completedAtUnixMs) &&
     areJsonLikeValuesEqual(left.payload, right.payload)
   );
+}
+
+function positiveNumber(value: number | undefined): number {
+  return typeof value === "number" && Number.isFinite(value) && value > 0
+    ? value
+    : 0;
 }
 
 export function cloneAgentActivityMessage<
@@ -100,6 +113,8 @@ function mergeAgentActivityMessage<T extends AgentActivityMessage>(
   return {
     ...existing,
     ...incoming,
+    sequence: incoming.sequence ?? existing.sequence,
+    createdAtUnixMs: incoming.createdAtUnixMs ?? existing.createdAtUnixMs,
     semantics: incoming.semantics
       ? {
           ...existing.semantics,

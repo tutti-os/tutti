@@ -11,6 +11,7 @@ test("preserves protocol v2 session-level message ownership", () => {
     role: "assistant",
     kind: "text",
     occurredAtUnixMs: 1,
+    sequence: 1,
     version: 1
   } satisfies WorkspaceAgentSessionMessage;
 
@@ -25,6 +26,7 @@ test("normalizes non-empty turn ownership", () => {
     role: "assistant",
     kind: "text",
     occurredAtUnixMs: 1,
+    sequence: 1,
     version: 1
   } satisfies WorkspaceAgentSessionMessage;
 
