@@ -123,6 +123,9 @@ export function createAgentSessionEngine({
       ) {
         const result = rootEngineReducer(state, intent);
         state = result.state;
+        if (result.followUpIntents?.length) {
+          intentQueue.unshift(...result.followUpIntents);
+        }
         for (const command of result.commands) {
           if (command.type === "engine/abortExternalCommand") {
             effectExecutor.abort(command.targetCommandId, command.reason);

@@ -566,6 +566,25 @@ export interface AgentActivityDeleteSessionResult {
   removed: boolean;
 }
 
+export interface AgentActivityDeleteSessionsInput {
+  workspaceId: string;
+  agentSessionIds: readonly string[];
+  signal?: AbortSignal;
+}
+
+export interface AgentActivityDeleteSessionsResult {
+  removedMessages: number;
+  removedSessionIds: string[];
+  removedSessions: number;
+}
+
+export interface AgentActivitySetSessionPinnedInput {
+  workspaceId: string;
+  agentSessionId: string;
+  pinned: boolean;
+  signal?: AbortSignal;
+}
+
 export type AgentActivityNeedsAttentionKind =
   | "permission"
   | "question"

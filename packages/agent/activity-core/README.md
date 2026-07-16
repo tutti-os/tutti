@@ -108,7 +108,9 @@ export const adapter: AgentActivityAdapter = {
   goalControl: controlAgentGoal,
   submitInteractive: submitAgentInteractiveResponse,
   deleteSession: deleteAgentSession,
-  renameSession: renameAgentSession
+  deleteSessions: deleteAgentSessions,
+  renameSession: renameAgentSession,
+  setSessionPinned: setAgentSessionPinned
 };
 ```
 

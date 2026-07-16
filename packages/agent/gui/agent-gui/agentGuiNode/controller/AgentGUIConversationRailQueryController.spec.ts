@@ -157,7 +157,7 @@ describe("AgentGUIConversationRailQueryController", () => {
     }
   });
 
-  it("keeps pin refreshes interactive and reloads only affected pages", async () => {
+  it("publishes pin and delete projections only after affected pages resolve", async () => {
     const engine = createTestAgentSessionEngine();
     const session = normalizeAgentActivitySession({
       activeTurnId: null,
@@ -173,11 +173,18 @@ describe("AgentGUIConversationRailQueryController", () => {
       workspaceId: "test-workspace"
     });
     const sectionResolvers: Array<() => void> = [];
-    const listPinnedSessionsPage = vi.fn(async () => ({
-      hasMore: false,
-      sessions: [{ ...session, pinnedAtUnixMs: 100, updatedAtUnixMs: 2 }],
-      totalCount: 1
-    }));
+    let pinnedRequestCount = 0;
+    const listPinnedSessionsPage = vi.fn(async () => {
+      pinnedRequestCount += 1;
+      return {
+        hasMore: false,
+        sessions:
+          pinnedRequestCount === 1
+            ? [{ ...session, pinnedAtUnixMs: 100, updatedAtUnixMs: 2 }]
+            : [],
+        totalCount: pinnedRequestCount === 1 ? 1 : 0
+      };
+    });
     const listSessionSectionPage = vi.fn(async (input) => ({
       hasMore: false,
       kind: "conversations" as const,
@@ -240,6 +247,18 @@ describe("AgentGUIConversationRailQueryController", () => {
       expect(controller.getSnapshot().runtimeRailSectionsPending).toBe(false)
     );
     expect(controller.isInteractionLocked()).toBe(false);
+    let visiblePinnedAt =
+      controller.getSnapshot().runtimeRailConversations[0]?.pinnedAtUnixMs ??
+      null;
+    let visiblePinChanges = 0;
+    const unsubscribe = controller.subscribe((snapshot) => {
+      const nextPinnedAt =
+        snapshot.runtimeRailConversations[0]?.pinnedAtUnixMs ?? null;
+      if (nextPinnedAt !== visiblePinnedAt) {
+        visiblePinnedAt = nextPinnedAt;
+        visiblePinChanges += 1;
+      }
+    });
 
     engine.dispatch({
       type: "session/upserted",
@@ -249,14 +268,61 @@ describe("AgentGUIConversationRailQueryController", () => {
         updatedAtUnixMs: 2
       }
     });
+    expect(controller.isInteractionLocked()).toBe(true);
     expect(controller.getSnapshot().runtimeRailSectionsPending).toBe(false);
     expect(controller.getSnapshot().runtimeRailMemberships).toHaveLength(1);
-    expect(controller.isInteractionLocked()).toBe(false);
+    expect(
+      controller.getSnapshot().runtimeRailConversations[0]?.pinnedAtUnixMs
+    ).toBeNull();
     await vi.waitFor(() =>
       expect(listPinnedSessionsPage).toHaveBeenCalledTimes(1)
     );
     expect(listSessionSectionPage).toHaveBeenCalledTimes(1);
     expect(listSessionSections).toHaveBeenCalledTimes(1);
+    await vi.waitFor(() =>
+      expect(controller.isInteractionLocked()).toBe(false)
+    );
+    expect(
+      controller.getSnapshot().runtimeRailConversations[0]?.pinnedAtUnixMs
+    ).toBe(100);
+    expect(
+      controller
+        .getSnapshot()
+        .runtimeRailMemberships?.some((section) => section.id === "pinned")
+    ).toBe(true);
+    expect(visiblePinChanges).toBe(1);
+
+    let visibleConversationCount =
+      controller.getSnapshot().runtimeRailConversations.length;
+    let visibleDeleteChanges = 0;
+    const unsubscribeDelete = controller.subscribe((snapshot) => {
+      const nextCount = snapshot.runtimeRailConversations.length;
+      if (nextCount !== visibleConversationCount) {
+        visibleConversationCount = nextCount;
+        visibleDeleteChanges += 1;
+      }
+    });
+    engine.dispatch({
+      type: "session/removed",
+      agentSessionId: session.agentSessionId
+    });
+    expect(controller.isInteractionLocked()).toBe(true);
+    expect(controller.getSnapshot().runtimeRailConversations).toHaveLength(1);
+    expect(
+      controller
+        .getSnapshot()
+        .runtimeRailMemberships?.some((section) => section.id === "pinned")
+    ).toBe(true);
+    await vi.waitFor(() =>
+      expect(
+        controller
+          .getSnapshot()
+          .runtimeRailMemberships?.some((section) => section.id === "pinned")
+      ).toBe(false)
+    );
+    expect(controller.getSnapshot().runtimeRailConversations).toHaveLength(0);
+    expect(controller.isInteractionLocked()).toBe(false);
+    expect(visibleDeleteChanges).toBe(1);
 
     controller.configure({
       conversationFilter: {
@@ -269,6 +335,8 @@ describe("AgentGUIConversationRailQueryController", () => {
     });
     expect(controller.isInteractionLocked()).toBe(true);
 
+    unsubscribeDelete();
+    unsubscribe();
     detach();
     engine.dispose();
   });
@@ -323,6 +391,79 @@ describe("AgentGUIConversationRailQueryController", () => {
     expect(controller.getSnapshot().runtimeSectionsEnabled).toBe(true);
 
     detachSecond();
+    engine.dispose();
+  });
+
+  it("keeps the committed projection when targeted membership refresh fails", async () => {
+    const engine = createTestAgentSessionEngine();
+    const session = normalizeAgentActivitySession({
+      activeTurnId: null,
+      agentSessionId: "session-1",
+      agentTargetId: "local:codex",
+      cwd: "/workspace",
+      latestTurnInteractions: [],
+      pendingInteractions: [],
+      provider: "codex",
+      railSectionKey: "conversations",
+      title: "Session",
+      updatedAtUnixMs: 1,
+      workspaceId: "test-workspace"
+    });
+    const listPinnedSessionsPage = vi.fn(async () => {
+      throw new Error("pinned page failed");
+    });
+    const listSessionSectionPage = vi.fn(async () => {
+      throw new Error("section page failed");
+    });
+    const controller = new AgentGUIConversationRailQueryController({
+      engine,
+      getActiveConversationId: () => null,
+      runtime: {
+        listPinnedSessionsPage,
+        listSessionSectionPage,
+        listSessionSections: async (input) => ({
+          sections: [
+            {
+              hasMore: false,
+              kind: "conversations",
+              sectionKey: "conversations",
+              sessions: [session],
+              totalCount: 1
+            }
+          ],
+          workspaceId: input.workspaceId
+        })
+      },
+      workspaceId: "test-workspace"
+    });
+    controller.configure({
+      conversationFilter: { kind: "all" },
+      previewMode: false,
+      sectionAgentTargetFallbackId: null,
+      userProjects: []
+    });
+    const detach = controller.attach();
+    await vi.waitFor(() =>
+      expect(controller.getSnapshot().runtimeRailSectionsPending).toBe(false)
+    );
+
+    engine.dispatch({
+      session: { ...session, pinnedAtUnixMs: 10, updatedAtUnixMs: 2 },
+      type: "session/upserted"
+    });
+    await vi.waitFor(() =>
+      expect(listPinnedSessionsPage).toHaveBeenCalledTimes(1)
+    );
+    expect(listSessionSectionPage).toHaveBeenCalledTimes(1);
+    expect(controller.isInteractionLocked()).toBe(true);
+    expect(
+      controller.getSnapshot().runtimeRailConversations[0]?.pinnedAtUnixMs
+    ).toBeNull();
+    expect(
+      controller.getSnapshot().runtimeRailMemberships?.[0]?.sessionIds
+    ).toEqual(["session-1"]);
+
+    detach();
     engine.dispose();
   });
 

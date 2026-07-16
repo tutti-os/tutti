@@ -176,6 +176,21 @@ export function createWorkspaceAgentSessionEngineHost(
               settings: command.settings,
               workspaceId: command.workspaceId
             });
+          case "session/setPinned": {
+            const session = await adapter.setSessionPinned({
+              agentSessionId: command.agentSessionId,
+              pinned: command.pinned,
+              signal: options?.signal,
+              workspaceId: command.workspaceId
+            });
+            return { session };
+          }
+          case "sessions/delete":
+            return adapter.deleteSessions({
+              agentSessionIds: command.agentSessionIds,
+              signal: options?.signal,
+              workspaceId: command.workspaceId
+            });
           case "engine/probe":
             return Promise.resolve({ ok: true });
           case "engine/reconcileWorkspace": {

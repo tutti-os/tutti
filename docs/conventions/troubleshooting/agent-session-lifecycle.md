@@ -533,7 +533,10 @@ Turn state, loading, cancel, restore, file-change undo, rail projection, event u
   daemon, but the rail does not move the row or update its action until a later
   list refresh. Old conversations without a live runtime update immediately. In
   another variant, the pin command completes quickly but the whole rail becomes
-  disabled or changes to a skeleton while section membership refreshes.
+  disabled or changes to a skeleton while section membership refreshes. A third
+  variant renders the mutation in two steps: unpin first removes the pinned row,
+  then removes the pinned section and inserts the ordinary row; delete first
+  shrinks the section, then shrinks and refills it.
 - Quick checks:
   Correlate `pin_result` with `agent.activity.store.session_version_regression`.
   Compare the command response's `updatedAtUnixMs` with the engine's current
@@ -554,8 +557,11 @@ Turn state, loading, cancel, restore, file-change undo, rail projection, event u
   the whole stale response, including the new pin value.
   When the entity update is accepted, pin membership still requires
   authoritative pinned and ordinary first-page reads. Triggering an aggregate
-  section query or workspace activity load turns that narrow reconciliation
-  into a multi-second blocking reload on large histories.
+  section query or workspace activity load turns that targeted revalidation
+  into a multi-second blocking reload on large histories. Rendering the updated
+  or tombstoned canonical entity against the previous page membership creates
+  the two-step variant: entity projection changes before the authoritative page
+  replacement knows the final bounded list and refill row.
 - Fix:
   Merge session freshness monotonically across runtime and persistence using
   the newer timestamp. Pin responses that advance the session version must also
@@ -563,8 +569,14 @@ Turn state, loading, cancel, restore, file-change undo, rail projection, event u
   cannot clear a running turn. Do not weaken frontend version checks or hide the
   mismatch behind delayed refetches. For an accepted membership update, compare
   canonical before/after membership and request only pinned plus the exact
-  ordinary section page. Keep resolved pages visible and use the canonical row
-  as a transient overlay until both responses apply atomically. Do not call
+  ordinary section page. Route pin and delete through engine mutation intents;
+  the command result and canonical follow-up must drain before subscribers are
+  notified. Make the rail query controller the sole publisher of a composite
+  entity-plus-membership snapshot, retain its previous committed value while
+  targeted reads run, and publish the complete next value once. The view must
+  not subscribe to live engine rows separately or keep stale section snapshots.
+  Keep the committed projection on targeted failure and lock membership actions
+  until a scoped authoritative refresh succeeds. Do not call
   `listSessionSections` or workspace `load` from delete, pin/unpin, or rename.
   Lock scope-sensitive actions only while displayed membership belongs to a
   different or unresolved scope; do not patch daemon-owned membership locally.
@@ -572,9 +584,12 @@ Turn state, loading, cancel, restore, file-change undo, rail projection, event u
   Cover a live runtime session whose persisted pin update is newer, a newer
   runtime snapshot that must not regress, and a running turn that remains
   attached to the pin response. Run `go test ./services/tuttid/service/agent`
-  plus daemon lint, tests, and build. Add controller coverage proving a
-  same-scope pin/unpin calls only the pinned and exact ordinary page endpoints,
-  keeps `pending=false`, and does not call the aggregate section endpoint.
+  plus daemon lint, tests, and build when daemon persistence changed. Add
+  reducer interleaving coverage proving command success and canonical follow-up
+  share one engine notification. Add controller coverage proving same-scope
+  pin/unpin calls only the pinned and exact ordinary page endpoints, keeps the
+  old composite projection until both resolve, publishes once, and never calls
+  the aggregate section endpoint.
 - References:
   [service.go](../../../services/tuttid/service/agent/service.go)
   [service_session.go](../../../services/tuttid/service/agent/service_session.go)

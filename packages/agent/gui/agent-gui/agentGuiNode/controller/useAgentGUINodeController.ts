@@ -430,18 +430,6 @@ export function useAgentGUINodeController({
     getErrorCode: getAgentGUIErrorCode
   });
   const activeConversationLiveState = activation.stateFor(activeConversationId);
-  const removeConversations = useCallback(
-    (conversationIds: readonly string[]) => {
-      for (const agentSessionId of conversationIds) {
-        sessionEngine.dispatch({
-          type: "session/removed",
-          agentSessionId
-        });
-      }
-    },
-    [sessionEngine]
-  );
-
   const setUserProjectsSnapshot = useCallback(
     (projects: readonly AgentHostUserProject[]) => {
       setUserProjects((current) =>
@@ -675,7 +663,6 @@ export function useAgentGUINodeController({
     planImplementationTurnIdRef,
     prefillPromptRequest,
     previewMode,
-    removeConversations,
     reportActiveConversationCleared: reportAgentGUIActiveConversationCleared,
     sessionEngine,
     setUserProjectsSnapshot,

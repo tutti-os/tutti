@@ -58,6 +58,10 @@ import {
 } from "./composerOptions.reducer.ts";
 import { canonicalTurnKey } from "./sessionEntityKeys.ts";
 import { deriveCanonicalSubmitAvailability } from "./sessionLifecycle.availability.ts";
+import {
+  createInitialSessionMutationsState,
+  sessionMutationsReducer
+} from "./sessionMutations.reducer.ts";
 
 // Root reducer: static composition of domain reducers, zero business logic.
 // Cross-domain read-only context is passed explicitly; domains still own all
@@ -71,6 +75,7 @@ export function createInitialAgentSessionEngineState(): AgentSessionEngineState 
     planDecisions: createInitialPlanDecisionState(),
     promptQueue: createInitialPromptQueueState(),
     sessionReconcile: createInitialSessionReconcileState(),
+    sessionMutations: createInitialSessionMutationsState(),
     sessionCommands: createInitialSessionCommandsState(),
     sessionLifecycle: createInitialSessionLifecycleState(),
     sessionMessages: createInitialSessionMessagesState(),
@@ -275,6 +280,14 @@ export function rootEngineReducer(
       deletedSessionIds: state.sessionLifecycle.deletedSessionIds
     }
   );
+  const sessionMutations = sessionMutationsReducer(
+    state.sessionMutations,
+    intent,
+    {
+      deletedSessionIds: state.sessionLifecycle.deletedSessionIds,
+      sessionsById: state.sessionLifecycle.sessionsById
+    }
+  );
   const sessionLifecycle = sessionLifecycleReducer(
     state.sessionLifecycle,
     intent,
@@ -355,6 +368,7 @@ export function rootEngineReducer(
     planDecisions.state === state.planDecisions &&
     promptQueue.state === state.promptQueue &&
     sessionReconcile.state === state.sessionReconcile &&
+    sessionMutations.state === state.sessionMutations &&
     sessionCommands.state === state.sessionCommands &&
     sessionLifecycle.state === state.sessionLifecycle &&
     sessionMessages.state === state.sessionMessages &&
@@ -368,6 +382,7 @@ export function rootEngineReducer(
         planDecisions: planDecisions.state,
         promptQueue: promptQueue.state,
         sessionReconcile: sessionReconcile.state,
+        sessionMutations: sessionMutations.state,
         sessionCommands: sessionCommands.state,
         sessionLifecycle: sessionLifecycle.state,
         sessionMessages: sessionMessages.state,
@@ -380,11 +395,15 @@ export function rootEngineReducer(
       ...pendingIntents.commands,
       ...planDecisions.commands,
       ...sessionReconcile.commands,
+      ...sessionMutations.commands,
       ...sessionCommands.commands,
       ...sessionLifecycle.commands,
       ...promptQueue.commands,
       ...composerOptions.commands
     ],
+    ...(sessionMutations.followUpIntents
+      ? { followUpIntents: sessionMutations.followUpIntents }
+      : {}),
     state: nextState
   };
 }

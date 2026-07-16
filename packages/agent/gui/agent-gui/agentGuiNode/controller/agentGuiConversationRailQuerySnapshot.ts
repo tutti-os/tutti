@@ -2,6 +2,7 @@ import type {
   ConversationRailQueryState,
   ConversationRailSectionMembership
 } from "../model/agentGuiConversationRail";
+import type { AgentGUIConversationSummary } from "../model/agentGuiConversationModel";
 
 export const EMPTY_CONVERSATION_RAIL_QUERY_STATE: ConversationRailQueryState = {
   pending: false,
@@ -46,6 +47,7 @@ export interface AgentGUIConversationRailQuerySnapshot {
   };
   runtimeSectionsEnabled: boolean;
   runtimeRailMemberships: ConversationRailSectionMembership[] | null;
+  runtimeRailConversations: AgentGUIConversationSummary[];
   runtimeRailReconcilingSessionIds: readonly string[];
   runtimeRailSectionsPending: boolean;
   sectionPageStates: ConversationRailQueryState["sectionPageStates"];
@@ -53,6 +55,7 @@ export interface AgentGUIConversationRailQuerySnapshot {
 
 export function buildConversationRailQuerySnapshot(input: {
   queryState: ConversationRailQueryState;
+  runtimeRailConversations: AgentGUIConversationSummary[];
   runtimeSectionsEnabled: boolean;
   searchEnabled: boolean;
   searchQuery: string;
@@ -76,6 +79,7 @@ export function buildConversationRailQuerySnapshot(input: {
     },
     runtimeSectionsEnabled: input.runtimeSectionsEnabled,
     runtimeRailMemberships: input.queryState.sections,
+    runtimeRailConversations: input.runtimeRailConversations,
     runtimeRailReconcilingSessionIds: input.queryState.reconcilingSessionIds,
     runtimeRailSectionsPending: input.queryState.pending,
     sectionPageStates: input.queryState.sectionPageStates

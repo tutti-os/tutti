@@ -364,11 +364,31 @@ export function createDesktopAgentActivityAdapter({
         input.agentSessionId
       );
     },
+    async deleteSessions(input) {
+      const response = await tuttidClient.deleteWorkspaceAgentSessionsBatch(
+        input.workspaceId,
+        { sessionIds: [...input.agentSessionIds] },
+        { signal: input.signal }
+      );
+      return {
+        removedMessages: response.removedMessages,
+        removedSessionIds: response.removedSessionIds,
+        removedSessions: response.removedSessions
+      };
+    },
     async renameSession(input) {
       const session = await tuttidClient.updateWorkspaceAgentSessionTitle(
         input.workspaceId,
         input.agentSessionId,
         { title: input.title }
+      );
+      return agentActivitySessionFromTuttidSession(input.workspaceId, session);
+    },
+    async setSessionPinned(input) {
+      const session = await tuttidClient.updateWorkspaceAgentSessionPin(
+        input.workspaceId,
+        input.agentSessionId,
+        { pinned: input.pinned }
       );
       return agentActivitySessionFromTuttidSession(input.workspaceId, session);
     }

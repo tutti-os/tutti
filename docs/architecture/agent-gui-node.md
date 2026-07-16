@@ -1531,6 +1531,12 @@ The session list is not owned by AgentGuiNode. AgentGuiNode may keep query,
 selection, pending create/delete/submit overlays, and read-state UI metadata.
 The session rows themselves come from the runtime snapshot and are refreshed
 through `load`, event reconciliation, or explicit session fetches.
+Deleting the selected conversation commits `activeConversationId=null` and the
+home intent before the delete command runs. It must not auto-select an adjacent
+row, including a row that later fills the deleted page slot. Deleting a
+non-selected conversation preserves the current selection. If the command
+fails after the home transition, report the failure without restoring or
+selecting another conversation.
 The desktop adapter should keep broad session-list loads bounded before they
 enter `AgentActivityRuntime`; large workspaces can accumulate hundreds or
 thousands of historical agent sessions, and pushing all of them through the
@@ -1616,22 +1622,37 @@ empty failure state.
 Section-query `pending` has two presentation meanings. An unresolved first page
 is blocking and may reveal the delayed rail skeleton. A same-scope membership
 refresh is non-blocking: keep the resolved membership visible and interactive
-until authoritative daemon pages replace it. Session mutation responses first
-update or tombstone canonical engine entities. The rail query controller then
-compares before/after membership and reloads only affected first pages: ordinary
-delete reloads its section, pinned delete reloads pinned, and pin/unpin reloads
-both pinned and the session's ordinary section. Rename does not reload section
-pages; an active backend search is reissued because title changes can alter its
-membership. Targeted pages resolve together before replacing cache state. A
-targeted failure keeps old page state and transient canonical overlays, and
-leaves that scope cache stale for later authoritative bootstrap. It must not
-fall back to `listSessionSections` or a workspace activity `load`. A scope
-change may also keep the previous page visible to avoid destructive layout
-churn, but actions whose section or target scope could be stale remain locked
-until the new scope resolves. Derive these meanings inside the dedicated rail
-query controller from its current and resolved scope keys; do not add engine
-mutation state, manually move rows, or make the view reinterpret raw request
-state.
+until authoritative daemon pages replace it. Pin and delete enter the workspace
+engine as typed mutation intents. Their reducers own pending, success, failure,
+and unknown outcomes, emit one semantic external command, and commit returned
+sessions or deletion tombstones through follow-up intents in the same engine
+drain. AgentGUI and desktop facades may await the mutation selector for local
+cleanup or reporting, but they must not execute the transport command or patch
+canonical entities themselves.
+The rail query controller compares canonical before/after membership and reloads
+only affected first pages: ordinary delete reloads its section, pinned delete
+reloads pinned, and pin/unpin reloads both pinned and the session's ordinary
+section. Rename does not reload section pages; an active backend search is
+reissued because title changes can alter its membership. Canonical entity and
+page membership clocks meet at one composite rail snapshot seam: the controller
+publishes derived engine conversations together with daemon membership. While
+targeted reads are pending, it retains the prior immutable composite snapshot;
+after all reads resolve, it ingests returned entities and publishes the complete
+next snapshot once. The view must not subscribe to the engine separately or keep
+stale sections. A targeted failure keeps the committed snapshot and locks
+membership-sensitive actions until an authoritative scoped refresh succeeds.
+This derived committed snapshot is not a writable session cache; canonical
+entities remain engine-owned and query state still stores only ids, cursor, and
+totals. Controller attach resynchronizes mutation status from the current engine
+snapshot and invalidates interrupted projection work before bootstrap; mutation
+completion while the panel is detached must not preserve an old in-flight lock.
+Targeted revalidation must not fall back to `listSessionSections` or a
+workspace activity `load`. A
+scope change may also keep the previous page visible to avoid destructive
+layout churn, but actions whose section or target scope could be stale remain
+locked until the new scope resolves. Derive these meanings inside the dedicated
+rail query controller from its current and resolved scope keys; do not manually
+move rows or make the view reinterpret raw request state.
 The active conversation is a
 display overlay, not a pageable row: it may render beside the first five rows,
 but it must not consume the local visible-item limit or advance the cursor.

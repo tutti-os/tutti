@@ -104,6 +104,7 @@ export type EngineIntent =
   | PlanDecisionIntent
   | PromptQueueIntent
   | SessionReconcileIntent
+  | SessionMutationsIntent
   | SessionCommandsIntent
   | SessionLifecycleIntent
   | ComposerOptionsIntent;
@@ -165,6 +166,7 @@ export type EngineExternalCommand =
   | SessionUpdateSettingsCommand
   | SessionUnactivateCommand
   | SessionReconcileCommand
+  | SessionMutationCommand
   | TurnCancelCommand
   | ComposerOptionsCommand;
 
@@ -211,6 +213,7 @@ export interface AgentSessionEngineState {
   planDecisions: PlanDecisionState;
   promptQueue: PromptQueueState;
   sessionReconcile: SessionReconcileState;
+  sessionMutations: SessionMutationsState;
   sessionCommands: SessionCommandsState;
   sessionLifecycle: SessionLifecycleState;
   sessionMessages: SessionMessagesState;
@@ -219,6 +222,7 @@ export interface AgentSessionEngineState {
 
 export interface EngineReducerResult<TState> {
   commands: readonly EngineCommand[];
+  followUpIntents?: readonly EngineIntent[];
   state: TState;
 }
 
@@ -323,3 +327,8 @@ import type {
   ComposerOptionsIntent,
   ComposerOptionsState
 } from "./composerOptions.types.ts";
+import type {
+  SessionMutationCommand,
+  SessionMutationsIntent,
+  SessionMutationsState
+} from "./sessionMutations.types.ts";

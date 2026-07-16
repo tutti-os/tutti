@@ -1,4 +1,5 @@
 import {
+  dispatchSessionMutation,
   type AgentActivityAdapter,
   type AgentActivityGoalControlResult,
   type AgentActivityMessagePage,
@@ -95,6 +96,7 @@ export class WorkspaceAgentActivityService
     Promise<AgentActivitySnapshot>
   >();
   private composerOptionsCommandSequence = 1;
+  private sessionMutationSequence = 1;
   constructor(dependencies: WorkspaceAgentActivityServiceDependencies) {
     super(dependencies);
     this.dependencies = dependencies;
@@ -289,26 +291,23 @@ export class WorkspaceAgentActivityService
     input: Parameters<IWorkspaceAgentActivityService["deleteSessionsBatch"]>[0]
   ): ReturnType<IWorkspaceAgentActivityService["deleteSessionsBatch"]> {
     const workspaceId = normalizeWorkspaceId(input.workspaceId);
-    const response =
-      await this.dependencies.tuttidClient.deleteWorkspaceAgentSessionsBatch(
-        workspaceId,
-        { sessionIds: input.sessionIds },
-        { signal: input.signal }
-      );
-    const removedSessionIds = response.removedSessionIds
-      .map((id) => id.trim())
-      .filter(Boolean);
-    for (const agentSessionId of removedSessionIds) {
-      this.markSessionDeleted({
-        agentSessionId,
-        data: { deletedAtUnixMs: Date.now() },
+    const mutation = await dispatchSessionMutation(
+      this.entry(workspaceId).engine,
+      {
+        agentSessionIds: input.sessionIds,
+        mutationId: this.nextSessionMutationId("delete"),
+        timeoutMs: 30_000,
+        type: "sessions/deleteRequested",
         workspaceId
-      });
+      }
+    );
+    if (mutation.kind !== "delete" || !mutation.deleteResult) {
+      throw new Error("workspace_agent_delete_result_missing");
     }
     return {
-      removedMessages: response.removedMessages,
-      removedSessionIds,
-      removedSessions: response.removedSessions
+      removedMessages: mutation.deleteResult.removedMessages,
+      removedSessionIds: [...mutation.deleteResult.removedSessionIds],
+      removedSessions: mutation.deleteResult.removedSessions
     };
   }
 
@@ -340,17 +339,21 @@ export class WorkspaceAgentActivityService
     workspaceId: string;
   }): Promise<AgentActivitySession> {
     const workspaceId = normalizeWorkspaceId(input.workspaceId);
-    const session =
-      await this.dependencies.tuttidClient.updateWorkspaceAgentSessionPin(
-        workspaceId,
-        input.agentSessionId,
-        { pinned: input.pinned }
-      );
-    const activitySession = agentActivitySessionFromTuttidSession(
-      workspaceId,
-      session
+    const agentSessionId = input.agentSessionId.trim();
+    await dispatchSessionMutation(this.entry(workspaceId).engine, {
+      agentSessionId,
+      mutationId: this.nextSessionMutationId("pin"),
+      pinned: input.pinned,
+      timeoutMs: 30_000,
+      type: "session/pinRequested",
+      workspaceId
+    });
+    const activitySession = this.getSnapshot(workspaceId).sessions.find(
+      (session) => session.agentSessionId === agentSessionId
     );
-    this.upsertAuthoritativeSession(activitySession, "pin_result");
+    if (!activitySession) {
+      throw new Error("workspace_agent_pin_result_missing");
+    }
     return activitySession;
   }
 
@@ -760,5 +763,10 @@ export class WorkspaceAgentActivityService
       updateSessionSettings: (input) => this.updateSessionSettings(input),
       workspaceId
     });
+  }
+
+  private nextSessionMutationId(kind: "delete" | "pin"): string {
+    const sequence = this.sessionMutationSequence++;
+    return `${kind}:${Date.now()}:${sequence}`;
   }
 }

@@ -1,14 +1,6 @@
-import {
-  selectWorkspaceAgentConsumerSessions,
-  type AgentSessionEngineState
-} from "@tutti-os/agent-activity-core";
 import { useEffect, useMemo, useRef } from "react";
 import { useAgentActivityRuntime } from "../../../agentActivityRuntime";
-import { projectCanonicalAgentGUIConversationSummaries } from "../../../contexts/workspace/presentation/renderer/agentGuiConversationList/useAgentGuiConversationList";
-import { createAgentGUIConversationRailTitlePromptSelector } from "../../../shared/agentConversationRailTitlePromptSelector";
 import { useEngineSelector } from "../../../shared/engine/useEngineSelector";
-import type { AgentGUIConversationSummary } from "../model/agentGuiConversationModel";
-import { conversationSummariesRenderEqual } from "../model/agentGuiConversationRail";
 import type { AgentGUINodeViewModel } from "../model/agentGuiNodeTypes";
 import {
   AgentGUIConversationRailQueryController,
@@ -75,18 +67,6 @@ export function useAgentGUIConversationRailQuery({
     identitySnapshot,
     Object.is
   );
-  const selectRuntimeRailConversations = useMemo(
-    () =>
-      createRuntimeRailConversationsSelector(
-        createAgentGUIConversationRailTitlePromptSelector()
-      ),
-    []
-  );
-  const runtimeRailConversations = useEngineSelector(
-    engine,
-    selectRuntimeRailConversations,
-    conversationSummaryListsRenderEqual
-  );
   return useMemo(
     () => ({
       ...querySnapshot,
@@ -97,37 +77,9 @@ export function useAgentGUIConversationRailQuery({
         loadMore: controller.loadMoreSearchResults,
         retry: controller.retrySearchResults
       },
-      runtimeRailConversations
+      runtimeRailConversations: querySnapshot.runtimeRailConversations
     }),
-    [controller, querySnapshot, runtimeRailConversations]
-  );
-}
-
-function createRuntimeRailConversationsSelector(
-  selectTitlePrompts: ReturnType<
-    typeof createAgentGUIConversationRailTitlePromptSelector
-  >
-): (state: AgentSessionEngineState) => AgentGUIConversationSummary[] {
-  return (state) =>
-    projectCanonicalAgentGUIConversationSummaries(
-      selectWorkspaceAgentConsumerSessions(state),
-      selectTitlePrompts(state)
-    );
-}
-
-function conversationSummaryListsRenderEqual(
-  left: readonly AgentGUIConversationSummary[],
-  right: readonly AgentGUIConversationSummary[]
-): boolean {
-  return (
-    left.length === right.length &&
-    left.every((conversation, index) => {
-      const other = right[index];
-      return (
-        other !== undefined &&
-        conversationSummariesRenderEqual(conversation, other)
-      );
-    })
+    [controller, querySnapshot]
   );
 }
 

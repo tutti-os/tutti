@@ -70,6 +70,23 @@ export type {
 } from "./engine/types.ts";
 export { AGENT_SESSION_ENGINE_LOCAL_ORIGIN } from "./engine/types.ts";
 export { selectWorkspaceReconcileState } from "./engine/engineRuntime.selectors.ts";
+export { dispatchSessionMutation } from "./engine/sessionMutationDispatch.ts";
+export {
+  selectSessionMutation,
+  selectSessionMutations
+} from "./engine/sessionMutations.selectors.ts";
+export type {
+  SessionDeleteMutationResult,
+  SessionMutationCommand,
+  SessionMutationRecord,
+  SessionMutationStatus,
+  SessionMutationsIntent,
+  SessionMutationsState,
+  SessionPinRequestedIntent,
+  SessionSetPinnedCommand,
+  SessionsDeleteCommand,
+  SessionsDeleteRequestedIntent
+} from "./engine/sessionMutations.types.ts";
 export {
   selectAttentionReadState,
   selectSessionAttention
@@ -246,6 +263,8 @@ export type {
   AgentActivityCreateSessionInput,
   AgentActivityDeleteSessionInput,
   AgentActivityDeleteSessionResult,
+  AgentActivityDeleteSessionsInput,
+  AgentActivityDeleteSessionsResult,
   AgentActivityMessage,
   AgentActivityMessageSemantics,
   AgentActivityLoadComposerOptionsInput,
@@ -258,6 +277,7 @@ export type {
   AgentPromptContentBlock,
   AgentActivitySendInput,
   AgentActivitySendInputResult,
+  AgentActivitySetSessionPinnedInput,
   AgentActivitySession,
   AgentActivitySessionCapabilities,
   AgentActivitySessionGoal,

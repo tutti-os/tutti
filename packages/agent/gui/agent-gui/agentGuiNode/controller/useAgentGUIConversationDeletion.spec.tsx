@@ -1,7 +1,6 @@
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { useState } from "react";
-import type { AgentSessionEngine } from "@tutti-os/agent-activity-core";
 import type { AgentActivityRuntime } from "../../../agentActivityRuntime";
 import type { AgentGUIConversationSummary } from "../model/agentGuiConversationModel";
 import { useAgentGUIConversationDeletion } from "./useAgentGUIConversationDeletion";
@@ -36,16 +35,10 @@ function createInput(agentActivityRuntime: AgentActivityRuntime) {
     agentActivityRuntime,
     agentHostApi: { toast: { error: toastError } } as never,
     conversations: [targetConversation, nextConversation],
-    conversationsRef: {
-      current: [targetConversation, nextConversation]
-    },
     deleteAgentSessionView: vi.fn(),
     isDeletingConversation: false,
-    markSelectedConversationDetailPending: vi.fn(() => null),
     pendingDeleteConversation: targetConversation,
     persistActiveConversation: vi.fn(),
-    removeConversations: vi.fn(),
-    sessionEngine: { dispatch: vi.fn() } as unknown as AgentSessionEngine,
     sessionViewRef: (agentSessionId: string | null | undefined) => ({
       agentSessionId,
       origin: "local",
@@ -65,7 +58,7 @@ function createInput(agentActivityRuntime: AgentActivityRuntime) {
 }
 
 describe("useAgentGUIConversationDeletion", () => {
-  it("commits the next conversation selection before deleting the active session", async () => {
+  it("returns home before deleting the active session", async () => {
     let committedActiveConversationId: string | null = targetConversation.id;
     let activeConversationIdObservedByDelete: string | null = null;
     const deleteSession = vi.fn(async () => {
@@ -94,25 +87,23 @@ describe("useAgentGUIConversationDeletion", () => {
 
     act(() => result.current.confirmDeleteConversation());
 
-    expect(result.current.activeConversationId).toBe(nextConversation.id);
-    expect(input.persistActiveConversation).toHaveBeenCalledWith(
-      nextConversation.id
-    );
+    expect(result.current.activeConversationId).toBeNull();
+    expect(input.persistActiveConversation).toHaveBeenCalledWith(null);
+    expect(input.setIntent).toHaveBeenCalledWith({ tag: "home" });
+    expect(input.setIsLoadingMessages).toHaveBeenCalledWith(false);
     expect(unactivate).toHaveBeenCalledWith(targetConversation.id);
     await waitFor(() => expect(deleteSession).toHaveBeenCalledTimes(1));
-    expect(activeConversationIdObservedByDelete).toBe(nextConversation.id);
+    expect(activeConversationIdObservedByDelete).toBeNull();
     expect(deleteSession).toHaveBeenCalledWith({
       agentSessionId: targetConversation.id,
       workspaceId: "workspace-1"
     });
     await waitFor(() =>
-      expect(input.removeConversations).toHaveBeenCalledWith([
-        targetConversation.id
-      ])
+      expect(input.deleteAgentSessionView).toHaveBeenCalledTimes(1)
     );
   });
 
-  it("keeps the committed fallback selection when deletion fails", async () => {
+  it("keeps the committed home selection when deletion fails", async () => {
     const deleteSession = vi.fn(async () => {
       throw new Error("delete failed");
     });
@@ -135,9 +126,9 @@ describe("useAgentGUIConversationDeletion", () => {
     act(() => result.current.confirmDeleteConversation());
 
     await waitFor(() => expect(toastError).toHaveBeenCalledTimes(1));
-    expect(result.current.activeConversationId).toBe(nextConversation.id);
-    expect(input.activeConversationIdRef.current).toBe(nextConversation.id);
-    expect(input.removeConversations).not.toHaveBeenCalled();
+    expect(result.current.activeConversationId).toBeNull();
+    expect(input.activeConversationIdRef.current).toBeNull();
+    expect(input.deleteAgentSessionView).not.toHaveBeenCalled();
     expect(input.setIsDeletingConversation).toHaveBeenLastCalledWith(false);
   });
 });

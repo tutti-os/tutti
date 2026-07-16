@@ -5,7 +5,6 @@ import {
   type SetStateAction
 } from "react";
 import { flushSync } from "react-dom";
-import type { AgentSessionEngine } from "@tutti-os/agent-activity-core";
 import type { AgentActivityRuntime } from "../../../agentActivityRuntime";
 import type { useAgentHostApi } from "../../../agentActivityHost";
 import type { AgentSessionViewRef } from "../../../contexts/workspace/presentation/renderer/agentSessions/useAgentSessionTransport";
@@ -46,16 +45,10 @@ export interface UseAgentGUIConversationDeletionInput {
     SetStateAction<Record<string, AgentComposerDraft>>
   >;
   submittedDraftSnapshotsRef: RefObject<Record<string, SubmittedDraftSnapshot>>;
-  sessionEngine: AgentSessionEngine;
   deleteAgentSessionView: (ref: AgentSessionViewRef) => void;
-  conversationsRef: RefObject<AgentGUIConversationSummary[]>;
-  markSelectedConversationDetailPending: (
-    agentSessionId: string
-  ) => string | null;
   setIntent: Dispatch<SetStateAction<ConversationIntent>>;
   setActiveConversationId: Dispatch<SetStateAction<string | null>>;
   persistActiveConversation: (agentSessionId: string | null) => void;
-  removeConversations: (conversationIds: readonly string[]) => void;
   agentHostApi: ReturnType<typeof useAgentHostApi>;
   workspaceId: string;
 }
@@ -77,14 +70,10 @@ export function useAgentGUIConversationDeletion(
     agentActivityRuntime,
     setDraftByScopeKey,
     submittedDraftSnapshotsRef,
-    sessionEngine,
     deleteAgentSessionView,
-    conversationsRef,
-    markSelectedConversationDetailPending,
     setIntent,
     setActiveConversationId,
     persistActiveConversation,
-    removeConversations,
     agentHostApi,
     workspaceId
   } = input;
@@ -121,31 +110,13 @@ export function useAgentGUIConversationDeletion(
     setIsDeletingConversation(true);
     setDetailError(null);
     if (activeConversationIdRef.current === target.id) {
-      const currentConversations = conversationsRef.current;
-      const targetIndex = currentConversations.findIndex(
-        (conversation) => conversation.id === target.id
-      );
-      const nextConversations = currentConversations.filter(
-        (conversation) => conversation.id !== target.id
-      );
-      const nextActive =
-        nextConversations[Math.max(0, targetIndex)]?.id ??
-        nextConversations[Math.max(0, targetIndex - 1)]?.id ??
-        null;
-      if (nextActive) {
-        markSelectedConversationDetailPending(nextActive);
-      }
-      activeConversationIdRef.current = nextActive;
+      activeConversationIdRef.current = null;
       flushSync(() => {
-        if (nextActive) {
-          setIntent({ tag: "active", id: nextActive });
-        } else {
-          setIsLoadingMessages(false);
-          setIntent({ tag: "home" });
-        }
-        setActiveConversationId(nextActive);
+        setIsLoadingMessages(false);
+        setIntent({ tag: "home" });
+        setActiveConversationId(null);
       });
-      persistActiveConversation(nextActive);
+      persistActiveConversation(null);
     }
     void activation
       .unactivate(target.id)
@@ -169,12 +140,7 @@ export function useAgentGUIConversationDeletion(
           scopeKeys: new Set([deletedScopeKey]),
           targetAgentSessionIds: new Set([target.id])
         });
-        sessionEngine.dispatch({
-          agentSessionId: target.id,
-          type: "queue/sessionCleaned"
-        });
         deleteAgentSessionView(sessionViewRef(target.id));
-        removeConversations([target.id]);
         setPendingDeleteConversation(null);
       })
       .catch((error) => {
@@ -197,14 +163,10 @@ export function useAgentGUIConversationDeletion(
     activeConversationIdRef,
     agentActivityRuntime,
     agentHostApi.toast,
-    conversationsRef,
     deleteAgentSessionView,
     isDeletingConversation,
-    markSelectedConversationDetailPending,
     pendingDeleteConversation,
     persistActiveConversation,
-    removeConversations,
-    sessionEngine,
     sessionViewRef,
     setActiveConversationId,
     setDetailError,

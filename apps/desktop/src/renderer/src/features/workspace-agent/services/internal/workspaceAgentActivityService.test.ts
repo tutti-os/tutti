@@ -5,7 +5,8 @@ import { TuttidProtocolError } from "@tutti-os/client-tuttid-ts";
 import {
   selectEngineTurnsForSession,
   selectSessionActivationPresentations,
-  selectSessionAttention
+  selectSessionAttention,
+  selectSessionMutations
 } from "@tutti-os/agent-activity-core";
 import { WorkspaceAgentActivityService } from "./workspaceAgentActivityService.ts";
 
@@ -1642,8 +1643,57 @@ test("WorkspaceAgentActivityService deletes one exact session batch", async () =
   assert.equal(listCalls, 1);
   assert.deepEqual(engine.getSnapshot().sessionLifecycle.deletedSessionIds, {
     "child-1": true,
-    "session-1": true
+    "session-1": true,
+    "session-2": true
   });
+});
+
+test("WorkspaceAgentActivityService pins through the engine command port", async () => {
+  const calls: unknown[] = [];
+  const initial = workspaceAgentSession({ status: "completed" });
+  const service = new WorkspaceAgentActivityService({
+    tuttidClient: {
+      listWorkspaceAgentSessions: async () => ({
+        hasMore: false,
+        sessions: [initial],
+        workspaceId: "ws-1"
+      }),
+      updateWorkspaceAgentSessionPin: async (
+        workspaceId: string,
+        agentSessionId: string,
+        request: { pinned: boolean }
+      ) => {
+        calls.push({ agentSessionId, request, workspaceId });
+        return {
+          ...initial,
+          pinnedAtUnixMs: 10,
+          updatedAtUnixMs: Date.parse("2026-06-16T00:00:01.000Z")
+        };
+      }
+    } as unknown as TuttidClient,
+    runtimeApi: { logTerminalDiagnostic: async () => {} }
+  });
+  const engine = service.getSessionEngine("ws-1");
+  await new Promise((resolve) => setImmediate(resolve));
+
+  const result = await service.setSessionPinned({
+    agentSessionId: "session-1",
+    pinned: true,
+    workspaceId: "ws-1"
+  });
+
+  assert.deepEqual(calls, [
+    {
+      agentSessionId: "session-1",
+      request: { pinned: true },
+      workspaceId: "ws-1"
+    }
+  ]);
+  assert.equal(result.pinnedAtUnixMs, 10);
+  assert.equal(
+    selectSessionMutations(engine.getSnapshot()).at(-1)?.status,
+    "succeeded"
+  );
 });
 
 test("WorkspaceAgentActivityService single delete uses the authoritative batch result without reloading", async () => {
