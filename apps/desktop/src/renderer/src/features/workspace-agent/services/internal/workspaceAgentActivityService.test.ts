@@ -795,8 +795,12 @@ test("WorkspaceAgentActivityService preserves live provenance across a transient
     tuttidClient: {
       getWorkspaceAgentSession: async () => {
         getCalls += 1;
-        if (getCalls === 1) throw new Error("temporary reconcile failure");
-        return { session: settled, childSessions: [], turns: [] };
+        if (getCalls === 2) throw new Error("temporary reconcile failure");
+        return {
+          session: getCalls === 1 ? running : settled,
+          childSessions: [],
+          turns: []
+        };
       },
       listWorkspaceAgentSessionMessages: async () => ({
         hasMore: false,
@@ -836,7 +840,9 @@ test("WorkspaceAgentActivityService preserves live provenance across a transient
   await new Promise((resolve) => setImmediate(resolve));
   await new Promise((resolve) => setImmediate(resolve));
 
-  assert.equal(getCalls, 3);
+  // Initial active-root hydration + failed live pull + combined detail/message
+  // synchronization (detail before and after messages).
+  assert.equal(getCalls, 4);
   assert.equal(
     selectSessionAttention(
       service.getSessionEngine("ws-1").getSnapshot(),
@@ -1046,7 +1052,12 @@ test("WorkspaceAgentActivityService fetches detail before combined message recon
   await new Promise((resolve) => setImmediate(resolve));
 
   const session = service.getSnapshot("ws-1").sessions[0];
-  assert.deepEqual(calls, ["getSession", "listMessages", "getSession"]);
+  assert.deepEqual(calls, [
+    "getSession", // initial active-root child hydration
+    "getSession",
+    "listMessages",
+    "getSession"
+  ]);
   assert.equal(session?.activeTurn, null);
   assert.equal(session?.latestTurn?.phase, "settled");
   assert.deepEqual(
@@ -1148,6 +1159,15 @@ test("WorkspaceAgentActivityService reconciles child sessions and their messages
   });
 
   await service.load("ws-1");
+  assert.deepEqual(
+    service
+      .getSnapshot("ws-1")
+      .sessions.map((session) => session.agentSessionId)
+      .sort(),
+    ["child-1", "session-1"]
+  );
+  assert.deepEqual(messageRequests, []);
+
   service.ensureSessionSynchronized({
     agentSessionId: "session-1",
     workspaceId: "ws-1"

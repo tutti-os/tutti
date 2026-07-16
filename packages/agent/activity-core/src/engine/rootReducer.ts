@@ -332,7 +332,12 @@ export function rootEngineReducer(
   const sessionReconcile = sessionReconcileReducer(
     state.sessionReconcile,
     intent,
-    { deletedSessionIds: state.sessionLifecycle.deletedSessionIds }
+    {
+      deletedSessionIds: state.sessionLifecycle.deletedSessionIds,
+      sessionsById: sessionLifecycle.state.sessionsById,
+      workspaceReconcileCommandId:
+        state.engineRuntime.workspaceReconcile.commandId
+    }
   );
   const sessionMessages = sessionMessagesReducer(
     state.sessionMessages,

@@ -59,11 +59,18 @@ export interface WorkspaceAgentMessageCenterItem {
   digest: WorkspaceAgentMessageCenterDigest;
   lastAgentMessageSummary: string;
   lastAgentMessageAtUnixMs: number | null;
+  pendingInteractionTarget: WorkspaceAgentMessageCenterInteractionTarget | null;
   pendingPrompt: AgentConversationPromptVM | null;
   needsAttentionKind: AgentActivityNeedsAttentionItem["kind"] | null;
   needsAttentionSummary: string | null;
   latestTurnOutcome?: WorkspaceAgentMessageCenterTurnOutcome | null;
   sortTimeUnixMs: number;
+}
+
+export interface WorkspaceAgentMessageCenterInteractionTarget {
+  agentSessionId: string;
+  requestId: string;
+  turnId: string;
 }
 
 export interface WorkspaceAgentMessageCenterTurnOutcome {
@@ -107,6 +114,7 @@ export interface BuildWorkspaceAgentMessageCenterItemInput {
   messages: readonly AgentActivityMessage[];
   status: WorkspaceAgentActivityStatus;
   needsAttention: AgentActivityNeedsAttentionItem | null;
+  pendingInteractionTarget: WorkspaceAgentMessageCenterInteractionTarget | null;
   pendingPrompt: AgentConversationPromptVM | null;
   latestTurnOutcome: WorkspaceAgentMessageCenterTurnOutcome | null;
   options?: BuildWorkspaceAgentMessageCenterOptions;
@@ -122,6 +130,7 @@ export function buildWorkspaceAgentMessageCenterItem({
   messages,
   status,
   needsAttention,
+  pendingInteractionTarget,
   pendingPrompt,
   latestTurnOutcome,
   options = {}
@@ -163,6 +172,7 @@ export function buildWorkspaceAgentMessageCenterItem({
     lastAgentMessageSummary:
       lastAgentMessage?.summary ?? needsAttention?.summary ?? title,
     lastAgentMessageAtUnixMs: lastAgentMessage?.occurredAtUnixMs ?? null,
+    pendingInteractionTarget,
     pendingPrompt,
     needsAttentionKind: needsAttention?.kind ?? null,
     needsAttentionSummary: needsAttention?.summary ?? null,

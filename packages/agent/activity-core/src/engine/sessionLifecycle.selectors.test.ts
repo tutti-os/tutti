@@ -9,7 +9,8 @@ import {
   selectEngineSessionDeleted,
   selectRootAgentSessionIdsWithPendingInteractions,
   selectWorkspaceAgentConsumerCounts,
-  selectWorkspaceAgentConsumerSession
+  selectWorkspaceAgentConsumerSession,
+  selectWorkspaceAgentRootConversationSessions
 } from "./sessionLifecycle.selectors.ts";
 
 test("deleted session selector normalizes ids and hides tombstone storage", () => {
@@ -349,5 +350,137 @@ test("new goal control activation stays idle without a provider Turn", () => {
   assert.equal(
     selectWorkspaceAgentConsumerSession(state, "session-goal")?.displayStatus,
     "idle"
+  );
+});
+
+test("root conversation selector aggregates descendant pending interactions", () => {
+  const state = rootEngineReducer(createInitialAgentSessionEngineState(), {
+    sessions: [
+      {
+        activeTurn: {
+          agentSessionId: "root",
+          origin: "user_prompt",
+          phase: "running",
+          startedAtUnixMs: 10,
+          turnId: "root-turn",
+          updatedAtUnixMs: 20
+        },
+        activeTurnId: "root-turn",
+        agentSessionId: "root",
+        cwd: "/workspace",
+        latestTurnInteractions: [],
+        pendingInteractions: [],
+        provider: "claude-code",
+        title: "Root",
+        workspaceId: "workspace-1"
+      },
+      {
+        activeTurn: {
+          agentSessionId: "child",
+          origin: "provider_initiated",
+          phase: "waiting",
+          startedAtUnixMs: 15,
+          turnId: "child-turn",
+          updatedAtUnixMs: 25
+        },
+        activeTurnId: "child-turn",
+        agentSessionId: "child",
+        cwd: "/workspace",
+        kind: "child",
+        latestTurnInteractions: [],
+        parentAgentSessionId: "root",
+        parentToolCallId: "toolu-1",
+        parentTurnId: "root-turn",
+        pendingInteractions: [
+          {
+            agentSessionId: "child",
+            createdAtUnixMs: 26,
+            input: { question: "Allow Bash?" },
+            kind: "approval",
+            requestId: "approval-1",
+            status: "pending",
+            toolName: "Bash",
+            turnId: "child-turn",
+            updatedAtUnixMs: 26
+          }
+        ],
+        provider: "claude-code",
+        rootAgentSessionId: "root",
+        rootTurnId: "root-turn",
+        title: "Child",
+        workspaceId: "workspace-1"
+      }
+    ],
+    type: "session/snapshotReceived"
+  }).state;
+
+  const conversations = selectWorkspaceAgentRootConversationSessions(state);
+  assert.equal(conversations.length, 1);
+  assert.equal(conversations[0]?.session.agentSessionId, "root");
+  assert.equal(conversations[0]?.displayStatus, "waiting");
+  assert.deepEqual(
+    conversations[0]?.pendingInteractions.map((interaction) => [
+      interaction.agentSessionId,
+      interaction.turnId,
+      interaction.requestId
+    ]),
+    [["child", "child-turn", "approval-1"]]
+  );
+});
+
+test("root conversation stays working while a descendant turn is running", () => {
+  const state = rootEngineReducer(createInitialAgentSessionEngineState(), {
+    sessions: [
+      {
+        activeTurnId: null,
+        agentSessionId: "root",
+        cwd: "/workspace",
+        latestTurn: {
+          agentSessionId: "root",
+          origin: "user_prompt",
+          outcome: "completed",
+          phase: "settled",
+          settledAtUnixMs: 20,
+          startedAtUnixMs: 10,
+          turnId: "root-turn",
+          updatedAtUnixMs: 20
+        },
+        latestTurnInteractions: [],
+        pendingInteractions: [],
+        provider: "claude-code",
+        title: "Root",
+        workspaceId: "workspace-1"
+      },
+      {
+        activeTurn: {
+          agentSessionId: "child",
+          origin: "provider_initiated",
+          phase: "running",
+          startedAtUnixMs: 15,
+          turnId: "child-turn",
+          updatedAtUnixMs: 25
+        },
+        activeTurnId: "child-turn",
+        agentSessionId: "child",
+        cwd: "/workspace",
+        kind: "child",
+        latestTurnInteractions: [],
+        parentAgentSessionId: "root",
+        parentToolCallId: "toolu-1",
+        parentTurnId: "root-turn",
+        pendingInteractions: [],
+        provider: "claude-code",
+        rootAgentSessionId: "root",
+        rootTurnId: "root-turn",
+        title: "Child",
+        workspaceId: "workspace-1"
+      }
+    ],
+    type: "session/snapshotReceived"
+  }).state;
+
+  assert.equal(
+    selectWorkspaceAgentRootConversationSessions(state)[0]?.displayStatus,
+    "working"
   );
 });

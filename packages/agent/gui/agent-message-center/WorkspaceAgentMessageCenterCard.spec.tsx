@@ -84,6 +84,7 @@ function item(overrides: { summary: string }): WorkspaceAgentMessageCenterItem {
     },
     lastAgentMessageSummary: "",
     lastAgentMessageAtUnixMs: 1,
+    pendingInteractionTarget: null,
     pendingPrompt: null,
     needsAttentionKind: null,
     needsAttentionSummary: null,

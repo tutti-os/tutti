@@ -7,7 +7,7 @@ import {
   type WorkspaceAgentMessageCenterModel
 } from "@tutti-os/agent-gui/agent-message-center";
 import {
-  selectEnginePendingInteractions,
+  selectEngineInteraction,
   type AgentSessionEngine
 } from "@tutti-os/agent-activity-core";
 import { Button, CloseIcon, StatusDot, toast } from "@tutti-os/ui-system";
@@ -187,23 +187,26 @@ export function useWorkspaceAgentDecisionNotifications(input: {
               toast.dismiss(id);
             }}
             onSubmit={async (submitInput) => {
-              const interaction = selectEnginePendingInteractions(
+              const target = item.pendingInteractionTarget;
+              if (!target || target.requestId !== submitInput.requestId) return;
+              const interaction = selectEngineInteraction(
                 sessionEngine.getSnapshot(),
-                item.agentSessionId
-              ).find(
-                (candidate) => candidate.requestId === submitInput.requestId
+                target.agentSessionId,
+                target.turnId,
+                target.requestId
               );
-              if (!interaction) return;
+              if (interaction?.status !== "pending") return;
               sessionEngine.dispatch({
                 type: "interaction/responseRequested",
                 workspaceId,
-                agentSessionId: item.agentSessionId,
-                requestId: submitInput.requestId,
-                turnId: interaction.turnId,
+                agentSessionId: target.agentSessionId,
+                requestId: target.requestId,
+                turnId: target.turnId,
                 commandId: interactionCommandId({
                   workspaceId,
-                  agentSessionId: item.agentSessionId,
-                  requestId: submitInput.requestId
+                  agentSessionId: target.agentSessionId,
+                  requestId: target.requestId,
+                  turnId: target.turnId
                 }),
                 ...(submitInput.action ? { action: submitInput.action } : {}),
                 ...(submitInput.optionId
@@ -332,6 +335,15 @@ function WorkspaceAgentDecisionToast({
 }
 
 function waitingNotificationKey(item: WorkspaceAgentMessageCenterItem): string {
+  const target = item.pendingInteractionTarget;
+  if (target) {
+    return [
+      target.agentSessionId,
+      "interaction",
+      target.turnId,
+      target.requestId
+    ].join(":");
+  }
   const requestId = item.pendingPrompt?.requestId.trim();
   if (requestId) {
     return `${item.agentSessionId}:prompt:${requestId}`;

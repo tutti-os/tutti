@@ -6,7 +6,7 @@ import {
   useSyncExternalStore,
   type ReactNode
 } from "react";
-import { selectEnginePendingInteractions } from "@tutti-os/agent-activity-core";
+import { selectEngineInteraction } from "@tutti-os/agent-activity-core";
 import {
   buildWorkspaceAgentMessageCenterModelFromEngine,
   dispatchAgentPlanPromptAction,
@@ -135,6 +135,7 @@ export function StandaloneAgentMessageCenterToolPanel({
       payload?: Record<string, unknown>;
       promptKind?: string;
       requestId: string;
+      turnId?: string;
     }) => {
       const engine = activityService.getSessionEngine(workspaceId);
       if (input.promptKind === "plan-implementation") {
@@ -157,22 +158,25 @@ export function StandaloneAgentMessageCenterToolPanel({
         }
         return;
       }
-      const interaction = selectEnginePendingInteractions(
+      if (!input.turnId) return;
+      const interaction = selectEngineInteraction(
         engine.getSnapshot(),
-        input.agentSessionId
-      ).find((candidate) => candidate.requestId === input.requestId);
-      if (!interaction) return;
+        input.agentSessionId,
+        input.turnId,
+        input.requestId
+      );
+      if (interaction?.status !== "pending") return;
       engine.dispatch({
         type: "interaction/responseRequested",
         agentSessionId: input.agentSessionId,
         commandId: [
           workspaceId,
           input.agentSessionId,
-          interaction.turnId,
+          input.turnId,
           input.requestId
         ].join(":"),
         requestId: input.requestId,
-        turnId: interaction.turnId,
+        turnId: input.turnId,
         workspaceId,
         ...(input.action ? { action: input.action } : {}),
         ...(input.optionId ? { optionId: input.optionId } : {}),

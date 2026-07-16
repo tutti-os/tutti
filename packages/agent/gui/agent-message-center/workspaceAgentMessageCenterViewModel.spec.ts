@@ -279,6 +279,7 @@ function item(
     },
     lastAgentMessageSummary: `${agentSessionId} summary`,
     lastAgentMessageAtUnixMs: 1,
+    pendingInteractionTarget: null,
     pendingPrompt: null,
     needsAttentionKind: null,
     needsAttentionSummary: null,

@@ -8,6 +8,7 @@ import type {
   SessionReconcileRecord,
   SessionReconcileState
 } from "./sessionReconcile.types.ts";
+import type { CanonicalAgentSession } from "./sessionLifecycle.types.ts";
 
 const NO_COMMANDS: readonly EngineCommand[] = [];
 
@@ -18,8 +19,14 @@ export function createInitialSessionReconcileState(): SessionReconcileState {
 export function sessionReconcileReducer(
   state: SessionReconcileState,
   intent: EngineIntent,
-  context: { deletedSessionIds: Readonly<Record<string, true>> } = {
-    deletedSessionIds: {}
+  context: {
+    deletedSessionIds: Readonly<Record<string, true>>;
+    sessionsById: Readonly<Record<string, CanonicalAgentSession>>;
+    workspaceReconcileCommandId: string | null;
+  } = {
+    deletedSessionIds: {},
+    sessionsById: {},
+    workspaceReconcileCommandId: null
   }
 ): EngineReducerResult<SessionReconcileState> {
   switch (intent.type) {
@@ -50,12 +57,48 @@ export function sessionReconcileReducer(
     case "session/removed":
       return removeRecord(state, intent.agentSessionId);
     case "engine/commandResult":
+      if (
+        intent.commandType === "engine/reconcileWorkspace" &&
+        intent.outcome === "succeeded" &&
+        intent.commandId === context.workspaceReconcileCommandId
+      ) {
+        return hydrateActiveRootSessions(state, context.sessionsById);
+      }
       return intent.commandType === "session/reconcile"
         ? settleReconcile(state, intent)
         : unchanged(state);
     default:
       return unchanged(state);
   }
+}
+
+function hydrateActiveRootSessions(
+  state: SessionReconcileState,
+  sessionsById: Readonly<Record<string, CanonicalAgentSession>>
+): EngineReducerResult<SessionReconcileState> {
+  let next = state;
+  const commands: EngineCommand[] = [];
+  const activeRoots = Object.values(sessionsById)
+    .filter(
+      (session) =>
+        session.kind === "root" && Boolean(session.activeTurnId?.trim())
+    )
+    .sort((left, right) =>
+      left.agentSessionId.localeCompare(right.agentSessionId)
+    );
+
+  for (const session of activeRoots) {
+    const requested = requestReconcile(next, {
+      agentSessionId: session.agentSessionId,
+      needsMessages: false,
+      needsState: true,
+      workspaceId: session.workspaceId
+    });
+    next = requested.state;
+    commands.push(...requested.commands);
+  }
+
+  return { commands, state: next };
 }
 
 function requestReconcile(
