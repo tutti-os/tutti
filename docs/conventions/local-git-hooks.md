@@ -104,6 +104,11 @@ Rules:
   selects it
 - explicit full validation remains available for releases, broad migrations,
   manual confidence checks, and checked force-push workflows
+- tests or validation scripts that create temporary Git repositories must remove
+  inherited `GIT_*` repository-routing variables from child-process
+  environments; Git exports variables such as `GIT_DIR` while running hooks,
+  and allowing a fixture command to inherit them can mutate the caller's real
+  branch or index instead of the temporary repository
 
 TypeScript package tests and Go workspace tests use discovery-based runners
 instead of root package/module whitelists. Successful runs print compact
