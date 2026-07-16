@@ -274,6 +274,12 @@ export interface AgentGUIComposerSettingsVM {
   permissionModeChangeDuringTurn?: boolean;
   slashCommandPolicy?: AgentSlashCommandPolicy | null;
   isSettingsLoading: boolean;
+  /**
+   * The composer-options load settled in a terminal error with no cached
+   * options. Mutually exclusive with `isSettingsLoading`; the settings menus
+   * render a recoverable error affordance instead of a loading placeholder.
+   */
+  settingsLoadFailed?: boolean;
   /** Initial slash command and capability catalog request is in flight. */
   isCapabilityOptionsLoading?: boolean;
   isModelOptionsLoading?: boolean;

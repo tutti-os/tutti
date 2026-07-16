@@ -3,6 +3,8 @@ package workspaceagent
 import (
 	"context"
 	"errors"
+	"log/slog"
+	"sync"
 	"testing"
 	"time"
 
@@ -135,6 +137,93 @@ func testWorkspaceAgentService() (*Service, *memoryAgentStore) {
 		Now:   func() time.Time { return time.Unix(1700000000, 0).UTC() },
 		NewID: func() string { return "one" },
 	}, store
+}
+
+type recordingLogHandler struct {
+	mu      sync.Mutex
+	records []map[string]string
+}
+
+func (*recordingLogHandler) Enabled(context.Context, slog.Level) bool { return true }
+
+func (h *recordingLogHandler) Handle(_ context.Context, record slog.Record) error {
+	attrs := map[string]string{"msg": record.Message}
+	record.Attrs(func(attr slog.Attr) bool {
+		attrs[attr.Key] = attr.Value.String()
+		return true
+	})
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.records = append(h.records, attrs)
+	return nil
+}
+
+func (h *recordingLogHandler) WithAttrs([]slog.Attr) slog.Handler { return h }
+
+func (h *recordingLogHandler) WithGroup(string) slog.Handler { return h }
+
+func (h *recordingLogHandler) findEvent(event string) map[string]string {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	for _, record := range h.records {
+		if record["event"] == event {
+			return record
+		}
+	}
+	return nil
+}
+
+// Workspace Agent CRUD must leave an audit trail: session ingestion drops
+// stale agent references silently otherwise, making deleted-agent incidents
+// undiagnosable (feedback bug 5-1 layer 3).
+func TestServiceLogsWorkspaceAgentLifecycleEvents(t *testing.T) {
+	handler := &recordingLogHandler{}
+	previous := slog.Default()
+	slog.SetDefault(slog.New(handler))
+	t.Cleanup(func() { slog.SetDefault(previous) })
+
+	service, _ := testWorkspaceAgentService()
+	created, err := service.Create(context.Background(), PutInput{
+		WorkspaceID:          "ws",
+		Name:                 "Builder",
+		HarnessAgentTargetID: "local:codex",
+		ModelPlanID:          "mp-one",
+		DefaultModel:         "gpt-5",
+		Enabled:              true,
+	})
+	if err != nil {
+		t.Fatalf("Create() error = %v", err)
+	}
+	if _, err := service.Update(context.Background(), PutInput{
+		WorkspaceID:          "ws",
+		AgentID:              created.Agent.ID,
+		Name:                 "Builder v2",
+		HarnessAgentTargetID: "local:codex",
+		Enabled:              true,
+	}); err != nil {
+		t.Fatalf("Update() error = %v", err)
+	}
+	if err := service.Delete(context.Background(), "ws", created.Agent.ID); err != nil {
+		t.Fatalf("Delete() error = %v", err)
+	}
+
+	for _, event := range []string{
+		"workspace_agent.created",
+		"workspace_agent.updated",
+		"workspace_agent.deleted",
+	} {
+		record := handler.findEvent(event)
+		if record == nil {
+			t.Fatalf("missing %s log event, got %v", event, handler.records)
+		}
+		if record["workspace_id"] != "ws" || record["workspace_agent_id"] != created.Agent.ID {
+			t.Fatalf("%s log identity = %v", event, record)
+		}
+	}
+	updatedRecord := handler.findEvent("workspace_agent.updated")
+	if updatedRecord["revision"] != "2" {
+		t.Fatalf("updated log revision = %v", updatedRecord)
+	}
 }
 
 func TestServiceCreateAndResolve(t *testing.T) {

@@ -140,4 +140,60 @@ describe("useAgentGUIComposerPresentation", () => {
       result.current.stableComposerSettings.selectedReasoningEffortValue
     ).toBeNull();
   });
+
+  it("surfaces a failed options load as an error state instead of loading", () => {
+    const data: AgentGUINodeData = {
+      provider: "codex",
+      agentTargetId: "workspace-agent:custom",
+      lastActiveAgentSessionId: null
+    };
+    const target: AgentGUIComposerTargetData = {
+      agentTargetId: "workspace-agent:custom",
+      data,
+      provider: "codex",
+      targetId: "workspace-agent:custom"
+    };
+    const renderPresentation = (composerOptionsLoadFailed: boolean) =>
+      renderHook(() =>
+        useAgentGUIComposerPresentation({
+          activeConversation: null,
+          activeConversationId: null,
+          activeEngineSession: null,
+          activeSessionState: null,
+          agentActivityRuntime: {
+            projectPathIsRemote: false
+          } as AgentActivityRuntime,
+          composerSupport: composerSettingsSupportFromOptions(null, null),
+          composerOptionsLoading: false,
+          composerOptionsLoadFailed,
+          composerTargetProvider: "codex",
+          data,
+          defaultReasoningEffort: "high",
+          draftSettingsBySessionId: {},
+          draftSettingsBySessionIdRef: { current: {} },
+          onDataChangeRef: { current: vi.fn() },
+          normalizedProviderTargets: [],
+          providerComposerOptions: null,
+          selectedComposerTargetData: target,
+          selectedProjectPath: null,
+          setDraftSettingsBySessionId: vi.fn()
+        })
+      );
+
+    const failed = renderPresentation(true);
+    expect(
+      failed.result.current.stableComposerSettings.settingsLoadFailed
+    ).toBe(true);
+    expect(failed.result.current.stableComposerSettings.isSettingsLoading).toBe(
+      false
+    );
+
+    const loading = renderPresentation(false);
+    expect(
+      loading.result.current.stableComposerSettings.settingsLoadFailed
+    ).toBe(false);
+    expect(
+      loading.result.current.stableComposerSettings.isSettingsLoading
+    ).toBe(true);
+  });
 });

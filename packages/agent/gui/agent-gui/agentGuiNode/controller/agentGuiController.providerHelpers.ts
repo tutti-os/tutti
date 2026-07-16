@@ -136,13 +136,28 @@ export function composerDefaultsPatchFromSettings(
   return Object.keys(patch).length > 0 ? patch : null;
 }
 
+/**
+ * Placeholder targets produced while the provider catalog is still loading
+ * (`ref.kind === "loading"`). Their targetId is either the "__loading__"
+ * literal or an unresolved node target id; neither may ever be promoted to an
+ * agentTargetId, or the composer-options sync issues daemon requests for a
+ * target that does not exist (GET .../composer-options 4xx).
+ */
+export function isLoadingSentinelAgentGUIAgentTarget(
+  target: Pick<AgentGUIAgentTarget, "ref">
+): boolean {
+  return target.ref.kind === "loading";
+}
+
 export function composerTargetDataFromProviderTarget(input: {
   current: AgentGUINodeData;
   isExplicit: boolean;
   target: AgentGUIAgentTarget;
 }): AgentGUIComposerTargetData {
-  const agentTargetId =
-    normalizeOptionalText(input.target.agentTargetId) ?? input.target.targetId;
+  const agentTargetId = isLoadingSentinelAgentGUIAgentTarget(input.target)
+    ? null
+    : (normalizeOptionalText(input.target.agentTargetId) ??
+      input.target.targetId);
   const currentAgentTargetId = normalizeOptionalText(
     input.current.agentTargetId
   );
@@ -217,6 +232,23 @@ export function composerOptionsLoadingForTarget(input: {
     !input.snapshot.composerOptionsByTargetKey?.[targetKey] &&
     input.snapshot.composerOptionsLoadStatusByTargetKey?.[targetKey] ===
       "loading"
+  );
+}
+
+/**
+ * True when the last composer-options load for the target failed and no
+ * usable options are cached. Distinct from "loading" so the presentation can
+ * render a recoverable error state instead of a permanent loading label.
+ */
+export function composerOptionsLoadFailedForTarget(input: {
+  snapshot: AgentActivitySnapshot;
+  target: AgentGUIComposerTargetData;
+}): boolean {
+  const targetKey = input.target.agentTargetId?.trim() ?? "";
+  return Boolean(
+    targetKey &&
+    !input.snapshot.composerOptionsByTargetKey?.[targetKey] &&
+    input.snapshot.composerOptionsLoadStatusByTargetKey?.[targetKey] === "error"
   );
 }
 

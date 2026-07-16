@@ -186,6 +186,8 @@ export function useAgentGUIViewLabels(input: {
       ),
       defaultModel: t("agentHost.agentGui.defaultModel"),
       loadingOptions: t("agentHost.agentGui.loadingOptions"),
+      optionsLoadFailed: t("agentHost.agentGui.optionsLoadFailed"),
+      optionsLoadFailedRetry: t("agentHost.agentGui.optionsLoadFailedRetry"),
       inheritedUnavailable: t("agentHost.agentGui.inheritedUnavailable"),
       reasoningLabel: t("agentHost.agentGui.reasoningLabel"),
       reasoningDegreeLabel: t("agentHost.agentGui.reasoningDegreeLabel"),

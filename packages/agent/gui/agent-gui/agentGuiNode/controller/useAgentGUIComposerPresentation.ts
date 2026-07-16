@@ -72,6 +72,7 @@ interface UseAgentGUIComposerPresentationInput {
   agentActivityRuntime: AgentActivityRuntime;
   composerSupport: ReturnType<typeof composerSettingsSupportFromOptions>;
   composerOptionsLoading: boolean;
+  composerOptionsLoadFailed?: boolean;
   composerTargetProvider: AgentGUIProvider;
   data: AgentGUINodeData;
   defaultReasoningEffort: AgentSessionReasoningEffort | null;
@@ -321,6 +322,10 @@ export function useAgentGUIComposerPresentation(
       (!input.composerSupport.model || activeSessionModelSelection !== null) &&
       (!input.composerSupport.reasoning ||
         activeSessionReasoningSelection !== null);
+    // A terminal load failure with no cached options is an error state, never
+    // a loading state: the menus must offer retry instead of pulsing forever.
+    const settingsLoadFailed =
+      input.composerOptionsLoadFailed === true && !hasOptionsSource;
     const selectedPermissionModeValue =
       normalizePermissionModeId(draftSettings.permissionModeId) ??
       normalizePermissionModeId(permissionConfig?.defaultValue);
@@ -355,7 +360,8 @@ export function useAgentGUIComposerPresentation(
       planExclusiveWithPermissionMode:
         input.providerComposerOptions?.behavior
           ?.planModeExclusiveWithPermissionMode === true,
-      isSettingsLoading: !hasACPSettings,
+      isSettingsLoading: !hasACPSettings && !settingsLoadFailed,
+      settingsLoadFailed,
       isCapabilityOptionsLoading: input.composerOptionsLoading,
       isModelOptionsLoading: isForegroundModelOptionsLoading({
         modelOptionsLoading: input.providerComposerOptions?.modelOptionsLoading,
@@ -442,6 +448,7 @@ export function useAgentGUIComposerPresentation(
     input.agentActivityRuntime.projectPathIsRemote,
     input.composerSupport,
     input.composerOptionsLoading,
+    input.composerOptionsLoadFailed,
     input.composerTargetProvider,
     input.normalizedProviderTargets,
     input.providerComposerOptions,

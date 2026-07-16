@@ -82,6 +82,66 @@ describe("useAgentGUIComposerOptionsSync", () => {
     });
   });
 
+  it("never issues an options request for the loading-sentinel target", async () => {
+    const getComposerOptions = vi.fn(async () => ({}));
+    const data: AgentGUINodeData = {
+      provider: "codex",
+      agentTargetId: null,
+      lastActiveAgentSessionId: null
+    };
+    // The provider catalog has not resolved yet: the selection hook exposes a
+    // disabled loading sentinel whose target id must never reach the daemon.
+    const sentinelTarget: AgentGUIComposerTargetData = {
+      agentTargetId: null,
+      data,
+      provider: "codex",
+      targetId: "__loading__"
+    };
+    const { rerender } = renderHook(
+      ({ isCreatingConversation }) =>
+        useAgentGUIComposerOptionsSync({
+          activeConversationId: null,
+          activeConversationIdRef: { current: null },
+          agentActivityRuntime: {
+            getComposerOptions
+          } as unknown as AgentActivityRuntime,
+          composerOptionsProjectKeyRef: { current: null },
+          composerTargetData: sentinelTarget,
+          conversationFilter: null,
+          currentUserId: "user-1",
+          data,
+          dataRef: { current: data },
+          defaultReasoningEffort: "high",
+          draftSettingsBySessionIdRef: { current: {} },
+          setDraftSettingsBySessionId: vi.fn(),
+          isComposerHome: true,
+          isComposerHomeRef: { current: true },
+          isCreatingConversation,
+          loadDraftComposerOptionsRef: { current: () => {} },
+          loadSessionState: vi.fn(),
+          onDataChangeRef: { current: vi.fn() },
+          previewMode: false,
+          providerComposerOptions: null,
+          reloadSelectedConversation: vi.fn(),
+          selectedComposerTargetDataRef: { current: sentinelTarget },
+          selectedProjectPath: "/workspace/project",
+          selectedProjectPathRef: { current: "/workspace/project" },
+          sessionEngine: {
+            getSnapshot: () => ({})
+          } as unknown as AgentSessionEngine,
+          syncConversationListProjection: vi.fn(async () => {}),
+          workspaceId: "workspace-1",
+          workspacePath: "/workspace"
+        }),
+      { initialProps: { isCreatingConversation: true } }
+    );
+
+    rerender({ isCreatingConversation: false });
+
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(getComposerOptions).not.toHaveBeenCalled();
+  });
+
   it("reconciles a changed plan fingerprint into home composer defaults", async () => {
     let data: AgentGUINodeData = {
       provider: "codex",

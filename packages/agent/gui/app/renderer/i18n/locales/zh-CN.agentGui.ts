@@ -39,6 +39,8 @@ export const zhCNAgentGui = {
   modelSelectionLabel: "模型选择",
   defaultModel: "默认模型",
   loadingOptions: "正在加载",
+  optionsLoadFailed: "加载失败",
+  optionsLoadFailedRetry: "选项加载失败，点击重试。",
   inheritedUnavailable: "继承 / 不可用",
   reasoningLabel: "推理强度",
   reasoningDegreeLabel: "推理程度",

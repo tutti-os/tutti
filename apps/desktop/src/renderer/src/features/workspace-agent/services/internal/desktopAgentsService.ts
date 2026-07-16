@@ -142,25 +142,31 @@ export class DesktopAgentsService implements IAgentsService {
           ? { ...target, enabled: false }
           : target
       );
-      const agents =
-        workspaceAgentResponse.agents.length > 0
-          ? mapWorkspaceAgentsToAgents(workspaceAgentResponse.agents, {
-              isAgentTargetProviderGated:
-                this.dependencies.isAgentTargetProviderGated,
-              resolveAgentTargetIconUrl:
-                this.dependencies.resolveAgentTargetIconUrl
-            })
-          : mapAgentTargetPresentationsToAgents(daemonAgentTargets).map(
-              (agent) =>
-                this.dependencies.isAgentTargetProviderGated?.(
-                  agent.provider
-                ) === true
-                  ? {
-                      ...agent,
-                      availability: { status: "coming_soon" as const }
-                    }
-                  : agent
-            );
+      // Built-in Harness targets and explicit workspace Agents coexist in the
+      // AgentGUI directory: built-ins keep their sortOrder-first placement and
+      // workspace Agents are appended, deduped by agentTargetId.
+      const builtinAgents = mapAgentTargetPresentationsToAgents(
+        daemonAgentTargets
+      ).map((agent) =>
+        this.dependencies.isAgentTargetProviderGated?.(agent.provider) === true
+          ? {
+              ...agent,
+              availability: { status: "coming_soon" as const }
+            }
+          : agent
+      );
+      const workspaceAgents = mapWorkspaceAgentsToAgents(
+        workspaceAgentResponse.agents,
+        {
+          isAgentTargetProviderGated:
+            this.dependencies.isAgentTargetProviderGated,
+          resolveAgentTargetIconUrl: this.dependencies.resolveAgentTargetIconUrl
+        }
+      );
+      const agents = dedupeAgentsByAgentTargetId([
+        ...builtinAgents,
+        ...workspaceAgents
+      ]);
       const nextSnapshot: AgentsSnapshot = {
         agents,
         agentTargets,
@@ -218,6 +224,19 @@ export class DesktopAgentsService implements IAgentsService {
       listener();
     }
   }
+}
+
+function dedupeAgentsByAgentTargetId(
+  agents: readonly AgentGUIAgent[]
+): readonly AgentGUIAgent[] {
+  const seenAgentTargetIds = new Set<string>();
+  return agents.filter((agent) => {
+    if (seenAgentTargetIds.has(agent.agentTargetId)) {
+      return false;
+    }
+    seenAgentTargetIds.add(agent.agentTargetId);
+    return true;
+  });
 }
 
 export function mapAgentTargetsToPresentations(

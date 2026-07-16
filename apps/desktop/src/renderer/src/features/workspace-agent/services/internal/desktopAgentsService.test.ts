@@ -281,11 +281,63 @@ test("desktop agents service projects explicit workspace Agents as opaque AgentG
   );
 });
 
-test("desktop agents service prefers explicit workspace Agents over fixed Harness targets", async () => {
+test("desktop agents service merges built-in Harness targets with workspace Agents", async () => {
   const service = new DesktopAgentsService({
     tuttidClient: {
       listAgentTargets: async () => ({
         targets: [
+          createAgentTarget({
+            id: "local:claude-code",
+            name: "Claude Code",
+            provider: "claude-code",
+            sortOrder: 20
+          }),
+          createAgentTarget({
+            id: "local:codex",
+            name: "Codex",
+            provider: "codex",
+            sortOrder: 10
+          })
+        ]
+      }),
+      listWorkspaceAgents: async () => ({
+        agents: [
+          createWorkspaceAgent({
+            id: "workspace-agent:reviewer",
+            name: "Reviewer"
+          })
+        ]
+      })
+    },
+    workspaceId: "workspace-1"
+  });
+
+  const snapshot = await service.load();
+
+  // Built-in targets keep their sortOrder-first placement; workspace Agents
+  // are appended rather than replacing the built-in directory.
+  assert.deepEqual(
+    snapshot.agents.map((agent) => agent.agentTargetId),
+    ["local:codex", "local:claude-code", "workspace-agent:reviewer"]
+  );
+  assert.deepEqual(
+    snapshot.agentTargets.map((target) => target.agentTargetId),
+    ["local:codex", "local:claude-code"]
+  );
+});
+
+test("desktop agents service applies provider gates to built-ins in the merged directory", async () => {
+  const service = new DesktopAgentsService({
+    isAgentTargetProviderGated: (provider) => provider === "claude-code",
+    tuttidClient: {
+      listAgentTargets: async () => ({
+        targets: [
+          createAgentTarget({
+            id: "local:claude-code",
+            name: "Claude Code",
+            provider: "claude-code",
+            sortOrder: 20
+          }),
           createAgentTarget({
             id: "local:codex",
             name: "Codex",
@@ -309,12 +361,61 @@ test("desktop agents service prefers explicit workspace Agents over fixed Harnes
   const snapshot = await service.load();
 
   assert.deepEqual(
-    snapshot.agents.map((agent) => agent.agentTargetId),
-    ["workspace-agent:reviewer"]
+    snapshot.agents.map((agent) => ({
+      agentTargetId: agent.agentTargetId,
+      availability: agent.availability
+    })),
+    [
+      { agentTargetId: "local:codex", availability: { status: "ready" } },
+      {
+        agentTargetId: "local:claude-code",
+        availability: { status: "coming_soon" }
+      },
+      {
+        agentTargetId: "workspace-agent:reviewer",
+        availability: { status: "ready" }
+      }
+    ]
   );
+});
+
+test("desktop agents service dedupes merged directory entries by agent target id", async () => {
+  const service = new DesktopAgentsService({
+    tuttidClient: {
+      listAgentTargets: async () => ({
+        targets: [
+          createAgentTarget({
+            id: "local:codex",
+            name: "Codex",
+            provider: "codex",
+            sortOrder: 10
+          })
+        ]
+      }),
+      listWorkspaceAgents: async () => ({
+        agents: [
+          createWorkspaceAgent({ id: "local:codex", name: "Shadowed" }),
+          createWorkspaceAgent({
+            id: "workspace-agent:reviewer",
+            name: "Reviewer"
+          })
+        ]
+      })
+    },
+    workspaceId: "workspace-1"
+  });
+
+  const snapshot = await service.load();
+
   assert.deepEqual(
-    snapshot.agentTargets.map((target) => target.agentTargetId),
-    ["local:codex"]
+    snapshot.agents.map((agent) => ({
+      agentTargetId: agent.agentTargetId,
+      name: agent.name
+    })),
+    [
+      { agentTargetId: "local:codex", name: "Codex" },
+      { agentTargetId: "workspace-agent:reviewer", name: "Reviewer" }
+    ]
   );
 });
 

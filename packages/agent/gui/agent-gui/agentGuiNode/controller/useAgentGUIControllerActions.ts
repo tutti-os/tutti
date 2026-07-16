@@ -56,6 +56,9 @@ export function useAgentGUIControllerActions(
   const updateComposerSettings = useStableControllerEventCallback(
     actions.updateComposerSettings
   );
+  const retryComposerOptions = useStableControllerEventCallback(
+    actions.retryComposerOptions
+  );
   const setTuttiModeActive = useStableControllerEventCallback(
     actions.setTuttiModeActive
   );
@@ -124,6 +127,7 @@ export function useAgentGUIControllerActions(
       updateDraftContent,
       updateSelectedProjectPath,
       updateComposerSettings,
+      retryComposerOptions,
       setTuttiModeActive,
       retryTuttiModeActivation,
       updatePlanIssueBudgetPreset,
@@ -170,6 +174,7 @@ export function useAgentGUIControllerActions(
       submitPrompt,
       toggleConversationPinned,
       updateComposerSettings,
+      retryComposerOptions,
       setTuttiModeActive,
       retryTuttiModeActivation,
       updatePlanIssueBudgetPreset,

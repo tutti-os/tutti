@@ -167,6 +167,7 @@ func (s *Service) Create(ctx context.Context, input PutInput) (workspaceagentbiz
 	if err := s.Store.PutWorkspaceAgent(ctx, normalized); err != nil {
 		return workspaceagentbiz.View{}, err
 	}
+	logWorkspaceAgentLifecycle("created", normalized)
 	s.publishConfigurationChanged(ctx, normalized, s.configurationDefaultModel(ctx, normalized), true)
 	return s.view(ctx, normalized)
 }
@@ -201,6 +202,7 @@ func (s *Service) Update(ctx context.Context, input PutInput) (workspaceagentbiz
 	if err := s.Store.PutWorkspaceAgent(ctx, normalized); err != nil {
 		return workspaceagentbiz.View{}, err
 	}
+	logWorkspaceAgentLifecycle("updated", normalized)
 	resetComposerModel := existing.HarnessAgentTargetID != normalized.HarnessAgentTargetID ||
 		existing.ModelPlanID != normalized.ModelPlanID ||
 		existing.DefaultModel != normalized.DefaultModel ||
@@ -241,6 +243,12 @@ func (s *Service) Delete(ctx context.Context, workspaceID string, agentID string
 	if err := s.Store.DeleteWorkspaceAgent(ctx, workspaceID, agentID); err != nil {
 		return err
 	}
+	// Deletion is deliberately not blocked by existing session references:
+	// stale ids degrade gracefully in the GUI (composer options settle into a
+	// recoverable error, and session ingestion drops the dangling reference
+	// with a diagnostic). This audit event is what ties those later
+	// "agent_target_id.dropped" ingestion warnings back to a user action.
+	logWorkspaceAgentLifecycle("deleted", workspaceagentbiz.Agent{WorkspaceID: workspaceID, ID: agentID})
 	s.publishConfigurationChanged(ctx, workspaceagentbiz.Agent{WorkspaceID: workspaceID, ID: agentID}, "", true)
 	return nil
 }
@@ -527,6 +535,22 @@ func agentModelRefs(agent workspaceagentbiz.Agent) []workspaceagentbiz.ModelRef 
 		refs = append(refs, workspaceagentbiz.ModelRef{ModelPlanID: agent.ModelPlanID, Model: agent.DefaultModel})
 	}
 	return append(refs, agent.ModelFallbacks...)
+}
+
+// logWorkspaceAgentLifecycle emits the CRUD audit trail. Session records may
+// reference a WorkspaceAgent long after it changed or disappeared; these
+// events are the anchor that makes later ingestion-side reference drops
+// attributable to a concrete configuration action.
+func logWorkspaceAgentLifecycle(action string, agent workspaceagentbiz.Agent) {
+	slog.Info("workspace agent "+action,
+		"event", "workspace_agent."+action,
+		"workspace_id", agent.WorkspaceID,
+		"workspace_agent_id", agent.ID,
+		"harness_agent_target_id", agent.HarnessAgentTargetID,
+		"model_plan_id", agent.ModelPlanID,
+		"enabled", agent.Enabled,
+		"revision", agent.Revision,
+	)
 }
 
 func (s *Service) publishConfigurationChanged(ctx context.Context, agent workspaceagentbiz.Agent, defaultModel string, resetComposerModel bool) {

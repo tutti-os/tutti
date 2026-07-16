@@ -434,5 +434,16 @@ export function useAgentGUIComposerSettingsActions(
     }
   );
 
-  return { updateComposerSettings, updatePlanIssueBudgetPreset };
+  // Recovery entry for the composer-options terminal error state: re-issues
+  // the draft options load (the engine grants a fresh retry budget per
+  // user-driven request).
+  const retryComposerOptions = useStableControllerEventCallback(() => {
+    loadDraftComposerOptions({ force: true });
+  });
+
+  return {
+    retryComposerOptions,
+    updateComposerSettings,
+    updatePlanIssueBudgetPreset
+  };
 }

@@ -17,7 +17,9 @@ describe("AgentPermissionModeDropdown", () => {
           composerSettings={composerSettings(null, true)}
           labels={{
             permissionLabel: "Permission",
-            loadingOptions: "Loading"
+            loadingOptions: "Loading",
+            optionsLoadFailed: "Failed to load",
+            optionsLoadFailedRetry: "Options failed to load. Click to retry."
           }}
           onSettingsChange={vi.fn()}
         />
@@ -33,7 +35,9 @@ describe("AgentPermissionModeDropdown", () => {
           composerSettings={composerSettings("full-access")}
           labels={{
             permissionLabel: "Permission",
-            loadingOptions: "Loading"
+            loadingOptions: "Loading",
+            optionsLoadFailed: "Failed to load",
+            optionsLoadFailedRetry: "Options failed to load. Click to retry."
           }}
           onSettingsChange={vi.fn()}
         />
@@ -50,7 +54,9 @@ describe("AgentPermissionModeDropdown", () => {
           composerSettings={composerSettings(null, true)}
           labels={{
             permissionLabel: "Permission",
-            loadingOptions: "Loading"
+            loadingOptions: "Loading",
+            optionsLoadFailed: "Failed to load",
+            optionsLoadFailedRetry: "Options failed to load. Click to retry."
           }}
           onSettingsChange={vi.fn()}
         />
@@ -67,6 +73,34 @@ describe("AgentPermissionModeDropdown", () => {
         )
       )
     ).toBe(false);
+  });
+
+  it("renders a recoverable error state that retries the options load", () => {
+    const onRetryOptions = vi.fn();
+    const view = render(
+      <TooltipProvider>
+        <AgentPermissionModeDropdown
+          composerSettings={{
+            ...composerSettings(null, false),
+            availablePermissionModes: [],
+            settingsLoadFailed: true
+          }}
+          labels={{
+            permissionLabel: "Permission",
+            loadingOptions: "Loading",
+            optionsLoadFailed: "Failed to load",
+            optionsLoadFailedRetry: "Options failed to load. Click to retry."
+          }}
+          onRetryOptions={onRetryOptions}
+          onSettingsChange={vi.fn()}
+        />
+      </TooltipProvider>
+    );
+
+    const retryButton = view.getByRole("button", { name: "Permission" });
+    expect(retryButton.textContent).toContain("Failed to load");
+    retryButton.click();
+    expect(onRetryOptions).toHaveBeenCalledTimes(1);
   });
 });
 

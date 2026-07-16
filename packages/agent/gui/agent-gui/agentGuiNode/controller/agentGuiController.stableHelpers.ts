@@ -453,6 +453,7 @@ export function areComposerSettingsVMsEqual(
       (right.permissionModeChangeDuringTurn ?? false) &&
     sameSlashPolicy(left.slashCommandPolicy, right.slashCommandPolicy) &&
     left.isSettingsLoading === right.isSettingsLoading &&
+    !!left.settingsLoadFailed === !!right.settingsLoadFailed &&
     !!left.isCapabilityOptionsLoading === !!right.isCapabilityOptionsLoading &&
     !!left.isModelOptionsLoading === !!right.isModelOptionsLoading &&
     left.modelUnavailable === right.modelUnavailable &&
