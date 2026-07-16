@@ -368,12 +368,6 @@ export function AgentComposer(props: AgentComposerProps): React.JSX.Element {
   }, [contextMentionProviders]);
 
   useEffect(() => {
-    mentionControllerRef.current?.setProvenanceCatalog(
-      referenceProvenanceFilter?.snapshot.catalog ?? null
-    );
-  }, [referenceProvenanceFilter?.snapshot.catalog]);
-
-  useEffect(() => {
     draftImagesRef.current = agentComposerDraftImages(draftContent);
     draftFilesRef.current = agentComposerDraftFiles(draftContent);
     draftLargeTextsRef.current = agentComposerDraftLargeTexts(draftContent);
@@ -392,10 +386,16 @@ export function AgentComposer(props: AgentComposerProps): React.JSX.Element {
   }, [draftContent, draftPrompt, goalDraftObjective]);
 
   useEffect(() => {
+    mentionControllerRef.current?.setProvenanceCatalog(
+      referenceProvenanceFilter?.snapshot.catalog ?? null
+    );
     mentionControllerRef.current?.setProvenanceFilter(
       referenceProvenanceFilter?.snapshot.value ?? null
     );
-  }, [referenceProvenanceFilter?.snapshot.value]);
+  }, [
+    referenceProvenanceFilter?.snapshot.catalog,
+    referenceProvenanceFilter?.snapshot.value
+  ]);
 
   useEffect(() => {
     if (
