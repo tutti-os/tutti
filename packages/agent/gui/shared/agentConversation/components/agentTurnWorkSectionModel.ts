@@ -19,12 +19,15 @@ export type AgentTurnWorkSectionRow =
     renderKey?: string;
   };
 
+export interface AgentTurnWorkSectionSegment {
+  kind: "visible" | "work";
+  rows: AgentTurnWorkSectionRow[];
+}
+
 export interface AgentTurnWorkSectionModel {
   timing: AgentTurnTiming | null;
-  userRows: AgentTurnWorkSectionRow[];
-  workRowsBeforeFinal: AgentTurnWorkSectionRow[];
-  finalRows: AgentTurnWorkSectionRow[];
-  workRowsAfterFinal: AgentTurnWorkSectionRow[];
+  leadingRows: AgentTurnWorkSectionRow[];
+  sections: AgentTurnWorkSectionSegment[];
   collapseEligible: boolean;
 }
 
@@ -84,75 +87,25 @@ export function buildAgentTurnWorkSectionModel(
   if (!timing) {
     return {
       timing: null,
-      userRows: [],
-      workRowsBeforeFinal: group.rows,
-      finalRows: [],
-      workRowsAfterFinal: [],
+      leadingRows: [],
+      sections: [{ kind: "visible", rows: group.rows }],
       collapseEligible: false
     };
   }
 
-  const userRows: AgentTurnWorkSectionRow[] = group.rows.filter(({ row }) =>
-    isUserMessageRow(row)
+  const leadingRowCount = countLeadingUserRows(group.rows);
+  const leadingRows = group.rows.slice(0, leadingRowCount);
+  const finalTarget = findFinalAssistantTextTarget(group.rows);
+  const sections = buildOrderedSections(
+    group.rows,
+    leadingRowCount,
+    finalTarget
   );
-  const agentRows: AgentTurnWorkSectionRow[] = group.rows.filter(
-    ({ row }) => !isUserMessageRow(row)
+  const hasHiddenWork = sections.some(
+    (section) => section.kind === "work" && section.rows.length > 0
   );
-  const finalTarget = findFinalAssistantTextTarget(agentRows);
-  if (!finalTarget) {
-    return {
-      timing,
-      userRows,
-      workRowsBeforeFinal: agentRows,
-      finalRows: [],
-      workRowsAfterFinal: [],
-      collapseEligible: false
-    };
-  }
-
-  const workRowsBeforeFinal = agentRows.slice(0, finalTarget.rowIndex);
-  const workRowsAfterFinal = agentRows.slice(finalTarget.rowIndex + 1);
-  const sourceEntry = agentRows[finalTarget.rowIndex]!;
-  const sourceRow = sourceEntry.row as AgentMessageRowVM;
-  const messagesBeforeFinal = sourceRow.messages.slice(
-    0,
-    finalTarget.messageIndex
-  );
-  const messagesAfterFinal = sourceRow.messages.slice(
-    finalTarget.messageIndex + 1
-  );
-
-  if (sourceRow.thinking.length > 0 || messagesBeforeFinal.length > 0) {
-    workRowsBeforeFinal.push({
-      ...sourceEntry,
-      renderKey: `${sourceRow.id}:turn-work-before`,
-      row: cloneAssistantRow(sourceRow, messagesBeforeFinal, sourceRow.thinking)
-    });
-  }
-
-  const finalRows: AgentTurnWorkSectionRow[] = [
-    {
-      ...sourceEntry,
-      renderKey: `${sourceRow.id}:turn-final`,
-      row: cloneAssistantRow(
-        sourceRow,
-        [sourceRow.messages[finalTarget.messageIndex]!],
-        []
-      )
-    }
-  ];
-
-  if (messagesAfterFinal.length > 0) {
-    workRowsAfterFinal.unshift({
-      ...sourceEntry,
-      renderKey: `${sourceRow.id}:turn-work-after`,
-      row: cloneAssistantRow(sourceRow, messagesAfterFinal, [])
-    });
-  }
-
-  const hasHiddenWork =
-    workRowsBeforeFinal.length > 0 || workRowsAfterFinal.length > 0;
   const collapseEligible =
+    finalTarget !== null &&
     turn?.phase === "settled" &&
     turn.outcome === "completed" &&
     hasHiddenWork &&
@@ -161,12 +114,90 @@ export function buildAgentTurnWorkSectionModel(
 
   return {
     timing,
-    userRows,
-    workRowsBeforeFinal,
-    finalRows,
-    workRowsAfterFinal,
+    leadingRows,
+    sections,
     collapseEligible
   };
+}
+
+function countLeadingUserRows(
+  rows: readonly AgentTurnWorkSectionRow[]
+): number {
+  let count = 0;
+  while (isUserMessageRow(rows[count]?.row)) {
+    count += 1;
+  }
+  return count;
+}
+
+function buildOrderedSections(
+  rows: readonly AgentTurnWorkSectionRow[],
+  startIndex: number,
+  finalTarget: { rowIndex: number; messageIndex: number } | null
+): AgentTurnWorkSectionSegment[] {
+  const sections: AgentTurnWorkSectionSegment[] = [];
+  for (let rowIndex = startIndex; rowIndex < rows.length; rowIndex += 1) {
+    const entry = rows[rowIndex]!;
+    if (finalTarget?.rowIndex === rowIndex) {
+      appendFinalAssistantSections(sections, entry, finalTarget.messageIndex);
+      continue;
+    }
+    appendSectionRow(
+      sections,
+      isUserMessageRow(entry.row) ? "visible" : "work",
+      entry
+    );
+  }
+  return sections;
+}
+
+function appendFinalAssistantSections(
+  sections: AgentTurnWorkSectionSegment[],
+  sourceEntry: AgentTurnWorkSectionRow,
+  finalMessageIndex: number
+): void {
+  const sourceRow = sourceEntry.row as AgentMessageRowVM;
+  const messagesBeforeFinal = sourceRow.messages.slice(0, finalMessageIndex);
+  const messagesAfterFinal = sourceRow.messages.slice(finalMessageIndex + 1);
+
+  if (sourceRow.thinking.length > 0 || messagesBeforeFinal.length > 0) {
+    appendSectionRow(sections, "work", {
+      ...sourceEntry,
+      renderKey: `${sourceRow.id}:turn-work-before`,
+      row: cloneAssistantRow(sourceRow, messagesBeforeFinal, sourceRow.thinking)
+    });
+  }
+
+  appendSectionRow(sections, "visible", {
+    ...sourceEntry,
+    renderKey: `${sourceRow.id}:turn-final`,
+    row: cloneAssistantRow(
+      sourceRow,
+      [sourceRow.messages[finalMessageIndex]!],
+      []
+    )
+  });
+
+  if (messagesAfterFinal.length > 0) {
+    appendSectionRow(sections, "work", {
+      ...sourceEntry,
+      renderKey: `${sourceRow.id}:turn-work-after`,
+      row: cloneAssistantRow(sourceRow, messagesAfterFinal, [])
+    });
+  }
+}
+
+function appendSectionRow(
+  sections: AgentTurnWorkSectionSegment[],
+  kind: AgentTurnWorkSectionSegment["kind"],
+  row: AgentTurnWorkSectionRow
+): void {
+  const previous = sections.at(-1);
+  if (previous?.kind === kind) {
+    previous.rows.push(row);
+    return;
+  }
+  sections.push({ kind, rows: [row] });
 }
 
 function findFinalAssistantTextTarget(
@@ -210,9 +241,9 @@ function groupContainsBlockingMessage(
 }
 
 function isUserMessageRow(
-  row: AgentTurnWorkSectionRow["row"]
+  row: AgentTurnWorkSectionRow["row"] | undefined
 ): row is AgentMessageRowVM {
-  return row.kind === "message" && row.speaker === "user";
+  return row?.kind === "message" && row.speaker === "user";
 }
 
 function cloneAssistantRow(

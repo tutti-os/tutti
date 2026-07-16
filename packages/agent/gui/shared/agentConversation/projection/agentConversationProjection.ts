@@ -54,21 +54,18 @@ export function projectAgentConversationVM(
     if (summary) rows.push(summary);
   });
 
-  const processing = projectAgentProcessingRow(detail, rows);
-  if (processing) {
-    rows.push(processing);
-  }
-
-  const normalizedRows = projectAgentMessageFinalText(
-    dropCodexRuntimeDiagnosticNotices(
-      dropRedundantErrorWarningNotices(
-        mergeAdjacentAssistantMessageRows(
-          dropRedundantCompactFailureEchoRows(
-            mergeAdjacentTransportRetryNoticeRows(rows)
-          )
+  const normalizedRows = dropCodexRuntimeDiagnosticNotices(
+    dropRedundantErrorWarningNotices(
+      mergeAdjacentAssistantMessageRows(
+        dropRedundantCompactFailureEchoRows(
+          mergeAdjacentTransportRetryNoticeRows(rows)
         )
       )
-    ),
+    )
+  );
+  const processing = projectAgentProcessingRow(detail, normalizedRows);
+  const projectedRows = projectAgentMessageFinalText(
+    processing ? [...normalizedRows, processing] : normalizedRows,
     detail
   );
 
@@ -76,7 +73,7 @@ export function projectAgentConversationVM(
     activity: detail.activity,
     workspaceRoot: detail.workspaceRoot,
     sourceDetail: detail,
-    rows: normalizedRows
+    rows: projectedRows
   };
 }
 

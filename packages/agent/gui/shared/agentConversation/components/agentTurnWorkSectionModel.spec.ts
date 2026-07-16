@@ -81,23 +81,27 @@ describe("agentTurnWorkSectionModel", () => {
       })
     );
 
-    expect(model.userRows).toHaveLength(1);
-    expect(model.workRowsBeforeFinal).toHaveLength(1);
-    expect(model.finalRows).toHaveLength(1);
-    expect(model.workRowsAfterFinal).toHaveLength(2);
+    expect(model.leadingRows).toHaveLength(1);
+    expect(model.sections.map((section) => section.kind)).toEqual([
+      "work",
+      "visible",
+      "work"
+    ]);
     expect(model.collapseEligible).toBe(true);
 
-    const finalRow = model.finalRows[0]?.row;
+    const finalRow = model.sections[1]?.rows[0]?.row;
     expect(finalRow?.kind).toBe("message");
     if (finalRow?.kind === "message") {
       expect(finalRow.id).toBe("assistant-row");
       expect(finalRow.messages.map((item) => item.body)).toEqual(["final"]);
       expect(finalRow.thinking).toEqual([]);
     }
-    expect(model.workRowsBeforeFinal[0]?.renderKey).toBe(
+    expect(model.sections[0]?.rows[0]?.renderKey).toBe(
       "assistant-row:turn-work-before"
     );
-    expect(model.finalRows[0]?.renderKey).toBe("assistant-row:turn-final");
+    expect(model.sections[1]?.rows[0]?.renderKey).toBe(
+      "assistant-row:turn-final"
+    );
   });
 
   it("uses an explicit final-text marker instead of copy availability", () => {
@@ -117,8 +121,8 @@ describe("agentTurnWorkSectionModel", () => {
     );
 
     expect(model.collapseEligible).toBe(true);
-    expect(model.finalRows).toHaveLength(1);
-    expect(model.finalRows[0]?.row.kind).toBe("message");
+    expect(model.sections).toHaveLength(2);
+    expect(model.sections[1]?.rows[0]?.row.kind).toBe("message");
   });
 
   it("preserves interleaved user and assistant chronology in ordered sections", () => {
@@ -257,7 +261,8 @@ describe("agentTurnWorkSectionModel", () => {
 
     expect(model.timing).toEqual({ kind: "settled", elapsedSeconds: 10 });
     expect(model.collapseEligible).toBe(false);
-    expect(model.finalRows).toHaveLength(1);
+    expect(model.sections).toHaveLength(1);
+    expect(model.sections[0]?.kind).toBe("visible");
   });
 });
 

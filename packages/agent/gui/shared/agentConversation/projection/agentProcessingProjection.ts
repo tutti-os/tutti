@@ -10,7 +10,7 @@ export function projectAgentProcessingRow(
   if (!detail.showProcessingIndicator) {
     return null;
   }
-  const turnId = detail.turns.at(-1)?.id ?? null;
+  const turnId = detail.session.activeTurnId ?? detail.turns.at(-1)?.id ?? null;
   const canonicalTurn = detail.sessionTurns?.find(
     (turn) => turn.turnId === turnId
   );
@@ -19,11 +19,21 @@ export function projectAgentProcessingRow(
     canonicalTurn.phase !== "settled" &&
     Number.isFinite(canonicalTurn.startedAtUnixMs)
   ) {
-    return null;
+    if (turnId && hasTurnTimingHostRow(rows, turnId)) {
+      return null;
+    }
+    return processingRow(detail, turnId);
   }
   if (turnId && hasSpecificProgressRow(rows, turnId)) {
     return null;
   }
+  return processingRow(detail, turnId);
+}
+
+function processingRow(
+  detail: WorkspaceAgentSessionDetailViewModel,
+  turnId: string | null
+): AgentProcessingRowVM {
   return {
     kind: "processing",
     id: `processing:${turnId ?? "session"}`,
@@ -31,6 +41,13 @@ export function projectAgentProcessingRow(
     occurredAtUnixMs:
       detail.session.updatedAtUnixMs ?? detail.session.createdAtUnixMs ?? null
   };
+}
+
+function hasTurnTimingHostRow(
+  rows: readonly AgentTranscriptRowVM[],
+  activeTurnId: string
+): boolean {
+  return rows.some((row) => row.turnId === activeTurnId);
 }
 
 function hasSpecificProgressRow(

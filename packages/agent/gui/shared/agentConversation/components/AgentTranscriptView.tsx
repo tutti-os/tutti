@@ -1,5 +1,4 @@
 import {
-  Fragment,
   memo,
   useCallback,
   useLayoutEffect,
@@ -35,7 +34,7 @@ import {
 
 const AGENT_TRANSCRIPT_VIRTUALIZATION_OVERSCAN = 6;
 const AGENT_TRANSCRIPT_ESTIMATED_TURN_HEIGHT_PX = 280;
-const AGENT_TRANSCRIPT_TURN_GAP_PX = 12;
+const AGENT_TRANSCRIPT_TURN_GAP_PX = 24;
 const AGENT_TRANSCRIPT_FALLBACK_TURN_COUNT = 3;
 interface AgentTranscriptViewProps {
   conversation: AgentConversationVM;
@@ -324,7 +323,10 @@ export const AgentTranscriptView = memo(function AgentTranscriptView({
   };
 
   const renderTurnGroup = (group: (typeof turnGroups)[number]): JSX.Element => (
-    <Fragment key={group.key}>
+    <div
+      key={group.key}
+      className="agent-gui-transcript-turn grid min-w-0 gap-4"
+    >
       {group.rows.some(({ rowIndex }) => dividerRowIndexes.has(rowIndex)) ? (
         <div
           className="h-px w-full flex-none bg-[var(--line-2,var(--tutti-line-2))]"
@@ -345,7 +347,7 @@ export const AgentTranscriptView = memo(function AgentTranscriptView({
         disclosureStore={turnDisclosureStore}
         renderRow={renderRow}
       />
-    </Fragment>
+    </div>
   );
 
   if (shouldVirtualize) {

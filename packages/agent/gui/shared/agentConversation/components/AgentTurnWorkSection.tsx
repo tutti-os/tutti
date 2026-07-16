@@ -47,7 +47,14 @@ export function AgentTurnWorkSection({
     : true;
 
   if (!model.timing) {
-    return <>{renderRows(group.rows, renderRow)}</>;
+    return (
+      <div
+        className="grid min-w-0 gap-4"
+        data-agent-turn-work-section={group.turnId ?? group.key}
+      >
+        {renderRows(group.rows, renderRow)}
+      </div>
+    );
   }
 
   const toggleLabel = expanded
@@ -55,8 +62,11 @@ export function AgentTurnWorkSection({
     : t("agentHost.agentGui.expandTurnWork");
 
   return (
-    <>
-      {renderRows(model.userRows, renderRow)}
+    <div
+      className="grid min-w-0 gap-4"
+      data-agent-turn-work-section={group.turnId ?? group.key}
+    >
+      {renderRows(model.leadingRows, renderRow)}
       <div
         className="flex min-h-6 items-center gap-0.5 text-[12px] text-[var(--text-tertiary)]"
         data-agent-turn-work-header={group.turnId ?? group.key}
@@ -81,18 +91,23 @@ export function AgentTurnWorkSection({
           </BareIconButton>
         ) : null}
       </div>
-      {model.workRowsBeforeFinal.length > 0 ? (
-        <CollapsibleReveal expanded={expanded}>
-          {renderRows(model.workRowsBeforeFinal, renderRow)}
-        </CollapsibleReveal>
-      ) : null}
-      {renderRows(model.finalRows, renderRow)}
-      {model.workRowsAfterFinal.length > 0 ? (
-        <CollapsibleReveal expanded={expanded}>
-          {renderRows(model.workRowsAfterFinal, renderRow)}
-        </CollapsibleReveal>
-      ) : null}
-    </>
+      {model.sections.map((section, sectionIndex) => {
+        const content = renderRows(section.rows, renderRow);
+        if (section.kind !== "work" || !model.collapseEligible) {
+          return content;
+        }
+        const firstRow = section.rows[0];
+        return (
+          <CollapsibleReveal
+            key={`work:${firstRow?.renderKey ?? firstRow?.row.id ?? sectionIndex}`}
+            expanded={expanded}
+            innerClassName="grid gap-4"
+          >
+            {content}
+          </CollapsibleReveal>
+        );
+      })}
+    </div>
   );
 }
 

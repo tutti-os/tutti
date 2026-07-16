@@ -6935,17 +6935,8 @@ button.agent-gui-node__conversation-section-toggle:hover
   box-sizing: border-box;
   width: 100%;
   min-width: 0;
-  padding-bottom: 16px;
+  padding-bottom: 24px;
   will-change: transform;
-}
-
-.agent-gui-transcript-virtual-item
-  > .agent-gui-transcript-row
-  + .agent-gui-transcript-row,
-.agent-gui-transcript-virtual-item
-  > [data-testid="agent-transcript-turn-divider"]
-  + .agent-gui-transcript-row {
-  margin-top: 16px;
 }
 
 .agent-gui-transcript-row[data-agent-transcript-row-enter="true"] {

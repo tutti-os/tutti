@@ -14,6 +14,7 @@ interface CollapsibleRevealProps {
   expanded: boolean;
   children: ReactNode;
   className?: string;
+  innerClassName?: string;
   preMountOnIdle?: boolean;
 }
 
@@ -21,6 +22,7 @@ export function CollapsibleReveal({
   expanded,
   children,
   className,
+  innerClassName,
   preMountOnIdle = false
 }: CollapsibleRevealProps): JSX.Element | null {
   "use memo";
@@ -193,7 +195,12 @@ export function CollapsibleReveal({
       style={rootStyle}
       onTransitionEnd={handleTransitionEnd}
     >
-      <div ref={innerRef} className="agent-collapsible-reveal__inner">
+      <div
+        ref={innerRef}
+        className={["agent-collapsible-reveal__inner", innerClassName ?? ""]
+          .filter(Boolean)
+          .join(" ")}
+      >
         {children}
       </div>
     </div>
