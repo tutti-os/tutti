@@ -179,6 +179,11 @@ export function buildWorkspaceAgentInteractivePromptLabels(
         ? workspaceAgentProviderLabel(provider)
         : t("agentHost.workspaceAgentsGenericAgentName")
     }),
+    fileChangeApprovalLead: t("agentHost.agentGui.fileChangeApprovalRequired", {
+      provider: provider
+        ? workspaceAgentProviderLabel(provider)
+        : t("agentHost.workspaceAgentsGenericAgentName")
+    }),
     planLead: t("agentHost.agentGui.planLead"),
     planModes: [
       {

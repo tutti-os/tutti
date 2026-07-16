@@ -478,8 +478,8 @@ func TestClaudeCodeSDKAdapterMapsToolLifecycleAndFileMetadata(t *testing.T) {
 	if len(started) != 1 || started[0].Type != activityshared.EventCallStarted {
 		t.Fatalf("started = %#v, want call.started", started)
 	}
-	if len(completed) != 1 || completed[0].Type != activityshared.EventCallCompleted {
-		t.Fatalf("completed = %#v, want call.completed", completed)
+	if len(completed) != 2 || completed[0].Type != activityshared.EventCallCompleted || completed[1].Type != activityshared.EventTurnUpdated {
+		t.Fatalf("completed = %#v, want call.completed followed by turn.updated", completed)
 	}
 	if started[0].EventID != "claude-sdk:tool:toolu-1" || completed[0].EventID != started[0].EventID {
 		t.Fatalf("event IDs = %q %q, want stable tool ID", started[0].EventID, completed[0].EventID)
@@ -498,6 +498,10 @@ func TestClaudeCodeSDKAdapterMapsToolLifecycleAndFileMetadata(t *testing.T) {
 	completedMetadata := payloadMap(completed[0].Payload.Metadata, "metadata")
 	if toolResponse := payloadMap(completedMetadata, "claudeToolResponse"); payloadMap(toolResponse, "structuredPatch") == nil {
 		t.Fatalf("completed metadata = %#v, want structuredPatch", completed[0].Payload.Metadata)
+	}
+	turnFiles := payloadArray(payloadMap(completed[1].Payload.Metadata, "fileChanges")["files"])
+	if len(turnFiles) != 1 || turnFiles[0]["path"] != "/tmp/a.txt" || turnFiles[0]["change"] != "modified" {
+		t.Fatalf("turn file changes = %#v, want canonical modified file", turnFiles)
 	}
 }
 

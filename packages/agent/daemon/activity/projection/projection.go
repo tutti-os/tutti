@@ -58,6 +58,7 @@ type SessionStateReport struct {
 	OccurredAtUnixMS     int64
 	StartedAtUnixMS      int64
 	EndedAtUnixMS        int64
+	CreatedAtUnixMS      int64
 }
 
 type SessionProjection struct {
@@ -108,8 +109,11 @@ func ProjectSessionState(
 		LastEventUnixMS:      lastEvent,
 		StartedAtUnixMS:      report.StartedAtUnixMS,
 		EndedAtUnixMS:        report.EndedAtUnixMS,
-		CreatedAtUnixMS:      nowUnixMS,
+		CreatedAtUnixMS:      report.CreatedAtUnixMS,
 		UpdatedAtUnixMS:      nowUnixMS,
+	}
+	if session.CreatedAtUnixMS <= 0 {
+		session.CreatedAtUnixMS = nowUnixMS
 	}
 	if hasExisting {
 		session.CreatedAtUnixMS = existing.CreatedAtUnixMS

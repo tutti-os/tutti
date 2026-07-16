@@ -21,6 +21,7 @@ func cloneSessionMessages(messages []SessionMessage) []SessionMessage {
 			Role:              strings.TrimSpace(message.Role),
 			Kind:              strings.TrimSpace(message.Kind),
 			Status:            strings.TrimSpace(message.Status),
+			Semantics:         cloneActivityMessageSemantics(message.Semantics),
 			Payload:           clonePayload(message.Payload),
 			OccurredAtUnixMS:  message.OccurredAtUnixMS,
 			StartedAtUnixMS:   message.StartedAtUnixMS,

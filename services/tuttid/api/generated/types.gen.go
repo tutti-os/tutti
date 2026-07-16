@@ -1120,6 +1120,24 @@ func (e PermissionModeSemantic) Valid() bool {
 	}
 }
 
+// Defines values for SendWorkspaceAgentSessionInputResponseKind.
+const (
+	GoalControl SendWorkspaceAgentSessionInputResponseKind = "goalControl"
+	Turn        SendWorkspaceAgentSessionInputResponseKind = "turn"
+)
+
+// Valid indicates whether the value is a known member of the SendWorkspaceAgentSessionInputResponseKind enum.
+func (e SendWorkspaceAgentSessionInputResponseKind) Valid() bool {
+	switch e {
+	case GoalControl:
+		return true
+	case Turn:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for SubmitWorkspaceAgentPlanDecisionRequestAction.
 const (
 	Implement SubmitWorkspaceAgentPlanDecisionRequestAction = "implement"
@@ -1251,19 +1269,19 @@ func (e WorkspaceAgentInteractionKind) Valid() bool {
 
 // Defines values for WorkspaceAgentInteractionStatus.
 const (
-	Answered   WorkspaceAgentInteractionStatus = "answered"
-	Pending    WorkspaceAgentInteractionStatus = "pending"
-	Superseded WorkspaceAgentInteractionStatus = "superseded"
+	WorkspaceAgentInteractionStatusAnswered   WorkspaceAgentInteractionStatus = "answered"
+	WorkspaceAgentInteractionStatusPending    WorkspaceAgentInteractionStatus = "pending"
+	WorkspaceAgentInteractionStatusSuperseded WorkspaceAgentInteractionStatus = "superseded"
 )
 
 // Valid indicates whether the value is a known member of the WorkspaceAgentInteractionStatus enum.
 func (e WorkspaceAgentInteractionStatus) Valid() bool {
 	switch e {
-	case Answered:
+	case WorkspaceAgentInteractionStatusAnswered:
 		return true
-	case Pending:
+	case WorkspaceAgentInteractionStatusPending:
 		return true
-	case Superseded:
+	case WorkspaceAgentInteractionStatusSuperseded:
 		return true
 	default:
 		return false
@@ -1369,6 +1387,36 @@ func (e WorkspaceAgentSessionGoalControlRequestAction) Valid() bool {
 	}
 }
 
+// Defines values for WorkspaceAgentSessionGoalStateSyncStatus.
+const (
+	WorkspaceAgentSessionGoalStateSyncStatusApplying WorkspaceAgentSessionGoalStateSyncStatus = "applying"
+	WorkspaceAgentSessionGoalStateSyncStatusDiverged WorkspaceAgentSessionGoalStateSyncStatus = "diverged"
+	WorkspaceAgentSessionGoalStateSyncStatusFailed   WorkspaceAgentSessionGoalStateSyncStatus = "failed"
+	WorkspaceAgentSessionGoalStateSyncStatusPending  WorkspaceAgentSessionGoalStateSyncStatus = "pending"
+	WorkspaceAgentSessionGoalStateSyncStatusSynced   WorkspaceAgentSessionGoalStateSyncStatus = "synced"
+	WorkspaceAgentSessionGoalStateSyncStatusUnknown  WorkspaceAgentSessionGoalStateSyncStatus = "unknown"
+)
+
+// Valid indicates whether the value is a known member of the WorkspaceAgentSessionGoalStateSyncStatus enum.
+func (e WorkspaceAgentSessionGoalStateSyncStatus) Valid() bool {
+	switch e {
+	case WorkspaceAgentSessionGoalStateSyncStatusApplying:
+		return true
+	case WorkspaceAgentSessionGoalStateSyncStatusDiverged:
+		return true
+	case WorkspaceAgentSessionGoalStateSyncStatusFailed:
+		return true
+	case WorkspaceAgentSessionGoalStateSyncStatusPending:
+		return true
+	case WorkspaceAgentSessionGoalStateSyncStatusSynced:
+		return true
+	case WorkspaceAgentSessionGoalStateSyncStatusUnknown:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for WorkspaceAgentSessionKind.
 const (
 	Child WorkspaceAgentSessionKind = "child"
@@ -1399,6 +1447,33 @@ func (e WorkspaceAgentSessionSectionKind) Valid() bool {
 	case Conversations:
 		return true
 	case Project:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for WorkspaceAgentTurnOrigin.
+const (
+	GoalArm           WorkspaceAgentTurnOrigin = "goal_arm"
+	GoalContinuation  WorkspaceAgentTurnOrigin = "goal_continuation"
+	LegacyUnknown     WorkspaceAgentTurnOrigin = "legacy_unknown"
+	ProviderInitiated WorkspaceAgentTurnOrigin = "provider_initiated"
+	UserPrompt        WorkspaceAgentTurnOrigin = "user_prompt"
+)
+
+// Valid indicates whether the value is a known member of the WorkspaceAgentTurnOrigin enum.
+func (e WorkspaceAgentTurnOrigin) Valid() bool {
+	switch e {
+	case GoalArm:
+		return true
+	case GoalContinuation:
+		return true
+	case LegacyUnknown:
+		return true
+	case ProviderInitiated:
+		return true
+	case UserPrompt:
 		return true
 	default:
 		return false
@@ -3562,12 +3637,23 @@ type SendWorkspaceAgentSessionInputRequest struct {
 
 // SendWorkspaceAgentSessionInputResponse defines model for SendWorkspaceAgentSessionInputResponse.
 type SendWorkspaceAgentSessionInputResponse struct {
-	Session WorkspaceAgentSession `json:"session"`
+	Goal      *WorkspaceAgentSessionGoal      `json:"goal,omitempty"`
+	GoalState *WorkspaceAgentSessionGoalState `json:"goalState,omitempty"`
+
+	// Kind Discriminates a Turn-producing input from a typed session-level Goal control.
+	Kind SendWorkspaceAgentSessionInputResponseKind `json:"kind"`
+
+	// OperationId Durable GoalControlOperation identity when kind is goalControl.
+	OperationId *string               `json:"operationId,omitempty"`
+	Session     WorkspaceAgentSession `json:"session"`
 
 	// Turn Protocol v2 turn entity. One user-submission-driven execution: submit, run, wait, settle. Owns phase, outcome, error, and file changes; the session only keeps an activeTurnId reference.
 	Turn   *WorkspaceAgentTurn `json:"turn,omitempty"`
-	TurnId string              `json:"turnId"`
+	TurnId *string             `json:"turnId,omitempty"`
 }
+
+// SendWorkspaceAgentSessionInputResponseKind Discriminates a Turn-producing input from a typed session-level Goal control.
+type SendWorkspaceAgentSessionInputResponseKind string
 
 // SetSystemAgentTargetEnabledRequest defines model for SetSystemAgentTargetEnabledRequest.
 type SetSystemAgentTargetEnabledRequest struct {
@@ -3895,7 +3981,10 @@ type WorkspaceAgentSession struct {
 	PinnedAtUnixMs      *int64                      `json:"pinnedAtUnixMs"`
 	Provider            WorkspaceAgentProvider      `json:"provider"`
 	ProviderSessionId   *string                     `json:"providerSessionId"`
-	Resumable           bool                        `json:"resumable"`
+
+	// RailSectionKey Persisted conversation-rail membership key. Clients must use this exact key for section placement and must not infer membership from cwd or project paths.
+	RailSectionKey string `json:"railSectionKey"`
+	Resumable      bool   `json:"resumable"`
 
 	// RootAgentSessionId Root session that owns this child session. Null when kind is root.
 	RootAgentSessionId *string `json:"rootAgentSessionId"`
@@ -3929,6 +4018,9 @@ type WorkspaceAgentSessionDetailResponse struct {
 	// ChildSessions Flat collection of every nested child session below session. Clients reconstruct the tree from the immutable parent fields.
 	ChildSessions []WorkspaceAgentSession `json:"childSessions"`
 	Session       WorkspaceAgentSession   `json:"session"`
+
+	// Turns Ordered durable turns owned by session. This detail-only collection is the canonical source for turn-scoped history such as file changes; clients must not reconstruct it from provider tool payloads.
+	Turns []WorkspaceAgentTurn `json:"turns"`
 }
 
 // WorkspaceAgentSessionEventEnvelope defines model for WorkspaceAgentSessionEventEnvelope.
@@ -3971,8 +4063,35 @@ type WorkspaceAgentSessionGoalControlRequestAction string
 
 // WorkspaceAgentSessionGoalControlResponse defines model for WorkspaceAgentSessionGoalControlResponse.
 type WorkspaceAgentSessionGoalControlResponse struct {
-	Goal    *WorkspaceAgentSessionGoal `json:"goal,omitempty"`
-	Session WorkspaceAgentSession      `json:"session"`
+	Goal *WorkspaceAgentSessionGoal `json:"goal,omitempty"`
+
+	// OperationId Durable GoalControlOperation identity; null only for compatibility runtimes without a goal store.
+	OperationId *string                         `json:"operationId,omitempty"`
+	Session     WorkspaceAgentSession           `json:"session"`
+	State       *WorkspaceAgentSessionGoalState `json:"state,omitempty"`
+}
+
+// WorkspaceAgentSessionGoalState defines model for WorkspaceAgentSessionGoalState.
+type WorkspaceAgentSessionGoalState struct {
+	Desired            *WorkspaceAgentSessionGoal               `json:"desired,omitempty"`
+	LastError          *string                                  `json:"lastError,omitempty"`
+	LastEvidence       map[string]interface{}                   `json:"lastEvidence"`
+	Observed           *WorkspaceAgentSessionGoal               `json:"observed,omitempty"`
+	ObservedAtUnixMs   *int64                                   `json:"observedAtUnixMs,omitempty"`
+	PendingOperationId *string                                  `json:"pendingOperationId,omitempty"`
+	Revision           int64                                    `json:"revision"`
+	SyncStatus         WorkspaceAgentSessionGoalStateSyncStatus `json:"syncStatus"`
+	Tombstoned         bool                                     `json:"tombstoned"`
+	UpdatedAtUnixMs    int64                                    `json:"updatedAtUnixMs"`
+}
+
+// WorkspaceAgentSessionGoalStateSyncStatus defines model for WorkspaceAgentSessionGoalState.SyncStatus.
+type WorkspaceAgentSessionGoalStateSyncStatus string
+
+// WorkspaceAgentSessionGoalStateResponse defines model for WorkspaceAgentSessionGoalStateResponse.
+type WorkspaceAgentSessionGoalStateResponse struct {
+	Session WorkspaceAgentSession          `json:"session"`
+	State   WorkspaceAgentSessionGoalState `json:"state"`
 }
 
 // WorkspaceAgentSessionKind Root sessions are user-visible conversations. Child sessions are provider-native agents reached through their immutable parent fields.
@@ -3990,22 +4109,24 @@ type WorkspaceAgentSessionListResponse struct {
 
 // WorkspaceAgentSessionMessage defines model for WorkspaceAgentSessionMessage.
 type WorkspaceAgentSessionMessage struct {
-	AgentSessionId    string                         `json:"agentSessionId"`
-	CompletedAtUnixMs *int64                         `json:"completedAtUnixMs,omitempty"`
-	CreatedAtUnixMs   *int64                         `json:"createdAtUnixMs,omitempty"`
-	Kind              string                         `json:"kind"`
-	MessageId         string                         `json:"messageId"`
-	OccurredAtUnixMs  int64                          `json:"occurredAtUnixMs"`
-	Payload           *map[string]interface{}        `json:"payload,omitempty"`
-	Role              string                         `json:"role"`
-	Semantics         *AgentActivityMessageSemantics `json:"semantics,omitempty"`
+	AgentSessionId    string `json:"agentSessionId"`
+	CompletedAtUnixMs *int64 `json:"completedAtUnixMs,omitempty"`
+	CreatedAtUnixMs   *int64 `json:"createdAtUnixMs,omitempty"`
+
+	// Kind session_audit is the only session-scoped kind; every other kind is Turn-scoped and requires a non-null turnId.
+	Kind             string                         `json:"kind"`
+	MessageId        string                         `json:"messageId"`
+	OccurredAtUnixMs int64                          `json:"occurredAtUnixMs"`
+	Payload          *map[string]interface{}        `json:"payload,omitempty"`
+	Role             string                         `json:"role"`
+	Semantics        *AgentActivityMessageSemantics `json:"semantics,omitempty"`
 
 	// Sequence Stable message presentation order assigned when the durable message row is first created. Updating the same message does not change this value; version remains the mutable snapshot change cursor.
 	Sequence        int64   `json:"sequence"`
 	StartedAtUnixMs *int64  `json:"startedAtUnixMs,omitempty"`
 	Status          *string `json:"status,omitempty"`
 
-	// TurnId Protocol v2 message ownership is an explicit choice: a non-empty turnId attaches the message to that turn; null marks a session-level message (system notices, imported history). Empty strings are forbidden.
+	// TurnId A non-empty turnId attaches a Turn-scoped message to a real persisted Turn. Null is valid only when kind is session_audit; empty strings are forbidden. Legacy stored turnless rows are read as compatibility data and are never assigned a guessed Turn.
 	TurnId          *string `json:"turnId"`
 	UpdatedAtUnixMs *int64  `json:"updatedAtUnixMs,omitempty"`
 	Version         int64   `json:"version"`
@@ -4088,15 +4209,24 @@ type WorkspaceAgentTurn struct {
 	CompletedCommand *WorkspaceAgentCompletedCommand `json:"completedCommand"`
 	Error            *WorkspaceAgentTurnError        `json:"error"`
 	FileChanges      *map[string]interface{}         `json:"fileChanges"`
-	Outcome          *WorkspaceAgentTurnOutcome      `json:"outcome"`
+
+	// Origin Durable business provenance; steer is input on an existing turn and is never an origin.
+	Origin  WorkspaceAgentTurnOrigin   `json:"origin"`
+	Outcome *WorkspaceAgentTurnOutcome `json:"outcome"`
 
 	// Phase Protocol v2 closed turn phase vocabulary. submitted -> running -> waiting (interactions) -> settling -> settled.
-	Phase           WorkspaceAgentTurnPhase `json:"phase"`
-	SettledAtUnixMs *int64                  `json:"settledAtUnixMs"`
-	StartedAtUnixMs int64                   `json:"startedAtUnixMs"`
-	TurnId          string                  `json:"turnId"`
-	UpdatedAtUnixMs int64                   `json:"updatedAtUnixMs"`
+	Phase                 WorkspaceAgentTurnPhase `json:"phase"`
+	SettledAtUnixMs       *int64                  `json:"settledAtUnixMs"`
+	SourceGoalOperationId *string                 `json:"sourceGoalOperationId,omitempty"`
+	SourceGoalRepairEpoch *int64                  `json:"sourceGoalRepairEpoch,omitempty"`
+	SourceGoalRevision    *int64                  `json:"sourceGoalRevision,omitempty"`
+	StartedAtUnixMs       int64                   `json:"startedAtUnixMs"`
+	TurnId                string                  `json:"turnId"`
+	UpdatedAtUnixMs       int64                   `json:"updatedAtUnixMs"`
 }
+
+// WorkspaceAgentTurnOrigin Durable business provenance; steer is input on an existing turn and is never an origin.
+type WorkspaceAgentTurnOrigin string
 
 // WorkspaceAgentTurnCancelResponse defines model for WorkspaceAgentTurnCancelResponse.
 type WorkspaceAgentTurnCancelResponse struct {
@@ -4748,6 +4878,9 @@ type GetAgentProviderStatusesParams struct {
 
 	// IncludeNetwork Opt into the network connectivity probe (registry / provider API / proxy reachability). Off by default so the common detection path stays local and never blocks on the network; only the agent-env wizard's network diagnostic sets this.
 	IncludeNetwork *bool `form:"includeNetwork,omitempty" json:"includeNetwork,omitempty"`
+
+	// Refresh Bypass the daemon provider-readiness cache.
+	Refresh *bool `form:"refresh,omitempty" json:"refresh,omitempty"`
 }
 
 // ListCliCapabilitiesParams defines parameters for ListCliCapabilities.
@@ -4838,6 +4971,9 @@ type ListWorkspaceAgentSessionMessagesParamsOrder string
 type GetWorkspaceAppAgentProviderStatusesParams struct {
 	Providers      *[]WorkspaceAgentProvider `form:"providers,omitempty" json:"providers,omitempty"`
 	IncludeNetwork *bool                     `form:"includeNetwork,omitempty" json:"includeNetwork,omitempty"`
+
+	// Refresh Bypass the daemon provider-readiness cache.
+	Refresh *bool `form:"refresh,omitempty" json:"refresh,omitempty"`
 }
 
 // ListWorkspaceFileDirectoryParams defines parameters for ListWorkspaceFileDirectory.
@@ -4897,7 +5033,9 @@ type ListWorkspaceIssuesParams struct {
 	PageToken    *IssueManagerPageToken    `form:"pageToken,omitempty" json:"pageToken,omitempty"`
 	TopicId      IssueManagerTopicIDQuery  `form:"topicId" json:"topicId"`
 	StatusFilter *IssueManagerStatusFilter `form:"statusFilter,omitempty" json:"statusFilter,omitempty"`
-	SearchQuery  *IssueManagerSearchQuery  `form:"searchQuery,omitempty" json:"searchQuery,omitempty"`
+
+	// SearchQuery Case-insensitive substring search over the visible title only.
+	SearchQuery *IssueManagerSearchQuery `form:"searchQuery,omitempty" json:"searchQuery,omitempty"`
 }
 
 // ListWorkspaceIssueTasksParams defines parameters for ListWorkspaceIssueTasks.
@@ -4905,7 +5043,9 @@ type ListWorkspaceIssueTasksParams struct {
 	PageSize     *IssueManagerPageSize     `form:"pageSize,omitempty" json:"pageSize,omitempty"`
 	PageToken    *IssueManagerPageToken    `form:"pageToken,omitempty" json:"pageToken,omitempty"`
 	StatusFilter *IssueManagerStatusFilter `form:"statusFilter,omitempty" json:"statusFilter,omitempty"`
-	SearchQuery  *IssueManagerSearchQuery  `form:"searchQuery,omitempty" json:"searchQuery,omitempty"`
+
+	// SearchQuery Case-insensitive substring search over the visible title only.
+	SearchQuery *IssueManagerSearchQuery `form:"searchQuery,omitempty" json:"searchQuery,omitempty"`
 }
 
 // AttachWorkspaceTerminalParams defines parameters for AttachWorkspaceTerminal.

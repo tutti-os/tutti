@@ -97,6 +97,7 @@ export class DesktopAgentProviderStatusService implements IAgentProviderStatusSe
   private revision = 0;
   private snapshot: AgentProviderStatusSnapshot = emptySnapshot;
   private readonly transientDowngradeCounts = new Map<string, number>();
+  private disposed = false;
 
   constructor(
     dependencies: DesktopAgentProviderStatusServiceDependencies,
@@ -124,6 +125,20 @@ export class DesktopAgentProviderStatusService implements IAgentProviderStatusSe
 
   getRevision(): number {
     return this.revision;
+  }
+
+  dispose(): void {
+    if (this.disposed) {
+      return;
+    }
+    this.disposed = true;
+    this.requestSequence += 1;
+    for (const timer of this.pendingActionStatusPolls.values()) {
+      this.loginStatusPollScheduler.clearTimeout(timer);
+    }
+    this.pendingActionStatusPolls.clear();
+    this.accountLifecycle.dispose();
+    this.listeners.clear();
   }
 
   getSnapshot(): AgentProviderStatusSnapshot {
@@ -184,6 +199,7 @@ export class DesktopAgentProviderStatusService implements IAgentProviderStatusSe
     input: {
       providers?: WorkspaceAgentProvider[];
       includeNetwork?: boolean;
+      refresh?: boolean;
     } = {}
   ): Promise<AgentProviderStatusListResponse | null> {
     const requestKey = providerStatusRequestKey(input);
@@ -467,10 +483,14 @@ export class DesktopAgentProviderStatusService implements IAgentProviderStatusSe
   ): Promise<void> {
     const input = {
       providers,
-      includeNetwork: options?.includeNetwork
+      includeNetwork: options?.includeNetwork,
+      refresh: true
     };
     const inflightRequest = this.inflightRequests.get(
-      providerStatusRequestKey(input)
+      providerStatusRequestKey({
+        providers,
+        includeNetwork: options?.includeNetwork
+      })
     );
     if (inflightRequest) {
       await inflightRequest;
@@ -639,7 +659,7 @@ export class DesktopAgentProviderStatusService implements IAgentProviderStatusSe
     provider: WorkspaceAgentProvider,
     actionId: string
   ): void {
-    if (!this.isActionPending(provider, actionId)) {
+    if (this.disposed || !this.isActionPending(provider, actionId)) {
       return;
     }
     const key = pendingActionKey(provider, actionId);
@@ -703,10 +723,12 @@ function pendingActionKey(
 function providerStatusRequestKey(input: {
   providers?: readonly WorkspaceAgentProvider[];
   includeNetwork?: boolean;
+  refresh?: boolean;
 }): string {
   const providers = [...new Set(input.providers ?? [])].sort();
   return JSON.stringify({
     includeNetwork: input.includeNetwork === true,
+    refresh: input.refresh === true,
     providers: providers.length > 0 ? providers : null
   });
 }

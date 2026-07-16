@@ -36,9 +36,13 @@ session-level child summaries.
   normalizer into approval projection. AgentGUI renders structured `changes`
   or `fileChanges`, `grantRoot`, and a standalone `reason`; approval reasons and
   correlated file-change directories render directly below the title without
-  duplicate Summary or Path cards. A lone `grantRoot` outside a file-change
-  approval remains a labeled path detail. These remain approval previews, not
-  evidence that a file change executed.
+  duplicate Summary or Path cards, and the title states that the authorization
+  is for editing files. Runtime adapters normalize the provider tool kind into
+  interaction metadata `approvalPurpose=edit-files`; GUI prompt projection uses
+  that semantic purpose and must not infer authorization intent from rendered
+  file details. A lone `grantRoot` outside a file-change approval remains a
+  labeled path detail. These remain approval previews, not evidence that a file
+  change executed.
 - Validate: cover Cursor known-input fallback and Codex root and child
   file-change approvals. When absolute paths share a directory, render that
   directory once and show relative file paths beneath it. Confirm the reason

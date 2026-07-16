@@ -91,11 +91,15 @@ collaborators:
 - `sessionConfiguration.ts`, `sessionSettings.ts`, and `options.ts`: SDK query
   configuration and mutable session settings.
 - `promptQueue.ts` and `turnLifecycle.ts`: prompt ordering and turn ownership.
+- `goalExecQueue.ts`: queued Goal command ordering and supersession.
+- `queryGeneration.ts` and `queryHooks.ts`: one SDK Query execution generation,
+  its prompt/abort resources, and generation-scoped SDK hooks.
 - `messageRouter.ts`, `messageProjection.ts`, `assistantStream.ts`, and
   `sdkMessages.ts`: SDK message routing and assistant output projection.
 - `toolActivity.ts`, `toolEvents.ts`, `toolActivityTypes.ts`, `taskPlan.ts`, and
   `taskNotification.ts`: normalized tool, delegated-task, and plan activity.
-- `interactive.ts`: approvals and interactive questions.
+- `interactive.ts` and `interactiveTurnResolver.ts`: approvals, interactive
+  questions, and canonical Turn ownership resolution.
 - `compaction.ts` and `usage.ts`: context compaction and usage reporting.
 - `authDiagnostics.ts`, `errors.ts`, and `runtimeValues.ts`: diagnostics and
   small runtime value helpers.
@@ -110,6 +114,20 @@ code.
 Raw sidecar stderr is never copied into activity, logs, or user-visible errors.
 The Go transport retains only a bounded failure classification; explicitly
 prefixed auth diagnostics are separately sanitized before structured logging.
+
+SDK Query lifetime is narrower than durable provider-session lifetime. A user
+cancel first revokes the current Query generation, awaits the SDK interrupt
+acknowledgment, then closes that Query in cleanup. Closing before the interrupt
+response turns a successful provider stop into a transport failure. Revocation
+fences message routing, hooks, and `canUseTool` before permission-mode handling,
+including `bypassPermissions`; background-task notifications from the canceled
+generation therefore cannot start a synthetic continuation or execute another
+tool. The next real user prompt creates a fresh Query with
+`resume: providerSessionId` and generation-local prompt/abort resources. If the
+SDK replays the canceled generation's terminal task notification and paired
+result during resume, the new generation consumes that tail without attaching
+it to the new canonical Turn. Session close remains permanent and closes the
+current generation without creating a resumable successor.
 
 ## Protocol and compatibility
 

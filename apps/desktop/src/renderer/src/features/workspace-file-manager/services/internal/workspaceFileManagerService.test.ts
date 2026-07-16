@@ -45,6 +45,18 @@ test("workspace file manager service reuses one long-lived session per workspace
   assert.notEqual(first, third);
 });
 
+test("workspace file manager service dispose releases user project subscription", () => {
+  const userProjects = createWorkspaceUserProjectServiceStub();
+  const dependencies = createDependenciesStub();
+  dependencies.workspaceUserProjectService = userProjects.service;
+  const service = new WorkspaceFileManagerService(dependencies);
+
+  assert.equal(userProjects.listenerCount, 1);
+  service.dispose();
+  service.dispose();
+  assert.equal(userProjects.listenerCount, 0);
+});
+
 test("workspace file manager service does not refresh unchanged locations during repeated session lookup", async () => {
   const userProjects = createWorkspaceUserProjectServiceStub();
   const dependencies = createDependenciesStub();
@@ -766,6 +778,7 @@ function createWorkspaceUserProjectServiceStub(
 ): {
   emit(): void;
   readonly ensureLoadedCalls: number;
+  readonly listenerCount: number;
   resetEnsureLoadedCalls(): void;
   service: NonNullable<
     WorkspaceFileManagerServiceDependencies["workspaceUserProjectService"]
@@ -832,6 +845,9 @@ function createWorkspaceUserProjectServiceStub(
     },
     get ensureLoadedCalls() {
       return ensureLoadedCalls;
+    },
+    get listenerCount() {
+      return listeners.size;
     },
     resetEnsureLoadedCalls() {
       ensureLoadedCalls = 0;
@@ -1001,6 +1017,8 @@ function createDependenciesStub(): {
       rollbackWorkspaceApp: fail,
       cancelWorkspaceAgentTurn: fail,
       goalControlWorkspaceAgentSession: fail,
+      getWorkspaceAgentSessionGoal: fail,
+      reconcileWorkspaceAgentSessionGoal: fail,
       sendWorkspaceAgentSessionInput: fail,
       submitWorkspaceAgentPlanDecision: fail,
       readWorkspaceAgentSessionAttachment: fail,

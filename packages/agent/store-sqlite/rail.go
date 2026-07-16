@@ -50,8 +50,6 @@ func (s *Store) resolveAgentSessionRailSectionTx(
 	tx *sql.Tx,
 	workspaceID string,
 	agentSessionID string,
-	hasExisting bool,
-	existingCWD string,
 	finalCWD string,
 	runtimeContext map[string]any,
 ) (RailSection, error) {
@@ -59,7 +57,10 @@ func (s *Store) resolveAgentSessionRailSectionTx(
 	if err != nil {
 		return RailSection{}, err
 	}
-	if hasExisting && existingRail.Found && existingRail.Valid && strings.TrimSpace(existingCWD) == strings.TrimSpace(finalCWD) {
+	// Rail membership is assigned when the session is first persisted and is
+	// immutable afterwards. Runtime cwd changes must not silently move an
+	// existing conversation between rail sections.
+	if existingRail.Found && existingRail.Valid {
 		return existingRail.Section, nil
 	}
 	return s.classifyAgentSessionRailSectionTx(ctx, tx, finalCWD, runtimeContext)

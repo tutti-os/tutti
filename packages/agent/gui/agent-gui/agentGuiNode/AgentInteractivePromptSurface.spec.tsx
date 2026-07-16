@@ -11,6 +11,7 @@ import { setAgentGuiI18nTestLocale } from "../../i18n/testUtils";
 
 const labels = {
   approvalLead: "Waiting for your approval",
+  fileChangeApprovalLead: "Codex requests authorization to edit files",
   planLead: "Ready to implement. How should permissions work?",
   planModes: [
     {
@@ -84,6 +85,7 @@ describe("AgentInteractivePromptSurface", () => {
       />
     );
 
+    expect(screen.getByText("Waiting for your approval")).toBeTruthy();
     expect(screen.getByText("pnpm test --run renderer")).toBeTruthy();
     expect(screen.getByText("Verify the renderer parity fixes.")).toBeTruthy();
     expect(screen.getByText("Run this tool a single time.")).toBeTruthy();
@@ -118,6 +120,7 @@ describe("AgentInteractivePromptSurface", () => {
           turnId: "turn-1",
           requestId: "request-file-change",
           callId: "request-file-change",
+          approvalPurpose: "edit-files",
           title: "Apply file changes",
           status: "waiting_approval",
           toolName: "Approval",
@@ -146,7 +149,7 @@ describe("AgentInteractivePromptSurface", () => {
     );
 
     const lead = screen
-      .getByText("Waiting for your approval")
+      .getByText("Codex requests authorization to edit files")
       .closest(".agent-gui-conversation__interactive-prompt-lead-content");
     expect(lead).toHaveTextContent("Allow these file changes?");
     expect(lead).toHaveTextContent("/workspace/session");
@@ -155,6 +158,37 @@ describe("AgentInteractivePromptSurface", () => {
     expect(screen.queryByText("Path")).toBeNull();
     expect(screen.getByText("Files")).toBeTruthy();
     expect(screen.getByText("app.js, styles.css")).toBeTruthy();
+  });
+
+  it("does not infer an edit-files title from file details", () => {
+    render(
+      <AgentInteractivePromptSurface
+        prompt={{
+          kind: "approval",
+          id: "approval:request-generic",
+          turnId: "turn-1",
+          requestId: "request-generic",
+          callId: "request-generic",
+          title: "Approval",
+          status: "waiting_approval",
+          toolName: "Approval",
+          input: {
+            changes: [{ path: "/workspace/session/app.js" }]
+          },
+          options: [{ id: "allow_once", label: "Allow", kind: "allow_once" }],
+          output: null,
+          occurredAtUnixMs: 1
+        }}
+        isSubmitting={false}
+        onSubmit={vi.fn()}
+        labels={labels}
+      />
+    );
+
+    expect(screen.getByText("Waiting for your approval")).toBeTruthy();
+    expect(
+      screen.queryByText("Codex requests authorization to edit files")
+    ).toBeNull();
   });
 
   it("clears approval option loading when external submission settles", async () => {

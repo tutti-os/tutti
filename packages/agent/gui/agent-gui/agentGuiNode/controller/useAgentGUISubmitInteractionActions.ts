@@ -22,6 +22,7 @@ import {
 } from "../model/agentComposerDraft";
 import type {
   AgentComposerDraft,
+  AgentGUIOptimisticGoalControl,
   SubmittedDraftSnapshot
 } from "../model/agentGuiNodeTypes";
 import { resolveAgentComposerDraftScopeKey } from "../model/agentComposerDraftScope";
@@ -62,6 +63,7 @@ import {
 } from "./useAgentConversationSelection";
 import type { useAgentGUIActivation } from "./useAgentGUIActivation";
 import type { AgentGUINewConversationActivationResult } from "./agentGuiNewConversationActivation.types";
+import { useAgentGUIGoalControlActions } from "./useAgentGUIGoalControlActions";
 
 interface UseAgentGUISubmitInteractionActionsInput {
   activation: ReturnType<typeof useAgentGUIActivation>;
@@ -99,6 +101,7 @@ interface UseAgentGUISubmitInteractionActionsInput {
   }>;
   previewMode: boolean;
   promptImagesSupported: boolean;
+  optimisticGoalControl: AgentGUIOptimisticGoalControl | null;
   sessionEngine: AgentSessionEngine;
   setActiveConversationId: Dispatch<SetStateAction<string | null>>;
   setDetailError: Dispatch<SetStateAction<string | null>>;
@@ -107,11 +110,15 @@ interface UseAgentGUISubmitInteractionActionsInput {
   >;
   setGoalClearNoticeSequence: Dispatch<SetStateAction<number>>;
   setIntent: Dispatch<SetStateAction<ConversationIntent>>;
+  setOptimisticGoalControl: Dispatch<
+    SetStateAction<AgentGUIOptimisticGoalControl | null>
+  >;
   submittedDraftSnapshotsRef: RefObject<Record<string, SubmittedDraftSnapshot>>;
   startConversation(
     content: AgentPromptContentBlock[],
     displayPrompt?: string,
-    options?: AgentComposerSubmitOptions
+    options?: AgentComposerSubmitOptions,
+    initialTurnExpected?: boolean
   ): AgentGUINewConversationActivationResult | null;
   submitPromptRef: RefObject<
     (
@@ -122,6 +129,35 @@ interface UseAgentGUISubmitInteractionActionsInput {
   >;
   transientConversation: AgentGUIConversationSummary | null;
   workspaceId: string;
+}
+
+export function typedGoalControlFromComposer(
+  content: AgentPromptContentBlock[],
+  _displayPrompt?: string
+): { action: AgentActivityGoalControlAction; objective?: string } | null {
+  if (content.length !== 1 || content[0]?.type !== "text") {
+    return null;
+  }
+  // Structured content owns command semantics. displayPrompt may collapse a
+  // bundle into a chip, but it must neither hide nor manufacture a control.
+  const prompt = (content[0].text ?? "").trim();
+  const match = /^\/goal(?:\s+([\s\S]+))?$/iu.exec(prompt);
+  const args = match?.[1]?.trim() ?? "";
+  if (!match || !args) {
+    return null;
+  }
+  switch (args.toLowerCase()) {
+    case "clear":
+    case "reset":
+      return { action: "clear" };
+    case "pause":
+      return { action: "pause" };
+    case "resume":
+    case "active":
+      return { action: "resume" };
+    default:
+      return { action: "set", objective: args };
+  }
 }
 
 export function useAgentGUISubmitInteractionActions(
@@ -146,18 +182,35 @@ export function useAgentGUISubmitInteractionActions(
     planActionsRef,
     previewMode,
     promptImagesSupported,
+    optimisticGoalControl,
     sessionEngine,
     setActiveConversationId,
     setDetailError,
     setDraftByScopeKey,
     setGoalClearNoticeSequence,
     setIntent,
+    setOptimisticGoalControl,
     submittedDraftSnapshotsRef,
     startConversation,
     submitPromptRef,
     transientConversation,
     workspaceId
   } = input;
+  const { beginOptimisticGoalControl, goalControl } =
+    useAgentGUIGoalControlActions({
+      activeConversationIdRef,
+      agentActivityRuntime,
+      draftByScopeKeyRef,
+      isCurrentConversation,
+      optimisticGoalControl,
+      previewMode,
+      sessionEngine,
+      setDetailError,
+      setDraftByScopeKey,
+      setGoalClearNoticeSequence,
+      setOptimisticGoalControl,
+      workspaceId
+    });
   const retryActivation = useCallback(() => {
     const agentSessionId = activeConversationIdRef.current;
     if (!agentSessionId) {
@@ -386,50 +439,6 @@ export function useAgentGUISubmitInteractionActions(
     [activation, executePrompt, isSessionMarkedNonResumable, workspaceId]
   );
 
-  // Goal controls act on the thread immediately through the dedicated runtime
-  // API. They must not enter the normal prompt pipeline: doing so creates a
-  // pending submit and pseudo turn that can hide the active turn's stop control
-  // and attach its processing indicator to a control message.
-  const goalControl = useCallback(
-    (action: AgentActivityGoalControlAction, objective?: string) => {
-      if (previewMode) {
-        return;
-      }
-      const agentSessionId = activeConversationIdRef.current;
-      if (!agentSessionId) {
-        return;
-      }
-      setDetailError(null);
-      void agentActivityRuntime
-        .goalControl({
-          workspaceId,
-          agentSessionId,
-          action,
-          ...(objective !== undefined ? { objective } : {})
-        })
-        .then(() => {
-          if (action !== "clear" || !isCurrentConversation(agentSessionId)) {
-            return;
-          }
-          setGoalClearNoticeSequence((current) => current + 1);
-        })
-        .catch((error: unknown) => {
-          if (!isCurrentConversation(agentSessionId)) {
-            return;
-          }
-          setDetailError(getAgentGUIErrorMessage(error));
-        });
-    },
-    [
-      agentActivityRuntime,
-      isCurrentConversation,
-      previewMode,
-      setDetailError,
-      setGoalClearNoticeSequence,
-      workspaceId
-    ]
-  );
-
   const submitPrompt = useCallback(
     (
       content: AgentPromptContentBlock[],
@@ -446,6 +455,10 @@ export function useAgentGUISubmitInteractionActions(
       }
       const displayPromptText =
         displayPrompt && displayPrompt.trim() ? displayPrompt : undefined;
+      const typedGoal = typedGoalControlFromComposer(
+        normalizedContent,
+        displayPromptText
+      );
       if (
         !promptImagesSupported &&
         agentPromptContentHasImage(normalizedContent)
@@ -486,6 +499,14 @@ export function useAgentGUISubmitInteractionActions(
             setActiveConversationId(recoveredAgentSessionId);
             setIntent({ tag: "active", id: recoveredAgentSessionId });
             persistActiveConversation(recoveredAgentSessionId);
+            if (typedGoal) {
+              goalControl(
+                typedGoal.action,
+                typedGoal.objective,
+                resolveAgentComposerDraftScopeKey({})
+              );
+              return;
+            }
             submitExistingPrompt(
               recoveredAgentSessionId,
               normalizedContent,
@@ -506,9 +527,19 @@ export function useAgentGUISubmitInteractionActions(
         const activationResult = startConversation(
           normalizedContent,
           displayPromptText,
-          options
+          options,
+          typedGoal ? false : undefined
         );
         if (activationResult) {
+          if (typedGoal) {
+            beginOptimisticGoalControl(
+              activationResult.agentSessionId,
+              typedGoal.action,
+              typedGoal.objective,
+              `goal-activation:${activationResult.requestId}`,
+              true
+            );
+          }
           draftByScopeKeyRef.current = clearSubmittedAgentGUIHomeDraft({
             draftKey: homeDraftKey,
             drafts: draftByScopeKeyRef.current,
@@ -524,6 +555,14 @@ export function useAgentGUISubmitInteractionActions(
         }
         return;
       }
+      if (typedGoal) {
+        goalControl(
+          typedGoal.action,
+          typedGoal.objective,
+          resolveAgentComposerDraftScopeKey({ agentSessionId })
+        );
+        return;
+      }
       submitExistingPrompt(
         agentSessionId,
         normalizedContent,
@@ -536,9 +575,11 @@ export function useAgentGUISubmitInteractionActions(
     },
     [
       agentActivityRuntime,
+      beginOptimisticGoalControl,
       conversationListQuery,
       previewMode,
       promptImagesSupported,
+      goalControl,
       persistActiveConversation,
       startConversation,
       submitExistingPrompt,

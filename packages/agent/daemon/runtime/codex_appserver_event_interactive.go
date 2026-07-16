@@ -141,6 +141,7 @@ func (a *CodexAppServerAdapter) appServerApprovalRequested(
 	title := firstNonEmpty(asString(toolCall["title"]), "Permission requested")
 	callID := firstNonEmpty(asString(toolCall["toolCallId"]), newID())
 	status := string(activityshared.TurnPhaseWaitingApproval)
+	approvalPurpose := normalizedApprovalPurpose(toolCall)
 	knownInput := normalizer.KnownToolCallInput(asString(toolCall["toolCallId"]))
 	input := normalizedApprovalInput(toolCall, options, requestID, knownInput)
 	payload := map[string]any{
@@ -151,19 +152,23 @@ func (a *CodexAppServerAdapter) appServerApprovalRequested(
 		"status":   status,
 		"input":    input,
 	}
+	if approvalPurpose != "" {
+		payload["approvalPurpose"] = approvalPurpose
+	}
 	pending := &pendingInteractiveRequest{
-		agentSessionID: strings.TrimSpace(session.AgentSessionID),
-		turnID:         strings.TrimSpace(turnID),
-		requestID:      requestID,
-		eventID:        newID(),
-		callID:         callID,
-		callType:       "approval",
-		input:          input,
-		kind:           "approval",
-		name:           title,
-		toolName:       "Approval",
-		options:        options,
-		response:       make(chan pendingInteractiveResponse, 1),
+		agentSessionID:  strings.TrimSpace(session.AgentSessionID),
+		turnID:          strings.TrimSpace(turnID),
+		requestID:       requestID,
+		eventID:         newID(),
+		callID:          callID,
+		callType:        "approval",
+		input:           input,
+		kind:            "approval",
+		approvalPurpose: approvalPurpose,
+		name:            title,
+		toolName:        "Approval",
+		options:         options,
+		response:        make(chan pendingInteractiveResponse, 1),
 	}
 	a.storePendingRequest(pending)
 	return []activityshared.Event{

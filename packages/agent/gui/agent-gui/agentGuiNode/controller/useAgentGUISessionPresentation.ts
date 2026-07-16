@@ -24,12 +24,16 @@ import type {
   AgentGUIConversationSummary,
   AgentGUIInteractivePrompt
 } from "../model/agentGuiConversationModel";
-import type { AgentGUISessionChrome } from "../model/agentGuiNodeTypes";
+import type {
+  AgentGUIOptimisticGoalControl,
+  AgentGUISessionChrome
+} from "../model/agentGuiNodeTypes";
 import { composerSettingsSupportFromOptions } from "../model/composerSettingsSupport";
 import {
   agentActivityDisplayStatusBusy,
   conversationBusyStatus
 } from "./agentGuiController.draftMessageHelpers";
+import { unresolvedOptimisticGoalControl } from "./agentGuiOptimisticGoal";
 import { isNonRetryableResumeErrorCode } from "./agentGuiController.errors";
 import {
   normalizeOptionalText,
@@ -78,6 +82,7 @@ interface UseAgentGUISessionPresentationInput {
   lastRenderStateDiagnosticKeyRef: CurrentValue<string | null>;
   pendingApproval: AgentApprovalItemVM | null;
   planImplementationTurnIdRef: CurrentValue<string | null>;
+  optimisticGoalControl: AgentGUIOptimisticGoalControl | null;
   agentTargetsLoading: boolean;
   serverInteractivePrompt: AgentGUIInteractivePrompt | null;
   sessionEngine: AgentSessionEngine;
@@ -169,16 +174,32 @@ export function useAgentGUISessionPresentation(
     input.activeConversationId !== null && input.activationState !== "active";
   const activeConversationResumeUnavailable =
     activeConversationRequiresResume && activeSessionResumable === false;
-  const sessionChromeRawState = useMemo<AgentGUISessionChrome["rawState"]>(
-    () =>
+  const sessionChromeRawState = useMemo<
+    AgentGUISessionChrome["rawState"]
+  >(() => {
+    const optimisticGoalControl = unresolvedOptimisticGoalControl(
+      input.optimisticGoalControl,
+      input.activeConversationId,
       input.activeEngineSession
-        ? {
-            agentSessionId: input.activeEngineSession.agentSessionId,
-            goal: input.activeEngineSession.goal
-          }
-        : null,
-    [input.activeEngineSession?.agentSessionId, input.activeEngineSession?.goal]
-  );
+    );
+    const agentSessionId =
+      input.activeEngineSession?.agentSessionId ??
+      optimisticGoalControl?.agentSessionId;
+    if (!agentSessionId) {
+      return null;
+    }
+    return {
+      agentSessionId,
+      goal: optimisticGoalControl
+        ? optimisticGoalControl.goal
+        : (input.activeEngineSession?.goal ?? null)
+    };
+  }, [
+    input.activeConversationId,
+    input.activeEngineSession?.agentSessionId,
+    input.activeEngineSession?.goal,
+    input.optimisticGoalControl
+  ]);
   const sessionChrome = useMemo<AgentGUISessionChrome>(() => {
     const normalizedError = input.activationError?.trim() ?? "";
     const authState = input.activeSessionState?.authState?.trim() ?? "";

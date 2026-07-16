@@ -193,9 +193,10 @@ export function upsertCanonicalTurn(
   const key = canonicalTurnKey(turn.agentSessionId, turn.turnId);
   const current = state.turnsById[key];
   if (current && !shouldUseIncomingTurn(current, turn)) return state;
+  const nextTurn = current ? preserveTurnProvenance(current, turn) : turn;
   return {
     ...state,
-    turnsById: { ...state.turnsById, [key]: { ...turn } }
+    turnsById: { ...state.turnsById, [key]: { ...nextTurn } }
   };
 }
 
@@ -318,8 +319,59 @@ function mergeTurnInto(
   const key = canonicalTurnKey(turn.agentSessionId, turn.turnId);
   const current = target[key] ?? existing[key];
   if (!current || shouldUseIncomingTurn(current, turn)) {
-    target[key] = { ...turn };
+    target[key] = {
+      ...(current ? preserveTurnProvenance(current, turn) : turn)
+    };
   }
+}
+
+/**
+ * Turn provenance is assigned once. Realtime and HTTP snapshots may arrive in
+ * either order, so lifecycle refreshes must not reclassify an observed Turn or
+ * erase source fields omitted by a later payload. An absent optional source
+ * field may be completed once, but an explicit null/value is immutable.
+ */
+function preserveTurnProvenance(
+  current: AgentActivityTurn,
+  incoming: AgentActivityTurn
+): AgentActivityTurn {
+  let sourceGoalOperationId = current.sourceGoalOperationId;
+  let sourceGoalRevision = current.sourceGoalRevision;
+  let sourceGoalRepairEpoch = current.sourceGoalRepairEpoch;
+  // Historical provenance is intentionally opaque and must never be filled
+  // from a later lifecycle payload.
+  const canCompleteGoalSource =
+    current.origin !== "legacy_unknown" &&
+    (current.origin === "goal_arm" || current.origin === "goal_continuation") &&
+    incoming.origin === current.origin;
+  if (canCompleteGoalSource) {
+    if (sourceGoalOperationId === undefined) {
+      sourceGoalOperationId = incoming.sourceGoalOperationId;
+    }
+    if (sourceGoalRevision === undefined) {
+      sourceGoalRevision = incoming.sourceGoalRevision;
+    }
+    if (sourceGoalRepairEpoch === undefined) {
+      sourceGoalRepairEpoch = incoming.sourceGoalRepairEpoch;
+    }
+  }
+  const next = { ...incoming, origin: current.origin };
+  if (sourceGoalOperationId === undefined) {
+    delete next.sourceGoalOperationId;
+  } else {
+    next.sourceGoalOperationId = sourceGoalOperationId;
+  }
+  if (sourceGoalRevision === undefined) {
+    delete next.sourceGoalRevision;
+  } else {
+    next.sourceGoalRevision = sourceGoalRevision;
+  }
+  if (sourceGoalRepairEpoch === undefined) {
+    delete next.sourceGoalRepairEpoch;
+  } else {
+    next.sourceGoalRepairEpoch = sourceGoalRepairEpoch;
+  }
+  return next;
 }
 
 function shouldUseIncomingSession(

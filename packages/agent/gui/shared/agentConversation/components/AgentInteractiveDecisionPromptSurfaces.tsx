@@ -48,8 +48,8 @@ export function ApprovalPromptSurface({
 }) {
   "use memo";
   const promptToolPresentation = useMemo(
-    () => formatApprovalToolPresentation(prompt.input ?? null),
-    [prompt.input]
+    () => formatApprovalToolPresentation(prompt, labels),
+    [labels, prompt]
   );
   const [submittingOptionId, setSubmittingOptionId] = useState<string | null>(
     null
@@ -157,7 +157,7 @@ export function ApprovalPromptSurface({
       <div className={interactivePromptCardClassName(edgeGlow)}>
         <div className={styles.interactivePromptLeadContent}>
           <div className={styles.interactivePromptLead}>
-            {stripPromptTitlePunctuation(labels.approvalLead)}
+            {stripPromptTitlePunctuation(promptToolPresentation.lead)}
           </div>
           {promptToolPresentation.leadDetails.map((detail) => (
             <div

@@ -305,6 +305,7 @@ export function useAgentGUIDetailModel(input: Input) {
   const interactivePromptLabels = useMemo(
     () => ({
       approvalLead: labels.approvalRequired,
+      fileChangeApprovalLead: labels.fileChangeApprovalRequired,
       planLead: labels.planLead,
       planModes: labels.planModes,
       stayInPlan: labels.stayInPlan,
@@ -325,6 +326,7 @@ export function useAgentGUIDetailModel(input: Input) {
     [
       labels.answerPlaceholder,
       labels.approvalRequired,
+      labels.fileChangeApprovalRequired,
       labels.feedbackPlaceholder,
       labels.nextQuestion,
       labels.planLead,

@@ -10,6 +10,7 @@ import (
 type captureActivityClient struct {
 	stateInputs    []agentsessionstore.ReportSessionStateInput
 	messagesInputs []agentsessionstore.ReportSessionMessagesInput
+	rejectMessages bool
 }
 
 func (c *captureActivityClient) ReportSessionState(_ context.Context, input agentsessionstore.ReportSessionStateInput) (agentsessionstore.ReportSessionStateReply, error) {
@@ -19,7 +20,24 @@ func (c *captureActivityClient) ReportSessionState(_ context.Context, input agen
 
 func (c *captureActivityClient) ReportSessionMessages(_ context.Context, input agentsessionstore.ReportSessionMessagesInput) (agentsessionstore.ReportSessionMessagesReply, error) {
 	c.messagesInputs = append(c.messagesInputs, input)
+	if c.rejectMessages {
+		return agentsessionstore.ReportSessionMessagesReply{}, nil
+	}
 	return agentsessionstore.ReportSessionMessagesReply{AcceptedCount: len(input.Updates)}, nil
+}
+
+func TestQueuedReporterRejectsUnacceptedControlActivity(t *testing.T) {
+	t.Parallel()
+	client := &captureActivityClient{rejectMessages: true}
+	reporter := QueuedReporter{ClientProvider: func() ActivityClient { return client }}
+	err := reporter.Report(context.Background(), agentsessionstore.ReportActivityInput{
+		WorkspaceID:   "room-1",
+		Source:        agentsessionstore.EventSource{Provider: "codex", AgentID: "agent-1"},
+		SessionAudits: []agentsessionstore.WorkspaceAgentSessionAuditUpdate{{AuditID: "audit-1", Role: "user"}},
+	})
+	if err == nil {
+		t.Fatal("Report accepted an audit rejected by the durable client")
+	}
 }
 
 func TestQueuedReporterCallsClientWithNormalizedRuntimeInput(t *testing.T) {

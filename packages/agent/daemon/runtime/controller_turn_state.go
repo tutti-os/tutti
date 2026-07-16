@@ -13,6 +13,7 @@ func submittedTurnActivityEvents(session Session, turnID string) []activityshare
 		return nil
 	}
 	event := activityshared.NewTurnUpdated(ctx, turnID, activityshared.TurnPhaseSubmitted)
+	event.Payload.Metadata = map[string]any{"turnOrigin": "user_prompt"}
 	// The controller owns the submit moment; it publishes the submitted
 	// lifecycle snapshot so downstream layers copy instead of recomputing
 	// (ADR 0008).
@@ -239,7 +240,7 @@ func applyTurnLifecycleFromEvents(session Session, events []activityshared.Event
 
 func turnLifecyclePhaseFromEvent(event activityshared.Event) string {
 	switch event.Type {
-	case activityshared.EventTurnStarted:
+	case activityshared.EventTurnStarted, activityshared.EventRootProviderTurnStarted:
 		return "running"
 	case activityshared.EventTurnUpdated:
 		switch strings.TrimSpace(event.Payload.TurnPhase) {

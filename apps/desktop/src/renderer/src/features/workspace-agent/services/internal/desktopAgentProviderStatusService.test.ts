@@ -93,10 +93,12 @@ test("runAction executes terminal commands and refreshes the provider status", a
 
 test("refresh sends includeNetwork only when the caller opts in", async () => {
   const includeNetworkRequests: Array<boolean | undefined> = [];
+  const forceRefreshRequests: Array<boolean | undefined> = [];
   const service = new DesktopAgentProviderStatusService({
     tuttidClient: createTuttidClient({
-      onStatusRequest: (_providers, includeNetwork) => {
+      onStatusRequest: (_providers, includeNetwork, refresh) => {
         includeNetworkRequests.push(includeNetwork);
+        forceRefreshRequests.push(refresh);
       },
       snapshots: [
         createStatusResponse([
@@ -117,6 +119,7 @@ test("refresh sends includeNetwork only when the caller opts in", async () => {
   await service.refresh(["codex"], { includeNetwork: true });
 
   assert.deepEqual(includeNetworkRequests, [undefined, true]);
+  assert.deepEqual(forceRefreshRequests, [true, true]);
 });
 
 test("a local-only refresh keeps the network the wizard fetched", async () => {
@@ -472,7 +475,6 @@ test("runAction short-polls login status after sign-in and coalesces repeated lo
       snapshots: [
         createStatusResponse([authRequiredStatus]),
         createStatusResponse([authRequiredStatus]),
-        createStatusResponse([authRequiredStatus]),
         createStatusResponse([
           createProviderStatus({
             actions: [],
@@ -491,7 +493,8 @@ test("runAction short-polls login status after sign-in and coalesces repeated lo
   await service.refresh();
   await service.runAction("codex", "login");
   await service.runAction("codex", "login");
-  await waitFor(() => statusCalls.length >= 3);
+  await waitFor(() => statusCalls.length >= 2);
+  await waitFor(() => !service.getSnapshot().isLoading);
 
   assert.equal(pollScheduler.pendingTimerCount(), 1);
   assert.equal(commands.length, 2);
@@ -503,7 +506,7 @@ test("runAction short-polls login status after sign-in and coalesces repeated lo
 
   assert.equal(service.getStatus("codex")?.availability.status, "ready");
   assert.equal(pollScheduler.pendingTimerCount(), 0);
-  assert.deepEqual(statusCalls, [undefined, ["codex"], ["codex"], ["codex"]]);
+  assert.deepEqual(statusCalls, [undefined, ["codex"], ["codex"]]);
 });
 
 test("runAction stops login status polling after the default three minute window", async () => {
@@ -541,10 +544,13 @@ test("runAction stops login status polling after the default three minute window
   await service.refresh();
   await service.runAction("codex", "login");
   await waitFor(() => statusCalls.length >= 2);
+  await waitFor(() => !service.getSnapshot().isLoading);
 
   pollScheduler.advance(179_999);
   pollScheduler.runNext();
-  await waitFor(() => statusCalls.length >= 3);
+  await waitFor(
+    () => statusCalls.length >= 3 && pollScheduler.pendingTimerCount() === 1
+  );
 
   assert.equal(pollScheduler.pendingTimerCount(), 1);
 
@@ -1869,7 +1875,8 @@ function createTuttidClient(input: {
   ) => void;
   onStatusRequest?: (
     providers: readonly WorkspaceAgentProvider[] | undefined,
-    includeNetwork?: boolean
+    includeNetwork?: boolean,
+    refresh?: boolean
   ) => void;
   probes?: AgentProviderProbeResponse[];
   snapshots: AgentProviderStatusListResponse[];
@@ -1879,7 +1886,11 @@ function createTuttidClient(input: {
   let probeIndex = 0;
   return {
     async getAgentProviderStatuses(request) {
-      input.onStatusRequest?.(request?.providers, request?.includeNetwork);
+      input.onStatusRequest?.(
+        request?.providers,
+        request?.includeNetwork,
+        request?.refresh
+      );
       const snapshot = input.snapshots[index] ?? input.snapshots.at(-1);
       index += 1;
       if (!snapshot) {

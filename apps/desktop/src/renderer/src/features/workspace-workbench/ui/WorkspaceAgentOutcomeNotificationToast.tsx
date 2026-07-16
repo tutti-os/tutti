@@ -6,6 +6,7 @@ import type {
   WorkspaceAgentOutcomeForegroundNotification,
   WorkspaceAgentOutcomeForegroundNotificationPresenter
 } from "../services/workspaceAgentOutcomeNotification";
+import { workspaceAgentOutcomeNotificationKey } from "../services/workspaceAgentOutcomeNotification";
 
 const WORKSPACE_AGENT_OUTCOME_TOAST_DURATION = 6000;
 const workspaceAgentDecisionToastClassName = "workspace-agent-decision-toast";
@@ -38,7 +39,8 @@ export function createWorkspaceAgentOutcomeForegroundNotificationPresenter(): Wo
         ),
         {
           className: workspaceAgentDecisionToastClassName,
-          duration: WORKSPACE_AGENT_OUTCOME_TOAST_DURATION
+          duration: WORKSPACE_AGENT_OUTCOME_TOAST_DURATION,
+          id: workspaceAgentOutcomeNotificationKey(notification)
         }
       );
     }

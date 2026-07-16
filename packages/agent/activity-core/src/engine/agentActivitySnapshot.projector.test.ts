@@ -33,6 +33,7 @@ function session(): AgentActivitySession {
     error: null,
     fileChanges: null,
     outcome: null,
+    origin: "user_prompt" as const,
     phase: "waiting" as const,
     settledAtUnixMs: null,
     startedAtUnixMs: 10,

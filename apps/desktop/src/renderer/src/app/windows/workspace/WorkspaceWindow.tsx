@@ -1,5 +1,6 @@
 import { lazy, Suspense } from "react";
 import { StandaloneAgentStartupShell } from "@renderer/features/workspace-workbench/ui/StandaloneAgentStartupShell.tsx";
+import type { WorkspaceWindowContainerResult } from "./createWorkspaceWindowContainer.ts";
 
 const LazyDefaultWorkspaceWindow = lazy(() =>
   import("./DefaultWorkspaceWindow.tsx").then((module) => ({
@@ -12,7 +13,11 @@ const LazyStandaloneAgentWorkspaceWindow = lazy(() =>
   }))
 );
 
-export function WorkspaceWindow() {
+export function WorkspaceWindow({
+  containerInput
+}: {
+  containerInput: WorkspaceWindowContainerResult;
+}) {
   const routeView =
     new URLSearchParams(window.location.search).get("view") || "workspace";
   const routeFallback =
@@ -25,9 +30,9 @@ export function WorkspaceWindow() {
   return (
     <Suspense fallback={routeFallback}>
       {routeView === "agent" ? (
-        <LazyStandaloneAgentWorkspaceWindow />
+        <LazyStandaloneAgentWorkspaceWindow containerInput={containerInput} />
       ) : (
-        <LazyDefaultWorkspaceWindow />
+        <LazyDefaultWorkspaceWindow containerInput={containerInput} />
       )}
     </Suspense>
   );

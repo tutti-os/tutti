@@ -265,6 +265,7 @@ func buildDaemonAPI(ctx context.Context, store workspacedata.CatalogStore, analy
 		AnalyticsReporter: analyticsReporter,
 		ManagedRuntime:    managedRuntimeResolver,
 		RunOutcomes:       runOutcomes,
+		StatusCache:       agentstatusservice.NewProviderStatusCache(),
 	}
 	accountService := accountservice.NewService("")
 	agentProcessTransport := agentdaemon.NewLocalProcessTransport()
@@ -317,15 +318,33 @@ func buildDaemonAPI(ctx context.Context, store workspacedata.CatalogStore, analy
 	agentSessionService.ExtensionComposerProfiles = agentExtensionComposerProfileResolver{
 		manager: agentExtensionManager,
 	}
+	agentSessionService.SessionInitializer = agentActivityProjection
 	agentSessionService.SessionReader = agentActivityProjection
 	agentSessionService.UserProjectReader = userProjectService
 	agentSessionService.MessageReader = agentActivityProjection
 	agentSessionService.ExternalImportStore = agentActivityRepo
 	agentSessionService.TurnStore = agentActivityRepo
 	agentSessionService.RuntimeOperationStore = agentActivityRepo
+	agentSessionService.GoalStateStore = agentActivityRepo
+	agentSessionService.GoalAuditPublisher = agentActivityProjection
 	agentSessionService.SubmitClaimStore = agentActivityRepo
 	agentSessionService.RuntimeOperationEventPublisher = agentActivityProjection
 	agentSessionService.RuntimeOperationOwner = uuid.NewString()
+	agentSessionService.GoalOperationOwner = uuid.NewString()
+	goalReconcileInbox, ok := agentActivityRepo.(interface {
+		agentservice.GoalReconcileInboxStore
+		agentservice.GoalReconcileInboxWriter
+	})
+	if !ok {
+		return tuttiapi.DaemonAPI{}, nil, nil, nil, fmt.Errorf("agent goal reconcile inbox store is unavailable")
+	}
+	agentSessionService.GoalReconcileInboxStore = goalReconcileInbox
+	agentActivityProjection.SetGoalReconcileInboxWriter(goalReconcileInbox)
+	goalProvenanceLedger, ok := agentActivityRepo.(agentservice.GoalProvenanceLedgerStore)
+	if !ok {
+		return tuttiapi.DaemonAPI{}, nil, nil, nil, fmt.Errorf("agent goal provenance ledger store is unavailable")
+	}
+	agentActivityProjection.SetGoalProvenanceLedger(goalProvenanceLedger)
 	agentSessionService.SessionDirectoryAllocator = agentservice.LocalSessionDirectoryAllocator{
 		StateDir: tuttitypes.DefaultStateDir(),
 	}
@@ -343,10 +362,18 @@ func buildDaemonAPI(ctx context.Context, store workspacedata.CatalogStore, analy
 	if err := agentSessionService.RecoverRuntimeOperations(ctx); err != nil {
 		return tuttiapi.DaemonAPI{}, nil, nil, nil, fmt.Errorf("recover agent runtime operations: %w", err)
 	}
+	if err := agentSessionService.RecoverGoalOperations(ctx); err != nil {
+		return tuttiapi.DaemonAPI{}, nil, nil, nil, fmt.Errorf("recover agent goal operations: %w", err)
+	}
+	if err := agentSessionService.RecoverGoalReconcileInbox(ctx); err != nil {
+		return tuttiapi.DaemonAPI{}, nil, nil, nil, fmt.Errorf("recover agent goal reconcile inbox: %w", err)
+	}
 	if err := agentActivityProjection.SettleStaleTurnsOnStartup(ctx); err != nil {
 		return tuttiapi.DaemonAPI{}, nil, nil, nil, fmt.Errorf("settle stale agent turns on startup: %w", err)
 	}
 	go agentSessionService.RunRuntimeOperationWorker(ctx)
+	go agentSessionService.RunGoalOperationWorker(ctx)
+	go agentSessionService.RunGoalReconcileInboxWorker(ctx)
 
 	workspaceService := workspaceservice.CatalogService{
 		Store:            store,

@@ -350,6 +350,9 @@ export function AgentComposer(props: AgentComposerProps): React.JSX.Element {
     const controller = new AgentMentionSearchController({
       contextMentionProviders
     });
+    controller.setProvenanceCatalog(
+      referenceProvenanceFilter?.snapshot.catalog ?? null
+    );
     // A provider replacement creates a fresh controller, so seed it with the
     // filter captured by the same render before exposing it through the ref.
     controller.setProvenanceFilter(
@@ -383,10 +386,16 @@ export function AgentComposer(props: AgentComposerProps): React.JSX.Element {
   }, [draftContent, draftPrompt, goalDraftObjective]);
 
   useEffect(() => {
+    mentionControllerRef.current?.setProvenanceCatalog(
+      referenceProvenanceFilter?.snapshot.catalog ?? null
+    );
     mentionControllerRef.current?.setProvenanceFilter(
       referenceProvenanceFilter?.snapshot.value ?? null
     );
-  }, [referenceProvenanceFilter?.snapshot.value]);
+  }, [
+    referenceProvenanceFilter?.snapshot.catalog,
+    referenceProvenanceFilter?.snapshot.value
+  ]);
 
   useEffect(() => {
     if (

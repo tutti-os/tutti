@@ -43,6 +43,9 @@ func ProjectActivityEventsToStreamEvents(session Session, events []activityshare
 				Data:      update,
 			})
 		}
+		if audit, ok := sessionAuditUpdateFromSessionEvent(event, sessionID, timestamp); ok {
+			out = append(out, StreamEvent{EventType: StreamEventSessionAudit, Data: audit})
+		}
 		if shouldAppendVisibleFailure(events, event) {
 			if update, ok := visibleFailureMessageUpdate(source, event, sessionID, timestamp); ok {
 				out = append(out, StreamEvent{
@@ -57,12 +60,13 @@ func ProjectActivityEventsToStreamEvents(session Session, events []activityshare
 
 func eventSourceFromSession(session Session) agentsessionstore.EventSource {
 	return agentsessionstore.EventSource{
-		Provider:          strings.TrimSpace(session.Provider),
-		ProviderSessionID: strings.TrimSpace(session.ProviderSessionID),
-		AgentID:           strings.TrimSpace(session.AgentSessionID),
-		AgentTargetID:     strings.TrimSpace(session.AgentTargetID),
-		CWD:               strings.TrimSpace(session.CWD),
-		SessionOrigin:     agentsessionstore.WorkspaceAgentSessionOriginRuntime,
+		Provider:               strings.TrimSpace(session.Provider),
+		ProviderSessionID:      strings.TrimSpace(session.ProviderSessionID),
+		SessionCreatedAtUnixMS: session.CreatedAtUnixMS,
+		AgentID:                strings.TrimSpace(session.AgentSessionID),
+		AgentTargetID:          strings.TrimSpace(session.AgentTargetID),
+		CWD:                    strings.TrimSpace(session.CWD),
+		SessionOrigin:          agentsessionstore.WorkspaceAgentSessionOriginRuntime,
 	}
 }
 
@@ -125,6 +129,8 @@ func isReportableActivityType(eventType activityshared.EventType) bool {
 		activityshared.EventSessionUpdated,
 		activityshared.EventSessionCompleted,
 		activityshared.EventSessionFailed,
+		activityshared.EventSessionAudit,
+		activityshared.EventGoalReconcileRequired,
 		activityshared.EventTurnStarted,
 		activityshared.EventTurnUpdated,
 		activityshared.EventTurnCompleted,
@@ -142,6 +148,44 @@ func isReportableActivityType(eventType activityshared.EventType) bool {
 	default:
 		return false
 	}
+}
+
+func goalReconcileRequestFromSessionEvent(event activityshared.Event, sessionID string) (agentsessionstore.WorkspaceAgentGoalReconcileRequest, bool) {
+	if event.Type != activityshared.EventGoalReconcileRequired || strings.TrimSpace(sessionID) == "" {
+		return agentsessionstore.WorkspaceAgentGoalReconcileRequest{}, false
+	}
+	metadata := event.Payload.Metadata
+	requestID := firstNonEmptyString(stringFromPayload(metadata, "requestId"), event.EventID)
+	if requestID == "" {
+		return agentsessionstore.WorkspaceAgentGoalReconcileRequest{}, false
+	}
+	return agentsessionstore.WorkspaceAgentGoalReconcileRequest{
+		RequestID:           requestID,
+		Phase:               stringFromPayload(metadata, "phase"),
+		AgentSessionID:      strings.TrimSpace(sessionID),
+		ProviderTurnID:      stringFromPayload(metadata, "providerTurnId"),
+		Reason:              stringFromPayload(metadata, "reason"),
+		FenceMode:           stringFromPayload(metadata, "fenceMode"),
+		ExpectedOperationID: stringFromPayload(metadata, "expectedGoalOperationId"),
+		ExpectedRevision:    payloadInt64(metadata, "expectedGoalRevision"),
+		ExpectedRepairEpoch: payloadInt64(metadata, "expectedGoalRepairEpoch"),
+		QuiesceSucceeded:    metadata["quiesceSucceeded"] == true,
+		QuiesceError:        stringFromPayload(metadata, "quiesceError"),
+	}, true
+}
+
+func sessionAuditUpdateFromSessionEvent(event activityshared.Event, sessionID string, timestamp int64) (agentsessionstore.WorkspaceAgentSessionAuditUpdate, bool) {
+	if event.Type != activityshared.EventSessionAudit || strings.TrimSpace(sessionID) == "" || timestamp <= 0 {
+		return agentsessionstore.WorkspaceAgentSessionAuditUpdate{}, false
+	}
+	auditID := firstNonEmptyString(stringFromPayload(event.Payload.Metadata, "auditId"), event.EventID)
+	if auditID == "" || strings.TrimSpace(event.Payload.TurnID) != "" {
+		return agentsessionstore.WorkspaceAgentSessionAuditUpdate{}, false
+	}
+	return agentsessionstore.WorkspaceAgentSessionAuditUpdate{
+		AuditID: auditID, Role: strings.TrimSpace(string(event.Payload.Role)), Content: event.Payload.Content,
+		Payload: clonePayload(event.Payload.Metadata), OccurredAtUnixMS: timestamp,
+	}, true
 }
 
 func shouldSkipActivityEvent(event activityshared.Event) bool {

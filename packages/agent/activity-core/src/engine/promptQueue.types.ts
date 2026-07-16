@@ -19,26 +19,16 @@ export interface EngineQueuedPrompt {
 
 export type PromptQueueSuspendReason = "user_stop";
 
-export interface PromptQueueAvailability {
-  activeTurnId: string | null;
-  lastTurnId: string | null;
-  lastTurnVersion: number | null;
-  sessionVersion: number | null;
-  state: "available" | "blocked" | "missing";
-}
-
 export interface PromptQueueInFlightCommand {
   commandId: string;
   kind: "send";
   promptId: string;
   runtimeContent?: readonly AgentPromptContentBlock[];
-  startedLastTurnId: string | null;
-  startedLastTurnVersion: number | null;
 }
 
 export interface PromptQueueRecord {
   agentSessionId: string;
-  availability: PromptQueueAvailability;
+  deliveryBarrierTurnId: string | null;
   failedPromptId: string | null;
   failureMessage: string | null;
   inFlight: PromptQueueInFlightCommand | null;
@@ -50,7 +40,6 @@ export interface PromptQueueRecord {
 }
 
 export interface PromptQueueState {
-  availabilityBySessionId: Readonly<Record<string, PromptQueueAvailability>>;
   nextCommandSequence: number;
   recordsBySessionId: Readonly<Record<string, PromptQueueRecord>>;
 }

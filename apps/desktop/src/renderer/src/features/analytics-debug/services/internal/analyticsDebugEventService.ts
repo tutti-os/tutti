@@ -24,6 +24,7 @@ export class AnalyticsDebugEventService implements IAnalyticsDebugEventService {
 
   private events: TrackEvent[] = [];
   private readonly listeners = new Set<() => void>();
+  private unsubscribeEventStream: (() => void) | null = null;
 
   constructor(dependencies: AnalyticsDebugEventServiceDependencies = {}) {
     if (dependencies.eventStreamClient) {
@@ -38,6 +39,12 @@ export class AnalyticsDebugEventService implements IAnalyticsDebugEventService {
 
     this.events = [];
     this.emit();
+  }
+
+  dispose(): void {
+    this.unsubscribeEventStream?.();
+    this.unsubscribeEventStream = null;
+    this.listeners.clear();
   }
 
   getSnapshot(): AnalyticsDebugEventServiceSnapshot {
@@ -73,9 +80,12 @@ export class AnalyticsDebugEventService implements IAnalyticsDebugEventService {
   private connectEventStream(
     eventStreamClient: Pick<TuttidEventStreamClient, "connect" | "subscribe">
   ): void {
-    eventStreamClient.subscribe("analytics.debug.reported", (event) => {
-      this.recordReportedEvents(event.payload.events);
-    });
+    this.unsubscribeEventStream = eventStreamClient.subscribe(
+      "analytics.debug.reported",
+      (event) => {
+        this.recordReportedEvents(event.payload.events);
+      }
+    );
     void eventStreamClient.connect().catch(() => undefined);
   }
 

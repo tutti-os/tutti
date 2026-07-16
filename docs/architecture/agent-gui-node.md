@@ -82,6 +82,16 @@ OpenAPI contracts change before daemon HTTP request or response code. Generated
 clients and event contracts are projections of that schema, not independent
 models.
 
+Goal control follows the same ownership rule but is not a Turn command. Goal is
+a durable session-level entity with desired/observed state, a monotonic
+revision, and independent control-operation records. A Goal operation may cause
+zero or more provider-created Turns; it never reserves a Turn ID. Real Turns
+carry immutable origin plus optional source Goal operation/revision. Provider
+observations update only observed state, so a late snapshot cannot erase a
+newer desired state or clear tombstone. Provider differences are normalized by
+the daemon `GoalAdapter`; GUI and service code use the typed Goal API rather
+than sending goal banner actions through the prompt pipeline.
+
 ## Workspace Engine Ownership
 
 One `AgentSessionEngine` instance owns agent state for one workspace and runtime
@@ -658,6 +668,13 @@ desktop shell entry. Both the OS workspace route and standalone Agent route
 statically own the body inside their already-lazy route chunks. This avoids a
 second body-level import waterfall after either route begins rendering while
 keeping non-workspace desktop routes outside the AgentGUI graph.
+Before `createRoot().render`, the desktop renderer bootstrap dynamically loads
+and creates exactly one workspace-window runtime for that Electron renderer
+realm. React route components only consume that runtime through props and DI
+context; render, Suspense retry, or route-body remount must not construct a
+second service graph. The runtime owns one event-stream client and releases its
+controllers, subscriptions, DI services, analytics leases, host listeners, and
+event-stream transport through one idempotent `dispose()` on window teardown.
 Every blocking boundary before the real AgentGUI controller mounts uses that
 same startup-shell geometry: the route-level Suspense fallback, workspace
 catalog hydration, and workbench host-session binding.
@@ -989,6 +1006,22 @@ sequencing transport calls in React effects.
 
 ## Submit And Startup Transactions
 
+Provider readiness is application-scoped daemon state, not a session-create
+precondition. `tuttid` caches each provider's resolved CLI/adapter, version, and
+auth snapshot independently of status request shape; concurrent reads share one
+probe, ordinary reads reuse the completed result, and explicit refresh or a
+runtime auth failure invalidates it. Desktop windows mirror that snapshot and
+must not force a full provider probe on every focus.
+
+Creating a session performs only request-scoped validation, cwd/runtime
+preparation, and the real provider handshake. It must not synchronously run CLI
+status, auth-status, version, network, or hidden model-discovery probes first.
+For Cursor, account-scoped model discovery may create one hidden ACP session and
+preserve its last-known-good catalog, but visible session creation never waits
+for that discovery: the visible session's own `session/new` can populate the
+same catalog. Process spawn, `initialize`, and `session/new` failures are the
+authoritative launch result and invalidate matching cached readiness data.
+
 `clientSubmitId` is the daemon-owned idempotency key, not merely a diagnostic
 field. Before invoking a provider, the daemon persists a submit claim scoped by
 workspace, session, and client submit ID. A duplicate accepted claim returns
@@ -1005,6 +1038,10 @@ The session engine owns activation deadlines. It passes one cancellation signal
 through the desktop command port and HTTP adapter. Adapters must not race the
 engine with an independent timeout budget; command timeout, cancellation, and
 uncertain-delivery reconciliation are one engine workflow.
+The outer new-session activation deadline must also leave room for process spawn
+and `initialize` before ACP `session/new` starts its own full 30-second timeout;
+an activation timer that starts at the user's click must not cancel
+`session/new` with only the leftover portion of that budget.
 
 ## Validation
 
@@ -1056,14 +1093,24 @@ agent fileChange/tool output
   -> git apply / git apply -R against the Git repository resolved from cwd
 ```
 
-The durable activity data is the original turn summary input:
+The response-tail presentation and executable patch actions have separate
+canonical inputs:
 
-- `patchBatches` with the tool call id, cwd, path, change type, and patch
-  payload needed to reconstruct per-batch diffs.
-- file-level unified diffs as a fallback for older or less structured activity.
-  This fallback also applies when recorded `patchBatches` exist but reconstruct
-  zero executable diffs; for absolute file paths with a synthetic `/` workspace
-  root, use the file's containing directory as the Git cwd.
+- `WorkspaceAgentSessionDetailResponse.turns[].fileChanges.files` owns each
+  turn's changed-file list and create/modify/delete semantics. The detail
+  response returns root-session turns in durable order; list responses keep
+  only active/latest turn projections.
+- completed tool-call `changes` payloads own executable `patchBatches`,
+  including tool call id, cwd, path, change type, and patch content used by
+  Undo/Reapply.
+
+AgentGUI may associate executable patch batches with files already present in
+the matching durable turn's `fileChanges`, but it must not reconstruct the
+changed-file list from tool calls, provider metadata, or activity-card
+`changedFiles`. The desktop reconcile bridge inserts detail turns into the
+existing activity engine `turnsById` store, and AgentGUI projects each settled
+turn's summary directly after that turn. Sessions written before this contract
+was enforced are not backfilled in the conversation UI.
 
 Claude SDK sidecars must not treat Edit/Write input text as authoritative patch
 data. They should collect the `PostToolUse` `tool_response.structuredPatch`
@@ -1073,15 +1120,17 @@ arrives. Provider diff metadata must be canonicalized at this adapter boundary
 before it becomes durable activity data. In particular, unified-diff control
 markers such as `\ No newline at end of file` must use Git's exact syntax;
 provider display formatting must not flow unchanged into executable
-`patchBatches`. AgentGUI also canonicalizes this marker while reading older
-persisted activity so pre-fix sessions remain reversible.
+`patchBatches`.
 
 Provider adapters that receive successful write/edit/apply_patch tool calls
-without a native turn-level diff event must still normalize the executed tool
-output into `fileChanges.files` and emit a `turn.updated` patch carrying those
-`fileChanges`. The AgentGUI turn summary reads the turn state as the shared
-source for the response-tail changed-file list; tool-only payloads are not a
-substitute for that state.
+without a native turn-level diff event must normalize the executed tool output
+into `fileChanges.files`, merge it with the current turn's canonical file set,
+and emit a `turn.updated` patch carrying the accumulated `fileChanges`. The
+shared runtime normalizer consumes provider semantics such as Cursor ACP
+`kind=delete`, Codex `changes[].kind.type`, and Claude Code structured patches;
+raw provider fields do not cross into AgentGUI business rules. The AgentGUI
+response-tail summary reads only the matching durable turn's `fileChanges`
+state from the session-detail turn collection.
 
 Approval transport calls may wrap pending Edit/Write input, but they are
 interaction plumbing rather than transcript content. Preserve that nested input
@@ -1154,6 +1203,14 @@ publishes its provider start and terminal facts, while `services/tuttid` keeps
 the root turn active until that provider turn and every nested child turn are
 terminal. AgentGUI must not turn a synthetic provider id into another
 `WorkspaceAgentTurn`.
+
+That continuation rule applies only while the canonical root remains live. A
+user cancel revokes the provider execution generation before the root settles;
+late background completion from that generation cannot reopen the root, create
+a pending Interaction, or run another tool. A later explicit user prompt may
+resume the durable provider session, but it owns a new canonical turn and a new
+provider execution generation. AgentGUI continues to read canonical Turn and
+Interaction entities; it does not hide late provider actions after execution.
 
 Claude Goal status is presentation metadata, not a lifecycle authority. A
 complete Goal may coexist with a waiting canonical root and running child.
@@ -1322,8 +1379,18 @@ Show more heuristics. Page responses upsert their session entities into the
 workspace engine; the rail query cache stores only ordered session ids,
 section metadata, cursors, and totals. A pure projection joins those ids back
 to engine entities. Do not keep a second summary cache or manually patch
-section rows from conversation summaries. Removing a project removes that rail
-section from the section list; re-adding the same path reveals historical
+section rows from conversation summaries. Every daemon session carries its
+required persisted `railSectionKey`. An active session outside loaded pages and
+backend search results enter a section only when that key exactly equals the
+section key; pinned state remains independent. AgentGUI must not manufacture a
+session membership fallback or infer membership from cwd and resolved
+user-project paths. Empty project and Conversations section chrome remains
+visible from the current section inventory even when no exact membership rows
+exist or the initial membership request fails; preserving that chrome must not
+place any session into it. The daemon assigns the key before Create succeeds
+and treats it as immutable session identity metadata; later cwd observations do
+not move the session to another rail section. Removing a project removes that
+rail section from the section list; re-adding the same path reveals historical
 sessions with the same section key.
 The daemon first-page reader is a required production repository seam, not an
 optional fast path with a per-section fallback. Its SQLite query must be driven
@@ -1561,15 +1628,14 @@ enter the workspace engine's prompt queue instead of calling `sendInput`
 directly.
 Pending new-session activation is request- and session-scoped, not a
 workspace-wide creation lock. A workspace may have multiple pending new
-activations, and the conversation rail projects every optimistic session.
+activations, and conversation state retains every optimistic session.
 The engine's `pendingIntents` is the only owner. The conversation-list selector
 projects each missing session once and marks its row as a pending-activation
-projection. Runtime section pagination caches canonical session ids only; a pure
-rail display projection overlays the complete pending set into matching
-project/conversations sections and sorts it by conversation time. Pending rows
-must never be written into section pages, cursors, or membership invalidation,
-and the rail must not rely on the currently active row as its only optimistic
-overlay.
+projection. A pending intent has no persisted `railSectionKey`, so it remains
+outside formal rail sections until the canonical daemon session arrives; the
+frontend must not guess a section from its cwd. Runtime section pagination
+caches canonical session ids only. Pending rows must never be written into
+section pages, cursors, or membership invalidation.
 The pending row itself does not invalidate membership. Its transition to a
 canonical engine session does, and the query controller may keep only that
 session id—not a duplicate summary—as temporary reconciliation metadata.
@@ -2309,8 +2375,8 @@ User-visible rules:
   subprocess, and the renderer re-checks on window focus/visibility and keeps
   polling while the permission dialog is open and unauthorized.
 - User composer defaults are owned by desktop preferences. AgentGUI may request
-  a defaults write only from the home/new composer path, through an explicit host
-  callback.
+  a defaults write from the home/new composer path or after an explicit user
+  selection in an active session, through an explicit host callback.
 - Lab-mode AgentGUI affordances are desktop-preference driven through generic
   feature flags. AgentGUI must not receive experiment-specific props or create
   git worktrees itself; new experiments should add a desktop feature-flag
@@ -2320,9 +2386,10 @@ User-visible rules:
   by a directory-resolved `agentTargetId`. They have no provider-keyed fallback,
   so two targets under the same provider cannot share model, permission,
   reasoning, speed, or draft state by accident.
-- Active session settings are session state. Opening, restoring, or editing an
-  active session must not promote that session's model, permission mode, or
-  reasoning setting into user defaults.
+- Active session settings are session state. Opening or restoring an active
+  session must not promote its settings into user defaults. An explicit model,
+  permission, reasoning, or speed selection updates both the session and that
+  target's defaults so the next new conversation inherits the user's choice.
 - Workbench node `composerOverrides` are UI-local home/new composer draft state,
   not an authoritative source for desktop preferences.
 - Draft clearing happens only after the submitted content still matches the
@@ -2372,6 +2439,26 @@ turn remains blocked; cancel-then-send records the selected prompt as
 `sendNextPromptId`, issues an exact `turn/cancel`, and sends a normal prompt only
 after the cancel result validates or the canonical turn settles. Metadata-only
 session patches and locally inferred idle states cannot unlock the queue.
+
+`sessionLifecycleReducer` is the only reducer that interprets session, turn,
+and interaction lifecycle. The prompt-queue reducer must not derive readiness
+from raw `session/snapshotReceived` or `session/upserted` payloads, retain a
+snapshot-derived availability field on queue records, or maintain a parallel
+timestamp/activity clock. `rootEngineReducer` performs command validation and
+send-now strategy precomputation against the old state, reduces lifecycle
+first, then passes the post-lifecycle canonical session/turn/interaction view
+into the queue reducer. After the queue applies its own intent transition, it
+drains each affected session deterministically from that canonical view.
+
+A successful queued send first writes its validated authoritative session and
+exact turn into canonical lifecycle. The queue keeps only the exact turn id
+needed as a delivery barrier; it does not copy turn phase or availability. If a
+timed-out send is confirmed by a durable message before lifecycle reconcile,
+the confirmation must carry a non-null exact `turnId`. The queue removes the
+uncertain delivery only after recording that barrier, and no later prompt may
+drain until canonical lifecycle contains the same turn in `settled` phase. A
+confirmation without an exact turn id leaves delivery uncertain and cannot
+authorize an inferred-idle resend.
 
 A pending submit confirmation deadline is not a queue-wait deadline. While the
 same `clientSubmitId` still has a queue-owned delivery that has not failed or
@@ -3108,6 +3195,9 @@ into a dynamic `issue-topic:*` presentation key, then atomically replaces the
 ordered group list for each debounced search. Each group owns its items,
 query-scoped total, cursor, and load-more status; loading or retrying one topic
 must not replace sibling groups or put the whole palette into loading state.
+Search results in the Tasks tab match only the visible workspace-issue title.
+The daemon issue-list query owns that rule so its items, counts, and cursors all
+use the same title-only result set.
 
 ```text
 Agent mention query identity
@@ -3180,9 +3270,12 @@ directories. Ordinary opened-file and issue-summary records do not currently
 carry durable provenance and therefore fail closed when either an Agent or
 Member constraint is active. A typed File query must route to the
 provenance-aware generated-file provider for either active dimension, even when
-the ordinary generated-files group is otherwise disabled. Existing result
-groups remain unchanged; the filter narrows their contents and does not
-introduce a second grouping layer.
+the ordinary generated-files group is otherwise disabled. Generated-file and
+picker result groups remain source-owned. The Agent Session `@` list is the
+exception: when a host injects an Agent provenance catalog, it groups returned
+sessions by exact `agentTargetId` in catalog order and uses the catalog option
+label as the group heading. This grouping is presentation only; the provider
+still applies the selected provenance constraint before pagination.
 
 Only catalog entries with a durable `agentTargetId` participate in filtering;
 host target ids are not substitutes. Catalogs and filters are normalized at the
@@ -3234,14 +3327,15 @@ provider capability/options
 Avoid fixing a menu label or disabled state without checking whether the same
 setting is also used by prompt creation, session continuation, and runtime
 tracking.
-Active-session settings are first-class session state, not composer defaults.
-The controller should submit exactly one engine intent for one menu selection;
-it must not also promote the active value into target defaults. The engine owns
-the operation state. A timed-out update remains `unknown`, and the next explicit
-user selection carries retry intent instead of being silently dropped. That
-retry merges the unresolved in-flight patch, any queued patch, and the latest
-selection in that order, so the newest value wins without losing settings that
-the daemon may not have applied before the timeout.
+Active-session settings are first-class session state. The controller submits
+exactly one engine intent for one menu selection. The same explicit user
+selection may independently update the target default and the node-local default
+draft; merely opening or restoring a session must not. The engine owns the
+operation state. A timed-out update remains `unknown`, and the next explicit user
+selection carries retry intent instead of being silently dropped. That retry
+merges the unresolved in-flight patch, any queued patch, and the latest selection
+in that order, so the newest value wins without losing settings that the daemon
+may not have applied before the timeout.
 
 The daemon selects the mutation path from session liveness. A live session
 updates through its provider adapter. A historical session updates the durable

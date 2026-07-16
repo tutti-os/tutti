@@ -3,6 +3,7 @@ import {
   type AgentActivityAdapter,
   type AgentActivityMessage,
   type AgentActivitySession,
+  type AgentActivityTurn,
   type AgentPromptContentBlock
 } from "@tutti-os/agent-activity-core";
 import type {
@@ -13,7 +14,8 @@ import type {
   SendWorkspaceAgentSessionInputRequest,
   WorkspaceAgentProvider,
   WorkspaceAgentSession,
-  WorkspaceAgentSessionMessage
+  WorkspaceAgentSessionMessage,
+  WorkspaceAgentTurn
 } from "@tutti-os/client-tuttid-ts";
 import type { DesktopRuntimeApi } from "@preload/types";
 import { getActiveLocale } from "../../../i18n/runtime.ts";
@@ -256,7 +258,17 @@ export function createDesktopAgentActivityAdapter({
         });
         throw wrapLocalizedTuttidErrorIfSpecific(error, getActiveLocale());
       }
-      if (!result.turn) {
+      if (result.kind === "goalControl") {
+        return {
+          kind: "goalControl",
+          goal: result.goal ?? result.session.goal ?? null,
+          session: agentActivitySessionFromTuttidSession(
+            input.workspaceId,
+            result.session
+          )
+        };
+      }
+      if (!result.turn || !result.turnId) {
         throw new Error("workspace_agent.send_response_turn_required");
       }
       reportDesktopAgentSubmitTrace(runtimeApi, {
@@ -273,6 +285,7 @@ export function createDesktopAgentActivityAdapter({
         }
       });
       return {
+        kind: "turn",
         session: agentActivitySessionFromTuttidSession(
           input.workspaceId,
           result.session
@@ -478,6 +491,7 @@ export function agentActivitySessionFromTuttidSession(
     providerSessionId: session.providerSessionId ?? session.id,
     userId: DESKTOP_AGENT_GUI_CURRENT_USER_ID,
     cwd: session.cwd ?? "/",
+    railSectionKey: session.railSectionKey,
     title: session.title ?? "",
     activeTurnId: session.activeTurnId,
     activeTurn: session.activeTurn ?? null,
@@ -504,12 +518,40 @@ export function agentActivitySessionFromTuttidSession(
   };
 }
 
+export function agentActivityTurnFromTuttidTurn(
+  turn: WorkspaceAgentTurn
+): AgentActivityTurn {
+  return {
+    agentSessionId: turn.agentSessionId,
+    completedCommand: turn.completedCommand,
+    error: turn.error,
+    fileChanges: turn.fileChanges,
+    outcome: turn.outcome,
+    origin: turn.origin,
+    phase: turn.phase,
+    ...(turn.sourceGoalOperationId !== undefined
+      ? { sourceGoalOperationId: turn.sourceGoalOperationId }
+      : {}),
+    ...(turn.sourceGoalRevision !== undefined
+      ? { sourceGoalRevision: turn.sourceGoalRevision }
+      : {}),
+    ...(turn.sourceGoalRepairEpoch !== undefined
+      ? { sourceGoalRepairEpoch: turn.sourceGoalRepairEpoch }
+      : {}),
+    settledAtUnixMs: turn.settledAtUnixMs,
+    startedAtUnixMs: turn.startedAtUnixMs,
+    turnId: turn.turnId,
+    updatedAtUnixMs: turn.updatedAtUnixMs
+  };
+}
+
 function assertProtocolV2SessionContract(session: WorkspaceAgentSession): void {
   const value = session as unknown as Record<string, unknown>;
   const missing = [
     "activeTurnId",
     "latestTurnInteractions",
-    "pendingInteractions"
+    "pendingInteractions",
+    "railSectionKey"
   ].filter((field) => !Object.prototype.hasOwnProperty.call(value, field));
   if (missing.length > 0) {
     throw new Error(
@@ -522,6 +564,14 @@ function assertProtocolV2SessionContract(session: WorkspaceAgentSession): void {
   ) {
     throw new Error(
       "Protocol v2 contract error: workspace agent interaction collections must be arrays"
+    );
+  }
+  if (
+    typeof value.railSectionKey !== "string" ||
+    value.railSectionKey.trim().length === 0
+  ) {
+    throw new Error(
+      "Protocol v2 contract error: workspace agent railSectionKey must be a non-empty string"
     );
   }
 }

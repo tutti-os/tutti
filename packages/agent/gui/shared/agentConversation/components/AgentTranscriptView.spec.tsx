@@ -1393,8 +1393,54 @@ describe("AgentTranscriptView", () => {
               ]
             },
             session: {
-              ...detailViewModel().session
+              ...detailViewModel().session,
+              latestTurn: {
+                agentSessionId: "session-1",
+                turnId: "turn-1",
+                phase: "settled",
+                origin: "user_prompt",
+                outcome: "completed",
+                startedAtUnixMs: 1,
+                settledAtUnixMs: 10,
+                updatedAtUnixMs: 10,
+                fileChanges: {
+                  files: [
+                    {
+                      path: "/workspace/demo/src/App.tsx",
+                      change: "modified"
+                    },
+                    {
+                      path: "/workspace/demo/src/routes.ts",
+                      change: "added"
+                    }
+                  ]
+                }
+              }
             },
+            sessionTurns: [
+              {
+                agentSessionId: "session-1",
+                turnId: "turn-1",
+                phase: "settled",
+                origin: "user_prompt",
+                outcome: "completed",
+                startedAtUnixMs: 1,
+                settledAtUnixMs: 10,
+                updatedAtUnixMs: 10,
+                fileChanges: {
+                  files: [
+                    {
+                      path: "/workspace/demo/src/App.tsx",
+                      change: "modified"
+                    },
+                    {
+                      path: "/workspace/demo/src/routes.ts",
+                      change: "added"
+                    }
+                  ]
+                }
+              }
+            ],
             showProcessingIndicator: false
           })
         )}
@@ -1412,12 +1458,12 @@ describe("AgentTranscriptView", () => {
     ).toBeTruthy();
     fireEvent.click(
       screen.getByRole("button", {
-        name: /src\/App\.tsx/i
+        name: /App\.tsx/i
       })
     );
     await flushCollapsibleRevealFrames();
-    expect(screen.getByTitle("src/App.tsx")).toBeTruthy();
-    expect(screen.getByTitle("src/routes.ts")).toBeTruthy();
+    expect(screen.getByTitle("/workspace/demo/src/App.tsx")).toBeTruthy();
+    expect(screen.getByTitle("/workspace/demo/src/routes.ts")).toBeTruthy();
   });
 
   it("renders visible agent errors as an alert with collapsible details", async () => {

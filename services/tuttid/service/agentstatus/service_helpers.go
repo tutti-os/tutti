@@ -324,15 +324,29 @@ func (s Service) resolveAuthFromCommand(ctx context.Context, spec ProviderSpec, 
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	for attempt := 0; attempt < authStatusCommandAttempts; attempt++ {
+	attempts := authStatusCommandAttempts
+	if isCursorAuthCommandSpec(spec) {
+		attempts = 1
+	}
+	for attempt := 0; attempt < attempts; attempt++ {
 		if auth, ok := s.runAuthStatusCommand(ctx, spec, binaryPath); ok {
 			return auth, true
 		}
-		if attempt+1 < authStatusCommandAttempts && !sleepContext(ctx, s.authStatusCommandRetryDelay()) {
+		if attempt+1 < attempts && !sleepContext(ctx, s.authStatusCommandRetryDelay()) {
 			return AuthInfo{}, false
 		}
 	}
 	return AuthInfo{}, false
+}
+
+func isCursorAuthCommandSpec(spec ProviderSpec) bool {
+	runnerKind := spec.AuthCommandRunnerKind
+	if runnerKind == "" {
+		if status, ok := migratedProviderStatus(spec.Provider); ok {
+			runnerKind = status.AuthCommandRunnerKind
+		}
+	}
+	return runnerKind == providerregistry.AuthCommandRunnerKindCursor
 }
 
 func (s Service) runAuthStatusCommand(ctx context.Context, spec ProviderSpec, binaryPath string) (AuthInfo, bool) {

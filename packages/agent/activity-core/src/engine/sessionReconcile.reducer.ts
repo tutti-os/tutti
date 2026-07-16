@@ -32,10 +32,13 @@ export function sessionReconcileReducer(
       }
       return requestReconcile(state, {
         agentSessionId: intent.agentSessionId,
-        needsMessages: intent.eventType === "message_update",
+        needsMessages:
+          intent.eventType === "message_update" ||
+          intent.eventType === "session_audit",
         needsState:
           !intent.hasCachedSession ||
-          intent.eventType !== "message_update" ||
+          (intent.eventType !== "message_update" &&
+            intent.eventType !== "session_audit") ||
           !intent.hasInlineMessages,
         workspaceId: intent.workspaceId
       });

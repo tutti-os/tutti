@@ -152,7 +152,7 @@ func (c *streamingReportCoalescer) stopTimer() {
 }
 
 func isCoalescibleStreamingReport(report agentsessionstore.ReportActivityInput) bool {
-	if len(report.TimelineItems) > 0 || len(report.StatePatches) > 0 || len(report.MessageUpdates) == 0 {
+	if len(report.TimelineItems) > 0 || len(report.StatePatches) > 0 || len(report.SessionAudits) > 0 || len(report.GoalReconcileRequests) > 0 || len(report.MessageUpdates) == 0 {
 		return false
 	}
 	for _, update := range report.MessageUpdates {

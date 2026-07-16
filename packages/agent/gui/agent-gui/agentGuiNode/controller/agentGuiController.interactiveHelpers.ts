@@ -8,6 +8,7 @@ import type {
   AgentGUIInteractivePrompt,
   AgentGUIInteractiveQuestion
 } from "../model/agentGuiConversationModel";
+import { normalizeAgentApprovalPurpose } from "../../../shared/agentConversation/agentApprovalPurpose";
 export function normalizeProjectConversationPath(
   path: string | null | undefined
 ): string {
@@ -76,12 +77,16 @@ export function interactiveApprovalFromInteraction(
     })
     .filter((option): option is NonNullable<typeof option> => option !== null);
   if (!callId || normalizedOptions.length === 0) return null;
+  const approvalPurpose = normalizeAgentApprovalPurpose(
+    interaction.metadata?.approvalPurpose
+  );
   return {
     kind: "approval",
     id: `approval:${callId}`,
     turnId: interaction.turnId,
     requestId: interaction.requestId,
     callId,
+    ...(approvalPurpose ? { approvalPurpose } : {}),
     title: interaction.toolName?.trim() || "Approval required",
     status: "waiting_approval",
     toolName: interaction.toolName?.trim() || null,

@@ -248,25 +248,34 @@ test("left dock magnification hit bounds use the vertical slot range", () => {
   );
 
   assertBoundsEqual(hitBounds, {
-    crossEnd: 101.44,
+    crossEnd: 71.2,
     crossStart: 12,
     mainEnd: 203.2,
     mainStart: 100
   });
 });
 
-test("left dock magnification hit bounds include the expanded icon width", () => {
+test("left dock magnification hit bounds stay flush with the icon column", () => {
   const hitBounds = resolveDockMagnificationHitBounds(
     [{ bottom: 143.2, left: 20, right: 63.2, top: 100 }],
     "left"
   );
 
   assertBoundsEqual(hitBounds, {
-    crossEnd: 101.44,
+    crossEnd: 71.2,
     crossStart: 12,
     mainEnd: 143.2,
     mainStart: 100
   });
+  assert.equal(
+    isDockMagnificationPointInsideHitBounds({
+      clientX: 63.2 + DOCK_ICON_PEAK_SIZE - DOCK_ICON_BASE_SIZE,
+      clientY: 120,
+      dockPlacement: "left",
+      hitBounds
+    }),
+    false
+  );
 });
 
 test("dock magnification expands both slot axes so neighbors keep spacing", () => {

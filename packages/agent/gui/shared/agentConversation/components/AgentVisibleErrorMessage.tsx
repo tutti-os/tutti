@@ -11,8 +11,11 @@ import {
 import type { AgentMessageContentVM } from "../contracts/agentMessageRowVM";
 import { AgentMessageDetailsDisclosure } from "./AgentMessageDetailsDisclosure";
 
-const PLAN_LIMIT_WARNING_CLASS_NAME =
-  "border-[color-mix(in_srgb,var(--state-warning)_14%,transparent)] bg-[color-mix(in_srgb,var(--background-fronted)_100%,var(--state-warning)_6%)]";
+// All error banners use the light-red danger surface. Yellow/warning surfaces
+// are banned for notice boxes — see "Badges And Status" in
+// docs/conventions/desktop-visual-language.md.
+const ERROR_BANNER_CLASS_NAME =
+  "border-[var(--on-danger-hover)] bg-[var(--on-danger)] text-[var(--state-danger)]";
 
 // Builds a synthetic visibleError from a plain failed message whose text is a
 // recognizable env failure, so it renders as the structured remediation card.
@@ -64,12 +67,10 @@ export function AgentVisibleErrorMessage({
   const actionKey = presentation?.actionKey ?? null;
   const externalUrl = presentation?.externalUrl ?? null;
   const hint = visibleErrorHint(message);
-  // Plan/quota gates are account limits, not crashes — use the calmer warning
-  // tone so a Cursor free-plan "Upgrade your plan…" retry is not a danger card.
+  // Plan/quota gates are account limits, not crashes — they keep role="status"
+  // (not "alert") and show the provider's own message, but share the standard
+  // light-red banner surface.
   const isPlanOrQuotaLimit = error?.code === "quota_or_rate_limit";
-  const toneClassName = isPlanOrQuotaLimit
-    ? PLAN_LIMIT_WARNING_CLASS_NAME
-    : "border-[var(--on-danger-hover)] bg-[var(--on-danger)] text-[var(--state-danger)]";
   const displayHeadline =
     isPlanOrQuotaLimit && isProviderPlanLimitMessage(detail)
       ? detail
@@ -77,7 +78,7 @@ export function AgentVisibleErrorMessage({
   return (
     <section
       role={isPlanOrQuotaLimit ? "status" : "alert"}
-      className={`box-border w-full min-w-0 rounded-[8px] border p-3 text-[13px] leading-5 text-[var(--text-primary)] ${toneClassName}`}
+      className={`box-border w-full min-w-0 rounded-[8px] border p-3 text-[13px] leading-5 text-[var(--text-primary)] ${ERROR_BANNER_CLASS_NAME}`}
     >
       <div className="flex min-w-0 items-start gap-3">
         <div className="min-w-0 flex-1">

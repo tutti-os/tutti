@@ -63,6 +63,7 @@ const styles = {
   composerQueuedPromptActions: "agent-gui-node__composer-queued-prompt-actions",
   composerReferenceTrigger: "agent-gui-node__composer-reference-trigger",
   composerSendButton: "agent-gui-node__composer-send-button",
+  composerStopButton: "agent-gui-node__composer-stop-button",
   composerSelect: "agent-gui-node__composer-select",
   composerTextarea: "agent-gui-node__composer-textarea",
   composerToggle: "agent-gui-node__composer-toggle",

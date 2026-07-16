@@ -403,6 +403,8 @@ export const enAgentGui = {
   batchDeleteConversationsConfirm: "Delete conversations",
   runtimeSessionOnly: "Only runtime sessions appear here.",
   approvalRequired: "{{provider}} requests your authorization.",
+  fileChangeApprovalRequired:
+    "{{provider}} requests your authorization to edit files.",
   approvalUnavailable: "No choices are available.",
   approvalOptions: {
     allowOnce: "Yes, proceed",

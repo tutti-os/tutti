@@ -1718,7 +1718,8 @@ test("desktop rich text @ service emits enriched app + session meta when enrichm
             updatedAtUnixMs: 1780272000000,
             workspaceId
           },
-          childSessions: []
+          childSessions: [],
+          turns: []
         };
       }
     } as unknown as TuttidClient,

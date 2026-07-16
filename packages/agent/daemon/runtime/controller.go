@@ -43,7 +43,7 @@ type Controller struct {
 }
 
 type sessionLifecycleLock struct {
-	mu   sync.Mutex
+	gate chan struct{}
 	refs int
 }
 
@@ -139,6 +139,16 @@ func (c *Controller) configureAdapter(adapter Adapter) {
 	}
 	if sinkAdapter, ok := adapter.(SessionEventSinkAdapter); ok {
 		sinkAdapter.SetSessionEventSink(c.applySessionEventsByAgentSessionID)
+	}
+	if sinkAdapter, ok := adapter.(GoalReconcileDurableSinkAdapter); ok {
+		sinkAdapter.SetGoalReconcileDurableSink(c.reportGoalReconcileDurable)
+	}
+	if sinkAdapter, ok := adapter.(GoalProvenanceDurableSinkAdapter); ok {
+		// Always install the controller boundary. If the configured reporter
+		// cannot durably bind/lookup provenance, the controller returns an
+		// explicit error and Codex fails closed instead of silently falling back
+		// to a restart-unsafe process-local cache.
+		sinkAdapter.SetGoalProvenanceDurableSink(c)
 	}
 	if sinkAdapter, ok := adapter.(ConfigOptionsUpdateSinkAdapter); ok {
 		sinkAdapter.SetConfigOptionsUpdateSink(c.applyConfigOptionsUpdateByAgentSessionID)

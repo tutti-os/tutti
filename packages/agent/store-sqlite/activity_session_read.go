@@ -26,7 +26,8 @@ SELECT workspace_id, agent_session_id, session_kind, root_agent_session_id, root
        parent_agent_session_id, parent_turn_id, parent_tool_call_id,
        origin, agent_target_id, provider, provider_session_id, model,
        user_id, settings_json, session_metadata_json, internal_runtime_context_json, cwd,
-	       title, message_version, last_event_at_unix_ms,
+       rail_section_key,
+       title, message_version, last_event_at_unix_ms,
        started_at_unix_ms, ended_at_unix_ms, pinned_at_unix_ms,
        created_at_unix_ms, updated_at_unix_ms, active_turn_id
 FROM workspace_agent_sessions
@@ -86,7 +87,8 @@ SELECT workspace_id, agent_session_id, session_kind, root_agent_session_id, root
        parent_agent_session_id, parent_turn_id, parent_tool_call_id,
        origin, agent_target_id, provider, provider_session_id, model,
        user_id, settings_json, session_metadata_json, internal_runtime_context_json, cwd,
-	       title, message_version, last_event_at_unix_ms,
+       rail_section_key,
+       title, message_version, last_event_at_unix_ms,
        started_at_unix_ms, ended_at_unix_ms, pinned_at_unix_ms,
        created_at_unix_ms, updated_at_unix_ms, active_turn_id
 FROM workspace_agent_sessions
@@ -144,7 +146,8 @@ SELECT session.workspace_id, session.agent_session_id, session.session_kind,
        session.parent_agent_session_id, session.parent_turn_id, session.parent_tool_call_id,
        session.origin, session.agent_target_id, session.provider, session.provider_session_id, session.model,
        session.user_id, session.settings_json, session.session_metadata_json,
-       session.internal_runtime_context_json, session.cwd, session.title, session.message_version,
+       session.internal_runtime_context_json, session.cwd, session.rail_section_key,
+       session.title, session.message_version,
        session.last_event_at_unix_ms, session.started_at_unix_ms, session.ended_at_unix_ms,
        session.pinned_at_unix_ms, session.created_at_unix_ms, session.updated_at_unix_ms,
        session.active_turn_id

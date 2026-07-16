@@ -168,6 +168,7 @@ describe("projectAgentConversationVM", () => {
           activeTurn: {
             agentSessionId: "session-1",
             outcome: null,
+            origin: "user_prompt",
             phase: "running",
             settledAtUnixMs: null,
             startedAtUnixMs: 1,
@@ -593,17 +594,83 @@ describe("projectAgentConversationVM", () => {
     ).toBe("Need to inspect before editing.");
   });
 
-  it("appends summary rows after the turn has completed", () => {
+  it("places each canonical file summary directly after its settled turn", () => {
     const conversation = projectAgentConversationVM(
       detailViewModel({
-        session: {
-          ...detailViewModel().session
-        },
+        turns: [
+          {
+            id: "turn-1",
+            userMessage: { id: "user-1", body: "First" },
+            userMessages: [{ id: "user-1", body: "First" }],
+            agentMessages: [{ id: "assistant-1", body: "Done first" }],
+            toolCalls: [],
+            toolCallCount: 0,
+            hasFailedToolCall: false,
+            agentItems: [
+              {
+                kind: "message",
+                message: { id: "assistant-1", body: "Done first" }
+              }
+            ]
+          },
+          {
+            id: "turn-2",
+            userMessage: { id: "user-2", body: "Second" },
+            userMessages: [{ id: "user-2", body: "Second" }],
+            agentMessages: [{ id: "assistant-2", body: "Done second" }],
+            toolCalls: [],
+            toolCallCount: 0,
+            hasFailedToolCall: false,
+            agentItems: [
+              {
+                kind: "message",
+                message: { id: "assistant-2", body: "Done second" }
+              }
+            ]
+          }
+        ],
+        sessionTurns: [
+          {
+            agentSessionId: "session-1",
+            turnId: "turn-1",
+            phase: "settled",
+            origin: "user_prompt",
+            outcome: "completed",
+            startedAtUnixMs: 1,
+            settledAtUnixMs: 10,
+            updatedAtUnixMs: 10,
+            fileChanges: {
+              files: [{ path: "/workspace/demo/first.ts", change: "added" }]
+            }
+          },
+          {
+            agentSessionId: "session-1",
+            turnId: "turn-2",
+            phase: "settled",
+            origin: "user_prompt",
+            outcome: "completed",
+            startedAtUnixMs: 11,
+            settledAtUnixMs: 20,
+            updatedAtUnixMs: 20,
+            fileChanges: {
+              files: [{ path: "/workspace/demo/second.ts", change: "deleted" }]
+            }
+          }
+        ],
         showProcessingIndicator: false
       })
     );
 
-    expect(conversation.rows.map((row) => row.kind)).toContain("turn-summary");
+    expect(conversation.rows.map((row) => `${row.turnId}:${row.kind}`)).toEqual(
+      [
+        "turn-1:message",
+        "turn-1:message",
+        "turn-1:turn-summary",
+        "turn-2:message",
+        "turn-2:message",
+        "turn-2:turn-summary"
+      ]
+    );
   });
 
   it("uses the session cwd for turn summaries when no workspace root is selected", () => {
@@ -1216,6 +1283,7 @@ describe("projectAgentConversationVM", () => {
           latestTurn: {
             agentSessionId: "session-1",
             outcome: "completed",
+            origin: "user_prompt",
             phase: "settled",
             settledAtUnixMs: 10,
             startedAtUnixMs: 1,
@@ -1297,6 +1365,7 @@ describe("projectAgentConversationVM", () => {
           activeTurn: {
             agentSessionId: "session-1",
             outcome: null,
+            origin: "user_prompt",
             phase: "running",
             settledAtUnixMs: null,
             startedAtUnixMs: 1,
@@ -1371,6 +1440,7 @@ describe("projectAgentConversationVM", () => {
           activeTurn: {
             agentSessionId: "session-1",
             outcome: null,
+            origin: "user_prompt",
             phase: "running",
             settledAtUnixMs: null,
             startedAtUnixMs: 1,
@@ -1598,12 +1668,28 @@ describe("projectAgentConversationVM", () => {
     };
     const previous = projectAgentConversationVM(
       detailViewModel({
+        session: {
+          ...detailViewModel().session,
+          latestTurn: {
+            ...detailViewModel().session.latestTurn!,
+            turnId: "turn-2",
+            fileChanges: null
+          }
+        },
         turns: [firstTurn, secondTurn],
         showProcessingIndicator: false
       })
     );
     const next = projectAgentConversationVM(
       detailViewModel({
+        session: {
+          ...detailViewModel().session,
+          latestTurn: {
+            ...detailViewModel().session.latestTurn!,
+            turnId: "turn-2",
+            fileChanges: null
+          }
+        },
         turns: [
           firstTurn,
           {
@@ -1694,10 +1780,48 @@ function detailViewModel(
       cwd: "/workspace/demo",
       title: "Codex",
       createdAtUnixMs: 1,
-      updatedAtUnixMs: 10
+      updatedAtUnixMs: 10,
+      latestTurn: {
+        agentSessionId: "session-1",
+        turnId: "turn-1",
+        phase: "settled",
+        origin: "user_prompt",
+        outcome: "completed",
+        startedAtUnixMs: 1,
+        settledAtUnixMs: 10,
+        updatedAtUnixMs: 10,
+        fileChanges: {
+          files: [
+            {
+              path: "/workspace/demo/src/App.tsx",
+              change: "modified"
+            }
+          ]
+        }
+      }
     }),
     cwd: "/workspace/demo",
     workspaceRoot: "/workspace/demo",
+    sessionTurns: [
+      {
+        agentSessionId: "session-1",
+        turnId: "turn-1",
+        phase: "settled",
+        origin: "user_prompt",
+        outcome: "completed",
+        startedAtUnixMs: 1,
+        settledAtUnixMs: 10,
+        updatedAtUnixMs: 10,
+        fileChanges: {
+          files: [
+            {
+              path: "/workspace/demo/src/App.tsx",
+              change: "modified"
+            }
+          ]
+        }
+      }
+    ],
     turns: [
       {
         id: "turn-1",

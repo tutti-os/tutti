@@ -7,9 +7,10 @@ import (
 	"time"
 )
 
-// UpsertInteraction records an interaction status transition and ensures the
-// owning turn row exists so the foreign key holds even when the prompt arrives
-// before the turn's own state report (the turn is synthesized as waiting).
+// UpsertInteraction records an interaction status transition for an existing
+// Turn. It never manufactures the owning Turn: provider-initiated prompts must
+// report a provider_initiated Turn and the interaction together through
+// ReportActivityState so both entities commit atomically.
 // Pending interactions are independent entities; a new request never
 // supersedes an unrelated pending request.
 // Answered/superseded are terminal; a terminal row rejects regressions to

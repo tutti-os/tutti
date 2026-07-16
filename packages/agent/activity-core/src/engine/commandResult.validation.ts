@@ -104,15 +104,7 @@ export function validateSendInputResult(
   }
   const sessionId = value.session.agentSessionId.trim();
   const workspaceId = value.session.workspaceId.trim();
-  const turnSessionId = value.turn.agentSessionId.trim();
-  const turnId = value.turnId.trim();
-  if (!turnId || value.turn.turnId.trim() !== turnId) {
-    return { kind: "invalid", reason: "send_result_turn_scope_mismatch" };
-  }
-  if (
-    sessionId !== record.agentSessionId ||
-    turnSessionId !== record.agentSessionId
-  ) {
+  if (sessionId !== record.agentSessionId) {
     return {
       kind: "invalid",
       reason: "send_result_session_scope_mismatch"
@@ -124,6 +116,20 @@ export function validateSendInputResult(
       reason: "send_result_workspace_scope_mismatch"
     };
   }
+  if (value.kind === "goalControl") {
+    return { kind: "valid", result: value };
+  }
+  const turnSessionId = value.turn.agentSessionId.trim();
+  const turnId = value.turnId.trim();
+  if (!turnId || value.turn.turnId.trim() !== turnId) {
+    return { kind: "invalid", reason: "send_result_turn_scope_mismatch" };
+  }
+  if (turnSessionId !== record.agentSessionId) {
+    return {
+      kind: "invalid",
+      reason: "send_result_session_scope_mismatch"
+    };
+  }
   return { kind: "valid", result: value };
 }
 
@@ -131,7 +137,22 @@ function isSendInputResult(
   value: unknown
 ): value is AgentActivitySendInputResult {
   if (!value || typeof value !== "object") return false;
-  const result = value as Partial<AgentActivitySendInputResult>;
+  const result = value as {
+    kind?: unknown;
+    session?: Partial<AgentActivitySession>;
+    turn?: Partial<AgentActivityTurn>;
+    turnId?: unknown;
+  };
+  if (
+    result.kind === "goalControl" &&
+    result.session &&
+    typeof result.session.agentSessionId === "string" &&
+    typeof result.session.workspaceId === "string" &&
+    Array.isArray(result.session.latestTurnInteractions) &&
+    Array.isArray(result.session.pendingInteractions)
+  ) {
+    return true;
+  }
   return Boolean(
     result.session &&
     result.turn &&

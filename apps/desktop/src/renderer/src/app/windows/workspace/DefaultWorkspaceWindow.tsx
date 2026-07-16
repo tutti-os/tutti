@@ -1,6 +1,7 @@
 import { lazy, Suspense } from "react";
 import { AppUpdateStatus } from "@renderer/features/app-update";
 import { WorkspaceWindowContainerHost } from "./WorkspaceWindowContainerHost.tsx";
+import type { WorkspaceWindowContainerResult } from "./createWorkspaceWindowContainer.ts";
 
 const LazyWorkspaceWorkbench = lazy(() =>
   import("@renderer/features/workspace-workbench/ui/WorkspaceWorkbench.tsx").then(
@@ -8,9 +9,13 @@ const LazyWorkspaceWorkbench = lazy(() =>
   )
 );
 
-export function DefaultWorkspaceWindow() {
+export function DefaultWorkspaceWindow({
+  containerInput
+}: {
+  containerInput: WorkspaceWindowContainerResult;
+}) {
   return (
-    <WorkspaceWindowContainerHost>
+    <WorkspaceWindowContainerHost containerInput={containerInput}>
       {({ environmentMode, workspaceAppExternalApi, workspaceID }) => (
         <Suspense
           fallback={<main className="h-screen min-h-0 bg-background" />}

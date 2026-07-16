@@ -26,19 +26,19 @@ import type {
   AgentGUINodeViewProps,
   AgentGUIViewLabels
 } from "../AgentGUINodeView";
-import {
-  groupConversations,
-  type ConversationSection
-} from "../agentGuiNodeViewConversation";
+import type { ConversationSection } from "../agentGuiNodeViewConversation";
 import {
   isConversationRailInitialLoadPending,
   projectConversationRailMemberships,
+  projectConversationRailSectionsByExactKey,
+  projectConversationRailSearchSections,
   projectConversationRailSectionsWithActiveConversation,
   projectConversationRailSectionsWithTransientConversations,
   resolveConversationRailActiveConversation,
   stabilizeConversationSectionItems,
   stabilizeConversationSections
 } from "../model/agentGuiConversationRail";
+import { preserveConversationRailSectionTemplates } from "../model/agentGuiConversationRailSectionTemplates";
 import type { useAgentGUIConversationRailQuery } from "../controller/useAgentGUIConversationRailQuery";
 import { AgentGUIConversationRailSection } from "./AgentGUIConversationRailSection";
 import { AgentGUIProjectRailHeader } from "./AgentGUIConversationRailItem";
@@ -275,7 +275,11 @@ export const AgentGUIConversationRailPane = memo(
         labels,
         sections: runtimeSectionsWithTransientConversations
       });
-    const runtimeDisplaySections = runtimeDisplayProjection.sections;
+    const runtimeDisplaySections = preserveConversationRailSectionTemplates({
+      labels,
+      sections: runtimeDisplayProjection.sections,
+      userProjects
+    });
     const railActiveOverlay = runtimeDisplayProjection.activeOverlay;
 
     useEffect(() => {
@@ -344,8 +348,10 @@ export const AgentGUIConversationRailPane = memo(
       const startedAtMs = agentGuiPerfNowMs();
       const query = conversationQuery.trim();
       const rawGroups = backendSearchActive
-        ? groupConversations(filteredConversations, labels, userProjects, {
-            includeEmptyConversations: false
+        ? projectConversationRailSearchSections({
+            conversations: filteredConversations,
+            labels,
+            sections: runtimeDisplaySections
           })
         : runtimeSectionsEnabled || runtimeRailSections
           ? runtimeDisplaySections.length > 0
@@ -371,8 +377,11 @@ export const AgentGUIConversationRailPane = memo(
                         ))
                   )
             : []
-          : groupConversations(filteredConversations, labels, userProjects, {
-              includeEmptyConversations: !query
+          : projectConversationRailSectionsByExactKey({
+              conversations: filteredConversations,
+              labels,
+              userProjects,
+              includeEmptySections: !query
             });
       const groups = stabilizeConversationSections(
         groupedConversationsRef.current,

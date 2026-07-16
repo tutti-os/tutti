@@ -5,6 +5,11 @@ export type RuntimeTurn = {
   readonly promptUuid: string;
   readonly synthetic?: boolean;
   awaitingContinuation?: boolean;
+  readonly origin?: string;
+  readonly goalOperationId?: string;
+  readonly goalRevision?: number;
+  readonly goalRepairEpoch?: number;
+  readonly goalAction?: "set" | "clear";
   settled: boolean;
 };
 
@@ -22,7 +27,6 @@ export class TurnLifecycle {
   private pendingOrphanCount = 0;
   private cancelledValue = false;
   private completedTurnCount = 0;
-  private forceCancelTimer: ReturnType<typeof setTimeout> | undefined;
   private continuationStartTimer: ReturnType<typeof setTimeout> | undefined;
   private rejectingTimedOutContinuation = false;
 
@@ -193,7 +197,6 @@ export class TurnLifecycle {
     turn.settled = true;
     this.completedTurnCount += 1;
     this.emit({ type, payload: { ...payload, turnId: turn.turnId } });
-    this.clearForceCancelTimer();
     this.clearContinuationStartTimer();
     this.active = undefined;
     this.activeIdValue = "";
@@ -243,13 +246,14 @@ export class TurnLifecycle {
     return Boolean(this.active);
   }
 
-  scheduleForceCancel(callback: () => void, graceMs: number): void {
-    if (!this.active || this.forceCancelTimer) {
-      return;
+  cancelActiveExact(turnId: string): boolean {
+    const expected = turnId.trim();
+    if (!expected || this.active?.turnId !== expected || this.active.settled) {
+      return false;
     }
-    this.forceCancelTimer = setTimeout(callback, graceMs);
+    this.cancelledValue = true;
+    return true;
   }
-
   clearCancelled(): void {
     this.cancelledValue = false;
   }
@@ -267,7 +271,6 @@ export class TurnLifecycle {
   }
 
   close(): void {
-    this.clearForceCancelTimer();
     this.clearContinuationStartTimer();
   }
 
@@ -280,10 +283,35 @@ export class TurnLifecycle {
     this.cancelledValue = false;
     this.pendingOrphanCount = 0;
     this.onActivate();
-    if (turn.synthetic) {
+    if (turn.goalOperationId && turn.goalRevision && turn.goalAction) {
+      this.emit({
+        type: "goal_command_started",
+        payload: {
+          turnId: turn.turnId,
+          operationId: turn.goalOperationId,
+          revision: turn.goalRevision,
+          repairEpoch: turn.goalRepairEpoch ?? 0,
+          action: turn.goalAction
+        }
+      });
+    }
+    if (turn.synthetic || turn.origin) {
       this.emit({
         type: "turn_started",
-        payload: { turnId: turn.turnId, synthetic: true }
+        payload: {
+          turnId: turn.turnId,
+          ...(turn.synthetic ? { synthetic: true } : {}),
+          ...(turn.origin ? { turnOrigin: turn.origin } : {}),
+          ...(turn.goalOperationId
+            ? { sourceGoalOperationId: turn.goalOperationId }
+            : {}),
+          ...(turn.goalRevision
+            ? { sourceGoalRevision: turn.goalRevision }
+            : {}),
+          ...(turn.goalRepairEpoch
+            ? { sourceGoalRepairEpoch: turn.goalRepairEpoch }
+            : {})
+        }
       });
     }
   }
@@ -320,13 +348,5 @@ export class TurnLifecycle {
     while (this.turns[0]?.settled) {
       this.turns.shift();
     }
-  }
-
-  private clearForceCancelTimer(): void {
-    if (!this.forceCancelTimer) {
-      return;
-    }
-    clearTimeout(this.forceCancelTimer);
-    this.forceCancelTimer = undefined;
   }
 }

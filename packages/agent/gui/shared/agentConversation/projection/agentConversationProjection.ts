@@ -12,10 +12,7 @@ import { computeAgentToolGroups } from "./agentToolGroupingProjection";
 import { buildAgentTurnSequenceItems } from "./agentTurnSequenceProjection";
 import { projectTurnRows } from "./agentTurnRowProjection";
 import { projectAgentProcessingRow } from "./agentProcessingProjection";
-import {
-  projectAgentTurnSummaryRowForTurn,
-  projectAgentTurnSummaryRows
-} from "./agentTurnSummaryProjection";
+import { projectAgentTurnSummaryRows } from "./agentTurnSummaryProjection";
 
 export interface AgentConversationProjectionOptions {
   avoidGroupingEdits?: boolean;
@@ -33,30 +30,23 @@ export function projectAgentConversationVM(
 ): AgentConversationVM {
   const rows: AgentTranscriptRowVM[] = [];
   const turns = detail.turns;
+  const summariesByTurnId = new Map(
+    projectAgentTurnSummaryRows(detail).map((summary) => [
+      summary.turnId,
+      summary
+    ])
+  );
 
-  turns.forEach((turn, index) => {
+  turns.forEach((turn) => {
     rows.push(
       ...projectTurnConversationRows(turn, detail.session.workspaceId, {
         agentSessionId: detail.session.agentSessionId,
         avoidGroupingEdits: options.avoidGroupingEdits
       })
     );
-    if (shouldShowTurnSummaryForTurn(detail, index)) {
-      rows.push(
-        ...projectAgentTurnSummaryRowForTurn(turn, {
-          defaultCwd: detail.cwd,
-          workspaceRoot: detail.workspaceRoot
-        })
-      );
-    }
+    const summary = summariesByTurnId.get(turn.id);
+    if (summary) rows.push(summary);
   });
-
-  if (
-    !rows.some((row) => row.kind === "turn-summary") &&
-    shouldShowLatestTurnSummaryFallback(detail)
-  ) {
-    rows.push(...projectAgentTurnSummaryRows(detail));
-  }
 
   const processing = projectAgentProcessingRow(detail, rows);
   if (processing) {
@@ -463,11 +453,42 @@ function buildAssistantCopyEligibleTurnIds(
 ): ReadonlySet<string> {
   const ids = new Set<string>();
   detail.turns.forEach((turn, index) => {
-    if (index < detail.turns.length - 1 || isLatestTurnSettled(detail)) {
+    if (
+      index < detail.turns.length - 1 ||
+      isLatestTranscriptTurnSettled(detail)
+    ) {
       ids.add(turn.id);
     }
   });
   return ids;
+}
+
+function isLatestTranscriptTurnSettled(
+  detail: WorkspaceAgentSessionDetailViewModel
+): boolean {
+  const latestTranscriptTurnId = detail.turns.at(-1)?.id;
+  const canonicalTurn = detail.sessionTurns?.find(
+    (turn) => turn.turnId === latestTranscriptTurnId
+  );
+  const activeTurn = detail.session.activeTurn;
+  if (
+    activeTurn &&
+    activeTurn.turnId === latestTranscriptTurnId &&
+    activeTurn.phase !== "settled"
+  ) {
+    return false;
+  }
+  if (canonicalTurn) {
+    return (
+      canonicalTurn.phase === "settled" &&
+      detail.showProcessingIndicator !== true
+    );
+  }
+  const activePhase = activeTurn?.phase ?? "";
+  return (
+    detail.showProcessingIndicator !== true &&
+    !["submitted", "running", "waiting", "settling"].includes(activePhase)
+  );
 }
 
 function findLatestAssistantCopyTargetKeys(
@@ -567,32 +588,6 @@ function isSpecialAssistantMessage(message: {
     message.systemNotice ||
     message.contentKind === "plan"
   );
-}
-
-function shouldShowTurnSummaryForTurn(
-  detail: WorkspaceAgentSessionDetailViewModel,
-  turnIndex: number
-): boolean {
-  return turnIndex < detail.turns.length - 1 || isLatestTurnSettled(detail);
-}
-
-function shouldShowLatestTurnSummaryFallback(
-  detail: WorkspaceAgentSessionDetailViewModel
-): boolean {
-  return detail.turns.length === 0 || isLatestTurnSettled(detail);
-}
-
-function isLatestTurnSettled(
-  detail: WorkspaceAgentSessionDetailViewModel
-): boolean {
-  const phase = detail.session.activeTurn?.phase.trim().toLowerCase() ?? "";
-  const canonicalTurnUnsettled = [
-    "submitted",
-    "running",
-    "waiting",
-    "settling"
-  ].includes(phase);
-  return detail.showProcessingIndicator !== true && !canonicalTurnUnsettled;
 }
 
 function projectTurnConversationRows(

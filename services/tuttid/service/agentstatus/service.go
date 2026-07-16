@@ -73,6 +73,9 @@ type ListInput struct {
 	// never blocks on the network. Only the agent-env wizard, which renders the
 	// network diagnostic, sets this.
 	IncludeNetwork bool
+	// ForceRefresh bypasses the application readiness cache. Interactive refresh,
+	// install, and login flows use it; ordinary startup and dock reads do not.
+	ForceRefresh bool
 }
 
 type ProbeInput struct {
@@ -232,6 +235,10 @@ type Service struct {
 	// RunOutcomes lets a runtime auth failure override a stale "logged in" marker
 	// so the dock/wizard surface that login dropped. Shared pointer across copies.
 	RunOutcomes *RunOutcomeStore
+	// StatusCache is shared by the daemon API and agent session service so local
+	// readiness probes run once per provider instead of once per caller/window.
+	StatusCache    *ProviderStatusCache
+	StatusCacheTTL time.Duration
 }
 
 const authStatusCommandTimeout = 5 * time.Second
@@ -263,6 +270,7 @@ func (s Service) List(ctx context.Context, input ListInput) (snapshot Snapshot, 
 			"event", "tutti.agent_provider.status_list.completed",
 			"durationMs", time.Since(startedAt).Milliseconds(),
 			"includeNetwork", input.IncludeNetwork,
+			"forceRefresh", input.ForceRefresh,
 			"providerCount", len(snapshot.Providers),
 			"requestedProviderCount", len(input.Providers),
 			"requestedProviders", input.Providers,
@@ -283,7 +291,7 @@ func (s Service) List(ctx context.Context, input ListInput) (snapshot Snapshot, 
 	group.SetLimit(statusDetectionConcurrency)
 	for i, spec := range specs {
 		group.Go(func() error {
-			statuses[i] = s.statusForSpec(ctx, spec, now)
+			statuses[i] = s.cachedStatusForSpec(ctx, spec, input.ForceRefresh || input.IncludeNetwork)
 			return nil
 		})
 	}
@@ -338,11 +346,77 @@ func (s Service) List(ctx context.Context, input ListInput) (snapshot Snapshot, 
 		statuses[i].ActiveAction = activeActionForProvider(statuses[i].Provider)
 	}
 
+	capturedAt := now
+	for i := range statuses {
+		if checkedAt := statuses[i].Availability.CheckedAt; checkedAt != nil && checkedAt.After(capturedAt) {
+			capturedAt = *checkedAt
+		}
+	}
 	snapshot = Snapshot{
-		CapturedAt: now,
+		CapturedAt: capturedAt,
 		Providers:  statuses,
 	}
 	return snapshot, nil
+}
+
+func (s Service) cachedStatusForSpec(ctx context.Context, spec ProviderSpec, forceRefresh bool) ProviderStatus {
+	cache := s.StatusCache
+	if cache == nil {
+		return s.detectStatusForSpec(ctx, spec)
+	}
+	if !forceRefresh {
+		if cached, cachedAt, credentialFingerprint, ok := cache.get(spec.Provider, s.now(), s.providerStatusCacheTTL()); ok &&
+			s.cachedProviderStatusStillValid(spec, cachedAt, credentialFingerprint) {
+			return cached
+		}
+	}
+
+	value, _, _ := cache.group.Do(spec.Provider, func() (any, error) {
+		if !forceRefresh {
+			if cached, cachedAt, credentialFingerprint, ok := cache.get(spec.Provider, s.now(), s.providerStatusCacheTTL()); ok &&
+				s.cachedProviderStatusStillValid(spec, cachedAt, credentialFingerprint) {
+				return cached, nil
+			}
+		}
+		status := s.detectStatusForSpec(ctx, spec)
+		completedAt := s.now()
+		status.Availability.CheckedAt = &completedAt
+		cache.set(spec.Provider, completedAt, s.providerCredentialFingerprint(spec), status)
+		return status, nil
+	})
+	return cloneProviderStatus(value.(ProviderStatus))
+}
+
+func (s Service) detectStatusForSpec(ctx context.Context, spec ProviderSpec) ProviderStatus {
+	status := s.statusForSpec(ctx, spec, s.now())
+	completedAt := s.now()
+	status.Availability.CheckedAt = &completedAt
+	return status
+}
+
+func (s Service) providerStatusCacheTTL() time.Duration {
+	if s.StatusCacheTTL != 0 {
+		return s.StatusCacheTTL
+	}
+	return defaultProviderStatusCacheTTL
+}
+
+func (s Service) cachedProviderStatusStillValid(spec ProviderSpec, cachedAt time.Time, credentialFingerprint string) bool {
+	failedAt, invalidated := s.RunOutcomes.AuthInvalidatedSince(spec.Provider)
+	if invalidated && failedAt.After(cachedAt) {
+		return false
+	}
+	return credentialFingerprint == s.providerCredentialFingerprint(spec)
+}
+
+func (s Service) invalidateProviderStatus(provider string) {
+	s.StatusCache.invalidate(provider)
+}
+
+// Invalidate drops one provider's application readiness snapshot after the
+// real runtime proves that cached launch assumptions are no longer reliable.
+func (s Service) Invalidate(provider string) {
+	s.invalidateProviderStatus(strings.TrimSpace(provider))
 }
 
 func (s Service) Probe(ctx context.Context, input ProbeInput) (ProbeResult, error) {
@@ -438,6 +512,7 @@ func (s Service) RunAction(ctx context.Context, input RunActionInput) (RunAction
 		return RunActionResult{}, err
 	}
 	spec := specs[0]
+	defer s.invalidateProviderStatus(spec.Provider)
 	result := RunActionResult{
 		Provider:    spec.Provider,
 		ActionID:    input.ActionID,

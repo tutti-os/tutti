@@ -83,7 +83,8 @@ export function useAgentGUINewConversationActivation(
     (
       initialContentInput?: unknown,
       displayPrompt?: string,
-      submitOptions?: AgentComposerSubmitOptions
+      submitOptions?: AgentComposerSubmitOptions,
+      initialTurnExpected?: boolean
     ): AgentGUINewConversationActivationResult | null => {
       const target = selectedAgentTargetRef.current;
       const targetData = selectedComposerTargetDataRef.current;
@@ -218,6 +219,7 @@ export function useAgentGUINewConversationActivation(
         clientSubmitId: submitTrace.clientSubmitId,
         cwd: selectedProjectPath ?? "",
         initialContent: normalizedInitialContent,
+        ...(initialTurnExpected !== undefined ? { initialTurnExpected } : {}),
         initialDisplayPrompt,
         runtimeContent: toRuntimeSendContent(normalizedInitialContent),
         submitDiagnostics: agentSubmitTraceDiagnostics(submitTrace),

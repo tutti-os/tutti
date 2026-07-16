@@ -1048,7 +1048,7 @@ func (s *fakeStore) ListIssues(_ context.Context, filter IssueListFilter) (Issue
 		if filter.StatusFilter != "" && issue.Status != filter.StatusFilter {
 			continue
 		}
-		if !matchesSearch(filter.SearchQuery, issue.Title, issue.SearchText) {
+		if !matchesSearch(filter.SearchQuery, issue.Title) {
 			continue
 		}
 		items = append(items, issue)
@@ -1133,7 +1133,7 @@ func (s *fakeStore) ListTasks(_ context.Context, filter TaskListFilter) (TaskLis
 		if filter.StatusFilter != "" && task.Status != filter.StatusFilter {
 			continue
 		}
-		if !matchesSearch(filter.SearchQuery, task.Title, task.SearchText) {
+		if !matchesSearch(filter.SearchQuery, task.Title) {
 			continue
 		}
 		items = append(items, task)

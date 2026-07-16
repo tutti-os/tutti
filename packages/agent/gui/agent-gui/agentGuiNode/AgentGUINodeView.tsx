@@ -633,6 +633,7 @@ export function AgentGUINodeView({
                     }
                     slashStatusUsageDidFail={slashStatusUsageDidFail}
                     slashStatusUsageAttempted={slashStatusUsageAttempted}
+                    provider={effectiveRailConfigProvider}
                     providerAuthAccountLabel={effectiveProviderAuthAccountLabel}
                     onAgentConfigMenuOpen={onAgentConfigMenuOpen}
                     onAgentUsageRefresh={onAgentUsageRefresh}

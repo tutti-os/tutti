@@ -5,6 +5,91 @@ import (
 	"testing"
 )
 
+func TestReportActivityStateAtomicallyCreatesGoalTurnAndProviderBinding(t *testing.T) {
+	t.Parallel()
+	store := openTestStore(t, testOptions(&staticProjectPaths{}))
+	ctx := context.Background()
+	if _, err := store.ReportSessionState(ctx, SessionStateReport{
+		WorkspaceID: "ws-1", AgentSessionID: "root", Kind: SessionKindRoot,
+		Provider: "claude-code", OccurredAtUnixMS: 20,
+	}); err != nil {
+		t.Fatalf("seed newer session snapshot: %v", err)
+	}
+
+	result, err := store.ReportActivityState(ctx, ActivityStateReport{
+		Session: SessionStateReport{
+			WorkspaceID: "ws-1", AgentSessionID: "root", Kind: SessionKindRoot,
+			Provider: "claude-code", OccurredAtUnixMS: 10,
+		},
+		Turn: &TurnTransition{
+			WorkspaceID: "ws-1", AgentSessionID: "root", TurnID: "goal-turn",
+			Phase: TurnPhaseRunning, Origin: TurnOriginGoalArm,
+			SourceGoalOperationID: "goal-op-1", SourceGoalRevision: 1,
+			OccurredAtUnixMS: 10,
+		},
+		RootProviderTurn: &RootProviderTurnTransition{
+			WorkspaceID: "ws-1", RootAgentSessionID: "root", RootTurnID: "goal-turn",
+			ProviderTurnID: "provider-turn", Phase: RootProviderTurnPhaseRunning,
+			OccurredAtUnixMS: 10,
+		},
+	})
+	if err != nil {
+		t.Fatalf("ReportActivityState(goal provider start): %v", err)
+	}
+	if !result.TurnAccepted || !result.RootTurnAccepted {
+		t.Fatalf("compound goal start result = %#v", result)
+	}
+	if result.State.StateApplied {
+		t.Fatalf("stale enclosing session unexpectedly applied: %#v", result.State)
+	}
+	turn, found, err := store.GetTurn(ctx, "ws-1", "root", "goal-turn")
+	if err != nil || !found || turn.Origin != TurnOriginGoalArm || turn.SourceGoalOperationID != "goal-op-1" ||
+		turn.RootProviderTurnID != "provider-turn" || turn.RootProviderTurnPhase != RootProviderTurnPhaseRunning {
+		t.Fatalf("persisted compound goal turn = %#v found=%v err=%v", turn, found, err)
+	}
+	messageResult, err := store.ReportSessionMessages(ctx, SessionMessageReport{
+		WorkspaceID: "ws-1", AgentSessionID: "root", Origin: "runtime",
+		Messages: []MessageUpdate{{
+			MessageID: "assistant-1", TurnID: "goal-turn", Role: "assistant",
+			Kind: "text", Status: "running", Payload: map[string]any{"text": "working"},
+			OccurredAtUnixMS: 11,
+		}},
+	})
+	if err != nil || messageResult.AcceptedCount != 1 {
+		t.Fatalf("persist first goal assistant message = %#v err=%v", messageResult, err)
+	}
+}
+
+func TestReportActivityStateRollsBackGoalTurnWhenProviderBindingFails(t *testing.T) {
+	t.Parallel()
+	store := openTestStore(t, testOptions(&staticProjectPaths{}))
+	ctx := context.Background()
+
+	_, err := store.ReportActivityState(ctx, ActivityStateReport{
+		Session: SessionStateReport{
+			WorkspaceID: "ws-1", AgentSessionID: "root", Kind: SessionKindRoot,
+			Provider: "claude-code", OccurredAtUnixMS: 10,
+		},
+		Turn: &TurnTransition{
+			WorkspaceID: "ws-1", AgentSessionID: "root", TurnID: "goal-turn",
+			Phase: TurnPhaseRunning, Origin: TurnOriginGoalArm,
+			SourceGoalOperationID: "goal-op-1", SourceGoalRevision: 1,
+			OccurredAtUnixMS: 10,
+		},
+		RootProviderTurn: &RootProviderTurnTransition{
+			WorkspaceID: "ws-1", RootAgentSessionID: "root", RootTurnID: "missing-turn",
+			ProviderTurnID: "provider-turn", Phase: RootProviderTurnPhaseRunning,
+			OccurredAtUnixMS: 10,
+		},
+	})
+	if err == nil {
+		t.Fatal("compound report with invalid provider binding unexpectedly succeeded")
+	}
+	if turn, found, getErr := store.GetTurn(ctx, "ws-1", "root", "goal-turn"); getErr != nil || found {
+		t.Fatalf("failed compound report leaked canonical turn = %#v found=%v err=%v", turn, found, getErr)
+	}
+}
+
 func TestRootProviderCompletionWaitsForEveryChildTurn(t *testing.T) {
 	t.Parallel()
 	store := openTestStore(t, testOptions(&staticProjectPaths{}))
@@ -76,6 +161,21 @@ func TestLateRootProviderCompletionUpdatesProjectionWithoutChangingCanceledCanon
 		NowUnixMS: 30,
 	}); err != nil || !changed {
 		t.Fatalf("complete cancel changed=%v err=%v", changed, err)
+	}
+	lateStarted, err := store.ReportActivityState(ctx, ActivityStateReport{
+		Session: SessionStateReport{
+			WorkspaceID: "ws-1", AgentSessionID: "root", Kind: SessionKindRoot,
+			Provider: "codex", OccurredAtUnixMS: 35,
+		},
+		RootProviderTurn: &RootProviderTurnTransition{
+			WorkspaceID: "ws-1", RootAgentSessionID: "root", RootTurnID: "root-turn",
+			ProviderTurnID: "provider-turn-2", Phase: RootProviderTurnPhaseRunning,
+			OccurredAtUnixMS: 35,
+		},
+	})
+	if err != nil || lateStarted.RootTurnAccepted || lateStarted.RootTurn.Phase != TurnPhaseSettled ||
+		lateStarted.RootTurn.RootProviderTurnID != "provider-turn-1" {
+		t.Fatalf("late provider start = %#v error=%v, want settled root unchanged", lateStarted, err)
 	}
 	if _, err := store.ReportActivityState(ctx, ActivityStateReport{
 		Session: SessionStateReport{

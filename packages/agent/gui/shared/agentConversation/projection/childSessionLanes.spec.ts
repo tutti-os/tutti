@@ -169,6 +169,7 @@ function turn(
   return {
     agentSessionId,
     turnId,
+    origin: "user_prompt",
     phase,
     outcome,
     error: errorMessage ? { message: errorMessage } : null,

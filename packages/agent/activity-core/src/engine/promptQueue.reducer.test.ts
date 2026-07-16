@@ -1,7 +1,15 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import type { AgentActivitySession } from "../types.ts";
+import type {
+  AgentActivityInteraction,
+  AgentActivitySession,
+  AgentActivityTurn
+} from "../types.ts";
 import { normalizeAgentActivitySession } from "../sessionNormalization.ts";
+import type {
+  CancelResultValidation,
+  SendInputResultValidation
+} from "./commandResult.validation.ts";
 import {
   createInitialPromptQueueState,
   promptQueueReducer
@@ -11,688 +19,561 @@ import {
   resolveQueuedPromptSendNowStrategy,
   type PromptQueueSendNowStrategy
 } from "./promptQueue.sendNow.ts";
+import { deriveCanonicalSubmitAvailability } from "./sessionLifecycle.availability.ts";
+import {
+  createInitialSessionLifecycleState,
+  sessionLifecycleReducer
+} from "./sessionLifecycle.reducer.ts";
+import type { SessionLifecycleState } from "./sessionLifecycle.types.ts";
 import type { EngineCommand, EngineCommandResultIntent } from "./types.ts";
 
-test("queued prompt waits for a busy turn and sends when canonical lifecycle settles", () => {
-  let state = createInitialPromptQueueState();
-  state = reduce(state, {
-    type: "session/snapshotReceived",
-    sessions: [session("running", 1)]
-  }).state;
-
-  const queued = reduce(state, enqueue("prompt-1"));
-  assert.equal(queued.commands.length, 0);
-  assert.deepEqual(
-    queued.state.recordsBySessionId["session-1"]?.prompts.map(
-      (prompt) => prompt.id
-    ),
-    ["prompt-1"]
+test("queue drains from canonical lifecycle, not raw session input", () => {
+  const running = canonicalLifecycle("running", 1);
+  const queued = reduce(
+    createInitialPromptQueueState(),
+    enqueue("prompt-1"),
+    running
   );
+  assert.deepEqual(queued.commands, []);
 
-  const settled = reduce(queued.state, {
-    type: "session/snapshotReceived",
-    sessions: [session("settled", 2)]
-  });
+  const settled = reduce(
+    queued.state,
+    turnUpserted(settledTurn("turn-1", 2)),
+    canonicalLifecycle("settled", 2)
+  );
   assert.equal(settled.commands[0]?.type, "queue/sendPrompt");
   assert.equal(settled.commands[0]?.commandId, "queue:send:session-1:1");
 });
 
-test("queued capability submit preserves its required settings through delivery", () => {
-  const loaded = reduce(createInitialPromptQueueState(), {
-    type: "session/snapshotReceived",
-    sessions: [session("running", 1)]
-  });
-  const queued = reduce(loaded.state, {
-    ...submit("prompt-capability"),
-    requiredSettingsPatch: { computerUse: true }
-  });
+test("available canonical lifecycle sends an enqueued prompt immediately", () => {
+  const result = reduce(
+    createInitialPromptQueueState(),
+    enqueue("prompt-1"),
+    canonicalLifecycle("settled", 1)
+  );
+  assert.equal(result.commands[0]?.type, "queue/sendPrompt");
+  assert.deepEqual(
+    send(result.commands[0]).submitDiagnostics,
+    submitDiagnostics
+  );
+});
 
-  assert.equal(queued.commands.length, 0);
+test("queued capability settings and diagnostics survive delivery", () => {
+  const queued = reduce(
+    createInitialPromptQueueState(),
+    {
+      ...submit("prompt-capability"),
+      requiredSettingsPatch: { computerUse: true }
+    },
+    canonicalLifecycle("running", 1)
+  );
   assert.deepEqual(
     queued.state.recordsBySessionId["session-1"]?.prompts[0]
       ?.requiredSettingsPatch,
     { computerUse: true }
   );
-
-  const settled = reduce(queued.state, {
-    type: "session/snapshotReceived",
-    sessions: [session("settled", 2)]
+  const sending = reduce(
+    queued.state,
+    turnUpserted(settledTurn("turn-1", 2)),
+    canonicalLifecycle("settled", 2)
+  );
+  assert.deepEqual(send(sending.commands[0]).requiredSettingsPatch, {
+    computerUse: true
   });
-  assert.deepEqual(
-    settled.commands[0]?.type === "queue/sendPrompt"
-      ? settled.commands[0].requiredSettingsPatch
-      : null,
-    { computerUse: true }
-  );
-
-  const failed = reduce(
-    settled.state,
-    commandResult(commandId(settled.commands[0]), "queue/sendPrompt", "failed")
-  );
-  const retried = reduce(failed.state, sendNow("prompt-capability"));
-  assert.deepEqual(
-    retried.commands[0]?.type === "queue/sendPrompt"
-      ? retried.commands[0].requiredSettingsPatch
-      : null,
-    { computerUse: true }
-  );
 });
 
-test("enqueue drains immediately against the engine's available snapshot", () => {
-  const loaded = reduce(createInitialPromptQueueState(), {
-    type: "session/snapshotReceived",
-    sessions: [session("settled", 1)]
-  });
-  const queued = reduce(loaded.state, enqueue("prompt-1"));
-  assert.equal(queued.commands[0]?.type, "queue/sendPrompt");
-  assert.deepEqual(
-    queued.commands[0]?.type === "queue/sendPrompt"
-      ? queued.commands[0].submitDiagnostics
-      : null,
-    submitDiagnostics
-  );
-});
-
-test("immediate submit preserves diagnostics on the send command", () => {
-  const result = reduce(createInitialPromptQueueState(), {
-    ...submit("prompt-immediate"),
-    routing: "immediate"
-  });
-  assert.deepEqual(
-    result.commands[0]?.type === "queue/sendPrompt"
-      ? result.commands[0].submitDiagnostics
-      : null,
-    submitDiagnostics
-  );
-});
-
-test("send-now submit atomically becomes native guidance for a capable active turn", () => {
-  const loaded = reduce(createInitialPromptQueueState(), {
-    type: "session/snapshotReceived",
-    sessions: [session("running", 1)]
-  });
-  const result = reduce(loaded.state, {
-    ...submit("prompt-guidance"),
-    routing: "send_now"
-  });
-  assert.equal(result.commands.length, 1);
-  assert.equal(result.commands[0]?.type, "queue/sendPrompt");
-  assert.equal(
-    result.commands[0]?.type === "queue/sendPrompt"
-      ? result.commands[0].guidance
-      : undefined,
-    true
-  );
-});
-
-test("send-now submit stays queued for cancel-then-send fallback", () => {
-  const loaded = reduce(createInitialPromptQueueState(), {
-    type: "session/snapshotReceived",
-    sessions: [session("running", 1)]
-  });
+test("immediate submit bypasses queue storage and preserves diagnostics", () => {
   const result = reduce(
-    loaded.state,
-    { ...submit("prompt-fallback"), routing: "send_now" },
-    "cancel_then_send"
+    createInitialPromptQueueState(),
+    { ...submit("prompt-immediate"), routing: "immediate" },
+    canonicalLifecycle("settled", 1)
   );
-  assert.equal(result.commands.length, 0);
-  assert.equal(
-    result.state.recordsBySessionId["session-1"]?.sendNextPromptId,
-    "prompt-fallback"
-  );
-  assert.equal(
-    result.state.recordsBySessionId["session-1"]?.prompts[0]?.guidance,
-    undefined
-  );
-});
-
-test("successful send removes only the claimed head and waits for another lifecycle update", () => {
-  let state = reduce(createInitialPromptQueueState(), {
-    type: "session/snapshotReceived",
-    sessions: [session("settled", 1)]
-  }).state;
-  const first = reduce(state, enqueue("prompt-1"));
-  state = first.state;
-  state = reduce(state, enqueue("prompt-2")).state;
-
-  const completed = reduce(
-    state,
-    commandResult(commandId(first.commands[0]), "queue/sendPrompt", "succeeded")
-  );
-  assert.equal(completed.commands.length, 0);
+  assert.equal(result.state.recordsBySessionId["session-1"], undefined);
   assert.deepEqual(
-    completed.state.recordsBySessionId["session-1"]?.prompts.map(
-      (prompt) => prompt.id
+    send(result.commands[0]).submitDiagnostics,
+    submitDiagnostics
+  );
+});
+
+test("send-now native guidance can send against a canonical active turn", () => {
+  const lifecycle = canonicalLifecycle("running", 1);
+  let state = reduce(
+    createInitialPromptQueueState(),
+    enqueue("prompt-guidance"),
+    lifecycle
+  ).state;
+  const guided = reduce(state, sendNow("prompt-guidance"), lifecycle);
+  assert.equal(send(guided.commands[0]).guidance, true);
+});
+
+test("cancel-then-send waits until validated cancellation updates canonical lifecycle", () => {
+  const running = canonicalLifecycle("running", 1);
+  let state = reduce(
+    createInitialPromptQueueState(),
+    enqueue("prompt-1"),
+    running
+  ).state;
+  const promoted = reduce(state, sendNow("prompt-1"), running, {
+    strategy: "cancel_then_send"
+  });
+  assert.deepEqual(promoted.commands, []);
+  assert.equal(
+    promoted.state.recordsBySessionId["session-1"]?.sendNextPromptId,
+    "prompt-1"
+  );
+
+  const turn = settledTurn("turn-1", 2, "canceled");
+  const validation: CancelResultValidation = {
+    kind: "valid",
+    response: {
+      cancel: { canceled: true, reason: "turn_canceled" },
+      turn: { ...turn, completedCommand: null, error: null, fileChanges: null }
+    }
+  };
+  const canceled = reduce(
+    promoted.state,
+    commandResult("cancel-1", "turn/cancel", "succeeded"),
+    canonicalLifecycle("settled", 2),
+    { cancelValidation: validation }
+  );
+  assert.equal(canceled.commands[0]?.type, "queue/sendPrompt");
+  assert.equal(send(canceled.commands[0]).guidance, undefined);
+});
+
+test("successful send establishes an exact-turn barrier before the next prompt", () => {
+  const available = canonicalLifecycle("settled", 1, "turn-0");
+  const first = reduce(
+    createInitialPromptQueueState(),
+    enqueue("prompt-1"),
+    available
+  );
+  let state = reduce(first.state, enqueue("prompt-2"), available).state;
+  const running = canonicalLifecycle("running", 2, "turn-1");
+  const accepted = reduce(
+    state,
+    commandResult(
+      commandId(first.commands[0]),
+      "queue/sendPrompt",
+      "succeeded"
     ),
-    ["prompt-2"]
+    running,
+    { sendValidation: validSend("turn-1", "running", 2) }
   );
-});
-
-test("late send result starts the next prompt after a complete observed turn", () => {
-  let state = reduce(createInitialPromptQueueState(), {
-    type: "session/snapshotReceived",
-    sessions: [session("settled", 1)]
-  }).state;
-  const first = reduce(state, enqueue("prompt-1"));
+  assert.deepEqual(accepted.commands, []);
   assert.equal(
-    "timeoutMs" in first.commands[0]! ? first.commands[0]!.timeoutMs : null,
-    30_000
+    accepted.state.recordsBySessionId["session-1"]?.deliveryBarrierTurnId,
+    "turn-1"
   );
-  state = reduce(first.state, enqueue("prompt-2")).state;
-  state = reduce(state, {
-    type: "session/snapshotReceived",
-    sessions: [session("running", 2)]
-  }).state;
-  state = reduce(state, {
-    type: "session/snapshotReceived",
-    sessions: [session("settled", 3)]
-  }).state;
 
-  const completed = reduce(
-    state,
-    commandResult(commandId(first.commands[0]), "queue/sendPrompt", "succeeded")
+  const settled = reduce(
+    accepted.state,
+    turnUpserted(settledTurn("turn-1", 3)),
+    canonicalLifecycle("settled", 3, "turn-1")
   );
-  assert.equal(completed.commands[0]?.type, "queue/sendPrompt");
-  assert.equal(
-    completed.state.recordsBySessionId["session-1"]?.inFlight?.promptId,
-    "prompt-2"
-  );
+  assert.equal(send(settled.commands[0]).promptId, "prompt-2");
 });
 
-test("metadata-only session updates do not prove a queued turn completed", () => {
-  let state = reduce(createInitialPromptQueueState(), {
-    type: "session/snapshotReceived",
-    sessions: [session("settled", 1)]
-  }).state;
-  const first = reduce(state, enqueue("prompt-1"));
-  state = reduce(first.state, enqueue("prompt-2")).state;
-  const metadataOnly = {
-    ...session("settled", 2),
-    activeTurn: session("settled", 1).activeTurn
-  };
-  state = reduce(state, {
-    type: "session/snapshotReceived",
-    sessions: [metadataOnly]
-  }).state;
-  const completed = reduce(
-    state,
-    commandResult(commandId(first.commands[0]), "queue/sendPrompt", "succeeded")
+test("turnless goal control result completes delivery without a turn barrier", () => {
+  const available = canonicalLifecycle("settled", 1, "turn-0");
+  const first = reduce(
+    createInitialPromptQueueState(),
+    enqueue("prompt-1"),
+    available
   );
-  assert.equal(completed.commands.length, 0);
-  assert.equal(completed.state.recordsBySessionId["session-1"]?.inFlight, null);
-});
-
-test("Claude goal completion does not drain prompts while the canonical root waits", () => {
-  const running = session("running", 1);
-  const waiting = {
-    ...running,
-    activeTurn: { ...running.activeTurn!, phase: "waiting" as const },
-    goal: { objective: "ship it", status: "active" as const },
-    provider: "claude-code"
-  };
-  let state = reduce(createInitialPromptQueueState(), {
-    type: "session/snapshotReceived",
-    sessions: [waiting]
-  }).state;
-  state = reduce(state, enqueue("prompt-1")).state;
-
-  const goalCompleted = reduce(state, {
-    type: "session/snapshotReceived",
-    sessions: [
-      {
-        ...waiting,
-        goal: { objective: "ship it", status: "complete" as const },
-        updatedAtUnixMs: 2
+  const withSecond = reduce(first.state, enqueue("prompt-2"), available).state;
+  const completed = reduce(
+    withSecond,
+    commandResult(
+      commandId(first.commands[0]),
+      "queue/sendPrompt",
+      "succeeded"
+    ),
+    available,
+    {
+      sendValidation: {
+        kind: "valid",
+        result: {
+          kind: "goalControl",
+          session: activitySession("settled", 2, "turn-0")
+        }
       }
-    ]
-  });
-
-  assert.equal(goalCompleted.commands.length, 0);
-  assert.equal(
-    goalCompleted.state.recordsBySessionId["session-1"]?.availability.state,
-    "blocked"
+    }
   );
-  assert.deepEqual(
-    goalCompleted.state.recordsBySessionId["session-1"]?.prompts.map(
-      (prompt) => prompt.id
+  assert.equal(send(completed.commands[0]).promptId, "prompt-2");
+  assert.equal(
+    completed.state.recordsBySessionId["session-1"]?.deliveryBarrierTurnId,
+    null
+  );
+});
+
+test("late send result drains once when its exact canonical turn already settled", () => {
+  const available = canonicalLifecycle("settled", 1, "turn-0");
+  const first = reduce(
+    createInitialPromptQueueState(),
+    enqueue("prompt-1"),
+    available
+  );
+  const withSecond = reduce(first.state, enqueue("prompt-2"), available).state;
+  const completed = reduce(
+    withSecond,
+    commandResult(
+      commandId(first.commands[0]),
+      "queue/sendPrompt",
+      "succeeded"
     ),
-    ["prompt-1"]
+    canonicalLifecycle("settled", 3, "turn-1"),
+    { sendValidation: validSend("turn-1", "running", 2) }
   );
+  assert.equal(send(completed.commands[0]).promptId, "prompt-2");
 });
 
-test("native guidance uses the current running turn despite a stale settled snapshot", () => {
-  let state = reduce(createInitialPromptQueueState(), {
-    type: "session/snapshotReceived",
-    sessions: [session("running", 3)]
-  }).state;
-  state = reduce(state, enqueue("prompt-1")).state;
-  const staleSnapshot = reduce(state, {
-    type: "session/snapshotReceived",
-    sessions: [session("settled", 2)]
+test("pending canonical interaction blocks drain even after the turn settles", () => {
+  const lifecycle = canonicalLifecycle("settled", 2, "turn-1", true);
+  const queued = reduce(
+    createInitialPromptQueueState(),
+    enqueue("prompt-1"),
+    lifecycle
+  );
+  assert.deepEqual(queued.commands, []);
+  assert.deepEqual(deriveCanonicalSubmitAvailability(lifecycle, "session-1"), {
+    state: "blocked",
+    reason: "waiting"
   });
-  assert.equal(staleSnapshot.commands.length, 0);
-  assert.equal(
-    staleSnapshot.state.recordsBySessionId["session-1"]?.availability.state,
-    "blocked"
-  );
-  const guided = reduce(staleSnapshot.state, sendNow("prompt-1"));
-  assert.equal(guided.commands[0]?.type, "queue/sendPrompt");
-  assert.equal(
-    guided.commands[0]?.type === "queue/sendPrompt"
-      ? guided.commands[0].guidance
-      : false,
-    true
-  );
 });
 
-test("user stop suspends automatic drain until an explicit resume", () => {
-  let state = reduce(createInitialPromptQueueState(), {
-    type: "session/snapshotReceived",
-    sessions: [session("running", 1)]
-  }).state;
-  state = reduce(state, enqueue("prompt-1")).state;
-  state = reduce(state, {
-    type: "queue/suspended",
-    agentSessionId: "session-1",
-    reason: "user_stop"
-  }).state;
-  const settled = reduce(state, {
-    type: "session/snapshotReceived",
-    sessions: [session("settled", 2)]
-  });
-  assert.equal(settled.commands.length, 0);
-
-  const resumed = reduce(settled.state, {
-    type: "queue/resumed",
-    agentSessionId: "session-1"
-  });
+test("user stop suspension blocks drain until explicit resume", () => {
+  const running = canonicalLifecycle("running", 1);
+  let state = reduce(
+    createInitialPromptQueueState(),
+    enqueue("prompt-1"),
+    running
+  ).state;
+  state = reduce(
+    state,
+    {
+      type: "queue/suspended",
+      agentSessionId: "session-1",
+      reason: "user_stop"
+    },
+    running
+  ).state;
+  const settled = canonicalLifecycle("settled", 2);
+  state = reduce(state, turnUpserted(settledTurn("turn-1", 2)), settled).state;
+  const resumed = reduce(
+    state,
+    { type: "queue/resumed", agentSessionId: "session-1" },
+    settled
+  );
   assert.equal(resumed.commands[0]?.type, "queue/sendPrompt");
 });
 
-test("ordinary submit resumes a paused queue without losing the existing FIFO head command", () => {
-  let state = reduce(createInitialPromptQueueState(), {
-    type: "session/snapshotReceived",
-    sessions: [session("running", 1)]
-  }).state;
-  state = reduce(state, enqueue("prompt-1")).state;
-  state = reduce(state, enqueue("prompt-2")).state;
-  state = reduce(state, {
-    type: "queue/suspended",
-    agentSessionId: "session-1",
-    reason: "user_stop"
-  }).state;
-  state = reduce(state, {
-    type: "session/snapshotReceived",
-    sessions: [session("settled", 2)]
-  }).state;
-
-  const submitted = reduce(state, submit("prompt-3"));
-
-  assert.equal(submitted.commands.length, 1);
-  assert.equal(submitted.commands[0]?.type, "queue/sendPrompt");
-  assert.equal(
-    submitted.commands[0]?.type === "queue/sendPrompt"
-      ? submitted.commands[0].promptId
-      : null,
-    "prompt-1"
-  );
-  assert.deepEqual(
-    submitted.state.recordsBySessionId["session-1"]?.prompts.map(
-      (prompt) => prompt.id
-    ),
-    ["prompt-1", "prompt-2", "prompt-3"]
-  );
-  assert.equal(
-    submitted.state.recordsBySessionId["session-1"]?.inFlight?.promptId,
-    "prompt-1"
-  );
-  assert.equal(
-    submitted.state.recordsBySessionId["session-1"]?.suspendReason,
-    null
-  );
-});
-
-test("ordinary submit only resumes and enqueues until the interrupted turn settles", () => {
-  let state = reduce(createInitialPromptQueueState(), {
-    type: "session/snapshotReceived",
-    sessions: [session("running", 1)]
-  }).state;
-  state = reduce(state, enqueue("prompt-1")).state;
-  state = reduce(state, {
-    type: "queue/suspended",
-    agentSessionId: "session-1",
-    reason: "user_stop"
-  }).state;
-
-  const submitted = reduce(state, submit("prompt-2"));
-
-  assert.equal(submitted.commands.length, 0);
-  assert.equal(
-    submitted.state.recordsBySessionId["session-1"]?.suspendReason,
-    null
-  );
+test("ordinary submit resumes a paused queue and preserves FIFO", () => {
+  const available = canonicalLifecycle("settled", 2);
+  let state = reduce(
+    createInitialPromptQueueState(),
+    enqueue("prompt-1"),
+    canonicalLifecycle("running", 1)
+  ).state;
+  state = reduce(
+    state,
+    {
+      type: "queue/suspended",
+      agentSessionId: "session-1",
+      reason: "user_stop"
+    },
+    canonicalLifecycle("running", 1)
+  ).state;
+  const submitted = reduce(state, submit("prompt-2"), available);
+  assert.equal(send(submitted.commands[0]).promptId, "prompt-1");
   assert.deepEqual(
     submitted.state.recordsBySessionId["session-1"]?.prompts.map(
       (prompt) => prompt.id
     ),
     ["prompt-1", "prompt-2"]
   );
-
-  const settled = reduce(submitted.state, {
-    type: "session/snapshotReceived",
-    sessions: [session("settled", 2)]
-  });
-  assert.equal(settled.commands.length, 1);
-  assert.equal(
-    settled.commands[0]?.type === "queue/sendPrompt"
-      ? settled.commands[0].promptId
-      : null,
-    "prompt-1"
-  );
 });
 
-test("send now resumes a paused queue and emits only the promoted prompt command", () => {
-  let state = reduce(createInitialPromptQueueState(), {
-    type: "session/snapshotReceived",
-    sessions: [session("running", 1)]
-  }).state;
-  state = reduce(state, enqueue("prompt-1")).state;
-  state = reduce(state, enqueue("prompt-2")).state;
-  state = reduce(state, {
-    type: "queue/suspended",
-    agentSessionId: "session-1",
-    reason: "user_stop"
-  }).state;
-  state = reduce(state, {
-    type: "session/snapshotReceived",
-    sessions: [session("settled", 2)]
-  }).state;
-
-  const promoted = reduce(state, sendNow("prompt-2"));
-
-  assert.equal(promoted.commands.length, 1);
-  assert.equal(
-    promoted.commands[0]?.type === "queue/sendPrompt"
-      ? promoted.commands[0].promptId
-      : null,
-    "prompt-2"
+test("send failure stays blocked until send-now retry clears it", () => {
+  const available = canonicalLifecycle("settled", 1);
+  const sending = reduce(
+    createInitialPromptQueueState(),
+    enqueue("prompt-1"),
+    available
   );
-  assert.deepEqual(
-    promoted.state.recordsBySessionId["session-1"]?.prompts.map(
-      (prompt) => prompt.id
-    ),
-    ["prompt-2", "prompt-1"]
-  );
-  assert.equal(
-    promoted.state.recordsBySessionId["session-1"]?.suspendReason,
-    null
-  );
-});
-
-test("send now uses native guidance without cancel when the provider supports it", () => {
-  let state = reduce(createInitialPromptQueueState(), {
-    type: "session/snapshotReceived",
-    sessions: [session("running", 1)]
-  }).state;
-  state = reduce(state, enqueue("prompt-1")).state;
-  state = reduce(state, enqueue("prompt-2")).state;
-
-  const promoted = reduce(state, sendNow("prompt-2"));
-  assert.equal(promoted.commands[0]?.type, "queue/sendPrompt");
-  assert.equal(
-    promoted.commands[0]?.type === "queue/sendPrompt"
-      ? promoted.commands[0].guidance
-      : false,
-    true
-  );
-  assert.deepEqual(
-    promoted.state.recordsBySessionId["session-1"]?.prompts.map(
-      (prompt) => prompt.id
-    ),
-    ["prompt-2", "prompt-1"]
-  );
-
-  assert.deepEqual(
-    promoted.commands[0]?.type === "queue/sendPrompt"
-      ? promoted.commands[0].submitDiagnostics
-      : null,
-    submitDiagnostics
-  );
-});
-
-test("cancel-then-send fallback waits for cancellation before normal send", () => {
-  let state = reduce(createInitialPromptQueueState(), {
-    type: "session/snapshotReceived",
-    sessions: [session("running", 1)]
-  }).state;
-  state = reduce(state, enqueue("prompt-1")).state;
-  const promoted = reduce(state, sendNow("prompt-1"), "cancel_then_send");
-  assert.equal(promoted.commands.length, 0);
-  const cancelIntent = {
-    ...commandResult("cancel-1", "turn/cancel", "succeeded"),
-    value: {
-      cancel: { canceled: true, reason: "turn_canceled" as const },
-      turn: {
-        ...session("running", 2).activeTurn!,
-        completedCommand: null,
-        error: null,
-        fileChanges: null,
-        phase: "settled" as const,
-        outcome: "canceled" as const,
-        settledAtUnixMs: 2,
-        updatedAtUnixMs: 2
-      }
-    }
-  };
-  const canceled = promptQueueReducer(promoted.state, cancelIntent, {
-    cancelResultValidation: {
-      kind: "valid",
-      response: cancelIntent.value
-    },
-    deletedSessionIds: {},
-    sendNowStrategy: null
-  });
-  assert.equal(canceled.commands.length, 1);
-  assert.equal(canceled.commands[0]?.type, "queue/sendPrompt");
-  assert.equal(
-    canceled.commands[0]?.type === "queue/sendPrompt"
-      ? canceled.commands[0].guidance
-      : undefined,
-    undefined
-  );
-});
-
-test("a full settled snapshot preserves the observed turn needed by a late send result", () => {
-  let state = reduce(createInitialPromptQueueState(), {
-    type: "session/snapshotReceived",
-    sessions: [session("settled", 1)]
-  }).state;
-  const first = reduce(state, enqueue("prompt-1"));
-  state = reduce(first.state, enqueue("prompt-2")).state;
-  state = reduce(state, {
-    type: "session/snapshotReceived",
-    sessions: [session("running", 2)]
-  }).state;
-  state = reduce(state, {
-    type: "session/snapshotReceived",
-    sessions: [session("settled", 3)]
-  }).state;
-  const completed = reduce(
-    state,
-    commandResult(commandId(first.commands[0]), "queue/sendPrompt", "succeeded")
-  );
-  assert.equal(completed.commands[0]?.type, "queue/sendPrompt");
-});
-
-test("same-millisecond stale settled turn cannot replace a different running turn", () => {
-  let state = reduce(createInitialPromptQueueState(), {
-    type: "session/snapshotReceived",
-    sessions: [
-      {
-        ...{
-          activeTurnId: null,
-          latestTurnInteractions: [],
-          pendingInteractions: []
-        },
-        ...session("running", 3),
-        activeTurn: { ...session("running", 3).activeTurn!, turnId: "turn-b" },
-        activeTurnId: "turn-b"
-      }
-    ]
-  }).state;
-  state = reduce(state, enqueue("prompt-1")).state;
-  const stale = reduce(state, {
-    type: "session/snapshotReceived",
-    sessions: [
-      {
-        ...{
-          activeTurnId: null,
-          latestTurnInteractions: [],
-          pendingInteractions: []
-        },
-        ...session("settled", 3),
-        activeTurn: {
-          ...session("running", 3).activeTurn!,
-          phase: "settled",
-          turnId: "turn-a"
-        }
-      }
-    ]
-  });
-  assert.equal(stale.commands.length, 0);
-  assert.equal(
-    stale.state.recordsBySessionId["session-1"]?.availability.activeTurnId,
-    "turn-b"
-  );
-});
-
-test("send failure stays visible until the failed prompt is explicitly promoted", () => {
-  let state = reduce(createInitialPromptQueueState(), {
-    type: "session/snapshotReceived",
-    sessions: [session("settled", 1)]
-  }).state;
-  const sending = reduce(state, enqueue("prompt-1"));
-  const failed = reduce(sending.state, {
-    ...commandResult(
-      commandId(sending.commands[0]),
-      "queue/sendPrompt",
-      "failed"
-    ),
-    errorMessage: "Agent session already has an active turn"
-  });
-  assert.equal(
-    failed.state.recordsBySessionId["session-1"]?.failedPromptId,
-    "prompt-1"
-  );
-
-  const sameVersion = reduce(failed.state, {
-    type: "session/snapshotReceived",
-    sessions: [session("settled", 2)]
-  });
-  assert.equal(sameVersion.commands.length, 0);
-
-  const retried = reduce(sameVersion.state, sendNow("prompt-1"));
-  assert.equal(retried.commands[0]?.type, "queue/sendPrompt");
-});
-
-test("non-conflict send failure marks the head and promotion clears the failure", () => {
-  let state = reduce(createInitialPromptQueueState(), {
-    type: "session/snapshotReceived",
-    sessions: [session("settled", 1)]
-  }).state;
-  const sending = reduce(state, enqueue("prompt-1"));
   const failed = reduce(
     sending.state,
-    commandResult(commandId(sending.commands[0]), "queue/sendPrompt", "failed")
+    commandResult(commandId(sending.commands[0]), "queue/sendPrompt", "failed"),
+    available
   );
   assert.equal(
     failed.state.recordsBySessionId["session-1"]?.failedPromptId,
     "prompt-1"
   );
-  const retried = reduce(failed.state, sendNow("prompt-1"));
+  const retried = reduce(failed.state, sendNow("prompt-1"), available);
   assert.equal(retried.commands[0]?.type, "queue/sendPrompt");
 });
 
-test("send timeout is uncertain until a canonical turn proves acceptance", () => {
-  let state = reduce(createInitialPromptQueueState(), {
-    type: "session/snapshotReceived",
-    sessions: [session("settled", 1)]
-  }).state;
-  const first = reduce(state, submit("prompt-1"));
-  state = reduce(first.state, enqueue("prompt-2")).state;
+test("timeout confirmation waits for its exact canonical turn to settle", () => {
+  const available = canonicalLifecycle("settled", 1, "turn-0");
+  const first = reduce(
+    createInitialPromptQueueState(),
+    submit("prompt-1"),
+    available
+  );
+  let state = reduce(first.state, enqueue("prompt-2"), available).state;
   const timedOut = reduce(
     state,
-    commandResult(commandId(first.commands[0]), "queue/sendPrompt", "timedOut")
+    commandResult(commandId(first.commands[0]), "queue/sendPrompt", "timedOut"),
+    available
   );
   assert.equal(timedOut.commands[0]?.type, "session/reconcile");
   assert.equal(
     timedOut.state.recordsBySessionId["session-1"]?.uncertainDelivery?.promptId,
     "prompt-1"
   );
-  const retryBlocked = reduce(timedOut.state, sendNow("prompt-1"));
-  assert.equal(retryBlocked.commands.length, 0);
-  state = reduce(retryBlocked.state, {
-    type: "session/snapshotReceived",
-    sessions: [session("running", 2)]
-  }).state;
+
+  const confirmedBeforeTurn = reduce(
+    timedOut.state,
+    messagesReceived("prompt-1", "turn-1"),
+    available
+  );
+  assert.deepEqual(confirmedBeforeTurn.commands, []);
   assert.equal(
-    state.recordsBySessionId["session-1"]?.uncertainDelivery?.promptId,
+    confirmedBeforeTurn.state.recordsBySessionId["session-1"]
+      ?.deliveryBarrierTurnId,
+    "turn-1"
+  );
+  assert.equal(
+    confirmedBeforeTurn.state.recordsBySessionId["session-1"]
+      ?.uncertainDelivery,
+    null
+  );
+
+  const running = reduce(
+    confirmedBeforeTurn.state,
+    turnUpserted(runningTurn("turn-1", 2)),
+    canonicalLifecycle("running", 2, "turn-1")
+  );
+  assert.deepEqual(running.commands, []);
+  const settled = reduce(
+    running.state,
+    turnUpserted(settledTurn("turn-1", 3)),
+    canonicalLifecycle("settled", 3, "turn-1")
+  );
+  assert.equal(send(settled.commands[0]).promptId, "prompt-2");
+});
+
+test("confirmation without exact turn id stays uncertain across expiry", () => {
+  const available = canonicalLifecycle("settled", 1);
+  const sending = reduce(
+    createInitialPromptQueueState(),
+    submit("prompt-1"),
+    available
+  );
+  const timedOut = reduce(
+    sending.state,
+    commandResult(
+      commandId(sending.commands[0]),
+      "queue/sendPrompt",
+      "timedOut"
+    ),
+    available
+  );
+  const uncorrelated = reduce(
+    timedOut.state,
+    messagesReceived("prompt-1", null),
+    available
+  );
+  assert.equal(
+    uncorrelated.state.recordsBySessionId["session-1"]?.uncertainDelivery
+      ?.promptId,
     "prompt-1"
   );
-  state = reduce(state, {
-    type: "session/snapshotReceived",
-    sessions: [session("settled", 3)]
-  }).state;
+  const expired = reduce(
+    uncorrelated.state,
+    {
+      type: "engine/intentExpired",
+      expiryId: "submit:prompt-1",
+      dueAtUnixMs: 60_000
+    },
+    available
+  );
   assert.equal(
-    state.recordsBySessionId["session-1"]?.uncertainDelivery?.promptId,
+    expired.state.recordsBySessionId["session-1"]?.uncertainDelivery?.promptId,
     "prompt-1"
   );
-  const confirmed = reduce(state, {
-    type: "message/snapshotReceived",
+});
+
+test("session removal cleans queue-owned delivery state", () => {
+  const lifecycle = canonicalLifecycle("running", 1);
+  const queued = reduce(
+    createInitialPromptQueueState(),
+    enqueue("prompt-1"),
+    lifecycle
+  );
+  const removed = reduce(
+    queued.state,
+    { type: "session/removed", agentSessionId: "session-1" },
+    createInitialSessionLifecycleState(),
+    { deletedSessionIds: { "session-1": true } }
+  );
+  assert.equal(removed.state.recordsBySessionId["session-1"], undefined);
+});
+
+function reduce(
+  state: ReturnType<typeof createInitialPromptQueueState>,
+  intent: Parameters<typeof promptQueueReducer>[1],
+  lifecycle: SessionLifecycleState,
+  options: {
+    cancelValidation?: CancelResultValidation;
+    deletedSessionIds?: Readonly<Record<string, true>>;
+    sendValidation?: SendInputResultValidation;
+    strategy?: PromptQueueSendNowStrategy;
+  } = {}
+) {
+  const availability = deriveCanonicalSubmitAvailability(
+    lifecycle,
+    "session-1"
+  );
+  const strategy =
+    options.strategy ??
+    (intent.type === "submit/requested" && intent.routing === "send_now"
+      ? resolvePromptSendNowStrategy(availability, {
+          activeTurnGuidance: true,
+          interrupt: true
+        })
+      : intent.type === "queue/sendNowRequested"
+        ? resolveQueuedPromptSendNowStrategy(
+            state,
+            intent.agentSessionId,
+            intent.promptId,
+            availability,
+            { activeTurnGuidance: true, interrupt: true }
+          )
+        : null);
+  return promptQueueReducer(state, intent, {
+    cancelResultValidation: options.cancelValidation,
+    deletedSessionIds: options.deletedSessionIds ?? {},
+    lifecycle,
+    sendNowStrategy: strategy,
+    sendResultValidation: options.sendValidation,
+    submitRequestAccepted: true
+  });
+}
+
+function canonicalLifecycle(
+  phase: "running" | "settled",
+  updatedAtUnixMs: number,
+  turnId = "turn-1",
+  pendingInteraction = false
+): SessionLifecycleState {
+  return sessionLifecycleReducer(createInitialSessionLifecycleState(), {
+    type: "session/snapshotReceived",
+    sessions: [
+      activitySession(phase, updatedAtUnixMs, turnId, pendingInteraction)
+    ]
+  }).state;
+}
+
+function activitySession(
+  phase: "running" | "settled",
+  updatedAtUnixMs: number,
+  turnId: string,
+  pendingInteraction = false
+): AgentActivitySession {
+  const turn =
+    phase === "running"
+      ? runningTurn(turnId, updatedAtUnixMs)
+      : settledTurn(turnId, updatedAtUnixMs);
+  const interaction: AgentActivityInteraction = {
+    agentSessionId: "session-1",
+    createdAtUnixMs: updatedAtUnixMs,
+    input: {},
+    kind: "question",
+    metadata: {},
+    requestId: "request-1",
+    status: "pending",
+    turnId,
+    updatedAtUnixMs
+  };
+  return normalizeAgentActivitySession({
+    activeTurn: phase === "running" ? turn : null,
+    activeTurnId: phase === "running" ? turnId : null,
+    agentSessionId: "session-1",
+    cwd: "/workspace",
+    latestTurn: turn,
+    latestTurnInteractions: pendingInteraction ? [interaction] : [],
+    pendingInteractions: pendingInteraction ? [interaction] : [],
+    provider: "codex",
+    title: "Session",
+    updatedAtUnixMs,
+    workspaceId: "workspace-1"
+  });
+}
+
+function validSend(
+  turnId: string,
+  phase: "running" | "settled",
+  updatedAtUnixMs: number
+): SendInputResultValidation {
+  const session = activitySession(phase, updatedAtUnixMs, turnId);
+  return {
+    kind: "valid",
+    result: { session, turn: session.latestTurn!, turnId }
+  };
+}
+
+function runningTurn(
+  turnId: string,
+  updatedAtUnixMs: number
+): AgentActivityTurn {
+  return {
+    agentSessionId: "session-1",
+    origin: "user_prompt",
+    phase: "running",
+    startedAtUnixMs: updatedAtUnixMs,
+    turnId,
+    updatedAtUnixMs
+  };
+}
+
+function settledTurn(
+  turnId: string,
+  updatedAtUnixMs: number,
+  outcome: "completed" | "canceled" = "completed"
+): AgentActivityTurn {
+  return {
+    agentSessionId: "session-1",
+    origin: "user_prompt",
+    outcome,
+    phase: "settled",
+    settledAtUnixMs: updatedAtUnixMs,
+    startedAtUnixMs: Math.max(0, updatedAtUnixMs - 1),
+    turnId,
+    updatedAtUnixMs
+  };
+}
+
+function turnUpserted(turn: AgentActivityTurn) {
+  return { type: "turn/upserted" as const, turn };
+}
+
+function messagesReceived(clientSubmitId: string, turnId: string | null) {
+  return {
+    type: "message/snapshotReceived" as const,
     messages: [
       {
         agentSessionId: "session-1",
         kind: "text",
         messageId: "message-1",
         occurredAtUnixMs: 4,
-        payload: { clientSubmitId: "prompt-1", text: "prompt-1" },
+        payload: { clientSubmitId, text: clientSubmitId },
         role: "user",
-        turnId: "turn-1",
+        turnId,
         version: 1
       }
     ]
-  });
-  assert.equal(confirmed.commands[0]?.type, "queue/sendPrompt");
-  assert.equal(
-    confirmed.state.recordsBySessionId["session-1"]?.inFlight?.promptId,
-    "prompt-2"
-  );
-});
-
-function reduce(
-  state: ReturnType<typeof createInitialPromptQueueState>,
-  intent: Parameters<typeof promptQueueReducer>[1],
-  strategy?: PromptQueueSendNowStrategy
-) {
-  return promptQueueReducer(state, intent, {
-    deletedSessionIds: {},
-    sendNowStrategy:
-      intent.type === "submit/requested" && intent.routing === "send_now"
-        ? (strategy ??
-          resolvePromptSendNowStrategy(state, intent.agentSessionId, {
-            activeTurnGuidance: true,
-            interrupt: true
-          }))
-        : intent.type === "queue/sendNowRequested"
-          ? (strategy ??
-            resolveQueuedPromptSendNowStrategy(
-              state,
-              intent.agentSessionId,
-              intent.promptId,
-              { activeTurnGuidance: true, interrupt: true }
-            ))
-          : null
-  });
+  };
 }
 
 function sendNow(promptId: string) {
@@ -742,38 +623,6 @@ const submitDiagnostics = {
   submittedAtUnixMs: 1
 } as const;
 
-function session(
-  phase: "running" | "settled",
-  updatedAtUnixMs: number
-): AgentActivitySession {
-  return normalizeAgentActivitySession({
-    ...{
-      activeTurnId: null,
-      latestTurnInteractions: [],
-      pendingInteractions: []
-    },
-    agentSessionId: "session-1",
-    cwd: "/workspace",
-    provider: "codex",
-    activeTurnId: phase === "running" ? "turn-1" : null,
-    activeTurn:
-      phase === "running"
-        ? {
-            turnId: "turn-1",
-            agentSessionId: "session-1",
-            phase,
-            startedAtUnixMs: 1,
-            updatedAtUnixMs
-          }
-        : null,
-    latestTurnInteractions: [],
-    pendingInteractions: [],
-    title: "Session",
-    updatedAtUnixMs,
-    workspaceId: "workspace-1"
-  });
-}
-
 function commandResult(
   commandId: string,
   commandType: EngineCommandResultIntent["commandType"],
@@ -785,4 +634,11 @@ function commandResult(
 function commandId(command: EngineCommand | undefined): string {
   assert.ok(command && "commandId" in command && command.commandId);
   return command.commandId;
+}
+
+function send(
+  command: EngineCommand | undefined
+): Extract<EngineCommand, { type: "queue/sendPrompt" }> {
+  assert.equal(command?.type, "queue/sendPrompt");
+  return command as Extract<EngineCommand, { type: "queue/sendPrompt" }>;
 }

@@ -105,6 +105,8 @@ type scriptedAppServerConnection struct {
 	goalCompletionAfterTurns        int
 	goalTurnFailAtTurn              int // goal-driven turn number (1-based) that settles as "failed" instead of "completed"
 	goalCleared                     bool
+	goalOmitUpdatedAt               bool
+	goalEmptyResponse               bool
 	replayTokenUsageOnResume        bool // mirror real codex: emit token usage during thread/resume
 	threadResumeError               bool // fail thread/resume with an RPC error
 	closeOnce                       sync.Once
@@ -613,16 +615,23 @@ func (c *scriptedAppServerConnection) Send(data []byte) error {
 				"createdAt":       int64(1750000000),
 				"updatedAt":       int64(1750000001),
 			}
+			if c.goalOmitUpdatedAt {
+				delete(goal, "updatedAt")
+			}
 			if tokenBudget, ok := int64Value(message.Params["tokenBudget"]); ok {
 				goal["tokenBudget"] = tokenBudget
 			}
 			c.goal = clonePayload(goal)
 			notificationsBeforeResponse := c.goalNotificationsBeforeResponse
+			responseGoal := goal
+			if c.goalEmptyResponse {
+				responseGoal = map[string]any{}
+			}
 			c.mu.Unlock()
 			sendResponse := func() {
 				c.sendJSON(map[string]any{
 					"id":     message.ID,
-					"result": map[string]any{"goal": goal},
+					"result": map[string]any{"goal": responseGoal},
 				})
 			}
 			sendTurnNotifications := func() {
@@ -638,6 +647,14 @@ func (c *scriptedAppServerConnection) Send(data []byte) error {
 				if goalStatus == "complete" && goalTurnNumber > 1 {
 					messageText = "Goal complete."
 				}
+				// Real Codex exposes the only turn-scoped Goal provenance on
+				// thread/goal/updated. Tests must not let turn/started inherit
+				// the adapter's mutable current Goal identity.
+				c.notify(appServerNotifyThreadGoalUpdated, map[string]any{
+					"threadId": "codex-thread-1",
+					"turnId":   turnID,
+					"goal":     goal,
+				})
 				c.notify(appServerNotifyTurnStarted, map[string]any{
 					"threadId": "codex-thread-1",
 					"turn":     map[string]any{"id": turnID, "status": "inProgress", "items": []any{}},
@@ -3493,6 +3510,7 @@ func TestCodexAppServerAdapterSlashGoalSetsObjective(t *testing.T) {
 
 func TestCodexAppServerAdapterSlashGoalContinuesUntilTerminalGoal(t *testing.T) {
 	adapter, transport, session := startedAppServerAdapter(t)
+	adapter.replaceGoalOperationIdentity(session.AgentSessionID, "goal-op-continuation", 1, 0)
 	adapter.goalContinuationGraceWindow = 50 * time.Millisecond
 	transport.conn.goalStartsTurn = true
 	transport.conn.goalNotificationsBeforeResponse = true
@@ -3576,6 +3594,7 @@ func TestCodexAppServerAdapterSlashGoalContinuesUntilTerminalGoal(t *testing.T) 
 // further signal ("goal 执行一半不动了").
 func TestCodexAppServerAdapterGoalContinuesAfterMidGoalTurnFailure(t *testing.T) {
 	adapter, transport, session := startedAppServerAdapter(t)
+	adapter.replaceGoalOperationIdentity(session.AgentSessionID, "goal-op-failure-continuation", 1, 0)
 	adapter.goalContinuationGraceWindow = 50 * time.Millisecond
 	transport.conn.goalStartsTurn = true
 	transport.conn.goalNotificationsBeforeResponse = true
@@ -3654,6 +3673,24 @@ func TestCodexAppServerAdapterGoalContinuesAfterMidGoalTurnFailure(t *testing.T)
 	goalSets := appServerRequestParamsList(t, transport.conn, appServerMethodThreadGoalSet)
 	if len(goalSets) != 3 {
 		t.Fatalf("goal/set requests = %d, want 3", len(goalSets))
+	}
+}
+
+func TestCodexGoalContinuationNudgeDropsSupersededRevision(t *testing.T) {
+	t.Parallel()
+
+	adapter, transport, session := startedAppServerAdapter(t)
+	adapter.goalContinuationGraceWindow = 30 * time.Millisecond
+	adapter.applyGoalUpdate(session.AgentSessionID, map[string]any{"objective": "first", "status": "active"})
+	adapter.replaceGoalOperationIdentity(session.AgentSessionID, "goal-op-1", 1, 0)
+	adapter.scheduleGoalContinuationNudge(session)
+
+	// A newer desired revision wins before the old timer fires. The goal may
+	// still be active, so only the revision guard prevents a stale RPC.
+	adapter.replaceGoalOperationIdentity(session.AgentSessionID, "goal-op-2", 2, 0)
+	time.Sleep(100 * time.Millisecond)
+	if requests := appServerRequestParamsList(t, transport.conn, appServerMethodThreadGoalSet); len(requests) != 0 {
+		t.Fatalf("superseded nudge emitted goal/set requests = %#v", requests)
 	}
 }
 
@@ -3818,9 +3855,12 @@ func TestCodexAppServerAdapterMidTurnGoalClearDoesNotSteer(t *testing.T) {
 		t.Fatalf("in-memory goal not cleared: %#v", goal)
 	}
 	steered := false
-	for _, event := range eventsOfType(events, activityshared.EventMessageAppended) {
+	for _, event := range eventsOfType(events, activityshared.EventSessionAudit) {
 		if event.Payload.Metadata["goalControl"] == true {
 			steered = true
+			if event.Payload.TurnID != "" {
+				t.Fatalf("goal audit turn id = %q, want empty", event.Payload.TurnID)
+			}
 		}
 	}
 	if !steered {
@@ -3835,11 +3875,9 @@ func TestCodexAppServerAdapterMidTurnGoalClearDoesNotSteer(t *testing.T) {
 	}
 }
 
-// Goal control from the GUI must keep working while another turn holds the
-// controller's turn slot: the single-turn gate falls back to the adapter's
-// thread-level goal control instead of rejecting with "already has an
-// active turn".
-func TestControllerExecGoalControlWhileTurnActive(t *testing.T) {
+// The controller no longer classifies typed goal commands. Service owns that
+// boundary, so every Controller.Exec call has the normal Turn contract.
+func TestControllerExecDoesNotBypassActiveTurnForTypedGoal(t *testing.T) {
 	t.Parallel()
 
 	transport := newScriptedAppServerTransport()
@@ -3871,36 +3909,23 @@ func TestControllerExecGoalControlWhileTurnActive(t *testing.T) {
 	waitForCondition(t, func() bool {
 		return adapter.sessionActiveTurnID(agentSessionID) == "turn-1"
 	})
-	beforeGoal, ok := controller.get("room-1", agentSessionID)
-	if !ok {
-		t.Fatal("session missing before goal control")
+	// A typed goal sent below the Service boundary is an ordinary Turn input
+	// and therefore cannot bypass the single-active-turn gate.
+	if _, err := controller.Exec(context.Background(), ExecInput{
+		RoomID:         "room-1",
+		AgentSessionID: agentSessionID,
+		Content:        textPrompt("/goal clear"),
+	}); !errors.Is(err, ErrSessionActiveTurn) {
+		t.Fatalf("mid-turn typed goal error = %v, want ErrSessionActiveTurn", err)
 	}
-
-	// Goal control succeeds while the turn slot is occupied…
-	result, err := controller.Exec(context.Background(), ExecInput{
-		RoomID:           "room-1",
-		AgentSessionID:   agentSessionID,
-		Content:          textPrompt("/goal clear"),
-		InitialTitle:     "Clear current goal",
-		InitialTitleBase: beforeGoal.Title,
-	})
-	if err != nil {
-		t.Fatalf("Exec /goal clear: %v", err)
-	}
-	if !result.Accepted {
-		t.Fatalf("goal control result = %#v, want accepted", result)
-	}
-	if goal := adapter.sessionGoal(agentSessionID); len(goal) != 0 {
-		t.Fatalf("goal not cleared: %#v", goal)
+	if goal := adapter.sessionGoal(agentSessionID); asString(goal["objective"]) != "ship it" {
+		t.Fatalf("controller unexpectedly changed goal: %#v", goal)
 	}
 	if adapter.sessionActiveTurnID(agentSessionID) != "turn-1" {
-		t.Fatalf("running turn must survive goal control")
-	}
-	if session, ok := controller.get("room-1", agentSessionID); !ok || session.Title != "Clear current goal" {
-		t.Fatalf("goal control initial title session = %#v", session)
+		t.Fatalf("active turn changed after rejected input")
 	}
 
-	// …while ordinary prompts still hit the single-turn gate.
+	// Ordinary prompts use the same Turn gate.
 	if _, err := controller.Exec(context.Background(), ExecInput{
 		RoomID:         "room-1",
 		AgentSessionID: agentSessionID,
@@ -3990,12 +4015,22 @@ func TestControllerAdoptedTurnStatusSurvivesMetadataEvents(t *testing.T) {
 		t.Fatalf("Start: %v", err)
 	}
 	agentSessionID := started.Session.AgentSessionID
-	adapter.applyGoalUpdate(agentSessionID, map[string]any{
-		"objective": "ship it",
-		"status":    "active",
-	})
+	adapter.SetGoalProvenanceDurableSink(&memoryGoalProvenanceLedger{bindings: make(map[string]GoalProvenanceBinding)})
+	identity := goalOperationIdentity{operationID: "goal-op-metadata", revision: 1}
+	adapter.replaceGoalOperationIdentity(agentSessionID, identity.operationID, identity.revision, identity.repairEpoch)
+	goal := map[string]any{
+		"threadId": "codex-thread-1", "objective": "ship it", "status": "active",
+		"createdAt": int64(100), "updatedAt": int64(101),
+	}
+	adapter.applyGoalUpdate(agentSessionID, goal)
+	if err := adapter.bindGoalGeneration(context.Background(), started.Session, goal, identity); err != nil {
+		t.Fatalf("bindGoalGeneration: %v", err)
+	}
 
 	// Codex self-starts a goal continuation turn; the reducer adopts it.
+	transport.conn.notify(appServerNotifyThreadGoalUpdated, map[string]any{
+		"threadId": "codex-thread-1", "turnId": "turn-goal-1", "goal": goal,
+	})
 	transport.conn.notify(appServerNotifyTurnStarted, map[string]any{
 		"threadId": "codex-thread-1",
 		"turn":     map[string]any{"id": "turn-goal-1", "status": "inProgress", "items": []any{}},
@@ -4057,7 +4092,8 @@ func TestControllerGoalControl(t *testing.T) {
 	transport := newScriptedAppServerTransport()
 	transport.conn.holdTurn = true
 	adapter := NewCodexAppServerAdapter(transport)
-	controller := NewController([]Adapter{adapter}, nil)
+	reporter := &recordingReporter{}
+	controller := NewController([]Adapter{adapter}, reporter)
 	started, err := controller.Start(context.Background(), StartInput{
 		RoomID:   "room-1",
 		Provider: ProviderCodex,
@@ -4085,7 +4121,6 @@ func TestControllerGoalControl(t *testing.T) {
 	if asString(result.Goal["status"]) != "paused" {
 		t.Fatalf("pause result goal = %#v, want paused", result.Goal)
 	}
-
 	// Resume and edit the objective while a turn is running.
 	if _, err := controller.Exec(context.Background(), ExecInput{
 		RoomID:         "room-1",
@@ -4140,6 +4175,994 @@ func TestControllerGoalControl(t *testing.T) {
 	}
 
 	transport.conn.completePendingTurn()
+}
+
+func TestCodexAdoptedGoalTurnCarriesDurableGoalIdentity(t *testing.T) {
+	t.Parallel()
+
+	adapter, _, session := startedAppServerAdapter(t)
+	identity := goalOperationIdentity{operationID: "goal-op-9", revision: 9, repairEpoch: 4}
+	adapter.replaceGoalOperationIdentity(session.AgentSessionID, identity.operationID, identity.revision, identity.repairEpoch)
+	adapter.mu.Lock()
+	adapter.sessions[session.AgentSessionID].pendingGoalTurns = map[string]*codexPendingGoalTurn{
+		"provider-goal-turn-9": {providerTurnID: "provider-goal-turn-9", session: session, state: codexGoalTurnPending},
+	}
+	adapter.mu.Unlock()
+	events := make(chan activityshared.Event, 4)
+	adapter.SetSessionEventSink(func(_ string, batch []activityshared.Event) {
+		for _, event := range batch {
+			events <- event
+		}
+	})
+	if !adapter.adoptServerInitiatedTurn(session, "provider-goal-turn-9", identity) {
+		t.Fatal("goal turn was not adopted")
+	}
+
+	select {
+	case event := <-events:
+		metadata := event.Payload.Metadata
+		if event.Type != activityshared.EventTurnStarted || metadata["turnOrigin"] != "goal_continuation" || metadata["sourceGoalOperationId"] != "goal-op-9" || metadata["sourceGoalRevision"] != int64(9) || metadata["sourceGoalRepairEpoch"] != int64(4) {
+			t.Fatalf("adopted goal turn event = %#v", event)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("timed out waiting for adopted goal turn")
+	}
+}
+
+func TestCodexGoalProvenanceNotificationOverflowFailsClosedWithLateBinding(t *testing.T) {
+	adapter, transport, session := startedAppServerAdapter(t)
+	reconciled := make(chan struct{}, 1)
+	adapter.SetSessionEventSink(func(_ string, events []activityshared.Event) {
+		for _, event := range events {
+			if event.Type == activityshared.EventGoalReconcileRequired {
+				select {
+				case reconciled <- struct{}{}:
+				default:
+				}
+			}
+		}
+	})
+	identity := goalOperationIdentity{operationID: "goal-overflow", revision: 1}
+	adapter.replaceGoalOperationIdentity(session.AgentSessionID, identity.operationID, identity.revision, 0)
+	adapter.mu.Lock()
+	adapter.sessions[session.AgentSessionID].pendingGoalTurns = map[string]*codexPendingGoalTurn{
+		"turn-overflow": {providerTurnID: "turn-overflow", session: session, state: codexGoalTurnPending},
+	}
+	adapter.mu.Unlock()
+	message := acpMessage{Method: appServerNotifyWarning, Params: json.RawMessage(`{"turnId":"turn-overflow","message":"buffered"}`)}
+	for i := 0; i < maxPendingGoalTurnNotifications; i++ {
+		if !adapter.bufferPendingGoalTurnNotification(session.AgentSessionID, "turn-overflow", message) {
+			t.Fatal("notification was not buffered")
+		}
+	}
+	terminal := acpMessage{Method: appServerNotifyTurnCompleted, Params: json.RawMessage(`{"turnId":"turn-overflow","turn":{"id":"turn-overflow","status":"completed"}}`)}
+	if !adapter.bufferPendingGoalTurnNotification(session.AgentSessionID, "turn-overflow", terminal) {
+		t.Fatal("overflow terminal was not consumed")
+	}
+	goal := map[string]any{"threadId": session.ProviderSessionID, "objective": "old", "createdAt": int64(1), "updatedAt": int64(2)}
+	if err := adapter.bindGoalGeneration(context.Background(), session, goal, identity); err == nil {
+		t.Fatal("late binding unexpectedly revived degraded provenance")
+	}
+	adapter.observeGoalTurnGeneration(session, "turn-overflow", goal)
+	adapter.mu.Lock()
+	degraded := adapter.sessions[session.AgentSessionID].provenanceDegraded
+	active := adapter.sessions[session.AgentSessionID].activeTurn
+	adapter.mu.Unlock()
+	if !degraded || active != nil {
+		t.Fatalf("degraded=%v active=%#v", degraded, active)
+	}
+	deadline := time.Now().Add(2 * time.Second)
+	interrupted, durableReconcile := false, false
+	for time.Now().Before(deadline) {
+		transport.conn.mu.Lock()
+		attempts := append([]string(nil), transport.conn.interruptAttempts...)
+		transport.conn.mu.Unlock()
+		if len(attempts) > 0 {
+			if attempts[0] != "turn-overflow" {
+				t.Fatalf("interrupts=%v", attempts)
+			}
+			interrupted = true
+		}
+		select {
+		case <-reconciled:
+			durableReconcile = true
+		default:
+		}
+		if interrupted && durableReconcile {
+			return
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	t.Fatalf("overflow closure interrupted=%v durableReconcile=%v", interrupted, durableReconcile)
+}
+
+func TestCodexGoalProvenanceDoubleResolvePreservesAdoptingBuffer(t *testing.T) {
+	adapter, _, session := startedAppServerAdapter(t)
+	identity := goalOperationIdentity{operationID: "goal-double", revision: 2}
+	adapter.replaceGoalOperationIdentity(session.AgentSessionID, identity.operationID, identity.revision, 0)
+	fingerprint := "fingerprint-double"
+	adapter.mu.Lock()
+	app := adapter.sessions[session.AgentSessionID]
+	app.pendingGoalTurns = map[string]*codexPendingGoalTurn{"turn-double": {providerTurnID: "turn-double", session: session, state: codexGoalTurnPending}}
+	app.goalGenerationBindings = map[string]codexGoalGenerationBinding{fingerprint: {identity: identity}}
+	app.goalTurnEvidence = map[string]*codexGoalTurnEvidence{"turn-double": {fingerprints: map[string]struct{}{fingerprint: {}}, identity: identity, bound: true}}
+	adapter.mu.Unlock()
+	ready := make(chan struct{}, 2)
+	release := make(chan struct{})
+	adapter.goalBeforeAdoptHook = func() { ready <- struct{}{}; <-release }
+	var once sync.Once
+	adapter.goalHandoffCommittedHook = func() {
+		once.Do(func() {
+			adapter.mu.Lock()
+			quiesced := adapter.degradeGoalProvenanceLocked(adapter.sessions[session.AgentSessionID])
+			adapter.mu.Unlock()
+			if len(quiesced) != 0 {
+				t.Errorf("adopting turn was degraded as pending: %#v", quiesced)
+			}
+			adapter.expirePendingGoalTurn(session.AgentSessionID, "turn-double")
+			adapter.bufferPendingGoalTurnNotification(session.AgentSessionID, "turn-double", acpMessage{Method: appServerNotifyTurnCompleted, Params: json.RawMessage(`{"turnId":"turn-double","turn":{"id":"turn-double","status":"completed"}}`)})
+		})
+	}
+	var wg sync.WaitGroup
+	wg.Add(2)
+	for i := 0; i < 2; i++ {
+		go func() { defer wg.Done(); adapter.tryResolvePendingGoalTurn(session.AgentSessionID, "turn-double") }()
+	}
+	<-ready
+	<-ready
+	close(release)
+	wg.Wait()
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		adapter.mu.Lock()
+		active := adapter.sessions[session.AgentSessionID].activeTurn
+		_, pending := adapter.sessions[session.AgentSessionID].pendingGoalTurns["turn-double"]
+		adapter.mu.Unlock()
+		if active == nil && !pending {
+			return
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	t.Fatal("double resolve lost terminal or left adopting buffer")
+}
+
+func TestCodexGoalHandoffReplaysBufferedContentInOrderExactlyOnce(t *testing.T) {
+	adapter, _, session := startedAppServerAdapter(t)
+	identity := goalOperationIdentity{operationID: "goal-content", revision: 3}
+	adapter.replaceGoalOperationIdentity(session.AgentSessionID, identity.operationID, identity.revision, 0)
+	fingerprint := "fingerprint-content"
+	notifications := []acpMessage{
+		{Method: appServerNotifyReasoningDelta, Params: mustJSONRawMessage(t, map[string]any{"threadId": session.ProviderSessionID, "turnId": "turn-content", "delta": "think first"})},
+		{Method: appServerNotifyAgentMessageDelta, Params: mustJSONRawMessage(t, map[string]any{"threadId": session.ProviderSessionID, "turnId": "turn-content", "delta": "hello second"})},
+		{Method: appServerNotifyItemStarted, Params: mustJSONRawMessage(t, map[string]any{"threadId": session.ProviderSessionID, "turnId": "turn-content", "item": map[string]any{"type": "commandExecution", "id": "cmd-content", "command": "pwd", "status": "inProgress"}})},
+		{Method: appServerNotifyItemCompleted, Params: mustJSONRawMessage(t, map[string]any{"threadId": session.ProviderSessionID, "turnId": "turn-content", "item": map[string]any{"type": "commandExecution", "id": "cmd-content", "command": "pwd", "status": "completed", "aggregatedOutput": "/workspace", "exitCode": 0}})},
+		{Method: appServerNotifyTurnCompleted, Params: mustJSONRawMessage(t, map[string]any{"threadId": session.ProviderSessionID, "turnId": "turn-content", "turn": map[string]any{"id": "turn-content", "status": "completed"}})},
+	}
+	adapter.mu.Lock()
+	app := adapter.sessions[session.AgentSessionID]
+	app.pendingGoalTurns = map[string]*codexPendingGoalTurn{"turn-content": {providerTurnID: "turn-content", session: session, state: codexGoalTurnPending, notifications: notifications}}
+	app.goalGenerationBindings = map[string]codexGoalGenerationBinding{fingerprint: {identity: identity}}
+	app.goalTurnEvidence = map[string]*codexGoalTurnEvidence{"turn-content": {fingerprints: map[string]struct{}{fingerprint: {}}, identity: identity, bound: true}}
+	adapter.mu.Unlock()
+	var mu sync.Mutex
+	var events []activityshared.Event
+	adapter.SetSessionEventSink(func(_ string, batch []activityshared.Event) {
+		mu.Lock()
+		events = append(events, batch...)
+		mu.Unlock()
+	})
+	if !adapter.tryResolvePendingGoalTurn(session.AgentSessionID, "turn-content") {
+		t.Fatal("handoff was not resolved")
+	}
+	waitForCondition(t, func() bool {
+		adapter.mu.Lock()
+		active := adapter.sessions[session.AgentSessionID].activeTurn
+		adapter.mu.Unlock()
+		return active == nil
+	})
+	mu.Lock()
+	got := append([]activityshared.Event(nil), events...)
+	mu.Unlock()
+	started, thinking, assistant, callStarted, callCompleted, providerTerminal := -1, -1, -1, -1, -1, -1
+	for i, event := range got {
+		if event.Payload.TurnID == "" {
+			t.Fatalf("replayed event missing local turn id: %#v", event)
+		}
+		switch {
+		case event.Type == activityshared.EventTurnStarted:
+			started = i
+		case strings.Contains(event.Payload.Content, "think first") && event.Payload.Metadata["streamState"] == messageStreamStateStreaming:
+			if thinking >= 0 {
+				t.Fatal("thinking replayed twice")
+			}
+			thinking = i
+		case strings.Contains(event.Payload.Content, "hello second") && event.Payload.Metadata["streamState"] == messageStreamStateStreaming:
+			if assistant >= 0 {
+				t.Fatal("assistant replayed twice")
+			}
+			assistant = i
+		case event.Type == activityshared.EventCallStarted:
+			callStarted = i
+		case event.Type == activityshared.EventCallCompleted:
+			callCompleted = i
+		case event.Type == activityshared.EventRootProviderTurnCompleted:
+			providerTerminal = i
+			if event.Payload.ProviderTurnID != "turn-content" {
+				t.Fatalf("provider terminal id = %q, want turn-content", event.Payload.ProviderTurnID)
+			}
+		case event.Type == activityshared.EventTurnCompleted || event.Type == activityshared.EventTurnFailed || string(event.Type) == EventTurnCanceled:
+			t.Fatalf("adapter emitted canonical terminal for provider completion: %#v", event)
+		}
+	}
+	if started < 0 || started >= thinking || thinking >= assistant || assistant >= callStarted || callStarted >= callCompleted || callCompleted >= providerTerminal {
+		t.Fatalf("replay order start=%d thinking=%d assistant=%d callStart=%d callComplete=%d providerTerminal=%d events=%#v", started, thinking, assistant, callStarted, callCompleted, providerTerminal, got)
+	}
+}
+
+func TestCodexGoalAdoptingOverflowSettlesAndQuiesces(t *testing.T) {
+	for _, tc := range []struct {
+		name        string
+		failQuiesce bool
+		wantOutcome activityshared.TurnOutcome
+	}{{"success", false, activityshared.TurnOutcomeCanceled}, {"failure", true, activityshared.TurnOutcomeFailed}} {
+		t.Run(tc.name, func(t *testing.T) {
+			adapter, transport, session := startedAppServerAdapter(t)
+			identity := goalOperationIdentity{operationID: "goal-overflow-adopting", revision: 5}
+			adapter.replaceGoalOperationIdentity(session.AgentSessionID, identity.operationID, 5, 0)
+			if tc.failQuiesce {
+				transport.conn.mu.Lock()
+				transport.conn.interruptTurnIDMismatch = "newer-turn"
+				transport.conn.mu.Unlock()
+			}
+			fingerprint := "fingerprint-adopting"
+			adapter.mu.Lock()
+			app := adapter.sessions[session.AgentSessionID]
+			app.pendingGoalTurns = map[string]*codexPendingGoalTurn{"turn-adopting": {providerTurnID: "turn-adopting", session: session, state: codexGoalTurnPending}}
+			app.goalGenerationBindings = map[string]codexGoalGenerationBinding{fingerprint: {identity: identity}}
+			app.goalTurnEvidence = map[string]*codexGoalTurnEvidence{"turn-adopting": {fingerprints: map[string]struct{}{fingerprint: {}}, identity: identity, bound: true}}
+			adapter.mu.Unlock()
+			drainEntered := make(chan struct{})
+			release := make(chan struct{})
+			var drainOnce sync.Once
+			adapter.goalHandoffDrainHook = func() { drainOnce.Do(func() { close(drainEntered); <-release }) }
+			var mu sync.Mutex
+			var events []activityshared.Event
+			adapter.SetSessionEventSink(func(_ string, batch []activityshared.Event) {
+				mu.Lock()
+				events = append(events, batch...)
+				mu.Unlock()
+			})
+			initial := acpMessage{Method: appServerNotifyAgentMessageDelta, Params: json.RawMessage(`{"turnId":"turn-adopting","delta":"before overflow"}`)}
+			if !adapter.bufferPendingGoalTurnNotification(session.AgentSessionID, "turn-adopting", initial) {
+				t.Fatal("initial adopting notification escaped buffer")
+			}
+			done := make(chan struct{})
+			go func() { adapter.tryResolvePendingGoalTurn(session.AgentSessionID, "turn-adopting"); close(done) }()
+			<-drainEntered
+			message := acpMessage{Method: appServerNotifyWarning, Params: json.RawMessage(`{"turnId":"turn-adopting","message":"noise"}`)}
+			for i := 0; i <= maxPendingGoalTurnNotifications; i++ {
+				if !adapter.bufferPendingGoalTurnNotification(session.AgentSessionID, "turn-adopting", message) {
+					t.Fatal("adopting notification escaped buffer")
+				}
+			}
+			close(release)
+			<-done
+			waitForCondition(t, func() bool {
+				adapter.mu.Lock()
+				active := adapter.sessions[session.AgentSessionID].activeTurn
+				adapter.mu.Unlock()
+				return active == nil
+			})
+			late := acpMessage{Method: appServerNotifyTurnCompleted, Params: json.RawMessage(`{"turnId":"turn-adopting","turn":{"id":"turn-adopting","status":"completed"}}`)}
+			if !adapter.bufferPendingGoalTurnNotification(session.AgentSessionID, "turn-adopting", late) {
+				t.Fatal("late terminal escaped aborted handoff")
+			}
+			time.Sleep(20 * time.Millisecond)
+			mu.Lock()
+			snapshot := append([]activityshared.Event(nil), events...)
+			mu.Unlock()
+			providerTerminalCount, reconcileCount, assistantIndex, terminalIndex := 0, 0, -1, -1
+			var reconcileID string
+			phases := map[string]bool{}
+			for index, event := range snapshot {
+				if (event.Type == activityshared.EventMessageAppended || event.Type == activityshared.EventMessageCreated) && strings.Contains(event.Payload.Content, "before overflow") {
+					assistantIndex = index
+				}
+				if event.Type == activityshared.EventRootProviderTurnCompleted {
+					providerTerminalCount++
+					terminalIndex = index
+					if event.Payload.ProviderTurnID != "turn-adopting" {
+						t.Fatalf("provider terminal id = %q, want turn-adopting", event.Payload.ProviderTurnID)
+					}
+					if event.Payload.TurnOutcome != string(tc.wantOutcome) {
+						t.Fatalf("provider terminal outcome = %q, want %q", event.Payload.TurnOutcome, tc.wantOutcome)
+					}
+				}
+				if event.Type == activityshared.EventGoalReconcileRequired {
+					reconcileCount++
+					if reconcileID == "" {
+						reconcileID = event.EventID
+					} else if reconcileID != event.EventID {
+						t.Fatalf("two-phase reconcile changed request id: %#v", snapshot)
+					}
+					phases[asString(event.Payload.Metadata["phase"])] = true
+				}
+				if event.Type == activityshared.EventTurnCompleted || event.Type == activityshared.EventTurnFailed || string(event.Type) == EventTurnCanceled {
+					t.Fatalf("adapter emitted canonical terminal for provider completion: %#v", snapshot)
+				}
+			}
+			if providerTerminalCount != 1 || reconcileCount != 2 || !phases["quiesce_pending"] || !phases["finalized"] {
+				t.Fatalf("providerTerminal=%d reconcile=%d phases=%v events=%#v", providerTerminalCount, reconcileCount, phases, snapshot)
+			}
+			if assistantIndex < 0 || terminalIndex <= assistantIndex {
+				t.Fatalf("drained content/terminal order assistant=%d terminal=%d events=%#v", assistantIndex, terminalIndex, snapshot)
+			}
+			transport.conn.mu.Lock()
+			attempts := append([]string(nil), transport.conn.interruptAttempts...)
+			transport.conn.mu.Unlock()
+			wantAttempts := 1
+			if tc.failQuiesce {
+				wantAttempts = 3
+			}
+			if len(attempts) != wantAttempts {
+				t.Fatalf("interrupt attempts=%v want=%d", attempts, wantAttempts)
+			}
+			for _, id := range attempts {
+				if id != "turn-adopting" {
+					t.Fatalf("non-exact interrupt=%v", attempts)
+				}
+			}
+		})
+	}
+}
+
+func TestCodexGoalAdoptingPrepareFailureTerminatesLocalTurnAndProvider(t *testing.T) {
+	adapter, transport, session := startedAppServerAdapter(t)
+	adapter.SetGoalReconcileDurableSink(func(context.Context, Session, GoalReconcileDurableRequest) error {
+		return errors.New("durable reporter unavailable")
+	})
+	identity := goalOperationIdentity{operationID: "goal-prepare-fail", revision: 5}
+	adapter.replaceGoalOperationIdentity(session.AgentSessionID, identity.operationID, identity.revision, 0)
+	fingerprint := "fingerprint-prepare-fail"
+	adapter.mu.Lock()
+	app := adapter.sessions[session.AgentSessionID]
+	app.pendingGoalTurns = map[string]*codexPendingGoalTurn{"turn-adopting": {providerTurnID: "turn-adopting", session: session, state: codexGoalTurnPending}}
+	app.goalGenerationBindings = map[string]codexGoalGenerationBinding{fingerprint: {identity: identity}}
+	app.goalTurnEvidence = map[string]*codexGoalTurnEvidence{"turn-adopting": {fingerprints: map[string]struct{}{fingerprint: {}}, identity: identity, bound: true}}
+	adapter.mu.Unlock()
+	committed, release := make(chan struct{}), make(chan struct{})
+	adapter.goalHandoffCommittedHook = func() { close(committed); <-release }
+	var mu sync.Mutex
+	var events []activityshared.Event
+	adapter.SetSessionEventSink(func(_ string, batch []activityshared.Event) {
+		mu.Lock()
+		events = append(events, batch...)
+		mu.Unlock()
+	})
+	done := make(chan struct{})
+	go func() { adapter.tryResolvePendingGoalTurn(session.AgentSessionID, "turn-adopting"); close(done) }()
+	<-committed
+	message := acpMessage{Method: appServerNotifyWarning, Params: json.RawMessage(`{"turnId":"turn-adopting","message":"noise"}`)}
+	for i := 0; i <= maxPendingGoalTurnNotifications; i++ {
+		if !adapter.bufferPendingGoalTurnNotification(session.AgentSessionID, "turn-adopting", message) {
+			t.Fatal("adopting notification escaped buffer")
+		}
+	}
+	close(release)
+	<-done
+	waitForCondition(t, func() bool {
+		adapter.mu.Lock()
+		active := adapter.sessions[session.AgentSessionID].activeTurn
+		adapter.mu.Unlock()
+		return active == nil
+	})
+	select {
+	case <-app.client.Done():
+	case <-time.After(5 * time.Second):
+		t.Fatal("provider remained live after durable prepare failure")
+	}
+	mu.Lock()
+	snapshot := append([]activityshared.Event(nil), events...)
+	mu.Unlock()
+	providerFailed := 0
+	for _, event := range snapshot {
+		if event.Type == activityshared.EventRootProviderTurnCompleted {
+			providerFailed++
+			if event.Payload.ProviderTurnID != "turn-adopting" {
+				t.Fatalf("provider terminal id = %q, want turn-adopting", event.Payload.ProviderTurnID)
+			}
+			if event.Payload.TurnOutcome != string(activityshared.TurnOutcomeFailed) {
+				t.Fatalf("provider terminal outcome = %q, want failed", event.Payload.TurnOutcome)
+			}
+		}
+		if event.Type == activityshared.EventTurnCompleted || event.Type == activityshared.EventTurnFailed || string(event.Type) == EventTurnCanceled {
+			t.Fatalf("adapter emitted canonical terminal for provider completion: %#v", event)
+		}
+	}
+	transport.conn.mu.Lock()
+	attempts := append([]string(nil), transport.conn.interruptAttempts...)
+	transport.conn.mu.Unlock()
+	if providerFailed != 1 || len(attempts) != 0 {
+		t.Fatalf("providerFailed=%d interruptAttempts=%v events=%#v", providerFailed, attempts, snapshot)
+	}
+}
+
+func TestCodexGoalProvenanceWorkingSetRemainsBoundedAfterManyGenerations(t *testing.T) {
+	adapter, transport, session := startedAppServerAdapter(t)
+	identity := goalOperationIdentity{operationID: "goal-cap", revision: 1}
+	adapter.replaceGoalOperationIdentity(session.AgentSessionID, identity.operationID, 1, 0)
+	for i := 0; i < 512; i++ {
+		goal := map[string]any{"threadId": session.ProviderSessionID, "objective": fmt.Sprintf("goal-%d", i), "createdAt": int64(i + 1), "updatedAt": int64(i + 2)}
+		if err := adapter.bindGoalGeneration(context.Background(), session, goal, identity); err != nil {
+			t.Fatalf("bindGoalGeneration: %v", err)
+		}
+	}
+	adapter.mu.Lock()
+	degraded := adapter.sessions[session.AgentSessionID].provenanceDegraded
+	bindings := len(adapter.sessions[session.AgentSessionID].goalGenerationBindings)
+	adapter.mu.Unlock()
+	if degraded || bindings > maxGoalGenerationBindings {
+		t.Fatalf("degraded=%v bindings=%d", degraded, bindings)
+	}
+	_ = transport
+}
+
+func TestCodexGoalGenerationFingerprintIsStableFixedLengthDigest(t *testing.T) {
+	goal := map[string]any{"threadId": "thread-1", "objective": "private objective", "createdAt": int64(10), "updatedAt": int64(11)}
+	first := codexGoalGenerationFingerprint(goal)
+	second := codexGoalGenerationFingerprint(clonePayload(goal))
+	if first != second || len(first) != len("sha256:")+64 || strings.Contains(first, "private objective") {
+		t.Fatalf("fingerprint first=%q second=%q", first, second)
+	}
+	changed := clonePayload(goal)
+	changed["updatedAt"] = int64(12)
+	if codexGoalGenerationFingerprint(changed) == first {
+		t.Fatal("updated provider generation produced the same fingerprint")
+	}
+	for _, field := range []string{"threadId", "objective", "createdAt", "updatedAt"} {
+		missing := clonePayload(goal)
+		delete(missing, field)
+		if got := codexGoalGenerationFingerprint(missing); got != "" {
+			t.Fatalf("fingerprint missing %s = %q, want empty", field, got)
+		}
+	}
+}
+
+func TestCodexGoalApplyMissingGenerationFingerprintFailsClosed(t *testing.T) {
+	adapter, transport, session := startedAppServerAdapter(t)
+	transport.conn.mu.Lock()
+	transport.conn.goalOmitUpdatedAt = true
+	transport.conn.mu.Unlock()
+	_, err := adapter.ApplyGoal(context.Background(), session, GoalApplyInput{
+		Action: GoalControlSet, Objective: "ship safely", OperationID: "goal-missing-fingerprint", Revision: 1,
+	})
+	if err == nil || !strings.Contains(err.Error(), "missing immutable fingerprint fields") {
+		t.Fatalf("ApplyGoal error = %v", err)
+	}
+	adapter.mu.Lock()
+	appSession := adapter.sessions[session.AgentSessionID]
+	degraded, client := appSession.provenanceDegraded, appSession.client
+	goal := clonePayload(appSession.goal)
+	adapter.mu.Unlock()
+	if !degraded || len(goal) != 0 {
+		t.Fatalf("degraded=%v localGoal=%#v", degraded, goal)
+	}
+	select {
+	case <-client.Done():
+	case <-time.After(5 * time.Second):
+		t.Fatal("provider stayed live after invalid Goal generation response")
+	}
+}
+
+func TestCodexDurableGoalSetEmptyGenerationResponseFailsClosed(t *testing.T) {
+	adapter, transport, session := startedAppServerAdapter(t)
+	transport.conn.mu.Lock()
+	transport.conn.goalEmptyResponse = true
+	transport.conn.mu.Unlock()
+	result, err := adapter.ApplyGoal(context.Background(), session, GoalApplyInput{
+		Action: GoalControlSet, Objective: "ship safely", OperationID: "goal-empty-generation", Revision: 1,
+	})
+	if err == nil || !strings.Contains(err.Error(), "returned no Goal generation") {
+		t.Fatalf("ApplyGoal result=%#v error=%v", result, err)
+	}
+	if result.ProviderPhase == "applied" {
+		t.Fatalf("empty Goal generation was reported applied: %#v", result)
+	}
+	adapter.mu.Lock()
+	appSession := adapter.sessions[session.AgentSessionID]
+	degraded, client := appSession.provenanceDegraded, appSession.client
+	goal := clonePayload(appSession.goal)
+	adapter.mu.Unlock()
+	if !degraded || len(goal) != 0 {
+		t.Fatalf("degraded=%v localGoal=%#v", degraded, goal)
+	}
+	select {
+	case <-client.Done():
+	case <-time.After(5 * time.Second):
+		t.Fatal("provider stayed live after empty durable Goal set response")
+	}
+}
+
+func TestCodexTurnScopedGoalObservationMissingFingerprintFailsClosed(t *testing.T) {
+	adapter, _, session := startedAppServerAdapter(t)
+	adapter.observeGoalTurnGeneration(session, "turn-missing-fingerprint", map[string]any{
+		"threadId": session.ProviderSessionID, "objective": "ship safely", "createdAt": int64(1),
+	})
+	adapter.mu.Lock()
+	appSession := adapter.sessions[session.AgentSessionID]
+	degraded, client := appSession.provenanceDegraded, appSession.client
+	adapter.mu.Unlock()
+	if !degraded {
+		t.Fatal("turn-scoped invalid generation did not degrade provenance")
+	}
+	select {
+	case <-client.Done():
+	case <-time.After(5 * time.Second):
+		t.Fatal("provider stayed live after invalid turn-scoped Goal generation")
+	}
+}
+
+func TestCodexGoalProvenanceDurableLedgerSurvivesRestartAndAdoptsDelayedGeneration(t *testing.T) {
+	ledger := &memoryGoalProvenanceLedger{bindings: make(map[string]GoalProvenanceBinding)}
+	firstAdapter, _, session := startedAppServerAdapter(t)
+	firstAdapter.SetGoalProvenanceDurableSink(ledger)
+	oldIdentity := goalOperationIdentity{operationID: "goal-old", revision: 1}
+	oldGoal := map[string]any{"threadId": session.ProviderSessionID, "objective": "old", "createdAt": int64(1), "updatedAt": int64(2)}
+	firstAdapter.replaceGoalOperationIdentity(session.AgentSessionID, oldIdentity.operationID, oldIdentity.revision, 0)
+	if err := firstAdapter.bindGoalGeneration(context.Background(), session, oldGoal, oldIdentity); err != nil {
+		t.Fatalf("bind old generation: %v", err)
+	}
+
+	restarted, transport, restartedSession := startedAppServerAdapter(t)
+	restarted.SetGoalProvenanceDurableSink(ledger)
+	restarted.goalProvenanceGraceWindow = 10 * time.Millisecond
+	newIdentity := goalOperationIdentity{operationID: "goal-new", revision: 2}
+	newGoal := map[string]any{"threadId": restartedSession.ProviderSessionID, "objective": "new", "createdAt": int64(3), "updatedAt": int64(4)}
+	restarted.replaceGoalOperationIdentity(restartedSession.AgentSessionID, newIdentity.operationID, newIdentity.revision, 0)
+	if err := restarted.bindGoalGeneration(context.Background(), restartedSession, newGoal, newIdentity); err != nil {
+		t.Fatalf("bind new generation: %v", err)
+	}
+	restarted.queueGoalTurnForProvenance(restartedSession, "turn-delayed-old-after-restart")
+	restarted.observeGoalTurnGeneration(restartedSession, "turn-delayed-old-after-restart", oldGoal)
+	waitForCondition(t, func() bool {
+		restarted.mu.Lock()
+		defer restarted.mu.Unlock()
+		return restarted.sessions[restartedSession.AgentSessionID].activeTurn != nil
+	})
+	transport.conn.mu.Lock()
+	interrupts := append([]string(nil), transport.conn.interruptAttempts...)
+	transport.conn.mu.Unlock()
+	if len(interrupts) != 0 {
+		t.Fatalf("delayed proven generation was interrupted after restart: %#v", interrupts)
+	}
+}
+
+func TestCodexGoalProvenanceUsesLiveThreadIDForPreStartCapturedSession(t *testing.T) {
+	adapter, _, session := startedAppServerAdapter(t)
+	ledger := &memoryGoalProvenanceLedger{bindings: make(map[string]GoalProvenanceBinding)}
+	adapter.SetGoalProvenanceDurableSink(ledger)
+	identity := goalOperationIdentity{operationID: "goal-live-thread", revision: 1}
+	goal := map[string]any{"threadId": session.ProviderSessionID, "objective": "continue", "createdAt": int64(1), "updatedAt": int64(2)}
+	adapter.replaceGoalOperationIdentity(session.AgentSessionID, identity.operationID, identity.revision, 0)
+	if err := adapter.bindGoalGeneration(context.Background(), session, goal, identity); err != nil {
+		t.Fatalf("bind generation: %v", err)
+	}
+	staleCapturedSession := session
+	staleCapturedSession.ProviderSessionID = ""
+	adapter.observeGoalTurnGeneration(staleCapturedSession, "provider-turn-live-thread", goal)
+	adapter.mu.Lock()
+	evidence := adapter.sessions[session.AgentSessionID].goalTurnEvidence["provider-turn-live-thread"]
+	adapter.mu.Unlock()
+	if evidence == nil || !evidence.bound || evidence.identity != identity {
+		t.Fatalf("evidence=%#v, want durable identity %#v", evidence, identity)
+	}
+}
+
+func TestCodexGoalProvenanceDurableCollisionRemainsAmbiguousAfterRestart(t *testing.T) {
+	ledger := &memoryGoalProvenanceLedger{bindings: make(map[string]GoalProvenanceBinding)}
+	first, _, session := startedAppServerAdapter(t)
+	first.SetGoalProvenanceDurableSink(ledger)
+	goal := map[string]any{"threadId": session.ProviderSessionID, "objective": "same", "createdAt": int64(1), "updatedAt": int64(2)}
+	firstIdentity := goalOperationIdentity{operationID: "goal-first", revision: 1}
+	first.replaceGoalOperationIdentity(session.AgentSessionID, firstIdentity.operationID, firstIdentity.revision, 0)
+	if err := first.bindGoalGeneration(context.Background(), session, goal, firstIdentity); err != nil {
+		t.Fatalf("bind first: %v", err)
+	}
+
+	restarted, transport, restartedSession := startedAppServerAdapter(t)
+	restarted.SetGoalProvenanceDurableSink(ledger)
+	secondIdentity := goalOperationIdentity{operationID: "goal-second", revision: 2}
+	restarted.replaceGoalOperationIdentity(restartedSession.AgentSessionID, secondIdentity.operationID, secondIdentity.revision, 0)
+	if err := restarted.bindGoalGeneration(context.Background(), restartedSession, goal, secondIdentity); err == nil {
+		t.Fatal("durable collision did not fail closed")
+	}
+	restarted.mu.Lock()
+	client := restarted.sessions[restartedSession.AgentSessionID].client
+	restarted.mu.Unlock()
+	select {
+	case <-client.Done():
+	case <-time.After(5 * time.Second):
+		t.Fatal("provider stayed live after durable provenance collision")
+	}
+	restarted.mu.Lock()
+	appSession := restarted.sessions[restartedSession.AgentSessionID]
+	degraded, active := appSession.provenanceDegraded, appSession.activeTurn
+	restarted.mu.Unlock()
+	if !degraded || active != nil {
+		t.Fatalf("degraded=%v active=%#v", degraded, active)
+	}
+	_ = transport
+}
+
+func TestCodexGoalProvenanceWorkingSetStaysBoundedAcrossManyContinuations(t *testing.T) {
+	adapter, _, session := startedAppServerAdapter(t)
+	ledger := &memoryGoalProvenanceLedger{bindings: make(map[string]GoalProvenanceBinding)}
+	adapter.SetGoalProvenanceDurableSink(ledger)
+	for i := 1; i <= 320; i++ {
+		identity := goalOperationIdentity{operationID: fmt.Sprintf("goal-op-%d", i), revision: int64(i)}
+		goal := map[string]any{"threadId": session.ProviderSessionID, "objective": fmt.Sprintf("goal-%d", i), "createdAt": int64(i), "updatedAt": int64(i + 1)}
+		providerTurnID := fmt.Sprintf("provider-turn-%d", i)
+		adapter.replaceGoalOperationIdentity(session.AgentSessionID, identity.operationID, identity.revision, 0)
+		if err := adapter.bindGoalGeneration(context.Background(), session, goal, identity); err != nil {
+			t.Fatalf("bind generation %d: %v", i, err)
+		}
+		adapter.observeGoalTurnGeneration(session, providerTurnID, goal)
+		adapter.mu.Lock()
+		if adapter.sessions[session.AgentSessionID].pendingGoalTurns == nil {
+			adapter.sessions[session.AgentSessionID].pendingGoalTurns = make(map[string]*codexPendingGoalTurn)
+		}
+		adapter.sessions[session.AgentSessionID].pendingGoalTurns[providerTurnID] = &codexPendingGoalTurn{
+			providerTurnID: providerTurnID, session: session, state: codexGoalTurnPending,
+		}
+		adapter.mu.Unlock()
+		appTurn := &codexAppServerActiveTurn{turnID: fmt.Sprintf("local-turn-%d", i)}
+		if !adapter.beginGoalTurnHandoff(session.AgentSessionID, providerTurnID, appTurn, identity) {
+			t.Fatalf("begin handoff %d", i)
+		}
+		adapter.drainGoalTurnHandoff(session.AgentSessionID, providerTurnID, appTurn)
+		adapter.endActiveTurn(session.AgentSessionID, appTurn)
+	}
+	adapter.mu.Lock()
+	appSession := adapter.sessions[session.AgentSessionID]
+	degraded, evidence, bindings := appSession.provenanceDegraded, len(appSession.goalTurnEvidence), len(appSession.goalGenerationBindings)
+	adapter.mu.Unlock()
+	if degraded || evidence != 0 || bindings > maxGoalGenerationBindings {
+		t.Fatalf("degraded=%v evidence=%d bindings=%d", degraded, evidence, bindings)
+	}
+}
+
+type memoryGoalProvenanceLedger struct {
+	mu       sync.Mutex
+	bindings map[string]GoalProvenanceBinding
+}
+
+type blockingGoalProvenanceLedger struct {
+	*memoryGoalProvenanceLedger
+	lookupStarted chan struct{}
+	releaseLookup chan struct{}
+}
+
+func (l *blockingGoalProvenanceLedger) LookupGoalProvenance(ctx context.Context, session Session, fingerprint string) (GoalProvenanceBinding, bool, error) {
+	select {
+	case <-l.lookupStarted:
+	default:
+		close(l.lookupStarted)
+	}
+	select {
+	case <-l.releaseLookup:
+	case <-ctx.Done():
+		return GoalProvenanceBinding{}, false, ctx.Err()
+	}
+	return l.memoryGoalProvenanceLedger.LookupGoalProvenance(ctx, session, fingerprint)
+}
+
+func TestCodexGoalProvenanceGraceWaitsForDurableLookup(t *testing.T) {
+	adapter, transport, session := startedAppServerAdapter(t)
+	adapter.goalProvenanceGraceWindow = 10 * time.Millisecond
+	ledger := &blockingGoalProvenanceLedger{
+		memoryGoalProvenanceLedger: &memoryGoalProvenanceLedger{bindings: make(map[string]GoalProvenanceBinding)},
+		lookupStarted:              make(chan struct{}), releaseLookup: make(chan struct{}),
+	}
+	adapter.SetGoalProvenanceDurableSink(ledger)
+	identity := goalOperationIdentity{operationID: "goal-op-slow", revision: 1}
+	goal := map[string]any{"threadId": session.ProviderSessionID, "objective": "ship", "createdAt": int64(1), "updatedAt": int64(2)}
+	adapter.replaceGoalOperationIdentity(session.AgentSessionID, identity.operationID, identity.revision, 0)
+	if err := adapter.bindGoalGeneration(context.Background(), session, goal, identity); err != nil {
+		t.Fatal(err)
+	}
+	adapter.queueGoalTurnForProvenance(session, "provider-turn-slow")
+	done := make(chan struct{})
+	go func() {
+		adapter.observeGoalTurnGeneration(session, "provider-turn-slow", goal)
+		close(done)
+	}()
+	<-ledger.lookupStarted
+	time.Sleep(35 * time.Millisecond)
+	adapter.mu.Lock()
+	_, pending := adapter.sessions[session.AgentSessionID].pendingGoalTurns["provider-turn-slow"]
+	adapter.mu.Unlock()
+	if !pending {
+		t.Fatal("pending Goal turn expired while durable lookup was in flight")
+	}
+	if requests := appServerRequestParamsList(t, transport.conn, appServerMethodTurnInterrupt); len(requests) != 0 {
+		t.Fatalf("Goal turn was interrupted during durable lookup: %#v", requests)
+	}
+	close(ledger.releaseLookup)
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("durable lookup did not finish")
+	}
+}
+
+func (l *memoryGoalProvenanceLedger) BindGoalProvenance(_ context.Context, session Session, fingerprint string, proposed GoalProvenanceBinding) (GoalProvenanceBinding, error) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	key := session.RoomID + "\x00" + session.AgentSessionID + "\x00" + session.ProviderSessionID + "\x00" + fingerprint
+	existing, found := l.bindings[key]
+	if !found {
+		l.bindings[key] = proposed
+		return proposed, nil
+	}
+	if existing.Ambiguous {
+		return existing, nil
+	}
+	if existing.OperationID != proposed.OperationID || existing.Revision != proposed.Revision || existing.RepairEpoch != proposed.RepairEpoch {
+		existing = GoalProvenanceBinding{Ambiguous: true}
+		l.bindings[key] = existing
+	}
+	return existing, nil
+}
+
+func (l *memoryGoalProvenanceLedger) LookupGoalProvenance(_ context.Context, session Session, fingerprint string) (GoalProvenanceBinding, bool, error) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	key := session.RoomID + "\x00" + session.AgentSessionID + "\x00" + session.ProviderSessionID + "\x00" + fingerprint
+	binding, found := l.bindings[key]
+	return binding, found, nil
+}
+
+func TestCodexLateSupersededGoalTurnKeepsOriginalIdentityAndContinues(t *testing.T) {
+	adapter, transport, session := startedAppServerAdapter(t)
+	adapter.goalProvenanceGraceWindow = 10 * time.Millisecond
+	var sinkMu sync.Mutex
+	var sinkEvents []activityshared.Event
+	adapter.SetSessionEventSink(func(_ string, batch []activityshared.Event) {
+		sinkMu.Lock()
+		defer sinkMu.Unlock()
+		sinkEvents = append(sinkEvents, batch...)
+	})
+
+	if _, err := adapter.ApplyGoal(context.Background(), session, GoalApplyInput{
+		Action: GoalControlSet, Objective: "old objective", OperationID: "goal-op-1", Revision: 1,
+	}); err != nil {
+		t.Fatalf("set1: %v", err)
+	}
+	oldGoal := adapter.sessionGoal(session.AgentSessionID)
+	if _, err := adapter.ApplyGoal(context.Background(), session, GoalApplyInput{
+		Action: GoalControlClear, OperationID: "goal-clear", Revision: 2,
+	}); err != nil {
+		t.Fatalf("clear: %v", err)
+	}
+	if _, err := adapter.ApplyGoal(context.Background(), session, GoalApplyInput{
+		Action: GoalControlSet, Objective: "new objective", OperationID: "goal-op-2", Revision: 3, RepairEpoch: 2,
+	}); err != nil {
+		t.Fatalf("set2: %v", err)
+	}
+
+	appSession := adapter.getSession(session.AgentSessionID)
+	reducer := newCodexAppServerReducer(adapter)
+	reducer.ReduceNotification(appSession.client, session, "", acpMessage{
+		Method: appServerNotifyThreadGoalUpdated,
+		Params: mustJSONRawMessage(t, map[string]any{
+			"threadId": session.ProviderSessionID, "turnId": "provider-old-turn", "goal": oldGoal,
+		}),
+	}, nil, nil)
+	reducer.ReduceNotification(appSession.client, session, "", acpMessage{
+		Method: appServerNotifyTurnStarted,
+		Params: mustJSONRawMessage(t, map[string]any{
+			"threadId": session.ProviderSessionID,
+			"turn":     map[string]any{"id": "provider-old-turn", "status": "inProgress", "items": []any{}},
+		}),
+	}, nil, nil)
+
+	waitForCondition(t, func() bool {
+		sinkMu.Lock()
+		defer sinkMu.Unlock()
+		for _, event := range sinkEvents {
+			if event.Type == activityshared.EventTurnStarted && event.Payload.Metadata["sourceGoalOperationId"] == "goal-op-2" {
+				t.Fatalf("late old provider turn inherited op2: %#v", event)
+			}
+			if event.Type == activityshared.EventTurnStarted &&
+				event.Payload.Metadata["sourceGoalOperationId"] == "goal-op-1" &&
+				event.Payload.Metadata["sourceGoalRevision"] == int64(1) {
+				return true
+			}
+		}
+		return false
+	})
+	if requests := appServerRequestParamsList(t, transport.conn, appServerMethodTurnInterrupt); len(requests) != 0 {
+		t.Fatalf("superseding Goal state interrupted current provider Turn: %#v", requests)
+	}
+}
+
+func TestCodexRestartedActiveGoalTurnDoesNotGuessProvenance(t *testing.T) {
+	adapter, transport, session := startedAppServerAdapter(t)
+	adapter.goalProvenanceGraceWindow = 10 * time.Millisecond
+	adapter.applyGoalUpdate(session.AgentSessionID, map[string]any{
+		"threadId": session.ProviderSessionID, "objective": "resumed provider goal", "status": "active",
+		"createdAt": int64(100), "updatedAt": int64(101),
+	})
+	var sinkMu sync.Mutex
+	var sinkEvents []activityshared.Event
+	adapter.SetSessionEventSink(func(_ string, batch []activityshared.Event) {
+		sinkMu.Lock()
+		defer sinkMu.Unlock()
+		sinkEvents = append(sinkEvents, batch...)
+	})
+
+	appSession := adapter.getSession(session.AgentSessionID)
+	newCodexAppServerReducer(adapter).ReduceNotification(appSession.client, session, "", acpMessage{
+		Method: appServerNotifyTurnStarted,
+		Params: mustJSONRawMessage(t, map[string]any{
+			"threadId": session.ProviderSessionID,
+			"turn":     map[string]any{"id": "provider-restart-turn", "status": "inProgress", "items": []any{}},
+		}),
+	}, nil, nil)
+
+	waitForCondition(t, func() bool {
+		requests := appServerRequestParamsList(t, transport.conn, appServerMethodTurnInterrupt)
+		return len(requests) > 0 && asString(requests[len(requests)-1]["turnId"]) == "provider-restart-turn"
+	})
+	waitForCondition(t, func() bool {
+		sinkMu.Lock()
+		defer sinkMu.Unlock()
+		for _, event := range sinkEvents {
+			if event.Type == activityshared.EventTurnStarted {
+				t.Fatalf("restart turn was adopted without operation evidence: %#v", event)
+			}
+			if event.Type == activityshared.EventGoalReconcileRequired && event.Payload.Metadata["phase"] == "finalized" {
+				return event.Payload.Metadata["fenceMode"] == "current_durable" &&
+					event.Payload.Metadata["expectedGoalOperationId"] == "" &&
+					event.Payload.Metadata["expectedGoalRevision"] == int64(0) &&
+					event.Payload.Metadata["quiesceSucceeded"] == true
+			}
+		}
+		return false
+	})
+}
+
+func TestCodexUnprovenGoalTurnQuiesceFailureRemainsExplicitAndExact(t *testing.T) {
+	adapter, transport, session := startedAppServerAdapter(t)
+	adapter.goalProvenanceGraceWindow = 10 * time.Millisecond
+	transport.conn.interruptTurnIDMismatch = "provider-newer-turn"
+	adapter.applyGoalUpdate(session.AgentSessionID, map[string]any{
+		"threadId": session.ProviderSessionID, "objective": "resumed provider goal", "status": "active",
+		"createdAt": int64(100), "updatedAt": int64(101),
+	})
+	events := make(chan activityshared.Event, 4)
+	adapter.SetSessionEventSink(func(_ string, batch []activityshared.Event) {
+		for _, event := range batch {
+			events <- event
+		}
+	})
+	appSession := adapter.getSession(session.AgentSessionID)
+	newCodexAppServerReducer(adapter).ReduceNotification(appSession.client, session, "", acpMessage{
+		Method: appServerNotifyTurnStarted,
+		Params: mustJSONRawMessage(t, map[string]any{
+			"threadId": session.ProviderSessionID,
+			"turn":     map[string]any{"id": "provider-old-turn", "status": "inProgress", "items": []any{}},
+		}),
+	}, nil, nil)
+
+	deadline := time.After(5 * time.Second)
+	for {
+		select {
+		case event := <-events:
+			if event.Type != activityshared.EventGoalReconcileRequired || event.Payload.Metadata["phase"] != "finalized" {
+				continue
+			}
+			if event.Payload.Metadata["quiesceSucceeded"] != false || strings.TrimSpace(asString(event.Payload.Metadata["quiesceError"])) == "" {
+				t.Fatalf("failed quiesce evidence = %#v", event.Payload.Metadata)
+			}
+			transport.conn.mu.Lock()
+			attempts := append([]string(nil), transport.conn.interruptAttempts...)
+			transport.conn.mu.Unlock()
+			if len(attempts) != 3 {
+				t.Fatalf("exact quiesce attempts = %#v, want 3", attempts)
+			}
+			for _, attempt := range attempts {
+				if attempt != "provider-old-turn" {
+					t.Fatalf("quiesce retargeted a different provider turn: %#v", attempts)
+				}
+			}
+			return
+		case <-deadline:
+			t.Fatal("timed out waiting for failed quiesce evidence")
+		}
+	}
+}
+
+func TestCodexUnprovenGoalTurnDurablyPreparesBeforeExactInterrupt(t *testing.T) {
+	transport := newScriptedAppServerTransport()
+	adapter := NewCodexAppServerAdapter(transport)
+	adapter.goalProvenanceGraceWindow = 10 * time.Millisecond
+	reporter := &goalPrepareBarrierReporter{prepared: make(chan struct{}), release: make(chan struct{})}
+	controller := NewController([]Adapter{adapter}, reporter)
+	started, err := controller.Start(context.Background(), StartInput{RoomID: "room-1", Provider: ProviderCodex, CWD: "/workspace", Title: "Codex"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	session := started.Session
+	adapter.applyGoalUpdate(session.AgentSessionID, map[string]any{
+		"threadId": session.ProviderSessionID, "objective": "restart", "status": "active",
+		"createdAt": int64(100), "updatedAt": int64(101),
+	})
+	appSession := adapter.getSession(session.AgentSessionID)
+	newCodexAppServerReducer(adapter).ReduceNotification(appSession.client, session, "", acpMessage{
+		Method: appServerNotifyTurnStarted,
+		Params: mustJSONRawMessage(t, map[string]any{
+			"threadId": session.ProviderSessionID,
+			"turn":     map[string]any{"id": "provider-unproven", "status": "inProgress", "items": []any{}},
+		}),
+	}, nil, nil)
+	select {
+	case <-reporter.prepared:
+	case <-time.After(5 * time.Second):
+		t.Fatal("pending reconcile was not reported")
+	}
+	transport.conn.mu.Lock()
+	beforeCommit := append([]string(nil), transport.conn.interruptAttempts...)
+	transport.conn.mu.Unlock()
+	if len(beforeCommit) != 0 {
+		t.Fatalf("exact interrupt raced ahead of durable prepare: %v", beforeCommit)
+	}
+	close(reporter.release)
+	waitForCondition(t, func() bool {
+		transport.conn.mu.Lock()
+		defer transport.conn.mu.Unlock()
+		return len(transport.conn.interruptAttempts) == 1 && transport.conn.interruptAttempts[0] == "provider-unproven"
+	})
+	waitForCondition(t, func() bool {
+		phases := reporter.phaseSnapshot()
+		return len(phases) >= 2 && phases[0] == "quiesce_pending" && phases[1] == "finalized"
+	})
+}
+
+func TestCodexUnprovenGoalTurnPrepareFailureForceClosesProvider(t *testing.T) {
+	transport := newScriptedAppServerTransport()
+	adapter := NewCodexAppServerAdapter(transport)
+	adapter.goalProvenanceGraceWindow = 10 * time.Millisecond
+	adapter.goalReconcileAckTimeout = 20 * time.Millisecond
+	controller := NewController([]Adapter{adapter}, blockingGoalReconcileReporter{})
+	started, err := controller.Start(context.Background(), StartInput{RoomID: "room-1", Provider: ProviderCodex, CWD: "/workspace", Title: "Codex"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	session := started.Session
+	adapter.applyGoalUpdate(session.AgentSessionID, map[string]any{"threadId": session.ProviderSessionID, "objective": "restart", "status": "active"})
+	appSession := adapter.getSession(session.AgentSessionID)
+	newCodexAppServerReducer(adapter).ReduceNotification(appSession.client, session, "", acpMessage{
+		Method: appServerNotifyTurnStarted,
+		Params: mustJSONRawMessage(t, map[string]any{"threadId": session.ProviderSessionID,
+			"turn": map[string]any{"id": "provider-unproven", "status": "inProgress", "items": []any{}}}),
+	}, nil, nil)
+	waitForCondition(t, func() bool {
+		transport.conn.mu.Lock()
+		defer transport.conn.mu.Unlock()
+		return transport.conn.closeCount > 0
+	})
+	select {
+	case <-appSession.client.Done():
+	case <-time.After(5 * time.Second):
+		t.Fatal("provider client did not terminate after durable prepare failure")
+	}
+	transport.conn.mu.Lock()
+	attempts := append([]string(nil), transport.conn.interruptAttempts...)
+	transport.conn.mu.Unlock()
+	if len(attempts) != 0 {
+		t.Fatalf("unprotected exact interrupt continued after durable prepare failure: %v", attempts)
+	}
 }
 
 // thread/goal/updated notifications must reach the GUI as session events even

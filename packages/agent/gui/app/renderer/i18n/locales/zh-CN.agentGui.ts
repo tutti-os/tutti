@@ -375,6 +375,7 @@ export const zhCNAgentGui = {
   batchDeleteConversationsConfirm: "删除对话",
   runtimeSessionOnly: "这里只显示 runtime 会话。",
   approvalRequired: "{{provider}} 请求你的授权。",
+  fileChangeApprovalRequired: "{{provider}} 请求编辑文件的授权",
   approvalUnavailable: "没有可用选项。",
   approvalOptions: {
     allowOnce: "允许执行",

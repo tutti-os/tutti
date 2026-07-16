@@ -15,7 +15,7 @@ Required mention routing:
 - `mention://workspace-issue/<id>?workspaceId=...` -> `$issue-manager`
 - `mention://workspace-app/<appId>?workspaceId=...` -> `$workspace-app`; `<appId>` is not a skill name.
 - `mention://workspace-reference/<id>?source=...&workspaceId=...` -> `$reference`
-- `mention://agent-session/<id>?workspaceId=...` -> `$tutti-handoff`; `$tutti-cli` for command syntax.
+- `mention://agent-session/<id>?workspaceId=...` -> `$tutti-cli`
 - `mention://agent-target/<targetId>?workspaceId=...` -> `$tutti-handoff`; an instruction for the mentioned agent -> hand off, do not do it yourself; a question about it -> read.
 - Treat `mention://...` as internal Tutti references, not web URLs or paths.
 

@@ -1,12 +1,43 @@
 package agent
 
 import (
+	"context"
 	"reflect"
 	"testing"
 
 	agentsessionstore "github.com/tutti-os/tutti/packages/agent/daemon/activity"
 	agentactivitybiz "github.com/tutti-os/tutti/services/tuttid/biz/agentactivity"
 )
+
+func TestPublishPersistedTurnStateObservesOnlyCanonicalSettlement(t *testing.T) {
+	t.Parallel()
+	observer := &rootTurnObserverStub{}
+	projection := &ActivityProjection{rootTurnObserver: observer}
+	input := agentsessionstore.ReportSessionStateInput{
+		WorkspaceID: "ws-1", AgentSessionID: "root",
+	}
+
+	projection.publishPersistedTurnState(context.Background(), input, agentactivitybiz.ActivityStateReportResult{
+		RootTurnAccepted: true,
+		RootTurn: agentactivitybiz.Turn{
+			AgentSessionID: "root", TurnID: "goal-turn", Phase: agentactivitybiz.TurnPhaseWaiting,
+		},
+	})
+	if len(observer.turns) != 0 {
+		t.Fatalf("waiting root turn released runtime slot: %#v", observer.turns)
+	}
+
+	projection.publishPersistedTurnState(context.Background(), input, agentactivitybiz.ActivityStateReportResult{
+		RootTurnAccepted: true,
+		RootTurn: agentactivitybiz.Turn{
+			AgentSessionID: "root", TurnID: "goal-turn", Phase: agentactivitybiz.TurnPhaseSettled,
+			Outcome: agentactivitybiz.TurnOutcomeCompleted,
+		},
+	})
+	if len(observer.turns) != 1 || observer.turns[0].TurnID != "goal-turn" || observer.turns[0].Outcome != agentactivitybiz.TurnOutcomeCompleted {
+		t.Fatalf("canonical settlement observations = %#v", observer.turns)
+	}
+}
 
 func TestTurnTransitionFromStateInputRequiresExplicitTurnPatch(t *testing.T) {
 	t.Parallel()
@@ -54,6 +85,10 @@ func TestGeneratedWorkspaceAgentTurnCoversAllFields(t *testing.T) {
 		WorkspaceID:            "ws-1",
 		AgentSessionID:         "session-1",
 		TurnID:                 "turn-1",
+		Origin:                 agentactivitybiz.TurnOriginGoalContinuation,
+		SourceGoalOperationID:  "goal-op-1",
+		SourceGoalRevision:     2,
+		SourceGoalRepairEpoch:  3,
 		Phase:                  agentactivitybiz.TurnPhaseSettled,
 		Outcome:                agentactivitybiz.TurnOutcomeFailed,
 		ErrorMessage:           "provider exploded",

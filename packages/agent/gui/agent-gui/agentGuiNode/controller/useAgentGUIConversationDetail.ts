@@ -1,5 +1,6 @@
 import {
   selectEngineAvailableCommands,
+  selectEngineTurnsForSession,
   type AgentActivityInteraction,
   type AgentActivityMessage,
   type AgentActivitySnapshot,
@@ -97,6 +98,9 @@ export function useAgentGUIConversationDetail(
   const activeCanonicalLiveTurn = Boolean(
     input.activeTurn && input.activeTurn.phase !== "settled"
   );
+  const sessionTurns = useEngineSelector(input.sessionEngine, (state) =>
+    selectEngineTurnsForSession(state, input.activeConversationId)
+  );
   const projectionConversation =
     useMemo<AgentGUIConversationProjectionSource | null>(() => {
       if (!input.activeConversation) {
@@ -114,7 +118,8 @@ export function useAgentGUIConversationDetail(
         previous.titleFallback === current.titleFallback &&
         previous.status === current.status &&
         previous.cwd === current.cwd &&
-        previous.activeTurn === input.activeTurn
+        previous.activeTurn === input.activeTurn &&
+        previous.sessionTurns === sessionTurns
       ) {
         return previous;
       }
@@ -127,11 +132,12 @@ export function useAgentGUIConversationDetail(
         status: current.status,
         cwd: current.cwd,
         updatedAtUnixMs: current.updatedAtUnixMs,
-        activeTurn: input.activeTurn
+        activeTurn: input.activeTurn,
+        sessionTurns
       };
       projectionConversationRef.current = next;
       return next;
-    }, [input.activeConversation, input.activeTurn]);
+    }, [input.activeConversation, input.activeTurn, sessionTurns]);
 
   const draftContent = input.activeConversationId
     ? (input.draftByScopeKey[

@@ -1,6 +1,6 @@
 ---
 name: tutti-handoff
-description: Use for any turn that mentions another agent (`mention://agent-target/...` or `mention://agent-session/...`) where work may move between agents, and for follow-up turns about work already handed to another agent session in this conversation — deciding whether to hand off, which task to hand off, how results come back, handling launch failures, and routing follow-up instructions after a delegation.
+description: Use for any turn that mentions another agent (`mention://agent-target/...`) where work may move between agents, and for follow-up turns about work already handed to another agent session in this conversation — deciding whether to hand off, which task to hand off, how results come back, handling launch failures, and routing follow-up instructions after a delegation. A `mention://agent-session/...` link on its own is a context reference, not a handoff trigger.
 ---
 
 # Tutti Agent Handoff

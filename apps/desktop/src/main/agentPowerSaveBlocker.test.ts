@@ -160,7 +160,7 @@ function createFakeTuttidClient(input: {
       if (!session) {
         throw new Error("session not found");
       }
-      return { session, childSessions: [] };
+      return { session, childSessions: [], turns: [] };
     },
     async listWorkspaceAgentSessions(workspaceID) {
       return {
@@ -209,6 +209,7 @@ function createSession(id: string, status: string): WorkspaceAgentSession {
           completedCommand: null,
           error: null,
           fileChanges: null,
+          origin: "user_prompt",
           outcome: null,
           phase: "running",
           settledAtUnixMs: null,
@@ -223,6 +224,7 @@ function createSession(id: string, status: string): WorkspaceAgentSession {
     pendingInteractions: [],
     permissionConfig: { configurable: false, modes: [] },
     pinnedAtUnixMs: null,
+    railSectionKey: "conversations",
     provider: "codex",
     providerSessionId: null,
     resumable: true,

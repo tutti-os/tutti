@@ -3,6 +3,7 @@ import test from "node:test";
 import type { TuttidClient } from "@tutti-os/client-tuttid-ts";
 import { TuttidProtocolError } from "@tutti-os/client-tuttid-ts";
 import {
+  selectEngineTurnsForSession,
   selectSessionActivationPresentations,
   selectSessionAttention
 } from "@tutti-os/agent-activity-core";
@@ -76,6 +77,7 @@ test("WorkspaceAgentActivityService.sendInput preserves the authoritative ready 
         workspaceId: "ws-1"
       }),
       sendWorkspaceAgentSessionInput: async () => ({
+        kind: "turn",
         session: readySession,
         turnId: "turn-1",
         turn: workspaceAgentTurn({ phase: "submitted" })
@@ -99,6 +101,10 @@ test("WorkspaceAgentActivityService.sendInput preserves the authoritative ready 
     .sessions.find((session) => session.agentSessionId === "session-1");
 
   assert.equal(result.session.activeTurn, null);
+  assert.notEqual(result.kind, "goalControl");
+  if (result.kind === "goalControl") {
+    throw new Error("expected a Turn-producing send result");
+  }
   assert.equal(result.turn.phase, "submitted");
   assert.equal(snapshotSession?.activeTurn, null);
 });
@@ -296,7 +302,8 @@ test("WorkspaceAgentActivityService reads existing session settings from the dae
       createWorkspaceAgentSession: async () => createdSession,
       getWorkspaceAgentSession: async () => ({
         session: loadedSession,
-        childSessions: []
+        childSessions: [],
+        turns: []
       }),
       sendWorkspaceAgentSessionInput: async () => ({ session: loadedSession }),
       updateWorkspaceAgentSessionVisibility: async () => loadedSession
@@ -562,7 +569,8 @@ test("WorkspaceAgentActivityService starts session-event streams and preserves u
             phase: "settled"
           }
         }),
-        childSessions: []
+        childSessions: [],
+        turns: []
       })
     } as unknown as TuttidClient,
     runtimeApi: {
@@ -641,6 +649,41 @@ test("WorkspaceAgentActivityService starts session-event streams and preserves u
   assert.deepEqual(await receivedTurnEvent, turnEvent);
 });
 
+test("WorkspaceAgentActivityService dispose releases every event stream subscription", () => {
+  const activeSubscriptions = new Set<symbol>();
+  const subscribe = () => {
+    const id = Symbol("subscription");
+    activeSubscriptions.add(id);
+    return () => activeSubscriptions.delete(id);
+  };
+  const service = new WorkspaceAgentActivityService({
+    eventStreamClient: {
+      connect: async () => {},
+      dispose: () => {},
+      publishIntent: async () => {},
+      subscribe: () => subscribe(),
+      subscribeConnectionState: () => subscribe()
+    } as never,
+    tuttidClient: {
+      listWorkspaceAgentSessions: async () => ({
+        hasMore: false,
+        sessions: [],
+        workspaceId: "ws-1"
+      })
+    } as unknown as TuttidClient,
+    runtimeApi: {
+      logTerminalDiagnostic: async () => {}
+    }
+  });
+
+  service.onSessionEvent("ws-1", () => {});
+  assert.equal(activeSubscriptions.size, 3);
+
+  service.dispose();
+  service.dispose();
+  assert.equal(activeSubscriptions.size, 0);
+});
+
 test("WorkspaceAgentActivityService preserves realtime turn provenance for attention", async () => {
   const listenersByTopic = new Map<string, (event: unknown) => void>();
   const running = workspaceAgentSession({
@@ -665,7 +708,8 @@ test("WorkspaceAgentActivityService preserves realtime turn provenance for atten
     tuttidClient: {
       getWorkspaceAgentSession: async () => ({
         session: settled,
-        childSessions: []
+        childSessions: [],
+        turns: []
       }),
       listWorkspaceAgentSessions: async () => ({
         hasMore: false,
@@ -752,7 +796,7 @@ test("WorkspaceAgentActivityService preserves live provenance across a transient
       getWorkspaceAgentSession: async () => {
         getCalls += 1;
         if (getCalls === 1) throw new Error("temporary reconcile failure");
-        return { session: settled, childSessions: [] };
+        return { session: settled, childSessions: [], turns: [] };
       },
       listWorkspaceAgentSessionMessages: async () => ({
         hasMore: false,
@@ -968,7 +1012,8 @@ test("WorkspaceAgentActivityService fetches detail before combined message recon
         calls.push("getSession");
         return {
           session: messagesResolved ? finalSession : staleSession,
-          childSessions: []
+          childSessions: [],
+          turns: []
         };
       },
       listWorkspaceAgentSessions: async () => ({
@@ -1053,7 +1098,23 @@ test("WorkspaceAgentActivityService reconciles child sessions and their messages
     tuttidClient: {
       getWorkspaceAgentSession: async () => ({
         session: root,
-        childSessions: [child]
+        childSessions: [child],
+        turns: [
+          {
+            agentSessionId: "session-1",
+            turnId: "turn-1",
+            phase: "settled",
+            outcome: "completed",
+            error: null,
+            completedCommand: null,
+            startedAtUnixMs: 1,
+            settledAtUnixMs: 2,
+            updatedAtUnixMs: 2,
+            fileChanges: {
+              files: [{ path: "/workspace/removed.txt", change: "deleted" }]
+            }
+          }
+        ]
       }),
       listWorkspaceAgentSessions: async () => ({
         hasMore: false,
@@ -1108,6 +1169,27 @@ test("WorkspaceAgentActivityService reconciles child sessions and their messages
     snapshot.sessionMessagesById["child-1"]?.[0]?.turnId,
     "child-turn-1"
   );
+  assert.deepEqual(
+    selectEngineTurnsForSession(
+      service.getSessionEngine("ws-1").getSnapshot(),
+      "session-1"
+    ).map((turn) => ({
+      turnId: turn.turnId,
+      phase: turn.phase,
+      updatedAtUnixMs: turn.updatedAtUnixMs,
+      fileChanges: turn.fileChanges
+    })),
+    [
+      {
+        turnId: "turn-1",
+        phase: "settled",
+        updatedAtUnixMs: 2,
+        fileChanges: {
+          files: [{ path: "/workspace/removed.txt", change: "deleted" }]
+        }
+      }
+    ]
+  );
 });
 
 test("WorkspaceAgentActivityService loads the newest history page first", async () => {
@@ -1117,7 +1199,8 @@ test("WorkspaceAgentActivityService loads the newest history page first", async 
     tuttidClient: {
       getWorkspaceAgentSession: async () => ({
         session,
-        childSessions: []
+        childSessions: [],
+        turns: []
       }),
       listWorkspaceAgentSessions: async () => ({
         hasMore: false,
@@ -1166,7 +1249,8 @@ test("WorkspaceAgentActivityService drains every incremental history page", asyn
     tuttidClient: {
       getWorkspaceAgentSession: async () => ({
         session,
-        childSessions: []
+        childSessions: [],
+        turns: []
       }),
       listWorkspaceAgentSessions: async () => ({
         hasMore: false,
@@ -1785,6 +1869,7 @@ function workspaceAgentSession(overrides: {
     pendingInteractions: [],
     permissionConfig: { configurable: false, modes: [] },
     pinnedAtUnixMs: null,
+    railSectionKey: "conversations",
     resumable: true,
     settings: overrides.settings ?? {},
     title: "Session 1",

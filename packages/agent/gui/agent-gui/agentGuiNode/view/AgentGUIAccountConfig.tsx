@@ -17,6 +17,7 @@ import { AccountMembershipBadge } from "../AccountMembershipBadge";
 import { AgentProbeUsageFreshness } from "../AgentProbeUsageFreshness";
 import { AgentUsageMeter } from "../AgentUsageMeter";
 import { SettingsLinedIcon } from "../../../app/renderer/components/icons/SettingsLinedIcon";
+import { resolveAgentGuiSessionProviderFlatIconUrl } from "../../../agentGuiSessionProviderIconUrls";
 import styles from "../AgentGUINode.styles";
 import type { AgentGUIAccountMenuState } from "../accountMenuState";
 import type { AgentComposerSlashStatusLimit } from "../AgentComposer";
@@ -328,6 +329,7 @@ interface AgentGUIConfigMenuProps {
   slashStatusUsageCapturedAtUnixMs: number | null;
   slashStatusUsageDidFail: boolean;
   slashStatusUsageAttempted: boolean;
+  provider?: string | null;
   providerAuthAccountLabel?: string | null;
   onAgentConfigMenuOpen?: () => void;
   onAgentUsageRefresh?: () => void;
@@ -346,6 +348,7 @@ export function AgentGUIConfigMenu({
   slashStatusUsageCapturedAtUnixMs,
   slashStatusUsageDidFail,
   slashStatusUsageAttempted,
+  provider,
   providerAuthAccountLabel,
   onAgentConfigMenuOpen,
   onAgentUsageRefresh,
@@ -354,6 +357,9 @@ export function AgentGUIConfigMenu({
   onOpenAgentSettings
 }: AgentGUIConfigMenuProps): React.JSX.Element {
   const [open, setOpen] = useState(false);
+  const providerFlatIconUrl = resolveAgentGuiSessionProviderFlatIconUrl(
+    provider ?? undefined
+  );
   return (
     <Popover
       open={open}
@@ -384,13 +390,25 @@ export function AgentGUIConfigMenu({
         className="w-[300px] max-w-[calc(100vw-32px)] gap-3 p-1 text-xs"
         data-testid="agent-gui-config-menu"
       >
-        <div className="flex min-w-0 flex-col gap-3">
+        <div className="flex min-w-0 flex-col gap-1">
           {providerScopedActionsVisible && providerAuthAccountLabel ? (
             <>
               <div className="flex min-w-0 flex-col gap-2 p-2">
-                <span className="text-[13px] font-semibold leading-4">
-                  {labels.slashStatusAccount}
-                </span>
+                <div className="flex min-w-0 items-center gap-2">
+                  {providerFlatIconUrl ? (
+                    <span
+                      aria-hidden="true"
+                      className="size-4 shrink-0 bg-current"
+                      style={{
+                        mask: `url("${providerFlatIconUrl}") center / contain no-repeat`,
+                        WebkitMask: `url("${providerFlatIconUrl}") center / contain no-repeat`
+                      }}
+                    />
+                  ) : null}
+                  <span className="text-[13px] font-semibold leading-4">
+                    {labels.slashStatusAccount}
+                  </span>
+                </div>
                 <span className="text-[13px] leading-5 text-[var(--text-secondary)]">
                   {providerAuthAccountLabel}
                 </span>

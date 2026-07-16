@@ -11,7 +11,8 @@ import {
 import type { NotificationMessage } from "@tutti-os/ui-notifications";
 import {
   buildWorkspaceAgentOutcomeNotificationFromSettledTurn,
-  createWorkspaceAgentOutcomeNotificationController
+  createWorkspaceAgentOutcomeNotificationController,
+  workspaceAgentOutcomeNotificationKey
 } from "./workspaceAgentOutcomeNotification.ts";
 
 test("outcome builder projects canonical completed and failed settled turns", () => {
@@ -26,6 +27,7 @@ test("outcome builder projects canonical completed and failed settled turns", ()
       level: "success",
       provider: "codex",
       status: "completed",
+      turnId: "turn-1",
       workspaceId: "ws-1"
     }
   );
@@ -109,6 +111,7 @@ test("controller notifies once for a canonical running to settled transition", (
       level: "success",
       provider: "codex",
       statusLabel: "Completed",
+      turnId: "turn-1",
       workspaceId: "ws-1"
     }
   ]);
@@ -116,6 +119,17 @@ test("controller notifies once for a canonical running to settled transition", (
   assert.equal(harness.notifications[0]?.title, "Build feature completed");
 
   harness.controller.dispose();
+});
+
+test("outcome notification key is stable per workspace session turn", () => {
+  assert.equal(
+    workspaceAgentOutcomeNotificationKey({
+      agentSessionId: "session-1",
+      turnId: "turn-1",
+      workspaceId: "ws-1"
+    }),
+    "workspace-agent-outcome:ws-1:session-1:turn-1"
+  );
 });
 
 test("session messages never synthesize outcomes", () => {
@@ -224,6 +238,7 @@ function canonicalTurn(
 ): AgentActivityTurn {
   return {
     agentSessionId: "session-1",
+    origin: "user_prompt",
     outcome,
     phase,
     ...(phase === "settled" ? { settledAtUnixMs: 2 } : {}),

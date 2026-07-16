@@ -252,6 +252,81 @@ func TestApplyLifecycleSnapshotToPatchProviderAgnostic(t *testing.T) {
 	}
 }
 
+func TestGoalRootProviderStartProjectsAtomicCanonicalTurn(t *testing.T) {
+	t.Parallel()
+
+	session := Session{
+		RoomID: "room-1", AgentSessionID: "agent-1", Provider: ProviderClaudeCode,
+		ProviderSessionID: "claude-1",
+	}
+	event := claudeSDKRootProviderTurnStartedEvent(session, "goal-turn-1", "provider-turn-1", map[string]any{
+		"turnOrigin":            "goal_arm",
+		"sourceGoalOperationId": "goal-op-1",
+		"sourceGoalRevision":    int64(4),
+		"sourceGoalRepairEpoch": int64(2),
+	})
+	patch, ok := statePatchFromSessionEvent(agentsessionstore.EventSource{Provider: ProviderClaudeCode}, event, session.AgentSessionID, 100)
+	if !ok || patch.Turn == nil || patch.RootProviderTurn == nil {
+		t.Fatalf("goal provider start patch = %#v, want atomic turn and provider transition", patch)
+	}
+	if patch.Turn.TurnID != "goal-turn-1" || patch.Turn.Phase != "running" || patch.Turn.Origin != "goal_arm" ||
+		patch.Turn.SourceGoalOperationID != "goal-op-1" || patch.Turn.SourceGoalRevision != 4 || patch.Turn.SourceGoalRepairEpoch != 2 {
+		t.Fatalf("goal turn patch = %#v", patch.Turn)
+	}
+	if patch.RootProviderTurn.RootTurnID != "goal-turn-1" || patch.RootProviderTurn.ProviderTurnID != "provider-turn-1" {
+		t.Fatalf("root provider patch = %#v", patch.RootProviderTurn)
+	}
+}
+
+func TestOrdinaryRootProviderStartCannotCreateCanonicalTurn(t *testing.T) {
+	t.Parallel()
+
+	session := Session{RoomID: "room-1", AgentSessionID: "agent-1", Provider: ProviderClaudeCode}
+	event := claudeSDKRootProviderTurnStartedEvent(session, "missing-turn", "provider-turn-1", map[string]any{"adapter": "claude"})
+	event = stampAdapterTurnLifecycleEvents([]activityshared.Event{event}, func() uint64 { return 1 })[0]
+	patch, ok := statePatchFromSessionEvent(agentsessionstore.EventSource{Provider: ProviderClaudeCode}, event, session.AgentSessionID, 100)
+	if !ok || patch.RootProviderTurn == nil {
+		t.Fatalf("ordinary root provider patch = %#v", patch)
+	}
+	if patch.Turn != nil {
+		t.Fatalf("ordinary root provider start fabricated canonical turn: %#v", patch.Turn)
+	}
+}
+
+func TestRootProviderStartWaitsForDurableCanonicalSettlement(t *testing.T) {
+	t.Parallel()
+
+	session := Session{RoomID: "room-1", AgentSessionID: "agent-1", Provider: ProviderClaudeCode}
+	started := claudeSDKRootProviderTurnStartedEvent(session, "goal-turn-1", "provider-turn-1", map[string]any{
+		"turnOrigin":            "goal_arm",
+		"sourceGoalOperationId": "goal-op-1",
+		"sourceGoalRevision":    int64(1),
+	})
+	started = stampAdapterTurnLifecycleEvents([]activityshared.Event{started}, func() uint64 { return 1 })[0]
+	session = applyTurnLifecycleSnapshots(session, []activityshared.Event{started})
+	if !sessionHasLiveTurnLifecycle(session) || runtimeTurnLifecycleActiveTurnID(session.TurnLifecycle) != "goal-turn-1" {
+		t.Fatalf("runtime lifecycle after provider start = %#v", session.TurnLifecycle)
+	}
+
+	completed := claudeSDKRootProviderTurnCompletedEvent(session, "goal-turn-1", "provider-turn-1", activityshared.TurnOutcomeCompleted, nil)
+	completed = stampAdapterTurnLifecycleEvents([]activityshared.Event{completed}, func() uint64 { return 2 })[0]
+	session = applyTurnLifecycleSnapshots(session, []activityshared.Event{completed})
+	if !sessionHasLiveTurnLifecycle(session) || runtimeTurnLifecycleActiveTurnID(session.TurnLifecycle) != "goal-turn-1" {
+		t.Fatalf("runtime lifecycle after provider completion = %#v", session.TurnLifecycle)
+	}
+
+	controller := NewController(nil, nil)
+	controller.store(session)
+	controller.ReconcileRootTurnSettlement(RootTurnSettlement{
+		RoomID: session.RoomID, AgentSessionID: session.AgentSessionID,
+		TurnID: "goal-turn-1", Outcome: "completed",
+	})
+	reconciled, ok := controller.get(session.RoomID, session.AgentSessionID)
+	if !ok || sessionHasLiveTurnLifecycle(reconciled) || reconciled.SubmitAvailability == nil || reconciled.SubmitAvailability.State != "available" {
+		t.Fatalf("runtime lifecycle after durable settlement = %#v", reconciled)
+	}
+}
+
 // A rejected/errored approval must not strand the lifecycle in
 // waiting_approval: the error path appends a back-to-running snapshot.
 func TestCodexAppServerAdapterApprovalErrorPathResumesLifecycle(t *testing.T) {

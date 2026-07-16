@@ -37,6 +37,67 @@ type reportCall struct {
 	report agentsessionstore.ReportActivityInput
 }
 
+type goalPrepareBarrierReporter struct {
+	mu       sync.Mutex
+	prepared chan struct{}
+	release  chan struct{}
+	once     sync.Once
+	phases   []string
+}
+
+type blockingGoalReconcileReporter struct{}
+
+func (blockingGoalReconcileReporter) Report(ctx context.Context, _ agentsessionstore.ReportActivityInput) error {
+	<-ctx.Done()
+	return ctx.Err()
+}
+
+func (r *goalPrepareBarrierReporter) Report(ctx context.Context, report agentsessionstore.ReportActivityInput) error {
+	for _, request := range report.GoalReconcileRequests {
+		r.mu.Lock()
+		r.phases = append(r.phases, request.Phase)
+		r.mu.Unlock()
+		if request.Phase == "quiesce_pending" {
+			r.once.Do(func() { close(r.prepared) })
+			select {
+			case <-r.release:
+			case <-ctx.Done():
+				return ctx.Err()
+			}
+		}
+	}
+	return nil
+}
+
+func (r *goalPrepareBarrierReporter) phaseSnapshot() []string {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return append([]string(nil), r.phases...)
+}
+
+func TestGoalRecoveryCapabilitiesComeFromAdapterPolicy(t *testing.T) {
+	codex := (&CodexAppServerAdapter{}).GoalCapabilities()
+	if !codex.QuerySupported || !codex.ReplaySetAfterRestart {
+		t.Fatalf("codex capabilities=%#v", codex)
+	}
+	claude := (&ClaudeCodeSDKAdapter{}).GoalCapabilities()
+	if claude.QuerySupported || claude.ReplaySetAfterRestart {
+		t.Fatalf("claude capabilities=%#v", claude)
+	}
+
+	// A provider name is not a capability. Even an adapter registered under
+	// the codex string is rejected if it does not implement GoalAdapter.
+	adapter := &recordingStartAdapter{provider: ProviderCodex}
+	controller := NewController([]Adapter{adapter}, nil)
+	started, err := controller.Start(context.Background(), StartInput{RoomID: "room-policy", Provider: ProviderCodex})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := controller.GoalCapabilities(context.Background(), GoalReconcileInput{RoomID: "room-policy", AgentSessionID: started.Session.AgentSessionID}); err == nil {
+		t.Fatal("provider-name-only adapter unexpectedly acquired goal recovery capabilities")
+	}
+}
+
 func stringPtr(value string) *string {
 	return &value
 }
@@ -5740,6 +5801,24 @@ func TestControllerExactTurnCancelHoldsLifecycleLockThroughAdapterCancel(t *test
 	case <-secondLockAcquired:
 	case <-time.After(2 * time.Second):
 		t.Fatal("session lifecycle lock was not released after adapter cancel")
+	}
+}
+
+func TestGoalCapabilitiesWaitObservesContextCancellation(t *testing.T) {
+	controller := NewController(nil, nil)
+	release := controller.acquireLifecycleLock("room-1", "session-1")
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Millisecond)
+	defer cancel()
+	_, err := controller.GoalCapabilities(ctx, GoalReconcileInput{RoomID: "room-1", AgentSessionID: "session-1"})
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("GoalCapabilities error = %v", err)
+	}
+	release()
+	controller.mu.Lock()
+	remaining := len(controller.lifecycleLocks)
+	controller.mu.Unlock()
+	if remaining != 0 {
+		t.Fatalf("lifecycle lock references leaked: %d", remaining)
 	}
 }
 

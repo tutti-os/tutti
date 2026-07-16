@@ -404,6 +404,14 @@ func (stubAgentSessionService) GoalControl(context.Context, string, string, stri
 	return agentservice.GoalControlSessionResult{}, nil
 }
 
+func (stubAgentSessionService) GetGoalState(context.Context, string, string) (agentservice.GoalStateSessionResult, error) {
+	return agentservice.GoalStateSessionResult{}, nil
+}
+
+func (stubAgentSessionService) ReconcileGoal(context.Context, string, string) (agentservice.GoalStateSessionResult, error) {
+	return agentservice.GoalStateSessionResult{}, nil
+}
+
 func (s stubAgentSessionService) SendInput(ctx context.Context, workspaceID string, agentSessionID string, input agentservice.SendInput) (agentservice.SendInputResult, error) {
 	if s.sendInputFn != nil {
 		return s.sendInputFn(ctx, workspaceID, agentSessionID, input)
@@ -861,6 +869,62 @@ func TestDaemonAPIGeneratedRoutesSendAgentSessionInputForwardsGuidance(t *testin
 	)
 	if recorder.Code != http.StatusOK {
 		t.Fatalf("status = %d, want %d; body: %s", recorder.Code, http.StatusOK, recorder.Body.String())
+	}
+}
+
+func TestDaemonAPIGeneratedRoutesSendTypedGoalReturnsOperationWithoutTurn(t *testing.T) {
+	mux := http.NewServeMux()
+	updatedAt := time.UnixMilli(1000)
+	RegisterRoutes(mux, NewRoutes(DaemonAPI{
+		AgentSessionService: stubAgentSessionService{
+			sendInputFn: func(_ context.Context, _, agentSessionID string, input agentservice.SendInput) (agentservice.SendInputResult, error) {
+				if len(input.Content) != 1 || input.Content[0].Text != "/goal clear" {
+					t.Fatalf("input content = %#v", input.Content)
+				}
+				goalState := agentactivitybiz.SessionGoalState{
+					AgentSessionID: agentSessionID,
+					Revision:       2,
+					SyncStatus:     agentactivitybiz.GoalSyncStatusApplying,
+				}
+				goalResult := agentservice.GoalControlSessionResult{
+					OperationID: "goal-op-2",
+					GoalState:   &goalState,
+				}
+				return agentservice.SendInputResult{
+					Kind: "goalControl",
+					Session: agentservice.Session{
+						ID: agentSessionID, Provider: "claude-code", Visible: true,
+						CreatedAt: time.UnixMilli(1000), UpdatedAt: &updatedAt,
+					},
+					GoalControl: &goalResult,
+				}, nil
+			},
+		},
+	}))
+
+	recorder := performGeneratedRouteRequest(
+		t,
+		mux,
+		http.MethodPost,
+		"/v1/workspaces/ws-1/agent-sessions/agent-session-1/input",
+		map[string]any{"content": []map[string]any{{"type": "text", "text": "/goal clear"}}},
+	)
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d; body: %s", recorder.Code, http.StatusOK, recorder.Body.String())
+	}
+	var response tuttigenerated.SendWorkspaceAgentSessionInputResponse
+	decodeGeneratedRouteResponse(t, recorder, &response)
+	if response.Kind != tuttigenerated.GoalControl {
+		t.Fatalf("kind = %q, want goalControl", response.Kind)
+	}
+	if response.TurnId != nil || response.Turn != nil {
+		t.Fatalf("typed goal manufactured turn: turnId=%v turn=%#v", response.TurnId, response.Turn)
+	}
+	if response.OperationId == nil || *response.OperationId != "goal-op-2" {
+		t.Fatalf("operationId = %v, want goal-op-2", response.OperationId)
+	}
+	if response.GoalState == nil || response.GoalState.Revision != 2 {
+		t.Fatalf("goalState = %#v", response.GoalState)
 	}
 }
 

@@ -365,9 +365,8 @@ func resolveExternalImportSessionCwd(raw string) (string, bool) {
 		// independent project rooted at the worktree instead of lining up
 		// with the main checkout the user actually registered as their
 		// project. Resolve it upfront so every downstream consumer of this
-		// cwd (project-path grouping, selection matching, and the persisted
-		// session record the GUI groups conversations by) agrees on the same
-		// canonical project identity.
+		// cwd (project selection, initial rail classification, and the persisted
+		// session record) agrees on the same canonical project identity.
 		if resolved, ok := resolveExternalImportWorktreeCwd(canonical); ok {
 			return resolved, true
 		}

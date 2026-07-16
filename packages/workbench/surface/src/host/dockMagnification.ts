@@ -121,13 +121,8 @@ export function resolveDockMagnificationHitBounds(
     }
   }
 
-  const effectiveCrossAxisEndPadding =
-    dockPlacement === "left"
-      ? crossAxisPadding + (DOCK_ICON_PEAK_SIZE - DOCK_ICON_BASE_SIZE)
-      : crossAxisPadding;
-
   return {
-    crossEnd: crossEnd + effectiveCrossAxisEndPadding,
+    crossEnd: crossEnd + crossAxisPadding,
     crossStart: crossStart - crossAxisPadding,
     mainEnd,
     mainStart

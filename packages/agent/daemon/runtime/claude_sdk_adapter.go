@@ -87,6 +87,11 @@ type claudeSDKAdapterSession struct {
 	// transcript content, so their assistant/thinking projection is suppressed
 	// before persistence. Guarded by the adapter mutex.
 	goalClearControlTurns map[string]struct{}
+	// Durable goal identity associated with the arm/continuation lifecycle.
+	// It is deliberately independent of goalArmTurnID.
+	goalOperationID string
+	goalRevision    int64
+	goalRepairEpoch int64
 }
 
 type claudeSDKCompactMessage struct {
@@ -120,10 +125,12 @@ type claudeSDKChildSession struct {
 }
 
 type claudeSDKTurnWaiter struct {
-	turnID string
-	emit   EventSink
-	events []activityshared.Event
-	done   chan claudeSDKTurnResult
+	mu        sync.Mutex
+	turnID    string
+	emit      EventSink
+	events    []activityshared.Event
+	done      chan claudeSDKTurnResult
+	completed bool
 }
 
 type claudeSDKTurnResult struct {

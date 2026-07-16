@@ -587,6 +587,56 @@ func TestReportActivityInputProjectsRuntimeCallsToStableMessageUpdates(t *testin
 	}
 }
 
+func TestReportActivityInputPersistsCanonicalTurnFileChanges(t *testing.T) {
+	t.Parallel()
+
+	session := reportTestSession()
+	session.Provider = ProviderCursor
+	fileChanges := map[string]any{
+		"files": []any{
+			map[string]any{
+				"path":      "/workspace/obsolete.txt",
+				"change":    "deleted",
+				"oldString": "obsolete\n",
+				"newString": "",
+			},
+		},
+	}
+	completed := newTurnActivityEventWithID(session, "call-event-delete", EventCallCompleted, "turn-delete", messageStreamStateCompleted, "", "Write", map[string]any{
+		"callId":      "delete-1",
+		"callType":    "tool",
+		"name":        "Write",
+		"toolName":    "Write",
+		"fileChanges": fileChanges,
+		"output": map[string]any{
+			"filePath":  "/workspace/obsolete.txt",
+			"oldString": "obsolete\n",
+		},
+	})
+	completed.OccurredAtUnixMS = 301
+	turnUpdated := newTurnActivityEvent(session, EventTurnUpdated, "turn-delete", SessionStatusWorking, "", "", map[string]any{
+		"fileChanges": fileChanges,
+	})
+	turnUpdated.OccurredAtUnixMS = 302
+
+	report := reportActivityInput(session, []activityshared.Event{completed, turnUpdated})
+	if len(report.MessageUpdates) != 1 {
+		t.Fatalf("message updates = %#v, want one completed tool update", report.MessageUpdates)
+	}
+	payload := report.MessageUpdates[0].Payload
+	files := payloadArray(payloadMap(payload, "fileChanges")["files"])
+	if len(files) != 1 || files[0]["change"] != "deleted" {
+		t.Fatalf("tool payload = %#v, want canonical deleted file changes", payload)
+	}
+	if len(report.StatePatches) != 1 || report.StatePatches[0].Turn == nil {
+		t.Fatalf("state patches = %#v, want turn file-change patch", report.StatePatches)
+	}
+	turnFiles := payloadArray(report.StatePatches[0].Turn.FileChanges["files"])
+	if len(turnFiles) != 1 || turnFiles[0]["change"] != "deleted" {
+		t.Fatalf("turn patch = %#v, want canonical deleted file changes", report.StatePatches[0].Turn)
+	}
+}
+
 func TestReportActivityInputProjectsOnlyExplicitInteractionTransitions(t *testing.T) {
 	t.Parallel()
 
@@ -624,6 +674,10 @@ func TestReportActivityInputProjectsOnlyExplicitInteractionTransitions(t *testin
 		transition.Kind != "question" || transition.Status != "pending" ||
 		transition.ToolName != "AskUserQuestion" {
 		t.Fatalf("interaction transition = %#v", transition)
+	}
+	turn := report.StatePatches[0].Turn
+	if turn == nil || turn.TurnID != "turn-1" || turn.Phase != "waiting" || turn.Origin != "provider_initiated" || turn.ActiveTurnID == nil || *turn.ActiveTurnID != "turn-1" {
+		t.Fatalf("provider-initiated turn = %#v, want explicit atomic turn creation", turn)
 	}
 }
 

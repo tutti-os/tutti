@@ -24,6 +24,7 @@ type acpTurnNormalizer struct {
 	toolItemIDs               map[string]string
 	toolCallsSeen             map[string]bool
 	pendingToolCalls          map[string]pendingToolCallSnapshot
+	fileChanges               map[string]any
 	compactionMu              sync.Mutex
 	compactionMessageID       string
 	compactionTerminalStatus  string
@@ -363,7 +364,7 @@ func (n *acpTurnNormalizer) ToolCallEvents(session Session, turnID string, updat
 		if !ok {
 			return nil, false
 		}
-		return []activityshared.Event{event}, true
+		return appendTurnFileChangesEvent(nil, []activityshared.Event{event}, event), true
 	}
 	eventID := n.toolItemID(update)
 	if eventID == "" {
@@ -376,6 +377,7 @@ func (n *acpTurnNormalizer) ToolCallEvents(session Session, turnID string, updat
 	n.trackToolCallEvent(event)
 	events := n.Finish(session, turnID, messageStreamStateCompleted)
 	events = append(events, event)
+	events = appendTurnFileChangesEvent(n, events, event)
 	return events, true
 }
 
@@ -424,7 +426,7 @@ func (n *acpTurnNormalizer) StandardToolCallEvents(session Session, turnID strin
 		if !ok {
 			return nil, false
 		}
-		return appendTurnFileChangesEvent(session, turnID, []activityshared.Event{event}, event), true
+		return appendTurnFileChangesEvent(nil, []activityshared.Event{event}, event), true
 	}
 	event, ok := n.StandardToolCallEvent(session, turnID, updateType, update)
 	if !ok {
@@ -432,13 +434,12 @@ func (n *acpTurnNormalizer) StandardToolCallEvents(session Session, turnID strin
 	}
 	events := n.Finish(session, turnID, messageStreamStateCompleted)
 	events = append(events, event)
-	events = appendTurnFileChangesEvent(session, turnID, events, event)
+	events = appendTurnFileChangesEvent(n, events, event)
 	return events, true
 }
 
 func appendTurnFileChangesEvent(
-	session Session,
-	turnID string,
+	normalizer *acpTurnNormalizer,
 	events []activityshared.Event,
 	event activityshared.Event,
 ) []activityshared.Event {
@@ -449,9 +450,28 @@ func appendTurnFileChangesEvent(
 	if fileChanges == nil {
 		return events
 	}
-	return append(events, newTurnActivityEvent(session, EventTurnUpdated, turnID, SessionStatusWorking, "", "", map[string]any{
-		"fileChanges": fileChanges,
-	}))
+	if normalizer != nil {
+		normalizer.fileChanges = mergeCanonicalFileChanges(normalizer.fileChanges, fileChanges)
+		fileChanges = clonePayload(normalizer.fileChanges)
+	}
+	ctx := activityshared.EventContext{
+		EventID:              newID(),
+		Provider:             event.Provider,
+		ProviderSessionID:    event.ProviderSessionID,
+		AgentSessionID:       event.AgentSessionID,
+		SessionKind:          event.SessionKind,
+		RootAgentSessionID:   event.RootAgentSessionID,
+		RootTurnID:           event.RootTurnID,
+		ParentAgentSessionID: event.ParentAgentSessionID,
+		ParentTurnID:         event.ParentTurnID,
+		ParentToolCallID:     event.ParentToolCallID,
+		TurnID:               event.Payload.TurnID,
+		CWD:                  event.Payload.CWD,
+		OccurredAtUnixMS:     nextEventUnixMS(),
+	}
+	updated := activityshared.NewTurnUpdated(ctx, event.Payload.TurnID, activityshared.TurnPhaseWorking)
+	updated.Payload.Metadata = map[string]any{"fileChanges": fileChanges}
+	return append(events, updated)
 }
 
 func (n *acpTurnNormalizer) toolItemID(update map[string]any) string {
@@ -634,7 +654,7 @@ func normalizeMergedACPToolPayload(payload map[string]any) {
 	if strings.TrimSpace(asString(payload["callType"])) == "" && strings.TrimSpace(kind) != "" {
 		payload["callType"] = kind
 	}
-	if fileChanges := fileChangesFromACPToolPayload(payload); fileChanges != nil {
+	if fileChanges := canonicalFileChangesFromToolPayload(payload); fileChanges != nil {
 		payload["fileChanges"] = fileChanges
 	}
 }

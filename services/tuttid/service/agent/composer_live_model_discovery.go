@@ -216,9 +216,6 @@ func (s *Service) discoverLiveComposerModelsUncachedForScope(
 		providerTargetRefKind(providerTargetRef) != "agent_extension" {
 		return nil, errLiveModelDiscoveryAlreadyAttempted
 	}
-	if err := s.ensureProviderRuntimeInstalledForLaunch(ctx, scope.provider, providerTargetRef); err != nil {
-		return nil, err
-	}
 	releaseStartup, err := s.awaitClaudeStartupSlot(ctx, scope.provider)
 	if err != nil {
 		return nil, err
@@ -281,6 +278,7 @@ func (s *Service) discoverLiveComposerModelsUncachedForScope(
 		return runtimeSession, nil
 	}()
 	if err != nil {
+		s.invalidateProviderAvailability(scope.provider)
 		if isExtension {
 			logAgentExtensionComposerDebug("runtime_start_failed", map[string]any{
 				"agentTargetId": scope.agentTargetID,

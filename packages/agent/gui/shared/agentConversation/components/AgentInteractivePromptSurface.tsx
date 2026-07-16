@@ -33,6 +33,7 @@ export interface AgentInteractivePromptSurfaceProps {
   }) => void;
   labels: {
     approvalLead: string;
+    fileChangeApprovalLead: string;
     planLead: string;
     planModes: Array<{ id: string; label: string; description: string }>;
     stayInPlan: string;

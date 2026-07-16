@@ -24,6 +24,25 @@ import type {
 export function parseInlineActivityMessages(
   event: AgentActivityUpdatedEvent
 ): AgentActivityMessage[] {
+  if (event.eventType === "session_audit") {
+    const audit = recordValue(event.data.audit);
+    if (!audit) return [];
+    return [
+      agentActivityMessageFromInlineMessage({
+        agentSessionId: event.agentSessionId.trim(),
+        message: {
+          kind: "session_audit",
+          messageId: audit.auditId,
+          occurredAtUnixMs: audit.occurredAtUnixMs,
+          payload: audit.payload,
+          role: audit.role,
+          turnId: null,
+          version: audit.version
+        },
+        workspaceId: event.workspaceId
+      })
+    ].filter((message): message is AgentActivityMessage => message !== null);
+  }
   if (event.eventType !== "message_update") return [];
   const source = recordValue(event.data);
   const rawMessages = Array.isArray(source?.messages) ? source.messages : [];
@@ -63,6 +82,7 @@ function agentActivityMessageFromInlineMessage(input: {
     !role ||
     !kind ||
     (rawTurnId !== null && !turnId) ||
+    (kind === "session_audit" ? rawTurnId !== null : rawTurnId === null) ||
     version <= 0 ||
     occurredAtUnixMs === undefined ||
     occurredAtUnixMs <= 0

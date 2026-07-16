@@ -57,6 +57,7 @@ import {
   createInitialComposerOptionsState
 } from "./composerOptions.reducer.ts";
 import { canonicalTurnKey } from "./sessionEntityKeys.ts";
+import { deriveCanonicalSubmitAvailability } from "./sessionLifecycle.availability.ts";
 
 // Root reducer: static composition of domain reducers, zero business logic.
 // Cross-domain read-only context is passed explicitly; domains still own all
@@ -207,8 +208,10 @@ export function rootEngineReducer(
     submitIntent?.type === "submit/requested" &&
     submitIntent.routing === "send_now"
       ? resolvePromptSendNowStrategy(
-          state.promptQueue,
-          submitSessionId,
+          deriveCanonicalSubmitAvailability(
+            state.sessionLifecycle,
+            submitSessionId
+          ),
           submitSession?.capabilities
         )
       : null;
@@ -246,17 +249,14 @@ export function rootEngineReducer(
             state.promptQueue,
             intent.agentSessionId,
             intent.promptId,
+            deriveCanonicalSubmitAvailability(
+              state.sessionLifecycle,
+              intent.agentSessionId
+            ),
             state.sessionLifecycle.sessionsById[intent.agentSessionId.trim()]
               ?.capabilities
           )
         : null;
-  const promptQueue = promptQueueReducer(state.promptQueue, intent, {
-    cancelResultValidation,
-    deletedSessionIds: state.sessionLifecycle.deletedSessionIds,
-    planFeedbackAccepted: feedbackAccepted,
-    submitRequestAccepted,
-    sendNowStrategy
-  });
   const expiringSubmitId =
     intent.type === "engine/intentExpired" &&
     intent.expiryId.startsWith("submit:")
@@ -290,13 +290,24 @@ export function rootEngineReducer(
       cancelResultValidation
     }
   );
+  const promptQueue = promptQueueReducer(state.promptQueue, intent, {
+    cancelResultValidation,
+    deletedSessionIds: sessionLifecycle.state.deletedSessionIds,
+    interactionResultValidation,
+    lifecycle: sessionLifecycle.state,
+    planFeedbackAccepted: feedbackAccepted,
+    sendResultValidation,
+    submitRequestAccepted,
+    sendNowStrategy,
+    settingsResultValidation
+  });
   const attentionReadState = attentionReadStateReducer(
     state.attentionReadState,
     intent,
     { sessionsById: sessionLifecycle.state.sessionsById }
   );
   const pendingIntents = pendingIntentsReducer(state.pendingIntents, intent, {
-    deletedSessionIds: state.sessionLifecycle.deletedSessionIds,
+    deletedSessionIds: sessionLifecycle.state.deletedSessionIds,
     turnsById: sessionLifecycle.state.turnsById,
     submitCancellationAccepted:
       intent.type === "submit/canceled" &&
@@ -363,10 +374,10 @@ export function rootEngineReducer(
       ...engineRuntime.commands,
       ...pendingIntents.commands,
       ...planDecisions.commands,
-      ...promptQueue.commands,
       ...sessionReconcile.commands,
       ...sessionCommands.commands,
       ...sessionLifecycle.commands,
+      ...promptQueue.commands,
       ...composerOptions.commands
     ],
     state: nextState

@@ -15,6 +15,7 @@ import {
   canonicalTurnKey
 } from "./sessionEntityKeys.ts";
 import { selectLatestActivationForSession } from "./pendingIntents.selectors.ts";
+import { deriveCanonicalSubmitAvailability } from "./sessionLifecycle.availability.ts";
 
 export interface WorkspaceAgentConsumerSession {
   activeTurn: AgentActivityTurn | null;
@@ -227,19 +228,14 @@ export function selectEngineSubmitAvailability(
   state: AgentSessionEngineState,
   agentSessionId: string | null | undefined
 ): EngineSubmitAvailability | null {
-  const id = agentSessionId?.trim() ?? "";
-  const session = state.sessionLifecycle.sessionsById[id];
-  if (!session) {
-    return null;
-  }
-  if (selectEnginePendingInteractions(state, id).length > 0) {
-    return { state: "blocked", reason: "waiting" };
-  }
-  const activeTurn = selectEngineActiveTurn(state, id);
-  if (activeTurn && activeTurn.phase !== "settled") {
-    return { state: "blocked", reason: "active_turn" };
-  }
-  return { state: "available" };
+  const availability = deriveCanonicalSubmitAvailability(
+    state.sessionLifecycle,
+    agentSessionId
+  );
+  if (availability.state === "missing") return null;
+  return availability.reason
+    ? { state: availability.state, reason: availability.reason }
+    : { state: availability.state };
 }
 
 export function selectEngineCancelPending(

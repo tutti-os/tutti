@@ -12,10 +12,9 @@ import (
 )
 
 const (
-	ProviderAvailabilityAvailable      = "available"
-	ProviderAvailabilityUnavailable    = "unavailable"
-	ProviderAvailabilityUnknown        = "unknown"
-	providerAvailabilityReasonFallback = "agent_provider_unavailable"
+	ProviderAvailabilityAvailable   = "available"
+	ProviderAvailabilityUnavailable = "unavailable"
+	ProviderAvailabilityUnknown     = "unknown"
 )
 
 var ErrProviderUnavailable = errors.New("agent provider unavailable")
@@ -72,12 +71,29 @@ type ProviderAvailabilityChecker interface {
 	ListProviderAvailability(context.Context, []string) ([]ProviderAvailability, error)
 }
 
+type ProviderAvailabilityInvalidator interface {
+	InvalidateProviderAvailability(string)
+}
+
 type AgentStatusProviderAvailabilityChecker struct {
 	Service AgentProviderStatusLister
 }
 
 type AgentProviderStatusLister interface {
 	List(context.Context, agentstatusservice.ListInput) (agentstatusservice.Snapshot, error)
+}
+
+func (c AgentStatusProviderAvailabilityChecker) InvalidateProviderAvailability(provider string) {
+	if invalidator, ok := c.Service.(interface{ Invalidate(string) }); ok {
+		invalidator.Invalidate(provider)
+	}
+}
+
+func (s *Service) invalidateProviderAvailability(provider string) {
+	s.providerAvailabilityCache.invalidate(provider)
+	if invalidator, ok := s.AvailabilityChecker.(ProviderAvailabilityInvalidator); ok {
+		invalidator.InvalidateProviderAvailability(provider)
+	}
 }
 
 func (s *Service) ListProviderAvailability(ctx context.Context, input ProviderAvailabilityInput) ([]ProviderAvailability, error) {
@@ -101,38 +117,8 @@ func (s *Service) ListProviderAvailability(ctx context.Context, input ProviderAv
 	if err != nil {
 		return nil, err
 	}
-	s.providerAvailabilityCache.set(cacheKey, now, availability)
+	s.providerAvailabilityCache.set(cacheKey, time.Now().UTC(), availability)
 	return cloneProviderAvailability(availability), nil
-}
-
-func (s *Service) ensureProviderRuntimeInstalled(ctx context.Context, provider string) error {
-	if s.AvailabilityChecker == nil {
-		return nil
-	}
-	availability, err := s.ListProviderAvailability(ctx, ProviderAvailabilityInput{Provider: provider})
-	if err != nil {
-		return err
-	}
-	for _, item := range availability {
-		if providerAvailabilityNeedsInstall(item) {
-			return providerUnavailableErrorFromAvailability(item)
-		}
-	}
-	return nil
-}
-
-func (s *Service) ensureProviderRuntimeInstalledForLaunch(
-	ctx context.Context,
-	provider string,
-	providerTargetRef map[string]any,
-) error {
-	if providerTargetRefKind(providerTargetRef) == "agent_extension" {
-		// Extension runtime availability is resolved from the signed installation
-		// and fixed Target binding by the dynamic adapter resolver. The legacy
-		// provider status service owns only the built-in provider catalog.
-		return nil
-	}
-	return s.ensureProviderRuntimeInstalled(ctx, provider)
 }
 
 func providerTargetRefKind(providerTargetRef map[string]any) string {
@@ -249,55 +235,6 @@ func providerAvailabilityAdapterDetail(status agentstatusservice.ProviderStatus)
 		return "Managed Node runtime is unavailable"
 	default:
 		return "ACP adapter not found"
-	}
-}
-
-func providerAvailabilityNeedsInstall(availability ProviderAvailability) bool {
-	if availability.Status == ProviderAvailabilityAvailable {
-		return false
-	}
-	for _, check := range availability.Checks {
-		switch strings.TrimSpace(check.Name) {
-		case "cli", "adapter":
-			if !check.Passed {
-				return true
-			}
-		}
-	}
-	if availability.LastError == nil {
-		return false
-	}
-	switch strings.TrimSpace(availability.LastError.Code) {
-	case "cli_not_found", "acp_adapter_not_found", agentstatusservice.ReasonClaudeSDKSidecarUnavailable, agentstatusservice.ReasonManagedRuntimeUnavailable:
-		return true
-	default:
-		return false
-	}
-}
-
-func providerUnavailableErrorFromAvailability(availability ProviderAvailability) error {
-	reasonCode := providerAvailabilityReasonFallback
-	message := "agent provider runtime is unavailable"
-	if availability.LastError != nil {
-		if code := strings.TrimSpace(availability.LastError.Code); code != "" {
-			reasonCode = code
-		}
-		if detail := strings.TrimSpace(availability.LastError.Message); detail != "" {
-			message = detail
-		}
-	}
-	if message == "agent provider runtime is unavailable" {
-		for _, check := range availability.Checks {
-			if !check.Passed && strings.TrimSpace(check.Detail) != "" {
-				message = strings.TrimSpace(check.Detail)
-				break
-			}
-		}
-	}
-	return &ProviderUnavailableError{
-		Provider:   strings.TrimSpace(availability.Provider),
-		ReasonCode: reasonCode,
-		Message:    message,
 	}
 }
 

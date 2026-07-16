@@ -12,7 +12,7 @@ import type { useAgentGUIActivation } from "./useAgentGUIActivation";
 import { useAgentGUIComposerSettingsActions } from "./useAgentGUIComposerSettingsActions";
 
 describe("useAgentGUIComposerSettingsActions", () => {
-  it("retries an unknown active-session update without changing target defaults", () => {
+  it("retries an unknown active-session update and remembers the explicit selection", () => {
     const execute = vi.fn(() => new Promise<unknown>(() => undefined));
     const sessionEngine = createAgentSessionEngine({
       clock: { nowUnixMs: () => 1 },
@@ -25,6 +25,7 @@ describe("useAgentGUIComposerSettingsActions", () => {
       sessions: [
         normalizeAgentActivitySession({
           activeTurnId: null,
+          agentTargetId: "local:claude-code",
           agentSessionId: "session-1",
           cwd: "/workspace",
           latestTurnInteractions: [],
@@ -65,6 +66,9 @@ describe("useAgentGUIComposerSettingsActions", () => {
     const onDataChange = vi.fn();
     const onRememberComposerDefaults = vi.fn();
     const setDraftSettingsBySessionId = vi.fn();
+    const draftSettingsBySessionIdRef: {
+      current: Record<string, AgentSessionComposerSettings>;
+    } = { current: {} };
     const dispatch = vi.spyOn(sessionEngine, "dispatch");
     const activeSettings: AgentSessionComposerSettings = {
       browserUse: true,
@@ -85,8 +89,9 @@ describe("useAgentGUIComposerSettingsActions", () => {
           getSnapshot: () => ({})
         } as unknown as AgentActivityRuntime,
         composerSupportPermissionModeChangeDeferred: false,
+        dataRef: { current: data },
         defaultReasoningEffort: null,
-        draftSettingsBySessionIdRef: { current: {} },
+        draftSettingsBySessionIdRef,
         loadDraftComposerOptions: vi.fn(),
         onDataChangeRef: { current: onDataChange },
         onRememberComposerDefaultsRef: {
@@ -123,8 +128,25 @@ describe("useAgentGUIComposerSettingsActions", () => {
       })
     );
     expect(execute).toHaveBeenCalledTimes(2);
-    expect(onRememberComposerDefaults).not.toHaveBeenCalled();
-    expect(onDataChange).not.toHaveBeenCalled();
-    expect(setDraftSettingsBySessionId).not.toHaveBeenCalled();
+    expect(onRememberComposerDefaults).toHaveBeenCalledWith({
+      agentTargetId: "local:claude-code",
+      provider: "claude-code",
+      defaults: { permissionModeId: "acceptEdits" }
+    });
+    expect(
+      draftSettingsBySessionIdRef.current[
+        "__agent_gui_node_defaults__:target:local:claude-code"
+      ]
+    ).toMatchObject({ permissionModeId: "acceptEdits" });
+    expect(setDraftSettingsBySessionId).toHaveBeenCalledTimes(1);
+    expect(onDataChange).toHaveBeenCalledTimes(1);
+    const updateNode = onDataChange.mock.calls[0]?.[0] as
+      | ((current: AgentGUINodeData) => AgentGUINodeData)
+      | undefined;
+    expect(updateNode?.(data)).toMatchObject({
+      composerOverridesByAgentTargetId: {
+        "local:claude-code": { permissionModeId: "acceptEdits" }
+      }
+    });
   });
 });

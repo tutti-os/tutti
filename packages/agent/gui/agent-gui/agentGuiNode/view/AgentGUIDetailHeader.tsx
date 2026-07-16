@@ -90,6 +90,7 @@ export type ChromeLabels = {
 
 export type InteractivePromptLabels = {
   approvalLead: string;
+  fileChangeApprovalLead: string;
   planLead: string;
   planModes: Array<{ id: string; label: string; description: string }>;
   stayInPlan: string;

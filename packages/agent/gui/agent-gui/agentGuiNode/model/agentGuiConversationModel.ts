@@ -220,6 +220,7 @@ export function buildAgentGUIConversationDetail({
   const detail = buildWorkspaceAgentSessionDetailViewModel({
     activity: resolvedActivity,
     session,
+    sessionTurns: conversation.sessionTurns,
     timelineItems: [...timelineItems],
     workspaceRoot
   });
@@ -325,6 +326,7 @@ export function conversationSummaryFromAgentSession(
       session.activeTurnId ? "working" : "idle"
     ),
     cwd: session.cwd?.trim() ?? "",
+    railSectionKey: session.railSectionKey,
     project: resolveConversationProject(session, projectResolver),
     ...(isExternalImportNoProjectSession(session)
       ? { projectMode: "none" }
@@ -453,6 +455,7 @@ function conversationSummaryFromActivity(
     titleFallback,
     status,
     cwd: session?.cwd.trim() ?? "",
+    ...(session ? { railSectionKey: session.railSectionKey } : {}),
     project: resolveConversationProject(session, options.projectResolver),
     ...(isExternalImportNoProjectSession(session)
       ? { projectMode: "none" }

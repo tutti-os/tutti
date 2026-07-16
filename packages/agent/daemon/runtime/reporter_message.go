@@ -160,7 +160,19 @@ func callMessageUpdateFromSessionEvent(
 	if callType := firstNonEmptyString(event.Payload.CallType, stringFromPayload(event.Payload.Metadata, "callType")); callType != "" {
 		payload["callType"] = callType
 	}
-	for _, key := range []string{"toolName", "activityKind", "command", "status", "exitCode", "exit_code", "sessionID", "paths", "requestId"} {
+	for _, key := range []string{
+		"toolName",
+		"activityKind",
+		"fileChangeKind",
+		"fileChanges",
+		"command",
+		"status",
+		"exitCode",
+		"exit_code",
+		"sessionID",
+		"paths",
+		"requestId",
+	} {
 		if value, ok := event.Payload.Metadata[key]; ok && !payloadValueIsEmpty(value) {
 			if key == "toolName" {
 				continue

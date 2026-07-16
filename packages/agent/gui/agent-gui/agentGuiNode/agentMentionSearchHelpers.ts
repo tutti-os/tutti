@@ -20,6 +20,7 @@ import type {
   AgentMentionGroup,
   AgentMentionGroupId
 } from "./AgentMentionSearchController";
+import type { AgentMentionRawGroups } from "./AgentMentionSearchContracts";
 import type {
   AgentActivityMessage,
   AgentActivitySession
@@ -306,14 +307,9 @@ function emptyGroupLabel(groupId: AgentMentionGroupId, query: string): string {
   return agentMentionEmptyGroupLabel(groupId, query);
 }
 
-type AgentMentionRawGroupId = Exclude<
-  AgentMentionGroupId,
-  "files" | `issue-topic:${string}`
->;
-
 export function resolveMentionGroupItems(
   groupId: AgentMentionGroupId,
-  rawGroups: Record<AgentMentionRawGroupId, AgentContextMentionItem[]>
+  rawGroups: AgentMentionRawGroups
 ): AgentContextMentionItem[] {
   if (groupId.startsWith("issue-topic:")) {
     return [];
@@ -321,7 +317,24 @@ export function resolveMentionGroupItems(
   if (groupId === "files") {
     return [...rawGroups.opened_files, ...rawGroups.agent_generated_files];
   }
-  return rawGroups[groupId as AgentMentionRawGroupId] ?? [];
+  if (groupId === "my_sessions" || groupId === "collab_sessions") {
+    return rawGroups.sessions.filter(
+      (item) => item.kind === "session" && item.scope === groupId
+    );
+  }
+  if (groupId.startsWith("agent:")) {
+    return [];
+  }
+  if (
+    groupId === "apps" ||
+    groupId === "agents" ||
+    groupId === "opened_files" ||
+    groupId === "agent_generated_files" ||
+    groupId === "issues"
+  ) {
+    return rawGroups[groupId];
+  }
+  return [];
 }
 
 export function resolveMentionGroupTotalCount(

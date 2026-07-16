@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"time"
 
 	agentactivitybiz "github.com/tutti-os/tutti/services/tuttid/biz/agentactivity"
 )
@@ -69,6 +70,38 @@ func TestProtocolV2ProjectionRestoresSettledLatestTurnWithoutActiveTurn(t *testi
 	}
 }
 
+func TestGetDetailReturnsAllDurableSessionTurns(t *testing.T) {
+	t.Parallel()
+	runtime := newFakeRuntime()
+	runtime.sessions["workspace-1:session-1"] = ProviderRuntimeSession{
+		ID:              "session-1",
+		WorkspaceID:     "workspace-1",
+		Provider:        "cursor",
+		CreatedAtUnixMS: time.UnixMilli(1).UnixMilli(),
+		UpdatedAtUnixMS: time.UnixMilli(3).UnixMilli(),
+	}
+	turns := []agentactivitybiz.Turn{
+		{WorkspaceID: "workspace-1", AgentSessionID: "session-1", TurnID: "turn-1", Phase: agentactivitybiz.TurnPhaseSettled, StartedAtUnixMS: 1},
+		{WorkspaceID: "workspace-1", AgentSessionID: "session-1", TurnID: "turn-2", Phase: agentactivitybiz.TurnPhaseSettled, StartedAtUnixMS: 2, FileChanges: map[string]any{"files": []any{map[string]any{"path": "removed.txt", "change": "deleted"}}}},
+	}
+	service := newIsolatedAgentService(runtime)
+	service.TurnStore = failingTurnStore{
+		latestTurn:   turns[1],
+		sessionTurns: turns,
+	}
+
+	detail, err := service.GetDetail(context.Background(), "workspace-1", "session-1")
+	if err != nil {
+		t.Fatalf("GetDetail() error = %v", err)
+	}
+	if len(detail.Turns) != 2 || detail.Turns[0].TurnID != "turn-1" || detail.Turns[1].TurnID != "turn-2" {
+		t.Fatalf("detail turns = %#v", detail.Turns)
+	}
+	if got := detail.Turns[1].FileChanges["files"]; got == nil {
+		t.Fatalf("second turn file changes = %#v", detail.Turns[1].FileChanges)
+	}
+}
+
 func TestProtocolV2BatchProjectionPropagatesLatestTurnReadFailure(t *testing.T) {
 	t.Parallel()
 	want := errors.New("latest turn store unavailable")
@@ -124,10 +157,22 @@ type failingTurnStore struct {
 	latestInteractionListCalls *int
 	latestTurnInteractions     map[string][]agentactivitybiz.Interaction
 	interactions               []agentactivitybiz.Interaction
+	sessionTurns               []agentactivitybiz.Turn
+	sessionTurnsErr            error
 }
 
 func (s failingTurnStore) GetLatestTurn(context.Context, string, string) (agentactivitybiz.Turn, bool, error) {
 	return s.latestTurn, s.latestTurn.TurnID != "", s.latestTurnErr
+}
+
+func (s failingTurnStore) ListSessionTurns(context.Context, string, string) ([]agentactivitybiz.Turn, error) {
+	if s.sessionTurns != nil || s.sessionTurnsErr != nil {
+		return s.sessionTurns, s.sessionTurnsErr
+	}
+	if s.latestTurn.TurnID == "" {
+		return []agentactivitybiz.Turn{}, nil
+	}
+	return []agentactivitybiz.Turn{s.latestTurn}, nil
 }
 
 func (s failingTurnStore) ListLatestTurns(context.Context, string, []string) (map[string]agentactivitybiz.Turn, error) {

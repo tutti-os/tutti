@@ -358,6 +358,65 @@ describe("projectWorkspaceAgentMessagesToConversationVM", () => {
     ).toContain("Provider notice\n\nNotice text");
   });
 
+  it("keeps turnless session audits in chronological conversation order", () => {
+    const conversation = projectWorkspaceAgentMessagesToConversationVM({
+      activity: activity(),
+      session: session({
+        effectiveStatus: "completed",
+        turnPhase: "completed"
+      }),
+      messages: [
+        message({
+          messageId: "goal-control:first",
+          version: 1,
+          turnId: undefined,
+          role: "user",
+          kind: "session_audit",
+          payload: { text: "/goal first" },
+          occurredAtUnixMs: 100
+        }),
+        message({
+          messageId: "assistant-first",
+          version: 2,
+          turnId: "goal-turn-1",
+          role: "assistant",
+          kind: "text",
+          payload: { text: "First goal result" },
+          occurredAtUnixMs: 200
+        }),
+        message({
+          messageId: "goal-control:second",
+          version: 3,
+          turnId: undefined,
+          role: "user",
+          kind: "session_audit",
+          payload: { text: "/goal second" },
+          occurredAtUnixMs: 300
+        }),
+        message({
+          messageId: "assistant-second",
+          version: 4,
+          turnId: "goal-turn-2",
+          role: "assistant",
+          kind: "text",
+          payload: { text: "Second goal result" },
+          occurredAtUnixMs: 400
+        })
+      ]
+    });
+
+    expect(
+      conversation.rows
+        .filter((row) => row.kind === "message")
+        .map((row) => `${row.speaker}:${row.messages[0]?.body}`)
+    ).toEqual([
+      "user:/goal first",
+      "assistant:First goal result",
+      "user:/goal second",
+      "assistant:Second goal result"
+    ]);
+  });
+
   it("projects only the latest text snapshot for a stable message id", () => {
     const conversation = projectWorkspaceAgentMessagesToConversationVM({
       activity: activity(),
@@ -1045,6 +1104,7 @@ function session(
           activeTurn: {
             agentSessionId: "session-1",
             outcome: null,
+            origin: "user_prompt",
             phase: phase === "working" ? "running" : phase,
             settledAtUnixMs: null,
             startedAtUnixMs: 1,

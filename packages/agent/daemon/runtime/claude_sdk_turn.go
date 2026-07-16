@@ -25,19 +25,22 @@ func (s *claudeSDKAdapterSession) ensureClaudeSDKTurnNormalizerLocked(turnID str
 	return normalizer
 }
 
-// trackClaudeSDKTurnCallEvents records call.started/completed/failed against
-// the shared ACP turn normalizer so Claude turns close open tools the same way
-// Codex/ACP do on FinishInterrupted/FinishFailed/FinishCompleted.
-func (a *ClaudeCodeSDKAdapter) trackClaudeSDKTurnCallEvents(
+// projectClaudeSDKTurnCallEvents gives Claude the same turn-owned call merge,
+// file-change accumulation, and dangling-call settlement path as ACP/Codex.
+// A completed call is merged with its started snapshot before canonical
+// fileChanges are derived, so input-only Write/Edit details are not lost.
+func (a *ClaudeCodeSDKAdapter) projectClaudeSDKTurnCallEvents(
 	adapterSession *claudeSDKAdapterSession,
 	events []activityshared.Event,
-) {
+) []activityshared.Event {
 	if a == nil || adapterSession == nil || len(events) == 0 {
-		return
+		return events
 	}
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	for _, event := range events {
+	projected := make([]activityshared.Event, 0, len(events)*2)
+	for index := range events {
+		event := events[index]
 		switch event.Type {
 		case activityshared.EventCallStarted,
 			activityshared.EventCallCompleted,
@@ -50,9 +53,17 @@ func (a *ClaudeCodeSDKAdapter) trackClaudeSDKTurnCallEvents(
 			if normalizer == nil {
 				continue
 			}
+			if event.Type == activityshared.EventCallCompleted {
+				normalizer.mergePendingToolCallSnapshot(&event)
+			}
 			normalizer.trackToolCallEvent(event)
+			projected = append(projected, event)
+			projected = appendTurnFileChangesEvent(normalizer, projected, event)
+			continue
 		}
+		projected = append(projected, event)
 	}
+	return projected
 }
 
 // claudeSDKThinkingEvents routes Claude thinking snapshots through the shared

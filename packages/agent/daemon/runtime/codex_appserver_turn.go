@@ -131,6 +131,7 @@ func (a *CodexAppServerAdapter) finalizeSettledTurn(agentSessionID string, appTu
 	if a == nil || appTurn == nil || appTurn.emitTerminal == nil {
 		return
 	}
+	appTurn.processMu.Lock()
 	appTurn.settleFinalized.Store(true)
 	session := appTurn.session
 	turnID := appTurn.turnID
@@ -164,6 +165,7 @@ func (a *CodexAppServerAdapter) finalizeSettledTurn(agentSessionID string, appTu
 		appTurn.normalizer.ApplyAssistantFinalText(appServerTurnFinalAssistantText(terminal.turn))
 		appTurn.emitTerminal(appServerTurnTerminalEvents(session, turnID, terminal.turn, appTurn.normalizer))
 	}
+	appTurn.processMu.Unlock()
 	a.endActiveTurn(agentSessionID, appTurn)
 	appTurn.markTerminated()
 	// With an active goal, codex normally auto-starts the next turn; the

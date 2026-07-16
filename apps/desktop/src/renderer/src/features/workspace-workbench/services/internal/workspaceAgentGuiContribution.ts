@@ -26,7 +26,6 @@ import type {
 import type {
   DesktopComputerUseApi,
   DesktopHostFilesApi,
-  DesktopHostWindowApi,
   DesktopPlatformApi,
   DesktopRuntimeApi
 } from "@preload/types";
@@ -70,7 +69,6 @@ export function createWorkspaceAgentGuiContribution(input: {
   >[0]["unifiedDockIconUrl"];
   defaultAgentProvider?: string | null;
   hostFilesApi: DesktopHostFilesApi;
-  hostWindowApi: Pick<DesktopHostWindowApi, "openAgentWindow">;
   i18n: WorkspaceWorkbenchDesktopI18nRuntime;
   onCapabilitySettingsRequest?: DesktopAgentGUIWorkbenchBodyProps["onCapabilitySettingsRequest"];
   agentsService: Pick<IAgentsService, "getSnapshot" | "subscribe">;
@@ -207,9 +205,6 @@ export function createWorkspaceAgentGuiContribution(input: {
       ),
       newConversation: input.appI18n.t("workspace.agentGui.newConversation"),
       nodeTitle: input.i18n.t(workspaceWorkbenchDesktopI18nKeys.nodes.agent),
-      openDetachedWindow: input.appI18n.t(
-        "workspace.agentGui.openDetachedWindow"
-      ),
       untitledConversation: input.appI18n.t(
         "workspace.agentGui.untitledConversation"
       )
@@ -224,20 +219,6 @@ export function createWorkspaceAgentGuiContribution(input: {
     ),
     renderBody: (context, helpers) =>
       renderAgentGuiWorkbenchBody(context, helpers),
-    onOpenDetachedWindow: (request) => {
-      // Transfer the complete lifecycle snapshot synchronously. The detached
-      // window hydrates its canonical directory service before first paint and
-      // then refreshes that same service; it does not create React-owned
-      // loading or retry state.
-      input.hostWindowApi.openAgentWindow({
-        agentDirectorySnapshot: input.agentsService.getSnapshot(),
-        agentSessionId: request.agentSessionId,
-        agentTargetId: request.agentTargetId,
-        providerStatusSnapshot: input.agentProviderStatusService.getSnapshot(),
-        provider: request.provider,
-        workspaceId: request.workspaceId
-      });
-    },
     renderPreview: (context, helpers) =>
       createElement(
         DesktopAgentGUIWorkbenchDockPreviewFrame,

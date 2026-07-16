@@ -24,7 +24,12 @@ import type {
 } from "./types.ts";
 
 const NO_COMMANDS: readonly EngineCommand[] = [];
-const ACTIVATION_COMMAND_TIMEOUT_MS = 30_000;
+const EXISTING_SESSION_ACTIVATION_COMMAND_TIMEOUT_MS = 30_000;
+// A new activation includes process spawn and ACP initialize before session/new.
+// Keep the outer command alive long enough for session/new to receive its own
+// full 30-second protocol timeout instead of inheriting a partially spent UI
+// deadline.
+const NEW_SESSION_ACTIVATION_COMMAND_TIMEOUT_MS = 90_000;
 
 export function createInitialPendingIntentsState(): PendingIntentsState {
   return {
@@ -213,7 +218,8 @@ function requestActivation(
     errorCode: null,
     errorMessage: null,
     expiresAtUnixMs: intent.expiresAtUnixMs,
-    initialTurnExpected: runtimeContent.length > 0,
+    initialTurnExpected:
+      intent.initialTurnExpected ?? runtimeContent.length > 0,
     ...(intent.submitDiagnostics
       ? { submitDiagnostics: { ...intent.submitDiagnostics } }
       : {}),
@@ -267,7 +273,7 @@ function requestActivation(
               : {}),
             mode: "new" as const,
             ...(intent.settings ? { settings: { ...intent.settings } } : {}),
-            timeoutMs: ACTIVATION_COMMAND_TIMEOUT_MS,
+            timeoutMs: NEW_SESSION_ACTIVATION_COMMAND_TIMEOUT_MS,
             ...(intent.title?.trim() ? { title: intent.title.trim() } : {}),
             type: "session/activate",
             ...(intent.visible !== undefined
@@ -290,7 +296,7 @@ function requestActivation(
               : {}),
             mode: "existing" as const,
             ...(intent.settings ? { settings: { ...intent.settings } } : {}),
-            timeoutMs: ACTIVATION_COMMAND_TIMEOUT_MS,
+            timeoutMs: EXISTING_SESSION_ACTIVATION_COMMAND_TIMEOUT_MS,
             ...(intent.title?.trim() ? { title: intent.title.trim() } : {}),
             type: "session/activate" as const,
             ...(intent.visible !== undefined

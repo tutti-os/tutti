@@ -1,6 +1,7 @@
 import type {
   AgentActivityMessageSemantics,
-  AgentActivitySession
+  AgentActivitySession,
+  AgentActivityTurn
 } from "@tutti-os/agent-activity-core";
 import type { WorkspaceAgentActivityTimelineItem } from "./workspaceAgentTimelineTypes";
 import type { WorkspaceAgentActivityCard } from "./workspaceAgentActivityListViewModel";
@@ -105,12 +106,14 @@ export interface WorkspaceAgentSessionDetailViewModel {
   cwd: string;
   workspaceRoot: string | null;
   turns: WorkspaceAgentSessionDetailTurn[];
+  sessionTurns?: readonly AgentActivityTurn[];
   showProcessingIndicator?: boolean;
 }
 
 export interface BuildWorkspaceAgentSessionDetailInput {
   activity: WorkspaceAgentActivityCard;
   session: AgentActivitySession;
+  sessionTurns?: readonly AgentActivityTurn[];
   timelineItems: WorkspaceAgentActivityTimelineItem[];
   workspaceRoot?: string | null;
 }

@@ -26,7 +26,10 @@ import {
 } from "./agentMentionSearchDiagnostics";
 import { queryAgentMentionProviderGroupPage } from "./AgentMentionSearchIndex";
 import { AgentMentionSearchControllerBase } from "./AgentMentionSearchControllerBase";
-import type { ReferenceProvenanceFilter } from "@tutti-os/workspace-file-reference/contracts";
+import type {
+  ReferenceProvenanceCatalog,
+  ReferenceProvenanceFilter
+} from "@tutti-os/workspace-file-reference/contracts";
 import { referenceProvenanceFilterCacheKey } from "@tutti-os/workspace-file-reference/core";
 
 export type {
@@ -43,6 +46,21 @@ export class AgentMentionSearchController extends AgentMentionSearchControllerBa
     string,
     { abortController: AbortController; token: symbol }
   >();
+
+  setProvenanceCatalog(catalog: ReferenceProvenanceCatalog | null): void {
+    if (this.currentProvenanceCatalog === catalog) return;
+    this.currentProvenanceCatalog = catalog;
+    if (
+      this.currentFilter !== "session" ||
+      (this.state.status !== "ready" && this.state.status !== "loading")
+    ) {
+      return;
+    }
+    this.setState({
+      ...this.state,
+      groups: this.groupsFromRawGroups()
+    });
+  }
 
   setProvenanceFilter(filter: ReferenceProvenanceFilter | null): void {
     const previousKey = this.currentProvenanceFilter

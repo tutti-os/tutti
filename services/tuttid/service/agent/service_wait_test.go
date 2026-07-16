@@ -106,6 +106,14 @@ func (r *waitRuntime) GetLatestTurn(_ context.Context, workspaceID string, sessi
 	return turn, ok, nil
 }
 
+func (r *waitRuntime) ListSessionTurns(_ context.Context, workspaceID string, sessionID string) ([]agentactivitybiz.Turn, error) {
+	turn, ok := r.persistedTurn(workspaceID, sessionID)
+	if !ok {
+		return []agentactivitybiz.Turn{}, nil
+	}
+	return []agentactivitybiz.Turn{turn}, nil
+}
+
 func (r *waitRuntime) GetTurn(_ context.Context, workspaceID string, sessionID string, turnID string) (agentactivitybiz.Turn, bool, error) {
 	turn, ok := r.persistedTurn(workspaceID, sessionID)
 	return turn, ok && turn.TurnID == turnID, nil

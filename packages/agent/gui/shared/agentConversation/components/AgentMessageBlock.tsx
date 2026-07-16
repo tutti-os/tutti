@@ -37,9 +37,10 @@ import { AgentUserImageGrid } from "./AgentMessageImages";
 const MESSAGE_COPY_FEEDBACK_MS = 1400;
 const TRANSPORT_RETRY_PROGRESS_PATTERN =
   /\b(reconnect(?:ing)?(?:\s*(?:\.\.\.|…|[.。]+|:|-))?\s*\(?\d+\s*\/\s*\d+\)?)/i;
-const SYSTEM_NOTICE_WARNING_CLASS_NAME =
-  "border-[color-mix(in_srgb,var(--state-warning)_14%,transparent)] bg-[color-mix(in_srgb,var(--background-fronted)_100%,var(--state-warning)_6%)]";
-const SYSTEM_NOTICE_ERROR_CLASS_NAME =
+// All system-notice banners use the light-red danger surface. Yellow/warning
+// surfaces are banned for notice boxes — see "Badges And Status" in
+// docs/conventions/desktop-visual-language.md.
+const SYSTEM_NOTICE_CLASS_NAME =
   "border-[var(--on-danger-hover)] bg-[var(--on-danger)]";
 
 interface AgentMessageBlockProps {
@@ -362,11 +363,10 @@ function AgentSystemNoticeMessage({
     );
   }
   const isStatusNotice = systemNoticeIsStatus(message);
-  const noticeToneClassName = systemNoticeToneClassName(message);
   return (
     <section
       role={isStatusNotice ? "status" : undefined}
-      className={`box-border w-full min-w-0 rounded-[8px] border p-3 text-[13px] leading-5 text-[var(--text-primary)] ${noticeToneClassName}`}
+      className={`box-border w-full min-w-0 rounded-[8px] border p-3 text-[13px] leading-5 text-[var(--text-primary)] ${SYSTEM_NOTICE_CLASS_NAME}`}
     >
       <div className="min-w-0">
         <div className="font-medium text-[var(--text-primary)]">{title}</div>
@@ -376,21 +376,6 @@ function AgentSystemNoticeMessage({
       </div>
     </section>
   );
-}
-
-function systemNoticeToneClassName(message: AgentMessageContentVM): string {
-  const notice = message.systemNotice;
-  if (
-    notice?.severity === "error" ||
-    notice?.noticeKind === "transport_fallback" ||
-    isTransportFallbackNotice(message)
-  ) {
-    return SYSTEM_NOTICE_ERROR_CLASS_NAME;
-  }
-  if (notice?.severity === "warning") {
-    return SYSTEM_NOTICE_WARNING_CLASS_NAME;
-  }
-  return SYSTEM_NOTICE_WARNING_CLASS_NAME;
 }
 
 function systemNoticeIsStatus(message: AgentMessageContentVM): boolean {

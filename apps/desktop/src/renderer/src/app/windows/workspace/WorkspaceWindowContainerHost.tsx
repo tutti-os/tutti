@@ -1,29 +1,22 @@
-import { useEffect, useMemo, type ReactNode } from "react";
+import { useEffect, type ReactNode } from "react";
 import { InstantiationContext } from "@tutti-os/infra/di";
 import { AnalyticsDebugFloatingEntryGate } from "@renderer/features/analytics-debug";
 import { useTranslation } from "../../../i18n";
 import { Toast } from "../../../lib/toast";
-import {
-  createWorkspaceWindowContainer,
-  type WorkspaceWindowContainerResult
-} from "./createWorkspaceWindowContainer";
-import { createDeferredWorkspaceContainerDispose } from "./deferredWorkspaceContainerDispose";
+import type { WorkspaceWindowContainerResult } from "./createWorkspaceWindowContainer";
 
 export interface WorkspaceWindowContainerHostInput extends WorkspaceWindowContainerResult {
   workspaceID: string | null;
 }
 
 export function WorkspaceWindowContainerHost({
-  children
+  children,
+  containerInput
 }: {
   children: (input: WorkspaceWindowContainerHostInput) => ReactNode;
+  containerInput: WorkspaceWindowContainerResult;
 }) {
-  const containerInput = useMemo(() => createWorkspaceWindowContainer(), []);
   const { container, hostWindowApi, startupWorkspaceID } = containerInput;
-  const containerDispose = useMemo(
-    () => createDeferredWorkspaceContainerDispose(() => container.dispose()),
-    [container]
-  );
   const requestedWorkspaceID = new URLSearchParams(window.location.search).get(
     "workspaceId"
   );
@@ -31,11 +24,8 @@ export function WorkspaceWindowContainerHost({
   const { t } = useTranslation();
 
   useEffect(() => {
-    containerDispose.cancel();
-    return () => {
-      containerDispose.schedule();
-    };
-  }, [containerDispose]);
+    containerInput.markCommitted();
+  }, [containerInput]);
 
   useEffect(() => {
     return hostWindowApi.onQuitShortcutToast(() => {

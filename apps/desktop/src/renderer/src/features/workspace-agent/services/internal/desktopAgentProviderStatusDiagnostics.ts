@@ -32,6 +32,7 @@ export interface DiagnosticsConsentStore {
 export interface AgentProviderStatusRequestInput {
   providers?: readonly WorkspaceAgentProvider[];
   includeNetwork?: boolean;
+  refresh?: boolean;
 }
 
 interface DesktopAgentProviderStatusDiagnosticsDependencies {

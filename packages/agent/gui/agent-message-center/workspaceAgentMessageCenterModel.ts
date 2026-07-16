@@ -7,6 +7,7 @@ import {
 import type { AgentConversationPromptVM } from "../shared/agentConversation/contracts/agentConversationVM";
 import { normalizeAskUserQuestions } from "../shared/agentConversation/askUserQuestions";
 import { extractAgentMcpToolTarget } from "../shared/agentMcpToolTarget";
+import { normalizeAgentApprovalPurpose } from "../shared/agentConversation/agentApprovalPurpose";
 import type { WorkspaceAgentActivityStatus } from "../shared/workspaceAgentActivityListViewModel";
 import { resolveWorkspaceAgentSessionSortTimeUnixMs } from "../shared/workspaceAgentSessionSortTime";
 import {
@@ -372,12 +373,16 @@ function approvalPromptFromMessage(
     return null;
   }
   const mcpTarget = extractAgentMcpToolTarget({ payload });
+  const approvalPurpose = normalizeAgentApprovalPurpose(
+    payload.approvalPurpose
+  );
   return {
     kind: "approval",
     id: `approval:${requestId}`,
     turnId: message.turnId ?? "turn:unknown",
     requestId,
     callId: stringValue(payload.callId) ?? message.messageId,
+    ...(approvalPurpose ? { approvalPurpose } : {}),
     title: firstNonEmptyString(
       mcpTarget?.displayName ?? null,
       stringValue(payload.summary),

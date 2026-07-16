@@ -3,6 +3,8 @@ package agentruntime
 import (
 	"encoding/json"
 	"testing"
+
+	activityshared "github.com/tutti-os/tutti/packages/agent/daemon/activity/events"
 )
 
 func TestAppServerFileChangePreservesCwdInRawInput(t *testing.T) {
@@ -36,6 +38,35 @@ func TestAppServerFileChangePreservesCwdInRawInput(t *testing.T) {
 	}
 }
 
+func TestAppServerFileChangeCompletionUpdatesCanonicalTurn(t *testing.T) {
+	t.Parallel()
+
+	session := standardTestSession(ProviderCodex)
+	normalizer := newACPTurnNormalizer()
+	update, ok := appServerItemToolCallUpdate(map[string]any{
+		"id":     "item-delete",
+		"type":   "fileChange",
+		"status": "completed",
+		"cwd":    "/workspace/project",
+		"changes": []any{map[string]any{
+			"path": "/workspace/project/obsolete.ts",
+			"kind": map[string]any{"type": "delete"},
+			"diff": "@@ -1 +0,0 @@\n-obsolete",
+		}},
+	}, true)
+	if !ok {
+		t.Fatal("fileChange item did not produce a tool-call update")
+	}
+	events, ok := normalizer.ToolCallEvents(session, "turn-1", update)
+	if !ok || len(events) != 2 || events[1].Type != activityshared.EventTurnUpdated {
+		t.Fatalf("fileChange events = %#v, want completed call followed by turn.updated", events)
+	}
+	files := payloadArray(payloadMap(events[1].Payload.Metadata, "fileChanges")["files"])
+	if len(files) != 1 || files[0]["change"] != "deleted" {
+		t.Fatalf("turn file changes = %#v, want deleted", files)
+	}
+}
+
 func TestAppServerFileChangeApprovalUsesStartedItemChanges(t *testing.T) {
 	t.Parallel()
 
@@ -65,7 +96,7 @@ func TestAppServerFileChangeApprovalUsesStartedItemChanges(t *testing.T) {
 	}
 
 	adapter := &CodexAppServerAdapter{}
-	_, pending, err := adapter.appServerApprovalRequested(
+	events, pending, err := adapter.appServerApprovalRequested(
 		session,
 		"turn-1",
 		json.RawMessage(`1`),
@@ -82,6 +113,13 @@ func TestAppServerFileChangeApprovalUsesStartedItemChanges(t *testing.T) {
 	}
 	if pending == nil {
 		t.Fatal("pending approval is nil")
+	}
+	if pending.approvalPurpose != approvalPurposeEditFiles {
+		t.Fatalf("pending approval purpose = %q, want %q", pending.approvalPurpose, approvalPurposeEditFiles)
+	}
+	interaction := events[len(events)-1].Payload.Interaction
+	if interaction == nil || asString(interaction.Metadata["approvalPurpose"]) != approvalPurposeEditFiles {
+		t.Fatalf("interaction approval purpose = %#v, want %q", interaction, approvalPurposeEditFiles)
 	}
 	changes, ok := pending.input["changes"].([]any)
 	if !ok || len(changes) != 1 {
