@@ -192,7 +192,8 @@ export class SessionRuntime {
         this.lastAssistantUuid = value;
       },
       onSessionState: () => this.emitSessionState(),
-      onMaybeTitle: () => this.maybeEmitSessionTitleUpdated(),
+      onMaybeTitle: (shouldEmit) =>
+        this.maybeEmitSessionTitleUpdated(shouldEmit),
       turns: this.turns,
       assistant: this.assistantStream,
       activities: this.activities,
@@ -766,7 +767,9 @@ export class SessionRuntime {
     return this.configuration.sessionStatePayload();
   }
 
-  private async maybeEmitSessionTitleUpdated(): Promise<void> {
+  private async maybeEmitSessionTitleUpdated(
+    shouldEmit: () => boolean = () => true
+  ): Promise<void> {
     if (this.driver || !this.providerSessionId) {
       return;
     }
@@ -780,7 +783,7 @@ export class SessionRuntime {
       const title = normalizeTitle(
         stringValue(info?.customTitle) || stringValue(info?.summary)
       );
-      if (!title || title === this.lastTitle) {
+      if (!shouldEmit() || !title || title === this.lastTitle) {
         return;
       }
       this.lastTitle = title;

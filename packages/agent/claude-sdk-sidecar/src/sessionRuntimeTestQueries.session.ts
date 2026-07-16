@@ -73,6 +73,47 @@ export function userPromptText(message: SDKUserMessage): string {
     .join("");
 }
 
+export function fakeDeferredContextUsageQuery(
+  prompt: AsyncIterable<SDKUserMessage>,
+  contextUsageResolvers: Array<(value: unknown) => void>
+): AsyncIterable<SDKMessage> & {
+  getContextUsage: () => Promise<unknown>;
+  close: () => void;
+} {
+  return {
+    async *[Symbol.asyncIterator]() {
+      const iterator = prompt[Symbol.asyncIterator]();
+      for (let index = 0; index < 2; index += 1) {
+        const nextPrompt = await iterator.next();
+        const promptMessage = nextPrompt.value as SDKUserMessage & {
+          uuid?: string;
+        };
+        yield {
+          ...promptMessage,
+          uuid: promptMessage.uuid,
+          type: "user",
+          parent_tool_use_id: null,
+          session_id: "provider-session-1"
+        } as SDKMessage;
+        yield {
+          type: "result",
+          subtype: "success",
+          usage: {
+            input_tokens: 120,
+            output_tokens: 8,
+            cache_read_input_tokens: 72,
+            cache_creation_input_tokens: 0
+          }
+        } as unknown as SDKMessage;
+      }
+    },
+    getContextUsage() {
+      return new Promise((resolve) => contextUsageResolvers.push(resolve));
+    },
+    close() {}
+  };
+}
+
 export function fakeCompactBoundaryQuery(
   prompt: AsyncIterable<SDKUserMessage>,
   options: { boundaryAfterResult?: boolean } = {}

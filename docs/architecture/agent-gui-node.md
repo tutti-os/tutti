@@ -1266,6 +1266,13 @@ the user message or after the result settles; AgentGUI needs the sidecar to
 attach a durable `compact_completed` event to the compact command turn rather
 than only the currently active turn.
 
+Claude SDK Result success is the turn lifecycle terminal signal. Best-effort
+context-usage and session-title refreshes run after the sidecar emits that
+terminal event and must never delay it. A context snapshot is invalidated when
+a newer snapshot request starts or the SDK echoes a later root user prompt, so
+a slow control response cannot overwrite usage associated with newer work. A
+delayed title refresh is likewise ignored after a later root prompt begins.
+
 When Claude resumes root work after a child completes, the SDK continuation is
 another provider turn attached to the same canonical root turn. The adapter
 publishes its provider start and terminal facts, while `services/tuttid` keeps

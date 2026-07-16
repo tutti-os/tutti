@@ -29,20 +29,21 @@ export class SDKMessageRouter {
   private readonly setProviderSessionId: (value: string) => void;
   private readonly onAssistantUuid: (value: string) => void;
   private readonly onSessionState: () => void;
-  private readonly onMaybeTitle: () => Promise<void>;
+  private readonly onMaybeTitle: (shouldEmit?: () => boolean) => Promise<void>;
   private readonly turns: TurnLifecycle;
   private readonly assistant: AssistantStreamProjector;
   private readonly activities: ToolActivityProjector;
   private readonly projection: MessageProjection;
   private readonly compaction: CompactionTracker;
   private readonly emit: ClaudeSDKSidecarEventEmitter;
+  private contextUsageGeneration = 0;
 
   constructor(options: {
     getProviderSessionId: () => string;
     setProviderSessionId: (value: string) => void;
     onAssistantUuid: (value: string) => void;
     onSessionState: () => void;
-    onMaybeTitle: () => Promise<void>;
+    onMaybeTitle: (shouldEmit?: () => boolean) => Promise<void>;
     turns: TurnLifecycle;
     assistant: AssistantStreamProjector;
     activities: ToolActivityProjector;
@@ -308,7 +309,15 @@ export class SDKMessageRouter {
     if (notificationText.includes("<task-notification>")) {
       this.activities.handleTaskNotificationFromText(notificationText);
     }
+    const activeTurnIdBefore = this.turns.activeId;
     this.turns.activateForUserMessage(readSDKMessageUuid(message));
+    if (
+      !parentToolUseID &&
+      this.turns.activeId &&
+      this.turns.activeId !== activeTurnIdBefore
+    ) {
+      this.contextUsageGeneration += 1;
+    }
     const blocks = contentBlocksFromMessage(message);
     if (
       this.turns.pendingOrphans > 0 &&
@@ -350,29 +359,46 @@ export class SDKMessageRouter {
     ) {
       return;
     }
-    const contextSnapshotEmitted =
-      await this.compaction.emitContextUsageSnapshot(this.turns.activeId, {
-        modelUsage: result.modelUsage
+    const turnId = this.turns.activeId;
+    const contextUsageGeneration = this.contextUsageGeneration;
+    if (this.turns.cancelled) {
+      this.turns.settleActive("turn_canceled");
+      this.turns.clearCancelled();
+    } else if (result.subtype === "success") {
+      this.turns.settleActive("turn_completed", { stopReason: "end_turn" });
+    } else {
+      this.turns.settleActive("turn_failed", {
+        error: result.errors?.[0] ?? "Claude SDK turn failed"
       });
-    if (!contextSnapshotEmitted) {
-      emitUsageUpdated(this.emit, this.turns.activeId, {
+    }
+    void this.emitResultUsage(turnId, contextUsageGeneration, result);
+    void this.onMaybeTitle(
+      () => this.contextUsageGeneration === contextUsageGeneration
+    );
+  }
+
+  private async emitResultUsage(
+    turnId: string,
+    contextUsageGeneration: number,
+    result: {
+      usage?: unknown;
+      modelUsage?: unknown;
+      total_cost_usd?: unknown;
+    }
+  ): Promise<void> {
+    const shouldEmit = () =>
+      this.contextUsageGeneration === contextUsageGeneration;
+    const contextSnapshotResult =
+      await this.compaction.emitContextUsageSnapshot(turnId, {
+        modelUsage: result.modelUsage,
+        shouldEmit
+      });
+    if (contextSnapshotResult === "unavailable" && shouldEmit()) {
+      emitUsageUpdated(this.emit, turnId, {
         usage: result.usage,
         modelUsage: result.modelUsage,
         totalCostUsd: result.total_cost_usd
       });
     }
-    await this.onMaybeTitle();
-    if (this.turns.cancelled) {
-      this.turns.settleActive("turn_canceled");
-      this.turns.clearCancelled();
-      return;
-    }
-    if (result.subtype === "success") {
-      this.turns.settleActive("turn_completed", { stopReason: "end_turn" });
-      return;
-    }
-    this.turns.settleActive("turn_failed", {
-      error: result.errors?.[0] ?? "Claude SDK turn failed"
-    });
   }
 }

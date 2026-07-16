@@ -11,6 +11,7 @@ import {
 import { fakeQueryWithInitializationModels } from "./sessionRuntimeTestQueries.assistant.ts";
 import {
   fakeCompactBoundaryQuery,
+  fakeDeferredContextUsageQuery,
   fakeFailedCompactQuery,
   fakeGuidancePromptQuery,
   fakePermissionCheckQuery,
@@ -62,6 +63,20 @@ test("guidance prompt stays on the active SDK turn", async () => {
     restoreSink();
   }
 });
+
+async function waitForCondition(
+  predicate: () => boolean,
+  description: string
+): Promise<void> {
+  const deadline = Date.now() + 1000;
+  while (Date.now() < deadline) {
+    if (predicate()) {
+      return;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+  assert.fail(`timed out waiting for ${description}`);
+}
 
 test("goal set scheduling ack followed by immediate clear coalesces before SDK activation", async () => {
   const events: Array<{ type: string; payload?: Record<string, unknown> }> = [];
@@ -275,6 +290,7 @@ test("context usage prefers result modelUsage window over SDK maxTokens", async 
     await session.start();
     session.exec("turn-1", "hi");
     await waitForEvent(events, "turn_completed");
+    await waitForEvent(events, "usage_updated");
 
     const usage = events.find(
       (event) =>
@@ -292,6 +308,85 @@ test("context usage prefers result modelUsage window over SDK maxTokens", async 
       ),
       false,
       "cumulative result usage must not replace the authoritative context snapshot"
+    );
+  } finally {
+    restoreSink();
+  }
+});
+
+test("turn completion does not wait for context usage and stale snapshots are dropped", async () => {
+  const events: Array<{ type: string; payload?: Record<string, unknown> }> = [];
+  const contextUsageResolvers: Array<(value: unknown) => void> = [];
+  const restoreSink = withSidecarEventSinkForTest((event) =>
+    events.push(event)
+  );
+  try {
+    const session = new SessionRuntime(
+      "provider-session-1",
+      "/repo",
+      {},
+      false,
+      false,
+      {
+        model: "haiku",
+        permissionModeId: "default",
+        planMode: false,
+        effort: "",
+        speed: ""
+      },
+      sidecarClaudeOptionsFromPayload({}),
+      undefined,
+      ({ prompt }) =>
+        fakeDeferredContextUsageQuery(prompt, contextUsageResolvers)
+    );
+
+    await session.start();
+    session.exec("turn-1", "first");
+    await waitForCondition(
+      () =>
+        events.some(
+          (event) =>
+            event.type === "turn_completed" &&
+            event.payload?.turnId === "turn-1"
+        ),
+      "first turn completion"
+    );
+    assert.equal(contextUsageResolvers.length, 1);
+
+    session.exec("turn-2", "second");
+    await waitForCondition(
+      () =>
+        events.some(
+          (event) =>
+            event.type === "turn_completed" &&
+            event.payload?.turnId === "turn-2"
+        ) && contextUsageResolvers.length === 2,
+      "second turn completion and context usage request"
+    );
+
+    contextUsageResolvers[1]?.({ totalTokens: 222, maxTokens: 200_000 });
+    await waitForCondition(
+      () =>
+        events.some(
+          (event) =>
+            event.type === "usage_updated" &&
+            event.payload?.turnId === "turn-2" &&
+            isRecord(event.payload?.contextWindow)
+        ),
+      "second turn context usage"
+    );
+
+    contextUsageResolvers[0]?.({ totalTokens: 111, maxTokens: 200_000 });
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    assert.equal(
+      events.some(
+        (event) =>
+          event.type === "usage_updated" &&
+          event.payload?.turnId === "turn-1" &&
+          isRecord(event.payload?.contextWindow)
+      ),
+      false,
+      "the delayed first-turn snapshot must not overwrite the newer turn"
     );
   } finally {
     restoreSink();

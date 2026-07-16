@@ -1593,7 +1593,9 @@ Turn state, loading, cancel, restore, file-change undo, rail projection, event u
   window for a model that should have 1M context, or a 200k model keeps showing
   the prior 1M total after a model switch. After one Claude Code request runs
   several tools, the used-token count may also jump from the latest iteration's
-  value to nearly the sum of every iteration in that turn.
+  value to nearly the sum of every iteration in that turn. A related lifecycle
+  symptom is that Claude has rendered its final answer but Agent GUI remains in
+  the working state until a delayed context-usage control request returns.
 - Quick checks:
   Trace the provider update first: use
   `agent_session.claude_sdk.usage_update` for Claude SDK and
@@ -1612,7 +1614,10 @@ Turn state, loading, cancel, restore, file-change undo, rail projection, event u
   window across models. For a tool-loop spike, compare the streamed
   `normalized_used_tokens` values with the final Result update. If the final
   value equals their sum, the cumulative Result usage was mistaken for current
-  context occupancy.
+  context occupancy. For a stuck working indicator, compare the Claude SDK
+  `result` lifecycle timestamp with the later `context_window` usage update and
+  `turn_completed`; a long result-to-completion gap isolates telemetry on the
+  terminal path rather than unfinished provider work.
 - Root cause:
   Protocol v2 intentionally removed raw `runtimeContext` from the public
   session model. If the refactor removes that legacy field without adding a
@@ -1629,7 +1634,10 @@ Turn state, loading, cancel, restore, file-change undo, rail projection, event u
   `Query.getContextUsage()` snapshot must therefore win at Result time. Calling
   that method after detaching it from the Query object loses its `this` binding;
   if the best-effort error is swallowed, the cumulative fallback remains
-  visible as a false context spike.
+  visible as a false context spike. Conversely, awaiting a correctly bound
+  `getContextUsage()` call before emitting `turn_completed` makes optional
+  telemetry a lifecycle dependency and leaves the GUI working for the duration
+  of a slow control response.
 - Fix:
   Define usage in the protocol-v2 OpenAPI contract and carry it as typed durable
   session metadata through the generated client, desktop adapter, canonical
@@ -1639,9 +1647,11 @@ Turn state, loading, cancel, restore, file-change undo, rail projection, event u
   context-window values. Track the model associated with a cached context
   window, and only reuse the previous total for the same model or when the model
   is unknown. Do not hard-code alias-to-model mappings in Tutti. Invoke
-  `getContextUsage()` through its owning Query object and emit that snapshot
-  before considering Result usage as a fallback, so cumulative billing totals
-  never overwrite an available context snapshot.
+  `getContextUsage()` through its owning Query object after the Result has
+  terminalized the turn. Keep the authoritative snapshot and cumulative Result
+  fallback in an asynchronous telemetry path, and invalidate a delayed snapshot
+  when a newer snapshot request starts or a later root user prompt begins so
+  older usage cannot overwrite newer work.
 - Validation:
   Cover runtime-context splitting and metadata persistence, generated API
   projection, desktop canonical-session adaptation, activity-core usage
@@ -1651,8 +1661,10 @@ Turn state, loading, cancel, restore, file-change undo, rail projection, event u
   usage updates where the last payload lacks `totalTokens`. Add a sidecar query
   fixture whose `getContextUsage()` depends on `this`, and give its Result a
   multi-iteration cumulative usage total; assert that only the authoritative
-  context snapshot is emitted. Then run the Claude SDK sidecar tests, daemon Go
-  tests, AgentGUI tests, and typechecks.
+  context snapshot is emitted. Also cover a context query that remains pending:
+  `turn_completed` must be emitted first, and a delayed snapshot must be dropped
+  after a newer snapshot request or the next root user prompt. Then run the
+  Claude SDK sidecar tests, daemon Go tests, AgentGUI tests, and typechecks.
 - References:
   [agent-activity-packages.md](../architecture/agent-activity-packages.md)
   [session_metadata.go](../../packages/agent/store-sqlite/session_metadata.go)

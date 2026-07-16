@@ -8,6 +8,8 @@ type ContextUsageQuery = {
   getContextUsage?: () => Promise<unknown>;
 };
 
+export type ContextUsageSnapshotResult = "emitted" | "unavailable" | "stale";
+
 export class CompactionTracker {
   private inProgress = false;
   private commandTurnId = "";
@@ -17,6 +19,7 @@ export class CompactionTracker {
   private readonly clearPendingOrphans: () => void;
   private readonly getQuery: () => ContextUsageQuery | undefined;
   private readonly emit: ClaudeSDKSidecarEventEmitter;
+  private contextUsageRequestGeneration = 0;
 
   constructor(options: {
     activeTurnId: () => string;
@@ -55,23 +58,30 @@ export class CompactionTracker {
 
   async emitContextUsageSnapshot(
     turnId: string,
-    options: { modelUsage?: unknown } = {}
-  ): Promise<boolean> {
+    options: { modelUsage?: unknown; shouldEmit?: () => boolean } = {}
+  ): Promise<ContextUsageSnapshotResult> {
+    const requestGeneration = ++this.contextUsageRequestGeneration;
+    const isCurrent = () =>
+      requestGeneration === this.contextUsageRequestGeneration &&
+      (!options.shouldEmit || options.shouldEmit());
     const query = this.getQuery();
     if (!query?.getContextUsage) {
-      return false;
+      return "unavailable";
     }
     try {
       const contextUsage = recordValue(await query.getContextUsage());
+      if (!isCurrent()) {
+        return "stale";
+      }
       if (!contextUsage) {
-        return false;
+        return "unavailable";
       }
       const usedTokens = numberValue(contextUsage.totalTokens);
       const contextWindowTokens =
         contextWindowTokensFromModelUsage(options.modelUsage) ||
         numberValue(contextUsage.maxTokens);
       if (usedTokens <= 0 && contextWindowTokens <= 0) {
-        return false;
+        return "unavailable";
       }
       emitUsageUpdated(this.emit, turnId, {
         contextWindow: {
@@ -82,10 +92,10 @@ export class CompactionTracker {
           compactsAutomatically: contextUsage.isAutoCompactEnabled === true
         }
       });
-      return true;
+      return "emitted";
     } catch {
       // Context usage is best-effort; result usage remains available.
-      return false;
+      return isCurrent() ? "unavailable" : "stale";
     }
   }
 
