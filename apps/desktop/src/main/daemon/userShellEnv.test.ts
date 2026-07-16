@@ -2,6 +2,8 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   parseAllowedUserShellEnv,
+  resetCachedUserShellEnvForTest,
+  resolveCachedUserShellEnv,
   resolveUserShellEnvInvocation,
   userShellEnvTimeoutMs
 } from "./userShellEnv.ts";
@@ -60,4 +62,26 @@ test("parseAllowedUserShellEnv forwards proxy variables in both cases", () => {
     https_proxy: "http://127.0.0.1:7890",
     no_proxy: "localhost,.internal"
   });
+});
+
+test("cached user shell env retries after a failed resolution", async () => {
+  resetCachedUserShellEnvForTest();
+  let attempts = 0;
+
+  await assert.rejects(
+    resolveCachedUserShellEnv(async () => {
+      attempts += 1;
+      throw new Error("temporary shell failure");
+    }),
+    /temporary shell failure/
+  );
+
+  const env = await resolveCachedUserShellEnv(async () => {
+    attempts += 1;
+    return { PATH: "/Users/test/.local/bin:/usr/bin" };
+  });
+
+  assert.equal(attempts, 2);
+  assert.deepEqual(env, { PATH: "/Users/test/.local/bin:/usr/bin" });
+  resetCachedUserShellEnvForTest();
 });

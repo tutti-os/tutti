@@ -23,7 +23,9 @@
   Keep `<state-dir>/bin/tutti` canonical, and install a forwarding shim only in
   writable `~/.local/bin` or `~/bin` directories already present on the login
   shell's `PATH`. Repair Tutti-owned shims on later startups, preserve unrelated
-  commands, and do not edit shell profiles or write `/usr/local/bin`.
+  commands, and do not edit shell profiles or write `/usr/local/bin`. Keep this
+  installation best-effort so a slow or invalid shell environment cannot delay
+  desktop window creation.
 - Validation:
   Start packaged Tutti, open a new login shell, and verify `command -v tutti`
   resolves to a user bin directory and `tutti status` succeeds. Cover creation,

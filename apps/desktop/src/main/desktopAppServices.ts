@@ -83,6 +83,31 @@ export async function createDesktopAppServices(
     });
   });
 
+  void ensureCliShimInBackground(options, factories);
+
+  const hostServices = await resolveHostServices(factories, {
+    browserNodeGuestPreloadPath: options.browserNodeGuestPreloadPath,
+    enableDevelopmentReloadShortcut: options.enableDevelopmentReloadShortcut,
+    appVersion: options.appVersion,
+    fallbackLocale: options.fallbackLocale,
+    logger: options.logger,
+    tuttidClient: daemonRuntime.tuttidClient,
+    preloadPath: options.preloadPath,
+    rendererUrl: options.rendererUrl,
+    workspaceAppPreloadPath: options.workspaceAppPreloadPath
+  });
+
+  return {
+    ...daemonRuntime,
+    ...hostServices,
+    updateService
+  };
+}
+
+async function ensureCliShimInBackground(
+  options: CreateDesktopAppServicesOptions,
+  factories?: Partial<DesktopAppServiceFactories>
+): Promise<void> {
   try {
     const cliShim = await resolveCliShim(factories, {
       isPackaged: Boolean(options.isPackaged)
@@ -103,24 +128,6 @@ export async function createDesktopAppServices(
       error_code: classifyDesktopErrorCode(error)
     });
   }
-
-  const hostServices = await resolveHostServices(factories, {
-    browserNodeGuestPreloadPath: options.browserNodeGuestPreloadPath,
-    enableDevelopmentReloadShortcut: options.enableDevelopmentReloadShortcut,
-    appVersion: options.appVersion,
-    fallbackLocale: options.fallbackLocale,
-    logger: options.logger,
-    tuttidClient: daemonRuntime.tuttidClient,
-    preloadPath: options.preloadPath,
-    rendererUrl: options.rendererUrl,
-    workspaceAppPreloadPath: options.workspaceAppPreloadPath
-  });
-
-  return {
-    ...daemonRuntime,
-    ...hostServices,
-    updateService
-  };
 }
 
 async function resolveDaemonRuntime(

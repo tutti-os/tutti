@@ -157,7 +157,8 @@ command to external shells on macOS and Linux, desktop may also install or
 repair a Tutti-owned forwarding shim in `~/.local/bin` or `~/bin`, but only
 when that directory is already present in the user's login-shell `PATH` and
 writable. It must not overwrite a non-Tutti command, mutate shell profiles, or
-write to global locations such as `/usr/local/bin`.
+write to global locations such as `/usr/local/bin`. PATH exposure is a
+best-effort background startup task and must not delay desktop window creation.
 
 Local development scripts install a separate `tutti-dev` command so developer
 shells can target the development daemon without shadowing a packaged `tutti`

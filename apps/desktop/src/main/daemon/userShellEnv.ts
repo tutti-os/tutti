@@ -133,8 +133,13 @@ export function resolveUserShellEnv(
   });
 }
 
-export function resolveCachedUserShellEnv(): Promise<Record<string, string>> {
-  cachedUserShellEnv ??= resolveUserShellEnv();
+export function resolveCachedUserShellEnv(
+  resolver: () => Promise<Record<string, string>> = resolveUserShellEnv
+): Promise<Record<string, string>> {
+  cachedUserShellEnv ??= resolver().catch((error) => {
+    cachedUserShellEnv = null;
+    throw error;
+  });
   return cachedUserShellEnv;
 }
 
