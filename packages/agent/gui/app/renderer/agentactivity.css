@@ -9377,20 +9377,8 @@ html[data-theme="light"] [data-message-center-item-id].agent-gui-edge-glow {
   left: 50%;
   transform: translate(-50%, -50%);
   z-index: 2;
-  display: inline-flex;
-  align-items: center;
-  height: 16px;
-  padding: 0 4px;
-  border-radius: 4px;
-  background: var(--tutti-purple-bg);
-  color: var(--tutti-purple);
-  font-family: var(--font-sans, inherit);
-  font-size: 9px;
-  font-weight: 600;
-  font-style: normal;
-  line-height: 1;
-  letter-spacing: 0.01em;
-  white-space: nowrap;
+  width: 26px;
+  height: auto;
   pointer-events: none;
 }
 
@@ -9744,6 +9732,28 @@ html[data-theme="light"] [data-message-center-item-id].agent-gui-edge-glow {
   pointer-events: none;
   transform: translate(-50%, -50%) rotate(-30deg) scale(1.9);
   transform-origin: center;
+  animation: agent-gui-vinyl-player-beta-slap 420ms cubic-bezier(0.34, 1.56, 0.64, 1)
+    both;
+}
+
+/* Sticker "slap": drops in oversized and transparent, then snaps down to size
+   with a slight overshoot so it lands like a decal being pressed on. Keep the
+   translate/rotate in every keyframe since transform is a single property. */
+@keyframes agent-gui-vinyl-player-beta-slap {
+  0% {
+    opacity: 0;
+    transform: translate(-50%, -50%) rotate(-30deg) scale(4.2);
+  }
+
+  60% {
+    opacity: 1;
+    transform: translate(-50%, -50%) rotate(-30deg) scale(1.7);
+  }
+
+  100% {
+    opacity: 1;
+    transform: translate(-50%, -50%) rotate(-30deg) scale(1.9);
+  }
 }
 
 .agent-gui-vinyl-player__indicator {
