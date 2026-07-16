@@ -2300,8 +2300,8 @@ User-visible rules:
   subprocess, and the renderer re-checks on window focus/visibility and keeps
   polling while the permission dialog is open and unauthorized.
 - User composer defaults are owned by desktop preferences. AgentGUI may request
-  a defaults write only from the home/new composer path, through an explicit host
-  callback.
+  a defaults write from the home/new composer path or after an explicit user
+  selection in an active session, through an explicit host callback.
 - Lab-mode AgentGUI affordances are desktop-preference driven through generic
   feature flags. AgentGUI must not receive experiment-specific props or create
   git worktrees itself; new experiments should add a desktop feature-flag
@@ -2311,9 +2311,10 @@ User-visible rules:
   by a directory-resolved `agentTargetId`. They have no provider-keyed fallback,
   so two targets under the same provider cannot share model, permission,
   reasoning, speed, or draft state by accident.
-- Active session settings are session state. Opening, restoring, or editing an
-  active session must not promote that session's model, permission mode, or
-  reasoning setting into user defaults.
+- Active session settings are session state. Opening or restoring an active
+  session must not promote its settings into user defaults. An explicit model,
+  permission, reasoning, or speed selection updates both the session and that
+  target's defaults so the next new conversation inherits the user's choice.
 - Workbench node `composerOverrides` are UI-local home/new composer draft state,
   not an authoritative source for desktop preferences.
 - Draft clearing happens only after the submitted content still matches the
@@ -3197,14 +3198,15 @@ provider capability/options
 Avoid fixing a menu label or disabled state without checking whether the same
 setting is also used by prompt creation, session continuation, and runtime
 tracking.
-Active-session settings are first-class session state, not composer defaults.
-The controller should submit exactly one engine intent for one menu selection;
-it must not also promote the active value into target defaults. The engine owns
-the operation state. A timed-out update remains `unknown`, and the next explicit
-user selection carries retry intent instead of being silently dropped. That
-retry merges the unresolved in-flight patch, any queued patch, and the latest
-selection in that order, so the newest value wins without losing settings that
-the daemon may not have applied before the timeout.
+Active-session settings are first-class session state. The controller submits
+exactly one engine intent for one menu selection. The same explicit user
+selection may independently update the target default and the node-local default
+draft; merely opening or restoring a session must not. The engine owns the
+operation state. A timed-out update remains `unknown`, and the next explicit user
+selection carries retry intent instead of being silently dropped. That retry
+merges the unresolved in-flight patch, any queued patch, and the latest selection
+in that order, so the newest value wins without losing settings that the daemon
+may not have applied before the timeout.
 
 The daemon selects the mutation path from session liveness. A live session
 updates through its provider adapter. A historical session updates the durable

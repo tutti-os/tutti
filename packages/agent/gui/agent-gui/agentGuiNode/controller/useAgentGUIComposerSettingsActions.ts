@@ -33,6 +33,7 @@ import {
 import {
   composerDefaultsPatchFromSettings,
   composerOptionsForTarget,
+  rememberComposerDefaultsFields,
   type AgentGUIRememberComposerDefaultsInput
 } from "./agentGuiController.providerHelpers";
 import type { useAgentGUIActivation } from "./useAgentGUIActivation";
@@ -44,6 +45,7 @@ interface UseAgentGUIComposerSettingsActionsInput {
   activeEngineActiveTurn: AgentActivityTurn | null;
   agentActivityRuntime: AgentActivityRuntime;
   composerSupportPermissionModeChangeDeferred: boolean;
+  dataRef: RefObject<AgentGUINodeData>;
   defaultReasoningEffort: AgentSessionReasoningEffort | null;
   draftSettingsBySessionIdRef: RefObject<
     Record<string, AgentSessionComposerSettings>
@@ -79,6 +81,7 @@ export function useAgentGUIComposerSettingsActions(
     activeConversationIdRef,
     activeEngineActiveTurn,
     agentActivityRuntime,
+    dataRef,
     defaultReasoningEffort,
     draftSettingsBySessionIdRef,
     loadDraftComposerOptions,
@@ -272,6 +275,66 @@ export function useAgentGUIComposerSettingsActions(
         Object.keys(sessionSettingsPatch).length > 0 &&
         (canonicalSession !== null || isPreActivationSession)
       ) {
+        const rememberedDefaultsPatch = composerDefaultsPatchFromSettings(
+          sessionSettingsPatch,
+          sessionSettingsPatch
+        );
+        if (rememberedDefaultsPatch) {
+          const defaultAgentTargetId =
+            normalizeOptionalText(canonicalSession?.agentTargetId) ??
+            normalizeOptionalText(dataRef.current.agentTargetId);
+          const defaultProvider =
+            canonicalSession?.provider ?? dataRef.current.provider;
+          void onRememberComposerDefaultsRef.current?.({
+            agentTargetId: defaultAgentTargetId,
+            provider: defaultProvider,
+            defaults: rememberedDefaultsPatch
+          });
+
+          const durableNodeDefaultsPatch: Partial<AgentSessionComposerSettings> =
+            {};
+          for (const field of rememberComposerDefaultsFields) {
+            if (sessionSettingsPatch[field] !== undefined) {
+              durableNodeDefaultsPatch[field] = sessionSettingsPatch[field];
+            }
+          }
+          const defaultDraftKey = nodeDefaultDraftKey(
+            defaultProvider,
+            defaultAgentTargetId
+          );
+          const defaultData: AgentGUINodeData = {
+            ...dataRef.current,
+            provider: defaultProvider,
+            agentTargetId: defaultAgentTargetId
+          };
+          const storedNodeDefaults = readNodeDefaultDraftSettings({
+            data: defaultData,
+            defaultReasoningEffort,
+            drafts: draftSettingsBySessionIdRef.current
+          });
+          const nextNodeDefaults = {
+            ...storedNodeDefaults,
+            ...durableNodeDefaultsPatch
+          };
+          draftSettingsBySessionIdRef.current = {
+            ...draftSettingsBySessionIdRef.current,
+            [defaultDraftKey]: nextNodeDefaults
+          };
+          setDraftSettingsBySessionId((current) => ({
+            ...current,
+            [defaultDraftKey]: nextNodeDefaults
+          }));
+          onDataChangeRef.current((current) =>
+            nodeDataFromComposerSettings(
+              {
+                ...current,
+                provider: defaultProvider,
+                agentTargetId: defaultAgentTargetId
+              },
+              nextNodeDefaults
+            )
+          );
+        }
         if (isPreActivationSession) {
           sessionEngine.dispatch({
             type: "activation/settingsPatched",
