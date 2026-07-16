@@ -40,9 +40,6 @@ DCO sign-off, PR workflow, review gates, and multilingual documentation updates.
 ## Hard Rules
 
 - Published workspace packages use `@tutti-os/*`; keep manifests, imports, docs, and release config aligned.
-- Do not start subagents unless the user explicitly approves it first.
-- Do not invoke or use Superdesign.
-- Do not hot-reload while editing files or during intermediate iterations. Complete the entire task, including edits and validation, then hot-reload the relevant development environment exactly once. Skip it when the user explicitly asks not to reload or restart.
 - All new requirements and features across Tutti projects must first reuse existing `@tutti-os/ui-system` components, semantic color tokens, typography, spacing, and other established UI conventions. Before introducing bespoke UI or raw color values, inspect the existing UI System exports and tokens; if the required capability is missing, prefer extending the shared UI System with a reusable primitive or token and document the rationale.
 - User-visible copy must go through the relevant i18n layer. Do not hardcode UI text, dialog text, status labels, empty states, or user-facing errors.
 - Chinese user-facing UI copy must not end with a Chinese full stop (。); keep this punctuation rule consistent across settings and other product surfaces.
