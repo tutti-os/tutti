@@ -1617,6 +1617,7 @@ test("WorkspaceAgentActivityService lists deletion candidates with exact section
 
 test("WorkspaceAgentActivityService deletes one exact session batch", async () => {
   const calls: unknown[] = [];
+  let listCalls = 0;
   const service = new WorkspaceAgentActivityService({
     tuttidClient: {
       deleteWorkspaceAgentSessionsBatch: async (
@@ -1628,18 +1629,19 @@ test("WorkspaceAgentActivityService deletes one exact session batch", async () =
         calls.push({ request, workspaceId });
         return {
           removedMessages: 3,
-          removedSessionIds: ["session-1"],
-          removedSessions: 1
+          removedSessionIds: ["session-1", "child-1"],
+          removedSessions: 2
         };
       },
-      listWorkspaceAgentSessions: async (workspaceId: string) => ({
-        hasMore: false,
-        sessions: [],
-        workspaceId
-      })
+      listWorkspaceAgentSessions: async (workspaceId: string) => {
+        listCalls += 1;
+        return { hasMore: false, sessions: [], workspaceId };
+      }
     } as unknown as TuttidClient,
     runtimeApi: { logTerminalDiagnostic: async () => {} }
   });
+  const engine = service.getSessionEngine("ws-1");
+  await new Promise((resolve) => setImmediate(resolve));
 
   const result = await service.deleteSessionsBatch({
     sessionIds: ["session-1", "session-2"],
@@ -1654,8 +1656,60 @@ test("WorkspaceAgentActivityService deletes one exact session batch", async () =
   ]);
   assert.deepEqual(result, {
     removedMessages: 3,
-    removedSessionIds: ["session-1"],
-    removedSessions: 1
+    removedSessionIds: ["session-1", "child-1"],
+    removedSessions: 2
+  });
+  assert.equal(listCalls, 1);
+  assert.deepEqual(engine.getSnapshot().sessionLifecycle.deletedSessionIds, {
+    "child-1": true,
+    "session-1": true
+  });
+});
+
+test("WorkspaceAgentActivityService single delete uses the authoritative batch result without reloading", async () => {
+  const calls: unknown[] = [];
+  let listCalls = 0;
+  const service = new WorkspaceAgentActivityService({
+    tuttidClient: {
+      deleteWorkspaceAgentSessionsBatch: async (
+        workspaceId: string,
+        request: Parameters<
+          TuttidClient["deleteWorkspaceAgentSessionsBatch"]
+        >[1]
+      ) => {
+        calls.push({ request, workspaceId });
+        return {
+          removedMessages: 2,
+          removedSessionIds: ["session-1", "child-1"],
+          removedSessions: 2
+        };
+      },
+      listWorkspaceAgentSessions: async (workspaceId: string) => {
+        listCalls += 1;
+        return { hasMore: false, sessions: [], workspaceId };
+      }
+    } as unknown as TuttidClient,
+    runtimeApi: { logTerminalDiagnostic: async () => {} }
+  });
+  const engine = service.getSessionEngine("ws-1");
+  await new Promise((resolve) => setImmediate(resolve));
+
+  const result = await service.deleteSession({
+    agentSessionId: "session-1",
+    workspaceId: "ws-1"
+  });
+
+  assert.deepEqual(result, { removed: true });
+  assert.deepEqual(calls, [
+    {
+      request: { sessionIds: ["session-1"] },
+      workspaceId: "ws-1"
+    }
+  ]);
+  assert.equal(listCalls, 1);
+  assert.deepEqual(engine.getSnapshot().sessionLifecycle.deletedSessionIds, {
+    "child-1": true,
+    "session-1": true
   });
 });
 

@@ -64,7 +64,7 @@ describe("AgentGUIConversationRailQueryController", () => {
     }
   });
 
-  it("locks unresolved scopes but keeps same-scope pin refreshes interactive", async () => {
+  it("keeps pin refreshes interactive and reloads only affected pages", async () => {
     const engine = createTestAgentSessionEngine();
     const session = normalizeAgentActivitySession({
       activeTurnId: null,
@@ -74,42 +74,56 @@ describe("AgentGUIConversationRailQueryController", () => {
       latestTurnInteractions: [],
       pendingInteractions: [],
       provider: "codex",
+      railSectionKey: "conversations",
       title: "Session",
       updatedAtUnixMs: 1,
       workspaceId: "test-workspace"
     });
     const sectionResolvers: Array<() => void> = [];
-    const diagnosticLogger = vi.fn();
+    const listPinnedSessionsPage = vi.fn(async () => ({
+      hasMore: false,
+      sessions: [{ ...session, pinnedAtUnixMs: 100, updatedAtUnixMs: 2 }],
+      totalCount: 1
+    }));
+    const listSessionSectionPage = vi.fn(async (input) => ({
+      hasMore: false,
+      kind: "conversations" as const,
+      sectionKey: input.sectionKey,
+      sessions: [],
+      totalCount: 0
+    }));
+    const listSessionSections = vi.fn(
+      (input) =>
+        new Promise<
+          Awaited<
+            ReturnType<
+              NonNullable<ConversationRailQueryRuntime["listSessionSections"]>
+            >
+          >
+        >((resolve) => {
+          sectionResolvers.push(() =>
+            resolve({
+              sections: [
+                {
+                  hasMore: false,
+                  kind: "conversations",
+                  sectionKey: "conversations",
+                  sessions: [session],
+                  totalCount: 1
+                }
+              ],
+              workspaceId: input.workspaceId
+            })
+          );
+        })
+    );
     const controller = new AgentGUIConversationRailQueryController({
-      diagnosticLogger,
-      diagnosticSlowThresholdMs: 0,
       engine,
       getActiveConversationId: () => null,
       runtime: {
-        listSessionSections: (input) =>
-          new Promise((resolve) => {
-            sectionResolvers.push(() =>
-              resolve({
-                sections: [
-                  {
-                    hasMore: false,
-                    kind: "conversations",
-                    sectionKey: "conversations",
-                    sessions: [session],
-                    totalCount: 1
-                  }
-                ],
-                workspaceId: input.workspaceId
-              })
-            );
-          }),
-        listSessionSectionPage: async (input) => ({
-          hasMore: false,
-          kind: "conversations",
-          sectionKey: input.sectionKey,
-          sessions: [],
-          totalCount: 0
-        }),
+        listPinnedSessionsPage,
+        listSessionSections,
+        listSessionSectionPage,
         listSessionsPage: async (input) => ({
           hasMore: false,
           sessions: [],
@@ -142,20 +156,14 @@ describe("AgentGUIConversationRailQueryController", () => {
         updatedAtUnixMs: 2
       }
     });
-    expect(controller.getSnapshot().runtimeRailSectionsPending).toBe(true);
+    expect(controller.getSnapshot().runtimeRailSectionsPending).toBe(false);
     expect(controller.getSnapshot().runtimeRailMemberships).toHaveLength(1);
     expect(controller.isInteractionLocked()).toBe(false);
-
-    sectionResolvers.shift()?.();
     await vi.waitFor(() =>
-      expect(controller.getSnapshot().runtimeRailSectionsPending).toBe(false)
+      expect(listPinnedSessionsPage).toHaveBeenCalledTimes(1)
     );
-    expect(diagnosticLogger).toHaveBeenLastCalledWith(
-      expect.objectContaining({
-        refreshReason: "membership_change",
-        returnedSessionCount: 1
-      })
-    );
+    expect(listSessionSectionPage).toHaveBeenCalledTimes(1);
+    expect(listSessionSections).toHaveBeenCalledTimes(1);
 
     controller.configure({
       conversationFilter: {

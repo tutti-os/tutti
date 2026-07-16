@@ -1474,13 +1474,23 @@ cursor, and totals; only an unresolved or newly selected scope may resolve to an
 empty failure state.
 Section-query `pending` has two presentation meanings. An unresolved first page
 is blocking and may reveal the delayed rail skeleton. A same-scope membership
-refresh, including pin or unpin invalidation, is non-blocking: keep the resolved
-membership visible and interactive until the authoritative daemon page replaces
-it. A scope change may also keep the previous page visible to avoid destructive
-layout churn, but actions whose section or target scope could be stale remain
-locked until the new scope resolves. Derive these meanings inside the dedicated
-rail query controller from its current and resolved scope keys; do not add engine
-state, manually move rows, or make the view reinterpret raw request state.
+refresh is non-blocking: keep the resolved membership visible and interactive
+until authoritative daemon pages replace it. Session mutation responses first
+update or tombstone canonical engine entities. The rail query controller then
+compares before/after membership and reloads only affected first pages: ordinary
+delete reloads its section, pinned delete reloads pinned, and pin/unpin reloads
+both pinned and the session's ordinary section. Rename does not reload section
+pages; an active backend search is reissued because title changes can alter its
+membership. Targeted pages resolve together before replacing cache state. A
+targeted failure keeps old page state and transient canonical overlays, and
+leaves that scope cache stale for later authoritative bootstrap. It must not
+fall back to `listSessionSections` or a workspace activity `load`. A scope
+change may also keep the previous page visible to avoid destructive layout
+churn, but actions whose section or target scope could be stale remain locked
+until the new scope resolves. Derive these meanings inside the dedicated rail
+query controller from its current and resolved scope keys; do not add engine
+mutation state, manually move rows, or make the view reinterpret raw request
+state.
 The active conversation is a
 display overlay, not a pageable row: it may render beside the first five rows,
 but it must not consume the local visible-item limit or advance the cursor.
@@ -1535,17 +1545,18 @@ reconciliation of one of those entities is not new rail membership and must
 preserve every loaded section page and cursor. Entity-list order or count must
 not serve directly as a section-query invalidation key; rail invalidation must
 account for membership already owned by loaded section pages.
-First-page section refetches are reserved for workspace, rail filter, user
-project, or session membership changes; Show more continues to use the section
-page endpoint.
+The aggregate first-page section query is reserved for workspace, rail filter,
+or user-project inventory changes. Session membership changes use only the
+affected section/pinned first-page endpoints; Show more continues to use the
+same page endpoints with its cursor.
 Pending activation becoming canonical is one of those session membership
 changes, even while that session remains active. The rail query controller must
-retain the session id as reconciliation metadata, refetch section first pages,
-and let the pure display projection join and sort the canonical engine entity
-until a successful daemon response replaces the membership cache. Active
-selection alone must never suppress this invalidation; historical active-detail
-hydration without pending-activation provenance remains an entity update and
-must preserve loaded pages and cursors.
+retain the session id as reconciliation metadata, refetch its exact section
+first page, and let the pure display projection join and sort the canonical
+engine entity until a successful daemon response replaces the membership cache.
+Active selection alone must never suppress this invalidation; historical
+active-detail hydration without pending-activation provenance remains an entity
+update and must preserve loaded pages and cursors.
 During rail-filter refetches, keep the previously rendered section chrome in
 place for short reloads. Provider/agent switching should not briefly unmount
 the project rail header or replace a populated rail with an empty/skeleton

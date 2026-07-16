@@ -11,6 +11,29 @@ export const EMPTY_CONVERSATION_RAIL_QUERY_STATE: ConversationRailQueryState = {
   sections: null
 };
 
+export interface ConversationSearchQueryState {
+  failed: boolean;
+  hasMore: boolean;
+  loadingMore: boolean;
+  nextCursor: string | null;
+  pending: boolean;
+  requestKey: string | null;
+  resolvedQuery: string;
+  sessionIds: readonly string[];
+}
+
+export const EMPTY_CONVERSATION_SEARCH_QUERY_STATE: ConversationSearchQueryState =
+  {
+    failed: false,
+    hasMore: false,
+    loadingMore: false,
+    nextCursor: null,
+    pending: false,
+    requestKey: null,
+    resolvedQuery: "",
+    sessionIds: []
+  };
+
 export interface AgentGUIConversationRailQuerySnapshot {
   railSearch: {
     enabled: boolean;
@@ -34,15 +57,7 @@ export function buildConversationRailQuerySnapshot(input: {
   searchEnabled: boolean;
   searchQuery: string;
   searchRequestKey: string | null;
-  searchState: {
-    failed: boolean;
-    hasMore: boolean;
-    loadingMore: boolean;
-    pending: boolean;
-    requestKey: string | null;
-    resolvedQuery: string;
-    sessionIds: readonly string[];
-  };
+  searchState: ConversationSearchQueryState;
 }): AgentGUIConversationRailQuerySnapshot {
   const searchResolved =
     input.searchState.requestKey === input.searchRequestKey &&

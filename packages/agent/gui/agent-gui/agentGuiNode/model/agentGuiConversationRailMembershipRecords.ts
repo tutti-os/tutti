@@ -14,8 +14,11 @@ export function projectConversationRailMembershipRecords(
   );
   return [
     ...sessions.map((item) => ({
+      agentTargetId: item.session.agentTargetId,
       id: item.session.agentSessionId,
-      pinnedAtUnixMs: item.session.pinnedAtUnixMs ?? null
+      pinnedAtUnixMs: item.session.pinnedAtUnixMs ?? null,
+      railSectionKey: item.session.railSectionKey?.trim() || null,
+      title: item.session.title
     })),
     ...selectPendingActivations(state)
       .filter(
@@ -25,9 +28,12 @@ export function projectConversationRailMembershipRecords(
           !canonicalIds.has(record.agentSessionId)
       )
       .map((record) => ({
+        agentTargetId: record.agentTargetId,
         id: record.agentSessionId,
         pinnedAtUnixMs: null,
-        projectionSource: "pending_activation" as const
+        projectionSource: "pending_activation" as const,
+        railSectionKey: null,
+        title: record.title ?? ""
       }))
   ];
 }

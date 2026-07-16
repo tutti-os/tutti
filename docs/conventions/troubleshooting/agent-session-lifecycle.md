@@ -486,26 +486,29 @@ Turn state, loading, cancel, restore, file-change undo, rail projection, event u
   as `pinnedAtUnixMs` into the runtime projection. If that merge keeps the older
   runtime timestamp, the frontend's monotonic session reducer correctly rejects
   the whole stale response, including the new pin value.
-  When the entity update is accepted, pin membership still requires an
-  authoritative section refresh. Treating every pending section request as an
-  unresolved list load turns that same-scope background refresh into a blocking
-  skeleton even though valid membership is already available.
+  When the entity update is accepted, pin membership still requires
+  authoritative pinned and ordinary first-page reads. Triggering an aggregate
+  section query or workspace activity load turns that narrow reconciliation
+  into a multi-second blocking reload on large histories.
 - Fix:
   Merge session freshness monotonically across runtime and persistence using
   the newer timestamp. Pin responses that advance the session version must also
   include protocol-v2 active/latest turn state so accepting the metadata update
   cannot clear a running turn. Do not weaken frontend version checks or hide the
-  mismatch behind delayed refetches. For an accepted membership update, keep the
-  resolved section page visible during the same-scope refresh and reveal the rail
-  skeleton only when no first page has resolved. Lock scope-sensitive actions
-  only while the displayed membership belongs to a different or unresolved
-  scope; do not patch daemon-owned membership locally.
+  mismatch behind delayed refetches. For an accepted membership update, compare
+  canonical before/after membership and request only pinned plus the exact
+  ordinary section page. Keep resolved pages visible and use the canonical row
+  as a transient overlay until both responses apply atomically. Do not call
+  `listSessionSections` or workspace `load` from delete, pin/unpin, or rename.
+  Lock scope-sensitive actions only while displayed membership belongs to a
+  different or unresolved scope; do not patch daemon-owned membership locally.
 - Validation:
   Cover a live runtime session whose persisted pin update is newer, a newer
   runtime snapshot that must not regress, and a running turn that remains
   attached to the pin response. Run `go test ./services/tuttid/service/agent`
-  plus daemon lint, tests, and build. Add controller coverage for initial load,
-  same-scope membership refresh, scope change, and stale request cancellation.
+  plus daemon lint, tests, and build. Add controller coverage proving a
+  same-scope pin/unpin calls only the pinned and exact ordinary page endpoints,
+  keeps `pending=false`, and does not call the aggregate section endpoint.
 - References:
   [service.go](../../../services/tuttid/service/agent/service.go)
   [service_session.go](../../../services/tuttid/service/agent/service_session.go)

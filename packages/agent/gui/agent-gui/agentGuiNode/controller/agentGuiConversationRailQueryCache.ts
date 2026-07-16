@@ -1,5 +1,9 @@
 import type { AgentActivitySession } from "@tutti-os/agent-activity-core";
-import type { AgentActivityRuntimeSessionSectionsResult } from "../../../agentActivityRuntime";
+import type {
+  AgentActivityRuntimeSessionPage,
+  AgentActivityRuntimeSessionSection,
+  AgentActivityRuntimeSessionSectionsResult
+} from "../../../agentActivityRuntime";
 import type {
   WorkspaceQueryCache,
   WorkspaceQueryCacheEntry
@@ -16,6 +20,14 @@ export interface CachedConversationRailQuery {
   sectionCount: number;
   sessions: readonly AgentActivitySession[];
 }
+
+export type ConversationRailRefreshedPage =
+  | { kind: "pinned"; page: AgentActivityRuntimeSessionPage }
+  | {
+      id: string;
+      kind: "section";
+      page: AgentActivityRuntimeSessionSection;
+    };
 
 export function cachedConversationRailQueryFromFirstPages(
   page: AgentActivityRuntimeSessionSectionsResult,
@@ -88,6 +100,61 @@ export function writeConversationRailQueryCache(input: {
     sectionCount: queryState.sections.length,
     sessions: []
   });
+}
+
+export function replaceConversationRailFirstPages(input: {
+  pages: readonly ConversationRailRefreshedPage[];
+  queryState: ConversationRailQueryState;
+}): ConversationRailQueryState {
+  let sections = [...(input.queryState.sections ?? [])];
+  let sectionPageStates = input.queryState.sectionPageStates;
+  for (const refreshed of input.pages) {
+    const sectionId = refreshed.kind === "pinned" ? "pinned" : refreshed.id;
+    sectionPageStates = updateConversationRailSectionPageState(
+      sectionPageStates,
+      sectionId,
+      conversationRailPageState(refreshed.page)
+    );
+    const projected =
+      refreshed.kind === "pinned"
+        ? projectRuntimeSectionsToConversationRailMemberships({
+            pinned: refreshed.page,
+            sections: []
+          })[0]
+        : projectRuntimeSectionsToConversationRailMemberships({
+            sections: [refreshed.page]
+          })[0];
+    const existingIndex = sections.findIndex(
+      (section) => section.id === sectionId
+    );
+    if (!projected) {
+      if (existingIndex >= 0) sections.splice(existingIndex, 1);
+      continue;
+    }
+    if (existingIndex >= 0) {
+      sections[existingIndex] = projected;
+      continue;
+    }
+    if (projected.kind === "pinned") {
+      sections.unshift(projected);
+      continue;
+    }
+    const conversationsIndex = sections.findIndex(
+      (section) => section.kind === "conversations"
+    );
+    if (projected.kind === "project" && conversationsIndex >= 0) {
+      sections.splice(conversationsIndex, 0, projected);
+    } else {
+      sections.push(projected);
+    }
+  }
+  return {
+    ...input.queryState,
+    pending: false,
+    reconcilingSessionIds: [],
+    sectionPageStates,
+    sections
+  };
 }
 
 export function updateConversationRailSectionPageState<T>(

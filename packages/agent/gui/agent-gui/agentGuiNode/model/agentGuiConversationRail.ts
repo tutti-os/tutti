@@ -40,6 +40,12 @@ export interface ConversationRailQueryState {
   sections: ConversationRailSectionMembership[] | null;
 }
 
+export {
+  planRuntimeRailMembershipRefresh,
+  type ConversationRailMembershipRecord,
+  type ConversationRailMembershipRefreshPlan
+} from "./agentGuiConversationRailMembershipRefresh";
+
 export function isConversationRailInitialLoadPending(input: {
   pending: boolean;
   runtimeSectionsEnabled: boolean;
@@ -408,97 +414,6 @@ export function projectConversationRailSectionsByExactKey(input: {
     sections,
     includeEmptySections: input.includeEmptySections
   });
-}
-
-export type ConversationRailMembershipRefreshPlan =
-  | { kind: "none" }
-  | {
-      kind: "refresh_first_pages";
-      reconcilingSessionIds: readonly string[];
-    };
-
-export interface ConversationRailMembershipRecord {
-  id: string;
-  pinnedAtUnixMs?: number | null;
-  projectionSource?: "pending_activation";
-}
-
-export function planRuntimeRailMembershipRefresh(input: {
-  activeConversationId?: string | null;
-  loadedSections: readonly ConversationRailSectionMembership[] | null;
-  next: readonly ConversationRailMembershipRecord[];
-  previous: readonly ConversationRailMembershipRecord[];
-}): ConversationRailMembershipRefreshPlan {
-  const previousPendingIds = new Set(
-    input.previous.flatMap((conversation) => {
-      const id = conversation.id.trim();
-      return conversation.projectionSource === "pending_activation" && id
-        ? [id]
-        : [];
-    })
-  );
-  const previousConversations = input.previous.filter(
-    (conversation) => conversation.projectionSource !== "pending_activation"
-  );
-  const nextConversations = input.next.filter(
-    (conversation) => conversation.projectionSource !== "pending_activation"
-  );
-  const previousById = new Map(
-    previousConversations.flatMap((conversation) => {
-      const id = conversation.id.trim();
-      return id ? [[id, conversation] as const] : [];
-    })
-  );
-  const nextById = new Map(
-    nextConversations.flatMap((conversation) => {
-      const id = conversation.id.trim();
-      return id ? [[id, conversation] as const] : [];
-    })
-  );
-  const loadedIds = new Set(
-    (input.loadedSections ?? []).flatMap((section) =>
-      section.sessionIds.map((id) => id.trim()).filter(Boolean)
-    )
-  );
-
-  let requiresRefresh = false;
-  const reconcilingSessionIds: string[] = [];
-  for (const id of previousById.keys()) {
-    if (!nextById.has(id)) {
-      requiresRefresh = true;
-    }
-  }
-  for (const [id, conversation] of nextById) {
-    const previous = previousById.get(id);
-    if (!previous) {
-      if (previousPendingIds.has(id)) {
-        if (!loadedIds.has(id)) {
-          requiresRefresh = true;
-          reconcilingSessionIds.push(id);
-        }
-        continue;
-      }
-      if (id === (input.activeConversationId?.trim() ?? "")) {
-        continue;
-      }
-      // Section pages can expose historical rows outside the engine's bounded
-      // session snapshot. Hydrating one of those rows adds an entity, not rail
-      // membership; keep every already-loaded page and cursor intact.
-      if (!loadedIds.has(id)) {
-        requiresRefresh = true;
-      }
-      continue;
-    }
-    if ((previous.pinnedAtUnixMs ?? 0) !== (conversation.pinnedAtUnixMs ?? 0)) {
-      requiresRefresh = true;
-    }
-  }
-  return requiresRefresh
-    ? {
-        kind: "refresh_first_pages",
-        reconcilingSessionIds
-      }
-    : { kind: "none" };
 }
 
 export function mergeConversationRailSessionIds(
