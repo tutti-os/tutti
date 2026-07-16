@@ -58,6 +58,13 @@ Supported manual modes:
 - `explicit_version_release`: publish an explicit release semver such as `0.1.0`, `0.1.0-beta.0`, `0.1.0-rc.0`, `1.13.0-rc.0`, or `2.0.0`
 - `unsigned_dry_run`: build unsigned artifacts without publishing a GitHub Release
 
+Manual runs also expose `publication_mode`:
+
+- `publish` keeps the existing end-to-end behavior. The workflow stages a GitHub Draft Release, uploads immutable assets, then calls the promotion workflow to update public channel metadata and publish the stable GitHub Release.
+- `draft_only` builds the same signed and notarized artifacts, keeps the GitHub Release as a draft, uploads immutable assets under the versioned S3/CloudFront `<tag>/` directory, and stops before changing any public channel pointer, changelog, stable alias, or GitHub visibility.
+
+Draft-only assets are unlisted, not private. Anyone who knows the immutable CloudFront URL can download them. This is intentional so internal release notifications can carry working QA download links. Do not use the desktop release asset prefix for confidential artifacts.
+
 Manual RC and stable release modes (`patch_rc_release`, `patch_release`, `minor_release`, and `major_release`) are branch-gated before tag resolution or artifact builds:
 
 - the workflow dispatch branch must be `main` or `release/*`
@@ -177,12 +184,14 @@ Release notification is handled by:
 apps/desktop/scripts/send-release-feishu-card.mjs
 ```
 
-After a successful publish, the workflow sends a Feishu card when:
+After a successful stage or promotion, the workflow sends a Feishu card when:
 
 - `notify_feishu` is true
 - the `FEISHU_RELEASE_WEBHOOK_URL` secret is configured
 
 If the webhook secret is missing, the workflow skips notification instead of failing the release.
+
+For `draft_only`, the card links to the authorized GitHub Draft Release and uses the immutable AWS/CloudFront asset URLs. Sending the card does not update `latest.json`, a prerelease channel pointer, `changelog.json`, or the floating `stable` release.
 
 The card links to available macOS, Windows, Linux, GitHub Release, and workflow run URLs.
 
@@ -260,6 +269,21 @@ https://<asset-base-url>/changelog.json
 ```
 
 `changelog.json` is updated only for stable releases. RC and beta builds can still generate per-run summaries for Feishu and GitHub Release notes, but they should not appear on the public changelog feed unless that policy is changed explicitly.
+
+## Draft Promotion
+
+External publication is owned by `.github/workflows/desktop-release-promote.yml`. It can be called by the normal desktop release workflow for `publication_mode=publish`, or run manually with an existing Draft Release tag after a `draft_only` build has been approved.
+
+Promotion performs these checks before changing public state:
+
+- the GitHub Release exists and its stable, RC, or beta shape matches the tag
+- the tag still points to the staged commit
+- `SHA256SUMS.txt` exists and the downloaded draft assets match it
+- the target version does not move the selected public channel backwards
+
+It then repairs or uploads the immutable AWS objects, updates release notes, publishes a stable GitHub Release when applicable, writes the selected stable/RC/beta pointer, refreshes the stable alias, verifies the public CloudFront pointer, and sends the promoted release notification. Promotion is serialized with the `desktop-release-promotion` concurrency group because stable and prerelease pointers are mutable shared state.
+
+RC and beta promotions preserve the existing GitHub policy: their GitHub Releases remain drafts while their AWS channel pointers become available. Stable promotion changes the GitHub Release from draft to public and marks it Latest.
 
 ## Release Summaries
 

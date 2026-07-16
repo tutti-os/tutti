@@ -39,6 +39,33 @@ test("release Feishu card marks beta tags as prereleases", () => {
   assert.match(resolveIntroText("v1.12.19-beta.0"), /Beta 预览通道/);
 });
 
+test("release Feishu card clearly marks draft builds without claiming public publication", () => {
+  assert.equal(
+    resolveReleaseKind("v1.12.20", "draft"),
+    "Draft stable candidate"
+  );
+  assert.match(resolveIntroText("v1.12.20", "draft"), /仍为 Draft/);
+  assert.match(resolveIntroText("v1.12.20", "draft"), /尚未更新公开下载通道/);
+
+  const payload = buildCardPayload({
+    actor: "jomeswang",
+    branch: "release/0704",
+    macUrl: "https://example.com/tutti.dmg",
+    publicationStatus: "draft",
+    releaseUrl: "https://github.com/tutti-os/tutti/releases/tag/v1.12.20",
+    runUrl: "https://github.com/tutti-os/tutti/actions/runs/1",
+    tag: "v1.12.20",
+    target: "4039186abcdef0"
+  });
+
+  assert.equal(payload.card.header.title.content, "Tutti Draft 构建完成");
+  assert.equal(payload.card.header.template, "orange");
+  assert.equal(
+    extractFieldMap(payload).get("构建类型"),
+    "Draft stable candidate"
+  );
+});
+
 test("release Feishu card includes tsh-aligned release context fields", () => {
   const payload = buildCardPayload({
     actor: "jomeswang",
