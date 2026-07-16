@@ -20,7 +20,7 @@ import {
 import {
   type AgentActivityMessage,
   type CanonicalAgentSession,
-  selectEnginePendingInteractions
+  selectEngineInteraction
 } from "@tutti-os/agent-activity-core";
 import type { WorkspaceSummary } from "@tutti-os/client-tuttid-ts";
 import type { WorkbenchHostChromeRenderContext } from "@tutti-os/workbench-surface";
@@ -354,6 +354,7 @@ export function WorkspaceAgentMessageCenterAction({
       payload?: Record<string, unknown>;
       promptKind?: string;
       requestId: string;
+      turnId?: string;
     }) => {
       if (input.promptKind === "plan-implementation") {
         if (
@@ -375,21 +376,25 @@ export function WorkspaceAgentMessageCenterAction({
         }
         return;
       }
-      const interaction = selectEnginePendingInteractions(
+      if (!input.turnId) return;
+      const interaction = selectEngineInteraction(
         sessionEngine.getSnapshot(),
-        input.agentSessionId
-      ).find((candidate) => candidate.requestId === input.requestId);
-      if (!interaction) return;
+        input.agentSessionId,
+        input.turnId,
+        input.requestId
+      );
+      if (interaction?.status !== "pending") return;
       sessionEngine.dispatch({
         type: "interaction/responseRequested",
         agentSessionId: input.agentSessionId,
         commandId: interactionCommandId({
           workspaceId: workspace.id,
           agentSessionId: input.agentSessionId,
-          requestId: input.requestId
+          requestId: input.requestId,
+          turnId: input.turnId
         }),
         requestId: input.requestId,
-        turnId: interaction.turnId,
+        turnId: input.turnId,
         workspaceId: workspace.id,
         ...(input.action ? { action: input.action } : {}),
         ...(input.optionId ? { optionId: input.optionId } : {}),

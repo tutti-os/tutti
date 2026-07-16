@@ -10,7 +10,8 @@ import { normalizeAgentApprovalPurpose } from "../shared/agentConversation/agent
 import {
   selectEngineInteractionResponse,
   selectPendingSubmitsForSession,
-  selectPlanDecisionForTurn
+  selectPlanDecisionForTurn,
+  selectWorkspaceAgentRootConversationSessions
 } from "@tutti-os/agent-activity-core";
 import type { AgentConversationPromptVM } from "../shared/agentConversation/contracts/agentConversationVM";
 import { normalizeAskUserQuestions } from "../shared/agentConversation/askUserQuestions";
@@ -21,7 +22,6 @@ import {
   type WorkspaceAgentMessageCenterModel,
   type WorkspaceAgentMessageCenterTurnOutcome
 } from "./workspaceAgentMessageCenterModel";
-import { selectWorkspaceAgentConsumerSessions } from "./workspaceAgentConsumerSelectors";
 
 /**
  * Canonical Message Center entrypoint. Session/turn/interaction truth comes
@@ -47,6 +47,9 @@ export function buildWorkspaceAgentMessageCenterModelFromEngine(
         messages: sessionMessages(snapshot.sessionMessagesById, consumer),
         status: consumer.displayStatus,
         needsAttention,
+        pendingInteractionTarget: interaction
+          ? interactionTarget(interaction)
+          : null,
         pendingPrompt: interaction ? promptFromInteraction(interaction) : null,
         latestTurnOutcome: turnOutcome(consumer),
         options
@@ -68,7 +71,7 @@ export interface WorkspaceAgentMessageCenterPresentation {
 export function selectWorkspaceAgentMessageCenterPresentation(
   state: AgentSessionEngineState
 ): WorkspaceAgentMessageCenterPresentation {
-  const consumers = selectWorkspaceAgentConsumerSessions(state);
+  const consumers = selectWorkspaceAgentRootConversationSessions(state);
   const promptStatusByKey: Record<
     string,
     WorkspaceAgentMessageCenterPromptStatus
@@ -78,20 +81,25 @@ export function selectWorkspaceAgentMessageCenterPresentation(
     for (const interaction of consumer.pendingInteractions) {
       const response = selectEngineInteractionResponse(
         state,
-        sessionId,
+        interaction.agentSessionId,
         interaction.turnId,
         interaction.requestId
       );
       if (response) {
-        promptStatusByKey[promptStatusKey(sessionId, interaction.requestId)] =
-          response.status;
+        promptStatusByKey[
+          promptStatusKey(
+            interaction.agentSessionId,
+            interaction.turnId,
+            interaction.requestId
+          )
+        ] = response.status;
       }
     }
     const turnId = consumer.latestTurn?.turnId ?? "";
     if (!turnId) continue;
     const decision = selectPlanDecisionForTurn(state, sessionId, turnId);
     if (decision) {
-      promptStatusByKey[promptStatusKey(sessionId, turnId)] =
+      promptStatusByKey[promptStatusKey(sessionId, turnId, turnId)] =
         decision.status === "requested" ? "responding" : decision.status;
       continue;
     }
@@ -106,7 +114,7 @@ export function selectWorkspaceAgentMessageCenterPresentation(
       (record) => record.clientSubmitId.startsWith(feedbackPrefix)
     );
     if (submit) {
-      promptStatusByKey[promptStatusKey(sessionId, turnId)] =
+      promptStatusByKey[promptStatusKey(sessionId, turnId, turnId)] =
         submit.status === "failed"
           ? "failed"
           : submit.status === "uncertain"
@@ -156,20 +164,35 @@ export function workspaceAgentMessageCenterPromptStatus(
   presentation: WorkspaceAgentMessageCenterPresentation,
   item: Pick<
     import("./workspaceAgentMessageCenterModel").WorkspaceAgentMessageCenterItem,
-    "agentSessionId" | "pendingPrompt"
+    "agentSessionId" | "pendingInteractionTarget" | "pendingPrompt"
   >
 ): WorkspaceAgentMessageCenterPromptStatus {
   const prompt = item.pendingPrompt;
   if (!prompt) return "idle";
+  const target = item.pendingInteractionTarget;
   return (
     presentation.promptStatusByKey[
-      promptStatusKey(item.agentSessionId, prompt.requestId)
+      target
+        ? promptStatusKey(
+            target.agentSessionId,
+            target.turnId,
+            target.requestId
+          )
+        : promptStatusKey(
+            item.agentSessionId,
+            prompt.requestId,
+            prompt.requestId
+          )
     ] ?? "idle"
   );
 }
 
-function promptStatusKey(agentSessionId: string, requestId: string): string {
-  return `${agentSessionId}\0${requestId}`;
+function promptStatusKey(
+  agentSessionId: string,
+  turnId: string,
+  requestId: string
+): string {
+  return `${agentSessionId}\0${turnId}\0${requestId}`;
 }
 
 function promptStatusMapsEqual(
@@ -203,6 +226,16 @@ function latestPendingInteraction(
   consumer: WorkspaceAgentConsumerSession
 ): AgentActivityInteraction | null {
   return consumer.pendingInteractions.at(-1) ?? null;
+}
+
+function interactionTarget(
+  interaction: AgentActivityInteraction
+): import("./workspaceAgentMessageCenterModel").WorkspaceAgentMessageCenterInteractionTarget {
+  return {
+    agentSessionId: interaction.agentSessionId,
+    requestId: interaction.requestId,
+    turnId: interaction.turnId
+  };
 }
 
 function needsAttentionFromInteraction(
@@ -292,6 +325,12 @@ function promptFromInteraction(
 function turnOutcome(
   consumer: WorkspaceAgentConsumerSession
 ): WorkspaceAgentMessageCenterTurnOutcome | null {
+  if (
+    consumer.displayStatus !== "completed" &&
+    consumer.displayStatus !== "failed"
+  ) {
+    return null;
+  }
   const turn = consumer.latestTurn;
   if (!turn || turn.phase !== "settled") return null;
   const status =

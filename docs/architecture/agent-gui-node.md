@@ -143,6 +143,13 @@ bridge keeps the one-shot realtime provenance outside reducer state while that
 pull is in flight. `AgentActivitySnapshot` is a memoized projection of the
 engine state, not a separately mutable controller snapshot.
 
+The workspace list is root-only. After a successful workspace reconcile, the
+engine requests a state detail reconcile for every active root session. Session
+detail hydrates that root plus all nested child sessions into the same engine;
+this is required before root-conversation consumers can project child activity
+or pending interactions after restart. The command executor only performs these
+requests; active-root selection and reconcile scope remain engine decisions.
+
 Actionable interaction UI has one read path:
 
 ```text
@@ -151,6 +158,15 @@ durable Interaction(pending)
   -> AgentSessionEngine pendingInteractions selector
   -> approval / question / exit-plan presentation
 ```
+
+Message Center presents one card per root conversation, not one card per child.
+Its engine selector aggregates pending interactions and non-terminal activity
+from the root and every descendant. Any descendant pending interaction makes
+the root card waiting; any descendant still working prevents a terminal root
+card. The card keeps root identity for conversation navigation, but each
+actionable prompt carries its exact child `(agentSessionId, turnId, requestId)`
+target. Inline card and decision-toast submissions dispatch against that exact
+target.
 
 The workspace shell and standalone Agent window share one decision-notification
 controller and card presentation. When a new pending interaction arrives while

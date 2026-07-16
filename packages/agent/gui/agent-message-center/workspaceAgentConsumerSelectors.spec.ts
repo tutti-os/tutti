@@ -7,6 +7,7 @@ import {
 import {
   buildWorkspaceAgentMessageCenterModelFromEngine,
   selectWorkspaceAgentMessageCenterPresentation,
+  workspaceAgentMessageCenterPromptStatus,
   workspaceAgentMessageCenterPresentationEqual
 } from "./workspaceAgentMessageCenterEngineModel";
 import { selectMessageCenterAttentionDeckItems } from "./workspaceAgentMessageCenterModel";
@@ -110,6 +111,174 @@ describe("workspaceAgentConsumerSelectors", () => {
     expect(selectMessageCenterAttentionDeckItems(resolvedModel.items)).toEqual(
       []
     );
+  });
+
+  it("aggregates a child approval into its root conversation card", () => {
+    const engine = createEngine();
+    engine.dispatch({
+      type: "session/snapshotReceived",
+      sessions: [
+        session({
+          activeTurnId: "root-turn-1",
+          activeTurn: {
+            turnId: "root-turn-1",
+            agentSessionId: "session-1",
+            origin: "user_prompt",
+            phase: "running",
+            startedAtUnixMs: 10,
+            updatedAtUnixMs: 20
+          },
+          provider: "claude-code"
+        }),
+        session({
+          activeTurnId: "child-turn-1",
+          activeTurn: {
+            turnId: "child-turn-1",
+            agentSessionId: "child-1",
+            origin: "provider_initiated",
+            phase: "waiting",
+            startedAtUnixMs: 15,
+            updatedAtUnixMs: 25
+          },
+          agentSessionId: "child-1",
+          kind: "child",
+          parentAgentSessionId: "session-1",
+          parentToolCallId: "toolu-agent-1",
+          parentTurnId: "root-turn-1",
+          pendingInteractions: [
+            {
+              requestId: "child-approval-1",
+              agentSessionId: "child-1",
+              turnId: "child-turn-1",
+              kind: "approval",
+              status: "pending",
+              toolName: "Bash",
+              input: {
+                question: "Allow Bash?",
+                options: [{ optionId: "allow", label: "Allow" }]
+              },
+              createdAtUnixMs: 26,
+              updatedAtUnixMs: 26
+            }
+          ],
+          provider: "claude-code",
+          providerSessionId: "agent-1",
+          rootAgentSessionId: "session-1",
+          rootTurnId: "root-turn-1",
+          title: "Child"
+        })
+      ]
+    });
+
+    const presentation = selectWorkspaceAgentMessageCenterPresentation(
+      engine.getSnapshot()
+    );
+    const model = buildWorkspaceAgentMessageCenterModelFromEngine(
+      presentation,
+      { workspaceId: "workspace-1", sessionMessagesById: {} }
+    );
+
+    expect(model.items).toHaveLength(1);
+    expect(model.items[0]).toMatchObject({
+      agentSessionId: "session-1",
+      status: "waiting",
+      pendingInteractionTarget: {
+        agentSessionId: "child-1",
+        requestId: "child-approval-1",
+        turnId: "child-turn-1"
+      },
+      pendingPrompt: {
+        kind: "approval",
+        requestId: "child-approval-1",
+        turnId: "child-turn-1"
+      }
+    });
+    expect(model.waitingCount).toBe(1);
+    expect(selectMessageCenterAttentionDeckItems(model.items)).toHaveLength(1);
+
+    engine.dispatch({
+      type: "interaction/responseRequested",
+      agentSessionId: "child-1",
+      commandId: "respond-child-approval-1",
+      requestId: "child-approval-1",
+      turnId: "child-turn-1",
+      workspaceId: "workspace-1",
+      optionId: "allow"
+    });
+    const respondingPresentation =
+      selectWorkspaceAgentMessageCenterPresentation(engine.getSnapshot());
+    expect(
+      workspaceAgentMessageCenterPromptStatus(
+        respondingPresentation,
+        model.items[0]!
+      )
+    ).toBe("responding");
+
+    engine.dispatch({
+      type: "interaction/upserted",
+      interaction: {
+        requestId: "child-approval-1",
+        agentSessionId: "child-1",
+        turnId: "child-turn-1",
+        kind: "approval",
+        status: "answered",
+        toolName: "Bash",
+        input: { question: "Allow Bash?" },
+        createdAtUnixMs: 26,
+        updatedAtUnixMs: 30
+      }
+    });
+    engine.dispatch({
+      type: "session/snapshotReceived",
+      sessions: [
+        session({
+          activeTurnId: null,
+          latestTurn: {
+            turnId: "root-turn-1",
+            agentSessionId: "session-1",
+            origin: "user_prompt",
+            phase: "settled",
+            outcome: "completed",
+            startedAtUnixMs: 10,
+            settledAtUnixMs: 30,
+            updatedAtUnixMs: 30
+          },
+          provider: "claude-code"
+        }),
+        session({
+          activeTurnId: "child-turn-1",
+          activeTurn: {
+            turnId: "child-turn-1",
+            agentSessionId: "child-1",
+            origin: "provider_initiated",
+            phase: "running",
+            startedAtUnixMs: 15,
+            updatedAtUnixMs: 31
+          },
+          agentSessionId: "child-1",
+          kind: "child",
+          parentAgentSessionId: "session-1",
+          parentToolCallId: "toolu-agent-1",
+          parentTurnId: "root-turn-1",
+          provider: "claude-code",
+          providerSessionId: "agent-1",
+          rootAgentSessionId: "session-1",
+          rootTurnId: "root-turn-1",
+          title: "Child"
+        })
+      ]
+    });
+    const resumedModel = buildWorkspaceAgentMessageCenterModelFromEngine(
+      selectWorkspaceAgentMessageCenterPresentation(engine.getSnapshot()),
+      { workspaceId: "workspace-1", sessionMessagesById: {} }
+    );
+    expect(resumedModel.items).toHaveLength(1);
+    expect(resumedModel.items[0]).toMatchObject({
+      agentSessionId: "session-1",
+      latestTurnOutcome: null,
+      pendingPrompt: null,
+      status: "working"
+    });
   });
 
   it("projects signed Agent Target presentation for open-provider sessions", () => {
