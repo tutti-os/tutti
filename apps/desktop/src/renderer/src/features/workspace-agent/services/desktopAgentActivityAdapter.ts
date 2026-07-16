@@ -107,30 +107,56 @@ export function createDesktopAgentActivityAdapter({
       }
     },
     async loadComposerOptions(input) {
+      const startedAt = Date.now();
       const cwd = input.cwd?.trim();
       const agentTargetId = input.agentTargetId?.trim();
-      const result = await withAbortableRequestTimeout(
-        (signal) =>
-          tuttidClient.getAgentProviderComposerOptions(
-            workspaceAgentProvider(input.provider),
-            {
-              ...(agentTargetId ? { agentTargetId } : {}),
-              ...(cwd ? { cwd } : {}),
-              workspaceId: input.workspaceId,
-              settings: input.settings ?? {}
-            },
-            { signal }
-          ),
-        {
-          signal: input.signal,
-          timeoutMessage: "Agent composer options request timed out.",
-          timeoutMs: composerOptionsRequestTimeoutMs
-        }
-      );
-      return agentActivityComposerOptionsFromTuttidResult(
-        input.provider,
-        result
-      );
+      try {
+        const result = await withAbortableRequestTimeout(
+          (signal) =>
+            tuttidClient.getAgentProviderComposerOptions(
+              workspaceAgentProvider(input.provider),
+              {
+                ...(agentTargetId ? { agentTargetId } : {}),
+                ...(cwd ? { cwd } : {}),
+                workspaceId: input.workspaceId,
+                settings: input.settings ?? {}
+              },
+              { signal }
+            ),
+          {
+            signal: input.signal,
+            timeoutMessage: "Agent composer options request timed out.",
+            timeoutMs: composerOptionsRequestTimeoutMs
+          }
+        );
+        reportDesktopAgentComposerOptionsDiagnostic(
+          runtimeApi,
+          input.workspaceId,
+          {
+            agentTargetId: agentTargetId ?? null,
+            durationMs: Date.now() - startedAt,
+            provider: input.provider,
+            status: "ready"
+          }
+        );
+        return agentActivityComposerOptionsFromTuttidResult(
+          input.provider,
+          result
+        );
+      } catch (error) {
+        reportDesktopAgentComposerOptionsDiagnostic(
+          runtimeApi,
+          input.workspaceId,
+          {
+            agentTargetId: agentTargetId ?? null,
+            durationMs: Date.now() - startedAt,
+            provider: input.provider,
+            status: "error",
+            ...normalizeDesktopAgentDiagnosticError(error)
+          }
+        );
+        throw error;
+      }
     },
     async createSession(input) {
       reportDesktopAgentSubmitTrace(runtimeApi, {
@@ -365,6 +391,25 @@ function reportDesktopAgentMessageListDiagnostic(
       .catch(() => {});
   } catch {
     // Diagnostic logging must not affect message loading.
+  }
+}
+
+function reportDesktopAgentComposerOptionsDiagnostic(
+  runtimeApi: Pick<DesktopRuntimeApi, "logTerminalDiagnostic">,
+  workspaceId: string,
+  details: Record<string, string | number | boolean | null>
+): void {
+  try {
+    void runtimeApi
+      .logTerminalDiagnostic({
+        details,
+        event: "agent.composer_options.load",
+        level: details.status === "error" ? "warn" : "info",
+        workspaceId
+      })
+      .catch(() => {});
+  } catch {
+    // Diagnostic logging must not affect composer option loading.
   }
 }
 

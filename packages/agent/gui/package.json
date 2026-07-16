@@ -25,6 +25,7 @@
     "./provider-icons": "./provider-icons.ts",
     "./agentGuiSessionProviderIconUrls": "./agentGuiSessionProviderIconUrls.ts",
     "./workspace-agent-generated-files": "./shared/workspaceAgentGeneratedFiles.ts",
+    "./workspace-query-cache": "./shared/query/workspaceQueryCache.ts",
     "./i18n": "./i18n/index.ts",
     "./workbench": "./workbench/index.ts",
     "./workbench/contribution": "./workbench/contribution.ts",
@@ -176,6 +177,10 @@
         "types": "./dist/workspace-agent-generated-files.d.ts",
         "import": "./dist/workspace-agent-generated-files.js"
       },
+      "./workspace-query-cache": {
+        "types": "./dist/workspace-query-cache.d.ts",
+        "import": "./dist/workspace-query-cache.js"
+      },
       "./i18n": {
         "types": "./dist/i18n/index.d.ts",
         "import": "./dist/i18n/index.js"
@@ -260,6 +265,9 @@
         ],
         "workspace-agent-generated-files": [
           "./dist/workspace-agent-generated-files.d.ts"
+        ],
+        "workspace-query-cache": [
+          "./dist/workspace-query-cache.d.ts"
         ],
         "i18n": [
           "./dist/i18n/index.d.ts"

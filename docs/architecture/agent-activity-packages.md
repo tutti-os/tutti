@@ -135,6 +135,11 @@ Activating a conversation must not by itself call `listSessionSections` again.
 Likewise, active detail provider changes should not reload section first pages.
 Page sessions must be upserted into the workspace engine, while the rail query
 cache retains only ordered session ids, cursors, totals, and section metadata.
+Desktop keeps that cache on the workspace-scoped runtime rather than a mounted
+AgentGUI controller. Fresh first pages are reused for 30 seconds across panel
+remounts and repeated target switches; stale pages remain visible while one
+coalesced background request revalidates the scope. The cache never owns session
+entities, titles, lifecycle, or interaction state.
 Section first-page reloads should be tied to workspace, rail filter, user
 project, or session membership changes.
 Historical rows already owned by loaded section pages can be absent from a
@@ -433,6 +438,10 @@ erase a usable preloaded model or reasoning selection while live metadata is
 still arriving. Because the effective settings are request-dependent,
 composer-options cache freshness and in-flight reuse include normalized `cwd`
 and normalized requested settings in addition to the target key.
+Ordinary home-target and project switches use that signature-aware cache and
+must not force a second transport request from the click handler. Forced loads
+are reserved for explicit catalog invalidation, activation/creation settlement,
+or provider-declared draft-session prewarming.
 
 Composer-options loading may be suppressed while a new-session activation is
 pending, but that guard follows the current engine state rather than a

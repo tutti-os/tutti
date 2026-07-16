@@ -659,6 +659,14 @@ Turn state, loading, cancel, restore, file-change undo, rail projection, event u
   `rail_visible_session_count` as the target-scoped total across requested
   sections and `returned_session_count` as only the bounded first-page rows;
   neither requires another full-workspace count query.
+  For provider switching, inspect `agent_gui.provider_switch.completed` or
+  `agent_gui.provider_switch.failed`. They report source/target ids, fresh/stale/
+  miss cache status, request time, controller-apply time, and total controller
+  readiness time. Correlate target and timestamp with
+  `agent.composer_options.load`, which records composer transport duration and
+  status. A fresh rail hit with no composer transport indicates both caches were
+  reused; a long rail request isolates section loading, while a long composer
+  event isolates target option discovery.
 - Root cause:
   A second React summary cache mixed entity data, section membership, active
   selection, and visible-item limits. Effects manually patched section rows

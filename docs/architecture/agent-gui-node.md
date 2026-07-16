@@ -1546,7 +1546,12 @@ place for short reloads. Provider/agent switching should not briefly unmount
 the project rail header or replace a populated rail with an empty/skeleton
 rail; if the new first page takes longer than the rail skeleton delay, show the
 skeleton so the user sees loading feedback. Only workspace changes may clear
-the section cache immediately. Local Show more/Show less expansion belongs to
+the section cache immediately. The desktop runtime shares bounded first-page
+query entries across AgentGUI controller mounts, keyed by workspace and exact
+rail scope. A fresh entry is restored without transport; a stale entry remains
+visible while one in-flight request is shared by every consumer. Cache entries
+contain membership, cursor, total, and section metadata only; canonical sessions
+remain in the workspace engine. Local Show more/Show less expansion belongs to
 the workspace-plus-filter query scope, not the backend section id alone. Reset
 its visible-item limit in the filter-change render so stale section chrome
 cannot flash pagination controls from the previous provider scope. Keep the

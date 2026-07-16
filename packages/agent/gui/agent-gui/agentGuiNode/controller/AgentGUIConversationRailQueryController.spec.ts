@@ -1,6 +1,7 @@
 import { normalizeAgentActivitySession } from "@tutti-os/agent-activity-core";
 import { describe, expect, it, vi } from "vitest";
 import { createTestAgentSessionEngine } from "../../../shared/testing/createTestAgentSessionEngine";
+import { createWorkspaceQueryCache } from "../../../shared/query/workspaceQueryCache";
 import {
   AgentGUIConversationRailQueryController,
   CONVERSATION_SEARCH_DEBOUNCE_MS,
@@ -171,7 +172,7 @@ describe("AgentGUIConversationRailQueryController", () => {
     engine.dispose();
   });
 
-  it("reattaches cleanly and follows preview-mode scope changes", async () => {
+  it("reuses fresh first pages across reattach and preview-mode scope changes", async () => {
     const engine = createTestAgentSessionEngine();
     const listSessionSections = vi.fn<
       NonNullable<ConversationRailQueryRuntime["listSessionSections"]>
@@ -210,18 +211,14 @@ describe("AgentGUIConversationRailQueryController", () => {
     detachFirst();
 
     const detachSecond = controller.attach();
-    await vi.waitFor(() =>
-      expect(listSessionSections).toHaveBeenCalledTimes(2)
-    );
+    expect(listSessionSections).toHaveBeenCalledTimes(1);
 
     controller.configure({ ...regularScope, previewMode: true });
     expect(controller.getSnapshot().runtimeSectionsEnabled).toBe(false);
-    expect(listSessionSections).toHaveBeenCalledTimes(2);
+    expect(listSessionSections).toHaveBeenCalledTimes(1);
 
     controller.configure(regularScope);
-    await vi.waitFor(() =>
-      expect(listSessionSections).toHaveBeenCalledTimes(3)
-    );
+    expect(listSessionSections).toHaveBeenCalledTimes(1);
     expect(controller.getSnapshot().runtimeSectionsEnabled).toBe(true);
 
     detachSecond();
@@ -251,6 +248,7 @@ describe("AgentGUIConversationRailQueryController", () => {
       };
     });
     const controller = new AgentGUIConversationRailQueryController({
+      cacheFreshMs: -1,
       engine,
       getActiveConversationId: () => null,
       runtime: {
@@ -303,6 +301,7 @@ describe("AgentGUIConversationRailQueryController", () => {
     const reportDiagnostic = vi.fn();
     const diagnosticTimes = [0, 300, 325];
     const controller = new AgentGUIConversationRailQueryController({
+      cacheFreshMs: -1,
       diagnosticNow: () => diagnosticTimes.shift() ?? 325,
       diagnosticSlowThresholdMs: 250,
       engine,
@@ -378,6 +377,7 @@ describe("AgentGUIConversationRailQueryController", () => {
     let requestCount = 0;
     const diagnosticTimes = [0, 100, 110, 110, 130];
     const controller = new AgentGUIConversationRailQueryController({
+      cacheFreshMs: -1,
       diagnosticLogger,
       diagnosticNow: () => diagnosticTimes.shift() ?? 130,
       diagnosticSlowThresholdMs: 250,
@@ -432,6 +432,172 @@ describe("AgentGUIConversationRailQueryController", () => {
     });
 
     detachSecond();
+    engine.dispose();
+  });
+
+  it("shares an in-flight scope request across controllers and restores it after remount", async () => {
+    const engine = createTestAgentSessionEngine();
+    const cache = createWorkspaceQueryCache<unknown>();
+    let resolveSections!: () => void;
+    const listSessionSections = vi.fn<
+      NonNullable<ConversationRailQueryRuntime["listSessionSections"]>
+    >((input) =>
+      new Promise<void>((resolve) => {
+        resolveSections = resolve;
+      }).then(() => ({
+        sections: [
+          {
+            hasMore: false,
+            kind: "conversations" as const,
+            sectionKey: "conversations",
+            sessions: [],
+            totalCount: 0
+          }
+        ],
+        workspaceId: input.workspaceId
+      }))
+    );
+    const runtime: ConversationRailQueryRuntime = {
+      getSessionSectionsQueryCache: () => cache,
+      listSessionSections,
+      listSessionSectionPage: async (input) => ({
+        hasMore: false,
+        kind: "conversations",
+        sectionKey: input.sectionKey,
+        sessions: [],
+        totalCount: 0
+      })
+    };
+    const scope = {
+      conversationFilter: {
+        agentTargetId: "local:codex",
+        kind: "agentTarget"
+      } as const,
+      previewMode: false,
+      sectionAgentTargetFallbackId: null,
+      userProjects: []
+    };
+    const first = new AgentGUIConversationRailQueryController({
+      engine,
+      getActiveConversationId: () => null,
+      runtime,
+      workspaceId: "test-workspace"
+    });
+    const second = new AgentGUIConversationRailQueryController({
+      engine,
+      getActiveConversationId: () => null,
+      runtime,
+      workspaceId: "test-workspace"
+    });
+    first.configure(scope);
+    second.configure(scope);
+    const detachFirst = first.attach();
+    const detachSecond = second.attach();
+
+    expect(listSessionSections).toHaveBeenCalledTimes(1);
+    resolveSections();
+    await vi.waitFor(() =>
+      expect(first.getSnapshot().runtimeRailSectionsPending).toBe(false)
+    );
+    await vi.waitFor(() =>
+      expect(second.getSnapshot().runtimeRailSectionsPending).toBe(false)
+    );
+    detachFirst();
+    detachSecond();
+
+    const remounted = new AgentGUIConversationRailQueryController({
+      engine,
+      getActiveConversationId: () => null,
+      runtime,
+      workspaceId: "test-workspace"
+    });
+    remounted.configure(scope);
+    const detachRemounted = remounted.attach();
+    expect(remounted.getSnapshot().runtimeRailMemberships).toHaveLength(1);
+    expect(remounted.getSnapshot().runtimeRailSectionsPending).toBe(false);
+    expect(listSessionSections).toHaveBeenCalledTimes(1);
+
+    detachRemounted();
+    engine.dispose();
+  });
+
+  it("restores a fresh target scope without refetching on A to B to A", async () => {
+    const engine = createTestAgentSessionEngine();
+    const diagnosticLogger = vi.fn();
+    const listSessionSections = vi.fn<
+      NonNullable<ConversationRailQueryRuntime["listSessionSections"]>
+    >(async (input) => ({
+      sections: [
+        {
+          hasMore: false,
+          kind: "conversations",
+          sectionKey: "conversations",
+          sessions: [],
+          totalCount: 0
+        }
+      ],
+      workspaceId: input.workspaceId
+    }));
+    const controller = new AgentGUIConversationRailQueryController({
+      diagnosticLogger,
+      engine,
+      getActiveConversationId: () => null,
+      runtime: {
+        listSessionSections,
+        listSessionSectionPage: async (input) => ({
+          hasMore: false,
+          kind: "conversations",
+          sectionKey: input.sectionKey,
+          sessions: [],
+          totalCount: 0
+        })
+      },
+      workspaceId: "test-workspace"
+    });
+    const scope = (agentTargetId: string) => ({
+      conversationFilter: { agentTargetId, kind: "agentTarget" as const },
+      previewMode: false,
+      sectionAgentTargetFallbackId: null,
+      userProjects: []
+    });
+    controller.configure(scope("local:codex"));
+    const detach = controller.attach();
+    await vi.waitFor(() =>
+      expect(listSessionSections).toHaveBeenCalledTimes(1)
+    );
+
+    controller.configure(scope("local:claude-code"));
+    await vi.waitFor(() =>
+      expect(listSessionSections).toHaveBeenCalledTimes(2)
+    );
+    await vi.waitFor(() =>
+      expect(controller.getSnapshot().runtimeRailSectionsPending).toBe(false)
+    );
+    expect(diagnosticLogger).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        cacheStatus: "miss",
+        event: "agent_gui.provider_switch.completed",
+        fromAgentTargetId: "local:codex",
+        status: "ready",
+        toAgentTargetId: "local:claude-code"
+      })
+    );
+
+    controller.configure(scope("local:codex"));
+    expect(controller.getSnapshot().runtimeRailSectionsPending).toBe(false);
+    expect(listSessionSections).toHaveBeenCalledTimes(2);
+    expect(diagnosticLogger).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        cacheStatus: "fresh",
+        event: "agent_gui.provider_switch.completed",
+        fromAgentTargetId: "local:claude-code",
+        requestMs: 0,
+        status: "ready",
+        toAgentTargetId: "local:codex"
+      })
+    );
+
+    detach();
     engine.dispose();
   });
 });

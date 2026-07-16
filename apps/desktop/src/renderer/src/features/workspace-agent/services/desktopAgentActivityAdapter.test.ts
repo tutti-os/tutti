@@ -647,6 +647,7 @@ test("desktop agent activity adapter submits interactive responses through tutti
 
 test("desktop agent activity adapter normalizes provider composer options", async () => {
   const calls: unknown[] = [];
+  const diagnostics: unknown[] = [];
   const adapter = createDesktopAgentActivityAdapter({
     tuttidClient: createTuttidClient({
       async getAgentProviderComposerOptions(provider, request) {
@@ -724,7 +725,7 @@ test("desktop agent activity adapter normalizes provider composer options", asyn
         };
       }
     }),
-    runtimeApi: createRuntimeApi()
+    runtimeApi: createRuntimeApi(diagnostics)
   });
 
   const options = await adapter.loadComposerOptions({
@@ -779,6 +780,25 @@ test("desktop agent activity adapter normalizes provider composer options", asyn
   assert.equal(options.capabilities?.planMode, true);
   assert.equal(options.capabilities?.browserUse, true);
   assert.equal(options.capabilities?.activeTurnGuidance, true);
+  assert.equal(diagnostics.length, 1);
+  const diagnostic = diagnostics[0] as {
+    details: Record<string, unknown>;
+    event: string;
+    level: string;
+    workspaceId: string;
+  };
+  assert.equal(diagnostic.event, "agent.composer_options.load");
+  assert.equal(diagnostic.level, "info");
+  assert.equal(diagnostic.workspaceId, workspaceId);
+  assert.deepEqual(
+    { ...diagnostic.details, durationMs: typeof diagnostic.details.durationMs },
+    {
+      agentTargetId: null,
+      durationMs: "number",
+      provider: "codex",
+      status: "ready"
+    }
+  );
 });
 
 test("desktop agent activity adapter cancels composer options when caller aborts", async () => {

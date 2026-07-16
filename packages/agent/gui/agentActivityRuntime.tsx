@@ -29,6 +29,7 @@ import type {
   AgentHostAgentSessionComposerSettings,
   AgentHostUnactivateAgentSessionResult
 } from "./shared/contracts/dto";
+import type { WorkspaceQueryCache } from "./shared/query/workspaceQueryCache";
 
 export interface AgentActivityRuntimeUpdateSessionSettingsResult {
   agentSessionId: string;
@@ -372,6 +373,9 @@ export interface AgentActivityRuntime {
   ): Promise<AgentActivityRuntimeUpdateSessionSettingsResult>;
   getSnapshot(workspaceId: string): AgentActivitySnapshot;
   getSessionEngine(workspaceId: string): AgentSessionEngine;
+  getSessionSectionsQueryCache?(
+    workspaceId: string
+  ): WorkspaceQueryCache<unknown>;
   listSessionMessages(
     input: AgentActivityRuntimeListSessionMessagesInput
   ): Promise<AgentActivityMessagePage>;
