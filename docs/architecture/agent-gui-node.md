@@ -2174,7 +2174,13 @@ User-visible rules:
 - Conversation target filters are also list-query concerns. The All rail filter
   applies no `agentTargetId` constraint; provider target rail filters such as
   Codex and Claude Code match sessions by `session.agentTargetId`, not by
-  `session.provider`. Filter normalization and list projection helpers must not
+  `session.provider`. Agent-directory loading, readiness, visibility, and
+  cardinality must not alter that query meaning: an
+  `idle -> loading -> partial -> ready` directory sequence cannot turn All into
+  a target-scoped request or create a new rail cache key. Only an explicit
+  `agentTarget` filter may add `agentTargetId` to section, pinned, search,
+  pagination, or batch-action requests. Filter normalization and list
+  projection helpers must not
   mutate workbench node `provider`, provider target fields, composer drafts,
   desktop default provider, or composer-default preferences. All-filter clicks
   must only clear the `agentTargetId` constraint. Provider target rail clicks
@@ -2184,9 +2190,7 @@ User-visible rules:
   should unactivate the current conversation and show the selected target's
   new-conversation empty composer. React view components must not dispatch
   separate filter and home-composer target actions for one rail click.
-  Apply them only for multi-provider conversation scopes. Single-provider
-  panels should let the node provider constrain the query and collapse target
-  filter actions back to All in the controller.
+  Apply them only for explicit target-filtered conversation scopes.
 - A pending create row can appear before the daemon-created session is
   authoritative. It must be replaced by the authoritative session or removed on
   create failure.

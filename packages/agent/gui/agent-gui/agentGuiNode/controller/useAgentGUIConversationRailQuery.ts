@@ -20,7 +20,6 @@ export interface AgentGUIConversationRailInput {
   conversationFilter: AgentGUINodeViewModel["rail"]["conversationFilter"];
   conversationQuery: string;
   previewMode: boolean;
-  sectionAgentTargetFallbackId: string | null;
   userProjects: AgentGUINodeViewModel["rail"]["userProjects"];
   workspaceId: string;
 }
@@ -30,7 +29,6 @@ export function useAgentGUIConversationRailQuery({
   conversationFilter,
   conversationQuery,
   previewMode,
-  sectionAgentTargetFallbackId,
   userProjects,
   workspaceId
 }: AgentGUIConversationRailInput) {
@@ -57,7 +55,6 @@ export function useAgentGUIConversationRailQuery({
     controller.configure({
       conversationFilter,
       previewMode,
-      sectionAgentTargetFallbackId,
       userProjects
     });
     controller.setSearchQuery(conversationQuery);
@@ -66,7 +63,6 @@ export function useAgentGUIConversationRailQuery({
     conversationFilter,
     conversationQuery,
     previewMode,
-    sectionAgentTargetFallbackId,
     userProjects
   ]);
 

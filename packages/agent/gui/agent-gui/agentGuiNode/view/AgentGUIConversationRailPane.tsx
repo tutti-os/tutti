@@ -88,7 +88,6 @@ export interface AgentGUIConversationRailControllerProps {
   agentTargets: AgentGUINodeViewModel["rail"]["agentTargets"];
   agentTargetsLoading: AgentGUINodeViewModel["rail"]["agentTargetsLoading"];
   conversationFilter: AgentGUINodeViewModel["rail"]["conversationFilter"];
-  sectionAgentTargetFallbackId: string | null;
   onUpdateConversationFilter: (
     filter: AgentGUINodeViewModel["rail"]["conversationFilter"]
   ) => void;
@@ -172,7 +171,6 @@ export const AgentGUIConversationRailPane = memo(
     createConversationDisabled,
     isCollapsed,
     conversationFilter,
-    sectionAgentTargetFallbackId,
     conversationQuery,
     railQuery,
     onCreateConversation,
@@ -407,7 +405,7 @@ export const AgentGUIConversationRailPane = memo(
     const sectionPaginationScopeKey = `${
       conversationFilter.kind === "agentTarget"
         ? `${workspaceId}:agentTarget:${conversationFilter.agentTargetId.trim()}`
-        : `${workspaceId}:all:${sectionAgentTargetFallbackId?.trim() ?? ""}`
+        : `${workspaceId}:all`
     }:search:${conversationQuery.trim()}`;
     const toggleProjectSectionCollapsed = useCallback((sectionId: string) => {
       setCollapsedProjectSectionIds((current) => {
@@ -433,7 +431,7 @@ export const AgentGUIConversationRailPane = memo(
     const sectionAgentTargetId =
       conversationFilter.kind === "agentTarget"
         ? conversationFilter.agentTargetId.trim()
-        : (sectionAgentTargetFallbackId?.trim() ?? "");
+        : "";
     const requestSectionBatchDeletion = useCallback(
       (section: ConversationSection) => {
         if (

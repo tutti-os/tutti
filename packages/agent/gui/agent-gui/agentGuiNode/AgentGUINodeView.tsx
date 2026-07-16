@@ -438,17 +438,6 @@ export function AgentGUINodeView({
     providerAuthAccountLabels,
     viewModel.shell.data.provider
   ]);
-  const enabledProviderTargets = viewModel.rail.agentTargets.filter(
-    (target) =>
-      target.disabled !== true &&
-      ((target.agentTargetId?.trim() ?? "") || (target.targetId?.trim() ?? ""))
-  );
-  const sectionAgentTargetFallbackId =
-    enabledProviderTargets.length <= 1
-      ? viewModel.rail.selectedAgentTarget.agentTargetId?.trim() ||
-        viewModel.rail.selectedAgentTarget.targetId?.trim() ||
-        null
-      : null;
   const openAgentEnvSetup = useCallback(() => {
     // In the "All" filter there is no single rail provider; pass it through as
     // null so the env panel host falls back to the default provider.
@@ -488,7 +477,6 @@ export function AgentGUINodeView({
       agentTargets: viewModel.rail.agentTargets,
       agentTargetsLoading: viewModel.rail.agentTargetsLoading,
       conversationFilter: viewModel.rail.conversationFilter,
-      sectionAgentTargetFallbackId,
       onCreateConversation: requestCreateConversation,
       onUpdateConversationFilter: actions.updateConversationFilter,
       onSelectConversationFilterTarget: actions.selectConversationFilterTarget,
@@ -525,7 +513,6 @@ export function AgentGUINodeView({
       requestRenameConversation,
       selectConversation,
       selectProjectDirectory,
-      sectionAgentTargetFallbackId,
       viewModel.rail.agentTargets,
       viewModel.rail.agentTargetsLoading,
       toggleConversationPinned,

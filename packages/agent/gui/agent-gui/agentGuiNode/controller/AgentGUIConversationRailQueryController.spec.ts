@@ -29,7 +29,6 @@ describe("AgentGUIConversationRailQueryController", () => {
       controller.configure({
         conversationFilter: { kind: "all" },
         previewMode: false,
-        sectionAgentTargetFallbackId: null,
         userProjects: []
       });
 
@@ -135,7 +134,6 @@ describe("AgentGUIConversationRailQueryController", () => {
     controller.configure({
       conversationFilter: { kind: "all" },
       previewMode: false,
-      sectionAgentTargetFallbackId: null,
       userProjects: []
     });
 
@@ -171,7 +169,6 @@ describe("AgentGUIConversationRailQueryController", () => {
         kind: "agentTarget"
       },
       previewMode: false,
-      sectionAgentTargetFallbackId: null,
       userProjects: []
     });
     expect(controller.isInteractionLocked()).toBe(true);
@@ -207,7 +204,6 @@ describe("AgentGUIConversationRailQueryController", () => {
     const regularScope = {
       conversationFilter: { kind: "all" } as const,
       previewMode: false,
-      sectionAgentTargetFallbackId: null,
       userProjects: []
     };
 
@@ -230,6 +226,75 @@ describe("AgentGUIConversationRailQueryController", () => {
     expect(controller.getSnapshot().runtimeSectionsEnabled).toBe(true);
 
     detachSecond();
+    engine.dispose();
+  });
+
+  it("keeps the All scope unfiltered across repeated startup configuration", async () => {
+    const engine = createTestAgentSessionEngine();
+    const listSessionSections = vi.fn<
+      NonNullable<ConversationRailQueryRuntime["listSessionSections"]>
+    >(async (input) => ({
+      sections: [],
+      workspaceId: input.workspaceId
+    }));
+    const controller = new AgentGUIConversationRailQueryController({
+      engine,
+      getActiveConversationId: () => null,
+      runtime: {
+        listSessionSections,
+        listSessionSectionPage: async (input) => ({
+          hasMore: false,
+          kind: "conversations",
+          sectionKey: input.sectionKey,
+          sessions: [],
+          totalCount: 0
+        })
+      },
+      workspaceId: "test-workspace"
+    });
+
+    controller.configure({
+      conversationFilter: { kind: "all" },
+      previewMode: false,
+      userProjects: []
+    });
+    const detach = controller.attach();
+
+    controller.configure({
+      conversationFilter: { kind: "all" },
+      previewMode: false,
+      userProjects: []
+    });
+    controller.configure({
+      conversationFilter: { kind: "all" },
+      previewMode: false,
+      userProjects: []
+    });
+
+    await vi.waitFor(() =>
+      expect(controller.getSnapshot().runtimeRailSectionsPending).toBe(false)
+    );
+    expect(listSessionSections).toHaveBeenCalledTimes(1);
+    expect(listSessionSections.mock.calls[0]?.[0]).not.toHaveProperty(
+      "agentTargetId"
+    );
+
+    controller.configure({
+      conversationFilter: {
+        agentTargetId: "local:codex",
+        kind: "agentTarget"
+      },
+      previewMode: false,
+      userProjects: []
+    });
+    await vi.waitFor(() =>
+      expect(listSessionSections).toHaveBeenCalledTimes(2)
+    );
+    expect(listSessionSections.mock.calls[1]?.[0]).toMatchObject({
+      agentTargetId: "local:codex"
+    });
+
+    detach();
     engine.dispose();
   });
 
@@ -274,7 +339,6 @@ describe("AgentGUIConversationRailQueryController", () => {
     controller.configure({
       conversationFilter: { kind: "all" },
       previewMode: false,
-      sectionAgentTargetFallbackId: null,
       userProjects: []
     });
 
@@ -349,7 +413,6 @@ describe("AgentGUIConversationRailQueryController", () => {
         agentTargetId: "local:codex"
       },
       previewMode: false,
-      sectionAgentTargetFallbackId: null,
       userProjects: []
     });
 
@@ -410,7 +473,6 @@ describe("AgentGUIConversationRailQueryController", () => {
     const scope = {
       conversationFilter: { kind: "all" } as const,
       previewMode: false,
-      sectionAgentTargetFallbackId: null,
       userProjects: []
     };
     controller.configure(scope);
@@ -482,7 +544,6 @@ describe("AgentGUIConversationRailQueryController", () => {
         kind: "agentTarget"
       } as const,
       previewMode: false,
-      sectionAgentTargetFallbackId: null,
       userProjects: []
     };
     const first = new AgentGUIConversationRailQueryController({
@@ -565,7 +626,6 @@ describe("AgentGUIConversationRailQueryController", () => {
     const scope = (agentTargetId: string) => ({
       conversationFilter: { agentTargetId, kind: "agentTarget" as const },
       previewMode: false,
-      sectionAgentTargetFallbackId: null,
       userProjects: []
     });
     controller.configure(scope("local:codex"));

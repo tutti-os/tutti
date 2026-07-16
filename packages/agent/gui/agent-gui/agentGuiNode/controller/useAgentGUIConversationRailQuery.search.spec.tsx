@@ -63,7 +63,6 @@ describe("useAgentGUIConversationRailQuery search", () => {
           },
           conversationQuery: " backend ",
           previewMode: false,
-          sectionAgentTargetFallbackId: null,
           userProjects: [],
           workspaceId: "workspace-1"
         }),
@@ -142,7 +141,6 @@ describe("useAgentGUIConversationRailQuery search", () => {
           conversationFilter: { kind: "all" },
           conversationQuery: "backend",
           previewMode: false,
-          sectionAgentTargetFallbackId: null,
           userProjects: [],
           workspaceId: "workspace-1"
         }),
@@ -193,7 +191,6 @@ describe("useAgentGUIConversationRailQuery search", () => {
           conversationFilter: { kind: "all" },
           conversationQuery: "",
           previewMode: true,
-          sectionAgentTargetFallbackId: null,
           userProjects: [],
           workspaceId: "workspace-1"
         });
@@ -245,7 +242,6 @@ describe("useAgentGUIConversationRailQuery search", () => {
         conversationFilter: { kind: "all" },
         conversationQuery: "streaming",
         previewMode: true,
-        sectionAgentTargetFallbackId: null,
         userProjects: [],
         workspaceId: "workspace-1"
       });
@@ -274,7 +270,6 @@ describe("useAgentGUIConversationRailQuery search", () => {
             pendingDeleteConversationId={null}
             previewMode
             railQuery={railQuery}
-            sectionAgentTargetFallbackId={null}
             uiLanguage="en"
             userProjects={[]}
             workspaceId="workspace-1"
@@ -342,7 +337,6 @@ describe("useAgentGUIConversationRailQuery search", () => {
         conversationFilter: { kind: "all" },
         conversationQuery: "",
         previewMode: false,
-        sectionAgentTargetFallbackId: null,
         userProjects,
         workspaceId: "workspace-1"
       });
@@ -364,7 +358,6 @@ describe("useAgentGUIConversationRailQuery search", () => {
           pendingDeleteConversationId={null}
           previewMode={false}
           railQuery={railQuery}
-          sectionAgentTargetFallbackId={null}
           uiLanguage="en"
           userProjects={userProjects}
           workspaceId="workspace-1"

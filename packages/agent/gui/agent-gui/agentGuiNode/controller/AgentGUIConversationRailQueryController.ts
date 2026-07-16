@@ -42,6 +42,7 @@ import {
   EMPTY_CONVERSATION_RAIL_QUERY_STATE,
   type AgentGUIConversationRailQuerySnapshot
 } from "./agentGuiConversationRailQuerySnapshot";
+import { agentTargetQueryInput } from "./agentGuiConversationRailQueryInput";
 import { AgentGUIConversationRailTargetedPageRefresher } from "./AgentGUIConversationRailTargetedPageRefresher";
 
 export type { AgentGUIConversationRailQuerySnapshot } from "./agentGuiConversationRailQuerySnapshot";
@@ -49,10 +50,10 @@ export type { AgentGUIConversationRailQuerySnapshot } from "./agentGuiConversati
 const SECTION_PAGE_SIZE = 5;
 export const CONVERSATION_SEARCH_DEBOUNCE_MS = 300;
 export const CONVERSATION_RAIL_QUERY_CACHE_FRESH_MS = 30_000;
+
 export interface ConversationRailQueryScope {
   conversationFilter: AgentGUINodeViewModel["rail"]["conversationFilter"];
   previewMode: boolean;
-  sectionAgentTargetFallbackId: string | null;
   userProjects: AgentGUINodeViewModel["rail"]["userProjects"];
 }
 
@@ -193,7 +194,7 @@ export class AgentGUIConversationRailQueryController {
     const sectionAgentTargetId =
       scope.conversationFilter.kind === "agentTarget"
         ? scope.conversationFilter.agentTargetId.trim()
-        : (scope.sectionAgentTargetFallbackId?.trim() ?? "");
+        : "";
     const userProjectPathKey = JSON.stringify(
       scope.userProjects
         .map((project) => project.path.trim())
@@ -286,14 +287,14 @@ export class AgentGUIConversationRailQueryController {
     const request =
       membership.kind === "pinned"
         ? this.runtime.listPinnedSessionsPage!({
-            agentTargetId: this.sectionAgentTargetId || undefined,
+            ...agentTargetQueryInput(this.sectionAgentTargetId),
             cursor: currentPageState.nextCursor || undefined,
             limit: SECTION_PAGE_SIZE,
             signal: abortController.signal,
             workspaceId: this.workspaceId
           })
         : this.runtime.listSessionSectionPage!({
-            agentTargetId: this.sectionAgentTargetId || undefined,
+            ...agentTargetQueryInput(this.sectionAgentTargetId),
             cursor: currentPageState.nextCursor || undefined,
             limit: SECTION_PAGE_SIZE,
             sectionKey: section.id,
@@ -384,7 +385,7 @@ export class AgentGUIConversationRailQueryController {
     this.searchState = { ...this.searchState, loadingMore: true };
     this.emit();
     void listSessionsPage({
-      agentTargetId: this.sectionAgentTargetId || undefined,
+      ...agentTargetQueryInput(this.sectionAgentTargetId),
       cursor: this.searchState.nextCursor ?? undefined,
       limit: 100,
       searchQuery: this.searchQuery,
@@ -522,7 +523,7 @@ export class AgentGUIConversationRailQueryController {
     void this.sessionSectionsQueryCache
       .request(scopeKey, async () => {
         const page = await listSections({
-          agentTargetId: this.sectionAgentTargetId || undefined,
+          ...agentTargetQueryInput(this.sectionAgentTargetId),
           limitPerSection: SECTION_PAGE_SIZE,
           workspaceId: this.workspaceId
         });
@@ -665,7 +666,7 @@ export class AgentGUIConversationRailQueryController {
     };
     this.emit();
     void listSessionsPage({
-      agentTargetId: this.sectionAgentTargetId || undefined,
+      ...agentTargetQueryInput(this.sectionAgentTargetId),
       limit: 100,
       searchQuery: query,
       signal: abortController.signal,

@@ -695,11 +695,18 @@ Turn state, loading, cancel, restore, file-change undo, rail projection, event u
   one selected overlay may show
   Show more/Show less even when only six sessions exist, or a nine-session
   section may ignore the first Show more click. Restart can reproduce the same
-  selected-row loss.
+  selected-row loss. A cold AgentGUI launch may also show an empty project rail
+  until the user switches Agent tabs, even though the runtime snapshot and
+  section endpoint already contain history.
 - Quick checks:
   Inspect `workspace_agent_sessions.agent_target_id` and `rail_section_key`.
   Confirm section requests carry the selected `agentTargetId` before pagination
-  and responses preserve `totalCount`, `hasMore`, and `nextCursor`. In the
+  and that All requests omit it. Compare
+  `agent_gui.conversation_rail.first_pages_slow` with
+  `agent_provider_status.request.*`: if the section request returned rows while
+  the Agent directory was still moving through partial states, inspect whether
+  renderer scope keys changed with directory cardinality. Responses must
+  preserve `totalCount`, `hasMore`, and `nextCursor`. In the
   renderer, distinguish daemon-owned section membership ids from engine-owned
   session entities; activating or hydrating one session must not rewrite the
   loaded membership page. For latency, count repository section reads per
@@ -750,7 +757,11 @@ Turn state, loading, cancel, restore, file-change undo, rail projection, event u
   A database opened by different worktrees or intermediate builds can retain a
   migration marker after a required physical index disappears; treating the
   marker alone as proof of the schema invariant makes every section bootstrap
-  fail while an active-session overlay can misleadingly remain visible.
+  fail while an active-session overlay can misleadingly remain visible. The
+  cold-launch variant comes from deriving All scope from the asynchronously
+  loaded Agent directory cardinality: temporary zero/one/many target states
+  create different request and cache scopes even though the user never changed
+  the filter.
 - Fix:
   Keep page sessions in the workspace engine. Cache only ordered membership ids,
   cursor, `hasMore`, and `totalCount` in the controller query, then join ids to
@@ -764,7 +775,10 @@ Turn state, loading, cancel, restore, file-change undo, rail projection, event u
   Reassert required rail indexes with idempotent `CREATE INDEX IF NOT EXISTS`
   during every store migration pass, including when the corresponding marker is
   already recorded, so schema drift repairs itself without rewriting session
-  data.
+  data. Keep rail query semantics explicit: All never sends `agentTargetId`,
+  and only an explicit Agent-target filter may create a target-scoped request.
+  Agent-directory loading or visibility changes must not participate in the
+  section-query key.
   Do not add one `UNION ALL` arm per section; that restores section-count scaling
   and inherits SQLite's compound-select term limit.
 - Validation:
@@ -780,6 +794,8 @@ Turn state, loading, cancel, restore, file-change undo, rail projection, event u
   requested-section histories. Cover Codex -> All -> Codex,
   client restart restore, active row outside first page, five-plus-active totals,
   nine-session Show more, slow provider refetch, and bounded snapshot omission.
+  Also cover directory startup transitions from zero to one to multiple targets
+  and assert the All request remains unfiltered and is not restarted.
 - References:
   [useAgentGUIConversationRailQuery.ts](../../../packages/agent/gui/agent-gui/agentGuiNode/controller/useAgentGUIConversationRailQuery.ts)
   [agentGuiConversationRail.ts](../../../packages/agent/gui/agent-gui/agentGuiNode/model/agentGuiConversationRail.ts)
