@@ -46,6 +46,20 @@
         "description": "无需询问直接运行命令，除非被你的 Cursor 权限规则明确拒绝。"
       }
     },
+    "opencode": {
+      "read-only": {
+        "description": "允许读取和搜索本地项目，拒绝修改、命令、网络及其他需授权操作",
+        "label": "只读"
+      },
+      "ask": {
+        "description": "读取和搜索直接执行，修改、命令、网络及其他操作会先询问你",
+        "label": "询问"
+      },
+      "full-access": {
+        "description": "自动允许需授权操作，但不会改变 OpenCode 独立的 Plan 模式限制",
+        "label": "完全访问"
+      }
+    },
     "hermes": {
       "yolo": {
         "description": "当前 provider 不支持在这里调整权限模式。",

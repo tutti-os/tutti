@@ -18,6 +18,7 @@ const (
 	StandardACPAdapterStrategyCursor   StandardACPAdapterStrategy = "cursor"
 	StandardACPAdapterStrategyNexight  StandardACPAdapterStrategy = "nexight"
 	StandardACPAdapterStrategyOpenClaw StandardACPAdapterStrategy = "openclaw"
+	StandardACPAdapterStrategyOpenCode StandardACPAdapterStrategy = "opencode"
 )
 
 // EndpointConfigKind identifies an optional provider-owned config source for
@@ -137,6 +138,7 @@ type StandardACPRuntimeDescriptor struct {
 	DefaultPermissionModeRuntimeID string
 	SettingsEnvironment            RuntimeSettingsEnvironmentDescriptor
 	PlanModeRuntimeID              string
+	PlanModeDisabledRuntimeID      string
 	ProjectCurrentMode             bool
 	StartupDiagnostics             bool
 	DeriveImageInputFromPrompt     bool

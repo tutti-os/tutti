@@ -20,11 +20,9 @@ func openCodeDescriptor() ProviderDescriptor {
 			Command:             []string{"opencode", "acp"},
 			AuthRequiredMessage: "OpenCode ACP requires authentication; run `opencode auth login` on the host, then retry this session.",
 			StandardACP: StandardACPRuntimeDescriptor{
-				PermissionModes: []RuntimePermissionModeDescriptor{
-					{InputID: "", RuntimeID: "build"},
-					{InputID: "build", RuntimeID: "build"},
-					{InputID: "plan", RuntimeID: "plan"},
-				},
+				AdapterStrategy:           StandardACPAdapterStrategyOpenCode,
+				PlanModeRuntimeID:         "plan",
+				PlanModeDisabledRuntimeID: "build",
 				SettingsEnvironment: RuntimeSettingsEnvironmentDescriptor{
 					Variable: "OPENCODE_CONFIG_CONTENT",
 					JSONFields: []RuntimeSettingsJSONFieldDescriptor{
@@ -88,6 +86,14 @@ func openCodeDescriptor() ProviderDescriptor {
 				CapabilityModelImageInputRequired,
 				CapabilityPlanMode,
 				CapabilityInterrupt,
+				CapabilityPermissionModeChangeDuringTurn,
+			},
+			PermissionConfigurable:  true,
+			DefaultPermissionModeID: "ask",
+			PermissionModes: []PermissionModeDescriptor{
+				{ID: "read-only", Semantic: "locked-down"},
+				{ID: "ask", Semantic: "ask-before-write"},
+				{ID: "full-access", Semantic: "full-access"},
 			},
 			ConfigOptionIDs: ComposerConfigOptionIDs{
 				Model:     "model",

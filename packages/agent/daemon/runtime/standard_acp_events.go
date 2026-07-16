@@ -299,6 +299,9 @@ func standardACPPermissionRequested(
 	if err := json.Unmarshal(raw, &params); err != nil {
 		return nil, nil, fmt.Errorf("invalid permission request: %w", err)
 	}
+	if adapter != nil && adapter.config.filterPermissionOptions != nil {
+		params.Options = adapter.config.filterPermissionOptions(params.Options)
+	}
 	requestID := acpRequestID(rawRequestID)
 	if requestID == "" {
 		return nil, nil, errors.New("permission request id is required")

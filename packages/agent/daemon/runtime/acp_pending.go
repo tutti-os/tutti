@@ -10,12 +10,19 @@ import (
 // ACP permission requests carry provider-defined option IDs. This file owns
 // only ACP decoding and response-envelope details; shared interactive state
 // and activity projection live in interactive_projection.go.
-func acpPermissionRequestDecisionOptionID(raw json.RawMessage, decision string) (string, bool) {
+func acpPermissionRequestDecisionOptionID(
+	raw json.RawMessage,
+	decision string,
+	filter func([]map[string]any) []map[string]any,
+) (string, bool) {
 	var params struct {
 		Options []map[string]any `json:"options"`
 	}
 	if err := json.Unmarshal(raw, &params); err != nil {
 		return "", false
+	}
+	if filter != nil {
+		params.Options = filter(params.Options)
 	}
 	return resolveACPPermissionDecisionOptionID(params.Options, decision)
 }

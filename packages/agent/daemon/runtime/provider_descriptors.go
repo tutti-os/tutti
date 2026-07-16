@@ -62,6 +62,8 @@ func newAdapterFromProviderDescriptor(
 			return newNexightAdapterFromProviderDescriptor(descriptor, transport, host, commandResolver)
 		case providerregistry.StandardACPAdapterStrategyOpenClaw:
 			return newOpenClawAdapterFromProviderDescriptor(descriptor, transport, host, commandResolver)
+		case providerregistry.StandardACPAdapterStrategyOpenCode:
+			return newOpenCodeAdapterFromProviderDescriptor(descriptor, transport, host, commandResolver)
 		default:
 			return nil
 		}
@@ -107,8 +109,11 @@ func newStandardACPAdapterFromProviderDescriptor(
 				}
 				return env
 			},
-			commandResolver:    commandResolver,
-			planModeRuntimeID:  strings.TrimSpace(standardACP.PlanModeRuntimeID),
+			commandResolver:   commandResolver,
+			planModeRuntimeID: strings.TrimSpace(standardACP.PlanModeRuntimeID),
+			planModeDisabledRuntimeID: strings.TrimSpace(
+				standardACP.PlanModeDisabledRuntimeID,
+			),
 			projectCurrentMode: standardACP.ProjectCurrentMode,
 			startupDiagnostics: standardACP.StartupDiagnostics,
 		},

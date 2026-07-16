@@ -40,21 +40,29 @@ type standardACPConfig struct {
 	// the resolved command (e.g. codex-acp `--config model=...` flags that can
 	// only be applied at process start).
 	commandWithSettings func([]string, Session) []string
+	// finalizeEnv applies provider-owned environment composition after session,
+	// target, and managed-runtime overrides have been resolved.
+	finalizeEnv func([]string, Session) ([]string, error)
 	// requiresNewSessionForSettings reports settings patches that can only
 	// take effect via a fresh process/session (spawn-time-only flags).
 	requiresNewSessionForSettings func(Session, SessionSettingsPatch) bool
-	// autoApprovePermissionDecision lets a provider resolve incoming
+	// automaticPermissionDecision lets a provider resolve incoming
 	// session/request_permission requests without prompting, from the live
-	// permission tier (e.g. Cursor "full access"). It returns a decision
+	// permission tier. It returns a decision
 	// token ("approved" / "denied") to apply automatically, or "" to prompt
 	// the user as usual. Nil (the default) always prompts.
-	autoApprovePermissionDecision func(permissionModeID string) string
+	automaticPermissionDecision func(permissionModeID string) string
+	// filterPermissionOptions narrows provider-offered approval choices before
+	// they become a durable interaction. Providers use it only when an option
+	// would conflict with live permission-tier semantics.
+	filterPermissionOptions func([]map[string]any) []map[string]any
 	// autoContinueRetriableTurnError resumes turns the agent ends "normally"
 	// right after streaming a transient network error as plain text (Cursor's
 	// "Error: RetriableError: ..." tail). See acp_auto_continue.go.
 	autoContinueRetriableTurnError bool
 	applySessionMeta               func(map[string]any, Session, HostMetadata)
 	planModeRuntimeID              string
+	planModeDisabledRuntimeID      string
 	projectCurrentMode             bool
 	startupDiagnostics             bool
 	toolAliases                    map[string]string
@@ -96,9 +104,9 @@ type standardACPSession struct {
 	// lifecycleSeq orders provider-agnostic authoritative turn snapshots
 	// emitted by the standard ACP adapter (ADR 0008).
 	lifecycleSeq uint64
-	// permissionModeID tracks the session's live permission tier so an
-	// auto-approve tier (e.g. Cursor "full access") applies to permission
-	// requests immediately after a mid-session tier change, without a respawn.
+	// permissionModeID tracks the session's live permission tier so automatic
+	// approval or denial applies immediately after a mid-session tier change,
+	// without a respawn.
 	permissionModeID string
 }
 

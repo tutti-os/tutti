@@ -97,14 +97,18 @@ func (a *standardACPAdapter) handleACPMessage(
 			_ = client.Respond(ctx, message.ID, nil, &acpError{Code: -32000, Message: err.Error()})
 			return nil, err
 		}
-		// Auto-approve tiers (e.g. Cursor "full access") resolve the request
-		// from the live permission tier without prompting; the tool call still
-		// streams its own activity via session/update.
-		if decision := a.autoApprovePermissionDecision(session.AgentSessionID); decision != "" {
-			if optionID, ok := acpPermissionRequestDecisionOptionID(message.Params, decision); ok {
+		// Automatic tiers resolve the request from the live permission tier
+		// without prompting; the tool call still streams its own activity via
+		// session/update.
+		if decision := a.automaticPermissionDecision(session.AgentSessionID); decision != "" {
+			if optionID, ok := acpPermissionRequestDecisionOptionID(
+				message.Params,
+				decision,
+				a.config.filterPermissionOptions,
+			); ok {
 				if err := client.Respond(ctx, message.ID, acpPermissionResponseResult(optionID), nil); err != nil {
-					slog.Warn("agent session ACP auto-approve response failed",
-						"event", "agent_session.acp.permission.auto_approve_response_failed",
+					slog.Warn("agent session ACP automatic permission response failed",
+						"event", "agent_session.acp.permission.automatic_response_failed",
 						"provider", a.config.provider,
 						"adapter", a.config.adapterName,
 						"room_id", session.RoomID,

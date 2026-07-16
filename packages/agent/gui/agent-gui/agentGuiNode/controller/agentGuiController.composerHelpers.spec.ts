@@ -101,6 +101,43 @@ describe("permissionModeOptions", () => {
       }
     ]);
   });
+
+  it("presents OpenCode permissions independently from Plan mode", () => {
+    const permissionConfig: AgentSessionPermissionConfig = {
+      configurable: true,
+      defaultValue: "ask",
+      modes: [
+        {
+          id: "read-only",
+          label: "Read-only",
+          description: "Read-only",
+          semantic: "locked-down"
+        },
+        {
+          id: "ask",
+          label: "Ask",
+          description: "Ask",
+          semantic: "ask-before-write"
+        },
+        {
+          id: "full-access",
+          label: "Full access",
+          description: "Full access",
+          semantic: "full-access"
+        }
+      ]
+    };
+
+    expect(permissionModeOptions("opencode", permissionConfig)).toEqual([
+      expect.objectContaining({ value: "read-only", label: "Read-only" }),
+      expect.objectContaining({ value: "ask", label: "Ask" }),
+      expect.objectContaining({
+        value: "full-access",
+        label: "Full access",
+        description: expect.stringContaining("separate Plan mode")
+      })
+    ]);
+  });
 });
 
 describe("model reasoning options", () => {

@@ -113,6 +113,22 @@ export const zhCNAgentGui = {
           "无需询问直接运行命令，除非被你的 Cursor 权限规则明确拒绝。"
       }
     },
+    opencode: {
+      "read-only": {
+        label: "只读",
+        description:
+          "允许读取和搜索本地项目，拒绝修改、命令、网络及其他需授权操作"
+      },
+      ask: {
+        label: "询问",
+        description: "读取和搜索直接执行，修改、命令、网络及其他操作会先询问你"
+      },
+      "full-access": {
+        label: "完全访问",
+        description:
+          "自动允许需授权操作，但不会改变 OpenCode 独立的 Plan 模式限制"
+      }
+    },
     nexight: {
       "read-only": {
         label: "请求批准",

@@ -1,6 +1,7 @@
 package agentruntime
 
 import (
+	"encoding/json"
 	"strings"
 	"testing"
 
@@ -90,6 +91,22 @@ func TestMigratedCodexDescriptorOwnsPermissionModes(t *testing.T) {
 	}
 }
 
+func TestMigratedOpenCodeDescriptorOwnsPermissionModes(t *testing.T) {
+	if got := defaultPermissionModeIDForProvider(ProviderOpenCode); got != "ask" {
+		t.Fatalf("default permission mode = %q, want ask", got)
+	}
+	for _, mode := range []string{"read-only", "ask", "full-access"} {
+		if !permissionModeIDAllowedForProvider(ProviderOpenCode, mode) {
+			t.Fatalf("permission mode %q rejected", mode)
+		}
+	}
+	for _, workflowMode := range []string{"build", "plan"} {
+		if permissionModeIDAllowedForProvider(ProviderOpenCode, workflowMode) {
+			t.Fatalf("workflow mode %q accepted as a permission mode", workflowMode)
+		}
+	}
+}
+
 func TestMigratedOpenCodeDescriptorBuildsStandardACPAdapter(t *testing.T) {
 	descriptor, ok := providerregistry.Find(ProviderOpenCode)
 	if !ok {
@@ -97,7 +114,7 @@ func TestMigratedOpenCodeDescriptorBuildsStandardACPAdapter(t *testing.T) {
 	}
 	descriptor.Runtime.Name = "descriptor-opencode-acp"
 	descriptor.Runtime.Command = []string{"descriptor-opencode", "acp"}
-	descriptor.Runtime.StandardACP.PermissionModes[0].RuntimeID = "descriptor-build"
+	descriptor.Runtime.StandardACP.PlanModeDisabledRuntimeID = "descriptor-build"
 	descriptor.Runtime.StandardACP.SettingsEnvironment.Variable = "DESCRIPTOR_CONFIG"
 	descriptor.Runtime.StandardACP.SettingsEnvironment.JSONFields[0].JSONKey = "descriptorModel"
 	adapter := newAdapterFromProviderDescriptor(
@@ -113,16 +130,26 @@ func TestMigratedOpenCodeDescriptorBuildsStandardACPAdapter(t *testing.T) {
 	if standardAdapter.Provider() != ProviderOpenCode ||
 		standardAdapter.config.adapterName != "descriptor-opencode-acp" ||
 		standardAdapter.config.command[0] != "descriptor-opencode" ||
-		standardAdapter.config.permissionModeID("") != "descriptor-build" {
+		standardAdapter.config.planModeDisabledRuntimeID != "descriptor-build" ||
+		standardAdapter.config.permissionModeID("ask") != "" {
 		t.Fatalf("adapter config = %#v", standardAdapter.config)
 	}
 	session := standardTestSession(ProviderOpenCode)
 	session.Settings = &SessionSettings{Model: "openai/descriptor-model"}
-	environment := standardAdapter.config.env(session)
-	if !containsStringWithPrefix(
-		environment,
-		`DESCRIPTOR_CONFIG={"descriptorModel":"openai/descriptor-model"}`,
-	) {
+	environment, err := standardAdapter.config.finalizeEnv(standardAdapter.config.env(session), session)
+	if err != nil {
+		t.Fatalf("finalize descriptor environment: %v", err)
+	}
+	var descriptorConfig map[string]any
+	for _, item := range environment {
+		if !strings.HasPrefix(item, "DESCRIPTOR_CONFIG=") {
+			continue
+		}
+		if err := json.Unmarshal([]byte(strings.TrimPrefix(item, "DESCRIPTOR_CONFIG=")), &descriptorConfig); err != nil {
+			t.Fatalf("decode descriptor config: %v", err)
+		}
+	}
+	if descriptorConfig["descriptorModel"] != "openai/descriptor-model" {
 		t.Fatalf("adapter environment = %#v", environment)
 	}
 }
@@ -157,13 +184,4 @@ func TestDefaultControllerRegistersEveryMigratedProviderDescriptor(t *testing.T)
 	if len(controller.adapters) != len(providerregistry.Migrated()) {
 		t.Fatalf("controller adapters = %d, migrated descriptors = %d", len(controller.adapters), len(providerregistry.Migrated()))
 	}
-}
-
-func containsStringWithPrefix(values []string, prefix string) bool {
-	for _, value := range values {
-		if strings.HasPrefix(value, prefix) {
-			return true
-		}
-	}
-	return false
 }

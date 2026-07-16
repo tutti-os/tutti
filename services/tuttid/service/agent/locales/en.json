@@ -46,6 +46,20 @@
         "description": "Runs commands without asking, unless explicitly denied by your Cursor permission rules."
       }
     },
+    "opencode": {
+      "read-only": {
+        "description": "Reads and searches the local project, but denies edits, commands, network access, and other approval-gated actions.",
+        "label": "Read-only"
+      },
+      "ask": {
+        "description": "Reads and searches directly, then asks before edits, commands, network access, and other gated actions.",
+        "label": "Ask"
+      },
+      "full-access": {
+        "description": "Automatically allows gated actions without changing OpenCode's separate Plan mode restrictions.",
+        "label": "Full access"
+      }
+    },
     "hermes": {
       "yolo": {
         "description": "This provider does not support changing permission mode here.",

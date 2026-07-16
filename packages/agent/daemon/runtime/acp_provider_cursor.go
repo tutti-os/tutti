@@ -124,7 +124,7 @@ func newCursorAdapterFromProviderDescriptor(
 ) *standardACPAdapter {
 	adapter := newStandardACPAdapterFromProviderDescriptor(descriptor, transport, host, commandResolver)
 	adapter.config.commandWithSettings = cursorACPCommandWithPluginDir
-	adapter.config.autoApprovePermissionDecision = cursorAutoApprovePermissionDecision
+	adapter.config.automaticPermissionDecision = cursorAutoApprovePermissionDecision
 	adapter.config.autoContinueRetriableTurnError = true
 	adapter.config.messageDiagnostics = &standardACPMessageDiagnostics{
 		method:         cursorACPMethodTask,

@@ -250,7 +250,7 @@ func TestMigratedReturnsOpenCodeNestedClones(t *testing.T) {
 	if !ok {
 		t.Fatal("opencode descriptor missing")
 	}
-	first.Runtime.StandardACP.PermissionModes[0].RuntimeID = "mutated"
+	first.Runtime.StandardACP.PlanModeDisabledRuntimeID = "mutated"
 	first.Runtime.StandardACP.SettingsEnvironment.JSONFields[0].JSONKey = "mutated"
 	first.Status.AuthWatch.Sources[0].PathEnvVars[0] = "MUTATED"
 	first.Status.AuthWatch.Sources[1].RootCandidates[0].EnvVar = "MUTATED"
@@ -260,7 +260,7 @@ func TestMigratedReturnsOpenCodeNestedClones(t *testing.T) {
 	if !ok {
 		t.Fatal("opencode descriptor missing after mutation")
 	}
-	if second.Runtime.StandardACP.PermissionModes[0].RuntimeID != "build" ||
+	if second.Runtime.StandardACP.PlanModeDisabledRuntimeID != "build" ||
 		second.Runtime.StandardACP.SettingsEnvironment.JSONFields[0].JSONKey != "model" {
 		t.Fatalf("Runtime.StandardACP leaked mutation: %#v", second.Runtime.StandardACP)
 	}
@@ -366,11 +366,20 @@ func TestValidateRejectsInvalidStandardACPDescriptorStrategies(t *testing.T) {
 		name   string
 		mutate func(*ProviderDescriptor)
 	}{
-		{name: "blank runtime mode", mutate: func(value *ProviderDescriptor) {
-			value.Runtime.StandardACP.PermissionModes[0].RuntimeID = " "
+		{name: "blank permission runtime mode", mutate: func(value *ProviderDescriptor) {
+			value.Runtime.StandardACP.PermissionModes = append(
+				value.Runtime.StandardACP.PermissionModes,
+				RuntimePermissionModeDescriptor{InputID: "ask", RuntimeID: " "},
+			)
 		}},
-		{name: "duplicate input mode", mutate: func(value *ProviderDescriptor) {
-			value.Runtime.StandardACP.PermissionModes[1].InputID = ""
+		{name: "plan disabled mode without plan mode", mutate: func(value *ProviderDescriptor) {
+			value.Runtime.StandardACP.PlanModeRuntimeID = ""
+		}},
+		{name: "duplicate permission input mode", mutate: func(value *ProviderDescriptor) {
+			value.Runtime.StandardACP.PermissionModes = []RuntimePermissionModeDescriptor{
+				{InputID: "ask", RuntimeID: "ask"},
+				{InputID: "ask", RuntimeID: "prompt"},
+			}
 		}},
 		{name: "missing settings environment variable", mutate: func(value *ProviderDescriptor) {
 			value.Runtime.StandardACP.SettingsEnvironment.Variable = ""

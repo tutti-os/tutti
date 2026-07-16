@@ -120,6 +120,23 @@ export const enAgentGui = {
           "Runs commands without asking, unless explicitly denied by your Cursor permission rules."
       }
     },
+    opencode: {
+      "read-only": {
+        label: "Read-only",
+        description:
+          "Reads and searches the local project, but denies edits, commands, network access, and other approval-gated actions."
+      },
+      ask: {
+        label: "Ask",
+        description:
+          "Reads and searches directly, then asks before edits, commands, network access, and other gated actions."
+      },
+      "full-access": {
+        label: "Full access",
+        description:
+          "Automatically allows gated actions without changing OpenCode's separate Plan mode restrictions."
+      }
+    },
     nexight: {
       "read-only": {
         label: "Ask for approval",

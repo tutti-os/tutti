@@ -211,6 +211,34 @@ func TestComposerPermissionConfigForCursor(t *testing.T) {
 	}
 }
 
+func TestComposerPermissionConfigForOpenCodeIsIndependentFromPlanMode(t *testing.T) {
+	t.Parallel()
+	config := composerPermissionConfig("opencode", "", "en")
+	if !config.Configurable {
+		t.Fatal("opencode permission config must be configurable")
+	}
+	if config.DefaultValue != "ask" {
+		t.Fatalf("opencode default permission mode = %q, want ask", config.DefaultValue)
+	}
+	ids := make([]string, 0, len(config.Modes))
+	for _, mode := range config.Modes {
+		ids = append(ids, mode.ID)
+	}
+	if !slices.Equal(ids, []string{"read-only", "ask", "full-access"}) {
+		t.Fatalf("opencode permission mode ids = %v, want [read-only ask full-access]", ids)
+	}
+	if got := normalizePermissionModeIDForProvider("opencode", "plan"); got != "ask" {
+		t.Fatalf("OpenCode workflow mode leaked into permission mode: %q", got)
+	}
+	settings := normalizeComposerSettingsForProvider("opencode", ComposerSettings{
+		PermissionModeID: "full-access",
+		PlanMode:         true,
+	})
+	if settings.PermissionModeID != "full-access" || !settings.PlanMode {
+		t.Fatalf("OpenCode permission/plan settings are not independent: %#v", settings)
+	}
+}
+
 func TestComposerConfigConfigurableTruthTable(t *testing.T) {
 	t.Parallel()
 	// Pins the backend configurable flags so the GUI can derive support from
@@ -225,6 +253,7 @@ func TestComposerConfigConfigurableTruthTable(t *testing.T) {
 		{"codex", true, true, true},
 		{"tutti-agent", true, true, true},
 		{"cursor", true, false, true},
+		{"opencode", true, false, true},
 		{"hermes", false, false, false},
 		{"nexight", false, false, true},
 		{"openclaw", false, false, false},

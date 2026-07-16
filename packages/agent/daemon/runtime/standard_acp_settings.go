@@ -10,10 +10,9 @@ import (
 	"time"
 )
 
-func (a *standardACPAdapter) applyPermissionMode(ctx context.Context, client *acpClient, session Session) error {
-	modeID := a.effectiveModeID(session)
+func (a *standardACPAdapter) applyACPMode(ctx context.Context, client *acpClient, session Session, modeID string) error {
 	if modeID == "" {
-		a.logHermesStartupDiagnostics("permission_mode.skipped", map[string]any{
+		a.logHermesStartupDiagnostics("session_mode.skipped", map[string]any{
 			"room_id":             session.RoomID,
 			"agent_session_id":    session.AgentSessionID,
 			"provider_session_id": session.ProviderSessionID,
@@ -31,8 +30,8 @@ func (a *standardACPAdapter) applyPermissionMode(ctx context.Context, client *ac
 		}
 	}
 	setModeStartedAt := time.Now()
-	slog.Info("agent session ACP permission mode update started",
-		"event", "agent_session.acp.permission_mode.start",
+	slog.Info("agent session ACP mode update started",
+		"event", "agent_session.acp.session_mode.start",
 		"provider", a.config.provider,
 		"agent_session_id", session.AgentSessionID,
 		"provider_session_id", session.ProviderSessionID,
@@ -40,7 +39,7 @@ func (a *standardACPAdapter) applyPermissionMode(ctx context.Context, client *ac
 		"mode_id", modeID,
 		"timeout_ms", acpPermissionModeTimeout.Milliseconds(),
 	)
-	a.logHermesStartupDiagnostics("permission_mode.start", map[string]any{
+	a.logHermesStartupDiagnostics("session_mode.start", map[string]any{
 		"room_id":             session.RoomID,
 		"agent_session_id":    session.AgentSessionID,
 		"provider_session_id": session.ProviderSessionID,
@@ -53,7 +52,7 @@ func (a *standardACPAdapter) applyPermissionMode(ctx context.Context, client *ac
 		return err
 	})
 	if err != nil {
-		a.logHermesStartupDiagnostics("permission_mode.unconfirmed", map[string]any{
+		a.logHermesStartupDiagnostics("session_mode.unconfirmed", map[string]any{
 			"room_id":             session.RoomID,
 			"agent_session_id":    session.AgentSessionID,
 			"provider_session_id": session.ProviderSessionID,
@@ -63,10 +62,10 @@ func (a *standardACPAdapter) applyPermissionMode(ctx context.Context, client *ac
 			"error":               err.Error(),
 		})
 		if a.config.failOnSetModeError {
-			return fmt.Errorf("agent session ACP permission mode confirmation failed: %w", err)
+			return fmt.Errorf("agent session ACP mode confirmation failed: %w", err)
 		}
-		slog.Warn("agent session ACP permission mode was not confirmed; continuing",
-			"event", "agent_session.acp.permission_mode.unconfirmed",
+		slog.Warn("agent session ACP mode was not confirmed; continuing",
+			"event", "agent_session.acp.session_mode.unconfirmed",
 			"provider", a.config.provider,
 			"agent_session_id", session.AgentSessionID,
 			"provider_session_id", session.ProviderSessionID,
@@ -76,8 +75,8 @@ func (a *standardACPAdapter) applyPermissionMode(ctx context.Context, client *ac
 		)
 		return nil
 	}
-	slog.Info("agent session ACP permission mode update succeeded",
-		"event", "agent_session.acp.permission_mode.succeeded",
+	slog.Info("agent session ACP mode update succeeded",
+		"event", "agent_session.acp.session_mode.succeeded",
 		"provider", a.config.provider,
 		"agent_session_id", session.AgentSessionID,
 		"provider_session_id", session.ProviderSessionID,
@@ -85,7 +84,7 @@ func (a *standardACPAdapter) applyPermissionMode(ctx context.Context, client *ac
 		"mode_id", modeID,
 		"elapsed_ms", time.Since(setModeStartedAt).Milliseconds(),
 	)
-	a.logHermesStartupDiagnostics("permission_mode.succeeded", map[string]any{
+	a.logHermesStartupDiagnostics("session_mode.succeeded", map[string]any{
 		"room_id":             session.RoomID,
 		"agent_session_id":    session.AgentSessionID,
 		"provider_session_id": session.ProviderSessionID,
@@ -320,7 +319,7 @@ func (a *standardACPAdapter) ApplySessionSettings(
 	}
 
 	if patch.PlanMode != nil {
-		if err := a.applyPermissionMode(ctx, acpSession.client, session); err != nil {
+		if err := a.applyACPMode(ctx, acpSession.client, session, a.effectiveModeID(session)); err != nil {
 			return err
 		}
 	}
@@ -397,10 +396,13 @@ func (a *standardACPAdapter) ApplyPermissionMode(ctx context.Context, session Se
 	if strings.TrimSpace(session.ProviderSessionID) == "" {
 		session.ProviderSessionID = acpSession.providerSessionID
 	}
-	// Track the live tier so auto-approve tiers (Cursor "full access") take
-	// effect on subsequent permission requests without a respawn.
+	// Track the live tier so automatic decisions (for example full-access
+	// approval or read-only denial) affect subsequent requests without respawn.
 	a.setSessionPermissionModeID(session.AgentSessionID, session.PermissionModeID)
-	return a.applyPermissionMode(ctx, acpSession.client, session)
+	if a.config.permissionModeID == nil || a.config.permissionModeID(session.PermissionModeID) == "" {
+		return nil
+	}
+	return a.applyACPMode(ctx, acpSession.client, session, a.effectiveModeID(session))
 }
 
 func (a *standardACPAdapter) setSessionPermissionModeID(agentSessionID string, permissionModeID string) {
@@ -414,11 +416,10 @@ func (a *standardACPAdapter) setSessionPermissionModeID(agentSessionID string, p
 	}
 }
 
-// autoApprovePermissionDecision resolves the decision the provider's
-// auto-approve tier applies to a permission request for this session, or ""
-// to prompt the user. Reads the live tier so a mid-session change is honored.
-func (a *standardACPAdapter) autoApprovePermissionDecision(agentSessionID string) string {
-	if a == nil || a.config.autoApprovePermissionDecision == nil {
+// automaticPermissionDecision resolves the decision the provider's live
+// permission tier applies to a permission request, or "" to prompt the user.
+func (a *standardACPAdapter) automaticPermissionDecision(agentSessionID string) string {
+	if a == nil || a.config.automaticPermissionDecision == nil {
 		return ""
 	}
 	a.mu.Lock()
@@ -428,7 +429,7 @@ func (a *standardACPAdapter) autoApprovePermissionDecision(agentSessionID string
 		permissionModeID = session.permissionModeID
 	}
 	a.mu.Unlock()
-	return a.config.autoApprovePermissionDecision(permissionModeID)
+	return a.config.automaticPermissionDecision(permissionModeID)
 }
 
 func (a *standardACPAdapter) effectiveModeID(session Session) string {
@@ -442,6 +443,9 @@ func (a *standardACPAdapter) effectiveModeID(session Session) string {
 		if modeID := a.config.permissionModeID("plan"); modeID != "" {
 			return modeID
 		}
+	}
+	if a.config.planModeDisabledRuntimeID != "" {
+		return a.config.planModeDisabledRuntimeID
 	}
 	return a.config.permissionModeID(session.PermissionModeID)
 }

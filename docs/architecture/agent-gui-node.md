@@ -337,7 +337,16 @@ A provider's read-only tier must map to its actual non-writing execution mode,
 not to a planning workflow that can advance into implementation. For Cursor,
 the durable `read-only` tier maps to ACP `ask`, while the independent
 `planMode` flag maps to ACP `plan`; leaving plan mode restores the runtime mode
-derived from the durable permission tier.
+derived from the durable permission tier. OpenCode keeps ACP `build` and `plan`
+exclusively as workflow modes controlled by `planMode`. Its `read-only`, `ask`,
+and `full-access` permission tiers resolve OpenCode ACP permission requests and
+must never call `session/set_mode`. OpenCode's plan agent must retain its edit
+denial even when the independent permission tier is `full-access`; one-shot
+approval choices keep a later live switch to `read-only` enforceable. For
+OpenCode processes launched by AgentGUI, the selected tier is authoritative:
+the adapter merges unrelated `OPENCODE_CONFIG_CONTENT` fields but replaces its
+permission policy and neutralizes `OPENCODE_PERMISSION` so external overrides
+cannot collapse the permission/workflow boundary.
 Host feature switches that disable an agent for new conversations should keep
 the entry present with a non-ready `availability.status` when another surface
 still needs to show it. Filter the entry out only for surfaces that should

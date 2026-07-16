@@ -552,9 +552,12 @@ func validateExternalImportDescriptor(descriptor ExternalImportDescriptor) error
 
 func validateStandardACPRuntime(descriptor StandardACPRuntimeDescriptor) error {
 	switch descriptor.AdapterStrategy {
-	case "", StandardACPAdapterStrategyGeneric, StandardACPAdapterStrategyCursor, StandardACPAdapterStrategyNexight, StandardACPAdapterStrategyOpenClaw:
+	case "", StandardACPAdapterStrategyGeneric, StandardACPAdapterStrategyCursor, StandardACPAdapterStrategyNexight, StandardACPAdapterStrategyOpenClaw, StandardACPAdapterStrategyOpenCode:
 	default:
 		return fmt.Errorf("adapter strategy %q is unsupported", descriptor.AdapterStrategy)
+	}
+	if strings.TrimSpace(descriptor.PlanModeDisabledRuntimeID) != "" && strings.TrimSpace(descriptor.PlanModeRuntimeID) == "" {
+		return fmt.Errorf("plan-mode disabled runtime id requires a plan-mode runtime id")
 	}
 	modeIDs := make(map[string]struct{}, len(descriptor.PermissionModes))
 	for index, mode := range descriptor.PermissionModes {
