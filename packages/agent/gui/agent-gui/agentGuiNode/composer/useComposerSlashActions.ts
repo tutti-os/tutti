@@ -33,11 +33,10 @@ import {
 import { skillTriggerForPrefix } from "../model/agentSkillOptions";
 import { moveSlashCommandHighlight } from "../model/agentSlashCommands";
 import {
-  agentComposerDraftDisplayPrompt,
   agentComposerDraftHasContent,
-  agentComposerDraftToPromptContent,
   buildAgentComposerDraft,
   emptyAgentComposerDraft,
+  projectAgentComposerDraftSubmission,
   textPromptContent,
   updateAgentComposerDraft
 } from "../model/agentComposerDraft";
@@ -457,26 +456,24 @@ export function useComposerSlashActions(input: UseComposerSlashActionsInput) {
       }
       setIsPaletteOpen(false);
       // workspace-reference 保持为单条 mention，由 skill+CLI 按需解析。
-      const submitContent = agentComposerDraftToPromptContent({
+      const submission = projectAgentComposerDraftSubmission({
         draft: nextDraftContent,
         skills: availableSkills
       });
-      const submitDisplayPrompt =
-        agentComposerDraftDisplayPrompt(nextDraftContent);
       if (options?.guidance === true) {
         if (!onSubmitGuidance) {
           return;
         }
-        if (submitDisplayPrompt) {
-          onSubmitGuidance(submitContent, submitDisplayPrompt);
+        if (submission.displayPrompt) {
+          onSubmitGuidance(submission.content, submission.displayPrompt);
         } else {
-          onSubmitGuidance(submitContent);
+          onSubmitGuidance(submission.content);
         }
       } else {
-        if (submitDisplayPrompt) {
-          onSubmit(submitContent, submitDisplayPrompt);
+        if (submission.displayPrompt) {
+          onSubmit(submission.content, submission.displayPrompt);
         } else {
-          onSubmit(submitContent);
+          onSubmit(submission.content);
         }
       }
       // The controller owns draft clearing: an in-session send clears the

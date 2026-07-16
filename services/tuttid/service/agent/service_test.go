@@ -2121,6 +2121,9 @@ func TestServiceCreatePassesInitialDisplayPromptToRuntime(t *testing.T) {
 	if call.DisplayPrompt != "Run Automation" {
 		t.Fatalf("runtime display prompt = %q", call.DisplayPrompt)
 	}
+	if call.InitialTitle != "Run Automation" {
+		t.Fatalf("runtime initial title = %q", call.InitialTitle)
+	}
 	if call.Metadata["clientSubmitId"] != "submit-create-1" || call.Metadata["spacedDiagnosticKey"] != "trimmed" {
 		t.Fatalf("runtime metadata = %#v", call.Metadata)
 	}

@@ -1574,13 +1574,22 @@ activation record. The submit/composer module—not activation or selection—ow
 clearing the matching target-level home draft, so a later New action starts
 empty. The same module reconstructs the home draft after activation failure,
 only when the user has not already typed a replacement home draft.
-The pending prompt envelope preserves normalized `content` plus the optional
+The composer model owns one submission projection that separates normalized
+provider-facing `content` from the optional user-visible `displayPrompt`.
+Provider-facing prompt syntax rewrites, including descriptor-authoritative skill
+trigger aliases, must preserve the pre-rewrite visible text as `displayPrompt`
+when the two representations differ. Existing explicit display prompts for rich
+mentions and persisted pasted text take precedence. Ordinary prompts whose
+visible and runtime text are identical omit the field.
+The pending prompt envelope preserves normalized `content` plus that optional
 `displayPrompt` used for presentation. Materialized `runtimeContent` exists only
 on the requested intent and transport command; it must not replace presentation
 content in the pending record. Activation and existing-session submit share this
 contract. Their optimistic user messages use the authoritative payload shape:
 `content`, optional `displayPrompt`, and `text` resolved from `displayPrompt`
-before content-derived text.
+before content-derived text. The optimistic title and daemon initial-title
+derivation consume the same visible representation; the canonical session title
+then replaces the optimistic projection after persistence.
 Provider adapters must carry the materialized prompt in the provider's input
 field only. Auxiliary request metadata must not duplicate unbounded prompt
 content; provider-specific wire metadata remains adapter-owned and limited to
