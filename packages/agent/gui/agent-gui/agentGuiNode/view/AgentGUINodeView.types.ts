@@ -206,6 +206,7 @@ export interface AgentGUIViewLabels {
   batchDeleteConversationsBody: (count: number) => string;
   batchDeleteConversationsConfirm: string;
   approvalRequired: string;
+  fileChangeApprovalRequired: string;
   approvalUnavailable: string;
   authRequired: string;
   authLogin: string;

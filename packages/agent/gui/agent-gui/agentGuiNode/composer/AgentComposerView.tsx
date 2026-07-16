@@ -242,6 +242,7 @@ export function AgentComposerView(input: Props): React.JSX.Element {
             onSubmit={submitInteractivePromptAndDismiss}
             labels={{
               approvalLead: labels.approvalLead,
+              fileChangeApprovalLead: labels.fileChangeApprovalLead,
               planLead: labels.planLead,
               planModes: labels.planModes,
               stayInPlan: labels.stayInPlan,

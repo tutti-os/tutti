@@ -420,6 +420,10 @@ export function useAgentGUIViewLabels(input: {
       approvalRequired: t("agentHost.agentGui.approvalRequired", {
         provider: displayProviderLabel
       }),
+      fileChangeApprovalRequired: t(
+        "agentHost.agentGui.fileChangeApprovalRequired",
+        { provider: displayProviderLabel }
+      ),
       approvalUnavailable: t("agentHost.agentGui.approvalUnavailable"),
       authRequired: t("agentHost.agentGui.authRequired"),
       authLogin: t("agentHost.agentGui.authLogin"),

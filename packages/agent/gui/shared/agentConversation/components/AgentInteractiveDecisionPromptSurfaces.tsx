@@ -157,7 +157,11 @@ export function ApprovalPromptSurface({
       <div className={interactivePromptCardClassName(edgeGlow)}>
         <div className={styles.interactivePromptLeadContent}>
           <div className={styles.interactivePromptLead}>
-            {stripPromptTitlePunctuation(labels.approvalLead)}
+            {stripPromptTitlePunctuation(
+              promptToolPresentation.isFileChange
+                ? labels.fileChangeApprovalLead
+                : labels.approvalLead
+            )}
           </div>
           {promptToolPresentation.leadDetails.map((detail) => (
             <div

@@ -11,6 +11,7 @@ import { setAgentGuiI18nTestLocale } from "../../i18n/testUtils";
 
 const labels = {
   approvalLead: "Waiting for your approval",
+  fileChangeApprovalLead: "Codex requests authorization to edit files",
   planLead: "Ready to implement. How should permissions work?",
   planModes: [
     {
@@ -84,6 +85,7 @@ describe("AgentInteractivePromptSurface", () => {
       />
     );
 
+    expect(screen.getByText("Waiting for your approval")).toBeTruthy();
     expect(screen.getByText("pnpm test --run renderer")).toBeTruthy();
     expect(screen.getByText("Verify the renderer parity fixes.")).toBeTruthy();
     expect(screen.getByText("Run this tool a single time.")).toBeTruthy();
@@ -146,7 +148,7 @@ describe("AgentInteractivePromptSurface", () => {
     );
 
     const lead = screen
-      .getByText("Waiting for your approval")
+      .getByText("Codex requests authorization to edit files")
       .closest(".agent-gui-conversation__interactive-prompt-lead-content");
     expect(lead).toHaveTextContent("Allow these file changes?");
     expect(lead).toHaveTextContent("/workspace/session");

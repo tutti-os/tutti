@@ -118,6 +118,7 @@ export interface LabeledPromptToolDetail {
 }
 
 export interface ApprovalPromptToolPresentation {
+  isFileChange: boolean;
   leadDetails: LabeledPromptToolDetail[];
   cardDetails: LabeledPromptToolDetail[];
 }
@@ -154,6 +155,7 @@ export function formatApprovalToolPresentation(
       ) === index
   );
   return {
+    isFileChange: hasFileChanges,
     leadDetails,
     cardDetails: details.filter((detail) => !isLeadDetail(detail))
   };

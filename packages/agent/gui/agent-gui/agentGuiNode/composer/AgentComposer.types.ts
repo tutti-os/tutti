@@ -204,6 +204,7 @@ export interface AgentComposerProps {
     usageLimitsLabel: string;
     usageCompactAction: string;
     approvalLead: string;
+    fileChangeApprovalLead: string;
     planLead: string;
     planModes: Array<{ id: string; label: string; description: string }>;
     stayInPlan: string;
