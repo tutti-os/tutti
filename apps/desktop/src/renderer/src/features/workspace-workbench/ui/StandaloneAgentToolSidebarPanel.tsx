@@ -26,6 +26,13 @@ const LazyStandaloneAgentAppCenterToolPanel = lazy(() =>
     })
   )
 );
+const LazyStandaloneAgentAppViewerToolPanel = lazy(() =>
+  import("./StandaloneAgentAppViewerToolPanel.tsx").then(
+    ({ StandaloneAgentAppViewerToolPanel }) => ({
+      default: StandaloneAgentAppViewerToolPanel
+    })
+  )
+);
 const LazyStandaloneAgentMessageCenterToolPanel = lazy(() =>
   import("./StandaloneAgentMessageCenterToolPanel.tsx").then(
     ({ StandaloneAgentMessageCenterToolPanel }) => ({
@@ -112,16 +119,16 @@ export function StandaloneAgentToolSidebarPanel({
       </Suspense>
     );
   }
-  if (panel === "apps") {
+  if (panel === "apps" && tab.appId) {
     return (
       <Suspense
         fallback={
           <StandaloneAgentToolLoadingState label={i18n.t("common.loading")} />
         }
       >
-        <LazyStandaloneAgentAppCenterToolPanel
+        <LazyStandaloneAgentAppViewerToolPanel
           active={active}
-          backLabel={i18n.t("workspace.appCenter.backToApps")}
+          appId={tab.appId}
           contributions={contributions}
           unavailableLabel={i18n.t(
             "workspace.agentGui.toolSidebar.unavailable",
@@ -129,6 +136,17 @@ export function StandaloneAgentToolSidebarPanel({
           )}
           workspaceId={workspaceId}
         />
+      </Suspense>
+    );
+  }
+  if (panel === "apps") {
+    return (
+      <Suspense
+        fallback={
+          <StandaloneAgentToolLoadingState label={i18n.t("common.loading")} />
+        }
+      >
+        <LazyStandaloneAgentAppCenterToolPanel workspaceId={workspaceId} />
       </Suspense>
     );
   }

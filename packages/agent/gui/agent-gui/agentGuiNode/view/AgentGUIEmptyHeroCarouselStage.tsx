@@ -126,13 +126,20 @@ export class AgentGUIEmptyHeroCarouselStage extends Component<AgentGUIEmptyHeroC
     );
     if (!slot) {
       this.layer.style.removeProperty("--agent-gui-hero-carousel-slot-top");
+      this.layer.style.removeProperty("--agent-gui-hero-carousel-slot-left");
       return;
     }
-    const top =
-      slot.getBoundingClientRect().top - this.stage.getBoundingClientRect().top;
+    const stageRect = this.stage.getBoundingClientRect();
+    const slotRect = slot.getBoundingClientRect();
+    const top = slotRect.top - stageRect.top;
+    const left = slotRect.left + slotRect.width / 2 - stageRect.left;
     this.layer.style.setProperty(
       "--agent-gui-hero-carousel-slot-top",
       `${top}px`
+    );
+    this.layer.style.setProperty(
+      "--agent-gui-hero-carousel-slot-left",
+      `${left}px`
     );
   };
 

@@ -85,13 +85,13 @@ test("standalone Agent tools load their OS node UI on demand", () => {
     standaloneAgentToolSidebarPanelSource,
     /<LazyStandaloneAgentAppCenterToolPanel/
   );
+  assert.match(
+    standaloneAgentToolSidebarPanelSource,
+    /<LazyStandaloneAgentAppViewerToolPanel/
+  );
   assert.doesNotMatch(
     standaloneAgentToolSidebarPanelSource,
     /<WorkspaceAppCenterPane/
-  );
-  assert.match(
-    standaloneAgentToolSidebarPanelSource,
-    /workspace\.appCenter\.backToApps/
   );
   assert.match(
     standaloneAgentMessageCenterToolPanelSource,
@@ -287,7 +287,11 @@ test("standalone Agent panel tab buttons switch the active mounted panel", () =>
 test("standalone Agent panel tabs render semantic icons before their labels", () => {
   assert.match(
     standaloneAgentToolSidebarSource,
-    /<ToolSidebarTabIcon tab=\{tab\} \/>[\s\S]*?resolveToolTabLabel\(tab, copy\)/
+    /resolveToolTabLabel\(tab, copy, app, locale\)/
+  );
+  assert.match(
+    standaloneAgentToolSidebarSource,
+    /<ToolSidebarTabIcon app=\{app\} tab=\{tab\} \/>[\s\S]*?<span className="truncate">\{label\}<\/span>/
   );
   assert.match(
     standaloneAgentToolSidebarToolbarSource,

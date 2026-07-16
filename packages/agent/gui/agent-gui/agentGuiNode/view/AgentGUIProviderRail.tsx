@@ -39,6 +39,7 @@ import {
   AgentGUIUnifiedProviderIcon,
   agentGUIProviderRailIconPresentation
 } from "./AgentGUIEmptyState";
+import { isBetaAgentProvider } from "../../../shared/managedAgentProviders";
 import styles from "../AgentGUINode.styles";
 import { AgentGUIProviderManagerDialog } from "./AgentGUIProviderManagerDialog";
 import { useAgentGUIProviderRailPreferences } from "./useAgentGUIProviderRailPreferences";
@@ -761,6 +762,14 @@ export const AgentGUIProviderRail = memo(function AgentGUIProviderRail({
                       draggable={false}
                       src={target.badge.iconUrl}
                     />
+                  </span>
+                ) : null}
+                {providerSelected && isBetaAgentProvider(target.provider) ? (
+                  <span
+                    aria-hidden="true"
+                    className={styles.providerRailBetaBadge}
+                  >
+                    Beta
                   </span>
                 ) : null}
               </span>

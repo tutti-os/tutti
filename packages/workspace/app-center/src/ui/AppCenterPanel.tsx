@@ -1641,7 +1641,12 @@ function AppCenterRecommendedHeaderActions({
           variant="ghost"
           onClick={onRefreshCatalog}
         >
-          <RefreshIcon className={loading ? "animate-spin" : undefined} />
+          <RefreshIcon
+            className={cn(
+              loading &&
+                "motion-safe:animate-[spin_520ms_cubic-bezier(0.4,0,0.2,1)_infinite_reverse]"
+            )}
+          />
         </Button>
       </TooltipTrigger>
       <TooltipContent side="bottom">

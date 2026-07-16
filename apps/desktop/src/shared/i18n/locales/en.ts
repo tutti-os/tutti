@@ -52,7 +52,7 @@ export const en = {
     availableTitle: "Update to New Version",
     badge: "update",
     checkingTitle: "Checking for updates",
-    downloadAction: "Update",
+    downloadAction: "Upgrade",
     downloadedTitle: "Ready to install",
     downloadingTitle: "Downloading {{percent}}",
     errorTitle: "Unable to check for updates",

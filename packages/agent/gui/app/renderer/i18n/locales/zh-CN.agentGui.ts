@@ -17,8 +17,7 @@ export const zhCNAgentGui = {
     "需要先连接 {{provider}}，才能在这里开始新的对话。",
   providerGateInstallAction: "连接",
   providerGateLoginTitle: "登录 {{provider}}",
-  providerGateLoginDescription:
-    "使用账号登录后即可开始使用 {{provider}} 对话。",
+  providerGateLoginDescription: "使用账号登录后即可开始使用 {{provider}} 对话",
   providerGateLoginAction: "登录",
   providerGateComingSoonTitle: "{{provider}} 即将上线",
   providerGateComingSoonDescription:

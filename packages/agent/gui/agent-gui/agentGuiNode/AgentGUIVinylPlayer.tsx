@@ -1,5 +1,6 @@
 import { motion } from "framer-motion";
 import type { AgentGUIAgentAvatarPresentation } from "./model/agentGuiAgentAvatarPresentation";
+import { isBetaAgentProvider } from "../../shared/managedAgentProviders";
 import chassisAssetUrl from "../../app/renderer/assets/icons/agent-vinyl-player-chassis.png";
 import tonearmAssetUrl from "../../app/renderer/assets/icons/agent-vinyl-tonearm.png";
 
@@ -17,9 +18,14 @@ export function AgentGUIVinylPlayer({
   isPlaying
 }: AgentGUIVinylPlayerProps): React.JSX.Element {
   const selectedAgentCover = selectedAgent?.iconUrl ?? null;
+  const showBetaBadge = isBetaAgentProvider(selectedAgent?.provider);
 
   return (
     <div className="agent-gui-vinyl-player" aria-hidden="true">
+      {showBetaBadge ? (
+        // i18n-check-ignore -- "Beta" is a proper-noun product tag, left untranslated
+        <span className="agent-gui-vinyl-player__beta">Beta</span>
+      ) : null}
       <img
         className="agent-gui-vinyl-player__chassis"
         src={chassisAssetUrl}

@@ -1984,7 +1984,10 @@
 }
 
 .desktop-dock-popup-root[data-dock-placement="bottom"] {
-  transform: translate(-50%, -100%);
+  transform: translate(
+    -50%,
+    calc(-100% + var(--desktop-dock-popup-clamp-offset, 0px))
+  );
 }
 
 .desktop-dock-popup-root[data-popup-variant="minimized-stack"] {
@@ -1993,7 +1996,10 @@
 }
 
 .desktop-dock-popup-root[data-dock-placement="left"] {
-  transform: translate(0, -50%);
+  transform: translate(
+    0,
+    calc(-50% + var(--desktop-dock-popup-clamp-offset, 0px))
+  );
 }
 
 .desktop-dock-popup-root[data-dock-placement="left"][data-popup-variant="minimized-stack"] {

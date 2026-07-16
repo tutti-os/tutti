@@ -44,6 +44,39 @@ test("standalone agent tool sidebar opens, swaps, and hides one active tab at a 
   ]);
 });
 
+test("standalone agent tool sidebar opens each app in its own sibling tab beside the app store", () => {
+  const storeOpen = reduceStandaloneAgentToolSidebarState(
+    createStandaloneAgentToolSidebarState(),
+    { panel: "apps", tabId: "apps:1", type: "open-panel" }
+  );
+  const appAOpen = reduceStandaloneAgentToolSidebarState(storeOpen, {
+    appId: "app-a",
+    panel: "apps",
+    tabId: "apps:2",
+    type: "open-panel"
+  });
+  const appBOpen = reduceStandaloneAgentToolSidebarState(appAOpen, {
+    appId: "app-b",
+    panel: "apps",
+    tabId: "apps:3",
+    type: "open-panel"
+  });
+  const appAReopened = reduceStandaloneAgentToolSidebarState(appBOpen, {
+    appId: "app-a",
+    panel: "apps",
+    tabId: "apps:4",
+    type: "open-panel"
+  });
+
+  assert.deepEqual(appBOpen.mountedTabs, [
+    { id: "apps:1", panel: "apps" },
+    { appId: "app-a", id: "apps:2", panel: "apps" },
+    { appId: "app-b", id: "apps:3", panel: "apps" }
+  ]);
+  assert.equal(appAReopened.activeTabId, "apps:2");
+  assert.deepEqual(appAReopened.mountedTabs, appBOpen.mountedTabs);
+});
+
 test("standalone agent right-sidebar panels are mutually exclusive for every switch", () => {
   const panels = ["files", "browser", "apps", "tasks", "messages"] as const;
 

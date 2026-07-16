@@ -161,6 +161,7 @@ const styles = {
   projectRailTitle: "agent-gui-node__project-rail-title",
   providerRail: "agent-gui-node__provider-rail",
   providerRailAvatar: "agent-gui-node__provider-rail-avatar",
+  providerRailBetaBadge: "agent-gui-node__provider-rail-beta-badge",
   providerRailAvatarIcon: "agent-gui-node__provider-rail-avatar-icon",
   providerRailAvatarImage: "agent-gui-node__provider-rail-avatar-image",
   emptyHeroIconSlot: "agent-gui-node__empty-hero-icon-slot",
