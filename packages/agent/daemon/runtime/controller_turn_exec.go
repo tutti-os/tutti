@@ -31,6 +31,21 @@ func (c *Controller) beginTurn(session Session, turnID string, cancel context.Ca
 	return session, nil
 }
 
+func (c *Controller) rollbackSubmittedTurn(session Session, turnID string) {
+	if c == nil {
+		return
+	}
+	key := sessionKey(session.RoomID, session.AgentSessionID)
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	turn, ok := c.turns[key]
+	if !ok || strings.TrimSpace(turn.turnID) != strings.TrimSpace(turnID) {
+		return
+	}
+	delete(c.turns, key)
+	c.sessions[key] = session
+}
+
 func (c *Controller) runExecTurn(ctx context.Context, session Session, adapter Adapter, content []PromptContentBlock, displayPrompt string, turnID string) {
 	if asyncAdapter, ok := adapter.(AsyncExecAdapter); ok {
 		c.runAsyncExecTurn(ctx, session, asyncAdapter, content, displayPrompt, turnID)

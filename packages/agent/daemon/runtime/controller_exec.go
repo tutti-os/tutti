@@ -48,6 +48,7 @@ func (c *Controller) Exec(ctx context.Context, input ExecInput) (ExecResult, err
 	if input.Guidance {
 		return c.guideActiveTurn(ctx, session, adapter, content, displayPrompt, metadata)
 	}
+	previousSession := session
 	titleUpdated := false
 	if initialTitle := strings.TrimSpace(input.InitialTitle); initialTitle != "" &&
 		!session.InitialTitleEstablished &&
@@ -71,17 +72,26 @@ func (c *Controller) Exec(ctx context.Context, input ExecInput) (ExecResult, err
 	key := sessionKey(session.RoomID, session.AgentSessionID)
 	c.mu.Lock()
 	provisional := c.provisionalSessions[key]
-	if provisional {
-		delete(c.provisionalSessions, key)
-	}
 	c.mu.Unlock()
 	submitEvents := submittedTurnActivityEvents(session, turnID)
 	if titleUpdated {
 		submitEvents = append([]activityshared.Event{newSessionTitleActivityEvent(session, session.Title)}, submitEvents...)
 	}
+	if err := c.reportSubmittedTurnDurable(ctx, session, submitEvents); err != nil {
+		cancel()
+		c.rollbackSubmittedTurn(previousSession, turnID)
+		logAgentSubmitTrace("runtime.exec.submitted_report_failed", session, turnID, metadata, map[string]any{
+			"error": err.Error(),
+		})
+		return ExecResult{}, fmt.Errorf("persist submitted agent turn: %w", err)
+	}
+	if provisional {
+		c.mu.Lock()
+		delete(c.provisionalSessions, key)
+		c.mu.Unlock()
+	}
 	if len(submitEvents) > 0 {
 		c.publish(session, submitEvents)
-		c.enqueueSessionReport(ctx, session, submitEvents)
 	}
 	if provisional {
 		c.publishPendingConfigOptionsUpdates(session)
