@@ -427,7 +427,26 @@ export abstract class WorkspaceAppCenterControllerState extends WorkspaceAppCent
         !this.usesPollingRefresh &&
         this.appOperationCursors.has(installKey)
       ) {
-        return mergeWorkspaceAppCatalogFields(currentApp, snapshotApp);
+        const mergedApp = mergeWorkspaceAppCatalogFields(
+          currentApp,
+          snapshotApp
+        );
+        // Ordered operation events own lifecycle state, but launchUrl is a
+        // route capability that only exists in the authoritative runtime
+        // snapshot. Enrich the terminal event projection only when both
+        // sources describe the exact same running runtime fence.
+        if (
+          currentApp.runtimeStatus === "running" &&
+          snapshotApp.runtimeStatus === "running" &&
+          currentApp.runtimeId != null &&
+          currentApp.runtimeId === snapshotApp.runtimeId &&
+          currentApp.installationId != null &&
+          currentApp.installationId === snapshotApp.installationId &&
+          snapshotApp.launchUrl != null
+        ) {
+          return { ...mergedApp, launchUrl: snapshotApp.launchUrl };
+        }
+        return mergedApp;
       }
       if (!currentApp || currentApp.stateRevision < snapshotApp.stateRevision) {
         return snapshotApp;

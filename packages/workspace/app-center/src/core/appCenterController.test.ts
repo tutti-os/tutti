@@ -811,6 +811,86 @@ test("WorkspaceAppCenterController fences snapshots after ordered event updates"
   controller.endWorkspacePolling("workspace-1");
 });
 
+test("WorkspaceAppCenterController backfills launch URL for the running event runtime", () => {
+  const controller = createWorkspaceAppCenterController({
+    formatError,
+    gateway: createGateway(),
+    refreshPolicy: "event"
+  });
+  controller.beginWorkspacePolling("workspace-1");
+  controller.applySnapshot(
+    "workspace-1",
+    createSnapshot({
+      apps: [
+        createApp({
+          installationId: "installation-1",
+          runtimeId: "runtime-1",
+          runtimeStatus: "starting",
+          stateRevision: 5
+        })
+      ]
+    })
+  );
+  controller.applyAppUpdate({
+    app: createApp({
+      installationId: "installation-1",
+      launchUrl: null,
+      runtimeId: "runtime-1",
+      runtimeStatus: "running",
+      stateRevision: 1
+    }),
+    operationCursor: {
+      desiredGeneration: 2,
+      operationId: "install-2",
+      sequence: 20
+    },
+    workspaceId: "workspace-1"
+  });
+
+  controller.applySnapshot(
+    "workspace-1",
+    createSnapshot({
+      apps: [
+        createApp({
+          installationId: "installation-1",
+          launchUrl: "http://runtime-1.tsh-app.localhost:3000",
+          runtimeId: "runtime-1",
+          runtimeStatus: "running",
+          stateRevision: 6
+        })
+      ]
+    })
+  );
+
+  assert.equal(controller.store.apps[0]?.runtimeStatus, "running");
+  assert.equal(
+    controller.store.apps[0]?.launchUrl,
+    "http://runtime-1.tsh-app.localhost:3000"
+  );
+  // Snapshot enrichment must not advance or replace event ordering state.
+  assert.equal(controller.store.apps[0]?.stateRevision, 1);
+
+  controller.applySnapshot(
+    "workspace-1",
+    createSnapshot({
+      apps: [
+        createApp({
+          installationId: "installation-1",
+          launchUrl: "http://different-runtime.tsh-app.localhost:4000",
+          runtimeId: "runtime-2",
+          runtimeStatus: "running",
+          stateRevision: 7
+        })
+      ]
+    })
+  );
+  assert.equal(
+    controller.store.apps[0]?.launchUrl,
+    "http://runtime-1.tsh-app.localhost:3000"
+  );
+  controller.endWorkspacePolling("workspace-1");
+});
+
 test("WorkspaceAppCenterController clears operation cursors on workspace switch and rejects updates after polling end", () => {
   const controller = createWorkspaceAppCenterController({
     formatError,
