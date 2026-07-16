@@ -125,7 +125,7 @@ export function AgentGuiWorkbenchHeader({
   const sessionTitleDisplayPrompt = hasBodyRenderError
     ? ""
     : conversationTitleDisplayPrompt?.trim() || "";
-  const collapsedTitle = agentTitle?.trim() || sessionTitle;
+  const collapsedTitle = sessionTitle || agentTitle?.trim() || "";
   const sessionIconUrl = conversationIconUrl?.trim() || "";
   const sessionIconFallbackUrl = conversationIconFallbackUrl?.trim() || "";
   const hasExpandedIdentity = Boolean(

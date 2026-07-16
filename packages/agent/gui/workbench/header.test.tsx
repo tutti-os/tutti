@@ -172,7 +172,7 @@ describe("AgentGuiWorkbenchHeader", () => {
     expect(primary).toContainElement(actions);
   });
 
-  it("shows the selected agent identity in the collapsed header", () => {
+  it("prefers the conversation title in the collapsed header", () => {
     render(
       <AgentGuiWorkbenchHeader
         agentTitle="Cursor"
@@ -191,8 +191,8 @@ describe("AgentGuiWorkbenchHeader", () => {
       />
     );
 
-    expect(screen.getByText("Cursor")).toBeInTheDocument();
-    expect(screen.queryByText("Fix the header")).not.toBeInTheDocument();
+    expect(screen.getByText("Fix the header")).toBeInTheDocument();
+    expect(screen.queryByText("Cursor")).not.toBeInTheDocument();
     expect(screen.getByTestId("agent-gui-window-session-icon")).toHaveAttribute(
       "src",
       "asset://cursor.png"
