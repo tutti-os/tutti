@@ -9,6 +9,99 @@ import {
 } from "./AgentGUIConversationRailQueryController";
 
 describe("AgentGUIConversationRailQueryController", () => {
+  it("does not treat workspace hydration as a rail membership mutation", async () => {
+    let resolveWorkspaceReconcile!: () => void;
+    const engine = createTestAgentSessionEngine("test-workspace", {
+      execute: async (command) => {
+        if (command.type !== "engine/reconcileWorkspace") return { ok: true };
+        await new Promise<void>((resolve) => {
+          resolveWorkspaceReconcile = resolve;
+        });
+        return { ok: true };
+      }
+    });
+    const session = normalizeAgentActivitySession({
+      activeTurnId: null,
+      agentSessionId: "historical-session",
+      agentTargetId: "local:codex",
+      cwd: "/workspace",
+      latestTurnInteractions: [],
+      pendingInteractions: [],
+      provider: "codex",
+      railSectionKey: "conversations",
+      title: "Historical session",
+      updatedAtUnixMs: 1,
+      workspaceId: "test-workspace"
+    });
+    let resolveFirstPages!: () => void;
+    const listSessionSections = vi.fn<
+      NonNullable<ConversationRailQueryRuntime["listSessionSections"]>
+    >((input) =>
+      new Promise<void>((resolve) => {
+        resolveFirstPages = resolve;
+      }).then(() => ({
+        sections: [
+          {
+            hasMore: false,
+            kind: "conversations" as const,
+            sectionKey: "conversations",
+            sessions: [session],
+            totalCount: 1
+          }
+        ],
+        workspaceId: input.workspaceId
+      }))
+    );
+    const listSessionSectionPage = vi.fn(async (input) => ({
+      hasMore: false,
+      kind: "conversations" as const,
+      sectionKey: input.sectionKey,
+      sessions: [session],
+      totalCount: 1
+    }));
+    const controller = new AgentGUIConversationRailQueryController({
+      engine,
+      getActiveConversationId: () => null,
+      runtime: { listSessionSections, listSessionSectionPage },
+      workspaceId: "test-workspace"
+    });
+    controller.configure({
+      conversationFilter: { kind: "all" },
+      previewMode: false,
+      sectionAgentTargetFallbackId: null,
+      userProjects: []
+    });
+
+    const detach = controller.attach();
+    expect(engine.getSnapshot().engineRuntime.workspaceReconcile.status).toBe(
+      "loading"
+    );
+    engine.dispatch({ sessions: [session], type: "session/snapshotReceived" });
+
+    expect(listSessionSectionPage).not.toHaveBeenCalled();
+
+    resolveWorkspaceReconcile();
+    await vi.waitFor(() =>
+      expect(engine.getSnapshot().engineRuntime.workspaceReconcile.status).toBe(
+        "ready"
+      )
+    );
+    resolveFirstPages();
+    await vi.waitFor(() =>
+      expect(controller.getSnapshot().runtimeRailSectionsPending).toBe(false)
+    );
+    expect(controller.getSnapshot().runtimeRailMemberships).toEqual([
+      expect.objectContaining({
+        id: "conversations",
+        sessionIds: ["historical-session"]
+      })
+    ]);
+    expect(listSessionSectionPage).not.toHaveBeenCalled();
+
+    detach();
+    engine.dispose();
+  });
+
   it("debounces conversation searches and immediately clears an active query", async () => {
     vi.useFakeTimers();
     try {

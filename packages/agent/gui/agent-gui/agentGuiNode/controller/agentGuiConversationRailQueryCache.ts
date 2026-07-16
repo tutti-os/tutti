@@ -1,4 +1,3 @@
-import type { AgentActivitySession } from "@tutti-os/agent-activity-core";
 import type {
   AgentActivityRuntimeSessionPage,
   AgentActivityRuntimeSessionSection,
@@ -18,7 +17,6 @@ export interface CachedConversationRailQuery {
   queryState: ConversationRailQueryState;
   returnedSessionCount: number;
   sectionCount: number;
-  sessions: readonly AgentActivitySession[];
 }
 
 export type ConversationRailRefreshedPage =
@@ -47,10 +45,6 @@ export function cachedConversationRailQueryFromFirstPages(
       conversationRailPageState(section)
     );
   }
-  const sessions = [
-    ...(page.pinned?.sessions ?? []),
-    ...page.sections.flatMap((section) => section.sessions)
-  ];
   return {
     queryState: {
       pending: false,
@@ -59,21 +53,19 @@ export function cachedConversationRailQueryFromFirstPages(
       sectionPageStates,
       sections
     },
-    returnedSessionCount: sessions.length,
-    sectionCount: page.sections.length + (page.pinned ? 1 : 0),
-    sessions
+    returnedSessionCount:
+      (page.pinned?.sessions.length ?? 0) +
+      page.sections.reduce(
+        (count, section) => count + section.sessions.length,
+        0
+      ),
+    sectionCount: page.sections.length + (page.pinned ? 1 : 0)
   };
 }
 
 export function applyCachedConversationRailQuery(input: {
-  cache: WorkspaceQueryCache<CachedConversationRailQuery>;
   entry: WorkspaceQueryCacheEntry<CachedConversationRailQuery>;
-  scopeKey: string;
-  upsertSessions(sessions: readonly AgentActivitySession[]): void;
 }): ConversationRailQueryState {
-  if (input.cache.claimIngestion(input.scopeKey, input.entry.version)) {
-    input.upsertSessions(input.entry.value.sessions);
-  }
   return input.entry.value.queryState;
 }
 
@@ -97,8 +89,7 @@ export function writeConversationRailQueryCache(input: {
       (count, section) => count + section.sessionIds.length,
       0
     ),
-    sectionCount: queryState.sections.length,
-    sessions: []
+    sectionCount: queryState.sections.length
   });
 }
 

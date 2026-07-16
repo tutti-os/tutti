@@ -695,7 +695,8 @@ Turn state, loading, cancel, restore, file-change undo, rail projection, event u
   one selected overlay may show
   Show more/Show less even when only six sessions exist, or a nine-session
   section may ignore the first Show more click. Restart can reproduce the same
-  selected-row loss.
+  selected-row loss. On cold startup, All may also show section headers without
+  session rows until selecting Codex and then returning to All.
 - Quick checks:
   Inspect `workspace_agent_sessions.agent_target_id` and `rail_section_key`.
   Confirm section requests carry the selected `agentTargetId` before pagination
@@ -736,6 +737,11 @@ Turn state, loading, cancel, restore, file-change undo, rail projection, event u
   status. A fresh rail hit with no composer transport indicates both caches were
   reused; a long rail request isolates section loading, while a long composer
   event isolates target option discovery.
+  For the cold-start empty-row variant, compare
+  `agent.gui.runtime.snapshot_changed` session counts with
+  `agent_gui.conversation_rail.first_pages_slow`. If historical reconciliation
+  finishes while the first-page request is unresolved, confirm no section-page
+  request is emitted with `refreshReason=membership_change`.
 - Root cause:
   A second React summary cache mixed entity data, section membership, active
   selection, and visible-item limits. Effects manually patched section rows
@@ -751,6 +757,10 @@ Turn state, loading, cancel, restore, file-change undo, rail projection, event u
   migration marker after a required physical index disappears; treating the
   marker alone as proof of the schema invariant makes every section bootstrap
   fail while an active-session overlay can misleadingly remain visible.
+  Historical `session/snapshotReceived` hydration can also be mistaken for a
+  live rail membership mutation, causing a targeted section refresh to race the
+  unresolved bootstrap request. Caching session payloads or a separate ingestion
+  marker makes that race worse by splitting entity ownership from the engine.
 - Fix:
   Keep page sessions in the workspace engine. Cache only ordered membership ids,
   cursor, `hasMore`, and `totalCount` in the controller query, then join ids to
@@ -765,6 +775,11 @@ Turn state, loading, cancel, restore, file-change undo, rail projection, event u
   during every store migration pass, including when the corresponding marker is
   already recorded, so schema drift repairs itself without rewriting session
   data.
+  While workspace reconciliation is loading, update only the rail membership
+  comparison baseline; do not target-refresh pages for historical snapshot
+  hydration. Upsert first-page response entities into the workspace engine before
+  publishing their membership ids. Resolved query cache entries must not contain
+  session entities or ingestion ownership state.
   Do not add one `UNION ALL` arm per section; that restores section-count scaling
   and inherits SQLite's compound-select term limit.
 - Validation:
@@ -780,6 +795,9 @@ Turn state, loading, cancel, restore, file-change undo, rail projection, event u
   requested-section histories. Cover Codex -> All -> Codex,
   client restart restore, active row outside first page, five-plus-active totals,
   nine-session Show more, slow provider refetch, and bounded snapshot omission.
+  Add a cold-start ordering case where historical workspace hydration arrives
+  before the first section response and assert that no targeted membership refresh
+  is issued.
 - References:
   [useAgentGUIConversationRailQuery.ts](../../../packages/agent/gui/agent-gui/agentGuiNode/controller/useAgentGUIConversationRailQuery.ts)
   [agentGuiConversationRail.ts](../../../packages/agent/gui/agent-gui/agentGuiNode/model/agentGuiConversationRail.ts)

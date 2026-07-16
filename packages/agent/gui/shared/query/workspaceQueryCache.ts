@@ -6,7 +6,6 @@ export interface WorkspaceQueryCacheEntry<TValue> {
 }
 
 export interface WorkspaceQueryCache<TValue> {
-  claimIngestion(key: string, version: number): boolean;
   invalidate(key?: string): void;
   read(key: string): WorkspaceQueryCacheEntry<TValue> | null;
   request(
@@ -19,10 +18,7 @@ export interface WorkspaceQueryCache<TValue> {
 type MutableWorkspaceQueryCacheEntry<TValue> = Omit<
   WorkspaceQueryCacheEntry<TValue>,
   "stale"
-> & {
-  ingested: boolean;
-  stale: boolean;
-};
+> & { stale: boolean };
 
 const DEFAULT_MAX_ENTRIES = 24;
 
@@ -54,11 +50,9 @@ export function createWorkspaceQueryCache<TValue>(options?: {
 
   const write = (
     key: string,
-    value: TValue,
-    ingested: boolean
+    value: TValue
   ): MutableWorkspaceQueryCacheEntry<TValue> => {
     const entry: MutableWorkspaceQueryCacheEntry<TValue> = {
-      ingested,
       resolvedAtUnixMs: now(),
       stale: false,
       value,
@@ -70,14 +64,6 @@ export function createWorkspaceQueryCache<TValue>(options?: {
   };
 
   return {
-    claimIngestion(key, expectedVersion) {
-      const entry = entries.get(key);
-      if (!entry || entry.version !== expectedVersion || entry.ingested) {
-        return false;
-      }
-      entry.ingested = true;
-      return true;
-    },
     invalidate(key) {
       if (key !== undefined) {
         const entry = entries.get(key);
@@ -97,7 +83,7 @@ export function createWorkspaceQueryCache<TValue>(options?: {
       if (active) return active;
       const request = load()
         .then((value): WorkspaceQueryCacheEntry<TValue> => {
-          return write(key, value, false);
+          return write(key, value);
         })
         .finally(() => {
           if (requests.get(key) === request) requests.delete(key);
@@ -106,7 +92,7 @@ export function createWorkspaceQueryCache<TValue>(options?: {
       return request;
     },
     write(key, value) {
-      return write(key, value, true);
+      return write(key, value);
     }
   };
 }

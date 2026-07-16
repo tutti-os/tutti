@@ -1593,6 +1593,13 @@ reconciliation of one of those entities is not new rail membership and must
 preserve every loaded section page and cursor. Entity-list order or count must
 not serve directly as a section-query invalidation key; rail invalidation must
 account for membership already owned by loaded section pages.
+Workspace historical reconciliation is entity hydration, not a rail membership
+mutation. While `workspaceReconcile.status` is `loading`, the query controller
+must only advance its membership comparison baseline; it must not invalidate or
+target-refresh section pages for `session/snapshotReceived`. The initial section
+response owns bootstrap membership and must upsert returned entities into the
+workspace engine before publishing membership ids. Once reconciliation is ready,
+later canonical membership mutations continue through the targeted refresh path.
 The aggregate first-page section query is reserved for workspace, rail filter,
 or user-project inventory changes. Session membership changes use only the
 affected section/pinned first-page endpoints; Show more continues to use the

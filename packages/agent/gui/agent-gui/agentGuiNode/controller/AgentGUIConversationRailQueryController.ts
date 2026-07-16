@@ -435,7 +435,11 @@ export class AgentGUIConversationRailQueryController {
 
   private handleEngineState(state: AgentSessionEngineState): void {
     const next = projectConversationRailMembershipRecords(state);
-    if (this.ingestingSessions || !this.runtimeSectionsEnabled()) {
+    if (
+      this.ingestingSessions ||
+      !this.runtimeSectionsEnabled() ||
+      state.engineRuntime.workspaceReconcile.status === "loading"
+    ) {
       this.previousMembershipRecords = next;
       return;
     }
@@ -484,7 +488,7 @@ export class AgentGUIConversationRailQueryController {
         ? this.diagnosticNow()
         : null;
     if (cached && this.queryState.resolvedScopeKey !== scopeKey) {
-      this.applyCachedFirstPages(scopeKey, cached);
+      this.applyCachedFirstPages(cached);
       this.emit();
     }
     if (
@@ -526,6 +530,10 @@ export class AgentGUIConversationRailQueryController {
           limitPerSection: SECTION_PAGE_SIZE,
           workspaceId: this.workspaceId
         });
+        this.upsertSessions([
+          ...(page.pinned?.sessions ?? []),
+          ...page.sections.flatMap((section) => section.sessions)
+        ]);
         return cachedConversationRailQueryFromFirstPages(page, scopeKey);
       })
       .then((entry) => {
@@ -536,7 +544,7 @@ export class AgentGUIConversationRailQueryController {
           return;
         }
         const requestResolvedAt = this.diagnosticNow();
-        this.applyCachedFirstPages(scopeKey, entry);
+        this.applyCachedFirstPages(entry);
         this.emit();
         const completedAt = this.diagnosticNow();
         this.providerSwitchDiagnostics.complete(scopeKey, {
@@ -612,18 +620,12 @@ export class AgentGUIConversationRailQueryController {
   }
 
   private applyCachedFirstPages(
-    scopeKey: string,
     entry: ReturnType<
       WorkspaceQueryCache<CachedConversationRailQuery>["read"]
     > &
       object
   ): void {
-    this.queryState = applyCachedConversationRailQuery({
-      cache: this.sessionSectionsQueryCache,
-      entry,
-      scopeKey,
-      upsertSessions: (sessions) => this.upsertSessions(sessions)
-    });
+    this.queryState = applyCachedConversationRailQuery({ entry });
   }
 
   private writeCurrentQueryCache(): void {
