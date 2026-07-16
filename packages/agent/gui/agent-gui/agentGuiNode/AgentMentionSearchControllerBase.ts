@@ -179,12 +179,14 @@ export class AgentMentionSearchControllerBase {
       this.resetTotalCounts();
       this.emitBrowseState("loading");
     }
+    const abortSignal = this.beginActiveRequest();
     void this.runBrowseSearch({
       workspaceId: this.activeWorkspaceId,
       currentUserId: this.currentUserId,
       requestId,
       filter,
-      sessionCwd: this.currentSessionCwd
+      sessionCwd: this.currentSessionCwd,
+      abortSignal
     });
   }
 
@@ -290,6 +292,7 @@ export class AgentMentionSearchControllerBase {
     requestId: number;
     filter: AgentMentionFilterId;
     sessionCwd: string;
+    abortSignal: AbortSignal;
   }): Promise<void> {
     const startedAt = this.diagnosticNow();
     let providerDiagnostics: AgentMentionProviderQueryDiagnostic[] = [];
@@ -300,7 +303,8 @@ export class AgentMentionSearchControllerBase {
         input,
         cacheKey,
         "open",
-        provenanceFilter
+        provenanceFilter,
+        input.abortSignal
       );
       providerDiagnostics = result.providerDiagnostics;
       if (
@@ -375,7 +379,8 @@ export class AgentMentionSearchControllerBase {
       sessionCwd: string;
     },
     provenanceFilter: ReferenceProvenanceFilter | null = this
-      .currentProvenanceFilter
+      .currentProvenanceFilter,
+    abortSignal?: AbortSignal
   ): Promise<AgentMentionBrowseFetchResult> {
     return this.fetchFilterResult(
       {
@@ -383,7 +388,8 @@ export class AgentMentionSearchControllerBase {
         query: "",
         includeAgentGeneratedFiles: input.filter === "file"
       },
-      provenanceFilter
+      provenanceFilter,
+      abortSignal
     );
   }
 
@@ -687,15 +693,18 @@ export class AgentMentionSearchControllerBase {
     cacheKey: string,
     reason: AgentMentionBrowseLoadReason,
     provenanceFilter: ReferenceProvenanceFilter | null = this
-      .currentProvenanceFilter
+      .currentProvenanceFilter,
+    abortSignal?: AbortSignal
   ): Promise<AgentMentionBrowseFetchResult> {
     return loadAgentMentionBrowseFetchResult({
       input,
       cacheKey,
       reason,
+      abortSignal,
       diagnosticNow: this.diagnosticNow,
       providerIds: this.providerIdsForDiagnostics(),
-      fetchBrowseResult: () => this.fetchBrowseResult(input, provenanceFilter),
+      fetchBrowseResult: (sharedAbortSignal) =>
+        this.fetchBrowseResult(input, provenanceFilter, sharedAbortSignal),
       logLifecycle: (event, details) => this.logLifecycle(event, details)
     });
   }

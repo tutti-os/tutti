@@ -1204,16 +1204,18 @@ describe("AgentMentionSearchController", () => {
     expect(queryWorkspaceApps).toHaveBeenCalledTimes(1);
   });
 
-  it("dedupes in-flight browse loads across close and reopen", async () => {
-    let resolveFiles: (value: {
-      workspaceId: string;
-      root: string;
-      entries: { path: string; name: string; kind: string }[];
-    }) => void = () => undefined;
+  it("cancels an orphaned browse load and refetches after reopen", async () => {
+    const resolveFiles: Array<
+      (value: {
+        workspaceId: string;
+        root: string;
+        entries: { path: string; name: string; kind: string }[];
+      }) => void
+    > = [];
     const queryFiles = vi.fn(
       () =>
         new Promise((resolve) => {
-          resolveFiles = resolve;
+          resolveFiles.push(resolve);
         })
     );
     const controller = new AgentMentionSearchController({
@@ -1237,11 +1239,11 @@ describe("AgentMentionSearchController", () => {
     controller.updateQuery({ workspaceId: "room-1", query: "" });
     await vi.waitFor(() => expect(queryFiles).toHaveBeenCalledTimes(1));
     controller.close();
-    controller.setFilter("file");
     controller.updateQuery({ workspaceId: "room-1", query: "" });
-    expect(queryFiles).toHaveBeenCalledTimes(1);
+    controller.setFilter("file");
+    await vi.waitFor(() => expect(queryFiles).toHaveBeenCalledTimes(2));
 
-    resolveFiles({
+    resolveFiles[1]?.({
       workspaceId: "room-1",
       root: "/workspace",
       entries: [
@@ -1270,19 +1272,21 @@ describe("AgentMentionSearchController", () => {
         ])
       })
     );
-    expect(queryFiles).toHaveBeenCalledTimes(1);
+    expect(queryFiles).toHaveBeenCalledTimes(2);
   });
 
-  it("dedupes in-flight browse loads across agent GUI controller recreation", async () => {
-    let resolveFiles: (value: {
-      workspaceId: string;
-      root: string;
-      entries: { path: string; name: string; kind: string }[];
-    }) => void = () => undefined;
+  it("cancels an orphaned browse load and refetches after controller recreation", async () => {
+    const resolveFiles: Array<
+      (value: {
+        workspaceId: string;
+        root: string;
+        entries: { path: string; name: string; kind: string }[];
+      }) => void
+    > = [];
     const queryFiles = vi.fn(
       () =>
         new Promise((resolve) => {
-          resolveFiles = resolve;
+          resolveFiles.push(resolve);
         })
     );
     const providerOptions: TestContextMentionProviderOptions = {
@@ -1315,9 +1319,9 @@ describe("AgentMentionSearchController", () => {
     secondController.subscribe((state) => secondStates.push(state));
     secondController.setFilter("file");
     secondController.updateQuery({ workspaceId: "room-1", query: "" });
-    expect(queryFiles).toHaveBeenCalledTimes(1);
+    await vi.waitFor(() => expect(queryFiles).toHaveBeenCalledTimes(2));
 
-    resolveFiles({
+    resolveFiles[1]?.({
       workspaceId: "room-1",
       root: "/workspace",
       entries: [
@@ -1346,7 +1350,7 @@ describe("AgentMentionSearchController", () => {
         ])
       })
     );
-    expect(queryFiles).toHaveBeenCalledTimes(1);
+    expect(queryFiles).toHaveBeenCalledTimes(2);
   });
 
   it("debounces grouped searches and returns file results", async () => {

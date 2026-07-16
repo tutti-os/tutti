@@ -29,9 +29,16 @@ const sharedAgentMentionBrowseCache = new Map<
   string,
   AgentMentionBrowseCacheEntry
 >();
+interface SharedAgentMentionBrowseFetch {
+  abortController: AbortController;
+  consumers: Set<symbol>;
+  promise: Promise<AgentMentionBrowseFetchResult> | null;
+  settled: boolean;
+}
+
 const sharedAgentMentionBrowseFetches = new Map<
   string,
-  Promise<AgentMentionBrowseFetchResult>
+  SharedAgentMentionBrowseFetch
 >();
 
 // Bound the shared browse cache so long-lived renderer sessions cannot grow it
@@ -133,6 +140,9 @@ export function scheduleAgentMentionIdleTask(task: () => void): () => void {
 
 export function resetAgentMentionSearchBrowseCacheForTests(): void {
   sharedAgentMentionBrowseCache.clear();
+  for (const fetch of sharedAgentMentionBrowseFetches.values()) {
+    fetch.abortController.abort();
+  }
   sharedAgentMentionBrowseFetches.clear();
 }
 
@@ -157,7 +167,10 @@ export async function loadAgentMentionBrowseFetchResult(input: {
   reason: AgentMentionBrowseLoadReason;
   diagnosticNow: () => number;
   providerIds: string;
-  fetchBrowseResult: () => Promise<AgentMentionBrowseFetchResult>;
+  abortSignal?: AbortSignal;
+  fetchBrowseResult: (
+    abortSignal: AbortSignal
+  ) => Promise<AgentMentionBrowseFetchResult>;
   logLifecycle: (
     event: AgentMentionLifecycleDiagnosticLog["event"],
     details: AgentMentionLifecycleDiagnosticLog["details"]
@@ -165,46 +178,122 @@ export async function loadAgentMentionBrowseFetchResult(input: {
 }): Promise<AgentMentionBrowseFetchResult> {
   const { cacheKey, reason } = input;
   const browseInput = input.input;
-  const existingFetch = sharedAgentMentionBrowseFetches.get(cacheKey);
-  if (existingFetch) {
+  let sharedFetch = sharedAgentMentionBrowseFetches.get(cacheKey);
+  if (sharedFetch) {
     input.logLifecycle("browse.fetch.dedupe", {
       filter: browseInput.filter,
       reason,
       workspaceId: browseInput.workspaceId
     });
-    return existingFetch;
-  }
-  const startedAt = input.diagnosticNow();
-  input.logLifecycle("browse.fetch.start", {
-    filter: browseInput.filter,
-    providerIds: input.providerIds,
-    reason,
-    workspaceId: browseInput.workspaceId
-  });
-  const fetchPromise = input
-    .fetchBrowseResult()
-    .then((result) => {
-      writeBrowseCacheEntry(cacheKey, {
-        ...result,
-        cachedAt: input.diagnosticNow()
-      });
-      input.logLifecycle("browse.fetch.success", {
-        durationMs: elapsedDiagnosticMs(input.diagnosticNow(), startedAt),
-        filter: browseInput.filter,
-        itemCount: rawGroupItemCount(result.rawGroups),
-        providerResults: providerDiagnosticsSummary(result.providerDiagnostics),
-        reason,
-        workspaceId: browseInput.workspaceId
-      });
-      return result;
-    })
-    .finally(() => {
-      if (sharedAgentMentionBrowseFetches.get(cacheKey) === fetchPromise) {
-        sharedAgentMentionBrowseFetches.delete(cacheKey);
-      }
+  } else {
+    const startedAt = input.diagnosticNow();
+    input.logLifecycle("browse.fetch.start", {
+      filter: browseInput.filter,
+      providerIds: input.providerIds,
+      reason,
+      workspaceId: browseInput.workspaceId
     });
-  sharedAgentMentionBrowseFetches.set(cacheKey, fetchPromise);
-  return fetchPromise;
+    const abortController = new AbortController();
+    sharedFetch = {
+      abortController,
+      consumers: new Set(),
+      promise: null,
+      settled: false
+    };
+    const entry = sharedFetch;
+    entry.promise = input
+      .fetchBrowseResult(abortController.signal)
+      .then((result) => {
+        if (abortController.signal.aborted) {
+          const error = new Error("Mention browse request aborted");
+          error.name = "AbortError";
+          throw error;
+        }
+        writeBrowseCacheEntry(cacheKey, {
+          ...result,
+          cachedAt: input.diagnosticNow()
+        });
+        input.logLifecycle("browse.fetch.success", {
+          durationMs: elapsedDiagnosticMs(input.diagnosticNow(), startedAt),
+          filter: browseInput.filter,
+          itemCount: rawGroupItemCount(result.rawGroups),
+          providerResults: providerDiagnosticsSummary(
+            result.providerDiagnostics
+          ),
+          reason,
+          workspaceId: browseInput.workspaceId
+        });
+        return result;
+      })
+      .finally(() => {
+        entry.settled = true;
+        if (sharedAgentMentionBrowseFetches.get(cacheKey) === entry) {
+          sharedAgentMentionBrowseFetches.delete(cacheKey);
+        }
+      });
+    sharedAgentMentionBrowseFetches.set(cacheKey, entry);
+  }
+
+  return consumeSharedBrowseFetch({
+    abortSignal: input.abortSignal,
+    cacheKey,
+    sharedFetch
+  });
+}
+
+function consumeSharedBrowseFetch(input: {
+  abortSignal?: AbortSignal;
+  cacheKey: string;
+  sharedFetch: SharedAgentMentionBrowseFetch;
+}): Promise<AgentMentionBrowseFetchResult> {
+  const consumer = Symbol(input.cacheKey);
+  input.sharedFetch.consumers.add(consumer);
+  const sharedPromise = input.sharedFetch.promise;
+  if (!sharedPromise) {
+    input.sharedFetch.consumers.delete(consumer);
+    return Promise.reject(new Error("Mention browse request was not started"));
+  }
+
+  return new Promise((resolve, reject) => {
+    let finished = false;
+    const finish = (settle: () => void, abortWhenUnused: boolean): void => {
+      if (finished) {
+        return;
+      }
+      finished = true;
+      input.abortSignal?.removeEventListener("abort", onAbort);
+      input.sharedFetch.consumers.delete(consumer);
+      if (
+        abortWhenUnused &&
+        !input.sharedFetch.settled &&
+        input.sharedFetch.consumers.size === 0
+      ) {
+        if (
+          sharedAgentMentionBrowseFetches.get(input.cacheKey) ===
+          input.sharedFetch
+        ) {
+          sharedAgentMentionBrowseFetches.delete(input.cacheKey);
+        }
+        input.sharedFetch.abortController.abort();
+      }
+      settle();
+    };
+    const onAbort = (): void => {
+      const error = new Error("Mention browse request aborted");
+      error.name = "AbortError";
+      finish(() => reject(error), true);
+    };
+
+    if (input.abortSignal?.aborted) {
+      onAbort();
+      return;
+    }
+    input.abortSignal?.addEventListener("abort", onAbort, { once: true });
+    sharedPromise.then(
+      (result) => finish(() => resolve(result), false),
+      (error: unknown) => finish(() => reject(error), false)
+    );
+  });
 }
 
 export function readAgentMentionBrowseCache(input: {

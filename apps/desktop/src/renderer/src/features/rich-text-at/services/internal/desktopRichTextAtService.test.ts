@@ -502,9 +502,16 @@ test("desktop rich text @ service resolves workspace issue query by issue id", a
       ) {
         assert.equal(request?.searchQuery, "issue-restore-1");
         return {
-          issues: [],
+          issues: Array.from({ length: 10 }, (_, index) => ({
+            issueId: `issue-existing-${index + 1}`,
+            status: "open",
+            title: `Existing issue ${index + 1}`,
+            topicId: "topic-1",
+            workspaceId
+          })),
+          nextPageToken: "cursor-2",
           statusCounts: {},
-          totalCount: 0,
+          totalCount: 25,
           workspaceId
         };
       },
@@ -552,7 +559,7 @@ test("desktop rich text @ service resolves workspace issue query by issue id", a
     { issueId: "issue-restore-1", workspaceId: "workspace-1" },
     { issueId: "issue-restore-1", workspaceId: "workspace-1" }
   ]);
-  assert.equal(items.length, 1);
+  assert.equal(items.length, 10);
   assert.equal(provider.getItemKey(items[0]), "issue-restore-1");
   assert.equal(
     provider.getItemIconUrl?.(items[0]),
@@ -562,13 +569,28 @@ test("desktop rich text @ service resolves workspace issue query by issue id", a
     grouped.groups.map((group) => ({
       id: group.id,
       label: group.label,
+      totalCount: group.totalCount,
+      nextCursor: group.nextCursor,
       issueIds: group.items.map((item) => (item as { issueId: string }).issueId)
     })),
     [
       {
         id: "topic-1",
         label: "Default",
-        issueIds: ["issue-restore-1"]
+        totalCount: 25,
+        nextCursor: "cursor-2",
+        issueIds: [
+          "issue-restore-1",
+          "issue-existing-1",
+          "issue-existing-2",
+          "issue-existing-3",
+          "issue-existing-4",
+          "issue-existing-5",
+          "issue-existing-6",
+          "issue-existing-7",
+          "issue-existing-8",
+          "issue-existing-9"
+        ]
       }
     ]
   );
