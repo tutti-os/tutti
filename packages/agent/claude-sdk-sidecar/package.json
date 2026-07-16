@@ -27,6 +27,7 @@
     "src/sessionSettings.ts",
     "src/sessionRuntime.ts",
     "src/sessionConfiguration.ts",
+    "src/settingsEnv.ts",
     "src/taskNotification.ts",
     "src/taskPlan.ts",
     "src/testDriver.ts",

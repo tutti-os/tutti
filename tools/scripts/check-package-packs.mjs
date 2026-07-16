@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { mkdtemp, readdir, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, readdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -7,6 +7,7 @@ import {
   getNpmReleasePackages,
   workspaceRoot
 } from "./npm-release-packages.mjs";
+import { missingPackedRelativeImports } from "./package-pack-relative-imports.mjs";
 
 const forbiddenPrefixes = [
   "package/src/",
@@ -42,7 +43,8 @@ async function checkPackage(packageConfig, destination) {
   });
 
   const tarball = await findNewTarball(destination, beforeFiles);
-  const entries = listTarballEntries(join(destination, tarball));
+  const tarballPath = join(destination, tarball);
+  const entries = listTarballEntries(tarballPath);
   const entrySet = new Set(entries);
   const violations = [];
   const requiredFiles = getRequiredFiles(packageConfig.manifest);
@@ -61,6 +63,19 @@ async function checkPackage(packageConfig, destination) {
   for (const entry of entries) {
     if (packageForbiddenPrefixes.some((prefix) => entry.startsWith(prefix))) {
       violations.push(`unexpected ${entry}`);
+    }
+  }
+
+  if (packageConfig.name === "@tutti-os/claude-sdk-sidecar") {
+    const unpackedDirectory = join(destination, `${tarball}.unpacked`);
+    await mkdir(unpackedDirectory, { recursive: true });
+    execFileSync("tar", ["-xzf", tarballPath, "-C", unpackedDirectory]);
+    const missingImports = await missingPackedRelativeImports(
+      join(unpackedDirectory, "package"),
+      "src/main.ts"
+    );
+    for (const missingImport of missingImports) {
+      violations.push(`missing runtime import ${missingImport}`);
     }
   }
 
