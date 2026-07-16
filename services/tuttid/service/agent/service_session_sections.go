@@ -2,8 +2,11 @@ package agent
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"log/slog"
 	"strings"
+	"time"
 
 	agentactivitybiz "github.com/tutti-os/tutti/services/tuttid/biz/agentactivity"
 	userprojectbiz "github.com/tutti-os/tutti/services/tuttid/biz/userproject"
@@ -13,34 +16,62 @@ const (
 	sessionSectionKindConversations = "conversations"
 	sessionSectionKindProject       = "project"
 	sessionSectionKeyConversations  = "conversations"
+	sessionSectionsSlowLogThreshold = 250 * time.Millisecond
 )
+
+type sessionSectionsDiagnostics struct {
+	failureStage    string
+	hydrateDuration time.Duration
+	projectDuration time.Duration
+	sectionCount    int
+	sessionCount    int
+	storeDuration   time.Duration
+}
 
 func (s *Service) ListSessionSections(
 	ctx context.Context,
 	workspaceID string,
 	input ListSessionSectionsInput,
-) (SessionSectionsPage, error) {
+) (result SessionSectionsPage, resultErr error) {
 	workspaceID = strings.TrimSpace(workspaceID)
 	if workspaceID == "" || input.LimitPerSection <= 0 {
 		return SessionSectionsPage{}, ErrInvalidArgument
 	}
 	agentTargetID := strings.TrimSpace(input.AgentTargetID)
+	startedAt := time.Now()
+	diagnostics := &sessionSectionsDiagnostics{failureStage: "projects"}
+	defer func() {
+		logSessionSectionsDiagnostics(
+			ctx,
+			workspaceID,
+			agentTargetID,
+			input.LimitPerSection,
+			time.Since(startedAt),
+			diagnostics,
+			resultErr,
+		)
+	}()
+	projectsStartedAt := time.Now()
 	projects, err := s.currentUserProjects(ctx)
+	diagnostics.projectDuration = time.Since(projectsStartedAt)
 	if err != nil {
 		return SessionSectionsPage{}, err
 	}
+	diagnostics.failureStage = "reader"
 	reader, ok := s.SessionReader.(SessionSectionsReader)
 	if !ok {
 		return SessionSectionsPage{}, ErrInvalidArgument
 	}
-	return s.listSessionSectionsBatched(
+	result, resultErr = s.listSessionSectionsBatched(
 		ctx,
 		reader,
 		workspaceID,
 		projects,
 		input.LimitPerSection,
 		agentTargetID,
+		diagnostics,
 	)
+	return result, resultErr
 }
 
 func (s *Service) listSessionSectionsBatched(
@@ -50,6 +81,7 @@ func (s *Service) listSessionSectionsBatched(
 	projects []userprojectbiz.Project,
 	limitPerSection int,
 	agentTargetID string,
+	diagnostics *sessionSectionsDiagnostics,
 ) (SessionSectionsPage, error) {
 	normalizedProjects := make([]userprojectbiz.Project, 0, len(projects))
 	sectionKeys := make([]string, 0, len(projects)+2)
@@ -63,12 +95,15 @@ func (s *Service) listSessionSectionsBatched(
 		sectionKeys = append(sectionKeys, project.SectionKey)
 	}
 	sectionKeys = append(sectionKeys, sessionSectionKeyConversations)
+	diagnostics.failureStage = "store"
+	storeStartedAt := time.Now()
 	page, ok, err := reader.ListSessionSections(ctx, agentactivitybiz.ListSessionSectionsInput{
 		WorkspaceID:     workspaceID,
 		SectionKeys:     sectionKeys,
 		AgentTargetID:   strings.TrimSpace(agentTargetID),
 		LimitPerSection: limitPerSection,
 	})
+	diagnostics.storeDuration = time.Since(storeStartedAt)
 	if err != nil {
 		return SessionSectionsPage{}, err
 	}
@@ -85,10 +120,16 @@ func (s *Service) listSessionSectionsBatched(
 		rawPagesByKey[sectionKey] = section
 		rawSessions = append(rawSessions, section.Sessions...)
 	}
+	diagnostics.sectionCount = len(page.Sections)
+	diagnostics.sessionCount = len(rawSessions)
+	diagnostics.failureStage = "hydrate"
+	hydrateStartedAt := time.Now()
 	sessions, err := s.sessionsFromActivity(ctx, workspaceID, rawSessions)
+	diagnostics.hydrateDuration = time.Since(hydrateStartedAt)
 	if err != nil {
 		return SessionSectionsPage{}, err
 	}
+	diagnostics.failureStage = "projection"
 	sessionsByID := make(map[string]Session, len(sessions))
 	for _, session := range sessions {
 		sessionsByID[session.ID] = session
@@ -139,7 +180,7 @@ func (s *Service) listSessionSectionsBatched(
 		TotalCount: conversationsPage.TotalCount,
 		NextCursor: conversationsPage.NextCursor,
 	})
-	return SessionSectionsPage{
+	result := SessionSectionsPage{
 		WorkspaceID: workspaceID,
 		Pinned: SessionPage{
 			Sessions:   pinnedSessions,
@@ -148,7 +189,52 @@ func (s *Service) listSessionSectionsBatched(
 			NextCursor: pinnedPage.NextCursor,
 		},
 		Sections: sections,
-	}, nil
+	}
+	diagnostics.failureStage = ""
+	return result, nil
+}
+
+func logSessionSectionsDiagnostics(
+	ctx context.Context,
+	workspaceID string,
+	agentTargetID string,
+	limitPerSection int,
+	duration time.Duration,
+	diagnostics *sessionSectionsDiagnostics,
+	err error,
+) {
+	if errors.Is(err, context.Canceled) || (err == nil && duration < sessionSectionsSlowLogThreshold) {
+		return
+	}
+	status := "slow"
+	event := "workspace.agent_session.sections.list_slow"
+	message := "workspace agent session sections list slow"
+	level := slog.LevelInfo
+	if err != nil {
+		status = "failed"
+		event = "workspace.agent_session.sections.list_failed"
+		message = "workspace agent session sections list failed"
+		level = slog.LevelWarn
+	}
+	args := []any{
+		"event", event,
+		"workspace_id", workspaceID,
+		"agent_target_id", agentTargetID,
+		"target_filtered", agentTargetID != "",
+		"limit_per_section", limitPerSection,
+		"status", status,
+		"failure_stage", diagnostics.failureStage,
+		"duration_ms", duration.Milliseconds(),
+		"projects_ms", diagnostics.projectDuration.Milliseconds(),
+		"store_ms", diagnostics.storeDuration.Milliseconds(),
+		"hydrate_ms", diagnostics.hydrateDuration.Milliseconds(),
+		"section_count", diagnostics.sectionCount,
+		"session_count", diagnostics.sessionCount,
+	}
+	if err != nil {
+		args = append(args, "error", err)
+	}
+	slog.Log(ctx, level, message, args...)
 }
 
 func sessionsForSectionPage(

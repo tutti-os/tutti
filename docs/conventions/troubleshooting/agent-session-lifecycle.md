@@ -625,7 +625,15 @@ Turn state, loading, cancel, restore, file-change undo, rail projection, event u
   by the session primary key after narrow id trimming. A target-filtered rail
   must instead use `idx_workspace_agent_sessions_rail_section_target_page` and
   `idx_workspace_agent_sessions_pinned_target_page` with an exact target
-  predicate; an optional `OR` predicate cannot narrow the index range.
+  predicate; an optional `OR` predicate cannot narrow the index range. For a
+  reported slow switch, correlate
+  `agent_gui.conversation_rail.first_pages_slow` with
+  `workspace.agent_session.sections.list_slow`: the renderer event separates
+  request and controller-apply time, while the daemon event separates current
+  projects, store, and hydration time. Corresponding `*_failed` events record
+  real failures. Successful requests below 250 ms, aborted requests, and stale
+  responses are intentionally silent; these diagnostics must not log project
+  paths, section keys, session titles, or prompts.
 - Root cause:
   A second React summary cache mixed entity data, section membership, active
   selection, and visible-item limits. Effects manually patched section rows

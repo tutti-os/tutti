@@ -236,4 +236,139 @@ describe("AgentGUIConversationRailQueryController", () => {
     detachSecond();
     engine.dispose();
   });
+
+  it("logs only slow successful first-page rail queries", async () => {
+    const engine = createTestAgentSessionEngine();
+    const reportDiagnostic = vi.fn();
+    const diagnosticTimes = [0, 300, 325];
+    const controller = new AgentGUIConversationRailQueryController({
+      diagnosticNow: () => diagnosticTimes.shift() ?? 325,
+      diagnosticSlowThresholdMs: 250,
+      engine,
+      getActiveConversationId: () => null,
+      runtime: {
+        listSessionSections: async (input) => ({
+          pinned: {
+            hasMore: false,
+            sessions: [],
+            totalCount: 0
+          },
+          sections: [
+            {
+              hasMore: false,
+              kind: "conversations",
+              sectionKey: "conversations",
+              sessions: [],
+              totalCount: 0
+            }
+          ],
+          workspaceId: input.workspaceId
+        }),
+        listSessionSectionPage: async (input) => ({
+          hasMore: false,
+          kind: "conversations",
+          sectionKey: input.sectionKey,
+          sessions: [],
+          totalCount: 0
+        }),
+        reportDiagnostic
+      },
+      workspaceId: "test-workspace"
+    });
+    controller.configure({
+      conversationFilter: {
+        kind: "agentTarget",
+        agentTargetId: "local:codex"
+      },
+      previewMode: false,
+      sectionAgentTargetFallbackId: null,
+      userProjects: []
+    });
+
+    const detach = controller.attach();
+    await vi.waitFor(() => expect(reportDiagnostic).toHaveBeenCalledTimes(1));
+    expect(reportDiagnostic).toHaveBeenCalledWith({
+      details: {
+        agentTargetId: "local:codex",
+        controllerApplyMs: 25,
+        durationMs: 325,
+        event: "agent_gui.conversation_rail.first_pages_slow",
+        requestId: 2,
+        requestMs: 300,
+        sectionCount: 2,
+        sessionCount: 0,
+        status: "ready",
+        workspaceId: "test-workspace"
+      },
+      event: "agent_gui.conversation_rail.first_pages_slow",
+      level: "info",
+      source: "agent-gui",
+      workspaceId: "test-workspace"
+    });
+
+    detach();
+    engine.dispose();
+  });
+
+  it("suppresses fast success diagnostics but records real failures", async () => {
+    const engine = createTestAgentSessionEngine();
+    const diagnosticLogger = vi.fn();
+    let requestCount = 0;
+    const diagnosticTimes = [0, 100, 110, 110, 130];
+    const controller = new AgentGUIConversationRailQueryController({
+      diagnosticLogger,
+      diagnosticNow: () => diagnosticTimes.shift() ?? 130,
+      diagnosticSlowThresholdMs: 250,
+      engine,
+      getActiveConversationId: () => null,
+      runtime: {
+        listSessionSections: async (input) => {
+          requestCount += 1;
+          if (requestCount > 1) throw new TypeError("backend unavailable");
+          return { sections: [], workspaceId: input.workspaceId };
+        },
+        listSessionSectionPage: async (input) => ({
+          hasMore: false,
+          kind: "conversations",
+          sectionKey: input.sectionKey,
+          sessions: [],
+          totalCount: 0
+        })
+      },
+      workspaceId: "test-workspace"
+    });
+    const scope = {
+      conversationFilter: { kind: "all" } as const,
+      previewMode: false,
+      sectionAgentTargetFallbackId: null,
+      userProjects: []
+    };
+    controller.configure(scope);
+
+    const detachFirst = controller.attach();
+    await vi.waitFor(() =>
+      expect(controller.getSnapshot().runtimeRailSectionsPending).toBe(false)
+    );
+    expect(diagnosticLogger).not.toHaveBeenCalled();
+    detachFirst();
+
+    const detachSecond = controller.attach();
+    await vi.waitFor(() => expect(diagnosticLogger).toHaveBeenCalledTimes(1));
+    expect(diagnosticLogger).toHaveBeenCalledWith({
+      agentTargetId: null,
+      controllerApplyMs: 0,
+      durationMs: 20,
+      errorKind: "TypeError",
+      event: "agent_gui.conversation_rail.first_pages_failed",
+      requestId: 4,
+      requestMs: 20,
+      sectionCount: 0,
+      sessionCount: 0,
+      status: "error",
+      workspaceId: "test-workspace"
+    });
+
+    detachSecond();
+    engine.dispose();
+  });
 });
