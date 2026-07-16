@@ -21,15 +21,45 @@ const mcpProtocolVersion = "2025-06-18"
 
 // ToolResult is the flattened result of an MCP tools/call.
 type ToolResult struct {
-	Text    string
-	Images  []ToolImage
-	IsError bool
+	Text              string
+	Images            []ToolImage
+	StructuredContent map[string]any
+	Raw               json.RawMessage
+	IsError           bool
 }
 
 // ToolImage is a base64 image returned by a tool (e.g. take_screenshot).
 type ToolImage struct {
 	Data     string
 	MimeType string
+}
+
+// ToolCatalog is the versioned native tool surface reported by cua-driver.
+type ToolCatalog struct {
+	SchemaVersion     string           `json:"schemaVersion"`
+	CapabilityVersion string           `json:"capabilityVersion"`
+	Tools             []ToolDefinition `json:"tools"`
+}
+
+// ToolDefinition preserves the MCP schema and semantic metadata needed for
+// generic discovery, policy, and argument forwarding.
+type ToolDefinition struct {
+	Name         string          `json:"name"`
+	Description  string          `json:"description"`
+	InputSchema  map[string]any  `json:"inputSchema"`
+	Annotations  ToolAnnotations `json:"annotations"`
+	Capabilities []string        `json:"capabilities"`
+	Allowed      bool            `json:"allowed"`
+	DenialReason string          `json:"denialReason"`
+}
+
+// ToolAnnotations mirrors the MCP tool hints. These hints describe effects;
+// Tutti-owned policy remains the authorization boundary.
+type ToolAnnotations struct {
+	ReadOnly    bool `json:"readOnlyHint"`
+	Destructive bool `json:"destructiveHint"`
+	Idempotent  bool `json:"idempotentHint"`
+	OpenWorld   bool `json:"openWorldHint"`
 }
 
 // computerSession owns one cua-driver subprocess. Tool calls are serialized
@@ -108,6 +138,17 @@ func (s *computerSession) inFlightCount() int32 {
 }
 
 func (s *computerSession) callTool(ctx context.Context, name string, args map[string]any) (ToolResult, error) {
+	result, err := s.callNativeTool(ctx, name, args)
+	if err != nil {
+		return ToolResult{}, err
+	}
+	if result.IsError {
+		return result, toolResultError(result)
+	}
+	return result, nil
+}
+
+func (s *computerSession) callNativeTool(ctx context.Context, name string, args map[string]any) (ToolResult, error) {
 	if s.client == nil || s.client.isClosed() {
 		return ToolResult{}, errors.New("computer session not started")
 	}
@@ -121,6 +162,22 @@ func (s *computerSession) callTool(ctx context.Context, name string, args map[st
 		return ToolResult{}, err
 	}
 	return parseToolResult(raw)
+}
+
+func (s *computerSession) listTools(ctx context.Context) (ToolCatalog, error) {
+	if s.client == nil || s.client.isClosed() {
+		return ToolCatalog{}, errors.New("computer session not started")
+	}
+	s.callMu.Lock()
+	defer s.callMu.Unlock()
+	if s.client == nil || s.client.isClosed() {
+		return ToolCatalog{}, errors.New("computer session not started")
+	}
+	raw, err := s.client.call(ctx, "tools/list", map[string]any{})
+	if err != nil {
+		return ToolCatalog{}, err
+	}
+	return parseToolCatalog(raw)
 }
 
 func (s *computerSession) close() {
@@ -138,8 +195,9 @@ func (s *computerSession) closeLocked() {
 }
 
 type mcpToolCallResult struct {
-	IsError bool `json:"isError"`
-	Content []struct {
+	IsError           bool           `json:"isError"`
+	StructuredContent map[string]any `json:"structuredContent"`
+	Content           []struct {
 		Type     string `json:"type"`
 		Text     string `json:"text"`
 		Data     string `json:"data"`
@@ -152,7 +210,11 @@ func parseToolResult(raw json.RawMessage) (ToolResult, error) {
 	if err := json.Unmarshal(raw, &parsed); err != nil {
 		return ToolResult{}, fmt.Errorf("decode computer tool result: %w", err)
 	}
-	result := ToolResult{IsError: parsed.IsError}
+	result := ToolResult{
+		IsError:           parsed.IsError,
+		StructuredContent: parsed.StructuredContent,
+		Raw:               append(json.RawMessage(nil), raw...),
+	}
 	var texts []string
 	for _, item := range parsed.Content {
 		switch item.Type {
@@ -163,12 +225,30 @@ func parseToolResult(raw json.RawMessage) (ToolResult, error) {
 		}
 	}
 	result.Text = strings.Join(texts, "\n")
-	if result.IsError {
-		msg := strings.TrimSpace(result.Text)
-		if msg == "" {
-			msg = "computer tool reported an error"
-		}
-		return result, errors.New(msg)
-	}
 	return result, nil
+}
+
+func toolResultError(result ToolResult) error {
+	message := strings.TrimSpace(result.Text)
+	if message == "" {
+		message = "computer tool reported an error"
+	}
+	return errors.New(message)
+}
+
+type mcpToolCatalog struct {
+	SchemaVersion     string           `json:"schema_version"`
+	CapabilityVersion string           `json:"capability_version"`
+	Tools             []ToolDefinition `json:"tools"`
+}
+
+func parseToolCatalog(raw json.RawMessage) (ToolCatalog, error) {
+	var parsed mcpToolCatalog
+	if err := json.Unmarshal(raw, &parsed); err != nil {
+		return ToolCatalog{}, fmt.Errorf("decode computer tool catalog: %w", err)
+	}
+	if parsed.Tools == nil {
+		parsed.Tools = []ToolDefinition{}
+	}
+	return ToolCatalog(parsed), nil
 }

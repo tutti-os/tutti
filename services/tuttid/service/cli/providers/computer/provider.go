@@ -18,6 +18,8 @@ var errComputerUnavailable = errors.New("computer service is unavailable")
 // ComputerService is the subset of the daemon computer service the CLI needs.
 type ComputerService interface {
 	CallTool(ctx context.Context, workspaceID, cwd, tool string, args map[string]any) (computersvc.ToolResult, error)
+	CallNativeTool(ctx context.Context, workspaceID, cwd, tool string, args map[string]any) (computersvc.ToolResult, error)
+	ListTools(ctx context.Context, workspaceID, cwd string) (computersvc.ToolCatalog, error)
 }
 
 type Provider struct {
@@ -41,17 +43,20 @@ func (p Provider) Commands() []cliservice.Command {
 		p.newPressKeyCommand(),
 		p.newScrollCommand(),
 		p.newMoveCursorCommand(),
+		p.newToolListCommand(),
+		p.newToolDescribeCommand(),
+		p.newToolCallCommand(),
 	}
 }
 
-// call invokes the mapped cua-driver tool and returns the tool's text.
-func (p Provider) call(ctx context.Context, workspaceID string, tool string, args map[string]any) (string, error) {
+// call invokes the mapped cua-driver tool and preserves its structured result.
+func (p Provider) call(ctx context.Context, workspaceID string, tool string, args map[string]any) (computersvc.ToolResult, error) {
 	if p.computer == nil {
-		return "", errComputerUnavailable
+		return computersvc.ToolResult{}, errComputerUnavailable
 	}
 	result, err := p.computer.CallTool(ctx, workspaceID, "", tool, args)
 	if err != nil {
-		return "", err
+		return computersvc.ToolResult{}, err
 	}
-	return result.Text, nil
+	return result, nil
 }

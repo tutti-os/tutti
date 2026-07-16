@@ -145,6 +145,73 @@ the user asks to open or show an app window, or confirms that an app window
 should be opened. For ordinary app work, agents should prefer the app-specific
 CLI capability over opening the app UI.
 
+### Computer command surfaces
+
+The builtin `computer` provider has two intentionally different layers, both
+owned by `services/tuttid/service/computer` and exposed through daemon command
+specs:
+
+- stable aliases such as `computer screenshot`, `click`, `type`, and `scroll`
+  provide a small window-oriented compatibility contract and may normalize
+  legacy tool names;
+- `computer tool list|describe|call` discovers and invokes the native
+  cua-driver MCP catalog without adding a Tutti binding for every driver tool;
+  this is the complete extensible entry point for authorized native
+  capabilities that do not have a stable alias.
+
+Stable screenshot-coordinate commands (`screenshot`, `click`, `double-click`,
+`right-click`, and `scroll`) expose only the window workflow. They do not expose
+a synthetic shared `scope`. `pid` and `window-id` are accepted only as a pair;
+when both are omitted, the service may select an eligible visible window.
+Coordinates for pointer and scroll commands are local to the selected window
+screenshot. Keyboard commands accept the same explicit pid/window pair to
+avoid target drift. `move-cursor` is deliberately target- and scope-less: it
+accepts agent-cursor screen points, not pixels copied from either screenshot
+surface.
+
+Desktop automation follows each native cua-driver tool's real contract rather
+than a Tutti-wide scope model:
+
+- `get_config` reads cua-driver's host-global persisted `capture_scope`;
+- `get_desktop_state` captures the desktop only when that persisted setting is
+  already `desktop`; the call does not choose a capture scope;
+- native `click` has its own per-call `scope: "desktop"` contract;
+- native `scroll` requires a PID and has no true desktop-coordinate mode, so
+  Tutti must not advertise desktop scrolling.
+
+Stable commands and native calls must not implement a hidden set/call/restore
+sequence around `capture_scope`. The `system.config.write` capability used by
+native `set_config` is authorized by Tutti's default computer policy, so an
+agent may explicitly set `capture_scope` to `desktop` through `computer tool
+call` before invoking `get_desktop_state`. The mutation is host-global and
+persisted by cua-driver; the agent must not disguise that fact or automatically
+restore the previous value after capture. Stable `computer screenshot` remains
+window-only regardless of the persisted scope.
+
+The native catalog is also the policy input. Tutti applies a default-deny
+capability allowlist in `service/computer`. `tool list` and `tool describe`
+retain the complete live catalog and annotate every tool with the Tutti-owned
+`allowed` decision and `denialReason`; `tool call` enforces the same policy.
+MCP effect annotations are descriptive hints and never grant authority. Both
+the catalog `schema_version` and `capability_version` are breaking-contract
+boundaries; missing or unknown versions fail closed before any tool is listed,
+described, or invoked. Every advertised capability must be explicitly
+recognized and allowed before invocation. Tools with no capability metadata,
+any unknown or denied capability, or a name absent from the live catalog remain
+unavailable even when another capability on that tool is allowed. Stable
+aliases enumerate their supported operations and must not fall through to raw
+native invocation.
+
+Stable aliases return compact, explicitly projected JSON. Native `tool call`
+is the narrow exception: its JSON mode preserves the complete MCP tool result,
+including unknown and future content variants, so extending cua-driver does
+not require a Tutti result adapter. Plain mode may still project the collected
+text for terminal use. A valid MCP result with `isError: true` is still emitted
+unchanged by native JSON mode so callers retain its structured diagnostics;
+transport and protocol failures remain CLI errors. Stable aliases continue to
+translate `isError` results into their compatibility error behavior. Do not use
+the native surface to bypass stable alias validation or the capability policy.
+
 ## Command Kinds
 
 Builtin commands must declare one command kind.
