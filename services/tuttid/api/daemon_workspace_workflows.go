@@ -309,7 +309,7 @@ func generatedTuttiModePlanTask(task tuttimodeplanservice.PlanTask) tuttigenerat
 		ModelPlanId:        stringPointerIfNotBlank(task.ModelPlanID),
 		Model:              stringPointerIfNotBlank(task.Model),
 		ExecutionDirectory: stringPointerIfNotBlank(task.ExecutionDirectory),
-		DependsOn:          append([]string(nil), task.DependsOn...),
+		DependsOn:          append([]string{}, task.DependsOn...),
 	}
 }
 

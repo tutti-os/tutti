@@ -208,6 +208,44 @@ func TestWorkspaceWorkflowRoutesAreRegistered(t *testing.T) {
 	})
 }
 
+func TestListWorkspaceWorkflowsSerializesEmptyTaskDependenciesAsArray(t *testing.T) {
+	t.Parallel()
+
+	service := &stubTuttiModePlanService{views: []tuttimodeplanservice.SnapshotView{workflowViewFixture()}}
+	mux := http.NewServeMux()
+	RegisterRoutes(mux, NewRoutes(DaemonAPI{TuttiModePlanService: service}))
+
+	response := httptest.NewRecorder()
+	request := httptest.NewRequest(
+		http.MethodGet,
+		"/v1/workspaces/workspace-1/workflows?sourceSessionId=session-1&checkpointStatus=pending",
+		nil,
+	)
+	mux.ServeHTTP(response, request)
+
+	if response.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d; body: %s", response.Code, http.StatusOK, response.Body.String())
+	}
+	var payload struct {
+		Workflows []struct {
+			Revisions []struct {
+				Document struct {
+					Tasks []struct {
+						DependsOn json.RawMessage `json:"dependsOn"`
+					} `json:"tasks"`
+				} `json:"document"`
+			} `json:"revisions"`
+		} `json:"workflows"`
+	}
+	if err := json.Unmarshal(response.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("decode response: %v; body: %s", err, response.Body.String())
+	}
+	got := payload.Workflows[0].Revisions[0].Document.Tasks[0].DependsOn
+	if string(got) != "[]" {
+		t.Fatalf("dependsOn = %s, want []", got)
+	}
+}
+
 func TestGetWorkspaceWorkflowRecoversNonFinitePersistedBudgetAsJSONError(t *testing.T) {
 	t.Parallel()
 
