@@ -76,6 +76,33 @@
   [commands.go](../../../services/tuttid/service/cli/providers/tuttimodeplan/commands.go),
   [useTuttiModePlanPanels.ts](../../../packages/agent/gui/workspaceWorkflow/tuttiModePlan/useTuttiModePlanPanels.ts)
 
+### Tutti Mode Plan stops loading after a task-graph revision
+
+- **Symptom:** The configuration review panel works and `tutti plan revise`
+  returns a pending task-review checkpoint, but AgentGUI replaces the panel
+  with its load-failure state.
+- **Quick checks:** Call the session-scoped workspace-workflow list endpoint
+  and inspect every task in the returned revision. Required collection fields,
+  especially `dependsOn`, must be JSON arrays even when empty. A successful
+  CLI mutation and HTTP `200` do not prove that the response still satisfies
+  the generated client contract.
+- **Root cause:** A Go transport projection copied an empty dependency slice
+  onto a nil slice. `encoding/json` emitted `null`, violating the non-nullable
+  OpenAPI array contract. The generated TypeScript client therefore exposed a
+  value typed as `string[]` whose runtime value was `null`, and the desktop
+  adapter failed while cloning it before panel projection.
+- **Fix:** Normalize required collections at the daemon API boundary so empty
+  values serialize as `[]`. Keep the OpenAPI field non-nullable and do not move
+  the repair into AgentGUI business projection, where it would only conceal a
+  malformed wire response.
+- **Validation:** Exercise the real HTTP route, decode its JSON, and assert an
+  empty task dependency list is exactly `[]`, not `null`. Then verify a
+  task-graph revision with a root task can be listed and rendered.
+- **References:**
+  [workspace-workflows.md](../../architecture/workspace-workflows.md),
+  [daemon_workspace_workflows.go](../../../services/tuttid/api/daemon_workspace_workflows.go),
+  [desktopWorkspaceWorkflowRuntime.ts](../../../apps/desktop/src/renderer/src/features/workspace-agent/services/internal/desktopWorkspaceWorkflowRuntime.ts)
+
 ### Retrying a Tutti Mode Plan mutation duplicates or rejects the revision
 
 - **Symptom:** A retry after a CLI timeout creates another workflow/revision,
