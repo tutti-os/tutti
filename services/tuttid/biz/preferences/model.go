@@ -24,8 +24,8 @@ const (
 	DefaultDesktopMinimizeAnimation           = "scale"
 	DefaultDesktopSleepPreventionMode         = "never"
 	DefaultDesktopShowAppDeveloperSources     = false
-	DefaultDesktopEnableCursorAgent           = false
-	DefaultDesktopEnableOpenCodeAgent         = false
+	DefaultDesktopEnableCursorAgent           = true
+	DefaultDesktopEnableOpenCodeAgent         = true
 	DefaultDesktopThemeSource                 = "dark"
 	DefaultDesktopUpdateChannel               = "rc"
 	DefaultDesktopUpdatePolicy                = "prompt"

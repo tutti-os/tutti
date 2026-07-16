@@ -29,3 +29,13 @@ func TestDefaultDesktopPreferencesHasEmptyFlags(t *testing.T) {
 		t.Fatalf("want empty flags, got %v", d.FeatureFlags)
 	}
 }
+
+func TestDefaultDesktopPreferencesEnablesCursorAndOpenCodeAgents(t *testing.T) {
+	d := DefaultDesktopPreferences()
+	if !d.EnableCursorAgent {
+		t.Fatal("want Cursor agent enabled by default")
+	}
+	if !d.EnableOpenCodeAgent {
+		t.Fatal("want OpenCode agent enabled by default")
+	}
+}

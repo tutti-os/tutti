@@ -211,7 +211,7 @@ func (s *SQLiteStore) applyDesktopPreferencesEnableCursorAgentV1(ctx context.Con
 	if !hasEnableCursorAgent {
 		if _, err := s.writeDB.ExecContext(ctx, `
 ALTER TABLE desktop_preferences
-  ADD COLUMN enable_cursor_agent INTEGER NOT NULL DEFAULT 0;`); err != nil {
+  ADD COLUMN enable_cursor_agent INTEGER NOT NULL DEFAULT 1;`); err != nil {
 			return fmt.Errorf("migrate workspace database for desktop enable cursor agent: %w", err)
 		}
 	}
@@ -243,7 +243,7 @@ func (s *SQLiteStore) applyDesktopPreferencesEnableOpenCodeAgentV1(ctx context.C
 	if !hasEnableOpenCodeAgent {
 		if _, err := s.writeDB.ExecContext(ctx, `
 ALTER TABLE desktop_preferences
-  ADD COLUMN enable_opencode_agent INTEGER NOT NULL DEFAULT 0;`); err != nil {
+  ADD COLUMN enable_opencode_agent INTEGER NOT NULL DEFAULT 1;`); err != nil {
 			return fmt.Errorf("migrate workspace database for desktop enable opencode agent: %w", err)
 		}
 	}

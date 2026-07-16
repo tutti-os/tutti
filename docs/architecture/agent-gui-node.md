@@ -2976,9 +2976,11 @@ Desktop workbench feeds the renderer `AgentsService` `/agents` snapshot into
 AgentGUI. Product feature gates may filter that array before rendering; a
 loaded empty result remains empty. Availability states that should stay visible
 must remain in the array with the matching non-ready status instead of becoming
-synthetic provider placeholders. OpenCode remains gated by the
-`enableOpenCodeAgent` developer preference. Tutti Agent visibility is owned by
-the daemon's `local:tutti-agent` Agent Target: disabled daemon targets stay in
+synthetic provider placeholders. Cursor and OpenCode remain controlled by the
+`enableCursorAgent` and `enableOpenCodeAgent` developer preferences. Both are
+enabled by default for new desktop preferences, while an initialized stored
+opt-out remains authoritative. Tutti Agent visibility is owned by the daemon's
+`local:tutti-agent` Agent Target: disabled daemon targets stay in
 the presentation snapshot for history and settings, but are omitted from the
 new-session `agents` projection before the directory reaches AgentGUI.
 Provider slash commands must come from the runtime command snapshot or an

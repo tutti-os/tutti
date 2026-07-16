@@ -76,8 +76,8 @@ test("createDesktopHostPreferencesState initializes missing preferences with dar
         minimizeAnimation: "genie",
         sleepPreventionMode: "never",
         showAppDeveloperSources: false,
-        enableCursorAgent: false,
-        enableOpenCodeAgent: false,
+        enableCursorAgent: true,
+        enableOpenCodeAgent: true,
         themeSource: "dark",
         updateChannel: "stable",
         updatePolicy: "prompt"
