@@ -9,6 +9,7 @@ import {
   rootEngineReducer
 } from "./rootReducer.ts";
 import { selectSessionHasUnconfirmedSubmit } from "./pendingIntents.selectors.ts";
+import { canonicalInteractionKey } from "./sessionEntityKeys.ts";
 import type { EngineIntent, EngineRuntimeState } from "./types.ts";
 import type { AgentActivitySessionCapabilities } from "../types.ts";
 
@@ -606,9 +607,9 @@ test("an uncertain queued submit cannot be half-canceled", () => {
     "failed"
   );
   assert.equal(
-    expired.state.promptQueue.recordsBySessionId["session-1"]
-      ?.uncertainDelivery,
-    null
+    expired.state.promptQueue.recordsBySessionId["session-1"]?.uncertainDelivery
+      ?.promptId,
+    "submit-1"
   );
 });
 
@@ -737,7 +738,7 @@ test("an invalid send-now request cannot cancel an unrelated active turn", () =>
   );
 });
 
-test("ACP send-now fallback waits for the exact turn before canceling", () => {
+test("queue shares canonical submit availability when the active turn entity is absent", () => {
   let state = createInitialAgentSessionEngineState();
   state = rootEngineReducer(state, {
     type: "session/snapshotReceived",
@@ -760,7 +761,7 @@ test("ACP send-now fallback waits for the exact turn before canceling", () => {
       }
     ]
   }).state;
-  state = rootEngineReducer(state, {
+  const queued = rootEngineReducer(state, {
     type: "queue/enqueued",
     agentSessionId: "session-1",
     prompt: {
@@ -769,27 +770,16 @@ test("ACP send-now fallback waits for the exact turn before canceling", () => {
       id: "prompt-1"
     },
     workspaceId: "workspace-1"
-  }).state;
-  const promoted = rootEngineReducer(state, {
-    type: "queue/sendNowRequested",
-    agentSessionId: "session-1",
-    awaitingTurnExpiresAtUnixMs: 30_000,
-    cancelCommandId: "cancel-1",
-    promptId: "prompt-1",
-    timeoutMs: 30_000
   });
   assert.equal(
-    promoted.state.sessionLifecycle.operationBySessionId["session-1"]?.cancel
-      .status,
-    "awaitingTurn"
+    queued.commands.some((command) => command.type === "queue/sendPrompt"),
+    true
   );
-  assert.deepEqual(promoted.commands, [
-    {
-      dueAtUnixMs: 30_000,
-      expiryId: "cancel:awaiting-turn:cancel-1",
-      type: "engine/scheduleExpiry"
-    }
-  ]);
+  assert.equal(
+    queued.state.sessionLifecycle.operationBySessionId["session-1"]?.cancel
+      .status,
+    "idle"
+  );
 });
 
 test("composer send-now uses native guidance without canceling the active turn", () => {
@@ -831,6 +821,360 @@ test("composer send-now uses exact-turn cancel before a normal ACP prompt", () =
     "submit-fallback"
   );
 });
+
+test("root drains once from post-lifecycle canonical turn state", () => {
+  let state = createInitialAgentSessionEngineState();
+  state = rootEngineReducer(state, {
+    type: "session/snapshotReceived",
+    sessions: [runningSession(capabilities({}))]
+  }).state;
+  const queued = rootEngineReducer(state, {
+    type: "queue/enqueued",
+    agentSessionId: "session-1",
+    prompt: {
+      content: [{ type: "text", text: "next" }],
+      createdAtUnixMs: 2,
+      id: "prompt-1"
+    },
+    workspaceId: "workspace-1"
+  });
+  assert.deepEqual(queued.commands, []);
+
+  const turn = {
+    agentSessionId: "session-1",
+    outcome: "completed" as const,
+    phase: "settled" as const,
+    settledAtUnixMs: 3,
+    startedAtUnixMs: 1,
+    turnId: "turn-1",
+    updatedAtUnixMs: 3
+  };
+  const settled = rootEngineReducer(queued.state, {
+    type: "turn/upserted",
+    turn
+  });
+  assert.equal(
+    settled.commands.filter((command) => command.type === "queue/sendPrompt")
+      .length,
+    1
+  );
+  const duplicate = rootEngineReducer(settled.state, {
+    type: "turn/upserted",
+    turn
+  });
+  assert.equal(
+    duplicate.commands.some((command) => command.type === "queue/sendPrompt"),
+    false
+  );
+});
+
+test("authoritative interaction result drains from post-lifecycle canonical state", () => {
+  let state = createInitialAgentSessionEngineState();
+  const waitingTurn = {
+    agentSessionId: "session-1",
+    phase: "waiting" as const,
+    startedAtUnixMs: 1,
+    turnId: "turn-1",
+    updatedAtUnixMs: 1
+  };
+  const pendingInteraction = {
+    agentSessionId: "session-1",
+    createdAtUnixMs: 1,
+    input: {},
+    kind: "question" as const,
+    metadata: {},
+    requestId: "request-1",
+    status: "pending" as const,
+    turnId: "turn-1",
+    updatedAtUnixMs: 1
+  };
+  const waitingSession = {
+    ...runningSession(capabilities({})),
+    activeTurn: waitingTurn,
+    latestTurn: waitingTurn,
+    latestTurnInteractions: [pendingInteraction],
+    pendingInteractions: [pendingInteraction]
+  };
+  state = rootEngineReducer(state, {
+    type: "session/snapshotReceived",
+    sessions: [waitingSession]
+  }).state;
+  state = rootEngineReducer(state, {
+    type: "queue/enqueued",
+    agentSessionId: "session-1",
+    prompt: {
+      content: [{ type: "text", text: "continue" }],
+      createdAtUnixMs: 2,
+      id: "prompt-1"
+    },
+    workspaceId: "workspace-1"
+  }).state;
+  const requested = rootEngineReducer(state, {
+    type: "interaction/responseRequested",
+    agentSessionId: "session-1",
+    commandId: "respond-1",
+    optionId: "approve",
+    requestId: "request-1",
+    turnId: "turn-1",
+    workspaceId: "workspace-1"
+  });
+  assert.equal(requested.commands[0]?.type, "interaction/respond");
+
+  const settledTurn = {
+    ...waitingTurn,
+    outcome: "completed" as const,
+    phase: "settled" as const,
+    settledAtUnixMs: 3,
+    updatedAtUnixMs: 3
+  };
+  const completed = rootEngineReducer(requested.state, {
+    commandId: "respond-1",
+    commandType: "interaction/respond",
+    correlationId: canonicalInteractionKey("session-1", "turn-1", "request-1"),
+    outcome: "succeeded",
+    type: "engine/commandResult",
+    value: {
+      session: {
+        ...waitingSession,
+        activeTurn: null,
+        activeTurnId: null,
+        latestTurn: settledTurn,
+        latestTurnInteractions: [
+          { ...pendingInteraction, status: "answered", updatedAtUnixMs: 3 }
+        ],
+        pendingInteractions: [],
+        updatedAtUnixMs: 3
+      }
+    }
+  });
+  const queueSend = completed.commands.find(
+    (command) => command.type === "queue/sendPrompt"
+  );
+  assert.equal(
+    queueSend?.type === "queue/sendPrompt" ? queueSend.promptId : null,
+    "prompt-1"
+  );
+});
+
+test("terminal latest turn drains at an unchanged session timestamp", () => {
+  let state = createInitialAgentSessionEngineState();
+  const running = runningSession(capabilities({}));
+  state = rootEngineReducer(state, {
+    type: "session/snapshotReceived",
+    sessions: [
+      {
+        ...running,
+        activeTurn: { ...running.activeTurn, updatedAtUnixMs: 90 },
+        updatedAtUnixMs: 100
+      }
+    ]
+  }).state;
+  state = rootEngineReducer(state, {
+    type: "queue/enqueued",
+    agentSessionId: "session-1",
+    prompt: {
+      content: [{ type: "text", text: "next" }],
+      createdAtUnixMs: 101,
+      id: "prompt-1"
+    },
+    workspaceId: "workspace-1"
+  }).state;
+  const settled = rootEngineReducer(state, {
+    type: "session/snapshotReceived",
+    sessions: [
+      {
+        ...running,
+        activeTurn: null,
+        activeTurnId: null,
+        latestTurn: {
+          agentSessionId: "session-1",
+          outcome: "completed",
+          phase: "settled",
+          settledAtUnixMs: 110,
+          startedAtUnixMs: 1,
+          turnId: "turn-1",
+          updatedAtUnixMs: 110
+        },
+        updatedAtUnixMs: 100
+      }
+    ]
+  });
+  assert.equal(
+    settled.commands.some((command) => command.type === "queue/sendPrompt"),
+    true
+  );
+});
+
+test("successful queued send waits for its exact canonical turn before FIFO drain", () => {
+  let state = createInitialAgentSessionEngineState();
+  const priorTurn = {
+    agentSessionId: "session-1",
+    outcome: "completed" as const,
+    phase: "settled" as const,
+    settledAtUnixMs: 1,
+    startedAtUnixMs: 0,
+    turnId: "turn-0",
+    updatedAtUnixMs: 1
+  };
+  const availableSession = {
+    ...runningSession(capabilities({})),
+    activeTurn: null,
+    activeTurnId: null,
+    latestTurn: priorTurn
+  };
+  state = rootEngineReducer(state, {
+    type: "session/snapshotReceived",
+    sessions: [availableSession]
+  }).state;
+  const first = rootEngineReducer(state, queuedSubmit("submit-1", 2));
+  const firstSend = first.commands.find(
+    (command) => command.type === "queue/sendPrompt"
+  );
+  assert.equal(firstSend?.type, "queue/sendPrompt");
+  state = rootEngineReducer(first.state, queuedSubmit("submit-2", 3)).state;
+  const runningTurn = {
+    agentSessionId: "session-1",
+    phase: "running" as const,
+    startedAtUnixMs: 4,
+    turnId: "turn-1",
+    updatedAtUnixMs: 4
+  };
+  const accepted = rootEngineReducer(state, {
+    commandId:
+      firstSend?.type === "queue/sendPrompt" ? firstSend.commandId : "",
+    commandType: "queue/sendPrompt",
+    correlationId: "submit-1",
+    outcome: "succeeded",
+    type: "engine/commandResult",
+    value: {
+      session: {
+        ...availableSession,
+        activeTurn: runningTurn,
+        activeTurnId: "turn-1",
+        latestTurn: runningTurn,
+        updatedAtUnixMs: 4
+      },
+      turn: runningTurn,
+      turnId: "turn-1"
+    }
+  });
+  assert.equal(
+    accepted.commands.some((command) => command.type === "queue/sendPrompt"),
+    false
+  );
+  assert.equal(
+    accepted.state.promptQueue.recordsBySessionId["session-1"]
+      ?.deliveryBarrierTurnId,
+    "turn-1"
+  );
+  const settled = rootEngineReducer(accepted.state, {
+    type: "turn/upserted",
+    turn: {
+      ...runningTurn,
+      outcome: "completed",
+      phase: "settled",
+      settledAtUnixMs: 5,
+      updatedAtUnixMs: 5
+    }
+  });
+  const secondSend = settled.commands.find(
+    (command) => command.type === "queue/sendPrompt"
+  );
+  assert.equal(
+    secondSend?.type === "queue/sendPrompt" ? secondSend.promptId : null,
+    "submit-2"
+  );
+});
+
+test("timeout message confirmation waits for exact-turn lifecycle reconcile", () => {
+  let state = createInitialAgentSessionEngineState();
+  const availableSession = {
+    ...runningSession(capabilities({})),
+    activeTurn: null,
+    activeTurnId: null,
+    latestTurn: {
+      agentSessionId: "session-1",
+      outcome: "completed" as const,
+      phase: "settled" as const,
+      settledAtUnixMs: 1,
+      startedAtUnixMs: 0,
+      turnId: "turn-0",
+      updatedAtUnixMs: 1
+    }
+  };
+  state = rootEngineReducer(state, {
+    type: "session/snapshotReceived",
+    sessions: [availableSession]
+  }).state;
+  const first = rootEngineReducer(state, queuedSubmit("submit-1", 2));
+  const firstSend = first.commands.find(
+    (command) => command.type === "queue/sendPrompt"
+  );
+  state = rootEngineReducer(first.state, queuedSubmit("submit-2", 3)).state;
+  const timedOut = rootEngineReducer(state, {
+    commandId:
+      firstSend?.type === "queue/sendPrompt" ? firstSend.commandId : "",
+    commandType: "queue/sendPrompt",
+    correlationId: "submit-1",
+    outcome: "timedOut",
+    type: "engine/commandResult"
+  });
+  const confirmed = rootEngineReducer(timedOut.state, {
+    type: "message/snapshotReceived",
+    messages: [
+      {
+        agentSessionId: "session-1",
+        kind: "text",
+        messageId: "message-1",
+        occurredAtUnixMs: 4,
+        payload: { clientSubmitId: "submit-1", text: "submit-1" },
+        role: "user",
+        turnId: "turn-1",
+        version: 1
+      }
+    ]
+  });
+  assert.equal(
+    confirmed.commands.some((command) => command.type === "queue/sendPrompt"),
+    false
+  );
+  assert.equal(
+    confirmed.state.promptQueue.recordsBySessionId["session-1"]
+      ?.deliveryBarrierTurnId,
+    "turn-1"
+  );
+  const reconciled = rootEngineReducer(confirmed.state, {
+    type: "turn/upserted",
+    turn: {
+      agentSessionId: "session-1",
+      outcome: "completed",
+      phase: "settled",
+      settledAtUnixMs: 5,
+      startedAtUnixMs: 4,
+      turnId: "turn-1",
+      updatedAtUnixMs: 5
+    }
+  });
+  const secondSend = reconciled.commands.find(
+    (command) => command.type === "queue/sendPrompt"
+  );
+  assert.equal(
+    secondSend?.type === "queue/sendPrompt" ? secondSend.promptId : null,
+    "submit-2"
+  );
+});
+
+function queuedSubmit(clientSubmitId: string, requestedAtUnixMs: number) {
+  return {
+    agentSessionId: "session-1",
+    clientSubmitId,
+    content: [{ type: "text" as const, text: clientSubmitId }],
+    expiresAtUnixMs: requestedAtUnixMs + 120_000,
+    requestedAtUnixMs,
+    type: "submit/requested" as const,
+    workspaceId: "workspace-1"
+  };
+}
 
 function runningSession(capabilityList: AgentActivitySessionCapabilities) {
   return {

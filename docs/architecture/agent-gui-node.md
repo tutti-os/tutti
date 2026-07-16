@@ -2346,6 +2346,26 @@ turn remains blocked; cancel-then-send records the selected prompt as
 after the cancel result validates or the canonical turn settles. Metadata-only
 session patches and locally inferred idle states cannot unlock the queue.
 
+`sessionLifecycleReducer` is the only reducer that interprets session, turn,
+and interaction lifecycle. The prompt-queue reducer must not derive readiness
+from raw `session/snapshotReceived` or `session/upserted` payloads, retain a
+snapshot-derived availability field on queue records, or maintain a parallel
+timestamp/activity clock. `rootEngineReducer` performs command validation and
+send-now strategy precomputation against the old state, reduces lifecycle
+first, then passes the post-lifecycle canonical session/turn/interaction view
+into the queue reducer. After the queue applies its own intent transition, it
+drains each affected session deterministically from that canonical view.
+
+A successful queued send first writes its validated authoritative session and
+exact turn into canonical lifecycle. The queue keeps only the exact turn id
+needed as a delivery barrier; it does not copy turn phase or availability. If a
+timed-out send is confirmed by a durable message before lifecycle reconcile,
+the confirmation must carry a non-null exact `turnId`. The queue removes the
+uncertain delivery only after recording that barrier, and no later prompt may
+drain until canonical lifecycle contains the same turn in `settled` phase. A
+confirmation without an exact turn id leaves delivery uncertain and cannot
+authorize an inferred-idle resend.
+
 A pending submit confirmation deadline is not a queue-wait deadline. While the
 same `clientSubmitId` still has a queue-owned delivery that has not failed or
 entered uncertain delivery, expiry rolls the confirmation window forward

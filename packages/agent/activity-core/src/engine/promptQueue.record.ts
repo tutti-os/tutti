@@ -2,18 +2,11 @@ import type { PromptQueueRecord } from "./promptQueue.types.ts";
 
 export function emptyQueueRecord(
   workspaceId: string,
-  agentSessionId: string,
-  availability?: PromptQueueRecord["availability"]
+  agentSessionId: string
 ): PromptQueueRecord {
   return {
     agentSessionId,
-    availability: availability ?? {
-      activeTurnId: null,
-      lastTurnId: null,
-      lastTurnVersion: null,
-      sessionVersion: null,
-      state: "missing"
-    },
+    deliveryBarrierTurnId: null,
     failedPromptId: null,
     failureMessage: null,
     inFlight: null,
@@ -30,7 +23,8 @@ export function compactQueueRecord(
 ): PromptQueueRecord | null {
   return record.prompts.length === 0 &&
     !record.inFlight &&
-    !record.uncertainDelivery
+    !record.uncertainDelivery &&
+    !record.deliveryBarrierTurnId
     ? null
     : record;
 }

@@ -1,7 +1,5 @@
-import type {
-  PromptQueueState,
-  PromptQueueAvailability
-} from "./promptQueue.types.ts";
+import type { CanonicalSubmitAvailability } from "./sessionLifecycle.availability.ts";
+import type { PromptQueueState } from "./promptQueue.types.ts";
 
 export type PromptQueueSendNowStrategy =
   | "send_available"
@@ -17,6 +15,7 @@ export function resolveQueuedPromptSendNowStrategy(
   state: PromptQueueState,
   rawAgentSessionId: string,
   rawPromptId: string,
+  availability: CanonicalSubmitAvailability,
   capabilities: ActiveTurnDeliveryCapabilities | null | undefined
 ): PromptQueueSendNowStrategy | null {
   const agentSessionId = rawAgentSessionId.trim();
@@ -24,23 +23,20 @@ export function resolveQueuedPromptSendNowStrategy(
   if (!canRequestQueuedPromptSendNow(state, agentSessionId, promptId)) {
     return null;
   }
-  return resolvePromptSendNowStrategy(state, agentSessionId, capabilities);
+  return resolvePromptSendNowStrategy(availability, capabilities);
 }
 
 export function resolvePromptSendNowStrategy(
-  state: PromptQueueState,
-  rawAgentSessionId: string,
+  availability: CanonicalSubmitAvailability,
   capabilities: ActiveTurnDeliveryCapabilities | null | undefined
 ): PromptQueueSendNowStrategy | null {
-  const agentSessionId = rawAgentSessionId.trim();
-  const availability = resolveAvailability(state, agentSessionId);
-  if (!availability) {
-    return null;
-  }
   if (availability.state === "available") {
     return "send_available";
   }
-  if (availability.state !== "blocked" || !availability.activeTurnId) {
+  if (
+    availability.state !== "blocked" ||
+    availability.reason !== "active_turn"
+  ) {
     return null;
   }
   if (capabilities?.activeTurnGuidance === true) {
@@ -63,15 +59,5 @@ export function canRequestQueuedPromptSendNow(
     current.inFlight?.promptId !== promptId &&
     current.uncertainDelivery?.promptId !== promptId &&
     current.prompts.some((prompt) => prompt.id === promptId)
-  );
-}
-
-function resolveAvailability(
-  state: PromptQueueState,
-  agentSessionId: string
-): PromptQueueAvailability | undefined {
-  return (
-    state.recordsBySessionId[agentSessionId]?.availability ??
-    state.availabilityBySessionId[agentSessionId]
   );
 }

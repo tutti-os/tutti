@@ -8,17 +8,21 @@ test("workspace queued-prompt selector hides prompt queue storage shape", () => 
   const initial = createInitialAgentSessionEngineState();
   assert.equal(selectEngineHasQueuedPrompts(initial), false);
 
-  const queued = promptQueueReducer(initial.promptQueue, {
-    type: "queue/enqueued",
-    agentSessionId: "session-1",
-    workspaceId: "workspace-1",
-    prompt: {
-      id: "prompt-1",
-      content: [{ type: "text", text: "Review" }],
-      displayPrompt: "Review",
-      createdAtUnixMs: 1
-    }
-  });
+  const queued = promptQueueReducer(
+    initial.promptQueue,
+    {
+      type: "queue/enqueued",
+      agentSessionId: "session-1",
+      workspaceId: "workspace-1",
+      prompt: {
+        id: "prompt-1",
+        content: [{ type: "text", text: "Review" }],
+        displayPrompt: "Review",
+        createdAtUnixMs: 1
+      }
+    },
+    { deletedSessionIds: {}, lifecycle: initial.sessionLifecycle }
+  );
   assert.equal(
     selectEngineHasQueuedPrompts({ ...initial, promptQueue: queued.state }),
     true

@@ -172,7 +172,6 @@ export {
 } from "./engine/promptQueue.selectors.ts";
 export type {
   EngineQueuedPrompt,
-  PromptQueueAvailability,
   PromptQueueInFlightCommand,
   PromptQueueRecord,
   PromptQueueSendCommand,
