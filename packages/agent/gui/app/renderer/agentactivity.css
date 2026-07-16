@@ -9187,7 +9187,7 @@ html[data-theme="light"] [data-message-center-item-id].agent-gui-edge-glow {
 }
 
 .agent-gui-node__provider-rail-config-footer {
-  padding-bottom: 8px;
+  padding-bottom: 4px;
 }
 
 .agent-gui-node__provider-rail-config-footer:last-child {
@@ -9732,8 +9732,8 @@ html[data-theme="light"] [data-message-center-item-id].agent-gui-edge-glow {
   pointer-events: none;
   transform: translate(-50%, -50%) rotate(-30deg) scale(1.9);
   transform-origin: center;
-  animation: agent-gui-vinyl-player-beta-slap 420ms cubic-bezier(0.34, 1.56, 0.64, 1)
-    both;
+  animation: agent-gui-vinyl-player-beta-slap 420ms
+    cubic-bezier(0.34, 1.56, 0.64, 1) both;
 }
 
 /* Sticker "slap": drops in oversized and transparent, then snaps down to size
