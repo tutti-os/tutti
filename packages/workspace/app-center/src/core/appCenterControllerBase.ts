@@ -11,6 +11,7 @@ import {
 import {
   createWorkspaceAppCenterStoreState,
   type WorkspaceAppCenterControllerDependencies,
+  type WorkspaceAppCenterOperationCursor,
   type WorkspaceAppCenterOperationDetails
 } from "./appCenterControllerTypes.ts";
 
@@ -34,9 +35,17 @@ export abstract class WorkspaceAppCenterControllerBase {
   protected pendingFactoryPublishKeys = new Set<string>();
   protected pendingInstallKeys = new Set<string>();
   protected pendingInstallReportKeys = new Set<string>();
+  protected appOperationCursors = new Map<
+    string,
+    WorkspaceAppCenterOperationCursor
+  >();
   protected appLoadSequence = 0;
   protected factoryLoadSequence = 0;
   protected pollingWorkspaceId: string | null = null;
+
+  protected get usesPollingRefresh(): boolean {
+    return (this.dependencies.refreshPolicy ?? "poll") === "poll";
+  }
 
   constructor(dependencies: WorkspaceAppCenterControllerDependencies) {
     this.dependencies = dependencies;
@@ -76,7 +85,20 @@ export abstract class WorkspaceAppCenterControllerBase {
     this.clearInstallRefreshTimers();
     this.clearActiveInstallRefreshTimers();
     this.clearTransientRuntimeRefreshTimer();
+    this.appOperationCursors.clear();
     this.pollingWorkspaceId = normalizedWorkspaceId;
+  }
+
+  /**
+   * Resets only event ordering state while keeping in-flight install lifecycle
+   * state intact. Event-driven hosts should pause delivery from the old stream,
+   * call this method, apply a fresh snapshot, and then resume event delivery.
+   */
+  resetWorkspaceEventCursors(workspaceId: string): void {
+    if (this.pollingWorkspaceId !== workspaceId.trim()) {
+      return;
+    }
+    this.appOperationCursors.clear();
   }
 
   endWorkspacePolling(workspaceId: string): void {
@@ -88,6 +110,7 @@ export abstract class WorkspaceAppCenterControllerBase {
     this.clearInstallRefreshTimers();
     this.clearActiveInstallRefreshTimers();
     this.clearTransientRuntimeRefreshTimer();
+    this.appOperationCursors.clear();
   }
 
   getViewState(
@@ -160,6 +183,15 @@ export abstract class WorkspaceAppCenterControllerBase {
     }
     clearTimeout(this.catalogRefreshTimer);
     this.catalogRefreshTimer = null;
+  }
+
+  protected clearOperationCursorsOnWorkspaceChange(workspaceId: string): void {
+    if (
+      this.store.workspaceId !== null &&
+      this.store.workspaceId !== workspaceId
+    ) {
+      this.appOperationCursors.clear();
+    }
   }
 
   protected clearInstallRefreshTimer(workspaceId: string, appId: string): void {

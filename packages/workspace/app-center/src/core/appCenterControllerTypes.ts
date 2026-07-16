@@ -11,6 +11,18 @@ export const defaultInstallRefreshDelayMs = 750;
 export const defaultTransientRuntimeRefreshDelayMs = 750;
 export const defaultTransientRuntimeRefreshMaxAttempts = 40;
 
+export type WorkspaceAppCenterRefreshPolicy = "poll" | "event";
+
+/**
+ * Monotonic identity for one app operation event stream. A new operation must
+ * advance desiredGeneration; events within it must advance sequence.
+ */
+export interface WorkspaceAppCenterOperationCursor {
+  readonly desiredGeneration: number;
+  readonly operationId: string;
+  readonly sequence: number;
+}
+
 export type WorkspaceAppCenterOperation =
   | "app_center.refresh"
   | "app_center.refresh_catalog"
@@ -124,6 +136,8 @@ export interface WorkspaceAppCenterControllerDependencies {
   hooks?: WorkspaceAppCenterControllerHooks;
   installRefreshDelayMs?: number;
   now?: () => number;
+  /** Defaults to `poll`. Event mode relies on host-pushed app updates. */
+  refreshPolicy?: WorkspaceAppCenterRefreshPolicy;
   store?: WorkspaceAppCenterStoreState;
   transientRuntimeRefreshDelayMs?: number;
   transientRuntimeRefreshMaxAttempts?: number;

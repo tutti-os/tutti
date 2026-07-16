@@ -4,9 +4,11 @@ export {
   createWorkspaceAppCenterStoreState,
   type WorkspaceAppCenterControllerDependencies,
   type WorkspaceAppCenterControllerHooks,
+  type WorkspaceAppCenterOperationCursor,
   type WorkspaceAppCenterOperation,
   type WorkspaceAppCenterOperationDetails,
   type WorkspaceAppCenterRefreshDiscard,
+  type WorkspaceAppCenterRefreshPolicy,
   type WorkspaceAppCenterUiAction
 } from "./appCenterController.ts";
 export {

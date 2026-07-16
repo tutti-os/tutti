@@ -18,9 +18,11 @@ export {
   createWorkspaceAppCenterStoreState,
   type WorkspaceAppCenterControllerDependencies,
   type WorkspaceAppCenterControllerHooks,
+  type WorkspaceAppCenterOperationCursor,
   type WorkspaceAppCenterOperation,
   type WorkspaceAppCenterOperationDetails,
   type WorkspaceAppCenterRefreshDiscard,
+  type WorkspaceAppCenterRefreshPolicy,
   type WorkspaceAppCenterUiAction
 } from "./appCenterControllerTypes.ts";
 
@@ -342,6 +344,7 @@ export class WorkspaceAppCenterController extends WorkspaceAppCenterControllerSt
     const appSequence = ++this.appLoadSequence;
     const factorySequence = ++this.factoryLoadSequence;
     const wasIdle = this.store.loadStatus === "idle";
+    this.clearOperationCursorsOnWorkspaceChange(normalizedWorkspaceId);
     this.store.workspaceId = normalizedWorkspaceId;
     this.store.error = null;
     if (wasIdle) {

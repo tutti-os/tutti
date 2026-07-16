@@ -19,8 +19,10 @@ import {
   defaultCatalogLoadingRefreshDelayMs,
   defaultInstallRefreshDelayMs,
   defaultTransientRuntimeRefreshDelayMs,
-  defaultTransientRuntimeRefreshMaxAttempts
+  defaultTransientRuntimeRefreshMaxAttempts,
+  type WorkspaceAppCenterOperationCursor
 } from "./appCenterControllerTypes.ts";
+import { acceptWorkspaceAppOperationCursor } from "./appOperationCursor.ts";
 import { reconcilePendingInstallProgress } from "./installProgressMerge.ts";
 
 export abstract class WorkspaceAppCenterControllerState extends WorkspaceAppCenterControllerBase {
@@ -30,6 +32,7 @@ export abstract class WorkspaceAppCenterControllerState extends WorkspaceAppCent
     workspaceId: string,
     snapshot: WorkspaceAppCenterSnapshot
   ): void {
+    this.clearOperationCursorsOnWorkspaceChange(workspaceId);
     const nextApps = sortWorkspaceAppCenterApps(
       this.mergeSnapshotAppsByStateRevision(
         workspaceId,
@@ -86,6 +89,7 @@ export abstract class WorkspaceAppCenterControllerState extends WorkspaceAppCent
     workspaceId: string,
     snapshot: WorkspaceAppFactorySnapshot
   ): void {
+    this.clearOperationCursorsOnWorkspaceChange(workspaceId);
     if (this.store.workspaceId !== workspaceId) {
       this.store.workspaceId = workspaceId;
     }
@@ -106,10 +110,16 @@ export abstract class WorkspaceAppCenterControllerState extends WorkspaceAppCent
   applyAppUpdate(input: {
     app: WorkspaceAppCenterApp;
     failureReason?: string | null;
+    operationCursor?: WorkspaceAppCenterOperationCursor | null;
     startedAtUnixMs?: number | null;
     workspaceId: string;
   }): void {
-    if (this.store.workspaceId !== input.workspaceId) {
+    if (
+      this.store.workspaceId !== input.workspaceId ||
+      (!this.usesPollingRefresh &&
+        (this.pollingWorkspaceId !== input.workspaceId ||
+          input.operationCursor == null))
+    ) {
       return;
     }
     const currentApp = this.store.apps.find(
@@ -118,7 +128,16 @@ export abstract class WorkspaceAppCenterControllerState extends WorkspaceAppCent
     if (!currentApp) {
       return;
     }
+    const operationAdvance = acceptWorkspaceAppOperationCursor(
+      this.appOperationCursors,
+      appRuntimeKey(input.workspaceId, input.app.appId),
+      input.operationCursor
+    );
+    if (operationAdvance === false) {
+      return;
+    }
     const acceptedRuntimeTransition =
+      operationAdvance === true ||
       input.app.stateRevision > currentApp.stateRevision;
     if (
       acceptedRuntimeTransition &&
@@ -144,14 +163,18 @@ export abstract class WorkspaceAppCenterControllerState extends WorkspaceAppCent
       });
     }
     this.applyAppSnapshot(input.workspaceId, input.app, {
-      installFailureReason: input.failureReason ?? null
+      installFailureReason: input.failureReason ?? null,
+      operationAdvance: operationAdvance === true
     });
   }
 
   applyAppSnapshot(
     workspaceId: string,
     nextApp: WorkspaceAppCenterApp,
-    options: { installFailureReason?: string | null } = {}
+    options: {
+      installFailureReason?: string | null;
+      operationAdvance?: boolean;
+    } = {}
   ): void {
     if (this.store.workspaceId !== workspaceId) {
       return;
@@ -161,6 +184,7 @@ export abstract class WorkspaceAppCenterControllerState extends WorkspaceAppCent
     );
     if (
       currentApp &&
+      options.operationAdvance !== true &&
       nextApp.stateRevision <= currentApp.stateRevision &&
       !this.shouldAcceptRuntimeSnapshot(currentApp, nextApp)
     ) {
@@ -241,6 +265,9 @@ export abstract class WorkspaceAppCenterControllerState extends WorkspaceAppCent
   }
 
   protected scheduleInstallRefresh(workspaceId: string, appId: string): void {
+    if (!this.usesPollingRefresh) {
+      return;
+    }
     const key = appRuntimeKey(workspaceId, appId);
     if (this.installRefreshTimers.has(key)) {
       return;
@@ -394,10 +421,17 @@ export abstract class WorkspaceAppCenterControllerState extends WorkspaceAppCent
     );
     return snapshotApps.map((snapshotApp) => {
       const currentApp = currentAppsById.get(snapshotApp.appId);
+      const installKey = appRuntimeKey(workspaceId, snapshotApp.appId);
+      if (
+        currentApp &&
+        !this.usesPollingRefresh &&
+        this.appOperationCursors.has(installKey)
+      ) {
+        return mergeWorkspaceAppCatalogFields(currentApp, snapshotApp);
+      }
       if (!currentApp || currentApp.stateRevision < snapshotApp.stateRevision) {
         return snapshotApp;
       }
-      const installKey = appRuntimeKey(workspaceId, snapshotApp.appId);
       if (this.pendingInstallKeys.has(installKey)) {
         const pendingSettled = this.isPendingInstallSettled(
           installKey,
@@ -476,7 +510,7 @@ export abstract class WorkspaceAppCenterControllerState extends WorkspaceAppCent
     workspaceId: string,
     hasTransientRuntimeApps: boolean
   ): void {
-    if (this.pollingWorkspaceId !== workspaceId) {
+    if (!this.usesPollingRefresh || this.pollingWorkspaceId !== workspaceId) {
       return;
     }
     if (!hasTransientRuntimeApps) {
@@ -648,7 +682,7 @@ export abstract class WorkspaceAppCenterControllerState extends WorkspaceAppCent
     workspaceId: string,
     apps: readonly WorkspaceAppCenterApp[]
   ): void {
-    if (this.pollingWorkspaceId !== workspaceId) {
+    if (!this.usesPollingRefresh || this.pollingWorkspaceId !== workspaceId) {
       return;
     }
     for (const app of apps) {
@@ -675,6 +709,9 @@ export abstract class WorkspaceAppCenterControllerState extends WorkspaceAppCent
     workspaceId: string,
     appId: string
   ): void {
+    if (!this.usesPollingRefresh) {
+      return;
+    }
     const key = appRuntimeKey(workspaceId, appId);
     if (this.activeInstallRefreshTimers.has(key)) {
       return;

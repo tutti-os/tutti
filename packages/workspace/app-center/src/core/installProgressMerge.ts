@@ -37,6 +37,13 @@ export function reconcilePendingInstallProgress(input: {
     return clearDownloadBytesUnlessDownloading(progress);
   }
 
+  if (progress.indeterminate) {
+    return clearDownloadBytesUnlessDownloading({
+      ...progress,
+      userPhase: runtimePhase
+    });
+  }
+
   return advanceInstallProgressToPhase(progress, runtimePhase);
 }
 
@@ -90,16 +97,13 @@ function advanceInstallProgressToPhase(
 function createProgressForRuntimePhase(
   userPhase: WorkspaceAppInstallUserPhase
 ): WorkspaceAppInstallProgress {
-  return advanceInstallProgressToPhase(
-    {
-      downloadedBytes: null,
-      indeterminate: false,
-      overallPercent: 0,
-      totalBytes: null,
-      userPhase: "downloading"
-    },
+  return {
+    downloadedBytes: null,
+    indeterminate: true,
+    overallPercent: 0,
+    totalBytes: null,
     userPhase
-  );
+  };
 }
 
 function clearDownloadBytesUnlessDownloading(

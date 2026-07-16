@@ -52,7 +52,28 @@ test("reconcilePendingInstallProgress creates progress from runtime phase when n
   });
 
   assert.equal(progress?.userPhase, "starting");
-  assert.equal(progress?.overallPercent, 96);
+  assert.equal(progress?.overallPercent, 0);
+  assert.equal(progress?.indeterminate, true);
+  assert.equal(progress?.downloadedBytes, null);
+  assert.equal(progress?.totalBytes, null);
+});
+
+test("reconcilePendingInstallProgress never invents a percentage for indeterminate progress", () => {
+  const progress = reconcilePendingInstallProgress({
+    incoming: null,
+    previous: {
+      downloadedBytes: 1024,
+      indeterminate: true,
+      overallPercent: 40,
+      totalBytes: 2048,
+      userPhase: "downloading"
+    },
+    runtimeStatus: "starting"
+  });
+
+  assert.equal(progress?.userPhase, "starting");
+  assert.equal(progress?.overallPercent, 40);
+  assert.equal(progress?.indeterminate, true);
   assert.equal(progress?.downloadedBytes, null);
   assert.equal(progress?.totalBytes, null);
 });

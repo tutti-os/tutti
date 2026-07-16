@@ -583,6 +583,399 @@ test("WorkspaceAppCenterController preserves install progress during pending ins
   });
 });
 
+test("WorkspaceAppCenterController event refresh policy does not start per-app polling", async () => {
+  let listCalls = 0;
+  const controller = createWorkspaceAppCenterController({
+    formatError,
+    gateway: createGateway({
+      async installWorkspaceApp() {
+        return createSnapshot({
+          apps: [
+            createApp({
+              appId: "app-1",
+              installed: false,
+              runtimeStatus: "installing",
+              stateRevision: 2
+            })
+          ]
+        });
+      },
+      async listWorkspaceApps() {
+        listCalls += 1;
+        return createSnapshot();
+      }
+    }),
+    installRefreshDelayMs: 1,
+    refreshPolicy: "event"
+  });
+  controller.applySnapshot(
+    "workspace-1",
+    createSnapshot({
+      apps: [createApp({ installed: false, runtimeStatus: "idle" })]
+    })
+  );
+  controller.beginWorkspacePolling("workspace-1");
+
+  await controller.installApp({ appId: "app-1", workspaceId: "workspace-1" });
+  await new Promise((resolve) => setTimeout(resolve, 20));
+
+  assert.equal(listCalls, 0);
+  assert.equal(controller.store.apps[0]?.runtimeStatus, "installing");
+  controller.endWorkspacePolling("workspace-1");
+});
+
+test("WorkspaceAppCenterController event refresh policy disables active and transient refresh timers", async () => {
+  let listCalls = 0;
+  const controller = createWorkspaceAppCenterController({
+    formatError,
+    gateway: createGateway({
+      async listWorkspaceApps() {
+        listCalls += 1;
+        return createSnapshot();
+      }
+    }),
+    installRefreshDelayMs: 1,
+    refreshPolicy: "event",
+    transientRuntimeRefreshDelayMs: 1
+  });
+  controller.beginWorkspacePolling("workspace-1");
+  controller.applySnapshot(
+    "workspace-1",
+    createSnapshot({
+      apps: [
+        createApp({
+          installProgress: {
+            downloadedBytes: null,
+            indeterminate: true,
+            overallPercent: 0,
+            totalBytes: null,
+            userPhase: "starting"
+          },
+          runtimeStatus: "starting"
+        })
+      ]
+    })
+  );
+
+  await new Promise((resolve) => setTimeout(resolve, 20));
+
+  assert.equal(listCalls, 0);
+  controller.endWorkspacePolling("workspace-1");
+});
+
+test("WorkspaceAppCenterController orders pushed updates by generation and sequence", () => {
+  const controller = createWorkspaceAppCenterController({
+    formatError,
+    gateway: createGateway(),
+    refreshPolicy: "event"
+  });
+  controller.beginWorkspacePolling("workspace-1");
+  controller.applySnapshot(
+    "workspace-1",
+    createSnapshot({
+      apps: [createApp({ runtimeStatus: "idle", stateRevision: 5 })]
+    })
+  );
+
+  controller.applyAppUpdate({
+    app: createApp({ runtimeStatus: "starting", stateRevision: 5 }),
+    operationCursor: {
+      desiredGeneration: 1,
+      operationId: "install-1",
+      sequence: 2
+    },
+    workspaceId: "workspace-1"
+  });
+  controller.applyAppUpdate({
+    app: createApp({ runtimeStatus: "failed", stateRevision: 99 }),
+    operationCursor: {
+      desiredGeneration: 1,
+      operationId: "install-1",
+      sequence: 1
+    },
+    workspaceId: "workspace-1"
+  });
+  controller.applyAppUpdate({
+    app: createApp({ runtimeStatus: "failed", stateRevision: 100 }),
+    operationCursor: {
+      desiredGeneration: 1,
+      operationId: "different-operation",
+      sequence: 99
+    },
+    workspaceId: "workspace-1"
+  });
+
+  assert.equal(controller.store.apps[0]?.runtimeStatus, "starting");
+
+  controller.applyAppUpdate({
+    app: createApp({ runtimeStatus: "running", stateRevision: 1 }),
+    operationCursor: {
+      desiredGeneration: 2,
+      operationId: "install-2",
+      sequence: 0
+    },
+    workspaceId: "workspace-1"
+  });
+
+  assert.equal(controller.store.apps[0]?.runtimeStatus, "running");
+  controller.applyAppUpdate({
+    app: createApp({ runtimeStatus: "failed", stateRevision: 100 }),
+    operationCursor: {
+      desiredGeneration: 3,
+      operationId: "install-2",
+      sequence: 0
+    },
+    workspaceId: "workspace-1"
+  });
+  assert.equal(controller.store.apps[0]?.runtimeStatus, "running");
+  controller.endWorkspacePolling("workspace-1");
+});
+
+test("WorkspaceAppCenterController event policy rejects unordered app updates", () => {
+  const controller = createWorkspaceAppCenterController({
+    formatError,
+    gateway: createGateway(),
+    refreshPolicy: "event"
+  });
+  controller.beginWorkspacePolling("workspace-1");
+  controller.applySnapshot(
+    "workspace-1",
+    createSnapshot({ apps: [createApp({ stateRevision: 1 })] })
+  );
+
+  controller.applyAppUpdate({
+    app: createApp({ runtimeStatus: "failed", stateRevision: 100 }),
+    workspaceId: "workspace-1"
+  });
+
+  assert.equal(controller.store.apps[0]?.runtimeStatus, "idle");
+  controller.endWorkspacePolling("workspace-1");
+});
+
+test("WorkspaceAppCenterController fences snapshots after ordered event updates", () => {
+  const controller = createWorkspaceAppCenterController({
+    formatError,
+    gateway: createGateway(),
+    refreshPolicy: "event"
+  });
+  controller.beginWorkspacePolling("workspace-1");
+  controller.applySnapshot(
+    "workspace-1",
+    createSnapshot({
+      apps: [
+        createApp({
+          availableVersion: "1.1.0",
+          runtimeStatus: "idle",
+          stateRevision: 5
+        })
+      ]
+    })
+  );
+  controller.applyAppUpdate({
+    app: createApp({ runtimeStatus: "running", stateRevision: 1 }),
+    operationCursor: {
+      desiredGeneration: 2,
+      operationId: "install-2",
+      sequence: 2
+    },
+    workspaceId: "workspace-1"
+  });
+
+  controller.applySnapshot(
+    "workspace-1",
+    createSnapshot({
+      apps: [
+        createApp({
+          availableVersion: "1.2.0",
+          runtimeStatus: "starting",
+          stateRevision: 6
+        })
+      ]
+    })
+  );
+
+  assert.equal(controller.store.apps[0]?.runtimeStatus, "running");
+  assert.equal(controller.store.apps[0]?.stateRevision, 1);
+  assert.equal(controller.store.apps[0]?.availableVersion, "1.2.0");
+
+  controller.resetWorkspaceEventCursors("workspace-1");
+  controller.applySnapshot(
+    "workspace-1",
+    createSnapshot({
+      apps: [createApp({ runtimeStatus: "starting", stateRevision: 6 })]
+    })
+  );
+
+  assert.equal(controller.store.apps[0]?.runtimeStatus, "starting");
+  assert.equal(controller.store.apps[0]?.stateRevision, 6);
+  controller.endWorkspacePolling("workspace-1");
+});
+
+test("WorkspaceAppCenterController clears operation cursors on workspace switch and rejects updates after polling end", () => {
+  const controller = createWorkspaceAppCenterController({
+    formatError,
+    gateway: createGateway(),
+    refreshPolicy: "event"
+  });
+  controller.beginWorkspacePolling("workspace-1");
+  controller.applySnapshot(
+    "workspace-1",
+    createSnapshot({ apps: [createApp({ stateRevision: 5 })] })
+  );
+  controller.applyAppUpdate({
+    app: createApp({ runtimeStatus: "starting", stateRevision: 1 }),
+    operationCursor: {
+      desiredGeneration: 2,
+      operationId: "workspace-1-operation",
+      sequence: 1
+    },
+    workspaceId: "workspace-1"
+  });
+
+  controller.applySnapshot(
+    "workspace-2",
+    createSnapshot({ apps: [createApp({ stateRevision: 5 })] })
+  );
+  controller.applySnapshot(
+    "workspace-1",
+    createSnapshot({ apps: [createApp({ stateRevision: 5 })] })
+  );
+  controller.applyAppUpdate({
+    app: createApp({ runtimeStatus: "preparing", stateRevision: 1 }),
+    operationCursor: {
+      desiredGeneration: 1,
+      operationId: "after-switch",
+      sequence: 0
+    },
+    workspaceId: "workspace-1"
+  });
+  assert.equal(controller.store.apps[0]?.runtimeStatus, "preparing");
+
+  controller.endWorkspacePolling("workspace-1");
+  controller.applyAppUpdate({
+    app: createApp({ runtimeStatus: "running", stateRevision: 1 }),
+    operationCursor: {
+      desiredGeneration: 1,
+      operationId: "after-end",
+      sequence: 0
+    },
+    workspaceId: "workspace-1"
+  });
+  assert.equal(controller.store.apps[0]?.runtimeStatus, "preparing");
+});
+
+test("WorkspaceAppCenterController reconnect reset preserves pending install lifecycle", async () => {
+  const installedApps: WorkspaceAppCenterApp[] = [];
+  const installingApp = createApp({
+    installed: false,
+    installProgress: {
+      downloadedBytes: null,
+      indeterminate: true,
+      overallPercent: 0,
+      totalBytes: null,
+      userPhase: "downloading"
+    },
+    runtimeStatus: "installing",
+    stateRevision: 2
+  });
+  const controller = createWorkspaceAppCenterController({
+    formatError,
+    gateway: createGateway({
+      async installWorkspaceApp() {
+        return createSnapshot({ apps: [installingApp] });
+      }
+    }),
+    hooks: {
+      onAppInstalled(app) {
+        installedApps.push(app);
+      }
+    },
+    refreshPolicy: "event"
+  });
+  controller.beginWorkspacePolling("workspace-1");
+  controller.applySnapshot(
+    "workspace-1",
+    createSnapshot({
+      apps: [createApp({ installed: false, runtimeStatus: "idle" })]
+    })
+  );
+
+  await controller.installApp({ appId: "app-1", workspaceId: "workspace-1" });
+  controller.applyAppUpdate({
+    app: createApp({
+      installed: false,
+      runtimeStatus: "installing",
+      stateRevision: 3
+    }),
+    operationCursor: {
+      desiredGeneration: 5,
+      operationId: "old-stream-install",
+      sequence: 4
+    },
+    workspaceId: "workspace-1"
+  });
+
+  controller.resetWorkspaceEventCursors("workspace-1");
+  controller.applySnapshot(
+    "workspace-1",
+    createSnapshot({ apps: [installingApp] })
+  );
+  controller.applyAppUpdate({
+    app: createApp({ runtimeStatus: "running", stateRevision: 4 }),
+    operationCursor: {
+      desiredGeneration: 1,
+      operationId: "replacement-stream-install",
+      sequence: 0
+    },
+    workspaceId: "workspace-1"
+  });
+
+  assert.equal(controller.store.apps[0]?.runtimeStatus, "running");
+  assert.equal(installedApps.length, 1);
+  controller.endWorkspacePolling("workspace-1");
+});
+
+test("WorkspaceAppCenterController clears cursors before refresh switches workspace", async () => {
+  const controller = createWorkspaceAppCenterController({
+    formatError,
+    gateway: createGateway({
+      async listWorkspaceApps() {
+        return createSnapshot({ apps: [createApp()] });
+      }
+    }),
+    refreshPolicy: "event"
+  });
+  controller.beginWorkspacePolling("workspace-1");
+  controller.applySnapshot(
+    "workspace-1",
+    createSnapshot({ apps: [createApp()] })
+  );
+  controller.applyAppUpdate({
+    app: createApp({ runtimeStatus: "starting" }),
+    operationCursor: {
+      desiredGeneration: 2,
+      operationId: "before-switch",
+      sequence: 1
+    },
+    workspaceId: "workspace-1"
+  });
+
+  await controller.refresh("workspace-2");
+  await controller.refresh("workspace-1");
+  controller.applyAppUpdate({
+    app: createApp({ runtimeStatus: "running" }),
+    operationCursor: {
+      desiredGeneration: 1,
+      operationId: "after-switch",
+      sequence: 0
+    },
+    workspaceId: "workspace-1"
+  });
+
+  assert.equal(controller.store.apps[0]?.runtimeStatus, "running");
+  controller.endWorkspacePolling("workspace-1");
+});
+
 test("WorkspaceAppCenterController clears pending install when backend job disappears", async () => {
   let installCalls = 0;
   const installFailures: unknown[] = [];

@@ -39,6 +39,7 @@ import type {
 import { isCommunityRecommendedApp } from "../core/appCenterAppOrdering.ts";
 import type { AppCenterI18nRuntime } from "../i18n/appCenterI18n.ts";
 import { isTextOverflowing } from "./appCardTextOverflow.ts";
+import { getAppInstallProgressRingPresentation } from "./appInstallProgressRing.ts";
 
 export interface AppCenterFactoryProviderOption {
   readonly agentTargetId: string;
@@ -303,6 +304,10 @@ export const AppCard = memo(function AppCard({
             {showInstallProgressRing ? (
               <AppInstallProgressRing
                 ariaLabel={copy.t("status.installProgress.progressAria")}
+                ariaValueText={resolveInstallProgressPhaseLabel(
+                  copy,
+                  app.installProgress
+                )}
                 fallbackPercent={0}
                 progress={app.installProgress}
               />
@@ -1014,30 +1019,36 @@ function AppIcon({
 
 function AppInstallProgressRing({
   ariaLabel,
+  ariaValueText,
   fallbackPercent,
   progress
 }: {
   readonly ariaLabel: string;
+  readonly ariaValueText: string;
   readonly fallbackPercent: number;
   readonly progress: WorkspaceAppInstallProgress | null | undefined;
 }): ReactElement {
-  const percent =
-    progress == null
-      ? Math.max(0, Math.min(100, Math.round(fallbackPercent)))
-      : Math.max(0, Math.min(100, Math.round(progress.overallPercent)));
+  const presentation = getAppInstallProgressRingPresentation({
+    fallbackPercent,
+    indeterminateValueText: ariaValueText,
+    progress
+  });
 
   return (
     <span
       aria-label={ariaLabel}
       aria-valuemax={100}
       aria-valuemin={0}
-      aria-valuenow={percent}
+      aria-valuenow={presentation.ariaValueNow}
+      aria-valuetext={presentation.ariaValueText}
       className="relative inline-flex size-[14px] shrink-0 items-center justify-center rounded-full"
       role="progressbar"
-      style={{
-        background: `conic-gradient(var(--text-secondary) ${percent}%, color-mix(in srgb, var(--text-secondary) 24%, transparent) 0)`
-      }}
     >
+      <span
+        aria-hidden="true"
+        className={presentation.indicatorClassName}
+        style={presentation.indicatorStyle}
+      />
       <span
         aria-hidden="true"
         className="absolute inset-[2px] rounded-full bg-[var(--surface-panel)]"
@@ -1046,12 +1057,29 @@ function AppInstallProgressRing({
   );
 }
 
+function resolveInstallProgressPhaseLabel(
+  copy: AppCenterI18nRuntime,
+  progress: WorkspaceAppInstallProgress | null | undefined
+): string {
+  switch (progress?.userPhase) {
+    case "downloading":
+      return copy.t("status.installProgress.downloading");
+    case "starting":
+      return copy.t("status.installProgress.starting");
+    default:
+      return copy.t("status.installProgress.installing");
+  }
+}
+
 function resolveInstallProgressTitle(
   copy: AppCenterI18nRuntime,
   progress: WorkspaceAppInstallProgress,
   statusLabel: string
 ): string {
   const byteLabel = formatInstallProgressBytes(copy, progress);
+  if (progress.indeterminate) {
+    return byteLabel ? `${statusLabel} · ${byteLabel}` : statusLabel;
+  }
   const percent = Math.max(
     0,
     Math.min(100, Math.round(progress.overallPercent))
