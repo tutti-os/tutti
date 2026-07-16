@@ -598,6 +598,43 @@ func TestUpsertInteractionRejectsUnknownTurnWithoutManufacturingOne(t *testing.T
 	}
 }
 
+func TestUpsertInteractionRejectsNewPendingRequestOnSettledTurn(t *testing.T) {
+	t.Parallel()
+	store := openTestStore(t, testOptions(&staticProjectPaths{}))
+	ctx := context.Background()
+	seedTurnTestSession(t, store, "ws-1", "session-1")
+	if _, accepted, err := store.RecordTurnTransition(ctx, TurnTransition{
+		WorkspaceID: "ws-1", AgentSessionID: "session-1", TurnID: "turn-1",
+		Phase: TurnPhaseSettled, Outcome: TurnOutcomeCanceled, OccurredAtUnixMS: 100,
+	}); err != nil || !accepted {
+		t.Fatalf("settle turn accepted=%v error=%v", accepted, err)
+	}
+
+	interaction, result, err := store.UpsertInteraction(ctx, InteractionUpsert{
+		WorkspaceID: "ws-1", AgentSessionID: "session-1", RequestID: "late-request",
+		TurnID: "turn-1", Kind: InteractionKindApproval, Status: InteractionStatusPending,
+		OccurredAtUnixMS: 200,
+	})
+	if err != nil || result != InteractionTransitionAlreadyApplied || interaction.RequestID != "" {
+		t.Fatalf("late pending interaction=%#v result=%v error=%v", interaction, result, err)
+	}
+	interactions, err := store.ListSessionInteractions(ctx, ListSessionInteractionsInput{
+		WorkspaceID: "ws-1", AgentSessionID: "session-1",
+	})
+	if err != nil || len(interactions) != 0 {
+		t.Fatalf("settled-turn interactions=%#v error=%v, want none", interactions, err)
+	}
+
+	terminal := InteractionUpsert{
+		WorkspaceID: "ws-1", AgentSessionID: "session-1", RequestID: "terminal-request",
+		TurnID: "turn-1", Kind: InteractionKindApproval, Status: InteractionStatusSuperseded,
+		OccurredAtUnixMS: 300,
+	}
+	if stored, result, err := store.UpsertInteraction(ctx, terminal); err != nil || result != InteractionTransitionApplied || stored.Status != InteractionStatusSuperseded {
+		t.Fatalf("terminal interaction=%#v result=%v error=%v", stored, result, err)
+	}
+}
+
 func TestUpsertInteractionDistinguishesReplayFromConflictAndPreservesFirstTerminal(t *testing.T) {
 	t.Parallel()
 	store := openTestStore(t, testOptions(&staticProjectPaths{}))

@@ -1156,6 +1156,14 @@ the root turn active until that provider turn and every nested child turn are
 terminal. AgentGUI must not turn a synthetic provider id into another
 `WorkspaceAgentTurn`.
 
+That continuation rule applies only while the canonical root remains live. A
+user cancel revokes the provider execution generation before the root settles;
+late background completion from that generation cannot reopen the root, create
+a pending Interaction, or run another tool. A later explicit user prompt may
+resume the durable provider session, but it owns a new canonical turn and a new
+provider execution generation. AgentGUI continues to read canonical Turn and
+Interaction entities; it does not hide late provider actions after execution.
+
 Claude Goal status is presentation metadata, not a lifecycle authority. A
 complete Goal may coexist with a waiting canonical root and running child.
 AgentGUI derives its visible completion, composer availability, prompt queue,

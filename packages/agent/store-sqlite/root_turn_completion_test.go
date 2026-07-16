@@ -162,6 +162,21 @@ func TestLateRootProviderCompletionUpdatesProjectionWithoutChangingCanceledCanon
 	}); err != nil || !changed {
 		t.Fatalf("complete cancel changed=%v err=%v", changed, err)
 	}
+	lateStarted, err := store.ReportActivityState(ctx, ActivityStateReport{
+		Session: SessionStateReport{
+			WorkspaceID: "ws-1", AgentSessionID: "root", Kind: SessionKindRoot,
+			Provider: "codex", OccurredAtUnixMS: 35,
+		},
+		RootProviderTurn: &RootProviderTurnTransition{
+			WorkspaceID: "ws-1", RootAgentSessionID: "root", RootTurnID: "root-turn",
+			ProviderTurnID: "provider-turn-2", Phase: RootProviderTurnPhaseRunning,
+			OccurredAtUnixMS: 35,
+		},
+	})
+	if err != nil || lateStarted.RootTurnAccepted || lateStarted.RootTurn.Phase != TurnPhaseSettled ||
+		lateStarted.RootTurn.RootProviderTurnID != "provider-turn-1" {
+		t.Fatalf("late provider start = %#v error=%v, want settled root unchanged", lateStarted, err)
+	}
 	if _, err := store.ReportActivityState(ctx, ActivityStateReport{
 		Session: SessionStateReport{
 			WorkspaceID: "ws-1", AgentSessionID: "root", Kind: SessionKindRoot,

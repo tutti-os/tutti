@@ -964,6 +964,47 @@ Turn state, loading, cancel, restore, file-change undo, rail projection, event u
   [acp_turn_normalizer.go](../../../packages/agent/daemon/runtime/acp_turn_normalizer.go)
   [acp_turn_normalizer_snapshots.go](../../../packages/agent/daemon/runtime/acp_turn_normalizer_snapshots.go)
 
+### Claude Code starts another command after Stop
+
+- Symptom:
+  User stops a Claude Code turn after a Bash command becomes a background task.
+  The turn settles as canceled, but background completion is followed by a new
+  assistant continuation, approval, or Bash command such as `ls`. The new
+  provider id may be synthetic even though no sub-agent exists.
+- Quick checks:
+  Correlate provider session id, canonical root turn id, and sidecar events. If
+  a background `task_notification` arrives after `turn_canceled`, followed by
+  synthetic `turn_started` or `approval_requested`, inspect SDK Query lifetime.
+  Confirm the exported session has no child-session relation before classifying
+  the continuation as a sub-agent.
+- Root cause:
+  Claude Agent SDK `interrupt()` stops current query execution but does not
+  terminate the Query or all background resources. Reusing that Query lets a
+  late background completion trigger another root inference. Filtering the
+  synthetic event in AgentGUI or daemon persistence is too late: provider code
+  may already have requested or executed the tool, especially under
+  `bypassPermissions`.
+- Fix:
+  Treat each SDK Query as an execution generation. Cancel revokes the generation
+  before calling the SDK, rejects its pending interactions, awaits the interrupt
+  acknowledgment, then closes it in cleanup. Fence messages, hooks, and
+  `canUseTool` by generation identity. Give the next real user prompt a fresh
+  prompt queue and Query using `resume: providerSessionId`. Consume a canceled
+  generation's replayed terminal task notification and paired result before
+  they can settle the new canonical Turn. Keep normal non-canceled child
+  completion continuations enabled. As defense in depth, reject a new pending
+  Interaction whose canonical owning Turn is already settled.
+- Validation:
+  Run `pnpm --filter @tutti-os/claude-sdk-sidecar test` and
+  `go test ./packages/agent/store-sqlite -run 'TestUpsertInteractionRejectsNewPendingRequestOnSettledTurn'`.
+  Cover default and `bypassPermissions`, assert no synthetic turn, approval, or
+  tool permission after cancel, then assert a new real prompt resumes the same
+  provider session.
+- References:
+  [sessionRuntime.ts](../../../packages/agent/claude-sdk-sidecar/src/sessionRuntime.ts)
+  [queryGeneration.ts](../../../packages/agent/claude-sdk-sidecar/src/queryGeneration.ts)
+  [activity_turns.go](../../../packages/agent/store-sqlite/activity_turns.go)
+
 ### AgentGUI freezes when session history is large
 
 - Symptom:

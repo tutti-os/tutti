@@ -59,6 +59,7 @@ Turn state, loading, cancel, restore, rail projection, event updates, imports, a
 - [AgentActivity replication repeatedly rejects message batches as invalid](./agent-session-lifecycle.md#agentactivity-replication-repeatedly-rejects-message-batches-as-invalid)
 - [Remote agent cancel does not stop the local turn](./agent-session-lifecycle.md#remote-agent-cancel-does-not-stop-the-local-turn)
 - [Claude Code cancel leaves Write/tool cards stuck in progress](./agent-session-lifecycle.md#claude-code-cancel-leaves-writetool-cards-stuck-in-progress)
+- [Claude Code starts another command after Stop](./agent-session-lifecycle.md#claude-code-starts-another-command-after-stop)
 - [AgentGUI freezes when session history is large](./agent-session-lifecycle.md#agentgui-freezes-when-session-history-is-large)
 - [AgentGUI @ Sessions tab is empty](./agent-session-lifecycle.md#agentgui--sessions-tab-is-empty)
 - [Agent diagnostics flood while a turn is streaming](./agent-session-lifecycle.md#agent-diagnostics-flood-while-a-turn-is-streaming)

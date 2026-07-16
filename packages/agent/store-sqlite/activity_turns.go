@@ -504,10 +504,18 @@ func (*Store) upsertInteractionTx(
 		}
 	}
 
-	if _, hasTurn, err := getAgentTurnTx(ctx, tx, workspaceID, agentSessionID, turnID); err != nil {
+	ownerTurn, hasTurn, err := getAgentTurnTx(ctx, tx, workspaceID, agentSessionID, turnID)
+	if err != nil {
 		return Interaction{}, InteractionTransitionConflict, err
-	} else if !hasTurn {
+	}
+	if !hasTurn {
 		return Interaction{}, InteractionTransitionConflict, fmt.Errorf("workspace agent interaction references unknown turn %q", turnID)
+	}
+	if ownerTurn.Phase == TurnPhaseSettled && status == InteractionStatusPending {
+		// A settled turn cannot acquire new actionable work. Treat a late pending
+		// provider report as an idempotent stale transition; terminal reports may
+		// still be recorded for replay and reconciliation evidence.
+		return Interaction{}, InteractionTransitionAlreadyApplied, nil
 	}
 
 	inputJSON, err := marshalJSONMap(upsert.Input)

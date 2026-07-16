@@ -283,7 +283,10 @@ Interaction persistence returns `applied`, `already_applied`, or `conflict`.
 Exact replays and late transitions after the first terminal state are
 `already_applied`; a changed immutable identity (`kind`, `toolName`, `input`, or
 `metadata`) is a hard `conflict` for the whole state report. A terminal state
-never transitions back to `pending`.
+never transitions back to `pending`. A settled owning Turn cannot acquire a new
+pending Interaction: persistence treats that late provider report as an
+idempotent stale transition and stores no actionable row. Terminal reports may
+still be recorded for replay and reconciliation evidence.
 
 Protocol-v2 session responses expose `activeTurnId` (required and nullable),
 `pendingInteractions` (required and never null), independent `activeTurn` /
