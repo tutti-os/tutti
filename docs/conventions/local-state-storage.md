@@ -226,7 +226,7 @@ Tutti provider startup.
 - desktop main-process operational logging defaults to `<state-dir>/logs/tutti-desktop.log`
 - desktop-to-daemon listener publication defaults to `<state-dir>/run/tuttid.listener.json`
 - the bundled CLI discovers the managed daemon by reading `<state-dir>/run/tuttid.listener.json`
-- packaged desktop shim install or repair uses `<state-dir>/bin/tutti` as the user-level command path and points it at the packaged CLI binary
+- packaged desktop shim install or repair uses `<state-dir>/bin/tutti` as the canonical user-level command path and points it at the packaged CLI binary; on macOS and Linux, when the login-shell `PATH` already contains writable `~/.local/bin` or `~/bin`, desktop also maintains a Tutti-owned forwarding shim there without replacing third-party commands
 - local development scripts install or repair `<state-dir>/bin/tutti-dev` as the development CLI command and default it to `TUTTI_ENV=development`
 - workspace app package cache, per-installation runtime/data/log state, and
   app factory job working directories live under `<state-dir>/apps`

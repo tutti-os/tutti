@@ -30,6 +30,7 @@ const allowedEnvKeys = new Set([
   "no_proxy"
 ]);
 const allowedEnvPrefixes = ["MISE_"];
+let cachedUserShellEnv: Promise<Record<string, string>> | null = null;
 
 export function resolveUserShellEnvInvocation(
   platform: NodeJS.Platform = process.platform,
@@ -130,6 +131,15 @@ export function resolveUserShellEnv(
       resolve(parseAllowedUserShellEnv(Buffer.concat(chunks)));
     });
   });
+}
+
+export function resolveCachedUserShellEnv(): Promise<Record<string, string>> {
+  cachedUserShellEnv ??= resolveUserShellEnv();
+  return cachedUserShellEnv;
+}
+
+export function resetCachedUserShellEnvForTest(): void {
+  cachedUserShellEnv = null;
 }
 
 function isAllowedUserShellEnvKey(key: string): boolean {

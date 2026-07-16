@@ -208,6 +208,7 @@ test("createDesktopAppServices starts tuttid before creating host services", asy
       events.push("cli-shim:ensure");
       return {
         installed: false,
+        pathShimPath: "/tmp/bin/tutti",
         shimPath: "/tmp/tutti/bin/tutti"
       };
     }
@@ -273,6 +274,7 @@ test("createDesktopAppServices rejects when managed tuttid fails to start", asyn
           events.push("cli-shim:ensure");
           return {
             installed: false,
+            pathShimPath: null,
             shimPath: "/tmp/tutti/bin/tutti"
           };
         }
