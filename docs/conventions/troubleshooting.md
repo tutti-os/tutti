@@ -919,6 +919,35 @@ delimited by ---`, and the composer skill picker may show partial or
   [activity_projection.go](../../services/tuttid/service/agent/activity_projection.go)
   [WorkspaceChrome.tsx](../../apps/desktop/src/renderer/src/features/workspace-workbench/ui/WorkspaceChrome.tsx)
 
+### Async agent turn completes but session remains working
+
+- Symptom:
+  AgentGUI shows a completed assistant reply, but the conversation or composer
+  still looks busy. Activity patches may show a settled turn with available
+  submit state while the outer session phase/status remains `working`.
+- Quick checks:
+  Compare the terminal turn event path with the published/reported state patch.
+  Claude Code SDK uses the async runtime path, so inspect
+  `runtime.async_events_emitted` for the terminal event and verify the same
+  report has `CurrentPhase=idle`, `TurnLifecycle.Phase=settled`, nil active
+  turn id, and `SubmitAvailability.State=available`.
+- Root cause:
+  Async runtime events are emitted while the controller still has the active
+  turn in its map. If terminal events are passed through the same
+  `preserveActiveTurnStatus` guard used for non-terminal updates, the session
+  can be changed back to `working` before publish/report. The later in-memory
+  `finishTurn` cleanup does not publish another state patch, so the GUI and
+  durable activity can keep the stale busy phase.
+- Fix:
+  Treat async terminal events like sync terminal events before publishing: apply
+  turn lifecycle, reconcile finished-turn status, then publish/report the
+  terminal patch. Only preserve active-turn status for non-terminal async
+  updates.
+- Validation:
+  Add controller coverage for an `AsyncExecAdapter` terminal event and assert
+  the terminal report patch is idle, settled, and submit-available. Run the
+  focused controller tests and the runtime package tests.
+
 ### Claude SDK ExitPlanMode fails as interrupted after plan is ready
 
 - Symptom:

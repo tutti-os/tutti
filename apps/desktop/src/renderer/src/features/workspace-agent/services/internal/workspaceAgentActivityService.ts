@@ -1498,6 +1498,12 @@ export class WorkspaceAgentActivityService implements IWorkspaceAgentActivitySer
       return true;
     }
     const entry = this.controllerEntry(input.workspaceId);
+    const beforeSession =
+      entry.controller
+        .getSnapshot()
+        .sessions.find(
+          (session) => session.agentSessionId === input.agentSessionId
+        ) ?? null;
     const result = entry.controller.applyActivityUpdatedEvent({
       agentSessionId: input.agentSessionId,
       data: input.data,
@@ -1509,19 +1515,40 @@ export class WorkspaceAgentActivityService implements IWorkspaceAgentActivitySer
         agentSessionId: input.agentSessionId,
         traceEvent: "inline.not_applied",
         workspaceId: input.workspaceId,
-        fields: { eventType: input.eventType }
+        fields: {
+          beforeSession:
+            agentActivitySessionReconcileDiagnosticDetails(beforeSession),
+          dataSummary: agentActivityUpdateDataReconcileDiagnosticDetails(
+            input.data
+          ),
+          eventType: input.eventType
+        }
       });
       return false;
     }
+    const afterSession =
+      entry.controller
+        .getSnapshot()
+        .sessions.find(
+          (session) => session.agentSessionId === input.agentSessionId
+        ) ?? null;
     this.reportReconcileTrace({
       agentSessionId: input.agentSessionId,
       traceEvent: "inline.applied",
       workspaceId: input.workspaceId,
       fields: {
+        afterSession:
+          agentActivitySessionReconcileDiagnosticDetails(afterSession),
+        beforeSession:
+          agentActivitySessionReconcileDiagnosticDetails(beforeSession),
+        dataSummary: agentActivityUpdateDataReconcileDiagnosticDetails(
+          input.data
+        ),
         eventType: input.eventType,
         incomingSession: agentActivitySessionReconcileDiagnosticDetails(
           result.session
         ),
+        messageUpdateCount: result.messages.length,
         statePatch: agentActivityStatePatchReconcileDiagnosticDetails(
           result.statePatch
         )
@@ -1636,6 +1663,24 @@ function agentActivityStatePatchReconcileDiagnosticDetails(
     turnPhase: patch.turn?.phase ?? null,
     turnSubmitAvailabilityState: patch.turn?.submitAvailability?.state ?? null,
     updatedAtUnixMs: patch.occurredAtUnixMs ?? null
+  };
+}
+
+function agentActivityUpdateDataReconcileDiagnosticDetails(
+  data: unknown
+): Record<string, unknown> {
+  const source = recordValue(data);
+  const runtimeContext = recordValue(source?.runtimeContext);
+  return {
+    hasCurrentPhase: source?.currentPhase !== undefined,
+    hasInlineMessages: hasInlineMessagesData(data),
+    hasLifecycleStatus: source?.lifecycleStatus !== undefined,
+    hasRuntimeContext: runtimeContext !== null,
+    hasRuntimeContextUsage: recordValue(runtimeContext?.usage) !== null,
+    hasSubmitAvailability: source?.submitAvailability !== undefined,
+    hasTurn: source?.turn !== undefined,
+    inlineMessageCount: inlineMessagesFromActivityUpdateData(data).length,
+    isTerminalMessageUpdate: isTerminalActivityMessageUpdate(data)
   };
 }
 

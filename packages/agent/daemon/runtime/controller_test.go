@@ -2861,7 +2861,8 @@ func TestControllerExecUsesAsyncAdapterAndFinalizesFromTerminalEvent(t *testing.
 	t.Parallel()
 
 	adapter := newAsyncExecTestAdapter()
-	controller := NewController([]Adapter{adapter}, nil)
+	reporter := &recordingReporter{}
+	controller := NewController([]Adapter{adapter}, reporter)
 	started, err := controller.Start(context.Background(), StartInput{
 		RoomID:         "room-1",
 		AgentSessionID: "agent-session-1",
@@ -2871,11 +2872,12 @@ func TestControllerExecUsesAsyncAdapterAndFinalizesFromTerminalEvent(t *testing.
 	if err != nil {
 		t.Fatalf("Start: %v", err)
 	}
-	if _, err := controller.Exec(context.Background(), ExecInput{
+	execResult, err := controller.Exec(context.Background(), ExecInput{
 		RoomID:         "room-1",
 		AgentSessionID: started.Session.AgentSessionID,
 		Content:        textPrompt("run"),
-	}); err != nil {
+	})
+	if err != nil {
 		t.Fatalf("Exec: %v", err)
 	}
 	select {
@@ -2901,6 +2903,34 @@ func TestControllerExecUsesAsyncAdapterAndFinalizesFromTerminalEvent(t *testing.
 	}
 	if session.TurnLifecycle == nil || session.TurnLifecycle.Phase != "settled" {
 		t.Fatalf("turn lifecycle = %#v, want settled", session.TurnLifecycle)
+	}
+	var terminalPatch *agentsessionstore.WorkspaceAgentStatePatch
+	waitForCondition(t, func() bool {
+		for _, report := range reportInputs(reporter.snapshot()) {
+			for index := range report.StatePatches {
+				patch := &report.StatePatches[index]
+				if patch.Turn != nil && patch.Turn.TurnID == execResult.TurnID && patch.Turn.CompletedAtUnixMS > 0 {
+					patchCopy := *patch
+					terminalPatch = &patchCopy
+					return true
+				}
+			}
+		}
+		return false
+	})
+	if terminalPatch == nil {
+		t.Fatalf("reports = %#v, missing async terminal turn patch", reportInputs(reporter.snapshot()))
+	}
+	if terminalPatch.CurrentPhase != string(activityshared.TurnPhaseIdle) {
+		t.Fatalf("async terminal patch current phase = %q, want idle", terminalPatch.CurrentPhase)
+	}
+	if terminalPatch.TurnLifecycle == nil ||
+		terminalPatch.TurnLifecycle.ActiveTurnID != nil ||
+		terminalPatch.TurnLifecycle.Phase != "settled" {
+		t.Fatalf("async terminal lifecycle = %#v, want settled with nil active turn", terminalPatch.TurnLifecycle)
+	}
+	if terminalPatch.SubmitAvailability == nil || terminalPatch.SubmitAvailability.State != "available" {
+		t.Fatalf("async terminal submit availability = %#v, want available", terminalPatch.SubmitAvailability)
 	}
 }
 
@@ -4521,7 +4551,7 @@ func TestEnrichStreamStateEventsWithSessionSnapshotFillsRuntimeContext(t *testin
 		},
 	}}
 
-	controller.enrichStreamStateEventsWithSessionSnapshot(session, events)
+	controller.enrichStreamStateEventsWithSessionSnapshot(session, events, nil)
 
 	patch, ok := events[0].Data.(agentsessionstore.WorkspaceAgentStatePatch)
 	if !ok {
@@ -4549,6 +4579,131 @@ func TestEnrichStreamStateEventsWithSessionSnapshotFillsRuntimeContext(t *testin
 	if patch.PendingInteractive == nil || patch.PendingInteractive.RequestID != "request-1" {
 		t.Fatalf("pending interactive = %#v, want request-1", patch.PendingInteractive)
 	}
+}
+
+func TestEnrichStreamStateEventsWithSessionSnapshotKeepsUsageUpdateMetadataOnly(t *testing.T) {
+	t.Parallel()
+
+	adapter := &statefulInteractiveAdapter{
+		provider: ProviderClaudeCode,
+		snapshot: SessionStateSnapshot{
+			AgentSessionID: "agent-session-1",
+			Provider:       ProviderClaudeCode,
+			TurnLifecycle: &TurnLifecycle{
+				ActiveTurnID: stringPtr("synthetic-turn-1"),
+				Phase:        "running",
+			},
+			SubmitAvailability: blockedSubmitAvailability("active_turn"),
+			RuntimeContext: map[string]any{
+				"usage": map[string]any{
+					"contextWindow": map[string]any{
+						"usedTokens":  int64(38414),
+						"totalTokens": int64(200000),
+					},
+				},
+			},
+		},
+	}
+	controller := NewController([]Adapter{adapter}, nil)
+	session := Session{
+		RoomID:         "room-1",
+		AgentSessionID: "agent-session-1",
+		Provider:       ProviderClaudeCode,
+	}
+	controller.store(session)
+	events := []StreamEvent{{
+		EventType: StreamEventStatePatch,
+		Data: agentsessionstore.WorkspaceAgentStatePatch{
+			AgentSessionID: "agent-session-1",
+		},
+	}}
+
+	controller.enrichStreamStateEventsWithSessionSnapshot(
+		session,
+		events,
+		[]activityshared.Event{acpSessionUpdateEventForTest(session, "usage_update")},
+	)
+
+	patch, ok := events[0].Data.(agentsessionstore.WorkspaceAgentStatePatch)
+	if !ok {
+		t.Fatalf("stream patch type = %T, want WorkspaceAgentStatePatch", events[0].Data)
+	}
+	usage, _ := patch.RuntimeContext["usage"].(map[string]any)
+	contextWindow, _ := usage["contextWindow"].(map[string]any)
+	if got, _ := acpInt64Value(contextWindow["totalTokens"]); got != 200000 {
+		t.Fatalf("runtime context usage = %#v, want totalTokens=200000", patch.RuntimeContext["usage"])
+	}
+	if patch.TurnLifecycle != nil {
+		t.Fatalf("turn lifecycle = %#v, want nil for usage update", patch.TurnLifecycle)
+	}
+	if patch.SubmitAvailability != nil {
+		t.Fatalf("submit availability = %#v, want nil for usage update", patch.SubmitAvailability)
+	}
+}
+
+func TestEnrichReportStatePatchesWithSessionSnapshotKeepsUsageUpdateMetadataOnly(t *testing.T) {
+	t.Parallel()
+
+	adapter := &statefulInteractiveAdapter{
+		provider: ProviderClaudeCode,
+		snapshot: SessionStateSnapshot{
+			AgentSessionID:     "agent-session-1",
+			Provider:           ProviderClaudeCode,
+			TurnLifecycle:      &TurnLifecycle{ActiveTurnID: stringPtr("synthetic-turn-1"), Phase: "running"},
+			SubmitAvailability: blockedSubmitAvailability("active_turn"),
+			PendingInteractive: &SessionInteractivePrompt{RequestID: "request-1"},
+			RuntimeContext: map[string]any{
+				"usage": map[string]any{
+					"contextWindow": map[string]any{
+						"usedTokens":  int64(38414),
+						"totalTokens": int64(200000),
+					},
+				},
+			},
+		},
+	}
+	controller := NewController([]Adapter{adapter}, nil)
+	session := Session{
+		RoomID:         "room-1",
+		AgentSessionID: "agent-session-1",
+		Provider:       ProviderClaudeCode,
+	}
+	controller.store(session)
+	report := &agentsessionstore.ReportActivityInput{
+		StatePatches: []agentsessionstore.WorkspaceAgentStatePatch{{
+			AgentSessionID: "agent-session-1",
+		}},
+	}
+
+	controller.enrichReportStatePatchesWithSessionSnapshot(
+		session,
+		report,
+		[]activityshared.Event{acpSessionUpdateEventForTest(session, "usage_update")},
+	)
+
+	patch := report.StatePatches[0]
+	usage, _ := patch.RuntimeContext["usage"].(map[string]any)
+	contextWindow, _ := usage["contextWindow"].(map[string]any)
+	if got, _ := acpInt64Value(contextWindow["totalTokens"]); got != 200000 {
+		t.Fatalf("runtime context usage = %#v, want totalTokens=200000", patch.RuntimeContext["usage"])
+	}
+	if patch.TurnLifecycle != nil {
+		t.Fatalf("turn lifecycle = %#v, want nil for usage update", patch.TurnLifecycle)
+	}
+	if patch.SubmitAvailability != nil {
+		t.Fatalf("submit availability = %#v, want nil for usage update", patch.SubmitAvailability)
+	}
+	if patch.PendingInteractivePresent || patch.PendingInteractive != nil {
+		t.Fatalf("pending interactive = (%v, %#v), want omitted for usage update", patch.PendingInteractivePresent, patch.PendingInteractive)
+	}
+}
+
+func acpSessionUpdateEventForTest(session Session, updateType string) activityshared.Event {
+	event := newSessionActivityEvent(session, EventSessionUpdated, SessionStatusReady, map[string]any{
+		"acpSessionUpdate": updateType,
+	})
+	event.Payload.EffectiveStatus = ""
+	return event
 }
 
 func TestDeriveSessionStatusFromEvents(t *testing.T) {

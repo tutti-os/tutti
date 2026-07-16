@@ -1002,7 +1002,12 @@ func (c *Controller) runAsyncExecTurn(ctx context.Context, session Session, adap
 		previousStatus := session.Status
 		session = applySessionEvents(session, events)
 		session = applyTurnLifecycleFromEvents(session, events)
-		session = c.preserveActiveTurnStatus(session, turnID, previousStatus)
+		terminal := turnHasTerminalEvent(events, turnID) || turnSteeredIntoActiveTurn(events, turnID)
+		if terminal {
+			session = reconcileFinishedTurnStatus(session)
+		} else {
+			session = c.preserveActiveTurnStatus(session, turnID, previousStatus)
+		}
 		if shouldAdvanceSessionUpdatedAtFromEvents(events) {
 			session.UpdatedAtUnixMS = unixMS(now())
 		}
@@ -1015,7 +1020,7 @@ func (c *Controller) runAsyncExecTurn(ctx context.Context, session Session, adap
 			"session_status":       session.Status,
 			"turn_phase":           turnLifecyclePhaseFromEvents(events),
 		})
-		if turnHasTerminalEvent(events, turnID) || turnSteeredIntoActiveTurn(events, turnID) {
+		if terminal {
 			finish(session)
 		}
 	}
@@ -2553,7 +2558,7 @@ func (c *Controller) publish(session Session, events []activityshared.Event) {
 		return
 	}
 	projected := ProjectActivityEventsToStreamEvents(session, events)
-	c.enrichStreamStateEventsWithSessionSnapshot(session, projected)
+	c.enrichStreamStateEventsWithSessionSnapshot(session, projected, events)
 	slog.Debug(
 		"agent session publish events",
 		"event", "agent_session.publish",
@@ -2795,7 +2800,7 @@ func cloneAgentSessionCommands(commands []AgentSessionCommand) []AgentSessionCom
 
 func (c *Controller) enqueueSessionReport(ctx context.Context, session Session, events []activityshared.Event) {
 	report := reportActivityInput(session, events)
-	c.enrichReportStatePatchesWithSessionSnapshot(session, &report)
+	c.enrichReportStatePatchesWithSessionSnapshot(session, &report, events)
 	c.enqueueReport(ctx, report)
 }
 
@@ -2848,6 +2853,7 @@ func (c *Controller) enrichReportWithSessionSnapshot(session Session, report *ag
 func (c *Controller) enrichReportStatePatchesWithSessionSnapshot(
 	session Session,
 	report *agentsessionstore.ReportActivityInput,
+	events []activityshared.Event,
 ) {
 	if report == nil || len(report.StatePatches) == 0 {
 		return
@@ -2856,12 +2862,18 @@ func (c *Controller) enrichReportStatePatchesWithSessionSnapshot(
 	if snapshot.AgentSessionID == "" {
 		return
 	}
-	enrichReportStatePatches(report, statePatchFromSessionStateSnapshot(snapshot))
+	snapshotPatch := statePatchFromSessionStateSnapshot(snapshot)
+	if activityEventsAreMetadataOnlySessionUpdates(events) {
+		enrichReportMetadataStatePatches(report, snapshotPatch)
+		return
+	}
+	enrichReportStatePatches(report, snapshotPatch)
 }
 
 func (c *Controller) enrichStreamStateEventsWithSessionSnapshot(
 	session Session,
 	events []StreamEvent,
+	activityEvents []activityshared.Event,
 ) {
 	if c == nil || len(events) == 0 {
 		return
@@ -2871,6 +2883,7 @@ func (c *Controller) enrichStreamStateEventsWithSessionSnapshot(
 		return
 	}
 	snapshotPatch := statePatchFromSessionStateSnapshot(snapshot)
+	metadataOnly := activityEventsAreMetadataOnlySessionUpdates(activityEvents)
 	for index := range events {
 		if events[index].EventType != StreamEventStatePatch {
 			continue
@@ -2882,8 +2895,34 @@ func (c *Controller) enrichStreamStateEventsWithSessionSnapshot(
 		tmp := agentsessionstore.ReportActivityInput{
 			StatePatches: []agentsessionstore.WorkspaceAgentStatePatch{patch},
 		}
-		enrichReportStatePatches(&tmp, snapshotPatch)
+		if metadataOnly {
+			enrichReportMetadataStatePatches(&tmp, snapshotPatch)
+		} else {
+			enrichReportStatePatches(&tmp, snapshotPatch)
+		}
 		events[index].Data = tmp.StatePatches[0]
+	}
+}
+
+func activityEventsAreMetadataOnlySessionUpdates(events []activityshared.Event) bool {
+	if len(events) == 0 {
+		return false
+	}
+	for _, event := range events {
+		if event.Type != activityshared.EventSessionUpdated || !isMetadataOnlyACPSessionUpdate(event) {
+			return false
+		}
+	}
+	return true
+}
+
+func isMetadataOnlyACPSessionUpdate(event activityshared.Event) bool {
+	updateType := strings.TrimSpace(asString(event.Payload.Metadata["acpSessionUpdate"]))
+	switch updateType {
+	case "usage_update", "config_option_update", "thread_goal_update", "thread_goal_cleared":
+		return true
+	default:
+		return false
 	}
 }
 
@@ -2891,16 +2930,33 @@ func enrichReportStatePatches(
 	report *agentsessionstore.ReportActivityInput,
 	patch agentsessionstore.WorkspaceAgentStatePatch,
 ) {
+	enrichReportStatePatchesWithMode(report, patch, false)
+}
+
+func enrichReportMetadataStatePatches(
+	report *agentsessionstore.ReportActivityInput,
+	patch agentsessionstore.WorkspaceAgentStatePatch,
+) {
+	enrichReportStatePatchesWithMode(report, patch, true)
+}
+
+func enrichReportStatePatchesWithMode(
+	report *agentsessionstore.ReportActivityInput,
+	patch agentsessionstore.WorkspaceAgentStatePatch,
+	metadataOnly bool,
+) {
 	if report == nil {
 		return
 	}
 	for index := range report.StatePatches {
 		report.StatePatches[index].Settings = clonePayload(patch.Settings)
 		report.StatePatches[index].RuntimeContext = clonePayload(patch.RuntimeContext)
-		report.StatePatches[index].TurnLifecycle = cloneTurnLifecycle(patch.TurnLifecycle)
-		report.StatePatches[index].SubmitAvailability = cloneSubmitAvailability(patch.SubmitAvailability)
-		report.StatePatches[index].PendingInteractive = cloneInteractivePrompt(patch.PendingInteractive)
-		report.StatePatches[index].PendingInteractivePresent = patch.PendingInteractivePresent
+		if !metadataOnly {
+			report.StatePatches[index].TurnLifecycle = cloneTurnLifecycle(patch.TurnLifecycle)
+			report.StatePatches[index].SubmitAvailability = cloneSubmitAvailability(patch.SubmitAvailability)
+			report.StatePatches[index].PendingInteractive = cloneInteractivePrompt(patch.PendingInteractive)
+			report.StatePatches[index].PendingInteractivePresent = patch.PendingInteractivePresent
+		}
 		if report.StatePatches[index].Provider == "" {
 			report.StatePatches[index].Provider = patch.Provider
 		}
