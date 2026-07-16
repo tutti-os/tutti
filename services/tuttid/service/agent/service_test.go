@@ -3950,6 +3950,100 @@ func TestServiceFallsBackToPersistedSessions(t *testing.T) {
 	}
 }
 
+func TestServiceGetUsesNewerPersistedStateOverStaleRuntimeSession(t *testing.T) {
+	runtime := newFakeRuntime()
+	activeTurnID := "turn-1"
+	runtime.sessions["ws-1:session-1"] = RuntimeSession{
+		ID:                "session-1",
+		WorkspaceID:       "ws-1",
+		Provider:          "claude-code",
+		ProviderSessionID: "provider-session-1",
+		Status:            "working",
+		TurnLifecycle: &TurnLifecycle{
+			ActiveTurnID: &activeTurnID,
+			Phase:        "running",
+		},
+		SubmitAvailability: &SubmitAvailability{State: "blocked", Reason: "active_turn"},
+		UpdatedAtUnixMS:    1000,
+	}
+	service := NewService(runtime)
+	service.SessionReader = fakeSessionReader{
+		sessions: map[string]PersistedSession{
+			"ws-1:session-1": {
+				ID:                "session-1",
+				WorkspaceID:       "ws-1",
+				Provider:          "claude-code",
+				ProviderSessionID: "provider-session-1",
+				Status:            "completed",
+				CurrentPhase:      "idle",
+				LastEventUnixMS:   2000,
+				UpdatedAtUnixMS:   2000,
+			},
+		},
+	}
+
+	got, err := service.Get(context.Background(), "ws-1", "session-1")
+	if err != nil {
+		t.Fatalf("Get returned error: %v", err)
+	}
+	if got.Status != "completed" {
+		t.Fatalf("status = %q, want completed", got.Status)
+	}
+	if got.TurnLifecycle == nil || got.TurnLifecycle.ActiveTurnID != nil || got.TurnLifecycle.Phase != "settled" {
+		t.Fatalf("turn lifecycle = %#v, want settled without active turn", got.TurnLifecycle)
+	}
+	if got.SubmitAvailability == nil || got.SubmitAvailability.State != "available" {
+		t.Fatalf("submit availability = %#v, want available", got.SubmitAvailability)
+	}
+
+	list, err := service.List(context.Background(), "ws-1")
+	if err != nil {
+		t.Fatalf("List returned error: %v", err)
+	}
+	if len(list) != 1 || list[0].Status != "completed" {
+		t.Fatalf("list = %#v, want completed persisted state", list)
+	}
+}
+
+func TestServiceGetKeepsRuntimeStateWhenPersistedStateIsNotNewer(t *testing.T) {
+	runtime := newFakeRuntime()
+	activeTurnID := "turn-1"
+	runtime.sessions["ws-1:session-1"] = RuntimeSession{
+		ID:                 "session-1",
+		WorkspaceID:        "ws-1",
+		Provider:           "claude-code",
+		Status:             "working",
+		TurnLifecycle:      &TurnLifecycle{ActiveTurnID: &activeTurnID, Phase: "running"},
+		UpdatedAtUnixMS:    2000,
+		SubmitAvailability: &SubmitAvailability{State: "blocked", Reason: "active_turn"},
+	}
+	service := NewService(runtime)
+	service.SessionReader = fakeSessionReader{
+		sessions: map[string]PersistedSession{
+			"ws-1:session-1": {
+				ID:              "session-1",
+				WorkspaceID:     "ws-1",
+				Provider:        "claude-code",
+				Status:          "completed",
+				CurrentPhase:    "idle",
+				LastEventUnixMS: 1000,
+				UpdatedAtUnixMS: 1000,
+			},
+		},
+	}
+
+	got, err := service.Get(context.Background(), "ws-1", "session-1")
+	if err != nil {
+		t.Fatalf("Get returned error: %v", err)
+	}
+	if got.Status != "running" {
+		t.Fatalf("status = %q, want runtime running", got.Status)
+	}
+	if got.TurnLifecycle == nil || got.TurnLifecycle.ActiveTurnID == nil || *got.TurnLifecycle.ActiveTurnID != activeTurnID {
+		t.Fatalf("turn lifecycle = %#v, want live runtime turn", got.TurnLifecycle)
+	}
+}
+
 func TestServiceListFilteredMatchesSearchVisibilityLimitAndUpdatedOrder(t *testing.T) {
 	runtime := newFakeRuntime()
 	olderUpdatedAt := time.UnixMilli(2000)

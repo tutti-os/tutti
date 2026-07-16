@@ -43,6 +43,40 @@ Use this shape for new entries:
 
 ## Current Entries
 
+### Agent session stays loading after a completed turn
+
+- Symptom:
+  AgentGUI shows the assistant response as completed, but the conversation or
+  sidebar remains in a loading/running state. Desktop logs may contain
+  `agent.activity.store.session_version_regression` where the previous session
+  is `settled`/`available` and the next session is older
+  `running`/`active_turn`.
+- Quick checks:
+  Compare the desktop `reconcile.state_fetch.resolved` session timestamp with
+  the latest inline `state_patch` timestamp. In `tuttid.log`, check whether
+  runtime emitted a terminal `turn_phase=settled` event before the fetch
+  response was applied.
+- Root cause:
+  Activity projection can accept and broadcast a newer completed state while
+  `GetWorkspaceAgentSession` still prefers an older live runtime snapshot for
+  the same session. The projection store has timestamp regression protection,
+  but the service read path can bypass it when a runtime session is present.
+- Fix:
+  In service read paths, compare persisted projection freshness against the
+  runtime snapshot. If persisted state is newer, return the projected session
+  state and synthesize non-live turn lifecycle/submit availability instead of
+  exposing the stale runtime active turn.
+- Validation:
+  Add service coverage where runtime reports `working/running/active_turn` with
+  an older `UpdatedAtUnixMS`, while persisted state reports
+  `completed/idle/available` with a newer `LastEventUnixMS`. Validate both
+  `Get` and `List` do not return the old active turn. Run
+  `go test ./services/tuttid/service/agent`.
+- References:
+  [service_session.go](../../services/tuttid/service/agent/service_session.go)
+  [service.go](../../services/tuttid/service/agent/service.go)
+  [service_session_list.go](../../services/tuttid/service/agent/service_session_list.go)
+
 ### Claude composer model list stays stale after credential switch
 
 - Symptom:
