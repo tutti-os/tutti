@@ -100,6 +100,7 @@ export interface WorkspaceAgentMessageCenterPanelProps {
     payload?: Record<string, unknown>;
     promptKind?: string;
     requestId: string;
+    turnId?: string;
   }) => Promise<void> | void;
 }
 
@@ -308,7 +309,11 @@ function WorkspaceAgentMessageCenterPanelContent({
       }
       await onSubmitPrompt({
         ...input,
-        agentSessionId: item.agentSessionId,
+        agentSessionId:
+          item.pendingInteractionTarget?.agentSessionId ?? item.agentSessionId,
+        ...(item.pendingInteractionTarget
+          ? { turnId: item.pendingInteractionTarget.turnId }
+          : {}),
         promptKind: item.pendingPrompt?.kind
       });
     },

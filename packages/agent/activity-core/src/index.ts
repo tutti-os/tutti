@@ -115,9 +115,11 @@ export {
   selectEngineSubmitAvailability,
   selectEngineTurnsForSession,
   selectEngineTurn,
+  selectRootAgentSessionIdsWithPendingInteractions,
   selectWorkspaceAgentConsumerCounts,
   selectWorkspaceAgentConsumerSession,
-  selectWorkspaceAgentConsumerSessions
+  selectWorkspaceAgentConsumerSessions,
+  selectWorkspaceAgentRootConversationSessions
 } from "./engine/sessionLifecycle.selectors.ts";
 export {
   selectEngineSessionDetailHydrated,

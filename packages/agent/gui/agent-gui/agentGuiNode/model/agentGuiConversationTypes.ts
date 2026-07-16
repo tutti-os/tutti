@@ -51,6 +51,7 @@ export interface AgentGUIConversationSummary {
   updatedAtUnixMs: number;
   hasUnreadCompletion?: boolean;
   unreadCompletionKey?: string | null;
+  needsUserAction?: boolean;
   projectionSource?: "pending_activation";
   isImported?: boolean;
   activeTurn?: AgentActivitySession["activeTurn"];

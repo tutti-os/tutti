@@ -121,11 +121,11 @@ export function filterConversationSectionsBySearchMatches(
 function conversationMetaKind(
   conversation: AgentGUINodeViewModel["rail"]["conversations"][number]
 ): "loading" | "waiting" | "failed" | "unread-complete" | "time" {
-  if (conversation.status === "working") {
-    return "loading";
-  }
-  if (conversation.status === "waiting") {
+  if (conversation.needsUserAction) {
     return "waiting";
+  }
+  if (conversation.status === "working" || conversation.status === "waiting") {
+    return "loading";
   }
   if (conversation.status === "failed") {
     return "failed";

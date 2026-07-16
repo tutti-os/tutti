@@ -5,6 +5,96 @@ import { createLocalAgentGUIAgentTarget } from "../../../../../agentTargets";
 import { useAgentGuiConversationList } from "./useAgentGuiConversationList";
 
 describe("useAgentGuiConversationList", () => {
+  it("projects a child interaction as user action on its root conversation", () => {
+    const engine = createAgentSessionEngine({
+      clock: { nowUnixMs: () => 1 },
+      commandPort: { execute: async () => ({}) },
+      identity: { origin: "test", workspaceId: "workspace-1" },
+      scheduler: { schedule: () => ({ cancel() {} }) }
+    });
+    const query = {
+      workspaceId: "workspace-1",
+      userId: "user-1",
+      provider: "claude-code" as const,
+      sessionOrigin: "test"
+    };
+    const { result } = renderHook(() =>
+      useAgentGuiConversationList(engine, query)
+    );
+
+    act(() => {
+      engine.dispatch({
+        type: "session/snapshotReceived",
+        sessions: [
+          {
+            activeTurn: {
+              agentSessionId: "root",
+              origin: "user_prompt",
+              phase: "waiting",
+              startedAtUnixMs: 1,
+              turnId: "root-turn",
+              updatedAtUnixMs: 2
+            },
+            activeTurnId: "root-turn",
+            agentSessionId: "root",
+            cwd: "/workspace",
+            latestTurnInteractions: [],
+            pendingInteractions: [],
+            provider: "claude-code",
+            title: "Root conversation",
+            updatedAtUnixMs: 2,
+            workspaceId: "workspace-1"
+          },
+          {
+            activeTurn: {
+              agentSessionId: "child",
+              origin: "provider_initiated",
+              phase: "waiting",
+              startedAtUnixMs: 1,
+              turnId: "child-turn",
+              updatedAtUnixMs: 2
+            },
+            activeTurnId: "child-turn",
+            agentSessionId: "child",
+            cwd: "/workspace",
+            kind: "child",
+            latestTurnInteractions: [],
+            parentAgentSessionId: "root",
+            parentToolCallId: "tool-call-1",
+            parentTurnId: "root-turn",
+            pendingInteractions: [
+              {
+                agentSessionId: "child",
+                createdAtUnixMs: 2,
+                input: { questions: [{ id: "question-1" }] },
+                kind: "question",
+                requestId: "request-1",
+                status: "pending",
+                toolName: "AskUserQuestion",
+                turnId: "child-turn",
+                updatedAtUnixMs: 2
+              }
+            ],
+            provider: "claude-code",
+            rootAgentSessionId: "root",
+            rootTurnId: "root-turn",
+            title: "Child task",
+            updatedAtUnixMs: 2,
+            workspaceId: "workspace-1"
+          }
+        ]
+      });
+    });
+
+    expect(result.current?.conversations).toEqual([
+      expect.objectContaining({
+        id: "root",
+        needsUserAction: true,
+        status: "waiting"
+      })
+    ]);
+  });
+
   it("projects a task marker from a matching mention-rich initial prompt", () => {
     const engine = createAgentSessionEngine({
       clock: { nowUnixMs: () => 1 },

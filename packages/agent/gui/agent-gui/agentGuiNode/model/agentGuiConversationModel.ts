@@ -91,6 +91,16 @@ export function buildAgentGUIConversationSummaries({
   sessionMessagesById,
   userProjects = []
 }: BuildAgentGUIConversationsInput): AgentGUIConversationSummary[] {
+  const rootSessionIdsAwaitingUserAction = new Set(
+    snapshot.sessions.flatMap((session) => {
+      if (session.pendingInteractions.length === 0) return [];
+      const rootSessionId =
+        session.kind === "child"
+          ? session.rootAgentSessionId
+          : session.agentSessionId;
+      return rootSessionId ? [rootSessionId] : [];
+    })
+  );
   const runtimeSnapshot = filterAgentGUIRuntimeSnapshot(snapshot);
   const sessionsById = new Map(
     selectRootAgentActivitySessions(runtimeSnapshot).map((session) => [
@@ -111,7 +121,8 @@ export function buildAgentGUIConversationSummaries({
     conversationSummaryFromActivity(
       activity,
       sessionsById.get(activity.sessionId),
-      { projectResolver }
+      { projectResolver },
+      rootSessionIdsAwaitingUserAction
     )
   );
   if (conversationFilter) {
@@ -301,6 +312,7 @@ export function conversationSummaryFromAgentSession(
   session: CanonicalAgentSession,
   options: {
     isNoProjectPath?: AgentGUIConversationNoProjectPathResolver;
+    needsUserAction?: boolean;
     userProjects?: readonly AgentGUIConversationUserProject[];
   } = {}
 ): AgentGUIConversationSummary {
@@ -332,6 +344,7 @@ export function conversationSummaryFromAgentSession(
       ? { projectMode: "none" }
       : {}),
     pinnedAtUnixMs: session.pinnedAtUnixMs ?? null,
+    needsUserAction: options.needsUserAction ?? false,
     sortTimeUnixMs: resolveWorkspaceAgentSessionSortTimeUnixMs(session),
     updatedAtUnixMs:
       session.updatedAtUnixMs || session.createdAtUnixMs || Date.now()
@@ -428,7 +441,8 @@ function isAgentGUIRuntimeSession(session: AgentActivitySession): boolean {
 function conversationSummaryFromActivity(
   activity: WorkspaceAgentActivityCard,
   session: AgentActivitySession | undefined,
-  options: AgentGUIConversationProjectResolutionContext
+  options: AgentGUIConversationProjectResolutionContext,
+  rootSessionIdsAwaitingUserAction: ReadonlySet<string>
 ): AgentGUIConversationSummary {
   const status = conversationStatusFromActivity(activity.status);
   const provider = resolveAgentGUIProviderIdentity({
@@ -461,6 +475,7 @@ function conversationSummaryFromActivity(
       ? { projectMode: "none" }
       : {}),
     pinnedAtUnixMs: session?.pinnedAtUnixMs ?? null,
+    needsUserAction: rootSessionIdsAwaitingUserAction.has(activity.sessionId),
     sortTimeUnixMs: activity.sortTimeUnixMs,
     updatedAtUnixMs: session?.updatedAtUnixMs || activity.sortTimeUnixMs || 0,
     activeTurn: session?.activeTurn ?? null,

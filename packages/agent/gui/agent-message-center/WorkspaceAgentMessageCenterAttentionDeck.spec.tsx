@@ -27,6 +27,7 @@ function promptItem(
     },
     lastAgentMessageSummary: "",
     lastAgentMessageAtUnixMs: 1,
+    pendingInteractionTarget: null,
     needsAttentionKind: null,
     needsAttentionSummary: null,
     sortTimeUnixMs: 1,

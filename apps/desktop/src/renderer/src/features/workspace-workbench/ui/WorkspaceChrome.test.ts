@@ -84,10 +84,13 @@ test("workspace chrome does not call updateSessionSettings or sendInput from the
   assert.doesNotMatch(handler, /sendInput/);
   assert.doesNotMatch(handler, /submitInteractive/);
   assert.match(handler, /interaction\/responseRequested/);
-  assert.match(handler, /selectEnginePendingInteractions\(/);
-  assert.match(handler, /candidate\.requestId === input\.requestId/);
+  assert.match(handler, /selectEngineInteraction\(/);
+  assert.match(
+    handler,
+    /input\.agentSessionId,[\s\S]*input\.turnId,[\s\S]*input\.requestId/
+  );
   assert.match(handler, /requestId: input\.requestId/);
-  assert.match(handler, /turnId: interaction\.turnId/);
+  assert.match(handler, /turnId: input\.turnId/);
   assert.match(
     handler,
     /input\.payload \? \{ payload: input\.payload \} : \{\}/
@@ -122,6 +125,17 @@ test("workspace chrome gates the agent decision toast on window focus, message c
   assert.match(
     decisionNotificationsSource,
     /createDocumentNotificationVisibilityState\(\{\s*hasFocus: \(\) => document\.hasFocus\(\),\s*visibilityState: \(\) => document\.visibilityState\s*\}\)/
+  );
+});
+
+test("workspace decision toast routes child prompts by exact interaction identity", () => {
+  assert.match(
+    decisionNotificationsSource,
+    /const target = item\.pendingInteractionTarget;[\s\S]*?selectEngineInteraction\([\s\S]*?target\.agentSessionId,[\s\S]*?target\.turnId,[\s\S]*?target\.requestId/
+  );
+  assert.match(
+    decisionNotificationsSource,
+    /type: "interaction\/responseRequested",[\s\S]*?agentSessionId: target\.agentSessionId,[\s\S]*?requestId: target\.requestId,[\s\S]*?turnId: target\.turnId/
   );
 });
 

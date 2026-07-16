@@ -2,19 +2,21 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   createInitialAgentSessionEngineState,
-  rootEngineReducer,
+  rootEngineReducer
 } from "./rootReducer.ts";
 import {
   selectEngineSubmitAvailability,
   selectEngineSessionDeleted,
+  selectRootAgentSessionIdsWithPendingInteractions,
   selectWorkspaceAgentConsumerCounts,
   selectWorkspaceAgentConsumerSession,
+  selectWorkspaceAgentRootConversationSessions
 } from "./sessionLifecycle.selectors.ts";
 
 test("deleted session selector normalizes ids and hides tombstone storage", () => {
   const state = rootEngineReducer(createInitialAgentSessionEngineState(), {
     agentSessionId: "session-1",
-    type: "session/removed",
+    type: "session/removed"
   }).state;
 
   assert.equal(selectEngineSessionDeleted(state, " session-1 "), true);
@@ -30,7 +32,7 @@ test("consumer status is derived from canonical entities and engine-owned initia
         ...{
           activeTurnId: null,
           latestTurnInteractions: [],
-          pendingInteractions: [],
+          pendingInteractions: []
         },
         activeTurn: {
           agentSessionId: "session-1",
@@ -38,7 +40,7 @@ test("consumer status is derived from canonical entities and engine-owned initia
           phase: "running",
           startedAtUnixMs: 10,
           turnId: "turn-1",
-          updatedAtUnixMs: 20,
+          updatedAtUnixMs: 20
         },
         activeTurnId: "turn-1",
         agentSessionId: "session-1",
@@ -52,15 +54,15 @@ test("consumer status is derived from canonical entities and engine-owned initia
             requestId: "request-1",
             status: "pending",
             turnId: "turn-1",
-            updatedAtUnixMs: 21,
-          },
+            updatedAtUnixMs: 21
+          }
         ],
         provider: "codex",
         title: "Canonical session",
-        workspaceId: "workspace-1",
-      },
+        workspaceId: "workspace-1"
+      }
     ],
-    type: "session/snapshotReceived",
+    type: "session/snapshotReceived"
   }).state;
 
   const consumer = selectWorkspaceAgentConsumerSession(state, "session-1");
@@ -74,7 +76,7 @@ test("consumer status is derived from canonical entities and engine-owned initia
     failed: 0,
     idle: 0,
     waiting: 1,
-    working: 0,
+    working: 0
   });
 });
 
@@ -91,7 +93,7 @@ test("new activation stays working between session confirmation and first canoni
     requestedAtUnixMs: 10,
     requestId: "activation-1",
     type: "activation/requested",
-    workspaceId: "workspace-1",
+    workspaceId: "workspace-1"
   }).state;
   state = rootEngineReducer(state, {
     sessions: [
@@ -104,15 +106,15 @@ test("new activation stays working between session confirmation and first canoni
         pendingInteractions: [],
         provider: "codex",
         title: "test1",
-        workspaceId: "workspace-1",
-      },
+        workspaceId: "workspace-1"
+      }
     ],
-    type: "session/snapshotReceived",
+    type: "session/snapshotReceived"
   }).state;
 
   assert.equal(
     selectWorkspaceAgentConsumerSession(state, "session-1")?.displayStatus,
-    "working",
+    "working"
   );
 
   state = rootEngineReducer(state, {
@@ -129,21 +131,21 @@ test("new activation stays working between session confirmation and first canoni
           phase: "settled",
           startedAtUnixMs: 10,
           turnId: "turn-1",
-          updatedAtUnixMs: 30,
+          updatedAtUnixMs: 30
         },
         latestTurnInteractions: [],
         pendingInteractions: [],
         provider: "codex",
         title: "test1",
-        workspaceId: "workspace-1",
-      },
+        workspaceId: "workspace-1"
+      }
     ],
-    type: "session/snapshotReceived",
+    type: "session/snapshotReceived"
   }).state;
 
   assert.equal(
     selectWorkspaceAgentConsumerSession(state, "session-1")?.displayStatus,
-    "completed",
+    "completed"
   );
 });
 
@@ -159,7 +161,7 @@ test("new activation without initial content stays idle after session confirmati
     requestedAtUnixMs: 10,
     requestId: "activation-1",
     type: "activation/requested",
-    workspaceId: "workspace-1",
+    workspaceId: "workspace-1"
   }).state;
   state = rootEngineReducer(state, {
     sessions: [
@@ -172,15 +174,15 @@ test("new activation without initial content stays idle after session confirmati
         pendingInteractions: [],
         provider: "codex",
         title: "",
-        workspaceId: "workspace-1",
-      },
+        workspaceId: "workspace-1"
+      }
     ],
-    type: "session/snapshotReceived",
+    type: "session/snapshotReceived"
   }).state;
 
   assert.equal(
     selectWorkspaceAgentConsumerSession(state, "session-1")?.displayStatus,
-    "idle",
+    "idle"
   );
 });
 
@@ -195,7 +197,7 @@ test("completed Claude goal does not unlock a waiting root with a running child"
           phase: "waiting",
           startedAtUnixMs: 10,
           turnId: "root-turn",
-          updatedAtUnixMs: 30,
+          updatedAtUnixMs: 30
         },
         activeTurnId: "root-turn",
         agentSessionId: "root",
@@ -205,7 +207,7 @@ test("completed Claude goal does not unlock a waiting root with a running child"
         pendingInteractions: [],
         provider: "claude-code",
         title: "Root",
-        workspaceId: "workspace-1",
+        workspaceId: "workspace-1"
       },
       {
         activeTurn: {
@@ -214,7 +216,7 @@ test("completed Claude goal does not unlock a waiting root with a running child"
           phase: "running",
           startedAtUnixMs: 20,
           turnId: "child-turn",
-          updatedAtUnixMs: 30,
+          updatedAtUnixMs: 30
         },
         activeTurnId: "child-turn",
         agentSessionId: "child",
@@ -229,19 +231,19 @@ test("completed Claude goal does not unlock a waiting root with a running child"
         rootAgentSessionId: "root",
         rootTurnId: "root-turn",
         title: "Child",
-        workspaceId: "workspace-1",
-      },
+        workspaceId: "workspace-1"
+      }
     ],
-    type: "session/snapshotReceived",
+    type: "session/snapshotReceived"
   }).state;
 
   assert.equal(
     selectWorkspaceAgentConsumerSession(state, "root")?.displayStatus,
-    "waiting",
+    "waiting"
   );
   assert.deepEqual(selectEngineSubmitAvailability(state, "root"), {
     state: "blocked",
-    reason: "active_turn",
+    reason: "active_turn"
   });
   assert.deepEqual(selectWorkspaceAgentConsumerCounts(state), {
     canceled: 0,
@@ -249,8 +251,66 @@ test("completed Claude goal does not unlock a waiting root with a running child"
     failed: 0,
     idle: 0,
     waiting: 1,
-    working: 0,
+    working: 0
   });
+});
+
+test("pending child interactions are attributed to their root session", () => {
+  let state = createInitialAgentSessionEngineState();
+  state = rootEngineReducer(state, {
+    sessions: [
+      {
+        activeTurnId: null,
+        agentSessionId: "root",
+        cwd: "/workspace",
+        latestTurnInteractions: [],
+        pendingInteractions: [],
+        provider: "claude-code",
+        title: "Root",
+        workspaceId: "workspace-1"
+      },
+      {
+        activeTurn: {
+          agentSessionId: "child",
+          origin: "provider_initiated",
+          phase: "waiting",
+          startedAtUnixMs: 20,
+          turnId: "child-turn",
+          updatedAtUnixMs: 21
+        },
+        activeTurnId: "child-turn",
+        agentSessionId: "child",
+        cwd: "/workspace",
+        kind: "child",
+        latestTurnInteractions: [],
+        parentAgentSessionId: "root",
+        parentToolCallId: "toolu-1",
+        parentTurnId: "root-turn",
+        pendingInteractions: [
+          {
+            agentSessionId: "child",
+            createdAtUnixMs: 21,
+            input: { question: "Choose an option" },
+            kind: "question",
+            requestId: "request-1",
+            status: "pending",
+            turnId: "child-turn",
+            updatedAtUnixMs: 21
+          }
+        ],
+        provider: "claude-code",
+        rootAgentSessionId: "root",
+        rootTurnId: "root-turn",
+        title: "Child",
+        workspaceId: "workspace-1"
+      }
+    ],
+    type: "session/snapshotReceived"
+  }).state;
+
+  assert.deepEqual(selectRootAgentSessionIdsWithPendingInteractions(state), [
+    "root"
+  ]);
 });
 
 test("new goal control activation stays idle without a provider Turn", () => {
@@ -268,7 +328,7 @@ test("new goal control activation stays idle without a provider Turn", () => {
     requestId: "activation-goal",
     runtimeContent: [{ type: "text", text: "/goal ship it" }],
     type: "activation/requested",
-    workspaceId: "workspace-1",
+    workspaceId: "workspace-1"
   }).state;
   state = rootEngineReducer(state, {
     sessions: [
@@ -281,14 +341,146 @@ test("new goal control activation stays idle without a provider Turn", () => {
         pendingInteractions: [],
         provider: "claude-code",
         title: "/goal ship it",
-        workspaceId: "workspace-1",
-      },
+        workspaceId: "workspace-1"
+      }
     ],
-    type: "session/snapshotReceived",
+    type: "session/snapshotReceived"
   }).state;
 
   assert.equal(
     selectWorkspaceAgentConsumerSession(state, "session-goal")?.displayStatus,
-    "idle",
+    "idle"
+  );
+});
+
+test("root conversation selector aggregates descendant pending interactions", () => {
+  const state = rootEngineReducer(createInitialAgentSessionEngineState(), {
+    sessions: [
+      {
+        activeTurn: {
+          agentSessionId: "root",
+          origin: "user_prompt",
+          phase: "running",
+          startedAtUnixMs: 10,
+          turnId: "root-turn",
+          updatedAtUnixMs: 20
+        },
+        activeTurnId: "root-turn",
+        agentSessionId: "root",
+        cwd: "/workspace",
+        latestTurnInteractions: [],
+        pendingInteractions: [],
+        provider: "claude-code",
+        title: "Root",
+        workspaceId: "workspace-1"
+      },
+      {
+        activeTurn: {
+          agentSessionId: "child",
+          origin: "provider_initiated",
+          phase: "waiting",
+          startedAtUnixMs: 15,
+          turnId: "child-turn",
+          updatedAtUnixMs: 25
+        },
+        activeTurnId: "child-turn",
+        agentSessionId: "child",
+        cwd: "/workspace",
+        kind: "child",
+        latestTurnInteractions: [],
+        parentAgentSessionId: "root",
+        parentToolCallId: "toolu-1",
+        parentTurnId: "root-turn",
+        pendingInteractions: [
+          {
+            agentSessionId: "child",
+            createdAtUnixMs: 26,
+            input: { question: "Allow Bash?" },
+            kind: "approval",
+            requestId: "approval-1",
+            status: "pending",
+            toolName: "Bash",
+            turnId: "child-turn",
+            updatedAtUnixMs: 26
+          }
+        ],
+        provider: "claude-code",
+        rootAgentSessionId: "root",
+        rootTurnId: "root-turn",
+        title: "Child",
+        workspaceId: "workspace-1"
+      }
+    ],
+    type: "session/snapshotReceived"
+  }).state;
+
+  const conversations = selectWorkspaceAgentRootConversationSessions(state);
+  assert.equal(conversations.length, 1);
+  assert.equal(conversations[0]?.session.agentSessionId, "root");
+  assert.equal(conversations[0]?.displayStatus, "waiting");
+  assert.deepEqual(
+    conversations[0]?.pendingInteractions.map((interaction) => [
+      interaction.agentSessionId,
+      interaction.turnId,
+      interaction.requestId
+    ]),
+    [["child", "child-turn", "approval-1"]]
+  );
+});
+
+test("root conversation stays working while a descendant turn is running", () => {
+  const state = rootEngineReducer(createInitialAgentSessionEngineState(), {
+    sessions: [
+      {
+        activeTurnId: null,
+        agentSessionId: "root",
+        cwd: "/workspace",
+        latestTurn: {
+          agentSessionId: "root",
+          origin: "user_prompt",
+          outcome: "completed",
+          phase: "settled",
+          settledAtUnixMs: 20,
+          startedAtUnixMs: 10,
+          turnId: "root-turn",
+          updatedAtUnixMs: 20
+        },
+        latestTurnInteractions: [],
+        pendingInteractions: [],
+        provider: "claude-code",
+        title: "Root",
+        workspaceId: "workspace-1"
+      },
+      {
+        activeTurn: {
+          agentSessionId: "child",
+          origin: "provider_initiated",
+          phase: "running",
+          startedAtUnixMs: 15,
+          turnId: "child-turn",
+          updatedAtUnixMs: 25
+        },
+        activeTurnId: "child-turn",
+        agentSessionId: "child",
+        cwd: "/workspace",
+        kind: "child",
+        latestTurnInteractions: [],
+        parentAgentSessionId: "root",
+        parentToolCallId: "toolu-1",
+        parentTurnId: "root-turn",
+        pendingInteractions: [],
+        provider: "claude-code",
+        rootAgentSessionId: "root",
+        rootTurnId: "root-turn",
+        title: "Child",
+        workspaceId: "workspace-1"
+      }
+    ],
+    type: "session/snapshotReceived"
+  }).state;
+
+  assert.equal(
+    selectWorkspaceAgentRootConversationSessions(state)[0]?.displayStatus,
+    "working"
   );
 });

@@ -343,6 +343,7 @@ function createIssueManagerFallbackMessageCenterItem({
     },
     needsAttentionKind: null,
     needsAttentionSummary: null,
+    pendingInteractionTarget: null,
     pendingPrompt: null,
     provider,
     sortTimeUnixMs,

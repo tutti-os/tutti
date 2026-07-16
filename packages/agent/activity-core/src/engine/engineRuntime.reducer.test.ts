@@ -138,6 +138,47 @@ test("workspace start loads once and failed load requires explicit retry", () =>
   assert.equal(retry.commands.length, 1);
 });
 
+test("successful workspace reconcile hydrates state for active root sessions", () => {
+  const requested = rootEngineReducer(createInitialAgentSessionEngineState(), {
+    type: "workspace/reconcileRequested",
+    workspaceId: "workspace-1"
+  });
+  const snapshotted = rootEngineReducer(requested.state, {
+    sessions: [
+      runningSession(capabilities({})),
+      {
+        activeTurnId: null,
+        agentSessionId: "session-settled",
+        cwd: "/workspace",
+        latestTurnInteractions: [],
+        pendingInteractions: [],
+        provider: "claude-code",
+        title: "Settled",
+        workspaceId: "workspace-1"
+      }
+    ],
+    type: "session/snapshotReceived"
+  });
+
+  const reconciled = rootEngineReducer(snapshotted.state, {
+    commandId: requested.state.engineRuntime.workspaceReconcile.commandId ?? "",
+    commandType: "engine/reconcileWorkspace",
+    outcome: "succeeded",
+    type: "engine/commandResult"
+  });
+
+  assert.deepEqual(reconciled.commands, [
+    {
+      agentSessionId: "session-1",
+      commandId: "session:reconcile:session-1:1",
+      scope: "state",
+      timeoutMs: 30_000,
+      type: "session/reconcile",
+      workspaceId: "workspace-1"
+    }
+  ]);
+});
+
 test("expiry request and cancellation emit internal clock commands", () => {
   const requested = engineRuntimeReducer(createInitialEngineRuntimeState(), {
     dueAtUnixMs: 500,

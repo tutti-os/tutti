@@ -772,6 +772,21 @@ describe("AgentMentionSearchController", () => {
           provider: "claude-code",
           targetId: "local:claude-code",
           workspaceId: "room-1"
+        },
+        {
+          description: "Run a shared Codex agent",
+          iconUrl: "tutti://agent/codex.svg",
+          name: "Lin's Codex",
+          provider: "codex",
+          targetId: "shared-agent:shared-codex",
+          workspaceId: "room-1"
+        },
+        {
+          description: "Run an uncatalogued agent",
+          name: "Legacy Gemini",
+          provider: "gemini",
+          targetId: "legacy:gemini",
+          workspaceId: "room-1"
         }
       ]
     });
@@ -806,6 +821,18 @@ describe("AgentMentionSearchController", () => {
     });
     const states: any[] = [];
     controller.subscribe((state) => states.push(state));
+    controller.setProvenanceCatalog({
+      enabledDimensions: ["agent"],
+      agentOptions: [
+        {
+          id: "shared-agent:shared-codex",
+          label: "Lin · Codex"
+        },
+        { id: "local:codex", label: "Me · Codex" },
+        { id: "local:claude-code", label: "Me · Claude Code" }
+      ],
+      memberOptions: []
+    });
 
     controller.setFilter("agent");
     controller.updateQuery({ workspaceId: "room-1", query: "" });
@@ -816,23 +843,48 @@ describe("AgentMentionSearchController", () => {
         mode: "browse",
         filter: "agent",
         groups: [
-          expect.objectContaining({
-            id: "agents",
+          {
+            id: "agent:shared-agent%3Ashared-codex",
+            label: "Lin · Codex",
             items: [
               expect.objectContaining({
                 kind: "agent-target",
-                targetId: "local:codex",
-                href: "mention://agent-target/local:codex?workspaceId=room-1",
+                targetId: "shared-agent:shared-codex",
+                href: "mention://agent-target/shared-agent:shared-codex?workspaceId=room-1",
                 agentProviderId: "codex"
-              }),
-              expect.objectContaining({
-                kind: "agent-target",
-                targetId: "local:claude-code",
-                href: "mention://agent-target/local:claude-code?workspaceId=room-1",
-                agentProviderId: "claude-code"
               })
             ]
-          })
+          },
+          {
+            id: "agent:local%3Acodex",
+            label: "Me · Codex",
+            items: [
+              expect.objectContaining({
+                kind: "agent-target",
+                targetId: "local:codex"
+              })
+            ]
+          },
+          {
+            id: "agent:local%3Aclaude-code",
+            label: "Me · Claude Code",
+            items: [
+              expect.objectContaining({
+                kind: "agent-target",
+                targetId: "local:claude-code"
+              })
+            ]
+          },
+          {
+            id: "agent:uncatalogued%3Alegacy%3Agemini",
+            label: "Legacy Gemini",
+            items: [
+              expect.objectContaining({
+                kind: "agent-target",
+                targetId: "legacy:gemini"
+              })
+            ]
+          }
         ]
       })
     );
@@ -842,6 +894,23 @@ describe("AgentMentionSearchController", () => {
       limit: undefined
     });
     expect(queryWorkspaceApps).not.toHaveBeenCalled();
+    controller.setProvenanceFilter({
+      agentTargetIds: ["shared-agent:shared-codex"],
+      memberIds: null
+    });
+    await vi.waitFor(() =>
+      expect(states.at(-1)).toMatchObject({
+        status: "ready",
+        groups: [
+          {
+            id: "agent:shared-agent%3Ashared-codex",
+            items: [
+              expect.objectContaining({ targetId: "shared-agent:shared-codex" })
+            ]
+          }
+        ]
+      })
+    );
   });
 
   it("renders all workspace apps without mention pagination", async () => {

@@ -292,6 +292,72 @@ export function selectWorkspaceAgentConsumerSessions(
   );
 }
 
+export function selectRootAgentSessionIdsWithPendingInteractions(
+  state: AgentSessionEngineState
+): readonly string[] {
+  const rootAgentSessionIds = new Set<string>();
+  for (const session of Object.values(state.sessionLifecycle.sessionsById)) {
+    if (
+      selectEnginePendingInteractions(state, session.agentSessionId).length ===
+      0
+    ) {
+      continue;
+    }
+    const rootAgentSessionId =
+      session.kind === "child"
+        ? session.rootAgentSessionId
+        : session.agentSessionId;
+    if (rootAgentSessionId) rootAgentSessionIds.add(rootAgentSessionId);
+  }
+  return [...rootAgentSessionIds];
+}
+
+export function selectWorkspaceAgentRootConversationSessions(
+  state: AgentSessionEngineState
+): readonly WorkspaceAgentConsumerSession[] {
+  const consumers = selectAllWorkspaceAgentConsumerSessions(state);
+  const rootSessionIds = new Set(
+    consumers
+      .filter((consumer) => consumer.session.kind === "root")
+      .map((consumer) => consumer.session.agentSessionId)
+  );
+  const consumersByRootSessionId = new Map<
+    string,
+    WorkspaceAgentConsumerSession[]
+  >();
+
+  for (const consumer of consumers) {
+    const rootSessionId =
+      consumer.session.kind === "child"
+        ? (consumer.session.rootAgentSessionId?.trim() ?? "")
+        : consumer.session.agentSessionId;
+    if (!rootSessionIds.has(rootSessionId)) continue;
+    const conversationConsumers =
+      consumersByRootSessionId.get(rootSessionId) ?? [];
+    conversationConsumers.push(consumer);
+    consumersByRootSessionId.set(rootSessionId, conversationConsumers);
+  }
+
+  return consumers
+    .filter((consumer) => consumer.session.kind === "root")
+    .map((consumer) => {
+      const conversationConsumers =
+        consumersByRootSessionId.get(consumer.session.agentSessionId) ?? [];
+      const pendingInteractions = conversationConsumers
+        .flatMap((item) => item.pendingInteractions)
+        .sort(compareInteractionsByOccurrence);
+      return {
+        ...consumer,
+        displayStatus: rootConversationDisplayStatus(
+          consumer,
+          conversationConsumers,
+          pendingInteractions
+        ),
+        pendingInteractions
+      };
+    });
+}
+
 export function selectAllWorkspaceAgentConsumerSessions(
   state: AgentSessionEngineState
 ): readonly WorkspaceAgentConsumerSession[] {
@@ -399,5 +465,33 @@ function initialActivationTurnIsPending(
     activation?.mode === "new" &&
     activation.initialTurnExpected &&
     isPendingActivationViable(activation)
+  );
+}
+
+function rootConversationDisplayStatus(
+  root: WorkspaceAgentConsumerSession,
+  consumers: readonly WorkspaceAgentConsumerSession[],
+  pendingInteractions: readonly AgentActivityInteraction[]
+): AgentActivityDisplayStatus {
+  if (pendingInteractions.length > 0) return "waiting";
+  if (consumers.some((consumer) => consumer.displayStatus === "working")) {
+    return "working";
+  }
+  if (consumers.some((consumer) => consumer.displayStatus === "waiting")) {
+    return "waiting";
+  }
+  return root.displayStatus;
+}
+
+function compareInteractionsByOccurrence(
+  left: AgentActivityInteraction,
+  right: AgentActivityInteraction
+): number {
+  return (
+    left.createdAtUnixMs - right.createdAtUnixMs ||
+    left.updatedAtUnixMs - right.updatedAtUnixMs ||
+    left.agentSessionId.localeCompare(right.agentSessionId) ||
+    left.turnId.localeCompare(right.turnId) ||
+    left.requestId.localeCompare(right.requestId)
   );
 }

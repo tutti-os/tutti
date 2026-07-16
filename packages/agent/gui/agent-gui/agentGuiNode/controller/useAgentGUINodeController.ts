@@ -408,10 +408,12 @@ export function useAgentGUINodeController({
       }
       return conversationSummaryFromAgentSession(session, {
         isNoProjectPath,
+        needsUserAction: activeRelatedPendingInteractions.length > 0,
         userProjects
       });
     }, [
       activeEngineSession,
+      activeRelatedPendingInteractions.length,
       agentActivityDisplayStatuses,
       conversations,
       isNoProjectPath,

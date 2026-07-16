@@ -235,6 +235,7 @@ export function conversationSummariesRenderEqual(
     left.isImported === right.isImported &&
     left.hasUnreadCompletion === right.hasUnreadCompletion &&
     left.unreadCompletionKey === right.unreadCompletionKey &&
+    left.needsUserAction === right.needsUserAction &&
     conversationProjectsRenderEqual(left.project, right.project)
   );
 }

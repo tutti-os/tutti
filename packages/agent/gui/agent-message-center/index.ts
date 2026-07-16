@@ -101,6 +101,7 @@ export type {
   WorkspaceAgentMessageCenterAgentPresentation,
   WorkspaceAgentMessageCenterCounts,
   WorkspaceAgentMessageCenterIdentity,
+  WorkspaceAgentMessageCenterInteractionTarget,
   WorkspaceAgentMessageCenterItem,
   WorkspaceAgentMessageCenterModel
 } from "./workspaceAgentMessageCenterModel";

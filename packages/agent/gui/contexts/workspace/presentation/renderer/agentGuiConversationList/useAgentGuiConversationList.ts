@@ -1,8 +1,9 @@
 import { useMemo } from "react";
 import {
   isPendingActivationViable,
-  selectWorkspaceAgentConsumerSessions,
   selectPendingActivations,
+  selectRootAgentSessionIdsWithPendingInteractions,
+  selectWorkspaceAgentConsumerSessions,
   selectWorkspaceReconcileState,
   type AgentSessionEngine,
   type PendingActivationIntentRecord
@@ -42,7 +43,8 @@ const EMPTY_AGENT_GUI_AGENT_TARGETS: readonly AgentGUIAgentTarget[] = [];
 
 export function projectCanonicalAgentGUIConversationSummaries(
   sessions: ReturnType<typeof selectWorkspaceAgentConsumerSessions>,
-  firstUserDisplayPromptsBySessionId: AgentGUIConversationRailTitlePromptsBySessionId = {}
+  firstUserDisplayPromptsBySessionId: AgentGUIConversationRailTitlePromptsBySessionId = {},
+  rootSessionIdsAwaitingUserAction?: ReadonlySet<string>
 ): AgentGUIConversationSummary[] {
   return sessions.map((item): AgentGUIConversationSummary => {
     const provider = resolveAgentGUIProviderIdentity({
@@ -71,6 +73,9 @@ export function projectCanonicalAgentGUIConversationSummaries(
       agentTargetId: item.session.agentTargetId ?? null,
       cwd: item.session.cwd,
       id: item.session.agentSessionId,
+      needsUserAction:
+        rootSessionIdsAwaitingUserAction?.has(item.session.agentSessionId) ??
+        item.pendingInteractions.length > 0,
       pinnedAtUnixMs: item.session.pinnedAtUnixMs ?? null,
       provider,
       railSectionKey: item.session.railSectionKey,
@@ -103,6 +108,11 @@ export function useAgentGuiConversationList(
     selectWorkspaceAgentConsumerSessions,
     consumerSessionsEqual
   );
+  const rootAgentSessionIdsWithPendingInteractions = useEngineSelector(
+    engine,
+    selectRootAgentSessionIdsWithPendingInteractions,
+    stringArraysEqual
+  );
   const pendingActivations = useEngineSelector(
     engine,
     selectPendingActivations,
@@ -119,6 +129,9 @@ export function useAgentGuiConversationList(
   );
   return useMemo(() => {
     if (!query) return null;
+    const rootSessionIdsAwaitingUserAction = new Set(
+      rootAgentSessionIdsWithPendingInteractions
+    );
     const canonicalIds = new Set(
       sessions.map((item) => item.session.agentSessionId)
     );
@@ -184,7 +197,8 @@ export function useAgentGuiConversationList(
         sessions.filter(
           (item) => item.session.workspaceId === query.workspaceId
         ),
-        firstUserDisplayPromptsBySessionId
+        firstUserDisplayPromptsBySessionId,
+        rootSessionIdsAwaitingUserAction
       ).map((conversation): AgentGUIConversationSummary => {
         const canonicalUpdatedAtUnixMs = conversation.updatedAtUnixMs;
         const activation = latestNewActivationBySessionId.get(conversation.id);
@@ -274,6 +288,7 @@ export function useAgentGuiConversationList(
     firstUserDisplayPromptsBySessionId,
     pendingActivations,
     query,
+    rootAgentSessionIdsWithPendingInteractions,
     sessions,
     workspaceReconcile
   ]);
@@ -309,4 +324,14 @@ function consumerSessionsEqual(
       item.displayStatus === other.displayStatus
     );
   });
+}
+
+function stringArraysEqual(
+  left: readonly string[],
+  right: readonly string[]
+): boolean {
+  return (
+    left.length === right.length &&
+    left.every((item, index) => item === right[index])
+  );
 }
