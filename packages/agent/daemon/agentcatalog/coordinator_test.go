@@ -66,6 +66,16 @@ func testPolicy() ModelDiscoveryPolicy {
 	return ModelDiscoveryPolicy{Enabled: true, ReuseRuntimeSnapshot: true, RuntimeAuthoritative: true, PersistLastGood: true, FreshTTL: time.Minute, MaxStale: time.Hour, ColdResolverKind: "test"}
 }
 
+func TestCoordinatorDefaultBudgets(t *testing.T) {
+	coordinator := NewCoordinator(CoordinatorOptions{})
+	if coordinator.interactiveWait != 10*time.Second {
+		t.Fatalf("interactive wait = %s, want 10s", coordinator.interactiveWait)
+	}
+	if coordinator.resolverTimeout != 20*time.Second {
+		t.Fatalf("resolver timeout = %s, want 20s", coordinator.resolverTimeout)
+	}
+}
+
 func TestCoordinatorRuntimeSnapshotPrecedesResolverAndClones(t *testing.T) {
 	var calls atomic.Int32
 	coordinator := NewCoordinator(CoordinatorOptions{Resolvers: map[string]ColdResolver{"test": ColdResolverFunc(func(context.Context, ResolveModelsInput) (ModelSnapshot, error) {

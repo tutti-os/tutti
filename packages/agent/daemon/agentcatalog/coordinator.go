@@ -10,7 +10,7 @@ import (
 )
 
 const (
-	defaultInteractiveWait = 1500 * time.Millisecond
+	defaultInteractiveWait = 10 * time.Second
 	defaultResolverTimeout = 20 * time.Second
 )
 
