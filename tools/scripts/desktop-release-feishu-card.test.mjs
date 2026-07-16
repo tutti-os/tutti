@@ -4,11 +4,46 @@ import assert from "node:assert/strict";
 import {
   buildCardPayload,
   buildSummaryElements,
+  loadRelease,
   resolveMirroredAssetUrl,
   resolveReleaseAssetBaseUrl,
   resolveIntroText,
   resolveReleaseKind
 } from "../../apps/desktop/scripts/send-release-feishu-card.mjs";
+
+test("release Feishu card loads draft releases from the authenticated listing", async (t) => {
+  const originalFetch = globalThis.fetch;
+  t.after(() => {
+    globalThis.fetch = originalFetch;
+  });
+
+  const requests = [];
+  globalThis.fetch = async (url, options) => {
+    requests.push({ url, options });
+    if (url.includes("/releases/tags/")) {
+      return new Response(null, { status: 404 });
+    }
+    return Response.json([
+      {
+        assets: [{ name: "Tutti-0.1.0-rc.4-mac-universal.dmg" }],
+        draft: true,
+        tag_name: "v0.1.0-rc.4"
+      }
+    ]);
+  };
+
+  const release = await loadRelease(
+    "tutti-os/tutti",
+    "v0.1.0-rc.4",
+    "test-token"
+  );
+
+  assert.equal(release.draft, true);
+  assert.equal(release.tag_name, "v0.1.0-rc.4");
+  assert.equal(requests.length, 2);
+  assert.match(requests[1].url, /\/releases\?per_page=100&page=1$/);
+  assert.equal(requests[1].options.headers.authorization, "Bearer test-token");
+});
 
 function extractFieldMap(payload) {
   const fieldEntries = payload.card.elements

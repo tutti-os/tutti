@@ -126,13 +126,42 @@ async function loadRelease(repository, tag, githubToken) {
       headers
     }
   );
-  if (!response.ok) {
+  if (response.ok) {
+    return response.json();
+  }
+  if (response.status !== 404) {
     throw new Error(
       `Unable to load release ${tag}: GitHub API returned ${response.status}`
     );
   }
 
-  return response.json();
+  // GitHub's release-by-tag endpoint does not return draft releases. The
+  // authenticated releases listing does, so fall back to it for draft-only,
+  // release-candidate, and beta notification paths.
+  for (let page = 1; ; page += 1) {
+    const releasesResponse = await fetch(
+      `https://api.github.com/repos/${repository}/releases?per_page=100&page=${page}`,
+      {
+        headers
+      }
+    );
+    if (!releasesResponse.ok) {
+      throw new Error(
+        `Unable to load release ${tag}: GitHub API returned ${releasesResponse.status}`
+      );
+    }
+
+    const releases = await releasesResponse.json();
+    const release = releases.find((candidate) => candidate.tag_name === tag);
+    if (release) {
+      return release;
+    }
+    if (releases.length < 100) {
+      break;
+    }
+  }
+
+  throw new Error(`Unable to load release ${tag}: release was not found`);
 }
 
 function findPreferredAssetName(assetNames, pattern) {
@@ -463,6 +492,7 @@ export {
   buildCardPayload,
   buildSummaryElements,
   findPreferredAssetName,
+  loadRelease,
   loadReleaseSummary,
   listAssetNames,
   resolveMirroredAssetUrl,
