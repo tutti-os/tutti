@@ -841,6 +841,7 @@ func TestDaemonAPIGeneratedRoutesSendAgentSessionInputForwardsGuidance(t *testin
 					t.Fatalf("input content = %#v", input.Content)
 				}
 				return agentservice.SendInputResult{
+					Kind: "turn",
 					Session: agentservice.Session{
 						ID:        agentSessionID,
 						Provider:  "codex",
@@ -849,6 +850,11 @@ func TestDaemonAPIGeneratedRoutesSendAgentSessionInputForwardsGuidance(t *testin
 						UpdatedAt: &updatedAt,
 					},
 					TurnID: "turn-guidance",
+					Turn: &agentactivitybiz.Turn{
+						WorkspaceID: "ws-1", AgentSessionID: agentSessionID, TurnID: "turn-guidance",
+						Phase: agentactivitybiz.TurnPhaseSubmitted, Origin: agentactivitybiz.TurnOriginUserPrompt,
+						StartedAtUnixMS: 1000, UpdatedAtUnixMS: 1000,
+					},
 				}, nil
 			},
 		},
@@ -869,6 +875,15 @@ func TestDaemonAPIGeneratedRoutesSendAgentSessionInputForwardsGuidance(t *testin
 	)
 	if recorder.Code != http.StatusOK {
 		t.Fatalf("status = %d, want %d; body: %s", recorder.Code, http.StatusOK, recorder.Body.String())
+	}
+	var response tuttigenerated.SendWorkspaceAgentSessionInputResponse
+	decodeGeneratedRouteResponse(t, recorder, &response)
+	turnResponse, err := response.AsSendWorkspaceAgentSessionInputTurnResponse()
+	if err != nil {
+		t.Fatalf("decode turn response: %v", err)
+	}
+	if turnResponse.TurnId != "turn-guidance" || turnResponse.Turn.TurnId != "turn-guidance" {
+		t.Fatalf("turn response = %#v, want exact guidance turn", turnResponse)
 	}
 }
 
@@ -914,17 +929,43 @@ func TestDaemonAPIGeneratedRoutesSendTypedGoalReturnsOperationWithoutTurn(t *tes
 	}
 	var response tuttigenerated.SendWorkspaceAgentSessionInputResponse
 	decodeGeneratedRouteResponse(t, recorder, &response)
-	if response.Kind != tuttigenerated.GoalControl {
-		t.Fatalf("kind = %q, want goalControl", response.Kind)
+	goalResponse, err := response.AsSendWorkspaceAgentSessionInputGoalControlResponse()
+	if err != nil {
+		t.Fatalf("decode goal-control response: %v", err)
 	}
-	if response.TurnId != nil || response.Turn != nil {
-		t.Fatalf("typed goal manufactured turn: turnId=%v turn=%#v", response.TurnId, response.Turn)
+	if goalResponse.Kind != tuttigenerated.SendWorkspaceAgentSessionInputGoalControlResponseKindGoalControl {
+		t.Fatalf("kind = %q, want goalControl", goalResponse.Kind)
 	}
-	if response.OperationId == nil || *response.OperationId != "goal-op-2" {
-		t.Fatalf("operationId = %v, want goal-op-2", response.OperationId)
+	if goalResponse.OperationId == nil || *goalResponse.OperationId != "goal-op-2" {
+		t.Fatalf("operationId = %v, want goal-op-2", goalResponse.OperationId)
 	}
-	if response.GoalState == nil || response.GoalState.Revision != 2 {
-		t.Fatalf("goalState = %#v", response.GoalState)
+	if goalResponse.GoalState == nil || goalResponse.GoalState.Revision != 2 {
+		t.Fatalf("goalState = %#v", goalResponse.GoalState)
+	}
+}
+
+func TestDaemonAPIGeneratedRoutesSendTurnRejectsMissingExactTurn(t *testing.T) {
+	mux := http.NewServeMux()
+	RegisterRoutes(mux, NewRoutes(DaemonAPI{
+		AgentSessionService: stubAgentSessionService{
+			sendInputFn: func(_ context.Context, _, agentSessionID string, _ agentservice.SendInput) (agentservice.SendInputResult, error) {
+				return agentservice.SendInputResult{
+					Kind: "turn", TurnID: "turn-missing",
+					Session: agentservice.Session{ID: agentSessionID, Provider: "codex", Visible: true, CreatedAt: time.UnixMilli(1000)},
+				}, nil
+			},
+		},
+	}))
+
+	recorder := performGeneratedRouteRequest(
+		t,
+		mux,
+		http.MethodPost,
+		"/v1/workspaces/ws-1/agent-sessions/agent-session-1/input",
+		map[string]any{"content": []map[string]any{{"type": "text", "text": "hello"}}},
+	)
+	if recorder.Code != http.StatusBadGateway {
+		t.Fatalf("status = %d, want %d; body: %s", recorder.Code, http.StatusBadGateway, recorder.Body.String())
 	}
 }
 

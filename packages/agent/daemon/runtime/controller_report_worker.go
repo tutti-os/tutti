@@ -25,6 +25,20 @@ func (c *Controller) enqueueSessionReport(ctx context.Context, session Session, 
 	c.enqueueReport(ctx, report)
 }
 
+// reportSubmittedTurnDurable is the acceptance barrier for a user submission.
+// The daemon reporter commits the submitted Turn and its session pointer before
+// Exec may publish the transition, start provider work, or return success.
+func (c *Controller) reportSubmittedTurnDurable(ctx context.Context, session Session, events []activityshared.Event) error {
+	if c == nil || c.reporter == nil {
+		// Reporter-less controllers are used as standalone runtimes and have no
+		// durable projection. The wired tuttid runtime always provides a reporter.
+		return nil
+	}
+	report := reportActivityInput(session, events)
+	c.enrichReportStatePatchesWithSessionMetadata(session, &report)
+	return c.reporter.Report(ctx, report)
+}
+
 func (c *Controller) reportGoalReconcileControl(ctx context.Context, report agentsessionstore.ReportActivityInput) error {
 	if c == nil || c.reporter == nil {
 		return errors.New("durable goal reconcile reporter is unavailable")

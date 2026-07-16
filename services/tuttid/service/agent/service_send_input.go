@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/tutti-os/tutti/packages/agent/daemon/titletext"
+	agentactivitybiz "github.com/tutti-os/tutti/services/tuttid/biz/agentactivity"
 )
 
 func (s *Service) SendInput(ctx context.Context, workspaceID string, agentSessionID string, input SendInput) (SendInputResult, error) {
@@ -103,9 +104,13 @@ func (s *Service) SendInput(ctx context.Context, workspaceID string, agentSessio
 		s.reportAgentServiceNodeFailure(ctx, agentSessionID, "message_send", "runtime_exec", provider, nodeStartedAt, normalizedErr)
 		return SendInputResult{}, normalizedErr
 	}
+	turnID := strings.TrimSpace(result.TurnID)
+	if turnID == "" {
+		return SendInputResult{}, ErrSubmitDeliveryUnknown
+	}
 	if submitClaim.ClientSubmitID != "" {
 		claimPending = false
-		if err := s.acceptSubmitClaim(workspaceID, agentSessionID, submitClaim.ClientSubmitID, result.TurnID); err != nil {
+		if err := s.acceptSubmitClaim(workspaceID, agentSessionID, submitClaim.ClientSubmitID, turnID); err != nil {
 			return SendInputResult{}, err
 		}
 	}
@@ -121,14 +126,47 @@ func (s *Service) SendInput(ctx context.Context, workspaceID string, agentSessio
 		s.reportAgentServiceNodeFailure(ctx, agentSessionID, "message_send", "session_refreshed", provider, nodeStartedAt, err)
 		return SendInputResult{}, err
 	}
+	turn, err := s.exactSubmittedTurn(ctx, workspaceID, agentSessionID, turnID, session)
+	if err != nil {
+		s.reportAgentServiceNodeFailure(ctx, agentSessionID, "message_send", "turn_refreshed", provider, nodeStartedAt, err)
+		return SendInputResult{}, err
+	}
 	s.reportAgentServiceNodeSuccess(ctx, agentSessionID, "message_send", "session_refreshed", provider, nodeStartedAt)
 	return SendInputResult{
 		Session:            session,
 		Kind:               "turn",
-		TurnID:             strings.TrimSpace(result.TurnID),
+		TurnID:             turnID,
+		Turn:               turn,
 		TurnLifecycle:      result.TurnLifecycle,
 		SubmitAvailability: result.SubmitAvailability,
 	}, nil
+}
+
+func (s *Service) exactSubmittedTurn(
+	ctx context.Context,
+	workspaceID string,
+	agentSessionID string,
+	turnID string,
+	session Session,
+) (*agentactivitybiz.Turn, error) {
+	if s.TurnStore != nil {
+		turn, ok, err := s.TurnStore.GetTurn(ctx, workspaceID, agentSessionID, turnID)
+		if err != nil {
+			return nil, err
+		}
+		if !ok || strings.TrimSpace(turn.TurnID) != turnID {
+			return nil, ErrSubmitDeliveryUnknown
+		}
+		return &turn, nil
+	}
+	// Standalone service tests may omit the durable store. Prefer an exact
+	// entity already attached to the session, but never synthesize one.
+	for _, turn := range []*agentactivitybiz.Turn{session.ActiveTurn, session.LatestTurn} {
+		if turn != nil && strings.TrimSpace(turn.TurnID) == turnID {
+			return turn, nil
+		}
+	}
+	return nil, nil
 }
 
 func (s *Service) validatePromptContentForExec(ctx context.Context, workspaceID, agentSessionID string, content []PromptContentBlock) error {

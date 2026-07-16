@@ -1120,18 +1120,30 @@ func (e PermissionModeSemantic) Valid() bool {
 	}
 }
 
-// Defines values for SendWorkspaceAgentSessionInputResponseKind.
+// Defines values for SendWorkspaceAgentSessionInputGoalControlResponseKind.
 const (
-	GoalControl SendWorkspaceAgentSessionInputResponseKind = "goalControl"
-	Turn        SendWorkspaceAgentSessionInputResponseKind = "turn"
+	SendWorkspaceAgentSessionInputGoalControlResponseKindGoalControl SendWorkspaceAgentSessionInputGoalControlResponseKind = "goalControl"
 )
 
-// Valid indicates whether the value is a known member of the SendWorkspaceAgentSessionInputResponseKind enum.
-func (e SendWorkspaceAgentSessionInputResponseKind) Valid() bool {
+// Valid indicates whether the value is a known member of the SendWorkspaceAgentSessionInputGoalControlResponseKind enum.
+func (e SendWorkspaceAgentSessionInputGoalControlResponseKind) Valid() bool {
 	switch e {
-	case GoalControl:
+	case SendWorkspaceAgentSessionInputGoalControlResponseKindGoalControl:
 		return true
-	case Turn:
+	default:
+		return false
+	}
+}
+
+// Defines values for SendWorkspaceAgentSessionInputTurnResponseKind.
+const (
+	SendWorkspaceAgentSessionInputTurnResponseKindTurn SendWorkspaceAgentSessionInputTurnResponseKind = "turn"
+)
+
+// Valid indicates whether the value is a known member of the SendWorkspaceAgentSessionInputTurnResponseKind enum.
+func (e SendWorkspaceAgentSessionInputTurnResponseKind) Valid() bool {
+	switch e {
+	case SendWorkspaceAgentSessionInputTurnResponseKindTurn:
 		return true
 	default:
 		return false
@@ -3620,6 +3632,20 @@ type RollbackWorkspaceAppRequest struct {
 	Version string `json:"version"`
 }
 
+// SendWorkspaceAgentSessionInputGoalControlResponse defines model for SendWorkspaceAgentSessionInputGoalControlResponse.
+type SendWorkspaceAgentSessionInputGoalControlResponse struct {
+	Goal      *WorkspaceAgentSessionGoal                            `json:"goal,omitempty"`
+	GoalState *WorkspaceAgentSessionGoalState                       `json:"goalState,omitempty"`
+	Kind      SendWorkspaceAgentSessionInputGoalControlResponseKind `json:"kind"`
+
+	// OperationId Durable GoalControlOperation identity when kind is goalControl.
+	OperationId *string               `json:"operationId,omitempty"`
+	Session     WorkspaceAgentSession `json:"session"`
+}
+
+// SendWorkspaceAgentSessionInputGoalControlResponseKind defines model for SendWorkspaceAgentSessionInputGoalControlResponse.Kind.
+type SendWorkspaceAgentSessionInputGoalControlResponseKind string
+
 // SendWorkspaceAgentSessionInputRequest defines model for SendWorkspaceAgentSessionInputRequest.
 type SendWorkspaceAgentSessionInputRequest struct {
 	ClientSubmitId string                    `json:"clientSubmitId"`
@@ -3635,23 +3661,21 @@ type SendWorkspaceAgentSessionInputRequest struct {
 
 // SendWorkspaceAgentSessionInputResponse defines model for SendWorkspaceAgentSessionInputResponse.
 type SendWorkspaceAgentSessionInputResponse struct {
-	Goal      *WorkspaceAgentSessionGoal      `json:"goal,omitempty"`
-	GoalState *WorkspaceAgentSessionGoalState `json:"goalState,omitempty"`
-
-	// Kind Discriminates a Turn-producing input from a typed session-level Goal control.
-	Kind SendWorkspaceAgentSessionInputResponseKind `json:"kind"`
-
-	// OperationId Durable GoalControlOperation identity when kind is goalControl.
-	OperationId *string               `json:"operationId,omitempty"`
-	Session     WorkspaceAgentSession `json:"session"`
-
-	// Turn Protocol v2 turn entity. One user-submission-driven execution: submit, run, wait, settle. Owns phase, outcome, error, and file changes; the session only keeps an activeTurnId reference.
-	Turn   *WorkspaceAgentTurn `json:"turn,omitempty"`
-	TurnId *string             `json:"turnId,omitempty"`
+	union json.RawMessage
 }
 
-// SendWorkspaceAgentSessionInputResponseKind Discriminates a Turn-producing input from a typed session-level Goal control.
-type SendWorkspaceAgentSessionInputResponseKind string
+// SendWorkspaceAgentSessionInputTurnResponse defines model for SendWorkspaceAgentSessionInputTurnResponse.
+type SendWorkspaceAgentSessionInputTurnResponse struct {
+	Kind    SendWorkspaceAgentSessionInputTurnResponseKind `json:"kind"`
+	Session WorkspaceAgentSession                          `json:"session"`
+
+	// Turn Protocol v2 turn entity. One user-submission-driven execution: submit, run, wait, settle. Owns phase, outcome, error, and file changes; the session only keeps an activeTurnId reference.
+	Turn   WorkspaceAgentTurn `json:"turn"`
+	TurnId string             `json:"turnId"`
+}
+
+// SendWorkspaceAgentSessionInputTurnResponseKind defines model for SendWorkspaceAgentSessionInputTurnResponse.Kind.
+type SendWorkspaceAgentSessionInputTurnResponseKind string
 
 // SetSystemAgentTargetEnabledRequest defines model for SetSystemAgentTargetEnabledRequest.
 type SetSystemAgentTargetEnabledRequest struct {
@@ -5563,6 +5587,95 @@ func (t IssueManagerContextRef) MarshalJSON() ([]byte, error) {
 }
 
 func (t *IssueManagerContextRef) UnmarshalJSON(b []byte) error {
+	err := t.union.UnmarshalJSON(b)
+	return err
+}
+
+// AsSendWorkspaceAgentSessionInputTurnResponse returns the union data inside the SendWorkspaceAgentSessionInputResponse as a SendWorkspaceAgentSessionInputTurnResponse
+func (t SendWorkspaceAgentSessionInputResponse) AsSendWorkspaceAgentSessionInputTurnResponse() (SendWorkspaceAgentSessionInputTurnResponse, error) {
+	var body SendWorkspaceAgentSessionInputTurnResponse
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromSendWorkspaceAgentSessionInputTurnResponse overwrites any union data inside the SendWorkspaceAgentSessionInputResponse as the provided SendWorkspaceAgentSessionInputTurnResponse
+func (t *SendWorkspaceAgentSessionInputResponse) FromSendWorkspaceAgentSessionInputTurnResponse(v SendWorkspaceAgentSessionInputTurnResponse) error {
+	v.Kind = "turn"
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeSendWorkspaceAgentSessionInputTurnResponse performs a merge with any union data inside the SendWorkspaceAgentSessionInputResponse, using the provided SendWorkspaceAgentSessionInputTurnResponse
+func (t *SendWorkspaceAgentSessionInputResponse) MergeSendWorkspaceAgentSessionInputTurnResponse(v SendWorkspaceAgentSessionInputTurnResponse) error {
+	v.Kind = "turn"
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+// AsSendWorkspaceAgentSessionInputGoalControlResponse returns the union data inside the SendWorkspaceAgentSessionInputResponse as a SendWorkspaceAgentSessionInputGoalControlResponse
+func (t SendWorkspaceAgentSessionInputResponse) AsSendWorkspaceAgentSessionInputGoalControlResponse() (SendWorkspaceAgentSessionInputGoalControlResponse, error) {
+	var body SendWorkspaceAgentSessionInputGoalControlResponse
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromSendWorkspaceAgentSessionInputGoalControlResponse overwrites any union data inside the SendWorkspaceAgentSessionInputResponse as the provided SendWorkspaceAgentSessionInputGoalControlResponse
+func (t *SendWorkspaceAgentSessionInputResponse) FromSendWorkspaceAgentSessionInputGoalControlResponse(v SendWorkspaceAgentSessionInputGoalControlResponse) error {
+	v.Kind = "goalControl"
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeSendWorkspaceAgentSessionInputGoalControlResponse performs a merge with any union data inside the SendWorkspaceAgentSessionInputResponse, using the provided SendWorkspaceAgentSessionInputGoalControlResponse
+func (t *SendWorkspaceAgentSessionInputResponse) MergeSendWorkspaceAgentSessionInputGoalControlResponse(v SendWorkspaceAgentSessionInputGoalControlResponse) error {
+	v.Kind = "goalControl"
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+func (t SendWorkspaceAgentSessionInputResponse) Discriminator() (string, error) {
+	var discriminator struct {
+		Discriminator string `json:"kind"`
+	}
+	err := json.Unmarshal(t.union, &discriminator)
+	return discriminator.Discriminator, err
+}
+
+func (t SendWorkspaceAgentSessionInputResponse) ValueByDiscriminator() (interface{}, error) {
+	discriminator, err := t.Discriminator()
+	if err != nil {
+		return nil, err
+	}
+	switch discriminator {
+	case "goalControl":
+		return t.AsSendWorkspaceAgentSessionInputGoalControlResponse()
+	case "turn":
+		return t.AsSendWorkspaceAgentSessionInputTurnResponse()
+	default:
+		return nil, errors.New("unknown discriminator value: " + discriminator)
+	}
+}
+
+func (t SendWorkspaceAgentSessionInputResponse) MarshalJSON() ([]byte, error) {
+	b, err := t.union.MarshalJSON()
+	return b, err
+}
+
+func (t *SendWorkspaceAgentSessionInputResponse) UnmarshalJSON(b []byte) error {
 	err := t.union.UnmarshalJSON(b)
 	return err
 }
