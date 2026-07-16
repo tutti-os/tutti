@@ -43,6 +43,12 @@ When a node body or header needs host-owned business state, pass an
 `externalNodeState` and `externalWorkspaceState`. If the source exposes
 `subscribe(...)`, the host re-renders when that subscription notifies.
 
+Node body context also exposes `isDragging` and `isResizing`. The Workbench
+shell continues applying live frame geometry during direct manipulation, while
+an expensive body adapter may use these flags to suppress frame-only renders
+until the interaction settles. The adapter must still observe both interaction
+transitions so the final committed frame reaches responsive body layout.
+
 Host-owned business instances are represented with `projectedNodes`. A
 projected node tells the workbench that a shell should currently exist for a
 host-owned instance; the workbench reconciles that presence with snapshot

@@ -89,7 +89,9 @@ export function StandaloneAgentAppViewerToolPanel({
     host: directHost.host,
     instanceId,
     instanceKey: instanceId,
+    isDragging: false,
     isFocused: active,
+    isResizing: false,
     node,
     setNodeRuntimeState: () => undefined,
     setSnapshotNodeState: () => undefined
