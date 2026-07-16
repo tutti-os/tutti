@@ -2179,7 +2179,15 @@ User-visible rules:
   `idle -> loading -> partial -> ready` directory sequence cannot turn All into
   a target-scoped request or create a new rail cache key. Only an explicit
   `agentTarget` filter may add `agentTargetId` to section, pinned, search,
-  pagination, or batch-action requests. Filter normalization and list
+  pagination, or batch-action requests. Rail query identity must contain only
+  values present in that backend request protocol. In particular, asynchronously
+  hydrated `userProjects` update project section presentation but must not
+  create a second cache scope or duplicate an otherwise identical section
+  request. Runtime membership changes that arrive while the first section
+  request is pending must be queued until that response establishes the full
+  rail topology. A targeted page refresh may update an established section,
+  but it must never replace an unresolved full-section response or construct
+  the rail from a partial set of changed pages. Filter normalization and list
   projection helpers must not
   mutate workbench node `provider`, provider target fields, composer drafts,
   desktop default provider, or composer-default preferences. All-filter clicks

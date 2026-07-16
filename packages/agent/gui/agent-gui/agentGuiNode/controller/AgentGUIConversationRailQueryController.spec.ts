@@ -4,9 +4,9 @@ import { createTestAgentSessionEngine } from "../../../shared/testing/createTest
 import { createWorkspaceQueryCache } from "../../../shared/query/workspaceQueryCache";
 import {
   AgentGUIConversationRailQueryController,
-  CONVERSATION_SEARCH_DEBOUNCE_MS,
-  type ConversationRailQueryRuntime
+  CONVERSATION_SEARCH_DEBOUNCE_MS
 } from "./AgentGUIConversationRailQueryController";
+import type { ConversationRailQueryRuntime } from "./agentGuiConversationRailQueryControllerTypes";
 
 describe("AgentGUIConversationRailQueryController", () => {
   it("debounces conversation searches and immediately clears an active query", async () => {
@@ -177,6 +177,99 @@ describe("AgentGUIConversationRailQueryController", () => {
     engine.dispose();
   });
 
+  it("defers membership page refreshes until first pages establish the rail topology", async () => {
+    const engine = createTestAgentSessionEngine();
+    const session = normalizeAgentActivitySession({
+      activeTurnId: null,
+      agentSessionId: "session-1",
+      agentTargetId: "local:codex",
+      cwd: "/workspace",
+      latestTurnInteractions: [],
+      pendingInteractions: [],
+      provider: "codex",
+      railSectionKey: "conversations",
+      title: "Session",
+      updatedAtUnixMs: 1,
+      workspaceId: "test-workspace"
+    });
+    let resolveFirstPages!: () => void;
+    const listSessionSections = vi.fn<
+      NonNullable<ConversationRailQueryRuntime["listSessionSections"]>
+    >((input) =>
+      new Promise<void>((resolve) => {
+        resolveFirstPages = resolve;
+      }).then(() => ({
+        sections: [
+          {
+            hasMore: false,
+            kind: "project" as const,
+            sectionKey: "project:/workspace",
+            sessions: [],
+            totalCount: 0,
+            userProject: {
+              createdAtUnixMs: 1,
+              id: "workspace",
+              label: "Workspace",
+              path: "/workspace",
+              sectionKey: "project:/workspace",
+              updatedAtUnixMs: 1
+            }
+          },
+          {
+            hasMore: false,
+            kind: "conversations" as const,
+            sectionKey: "conversations",
+            sessions: [session],
+            totalCount: 1
+          }
+        ],
+        workspaceId: input.workspaceId
+      }))
+    );
+    const listSessionSectionPage = vi.fn(async (input) => ({
+      hasMore: false,
+      kind: "conversations" as const,
+      sectionKey: input.sectionKey,
+      sessions: [session],
+      totalCount: 1
+    }));
+    const controller = new AgentGUIConversationRailQueryController({
+      engine,
+      getActiveConversationId: () => null,
+      runtime: {
+        listSessionSections,
+        listSessionSectionPage
+      },
+      workspaceId: "test-workspace"
+    });
+    controller.configure({
+      conversationFilter: { kind: "all" },
+      previewMode: false,
+      userProjects: []
+    });
+
+    const detach = controller.attach();
+    engine.dispatch({ type: "session/upserted", session });
+
+    expect(controller.getSnapshot().runtimeRailSectionsPending).toBe(true);
+    expect(listSessionSectionPage).not.toHaveBeenCalled();
+
+    resolveFirstPages();
+    await vi.waitFor(() =>
+      expect(listSessionSectionPage).toHaveBeenCalledTimes(1)
+    );
+    await vi.waitFor(() =>
+      expect(
+        controller
+          .getSnapshot()
+          .runtimeRailMemberships?.map((membership) => membership.id)
+      ).toEqual(["project:/workspace", "conversations"])
+    );
+
+    detach();
+    engine.dispose();
+  });
+
   it("reuses fresh first pages across reattach and preview-mode scope changes", async () => {
     const engine = createTestAgentSessionEngine();
     const listSessionSections = vi.fn<
@@ -229,7 +322,7 @@ describe("AgentGUIConversationRailQueryController", () => {
     engine.dispose();
   });
 
-  it("keeps the All scope unfiltered across repeated startup configuration", async () => {
+  it("keeps the All request stable while startup user projects hydrate", async () => {
     const engine = createTestAgentSessionEngine();
     const listSessionSections = vi.fn<
       NonNullable<ConversationRailQueryRuntime["listSessionSections"]>
@@ -263,12 +356,18 @@ describe("AgentGUIConversationRailQueryController", () => {
     controller.configure({
       conversationFilter: { kind: "all" },
       previewMode: false,
-      userProjects: []
-    });
-    controller.configure({
-      conversationFilter: { kind: "all" },
-      previewMode: false,
-      userProjects: []
+      userProjects: [
+        {
+          id: "workspace",
+          label: "workspace",
+          path: "/Users/local/workspace"
+        },
+        {
+          id: "team-shell",
+          label: "team-shell",
+          path: "/Users/local/team-shell"
+        }
+      ]
     });
 
     await vi.waitFor(() =>

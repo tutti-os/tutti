@@ -3,7 +3,6 @@ import {
   type AgentSessionEngine,
   type AgentSessionEngineState
 } from "@tutti-os/agent-activity-core";
-import type { AgentActivityRuntime } from "../../../agentActivityRuntime";
 import {
   createWorkspaceQueryCache,
   type WorkspaceQueryCache
@@ -14,7 +13,6 @@ import {
   type AgentGuiScheduledTask,
   type AgentGuiScheduler
 } from "../agentGuiScheduler";
-import type { AgentGUINodeViewModel } from "../model/agentGuiNodeTypes";
 import {
   CONVERSATION_RAIL_SLOW_DIAGNOSTIC_THRESHOLD_MS,
   createConversationRailDiagnosticLogger,
@@ -42,44 +40,23 @@ import {
   EMPTY_CONVERSATION_RAIL_QUERY_STATE,
   type AgentGUIConversationRailQuerySnapshot
 } from "./agentGuiConversationRailQuerySnapshot";
-import { agentTargetQueryInput } from "./agentGuiConversationRailQueryInput";
+import {
+  agentTargetQueryInput,
+  conversationRailScopeKey
+} from "./agentGuiConversationRailQueryInput";
+import { AgentGUIConversationRailDeferredRefresh } from "./AgentGUIConversationRailDeferredRefresh";
 import { AgentGUIConversationRailTargetedPageRefresher } from "./AgentGUIConversationRailTargetedPageRefresher";
+import type {
+  ConversationRailQueryControllerInput,
+  ConversationRailQueryRuntime,
+  ConversationRailQueryScope
+} from "./agentGuiConversationRailQueryControllerTypes";
 
 export type { AgentGUIConversationRailQuerySnapshot } from "./agentGuiConversationRailQuerySnapshot";
 
 const SECTION_PAGE_SIZE = 5;
 export const CONVERSATION_SEARCH_DEBOUNCE_MS = 300;
 export const CONVERSATION_RAIL_QUERY_CACHE_FRESH_MS = 30_000;
-
-export interface ConversationRailQueryScope {
-  conversationFilter: AgentGUINodeViewModel["rail"]["conversationFilter"];
-  previewMode: boolean;
-  userProjects: AgentGUINodeViewModel["rail"]["userProjects"];
-}
-
-interface ControllerInput {
-  cacheNow?: () => number;
-  cacheFreshMs?: number;
-  diagnosticLogger?: ConversationRailDiagnosticLogger;
-  diagnosticNow?: () => number;
-  diagnosticSlowThresholdMs?: number;
-  engine: AgentSessionEngine;
-  getActiveConversationId(): string | null;
-  runtime: ConversationRailQueryRuntime;
-  sessionSectionsQueryCache?: WorkspaceQueryCache<CachedConversationRailQuery>;
-  scheduler?: AgentGuiScheduler;
-  workspaceId: string;
-}
-
-export type ConversationRailQueryRuntime = Pick<
-  AgentActivityRuntime,
-  | "listPinnedSessionsPage"
-  | "listSessionSectionPage"
-  | "listSessionSections"
-  | "listSessionsPage"
-  | "getSessionSectionsQueryCache"
-  | "reportDiagnostic"
->;
 
 type Listener = (snapshot: AgentGUIConversationRailQuerySnapshot) => void;
 
@@ -110,6 +87,7 @@ export class AgentGUIConversationRailQueryController {
   private readonly providerSwitchDiagnostics: ConversationRailProviderSwitchDiagnosticTracker;
   private readonly pagingAbortControllers = new Map<string, AbortController>();
   private readonly targetedPageRefresher: AgentGUIConversationRailTargetedPageRefresher;
+  private readonly deferredMembershipRefresh: AgentGUIConversationRailDeferredRefresh;
   private queryState = EMPTY_CONVERSATION_RAIL_QUERY_STATE;
   private searchState = EMPTY_CONVERSATION_SEARCH_QUERY_STATE;
   private snapshot!: AgentGUIConversationRailQuerySnapshot;
@@ -129,7 +107,7 @@ export class AgentGUIConversationRailQueryController {
   >;
   private unsubscribeEngine: (() => void) | null = null;
 
-  constructor(input: ControllerInput) {
+  constructor(input: ConversationRailQueryControllerInput) {
     this.cacheFreshMs =
       input.cacheFreshMs ?? CONVERSATION_RAIL_QUERY_CACHE_FRESH_MS;
     this.cacheNow = input.cacheNow ?? Date.now;
@@ -171,6 +149,16 @@ export class AgentGUIConversationRailQueryController {
         runtime: this.runtime,
         workspaceId: this.workspaceId
       });
+    this.deferredMembershipRefresh =
+      new AgentGUIConversationRailDeferredRefresh((plan) => {
+        if (plan.refreshSearch) this.requestSearch();
+        if (plan.pageIds.length === 0) return;
+        this.cancelPagingRequests();
+        this.targetedPageRefresher.refresh({
+          agentTargetId: this.sectionAgentTargetId,
+          pageIds: plan.pageIds
+        });
+      });
     this.previousMembershipRecords = projectConversationRailMembershipRecords(
       this.engine.getSnapshot()
     );
@@ -195,20 +183,11 @@ export class AgentGUIConversationRailQueryController {
       scope.conversationFilter.kind === "agentTarget"
         ? scope.conversationFilter.agentTargetId.trim()
         : "";
-    const userProjectPathKey = JSON.stringify(
-      scope.userProjects
-        .map((project) => project.path.trim())
-        .filter((path) => path.length > 0)
-    );
-    const nextScopeKey = JSON.stringify([
-      this.workspaceId,
-      scope.conversationFilter.kind === "agentTarget"
-        ? `agentTarget:${scope.conversationFilter.agentTargetId.trim()}`
-        : "all",
-      scope.previewMode,
-      sectionAgentTargetId,
-      userProjectPathKey
-    ]);
+    const nextScopeKey = conversationRailScopeKey({
+      conversationFilter: scope.conversationFilter,
+      previewMode: scope.previewMode,
+      workspaceId: this.workspaceId
+    });
     const scopeChanged = nextScopeKey !== this.railSectionQueryKey;
     this.providerSwitchDiagnostics.configure({
       attached: this.attached,
@@ -224,6 +203,7 @@ export class AgentGUIConversationRailQueryController {
 
     this.cancelPagingRequests();
     this.targetedPageRefresher.cancel();
+    this.deferredMembershipRefresh.clear();
     this.queryState = {
       ...this.queryState,
       pending: this.runtimeSectionsEnabled(),
@@ -461,6 +441,13 @@ export class AgentGUIConversationRailQueryController {
       )
     };
     this.emit();
+    if (
+      this.deferredMembershipRefresh.deferIfPending(
+        this.queryState.pending,
+        plan
+      )
+    )
+      return;
     if (plan.refreshSearch) this.requestSearch();
     this.cancelPagingRequests();
     this.targetedPageRefresher.refresh({
@@ -504,6 +491,7 @@ export class AgentGUIConversationRailQueryController {
         sectionCount: cached.value.sectionCount,
         status: "ready"
       });
+      this.flushDeferredMembershipRefresh();
       return;
     }
     const cacheStatus = cached ? "stale" : "miss";
@@ -562,6 +550,7 @@ export class AgentGUIConversationRailQueryController {
           status: "ready",
           workspaceId: this.workspaceId
         });
+        this.flushDeferredMembershipRefresh();
       })
       .catch((error: unknown) => {
         if (
@@ -609,7 +598,16 @@ export class AgentGUIConversationRailQueryController {
               sections: []
             };
         this.emit();
+        this.flushDeferredMembershipRefresh();
       });
+  }
+
+  private flushDeferredMembershipRefresh(): void {
+    this.deferredMembershipRefresh.flushIfReady(
+      !this.queryState.pending &&
+        this.queryState.resolvedScopeKey === this.railSectionQueryKey &&
+        this.queryState.sections !== null
+    );
   }
 
   private applyCachedFirstPages(
@@ -791,6 +789,7 @@ export class AgentGUIConversationRailQueryController {
     this.unsubscribeEngine = null;
     this.cancelPagingRequests();
     this.targetedPageRefresher.cancel();
+    this.deferredMembershipRefresh.clear();
     this.clearSearchDebounceTimer();
     this.searchRequestSequence += 1;
     this.searchAbortController?.abort();
