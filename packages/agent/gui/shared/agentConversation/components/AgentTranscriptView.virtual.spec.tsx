@@ -465,7 +465,8 @@ function conversationWithCollapsibleTurns(
             ...row,
             messages: row.messages.map((message) => ({
               ...message,
-              copyText: message.body
+              copyText: message.body,
+              isTurnFinalText: true as const
             })),
             thinking: [
               {
