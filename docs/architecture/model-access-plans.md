@@ -54,6 +54,12 @@ and legacy fallback, not as the primary configured Agent directory.
 - Credentials must never appear in logs, events, timeline payloads, detection
   results, or generated provider instructions. `runtimeprep` writes the Codex
   provider table with `env_key`, never the key value.
+- `runtimeprep.PrepareInput.ModelEndpoint` is a private process-materialization
+  input. Capability resolvers and lifecycle callbacks receive only
+  `runtimeprep.PrepareContext`, which intentionally excludes endpoint URL,
+  credential, Plan name, and Plan identity. Only the concrete provider
+  preparer may read the endpoint secret to construct provider config and
+  environment variables.
 - `official_subscription` is provider-native, not an alias for the provider's
   metered API. It stores neither an API key nor a Base URL. OpenAI protocol
   selects the built-in Codex target and Anthropic protocol selects the
@@ -135,6 +141,12 @@ model-range validation but `runtimeprep.ModelEndpointConfig` is intentionally
 credentialless. Runtime preparation therefore performs no endpoint injection
 and Codex/Claude Code continues with its provider-native login. Endpoint-backed
 plans follow the injection chain above.
+
+Plan identity and immutable revision remain daemon-owned session metadata.
+They are recorded in the model resolution and runtime snapshot, but are not
+fields on `runtimeprep.ModelEndpointConfig`; the endpoint DTO carries only the
+protocol, Base URL, API key, model, and redaction-safe display name needed by
+the concrete provider preparer.
 
 `modelbinding.Binding` remains a compatibility fallback for raw system target
 ids. New WorkspaceAgent launches bypass that mutable binding and carry the

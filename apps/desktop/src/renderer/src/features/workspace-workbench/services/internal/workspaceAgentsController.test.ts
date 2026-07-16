@@ -404,6 +404,7 @@ test("workspace agents controller adds the daemon recommended compatible fallbac
     {
       id: "plan-primary",
       workspaceId: "workspace-1",
+      revision: 1,
       name: "Primary",
       templateKind: "custom",
       billingMode: "api_metered",

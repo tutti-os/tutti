@@ -58,7 +58,7 @@ func tuttiAgentAccountBase() string {
 // failures leave the session in the auth-required state that the provider
 // status service already reports.
 func BootstrapTuttiAgentUserAuth(ctx context.Context) {
-	bootstrapTuttiAgentUserAuth(ctx, runtimeprep.PrepareInput{})
+	bootstrapTuttiAgentUserAuth(ctx, runtimeprep.PrepareContext{})
 }
 
 // LogoutTuttiAgentUserAuth removes the local auth marker synchronously so
@@ -101,7 +101,7 @@ func logoutTuttiAgentUserAuth(ctx context.Context) error {
 
 // bootstrapTuttiAgentUserAuth is the provider-prepare variant that preserves
 // runtime prepare trace context when a real Tutti Agent session is starting.
-func bootstrapTuttiAgentUserAuth(ctx context.Context, input runtimeprep.PrepareInput) {
+func bootstrapTuttiAgentUserAuth(ctx context.Context, input runtimeprep.PrepareContext) {
 	cookie, ok := tuttiAgentAccountSessionCookie()
 	if !ok {
 		if err := logoutTuttiAgentUserAuth(ctx); err != nil {

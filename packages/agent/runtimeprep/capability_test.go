@@ -2,6 +2,7 @@ package runtimeprep
 
 import (
 	"context"
+	"fmt"
 	"strings"
 	"testing"
 )
@@ -10,7 +11,7 @@ func TestDefaultPreparerResolvesInjectedPackAcrossPolicySkillsAndEnv(t *testing.
 	profile := StandardProfile()
 	profile.Packs = append(profile.Packs, CapabilityPack{
 		Name: "deployment-docs",
-		Resolve: func(context.Context, PrepareInput) (CapabilityContribution, error) {
+		Resolve: func(context.Context, PrepareContext) (CapabilityContribution, error) {
 			return CapabilityContribution{
 				Enabled: true,
 				Skills: []SkillSpec{{
@@ -64,6 +65,38 @@ func TestHostAppContextUsesNativeGeneratedImageArtifactsOnlyForSupportedProvider
 		!strings.Contains(claudePolicy, "Multiple final images: one Markdown image tag each.") ||
 		strings.Contains(claudePolicy, "rendered directly from `imageGeneration` tool output") {
 		t.Fatalf("claude host policy = %q, want Markdown image fallback contract", claudePolicy)
+	}
+}
+
+func TestCapabilityResolverReceivesSecretFreePrepareContext(t *testing.T) {
+	t.Parallel()
+	var captured PrepareContext
+	_, err := Resolve(t.Context(), PrepareInput{
+		WorkspaceID:    "workspace-1",
+		AgentSessionID: "session-1",
+		AgentTargetID:  "local:codex",
+		Provider:       "codex",
+		ModelEndpoint: &ModelEndpointConfig{
+			PlanName: "private plan",
+			Protocol: "openai",
+			BaseURL:  "https://private.example/v1",
+			APIKey:   "sk-secret",
+		},
+	}, DeploymentProfile{Name: "test", Packs: []CapabilityPack{{
+		Name: "capture",
+		Resolve: func(_ context.Context, input PrepareContext) (CapabilityContribution, error) {
+			captured = input
+			return CapabilityContribution{Enabled: true}, nil
+		},
+	}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	encoded := fmt.Sprintf("%#v", captured)
+	for _, secret := range []string{"sk-secret", "private.example", "private plan"} {
+		if strings.Contains(encoded, secret) {
+			t.Fatalf("capability prepare context leaked %q: %s", secret, encoded)
+		}
 	}
 }
 
@@ -130,7 +163,7 @@ func TestWorkspaceAgentSkillSelectionFiltersHostSkillsButKeepsCorePacks(t *testi
 		{ID: "host/deployer", Name: "deployer", Files: map[string]string{"SKILL.md": "# Deployer\n"}},
 	}}
 	bundle, err := preparer.RenderSkillBundle(t.Context(), PrepareInput{
-		WorkspaceID: "workspace-1", AgentSessionID: "session-1", Provider: "claude-code",
+		WorkspaceID: "workspace-1", AgentSessionID: "session-1", AgentTargetID: "local:claude-code", Provider: "claude-code",
 		AgentSkills: []string{"host/reviewer"},
 	})
 	if err != nil {
@@ -153,7 +186,7 @@ func TestWorkspaceAgentExplicitEmptySkillSelectionKeepsOnlyCorePacks(t *testing.
 		ID: "host/reviewer", Name: "reviewer", Files: map[string]string{"SKILL.md": "# Reviewer\n"},
 	}}}
 	bundle, err := preparer.RenderSkillBundle(t.Context(), PrepareInput{
-		WorkspaceID: "workspace-1", AgentSessionID: "session-1", Provider: "claude-code",
+		WorkspaceID: "workspace-1", AgentSessionID: "session-1", AgentTargetID: "local:claude-code", Provider: "claude-code",
 		AgentCapabilitiesExplicit: true,
 	})
 	if err != nil {
@@ -220,8 +253,8 @@ func TestRenderTemplateRejectsMissingTemplateValuesButPreservesValueContent(t *t
 	}
 }
 
-func staticCapability(skill SkillSpec) func(context.Context, PrepareInput) (CapabilityContribution, error) {
-	return func(context.Context, PrepareInput) (CapabilityContribution, error) {
+func staticCapability(skill SkillSpec) func(context.Context, PrepareContext) (CapabilityContribution, error) {
+	return func(context.Context, PrepareContext) (CapabilityContribution, error) {
 		return CapabilityContribution{Enabled: true, Skills: []SkillSpec{skill}}, nil
 	}
 }

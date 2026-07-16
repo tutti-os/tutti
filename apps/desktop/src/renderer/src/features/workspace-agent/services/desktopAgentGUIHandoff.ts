@@ -1,5 +1,10 @@
-import type { AgentActivityCollaborationRun } from "@tutti-os/agent-activity-core";
+import {
+  dispatchCollaborationOperation,
+  type AgentActivityCollaborationRun
+} from "@tutti-os/agent-activity-core";
 import type { AgentActivityRuntime } from "@tutti-os/agent-gui";
+
+let handoffRequestSequence = 0;
 
 export async function startDesktopAgentGUIHandoff(input: {
   agentActivityRuntime: AgentActivityRuntime | null;
@@ -9,20 +14,24 @@ export async function startDesktopAgentGUIHandoff(input: {
   workspaceId: string;
   openTargetSession: (agentSessionId: string) => Promise<void>;
 }): Promise<AgentActivityCollaborationRun> {
-  const startAgentCollaboration =
-    input.agentActivityRuntime?.startAgentCollaboration;
-  if (!startAgentCollaboration) {
+  if (!input.agentActivityRuntime?.collaborationCommandSupport) {
     throw new Error("agent_handoff_unavailable");
   }
-  const run = await startAgentCollaboration({
-    agentSessionId: input.sourceAgentSessionId,
-    contextScope: "recent",
-    contextText: null,
-    mode: "handoff",
-    question: input.question,
-    targetAgentTargetId: input.targetAgentTargetId,
-    triggerReason: "handoff_menu",
-    workspaceId: input.workspaceId
+  const engine = input.agentActivityRuntime.getSessionEngine(input.workspaceId);
+  const requestId = `desktop-handoff:${input.sourceAgentSessionId}:${++handoffRequestSequence}`;
+  const run = await dispatchCollaborationOperation(engine, {
+    input: {
+      agentSessionId: input.sourceAgentSessionId,
+      contextScope: "recent",
+      contextText: null,
+      mode: "handoff",
+      question: input.question,
+      targetAgentTargetId: input.targetAgentTargetId,
+      triggerReason: "handoff_menu",
+      workspaceId: input.workspaceId
+    },
+    requestId,
+    type: "collaboration/startRequested"
   });
   const targetSessionId = run.targetSessionId?.trim();
   if (run.status === "failed" || !targetSessionId) {

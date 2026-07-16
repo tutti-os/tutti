@@ -1022,9 +1022,11 @@ export class WorkspaceAgentActivityService
         this.analytics.trackEngineActivation(input, activation);
         return activation;
       },
+      cancelCollaboration: (input) => this.cancelCollaboration(input),
       cancelTurn: (input) => this.cancelTurn(input),
       reconcileSession: (command) =>
         this.executeSessionReconcileCommand(command),
+      retryCollaboration: (input) => this.retryCollaboration(input),
       runtimeApi: this.dependencies.runtimeApi,
       sendInput: async (input) => {
         const result = await this.sendInput(input);
@@ -1032,6 +1034,8 @@ export class WorkspaceAgentActivityService
         return result;
       },
       submitInteractive: (input) => this.submitInteractive(input),
+      startAgentCollaboration: (input) => this.startAgentCollaboration(input),
+      setCollaborationAdoption: (input) => this.setCollaborationAdoption(input),
       submitPlanDecision: (input) => this.submitPlanDecision(input),
       subscribeSessionEvents: (workspaceId, listener) =>
         this.onSessionEvent(workspaceId, listener),

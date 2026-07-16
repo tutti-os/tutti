@@ -3,11 +3,24 @@ import type {
   DesktopDeveloperLogsState
 } from "@shared/contracts/ipc";
 import type {
+  AgentModelBinding,
   AgentProviderCapabilityOption,
   AutomationRule,
   AutomationRuleAction,
   AutomationRuleTrigger,
+  ModelPlan,
+  ModelPlanBillingMode,
+  ModelPlanDetection,
+  ModelPlanDetectionStage,
+  ModelPlanFirstUse,
+  ModelPlanModel,
+  ModelPlanPricing,
+  ModelPlanProtocol,
   ModelPlanReference,
+  ModelPlanStageResult,
+  ModelPlanStageStatus,
+  ModelPlanStatus,
+  ModelPlanTemplateKind,
   WorkspaceAgent,
   WorkspaceAgentProvider,
   WorkspaceAgentGeneratedAutomationRule
@@ -33,116 +46,30 @@ export type WorkspaceSettingsGeneralFocusAnchor =
   | "browser-use"
   | "computer-use";
 
-export type WorkspaceModelPlanProtocol = "anthropic" | "openai";
-
-export type WorkspaceModelPlanTemplateKind =
-  | "official_subscription"
-  | "coding_plan"
-  | "domestic"
-  | "relay"
-  | "custom";
-
-export type WorkspaceModelPlanBillingMode =
-  | "api_metered"
-  | "subscription_quota";
-
-export type WorkspaceModelPlanStatus =
-  | "disabled"
-  | "undetected"
-  | "detection_failed"
-  | "pending_first_use"
-  | "ready";
-
-export type WorkspaceModelPlanDetectionStage =
-  | "network"
-  | "auth"
-  | "model_discovery"
-  | "inference"
-  | "agent_runtime";
-
-export type WorkspaceModelPlanStageStatus =
-  | "passed"
-  | "failed"
-  | "skipped"
-  | "pending";
-
-export type WorkspaceModelPlanTier = "flagship" | "standard" | "economy";
-
-export interface WorkspaceModelPlanModel {
-  readonly id: string;
-  readonly name: string;
-  readonly tier?: WorkspaceModelPlanTier | null;
-  readonly capabilities?: readonly string[] | null;
-  readonly pricing?: WorkspaceModelPlanPricing | null;
-}
-
-export interface WorkspaceModelPlanPricing {
-  readonly currency: string;
-  readonly inputMicrosPerMillion: number;
-  readonly outputMicrosPerMillion: number;
-  readonly cacheReadMicrosPerMillion: number;
-  readonly cacheWriteMicrosPerMillion: number;
-}
-
-export interface WorkspaceModelPlanStageResult {
-  readonly stage: WorkspaceModelPlanDetectionStage;
-  readonly status: WorkspaceModelPlanStageStatus;
-  readonly latencyMs?: number | null;
-  readonly failureReason?: string | null;
-  readonly remedy?: string | null;
-  readonly detail?: string | null;
-  readonly checkedAt?: string | null;
-}
-
-export interface WorkspaceModelPlanDetection {
-  readonly stages: readonly WorkspaceModelPlanStageResult[];
-  readonly checkedAt?: string | null;
-  readonly model?: string | null;
-}
-
-export interface WorkspaceModelPlanFirstUse {
-  readonly status: "pending" | "completed";
-  readonly agentTargetId?: string | null;
-  readonly agentSessionId?: string | null;
-  readonly model?: string | null;
-  readonly completedAt?: string | null;
-}
-
-export interface WorkspaceModelPlan {
-  readonly id: string;
-  readonly workspaceId: string;
-  readonly name: string;
-  readonly templateKind: WorkspaceModelPlanTemplateKind;
-  readonly billingMode: WorkspaceModelPlanBillingMode;
-  readonly protocol: WorkspaceModelPlanProtocol;
-  readonly hasApiKey: boolean;
-  readonly baseUrl?: string | null;
-  readonly models: readonly WorkspaceModelPlanModel[];
-  readonly defaultModel?: string | null;
-  readonly enabled: boolean;
-  readonly status: WorkspaceModelPlanStatus;
-  readonly detection: WorkspaceModelPlanDetection;
-  readonly firstUse: WorkspaceModelPlanFirstUse;
-  readonly createdAt: string;
-  readonly updatedAt: string;
-}
+export type WorkspaceModelPlanProtocol = ModelPlanProtocol;
+export type WorkspaceModelPlanTemplateKind = ModelPlanTemplateKind;
+export type WorkspaceModelPlanBillingMode = ModelPlanBillingMode;
+export type WorkspaceModelPlanStatus = ModelPlanStatus;
+export type WorkspaceModelPlanDetectionStage = ModelPlanDetectionStage;
+export type WorkspaceModelPlanStageStatus = ModelPlanStageStatus;
+export type WorkspaceModelPlanTier = NonNullable<ModelPlanModel["tier"]>;
+export type WorkspaceModelPlanModel = WorkspaceSettingsReadonly<ModelPlanModel>;
+export type WorkspaceModelPlanPricing =
+  WorkspaceSettingsReadonly<ModelPlanPricing>;
+export type WorkspaceModelPlanStageResult =
+  WorkspaceSettingsReadonly<ModelPlanStageResult>;
+export type WorkspaceModelPlanDetection =
+  WorkspaceSettingsReadonly<ModelPlanDetection>;
+export type WorkspaceModelPlanFirstUse =
+  WorkspaceSettingsReadonly<ModelPlanFirstUse>;
+export type WorkspaceModelPlan = WorkspaceSettingsReadonly<ModelPlan>;
 
 export type WorkspaceModelPlanReferenceKind = ModelPlanReference["kind"];
 
-export interface WorkspaceModelPlanReference {
-  readonly kind: WorkspaceModelPlanReferenceKind;
-  readonly id: string;
-  readonly name?: string | null;
-  readonly role?: string | null;
-}
-
-export interface WorkspaceAgentModelBinding {
-  readonly agentTargetId: string;
-  readonly modelPlanId?: string | null;
-  readonly defaultModel?: string | null;
-  readonly modelPolicyId?: string | null;
-  readonly updatedAt?: string | null;
-}
+export type WorkspaceModelPlanReference =
+  WorkspaceSettingsReadonly<ModelPlanReference>;
+export type WorkspaceAgentModelBinding =
+  WorkspaceSettingsReadonly<AgentModelBinding>;
 
 export interface WorkspaceModelPlanBindingTarget {
   readonly enabled: boolean;

@@ -1009,7 +1009,7 @@ test("desktop rich text @ service assembles agent target mentions", async () => 
     ["local:codex", "local:claude-code"]
   );
   assert.equal(provider.getItemIconUrl?.(items[0]), tuttiAgentAssetUrls.codex);
-  assert.equal(provider.getItemSubtitle, undefined);
+  assert.equal(provider.getItemSubtitle?.(items[0]), "");
   assert.deepEqual(provider.toInsertResult(items[0]), {
     kind: "mention",
     mention: {

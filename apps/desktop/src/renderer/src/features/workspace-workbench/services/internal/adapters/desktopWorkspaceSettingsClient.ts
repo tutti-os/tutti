@@ -3,18 +3,24 @@ import type {
   DesktopDeveloperApi,
   DesktopRuntimeApi
 } from "@preload/types";
-import type {
-  AgentProviderComposerOptionsResponse,
-  AgentTarget,
-  AutomationRule,
-  DeletedAgentConversationPurgeResult,
-  GenerateWorkspaceAgentDraftRequest,
-  PutAutomationRuleRequest,
-  PutWorkspaceAgentRequest,
-  TuttidClient,
-  WorkspaceAgentDraftGeneration,
-  WorkspaceAgentProvider,
-  WorkspaceModelRecommendation
+import {
+  getTuttidProtocolErrorCode,
+  type AgentProviderComposerOptionsResponse,
+  type AgentTarget,
+  type AutomationRule,
+  type DeletedAgentConversationPurgeResult,
+  type DetectModelPlanRequest,
+  type DetectModelPlanResponse,
+  type GenerateWorkspaceAgentDraftRequest,
+  type PutModelPlanRequest,
+  type PutAutomationRuleRequest,
+  type PutWorkspaceAgentRequest,
+  type RecommendWorkspaceModelsRequest,
+  type SetAgentModelBindingRequest,
+  type TuttidClient,
+  type WorkspaceAgentDraftGeneration,
+  type WorkspaceAgentProvider,
+  type WorkspaceModelRecommendation
 } from "@tutti-os/client-tuttid-ts";
 import type {
   ClearDeveloperLogsResult,
@@ -32,94 +38,25 @@ import type {
   WorkspaceAgentModelBinding,
   WorkspaceAgentDefinition,
   WorkspaceModelPlan,
-  WorkspaceModelPlanDetection,
-  WorkspaceModelPlanModel,
-  WorkspaceModelPlanProtocol,
-  WorkspaceModelPlanReference,
-  WorkspaceModelPlanTemplateKind
+  WorkspaceModelPlanReference
 } from "../../workspaceSettingsTypes.ts";
-
-interface ModelPlanListResponse {
-  plans: WorkspaceModelPlan[];
-}
-
-interface ModelPlanReferencesResponse {
-  references: WorkspaceModelPlanReference[];
-}
-
-interface ModelRecommendationListResponse {
-  recommendations: WorkspaceModelRecommendation[];
-}
-
-interface AgentModelBindingListResponse {
-  bindings: WorkspaceAgentModelBinding[];
-}
 
 interface ClearWorkspaceAgentSessionsResponse {
   removedMessages: number;
   removedSessions: number;
 }
 
-export interface PutModelPlanInput {
-  /** Omitted keeps the stored credential on update. */
-  apiKey?: string;
-  baseUrl: string;
-  defaultModel?: string;
-  enabled: boolean;
-  models: WorkspaceModelPlanModel[];
-  name: string;
-  protocol: WorkspaceModelPlanProtocol;
-  templateKind: WorkspaceModelPlanTemplateKind;
-}
-
-export interface DetectModelPlanInput {
-  apiKey?: string;
-  baseUrl?: string;
-  model?: string;
-  models?: Array<{ id: string; name: string }>;
-  /** When set, omitted fields fall back to the stored plan. */
-  planId?: string;
-  protocol?: WorkspaceModelPlanProtocol;
-  templateKind?: WorkspaceModelPlanTemplateKind;
-}
-
-export interface DetectModelPlanResult {
-  detection: WorkspaceModelPlanDetection;
-  discoveredModels: WorkspaceModelPlanModel[];
-}
-
-export interface RecommendWorkspaceModelsInput {
-  limit?: number;
-  preferredPlanId?: string;
-  requiredCapabilities?: string[];
-}
-
-export interface SetAgentModelBindingInput {
-  defaultModel?: string | null;
-  modelPlanId?: string | null;
-  modelPolicyId?: string | null;
-}
+export type PutModelPlanInput = PutModelPlanRequest;
+export type DetectModelPlanInput = DetectModelPlanRequest;
+export type DetectModelPlanResult = DetectModelPlanResponse;
+export type RecommendWorkspaceModelsInput = RecommendWorkspaceModelsRequest;
+export type SetAgentModelBindingInput = SetAgentModelBindingRequest;
 
 export type PutWorkspaceAgentInput = PutWorkspaceAgentRequest;
 export type PutAutomationRuleInput = PutAutomationRuleRequest;
 
-export class DesktopWorkspaceSettingsDaemonError extends Error {
-  readonly code: string | null;
-  readonly status: number;
-
-  constructor(status: number, code: string | null) {
-    super(`Daemon request failed (${status}${code ? `: ${code}` : ""}).`);
-    this.name = "DesktopWorkspaceSettingsDaemonError";
-    this.code = code;
-    this.status = status;
-  }
-}
-
 export function isModelPlanReferencedError(error: unknown): boolean {
-  return (
-    error instanceof DesktopWorkspaceSettingsDaemonError &&
-    error.code === "model_plan_referenced"
-  );
+  return getTuttidProtocolErrorCode(error) === "model_plan_referenced";
 }
 
 export interface DesktopWorkspaceSettingsClient {
@@ -247,11 +184,22 @@ export function createDesktopWorkspaceSettingsClient(input: {
     | "generateWorkspaceAgentDraft"
     | "getAgentProviderComposerOptions"
     | "listAgentTargets"
+    | "listAgentModelBindings"
     | "listAutomationRules"
+    | "listModelPlanReferences"
+    | "listWorkspaceModelPlans"
     | "listWorkspaceAgents"
     | "purgeDeletedAgentConversations"
+    | "recommendWorkspaceModels"
+    | "createModelPlan"
+    | "deleteModelPlan"
+    | "detectModelPlan"
+    | "duplicateModelPlan"
+    | "setAgentModelBinding"
+    | "setModelPlanEnabled"
     | "setSystemAgentTargetEnabled"
     | "updateAutomationRule"
+    | "updateModelPlan"
     | "updateWorkspaceAgent"
   >;
 }): DesktopWorkspaceSettingsClient {
@@ -383,104 +331,60 @@ export function createDesktopWorkspaceSettingsClient(input: {
       );
     },
     async listModelPlans(workspaceID) {
-      const response = await requestDaemon<ModelPlanListResponse>(
-        input.runtimeApi,
-        `/v1/workspaces/${encodeURIComponent(workspaceID)}/model-plans`
-      );
-      return response.plans;
+      return (await input.tuttidClient.listWorkspaceModelPlans(workspaceID))
+        .plans;
     },
     async recommendWorkspaceModels(workspaceID, body) {
-      const response = await requestDaemon<ModelRecommendationListResponse>(
-        input.runtimeApi,
-        `/v1/workspaces/${encodeURIComponent(workspaceID)}/model-plans/recommend`,
-        {
-          body,
-          method: "POST"
-        }
-      );
-      return response.recommendations;
+      return (
+        await input.tuttidClient.recommendWorkspaceModels(workspaceID, body)
+      ).recommendations;
     },
     async createModelPlan(workspaceID, body) {
-      return await requestDaemon<WorkspaceModelPlan>(
-        input.runtimeApi,
-        `/v1/workspaces/${encodeURIComponent(workspaceID)}/model-plans`,
-        {
-          body,
-          method: "POST"
-        }
-      );
+      return await input.tuttidClient.createModelPlan(workspaceID, body);
     },
     async updateModelPlan(workspaceID, modelPlanID, body) {
-      return await requestDaemon<WorkspaceModelPlan>(
-        input.runtimeApi,
-        `/v1/workspaces/${encodeURIComponent(workspaceID)}/model-plans/${encodeURIComponent(modelPlanID)}`,
-        {
-          body,
-          method: "PUT"
-        }
+      return await input.tuttidClient.updateModelPlan(
+        workspaceID,
+        modelPlanID,
+        body
       );
     },
     async deleteModelPlan(workspaceID, modelPlanID) {
-      await requestDaemon(
-        input.runtimeApi,
-        `/v1/workspaces/${encodeURIComponent(workspaceID)}/model-plans/${encodeURIComponent(modelPlanID)}`,
-        {
-          method: "DELETE"
-        }
-      );
+      await input.tuttidClient.deleteModelPlan(workspaceID, modelPlanID);
     },
     async duplicateModelPlan(workspaceID, modelPlanID) {
-      return await requestDaemon<WorkspaceModelPlan>(
-        input.runtimeApi,
-        `/v1/workspaces/${encodeURIComponent(workspaceID)}/model-plans/${encodeURIComponent(modelPlanID)}/duplicate`,
-        {
-          body: {},
-          method: "POST"
-        }
+      return await input.tuttidClient.duplicateModelPlan(
+        workspaceID,
+        modelPlanID
       );
     },
     async setModelPlanEnabled(workspaceID, modelPlanID, enabled) {
-      return await requestDaemon<WorkspaceModelPlan>(
-        input.runtimeApi,
-        `/v1/workspaces/${encodeURIComponent(workspaceID)}/model-plans/${encodeURIComponent(modelPlanID)}/enabled`,
-        {
-          body: { enabled },
-          method: "PATCH"
-        }
+      return await input.tuttidClient.setModelPlanEnabled(
+        workspaceID,
+        modelPlanID,
+        { enabled }
       );
     },
     async listModelPlanReferences(workspaceID, modelPlanID) {
-      const response = await requestDaemon<ModelPlanReferencesResponse>(
-        input.runtimeApi,
-        `/v1/workspaces/${encodeURIComponent(workspaceID)}/model-plans/${encodeURIComponent(modelPlanID)}/references`
-      );
-      return response.references;
+      return (
+        await input.tuttidClient.listModelPlanReferences(
+          workspaceID,
+          modelPlanID
+        )
+      ).references;
     },
     async detectModelPlan(workspaceID, body) {
-      return await requestDaemon<DetectModelPlanResult>(
-        input.runtimeApi,
-        `/v1/workspaces/${encodeURIComponent(workspaceID)}/model-plans/detect`,
-        {
-          body,
-          method: "POST"
-        }
-      );
+      return await input.tuttidClient.detectModelPlan(workspaceID, body);
     },
     async listAgentModelBindings(workspaceID) {
-      const response = await requestDaemon<AgentModelBindingListResponse>(
-        input.runtimeApi,
-        `/v1/workspaces/${encodeURIComponent(workspaceID)}/agent-model-bindings`
-      );
-      return response.bindings;
+      return (await input.tuttidClient.listAgentModelBindings(workspaceID))
+        .bindings;
     },
     async setAgentModelBinding(workspaceID, agentTargetID, body) {
-      return await requestDaemon<WorkspaceAgentModelBinding>(
-        input.runtimeApi,
-        `/v1/workspaces/${encodeURIComponent(workspaceID)}/agent-model-bindings/${encodeURIComponent(agentTargetID)}`,
-        {
-          body,
-          method: "PUT"
-        }
+      return await input.tuttidClient.setAgentModelBinding(
+        workspaceID,
+        agentTargetID,
+        body
       );
     }
   };
@@ -500,23 +404,7 @@ async function requestDaemon<TResult = unknown>(
     },
     method: init.method ?? "GET"
   });
-  if (!response.ok) {
-    throw new DesktopWorkspaceSettingsDaemonError(
-      response.status,
-      await readDaemonErrorCode(response)
-    );
-  }
+  if (!response.ok)
+    throw new Error(`Daemon request failed (${response.status})`);
   return (await response.json()) as TResult;
-}
-
-async function readDaemonErrorCode(response: Response): Promise<string | null> {
-  try {
-    const payload = (await response.json()) as {
-      error?: { code?: unknown };
-    } | null;
-    const code = payload?.error?.code;
-    return typeof code === "string" ? code : null;
-  } catch {
-    return null;
-  }
 }

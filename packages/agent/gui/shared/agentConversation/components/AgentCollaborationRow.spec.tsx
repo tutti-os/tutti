@@ -6,11 +6,13 @@ import {
   waitFor
 } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import type { EngineCommandPort } from "@tutti-os/agent-activity-core";
 import {
   AgentActivityRuntimeProvider,
   resetAgentActivityRuntimeForTests,
   type AgentActivityRuntime
 } from "../../../agentActivityRuntime";
+import { createTestAgentSessionEngine } from "../../testing/createTestAgentSessionEngine";
 import type { AgentCollaborationVM } from "../contracts/agentCollaborationVM";
 import { AgentCollaborationRow } from "./AgentCollaborationRow";
 
@@ -53,13 +55,24 @@ function collaboration(
 }
 
 describe("AgentCollaborationRow cancellation", () => {
-  it("cancels a running durable collaboration through the host runtime", async () => {
-    const cancelCollaboration = vi
-      .fn()
-      .mockResolvedValue({ status: "canceled" });
-    const runtime = {
-      cancelCollaboration
-    } as unknown as AgentActivityRuntime;
+  it("cancels a running durable collaboration through the Session Engine", async () => {
+    const cancelCollaboration = vi.fn().mockResolvedValue({
+      adoption: "pending",
+      attempt: 1,
+      id: "run-1",
+      mode: "delegate",
+      status: "canceled",
+      triggerSource: "user",
+      workspaceId: "workspace-1"
+    });
+    const runtime = collaborationRuntime({
+      async execute(command) {
+        if (command.type === "collaboration/cancel") {
+          return cancelCollaboration(command.input);
+        }
+        return { ok: true };
+      }
+    });
 
     render(
       <AgentActivityRuntimeProvider runtime={runtime}>
@@ -81,9 +94,7 @@ describe("AgentCollaborationRow cancellation", () => {
   });
 
   it("hides cancel for settled and preview cards", () => {
-    const runtime = {
-      cancelCollaboration: vi.fn()
-    } as unknown as AgentActivityRuntime;
+    const runtime = collaborationRuntime();
     const view = render(
       <AgentActivityRuntimeProvider runtime={runtime}>
         <AgentCollaborationRow
@@ -116,15 +127,22 @@ describe("AgentCollaborationRow cancellation", () => {
 describe("AgentCollaborationRow failure recovery", () => {
   it("shows durable accounting and retries a failed run", async () => {
     const retryCollaboration = vi.fn().mockResolvedValue({
+      adoption: "pending",
+      attempt: 3,
       id: "run-2",
-      status: "running"
+      mode: "delegate",
+      status: "running",
+      triggerSource: "user",
+      workspaceId: "workspace-1"
     });
-    const runtime = {
-      retryCollaboration,
-      setCollaborationAdoption: vi.fn().mockResolvedValue({
-        adoption: "rejected"
-      })
-    } as unknown as AgentActivityRuntime;
+    const runtime = collaborationRuntime({
+      async execute(command) {
+        if (command.type === "collaboration/retry") {
+          return retryCollaboration(command.input);
+        }
+        return { ok: true };
+      }
+    });
 
     render(
       <AgentActivityRuntimeProvider runtime={runtime}>
@@ -201,3 +219,15 @@ describe("AgentCollaborationRow failure recovery", () => {
     );
   });
 });
+
+function collaborationRuntime(
+  commandPort: EngineCommandPort = {
+    execute: async () => ({ ok: true })
+  }
+): AgentActivityRuntime {
+  const engine = createTestAgentSessionEngine("workspace-1", commandPort);
+  return {
+    collaborationCommandSupport: true,
+    getSessionEngine: () => engine
+  } as unknown as AgentActivityRuntime;
+}

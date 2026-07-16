@@ -155,7 +155,7 @@ It owns:
 - agent activity contracts used by UI packages and host adapters
 - the host adapter interface
 - canonical session, turn, interaction, message, composer-option, prompt-queue,
-  and attention state inside one workspace engine
+  attention, and collaboration-operation state inside one workspace engine
 - memoized projection from engine state to the `AgentActivitySnapshot` runtime
   contract
 - message merge, immutable presentation-sequence ordering, mutable version
@@ -178,6 +178,16 @@ It does not own:
 - workspace file access
 - Electron IPC or preload APIs
 - React hooks or UI components
+
+Start, adoption, cancel, and retry for durable collaboration runs enter the
+workspace Session Engine as intents. The host command port is the only adapter
+that may invoke the transport/runtime mutation, and every success, failure, or
+timeout returns through `engine/commandResult`. AgentGUI components select the
+operation record from engine state for pending presentation and consume its
+terminal result through `dispatchCollaborationOperation`; they must not invoke
+collaboration methods directly or mirror workflow state in React. Desktop
+handoff follows the same command path and opens the target Session only after
+the durable start result contains a target Session id.
 
 ### `@tutti-os/agent-gui`
 

@@ -11,7 +11,6 @@ import (
 // session process environment or the session-scoped provider config; it must
 // never be logged, recorded in manifests, or echoed into instructions.
 type ModelEndpointConfig struct {
-	PlanID   string
 	PlanName string
 	// Protocol is the plan wire protocol family: "openai" or "anthropic".
 	Protocol string

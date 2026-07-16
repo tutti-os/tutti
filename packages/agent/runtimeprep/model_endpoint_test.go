@@ -9,7 +9,6 @@ func TestCodexConfigWithModelPlanEndpointRewritesProvider(t *testing.T) {
 	t.Parallel()
 
 	endpoint := &ModelEndpointConfig{
-		PlanID:   "mp-1",
 		PlanName: "Volc Coding Plan",
 		Protocol: "openai",
 		BaseURL:  "https://relay.example/v1",
@@ -53,7 +52,6 @@ func TestCodexConfigWithModelPlanEndpointUsesOpenRouterFunctionToolsOnly(t *test
 	t.Parallel()
 
 	endpoint := &ModelEndpointConfig{
-		PlanID:   "mp-openrouter",
 		PlanName: "OpenRouter DeepSeek",
 		Protocol: "openai",
 		BaseURL:  "https://openrouter.ai/api/v1",

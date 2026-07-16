@@ -37,9 +37,7 @@ import type {
 } from "../AgentGUINodeView";
 import {
   buildAgentConversationHandoffPrompt,
-  commandAppSource,
-  handoffProjectPathForConversation,
-  workspaceAppIconKey
+  handoffProjectPathForConversation
 } from "./agentGUIDetailModelHelpers";
 import { AgentGUIBottomDockPane } from "./AgentGUIBottomDockPane";
 import {
@@ -340,8 +338,9 @@ export const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
             target.agentTargetId === agentTargetId
           );
         }) ?? viewModel.rail.selectedAgentTarget);
+  const handoffSourceSessionId = viewModel.rail.activeConversationId;
   const stableHandoffConversation = useOptionalStableEventCallback(
-    onHandoffConversation && viewModel.rail.activeConversationId !== null
+    onHandoffConversation && handoffSourceSessionId !== null
       ? (target: (typeof composerHandoffProviderTargets)[number]) =>
           onHandoffConversation({
             agentTargetId: target.agentTargetId ?? target.targetId,
@@ -354,7 +353,7 @@ export const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
               workspaceId: viewModel.shell.workspaceId
             }),
             provider: target.provider,
-            sourceAgentSessionId: viewModel.rail.activeConversationId,
+            sourceAgentSessionId: handoffSourceSessionId,
             userProjectPath: handoffProjectPathForConversation(
               viewModel.rail.activeConversation
             )

@@ -262,7 +262,6 @@ func (s *Service) modelEndpointFromSessionRuntimeSnapshot(
 		return nil, err
 	}
 	return &runtimeprep.ModelEndpointConfig{
-		PlanID:   plan.ID,
 		PlanName: plan.Name,
 		Protocol: string(plan.Protocol),
 		BaseURL:  plan.BaseURL,

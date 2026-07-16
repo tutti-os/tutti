@@ -279,7 +279,6 @@ func (s *Service) resolveModelPlan(ctx context.Context, workspaceID string, agen
 	model := resolvePlanSessionModel(plan, binding, requestedModel)
 	return modelPlanResolution{
 		Endpoint: &runtimeprep.ModelEndpointConfig{
-			PlanID:   plan.ID,
 			PlanName: plan.Name,
 			Protocol: string(plan.Protocol),
 			BaseURL:  plan.BaseURL,
@@ -334,7 +333,7 @@ func resolvePlanDefaultModel(plan modelplanbiz.Plan, binding modelbindingbiz.Bin
 	return ""
 }
 
-func (s *Service) registerPendingPlanFirstUse(workspaceID string, agentSessionID string, endpoint *runtimeprep.ModelEndpointConfig, agentTargetID string) {
+func (s *Service) registerPendingPlanFirstUse(workspaceID string, agentSessionID string, modelPlanID string, endpoint *runtimeprep.ModelEndpointConfig, agentTargetID string) {
 	if endpoint == nil {
 		return
 	}
@@ -348,7 +347,7 @@ func (s *Service) registerPendingPlanFirstUse(workspaceID string, agentSessionID
 		runtime.pending = map[string]pendingPlanFirstUse{}
 	}
 	runtime.pending[pendingPlanFirstUseKey(workspaceID, agentSessionID)] = pendingPlanFirstUse{
-		PlanID:        endpoint.PlanID,
+		PlanID:        strings.TrimSpace(modelPlanID),
 		AgentTargetID: strings.TrimSpace(agentTargetID),
 		Model:         endpoint.Model,
 	}
@@ -457,20 +456,22 @@ func pendingPlanFirstUseFromSnapshot(snapshot sessionRuntimeSnapshot) (pendingPl
 // the plan authorizes, labeled with the source plan. Targets without an
 // active plan binding keep their native options.
 func (s *Service) applyModelPlanComposerOverlay(ctx context.Context, input ComposerOptionsInput, options ComposerOptions) ComposerOptions {
-	endpoint, planModels := s.resolveModelPlanEndpoint(
+	resolution := s.resolveModelPlan(
 		ctx,
 		input.WorkspaceID,
 		input.AgentTargetID,
 		options.Provider,
 		strings.TrimSpace(input.Settings.Model),
 	)
-	return applyResolvedModelPlanComposerOverlay(options, endpoint, planModels)
+	return applyResolvedModelPlanComposerOverlay(options, resolution)
 }
 
-func applyResolvedModelPlanComposerOverlay(options ComposerOptions, endpoint *runtimeprep.ModelEndpointConfig, planModels []modelplanbiz.Model) ComposerOptions {
+func applyResolvedModelPlanComposerOverlay(options ComposerOptions, resolution modelPlanResolution) ComposerOptions {
+	endpoint := resolution.Endpoint
 	if endpoint == nil {
 		return options
 	}
+	planModels := resolution.Models
 	modelOptions := make([]ComposerConfigOptionValue, 0, len(planModels))
 	for _, model := range planModels {
 		modelOptions = append(modelOptions, ComposerConfigOptionValue{
@@ -498,7 +499,7 @@ func applyResolvedModelPlanComposerOverlay(options ComposerOptions, endpoint *ru
 		options.ReasoningConfig.Options,
 	)
 	options.RuntimeContext["modelPlan"] = map[string]any{
-		"id":       endpoint.PlanID,
+		"id":       resolution.ModelConfiguration.ModelPlanID,
 		"name":     endpoint.PlanName,
 		"protocol": endpoint.Protocol,
 	}
@@ -576,7 +577,6 @@ func resolveProvidedModelPlan(provider string, agentTargetID string, plan modelp
 	model := resolvePlanSessionModel(plan, binding, requestedModel)
 	return modelPlanResolution{
 		Endpoint: &runtimeprep.ModelEndpointConfig{
-			PlanID:   plan.ID,
 			PlanName: plan.Name,
 			Protocol: string(plan.Protocol),
 			BaseURL:  plan.BaseURL,

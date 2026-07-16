@@ -160,6 +160,7 @@ export function createDesktopAgentActivityRuntime(
   const readLocalPreviewFile = options.hostFilesApi?.readLocalPreviewFile;
   return {
     origin: AGENT_SESSION_ENGINE_LOCAL_ORIGIN,
+    collaborationCommandSupport: true,
     promptContentUploadSupport: {
       file: Boolean(archiveAgentPromptFile),
       image: Boolean(archiveAgentPromptFile)

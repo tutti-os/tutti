@@ -105,6 +105,39 @@ function createTransportClient(
     async listWorkspaceModelPlans() {
       throw new Error("not used");
     },
+    async createModelPlan() {
+      throw new Error("not used");
+    },
+    async detectModelPlan() {
+      throw new Error("not used");
+    },
+    async recommendWorkspaceModels() {
+      throw new Error("not used");
+    },
+    async deleteModelPlan() {
+      throw new Error("not used");
+    },
+    async getModelPlan() {
+      throw new Error("not used");
+    },
+    async updateModelPlan() {
+      throw new Error("not used");
+    },
+    async duplicateModelPlan() {
+      throw new Error("not used");
+    },
+    async setModelPlanEnabled() {
+      throw new Error("not used");
+    },
+    async listModelPlanReferences() {
+      throw new Error("not used");
+    },
+    async listAgentModelBindings() {
+      throw new Error("not used");
+    },
+    async setAgentModelBinding() {
+      throw new Error("not used");
+    },
     async addWorkspaceIssueContextRefs() {
       throw new Error("not used");
     },

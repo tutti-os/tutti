@@ -29,6 +29,10 @@ const standaloneLaunchRoutingSource = readFileSync(
   resolve(currentDirectory, "useStandaloneAgentLaunchRouting.ts"),
   "utf8"
 );
+const standaloneLaunchProviderSource = readFileSync(
+  resolve(currentDirectory, "standaloneAgentLaunchProvider.ts"),
+  "utf8"
+);
 const workbenchBodySource = readFileSync(
   resolve(
     currentDirectory,
@@ -82,7 +86,11 @@ test("standalone Agent delegates live window focus to the engagement controller"
 test("standalone Agent accepts a startup intent without a provider", () => {
   assert.match(
     standaloneWindowSource,
-    /windowIntent\.kind === "agent" && windowIntent\.provider\s*\? normalizeDesktopAgentGUIProvider\(windowIntent\.provider\)\s*: "codex"/
+    /resolveStandaloneAgentLaunchConfiguration\(\{\s*defaultProvider: defaultAgentProvider,\s*intent: windowIntent\s*\}\)/
+  );
+  assert.match(
+    standaloneLaunchProviderSource,
+    /isDesktopAgentGUIProvider\(input\.intent\.provider\)[\s\S]*normalizeDesktopAgentGUIProvider\(input\.defaultProvider\)/
   );
 });
 

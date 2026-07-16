@@ -234,7 +234,13 @@ func (s *Service) CreateWithResult(ctx context.Context, workspaceID string, inpu
 		}, getErr
 	}
 	s.reportAgentServiceNodeSuccess(ctx, session.ID, "session_create", "runtime_started", session.Provider, nodeStartedAt)
-	s.registerPendingPlanFirstUse(workspaceID, session.ID, planResolution.Endpoint, input.AgentTargetID)
+	s.registerPendingPlanFirstUse(
+		workspaceID,
+		session.ID,
+		planResolution.ModelConfiguration.ModelPlanID,
+		planResolution.Endpoint,
+		input.AgentTargetID,
+	)
 	if len(normalizedContent) == 0 {
 		return CreateSessionResult{
 			Session: decorateIsolatedSession(serviceSessionWithPersistedFreshness(

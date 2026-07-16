@@ -87,6 +87,14 @@ export type {
   SessionsDeleteCommand,
   SessionsDeleteRequestedIntent
 } from "./engine/sessionMutations.types.ts";
+export { selectCollaborationOperation } from "./engine/collaborationOperations.selectors.ts";
+export { dispatchCollaborationOperation } from "./engine/collaborationOperations.dispatch.ts";
+export type {
+  CollaborationOperationKind,
+  CollaborationOperationRequestedIntent,
+  CollaborationOperationRecord,
+  CollaborationOperationsState
+} from "./engine/collaborationOperations.types.ts";
 export {
   selectAttentionReadState,
   selectSessionAttention

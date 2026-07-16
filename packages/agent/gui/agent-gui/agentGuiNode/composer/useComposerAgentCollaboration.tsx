@@ -1,4 +1,9 @@
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useRef, useState, type ReactNode } from "react";
+import {
+  dispatchCollaborationOperation,
+  selectCollaborationOperation,
+  type AgentSessionEngineState
+} from "@tutti-os/agent-activity-core";
 import { toast } from "@tutti-os/ui-system";
 import type { AgentActivityRuntime } from "../../../agentActivityRuntime";
 import type { AgentHostApi } from "../../../host/agentHostApi";
@@ -27,6 +32,7 @@ import {
   agentCollaborationTargetsFromPrompt,
   collaborationQuestionFromPrompt
 } from "./composerAgentCollaboration";
+import { useOptionalEngineSelector } from "../../../shared/engine/useEngineSelector";
 
 interface Input {
   agentHostApi: AgentHostApi | null;
@@ -49,6 +55,14 @@ interface Result {
   submit: () => void;
 }
 
+interface CollaborationComposerState {
+  contextScope: AgentComposerCollaborationContextScope;
+  errorMessage: string | null;
+  mode: AgentComposerCollaborationMode | null;
+  requestId: string;
+  supplement: string;
+}
+
 /**
  * Owns the explicit @Agent composer branch. Normal prompt submission remains
  * in AgentComposer/useComposerSlashActions; this hook only intercepts durable
@@ -57,6 +71,18 @@ interface Result {
 export function useComposerAgentCollaboration(input: Input): Result {
   const targets = agentCollaborationTargetsFromPrompt(input.draftPrompt);
   const targetKey = targets.map((target) => target.targetId).join("\u0000");
+  const operationRequestId = `composer:${input.draftScopeKey}:${targetKey}`;
+  const sessionEngine = input.runtime?.collaborationCommandSupport
+    ? input.runtime.getSessionEngine(input.workspaceId)
+    : null;
+  const operation = useOptionalEngineSelector<
+    AgentSessionEngineState,
+    ReturnType<typeof selectCollaborationOperation>
+  >(
+    sessionEngine,
+    (state) => selectCollaborationOperation(state, operationRequestId),
+    null
+  );
   const { images, files, largeTexts } = agentComposerDraftAttachmentProjection(
     input.draftContent
   );
@@ -81,32 +107,52 @@ export function useComposerAgentCollaboration(input: Input): Result {
   draftContentRef.current = input.draftContent;
   draftPromptRef.current = input.draftPrompt;
 
-  const [mode, setMode] = useState<AgentComposerCollaborationMode | null>(null);
-  const [contextScope, setContextScope] =
-    useState<AgentComposerCollaborationContextScope>("recent");
-  const [supplement, setSupplement] = useState("");
-  const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const [pending, setPending] = useState(false);
-
-  useEffect(() => {
-    setMode(null);
-    setContextScope("recent");
-    setSupplement("");
-    setErrorMessage(null);
-  }, [input.draftScopeKey, targetKey]);
+  const [storedComposerState, setStoredComposerState] =
+    useState<CollaborationComposerState>(() =>
+      emptyCollaborationComposerState(operationRequestId)
+    );
+  const composerState =
+    storedComposerState.requestId === operationRequestId
+      ? storedComposerState
+      : emptyCollaborationComposerState(operationRequestId);
+  const { contextScope, errorMessage, mode, supplement } = composerState;
+  const pending = operation?.status === "inFlight";
 
   const blocked =
     targets.length > 0 &&
     (targets.length !== 1 ||
       !input.agentSessionId ||
-      !input.runtime?.startAgentCollaboration ||
+      !sessionEngine ||
       !delegationAllowed ||
       !mode ||
       attachmentCount > 0);
   const effectiveSubmitDisabled = input.submitDisabled || pending || blocked;
 
-  const showError = (message: string, error?: unknown): void => {
-    setErrorMessage(message);
+  const updateComposerState = (
+    patch: Partial<Omit<CollaborationComposerState, "requestId">>
+  ): void => {
+    setStoredComposerState((current) => ({
+      ...(current.requestId === operationRequestId
+        ? current
+        : emptyCollaborationComposerState(operationRequestId)),
+      ...patch
+    }));
+  };
+
+  const showError = (
+    message: string,
+    error?: unknown,
+    expectedRequestId?: string
+  ): void => {
+    if (expectedRequestId) {
+      setStoredComposerState((current) =>
+        current.requestId === expectedRequestId
+          ? { ...current, errorMessage: message }
+          : current
+      );
+    } else {
+      updateComposerState({ errorMessage: message });
+    }
     void input.agentHostApi?.debug?.logRuntimeDiagnostics?.({
       details: {
         error:
@@ -128,14 +174,13 @@ export function useComposerAgentCollaboration(input: Input): Result {
   };
 
   const submit = (): void => {
-    void submitAgentCollaboration();
+    submitAgentCollaboration();
   };
 
-  const submitAgentCollaboration = async (): Promise<void> => {
+  const submitAgentCollaboration = (): void => {
     if (pending) {
       return;
     }
-    const startAgentCollaboration = input.runtime?.startAgentCollaboration;
     const target = targets[0];
     if (targets.length !== 1 || !target) {
       showError(
@@ -147,7 +192,7 @@ export function useComposerAgentCollaboration(input: Input): Result {
       showError(translate("agentHost.agentGui.collaborationComposerNoSession"));
       return;
     }
-    if (!startAgentCollaboration) {
+    if (!sessionEngine) {
       showError(
         translate("agentHost.agentGui.collaborationComposerUnavailable")
       );
@@ -176,10 +221,10 @@ export function useComposerAgentCollaboration(input: Input): Result {
     const submittedDraft = draftContentRef.current;
     const submittedPrompt = draftPromptRef.current;
     const submittedScopeKey = input.draftScopeKey;
-    setErrorMessage(null);
-    setPending(true);
-    try {
-      const run = await startAgentCollaboration({
+    const submittedRequestId = operationRequestId;
+    updateComposerState({ errorMessage: null });
+    void dispatchCollaborationOperation(sessionEngine, {
+      input: {
         agentSessionId: input.agentSessionId,
         contextScope,
         contextText: supplement.trim() || null,
@@ -187,31 +232,30 @@ export function useComposerAgentCollaboration(input: Input): Result {
         question: collaborationQuestionFromPrompt(submittedPrompt),
         targetAgentTargetId: target.targetId,
         workspaceId: input.workspaceId
-      });
-      if (run.status === "failed") {
+      },
+      requestId: operationRequestId,
+      type: "collaboration/startRequested"
+    })
+      .then(() => {
+        if (draftContentRef.current === submittedDraft) {
+          input.onDraftContentChange(
+            emptyAgentComposerDraft(),
+            submittedScopeKey
+          );
+        }
+        setStoredComposerState((current) =>
+          current.requestId === submittedRequestId
+            ? emptyCollaborationComposerState(submittedRequestId)
+            : current
+        );
+      })
+      .catch((error: unknown) => {
         showError(
-          translate("agentHost.agentGui.collaborationComposerStartFailed")
+          translate("agentHost.agentGui.collaborationComposerStartFailed"),
+          error,
+          submittedRequestId
         );
-        return;
-      }
-      if (draftContentRef.current === submittedDraft) {
-        input.onDraftContentChange(
-          emptyAgentComposerDraft(),
-          submittedScopeKey
-        );
-      }
-      setMode(null);
-      setContextScope("recent");
-      setSupplement("");
-      setErrorMessage(null);
-    } catch (error) {
-      showError(
-        translate("agentHost.agentGui.collaborationComposerStartFailed"),
-        error
-      );
-    } finally {
-      setPending(false);
-    }
+      });
   };
 
   return {
@@ -230,19 +274,16 @@ export function useComposerAgentCollaboration(input: Input): Result {
           supplement={supplement}
           targets={targets}
           onContextScopeChange={(scope) => {
-            setContextScope(scope);
-            setErrorMessage(null);
+            updateComposerState({ contextScope: scope, errorMessage: null });
           }}
           onModeChange={(nextMode) => {
-            setMode(nextMode);
-            setErrorMessage(null);
+            updateComposerState({ errorMessage: null, mode: nextMode });
           }}
           onRetry={() => {
-            void submitAgentCollaboration();
+            submitAgentCollaboration();
           }}
           onChooseAnotherMode={() => {
-            setMode(null);
-            setErrorMessage(null);
+            updateComposerState({ errorMessage: null, mode: null });
           }}
           onReturnToSession={() => {
             input.onDraftContentChange(
@@ -251,16 +292,32 @@ export function useComposerAgentCollaboration(input: Input): Result {
               }),
               input.draftScopeKey
             );
-            setMode(null);
-            setContextScope("recent");
-            setSupplement("");
-            setErrorMessage(null);
+            updateComposerState({
+              contextScope: "recent",
+              errorMessage: null,
+              mode: null,
+              supplement: ""
+            });
           }}
-          onSupplementChange={setSupplement}
+          onSupplementChange={(nextSupplement) => {
+            updateComposerState({ supplement: nextSupplement });
+          }}
         />
       ) : null,
     effectiveSubmitDisabled,
     hasCollaborationTargets: targets.length > 0,
     submit
+  };
+}
+
+function emptyCollaborationComposerState(
+  requestId: string
+): CollaborationComposerState {
+  return {
+    contextScope: "recent",
+    errorMessage: null,
+    mode: null,
+    requestId,
+    supplement: ""
   };
 }

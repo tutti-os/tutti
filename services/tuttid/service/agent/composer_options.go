@@ -222,7 +222,6 @@ func (s *Service) GetComposerOptions(ctx context.Context, input ComposerOptionsI
 		)
 	}
 	planEndpoint := modelPlanResolution.Endpoint
-	planModels := modelPlanResolution.Models
 	if planEndpoint != nil {
 		settings.Model = planEndpoint.Model
 	}
@@ -389,7 +388,7 @@ func (s *Service) GetComposerOptions(ctx context.Context, input ComposerOptionsI
 		options = s.mergeRuntimeComposerContextForComposerOptions(input, effectiveSettings, locale, extensionProfile, options)
 		options = applyExtensionComposerCapabilities(options, extensionProfile)
 	}
-	options = applyResolvedModelPlanComposerOverlay(options, planEndpoint, planModels)
+	options = applyResolvedModelPlanComposerOverlay(options, modelPlanResolution)
 	return options, nil
 }
 

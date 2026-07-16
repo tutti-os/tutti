@@ -59,6 +59,68 @@ type PrepareInput struct {
 	ExternalRolloutSourcePath string
 }
 
+// PrepareContext is the non-secret subset exposed to capability resolvers and
+// host lifecycle callbacks. Provider credentials stay reachable only from the
+// concrete ProviderPreparer that materializes the session process.
+type PrepareContext struct {
+	WorkspaceID               string
+	AgentSessionID            string
+	AgentTargetID             string
+	Provider                  string
+	Cwd                       string
+	CLICommand                string
+	CommandGuide              string
+	Title                     string
+	PermissionModeID          string
+	PlanMode                  bool
+	BrowserUse                bool
+	ComputerUse               bool
+	Model                     string
+	ReasoningEffort           string
+	ConversationDetailMode    string
+	AgentName                 string
+	AgentPurpose              string
+	AgentInstructions         string
+	AgentCapabilitiesExplicit bool
+	AgentSkills               []string
+	AgentTools                []string
+	AgentPermissions          []string
+}
+
+func prepareContext(input PrepareInput) PrepareContext {
+	return PrepareContext{
+		WorkspaceID: input.WorkspaceID, AgentSessionID: input.AgentSessionID,
+		AgentTargetID: input.AgentTargetID, Provider: input.Provider, Cwd: input.Cwd,
+		CLICommand: input.CLICommand, CommandGuide: input.CommandGuide, Title: input.Title,
+		PermissionModeID: input.PermissionModeID, PlanMode: input.PlanMode,
+		BrowserUse: input.BrowserUse, ComputerUse: input.ComputerUse, Model: input.Model,
+		ReasoningEffort: input.ReasoningEffort, ConversationDetailMode: input.ConversationDetailMode,
+		AgentName: input.AgentName, AgentPurpose: input.AgentPurpose,
+		AgentInstructions:         input.AgentInstructions,
+		AgentCapabilitiesExplicit: input.AgentCapabilitiesExplicit,
+		AgentSkills:               append([]string(nil), input.AgentSkills...),
+		AgentTools:                append([]string(nil), input.AgentTools...),
+		AgentPermissions:          append([]string(nil), input.AgentPermissions...),
+	}
+}
+
+func (input PrepareContext) instructionInput() PrepareInput {
+	return PrepareInput{
+		WorkspaceID: input.WorkspaceID, AgentSessionID: input.AgentSessionID,
+		AgentTargetID: input.AgentTargetID, Provider: input.Provider, Cwd: input.Cwd,
+		CLICommand: input.CLICommand, CommandGuide: input.CommandGuide, Title: input.Title,
+		PermissionModeID: input.PermissionModeID, PlanMode: input.PlanMode,
+		BrowserUse: input.BrowserUse, ComputerUse: input.ComputerUse, Model: input.Model,
+		ReasoningEffort: input.ReasoningEffort, ConversationDetailMode: input.ConversationDetailMode,
+		AgentName: input.AgentName, AgentPurpose: input.AgentPurpose,
+		AgentInstructions:         input.AgentInstructions,
+		AgentCapabilitiesExplicit: input.AgentCapabilitiesExplicit,
+		AgentSkills:               append([]string(nil), input.AgentSkills...),
+		AgentTools:                append([]string(nil), input.AgentTools...),
+		AgentPermissions:          append([]string(nil), input.AgentPermissions...),
+	}
+}
+
 type PreparedRuntime struct {
 	Cwd string
 	Env []string

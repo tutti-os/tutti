@@ -224,7 +224,8 @@ export async function fetchAgentMentionFilterResult(input: {
         currentUserId: input.currentUserId,
         query: input.query,
         sessionCwd: input.sessionCwd,
-        diagnostics: providerDiagnostics
+        diagnostics: providerDiagnostics,
+        provenanceFilter: input.provenanceFilter
       });
       const rawGroups = emptyAgentMentionRawGroups();
       rawGroups.models = modelItems.filter(
