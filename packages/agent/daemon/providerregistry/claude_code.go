@@ -67,6 +67,18 @@ func claudeCodeDescriptor() ProviderDescriptor {
 		},
 		ComposerProfile: ComposerProfileDescriptor{
 			ModelSelection: true,
+			ModelDiscovery: ModelDiscoveryDescriptor{
+				Enabled:              true,
+				ColdResolverKind:     ModelResolverKindHiddenRuntimeSession,
+				ReuseRuntimeSnapshot: true,
+				RuntimeAuthoritative: true,
+				HiddenProbe:          true,
+				ScopeKind:            ModelDiscoveryScopeAccount,
+				PersistLastGood:      true,
+				FreshTTLSeconds:      600,
+				MaxStaleSeconds:      86400,
+				FallbackKind:         ModelFallbackKindClaudeAliases,
+			},
 			LiveModelDiscovery: LiveModelDiscoveryDescriptor{
 				Kind:          LiveModelDiscoveryKindClaudeSDK,
 				HiddenProbe:   true,

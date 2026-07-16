@@ -360,6 +360,9 @@ func Validate(descriptor ProviderDescriptor) error {
 	if err := validateAuthWatch(descriptor.Status.AuthWatch); err != nil {
 		return fmt.Errorf("provider %q auth watch: %w", providerID, err)
 	}
+	if err := validateModelDiscovery(descriptor.ComposerProfile); err != nil {
+		return fmt.Errorf("provider %q model discovery: %w", providerID, err)
+	}
 	switch descriptor.ComposerProfile.ModelCatalog {
 	case "", ModelCatalogKindCodexCLI, ModelCatalogKindOpenCodeCLI, ModelCatalogKindTuttiCLI:
 	default:
@@ -512,6 +515,51 @@ func Validate(descriptor ProviderDescriptor) error {
 		if !found {
 			return fmt.Errorf("provider %q default permission mode %q is not declared", providerID, defaultPermissionModeID)
 		}
+	}
+	return nil
+}
+
+func validateModelDiscovery(profile ComposerProfileDescriptor) error {
+	policy := profile.ModelDiscovery
+	if profile.ModelSelection != policy.Enabled {
+		return fmt.Errorf("model selection and discovery enabled state must match")
+	}
+	if !policy.Enabled {
+		if policy != (ModelDiscoveryDescriptor{}) {
+			return fmt.Errorf("disabled model discovery cannot declare policy")
+		}
+		return nil
+	}
+	switch policy.ColdResolverKind {
+	case ModelResolverKindCodexAppServer, ModelResolverKindOpenCodeCLI, ModelResolverKindTuttiAppServer, ModelResolverKindHiddenRuntimeSession:
+	case "":
+		if policy.FallbackKind == "" && !policy.ReuseRuntimeSnapshot {
+			return fmt.Errorf("enabled discovery requires a resolver, runtime reuse, or fallback")
+		}
+	default:
+		return fmt.Errorf("unsupported resolver kind %q", policy.ColdResolverKind)
+	}
+	switch policy.ScopeKind {
+	case ModelDiscoveryScopeAccount, ModelDiscoveryScopeProvider, ModelDiscoveryScopeCWD, ModelDiscoveryScopeTarget:
+	default:
+		return fmt.Errorf("bounded scope kind is required")
+	}
+	switch policy.FallbackKind {
+	case "", ModelFallbackKindClaudeAliases, ModelFallbackKindSelectedModel:
+	default:
+		return fmt.Errorf("unsupported fallback kind %q", policy.FallbackKind)
+	}
+	if policy.HiddenProbe && !policy.ReuseRuntimeSnapshot {
+		return fmt.Errorf("hidden probe requires runtime snapshot reuse")
+	}
+	if policy.HiddenProbe && policy.ColdResolverKind != ModelResolverKindHiddenRuntimeSession {
+		return fmt.Errorf("hidden probe requires hidden runtime session resolver")
+	}
+	if policy.PersistLastGood && policy.ScopeKind == "" {
+		return fmt.Errorf("durable persistence requires a bounded scope")
+	}
+	if policy.FreshTTLSeconds < 0 || policy.MaxStaleSeconds < 0 {
+		return fmt.Errorf("fresh and stale durations must be non-negative")
 	}
 	return nil
 }

@@ -1,10 +1,12 @@
 package agent
 
 import (
+	"context"
 	"strings"
 	"sync"
 	"time"
 
+	"github.com/tutti-os/tutti/packages/agent/daemon/agentcatalog"
 	"github.com/tutti-os/tutti/services/tuttid/biz/agentprovider"
 )
 
@@ -88,6 +90,10 @@ func (s *Service) InvalidateLiveComposerModels(provider string) {
 	if normalized == "" {
 		return
 	}
+	_ = s.catalogCoordinator().Invalidate(context.Background(), agentcatalog.InvalidateInput{
+		Facet:      agentcatalog.FacetModels,
+		ProviderID: normalized,
+	})
 	nowUnixMS := time.Now().UnixMilli()
 	deletedCacheEntries := s.liveComposerModelCache().invalidateProvider(normalized)
 	prefix := "live-model:" + normalized + ":"
@@ -160,6 +166,9 @@ func (s *Service) setLiveComposerModelOptionsForScope(scope composerLiveModelSco
 		return
 	}
 	s.liveComposerModelCache().set(scope.key(), now, options)
+	s.ingestComposerModels(ComposerOptionsInput{
+		Provider: scope.provider, WorkspaceID: scope.workspaceID, Cwd: scope.cwd, AgentTargetID: scope.agentTargetID,
+	}, options, true)
 }
 
 // composerLiveModelCacheKey buckets the cache by provider, workspace, cwd scope,

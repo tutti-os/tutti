@@ -19,6 +19,7 @@ type composerProfile struct {
 	// model overrides for this provider. Without it, stale persisted model
 	// values are cleared before they reach the runtime.
 	ModelSelection bool
+	ModelDiscovery providerregistry.ModelDiscoveryDescriptor
 	// LiveModelDiscovery: model options come from the model config option a
 	// live agent session advertises through its runtime; GetComposerOptions merges them
 	// into the composer (reusing a running session's list when one exists).
@@ -104,6 +105,7 @@ func composerProfileFromDescriptor(provider providerregistry.ProviderDescriptor)
 	}
 	return composerProfile{
 		ModelSelection:           descriptor.ModelSelection,
+		ModelDiscovery:           descriptor.ModelDiscovery,
 		LiveModelDiscovery:       descriptor.LiveModelDiscovery.Kind != "",
 		LiveModelDiscoveryKind:   descriptor.LiveModelDiscovery.Kind,
 		LiveModelProbeSession:    descriptor.LiveModelDiscovery.HiddenProbe,
