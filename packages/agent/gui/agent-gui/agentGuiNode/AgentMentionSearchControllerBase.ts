@@ -34,6 +34,7 @@ import {
 import {
   buildAgentMentionBrowseCacheKey,
   loadAgentMentionBrowseFetchResult,
+  mergeAgentMentionBrowseIssueGroupPage,
   readAgentMentionBrowseCache,
   type AgentMentionBrowseCacheEntry,
   type AgentMentionBrowseFetchResult,
@@ -45,6 +46,7 @@ import {
   cloneAgentMentionRawGroups,
   elapsedDiagnosticMs,
   emptyAgentMentionRawGroups,
+  issueTopicPaginationChanges,
   logAgentMentionLifecycleDiagnostic,
   rawGroupItemCount
 } from "./AgentMentionSearchModel";
@@ -298,6 +300,9 @@ export class AgentMentionSearchControllerBase {
     let providerDiagnostics: AgentMentionProviderQueryDiagnostic[] = [];
     const provenanceFilter = this.currentProvenanceFilter;
     const cacheKey = this.browseCacheKey(input, provenanceFilter);
+    const issueTopicGroupsAtStart = cloneAgentMentionIssueTopicGroups(
+      this.issueTopicGroups
+    );
     try {
       const result = await this.loadBrowseFetchResult(
         input,
@@ -318,7 +323,22 @@ export class AgentMentionSearchControllerBase {
         });
         return;
       }
-      this.applyBrowseFetchResult(result);
+      const paginationChanges = issueTopicPaginationChanges(
+        issueTopicGroupsAtStart,
+        this.issueTopicGroups
+      );
+      for (const group of paginationChanges) {
+        mergeAgentMentionBrowseIssueGroupPage({
+          cacheKey,
+          group,
+          cachedAt: this.diagnosticNow()
+        });
+      }
+      const resultToApply =
+        paginationChanges.length > 0
+          ? (this.readBrowseCache(cacheKey).entry ?? result)
+          : result;
+      this.applyBrowseFetchResult(resultToApply);
       const groups = this.groupsFromRawGroups();
 
       this.setState({

@@ -14,6 +14,7 @@ import {
 import { UnderlineTabs } from "@tutti-os/ui-system/components";
 import { cn } from "@tutti-os/ui-system/utils";
 import { flattenMentionPaletteEntries } from "./mentionPaletteEntries.ts";
+import { mentionPaletteExpandLabel } from "./mentionPaletteModel.ts";
 import { MentionPaletteScrollbar } from "./mentionPaletteScrollbar.tsx";
 import type {
   MentionPaletteGroup,
@@ -481,12 +482,7 @@ function MentionPaletteGroups<TItem>({
                     }
                   }}
                 >
-                  {group.expandStatus === "loading"
-                    ? (group.expandLoadingLabel ?? group.expandLabel)
-                    : group.expandStatus === "error"
-                      ? (group.expandErrorLabel ?? group.expandLabel)
-                      : (group.expandLabel ??
-                        `+${Math.max(0, group.totalCount - group.visibleCount)}`)}
+                  {mentionPaletteExpandLabel(group)}
                 </button>
               ) : null}
             </div>

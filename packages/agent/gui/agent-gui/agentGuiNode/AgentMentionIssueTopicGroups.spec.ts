@@ -294,6 +294,77 @@ describe("AgentMentionSearchController issue topic groups", () => {
     expect(queryGroups).toHaveBeenCalledTimes(1);
   });
 
+  it("preserves a page that completes while stale browse data revalidates", async () => {
+    let now = 1_000;
+    const refresh = deferred<RichTextTriggerGroupedQueryResult<TestIssue>>();
+    const queryGroups = vi
+      .fn()
+      .mockResolvedValueOnce(
+        groupedResult([
+          {
+            id: "topic/one",
+            label: "Pinned",
+            items: [issue("issue-1", "topic/one")],
+            totalCount: 2,
+            nextCursor: "cursor-1"
+          }
+        ])
+      )
+      .mockReturnValueOnce(refresh.promise);
+    const provider = groupedIssueProvider({
+      queryGroups,
+      queryGroupPage: vi.fn(async () => ({
+        id: "topic/one",
+        label: "Pinned",
+        items: [issue("issue-2", "topic/one")],
+        totalCount: 2
+      }))
+    });
+    const controller = new AgentMentionSearchController({
+      browseCacheTtlMs: 0,
+      contextMentionProviders: [provider],
+      diagnosticNow: () => now
+    });
+    const states: AgentMentionSearchState[] = [];
+    controller.subscribe((state) => states.push(state));
+    controller.setFilter("issue");
+    controller.updateQuery({ workspaceId: "workspace-1", query: "" });
+    await vi.waitFor(() => expect(states.at(-1)?.status).toBe("ready"));
+
+    controller.close();
+    now += 1;
+    controller.updateQuery({ workspaceId: "workspace-1", query: "" });
+    controller.setFilter("issue");
+    await vi.waitFor(() => expect(queryGroups).toHaveBeenCalledTimes(2));
+    controller.expandGroup("issue-topic:topic%2Fone");
+    await vi.waitFor(() =>
+      expect(states.at(-1)?.groups[0]?.items).toHaveLength(2)
+    );
+
+    refresh.resolve(
+      groupedResult([
+        {
+          id: "topic/one",
+          label: "Pinned refreshed",
+          items: [issue("issue-1", "topic/one")],
+          totalCount: 2,
+          nextCursor: "cursor-1"
+        }
+      ])
+    );
+
+    await vi.waitFor(() =>
+      expect(states.at(-1)?.groups[0]).toMatchObject({
+        label: "Pinned refreshed",
+        hasMore: false,
+        items: [
+          expect.objectContaining({ targetId: "issue-1" }),
+          expect.objectContaining({ targetId: "issue-2" })
+        ]
+      })
+    );
+  });
+
   it("loads search pages with the active query and cursor while preserving stable entry keys", async () => {
     vi.useFakeTimers();
     const initialItems = Array.from({ length: 10 }, (_, index) =>

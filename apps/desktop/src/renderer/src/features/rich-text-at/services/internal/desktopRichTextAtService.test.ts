@@ -559,7 +559,7 @@ test("desktop rich text @ service resolves workspace issue query by issue id", a
     { issueId: "issue-restore-1", workspaceId: "workspace-1" },
     { issueId: "issue-restore-1", workspaceId: "workspace-1" }
   ]);
-  assert.equal(items.length, 10);
+  assert.equal(items.length, 11);
   assert.equal(provider.getItemKey(items[0]), "issue-restore-1");
   assert.equal(
     provider.getItemIconUrl?.(items[0]),
@@ -589,11 +589,86 @@ test("desktop rich text @ service resolves workspace issue query by issue id", a
           "issue-existing-6",
           "issue-existing-7",
           "issue-existing-8",
-          "issue-existing-9"
+          "issue-existing-9",
+          "issue-existing-10"
         ]
       }
     ]
   );
+});
+
+test("workspace issue compatibility query interleaves topics before global truncation", async () => {
+  const service = new DesktopRichTextAtService({
+    tuttidClient: {
+      async listWorkspaceIssueTopics(workspaceId: string) {
+        return {
+          topics: ["topic-a", "topic-b"].map((topicId) => ({
+            isDefault: topicId === "topic-a",
+            summary: "",
+            title: topicId,
+            topicId,
+            workspaceId
+          }))
+        };
+      },
+      async listWorkspaceIssues(
+        workspaceId: string,
+        request: { topicId: string }
+      ) {
+        const itemCount = request.topicId === "topic-a" ? 10 : 2;
+        return {
+          issues: Array.from({ length: itemCount }, (_, index) => ({
+            issueId: `${request.topicId}-${index + 1}`,
+            status: "open",
+            title: `${request.topicId} issue ${index + 1}`,
+            topicId: request.topicId,
+            workspaceId
+          })),
+          statusCounts: {},
+          totalCount: itemCount
+        };
+      },
+      async getWorkspaceIssueDetail(workspaceId: string, issueId: string) {
+        return {
+          issue: {
+            issueId,
+            status: "open",
+            title: "Exact issue",
+            topicId: "topic-b",
+            workspaceId
+          },
+          tasks: []
+        };
+      }
+    } as unknown as TuttidClient
+  });
+  const provider = service.getProviders({
+    capabilities: ["workspace-issue"],
+    surface: "agent-composer",
+    target: "agent-gui",
+    workspaceId: "workspace-1"
+  })[0];
+  assert.ok(provider);
+
+  const items = await provider.query({
+    context: {},
+    keyword: "",
+    maxResults: 5,
+    trigger: "@"
+  });
+
+  assert.deepEqual(
+    items.slice(0, 5).map((item) => provider.getItemKey(item)),
+    ["topic-a-1", "topic-b-1", "topic-a-2", "topic-b-2", "topic-a-3"]
+  );
+
+  const exactItems = await provider.query({
+    context: {},
+    keyword: "issue-exact",
+    maxResults: 5,
+    trigger: "@"
+  });
+  assert.equal(provider.getItemKey(exactItems[0]), "issue-exact");
 });
 
 test("desktop rich text @ service assembles agent session providers by capability", async () => {

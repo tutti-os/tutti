@@ -114,6 +114,40 @@ export function cloneAgentMentionIssueTopicGroups(
   );
 }
 
+export function issueTopicPaginationChanges(
+  groupsAtStart: readonly AgentMentionIssueTopicGroup[] | null,
+  currentGroups: readonly AgentMentionIssueTopicGroup[] | null
+): AgentMentionIssueTopicGroup[] {
+  if (!groupsAtStart || !currentGroups) {
+    return [];
+  }
+  const startingGroups = new Map(
+    groupsAtStart.map((group) => [group.id, group] as const)
+  );
+  return currentGroups.flatMap((group) => {
+    const startingGroup = startingGroups.get(group.id);
+    if (!startingGroup) {
+      return [];
+    }
+    const startingIssueIds = new Set(
+      startingGroup.items
+        .filter((item) => item.kind === "workspace-issue")
+        .map((item) => item.targetId)
+    );
+    const appendedItems = group.items.filter(
+      (item) =>
+        item.kind !== "workspace-issue" || !startingIssueIds.has(item.targetId)
+    );
+    if (
+      appendedItems.length === 0 &&
+      group.nextPageToken === startingGroup.nextPageToken
+    ) {
+      return [];
+    }
+    return [{ ...group, items: appendedItems }];
+  });
+}
+
 export function emptyAgentMentionRawGroups(): AgentMentionRawGroups {
   return {
     apps: [],

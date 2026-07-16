@@ -41,12 +41,17 @@ export function createWorkspaceIssueAtContributor(
           id: WORKSPACE_ISSUE_PROVIDER_ID,
           trigger: "@",
           async query(searchInput) {
-            const result = await queryWorkspaceIssueMentionGroups({
+            const groups = await queryWorkspaceIssueMentionGroups({
               tuttidClient,
               workspaceId: input.workspaceId,
               searchInput
             });
-            return result.flatMap((group) => group.items);
+            return mergeWorkspaceIssueMentionGroups(
+              groups,
+              workspaceIssueIdSearchKeyword(
+                normalizeWorkspaceIssueSearchQuery(searchInput.keyword)
+              )
+            );
           },
           async queryGroups(searchInput) {
             return {
@@ -201,14 +206,16 @@ async function queryWorkspaceIssueMentionGroups(input: {
         if (!group) {
           return groups.filter((candidate) => candidate.items.length > 0);
         }
+        const items = [
+          item,
+          ...group.items.filter(
+            (candidate) => candidate.issueId !== item.issueId
+          )
+        ];
         groups[groupIndex] = {
           ...group,
-          items: [
-            item,
-            ...group.items.filter(
-              (candidate) => candidate.issueId !== item.issueId
-            )
-          ].slice(0, WORKSPACE_ISSUE_MENTION_PAGE_SIZE)
+          items,
+          totalCount: Math.max(group.totalCount, items.length)
         };
       } else {
         groups.push({
@@ -222,6 +229,39 @@ async function queryWorkspaceIssueMentionGroups(input: {
   }
 
   return groups.filter((group) => group.items.length > 0);
+}
+
+function mergeWorkspaceIssueMentionGroups(
+  groups: readonly RichTextTriggerQueryGroup<WorkspaceIssueAtItem>[],
+  exactIssueId: string | null
+): WorkspaceIssueAtItem[] {
+  const items: WorkspaceIssueAtItem[] = [];
+  const seenIssueIds = new Set<string>();
+  if (exactIssueId) {
+    const exactItem = groups
+      .flatMap((group) => group.items)
+      .find((item) => item.issueId === exactIssueId);
+    if (exactItem) {
+      items.push(exactItem);
+      seenIssueIds.add(exactItem.issueId);
+    }
+  }
+
+  const maxGroupLength = Math.max(
+    0,
+    ...groups.map((group) => group.items.length)
+  );
+  for (let itemIndex = 0; itemIndex < maxGroupLength; itemIndex += 1) {
+    for (const group of groups) {
+      const item = group.items[itemIndex];
+      if (!item || seenIssueIds.has(item.issueId)) {
+        continue;
+      }
+      items.push(item);
+      seenIssueIds.add(item.issueId);
+    }
+  }
+  return items;
 }
 
 function emptyWorkspaceIssueMentionGroup(
