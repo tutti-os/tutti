@@ -173,15 +173,17 @@ func TestStoreListSessionSectionsPropagatesCanceledContext(t *testing.T) {
 	}
 }
 
-func TestStoreMigrationRestoresPinnedPageIndexAfterSessionTableRebuild(t *testing.T) {
+func TestStoreMigrationRepairsMissingPinnedPageIndexWithAppliedMarker(t *testing.T) {
 	t.Parallel()
 
 	store := openTestStore(t, testOptions(&staticProjectPaths{}))
 	ctx := context.Background()
+	if applied, err := store.hasMigration(ctx, schemaMigrationWorkspaceAgentActivityV9); err != nil || !applied {
+		t.Fatalf("pinned index migration marker applied = %v, error = %v", applied, err)
+	}
 	if _, err := store.db.ExecContext(ctx, `
 DROP INDEX idx_workspace_agent_sessions_pinned_page;
-DELETE FROM agent_store_schema_migrations WHERE id = ?;
-`, schemaMigrationWorkspaceAgentActivityV9); err != nil {
+`); err != nil {
 		t.Fatalf("prepare missing pinned index error = %v", err)
 	}
 	if err := store.Migrate(ctx); err != nil {
@@ -200,16 +202,18 @@ WHERE type = 'index' AND name = 'idx_workspace_agent_sessions_pinned_page'
 	}
 }
 
-func TestStoreMigrationAddsTargetScopedRailIndexes(t *testing.T) {
+func TestStoreMigrationRepairsMissingTargetRailIndexesWithAppliedMarker(t *testing.T) {
 	t.Parallel()
 
 	store := openTestStore(t, testOptions(&staticProjectPaths{}))
 	ctx := context.Background()
+	if applied, err := store.hasMigration(ctx, schemaMigrationWorkspaceAgentActivityV10); err != nil || !applied {
+		t.Fatalf("target index migration marker applied = %v, error = %v", applied, err)
+	}
 	if _, err := store.db.ExecContext(ctx, `
 DROP INDEX idx_workspace_agent_sessions_rail_section_target_page;
 DROP INDEX idx_workspace_agent_sessions_pinned_target_page;
-DELETE FROM agent_store_schema_migrations WHERE id = ?;
-`, schemaMigrationWorkspaceAgentActivityV10); err != nil {
+`); err != nil {
 		t.Fatalf("prepare missing target-scoped indexes error = %v", err)
 	}
 	if err := store.Migrate(ctx); err != nil {

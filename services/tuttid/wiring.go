@@ -317,6 +317,7 @@ func buildDaemonAPI(ctx context.Context, store workspacedata.CatalogStore, analy
 	agentSessionService.ExtensionComposerProfiles = agentExtensionComposerProfileResolver{
 		manager: agentExtensionManager,
 	}
+	agentSessionService.SessionInitializer = agentActivityProjection
 	agentSessionService.SessionReader = agentActivityProjection
 	agentSessionService.UserProjectReader = userProjectService
 	agentSessionService.MessageReader = agentActivityProjection

@@ -207,11 +207,21 @@ func (s *Service) Create(ctx context.Context, workspaceID string, input CreateSe
 	logAgentSubmitTrace("service.create.runtime_start_resolved", workspaceID, session.ID, input.Metadata, map[string]any{
 		"provider_runtime_status": session.Status,
 	})
+	persistedSession, err := s.initializeRuntimeSession(ctx, session)
+	if err != nil {
+		s.reportAgentServiceNodeFailure(ctx, session.ID, "session_create", "session_persisted", session.Provider, nodeStartedAt, err)
+		closeErr := s.controller().Close(ctx, RuntimeCloseInput{
+			WorkspaceID:    workspaceID,
+			AgentSessionID: session.ID,
+		})
+		return Session{}, cleanupPrepared(errors.Join(err, closeErr))
+	}
+	s.reportAgentServiceNodeSuccess(ctx, session.ID, "session_create", "session_persisted", session.Provider, nodeStartedAt)
 	if len(normalizedContent) == 0 {
-		return serviceSessionWithComposerSkillOptions(
+		return serviceSessionWithPersistedFreshness(
 			session,
+			persistedSession,
 			s.controller().CanResume(runtimeResumeInputFromRuntimeSession(session)),
-			s.discoverComposerSkillOptions(session.Provider, session.Cwd, session.Env),
 		), nil
 	}
 	nodeStartedAt = time.Now()
@@ -276,10 +286,10 @@ func (s *Service) Create(ctx context.Context, workspaceID string, input CreateSe
 	if refreshed, ok := s.controller().Session(workspaceID, session.ID); ok {
 		session = refreshed
 	}
-	return serviceSessionWithComposerSkillOptions(
+	return serviceSessionWithPersistedFreshness(
 		session,
+		persistedSession,
 		s.controller().CanResume(runtimeResumeInputFromRuntimeSession(session)),
-		s.discoverComposerSkillOptions(session.Provider, session.Cwd, session.Env),
 	), nil
 }
 
@@ -495,14 +505,22 @@ func (s *Service) get(ctx context.Context, workspaceID string, agentSessionID st
 		resumable := s.controller().CanResume(runtimeResumeInputFromRuntimeSession(session))
 		service := serviceSession(session, resumable)
 		if s.SessionReader != nil {
-			if persisted, ok := s.SessionReader.GetSession(workspaceID, agentSessionID); ok {
-				service = serviceSessionWithPersistedFreshness(session, persisted, resumable)
+			persisted, ok := s.SessionReader.GetSession(workspaceID, agentSessionID)
+			if !ok {
+				return Session{}, errors.New("live workspace agent session has no persisted session")
 			}
+			if err := validatePersistedRailSectionKey(persisted); err != nil {
+				return Session{}, err
+			}
+			service = serviceSessionWithPersistedFreshness(session, persisted, resumable)
 		}
 		return s.withProtocolV2TurnState(ctx, workspaceID, service)
 	}
 	if s.SessionReader != nil {
 		if persisted, ok := s.SessionReader.GetSession(workspaceID, agentSessionID); ok {
+			if err := validatePersistedRailSectionKey(persisted); err != nil {
+				return Session{}, err
+			}
 			if isStaleHiddenLiveModelDiscoverySession(persisted) {
 				if _, err := s.Delete(ctx, workspaceID, agentSessionID); err != nil && !errors.Is(err, ErrSessionNotFound) {
 					return Session{}, err

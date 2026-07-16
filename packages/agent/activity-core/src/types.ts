@@ -24,6 +24,8 @@ export interface AgentActivitySession {
   model?: string | null;
   noProject?: boolean | null;
   cwd: string;
+  /** Backend-owned conversation-rail membership; absent for non-rail runtimes. */
+  railSectionKey?: string;
   title: string;
   activeTurnId: string | null;
   activeTurn: AgentActivityTurn | null;

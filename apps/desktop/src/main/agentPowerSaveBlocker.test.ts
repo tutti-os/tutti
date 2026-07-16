@@ -223,6 +223,7 @@ function createSession(id: string, status: string): WorkspaceAgentSession {
     pendingInteractions: [],
     permissionConfig: { configurable: false, modes: [] },
     pinnedAtUnixMs: null,
+    railSectionKey: "conversations",
     provider: "codex",
     providerSessionId: null,
     resumable: true,

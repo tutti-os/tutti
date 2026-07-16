@@ -643,7 +643,11 @@ Turn state, loading, cancel, restore, file-change undo, rail projection, event u
   must instead use `idx_workspace_agent_sessions_rail_section_target_page` and
   `idx_workspace_agent_sessions_pinned_target_page` with an exact target
   predicate; an optional `OR` predicate cannot narrow the index range. For a
-  reported slow switch, correlate
+  rail that shows only the active/new session, inspect `*_failed` events for
+  `no such index`, then compare those required indexes with `sqlite_master`
+  even when their migration markers exist. Store startup must idempotently
+  restore missing rail pagination indexes; do not weaken `INDEXED BY` or fall
+  back to a full session scan. For a reported slow switch, correlate
   `agent_gui.conversation_rail.first_pages_slow` with
   `workspace.agent_session.sections.list_slow`: the renderer event separates
   request and controller-apply time, while the daemon event separates current
@@ -666,6 +670,10 @@ Turn state, loading, cancel, restore, file-change undo, rail projection, event u
   the workspace DB retains history for removed projects. Scanning that full
   history or repeating canonical turn / interaction hydration per section makes
   the rail wait scale with project count even when every leaf query looks fast.
+  A database opened by different worktrees or intermediate builds can retain a
+  migration marker after a required physical index disappears; treating the
+  marker alone as proof of the schema invariant makes every section bootstrap
+  fail while an active-session overlay can misleadingly remain visible.
 - Fix:
   Keep page sessions in the workspace engine. Cache only ordered membership ids,
   cursor, `hasMore`, and `totalCount` in the controller query, then join ids to
@@ -676,6 +684,10 @@ Turn state, loading, cancel, restore, file-change undo, rail projection, event u
   bootstrap as a required narrow repository seam: one requested-section-driven
   batch query, independent pinned and ordinary index branches, count/sort/limit
   on narrow session ids, then one cross-section canonical entity hydration.
+  Reassert required rail indexes with idempotent `CREATE INDEX IF NOT EXISTS`
+  during every store migration pass, including when the corresponding marker is
+  already recorded, so schema drift repairs itself without rewriting session
+  data.
   Do not add one `UNION ALL` arm per section; that restores section-count scaling
   and inherits SQLite's compound-select term limit.
 - Validation:
@@ -720,17 +732,14 @@ Turn state, loading, cancel, restore, file-change undo, rail projection, event u
   record its own scratch cwd under
   `Documents/Codex/<yyyy-mm-dd>/<conversation>`.
 - Root cause:
-  Conversation project grouping is a view-model join of `cwd x userProjects`.
-  If a generated no-project cwd is not recognized before prefix/parent project
-  matching, the longest-parent project match can assign the session to a broad
-  project such as `$HOME`. Keep generated-path recognition in the host
-  `isNoProjectPath` callback because it has the user home-directory context;
-  a package-level suffix check would misclassify real projects that contain a
-  `Documents/tutti/session-<uuid>` subdirectory. External import has a similar
-  trap because provider transcripts may record `$HOME` or a provider-owned
-  scratch working directory as the cwd when no project was selected; that intent
-  must be persisted as session metadata rather than inferred later from
-  user-project prefix matching. A second loss point is runtime state projection:
+  Rail membership is classified once by the daemon when the session is first
+  persisted, using `cwd`, runtime no-project markers, and current user projects.
+  If a generated no-project marker is lost before that write, longest-parent
+  matching can assign the immutable `railSectionKey` to a broad project such as
+  `$HOME`. External import has a similar trap because provider transcripts may
+  record `$HOME` or a provider-owned scratch working directory as the cwd when
+  no project was selected; that intent must reach initial persistence as session
+  metadata. A second loss point is runtime state projection:
   rebuilding `runtimeContext` from only `cwd`, title, permissions, and visibility,
   or replacing it wholesale with `StateAdapter` output, drops launch-scoped
   markers such as `noProject` before durable rail classification runs.
@@ -745,8 +754,12 @@ Turn state, loading, cancel, restore, file-change undo, rail projection, event u
   upsert should both use that classifier, matching exact user projects first,
   then preserving no-project/provider scratch cwd shapes as conversations, then
   applying longest parent-project matches. Do not rederive historical rail
-  assignment from the current user-project list during read pagination; keep
-  existing rail fields stable when a session's final cwd has not changed.
+  assignment from the current user-project list or a later cwd observation;
+  preserve every valid existing rail key unconditionally. A successful Create
+  response must synchronously read back the persisted session and its nonblank
+  key rather than racing the runtime's asynchronous activity reporter. AgentGUI
+  must project sessions only by exact key equality and must not retain a cwd-based
+  grouping fallback.
 - Validation:
   Run
   `pnpm --filter @tutti-os/agent-gui test -- agent-gui/agentGuiNode/model/agentGuiConversationModel.spec.ts`,

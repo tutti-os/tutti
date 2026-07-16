@@ -226,6 +226,7 @@ export function conversationSummariesRenderEqual(
     ) &&
     left.status === right.status &&
     left.cwd === right.cwd &&
+    left.railSectionKey === right.railSectionKey &&
     left.pinnedAtUnixMs === right.pinnedAtUnixMs &&
     left.sortTimeUnixMs === right.sortTimeUnixMs &&
     left.updatedAtUnixMs === right.updatedAtUnixMs &&
@@ -257,6 +258,7 @@ export function conversationProjectsRenderEqual(
       ? !left && !right
       : left.id === right.id &&
         left.path === right.path &&
+        left.sectionKey === right.sectionKey &&
         left.label === right.label &&
         left.createdAtUnixMs === right.createdAtUnixMs &&
         left.updatedAtUnixMs === right.updatedAtUnixMs &&

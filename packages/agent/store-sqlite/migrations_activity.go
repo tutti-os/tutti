@@ -257,15 +257,17 @@ func (s *Store) applyWorkspaceAgentActivityV9(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	if applied {
-		return nil
-	}
 
+	// Reassert the physical index even when the marker exists. Databases opened
+	// by different builds can retain the marker after a table rebuild drops it.
 	if _, err := s.db.ExecContext(ctx, `
 CREATE INDEX IF NOT EXISTS idx_workspace_agent_sessions_pinned_page
   ON workspace_agent_sessions(workspace_id, deleted_at_unix_ms, pinned_at_unix_ms DESC, agent_session_id ASC);
 `); err != nil {
 		return fmt.Errorf("migrate workspace agent activity to v9 pinned pagination index: %w", err)
+	}
+	if applied {
+		return nil
 	}
 
 	return s.recordMigration(ctx, schemaMigrationWorkspaceAgentActivityV9)
@@ -279,10 +281,9 @@ func (s *Store) applyWorkspaceAgentActivityV10(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	if applied {
-		return nil
-	}
 
+	// Keep the target-scoped query contract self-healing for the same
+	// marker-without-index schema drift covered by v9.
 	if _, err := s.db.ExecContext(ctx, `
 CREATE INDEX IF NOT EXISTS idx_workspace_agent_sessions_rail_section_target_page
   ON workspace_agent_sessions(workspace_id, rail_section_key, agent_target_id, deleted_at_unix_ms, pinned_at_unix_ms, agent_session_id);
@@ -290,6 +291,9 @@ CREATE INDEX IF NOT EXISTS idx_workspace_agent_sessions_pinned_target_page
   ON workspace_agent_sessions(workspace_id, agent_target_id, deleted_at_unix_ms, pinned_at_unix_ms DESC, agent_session_id ASC);
 `); err != nil {
 		return fmt.Errorf("migrate workspace agent activity to v10 target-scoped rail indexes: %w", err)
+	}
+	if applied {
+		return nil
 	}
 
 	return s.recordMigration(ctx, schemaMigrationWorkspaceAgentActivityV10)

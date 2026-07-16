@@ -35,6 +35,7 @@ func TestGeneratedAgentSessionIncludesIndependentLatestTurnProjection(t *testing
 		ID:                     "session-1",
 		Kind:                   agentactivitybiz.SessionKindRoot,
 		Provider:               "codex",
+		RailSectionKey:         "project:repo-1",
 		CreatedAt:              time.UnixMilli(10),
 		LatestTurn:             &latest,
 		LatestTurnInteractions: latestInteractions,
@@ -64,6 +65,9 @@ func TestGeneratedAgentSessionIncludesIndependentLatestTurnProjection(t *testing
 		generated.Goal == nil || !generated.Imported {
 		t.Fatalf("v2 session fields = %#v", generated)
 	}
+	if generated.RailSectionKey != "project:repo-1" {
+		t.Fatalf("rail section key = %q, want project:repo-1", generated.RailSectionKey)
+	}
 	encoded, err := json.Marshal(generated)
 	if err != nil {
 		t.Fatal(err)
@@ -77,6 +81,9 @@ func TestGeneratedAgentSessionIncludesIndependentLatestTurnProjection(t *testing
 	}
 	if interactions, ok := payload["pendingInteractions"].([]any); !ok || len(interactions) != 0 {
 		t.Fatalf("pendingInteractions payload=%#v", payload)
+	}
+	if payload["railSectionKey"] != "project:repo-1" {
+		t.Fatalf("railSectionKey payload=%#v", payload)
 	}
 	for _, removed := range []string{"status", "turnLifecycle", "submitAvailability", "runtimeContext", "createdAt", "updatedAt", "endedAt", "lastError"} {
 		if _, ok := payload[removed]; ok {

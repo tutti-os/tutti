@@ -1,5 +1,4 @@
 import { Spinner } from "@tutti-os/ui-system";
-import { normalizeAgentGUIProjectPath } from "./model/agentGuiConversationProjectResolver";
 import { AskLinedIcon } from "@tutti-os/ui-system/icons";
 import { resolveAgentGUIConversationSortTimeUnixMs } from "./model/agentGuiConversationModel";
 import type { AgentGUINodeViewModel } from "./model/agentGuiNodeTypes";
@@ -102,135 +101,6 @@ export function ConversationMeta({
   );
 }
 
-export function groupConversations(
-  conversations: AgentGUINodeViewModel["rail"]["conversations"],
-  labels: Pick<AgentGUIViewLabels, "sectionPinned" | "sectionConversations">,
-  userProjects: AgentGUINodeViewModel["rail"]["userProjects"] = [],
-  options: { includeEmptyConversations?: boolean } = {}
-): ConversationSection[] {
-  const groups: ConversationSection[] = [];
-  const pinned = conversations
-    .filter((conversation) => (conversation.pinnedAtUnixMs ?? 0) > 0)
-    .sort(
-      (left, right) =>
-        (right.pinnedAtUnixMs ?? 0) - (left.pinnedAtUnixMs ?? 0) ||
-        resolveAgentGUIConversationSortTimeUnixMs(right) -
-          resolveAgentGUIConversationSortTimeUnixMs(left) ||
-        left.id.localeCompare(right.id)
-    );
-  if (pinned.length > 0) {
-    groups.push({
-      id: "pinned",
-      kind: "pinned",
-      label: labels.sectionPinned,
-      project: null,
-      items: pinned
-    });
-  }
-  const projectGroups = new Map<string, ConversationSectionWithSort>();
-  const normalizedProjectPathByPath = new Map<string, string>();
-  const normalizeProjectPath = (path: string) =>
-    normalizeConversationProjectPathCached(path, normalizedProjectPathByPath);
-  userProjects.forEach((project, projectOrder) => {
-    const normalizedPath = normalizeProjectPath(project.path);
-    const sectionId = conversationProjectSectionId(project, normalizedPath);
-    if (projectGroups.has(sectionId)) {
-      return;
-    }
-    projectGroups.set(sectionId, {
-      id: sectionId,
-      kind: "project",
-      label: project.label,
-      project,
-      items: [],
-      projectOrder,
-      sectionOrder: 0,
-      projectUpdatedAtUnixMs: resolveConversationProjectUpdatedAtUnixMs(project)
-    });
-  });
-  if (options.includeEmptyConversations) {
-    projectGroups.set("conversations", {
-      id: "conversations",
-      kind: "conversations",
-      label: labels.sectionConversations,
-      project: null,
-      items: [],
-      projectOrder: Number.MAX_SAFE_INTEGER,
-      sectionOrder: 1,
-      projectUpdatedAtUnixMs: 0
-    });
-  }
-  for (const conversation of conversations) {
-    if ((conversation.pinnedAtUnixMs ?? 0) > 0) {
-      continue;
-    }
-    if (!conversation.project) {
-      const existing = projectGroups.get("conversations");
-      if (existing) {
-        existing.items.push(conversation);
-        continue;
-      }
-      projectGroups.set("conversations", {
-        id: "conversations",
-        kind: "conversations",
-        label: labels.sectionConversations,
-        project: null,
-        items: [conversation],
-        projectOrder: Number.MAX_SAFE_INTEGER,
-        sectionOrder: 1,
-        projectUpdatedAtUnixMs: 0
-      });
-      continue;
-    }
-
-    const normalizedPath = normalizeProjectPath(conversation.project.path);
-    const sectionId = conversationProjectSectionId(
-      conversation.project,
-      normalizedPath
-    );
-    const existing = projectGroups.get(sectionId);
-    if (existing) {
-      existing.items.push(conversation);
-      continue;
-    }
-    projectGroups.set(sectionId, {
-      id: sectionId,
-      kind: "project",
-      label: conversation.project.label,
-      project: conversation.project,
-      items: [conversation],
-      projectOrder: Number.MAX_SAFE_INTEGER - 1,
-      sectionOrder: 0,
-      projectUpdatedAtUnixMs: resolveConversationProjectUpdatedAtUnixMs(
-        conversation.project
-      )
-    });
-  }
-  groups.push(
-    ...[...projectGroups.values()]
-      .filter(
-        (group) => options.includeEmptyConversations || group.items.length > 0
-      )
-      .sort(
-        (left, right) =>
-          left.sectionOrder - right.sectionOrder ||
-          right.projectUpdatedAtUnixMs - left.projectUpdatedAtUnixMs ||
-          left.projectOrder - right.projectOrder ||
-          left.label.localeCompare(right.label) ||
-          left.id.localeCompare(right.id)
-      )
-      .map(
-        ({
-          projectOrder: _projectOrder,
-          sectionOrder: _sectionOrder,
-          projectUpdatedAtUnixMs: _projectUpdatedAtUnixMs,
-          ...group
-        }) => group
-      )
-  );
-  return groups;
-}
-
 export function filterConversationSectionsBySearchMatches(
   sections: readonly ConversationSection[],
   matchingConversations: AgentGUINodeViewModel["rail"]["conversations"]
@@ -246,46 +116,6 @@ export function filterConversationSectionsBySearchMatches(
       )
     }))
     .filter((section) => section.items.length > 0);
-}
-
-type ConversationSectionWithSort = ConversationSection & {
-  projectOrder: number;
-  sectionOrder: number;
-  projectUpdatedAtUnixMs: number;
-};
-
-function resolveConversationProjectUpdatedAtUnixMs(
-  project: ConversationSection["project"]
-): number {
-  if (!project) {
-    return 0;
-  }
-  return (
-    project.updatedAtUnixMs ??
-    project.lastUsedAtUnixMs ??
-    project.createdAtUnixMs ??
-    0
-  );
-}
-
-function normalizeConversationProjectPathCached(
-  path: string,
-  normalizedPathByPath: Map<string, string>
-): string {
-  const cached = normalizedPathByPath.get(path);
-  if (cached !== undefined) {
-    return cached;
-  }
-  const normalized = normalizeAgentGUIProjectPath(path);
-  normalizedPathByPath.set(path, normalized);
-  return normalized;
-}
-
-function conversationProjectSectionId(
-  project: NonNullable<ConversationSection["project"]>,
-  normalizedPath: string
-): string {
-  return project.sectionKey?.trim() || `project:${normalizedPath}`;
 }
 
 function conversationMetaKind(

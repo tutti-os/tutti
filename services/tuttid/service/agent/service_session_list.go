@@ -61,6 +61,9 @@ func (s *Service) listFilteredSortedSessions(ctx context.Context, workspaceID st
 	if s.SessionReader != nil {
 		if persisted, ok := s.SessionReader.ListSessions(workspaceID); ok {
 			for _, session := range persisted {
+				if err := validatePersistedRailSectionKey(session); err != nil {
+					return nil, err
+				}
 				sessionID := strings.TrimSpace(session.ID)
 				if isStaleHiddenLiveModelDiscoverySession(session) {
 					if _, ok := s.controller().Session(workspaceID, sessionID); !ok {
@@ -91,9 +94,14 @@ func (s *Service) listFilteredSortedSessions(ctx context.Context, workspaceID st
 		resumable := s.controller().CanResume(runtimeResumeInputFromRuntimeSession(session))
 		service := serviceSession(session, resumable)
 		if s.SessionReader != nil {
-			if persisted, ok := s.SessionReader.GetSession(workspaceID, session.ID); ok {
-				service = serviceSessionWithPersistedFreshness(session, persisted, resumable)
+			persisted, ok := s.SessionReader.GetSession(workspaceID, session.ID)
+			if !ok {
+				return nil, errors.New("live workspace agent session has no persisted session")
 			}
+			if err := validatePersistedRailSectionKey(persisted); err != nil {
+				return nil, err
+			}
+			service = serviceSessionWithPersistedFreshness(session, persisted, resumable)
 		}
 		sessionByID[strings.TrimSpace(session.ID)] = service
 	}

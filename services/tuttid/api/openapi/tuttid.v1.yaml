@@ -7025,6 +7025,7 @@ components:
         - provider
         - providerSessionId
         - cwd
+        - railSectionKey
         - visible
         - settings
         - permissionConfig
@@ -7095,6 +7096,13 @@ components:
         cwd:
           type: string
           nullable: true
+        railSectionKey:
+          type: string
+          minLength: 1
+          description: >-
+            Persisted conversation-rail membership key. Clients must use this
+            exact key for section placement and must not infer membership from
+            cwd or project paths.
         activeTurnId:
           type: string
           nullable: true

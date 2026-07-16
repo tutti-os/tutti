@@ -2,6 +2,7 @@ import {
   normalizeAgentActivitySession,
   type AgentActivityTurn
 } from "@tutti-os/agent-activity-core";
+import { TooltipProvider } from "@tutti-os/ui-system";
 import {
   act,
   render,
@@ -168,6 +169,7 @@ describe("useAgentGUIConversationRailQuery search", () => {
         latestTurnInteractions: [],
         pendingInteractions: [],
         provider: "codex",
+        railSectionKey: "conversations",
         title: "streaming session",
         updatedAtUnixMs: 1,
         workspaceId: "workspace-1"
@@ -225,6 +227,7 @@ describe("useAgentGUIConversationRailQuery search", () => {
         latestTurnInteractions: [],
         pendingInteractions: [],
         provider: "codex",
+        railSectionKey: "conversations",
         title: "streaming session",
         updatedAtUnixMs: 1,
         workspaceId: "workspace-1"
@@ -308,6 +311,94 @@ describe("useAgentGUIConversationRailQuery search", () => {
     });
 
     expect(railCommitCount).toBe(previousRailCommitCount);
+  });
+
+  it("keeps empty section chrome visible when the first membership request fails", async () => {
+    const engine = createTestAgentSessionEngine("workspace-1");
+    const runtime = {
+      getSessionEngine: () => engine,
+      async listSessionSections() {
+        throw new Error("section membership unavailable");
+      },
+      async listSessionSectionPage() {
+        throw new Error("section membership unavailable");
+      }
+    } as unknown as AgentActivityRuntime;
+    const userProjects = [
+      {
+        id: "workspace-project",
+        label: "Workspace",
+        path: "/workspace",
+        sectionKey: "project:/workspace",
+        createdAtUnixMs: 1,
+        updatedAtUnixMs: 1,
+        lastUsedAtUnixMs: 1
+      }
+    ];
+
+    function RailHarness(): React.JSX.Element {
+      const railQuery = useAgentGUIConversationRailQuery({
+        activeConversationId: null,
+        conversationFilter: { kind: "all" },
+        conversationQuery: "",
+        previewMode: false,
+        sectionAgentTargetFallbackId: null,
+        userProjects,
+        workspaceId: "workspace-1"
+      });
+      return (
+        <AgentGUIConversationRailPane
+          activeConversation={null}
+          activeConversationId={null}
+          agentTargets={[]}
+          agentTargetsLoading={false}
+          conversationFilter={{ kind: "all" }}
+          conversationQuery=""
+          conversations={[]}
+          createConversationDisabled={false}
+          isCollapsed={false}
+          isDeletingConversation={false}
+          isDeletingProjectConversations={false}
+          isLoadingConversations={false}
+          labels={RAIL_LABELS}
+          pendingDeleteConversationId={null}
+          previewMode={false}
+          railQuery={railQuery}
+          sectionAgentTargetFallbackId={null}
+          uiLanguage="en"
+          userProjects={userProjects}
+          workspaceId="workspace-1"
+          workspaceUserProjectI18n={RAIL_PROJECT_I18N}
+          onCancelDeleteConversation={() => {}}
+          onConfirmDeleteConversation={() => {}}
+          onConfirmDeleteConversations={() => {}}
+          onConfirmDeleteProjectConversations={async () => []}
+          onConversationQueryChange={() => {}}
+          onCreateConversation={() => {}}
+          onMarkConversationUnread={() => {}}
+          onRemoveProject={() => {}}
+          onRequestDeleteConversation={() => {}}
+          onRequestRenameConversation={() => {}}
+          onSelectConversation={() => {}}
+          onSelectConversationFilterTarget={() => {}}
+          onToggleConversationPinned={() => {}}
+          onUpdateConversationFilter={() => {}}
+        />
+      );
+    }
+
+    render(
+      <AgentActivityRuntimeProvider runtime={runtime}>
+        <TooltipProvider>
+          <RailHarness />
+        </TooltipProvider>
+      </AgentActivityRuntimeProvider>
+    );
+
+    await screen.findByText("Workspace");
+    expect(screen.getByText("Conversations")).toBeTruthy();
+    expect(screen.getAllByText("No conversations")).toHaveLength(2);
+    expect(screen.queryByText("Conversation unavailable")).toBeNull();
   });
 });
 

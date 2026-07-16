@@ -1313,8 +1313,18 @@ Show more heuristics. Page responses upsert their session entities into the
 workspace engine; the rail query cache stores only ordered session ids,
 section metadata, cursors, and totals. A pure projection joins those ids back
 to engine entities. Do not keep a second summary cache or manually patch
-section rows from conversation summaries. Removing a project removes that rail
-section from the section list; re-adding the same path reveals historical
+section rows from conversation summaries. Every daemon session carries its
+required persisted `railSectionKey`. An active session outside loaded pages and
+backend search results enter a section only when that key exactly equals the
+section key; pinned state remains independent. AgentGUI must not manufacture a
+session membership fallback or infer membership from cwd and resolved
+user-project paths. Empty project and Conversations section chrome remains
+visible from the current section inventory even when no exact membership rows
+exist or the initial membership request fails; preserving that chrome must not
+place any session into it. The daemon assigns the key before Create succeeds
+and treats it as immutable session identity metadata; later cwd observations do
+not move the session to another rail section. Removing a project removes that
+rail section from the section list; re-adding the same path reveals historical
 sessions with the same section key.
 The daemon first-page reader is a required production repository seam, not an
 optional fast path with a per-section fallback. Its SQLite query must be driven
@@ -1552,15 +1562,14 @@ enter the workspace engine's prompt queue instead of calling `sendInput`
 directly.
 Pending new-session activation is request- and session-scoped, not a
 workspace-wide creation lock. A workspace may have multiple pending new
-activations, and the conversation rail projects every optimistic session.
+activations, and conversation state retains every optimistic session.
 The engine's `pendingIntents` is the only owner. The conversation-list selector
 projects each missing session once and marks its row as a pending-activation
-projection. Runtime section pagination caches canonical session ids only; a pure
-rail display projection overlays the complete pending set into matching
-project/conversations sections and sorts it by conversation time. Pending rows
-must never be written into section pages, cursors, or membership invalidation,
-and the rail must not rely on the currently active row as its only optimistic
-overlay.
+projection. A pending intent has no persisted `railSectionKey`, so it remains
+outside formal rail sections until the canonical daemon session arrives; the
+frontend must not guess a section from its cwd. Runtime section pagination
+caches canonical session ids only. Pending rows must never be written into
+section pages, cursors, or membership invalidation.
 The pending row itself does not invalidate membership. Its transition to a
 canonical engine session does, and the query controller may keep only that
 session id—not a duplicate summary—as temporary reconciliation metadata.

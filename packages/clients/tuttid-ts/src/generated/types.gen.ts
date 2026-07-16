@@ -1305,6 +1305,10 @@ export type WorkspaceAgentSession = {
   providerSessionId: string | null;
   cwd: string | null;
   /**
+   * Persisted conversation-rail membership key. Clients must use this exact key for section placement and must not infer membership from cwd or project paths.
+   */
+  railSectionKey: string;
+  /**
    * Protocol v2. The only turn reference kept on the session; null when no turn is in flight.
    */
   activeTurnId: string | null;

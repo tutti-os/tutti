@@ -131,6 +131,7 @@ func scanAgentSessionWithTrailingValues(
 		&metadataJSON,
 		&internalRuntimeContextJSON,
 		&session.Cwd,
+		&session.RailSectionKey,
 		&session.Title,
 		&session.MessageVersion,
 		&session.LastEventUnixMS,
