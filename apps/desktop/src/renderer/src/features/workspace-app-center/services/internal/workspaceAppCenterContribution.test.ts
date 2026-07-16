@@ -78,7 +78,7 @@ test("workspace app contribution reports app open from dock launch requests", as
   );
 });
 
-test("workspace app launch request does not apply app-specific minimum webview size", async () => {
+test("workspace app launch request omits size constraints for apps without manifest window constraints", async () => {
   const app = createApp({
     appId: "ready",
     runtimeStatus: "running",
@@ -95,12 +95,37 @@ test("workspace app launch request does not apply app-specific minimum webview s
     }
   });
 
-  assert.equal(result?.sizeConstraints, undefined);
+  assert.equal(result?.sizeConstraints, null);
   assert.deepEqual(result?.defaultFrame, {
     height: 680,
     width: 1040,
     x: 170,
     y: 64
+  });
+});
+
+test("workspace app launch request applies manifest window size constraints", async () => {
+  const app = createApp({
+    appId: "docs",
+    runtimeStatus: "running",
+    launchUrl: "http://127.0.0.1:3000",
+    windowMinWidth: 520,
+    windowMinHeight: 640
+  });
+  const result = await resolveWorkspaceAppCenterLaunchRequest({
+    appCenterService: createAppCenterService([app]),
+    request: {
+      ...createLaunchRequestContext(),
+      dockEntryId: workspaceAppDockEntryId("docs"),
+      reason: "dock",
+      typeId: workspaceAppWebviewTypeID,
+      workspaceId: "workspace-1"
+    }
+  });
+
+  assert.deepEqual(result?.sizeConstraints, {
+    minWidth: 520,
+    minHeight: 640
   });
 });
 
