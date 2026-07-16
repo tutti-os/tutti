@@ -154,7 +154,7 @@ func TestSQLiteStoreMigrationFiltersAgentGUINodesWithoutValidTargetIdentity(t *t
 	if err := store.Create(ctx, workspacebiz.Summary{ID: workspaceID, Name: "Agent GUI Target Migration"}); err != nil {
 		t.Fatalf("Create() error = %v", err)
 	}
-	if _, err := store.db.ExecContext(ctx, `
+	if _, err := store.writeDB.ExecContext(ctx, `
 INSERT OR IGNORE INTO agent_targets (
   id, provider, launch_ref_json, name, icon_key, enabled, source,
   sort_order, created_at_ms, updated_at_ms
@@ -182,7 +182,7 @@ INSERT OR IGNORE INTO agent_targets (
 	}); err != nil {
 		t.Fatalf("PutWorkbenchSnapshot() error = %v", err)
 	}
-	if _, err := store.db.ExecContext(ctx, `
+	if _, err := store.writeDB.ExecContext(ctx, `
 DELETE FROM tuttid_schema_migrations WHERE id = ?
 `, schemaMigrationWorkspaceWorkbenchAgentTargetIdentityV1); err != nil {
 		t.Fatalf("delete migration marker: %v", err)
