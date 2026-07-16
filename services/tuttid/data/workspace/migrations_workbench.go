@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"time"
 )
 
@@ -108,6 +109,244 @@ VALUES (?, ?)
 	if err := tx.Commit(); err != nil {
 		return fmt.Errorf("commit AgentGUI workbench dock migration: %w", err)
 	}
+	return nil
+}
+
+func (s *SQLiteStore) applyWorkspaceWorkbenchAgentTargetIdentityV1(ctx context.Context) error {
+	applied, err := s.hasMigration(ctx, schemaMigrationWorkspaceWorkbenchAgentTargetIdentityV1)
+	if err != nil {
+		return err
+	}
+	if applied {
+		return nil
+	}
+
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin AgentGUI target identity migration: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+	var snapshotTableCount int
+	if err := tx.QueryRowContext(ctx, `
+SELECT COUNT(*) FROM sqlite_master
+WHERE type = 'table' AND name = 'workspace_workbench_snapshots'
+`).Scan(&snapshotTableCount); err != nil {
+		return fmt.Errorf("inspect workbench snapshot table for target identity migration: %w", err)
+	}
+	if snapshotTableCount == 0 {
+		if _, err := tx.ExecContext(ctx, `
+INSERT INTO tuttid_schema_migrations (id, applied_at_unix_ms) VALUES (?, ?)
+`, schemaMigrationWorkspaceWorkbenchAgentTargetIdentityV1, unixMs(time.Now().UTC())); err != nil {
+			return fmt.Errorf("record empty AgentGUI target identity migration: %w", err)
+		}
+		if err := tx.Commit(); err != nil {
+			return fmt.Errorf("commit empty AgentGUI target identity migration: %w", err)
+		}
+		return nil
+	}
+
+	validAgentTargetIDs := make(map[string]struct{})
+	targetRows, err := tx.QueryContext(ctx, `SELECT id FROM agent_targets`)
+	if err != nil {
+		return fmt.Errorf("list agent targets for workbench migration: %w", err)
+	}
+	for targetRows.Next() {
+		var targetID string
+		if err := targetRows.Scan(&targetID); err != nil {
+			_ = targetRows.Close()
+			return fmt.Errorf("scan agent target for workbench migration: %w", err)
+		}
+		validAgentTargetIDs[strings.TrimSpace(targetID)] = struct{}{}
+	}
+	if err := targetRows.Close(); err != nil {
+		return fmt.Errorf("close agent target rows for workbench migration: %w", err)
+	}
+	if err := targetRows.Err(); err != nil {
+		return fmt.Errorf("iterate agent targets for workbench migration: %w", err)
+	}
+
+	rows, err := tx.QueryContext(ctx, `
+SELECT workspace_id, snapshot_json
+FROM workspace_workbench_snapshots
+WHERE schema_version = 1
+ORDER BY workspace_id ASC
+`)
+	if err != nil {
+		return fmt.Errorf("list snapshots for AgentGUI target identity migration: %w", err)
+	}
+	var snapshots []storedWorkbenchSnapshotMigrationRow
+	for rows.Next() {
+		var snapshot storedWorkbenchSnapshotMigrationRow
+		if err := rows.Scan(&snapshot.workspaceID, &snapshot.snapshotJSON); err != nil {
+			_ = rows.Close()
+			return fmt.Errorf("scan snapshot for AgentGUI target identity migration: %w", err)
+		}
+		snapshots = append(snapshots, snapshot)
+	}
+	if err := rows.Close(); err != nil {
+		return fmt.Errorf("close snapshot rows for AgentGUI target identity migration: %w", err)
+	}
+	if err := rows.Err(); err != nil {
+		return fmt.Errorf("iterate snapshots for AgentGUI target identity migration: %w", err)
+	}
+
+	for _, snapshot := range snapshots {
+		normalizedJSON, changed, err := filterAgentGUIWorkbenchNodesWithoutValidTarget(
+			[]byte(snapshot.snapshotJSON), validAgentTargetIDs,
+		)
+		if err != nil {
+			return fmt.Errorf("filter AgentGUI cache for workspace %q: %w", snapshot.workspaceID, err)
+		}
+		if !changed {
+			continue
+		}
+		if _, err := tx.ExecContext(ctx, `
+UPDATE workspace_workbench_snapshots
+SET snapshot_json = ?
+WHERE workspace_id = ?
+`, string(normalizedJSON), snapshot.workspaceID); err != nil {
+			return fmt.Errorf("update AgentGUI cache for workspace %q: %w", snapshot.workspaceID, err)
+		}
+	}
+
+	if _, err := tx.ExecContext(ctx, `
+INSERT INTO tuttid_schema_migrations (id, applied_at_unix_ms)
+VALUES (?, ?)
+`, schemaMigrationWorkspaceWorkbenchAgentTargetIdentityV1, unixMs(time.Now().UTC())); err != nil {
+		return fmt.Errorf("record AgentGUI target identity migration: %w", err)
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit AgentGUI target identity migration: %w", err)
+	}
+	return nil
+}
+
+func filterAgentGUIWorkbenchNodesWithoutValidTarget(
+	snapshotJSON []byte,
+	validAgentTargetIDs map[string]struct{},
+) ([]byte, bool, error) {
+	var snapshot map[string]json.RawMessage
+	if err := json.Unmarshal(snapshotJSON, &snapshot); err != nil {
+		return nil, false, fmt.Errorf("decode snapshot json: %w", err)
+	}
+	var nodes []map[string]json.RawMessage
+	if err := json.Unmarshal(snapshot["nodes"], &nodes); err != nil {
+		return nil, false, fmt.Errorf("decode snapshot nodes: %w", err)
+	}
+
+	removedNodeIDs := make(map[string]struct{})
+	filteredNodes := make([]map[string]json.RawMessage, 0, len(nodes))
+	for _, node := range nodes {
+		remove, err := shouldRemoveAgentGUIWorkbenchNode(node, validAgentTargetIDs)
+		if err != nil {
+			return nil, false, err
+		}
+		if !remove {
+			filteredNodes = append(filteredNodes, node)
+			continue
+		}
+		var nodeID string
+		if err := json.Unmarshal(node["id"], &nodeID); err == nil && nodeID != "" {
+			removedNodeIDs[nodeID] = struct{}{}
+		}
+	}
+	if len(removedNodeIDs) == 0 {
+		return snapshotJSON, false, nil
+	}
+	normalizedNodes, err := json.Marshal(filteredNodes)
+	if err != nil {
+		return nil, false, fmt.Errorf("encode filtered snapshot nodes: %w", err)
+	}
+	snapshot["nodes"] = normalizedNodes
+	filterSnapshotNodeIDList(snapshot, "nodeStack", removedNodeIDs)
+	filterSnapshotActiveNodeID(snapshot, removedNodeIDs)
+	if err := filterSnapshotSpaceNodeIDs(snapshot, removedNodeIDs); err != nil {
+		return nil, false, err
+	}
+	normalizedSnapshot, err := json.Marshal(snapshot)
+	if err != nil {
+		return nil, false, fmt.Errorf("encode filtered snapshot: %w", err)
+	}
+	return normalizedSnapshot, true, nil
+}
+
+func shouldRemoveAgentGUIWorkbenchNode(
+	node map[string]json.RawMessage,
+	validAgentTargetIDs map[string]struct{},
+) (bool, error) {
+	var data map[string]json.RawMessage
+	if err := json.Unmarshal(node["data"], &data); err != nil {
+		return false, nil
+	}
+	if !rawJSONStringEquals(data["typeId"], agentGUIWorkbenchTypeID) {
+		return false, nil
+	}
+	var snapshotState map[string]json.RawMessage
+	if err := json.Unmarshal(data["snapshotNodeState"], &snapshotState); err != nil {
+		return true, nil
+	}
+	var agentTargetID string
+	if err := json.Unmarshal(snapshotState["agentTargetId"], &agentTargetID); err != nil {
+		return true, nil
+	}
+	_, valid := validAgentTargetIDs[strings.TrimSpace(agentTargetID)]
+	return !valid, nil
+}
+
+func filterSnapshotNodeIDList(
+	snapshot map[string]json.RawMessage,
+	key string,
+	removedNodeIDs map[string]struct{},
+) {
+	var nodeIDs []string
+	if json.Unmarshal(snapshot[key], &nodeIDs) != nil {
+		return
+	}
+	filtered := nodeIDs[:0]
+	for _, nodeID := range nodeIDs {
+		if _, removed := removedNodeIDs[nodeID]; !removed {
+			filtered = append(filtered, nodeID)
+		}
+	}
+	encoded, err := json.Marshal(filtered)
+	if err == nil {
+		snapshot[key] = encoded
+	}
+}
+
+func filterSnapshotActiveNodeID(
+	snapshot map[string]json.RawMessage,
+	removedNodeIDs map[string]struct{},
+) {
+	var activeNodeID string
+	if json.Unmarshal(snapshot["activeNodeId"], &activeNodeID) != nil {
+		return
+	}
+	if _, removed := removedNodeIDs[activeNodeID]; removed {
+		snapshot["activeNodeId"] = json.RawMessage("null")
+	}
+}
+
+func filterSnapshotSpaceNodeIDs(
+	snapshot map[string]json.RawMessage,
+	removedNodeIDs map[string]struct{},
+) error {
+	spacesJSON, ok := snapshot["spaces"]
+	if !ok {
+		return nil
+	}
+	var spaces []map[string]json.RawMessage
+	if err := json.Unmarshal(spacesJSON, &spaces); err != nil {
+		return fmt.Errorf("decode snapshot spaces: %w", err)
+	}
+	for _, space := range spaces {
+		filterSnapshotNodeIDList(space, "nodeIds", removedNodeIDs)
+	}
+	encoded, err := json.Marshal(spaces)
+	if err != nil {
+		return fmt.Errorf("encode snapshot spaces: %w", err)
+	}
+	snapshot["spaces"] = encoded
 	return nil
 }
 

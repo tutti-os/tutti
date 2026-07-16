@@ -148,7 +148,7 @@ test("standalone Agent handles task and app Agent launch requests", () => {
   );
   assert.match(
     standaloneWindowSource,
-    /<DesktopAgentGUIWorkbenchBody[\s\S]*?prefillPromptBootstrapRequest=\{prefillPromptBootstrapRequest\}/
+    /<DesktopAgentGUISurface[\s\S]*?prefillPromptBootstrapRequest=\{prefillPromptBootstrapRequest\}/
   );
   assert.match(
     workbenchBodySource,
@@ -243,14 +243,14 @@ test("standalone Agent hides panel toggles until its content mounts", () => {
   );
   assert.match(
     standaloneWindowSource,
-    /<StandaloneAgentWindowContentReady onReady=\{handleContentReady\}>[\s\S]*?<DesktopAgentGUIWorkbenchBody/
+    /<StandaloneAgentWindowContentReady onReady=\{handleContentReady\}>[\s\S]*?<DesktopAgentGUISurface/
   );
 });
 
 test("standalone Agent loads its body with the route instead of adding a second lazy boundary", () => {
   assert.match(
     standaloneWindowSource,
-    /import \{ DesktopAgentGUIWorkbenchBody \} from "@renderer\/features\/workspace-agent\/ui\/DesktopAgentGUIWorkbenchBody\.tsx"/
+    /import \{ DesktopAgentGUISurface \} from "@renderer\/features\/workspace-agent\/ui\/DesktopAgentGUIWorkbenchBody\.tsx"/
   );
   assert.doesNotMatch(
     standaloneWindowSource,

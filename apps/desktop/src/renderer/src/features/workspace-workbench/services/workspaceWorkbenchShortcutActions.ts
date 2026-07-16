@@ -8,10 +8,7 @@ import {
   type AgentGuiWorkbenchNewConversationDetail
 } from "@tutti-os/agent-gui/workbench/contribution";
 import { requestWorkspaceAgentGuiLaunch } from "@renderer/features/workspace-agent/services/workspaceAgentGuiLaunchCoordinator.ts";
-import {
-  workspaceAgentGuiNodeID,
-  workspaceAgentGuiProviderFromIdentifier
-} from "./workspaceAgentGuiLaunch.ts";
+import { workspaceAgentGuiNodeID } from "./workspaceAgentGuiLaunch.ts";
 import { createWorkspaceAgentGuiSameTypeWindowLaunchRequest } from "./workspaceWorkbenchShortcutAgentLaunch.ts";
 export {
   resolveWorkspaceAgentGuiNodeAgentTargetId,
@@ -31,10 +28,7 @@ export function resolveActiveWorkspaceWorkbenchNode(
 export function isWorkspaceAgentGuiWorkbenchNode(
   node: WorkspaceWorkbenchNode
 ): boolean {
-  return (
-    node.data.typeId === workspaceAgentGuiNodeID ||
-    workspaceAgentGuiProviderFromIdentifier(node.data.instanceId) !== null
-  );
+  return node.data.typeId === workspaceAgentGuiNodeID;
 }
 
 export async function openWorkspaceWorkbenchAgentConversationShortcut(input: {

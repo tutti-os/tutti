@@ -26,8 +26,7 @@ import {
 } from "@tutti-os/agent-gui/workbench/contribution";
 import type {
   WorkbenchContribution,
-  WorkbenchHostHandle,
-  WorkbenchHostNodeBodyContext
+  WorkbenchHostHandle
 } from "@tutti-os/workbench-surface";
 import type { I18nRuntime } from "@tutti-os/ui-i18n-runtime";
 import { createDesktopAgentGUIWorkbenchHostInput } from "@renderer/features/workspace-agent/services/createDesktopAgentGUIWorkbenchHostInput.ts";
@@ -35,11 +34,9 @@ import { IAgentsService } from "@renderer/features/workspace-agent/services/agen
 import type { IAgentProviderStatusService as AgentProviderStatusService } from "@renderer/features/workspace-agent/services/agentProviderStatusService.interface.ts";
 import type { IWorkspaceAgentActivityService as WorkspaceAgentActivityService } from "@renderer/features/workspace-agent/services/workspaceAgentActivityService.interface.ts";
 import type { DesktopAgentGUIPrefillPromptRequest } from "@renderer/features/workspace-agent/services/desktopAgentGUIPrefillPromptActivation.ts";
-import { isDesktopAgentGUIProvider } from "@renderer/features/workspace-agent/desktopAgentGUINodeState.ts";
 import {
   desktopAgentGUIOpenSessionActivationType,
   normalizeDesktopAgentGUIProvider,
-  type DesktopAgentGUIProvider,
   type DesktopAgentGUIWorkbenchState
 } from "@renderer/features/workspace-agent/desktopAgentGUINodeState.ts";
 import {
@@ -61,7 +58,9 @@ import type { TuttiExternalFileOpenInput } from "@tutti-os/workspace-external-co
 import type { IReporterService } from "@renderer/features/analytics";
 import type { IDesktopRichTextAtService } from "@renderer/features/rich-text-at";
 import type { IWorkspaceUserProjectService } from "@renderer/features/workspace-user-project";
-import { DesktopAgentGUIWorkbenchBody } from "@renderer/features/workspace-agent/ui/DesktopAgentGUIWorkbenchBody.tsx";
+import { createAgentGuiWorkbenchInstanceId } from "@tutti-os/agent-gui/workbench";
+import { DesktopAgentGUISurface } from "@renderer/features/workspace-agent/ui/DesktopAgentGUIWorkbenchBody.tsx";
+import type { DesktopAgentGUISurfaceContext } from "@renderer/features/workspace-agent/ui/desktopAgentGUIWorkbenchModel.ts";
 import { useTranslation } from "@renderer/i18n";
 import { AppUpdateStatus } from "@renderer/features/app-update";
 import { StandaloneAgentToolSidebar } from "./StandaloneAgentToolSidebar";
@@ -101,7 +100,6 @@ const LazyStandaloneAgentWindowPanelHosts = lazy(() =>
 );
 
 const standaloneAgentNodeId = "standalone-agent-window-node";
-const standaloneAgentInstanceKey = "standalone-agent-window";
 const standaloneAgentDefaultConversationRailWidthPx = 280;
 function renderStandaloneAgentSidebarFooter(): ReactNode {
   return (
@@ -273,17 +271,45 @@ export function StandaloneAgentWindow({
     getAgentDirectorySnapshot
   );
   const agents = agentDirectorySnapshot.agents;
+  const defaultAgentTargetId = useMemo(() => {
+    const requestedTargetId = launchAgentTargetId?.trim() || null;
+    if (
+      requestedTargetId &&
+      agents.some((agent) => agent.agentTargetId === requestedTargetId)
+    ) {
+      return requestedTargetId;
+    }
+    return (
+      agents.find(
+        (agent) =>
+          agent.provider === launchProvider &&
+          agent.availability.status === "ready"
+      )?.agentTargetId ??
+      agents.find((agent) => agent.availability.status === "ready")
+        ?.agentTargetId ??
+      null
+    );
+  }, [agents, launchAgentTargetId, launchProvider]);
   const [frame, setFrame] = useState(readStandaloneAgentWindowFrame);
   const [isWindowMaximized, setIsWindowMaximized] = useState(
     readStandaloneAgentWindowMaximizedState
   );
   const [nodeState, setNodeState] = useState<DesktopAgentGUIWorkbenchState>(
     () => ({
-      agentTargetId: launchAgentTargetId,
-      lastActiveAgentSessionId: launchAgentSessionId,
-      provider: launchProvider
+      agentTargetId: defaultAgentTargetId,
+      lastActiveAgentSessionId: launchAgentSessionId
     })
   );
+  useEffect(() => {
+    if (!defaultAgentTargetId) {
+      return;
+    }
+    setNodeState((current) =>
+      current.agentTargetId?.trim()
+        ? current
+        : { ...current, agentTargetId: defaultAgentTargetId }
+    );
+  }, [defaultAgentTargetId]);
   const [isContentLoading, setIsContentLoading] = useState(true);
   const handleContentReady = useCallback(() => {
     setIsContentLoading(false);
@@ -295,7 +321,7 @@ export function StandaloneAgentWindow({
     () => workspaceAgentActivityService.getSnapshot(workspaceId)
   );
   const [activation, setActivation] = useState<
-    WorkbenchHostNodeBodyContext["activation"]
+    DesktopAgentGUISurfaceContext["activation"]
   >(() =>
     launchAgentSessionId
       ? {
@@ -428,15 +454,15 @@ export function StandaloneAgentWindow({
     () => createStandaloneAgentDockPreviewCache(desktopApi.dockPreviewCache),
     [desktopApi.dockPreviewCache]
   );
-  const instanceId = useMemo(
-    () => `agent-gui:${launchProvider}:standalone:${workspaceId}`,
-    [launchProvider, workspaceId]
-  );
+  const instanceId = useMemo(() => createAgentGuiWorkbenchInstanceId(), []);
   const activeAgentTargetId = nodeState.agentTargetId?.trim() || null;
+  const activeAgent = agents.find(
+    (agent) => agent.agentTargetId === activeAgentTargetId
+  );
   const headerIdentity = useStandaloneAgentWindowHeaderIdentity({
     activeAgentTargetId,
     agents,
-    fallbackProvider: readStandaloneNodeProvider(nodeState, launchProvider),
+    fallbackProvider: activeAgent?.provider ?? launchProvider,
     nodeState,
     sessions: activitySnapshot.sessions,
     workspaceAgentActivityService,
@@ -469,43 +495,20 @@ export function StandaloneAgentWindow({
       }),
     []
   );
-  const context = useMemo<
-    WorkbenchHostNodeBodyContext<DesktopAgentGUIWorkbenchState, null>
-  >(
+  const surface = useMemo<DesktopAgentGUISurfaceContext>(
     () => ({
       activation,
       displayMode: "floating",
-      externalNodeState: nodeState,
-      externalWorkspaceState: null,
-      focus: () => undefined,
+      frame,
       host,
       instanceId,
-      instanceKey: standaloneAgentInstanceKey,
       // Standalone has one node; document focus is tracked live by engagement.
       isFocused: true,
-      node: {
-        data: {
-          activation,
-          instanceId,
-          instanceKey: standaloneAgentInstanceKey,
-          runtimeNodeState: nodeState,
-          snapshotNodeState: null,
-          typeId: "agent-gui"
-        },
-        displayMode: "floating",
-        frame,
-        id: standaloneAgentNodeId,
-        isMinimized: false,
-        kind: "window",
-        restoreFrame: null,
-        title: i18n.t("workspace.agentGui.fallbackAgentLabel")
-      },
-      setNodeRuntimeState: (state) => {
-        setNodeState((state ?? {}) as DesktopAgentGUIWorkbenchState);
-      },
-      setSnapshotNodeState: (state) => {
-        setNodeState((state ?? {}) as DesktopAgentGUIWorkbenchState);
-      }
+      isMinimized: false,
+      nodeId: standaloneAgentNodeId,
+      nodeTitle: i18n.t("workspace.agentGui.fallbackAgentLabel"),
+      presentationMode: undefined,
+      state: nodeState
     }),
     [activation, frame, host, i18n, instanceId, nodeState]
   );
@@ -716,12 +719,12 @@ export function StandaloneAgentWindow({
         workspaceId={workspaceId}
       >
         <StandaloneAgentWindowContentReady onReady={handleContentReady}>
-          <DesktopAgentGUIWorkbenchBody
+          <DesktopAgentGUISurface
             agentActivityRuntime={agentGuiHostInput.agentActivityRuntime}
             agentHostApi={agentGuiHostInput.agentHostApi}
             appCenterService={workspaceAppCenterService}
             agentProviderStatusService={agentProviderStatusService}
-            context={context}
+            surface={surface}
             computerUseApi={desktopApi.computerUse}
             composerAppendRequest={composerAppendRequest}
             conversationRailAutoCollapseWidthPx={
@@ -730,11 +733,16 @@ export function StandaloneAgentWindow({
             dockPreviewCache={dockPreviewCache}
             onLinkAction={handleLinkAction}
             onCapabilitySettingsRequest={handleCapabilitySettingsRequest}
-            onOpenAgentConversationWindow={({ agentSessionId, provider }) => {
+            onOpenAgentConversationWindow={({
+              agentSessionId,
+              agentTargetId,
+              provider
+            }) => {
               // Duplicate the complete live snapshot so the new window can
               // hydrate before its first local refresh.
               void hostWindowApi.openAgentWindow({
                 agentSessionId,
+                agentTargetId,
                 providerStatusSnapshot:
                   agentProviderStatusService.getSnapshot(),
                 agentDirectorySnapshot,
@@ -746,6 +754,7 @@ export function StandaloneAgentWindow({
             prefillPromptBootstrapRequest={prefillPromptBootstrapRequest}
             providerStatusBootstrapSnapshot={providerStatusBootstrapSnapshot}
             agentDirectory={agentDirectorySnapshot}
+            defaultAgentTargetId={defaultAgentTargetId}
             contextMentionProviders={agentGuiHostInput.contextMentionProviders}
             runtimeApi={desktopApi.runtime}
             trackAgentProviderChatReady={
@@ -795,12 +804,4 @@ export function StandaloneAgentWindow({
       />
     </main>
   );
-}
-
-function readStandaloneNodeProvider(
-  state: DesktopAgentGUIWorkbenchState,
-  fallbackProvider: DesktopAgentGUIProvider
-): DesktopAgentGUIProvider {
-  const provider = (state as { provider?: unknown }).provider;
-  return isDesktopAgentGUIProvider(provider) ? provider : fallbackProvider;
 }

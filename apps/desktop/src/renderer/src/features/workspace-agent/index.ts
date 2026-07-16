@@ -23,7 +23,6 @@ export { DesktopAgentProviderManageDialog } from "./ui/DesktopAgentProviderManag
 export {
   createDesktopAgentGUINodeStateSource,
   desktopAgentGUIOpenSessionActivationType,
-  desktopAgentGUIProviderFromInstanceId,
   normalizeDesktopAgentGUINodeState,
   normalizeDesktopAgentGUIProvider,
   normalizeDesktopAgentGUIWorkbenchState

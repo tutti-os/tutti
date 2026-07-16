@@ -145,6 +145,79 @@ WHERE id = ?
 	}
 }
 
+func TestSQLiteStoreMigrationFiltersAgentGUINodesWithoutValidTargetIdentity(t *testing.T) {
+	t.Parallel()
+
+	store := openTestSQLiteStore(t)
+	ctx := context.Background()
+	const workspaceID = "ws-agent-gui-target-migration"
+	if err := store.Create(ctx, workspacebiz.Summary{ID: workspaceID, Name: "Agent GUI Target Migration"}); err != nil {
+		t.Fatalf("Create() error = %v", err)
+	}
+	if _, err := store.db.ExecContext(ctx, `
+INSERT OR IGNORE INTO agent_targets (
+  id, provider, launch_ref_json, name, icon_key, enabled, source,
+  sort_order, created_at_ms, updated_at_ms
+) VALUES (
+  'local:codex', 'codex', '{"type":"local_cli","provider":"codex"}',
+  'Codex', 'codex', 1, 'system', 10, 1, 1
+)
+`); err != nil {
+		t.Fatalf("insert target fixture: %v", err)
+	}
+	const snapshotJSON = `{
+  "schemaVersion": 1,
+  "nodes": [
+    {"id":"agent-valid","kind":"agent-gui","data":{"typeId":"agent-gui","snapshotNodeState":{"agentTargetId":"local:codex"}}},
+    {"id":"agent-missing","kind":"agent-gui","data":{"typeId":"agent-gui","snapshotNodeState":{}}},
+    {"id":"agent-unknown","kind":"agent-gui","data":{"typeId":"agent-gui","snapshotNodeState":{"agentTargetId":"missing-target"}}},
+    {"id":"app","kind":"workspace-app-webview","data":{"typeId":"workspace-app-webview"}}
+  ],
+  "nodeStack": ["agent-valid", "agent-missing", "agent-unknown", "app"],
+  "activeNodeId": "agent-unknown",
+  "spaces": [{"id":"space-1","name":"One","nodeIds":["agent-valid","agent-missing","agent-unknown","app"]}]
+}`
+	if err := store.PutWorkbenchSnapshot(ctx, workspacebiz.WorkbenchSnapshot{
+		JSON: []byte(snapshotJSON), SchemaVersion: 1, WorkspaceID: workspaceID,
+	}); err != nil {
+		t.Fatalf("PutWorkbenchSnapshot() error = %v", err)
+	}
+	if _, err := store.db.ExecContext(ctx, `
+DELETE FROM tuttid_schema_migrations WHERE id = ?
+`, schemaMigrationWorkspaceWorkbenchAgentTargetIdentityV1); err != nil {
+		t.Fatalf("delete migration marker: %v", err)
+	}
+
+	if err := store.Migrate(ctx); err != nil {
+		t.Fatalf("Migrate() error = %v", err)
+	}
+	var migrated struct {
+		Nodes []struct {
+			ID string `json:"id"`
+		} `json:"nodes"`
+		NodeStack    []string `json:"nodeStack"`
+		ActiveNodeID *string  `json:"activeNodeId"`
+		Spaces       []struct {
+			NodeIDs []string `json:"nodeIds"`
+		} `json:"spaces"`
+	}
+	if err := json.Unmarshal([]byte(readTestWorkbenchSnapshotJSON(t, store, workspaceID)), &migrated); err != nil {
+		t.Fatalf("decode migrated snapshot: %v", err)
+	}
+	if len(migrated.Nodes) != 2 || migrated.Nodes[0].ID != "agent-valid" || migrated.Nodes[1].ID != "app" {
+		t.Fatalf("nodes = %+v, want valid AgentGUI node and app", migrated.Nodes)
+	}
+	if got := migrated.NodeStack; len(got) != 2 || got[0] != "agent-valid" || got[1] != "app" {
+		t.Fatalf("nodeStack = %v, want [agent-valid app]", got)
+	}
+	if migrated.ActiveNodeID != nil {
+		t.Fatalf("activeNodeId = %v, want null", migrated.ActiveNodeID)
+	}
+	if len(migrated.Spaces) != 1 || len(migrated.Spaces[0].NodeIDs) != 2 {
+		t.Fatalf("spaces = %+v, want only retained node ids", migrated.Spaces)
+	}
+}
+
 type testWorkbenchSnapshotMigration struct {
 	Nodes        []testWorkbenchSnapshotMigrationNode
 	ClosedFrames []testWorkbenchSnapshotMigrationClosedFrame

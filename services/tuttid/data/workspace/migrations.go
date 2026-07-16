@@ -13,6 +13,7 @@ const schemaMigrationWorkspacesV2 = "workspaces_v2"
 const schemaMigrationWorkspacesV3 = "workspaces_v3"
 const schemaMigrationWorkspacesV4 = "workspaces_v4"
 const schemaMigrationWorkspaceWorkbenchAgentGUIUnifiedDockV1 = "workspace_workbench_agent_gui_unified_dock_v1"
+const schemaMigrationWorkspaceWorkbenchAgentTargetIdentityV1 = "workspace_workbench_agent_target_identity_v1"
 const schemaMigrationWorkspaceIssuesV1 = "workspace_issues_v1"
 const schemaMigrationWorkspaceIssuesV2 = "workspace_issues_v2"
 const schemaMigrationWorkspaceIssuesV3 = "workspace_issues_v3"
@@ -180,6 +181,9 @@ INSERT OR IGNORE INTO tuttid_schema_migrations (id, applied_at_unix_ms)
 	// store. They must run after user_projects_v1: the rail section backfill
 	// reads project paths through userProjectPathsQuerier.
 	if err := s.agentStore().Migrate(ctx); err != nil {
+		return err
+	}
+	if err := s.applyWorkspaceWorkbenchAgentTargetIdentityV1(ctx); err != nil {
 		return err
 	}
 

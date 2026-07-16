@@ -4,7 +4,6 @@ import {
   areDesktopAgentGUIWorkbenchStatesEqual,
   createDesktopAgentGUINodeStateSource,
   createDefaultDesktopAgentGUINodeState,
-  desktopAgentGUIProviderFromInstanceId,
   migrateLegacyDesktopAgentGUIWorkbenchState,
   normalizeDesktopAgentGUINodeState,
   normalizeDesktopAgentGUIWorkbenchState,
@@ -259,25 +258,6 @@ test("desktop agent gui node state ignores removed legacy composer defaults", ()
       ...createDefaultDesktopAgentGUINodeState("hermes"),
       lastActiveAgentSessionId: "session-1"
     }
-  );
-});
-
-test("desktop agent gui provider derives from workbench instance id", () => {
-  assert.throws(
-    () => desktopAgentGUIProviderFromInstanceId("agent-gui"),
-    /agent_gui_workbench.instance_provider_required/
-  );
-  assert.equal(
-    desktopAgentGUIProviderFromInstanceId("agent-gui:claude-code"),
-    "claude-code"
-  );
-  assert.equal(
-    desktopAgentGUIProviderFromInstanceId("agent-gui:hermes:panel:abc"),
-    "hermes"
-  );
-  assert.equal(
-    desktopAgentGUIProviderFromInstanceId("agent-gui:unsupported"),
-    "unsupported"
   );
 });
 

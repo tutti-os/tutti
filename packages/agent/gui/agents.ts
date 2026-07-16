@@ -96,6 +96,7 @@ export function projectAgentGUIAgentsToInternalTargets(
       agentTargetId: agent.agentTargetId
     },
     label: agent.name,
+    availability: agent.availability,
     ...(agent.description ? { description: agent.description } : {}),
     iconUrl: agent.iconUrl,
     ...(agent.heroImageUrl ? { heroImageUrl: agent.heroImageUrl } : {}),

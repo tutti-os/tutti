@@ -16,7 +16,6 @@ export {
 } from "@tutti-os/agent-gui/workbench/providerCatalog";
 
 export {
-  agentGuiWorkbenchProviderFromInstanceId as desktopAgentGUIProviderFromInstanceId,
   areAgentGuiWorkbenchNodeStatesEqual as areDesktopAgentGUINodeStatesEqual,
   areAgentGuiWorkbenchStatesEqual as areDesktopAgentGUIWorkbenchStatesEqual,
   createAgentGuiWorkbenchNodeStateSource as createDesktopAgentGUINodeStateSource,

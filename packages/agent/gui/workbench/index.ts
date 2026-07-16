@@ -39,8 +39,6 @@ export {
 export {
   agentGuiWorkbenchDockEntryId,
   agentGuiWorkbenchDockIdentityFromIdentifier,
-  agentGuiWorkbenchInstanceId,
-  agentGuiWorkbenchProviderFromIdentifier,
   agentGuiWorkbenchProviderFromLaunchRequest,
   agentGuiWorkbenchTypeId,
   agentGuiWorkbenchUnifiedDockEntryId,
@@ -52,7 +50,6 @@ export {
 } from "./launch.ts";
 export type { AgentGuiWorkbenchLaunchDescriptor } from "./launch.ts";
 export {
-  agentGuiWorkbenchProviderFromInstanceId,
   areAgentGuiWorkbenchNodeStatesEqual,
   areAgentGuiWorkbenchStatesEqual,
   createAgentGuiWorkbenchNodeStateSource,

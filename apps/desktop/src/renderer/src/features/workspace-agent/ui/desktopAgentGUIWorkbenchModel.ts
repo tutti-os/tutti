@@ -37,6 +37,20 @@ export const DESKTOP_AGENT_GUI_CONVERSATION_RAIL_TOGGLE_EVENT =
 export type DesktopAgentGUIConversationRailToggleDetail =
   AgentGuiWorkbenchConversationRailToggleDetail;
 
+export interface DesktopAgentGUISurfaceContext {
+  activation: WorkbenchHostNodeBodyContext["activation"];
+  displayMode: WorkbenchHostNodeBodyContext["displayMode"];
+  frame: WorkbenchHostNodeBodyContext["node"]["frame"];
+  host: WorkbenchHostNodeBodyContext["host"];
+  instanceId: string;
+  isFocused: boolean;
+  isMinimized: boolean;
+  nodeId: string;
+  nodeTitle: string;
+  presentationMode: WorkbenchHostNodeBodyContext["presentationMode"];
+  state: unknown;
+}
+
 export interface DesktopAgentGUIWorkbenchBodyProps {
   agentActivityRuntime: AgentActivityRuntime;
   agentHostApi: AgentHostInputApi;
@@ -51,6 +65,7 @@ export interface DesktopAgentGUIWorkbenchBodyProps {
   onCapabilitySettingsRequest?: AgentGUIProps["hostActions"]["onCapabilitySettingsRequest"];
   onOpenAgentConversationWindow?: (input: {
     agentSessionId: string;
+    agentTargetId: string | null;
     provider: DesktopAgentGUINodeState["provider"];
     workspaceId: string;
   }) => Promise<void> | void;
@@ -86,6 +101,13 @@ export interface DesktopAgentGUIWorkbenchBodyProps {
   resolveWorkspaceReferenceInitialTarget?: AgentGUIProps["workspace"]["resolveReferenceInitialTarget"];
   workspaceId: string;
 }
+
+export type DesktopAgentGUISurfaceProps = Omit<
+  DesktopAgentGUIWorkbenchBodyProps,
+  "context"
+> & {
+  surface: DesktopAgentGUISurfaceContext;
+};
 
 export function resolveComputerUseAuthorizationState(
   status: DesktopComputerUseStatus | null

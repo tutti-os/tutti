@@ -16,10 +16,8 @@ import {
   createWorkspaceAgentGuiInstanceId,
   createWorkspaceFilesDockEntry,
   toWorkspaceFilesActivation,
-  workspaceAgentGuiInstanceId,
   workspaceAgentGuiNodeID,
   workspaceAgentGuiNodeFrame,
-  workspaceAgentGuiProviderFromIdentifier,
   workspaceAgentGuiProviderFromLaunchRequest,
   workspaceBrowserNodeID,
   workspaceFilePreviewNodeFrame,
@@ -70,38 +68,13 @@ test("createWorkspaceFilesDockEntry configures the files dock entry", () => {
   );
 });
 
-test("workspace agent GUI identifiers keep providers in instance identities", () => {
-  assert.equal(workspaceAgentGuiInstanceId("codex"), "agent-gui:codex");
-  assert.equal(workspaceAgentGuiInstanceId("hermes"), "agent-gui:hermes");
-  assert.equal(workspaceAgentGuiProviderFromIdentifier("agent-gui"), null);
-  assert.equal(
-    workspaceAgentGuiProviderFromIdentifier("agent-gui:codex:panel:1"),
-    "codex"
-  );
-  assert.equal(
-    workspaceAgentGuiProviderFromIdentifier("agent-gui:openclaw"),
-    "openclaw"
-  );
-  assert.equal(
-    workspaceAgentGuiProviderFromIdentifier("agent-gui:unknown"),
-    "unknown"
-  );
-});
-
-test("workspace agent GUI creates multi-open panel instance ids", () => {
-  const first = createWorkspaceAgentGuiInstanceId({ provider: "codex" });
-  const second = createWorkspaceAgentGuiInstanceId({ provider: "codex" });
+test("workspace agent GUI creates opaque multi-open instance ids", () => {
+  const first = createWorkspaceAgentGuiInstanceId();
+  const second = createWorkspaceAgentGuiInstanceId();
 
   assert.notEqual(first, second);
-  assert.equal(workspaceAgentGuiProviderFromIdentifier(first), "codex");
-  assert.equal(workspaceAgentGuiProviderFromIdentifier(second), "codex");
-  assert.equal(
-    createWorkspaceAgentGuiInstanceId({
-      agentSessionId: "session:1",
-      provider: "hermes"
-    }),
-    "agent-gui:hermes:session:session%3A1"
-  );
+  assert.match(first, /^agent-gui:instance:/);
+  assert.match(second, /^agent-gui:instance:/);
 });
 
 test("workspace files open in the wide three-column frame", () => {
@@ -170,7 +143,7 @@ test("workspace agent GUI session launches use container instances", () => {
   assert.equal(descriptor.provider, "codex");
   assert.equal(descriptor.targetAgentSessionId, "session-2");
   assert.equal(descriptor.dockEntryId, "agent-gui:unified");
-  assert.match(descriptor.instanceId, /^agent-gui:codex:panel:/);
+  assert.match(descriptor.instanceId, /^agent-gui:instance:/);
   assert.equal(descriptor.reuseDockEntryNode, false);
   assert.deepEqual(descriptor.activation, {
     payload: {

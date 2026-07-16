@@ -1,5 +1,6 @@
 import { useMemo } from "react";
 import type { AgentGUIProviderReadinessGate } from "../../../types";
+import { isAgentGUIAgentTargetComingSoon } from "../../../agentTargets";
 import { UnavailableChatIcon } from "../../../app/renderer/components/icons/UnavailableChatIcon";
 import { useProjectedAgentConversation } from "../../../shared/agentConversation/projection/useProjectedAgentConversation";
 import type { AgentComposerSlashStatusLimit } from "../AgentComposer";
@@ -59,8 +60,10 @@ export function useAgentGUIDetailModel(input: Input) {
     conversation: targetConversation
   });
   const hasActiveConversation = viewModel.rail.activeConversationId !== null;
-  const selectedAgentTargetComingSoon =
-    viewModel.rail.selectedAgentTarget?.disabled === true;
+  const selectedAgentTargetComingSoon = isAgentGUIAgentTargetComingSoon(
+    viewModel.rail.selectedAgentTarget,
+    viewModel.rail.comingSoonProviders
+  );
   const emptyProviderReadinessGate = !hasActiveConversation
     ? selectedAgentTargetComingSoon
       ? ({ status: "coming_soon" } satisfies AgentGUIProviderReadinessGate)

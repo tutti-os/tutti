@@ -3,8 +3,6 @@ import {
   agentGuiWorkbenchDockEntryId,
   agentGuiWorkbenchPrefillPromptActivationType,
   agentGuiWorkbenchDockIdentityFromIdentifier,
-  agentGuiWorkbenchInstanceId,
-  agentGuiWorkbenchProviderFromIdentifier,
   agentGuiWorkbenchProviderFromLaunchRequest,
   agentGuiWorkbenchUnifiedDockEntryId,
   createAgentGuiWorkbenchDraftLaunchRequest,
@@ -15,48 +13,13 @@ import {
 } from "./launch.ts";
 
 describe("agent gui workbench launch contract", () => {
-  it("keeps provider identity in instance ids instead of dock ids", () => {
+  it("keeps runtime instance ids opaque", () => {
     expect(agentGuiWorkbenchUnifiedDockEntryId()).toBe("agent-gui:unified");
-    expect(agentGuiWorkbenchInstanceId("codex")).toBe("agent-gui:codex");
-    expect(agentGuiWorkbenchProviderFromIdentifier("agent-gui")).toBeNull();
-    expect(agentGuiWorkbenchProviderFromIdentifier("agent-gui:codex")).toBe(
-      "codex"
-    );
-    expect(agentGuiWorkbenchProviderFromIdentifier("agent-gui:openclaw")).toBe(
-      "openclaw"
-    );
-    expect(agentGuiWorkbenchProviderFromIdentifier("agent-gui:unknown")).toBe(
-      "unknown"
-    );
-  });
-
-  it("creates stable session instance ids", () => {
-    expect(
-      createAgentGuiWorkbenchInstanceId({
-        agentSessionId: "session:1",
-        provider: "hermes"
-      })
-    ).toBe("agent-gui:hermes:session:session%3A1");
-  });
-
-  it("round trips encoded and legacy provider ids containing colons", () => {
-    const instanceId = createAgentGuiWorkbenchInstanceId({
-      agentTargetId: "extension:gemini",
-      provider: "acp:gemini"
-    });
-
-    expect(instanceId).toBe("agent-gui:acp%3Agemini:target:extension%3Agemini");
-    expect(agentGuiWorkbenchProviderFromIdentifier(instanceId)).toBe(
-      "acp:gemini"
-    );
-    expect(
-      agentGuiWorkbenchProviderFromIdentifier(
-        "agent-gui:acp:gemini:target:extension%3Agemini"
-      )
-    ).toBe("acp:gemini");
-    expect(
-      agentGuiWorkbenchProviderFromIdentifier("agent-gui:acp:gemini")
-    ).toBe("acp:gemini");
+    const first = createAgentGuiWorkbenchInstanceId();
+    const second = createAgentGuiWorkbenchInstanceId();
+    expect(first).toMatch(/^agent-gui:instance:/);
+    expect(second).toMatch(/^agent-gui:instance:/);
+    expect(first).not.toBe(second);
   });
 
   it("keeps deprecated dock identity helpers canonical", () => {
@@ -109,7 +72,7 @@ describe("agent gui workbench launch contract", () => {
     });
 
     expect(descriptor.dockEntryId).toBe("agent-gui:unified");
-    expect(descriptor.instanceId).toContain("agent-gui:codex:panel:");
+    expect(descriptor.instanceId).toMatch(/^agent-gui:instance:/);
     expect(descriptor.provider).toBe("codex");
   });
 
@@ -118,17 +81,10 @@ describe("agent gui workbench launch contract", () => {
     expect(
       agentGuiWorkbenchDockIdentityFromIdentifier("agent-gui:unified")
     ).toEqual({ kind: "unifiedAggregate" });
-    expect(
-      agentGuiWorkbenchProviderFromIdentifier("agent-gui:unified")
-    ).toBeNull();
-    expect(agentGuiWorkbenchProviderFromIdentifier("agent-gui")).toBeNull();
     expect(agentGuiWorkbenchDockIdentityFromIdentifier("agent-gui")).toBeNull();
     expect(
       agentGuiWorkbenchDockIdentityFromIdentifier("agent-gui:claude-code")
     ).toBeNull();
-    expect(
-      agentGuiWorkbenchProviderFromIdentifier("agent-gui:extension-provider")
-    ).toBe("extension-provider");
   });
 
   it("launches sessions into provider panels until current session state can reuse a node", () => {
@@ -155,7 +111,7 @@ describe("agent gui workbench launch contract", () => {
       reuseExistingSessionNode: true,
       targetAgentSessionId: "session-2"
     });
-    expect(descriptor.instanceId).toContain("agent-gui:codex:panel:");
+    expect(descriptor.instanceId).toMatch(/^agent-gui:instance:/);
   });
 
   it("launches sessions with target metadata into target panels", () => {
@@ -170,7 +126,6 @@ describe("agent gui workbench launch contract", () => {
         typeId: "agent-gui"
       })
     ).toMatchObject({
-      instanceId: "agent-gui:codex:target:local%3Acodex",
       openInNewWindow: false,
       reuseExistingSessionNode: true,
       targetAgentSessionId: "session-2"
@@ -194,14 +149,14 @@ describe("agent gui workbench launch contract", () => {
       },
       type: "agent-gui:open-session"
     });
-    expect(descriptor.instanceId).toContain("agent-gui:codex:panel:");
+    expect(descriptor.instanceId).toMatch(/^agent-gui:instance:/);
     expect(descriptor.openInNewWindow).toBe(true);
     expect(descriptor.reuseDockEntryNode).toBe(false);
     expect(descriptor.reuseExistingSessionNode).toBe(false);
     expect(descriptor.targetAgentSessionId).toBe("session-2");
   });
 
-  it("keeps unified aggregate dock launches provider-specific at the instance layer", () => {
+  it("keeps provider metadata separate from opaque aggregate instances", () => {
     const descriptor = createAgentGuiWorkbenchLaunchDescriptor({
       dockEntryId: agentGuiWorkbenchUnifiedDockEntryId(),
       payload: {
@@ -211,7 +166,7 @@ describe("agent gui workbench launch contract", () => {
     });
 
     expect(descriptor.dockEntryId).toBe("agent-gui:unified");
-    expect(descriptor.instanceId).toContain("agent-gui:claude-code:panel:");
+    expect(descriptor.instanceId).toMatch(/^agent-gui:instance:/);
     expect(descriptor.provider).toBe("claude-code");
     expect(descriptor.reuseDockEntryNode).toBe(true);
   });
@@ -345,7 +300,7 @@ describe("agent gui workbench launch contract", () => {
       reuseExistingSessionNode: false,
       targetAgentSessionId: null
     });
-    expect(descriptor.instanceId).toContain("agent-gui:codex:panel:");
+    expect(descriptor.instanceId).toMatch(/^agent-gui:instance:/);
   });
 
   it("creates session launch requests for the unified dock entry", () => {

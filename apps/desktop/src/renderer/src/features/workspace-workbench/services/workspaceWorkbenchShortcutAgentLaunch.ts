@@ -1,9 +1,6 @@
 import type { WorkspaceAgentProvider } from "@tutti-os/client-tuttid-ts";
 import { normalizeDesktopAgentGUIProvider } from "../../workspace-agent/desktopAgentGUINodeState.ts";
-import {
-  createWorkspaceAgentGuiSessionLaunchRequest,
-  workspaceAgentGuiProviderFromIdentifier
-} from "./workspaceAgentGuiLaunch.ts";
+import { createWorkspaceAgentGuiSessionLaunchRequest } from "./workspaceAgentGuiLaunch.ts";
 
 interface WorkspaceAgentGuiShortcutNode {
   data: {
@@ -18,7 +15,6 @@ export function resolveWorkspaceAgentGuiNodeProvider(
   fallback: WorkspaceAgentProvider
 ): WorkspaceAgentProvider {
   return (
-    workspaceAgentGuiProviderFromIdentifier(node.data.instanceId) ??
     workspaceAgentGuiProviderFromState(node.data.snapshotNodeState) ??
     workspaceAgentGuiProviderFromState(node.data.runtimeNodeState) ??
     fallback
