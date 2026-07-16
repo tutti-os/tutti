@@ -7,6 +7,7 @@ import (
 	"github.com/google/uuid"
 	tuttigenerated "github.com/tutti-os/tutti/services/tuttid/api/generated"
 	"github.com/tutti-os/tutti/services/tuttid/apierrors"
+	automationrulebiz "github.com/tutti-os/tutti/services/tuttid/biz/automationrule"
 	agentservice "github.com/tutti-os/tutti/services/tuttid/service/agent"
 )
 
@@ -42,11 +43,13 @@ func (api DaemonAPI) CreateWorkspaceAgentSession(ctx context.Context, request tu
 	session, err := api.AgentSessionService.Create(ctx, string(request.WorkspaceID), agentservice.CreateSessionInput{
 		AgentSessionID:         agentSessionID,
 		AgentTargetID:          agentTargetID,
+		AutomationRuleOverride: automationRuleOverrideFromGenerated(request.Body.AutomationRuleOverride),
 		Cwd:                    request.Body.Cwd,
 		InitialContent:         agentPromptContentFromGenerated(request.Body.InitialContent),
 		InitialDisplayPrompt:   stringPtrValue(request.Body.InitialDisplayPrompt),
 		Metadata:               metadata,
 		Model:                  request.Body.Model,
+		ModelPlanID:            request.Body.ModelPlanId,
 		PermissionModeID:       request.Body.PermissionModeId,
 		PlanMode:               request.Body.PlanMode,
 		BrowserUse:             request.Body.BrowserUse,
@@ -65,6 +68,16 @@ func (api DaemonAPI) CreateWorkspaceAgentSession(ctx context.Context, request tu
 	return tuttigenerated.CreateWorkspaceAgentSession201JSONResponse{
 		Session: generatedAgentSession(session),
 	}, nil
+}
+
+func automationRuleOverrideFromGenerated(input *tuttigenerated.SetAgentSessionAutomationRuleOverrideRequest) *automationrulebiz.SessionOverride {
+	if input == nil {
+		return nil
+	}
+	return &automationrulebiz.SessionOverride{
+		Disabled: input.Disabled,
+		RuleIDs:  append([]string(nil), input.RuleIds...),
+	}
 }
 
 func createSessionRuntimeContext(noProject *bool) map[string]any {

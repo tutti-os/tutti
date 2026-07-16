@@ -221,3 +221,24 @@ test("agent composer options preserve effective pre-session settings", () => {
     permissionModeId: "full-access"
   });
 });
+
+test("agent composer options project model configuration without exposing runtime context", () => {
+  const options = agentActivityComposerOptionsFromTuttidResult("codex", {
+    runtimeContext: {
+      modelConfiguration: {
+        agentTargetId: "local:codex",
+        defaultModel: "gpt-5.5-codex",
+        fingerprint: "plan-1:7",
+        source: "model-plan"
+      }
+    }
+  });
+
+  assert.deepEqual(options.modelConfiguration, {
+    agentTargetId: "local:codex",
+    defaultModel: "gpt-5.5-codex",
+    fingerprint: "plan-1:7",
+    source: "model-plan"
+  });
+  assert.equal("runtimeContext" in options, false);
+});

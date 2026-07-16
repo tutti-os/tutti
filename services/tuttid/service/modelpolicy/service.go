@@ -1,6 +1,6 @@
-// Package modelpolicy orchestrates workspace model usage policies, their
-// per-session overrides, the session acceptance ladder, and the fixed
-// automated review rule.
+// Package modelpolicy preserves legacy policy CRUD, per-session records, and
+// the acceptance ladder. Production runtime automation is owned by
+// automationrule; the legacy review runner is intentionally not wired.
 package modelpolicy
 
 import (

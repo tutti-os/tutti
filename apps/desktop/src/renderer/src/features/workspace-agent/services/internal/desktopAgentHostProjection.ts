@@ -10,6 +10,7 @@ export type AgentHostAgentSessionComposerSettings =
 
 export interface AgentHostAgentSessionComposerSettingsInput {
   model?: string | null;
+  modelPlanId?: string | null;
   permissionModeId?: string | null;
   planMode?: boolean | null;
   reasoningEffort?: string | null;
@@ -36,6 +37,7 @@ export function normalizeComposerSettings(
 ): AgentHostAgentSessionComposerSettings {
   return {
     model: normalizedOptionalString(settings?.model),
+    modelPlanId: normalizedOptionalString(settings?.modelPlanId),
     permissionModeId: resolveComposerPermissionMode(settings),
     planMode: Boolean(settings?.planMode),
     reasoningEffort: normalizedOptionalString(settings?.reasoningEffort),

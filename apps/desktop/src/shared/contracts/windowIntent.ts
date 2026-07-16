@@ -23,6 +23,8 @@ export type DesktopWindowIntent =
       agentDirectorySnapshot?: DesktopAgentDirectorySnapshot;
       autoSubmit?: boolean;
       draftPrompt?: string | null;
+      model?: string | null;
+      modelPlanId?: string | null;
       providerStatusSnapshot?: DesktopAgentProviderStatusSnapshot;
       kind: "agent";
       provider?: string | null;
@@ -56,6 +58,8 @@ export function createAgentWindowIntent(input: {
   agentTargetID?: string | null;
   autoSubmit?: boolean;
   draftPrompt?: string | null;
+  model?: string | null;
+  modelPlanId?: string | null;
   providerStatusSnapshot?: DesktopAgentProviderStatusSnapshot | null;
   provider?: string | null;
   userProjectPath?: string | null;
@@ -74,6 +78,10 @@ export function createAgentWindowIntent(input: {
     ...(input.autoSubmit === true ? { autoSubmit: true } : {}),
     ...(input.draftPrompt?.trim()
       ? { draftPrompt: input.draftPrompt.trim() }
+      : {}),
+    ...(input.model?.trim() ? { model: input.model.trim() } : {}),
+    ...(input.modelPlanId?.trim()
+      ? { modelPlanId: input.modelPlanId.trim() }
       : {}),
     ...(providerStatusSnapshot ? { providerStatusSnapshot } : {}),
     kind: "agent",
@@ -124,6 +132,12 @@ export function encodeDesktopWindowIntent(
     }
     if (intent.autoSubmit) {
       params.set("autoSubmit", "1");
+    }
+    if (intent.model) {
+      params.set("model", intent.model);
+    }
+    if (intent.modelPlanId) {
+      params.set("modelPlanId", intent.modelPlanId);
     }
     if (intent.provider) {
       params.set("provider", intent.provider);
@@ -191,6 +205,8 @@ export function resolveDesktopWindowIntent(
       agentTargetID: params.get("agentTargetId"),
       autoSubmit: params.get("autoSubmit") === "1",
       draftPrompt: params.get("draftPrompt"),
+      model: params.get("model"),
+      modelPlanId: params.get("modelPlanId"),
       providerStatusSnapshot: parseAgentProviderStatusSnapshot(
         params.get("agentProviderStatusSnapshot")
       ),

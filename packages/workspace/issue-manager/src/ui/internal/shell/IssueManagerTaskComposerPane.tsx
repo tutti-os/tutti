@@ -11,6 +11,7 @@ import {
   issueManagerEditorRiseInDelay1ClassName,
   issueManagerEditorRiseInDelay2ClassName
 } from "./IssueManagerEditorMotion.ts";
+import { IssueManagerTaskAssignmentFields } from "../orchestration/IssueManagerOrchestrationFields.tsx";
 
 export function IssueManagerTaskComposerPane({
   controller,
@@ -61,6 +62,7 @@ export function IssueManagerTaskComposerPane({
                 onChange={controller.setTaskContent}
               />
             </div>
+            <IssueManagerTaskAssignmentFields controller={controller} />
           </div>
         </div>
       </div>

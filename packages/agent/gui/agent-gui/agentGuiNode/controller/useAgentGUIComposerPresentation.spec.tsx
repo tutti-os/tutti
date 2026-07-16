@@ -230,6 +230,7 @@ describe("useAgentGUIComposerPresentation", () => {
           draftSettingsBySessionId,
           draftSettingsBySessionIdRef: { current: draftSettingsBySessionId },
           onDataChangeRef: { current: vi.fn() },
+          normalizedProviderTargets: [],
           providerComposerOptions: options,
           selectedComposerTargetData: target,
           selectedProjectPath: null,

@@ -7,12 +7,18 @@ import type {
 } from "../workspaceSettingsService.interface";
 import type {
   WorkspaceModelPlan,
+  WorkspaceModelPlanBindingTarget,
   WorkspaceModelPlanDraft,
   WorkspaceModelPlanDraftSeed,
   WorkspaceModelPlanFeedbackKind,
   WorkspaceModelPlanModel,
   WorkspaceSettingsStoreState
 } from "../workspaceSettingsTypes.ts";
+import { compatibleWorkspaceModelPlanFirstUseTargets } from "../workspaceModelPlanFirstUse.ts";
+import {
+  workspaceModelPlanUsesNativeLogin,
+  workspaceModelPlanUsesSubscriptionQuota
+} from "../workspaceModelPlanTemplates.ts";
 import type {
   DesktopWorkspaceSettingsClient,
   DetectModelPlanInput,
@@ -36,13 +42,23 @@ export interface WorkspaceModelPlansControllerDependencies {
     | "setModelPlanEnabled"
     | "updateModelPlan"
   >;
+  launchAgentGui?: (input: {
+    agentTargetId: string;
+    draftPrompt: string;
+    model: string | null;
+    modelPlanId: string;
+    openInNewWindow: true;
+    provider: WorkspaceModelPlanBindingTarget["provider"];
+    workspaceId: string;
+  }) => Promise<boolean>;
   notifications: NotificationService;
   store: WorkspaceSettingsStoreState;
 }
 
 /**
- * Owns the workspace "model plans" settings slice: named model access plans
- * with staged connection detection plus per-agent-target model bindings.
+ * Owns the workspace model-plan settings slice. Legacy fixed-target bindings
+ * remain available through explicit compatibility methods, but the default
+ * settings refresh is Plan-only because WorkspaceAgents own new mappings.
  * API keys only ever live inside the in-flight draft and request payloads.
  */
 export class WorkspaceModelPlansController implements IWorkspaceModelPlansController {
@@ -65,7 +81,7 @@ export class WorkspaceModelPlansController implements IWorkspaceModelPlansContro
   }
 
   async refresh(): Promise<void> {
-    await Promise.all([this.refreshPlans(), this.refreshBindings()]);
+    await this.refreshPlans();
   }
 
   async refreshPlans(): Promise<void> {
@@ -166,6 +182,7 @@ export class WorkspaceModelPlansController implements IWorkspaceModelPlansContro
       (patch.protocol !== undefined && patch.protocol !== draft.protocol);
     this.state.draft = { ...draft, ...patch };
     this.state.draftFeedback = null;
+    this.state.draftSaveImpact = null;
     if (invalidatesDetection) {
       this.state.draftDetection = null;
     }
@@ -176,6 +193,7 @@ export class WorkspaceModelPlansController implements IWorkspaceModelPlansContro
     this.state.draftDetection = null;
     this.state.draftDiscoveredModels = [];
     this.state.draftFeedback = null;
+    this.state.draftSaveImpact = null;
   }
 
   async detectDraft(): Promise<void> {
@@ -185,7 +203,10 @@ export class WorkspaceModelPlansController implements IWorkspaceModelPlansContro
       return;
     }
     const baseUrl = draft.baseUrl.trim();
-    if (!baseUrl && !draft.planId) {
+    const usesNativeLogin = workspaceModelPlanUsesNativeLogin(
+      draft.templateKind
+    );
+    if (!baseUrl && !draft.planId && !usesNativeLogin) {
       this.setDraftFeedback("requiredFields");
       return;
     }
@@ -197,6 +218,7 @@ export class WorkspaceModelPlansController implements IWorkspaceModelPlansContro
       const request: DetectModelPlanInput = {
         ...(draft.planId ? { planId: draft.planId } : {}),
         protocol: draft.protocol,
+        templateKind: draft.templateKind,
         ...(baseUrl ? { baseUrl } : {}),
         ...(draft.apiKey.trim() ? { apiKey: draft.apiKey } : {}),
         ...(models.length > 0
@@ -264,9 +286,61 @@ export class WorkspaceModelPlansController implements IWorkspaceModelPlansContro
       this.setDraftFeedback("requiredFields");
       return;
     }
+    const storedPlan = draft.planId
+      ? this.state.plans.find((plan) => plan.id === draft.planId)
+      : undefined;
+    const requiresPersistedDetection =
+      !draft.planId || modelPlanConnectionChanged(draft, storedPlan);
+    if (
+      requiresPersistedDetection &&
+      !modelPlanDetectionCorePassed(this.state.draftDetection)
+    ) {
+      this.setDraftFeedback("detectionRequired");
+      return;
+    }
+    if (
+      draft.planId &&
+      modelPlanModelRangeChanged(draft, storedPlan) &&
+      this.state.draftSaveImpact?.planID !== draft.planId
+    ) {
+      this.state.saving = true;
+      try {
+        const references =
+          await this.dependencies.client.listModelPlanReferences(
+            workspaceID,
+            draft.planId
+          );
+        if (
+          workspaceID !== this.store.workspaceID ||
+          this.state.draft !== draft
+        ) {
+          return;
+        }
+        if (references.length > 0) {
+          this.state.draftSaveImpact = {
+            planID: draft.planId,
+            references
+          };
+          return;
+        }
+      } catch {
+        if (
+          workspaceID === this.store.workspaceID &&
+          this.state.draft === draft
+        ) {
+          this.setDraftFeedback("saveFailed");
+        }
+        return;
+      } finally {
+        this.state.saving = false;
+      }
+    }
     this.state.saving = true;
     try {
       const models = normalizeModels(draft.models);
+      const usesSubscriptionQuota = workspaceModelPlanUsesSubscriptionQuota(
+        draft.templateKind
+      );
       const defaultModel = draft.defaultModel.trim();
       const request: PutModelPlanInput = {
         ...(draft.apiKey.trim() ? { apiKey: draft.apiKey } : {}),
@@ -275,7 +349,12 @@ export class WorkspaceModelPlansController implements IWorkspaceModelPlansContro
           ? { defaultModel }
           : {}),
         enabled: draft.enabled,
-        models: models.map(({ id, name }) => ({ id, name })),
+        models: models.map(({ id, name, pricing, tier }) => ({
+          id,
+          name,
+          tier: tier ?? "standard",
+          ...(!usesSubscriptionQuota && pricing ? { pricing } : {})
+        })),
         name: draft.name.trim(),
         protocol: draft.protocol,
         templateKind: draft.templateKind
@@ -288,6 +367,33 @@ export class WorkspaceModelPlansController implements IWorkspaceModelPlansContro
           )
         : await this.dependencies.client.createModelPlan(workspaceID, request);
       this.upsertPlan(saved);
+      if (requiresPersistedDetection) {
+        // Draft detection proves the proposed endpoint before commit. Repeat
+        // the check against the saved Plan identity so the durable list row
+        // enters pending_first_use instead of falling back to undetected.
+        this.state.draft = {
+          ...draft,
+          apiKey: "",
+          hasApiKey: saved.hasApiKey,
+          planId: saved.id
+        };
+        try {
+          const result = await this.dependencies.client.detectModelPlan(
+            workspaceID,
+            { planId: saved.id }
+          );
+          this.state.draftDetection = result.detection;
+          this.state.draftDiscoveredModels = result.discoveredModels;
+          await this.reloadPlan(saved.id);
+          if (!modelPlanDetectionCorePassed(result.detection)) {
+            this.setDraftFeedback("detectFailed");
+            return;
+          }
+        } catch {
+          this.setDraftFeedback("detectFailed");
+          return;
+        }
+      }
       this.cancelDraft();
     } catch {
       this.setDraftFeedback("saveFailed");
@@ -334,6 +440,61 @@ export class WorkspaceModelPlansController implements IWorkspaceModelPlansContro
       this.setPlanFeedback(planID, "duplicateFailed");
     } finally {
       this.state.duplicatingPlanID = null;
+    }
+  }
+
+  async launchFirstUse(planID: string, agentTargetID: string): Promise<void> {
+    const workspaceID = this.store.workspaceID;
+    if (!workspaceID || this.state.firstUseLaunchingPlanID) {
+      return;
+    }
+    const plan = this.state.plans.find((candidate) => candidate.id === planID);
+    const target = plan
+      ? compatibleWorkspaceModelPlanFirstUseTargets({
+          plan,
+          targets: this.store.agents.harnessTargets
+        }).find((candidate) => candidate.id === agentTargetID)
+      : undefined;
+    if (!plan || !target || !this.dependencies.launchAgentGui) {
+      this.state.firstUseLaunchFailedPlanID = planID;
+      return;
+    }
+
+    this.state.firstUseLaunchFailedPlanID = null;
+    this.state.firstUseLaunchingPlanID = planID;
+    try {
+      const launched = await this.dependencies.launchAgentGui({
+        agentTargetId: target.id,
+        draftPrompt: createActiveTranslator().t(
+          "workspace.settings.apps.modelPlans.firstUsePrompt",
+          { plan: plan.name }
+        ),
+        model: plan.defaultModel ?? null,
+        modelPlanId: plan.id,
+        openInNewWindow: true,
+        provider: target.provider,
+        workspaceId: workspaceID
+      });
+      if (
+        this.store.workspaceID === workspaceID &&
+        this.state.firstUseLaunchingPlanID === planID
+      ) {
+        this.state.firstUseLaunchFailedPlanID = launched ? null : planID;
+      }
+    } catch {
+      if (
+        this.store.workspaceID === workspaceID &&
+        this.state.firstUseLaunchingPlanID === planID
+      ) {
+        this.state.firstUseLaunchFailedPlanID = planID;
+      }
+    } finally {
+      if (
+        this.store.workspaceID === workspaceID &&
+        this.state.firstUseLaunchingPlanID === planID
+      ) {
+        this.state.firstUseLaunchingPlanID = null;
+      }
     }
   }
 
@@ -451,10 +612,10 @@ export class WorkspaceModelPlansController implements IWorkspaceModelPlansContro
     try {
       const plans = await this.dependencies.client.listModelPlans(workspaceID);
       const refreshed = plans.find((plan) => plan.id === planID);
-      this.state.plans = plans;
       if (!refreshed) {
         return;
       }
+      this.state.plans = plans;
     } catch {
       // Detection already surfaced its own result; a stale list row is
       // recoverable on the next refresh.
@@ -466,6 +627,7 @@ export class WorkspaceModelPlansController implements IWorkspaceModelPlansContro
     this.state.draftDetection = null;
     this.state.draftDiscoveredModels = [];
     this.state.draftFeedback = null;
+    this.state.draftSaveImpact = null;
     this.state.confirmingDeletePlanID = null;
     this.state.deleteBlock = null;
   }
@@ -506,11 +668,64 @@ export class WorkspaceModelPlansController implements IWorkspaceModelPlansContro
 }
 
 function hasRequiredDraftFields(draft: WorkspaceModelPlanDraft): boolean {
+  if (draft.name.trim().length === 0) {
+    return false;
+  }
+  if (workspaceModelPlanUsesNativeLogin(draft.templateKind)) {
+    return draft.planId !== null || normalizeModels(draft.models).length > 0;
+  }
   return (
-    draft.name.trim().length > 0 &&
     draft.baseUrl.trim().length > 0 &&
     (draft.hasApiKey || draft.apiKey.trim().length > 0)
   );
+}
+
+function modelPlanConnectionChanged(
+  draft: WorkspaceModelPlanDraft,
+  stored: WorkspaceModelPlan | undefined
+): boolean {
+  if (!stored) {
+    return true;
+  }
+  return (
+    draft.apiKey.trim().length > 0 ||
+    draft.baseUrl.trim() !== (stored.baseUrl ?? "").trim() ||
+    draft.protocol !== stored.protocol
+  );
+}
+
+function modelPlanModelRangeChanged(
+  draft: WorkspaceModelPlanDraft,
+  stored: WorkspaceModelPlan | undefined
+): boolean {
+  if (!stored) {
+    return false;
+  }
+  const draftIDs = normalizeModels(draft.models)
+    .map((model) => model.id)
+    .sort();
+  const storedIDs = normalizeModels(stored.models)
+    .map((model) => model.id)
+    .sort();
+  return (
+    draftIDs.length !== storedIDs.length ||
+    draftIDs.some((id, index) => id !== storedIDs[index])
+  );
+}
+
+function modelPlanDetectionCorePassed(
+  detection: WorkspaceSettingsStoreState["modelPlans"]["draftDetection"]
+): boolean {
+  if (!detection) {
+    return false;
+  }
+  const stages = ["network", "auth", "model_discovery", "inference"] as const;
+  return stages.every((stage) => {
+    const result = detection.stages.find(
+      (candidate) => candidate.stage === stage
+    );
+    return result?.status === "passed" || result?.status === "skipped";
+  });
 }
 
 function normalizeModels(
@@ -528,8 +743,13 @@ function normalizeModels(
       ...(model.capabilities !== undefined
         ? { capabilities: model.capabilities }
         : {}),
+      ...(model.pricing ? { pricing: { ...model.pricing } } : {}),
       id,
-      name: model.name.trim() || id
+      name: model.name.trim() || id,
+      tier:
+        model.tier === "flagship" || model.tier === "economy"
+          ? model.tier
+          : "standard"
     });
   }
   return normalized;

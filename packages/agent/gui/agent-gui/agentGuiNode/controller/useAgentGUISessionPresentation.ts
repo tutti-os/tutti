@@ -15,8 +15,11 @@ import type { AgentConversationVM } from "../../../shared/agentConversation/cont
 import type { AgentApprovalItemVM } from "../../../shared/agentConversation/contracts/agentApprovalItemVM";
 import {
   latestPlanTurnId,
+  planIssueDraftFromTimelineItems,
   planImplementationPromptFromPlanTurn
 } from "../../../shared/agentConversation/planImplementationPresentation";
+import type { PlanIssueBudgetPreset } from "../../../shared/agentConversation/planImplementationPresentation";
+import type { PlanOrchestrationCatalog } from "../../../shared/agentConversation/planImplementationPresentation";
 import type { AgentSessionState } from "../../../shared/agentSessionTypes";
 import type { AppErrorCode } from "../../../shared/contracts/dto";
 import { useEngineSelector } from "../../../shared/engine/useEngineSelector";
@@ -73,6 +76,8 @@ interface UseAgentGUISessionPresentationInput {
   isSubmitting: boolean;
   lastRenderStateDiagnosticKeyRef: CurrentValue<string | null>;
   pendingApproval: AgentApprovalItemVM | null;
+  planIssueAssignmentCatalog: PlanOrchestrationCatalog;
+  planIssueBudgetPreset: PlanIssueBudgetPreset;
   planImplementationTurnIdRef: CurrentValue<string | null>;
   optimisticGoalControl: AgentGUIOptimisticGoalControl | null;
   agentTargetsLoading: boolean;
@@ -121,7 +126,14 @@ export function useAgentGUISessionPresentation(
     !activePlanTurnDismissed
       ? planImplementationPromptFromPlanTurn(
           planImplementationTurnId,
-          input.activeConversation?.title ?? ""
+          input.activeConversation?.title ?? "",
+          planIssueDraftFromTimelineItems(
+            input.activeTimelineItems,
+            planImplementationTurnId,
+            translate("agentHost.agentGui.planIssueUntitled"),
+            input.planIssueBudgetPreset
+          ) ?? undefined,
+          input.planIssueAssignmentCatalog
         )
       : null;
   const pendingInteractivePrompt =

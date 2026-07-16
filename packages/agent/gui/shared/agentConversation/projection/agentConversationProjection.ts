@@ -166,7 +166,6 @@ export function latestAssistantMessageText(
   }
   return null;
 }
-
 export function reconcileProjectedAgentConversationVM(
   previous: AgentConversationVM | null | undefined,
   next: AgentConversationVM

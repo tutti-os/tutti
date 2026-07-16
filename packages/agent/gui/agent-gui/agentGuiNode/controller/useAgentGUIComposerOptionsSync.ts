@@ -1,8 +1,9 @@
 import {
+  type AgentActivityComposerOptions,
   selectLatestActivationForSession,
   type AgentSessionEngine
 } from "@tutti-os/agent-activity-core";
-import type { RefObject } from "react";
+import type { Dispatch, RefObject, SetStateAction } from "react";
 import { useCallback, useEffect, useRef } from "react";
 import type { AgentActivityRuntime } from "../../../agentActivityRuntime";
 import { subscribe, subscribeCoalesced } from "../../../host/agentHostEventBus";
@@ -11,7 +12,11 @@ import type {
   AgentSessionReasoningEffort
 } from "../../../shared/agentSessionTypes";
 import type { AgentGUINodeData } from "../../../types";
-import { readNodeDefaultDraftSettings } from "./agentGuiController.composerHelpers";
+import {
+  nodeDataFromComposerSettings,
+  nodeDefaultDraftKey,
+  readNodeDefaultDraftSettings
+} from "./agentGuiController.composerHelpers";
 import {
   composerTargetDataForConversation,
   type AgentGUIComposerTargetData
@@ -19,6 +24,7 @@ import {
 import {
   composerDefaultsPatchFromSettings,
   mergeAgentModelCatalogInvalidationEvents,
+  mergeAgentModelConfigurationChangedEvents,
   withoutAcknowledgedComposerDefaults
 } from "./agentGuiController.providerHelpers";
 import type { AgentGUIComposerDefaultsAuthorityReconciler } from "./agentGuiComposerDefaultsReconciliation";
@@ -36,17 +42,20 @@ export function useAgentGUIComposerOptionsSync(input: {
   draftSettingsBySessionIdRef: RefObject<
     Record<string, AgentSessionComposerSettings>
   >;
+  setDraftSettingsBySessionId: Dispatch<
+    SetStateAction<Record<string, AgentSessionComposerSettings>>
+  >;
   isComposerHome: boolean;
   isComposerHomeRef: RefObject<boolean>;
   isCreatingConversation: boolean;
   loadDraftComposerOptionsRef: RefObject<() => void>;
   loadSessionState(agentSessionId: string, cause?: unknown): void;
   onComposerDefaultsAuthorityReloadedRef: RefObject<AgentGUIComposerDefaultsAuthorityReconciler>;
+  onDataChangeRef: RefObject<
+    (updater: (current: AgentGUINodeData) => AgentGUINodeData) => void
+  >;
   previewMode: boolean;
-  providerComposerOptions:
-    | { behavior?: { prewarmDraftSession?: boolean } | null }
-    | null
-    | undefined;
+  providerComposerOptions: AgentActivityComposerOptions | null | undefined;
   reloadSelectedConversation(
     agentSessionId: string,
     options: { reloadConversations: boolean; reloadDetail: boolean }
@@ -173,7 +182,7 @@ export function useAgentGUIComposerOptionsSync(input: {
 
   useEffect(() => {
     if (input.previewMode) return undefined;
-    return subscribeCoalesced(
+    const unsubscribeCatalog = subscribeCoalesced(
       "agent-model-catalog-invalidated",
       {
         delayMs: 150,
@@ -203,7 +212,34 @@ export function useAgentGUIComposerOptionsSync(input: {
         });
       }
     );
-  }, [input.loadSessionState, input.previewMode, loadDraftComposerOptions]);
+    const unsubscribeConfiguration = subscribeCoalesced(
+      "agent-model-configuration-changed",
+      {
+        delayMs: 50,
+        key: (event) => event.workspaceId,
+        merge: mergeAgentModelConfigurationChangedEvents
+      },
+      (event) => {
+        if (event.workspaceId !== input.workspaceId) return;
+        const agentTargetId =
+          input.selectedComposerTargetDataRef.current.agentTargetId?.trim() ??
+          "";
+        if (!agentTargetId || !event.agentTargetIds.includes(agentTargetId)) {
+          return;
+        }
+        loadDraftComposerOptions({ force: true });
+      }
+    );
+    return () => {
+      unsubscribeCatalog();
+      unsubscribeConfiguration();
+    };
+  }, [
+    input.loadSessionState,
+    input.previewMode,
+    input.workspaceId,
+    loadDraftComposerOptions
+  ]);
 
   useEffect(() => {
     if (input.previewMode) return undefined;
@@ -254,6 +290,65 @@ export function useAgentGUIComposerOptionsSync(input: {
       !input.isCreatingConversation;
     previousActiveConversationIdRef.current = input.activeConversationId;
     previousIsCreatingConversationRef.current = input.isCreatingConversation;
+    const reconcileModelConfiguration = () => {
+      if (!input.isComposerHome || input.activeConversationId !== null) return;
+      const configuration = input.providerComposerOptions?.modelConfiguration;
+      const agentTargetId =
+        input.composerTargetData.agentTargetId?.trim() ?? "";
+      if (!configuration || configuration.agentTargetId !== agentTargetId) {
+        return;
+      }
+      const currentData = input.dataRef.current;
+      const previous =
+        currentData.modelConfigurationsByAgentTargetId?.[agentTargetId] ?? null;
+      if (
+        previous?.fingerprint === configuration.fingerprint ||
+        (!previous && configuration.source === "provider-native")
+      ) {
+        return;
+      }
+      const selectedModel =
+        configuration.source === "model-plan"
+          ? configuration.defaultModel
+          : null;
+      const nextSettings: AgentSessionComposerSettings = {
+        ...readNodeDefaultDraftSettings({
+          data: currentData,
+          defaultReasoningEffort: input.defaultReasoningEffort,
+          drafts: input.draftSettingsBySessionIdRef.current
+        }),
+        model: selectedModel
+      };
+      const draftKey = nodeDefaultDraftKey(
+        input.composerTargetData.provider,
+        agentTargetId
+      );
+      input.setDraftSettingsBySessionId((current) => ({
+        ...current,
+        [draftKey]: nextSettings
+      }));
+      input.onDataChangeRef.current((current) => {
+        if ((current.agentTargetId?.trim() ?? "") !== agentTargetId) {
+          return current;
+        }
+        return nodeDataFromComposerSettings(
+          {
+            ...current,
+            modelConfigurationsByAgentTargetId: {
+              ...(current.modelConfigurationsByAgentTargetId ?? {}),
+              [agentTargetId]: {
+                defaultModel: configuration.defaultModel,
+                fingerprint: configuration.fingerprint,
+                selectedModel,
+                source: configuration.source
+              }
+            }
+          },
+          nextSettings
+        );
+      });
+    };
+    reconcileModelConfiguration();
     loadDraftComposerOptions(
       conversationActivated ||
         conversationCreationSettled ||
@@ -267,11 +362,13 @@ export function useAgentGUIComposerOptionsSync(input: {
     input.activeConversationId,
     input.composerTargetData.agentTargetId,
     input.composerTargetData.provider,
+    input.defaultReasoningEffort,
     input.isComposerHome,
     input.isCreatingConversation,
     input.previewMode,
     input.providerComposerOptions?.behavior?.prewarmDraftSession,
     input.selectedProjectPath,
+    input.providerComposerOptions?.modelConfiguration,
     loadDraftComposerOptions
   ]);
 

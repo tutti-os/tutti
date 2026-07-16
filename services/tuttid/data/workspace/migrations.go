@@ -19,6 +19,11 @@ const schemaMigrationWorkspaceIssuesV2 = "workspace_issues_v2"
 const schemaMigrationWorkspaceIssuesV3 = "workspace_issues_v3"
 const schemaMigrationWorkspaceIssuesV4 = "workspace_issues_v4"
 const schemaMigrationWorkspaceIssuesV5 = "workspace_issues_v5"
+const schemaMigrationWorkspaceIssuesV6 = "workspace_issues_orchestration_v1"
+const schemaMigrationWorkspaceIssuesV7 = "workspace_issues_sequential_execution_v1"
+const schemaMigrationWorkspaceIssuesV8 = "workspace_issues_parallel_execution_v1"
+const schemaMigrationWorkspaceIssuesV9 = "workspace_issues_dispatch_paused_v1"
+const schemaMigrationWorkspaceIssuesV10 = "workspace_issues_collaboration_usage_v1"
 const schemaMigrationDesktopPreferencesV1 = "desktop_preferences_v1"
 const schemaMigrationDesktopPreferencesAgentDockLayoutV1 = "desktop_preferences_agent_dock_layout_v1"
 const schemaMigrationDesktopPreferencesSleepPreventionModeV1 = "desktop_preferences_sleep_prevention_mode_v1"
@@ -46,9 +51,17 @@ const schemaMigrationWorkspaceAppsV1 = "workspace_apps_v1"
 const schemaMigrationWorkspaceAppsV2 = "workspace_apps_v2"
 const schemaMigrationWorkspaceAppsV3 = "workspace_apps_v3"
 const schemaMigrationManagedCredentialsV1 = "managed_credentials_v1"
+const schemaMigrationManagedCredentialsV2 = "managed_credentials_model_plans_v1"
 const schemaMigrationModelPlansV1 = "model_plans_v1"
+const schemaMigrationModelPlanRevisionsV1 = "model_plan_revisions_v1"
 const schemaMigrationAgentModelBindingsV1 = "agent_model_bindings_v1"
+const schemaMigrationWorkspaceAgentsV1 = "workspace_agents_v1"
+const schemaMigrationWorkspaceAgentsV2 = "workspace_agents_model_fallbacks_v1"
+const schemaMigrationWorkspaceAgentsV3 = "workspace_agents_call_conditions_v1"
+const schemaMigrationWorkspaceAgentsV4 = "workspace_agents_capability_selection_v1"
 const schemaMigrationCollabRunsV1 = "collab_runs_v1"
+const schemaMigrationCollabRunsRetryV1 = "collab_runs_retry_v1"
+const schemaMigrationCollabRunsUsageV1 = "collab_runs_usage_v1"
 const schemaMigrationAppFactoryJobsV1 = "app_factory_jobs_v1"
 const schemaMigrationAppFactoryJobsV2 = "app_factory_jobs_v2"
 const schemaMigrationAppFactoryJobsV3 = "app_factory_jobs_v3"
@@ -114,6 +127,25 @@ INSERT OR IGNORE INTO tuttid_schema_migrations (id, applied_at_unix_ms)
 	}
 
 	if err := s.applyWorkspaceIssuesV5(ctx); err != nil {
+		return err
+	}
+
+	if err := s.applyWorkspaceIssuesV6(ctx); err != nil {
+		return err
+	}
+
+	if err := s.applyWorkspaceIssuesV7(ctx); err != nil {
+		return err
+	}
+
+	if err := s.applyWorkspaceIssuesV8(ctx); err != nil {
+		return err
+	}
+
+	if err := s.applyWorkspaceIssuesV9(ctx); err != nil {
+		return err
+	}
+	if err := s.applyWorkspaceIssuesV10(ctx); err != nil {
 		return err
 	}
 
@@ -210,16 +242,43 @@ INSERT OR IGNORE INTO tuttid_schema_migrations (id, applied_at_unix_ms)
 	if err := s.applyManagedCredentialsV1(ctx); err != nil {
 		return err
 	}
+	if err := s.applyManagedCredentialsV2(ctx); err != nil {
+		return err
+	}
 	if err := s.applyModelPlansV1(ctx); err != nil {
+		return err
+	}
+	if err := s.applyModelPlanRevisionsV1(ctx); err != nil {
 		return err
 	}
 	if err := s.applyAgentModelBindingsV1(ctx); err != nil {
 		return err
 	}
+	if err := s.applyWorkspaceAgentsV1(ctx); err != nil {
+		return err
+	}
+	if err := s.applyWorkspaceAgentsV2(ctx); err != nil {
+		return err
+	}
+	if err := s.applyWorkspaceAgentsV3(ctx); err != nil {
+		return err
+	}
+	if err := s.applyWorkspaceAgentsV4(ctx); err != nil {
+		return err
+	}
 	if err := s.applyCollabRunsV1(ctx); err != nil {
 		return err
 	}
+	if err := s.applyCollabRunsRetryV1(ctx); err != nil {
+		return err
+	}
+	if err := s.applyCollabRunsUsageV1(ctx); err != nil {
+		return err
+	}
 	if err := s.applyModelPoliciesV1(ctx); err != nil {
+		return err
+	}
+	if err := s.applyAutomationRulesV1(ctx); err != nil {
 		return err
 	}
 	if err := s.applyAppFactoryJobsV1(ctx); err != nil {

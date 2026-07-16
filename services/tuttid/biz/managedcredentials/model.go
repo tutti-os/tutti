@@ -20,9 +20,11 @@ func IsProviderID(value string) bool {
 }
 
 type Model struct {
-	ID       string     `json:"id"`
-	Name     string     `json:"name"`
-	Provider ProviderID `json:"provider"`
+	ID            string     `json:"id"`
+	Name          string     `json:"name"`
+	Provider      ProviderID `json:"provider"`
+	ModelPlanID   string     `json:"modelPlanId,omitempty"`
+	ModelPlanName string     `json:"modelPlanName,omitempty"`
 }
 
 type ProviderConfig struct {
@@ -66,19 +68,22 @@ func cloneModels(models []Model) []Model {
 }
 
 type Grant struct {
-	WorkspaceID string
-	AppID       string
-	GrantRef    string
-	ProviderIDs []ProviderID
-	Scopes      []string
-	CreatedAt   time.Time
-	ExpiresAt   time.Time
-	RevokedAt   *time.Time
+	WorkspaceID  string
+	AppID        string
+	GrantRef     string
+	ProviderIDs  []ProviderID
+	ModelPlanIDs []string
+	Scopes       []string
+	CreatedAt    time.Time
+	ExpiresAt    time.Time
+	RevokedAt    *time.Time
 }
 
 type ProviderCredential struct {
-	Provider ProviderID `json:"provider"`
-	APIKey   string     `json:"apiKey"`
-	BaseURL  string     `json:"baseUrl,omitempty"`
-	Models   []Model    `json:"models,omitempty"`
+	Provider      ProviderID `json:"provider"`
+	APIKey        string     `json:"apiKey"`
+	BaseURL       string     `json:"baseUrl,omitempty"`
+	ModelPlanID   string     `json:"modelPlanId,omitempty"`
+	ModelPlanName string     `json:"modelPlanName,omitempty"`
+	Models        []Model    `json:"models,omitempty"`
 }

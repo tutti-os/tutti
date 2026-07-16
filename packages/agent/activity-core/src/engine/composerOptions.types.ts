@@ -38,6 +38,7 @@ export interface ComposerOptionsLoadRequestedIntent {
 export interface ComposerOptionsInvalidatedIntent {
   type: "composerOptions/invalidated";
   providers?: readonly string[];
+  /** Exact opaque target keys; combined with provider filters when both exist. */
   targetKeys?: readonly string[];
 }
 

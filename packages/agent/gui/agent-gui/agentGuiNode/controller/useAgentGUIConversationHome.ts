@@ -26,11 +26,17 @@ import {
   resolveAgentGUIComposerAppendRequest,
   type AgentGUIComposerAppendRequest
 } from "./useAgentGUIComposerAppendRequest";
+import {
+  buildNodeDefaultComposerSettings,
+  nodeDataFromComposerSettings
+} from "./agentGuiController.composerHelpers";
 
 export interface AgentGUIPrefillPromptRequest {
   agentTargetId?: string | null;
   autoSubmit?: boolean;
   draftPrompt: string;
+  model?: string | null;
+  modelPlanId?: string | null;
   provider?: AgentGUIProvider;
   sequence: number;
   userProjectPath?: string | null;
@@ -313,10 +319,23 @@ export function useAgentGUIConversationHome({
           ),
           target
         });
-        const nextData = {
+        const nextTargetNodeData = {
           ...nextTargetData.data,
           lastActiveAgentSessionId: null
         };
+        const nextData = applyAgentGUIPrefillComposerAssignment(
+          nextTargetNodeData,
+          prefillPromptRequest
+        );
+        dataRef.current = nextData;
+        return nextData;
+      });
+    } else if (prefillPromptRequest.model || prefillPromptRequest.modelPlanId) {
+      onDataChangeRef.current((current) => {
+        const nextData = applyAgentGUIPrefillComposerAssignment(
+          { ...current, lastActiveAgentSessionId: null },
+          prefillPromptRequest
+        );
         dataRef.current = nextData;
         return nextData;
       });
@@ -362,4 +381,20 @@ export function useAgentGUIConversationHome({
   ]);
 
   return { createConversation, enterHome };
+}
+
+export function applyAgentGUIPrefillComposerAssignment(
+  data: AgentGUINodeData,
+  request: Pick<AgentGUIPrefillPromptRequest, "model" | "modelPlanId">
+): AgentGUINodeData {
+  const model = request.model?.trim() || null;
+  const modelPlanId = request.modelPlanId?.trim() || null;
+  if (!model && !modelPlanId) {
+    return data;
+  }
+  return nodeDataFromComposerSettings(data, {
+    ...buildNodeDefaultComposerSettings(data),
+    model,
+    modelPlanId
+  });
 }

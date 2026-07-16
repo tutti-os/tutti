@@ -4,9 +4,17 @@ import type {
   DesktopRuntimeApi
 } from "@preload/types";
 import type {
+  AgentProviderComposerOptionsResponse,
   AgentTarget,
+  AutomationRule,
   DeletedAgentConversationPurgeResult,
-  TuttidClient
+  GenerateWorkspaceAgentDraftRequest,
+  PutAutomationRuleRequest,
+  PutWorkspaceAgentRequest,
+  TuttidClient,
+  WorkspaceAgentDraftGeneration,
+  WorkspaceAgentProvider,
+  WorkspaceModelRecommendation
 } from "@tutti-os/client-tuttid-ts";
 import type {
   ClearDeveloperLogsResult,
@@ -22,6 +30,7 @@ import type {
 } from "@shared/contracts/ipc";
 import type {
   WorkspaceAgentModelBinding,
+  WorkspaceAgentDefinition,
   WorkspaceModelPlan,
   WorkspaceModelPlanDetection,
   WorkspaceModelPlanModel,
@@ -36,6 +45,10 @@ interface ModelPlanListResponse {
 
 interface ModelPlanReferencesResponse {
   references: WorkspaceModelPlanReference[];
+}
+
+interface ModelRecommendationListResponse {
+  recommendations: WorkspaceModelRecommendation[];
 }
 
 interface AgentModelBindingListResponse {
@@ -53,7 +66,7 @@ export interface PutModelPlanInput {
   baseUrl: string;
   defaultModel?: string;
   enabled: boolean;
-  models: Array<{ id: string; name: string }>;
+  models: WorkspaceModelPlanModel[];
   name: string;
   protocol: WorkspaceModelPlanProtocol;
   templateKind: WorkspaceModelPlanTemplateKind;
@@ -67,6 +80,7 @@ export interface DetectModelPlanInput {
   /** When set, omitted fields fall back to the stored plan. */
   planId?: string;
   protocol?: WorkspaceModelPlanProtocol;
+  templateKind?: WorkspaceModelPlanTemplateKind;
 }
 
 export interface DetectModelPlanResult {
@@ -74,11 +88,20 @@ export interface DetectModelPlanResult {
   discoveredModels: WorkspaceModelPlanModel[];
 }
 
+export interface RecommendWorkspaceModelsInput {
+  limit?: number;
+  preferredPlanId?: string;
+  requiredCapabilities?: string[];
+}
+
 export interface SetAgentModelBindingInput {
   defaultModel?: string | null;
   modelPlanId?: string | null;
   modelPolicyId?: string | null;
 }
+
+export type PutWorkspaceAgentInput = PutWorkspaceAgentRequest;
+export type PutAutomationRuleInput = PutAutomationRuleRequest;
 
 export class DesktopWorkspaceSettingsDaemonError extends Error {
   readonly code: string | null;
@@ -119,6 +142,43 @@ export interface DesktopWorkspaceSettingsClient {
     input?: DesktopComputerUseRestartDriverInput
   ): Promise<DesktopComputerUseRestartDriverResult>;
   listAgentTargets(): Promise<AgentTarget[]>;
+  getAgentProviderComposerOptions(
+    workspaceID: string,
+    provider: WorkspaceAgentProvider,
+    agentTargetID: string
+  ): Promise<AgentProviderComposerOptionsResponse>;
+  listAutomationRules(workspaceID: string): Promise<AutomationRule[]>;
+  createAutomationRule(
+    workspaceID: string,
+    input: PutAutomationRuleInput
+  ): Promise<AutomationRule>;
+  updateAutomationRule(
+    workspaceID: string,
+    automationRuleID: string,
+    input: PutAutomationRuleInput
+  ): Promise<AutomationRule>;
+  deleteAutomationRule(
+    workspaceID: string,
+    automationRuleID: string
+  ): Promise<void>;
+  listWorkspaceAgents(workspaceID: string): Promise<WorkspaceAgentDefinition[]>;
+  generateWorkspaceAgentDraft(
+    workspaceID: string,
+    input: GenerateWorkspaceAgentDraftRequest
+  ): Promise<WorkspaceAgentDraftGeneration>;
+  createWorkspaceAgent(
+    workspaceID: string,
+    input: PutWorkspaceAgentInput
+  ): Promise<WorkspaceAgentDefinition>;
+  updateWorkspaceAgent(
+    workspaceID: string,
+    workspaceAgentID: string,
+    input: PutWorkspaceAgentInput
+  ): Promise<WorkspaceAgentDefinition>;
+  deleteWorkspaceAgent(
+    workspaceID: string,
+    workspaceAgentID: string
+  ): Promise<void>;
   setSystemAgentTargetEnabled(
     agentTargetID: string,
     enabled: boolean
@@ -133,6 +193,10 @@ export interface DesktopWorkspaceSettingsClient {
   openLogDirectory(): Promise<void>;
   openLogFile(kind: DesktopDeveloperLogKind): Promise<void>;
   listModelPlans(workspaceID: string): Promise<WorkspaceModelPlan[]>;
+  recommendWorkspaceModels(
+    workspaceID: string,
+    input: RecommendWorkspaceModelsInput
+  ): Promise<WorkspaceModelRecommendation[]>;
   createModelPlan(
     workspaceID: string,
     input: PutModelPlanInput
@@ -176,9 +240,19 @@ export function createDesktopWorkspaceSettingsClient(input: {
   runtimeApi: DesktopRuntimeApi;
   tuttidClient: Pick<
     TuttidClient,
+    | "createAutomationRule"
+    | "createWorkspaceAgent"
+    | "deleteAutomationRule"
+    | "deleteWorkspaceAgent"
+    | "generateWorkspaceAgentDraft"
+    | "getAgentProviderComposerOptions"
     | "listAgentTargets"
-    | "setSystemAgentTargetEnabled"
+    | "listAutomationRules"
+    | "listWorkspaceAgents"
     | "purgeDeletedAgentConversations"
+    | "setSystemAgentTargetEnabled"
+    | "updateAutomationRule"
+    | "updateWorkspaceAgent"
   >;
 }): DesktopWorkspaceSettingsClient {
   return {
@@ -217,6 +291,63 @@ export function createDesktopWorkspaceSettingsClient(input: {
     },
     async listAgentTargets() {
       return (await input.tuttidClient.listAgentTargets()).targets;
+    },
+    async getAgentProviderComposerOptions(
+      workspaceID,
+      provider,
+      agentTargetID
+    ) {
+      return await input.tuttidClient.getAgentProviderComposerOptions(
+        provider,
+        {
+          agentTargetId: agentTargetID,
+          workspaceId: workspaceID
+        }
+      );
+    },
+    async listAutomationRules(workspaceID) {
+      return (await input.tuttidClient.listAutomationRules(workspaceID)).rules;
+    },
+    async createAutomationRule(workspaceID, body) {
+      return await input.tuttidClient.createAutomationRule(workspaceID, body);
+    },
+    async updateAutomationRule(workspaceID, automationRuleID, body) {
+      return await input.tuttidClient.updateAutomationRule(
+        workspaceID,
+        automationRuleID,
+        body
+      );
+    },
+    async deleteAutomationRule(workspaceID, automationRuleID) {
+      await input.tuttidClient.deleteAutomationRule(
+        workspaceID,
+        automationRuleID
+      );
+    },
+    async listWorkspaceAgents(workspaceID) {
+      return (await input.tuttidClient.listWorkspaceAgents(workspaceID)).agents;
+    },
+    async generateWorkspaceAgentDraft(workspaceID, body) {
+      return await input.tuttidClient.generateWorkspaceAgentDraft(
+        workspaceID,
+        body
+      );
+    },
+    async createWorkspaceAgent(workspaceID, body) {
+      return await input.tuttidClient.createWorkspaceAgent(workspaceID, body);
+    },
+    async updateWorkspaceAgent(workspaceID, workspaceAgentID, body) {
+      return await input.tuttidClient.updateWorkspaceAgent(
+        workspaceID,
+        workspaceAgentID,
+        body
+      );
+    },
+    async deleteWorkspaceAgent(workspaceID, workspaceAgentID) {
+      await input.tuttidClient.deleteWorkspaceAgent(
+        workspaceID,
+        workspaceAgentID
+      );
     },
     setSystemAgentTargetEnabled(agentTargetID, enabled) {
       return input.tuttidClient.setSystemAgentTargetEnabled(
@@ -257,6 +388,17 @@ export function createDesktopWorkspaceSettingsClient(input: {
         `/v1/workspaces/${encodeURIComponent(workspaceID)}/model-plans`
       );
       return response.plans;
+    },
+    async recommendWorkspaceModels(workspaceID, body) {
+      const response = await requestDaemon<ModelRecommendationListResponse>(
+        input.runtimeApi,
+        `/v1/workspaces/${encodeURIComponent(workspaceID)}/model-plans/recommend`,
+        {
+          body,
+          method: "POST"
+        }
+      );
+      return response.recommendations;
     },
     async createModelPlan(workspaceID, body) {
       return await requestDaemon<WorkspaceModelPlan>(

@@ -7,8 +7,40 @@ import (
 	"strings"
 	"time"
 
+	eventsgenerated "github.com/tutti-os/tutti/services/tuttid/api/events/generated"
 	agentproviderbiz "github.com/tutti-os/tutti/services/tuttid/biz/agentprovider"
 )
+
+func validateAgentModelCatalogInvalidatedPayload(payload []byte) error {
+	var decoded eventsgenerated.AgentModelCatalogInvalidatedPayload
+	if err := decodeJSONStrict(payload, &decoded); err != nil {
+		return fmt.Errorf("decode payload: %w", err)
+	}
+	var requiredFields struct {
+		OccurredAtUnixMs *int `json:"occurredAtUnixMs"`
+	}
+	if err := json.Unmarshal(payload, &requiredFields); err != nil {
+		return fmt.Errorf("decode required fields: %w", err)
+	}
+	if requiredFields.OccurredAtUnixMs == nil {
+		return fmt.Errorf("occurredAtUnixMs is required")
+	}
+	if len(decoded.Providers) == 0 {
+		return fmt.Errorf("providers is required")
+	}
+	for _, provider := range decoded.Providers {
+		if strings.TrimSpace(provider) == "" {
+			return fmt.Errorf("providers must not contain empty entries")
+		}
+		if !agentproviderbiz.IsSupported(provider) {
+			return fmt.Errorf("providers contains unsupported provider %q", provider)
+		}
+	}
+	if decoded.OccurredAtUnixMs < 0 {
+		return fmt.Errorf("occurredAtUnixMs must not be negative")
+	}
+	return nil
+}
 
 // AgentModelCatalogPublisher broadcasts that the daemon-side model catalog for
 // one or more agent providers can no longer be trusted (for example because an
@@ -46,9 +78,9 @@ func (p AgentModelCatalogPublisher) PublishAgentModelCatalogInvalidated(
 	if p.Now != nil {
 		now = p.Now()
 	}
-	payload, err := json.Marshal(agentModelCatalogInvalidatedPayload{
+	payload, err := json.Marshal(eventsgenerated.AgentModelCatalogInvalidatedPayload{
 		Providers:        normalized,
-		OccurredAtUnixMS: now.UnixMilli(),
+		OccurredAtUnixMs: int(now.UnixMilli()),
 	})
 	if err != nil {
 		return fmt.Errorf("marshal agent model catalog invalidated payload: %w", err)

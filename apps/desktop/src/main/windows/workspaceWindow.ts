@@ -319,6 +319,8 @@ export function loadAgentWindowContent(
     autoSubmit?: boolean;
     dockPlacement: DesktopDockPlacement;
     draftPrompt?: string | null;
+    model?: string | null;
+    modelPlanId?: string | null;
     providerStatusSnapshot?: DesktopAgentProviderStatusSnapshot | null;
     provider?: string | null;
     theme: DesktopThemeState;
@@ -339,6 +341,8 @@ export function loadAgentWindowContent(
     agentTargetID: options.agentTargetID,
     autoSubmit: options.autoSubmit,
     draftPrompt: options.draftPrompt,
+    model: options.model,
+    modelPlanId: options.modelPlanId,
     providerStatusSnapshot: options.providerStatusSnapshot,
     provider: options.provider,
     userProjectPath: options.userProjectPath,

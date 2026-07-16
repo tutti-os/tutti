@@ -34,6 +34,8 @@ export interface DesktopIssueManagerAgentGuiLaunchInput {
   agentSessionId?: string;
   agentTargetId?: string | null;
   draftPrompt?: string;
+  model?: string | null;
+  modelPlanId?: string | null;
   openInNewWindow?: boolean;
   provider: string;
   userProjectPath?: string | null;
@@ -71,6 +73,8 @@ export function createDesktopIssueManagerAgentRunner(input: {
         agentTargetId,
         agentGuiLaunchUnavailableMessage: messages.agentGuiLaunchUnavailable,
         draftPrompt: prompt,
+        model: request.task?.model,
+        modelPlanId: request.task?.modelPlanId,
         launchAgentGui: input.launchAgentGui,
         provider: request.provider,
         userProjectPath: request.executionDirectory,
@@ -84,6 +88,8 @@ function openIssueManagerAgentDraft(input: {
   agentTargetId: string;
   agentGuiLaunchUnavailableMessage: string;
   draftPrompt: string;
+  model?: string | null;
+  modelPlanId?: string | null;
   launchAgentGui?: (
     input: DesktopIssueManagerAgentGuiLaunchInput
   ) => Promise<void> | void;
@@ -108,6 +114,8 @@ function openIssueManagerAgentDraft(input: {
       launchAgentGui({
         agentTargetId: input.agentTargetId,
         draftPrompt: input.draftPrompt,
+        model: input.model,
+        modelPlanId: input.modelPlanId,
         openInNewWindow: true,
         provider: input.provider,
         userProjectPath: input.userProjectPath,

@@ -256,18 +256,17 @@ func (a serviceHostPreparation) Prepare(ctx context.Context, input agenthost.Run
 		UpdatedAtUnixMS: input.UpdatedAtUnixMS, Metadata: input.SessionMetadata,
 	}
 	persisted = a.service.clampPersistedSessionReasoningEffortForResume(ctx, persisted)
-	createInput := createSessionInputFromPersisted(persisted)
-	prepared, err := a.service.prepareRuntime(ctx, input.WorkspaceID, input.Cwd, createInput)
+	prepared, err := a.service.prepareRuntimeForResume(ctx, persisted)
 	if err != nil {
 		return agenthost.PreparedRuntime{}, err
 	}
 	var targetRef map[string]any
 	if strings.TrimSpace(input.AgentTargetID) != "" {
-		launch, err := a.service.resolveCreateSessionLaunch(ctx, CreateSessionInput{AgentTargetID: input.AgentTargetID, Provider: input.Provider})
+		resolvedRef, err := a.service.resolveProviderTargetRefForResume(ctx, persisted)
 		if err != nil {
 			return agenthost.PreparedRuntime{}, err
 		}
-		targetRef = launch.ProviderTargetRef
+		targetRef = resolvedRef
 	}
 	settings = persisted.Settings
 	return agenthost.PreparedRuntime{

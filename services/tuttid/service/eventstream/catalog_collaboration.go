@@ -1,35 +1,32 @@
 package eventstream
 
 import (
+	"encoding/json"
 	"fmt"
 	"strings"
 
+	eventsgenerated "github.com/tutti-os/tutti/services/tuttid/api/events/generated"
 	collabrunbiz "github.com/tutti-os/tutti/services/tuttid/biz/collabrun"
 )
 
-type agentCollaborationUpdatedPayload struct {
-	WorkspaceID      string `json:"workspaceId"`
-	RunID            string `json:"runId"`
-	Mode             string `json:"mode"`
-	Status           string `json:"status"`
-	SourceSessionID  string `json:"sourceSessionId,omitempty"`
-	TargetSessionID  string `json:"targetSessionId,omitempty"`
-	ModelPlanID      string `json:"modelPlanId,omitempty"`
-	Model            string `json:"model,omitempty"`
-	TriggerSource    string `json:"triggerSource"`
-	Adoption         string `json:"adoption,omitempty"`
-	OccurredAtUnixMS int64  `json:"occurredAtUnixMs"`
-}
-
 func validateAgentCollaborationUpdatedPayload(payload []byte) error {
-	var decoded agentCollaborationUpdatedPayload
+	var decoded eventsgenerated.AgentCollaborationUpdatedPayload
 	if err := decodeJSONStrict(payload, &decoded); err != nil {
 		return fmt.Errorf("decode payload: %w", err)
 	}
-	if strings.TrimSpace(decoded.WorkspaceID) == "" {
+	var requiredFields struct {
+		OccurredAtUnixMs *int `json:"occurredAtUnixMs"`
+	}
+	if err := json.Unmarshal(payload, &requiredFields); err != nil {
+		return fmt.Errorf("decode required fields: %w", err)
+	}
+	if requiredFields.OccurredAtUnixMs == nil {
+		return fmt.Errorf("occurredAtUnixMs is required")
+	}
+	if strings.TrimSpace(decoded.WorkspaceId) == "" {
 		return fmt.Errorf("workspaceId is required")
 	}
-	if strings.TrimSpace(decoded.RunID) == "" {
+	if strings.TrimSpace(decoded.RunId) == "" {
 		return fmt.Errorf("runId is required")
 	}
 	if !collabrunbiz.IsMode(decoded.Mode) {
@@ -41,23 +38,23 @@ func validateAgentCollaborationUpdatedPayload(payload []byte) error {
 	if !collabrunbiz.IsTriggerSource(decoded.TriggerSource) {
 		return fmt.Errorf("triggerSource is unsupported")
 	}
-	if decoded.SourceSessionID != "" && strings.TrimSpace(decoded.SourceSessionID) == "" {
+	if decoded.SourceSessionId != nil && strings.TrimSpace(*decoded.SourceSessionId) == "" {
 		return fmt.Errorf("sourceSessionId must not be blank")
 	}
-	if decoded.TargetSessionID != "" && strings.TrimSpace(decoded.TargetSessionID) == "" {
+	if decoded.TargetSessionId != nil && strings.TrimSpace(*decoded.TargetSessionId) == "" {
 		return fmt.Errorf("targetSessionId must not be blank")
 	}
-	if decoded.ModelPlanID != "" && strings.TrimSpace(decoded.ModelPlanID) == "" {
+	if decoded.ModelPlanId != nil && strings.TrimSpace(*decoded.ModelPlanId) == "" {
 		return fmt.Errorf("modelPlanId must not be blank")
 	}
-	if decoded.Model != "" && strings.TrimSpace(decoded.Model) == "" {
+	if decoded.Model != nil && strings.TrimSpace(*decoded.Model) == "" {
 		return fmt.Errorf("model must not be blank")
 	}
-	if decoded.Adoption != "" && !collabrunbiz.IsAdoption(decoded.Adoption) {
+	if decoded.Adoption != nil && !collabrunbiz.IsAdoption(*decoded.Adoption) {
 		return fmt.Errorf("adoption is unsupported")
 	}
-	if decoded.OccurredAtUnixMS <= 0 {
-		return fmt.Errorf("occurredAtUnixMs is required")
+	if decoded.OccurredAtUnixMs < 0 {
+		return fmt.Errorf("occurredAtUnixMs must not be negative")
 	}
 	return nil
 }

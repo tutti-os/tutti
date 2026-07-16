@@ -21,16 +21,22 @@ import (
 const (
 	FailureConnection       = "connection_failed"
 	FailureUnauthorized     = "unauthorized"
+	FailureProviderRuntime  = "provider_runtime_unavailable"
+	FailureProviderAuth     = "provider_auth_required"
 	FailureCatalogNotFound  = "model_catalog_unavailable"
 	FailureCatalogDecode    = "model_catalog_decode_failed"
 	FailureNoModel          = "no_model_selected"
 	FailureModelRejected    = "model_rejected"
 	FailureInference        = "inference_failed"
+	FailureAgentRuntime     = "agent_runtime_failed"
 	RemedyCheckNetwork      = "check_network_or_base_url"
 	RemedyCheckAPIKey       = "check_api_key"
+	RemedyEnableProvider    = "install_or_enable_agent_provider"
+	RemedyLoginProvider     = "login_agent_provider"
 	RemedyAddModelsManually = "add_models_manually"
 	RemedyCheckModelID      = "check_model_id"
 	RemedySelectModel       = "select_model"
+	RemedyRetryAgentRuntime = "retry_compatible_agent"
 )
 
 var ErrDetectionInput = errors.New("invalid model plan detection input")
@@ -39,10 +45,11 @@ var ErrDetectionInput = errors.New("invalid model plan detection input")
 // reuses stored fields for anything omitted and persists the outcome; without
 // PlanID it verifies an unsaved draft.
 type DetectInput struct {
-	WorkspaceID string
-	PlanID      string
-	Protocol    string
-	BaseURL     string
+	WorkspaceID  string
+	PlanID       string
+	TemplateKind string
+	Protocol     string
+	BaseURL      string
 	// APIKey nil reuses the stored plan credential.
 	APIKey *string
 	Models []modelplanbiz.Model
@@ -83,6 +90,16 @@ func (s *Service) Detect(ctx context.Context, input DetectInput) (DetectResult, 
 	if !modelplanbiz.IsProtocol(string(protocol)) {
 		return DetectResult{}, fmt.Errorf("%w: protocol is unsupported", ErrDetectionInput)
 	}
+	templateKind := modelplanbiz.TemplateKind(strings.TrimSpace(input.TemplateKind))
+	if templateKind == "" && hasStored {
+		templateKind = stored.TemplateKind
+	}
+	if templateKind == "" {
+		templateKind = modelplanbiz.TemplateCustom
+	}
+	if !modelplanbiz.IsTemplateKind(string(templateKind)) {
+		return DetectResult{}, fmt.Errorf("%w: template kind is unsupported", ErrDetectionInput)
+	}
 	baseURL := strings.TrimSpace(input.BaseURL)
 	if baseURL == "" && hasStored {
 		baseURL = stored.BaseURL
@@ -106,37 +123,46 @@ func (s *Service) Detect(ctx context.Context, input DetectInput) (DetectResult, 
 	}
 
 	now := s.now()
-	snapshot := modelplanbiz.DetectionSnapshot{CheckedAt: now, Model: inferenceModel}
+	var snapshot modelplanbiz.DetectionSnapshot
 	var discovered []modelplanbiz.Model
+	if templateKind == modelplanbiz.TemplateOfficialSubscription {
+		snapshot, discovered = s.detectNativeSubscription(ctx, NativeSubscriptionProbeInput{
+			WorkspaceID: workspaceID,
+			Protocol:    protocol,
+			Model:       inferenceModel,
+			Models:      models,
+		}, now)
+	} else {
+		snapshot = modelplanbiz.DetectionSnapshot{CheckedAt: now, Model: inferenceModel}
+		networkResult := s.checkNetwork(ctx, protocol, baseURL, now)
+		snapshot.Stages = append(snapshot.Stages, networkResult)
 
-	networkResult := s.checkNetwork(ctx, protocol, baseURL, now)
-	snapshot.Stages = append(snapshot.Stages, networkResult)
+		authResult := modelplanbiz.StageResult{Stage: modelplanbiz.StageAuth, Status: modelplanbiz.StageSkipped, CheckedAt: now}
+		discoveryResult := modelplanbiz.StageResult{Stage: modelplanbiz.StageModelDiscovery, Status: modelplanbiz.StageSkipped, CheckedAt: now}
+		inferenceResult := modelplanbiz.StageResult{Stage: modelplanbiz.StageInference, Status: modelplanbiz.StageSkipped, CheckedAt: now}
 
-	authResult := modelplanbiz.StageResult{Stage: modelplanbiz.StageAuth, Status: modelplanbiz.StageSkipped, CheckedAt: now}
-	discoveryResult := modelplanbiz.StageResult{Stage: modelplanbiz.StageModelDiscovery, Status: modelplanbiz.StageSkipped, CheckedAt: now}
-	inferenceResult := modelplanbiz.StageResult{Stage: modelplanbiz.StageInference, Status: modelplanbiz.StageSkipped, CheckedAt: now}
-
-	if networkResult.Status == modelplanbiz.StagePassed {
-		authResult, discoveryResult, discovered = s.checkAuthAndDiscovery(ctx, protocol, baseURL, apiKey, models, now)
-		if authResult.Status != modelplanbiz.StageFailed {
-			inferenceResult = s.checkInference(ctx, protocol, baseURL, apiKey, inferenceModel, now)
-			if inferenceResult.Status == modelplanbiz.StageFailed && inferenceResult.FailureReason == FailureUnauthorized {
-				// Inference is the authoritative credential check when the
-				// catalog endpoint could not verify the key.
-				authResult = modelplanbiz.StageResult{
-					Stage:         modelplanbiz.StageAuth,
-					Status:        modelplanbiz.StageFailed,
-					FailureReason: FailureUnauthorized,
-					Remedy:        RemedyCheckAPIKey,
-					CheckedAt:     now,
+		if networkResult.Status == modelplanbiz.StagePassed {
+			authResult, discoveryResult, discovered = s.checkAuthAndDiscovery(ctx, protocol, baseURL, apiKey, models, now)
+			if authResult.Status != modelplanbiz.StageFailed {
+				inferenceResult = s.checkInference(ctx, protocol, baseURL, apiKey, inferenceModel, now)
+				if inferenceResult.Status == modelplanbiz.StageFailed && inferenceResult.FailureReason == FailureUnauthorized {
+					// Inference is the authoritative credential check when the
+					// catalog endpoint could not verify the key.
+					authResult = modelplanbiz.StageResult{
+						Stage:         modelplanbiz.StageAuth,
+						Status:        modelplanbiz.StageFailed,
+						FailureReason: FailureUnauthorized,
+						Remedy:        RemedyCheckAPIKey,
+						CheckedAt:     now,
+					}
+				} else if inferenceResult.Status == modelplanbiz.StagePassed && authResult.Status == modelplanbiz.StageSkipped {
+					authResult = modelplanbiz.StageResult{Stage: modelplanbiz.StageAuth, Status: modelplanbiz.StagePassed, CheckedAt: now}
 				}
-			} else if inferenceResult.Status == modelplanbiz.StagePassed && authResult.Status == modelplanbiz.StageSkipped {
-				authResult = modelplanbiz.StageResult{Stage: modelplanbiz.StageAuth, Status: modelplanbiz.StagePassed, CheckedAt: now}
 			}
 		}
-	}
 
-	snapshot.Stages = append(snapshot.Stages, authResult, discoveryResult, inferenceResult)
+		snapshot.Stages = append(snapshot.Stages, authResult, discoveryResult, inferenceResult)
+	}
 
 	agentStage := modelplanbiz.StageResult{Stage: modelplanbiz.StageAgentRuntime, Status: modelplanbiz.StagePending, CheckedAt: now}
 	if hasStored {
@@ -148,10 +174,12 @@ func (s *Service) Detect(ctx context.Context, input DetectInput) (DetectResult, 
 
 	if hasStored {
 		stored.Detection = snapshot
+		stored.Revision = nextModelPlanRevision(stored.Revision)
 		stored.UpdatedAt = now
 		if err := s.Store.PutModelPlan(ctx, stored); err != nil {
 			return DetectResult{}, err
 		}
+		s.publishConfigurationChanged(ctx, stored.WorkspaceID, stored.ID, true)
 		s.publishChanged(stored.WorkspaceID)
 	}
 
@@ -464,8 +492,10 @@ type CompletionRequest struct {
 
 // CompletionUsage reports provider-recorded token usage when available.
 type CompletionUsage struct {
-	InputTokens  int64 `json:"inputTokens,omitempty"`
-	OutputTokens int64 `json:"outputTokens,omitempty"`
+	InputTokens      int64 `json:"inputTokens,omitempty"`
+	OutputTokens     int64 `json:"outputTokens,omitempty"`
+	CacheReadTokens  int64 `json:"cacheReadTokens,omitempty"`
+	CacheWriteTokens int64 `json:"cacheWriteTokens,omitempty"`
 }
 
 type CompletionResult struct {
@@ -570,8 +600,10 @@ func decodeCompletionText(protocol modelplanbiz.Protocol, raw []byte) (string, C
 				Text string `json:"text"`
 			} `json:"content"`
 			Usage struct {
-				InputTokens  int64 `json:"input_tokens"`
-				OutputTokens int64 `json:"output_tokens"`
+				InputTokens              int64 `json:"input_tokens"`
+				OutputTokens             int64 `json:"output_tokens"`
+				CacheReadInputTokens     int64 `json:"cache_read_input_tokens"`
+				CacheCreationInputTokens int64 `json:"cache_creation_input_tokens"`
 			} `json:"usage"`
 		}
 		if err := json.Unmarshal(raw, &payload); err != nil {
@@ -583,7 +615,12 @@ func decodeCompletionText(protocol modelplanbiz.Protocol, raw []byte) (string, C
 				builder.WriteString(block.Text)
 			}
 		}
-		return builder.String(), CompletionUsage{InputTokens: payload.Usage.InputTokens, OutputTokens: payload.Usage.OutputTokens}, nil
+		return builder.String(), CompletionUsage{
+			InputTokens:      payload.Usage.InputTokens,
+			OutputTokens:     payload.Usage.OutputTokens,
+			CacheReadTokens:  payload.Usage.CacheReadInputTokens,
+			CacheWriteTokens: payload.Usage.CacheCreationInputTokens,
+		}, nil
 	}
 	var payload struct {
 		Choices []struct {
@@ -594,6 +631,9 @@ func decodeCompletionText(protocol modelplanbiz.Protocol, raw []byte) (string, C
 		Usage struct {
 			PromptTokens     int64 `json:"prompt_tokens"`
 			CompletionTokens int64 `json:"completion_tokens"`
+			PromptDetails    struct {
+				CachedTokens int64 `json:"cached_tokens"`
+			} `json:"prompt_tokens_details"`
 		} `json:"usage"`
 	}
 	if err := json.Unmarshal(raw, &payload); err != nil {
@@ -603,5 +643,9 @@ func decodeCompletionText(protocol modelplanbiz.Protocol, raw []byte) (string, C
 	if len(payload.Choices) > 0 {
 		text = payload.Choices[0].Message.Content
 	}
-	return text, CompletionUsage{InputTokens: payload.Usage.PromptTokens, OutputTokens: payload.Usage.CompletionTokens}, nil
+	return text, CompletionUsage{
+		InputTokens:     payload.Usage.PromptTokens,
+		OutputTokens:    payload.Usage.CompletionTokens,
+		CacheReadTokens: payload.Usage.PromptDetails.CachedTokens,
+	}, nil
 }

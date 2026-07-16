@@ -152,10 +152,12 @@ it. Callers pass the already-resolved directory target id; two distinct targets
 that share a `provider` therefore keep isolated caches (no provider-dimension
 fallback).
 
-`invalidateComposerOptions({ providers })` drops freshness markers so the next
-non-forced load refetches, while the last known options stay renderable. It
-filters by the `provider` stored inside each cached value, never by inspecting
-the opaque `targetKey`.
+`invalidateComposerOptions({ providers, targetKeys })` drops freshness markers
+so the next non-forced load refetches, while the last known options stay
+renderable. `providers` filters using cached/request metadata; `targetKeys`
+matches exact opaque keys without parsing them. When both are supplied, an
+entry must match both filters. This lets a host invalidate one changed agent
+target without evicting sibling targets that use the same provider.
 
 ## Submit Availability
 

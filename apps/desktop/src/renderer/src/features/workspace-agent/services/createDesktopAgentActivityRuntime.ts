@@ -515,6 +515,60 @@ export function createDesktopAgentActivityRuntime(
           ) => workspaceAgentActivityService.startModelConsult!(input)
         }
       : {}),
+    ...(workspaceAgentActivityService.startAgentCollaboration
+      ? {
+          startAgentCollaboration: (
+            input: Parameters<
+              NonNullable<AgentActivityRuntime["startAgentCollaboration"]>
+            >[0]
+          ) => workspaceAgentActivityService.startAgentCollaboration!(input)
+        }
+      : {}),
+    ...(workspaceAgentActivityService.cancelCollaboration
+      ? {
+          cancelCollaboration: (
+            input: Parameters<
+              NonNullable<AgentActivityRuntime["cancelCollaboration"]>
+            >[0]
+          ) => workspaceAgentActivityService.cancelCollaboration!(input)
+        }
+      : {}),
+    ...(workspaceAgentActivityService.retryCollaboration
+      ? {
+          retryCollaboration: (
+            input: Parameters<
+              NonNullable<AgentActivityRuntime["retryCollaboration"]>
+            >[0]
+          ) => workspaceAgentActivityService.retryCollaboration!(input)
+        }
+      : {}),
+    ...(workspaceAgentActivityService.listAutomationRules
+      ? {
+          listAutomationRules: (
+            input: Parameters<
+              NonNullable<AgentActivityRuntime["listAutomationRules"]>
+            >[0]
+          ) => workspaceAgentActivityService.listAutomationRules!(input)
+        }
+      : {}),
+    ...(workspaceAgentActivityService.getAutomationRuleOverride
+      ? {
+          getAutomationRuleOverride: (
+            input: Parameters<
+              NonNullable<AgentActivityRuntime["getAutomationRuleOverride"]>
+            >[0]
+          ) => workspaceAgentActivityService.getAutomationRuleOverride!(input)
+        }
+      : {}),
+    ...(workspaceAgentActivityService.setAutomationRuleOverride
+      ? {
+          setAutomationRuleOverride: (
+            input: Parameters<
+              NonNullable<AgentActivityRuntime["setAutomationRuleOverride"]>
+            >[0]
+          ) => workspaceAgentActivityService.setAutomationRuleOverride!(input)
+        }
+      : {}),
     ...(workspaceAgentActivityService.setCollaborationAdoption
       ? {
           setCollaborationAdoption: (

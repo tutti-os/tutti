@@ -1,3 +1,23 @@
+import type { AgentActivityComposerModelConfiguration } from "./composerModelConfiguration.types.ts";
+
+export type {
+  AgentActivityCancelCollaborationInput,
+  AgentActivityCollaborationAdoption,
+  AgentActivityCollaborationMode,
+  AgentActivityCollaborationRun,
+  AgentActivityCollaborationStatus,
+  AgentActivityCollaborationTriggerSource,
+  AgentActivityCollaborationUsage,
+  AgentActivityListModelPlansInput,
+  AgentActivityListModelPlansResult,
+  AgentActivityModelPlanModel,
+  AgentActivityModelPlanSummary,
+  AgentActivityRetryCollaborationInput,
+  AgentActivitySetCollaborationAdoptionInput,
+  AgentActivityStartAgentCollaborationInput,
+  AgentActivityStartModelConsultInput
+} from "./collaboration.types.ts";
+
 export type AgentActivityDisplayStatus =
   | "working"
   | "waiting"
@@ -191,6 +211,7 @@ export interface AgentActivityComposerPermissionConfig {
 
 export interface AgentActivityComposerSettings {
   model?: string | null;
+  modelPlanId?: string | null;
   reasoningEffort?: string | null;
   speed?: string | null;
   planMode?: boolean | null;
@@ -260,6 +281,8 @@ export interface AgentActivityComposerOptions {
     name: string;
     protocol?: string | null;
   } | null;
+  /** Authoritative model default identity for the selected agent target. */
+  modelConfiguration?: AgentActivityComposerModelConfiguration | null;
   loadedAtUnixMs: number;
 }
 
@@ -450,11 +473,13 @@ export interface AgentActivityCreateSessionInput {
   agentTargetId: string;
   cwd?: string | null;
   noProject?: boolean | null;
+  automationRuleOverride?: AgentActivityAutomationRuleOverride | null;
   initialContent?: AgentPromptContentBlock[] | null;
   /** 仅展示用的首轮文本(bundle 折叠成一个 chip);initialContent 仍带展开后的文件。 */
   initialDisplayPrompt?: string | null;
   submitDiagnostics?: AgentActivitySubmitDiagnostics;
   model?: string | null;
+  modelPlanId?: string | null;
   planMode?: boolean | null;
   permissionModeId?: string | null;
   reasoningEffort?: string | null;
@@ -462,6 +487,11 @@ export interface AgentActivityCreateSessionInput {
   title?: string | null;
   visible?: boolean | null;
   signal?: AbortSignal;
+}
+
+export interface AgentActivityAutomationRuleOverride {
+  disabled: boolean;
+  ruleIds: string[];
 }
 
 export interface AgentActivitySendInput {
@@ -689,7 +719,6 @@ export interface AgentActivityListModelPlansInput {
 export interface AgentActivityListModelPlansResult {
   plans: AgentActivityModelPlanSummary[];
 }
-
 export type AgentActivityNeedsAttentionKind =
   | "permission"
   | "question"
@@ -768,6 +797,7 @@ export interface AgentActivityInteraction {
 
 export type AgentActivitySessionSettings = {
   model?: string | null;
+  modelPlanId?: string | null;
   permissionModeId?: string | null;
   planMode?: boolean | null;
   browserUse?: boolean | null;

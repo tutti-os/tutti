@@ -71,6 +71,20 @@ type staticReferences struct {
 	references []modelplanbiz.Reference
 }
 
+type fakeNativeSubscriptionProbe struct {
+	input  NativeSubscriptionProbeInput
+	result NativeSubscriptionProbeResult
+	err    error
+}
+
+func (f *fakeNativeSubscriptionProbe) ProbeNativeSubscription(
+	_ context.Context,
+	input NativeSubscriptionProbeInput,
+) (NativeSubscriptionProbeResult, error) {
+	f.input = input
+	return f.result, f.err
+}
+
 func (s staticReferences) ListModelPlanReferences(context.Context, string, string) ([]modelplanbiz.Reference, error) {
 	return s.references, nil
 }
@@ -112,6 +126,9 @@ func TestCreateAndUpdatePlanResetsVerificationOnCredentialChange(t *testing.T) {
 	if !created.HasAPIKey || created.Status != modelplanbiz.StatusUndetected {
 		t.Fatalf("CreatePlan() = %#v, want hasApiKey && undetected", created)
 	}
+	if created.Revision != 1 {
+		t.Fatalf("CreatePlan() revision = %d, want 1", created.Revision)
+	}
 
 	// Simulate a passed detection plus first use.
 	stored, _ := store.GetModelPlan(ctx, "ws", created.ID)
@@ -135,6 +152,9 @@ func TestCreateAndUpdatePlanResetsVerificationOnCredentialChange(t *testing.T) {
 	if afterFirstUse.FirstUse.AgentTargetID != "local:codex" {
 		t.Fatalf("first use target = %q", afterFirstUse.FirstUse.AgentTargetID)
 	}
+	if afterFirstUse.Revision != 2 {
+		t.Fatalf("revision after first use = %d, want 2", afterFirstUse.Revision)
+	}
 
 	// Renaming without credential change keeps verification state.
 	renamed, err := service.UpdatePlan(ctx, PutPlanInput{
@@ -153,6 +173,9 @@ func TestCreateAndUpdatePlanResetsVerificationOnCredentialChange(t *testing.T) {
 	}
 	if renamed.Status != modelplanbiz.StatusReady || !renamed.HasAPIKey {
 		t.Fatalf("UpdatePlan(rename) status = %q hasApiKey = %v, want ready/true", renamed.Status, renamed.HasAPIKey)
+	}
+	if renamed.Revision != 3 {
+		t.Fatalf("UpdatePlan(rename) revision = %d, want 3", renamed.Revision)
 	}
 
 	// Changing the credential resets detection and first use.
@@ -177,6 +200,54 @@ func TestCreateAndUpdatePlanResetsVerificationOnCredentialChange(t *testing.T) {
 	}
 	if rotated.FirstUse.Status != modelplanbiz.FirstUsePending {
 		t.Fatalf("UpdatePlan(rotate) first use = %q, want pending", rotated.FirstUse.Status)
+	}
+	if rotated.Revision != 4 {
+		t.Fatalf("UpdatePlan(rotate) revision = %d, want 4", rotated.Revision)
+	}
+}
+
+func TestMarkFirstUseFailureReturnsPlanToAgentRuntimeDetectionNode(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	store := newMemoryPlanStore()
+	service := newTestService(store)
+	apiKey := "sk-one"
+	created, err := service.CreatePlan(ctx, PutPlanInput{
+		WorkspaceID: "ws", Name: "Plan", TemplateKind: "custom", Protocol: "openai",
+		APIKey: &apiKey, BaseURL: "https://api.example.com/v1",
+		Models: []modelplanbiz.Model{{ID: "model-1"}}, DefaultModel: "model-1", Enabled: true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	stored, _ := store.GetModelPlan(ctx, "ws", created.ID)
+	for _, stage := range []modelplanbiz.DetectionStage{modelplanbiz.StageNetwork, modelplanbiz.StageAuth, modelplanbiz.StageModelDiscovery, modelplanbiz.StageInference} {
+		stored.Detection.Stages = append(stored.Detection.Stages, modelplanbiz.StageResult{Stage: stage, Status: modelplanbiz.StagePassed})
+	}
+	stored.Detection.Stages = append(stored.Detection.Stages, modelplanbiz.StageResult{Stage: modelplanbiz.StageAgentRuntime, Status: modelplanbiz.StagePending})
+	if err := store.PutModelPlan(ctx, stored); err != nil {
+		t.Fatal(err)
+	}
+	if err := service.MarkFirstUseFailure(ctx, "ws", created.ID, "local:codex", "session-failed", "model-1"); err != nil {
+		t.Fatalf("MarkFirstUseFailure() error = %v", err)
+	}
+	failed, err := service.GetPlan(ctx, "ws", created.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if failed.Status != modelplanbiz.StatusDetectionFailed || failed.FirstUse.Status != modelplanbiz.FirstUsePending {
+		t.Fatalf("failed first use plan = %#v", failed)
+	}
+	runtimeStage, ok := failed.Detection.StageOutcome(modelplanbiz.StageAgentRuntime)
+	if !ok || runtimeStage.Status != modelplanbiz.StageFailed || runtimeStage.FailureReason != FailureAgentRuntime || runtimeStage.Remedy != RemedyRetryAgentRuntime {
+		t.Fatalf("agent runtime stage = %#v", runtimeStage)
+	}
+	if err := service.MarkFirstUse(ctx, "ws", created.ID, "local:codex", "session-retry", "model-1"); err != nil {
+		t.Fatalf("MarkFirstUse(retry) error = %v", err)
+	}
+	ready, _ := service.GetPlan(ctx, "ws", created.ID)
+	if ready.Status != modelplanbiz.StatusReady {
+		t.Fatalf("retry status = %q, want ready", ready.Status)
 	}
 }
 
@@ -333,6 +404,92 @@ func TestDetectStagesAgainstFakeOpenAIProvider(t *testing.T) {
 	}
 }
 
+func TestDetectOfficialSubscriptionUsesNativeProviderProbe(t *testing.T) {
+	t.Parallel()
+
+	probe := &fakeNativeSubscriptionProbe{result: NativeSubscriptionProbeResult{
+		RuntimeAvailable:   true,
+		Authenticated:      true,
+		DiscoveredModels:   []modelplanbiz.Model{{ID: "gpt-native", Name: "GPT Native"}},
+		InferenceAttempted: true,
+		InferencePassed:    true,
+		InferenceModel:     "gpt-native",
+	}}
+	service := newTestService(newMemoryPlanStore())
+	service.NativeSubscriptionProbe = probe
+
+	result, err := service.Detect(context.Background(), DetectInput{
+		WorkspaceID:  "ws",
+		TemplateKind: string(modelplanbiz.TemplateOfficialSubscription),
+		Protocol:     string(modelplanbiz.ProtocolOpenAI),
+	})
+	if err != nil {
+		t.Fatalf("Detect() error = %v", err)
+	}
+	if probe.input.WorkspaceID != "ws" || probe.input.Protocol != modelplanbiz.ProtocolOpenAI {
+		t.Fatalf("probe input = %#v", probe.input)
+	}
+	for _, stage := range []modelplanbiz.DetectionStage{
+		modelplanbiz.StageNetwork,
+		modelplanbiz.StageAuth,
+		modelplanbiz.StageModelDiscovery,
+		modelplanbiz.StageInference,
+	} {
+		assertStage(t, result.Detection, stage, modelplanbiz.StagePassed)
+	}
+	assertStage(t, result.Detection, modelplanbiz.StageAgentRuntime, modelplanbiz.StagePending)
+	if result.Detection.Model != "gpt-native" || len(result.DiscoveredModels) != 1 || result.DiscoveredModels[0].ID != "gpt-native" {
+		t.Fatalf("Detect() = %#v", result)
+	}
+}
+
+func TestDetectStoredOfficialSubscriptionPersistsNativeLoginFailure(t *testing.T) {
+	t.Parallel()
+
+	store := newMemoryPlanStore()
+	service := newTestService(store)
+	service.NativeSubscriptionProbe = &fakeNativeSubscriptionProbe{result: NativeSubscriptionProbeResult{
+		RuntimeAvailable: true,
+		Authenticated:    false,
+		AuthDetail:       "authentication required",
+	}}
+	created, err := service.CreatePlan(context.Background(), PutPlanInput{
+		WorkspaceID:  "ws",
+		Name:         "Codex subscription",
+		TemplateKind: string(modelplanbiz.TemplateOfficialSubscription),
+		Protocol:     string(modelplanbiz.ProtocolOpenAI),
+		Models:       []modelplanbiz.Model{{ID: "gpt-native"}},
+		DefaultModel: "gpt-native",
+		Enabled:      true,
+	})
+	if err != nil {
+		t.Fatalf("CreatePlan() error = %v", err)
+	}
+
+	result, err := service.Detect(context.Background(), DetectInput{
+		WorkspaceID: "ws",
+		PlanID:      created.ID,
+	})
+	if err != nil {
+		t.Fatalf("Detect() error = %v", err)
+	}
+	assertStage(t, result.Detection, modelplanbiz.StageNetwork, modelplanbiz.StagePassed)
+	assertStage(t, result.Detection, modelplanbiz.StageAuth, modelplanbiz.StageFailed)
+	assertStage(t, result.Detection, modelplanbiz.StageModelDiscovery, modelplanbiz.StageSkipped)
+	assertStage(t, result.Detection, modelplanbiz.StageInference, modelplanbiz.StageSkipped)
+	auth, _ := result.Detection.StageOutcome(modelplanbiz.StageAuth)
+	if auth.FailureReason != FailureProviderAuth || auth.Remedy != RemedyLoginProvider {
+		t.Fatalf("auth stage = %#v", auth)
+	}
+	persisted, err := service.GetPlan(context.Background(), "ws", created.ID)
+	if err != nil {
+		t.Fatalf("GetPlan() error = %v", err)
+	}
+	if persisted.Status != modelplanbiz.StatusDetectionFailed || persisted.HasAPIKey || persisted.BaseURL != "" {
+		t.Fatalf("persisted plan = %#v", persisted)
+	}
+}
+
 func TestDetectAnthropicProtocolWithoutCatalogFallsBackToInference(t *testing.T) {
 	t.Parallel()
 
@@ -386,7 +543,7 @@ func TestCompleteReturnsTextAndUsage(t *testing.T) {
 			return
 		}
 		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{"choices":[{"message":{"content":"advice text"}}],"usage":{"prompt_tokens":10,"completion_tokens":3}}`))
+		_, _ = w.Write([]byte(`{"choices":[{"message":{"content":"advice text"}}],"usage":{"prompt_tokens":10,"completion_tokens":3,"prompt_tokens_details":{"cached_tokens":6}}}`))
 	}))
 	defer fake.Close()
 
@@ -405,8 +562,28 @@ func TestCompleteReturnsTextAndUsage(t *testing.T) {
 	if result.Text != "advice text" {
 		t.Fatalf("Complete() text = %q", result.Text)
 	}
-	if result.Usage.InputTokens != 10 || result.Usage.OutputTokens != 3 {
+	if result.Usage.InputTokens != 10 || result.Usage.OutputTokens != 3 || result.Usage.CacheReadTokens != 6 || result.Usage.CacheWriteTokens != 0 {
 		t.Fatalf("Complete() usage = %#v", result.Usage)
+	}
+}
+
+func TestDecodeAnthropicCompletionPreservesCacheUsage(t *testing.T) {
+	t.Parallel()
+
+	text, usage, err := decodeCompletionText(modelplanbiz.ProtocolAnthropic, []byte(`{
+		"content":[{"type":"text","text":"reviewed"}],
+		"usage":{
+			"input_tokens":12,
+			"output_tokens":4,
+			"cache_read_input_tokens":20,
+			"cache_creation_input_tokens":5
+		}
+	}`))
+	if err != nil {
+		t.Fatalf("decodeCompletionText() error = %v", err)
+	}
+	if text != "reviewed" || usage.InputTokens != 12 || usage.OutputTokens != 4 || usage.CacheReadTokens != 20 || usage.CacheWriteTokens != 5 {
+		t.Fatalf("decoded completion = %q %#v", text, usage)
 	}
 }
 

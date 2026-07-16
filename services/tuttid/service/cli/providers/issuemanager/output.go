@@ -114,6 +114,8 @@ func issueSummaryValue(item workspaceissues.Issue) map[string]any {
 		"status":          string(item.Status),
 		"taskCount":       item.TaskCount,
 		"updatedAtUnixMs": item.UpdatedAtUnixMS,
+		"planningSource":  item.PlanningSource,
+		"budgetStatus":    item.Budget.Status,
 	}
 }
 
@@ -125,6 +127,11 @@ func issueDetailValue(item workspaceissues.Issue) map[string]any {
 		"title":                  item.Title,
 		"content":                item.Content,
 		"status":                 string(item.Status),
+		"planningSource":         string(item.PlanningSource),
+		"sourceSessionId":        item.SourceSessionID,
+		"executionProfile":       map[string]any{"reasoningIntensity": item.ExecutionProfile.ReasoningIntensity, "orchestrationIntensity": item.ExecutionProfile.OrchestrationIntensity},
+		"budget":                 map[string]any{"mode": string(item.Budget.Mode), "tokenLimit": item.Budget.TokenLimit, "consumedTokens": item.Budget.ConsumedTokens, "quotaWaterlinePercent": item.Budget.QuotaWaterlinePercent, "remainingQuotaPercent": item.Budget.RemainingQuotaPercent, "hasRemainingQuotaPercent": item.Budget.HasRemainingQuota, "status": string(item.Budget.Status)},
+		"cost":                   map[string]any{"currency": item.Cost.Currency, "estimatedMicros": item.Cost.EstimatedMicros, "actualMicros": item.Cost.ActualMicros},
 		"taskCount":              item.TaskCount,
 		"notStartedCount":        item.NotStartedCount,
 		"runningCount":           item.RunningCount,
@@ -142,23 +149,32 @@ func issueDetailValue(item workspaceissues.Issue) map[string]any {
 
 func taskSummaryValue(item workspaceissues.Task) map[string]any {
 	return map[string]any{
-		"taskId":      item.TaskID,
-		"issueId":     item.IssueID,
-		"title":       item.Title,
-		"status":      string(item.Status),
-		"priority":    string(item.Priority),
-		"sortIndex":   item.SortIndex,
-		"latestRunId": item.LatestRunID,
+		"taskId":            item.TaskID,
+		"issueId":           item.IssueID,
+		"title":             item.Title,
+		"status":            string(item.Status),
+		"priority":          string(item.Priority),
+		"sortIndex":         item.SortIndex,
+		"latestRunId":       item.LatestRunID,
+		"agentTargetId":     item.AgentTargetID,
+		"modelPlanId":       item.ModelPlanID,
+		"model":             item.Model,
+		"dependencyTaskIds": item.DependencyTaskIDs,
+		"acceptanceState":   string(item.AcceptanceState),
 	}
 }
 
 func taskActionSummaryValue(item workspaceissues.Task) map[string]any {
 	return map[string]any{
-		"taskId":   item.TaskID,
-		"issueId":  item.IssueID,
-		"title":    item.Title,
-		"status":   string(item.Status),
-		"priority": string(item.Priority),
+		"taskId":          item.TaskID,
+		"issueId":         item.IssueID,
+		"title":           item.Title,
+		"status":          string(item.Status),
+		"priority":        string(item.Priority),
+		"agentTargetId":   item.AgentTargetID,
+		"modelPlanId":     item.ModelPlanID,
+		"model":           item.Model,
+		"acceptanceState": string(item.AcceptanceState),
 	}
 }
 
@@ -173,6 +189,13 @@ func taskDetailValue(item workspaceissues.Task) map[string]any {
 		"priority":           string(item.Priority),
 		"sortIndex":          item.SortIndex,
 		"dueAtUnixMs":        item.DueAtUnixMS,
+		"agentTargetId":      item.AgentTargetID,
+		"modelPlanId":        item.ModelPlanID,
+		"model":              item.Model,
+		"executionDirectory": item.ExecutionDirectory,
+		"dependencyTaskIds":  item.DependencyTaskIDs,
+		"acceptanceState":    string(item.AcceptanceState),
+		"acceptanceSummary":  item.AcceptanceSummary,
 		"creatorUserId":      item.CreatorUserID,
 		"creatorDisplayName": item.CreatorDisplayName,
 		"creatorAvatarUrl":   item.CreatorAvatarURL,
@@ -184,13 +207,18 @@ func taskDetailValue(item workspaceissues.Task) map[string]any {
 
 func runSummaryValue(item workspaceissues.Run) map[string]any {
 	return map[string]any{
-		"runId":          item.RunID,
-		"taskId":         item.TaskID,
-		"issueId":        item.IssueID,
-		"status":         string(item.Status),
-		"agentProvider":  item.AgentProvider,
-		"agentTargetId":  item.AgentTargetID,
-		"agentSessionId": item.AgentSessionID,
+		"runId":              item.RunID,
+		"taskId":             item.TaskID,
+		"issueId":            item.IssueID,
+		"status":             string(item.Status),
+		"agentProvider":      item.AgentProvider,
+		"agentTargetId":      item.AgentTargetID,
+		"agentSessionId":     item.AgentSessionID,
+		"modelPlanId":        item.ModelPlanID,
+		"model":              item.Model,
+		"reasoningIntensity": item.ReasoningIntensity,
+		"usage":              map[string]any{"inputTokens": item.Usage.InputTokens, "outputTokens": item.Usage.OutputTokens, "cacheReadTokens": item.Usage.CacheReadTokens, "cacheWriteTokens": item.Usage.CacheWriteTokens},
+		"cost":               map[string]any{"currency": item.Cost.Currency, "estimatedMicros": item.Cost.EstimatedMicros, "actualMicros": item.Cost.ActualMicros},
 	}
 }
 
@@ -210,6 +238,11 @@ func runDetailValue(item workspaceissues.Run) map[string]any {
 		"errorMessage":       item.ErrorMessage,
 		"outputDir":          item.OutputDir,
 		"executionDirectory": item.ExecutionDirectory,
+		"modelPlanId":        item.ModelPlanID,
+		"model":              item.Model,
+		"reasoningIntensity": item.ReasoningIntensity,
+		"usage":              map[string]any{"inputTokens": item.Usage.InputTokens, "outputTokens": item.Usage.OutputTokens, "cacheReadTokens": item.Usage.CacheReadTokens, "cacheWriteTokens": item.Usage.CacheWriteTokens},
+		"cost":               map[string]any{"currency": item.Cost.Currency, "estimatedMicros": item.Cost.EstimatedMicros, "actualMicros": item.Cost.ActualMicros},
 		"createdAtUnixMs":    item.CreatedAtUnixMS,
 		"startedAtUnixMs":    item.StartedAtUnixMS,
 		"completedAtUnixMs":  item.CompletedAtUnixMS,

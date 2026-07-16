@@ -219,6 +219,9 @@ export function buildWorkspaceAgentInteractivePromptLabels(
     planImplementationConfirm: t(
       "agentHost.agentGui.planImplementationConfirm"
     ),
+    planImplementationCreateIssue: t(
+      "agentHost.agentGui.planImplementationCreateIssue"
+    ),
     planImplementationFeedbackPlaceholder: t(
       "agentHost.agentGui.planImplementationFeedbackPlaceholder"
     ),

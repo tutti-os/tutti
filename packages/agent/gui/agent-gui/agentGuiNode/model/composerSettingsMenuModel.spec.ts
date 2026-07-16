@@ -533,7 +533,7 @@ describe("buildComposerModelMenuModel plan, search and history", () => {
     expect(withoutPlan.model.optionDescriptionInline).toBe(false);
   });
 
-  it("enables the filter input above the threshold and filters by label/id", () => {
+  it("enables search above the threshold and searches model metadata", () => {
     const small = buildComposerModelMenuModel(vm(), labels);
     expect(small.model.searchEnabled).toBe(false);
     // Below the threshold the query is ignored entirely.
@@ -559,6 +559,57 @@ describe("buildComposerModelMenuModel plan, search and history", () => {
         searchQuery: "no-match"
       }).model.options
     ).toHaveLength(0);
+
+    const metadataMatch = buildComposerModelMenuModel(
+      vm({
+        aggregatedModelPlans: true,
+        availableModels: [
+          {
+            value: "model-plan:plan-a:gpt-a",
+            label: "GPT A",
+            sourceName: "Plan A",
+            tier: "flagship",
+            capabilities: ["vision"],
+            effect: "new_session"
+          },
+          ...manyModels(9).availableModels
+        ]
+      }),
+      labels,
+      { searchQuery: "vision" }
+    );
+    expect(metadataMatch.model.options.map((option) => option.value)).toEqual([
+      "model-plan:plan-a:gpt-a"
+    ]);
+  });
+
+  it("filters aggregated models by their Model Plan source", () => {
+    const settings = vm({
+      aggregatedModelPlans: true,
+      availableModels: [
+        {
+          value: "model-plan:plan-a:gpt-a",
+          label: "GPT A",
+          sourceName: "Plan A"
+        },
+        {
+          value: "model-plan:plan-b:gpt-b",
+          label: "GPT B",
+          sourceName: "Plan B"
+        }
+      ]
+    });
+    const unfiltered = buildComposerModelMenuModel(settings, labels);
+    expect(unfiltered.model.searchEnabled).toBe(true);
+    expect(unfiltered.model.sourceFilters).toEqual(["Plan A", "Plan B"]);
+
+    const filtered = buildComposerModelMenuModel(settings, labels, {
+      sourceFilter: "Plan B"
+    });
+    expect(filtered.model.sourceFilter).toBe("Plan B");
+    expect(filtered.model.options.map((option) => option.value)).toEqual([
+      "model-plan:plan-b:gpt-b"
+    ]);
   });
 
   it("splits favorites and recents into pinned groups without duplicates", () => {

@@ -419,6 +419,9 @@ function resolveMentionPaletteEmptyLabel(input: {
   if (input.filter === "issue") {
     return agentMentionEmptyGroupLabel("issues", input.query);
   }
+  if (input.filter === "model") {
+    return agentMentionEmptyGroupLabel("models", input.query);
+  }
   return input.emptyLabel;
 }
 
@@ -538,13 +541,13 @@ function agentMentionItemToRowItem(
   }
 
   if (item.kind === "custom") {
-    // 自定义 mention 只经 draftPrompt prefill 进入 composer,不出现在 @ 面板候选;
-    // 兜底按通用条目展示(label 即注册方给的 name)。
+    // 自定义 mention 以通用双行卡展示(name + summary);目前只有 Models tab
+    // (customKind "workspace-model") 会把 custom 条目送进 @ 面板候选。
     return {
-      kind: "issue",
-      title: item.name,
-      creatorName: null,
-      statusTag: null
+      kind: "app",
+      name: item.name,
+      description: item.summary ?? null,
+      iconUrl: null
     };
   }
 
@@ -682,6 +685,8 @@ function browseHintForFilter(filter: AgentMentionFilterId): string {
       return translate("agentHost.agentGui.contextPickerBrowseSessionHint");
     case "issue":
       return translate("agentHost.agentGui.contextPickerBrowseIssueHint");
+    case "model":
+      return translate("agentHost.agentGui.contextPickerBrowseModelHint");
   }
 }
 

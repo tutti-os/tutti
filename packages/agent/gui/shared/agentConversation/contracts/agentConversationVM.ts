@@ -6,6 +6,10 @@ import type {
 } from "./agentApprovalItemVM";
 import type { AgentAskUserQuestionVM } from "./agentAskUserQuestionItemVM";
 import type { AgentTranscriptRowVM } from "./agentTranscriptRowVM";
+import type {
+  PlanIssueDraft,
+  PlanOrchestrationCatalog
+} from "../planImplementationPresentation";
 
 export type AgentConversationPromptVM =
   | AgentApprovalItemVM
@@ -38,6 +42,10 @@ export type AgentConversationPromptVM =
       kind: "plan-implementation";
       requestId: string;
       title: string;
+      /** User-reviewable Issue proposal derived from the completed Plan turn. */
+      issueDraft?: PlanIssueDraft;
+      /** Credential-free compatible Agent/Plan/model choices for the preview. */
+      assignmentCatalog?: PlanOrchestrationCatalog;
     };
 
 export interface AgentConversationVM {

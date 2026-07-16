@@ -84,7 +84,11 @@ test("desktop agent GUI workbench host input reuses an injected agent host api",
     workspaceId
   });
 
-  assert.equal(hostInput.agentHostApi, agentHostApi);
+  assert.equal(hostInput.agentHostApi.meta, agentHostApi.meta);
+  assert.equal(
+    typeof hostInput.agentHostApi.workspaceIssues?.estimateAutoTokenBudget,
+    "function"
+  );
   assert.equal(hostInput.contextMentionProviders[0]?.id, "file");
   assert.equal(
     typeof hostInput.workspaceFileReferenceAdapter.listDirectory,
@@ -97,7 +101,8 @@ test("desktop agent GUI workbench host input reuses an injected agent host api",
         "workspace-issue",
         "agent-session",
         "workspace-app",
-        "agent-target"
+        "agent-target",
+        "workspace-model"
       ],
       surface: "composer",
       target: "agent-gui",
@@ -572,7 +577,11 @@ test("desktop agent GUI workbench host input passes an activity runtime backed b
     workspaceId
   });
 
-  assert.equal(hostInput.agentHostApi, agentHostApi);
+  assert.equal(hostInput.agentHostApi.meta, agentHostApi.meta);
+  assert.equal(
+    typeof hostInput.agentHostApi.workspaceIssues?.estimateAutoTokenBudget,
+    "function"
+  );
   assert.notEqual(hostInput.agentActivityRuntime, null);
   assert.equal(
     hostInput.agentActivityRuntime?.getSnapshot(workspaceId).workspaceId,

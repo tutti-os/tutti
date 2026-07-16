@@ -384,7 +384,7 @@ func Classify(err error) *ProtocolError {
 		return WorkspaceIssueResourceExists(ReasonWorkspaceIssueTaskExists, WithCause(err))
 	case errors.Is(err, workspaceissues.ErrRunNotFound):
 		return WorkspaceIssueResourceNotFound(ReasonWorkspaceIssueRunNotFound, WithCause(err))
-	case errors.Is(err, workspaceissues.ErrRunAlreadyExists):
+	case errors.Is(err, workspaceissues.ErrRunAlreadyExists), errors.Is(err, workspaceissues.ErrTaskAlreadyClaimed):
 		return WorkspaceIssueResourceExists(ReasonWorkspaceIssueRunExists, WithCause(err))
 	case errors.Is(err, workspaceissues.ErrContextRefNotFound):
 		return WorkspaceIssueResourceNotFound(ReasonWorkspaceIssueContextRefNotFound, WithCause(err))

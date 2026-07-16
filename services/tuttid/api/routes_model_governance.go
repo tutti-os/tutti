@@ -96,6 +96,14 @@ func registerModelGovernanceRoutes(mux *http.ServeMux, routes Routes, wrapper *t
 		routes.CancelCollaborationRun(w, r, tuttigenerated.WorkspaceID(r.PathValue("workspaceID")), tuttigenerated.CollaborationRunID(r.PathValue("collaborationRunID")))
 	})
 
+	mux.HandleFunc("/v1/workspaces/{workspaceID}/collaboration-runs/{collaborationRunID}/retry", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			tuttitypes.WriteMethodNotAllowed(w)
+			return
+		}
+		routes.RetryCollaborationRun(w, r, tuttigenerated.WorkspaceID(r.PathValue("workspaceID")), tuttigenerated.CollaborationRunID(r.PathValue("collaborationRunID")))
+	})
+
 	mux.HandleFunc("/v1/workspaces/{workspaceID}/agent-model-bindings", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet {
 			tuttitypes.WriteMethodNotAllowed(w)

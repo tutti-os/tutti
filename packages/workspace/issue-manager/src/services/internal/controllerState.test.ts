@@ -241,6 +241,7 @@ test("controllerState syncs issue drafts from detail only in read mode", () => {
     syncIssueManagerIssueDraftFromDetail(current, detail, "read"),
     {
       content: "Plan migration",
+      dispatchPaused: false,
       title: "Plan migration"
     }
   );

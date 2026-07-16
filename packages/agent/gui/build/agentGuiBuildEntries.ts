@@ -8,6 +8,7 @@ export const agentGUIBuildEntries = {
   "mention-search": "agent-gui/agentGuiNode/AgentMentionSearchController.ts",
   "agent-message-center/index": "agent-message-center/index.ts",
   "agent-conversation/index": "agent-conversation/index.ts",
+  "plan-issue": "shared/agentConversation/planImplementationPresentation.ts",
   "agent-env/index": "shared/agentEnv/index.ts",
   "agent-env/ui": "shared/agentEnv/ui.ts",
   "context-mention-palette/index": "context-mention-palette/index.ts",
@@ -43,6 +44,7 @@ export const agentGUIDtsEntryGroups = [
     "mention-search",
     "agent-message-center/index",
     "agent-conversation/index",
+    "plan-issue",
     "context-mention-palette/index",
     "context-mention-provider"
   ],

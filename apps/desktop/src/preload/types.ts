@@ -13,6 +13,8 @@ import type {
   DesktopClipboardImagePayload,
   DesktopCreateUserDocumentsProjectDirectoryResult,
   DesktopCustomWallpaperImage,
+  DesktopGitWorktree,
+  DesktopGitWorktreeInput,
   DesktopLocalFileTextResult,
   DesktopHostNotificationNavigationPayload,
   DesktopHostNotificationPayload,
@@ -194,6 +196,9 @@ export interface DesktopHostFilesApi {
     workspaceID: string;
   }): Promise<void>;
   readLocalFileText(path: string): Promise<DesktopLocalFileTextResult>;
+  createGitWorktree?(
+    input: DesktopGitWorktreeInput
+  ): Promise<DesktopGitWorktree | null>;
   readLocalPreviewFile(path: string): Promise<Uint8Array>;
   archiveAgentPromptFile(
     input: DesktopArchiveAgentPromptFileInput

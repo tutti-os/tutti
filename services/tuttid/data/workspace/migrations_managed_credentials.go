@@ -50,3 +50,29 @@ INSERT INTO tuttid_schema_migrations (id, applied_at_unix_ms)
 	}
 	return nil
 }
+
+// applyManagedCredentialsV2 lets workspace apps hold references to the same
+// Model Plans used by Agents and automation. The legacy provider list remains
+// for backwards-compatible grants; new grants can select either surface.
+func (s *SQLiteStore) applyManagedCredentialsV2(ctx context.Context) error {
+	applied, err := s.hasMigration(ctx, schemaMigrationManagedCredentialsV2)
+	if err != nil {
+		return err
+	}
+	if applied {
+		return nil
+	}
+
+	now := unixMs(time.Now().UTC())
+	_, err = s.writeDB.ExecContext(ctx, `
+ALTER TABLE managed_model_app_grants
+  ADD COLUMN model_plan_ids_json TEXT NOT NULL DEFAULT '[]';
+
+INSERT INTO tuttid_schema_migrations (id, applied_at_unix_ms)
+  VALUES (?, ?);
+`, schemaMigrationManagedCredentialsV2, now)
+	if err != nil {
+		return fmt.Errorf("migrate managed credentials model plans: %w", err)
+	}
+	return nil
+}

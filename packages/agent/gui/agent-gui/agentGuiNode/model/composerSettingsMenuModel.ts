@@ -48,6 +48,12 @@ export type AgentComposerSettingsMenuLabels = {
 
 export interface ComposerMenuOption {
   value: string;
+  model?: string;
+  modelPlanId?: string;
+  sourceName?: string;
+  tier?: string;
+  capabilities?: string[];
+  effect?: "next_call" | "new_session";
   label: string;
   description?: string;
   summary?: string[];
@@ -86,6 +92,8 @@ export interface ComposerModelMenuLocalState {
   favoriteModelIds?: readonly string[];
   /** Most-recent-first model ids picked for the target (localStorage chrome). */
   recentModelIds?: readonly string[];
+  /** Exact Model Plan source selected by the aggregate-list filter. */
+  sourceFilter?: string;
 }
 
 /** Render the model filter input once the list exceeds this option count. */
@@ -119,6 +127,10 @@ export interface ComposerModelMenuModel {
     optionDescriptionInline: boolean;
     /** The list is long enough to render the filter input. */
     searchEnabled: boolean;
+    /** Distinct Model Plan sources available for explicit filtering. */
+    sourceFilters: string[];
+    /** Applied source filter ("" means all sources). */
+    sourceFilter: string;
     /** Normalized applied filter ("" when none). */
     searchQuery: string;
     /** Favorites group shown above recents; deduped out of `options`. */
@@ -200,13 +212,28 @@ export function buildComposerModelMenuModel(
       const allOptions = modelItems.map((option) =>
         modelMenuOptionFromSettingOption(option, labels)
       );
-      const searchEnabled = allOptions.length > COMPOSER_MODEL_SEARCH_THRESHOLD;
+      const searchEnabled =
+        composerSettings.aggregatedModelPlans === true ||
+        allOptions.length > COMPOSER_MODEL_SEARCH_THRESHOLD;
       const searchQuery = searchEnabled
         ? (localState.searchQuery ?? "").trim()
         : "";
-      const visibleOptions = searchQuery
-        ? filterComposerModelMenuOptions(allOptions, searchQuery)
-        : allOptions;
+      const sourceFilters = Array.from(
+        new Set(
+          allOptions
+            .map((option) => option.sourceName?.trim() ?? "")
+            .filter(Boolean)
+        )
+      );
+      const requestedSourceFilter = localState.sourceFilter?.trim() ?? "";
+      const sourceFilter = sourceFilters.includes(requestedSourceFilter)
+        ? requestedSourceFilter
+        : "";
+      const visibleOptions = filterComposerModelMenuOptions(
+        allOptions,
+        searchQuery,
+        sourceFilter
+      );
       const favoriteValueSet = new Set(
         (localState.favoriteModelIds ?? [])
           .map((value) => value.trim())
@@ -251,8 +278,12 @@ export function buildComposerModelMenuModel(
               name: composerSettings.modelPlan.name
             }
           : null,
-        optionDescriptionInline: Boolean(composerSettings.modelPlan),
+        optionDescriptionInline:
+          Boolean(composerSettings.modelPlan) ||
+          composerSettings.aggregatedModelPlans === true,
         searchEnabled,
+        sourceFilters,
+        sourceFilter,
         searchQuery,
         favoriteOptions,
         recentOptions,
@@ -285,20 +316,31 @@ export function buildComposerModelMenuModel(
   };
 }
 
-/** Case-insensitive filter over model label and id (value). */
+/** Case-insensitive search plus an exact Model Plan source filter. */
 export function filterComposerModelMenuOptions(
   options: readonly ComposerMenuOption[],
-  searchQuery: string
+  searchQuery: string,
+  sourceFilter = ""
 ): ComposerMenuOption[] {
   const query = searchQuery.trim().toLowerCase();
-  if (!query) {
-    return [...options];
-  }
-  return options.filter(
-    (option) =>
-      option.label.toLowerCase().includes(query) ||
-      option.value.toLowerCase().includes(query)
-  );
+  const source = sourceFilter.trim();
+  return options.filter((option) => {
+    if (source && option.sourceName?.trim() !== source) {
+      return false;
+    }
+    if (!query) {
+      return true;
+    }
+    return [
+      option.label,
+      option.value,
+      option.description,
+      option.sourceName,
+      option.tier,
+      option.effect,
+      ...(option.capabilities ?? [])
+    ].some((value) => value?.toLowerCase().includes(query));
+  });
 }
 
 function modelMenuOptionFromSettingOption(
@@ -314,6 +356,12 @@ function modelMenuOptionFromSettingOption(
   });
   return {
     value: option.value,
+    ...(option.model ? { model: option.model } : {}),
+    ...(option.modelPlanId ? { modelPlanId: option.modelPlanId } : {}),
+    ...(option.sourceName ? { sourceName: option.sourceName } : {}),
+    ...(option.tier ? { tier: option.tier } : {}),
+    ...(option.capabilities ? { capabilities: option.capabilities } : {}),
+    ...(option.effect ? { effect: option.effect } : {}),
     label: presentation.label,
     ...(description ? { description } : {}),
     ...(presentation.summary.length > 0

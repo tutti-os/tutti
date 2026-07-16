@@ -44,15 +44,18 @@ import {
   issueManagerEditorRiseInDelay1ClassName,
   issueManagerEditorRiseInDelay2ClassName
 } from "./IssueManagerEditorMotion.ts";
+import { IssueManagerTaskAssignmentFields } from "../orchestration/IssueManagerOrchestrationFields.tsx";
 
 export function IssueManagerTaskDrawerHeader({
   controller,
   onClose,
+  selectedIssue,
   selectedTask,
   view
 }: {
   controller: IssueManagerController;
   onClose: () => void;
+  selectedIssue: IssueManagerIssueSummary | null;
   selectedTask: IssueManagerTaskSummary | null;
   view: Pick<
     IssueManagerTaskDrawerViewState,
@@ -93,6 +96,18 @@ export function IssueManagerTaskDrawerHeader({
           <div className="flex shrink-0 items-center gap-2">
             {view.showTaskActions && selectedTask ? (
               <>
+                {selectedIssue?.sourceSessionId &&
+                controller.canOpenAgentSessions ? (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    onClick={() =>
+                      void controller.openPlanningSession(selectedIssue)
+                    }
+                  >
+                    {copy.t("actions.openPlanningSession")}
+                  </Button>
+                ) : null}
                 <Button
                   type="button"
                   variant="ghost"
@@ -267,6 +282,7 @@ export function IssueManagerTaskDrawerEditBody({
             onChange={controller.setTaskContent}
           />
         </div>
+        <IssueManagerTaskAssignmentFields controller={controller} />
       </div>
     </div>
   );
@@ -300,6 +316,7 @@ export function IssueManagerTaskDrawerReadBody({
         onOpen={controller.openReference}
         variant="plain"
       />
+      <IssueManagerTaskAssignmentOverview controller={controller} />
       <IssueManagerLatestRunStatusSection
         copy={copy}
         latestRun={latestRun}
@@ -317,6 +334,42 @@ export function IssueManagerTaskDrawerReadBody({
         onOpen={controller.openReference}
       />
     </>
+  );
+}
+
+function IssueManagerTaskAssignmentOverview({
+  controller
+}: {
+  controller: IssueManagerController;
+}): JSX.Element | null {
+  const task = controller.taskDetail.value?.task;
+  if (!task) return null;
+  const values = [
+    [controller.copy.t("labels.agent"), task.agentTargetId],
+    [controller.copy.t("labels.modelPlan"), task.modelPlanId],
+    [controller.copy.t("labels.model"), task.model],
+    [controller.copy.t("labels.executionDirectory"), task.executionDirectory],
+    [
+      controller.copy.t("labels.dependencies"),
+      task.dependencyTaskIds?.join(", ")
+    ],
+    [controller.copy.t("labels.acceptanceState"), task.acceptanceState]
+  ].filter((entry) => entry[1]);
+  if (values.length === 0) return null;
+  return (
+    <section className="grid gap-2.5">
+      <h3 className="text-[13px] font-semibold text-[var(--text-primary)]">
+        {controller.copy.t("labels.executionAssignment")}
+      </h3>
+      <dl className="grid gap-2 rounded-[12px] border border-[var(--line-2)] px-4 py-3 text-[12px] sm:grid-cols-2">
+        {values.map(([label, value]) => (
+          <div className="min-w-0" key={label}>
+            <dt className="text-[var(--text-tertiary)]">{label}</dt>
+            <dd className="truncate text-[var(--text-primary)]">{value}</dd>
+          </div>
+        ))}
+      </dl>
+    </section>
   );
 }
 

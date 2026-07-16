@@ -2,16 +2,32 @@ import type {
   DesktopDeveloperLogFileSummary,
   DesktopDeveloperLogsState
 } from "@shared/contracts/ipc";
+import type {
+  AgentProviderCapabilityOption,
+  AutomationRule,
+  AutomationRuleAction,
+  AutomationRuleTrigger,
+  ModelPlanReference,
+  WorkspaceAgent,
+  WorkspaceAgentProvider,
+  WorkspaceAgentGeneratedAutomationRule
+} from "@tutti-os/client-tuttid-ts";
+
+type WorkspaceSettingsReadonly<T> = T extends readonly (infer Item)[]
+  ? readonly WorkspaceSettingsReadonly<Item>[]
+  : T extends object
+    ? { readonly [Key in keyof T]: WorkspaceSettingsReadonly<T[Key]> }
+    : T;
 
 export type WorkspaceSettingsSectionID =
   | "about"
   | "account"
   | "agent"
   | "appearance"
-  | "apps"
   | "developer"
   | "general"
-  | "lab";
+  | "lab"
+  | "model";
 
 export type WorkspaceSettingsGeneralFocusAnchor =
   | "browser-use"
@@ -25,6 +41,10 @@ export type WorkspaceModelPlanTemplateKind =
   | "domestic"
   | "relay"
   | "custom";
+
+export type WorkspaceModelPlanBillingMode =
+  | "api_metered"
+  | "subscription_quota";
 
 export type WorkspaceModelPlanStatus =
   | "disabled"
@@ -46,10 +66,22 @@ export type WorkspaceModelPlanStageStatus =
   | "skipped"
   | "pending";
 
+export type WorkspaceModelPlanTier = "flagship" | "standard" | "economy";
+
 export interface WorkspaceModelPlanModel {
   readonly id: string;
   readonly name: string;
+  readonly tier?: WorkspaceModelPlanTier | null;
   readonly capabilities?: readonly string[] | null;
+  readonly pricing?: WorkspaceModelPlanPricing | null;
+}
+
+export interface WorkspaceModelPlanPricing {
+  readonly currency: string;
+  readonly inputMicrosPerMillion: number;
+  readonly outputMicrosPerMillion: number;
+  readonly cacheReadMicrosPerMillion: number;
+  readonly cacheWriteMicrosPerMillion: number;
 }
 
 export interface WorkspaceModelPlanStageResult {
@@ -81,6 +113,7 @@ export interface WorkspaceModelPlan {
   readonly workspaceId: string;
   readonly name: string;
   readonly templateKind: WorkspaceModelPlanTemplateKind;
+  readonly billingMode: WorkspaceModelPlanBillingMode;
   readonly protocol: WorkspaceModelPlanProtocol;
   readonly hasApiKey: boolean;
   readonly baseUrl?: string | null;
@@ -94,10 +127,7 @@ export interface WorkspaceModelPlan {
   readonly updatedAt: string;
 }
 
-export type WorkspaceModelPlanReferenceKind =
-  | "agent_target"
-  | "model_policy"
-  | "workspace_app";
+export type WorkspaceModelPlanReferenceKind = ModelPlanReference["kind"];
 
 export interface WorkspaceModelPlanReference {
   readonly kind: WorkspaceModelPlanReferenceKind;
@@ -119,6 +149,163 @@ export interface WorkspaceModelPlanBindingTarget {
   readonly id: string;
   readonly name: string;
   readonly provider: string;
+}
+
+export type WorkspaceAgentHarness = WorkspaceSettingsReadonly<
+  WorkspaceAgent["harness"]
+>;
+
+export interface WorkspaceAgentHarnessTargetOption {
+  readonly enabled: boolean;
+  readonly id: string;
+  readonly name: string;
+  readonly provider: WorkspaceAgentProvider;
+}
+
+export type WorkspaceAgentCapabilityOption =
+  WorkspaceSettingsReadonly<AgentProviderCapabilityOption>;
+
+export type WorkspaceAgentSource = WorkspaceAgent["source"];
+
+export type WorkspaceAgentModelRef = WorkspaceSettingsReadonly<
+  WorkspaceAgent["modelFallbacks"][number]
+>;
+
+/**
+ * One explicit selectable Agent configuration. Its id is also the opaque
+ * AgentGUI target identity; harness/provider details are presentation and
+ * execution metadata rather than directory identity.
+ */
+export type WorkspaceAgentDefinition =
+  WorkspaceSettingsReadonly<WorkspaceAgent>;
+
+export interface WorkspaceAgentDraft {
+  agentId: string | null;
+  name: string;
+  purpose: string;
+  harnessAgentTargetId: string;
+  modelPlanId: string;
+  defaultModel: string;
+  modelFallbacks: readonly WorkspaceAgentModelRef[];
+  instructions: string;
+  callConditions: string;
+  capabilitiesExplicit: boolean;
+  skills: string;
+  tools: string;
+  permissions: string;
+  enabled: boolean;
+  generationRequirements: string;
+  generatedAutomationRules: readonly WorkspaceAgentGeneratedAutomationRule[];
+}
+
+export type WorkspaceAgentFeedbackKind =
+  | "deleteFailed"
+  | "generateFailed"
+  | "generationRequiresPlan"
+  | "generatedRulesSaveFailed"
+  | "noRecommendation"
+  | "recommendFailed"
+  | "requiredFields"
+  | "saveFailed";
+
+export interface WorkspaceAgentFeedback {
+  readonly kind: WorkspaceAgentFeedbackKind;
+}
+
+export interface WorkspaceSettingsWorkspaceAgentsMutableState {
+  agents: WorkspaceAgentDefinition[];
+  confirmingDeleteAgentID: string | null;
+  deletingAgentID: string | null;
+  draft: WorkspaceAgentDraft | null;
+  feedback: WorkspaceAgentFeedback | null;
+  capabilityCatalog: WorkspaceAgentCapabilityOption[];
+  capabilityCatalogHarnessTargetID: string | null;
+  capabilityCatalogLoadFailed: boolean;
+  capabilityCatalogLoading: boolean;
+  harnessTargets: WorkspaceAgentHarnessTargetOption[];
+  loadFailed: boolean;
+  loading: boolean;
+  generating: boolean;
+  recommendingFallback: boolean;
+  saving: boolean;
+}
+
+export interface WorkspaceSettingsWorkspaceAgentsSnapshotState {
+  readonly agents: readonly WorkspaceAgentDefinition[];
+  readonly confirmingDeleteAgentID: string | null;
+  readonly deletingAgentID: string | null;
+  readonly draft: Readonly<WorkspaceAgentDraft> | null;
+  readonly feedback: WorkspaceAgentFeedback | null;
+  readonly capabilityCatalog: readonly WorkspaceAgentCapabilityOption[];
+  readonly capabilityCatalogHarnessTargetID: string | null;
+  readonly capabilityCatalogLoadFailed: boolean;
+  readonly capabilityCatalogLoading: boolean;
+  readonly harnessTargets: readonly WorkspaceAgentHarnessTargetOption[];
+  readonly loadFailed: boolean;
+  readonly loading: boolean;
+  readonly generating: boolean;
+  readonly recommendingFallback: boolean;
+  readonly saving: boolean;
+}
+
+export type WorkspaceAutomationRuleAction = AutomationRuleAction;
+export type WorkspaceAutomationRuleTrigger = AutomationRuleTrigger;
+
+export type WorkspaceAutomationRule = WorkspaceSettingsReadonly<AutomationRule>;
+
+/**
+ * Local edit buffer for one daemon-owned AutomationRule. Separate model and
+ * Agent target fields let an action switch safely without retaining an
+ * invalid target shape in the request.
+ */
+export interface WorkspaceAutomationRuleDraft {
+  automationRuleId: string | null;
+  name: string;
+  enabled: boolean;
+  trigger: WorkspaceAutomationRuleTrigger;
+  action: WorkspaceAutomationRuleAction;
+  sourceWorkspaceAgentId: string;
+  targetWorkspaceAgentId: string;
+  modelPlanId: string;
+  model: string;
+  requiredCapabilities: string;
+  permissionModeId: string;
+  allowedTools: string;
+  maxRunsPerSession: string;
+  maxTotalTokensPerSession: string;
+  prompt: string;
+}
+
+export type WorkspaceAutomationRuleFeedbackKind =
+  | "deleteFailed"
+  | "invalidBudget"
+  | "requiredFields"
+  | "saveFailed";
+
+export interface WorkspaceAutomationRuleFeedback {
+  readonly kind: WorkspaceAutomationRuleFeedbackKind;
+}
+
+export interface WorkspaceSettingsAutomationRulesMutableState {
+  rules: WorkspaceAutomationRule[];
+  confirmingDeleteRuleID: string | null;
+  deletingRuleID: string | null;
+  draft: WorkspaceAutomationRuleDraft | null;
+  feedback: WorkspaceAutomationRuleFeedback | null;
+  loadFailed: boolean;
+  loading: boolean;
+  saving: boolean;
+}
+
+export interface WorkspaceSettingsAutomationRulesSnapshotState {
+  readonly rules: readonly WorkspaceAutomationRule[];
+  readonly confirmingDeleteRuleID: string | null;
+  readonly deletingRuleID: string | null;
+  readonly draft: Readonly<WorkspaceAutomationRuleDraft> | null;
+  readonly feedback: WorkspaceAutomationRuleFeedback | null;
+  readonly loadFailed: boolean;
+  readonly loading: boolean;
+  readonly saving: boolean;
 }
 
 /**
@@ -151,6 +338,7 @@ export interface WorkspaceModelPlanDraftSeed {
 
 export type WorkspaceModelPlanFeedbackKind =
   | "detectFailed"
+  | "detectionRequired"
   | "deleteFailed"
   | "duplicateFailed"
   | "requiredFields"
@@ -162,6 +350,12 @@ export interface WorkspaceModelPlanFeedback {
 }
 
 export interface WorkspaceModelPlanDeleteBlock {
+  readonly planID: string;
+  readonly references: readonly WorkspaceModelPlanReference[];
+}
+
+/** All current consumers shown before committing a model-range edit. */
+export interface WorkspaceModelPlanSaveImpact {
   readonly planID: string;
   readonly references: readonly WorkspaceModelPlanReference[];
 }
@@ -185,7 +379,10 @@ export interface WorkspaceSettingsModelPlansMutableState {
   draftDetection: WorkspaceModelPlanDetection | null;
   draftDiscoveredModels: readonly WorkspaceModelPlanModel[];
   draftFeedback: WorkspaceModelPlanFeedback | null;
+  draftSaveImpact: WorkspaceModelPlanSaveImpact | null;
   duplicatingPlanID: string | null;
+  firstUseLaunchFailedPlanID: string | null;
+  firstUseLaunchingPlanID: string | null;
   loading: boolean;
   planFeedback: Record<string, WorkspaceModelPlanFeedback>;
   plans: WorkspaceModelPlan[];
@@ -212,7 +409,10 @@ export interface WorkspaceSettingsModelPlansSnapshotState {
   readonly draftDetection: WorkspaceModelPlanDetection | null;
   readonly draftDiscoveredModels: readonly WorkspaceModelPlanModel[];
   readonly draftFeedback: Readonly<WorkspaceModelPlanFeedback> | null;
+  readonly draftSaveImpact: WorkspaceModelPlanSaveImpact | null;
   readonly duplicatingPlanID: string | null;
+  readonly firstUseLaunchFailedPlanID: string | null;
+  readonly firstUseLaunchingPlanID: string | null;
   readonly loading: boolean;
   readonly planFeedback: Readonly<
     Record<string, Readonly<WorkspaceModelPlanFeedback>>
@@ -246,6 +446,8 @@ export interface WorkspaceSettingsDeveloperLogsSnapshotState {
 
 export interface WorkspaceSettingsStoreState {
   activeSection: WorkspaceSettingsSectionID;
+  agents: WorkspaceSettingsWorkspaceAgentsMutableState;
+  automationRules: WorkspaceSettingsAutomationRulesMutableState;
   developerPanelVisible: boolean;
   developerLogs: WorkspaceSettingsDeveloperLogsMutableState;
   generalFocusAnchor: WorkspaceSettingsGeneralFocusAnchor | null;
@@ -259,6 +461,8 @@ export interface WorkspaceSettingsStoreState {
 
 export interface WorkspaceSettingsReadableStoreState {
   readonly activeSection: WorkspaceSettingsSectionID;
+  readonly agents: WorkspaceSettingsWorkspaceAgentsSnapshotState;
+  readonly automationRules: WorkspaceSettingsAutomationRulesSnapshotState;
   readonly developerPanelVisible: boolean;
   readonly developerLogs: WorkspaceSettingsDeveloperLogsSnapshotState;
   readonly generalFocusAnchor: WorkspaceSettingsGeneralFocusAnchor | null;

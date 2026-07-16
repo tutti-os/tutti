@@ -24,9 +24,19 @@ describe("projectAgentCollaborationVM", () => {
         modelPlanId: "plan-1",
         model: "kimi-k2",
         contextScope: "summary",
+        retryOfRunId: "run-0",
+        attempt: 2,
+        requestText: "Review the implementation.",
         resultText: "Consider a version-key guard.",
+        failureStage: null,
         durationMs: 5200,
-        usage: { inputTokens: 812, outputTokens: 96 },
+        usage: {
+          inputTokens: 812,
+          outputTokens: 96,
+          cacheReadTokens: 320,
+          cacheWriteTokens: 40
+        },
+        cost: { currency: "USD", estimatedMicros: 900 },
         adoption: "pending"
       }
     });
@@ -46,10 +56,20 @@ describe("projectAgentCollaborationVM", () => {
       modelPlanName: null,
       model: "kimi-k2",
       contextScope: "summary",
+      retryOfRunId: "run-0",
+      attempt: 2,
+      requestText: "Review the implementation.",
       resultText: "Consider a version-key guard.",
       failureReason: null,
+      failureStage: null,
       durationMs: 5200,
-      usage: { inputTokens: 812, outputTokens: 96 },
+      usage: {
+        inputTokens: 812,
+        outputTokens: 96,
+        cacheReadTokens: 320,
+        cacheWriteTokens: 40
+      },
+      cost: { currency: "USD", estimatedMicros: 900 },
       adoption: "pending"
     });
   });
@@ -151,7 +171,12 @@ describe("collaboration message kind projection", () => {
             status: "completed",
             resultText: "Looks right; watch the merge key.",
             durationMs: 4100,
-            usage: { inputTokens: 900, outputTokens: 120 },
+            usage: {
+              inputTokens: 900,
+              outputTokens: 120,
+              cacheReadTokens: 450,
+              cacheWriteTokens: 60
+            },
             adoption: "pending"
           })
         })
@@ -170,7 +195,12 @@ describe("collaboration message kind projection", () => {
       status: "completed",
       resultText: "Looks right; watch the merge key.",
       durationMs: 4100,
-      usage: { inputTokens: 900, outputTokens: 120 },
+      usage: {
+        inputTokens: 900,
+        outputTokens: 120,
+        cacheReadTokens: 450,
+        cacheWriteTokens: 60
+      },
       adoption: "pending"
     });
     // Collaboration cards own their copy affordance; no transcript copy text.

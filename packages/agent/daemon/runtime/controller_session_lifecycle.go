@@ -48,6 +48,19 @@ func (c *Controller) Start(ctx context.Context, input StartInput) (StartResult, 
 	if existing, ok := c.get(roomID, agentSessionID); ok {
 		return StartResult{Session: existing}, nil
 	}
+	accessRequest := SharedAgentAccessRequest{
+		Action:            SharedAgentAccessStart,
+		RoomID:            roomID,
+		AgentSessionID:    agentSessionID,
+		AgentTargetID:     strings.TrimSpace(input.AgentTargetID),
+		Provider:          provider,
+		ModelPlanID:       sharedAgentModelPlanID(input.RuntimeContext),
+		Model:             strings.TrimSpace(settings.Model),
+		ProviderTargetRef: clonePayload(input.ProviderTargetRef),
+	}
+	if err := c.applySharedAgentAccess(ctx, accessRequest); err != nil {
+		return StartResult{}, err
+	}
 	session := Session{
 		RoomID:                  roomID,
 		AgentSessionID:          agentSessionID,
@@ -72,6 +85,8 @@ func (c *Controller) Start(ctx context.Context, input StartInput) (StartResult, 
 	}
 	events, err := adapter.Start(ctx, session)
 	if err != nil {
+		accessRequest.Action = SharedAgentAccessRelease
+		_ = c.applySharedAgentAccess(ctx, accessRequest)
 		detail := cleanVisibleErrorText(err.Error())
 		code := visibleFailureCode(detail)
 		startError := &AppError{
@@ -176,8 +191,14 @@ func (c *Controller) Resume(ctx context.Context, input ResumeInput) (Session, er
 	if session.Settings != nil {
 		session.PermissionModeID = session.Settings.PermissionModeID
 	}
+	accessRequest := sharedAgentAccessRequestForSession(SharedAgentAccessResume, session)
+	if err := c.applySharedAgentAccess(ctx, accessRequest); err != nil {
+		return Session{}, err
+	}
 	if err := adapter.Resume(ctx, session); err != nil {
 		if !input.RecreateIfMissing || !isResumeRecreatableError(err) {
+			accessRequest.Action = SharedAgentAccessRelease
+			_ = c.applySharedAgentAccess(ctx, accessRequest)
 			return Session{}, err
 		}
 		// The provider session is not available locally (imported from another
@@ -186,6 +207,8 @@ func (c *Controller) Resume(ctx context.Context, input ResumeInput) (Session, er
 		// what keeps imported conversations continuable instead of forcing the
 		// user into a brand new conversation.
 		if err := c.recreateAdapterSession(ctx, session, adapter); err != nil {
+			accessRequest.Action = SharedAgentAccessRelease
+			_ = c.applySharedAgentAccess(ctx, accessRequest)
 			return Session{}, err
 		}
 		if refreshed, ok := c.get(session.RoomID, session.AgentSessionID); ok {
@@ -215,6 +238,7 @@ func (c *Controller) Close(ctx context.Context, input CloseInput) (CloseResult, 
 	if err := adapter.Close(ctx, session); err != nil {
 		return CloseResult{}, err
 	}
+	_ = c.applySharedAgentAccess(ctx, sharedAgentAccessRequestForSession(SharedAgentAccessRelease, session))
 	c.mu.Lock()
 	provisional := c.provisionalSessions[key]
 	if provisional {

@@ -11,15 +11,21 @@ import (
 	modelplanbiz "github.com/tutti-os/tutti/services/tuttid/biz/modelplan"
 )
 
-// ErrModelPlanNotFound reports a missing model plan row.
-var ErrModelPlanNotFound = errors.New("model plan not found")
+var (
+	// ErrModelPlanNotFound reports a missing current model plan row.
+	ErrModelPlanNotFound = errors.New("model plan not found")
+	// ErrModelPlanRevisionNotFound reports a missing immutable plan revision.
+	ErrModelPlanRevisionNotFound = errors.New("model plan revision not found")
+	// ErrModelPlanRevisionConflict reports a non-monotonic plan write.
+	ErrModelPlanRevisionConflict = errors.New("model plan revision conflict")
+)
 
 func (s *SQLiteStore) ListModelPlans(ctx context.Context, workspaceID string) ([]modelplanbiz.Plan, error) {
 	if s == nil || s.readDB == nil {
 		return nil, errors.New("workspace database is not initialized")
 	}
 	rows, err := s.readDB.QueryContext(ctx, `
-SELECT workspace_id, plan_id, name, template_kind, protocol, api_key_ciphertext,
+SELECT workspace_id, plan_id, revision, name, template_kind, protocol, api_key_ciphertext,
   base_url, models_json, default_model, enabled, detection_json, first_use_json,
   created_at_unix_ms, updated_at_unix_ms
 FROM model_plans
@@ -50,7 +56,7 @@ func (s *SQLiteStore) GetModelPlan(ctx context.Context, workspaceID string, plan
 		return modelplanbiz.Plan{}, errors.New("workspace database is not initialized")
 	}
 	row := s.readDB.QueryRowContext(ctx, `
-SELECT workspace_id, plan_id, name, template_kind, protocol, api_key_ciphertext,
+SELECT workspace_id, plan_id, revision, name, template_kind, protocol, api_key_ciphertext,
   base_url, models_json, default_model, enabled, detection_json, first_use_json,
   created_at_unix_ms, updated_at_unix_ms
 FROM model_plans
@@ -66,10 +72,70 @@ WHERE workspace_id = ? AND plan_id = ?
 	return plan, nil
 }
 
+// GetModelPlanRevision returns one immutable secret-bearing plan revision.
+// Callers must keep the returned credential inside the daemon runtime
+// boundary; only its id/revision/fingerprint belongs in session context.
+func (s *SQLiteStore) GetModelPlanRevision(ctx context.Context, workspaceID string, planID string, revision uint64) (modelplanbiz.Plan, error) {
+	if s == nil || s.readDB == nil {
+		return modelplanbiz.Plan{}, errors.New("workspace database is not initialized")
+	}
+	if revision == 0 {
+		return modelplanbiz.Plan{}, ErrModelPlanRevisionNotFound
+	}
+	row := s.readDB.QueryRowContext(ctx, `
+SELECT workspace_id, plan_id, revision, name, template_kind, protocol, api_key_ciphertext,
+  base_url, models_json, default_model, enabled, detection_json, first_use_json,
+  created_at_unix_ms, updated_at_unix_ms
+FROM model_plan_revisions
+WHERE workspace_id = ? AND plan_id = ? AND revision = ?
+`, workspaceID, planID, revision)
+	plan, err := scanModelPlan(row)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return modelplanbiz.Plan{}, ErrModelPlanRevisionNotFound
+		}
+		return modelplanbiz.Plan{}, err
+	}
+	return plan, nil
+}
+
 func (s *SQLiteStore) PutModelPlan(ctx context.Context, plan modelplanbiz.Plan) error {
 	if s == nil || s.writeDB == nil {
 		return errors.New("workspace database is not initialized")
 	}
+	tx, err := s.writeDB.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin put model plan: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	var currentRevision uint64
+	err = tx.QueryRowContext(ctx, `
+SELECT revision
+FROM model_plans
+WHERE workspace_id = ? AND plan_id = ?
+`, plan.WorkspaceID, plan.ID).Scan(&currentRevision)
+	switch {
+	case errors.Is(err, sql.ErrNoRows):
+		if plan.Revision == 0 {
+			plan.Revision = 1
+		}
+		if plan.Revision != 1 {
+			return fmt.Errorf("%w: first revision is %d, want 1", ErrModelPlanRevisionConflict, plan.Revision)
+		}
+	case err != nil:
+		return fmt.Errorf("read current model plan revision: %w", err)
+	default:
+		// Existing callers historically wrote back the revision they read. Treat
+		// that as the next revision while still rejecting stale concurrent writes.
+		if plan.Revision == 0 || plan.Revision == currentRevision {
+			plan.Revision = currentRevision + 1
+		}
+		if plan.Revision != currentRevision+1 {
+			return fmt.Errorf("%w: got %d after %d", ErrModelPlanRevisionConflict, plan.Revision, currentRevision)
+		}
+	}
+
 	modelsJSON, err := json.Marshal(modelplanbiz.CloneModels(plan.Models))
 	if err != nil {
 		return fmt.Errorf("marshal model plan models: %w", err)
@@ -86,13 +152,14 @@ func (s *SQLiteStore) PutModelPlan(ctx context.Context, plan modelplanbiz.Plan) 
 	if err != nil {
 		return err
 	}
-	_, err = s.writeDB.ExecContext(ctx, `
+	_, err = tx.ExecContext(ctx, `
 INSERT INTO model_plans (
-  workspace_id, plan_id, name, template_kind, protocol, api_key_ciphertext,
+  workspace_id, plan_id, revision, name, template_kind, protocol, api_key_ciphertext,
   base_url, models_json, default_model, enabled, detection_json, first_use_json,
   created_at_unix_ms, updated_at_unix_ms
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 ON CONFLICT(workspace_id, plan_id) DO UPDATE SET
+  revision = excluded.revision,
   name = excluded.name,
   template_kind = excluded.template_kind,
   protocol = excluded.protocol,
@@ -104,11 +171,27 @@ ON CONFLICT(workspace_id, plan_id) DO UPDATE SET
   detection_json = excluded.detection_json,
   first_use_json = excluded.first_use_json,
   updated_at_unix_ms = excluded.updated_at_unix_ms
-`, plan.WorkspaceID, plan.ID, plan.Name, string(plan.TemplateKind), string(plan.Protocol), ciphertext,
+`, plan.WorkspaceID, plan.ID, plan.Revision, plan.Name, string(plan.TemplateKind), string(plan.Protocol), ciphertext,
 		plan.BaseURL, string(modelsJSON), plan.DefaultModel, boolInt(plan.Enabled), string(detectionJSON), string(firstUseJSON),
 		unixMs(plan.CreatedAt), unixMs(plan.UpdatedAt))
 	if err != nil {
 		return fmt.Errorf("put model plan: %w", err)
+	}
+	_, err = tx.ExecContext(ctx, `
+INSERT INTO model_plan_revisions (
+  workspace_id, plan_id, revision, name, template_kind, protocol,
+  api_key_ciphertext, base_url, models_json, default_model, enabled,
+  detection_json, first_use_json, created_at_unix_ms, updated_at_unix_ms,
+  recorded_at_unix_ms
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+`, plan.WorkspaceID, plan.ID, plan.Revision, plan.Name, string(plan.TemplateKind), string(plan.Protocol), ciphertext,
+		plan.BaseURL, string(modelsJSON), plan.DefaultModel, boolInt(plan.Enabled), string(detectionJSON), string(firstUseJSON),
+		unixMs(plan.CreatedAt), unixMs(plan.UpdatedAt), unixMs(time.Now().UTC()))
+	if err != nil {
+		return fmt.Errorf("put immutable model plan revision: %w", err)
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit model plan revision: %w", err)
 	}
 	return nil
 }
@@ -136,6 +219,7 @@ WHERE workspace_id = ? AND plan_id = ?
 
 func scanModelPlan(row managedProviderScanner) (modelplanbiz.Plan, error) {
 	var plan modelplanbiz.Plan
+	var revision int64
 	var templateKind string
 	var protocol string
 	var ciphertext string
@@ -145,11 +229,15 @@ func scanModelPlan(row managedProviderScanner) (modelplanbiz.Plan, error) {
 	var firstUseJSON string
 	var createdAtUnixMS int64
 	var updatedAtUnixMS int64
-	if err := row.Scan(&plan.WorkspaceID, &plan.ID, &plan.Name, &templateKind, &protocol, &ciphertext,
+	if err := row.Scan(&plan.WorkspaceID, &plan.ID, &revision, &plan.Name, &templateKind, &protocol, &ciphertext,
 		&plan.BaseURL, &modelsJSON, &plan.DefaultModel, &enabled, &detectionJSON, &firstUseJSON,
 		&createdAtUnixMS, &updatedAtUnixMS); err != nil {
 		return modelplanbiz.Plan{}, err
 	}
+	if revision <= 0 {
+		revision = 1
+	}
+	plan.Revision = uint64(revision)
 	apiKey, err := decryptManagedCredential(ciphertext)
 	if err != nil {
 		return modelplanbiz.Plan{}, err

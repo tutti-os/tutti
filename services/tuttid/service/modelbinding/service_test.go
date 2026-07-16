@@ -124,7 +124,11 @@ func newBindingTestService(store *memoryBindingStore) *Service {
 			},
 		}},
 		Targets: staticTargets{targets: map[string]agenttargetbiz.Target{
-			"local:codex": {ID: "local:codex", Name: "Codex"},
+			"local:codex": {
+				ID:       "local:codex",
+				Name:     "Codex",
+				Provider: "codex",
+			},
 		}},
 		Now: func() time.Time { return time.UnixMilli(1700000000000).UTC() },
 	}

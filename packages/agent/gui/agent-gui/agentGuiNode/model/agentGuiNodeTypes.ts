@@ -25,6 +25,7 @@ import type {
   AgentSessionReasoningEffort,
   AgentSessionSpeed
 } from "../../../shared/agentSessionTypes";
+import type { PlanIssueBudgetPreset } from "../../../shared/agentConversation/planImplementationPresentation";
 import type { AgentSlashCommandPolicy } from "./agentSlashCommandProviderPolicy";
 import type { AgentConversationVM } from "../../../shared/agentConversation/contracts/agentConversationVM";
 import type { WorkspaceAgentSessionDetailViewModel } from "../../../shared/workspaceAgentSessionDetailViewModel";
@@ -83,7 +84,15 @@ export interface AgentGUIProjectConversationDeleteTarget {
 }
 
 export interface AgentGUIComposerSettingOption {
+  /** Unique selection identity. Aggregated models include the Model Plan id. */
   value: string;
+  /** Runtime model id when value is a Plan-qualified selection identity. */
+  model?: string;
+  modelPlanId?: string;
+  sourceName?: string;
+  tier?: string;
+  capabilities?: string[];
+  effect?: "next_call" | "new_session";
   label: string;
   description?: string;
   supportsImageInput?: boolean;
@@ -259,6 +268,7 @@ export interface AgentGUIComposerSettingsVM {
   sessionSettings: AgentSessionComposerSettings | null;
   draftSettings: {
     model: string | null;
+    modelPlanId?: string | null;
     reasoningEffort: AgentSessionReasoningEffort | null;
     speed: AgentSessionSpeed | null;
     planMode: boolean;
@@ -273,6 +283,10 @@ export interface AgentGUIComposerSettingsVM {
   supportsSpeed: boolean;
   supportsPermissionMode?: boolean;
   supportsPlanMode: boolean;
+  /** Persisted defaults applied when the next Plan enters Issue review. */
+  planIssueBudgetPreset?: PlanIssueBudgetPreset;
+  /** Ultra Plan requires the target's authoritative plan-to-issue capability. */
+  supportsUltraPlan?: boolean;
   // Descriptor-derived plan/permission exclusivity.
   planExclusiveWithPermissionMode?: boolean;
   supportsBrowser?: boolean;
@@ -288,6 +302,8 @@ export interface AgentGUIComposerSettingsVM {
   speedUnavailable: boolean;
   permissionModeUnavailable?: boolean;
   selectedModelValue?: string | null;
+  /** True when the model list combines more than the target's bound Plan. */
+  aggregatedModelPlans?: boolean;
   selectedReasoningEffortValue?: AgentSessionReasoningEffort | null;
   selectedSpeedValue?: AgentSessionSpeed | null;
   selectedPermissionModeValue?: string | null;

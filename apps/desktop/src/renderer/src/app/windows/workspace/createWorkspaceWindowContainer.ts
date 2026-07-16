@@ -13,6 +13,7 @@ import { registerDesktopPreferencesServices } from "@renderer/features/desktop-p
 import { registerRichTextAtServices } from "@renderer/features/rich-text-at/services/registerRichTextAtServices";
 import { createDesktopAgentSessionStatusViewResolver } from "@renderer/features/rich-text-at/providers/desktopAgentSessionStatusView.ts";
 import { registerWorkspaceAgentServices } from "@renderer/features/workspace-agent/services/registerWorkspaceAgentServices";
+import { requestWorkspaceAgentGuiLaunch } from "@renderer/features/workspace-agent/services/workspaceAgentGuiLaunchCoordinator.ts";
 import type { IAgentProviderStatusService as AgentProviderStatusService } from "@renderer/features/workspace-agent/services/agentProviderStatusService.interface.ts";
 import type { IWorkspaceAgentActivityService as WorkspaceAgentActivityService } from "@renderer/features/workspace-agent/services/workspaceAgentActivityService.interface.ts";
 import { registerWorkspaceAppCenterServices } from "@renderer/features/workspace-app-center/services/registerWorkspaceAppCenterServices";
@@ -269,6 +270,7 @@ export function createWorkspaceWindowContainer(): WorkspaceWindowContainerResult
     hostNotificationsApi: desktopApi.host.notifications,
     hostWindowApi: desktopApi.host.window,
     hostWorkspaceApi: desktopApi.host.workspace,
+    launchAgentGui: requestWorkspaceAgentGuiLaunch,
     tuttidClient,
     platformApi: desktopApi.platform,
     reporterService,

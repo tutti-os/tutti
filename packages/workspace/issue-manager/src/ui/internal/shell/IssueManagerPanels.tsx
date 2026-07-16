@@ -37,6 +37,8 @@ import {
   issueManagerEditorRiseInDelay1ClassName,
   issueManagerEditorRiseInDelay2ClassName
 } from "./IssueManagerEditorMotion.ts";
+import { IssueManagerExecutionProfileFields } from "../orchestration/IssueManagerOrchestrationFields.tsx";
+import { createLowerIntensityBudgetRecoveryPatch } from "../orchestration/IssueManagerBudgetRecovery.ts";
 
 export { IssueManagerEmptyIllustration } from "../panel/IssueManagerPanelSurface.tsx";
 
@@ -123,6 +125,7 @@ export function IssueManagerIssuePane({
                     onChange={controller.setIssueContent}
                   />
                 </div>
+                <IssueManagerExecutionProfileFields controller={controller} />
               </div>
             </div>
           </div>
@@ -177,6 +180,18 @@ export function IssueManagerIssuePane({
                     </h2>
                   </IssueManagerTitleTooltip>
                   <div className="flex shrink-0 items-center gap-2">
+                    {selectedIssue.sourceSessionId &&
+                    controller.canOpenAgentSessions ? (
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        onClick={() =>
+                          void controller.openPlanningSession(selectedIssue)
+                        }
+                      >
+                        {copy.t("actions.openPlanningSession")}
+                      </Button>
+                    ) : null}
                     <Button
                       type="button"
                       variant="ghost"
@@ -254,6 +269,10 @@ export function IssueManagerIssuePane({
                 onOpen={controller.openReference}
                 variant="plain"
               />
+              <IssueManagerExecutionOverview
+                controller={controller}
+                issue={selectedIssue}
+              />
               <IssueManagerLatestRunStatusSection
                 copy={copy}
                 latestRun={issueLatestRun}
@@ -285,4 +304,144 @@ export function IssueManagerIssuePane({
       </ScrollArea>
     </div>
   );
+}
+
+function IssueManagerExecutionOverview({
+  controller,
+  issue
+}: {
+  controller: IssueManagerController;
+  issue: IssueManagerIssueSummary;
+}): JSX.Element | null {
+  const executionProfile = issue.executionProfile;
+  const budget = issue.budget;
+  if (!executionProfile || !budget) {
+    return null;
+  }
+  const usagePercent =
+    budget.tokenLimit > 0
+      ? Math.min(
+          100,
+          Math.round((budget.consumedTokens / budget.tokenLimit) * 100)
+        )
+      : 0;
+  const openBudgetRecoveryEditor = () => {
+    controller.setIssueDraft({
+      budget: {
+        ...budget,
+        mode: "fixed",
+        status: "active",
+        tokenLimit:
+          budget.tokenLimit +
+          Math.max(10_000, Math.ceil(budget.tokenLimit * 0.25))
+      }
+    });
+    controller.setIssueEditorMode("edit");
+  };
+  const lowerIntensityAndContinue = () => {
+    controller.setIssueDraft(
+      createLowerIntensityBudgetRecoveryPatch({ budget, executionProfile })
+    );
+    controller.setIssueEditorMode("edit");
+  };
+  const firstRemainingTask = controller.issueDetail.value?.tasks.find(
+    (task) => task.status === "not_started" || task.status === "failed"
+  );
+  return (
+    <section className="grid gap-2.5">
+      <h3 className="text-[13px] font-semibold text-[var(--text-primary)]">
+        {controller.copy.t("labels.executionProfile")}
+      </h3>
+      <div className="grid gap-2 rounded-[12px] border border-[var(--line-2)] px-4 py-3 text-[12px] text-[var(--text-secondary)] sm:grid-cols-2">
+        <span>
+          {controller.copy.t("labels.reasoningIntensity")}:{" "}
+          {executionProfile.reasoningIntensity}
+        </span>
+        <span>
+          {controller.copy.t("labels.orchestrationIntensity")}:{" "}
+          {executionProfile.orchestrationIntensity}
+        </span>
+        <span>
+          {controller.copy.t("labels.tokenUsage")}:{" "}
+          {budget.consumedTokens.toLocaleString()} /{" "}
+          {budget.tokenLimit > 0 ? budget.tokenLimit.toLocaleString() : "-"} (
+          {usagePercent}%)
+        </span>
+        <span>
+          {controller.copy.t("labels.estimatedCost")}:{" "}
+          {formatIssueManagerCost(
+            issue.cost?.estimatedMicros,
+            issue.cost?.currency
+          )}
+        </span>
+        {budget.remainingQuotaPercent !== undefined ? (
+          <span>
+            {controller.copy.t("labels.remainingQuota")}:{" "}
+            {budget.remainingQuotaPercent}%
+          </span>
+        ) : null}
+      </div>
+      {budget.status === "soft_limited" ? (
+        <div className="grid gap-3 rounded-[12px] border border-[var(--color-warning)] bg-[var(--background-secondary)] px-4 py-3 text-[12px] text-[var(--text-primary)]">
+          <p>{controller.copy.t("labels.budgetSoftLimited")}</p>
+          <div className="flex flex-wrap gap-2">
+            <Button
+              size="sm"
+              type="button"
+              variant="secondary"
+              onClick={openBudgetRecoveryEditor}
+            >
+              {controller.copy.t("actions.addBudget")}
+            </Button>
+            <Button
+              size="sm"
+              type="button"
+              variant="secondary"
+              onClick={lowerIntensityAndContinue}
+            >
+              {controller.copy.t("actions.lowerIntensityAndContinue")}
+            </Button>
+            <Button
+              disabled={!firstRemainingTask}
+              size="sm"
+              type="button"
+              variant="secondary"
+              onClick={() =>
+                firstRemainingTask &&
+                controller.selectTask(firstRemainingTask.taskId)
+              }
+            >
+              {controller.copy.t("actions.continueRemainingTasksManually")}
+            </Button>
+          </div>
+        </div>
+      ) : null}
+      {issue.dispatchPaused && budget.status !== "soft_limited" ? (
+        <div className="grid gap-3 rounded-[12px] border border-[var(--color-warning)] bg-[var(--background-secondary)] px-4 py-3 text-[12px] text-[var(--text-primary)]">
+          <p>{controller.copy.t("labels.budgetRecoveryRearrangeHint")}</p>
+          <div>
+            <Button
+              size="sm"
+              type="button"
+              variant="secondary"
+              onClick={() => {
+                controller.setIssueDraft({ dispatchPaused: false });
+                controller.setIssueEditorMode("edit");
+              }}
+            >
+              {controller.copy.t("actions.resumeDispatch")}
+            </Button>
+          </div>
+        </div>
+      ) : null}
+    </section>
+  );
+}
+
+function formatIssueManagerCost(
+  micros: number | undefined,
+  currency: string | undefined
+): string {
+  if (!micros) return "-";
+  return `${currency || "USD"} ${(micros / 1_000_000).toFixed(4)}`;
 }

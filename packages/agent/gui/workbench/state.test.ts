@@ -21,7 +21,7 @@ describe("agent gui workbench state", () => {
     ).toBe("unsupported");
     expect(
       normalizeAgentGuiWorkbenchNodeState({
-        composerOverrides: { model: "gpt-5" },
+        composerOverrides: { model: "gpt-5", modelPlanId: "plan-1" },
         composerOverridesByAgentTargetId: {
           "target-a": { model: "target-model" }
         },
@@ -38,7 +38,7 @@ describe("agent gui workbench state", () => {
       })
     ).toEqual({
       ...createDefaultAgentGuiWorkbenchNodeState("hermes"),
-      composerOverrides: { model: "gpt-5" },
+      composerOverrides: { model: "gpt-5", modelPlanId: "plan-1" },
       composerOverridesByAgentTargetId: {
         "target-a": { model: "target-model" }
       },
@@ -81,6 +81,115 @@ describe("agent gui workbench state", () => {
         "shared-agent:agent-1": "session-1"
       }
     });
+  });
+
+  it("normalizes and persists the pre-planning budget preset", () => {
+    const preset = {
+      executionProfile: {
+        reasoningIntensity: 70,
+        orchestrationIntensity: 45
+      },
+      budget: {
+        mode: "fixed" as const,
+        tokenLimit: 90_000,
+        quotaWaterlinePercent: 12
+      }
+    };
+    const normalized = normalizeAgentGuiWorkbenchNodeState({
+      provider: "codex",
+      planIssueBudgetPreset: preset
+    });
+
+    expect(normalized.planIssueBudgetPreset).toEqual(preset);
+    expect(projectAgentGuiWorkbenchState(normalized)).toMatchObject({
+      planIssueBudgetPreset: preset
+    });
+    expect(
+      areAgentGuiWorkbenchStatesEqual(
+        normalizeAgentGuiWorkbenchState({ planIssueBudgetPreset: preset }),
+        normalizeAgentGuiWorkbenchState({
+          planIssueBudgetPreset: {
+            ...preset,
+            budget: { ...preset.budget, tokenLimit: 90_001 }
+          }
+        })
+      )
+    ).toBe(false);
+  });
+
+  it("normalizes and projects workspace-scoped model configurations", () => {
+    const normalized = normalizeAgentGuiWorkbenchState({
+      agentTargetId: " local:codex ",
+      lastActiveAgentSessionId: null,
+      modelConfigurationsByAgentTargetId: {
+        " local:codex ": {
+          fingerprint: " plan-1:v2 ",
+          source: "model-plan",
+          defaultModel: " x-ai/grok-4.5 ",
+          selectedModel: null
+        },
+        invalid: {
+          fingerprint: "",
+          source: "model-plan",
+          defaultModel: "ignored",
+          selectedModel: null
+        }
+      }
+    });
+
+    expect(normalized).toEqual({
+      agentTargetId: "local:codex",
+      conversationRailCollapsed: false,
+      conversationRailWidthPx: null,
+      lastActiveAgentSessionId: null,
+      modelConfigurationsByAgentTargetId: {
+        "local:codex": {
+          fingerprint: "plan-1:v2",
+          source: "model-plan",
+          defaultModel: "x-ai/grok-4.5",
+          selectedModel: null
+        }
+      }
+    });
+
+    expect(
+      projectAgentGuiWorkbenchState({
+        ...createDefaultAgentGuiWorkbenchNodeState("codex"),
+        agentTargetId: "local:codex",
+        composerOverridesByAgentTargetId: {
+          "local:codex": { model: "not-persisted" }
+        },
+        modelConfigurationsByAgentTargetId:
+          normalized.modelConfigurationsByAgentTargetId
+      })
+    ).toEqual(normalized);
+  });
+
+  it("includes workspace-scoped model configurations in state equality", () => {
+    const current = normalizeAgentGuiWorkbenchState({
+      lastActiveAgentSessionId: null,
+      modelConfigurationsByAgentTargetId: {
+        "local:codex": {
+          fingerprint: "plan-1:v1",
+          source: "model-plan",
+          defaultModel: "gpt-5",
+          selectedModel: null
+        }
+      }
+    });
+    const changed = normalizeAgentGuiWorkbenchState({
+      lastActiveAgentSessionId: null,
+      modelConfigurationsByAgentTargetId: {
+        "local:codex": {
+          fingerprint: "plan-1:v2",
+          source: "model-plan",
+          defaultModel: "gpt-5.1",
+          selectedModel: null
+        }
+      }
+    });
+
+    expect(areAgentGuiWorkbenchStatesEqual(current, changed)).toBe(false);
   });
 
   it("migrates legacy provider target ids to agent target selection", () => {

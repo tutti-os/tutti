@@ -203,6 +203,40 @@ test("invalidate clears cache validity so the next request refetches", () => {
   assert.equal(result.commands.length, 1);
 });
 
+test("invalidate intersects provider and exact opaque target filters", () => {
+  let state = createInitialComposerOptionsState();
+  for (const [targetKey, provider, commandId] of [
+    ["target-a", "codex", "cmd-a"],
+    ["target-b", "codex", "cmd-b"],
+    ["target-c", "claude-code", "cmd-c"]
+  ] as const) {
+    state = composerOptionsReducer(state, {
+      ...loadRequest(),
+      commandId,
+      provider,
+      targetKey
+    }).state;
+    state = composerOptionsReducer(state, {
+      type: "engine/commandResult",
+      commandId,
+      commandType: "composerOptions/load",
+      correlationId: targetKey,
+      outcome: "succeeded",
+      value: options({ provider })
+    }).state;
+  }
+
+  state = composerOptionsReducer(state, {
+    type: "composerOptions/invalidated",
+    providers: ["codex"],
+    targetKeys: ["target-a", "target-c"]
+  }).state;
+
+  assert.equal(state.entriesByTargetKey["target-a"]?.settledSignature, null);
+  assert.notEqual(state.entriesByTargetKey["target-b"]?.settledSignature, null);
+  assert.notEqual(state.entriesByTargetKey["target-c"]?.settledSignature, null);
+});
+
 test("invalidate lets an in-flight caller settle but forces the next refresh", () => {
   let state = composerOptionsReducer(
     createInitialComposerOptionsState(),

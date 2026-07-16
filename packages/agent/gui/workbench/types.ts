@@ -1,3 +1,6 @@
+import type { PlanIssueBudgetPreset } from "../shared/agentConversation/planImplementationPresentation.ts";
+import type { AgentGUIModelConfigurationState } from "../types.ts";
+
 /** Open runtime metadata; agentTargetId remains the launch identity. */
 export type AgentGuiWorkbenchProvider = string;
 
@@ -11,12 +14,15 @@ export interface AgentGuiWorkbenchPrefillPromptPayload {
   agentTargetId?: string | null;
   autoSubmit?: boolean;
   draftPrompt: string;
+  model?: string | null;
+  modelPlanId?: string | null;
   provider?: AgentGuiWorkbenchProvider;
   userProjectPath?: string | null;
 }
 
 export interface AgentGuiWorkbenchComposerOverrides {
   model?: string | null;
+  modelPlanId?: string | null;
   permissionModeId?: string | null;
   planMode?: boolean;
   reasoningEffort?: string | null;
@@ -32,11 +38,18 @@ export type AgentGuiWorkbenchComposerOverridesByAgentTargetId = Record<
   AgentGuiWorkbenchComposerOverrides | null
 >;
 
+export type AgentGuiWorkbenchModelConfigurationsByAgentTargetId = Record<
+  string,
+  AgentGUIModelConfigurationState
+>;
+
 export interface AgentGuiWorkbenchNodeState {
   agentTargetId?: string | null;
   composerOverrides?: AgentGuiWorkbenchComposerOverrides | null;
   composerOverridesByAgentTargetId?: AgentGuiWorkbenchComposerOverridesByAgentTargetId | null;
   composerOverridesByProvider?: AgentGuiWorkbenchComposerOverridesByProvider | null;
+  modelConfigurationsByAgentTargetId?: AgentGuiWorkbenchModelConfigurationsByAgentTargetId | null;
+  planIssueBudgetPreset?: PlanIssueBudgetPreset | null;
   conversationCount?: number | null;
   conversationRailCollapsed?: boolean | null;
   conversationRailWidthPx?: number | null;
@@ -51,8 +64,11 @@ export interface AgentGuiWorkbenchState {
   conversationRailWidthPx?: number | null;
   lastActiveAgentSessionId: string | null;
   lastActiveAgentSessionIdByAgentTargetId?: Record<string, string> | null;
+  modelConfigurationsByAgentTargetId?: AgentGuiWorkbenchModelConfigurationsByAgentTargetId | null;
+  planIssueBudgetPreset?: PlanIssueBudgetPreset | null;
 }
 
 export interface AgentGuiWorkbenchWorkspaceState {
   workspaceId: string;
 }
+import type { AgentGUIModelConfigurationState } from "../types.ts";

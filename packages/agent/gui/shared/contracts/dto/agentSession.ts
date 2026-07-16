@@ -39,6 +39,8 @@ export interface AgentHostAgentSessionPermissionConfig {
 
 export interface AgentHostAgentSessionComposerSettings {
   model?: string | null;
+  /** Pre-session Model Plan override. A different Plan requires a new Session. */
+  modelPlanId?: string | null;
   reasoningEffort?: AgentHostAgentSessionReasoningEffort | null;
   speed?: AgentHostAgentSessionSpeed | null;
   planMode?: boolean;

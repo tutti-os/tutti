@@ -292,7 +292,7 @@ test("WorkspaceSettingsService opens the model plans pane for managed-models req
     }
   );
 
-  assert.equal(service.store.activeSection, "apps");
+  assert.equal(service.store.activeSection, "model");
 });
 
 test("WorkspaceSettingsService opens agent settings with a focused anchor", () => {
@@ -880,6 +880,28 @@ function createWorkspaceSettingsClient(
       }
     }),
     listAgentTargets: async () => [],
+    getAgentProviderComposerOptions: async () => {
+      throw new Error("not used");
+    },
+    listAutomationRules: async () => [],
+    createAutomationRule: async () => {
+      throw new Error("not used");
+    },
+    updateAutomationRule: async () => {
+      throw new Error("not used");
+    },
+    deleteAutomationRule: async () => {},
+    listWorkspaceAgents: async () => [],
+    createWorkspaceAgent: async () => {
+      throw new Error("not used");
+    },
+    generateWorkspaceAgentDraft: async () => {
+      throw new Error("not used");
+    },
+    updateWorkspaceAgent: async () => {
+      throw new Error("not used");
+    },
+    deleteWorkspaceAgent: async () => {},
     setSystemAgentTargetEnabled: async () => {
       throw new Error("not used");
     },
@@ -912,6 +934,7 @@ function createWorkspaceSettingsClient(
     openLogDirectory: async () => {},
     openLogFile: async () => {},
     listModelPlans: async () => [],
+    recommendWorkspaceModels: async () => [],
     createModelPlan: async () => {
       throw new Error("not used");
     },

@@ -9,6 +9,10 @@ import type { ReferenceSourceAggregator } from "@tutti-os/workspace-file-referen
 import type { AgentGuiWorkbenchSessionActionRequest } from "../../workbench/sessionActions";
 import type { AgentSettings } from "../../contexts/settings/domain/agentSettings";
 import type { WorkspaceLinkAction } from "../../actions/workspaceLinkActions";
+import {
+  planIssueBudgetPresetsEqual,
+  type PlanIssueCreationOptions
+} from "../../shared/agentConversation/planImplementationPresentation";
 import type {
   AgentGUINodeData,
   AgentGUIProvider,
@@ -149,6 +153,7 @@ export interface AgentGUINodeHostActions {
     agentTargetId?: string | null;
     draftPrompt: string;
     provider: AgentGUIProvider;
+    sourceAgentSessionId: string;
     userProjectPath?: string | null;
   }) => void | Promise<void>;
   onCapabilitySettingsRequest?: (
@@ -157,6 +162,14 @@ export interface AgentGUINodeHostActions {
   onAgentProviderLogin?: (provider: AgentGUIProvider) => void;
   onAgentEnvPanelOpen?: (input?: OpenAgentEnvPanelInput) => void;
   onOpenConversationWindow?: (agentSessionId: string) => void;
+  onCreateIssueFromPlan?: (input: {
+    agentSessionId: string;
+    creationOptions?: PlanIssueCreationOptions;
+    planTurnId: string;
+    workspaceId: string;
+  }) =>
+    | Promise<{ issueId: string; topicId: string }>
+    | { issueId: string; topicId: string };
   onClose: () => void;
   onResize: (frame: NodeFrame) => void;
   onUpdateNode: (
@@ -209,8 +222,12 @@ function agentGuiStateEquals(
       left.conversationRailCollapsed === right.conversationRailCollapsed &&
       (left.composerOverrides?.model ?? null) ===
         (right.composerOverrides?.model ?? null) &&
+      (left.composerOverrides?.modelPlanId ?? null) ===
+        (right.composerOverrides?.modelPlanId ?? null) &&
       (left.composerOverrides?.reasoningEffort ?? null) ===
         (right.composerOverrides?.reasoningEffort ?? null) &&
+      (left.composerOverrides?.speed ?? null) ===
+        (right.composerOverrides?.speed ?? null) &&
       (left.composerOverrides?.planMode ?? null) ===
         (right.composerOverrides?.planMode ?? null) &&
       (left.composerOverrides?.permissionModeId ?? null) ===
@@ -222,6 +239,14 @@ function agentGuiStateEquals(
       composerOverridesByAgentTargetIdEqual(
         left.composerOverridesByAgentTargetId,
         right.composerOverridesByAgentTargetId
+      ) &&
+      modelConfigurationsByAgentTargetIdEqual(
+        left.modelConfigurationsByAgentTargetId,
+        right.modelConfigurationsByAgentTargetId
+      ) &&
+      planIssueBudgetPresetsEqual(
+        left.planIssueBudgetPreset,
+        right.planIssueBudgetPreset
       ))
   );
 }
@@ -242,8 +267,11 @@ function composerOverridesByProviderEqual(
     const rightSettings = right?.[key] ?? null;
     if (
       (leftSettings?.model ?? null) !== (rightSettings?.model ?? null) ||
+      (leftSettings?.modelPlanId ?? null) !==
+        (rightSettings?.modelPlanId ?? null) ||
       (leftSettings?.reasoningEffort ?? null) !==
         (rightSettings?.reasoningEffort ?? null) ||
+      (leftSettings?.speed ?? null) !== (rightSettings?.speed ?? null) ||
       (leftSettings?.planMode ?? null) !== (rightSettings?.planMode ?? null) ||
       (leftSettings?.permissionModeId ?? null) !==
         (rightSettings?.permissionModeId ?? null)
@@ -267,8 +295,11 @@ function composerOverridesByAgentTargetIdEqual(
     const rightSettings = right?.[key] ?? null;
     if (
       (leftSettings?.model ?? null) !== (rightSettings?.model ?? null) ||
+      (leftSettings?.modelPlanId ?? null) !==
+        (rightSettings?.modelPlanId ?? null) ||
       (leftSettings?.reasoningEffort ?? null) !==
         (rightSettings?.reasoningEffort ?? null) ||
+      (leftSettings?.speed ?? null) !== (rightSettings?.speed ?? null) ||
       (leftSettings?.planMode ?? null) !== (rightSettings?.planMode ?? null) ||
       (leftSettings?.permissionModeId ?? null) !==
         (rightSettings?.permissionModeId ?? null)
@@ -291,6 +322,29 @@ function stringRecordsEqual(
       (key, index) => key === rightKeys[index] && left?.[key] === right?.[key]
     )
   );
+}
+
+function modelConfigurationsByAgentTargetIdEqual(
+  left: AgentGUINodeData["modelConfigurationsByAgentTargetId"],
+  right: AgentGUINodeData["modelConfigurationsByAgentTargetId"]
+): boolean {
+  const keys = new Set([
+    ...Object.keys(left ?? {}),
+    ...Object.keys(right ?? {})
+  ]);
+  for (const key of keys) {
+    const leftConfiguration = left?.[key] ?? null;
+    const rightConfiguration = right?.[key] ?? null;
+    if (
+      leftConfiguration?.fingerprint !== rightConfiguration?.fingerprint ||
+      leftConfiguration?.source !== rightConfiguration?.source ||
+      leftConfiguration?.defaultModel !== rightConfiguration?.defaultModel ||
+      leftConfiguration?.selectedModel !== rightConfiguration?.selectedModel
+    ) {
+      return false;
+    }
+  }
+  return true;
 }
 
 export function areAgentGUINodePropsEqual(

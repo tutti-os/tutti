@@ -45,6 +45,7 @@ import {
   SelectTrigger,
   SelectValue,
   ShortcutBadge,
+  Slider,
   Spinner,
   StatusDot,
   Switch,
@@ -333,6 +334,7 @@ const sections = [
     "ShortcutBadge",
     "快捷键提示与 tooltip 辅助标识"
   ),
+  ...componentSection("slider", "Slider", "数值强度与连续区间选择"),
   {
     id: "spinner",
     label: "Spinner",
@@ -475,6 +477,7 @@ const sectionCopy: Record<
       label: "Shortcut Badge",
       summary: "快捷键提示与 tooltip 辅助标识"
     },
+    slider: { label: "Slider", summary: "数值强度与连续区间选择" },
     spinner: { label: "Spinner", summary: "加载、提交与长任务等待指示器" },
     "status-dot": { label: "Status Dot", summary: "紧凑状态标识与在线指示" },
     switch: { label: "Switch", summary: "即时开关型布尔配置" },
@@ -557,6 +560,10 @@ const sectionCopy: Record<
     "shortcut-badge": {
       label: "Shortcut Badge",
       summary: "Keyboard shortcut hints and tooltip helper labels."
+    },
+    slider: {
+      label: "Slider",
+      summary: "Numeric intensity and continuous range selection."
     },
     spinner: {
       label: "Spinner",
@@ -1566,6 +1573,52 @@ function ShortcutBadgeStoryboard() {
           <ShortcutBadge>Ctrl + Shift + P</ShortcutBadge>
         </div>
       </ExampleCard>
+    </DocsSection>
+  );
+}
+
+function SliderStoryboard() {
+  const [intensity, setIntensity] = useState([60]);
+
+  if (!hasStoryboard("Slider")) {
+    return null;
+  }
+
+  return (
+    <DocsSection
+      id="slider"
+      title="Slider"
+      description="连续数值与范围选择控件，使用语义 token 提供 hover、focus 与 disabled 状态"
+      componentId={metadataFor("Slider")?.id}
+    >
+      <div className="grid gap-1 lg:grid-cols-2">
+        <ExampleCard title="Controlled Value" description="单一强度值">
+          <label className="grid gap-3 text-[13px] text-[var(--text-primary)]">
+            <span>Reasoning intensity: {intensity[0]}</span>
+            <Slider
+              aria-label="Reasoning intensity"
+              value={intensity}
+              onValueChange={setIntensity}
+            />
+          </label>
+        </ExampleCard>
+        <ExampleCard title="States" description="范围与禁用状态">
+          <div className="grid gap-5">
+            <Slider
+              defaultValue={[25, 75]}
+              thumbAriaLabels={[
+                "Selected range minimum",
+                "Selected range maximum"
+              ]}
+            />
+            <Slider
+              aria-label="Disabled intensity"
+              defaultValue={[40]}
+              disabled
+            />
+          </div>
+        </ExampleCard>
+      </div>
     </DocsSection>
   );
 }
@@ -3686,6 +3739,7 @@ export function App() {
           <ResizableStoryboard />
           <SelectStoryboard />
           <ShortcutBadgeStoryboard />
+          <SliderStoryboard />
           <SpinnerStoryboard />
           <StatusDotStoryboard />
           <SwitchStoryboard />

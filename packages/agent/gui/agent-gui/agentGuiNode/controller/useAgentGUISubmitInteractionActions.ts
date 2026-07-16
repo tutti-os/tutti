@@ -2,35 +2,28 @@ import {
   selectEngineCancelState,
   selectEngineHasVisibleQueuedSubmit,
   selectPendingSubmitsForSession,
-  type AgentActivityGoalControlAction,
-  type AgentActivityInteraction,
-  type AgentActivityTurn,
-  type AgentSessionEngine
+  type AgentActivityGoalControlAction
 } from "@tutti-os/agent-activity-core";
-import type { Dispatch, RefObject, SetStateAction } from "react";
 import { useCallback, useEffect } from "react";
-import type { AgentActivityRuntime } from "../../../agentActivityRuntime";
 import { translate } from "../../../i18n/index";
 import type { AgentPromptContentBlock } from "../../../shared/contracts/dto";
-import type { AgentGUINodeData } from "../../../types";
 import {
   agentPromptContentDisplayText,
   agentPromptContentHasImage,
   emptyAgentComposerDraft,
   normalizeAgentPromptContentBlocks,
-  snapshotAgentComposerDraft
+  snapshotAgentComposerDraft,
+  textPromptContent
 } from "../model/agentComposerDraft";
-import type {
-  AgentComposerDraft,
-  AgentGUIOptimisticGoalControl,
-  SubmittedDraftSnapshot
-} from "../model/agentGuiNodeTypes";
-import { resolveAgentComposerDraftScopeKey } from "../model/agentComposerDraftScope";
-import type { AgentGUIConversationSummary } from "../model/agentGuiConversationModel";
+import type { AgentComposerDraft } from "../model/agentGuiNodeTypes";
 import type { AgentComposerSubmitOptions } from "../composer/AgentComposer.types";
+import { resolveAgentComposerDraftScopeKey } from "../model/agentComposerDraftScope";
+import { composerModelPlanRequiresNewSession } from "../model/composerAggregatedModelPlans";
 import {
+  PLAN_IMPLEMENTATION_ACTION_CREATE_ISSUE,
   PLAN_IMPLEMENTATION_ACTION_FEEDBACK,
   PLAN_IMPLEMENTATION_ACTION_IMPLEMENT,
+  PLAN_IMPLEMENTATION_ACTION_ORCHESTRATE,
   PLAN_IMPLEMENTATION_ACTION_SKIP
 } from "../../../shared/agentConversation/planImplementationPresentation";
 import {
@@ -57,79 +50,17 @@ import {
   scheduleAgentSubmitTracePaint
 } from "./agentGuiController.reporting";
 import { resolveAgentGUIInteractionTarget } from "./agentGuiController.interactionHelpers";
+import { resolveConversationSummaryById } from "./useAgentConversationSelection";
 import {
-  resolveConversationSummaryById,
-  type ConversationIntent
-} from "./useAgentConversationSelection";
-import type { useAgentGUIActivation } from "./useAgentGUIActivation";
-import type { AgentGUINewConversationActivationResult } from "./agentGuiNewConversationActivation.types";
+  planIssueCreationOptionsFromPayload,
+  planIssueDraftFromPayload,
+  type UseAgentGUISubmitInteractionActionsInput
+} from "./agentGuiSubmitInteractionContracts";
 import { useAgentGUIGoalControlActions } from "./useAgentGUIGoalControlActions";
 
-interface UseAgentGUISubmitInteractionActionsInput {
-  activation: ReturnType<typeof useAgentGUIActivation>;
-  activeConversationIdRef: RefObject<string | null>;
-  activeEngineActiveTurn: AgentActivityTurn | null;
-  activeEnginePendingInteractions: readonly AgentActivityInteraction[];
-  agentActivityRuntime: AgentActivityRuntime;
-  conversationListQuery: unknown | null;
-  conversationsRef: RefObject<AgentGUIConversationSummary[]>;
-  dataRef: RefObject<AgentGUINodeData>;
-  draftByScopeKeyRef: RefObject<Record<string, AgentComposerDraft>>;
-  executePromptRef: RefObject<
-    (
-      agentSessionId: string,
-      content: AgentPromptContentBlock[],
-      displayPrompt?: string,
-      options?: {
-        immediate?: boolean;
-        requiredSettingsPatch?: AgentComposerSubmitOptions["requiredSettingsPatch"];
-        sendNow?: boolean;
-        sourceScopeKey?: string;
-        trackDraft?: boolean;
-      }
-    ) => void
-  >;
-  isComposerHomeRef: RefObject<boolean>;
-  isCurrentConversation(agentSessionId: string): boolean;
-  isRespondingToInteraction: boolean;
-  isSessionMarkedNonResumable(agentSessionId: string): boolean;
-  persistActiveConversation(agentSessionId: string | null): void;
-  planActionsRef: RefObject<{
-    implement(): void;
-    feedback(value: string): void;
-    skip(): void;
-  }>;
-  previewMode: boolean;
-  promptImagesSupported: boolean;
-  optimisticGoalControl: AgentGUIOptimisticGoalControl | null;
-  sessionEngine: AgentSessionEngine;
-  setActiveConversationId: Dispatch<SetStateAction<string | null>>;
-  setDetailError: Dispatch<SetStateAction<string | null>>;
-  setDraftByScopeKey: Dispatch<
-    SetStateAction<Record<string, AgentComposerDraft>>
-  >;
-  setGoalClearNoticeSequence: Dispatch<SetStateAction<number>>;
-  setIntent: Dispatch<SetStateAction<ConversationIntent>>;
-  setOptimisticGoalControl: Dispatch<
-    SetStateAction<AgentGUIOptimisticGoalControl | null>
-  >;
-  submittedDraftSnapshotsRef: RefObject<Record<string, SubmittedDraftSnapshot>>;
-  startConversation(
-    content: AgentPromptContentBlock[],
-    displayPrompt?: string,
-    options?: AgentComposerSubmitOptions,
-    initialTurnExpected?: boolean
-  ): AgentGUINewConversationActivationResult | null;
-  submitPromptRef: RefObject<
-    (
-      content: AgentPromptContentBlock[],
-      displayPrompt?: string,
-      options?: AgentComposerSubmitOptions
-    ) => void
-  >;
-  transientConversation: AgentGUIConversationSummary | null;
-  workspaceId: string;
-}
+const ULTRA_PLAN_RUNTIME_INSTRUCTION = `You are in Tutti Ultra Plan mode. Do not implement the requested work or decompose it into Issue tasks in this turn. Produce only a thorough, reviewable plan narrative. The host will ask the user to confirm Issue-level reasoning, orchestration, and token-budget settings before a later Planning Agent turn creates the task graph.
+
+End the response with the exact HTML comment <!-- tutti-ultra-plan-v1 -->. Do not emit a tutti-issue-plan-v1 block yet. Never invent credentials, owner ids, provider account metadata, prices, Agents, Model Plans, or models.`;
 
 export function typedGoalControlFromComposer(
   content: AgentPromptContentBlock[],
@@ -165,6 +96,7 @@ export function useAgentGUISubmitInteractionActions(
 ) {
   const {
     activation,
+    activeCanonicalComposerSettings,
     activeConversationIdRef,
     activeEngineActiveTurn,
     activeEnginePendingInteractions,
@@ -173,6 +105,7 @@ export function useAgentGUISubmitInteractionActions(
     conversationsRef,
     dataRef,
     draftByScopeKeyRef,
+    draftSettingsBySessionIdRef,
     executePromptRef,
     isComposerHomeRef,
     isCurrentConversation,
@@ -188,6 +121,7 @@ export function useAgentGUISubmitInteractionActions(
     setDetailError,
     setDraftByScopeKey,
     setGoalClearNoticeSequence,
+    setDraftSettingsBySessionId,
     setIntent,
     setOptimisticGoalControl,
     submittedDraftSnapshotsRef,
@@ -466,6 +400,13 @@ export function useAgentGUISubmitInteractionActions(
         setDetailError(translate("agentHost.agentGui.promptImagesUnsupported"));
         return;
       }
+      const ultraPlan = options?.executionMode === "ultra_plan";
+      const effectiveContent = ultraPlan
+        ? [
+            ...textPromptContent(ULTRA_PLAN_RUNTIME_INSTRUCTION),
+            ...normalizedContent
+          ]
+        : normalizedContent;
       if (!agentSessionId) {
         if (!isComposerHomeRef.current) {
           const promptLength =
@@ -509,8 +450,11 @@ export function useAgentGUISubmitInteractionActions(
             }
             submitExistingPrompt(
               recoveredAgentSessionId,
-              normalizedContent,
-              displayPromptText,
+              effectiveContent,
+              displayPromptText ??
+                (ultraPlan
+                  ? agentPromptContentDisplayText(normalizedContent)
+                  : undefined),
               {
                 requiredSettingsPatch: options?.requiredSettingsPatch,
                 sourceScopeKey: resolveAgentComposerDraftScopeKey({}),
@@ -525,8 +469,11 @@ export function useAgentGUISubmitInteractionActions(
           draftByScopeKeyRef.current[homeDraftKey] ?? emptyAgentComposerDraft()
         );
         const activationResult = startConversation(
-          normalizedContent,
-          displayPromptText,
+          effectiveContent,
+          displayPromptText ??
+            (ultraPlan
+              ? agentPromptContentDisplayText(normalizedContent)
+              : undefined),
           options,
           typedGoal ? false : undefined
         );
@@ -563,10 +510,68 @@ export function useAgentGUISubmitInteractionActions(
         );
         return;
       }
+      const stagedSettings =
+        draftSettingsBySessionIdRef.current[agentSessionId] ?? null;
+      if (
+        stagedSettings &&
+        composerModelPlanRequiresNewSession({
+          activeSettings: activeCanonicalComposerSettings,
+          draftSettings: stagedSettings
+        })
+      ) {
+        const sourceScopeKey = resolveAgentComposerDraftScopeKey({
+          agentSessionId
+        });
+        const submittedSourceDraft = snapshotAgentComposerDraft(
+          draftByScopeKeyRef.current[sourceScopeKey] ??
+            emptyAgentComposerDraft()
+        );
+        const sourceSessionUri = `mention://agent-session/${encodeURIComponent(agentSessionId)}?workspaceId=${encodeURIComponent(workspaceId)}`;
+        const crossPlanContent = [
+          ...textPromptContent(
+            translate(
+              "agentHost.agentGui.composerModelSwitchContextInstruction",
+              { sessionUri: sourceSessionUri }
+            )
+          ),
+          ...effectiveContent
+        ];
+        const activationResult = startConversation(
+          crossPlanContent,
+          displayPromptText ?? agentPromptContentDisplayText(normalizedContent),
+          options,
+          stagedSettings,
+          sourceScopeKey
+        );
+        if (activationResult) {
+          const nextSettingsDrafts = {
+            ...draftSettingsBySessionIdRef.current
+          };
+          delete nextSettingsDrafts[agentSessionId];
+          draftSettingsBySessionIdRef.current = nextSettingsDrafts;
+          setDraftSettingsBySessionId(nextSettingsDrafts);
+          draftByScopeKeyRef.current = clearSubmittedAgentGUIHomeDraft({
+            draftKey: sourceScopeKey,
+            drafts: draftByScopeKeyRef.current,
+            submittedDraft: submittedSourceDraft
+          });
+          setDraftByScopeKey((current) =>
+            clearSubmittedAgentGUIHomeDraft({
+              draftKey: sourceScopeKey,
+              drafts: current,
+              submittedDraft: submittedSourceDraft
+            })
+          );
+        }
+        return;
+      }
       submitExistingPrompt(
         agentSessionId,
-        normalizedContent,
-        displayPromptText,
+        effectiveContent,
+        displayPromptText ??
+          (ultraPlan
+            ? agentPromptContentDisplayText(normalizedContent)
+            : undefined),
         {
           requiredSettingsPatch: options?.requiredSettingsPatch,
           trackDraft: true
@@ -580,6 +585,8 @@ export function useAgentGUISubmitInteractionActions(
       previewMode,
       promptImagesSupported,
       goalControl,
+      activeCanonicalComposerSettings,
+      setDraftSettingsBySessionId,
       persistActiveConversation,
       startConversation,
       submitExistingPrompt,
@@ -639,8 +646,25 @@ export function useAgentGUISubmitInteractionActions(
     }) => {
       // Plan-implementation actions are client-orchestrated; route them to the
       // plan decision handlers instead of submitInteractive.
+      if (input.action === PLAN_IMPLEMENTATION_ACTION_CREATE_ISSUE) {
+        planActionsRef.current.createIssue(
+          planIssueCreationOptionsFromPayload(input.payload)
+        );
+        return;
+      }
       if (input.action === PLAN_IMPLEMENTATION_ACTION_IMPLEMENT) {
         planActionsRef.current.implement();
+        return;
+      }
+      if (input.action === PLAN_IMPLEMENTATION_ACTION_ORCHESTRATE) {
+        const draft = planIssueDraftFromPayload(input.payload);
+        const displayPrompt =
+          typeof input.payload?.displayPrompt === "string"
+            ? input.payload.displayPrompt.trim()
+            : "";
+        if (draft && displayPrompt) {
+          planActionsRef.current.orchestrate(draft, displayPrompt);
+        }
         return;
       }
       if (input.action === PLAN_IMPLEMENTATION_ACTION_FEEDBACK) {

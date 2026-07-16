@@ -320,6 +320,26 @@ test("malformed turnless goal control result is rejected before session upsert",
   });
 });
 
+test("new-session activation carries a defensive copy of its AutomationRule override", () => {
+  const requestedOverride = {
+    disabled: false,
+    ruleIds: ["rule-review", "rule-security"]
+  };
+  const result = reduce(createInitialPendingIntentsState(), {
+    ...activation(),
+    automationRuleOverride: requestedOverride
+  });
+  requestedOverride.ruleIds.push("rule-late-mutation");
+
+  assert.deepEqual(
+    result.state.activationsByRequestId["activation-1"]?.automationRuleOverride,
+    {
+      disabled: false,
+      ruleIds: ["rule-review", "rule-security"]
+    }
+  );
+});
+
 test("timed out activation remains uncertain until its exact session appears", () => {
   let state = reduce(createInitialPendingIntentsState(), activation()).state;
   state = reduce(state, {

@@ -24,6 +24,7 @@ import type {
   AgentMessageContentVM,
   AgentMessageRowVM
 } from "../contracts/agentMessageRowVM";
+import type { AgentCollaborationVM } from "../contracts/agentCollaborationVM";
 import { AgentMessageDetailsDisclosure } from "./AgentMessageDetailsDisclosure";
 import {
   AgentVisibleErrorMessage,
@@ -50,6 +51,7 @@ interface AgentMessageBlockProps {
   basePath: string;
   row: AgentMessageRowVM;
   onLinkAction?: (action: WorkspaceLinkAction) => void;
+  onReviseCollaboration?: (collaboration: AgentCollaborationVM) => void;
   thinkingLabel: string;
   onAuthLogin?: (provider?: string | null) => void;
   // The conversation's provider, so a failed message recovered as an env error
@@ -67,6 +69,7 @@ export function AgentMessageBlock({
   basePath,
   row,
   onLinkAction,
+  onReviseCollaboration,
   thinkingLabel,
   onAuthLogin,
   provider,
@@ -188,6 +191,7 @@ export function AgentMessageBlock({
               workspaceRoot={workspaceRoot}
               basePath={basePath}
               onLinkAction={onLinkAction}
+              onReviseCollaboration={onReviseCollaboration}
               workspaceAppIcons={workspaceAppIcons}
               previewMode={previewMode}
             />

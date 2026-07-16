@@ -63,6 +63,13 @@ test("desktop agent host api forwards model catalog and target defaults invalida
     "agent.model.catalog.invalidated"
   );
   assert.ok(invalidationHandler, "expected model catalog topic subscription");
+  const configurationHandler = topicHandlers.get(
+    "agent.model.configuration.changed"
+  );
+  assert.ok(
+    configurationHandler,
+    "expected model configuration topic subscription"
+  );
 
   const hostEvents: unknown[] = [];
   const unsubscribe = api.onHostEvent?.((event) => {
@@ -71,6 +78,15 @@ test("desktop agent host api forwards model catalog and target defaults invalida
   invalidationHandler({
     payload: { providers: ["codex", "claude-code"], occurredAtUnixMs: 4200 }
   });
+  configurationHandler({
+    payload: {
+      workspaceId,
+      agentTargetIds: ["local:codex"],
+      defaultModels: { "local:codex": "gpt-new" },
+      resetComposerModel: true,
+      occurredAtUnixMs: 4250
+    }
+  });
 
   assert.deepEqual(hostEvents, [
     {
@@ -78,6 +94,15 @@ test("desktop agent host api forwards model catalog and target defaults invalida
       type: "agent-model-catalog-invalidated",
       providers: ["codex", "claude-code"],
       occurredAtUnixMs: 4200
+    },
+    {
+      scope: "room",
+      workspaceId,
+      type: "agent-model-configuration-changed",
+      agentTargetIds: ["local:codex"],
+      defaultModels: { "local:codex": "gpt-new" },
+      resetComposerModel: true,
+      occurredAtUnixMs: 4250
     }
   ]);
   const defaultsInvalidationHandler = topicHandlers.get(
@@ -99,7 +124,16 @@ test("desktop agent host api forwards model catalog and target defaults invalida
   invalidationHandler({
     payload: { providers: ["codex"], occurredAtUnixMs: 4300 }
   });
-  assert.equal(hostEvents.length, 2);
+  configurationHandler({
+    payload: {
+      workspaceId,
+      agentTargetIds: ["local:codex"],
+      defaultModels: { "local:codex": "gpt-new" },
+      resetComposerModel: true,
+      occurredAtUnixMs: 4350
+    }
+  });
+  assert.equal(hostEvents.length, 3);
 });
 
 test("desktop agent host api writes images through the host clipboard", async () => {

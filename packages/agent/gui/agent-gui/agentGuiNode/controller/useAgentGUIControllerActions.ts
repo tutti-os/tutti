@@ -56,6 +56,9 @@ export function useAgentGUIControllerActions(
   const updateComposerSettings = useStableControllerEventCallback(
     actions.updateComposerSettings
   );
+  const updatePlanIssueBudgetPreset = useStableControllerEventCallback(
+    actions.updatePlanIssueBudgetPreset
+  );
   const sendQueuedPromptNext = useStableControllerEventCallback(
     actions.sendQueuedPromptNext
   );
@@ -119,6 +122,7 @@ export function useAgentGUIControllerActions(
       updateDraftContent,
       updateSelectedProjectPath,
       updateComposerSettings,
+      updatePlanIssueBudgetPreset,
       sendQueuedPromptNext,
       removeQueuedPrompt,
       editQueuedPrompt,
@@ -166,6 +170,7 @@ export function useAgentGUIControllerActions(
       submitPrompt,
       toggleConversationPinned,
       updateComposerSettings,
+      updatePlanIssueBudgetPreset,
       updateConversationFilter,
       updateDraftContent,
       updateSelectedProjectPath

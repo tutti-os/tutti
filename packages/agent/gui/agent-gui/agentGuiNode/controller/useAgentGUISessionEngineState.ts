@@ -109,6 +109,7 @@ export function useAgentGUISessionEngineState(input: {
       mergeOptimisticSessionSettings(
         {
           model: activeEngineSession?.settings?.model ?? undefined,
+          modelPlanId: activeEngineSession?.settings?.modelPlanId ?? undefined,
           permissionModeId:
             activeEngineSession?.settings?.permissionModeId ?? undefined,
           planMode: activeEngineSession?.settings?.planMode ?? undefined,

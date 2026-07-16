@@ -1,5 +1,6 @@
 import type {
   AgentHostAgentModelCatalogInvalidatedEvent,
+  AgentHostAgentModelConfigurationChangedEvent,
   AgentHostAgentSessionCommand,
   AgentHostAgentSessionComposerSettings,
   AgentHostAgentSessionEvent,
@@ -30,6 +31,8 @@ export interface AgentActivityMessageUpdate {
 }
 export type AgentModelCatalogInvalidatedEvent =
   AgentHostAgentModelCatalogInvalidatedEvent;
+export type AgentModelConfigurationChangedEvent =
+  AgentHostAgentModelConfigurationChangedEvent;
 export type AgentSessionCommand = AgentHostAgentSessionCommand;
 export type AgentSessionComposerSettings =
   AgentHostAgentSessionComposerSettings;

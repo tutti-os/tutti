@@ -236,6 +236,8 @@ describe("agent gui workbench launch contract", () => {
       createAgentGuiWorkbenchDraftLaunchRequest({
         agentTargetId: "local:codex",
         draftPrompt: "Review this issue",
+        model: "gpt-5.4",
+        modelPlanId: "plan-codex",
         provider: "codex",
         userProjectPath: "/Users/example/project"
       })
@@ -244,6 +246,8 @@ describe("agent gui workbench launch contract", () => {
       payload: {
         agentTargetId: "local:codex",
         draftPrompt: "Review this issue",
+        model: "gpt-5.4",
+        modelPlanId: "plan-codex",
         provider: "codex",
         userProjectPath: "/Users/example/project"
       },

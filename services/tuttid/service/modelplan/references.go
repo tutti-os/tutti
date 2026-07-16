@@ -7,7 +7,8 @@ import (
 )
 
 // CompositeReferenceResolver aggregates plan references from several
-// consumer domains (agent bindings, model usage policies, workspace apps).
+// consumer domains (WorkspaceAgents, automation rules, legacy bindings and
+// policies, and workspace apps).
 type CompositeReferenceResolver []ReferenceResolver
 
 func (resolvers CompositeReferenceResolver) ListModelPlanReferences(ctx context.Context, workspaceID string, planID string) ([]modelplanbiz.Reference, error) {

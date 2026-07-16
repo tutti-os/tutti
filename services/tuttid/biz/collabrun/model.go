@@ -41,11 +41,14 @@ const (
 	TriggerUser   TriggerSource = "user"
 	TriggerAgent  TriggerSource = "agent"
 	TriggerPolicy TriggerSource = "policy"
+	// TriggerAutomation is the action-centric replacement for the legacy
+	// model-policy review trigger. TriggerPolicy remains for historical runs.
+	TriggerAutomation TriggerSource = "automation"
 )
 
 func IsTriggerSource(value string) bool {
 	switch TriggerSource(value) {
-	case TriggerUser, TriggerAgent, TriggerPolicy:
+	case TriggerUser, TriggerAgent, TriggerPolicy, TriggerAutomation:
 		return true
 	default:
 		return false
@@ -104,8 +107,22 @@ func DefaultAdoption(mode Mode) Adoption {
 
 // Usage reports provider-recorded token usage for a consult completion.
 type Usage struct {
-	InputTokens  int64 `json:"inputTokens"`
-	OutputTokens int64 `json:"outputTokens"`
+	InputTokens      int64 `json:"inputTokens"`
+	OutputTokens     int64 `json:"outputTokens"`
+	CacheReadTokens  int64 `json:"cacheReadTokens"`
+	CacheWriteTokens int64 `json:"cacheWriteTokens"`
+}
+
+func (u Usage) Total() int64 {
+	return u.InputTokens + u.OutputTokens + u.CacheReadTokens + u.CacheWriteTokens
+}
+
+// Cost is an optional estimate for metered API plans. Currency stays empty
+// for subscription-quota plans and models without configured unit prices so
+// callers never present a fabricated amount.
+type Cost struct {
+	Currency        string `json:"currency"`
+	EstimatedMicros int64  `json:"estimatedMicros"`
 }
 
 // Run is the durable collaboration run record. Credentials never appear on a
@@ -128,14 +145,27 @@ type Run struct {
 	// ContextScope describes how much source context was carried over, for
 	// example "none", "summary", or "full".
 	ContextScope string
-	// Prompt is the stored consult input (context plus question).
+	// Prompt is the original consult question or target-session work request.
+	// Legacy consult rows may contain the already-composed prompt.
 	Prompt string
+	// RequestText keeps the uncomposed question/work request for replay while
+	// Prompt preserves the historical composed consult payload contract.
+	RequestText string
+	// ContextText is the optional user-supplied supplement. It remains daemon
+	// owned but is durable so retry can safely replay the original request.
+	ContextText string
+	// RetryOfRunID and Attempt preserve immutable retry lineage. The original
+	// request is attempt one and has no retry parent.
+	RetryOfRunID string
+	Attempt      int
 	// ResultText is the consult output.
 	ResultText    string
 	FailureReason string
+	FailureStage  string
 	Status        Status
 	Adoption      Adoption
 	Usage         Usage
+	Cost          Cost
 	StartedAt     time.Time
 	CompletedAt   time.Time
 	DurationMs    int64
@@ -156,6 +186,22 @@ func Normalize(run Run) (Run, error) {
 	run.ModelPlanID = strings.TrimSpace(run.ModelPlanID)
 	run.Model = strings.TrimSpace(run.Model)
 	run.ContextScope = strings.TrimSpace(run.ContextScope)
+	run.Prompt = strings.TrimSpace(run.Prompt)
+	run.RequestText = strings.TrimSpace(run.RequestText)
+	run.ContextText = strings.TrimSpace(run.ContextText)
+	run.RetryOfRunID = strings.TrimSpace(run.RetryOfRunID)
+	run.FailureReason = strings.TrimSpace(run.FailureReason)
+	run.FailureStage = strings.TrimSpace(run.FailureStage)
+	run.Cost.Currency = strings.ToUpper(strings.TrimSpace(run.Cost.Currency))
+	if run.Usage.InputTokens < 0 || run.Usage.OutputTokens < 0 || run.Usage.CacheReadTokens < 0 || run.Usage.CacheWriteTokens < 0 {
+		return Run{}, fmt.Errorf("%w: token usage cannot be negative", ErrInvalidRun)
+	}
+	if run.Attempt <= 0 {
+		run.Attempt = 1
+	}
+	if run.Cost.EstimatedMicros < 0 {
+		return Run{}, fmt.Errorf("%w: estimated cost cannot be negative", ErrInvalidRun)
+	}
 	if run.ID == "" {
 		return Run{}, fmt.Errorf("%w: id is required", ErrInvalidRun)
 	}

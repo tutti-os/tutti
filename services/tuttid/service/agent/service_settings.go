@@ -3,10 +3,19 @@ package agent
 import (
 	"context"
 	"strings"
+	"time"
 
+	agentsessionstore "github.com/tutti-os/tutti/packages/agent/daemon/activity"
 	agenthost "github.com/tutti-os/tutti/packages/agent/host"
 	"github.com/tutti-os/tutti/services/tuttid/biz/agentprovider"
 )
+
+type sessionStateReporter interface {
+	ReportSessionState(
+		context.Context,
+		agentsessionstore.ReportSessionStateInput,
+	) (agentsessionstore.ReportSessionStateReply, error)
+}
 
 func (s *Service) clampReasoningEffortForModel(
 	ctx context.Context,
@@ -99,6 +108,52 @@ func (s *Service) UpdateSettings(ctx context.Context, workspaceID string, agentS
 	defer release()
 	ref := agenthost.SessionRef{WorkspaceID: workspaceID, AgentSessionID: agentSessionID}
 	ctx = withServiceHeldSessionLock(ctx, s, ref)
+	ensured, err := s.ApplicationHost().EnsureRuntimeSession(ctx, ref)
+	if err != nil {
+		return Session{}, err
+	}
+	if settings.Model != nil {
+		if err := s.validateSessionModelAgainstRuntimeSnapshot(
+			ctx,
+			strings.TrimSpace(workspaceID),
+			ensured.RuntimeContext,
+			strings.TrimSpace(*settings.Model),
+		); err != nil {
+			return Session{}, err
+		}
+	}
+	provider := strings.TrimSpace(ensured.Provider)
+	selectedModel := ""
+	selectedReasoningEffort := ""
+	if ensured.Settings != nil {
+		selectedModel = ensured.Settings.Model
+		selectedReasoningEffort = ensured.Settings.ReasoningEffort
+	}
+	if settings.Model != nil {
+		selectedModel = strings.TrimSpace(*settings.Model)
+	}
+	if settings.ReasoningEffort != nil {
+		selectedReasoningEffort = *settings.ReasoningEffort
+	}
+	// A live Codex-derived runtime owns the freshest per-model reasoning
+	// catalog. Let its adapter resolve active updates; the daemon-side catalog
+	// remains the authority for pre-session create/resume only.
+	if (settings.Model != nil || settings.ReasoningEffort != nil) &&
+		!composerProviderUsesModelReasoningCatalog(provider) {
+		clampedReasoningEffort := s.clampReasoningEffortForModel(
+			ctx,
+			provider,
+			selectedModel,
+			selectedReasoningEffort,
+		)
+		if settings.ReasoningEffort != nil || clampedReasoningEffort != selectedReasoningEffort {
+			settings.ReasoningEffort = &clampedReasoningEffort
+		}
+	}
+	if settings.Speed != nil {
+		normalizedSpeed := normalizeSpeedForProvider(provider, *settings.Speed)
+		settings.Speed = &normalizedSpeed
+	}
 	result, err := s.ApplicationHost().UpdateSettings(ctx, agenthost.UpdateSettingsInput{
 		WorkspaceID: workspaceID, AgentSessionID: agentSessionID, Settings: settings,
 	})
@@ -106,4 +161,31 @@ func (s *Service) UpdateSettings(ctx context.Context, workspaceID string, agentS
 		return Session{}, err
 	}
 	return s.projectHostSessionResult(ctx, result.Canonical, result.Session, result.Live, result.Live)
+}
+
+func (s *Service) persistUpdatedRuntimeSettings(ctx context.Context, workspaceID string, agentSessionID string) error {
+	reporter, ok := s.SessionReader.(sessionStateReporter)
+	if !ok {
+		return nil
+	}
+	session, ok := s.controller().Session(workspaceID, agentSessionID)
+	if !ok || session.Settings == nil {
+		return nil
+	}
+	_, err := reporter.ReportSessionState(ctx, agentsessionstore.ReportSessionStateInput{
+		WorkspaceID:    strings.TrimSpace(workspaceID),
+		AgentSessionID: strings.TrimSpace(agentSessionID),
+		SessionOrigin:  agentsessionstore.WorkspaceAgentSessionOriginRuntime,
+		State: agentsessionstore.WorkspaceAgentSessionStateUpdate{
+			AgentTargetID:     strings.TrimSpace(session.AgentTargetID),
+			Provider:          strings.TrimSpace(session.Provider),
+			ProviderSessionID: strings.TrimSpace(session.ProviderSessionID),
+			Model:             strings.TrimSpace(session.Settings.Model),
+			Settings:          composerSettingsToStatePayload(*session.Settings),
+			CWD:               strings.TrimSpace(session.Cwd),
+			Title:             strings.TrimSpace(session.Title),
+			OccurredAtUnixMS:  time.Now().UnixMilli(),
+		},
+	})
+	return err
 }

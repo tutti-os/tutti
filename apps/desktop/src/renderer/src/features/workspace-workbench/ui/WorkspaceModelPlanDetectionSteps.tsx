@@ -56,7 +56,11 @@ const failureReasonLabelKeys: Record<string, DesktopI18nKey> = {
   model_rejected:
     "workspace.settings.apps.modelPlans.failureReasons.modelRejected",
   inference_failed:
-    "workspace.settings.apps.modelPlans.failureReasons.inferenceFailed"
+    "workspace.settings.apps.modelPlans.failureReasons.inferenceFailed",
+  provider_runtime_unavailable:
+    "workspace.settings.apps.modelPlans.failureReasons.providerRuntimeUnavailable",
+  provider_auth_required:
+    "workspace.settings.apps.modelPlans.failureReasons.providerAuthRequired"
 };
 
 const remedyLabelKeys: Record<string, DesktopI18nKey> = {
@@ -66,7 +70,11 @@ const remedyLabelKeys: Record<string, DesktopI18nKey> = {
   add_models_manually:
     "workspace.settings.apps.modelPlans.remedies.addModelsManually",
   check_model_id: "workspace.settings.apps.modelPlans.remedies.checkModelId",
-  select_model: "workspace.settings.apps.modelPlans.remedies.selectModel"
+  select_model: "workspace.settings.apps.modelPlans.remedies.selectModel",
+  install_or_enable_agent_provider:
+    "workspace.settings.apps.modelPlans.remedies.installOrEnableAgentProvider",
+  login_agent_provider:
+    "workspace.settings.apps.modelPlans.remedies.loginAgentProvider"
 };
 
 /**

@@ -20,6 +20,7 @@ type claudeSDKUsageState struct {
 	contextWindowTokens int64
 	contextKnown        bool
 	contextModel        string
+	tokens              runtimeTokenUsage
 	quotas              []map[string]any
 }
 
@@ -79,7 +80,8 @@ func claudeSDKUsageStateFromPayload(update map[string]any) (claudeSDKUsageState,
 	}
 	used, usedOK := firstInt64Value(context, "usedTokens", "used_tokens", "tokensUsed", "tokens_used", "currentTokens", "current_tokens", "used", "current")
 	total, totalOK := firstInt64Value(context, "totalTokens", "total_tokens", "windowTokens", "window_tokens", "contextWindowTokens", "context_window_tokens", "modelContextWindow", "model_context_window", "size", "limit", "max")
-	if !usedOK || !totalOK {
+	tokens := runtimeTokenUsageFromPayload(update)
+	if (!usedOK || !totalOK) && !tokens.known {
 		return claudeSDKUsageState{}, false
 	}
 	if used < 0 {
@@ -91,7 +93,8 @@ func claudeSDKUsageStateFromPayload(update map[string]any) (claudeSDKUsageState,
 	return claudeSDKUsageState{
 		contextUsedTokens:   used,
 		contextWindowTokens: total,
-		contextKnown:        true,
+		contextKnown:        usedOK && totalOK,
+		tokens:              tokens,
 	}, true
 }
 
@@ -110,14 +113,20 @@ func mergeClaudeSDKUsageState(previous claudeSDKUsageState, next claudeSDKUsageS
 	if len(merged.quotas) == 0 && len(previous.quotas) > 0 {
 		merged.quotas = cloneUsageQuotas(previous.quotas)
 	}
+	if !merged.tokens.known && previous.tokens.known {
+		merged.tokens = previous.tokens
+	}
 	return merged
 }
 
 func claudeSDKUsageRuntimeContext(usage claudeSDKUsageState) map[string]any {
-	if !usage.contextKnown && len(usage.quotas) == 0 {
+	if !usage.contextKnown && !usage.tokens.known && len(usage.quotas) == 0 {
 		return nil
 	}
-	result := map[string]any{}
+	result := usage.tokens.runtimeContextFields()
+	if result == nil {
+		result = map[string]any{}
+	}
 	if usage.contextKnown {
 		result["contextWindow"] = map[string]any{
 			"usedTokens":  usage.contextUsedTokens,
@@ -451,13 +460,17 @@ func claudeSDKUsageUpdate(payload map[string]any, previous claudeSDKUsageState, 
 	if total <= 0 {
 		total = claudeSDKAssumedContextWindow(contextModel)
 	}
-	return map[string]any{
+	result := map[string]any{
 		"sessionUpdate": "usage_update",
 		"contextWindow": map[string]any{
 			"usedTokens":  used,
 			"totalTokens": total,
 		},
 	}
+	for key, value := range runtimeTokenUsageFromPayload(usage).runtimeContextFields() {
+		result[key] = value
+	}
+	return result
 }
 
 // claudeSDKAssumedContextWindow picks the context-window size to assume when

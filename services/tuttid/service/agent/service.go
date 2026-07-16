@@ -12,6 +12,7 @@ import (
 	runtimeprep "github.com/tutti-os/tutti/packages/agent/runtimeprep"
 	agentactivitybiz "github.com/tutti-os/tutti/services/tuttid/biz/agentactivity"
 	agenttargetbiz "github.com/tutti-os/tutti/services/tuttid/biz/agenttarget"
+	automationrulebiz "github.com/tutti-os/tutti/services/tuttid/biz/automationrule"
 	preferencesbiz "github.com/tutti-os/tutti/services/tuttid/biz/preferences"
 	workspacedata "github.com/tutti-os/tutti/services/tuttid/data/workspace"
 	claudecodeservice "github.com/tutti-os/tutti/services/tuttid/service/claudecode"
@@ -60,7 +61,7 @@ func (s *Service) Create(ctx context.Context, workspaceID string, input CreateSe
 func (s *Service) CreateWithResult(ctx context.Context, workspaceID string, input CreateSessionInput) (CreateSessionResult, error) {
 	workspaceID = strings.TrimSpace(workspaceID)
 	input.AgentTargetID = strings.TrimSpace(input.AgentTargetID)
-	launch, err := s.resolveCreateSessionLaunch(ctx, input)
+	launch, err := s.resolveCreateSessionLaunch(ctx, workspaceID, &input)
 	if err != nil {
 		return CreateSessionResult{}, err
 	}
@@ -73,7 +74,15 @@ func (s *Service) CreateWithResult(ctx context.Context, workspaceID string, inpu
 	if err := s.applyCreateSessionComposerDefaults(ctx, &input); err != nil {
 		return CreateSessionResult{}, err
 	}
+	if err := s.applyRequestedModelPlan(ctx, workspaceID, &input); err != nil {
+		return Session{}, err
+	}
 	input.ConversationDetailMode = preferencesbiz.NormalizeDesktopAgentConversationDetailMode(input.ConversationDetailMode)
+	requestedPermissionModeID := strings.TrimSpace(value(input.PermissionModeID))
+	if input.StrictPermissionMode && requestedPermissionModeID != "" &&
+		!permissionModeConfigHasModeID(permissionConfigForProvider(provider), requestedPermissionModeID) {
+		return Session{}, fmt.Errorf("%w: permission mode is unsupported by the workspace agent harness", ErrInvalidArgument)
+	}
 	normalizedPermissionModeID := normalizePermissionModeIDForLaunch(provider, input.ProviderTargetRef, value(input.PermissionModeID))
 	if normalizedPermissionModeID != "" {
 		input.PermissionModeID = &normalizedPermissionModeID
@@ -95,15 +104,19 @@ func (s *Service) CreateWithResult(ctx context.Context, workspaceID string, inpu
 	logAgentSubmitTrace("service.create.content_normalized", workspaceID, input.AgentSessionID, input.Metadata, map[string]any{"content_block_count": len(normalizedContent)})
 	requestedModel := value(input.Model)
 	nodeStartedAt := time.Now()
-	planEndpoint, err := s.resolveCreateSessionModelForPlanOrProvider(ctx, workspaceID, provider, requestedModel, &input)
+	planResolution, err := s.resolveCreateSessionModelForPlanOrProvider(ctx, workspaceID, provider, requestedModel, &input)
 	if err != nil {
 		s.reportAgentServiceNodeFailure(ctx, input.AgentSessionID, "session_create", "model_validated", provider, nodeStartedAt, err)
 		return CreateSessionResult{}, err
 	}
 	s.reportAgentServiceNodeSuccess(ctx, input.AgentSessionID, "session_create", "model_validated", provider, nodeStartedAt)
+	input.RuntimeContext = runtimeContextWithSessionRuntimeSnapshot(input.RuntimeContext, input, provider, planResolution)
 	logAgentSubmitTrace("service.create.model_validated", workspaceID, input.AgentSessionID, input.Metadata, map[string]any{
 		"model": value(input.Model),
 	})
+	if err := s.applyCreateSessionReasoningIntensity(ctx, provider, value(input.Model), &input); err != nil {
+		return Session{}, err
+	}
 	input.ReasoningEffort = s.clampReasoningEffortPointerForLaunch(
 		ctx,
 		provider,
@@ -111,6 +124,9 @@ func (s *Service) CreateWithResult(ctx context.Context, workspaceID string, inpu
 		value(input.Model),
 		input.ReasoningEffort,
 	)
+	if err := s.applyInitialAutomationRuleOverride(ctx, workspaceID, input.AgentSessionID, input.AutomationRuleOverride); err != nil {
+		return Session{}, err
+	}
 	isolationMode := strings.TrimSpace(input.Isolation)
 	if isolationMode != "" && isolationMode != WorktreeIsolationMode {
 		return CreateSessionResult{}, fmt.Errorf("%w: unsupported session isolation mode %q", ErrInvalidArgument, isolationMode)
@@ -160,7 +176,7 @@ func (s *Service) CreateWithResult(ctx context.Context, workspaceID string, inpu
 		s.reportAgentServiceNodeSuccess(ctx, input.AgentSessionID, "session_create", "settings_validated", provider, nodeStartedAt)
 	}
 	nodeStartedAt = time.Now()
-	prepared, err := s.prepareRuntime(ctx, workspaceID, cwd, input)
+	prepared, err := s.prepareRuntimeWithModelEndpoint(ctx, workspaceID, cwd, input, planResolution.Endpoint)
 	if err != nil {
 		s.reportAgentServiceNodeFailure(ctx, input.AgentSessionID, "session_create", "runtime_prepared", provider, nodeStartedAt, err)
 		return CreateSessionResult{}, err
@@ -217,7 +233,8 @@ func (s *Service) CreateWithResult(ctx context.Context, workspaceID string, inpu
 			TurnID:  strings.TrimSpace(hostResult.TurnID),
 		}, getErr
 	}
-	s.registerPendingPlanFirstUse(workspaceID, session.ID, planEndpoint, input.AgentTargetID)
+	s.reportAgentServiceNodeSuccess(ctx, session.ID, "session_create", "runtime_started", session.Provider, nodeStartedAt)
+	s.registerPendingPlanFirstUse(workspaceID, session.ID, planResolution.Endpoint, input.AgentTargetID)
 	if len(normalizedContent) == 0 {
 		return CreateSessionResult{
 			Session: decorateIsolatedSession(serviceSessionWithPersistedFreshness(
@@ -296,16 +313,39 @@ func normalizeSpeedForLaunch(provider string, providerTargetRef map[string]any, 
 	return normalizeSpeedForProvider(provider, value)
 }
 
+func (s *Service) applyInitialAutomationRuleOverride(ctx context.Context, workspaceID string, agentSessionID string, input *automationrulebiz.SessionOverride) error {
+	if input == nil {
+		return nil
+	}
+	if s.AutomationRuleOverrides == nil {
+		return errors.New("automation rule session override service is unavailable")
+	}
+	override := *input
+	override.WorkspaceID = strings.TrimSpace(workspaceID)
+	override.AgentSessionID = strings.TrimSpace(agentSessionID)
+	override.RuleIDs = append([]string(nil), input.RuleIDs...)
+	if _, err := s.AutomationRuleOverrides.SetSessionOverride(ctx, override); err != nil {
+		return fmt.Errorf("set initial automation rule override: %w", err)
+	}
+	return nil
+}
+
 type resolvedCreateSessionLaunch struct {
 	Provider          string
 	ProviderTargetRef map[string]any
 }
 
-func (s *Service) resolveCreateSessionLaunch(ctx context.Context, input CreateSessionInput) (resolvedCreateSessionLaunch, error) {
+func (s *Service) resolveCreateSessionLaunch(ctx context.Context, workspaceID string, input *CreateSessionInput) (resolvedCreateSessionLaunch, error) {
+	if input == nil {
+		return resolvedCreateSessionLaunch{}, ErrInvalidArgument
+	}
 	requestProvider := strings.TrimSpace(input.Provider)
 	agentTargetID := strings.TrimSpace(input.AgentTargetID)
 	if agentTargetID == "" {
 		return resolvedCreateSessionLaunch{}, fmt.Errorf("%w: agent target id is required for agent session launch", ErrInvalidArgument)
+	}
+	if strings.HasPrefix(agentTargetID, workspaceAgentIDPrefix) {
+		return s.resolveWorkspaceAgentLaunch(ctx, strings.TrimSpace(workspaceID), input, requestProvider)
 	}
 	if s.AgentTargetStore == nil {
 		return resolvedCreateSessionLaunch{}, fmt.Errorf("%w: agent target store is unavailable", ErrInvalidArgument)
@@ -333,6 +373,7 @@ func (s *Service) resolveCreateSessionLaunch(ctx context.Context, input CreateSe
 	if requestProvider != "" && requestProvider != derivedProvider {
 		return resolvedCreateSessionLaunch{}, fmt.Errorf("%w: provider does not match agent target", ErrInvalidArgument)
 	}
+	input.HarnessAgentTargetID = normalized.ID
 	return resolvedCreateSessionLaunch{
 		Provider:          derivedProvider,
 		ProviderTargetRef: derivedRef,
@@ -364,11 +405,25 @@ type preparedRuntime struct {
 }
 
 func (s *Service) prepareRuntime(ctx context.Context, workspaceID string, cwd string, input CreateSessionInput) (preparedRuntime, error) {
+	provider := strings.TrimSpace(input.Provider)
+	planEndpoint, _ := s.resolveModelPlanEndpoint(ctx, workspaceID, input.AgentTargetID, provider, value(input.Model))
+	return s.prepareRuntimeWithModelEndpoint(ctx, workspaceID, cwd, input, planEndpoint)
+}
+
+// prepareRuntimeWithModelEndpoint prepares a launch with an already resolved
+// endpoint. Create and snapshot-based resume use this path so plan resolution
+// cannot drift between validation and process preparation.
+func (s *Service) prepareRuntimeWithModelEndpoint(
+	ctx context.Context,
+	workspaceID string,
+	cwd string,
+	input CreateSessionInput,
+	planEndpoint *runtimeprep.ModelEndpointConfig,
+) (preparedRuntime, error) {
 	if s.RuntimePreparer == nil {
 		return preparedRuntime{Cwd: cwd}, nil
 	}
 	provider := strings.TrimSpace(input.Provider)
-	planEndpoint, _ := s.resolveModelPlanEndpoint(ctx, workspaceID, input.AgentTargetID, provider, value(input.Model))
 	prepared, err := s.RuntimePreparer.Prepare(ctx, runtimeprep.PrepareInput{
 		WorkspaceID:               workspaceID,
 		AgentSessionID:            strings.TrimSpace(input.AgentSessionID),
@@ -385,6 +440,13 @@ func (s *Service) prepareRuntime(ctx context.Context, workspaceID string, cwd st
 		Model:                     clampComposerModelForLaunch(provider, input.ProviderTargetRef, value(input.Model)),
 		ReasoningEffort:           normalizeReasoningEffortForLaunch(provider, input.ProviderTargetRef, value(input.ReasoningEffort)),
 		ConversationDetailMode:    input.ConversationDetailMode,
+		AgentName:                 input.AgentName,
+		AgentPurpose:              input.AgentPurpose,
+		AgentInstructions:         input.AgentInstructions,
+		AgentCapabilitiesExplicit: input.AgentCapabilitiesExplicit,
+		AgentSkills:               append([]string(nil), input.AgentSkills...),
+		AgentTools:                append([]string(nil), input.AgentTools...),
+		AgentPermissions:          append([]string(nil), input.AgentPermissions...),
 		ExtraSkills:               sessionSkillBundlesToProviderSkillBundles(input.ExtraSkills),
 		Metadata:                  input.Metadata,
 		ExternalRolloutSourcePath: input.ExternalRolloutSourcePath,

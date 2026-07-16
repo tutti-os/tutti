@@ -215,6 +215,14 @@ function requestActivation(
   const baseState = supersededRequestIds.reduce(deleteActivation, state);
   const recordBase = {
     agentSessionId,
+    ...(intent.automationRuleOverride
+      ? {
+          automationRuleOverride: {
+            disabled: intent.automationRuleOverride.disabled,
+            ruleIds: [...intent.automationRuleOverride.ruleIds]
+          }
+        }
+      : {}),
     content,
     cwd: intent.cwd?.trim() ?? "",
     ...(displayPrompt ? { displayPrompt } : {}),
@@ -263,6 +271,14 @@ function requestActivation(
         ? {
             agentSessionId,
             agentTargetId: agentTargetId!,
+            ...(intent.automationRuleOverride
+              ? {
+                  automationRuleOverride: {
+                    disabled: intent.automationRuleOverride.disabled,
+                    ruleIds: [...intent.automationRuleOverride.ruleIds]
+                  }
+                }
+              : {}),
             commandId: `activate:${requestId}`,
             clientSubmitId: clientSubmitId!,
             correlationId: requestId,

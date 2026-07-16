@@ -7,6 +7,7 @@ import (
 	agentstore "github.com/tutti-os/tutti/packages/agent/store-sqlite"
 	agentactivitybiz "github.com/tutti-os/tutti/services/tuttid/biz/agentactivity"
 	agenttargetbiz "github.com/tutti-os/tutti/services/tuttid/biz/agenttarget"
+	automationrulebiz "github.com/tutti-os/tutti/services/tuttid/biz/automationrule"
 	collabrunbiz "github.com/tutti-os/tutti/services/tuttid/biz/collabrun"
 	managedcredentialsbiz "github.com/tutti-os/tutti/services/tuttid/biz/managedcredentials"
 	modelbindingbiz "github.com/tutti-os/tutti/services/tuttid/biz/modelbinding"
@@ -14,6 +15,7 @@ import (
 	preferencesbiz "github.com/tutti-os/tutti/services/tuttid/biz/preferences"
 	userprojectbiz "github.com/tutti-os/tutti/services/tuttid/biz/userproject"
 	workspacebiz "github.com/tutti-os/tutti/services/tuttid/biz/workspace"
+	workspaceagentbiz "github.com/tutti-os/tutti/services/tuttid/biz/workspaceagent"
 )
 
 var ErrWorkspaceNotFound = errors.New("workspace not found")
@@ -99,10 +101,53 @@ type AgentModelBindingsStore interface {
 	PutAgentModelBinding(context.Context, modelbindingbiz.Binding) error
 }
 
+type WorkspaceAgentsStore interface {
+	DeleteWorkspaceAgent(context.Context, string, string) error
+	GetWorkspaceAgent(context.Context, string, string) (workspaceagentbiz.Agent, error)
+	ListWorkspaceAgents(context.Context, string) ([]workspaceagentbiz.Agent, error)
+	ListWorkspaceAgentsByModelPlan(context.Context, string, string) ([]workspaceagentbiz.Agent, error)
+	PutWorkspaceAgent(context.Context, workspaceagentbiz.Agent) error
+}
+
+type AutomationRulesStore interface {
+	DeleteAutomationRule(context.Context, string, string) error
+	GetAutomationRule(context.Context, string, string) (automationrulebiz.Rule, error)
+	ListAutomationRules(context.Context, string) ([]automationrulebiz.Rule, error)
+	ListAutomationRulesByPlan(context.Context, string, string) ([]automationrulebiz.Rule, error)
+	CreateAutomationRule(context.Context, automationrulebiz.Rule) error
+	UpdateAutomationRule(context.Context, automationrulebiz.Rule) (automationrulebiz.Rule, error)
+	GetAutomationRuleSessionOverride(context.Context, string, string) (automationrulebiz.SessionOverride, bool, error)
+	PutAutomationRuleSessionOverride(context.Context, automationrulebiz.SessionOverride) error
+}
+
 type CollaborationRunsStore interface {
 	GetCollaborationRun(context.Context, string, string) (collabrunbiz.Run, error)
 	ListCollaborationRuns(context.Context, string, string, int) ([]collabrunbiz.Run, error)
 	PutCollaborationRun(context.Context, collabrunbiz.Run) error
+}
+
+// IssueCollaborationUsageLink is the durable Issue association resolved from
+// collaboration source/target sessions. DuplicateTaskRun means the
+// CollaborationRun mirrors the same target session already recorded as an
+// Issue Run and must not be counted twice.
+type IssueCollaborationUsageLink struct {
+	IssueID          string
+	TaskID           string
+	DuplicateTaskRun bool
+}
+
+type IssueCollaborationUsageTotals struct {
+	Usage collabrunbiz.Usage
+	Cost  collabrunbiz.Cost
+}
+
+// IssueCollaborationUsageStore is an optional Issue accounting extension.
+// The SQLite host implements it atomically; generic workspace Issue stores do
+// not have to expose collaboration persistence.
+type IssueCollaborationUsageStore interface {
+	ResolveIssueCollaborationUsageLink(context.Context, collabrunbiz.Run) (IssueCollaborationUsageLink, bool, error)
+	RecordIssueCollaborationUsage(context.Context, IssueCollaborationUsageLink, collabrunbiz.Run) (bool, error)
+	GetIssueCollaborationUsageTotals(context.Context, string, string, string) (IssueCollaborationUsageTotals, error)
 }
 
 type ManagedCredentialsStore interface {
@@ -110,6 +155,7 @@ type ManagedCredentialsStore interface {
 	DeleteManagedModelProviderConfig(context.Context, string, managedcredentialsbiz.ProviderID) error
 	GetManagedModelGrant(context.Context, string, string, string) (managedcredentialsbiz.Grant, error)
 	GetManagedModelProviderConfig(context.Context, string, managedcredentialsbiz.ProviderID) (managedcredentialsbiz.ProviderConfig, error)
+	ListManagedModelGrants(context.Context, string) ([]managedcredentialsbiz.Grant, error)
 	ListManagedModelProviderConfigs(context.Context, string) ([]managedcredentialsbiz.ProviderConfig, error)
 	PutManagedModelGrant(context.Context, managedcredentialsbiz.Grant) error
 	PutManagedModelProviderConfig(context.Context, managedcredentialsbiz.ProviderConfig) error

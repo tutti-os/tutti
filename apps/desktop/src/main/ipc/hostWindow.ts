@@ -235,6 +235,8 @@ function normalizeAgentWindowInput(
     agentTargetID: input.agentTargetId?.trim() || null,
     autoSubmit: input.autoSubmit === true,
     draftPrompt: input.draftPrompt?.trim() || null,
+    model: input.model?.trim() || null,
+    modelPlanId: input.modelPlanId?.trim() || null,
     openerBounds,
     openerWindowKind,
     offsetFromSourceWindow: input.offsetFromSourceWindow === true,

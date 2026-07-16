@@ -9,6 +9,8 @@ import (
 	"time"
 
 	managedcredentialsbiz "github.com/tutti-os/tutti/services/tuttid/biz/managedcredentials"
+	modelplanbiz "github.com/tutti-os/tutti/services/tuttid/biz/modelplan"
+	workspacedata "github.com/tutti-os/tutti/services/tuttid/data/workspace"
 )
 
 func TestServiceGrantCodeIsOneTimeAndGrantRefRefreshes(t *testing.T) {
@@ -120,6 +122,104 @@ func TestServiceGrantCodeIsOneTimeAndGrantRefRefreshes(t *testing.T) {
 	}
 	if !refreshCredential.ExpiresAt.Equal(grant.Grant.ExpiresAt) {
 		t.Fatalf("credential expiry = %s, want fixed grant expiry %s", refreshCredential.ExpiresAt, grant.Grant.ExpiresAt)
+	}
+}
+
+func TestServiceDefaultsAppGrantToUsableModelPlans(t *testing.T) {
+	ctx := context.Background()
+	now := time.Date(2026, 7, 15, 12, 0, 0, 0, time.UTC)
+	store := newManagedCredentialsMemoryStore()
+	store.plans["workspace-1:plan-1"] = readyManagedCredentialPlan(
+		"workspace-1", "plan-1", "OpenAI Plan", "plan-secret", "gpt-5.5",
+	)
+	service := &Service{
+		Store: store,
+		Plans: store,
+		Now:   func() time.Time { return now },
+	}
+
+	grant, err := service.CreateGrant(ctx, CreateGrantInput{
+		ContextToken: "context-token",
+		WorkspaceID:  "workspace-1",
+		AppID:        "app-1",
+		Nonce:        "nonce-1",
+		ProviderIDs:  []string{"openai"},
+		Scopes:       []string{"model:invoke"},
+		State:        "state-1",
+	})
+	if err != nil {
+		t.Fatalf("CreateGrant: %v", err)
+	}
+	if len(grant.Grant.ProviderIDs) != 0 || len(grant.Grant.ModelPlanIDs) != 1 || grant.Grant.ModelPlanIDs[0] != "plan-1" {
+		t.Fatalf("grant routes = providers %#v plans %#v", grant.Grant.ProviderIDs, grant.Grant.ModelPlanIDs)
+	}
+	if len(grant.Models) != 1 || grant.Models[0].ModelPlanID != "plan-1" || grant.Models[0].ModelPlanName != "OpenAI Plan" {
+		t.Fatalf("grant models = %#v", grant.Models)
+	}
+
+	credential, err := service.Credential(ctx, CredentialInput{
+		WorkspaceID: "workspace-1",
+		AppID:       "app-1",
+		GrantRef:    grant.Grant.GrantRef,
+		Provider:    "openai",
+		Model:       "gpt-5.5",
+		Capability:  "agent",
+	})
+	if err != nil {
+		t.Fatalf("Credential: %v", err)
+	}
+	if credential.Credential.APIKey != "plan-secret" || credential.Credential.ModelPlanID != "plan-1" {
+		t.Fatalf("credential = %#v", credential.Credential)
+	}
+
+	references, err := service.ListModelPlanReferences(ctx, "workspace-1", "plan-1")
+	if err != nil {
+		t.Fatalf("ListModelPlanReferences: %v", err)
+	}
+	if len(references) != 1 || references[0].Kind != modelplanbiz.ReferenceWorkspaceApp || references[0].ID != "app-1" {
+		t.Fatalf("references = %#v", references)
+	}
+}
+
+func TestServiceRequiresPlanIdentityForAmbiguousAppCredential(t *testing.T) {
+	ctx := context.Background()
+	store := newManagedCredentialsMemoryStore()
+	store.plans["workspace-1:plan-1"] = readyManagedCredentialPlan(
+		"workspace-1", "plan-1", "Plan One", "secret-one", "gpt-shared",
+	)
+	store.plans["workspace-1:plan-2"] = readyManagedCredentialPlan(
+		"workspace-1", "plan-2", "Plan Two", "secret-two", "gpt-shared",
+	)
+	service := &Service{Store: store, Plans: store}
+	grant, err := service.CreateGrant(ctx, CreateGrantInput{
+		ContextToken: "context-token",
+		WorkspaceID:  "workspace-1",
+		AppID:        "app-1",
+		Nonce:        "nonce-1",
+		ModelPlanIDs: []string{"plan-1", "plan-2"},
+		State:        "state-1",
+	})
+	if err != nil {
+		t.Fatalf("CreateGrant: %v", err)
+	}
+	input := CredentialInput{
+		WorkspaceID: "workspace-1",
+		AppID:       "app-1",
+		GrantRef:    grant.Grant.GrantRef,
+		Provider:    "openai",
+		Model:       "gpt-shared",
+		Capability:  "agent",
+	}
+	if _, err := service.Credential(ctx, input); !errors.Is(err, ErrModelPlanSelectionRequired) {
+		t.Fatalf("Credential without plan error = %v", err)
+	}
+	input.ModelPlanID = "plan-2"
+	credential, err := service.Credential(ctx, input)
+	if err != nil {
+		t.Fatalf("Credential with plan: %v", err)
+	}
+	if credential.Credential.APIKey != "secret-two" {
+		t.Fatalf("credential API key = %q", credential.Credential.APIKey)
 	}
 }
 
@@ -476,12 +576,14 @@ func TestServiceListProviderModelsTriesVersionedBaseModelsFirst(t *testing.T) {
 
 type managedCredentialsMemoryStore struct {
 	grants    map[string]managedcredentialsbiz.Grant
+	plans     map[string]modelplanbiz.Plan
 	providers map[string]managedcredentialsbiz.ProviderConfig
 }
 
 func newManagedCredentialsMemoryStore() *managedCredentialsMemoryStore {
 	return &managedCredentialsMemoryStore{
 		grants:    map[string]managedcredentialsbiz.Grant{},
+		plans:     map[string]modelplanbiz.Plan{},
 		providers: map[string]managedcredentialsbiz.ProviderConfig{},
 	}
 }
@@ -521,6 +623,34 @@ func (s *managedCredentialsMemoryStore) ListManagedModelProviderConfigs(_ contex
 	return configs, nil
 }
 
+func (s *managedCredentialsMemoryStore) ListManagedModelGrants(_ context.Context, workspaceID string) ([]managedcredentialsbiz.Grant, error) {
+	grants := []managedcredentialsbiz.Grant{}
+	for _, grant := range s.grants {
+		if grant.WorkspaceID == workspaceID {
+			grants = append(grants, grant)
+		}
+	}
+	return grants, nil
+}
+
+func (s *managedCredentialsMemoryStore) GetModelPlan(_ context.Context, workspaceID string, planID string) (modelplanbiz.Plan, error) {
+	plan, ok := s.plans[workspaceID+":"+planID]
+	if !ok {
+		return modelplanbiz.Plan{}, workspacedata.ErrModelPlanNotFound
+	}
+	return plan, nil
+}
+
+func (s *managedCredentialsMemoryStore) ListModelPlans(_ context.Context, workspaceID string) ([]modelplanbiz.Plan, error) {
+	plans := []modelplanbiz.Plan{}
+	for _, plan := range s.plans {
+		if plan.WorkspaceID == workspaceID {
+			plans = append(plans, plan)
+		}
+	}
+	return plans, nil
+}
+
 func (s *managedCredentialsMemoryStore) PutManagedModelGrant(_ context.Context, grant managedcredentialsbiz.Grant) error {
 	s.grants[grant.WorkspaceID+":"+grant.AppID+":"+grant.GrantRef] = grant
 	return nil
@@ -540,4 +670,50 @@ func (s *managedCredentialsMemoryStore) RevokeManagedModelGrant(_ context.Contex
 	grant.RevokedAt = &now
 	s.grants[workspaceID+":"+appID+":"+grantRef] = grant
 	return nil
+}
+
+func readyManagedCredentialPlan(workspaceID string, planID string, name string, apiKey string, modelID string) modelplanbiz.Plan {
+	checkedAt := time.Date(2026, 7, 15, 10, 0, 0, 0, time.UTC)
+	stages := make([]modelplanbiz.StageResult, 0, 4)
+	for _, stage := range []modelplanbiz.DetectionStage{
+		modelplanbiz.StageNetwork,
+		modelplanbiz.StageAuth,
+		modelplanbiz.StageModelDiscovery,
+		modelplanbiz.StageInference,
+	} {
+		stages = append(stages, modelplanbiz.StageResult{
+			Stage:     stage,
+			Status:    modelplanbiz.StagePassed,
+			CheckedAt: checkedAt,
+		})
+	}
+	return modelplanbiz.Plan{
+		ID:           planID,
+		WorkspaceID:  workspaceID,
+		Revision:     1,
+		Name:         name,
+		TemplateKind: modelplanbiz.TemplateCustom,
+		Protocol:     modelplanbiz.ProtocolOpenAI,
+		APIKey:       apiKey,
+		BaseURL:      "https://example.test/v1",
+		Models: []modelplanbiz.Model{{
+			ID:   modelID,
+			Name: modelID,
+			Tier: modelplanbiz.ModelTierStandard,
+		}},
+		DefaultModel: modelID,
+		Enabled:      true,
+		Detection: modelplanbiz.DetectionSnapshot{
+			Stages:    stages,
+			CheckedAt: checkedAt,
+			Model:     modelID,
+		},
+		FirstUse: modelplanbiz.FirstUse{
+			Status:      modelplanbiz.FirstUseCompleted,
+			CompletedAt: checkedAt,
+			Model:       modelID,
+		},
+		CreatedAt: checkedAt,
+		UpdatedAt: checkedAt,
+	}
 }

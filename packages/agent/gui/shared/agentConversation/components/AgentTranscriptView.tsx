@@ -13,6 +13,7 @@ import type { WorkspaceLinkAction } from "../../../contexts/workspace/presentati
 import type { AgentMessageMarkdownWorkspaceAppIcon } from "../../AgentMessageMarkdown";
 import type { AgentGUIProviderSkillOption } from "../../../agent-gui/agentGuiNode/model/agentGuiNodeTypes";
 import type { AgentConversationVM } from "../contracts/agentConversationVM";
+import type { AgentCollaborationVM } from "../contracts/agentCollaborationVM";
 import { AgentTranscriptItemView } from "./AgentTranscriptItemView";
 import { useAgentTurnDisclosureStore } from "./AgentTurnDisclosureContext";
 import { AgentTurnWorkSection } from "./AgentTurnWorkSection";
@@ -44,6 +45,7 @@ const preventVirtualScrollAdjustment = () => false;
 interface AgentTranscriptViewProps {
   conversation: AgentConversationVM;
   onLinkAction?: (action: WorkspaceLinkAction) => void;
+  onReviseCollaboration?: (collaboration: AgentCollaborationVM) => void;
   onAuthLogin?: (provider?: string | null) => void;
   availableSkills?: readonly AgentGUIProviderSkillOption[];
   workspaceAppIcons?: readonly AgentMessageMarkdownWorkspaceAppIcon[];
@@ -142,6 +144,7 @@ export function areAgentTranscriptViewPropsEqual(
       next.conversation
     ) &&
     previous.onLinkAction === next.onLinkAction &&
+    previous.onReviseCollaboration === next.onReviseCollaboration &&
     previous.onAuthLogin === next.onAuthLogin &&
     previous.availableSkills === next.availableSkills &&
     previous.workspaceAppIcons === next.workspaceAppIcons &&
@@ -154,6 +157,7 @@ export function areAgentTranscriptViewPropsEqual(
 export const AgentTranscriptView = memo(function AgentTranscriptView({
   conversation,
   onLinkAction,
+  onReviseCollaboration,
   onAuthLogin,
   availableSkills,
   workspaceAppIcons,

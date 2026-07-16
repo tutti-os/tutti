@@ -119,20 +119,25 @@ func (s *SQLiteStore) PutManagedModelGrant(ctx context.Context, grant managedcre
 	if err != nil {
 		return fmt.Errorf("marshal managed grant providers: %w", err)
 	}
+	modelPlansJSON, err := json.Marshal(grant.ModelPlanIDs)
+	if err != nil {
+		return fmt.Errorf("marshal managed grant model plans: %w", err)
+	}
 	scopesJSON, err := json.Marshal(grant.Scopes)
 	if err != nil {
 		return fmt.Errorf("marshal managed grant scopes: %w", err)
 	}
 	_, err = s.writeDB.ExecContext(ctx, `
 INSERT INTO managed_model_app_grants (
-  workspace_id, app_id, grant_ref, provider_ids_json, scopes_json, created_at_unix_ms, expires_at_unix_ms, revoked_at_unix_ms
-) VALUES (?, ?, ?, ?, ?, ?, ?, NULL)
+  workspace_id, app_id, grant_ref, provider_ids_json, model_plan_ids_json, scopes_json, created_at_unix_ms, expires_at_unix_ms, revoked_at_unix_ms
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL)
 ON CONFLICT(workspace_id, app_id, grant_ref) DO UPDATE SET
   provider_ids_json = excluded.provider_ids_json,
+  model_plan_ids_json = excluded.model_plan_ids_json,
   scopes_json = excluded.scopes_json,
   expires_at_unix_ms = excluded.expires_at_unix_ms,
   revoked_at_unix_ms = NULL
-`, grant.WorkspaceID, grant.AppID, grant.GrantRef, string(providersJSON), string(scopesJSON), unixMs(grant.CreatedAt), unixMs(grant.ExpiresAt))
+`, grant.WorkspaceID, grant.AppID, grant.GrantRef, string(providersJSON), string(modelPlansJSON), string(scopesJSON), unixMs(grant.CreatedAt), unixMs(grant.ExpiresAt))
 	if err != nil {
 		return fmt.Errorf("put managed model grant: %w", err)
 	}
@@ -144,25 +149,40 @@ func (s *SQLiteStore) GetManagedModelGrant(ctx context.Context, workspaceID stri
 		return managedcredentialsbiz.Grant{}, errors.New("workspace database is not initialized")
 	}
 	row := s.readDB.QueryRowContext(ctx, `
-SELECT workspace_id, app_id, grant_ref, provider_ids_json, scopes_json, created_at_unix_ms, expires_at_unix_ms, revoked_at_unix_ms
+SELECT workspace_id, app_id, grant_ref, provider_ids_json, model_plan_ids_json, scopes_json, created_at_unix_ms, expires_at_unix_ms, revoked_at_unix_ms
 FROM managed_model_app_grants
 WHERE workspace_id = ? AND app_id = ? AND grant_ref = ?
 `, workspaceID, appID, grantRef)
-	var grant managedcredentialsbiz.Grant
-	var providersJSON string
-	var scopesJSON string
-	var createdAtUnixMS int64
-	var expiresAtUnixMS int64
-	var revokedAt sql.NullInt64
-	if err := row.Scan(&grant.WorkspaceID, &grant.AppID, &grant.GrantRef, &providersJSON, &scopesJSON, &createdAtUnixMS, &expiresAtUnixMS, &revokedAt); err != nil {
-		return managedcredentialsbiz.Grant{}, err
+	return scanManagedModelGrant(row)
+}
+
+func (s *SQLiteStore) ListManagedModelGrants(ctx context.Context, workspaceID string) ([]managedcredentialsbiz.Grant, error) {
+	if s == nil || s.readDB == nil || s.writeDB == nil {
+		return nil, errors.New("workspace database is not initialized")
 	}
-	_ = json.Unmarshal([]byte(providersJSON), &grant.ProviderIDs)
-	_ = json.Unmarshal([]byte(scopesJSON), &grant.Scopes)
-	grant.CreatedAt = time.UnixMilli(createdAtUnixMS).UTC()
-	grant.ExpiresAt = time.UnixMilli(expiresAtUnixMS).UTC()
-	grant.RevokedAt = nullableUnixMs(revokedAt)
-	return grant, nil
+	rows, err := s.readDB.QueryContext(ctx, `
+SELECT workspace_id, app_id, grant_ref, provider_ids_json, model_plan_ids_json, scopes_json, created_at_unix_ms, expires_at_unix_ms, revoked_at_unix_ms
+FROM managed_model_app_grants
+WHERE workspace_id = ?
+ORDER BY app_id, grant_ref
+`, workspaceID)
+	if err != nil {
+		return nil, fmt.Errorf("list managed model grants: %w", err)
+	}
+	defer rows.Close()
+
+	grants := []managedcredentialsbiz.Grant{}
+	for rows.Next() {
+		grant, err := scanManagedModelGrant(rows)
+		if err != nil {
+			return nil, err
+		}
+		grants = append(grants, grant)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("list managed model grant rows: %w", err)
+	}
+	return grants, nil
 }
 
 func (s *SQLiteStore) RevokeManagedModelGrant(ctx context.Context, workspaceID string, appID string, grantRef string) error {
@@ -196,6 +216,26 @@ WHERE workspace_id = ? AND app_id = ? AND grant_ref = ?
 
 type managedProviderScanner interface {
 	Scan(dest ...any) error
+}
+
+func scanManagedModelGrant(row managedProviderScanner) (managedcredentialsbiz.Grant, error) {
+	var grant managedcredentialsbiz.Grant
+	var providersJSON string
+	var modelPlansJSON string
+	var scopesJSON string
+	var createdAtUnixMS int64
+	var expiresAtUnixMS int64
+	var revokedAt sql.NullInt64
+	if err := row.Scan(&grant.WorkspaceID, &grant.AppID, &grant.GrantRef, &providersJSON, &modelPlansJSON, &scopesJSON, &createdAtUnixMS, &expiresAtUnixMS, &revokedAt); err != nil {
+		return managedcredentialsbiz.Grant{}, err
+	}
+	_ = json.Unmarshal([]byte(providersJSON), &grant.ProviderIDs)
+	_ = json.Unmarshal([]byte(modelPlansJSON), &grant.ModelPlanIDs)
+	_ = json.Unmarshal([]byte(scopesJSON), &grant.Scopes)
+	grant.CreatedAt = time.UnixMilli(createdAtUnixMS).UTC()
+	grant.ExpiresAt = time.UnixMilli(expiresAtUnixMS).UTC()
+	grant.RevokedAt = nullableUnixMs(revokedAt)
+	return grant, nil
 }
 
 func scanManagedModelProviderConfig(row managedProviderScanner) (managedcredentialsbiz.ProviderConfig, error) {

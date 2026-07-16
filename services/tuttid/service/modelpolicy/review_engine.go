@@ -62,7 +62,8 @@ type reviewEngine struct {
 	lastTurn map[string]string
 }
 
-// ConfigureReviewAutomation wires the optional review automation inputs.
+// ConfigureReviewAutomation wires the legacy review runner for compatibility
+// tests and embedders. Production daemon wiring must use AutomationRule.
 func (s *Service) ConfigureReviewAutomation(bindings BindingSource, sessions SessionTargetResolver, runner ReviewConsultRunner, budget ReviewBudgetReader) {
 	s.Bindings = bindings
 	s.Sessions = sessions
@@ -121,11 +122,14 @@ func (s *Service) ObserveAgentSessionState(ctx context.Context, input agentsessi
 		}
 	}
 
-	policy, ok := s.resolveEffectivePolicy(ctx, workspaceID, agentSessionID, strings.TrimSpace(input.State.AgentTargetID))
-	if !ok || !policy.ReviewRule.Enabled {
+	// Legacy policy CRUD and acceptance remain readable during migration, but
+	// role-based review automation is inert unless a compatibility caller
+	// explicitly supplies a runner. Production wiring deliberately does not.
+	if s.Runner == nil {
 		return
 	}
-	if s.Runner == nil {
+	policy, ok := s.resolveEffectivePolicy(ctx, workspaceID, agentSessionID, strings.TrimSpace(input.State.AgentTargetID))
+	if !ok || !policy.ReviewRule.Enabled {
 		return
 	}
 
@@ -224,23 +228,38 @@ func (s *Service) runReview(ctx context.Context, workspaceID string, agentSessio
 		)
 		return
 	}
-	if !reviewVerdictPassed(result.ResultText) {
-		// A failing review keeps the ladder at agent_claimed; the run itself
-		// is visible in the collaboration timeline for the user to inspect.
-		return
+	_, _, _ = s.RecordAutomatedReviewOutcome(ctx, workspaceID, agentSessionID, result.RunID, reviewVerdictPassed(result.ResultText))
+}
+
+// RecordAutomatedReviewOutcome applies the fixed review result to the legacy
+// session acceptance projection. Production AutomationRule wiring calls this
+// same transition, while a failing or malformed review deliberately leaves
+// the Agent claim in place.
+func (s *Service) RecordAutomatedReviewOutcome(ctx context.Context, workspaceID string, agentSessionID string, reviewRunID string, passed bool) (modelpolicybiz.Acceptance, bool, error) {
+	workspaceID = strings.TrimSpace(workspaceID)
+	agentSessionID = strings.TrimSpace(agentSessionID)
+	reviewRunID = strings.TrimSpace(reviewRunID)
+	if s == nil || s.Store == nil || workspaceID == "" || agentSessionID == "" {
+		return modelpolicybiz.Acceptance{}, false, ErrInvalidPolicyInput
 	}
-	if existing, ok, err := s.GetAcceptance(ctx, workspaceID, agentSessionID); err == nil {
-		if ok && existing.State == modelpolicybiz.AcceptanceUserAccepted {
-			return
-		}
+	existing, ok, err := s.GetAcceptance(ctx, workspaceID, agentSessionID)
+	if err != nil {
+		return modelpolicybiz.Acceptance{}, false, err
 	}
-	_ = s.Store.PutAgentSessionAcceptance(ctx, modelpolicybiz.Acceptance{
+	if !passed || (ok && existing.State == modelpolicybiz.AcceptanceUserAccepted) {
+		return existing, ok, nil
+	}
+	acceptance := modelpolicybiz.Acceptance{
 		WorkspaceID:    workspaceID,
 		AgentSessionID: agentSessionID,
 		State:          modelpolicybiz.AcceptanceAutoChecked,
-		ReviewRunID:    result.RunID,
+		ReviewRunID:    reviewRunID,
 		UpdatedAt:      s.now(),
-	})
+	}
+	if err := s.Store.PutAgentSessionAcceptance(ctx, acceptance); err != nil {
+		return modelpolicybiz.Acceptance{}, false, err
+	}
+	return acceptance, true, nil
 }
 
 // reviewVerdictPassed parses the required final verdict line. Missing or

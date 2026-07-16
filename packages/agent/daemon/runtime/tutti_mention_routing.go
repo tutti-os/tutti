@@ -39,6 +39,8 @@ func skillForMentionURI(uri string) string {
 		return "tutti-cli"
 	case strings.HasPrefix(uri, "mention://agent-target/"):
 		return "tutti-handoff"
+	case strings.HasPrefix(uri, "mention://workspace-model/"):
+		return "tutti-cli"
 	default:
 		return ""
 	}

@@ -122,6 +122,7 @@ describe("useAgentGUIComposerOptionsSync", () => {
           dataRef,
           defaultReasoningEffort: "high",
           draftSettingsBySessionIdRef: { current: {} },
+          setDraftSettingsBySessionId: vi.fn(),
           isComposerHome: true,
           isComposerHomeRef: { current: true },
           isCreatingConversation,

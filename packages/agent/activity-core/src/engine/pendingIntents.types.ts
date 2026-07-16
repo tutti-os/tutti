@@ -1,4 +1,5 @@
 import type {
+  AgentActivityAutomationRuleOverride,
   AgentActivityMessage,
   AgentActivitySessionSettings,
   AgentActivitySubmitDiagnostics,
@@ -27,6 +28,7 @@ export function isPendingActivationViable(
 
 interface PendingActivationIntentRecordBase {
   agentSessionId: string;
+  automationRuleOverride?: Readonly<AgentActivityAutomationRuleOverride>;
   content: readonly AgentPromptContentBlock[];
   displayPrompt?: string;
   cwd: string;
@@ -93,6 +95,7 @@ export interface PendingIntentsState {
 interface SessionActivationRequestedIntentBase {
   type: "activation/requested";
   agentSessionId: string;
+  automationRuleOverride?: Readonly<AgentActivityAutomationRuleOverride>;
   content?: readonly AgentPromptContentBlock[];
   cwd?: string;
   expiresAtUnixMs: number;
@@ -158,6 +161,7 @@ export interface SessionUnactivationRequestedIntent {
 interface SessionActivateCommandBase {
   type: "session/activate";
   agentSessionId: string;
+  automationRuleOverride?: Readonly<AgentActivityAutomationRuleOverride>;
   commandId: string;
   correlationId: string;
   cwd?: string;

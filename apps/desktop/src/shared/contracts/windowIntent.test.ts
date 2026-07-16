@@ -90,6 +90,8 @@ test("encodeDesktopWindowIntent carries an Agent draft into a standalone window"
       agentTargetID: "target-1",
       autoSubmit: true,
       draftPrompt: " Fix the app ",
+      model: " gpt-5.4 ",
+      modelPlanId: " plan-codex ",
       provider: "codex",
       userProjectPath: " /workspace/app ",
       workspaceID: "workspace-1"
@@ -99,12 +101,16 @@ test("encodeDesktopWindowIntent carries an Agent draft into a standalone window"
   const params = new URLSearchParams(search);
   assert.equal(params.get("draftPrompt"), "Fix the app");
   assert.equal(params.get("autoSubmit"), "1");
+  assert.equal(params.get("model"), "gpt-5.4");
+  assert.equal(params.get("modelPlanId"), "plan-codex");
   assert.equal(params.get("userProjectPath"), "/workspace/app");
   assert.deepEqual(resolveDesktopWindowIntent(search), {
     agentSessionID: null,
     agentTargetID: "target-1",
     autoSubmit: true,
     draftPrompt: "Fix the app",
+    model: "gpt-5.4",
+    modelPlanId: "plan-codex",
     kind: "agent",
     provider: "codex",
     userProjectPath: "/workspace/app",

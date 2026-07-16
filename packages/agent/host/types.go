@@ -11,6 +11,7 @@ type SessionRef struct {
 
 type ComposerSettings struct {
 	Model            string
+	ModelPlanID      string
 	PermissionModeID string
 	PlanMode         bool
 	// BrowserUse is tri-state: nil means "use the default" (on), so the

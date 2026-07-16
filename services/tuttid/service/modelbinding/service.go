@@ -8,9 +8,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"strings"
 	"time"
 
+	agentproviderbiz "github.com/tutti-os/tutti/services/tuttid/biz/agentprovider"
 	agenttargetbiz "github.com/tutti-os/tutti/services/tuttid/biz/agenttarget"
 	modelbindingbiz "github.com/tutti-os/tutti/services/tuttid/biz/modelbinding"
 	modelplanbiz "github.com/tutti-os/tutti/services/tuttid/biz/modelplan"
@@ -29,11 +31,18 @@ type TargetResolver interface {
 	GetAgentTarget(ctx context.Context, id string) (agenttargetbiz.Target, error)
 }
 
+// ConfigurationChangePublisher notifies workspace clients that model
+// composer options for one or more agent targets are stale.
+type ConfigurationChangePublisher interface {
+	PublishAgentModelConfigurationChanged(ctx context.Context, workspaceID string, agentTargetIDs []string, defaultModels map[string]string, resetComposerModel bool) error
+}
+
 type Service struct {
-	Store   workspacedata.AgentModelBindingsStore
-	Plans   workspacedata.ModelPlansStore
-	Targets TargetResolver
-	Now     func() time.Time
+	Store                  workspacedata.AgentModelBindingsStore
+	Plans                  workspacedata.ModelPlansStore
+	Targets                TargetResolver
+	ConfigurationPublisher ConfigurationChangePublisher
+	Now                    func() time.Time
 }
 
 type SetBindingInput struct {
@@ -58,17 +67,22 @@ func (s *Service) SetBinding(ctx context.Context, input SetBindingInput) (modelb
 	if err != nil {
 		return modelbindingbiz.Binding{}, fmt.Errorf("%w: %w", ErrInvalidBindingInput, err)
 	}
+	var target *agenttargetbiz.Target
 	if s.Targets != nil {
-		if _, err := s.Targets.GetAgentTarget(ctx, binding.AgentTargetID); err != nil {
+		resolvedTarget, err := s.Targets.GetAgentTarget(ctx, binding.AgentTargetID)
+		if err != nil {
 			return modelbindingbiz.Binding{}, err
 		}
+		target = &resolvedTarget
 	}
 	if binding.IsZero() {
 		if err := s.Store.DeleteAgentModelBinding(ctx, binding.WorkspaceID, binding.AgentTargetID); err != nil && !errors.Is(err, workspacedata.ErrAgentModelBindingNotFound) {
 			return modelbindingbiz.Binding{}, err
 		}
+		s.publishConfigurationChanged(ctx, binding.WorkspaceID, []string{binding.AgentTargetID}, map[string]string{binding.AgentTargetID: ""}, true)
 		return binding, nil
 	}
+	effectiveDefaultModel := ""
 	if binding.ModelPlanID != "" {
 		plan, err := s.Plans.GetModelPlan(ctx, binding.WorkspaceID, binding.ModelPlanID)
 		if err != nil {
@@ -80,10 +94,18 @@ func (s *Service) SetBinding(ctx context.Context, input SetBindingInput) (modelb
 		if binding.DefaultModel != "" && !modelplanbiz.ModelsContain(plan.Models, binding.DefaultModel) {
 			return modelbindingbiz.Binding{}, ErrModelNotInPlan
 		}
+		effectiveDefaultModel = resolveEffectiveDefaultModelForTarget(binding, plan, target)
 	}
 	if err := s.Store.PutAgentModelBinding(ctx, binding); err != nil {
 		return modelbindingbiz.Binding{}, err
 	}
+	s.publishConfigurationChanged(
+		ctx,
+		binding.WorkspaceID,
+		[]string{binding.AgentTargetID},
+		map[string]string{binding.AgentTargetID: effectiveDefaultModel},
+		true,
+	)
 	return binding, nil
 }
 
@@ -100,6 +122,38 @@ func (s *Service) ListBindings(ctx context.Context, workspaceID string) ([]model
 		bindings = []modelbindingbiz.Binding{}
 	}
 	return bindings, nil
+}
+
+// ResolveBoundAgentTargetDefaultModels reports the effective default model for
+// every agent target currently backed by a model plan.
+func (s *Service) ResolveBoundAgentTargetDefaultModels(ctx context.Context, workspaceID string, planID string) (map[string]string, error) {
+	bindings, err := s.Store.ListAgentModelBindingsByPlan(ctx, strings.TrimSpace(workspaceID), strings.TrimSpace(planID))
+	if err != nil {
+		return nil, err
+	}
+	defaultModels := make(map[string]string, len(bindings))
+	if len(bindings) == 0 {
+		return defaultModels, nil
+	}
+	plan, err := s.Plans.GetModelPlan(ctx, strings.TrimSpace(workspaceID), strings.TrimSpace(planID))
+	if err != nil {
+		return nil, err
+	}
+	for _, binding := range bindings {
+		targetID := strings.TrimSpace(binding.AgentTargetID)
+		if targetID == "" {
+			continue
+		}
+		var target *agenttargetbiz.Target
+		if s.Targets != nil {
+			resolvedTarget, err := s.Targets.GetAgentTarget(ctx, targetID)
+			if err == nil {
+				target = &resolvedTarget
+			}
+		}
+		defaultModels[targetID] = resolveEffectiveDefaultModelForTarget(binding, plan, target)
+	}
+	return defaultModels, nil
 }
 
 // ListModelPlanReferences implements the model plan reference contract for
@@ -131,4 +185,55 @@ func (s *Service) now() time.Time {
 		return s.Now().UTC()
 	}
 	return time.Now().UTC()
+}
+
+func resolveEffectiveDefaultModel(binding modelbindingbiz.Binding, plan modelplanbiz.Plan) string {
+	if !plan.Enabled {
+		return ""
+	}
+	if binding.DefaultModel != "" && modelplanbiz.ModelsContain(plan.Models, binding.DefaultModel) {
+		return binding.DefaultModel
+	}
+	if plan.DefaultModel != "" {
+		return plan.DefaultModel
+	}
+	if len(plan.Models) > 0 {
+		return plan.Models[0].ID
+	}
+	return ""
+}
+
+func resolveEffectiveDefaultModelForTarget(binding modelbindingbiz.Binding, plan modelplanbiz.Plan, target *agenttargetbiz.Target) string {
+	if target != nil {
+		requiredProtocol, supported := modelPlanProtocolForAgentProvider(target.Provider)
+		if !supported || plan.Protocol != requiredProtocol {
+			return ""
+		}
+	}
+	return resolveEffectiveDefaultModel(binding, plan)
+}
+
+func modelPlanProtocolForAgentProvider(provider string) (modelplanbiz.Protocol, bool) {
+	protocol, ok := agentproviderbiz.ModelPlanProtocol(provider)
+	return modelplanbiz.Protocol(protocol), ok
+}
+
+func (s *Service) publishConfigurationChanged(ctx context.Context, workspaceID string, agentTargetIDs []string, defaultModels map[string]string, resetComposerModel bool) {
+	if s.ConfigurationPublisher == nil || len(agentTargetIDs) == 0 {
+		return
+	}
+	if err := s.ConfigurationPublisher.PublishAgentModelConfigurationChanged(
+		ctx,
+		workspaceID,
+		agentTargetIDs,
+		defaultModels,
+		resetComposerModel,
+	); err != nil {
+		slog.Warn("agent model binding configuration publish failed",
+			"event", "agent.model_configuration.changed_publish_failed",
+			"workspaceId", workspaceID,
+			"agentTargetIds", agentTargetIDs,
+			"error", err,
+		)
+	}
 }

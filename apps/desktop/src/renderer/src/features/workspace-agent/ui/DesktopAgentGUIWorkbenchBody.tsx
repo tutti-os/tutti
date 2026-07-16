@@ -11,6 +11,7 @@ import { AgentGUI } from "@tutti-os/agent-gui/agent-gui";
 import type { AgentGUIProps, AgentHostInputApi } from "@tutti-os/agent-gui";
 import { useService } from "@tutti-os/infra/di";
 import { requestWorkspaceAgentGuiLaunch } from "../services/workspaceAgentGuiLaunchCoordinator.ts";
+import { startDesktopAgentGUIHandoff } from "../services/desktopAgentGUIHandoff.ts";
 import { registerWorkspaceAgentGuiOpenSession } from "../../workspace-workbench/services/workspaceAgentGuiOpenSessionCoordinator.ts";
 import { workbenchFocusInputActivationType } from "@tutti-os/workbench-surface";
 import { useTranslation } from "@renderer/i18n";
@@ -40,7 +41,9 @@ import {
 } from "./desktopAgentGUIWorkbenchDiagnostics.ts";
 import {
   hasDesktopAgentGUIConversationRailCollapsedState,
-  resolveDesktopAgentGUIProviderForAgentTarget
+  resolveDesktopAgentGUIProviderForAgentTarget,
+  withDesktopAgentGUIModelConfiguration,
+  withDesktopAgentGUIProviderComposerDefaults
 } from "./desktopAgentGUIWorkbenchStateHelpers.ts";
 import { useDesktopAgentProbes } from "./useDesktopAgentProbes.ts";
 import {
@@ -83,6 +86,7 @@ function DesktopAgentGUISurfaceImpl({
   onLinkAction,
   onCapabilitySettingsRequest,
   onOpenAgentConversationWindow,
+  onCreateIssueFromPlan,
   onStateChange,
   prefillPromptBootstrapRequest = null,
   previewMode = false,
@@ -197,7 +201,12 @@ function DesktopAgentGUISurfaceImpl({
       preferredConversationRailCollapsed
         ? { ...baseState, conversationRailCollapsed: true }
         : baseState;
-    return railState;
+    const rememberedDefaultsState = withDesktopAgentGUIProviderComposerDefaults(
+      railState,
+      nodeProvider,
+      providerComposerDefaults
+    );
+    return withDesktopAgentGUIModelConfiguration(rememberedDefaultsState);
   }, [
     hasExplicitConversationRailCollapsedState,
     preferredConversationRailCollapsed,
@@ -604,16 +613,36 @@ function DesktopAgentGUISurfaceImpl({
     NonNullable<AgentGUIProps["hostActions"]["onHandoffConversation"]>
   >(
     async (request) => {
-      await requestWorkspaceAgentGuiLaunch({
-        agentTargetId: request.agentTargetId,
-        draftPrompt: request.draftPrompt,
-        openInNewWindow: true,
-        provider: normalizeDesktopAgentGUIProvider(request.provider),
-        userProjectPath: request.userProjectPath,
-        workspaceId
-      });
+      const targetAgentTargetId = request.agentTargetId?.trim();
+      if (!targetAgentTargetId) {
+        Toast.Error(i18n.t("workspace.agentGui.handoffFailed"));
+        return;
+      }
+      try {
+        await startDesktopAgentGUIHandoff({
+          agentActivityRuntime,
+          question: request.draftPrompt,
+          sourceAgentSessionId: request.sourceAgentSessionId,
+          targetAgentTargetId,
+          workspaceId,
+          openTargetSession: async (agentSessionId) => {
+            const opened = await requestWorkspaceAgentGuiLaunch({
+              agentSessionId,
+              agentTargetId: targetAgentTargetId,
+              openInNewWindow: true,
+              provider: normalizeDesktopAgentGUIProvider(request.provider),
+              workspaceId
+            });
+            if (!opened) {
+              throw new Error("agent_handoff_window_unavailable");
+            }
+          }
+        });
+      } catch {
+        Toast.Error(i18n.t("workspace.agentGui.handoffFailed"));
+      }
     },
-    [workspaceId]
+    [agentActivityRuntime, i18n, workspaceId]
   );
   const agentGUIHostProps = useStableDesktopAgentGUIHostProps({
     identity: {

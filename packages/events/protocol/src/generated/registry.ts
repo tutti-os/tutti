@@ -10,10 +10,14 @@ import type {
 
 export const businessEventTopicAgentActivityUpdated =
   "agent.activity.updated" as const;
+export const businessEventTopicAgentAutomationRulesChanged =
+  "agent.automation.rules.changed" as const;
 export const businessEventTopicAgentCollaborationUpdated =
   "agent.collaboration.updated" as const;
 export const businessEventTopicAgentModelCatalogInvalidated =
   "agent.model.catalog.invalidated" as const;
+export const businessEventTopicAgentModelConfigurationChanged =
+  "agent.model.configuration.changed" as const;
 export const businessEventTopicAnalyticsDebugReported =
   "analytics.debug.reported" as const;
 export const businessEventTopicPreferencesAgentComposerDefaultsChanged =
@@ -43,12 +47,19 @@ export interface BusinessEventDefinition {
   scope: BusinessEventScopeName;
 }
 
-export const businessEventCatalogRevision = "sha256:6b96f0e0f06ab525" as const;
+export const businessEventCatalogRevision = "sha256:43545267996a1447" as const;
 
 export const businessEventDefinitions = [
   {
     topic: "agent.activity.updated",
     version: 2,
+    direction: "server->client",
+    owner: "agent",
+    scope: "workspace"
+  },
+  {
+    topic: "agent.automation.rules.changed",
+    version: 1,
     direction: "server->client",
     owner: "agent",
     scope: "workspace"
@@ -66,6 +77,13 @@ export const businessEventDefinitions = [
     direction: "server->client",
     owner: "agent",
     scope: "global"
+  },
+  {
+    topic: "agent.model.configuration.changed",
+    version: 1,
+    direction: "server->client",
+    owner: "agent",
+    scope: "workspace"
   },
   {
     topic: "analytics.debug.reported",
@@ -147,6 +165,13 @@ export const businessEventDefinitionByTopic = {
     owner: "agent",
     scope: "workspace"
   },
+  "agent.automation.rules.changed": {
+    topic: "agent.automation.rules.changed",
+    version: 1,
+    direction: "server->client",
+    owner: "agent",
+    scope: "workspace"
+  },
   "agent.collaboration.updated": {
     topic: "agent.collaboration.updated",
     version: 1,
@@ -160,6 +185,13 @@ export const businessEventDefinitionByTopic = {
     direction: "server->client",
     owner: "agent",
     scope: "global"
+  },
+  "agent.model.configuration.changed": {
+    topic: "agent.model.configuration.changed",
+    version: 1,
+    direction: "server->client",
+    owner: "agent",
+    scope: "workspace"
   },
   "analytics.debug.reported": {
     topic: "analytics.debug.reported",

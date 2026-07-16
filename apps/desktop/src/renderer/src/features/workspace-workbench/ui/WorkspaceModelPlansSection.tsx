@@ -5,6 +5,11 @@ import {
   CopyIcon,
   DeleteIcon,
   EditIcon,
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
   StatusDot,
   Switch
 } from "@tutti-os/ui-system";
@@ -16,12 +21,18 @@ import {
   type WorkspaceModelPlanTemplateGroup
 } from "../services/workspaceModelPlanTemplates";
 import type {
+  WorkspaceAgentHarnessTargetOption,
   WorkspaceModelPlan,
   WorkspaceModelPlanReferenceKind,
   WorkspaceModelPlanStatus,
   WorkspaceSettingsModelPlansSnapshotState
 } from "../services/workspaceSettingsTypes";
 import { useWorkspaceSettingsService } from "./useWorkspaceSettingsService";
+import { compatibleWorkspaceModelPlanFirstUseTargets } from "../services/workspaceModelPlanFirstUse.ts";
+import {
+  workspaceSettingsSelectContentClass,
+  workspaceSettingsSelectTriggerClass
+} from "./workspaceSettingsFieldStyles.ts";
 import {
   WorkspaceModelPlanEditor,
   WorkspaceModelPlanFeedbackLine
@@ -53,7 +64,11 @@ const referenceKindLabelKeys: Record<
   DesktopI18nKey
 > = {
   agent_target: "workspace.settings.apps.modelPlans.referenceKinds.agentTarget",
+  automation_rule:
+    "workspace.settings.apps.modelPlans.referenceKinds.automationRule",
   model_policy: "workspace.settings.apps.modelPlans.referenceKinds.modelPolicy",
+  workspace_agent:
+    "workspace.settings.apps.modelPlans.referenceKinds.workspaceAgent",
   workspace_app:
     "workspace.settings.apps.modelPlans.referenceKinds.workspaceApp"
 };
@@ -165,6 +180,7 @@ export function WorkspaceModelPlansSection() {
                 discoveredModels={modelPlans.draftDiscoveredModels}
                 draft={draft}
                 feedback={modelPlans.draftFeedback}
+                saveImpact={modelPlans.draftSaveImpact}
                 saving={modelPlans.saving}
                 onAddDiscoveredModel={(modelID) =>
                   service.modelPlans.addDiscoveredModelToDraft(modelID)
@@ -181,6 +197,7 @@ export function WorkspaceModelPlansSection() {
             ) : (
               <WorkspaceModelPlanRow
                 key={plan.id}
+                harnessTargets={state.agents.harnessTargets}
                 modelPlans={modelPlans}
                 plan={plan}
               />
@@ -193,6 +210,7 @@ export function WorkspaceModelPlansSection() {
               discoveredModels={modelPlans.draftDiscoveredModels}
               draft={draft}
               feedback={modelPlans.draftFeedback}
+              saveImpact={modelPlans.draftSaveImpact}
               saving={modelPlans.saving}
               onAddDiscoveredModel={(modelID) =>
                 service.modelPlans.addDiscoveredModelToDraft(modelID)
@@ -214,14 +232,20 @@ export function WorkspaceModelPlansSection() {
 }
 
 function WorkspaceModelPlanRow({
+  harnessTargets,
   modelPlans,
   plan
 }: {
+  harnessTargets: readonly WorkspaceAgentHarnessTargetOption[];
   modelPlans: WorkspaceSettingsModelPlansSnapshotState;
   plan: WorkspaceModelPlan;
 }) {
   const { t } = useTranslation();
   const { service } = useWorkspaceSettingsService();
+  const [firstUseTargetID, setFirstUseTargetID] = useState("");
+  const firstUseLaunching = modelPlans.firstUseLaunchingPlanID === plan.id;
+  const firstUseLaunchFailed =
+    modelPlans.firstUseLaunchFailedPlanID === plan.id;
   const confirmingDelete = modelPlans.confirmingDeletePlanID === plan.id;
   const deleteBlock =
     modelPlans.deleteBlock?.planID === plan.id ? modelPlans.deleteBlock : null;
@@ -234,6 +258,14 @@ function WorkspaceModelPlanRow({
     (group) => group.kind === plan.templateKind
   );
   const checkedAt = plan.detection.checkedAt;
+  const compatibleTargets = compatibleWorkspaceModelPlanFirstUseTargets({
+    plan,
+    targets: harnessTargets
+  });
+  const firstUseTarget =
+    compatibleTargets.find((target) => target.id === firstUseTargetID) ??
+    compatibleTargets[0] ??
+    null;
 
   return (
     <section className="flex w-full flex-col gap-3 rounded-[10px] border border-[var(--border-1)] bg-[var(--transparency-block)] p-4">
@@ -253,6 +285,11 @@ function WorkspaceModelPlanRow({
           <p className="m-0 mt-1 truncate text-[11px] leading-[1.3] text-[var(--text-secondary)]">
             {[
               templateGroup ? t(templateGroup.labelKey) : null,
+              t(
+                plan.billingMode === "subscription_quota"
+                  ? "workspace.settings.apps.modelPlans.billingSubscriptionQuota"
+                  : "workspace.settings.apps.modelPlans.billingApiMetered"
+              ),
               t(protocolLabelKeys[plan.protocol]),
               t("workspace.settings.apps.modelPlans.modelCount", {
                 count: String(plan.models.length)
@@ -265,6 +302,15 @@ function WorkspaceModelPlanRow({
             ]
               .filter(Boolean)
               .join(" · ")}
+          </p>
+          <p className="m-0 mt-1 truncate text-[11px] leading-[1.3] text-[var(--text-secondary)]">
+            {compatibleTargets.length > 0
+              ? t("workspace.settings.apps.modelPlans.compatibleAgents", {
+                  agents: compatibleTargets
+                    .map((target) => target.name)
+                    .join(", ")
+                })
+              : t("workspace.settings.apps.modelPlans.compatibleAgentsNone")}
           </p>
         </div>
         {confirmingDelete ? (
@@ -351,9 +397,67 @@ function WorkspaceModelPlanRow({
       </div>
 
       {plan.status === "pending_first_use" ? (
-        <p className="m-0 text-[12px] leading-[1.4] text-[var(--text-secondary)]">
-          {t("workspace.settings.apps.modelPlans.pendingFirstUseGuide")}
-        </p>
+        <div className="flex flex-col gap-2 rounded-[8px] border border-[var(--border-1)] bg-[var(--transparency-block)] p-3">
+          <p className="m-0 text-[12px] leading-[1.4] text-[var(--text-secondary)]">
+            {t("workspace.settings.apps.modelPlans.pendingFirstUseGuide")}
+          </p>
+          {compatibleTargets.length > 0 ? (
+            <div className="flex items-center gap-2 max-[640px]:flex-col max-[640px]:items-stretch">
+              <Select
+                value={firstUseTarget?.id}
+                onValueChange={(targetID) => {
+                  setFirstUseTargetID(targetID);
+                }}
+              >
+                <SelectTrigger
+                  aria-label={t(
+                    "workspace.settings.apps.modelPlans.firstUseAgentLabel"
+                  )}
+                  className={workspaceSettingsSelectTriggerClass}
+                >
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent
+                  className={workspaceSettingsSelectContentClass}
+                  style={{ zIndex: "var(--z-panel-popover)" }}
+                >
+                  {compatibleTargets.map((target) => (
+                    <SelectItem key={target.id} value={target.id}>
+                      {target.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Button
+                disabled={!firstUseTarget || firstUseLaunching}
+                size="sm"
+                type="button"
+                onClick={() => {
+                  if (!firstUseTarget) return;
+                  void service.modelPlans.launchFirstUse(
+                    plan.id,
+                    firstUseTarget.id
+                  );
+                }}
+              >
+                {firstUseLaunching
+                  ? t("workspace.settings.apps.modelPlans.firstUseLaunching")
+                  : t("workspace.settings.apps.modelPlans.firstUseAction")}
+              </Button>
+            </div>
+          ) : (
+            <p className="m-0 text-[12px] text-[var(--state-warning)]">
+              {t(
+                "workspace.settings.apps.modelPlans.noCompatibleFirstUseAgent"
+              )}
+            </p>
+          )}
+          {firstUseLaunchFailed ? (
+            <p className="m-0 text-[12px] text-[var(--state-danger)]">
+              {t("workspace.settings.apps.modelPlans.firstUseLaunchFailed")}
+            </p>
+          ) : null}
+        </div>
       ) : null}
 
       {deleteBlock ? (

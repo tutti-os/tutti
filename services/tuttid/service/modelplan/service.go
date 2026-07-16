@@ -9,7 +9,10 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net/http"
+	"reflect"
+	"sort"
 	"strings"
 	"time"
 
@@ -36,13 +39,28 @@ type ChangePublisher interface {
 	PublishModelPlansChanged(workspaceID string)
 }
 
+// AgentTargetBindingResolver reports which agent targets consume a plan so
+// configuration-change events stay scoped to impacted composers.
+type AgentTargetBindingResolver interface {
+	ResolveBoundAgentTargetDefaultModels(ctx context.Context, workspaceID string, planID string) (map[string]string, error)
+}
+
+// ConfigurationChangePublisher notifies workspace clients that model
+// composer options for one or more agent targets are stale.
+type ConfigurationChangePublisher interface {
+	PublishAgentModelConfigurationChanged(ctx context.Context, workspaceID string, agentTargetIDs []string, defaultModels map[string]string, resetComposerModel bool) error
+}
+
 type Service struct {
-	Store      workspacedata.ModelPlansStore
-	References ReferenceResolver
-	Publisher  ChangePublisher
-	Now        func() time.Time
-	HTTPClient *http.Client
-	NewID      func() string
+	Store                   workspacedata.ModelPlansStore
+	References              ReferenceResolver
+	Bindings                AgentTargetBindingResolver
+	NativeSubscriptionProbe NativeSubscriptionProbe
+	Publisher               ChangePublisher
+	ConfigurationPublisher  ConfigurationChangePublisher
+	Now                     func() time.Time
+	HTTPClient              *http.Client
+	NewID                   func() string
 }
 
 type PutPlanInput struct {
@@ -71,6 +89,17 @@ func (s *Service) ListPlans(ctx context.Context, workspaceID string) ([]modelpla
 	return public, nil
 }
 
+// RecommendModels returns an explainable ranking of enabled routes. The pure
+// ranking policy lives in biz/modelplan so API, CLI, and automation callers do
+// not grow competing recommendation rules.
+func (s *Service) RecommendModels(ctx context.Context, workspaceID string, input modelplanbiz.RecommendInput) ([]modelplanbiz.Recommendation, error) {
+	plans, err := s.ListPlans(ctx, workspaceID)
+	if err != nil {
+		return nil, err
+	}
+	return modelplanbiz.RecommendModels(plans, input), nil
+}
+
 func (s *Service) GetPlan(ctx context.Context, workspaceID string, planID string) (modelplanbiz.PublicPlan, error) {
 	plan, err := s.Store.GetModelPlan(ctx, strings.TrimSpace(workspaceID), strings.TrimSpace(planID))
 	if err != nil {
@@ -86,6 +115,7 @@ func (s *Service) CreatePlan(ctx context.Context, input PutPlanInput) (modelplan
 	plan := modelplanbiz.Plan{
 		ID:           s.newID(),
 		WorkspaceID:  strings.TrimSpace(input.WorkspaceID),
+		Revision:     1,
 		Name:         input.Name,
 		TemplateKind: modelplanbiz.TemplateKind(strings.TrimSpace(input.TemplateKind)),
 		Protocol:     modelplanbiz.Protocol(strings.TrimSpace(input.Protocol)),
@@ -119,6 +149,7 @@ func (s *Service) UpdatePlan(ctx context.Context, input PutPlanInput) (modelplan
 		return modelplanbiz.PublicPlan{}, err
 	}
 	updated := existing
+	updated.Revision = nextModelPlanRevision(existing.Revision)
 	updated.Name = input.Name
 	updated.TemplateKind = modelplanbiz.TemplateKind(strings.TrimSpace(input.TemplateKind))
 	updated.Protocol = modelplanbiz.Protocol(strings.TrimSpace(input.Protocol))
@@ -141,6 +172,12 @@ func (s *Service) UpdatePlan(ctx context.Context, input PutPlanInput) (modelplan
 	if err := s.Store.PutModelPlan(ctx, normalized); err != nil {
 		return modelplanbiz.PublicPlan{}, err
 	}
+	s.publishConfigurationChanged(
+		ctx,
+		normalized.WorkspaceID,
+		normalized.ID,
+		composerConfigurationChanged(existing, normalized),
+	)
 	s.publishChanged(normalized.WorkspaceID)
 	return modelplanbiz.Public(normalized), nil
 }
@@ -155,6 +192,7 @@ func (s *Service) DuplicatePlan(ctx context.Context, workspaceID string, planID 
 	now := s.now()
 	clone := source
 	clone.ID = s.newID()
+	clone.Revision = 1
 	clone.Name = strings.TrimSpace(name)
 	if clone.Name == "" {
 		clone.Name = source.Name + " copy"
@@ -180,11 +218,14 @@ func (s *Service) SetPlanEnabled(ctx context.Context, workspaceID string, planID
 	if err != nil {
 		return modelplanbiz.PublicPlan{}, err
 	}
+	resetComposerModel := plan.Enabled != enabled
+	plan.Revision = nextModelPlanRevision(plan.Revision)
 	plan.Enabled = enabled
 	plan.UpdatedAt = s.now()
 	if err := s.Store.PutModelPlan(ctx, plan); err != nil {
 		return modelplanbiz.PublicPlan{}, err
 	}
+	s.publishConfigurationChanged(ctx, plan.WorkspaceID, plan.ID, resetComposerModel)
 	s.publishChanged(plan.WorkspaceID)
 	return modelplanbiz.Public(plan), nil
 }
@@ -249,6 +290,7 @@ func (s *Service) MarkFirstUse(ctx context.Context, workspaceID string, planID s
 		Detail:    strings.TrimSpace(agentTargetID),
 		CheckedAt: now,
 	})
+	plan.Revision = nextModelPlanRevision(plan.Revision)
 	plan.UpdatedAt = now
 	if err := s.Store.PutModelPlan(ctx, plan); err != nil {
 		return err
@@ -257,10 +299,54 @@ func (s *Service) MarkFirstUse(ctx context.Context, workspaceID string, planID s
 	return nil
 }
 
+// MarkFirstUseFailure records a failed real Agent call on the corresponding
+// detection node while keeping first use pending. A later successful retry
+// can still complete the same Plan.
+func (s *Service) MarkFirstUseFailure(ctx context.Context, workspaceID string, planID string, agentTargetID string, _ string, _ string) error {
+	plan, err := s.Store.GetModelPlan(ctx, strings.TrimSpace(workspaceID), strings.TrimSpace(planID))
+	if err != nil {
+		return err
+	}
+	if plan.FirstUse.Status == modelplanbiz.FirstUseCompleted {
+		return nil
+	}
+	now := s.now()
+	plan.FirstUse = modelplanbiz.FirstUse{Status: modelplanbiz.FirstUsePending}
+	plan.Detection = upsertStageResult(plan.Detection, modelplanbiz.StageResult{
+		Stage:         modelplanbiz.StageAgentRuntime,
+		Status:        modelplanbiz.StageFailed,
+		FailureReason: FailureAgentRuntime,
+		Remedy:        RemedyRetryAgentRuntime,
+		Detail:        strings.TrimSpace(agentTargetID),
+		CheckedAt:     now,
+	})
+	plan.Revision = nextModelPlanRevision(plan.Revision)
+	plan.UpdatedAt = now
+	if err := s.Store.PutModelPlan(ctx, plan); err != nil {
+		return err
+	}
+	s.publishChanged(plan.WorkspaceID)
+	return nil
+}
+
+func nextModelPlanRevision(current uint64) uint64 {
+	if current == 0 {
+		return 1
+	}
+	return current + 1
+}
+
 func credentialChanged(before modelplanbiz.Plan, after modelplanbiz.Plan) bool {
 	return before.APIKey != after.APIKey ||
 		before.BaseURL != after.BaseURL ||
 		before.Protocol != after.Protocol
+}
+
+func composerConfigurationChanged(before modelplanbiz.Plan, after modelplanbiz.Plan) bool {
+	return credentialChanged(before, after) ||
+		before.DefaultModel != after.DefaultModel ||
+		before.Enabled != after.Enabled ||
+		!reflect.DeepEqual(before.Models, after.Models)
 }
 
 func upsertStageResult(snapshot modelplanbiz.DetectionSnapshot, result modelplanbiz.StageResult) modelplanbiz.DetectionSnapshot {
@@ -300,6 +386,45 @@ func (s *Service) httpClient() *http.Client {
 func (s *Service) publishChanged(workspaceID string) {
 	if s.Publisher != nil {
 		s.Publisher.PublishModelPlansChanged(workspaceID)
+	}
+}
+
+func (s *Service) publishConfigurationChanged(ctx context.Context, workspaceID string, planID string, resetComposerModel bool) {
+	if s.Bindings == nil || s.ConfigurationPublisher == nil {
+		return
+	}
+	defaultModels, err := s.Bindings.ResolveBoundAgentTargetDefaultModels(ctx, workspaceID, planID)
+	if err != nil {
+		slog.Warn("agent model configuration impact resolution failed",
+			"event", "agent.model_configuration.impact_resolution_failed",
+			"workspaceId", workspaceID,
+			"modelPlanId", planID,
+			"error", err,
+		)
+		return
+	}
+	if len(defaultModels) == 0 {
+		return
+	}
+	targetIDs := make([]string, 0, len(defaultModels))
+	for targetID := range defaultModels {
+		targetIDs = append(targetIDs, targetID)
+	}
+	sort.Strings(targetIDs)
+	if err := s.ConfigurationPublisher.PublishAgentModelConfigurationChanged(
+		ctx,
+		workspaceID,
+		targetIDs,
+		defaultModels,
+		resetComposerModel,
+	); err != nil {
+		slog.Warn("agent model plan configuration publish failed",
+			"event", "agent.model_configuration.changed_publish_failed",
+			"workspaceId", workspaceID,
+			"modelPlanId", planID,
+			"agentTargetIds", targetIDs,
+			"error", err,
+		)
 	}
 }
 

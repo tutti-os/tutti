@@ -6,6 +6,7 @@ import { useCallback } from "react";
 import { translate } from "../../../i18n/index";
 import type { AgentPromptContentBlock } from "../../../shared/contracts/dto";
 import { deriveAgentGUIOptimisticConversationTitle } from "../../../shared/agentConversationTitleProjection";
+import type { AgentSessionComposerSettings } from "../../../shared/agentSessionTypes";
 import {
   agentPromptContentDisplayText,
   emptyAgentComposerDraft,
@@ -77,7 +78,8 @@ export function useAgentGUINewConversationActivation(
       initialContentInput?: unknown,
       displayPrompt?: string,
       submitOptions?: AgentComposerSubmitOptions,
-      initialTurnExpected?: boolean
+      initialTurnExpectedOrSettings?: boolean | AgentSessionComposerSettings,
+      sourceScopeKeyOverride?: string
     ): AgentGUINewConversationActivationResult | null => {
       const target = selectedAgentTargetRef.current;
       const targetData = selectedComposerTargetDataRef.current;
@@ -126,8 +128,17 @@ export function useAgentGUINewConversationActivation(
       const snapshotComposerOptions = getCachedComposerOptions();
       // Only sparse, explicit home intent crosses Create. Target defaults and
       // final provider validation are resolved from the latest daemon state.
+      const initialTurnExpected =
+        typeof initialTurnExpectedOrSettings === "boolean"
+          ? initialTurnExpectedOrSettings
+          : undefined;
+      const settingsOverride =
+        typeof initialTurnExpectedOrSettings === "object"
+          ? initialTurnExpectedOrSettings
+          : undefined;
       const settings = {
         ...initialNodeSettings,
+        ...settingsOverride,
         ...submitOptions?.requiredSettingsPatch
       };
       const prewarmedSessionId =
@@ -153,7 +164,8 @@ export function useAgentGUINewConversationActivation(
         queued: false,
         startedAtUnixMs: Date.now()
       });
-      const sourceScopeKey = resolveAgentComposerDraftScopeKey({});
+      const sourceScopeKey =
+        sourceScopeKeyOverride ?? resolveAgentComposerDraftScopeKey({});
       const submittedDraft =
         draftByScopeKeyRef.current[sourceScopeKey] ?? emptyAgentComposerDraft();
       submittedDraftSnapshotsRef.current[submitTrace.clientSubmitId] = {
@@ -171,6 +183,9 @@ export function useAgentGUINewConversationActivation(
         mode: "new",
         agentSessionId,
         agentTargetId,
+        ...(submitOptions?.automationRuleOverride
+          ? { automationRuleOverride: submitOptions.automationRuleOverride }
+          : {}),
         clientSubmitId: submitTrace.clientSubmitId,
         cwd: selectedProjectPath ?? "",
         initialContent: normalizedInitialContent,

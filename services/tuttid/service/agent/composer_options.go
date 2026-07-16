@@ -60,6 +60,9 @@ type ComposerOptionsInput struct {
 	WorkspaceID              string
 	Settings                 ComposerSettings
 	IncludeCapabilityCatalog *bool
+	// IgnoreModelPlanBinding is reserved for provider-native availability and
+	// subscription probes that must not inherit the workspace target binding.
+	IgnoreModelPlanBinding   bool
 	providerTargetRef        map[string]any
 	extensionComposerProfile ExtensionComposerProfile
 }
@@ -121,11 +124,13 @@ type ComposerOptions struct {
 func (s *Service) GetComposerOptions(ctx context.Context, input ComposerOptionsInput) (ComposerOptions, error) {
 	provider := agentprovider.Normalize(input.Provider)
 	agentTargetID := strings.TrimSpace(input.AgentTargetID)
+	launchInput := CreateSessionInput{}
 	if agentTargetID != "" {
-		launch, err := s.resolveCreateSessionLaunch(ctx, CreateSessionInput{
+		launchInput = CreateSessionInput{
 			AgentTargetID: agentTargetID,
 			Provider:      provider,
-		})
+		}
+		launch, err := s.resolveCreateSessionLaunch(ctx, input.WorkspaceID, &launchInput)
 		if err != nil {
 			return ComposerOptions{}, err
 		}
@@ -149,7 +154,7 @@ func (s *Service) GetComposerOptions(ctx context.Context, input ComposerOptionsI
 		}
 		input.Settings = mergeComposerSettingsWithDefaults(input.Settings, defaults)
 	}
-	settings := normalizeComposerSettingsForProvider(provider, ComposerSettings{
+	requestedSettings := ComposerSettings{
 		Model:            strings.TrimSpace(input.Settings.Model),
 		PermissionModeID: strings.TrimSpace(input.Settings.PermissionModeID),
 		PlanMode:         input.Settings.PlanMode,
@@ -157,13 +162,23 @@ func (s *Service) GetComposerOptions(ctx context.Context, input ComposerOptionsI
 		ComputerUse:      input.Settings.ComputerUse,
 		ReasoningEffort:  strings.TrimSpace(input.Settings.ReasoningEffort),
 		Speed:            strings.TrimSpace(input.Settings.Speed),
-	})
+	}
+	if strings.TrimSpace(requestedSettings.PermissionModeID) == "" {
+		requestedSettings.PermissionModeID = value(launchInput.PermissionModeID)
+	}
+	if requestedSettings.BrowserUse == nil {
+		requestedSettings.BrowserUse = cloneBoolPointer(launchInput.BrowserUse)
+	}
+	if requestedSettings.ComputerUse == nil {
+		requestedSettings.ComputerUse = cloneBoolPointer(launchInput.ComputerUse)
+	}
+	settings := normalizeComposerSettingsForProvider(provider, requestedSettings)
 	if providerTargetRefKind(input.providerTargetRef) == "agent_extension" {
-		settings.Model = strings.TrimSpace(input.Settings.Model)
-		settings.PermissionModeID = strings.TrimSpace(input.Settings.PermissionModeID)
-		settings.PlanMode = input.Settings.PlanMode
-		settings.ReasoningEffort = strings.TrimSpace(input.Settings.ReasoningEffort)
-		settings.Speed = strings.TrimSpace(input.Settings.Speed)
+		settings.Model = strings.TrimSpace(requestedSettings.Model)
+		settings.PermissionModeID = strings.TrimSpace(requestedSettings.PermissionModeID)
+		settings.PlanMode = requestedSettings.PlanMode
+		settings.ReasoningEffort = strings.TrimSpace(requestedSettings.ReasoningEffort)
+		settings.Speed = strings.TrimSpace(requestedSettings.Speed)
 	}
 	extensionProfile := ExtensionComposerProfile{}
 	if providerTargetRefKind(input.providerTargetRef) == "agent_extension" {
@@ -174,9 +189,46 @@ func (s *Service) GetComposerOptions(ctx context.Context, input ComposerOptionsI
 		}
 		input.extensionComposerProfile = extensionProfile
 	}
+	modelPlanResolution := modelPlanResolution{}
+	if input.IgnoreModelPlanBinding {
+		modelPlanResolution.ModelConfiguration = newProviderNativeModelConfiguration(
+			provider,
+			input.AgentTargetID,
+		)
+	} else if launchInput.ResolvedModelPlan != nil {
+		requestedModel := settings.Model
+		if requestedModel == "" {
+			requestedModel = strings.TrimSpace(value(launchInput.Model))
+			settings.Model = requestedModel
+		}
+		var err error
+		modelPlanResolution, err = resolveProvidedModelPlan(
+			provider,
+			input.AgentTargetID,
+			*launchInput.ResolvedModelPlan,
+			launchInput.AgentDefaultModel,
+			requestedModel,
+		)
+		if err != nil {
+			return ComposerOptions{}, err
+		}
+	} else {
+		modelPlanResolution = s.resolveModelPlan(
+			ctx,
+			input.WorkspaceID,
+			input.AgentTargetID,
+			provider,
+			settings.Model,
+		)
+	}
+	planEndpoint := modelPlanResolution.Endpoint
+	planModels := modelPlanResolution.Models
+	if planEndpoint != nil {
+		settings.Model = planEndpoint.Model
+	}
 	catalogProjection := composerModelCatalogProjection{}
 	catalogProjectionOK := false
-	if composerOptionsProviderUsesModelCatalog(provider) {
+	if planEndpoint == nil && composerOptionsProviderUsesModelCatalog(provider) {
 		catalogProjection, catalogProjectionOK = composerModelOptionsFromCatalog(
 			ctx,
 			s.ModelCatalog,
@@ -186,6 +238,9 @@ func (s *Service) GetComposerOptions(ctx context.Context, input ComposerOptionsI
 		)
 	}
 	defaultModel := composerConfiguredDefaultModel(provider)
+	if planEndpoint != nil {
+		defaultModel = planEndpoint.Model
+	}
 	if catalogProjectionOK && catalogProjection.DefaultModel != "" {
 		defaultModel = catalogProjection.DefaultModel
 	}
@@ -217,12 +272,13 @@ func (s *Service) GetComposerOptions(ctx context.Context, input ComposerOptionsI
 		capabilities = nil
 	}
 	runtimeContext := map[string]any{
-		"capabilities":     capabilities,
-		"configOptions":    composerConfigOptions(provider, effectiveSettings, modelOptions, reasoningOptions),
-		"model":            nullableString(effectiveSettings.Model),
-		"permissionModeId": nullableString(effectiveSettings.PermissionModeID),
-		"reasoningEffort":  nullableString(effectiveSettings.ReasoningEffort),
-		"speed":            nullableString(effectiveSettings.Speed),
+		"capabilities":       capabilities,
+		"configOptions":      composerConfigOptions(provider, effectiveSettings, modelOptions, reasoningOptions),
+		"model":              nullableString(effectiveSettings.Model),
+		"modelConfiguration": modelPlanResolution.ModelConfiguration.runtimeContext(),
+		"permissionModeId":   nullableString(effectiveSettings.PermissionModeID),
+		"reasoningEffort":    nullableString(effectiveSettings.ReasoningEffort),
+		"speed":              nullableString(effectiveSettings.Speed),
 	}
 	commands := []ComposerCommandOption{}
 	slashCommandPolicy := composerSlashCommandPolicy(provider)
@@ -241,13 +297,38 @@ func (s *Service) GetComposerOptions(ctx context.Context, input ComposerOptionsI
 	if agentTargetID != "" {
 		runtimeContext["agentTargetId"] = agentTargetID
 	}
-	skills := s.discoverComposerSkillOptionsForLaunch(ctx, provider, input.Cwd, nil, input.providerTargetRef)
+	if launchInput.WorkspaceAgentRevision > 0 {
+		runtimeContext["workspaceAgentRevision"] = launchInput.WorkspaceAgentRevision
+		runtimeContext["harnessAgentTargetId"] = launchInput.HarnessAgentTargetID
+	}
+	skills := filterWorkspaceAgentComposerSkills(
+		s.discoverComposerSkillOptionsForLaunch(ctx, provider, input.Cwd, nil, input.providerTargetRef),
+		launchInput.AgentSkills,
+		launchInput.AgentCapabilitiesExplicit,
+	)
 	capabilityCatalog := []ComposerCapabilityOption{}
 	capabilityErrors := []string(nil)
 	if composerOptionsIncludeCapabilityCatalog(input) {
 		capabilityCatalog, capabilityErrors = s.listComposerCapabilityOptions(ctx, provider, input.Cwd, skills)
+		capabilityCatalog = filterWorkspaceAgentComposerCapabilities(
+			capabilityCatalog,
+			launchInput.AgentTools,
+			launchInput.AgentCapabilitiesExplicit,
+		)
 	}
 	runtimeContext["skills"] = composerSkillOptionsRuntimeContext(skills)
+	if launchInput.WorkspaceAgentRevision > 0 {
+		runtimeContext["workspaceAgent"] = map[string]any{
+			"id":                   agentTargetID,
+			"revision":             launchInput.WorkspaceAgentRevision,
+			"harnessId":            launchInput.HarnessAgentTargetID,
+			"name":                 strings.TrimSpace(launchInput.AgentName),
+			"purpose":              strings.TrimSpace(launchInput.AgentPurpose),
+			"capabilitiesExplicit": launchInput.AgentCapabilitiesExplicit,
+			"skills":               append([]string(nil), launchInput.AgentSkills...),
+			"tools":                append([]string(nil), launchInput.AgentTools...),
+		}
+	}
 	runtimeContext["capabilityCatalog"] = composerCapabilityOptionsRuntimeContext(capabilityCatalog)
 	if len(capabilityErrors) > 0 {
 		runtimeContext["capabilityCatalogErrors"] = capabilityErrors
@@ -296,8 +377,8 @@ func (s *Service) GetComposerOptions(ctx context.Context, input ComposerOptionsI
 		Behavior:                composerProfileFor(provider).Behavior,
 		SlashCommandPolicy:      slashCommandPolicy,
 	}
-	if composerProfileFor(provider).LiveModelDiscovery ||
-		providerTargetRefKind(input.providerTargetRef) == "agent_extension" {
+	if planEndpoint == nil && (composerProfileFor(provider).LiveModelDiscovery ||
+		providerTargetRefKind(input.providerTargetRef) == "agent_extension") {
 		var err error
 		options, err = s.mergeLiveComposerModelsForComposerOptions(ctx, input, effectiveSettings, options)
 		if err != nil {
@@ -308,7 +389,7 @@ func (s *Service) GetComposerOptions(ctx context.Context, input ComposerOptionsI
 		options = s.mergeRuntimeComposerContextForComposerOptions(input, effectiveSettings, locale, extensionProfile, options)
 		options = applyExtensionComposerCapabilities(options, extensionProfile)
 	}
-	options = s.applyModelPlanComposerOverlay(ctx, input, options)
+	options = applyResolvedModelPlanComposerOverlay(options, planEndpoint, planModels)
 	return options, nil
 }
 

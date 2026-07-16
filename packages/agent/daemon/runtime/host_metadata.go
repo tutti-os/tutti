@@ -23,10 +23,12 @@ type HostMetadata struct {
 }
 
 type ControllerOptions struct {
-	HostMetadata            HostMetadata
-	ProviderCommandResolver ProviderCommandResolver
-	ProviderLaunchPreparer  ProviderLaunchPreparer
-	AdapterResolver         AdapterResolver
+	HostMetadata                HostMetadata
+	ProviderCommandResolver     ProviderCommandResolver
+	ProviderLaunchPreparer      ProviderLaunchPreparer
+	AdapterResolver             AdapterResolver
+	SharedAgentAccessController SharedAgentAccessController
+	SharedAgentAccessAuditor    SharedAgentAccessAuditor
 }
 
 type AdapterResolveInput struct {

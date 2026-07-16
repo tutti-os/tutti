@@ -20,7 +20,8 @@ import {
   DEFAULT_SESSION_LIMIT,
   FILE_PROVIDER_ID,
   WORKSPACE_APP_PROVIDER_ID,
-  WORKSPACE_ISSUE_PROVIDER_ID
+  WORKSPACE_ISSUE_PROVIDER_ID,
+  WORKSPACE_MODEL_PROVIDER_ID
 } from "./AgentMentionSearchContracts";
 import type { AgentMentionBrowseFetchResult } from "./AgentMentionSearchCache";
 import type {
@@ -214,6 +215,27 @@ export async function fetchAgentMentionFilterResult(input: {
         rawGroups,
         totalCounts: totalCountsFromRawGroups(rawGroups),
         issueTopicGroups: null
+      };
+    }
+    case "model": {
+      const modelItems = await input.queryProviderMentionItemsById({
+        providerId: WORKSPACE_MODEL_PROVIDER_ID,
+        workspaceId: input.workspaceId,
+        currentUserId: input.currentUserId,
+        query: input.query,
+        sessionCwd: input.sessionCwd,
+        diagnostics: providerDiagnostics
+      });
+      const rawGroups = emptyAgentMentionRawGroups();
+      rawGroups.models = modelItems.filter(
+        (item) =>
+          item.kind === "custom" &&
+          item.customKind === WORKSPACE_MODEL_PROVIDER_ID
+      );
+      return {
+        providerDiagnostics,
+        rawGroups,
+        totalCounts: totalCountsFromRawGroups(rawGroups)
       };
     }
   }

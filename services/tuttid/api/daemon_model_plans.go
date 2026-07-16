@@ -15,6 +15,7 @@ import (
 
 type ModelPlanService interface {
 	ListPlans(ctx context.Context, workspaceID string) ([]modelplanbiz.PublicPlan, error)
+	RecommendModels(ctx context.Context, workspaceID string, input modelplanbiz.RecommendInput) ([]modelplanbiz.Recommendation, error)
 	GetPlan(ctx context.Context, workspaceID string, planID string) (modelplanbiz.PublicPlan, error)
 	CreatePlan(ctx context.Context, input modelplanservice.PutPlanInput) (modelplanbiz.PublicPlan, error)
 	UpdatePlan(ctx context.Context, input modelplanservice.PutPlanInput) (modelplanbiz.PublicPlan, error)
@@ -23,6 +24,42 @@ type ModelPlanService interface {
 	DeletePlan(ctx context.Context, workspaceID string, planID string) error
 	PlanReferences(ctx context.Context, workspaceID string, planID string) ([]modelplanbiz.Reference, error)
 	Detect(ctx context.Context, input modelplanservice.DetectInput) (modelplanservice.DetectResult, error)
+}
+
+func (api DaemonAPI) RecommendWorkspaceModels(ctx context.Context, request tuttigenerated.RecommendWorkspaceModelsRequestObject) (tuttigenerated.RecommendWorkspaceModelsResponseObject, error) {
+	if api.ModelPlanService == nil {
+		return tuttigenerated.RecommendWorkspaceModels503JSONResponse{
+			ServiceUnavailableErrorJSONResponse: modelPlanServiceUnavailable(),
+		}, nil
+	}
+	if request.Body == nil {
+		return tuttigenerated.RecommendWorkspaceModels400JSONResponse{
+			InvalidRequestErrorJSONResponse: invalidRequestError(apierrors.EmptyBody()),
+		}, nil
+	}
+	input := modelplanbiz.RecommendInput{}
+	if request.Body.RequiredCapabilities != nil {
+		input.RequiredCapabilities = append([]string(nil), (*request.Body.RequiredCapabilities)...)
+	}
+	if request.Body.PreferredPlanId != nil {
+		input.PreferredPlanID = *request.Body.PreferredPlanId
+	}
+	if request.Body.Limit != nil {
+		input.Limit = *request.Body.Limit
+	}
+	recommendations, err := api.ModelPlanService.RecommendModels(ctx, request.WorkspaceID, input)
+	if err != nil {
+		return tuttigenerated.RecommendWorkspaceModels502JSONResponse{
+			WorkspaceOperationErrorJSONResponse: workspaceOperationError(apierrors.WorkspaceOperationFailed(apierrors.WithCause(err))),
+		}, nil
+	}
+	response := tuttigenerated.RecommendWorkspaceModelsResponse{
+		Recommendations: make([]tuttigenerated.WorkspaceModelRecommendation, 0, len(recommendations)),
+	}
+	for _, recommendation := range recommendations {
+		response.Recommendations = append(response.Recommendations, generatedWorkspaceModelRecommendation(recommendation))
+	}
+	return tuttigenerated.RecommendWorkspaceModels200JSONResponse(response), nil
 }
 
 func (api DaemonAPI) ListModelPlans(ctx context.Context, request tuttigenerated.ListModelPlansRequestObject) (tuttigenerated.ListModelPlansResponseObject, error) {
@@ -229,14 +266,19 @@ func (api DaemonAPI) DetectModelPlan(ctx context.Context, request tuttigenerated
 			InvalidRequestErrorJSONResponse: invalidRequestError(apierrors.EmptyBody()),
 		}, nil
 	}
+	templateKind := ""
+	if request.Body.TemplateKind != nil {
+		templateKind = string(*request.Body.TemplateKind)
+	}
 	input := modelplanservice.DetectInput{
-		WorkspaceID: request.WorkspaceID,
-		PlanID:      stringValue(request.Body.PlanId),
-		Protocol:    string(protocolValue(request.Body.Protocol)),
-		BaseURL:     stringValue(request.Body.BaseUrl),
-		APIKey:      request.Body.ApiKey,
-		Models:      bizModelPlanModels(request.Body.Models),
-		Model:       stringValue(request.Body.Model),
+		WorkspaceID:  request.WorkspaceID,
+		PlanID:       stringValue(request.Body.PlanId),
+		TemplateKind: templateKind,
+		Protocol:     string(protocolValue(request.Body.Protocol)),
+		BaseURL:      stringValue(request.Body.BaseUrl),
+		APIKey:       request.Body.ApiKey,
+		Models:       bizModelPlanModels(request.Body.Models),
+		Model:        stringValue(request.Body.Model),
 	}
 	result, err := api.ModelPlanService.Detect(ctx, input)
 	if err != nil {
@@ -294,7 +336,11 @@ func bizModelPlanModels(models *[]tuttigenerated.ModelPlanModel) []modelplanbiz.
 		if model.Capabilities != nil {
 			capabilities = *model.Capabilities
 		}
-		result = append(result, modelplanbiz.Model{ID: model.Id, Name: model.Name, Capabilities: capabilities})
+		tier := modelplanbiz.ModelTierStandard
+		if model.Tier != nil {
+			tier = modelplanbiz.NormalizeModelTier(modelplanbiz.ModelTier(*model.Tier))
+		}
+		result = append(result, modelplanbiz.Model{ID: model.Id, Name: model.Name, Tier: tier, Capabilities: capabilities, Pricing: bizModelPlanPricing(model.Pricing)})
 	}
 	return result
 }
@@ -303,8 +349,10 @@ func generatedModelPlan(plan modelplanbiz.PublicPlan) tuttigenerated.ModelPlan {
 	result := tuttigenerated.ModelPlan{
 		Id:           plan.ID,
 		WorkspaceId:  plan.WorkspaceID,
+		Revision:     int64(plan.Revision),
 		Name:         plan.Name,
 		TemplateKind: tuttigenerated.ModelPlanTemplateKind(plan.TemplateKind),
+		BillingMode:  tuttigenerated.ModelPlanBillingMode(plan.BillingMode),
 		Protocol:     tuttigenerated.ModelPlanProtocol(plan.Protocol),
 		HasApiKey:    plan.HasAPIKey,
 		Models:       generatedModelPlanModels(plan.Models),
@@ -328,13 +376,63 @@ func generatedModelPlanModels(models []modelplanbiz.Model) []tuttigenerated.Mode
 	result := make([]tuttigenerated.ModelPlanModel, 0, len(models))
 	for _, model := range models {
 		generated := tuttigenerated.ModelPlanModel{Id: model.ID, Name: model.Name}
+		tier := tuttigenerated.ModelPlanModelTier(modelplanbiz.NormalizeModelTier(model.Tier))
+		generated.Tier = &tier
 		if len(model.Capabilities) > 0 {
 			capabilities := append([]string(nil), model.Capabilities...)
 			generated.Capabilities = &capabilities
 		}
+		if model.Pricing != nil {
+			generated.Pricing = &tuttigenerated.ModelPlanPricing{
+				Currency:                   model.Pricing.Currency,
+				InputMicrosPerMillion:      model.Pricing.InputMicrosPerMillion,
+				OutputMicrosPerMillion:     model.Pricing.OutputMicrosPerMillion,
+				CacheReadMicrosPerMillion:  model.Pricing.CacheReadMicrosPerMillion,
+				CacheWriteMicrosPerMillion: model.Pricing.CacheWriteMicrosPerMillion,
+			}
+		}
 		result = append(result, generated)
 	}
 	return result
+}
+
+func generatedWorkspaceModelRecommendation(recommendation modelplanbiz.Recommendation) tuttigenerated.WorkspaceModelRecommendation {
+	tier := tuttigenerated.WorkspaceModelRecommendationTier(recommendation.Tier)
+	result := tuttigenerated.WorkspaceModelRecommendation{
+		PlanId:       recommendation.PlanID,
+		PlanName:     recommendation.PlanName,
+		BillingMode:  tuttigenerated.ModelPlanBillingMode(recommendation.BillingMode),
+		ModelId:      recommendation.ModelID,
+		ModelName:    recommendation.ModelName,
+		Tier:         &tier,
+		Capabilities: append([]string(nil), recommendation.Capabilities...),
+		Status:       tuttigenerated.ModelPlanStatus(recommendation.Status),
+		Rank:         recommendation.Rank,
+		Reasons:      append([]string(nil), recommendation.Reasons...),
+	}
+	if recommendation.Pricing != nil {
+		result.Pricing = &tuttigenerated.ModelPlanPricing{
+			Currency:                   recommendation.Pricing.Currency,
+			InputMicrosPerMillion:      recommendation.Pricing.InputMicrosPerMillion,
+			OutputMicrosPerMillion:     recommendation.Pricing.OutputMicrosPerMillion,
+			CacheReadMicrosPerMillion:  recommendation.Pricing.CacheReadMicrosPerMillion,
+			CacheWriteMicrosPerMillion: recommendation.Pricing.CacheWriteMicrosPerMillion,
+		}
+	}
+	return result
+}
+
+func bizModelPlanPricing(value *tuttigenerated.ModelPlanPricing) *modelplanbiz.ModelPricing {
+	if value == nil {
+		return nil
+	}
+	return &modelplanbiz.ModelPricing{
+		Currency:                   value.Currency,
+		InputMicrosPerMillion:      value.InputMicrosPerMillion,
+		OutputMicrosPerMillion:     value.OutputMicrosPerMillion,
+		CacheReadMicrosPerMillion:  value.CacheReadMicrosPerMillion,
+		CacheWriteMicrosPerMillion: value.CacheWriteMicrosPerMillion,
+	}
 }
 
 func generatedModelPlanDetection(detection modelplanbiz.DetectionSnapshot) tuttigenerated.ModelPlanDetection {

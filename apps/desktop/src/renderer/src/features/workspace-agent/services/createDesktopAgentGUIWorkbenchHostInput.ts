@@ -1,7 +1,8 @@
 import type {
   AgentActivityRuntime,
   AgentGUIProps,
-  AgentHostInputApi
+  AgentHostInputApi,
+  PlanIssueCreationOptions
 } from "@tutti-os/agent-gui";
 import type { AgentContextMentionProvider } from "@tutti-os/agent-gui/context-mention-provider";
 import type { TuttidClient } from "@tutti-os/client-tuttid-ts";
@@ -48,6 +49,7 @@ import type { IWorkspaceUserProjectService } from "../../workspace-user-project/
 import { translate } from "../../../i18n/appRuntime.ts";
 import { createDesktopAgentGeneratedFileMentionProvider } from "./internal/createDesktopAgentGeneratedFileMentionProvider.ts";
 import { createDesktopAgentExternalPromptFilePreparer } from "./internal/prepareDesktopAgentExternalPromptFiles.ts";
+import { createDesktopIssueFromAgentPlan } from "./desktopAgentGUIPlanIssue.ts";
 
 export interface DesktopAgentGUIWorkbenchHostInput {
   agentActivityRuntime: AgentActivityRuntime;
@@ -77,6 +79,17 @@ export interface DesktopAgentGUIWorkbenchHostInput {
   resolveMentionReferenceTarget: NonNullable<
     AgentGUIProps["workspace"]["resolveMentionReferenceTarget"]
   >;
+  createIssueFromPlan: (input: {
+    agentSessionId: string;
+    creationOptions?: PlanIssueCreationOptions;
+    planTurnId: string;
+    workspaceId: string;
+  }) => Promise<{
+    issueId: string;
+    topicId: string;
+    startedTaskIds: string[];
+    failedTaskIds: string[];
+  }>;
   resolveWorkspaceReferenceInitialTarget: NonNullable<
     AgentGUIProps["workspace"]["resolveReferenceInitialTarget"]
   >;
@@ -119,7 +132,7 @@ export function createDesktopAgentGUIWorkbenchHostInput({
   workspaceUserProjectService,
   workspaceId
 }: CreateDesktopAgentGUIWorkbenchHostInputInput): DesktopAgentGUIWorkbenchHostInput {
-  const resolvedAgentHostApi =
+  const baseAgentHostApi =
     agentHostApi ??
     createDesktopAgentHostApi({
       hostFilesApi,
@@ -130,6 +143,22 @@ export function createDesktopAgentGUIWorkbenchHostInput({
       workspaceUserProjectService,
       workspaceId
     });
+  const resolvedAgentHostApi: AgentHostInputApi = {
+    ...baseAgentHostApi,
+    workspaceIssues: {
+      ...baseAgentHostApi.workspaceIssues,
+      estimateAutoTokenBudget: async (input) => {
+        const estimate = tuttidClient.estimateWorkspaceIssueAutoTokenBudget;
+        if (!estimate) {
+          throw new Error("workspace_issue_budget_estimate_unavailable");
+        }
+        return estimate(workspaceId, {
+          executionProfile: input.executionProfile,
+          tasks: input.tasks
+        });
+      }
+    }
+  };
   const { agentActivityRuntime } = getDesktopAgentActivityRuntimeServices({
     hostFilesApi,
     reporterNow,
@@ -249,7 +278,8 @@ export function createDesktopAgentGUIWorkbenchHostInput({
           "workspace-issue",
           "agent-session",
           "workspace-app",
-          "agent-target"
+          "agent-target",
+          "workspace-model"
         ],
         surface: "composer",
         target: "agent-gui",
@@ -289,6 +319,22 @@ export function createDesktopAgentGUIWorkbenchHostInput({
       workspaceFileManagerService?.resolveEntryIconUrl(workspaceId, entry) ??
       Promise.resolve(null),
     resolveMentionReferenceTarget,
+    createIssueFromPlan: ({ agentSessionId, creationOptions, planTurnId }) =>
+      createDesktopIssueFromAgentPlan({
+        agentActivityRuntime,
+        agentSessionId,
+        creationOptions,
+        defaultIssueTitle: translate(
+          "workspace.agentGui.issueFromPlanDefaultTitle"
+        ),
+        defaultTopicTitle: translate(
+          "workspace.agentGui.issueFromPlanDefaultTopic"
+        ),
+        hostFilesApi,
+        planTurnId,
+        tuttidClient,
+        workspaceId
+      }),
     resolveWorkspaceReferenceInitialTarget
   };
 }

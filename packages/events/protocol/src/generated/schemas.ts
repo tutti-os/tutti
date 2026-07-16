@@ -1315,6 +1315,22 @@ export const agentActivityUpdatedPayloadSchema = {
   }
 } as const;
 
+export const agentAutomationRulesChangedPayloadSchema = {
+  type: "object",
+  additionalProperties: false,
+  required: ["workspaceId", "occurredAtUnixMs"],
+  properties: {
+    workspaceId: {
+      type: "string",
+      minLength: 1
+    },
+    occurredAtUnixMs: {
+      type: "integer",
+      minimum: 0
+    }
+  }
+} as const;
+
 export const agentCollaborationUpdatedPayloadSchema = {
   type: "object",
   additionalProperties: false,
@@ -1361,7 +1377,7 @@ export const agentCollaborationUpdatedPayloadSchema = {
     },
     triggerSource: {
       type: "string",
-      enum: ["user", "agent", "policy"]
+      enum: ["user", "agent", "policy", "automation"]
     },
     adoption: {
       type: "string",
@@ -1386,6 +1402,45 @@ export const agentModelCatalogInvalidatedPayloadSchema = {
         type: "string",
         minLength: 1
       }
+    },
+    occurredAtUnixMs: {
+      type: "integer",
+      minimum: 0
+    }
+  }
+} as const;
+
+export const agentModelConfigurationChangedPayloadSchema = {
+  type: "object",
+  additionalProperties: false,
+  required: [
+    "workspaceId",
+    "agentTargetIds",
+    "defaultModels",
+    "resetComposerModel",
+    "occurredAtUnixMs"
+  ],
+  properties: {
+    workspaceId: {
+      type: "string",
+      minLength: 1
+    },
+    agentTargetIds: {
+      type: "array",
+      minItems: 1,
+      items: {
+        type: "string",
+        minLength: 1
+      }
+    },
+    defaultModels: {
+      type: "object",
+      additionalProperties: {
+        type: "string"
+      }
+    },
+    resetComposerModel: {
+      type: "boolean"
     },
     occurredAtUnixMs: {
       type: "integer",
@@ -3009,8 +3064,11 @@ export const businessEventServerFrameSchema = {
 
 export const businessEventPayloadSchemas = {
   "agent.activity.updated": agentActivityUpdatedPayloadSchema,
+  "agent.automation.rules.changed": agentAutomationRulesChangedPayloadSchema,
   "agent.collaboration.updated": agentCollaborationUpdatedPayloadSchema,
   "agent.model.catalog.invalidated": agentModelCatalogInvalidatedPayloadSchema,
+  "agent.model.configuration.changed":
+    agentModelConfigurationChangedPayloadSchema,
   "analytics.debug.reported": analyticsDebugReportedPayloadSchema,
   "preferences.agent.composer.defaults.changed":
     preferencesAgentComposerDefaultsChangedPayloadSchema,

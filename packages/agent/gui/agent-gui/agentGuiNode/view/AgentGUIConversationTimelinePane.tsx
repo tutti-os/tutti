@@ -1,6 +1,7 @@
 import { memo } from "react";
 import { AgentConversationFlow } from "../../../shared/agentConversation/components/AgentConversationFlow";
 import type { AgentConversationVM } from "../../../shared/agentConversation/contracts/agentConversationVM";
+import type { AgentCollaborationVM } from "../../../shared/agentConversation/contracts/agentCollaborationVM";
 import type { WorkspaceLinkAction } from "../../../actions/workspaceLinkActions";
 import type { AgentGUIProviderSkillOption } from "../model/agentGuiNodeTypes";
 import type { AgentMessageMarkdownWorkspaceAppIcon } from "../../../shared/AgentMessageMarkdown";
@@ -15,6 +16,7 @@ interface AgentGUIConversationTimelinePaneProps {
   loadingLabel: string;
   empty: React.JSX.Element;
   onLinkAction?: (action: WorkspaceLinkAction) => void;
+  onReviseCollaboration?: (collaboration: AgentCollaborationVM) => void;
   onAuthLogin?: (provider?: string | null) => void;
   availableSkills?: readonly AgentGUIProviderSkillOption[];
   workspaceAppIcons?: readonly AgentMessageMarkdownWorkspaceAppIcon[];
@@ -36,6 +38,7 @@ export const AgentGUIConversationTimelinePane = memo(
     loadingLabel,
     empty,
     onLinkAction,
+    onReviseCollaboration,
     onAuthLogin,
     availableSkills,
     workspaceAppIcons = EMPTY_WORKSPACE_APP_ICONS,
@@ -61,6 +64,7 @@ export const AgentGUIConversationTimelinePane = memo(
           loadingLabel={loadingLabel}
           empty={empty}
           onLinkAction={onLinkAction}
+          onReviseCollaboration={onReviseCollaboration}
           onAuthLogin={onAuthLogin}
           availableSkills={availableSkills}
           workspaceAppIcons={workspaceAppIcons}

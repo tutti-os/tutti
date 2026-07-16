@@ -31,6 +31,8 @@ import type {
   WorkspaceSettingsReadableStoreState,
   WorkspaceSettingsGeneralFocusAnchor,
   WorkspaceSettingsSectionID,
+  WorkspaceAgentDraft,
+  WorkspaceAutomationRuleDraft,
   WorkspaceModelPlanDraft,
   WorkspaceModelPlanDraftSeed
 } from "./workspaceSettingsTypes";
@@ -48,7 +50,8 @@ export interface WorkspaceAgentModelBindingChange {
 
 /**
  * Model access plan operations exposed by the settings service. All state
- * lives on the settings store's `modelPlans` slice.
+ * lives on the settings store's `modelPlans` slice. Binding operations are a
+ * legacy compatibility surface and are not part of the default settings load.
  */
 export interface IWorkspaceModelPlansController {
   addDiscoveredModelToDraft(modelID: string): void;
@@ -59,6 +62,7 @@ export interface IWorkspaceModelPlansController {
   confirmDeletePlan(planID: string): Promise<void>;
   detectDraft(): Promise<void>;
   duplicatePlan(planID: string): Promise<void>;
+  launchFirstUse(planID: string, agentTargetID: string): Promise<void>;
   refresh(): Promise<void>;
   refreshBindings(): Promise<void>;
   refreshPlans(): Promise<void>;
@@ -72,6 +76,33 @@ export interface IWorkspaceModelPlansController {
   updateDraft(patch: Partial<WorkspaceModelPlanDraft>): void;
 }
 
+export interface IWorkspaceAgentsController {
+  beginDraft(): void;
+  beginEditAgent(agentID: string): void;
+  cancelDeleteAgent(): void;
+  cancelDraft(): void;
+  confirmDeleteAgent(agentID: string): Promise<void>;
+  addRecommendedFallback(): Promise<void>;
+  generateDraft(): Promise<void>;
+  refresh(): Promise<void>;
+  refreshCapabilityCatalog(): Promise<void>;
+  requestDeleteAgent(agentID: string): void;
+  saveDraft(): Promise<void>;
+  updateDraft(patch: Partial<WorkspaceAgentDraft>): void;
+}
+
+export interface IWorkspaceAutomationRulesController {
+  beginDraft(): void;
+  beginEditRule(automationRuleID: string): void;
+  cancelDeleteRule(): void;
+  cancelDraft(): void;
+  confirmDeleteRule(automationRuleID: string): Promise<void>;
+  refresh(): Promise<void>;
+  requestDeleteRule(automationRuleID: string): void;
+  saveDraft(): Promise<void>;
+  updateDraft(patch: Partial<WorkspaceAutomationRuleDraft>): void;
+}
+
 export interface WorkspaceSettingsOpenOptions {
   anchor?: WorkspaceSettingsGeneralFocusAnchor;
   pane?: string;
@@ -81,6 +112,8 @@ export interface WorkspaceSettingsOpenOptions {
 
 export interface IWorkspaceSettingsService {
   readonly _serviceBrand: undefined;
+  readonly automationRules: IWorkspaceAutomationRulesController;
+  readonly agents: IWorkspaceAgentsController;
   readonly modelPlans: IWorkspaceModelPlansController;
   readonly store: WorkspaceSettingsReadableStoreState;
 

@@ -56,6 +56,31 @@ export type AgentHostEnvironmentApi = AgentHostRecord & {
   getBaseUrl?: () => AgentHostAsyncResult<string>;
 };
 
+export interface AgentHostIssueAutoTokenBudgetInput {
+  executionProfile: {
+    reasoningIntensity: number;
+    orchestrationIntensity: number;
+  };
+  tasks: Array<{
+    agentTargetId?: string;
+    modelPlanId?: string;
+    model?: string;
+  }>;
+}
+
+export interface AgentHostIssueAutoTokenBudgetEstimate {
+  tokenLimit: number;
+  deterministicTokenLimit: number;
+  historicalTokenEstimate: number;
+  matchedTaskCount: number;
+}
+
+export type AgentHostWorkspaceIssuesApi = AgentHostRecord & {
+  estimateAutoTokenBudget?: (
+    input: AgentHostIssueAutoTokenBudgetInput
+  ) => AgentHostAsyncResult<AgentHostIssueAutoTokenBudgetEstimate>;
+};
+
 export type AgentHostPersistenceApi = AgentHostRecord & {
   readWorkspaceAgentReadState: (
     input: ReadWorkspaceAgentReadStateInput
@@ -164,6 +189,7 @@ export interface AgentHostInputApi {
   toast?: AgentHostToastApi;
   userProjects?: AgentHostUserProjectsApi;
   workspace: AgentHostWorkspaceApi;
+  workspaceIssues?: AgentHostWorkspaceIssuesApi;
   workspaceAgentProbes?: AgentHostWorkspaceAgentProbesApi;
 }
 
@@ -357,6 +383,7 @@ export interface AgentHostRuntimeApi {
   toast?: AgentHostToastApi;
   userProjects?: AgentHostUserProjectsApi;
   workspace: AgentHostWorkspaceApi;
+  workspaceIssues?: AgentHostWorkspaceIssuesApi;
   workspaceAgentProbes?: AgentHostWorkspaceAgentProbesApi;
 }
 
@@ -376,6 +403,7 @@ export function toAgentHostRuntimeApi(
     toast: hostApi.toast,
     userProjects: hostApi.userProjects,
     workspace: hostApi.workspace,
+    workspaceIssues: hostApi.workspaceIssues,
     workspaceAgentProbes: hostApi.workspaceAgentProbes
   };
 }

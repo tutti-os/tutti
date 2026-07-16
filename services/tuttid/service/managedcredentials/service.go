@@ -15,6 +15,7 @@ import (
 	"time"
 
 	managedcredentialsbiz "github.com/tutti-os/tutti/services/tuttid/biz/managedcredentials"
+	modelplanbiz "github.com/tutti-os/tutti/services/tuttid/biz/modelplan"
 	workspacedata "github.com/tutti-os/tutti/services/tuttid/data/workspace"
 
 	"github.com/tutti-os/tutti/packages/agent/daemon/httpx"
@@ -23,15 +24,23 @@ import (
 const GrantCodeTTL = 5 * time.Hour
 
 var (
-	ErrInvalidProvider       = errors.New("invalid managed credential provider")
-	ErrGrantCodeInvalid      = errors.New("managed credential grant code is invalid")
-	ErrGrantExpired          = errors.New("managed credential grant is expired")
-	ErrGrantRevoked          = errors.New("managed credential grant is revoked")
-	ErrProviderNotConfigured = errors.New("managed credential provider is not configured")
+	ErrInvalidProvider            = errors.New("invalid managed credential provider")
+	ErrGrantCodeInvalid           = errors.New("managed credential grant code is invalid")
+	ErrGrantExpired               = errors.New("managed credential grant is expired")
+	ErrGrantRevoked               = errors.New("managed credential grant is revoked")
+	ErrProviderNotConfigured      = errors.New("managed credential provider is not configured")
+	ErrModelPlanNotConfigured     = errors.New("managed credential model plan is not configured")
+	ErrModelPlanSelectionRequired = errors.New("managed credential model plan selection is required")
 )
+
+type ModelPlanSource interface {
+	GetModelPlan(context.Context, string, string) (modelplanbiz.Plan, error)
+	ListModelPlans(context.Context, string) ([]modelplanbiz.Plan, error)
+}
 
 type Service struct {
 	Store      workspacedata.ManagedCredentialsStore
+	Plans      ModelPlanSource
 	Now        func() time.Time
 	HTTPClient *http.Client
 
@@ -65,6 +74,7 @@ type CreateGrantInput struct {
 	AppID        string
 	Nonce        string
 	ProviderIDs  []string
+	ModelPlanIDs []string
 	Scopes       []string
 	State        string
 }
@@ -85,10 +95,11 @@ type ExchangeInput struct {
 }
 
 type ExchangeResult struct {
-	ExpiresAt time.Time
-	GrantRef  string
-	Providers []managedcredentialsbiz.ProviderID
-	Models    []managedcredentialsbiz.Model
+	ExpiresAt    time.Time
+	GrantRef     string
+	Providers    []managedcredentialsbiz.ProviderID
+	ModelPlanIDs []string
+	Models       []managedcredentialsbiz.Model
 }
 
 type CredentialInput struct {
@@ -96,6 +107,7 @@ type CredentialInput struct {
 	AppID       string
 	GrantRef    string
 	Provider    string
+	ModelPlanID string
 	Model       string
 	Capability  string
 }
@@ -232,7 +244,28 @@ func (s *Service) CreateGrant(ctx context.Context, input CreateGrantInput) (Gran
 	if err != nil {
 		return GrantResult{}, err
 	}
-	if len(providers) == 0 {
+	modelPlanIDs := normalizeIDs(input.ModelPlanIDs)
+	if len(modelPlanIDs) > 0 {
+		if _, err := s.usablePlansByID(ctx, workspaceID, modelPlanIDs); err != nil {
+			return GrantResult{}, err
+		}
+	}
+	if len(modelPlanIDs) == 0 && len(providers) > 0 {
+		modelPlanIDs, providers, err = s.preferModelPlansForProviders(ctx, workspaceID, providers)
+		if err != nil {
+			return GrantResult{}, err
+		}
+	}
+	if len(providers) == 0 && len(modelPlanIDs) == 0 {
+		modelPlanIDs, err = s.defaultUsableModelPlanIDs(ctx, workspaceID)
+		if err != nil {
+			return GrantResult{}, err
+		}
+	}
+	// Compatibility fallback for workspaces that have not created and verified
+	// a Model Plan yet. Once a usable Plan exists, an unscoped App grant reuses
+	// it instead of copying the legacy provider credential path.
+	if len(providers) == 0 && len(modelPlanIDs) == 0 {
 		configs, err := s.Store.ListManagedModelProviderConfigs(ctx, workspaceID)
 		if err != nil {
 			return GrantResult{}, err
@@ -246,13 +279,14 @@ func (s *Service) CreateGrant(ctx context.Context, input CreateGrantInput) (Gran
 	now := s.now()
 	grantRef := randomToken()
 	grant := managedcredentialsbiz.Grant{
-		WorkspaceID: workspaceID,
-		AppID:       appID,
-		GrantRef:    grantRef,
-		ProviderIDs: providers,
-		Scopes:      normalizeScopes(input.Scopes),
-		CreatedAt:   now,
-		ExpiresAt:   now.Add(GrantCodeTTL),
+		WorkspaceID:  workspaceID,
+		AppID:        appID,
+		GrantRef:     grantRef,
+		ProviderIDs:  providers,
+		ModelPlanIDs: modelPlanIDs,
+		Scopes:       normalizeScopes(input.Scopes),
+		CreatedAt:    now,
+		ExpiresAt:    now.Add(GrantCodeTTL),
 	}
 	if err := s.Store.PutManagedModelGrant(ctx, grant); err != nil {
 		return GrantResult{}, err
@@ -273,7 +307,7 @@ func (s *Service) CreateGrant(ctx context.Context, input CreateGrantInput) (Gran
 	return GrantResult{
 		GrantCode: code,
 		Grant:     grant,
-		Models:    s.modelsForProviders(ctx, workspaceID, providers),
+		Models:    s.modelsForGrant(ctx, grant),
 	}, nil
 }
 
@@ -299,10 +333,11 @@ func (s *Service) Exchange(ctx context.Context, input ExchangeInput) (ExchangeRe
 		return ExchangeResult{}, err
 	}
 	return ExchangeResult{
-		ExpiresAt: grant.ExpiresAt,
-		GrantRef:  grant.GrantRef,
-		Providers: append([]managedcredentialsbiz.ProviderID(nil), grant.ProviderIDs...),
-		Models:    s.modelsForProviders(ctx, workspaceID, grant.ProviderIDs),
+		ExpiresAt:    grant.ExpiresAt,
+		GrantRef:     grant.GrantRef,
+		Providers:    append([]managedcredentialsbiz.ProviderID(nil), grant.ProviderIDs...),
+		ModelPlanIDs: append([]string(nil), grant.ModelPlanIDs...),
+		Models:       s.modelsForGrant(ctx, grant),
 	}, nil
 }
 
@@ -313,7 +348,7 @@ func (s *Service) ListGrantModels(ctx context.Context, workspaceID string, appID
 	}
 	return ModelCatalogResult{
 		ExpiresAt: grant.ExpiresAt,
-		Models:    s.modelsForProviders(ctx, grant.WorkspaceID, grant.ProviderIDs),
+		Models:    s.modelsForGrant(ctx, grant),
 	}, nil
 }
 
@@ -329,25 +364,49 @@ func (s *Service) Credential(ctx context.Context, input CredentialInput) (Creden
 	if err != nil {
 		return CredentialResult{}, err
 	}
-	allowed := false
+	modelPlanID := strings.TrimSpace(input.ModelPlanID)
+	if modelPlanID != "" {
+		if !containsString(grant.ModelPlanIDs, modelPlanID) {
+			return CredentialResult{}, ErrModelPlanNotConfigured
+		}
+		return s.credentialForPlan(ctx, grant, modelPlanID, provider, strings.TrimSpace(input.Model))
+	}
+
+	// Preserve the original fixed-provider flow for explicitly legacy grants.
 	for _, grantProvider := range grant.ProviderIDs {
 		if grantProvider == provider {
-			allowed = true
-			break
+			return s.credentialForLegacyProvider(ctx, grant, provider, strings.TrimSpace(input.Model))
 		}
 	}
-	if !allowed {
-		return CredentialResult{}, ErrProviderNotConfigured
+
+	// Older app clients know only provider + model. They can still consume a
+	// Model Plan grant when that pair identifies exactly one Plan; multiple
+	// same-protocol Plans must be selected explicitly to avoid credential drift.
+	matches := []string{}
+	for _, candidateID := range grant.ModelPlanIDs {
+		plan, planErr := s.usablePlan(ctx, workspaceID, candidateID)
+		if planErr != nil || providerForProtocol(plan.Protocol) != provider {
+			continue
+		}
+		if input.Model == "" || planModelsContain(plan.Models, strings.TrimSpace(input.Model)) {
+			matches = append(matches, candidateID)
+		}
 	}
-	config, err := s.Store.GetManagedModelProviderConfig(ctx, workspaceID, provider)
+	if len(matches) == 0 {
+		return CredentialResult{}, ErrModelPlanNotConfigured
+	}
+	if len(matches) > 1 {
+		return CredentialResult{}, ErrModelPlanSelectionRequired
+	}
+	return s.credentialForPlan(ctx, grant, matches[0], provider, strings.TrimSpace(input.Model))
+}
+
+func (s *Service) credentialForLegacyProvider(ctx context.Context, grant managedcredentialsbiz.Grant, provider managedcredentialsbiz.ProviderID, model string) (CredentialResult, error) {
+	config, err := s.Store.GetManagedModelProviderConfig(ctx, grant.WorkspaceID, provider)
 	if err != nil {
 		return CredentialResult{}, err
 	}
-	if !config.Enabled || config.APIKey == "" {
-		return CredentialResult{}, ErrProviderNotConfigured
-	}
-	model := strings.TrimSpace(input.Model)
-	if model != "" && !modelsContain(config.Models, model) {
+	if !config.Enabled || config.APIKey == "" || (model != "" && !modelsContain(config.Models, model)) {
 		return CredentialResult{}, ErrProviderNotConfigured
 	}
 	return CredentialResult{

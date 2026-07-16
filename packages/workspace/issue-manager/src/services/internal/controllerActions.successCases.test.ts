@@ -218,6 +218,7 @@ test("controller actions save edited issues and sync only issue-scoped missing r
     {
       content:
         "[spec](/workspace/docs/spec.md)\n\n[design](/workspace/docs/design.md)",
+      dispatchPaused: false,
       issueId: "issue-1",
       title: "Plan migration",
       workspaceId: "workspace-1"

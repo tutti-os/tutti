@@ -8,6 +8,8 @@ import {
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { AgentInteractivePromptSurface } from "./AgentInteractivePromptSurface";
 import { setAgentGuiI18nTestLocale } from "../../i18n/testUtils";
+import { AgentActivityHostProvider } from "../../agentActivityHost";
+import type { AgentHostInputApi } from "../../host/agentHostApi";
 
 const labels = {
   approvalLead: "Waiting for your approval",
@@ -40,6 +42,27 @@ const labels = {
   waitingForAnswer: "Waiting for your answer...",
   planImplementationLead: "Implement this plan?",
   planImplementationConfirm: "Implement plan",
+  planImplementationCreateIssue: "Break into an Issue",
+  planIssueReviewTitle: "Execution review",
+  planIssueReasoning: "Reasoning intensity",
+  planIssueOrchestration: "Orchestration intensity",
+  planIssueBudgetAuto: "Auto budget",
+  planIssueBudgetFixed: "Fixed budget",
+  planIssueTokenBudget: "Token budget",
+  planIssueTaskPreview: "Task preview",
+  planIssueAgentTarget: "Agent",
+  planIssueModelPlan: "Model Plan",
+  planIssueModel: "Model",
+  planIssueDirectory: "Directory",
+  planIssueDependencies: "Dependencies",
+  planIssueCreateOnly: "Create Issue",
+  planIssueCreateAndStart: "Create and Start",
+  planIssueCreateAndStartParallel: "Create and Start in Parallel",
+  planIssueStartOrchestration: "Start orchestration",
+  planIssueEstimatedCost: "Estimated cost",
+  planIssueCostUnavailable: "Unavailable until priced models are assigned",
+  planIssueCostPartial: "Partial estimate; some prices are unknown",
+  planIssueUnassigned: "Unassigned",
   planImplementationFeedbackPlaceholder: "Adjust the plan instead...",
   planImplementationSend: "Send adjustments",
   planImplementationSkip: "Stay in Plan Mode"
@@ -1390,6 +1413,14 @@ describe("AgentInteractivePromptSurface", () => {
       action: "implement"
     });
 
+    fireEvent.click(
+      screen.getByTestId("agent-plan-implementation-create-issue")
+    );
+    expect(onSubmit).toHaveBeenCalledWith({
+      requestId: "plan-turn-1",
+      action: "create_issue"
+    });
+
     // Empty continue button skips (stays in plan mode).
     fireEvent.click(screen.getByTestId("agent-plan-implementation-continue"));
     expect(onSubmit).toHaveBeenCalledWith({
@@ -1408,6 +1439,441 @@ describe("AgentInteractivePromptSurface", () => {
       action: "feedback",
       payload: { text: "focus on tests first" }
     });
+  });
+
+  it("reveals budget settings only after traditional Plan requests Issue breakdown", () => {
+    const onSubmit = vi.fn();
+    const issueDraft = {
+      title: "Migration",
+      content: "Plan the migration.",
+      stage: "budget" as const,
+      planningSource: "traditional_plan" as const,
+      executionProfile: {
+        reasoningIntensity: 50,
+        orchestrationIntensity: 50
+      },
+      budget: {
+        mode: "auto" as const,
+        tokenLimit: 72_000,
+        quotaWaterlinePercent: 10
+      },
+      tasks: [
+        {
+          sourceId: "plan",
+          title: "Migration",
+          content: "Plan the migration.",
+          priority: "medium" as const,
+          dependencySourceIds: []
+        }
+      ]
+    };
+    render(
+      <AgentInteractivePromptSurface
+        prompt={{
+          kind: "plan-implementation",
+          requestId: "plan-traditional",
+          title: "Session",
+          issueDraft
+        }}
+        isSubmitting={false}
+        onSubmit={onSubmit}
+        labels={labels}
+      />
+    );
+
+    expect(
+      screen.getByTestId("agent-plan-implementation-implement")
+    ).toBeTruthy();
+    expect(
+      screen.queryByTestId("agent-plan-implementation-start-orchestration")
+    ).toBeNull();
+
+    fireEvent.click(
+      screen.getByTestId("agent-plan-implementation-create-issue")
+    );
+    expect(
+      screen.queryByTestId("agent-plan-implementation-implement")
+    ).toBeNull();
+    fireEvent.click(
+      screen.getByTestId("agent-plan-implementation-start-orchestration")
+    );
+    expect(onSubmit).toHaveBeenCalledWith({
+      requestId: "plan-traditional",
+      action: "orchestrate_issue",
+      payload: {
+        draft: issueDraft,
+        displayPrompt: "Start orchestration"
+      }
+    });
+  });
+
+  it("shows Ultra budget confirmation before the task preview", () => {
+    const onSubmit = vi.fn();
+    const issueDraft = {
+      title: "Migration",
+      content: "Plan the migration.",
+      stage: "budget" as const,
+      planningSource: "ultra_plan" as const,
+      executionProfile: {
+        reasoningIntensity: 70,
+        orchestrationIntensity: 80
+      },
+      budget: {
+        mode: "auto" as const,
+        tokenLimit: 90_000,
+        quotaWaterlinePercent: 10
+      },
+      tasks: [
+        {
+          sourceId: "plan",
+          title: "Migration",
+          content: "Plan the migration.",
+          priority: "medium" as const,
+          dependencySourceIds: []
+        }
+      ]
+    };
+    render(
+      <AgentInteractivePromptSurface
+        prompt={{
+          kind: "plan-implementation",
+          requestId: "plan-ultra",
+          title: "Session",
+          issueDraft
+        }}
+        isSubmitting={false}
+        onSubmit={onSubmit}
+        labels={labels}
+      />
+    );
+
+    expect(
+      screen.queryByTestId("agent-plan-implementation-implement")
+    ).toBeNull();
+    expect(screen.queryByText("Task preview")).toBeNull();
+    expect(
+      screen.getByTestId("agent-plan-implementation-start-orchestration")
+    ).toBeTruthy();
+  });
+
+  it("uses compatible assignment selectors and shows a priced task preview", async () => {
+    const onSubmit = vi.fn();
+    render(
+      <AgentInteractivePromptSurface
+        prompt={{
+          kind: "plan-implementation",
+          requestId: "plan-preview",
+          title: "Session",
+          issueDraft: {
+            title: "Ship",
+            content: "Ship the feature.",
+            stage: "preview",
+            planningSource: "ultra_plan",
+            executionProfile: {
+              reasoningIntensity: 70,
+              orchestrationIntensity: 80
+            },
+            budget: {
+              mode: "fixed",
+              tokenLimit: 100_000,
+              quotaWaterlinePercent: 10
+            },
+            tasks: [
+              {
+                sourceId: "build",
+                title: "Build",
+                content: "Build it.",
+                priority: "medium",
+                agentTargetId: "local:codex",
+                dependencySourceIds: []
+              }
+            ]
+          },
+          assignmentCatalog: {
+            agents: [
+              {
+                agentTargetId: "local:codex",
+                name: "Codex",
+                purpose: "Implement repository changes",
+                provider: "codex",
+                modelPlanProtocol: "openai",
+                available: true
+              }
+            ],
+            modelPlans: [
+              {
+                id: "openai-plan",
+                name: "OpenAI Plan",
+                billingMode: "api_metered",
+                protocol: "openai",
+                status: "ready",
+                available: true,
+                defaultModel: "gpt-5",
+                models: [
+                  {
+                    id: "gpt-5",
+                    name: "GPT-5",
+                    tier: "flagship",
+                    pricing: {
+                      currency: "USD",
+                      inputMicrosPerMillion: 10_000,
+                      outputMicrosPerMillion: 20_000,
+                      cacheReadMicrosPerMillion: 1_000,
+                      cacheWriteMicrosPerMillion: 5_000
+                    }
+                  }
+                ]
+              },
+              {
+                id: "anthropic-plan",
+                name: "Anthropic Plan",
+                protocol: "anthropic",
+                status: "ready",
+                available: true,
+                models: [{ id: "claude", name: "Claude" }]
+              }
+            ]
+          }
+        }}
+        isSubmitting={false}
+        onSubmit={onSubmit}
+        labels={labels}
+      />
+    );
+
+    const planSelect = screen.getByRole("combobox", { name: "Model Plan" });
+    Object.assign(planSelect, {
+      hasPointerCapture: () => false,
+      setPointerCapture: () => {},
+      releasePointerCapture: () => {}
+    });
+    fireEvent.pointerDown(planSelect, {
+      button: 0,
+      ctrlKey: false,
+      pointerId: 1,
+      pointerType: "mouse"
+    });
+    expect(
+      await screen.findByRole("option", { name: "OpenAI Plan" })
+    ).toBeVisible();
+    expect(screen.queryByRole("option", { name: "Anthropic Plan" })).toBeNull();
+    fireEvent.click(screen.getByRole("option", { name: "OpenAI Plan" }));
+
+    expect(screen.getByRole("combobox", { name: "Model" })).toHaveTextContent(
+      "GPT-5"
+    );
+    expect(
+      screen.getByTestId("agent-plan-implementation-cost-estimate")
+    ).toHaveTextContent("$0.002");
+
+    fireEvent.click(
+      screen.getByTestId("agent-plan-implementation-create-issue")
+    );
+    expect(onSubmit).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: "create_issue",
+        payload: {
+          creationOptions: expect.objectContaining({
+            draft: expect.objectContaining({
+              tasks: [
+                expect.objectContaining({
+                  agentTargetId: "local:codex",
+                  modelPlanId: "openai-plan",
+                  model: "gpt-5"
+                })
+              ]
+            })
+          })
+        }
+      })
+    );
+
+    fireEvent.click(
+      screen.getByTestId("agent-plan-implementation-create-and-start-parallel")
+    );
+    expect(onSubmit).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        action: "create_issue",
+        payload: {
+          creationOptions: expect.objectContaining({
+            executionMode: "parallel",
+            startExecution: true
+          })
+        }
+      })
+    );
+  });
+
+  it("lets users adjust task dependencies in the task preview", () => {
+    const onSubmit = vi.fn();
+    render(
+      <AgentInteractivePromptSurface
+        prompt={{
+          kind: "plan-implementation",
+          requestId: "plan-dependencies",
+          title: "Session",
+          issueDraft: {
+            title: "Ship",
+            content: "Ship the feature.",
+            stage: "preview",
+            planningSource: "ultra_plan",
+            executionProfile: {
+              reasoningIntensity: 50,
+              orchestrationIntensity: 50
+            },
+            budget: {
+              mode: "fixed",
+              tokenLimit: 80_000,
+              quotaWaterlinePercent: 10
+            },
+            tasks: [
+              {
+                sourceId: "build",
+                title: "Build",
+                content: "Build it.",
+                priority: "medium",
+                dependencySourceIds: []
+              },
+              {
+                sourceId: "verify",
+                title: "Verify",
+                content: "Verify it.",
+                priority: "medium",
+                dependencySourceIds: []
+              }
+            ]
+          }
+        }}
+        isSubmitting={false}
+        onSubmit={onSubmit}
+        labels={labels}
+      />
+    );
+
+    fireEvent.click(
+      screen.getByRole("checkbox", { name: "Dependencies: Build" })
+    );
+    fireEvent.click(
+      screen.getByTestId("agent-plan-implementation-create-issue")
+    );
+
+    expect(onSubmit).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: "create_issue",
+        payload: {
+          creationOptions: expect.objectContaining({
+            draft: expect.objectContaining({
+              tasks: [
+                expect.objectContaining({ dependencySourceIds: [] }),
+                expect.objectContaining({ dependencySourceIds: ["build"] })
+              ]
+            })
+          })
+        }
+      })
+    );
+  });
+
+  it("recalibrates an edited auto budget from host-provided run history", async () => {
+    const onSubmit = vi.fn();
+    const estimateAutoTokenBudget = vi.fn().mockResolvedValue({
+      tokenLimit: 1_032_000,
+      deterministicTokenLimit: 64_000,
+      historicalTokenEstimate: 10_000_000,
+      matchedTaskCount: 1
+    });
+    const agentHostApi: AgentHostInputApi = {
+      clipboard: { writeText: vi.fn() },
+      filesystem: { readFileText: vi.fn() },
+      workspace: {
+        ensureDirectory: vi.fn(),
+        readFile: vi.fn(),
+        selectDirectory: vi.fn(),
+        selectFiles: vi.fn(),
+        writeFileText: vi.fn()
+      },
+      workspaceIssues: { estimateAutoTokenBudget }
+    };
+
+    render(
+      <AgentActivityHostProvider agentHostApi={agentHostApi}>
+        <AgentInteractivePromptSurface
+          prompt={{
+            kind: "plan-implementation",
+            requestId: "plan-history-budget",
+            title: "Session",
+            issueDraft: {
+              title: "Ship",
+              content: "Ship the feature.",
+              stage: "preview",
+              planningSource: "ultra_plan",
+              executionProfile: {
+                reasoningIntensity: 50,
+                orchestrationIntensity: 50
+              },
+              budget: {
+                mode: "auto",
+                tokenLimit: 64_000,
+                quotaWaterlinePercent: 10
+              },
+              tasks: [
+                {
+                  sourceId: "build",
+                  title: "Build",
+                  content: "Build it.",
+                  priority: "medium",
+                  agentTargetId: "local:codex",
+                  modelPlanId: "plan-1",
+                  model: "model-1",
+                  dependencySourceIds: []
+                }
+              ]
+            }
+          }}
+          isSubmitting={false}
+          onSubmit={onSubmit}
+          labels={labels}
+        />
+      </AgentActivityHostProvider>
+    );
+
+    expect(screen.getByRole("spinbutton")).toHaveValue(64_000);
+    fireEvent.keyDown(
+      screen.getByRole("slider", { name: "Reasoning intensity" }),
+      { key: "ArrowRight" }
+    );
+
+    await waitFor(() =>
+      expect(screen.getByRole("spinbutton")).toHaveValue(1_032_000)
+    );
+    expect(estimateAutoTokenBudget).toHaveBeenCalledWith({
+      executionProfile: {
+        reasoningIntensity: 51,
+        orchestrationIntensity: 50
+      },
+      tasks: [
+        {
+          agentTargetId: "local:codex",
+          modelPlanId: "plan-1",
+          model: "model-1"
+        }
+      ]
+    });
+
+    fireEvent.click(
+      screen.getByTestId("agent-plan-implementation-create-issue")
+    );
+    expect(onSubmit).toHaveBeenCalledWith(
+      expect.objectContaining({
+        payload: {
+          creationOptions: expect.objectContaining({
+            draft: expect.objectContaining({
+              budget: expect.objectContaining({ tokenLimit: 1_032_000 })
+            })
+          })
+        }
+      })
+    );
   });
 
   it("submits a single-select ask-user answer in one click when compact", () => {

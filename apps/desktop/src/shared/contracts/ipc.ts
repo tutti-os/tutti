@@ -227,6 +227,7 @@ export const desktopIpcChannels = {
       revealWorkspaceFile: "host:files:revealWorkspaceFile",
       openTerminalLink: "host:files:openTerminalLink",
       readLocalFileText: "host:files:readLocalFileText",
+      createGitWorktree: "host:files:createGitWorktree",
       readLocalPreviewFile: "host:files:readLocalPreviewFile",
       archiveAgentPromptFile: "host:files:archiveAgentPromptFile",
       readPreviewFile: "host:files:readPreviewFile",
@@ -304,6 +305,8 @@ export interface DesktopHostOpenAgentWindowInput {
   agentTargetId?: string | null;
   autoSubmit?: boolean;
   draftPrompt?: string | null;
+  model?: string | null;
+  modelPlanId?: string | null;
   providerStatusSnapshot?: DesktopAgentProviderStatusSnapshot | null;
   minimizeSourceWindow?: boolean;
   offsetFromSourceWindow?: boolean;
@@ -427,6 +430,18 @@ export type DesktopWorkspaceAppFolderKind =
 export interface DesktopLocalFileTextResult {
   content: string;
   name: string;
+  path: string;
+}
+
+/** A task-owned Git checkout used to isolate parallel Issue execution. */
+export interface DesktopGitWorktreeInput {
+  issueId: string;
+  sourceDirectory: string;
+  taskId: string;
+}
+
+export interface DesktopGitWorktree {
+  branch: string;
   path: string;
 }
 
@@ -990,6 +1005,7 @@ export interface DesktopInvokePayloadByChannel {
   [desktopIpcChannels.host.files
     .openTerminalLink]: DesktopTerminalLinkPathPayload;
   [desktopIpcChannels.host.files.readLocalFileText]: string;
+  [desktopIpcChannels.host.files.createGitWorktree]: DesktopGitWorktreeInput;
   [desktopIpcChannels.host.files.readLocalPreviewFile]: string;
   [desktopIpcChannels.host.files
     .archiveAgentPromptFile]: DesktopArchiveAgentPromptFileInput;
@@ -1154,6 +1170,7 @@ export interface DesktopInvokeResultByChannel {
   [desktopIpcChannels.host.files.revealWorkspaceFile]: void;
   [desktopIpcChannels.host.files.openTerminalLink]: void;
   [desktopIpcChannels.host.files.readLocalFileText]: DesktopLocalFileTextResult;
+  [desktopIpcChannels.host.files.createGitWorktree]: DesktopGitWorktree | null;
   [desktopIpcChannels.host.files.readLocalPreviewFile]: Uint8Array;
   [desktopIpcChannels.host.files
     .archiveAgentPromptFile]: DesktopArchiveAgentPromptFileResult;

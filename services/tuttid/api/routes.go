@@ -240,7 +240,7 @@ func RegisterRoutes(mux *http.ServeMux, routes Routes) {
 		wrapper.ListWorkspaceAppMentionCandidates(w, r)
 	})
 
-	registerModelGovernanceRoutes(mux, routes, wrapper)
+	registerAgentConfigurationRoutes(mux, routes, wrapper)
 
 	mux.HandleFunc("/v1/workspaces/{workspaceID}/managed-model-providers", func(w http.ResponseWriter, r *http.Request) {
 		routes.HandleManagedModelProviders(w, r, r.PathValue("workspaceID"))
@@ -551,7 +551,7 @@ func RegisterRoutes(mux *http.ServeMux, routes Routes) {
 		wrapper.ApplyWorkspaceGitPatch(w, r)
 	})
 
-	registerIssueRoutes(mux, wrapper)
+	registerWorkspaceIssueRoutes(mux, wrapper)
 
 	mux.HandleFunc("/v1/workspaces/{workspaceID}/terminals", func(w http.ResponseWriter, r *http.Request) {
 		switch r.Method {

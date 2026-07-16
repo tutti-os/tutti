@@ -1,3 +1,7 @@
+import type {
+  AgentActivityAutomationRuleOverride,
+  AgentActivitySubmitSettingsPatch
+} from "@tutti-os/agent-activity-core";
 import type { AgentSessionCommand } from "../../../shared/agentSessionTypes";
 import type { UiLanguage } from "../../../contexts/settings/domain/agentSettings";
 import type { AgentConversationPromptVM } from "../../../shared/agentConversation/contracts/agentConversationVM";
@@ -9,7 +13,6 @@ import type { AgentContextMentionItem } from "../agentRichText/agentFileMentionE
 import type { AgentExternalPromptFilePreparer } from "../model/agentExternalPromptFiles";
 import type { AgentProjectPathChangeMetadata } from "../AgentComposerSettingsMenus";
 import type { AgentSlashCommandCapability } from "../model/agentSlashCommandProviderPolicy";
-import type { AgentModelConsultContext } from "../AgentModelConsultControl";
 import type {
   AgentComposerDraft,
   AgentGUIComposerSettingsVM,
@@ -20,11 +23,11 @@ import type {
 import type { AgentGUIProvider, AgentGUIAgentTarget } from "../../../types";
 import type { WorkspaceReferencePickResult } from "./useComposerDraftAttachments";
 import type { AgentGUIComposerEngagement } from "../engagement/agentGUIEngagement.types";
-import type { AgentActivitySubmitSettingsPatch } from "@tutti-os/agent-activity-core";
 import type {
   ReferenceProvenanceFilterController,
   ReferenceProvenanceFilterSnapshot
 } from "@tutti-os/workspace-file-reference/react";
+import type { PlanIssueBudgetPreset } from "../../../shared/agentConversation/planImplementationPresentation";
 
 export interface AgentComposerReferenceProvenanceFilter {
   snapshot: ReferenceProvenanceFilterSnapshot;
@@ -36,10 +39,16 @@ export interface AgentComposerReferenceProvenanceFilter {
 
 export interface AgentComposerSubmitOptions {
   requiredSettingsPatch?: AgentActivitySubmitSettingsPatch;
+  executionMode?: AgentComposerExecutionMode;
+  automationRuleOverride?: AgentActivityAutomationRuleOverride | null;
 }
+
+export type AgentComposerExecutionMode = "normal" | "plan" | "ultra_plan";
 
 export interface AgentComposerProps {
   workspaceId: string;
+  /** Active source session for explicit @Agent collaboration. */
+  agentSessionId?: string | null;
   workspacePath?: string | null;
   currentUserId?: string | null;
   provider: string;
@@ -91,8 +100,6 @@ export interface AgentComposerProps {
   providerSelectLabel?: string;
   handoffLabel?: string;
   handoffMenuLabel?: string;
-  /** Active-session model consult context; null hides the consult entry. */
-  modelConsult?: AgentModelConsultContext | null;
   labels: {
     send: string;
     modelLabel: string;
@@ -133,6 +140,11 @@ export interface AgentComposerProps {
       professionalLongRunning: string;
     };
     planModeLabel: string;
+    normalModeLabel?: string;
+    normalModeDescription?: string;
+    ultraPlanModeLabel?: string;
+    ultraPlanModeDescription?: string;
+    planModeDescription?: string;
     planModeOnLabel: string;
     planModeOffLabel: string;
     planUnavailable: string;
@@ -220,6 +232,28 @@ export interface AgentComposerProps {
     waitingForAnswer: string;
     planImplementationLead: string;
     planImplementationConfirm: string;
+    planImplementationCreateIssue?: string;
+    planIssueReviewTitle?: string;
+    planIssuePresetLabel?: string;
+    planIssueReasoning?: string;
+    planIssueOrchestration?: string;
+    planIssueBudgetAuto?: string;
+    planIssueBudgetFixed?: string;
+    planIssueTokenBudget?: string;
+    planIssueTaskPreview?: string;
+    planIssueAgentTarget?: string;
+    planIssueModelPlan?: string;
+    planIssueModel?: string;
+    planIssueDirectory?: string;
+    planIssueDependencies?: string;
+    planIssueCreateOnly?: string;
+    planIssueCreateAndStart?: string;
+    planIssueCreateAndStartParallel?: string;
+    planIssueStartOrchestration?: string;
+    planIssueEstimatedCost?: string;
+    planIssueCostUnavailable?: string;
+    planIssueCostPartial?: string;
+    planIssueUnassigned?: string;
     planImplementationFeedbackPlaceholder: string;
     planImplementationSend: string;
     planImplementationSkip: string;
@@ -280,6 +314,7 @@ export interface AgentComposerProps {
     computerUse?: boolean;
     permissionModeId?: string | null;
   }) => void;
+  onPlanIssueBudgetPresetChange?: (preset: PlanIssueBudgetPreset) => void;
   capabilityMenuState?: AgentComposerCapabilityMenuState;
   onCapabilitySettingsRequest?: (
     capability: AgentComposerCapabilitySettingsTarget

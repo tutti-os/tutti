@@ -13,9 +13,10 @@ func (s *Service) ValidateAgentComposerDefaultsPatch(
 	agentTargetID string,
 	patch preferencesbiz.AgentComposerDefaultsPatch,
 ) error {
-	launch, err := s.resolveCreateSessionLaunch(ctx, CreateSessionInput{
+	launchInput := CreateSessionInput{
 		AgentTargetID: agentTargetID,
-	})
+	}
+	launch, err := s.resolveCreateSessionLaunch(ctx, "", &launchInput)
 	if err != nil {
 		return err
 	}

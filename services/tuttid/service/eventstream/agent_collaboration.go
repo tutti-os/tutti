@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	eventsgenerated "github.com/tutti-os/tutti/services/tuttid/api/events/generated"
 	collabrunbiz "github.com/tutti-os/tutti/services/tuttid/biz/collabrun"
 )
 
@@ -32,18 +33,18 @@ func (p AgentCollaborationPublisher) PublishCollaborationRunUpdated(workspaceID 
 	if p.Now != nil {
 		now = p.Now()
 	}
-	payload, err := json.Marshal(agentCollaborationUpdatedPayload{
-		WorkspaceID:      workspaceID,
-		RunID:            run.ID,
+	payload, err := json.Marshal(eventsgenerated.AgentCollaborationUpdatedPayload{
+		WorkspaceId:      workspaceID,
+		RunId:            run.ID,
 		Mode:             string(run.Mode),
 		Status:           string(run.Status),
-		SourceSessionID:  run.SourceSessionID,
-		TargetSessionID:  run.TargetSessionID,
-		ModelPlanID:      run.ModelPlanID,
-		Model:            run.Model,
+		SourceSessionId:  optionalEventString(run.SourceSessionID),
+		TargetSessionId:  optionalEventString(run.TargetSessionID),
+		ModelPlanId:      optionalEventString(run.ModelPlanID),
+		Model:            optionalEventString(run.Model),
 		TriggerSource:    string(run.TriggerSource),
-		Adoption:         string(run.Adoption),
-		OccurredAtUnixMS: now.UnixMilli(),
+		Adoption:         optionalEventString(string(run.Adoption)),
+		OccurredAtUnixMs: int(now.UnixMilli()),
 	})
 	if err != nil {
 		slog.Warn("agent collaboration updated payload marshal failed",
@@ -67,4 +68,11 @@ func (p AgentCollaborationPublisher) PublishCollaborationRunUpdated(workspaceID 
 			"error", err,
 		)
 	}
+}
+
+func optionalEventString(value string) *string {
+	if value == "" {
+		return nil
+	}
+	return &value
 }

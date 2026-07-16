@@ -10,11 +10,16 @@ import type {
   AgentGuiWorkbenchComposerOverrides,
   AgentGuiWorkbenchComposerOverridesByAgentTargetId,
   AgentGuiWorkbenchComposerOverridesByProvider,
+  AgentGuiWorkbenchModelConfigurationsByAgentTargetId,
   AgentGuiWorkbenchNodeState,
   AgentGuiWorkbenchProvider,
   AgentGuiWorkbenchState,
   AgentGuiWorkbenchWorkspaceState
 } from "./types.ts";
+import {
+  normalizePlanIssueBudgetPreset,
+  planIssueBudgetPresetsEqual
+} from "../shared/agentConversation/planImplementationPresentation.ts";
 
 type AgentGuiWorkbenchStateLookupRequest = Pick<
   WorkbenchHostExternalStateLookupInput,
@@ -30,6 +35,8 @@ export function createDefaultAgentGuiWorkbenchNodeState(
     composerOverrides: null,
     composerOverridesByAgentTargetId: null,
     composerOverridesByProvider: null,
+    modelConfigurationsByAgentTargetId: null,
+    planIssueBudgetPreset: null,
     conversationCount: null,
     conversationRailCollapsed: false,
     conversationRailWidthPx: null,
@@ -50,6 +57,13 @@ export function normalizeAgentGuiWorkbenchState(
     normalizeAgentGuiWorkbenchLastActiveSessionByAgentTargetId(
       state.lastActiveAgentSessionIdByAgentTargetId
     );
+  const modelConfigurationsByAgentTargetId =
+    normalizeAgentGuiWorkbenchModelConfigurationsByAgentTargetId(
+      state.modelConfigurationsByAgentTargetId
+    );
+  const planIssueBudgetPreset = normalizePlanIssueBudgetPreset(
+    state.planIssueBudgetPreset
+  );
   return {
     ...(agentTargetId ? { agentTargetId } : {}),
     conversationRailCollapsed: state.conversationRailCollapsed === true,
@@ -62,7 +76,11 @@ export function normalizeAgentGuiWorkbenchState(
         : null,
     ...(lastActiveAgentSessionIdByAgentTargetId
       ? { lastActiveAgentSessionIdByAgentTargetId }
-      : {})
+      : {}),
+    ...(modelConfigurationsByAgentTargetId
+      ? { modelConfigurationsByAgentTargetId }
+      : {}),
+    ...(planIssueBudgetPreset ? { planIssueBudgetPreset } : {})
   };
 }
 
@@ -94,6 +112,13 @@ export function projectAgentGuiWorkbenchState(
     normalizeAgentGuiWorkbenchLastActiveSessionByAgentTargetId(
       state.lastActiveAgentSessionIdByAgentTargetId
     );
+  const modelConfigurationsByAgentTargetId =
+    normalizeAgentGuiWorkbenchModelConfigurationsByAgentTargetId(
+      state.modelConfigurationsByAgentTargetId
+    );
+  const planIssueBudgetPreset = normalizePlanIssueBudgetPreset(
+    state.planIssueBudgetPreset
+  );
   return {
     ...(agentTargetId ? { agentTargetId } : {}),
     conversationRailCollapsed: state.conversationRailCollapsed === true,
@@ -103,7 +128,11 @@ export function projectAgentGuiWorkbenchState(
     lastActiveAgentSessionId: state.lastActiveAgentSessionId ?? null,
     ...(lastActiveAgentSessionIdByAgentTargetId
       ? { lastActiveAgentSessionIdByAgentTargetId }
-      : {})
+      : {}),
+    ...(modelConfigurationsByAgentTargetId
+      ? { modelConfigurationsByAgentTargetId }
+      : {}),
+    ...(planIssueBudgetPreset ? { planIssueBudgetPreset } : {})
   };
 }
 
@@ -119,6 +148,14 @@ export function areAgentGuiWorkbenchStatesEqual(
     stringRecordsEqual(
       left.lastActiveAgentSessionIdByAgentTargetId,
       right.lastActiveAgentSessionIdByAgentTargetId
+    ) &&
+    modelConfigurationsByAgentTargetIdEqual(
+      left.modelConfigurationsByAgentTargetId,
+      right.modelConfigurationsByAgentTargetId
+    ) &&
+    planIssueBudgetPresetsEqual(
+      left.planIssueBudgetPreset,
+      right.planIssueBudgetPreset
     )
   );
 }
@@ -148,6 +185,13 @@ export function normalizeAgentGuiWorkbenchNodeState(
       normalizeAgentGuiWorkbenchComposerOverridesByProvider(
         persistedState.composerOverridesByProvider
       ),
+    modelConfigurationsByAgentTargetId:
+      normalizeAgentGuiWorkbenchModelConfigurationsByAgentTargetId(
+        persistedState.modelConfigurationsByAgentTargetId
+      ),
+    planIssueBudgetPreset: normalizePlanIssueBudgetPreset(
+      persistedState.planIssueBudgetPreset
+    ),
     conversationCount: normalizeOptionalNonNegativeNumber(
       persistedState.conversationCount
     ),
@@ -182,6 +226,14 @@ export function areAgentGuiWorkbenchNodeStatesEqual(
     composerOverridesByProviderEqual(
       left.composerOverridesByProvider,
       right.composerOverridesByProvider
+    ) &&
+    modelConfigurationsByAgentTargetIdEqual(
+      left.modelConfigurationsByAgentTargetId,
+      right.modelConfigurationsByAgentTargetId
+    ) &&
+    planIssueBudgetPresetsEqual(
+      left.planIssueBudgetPreset,
+      right.planIssueBudgetPreset
     ) &&
     left.conversationCount === right.conversationCount &&
     left.conversationRailCollapsed === right.conversationRailCollapsed &&
@@ -359,6 +411,9 @@ function normalizeAgentGuiWorkbenchComposerOverrides(
   if (typeof value.model === "string" && value.model.trim()) {
     composerOverrides.model = value.model.trim();
   }
+  if (typeof value.modelPlanId === "string" && value.modelPlanId.trim()) {
+    composerOverrides.modelPlanId = value.modelPlanId.trim();
+  }
   if (
     typeof value.reasoningEffort === "string" &&
     value.reasoningEffort.trim()
@@ -373,6 +428,9 @@ function normalizeAgentGuiWorkbenchComposerOverrides(
   }
   if (typeof value.planMode === "boolean") {
     composerOverrides.planMode = value.planMode;
+  }
+  if (typeof value.speed === "string" && value.speed.trim()) {
+    composerOverrides.speed = value.speed.trim();
   }
   return Object.keys(composerOverrides).length > 0 ? composerOverrides : null;
 }
@@ -432,6 +490,42 @@ function normalizeAgentGuiWorkbenchLastActiveSessionByAgentTargetId(
   return Object.keys(result).length > 0 ? result : null;
 }
 
+function normalizeAgentGuiWorkbenchModelConfigurationsByAgentTargetId(
+  value: unknown
+): AgentGuiWorkbenchModelConfigurationsByAgentTargetId | null {
+  if (!isRecord(value)) {
+    return null;
+  }
+  const result: AgentGuiWorkbenchModelConfigurationsByAgentTargetId = {};
+  for (const [rawAgentTargetId, rawConfiguration] of Object.entries(value)) {
+    const agentTargetId = normalizeOptionalNonEmptyString(rawAgentTargetId);
+    if (!agentTargetId || !isRecord(rawConfiguration)) {
+      continue;
+    }
+    const fingerprint = normalizeOptionalNonEmptyString(
+      rawConfiguration.fingerprint
+    );
+    const source = rawConfiguration.source;
+    if (
+      !fingerprint ||
+      (source !== "model-plan" && source !== "provider-native")
+    ) {
+      continue;
+    }
+    result[agentTargetId] = {
+      fingerprint,
+      source,
+      defaultModel: normalizeOptionalNonEmptyString(
+        rawConfiguration.defaultModel
+      ),
+      selectedModel: normalizeOptionalNonEmptyString(
+        rawConfiguration.selectedModel
+      )
+    };
+  }
+  return Object.keys(result).length > 0 ? result : null;
+}
+
 function normalizeOptionalPositiveNumber(value: unknown): number | null {
   return typeof value === "number" && Number.isFinite(value) && value > 0
     ? Math.round(value)
@@ -450,9 +544,11 @@ function composerOverridesEqual(
 ): boolean {
   return (
     (left?.model ?? null) === (right?.model ?? null) &&
+    (left?.modelPlanId ?? null) === (right?.modelPlanId ?? null) &&
     (left?.permissionModeId ?? null) === (right?.permissionModeId ?? null) &&
     (left?.planMode ?? null) === (right?.planMode ?? null) &&
-    (left?.reasoningEffort ?? null) === (right?.reasoningEffort ?? null)
+    (left?.reasoningEffort ?? null) === (right?.reasoningEffort ?? null) &&
+    (left?.speed ?? null) === (right?.speed ?? null)
   );
 }
 
@@ -496,6 +592,29 @@ function stringRecordsEqual(
       (key, index) => key === rightKeys[index] && left?.[key] === right?.[key]
     )
   );
+}
+
+function modelConfigurationsByAgentTargetIdEqual(
+  left: AgentGuiWorkbenchModelConfigurationsByAgentTargetId | null | undefined,
+  right: AgentGuiWorkbenchModelConfigurationsByAgentTargetId | null | undefined
+): boolean {
+  const keys = new Set([
+    ...Object.keys(left ?? {}),
+    ...Object.keys(right ?? {})
+  ]);
+  for (const key of keys) {
+    const leftConfiguration = left?.[key] ?? null;
+    const rightConfiguration = right?.[key] ?? null;
+    if (
+      leftConfiguration?.fingerprint !== rightConfiguration?.fingerprint ||
+      leftConfiguration?.source !== rightConfiguration?.source ||
+      leftConfiguration?.defaultModel !== rightConfiguration?.defaultModel ||
+      leftConfiguration?.selectedModel !== rightConfiguration?.selectedModel
+    ) {
+      return false;
+    }
+  }
+  return true;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

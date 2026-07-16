@@ -145,6 +145,15 @@ export const zhCN = {
       switchWorkspaceUnavailable: "暂时无法加载工作区列表。"
     },
     agentGui: {
+      handoffFailed: "无法移交会话，来源会话保持不变。",
+      handoffRequest: "继续来源会话并接手后续步骤。",
+      issueFromPlanCreated: "已从确认的方案创建 Issue。",
+      issueFromTraditionalPlanCreated:
+        "Issue 已创建。下次可直接选择 Ultra Plan，一次完成规划与编排。",
+      issueFromPlanDefaultTopic: "收件箱",
+      issueFromPlanDefaultTitle: "已确认的方案",
+      issueFromPlanFailed: "无法将确认的方案转换为 Issue。",
+      issueFromPlanUnavailable: "当前无法使用方案转 Issue。",
       collapseConversationRail: "隐藏侧边栏",
       expandConversationRail: "显示侧边栏",
       fallbackAgentLabel: "Agent",
@@ -697,13 +706,13 @@ export const zhCN = {
       nav: {
         about: "关于",
         account: "账号",
-        apps: "应用",
         sectionsLabel: "设置分区",
         appearance: "外观",
         agent: "Agent",
         developer: "开发者",
         general: "通用",
-        lab: "实验室"
+        lab: "实验室",
+        model: "模型"
       },
       about: {
         appName: "Tutti",
@@ -731,14 +740,185 @@ export const zhCN = {
           staging: "测试应用"
         },
         appCatalogChannelSaveFailed: "暂时无法切换应用来源。",
+        agents: {
+          addAgent: "添加 Agent",
+          defaultModelLabel: "默认模型",
+          addModelFallback: "添加备用方案",
+          delete: "删除",
+          deleteConfirm: "删除这个 Agent？",
+          deleteFailed: "Agent 删除失败，请重试。",
+          deleting: "删除中...",
+          description:
+            "将 Harness 与模型方案、指令、Skills、工具和权限组合成具名的 Agent 选项。",
+          disabled: "已停用",
+          edit: "编辑",
+          editTitle: "编辑 {{agent}}",
+          editorDescription: "保存后，它会成为新会话中可选择的一个 Agent。",
+          emptyDescription:
+            "添加 Agent，把 Harness 和模型方案映射成可复用的会话选项。",
+          emptyTitle: "还没有工作区 Agent",
+          enabled: "可用",
+          enabledLabel: "允许用于新会话",
+          generate: "生成草稿",
+          generateChoosePlan: "请先选择兼容的模型方案。",
+          generateFailed: "未能生成有效草稿，请检查所选方案后重试。",
+          generateModelDisclosure:
+            "本次生成将使用 {{plan}} · {{model}}，不会自动保存任何内容。",
+          generateSafetyHint:
+            "生成结果只会回填表单供你确认；建议的自动化会以停用状态保存，不会自动开启付费动作。",
+          generateTitle: "智能生成配置",
+          generatedCallConditionsTitle: "调用条件",
+          generatedRuleDisabled: "保存时保持停用",
+          generatedRulesDescription:
+            "请检查这些有次数与 Token 上限的模型咨询建议。保存 Agent 时也会将它们以停用状态写入自动化规则。",
+          generatedRulesSaveFailed:
+            "Agent 已保存，但部分生成的自动化建议未保存成功。重试会继续保存剩余的停用建议。",
+          generatedRulesTitle: "生成的自动化建议",
+          generating: "生成中…",
+          generationRequirementsPlaceholder:
+            "可选：补充角色、工作流程、质量标准或特殊约束。",
+          generationRequiresPlan: "生成前请先选择 Harness 和兼容的模型方案。",
+          harnessLabel: "Harness",
+          harnessUnavailable: "Harness 不可用",
+          behaviorDetailsTitle: "完整指令与调用条件",
+          callConditionsLabel: "调用条件",
+          callConditionsPlaceholder: "发布决策前调用\n架构风险较高时调用",
+          instructionsLabel: "指令",
+          instructionsPlaceholder: "描述这个 Agent 应该如何开展工作。",
+          capabilitiesTitle: "兼容能力",
+          capabilitiesAutomaticDescription:
+            "默认同步这个 Harness 兼容的全部 Skills、插件和连接器。",
+          capabilitiesExplicitDescription:
+            "只有已勾选的能力可供这个 Agent 使用。",
+          capabilitiesLoading: "正在加载兼容能力…",
+          capabilitiesLoadFailed: "无法加载这个 Harness 的能力。",
+          noCompatibleCapabilities: "这个 Harness 暂未报告可配置能力。",
+          restoreAutomaticCapabilities: "恢复自动同步",
+          capabilityDetails: "技术详情",
+          capabilityGroups: {
+            skills: "Skills",
+            plugins: "插件",
+            connectors: "连接器"
+          },
+          capabilityStatuses: {
+            available: "可用",
+            disabled: "已停用",
+            authRequired: "需要登录",
+            setupRequired: "需要设置",
+            unsupported: "不支持"
+          },
+          advancedCapabilityIdsTitle: "高级能力 ID 与权限",
+          advancedCapabilityIdsDescription:
+            "仅在 Harness 目录无法发现能力时手动填写 ID。编辑 Skills 或工具后，这个 Agent 会改用明确的能力白名单。",
+          loadFailed: "暂时无法加载工作区 Agent。",
+          migrated: "由旧版绑定迁移",
+          modelPlanLabel: "模型方案",
+          modelFallbackDescription:
+            "仅在新会话无法使用主方案时按顺序尝试；运行中的会话不会切换凭证。",
+          modelFallbackLabel: "模型故障转移链",
+          noModelFallbackRecommendation: "没有其他健康模型能匹配主模型的能力。",
+          recommendModelFallback: "智能推荐",
+          recommendModelFallbackFailed: "备用模型推荐失败，请重试。",
+          recommendingModelFallback: "推荐中...",
+          removeModelFallback: "移除备用方案",
+          nameLabel: "名称",
+          namePlaceholder: "前端审查 Agent",
+          noHarnesses: "暂无可用的 Harness",
+          noModelPlan: "使用 Harness 默认模型",
+          onePerLine: "每行填写一项",
+          permissionsLabel: "权限",
+          permissionsPlaceholder: "workspace.write\nnetwork.read",
+          planDefaultModel: "使用方案默认模型",
+          purposeLabel: "用途",
+          purposePlaceholder: "审查 UI 变更的质量和无障碍体验",
+          requiredFields: "请填写名称并选择 Harness。",
+          retry: "重试",
+          save: "保存 Agent",
+          saveFailed: "Agent 保存失败，请检查配置后重试。",
+          saving: "保存中...",
+          skillsLabel: "Skills",
+          skillsPlaceholder: "react-review\naccessibility",
+          title: "Agents",
+          toolsLabel: "工具",
+          toolsPlaceholder: "terminal\nbrowser"
+        },
+        automationRules: {
+          actions: {
+            consult: "咨询模型",
+            delegate: "委派",
+            fork: "分叉",
+            handoff: "移交"
+          },
+          actionLabel: "动作",
+          addRule: "添加自动化",
+          allAgents: "全部 Agent",
+          allowedToolsLabel: "允许的工具",
+          allowedToolsPlaceholder: "terminal\nbrowser",
+          budgetDescription:
+            "限制会对每个来源会话独立计算。填写 0 会使用 daemon 的安全默认值，不代表无限制。",
+          budgetLabel: "预算",
+          budgetSummary: "{{runs}} 次 · {{tokens}} tokens",
+          chooseModelPlan: "选择模型方案",
+          chooseTargetAgent: "选择目标 Agent",
+          consultToolFree:
+            "模型咨询不会使用工具。权限模式和允许的工具仅适用于 Agent 动作。",
+          delete: "删除",
+          deleteConfirm: "删除这条自动化？",
+          deleteFailed: "自动化删除失败，请重试。",
+          deleting: "删除中...",
+          description:
+            "当 Agent 完成任务后，可选择自动发起模型咨询、分叉、委派或移交。",
+          disabled: "已停用",
+          edit: "编辑",
+          editTitle: "编辑 {{rule}}",
+          editorDescription:
+            "新自动化默认停用并使用保守限制。确认目标和权限后再启用。",
+          emptyDescription:
+            "当 Agent 完成工作后需要触发有边界的后续动作时，可添加一条规则。",
+          emptyTitle: "还没有自动化规则",
+          enabled: "已启用",
+          enabledLabel: "匹配的任务完成后自动运行",
+          invalidBudget: "两个预算限制都必须填写非负整数。",
+          loadFailed: "暂时无法加载自动化规则。",
+          maxRunsLabel: "每个来源会话最多运行次数",
+          maxTokensLabel: "每个来源会话最多使用 Token 数",
+          modelLabel: "模型",
+          modelPlanLabel: "模型方案",
+          nameLabel: "名称",
+          namePlaceholder: "完成质量检查",
+          onePerLine: "每行填写一项",
+          permissionModeLabel: "权限模式",
+          permissionModePlaceholder: "使用目标 Agent 的默认值",
+          planDefaultModel: "使用方案默认模型",
+          promptLabel: "提示词",
+          promptPlaceholder: "描述自动化应该执行的有边界后续任务。",
+          requiredCapabilitiesLabel: "模型必需能力",
+          requiredCapabilitiesPlaceholder: "reasoning\nvision",
+          requiredFields: "请填写名称，并按动作要求选择模型方案或目标 Agent。",
+          retry: "重试",
+          save: "保存自动化",
+          saveFailed: "自动化保存失败，请检查目标、权限和预算。",
+          saving: "保存中...",
+          sourceAgentLabel: "来源 Agent",
+          targetAgentLabel: "目标 Agent",
+          targetLabel: "目标",
+          title: "自动化规则",
+          triggerLabel: "触发条件",
+          triggers: {
+            onTaskComplete: "任务完成时",
+            onTaskFailed: "任务失败或中断时"
+          }
+        },
         modelPlans: {
           addDiscoveredModel: "添加 {{model}}",
           addModel: "添加模型",
           addPlan: "添加方案",
           agentRuntimePendingHint:
-            "保存方案后，在下方选择兼容的 Agent 完成第一次真实调用，即可完成验证。",
+            "保存方案后，将它分配给下方兼容的 Agent，并完成第一次真实调用，即可完成验证。",
           apiKey: "API 密钥",
           baseUrl: "Base URL",
+          billingApiMetered: "API 按量计费",
+          billingSubscriptionQuota: "订阅配额",
           bindings: {
             description:
               "为每个 Agent 选择默认使用的模型方案，Agent 的第一次真实调用会完成方案验证。",
@@ -764,6 +944,7 @@ export const zhCN = {
             "配置具名的模型接入方案——官方订阅、Coding Plan、国内模型、中转服务或自定义接口，供工作区的 Agent 和应用使用",
           detect: "检测连接",
           detectFailed: "连接检测失败，请重试。",
+          detectionRequired: "保存方案前，请先完成并通过连接检测。",
           detecting: "检测中...",
           detectionTitle: "连接检测",
           discoveredModels: "检测到的模型",
@@ -771,8 +952,16 @@ export const zhCN = {
           duplicateFailed: "复制失败，请重试。",
           edit: "编辑",
           editTitle: "编辑 {{plan}}",
+          compatibleAgents: "兼容 Agent：{{agents}}",
+          compatibleAgentsNone: "兼容 Agent：暂无已启用项",
+          firstUseAction: "使用这个 Agent 试用",
+          firstUseAgentLabel: "兼容 Agent",
+          firstUseLaunchFailed: "无法打开首次使用会话。",
+          firstUseLaunching: "正在打开…",
+          firstUsePrompt:
+            "请在这次真实首次调用中使用 {{plan}} 模型方案，简要介绍所选模型，并确认它可以在当前工作区正常响应。",
           emptyDescription:
-            "点「添加方案」用你的 API 密钥接入订阅、中转或自定义接口",
+            "点「添加方案」使用已有服务商登录，或接入 API 接口。",
           emptyTitle: "还没有模型方案",
           enabled: "启用 {{plan}}",
           failureReasons: {
@@ -782,6 +971,8 @@ export const zhCN = {
             modelCatalogUnavailable: "模型列表不可用。",
             modelRejected: "接入点拒绝了该模型。",
             noModelSelected: "没有可用于测试调用的模型。",
+            providerAuthRequired: "对应的 Agent 运行时尚未登录服务商账号。",
+            providerRuntimeUnavailable: "对应的 Agent 运行时当前不可用。",
             unauthorized: "接入点拒绝了凭证。",
             unknown: "检测失败。"
           },
@@ -791,14 +982,40 @@ export const zhCN = {
           lastDetectedAt: "上次检测 {{time}}",
           loadFailed: "暂时无法加载模型方案。",
           modelCount: "{{count}} 个模型",
+          modelCapabilities: "能力：{{capabilities}}",
           modelId: "模型 ID",
           modelIdPlaceholder: "model-id",
+          nativeLoginHint:
+            "此方案使用本机 Codex 或 Claude Code 已有的登录状态。如尚未登录，请先前往 Agent 设置完成登录，再运行连接检测；方案不会保存 API 密钥或 Base URL。",
+          modelRangeImpactDescription:
+            "以下引用会在下一次调用时使用变更后的模型范围。请确认影响后再次保存；运行中的调用不会改变。",
+          modelRangeImpactTitle: "确认受影响的引用",
           models: "模型",
+          noDiscoveredModelsMatch: "没有符合搜索条件的检测模型。",
+          priceCurrency: "币种",
+          priceInput: "输入 / 1M",
+          priceOutput: "输出 / 1M",
+          priceCacheRead: "缓存读取 / 1M",
+          priceCacheWrite: "缓存写入 / 1M",
+          searchDiscoveredModels: "搜索检测到的模型",
+          searchDiscoveredModelsPlaceholder: "搜索模型 ID 或名称",
+          selectAllDiscoveredModels: "全选当前结果",
+          subscriptionQuotaPricingHint:
+            "订阅方案通过剩余配额水位保护；Tutti 不会为这种接入方式虚构 token 金额单价。",
+          tier: "档位",
+          tierFlagship: "旗舰",
+          tierStandard: "标准",
+          tierEconomy: "经济",
+          tierUsageFlagship: "适合复杂推理、架构设计和质量要求高的工作。",
+          tierUsageStandard: "兼顾能力与成本，适合日常编码、审查和通用任务。",
+          tierUsageEconomy: "适合快速、高频或较直接的任务。",
           nameLabel: "名称",
           namePlaceholder: "我的模型方案",
           neverDetected: "尚未检测",
           pendingFirstUseGuide:
-            "在下方「Agent 绑定」中选择兼容的 Agent 发起第一次真实调用后，方案才算可用。",
+            "选择一个兼容 Agent 并完成第一次真实调用后，方案才算可用。",
+          noCompatibleFirstUseAgent:
+            "暂无已启用的兼容 Agent，请先在 Agent 设置中启用。",
           presetLabel: "服务商预设",
           presets: {
             agnes: "Agnes",
@@ -823,7 +1040,9 @@ export const zhCN = {
           },
           referenceKinds: {
             agentTarget: "Agent",
+            automationRule: "自动化规则",
             modelPolicy: "模型策略",
+            workspaceAgent: "工作区 Agent",
             workspaceApp: "应用"
           },
           remedies: {
@@ -831,12 +1050,16 @@ export const zhCN = {
             checkApiKey: "请检查 API 密钥。",
             checkModelId: "请检查模型 ID。",
             checkNetworkOrBaseUrl: "请检查网络或 Base URL。",
+            installOrEnableAgentProvider: "请安装或启用对应的 Agent。",
+            loginAgentProvider: "请在 Agent 设置中登录对应服务商账号。",
             selectModel: "请先选择模型。"
           },
           removeModel: "移除模型",
-          requiredFieldsMissing: "请先填写名称、API 密钥和 Base URL。",
+          requiredFieldsMissing:
+            "请填写名称和模型列表；接口方案还需要 API 密钥与 Base URL。",
           save: "保存",
-          saveFailed: "保存失败，请重试",
+          confirmModelRangeImpact: "确认影响并保存",
+          saveFailed: "保存失败，请重试。",
           saving: "保存中...",
           showApiKey: "显示密钥",
           stageLatency: "{{ms}} ms",
@@ -876,7 +1099,7 @@ export const zhCN = {
               label: "国内模型"
             },
             officialSubscription: {
-              guidance: "使用服务商官方 API 密钥直连官方订阅。",
+              guidance: "使用本机 Codex 或 Claude Code 已登录的官方订阅。",
               label: "官方订阅"
             },
             relay: {

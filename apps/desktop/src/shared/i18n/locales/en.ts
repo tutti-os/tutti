@@ -148,6 +148,18 @@ export const en = {
       switchWorkspaceUnavailable: "Unable to load workspaces right now."
     },
     agentGui: {
+      handoffFailed:
+        "The conversation could not be handed off. The source session is unchanged.",
+      handoffRequest:
+        "Continue the source conversation and take ownership of its next steps.",
+      issueFromPlanCreated: "Issue created from the approved plan.",
+      issueFromTraditionalPlanCreated:
+        "Issue created. Next time, choose Ultra Plan to plan and orchestrate in one flow.",
+      issueFromPlanDefaultTopic: "Inbox",
+      issueFromPlanDefaultTitle: "Approved plan",
+      issueFromPlanFailed:
+        "The approved plan could not be converted to an Issue.",
+      issueFromPlanUnavailable: "Plan-to-Issue conversion is unavailable.",
       collapseConversationRail: "Hide sidebar",
       expandConversationRail: "Show sidebar",
       fallbackAgentLabel: "Agent",
@@ -741,13 +753,13 @@ export const en = {
       nav: {
         about: "About",
         account: "Account",
-        apps: "Apps",
         sectionsLabel: "Settings sections",
         appearance: "Appearance",
         agent: "Agent",
         developer: "Developer",
         general: "General",
-        lab: "Lab"
+        lab: "Lab",
+        model: "Model"
       },
       about: {
         appName: "Tutti",
@@ -775,14 +787,200 @@ export const en = {
           staging: "Test"
         },
         appCatalogChannelSaveFailed: "We couldn't switch the app source.",
+        agents: {
+          addAgent: "Add Agent",
+          defaultModelLabel: "Default model",
+          addModelFallback: "Add fallback",
+          delete: "Delete",
+          deleteConfirm: "Delete this Agent?",
+          deleteFailed: "Couldn't delete the Agent — try again.",
+          deleting: "Deleting...",
+          description:
+            "Create named Agent options by combining a Harness with a model plan, instructions, skills, tools, and permissions.",
+          disabled: "Disabled",
+          edit: "Edit",
+          editTitle: "Edit {{agent}}",
+          editorDescription:
+            "This configuration becomes one selectable Agent in new conversations.",
+          emptyDescription:
+            "Add an Agent to map a Harness and model plan into a reusable conversation option.",
+          emptyTitle: "No workspace Agents yet",
+          enabled: "Ready",
+          enabledLabel: "Available for new conversations",
+          generate: "Generate draft",
+          generateChoosePlan:
+            "Choose a compatible model plan before generating.",
+          generateFailed:
+            "Couldn't generate a valid draft. Check the selected plan and try again.",
+          generateModelDisclosure:
+            "Generation will use {{plan}} · {{model}}. Nothing is saved automatically.",
+          generateSafetyHint:
+            "The result fills this form for review. Suggested automations are saved disabled and never start paid actions automatically.",
+          generateTitle: "Generate configuration",
+          generatedCallConditionsTitle: "Call conditions",
+          generatedRuleDisabled: "saved disabled",
+          generatedRulesDescription:
+            "Review these bounded model-consult suggestions. Saving the Agent also saves them disabled under Automation rules.",
+          generatedRulesSaveFailed:
+            "The Agent was saved, but one or more generated automation suggestions could not be saved. Retry to save the remaining disabled suggestions.",
+          generatedRulesTitle: "Generated automation suggestions",
+          generating: "Generating...",
+          generationRequirementsPlaceholder:
+            "Optional: describe the role, workflow, quality bar, or special constraints.",
+          generationRequiresPlan:
+            "Choose a Harness and compatible model plan before generating.",
+          harnessLabel: "Harness",
+          harnessUnavailable: "Harness unavailable",
+          behaviorDetailsTitle: "Instructions and call conditions",
+          callConditionsLabel: "Call conditions",
+          callConditionsPlaceholder:
+            "Use before a release decision\nUse when architecture risk is high",
+          instructionsLabel: "Instructions",
+          instructionsPlaceholder:
+            "Describe how this Agent should approach its work.",
+          capabilitiesTitle: "Compatible capabilities",
+          capabilitiesAutomaticDescription:
+            "Automatically uses all Skills, plugins, and connectors compatible with this Harness.",
+          capabilitiesExplicitDescription:
+            "Only the checked capabilities are available to this Agent.",
+          capabilitiesLoading: "Loading compatible capabilities...",
+          capabilitiesLoadFailed:
+            "We couldn't load capabilities for this Harness.",
+          noCompatibleCapabilities:
+            "This Harness did not report any configurable capabilities.",
+          restoreAutomaticCapabilities: "Use automatic selection",
+          capabilityDetails: "Technical details",
+          capabilityGroups: {
+            skills: "Skills",
+            plugins: "Plugins",
+            connectors: "Connectors"
+          },
+          capabilityStatuses: {
+            available: "Available",
+            disabled: "Disabled",
+            authRequired: "Sign-in required",
+            setupRequired: "Setup required",
+            unsupported: "Unsupported"
+          },
+          advancedCapabilityIdsTitle: "Advanced capability IDs and permissions",
+          advancedCapabilityIdsDescription:
+            "Use manual IDs only for capabilities the Harness catalog cannot discover. Editing Skills or tools switches this Agent to an explicit allowlist.",
+          loadFailed: "We couldn't load workspace Agents.",
+          migrated: "Migrated from an earlier binding",
+          modelPlanLabel: "Model plan",
+          modelFallbackDescription:
+            "Tried in this order only when a new conversation cannot use the primary plan. Running conversations never switch credentials.",
+          modelFallbackLabel: "Model failover chain",
+          noModelFallbackRecommendation:
+            "No additional healthy model matches the primary model's capabilities.",
+          recommendModelFallback: "Recommend",
+          recommendModelFallbackFailed:
+            "Couldn't recommend a fallback — try again.",
+          recommendingModelFallback: "Recommending...",
+          removeModelFallback: "Remove fallback",
+          nameLabel: "Name",
+          namePlaceholder: "Frontend reviewer",
+          noHarnesses: "No Harnesses are available",
+          noModelPlan: "Harness default models",
+          onePerLine: "One entry per line",
+          permissionsLabel: "Permissions",
+          permissionsPlaceholder: "workspace.write\nnetwork.read",
+          planDefaultModel: "Plan default",
+          purposeLabel: "Purpose",
+          purposePlaceholder: "Review UI changes for quality and accessibility",
+          requiredFields: "Enter a name and choose a Harness.",
+          retry: "Try again",
+          save: "Save Agent",
+          saveFailed:
+            "Couldn't save the Agent — check the fields and try again.",
+          saving: "Saving...",
+          skillsLabel: "Skills",
+          skillsPlaceholder: "react-review\naccessibility",
+          title: "Agents",
+          toolsLabel: "Tools",
+          toolsPlaceholder: "terminal\nbrowser"
+        },
+        automationRules: {
+          actions: {
+            consult: "Consult model",
+            delegate: "Delegate",
+            fork: "Fork",
+            handoff: "Handoff"
+          },
+          actionLabel: "Action",
+          addRule: "Add automation",
+          allAgents: "All Agents",
+          allowedToolsLabel: "Allowed tools",
+          allowedToolsPlaceholder: "terminal\nbrowser",
+          budgetDescription:
+            "Limits apply independently to each source session. Zero uses the daemon safety default and is never unlimited.",
+          budgetLabel: "Budget",
+          budgetSummary: "{{runs}} runs · {{tokens}} tokens",
+          chooseModelPlan: "Choose a model plan",
+          chooseTargetAgent: "Choose a target Agent",
+          consultToolFree:
+            "Model consults are tool-free. Permission mode and allowed tools apply only to Agent actions.",
+          delete: "Delete",
+          deleteConfirm: "Delete this automation?",
+          deleteFailed: "Couldn't delete the automation — try again.",
+          deleting: "Deleting...",
+          description:
+            "Run an optional consult, fork, delegation, or handoff after an Agent completes a task.",
+          disabled: "Disabled",
+          edit: "Edit",
+          editTitle: "Edit {{rule}}",
+          editorDescription:
+            "New automations start disabled with conservative limits. Enable the rule only after reviewing its target and authority.",
+          emptyDescription:
+            "Add a bounded action rule when completed Agent work should trigger a follow-up.",
+          emptyTitle: "No automation rules yet",
+          enabled: "Enabled",
+          enabledLabel: "Run automatically after matching tasks complete",
+          invalidBudget:
+            "Enter non-negative whole numbers for both budget limits.",
+          loadFailed: "We couldn't load automation rules.",
+          maxRunsLabel: "Maximum runs per source session",
+          maxTokensLabel: "Maximum total tokens per source session",
+          modelLabel: "Model",
+          modelPlanLabel: "Model plan",
+          nameLabel: "Name",
+          namePlaceholder: "Completion quality check",
+          onePerLine: "One entry per line",
+          permissionModeLabel: "Permission mode",
+          permissionModePlaceholder: "Use target Agent default",
+          planDefaultModel: "Plan default",
+          promptLabel: "Prompt",
+          promptPlaceholder:
+            "Describe the bounded follow-up the automation should perform.",
+          requiredCapabilitiesLabel: "Required model capabilities",
+          requiredCapabilitiesPlaceholder: "reasoning\nvision",
+          requiredFields:
+            "Enter a name and choose the model plan or target Agent required by this action.",
+          retry: "Try again",
+          save: "Save automation",
+          saveFailed:
+            "Couldn't save the automation — check its target, permissions, and budget.",
+          saving: "Saving...",
+          sourceAgentLabel: "Source Agent",
+          targetAgentLabel: "Target Agent",
+          targetLabel: "Target",
+          title: "Automation rules",
+          triggerLabel: "Trigger",
+          triggers: {
+            onTaskComplete: "When a task completes",
+            onTaskFailed: "When a task fails or is interrupted"
+          }
+        },
         modelPlans: {
           addDiscoveredModel: "Add {{model}}",
           addModel: "Add model",
           addPlan: "Add plan",
           agentRuntimePendingHint:
-            "Save the plan, then pick a compatible agent below and finish one real call to complete verification.",
+            "Save the plan, assign it to an Agent below, then finish one real call to complete verification.",
           apiKey: "API key",
           baseUrl: "Base URL",
+          billingApiMetered: "API metered billing",
+          billingSubscriptionQuota: "Subscription quota",
           bindings: {
             description:
               "Choose which model plan each agent uses by default. An agent's first real call completes the plan's verification.",
@@ -810,6 +1008,8 @@ export const en = {
             "Set up named model access plans — official subscriptions, coding plans, domestic providers, relays, or custom endpoints — for your workspace agents and apps",
           detect: "Test connection",
           detectFailed: "Couldn't run the connection check — try again.",
+          detectionRequired:
+            "Complete a successful connection check before saving this plan.",
           detecting: "Checking...",
           detectionTitle: "Connection check",
           discoveredModels: "Detected models",
@@ -817,8 +1017,16 @@ export const en = {
           duplicateFailed: "Couldn't duplicate — try again.",
           edit: "Edit",
           editTitle: "Edit {{plan}}",
+          compatibleAgents: "Compatible Agents: {{agents}}",
+          compatibleAgentsNone: "Compatible Agents: None enabled",
+          firstUseAction: "Try with this Agent",
+          firstUseAgentLabel: "Compatible Agent",
+          firstUseLaunchFailed: "Couldn't open the first-use session.",
+          firstUseLaunching: "Opening...",
+          firstUsePrompt:
+            "Use the {{plan}} model plan for this real first call. Briefly introduce the selected model and confirm it can respond in this workspace.",
           emptyDescription:
-            "Click \u201cAdd plan\u201d to connect a subscription, relay, or custom endpoint with your API key",
+            "Click \u201cAdd plan\u201d to use an existing provider login or connect an API endpoint.",
           emptyTitle: "No model plans yet",
           enabled: "Enable {{plan}}",
           failureReasons: {
@@ -829,6 +1037,10 @@ export const en = {
             modelCatalogUnavailable: "The model list isn't available.",
             modelRejected: "The endpoint rejected the model.",
             noModelSelected: "No model selected for the test call.",
+            providerAuthRequired:
+              "The provider's Agent runtime is not signed in.",
+            providerRuntimeUnavailable:
+              "The provider's Agent runtime is not available.",
             unauthorized: "The endpoint rejected the credentials.",
             unknown: "The check failed."
           },
@@ -838,14 +1050,43 @@ export const en = {
           lastDetectedAt: "Checked {{time}}",
           loadFailed: "We couldn't load model plans.",
           modelCount: "{{count}} models",
+          modelCapabilities: "Capabilities: {{capabilities}}",
           modelId: "Model ID",
           modelIdPlaceholder: "model-id",
+          nativeLoginHint:
+            "This plan uses the existing Codex or Claude Code login on this device. Sign in from Agent settings if needed, then run the connection check; no API key or Base URL is stored in this plan.",
+          modelRangeImpactDescription:
+            "These consumers may use the changed model range on their next call. Review the impact, then confirm to save; running calls are unchanged.",
+          modelRangeImpactTitle: "Review affected consumers",
           models: "Models",
+          noDiscoveredModelsMatch: "No detected models match this search.",
+          priceCurrency: "Currency",
+          priceInput: "Input / 1M",
+          priceOutput: "Output / 1M",
+          priceCacheRead: "Cache read / 1M",
+          priceCacheWrite: "Cache write / 1M",
+          searchDiscoveredModels: "Search detected models",
+          searchDiscoveredModelsPlaceholder: "Search model IDs or names",
+          selectAllDiscoveredModels: "Select all shown",
+          subscriptionQuotaPricingHint:
+            "Subscription quota is protected by a remaining-quota waterline. Tutti does not invent a monetary token price for this access scheme.",
+          tier: "Tier",
+          tierFlagship: "Flagship",
+          tierStandard: "Standard",
+          tierEconomy: "Economy",
+          tierUsageFlagship:
+            "Best for complex reasoning, architecture, and quality-critical work.",
+          tierUsageStandard:
+            "Balanced for everyday coding, review, and general Agent work.",
+          tierUsageEconomy:
+            "Best for fast, high-volume, or straightforward tasks.",
           nameLabel: "Name",
           namePlaceholder: "My model plan",
           neverDetected: "Not checked yet",
           pendingFirstUseGuide:
-            "Pick a compatible agent under Agent bindings below and finish one real call to make this plan fully usable.",
+            "Choose a compatible Agent and finish one real call to make this plan fully usable.",
+          noCompatibleFirstUseAgent:
+            "No enabled compatible Agent is available. Enable one in Agent settings first.",
           presetLabel: "Provider preset",
           presets: {
             agnes: "Agnes",
@@ -870,7 +1111,9 @@ export const en = {
           },
           referenceKinds: {
             agentTarget: "Agent",
+            automationRule: "Automation rule",
             modelPolicy: "Model policy",
+            workspaceAgent: "Workspace Agent",
             workspaceApp: "App"
           },
           remedies: {
@@ -878,12 +1121,17 @@ export const en = {
             checkApiKey: "Check the API key.",
             checkModelId: "Check the model ID.",
             checkNetworkOrBaseUrl: "Check the network or Base URL.",
+            installOrEnableAgentProvider:
+              "Install or enable the matching Agent provider.",
+            loginAgentProvider:
+              "Sign in to the matching provider from Agent settings.",
             selectModel: "Select a model first."
           },
           removeModel: "Remove model",
           requiredFieldsMissing:
-            "Fill in the name, API key, and Base URL first.",
+            "Fill in the name and model list. Endpoint plans also require an API key and Base URL.",
           save: "Save",
+          confirmModelRangeImpact: "Confirm impact and save",
           saveFailed: "Couldn't save — try again.",
           saving: "Saving...",
           showApiKey: "Show key",
@@ -926,7 +1174,7 @@ export const en = {
             },
             officialSubscription: {
               guidance:
-                "Connect an official API subscription directly with the provider's key.",
+                "Use the official subscription already signed in through Codex or Claude Code on this device.",
               label: "Official subscription"
             },
             relay: {

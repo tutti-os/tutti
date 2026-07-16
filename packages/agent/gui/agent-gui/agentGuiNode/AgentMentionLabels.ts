@@ -25,6 +25,8 @@ export function agentMentionGroupLabel(groupId: AgentMentionGroupId): string {
       return translate("agentHost.agentGui.mentionGroupCollabSessions");
     case "issues":
       return translate("agentHost.agentGui.mentionGroupIssues");
+    case "models":
+      return translate("agentHost.agentGui.mentionGroupModels");
     default:
       return "";
   }
@@ -42,6 +44,8 @@ export function agentMentionFilterLabel(filter: AgentMentionFilterId): string {
       return translate("agentHost.agentGui.mentionFilterSession");
     case "issue":
       return translate("agentHost.agentGui.mentionFilterIssue");
+    case "model":
+      return translate("agentHost.agentGui.mentionFilterModel");
   }
 }
 
@@ -73,6 +77,9 @@ export function agentMentionEmptyGroupLabel(
   }
   if (groupId === "collab_sessions") {
     return translate("agentHost.agentGui.mentionEmptyCollabSessions");
+  }
+  if (groupId === "models") {
+    return translate("agentHost.agentGui.mentionEmptyModels");
   }
   if (groupId.startsWith("agent:")) {
     return translate("agentHost.agentGui.mentionEmptyMySessions");

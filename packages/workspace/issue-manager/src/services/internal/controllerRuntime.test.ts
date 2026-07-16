@@ -458,6 +458,7 @@ test("controllerRuntime preserves drafts in edit mode and resyncs in read mode",
   runtime.setIssueEditorModeState("read");
   assert.deepEqual(runtime.getSnapshot().issueDraft, {
     content: "Updated body",
+    dispatchPaused: false,
     title: "Updated on server"
   });
 

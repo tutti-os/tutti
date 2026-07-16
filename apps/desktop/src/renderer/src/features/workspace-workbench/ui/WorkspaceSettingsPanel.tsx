@@ -118,7 +118,8 @@ import {
   workspaceWallpaperDisplayModes,
   workspaceWallpaperOptions
 } from "../services/workspaceWallpaper";
-import { WorkspaceAgentModelBindingSection } from "./WorkspaceAgentModelBindingSection";
+import { WorkspaceAgentsSection } from "./WorkspaceAgentsSection";
+import { WorkspaceAutomationRulesSection } from "./WorkspaceAutomationRulesSection";
 import { WorkspaceModelPlansSection } from "./WorkspaceModelPlansSection";
 import {
   workspaceSettingsInputClass,
@@ -255,12 +256,12 @@ export function WorkspaceSettingsPanel({
               label: t("workspace.settings.nav.agent")
             },
             {
-              id: "appearance" as const,
-              label: t("workspace.settings.nav.appearance")
+              id: "model" as const,
+              label: t("workspace.settings.nav.model")
             },
             {
-              id: "apps" as const,
-              label: t("workspace.settings.nav.apps")
+              id: "appearance" as const,
+              label: t("workspace.settings.nav.appearance")
             },
             ...(settingsState.tuttiAgentSwitchEnabled
               ? [
@@ -425,8 +426,8 @@ export function WorkspaceSettingsPanel({
                   desktopPreferencesState.workbenchWindowSnapping
                 }
               />
-            ) : settingsState.activeSection === "apps" ? (
-              <WorkspaceAppsSettingsSection />
+            ) : settingsState.activeSection === "model" ? (
+              <WorkspaceModelSettingsSection />
             ) : settingsState.activeSection === "lab" ? (
               <WorkspaceLabSettingsSection
                 changingFeatureFlags={
@@ -458,11 +459,10 @@ export function WorkspaceSettingsPanel({
   );
 }
 
-function WorkspaceAppsSettingsSection() {
+function WorkspaceModelSettingsSection() {
   return (
     <SettingsRows>
       <WorkspaceModelPlansSection />
-      <WorkspaceAgentModelBindingSection />
     </SettingsRows>
   );
 }
@@ -2227,6 +2227,9 @@ function WorkspaceAgentSettingsSection({
           focusedAnchor === "computer-use" ? focusRequestID : 0
         }
       />
+
+      <WorkspaceAgentsSection />
+      <WorkspaceAutomationRulesSection />
     </div>
   );
 }

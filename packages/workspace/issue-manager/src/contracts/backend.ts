@@ -4,6 +4,7 @@ import type {
   IssueManagerContextRef,
   IssueManagerCreateTopicInput,
   IssueManagerCreateIssueInput,
+  IssueManagerCreateIssueFromPlanInput,
   IssueManagerCreateRunInput,
   IssueManagerCreateTaskInput,
   IssueManagerIssueDetail,
@@ -35,6 +36,9 @@ export interface IssueManagerBackend {
   createIssue(
     input: IssueManagerCreateIssueInput
   ): Promise<IssueManagerIssueSummary>;
+  createIssueFromPlan?(
+    input: IssueManagerCreateIssueFromPlanInput
+  ): Promise<IssueManagerIssueDetail>;
   createTopic(input: IssueManagerCreateTopicInput): Promise<IssueManagerTopic>;
   createRun(input: IssueManagerCreateRunInput): Promise<IssueManagerRun>;
   createTask(

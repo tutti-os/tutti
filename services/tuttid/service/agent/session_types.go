@@ -11,8 +11,11 @@ import (
 	runtimeprep "github.com/tutti-os/tutti/packages/agent/runtimeprep"
 	agentactivitybiz "github.com/tutti-os/tutti/services/tuttid/biz/agentactivity"
 	agenttargetbiz "github.com/tutti-os/tutti/services/tuttid/biz/agenttarget"
+	automationrulebiz "github.com/tutti-os/tutti/services/tuttid/biz/automationrule"
+	modelplanbiz "github.com/tutti-os/tutti/services/tuttid/biz/modelplan"
 	preferencesbiz "github.com/tutti-os/tutti/services/tuttid/biz/preferences"
 	userprojectbiz "github.com/tutti-os/tutti/services/tuttid/biz/userproject"
+	workspaceagentbiz "github.com/tutti-os/tutti/services/tuttid/biz/workspaceagent"
 	claudecodeservice "github.com/tutti-os/tutti/services/tuttid/service/claudecode"
 	reporterservice "github.com/tutti-os/tutti/services/tuttid/service/reporter"
 )
@@ -25,6 +28,7 @@ type Service struct {
 	ModelCapabilities              ModelCapabilitiesResolver
 	AgentTargetStore               AgentTargetStore
 	SessionInitializer             SessionInitializer
+	WorkspaceAgentResolver         WorkspaceAgentResolver
 	SessionReader                  SessionReader
 	SessionPurgeStore              agenthost.SessionPurgeStore
 	UserProjectReader              UserProjectReader
@@ -38,6 +42,7 @@ type Service struct {
 	GoalReconcileInboxStore        GoalReconcileInboxStore
 	SubmitClaimStore               SubmitClaimStore
 	RuntimeOperationEventPublisher RuntimeOperationEventPublisher
+	AutomationRuleOverrides        AutomationRuleSessionOverrideWriter
 	RuntimeOperationClock          func() time.Time
 	RuntimeOperationOwner          string
 	StaleTurnSettler               agenthost.StaleTurnSettler
@@ -89,6 +94,10 @@ type Service struct {
 
 type GoalReconcileInboxStore = agenthost.GoalReconcileInboxStore
 
+type AutomationRuleSessionOverrideWriter interface {
+	SetSessionOverride(context.Context, automationrulebiz.SessionOverride) (automationrulebiz.SessionOverride, error)
+}
+
 type SubmitClaimStore interface {
 	PrepareSubmitClaim(context.Context, agentactivitybiz.SubmitClaimPrepare) (agentactivitybiz.SubmitClaim, bool, error)
 	AcceptSubmitClaim(context.Context, string, string, string, string, int64) (agentactivitybiz.SubmitClaim, bool, error)
@@ -124,6 +133,10 @@ type AgentTargetStore interface {
 
 type AgentComposerDefaultsReader interface {
 	GetAgentComposerDefaultsForTarget(context.Context, string) (preferencesbiz.AgentComposerDefaults, error)
+}
+
+type WorkspaceAgentResolver interface {
+	Resolve(context.Context, string, string) (workspaceagentbiz.Resolved, error)
 }
 
 type ComposerCapabilityLister interface {
@@ -460,8 +473,35 @@ type RuntimeStreamEvent struct {
 }
 
 type CreateSessionInput struct {
-	AgentSessionID         string
-	AgentTargetID          string
+	AgentSessionID string
+	AgentTargetID  string
+	// WorkspaceAgentRevision and HarnessAgentTargetID identify the immutable
+	// user-facing Agent definition and underlying Harness selected for launch.
+	// Legacy system targets leave the revision zero and use AgentTargetID as the
+	// Harness id.
+	WorkspaceAgentRevision    int64
+	HarnessAgentTargetID      string
+	AgentName                 string
+	AgentPurpose              string
+	AgentDefaultModel         string
+	AgentInstructions         string
+	AgentCallConditions       []string
+	AgentCapabilitiesExplicit bool
+	AgentSkills               []string
+	AgentTools                []string
+	AgentPermissions          []string
+	// AutomationRuleOverride is persisted after the runtime session starts but
+	// before its initial turn executes, so the first completion observes the
+	// session-local rule selection. Nil inherits enabled workspace rules.
+	AutomationRuleOverride *automationrulebiz.SessionOverride
+	// ResolvedModelPlan is a daemon-only exact plan override supplied by a
+	// WorkspaceAgent resolver. It may contain a credential and must never be
+	// serialized into runtime context or transport responses.
+	ResolvedModelPlan *modelplanbiz.Plan
+	// IgnoreModelPlanBinding forces provider-native credentials and model
+	// discovery for internal probes. It is daemon-only and must not be exposed
+	// as a user-facing session setting.
+	IgnoreModelPlanBinding bool
 	Provider               string
 	InitialContent         []PromptContentBlock
 	InitialDisplayPrompt   string
@@ -470,12 +510,22 @@ type CreateSessionInput struct {
 	Title                  *string
 	Cwd                    *string
 	PermissionModeID       *string
-	Model                  *string
-	PlanMode               *bool
-	BrowserUse             *bool
-	ComputerUse            *bool
-	ProviderTargetRef      map[string]any
-	ReasoningEffort        *string
+	// StrictPermissionMode rejects an explicit unsupported permission mode
+	// instead of applying the provider default. It is used by unattended
+	// automation so a typo cannot silently broaden authority.
+	StrictPermissionMode bool
+	Model                *string
+	ModelPlanID          *string
+	PlanMode             *bool
+	BrowserUse           *bool
+	ComputerUse          *bool
+	ProviderTargetRef    map[string]any
+	ReasoningEffort      *string
+	// ReasoningIntensity is an Issue-owned 0-100 strength request. When an
+	// explicit ReasoningEffort is absent, Create compiles it against the
+	// selected model's ordered reasoning-effort catalog. It is daemon-only and
+	// is not persisted as a per-session user setting.
+	ReasoningIntensity     *int
 	RuntimeContext         map[string]any
 	Isolation              string
 	Speed                  *string

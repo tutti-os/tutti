@@ -16,12 +16,14 @@ import { DesktopToastProvider } from "./lib/toast";
 import { registerDesktopPastedTextMention } from "./features/workspace-agent/services/registerDesktopPastedTextMention";
 import { registerBrowserElementMention } from "@tutti-os/agent-gui/workbench/browser-element-context";
 import type { WorkspaceWindowContainerResult } from "./app/windows/workspace/createWorkspaceWindowContainer.ts";
+import { registerDesktopModelMention } from "./features/workspace-agent/services/registerDesktopModelMention";
 import "./style.css";
 
 // Register host-owned agent mention kinds before the first composer/transcript
 // mounts (module-global registry; the agent-gui pipeline reads it during render).
 registerDesktopPastedTextMention();
 registerBrowserElementMention();
+registerDesktopModelMention();
 
 const root = document.querySelector<HTMLDivElement>("#app");
 

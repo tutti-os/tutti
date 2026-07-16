@@ -24,7 +24,15 @@ trusted app APIs may read or update host workspace state directly.
   app's managed durable data path, with optional progress and `AbortSignal`
   cancellation. It returns file metadata only; app-specific asset records remain
   owned by the calling app.
-- `permissions.request()` for user-activated host permission grants such as managed AI model access.
+- `permissions.request()` for user-activated host permission grants such as
+  managed AI model access. Apps may pass `modelPlanIds`; an unscoped request
+  defaults to all currently usable Model Plans, falling back to legacy fixed
+  providers only when the workspace has no usable Plan. Existing `providers`
+  requests are mapped to usable Plans of the same protocol before that legacy
+  fallback. Returned models carry
+  `modelPlanId`/`modelPlanName`, which the app should pass back to
+  `tutti managed-model credential` to disambiguate Plans that expose the same
+  provider/model pair.
 - `pdf.printHtmlToPdf()` for user-activated host PDF generation from print-ready HTML.
 - `settings.open()` for user-activated host settings navigation, including the managed models tab.
 - `userProjects.*` for trusted app access to local user project paths, default

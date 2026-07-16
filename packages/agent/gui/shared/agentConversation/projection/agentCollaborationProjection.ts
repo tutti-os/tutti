@@ -50,12 +50,39 @@ export function projectAgentCollaborationVM(
       stringField(payload, "modelPlanName") ?? stringField(payload, "planName"),
     model: stringField(payload, "model"),
     contextScope: stringField(payload, "contextScope"),
+    retryOfRunId: stringField(payload, "retryOfRunId"),
+    attempt: positiveIntegerField(payload, "attempt") ?? 1,
+    requestText: stringField(payload, "requestText"),
     resultText: stringField(payload, "resultText"),
     failureReason: stringField(payload, "failureReason"),
+    failureStage: stringField(payload, "failureStage"),
     durationMs: positiveNumberField(payload, "durationMs"),
     usage: usageField(payload),
+    cost: costField(payload),
     adoption: stringField(payload, "adoption") ?? "not_applicable"
   };
+}
+
+function costField(
+  payload: Record<string, unknown>
+): AgentCollaborationVM["cost"] {
+  const cost = normalizedPayload(
+    payload.cost as WorkspaceAgentActivityTimelineItem["payload"]
+  );
+  if (!cost) return null;
+  const currency = stringField(cost, "currency");
+  const estimatedMicros = nonNegativeNumberValue(cost.estimatedMicros);
+  return currency && estimatedMicros !== null
+    ? { currency, estimatedMicros }
+    : null;
+}
+
+function positiveIntegerField(
+  payload: Record<string, unknown>,
+  key: string
+): number | null {
+  const value = nonNegativeNumberValue(payload[key]);
+  return value !== null && Number.isInteger(value) && value > 0 ? value : null;
 }
 
 function usageField(
@@ -69,12 +96,21 @@ function usageField(
   }
   const inputTokens = nonNegativeNumberValue(usage.inputTokens);
   const outputTokens = nonNegativeNumberValue(usage.outputTokens);
-  if (inputTokens === null && outputTokens === null) {
+  const cacheReadTokens = nonNegativeNumberValue(usage.cacheReadTokens);
+  const cacheWriteTokens = nonNegativeNumberValue(usage.cacheWriteTokens);
+  if (
+    inputTokens === null &&
+    outputTokens === null &&
+    cacheReadTokens === null &&
+    cacheWriteTokens === null
+  ) {
     return null;
   }
   return {
     inputTokens: inputTokens ?? 0,
-    outputTokens: outputTokens ?? 0
+    outputTokens: outputTokens ?? 0,
+    cacheReadTokens: cacheReadTokens ?? 0,
+    cacheWriteTokens: cacheWriteTokens ?? 0
   };
 }
 

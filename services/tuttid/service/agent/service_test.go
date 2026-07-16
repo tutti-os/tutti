@@ -21,6 +21,7 @@ import (
 	"github.com/tutti-os/tutti/packages/agent/store-sqlite/canonical"
 	agentactivitybiz "github.com/tutti-os/tutti/services/tuttid/biz/agentactivity"
 	agenttargetbiz "github.com/tutti-os/tutti/services/tuttid/biz/agenttarget"
+	automationrulebiz "github.com/tutti-os/tutti/services/tuttid/biz/automationrule"
 	preferencesbiz "github.com/tutti-os/tutti/services/tuttid/biz/preferences"
 	userprojectbiz "github.com/tutti-os/tutti/services/tuttid/biz/userproject"
 	workspacebiz "github.com/tutti-os/tutti/services/tuttid/biz/workspace"
@@ -508,6 +509,21 @@ func TestServiceCreateResolvesAgentTargetID(t *testing.T) {
 	}
 	if got := runtime.startCalls[0].ProviderTargetRef["targetId"]; got != "local-codex" {
 		t.Fatalf("provider target ref targetId = %#v, want local-codex", got)
+	}
+}
+
+func TestServiceCreateStrictPermissionModeRejectsUnsupportedAutomationAuthority(t *testing.T) {
+	service := newTestService(newFakeRuntime())
+	unsupported := "definitely-not-a-codex-mode"
+	_, err := service.Create(context.Background(), "ws-1", CreateSessionInput{
+		AgentSessionID:       "strict-permission-session",
+		AgentTargetID:        agenttargetbiz.IDLocalCodex,
+		PermissionModeID:     &unsupported,
+		StrictPermissionMode: true,
+		InitialContent:       TextPromptContent("hello"),
+	})
+	if !errors.Is(err, ErrInvalidArgument) {
+		t.Fatalf("Create() error = %v, want ErrInvalidArgument", err)
 	}
 }
 
@@ -5470,6 +5486,7 @@ func TestServiceResumesPersistedSessionBeforeInput(t *testing.T) {
 			"ws-1:session-1": {
 				ID:                "session-1",
 				WorkspaceID:       "ws-1",
+				AgentTargetID:     "workspace-agent:writer",
 				Provider:          "codex",
 				ProviderSessionID: "provider-session-1",
 				ActiveTurnID:      "turn-1",
@@ -5490,6 +5507,9 @@ func TestServiceResumesPersistedSessionBeforeInput(t *testing.T) {
 	}
 	if len(runtime.resumeCalls) != 1 {
 		t.Fatalf("resume calls = %d, want 1", len(runtime.resumeCalls))
+	}
+	if runtime.resumeCalls[0].AgentTargetID != "workspace-agent:writer" {
+		t.Fatalf("resume agent target id = %q, want preserved target", runtime.resumeCalls[0].AgentTargetID)
 	}
 	if len(runtime.execCalls) != 1 {
 		t.Fatalf("exec calls = %d, want 1", len(runtime.execCalls))
@@ -7032,6 +7052,20 @@ type fakeRuntime struct {
 	closeHook              func(RuntimeCloseInput)
 	validateErr            error
 	validateCalls          []RuntimeExecInput
+}
+
+type recordingAutomationRuleOverrideWriter struct {
+	beforeSet func()
+	calls     []automationrulebiz.SessionOverride
+	err       error
+}
+
+func (w *recordingAutomationRuleOverrideWriter) SetSessionOverride(_ context.Context, override automationrulebiz.SessionOverride) (automationrulebiz.SessionOverride, error) {
+	if w.beforeSet != nil {
+		w.beforeSet()
+	}
+	w.calls = append(w.calls, override)
+	return override, w.err
 }
 
 type fakeAgentTargetStore struct {

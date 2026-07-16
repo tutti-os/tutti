@@ -113,7 +113,12 @@ describe("useAgentGUINewConversationActivation", () => {
     isComposerHomeRef.current = true;
     let secondResult: ReturnType<typeof result.current> = null;
     act(() => {
-      secondResult = result.current([{ type: "text", text: "second" }]);
+      secondResult = result.current(
+        [{ type: "text", text: "second" }],
+        "second",
+        { model: "gpt-plan", modelPlanId: "plan-2" },
+        "agent-session:source"
+      );
     });
     const secondSessionId = activate.mock.calls[1]?.[0].agentSessionId;
 
@@ -132,6 +137,9 @@ describe("useAgentGUINewConversationActivation", () => {
     expect(firstSessionId).toBeTruthy();
     expect(secondSessionId).toBeTruthy();
     expect(secondSessionId).not.toBe(firstSessionId);
+    expect(activate.mock.calls[1]?.[0]).toMatchObject({
+      settings: { model: "gpt-plan", modelPlanId: "plan-2" }
+    });
     expect(firstResult).toEqual({
       agentSessionId: firstSessionId,
       requestId: `activation:${firstSessionId}`

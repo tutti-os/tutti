@@ -18,6 +18,9 @@ func composerSettingsToPayload(settings ComposerSettings) map[string]any {
 	if model := strings.TrimSpace(settings.Model); model != "" {
 		payload["model"] = model
 	}
+	if modelPlanID := strings.TrimSpace(settings.ModelPlanID); modelPlanID != "" {
+		payload["modelPlanId"] = modelPlanID
+	}
 	if permissionModeID := strings.TrimSpace(settings.PermissionModeID); permissionModeID != "" {
 		payload["permissionModeId"] = permissionModeID
 	}
@@ -57,6 +60,7 @@ func composerSettingsToStatePayload(settings ComposerSettings) map[string]any {
 func composerSettingsFromPayload(payload map[string]any) ComposerSettings {
 	settings := ComposerSettings{
 		Model:            payloadString(payload, "model"),
+		ModelPlanID:      payloadString(payload, "modelPlanId"),
 		PermissionModeID: payloadString(payload, "permissionModeId"),
 		PlanMode:         payloadBool(payload, "planMode"),
 		ReasoningEffort:  payloadString(payload, "reasoningEffort"),
@@ -72,6 +76,7 @@ func composerSettingsFromPayload(payload map[string]any) ComposerSettings {
 
 func composerSettingsIsEmpty(settings ComposerSettings) bool {
 	return strings.TrimSpace(settings.Model) == "" &&
+		strings.TrimSpace(settings.ModelPlanID) == "" &&
 		strings.TrimSpace(settings.PermissionModeID) == "" &&
 		strings.TrimSpace(settings.ReasoningEffort) == "" &&
 		strings.TrimSpace(settings.Speed) == "" &&
@@ -95,6 +100,7 @@ func payloadBoolPointer(payload map[string]any, key string) *bool {
 func createSessionInputFromPersisted(session PersistedSession) CreateSessionInput {
 	input := CreateSessionInput{
 		AgentSessionID: strings.TrimSpace(session.ID),
+		AgentTargetID:  strings.TrimSpace(session.AgentTargetID),
 		Provider:       strings.TrimSpace(session.Provider),
 	}
 	if title := strings.TrimSpace(session.Title); title != "" {

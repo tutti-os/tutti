@@ -895,6 +895,7 @@ test("desktop agent activity adapter sends plan mode when creating sessions", as
       source: "agent-gui"
     },
     model: "gpt-5.5-codex-spark",
+    modelPlanId: "plan-codex-official",
     permissionModeId: "read-only",
     planMode: true,
     reasoningEffort: "high",
@@ -920,6 +921,7 @@ test("desktop agent activity adapter sends plan mode when creating sessions", as
           source: "agent-gui"
         },
         model: "gpt-5.5-codex-spark",
+        modelPlanId: "plan-codex-official",
         noProject: null,
         permissionModeId: "read-only",
         planMode: true,
@@ -1448,6 +1450,10 @@ test("desktop agent activity adapter forwards agent target id when creating Clau
     clientSubmitId: "submit-shared-claude",
     agentSessionId: "22222222-2222-4222-8222-222222222222",
     agentTargetId: "shared-agent:claude-1",
+    automationRuleOverride: {
+      disabled: false,
+      ruleIds: ["rule-review"]
+    },
     initialContent: [{ type: "text", text: "hello" }],
     workspaceId
   });
@@ -1456,6 +1462,10 @@ test("desktop agent activity adapter forwards agent target id when creating Clau
     {
       agentSessionId: "22222222-2222-4222-8222-222222222222",
       agentTargetId: "shared-agent:claude-1",
+      automationRuleOverride: {
+        disabled: false,
+        ruleIds: ["rule-review"]
+      },
       clientSubmitId: "submit-shared-claude",
       cwd: null,
       initialContent: [{ type: "text", text: "hello" }],

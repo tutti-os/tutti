@@ -134,6 +134,14 @@ export interface WorkspaceAgentComposerDefaultsInvalidatedEvent {
   agentTargetId: string;
 }
 
+export interface WorkspaceAgentModelConfigurationChangedEvent {
+  agentTargetIds: string[];
+  defaultModels: Record<string, string>;
+  occurredAtUnixMs: number;
+  resetComposerModel: boolean;
+  workspaceId: string;
+}
+
 export interface IWorkspaceAgentActivityService {
   readonly _serviceBrand: undefined;
 
@@ -219,6 +227,9 @@ export interface IWorkspaceAgentActivityService {
   onComposerDefaultsInvalidated(
     listener: (event: WorkspaceAgentComposerDefaultsInvalidatedEvent) => void
   ): () => void;
+  onModelConfigurationChanged?: (
+    listener: (event: WorkspaceAgentModelConfigurationChangedEvent) => void
+  ) => () => void;
   submitInteractive(
     input: AgentActivitySubmitInteractiveInput
   ): Promise<AgentActivitySubmitInteractiveResult>;
@@ -246,6 +257,22 @@ export interface IWorkspaceAgentActivityService {
   // fakes/hosts without collaboration-run support can omit them; the runtime
   // wiring only exposes the commands when the service implements them.
   startModelConsult?: NonNullable<AgentActivityRuntime["startModelConsult"]>;
+  startAgentCollaboration?: NonNullable<
+    AgentActivityRuntime["startAgentCollaboration"]
+  >;
+  cancelCollaboration?: NonNullable<
+    AgentActivityRuntime["cancelCollaboration"]
+  >;
+  retryCollaboration?: NonNullable<AgentActivityRuntime["retryCollaboration"]>;
+  listAutomationRules?: NonNullable<
+    AgentActivityRuntime["listAutomationRules"]
+  >;
+  getAutomationRuleOverride?: NonNullable<
+    AgentActivityRuntime["getAutomationRuleOverride"]
+  >;
+  setAutomationRuleOverride?: NonNullable<
+    AgentActivityRuntime["setAutomationRuleOverride"]
+  >;
   setCollaborationAdoption?: NonNullable<
     AgentActivityRuntime["setCollaborationAdoption"]
   >;

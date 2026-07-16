@@ -50,9 +50,14 @@ export function createDesktopIssueManagerBackend(
           input.runId,
           {
             errorMessage: input.errorMessage,
+            ...(input.cost === undefined ? {} : { cost: input.cost }),
             outputs: input.outputs,
             status: input.status,
-            summary: input.summary
+            summary: input.summary,
+            ...(input.usage === undefined ? {} : { usage: input.usage }),
+            ...(input.remainingQuotaPercent === undefined
+              ? {}
+              : { remainingQuotaPercent: input.remainingQuotaPercent })
           }
         );
       }
@@ -63,19 +68,48 @@ export function createDesktopIssueManagerBackend(
         input.runId,
         {
           errorMessage: input.errorMessage,
+          ...(input.cost === undefined ? {} : { cost: input.cost }),
           outputs: input.outputs,
           status: input.status,
-          summary: input.summary
+          summary: input.summary,
+          ...(input.usage === undefined ? {} : { usage: input.usage }),
+          ...(input.remainingQuotaPercent === undefined
+            ? {}
+            : { remainingQuotaPercent: input.remainingQuotaPercent })
         }
       );
     },
     async createIssue(input) {
       return tuttidClient.createWorkspaceIssue(input.workspaceId, {
         content: input.content,
+        ...(input.budget === undefined ? {} : { budget: input.budget }),
+        ...(input.executionProfile === undefined
+          ? {}
+          : { executionProfile: input.executionProfile }),
         issueId: input.issueId,
+        ...(input.planningSource === undefined
+          ? {}
+          : { planningSource: input.planningSource }),
+        ...(input.sourceSessionId === undefined
+          ? {}
+          : { sourceSessionId: input.sourceSessionId }),
         topicId: input.topicId,
         title: input.title
       });
+    },
+    async createIssueFromPlan(input) {
+      const createFromPlan = tuttidClient.createWorkspaceIssueFromPlan;
+      if (!createFromPlan) {
+        throw new Error("Issue creation from plan is unavailable.");
+      }
+      const response = await createFromPlan(input.workspaceId, {
+        issue: input.issue,
+        tasks: input.tasks.map((task) => ({
+          ...task,
+          priority: toClientPriority(task.priority)
+        }))
+      });
+      return normalizeIssueDetail(response);
     },
     async createTopic(input) {
       return tuttidClient.createWorkspaceIssueTopic(input.workspaceId, {
@@ -103,6 +137,10 @@ export function createDesktopIssueManagerBackend(
             agentTargetId,
             agentUserId: input.agentUserId,
             ...(executionDirectory ? { executionDirectory } : {}),
+            ...(input.model === undefined ? {} : { model: input.model }),
+            ...(input.modelPlanId === undefined
+              ? {}
+              : { modelPlanId: input.modelPlanId }),
             runId: input.runId
           }
         );
@@ -124,6 +162,10 @@ export function createDesktopIssueManagerBackend(
           agentTargetId,
           agentUserId: input.agentUserId,
           ...(executionDirectory ? { executionDirectory } : {}),
+          ...(input.model === undefined ? {} : { model: input.model }),
+          ...(input.modelPlanId === undefined
+            ? {}
+            : { modelPlanId: input.modelPlanId }),
           runId: input.runId
         }
       );
@@ -134,7 +176,20 @@ export function createDesktopIssueManagerBackend(
         input.issueId,
         {
           content: input.content,
+          ...(input.agentTargetId === undefined
+            ? {}
+            : { agentTargetId: input.agentTargetId }),
+          ...(input.dependencyTaskIds === undefined
+            ? {}
+            : { dependencyTaskIds: input.dependencyTaskIds }),
           dueAtUnix: input.dueAtUnix,
+          ...(input.executionDirectory === undefined
+            ? {}
+            : { executionDirectory: input.executionDirectory }),
+          ...(input.model === undefined ? {} : { model: input.model }),
+          ...(input.modelPlanId === undefined
+            ? {}
+            : { modelPlanId: input.modelPlanId }),
           priority: toClientPriority(input.priority),
           taskId: input.taskId,
           title: input.title
@@ -224,6 +279,14 @@ export function createDesktopIssueManagerBackend(
         input.issueId,
         {
           content: input.content,
+          ...(input.budget === undefined ? {} : { budget: input.budget }),
+          ...(input.dispatchPaused === undefined
+            ? {}
+            : { dispatchPaused: input.dispatchPaused }),
+          ...(input.executionProfile === undefined
+            ? {}
+            : { executionProfile: input.executionProfile }),
+          status: toClientStatus(input.status),
           title: input.title
         }
       );
@@ -246,7 +309,26 @@ export function createDesktopIssueManagerBackend(
         input.taskId,
         {
           content: input.content,
+          ...(input.acceptanceState === undefined
+            ? {}
+            : { acceptanceState: input.acceptanceState }),
+          ...(input.acceptanceSummary === undefined
+            ? {}
+            : { acceptanceSummary: input.acceptanceSummary }),
+          ...(input.agentTargetId === undefined
+            ? {}
+            : { agentTargetId: input.agentTargetId }),
+          ...(input.dependencyTaskIds === undefined
+            ? {}
+            : { dependencyTaskIds: input.dependencyTaskIds }),
           dueAtUnix: input.dueAtUnix,
+          ...(input.executionDirectory === undefined
+            ? {}
+            : { executionDirectory: input.executionDirectory }),
+          ...(input.model === undefined ? {} : { model: input.model }),
+          ...(input.modelPlanId === undefined
+            ? {}
+            : { modelPlanId: input.modelPlanId }),
           priority: toClientPriority(input.priority),
           sortIndex: input.sortIndex,
           status: toClientStatus(input.status),

@@ -21,6 +21,7 @@ import {
   FILE_PROVIDER_ID,
   WORKSPACE_APP_PROVIDER_ID,
   WORKSPACE_ISSUE_PROVIDER_ID,
+  WORKSPACE_MODEL_PROVIDER_ID,
   type AgentMentionLifecycleDiagnosticLog
 } from "./AgentMentionSearchContracts";
 import { presentAgentGeneratedFileMentionItems } from "./agentMentionAgentGeneratedFilesPresentation";
@@ -382,7 +383,8 @@ export function emptyAgentMentionRawGroups(): AgentMentionRawGroups {
     opened_files: [],
     agent_generated_files: [],
     sessions: [],
-    issues: []
+    issues: [],
+    models: []
   };
 }
 
@@ -395,7 +397,8 @@ export function cloneAgentMentionRawGroups(
     opened_files: [...rawGroups.opened_files],
     agent_generated_files: [...rawGroups.agent_generated_files],
     sessions: [...rawGroups.sessions],
-    issues: [...rawGroups.issues]
+    issues: [...rawGroups.issues],
+    models: [...rawGroups.models]
   };
 }
 
@@ -413,7 +416,8 @@ export function totalCountsFromRawGroups(
     collab_sessions: rawGroups.sessions.filter(
       (item) => item.kind === "session" && item.scope === "collab_sessions"
     ).length,
-    issues: rawGroups.issues.length
+    issues: rawGroups.issues.length,
+    models: rawGroups.models.length
   };
 }
 
@@ -632,6 +636,29 @@ export function providerItemToAgentMentionItem(input: {
       agentProviderId,
       iconUrl: presentation.iconUrl?.trim() || undefined,
       availabilityStatus: presentation.status?.trim() || undefined
+    };
+  }
+  if (input.providerId === WORKSPACE_MODEL_PROVIDER_ID) {
+    const modelPlanId = scope.modelPlanId?.trim() ?? "";
+    if (!modelPlanId) {
+      return null;
+    }
+    return {
+      kind: "custom",
+      customKind: WORKSPACE_MODEL_PROVIDER_ID,
+      href: createRichTextMentionHref({
+        providerId: WORKSPACE_MODEL_PROVIDER_ID,
+        entityId: targetId,
+        label,
+        scope: { modelPlanId, workspaceId }
+      }),
+      workspaceId,
+      targetId,
+      name: label,
+      summary:
+        compactText(presentation.subtitle) ||
+        compactText(input.subtitle) ||
+        undefined
     };
   }
   if (input.providerId === AGENT_SESSION_PROVIDER_ID) {

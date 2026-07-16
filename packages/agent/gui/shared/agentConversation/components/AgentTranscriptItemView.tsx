@@ -5,6 +5,7 @@ import type { AgentGUIProviderSkillOption } from "../../../agent-gui/agentGuiNod
 import { resolveAgentConversationLinkAction } from "../actions/agentConversationLinkActions";
 import type { AgentTranscriptRowVM } from "../contracts/agentTranscriptRowVM";
 import { AgentGeneratedImageRow } from "./AgentGeneratedImageRow";
+import type { AgentCollaborationVM } from "../contracts/agentCollaborationVM";
 import { AgentMessageBlock } from "./AgentMessageBlock";
 import { AgentProcessingRow } from "./AgentProcessingRow";
 import { AgentToolGroupRow } from "./AgentToolGroupRow";
@@ -22,6 +23,7 @@ interface AgentTranscriptItemViewProps {
     rawTimelineJson?: string;
   };
   onLinkAction?: (action: WorkspaceLinkAction) => void;
+  onReviseCollaboration?: (collaboration: AgentCollaborationVM) => void;
   onAuthLogin?: (provider?: string | null) => void;
   provider?: string | null;
   availableSkills?: readonly AgentGUIProviderSkillOption[];
@@ -39,6 +41,7 @@ export const AgentTranscriptItemView = memo(function AgentTranscriptItemView({
   row,
   labels,
   onLinkAction,
+  onReviseCollaboration,
   onAuthLogin,
   provider,
   availableSkills,
@@ -75,6 +78,7 @@ export const AgentTranscriptItemView = memo(function AgentTranscriptItemView({
           basePath={basePath}
           row={row}
           onLinkAction={onLinkAction}
+          onReviseCollaboration={onReviseCollaboration}
           onAuthLogin={onAuthLogin}
           provider={provider}
           availableSkills={availableSkills}

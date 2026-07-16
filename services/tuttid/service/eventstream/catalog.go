@@ -107,6 +107,16 @@ func DefaultCatalog() StaticCatalog {
 			},
 		},
 		{
+			Name:               TopicAgentAutomationRulesChanged,
+			ClientCanPublish:   false,
+			ClientCanSubscribe: true,
+			Version:            1,
+			directions:         []Direction{DirectionServerToClient},
+			validators: map[Direction]PayloadValidator{
+				DirectionServerToClient: validateAgentAutomationRulesChangedPayload,
+			},
+		},
+		{
 			Name:               TopicAgentCollaborationUpdated,
 			ClientCanPublish:   false,
 			ClientCanSubscribe: true,
@@ -129,6 +139,16 @@ func DefaultCatalog() StaticCatalog {
 	}
 	definitions = append(definitions, preferencesTopicDefinitions()...)
 	definitions = append(definitions, []TopicDefinition{
+		{
+			Name:               TopicAgentModelConfigurationChanged,
+			ClientCanPublish:   false,
+			ClientCanSubscribe: true,
+			Version:            1,
+			directions:         []Direction{DirectionServerToClient},
+			validators: map[Direction]PayloadValidator{
+				DirectionServerToClient: validateAgentModelConfigurationChangedPayload,
+			},
+		},
 		{
 			Name:               TopicUserProjectUpdated,
 			ClientCanPublish:   false,
@@ -526,28 +546,6 @@ func validateAgentActivityUpdatedPayload(payload []byte) error {
 		return fmt.Errorf("data is required")
 	}
 	return validateAgentActivityUpdatedData(decoded)
-}
-
-func validateAgentModelCatalogInvalidatedPayload(payload []byte) error {
-	var decoded agentModelCatalogInvalidatedPayload
-	if err := decodeJSONStrict(payload, &decoded); err != nil {
-		return fmt.Errorf("decode payload: %w", err)
-	}
-	if len(decoded.Providers) == 0 {
-		return fmt.Errorf("providers is required")
-	}
-	for _, provider := range decoded.Providers {
-		if strings.TrimSpace(provider) == "" {
-			return fmt.Errorf("providers must not contain empty entries")
-		}
-		if !agentproviderbiz.IsSupported(provider) {
-			return fmt.Errorf("providers contains unsupported provider %q", provider)
-		}
-	}
-	if decoded.OccurredAtUnixMS <= 0 {
-		return fmt.Errorf("occurredAtUnixMs is required")
-	}
-	return nil
 }
 
 func decodeJSONStrict(payload []byte, target any) error {

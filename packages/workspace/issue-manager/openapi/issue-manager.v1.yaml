@@ -189,6 +189,76 @@ paths:
           $ref: "#/components/responses/WorkspaceOperationError"
         "503":
           $ref: "#/components/responses/ServiceUnavailableError"
+  /v1/workspaces/{workspaceID}/issues/from-plan:
+    parameters:
+      - $ref: "#/components/parameters/WorkspaceID"
+    post:
+      operationId: createWorkspaceIssueFromPlan
+      tags:
+        - issue
+      summary: Create one executable Issue and its tasks from an Ultra or traditional Plan
+      description: The returned Issue remains durable even when execution is started later. Task assignments and dependencies are validated as one graph before task execution can start.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateIssueManagerIssueFromPlanRequest"
+      responses:
+        "201":
+          description: Workspace issue and tasks created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IssueManagerIssueDetailResponse"
+        "400":
+          $ref: "#/components/responses/InvalidRequestError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "404":
+          $ref: "#/components/responses/WorkspaceNotFoundError"
+        "405":
+          $ref: "#/components/responses/MethodNotAllowedError"
+        "409":
+          $ref: "#/components/responses/WorkspaceIssueResourceExistsError"
+        "502":
+          $ref: "#/components/responses/WorkspaceOperationError"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailableError"
+  /v1/workspaces/{workspaceID}/issues/auto-token-budget-estimate:
+    parameters:
+      - $ref: "#/components/parameters/WorkspaceID"
+    post:
+      operationId: estimateWorkspaceIssueAutoTokenBudget
+      tags:
+        - issue
+      summary: Estimate the authoritative automatic token budget for a proposed Issue graph
+      description: Uses the same scale, intensity, and comparable completed-run history compiler as Issue creation. No Issue or task is persisted.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/EstimateIssueManagerAutoTokenBudgetRequest"
+      responses:
+        "200":
+          description: Automatic token budget estimate
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IssueManagerAutoTokenBudgetEstimate"
+        "400":
+          $ref: "#/components/responses/InvalidRequestError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "404":
+          $ref: "#/components/responses/WorkspaceNotFoundError"
+        "405":
+          $ref: "#/components/responses/MethodNotAllowedError"
+        "502":
+          $ref: "#/components/responses/WorkspaceOperationError"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailableError"
   /v1/workspaces/{workspaceID}/issue-references/search:
     parameters:
       - $ref: "#/components/parameters/WorkspaceID"
@@ -1001,6 +1071,127 @@ components:
         - IssueManagerPriorityHigh
         - IssueManagerPriorityMedium
         - IssueManagerPriorityLow
+    IssueManagerPlanningSource:
+      type: string
+      description: How the issue entered the durable execution workflow.
+      enum:
+        - manual
+        - ultra_plan
+        - traditional_plan
+    IssueManagerBudgetMode:
+      type: string
+      enum:
+        - auto
+        - fixed
+    IssueManagerBudgetStatus:
+      type: string
+      description: soft_limited pauses future dispatch without canceling in-flight runs.
+      enum:
+        - active
+        - soft_limited
+    IssueManagerAcceptanceState:
+      type: string
+      description: Three-step completion ladder. Only user_accepted closes a successful task.
+      enum:
+        - agent_claimed
+        - auto_checked
+        - user_accepted
+    IssueManagerExecutionProfile:
+      type: object
+      additionalProperties: false
+      required:
+        - reasoningIntensity
+        - orchestrationIntensity
+      properties:
+        reasoningIntensity:
+          type: integer
+          minimum: 0
+          maximum: 100
+          description: Issue-owned reasoning strength inherited by every task and run.
+        orchestrationIntensity:
+          type: integer
+          minimum: 0
+          maximum: 100
+          description: Issue-owned decomposition, dependency, review, and retry strength.
+    IssueManagerBudget:
+      type: object
+      additionalProperties: false
+      required:
+        - mode
+        - tokenLimit
+        - consumedTokens
+        - quotaWaterlinePercent
+        - status
+      properties:
+        mode:
+          $ref: "#/components/schemas/IssueManagerBudgetMode"
+        tokenLimit:
+          type: integer
+          format: int64
+          minimum: 0
+          description: Compiled token soft limit. In auto mode the daemon owns this value; zero means no token gate is currently available.
+        consumedTokens:
+          type: integer
+          format: int64
+          minimum: 0
+        quotaWaterlinePercent:
+          type: number
+          format: double
+          minimum: 0
+          maximum: 100
+          description: Subscription plans gate on the remaining-quota waterline instead of fake monetary cost.
+        remainingQuotaPercent:
+          type: number
+          format: double
+          minimum: 0
+          maximum: 100
+          description: Last provider-reported subscription quota percentage. Omitted when the provider cannot report quota.
+        status:
+          $ref: "#/components/schemas/IssueManagerBudgetStatus"
+    IssueManagerTokenUsage:
+      type: object
+      additionalProperties: false
+      required:
+        - inputTokens
+        - outputTokens
+        - cacheReadTokens
+        - cacheWriteTokens
+      properties:
+        inputTokens:
+          type: integer
+          format: int64
+          minimum: 0
+        outputTokens:
+          type: integer
+          format: int64
+          minimum: 0
+        cacheReadTokens:
+          type: integer
+          format: int64
+          minimum: 0
+        cacheWriteTokens:
+          type: integer
+          format: int64
+          minimum: 0
+    IssueManagerCost:
+      type: object
+      additionalProperties: false
+      required:
+        - currency
+        - estimatedMicros
+        - actualMicros
+      properties:
+        currency:
+          type: string
+          description: ISO 4217 currency code. USD is used when a ModelPlan publishes API prices.
+        estimatedMicros:
+          type: integer
+          format: int64
+          minimum: 0
+        actualMicros:
+          type: integer
+          format: int64
+          minimum: 0
     IssueManagerStatusCounts:
       type: object
       additionalProperties: false
@@ -1084,6 +1275,14 @@ components:
         - title
         - content
         - status
+        - planningSource
+        - sourceSessionId
+        - sequentialExecution
+        - parallelExecution
+        - dispatchPaused
+        - executionProfile
+        - budget
+        - cost
         - taskCount
         - notStartedCount
         - runningCount
@@ -1109,6 +1308,26 @@ components:
           type: string
         status:
           $ref: "#/components/schemas/IssueManagerStatus"
+        planningSource:
+          $ref: "#/components/schemas/IssueManagerPlanningSource"
+        sourceSessionId:
+          type: string
+          description: Optional Agent session that produced the plan. Empty for manually created issues.
+        sequentialExecution:
+          type: boolean
+          description: When true, the daemon dispatches the next eligible task after each user acceptance while budget remains active.
+        parallelExecution:
+          type: boolean
+          description: When true, the daemon dispatches every dependency-ready task whose execution directory is isolated; dependencies still require user acceptance.
+        dispatchPaused:
+          type: boolean
+          description: When true, the daemon pauses future task dispatch without canceling or interrupting work already in flight.
+        executionProfile:
+          $ref: "#/components/schemas/IssueManagerExecutionProfile"
+        budget:
+          $ref: "#/components/schemas/IssueManagerBudget"
+        cost:
+          $ref: "#/components/schemas/IssueManagerCost"
         taskCount:
           type: integer
           minimum: 0
@@ -1157,6 +1376,13 @@ components:
         - priority
         - sortIndex
         - dueAtUnix
+        - agentTargetId
+        - modelPlanId
+        - model
+        - executionDirectory
+        - dependencyTaskIds
+        - acceptanceState
+        - acceptanceSummary
         - creatorUserId
         - creatorDisplayName
         - creatorAvatarUrl
@@ -1185,6 +1411,26 @@ components:
           type: integer
           format: int64
           minimum: 0
+        agentTargetId:
+          type: string
+          description: Opaque WorkspaceAgent assignment. Empty means not assigned yet.
+        modelPlanId:
+          type: string
+          description: Explicit Plan assignment. Empty delegates to the WorkspaceAgent default.
+        model:
+          type: string
+          description: Explicit model assignment. Empty delegates to the assigned Agent/Plan default.
+        executionDirectory:
+          type: string
+        dependencyTaskIds:
+          type: array
+          items:
+            type: string
+            minLength: 1
+        acceptanceState:
+          $ref: "#/components/schemas/IssueManagerAcceptanceState"
+        acceptanceSummary:
+          type: string
         creatorUserId:
           type: string
         creatorDisplayName:
@@ -1213,7 +1459,12 @@ components:
         - agentTargetId
         - agentSessionId
         - agentProvider
+        - modelPlanId
+        - model
+        - reasoningIntensity
         - status
+        - usage
+        - cost
         - summary
         - errorMessage
         - outputDir
@@ -1241,8 +1492,20 @@ components:
           type: string
         agentProvider:
           type: string
+        modelPlanId:
+          type: string
+        model:
+          type: string
+        reasoningIntensity:
+          type: integer
+          minimum: 0
+          maximum: 100
         status:
           $ref: "#/components/schemas/IssueManagerStatus"
+        usage:
+          $ref: "#/components/schemas/IssueManagerTokenUsage"
+        cost:
+          $ref: "#/components/schemas/IssueManagerCost"
         summary:
           type: string
         errorMessage:
@@ -1649,6 +1912,86 @@ components:
           minLength: 1
         content:
           type: string
+        planningSource:
+          $ref: "#/components/schemas/IssueManagerPlanningSource"
+        sourceSessionId:
+          type: string
+        sequentialExecution:
+          type: boolean
+          description: Persist the user's Create-and-Start choice so successor dispatch survives desktop restarts.
+        parallelExecution:
+          type: boolean
+          description: Persist the user's parallel Create-and-Start choice. Mutually exclusive with sequentialExecution.
+        executionProfile:
+          $ref: "#/components/schemas/IssueManagerExecutionProfile"
+        budget:
+          $ref: "#/components/schemas/IssueManagerBudget"
+    CreateIssueManagerIssueFromPlanRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - issue
+        - tasks
+      properties:
+        issue:
+          $ref: "#/components/schemas/CreateIssueManagerIssueRequest"
+        tasks:
+          type: array
+          minItems: 1
+          items:
+            $ref: "#/components/schemas/CreateIssueManagerTaskRequest"
+    EstimateIssueManagerAutoTokenBudgetRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - executionProfile
+        - tasks
+      properties:
+        executionProfile:
+          $ref: "#/components/schemas/IssueManagerExecutionProfile"
+        tasks:
+          type: array
+          minItems: 1
+          items:
+            $ref: "#/components/schemas/IssueManagerAutoTokenBudgetTaskInput"
+    IssueManagerAutoTokenBudgetTaskInput:
+      type: object
+      additionalProperties: false
+      properties:
+        agentTargetId:
+          type: string
+        modelPlanId:
+          type: string
+        model:
+          type: string
+    IssueManagerAutoTokenBudgetEstimate:
+      type: object
+      additionalProperties: false
+      required:
+        - tokenLimit
+        - deterministicTokenLimit
+        - historicalTokenEstimate
+        - matchedTaskCount
+      properties:
+        tokenLimit:
+          type: integer
+          format: int64
+          minimum: 1
+          description: Effective auto budget that Issue creation will compile for the same input.
+        deterministicTokenLimit:
+          type: integer
+          format: int64
+          minimum: 1
+          description: Scale and intensity estimate before historical calibration.
+        historicalTokenEstimate:
+          type: integer
+          format: int64
+          minimum: 0
+          description: Sum of comparable completed-run averages before headroom and blending.
+        matchedTaskCount:
+          type: integer
+          minimum: 0
+          description: Proposed tasks with at least one comparable completed run.
     CreateIssueManagerTopicRequest:
       type: object
       additionalProperties: false
@@ -1682,6 +2025,13 @@ components:
           type: string
         status:
           $ref: "#/components/schemas/IssueManagerStatus"
+        dispatchPaused:
+          type: boolean
+          description: Pause or resume future daemon dispatch. In-flight runs are not canceled.
+        executionProfile:
+          $ref: "#/components/schemas/IssueManagerExecutionProfile"
+        budget:
+          $ref: "#/components/schemas/IssueManagerBudget"
     CreateIssueManagerTaskRequest:
       type: object
       additionalProperties: false
@@ -1701,6 +2051,19 @@ components:
           type: integer
           format: int64
           minimum: 0
+        agentTargetId:
+          type: string
+        modelPlanId:
+          type: string
+        model:
+          type: string
+        executionDirectory:
+          type: string
+        dependencyTaskIds:
+          type: array
+          items:
+            type: string
+            minLength: 1
     CreateIssueManagerTasksRequest:
       type: object
       additionalProperties: false
@@ -1731,6 +2094,23 @@ components:
         sortIndex:
           type: integer
           minimum: 0
+        agentTargetId:
+          type: string
+        modelPlanId:
+          type: string
+        model:
+          type: string
+        executionDirectory:
+          type: string
+        dependencyTaskIds:
+          type: array
+          items:
+            type: string
+            minLength: 1
+        acceptanceState:
+          $ref: "#/components/schemas/IssueManagerAcceptanceState"
+        acceptanceSummary:
+          type: string
     AddIssueManagerContextRefItem:
       type: object
       additionalProperties: false
@@ -1777,6 +2157,10 @@ components:
           type: string
         executionDirectory:
           type: string
+        modelPlanId:
+          type: string
+        model:
+          type: string
     CompleteIssueManagerRunOutputItem:
       type: object
       additionalProperties: false
@@ -1809,6 +2193,16 @@ components:
           type: string
         errorMessage:
           type: string
+        usage:
+          $ref: "#/components/schemas/IssueManagerTokenUsage"
+        cost:
+          $ref: "#/components/schemas/IssueManagerCost"
+        remainingQuotaPercent:
+          type: number
+          format: double
+          minimum: 0
+          maximum: 100
+          description: Provider-reported remaining subscription quota after this run.
         outputs:
           type: array
           items:

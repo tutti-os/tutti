@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	agentsessionstore "github.com/tutti-os/tutti/packages/agent/daemon/activity"
 	collabrunbiz "github.com/tutti-os/tutti/services/tuttid/biz/collabrun"
 	modelplanbiz "github.com/tutti-os/tutti/services/tuttid/biz/modelplan"
 	workspacedata "github.com/tutti-os/tutti/services/tuttid/data/workspace"
@@ -131,6 +132,38 @@ type recordingPublisher struct {
 	runs []collabrunbiz.Run
 }
 
+type recordingTargetCanceller struct {
+	workspaceID string
+	sessionID   string
+	err         error
+}
+
+type recordingTargetLauncher struct {
+	inputs []TargetSessionLaunchInput
+	err    error
+}
+
+type recordingTerminalObserver struct {
+	runs []collabrunbiz.Run
+	err  error
+}
+
+func (o *recordingTerminalObserver) RecordCollaborationRun(_ context.Context, run collabrunbiz.Run) error {
+	o.runs = append(o.runs, run)
+	return o.err
+}
+
+func (l *recordingTargetLauncher) LaunchCollaborationTarget(_ context.Context, input TargetSessionLaunchInput) error {
+	l.inputs = append(l.inputs, input)
+	return l.err
+}
+
+func (c *recordingTargetCanceller) CancelTargetSession(_ context.Context, workspaceID string, sessionID string) error {
+	c.workspaceID = workspaceID
+	c.sessionID = sessionID
+	return c.err
+}
+
 func (p *recordingPublisher) PublishCollaborationRunUpdated(_ string, run collabrunbiz.Run) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
@@ -197,7 +230,7 @@ func newFakeOpenAIServer(t *testing.T) *httptest.Server {
 			return
 		}
 		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{"choices":[{"message":{"content":"advice: split the migration"}}],"usage":{"prompt_tokens":42,"completion_tokens":7}}`))
+		_, _ = w.Write([]byte(`{"choices":[{"message":{"content":"advice: split the migration"}}],"usage":{"prompt_tokens":42,"completion_tokens":7,"prompt_tokens_details":{"cached_tokens":18}}}`))
 	}))
 	t.Cleanup(fake.Close)
 	return fake
@@ -232,7 +265,7 @@ func TestStartConsultSuccessRecordsResultUsageAndEvents(t *testing.T) {
 	if run.ResultText != "advice: split the migration" {
 		t.Fatalf("run result = %q", run.ResultText)
 	}
-	if run.Usage.InputTokens != 42 || run.Usage.OutputTokens != 7 {
+	if run.Usage.InputTokens != 42 || run.Usage.OutputTokens != 7 || run.Usage.CacheReadTokens != 18 || run.Usage.CacheWriteTokens != 0 {
 		t.Fatalf("run usage = %#v", run.Usage)
 	}
 	if run.Model != "fake-mini" {
@@ -398,7 +431,7 @@ func TestStartConsultValidatesPlanAndModel(t *testing.T) {
 	}
 }
 
-func TestRecordRunStoresCompletedRecordPerMode(t *testing.T) {
+func TestRecordRunStoresRunningRecordPerMode(t *testing.T) {
 	t.Parallel()
 
 	ctx := context.Background()
@@ -420,8 +453,8 @@ func TestRecordRunStoresCompletedRecordPerMode(t *testing.T) {
 	if err != nil {
 		t.Fatalf("RecordRun(fork) error = %v", err)
 	}
-	if fork.Status != collabrunbiz.StatusCompleted || fork.DurationMs != 0 {
-		t.Fatalf("fork run = %#v, want completed with zero duration", fork)
+	if fork.Status != collabrunbiz.StatusRunning || !fork.CompletedAt.IsZero() {
+		t.Fatalf("fork run = %#v, want running without completion", fork)
 	}
 	if fork.Adoption != collabrunbiz.AdoptionNotApplicable {
 		t.Fatalf("fork adoption = %q, want not_applicable", fork.Adoption)
@@ -465,6 +498,325 @@ func TestRecordRunStoresCompletedRecordPerMode(t *testing.T) {
 
 	if published := publisher.published(); len(published) != 3 {
 		t.Fatalf("published events = %d, want 3", len(published))
+	}
+}
+
+func TestStartAgentRunRecordsBeforeLaunchingAndSettlesLaunchFailure(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	store := newMemoryRunStore()
+	publisher := &recordingPublisher{}
+	launcher := &recordingTargetLauncher{}
+	service := newTestService(store, newMemoryPlanStore(), nil, publisher)
+	service.Launcher = launcher
+
+	run, err := service.StartAgentRun(ctx, StartAgentRunInput{
+		WorkspaceID:         "ws",
+		Mode:                "delegate",
+		SourceSessionID:     "session-source",
+		TargetAgentTargetID: "workspace-agent:reviewer",
+		Question:            "Review the migration",
+		ContextText:         "Pay attention to rollback.",
+		TriggerSource:       "user",
+	})
+	if err != nil {
+		t.Fatalf("StartAgentRun() error = %v", err)
+	}
+	if run.Status != collabrunbiz.StatusRunning || run.ContextScope != "recent" || run.TargetSessionID == "" {
+		t.Fatalf("run = %#v", run)
+	}
+	if len(launcher.inputs) != 1 || launcher.inputs[0].RunID != run.ID || launcher.inputs[0].TargetSessionID != run.TargetSessionID {
+		t.Fatalf("launcher inputs = %#v", launcher.inputs)
+	}
+	published := publisher.published()
+	if len(published) != 1 || published[0].Status != collabrunbiz.StatusRunning {
+		t.Fatalf("published = %#v", published)
+	}
+
+	failingLauncher := &recordingTargetLauncher{err: errors.New("target unavailable")}
+	service.Launcher = failingLauncher
+	failed, err := service.StartAgentRun(ctx, StartAgentRunInput{
+		WorkspaceID:         "ws",
+		Mode:                "handoff",
+		SourceSessionID:     "session-source",
+		TargetAgentTargetID: "workspace-agent:owner",
+		Question:            "Take over",
+		ContextScope:        "full",
+		TriggerSource:       "user",
+	})
+	if err != nil {
+		t.Fatalf("StartAgentRun(failed launch) error = %v", err)
+	}
+	if failed.Status != collabrunbiz.StatusFailed || failed.FailureReason != "target unavailable" || failed.FailureStage != "target_launch" || failed.ContextScope != "full" {
+		t.Fatalf("failed run = %#v", failed)
+	}
+	published = publisher.published()
+	if len(published) != 3 || published[1].Status != collabrunbiz.StatusRunning || published[2].Status != collabrunbiz.StatusFailed {
+		t.Fatalf("published failure lifecycle = %#v", published)
+	}
+}
+
+func TestRetryRunReplaysDurableAgentRequestAsLinkedAttempt(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	store := newMemoryRunStore()
+	service := newTestService(store, newMemoryPlanStore(), nil, &recordingPublisher{})
+	service.Launcher = &recordingTargetLauncher{err: errors.New("target unavailable")}
+	failed, err := service.StartAgentRun(ctx, StartAgentRunInput{
+		WorkspaceID:         "ws",
+		Mode:                "delegate",
+		SourceSessionID:     "session-source",
+		TargetAgentTargetID: "workspace-agent:reviewer",
+		ModelPlanID:         "plan-1",
+		Model:               "model-1",
+		Question:            "Review the migration",
+		ContextText:         "Pay attention to rollback.",
+		ContextScope:        "full",
+		TriggerSource:       "user",
+	})
+	if err != nil || failed.Status != collabrunbiz.StatusFailed {
+		t.Fatalf("StartAgentRun() = %#v, %v", failed, err)
+	}
+
+	launcher := &recordingTargetLauncher{}
+	service.Launcher = launcher
+	retry, err := service.RetryRun(ctx, "ws", failed.ID)
+	if err != nil {
+		t.Fatalf("RetryRun() error = %v", err)
+	}
+	if retry.ID == failed.ID || retry.RetryOfRunID != failed.ID || retry.Attempt != 2 || retry.Status != collabrunbiz.StatusRunning {
+		t.Fatalf("retry = %#v", retry)
+	}
+	if len(launcher.inputs) != 1 || launcher.inputs[0].Question != "Review the migration" || launcher.inputs[0].ContextText != "Pay attention to rollback." || launcher.inputs[0].ContextScope != "full" {
+		t.Fatalf("retry launch input = %#v", launcher.inputs)
+	}
+	storedFailed, err := store.GetCollaborationRun(ctx, "ws", failed.ID)
+	if err != nil || storedFailed.Status != collabrunbiz.StatusFailed {
+		t.Fatalf("original failed run mutated: %#v, %v", storedFailed, err)
+	}
+	if _, err := service.RetryRun(ctx, "ws", retry.ID); !errors.Is(err, ErrRunNotRetryable) {
+		t.Fatalf("RetryRun(running) error = %v, want ErrRunNotRetryable", err)
+	}
+}
+
+func TestStartConsultEstimatesMeteredAPICost(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	fake := newFakeOpenAIServer(t)
+	store := newMemoryRunStore()
+	plans := newMemoryPlanStore()
+	plan, err := modelplanbiz.Normalize(modelplanbiz.Plan{
+		ID:           "mp-consult",
+		WorkspaceID:  "ws",
+		Name:         "Metered API",
+		TemplateKind: modelplanbiz.TemplateCustom,
+		Protocol:     modelplanbiz.ProtocolOpenAI,
+		APIKey:       "sk-consult-secret",
+		BaseURL:      fake.URL,
+		Models: []modelplanbiz.Model{{
+			ID: "fake-mini",
+			Pricing: &modelplanbiz.ModelPricing{
+				Currency:               "USD",
+				InputMicrosPerMillion:  1_000_000,
+				OutputMicrosPerMillion: 2_000_000,
+			},
+		}},
+		DefaultModel: "fake-mini",
+		Enabled:      true,
+	})
+	if err != nil {
+		t.Fatalf("Normalize plan error = %v", err)
+	}
+	if err := plans.PutModelPlan(ctx, plan); err != nil {
+		t.Fatalf("PutModelPlan() error = %v", err)
+	}
+	service := newTestService(store, plans, fake.Client(), &recordingPublisher{})
+	run, err := service.StartConsult(ctx, StartConsultInput{
+		WorkspaceID:     "ws",
+		SourceSessionID: "session-source",
+		ModelPlanID:     plan.ID,
+		Question:        "Review this",
+		TriggerSource:   "user",
+	})
+	if err != nil {
+		t.Fatalf("StartConsult() error = %v", err)
+	}
+	if run.Cost.Currency != "USD" || run.Cost.EstimatedMicros != 56 {
+		t.Fatalf("run cost = %#v, want USD 56 micros", run.Cost)
+	}
+}
+
+func TestEstimateRunCostIncludesCacheReadAndWrite(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	plans := newMemoryPlanStore()
+	plan, err := modelplanbiz.Normalize(modelplanbiz.Plan{
+		ID:           "mp-cache-cost",
+		WorkspaceID:  "ws",
+		Name:         "Cache priced",
+		TemplateKind: modelplanbiz.TemplateCustom,
+		Protocol:     modelplanbiz.ProtocolOpenAI,
+		Models: []modelplanbiz.Model{{
+			ID: "model-1",
+			Pricing: &modelplanbiz.ModelPricing{
+				Currency:                   "USD",
+				InputMicrosPerMillion:      100,
+				OutputMicrosPerMillion:     200,
+				CacheReadMicrosPerMillion:  30,
+				CacheWriteMicrosPerMillion: 40,
+			},
+		}},
+		DefaultModel: "model-1",
+		Enabled:      true,
+	})
+	if err != nil {
+		t.Fatalf("Normalize() error = %v", err)
+	}
+	if err := plans.PutModelPlan(ctx, plan); err != nil {
+		t.Fatalf("PutModelPlan() error = %v", err)
+	}
+	service := &Service{Plans: plans}
+	run := collabrunbiz.Run{
+		WorkspaceID: "ws",
+		ModelPlanID: plan.ID,
+		Model:       "model-1",
+		Usage: collabrunbiz.Usage{
+			InputTokens:      1_000_000,
+			OutputTokens:     1_000_000,
+			CacheReadTokens:  1_000_000,
+			CacheWriteTokens: 1_000_000,
+		},
+	}
+	service.estimateRunCost(ctx, &run)
+	if run.Cost.Currency != "USD" || run.Cost.EstimatedMicros != 370 {
+		t.Fatalf("estimated cost = %#v, want USD 370", run.Cost)
+	}
+}
+
+func TestObserveAgentSessionStateSettlesTargetRunWithExecutionFacts(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	store := newMemoryRunStore()
+	publisher := &recordingPublisher{}
+	service := newTestService(store, newMemoryPlanStore(), nil, publisher)
+	run, err := service.RecordRun(ctx, RecordRunInput{
+		WorkspaceID:         "ws",
+		Mode:                "delegate",
+		SourceSessionID:     "session-source",
+		TargetSessionID:     "session-target",
+		TargetAgentTargetID: "workspace-agent:before",
+		ModelPlanID:         "plan-before",
+		Model:               "model-before",
+		ContextScope:        "summary",
+		TriggerSource:       "user",
+	})
+	if err != nil {
+		t.Fatalf("RecordRun() error = %v", err)
+	}
+	outcome := "completed"
+	service.ObserveAgentSessionState(ctx, agentsessionstore.ReportSessionStateInput{
+		WorkspaceID:    "ws",
+		AgentSessionID: "session-target",
+		AgentTargetID:  "workspace-agent:actual",
+		State: agentsessionstore.WorkspaceAgentSessionStateUpdate{
+			Model: "model-actual",
+			RuntimeContext: map[string]any{
+				"usage": map[string]any{
+					"inputTokens":      int64(120),
+					"outputTokens":     int64(35),
+					"cacheReadTokens":  int64(50),
+					"cacheWriteTokens": int64(8),
+				},
+				"sessionRuntimeSnapshot": map[string]any{
+					"modelConfiguration": map[string]any{"modelPlanId": "plan-actual"},
+				},
+			},
+			TurnLifecycle: &agentsessionstore.WorkspaceAgentTurnLifecycle{Phase: "settled", Outcome: &outcome},
+			Turn: &agentsessionstore.WorkspaceAgentTurnStateUpdate{
+				TurnID:            "turn-1",
+				Phase:             "settled",
+				Outcome:           outcome,
+				StartedAtUnixMS:   1700000000000,
+				CompletedAtUnixMS: 1700000002500,
+			},
+		},
+	}, agentsessionstore.ReportSessionStateReply{Accepted: true, StateApplied: true})
+
+	settled, err := store.GetCollaborationRun(ctx, "ws", run.ID)
+	if err != nil {
+		t.Fatalf("GetCollaborationRun() error = %v", err)
+	}
+	if settled.Status != collabrunbiz.StatusCompleted || settled.DurationMs != 2500 {
+		t.Fatalf("settled lifecycle = %#v", settled)
+	}
+	if settled.TargetAgentTargetID != "workspace-agent:actual" || settled.ModelPlanID != "plan-actual" || settled.Model != "model-actual" {
+		t.Fatalf("settled identity = %#v", settled)
+	}
+	if settled.Usage.InputTokens != 120 || settled.Usage.OutputTokens != 35 || settled.Usage.CacheReadTokens != 50 || settled.Usage.CacheWriteTokens != 8 {
+		t.Fatalf("settled usage = %#v", settled.Usage)
+	}
+
+	failed := "failed"
+	service.ObserveAgentSessionState(ctx, agentsessionstore.ReportSessionStateInput{
+		WorkspaceID:    "ws",
+		AgentSessionID: "session-target",
+		State: agentsessionstore.WorkspaceAgentSessionStateUpdate{
+			LastError:     "late replay",
+			TurnLifecycle: &agentsessionstore.WorkspaceAgentTurnLifecycle{Phase: "settled", Outcome: &failed},
+		},
+	}, agentsessionstore.ReportSessionStateReply{Accepted: true, StateApplied: true})
+	replayed, _ := store.GetCollaborationRun(ctx, "ws", run.ID)
+	if replayed.Status != collabrunbiz.StatusCompleted || replayed.FailureReason != "" {
+		t.Fatalf("replayed settlement changed terminal run = %#v", replayed)
+	}
+	if published := publisher.published(); len(published) != 2 || published[0].Status != collabrunbiz.StatusRunning || published[1].Status != collabrunbiz.StatusCompleted {
+		t.Fatalf("published lifecycle = %#v", published)
+	}
+}
+
+func TestTerminalObserverReceivesDurableSettlementAndIdempotentAdoptionReplay(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	store := newMemoryRunStore()
+	observer := &recordingTerminalObserver{}
+	service := newTestService(store, newMemoryPlanStore(), nil, &recordingPublisher{})
+	service.TerminalObserver = observer
+	run, err := service.RecordRun(ctx, RecordRunInput{
+		WorkspaceID:     "ws",
+		Mode:            "delegate",
+		SourceSessionID: "source",
+		TargetSessionID: "target",
+		TriggerSource:   "user",
+	})
+	if err != nil {
+		t.Fatalf("RecordRun() error = %v", err)
+	}
+	settled, err := service.SettleRun(ctx, "ws", run.ID, SettleRunInput{
+		Status: string(collabrunbiz.StatusCompleted),
+		Usage: collabrunbiz.Usage{
+			InputTokens:      10,
+			OutputTokens:     3,
+			CacheReadTokens:  4,
+			CacheWriteTokens: 2,
+		},
+	})
+	if err != nil {
+		t.Fatalf("SettleRun() error = %v", err)
+	}
+	if len(observer.runs) != 1 || observer.runs[0] != settled {
+		t.Fatalf("terminal observations = %#v, want settled run", observer.runs)
+	}
+	if _, err := service.SetAdoption(ctx, "ws", run.ID, "adopted"); err != nil {
+		t.Fatalf("SetAdoption() error = %v", err)
+	}
+	if len(observer.runs) != 2 || observer.runs[1].Adoption != collabrunbiz.AdoptionAdopted {
+		t.Fatalf("adoption terminal replay = %#v", observer.runs)
 	}
 }
 
@@ -584,5 +936,40 @@ func TestCancelConsultSettlesRunningRun(t *testing.T) {
 	}
 	if _, err := service.CancelConsult(ctx, "ws", fork.ID); !errors.Is(err, ErrInvalidRunInput) {
 		t.Fatalf("CancelConsult(fork) error = %v, want ErrInvalidRunInput", err)
+	}
+}
+
+func TestCancelRunCancelsTargetSessionAndSettlesDelegate(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	store := newMemoryRunStore()
+	publisher := &recordingPublisher{}
+	canceller := &recordingTargetCanceller{}
+	service := newTestService(store, newMemoryPlanStore(), nil, publisher)
+	service.Canceller = canceller
+	run, err := service.RecordRun(ctx, RecordRunInput{
+		WorkspaceID:     "ws",
+		Mode:            "delegate",
+		SourceSessionID: "session-source",
+		TargetSessionID: "session-target",
+		TriggerSource:   "user",
+	})
+	if err != nil {
+		t.Fatalf("RecordRun() error = %v", err)
+	}
+	canceled, err := service.CancelRun(ctx, "ws", run.ID)
+	if err != nil {
+		t.Fatalf("CancelRun() error = %v", err)
+	}
+	if canceller.workspaceID != "ws" || canceller.sessionID != "session-target" {
+		t.Fatalf("cancel target = %q/%q", canceller.workspaceID, canceller.sessionID)
+	}
+	if canceled.Status != collabrunbiz.StatusCanceled || canceled.FailureReason != "canceled" {
+		t.Fatalf("canceled run = %#v", canceled)
+	}
+	again, err := service.CancelRun(ctx, "ws", run.ID)
+	if err != nil || again.Status != collabrunbiz.StatusCanceled {
+		t.Fatalf("CancelRun(idempotent) = %#v, %v", again, err)
 	}
 }

@@ -8,7 +8,10 @@ import {
   parseInlineActivityMessages,
   selectEngineSession
 } from "@tutti-os/agent-activity-core";
-import type { WorkspaceAgentActivityEnsureSessionSynchronizedInput } from "../workspaceAgentActivityService.interface.ts";
+import type {
+  WorkspaceAgentActivityEnsureSessionSynchronizedInput,
+  WorkspaceAgentModelConfigurationChangedEvent
+} from "../workspaceAgentActivityService.interface.ts";
 import type { WorkspaceAgentSessionEngineHost } from "./workspaceAgentSessionEngineHost.ts";
 import {
   agentActivitySessionReconcileDiagnosticDetails,
@@ -32,6 +35,7 @@ import type {
   WorkspaceAgentActivityReconcileDependencies
 } from "./workspaceAgentActivityReconcileTypes.ts";
 import { WorkspaceAgentComposerOptionsInvalidationCoordinator } from "./workspaceAgentComposerOptionsInvalidationCoordinator.ts";
+import { subscribeWorkspaceAgentModelConfigurationChanges } from "./workspaceAgentModelConfigurationBridge.ts";
 
 export abstract class WorkspaceAgentActivityReconcileBridge {
   private readonly reconcileDependencies: WorkspaceAgentActivityReconcileDependencies;
@@ -51,6 +55,9 @@ export abstract class WorkspaceAgentActivityReconcileBridge {
     new WorkspaceAgentComposerOptionsInvalidationCoordinator(() =>
       this.entries.values()
     );
+  private readonly modelConfigurationChangedListeners = new Set<
+    (event: WorkspaceAgentModelConfigurationChangedEvent) => void
+  >();
   private readonly latestStateEventBySessionKey = new Map<
     string,
     { data: unknown; eventType: "state_patch" }
@@ -176,6 +183,13 @@ export abstract class WorkspaceAgentActivityReconcileBridge {
     this.liveReconcileSessionKeys.clear();
     this.liveReconcileInFlightSessionKeys.clear();
     this.latestStateEventBySessionKey.clear();
+  }
+
+  onModelConfigurationChanged(
+    listener: (event: WorkspaceAgentModelConfigurationChangedEvent) => void
+  ): () => void {
+    this.modelConfigurationChangedListeners.add(listener);
+    return () => this.modelConfigurationChangedListeners.delete(listener);
   }
 
   protected async fetchActivitySessionDetail(
@@ -403,6 +417,12 @@ export abstract class WorkspaceAgentActivityReconcileBridge {
         { scope: { workspaceId } }
       )
     );
+    subscribeWorkspaceAgentModelConfigurationChanges({
+      eventStreamClient,
+      listeners: this.modelConfigurationChangedListeners,
+      sessionEngineHost: this.entries.get(workspaceId),
+      workspaceId
+    });
   }
 
   private startEventStreamConnection(): void {

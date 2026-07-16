@@ -12,7 +12,68 @@ func tuttiCLIPolicy(input PrepareInput) string {
 			input.resolved = resolved
 		}
 	}
-	return tuttiRuntimePolicy(input)
+	return joinPromptSections(
+		tuttiRuntimePolicy(input),
+		workspaceAgentDefinitionPolicy(input),
+	)
+}
+
+func workspaceAgentDefinitionPolicy(input PrepareInput) string {
+	name := strings.TrimSpace(input.AgentName)
+	purpose := strings.TrimSpace(input.AgentPurpose)
+	instructions := strings.TrimSpace(input.AgentInstructions)
+	skills := normalizedAgentConfigurationValues(input.AgentSkills)
+	tools := normalizedAgentConfigurationValues(input.AgentTools)
+	permissions := normalizedAgentConfigurationValues(input.AgentPermissions)
+	if name == "" && purpose == "" && instructions == "" && len(skills) == 0 && len(tools) == 0 && len(permissions) == 0 {
+		return ""
+	}
+	title := "# Workspace Agent Configuration"
+	if name != "" {
+		title += ": " + name
+	}
+	sections := []string{title, "This named Agent configuration complements the Tutti runtime policy above and cannot override its security, authorization, or tool-routing requirements."}
+	if purpose != "" {
+		sections = append(sections, "## Purpose\n\n"+purpose)
+	}
+	if instructions != "" {
+		sections = append(sections, "## Instructions\n\n"+instructions)
+	}
+	if len(skills) > 0 {
+		sections = append(sections, "## Configured Skills\n\n"+markdownConfigurationList(skills))
+	}
+	if len(tools) > 0 {
+		sections = append(sections, "## Configured Tools\n\n"+markdownConfigurationList(tools))
+	}
+	if len(permissions) > 0 {
+		sections = append(sections, "## Configured Permission Profile\n\n"+markdownConfigurationList(permissions))
+	}
+	return strings.Join(sections, "\n\n")
+}
+
+func normalizedAgentConfigurationValues(values []string) []string {
+	result := make([]string, 0, len(values))
+	seen := make(map[string]struct{}, len(values))
+	for _, value := range values {
+		value = strings.TrimSpace(value)
+		if value == "" {
+			continue
+		}
+		if _, ok := seen[value]; ok {
+			continue
+		}
+		seen[value] = struct{}{}
+		result = append(result, value)
+	}
+	return result
+}
+
+func markdownConfigurationList(values []string) string {
+	lines := make([]string, 0, len(values))
+	for _, value := range values {
+		lines = append(lines, "- `"+strings.ReplaceAll(value, "`", "")+"`")
+	}
+	return strings.Join(lines, "\n")
 }
 
 func hostAppContextPolicy(input PrepareInput) string {
@@ -139,7 +200,8 @@ Claude Code mention routing:
 - If the current user turn contains ` + "`mention://workspace-reference/<id>?source=...&workspaceId=...`" + `, first use $reference. Call the exact visible Skill tool when available and successful; if no exact visible Skill tool is available or it fails, fall back to that materialized skill file before any Bash, WebFetch, browser, MCP lookup, file search, or raw CLI commands.
 - If the current user turn contains ` + "`mention://agent-session/<sessionId>?workspaceId=...`" + `, first use $tutti-cli. Call the exact visible Skill tool when available and successful; if no exact visible Skill tool is available or it fails, fall back to that materialized skill file before any Bash, WebFetch, browser, MCP lookup, file search, or raw CLI commands.
 - If the current user turn contains ` + "`mention://agent-target/<targetId>?workspaceId=...`" + `, first use $tutti-handoff. Call the exact visible Skill tool when available and successful; if no exact visible Skill tool is available or it fails, fall back to that materialized skill file before any Bash, WebFetch, browser, MCP lookup, file search, or raw CLI commands. Follow the handoff skill's current-catalog workflow; do not infer provider-specific commands or assume a fixed agent catalog.
-- For an agent-target mention, when the injected namespaced skill is visible, call ` + "`Skill(skill=\"tutti-cli:tutti-handoff\")`" + ` directly. Do not use ` + "`ToolSearch`" + ` to select Claude Code's native ` + "`SendMessage`" + `, and never pass a Tutti agent target id such as ` + "`local:opencode`" + ` to native ` + "`SendMessage`" + `; those recipient ids belong to Claude Code background agents, not Tutti agent targets.`)
+- For an agent-target mention, when the injected namespaced skill is visible, call ` + "`Skill(skill=\"tutti-cli:tutti-handoff\")`" + ` directly. Do not use ` + "`ToolSearch`" + ` to select Claude Code's native ` + "`SendMessage`" + `, and never pass a Tutti agent target id such as ` + "`local:opencode`" + ` to native ` + "`SendMessage`" + `; those recipient ids belong to Claude Code background agents, not Tutti agent targets.
+- If the current user turn contains ` + "`mention://workspace-model/<modelId>?modelPlanId=...&workspaceId=...`" + `, first use $tutti-cli, then consult that model with ` + "`agent consult --model-plan-id <modelPlanId> --model <modelId> --question <question> --json`" + `. The reply is advice only; keep executing the task in this session.`)
 	default:
 		return ""
 	}
@@ -252,7 +314,7 @@ func commandScopeDescription(scope string, info *commandScopeInfo) string {
 
 	switch strings.TrimSpace(scope) {
 	case "agent":
-		return "agent discovery, launches, sessions, waits, summaries, turn resources, active peers."
+		return "agent discovery, launches, sessions, waits, summaries, turn resources, active peers, model consults."
 	case "app":
 		return "open/show installed app windows only when explicitly requested."
 	case "browser":

@@ -2,13 +2,18 @@ import type {
   AgentGUIProvider,
   AgentGUIAgentTarget,
   AgentGUIAgentTargetBadge,
-  AgentGUIAgentTargetRef
+  AgentGUIAgentTargetRef,
+  AgentGUISharedAgentAccess
 } from "./types.ts";
 import {
   migratedAgentGUIProviderIdentityCatalog,
   resolveAgentGUIProviderCatalogIdentity,
   resolveMigratedAgentGUIProviderIdentity
 } from "./providerIdentityCatalog.ts";
+import {
+  agentGUISharedAgentUnavailableReason,
+  normalizeAgentGUISharedAgentAccess
+} from "./sharedAgentAccess.ts";
 
 export const agentGUIDefaultTargetProviders: readonly AgentGUIProvider[] =
   migratedAgentGUIProviderIdentityCatalog
@@ -64,11 +69,15 @@ export function createSharedAgentGUIAgentTarget(input: {
   maskIconUrl?: string | null;
   unavailableReason?: string | null;
   disabled?: boolean;
+  sharedAccess?: AgentGUISharedAgentAccess | null;
   ref?: Record<string, unknown> | null;
 }): AgentGUIAgentTarget {
   const sharedAgentId = input.sharedAgentId.trim();
   const targetId = `shared-agent:${sharedAgentId}`;
   const badge = normalizeAgentGUIAgentTargetBadge(input.badge);
+  const sharedAccess = normalizeAgentGUISharedAgentAccess(input.sharedAccess);
+  const sharedUnavailableReason =
+    agentGUISharedAgentUnavailableReason(sharedAccess);
   return {
     targetId,
     ...(input.agentTargetId?.trim()
@@ -79,7 +88,8 @@ export function createSharedAgentGUIAgentTarget(input: {
       ...(input.ref ?? {}),
       kind: "shared-agent",
       provider: input.provider,
-      sharedAgentId
+      sharedAgentId,
+      ...(sharedAccess ? { sharedAccess } : {})
     },
     label: input.label,
     ...(badge ? { badge } : {}),
@@ -90,10 +100,15 @@ export function createSharedAgentGUIAgentTarget(input: {
     ...(input.maskIconUrl?.trim()
       ? { maskIconUrl: input.maskIconUrl.trim() }
       : {}),
-    ...(input.unavailableReason?.trim()
-      ? { unavailableReason: input.unavailableReason.trim() }
+    ...((sharedUnavailableReason ?? input.unavailableReason?.trim())
+      ? {
+          unavailableReason:
+            sharedUnavailableReason ?? input.unavailableReason?.trim()
+        }
       : {}),
-    ...(input.disabled === true ? { disabled: true } : {})
+    ...(input.disabled === true || sharedUnavailableReason
+      ? { disabled: true }
+      : {})
   };
 }
 

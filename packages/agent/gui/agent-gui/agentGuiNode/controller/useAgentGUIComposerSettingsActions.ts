@@ -14,6 +14,11 @@ import type {
 } from "../../../shared/agentSessionTypes";
 import type { AgentGUINodeData } from "../../../types";
 import {
+  normalizePlanIssueBudgetPreset,
+  planIssueBudgetPresetsEqual,
+  type PlanIssueBudgetPreset
+} from "../../../shared/agentConversation/planImplementationPresentation";
+import {
   cloneComposerSettings,
   nodeDefaultDraftKey,
   normalizePermissionModeId,
@@ -47,6 +52,7 @@ import {
   type AgentGUIRememberComposerDefaultsResult
 } from "./agentGuiController.providerHelpers";
 import type { useAgentGUIActivation } from "./useAgentGUIActivation";
+import { useStableControllerEventCallback } from "./agentGuiController.stableHelpers";
 
 interface UseAgentGUIComposerSettingsActionsInput {
   activation: ReturnType<typeof useAgentGUIActivation>;
@@ -279,6 +285,60 @@ export function useAgentGUIComposerSettingsActions(
       const sessionSettings = cloneComposerSettings(
         canonicalSession ? activeCanonicalComposerSettings : null
       );
+      const requestedModelPlanId =
+        supportedNextSettings.modelPlanId !== undefined
+          ? normalizeOptionalText(supportedNextSettings.modelPlanId)
+          : undefined;
+      const currentModelPlanId = normalizeOptionalText(
+        sessionSettings?.modelPlanId
+      );
+      if (
+        requestedModelPlanId !== undefined &&
+        requestedModelPlanId !== currentModelPlanId &&
+        canonicalSession !== null
+      ) {
+        const stagedSettings = resolveEffectiveComposerSettings({
+          settings: {
+            ...(sessionSettings ?? activeCanonicalComposerSettings),
+            ...supportedNextSettings,
+            modelPlanId: requestedModelPlanId
+          }
+        });
+        draftSettingsBySessionIdRef.current = {
+          ...draftSettingsBySessionIdRef.current,
+          [agentSessionId]: stagedSettings
+        };
+        setDraftSettingsBySessionId((current) => ({
+          ...current,
+          [agentSessionId]: stagedSettings
+        }));
+        onShowMessageRef.current?.(
+          translate("agentHost.agentGui.composerModelSwitchNewSessionHint"),
+          "info"
+        );
+        return;
+      }
+      if (
+        requestedModelPlanId !== undefined &&
+        requestedModelPlanId === currentModelPlanId &&
+        draftSettingsBySessionIdRef.current[agentSessionId]
+      ) {
+        const restoredSettings = resolveEffectiveComposerSettings({
+          settings: {
+            ...(sessionSettings ?? activeCanonicalComposerSettings),
+            ...supportedNextSettings,
+            modelPlanId: currentModelPlanId
+          }
+        });
+        draftSettingsBySessionIdRef.current = {
+          ...draftSettingsBySessionIdRef.current,
+          [agentSessionId]: restoredSettings
+        };
+        setDraftSettingsBySessionId((current) => ({
+          ...current,
+          [agentSessionId]: restoredSettings
+        }));
+      }
       const nextPermission =
         supportedNextSettings.permissionModeId !== undefined
           ? normalizeOptionalText(supportedNextSettings.permissionModeId)
@@ -332,6 +392,13 @@ export function useAgentGUIComposerSettingsActions(
           // command and must remain silent on both sync and async failures.
           void saving.catch(() => undefined);
         }
+      }
+      if (
+        isPreActivationSession &&
+        requestedModelPlanId !== undefined &&
+        requestedModelPlanId !== currentModelPlanId
+      ) {
+        sessionSettingsPatch.modelPlanId = requestedModelPlanId;
       }
 
       if (nextModel !== undefined && nextModel !== currentModel) {
@@ -422,7 +489,19 @@ export function useAgentGUIComposerSettingsActions(
   );
   updateComposerSettingsRef.current = updateComposerSettings;
 
-  return { updateComposerSettings };
+  const updatePlanIssueBudgetPreset = useStableControllerEventCallback(
+    (preset: PlanIssueBudgetPreset) => {
+      const normalized = normalizePlanIssueBudgetPreset(preset);
+      if (!normalized) return;
+      onDataChangeRef.current((current) =>
+        planIssueBudgetPresetsEqual(current.planIssueBudgetPreset, normalized)
+          ? current
+          : { ...current, planIssueBudgetPreset: normalized }
+      );
+    }
+  );
+
+  return { updateComposerSettings, updatePlanIssueBudgetPreset };
 }
 
 function invokeRememberComposerDefaults(

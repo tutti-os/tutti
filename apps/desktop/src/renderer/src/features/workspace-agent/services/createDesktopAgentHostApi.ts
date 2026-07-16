@@ -266,18 +266,21 @@ export function createDesktopAgentHostApi({
         )
     },
     // The desktop host forwards daemon business events the Agent GUI event bus
-    // understands. Today that is the model-catalog invalidation broadcast; the
-    // GUI reacts by force-reloading composer options and session state.
+    // understands. Catalog invalidation refreshes provider-owned options;
+    // workspace model-configuration changes additionally reset only affected
+    // new-conversation drafts. Target-default invalidation refreshes the
+    // corresponding composer catalog.
     onHostEvent: (listener: (event: unknown) => void) => {
-      const disposeModelCatalog =
-        agentActivityService.onModelCatalogInvalidated((event) => {
+      const unsubscribeCatalog = agentActivityService.onModelCatalogInvalidated(
+        (event) => {
           listener({
             scope: "global",
             type: "agent-model-catalog-invalidated",
             providers: event.providers,
             occurredAtUnixMs: event.occurredAtUnixMs
           });
-        });
+        }
+      );
       const disposeComposerDefaults =
         agentActivityService.onComposerDefaultsInvalidated((event) => {
           listener({
@@ -286,9 +289,22 @@ export function createDesktopAgentHostApi({
             type: "agent-composer-defaults-invalidated"
           });
         });
+      const unsubscribeConfiguration =
+        agentActivityService.onModelConfigurationChanged?.((event) => {
+          listener({
+            scope: "room",
+            workspaceId: event.workspaceId,
+            type: "agent-model-configuration-changed",
+            agentTargetIds: event.agentTargetIds,
+            defaultModels: event.defaultModels,
+            resetComposerModel: event.resetComposerModel,
+            occurredAtUnixMs: event.occurredAtUnixMs
+          });
+        }) ?? (() => {});
       return () => {
-        disposeModelCatalog();
+        unsubscribeCatalog();
         disposeComposerDefaults();
+        unsubscribeConfiguration();
       };
     },
     persistence: {

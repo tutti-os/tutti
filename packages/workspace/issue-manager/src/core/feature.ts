@@ -20,6 +20,7 @@ import type {
   IssueManagerEventSource,
   IssueManagerFileAdapter,
   IssueManagerIdentityAdapter,
+  IssueManagerModelPlanOptionsAdapter,
   IssueManagerNodeState,
   IssueManagerShareAdapter
 } from "../contracts/index.ts";
@@ -43,6 +44,7 @@ export interface IssueManagerFeature {
   agentBreakdownLauncher?: IssueManagerAgentBreakdownLauncher;
   analytics?: IssueManagerAnalyticsAdapter;
   agentTargetOptions?: IssueManagerAgentTargetOptionsAdapter;
+  modelPlanOptions?: IssueManagerModelPlanOptionsAdapter;
   agentSessionOpener?: IssueManagerAgentSessionOpener;
   agentRunner: IssueManagerAgentRunner;
   backend: IssueManagerBackend;
@@ -63,6 +65,7 @@ export interface CreateIssueManagerFeatureInput {
   agentBreakdownLauncher?: IssueManagerAgentBreakdownLauncher;
   analytics?: IssueManagerAnalyticsAdapter;
   agentTargetOptions?: IssueManagerAgentTargetOptionsAdapter;
+  modelPlanOptions?: IssueManagerModelPlanOptionsAdapter;
   agentSessionOpener?: IssueManagerAgentSessionOpener;
   agentRunner: IssueManagerAgentRunner;
   backend: IssueManagerBackend;
@@ -96,6 +99,7 @@ export function createIssueManagerFeature(
     agentBreakdownLauncher: input.agentBreakdownLauncher,
     analytics: input.analytics,
     agentTargetOptions: input.agentTargetOptions,
+    modelPlanOptions: input.modelPlanOptions,
     agentSessionOpener: input.agentSessionOpener,
     agentRunner: input.agentRunner,
     backend: input.backend,

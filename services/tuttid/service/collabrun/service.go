@@ -8,13 +8,16 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/base64"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"strings"
 	"sync"
 	"time"
 
+	agentsessionstore "github.com/tutti-os/tutti/packages/agent/daemon/activity"
 	collabrunbiz "github.com/tutti-os/tutti/services/tuttid/biz/collabrun"
 	modelplanbiz "github.com/tutti-os/tutti/services/tuttid/biz/modelplan"
 	workspacedata "github.com/tutti-os/tutti/services/tuttid/data/workspace"
@@ -36,6 +39,7 @@ var (
 	ErrModelNotInPlan      = errors.New("model is not part of the referenced plan")
 	ErrConsultLimitReached = errors.New("consult run limit reached for source session")
 	ErrInvalidAdoption     = errors.New("invalid collaboration run adoption transition")
+	ErrRunNotRetryable     = errors.New("collaboration run is not retryable")
 )
 
 // Completer performs one minimal single-turn completion against a plan
@@ -55,12 +59,36 @@ type Timeline interface {
 	ReportCollaborationTimeline(ctx context.Context, run collabrunbiz.Run)
 }
 
+// TargetSessionCanceller stops the active turn for a non-consult
+// collaboration target. The agent service is adapted to this narrow surface
+// in wiring so this package does not own agent-session business rules.
+type TargetSessionCanceller interface {
+	CancelTargetSession(ctx context.Context, workspaceID string, agentSessionID string) error
+}
+
+// TargetSessionLauncher starts one daemon-owned fork, delegate, or handoff
+// session after its running collaboration record is durable.
+type TargetSessionLauncher interface {
+	LaunchCollaborationTarget(ctx context.Context, input TargetSessionLaunchInput) error
+}
+
+// TerminalRunObserver receives durable terminal CollaborationRuns. It is an
+// optional accounting hook; failures never roll back the already-persisted
+// collaboration lifecycle and idempotent observers may see the same run
+// again after later adoption updates.
+type TerminalRunObserver interface {
+	RecordCollaborationRun(context.Context, collabrunbiz.Run) error
+}
+
 type Service struct {
-	Store     workspacedata.CollaborationRunsStore
-	Plans     workspacedata.ModelPlansStore
-	Completer Completer
-	Publisher Publisher
-	Timeline  Timeline
+	Store            workspacedata.CollaborationRunsStore
+	Plans            workspacedata.ModelPlansStore
+	Completer        Completer
+	Publisher        Publisher
+	Timeline         Timeline
+	Canceller        TargetSessionCanceller
+	Launcher         TargetSessionLauncher
+	TerminalObserver TerminalRunObserver
 	// MaxConsultRunsPerSourceSession defaults to
 	// DefaultMaxConsultRunsPerSourceSession when zero.
 	MaxConsultRunsPerSourceSession int
@@ -69,6 +97,7 @@ type Service struct {
 
 	mu      sync.Mutex
 	cancels map[string]context.CancelFunc
+	runMu   sync.Mutex
 }
 
 type StartConsultInput struct {
@@ -82,6 +111,8 @@ type StartConsultInput struct {
 	TriggerSource string
 	TriggerReason string
 	MaxTokens     int
+	RetryOfRunID  string
+	Attempt       int
 }
 
 // StartConsult executes one synchronous advisory completion against a plan
@@ -123,8 +154,9 @@ func (s *Service) StartConsult(ctx context.Context, input StartConsultInput) (co
 		return collabrunbiz.Run{}, err
 	}
 
+	contextText := strings.TrimSpace(input.ContextText)
 	prompt := question
-	if contextText := strings.TrimSpace(input.ContextText); contextText != "" {
+	if contextText != "" {
 		prompt = contextText + "\n\n" + question
 	}
 	now := s.now()
@@ -139,6 +171,10 @@ func (s *Service) StartConsult(ctx context.Context, input StartConsultInput) (co
 		Model:           model,
 		ContextScope:    consultContextScope(input.ContextText),
 		Prompt:          prompt,
+		RequestText:     question,
+		ContextText:     contextText,
+		RetryOfRunID:    input.RetryOfRunID,
+		Attempt:         input.Attempt,
 		Status:          collabrunbiz.StatusRunning,
 		StartedAt:       now,
 		CreatedAt:       now,
@@ -183,14 +219,19 @@ func (s *Service) StartConsult(ctx context.Context, input StartConsultInput) (co
 		}
 		run.Status = collabrunbiz.StatusFailed
 		run.FailureReason = sanitizeFailureReason(completeErr)
+		run.FailureStage = "provider_completion"
 	} else {
 		run.Status = collabrunbiz.StatusCompleted
 		run.ResultText = result.Text
 		run.Usage = collabrunbiz.Usage{
-			InputTokens:  result.Usage.InputTokens,
-			OutputTokens: result.Usage.OutputTokens,
+			InputTokens:      result.Usage.InputTokens,
+			OutputTokens:     result.Usage.OutputTokens,
+			CacheReadTokens:  result.Usage.CacheReadTokens,
+			CacheWriteTokens: result.Usage.CacheWriteTokens,
 		}
+		run.FailureStage = ""
 	}
+	s.estimateRunCost(ctx, &run)
 	if err := s.Store.PutCollaborationRun(ctx, run); err != nil {
 		return collabrunbiz.Run{}, err
 	}
@@ -209,17 +250,25 @@ type RecordRunInput struct {
 	ModelPlanID         string
 	Model               string
 	ContextScope        string
+	Prompt              string
+	RequestText         string
+	ContextText         string
+	RetryOfRunID        string
+	Attempt             int
 	TriggerSource       string
 	TriggerReason       string
 }
 
-// RecordRun stores one completed fork, delegate, or handoff record. The
-// launch already happened through the session-create path, so the run settles
-// immediately with zero duration.
+// RecordRun stores one running fork, delegate, or handoff record. Callers
+// create this record before launching the target session so even an immediate
+// target completion cannot race ahead of durable collaboration tracking.
 func (s *Service) RecordRun(ctx context.Context, input RecordRunInput) (collabrunbiz.Run, error) {
 	mode := collabrunbiz.Mode(strings.TrimSpace(input.Mode))
 	if mode == collabrunbiz.ModeConsult || !collabrunbiz.IsMode(string(mode)) {
 		return collabrunbiz.Run{}, fmt.Errorf("%w: mode must be fork, delegate, or handoff", ErrInvalidRunInput)
+	}
+	if strings.TrimSpace(input.TargetSessionID) == "" {
+		return collabrunbiz.Run{}, fmt.Errorf("%w: target session id is required", ErrInvalidRunInput)
 	}
 	now := s.now()
 	run := collabrunbiz.Run{
@@ -234,9 +283,13 @@ func (s *Service) RecordRun(ctx context.Context, input RecordRunInput) (collabru
 		ModelPlanID:         input.ModelPlanID,
 		Model:               input.Model,
 		ContextScope:        input.ContextScope,
-		Status:              collabrunbiz.StatusCompleted,
+		Prompt:              input.Prompt,
+		RequestText:         input.RequestText,
+		ContextText:         input.ContextText,
+		RetryOfRunID:        input.RetryOfRunID,
+		Attempt:             input.Attempt,
+		Status:              collabrunbiz.StatusRunning,
 		StartedAt:           now,
-		CompletedAt:         now,
 		CreatedAt:           now,
 		UpdatedAt:           now,
 	}
@@ -249,6 +302,125 @@ func (s *Service) RecordRun(ctx context.Context, input RecordRunInput) (collabru
 	}
 	s.notify(ctx, run)
 	return run, nil
+}
+
+// SettleRunInput contains terminal facts learned from the target session.
+// Empty optional identity fields preserve the values captured at launch.
+type SettleRunInput struct {
+	Status              string
+	FailureReason       string
+	FailureStage        string
+	TargetAgentTargetID string
+	ModelPlanID         string
+	Model               string
+	Usage               collabrunbiz.Usage
+	StartedAt           time.Time
+	CompletedAt         time.Time
+}
+
+// SettleRun records one terminal target-session result. It is idempotent:
+// once a collaboration run settles, replayed or racing state patches return
+// the stored terminal record unchanged.
+func (s *Service) SettleRun(ctx context.Context, workspaceID string, runID string, input SettleRunInput) (collabrunbiz.Run, error) {
+	status := collabrunbiz.Status(strings.TrimSpace(input.Status))
+	if status != collabrunbiz.StatusCompleted && status != collabrunbiz.StatusFailed && status != collabrunbiz.StatusCanceled {
+		return collabrunbiz.Run{}, fmt.Errorf("%w: terminal status is required", ErrInvalidRunInput)
+	}
+	s.runMu.Lock()
+	defer s.runMu.Unlock()
+	run, err := s.Store.GetCollaborationRun(ctx, strings.TrimSpace(workspaceID), strings.TrimSpace(runID))
+	if err != nil {
+		return collabrunbiz.Run{}, err
+	}
+	if run.Status != collabrunbiz.StatusRunning {
+		return run, nil
+	}
+	completedAt := input.CompletedAt.UTC()
+	if completedAt.IsZero() {
+		completedAt = s.now()
+	}
+	if !input.StartedAt.IsZero() {
+		run.StartedAt = input.StartedAt.UTC()
+	}
+	run.Status = status
+	run.CompletedAt = completedAt
+	run.UpdatedAt = completedAt
+	run.DurationMs = completedAt.Sub(run.StartedAt).Milliseconds()
+	if run.DurationMs < 0 {
+		run.DurationMs = 0
+	}
+	if value := strings.TrimSpace(input.TargetAgentTargetID); value != "" {
+		run.TargetAgentTargetID = value
+	}
+	if value := strings.TrimSpace(input.ModelPlanID); value != "" {
+		run.ModelPlanID = value
+	}
+	if value := strings.TrimSpace(input.Model); value != "" {
+		run.Model = value
+	}
+	run.Usage = input.Usage
+	s.estimateRunCost(ctx, &run)
+	if status == collabrunbiz.StatusCompleted {
+		run.FailureReason = ""
+		run.FailureStage = ""
+	} else {
+		run.FailureReason = shortFailureReason(input.FailureReason, string(status))
+		run.FailureStage = strings.TrimSpace(input.FailureStage)
+	}
+	if err := s.Store.PutCollaborationRun(ctx, run); err != nil {
+		return collabrunbiz.Run{}, err
+	}
+	s.notify(ctx, run)
+	return run, nil
+}
+
+// ObserveAgentSessionState settles every running non-consult collaboration
+// linked to a target session when its turn reaches a terminal outcome.
+func (s *Service) ObserveAgentSessionState(ctx context.Context, input agentsessionstore.ReportSessionStateInput, _ agentsessionstore.ReportSessionStateReply) {
+	status, outcome, startedAt, completedAt, ok := collaborationSettlement(input.State)
+	if !ok {
+		return
+	}
+	runs, err := s.Store.ListCollaborationRuns(ctx, strings.TrimSpace(input.WorkspaceID), "", 0)
+	if err != nil {
+		slog.Warn("list target collaboration runs failed",
+			"event", "agent.collaboration.target_runs_list_failed",
+			"workspace_id", strings.TrimSpace(input.WorkspaceID),
+			"agent_session_id", strings.TrimSpace(input.AgentSessionID),
+			"error", err,
+		)
+		return
+	}
+	usage := collaborationUsage(input.State.RuntimeContext)
+	modelPlanID := collaborationModelPlanID(input.State.RuntimeContext)
+	failureReason := strings.TrimSpace(input.State.LastError)
+	if failureReason == "" && status != collabrunbiz.StatusCompleted {
+		failureReason = outcome
+	}
+	for _, run := range runs {
+		if run.Mode == collabrunbiz.ModeConsult || run.Status != collabrunbiz.StatusRunning || strings.TrimSpace(run.TargetSessionID) != strings.TrimSpace(input.AgentSessionID) {
+			continue
+		}
+		if _, err := s.SettleRun(ctx, input.WorkspaceID, run.ID, SettleRunInput{
+			Status:              string(status),
+			FailureReason:       failureReason,
+			FailureStage:        "target_execution",
+			TargetAgentTargetID: firstNonEmpty(input.State.AgentTargetID, input.AgentTargetID),
+			ModelPlanID:         modelPlanID,
+			Model:               input.State.Model,
+			Usage:               usage,
+			StartedAt:           startedAt,
+			CompletedAt:         completedAt,
+		}); err != nil {
+			slog.Warn("settle target collaboration run failed",
+				"event", "agent.collaboration.target_run_settle_failed",
+				"workspace_id", strings.TrimSpace(input.WorkspaceID),
+				"agent_session_id", strings.TrimSpace(input.AgentSessionID),
+				"collaboration_run_id", run.ID,
+				"error", err,
+			)
+		}
+	}
 }
 
 // SetAdoption records whether the run outcome was taken up. Fork and handoff
@@ -277,8 +449,32 @@ func (s *Service) SetAdoption(ctx context.Context, workspaceID string, runID str
 	return run, nil
 }
 
-// CancelConsult marks a still-running consult canceled and cancels its
-// in-flight completion call. Settled runs are returned unchanged.
+// CancelRun cancels a running consult completion or the active target-session
+// turn for fork, delegate, and handoff. Settled runs are returned unchanged.
+func (s *Service) CancelRun(ctx context.Context, workspaceID string, runID string) (collabrunbiz.Run, error) {
+	run, err := s.Store.GetCollaborationRun(ctx, strings.TrimSpace(workspaceID), strings.TrimSpace(runID))
+	if err != nil {
+		return collabrunbiz.Run{}, err
+	}
+	if run.Status != collabrunbiz.StatusRunning {
+		return run, nil
+	}
+	if run.Mode == collabrunbiz.ModeConsult {
+		return s.cancelConsult(ctx, run)
+	}
+	if s.Canceller == nil {
+		return collabrunbiz.Run{}, fmt.Errorf("%w: target session cancellation is unavailable", ErrInvalidRunInput)
+	}
+	if err := s.Canceller.CancelTargetSession(ctx, run.WorkspaceID, run.TargetSessionID); err != nil {
+		return collabrunbiz.Run{}, err
+	}
+	return s.SettleRun(ctx, run.WorkspaceID, run.ID, SettleRunInput{
+		Status:        string(collabrunbiz.StatusCanceled),
+		FailureReason: "canceled",
+	})
+}
+
+// CancelConsult is retained as a compatibility wrapper for service callers.
 func (s *Service) CancelConsult(ctx context.Context, workspaceID string, runID string) (collabrunbiz.Run, error) {
 	run, err := s.Store.GetCollaborationRun(ctx, strings.TrimSpace(workspaceID), strings.TrimSpace(runID))
 	if err != nil {
@@ -287,6 +483,10 @@ func (s *Service) CancelConsult(ctx context.Context, workspaceID string, runID s
 	if run.Mode != collabrunbiz.ModeConsult {
 		return collabrunbiz.Run{}, fmt.Errorf("%w: only consult runs can be canceled", ErrInvalidRunInput)
 	}
+	return s.cancelConsult(ctx, run)
+}
+
+func (s *Service) cancelConsult(ctx context.Context, run collabrunbiz.Run) (collabrunbiz.Run, error) {
 	if run.Status != collabrunbiz.StatusRunning {
 		return run, nil
 	}
@@ -368,6 +568,22 @@ func (s *Service) notify(ctx context.Context, run collabrunbiz.Run) {
 	if s.Timeline != nil {
 		s.Timeline.ReportCollaborationTimeline(ctx, run)
 	}
+	if s.TerminalObserver != nil && isTerminalStatus(run.Status) {
+		if err := s.TerminalObserver.RecordCollaborationRun(ctx, run); err != nil {
+			slog.Warn("record terminal collaboration run failed",
+				"event", "agent_collaboration.terminal_observer_failed",
+				"workspace_id", run.WorkspaceID,
+				"collaboration_run_id", run.ID,
+				"error", err,
+			)
+		}
+	}
+}
+
+func isTerminalStatus(status collabrunbiz.Status) bool {
+	return status == collabrunbiz.StatusCompleted ||
+		status == collabrunbiz.StatusFailed ||
+		status == collabrunbiz.StatusCanceled
 }
 
 func (s *Service) now() time.Time {
@@ -421,4 +637,119 @@ func sanitizeFailureReason(err error) string {
 		message = message[:300]
 	}
 	return message
+}
+
+func shortFailureReason(value string, fallback string) string {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		value = strings.TrimSpace(fallback)
+	}
+	if len(value) > 300 {
+		value = value[:300]
+	}
+	return value
+}
+
+func collaborationSettlement(state agentsessionstore.WorkspaceAgentSessionStateUpdate) (collabrunbiz.Status, string, time.Time, time.Time, bool) {
+	outcome := ""
+	var startedAtUnixMS int64
+	var completedAtUnixMS int64
+	if lifecycle := state.TurnLifecycle; lifecycle != nil && strings.TrimSpace(lifecycle.Phase) == "settled" && lifecycle.Outcome != nil {
+		outcome = strings.TrimSpace(*lifecycle.Outcome)
+	}
+	if turn := state.Turn; turn != nil && strings.TrimSpace(turn.Phase) == "settled" {
+		if value := strings.TrimSpace(turn.Outcome); value != "" {
+			outcome = value
+		}
+		startedAtUnixMS = turn.StartedAtUnixMS
+		completedAtUnixMS = turn.CompletedAtUnixMS
+	}
+	if outcome == "" {
+		return "", "", time.Time{}, time.Time{}, false
+	}
+	status := collabrunbiz.StatusFailed
+	switch outcome {
+	case "completed":
+		status = collabrunbiz.StatusCompleted
+	case "canceled":
+		status = collabrunbiz.StatusCanceled
+	}
+	var startedAt time.Time
+	if startedAtUnixMS > 0 {
+		startedAt = time.UnixMilli(startedAtUnixMS).UTC()
+	}
+	var completedAt time.Time
+	if completedAtUnixMS > 0 {
+		completedAt = time.UnixMilli(completedAtUnixMS).UTC()
+	}
+	return status, outcome, startedAt, completedAt, true
+}
+
+func collaborationModelPlanID(runtimeContext map[string]any) string {
+	snapshot, _ := runtimeContext["sessionRuntimeSnapshot"].(map[string]any)
+	configuration, _ := snapshot["modelConfiguration"].(map[string]any)
+	value, _ := configuration["modelPlanId"].(string)
+	return strings.TrimSpace(value)
+}
+
+func collaborationUsage(runtimeContext map[string]any) collabrunbiz.Usage {
+	usage, _ := runtimeContext["usage"].(map[string]any)
+	if len(usage) == 0 {
+		return collabrunbiz.Usage{}
+	}
+	inputTokens := collaborationInt64(usage, "inputTokens", "input_tokens")
+	outputTokens := collaborationInt64(usage, "outputTokens", "output_tokens")
+	cacheReadTokens := collaborationInt64(usage, "cacheReadTokens", "cache_read_tokens", "cachedInputTokens", "cached_input_tokens", "cacheReadInputTokens", "cache_read_input_tokens")
+	cacheWriteTokens := collaborationInt64(usage, "cacheWriteTokens", "cache_write_tokens", "cacheCreationInputTokens", "cache_creation_input_tokens")
+	if inputTokens == 0 && outputTokens == 0 && cacheReadTokens == 0 && cacheWriteTokens == 0 {
+		if last, ok := usage["last"].(map[string]any); ok {
+			inputTokens = collaborationInt64(last, "inputTokens", "input_tokens")
+			outputTokens = collaborationInt64(last, "outputTokens", "output_tokens")
+			cacheReadTokens = collaborationInt64(last, "cacheReadTokens", "cache_read_tokens", "cachedInputTokens", "cached_input_tokens", "cacheReadInputTokens", "cache_read_input_tokens")
+			cacheWriteTokens = collaborationInt64(last, "cacheWriteTokens", "cache_write_tokens", "cacheCreationInputTokens", "cache_creation_input_tokens")
+		}
+	}
+	return collabrunbiz.Usage{
+		InputTokens:      inputTokens,
+		OutputTokens:     outputTokens,
+		CacheReadTokens:  cacheReadTokens,
+		CacheWriteTokens: cacheWriteTokens,
+	}
+}
+
+func collaborationInt64(payload map[string]any, keys ...string) int64 {
+	for _, key := range keys {
+		switch value := payload[key].(type) {
+		case int:
+			return int64(value)
+		case int32:
+			return int64(value)
+		case int64:
+			return value
+		case uint:
+			return int64(value)
+		case uint32:
+			return int64(value)
+		case uint64:
+			if value <= uint64(^uint64(0)>>1) {
+				return int64(value)
+			}
+		case float64:
+			return int64(value)
+		case json.Number:
+			if parsed, err := value.Int64(); err == nil {
+				return parsed
+			}
+		}
+	}
+	return 0
+}
+
+func firstNonEmpty(values ...string) string {
+	for _, value := range values {
+		if value = strings.TrimSpace(value); value != "" {
+			return value
+		}
+	}
+	return ""
 }

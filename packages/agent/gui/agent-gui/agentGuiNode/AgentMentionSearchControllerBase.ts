@@ -636,7 +636,8 @@ export class AgentMentionSearchControllerBase {
       "collab_sessions",
       "agents",
       "apps",
-      "issues"
+      "issues",
+      "models"
     ] as const) {
       this.expandedCounts[groupId] = mentionGroupPageSize(
         this.currentFilter,
@@ -673,7 +674,8 @@ export class AgentMentionSearchControllerBase {
       "collab_sessions",
       "agents",
       "apps",
-      "issues"
+      "issues",
+      "models"
     ] as const) {
       delete this.totalCounts[groupId];
     }
