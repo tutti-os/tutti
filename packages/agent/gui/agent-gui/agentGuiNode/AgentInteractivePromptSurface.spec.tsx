@@ -181,6 +181,7 @@ describe("AgentInteractivePromptSurface", () => {
 
   it("submits abort approval options with optional feedback", () => {
     const onSubmit = vi.fn();
+    setAgentGuiI18nTestLocale("zh-CN");
     render(
       <AgentInteractivePromptSurface
         prompt={{
@@ -201,8 +202,8 @@ describe("AgentInteractivePromptSurface", () => {
             },
             {
               id: "abort",
-              label: "No, and tell Codex what to do differently",
-              kind: "reject_once"
+              label: "Deny and stop the turn",
+              kind: "reject_always"
             }
           ],
           output: null,
@@ -219,13 +220,13 @@ describe("AgentInteractivePromptSurface", () => {
     ).toBeNull();
     fireEvent.click(
       screen.getByRole("button", {
-        name: "No, then send new instructions"
+        name: "拒绝，然后发送新的指令"
       })
     );
     expect(onSubmit).not.toHaveBeenCalled();
     expect(
       screen.queryByRole("button", {
-        name: "No, then send new instructions"
+        name: "拒绝，然后发送新的指令"
       })
     ).toBeNull();
     expect(screen.getByPlaceholderText(labels.feedbackPlaceholder)).toBe(
@@ -250,10 +251,11 @@ describe("AgentInteractivePromptSurface", () => {
       screen.getByRole("button", { name: labels.sendFeedback })
     ).toBeDisabled();
 
-    fireEvent.change(screen.getByPlaceholderText(labels.feedbackPlaceholder), {
+    const feedback = screen.getByPlaceholderText(labels.feedbackPlaceholder);
+    fireEvent.change(feedback, {
       target: { value: "Please split the work into smaller steps." }
     });
-    fireEvent.click(screen.getByRole("button", { name: labels.sendFeedback }));
+    fireEvent.keyDown(feedback, { key: "Enter", code: "Enter" });
 
     expect(onSubmit).toHaveBeenCalledWith({
       requestId: "request-approval",
@@ -463,7 +465,7 @@ describe("AgentInteractivePromptSurface", () => {
     ).toBeNull();
   });
 
-  it("does not submit approval shortcuts while editing feedback", () => {
+  it("does not submit empty feedback with Enter", () => {
     const onSubmit = vi.fn();
     render(
       <AgentInteractivePromptSurface

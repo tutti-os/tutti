@@ -213,9 +213,8 @@ export function ApprovalPromptSurface({
                     onChange={(event) => setFeedback(event.currentTarget.value)}
                     onKeyDown={(event) => {
                       if (
-                        !keyboardShortcuts ||
                         event.key !== "Enter" ||
-                        (!event.metaKey && !event.ctrlKey) ||
+                        event.shiftKey ||
                         event.nativeEvent.isComposing
                       ) {
                         return;

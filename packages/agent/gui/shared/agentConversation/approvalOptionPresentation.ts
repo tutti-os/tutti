@@ -50,7 +50,9 @@ export function approvalOptionDisplayLabel(
     return translate("agentHost.agentGui.approvalOptions.allowAlways");
   }
   if (idToken === "rejectalways" || kindToken === "rejectalways") {
-    return translate("agentHost.agentGui.approvalOptions.rejectAlways");
+    return intent.feedback
+      ? translate("agentHost.agentGui.approvalOptions.rejectWithFollowUp")
+      : translate("agentHost.agentGui.approvalOptions.rejectAlways");
   }
   if (
     idToken === "rejectonce" ||
