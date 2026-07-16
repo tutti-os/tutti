@@ -198,10 +198,12 @@ export function moveMentionPaletteHighlight<TItem>(input: {
   currentKey: string | null;
   delta: 1 | -1;
   getItemKey: (item: TItem, groupId: string) => string;
+  isItemDisabled?: (item: TItem, groupId: string) => boolean;
 }): string | null {
   const entries = flattenMentionPaletteEntries(
     input.state,
-    input.getItemKey
+    input.getItemKey,
+    input.isItemDisabled
   ).filter(
     (entry) =>
       entry.type === "category" ||
@@ -225,9 +227,14 @@ export function repairMentionPaletteHighlight<TItem>(input: {
   state: MentionPaletteState<TItem>;
   currentKey: string | null;
   getItemKey: (item: TItem, groupId: string) => string;
+  isItemDisabled?: (item: TItem, groupId: string) => boolean;
   preferredKey?: string | null;
 }): string | null {
-  const entries = flattenMentionPaletteEntries(input.state, input.getItemKey);
+  const entries = flattenMentionPaletteEntries(
+    input.state,
+    input.getItemKey,
+    input.isItemDisabled
+  );
   if (entries.length === 0) {
     return null;
   }
@@ -250,14 +257,17 @@ export function findMentionPaletteEntry<TItem>(input: {
   state: MentionPaletteState<TItem>;
   key: string | null;
   getItemKey: (item: TItem, groupId: string) => string;
+  isItemDisabled?: (item: TItem, groupId: string) => boolean;
 }): MentionPaletteEntry | null {
   if (input.key === null) {
     return null;
   }
   return (
-    flattenMentionPaletteEntries(input.state, input.getItemKey).find(
-      (entry) => entry.key === input.key
-    ) ?? null
+    flattenMentionPaletteEntries(
+      input.state,
+      input.getItemKey,
+      input.isItemDisabled
+    ).find((entry) => entry.key === input.key) ?? null
   );
 }
 
@@ -265,10 +275,12 @@ export function selectedMentionPaletteItem<TItem>(input: {
   state: MentionPaletteState<TItem>;
   key: string | null;
   getItemKey: (item: TItem, groupId: string) => string;
+  isItemDisabled?: (item: TItem, groupId: string) => boolean;
 }): TItem | null {
   for (const group of input.state.groups) {
     const index = group.items.findIndex(
       (candidate) =>
+        input.isItemDisabled?.(candidate, group.id) !== true &&
         `${group.id}:${input.getItemKey(candidate, group.id)}` === input.key
     );
     if (index >= 0) {

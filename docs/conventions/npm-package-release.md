@@ -74,10 +74,13 @@ iteration:
   must fail rather than guessing
 
 The workflow applies the resolved version to the fixed release group inside the
-CI checkout, validates tarballs, publishes the packages to public npm with the
-`latest` dist-tag, and then pushes the matching npm release git tag plus Go
-module tags for every `packages/**/go.mod` module. Stable releases do not open
-version PRs and do not require Changeset files.
+CI checkout, validates tarballs, and prepares a release-only commit. In that
+commit, internal Go module requirements use the resolved shared version and
+workspace-relative replacements are removed. The workflow publishes the npm
+packages with the `latest` dist-tag, then points the matching npm release tag
+and every `packages/**/go.mod` module tag at that release commit. The commit is
+reachable through those tags only and is not pushed to `main`. Stable releases
+do not open version PRs and do not require Changeset files.
 
 Because the stable release version is applied only in CI, repository manifests
 on `main` may lag behind the latest published `0.0.x` version. The durable

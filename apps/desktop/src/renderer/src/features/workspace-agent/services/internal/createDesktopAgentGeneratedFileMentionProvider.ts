@@ -1,13 +1,8 @@
 import type { AgentActivityRuntime } from "@tutti-os/agent-gui";
 import {
-  selectCanonicalAgentActivitySessions,
-  type AgentActivitySession
-} from "@tutti-os/agent-activity-core";
-import {
   AGENT_CONTEXT_MENTION_PROVIDER_IDS,
   type AgentContextMentionProvider
 } from "@tutti-os/agent-gui/context-mention-provider";
-import { collectWorkspaceAgentGeneratedFiles } from "@tutti-os/agent-gui/workspace-agent-generated-files";
 import { createRichTextMarkdownLinkInsertResult } from "@tutti-os/ui-rich-text/plugins";
 import type { ReferenceProvenanceFilter } from "@tutti-os/workspace-file-reference/contracts";
 import {
@@ -18,18 +13,13 @@ import {
 const { agentGeneratedFile: AGENT_GENERATED_FILE_PROVIDER_ID } =
   AGENT_CONTEXT_MENTION_PROVIDER_IDS;
 
-const DEFAULT_SESSION_MESSAGE_PAGE_SIZE = 200;
-
 interface AgentGeneratedFileMentionItem {
   displayName: string;
   path: string;
 }
 
 export function createDesktopAgentGeneratedFileMentionProvider(input: {
-  agentActivityRuntime: Pick<
-    AgentActivityRuntime,
-    "getSnapshot" | "listAgentGeneratedFiles" | "listSessionMessages"
-  >;
+  agentActivityRuntime: Pick<AgentActivityRuntime, "listAgentGeneratedFiles">;
   workspaceId: string;
 }): AgentContextMentionProvider<AgentGeneratedFileMentionItem> {
   return {
@@ -44,64 +34,32 @@ export function createDesktopAgentGeneratedFileMentionProvider(input: {
         "workspaceId",
         input.workspaceId
       );
-      const sessionCwd = metadataString(
+      const sectionKey = metadataString(
         searchInput.context.metadata,
-        "sessionCwd",
+        "sectionKey",
         ""
       );
-      const keyword = searchInput.keyword.trim();
+      if (!sectionKey || !input.agentActivityRuntime.listAgentGeneratedFiles) {
+        return [];
+      }
       const provenanceFilter = metadataReferenceProvenanceFilter(
         searchInput.context.metadata
       );
       const agentTargetIds = provenanceFilter?.agentTargetIds ?? null;
       if (agentTargetIds?.length === 0) return [];
-      if (input.agentActivityRuntime.listAgentGeneratedFiles) {
-        const result = await input.agentActivityRuntime.listAgentGeneratedFiles(
-          {
-            agentTargetIds: agentTargetIds ?? undefined,
-            limit: searchInput.maxResults,
-            query: keyword,
-            sessionCwd: sessionCwd || undefined,
-            signal: searchInput.abortSignal,
-            workspaceId
-          }
-        );
-        if (searchInput.abortSignal?.aborted) {
-          return [];
-        }
-        return result.entries.map((file) => ({
-          displayName: file.label,
-          path: file.path
-        }));
-      }
-      const snapshot = input.agentActivityRuntime.getSnapshot(workspaceId);
-      await hydrateRecentSessionMessages({
-        abortSignal: searchInput.abortSignal,
-        agentActivityRuntime: input.agentActivityRuntime,
-        agentTargetIds,
-        snapshot,
+
+      const result = await input.agentActivityRuntime.listAgentGeneratedFiles({
+        agentTargetIds: agentTargetIds ?? undefined,
+        limit: searchInput.maxResults,
+        query: searchInput.keyword.trim(),
+        sectionKey,
+        signal: searchInput.abortSignal,
         workspaceId
       });
       if (searchInput.abortSignal?.aborted) {
         return [];
       }
-      const refreshedSnapshot =
-        input.agentActivityRuntime.getSnapshot(workspaceId);
-      const files = collectWorkspaceAgentGeneratedFiles(refreshedSnapshot, {
-        ...(agentTargetIds ? { agentTargetIds } : {}),
-        ...(sessionCwd ? { sessionCwd } : {})
-      });
-      const normalizedKeyword = keyword.toLowerCase();
-      const filtered = normalizedKeyword
-        ? files.filter((file) =>
-            matchesAgentGeneratedFileKeyword(file, normalizedKeyword)
-          )
-        : files;
-      const limited =
-        searchInput.maxResults && searchInput.maxResults > 0
-          ? filtered.slice(0, searchInput.maxResults)
-          : filtered;
-      return limited.map((file) => ({
+      return result.entries.map((file) => ({
         displayName: file.label,
         path: file.path
       }));
@@ -120,54 +78,6 @@ export function createDesktopAgentGeneratedFileMentionProvider(input: {
       );
     }
   };
-}
-
-async function hydrateRecentSessionMessages(input: {
-  abortSignal?: AbortSignal;
-  agentActivityRuntime: Pick<AgentActivityRuntime, "listSessionMessages">;
-  agentTargetIds: readonly string[] | null;
-  snapshot: ReturnType<AgentActivityRuntime["getSnapshot"]>;
-  workspaceId: string;
-}): Promise<void> {
-  const sessionsNeedingMessages = selectCanonicalAgentActivitySessions(
-    input.snapshot
-  ).filter((session) => {
-    if (
-      input.agentTargetIds !== null &&
-      (session.agentTargetId === null ||
-        !input.agentTargetIds.includes(session.agentTargetId))
-    ) {
-      return false;
-    }
-    const sessionId = session.agentSessionId.trim();
-    if (!sessionId) {
-      return false;
-    }
-    return shouldRefreshSessionMessages(
-      session,
-      input.snapshot.sessionMessagesById[sessionId] ?? []
-    );
-  });
-
-  if (sessionsNeedingMessages.length === 0) {
-    return;
-  }
-
-  await Promise.all(
-    sessionsNeedingMessages.map(async (session) => {
-      if (input.abortSignal?.aborted) {
-        return;
-      }
-      await input.agentActivityRuntime
-        .listSessionMessages({
-          workspaceId: input.workspaceId,
-          agentSessionId: session.agentSessionId,
-          limit: DEFAULT_SESSION_MESSAGE_PAGE_SIZE,
-          signal: input.abortSignal
-        })
-        .catch(() => undefined);
-    })
-  );
 }
 
 function metadataReferenceProvenanceFilter(
@@ -193,41 +103,6 @@ function stringArrayOrNull(value: unknown): readonly string[] | null {
         .filter(Boolean)
     )
   );
-}
-
-function shouldRefreshSessionMessages(
-  session: AgentActivitySession,
-  messages: ReturnType<
-    AgentActivityRuntime["getSnapshot"]
-  >["sessionMessagesById"][string]
-): boolean {
-  if (!messages || messages.length === 0) {
-    return true;
-  }
-  const lastMessageAt = Math.max(
-    0,
-    ...messages.map(
-      (message) =>
-        message.occurredAtUnixMs ??
-        message.completedAtUnixMs ??
-        message.startedAtUnixMs ??
-        0
-    )
-  );
-  const sessionUpdatedAt =
-    session.updatedAtUnixMs ?? session.lastEventUnixMs ?? 0;
-  return sessionUpdatedAt > lastMessageAt;
-}
-
-function matchesAgentGeneratedFileKeyword(
-  file: { label: string; path: string },
-  keyword: string
-): boolean {
-  const haystack = `${file.label}\n${file.path}`.toLowerCase();
-  return keyword
-    .split(/\s+/)
-    .filter(Boolean)
-    .every((token) => haystack.includes(token));
 }
 
 function metadataString(

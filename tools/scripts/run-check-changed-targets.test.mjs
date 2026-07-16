@@ -34,12 +34,24 @@ describe("resolveGoModuleRoot", () => {
       "apps/cli"
     );
     assert.equal(
+      resolveGoModuleRoot(
+        "packages/agent/activity-replication/conformance/fixtures.go"
+      ),
+      "packages/agent/activity-replication"
+    );
+    assert.equal(
       resolveGoModuleRoot("packages/agent/runtimeprep/preparer.go"),
       "packages/agent/runtimeprep"
     );
     assert.equal(
       resolveGoModuleRoot("packages/agent/store-sqlite/store.go"),
       "packages/agent/store-sqlite"
+    );
+    assert.equal(
+      resolveGoModuleRoot(
+        "packages/agent/store-sqlite/canonical/vocabulary.go"
+      ),
+      "packages/agent/store-sqlite/canonical"
     );
     assert.equal(
       resolveGoModuleRoot("packages/auth/bridge-go/bridge.go"),
@@ -292,5 +304,6 @@ describe("buildGoLintLane", () => {
 
     assert.doesNotMatch(lane.command[2], /generate:builtin-apps/);
     assert.match(lane.command[2], /golangci-lint run/);
+    assert.match(lane.command[2], /--allow-parallel-runners/);
   });
 });

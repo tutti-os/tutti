@@ -37,6 +37,7 @@ interface Input {
   disabledReason?: string | null;
   placeholder: string;
   selectedProjectPath: string;
+  selectedProjectSectionKey: string;
   previousSelectedProjectPathRef: RefObject<string>;
   setIsSelectedProjectMissing: (value: boolean) => void;
   fileMentionSuggestion: AgentFileMentionSuggestionState | null;
@@ -70,6 +71,7 @@ export function useComposerPresentation(input: Input) {
     disabledReason,
     placeholder,
     selectedProjectPath,
+    selectedProjectSectionKey,
     previousSelectedProjectPathRef,
     setIsSelectedProjectMissing,
     fileMentionSuggestion,
@@ -204,9 +206,16 @@ export function useComposerPresentation(input: Input) {
       workspaceId,
       currentUserId,
       query: fileMentionSuggestion.query,
+      sectionKey: selectedProjectSectionKey || null,
       sessionCwd: selectedProjectPath || null
     });
-  }, [currentUserId, fileMentionSuggestion, selectedProjectPath, workspaceId]);
+  }, [
+    currentUserId,
+    fileMentionSuggestion,
+    selectedProjectPath,
+    selectedProjectSectionKey,
+    workspaceId
+  ]);
 
   useEffect(() => {
     setDismissedPromptRequestId(null);

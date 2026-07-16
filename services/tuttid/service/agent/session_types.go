@@ -51,6 +51,7 @@ type Service struct {
 	ProviderAvailabilityCacheTTL   time.Duration
 	CapabilityCatalogCacheTTL      time.Duration
 	LiveModelCacheTTL              time.Duration
+	GeneratedFilesClock            func() time.Time
 	LiveModelDiscoveryDeleteDelay  time.Duration
 	skillOptionsCache              *composerSkillOptionsCache
 	providerAvailabilityCache      *providerAvailabilityCache
@@ -66,6 +67,8 @@ type Service struct {
 	sessionSettingsLocks           map[string]*serviceSessionSettingsLock
 	goalActorsMu                   sync.Mutex
 	goalActors                     map[string]*goalActorEntry
+	generatedFilesCacheMu          sync.Mutex
+	generatedFilesCache            map[string]generatedFilesCacheEntry
 	// liveModelPersistedScanMissAtUnixMS memoizes, per live-model cache key,
 	// when the persisted-session fallback scan last found nothing, so the
 	// full session scan is not repeated on every composer-options fetch.

@@ -178,8 +178,8 @@ func (s *SQLiteStore) ListSessionMessages(ctx context.Context, input agentactivi
 	return s.agentReadStore().ListSessionMessages(ctx, input)
 }
 
-func (s *SQLiteStore) ListWorkspaceGeneratedFiles(ctx context.Context, input agentactivitybiz.ListWorkspaceGeneratedFilesInput) (agentactivitybiz.GeneratedFileList, bool, error) {
-	return s.agentReadStore().ListWorkspaceGeneratedFiles(ctx, input)
+func (s *SQLiteStore) ListWorkspaceGeneratedFileTurns(ctx context.Context, input agentactivitybiz.ListWorkspaceGeneratedFileTurnsInput) (agentactivitybiz.GeneratedFileTurnList, bool, error) {
+	return s.agentReadStore().ListWorkspaceGeneratedFileTurns(ctx, input)
 }
 
 func (s *SQLiteStore) DeleteSession(ctx context.Context, workspaceID string, agentSessionID string) (bool, error) {

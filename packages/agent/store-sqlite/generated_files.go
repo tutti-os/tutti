@@ -4,433 +4,127 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"path"
 	"strings"
 )
 
-const defaultWorkspaceGeneratedFilesLimit = 30
-const maxWorkspaceGeneratedFilesLimit = 100
+const (
+	workspaceGeneratedFileTurnCandidateLimit = 1000
+	sectionGeneratedFileTurnLimit            = 100
+)
 
-func (s *Store) ListWorkspaceGeneratedFiles(
+type generatedFileChangesPayload struct {
+	Files []struct {
+		Path   string `json:"path"`
+		Change string `json:"change"`
+	} `json:"files"`
+}
+
+func (s *Store) ListWorkspaceGeneratedFileTurns(
 	ctx context.Context,
-	input ListWorkspaceGeneratedFilesInput,
-) (GeneratedFileList, bool, error) {
+	input ListWorkspaceGeneratedFileTurnsInput,
+) (GeneratedFileTurnList, bool, error) {
 	if s == nil || s.db == nil {
-		return GeneratedFileList{}, false, fmt.Errorf("workspace database is not initialized")
+		return GeneratedFileTurnList{}, false, fmt.Errorf("workspace database is not initialized")
 	}
 	workspaceID := strings.TrimSpace(input.WorkspaceID)
-	if workspaceID == "" {
-		return GeneratedFileList{}, false, nil
+	sectionKey := strings.TrimSpace(input.SectionKey)
+	if workspaceID == "" || sectionKey == "" || sectionKey == PinnedSessionPageKey {
+		return GeneratedFileTurnList{}, false, nil
 	}
 	if err := s.ensureWorkspaceExists(ctx, workspaceID); err != nil {
-		return GeneratedFileList{}, false, err
+		return GeneratedFileTurnList{}, false, err
 	}
-	limit := input.Limit
-	if limit <= 0 {
-		limit = defaultWorkspaceGeneratedFilesLimit
-	}
-	if limit > maxWorkspaceGeneratedFilesLimit {
-		limit = maxWorkspaceGeneratedFilesLimit
-	}
-	sessionCwd := normalizeGeneratedFileComparablePath(input.SessionCwd)
-	query := strings.ToLower(strings.TrimSpace(input.Query))
-	scanLimit := generatedFileMessageScanLimit(limit)
-	agentTargetIDs := uniqueNonBlankStrings(input.AgentTargetIDs)
-	queryArgs := []any{workspaceID, sessionCwd, sessionCwd}
-	agentTargetFilter := ""
-	if len(agentTargetIDs) > 0 {
-		agentTargetFilter = "\n  AND s.agent_target_id IN (" + strings.TrimSuffix(strings.Repeat("?,", len(agentTargetIDs)), ",") + ")"
-		for _, agentTargetID := range agentTargetIDs {
-			queryArgs = append(queryArgs, agentTargetID)
-		}
-	}
-	queryArgs = append(queryArgs, scanLimit)
 
+	// Keep file_changes_json out of the 1000-row workspace candidate CTE. A
+	// canonical payload may contain large diffs, so fetch it only after section
+	// filtering has reduced the result to at most 100 turns.
 	rows, err := s.db.QueryContext(ctx, `
-SELECT s.cwd, m.kind, m.status, m.payload_json
-FROM workspace_agent_messages m
-JOIN workspace_agent_sessions s
-  ON s.workspace_id = m.workspace_id
- AND s.agent_session_id = m.agent_session_id
-WHERE m.workspace_id = ?
-  AND m.deleted_at_unix_ms = 0
-  AND s.deleted_at_unix_ms = 0
-  AND (? = '' OR s.cwd = ?)`+agentTargetFilter+`
-ORDER BY m.updated_at_unix_ms DESC, m.id DESC
-LIMIT ?
-`, queryArgs...)
+WITH recent_workspace_turns AS MATERIALIZED (
+  SELECT agent_session_id,
+         turn_id,
+         settled_at_unix_ms
+  FROM workspace_agent_turns INDEXED BY idx_workspace_agent_turns_workspace_settled_recent
+  WHERE workspace_id = ?
+    AND phase = 'settled'
+    AND settled_at_unix_ms IS NOT NULL
+  ORDER BY settled_at_unix_ms DESC,
+           agent_session_id DESC,
+           turn_id DESC
+  LIMIT ?
+),
+scoped_turns AS MATERIALIZED (
+  SELECT turns.agent_session_id,
+         COALESCE(sessions.agent_target_id, '') AS agent_target_id,
+         turns.turn_id,
+         sessions.cwd,
+         sessions.rail_section_kind,
+         sessions.rail_project_path,
+         turns.settled_at_unix_ms
+  FROM recent_workspace_turns AS turns
+  JOIN workspace_agent_sessions AS sessions
+    ON sessions.workspace_id = ?
+   AND sessions.agent_session_id = turns.agent_session_id
+  WHERE sessions.rail_section_key = ?
+    AND sessions.deleted_at_unix_ms = 0
+  ORDER BY turns.settled_at_unix_ms DESC,
+           turns.agent_session_id DESC,
+           turns.turn_id DESC
+  LIMIT ?
+)
+SELECT scoped.agent_session_id,
+       scoped.agent_target_id,
+       scoped.turn_id,
+       scoped.cwd,
+       scoped.rail_section_kind,
+       scoped.rail_project_path,
+       scoped.settled_at_unix_ms,
+       source.file_changes_json
+FROM scoped_turns AS scoped
+JOIN workspace_agent_turns AS source
+  ON source.workspace_id = ?
+ AND source.agent_session_id = scoped.agent_session_id
+ AND source.turn_id = scoped.turn_id
+ORDER BY scoped.settled_at_unix_ms DESC,
+         scoped.agent_session_id DESC,
+         scoped.turn_id DESC
+`, workspaceID, workspaceGeneratedFileTurnCandidateLimit, workspaceID, sectionKey, sectionGeneratedFileTurnLimit, workspaceID)
 	if err != nil {
-		return GeneratedFileList{}, false, fmt.Errorf("list workspace agent generated file messages: %w", err)
+		return GeneratedFileTurnList{}, false, fmt.Errorf("list workspace agent generated file turn candidates: %w", err)
 	}
 	defer rows.Close()
 
-	filesByPath := make(map[string]GeneratedFile)
-	files := make([]GeneratedFile, 0, limit)
+	turns := make([]GeneratedFileTurn, 0, sectionGeneratedFileTurnLimit)
 	for rows.Next() {
-		var cwd string
-		var kind string
-		var status string
-		var payloadJSON string
-		if err := rows.Scan(&cwd, &kind, &status, &payloadJSON); err != nil {
-			return GeneratedFileList{}, false, fmt.Errorf("scan workspace agent generated file message: %w", err)
+		var turn GeneratedFileTurn
+		var fileChangesJSON *string
+		if err := rows.Scan(
+			&turn.AgentSessionID,
+			&turn.AgentTargetID,
+			&turn.TurnID,
+			&turn.CWD,
+			&turn.RailSectionKind,
+			&turn.RailProjectPath,
+			&turn.SettledAtUnixMS,
+			&fileChangesJSON,
+		); err != nil {
+			return GeneratedFileTurnList{}, false, fmt.Errorf("scan workspace agent generated file turn candidate: %w", err)
 		}
-		var payload map[string]any
-		if err := json.Unmarshal([]byte(payloadJSON), &payload); err != nil {
-			return GeneratedFileList{}, false, fmt.Errorf("decode workspace agent generated file payload: %w", err)
-		}
-		if !isSuccessfulGeneratedFileMessage(kind, status, payload) {
-			continue
-		}
-		for _, filePath := range generatedFilePathsFromPayload(payload, cwd) {
-			if _, exists := filesByPath[filePath]; exists {
-				continue
-			}
-			file := GeneratedFile{
-				Path:  filePath,
-				Label: generatedFileLabel(filePath),
-			}
-			if !matchesGeneratedFileQuery(file, query) {
-				continue
-			}
-			filesByPath[filePath] = file
-			files = append(files, file)
-			if len(files) >= limit {
-				return GeneratedFileList{
-					WorkspaceID: workspaceID,
-					Files:       files,
-				}, true, nil
+		if fileChangesJSON != nil && strings.TrimSpace(*fileChangesJSON) != "" {
+			var payload generatedFileChangesPayload
+			if err := json.Unmarshal([]byte(*fileChangesJSON), &payload); err == nil {
+				turn.Changes = make([]GeneratedFileTurnChange, 0, len(payload.Files))
+				for _, file := range payload.Files {
+					turn.Changes = append(turn.Changes, GeneratedFileTurnChange{
+						Path:   file.Path,
+						Change: file.Change,
+					})
+				}
 			}
 		}
+		turns = append(turns, turn)
 	}
 	if err := rows.Err(); err != nil {
-		return GeneratedFileList{}, false, fmt.Errorf("iterate workspace agent generated file messages: %w", err)
+		return GeneratedFileTurnList{}, false, fmt.Errorf("iterate workspace agent generated file turn candidates: %w", err)
 	}
-
-	return GeneratedFileList{
-		WorkspaceID: workspaceID,
-		Files:       files,
-	}, true, nil
-}
-
-func generatedFileMessageScanLimit(limit int) int {
-	if limit <= 0 {
-		limit = defaultWorkspaceGeneratedFilesLimit
-	}
-	scanLimit := limit * 40
-	if scanLimit < 500 {
-		return 500
-	}
-	if scanLimit > 5000 {
-		return 5000
-	}
-	return scanLimit
-}
-
-func isSuccessfulGeneratedFileMessage(kind string, status string, payload map[string]any) bool {
-	if normalizeGeneratedFileToken(kind) != "tool_call" {
-		return false
-	}
-	if !generatedFileStatusAllows(status) {
-		return false
-	}
-	if !generatedFilePayloadStatusAllows(payload) {
-		return false
-	}
-	return hasGeneratedFileChangeSignal(payload)
-}
-
-func generatedFilePayloadStatusAllows(payload map[string]any) bool {
-	if payload == nil {
-		return true
-	}
-	if !generatedFileRecordStatusAllows(payload) {
-		return false
-	}
-	if output, ok := objectField(payload, "output"); ok {
-		if !generatedFileRecordStatusAllows(output) {
-			return false
-		}
-	}
-	return true
-}
-
-func generatedFileRecordStatusAllows(record map[string]any) bool {
-	if record == nil {
-		return true
-	}
-	if status, ok := stringField(record, "status"); ok && !generatedFileStatusAllows(status) {
-		return false
-	}
-	if success, ok := boolField(record, "success"); ok && !success {
-		return false
-	}
-	return true
-}
-
-func generatedFileStatusAllows(status string) bool {
-	normalized := normalizeGeneratedFileToken(status)
-	if normalized == "" {
-		return true
-	}
-	switch normalized {
-	case "completed", "success", "succeeded", "ok":
-		return true
-	default:
-		return false
-	}
-}
-
-func hasGeneratedFileChangeSignal(payload map[string]any) bool {
-	for _, record := range generatedFileSignalRecords(payload) {
-		if recordHasGeneratedFileToolSignal(record) {
-			return true
-		}
-	}
-	return false
-}
-
-func generatedFileSignalRecords(payload map[string]any) []map[string]any {
-	if payload == nil {
-		return nil
-	}
-	records := []map[string]any{payload}
-	if input, ok := objectField(payload, "input"); ok {
-		records = append(records, input)
-	}
-	if output, ok := objectField(payload, "output"); ok {
-		records = append(records, output)
-	}
-	if toolState, ok := objectField(payload, "tool_state"); ok {
-		if input, ok := objectField(toolState, "input"); ok {
-			records = append(records, input)
-		}
-	}
-	return records
-}
-
-func recordHasGeneratedFileToolSignal(record map[string]any) bool {
-	if record == nil {
-		return false
-	}
-	if activityKind, ok := stringField(record, "activityKind"); ok &&
-		isGeneratedFileChangeToolName(normalizeGeneratedFileToolName(activityKind)) {
-		return true
-	}
-	if _, ok := stringField(record, "fileChangeKind"); ok {
-		return true
-	}
-	if toolCall, ok := objectField(record, "toolCall"); ok {
-		if kind, ok := stringField(toolCall, "kind"); ok {
-			switch normalizeGeneratedFileToken(kind) {
-			case "write", "edit", "delete":
-				return true
-			}
-		}
-	}
-	for _, key := range []string{"toolName", "title", "name"} {
-		if name, ok := stringField(record, key); ok &&
-			isGeneratedFileChangeToolName(normalizeGeneratedFileToolName(name)) {
-			return true
-		}
-	}
-	return false
-}
-
-func isGeneratedFileChangeToolName(normalized string) bool {
-	if normalized == "" {
-		return false
-	}
-	for _, candidate := range []string{
-		"write",
-		"writefile",
-		"create",
-		"createfile",
-		"delete",
-		"deletefile",
-		"edit",
-		"editfile",
-		"multiedit",
-		"applypatch",
-		"move",
-		"notebookedit",
-	} {
-		if normalized == candidate || strings.HasPrefix(normalized, candidate+"/") {
-			return true
-		}
-	}
-	return false
-}
-
-func generatedFilePathsFromPayload(payload map[string]any, cwd string) []string {
-	paths := make([]string, 0)
-	appendPath := func(value any) {
-		normalized := normalizeGeneratedFilePath(value, cwd)
-		if normalized != "" {
-			paths = append(paths, normalized)
-		}
-	}
-	appendPathValues(payload, appendPath)
-	if output, ok := objectField(payload, "output"); ok {
-		appendPathValues(output, appendPath)
-	}
-	if input, ok := objectField(payload, "input"); ok {
-		appendPathValues(input, appendPath)
-	}
-	if toolState, ok := objectField(payload, "tool_state"); ok {
-		if input, ok := objectField(toolState, "input"); ok {
-			appendPathValues(input, appendPath)
-		}
-	}
-	return dedupeGeneratedFilePaths(paths)
-}
-
-func appendPathValues(payload map[string]any, appendPath func(any)) {
-	for _, key := range []string{"path", "filePath", "file_path"} {
-		appendPath(payload[key])
-	}
-	if values, ok := payload["paths"].([]any); ok {
-		for _, value := range values {
-			appendPath(value)
-		}
-	}
-	if fileChanges, ok := objectField(payload, "fileChanges"); ok {
-		if files, ok := fileChanges["files"].([]any); ok {
-			for _, file := range files {
-				if fileObject, ok := file.(map[string]any); ok {
-					appendPathValues(fileObject, appendPath)
-					continue
-				}
-				appendPath(file)
-			}
-		}
-	}
-	if changes, ok := objectField(payload, "changes"); ok {
-		for key, value := range changes {
-			appendPath(key)
-			if valueObject, ok := value.(map[string]any); ok {
-				appendPathValues(valueObject, appendPath)
-			}
-		}
-	}
-	if values, ok := payload["changes"].([]any); ok {
-		for _, value := range values {
-			if valueObject, ok := value.(map[string]any); ok {
-				appendPathValues(valueObject, appendPath)
-				continue
-			}
-			appendPath(value)
-		}
-	}
-}
-
-func objectField(payload map[string]any, key string) (map[string]any, bool) {
-	value, ok := payload[key]
-	if !ok {
-		return nil, false
-	}
-	object, ok := value.(map[string]any)
-	return object, ok
-}
-
-func stringField(payload map[string]any, key string) (string, bool) {
-	value, ok := payload[key]
-	if !ok {
-		return "", false
-	}
-	text, ok := value.(string)
-	if !ok {
-		return "", false
-	}
-	text = strings.TrimSpace(text)
-	return text, text != ""
-}
-
-func boolField(payload map[string]any, key string) (bool, bool) {
-	value, ok := payload[key]
-	if !ok {
-		return false, false
-	}
-	boolValue, ok := value.(bool)
-	return boolValue, ok
-}
-
-func normalizeGeneratedFileToken(value string) string {
-	return strings.ToLower(strings.TrimSpace(value))
-}
-
-func normalizeGeneratedFileToolName(value string) string {
-	normalized := strings.ToLower(strings.TrimSpace(value))
-	normalized = strings.ReplaceAll(normalized, "_", "")
-	normalized = strings.ReplaceAll(normalized, "-", "")
-	normalized = strings.ReplaceAll(normalized, " ", "")
-	return normalized
-}
-
-func normalizeGeneratedFilePath(value any, cwd string) string {
-	raw, ok := value.(string)
-	if !ok {
-		return ""
-	}
-	raw = strings.TrimSpace(raw)
-	if raw == "" || strings.HasPrefix(raw, "{") || strings.HasPrefix(raw, "[") {
-		return ""
-	}
-	raw = strings.ReplaceAll(raw, "\\", "/")
-	if strings.HasPrefix(raw, "/") || isWindowsAbsolutePath(raw) {
-		return path.Clean(raw)
-	}
-	base := normalizeGeneratedFileComparablePath(cwd)
-	if base == "" {
-		return path.Clean(raw)
-	}
-	return path.Clean(base + "/" + strings.TrimPrefix(strings.TrimPrefix(raw, "./"), "/"))
-}
-
-func normalizeGeneratedFileComparablePath(raw string) string {
-	return strings.TrimRight(strings.ReplaceAll(strings.TrimSpace(raw), "\\", "/"), "/")
-}
-
-func isWindowsAbsolutePath(value string) bool {
-	return len(value) >= 3 && value[1] == ':' && (value[2] == '/' || value[2] == '\\')
-}
-
-func dedupeGeneratedFilePaths(paths []string) []string {
-	seen := make(map[string]struct{}, len(paths))
-	out := make([]string, 0, len(paths))
-	for _, filePath := range paths {
-		if filePath == "" {
-			continue
-		}
-		if _, ok := seen[filePath]; ok {
-			continue
-		}
-		seen[filePath] = struct{}{}
-		out = append(out, filePath)
-	}
-	return out
-}
-
-func generatedFileLabel(filePath string) string {
-	trimmed := strings.TrimRight(filePath, "/")
-	if trimmed == "" {
-		return filePath
-	}
-	label := path.Base(trimmed)
-	if label == "." || label == "/" {
-		return filePath
-	}
-	return label
-}
-
-func matchesGeneratedFileQuery(file GeneratedFile, query string) bool {
-	if query == "" {
-		return true
-	}
-	haystack := strings.ToLower(file.Label + "\n" + file.Path)
-	for _, token := range strings.Fields(query) {
-		if !strings.Contains(haystack, token) {
-			return false
-		}
-	}
-	return true
+	return GeneratedFileTurnList{WorkspaceID: workspaceID, Turns: turns}, true, nil
 }

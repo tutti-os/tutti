@@ -321,13 +321,14 @@ test("desktop agent GUI workbench host input wires project references first", as
   );
 });
 
-test("desktop provenance search sends agent filters to tuttid without deriving a session cwd", async () => {
+test("desktop provenance search sends the persisted project section key and agent filters to tuttid", async () => {
   const generatedFileInputs: unknown[] = [];
   const workspaceAgentActivityService = createWorkspaceAgentActivityService([]);
   workspaceAgentActivityService.listAgentGeneratedFiles = async (input) => {
     generatedFileInputs.push(input);
     return {
       entries: [{ label: "report.md", path: "/outside/project/report.md" }],
+      hasMore: false,
       workspaceId
     };
   };
@@ -363,12 +364,50 @@ test("desktop provenance search sends agent filters to tuttid without deriving a
       agentTargetIds: ["local:codex"],
       limit: undefined,
       query: "report",
-      sessionCwd: undefined,
+      sectionKey: "project:/Users/local/repo",
       signal: undefined,
       workspaceId
     }
   ]);
   assert.equal(result.entries[0]?.ref.nodeId, "/outside/project/report.md");
+});
+
+test("desktop provenance search fails closed when a project has no persisted section key", async () => {
+  let generatedFileRequestCount = 0;
+  const workspaceAgentActivityService = createWorkspaceAgentActivityService([]);
+  workspaceAgentActivityService.listAgentGeneratedFiles = async () => {
+    generatedFileRequestCount += 1;
+    return { entries: [], hasMore: false, workspaceId };
+  };
+  const project = userProject("project-1", "/Users/local/repo", "Repo");
+  project.sectionKey = undefined;
+  const hostInput = createDesktopAgentGUIWorkbenchHostInput({
+    hostFilesApi: createHostFilesApi(),
+    tuttidClient: createTuttidClient(),
+    platformApi: createPlatformApi(),
+    richTextAtService: createRichTextAtService(),
+    runtimeApi: createRuntimeApi(),
+    workspaceAgentActivityService,
+    workspaceUserProjectService: createWorkspaceUserProjectService([project]),
+    workspaceId
+  });
+
+  await hostInput.referenceSourceAggregator.listSources({ workspaceId });
+  const result = await hostInput.referenceSourceAggregator.search(
+    { workspaceId },
+    USER_PROJECT_REFERENCE_SOURCE_ID,
+    {
+      query: "report",
+      provenanceFilter: {
+        agentTargetIds: ["local:codex"],
+        memberIds: null
+      },
+      withinNodeId: project.path
+    }
+  );
+
+  assert.equal(generatedFileRequestCount, 0);
+  assert.deepEqual(result.entries, []);
 });
 
 test("desktop agent GUI workbench host input prefers active conversation project for reference target", () => {
@@ -1416,6 +1455,7 @@ function userProject(
     id,
     label,
     path,
+    sectionKey: `project:${path}`,
     updatedAtUnixMs: 1
   };
 }
@@ -1426,6 +1466,7 @@ function agentGUIUserProject(project: WorkspaceUserProject): {
   label: string;
   lastUsedAtUnixMs?: number;
   path: string;
+  sectionKey?: string;
   updatedAtUnixMs?: number;
 } {
   return {
@@ -1438,6 +1479,9 @@ function agentGUIUserProject(project: WorkspaceUserProject): {
       ? { lastUsedAtUnixMs: project.lastUsedAtUnixMs }
       : {}),
     path: project.path,
+    ...(project.sectionKey === undefined
+      ? {}
+      : { sectionKey: project.sectionKey }),
     ...(project.updatedAtUnixMs === undefined
       ? {}
       : { updatedAtUnixMs: project.updatedAtUnixMs })
@@ -1615,7 +1659,7 @@ function createWorkspaceAgentActivityService(
       return { messages: [], hasMore: false, latestVersion: 0 };
     },
     async listAgentGeneratedFiles() {
-      return { entries: [], workspaceId };
+      return { entries: [], hasMore: false, workspaceId };
     },
     async listSessionsPage(input) {
       return { hasMore: false, sessions: [], workspaceId: input.workspaceId };

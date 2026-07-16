@@ -194,12 +194,17 @@ export function createWorkspaceAgentClient(
         "Workspace pinned agent session page request failed."
       );
     },
-    async listWorkspaceAgentGeneratedFiles(workspaceID, request) {
+    async listWorkspaceAgentGeneratedFiles(
+      workspaceID,
+      request,
+      requestOptions
+    ) {
       return unwrapData(
         await listWorkspaceAgentGeneratedFiles({
           client,
           path: { workspaceID },
-          query: request
+          query: request,
+          ...requestOptions
         }),
         "Workspace agent generated files request failed."
       );

@@ -2470,10 +2470,12 @@ paths:
           schema:
             type: string
         - in: query
-          name: sessionCwd
-          required: false
+          name: sectionKey
+          required: true
+          description: Persisted conversation-rail section key used to scope generated files. The pinned aggregate key is not accepted.
           schema:
             type: string
+            minLength: 1
         - in: query
           name: agentTargetIds
           required: false
@@ -2486,6 +2488,14 @@ paths:
             items:
               type: string
               minLength: 1
+        - in: query
+          name: cursor
+          required: false
+          description: Opaque cursor for the next page within the bounded recent generated-file result.
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 32
         - in: query
           name: limit
           required: false
@@ -7847,6 +7857,7 @@ components:
       required:
         - workspaceId
         - entries
+        - hasMore
       properties:
         workspaceId:
           type: string
@@ -7855,6 +7866,11 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/WorkspaceAgentGeneratedFileEntry"
+        hasMore:
+          type: boolean
+        nextCursor:
+          type: string
+          minLength: 1
     WorkspaceAgentSessionListResponse:
       type: object
       additionalProperties: false

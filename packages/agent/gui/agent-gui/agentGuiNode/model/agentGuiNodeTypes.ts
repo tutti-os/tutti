@@ -281,6 +281,8 @@ export interface AgentGUIComposerSettingsVM {
   selectedPermissionModeValue?: string | null;
   permissionConfig?: AgentSessionPermissionConfig | null;
   selectedProjectPath?: string | null;
+  /** Persisted rail membership used to scope Agent-generated file mentions. */
+  selectedProjectSectionKey?: string | null;
   projectLocked?: boolean;
   // Mirrors the injected runtime's `projectPathIsRemote`. When true the session
   // cwd is not on the local filesystem (e.g. a shared/cloud sandbox), so the

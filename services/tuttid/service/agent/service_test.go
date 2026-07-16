@@ -7489,8 +7489,8 @@ func (r *activityProjectionRepoStub) ListSessionMessages(context.Context, agenta
 	return r.messagePage, r.messagePageOK, r.messagePageErr
 }
 
-func (*activityProjectionRepoStub) ListWorkspaceGeneratedFiles(context.Context, agentactivitybiz.ListWorkspaceGeneratedFilesInput) (agentactivitybiz.GeneratedFileList, bool, error) {
-	return agentactivitybiz.GeneratedFileList{}, false, nil
+func (*activityProjectionRepoStub) ListWorkspaceGeneratedFileTurns(context.Context, agentactivitybiz.ListWorkspaceGeneratedFileTurnsInput) (agentactivitybiz.GeneratedFileTurnList, bool, error) {
+	return agentactivitybiz.GeneratedFileTurnList{}, false, nil
 }
 
 func (r *activityProjectionRepoStub) ReportSessionMessages(_ context.Context, input agentactivitybiz.SessionMessageReport) (agentactivitybiz.MessageReportResult, error) {

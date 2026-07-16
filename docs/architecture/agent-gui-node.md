@@ -475,6 +475,13 @@ selected agent's availability so coming-soon entries remain inspectable but
 cannot start sessions. Hosts may use `renderAgentUnavailableState` and
 `renderAgentReadinessState` for product-specific presentation, with actions
 routed through `onAgentAvailabilityAction`.
+Agent-target mention directories follow the same discoverability rule. A host
+may keep an unavailable shared target in the injected mention provider so room
+membership and ownership grouping remain visible, but it must project the
+non-ready status explicitly. The mention palette renders that target as
+unavailable and excludes it from pointer and keyboard selection until it is
+ready; absence from the mention directory is reserved for targets that are no
+longer shared or otherwise intentionally hidden.
 `disabled` is interaction state, not an availability classification. A disabled
 target is coming soon only when its explicit availability is `coming_soon` (or
 the host's explicit coming-soon catalog says so); unavailable, not-installed,
@@ -3429,18 +3436,44 @@ corepack pnpm --filter @tutti-os/agent-gui exec vitest run shared/AgentRichTextR
 ### Agent Generated File Mentions
 
 ```text
-Agent activity messages
-  -> target-filtered generated-file collector in tuttid or AgentGUI fallback
+Durable Turn.fileChanges snapshots
+  -> indexed recent settled-Turn candidate window
+  -> exact section join and Go file-state combination
+  -> target filter and workspace-file search ranking
   -> desktop mention provider
   -> mention palette grouping/count presentation
   -> composer file mention insertion
 ```
 
-Generated-file counts must be computed from collector output, not from palette
-rendering state. The collector owns the semantic filter: only successful
-file-change tool messages should contribute paths, and failed, canceled,
-running, or read-only tool calls must be ignored even when their payloads carry
-`path`, `filePath`, `fileChanges`, or `changes` fields.
+`Turn.fileChanges` is the only generated-file source of truth. The daemon does
+not persist a second file projection: it uses a partial settled-Turn index to
+materialize at most the newest 1000 workspace Turns, joins the requested exact
+rail section, and returns at most 100 settled Turns for Go aggregation.
+Activity messages, tool payloads, provider metadata, and renderer session
+snapshots are not compatibility fallbacks, so sessions that predate canonical
+Turn file changes do not appear in generated-file results. Running, waiting,
+and settling Turns are intentionally absent; all terminal outcomes may
+contribute files because a failed or canceled Turn can already have written.
+
+The query requires the exact persisted rail `sectionKey`. Project sections use
+the `WorkspaceUserProject.sectionKey` supplied by the daemon; the unassigned
+section uses the fixed `conversations` key. The desktop and AgentGUI layers must
+not derive a project key from `cwd` or a path. A missing key fails closed and
+the key is part of mention browse-cache identity. Go resolves relative paths
+against each persisted session `cwd`; project sections retain only normalized
+paths contained by their persisted `rail_project_path`. Turns are folded from
+newest `settledAt` to oldest, so the first valid `added`, `modified`, or
+`deleted` change for a path decides its current state. All other change kinds
+are ignored. Tombstones are applied before Agent filtering, then a non-empty
+query reuses workspace file-search ranking.
+
+The aggregate is cached by `workspaceId + sectionKey` for ten seconds without
+event invalidation. The HTTP cursor uses bounded offset pagination over at most
+200 ranked paths. Cache expiry may cause duplicate, missing, or reordered
+entries between pages, and a quiet section can be absent when its Turns fall
+outside the 1000-Turn workspace candidate window. AgentGUI labels the group as
+recent; this endpoint remains an optimistic convenience rather than an
+exhaustive generated-file ledger.
 
 ### Reference Source Filtering
 
@@ -3459,28 +3492,36 @@ AgentGUI creates one controlled provenance controller for both the composer
 `@` palette and the `+` reference picker. The desktop host injects the current
 Agent target catalog, while the query providers apply selected
 `agentTargetId` values before pagination. Session search merges target-scoped
-queries, and the generated-file fallback filters sessions before collecting
-file changes. Tutti's daemon-backed generated-file query accepts multiple
-`agentTargetIds` and filters persisted sessions in SQLite before applying its
-message scan limit; the renderer must not filter a capped session snapshot.
+queries. Tutti's daemon-backed generated-file query accepts multiple
+`agentTargetIds`; it combines the bounded Turn window for the persisted rail
+section before applying the session-target filter, ranking, and result limit.
+The renderer must not filter a capped snapshot.
 In the `+` picker, desktop project/local sources switch to that same
 generated-file provider for an active Agent constraint, then apply file type
 filters and the result limit. This provenance constraint does not imply a file
-path constraint, so picker location ids must not be mapped to session working
-directories. Ordinary opened-file and issue-summary records do not currently
+path-to-session-cwd constraint. A project source may select the exact persisted
+project `sectionKey` associated with its opaque location node, but it must not
+synthesize a section key or map the node to a session working directory.
+Ordinary opened-file and issue-summary records do not currently
 carry durable provenance and therefore fail closed when either an Agent or
 Member constraint is active. A typed File query must route to the
 provenance-aware generated-file provider for either active dimension, even when
 the ordinary generated-files group is otherwise disabled. Generated-file and
 picker result groups remain source-owned. The Agent Session and Agent target
-`@` lists are the exceptions: when a host injects an Agent provenance catalog,
-they group returned rows by exact `agentTargetId` in catalog order and use the
-catalog option label as the group heading. An Agent target row matches with its
-target id; AgentGUI does not synthesize owner-aware row labels because that
-presentation remains host-owned. Rows outside the catalog remain visible in
-stable uncatalogued groups only while no explicit Agent filter is selected.
+`@` lists are the exceptions when a host injects an Agent provenance catalog.
+Session rows group by exact `agentTargetId` in Agent catalog order. Agent target
+rows use each Agent option's `parentMemberId` to group under the matching Member
+catalog entry, so one member's targets share a group while filtering still uses
+the individual target ids. Collaboration hosts should build this catalog from
+the complete Agent directory, using `AgentGUIAgent.owner.userId` for shared
+targets, rather than deriving ownership only from sessions; targets without
+history must still join their owner's group. Hosts that omit a matching Member entry retain the
+per-Agent group. AgentGUI does not synthesize owner-aware row labels because
+that presentation remains host-owned. Rows outside the catalog remain visible
+in stable uncatalogued groups only while no explicit Agent filter is selected.
 This grouping is presentation only; the provider still applies the selected
-provenance constraint before pagination.
+provenance constraint before pagination. A host may provide Member entries for
+grouping without enabling the Member filter dimension.
 
 Only catalog entries with a durable `agentTargetId` participate in filtering;
 host target ids are not substitutes. Catalogs and filters are normalized at the

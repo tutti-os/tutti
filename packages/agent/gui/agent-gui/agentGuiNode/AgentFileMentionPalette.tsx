@@ -132,11 +132,24 @@ export function agentMentionItemKey(item: AgentContextMentionItem): string {
   }`;
 }
 
+export function isAgentMentionItemDisabled(
+  item: AgentContextMentionItem
+): boolean {
+  return (
+    item.kind === "agent-target" &&
+    item.availabilityStatus !== undefined &&
+    item.availabilityStatus !== "ready" &&
+    item.availabilityStatus !== "available"
+  );
+}
+
 export function flattenAgentMentionPaletteEntries(
   state: AgentMentionSearchState
 ): AgentMentionPaletteEntry[] {
-  return flattenMentionPaletteEntries(state, (item) =>
-    agentMentionItemKey(item)
+  return flattenMentionPaletteEntries(
+    state,
+    (item) => agentMentionItemKey(item),
+    isAgentMentionItemDisabled
   ).map((entry: MentionPaletteEntry): AgentMentionPaletteEntry => {
     if (entry.type === "item") {
       const item =
@@ -167,7 +180,9 @@ export function groupStartKeys(state: AgentMentionSearchState): string[] {
   }
   return state.groups
     .map((group) => {
-      const firstItem = group.items[0];
+      const firstItem = group.items.find(
+        (item) => !isAgentMentionItemDisabled(item)
+      );
       if (firstItem) {
         return `${group.id}:${agentMentionItemKey(firstItem)}`;
       }
@@ -263,6 +278,7 @@ export function AgentFileMentionPalette({
       state={shellState}
       highlightedKey={highlightedKey}
       getItemKey={agentMentionItemKey}
+      isItemDisabled={isAgentMentionItemDisabled}
       renderItem={(item, { group }) =>
         renderMentionRow(agentMentionItemToRowItem(item), {
           classNames: AGENT_MENTION_ROW_CLASS_NAMES,
@@ -500,7 +516,7 @@ function agentMentionItemToRowItem(
       name: item.name,
       description: mentionDescriptionWithoutTerminalPeriod(item.description),
       iconUrl: item.iconUrl ?? managedAgentRoundedIconUrl(item.agentProviderId),
-      statusTag: agentTargetAvailableStatusTag()
+      statusTag: agentTargetAvailabilityStatusTag(item.availabilityStatus)
     };
   }
 
@@ -601,15 +617,25 @@ function agentSessionStatusTag(
 }
 
 /**
- * Agent targets are only surfaced when the provider is ready/available, so the
- * `@` row always shows a green "Available" badge at its trailing edge.
+ * Shared agent targets remain discoverable while their owner is offline. Their
+ * availability badge communicates whether the target can currently be invoked.
  */
-function agentTargetAvailableStatusTag(): MentionRowStatusTag {
+function agentTargetAvailabilityStatusTag(
+  availabilityStatus: string | undefined
+): MentionRowStatusTag {
+  const available =
+    availabilityStatus === undefined ||
+    availabilityStatus === "ready" ||
+    availabilityStatus === "available";
   return {
-    label: translate("agentHost.agentGui.mentionAgentTargetAvailable"),
-    tone: "green",
+    label: translate(
+      available
+        ? "agentHost.agentGui.mentionAgentTargetAvailable"
+        : "agentHost.agentGui.mentionAgentTargetUnavailable"
+    ),
+    tone: available ? "green" : "neutral",
     variant: "activity",
-    dataStatus: "available"
+    dataStatus: available ? "available" : "unavailable"
   };
 }
 

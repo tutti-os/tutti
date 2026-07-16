@@ -303,6 +303,8 @@ the following in the same change:
 Go linting uses `golangci-lint` across the repository's current Go modules.
 The current root entrypoint runs the linter from:
 
+- `packages/agent/activity-replication`
+- `packages/agent/store-sqlite/canonical`
 - `packages/appcli/core`
 - `packages/agent/runtimeprep`
 - `packages/workspace/files`
@@ -318,8 +320,10 @@ changed-aware Go lint when daemon files change, but is not yet part of the root
 service/API code should stay outside those exceptions and must continue to
 satisfy the normal Go lint baseline.
 
-Changed-aware Go validation includes the nested `packages/agent/daemon` and
-`packages/agent/runtimeprep` modules.
+Changed-aware Go validation includes the nested
+`packages/agent/activity-replication`, `packages/agent/daemon`,
+`packages/agent/runtimeprep`, `packages/agent/store-sqlite`, and
+`packages/agent/store-sqlite/canonical` modules.
 Codex app-server protocol changes should also run
 `pnpm check:codexproto-generated` when schema, generator, or generated protocol
 files are touched.

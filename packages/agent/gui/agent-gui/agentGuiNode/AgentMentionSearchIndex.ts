@@ -35,6 +35,7 @@ export interface AgentMentionProviderQueryInput {
   query: string;
   limit?: number;
   sessionCwd?: string;
+  sectionKey?: string;
   provenanceFilter: ReferenceProvenanceFilter | null;
 }
 
@@ -46,6 +47,7 @@ export async function fetchAgentMentionFilterResult(input: {
   query: string;
   filter: AgentMentionFilterId;
   sessionCwd: string;
+  sectionKey: string;
   includeAgentGeneratedFiles: boolean;
   fileLimit: number;
   currentFileSearchLimit: number;
@@ -88,6 +90,7 @@ export async function fetchAgentMentionFilterResult(input: {
               query: input.query,
               limit: input.fileLimit,
               sessionCwd: input.sessionCwd,
+              sectionKey: input.sectionKey,
               diagnostics: providerDiagnostics,
               provenanceFilter: input.provenanceFilter
             })
@@ -219,6 +222,7 @@ export async function queryAgentMentionProviderItems(input: {
   query: string;
   limit?: number;
   sessionCwd: string;
+  sectionKey: string;
   abortSignal: AbortSignal;
   provenanceFilter: ReferenceProvenanceFilter | null;
 }): Promise<AgentContextMentionItem[]> {
@@ -230,6 +234,7 @@ export async function queryAgentMentionProviderItems(input: {
     context: {
       metadata: {
         currentUserId: input.currentUserId,
+        sectionKey: input.sectionKey || undefined,
         sessionCwd: input.sessionCwd || undefined,
         target: "agent-gui",
         workspaceId: input.workspaceId,
@@ -253,6 +258,7 @@ export async function queryAgentMentionProviderGroups(input: {
   query: string;
   limit?: number;
   sessionCwd: string;
+  sectionKey: string;
   abortSignal: AbortSignal;
   provenanceFilter: ReferenceProvenanceFilter | null;
 }): Promise<AgentMentionIssueTopicGroup[] | null> {
@@ -267,6 +273,7 @@ export async function queryAgentMentionProviderGroups(input: {
     context: {
       metadata: {
         currentUserId: input.currentUserId,
+        sectionKey: input.sectionKey || undefined,
         sessionCwd: input.sessionCwd || undefined,
         target: "agent-gui",
         workspaceId: input.workspaceId,
@@ -307,6 +314,7 @@ export async function queryAgentMentionProviderGroupPage(input: {
   cursor: string;
   pageSize: number;
   sessionCwd: string;
+  sectionKey: string;
   abortSignal: AbortSignal;
   provenanceFilter: ReferenceProvenanceFilter | null;
 }): Promise<AgentMentionIssueTopicGroup> {
@@ -324,6 +332,7 @@ export async function queryAgentMentionProviderGroupPage(input: {
     context: {
       metadata: {
         currentUserId: input.currentUserId,
+        sectionKey: input.sectionKey || undefined,
         sessionCwd: input.sessionCwd || undefined,
         target: "agent-gui",
         workspaceId: input.workspaceId,

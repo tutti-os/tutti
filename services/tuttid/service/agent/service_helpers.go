@@ -34,28 +34,6 @@ func cloneSessionMessages(messages []SessionMessage) []SessionMessage {
 	return out
 }
 
-func cloneGeneratedFiles(files []GeneratedFile) []GeneratedFile {
-	if len(files) == 0 {
-		return []GeneratedFile{}
-	}
-	out := make([]GeneratedFile, 0, len(files))
-	for _, file := range files {
-		path := strings.TrimSpace(file.Path)
-		if path == "" {
-			continue
-		}
-		label := strings.TrimSpace(file.Label)
-		if label == "" {
-			label = path
-		}
-		out = append(out, GeneratedFile{
-			Path:  path,
-			Label: label,
-		})
-	}
-	return out
-}
-
 func cloneSession(session Session) Session {
 	cloned := session
 	cloned.Metadata = cloneSessionMetadata(session.Metadata)

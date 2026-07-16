@@ -232,6 +232,15 @@
   opacity: 0.65;
 }
 
+.rich-text-at-mention-palette__row-button:disabled {
+  cursor: default;
+  color: var(--rich-text-at-mention-text-secondary);
+}
+
+.rich-text-at-mention-palette__row-button:disabled:active {
+  background: transparent;
+}
+
 .rich-text-at-mention-palette__row-button {
   position: relative;
   display: flex;

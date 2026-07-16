@@ -85,6 +85,7 @@ export interface AgentMentionAgentTargetItem {
   description?: string;
   agentProviderId?: string;
   iconUrl?: string;
+  availabilityStatus?: string;
 }
 
 export interface AgentMentionWorkspaceReferenceItem {

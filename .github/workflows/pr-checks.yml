@@ -30,10 +30,12 @@ jobs:
           cache-dependency-path: |
             go.work
             go.work.sum
+            packages/agent/activity-replication/go.mod
             packages/agent/daemon/go.mod
             packages/agent/daemon/go.sum
             packages/agent/runtimeprep/go.mod
             packages/agent/store-sqlite/go.mod
+            packages/agent/store-sqlite/canonical/go.mod
             packages/auth/bridge-go/go.mod
             packages/appcli/core/go.mod
             packages/events/stream-go/go.mod
@@ -221,10 +223,12 @@ jobs:
           cache-dependency-path: |
             go.work
             go.work.sum
+            packages/agent/activity-replication/go.mod
             packages/agent/daemon/go.mod
             packages/agent/daemon/go.sum
             packages/agent/runtimeprep/go.mod
             packages/agent/store-sqlite/go.mod
+            packages/agent/store-sqlite/canonical/go.mod
             packages/auth/bridge-go/go.mod
             packages/appcli/core/go.mod
             packages/events/stream-go/go.mod
@@ -272,7 +276,9 @@ jobs:
           cache-dependency-path: |
             go.work
             go.work.sum
+            packages/agent/activity-replication/go.mod
             packages/agent/runtimeprep/go.mod
+            packages/agent/store-sqlite/canonical/go.mod
             packages/appcli/core/go.mod
             packages/workbench/service/go.mod
             packages/workspace/files/go.mod

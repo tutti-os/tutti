@@ -15,8 +15,8 @@ import { DESKTOP_AGENT_GUI_CURRENT_USER_ID } from "./desktopAgentGuiIdentity.ts"
  * needs a workbench host that does not exist yet at startup. The provider id set
  * (hence the cache key) is identical, so the live controller reuses this warm;
  * dock-file enrichment and provider refreshes fill in on first open
- * via the 30s TTL revalidation. sessionCwd is "" because no agent session (and
- * therefore no selected project) exists yet at startup.
+ * via the 30s TTL revalidation. The startup composer is in the persisted
+ * conversations section; there is no selected project cwd yet.
  */
 export function preloadDesktopAgentGuiMentionBrowse(input: {
   workspaceId: string;
@@ -46,6 +46,7 @@ export function preloadDesktopAgentGuiMentionBrowse(input: {
   preloadAgentMentionBrowse({
     workspaceId,
     currentUserId: DESKTOP_AGENT_GUI_CURRENT_USER_ID,
+    sectionKey: "conversations",
     sessionCwd: "",
     contextMentionProviders
   });

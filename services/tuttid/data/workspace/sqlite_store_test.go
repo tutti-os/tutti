@@ -1168,7 +1168,7 @@ func TestSQLiteStorePreservesAgentTargetIDAcrossStateReports(t *testing.T) {
 	}
 }
 
-func TestSQLiteStoreListsWorkspaceGeneratedFiles(t *testing.T) {
+func TestSQLiteStoreGeneratedFilesDoNotFallbackToMessages(t *testing.T) {
 	t.Parallel()
 
 	store := openTestSQLiteStore(t)
@@ -1273,47 +1273,36 @@ func TestSQLiteStoreListsWorkspaceGeneratedFiles(t *testing.T) {
 		t.Fatalf("ReportSessionMessages(session-2) error = %v", err)
 	}
 
-	result, ok, err := store.ListWorkspaceGeneratedFiles(ctx, agentactivitybiz.ListWorkspaceGeneratedFilesInput{
+	result, ok, err := store.ListWorkspaceGeneratedFileTurns(ctx, agentactivitybiz.ListWorkspaceGeneratedFileTurnsInput{
 		WorkspaceID: "ws-agent-generated-files",
-		SessionCwd:  "/workspace",
-		Query:       "report",
-		Limit:       10,
+		SectionKey:  "conversations",
 	})
 	if err != nil {
-		t.Fatalf("ListWorkspaceGeneratedFiles() error = %v", err)
+		t.Fatalf("ListWorkspaceGeneratedFileTurns() error = %v", err)
 	}
 	if !ok {
-		t.Fatal("ListWorkspaceGeneratedFiles() ok = false, want true")
+		t.Fatal("ListWorkspaceGeneratedFileTurns() ok = false, want true")
 	}
-	if len(result.Files) != 1 {
-		t.Fatalf("len(files) = %d, want 1: %#v", len(result.Files), result.Files)
-	}
-	if result.Files[0].Path != "/workspace/report.md" || result.Files[0].Label != "report.md" {
-		t.Fatalf("file = %#v, want /workspace/report.md report.md", result.Files[0])
+	if len(result.Turns) != 0 {
+		t.Fatalf("turns = %#v, want no legacy message fallback", result.Turns)
 	}
 
-	arrayResult, ok, err := store.ListWorkspaceGeneratedFiles(ctx, agentactivitybiz.ListWorkspaceGeneratedFilesInput{
+	arrayResult, ok, err := store.ListWorkspaceGeneratedFileTurns(ctx, agentactivitybiz.ListWorkspaceGeneratedFileTurnsInput{
 		WorkspaceID: "ws-agent-generated-files",
-		SessionCwd:  "/workspace",
-		Query:       "slides",
-		Limit:       10,
+		SectionKey:  "conversations",
 	})
 	if err != nil {
-		t.Fatalf("ListWorkspaceGeneratedFiles(array changes) error = %v", err)
+		t.Fatalf("ListWorkspaceGeneratedFileTurns(array changes) error = %v", err)
 	}
 	if !ok {
-		t.Fatal("ListWorkspaceGeneratedFiles(array changes) ok = false, want true")
+		t.Fatal("ListWorkspaceGeneratedFileTurns(array changes) ok = false, want true")
 	}
-	if len(arrayResult.Files) != 2 {
-		t.Fatalf("len(array files) = %d, want 2: %#v", len(arrayResult.Files), arrayResult.Files)
-	}
-	if arrayResult.Files[0].Path != "/workspace/slides/02-why-now.html" ||
-		arrayResult.Files[1].Path != "/workspace/slides/01-cover.html" {
-		t.Fatalf("array files = %#v, want Codex Edit changes array paths", arrayResult.Files)
+	if len(arrayResult.Turns) != 0 {
+		t.Fatalf("array turns = %#v, want no legacy message fallback", arrayResult.Turns)
 	}
 }
 
-func TestSQLiteStoreListWorkspaceGeneratedFilesIgnoresFailedAndReadTools(t *testing.T) {
+func TestSQLiteStoreGeneratedFilesIgnoreAllMessageToolPayloads(t *testing.T) {
 	t.Parallel()
 
 	store := openTestSQLiteStore(t)
@@ -1420,22 +1409,18 @@ func TestSQLiteStoreListWorkspaceGeneratedFilesIgnoresFailedAndReadTools(t *test
 		t.Fatalf("ReportSessionMessages() error = %v", err)
 	}
 
-	result, ok, err := store.ListWorkspaceGeneratedFiles(ctx, agentactivitybiz.ListWorkspaceGeneratedFilesInput{
+	result, ok, err := store.ListWorkspaceGeneratedFileTurns(ctx, agentactivitybiz.ListWorkspaceGeneratedFileTurnsInput{
 		WorkspaceID: "ws-agent-generated-files-failed",
-		SessionCwd:  "/workspace",
-		Limit:       10,
+		SectionKey:  "conversations",
 	})
 	if err != nil {
-		t.Fatalf("ListWorkspaceGeneratedFiles() error = %v", err)
+		t.Fatalf("ListWorkspaceGeneratedFileTurns() error = %v", err)
 	}
 	if !ok {
-		t.Fatal("ListWorkspaceGeneratedFiles() ok = false, want true")
+		t.Fatal("ListWorkspaceGeneratedFileTurns() ok = false, want true")
 	}
-	if len(result.Files) != 1 {
-		t.Fatalf("len(files) = %d, want 1: %#v", len(result.Files), result.Files)
-	}
-	if result.Files[0].Path != "/workspace/ok.md" {
-		t.Fatalf("file path = %q, want /workspace/ok.md", result.Files[0].Path)
+	if len(result.Turns) != 0 {
+		t.Fatalf("turns = %#v, want no message-derived turns", result.Turns)
 	}
 }
 

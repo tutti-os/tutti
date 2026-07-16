@@ -162,6 +162,7 @@ export async function loadAgentMentionBrowseFetchResult(input: {
     currentUserId: string;
     filter: AgentMentionFilterId;
     sessionCwd: string;
+    sectionKey: string;
   };
   cacheKey: string;
   reason: AgentMentionBrowseLoadReason;
@@ -325,6 +326,7 @@ export function buildAgentMentionBrowseCacheKey(input: {
   currentUserId: string;
   filter: AgentMentionFilterId;
   sessionCwd: string;
+  sectionKey: string;
   fileLimit: number;
   issueLimit: number;
   providerIds: readonly string[];
@@ -334,6 +336,7 @@ export function buildAgentMentionBrowseCacheKey(input: {
     workspaceId: input.workspaceId,
     currentUserId: input.currentUserId,
     sessionCwd: input.sessionCwd,
+    sectionKey: input.sectionKey,
     filter: input.filter,
     fileLimit: input.fileLimit,
     issueLimit: input.issueLimit,

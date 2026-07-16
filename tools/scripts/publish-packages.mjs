@@ -11,6 +11,7 @@ import {
   formatStablePackageReleaseTag,
   parseStablePackageReleaseVersion
 } from "./package-release-version.mjs";
+import { preparePackageGoModuleReleaseTree } from "./go-module-release.mjs";
 
 if (isExecutedAsEntryPoint()) {
   await main();
@@ -38,6 +39,18 @@ async function main() {
       throw new Error(`Package release tag ${tagName} already exists`);
     }
   }
+
+  const rewrittenGoModules = await preparePackageGoModuleReleaseTree({
+    releaseVersion,
+    workspaceRoot
+  });
+  console.log(
+    `Prepared ${rewrittenGoModules.length} Go modules for v${releaseVersion}`
+  );
+  createReleaseCommit(releaseVersion, [
+    ...packages.map((packageConfig) => packageConfig.manifestPath),
+    ...rewrittenGoModules
+  ]);
 
   for (const packageConfig of packages) {
     if (isPackageVersionPublished(packageConfig.name, releaseVersion)) {
@@ -67,6 +80,31 @@ async function main() {
     env: createReleaseGitEnvironment(),
     stdio: "inherit"
   });
+}
+
+export function createReleaseCommit(releaseVersion, releasePaths) {
+  execFileSync("git", ["add", "--", ...releasePaths], {
+    cwd: workspaceRoot,
+    stdio: "inherit"
+  });
+  execFileSync(
+    "git",
+    [
+      "-c",
+      "user.name=github-actions[bot]",
+      "-c",
+      "user.email=41898282+github-actions[bot]@users.noreply.github.com",
+      "commit",
+      "--signoff",
+      "--message",
+      `chore(release): packages v${releaseVersion}`
+    ],
+    {
+      cwd: workspaceRoot,
+      env: createReleaseGitEnvironment(),
+      stdio: "inherit"
+    }
+  );
 }
 
 async function readSharedReleaseVersion(packages) {

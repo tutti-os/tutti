@@ -5218,6 +5218,47 @@ func TestControllerFinishParentTurnDoesNotOverwriteSyntheticLifecycle(t *testing
 	}
 }
 
+func TestControllerFinishTurnDoesNotRestoreClosedSession(t *testing.T) {
+	t.Parallel()
+
+	adapter := &recordingStartAdapter{provider: ProviderCodex}
+	controller := NewController([]Adapter{adapter}, nil)
+	started, err := controller.Start(context.Background(), StartInput{
+		RoomID:         "room-1",
+		AgentSessionID: "agent-session-1",
+		Provider:       ProviderCodex,
+	})
+	if err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+
+	turnID := "turn-1"
+	staleTurnSession := started.Session
+	staleTurnSession.Status = SessionStatusCanceled
+	staleTurnSession.TurnLifecycle = &TurnLifecycle{
+		ActiveTurnID: &turnID,
+		Phase:        "running",
+	}
+	controller.store(staleTurnSession)
+	controller.mu.Lock()
+	controller.turns[sessionKey(staleTurnSession.RoomID, staleTurnSession.AgentSessionID)] = activeTurn{turnID: turnID}
+	controller.mu.Unlock()
+
+	if _, err := controller.Close(context.Background(), CloseInput{
+		RoomID:         staleTurnSession.RoomID,
+		AgentSessionID: staleTurnSession.AgentSessionID,
+	}); err != nil {
+		t.Fatalf("Close: %v", err)
+	}
+
+	// A turn goroutine can finish after Close has removed its session. Its stale
+	// snapshot must not recreate the closed session and shadow the next Start.
+	controller.finishTurn(staleTurnSession, turnID)
+	if restored, ok := controller.Session(staleTurnSession.RoomID, staleTurnSession.AgentSessionID); ok {
+		t.Fatalf("late turn finish restored closed session: %#v", restored)
+	}
+}
+
 func TestControllerFinishTurnReconcilesCreatedStatusToReady(t *testing.T) {
 	t.Parallel()
 

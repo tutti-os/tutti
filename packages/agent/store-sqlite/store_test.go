@@ -756,10 +756,10 @@ func TestStoreWorkspaceExistsCallbackGatesWrites(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("ReportSessionState(known) error = %v", err)
 	}
-	if _, _, err := store.ListWorkspaceGeneratedFiles(ctx, ListWorkspaceGeneratedFilesInput{
-		WorkspaceID: "ws-unknown",
+	if _, _, err := store.ListWorkspaceGeneratedFileTurns(ctx, ListWorkspaceGeneratedFileTurnsInput{
+		WorkspaceID: "ws-unknown", SectionKey: RailSectionKeyConversations,
 	}); !errors.Is(err, errTestWorkspaceNotFound) {
-		t.Fatalf("ListWorkspaceGeneratedFiles(unknown) error = %v, want workspace not found", err)
+		t.Fatalf("ListWorkspaceGeneratedFileTurns(unknown) error = %v, want workspace not found", err)
 	}
 }
 

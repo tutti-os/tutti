@@ -76,6 +76,7 @@ export class AgentMentionSearchController extends AgentMentionSearchControllerBa
       workspaceId: this.activeWorkspaceId,
       currentUserId: this.currentUserId,
       query: this.currentQuery,
+      sectionKey: this.currentSectionKey,
       sessionCwd: this.currentSessionCwd
     });
   }
@@ -92,6 +93,7 @@ export class AgentMentionSearchController extends AgentMentionSearchControllerBa
     workspaceId: string;
     currentUserId?: string | null;
     query: string;
+    sectionKey?: string | null;
     sessionCwd?: string | null;
   }): void {
     if (this.disposed) {
@@ -99,6 +101,7 @@ export class AgentMentionSearchController extends AgentMentionSearchControllerBa
     }
     this.activeWorkspaceId = input.workspaceId.trim();
     this.currentUserId = input.currentUserId?.trim() ?? "";
+    this.currentSectionKey = input.sectionKey?.trim() ?? "";
     this.currentSessionCwd = input.sessionCwd?.trim() ?? "";
     this.currentQuery = normalizeQuery(input.query);
     this.clearTimer();
@@ -146,6 +149,7 @@ export class AgentMentionSearchController extends AgentMentionSearchControllerBa
         requestId,
         filter: this.currentFilter,
         provenanceFilter: this.currentProvenanceFilter,
+        sectionKey: this.currentSectionKey,
         sessionCwd: this.currentSessionCwd,
         abortSignal
       });
@@ -198,6 +202,7 @@ export class AgentMentionSearchController extends AgentMentionSearchControllerBa
       requestId,
       filter,
       provenanceFilter: this.currentProvenanceFilter,
+      sectionKey: this.currentSectionKey,
       sessionCwd: this.currentSessionCwd,
       abortSignal
     });
@@ -206,6 +211,7 @@ export class AgentMentionSearchController extends AgentMentionSearchControllerBa
   preloadBrowse(input: {
     workspaceId: string;
     currentUserId?: string | null;
+    sectionKey?: string | null;
     sessionCwd?: string | null;
     filter?: AgentMentionFilterId;
   }): void {
@@ -218,10 +224,11 @@ export class AgentMentionSearchController extends AgentMentionSearchControllerBa
     }
     const filter = input.filter ?? DEFAULT_AGENT_MENTION_FILTER;
     const currentUserId = input.currentUserId?.trim() ?? "";
+    const sectionKey = input.sectionKey?.trim() ?? "";
     const sessionCwd = input.sessionCwd?.trim() ?? "";
     const provenanceFilter = this.currentProvenanceFilter;
     const cacheKey = this.browseCacheKey(
-      { currentUserId, filter, sessionCwd, workspaceId },
+      { currentUserId, filter, sectionKey, sessionCwd, workspaceId },
       provenanceFilter
     );
     if (this.readBrowseCache(cacheKey).isFresh) {
@@ -243,6 +250,7 @@ export class AgentMentionSearchController extends AgentMentionSearchControllerBa
         currentUserId,
         filter,
         provenanceFilter,
+        sectionKey,
         sessionCwd,
         workspaceId
       });
@@ -254,6 +262,7 @@ export class AgentMentionSearchController extends AgentMentionSearchControllerBa
     currentUserId: string;
     filter: AgentMentionFilterId;
     provenanceFilter: ReferenceProvenanceFilter | null;
+    sectionKey: string;
     sessionCwd: string;
     workspaceId: string;
   }): void {
@@ -262,6 +271,7 @@ export class AgentMentionSearchController extends AgentMentionSearchControllerBa
       currentUserId,
       filter,
       provenanceFilter,
+      sectionKey,
       sessionCwd,
       workspaceId
     } = input;
@@ -287,6 +297,7 @@ export class AgentMentionSearchController extends AgentMentionSearchControllerBa
         workspaceId,
         currentUserId,
         filter,
+        sectionKey,
         sessionCwd
       },
       cacheKey,
@@ -427,6 +438,7 @@ export class AgentMentionSearchController extends AgentMentionSearchControllerBa
         requestId,
         filter: this.currentFilter,
         provenanceFilter: this.currentProvenanceFilter,
+        sectionKey: this.currentSectionKey,
         sessionCwd: this.currentSessionCwd,
         abortSignal
       });
@@ -498,6 +510,7 @@ export class AgentMentionSearchController extends AgentMentionSearchControllerBa
     const requestId = this.requestId;
     const workspaceId = this.activeWorkspaceId;
     const currentUserId = this.currentUserId;
+    const sectionKey = this.currentSectionKey;
     const sessionCwd = this.currentSessionCwd;
     const provenanceFilter = this.currentProvenanceFilter;
     const query = this.currentQuery;
@@ -528,6 +541,7 @@ export class AgentMentionSearchController extends AgentMentionSearchControllerBa
               query,
               cursor,
               pageSize: DEFAULT_MENTION_GROUP_PAGE_SIZE,
+              sectionKey,
               sessionCwd,
               abortSignal,
               provenanceFilter
@@ -574,6 +588,7 @@ export class AgentMentionSearchController extends AgentMentionSearchControllerBa
                 workspaceId,
                 currentUserId,
                 filter,
+                sectionKey,
                 sessionCwd
               },
               provenanceFilter
@@ -642,6 +657,7 @@ export class AgentMentionSearchController extends AgentMentionSearchControllerBa
 export function preloadAgentMentionBrowse(input: {
   workspaceId: string;
   currentUserId?: string | null;
+  sectionKey?: string | null;
   sessionCwd?: string | null;
   contextMentionProviders?: readonly AgentContextMentionProvider[];
   filter?: AgentMentionFilterId;
@@ -652,6 +668,7 @@ export function preloadAgentMentionBrowse(input: {
   controller.preloadBrowse({
     workspaceId: input.workspaceId,
     currentUserId: input.currentUserId,
+    sectionKey: input.sectionKey,
     sessionCwd: input.sessionCwd,
     filter: input.filter
   });

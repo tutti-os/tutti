@@ -9,10 +9,10 @@ import {
 } from "@tutti-os/agent-activity-core";
 import {
   buildWorkspaceAgentActivityListViewModel as buildCanonicalWorkspaceAgentActivityListViewModel,
-  collectWorkspaceAgentGeneratedFiles,
   reuseWorkspaceAgentActivityListViewModelIfUnchanged,
   type WorkspaceAgentActivityCard
 } from "./workspaceAgentActivityListViewModel";
+import { collectWorkspaceAgentGeneratedFiles } from "./workspaceAgentGeneratedFiles";
 
 type TestAgentActivitySessionInput = Omit<
   AgentActivitySessionInput,

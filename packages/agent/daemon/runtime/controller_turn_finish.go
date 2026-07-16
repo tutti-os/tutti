@@ -15,7 +15,12 @@ func (c *Controller) finishTurn(session Session, turnID string) {
 	if active, ok := c.turns[key]; ok && active.turnID == turnID {
 		delete(c.turns, key)
 	}
-	if current, ok := c.sessions[key]; ok && sessionHasDifferentLiveTurn(current, turnID) {
+	current, ok := c.sessions[key]
+	if !ok {
+		c.mu.Unlock()
+		return
+	}
+	if sessionHasDifferentLiveTurn(current, turnID) {
 		c.mu.Unlock()
 		return
 	}

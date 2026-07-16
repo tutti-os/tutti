@@ -12,7 +12,10 @@ import {
   AgentMentionSearchController,
   type AgentMentionSearchState
 } from "./AgentMentionSearchController";
-import { agentMentionItemKey } from "./AgentFileMentionPalette";
+import {
+  agentMentionItemKey,
+  isAgentMentionItemDisabled
+} from "./AgentFileMentionPalette";
 import { DEFAULT_AGENT_MENTION_FILTER } from "./agentMentionSearchHelpers";
 import { type AgentFileMentionSuggestionState } from "./agentRichText/agentFileMentionExtension";
 import { formatSlashStatusTokenCount } from "./AgentSlashStatusPanel";
@@ -210,6 +213,8 @@ export function AgentComposer(props: AgentComposerProps): React.JSX.Element {
   );
   const selectedProjectPath =
     composerSettings.selectedProjectPath?.trim() ?? "";
+  const selectedProjectSectionKey =
+    composerSettings.selectedProjectSectionKey?.trim() ?? "";
   const previousSelectedProjectPathRef = useRef(selectedProjectPath);
   const [mentionSearchState, setMentionSearchState] =
     useState<AgentMentionSearchState>({
@@ -317,7 +322,8 @@ export function AgentComposer(props: AgentComposerProps): React.JSX.Element {
         state: mentionSearchState,
         currentKey: null,
         preferredKey,
-        getItemKey: agentMentionItemKey
+        getItemKey: agentMentionItemKey,
+        isItemDisabled: isAgentMentionItemDisabled
       });
       autoMentionHighlightedKeyRef.current = nextKey;
       setMentionHighlightedKey(nextKey);
@@ -328,7 +334,8 @@ export function AgentComposer(props: AgentComposerProps): React.JSX.Element {
       const nextKey = repairMentionPaletteHighlight({
         state: mentionSearchState,
         currentKey: current,
-        getItemKey: agentMentionItemKey
+        getItemKey: agentMentionItemKey,
+        isItemDisabled: isAgentMentionItemDisabled
       });
       if (
         nextKey === current &&
@@ -459,6 +466,7 @@ export function AgentComposer(props: AgentComposerProps): React.JSX.Element {
     workspaceId,
     currentUserId,
     selectedProjectPath,
+    selectedProjectSectionKey,
     draftContent,
     fileMentionSuggestion,
     setFileMentionSuggestion,
@@ -599,6 +607,7 @@ export function AgentComposer(props: AgentComposerProps): React.JSX.Element {
     disabledReason,
     placeholder,
     selectedProjectPath,
+    selectedProjectSectionKey,
     previousSelectedProjectPathRef,
     setIsSelectedProjectMissing,
     fileMentionSuggestion,

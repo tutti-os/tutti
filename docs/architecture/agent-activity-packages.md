@@ -27,9 +27,30 @@ packages/agent/activity-core
 
 packages/agent/gui
   @tutti-os/agent-gui
+
+packages/agent/activity-replication
+  github.com/tutti-os/tutti/packages/agent/activity-replication
 ```
 
 ## Responsibilities
+
+### `packages/agent/activity-replication`
+
+`activity-replication` is the versioned Go wire contract for projecting an
+owner-local canonical activity store into a cloud read model. It owns batch,
+mutation, entity-key, scope, and snapshot JSON shapes; structural validation;
+duplicate and stale acknowledgement semantics; and backend-neutral
+conformance fixtures. Source/projection and sink/acknowledgement harnesses are
+separate: the SQLite canonical store runs the source fixtures in this
+repository, while external builders and MySQL sinks consume the matching side
+of the same wire cases.
+
+It imports the canonical activity vocabulary from
+`packages/agent/store-sqlite/canonical`; it must not redefine turn phase,
+outcome, origin, interaction kind, or interaction status values. It contains
+no SQL, transport, authorization, WebSocket, GUI state, or local command-state
+upserts. Legacy command-state entity names remain decodable only for projection
+tombstone deletes.
 
 ### `@tutti-os/agent-activity-core`
 
@@ -99,6 +120,15 @@ Every daemon `WorkspaceAgentSession` response carries the persisted membership
 as required `railSectionKey`. The desktop adapter rejects a missing or blank
 value as a protocol contract error; it must not manufacture `conversations` or
 derive a project key from `cwd`.
+Agent-generated-file search follows the same membership contract. The daemon
+reads a bounded window of recently settled `Turn.fileChanges` snapshots,
+joins them to non-deleted sessions by exact required `sectionKey`, and combines
+file state in Go. The desktop provider passes the active conversation's
+`railSectionKey`, the selected project's persisted `sectionKey`, or the fixed
+`conversations` key. It fails closed when that identity is unavailable.
+Neither the daemon nor the renderer maintains a generated-file projection or
+scans activity messages as a fallback, and pre-contract history is not
+backfilled from messages.
 The session service synchronously persists and reads back the initial runtime
 session before returning a successful Create response, so the response never
 races the runtime's asynchronous activity reporter. The store assigns

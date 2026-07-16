@@ -25,11 +25,10 @@ const (
 
 type ListSessionMessagesInput = agentstore.ListSessionMessagesInput
 
-type ListWorkspaceGeneratedFilesInput = agentstore.ListWorkspaceGeneratedFilesInput
-
-type GeneratedFile = agentstore.GeneratedFile
-
-type GeneratedFileList = agentstore.GeneratedFileList
+type ListWorkspaceGeneratedFileTurnsInput = agentstore.ListWorkspaceGeneratedFileTurnsInput
+type GeneratedFileTurnChange = agentstore.GeneratedFileTurnChange
+type GeneratedFileTurn = agentstore.GeneratedFileTurn
+type GeneratedFileTurnList = agentstore.GeneratedFileTurnList
 
 type ListSessionSectionInput = agentstore.ListSessionSectionInput
 

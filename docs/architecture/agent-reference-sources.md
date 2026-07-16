@@ -122,12 +122,19 @@ pagination.
 
 The AgentGUI desktop registry equips its `user-project` and `workspace-file`
 sources with an Agent-generated-file query adapter. With an active Agent
-constraint those sources pass the selected target ids to tuttid, which filters
-persisted sessions before its generated-file scan limit. Agent provenance is
-independent of file-location scope: the adapter must not reinterpret a picker
-`withinNodeId` as an Agent session working directory. Without a constraint the
+constraint those sources pass the selected target ids to tuttid. Tutti first
+combines the bounded recent Turn window for the persisted rail section, then
+applies the selected session target, file-search ranking, and page limit. This
+ordering lets a newer delete from another Agent suppress an older file before
+the Agent filter is applied. The generated-file contract
+requires an exact rail `sectionKey`: project sources resolve it from the
+matching persisted `WorkspaceUserProject.sectionKey`; they must not derive it
+from a path or reinterpret a picker `withinNodeId` as an Agent session working
+directory. Missing section identity fails closed. Without a constraint the
 sources retain the ordinary filesystem browse/search path. Other desktop
-registries do not acquire this capability implicitly.
+registries do not acquire this capability implicitly. Generated-file cursors
+page only within the bounded recent result and may drift when its ten-second
+cache expires; they do not claim exhaustive history.
 
 ## Invariants
 

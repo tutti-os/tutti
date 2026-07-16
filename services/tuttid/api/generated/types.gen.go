@@ -3903,6 +3903,8 @@ type WorkspaceAgentGeneratedFileEntry struct {
 // WorkspaceAgentGeneratedFileListResponse defines model for WorkspaceAgentGeneratedFileListResponse.
 type WorkspaceAgentGeneratedFileListResponse struct {
 	Entries     []WorkspaceAgentGeneratedFileEntry `json:"entries"`
+	HasMore     bool                               `json:"hasMore"`
+	NextCursor  *string                            `json:"nextCursor,omitempty"`
 	WorkspaceId string                             `json:"workspaceId"`
 }
 
@@ -4917,12 +4919,17 @@ type ListCliCapabilitiesParams struct {
 
 // ListWorkspaceAgentGeneratedFilesParams defines parameters for ListWorkspaceAgentGeneratedFiles.
 type ListWorkspaceAgentGeneratedFilesParams struct {
-	Query      *string `form:"query,omitempty" json:"query,omitempty"`
-	SessionCwd *string `form:"sessionCwd,omitempty" json:"sessionCwd,omitempty"`
+	Query *string `form:"query,omitempty" json:"query,omitempty"`
+
+	// SectionKey Persisted conversation-rail section key used to scope generated files. The pinned aggregate key is not accepted.
+	SectionKey string `form:"sectionKey" json:"sectionKey"`
 
 	// AgentTargetIds Optional agent target filters applied before generated-file limiting.
 	AgentTargetIds *[]string `form:"agentTargetIds,omitempty" json:"agentTargetIds,omitempty"`
-	Limit          *int      `form:"limit,omitempty" json:"limit,omitempty"`
+
+	// Cursor Opaque cursor for the next page within the bounded recent generated-file result.
+	Cursor *string `form:"cursor,omitempty" json:"cursor,omitempty"`
+	Limit  *int    `form:"limit,omitempty" json:"limit,omitempty"`
 }
 
 // ListWorkspaceAgentSessionSectionsParams defines parameters for ListWorkspaceAgentSessionSections.

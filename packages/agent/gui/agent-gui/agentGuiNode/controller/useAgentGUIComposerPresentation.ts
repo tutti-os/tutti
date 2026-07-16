@@ -12,6 +12,7 @@ import type {
 } from "../../../shared/agentSessionTypes";
 import type { AgentGUINodeData, AgentGUIProvider } from "../../../types";
 import type { AgentGUIConversationSummary } from "../model/agentGuiConversationModel";
+import type { AgentGUIConversationUserProject } from "../model/agentGuiConversationProjectResolver";
 import type { AgentGUIComposerSettingsVM } from "../model/agentGuiNodeTypes";
 import { slashCommandPolicyFromComposerOptions } from "../model/agentSlashCommandProviderPolicy";
 import { composerSettingsSupportFromOptions } from "../model/composerSettingsSupport";
@@ -65,6 +66,7 @@ interface UseAgentGUIComposerPresentationInput {
   providerComposerOptions: AgentActivityComposerOptions | null;
   selectedComposerTargetData: AgentGUIComposerTargetData;
   selectedProjectPath: string | null;
+  userProjects: readonly AgentGUIConversationUserProject[];
   setDraftSettingsBySessionId: Dispatch<
     SetStateAction<Record<string, AgentSessionComposerSettings>>
   >;
@@ -287,6 +289,13 @@ export function useAgentGUIComposerPresentation(
         input.activeConversationId !== null
           ? (input.activeConversation?.cwd ?? null)
           : input.selectedProjectPath,
+      selectedProjectSectionKey:
+        input.activeConversationId !== null
+          ? (input.activeConversation?.railSectionKey ?? null)
+          : resolveSelectedProjectSectionKey(
+              input.selectedProjectPath,
+              input.userProjects
+            ),
       projectLocked: input.activeConversationId !== null,
       projectPathIsRemote: input.agentActivityRuntime.projectPathIsRemote,
       collapseModelOptionsToLatest:
@@ -323,6 +332,7 @@ export function useAgentGUIComposerPresentation(
     draftSettings,
     draftSpeed,
     input.activeConversation?.cwd,
+    input.activeConversation?.railSectionKey,
     input.activeConversationId,
     input.agentActivityRuntime.projectPathIsRemote,
     input.composerSupport,
@@ -330,6 +340,7 @@ export function useAgentGUIComposerPresentation(
     input.composerTargetProvider,
     input.providerComposerOptions,
     input.selectedProjectPath,
+    input.userProjects,
     presentedReasoningEffort,
     sessionSettings
   ]);
@@ -342,4 +353,19 @@ export function useAgentGUIComposerPresentation(
     sessionSettings,
     stableComposerSettings: useStableComposerSettingsVM(composerSettings)
   };
+}
+
+function resolveSelectedProjectSectionKey(
+  selectedProjectPath: string | null,
+  userProjects: readonly AgentGUIConversationUserProject[]
+): string | null {
+  const projectPath = selectedProjectPath?.trim() ?? "";
+  if (!projectPath) {
+    return "conversations";
+  }
+  return (
+    userProjects
+      .find((project) => project.path.trim() === projectPath)
+      ?.sectionKey?.trim() || null
+  );
 }

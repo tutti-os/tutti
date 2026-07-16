@@ -6,7 +6,11 @@
 // target normalization) are injected through Options.
 package storesqlite
 
-import "context"
+import (
+	"context"
+
+	"github.com/tutti-os/tutti/packages/agent/store-sqlite/canonical"
+)
 
 // Repository is the public persistence contract for agent activity.
 // All methods are scoped by a host-defined workspace ID.
@@ -29,7 +33,7 @@ type Repository interface {
 	ListSessionSectionDeletionCandidates(context.Context, ListSessionSectionDeletionCandidatesInput) (SessionSectionDeletionCandidates, bool, error)
 	ListSessionTurns(context.Context, string, string) ([]Turn, error)
 	ListSessions(context.Context, string) ([]Session, bool, error)
-	ListWorkspaceGeneratedFiles(context.Context, ListWorkspaceGeneratedFilesInput) (GeneratedFileList, bool, error)
+	ListWorkspaceGeneratedFileTurns(context.Context, ListWorkspaceGeneratedFileTurnsInput) (GeneratedFileTurnList, bool, error)
 	ListSessionMessages(context.Context, ListSessionMessagesInput) (MessagePage, bool, error)
 	ReportActivityState(context.Context, ActivityStateReport) (ActivityStateReportResult, error)
 	ReportSessionMessages(context.Context, SessionMessageReport) (MessageReportResult, error)
@@ -83,22 +87,30 @@ type ListSessionMessagesInput struct {
 	Order         MessageOrder
 }
 
-type ListWorkspaceGeneratedFilesInput struct {
-	WorkspaceID    string
-	Query          string
-	SessionCwd     string
-	AgentTargetIDs []string
-	Limit          int
-}
-
-type GeneratedFile struct {
-	Path  string
-	Label string
-}
-
-type GeneratedFileList struct {
+type ListWorkspaceGeneratedFileTurnsInput struct {
 	WorkspaceID string
-	Files       []GeneratedFile
+	SectionKey  string
+}
+
+type GeneratedFileTurnChange struct {
+	Path   string
+	Change string
+}
+
+type GeneratedFileTurn struct {
+	AgentSessionID  string
+	AgentTargetID   string
+	TurnID          string
+	CWD             string
+	RailSectionKind string
+	RailProjectPath string
+	SettledAtUnixMS int64
+	Changes         []GeneratedFileTurnChange
+}
+
+type GeneratedFileTurnList struct {
+	WorkspaceID string
+	Turns       []GeneratedFileTurn
 }
 
 type ListSessionSectionInput struct {
@@ -198,8 +210,8 @@ type Session struct {
 }
 
 const (
-	SessionKindRoot  = "root"
-	SessionKindChild = "child"
+	SessionKindRoot  = canonical.SessionKindRoot
+	SessionKindChild = canonical.SessionKindChild
 )
 
 // ActivityStateReport persists the session projection and its optional v2
@@ -226,26 +238,26 @@ type ActivityStateReportResult struct {
 // mirror this list; keep both in sync with the openapi WorkspaceAgentTurnPhase
 // enum.
 const (
-	TurnPhaseSubmitted = "submitted"
-	TurnPhaseRunning   = "running"
-	TurnPhaseWaiting   = "waiting"
-	TurnPhaseSettling  = "settling"
-	TurnPhaseSettled   = "settled"
+	TurnPhaseSubmitted = canonical.TurnPhaseSubmitted
+	TurnPhaseRunning   = canonical.TurnPhaseRunning
+	TurnPhaseWaiting   = canonical.TurnPhaseWaiting
+	TurnPhaseSettling  = canonical.TurnPhaseSettling
+	TurnPhaseSettled   = canonical.TurnPhaseSettled
 )
 
 // Closed protocol v2 turn outcome vocabulary; mirrors the openapi
 // WorkspaceAgentTurnOutcome enum.
 const (
-	TurnOutcomeCompleted   = "completed"
-	TurnOutcomeFailed      = "failed"
-	TurnOutcomeCanceled    = "canceled"
-	TurnOutcomeInterrupted = "interrupted"
+	TurnOutcomeCompleted   = canonical.TurnOutcomeCompleted
+	TurnOutcomeFailed      = canonical.TurnOutcomeFailed
+	TurnOutcomeCanceled    = canonical.TurnOutcomeCanceled
+	TurnOutcomeInterrupted = canonical.TurnOutcomeInterrupted
 
-	TurnOriginUserPrompt        = "user_prompt"
-	TurnOriginGoalArm           = "goal_arm"
-	TurnOriginGoalContinuation  = "goal_continuation"
-	TurnOriginProviderInitiated = "provider_initiated"
-	TurnOriginLegacyUnknown     = "legacy_unknown"
+	TurnOriginUserPrompt        = canonical.TurnOriginUserPrompt
+	TurnOriginGoalArm           = canonical.TurnOriginGoalArm
+	TurnOriginGoalContinuation  = canonical.TurnOriginGoalContinuation
+	TurnOriginProviderInitiated = canonical.TurnOriginProviderInitiated
+	TurnOriginLegacyUnknown     = canonical.TurnOriginLegacyUnknown
 )
 
 // Turn is the protocol v2 execution entity inside either a root or child
@@ -283,8 +295,8 @@ type Turn struct {
 }
 
 const (
-	RootProviderTurnPhaseRunning   = "running"
-	RootProviderTurnPhaseCompleted = "completed"
+	RootProviderTurnPhaseRunning   = canonical.RootProviderTurnPhaseRunning
+	RootProviderTurnPhaseCompleted = canonical.RootProviderTurnPhaseCompleted
 )
 
 type RootProviderTurnTransition struct {
@@ -328,13 +340,13 @@ type TurnTransition struct {
 // Closed protocol v2 interaction vocabulary; mirrors the openapi
 // WorkspaceAgentInteractionKind / WorkspaceAgentInteractionStatus enums.
 const (
-	InteractionKindApproval = "approval"
-	InteractionKindQuestion = "question"
-	InteractionKindPlan     = "plan"
+	InteractionKindApproval = canonical.InteractionKindApproval
+	InteractionKindQuestion = canonical.InteractionKindQuestion
+	InteractionKindPlan     = canonical.InteractionKindPlan
 
-	InteractionStatusPending    = "pending"
-	InteractionStatusAnswered   = "answered"
-	InteractionStatusSuperseded = "superseded"
+	InteractionStatusPending    = canonical.InteractionStatusPending
+	InteractionStatusAnswered   = canonical.InteractionStatusAnswered
+	InteractionStatusSuperseded = canonical.InteractionStatusSuperseded
 )
 
 // Interaction is the protocol v2 interaction entity: an agent-initiated

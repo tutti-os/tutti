@@ -97,6 +97,7 @@ export class AgentMentionSearchControllerBase {
   protected currentFilter: AgentMentionFilterId = DEFAULT_AGENT_MENTION_FILTER;
   protected currentQuery = "";
   protected currentSessionCwd = "";
+  protected currentSectionKey = "";
   protected currentProvenanceFilter: ReferenceProvenanceFilter | null = null;
   protected currentProvenanceCatalog: ReferenceProvenanceCatalog | null = null;
   protected currentFileSearchLimit: number;
@@ -148,6 +149,7 @@ export class AgentMentionSearchControllerBase {
     const cacheKey = this.browseCacheKey({
       currentUserId: this.currentUserId,
       filter,
+      sectionKey: this.currentSectionKey,
       sessionCwd: this.currentSessionCwd,
       workspaceId: this.activeWorkspaceId
     });
@@ -191,6 +193,7 @@ export class AgentMentionSearchControllerBase {
       currentUserId: this.currentUserId,
       requestId,
       filter,
+      sectionKey: this.currentSectionKey,
       sessionCwd: this.currentSessionCwd,
       abortSignal
     });
@@ -203,6 +206,7 @@ export class AgentMentionSearchControllerBase {
     requestId: number;
     filter: AgentMentionFilterId;
     provenanceFilter: ReferenceProvenanceFilter | null;
+    sectionKey: string;
     sessionCwd: string;
     abortSignal?: AbortSignal;
   }): Promise<void> {
@@ -215,6 +219,7 @@ export class AgentMentionSearchControllerBase {
           currentUserId: input.currentUserId,
           query: input.query,
           filter: input.filter,
+          sectionKey: input.sectionKey,
           sessionCwd: input.sessionCwd,
           includeAgentGeneratedFiles: false
         },
@@ -297,6 +302,7 @@ export class AgentMentionSearchControllerBase {
     currentUserId: string;
     requestId: number;
     filter: AgentMentionFilterId;
+    sectionKey: string;
     sessionCwd: string;
     abortSignal: AbortSignal;
   }): Promise<void> {
@@ -400,6 +406,7 @@ export class AgentMentionSearchControllerBase {
       workspaceId: string;
       currentUserId: string;
       filter: AgentMentionFilterId;
+      sectionKey: string;
       sessionCwd: string;
     },
     provenanceFilter: ReferenceProvenanceFilter | null = this
@@ -478,6 +485,7 @@ export class AgentMentionSearchControllerBase {
     query: string;
     limit?: number;
     sessionCwd?: string;
+    sectionKey?: string;
     provenanceFilter: ReferenceProvenanceFilter | null;
     abortSignal?: AbortSignal;
   }): Promise<AgentContextMentionItem[]> {
@@ -497,6 +505,7 @@ export class AgentMentionSearchControllerBase {
               currentUserId: input.currentUserId,
               query: input.query,
               limit: input.limit,
+              sectionKey: input.sectionKey ?? this.currentSectionKey,
               sessionCwd: input.sessionCwd ?? this.currentSessionCwd,
               abortSignal,
               provenanceFilter: input.provenanceFilter
@@ -514,6 +523,7 @@ export class AgentMentionSearchControllerBase {
     query: string;
     limit?: number;
     sessionCwd?: string;
+    sectionKey?: string;
     provenanceFilter: ReferenceProvenanceFilter | null;
     abortSignal?: AbortSignal;
   }): Promise<AgentMentionIssueTopicGroup[] | null> {
@@ -536,6 +546,7 @@ export class AgentMentionSearchControllerBase {
           currentUserId: input.currentUserId,
           query: input.query,
           limit: input.limit,
+          sectionKey: input.sectionKey ?? this.currentSectionKey,
           sessionCwd: input.sessionCwd ?? this.currentSessionCwd,
           abortSignal,
           provenanceFilter: input.provenanceFilter
@@ -688,6 +699,7 @@ export class AgentMentionSearchControllerBase {
       workspaceId: string;
       currentUserId: string;
       filter: AgentMentionFilterId;
+      sectionKey: string;
       sessionCwd: string;
     },
     provenanceFilter: ReferenceProvenanceFilter | null = this
@@ -717,6 +729,7 @@ export class AgentMentionSearchControllerBase {
       workspaceId: string;
       currentUserId: string;
       filter: AgentMentionFilterId;
+      sectionKey: string;
       sessionCwd: string;
     },
     cacheKey: string,
@@ -744,6 +757,7 @@ export class AgentMentionSearchControllerBase {
       currentUserId: string;
       query: string;
       filter: AgentMentionFilterId;
+      sectionKey: string;
       sessionCwd: string;
       includeAgentGeneratedFiles: boolean;
     },

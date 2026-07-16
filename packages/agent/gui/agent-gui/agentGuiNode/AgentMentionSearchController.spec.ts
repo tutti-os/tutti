@@ -33,6 +33,7 @@ interface TestAgentTargetMentionItem {
   iconUrl?: string;
   name: string;
   provider: string;
+  status?: string;
   targetId: string;
   workspaceId: string;
 }
@@ -126,6 +127,7 @@ function createTestAgentGeneratedFileProvider(
         workspaceId: context?.metadata?.workspaceId,
         query: keyword,
         limit: maxResults,
+        sectionKey: context?.metadata?.sectionKey,
         provenanceFilter: context?.metadata?.referenceProvenanceFilter
       });
       return (result.entries ?? []).map((entry: any) => ({
@@ -240,6 +242,7 @@ function createTestAgentTargetProvider(
           agentProviderId: item.provider,
           description: item.description,
           iconUrl: item.iconUrl,
+          status: item.status,
           subtitle: item.description
         }
       }
@@ -778,6 +781,7 @@ describe("AgentMentionSearchController", () => {
           iconUrl: "tutti://agent/codex.svg",
           name: "Lin's Codex",
           provider: "codex",
+          status: "unavailable",
           targetId: "shared-agent:shared-codex",
           workspaceId: "room-1"
         },
@@ -826,12 +830,24 @@ describe("AgentMentionSearchController", () => {
       agentOptions: [
         {
           id: "shared-agent:shared-codex",
-          label: "Lin · Codex"
+          label: "Lin · Codex",
+          parentMemberId: "user-lin"
         },
-        { id: "local:codex", label: "Me · Codex" },
-        { id: "local:claude-code", label: "Me · Claude Code" }
+        {
+          id: "local:codex",
+          label: "Me · Codex",
+          parentMemberId: "user-current"
+        },
+        {
+          id: "local:claude-code",
+          label: "Me · Claude Code",
+          parentMemberId: "user-current"
+        }
       ],
-      memberOptions: []
+      memberOptions: [
+        { id: "user-current", label: "Me" },
+        { id: "user-lin", label: "Lin" }
+      ]
     });
 
     controller.setFilter("agent");
@@ -844,34 +860,30 @@ describe("AgentMentionSearchController", () => {
         filter: "agent",
         groups: [
           {
-            id: "agent:shared-agent%3Ashared-codex",
-            label: "Lin · Codex",
+            id: "member:user-current",
+            label: "Me",
+            items: [
+              expect.objectContaining({
+                kind: "agent-target",
+                targetId: "local:codex",
+                agentProviderId: "codex"
+              }),
+              expect.objectContaining({
+                kind: "agent-target",
+                targetId: "local:claude-code"
+              })
+            ]
+          },
+          {
+            id: "member:user-lin",
+            label: "Lin",
             items: [
               expect.objectContaining({
                 kind: "agent-target",
                 targetId: "shared-agent:shared-codex",
                 href: "mention://agent-target/shared-agent:shared-codex?workspaceId=room-1",
-                agentProviderId: "codex"
-              })
-            ]
-          },
-          {
-            id: "agent:local%3Acodex",
-            label: "Me · Codex",
-            items: [
-              expect.objectContaining({
-                kind: "agent-target",
-                targetId: "local:codex"
-              })
-            ]
-          },
-          {
-            id: "agent:local%3Aclaude-code",
-            label: "Me · Claude Code",
-            items: [
-              expect.objectContaining({
-                kind: "agent-target",
-                targetId: "local:claude-code"
+                agentProviderId: "codex",
+                availabilityStatus: "unavailable"
               })
             ]
           },
@@ -903,7 +915,7 @@ describe("AgentMentionSearchController", () => {
         status: "ready",
         groups: [
           {
-            id: "agent:shared-agent%3Ashared-codex",
+            id: "member:user-lin",
             items: [
               expect.objectContaining({ targetId: "shared-agent:shared-codex" })
             ]
@@ -1250,6 +1262,42 @@ describe("AgentMentionSearchController", () => {
       ])
     });
     expect(queryFiles).toHaveBeenCalledTimes(1);
+    controller.dispose();
+  });
+
+  it("isolates generated-file browse cache entries by persisted section key", async () => {
+    const queryAgentGeneratedFiles = vi.fn().mockResolvedValue({ entries: [] });
+    const controller = new AgentMentionSearchController({
+      queryAgentGeneratedFiles,
+      queryFiles: vi.fn().mockResolvedValue({ entries: [] })
+    });
+    controller.setFilter("file");
+
+    controller.updateQuery({
+      workspaceId: "room-1",
+      query: "",
+      sectionKey: "project:/workspace/one"
+    });
+    await vi.waitFor(() =>
+      expect(queryAgentGeneratedFiles).toHaveBeenCalledTimes(1)
+    );
+
+    controller.updateQuery({
+      workspaceId: "room-1",
+      query: "",
+      sectionKey: "project:/workspace/two"
+    });
+    await vi.waitFor(() =>
+      expect(queryAgentGeneratedFiles).toHaveBeenCalledTimes(2)
+    );
+    expect(queryAgentGeneratedFiles).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({ sectionKey: "project:/workspace/one" })
+    );
+    expect(queryAgentGeneratedFiles).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({ sectionKey: "project:/workspace/two" })
+    );
     controller.dispose();
   });
 
