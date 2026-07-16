@@ -16,6 +16,7 @@ test("canonical submit availability covers missing, interaction, active, and set
 
   const turn = {
     agentSessionId: "session-1",
+    origin: "user_prompt" as const,
     phase: "running" as const,
     startedAtUnixMs: 1,
     turnId: "turn-1",

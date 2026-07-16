@@ -140,16 +140,19 @@ custom-provider environment allowlist for OpenCode includes `OPENCODE_CONFIG`,
 `OPENCODE_CONFIG_DIR`, `OPENCODE_CONFIG_CONTENT`, and `OPENCODE_PERMISSION`
 so operator-supplied OpenCode config stays explicit and provider-owned.
 OpenCode composer model options and model-specific reasoning variants come from
-`opencode models --verbose` and are cached by the daemon model catalog. An
-empty `variants` object is authoritative: AgentGUI must not expose or submit an
-ACP `effort` value for that model. Do not restore a provider-wide static effort
-list, because OpenCode models use different variant vocabularies (for example
-`max` rather than `xhigh`) and some reasoning-capable models expose no
-selectable variant at all. The provider auth/config watcher invalidates that
-cache when OpenCode's auth marker (`~/.local/share/opencode/auth.json`) or
-configured OpenCode config files change, so local model-list updates refresh
-through the same `agent.model.catalog.invalidated` event path used by Codex and
-Claude Code. OpenCode composer skill options are discovered with slash triggers
+`opencode models --verbose`. Run that command from the composer workspace cwd
+because OpenCode resolves project configuration relative to the current
+directory. OpenCode model lists are not stored in the daemon model-catalog
+cache; each composer-options request observes the current CLI catalog. An empty
+`variants` object is authoritative: AgentGUI must not expose or submit an ACP
+`effort` value for that model. Do not restore a provider-wide static effort list,
+because OpenCode models use different variant vocabularies (for example `max`
+rather than `xhigh`) and some reasoning-capable models expose no selectable
+variant at all. The provider auth/config watcher still publishes the
+`agent.model.catalog.invalidated` event when OpenCode's auth marker
+(`~/.local/share/opencode/auth.json`) or configured OpenCode config files change
+so an open composer refreshes immediately; it does not invalidate an OpenCode
+model-list cache. OpenCode composer skill options are discovered with slash triggers
 from native `.opencode/skills/*/SKILL.md`, Claude-compatible `.claude/skills`,
 agent-compatible `.agents/skills`, global `~/.config/opencode/skills`,
 `~/.claude/skills`, `~/.agents/skills`, and the `OPENCODE_CONFIG_DIR` skills

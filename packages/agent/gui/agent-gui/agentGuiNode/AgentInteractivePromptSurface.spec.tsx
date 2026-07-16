@@ -109,6 +109,54 @@ describe("AgentInteractivePromptSurface", () => {
     });
   });
 
+  it("shows approval reasons and file-change paths below the title", () => {
+    render(
+      <AgentInteractivePromptSurface
+        prompt={{
+          kind: "approval",
+          id: "approval:request-file-change",
+          turnId: "turn-1",
+          requestId: "request-file-change",
+          callId: "request-file-change",
+          title: "Apply file changes",
+          status: "waiting_approval",
+          toolName: "Approval",
+          input: {
+            reason: "Allow these file changes?",
+            grantRoot: "/workspace/session",
+            changes: [
+              { path: "/workspace/session/app.js" },
+              { path: "/workspace/session/styles.css" }
+            ]
+          },
+          options: [
+            {
+              id: "allow_once",
+              label: "Allow once",
+              kind: "allow_once"
+            }
+          ],
+          output: null,
+          occurredAtUnixMs: 1
+        }}
+        isSubmitting={false}
+        onSubmit={vi.fn()}
+        labels={labels}
+      />
+    );
+
+    const lead = screen
+      .getByText("Waiting for your approval")
+      .closest(".agent-gui-conversation__interactive-prompt-lead-content");
+    expect(lead).toHaveTextContent("Allow these file changes?");
+    expect(lead).toHaveTextContent("/workspace/session");
+    expect(screen.getAllByText("/workspace/session")).toHaveLength(1);
+    expect(screen.queryByText("Summary")).toBeNull();
+    expect(screen.queryByText("Path")).toBeNull();
+    expect(screen.getByText("Files")).toBeTruthy();
+    expect(screen.getByText("app.js, styles.css")).toBeTruthy();
+  });
+
   it("clears approval option loading when external submission settles", async () => {
     const onSubmit = vi.fn();
     const prompt = {

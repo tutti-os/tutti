@@ -475,6 +475,27 @@ export function agentComposerDraftDisplayPrompt(
   return parts.join("\n");
 }
 
+export function projectAgentComposerDraftSubmission(input: {
+  draft: AgentComposerDraft;
+  skills: readonly AgentGUIProviderSkillOption[];
+}): {
+  content: AgentPromptContentBlock[];
+  displayPrompt?: string;
+} {
+  const content = agentComposerDraftToPromptContent(input);
+  const explicitDisplayPrompt = agentComposerDraftDisplayPrompt(input.draft);
+  const visibleText = agentComposerDraftSubmittedText(input.draft);
+  const runtimeText = agentPromptContentDisplayText(content);
+  const displayPrompt =
+    explicitDisplayPrompt ??
+    (visibleText !== runtimeText ? visibleText : undefined);
+
+  return {
+    content,
+    ...(displayPrompt ? { displayPrompt } : {})
+  };
+}
+
 function agentPromptFileBlocks(
   content: readonly AgentPromptContentBlock[]
 ): Array<AgentPromptContentBlock & { type: "file" }> {

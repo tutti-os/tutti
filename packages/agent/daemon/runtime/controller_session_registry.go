@@ -154,29 +154,49 @@ func (c *Controller) get(roomID, agentSessionID string) (Session, bool) {
 }
 
 func (c *Controller) acquireLifecycleLock(roomID, agentSessionID string) func() {
+	release, _ := c.acquireLifecycleLockContext(context.Background(), roomID, agentSessionID)
+	return release
+}
+
+func (c *Controller) acquireLifecycleLockContext(ctx context.Context, roomID, agentSessionID string) (func(), error) {
 	if c == nil {
-		return func() {}
+		return func() {}, nil
 	}
 	key := sessionKey(strings.TrimSpace(roomID), strings.TrimSpace(agentSessionID))
 	c.mu.Lock()
 	lock := c.lifecycleLocks[key]
 	if lock == nil {
-		lock = &sessionLifecycleLock{}
+		lock = &sessionLifecycleLock{gate: make(chan struct{}, 1)}
+		lock.gate <- struct{}{}
 		c.lifecycleLocks[key] = lock
 	}
 	lock.refs++
 	c.mu.Unlock()
 
-	lock.mu.Lock()
-	return func() {
-		lock.mu.Unlock()
-		c.mu.Lock()
-		lock.refs--
-		if lock.refs <= 0 && c.lifecycleLocks[key] == lock {
-			delete(c.lifecycleLocks, key)
-		}
-		c.mu.Unlock()
+	select {
+	case <-ctx.Done():
+		c.releaseLifecycleLockReference(key, lock)
+		return func() {}, ctx.Err()
+	case <-lock.gate:
 	}
+	if err := ctx.Err(); err != nil {
+		lock.gate <- struct{}{}
+		c.releaseLifecycleLockReference(key, lock)
+		return func() {}, err
+	}
+	return func() {
+		lock.gate <- struct{}{}
+		c.releaseLifecycleLockReference(key, lock)
+	}, nil
+}
+
+func (c *Controller) releaseLifecycleLockReference(key string, lock *sessionLifecycleLock) {
+	c.mu.Lock()
+	lock.refs--
+	if lock.refs <= 0 && c.lifecycleLocks[key] == lock {
+		delete(c.lifecycleLocks, key)
+	}
+	c.mu.Unlock()
 }
 
 func (c *Controller) findStartSession(

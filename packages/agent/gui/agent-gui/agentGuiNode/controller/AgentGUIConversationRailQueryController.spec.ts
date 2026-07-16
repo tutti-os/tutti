@@ -1,3 +1,4 @@
+import { normalizeAgentActivitySession } from "@tutti-os/agent-activity-core";
 import { describe, expect, it, vi } from "vitest";
 import { createTestAgentSessionEngine } from "../../../shared/testing/createTestAgentSessionEngine";
 import {
@@ -62,17 +63,44 @@ describe("AgentGUIConversationRailQueryController", () => {
     }
   });
 
-  it("owns the latest rail interaction lock instead of mirroring it in view refs", async () => {
+  it("locks unresolved scopes but keeps same-scope pin refreshes interactive", async () => {
     const engine = createTestAgentSessionEngine();
-    let resolveSections!: () => void;
+    const session = normalizeAgentActivitySession({
+      activeTurnId: null,
+      agentSessionId: "session-1",
+      agentTargetId: "local:codex",
+      cwd: "/workspace",
+      latestTurnInteractions: [],
+      pendingInteractions: [],
+      provider: "codex",
+      title: "Session",
+      updatedAtUnixMs: 1,
+      workspaceId: "test-workspace"
+    });
+    const sectionResolvers: Array<() => void> = [];
+    const diagnosticLogger = vi.fn();
     const controller = new AgentGUIConversationRailQueryController({
+      diagnosticLogger,
+      diagnosticSlowThresholdMs: 0,
       engine,
       getActiveConversationId: () => null,
       runtime: {
         listSessionSections: (input) =>
           new Promise((resolve) => {
-            resolveSections = () =>
-              resolve({ sections: [], workspaceId: input.workspaceId });
+            sectionResolvers.push(() =>
+              resolve({
+                sections: [
+                  {
+                    hasMore: false,
+                    kind: "conversations",
+                    sectionKey: "conversations",
+                    sessions: [session],
+                    totalCount: 1
+                  }
+                ],
+                workspaceId: input.workspaceId
+              })
+            );
           }),
         listSessionSectionPage: async (input) => ({
           hasMore: false,
@@ -99,13 +127,46 @@ describe("AgentGUIConversationRailQueryController", () => {
     const detach = controller.attach();
     expect(controller.isInteractionLocked()).toBe(true);
 
-    controller.setSearchQuery("active search");
-    expect(controller.isInteractionLocked()).toBe(false);
-
-    resolveSections();
+    sectionResolvers.shift()?.();
     await vi.waitFor(() =>
       expect(controller.getSnapshot().runtimeRailSectionsPending).toBe(false)
     );
+    expect(controller.isInteractionLocked()).toBe(false);
+
+    engine.dispatch({
+      type: "session/upserted",
+      session: {
+        ...session,
+        pinnedAtUnixMs: 100,
+        updatedAtUnixMs: 2
+      }
+    });
+    expect(controller.getSnapshot().runtimeRailSectionsPending).toBe(true);
+    expect(controller.getSnapshot().runtimeRailMemberships).toHaveLength(1);
+    expect(controller.isInteractionLocked()).toBe(false);
+
+    sectionResolvers.shift()?.();
+    await vi.waitFor(() =>
+      expect(controller.getSnapshot().runtimeRailSectionsPending).toBe(false)
+    );
+    expect(diagnosticLogger).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        refreshReason: "membership_change",
+        returnedSessionCount: 1
+      })
+    );
+
+    controller.configure({
+      conversationFilter: {
+        agentTargetId: "local:claude-code",
+        kind: "agentTarget"
+      },
+      previewMode: false,
+      sectionAgentTargetFallbackId: null,
+      userProjects: []
+    });
+    expect(controller.isInteractionLocked()).toBe(true);
+
     detach();
     engine.dispose();
   });
@@ -295,8 +356,9 @@ describe("AgentGUIConversationRailQueryController", () => {
         event: "agent_gui.conversation_rail.first_pages_slow",
         requestId: 2,
         requestMs: 300,
+        refreshReason: "attach",
+        returnedSessionCount: 0,
         sectionCount: 2,
-        sessionCount: 0,
         status: "ready",
         workspaceId: "test-workspace"
       },
@@ -362,8 +424,9 @@ describe("AgentGUIConversationRailQueryController", () => {
       event: "agent_gui.conversation_rail.first_pages_failed",
       requestId: 4,
       requestMs: 20,
+      refreshReason: "attach",
+      returnedSessionCount: 0,
       sectionCount: 0,
-      sessionCount: 0,
       status: "error",
       workspaceId: "test-workspace"
     });

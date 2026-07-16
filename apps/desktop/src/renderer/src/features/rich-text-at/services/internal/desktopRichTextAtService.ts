@@ -15,8 +15,7 @@ import {
 import type { RichTextTriggerProvider } from "@tutti-os/ui-rich-text/types";
 import {
   tuttiFileAssetUrls,
-  tuttiFolderAssetUrls,
-  tuttiIssueAssetUrls
+  tuttiFolderAssetUrls
 } from "../../../../../../shared/tuttiAssetProtocol.ts";
 import type { IAgentsService } from "../../../workspace-agent/services/agentsService.interface";
 import { resolveDesktopWorkspaceAppDefaultIconUrl } from "../../../../../../shared/workspaceAppIconDefaults.ts";
@@ -42,6 +41,7 @@ import {
   scopeString,
   type DesktopRichTextAtContributor
 } from "./desktopRichTextAtMentionSupport.ts";
+import { createWorkspaceIssueAtContributor } from "./desktopWorkspaceIssueAtContributor.ts";
 
 export interface DesktopRichTextAtServiceDependencies {
   agentsService?: Pick<IAgentsService, "load">;
@@ -67,16 +67,6 @@ interface WorkspaceFileAtItem {
   kind?: "directory" | "file" | (string & {});
   name?: string | null;
   path: string;
-}
-
-interface WorkspaceIssueAtItem {
-  content?: string | null;
-  creatorDisplayName?: string | null;
-  issueId: string;
-  status?: string | null;
-  title: string;
-  topicId: string;
-  workspaceId: string;
 }
 
 interface WorkspaceAppAtItem {
@@ -111,8 +101,7 @@ interface BuiltInWorkspaceAppResource {
 const {
   agentSession: AGENT_SESSION_PROVIDER_ID,
   file: FILE_PROVIDER_ID,
-  workspaceApp: WORKSPACE_APP_PROVIDER_ID,
-  workspaceIssue: WORKSPACE_ISSUE_PROVIDER_ID
+  workspaceApp: WORKSPACE_APP_PROVIDER_ID
 } = AGENT_CONTEXT_MENTION_PROVIDER_IDS;
 
 export class DesktopRichTextAtService implements IDesktopRichTextAtService {
@@ -614,146 +603,4 @@ function workspaceFileIconUrl(item: WorkspaceFileAtItem): string {
   return item.kind === "directory"
     ? tuttiFolderAssetUrls.default
     : tuttiFileAssetUrls.default;
-}
-
-function createWorkspaceIssueAtContributor(
-  tuttidClient: TuttidClient
-): DesktopRichTextAtContributor {
-  return {
-    capability: "workspace-issue",
-    getProviders(input) {
-      return [
-        createRichTextTriggerProvider<WorkspaceIssueAtItem>({
-          id: WORKSPACE_ISSUE_PROVIDER_ID,
-          trigger: "@",
-          async query(searchInput) {
-            if (searchInput.abortSignal?.aborted) {
-              return [];
-            }
-            const topicResponse = await tuttidClient.listWorkspaceIssueTopics(
-              input.workspaceId
-            );
-            if (searchInput.abortSignal?.aborted) {
-              return [];
-            }
-            const topicId = topicResponse.topics[0]?.topicId;
-            if (!topicId) {
-              return [];
-            }
-            const response = await tuttidClient.listWorkspaceIssues(
-              input.workspaceId,
-              {
-                pageSize: searchInput.maxResults,
-                searchQuery: searchInput.keyword,
-                topicId
-              }
-            );
-            if (searchInput.abortSignal?.aborted) {
-              return [];
-            }
-            const items = response.issues.map(workspaceIssueAtItemFromIssue);
-            const issueId = workspaceIssueIdSearchKeyword(searchInput.keyword);
-            if (!issueId || items.some((item) => item.issueId === issueId)) {
-              return items;
-            }
-            const detail = await getWorkspaceIssueDetailSafely(
-              tuttidClient,
-              input.workspaceId,
-              issueId
-            );
-            if (!detail) {
-              return items;
-            }
-            if (searchInput.abortSignal?.aborted) {
-              return [];
-            }
-            return [workspaceIssueAtItemFromIssue(detail.issue), ...items];
-          },
-          getItemKey: (item) => item.issueId,
-          getItemLabel: (item) => item.title,
-          getItemSubtitle: (item) =>
-            [item.status, item.creatorDisplayName, item.content]
-              .map((value) => value?.trim() ?? "")
-              .filter(Boolean)
-              .join(" · "),
-          getItemIconUrl: () => tuttiIssueAssetUrls.default,
-          toInsertResult(item) {
-            return createDesktopRichTextMentionInsertResult({
-              entityId: item.issueId,
-              label: item.title,
-              scope: compactStringRecord({
-                topicId: item.topicId,
-                workspaceId: item.workspaceId
-              }),
-              presentation: compactMentionPresentation({
-                description: item.content?.trim() ?? "",
-                iconUrl: tuttiIssueAssetUrls.default,
-                status: item.status?.trim() ?? ""
-              })
-            });
-          },
-          async resolveMention(identity) {
-            const workspaceId = scopeString(identity.scope, "workspaceId");
-            if (!workspaceId) {
-              return null;
-            }
-            return resolveMentionSafely(async () => {
-              const response = await tuttidClient.getWorkspaceIssueDetail(
-                workspaceId,
-                identity.entityId
-              );
-              const issue = response.issue;
-              return {
-                label: issue.title,
-                presentation: compactMentionPresentation({
-                  description: issue.content,
-                  iconUrl: tuttiIssueAssetUrls.default,
-                  status: issue.status
-                })
-              };
-            });
-          }
-        })
-      ];
-    }
-  };
-}
-
-async function getWorkspaceIssueDetailSafely(
-  tuttidClient: TuttidClient,
-  workspaceId: string,
-  issueId: string
-): Promise<Awaited<
-  ReturnType<TuttidClient["getWorkspaceIssueDetail"]>
-> | null> {
-  try {
-    return await tuttidClient.getWorkspaceIssueDetail(workspaceId, issueId);
-  } catch {
-    return null;
-  }
-}
-
-function workspaceIssueAtItemFromIssue(issue: {
-  content?: string | null;
-  creatorDisplayName?: string | null;
-  issueId: string;
-  status?: string | null;
-  title: string;
-  topicId: string;
-  workspaceId: string;
-}): WorkspaceIssueAtItem {
-  return {
-    content: issue.content,
-    creatorDisplayName: issue.creatorDisplayName,
-    issueId: issue.issueId,
-    status: issue.status,
-    title: issue.title,
-    topicId: issue.topicId,
-    workspaceId: issue.workspaceId
-  };
-}
-
-function workspaceIssueIdSearchKeyword(keyword: string): string | null {
-  const issueId = keyword.trim();
-  return /^issue-[A-Za-z0-9_-]+$/.test(issueId) ? issueId : null;
 }

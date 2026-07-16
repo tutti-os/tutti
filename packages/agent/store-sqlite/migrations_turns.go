@@ -49,6 +49,11 @@ CREATE TABLE IF NOT EXISTS workspace_agent_turns (
   file_changes_json TEXT,
   completed_command_json TEXT,
   backfilled INTEGER NOT NULL DEFAULT 0,
+  turn_origin TEXT NOT NULL DEFAULT 'legacy_unknown'
+    CHECK (turn_origin IN ('user_prompt','goal_arm','goal_continuation','provider_initiated','legacy_unknown')),
+  source_goal_operation_id TEXT,
+  source_goal_revision INTEGER CHECK (source_goal_revision IS NULL OR source_goal_revision >= 0),
+  source_goal_repair_epoch INTEGER CHECK (source_goal_repair_epoch IS NULL OR source_goal_repair_epoch >= 0),
   started_at_unix_ms INTEGER NOT NULL DEFAULT 0,
   settled_at_unix_ms INTEGER,
   created_at_unix_ms INTEGER NOT NULL,
@@ -302,6 +307,9 @@ func (s *Store) applyWorkspaceAgentActivityMessagesV2(ctx context.Context) error
 	if applied {
 		return nil
 	}
+	if err := s.ensureWorkspaceAgentMessageSemanticsColumn(ctx); err != nil {
+		return err
+	}
 
 	return s.rebuildWorkspaceAgentMessagesV2(ctx)
 }
@@ -339,6 +347,7 @@ CREATE TABLE workspace_agent_messages_v2 (
   role TEXT NOT NULL CHECK (length(role) > 0),
   kind TEXT NOT NULL CHECK (length(kind) > 0),
   status TEXT NOT NULL DEFAULT '',
+	semantics_json TEXT NOT NULL DEFAULT 'null' CHECK (json_valid(semantics_json)),
   payload_json TEXT NOT NULL DEFAULT '{}' CHECK (json_valid(payload_json) AND json_type(payload_json) = 'object'),
   occurred_at_unix_ms INTEGER NOT NULL DEFAULT 0 CHECK (occurred_at_unix_ms >= 0),
   started_at_unix_ms INTEGER NOT NULL DEFAULT 0 CHECK (started_at_unix_ms >= 0),
@@ -359,7 +368,7 @@ CREATE TABLE workspace_agent_messages_v2 (
 		if _, err := tx.ExecContext(ctx, `
 INSERT INTO workspace_agent_messages_v2 (
   id, workspace_id, agent_session_id, message_id, version, turn_id, role, kind, status,
-  payload_json, occurred_at_unix_ms, started_at_unix_ms, completed_at_unix_ms,
+  semantics_json, payload_json, occurred_at_unix_ms, started_at_unix_ms, completed_at_unix_ms,
   deleted_at_unix_ms, created_at_unix_ms, updated_at_unix_ms
 )
 SELECT
@@ -376,7 +385,7 @@ SELECT
     ELSE NULL
   END,
   role, kind, status,
-  payload_json, occurred_at_unix_ms, started_at_unix_ms, completed_at_unix_ms,
+  semantics_json, payload_json, occurred_at_unix_ms, started_at_unix_ms, completed_at_unix_ms,
   deleted_at_unix_ms, created_at_unix_ms, updated_at_unix_ms
 FROM workspace_agent_messages
 `); err != nil {

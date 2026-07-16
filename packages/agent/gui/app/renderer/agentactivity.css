@@ -3342,6 +3342,11 @@ aside.workspace-agents-status-panel
   gap: 12px;
 }
 
+.agent-gui-conversation__interactive-prompt-lead-content {
+  display: grid;
+  gap: 4px;
+}
+
 .agent-gui-conversation__interactive-prompt-lead {
   color: var(--text-primary);
   font-size: 15px;

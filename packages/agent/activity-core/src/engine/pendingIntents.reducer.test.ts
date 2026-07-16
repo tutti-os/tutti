@@ -129,6 +129,7 @@ test("an explicit settled turn confirms its accepted submit", () => {
   const turn = {
     turnId: "turn-1",
     agentSessionId: "session-1",
+    origin: "user_prompt" as const,
     phase: "settled" as const,
     outcome: "completed" as const,
     startedAtUnixMs: 1,
@@ -162,6 +163,7 @@ test("a late successful send result confirms against an already settled turn", (
   const turn = {
     turnId: "turn-1",
     agentSessionId: "session-1",
+    origin: "user_prompt" as const,
     phase: "settled" as const,
     outcome: "completed" as const,
     startedAtUnixMs: 1,
@@ -234,6 +236,88 @@ test("activation intent owns the transport command and confirmation deadline", (
       workspaceId: "workspace-1"
     }
   ]);
+});
+
+test("control activation can carry content without expecting a Turn", () => {
+  const intent = {
+    ...activation(),
+    content: [{ type: "text" as const, text: "/goal ship it" }],
+    initialTurnExpected: false,
+    runtimeContent: [{ type: "text" as const, text: "/goal ship it" }]
+  };
+  const result = reduce(createInitialPendingIntentsState(), intent);
+  const pending = result.state.activationsByRequestId["activation-1"];
+  assert.equal(pending?.initialTurnExpected, false);
+  assert.deepEqual(
+    result.commands.find((command) => command.type === "session/activate"),
+    {
+      agentSessionId: "session-new",
+      agentTargetId: "target-1",
+      clientSubmitId: "submit-new",
+      commandId: "activate:activation-1",
+      correlationId: "activation-1",
+      cwd: "/workspace",
+      initialContent: [{ type: "text", text: "/goal ship it" }],
+      initialDisplayPrompt: "/browser",
+      submitDiagnostics: { submittedAtUnixMs: 1 },
+      mode: "new",
+      settings: { model: "model-1" },
+      timeoutMs: 30_000,
+      title: "New session",
+      type: "session/activate",
+      workspaceId: "workspace-1"
+    }
+  );
+});
+
+test("goal control send result confirms without manufacturing a Turn", () => {
+  const state = reduce(createInitialPendingIntentsState(), submit()).state;
+  const validation = validateSendInputResult(
+    {
+      kind: "goalControl",
+      session: session("session-1"),
+      goal: { objective: "ship it", status: "active" as const }
+    },
+    state.submitsByClientSubmitId["submit-1"]
+  );
+  const result = pendingIntentsReducer(
+    state,
+    {
+      type: "engine/commandResult",
+      commandId: "queue:send:session-1:1",
+      commandType: "queue/sendPrompt",
+      correlationId: "submit-1",
+      outcome: "succeeded"
+    },
+    {
+      deletedSessionIds: {},
+      turnsById: {},
+      sendResultValidation: validation
+    }
+  );
+  assert.equal(
+    result.state.submitsByClientSubmitId["submit-1"]?.status,
+    "confirmed"
+  );
+  assert.equal(result.state.submitsByClientSubmitId["submit-1"]?.turnId, null);
+});
+
+test("malformed turnless goal control result is rejected before session upsert", () => {
+  const state = reduce(createInitialPendingIntentsState(), submit()).state;
+  const validation = validateSendInputResult(
+    {
+      kind: "goalControl",
+      session: {
+        agentSessionId: "session-1",
+        workspaceId: "workspace-1"
+      }
+    },
+    state.submitsByClientSubmitId["submit-1"]
+  );
+  assert.deepEqual(validation, {
+    kind: "invalid",
+    reason: "send_result_entities_missing"
+  });
 });
 
 test("timed out activation remains uncertain until its exact session appears", () => {
@@ -581,6 +665,7 @@ function session(agentSessionId: string) {
 function runningTurn() {
   return {
     agentSessionId: "session-1",
+    origin: "user_prompt" as const,
     phase: "running" as const,
     startedAtUnixMs: 1,
     turnId: "turn-1",

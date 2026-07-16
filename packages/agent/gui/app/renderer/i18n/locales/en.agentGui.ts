@@ -368,6 +368,8 @@ export const enAgentGui = {
   contextPickerBrowseIssueHint: "Type to search tasks in the current room",
   workspaceAppFactoryMentionFallback: "Create app",
   contextPickerExpandMore: "Show {{count}} more",
+  contextPickerLoadMoreLoading: "Loading…",
+  contextPickerLoadMoreRetry: "Load failed. Retry",
   contextPickerCategoryFileDescription: "Search Files and folders",
   contextPickerCategorySessionDescription: "Find agent sessions that I started",
   contextPickerCategoryCollabDescription:

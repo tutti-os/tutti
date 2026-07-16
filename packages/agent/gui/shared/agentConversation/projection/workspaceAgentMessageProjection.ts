@@ -111,7 +111,7 @@ export function projectWorkspaceAgentMessagesToTimelineItems(
       });
     }
 
-    if (kind === "text" && role === "user") {
+    if ((kind === "text" || kind === "session_audit") && role === "user") {
       return messageTimelineItem({
         message,
         id,

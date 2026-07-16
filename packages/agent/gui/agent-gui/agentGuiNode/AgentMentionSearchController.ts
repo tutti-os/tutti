@@ -8,18 +8,28 @@ import type { AgentContextMentionItem } from "./agentRichText/agentFileMentionEx
 import type { AgentContextMentionProvider } from "./agentContextMentionProvider";
 import {
   buildBrowseCategories,
+  WORKSPACE_ISSUE_PROVIDER_ID,
   type AgentMentionFilterId,
   type AgentMentionGroupId,
   type AgentMentionSearchListener
 } from "./AgentMentionSearchContracts";
 import {
   scheduleAgentMentionIdleTask,
+  mergeAgentMentionBrowseIssueGroupPage,
   MAX_BROWSE_CACHE_ENTRIES,
   resetAgentMentionSearchBrowseCacheForTests
 } from "./AgentMentionSearchCache";
 import { diagnosticErrorKind } from "./AgentMentionSearchModel";
+import {
+  queryAgentMentionProviderWithDiagnostics,
+  type AgentMentionProviderQueryDiagnostic
+} from "./agentMentionSearchDiagnostics";
+import { queryAgentMentionProviderGroupPage } from "./AgentMentionSearchIndex";
 import { AgentMentionSearchControllerBase } from "./AgentMentionSearchControllerBase";
-import type { ReferenceProvenanceFilter } from "@tutti-os/workspace-file-reference/contracts";
+import type {
+  ReferenceProvenanceCatalog,
+  ReferenceProvenanceFilter
+} from "@tutti-os/workspace-file-reference/contracts";
 import { referenceProvenanceFilterCacheKey } from "@tutti-os/workspace-file-reference/core";
 
 export type {
@@ -32,6 +42,26 @@ export type {
 export { MAX_BROWSE_CACHE_ENTRIES, resetAgentMentionSearchBrowseCacheForTests };
 
 export class AgentMentionSearchController extends AgentMentionSearchControllerBase {
+  private readonly issueLoadMoreRequests = new Map<
+    string,
+    { abortController: AbortController; token: symbol }
+  >();
+
+  setProvenanceCatalog(catalog: ReferenceProvenanceCatalog | null): void {
+    if (this.currentProvenanceCatalog === catalog) return;
+    this.currentProvenanceCatalog = catalog;
+    if (
+      this.currentFilter !== "session" ||
+      (this.state.status !== "ready" && this.state.status !== "loading")
+    ) {
+      return;
+    }
+    this.setState({
+      ...this.state,
+      groups: this.groupsFromRawGroups()
+    });
+  }
+
   setProvenanceFilter(filter: ReferenceProvenanceFilter | null): void {
     const previousKey = this.currentProvenanceFilter
       ? referenceProvenanceFilterCacheKey(this.currentProvenanceFilter)
@@ -72,6 +102,8 @@ export class AgentMentionSearchController extends AgentMentionSearchControllerBa
     this.currentSessionCwd = input.sessionCwd?.trim() ?? "";
     this.currentQuery = normalizeQuery(input.query);
     this.clearTimer();
+    this.abortActiveRequest();
+    this.cancelIssueLoadMoreRequests();
     const requestId = ++this.requestId;
     this.resetAgentGeneratedBrowsePath();
     this.resetExpandedCounts();
@@ -105,13 +137,17 @@ export class AgentMentionSearchController extends AgentMentionSearchControllerBa
       groups: this.groupsFromRawGroups(),
       error: null
     });
+    const abortSignal = this.beginActiveRequest();
     this.timer = this.scheduler.schedule(this.debounceMs, () => {
       void this.runSearch({
         workspaceId: this.activeWorkspaceId,
         currentUserId: this.currentUserId,
         query: this.currentQuery,
         requestId,
-        filter: this.currentFilter
+        filter: this.currentFilter,
+        provenanceFilter: this.currentProvenanceFilter,
+        sessionCwd: this.currentSessionCwd,
+        abortSignal
       });
     });
   }
@@ -122,6 +158,8 @@ export class AgentMentionSearchController extends AgentMentionSearchControllerBa
     }
     this.currentFilter = filter;
     this.clearTimer();
+    this.abortActiveRequest();
+    this.cancelIssueLoadMoreRequests();
     const requestId = ++this.requestId;
     this.resetAgentGeneratedBrowsePath();
     this.resetExpandedCounts();
@@ -152,12 +190,16 @@ export class AgentMentionSearchController extends AgentMentionSearchControllerBa
       groups: this.groupsFromRawGroups(),
       error: null
     });
+    const abortSignal = this.beginActiveRequest();
     void this.runSearch({
       workspaceId: this.activeWorkspaceId,
       currentUserId: this.currentUserId,
       query: this.currentQuery,
       requestId,
-      filter
+      filter,
+      provenanceFilter: this.currentProvenanceFilter,
+      sessionCwd: this.currentSessionCwd,
+      abortSignal
     });
   }
 
@@ -327,6 +369,10 @@ export class AgentMentionSearchController extends AgentMentionSearchControllerBa
   }
 
   expandGroup(groupId: AgentMentionGroupId): void {
+    if (groupId.startsWith("issue-topic:")) {
+      this.loadMoreIssueTopic(groupId as `issue-topic:${string}`);
+      return;
+    }
     const pageSize = mentionGroupPageSize(this.currentFilter, groupId);
     const current = this.expandedCounts[groupId] ?? pageSize;
     this.expandedCounts[groupId] = current + pageSize;
@@ -362,6 +408,7 @@ export class AgentMentionSearchController extends AgentMentionSearchControllerBa
     }
     if (needsMoreFiles || needsMoreIssues) {
       this.clearTimer();
+      this.abortActiveRequest();
       const requestId = ++this.requestId;
       this.setState({
         status: "loading",
@@ -372,12 +419,16 @@ export class AgentMentionSearchController extends AgentMentionSearchControllerBa
         groups: this.groupsFromRawGroups(),
         error: null
       });
+      const abortSignal = this.beginActiveRequest();
       void this.runSearch({
         workspaceId: this.activeWorkspaceId,
         currentUserId: this.currentUserId,
         query: this.currentQuery,
         requestId,
-        filter: this.currentFilter
+        filter: this.currentFilter,
+        provenanceFilter: this.currentProvenanceFilter,
+        sessionCwd: this.currentSessionCwd,
+        abortSignal
       });
       return;
     }
@@ -394,6 +445,8 @@ export class AgentMentionSearchController extends AgentMentionSearchControllerBa
 
   close(): void {
     this.clearTimer();
+    this.abortActiveRequest();
+    this.cancelIssueLoadMoreRequests();
     this.requestId += 1;
     this.currentFilter = DEFAULT_AGENT_MENTION_FILTER;
     this.resetAgentGeneratedBrowsePath();
@@ -415,9 +468,167 @@ export class AgentMentionSearchController extends AgentMentionSearchControllerBa
   dispose(): void {
     this.disposed = true;
     this.clearTimer();
+    this.abortActiveRequest();
+    this.cancelIssueLoadMoreRequests();
     this.cancelPendingPreload();
     this.listeners.clear();
     this.requestId += 1;
+  }
+
+  private loadMoreIssueTopic(groupId: `issue-topic:${string}`): void {
+    const group = this.issueTopicGroups?.find(
+      (candidate) => candidate.id === groupId
+    );
+    const cursor = group?.nextPageToken;
+    const provider = this.contextMentionProviders.get(
+      WORKSPACE_ISSUE_PROVIDER_ID
+    );
+    if (!group || !cursor || !provider?.queryGroupPage) {
+      return;
+    }
+    const requestKey = JSON.stringify({
+      workspaceId: this.activeWorkspaceId,
+      query: this.currentQuery,
+      providerGroupId: group.providerGroupId,
+      cursor
+    });
+    if (this.issueLoadMoreRequests.has(requestKey)) {
+      return;
+    }
+    const requestId = this.requestId;
+    const workspaceId = this.activeWorkspaceId;
+    const currentUserId = this.currentUserId;
+    const sessionCwd = this.currentSessionCwd;
+    const provenanceFilter = this.currentProvenanceFilter;
+    const query = this.currentQuery;
+    const filter = this.currentFilter;
+    const abortController = new AbortController();
+    const requestToken = Symbol(requestKey);
+    group.loadMoreStatus = "loading";
+    group.loadMoreError = null;
+    this.emitIssueTopicGroupsState();
+
+    void (async () => {
+      try {
+        const diagnostics: AgentMentionProviderQueryDiagnostic[] = [];
+        const page = await queryAgentMentionProviderWithDiagnostics({
+          abortSignal: abortController.signal,
+          diagnosticNow: this.diagnosticNow,
+          diagnostics,
+          fallback: null,
+          providerId: WORKSPACE_ISSUE_PROVIDER_ID,
+          providerTimeoutMs: this.providerTimeoutMs,
+          throwOnTimeout: true,
+          query: (abortSignal) =>
+            queryAgentMentionProviderGroupPage({
+              provider,
+              providerGroupId: group.providerGroupId,
+              workspaceId,
+              currentUserId,
+              query,
+              cursor,
+              pageSize: DEFAULT_MENTION_GROUP_PAGE_SIZE,
+              sessionCwd,
+              abortSignal,
+              provenanceFilter
+            }),
+          resultCount: (result) => result?.items.length ?? 0
+        });
+        if (
+          !page ||
+          !this.canApply(requestId, workspaceId, query, filter) ||
+          abortController.signal.aborted
+        ) {
+          return;
+        }
+        const current = this.issueTopicGroups?.find(
+          (candidate) => candidate.id === groupId
+        );
+        if (!current || current.nextPageToken !== cursor) {
+          return;
+        }
+        const seen = new Set(
+          current.items
+            .filter((item) => item.kind === "workspace-issue")
+            .map((item) => item.targetId)
+        );
+        const appended = page.items.filter((item) => {
+          if (item.kind !== "workspace-issue") {
+            return true;
+          }
+          if (seen.has(item.targetId)) {
+            return false;
+          }
+          seen.add(item.targetId);
+          return true;
+        });
+        current.items = [...current.items, ...appended];
+        current.totalCount = Math.max(page.totalCount, current.items.length);
+        current.nextPageToken = page.nextPageToken;
+        current.loadMoreStatus = "idle";
+        current.loadMoreError = null;
+        if (!query) {
+          mergeAgentMentionBrowseIssueGroupPage({
+            cacheKey: this.browseCacheKey(
+              {
+                workspaceId,
+                currentUserId,
+                filter,
+                sessionCwd
+              },
+              provenanceFilter
+            ),
+            group: page,
+            cachedAt: this.diagnosticNow()
+          });
+        }
+        this.emitIssueTopicGroupsState();
+      } catch (error) {
+        if (
+          !this.canApply(requestId, workspaceId, query, filter) ||
+          abortController.signal.aborted
+        ) {
+          return;
+        }
+        const current = this.issueTopicGroups?.find(
+          (candidate) => candidate.id === groupId
+        );
+        if (current?.nextPageToken === cursor) {
+          current.loadMoreStatus = "error";
+          current.loadMoreError =
+            error instanceof Error ? error.message : String(error);
+          this.emitIssueTopicGroupsState();
+        }
+      } finally {
+        const active = this.issueLoadMoreRequests.get(requestKey);
+        if (active?.token === requestToken) {
+          this.issueLoadMoreRequests.delete(requestKey);
+        }
+      }
+    })();
+    this.issueLoadMoreRequests.set(requestKey, {
+      abortController,
+      token: requestToken
+    });
+  }
+
+  private emitIssueTopicGroupsState(): void {
+    this.setState({
+      status: "ready",
+      query: this.currentQuery,
+      mode: this.currentQuery ? "results" : "browse",
+      filter: this.currentFilter,
+      categories: buildBrowseCategories(),
+      groups: this.groupsFromRawGroups(),
+      error: null
+    });
+  }
+
+  private cancelIssueLoadMoreRequests(): void {
+    for (const request of this.issueLoadMoreRequests.values()) {
+      request.abortController.abort();
+    }
+    this.issueLoadMoreRequests.clear();
   }
 }
 

@@ -111,7 +111,8 @@ interface UseAgentGUISubmitInteractionActionsInput {
   startConversation(
     content: AgentPromptContentBlock[],
     displayPrompt?: string,
-    options?: AgentComposerSubmitOptions
+    options?: AgentComposerSubmitOptions,
+    initialTurnExpected?: boolean
   ): AgentGUINewConversationActivationResult | null;
   submitPromptRef: RefObject<
     (
@@ -122,6 +123,35 @@ interface UseAgentGUISubmitInteractionActionsInput {
   >;
   transientConversation: AgentGUIConversationSummary | null;
   workspaceId: string;
+}
+
+export function typedGoalControlFromComposer(
+  content: AgentPromptContentBlock[],
+  _displayPrompt?: string
+): { action: AgentActivityGoalControlAction; objective?: string } | null {
+  if (content.length !== 1 || content[0]?.type !== "text") {
+    return null;
+  }
+  // Structured content owns command semantics. displayPrompt may collapse a
+  // bundle into a chip, but it must neither hide nor manufacture a control.
+  const prompt = (content[0].text ?? "").trim();
+  const match = /^\/goal(?:\s+([\s\S]+))?$/iu.exec(prompt);
+  const args = match?.[1]?.trim() ?? "";
+  if (!match || !args) {
+    return null;
+  }
+  switch (args.toLowerCase()) {
+    case "clear":
+    case "reset":
+      return { action: "clear" };
+    case "pause":
+      return { action: "pause" };
+    case "resume":
+    case "active":
+      return { action: "resume" };
+    default:
+      return { action: "set", objective: args };
+  }
 }
 
 export function useAgentGUISubmitInteractionActions(
@@ -386,12 +416,12 @@ export function useAgentGUISubmitInteractionActions(
     [activation, executePrompt, isSessionMarkedNonResumable, workspaceId]
   );
 
-  // Goal controls act on the thread immediately through the dedicated runtime
-  // API. They must not enter the normal prompt pipeline: doing so creates a
-  // pending submit and pseudo turn that can hide the active turn's stop control
-  // and attach its processing indicator to a control message.
   const goalControl = useCallback(
-    (action: AgentActivityGoalControlAction, objective?: string) => {
+    (
+      action: AgentActivityGoalControlAction,
+      objective?: string,
+      submittedDraftScopeKey?: string
+    ) => {
       if (previewMode) {
         return;
       }
@@ -399,6 +429,16 @@ export function useAgentGUISubmitInteractionActions(
       if (!agentSessionId) {
         return;
       }
+      const submittedDraftSnapshot = submittedDraftScopeKey
+        ? {
+            sourceScopeKey: submittedDraftScopeKey,
+            content: snapshotAgentComposerDraft(
+              draftByScopeKeyRef.current[submittedDraftScopeKey] ??
+                emptyAgentComposerDraft()
+            ),
+            targetAgentSessionId: agentSessionId
+          }
+        : null;
       setDetailError(null);
       void agentActivityRuntime
         .goalControl({
@@ -408,6 +448,16 @@ export function useAgentGUISubmitInteractionActions(
           ...(objective !== undefined ? { objective } : {})
         })
         .then(() => {
+          if (submittedDraftSnapshot) {
+            setDraftByScopeKey((current) => {
+              const next = clearSubmittedDraftIfUnchanged({
+                drafts: current,
+                snapshot: submittedDraftSnapshot
+              });
+              draftByScopeKeyRef.current = next;
+              return next;
+            });
+          }
           if (action !== "clear" || !isCurrentConversation(agentSessionId)) {
             return;
           }
@@ -424,6 +474,7 @@ export function useAgentGUISubmitInteractionActions(
       agentActivityRuntime,
       isCurrentConversation,
       previewMode,
+      setDraftByScopeKey,
       setDetailError,
       setGoalClearNoticeSequence,
       workspaceId
@@ -446,6 +497,10 @@ export function useAgentGUISubmitInteractionActions(
       }
       const displayPromptText =
         displayPrompt && displayPrompt.trim() ? displayPrompt : undefined;
+      const typedGoal = typedGoalControlFromComposer(
+        normalizedContent,
+        displayPromptText
+      );
       if (
         !promptImagesSupported &&
         agentPromptContentHasImage(normalizedContent)
@@ -486,6 +541,14 @@ export function useAgentGUISubmitInteractionActions(
             setActiveConversationId(recoveredAgentSessionId);
             setIntent({ tag: "active", id: recoveredAgentSessionId });
             persistActiveConversation(recoveredAgentSessionId);
+            if (typedGoal) {
+              goalControl(
+                typedGoal.action,
+                typedGoal.objective,
+                resolveAgentComposerDraftScopeKey({})
+              );
+              return;
+            }
             submitExistingPrompt(
               recoveredAgentSessionId,
               normalizedContent,
@@ -506,7 +569,8 @@ export function useAgentGUISubmitInteractionActions(
         const activationResult = startConversation(
           normalizedContent,
           displayPromptText,
-          options
+          options,
+          typedGoal ? false : undefined
         );
         if (activationResult) {
           draftByScopeKeyRef.current = clearSubmittedAgentGUIHomeDraft({
@@ -524,6 +588,14 @@ export function useAgentGUISubmitInteractionActions(
         }
         return;
       }
+      if (typedGoal) {
+        goalControl(
+          typedGoal.action,
+          typedGoal.objective,
+          resolveAgentComposerDraftScopeKey({ agentSessionId })
+        );
+        return;
+      }
       submitExistingPrompt(
         agentSessionId,
         normalizedContent,
@@ -539,6 +611,7 @@ export function useAgentGUISubmitInteractionActions(
       conversationListQuery,
       previewMode,
       promptImagesSupported,
+      goalControl,
       persistActiveConversation,
       startConversation,
       submitExistingPrompt,

@@ -150,6 +150,9 @@ import type {
   GetStartupWorkspaceResponses,
   GetWorkspaceAgentSessionData,
   GetWorkspaceAgentSessionErrors,
+  GetWorkspaceAgentSessionGoalData,
+  GetWorkspaceAgentSessionGoalErrors,
+  GetWorkspaceAgentSessionGoalResponses,
   GetWorkspaceAgentSessionResponses,
   GetWorkspaceAppAgentPreferencesData,
   GetWorkspaceAppAgentPreferencesErrors,
@@ -328,6 +331,9 @@ import type {
   ReadWorkspaceFilePreviewData,
   ReadWorkspaceFilePreviewErrors,
   ReadWorkspaceFilePreviewResponses,
+  ReconcileWorkspaceAgentSessionGoalData,
+  ReconcileWorkspaceAgentSessionGoalErrors,
+  ReconcileWorkspaceAgentSessionGoalResponses,
   RefreshWorkspaceAppCatalogData,
   RefreshWorkspaceAppCatalogErrors,
   RefreshWorkspaceAppCatalogResponses,
@@ -2119,6 +2125,24 @@ export const submitWorkspaceAgentPlanDecision = <
   });
 
 /**
+ * Get the durable desired and observed goal state
+ */
+export const getWorkspaceAgentSessionGoal = <
+  ThrowOnError extends boolean = false
+>(
+  options: Options<GetWorkspaceAgentSessionGoalData, ThrowOnError>
+) =>
+  (options.client ?? client).get<
+    GetWorkspaceAgentSessionGoalResponses,
+    GetWorkspaceAgentSessionGoalErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/v1/workspaces/{workspaceID}/agent-sessions/{agentSessionID}/goal",
+    ...options
+  });
+
+/**
  * Perform a goal control action on one workspace agent session
  */
 export const goalControlWorkspaceAgentSession = <
@@ -2138,6 +2162,24 @@ export const goalControlWorkspaceAgentSession = <
       "Content-Type": "application/json",
       ...options.headers
     }
+  });
+
+/**
+ * Reconcile the durable goal projection with provider evidence
+ */
+export const reconcileWorkspaceAgentSessionGoal = <
+  ThrowOnError extends boolean = false
+>(
+  options: Options<ReconcileWorkspaceAgentSessionGoalData, ThrowOnError>
+) =>
+  (options.client ?? client).post<
+    ReconcileWorkspaceAgentSessionGoalResponses,
+    ReconcileWorkspaceAgentSessionGoalErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/v1/workspaces/{workspaceID}/agent-sessions/{agentSessionID}/goal/reconcile",
+    ...options
   });
 
 /**

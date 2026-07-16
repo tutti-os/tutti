@@ -73,6 +73,16 @@ OpenAPI contracts change before daemon HTTP request or response code. Generated
 clients and event contracts are projections of that schema, not independent
 models.
 
+Goal control follows the same ownership rule but is not a Turn command. Goal is
+a durable session-level entity with desired/observed state, a monotonic
+revision, and independent control-operation records. A Goal operation may cause
+zero or more provider-created Turns; it never reserves a Turn ID. Real Turns
+carry immutable origin plus optional source Goal operation/revision. Provider
+observations update only observed state, so a late snapshot cannot erase a
+newer desired state or clear tombstone. Provider differences are normalized by
+the daemon `GoalAdapter`; GUI and service code use the typed Goal API rather
+than sending goal banner actions through the prompt pipeline.
+
 ## Workspace Engine Ownership
 
 One `AgentSessionEngine` instance owns agent state for one workspace and runtime
@@ -1313,8 +1323,18 @@ Show more heuristics. Page responses upsert their session entities into the
 workspace engine; the rail query cache stores only ordered session ids,
 section metadata, cursors, and totals. A pure projection joins those ids back
 to engine entities. Do not keep a second summary cache or manually patch
-section rows from conversation summaries. Removing a project removes that rail
-section from the section list; re-adding the same path reveals historical
+section rows from conversation summaries. Every daemon session carries its
+required persisted `railSectionKey`. An active session outside loaded pages and
+backend search results enter a section only when that key exactly equals the
+section key; pinned state remains independent. AgentGUI must not manufacture a
+session membership fallback or infer membership from cwd and resolved
+user-project paths. Empty project and Conversations section chrome remains
+visible from the current section inventory even when no exact membership rows
+exist or the initial membership request fails; preserving that chrome must not
+place any session into it. The daemon assigns the key before Create succeeds
+and treats it as immutable session identity metadata; later cwd observations do
+not move the session to another rail section. Removing a project removes that
+rail section from the section list; re-adding the same path reveals historical
 sessions with the same section key.
 The daemon first-page reader is a required production repository seam, not an
 optional fast path with a per-section fallback. Its SQLite query must be driven
@@ -1357,6 +1377,15 @@ filtering pinned rows after section pagination corrupts page size and totals.
 If a refresh of an already-resolved section scope fails, keep its membership,
 cursor, and totals; only an unresolved or newly selected scope may resolve to an
 empty failure state.
+Section-query `pending` has two presentation meanings. An unresolved first page
+is blocking and may reveal the delayed rail skeleton. A same-scope membership
+refresh, including pin or unpin invalidation, is non-blocking: keep the resolved
+membership visible and interactive until the authoritative daemon page replaces
+it. A scope change may also keep the previous page visible to avoid destructive
+layout churn, but actions whose section or target scope could be stale remain
+locked until the new scope resolves. Derive these meanings inside the dedicated
+rail query controller from its current and resolved scope keys; do not add engine
+state, manually move rows, or make the view reinterpret raw request state.
 The active conversation is a
 display overlay, not a pageable row: it may render beside the first five rows,
 but it must not consume the local visible-item limit or advance the cursor.
@@ -1543,15 +1572,14 @@ enter the workspace engine's prompt queue instead of calling `sendInput`
 directly.
 Pending new-session activation is request- and session-scoped, not a
 workspace-wide creation lock. A workspace may have multiple pending new
-activations, and the conversation rail projects every optimistic session.
+activations, and conversation state retains every optimistic session.
 The engine's `pendingIntents` is the only owner. The conversation-list selector
 projects each missing session once and marks its row as a pending-activation
-projection. Runtime section pagination caches canonical session ids only; a pure
-rail display projection overlays the complete pending set into matching
-project/conversations sections and sorts it by conversation time. Pending rows
-must never be written into section pages, cursors, or membership invalidation,
-and the rail must not rely on the currently active row as its only optimistic
-overlay.
+projection. A pending intent has no persisted `railSectionKey`, so it remains
+outside formal rail sections until the canonical daemon session arrives; the
+frontend must not guess a section from its cwd. Runtime section pagination
+caches canonical session ids only. Pending rows must never be written into
+section pages, cursors, or membership invalidation.
 The pending row itself does not invalidate membership. Its transition to a
 canonical engine session does, and the query controller may keep only that
 session id—not a duplicate summary—as temporary reconciliation metadata.
@@ -1565,13 +1593,22 @@ activation record. The submit/composer module—not activation or selection—ow
 clearing the matching target-level home draft, so a later New action starts
 empty. The same module reconstructs the home draft after activation failure,
 only when the user has not already typed a replacement home draft.
-The pending prompt envelope preserves normalized `content` plus the optional
+The composer model owns one submission projection that separates normalized
+provider-facing `content` from the optional user-visible `displayPrompt`.
+Provider-facing prompt syntax rewrites, including descriptor-authoritative skill
+trigger aliases, must preserve the pre-rewrite visible text as `displayPrompt`
+when the two representations differ. Existing explicit display prompts for rich
+mentions and persisted pasted text take precedence. Ordinary prompts whose
+visible and runtime text are identical omit the field.
+The pending prompt envelope preserves normalized `content` plus that optional
 `displayPrompt` used for presentation. Materialized `runtimeContent` exists only
 on the requested intent and transport command; it must not replace presentation
 content in the pending record. Activation and existing-session submit share this
 contract. Their optimistic user messages use the authoritative payload shape:
 `content`, optional `displayPrompt`, and `text` resolved from `displayPrompt`
-before content-derived text.
+before content-derived text. The optimistic title and daemon initial-title
+derivation consume the same visible representation; the canonical session title
+then replaces the optimistic projection after persistence.
 Provider adapters must carry the materialized prompt in the provider's input
 field only. Auxiliary request metadata must not duplicate unbounded prompt
 content; provider-specific wire metadata remains adapter-owned and limited to
@@ -2282,8 +2319,8 @@ User-visible rules:
   subprocess, and the renderer re-checks on window focus/visibility and keeps
   polling while the permission dialog is open and unauthorized.
 - User composer defaults are owned by desktop preferences. AgentGUI may request
-  a defaults write only from the home/new composer path, through an explicit host
-  callback.
+  a defaults write from the home/new composer path or after an explicit user
+  selection in an active session, through an explicit host callback.
 - Lab-mode AgentGUI affordances are desktop-preference driven through generic
   feature flags. AgentGUI must not receive experiment-specific props or create
   git worktrees itself; new experiments should add a desktop feature-flag
@@ -2293,9 +2330,10 @@ User-visible rules:
   by a directory-resolved `agentTargetId`. They have no provider-keyed fallback,
   so two targets under the same provider cannot share model, permission,
   reasoning, speed, or draft state by accident.
-- Active session settings are session state. Opening, restoring, or editing an
-  active session must not promote that session's model, permission mode, or
-  reasoning setting into user defaults.
+- Active session settings are session state. Opening or restoring an active
+  session must not promote its settings into user defaults. An explicit model,
+  permission, reasoning, or speed selection updates both the session and that
+  target's defaults so the next new conversation inherits the user's choice.
 - Workbench node `composerOverrides` are UI-local home/new composer draft state,
   not an authoritative source for desktop preferences.
 - Draft clearing happens only after the submitted content still matches the
@@ -3093,6 +3131,34 @@ App ids, descriptions, scopes, and CLI command metadata may enrich presentation
 or routing, but they must not produce search results that the visible app name
 cannot explain.
 
+Workspace-issue candidates use the rich-text provider's optional grouped query
+contract. The desktop provider first lists every daemon-ordered issue topic,
+loads each topic's first page with bounded concurrency, and returns one
+provider-owned group per non-empty topic. AgentGUI encodes the opaque topic id
+into a dynamic `issue-topic:*` presentation key, then atomically replaces the
+ordered group list for each debounced search. Each group owns its items,
+query-scoped total, cursor, and load-more status; loading or retrying one topic
+must not replace sibling groups or put the whole palette into loading state.
+
+```text
+Agent mention query identity
+  -> desktop workspace-issue grouped provider
+  -> daemon-ordered topic list
+  -> bounded first-page issue queries
+  -> atomic AgentGUI topic-group projection
+  -> one-topic cursor requests from expand actions
+```
+
+Browse topic groups participate in the existing 30-second
+stale-while-revalidate cache and shared in-flight dedupe. Successful browse
+pages merge into the cached topic group so reopening the palette preserves
+appended rows. Search groups remain request-scoped. Query, filter, workspace,
+close, and dispose transitions invalidate old first-page and page requests;
+`AbortSignal` is propagated through the desktop provider to the tuttid topic
+and issue-list requests, while request identity and cursor checks remain the
+final stale-response defense. Group metadata never changes the persisted
+`workspace-issue` mention URI or scope.
+
 Quick check:
 
 ```sh
@@ -3145,9 +3211,12 @@ directories. Ordinary opened-file and issue-summary records do not currently
 carry durable provenance and therefore fail closed when either an Agent or
 Member constraint is active. A typed File query must route to the
 provenance-aware generated-file provider for either active dimension, even when
-the ordinary generated-files group is otherwise disabled. Existing result
-groups remain unchanged; the filter narrows their contents and does not
-introduce a second grouping layer.
+the ordinary generated-files group is otherwise disabled. Generated-file and
+picker result groups remain source-owned. The Agent Session `@` list is the
+exception: when a host injects an Agent provenance catalog, it groups returned
+sessions by exact `agentTargetId` in catalog order and uses the catalog option
+label as the group heading. This grouping is presentation only; the provider
+still applies the selected provenance constraint before pagination.
 
 Only catalog entries with a durable `agentTargetId` participate in filtering;
 host target ids are not substitutes. Catalogs and filters are normalized at the
@@ -3199,14 +3268,15 @@ provider capability/options
 Avoid fixing a menu label or disabled state without checking whether the same
 setting is also used by prompt creation, session continuation, and runtime
 tracking.
-Active-session settings are first-class session state, not composer defaults.
-The controller should submit exactly one engine intent for one menu selection;
-it must not also promote the active value into target defaults. The engine owns
-the operation state. A timed-out update remains `unknown`, and the next explicit
-user selection carries retry intent instead of being silently dropped. That
-retry merges the unresolved in-flight patch, any queued patch, and the latest
-selection in that order, so the newest value wins without losing settings that
-the daemon may not have applied before the timeout.
+Active-session settings are first-class session state. The controller submits
+exactly one engine intent for one menu selection. The same explicit user
+selection may independently update the target default and the node-local default
+draft; merely opening or restoring a session must not. The engine owns the
+operation state. A timed-out update remains `unknown`, and the next explicit user
+selection carries retry intent instead of being silently dropped. That retry
+merges the unresolved in-flight patch, any queued patch, and the latest selection
+in that order, so the newest value wins without losing settings that the daemon
+may not have applied before the timeout.
 
 The daemon selects the mutation path from session liveness. A live session
 updates through its provider adapter. A historical session updates the durable

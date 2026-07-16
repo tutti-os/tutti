@@ -5,6 +5,9 @@ import type {
 } from "./AgentMentionSearchController";
 
 export function agentMentionGroupLabel(groupId: AgentMentionGroupId): string {
+  if (groupId.startsWith("issue-topic:")) {
+    return "";
+  }
   switch (groupId) {
     case "apps":
       return translate("agentHost.agentGui.mentionGroupApps");
@@ -22,6 +25,8 @@ export function agentMentionGroupLabel(groupId: AgentMentionGroupId): string {
       return translate("agentHost.agentGui.mentionGroupCollabSessions");
     case "issues":
       return translate("agentHost.agentGui.mentionGroupIssues");
+    default:
+      return "";
   }
 }
 
@@ -44,6 +49,9 @@ export function agentMentionEmptyGroupLabel(
   groupId: AgentMentionGroupId,
   query: string
 ): string {
+  if (groupId.startsWith("issue-topic:")) {
+    return "";
+  }
   if (groupId === "files" || groupId === "opened_files") {
     return query.trim()
       ? translate("agentHost.agentGui.mentionNoMatchingFiles")
@@ -65,6 +73,9 @@ export function agentMentionEmptyGroupLabel(
   }
   if (groupId === "collab_sessions") {
     return translate("agentHost.agentGui.mentionEmptyCollabSessions");
+  }
+  if (groupId.startsWith("agent:")) {
+    return translate("agentHost.agentGui.mentionEmptyMySessions");
   }
   return translate("agentHost.agentGui.mentionEmptyIssues");
 }

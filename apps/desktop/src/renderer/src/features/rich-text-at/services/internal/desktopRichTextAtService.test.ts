@@ -230,7 +230,7 @@ test("desktop rich text @ service assembles workspace issue providers by capabil
   assert.deepEqual(listCalls, [
     {
       workspaceId: "workspace-1",
-      pageSize: 5,
+      pageSize: 10,
       searchQuery: "login",
       topicId: "topic-1"
     }
@@ -276,6 +276,209 @@ test("desktop rich text @ service assembles workspace issue providers by capabil
   );
 });
 
+test("workspace issue provider queries every topic in order and pages one group", async () => {
+  const calls: Array<{
+    topicId: string;
+    pageToken?: string;
+    signal?: AbortSignal;
+  }> = [];
+  const service = new DesktopRichTextAtService({
+    tuttidClient: {
+      async listWorkspaceIssueTopics(
+        workspaceId: string,
+        options?: { signal?: AbortSignal }
+      ) {
+        assert.equal(workspaceId, "workspace-1");
+        assert.ok(options?.signal);
+        return {
+          topics: ["pinned/topic", "recent:topic", "empty-topic"].map(
+            (topicId, index) => ({
+              isDefault: index === 0,
+              summary: "",
+              title: index === 0 ? "Pinned" : index === 1 ? "Recent" : "Empty",
+              topicId,
+              workspaceId
+            })
+          )
+        };
+      },
+      async listWorkspaceIssues(
+        workspaceId: string,
+        request: {
+          pageSize?: number;
+          pageToken?: string;
+          searchQuery?: string;
+          topicId: string;
+        },
+        options?: { signal?: AbortSignal }
+      ) {
+        calls.push({
+          topicId: request.topicId,
+          pageToken: request.pageToken,
+          signal: options?.signal
+        });
+        if (request.topicId === "empty-topic") {
+          return {
+            issues: [],
+            statusCounts: {},
+            totalCount: 0
+          };
+        }
+        const suffix = request.pageToken ? "next" : "first";
+        return {
+          issues: [
+            {
+              content: request.searchQuery,
+              issueId: `issue-${request.topicId}-${suffix}`,
+              status: "open",
+              title: `${request.topicId} ${suffix}`,
+              topicId: request.topicId,
+              workspaceId
+            }
+          ],
+          nextPageToken: request.pageToken
+            ? undefined
+            : `cursor-${request.topicId}`,
+          statusCounts: {},
+          totalCount: 11
+        };
+      }
+    } as unknown as TuttidClient
+  });
+  const provider = service.getProviders({
+    capabilities: ["workspace-issue"],
+    surface: "agent-composer",
+    target: "agent-gui",
+    workspaceId: "workspace-1"
+  })[0];
+  assert.ok(provider?.queryGroups);
+  assert.ok(provider.queryGroupPage);
+  const abortController = new AbortController();
+  const result = await provider.queryGroups({
+    context: {},
+    keyword: "  login   bug ",
+    abortSignal: abortController.signal,
+    trigger: "@"
+  });
+  assert.deepEqual(
+    result.groups.map((group) => ({
+      id: group.id,
+      label: group.label,
+      totalCount: group.totalCount,
+      nextCursor: group.nextCursor
+    })),
+    [
+      {
+        id: "pinned/topic",
+        label: "Pinned",
+        totalCount: 11,
+        nextCursor: "cursor-pinned/topic"
+      },
+      {
+        id: "recent:topic",
+        label: "Recent",
+        totalCount: 11,
+        nextCursor: "cursor-recent:topic"
+      }
+    ]
+  );
+  const page = await provider.queryGroupPage({
+    context: {},
+    keyword: "login bug",
+    groupId: "recent:topic",
+    cursor: "cursor-recent:topic",
+    pageSize: 10,
+    abortSignal: abortController.signal,
+    trigger: "@"
+  });
+  assert.equal(
+    (page.items[0] as { issueId?: string } | undefined)?.issueId,
+    "issue-recent:topic-next"
+  );
+  assert.deepEqual(
+    calls.map((call) => ({
+      topicId: call.topicId,
+      pageToken: call.pageToken,
+      hasSignal: call.signal === abortController.signal
+    })),
+    [
+      { topicId: "pinned/topic", pageToken: undefined, hasSignal: true },
+      { topicId: "recent:topic", pageToken: undefined, hasSignal: true },
+      { topicId: "empty-topic", pageToken: undefined, hasSignal: true },
+      {
+        topicId: "recent:topic",
+        pageToken: "cursor-recent:topic",
+        hasSignal: true
+      }
+    ]
+  );
+});
+
+test("workspace issue provider limits first-page topic concurrency to four", async () => {
+  let active = 0;
+  let maxActive = 0;
+  let release!: () => void;
+  const gate = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const service = new DesktopRichTextAtService({
+    tuttidClient: {
+      async listWorkspaceIssueTopics(workspaceId: string) {
+        return {
+          topics: Array.from({ length: 8 }, (_, index) => ({
+            isDefault: index === 0,
+            summary: "",
+            title: `Topic ${index}`,
+            topicId: `topic-${index}`,
+            workspaceId
+          }))
+        };
+      },
+      async listWorkspaceIssues(
+        workspaceId: string,
+        request: { topicId: string }
+      ) {
+        active += 1;
+        maxActive = Math.max(maxActive, active);
+        await gate;
+        active -= 1;
+        return {
+          issues: [
+            {
+              issueId: `issue-${request.topicId}`,
+              status: "open",
+              title: request.topicId,
+              topicId: request.topicId,
+              workspaceId
+            }
+          ],
+          statusCounts: {},
+          totalCount: 1
+        };
+      }
+    } as unknown as TuttidClient
+  });
+  const provider = service.getProviders({
+    capabilities: ["workspace-issue"],
+    surface: "agent-composer",
+    target: "agent-gui",
+    workspaceId: "workspace-1"
+  })[0];
+  assert.ok(provider?.queryGroups);
+  const pending = provider.queryGroups({
+    context: {},
+    keyword: "",
+    trigger: "@"
+  });
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  assert.equal(active, 4);
+  assert.equal(maxActive, 4);
+  release();
+  const result = await pending;
+  assert.equal(result.groups.length, 8);
+  assert.equal(maxActive, 4);
+});
+
 test("desktop rich text @ service resolves workspace issue query by issue id", async () => {
   const detailCalls: Array<{ issueId: string; workspaceId: string }> = [];
   const service = new DesktopRichTextAtService({
@@ -299,9 +502,16 @@ test("desktop rich text @ service resolves workspace issue query by issue id", a
       ) {
         assert.equal(request?.searchQuery, "issue-restore-1");
         return {
-          issues: [],
+          issues: Array.from({ length: 10 }, (_, index) => ({
+            issueId: `issue-existing-${index + 1}`,
+            status: "open",
+            title: `Existing issue ${index + 1}`,
+            topicId: "topic-1",
+            workspaceId
+          })),
+          nextPageToken: "cursor-2",
           statusCounts: {},
-          totalCount: 0,
+          totalCount: 25,
           workspaceId
         };
       },
@@ -337,16 +547,128 @@ test("desktop rich text @ service resolves workspace issue query by issue id", a
     maxResults: 5,
     trigger: "@"
   });
+  assert.ok(provider.queryGroups);
+  const grouped = await provider.queryGroups({
+    context: {},
+    keyword: "issue-restore-1",
+    maxResults: 5,
+    trigger: "@"
+  });
 
   assert.deepEqual(detailCalls, [
+    { issueId: "issue-restore-1", workspaceId: "workspace-1" },
     { issueId: "issue-restore-1", workspaceId: "workspace-1" }
   ]);
-  assert.equal(items.length, 1);
+  assert.equal(items.length, 11);
   assert.equal(provider.getItemKey(items[0]), "issue-restore-1");
   assert.equal(
     provider.getItemIconUrl?.(items[0]),
     "tutti-asset://issue/default.png"
   );
+  assert.deepEqual(
+    grouped.groups.map((group) => ({
+      id: group.id,
+      label: group.label,
+      totalCount: group.totalCount,
+      nextCursor: group.nextCursor,
+      issueIds: group.items.map((item) => (item as { issueId: string }).issueId)
+    })),
+    [
+      {
+        id: "topic-1",
+        label: "Default",
+        totalCount: 25,
+        nextCursor: "cursor-2",
+        issueIds: [
+          "issue-restore-1",
+          "issue-existing-1",
+          "issue-existing-2",
+          "issue-existing-3",
+          "issue-existing-4",
+          "issue-existing-5",
+          "issue-existing-6",
+          "issue-existing-7",
+          "issue-existing-8",
+          "issue-existing-9",
+          "issue-existing-10"
+        ]
+      }
+    ]
+  );
+});
+
+test("workspace issue compatibility query interleaves topics before global truncation", async () => {
+  const service = new DesktopRichTextAtService({
+    tuttidClient: {
+      async listWorkspaceIssueTopics(workspaceId: string) {
+        return {
+          topics: ["topic-a", "topic-b"].map((topicId) => ({
+            isDefault: topicId === "topic-a",
+            summary: "",
+            title: topicId,
+            topicId,
+            workspaceId
+          }))
+        };
+      },
+      async listWorkspaceIssues(
+        workspaceId: string,
+        request: { topicId: string }
+      ) {
+        const itemCount = request.topicId === "topic-a" ? 10 : 2;
+        return {
+          issues: Array.from({ length: itemCount }, (_, index) => ({
+            issueId: `${request.topicId}-${index + 1}`,
+            status: "open",
+            title: `${request.topicId} issue ${index + 1}`,
+            topicId: request.topicId,
+            workspaceId
+          })),
+          statusCounts: {},
+          totalCount: itemCount
+        };
+      },
+      async getWorkspaceIssueDetail(workspaceId: string, issueId: string) {
+        return {
+          issue: {
+            issueId,
+            status: "open",
+            title: "Exact issue",
+            topicId: "topic-b",
+            workspaceId
+          },
+          tasks: []
+        };
+      }
+    } as unknown as TuttidClient
+  });
+  const provider = service.getProviders({
+    capabilities: ["workspace-issue"],
+    surface: "agent-composer",
+    target: "agent-gui",
+    workspaceId: "workspace-1"
+  })[0];
+  assert.ok(provider);
+
+  const items = await provider.query({
+    context: {},
+    keyword: "",
+    maxResults: 5,
+    trigger: "@"
+  });
+
+  assert.deepEqual(
+    items.slice(0, 5).map((item) => provider.getItemKey(item)),
+    ["topic-a-1", "topic-b-1", "topic-a-2", "topic-b-2", "topic-a-3"]
+  );
+
+  const exactItems = await provider.query({
+    context: {},
+    keyword: "issue-exact",
+    maxResults: 5,
+    trigger: "@"
+  });
+  assert.equal(provider.getItemKey(exactItems[0]), "issue-exact");
 });
 
 test("desktop rich text @ service assembles agent session providers by capability", async () => {

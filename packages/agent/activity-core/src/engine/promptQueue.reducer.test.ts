@@ -173,6 +173,39 @@ test("successful send establishes an exact-turn barrier before the next prompt",
   assert.equal(send(settled.commands[0]).promptId, "prompt-2");
 });
 
+test("turnless goal control result completes delivery without a turn barrier", () => {
+  const available = canonicalLifecycle("settled", 1, "turn-0");
+  const first = reduce(
+    createInitialPromptQueueState(),
+    enqueue("prompt-1"),
+    available
+  );
+  const withSecond = reduce(first.state, enqueue("prompt-2"), available).state;
+  const completed = reduce(
+    withSecond,
+    commandResult(
+      commandId(first.commands[0]),
+      "queue/sendPrompt",
+      "succeeded"
+    ),
+    available,
+    {
+      sendValidation: {
+        kind: "valid",
+        result: {
+          kind: "goalControl",
+          session: activitySession("settled", 2, "turn-0")
+        }
+      }
+    }
+  );
+  assert.equal(send(completed.commands[0]).promptId, "prompt-2");
+  assert.equal(
+    completed.state.recordsBySessionId["session-1"]?.deliveryBarrierTurnId,
+    null
+  );
+});
+
 test("late send result drains once when its exact canonical turn already settled", () => {
   const available = canonicalLifecycle("settled", 1, "turn-0");
   const first = reduce(
@@ -496,6 +529,7 @@ function runningTurn(
 ): AgentActivityTurn {
   return {
     agentSessionId: "session-1",
+    origin: "user_prompt",
     phase: "running",
     startedAtUnixMs: updatedAtUnixMs,
     turnId,
@@ -510,6 +544,7 @@ function settledTurn(
 ): AgentActivityTurn {
   return {
     agentSessionId: "session-1",
+    origin: "user_prompt",
     outcome,
     phase: "settled",
     settledAtUnixMs: updatedAtUnixMs,

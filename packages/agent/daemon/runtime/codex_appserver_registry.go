@@ -120,9 +120,14 @@ func (a *CodexAppServerAdapter) endActiveTurn(agentSessionID string, turn *codex
 	if appSession == nil || appSession.activeTurn != turn {
 		return
 	}
+	providerTurnID := strings.TrimSpace(appSession.activeTurnID)
 	appSession.activeTurn = nil
 	appSession.activeTurnID = ""
 	appSession.activeTurnStartConfirmed = false
+	if providerTurnID != "" {
+		delete(appSession.goalTurnEvidence, providerTurnID)
+	}
+	a.pruneGoalProvenanceLocked(appSession)
 }
 
 func (a *CodexAppServerAdapter) sessionActiveTurn(agentSessionID string) *codexAppServerActiveTurn {

@@ -2,28 +2,28 @@ import type {
   Options as ClaudeQueryOptions,
   PermissionMode,
   SDKMessage,
-  SDKUserMessage
+  SDKUserMessage,
 } from "@anthropic-ai/claude-agent-sdk";
 import {
   numberValue,
   recordValue,
-  sdkContentFromPromptBlocks
+  sdkContentFromPromptBlocks,
 } from "./normalizer.ts";
 import {
   claudeQueryOptionOverrides,
-  type SidecarClaudeOptions
+  type SidecarClaudeOptions,
 } from "./options.ts";
 import { AsyncPromptQueue } from "./promptQueue.ts";
 import {
   claudeAuthRefreshDiagnosticsEnabled,
   claudeCredentialSnapshot,
-  debugClaudeAuthRefreshLog
+  debugClaudeAuthRefreshLog,
 } from "./authDiagnostics.ts";
 import { errorMessage, errorPayload } from "./errors.ts";
 import { AssistantStreamProjector } from "./assistantStream.ts";
 import {
   InteractiveCoordinator,
-  type ToolPermissionOptions
+  type ToolPermissionOptions,
 } from "./interactive.ts";
 import { TurnLifecycle, type RuntimeTurn } from "./turnLifecycle.ts";
 import { normalizeTitle, stringValue } from "./runtimeValues.ts";
@@ -31,7 +31,7 @@ import {
   abortError,
   isAbortError,
   isCompactCommandPrompt,
-  normalizeResumeCursor
+  normalizeResumeCursor,
 } from "./sdkMessages.ts";
 import { ToolActivityProjector } from "./toolActivity.ts";
 import { SidecarTestDriver } from "./testDriver.ts";
@@ -48,7 +48,7 @@ import {
   modelOptionValue,
   querySettingsFromSessionSettings,
   type PendingFlagSettings,
-  type SidecarSessionSettings
+  type SidecarSessionSettings,
 } from "./sessionSettings.ts";
 
 type ClaudeQueryRuntime = AsyncIterable<SDKMessage> & {
@@ -68,15 +68,35 @@ type ClaudeQueryFactory = (input: {
 
 type ClaudeHookCallback = (
   input: unknown,
-  toolUseID?: string
+  toolUseID?: string,
 ) => Promise<{ continue: boolean }>;
 
 const DEFAULT_FORCE_CANCEL_GRACE_MS = 30_000;
 const DEFAULT_CONTINUATION_START_TIMEOUT_MS = 30_000;
+
+type GoalCommandDispatch = {
+  operationId: string;
+  revision: number;
+  repairEpoch?: number;
+  action: "set" | "clear";
+};
+
+type PendingGoalExec = {
+  turnId: string;
+  prompt: string;
+  content?: unknown;
+  turnOrigin?: string;
+  goal: GoalCommandDispatch;
+};
+
 export class SessionRuntime {
   readonly promptQueue = new AsyncPromptQueue();
   query: ClaudeQueryRuntime | undefined;
   providerSessionId: string;
+
+  get activeTurnId(): string {
+    return this.turns.activeId;
+  }
   private readonly cwd: string;
   private readonly env: Record<string, string | undefined>;
   private readonly restore: boolean;
@@ -99,6 +119,8 @@ export class SessionRuntime {
   private readonly interactions: InteractiveCoordinator;
   private readonly router: SDKMessageRouter;
   private readonly driver?: SidecarTestDriver;
+  private pendingGoalExecs: PendingGoalExec[] = [];
+  private goalDispatchScheduled = false;
 
   constructor(
     providerSessionId: string,
@@ -110,7 +132,7 @@ export class SessionRuntime {
     claudeOptions: SidecarClaudeOptions,
     resumeCursor?: Record<string, unknown>,
     queryFactory?: ClaudeQueryFactory,
-    continuationStartTimeoutMs = DEFAULT_CONTINUATION_START_TIMEOUT_MS
+    continuationStartTimeoutMs = DEFAULT_CONTINUATION_START_TIMEOUT_MS,
   ) {
     const resumeSessionId = stringValue(resumeCursor?.resume);
     this.providerSessionId = resumeSessionId || providerSessionId;
@@ -128,20 +150,20 @@ export class SessionRuntime {
           emit({
             type: "error",
             payload: {
-              error: `Claude SDK continuation interrupt failed: ${errorMessage(error)}`
-            }
+              error: `Claude SDK continuation interrupt failed: ${errorMessage(error)}`,
+            },
           });
         });
-      }
+      },
     });
     this.assistantStream = new AssistantStreamProjector(
       () => this.turns.activeId,
-      emit
+      emit,
     );
     this.activities = new ToolActivityProjector(
       () => this.turns.activeId,
       emit,
-      () => this.turns.expectSyntheticContinuation()
+      () => this.turns.expectSyntheticContinuation(),
     );
     this.compaction = new CompactionTracker({
       activeTurnId: () => this.turns.activeId,
@@ -150,7 +172,7 @@ export class SessionRuntime {
       },
       clearPendingOrphans: () => this.turns.clearPendingOrphans(),
       getQuery: () => this.query,
-      emit
+      emit,
     });
     this.projection = new MessageProjection({
       providerSessionId: () => this.providerSessionId,
@@ -158,7 +180,7 @@ export class SessionRuntime {
       assistant: this.assistantStream,
       activities: this.activities,
       compaction: this.compaction,
-      emit
+      emit,
     });
     this.configuration = new SessionConfiguration({
       settings,
@@ -168,13 +190,13 @@ export class SessionRuntime {
       markInitialized: () => {
         this.initialized = true;
       },
-      emitFastModeState: (state) => this.projection.emitFastModeState(state)
+      emitFastModeState: (state) => this.projection.emitFastModeState(state),
     });
     this.interactions = new InteractiveCoordinator({
       settings,
       resolveTurnId: (options) => this.resolveInteractiveTurnId(options),
       activateSyntheticTurn: () => this.turns.activateSynthetic().turnId,
-      emit
+      emit,
     });
     this.driver = testDriver
       ? new SidecarTestDriver(this.turns, this.interactions)
@@ -194,13 +216,13 @@ export class SessionRuntime {
       activities: this.activities,
       projection: this.projection,
       compaction: this.compaction,
-      emit
+      emit,
     });
     this.claudeOptions = claudeOptions;
     this.queryFactory = queryFactory;
     this.resumeCursor = normalizeResumeCursor(
       resumeCursor,
-      this.providerSessionId
+      this.providerSessionId,
     );
     this.lastAssistantUuid = stringValue(this.resumeCursor?.resumeSessionAt);
     this.turns.restoreTurnCount(numberValue(this.resumeCursor?.turnCount));
@@ -210,7 +232,7 @@ export class SessionRuntime {
     this.logAuthRefresh("session_start.begin", {
       restore: this.restore,
       initialized: this.initialized,
-      queryClosed: this.queryClosed
+      queryClosed: this.queryClosed,
     });
     await this.ensureQuery({ initialize: true });
     await this.configuration.applyPendingFlags();
@@ -222,17 +244,23 @@ export class SessionRuntime {
       payload: {
         providerSessionId: this.providerSessionId,
         ...this.sessionStatePayload(),
-        resumeCursor: this.currentResumeCursor()
-      }
+        resumeCursor: this.currentResumeCursor(),
+      },
     });
     this.logAuthRefresh("session_start.succeeded", {
       restore: this.restore,
       initialized: this.initialized,
-      queryClosed: this.queryClosed
+      queryClosed: this.queryClosed,
     });
   }
 
-  exec(turnId: string, prompt: string, content?: unknown): void {
+  exec(
+    turnId: string,
+    prompt: string,
+    content?: unknown,
+    turnOrigin?: string,
+    goal?: GoalCommandDispatch,
+  ): void {
     if (this.driver) {
       this.driver.exec(turnId, prompt);
       return;
@@ -242,16 +270,86 @@ export class SessionRuntime {
         type: "turn_failed",
         payload: {
           turnId,
-          error: "Claude SDK query is closed"
-        }
+          error: "Claude SDK query is closed",
+        },
       });
       return;
     }
+    if (goal?.operationId && goal.revision > 0) {
+      this.acceptGoalExec({ turnId, prompt, content, turnOrigin, goal });
+      return;
+    }
+    this.dispatchExec(turnId, prompt, content, turnOrigin);
+  }
+
+  private acceptGoalExec(input: PendingGoalExec): void {
+    if (input.goal.action === "clear") {
+      const retained: PendingGoalExec[] = [];
+      for (const pending of this.pendingGoalExecs) {
+        if (
+          pending.goal.action === "set" &&
+          pending.goal.revision < input.goal.revision
+        ) {
+          emit({
+            type: "goal_command_superseded",
+            payload: {
+              turnId: pending.turnId,
+              operationId: pending.goal.operationId,
+              revision: pending.goal.revision,
+              action: pending.goal.action,
+              supersededByRevision: input.goal.revision,
+            },
+          });
+          continue;
+        }
+        retained.push(pending);
+      }
+      this.pendingGoalExecs = retained;
+    }
+    this.pendingGoalExecs.push(input);
+    if (this.goalDispatchScheduled) {
+      return;
+    }
+    this.goalDispatchScheduled = true;
+    setTimeout(() => this.drainGoalExecs(), 0);
+  }
+
+  private drainGoalExecs(): void {
+    this.goalDispatchScheduled = false;
+    const pending = this.pendingGoalExecs;
+    this.pendingGoalExecs = [];
+    for (const input of pending) {
+      this.dispatchExec(
+        input.turnId,
+        input.prompt,
+        input.content,
+        input.turnOrigin,
+        input.goal,
+      );
+    }
+  }
+
+  private dispatchExec(
+    turnId: string,
+    prompt: string,
+    content?: unknown,
+    turnOrigin?: string,
+    goal?: GoalCommandDispatch,
+  ): void {
     this.turns.closeSyntheticBeforeUserTurn();
     const turn: RuntimeTurn = {
       turnId,
       promptUuid: crypto.randomUUID(),
-      settled: false
+      ...(turnOrigin ? { origin: turnOrigin } : {}),
+      ...(goal
+        ? {
+            goalOperationId: goal.operationId,
+            goalRevision: goal.revision,
+            goalRepairEpoch: goal.repairEpoch ?? 0,
+            goalAction: goal.action,
+          }
+        : {}),
+      settled: false,
     };
     this.compaction.selectCommand(turnId, isCompactCommandPrompt(prompt));
     void this.ensureQuery()
@@ -259,7 +357,7 @@ export class SessionRuntime {
       .then(() => {
         const sdkContent = sdkContentFromPromptBlocks(
           content,
-          prompt
+          prompt,
         ) as unknown as SDKUserMessage["message"]["content"];
         this.turns.enqueue(turn);
         this.promptQueue.push({
@@ -269,22 +367,22 @@ export class SessionRuntime {
           parent_tool_use_id: null,
           message: {
             role: "user",
-            content: sdkContent
-          }
+            content: sdkContent,
+          },
         } as SDKUserMessage);
       })
       .then(() => this.consume())
       .catch((error) => {
         this.logAuthRefresh("exec.ensure_query_failed", {
           turnId,
-          error: errorPayload(error)
+          error: errorPayload(error),
         });
         emit({
           type: "turn_failed",
           payload: {
             turnId,
-            error: errorMessage(error)
-          }
+            error: errorMessage(error),
+          },
         });
       });
   }
@@ -298,8 +396,8 @@ export class SessionRuntime {
       emit({
         type: "error",
         payload: {
-          error: "Claude SDK query is closed"
-        }
+          error: "Claude SDK query is closed",
+        },
       });
       return;
     }
@@ -308,7 +406,7 @@ export class SessionRuntime {
       .then(() => {
         const sdkContent = sdkContentFromPromptBlocks(
           content,
-          prompt
+          prompt,
         ) as unknown as SDKUserMessage["message"]["content"];
         this.promptQueue.push({
           uuid: crypto.randomUUID(),
@@ -317,27 +415,38 @@ export class SessionRuntime {
           parent_tool_use_id: null,
           message: {
             role: "user",
-            content: sdkContent
-          }
+            content: sdkContent,
+          },
         } as SDKUserMessage);
       })
       .then(() => this.consume())
       .catch((error) => {
         this.logAuthRefresh("guide.ensure_query_failed", {
-          error: errorPayload(error)
+          error: errorPayload(error),
         });
         emit({
           type: "error",
           payload: {
-            error: errorMessage(error)
-          }
+            error: errorMessage(error),
+          },
         });
       });
   }
 
-  async cancel(): Promise<void> {
+  async cancel(expectedTurnId = ""): Promise<boolean> {
     if (this.queryClosed) {
-      return;
+      return false;
+    }
+    if (expectedTurnId) {
+      if (!this.turns.cancelActiveExact(expectedTurnId)) {
+        return false;
+      }
+      this.interactions.rejectAll(new Error("Tool use aborted"));
+      this.turns.scheduleForceCancel(() => {
+        this.cancelController.abort();
+      }, DEFAULT_FORCE_CANCEL_GRACE_MS);
+      await this.query?.interrupt?.();
+      return true;
     }
     const hasActiveTurn = this.turns.cancelQueued();
     this.interactions.rejectAll(new Error("Tool use aborted"));
@@ -347,6 +456,7 @@ export class SessionRuntime {
       }, DEFAULT_FORCE_CANCEL_GRACE_MS);
     }
     await this.query?.interrupt?.();
+    return hasActiveTurn;
   }
 
   async close(): Promise<void> {
@@ -363,14 +473,14 @@ export class SessionRuntime {
     requestId: string,
     action: string,
     optionId: string,
-    payload: Record<string, unknown>
+    payload: Record<string, unknown>,
   ) {
     return this.interactions.submit(
       turnId,
       requestId,
       action,
       optionId,
-      payload
+      payload,
     );
   }
 
@@ -379,12 +489,12 @@ export class SessionRuntime {
     requestId: string,
     action: string,
     optionId: string,
-    payload: Record<string, unknown>
+    payload: Record<string, unknown>,
   ) {
     return this.interactions.disposition(turnId, requestId, {
       action,
       optionId,
-      payload
+      payload,
     });
   }
 
@@ -429,7 +539,7 @@ export class SessionRuntime {
           queuedTurnIds: this.turns.queue
             .filter((turn) => !turn.settled)
             .map((turn) => turn.turnId),
-          error: errorPayload(error)
+          error: errorPayload(error),
         });
         this.turns.failLiveTurns(errorMessage(error));
       } finally {
@@ -438,7 +548,7 @@ export class SessionRuntime {
         this.consuming = false;
         if (this.turns.activeTurn) {
           this.turns.settleActive(
-            this.turns.cancelled ? "turn_canceled" : "turn_failed"
+            this.turns.cancelled ? "turn_canceled" : "turn_failed",
           );
         }
         this.turns.failQueuedTurns("Claude SDK session ended");
@@ -448,7 +558,7 @@ export class SessionRuntime {
   }
 
   private nextQueryMessage(
-    iterator: AsyncIterator<SDKMessage>
+    iterator: AsyncIterator<SDKMessage>,
   ): Promise<IteratorResult<SDKMessage>> {
     const signal = this.cancelController.signal;
     if (signal.aborted) {
@@ -458,14 +568,14 @@ export class SessionRuntime {
       iterator.next(),
       new Promise<IteratorResult<SDKMessage>>((_, reject) => {
         signal.addEventListener("abort", () => reject(abortError()), {
-          once: true
+          once: true,
         });
-      })
+      }),
     ]);
   }
 
   private resolveInteractiveTurnId(
-    callbackOptions: ToolPermissionOptions
+    callbackOptions: ToolPermissionOptions,
   ): string {
     const toolUseID = stringValue(callbackOptions.toolUseID);
     if (toolUseID) {
@@ -516,7 +626,7 @@ export class SessionRuntime {
   }
 
   private async ensureQuery(
-    startOptions: { initialize?: boolean } = {}
+    startOptions: { initialize?: boolean } = {},
   ): Promise<void> {
     if (this.query || this.testDriver) {
       return;
@@ -527,7 +637,7 @@ export class SessionRuntime {
     const permissionMode = effectivePermissionMode(this.configuration.settings);
     const allowBypassPermissions = canBypassPermissions();
     const querySettings = querySettingsFromSessionSettings(
-      this.configuration.settings
+      this.configuration.settings,
     );
     // One settings snapshot feeds both the executable resolution and the SDK
     // env, so the two can never disagree (and the settings hierarchy is read
@@ -539,7 +649,7 @@ export class SessionRuntime {
     const claudeExecutablePath = resolveClaudeCodeExecutablePath({
       ...process.env,
       ...settingsEnv,
-      ...this.env
+      ...this.env,
     });
     const queryOptions: ClaudeQueryOptions = {
       cwd: this.cwd || process.cwd(),
@@ -547,7 +657,7 @@ export class SessionRuntime {
         ...process.env,
         ...settingsEnv,
         ...this.env,
-        CLAUDE_CODE_EMIT_SESSION_STATE_EVENTS: "1"
+        CLAUDE_CODE_EMIT_SESSION_STATE_EVENTS: "1",
       },
       ...(claudeExecutablePath
         ? { pathToClaudeCodeExecutable: claudeExecutablePath }
@@ -557,7 +667,7 @@ export class SessionRuntime {
         this.interactions.handleToolPermission(
           String(toolName),
           recordValue(toolInput) ?? {},
-          callbackOptions as ToolPermissionOptions
+          callbackOptions as ToolPermissionOptions,
         ),
       ...(this.restore
         ? { resume: this.providerSessionId }
@@ -578,32 +688,32 @@ export class SessionRuntime {
               ((input, toolUseID) =>
                 this.activities.handlePostToolUseHook(
                   input,
-                  toolUseID
-                )) satisfies ClaudeHookCallback
-            ]
-          }
+                  toolUseID,
+                )) satisfies ClaudeHookCallback,
+            ],
+          },
         ],
         TaskCreated: [
           {
             hooks: [
               ((input) =>
                 this.activities.handleTaskLifecycleHook(
-                  input
-                )) satisfies ClaudeHookCallback
-            ]
-          }
+                  input,
+                )) satisfies ClaudeHookCallback,
+            ],
+          },
         ],
         TaskCompleted: [
           {
             hooks: [
               ((input) =>
                 this.activities.handleTaskLifecycleHook(
-                  input
-                )) satisfies ClaudeHookCallback
-            ]
-          }
-        ]
-      }
+                  input,
+                )) satisfies ClaudeHookCallback,
+            ],
+          },
+        ],
+      },
     } as ClaudeQueryOptions & {
       hooks: Record<string, Array<{ hooks: ClaudeHookCallback[] }>>;
     };
@@ -616,35 +726,35 @@ export class SessionRuntime {
       hasResumeCursor: Boolean(this.resumeCursor),
       querySettingsKeys: Object.keys(querySettings),
       claudeOptionKeys: Object.keys(
-        claudeQueryOptionOverrides(this.claudeOptions)
-      )
+        claudeQueryOptionOverrides(this.claudeOptions),
+      ),
     });
     this.query = queryFactory({
       prompt: this.promptQueue.iterate(),
-      options: queryOptions
+      options: queryOptions,
     }) as ClaudeQueryRuntime;
     this.logAuthRefresh("query_create.succeeded", {
       initialize: startOptions.initialize === true,
       restore: this.restore,
       hasInitializationResult:
-        typeof this.query.initializationResult === "function"
+        typeof this.query.initializationResult === "function",
     });
     if (startOptions.initialize) {
       try {
         this.logAuthRefresh("query_initialization.begin", {
-          restore: this.restore
+          restore: this.restore,
         });
         const initializationResult = await this.query.initializationResult?.();
         this.configuration.applyInitializationResult(initializationResult);
         this.initialized = true;
         this.logAuthRefresh("query_initialization.succeeded", {
           restore: this.restore,
-          resultKeys: Object.keys(recordValue(initializationResult) ?? {})
+          resultKeys: Object.keys(recordValue(initializationResult) ?? {}),
         });
       } catch (error) {
         this.logAuthRefresh("query_initialization.failed", {
           restore: this.restore,
-          error: errorPayload(error)
+          error: errorPayload(error),
         });
         this.query.close?.();
         this.query = undefined;
@@ -656,7 +766,7 @@ export class SessionRuntime {
 
   private logAuthRefresh(
     stage: string,
-    payload: Record<string, unknown>
+    payload: Record<string, unknown>,
   ): void {
     if (!claudeAuthRefreshDiagnosticsEnabled()) {
       return;
@@ -665,7 +775,7 @@ export class SessionRuntime {
       providerSessionId: this.providerSessionId,
       cwd: this.cwd,
       credentials: claudeCredentialSnapshot(),
-      ...payload
+      ...payload,
     });
   }
 
@@ -682,7 +792,7 @@ export class SessionRuntime {
       ...(this.lastAssistantUuid
         ? { resumeSessionAt: this.lastAssistantUuid }
         : {}),
-      turnCount: this.turns.turnCount
+      turnCount: this.turns.turnCount,
     };
     return this.resumeCursor;
   }
@@ -693,8 +803,8 @@ export class SessionRuntime {
       payload: {
         providerSessionId: this.providerSessionId,
         ...this.sessionStatePayload(),
-        resumeCursor: this.currentResumeCursor()
-      }
+        resumeCursor: this.currentResumeCursor(),
+      },
     });
   }
 
@@ -710,11 +820,11 @@ export class SessionRuntime {
       const { getSessionInfo } = await import("@anthropic-ai/claude-agent-sdk");
       const info = recordValue(
         await getSessionInfo(this.providerSessionId, {
-          dir: this.cwd || process.cwd()
-        })
+          dir: this.cwd || process.cwd(),
+        }),
       );
       const title = normalizeTitle(
-        stringValue(info?.customTitle) || stringValue(info?.summary)
+        stringValue(info?.customTitle) || stringValue(info?.summary),
       );
       if (!title || title === this.lastTitle) {
         return;
@@ -724,8 +834,8 @@ export class SessionRuntime {
         type: "session_title_updated",
         payload: {
           providerSessionId: this.providerSessionId,
-          title
-        }
+          title,
+        },
       });
     } catch {
       // Title updates are best-effort; the turn result should not fail because

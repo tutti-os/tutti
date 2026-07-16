@@ -258,7 +258,7 @@ export type AgentActivityUpdatedPayloadV1 =
           payload: Record<string, unknown>;
           role: string;
           version: number;
-          turnId: string | null;
+          turnId: string;
           status?: string;
           occurredAtUnixMs: number;
           startedAtUnixMs?: number;
@@ -266,6 +266,23 @@ export type AgentActivityUpdatedPayloadV1 =
           createdAtUnixMs?: number;
           updatedAtUnixMs?: number;
         }[];
+      };
+    }
+  | {
+      workspaceId: string;
+      agentSessionId: string;
+      eventType: "session_audit";
+      data: {
+        workspaceId: string;
+        agentSessionId: string;
+        eventType: "session_audit";
+        audit: {
+          auditId: string;
+          role: string;
+          payload: Record<string, unknown>;
+          occurredAtUnixMs: number;
+          version: number;
+        };
       };
     }
   | {
@@ -282,7 +299,16 @@ export type AgentActivityUpdatedPayloadV1 =
           turnId: string;
           agentSessionId: string;
           phase: "submitted" | "running" | "waiting" | "settling" | "settled";
-          outcome: "completed" | "failed" | "canceled" | "interrupted";
+          origin:
+            | "user_prompt"
+            | "goal_arm"
+            | "goal_continuation"
+            | "provider_initiated"
+            | "legacy_unknown";
+          sourceGoalOperationId?: string | null;
+          sourceGoalRevision?: number | null;
+          sourceGoalRepairEpoch?: number | null;
+          outcome: null | "completed" | "failed" | "canceled" | "interrupted";
           error: Record<string, unknown> | null;
           fileChanges: unknown;
           completedCommand: Record<string, unknown> | null;

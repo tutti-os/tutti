@@ -34,6 +34,7 @@ const (
 	EventSessionCompleted = "session.completed"
 	EventSessionFailed    = "session.failed"
 	EventSessionCanceled  = "session.canceled"
+	EventSessionAudit     = "session.audit"
 	EventTurnStarted      = "turn.started"
 	EventTurnUpdated      = "turn.updated"
 	EventTurnCompleted    = "turn.completed"
@@ -55,6 +56,7 @@ const (
 	StreamEventStatePatch        = "state_patch"
 	StreamEventAvailableCommands = "available_commands_update"
 	StreamEventConfigOptions     = "config_options_update"
+	StreamEventSessionAudit      = "session_audit"
 )
 
 type StartInput struct {

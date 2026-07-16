@@ -168,6 +168,7 @@ describe("projectAgentConversationVM", () => {
           activeTurn: {
             agentSessionId: "session-1",
             outcome: null,
+            origin: "user_prompt",
             phase: "running",
             settledAtUnixMs: null,
             startedAtUnixMs: 1,
@@ -1216,6 +1217,7 @@ describe("projectAgentConversationVM", () => {
           latestTurn: {
             agentSessionId: "session-1",
             outcome: "completed",
+            origin: "user_prompt",
             phase: "settled",
             settledAtUnixMs: 10,
             startedAtUnixMs: 1,
@@ -1297,6 +1299,7 @@ describe("projectAgentConversationVM", () => {
           activeTurn: {
             agentSessionId: "session-1",
             outcome: null,
+            origin: "user_prompt",
             phase: "running",
             settledAtUnixMs: null,
             startedAtUnixMs: 1,
@@ -1371,6 +1374,7 @@ describe("projectAgentConversationVM", () => {
           activeTurn: {
             agentSessionId: "session-1",
             outcome: null,
+            origin: "user_prompt",
             phase: "running",
             settledAtUnixMs: null,
             startedAtUnixMs: 1,

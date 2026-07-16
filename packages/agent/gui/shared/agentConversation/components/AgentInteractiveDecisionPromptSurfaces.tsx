@@ -19,7 +19,7 @@ import {
   approvalFeedbackOptionId,
   approvalOptionShortcutLabel,
   CommandTextWithTooltip,
-  formatToolDetails,
+  formatApprovalToolPresentation,
   InteractiveOptionSpinner,
   interactiveOptionLabel,
   interactivePromptCardClassName,
@@ -47,8 +47,8 @@ export function ApprovalPromptSurface({
   embedded?: boolean;
 }) {
   "use memo";
-  const promptDetails = useMemo(
-    () => formatToolDetails(prompt.input ?? null),
+  const promptToolPresentation = useMemo(
+    () => formatApprovalToolPresentation(prompt.input ?? null),
     [prompt.input]
   );
   const [submittingOptionId, setSubmittingOptionId] = useState<string | null>(
@@ -155,12 +155,23 @@ export function ApprovalPromptSurface({
   return (
     <section className={interactivePromptClassName(embedded)}>
       <div className={interactivePromptCardClassName(edgeGlow)}>
-        <div className={styles.interactivePromptLead}>
-          {stripPromptTitlePunctuation(labels.approvalLead)}
+        <div className={styles.interactivePromptLeadContent}>
+          <div className={styles.interactivePromptLead}>
+            {stripPromptTitlePunctuation(labels.approvalLead)}
+          </div>
+          {promptToolPresentation.leadDetails.map((detail) => (
+            <div
+              key={`${detail.kind}:${detail.value}`}
+              className={styles.interactivePromptQuestion}
+            >
+              {detail.value}
+              {detail.meta ? ` ${detail.meta}` : null}
+            </div>
+          ))}
         </div>
-        {promptDetails.length > 0 ? (
+        {promptToolPresentation.cardDetails.length > 0 ? (
           <div className={styles.interactivePromptOptions}>
-            {promptDetails.map((detail) => (
+            {promptToolPresentation.cardDetails.map((detail) => (
               <div
                 key={`${detail.label}:${detail.value}`}
                 className={styles.interactiveOptionDisplay}

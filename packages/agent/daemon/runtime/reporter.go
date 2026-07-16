@@ -25,6 +25,10 @@ type ActivityClient interface {
 	ReportSessionMessages(context.Context, agentsessionstore.ReportSessionMessagesInput) (agentsessionstore.ReportSessionMessagesReply, error)
 }
 
+type goalProvenanceActivityClient interface {
+	agentsessionstore.GoalProvenanceLedger
+}
+
 type Reporter struct {
 	ClientProvider func() ActivityClient
 	Logger         *slog.Logger
@@ -32,8 +36,30 @@ type Reporter struct {
 	Backoff        []time.Duration
 }
 
+func (r Reporter) BindGoalProvenance(ctx context.Context, input agentsessionstore.BindGoalProvenanceInput) (agentsessionstore.GoalProvenanceBinding, error) {
+	if r.ClientProvider == nil {
+		return agentsessionstore.GoalProvenanceBinding{}, errors.New("agent session activity client provider is nil")
+	}
+	client, ok := r.ClientProvider().(goalProvenanceActivityClient)
+	if !ok || client == nil {
+		return agentsessionstore.GoalProvenanceBinding{}, errors.New("agent session activity client does not support goal provenance")
+	}
+	return client.BindGoalProvenance(ctx, input)
+}
+
+func (r Reporter) LookupGoalProvenance(ctx context.Context, input agentsessionstore.LookupGoalProvenanceInput) (agentsessionstore.GoalProvenanceBinding, bool, error) {
+	if r.ClientProvider == nil {
+		return agentsessionstore.GoalProvenanceBinding{}, false, errors.New("agent session activity client provider is nil")
+	}
+	client, ok := r.ClientProvider().(goalProvenanceActivityClient)
+	if !ok || client == nil {
+		return agentsessionstore.GoalProvenanceBinding{}, false, errors.New("agent session activity client does not support goal provenance")
+	}
+	return client.LookupGoalProvenance(ctx, input)
+}
+
 func (r Reporter) Report(ctx context.Context, input agentsessionstore.ReportActivityInput) error {
-	if len(input.TimelineItems) == 0 && len(input.StatePatches) == 0 && len(input.MessageUpdates) == 0 {
+	if len(input.TimelineItems) == 0 && len(input.StatePatches) == 0 && len(input.MessageUpdates) == 0 && len(input.SessionAudits) == 0 && len(input.GoalReconcileRequests) == 0 {
 		return nil
 	}
 	input.Source.SessionOrigin = agentsessionstore.WorkspaceAgentSessionOriginRuntime
@@ -59,6 +85,7 @@ func (r Reporter) Report(ctx context.Context, input agentsessionstore.ReportActi
 		"timeline_item_count", len(input.TimelineItems),
 		"state_patch_count", len(input.StatePatches),
 		"message_update_count", len(input.MessageUpdates),
+		"session_audit_count", len(input.SessionAudits),
 		"timeline_items", timelineItemsForLog,
 		"state_patches", statePatchesForLog,
 	)
@@ -167,6 +194,12 @@ func validateReportActivityAccepted(input agentsessionstore.ReportActivityInput,
 	if reply.AcceptedMessageUpdateCount < len(input.MessageUpdates) {
 		return fmt.Errorf("agent session activity report accepted %d/%d message updates", reply.AcceptedMessageUpdateCount, len(input.MessageUpdates))
 	}
+	if reply.AcceptedSessionAuditCount < len(input.SessionAudits) {
+		return fmt.Errorf("agent session activity report accepted %d/%d session audits", reply.AcceptedSessionAuditCount, len(input.SessionAudits))
+	}
+	if reply.AcceptedGoalReconcileRequestCount < len(input.GoalReconcileRequests) {
+		return fmt.Errorf("agent session activity report accepted %d/%d goal reconcile requests", reply.AcceptedGoalReconcileRequestCount, len(input.GoalReconcileRequests))
+	}
 	return nil
 }
 
@@ -193,6 +226,12 @@ func reportActivityInput(session Session, events []activityshared.Event) agentse
 		}
 		if update, ok := messageUpdateFromSessionEvent(source, event, sessionID, timestamp); ok {
 			input.MessageUpdates = append(input.MessageUpdates, update)
+		}
+		if audit, ok := sessionAuditUpdateFromSessionEvent(event, sessionID, timestamp); ok {
+			input.SessionAudits = append(input.SessionAudits, audit)
+		}
+		if request, ok := goalReconcileRequestFromSessionEvent(event, sessionID); ok {
+			input.GoalReconcileRequests = append(input.GoalReconcileRequests, request)
 		}
 		if shouldAppendVisibleFailure(events, event) {
 			if update, ok := visibleFailureMessageUpdate(source, event, sessionID, timestamp); ok {

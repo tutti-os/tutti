@@ -4,6 +4,10 @@ import type { ConversationSection } from "../agentGuiNodeViewConversation";
 import {
   insertConversationRailSectionOverlay,
   conversationSummariesRenderEqual,
+  isConversationRailInitialLoadPending,
+  projectConversationRailMemberships,
+  projectConversationRailSearchSections,
+  projectConversationRailSectionsByExactKey,
   projectConversationRailSectionsWithActiveConversation,
   planRuntimeRailMembershipRefresh,
   projectRuntimeSectionsToConversationRailMemberships,
@@ -11,6 +15,12 @@ import {
   resolveConversationRailActiveConversation
 } from "./agentGuiConversationRail";
 import type { ConversationRailSectionMembership } from "./agentGuiConversationRail";
+import { preserveConversationRailSectionTemplates } from "./agentGuiConversationRailSectionTemplates";
+
+const railLabels = {
+  sectionConversations: "Conversations",
+  sectionPinned: "Pinned"
+};
 
 function conversation(
   id: string,
@@ -21,6 +31,7 @@ function conversation(
     id,
     pinnedAtUnixMs,
     provider: "codex",
+    railSectionKey: "project:/workspace",
     status: "ready",
     title: id,
     updatedAtUnixMs: 1
@@ -45,6 +56,32 @@ function section(
     }
   ];
 }
+
+describe("isConversationRailInitialLoadPending", () => {
+  it("blocks only while the first runtime membership page is unresolved", () => {
+    expect(
+      isConversationRailInitialLoadPending({
+        pending: true,
+        runtimeSectionsEnabled: true,
+        sections: null
+      })
+    ).toBe(true);
+    expect(
+      isConversationRailInitialLoadPending({
+        pending: true,
+        runtimeSectionsEnabled: true,
+        sections: []
+      })
+    ).toBe(false);
+    expect(
+      isConversationRailInitialLoadPending({
+        pending: false,
+        runtimeSectionsEnabled: true,
+        sections: null
+      })
+    ).toBe(false);
+  });
+});
 
 function membership(
   items: readonly AgentGUIConversationSummary[]
@@ -212,19 +249,41 @@ describe("projectRuntimeSectionsToConversationRailMemberships", () => {
   });
 });
 
+describe("projectConversationRailMemberships", () => {
+  it("requires exact agreement between the session key and section key", () => {
+    const exact = conversation("exact");
+    const conflicting = {
+      ...conversation("conflicting"),
+      railSectionKey: "conversations"
+    };
+
+    const projected = projectConversationRailMemberships({
+      conversations: [exact, conflicting],
+      labels: {
+        sectionConversations: "Conversations",
+        sectionPinned: "Pinned"
+      },
+      sections: membership([exact, conflicting])
+    });
+
+    expect(projected[0]?.items.map((item) => item.id)).toEqual(["exact"]);
+  });
+});
+
 describe("projectConversationRailSectionsWithTransientConversations", () => {
   const labels = {
     sectionConversations: "Conversations",
     sectionPinned: "Pinned"
   };
 
-  it("overlays every pending row newest-first without mutating canonical sections", () => {
+  it("keeps pending rows out of project sections until exact membership arrives", () => {
     const canonical = section([conversation("canonical")]);
     const project = canonical[0]?.project ?? null;
     const first = {
       ...conversation("session-1"),
       project,
       projectionSource: "pending_activation" as const,
+      railSectionKey: undefined,
       sortTimeUnixMs: 10,
       updatedAtUnixMs: 10
     };
@@ -232,6 +291,7 @@ describe("projectConversationRailSectionsWithTransientConversations", () => {
       ...conversation("session-2"),
       project,
       projectionSource: "pending_activation" as const,
+      railSectionKey: undefined,
       sortTimeUnixMs: 20,
       updatedAtUnixMs: 20
     };
@@ -245,11 +305,8 @@ describe("projectConversationRailSectionsWithTransientConversations", () => {
       }
     );
 
-    expect(projected[0]?.items.map((item) => item.id)).toEqual([
-      "session-2",
-      "session-1",
-      "canonical"
-    ]);
+    expect(projected[0]?.items.map((item) => item.id)).toEqual(["canonical"]);
+    expect(projected).toHaveLength(1);
     expect(canonical[0]?.items.map((item) => item.id)).toEqual(["canonical"]);
   });
 
@@ -266,6 +323,7 @@ describe("projectConversationRailSectionsWithTransientConversations", () => {
       ...conversation("session-2"),
       project,
       projectionSource: "pending_activation" as const,
+      railSectionKey: undefined,
       sortTimeUnixMs: 30,
       updatedAtUnixMs: 30
     };
@@ -279,8 +337,8 @@ describe("projectConversationRailSectionsWithTransientConversations", () => {
       }
     );
 
+    expect(projected).toHaveLength(1);
     expect(projected[0]?.items.map((item) => item.id)).toEqual([
-      "session-2",
       "session-1",
       "older"
     ]);
@@ -314,7 +372,7 @@ describe("projectConversationRailSectionsWithActiveConversation", () => {
 
     const projected = projectConversationRailSectionsWithActiveConversation({
       activeConversation: active,
-      labels,
+      labels: railLabels,
       sections
     });
 
@@ -341,14 +399,14 @@ describe("projectConversationRailSectionsWithActiveConversation", () => {
 
     const projected = projectConversationRailSectionsWithActiveConversation({
       activeConversation: active,
-      labels,
+      labels: railLabels,
       sections: section([active])
     });
 
     expect(projected.activeOverlay?.conversation).toBe(active);
   });
 
-  it("overlays only the missing active row into its matching server section", () => {
+  it("uses the active row's exact key instead of its resolved project", () => {
     const active = {
       ...conversation("active"),
       project: {
@@ -356,7 +414,8 @@ describe("projectConversationRailSectionsWithActiveConversation", () => {
         label: "Workspace",
         path: "/workspace",
         sectionKey: "project:/workspace"
-      }
+      },
+      railSectionKey: "conversations"
     };
     const sections = section([conversation("recent")]);
 
@@ -366,13 +425,17 @@ describe("projectConversationRailSectionsWithActiveConversation", () => {
       sections
     });
 
-    expect(projected.sections).toBe(sections);
     expect(projected.activeOverlay?.conversation.id).toBe("active");
-    expect(projected.activeOverlay?.sectionId).toBe("project:/workspace");
+    expect(projected.activeOverlay?.sectionId).toBe("conversations");
+    expect(projected.activeOverlay?.conversation.project).toBeNull();
+    expect(projected.sections.map((item) => item.id)).toEqual([
+      "project:/workspace",
+      "conversations"
+    ]);
     expect(sections[0]?.items.map((item) => item.id)).toEqual(["recent"]);
   });
 
-  it("creates a transient project section when the server page omits it", () => {
+  it("creates an exact project overlay when its keyed section is not loaded", () => {
     const active = {
       ...conversation("active"),
       project: {
@@ -380,7 +443,8 @@ describe("projectConversationRailSectionsWithActiveConversation", () => {
         label: "Other",
         path: "/other",
         sectionKey: "project:/other"
-      }
+      },
+      railSectionKey: "project:/other"
     };
 
     const projected = projectConversationRailSectionsWithActiveConversation({
@@ -398,6 +462,211 @@ describe("projectConversationRailSectionsWithActiveConversation", () => {
       conversation: active,
       sectionId: "project:/other"
     });
+  });
+
+  it("does not project an active row whose backend key is absent", () => {
+    const active = {
+      ...conversation("active"),
+      railSectionKey: undefined
+    };
+    const sections = section([conversation("recent")]);
+
+    const projected = projectConversationRailSectionsWithActiveConversation({
+      activeConversation: active,
+      labels,
+      sections
+    });
+
+    expect(projected).toEqual({ activeOverlay: null, sections });
+  });
+});
+
+describe("projectConversationRailSearchSections", () => {
+  it("uses exact loaded membership and never infers missing membership from cwd", () => {
+    const loaded = conversation("loaded");
+    const resolvedProject = section([])[0]?.project ?? null;
+    const missing = {
+      ...conversation("missing"),
+      cwd: "/workspace/packages/app",
+      project: resolvedProject,
+      railSectionKey: "conversations"
+    };
+
+    const groups = projectConversationRailSearchSections({
+      conversations: [loaded, missing],
+      labels: {
+        sectionConversations: "Conversations",
+        sectionPinned: "Pinned"
+      },
+      sections: section([loaded])
+    });
+
+    expect(
+      groups.map((group) => [group.id, group.items.map((item) => item.id)])
+    ).toEqual([
+      ["project:/workspace", ["loaded"]],
+      ["conversations", ["missing"]]
+    ]);
+  });
+
+  it("preserves pinned and authoritative section order", () => {
+    const projectA = conversation("project-a");
+    const projectB = {
+      ...conversation("project-b"),
+      railSectionKey: "project:/b",
+      project: {
+        id: "b",
+        label: "B",
+        path: "/b",
+        sectionKey: "project:/b"
+      }
+    };
+    const pinned = {
+      ...conversation("pinned"),
+      pinnedAtUnixMs: 1,
+      updatedAtUnixMs: 0
+    };
+
+    const groups = projectConversationRailSearchSections({
+      conversations: [projectA, projectB, pinned],
+      labels: railLabels,
+      sections: [
+        {
+          id: "project:/b",
+          kind: "project",
+          label: "B",
+          project: projectB.project,
+          items: []
+        },
+        ...section([])
+      ]
+    });
+
+    expect(groups.map((group) => group.id)).toEqual([
+      "pinned",
+      "project:/b",
+      "project:/workspace"
+    ]);
+  });
+});
+
+describe("projectConversationRailSectionsByExactKey", () => {
+  it("uses only exact backend keys and keeps empty authoritative sections", () => {
+    const projectSummary = {
+      id: "workspace",
+      label: "Workspace",
+      path: "/workspace",
+      sectionKey: "project:/workspace"
+    };
+    const exactProject = {
+      ...conversation("exact-project"),
+      project: projectSummary
+    };
+    const conversations = {
+      ...conversation("general"),
+      cwd: "/workspace/nested",
+      project: projectSummary,
+      railSectionKey: "conversations"
+    };
+    const missingKey = {
+      ...conversation("missing-key"),
+      project: projectSummary,
+      railSectionKey: undefined
+    };
+
+    const groups = projectConversationRailSectionsByExactKey({
+      conversations: [conversations, missingKey, exactProject],
+      labels: railLabels,
+      userProjects: [
+        {
+          ...projectSummary,
+          createdAtUnixMs: 1,
+          updatedAtUnixMs: 1,
+          lastUsedAtUnixMs: 1
+        },
+        {
+          id: "empty",
+          label: "Empty",
+          path: "/empty",
+          sectionKey: "project:/empty",
+          createdAtUnixMs: 1,
+          updatedAtUnixMs: 1,
+          lastUsedAtUnixMs: 1
+        }
+      ],
+      includeEmptySections: true
+    });
+
+    expect(
+      groups.map((group) => [group.id, group.items.map((item) => item.id)])
+    ).toEqual([
+      ["project:/workspace", ["exact-project"]],
+      ["project:/empty", []],
+      ["conversations", ["general"]]
+    ]);
+  });
+});
+
+describe("preserveConversationRailSectionTemplates", () => {
+  it("keeps project and conversations sections visible when membership is empty", () => {
+    const groups = preserveConversationRailSectionTemplates({
+      labels: railLabels,
+      sections: [],
+      userProjects: [
+        {
+          id: "workspace",
+          label: "Workspace",
+          path: "/workspace",
+          sectionKey: "project:/workspace",
+          createdAtUnixMs: 1,
+          updatedAtUnixMs: 1,
+          lastUsedAtUnixMs: 1
+        }
+      ]
+    });
+
+    expect(
+      groups.map((group) => [group.id, group.items.map((item) => item.id)])
+    ).toEqual([
+      ["project:/workspace", []],
+      ["conversations", []]
+    ]);
+  });
+
+  it("preserves exact projected items without inferring missing membership", () => {
+    const exact = conversation("exact");
+    const groups = preserveConversationRailSectionTemplates({
+      labels: railLabels,
+      sections: section([exact]),
+      userProjects: [
+        {
+          id: "workspace",
+          label: "Workspace",
+          path: "/workspace",
+          sectionKey: "project:/workspace",
+          createdAtUnixMs: 1,
+          updatedAtUnixMs: 1,
+          lastUsedAtUnixMs: 1
+        },
+        {
+          id: "empty",
+          label: "Empty",
+          path: "/empty",
+          sectionKey: "project:/empty",
+          createdAtUnixMs: 1,
+          updatedAtUnixMs: 1,
+          lastUsedAtUnixMs: 1
+        }
+      ]
+    });
+
+    expect(
+      groups.map((group) => [group.id, group.items.map((item) => item.id)])
+    ).toEqual([
+      ["project:/workspace", ["exact"]],
+      ["project:/empty", []],
+      ["conversations", []]
+    ]);
   });
 });
 

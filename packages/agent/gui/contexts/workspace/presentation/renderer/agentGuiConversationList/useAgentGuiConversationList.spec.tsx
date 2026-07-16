@@ -592,6 +592,7 @@ describe("useAgentGuiConversationList", () => {
             cwd: "/workspace",
             latestTurn: {
               agentSessionId: "older-start-newer-update",
+              origin: "user_prompt",
               phase: "running",
               startedAtUnixMs: 2_000,
               turnId: "turn-older",
@@ -611,6 +612,7 @@ describe("useAgentGuiConversationList", () => {
             cwd: "/workspace",
             latestTurn: {
               agentSessionId: "newer-start-older-update",
+              origin: "user_prompt",
               phase: "running",
               startedAtUnixMs: 3_000,
               turnId: "turn-newer",

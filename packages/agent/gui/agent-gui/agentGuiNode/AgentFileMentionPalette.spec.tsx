@@ -26,6 +26,8 @@ vi.mock("../../i18n/index", async () => {
       "暂无已打开或 Agent 生成的文件，继续输入文件名可搜索本机文件",
     "agentHost.agentGui.contextPickerBrowseSessionHint":
       "输入内容以搜索我发起的 Agent 会话",
+    "agentHost.agentGui.contextPickerLoadMoreLoading": "正在加载",
+    "agentHost.agentGui.contextPickerLoadMoreRetry": "加载失败，重试",
     "agentHost.agentGui.mentionGroupOpenedFiles": "我打开的文件",
     "agentHost.agentGui.mentionGroupAgentGeneratedFiles": "Agent 生成的文件",
     "agentHost.agentGui.mentionAgentGeneratedFolderBack": "返回",
@@ -1329,6 +1331,78 @@ describe("AgentFileMentionPalette", () => {
     );
   });
 
+  it("renders provenance catalog labels for session groups", () => {
+    const session = (
+      targetId: string,
+      agentTargetId: string,
+      title: string
+    ): AgentContextMentionItem => ({
+      kind: "session",
+      href: `mention://agent-session/${targetId}?workspaceId=room-1`,
+      workspaceId: "room-1",
+      targetId,
+      agentTargetId,
+      name: title,
+      title,
+      scope: "my_sessions",
+      initiatorName: "User",
+      agentName: "Codex"
+    });
+    const state: AgentMentionSearchState = {
+      status: "ready",
+      query: "",
+      mode: "browse",
+      filter: "session",
+      categories: [],
+      groups: [
+        {
+          id: "agent:codex-main",
+          label: "Me · Codex",
+          items: [session("session-local", "codex-main", "Local build")],
+          totalCount: 1,
+          visibleCount: 1,
+          hasMore: false
+        },
+        {
+          id: "agent:shared-agent%3Ashared-codex",
+          label: "Lin · Codex",
+          items: [
+            session(
+              "session-shared",
+              "shared-agent:shared-codex",
+              "Shared build"
+            )
+          ],
+          totalCount: 1,
+          visibleCount: 1,
+          hasMore: false
+        }
+      ],
+      error: null
+    };
+
+    render(
+      <AgentFileMentionPalette
+        state={state}
+        highlightedKey={null}
+        label="mention palette"
+        loadingLabel="loading"
+        emptyLabel="empty"
+        errorLabel="error"
+        tabHintLabel="hint"
+        maxHeightPx={320}
+        onHighlightChange={vi.fn()}
+        onSelectItem={vi.fn()}
+        onSelectCategory={vi.fn()}
+        onSelectFilter={vi.fn()}
+        onExpandGroup={vi.fn()}
+      />
+    );
+
+    expect(screen.getByText("Me · Codex")).toBeVisible();
+    expect(screen.getByText("Lin · Codex")).toBeVisible();
+  });
+
   it("hides a duplicate group heading when the active filter has one matching group", () => {
     const state: AgentMentionSearchState = {
       status: "ready",
@@ -1555,5 +1629,71 @@ describe("AgentFileMentionPalette", () => {
       2,
       "opened_files:file:/workspace/assets/demo.png"
     );
+  });
+
+  it("renders dynamic task topic labels and isolated load-more states", () => {
+    const onExpandGroup = vi.fn();
+    const baseGroup = {
+      id: "issue-topic:topic%2Fone",
+      label: "Pinned topic",
+      items: [
+        {
+          kind: "workspace-issue" as const,
+          href: "mention://workspace-issue/issue-1?workspaceId=room-1&topicId=topic%2Fone",
+          workspaceId: "room-1",
+          targetId: "issue-1",
+          name: "Fix pagination",
+          title: "Fix pagination",
+          status: "running"
+        }
+      ],
+      totalCount: 11,
+      visibleCount: 1,
+      hasMore: true
+    };
+    const state: AgentMentionSearchState = {
+      status: "ready",
+      query: "",
+      mode: "browse",
+      filter: "issue",
+      categories: [],
+      groups: [{ ...baseGroup, expandStatus: "loading" }],
+      error: null
+    };
+    const props = {
+      highlightedKey: "expand:issue-topic:topic%2Fone",
+      label: "mention palette",
+      loadingLabel: "loading",
+      emptyLabel: "empty",
+      errorLabel: "error",
+      tabHintLabel: "hint",
+      maxHeightPx: 320,
+      onHighlightChange: vi.fn(),
+      onSelectItem: vi.fn(),
+      onSelectCategory: vi.fn(),
+      onSelectFilter: vi.fn(),
+      onExpandGroup
+    };
+    const { rerender } = render(
+      <AgentFileMentionPalette {...props} state={state} />
+    );
+
+    expect(screen.getByText("Pinned topic")).toBeVisible();
+    expect(screen.getByRole("button", { name: "正在加载" })).toBeDisabled();
+    expect(screen.getByText("Fix pagination")).toBeVisible();
+
+    rerender(
+      <AgentFileMentionPalette
+        {...props}
+        state={{
+          ...state,
+          groups: [{ ...baseGroup, expandStatus: "error" }]
+        }}
+      />
+    );
+    const retry = screen.getByRole("button", { name: "加载失败，重试" });
+    expect(retry).toBeEnabled();
+    fireEvent.click(retry);
+    expect(onExpandGroup).toHaveBeenCalledWith("issue-topic:topic%2Fone");
   });
 });

@@ -342,6 +342,8 @@ export const zhCNAgentGui = {
   contextPickerBrowseIssueHint: "输入内容以搜索当前房间内的任务",
   workspaceAppFactoryMentionFallback: "创建应用",
   contextPickerExpandMore: "展开更多 {{count}} 条",
+  contextPickerLoadMoreLoading: "正在加载",
+  contextPickerLoadMoreRetry: "加载失败，重试",
   contextPickerCategoryFileDescription: "搜索工作区文件和目录",
   contextPickerCategorySessionDescription: "查找我发起的 Agent 会话",
   contextPickerCategoryCollabDescription: "查看其他人和 Agent 的会话",

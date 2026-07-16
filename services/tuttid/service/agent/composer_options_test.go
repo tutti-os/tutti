@@ -152,13 +152,33 @@ func TestResolveCreateSessionModelPreservesClaudeAliases(t *testing.T) {
 	t.Parallel()
 	service := &Service{}
 	for _, want := range []string{"opus", "opusplan"} {
-		got := service.resolveCreateSessionModel(context.Background(), "claude-code", nil, stringPointer(want))
+		got := service.resolveCreateSessionModel(context.Background(), "claude-code", nil, "", stringPointer(want))
 		if got == nil {
 			t.Fatalf("resolveCreateSessionModel(%q) = nil, want %q", want, want)
 		}
 		if *got != want {
 			t.Fatalf("resolveCreateSessionModel(%q) = %q, want %q", want, *got, want)
 		}
+	}
+}
+
+func TestResolveCreateSessionModelPropagatesWorkspaceCwd(t *testing.T) {
+	t.Parallel()
+	inputs := []AgentModelCatalogInput{}
+	service := &Service{ModelCatalog: fakeModelCatalog{
+		inputs: &inputs,
+		result: AgentModelCatalogResult{Models: []AgentModelOption{{
+			ID:        "openai/gpt-5.4",
+			IsDefault: true,
+		}}},
+	}}
+
+	got := service.resolveCreateSessionModel(context.Background(), "opencode", nil, "/workspace/project", nil)
+	if got == nil || *got != "openai/gpt-5.4" {
+		t.Fatalf("resolveCreateSessionModel() = %v, want openai/gpt-5.4", got)
+	}
+	if len(inputs) != 1 || inputs[0] != (AgentModelCatalogInput{Provider: "opencode", Cwd: "/workspace/project"}) {
+		t.Fatalf("model catalog inputs = %+v, want workspace-scoped OpenCode lookup", inputs)
 	}
 }
 

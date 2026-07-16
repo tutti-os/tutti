@@ -61,13 +61,24 @@ func statePatchFromSessionEvent(source agentsessionstore.EventSource, event acti
 		event.Type != activityshared.EventRootProviderTurnStarted &&
 		event.Type != activityshared.EventRootProviderTurnCompleted {
 		patch.Turn = &agentsessionstore.WorkspaceAgentTurnPatch{
-			TurnID:  turnID,
-			Phase:   strings.TrimSpace(event.Payload.TurnPhase),
-			Outcome: strings.TrimSpace(event.Payload.TurnOutcome),
+			TurnID:                turnID,
+			Origin:                stringFromPayload(event.Payload.Metadata, "turnOrigin"),
+			SourceGoalOperationID: stringFromPayload(event.Payload.Metadata, "sourceGoalOperationId"),
+			SourceGoalRevision:    payloadInt64(event.Payload.Metadata, "sourceGoalRevision"),
+			SourceGoalRepairEpoch: payloadInt64(event.Payload.Metadata, "sourceGoalRepairEpoch"),
+			Phase:                 strings.TrimSpace(event.Payload.TurnPhase),
+			Outcome:               strings.TrimSpace(event.Payload.TurnOutcome),
 		}
 	}
+	applyProviderInitiatedInteractionTurnToPatch(&patch, event)
 	if !applyLifecycleSnapshotToPatch(&patch, event) {
 		applyExplicitTurnLifecycleToPatch(&patch, event)
+	}
+	if event.Type == activityshared.EventRootProviderTurnStarted || event.Type == activityshared.EventRootProviderTurnCompleted {
+		// A provider lifecycle snapshot may update the controller/session view,
+		// but root-provider aliases never create canonical Turns implicitly.
+		// The verified Goal-start proposal below is the only exception.
+		patch.Turn = nil
 	}
 	switch event.Type {
 	case activityshared.EventSessionStarted:
@@ -124,8 +135,83 @@ func statePatchFromSessionEvent(source agentsessionstore.EventSource, event acti
 			Outcome:        strings.TrimSpace(event.Payload.TurnOutcome),
 			ErrorMessage:   activityshared.BestEffortErrorMessage(event.Payload),
 		}
+		if event.Type == activityshared.EventRootProviderTurnStarted {
+			applyProviderCreatedGoalTurnToPatch(&patch, event, timestamp)
+		}
 	}
 	return patch, true
+}
+
+// applyProviderCreatedGoalTurnToPatch turns the provider's first authoritative
+// Goal turn_started fact into one compound state report. ReportActivityState
+// persists the canonical Turn before applying RootProviderTurn in the same
+// SQLite transaction, so messages can never observe a provider alias without
+// its owning Turn. Ordinary root-provider events remain unable to create Turns.
+func applyProviderCreatedGoalTurnToPatch(
+	patch *agentsessionstore.WorkspaceAgentStatePatch,
+	event activityshared.Event,
+	timestamp int64,
+) {
+	if patch == nil || patch.RootProviderTurn == nil {
+		return
+	}
+	origin := strings.TrimSpace(stringFromPayload(event.Payload.Metadata, "turnOrigin"))
+	if origin != "goal_arm" && origin != "goal_continuation" {
+		return
+	}
+	turnID := strings.TrimSpace(event.Payload.TurnID)
+	providerTurnID := strings.TrimSpace(event.Payload.ProviderTurnID)
+	if turnID == "" || providerTurnID == "" {
+		return
+	}
+
+	operationID := strings.TrimSpace(stringFromPayload(event.Payload.Metadata, "sourceGoalOperationId"))
+	revision := payloadInt64(event.Payload.Metadata, "sourceGoalRevision")
+	repairEpoch := payloadInt64(event.Payload.Metadata, "sourceGoalRepairEpoch")
+	if operationID == "" || revision <= 0 || repairEpoch < 0 {
+		// Legacy direct /goal prompts predate durable Goal identity. Their actual
+		// provider start is safe to adopt, but it must not claim guessed Goal
+		// provenance or participate in repair predicates.
+		origin = "legacy_unknown"
+		operationID = ""
+		revision = 0
+		repairEpoch = 0
+	}
+	activeTurnID := turnID
+	patch.Turn = &agentsessionstore.WorkspaceAgentTurnPatch{
+		TurnID:                turnID,
+		Origin:                origin,
+		SourceGoalOperationID: operationID,
+		SourceGoalRevision:    revision,
+		SourceGoalRepairEpoch: repairEpoch,
+		ActiveTurnID:          &activeTurnID,
+		Phase:                 "running",
+		StartedAtUnixMS:       timestamp,
+	}
+	patch.TurnLifecycle = &agentsessionstore.WorkspaceAgentTurnLifecycle{
+		ActiveTurnID: &activeTurnID,
+		Phase:        "running",
+	}
+	patch.Turn.SubmitAvailability = submitAvailabilityForExplicitLifecyclePhase("running")
+	patch.SubmitAvailability = cloneSubmitAvailability(patch.Turn.SubmitAvailability)
+}
+
+// applyProviderInitiatedInteractionTurnToPatch makes the Turn creation an
+// explicit part of the provider event projection. ReportActivityState then
+// commits this Turn and its first interaction atomically; the interaction
+// repository is deliberately unable to synthesize a missing Turn.
+func applyProviderInitiatedInteractionTurnToPatch(patch *agentsessionstore.WorkspaceAgentStatePatch, event activityshared.Event) {
+	if patch == nil || event.Type != activityshared.EventInteractionRequested || patch.InteractionTransition == nil || patch.Turn == nil {
+		return
+	}
+	if strings.TrimSpace(patch.Turn.Phase) == "" {
+		patch.Turn.Phase = "waiting"
+	}
+	if strings.TrimSpace(patch.Turn.Origin) == "" {
+		patch.Turn.Origin = "provider_initiated"
+	}
+	activeTurnID := strings.TrimSpace(patch.Turn.TurnID)
+	patch.Turn.ActiveTurnID = &activeTurnID
 }
 
 func cloneStringPointer(value *string) *string {

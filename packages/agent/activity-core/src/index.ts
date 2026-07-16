@@ -270,6 +270,7 @@ export type {
   AgentActivitySubmitDiagnostics,
   AgentActivitySubmitSettingsPatch,
   AgentActivityTurn,
+  AgentActivityTurnOrigin,
   AgentActivityTurnCancelResponse,
   AgentActivityInteraction,
   AgentActivityUpdatedApplyResult,

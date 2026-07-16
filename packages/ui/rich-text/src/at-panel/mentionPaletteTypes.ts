@@ -15,6 +15,9 @@ export interface MentionPaletteGroup<TItem> {
   totalCount: number;
   visibleCount: number;
   hasMore: boolean;
+  expandStatus?: "idle" | "loading" | "error";
+  expandLoadingLabel?: string;
+  expandErrorLabel?: string;
   emptyLabel?: string;
   /**
    * Optional precomputed label for the "show more" expand control. When omitted

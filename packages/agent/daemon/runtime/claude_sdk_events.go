@@ -2,12 +2,29 @@ package agentruntime
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"log/slog"
 	"strings"
 
 	activityshared "github.com/tutti-os/tutti/packages/agent/daemon/activity/events"
 )
+
+func payloadInt64(payload map[string]any, key string) int64 {
+	switch value := payload[key].(type) {
+	case int64:
+		return value
+	case int:
+		return int64(value)
+	case float64:
+		return int64(value)
+	case json.Number:
+		result, _ := value.Int64()
+		return result
+	default:
+		return 0
+	}
+}
 
 func (*ClaudeCodeSDKAdapter) applySidecarSessionEvent(adapterSession *claudeSDKAdapterSession, session Session, event claudeSDKSidecarEvent) []activityshared.Event {
 	if event.Type == "usage_updated" {
@@ -49,14 +66,57 @@ func (a *ClaudeCodeSDKAdapter) sidecarTurnEvents(adapterSession *claudeSDKAdapte
 	case "session_state":
 		return []activityshared.Event{newSessionActivityEvent(session, EventSessionUpdated, firstNonEmpty(session.Status, SessionStatusReady), claudeSDKRuntimeContext(session, adapterSession))}, false, nil
 	case "turn_started":
-		a.rememberClaudeSDKRootProviderTurn(adapterSession, providerTurnID)
 		metadata := map[string]any{
 			"adapter": claudeSDKSidecarAdapterName,
+		}
+		providerCreatedGoalTurn := false
+		if origin := payloadString(event.Payload, "turnOrigin"); origin != "" {
+			metadata["turnOrigin"] = origin
+			if origin == "goal_arm" || origin == "goal_continuation" {
+				providerCreatedGoalTurn = true
+				// Goal control does not pre-allocate a canonical Turn. The provider's
+				// turn_started event is the first authoritative Turn fact, so it also
+				// starts a fresh root mapping instead of inheriting the preceding user
+				// Turn from this long-lived SDK session.
+				rootTurnID = providerTurnID
+				a.beginClaudeSDKRootTurn(adapterSession, rootTurnID, providerTurnID)
+				operationID := payloadString(event.Payload, "sourceGoalOperationId")
+				revision := payloadInt64(event.Payload, "sourceGoalRevision")
+				repairEpoch := payloadInt64(event.Payload, "sourceGoalRepairEpoch")
+				metadata["sourceGoalOperationId"] = operationID
+				metadata["sourceGoalRevision"] = revision
+				metadata["sourceGoalRepairEpoch"] = repairEpoch
+				a.mu.Lock()
+				latestRevision, latestRepairEpoch := adapterSession.goalRevision, adapterSession.goalRepairEpoch
+				a.mu.Unlock()
+				if revision > 0 && revision == latestRevision && repairEpoch < latestRepairEpoch {
+					a.cancelClaudeSDKGoalTurn(adapterSession, session, providerTurnID, revision, repairEpoch)
+				}
+			}
+		}
+		if !providerCreatedGoalTurn {
+			a.rememberClaudeSDKRootProviderTurn(adapterSession, providerTurnID)
 		}
 		if payloadBoolValue(event.Payload, "synthetic") {
 			metadata["synthetic"] = true
 		}
 		return []activityshared.Event{claudeSDKRootProviderTurnStartedEvent(session, rootTurnID, providerTurnID, metadata)}, false, nil
+	case "goal_command_started":
+		evidence := map[string]any{
+			"source":         "claude_goal_command_started",
+			"confidence":     "lifecycle_inferred",
+			"phase":          "applied",
+			"operationId":    payloadString(event.Payload, "operationId"),
+			"revision":       payloadInt64(event.Payload, "revision"),
+			"repairEpoch":    payloadInt64(event.Payload, "repairEpoch"),
+			"action":         payloadString(event.Payload, "action"),
+			"providerTurnId": turnID,
+		}
+		runtimeContext := claudeSDKRuntimeContext(session, adapterSession)
+		runtimeContext["goalControlEvidence"] = evidence
+		return []activityshared.Event{newSessionActivityEvent(session, EventSessionUpdated, firstNonEmpty(session.Status, SessionStatusReady), runtimeContext)}, false, nil
+	case "goal_command_superseded":
+		return nil, false, nil
 	case "commands_updated":
 		if adapterSession.applyCommandsUpdated(session.AgentSessionID, event.Payload) {
 			a.emitCommandSnapshot(claudeSDKCommandSnapshot(session.AgentSessionID, adapterSession.liveState))
@@ -583,18 +643,31 @@ func (a *ClaudeCodeSDKAdapter) completeClaudeSDKWaiterEvent(
 	if waiter == nil {
 		return
 	}
+	waiter.mu.Lock()
+	if waiter.completed {
+		waiter.mu.Unlock()
+		return
+	}
 	if len(events) > 0 {
 		waiter.events = append(waiter.events, events...)
-		if waiter.emit != nil {
-			waiter.emit(events)
-		}
 	}
-	if err == nil && !terminal {
+	completed := err != nil || terminal
+	var resultEvents []activityshared.Event
+	if completed {
+		waiter.completed = true
+		resultEvents = append([]activityshared.Event(nil), waiter.events...)
+	}
+	emit := waiter.emit
+	waiter.mu.Unlock()
+	if len(events) > 0 && emit != nil {
+		emit(events)
+	}
+	if !completed {
 		return
 	}
 	a.unregisterClaudeSDKTurn(adapterSession, turnID, waiter)
 	waiter.done <- claudeSDKTurnResult{
-		events: append([]activityshared.Event(nil), waiter.events...),
+		events: resultEvents,
 		err:    err,
 	}
 }
@@ -617,8 +690,16 @@ func (a *ClaudeCodeSDKAdapter) failClaudeSDKReader(agentSessionID string, adapte
 	}
 	a.mu.Unlock()
 	for _, waiter := range turns {
+		waiter.mu.Lock()
+		if waiter.completed {
+			waiter.mu.Unlock()
+			continue
+		}
+		waiter.completed = true
+		events := append([]activityshared.Event(nil), waiter.events...)
+		waiter.mu.Unlock()
 		waiter.done <- claudeSDKTurnResult{
-			events: append([]activityshared.Event(nil), waiter.events...),
+			events: events,
 			err:    err,
 		}
 	}

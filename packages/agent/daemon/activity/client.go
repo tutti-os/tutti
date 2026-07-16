@@ -37,6 +37,69 @@ func (c *Client) ReportActivity(ctx context.Context, input ReportActivityInput) 
 	return ReportActivityAsSessionUpdates(ctx, c, input)
 }
 
+func (c *Client) BindGoalProvenance(ctx context.Context, input BindGoalProvenanceInput) (GoalProvenanceBinding, error) {
+	workspaceID := strings.TrimSpace(input.WorkspaceID)
+	agentSessionID := strings.TrimSpace(input.AgentSessionID)
+	if workspaceID == "" || agentSessionID == "" {
+		return GoalProvenanceBinding{}, errors.New("workspace id and agent session id are required")
+	}
+	input.WorkspaceID = workspaceID
+	input.AgentSessionID = agentSessionID
+	requestBody, err := marshalRequestBody(input)
+	if err != nil {
+		return GoalProvenanceBinding{}, fmt.Errorf("prepare goal provenance bind request: %w", err)
+	}
+	endpoint := fmt.Sprintf("%s/rooms/%s/agents/sessions/%s/goal-provenance/bind",
+		resolveSessionAPIPrefix(c.cfg.BaseURL), url.PathEscape(workspaceID), url.PathEscape(agentSessionID))
+	var binding GoalProvenanceBinding
+	if err := c.postJSONWithTransientRemoteRetry(ctx, endpoint, requestBody, &binding); err != nil {
+		return GoalProvenanceBinding{}, WithRequestBodyBytes(err, len(requestBody))
+	}
+	return binding, nil
+}
+
+func (c *Client) LookupGoalProvenance(ctx context.Context, input LookupGoalProvenanceInput) (GoalProvenanceBinding, bool, error) {
+	workspaceID := strings.TrimSpace(input.WorkspaceID)
+	agentSessionID := strings.TrimSpace(input.AgentSessionID)
+	if workspaceID == "" || agentSessionID == "" {
+		return GoalProvenanceBinding{}, false, errors.New("workspace id and agent session id are required")
+	}
+	input.WorkspaceID = workspaceID
+	input.AgentSessionID = agentSessionID
+	requestBody, err := marshalRequestBody(input)
+	if err != nil {
+		return GoalProvenanceBinding{}, false, fmt.Errorf("prepare goal provenance lookup request: %w", err)
+	}
+	endpoint := fmt.Sprintf("%s/rooms/%s/agents/sessions/%s/goal-provenance/lookup",
+		resolveSessionAPIPrefix(c.cfg.BaseURL), url.PathEscape(workspaceID), url.PathEscape(agentSessionID))
+	var reply LookupGoalProvenanceReply
+	if err := c.postJSONWithTransientRemoteRetry(ctx, endpoint, requestBody, &reply); err != nil {
+		return GoalProvenanceBinding{}, false, WithRequestBodyBytes(err, len(requestBody))
+	}
+	return reply.Binding, reply.Found, nil
+}
+
+func (c *Client) ReportGoalReconcileRequired(ctx context.Context, input ReportGoalReconcileRequiredInput) (ReportGoalReconcileRequiredReply, error) {
+	workspaceID := strings.TrimSpace(input.WorkspaceID)
+	agentSessionID := strings.TrimSpace(input.Request.AgentSessionID)
+	if workspaceID == "" || agentSessionID == "" {
+		return ReportGoalReconcileRequiredReply{}, errors.New("workspace id and agent session id are required")
+	}
+	input.WorkspaceID = workspaceID
+	input.Request.AgentSessionID = agentSessionID
+	requestBody, err := marshalRequestBody(input.Request)
+	if err != nil {
+		return ReportGoalReconcileRequiredReply{}, fmt.Errorf("prepare goal reconcile request: %w", err)
+	}
+	endpoint := fmt.Sprintf("%s/rooms/%s/agents/sessions/%s/goal-reconcile-required",
+		resolveSessionAPIPrefix(c.cfg.BaseURL), url.PathEscape(workspaceID), url.PathEscape(agentSessionID))
+	var reply ReportGoalReconcileRequiredReply
+	if err := c.postJSONWithTransientRemoteRetry(ctx, endpoint, requestBody, &reply); err != nil {
+		return ReportGoalReconcileRequiredReply{}, WithRequestBodyBytes(err, len(requestBody))
+	}
+	return reply, nil
+}
+
 func (c *Client) ReportSessionState(ctx context.Context, input ReportSessionStateInput) (ReportSessionStateReply, error) {
 	workspaceID := strings.TrimSpace(input.WorkspaceID)
 	if workspaceID == "" {
@@ -167,9 +230,11 @@ func DecodeReportActivityJSON(payload json.RawMessage) (ReportActivityInput, err
 		return ReportActivityInput{}, err
 	}
 	input := ReportActivityInput{
-		TimelineItems:  request.TimelineItems,
-		StatePatches:   request.StatePatches,
-		MessageUpdates: request.MessageUpdates,
+		TimelineItems:         request.TimelineItems,
+		StatePatches:          request.StatePatches,
+		MessageUpdates:        request.MessageUpdates,
+		SessionAudits:         request.SessionAudits,
+		GoalReconcileRequests: request.GoalReconcileRequests,
 	}
 	if request.Connector != nil {
 		connector := *request.Connector
@@ -488,11 +553,13 @@ func baseURLHostname(raw string) string {
 }
 
 type reportActivityRequest struct {
-	Connector      *ConnectorInfo                `json:"connector,omitempty"`
-	Source         *EventSource                  `json:"source,omitempty"`
-	TimelineItems  []WorkspaceAgentTimelineItem  `json:"timelineItems,omitempty"`
-	StatePatches   []WorkspaceAgentStatePatch    `json:"statePatches,omitempty"`
-	MessageUpdates []WorkspaceAgentMessageUpdate `json:"messageUpdates,omitempty"`
+	Connector             *ConnectorInfo                       `json:"connector,omitempty"`
+	Source                *EventSource                         `json:"source,omitempty"`
+	TimelineItems         []WorkspaceAgentTimelineItem         `json:"timelineItems,omitempty"`
+	StatePatches          []WorkspaceAgentStatePatch           `json:"statePatches,omitempty"`
+	MessageUpdates        []WorkspaceAgentMessageUpdate        `json:"messageUpdates,omitempty"`
+	SessionAudits         []WorkspaceAgentSessionAuditUpdate   `json:"sessionAudits,omitempty"`
+	GoalReconcileRequests []WorkspaceAgentGoalReconcileRequest `json:"goalReconcileRequests,omitempty"`
 }
 
 type reportSessionStateRequest struct {

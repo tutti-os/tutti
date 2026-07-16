@@ -49,7 +49,7 @@ func (s *Store) ListSessionMessages(
 			argsWithCursor := append(append([]any{}, args...), input.BeforeVersion, queryLimit)
 			rows, err = s.db.QueryContext(ctx, `
 SELECT id, agent_session_id, message_id, version, turn_id, role, kind, status,
-       payload_json, occurred_at_unix_ms, started_at_unix_ms, completed_at_unix_ms,
+       semantics_json, payload_json, occurred_at_unix_ms, started_at_unix_ms, completed_at_unix_ms,
        created_at_unix_ms, updated_at_unix_ms
 FROM workspace_agent_messages
 WHERE `+strings.Join(whereWithCursor, " AND ")+`
@@ -60,7 +60,7 @@ LIMIT ?
 			argsWithLimit := append(append([]any{}, args...), queryLimit)
 			rows, err = s.db.QueryContext(ctx, `
 SELECT id, agent_session_id, message_id, version, turn_id, role, kind, status,
-       payload_json, occurred_at_unix_ms, started_at_unix_ms, completed_at_unix_ms,
+       semantics_json, payload_json, occurred_at_unix_ms, started_at_unix_ms, completed_at_unix_ms,
        created_at_unix_ms, updated_at_unix_ms
 FROM workspace_agent_messages
 WHERE `+strings.Join(where, " AND ")+`
@@ -73,7 +73,7 @@ LIMIT ?
 		argsWithCursor := append(append([]any{}, args...), input.AfterVersion, queryLimit)
 		rows, err = s.db.QueryContext(ctx, `
 SELECT id, agent_session_id, message_id, version, turn_id, role, kind, status,
-       payload_json, occurred_at_unix_ms, started_at_unix_ms, completed_at_unix_ms,
+       semantics_json, payload_json, occurred_at_unix_ms, started_at_unix_ms, completed_at_unix_ms,
        created_at_unix_ms, updated_at_unix_ms
 FROM workspace_agent_messages
 WHERE `+strings.Join(whereWithCursor, " AND ")+`

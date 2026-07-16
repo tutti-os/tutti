@@ -36,6 +36,10 @@ func reportTestMessage(t *testing.T, store *Store, agentSessionID string, messag
 			}
 		}
 	}
+	kind := "text"
+	if turnID == "" {
+		kind = "session_audit"
+	}
 	_, err := store.ReportSessionMessages(context.Background(), SessionMessageReport{
 		WorkspaceID:    "ws-1",
 		AgentSessionID: agentSessionID,
@@ -44,7 +48,7 @@ func reportTestMessage(t *testing.T, store *Store, agentSessionID string, messag
 			MessageID:        messageID,
 			TurnID:           turnID,
 			Role:             "assistant",
-			Kind:             "text",
+			Kind:             kind,
 			Status:           "completed",
 			Payload:          map[string]any{"text": messageID},
 			OccurredAtUnixMS: occurred,

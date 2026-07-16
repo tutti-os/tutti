@@ -1,6 +1,8 @@
 package agent
 
 import (
+	"context"
+	"fmt"
 	"strings"
 	"time"
 
@@ -119,13 +121,32 @@ func serviceSession(session ProviderRuntimeSession, resumable bool) Session {
 	}
 }
 
-func serviceSessionWithComposerSkillOptions(
+func (s *Service) initializeRuntimeSession(
+	ctx context.Context,
 	session ProviderRuntimeSession,
-	resumable bool,
-	options []ComposerSkillOption,
-) Session {
-	_ = options
-	return serviceSession(session, resumable)
+) (PersistedSession, error) {
+	if s == nil || s.SessionInitializer == nil {
+		return PersistedSession{}, fmt.Errorf("initialize workspace agent session: session initializer is unavailable")
+	}
+	persisted, err := s.SessionInitializer.InitializeRuntimeSession(ctx, session)
+	if err != nil {
+		return PersistedSession{}, fmt.Errorf("initialize workspace agent session: %w", err)
+	}
+	if strings.TrimSpace(persisted.ID) != strings.TrimSpace(session.ID) ||
+		strings.TrimSpace(persisted.WorkspaceID) != strings.TrimSpace(session.WorkspaceID) {
+		return PersistedSession{}, fmt.Errorf("initialize workspace agent session: persisted session identity mismatch")
+	}
+	if strings.TrimSpace(persisted.RailSectionKey) == "" {
+		return PersistedSession{}, fmt.Errorf("initialize workspace agent session: persisted rail section key is empty")
+	}
+	return persisted, nil
+}
+
+func validatePersistedRailSectionKey(session PersistedSession) error {
+	if strings.TrimSpace(session.RailSectionKey) == "" {
+		return fmt.Errorf("workspace agent session %q has no persisted rail section key", strings.TrimSpace(session.ID))
+	}
+	return nil
 }
 
 func sessionFromPersisted(session PersistedSession, resumable bool) Session {
@@ -152,6 +173,7 @@ func sessionFromPersisted(session PersistedSession, resumable bool) Session {
 		Visible:           session.Metadata.Visible,
 	}, resumable)
 	result.ActiveTurnID = strings.TrimSpace(session.ActiveTurnID)
+	result.RailSectionKey = strings.TrimSpace(session.RailSectionKey)
 	result.Kind = strings.TrimSpace(session.Kind)
 	if result.Kind == "" {
 		result.Kind = agentactivitybiz.SessionKindRoot
@@ -188,6 +210,7 @@ func mergePersistedSessionState(session Session, persisted PersistedSession) Ses
 	session.ParentAgentSessionID = strings.TrimSpace(persisted.ParentAgentSessionID)
 	session.ParentTurnID = strings.TrimSpace(persisted.ParentTurnID)
 	session.ParentToolCallID = strings.TrimSpace(persisted.ParentToolCallID)
+	session.RailSectionKey = strings.TrimSpace(persisted.RailSectionKey)
 	if strings.TrimSpace(session.UserID) == "" {
 		session.UserID = strings.TrimSpace(persisted.UserID)
 	}

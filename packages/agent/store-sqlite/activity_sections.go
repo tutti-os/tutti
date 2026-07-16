@@ -84,7 +84,8 @@ SELECT workspace_id, agent_session_id, session_kind, root_agent_session_id, root
        parent_agent_session_id, parent_turn_id, parent_tool_call_id,
        origin, agent_target_id, provider, provider_session_id, model,
        user_id, settings_json, session_metadata_json, internal_runtime_context_json, cwd,
-	       title, message_version, last_event_at_unix_ms,
+       rail_section_key,
+       title, message_version, last_event_at_unix_ms,
        started_at_unix_ms, ended_at_unix_ms, pinned_at_unix_ms,
        created_at_unix_ms, updated_at_unix_ms, active_turn_id,
        conversation_sort_time_unix_ms
@@ -336,6 +337,7 @@ SELECT sessions.workspace_id, sessions.agent_session_id, sessions.session_kind,
        sessions.agent_target_id, sessions.provider, sessions.provider_session_id, sessions.model,
        sessions.user_id, sessions.settings_json, sessions.session_metadata_json,
        sessions.internal_runtime_context_json, sessions.cwd,
+       sessions.rail_section_key,
        sessions.title, sessions.message_version, sessions.last_event_at_unix_ms,
        sessions.started_at_unix_ms, sessions.ended_at_unix_ms, sessions.pinned_at_unix_ms,
        sessions.created_at_unix_ms, sessions.updated_at_unix_ms, sessions.active_turn_id,
@@ -464,7 +466,8 @@ SELECT workspace_id, agent_session_id, session_kind, root_agent_session_id, root
        parent_agent_session_id, parent_turn_id, parent_tool_call_id,
        origin, agent_target_id, provider, provider_session_id, model,
        user_id, settings_json, session_metadata_json, internal_runtime_context_json, cwd,
-	       title, message_version, last_event_at_unix_ms,
+       rail_section_key,
+       title, message_version, last_event_at_unix_ms,
        started_at_unix_ms, ended_at_unix_ms, pinned_at_unix_ms,
        created_at_unix_ms, updated_at_unix_ms, active_turn_id
 FROM workspace_agent_sessions INDEXED BY ` + indexName + `

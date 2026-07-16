@@ -22,6 +22,7 @@ var opencodeModelTokenPattern = regexp.MustCompile(`[A-Za-z0-9][A-Za-z0-9._-]*/[
 type OpenCodeCLIModelLister struct {
 	Command string
 	Args    []string
+	Cwd     string
 	Timeout time.Duration
 	Environ func() []string
 	HomeDir func() (string, error)
@@ -51,6 +52,9 @@ func (l OpenCodeCLIModelLister) ListModels(ctx context.Context) (AgentModelListR
 	}
 	cmd := exec.CommandContext(processCtx, command, args...)
 	cmd.Env = env
+	if cwd := strings.TrimSpace(l.Cwd); cwd != "" {
+		cmd.Dir = cwd
+	}
 	output, err := cmd.Output()
 	if err != nil {
 		if exitErr, ok := err.(*exec.ExitError); ok {

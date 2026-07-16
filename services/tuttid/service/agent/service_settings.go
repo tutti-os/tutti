@@ -19,9 +19,9 @@ func (s *Service) clampReasoningEffortForModel(
 		return normalizeReasoningEffortForProvider(provider, selected)
 	}
 	if strings.TrimSpace(model) == "" && s.ModelCatalog != nil {
-		model = composerDefaultModel(ctx, provider, s.ModelCatalog)
+		model = composerDefaultModel(ctx, provider, "", s.ModelCatalog)
 	}
-	catalogOptions, ok := composerModelOptionsFromCatalog(ctx, s.ModelCatalog, provider, model)
+	catalogOptions, ok := composerModelOptionsFromCatalog(ctx, s.ModelCatalog, provider, "", model)
 	if !ok || !catalogOptions.ReasoningEffortsAdvertised {
 		return normalizeReasoningEffortForProvider(provider, selected)
 	}

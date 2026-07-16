@@ -2,7 +2,6 @@ package agent
 
 import (
 	"context"
-	"log/slog"
 	"strings"
 
 	"github.com/tutti-os/tutti/packages/agent/daemon/providerregistry"
@@ -155,11 +154,25 @@ func (s *Service) GetComposerOptions(ctx context.Context, input ComposerOptionsI
 		settings.PermissionModeID = strings.TrimSpace(input.Settings.PermissionModeID)
 		settings.PlanMode = input.Settings.PlanMode
 	}
+	catalogProjection := composerModelCatalogProjection{}
+	catalogProjectionOK := false
+	if composerOptionsProviderUsesModelCatalog(provider) {
+		catalogProjection, catalogProjectionOK = composerModelOptionsFromCatalog(
+			ctx,
+			s.ModelCatalog,
+			provider,
+			input.Cwd,
+			settings.Model,
+		)
+	}
+	defaultModel := composerConfiguredDefaultModel(provider)
+	if catalogProjectionOK && catalogProjection.DefaultModel != "" {
+		defaultModel = catalogProjection.DefaultModel
+	}
 	effectiveSettings := resolveComposerEffectiveSettings(
-		ctx,
 		provider,
 		settings,
-		s.ModelCatalog,
+		defaultModel,
 	)
 	locale := normalizeComposerLocale(input.Locale)
 	permissionConfig := composerPermissionConfig(provider, effectiveSettings.PermissionModeID, locale)
@@ -199,34 +212,32 @@ func (s *Service) GetComposerOptions(ctx context.Context, input ComposerOptionsI
 	if len(capabilityErrors) > 0 {
 		runtimeContext["capabilityCatalogErrors"] = capabilityErrors
 	}
-	if composerOptionsProviderUsesModelCatalog(provider) {
-		if catalogProjection, ok := composerModelOptionsFromCatalog(ctx, s.ModelCatalog, provider, effectiveSettings.Model); ok {
-			modelOptions = s.enrichModelCapabilityOptions(ctx, provider, catalogProjection.ModelOptions)
-			runtimeContext["modelCatalogSource"] = catalogProjection.Source
-			if len(catalogProjection.ReasoningProfiles) > 0 {
-				runtimeContext["modelReasoningOptionsByModel"] = composerModelReasoningOptionsRuntimeContext(
-					provider,
-					locale,
-					catalogProjection.ReasoningProfiles,
-				)
-			}
-			if profile, advertised := catalogProjection.ReasoningProfiles[effectiveSettings.Model]; advertised {
-				effectiveSettings.ReasoningEffort = resolveAdvertisedReasoningEffort(
-					provider,
-					effectiveSettings.ReasoningEffort,
-					profile.DefaultReasoningEffort,
-					profile.ReasoningEfforts,
-				)
-				reasoningOptions = composerAdvertisedReasoningOptionValues(
-					provider,
-					effectiveSettings.ReasoningEffort,
-					locale,
-					profile.ReasoningEfforts,
-				)
-				runtimeContext["reasoningEffort"] = nullableString(effectiveSettings.ReasoningEffort)
-			}
-			runtimeContext["configOptions"] = composerConfigOptions(provider, effectiveSettings, modelOptions, reasoningOptions)
+	if catalogProjectionOK {
+		modelOptions = s.enrichModelCapabilityOptions(ctx, provider, catalogProjection.ModelOptions)
+		runtimeContext["modelCatalogSource"] = catalogProjection.Source
+		if len(catalogProjection.ReasoningProfiles) > 0 {
+			runtimeContext["modelReasoningOptionsByModel"] = composerModelReasoningOptionsRuntimeContext(
+				provider,
+				locale,
+				catalogProjection.ReasoningProfiles,
+			)
 		}
+		if profile, advertised := catalogProjection.ReasoningProfiles[effectiveSettings.Model]; advertised {
+			effectiveSettings.ReasoningEffort = resolveAdvertisedReasoningEffort(
+				provider,
+				effectiveSettings.ReasoningEffort,
+				profile.DefaultReasoningEffort,
+				profile.ReasoningEfforts,
+			)
+			reasoningOptions = composerAdvertisedReasoningOptionValues(
+				provider,
+				effectiveSettings.ReasoningEffort,
+				locale,
+				profile.ReasoningEfforts,
+			)
+			runtimeContext["reasoningEffort"] = nullableString(effectiveSettings.ReasoningEffort)
+		}
+		runtimeContext["configOptions"] = composerConfigOptions(provider, effectiveSettings, modelOptions, reasoningOptions)
 	}
 	options := ComposerOptions{
 		Provider:           provider,
@@ -290,13 +301,12 @@ func (s *Service) computerUseAvailable() bool {
 }
 
 func resolveComposerEffectiveSettings(
-	ctx context.Context,
 	provider string,
 	requested ComposerSettings,
-	catalog AgentModelCatalog,
+	defaultModel string,
 ) ComposerSettings {
 	effective := ComposerSettings{
-		Model:            composerDefaultModel(ctx, provider, catalog),
+		Model:            strings.TrimSpace(defaultModel),
 		PermissionModeID: defaultPermissionModeIDForProvider(provider),
 		ReasoningEffort:  composerDefaultReasoningEffort(provider),
 		Speed:            composerDefaultSpeed(provider),
@@ -343,10 +353,11 @@ func composerDefaultReasoningEffort(provider string) string {
 func composerDefaultModel(
 	ctx context.Context,
 	provider string,
+	cwd string,
 	catalog AgentModelCatalog,
 ) string {
 	if composerOptionsProviderUsesModelCatalog(provider) && catalog != nil {
-		result, err := catalog.ListModels(ctx, provider)
+		result, err := catalog.ListModels(ctx, AgentModelCatalogInput{Provider: provider, Cwd: cwd})
 		if err == nil {
 			for _, model := range result.Models {
 				modelID := strings.TrimSpace(model.ID)
@@ -356,6 +367,10 @@ func composerDefaultModel(
 			}
 		}
 	}
+	return composerConfiguredDefaultModel(provider)
+}
+
+func composerConfiguredDefaultModel(provider string) string {
 	if composerProfileFor(provider).ModelCatalog == providerregistry.ModelCatalogKindCodexCLI {
 		return strings.TrimSpace(readCodexConfiguredDefaultModel())
 	}
@@ -644,87 +659,6 @@ func composerModelConfig(provider string, selected string, options []ComposerCon
 		DefaultValue: selected,
 		Options:      values,
 	}
-}
-
-type composerModelCatalogProjection struct {
-	ModelOptions               []ComposerConfigOptionValue
-	ReasoningProfiles          map[string]composerModelReasoningProfile
-	DefaultReasoningEffort     string
-	ReasoningEfforts           []AgentModelReasoningEffortOption
-	ReasoningEffortsAdvertised bool
-	Source                     string
-}
-
-func composerModelOptionsFromCatalog(ctx context.Context, catalog AgentModelCatalog, provider string, selectedModel string) (composerModelCatalogProjection, bool) {
-	if catalog == nil {
-		return composerModelCatalogProjection{}, false
-	}
-	result, err := catalog.ListModels(ctx, provider)
-	if err != nil {
-		// The model list drives the composer's model selector; when it fails the
-		// selector renders empty. Surface the cause instead of swallowing it so a
-		// "no model options" report is diagnosable from the daemon logs.
-		slog.Warn("composer model catalog lookup failed",
-			"provider", provider,
-			"error", err,
-		)
-		return composerModelCatalogProjection{}, false
-	}
-	options := make([]ComposerConfigOptionValue, 0, len(result.Models)+1)
-	reasoningProfiles := make(map[string]composerModelReasoningProfile)
-	for _, model := range result.Models {
-		id := strings.TrimSpace(model.ID)
-		if id == "" {
-			continue
-		}
-		if containsModelOption(options, id) {
-			continue
-		}
-		name := strings.TrimSpace(model.DisplayName)
-		if name == "" {
-			name = id
-		}
-		options = append(options, ComposerConfigOptionValue{
-			ID:                 id,
-			Label:              name,
-			Value:              id,
-			Description:        strings.TrimSpace(model.Description),
-			SupportsImageInput: model.SupportsImageInput,
-		})
-		if model.ReasoningEffortsAdvertised {
-			reasoningProfiles[id] = composerModelReasoningProfile{
-				DefaultReasoningEffort: strings.TrimSpace(model.DefaultReasoningEffort),
-				ReasoningEfforts: append(
-					[]AgentModelReasoningEffortOption(nil),
-					model.SupportedReasoningEfforts...,
-				),
-			}
-		}
-	}
-	selected := strings.TrimSpace(selectedModel)
-	if selected != "" && !containsModelOption(options, selected) {
-		options = append(options, ComposerConfigOptionValue{ID: selected, Label: selected, Value: selected})
-	}
-	projection := composerModelCatalogProjection{
-		ModelOptions:      options,
-		ReasoningProfiles: reasoningProfiles,
-		Source:            strings.TrimSpace(result.Source),
-	}
-	if profile, ok := reasoningProfiles[selected]; ok {
-		projection.DefaultReasoningEffort = profile.DefaultReasoningEffort
-		projection.ReasoningEfforts = append([]AgentModelReasoningEffortOption(nil), profile.ReasoningEfforts...)
-		projection.ReasoningEffortsAdvertised = true
-	}
-	return projection, true
-}
-
-func containsModelOption(options []ComposerConfigOptionValue, value string) bool {
-	for _, option := range options {
-		if option.Value == value {
-			return true
-		}
-	}
-	return false
 }
 
 func composerSelectedModelOptions(model string) []ComposerConfigOptionValue {

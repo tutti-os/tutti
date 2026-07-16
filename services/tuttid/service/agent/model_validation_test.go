@@ -7,12 +7,12 @@ import (
 )
 
 type modelValidationCatalog struct {
-	providers []string
-	result    AgentModelCatalogResult
+	inputs []AgentModelCatalogInput
+	result AgentModelCatalogResult
 }
 
-func (c *modelValidationCatalog) ListModels(_ context.Context, provider string) (AgentModelCatalogResult, error) {
-	c.providers = append(c.providers, provider)
+func (c *modelValidationCatalog) ListModels(_ context.Context, input AgentModelCatalogInput) (AgentModelCatalogResult, error) {
+	c.inputs = append(c.inputs, input)
 	return c.result, nil
 }
 
@@ -31,8 +31,8 @@ func TestAvailableComposerModelsForValidationUsesProfileStrategy(t *testing.T) {
 	if err != nil || !ok {
 		t.Fatalf("availableComposerModelsForValidationProfile() = (%v, %v, %v)", models, ok, err)
 	}
-	if len(catalog.providers) != 1 || catalog.providers[0] != "future-provider" {
-		t.Fatalf("catalog providers = %#v", catalog.providers)
+	if len(catalog.inputs) != 1 || catalog.inputs[0].Provider != "future-provider" || catalog.inputs[0].Cwd != "/repo" {
+		t.Fatalf("catalog inputs = %#v", catalog.inputs)
 	}
 	if len(models) != 2 || models[0] != "model-a" || models[1] != "model-b" {
 		t.Fatalf("models = %#v", models)

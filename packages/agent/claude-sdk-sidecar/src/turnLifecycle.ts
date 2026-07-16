@@ -5,6 +5,11 @@ export type RuntimeTurn = {
   readonly promptUuid: string;
   readonly synthetic?: boolean;
   awaitingContinuation?: boolean;
+  readonly origin?: string;
+  readonly goalOperationId?: string;
+  readonly goalRevision?: number;
+  readonly goalRepairEpoch?: number;
+  readonly goalAction?: "set" | "clear";
   settled: boolean;
 };
 
@@ -88,7 +93,7 @@ export class TurnLifecycle {
       return;
     }
     const matched = this.turns.find(
-      (turn) => !turn.settled && turn.promptUuid === promptUuid
+      (turn) => !turn.settled && turn.promptUuid === promptUuid,
     );
     if (matched) {
       if (!matched.synthetic) {
@@ -131,7 +136,7 @@ export class TurnLifecycle {
       turnId: `synthetic-${crypto.randomUUID()}`,
       promptUuid: "",
       synthetic: true,
-      settled: false
+      settled: false,
     };
     this.turns.push(turn);
     this.activate(turn);
@@ -155,7 +160,7 @@ export class TurnLifecycle {
       this.rejectingTimedOutContinuation = true;
       this.settleActive("turn_completed", {
         stopReason: "background_agent_continuation_timeout",
-        syntheticTimeout: true
+        syntheticTimeout: true,
       });
       this.onContinuationStartTimeout();
     }, this.continuationStartTimeoutMs);
@@ -184,7 +189,7 @@ export class TurnLifecycle {
 
   settleActive(
     type: TerminalEvent,
-    payload: Record<string, unknown> = {}
+    payload: Record<string, unknown> = {},
   ): void {
     const turn = this.active;
     if (!turn || turn.settled) {
@@ -204,7 +209,7 @@ export class TurnLifecycle {
   failLiveTurns(error: string): void {
     if (this.active) {
       this.settleActive(this.cancelledValue ? "turn_canceled" : "turn_failed", {
-        error
+        error,
       });
     }
     this.failQueuedTurns(error);
@@ -218,7 +223,7 @@ export class TurnLifecycle {
       this.settleQueuedTurn(
         turn,
         this.cancelledValue ? "turn_canceled" : "turn_failed",
-        { error }
+        { error },
       );
     }
     this.compactQueue();
@@ -241,6 +246,15 @@ export class TurnLifecycle {
     this.pendingOrphanCount += orphaned;
     this.compactQueue();
     return Boolean(this.active);
+  }
+
+  cancelActiveExact(turnId: string): boolean {
+    const expected = turnId.trim();
+    if (!expected || this.active?.turnId !== expected || this.active.settled) {
+      return false;
+    }
+    this.cancelledValue = true;
+    return true;
   }
 
   scheduleForceCancel(callback: () => void, graceMs: number): void {
@@ -280,10 +294,35 @@ export class TurnLifecycle {
     this.cancelledValue = false;
     this.pendingOrphanCount = 0;
     this.onActivate();
-    if (turn.synthetic) {
+    if (turn.goalOperationId && turn.goalRevision && turn.goalAction) {
+      this.emit({
+        type: "goal_command_started",
+        payload: {
+          turnId: turn.turnId,
+          operationId: turn.goalOperationId,
+          revision: turn.goalRevision,
+          repairEpoch: turn.goalRepairEpoch ?? 0,
+          action: turn.goalAction,
+        },
+      });
+    }
+    if (turn.synthetic || turn.origin) {
       this.emit({
         type: "turn_started",
-        payload: { turnId: turn.turnId, synthetic: true }
+        payload: {
+          turnId: turn.turnId,
+          ...(turn.synthetic ? { synthetic: true } : {}),
+          ...(turn.origin ? { turnOrigin: turn.origin } : {}),
+          ...(turn.goalOperationId
+            ? { sourceGoalOperationId: turn.goalOperationId }
+            : {}),
+          ...(turn.goalRevision
+            ? { sourceGoalRevision: turn.goalRevision }
+            : {}),
+          ...(turn.goalRepairEpoch
+            ? { sourceGoalRepairEpoch: turn.goalRepairEpoch }
+            : {}),
+        },
       });
     }
   }
@@ -307,7 +346,7 @@ export class TurnLifecycle {
   private settleQueuedTurn(
     turn: RuntimeTurn,
     type: "turn_canceled" | "turn_failed",
-    payload: Record<string, unknown> = {}
+    payload: Record<string, unknown> = {},
   ): void {
     if (turn.settled) {
       return;

@@ -222,11 +222,11 @@ func TestCachedAgentModelCatalogCachesCodexModels(t *testing.T) {
 		},
 	}
 
-	first, err := catalog.ListModels(context.Background(), "codex")
+	first, err := catalog.ListModels(context.Background(), AgentModelCatalogInput{Provider: "codex"})
 	if err != nil {
 		t.Fatalf("first ListModels returned error: %v", err)
 	}
-	second, err := catalog.ListModels(context.Background(), "codex")
+	second, err := catalog.ListModels(context.Background(), AgentModelCatalogInput{Provider: "codex"})
 	if err != nil {
 		t.Fatalf("second ListModels returned error: %v", err)
 	}

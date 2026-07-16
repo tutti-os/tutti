@@ -150,6 +150,28 @@ func TestSessionActivityReporterAdapterRejectsMessageUpdateWithoutTurnID(t *test
 	}
 }
 
+func TestSessionActivityReporterAdapterReportsFirstClassSessionAudit(t *testing.T) {
+	reporter := &fakeSessionActivityReporter{}
+	adapter := NewSessionActivityReporterAdapter(reporter)
+	err := adapter.Report(context.Background(), ReportActivityInput{
+		WorkspaceID: "room-1",
+		Source:      EventSource{AgentID: "session-1", SessionOrigin: WorkspaceAgentSessionOriginRuntime},
+		SessionAudits: []WorkspaceAgentSessionAuditUpdate{{
+			AuditID: "goal-control:op-1", Role: "user", Content: "/goal clear", OccurredAtUnixMS: 10,
+		}},
+	})
+	if err != nil {
+		t.Fatalf("Report() error = %v", err)
+	}
+	if len(reporter.messageInputs) != 1 || len(reporter.messageInputs[0].Updates) != 1 {
+		t.Fatalf("message inputs = %#v", reporter.messageInputs)
+	}
+	update := reporter.messageInputs[0].Updates[0]
+	if update.Kind != "session_audit" || update.TurnID != "" {
+		t.Fatalf("audit update = %#v", update)
+	}
+}
+
 func TestSessionActivityReporterAdapterRequiresWorkspaceID(t *testing.T) {
 	adapter := NewSessionActivityReporterAdapter(&fakeSessionActivityReporter{})
 	if err := adapter.Report(context.Background(), ReportActivityInput{}); err == nil {

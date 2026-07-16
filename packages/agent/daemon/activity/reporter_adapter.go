@@ -38,6 +38,28 @@ type SessionActivityReporterAdapter struct {
 
 var _ ActivityReporter = (*SessionActivityReporterAdapter)(nil)
 
+func (a *SessionActivityReporterAdapter) BindGoalProvenance(ctx context.Context, input BindGoalProvenanceInput) (GoalProvenanceBinding, error) {
+	if a == nil {
+		return GoalProvenanceBinding{}, errors.New("agent activity reporter does not support goal provenance")
+	}
+	ledger, ok := a.reporter.(GoalProvenanceLedger)
+	if !ok {
+		return GoalProvenanceBinding{}, errors.New("agent activity reporter does not support goal provenance")
+	}
+	return ledger.BindGoalProvenance(ctx, input)
+}
+
+func (a *SessionActivityReporterAdapter) LookupGoalProvenance(ctx context.Context, input LookupGoalProvenanceInput) (GoalProvenanceBinding, bool, error) {
+	if a == nil {
+		return GoalProvenanceBinding{}, false, errors.New("agent activity reporter does not support goal provenance")
+	}
+	ledger, ok := a.reporter.(GoalProvenanceLedger)
+	if !ok {
+		return GoalProvenanceBinding{}, false, errors.New("agent activity reporter does not support goal provenance")
+	}
+	return ledger.LookupGoalProvenance(ctx, input)
+}
+
 // SessionActivityReporterAdapterOption configures a
 // SessionActivityReporterAdapter.
 type SessionActivityReporterAdapterOption func(*SessionActivityReporterAdapter)
@@ -90,7 +112,26 @@ func (a *SessionActivityReporterAdapter) Report(ctx context.Context, input Repor
 	if workspaceID == "" {
 		return errors.New("workspace id is required")
 	}
+	if len(input.GoalReconcileRequests) > 0 {
+		goalReporter, ok := a.reporter.(GoalReconcileRequestReporter)
+		if !ok {
+			return errors.New("agent activity reporter does not support goal reconcile requests")
+		}
+		for _, request := range input.GoalReconcileRequests {
+			reply, err := goalReporter.ReportGoalReconcileRequired(ctx, ReportGoalReconcileRequiredInput{
+				WorkspaceID: workspaceID,
+				Request:     request,
+			})
+			if err != nil {
+				return err
+			}
+			if !reply.Accepted {
+				return errors.New("goal reconcile request was not accepted")
+			}
+		}
+	}
 	stateInputs := SessionStateInputsFromActivity(input)
+	auditInputs := SessionAuditInputsFromActivity(input)
 	messageInputs, err := SessionMessageInputsFromActivity(input)
 	if err != nil {
 		return err
@@ -102,7 +143,7 @@ func (a *SessionActivityReporterAdapter) Report(ctx context.Context, input Repor
 		messages       []ReportSessionMessagesInput
 		messageUpdates int
 	}
-	order := make([]string, 0, len(stateInputs)+len(messageInputs))
+	order := make([]string, 0, len(stateInputs)+len(auditInputs)+len(messageInputs))
 	workBySession := make(map[string]*sessionWork)
 	workFor := func(agentSessionID string) *sessionWork {
 		work := workBySession[agentSessionID]
@@ -123,6 +164,12 @@ func (a *SessionActivityReporterAdapter) Report(ctx context.Context, input Repor
 		work := workFor(messagesInput.AgentSessionID)
 		work.messages = append(work.messages, messagesInput)
 		work.messageUpdates += len(messagesInput.Updates)
+	}
+	for _, auditInput := range auditInputs {
+		auditInput.WorkspaceID = workspaceID
+		work := workFor(auditInput.AgentSessionID)
+		work.messages = append(work.messages, auditInput)
+		work.messageUpdates += len(auditInput.Updates)
 	}
 
 	for _, agentSessionID := range order {

@@ -94,6 +94,16 @@ interface RichTextTriggerProvider<TItem = unknown> {
   query: (
     input: RichTextTriggerQueryInput
   ) => Promise<readonly TItem[]> | readonly TItem[];
+  queryGroups?: (
+    input: RichTextTriggerQueryInput
+  ) =>
+    | Promise<RichTextTriggerGroupedQueryResult<TItem>>
+    | RichTextTriggerGroupedQueryResult<TItem>;
+  queryGroupPage?: (
+    input: RichTextTriggerGroupPageQueryInput
+  ) =>
+    | Promise<RichTextTriggerQueryGroup<TItem>>
+    | RichTextTriggerQueryGroup<TItem>;
   getItemKey: (item: TItem) => string;
   getItemLabel: (item: TItem) => string;
   getItemSubtitle?: (item: TItem) => string | null | undefined;
@@ -111,11 +121,16 @@ interface RichTextTriggerProvider<TItem = unknown> {
 Interpretation:
 
 - `query` decides what a trigger can mention
+- `queryGroups` optionally returns provider-owned groups with stable ids,
+  labels, query-scoped totals, and independent cursors; `queryGroupPage`
+  appends one cursor page without re-querying sibling groups
 - `getItemLabel` and `getItemSubtitle` decide the suggestion copy
 - `toInsertResult` maps a chosen item into a mention, markdown-link, or text
   insertion
 - `resolveMention` restores editor-only label or presentation data from the
   stored mention identity
+- group ids, labels, totals, and cursors are candidate-panel metadata only;
+  they must not be copied into mention identity, href, or persisted scope
 
 Mention data:
 

@@ -14,6 +14,7 @@ import {
 import { UnderlineTabs } from "@tutti-os/ui-system/components";
 import { cn } from "@tutti-os/ui-system/utils";
 import { flattenMentionPaletteEntries } from "./mentionPaletteEntries.ts";
+import { mentionPaletteExpandLabel } from "./mentionPaletteModel.ts";
 import { MentionPaletteScrollbar } from "./mentionPaletteScrollbar.tsx";
 import type {
   MentionPaletteGroup,
@@ -464,6 +465,8 @@ function MentionPaletteGroups<TItem>({
                   }
                   type="button"
                   className={paletteStyles.expandButton}
+                  disabled={group.expandStatus === "loading"}
+                  aria-busy={group.expandStatus === "loading" || undefined}
                   data-highlighted={
                     `expand:${group.id}` === highlightedKey ? "" : undefined
                   }
@@ -473,10 +476,13 @@ function MentionPaletteGroups<TItem>({
                     }
                   }}
                   onMouseDown={(event) => event.preventDefault()}
-                  onClick={() => onExpandGroup(group.id)}
+                  onClick={() => {
+                    if (group.expandStatus !== "loading") {
+                      onExpandGroup(group.id);
+                    }
+                  }}
                 >
-                  {group.expandLabel ??
-                    `+${Math.max(0, group.totalCount - group.visibleCount)}`}
+                  {mentionPaletteExpandLabel(group)}
                 </button>
               ) : null}
             </div>

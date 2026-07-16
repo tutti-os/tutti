@@ -2,6 +2,11 @@ import type { AgentActivityRuntime } from "../../../agentActivityRuntime";
 
 export const CONVERSATION_RAIL_SLOW_DIAGNOSTIC_THRESHOLD_MS = 250;
 
+export type ConversationRailRefreshReason =
+  | "attach"
+  | "membership_change"
+  | "scope_change";
+
 export interface ConversationRailFirstPagesDiagnostic {
   agentTargetId: string | null;
   controllerApplyMs: number;
@@ -12,8 +17,9 @@ export interface ConversationRailFirstPagesDiagnostic {
     | "agent_gui.conversation_rail.first_pages_failed";
   requestId: number;
   requestMs: number;
+  refreshReason: ConversationRailRefreshReason;
+  returnedSessionCount: number;
   sectionCount: number;
-  sessionCount: number;
   status: "ready" | "error";
   workspaceId: string;
 }
@@ -31,8 +37,9 @@ export function emitConversationRailFirstPagesDiagnostic(input: {
   error?: unknown;
   requestId: number;
   requestMs: number;
+  refreshReason: ConversationRailRefreshReason;
+  returnedSessionCount: number;
   sectionCount: number;
-  sessionCount: number;
   status: "ready" | "error";
   workspaceId: string;
 }): void {
@@ -55,8 +62,9 @@ export function emitConversationRailFirstPagesDiagnostic(input: {
         : "agent_gui.conversation_rail.first_pages_slow",
     requestId: input.requestId,
     requestMs: input.requestMs,
+    refreshReason: input.refreshReason,
+    returnedSessionCount: input.returnedSessionCount,
     sectionCount: input.sectionCount,
-    sessionCount: input.sessionCount,
     status: input.status,
     workspaceId: input.workspaceId
   };

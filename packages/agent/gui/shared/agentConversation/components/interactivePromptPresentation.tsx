@@ -117,6 +117,11 @@ export interface LabeledPromptToolDetail {
   meta?: string;
 }
 
+export interface ApprovalPromptToolPresentation {
+  leadDetails: LabeledPromptToolDetail[];
+  cardDetails: LabeledPromptToolDetail[];
+}
+
 export function formatToolDetails(
   input: Record<string, unknown> | null
 ): LabeledPromptToolDetail[] {
@@ -126,6 +131,32 @@ export function formatToolDetails(
     value: detail.value,
     ...(detail.meta ? { meta: detail.meta } : {})
   }));
+}
+
+export function formatApprovalToolPresentation(
+  input: Record<string, unknown> | null
+): ApprovalPromptToolPresentation {
+  const details = formatToolDetails(input);
+  const hasFileChanges = details.some((detail) => detail.kind === "files");
+  const isLeadDetail = (detail: LabeledPromptToolDetail): boolean =>
+    detail.kind === "reason" ||
+    (hasFileChanges && (detail.kind === "directory" || detail.kind === "path"));
+  const leadDetails = [
+    ...details.filter((detail) => detail.kind === "reason"),
+    ...details.filter(
+      (detail) => detail.kind !== "reason" && isLeadDetail(detail)
+    )
+  ].filter(
+    (detail, index, candidates) =>
+      candidates.findIndex(
+        (candidate) =>
+          candidate.value === detail.value && candidate.meta === detail.meta
+      ) === index
+  );
+  return {
+    leadDetails,
+    cardDetails: details.filter((detail) => !isLeadDetail(detail))
+  };
 }
 
 export function PromptDetailValue({

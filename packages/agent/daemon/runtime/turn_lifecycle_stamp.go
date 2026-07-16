@@ -33,7 +33,7 @@ func stampAdapterTurnLifecycleEvents(events []activityshared.Event, nextSeq func
 func adapterSnapshotForTurnEvent(event activityshared.Event) (activityshared.TurnLifecycleSnapshot, bool) {
 	turnID := strings.TrimSpace(event.Payload.TurnID)
 	switch event.Type {
-	case activityshared.EventTurnStarted:
+	case activityshared.EventTurnStarted, activityshared.EventRootProviderTurnStarted:
 		return activityshared.TurnLifecycleSnapshot{
 			ActiveTurnID: turnID,
 			Phase:        string(activityshared.TurnPhaseRunning),

@@ -18,6 +18,8 @@ type ActivityProjection struct {
 	publisher              ActivityUpdatePublisher
 	sessionMessageObserver SessionMessageObserver
 	sessionStateObserver   SessionStateObserver
+	goalReconcileInbox     GoalReconcileInboxWriter
+	goalProvenanceLedger   GoalProvenanceLedgerStore
 	agentTargetResolver    AgentTargetResolver
 	rootTurnObserver       RootTurnObserver
 }
@@ -53,6 +55,29 @@ type RootTurnObserver interface {
 	ObserveRootTurnSettled(context.Context, string, string, agentactivitybiz.Turn)
 }
 
+type GoalReconcileRequiredInput struct {
+	WorkspaceID         string
+	AgentSessionID      string
+	RequestID           string
+	ProviderTurnID      string
+	Reason              string
+	FenceMode           string
+	ExpectedOperationID string
+	ExpectedRevision    int64
+	ExpectedRepairEpoch int64
+	QuiesceSucceeded    bool
+	QuiesceError        string
+}
+
+type GoalReconcileInboxWriter interface {
+	PutGoalReconcileInbox(context.Context, agentactivitybiz.GoalReconcileInboxItem) (bool, error)
+}
+
+type GoalProvenanceLedgerStore interface {
+	BindGoalProvenance(context.Context, agentactivitybiz.BindGoalProvenanceInput) (agentactivitybiz.GoalProvenanceBinding, error)
+	LookupGoalProvenance(context.Context, agentactivitybiz.LookupGoalProvenanceInput) (agentactivitybiz.GoalProvenanceBinding, bool, error)
+}
+
 func (p *ActivityProjection) SetPublisher(publisher ActivityUpdatePublisher) {
 	if p == nil {
 		return
@@ -86,6 +111,54 @@ func (p *ActivityProjection) SetRootTurnObserver(observer RootTurnObserver) {
 		return
 	}
 	p.rootTurnObserver = observer
+}
+
+func (p *ActivityProjection) SetGoalReconcileInboxWriter(store GoalReconcileInboxWriter) {
+	if p != nil {
+		p.goalReconcileInbox = store
+	}
+}
+
+func (p *ActivityProjection) SetGoalProvenanceLedger(store GoalProvenanceLedgerStore) {
+	if p != nil {
+		p.goalProvenanceLedger = store
+	}
+}
+
+func (p *ActivityProjection) BindGoalProvenance(ctx context.Context, input agentsessionstore.BindGoalProvenanceInput) (agentsessionstore.GoalProvenanceBinding, error) {
+	if p == nil || p.goalProvenanceLedger == nil {
+		return agentsessionstore.GoalProvenanceBinding{}, ErrInvalidArgument
+	}
+	binding, err := p.goalProvenanceLedger.BindGoalProvenance(ctx, agentactivitybiz.BindGoalProvenanceInput{
+		WorkspaceID: input.WorkspaceID, AgentSessionID: input.AgentSessionID,
+		SessionCreatedAtUnixMS: input.SessionCreatedAtUnixMS,
+		ProviderSessionID:      input.ProviderSessionID, Fingerprint: input.Fingerprint,
+		OperationID: input.OperationID, Revision: input.Revision, RepairEpoch: input.RepairEpoch,
+		OccurredAtUnixMS: input.OccurredAtUnixMS,
+	})
+	return activityGoalProvenanceBinding(binding), err
+}
+
+func (p *ActivityProjection) LookupGoalProvenance(ctx context.Context, input agentsessionstore.LookupGoalProvenanceInput) (agentsessionstore.GoalProvenanceBinding, bool, error) {
+	if p == nil || p.goalProvenanceLedger == nil {
+		return agentsessionstore.GoalProvenanceBinding{}, false, ErrInvalidArgument
+	}
+	binding, found, err := p.goalProvenanceLedger.LookupGoalProvenance(ctx, agentactivitybiz.LookupGoalProvenanceInput{
+		WorkspaceID: input.WorkspaceID, AgentSessionID: input.AgentSessionID,
+		SessionCreatedAtUnixMS: input.SessionCreatedAtUnixMS,
+		ProviderSessionID:      input.ProviderSessionID, Fingerprint: input.Fingerprint,
+	})
+	return activityGoalProvenanceBinding(binding), found, err
+}
+
+func activityGoalProvenanceBinding(binding agentactivitybiz.GoalProvenanceBinding) agentsessionstore.GoalProvenanceBinding {
+	return agentsessionstore.GoalProvenanceBinding{
+		WorkspaceID: binding.WorkspaceID, AgentSessionID: binding.AgentSessionID,
+		SessionCreatedAtUnixMS: binding.SessionCreatedAtUnixMS,
+		ProviderSessionID:      binding.ProviderSessionID, Fingerprint: binding.Fingerprint,
+		OperationID: binding.OperationID, Revision: binding.Revision, RepairEpoch: binding.RepairEpoch,
+		Ambiguous: binding.Ambiguous, CreatedAtUnixMS: binding.CreatedAtUnixMS, UpdatedAtUnixMS: binding.UpdatedAtUnixMS,
+	}
 }
 
 func normalizeReportSessionOrigins(
@@ -167,6 +240,7 @@ func (p *ActivityProjection) ReportSessionState(
 		OccurredAtUnixMS:  input.State.OccurredAtUnixMS,
 		StartedAtUnixMS:   input.State.StartedAtUnixMS,
 		EndedAtUnixMS:     input.State.EndedAtUnixMS,
+		CreatedAtUnixMS:   input.Source.SessionCreatedAtUnixMS,
 	}
 	activityReport := agentactivitybiz.ActivityStateReport{Session: stateReport}
 	if transition, ok := turnTransitionFromStateInput(input); ok {
@@ -320,14 +394,24 @@ func (p *ActivityProjection) ReportSessionMessages(
 	}
 	if result.AcceptedCount > 0 {
 		publishedAgentSessionID := canonicalMessageUpdateSessionID(input.AgentSessionID, result.Messages)
-		p.publishActivityUpdated(ctx, input.WorkspaceID, publishedAgentSessionID, "message_update", map[string]any{
-			"acceptedCount":  result.AcceptedCount,
-			"agentSessionId": publishedAgentSessionID,
-			"eventType":      "message_update",
-			"latestVersion":  result.LatestVersion,
-			"messages":       activityMessagesEventPayload(result.Messages),
-			"workspaceId":    strings.TrimSpace(input.WorkspaceID),
-		})
+		for start := 0; start < len(result.Messages); {
+			if strings.TrimSpace(result.Messages[start].Kind) == "session_audit" {
+				p.publishActivityUpdated(ctx, input.WorkspaceID, publishedAgentSessionID, "session_audit", activitySessionAuditEventPayload(input.WorkspaceID, publishedAgentSessionID, result.Messages[start]))
+				start++
+				continue
+			}
+			end := start + 1
+			for end < len(result.Messages) && strings.TrimSpace(result.Messages[end].Kind) != "session_audit" {
+				end++
+			}
+			run := result.Messages[start:end]
+			p.publishActivityUpdated(ctx, input.WorkspaceID, publishedAgentSessionID, "message_update", map[string]any{
+				"acceptedCount": len(run), "agentSessionId": publishedAgentSessionID,
+				"eventType": "message_update", "latestVersion": run[len(run)-1].Version,
+				"messages": activityMessagesEventPayload(run), "workspaceId": strings.TrimSpace(input.WorkspaceID),
+			})
+			start = end
+		}
 	}
 	reply := agentsessionstore.ReportSessionMessagesReply{
 		AcceptedCount:    result.AcceptedCount,
@@ -336,6 +420,62 @@ func (p *ActivityProjection) ReportSessionMessages(
 	}
 	p.observeSessionMessages(ctx, input, reply)
 	return reply, nil
+}
+
+func (p *ActivityProjection) ReportGoalReconcileRequired(ctx context.Context, input agentsessionstore.ReportGoalReconcileRequiredInput) (agentsessionstore.ReportGoalReconcileRequiredReply, error) {
+	request := input.Request
+	if p == nil || p.goalReconcileInbox == nil || strings.TrimSpace(input.WorkspaceID) == "" ||
+		strings.TrimSpace(request.AgentSessionID) == "" || strings.TrimSpace(request.RequestID) == "" {
+		return agentsessionstore.ReportGoalReconcileRequiredReply{}, ErrInvalidArgument
+	}
+	now := time.Now().UTC().UnixMilli()
+	_, err := p.goalReconcileInbox.PutGoalReconcileInbox(ctx, agentactivitybiz.GoalReconcileInboxItem{
+		RequestID: strings.TrimSpace(request.RequestID), WorkspaceID: strings.TrimSpace(input.WorkspaceID),
+		AgentSessionID: strings.TrimSpace(request.AgentSessionID), CreatedAtUnixMS: now,
+		Payload: map[string]any{
+			"phase":          strings.TrimSpace(request.Phase),
+			"providerTurnId": strings.TrimSpace(request.ProviderTurnID), "reason": strings.TrimSpace(request.Reason),
+			"fenceMode": strings.TrimSpace(request.FenceMode), "expectedOperationId": strings.TrimSpace(request.ExpectedOperationID),
+			"expectedRevision": request.ExpectedRevision, "expectedRepairEpoch": request.ExpectedRepairEpoch,
+			"quiesceSucceeded": request.QuiesceSucceeded, "quiesceError": strings.TrimSpace(request.QuiesceError),
+		},
+	})
+	if err != nil {
+		return agentsessionstore.ReportGoalReconcileRequiredReply{}, err
+	}
+	return agentsessionstore.ReportGoalReconcileRequiredReply{Accepted: true}, nil
+}
+
+func activitySessionAuditEventPayload(workspaceID, agentSessionID string, audit agentactivitybiz.Message) map[string]any {
+	payload := clonePayload(audit.Payload)
+	if payload == nil {
+		payload = map[string]any{}
+	}
+	return map[string]any{
+		"workspaceId": strings.TrimSpace(workspaceID), "agentSessionId": strings.TrimSpace(agentSessionID),
+		"eventType": "session_audit", "audit": map[string]any{
+			"auditId": strings.TrimSpace(audit.MessageID), "role": strings.TrimSpace(audit.Role),
+			"payload": payload, "occurredAtUnixMs": audit.OccurredAtUnixMS, "version": audit.Version,
+		},
+	}
+}
+
+func (p *ActivityProjection) PublishGoalControlAudit(
+	ctx context.Context,
+	workspaceID string,
+	agentSessionID string,
+	audit agentactivitybiz.Message,
+) {
+	if strings.TrimSpace(audit.Kind) != "session_audit" || strings.TrimSpace(audit.TurnID) != "" {
+		return
+	}
+	p.publishActivityUpdated(
+		ctx,
+		workspaceID,
+		agentSessionID,
+		"session_audit",
+		activitySessionAuditEventPayload(workspaceID, agentSessionID, audit),
+	)
 }
 
 func canonicalMessageUpdateSessionID(fallback string, messages []agentactivitybiz.Message) string {
@@ -642,116 +782,4 @@ func (p *ActivityProjection) ListWorkspaceGeneratedFiles(
 		WorkspaceID: strings.TrimSpace(list.WorkspaceID),
 		Files:       files,
 	}, true
-}
-
-func (p *ActivityProjection) publishActivityUpdated(
-	ctx context.Context,
-	workspaceID string,
-	agentSessionID string,
-	eventType string,
-	data map[string]any,
-) {
-	if p == nil || p.publisher == nil {
-		return
-	}
-	if err := p.publisher.PublishAgentActivityUpdated(
-		ctx,
-		workspaceID,
-		agentSessionID,
-		eventType,
-		data,
-	); err != nil {
-		slog.Warn("publish workspace agent activity update failed",
-			"event", "workspace.agent_activity.publish_failed",
-			"workspace_id", strings.TrimSpace(workspaceID),
-			"agent_session_id", strings.TrimSpace(agentSessionID),
-			"event_type", strings.TrimSpace(eventType),
-			"error", err,
-		)
-	}
-}
-
-func (p *ActivityProjection) observeSessionState(
-	ctx context.Context,
-	input agentsessionstore.ReportSessionStateInput,
-	reply agentsessionstore.ReportSessionStateReply,
-) {
-	if p == nil || p.sessionStateObserver == nil {
-		return
-	}
-	p.sessionStateObserver.ObserveAgentSessionState(ctx, input, reply)
-}
-
-func (p *ActivityProjection) observeSessionMessages(
-	ctx context.Context,
-	input agentsessionstore.ReportSessionMessagesInput,
-	reply agentsessionstore.ReportSessionMessagesReply,
-) {
-	if p == nil || p.sessionMessageObserver == nil {
-		return
-	}
-	p.sessionMessageObserver.ObserveAgentSessionMessages(ctx, input, reply)
-}
-
-func activityMessageUpdates(updates []agentsessionstore.WorkspaceAgentSessionMessageUpdate) []agentactivitybiz.MessageUpdate {
-	if len(updates) == 0 {
-		return nil
-	}
-	out := make([]agentactivitybiz.MessageUpdate, 0, len(updates))
-	for _, update := range updates {
-		out = append(out, agentactivitybiz.MessageUpdate{
-			MessageID:         strings.TrimSpace(update.MessageID),
-			TurnID:            strings.TrimSpace(update.TurnID),
-			Role:              strings.TrimSpace(update.Role),
-			Kind:              strings.TrimSpace(update.Kind),
-			Status:            strings.TrimSpace(update.Status),
-			ContentDelta:      update.ContentDelta,
-			Payload:           update.Payload,
-			OccurredAtUnixMS:  update.OccurredAtUnixMS,
-			StartedAtUnixMS:   update.StartedAtUnixMS,
-			CompletedAtUnixMS: update.CompletedAtUnixMS,
-		})
-	}
-	return out
-}
-
-func activityMessagesEventPayload(messages []agentactivitybiz.Message) []map[string]any {
-	if len(messages) == 0 {
-		return nil
-	}
-	out := make([]map[string]any, 0, len(messages))
-	for _, message := range messages {
-		// Protocol v2: session-level messages carry turnId null, never "".
-		var turnID any
-		if trimmed := strings.TrimSpace(message.TurnID); trimmed != "" {
-			turnID = trimmed
-		}
-		item := map[string]any{
-			"agentSessionId":   strings.TrimSpace(message.AgentSessionID),
-			"kind":             strings.TrimSpace(message.Kind),
-			"messageId":        strings.TrimSpace(message.MessageID),
-			"occurredAtUnixMs": message.OccurredAtUnixMS,
-			"payload":          clonePayload(message.Payload),
-			"role":             strings.TrimSpace(message.Role),
-			"turnId":           turnID,
-			"version":          message.Version,
-		}
-		if status := strings.TrimSpace(message.Status); status != "" {
-			item["status"] = status
-		}
-		if message.StartedAtUnixMS > 0 {
-			item["startedAtUnixMs"] = message.StartedAtUnixMS
-		}
-		if message.CompletedAtUnixMS > 0 {
-			item["completedAtUnixMs"] = message.CompletedAtUnixMS
-		}
-		if message.CreatedAtUnixMS > 0 {
-			item["createdAtUnixMs"] = message.CreatedAtUnixMS
-		}
-		if message.UpdatedAtUnixMS > 0 {
-			item["updatedAtUnixMs"] = message.UpdatedAtUnixMS
-		}
-		out = append(out, item)
-	}
-	return out
 }

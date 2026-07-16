@@ -34,11 +34,15 @@ session-level child summaries.
 - Fix: merge partial tool updates into the per-turn snapshot, expose the saved
   input through `KnownToolCallInput`, and pass the exact root or child turn
   normalizer into approval projection. AgentGUI renders structured `changes`
-  or `fileChanges`, `grantRoot`, and a standalone `reason`; these remain
-  approval previews, not evidence that a file change executed.
+  or `fileChanges`, `grantRoot`, and a standalone `reason`; approval reasons and
+  correlated file-change directories render directly below the title without
+  duplicate Summary or Path cards. A lone `grantRoot` outside a file-change
+  approval remains a labeled path detail. These remain approval previews, not
+  evidence that a file change executed.
 - Validate: cover Cursor known-input fallback and Codex root and child
   file-change approvals. When absolute paths share a directory, render that
-  directory once and show relative file paths beneath it.
+  directory once and show relative file paths beneath it. Confirm the reason
+  and correlated directory appear once below the title.
 - References:
   [acp_turn_normalizer.go](../../../packages/agent/daemon/runtime/acp_turn_normalizer.go)
   [codex_appserver_event_interactive.go](../../../packages/agent/daemon/runtime/codex_appserver_event_interactive.go)

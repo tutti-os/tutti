@@ -222,6 +222,7 @@ test("canceling a queued submit atomically removes queue and pending intent", ()
         },
         activeTurn: {
           agentSessionId: "session-1",
+          origin: "user_prompt",
           phase: "running",
           startedAtUnixMs: 1,
           turnId: "turn-1",
@@ -276,6 +277,7 @@ test("later queued submit stays requested when its expiry follows the prior deli
   const runningSession = {
     activeTurn: {
       agentSessionId: "session-1",
+      origin: "user_prompt" as const,
       phase: "running" as const,
       startedAtUnixMs: 1,
       turnId: "turn-1",
@@ -452,6 +454,7 @@ test("accepted submit stops blocking once its turn is no longer active", () => {
   let state = createInitialAgentSessionEngineState();
   const runningTurn = {
     agentSessionId: "session-1",
+    origin: "user_prompt" as const,
     phase: "running" as const,
     startedAtUnixMs: 1,
     turnId: "turn-1",
@@ -498,6 +501,7 @@ test("accepted submit stops blocking once its turn is no longer active", () => {
 
   const laterTurn = {
     agentSessionId: "session-1",
+    origin: "user_prompt" as const,
     outcome: "completed" as const,
     phase: "settled" as const,
     settledAtUnixMs: 4,
@@ -523,6 +527,7 @@ test("an uncertain queued submit cannot be half-canceled", () => {
   const runningSession = {
     activeTurn: {
       agentSessionId: "session-1",
+      origin: "user_prompt" as const,
       phase: "running" as const,
       startedAtUnixMs: 1,
       turnId: "turn-1",
@@ -707,6 +712,7 @@ test("an invalid send-now request cannot cancel an unrelated active turn", () =>
         },
         activeTurn: {
           agentSessionId: "session-1",
+          origin: "user_prompt",
           phase: "running",
           startedAtUnixMs: 1,
           turnId: "turn-1",
@@ -842,6 +848,7 @@ test("root drains once from post-lifecycle canonical turn state", () => {
 
   const turn = {
     agentSessionId: "session-1",
+    origin: "user_prompt" as const,
     outcome: "completed" as const,
     phase: "settled" as const,
     settledAtUnixMs: 3,
@@ -872,6 +879,7 @@ test("authoritative interaction result drains from post-lifecycle canonical stat
   let state = createInitialAgentSessionEngineState();
   const waitingTurn = {
     agentSessionId: "session-1",
+    origin: "user_prompt" as const,
     phase: "waiting" as const,
     startedAtUnixMs: 1,
     turnId: "turn-1",
@@ -988,6 +996,7 @@ test("terminal latest turn drains at an unchanged session timestamp", () => {
         activeTurnId: null,
         latestTurn: {
           agentSessionId: "session-1",
+          origin: "user_prompt",
           outcome: "completed",
           phase: "settled",
           settledAtUnixMs: 110,
@@ -1009,6 +1018,7 @@ test("successful queued send waits for its exact canonical turn before FIFO drai
   let state = createInitialAgentSessionEngineState();
   const priorTurn = {
     agentSessionId: "session-1",
+    origin: "user_prompt" as const,
     outcome: "completed" as const,
     phase: "settled" as const,
     settledAtUnixMs: 1,
@@ -1034,6 +1044,7 @@ test("successful queued send waits for its exact canonical turn before FIFO drai
   state = rootEngineReducer(first.state, queuedSubmit("submit-2", 3)).state;
   const runningTurn = {
     agentSessionId: "session-1",
+    origin: "user_prompt" as const,
     phase: "running" as const,
     startedAtUnixMs: 4,
     turnId: "turn-1",
@@ -1094,6 +1105,7 @@ test("timeout message confirmation waits for exact-turn lifecycle reconcile", ()
     activeTurnId: null,
     latestTurn: {
       agentSessionId: "session-1",
+      origin: "user_prompt" as const,
       outcome: "completed" as const,
       phase: "settled" as const,
       settledAtUnixMs: 1,
@@ -1147,6 +1159,7 @@ test("timeout message confirmation waits for exact-turn lifecycle reconcile", ()
     type: "turn/upserted",
     turn: {
       agentSessionId: "session-1",
+      origin: "user_prompt",
       outcome: "completed",
       phase: "settled",
       settledAtUnixMs: 5,
@@ -1180,6 +1193,7 @@ function runningSession(capabilityList: AgentActivitySessionCapabilities) {
   return {
     activeTurn: {
       agentSessionId: "session-1",
+      origin: "user_prompt" as const,
       phase: "running" as const,
       startedAtUnixMs: 1,
       turnId: "turn-1",

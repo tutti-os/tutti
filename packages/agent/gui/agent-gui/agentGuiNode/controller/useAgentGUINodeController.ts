@@ -490,7 +490,7 @@ export function useAgentGUINodeController({
   // NOTE: project metadata is intentionally NOT written back into the shared
   // conversation store. `conversation.project` is a per-window JOIN of cwd ×
   // userProjects; deriving it here and persisting it caused cross-window update
-  // storms. It is now derived in the view layer (groupConversations) instead.
+  // storms. Rail membership now comes from the backend railSectionKey contract.
 
   useEffect(() => {
     if (activeConversationId === null && isComposerHome) {

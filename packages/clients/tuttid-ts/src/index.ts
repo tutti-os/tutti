@@ -30,6 +30,7 @@ export {
   WORKSPACE_AGENT_TURN_OUTCOMES,
   WORKSPACE_AGENT_TURN_PHASES
 } from "./agentProtocolGuards.ts";
+export type { WorkspaceAgentSessionAuditEvent } from "./agentProtocolGuards.ts";
 export {
   getTuttidErrorI18nCandidates,
   getTuttidProtocolErrorCode,

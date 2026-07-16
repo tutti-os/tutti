@@ -8,6 +8,7 @@ import type {
   AgentMentionFilterId,
   AgentMentionGroup,
   AgentMentionGroupId,
+  AgentMentionIssueTopicGroup,
   AgentMentionRawGroups,
   AgentMentionTotalCounts
 } from "./AgentMentionSearchContracts";
@@ -22,6 +23,10 @@ import {
   type AgentMentionLifecycleDiagnosticLog
 } from "./AgentMentionSearchContracts";
 import { presentAgentGeneratedFileMentionItems } from "./agentMentionAgentGeneratedFilesPresentation";
+import type {
+  ReferenceProvenanceCatalog,
+  ReferenceProvenanceFilter
+} from "@tutti-os/workspace-file-reference/contracts";
 import {
   buildEmptyGroup,
   compactText,
@@ -38,9 +43,27 @@ export function buildAgentMentionGroups(input: {
   currentFilter: AgentMentionFilterId;
   currentQuery: string;
   expandedCounts: Partial<Record<AgentMentionGroupId, number>>;
+  issueTopicGroups: readonly AgentMentionIssueTopicGroup[] | null;
   rawGroups: AgentMentionRawGroups;
   totalCounts: AgentMentionTotalCounts;
+  provenanceCatalog: ReferenceProvenanceCatalog | null;
+  provenanceFilter: ReferenceProvenanceFilter | null;
 }): AgentMentionGroup[] {
+  if (input.currentFilter === "issue" && input.issueTopicGroups !== null) {
+    return input.issueTopicGroups.map((group) => ({
+      id: group.id,
+      label: group.label,
+      items: group.items,
+      totalCount: group.totalCount,
+      visibleCount: group.items.length,
+      hasMore: group.nextPageToken !== null,
+      expandStatus: group.loadMoreStatus
+    }));
+  }
+  const provenanceGroups = buildSessionProvenanceGroups(input);
+  if (provenanceGroups) {
+    return provenanceGroups;
+  }
   const orderedGroupIds = groupIdsForFilter(input.currentFilter);
   return orderedGroupIds
     .map((groupId) => {
@@ -93,14 +116,168 @@ export function buildAgentMentionGroups(input: {
     .filter((group): group is AgentMentionGroup => group !== null);
 }
 
+export function cloneAgentMentionIssueTopicGroups(
+  groups: readonly AgentMentionIssueTopicGroup[] | null
+): AgentMentionIssueTopicGroup[] | null {
+  return (
+    groups?.map((group) => ({ ...group, items: [...group.items] })) ?? null
+  );
+}
+
+export function issueTopicPaginationChanges(
+  groupsAtStart: readonly AgentMentionIssueTopicGroup[] | null,
+  currentGroups: readonly AgentMentionIssueTopicGroup[] | null
+): AgentMentionIssueTopicGroup[] {
+  if (!groupsAtStart || !currentGroups) {
+    return [];
+  }
+  const startingGroups = new Map(
+    groupsAtStart.map((group) => [group.id, group] as const)
+  );
+  return currentGroups.flatMap((group) => {
+    const startingGroup = startingGroups.get(group.id);
+    if (!startingGroup) {
+      return [];
+    }
+    const startingIssueIds = new Set(
+      startingGroup.items
+        .filter((item) => item.kind === "workspace-issue")
+        .map((item) => item.targetId)
+    );
+    const appendedItems = group.items.filter(
+      (item) =>
+        item.kind !== "workspace-issue" || !startingIssueIds.has(item.targetId)
+    );
+    if (
+      appendedItems.length === 0 &&
+      group.nextPageToken === startingGroup.nextPageToken
+    ) {
+      return [];
+    }
+    return [{ ...group, items: appendedItems }];
+  });
+}
+
+function buildSessionProvenanceGroups(input: {
+  currentFilter: AgentMentionFilterId;
+  expandedCounts: Partial<Record<AgentMentionGroupId, number>>;
+  provenanceCatalog: ReferenceProvenanceCatalog | null;
+  provenanceFilter: ReferenceProvenanceFilter | null;
+  rawGroups: AgentMentionRawGroups;
+}): AgentMentionGroup[] | null {
+  if (
+    input.currentFilter !== "session" ||
+    !input.provenanceCatalog?.enabledDimensions.includes("agent")
+  ) {
+    return null;
+  }
+  const selectedAgentTargetIds = input.provenanceFilter?.agentTargetIds ?? null;
+  const selectedAgentTargetIdSet =
+    selectedAgentTargetIds === null ? null : new Set(selectedAgentTargetIds);
+  const sessionItems = input.rawGroups.sessions.filter(
+    (item) =>
+      item.kind === "session" &&
+      (selectedAgentTargetIdSet === null ||
+        (item.agentTargetId
+          ? selectedAgentTargetIdSet.has(item.agentTargetId)
+          : false))
+  );
+  const catalogAgentTargetIds = new Set(
+    input.provenanceCatalog.agentOptions.map((option) => option.id)
+  );
+  const catalogGroups = input.provenanceCatalog.agentOptions.flatMap(
+    (option) => {
+      const items = sessionItems.filter(
+        (item) => item.kind === "session" && item.agentTargetId === option.id
+      );
+      if (items.length === 0) {
+        return [];
+      }
+      const groupId = agentProvenanceMentionGroupId(option.id);
+      const pageSize = mentionGroupPageSize(input.currentFilter, groupId);
+      const visibleCount = Math.min(
+        items.length,
+        input.expandedCounts[groupId] ?? pageSize
+      );
+      return [
+        {
+          id: groupId,
+          label: option.label,
+          items: items.slice(0, visibleCount),
+          totalCount: items.length,
+          visibleCount,
+          hasMore: items.length > visibleCount
+        }
+      ];
+    }
+  );
+  if (selectedAgentTargetIdSet !== null) {
+    return catalogGroups;
+  }
+  const unmatchedGroups = new Map<
+    string,
+    { id: `agent:${string}`; label: string; items: AgentContextMentionItem[] }
+  >();
+  for (const item of sessionItems) {
+    if (
+      item.kind !== "session" ||
+      (item.agentTargetId && catalogAgentTargetIds.has(item.agentTargetId))
+    ) {
+      continue;
+    }
+    const identity =
+      item.agentTargetId?.trim() ||
+      item.agentName.trim() ||
+      item.initiatorName.trim() ||
+      item.targetId;
+    const key = `uncatalogued:${identity}`;
+    const existing = unmatchedGroups.get(key);
+    if (existing) {
+      existing.items.push(item);
+      continue;
+    }
+    unmatchedGroups.set(key, {
+      id: agentProvenanceMentionGroupId(key),
+      label:
+        item.agentName.trim() ||
+        item.initiatorName.trim() ||
+        item.agentTargetId?.trim() ||
+        item.title,
+      items: [item]
+    });
+  }
+  return [
+    ...catalogGroups,
+    ...[...unmatchedGroups.values()].map((group) => {
+      const pageSize = mentionGroupPageSize(input.currentFilter, group.id);
+      const visibleCount = Math.min(
+        group.items.length,
+        input.expandedCounts[group.id] ?? pageSize
+      );
+      return {
+        ...group,
+        items: group.items.slice(0, visibleCount),
+        totalCount: group.items.length,
+        visibleCount,
+        hasMore: group.items.length > visibleCount
+      };
+    })
+  ];
+}
+
+export function agentProvenanceMentionGroupId(
+  agentTargetId: string
+): `agent:${string}` {
+  return `agent:${encodeURIComponent(agentTargetId)}`;
+}
+
 export function emptyAgentMentionRawGroups(): AgentMentionRawGroups {
   return {
     apps: [],
     agents: [],
     opened_files: [],
     agent_generated_files: [],
-    my_sessions: [],
-    collab_sessions: [],
+    sessions: [],
     issues: []
   };
 }
@@ -113,8 +290,7 @@ export function cloneAgentMentionRawGroups(
     agents: [...rawGroups.agents],
     opened_files: [...rawGroups.opened_files],
     agent_generated_files: [...rawGroups.agent_generated_files],
-    my_sessions: [...rawGroups.my_sessions],
-    collab_sessions: [...rawGroups.collab_sessions],
+    sessions: [...rawGroups.sessions],
     issues: [...rawGroups.issues]
   };
 }
@@ -127,8 +303,12 @@ export function totalCountsFromRawGroups(
     agents: rawGroups.agents.length,
     opened_files: rawGroups.opened_files.length,
     agent_generated_files: rawGroups.agent_generated_files.length,
-    my_sessions: rawGroups.my_sessions.length,
-    collab_sessions: rawGroups.collab_sessions.length,
+    my_sessions: rawGroups.sessions.filter(
+      (item) => item.kind === "session" && item.scope === "my_sessions"
+    ).length,
+    collab_sessions: rawGroups.sessions.filter(
+      (item) => item.kind === "session" && item.scope === "collab_sessions"
+    ).length,
     issues: rawGroups.issues.length
   };
 }
@@ -196,20 +376,10 @@ export function logAgentMentionLifecycleDiagnostic(
   }
 }
 
-export function normalizeSessionMentionItemsForMySessions(input: {
-  currentUserId: string;
+export function normalizeSessionMentionItems(input: {
   items: readonly AgentContextMentionItem[];
 }): AgentContextMentionItem[] {
-  return input.items
-    .filter((item) => item.kind === "session")
-    .filter((item) =>
-      input.currentUserId ? item.scope === "my_sessions" : true
-    )
-    .map((item) =>
-      item.scope === "my_sessions"
-        ? item
-        : { ...item, scope: "my_sessions" as const }
-    );
+  return input.items.filter((item) => item.kind === "session");
 }
 
 export function providerItemToAgentMentionItem(input: {
@@ -364,6 +534,7 @@ export function providerItemToAgentMentionItem(input: {
         presentation.agentIconUrl?.trim() ||
         presentation.iconUrl?.trim() ||
         undefined,
+      ...(scope.agentTargetId ? { agentTargetId: scope.agentTargetId } : {}),
       status: presentation.status?.trim() || undefined,
       inputPreview: description || undefined,
       summaryPreview

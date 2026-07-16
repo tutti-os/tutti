@@ -54,6 +54,29 @@ export function mentionPaletteGroup<TItem>(input: {
   };
 }
 
+export function mentionPaletteExpandLabel<TItem>(
+  group: Pick<
+    MentionPaletteGroup<TItem>,
+    | "expandErrorLabel"
+    | "expandLabel"
+    | "expandLoadingLabel"
+    | "expandStatus"
+    | "totalCount"
+    | "visibleCount"
+  >
+): string {
+  const fallbackLabel =
+    group.expandLabel ??
+    `+${Math.max(0, group.totalCount - group.visibleCount)}`;
+  if (group.expandStatus === "loading") {
+    return group.expandLoadingLabel ?? fallbackLabel;
+  }
+  if (group.expandStatus === "error") {
+    return group.expandErrorLabel ?? fallbackLabel;
+  }
+  return fallbackLabel;
+}
+
 export function buildMentionPaletteModel<TItem>(
   input: MentionPaletteModelInput<TItem>
 ): MentionPaletteState<TItem> {

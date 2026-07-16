@@ -345,19 +345,27 @@ function decorateMentionGroup(
     filter,
     groupCount: groups.length,
     groupId,
+    groupLabel: group.label,
     query
   });
+  const groupLabel = group.label ?? agentMentionGroupLabel(groupId);
   return {
     ...group,
-    label: showLabel ? agentMentionGroupLabel(groupId) : undefined,
+    label: showLabel ? groupLabel : undefined,
     emptyLabel: suppressChrome
       ? undefined
-      : agentMentionEmptyGroupLabel(groupId, query),
+      : (group.emptyLabel ?? agentMentionEmptyGroupLabel(groupId, query)),
     expandLabel: group.hasMore
       ? translate("agentHost.agentGui.contextPickerExpandMore", {
           count: mentionGroupExpandCount(group, filter)
         })
       : undefined,
+    expandLoadingLabel: translate(
+      "agentHost.agentGui.contextPickerLoadMoreLoading"
+    ),
+    expandErrorLabel: translate(
+      "agentHost.agentGui.contextPickerLoadMoreRetry"
+    ),
     sectionClassName: followsMySessions ? "mt-2" : undefined,
     hideTopDivider: suppressChrome
   };
@@ -402,6 +410,7 @@ function shouldRenderMentionGroupLabel(input: {
   filter: AgentMentionFilterId;
   groupCount: number;
   groupId: AgentMentionGroupId;
+  groupLabel?: string;
   query: string;
 }): boolean {
   if (shouldSuppressFileSearchGroupChrome(input.filter, input.query)) {
@@ -410,8 +419,11 @@ function shouldRenderMentionGroupLabel(input: {
   if (input.groupCount !== 1) {
     return true;
   }
+  if (input.groupId.startsWith("agent:")) {
+    return true;
+  }
   return (
-    agentMentionGroupLabel(input.groupId) !==
+    (input.groupLabel ?? agentMentionGroupLabel(input.groupId)) !==
     agentMentionFilterLabel(input.filter)
   );
 }

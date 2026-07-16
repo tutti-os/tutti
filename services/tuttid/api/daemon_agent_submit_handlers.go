@@ -100,8 +100,27 @@ func (api DaemonAPI) SendWorkspaceAgentSessionInput(ctx context.Context, request
 	logSendAgentSubmitTrace("api.send.completed", string(request.WorkspaceID), string(request.AgentSessionID), metadata, agentSessionTurnPhase(result.Session), result.TurnID, result.TurnLifecycle.Phase, nil)
 	response := tuttigenerated.SendWorkspaceAgentSessionInput200JSONResponse{
 		Session: generatedAgentSession(result.Session),
-		TurnId:  result.TurnID,
+		Kind:    tuttigenerated.SendWorkspaceAgentSessionInputResponseKind(result.Kind),
 	}
+	if result.Kind == "goalControl" && result.GoalControl != nil {
+		goalResult := result.GoalControl
+		if goalResult.OperationID != "" {
+			response.OperationId = &goalResult.OperationID
+		}
+		if goalResult.GoalState != nil {
+			state := generatedAgentSessionGoalState(*goalResult.GoalState)
+			response.GoalState = &state
+		}
+		if len(goalResult.Goal) > 0 {
+			var goal tuttigenerated.WorkspaceAgentSessionGoal
+			if decodeTypedAgentSessionField(goalResult.Goal, &goal) {
+				response.Goal = &goal
+			}
+		}
+		return response, nil
+	}
+	turnID := strings.TrimSpace(result.TurnID)
+	response.TurnId = &turnID
 	// Protocol v2: the accepted submission's turn entity rides along when the
 	// session projection already carries it.
 	if result.Session.ActiveTurn != nil {

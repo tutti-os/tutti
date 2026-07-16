@@ -17,7 +17,7 @@ func generatedAgentSessionMessages(messages []agentservice.SessionMessage) ([]tu
 		if trimmed := strings.TrimSpace(message.TurnID); trimmed != "" {
 			turnID = &trimmed
 		}
-		result = append(result, tuttigenerated.WorkspaceAgentSessionMessage{
+		generated := tuttigenerated.WorkspaceAgentSessionMessage{
 			AgentSessionId:    strings.TrimSpace(message.AgentSessionID),
 			CompletedAtUnixMs: int64Pointer(message.CompletedAtUnixMS),
 			CreatedAtUnixMs:   int64Pointer(message.CreatedAtUnixMS),
@@ -31,7 +31,18 @@ func generatedAgentSessionMessages(messages []agentservice.SessionMessage) ([]tu
 			TurnId:            turnID,
 			UpdatedAtUnixMs:   int64Pointer(message.UpdatedAtUnixMS),
 			Version:           int64(message.Version),
-		})
+		}
+		if message.Semantics != nil {
+			userVisible := message.Semantics.UserVisibleAssistantResponse
+			turnSettling := message.Semantics.TurnSettling
+			generated.Semantics = &tuttigenerated.AgentActivityMessageSemantics{
+				UserVisibleAssistantResponse: &userVisible,
+				TurnSettling:                 &turnSettling,
+				NoticeCommand:                stringPointerIfNotBlank(message.Semantics.NoticeCommand),
+				NoticeCommandStatus:          stringPointerIfNotBlank(message.Semantics.NoticeCommandStatus),
+			}
+		}
+		result = append(result, generated)
 	}
 	return result, nil
 }

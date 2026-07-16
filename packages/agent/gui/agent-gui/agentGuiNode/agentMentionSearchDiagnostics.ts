@@ -111,6 +111,7 @@ export function emitAgentMentionSearchDiagnostic(input: {
 }
 
 export async function queryAgentMentionProviderWithDiagnostics<T>(input: {
+  abortSignal?: AbortSignal;
   diagnosticNow: () => number;
   diagnostics: AgentMentionProviderQueryDiagnostic[];
   fallback: T;
@@ -118,6 +119,7 @@ export async function queryAgentMentionProviderWithDiagnostics<T>(input: {
   providerTimeoutMs: number;
   query: ((abortSignal: AbortSignal) => Promise<T>) | null;
   resultCount: (result: T) => number;
+  throwOnTimeout?: boolean;
 }): Promise<T> {
   if (!input.query) {
     input.diagnostics.push({
@@ -131,6 +133,7 @@ export async function queryAgentMentionProviderWithDiagnostics<T>(input: {
   const startedAt = input.diagnosticNow();
   try {
     const { result, timedOut } = await runAgentMentionProviderQuery({
+      abortSignal: input.abortSignal,
       fallback: input.fallback,
       providerTimeoutMs: input.providerTimeoutMs,
       query: input.query
@@ -144,8 +147,21 @@ export async function queryAgentMentionProviderWithDiagnostics<T>(input: {
       resultCount: input.resultCount(result),
       status: timedOut ? "timeout" : "success"
     });
+    if (timedOut && input.throwOnTimeout) {
+      const error = new Error("Mention provider query timed out.");
+      error.name = "TimeoutError";
+      throw error;
+    }
     return result;
   } catch (error) {
+    if (
+      error instanceof Error &&
+      error.name === "TimeoutError" &&
+      input.diagnostics.at(-1)?.providerId === input.providerId &&
+      input.diagnostics.at(-1)?.status === "timeout"
+    ) {
+      throw error;
+    }
     input.diagnostics.push({
       durationMs: elapsedAgentMentionSearchDiagnosticMs(
         input.diagnosticNow(),
@@ -205,11 +221,20 @@ function providerDiagnosticOrder(providerId: string): number {
 }
 
 async function runAgentMentionProviderQuery<T>(input: {
+  abortSignal?: AbortSignal;
   fallback: T;
   providerTimeoutMs: number;
   query: (abortSignal: AbortSignal) => Promise<T>;
 }): Promise<{ result: T; timedOut: boolean }> {
   const abortController = new AbortController();
+  const abortFromParent = () => abortController.abort();
+  if (input.abortSignal?.aborted) {
+    abortController.abort();
+  } else {
+    input.abortSignal?.addEventListener("abort", abortFromParent, {
+      once: true
+    });
+  }
   let timedOut = false;
   const queryPromise = Promise.resolve().then(() =>
     input.query(abortController.signal)
@@ -228,7 +253,11 @@ async function runAgentMentionProviderQuery<T>(input: {
     input.providerTimeoutMs <= 0 ||
     !Number.isFinite(input.providerTimeoutMs)
   ) {
-    return queryResultPromise;
+    try {
+      return await queryResultPromise;
+    } finally {
+      input.abortSignal?.removeEventListener("abort", abortFromParent);
+    }
   }
 
   let timeout: ReturnType<typeof setTimeout> | null = null;
@@ -245,6 +274,7 @@ async function runAgentMentionProviderQuery<T>(input: {
   try {
     return await Promise.race([queryResultPromise, timeoutPromise]);
   } finally {
+    input.abortSignal?.removeEventListener("abort", abortFromParent);
     if (timeout !== null) {
       clearTimeout(timeout);
     }

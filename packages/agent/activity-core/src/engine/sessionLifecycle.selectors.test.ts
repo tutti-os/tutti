@@ -2,19 +2,19 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   createInitialAgentSessionEngineState,
-  rootEngineReducer
+  rootEngineReducer,
 } from "./rootReducer.ts";
 import {
   selectEngineSubmitAvailability,
   selectEngineSessionDeleted,
   selectWorkspaceAgentConsumerCounts,
-  selectWorkspaceAgentConsumerSession
+  selectWorkspaceAgentConsumerSession,
 } from "./sessionLifecycle.selectors.ts";
 
 test("deleted session selector normalizes ids and hides tombstone storage", () => {
   const state = rootEngineReducer(createInitialAgentSessionEngineState(), {
     agentSessionId: "session-1",
-    type: "session/removed"
+    type: "session/removed",
   }).state;
 
   assert.equal(selectEngineSessionDeleted(state, " session-1 "), true);
@@ -30,14 +30,15 @@ test("consumer status is derived from canonical entities and engine-owned initia
         ...{
           activeTurnId: null,
           latestTurnInteractions: [],
-          pendingInteractions: []
+          pendingInteractions: [],
         },
         activeTurn: {
           agentSessionId: "session-1",
+          origin: "user_prompt",
           phase: "running",
           startedAtUnixMs: 10,
           turnId: "turn-1",
-          updatedAtUnixMs: 20
+          updatedAtUnixMs: 20,
         },
         activeTurnId: "turn-1",
         agentSessionId: "session-1",
@@ -51,15 +52,15 @@ test("consumer status is derived from canonical entities and engine-owned initia
             requestId: "request-1",
             status: "pending",
             turnId: "turn-1",
-            updatedAtUnixMs: 21
-          }
+            updatedAtUnixMs: 21,
+          },
         ],
         provider: "codex",
         title: "Canonical session",
-        workspaceId: "workspace-1"
-      }
+        workspaceId: "workspace-1",
+      },
     ],
-    type: "session/snapshotReceived"
+    type: "session/snapshotReceived",
   }).state;
 
   const consumer = selectWorkspaceAgentConsumerSession(state, "session-1");
@@ -73,7 +74,7 @@ test("consumer status is derived from canonical entities and engine-owned initia
     failed: 0,
     idle: 0,
     waiting: 1,
-    working: 0
+    working: 0,
   });
 });
 
@@ -90,7 +91,7 @@ test("new activation stays working between session confirmation and first canoni
     requestedAtUnixMs: 10,
     requestId: "activation-1",
     type: "activation/requested",
-    workspaceId: "workspace-1"
+    workspaceId: "workspace-1",
   }).state;
   state = rootEngineReducer(state, {
     sessions: [
@@ -103,15 +104,15 @@ test("new activation stays working between session confirmation and first canoni
         pendingInteractions: [],
         provider: "codex",
         title: "test1",
-        workspaceId: "workspace-1"
-      }
+        workspaceId: "workspace-1",
+      },
     ],
-    type: "session/snapshotReceived"
+    type: "session/snapshotReceived",
   }).state;
 
   assert.equal(
     selectWorkspaceAgentConsumerSession(state, "session-1")?.displayStatus,
-    "working"
+    "working",
   );
 
   state = rootEngineReducer(state, {
@@ -123,25 +124,26 @@ test("new activation stays working between session confirmation and first canoni
         cwd: "/workspace",
         latestTurn: {
           agentSessionId: "session-1",
+          origin: "user_prompt",
           outcome: "completed",
           phase: "settled",
           startedAtUnixMs: 10,
           turnId: "turn-1",
-          updatedAtUnixMs: 30
+          updatedAtUnixMs: 30,
         },
         latestTurnInteractions: [],
         pendingInteractions: [],
         provider: "codex",
         title: "test1",
-        workspaceId: "workspace-1"
-      }
+        workspaceId: "workspace-1",
+      },
     ],
-    type: "session/snapshotReceived"
+    type: "session/snapshotReceived",
   }).state;
 
   assert.equal(
     selectWorkspaceAgentConsumerSession(state, "session-1")?.displayStatus,
-    "completed"
+    "completed",
   );
 });
 
@@ -157,7 +159,7 @@ test("new activation without initial content stays idle after session confirmati
     requestedAtUnixMs: 10,
     requestId: "activation-1",
     type: "activation/requested",
-    workspaceId: "workspace-1"
+    workspaceId: "workspace-1",
   }).state;
   state = rootEngineReducer(state, {
     sessions: [
@@ -170,15 +172,15 @@ test("new activation without initial content stays idle after session confirmati
         pendingInteractions: [],
         provider: "codex",
         title: "",
-        workspaceId: "workspace-1"
-      }
+        workspaceId: "workspace-1",
+      },
     ],
-    type: "session/snapshotReceived"
+    type: "session/snapshotReceived",
   }).state;
 
   assert.equal(
     selectWorkspaceAgentConsumerSession(state, "session-1")?.displayStatus,
-    "idle"
+    "idle",
   );
 });
 
@@ -189,10 +191,11 @@ test("completed Claude goal does not unlock a waiting root with a running child"
       {
         activeTurn: {
           agentSessionId: "root",
+          origin: "user_prompt",
           phase: "waiting",
           startedAtUnixMs: 10,
           turnId: "root-turn",
-          updatedAtUnixMs: 30
+          updatedAtUnixMs: 30,
         },
         activeTurnId: "root-turn",
         agentSessionId: "root",
@@ -202,15 +205,16 @@ test("completed Claude goal does not unlock a waiting root with a running child"
         pendingInteractions: [],
         provider: "claude-code",
         title: "Root",
-        workspaceId: "workspace-1"
+        workspaceId: "workspace-1",
       },
       {
         activeTurn: {
           agentSessionId: "child",
+          origin: "provider_initiated",
           phase: "running",
           startedAtUnixMs: 20,
           turnId: "child-turn",
-          updatedAtUnixMs: 30
+          updatedAtUnixMs: 30,
         },
         activeTurnId: "child-turn",
         agentSessionId: "child",
@@ -225,19 +229,19 @@ test("completed Claude goal does not unlock a waiting root with a running child"
         rootAgentSessionId: "root",
         rootTurnId: "root-turn",
         title: "Child",
-        workspaceId: "workspace-1"
-      }
+        workspaceId: "workspace-1",
+      },
     ],
-    type: "session/snapshotReceived"
+    type: "session/snapshotReceived",
   }).state;
 
   assert.equal(
     selectWorkspaceAgentConsumerSession(state, "root")?.displayStatus,
-    "waiting"
+    "waiting",
   );
   assert.deepEqual(selectEngineSubmitAvailability(state, "root"), {
     state: "blocked",
-    reason: "active_turn"
+    reason: "active_turn",
   });
   assert.deepEqual(selectWorkspaceAgentConsumerCounts(state), {
     canceled: 0,
@@ -245,6 +249,46 @@ test("completed Claude goal does not unlock a waiting root with a running child"
     failed: 0,
     idle: 0,
     waiting: 1,
-    working: 0
+    working: 0,
   });
+});
+
+test("new goal control activation stays idle without a provider Turn", () => {
+  let state = createInitialAgentSessionEngineState();
+  state = rootEngineReducer(state, {
+    agentSessionId: "session-goal",
+    agentTargetId: "local:claude-code",
+    clientSubmitId: "submit-goal",
+    content: [{ type: "text", text: "/goal ship it" }],
+    cwd: "/workspace",
+    expiresAtUnixMs: 1_000,
+    initialTurnExpected: false,
+    mode: "new",
+    requestedAtUnixMs: 10,
+    requestId: "activation-goal",
+    runtimeContent: [{ type: "text", text: "/goal ship it" }],
+    type: "activation/requested",
+    workspaceId: "workspace-1",
+  }).state;
+  state = rootEngineReducer(state, {
+    sessions: [
+      {
+        activeTurnId: null,
+        agentSessionId: "session-goal",
+        createdAtUnixMs: 20,
+        cwd: "/workspace",
+        latestTurnInteractions: [],
+        pendingInteractions: [],
+        provider: "claude-code",
+        title: "/goal ship it",
+        workspaceId: "workspace-1",
+      },
+    ],
+    type: "session/snapshotReceived",
+  }).state;
+
+  assert.equal(
+    selectWorkspaceAgentConsumerSession(state, "session-goal")?.displayStatus,
+    "idle",
+  );
 });

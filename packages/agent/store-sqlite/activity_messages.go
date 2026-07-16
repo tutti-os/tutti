@@ -33,13 +33,14 @@ WHERE workspace_id = ? AND agent_session_id = ? AND deleted_at_unix_ms = 0
 	return version, nil
 }
 
-func (s *Store) upsertAgentMessageTx(
+func (*Store) upsertAgentMessageTx(
 	ctx context.Context,
 	tx *sql.Tx,
 	workspaceID string,
 	agentSessionID string,
 	input MessageUpdate,
 	now int64,
+	allowLegacyTurnless bool,
 ) (Message, bool, error) {
 	existing, ok, err := getAgentMessageForUpdate(ctx, tx, workspaceID, agentSessionID, input.MessageID)
 	if err != nil {
@@ -66,18 +67,20 @@ func (s *Store) upsertAgentMessageTx(
 	if !accepted {
 		return Message{}, false, nil
 	}
-	if turnID := strings.TrimSpace(message.TurnID); turnID != "" {
+	messageSemantics := cloneMessageSemantics(input.Semantics)
+	turnID := strings.TrimSpace(message.TurnID)
+	kind := strings.TrimSpace(message.Kind)
+	if kind == "session_audit" {
+		if turnID != "" {
+			return Message{}, false, fmt.Errorf("workspace agent session audit must not reference turn %q", turnID)
+		}
+	} else if turnID == "" && !allowLegacyTurnless {
+		return Message{}, false, fmt.Errorf("workspace agent message %q kind %q is missing turn", message.MessageID, kind)
+	} else if turnID != "" {
 		if _, exists, err := getAgentTurnTx(ctx, tx, workspaceID, agentSessionID, turnID); err != nil {
 			return Message{}, false, err
 		} else if !exists {
-			if _, accepted, err := s.recordTurnTransitionTx(ctx, tx, TurnTransition{
-				WorkspaceID: workspaceID, AgentSessionID: agentSessionID, TurnID: turnID,
-				Phase: TurnPhaseSubmitted, OccurredAtUnixMS: message.OccurredAtUnixMS,
-			}, now); err != nil {
-				return Message{}, false, fmt.Errorf("ensure workspace agent turn for message: %w", err)
-			} else if !accepted {
-				return Message{}, false, errors.New("workspace agent message turn transition was rejected")
-			}
+			return Message{}, false, fmt.Errorf("workspace agent message references unknown turn %q", turnID)
 		}
 	}
 	version, err := incrementAgentSessionMessageVersion(ctx, tx, workspaceID, agentSessionID)
@@ -89,18 +92,23 @@ func (s *Store) upsertAgentMessageTx(
 	if err != nil {
 		return Message{}, false, fmt.Errorf("encode workspace agent message payload: %w", err)
 	}
+	semanticsJSON, err := json.Marshal(messageSemantics)
+	if err != nil {
+		return Message{}, false, fmt.Errorf("encode workspace agent message semantics: %w", err)
+	}
 	_, err = tx.ExecContext(ctx, `
 INSERT INTO workspace_agent_messages (
   workspace_id, agent_session_id, message_id, version, turn_id, role, kind, status,
-  payload_json, occurred_at_unix_ms, started_at_unix_ms, completed_at_unix_ms,
+  semantics_json, payload_json, occurred_at_unix_ms, started_at_unix_ms, completed_at_unix_ms,
   created_at_unix_ms, updated_at_unix_ms
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 ON CONFLICT(workspace_id, agent_session_id, message_id) DO UPDATE SET
   version = excluded.version,
   turn_id = excluded.turn_id,
   role = excluded.role,
   kind = excluded.kind,
   status = excluded.status,
+  semantics_json = excluded.semantics_json,
   payload_json = excluded.payload_json,
   occurred_at_unix_ms = excluded.occurred_at_unix_ms,
   started_at_unix_ms = excluded.started_at_unix_ms,
@@ -108,7 +116,7 @@ ON CONFLICT(workspace_id, agent_session_id, message_id) DO UPDATE SET
   deleted_at_unix_ms = 0,
   updated_at_unix_ms = excluded.updated_at_unix_ms
 `, workspaceID, agentSessionID, strings.TrimSpace(input.MessageID), version,
-		nullString(strings.TrimSpace(message.TurnID)), message.Role, message.Kind, message.Status, string(payloadJSON),
+		nullString(strings.TrimSpace(message.TurnID)), message.Role, message.Kind, message.Status, string(semanticsJSON), string(payloadJSON),
 		message.OccurredAtUnixMS, message.StartedAtUnixMS, message.CompletedAtUnixMS,
 		message.CreatedAtUnixMS, message.UpdatedAtUnixMS)
 	if err != nil {
@@ -133,7 +141,7 @@ func getAgentMessageForUpdate(
 ) (Message, bool, error) {
 	row := tx.QueryRowContext(ctx, `
 SELECT id, agent_session_id, message_id, version, turn_id, role, kind, status,
-       payload_json, occurred_at_unix_ms, started_at_unix_ms, completed_at_unix_ms,
+       semantics_json, payload_json, occurred_at_unix_ms, started_at_unix_ms, completed_at_unix_ms,
        created_at_unix_ms, updated_at_unix_ms
 FROM workspace_agent_messages
 WHERE workspace_id = ? AND agent_session_id = ? AND message_id = ? AND deleted_at_unix_ms = 0
@@ -170,6 +178,7 @@ func messageProjectionSnapshot(message Message) agentactivityprojection.MessageS
 func scanAgentMessage(scanner rowScanner) (Message, error) {
 	var message Message
 	var payloadJSON string
+	var semanticsJSON string
 	var turnID sql.NullString
 	err := scanner.Scan(
 		&message.ID,
@@ -180,6 +189,7 @@ func scanAgentMessage(scanner rowScanner) (Message, error) {
 		&message.Role,
 		&message.Kind,
 		&message.Status,
+		&semanticsJSON,
 		&payloadJSON,
 		&message.OccurredAtUnixMS,
 		&message.StartedAtUnixMS,
@@ -193,6 +203,11 @@ func scanAgentMessage(scanner rowScanner) (Message, error) {
 	// NULL turn_id (session-level message) is surfaced as an empty string in
 	// the Go DTO; transport projections re-encode it as null.
 	message.TurnID = strings.TrimSpace(turnID.String)
+	if strings.TrimSpace(semanticsJSON) != "" && strings.TrimSpace(semanticsJSON) != "null" && strings.TrimSpace(semanticsJSON) != "{}" {
+		if err := json.Unmarshal([]byte(semanticsJSON), &message.Semantics); err != nil {
+			return Message{}, fmt.Errorf("decode workspace agent message semantics id=%d message_id=%q: %w", message.ID, message.MessageID, err)
+		}
+	}
 	if strings.TrimSpace(payloadJSON) == "" {
 		message.Payload = map[string]any{}
 		return message, nil
@@ -211,4 +226,12 @@ func scanAgentMessage(scanner rowScanner) (Message, error) {
 		)
 	}
 	return message, nil
+}
+
+func cloneMessageSemantics(value *MessageSemantics) *MessageSemantics {
+	if value == nil {
+		return nil
+	}
+	copy := *value
+	return &copy
 }

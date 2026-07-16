@@ -528,16 +528,20 @@ func statePatchFromSessionState(agentSessionID string, state WorkspaceAgentSessi
 	}
 	if state.Turn != nil {
 		patch.Turn = &WorkspaceAgentTurnPatch{
-			TurnID:             strings.TrimSpace(state.Turn.TurnID),
-			ActiveTurnID:       cloneStringPointer(state.Turn.ActiveTurnID),
-			Phase:              strings.TrimSpace(state.Turn.Phase),
-			Outcome:            strings.TrimSpace(state.Turn.Outcome),
-			Settling:           state.Turn.Settling,
-			CompletedCommand:   cloneCompletedCommand(state.Turn.CompletedCommand),
-			SubmitAvailability: cloneSubmitAvailability(state.Turn.SubmitAvailability),
-			FileChanges:        clonePayloadMap(state.Turn.FileChanges),
-			StartedAtUnixMS:    state.Turn.StartedAtUnixMS,
-			CompletedAtUnixMS:  state.Turn.CompletedAtUnixMS,
+			TurnID:                strings.TrimSpace(state.Turn.TurnID),
+			Origin:                strings.TrimSpace(state.Turn.Origin),
+			SourceGoalOperationID: strings.TrimSpace(state.Turn.SourceGoalOperationID),
+			SourceGoalRevision:    state.Turn.SourceGoalRevision,
+			SourceGoalRepairEpoch: state.Turn.SourceGoalRepairEpoch,
+			ActiveTurnID:          cloneStringPointer(state.Turn.ActiveTurnID),
+			Phase:                 strings.TrimSpace(state.Turn.Phase),
+			Outcome:               strings.TrimSpace(state.Turn.Outcome),
+			Settling:              state.Turn.Settling,
+			CompletedCommand:      cloneCompletedCommand(state.Turn.CompletedCommand),
+			SubmitAvailability:    cloneSubmitAvailability(state.Turn.SubmitAvailability),
+			FileChanges:           clonePayloadMap(state.Turn.FileChanges),
+			StartedAtUnixMS:       state.Turn.StartedAtUnixMS,
+			CompletedAtUnixMS:     state.Turn.CompletedAtUnixMS,
 		}
 	}
 	return patch

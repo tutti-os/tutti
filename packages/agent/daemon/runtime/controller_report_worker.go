@@ -2,6 +2,7 @@ package agentruntime
 
 import (
 	"context"
+	"errors"
 	"log/slog"
 	"strings"
 
@@ -12,7 +13,39 @@ import (
 func (c *Controller) enqueueSessionReport(ctx context.Context, session Session, events []activityshared.Event) {
 	report := reportActivityInput(session, events)
 	c.enrichReportStatePatchesWithSessionMetadata(session, &report)
+	if len(report.GoalReconcileRequests) > 0 {
+		control := report
+		control.TimelineItems = nil
+		control.StatePatches = nil
+		control.MessageUpdates = nil
+		control.SessionAudits = nil
+		report.GoalReconcileRequests = nil
+		_ = c.reportGoalReconcileControl(ctx, control)
+	}
 	c.enqueueReport(ctx, report)
+}
+
+func (c *Controller) reportGoalReconcileControl(ctx context.Context, report agentsessionstore.ReportActivityInput) error {
+	if c == nil || c.reporter == nil {
+		return errors.New("durable goal reconcile reporter is unavailable")
+	}
+	return c.reporter.Report(ctx, report)
+}
+
+func (c *Controller) reportGoalReconcileDurable(ctx context.Context, session Session, request GoalReconcileDurableRequest) error {
+	report := agentsessionstore.ReportActivityInput{
+		WorkspaceID: session.RoomID,
+		Connector:   &agentsessionstore.ConnectorInfo{ID: session.Provider, Version: "agent-gui-runtime"},
+		Source:      eventSourceFromSession(session),
+		GoalReconcileRequests: []agentsessionstore.WorkspaceAgentGoalReconcileRequest{{
+			RequestID: request.RequestID, Phase: request.Phase, AgentSessionID: session.AgentSessionID,
+			ProviderTurnID: request.ProviderTurnID, Reason: request.Reason, FenceMode: request.FenceMode,
+			ExpectedOperationID: request.ExpectedOperationID, ExpectedRevision: request.ExpectedRevision,
+			ExpectedRepairEpoch: request.ExpectedRepairEpoch, QuiesceSucceeded: request.QuiesceSucceeded,
+			QuiesceError: request.QuiesceError,
+		}},
+	}
+	return c.reportGoalReconcileControl(ctx, report)
 }
 
 func (c *Controller) enqueueSessionSnapshotReport(ctx context.Context, session Session) {
@@ -145,7 +178,7 @@ func enrichReportStatePatchesWithSessionMetadata(
 }
 
 func (c *Controller) enqueueReport(ctx context.Context, report agentsessionstore.ReportActivityInput) {
-	if len(report.TimelineItems) == 0 && len(report.StatePatches) == 0 && len(report.MessageUpdates) == 0 {
+	if len(report.TimelineItems) == 0 && len(report.StatePatches) == 0 && len(report.MessageUpdates) == 0 && len(report.SessionAudits) == 0 && len(report.GoalReconcileRequests) == 0 {
 		return
 	}
 	if c.reporter == nil {
@@ -166,6 +199,7 @@ func (c *Controller) enqueueReport(ctx context.Context, report agentsessionstore
 		"timeline_item_count", len(report.TimelineItems),
 		"state_patch_count", len(report.StatePatches),
 		"message_update_count", len(report.MessageUpdates),
+		"session_audit_count", len(report.SessionAudits),
 		"timeline_items", timelineItemsForLog,
 		"state_patches", statePatchesForLog,
 	)
@@ -186,6 +220,7 @@ func (c *Controller) enqueueReport(ctx context.Context, report agentsessionstore
 			"timeline_item_count", len(report.TimelineItems),
 			"state_patch_count", len(report.StatePatches),
 			"message_update_count", len(report.MessageUpdates),
+			"session_audit_count", len(report.SessionAudits),
 			"timeline_items", timelineItemsForLog,
 			"state_patches", statePatchesForLog,
 		)
@@ -232,6 +267,7 @@ func (c *Controller) report(ctx context.Context, request reportRequest) {
 			"timeline_item_count", len(request.report.TimelineItems),
 			"state_patch_count", len(request.report.StatePatches),
 			"message_update_count", len(request.report.MessageUpdates),
+			"session_audit_count", len(request.report.SessionAudits),
 			"timeline_items", timelineItemsForLog,
 			"state_patches", statePatchesForLog,
 			"error", err,

@@ -239,6 +239,43 @@ test("shared tuttid client cancels one exact workspace agent turn", async () => 
   );
 });
 
+test("shared tuttid client exposes goal state calibration routes", async () => {
+  const requests: Array<{ method: string; path: string }> = [];
+  const client = createTuttidClient({
+    fetch: async (input, init) => {
+      const request =
+        input instanceof Request ? input : new Request(input, init);
+      requests.push({
+        method: request.method,
+        path: new URL(request.url).pathname
+      });
+      return Response.json({
+        session: { id: "session-1" },
+        state: {
+          revision: 2,
+          tombstoned: true,
+          syncStatus: "synced",
+          lastEvidence: {},
+          updatedAtUnixMs: 10
+        }
+      });
+    }
+  });
+
+  await client.getWorkspaceAgentSessionGoal("ws-1", "session-1");
+  await client.reconcileWorkspaceAgentSessionGoal("ws-1", "session-1");
+  assert.deepEqual(requests, [
+    {
+      method: "GET",
+      path: "/v1/workspaces/ws-1/agent-sessions/session-1/goal"
+    },
+    {
+      method: "POST",
+      path: "/v1/workspaces/ws-1/agent-sessions/session-1/goal/reconcile"
+    }
+  ]);
+});
+
 test("shared tuttid client forwards bearer auth tokens", async () => {
   let authorizationHeader = "";
 
@@ -514,6 +551,46 @@ test("shared tuttid client lists workspace agent sessions with query params", as
     limit: "30",
     sectionKey: "project:/workspace/project"
   });
+});
+
+test("shared tuttid client forwards AbortSignal for issue topic and issue list requests", async () => {
+  const requests: Request[] = [];
+  const client = createTuttidClient({
+    fetch: async (input, init) => {
+      const request =
+        input instanceof Request ? input : new Request(input, init);
+      requests.push(request);
+      const path = new URL(request.url).pathname;
+      return new Response(
+        JSON.stringify(
+          path.endsWith("/issue-topics")
+            ? { topics: [] }
+            : { issues: [], statusCounts: {}, totalCount: 0 }
+        ),
+        { status: 200, headers: { "content-type": "application/json" } }
+      );
+    }
+  });
+  const abortController = new AbortController();
+
+  await client.listWorkspaceIssueTopics("ws-1", {
+    signal: abortController.signal
+  });
+  await client.listWorkspaceIssues(
+    "ws-1",
+    { pageSize: 10, searchQuery: "task", topicId: "topic-1" },
+    { signal: abortController.signal }
+  );
+
+  assert.deepEqual(
+    requests.map((request) => new URL(request.url).pathname),
+    ["/v1/workspaces/ws-1/issue-topics", "/v1/workspaces/ws-1/issues"]
+  );
+  abortController.abort();
+  assert.equal(
+    requests.every((request) => request.signal.aborted),
+    true
+  );
 });
 
 test("shared tuttid client lists section deletion candidates with pinned exclusion", async () => {

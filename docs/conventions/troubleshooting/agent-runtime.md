@@ -35,6 +35,7 @@ Provider discovery, installation, authentication, models, configuration, and run
 - [Claude Code sessions fail with `effectiveSource: "none"` when CC-Switch or similar proxy tools are used](./agent-provider-setup.md#claude-code-sessions-fail-with-effectivesource-none-when-cc-switch-or-similar-proxy-tools-are-used)
 - [Tutti Agent retries a 402 and shows generic provider setup](./agent-provider-setup.md#tutti-agent-retries-a-402-and-shows-generic-provider-setup)
 - [OpenCode effort changes fail with `effort not found`](./agent-provider-setup.md#opencode-effort-changes-fail-with-effort-not-found)
+- [OpenCode model picker has fewer models than the terminal](./agent-provider-setup.md#opencode-model-picker-has-fewer-models-than-the-terminal)
 - [Provider setup notice flashes after switching to an already-connected agent](./agent-provider-setup.md#provider-setup-notice-flashes-after-switching-to-an-already-connected-agent)
 
 ## [Agent Sessions And Lifecycle](./agent-session-lifecycle.md)
@@ -65,6 +66,7 @@ Turn state, loading, cancel, restore, rail projection, event updates, imports, a
 - [Imported sessions trigger fresh-completion indicators](./agent-session-lifecycle.md#imported-sessions-trigger-fresh-completion-indicators)
 - [Realtime agent completion does not show unread attention](./agent-session-lifecycle.md#realtime-agent-completion-does-not-show-unread-attention)
 - [Completed agent session stays activating and disables the composer](./agent-session-lifecycle.md#completed-agent-session-stays-activating-and-disables-the-composer)
+- [Goal clear stays planning and leaves the session running](./agent-session-lifecycle.md#goal-clear-stays-planning-and-leaves-the-session-running)
 - [Cursor auto-continue invents interrupted work after a network drop](./agent-session-lifecycle.md#cursor-auto-continue-invents-interrupted-work-after-a-network-drop)
 
 ## [Agent Approvals And Sub-Agents](./agent-approvals-subagents.md)

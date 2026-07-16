@@ -45,7 +45,7 @@ func TestAgentModelCatalogCustomModelProviderExposesOnlyConfiguredModel(t *testi
 		},
 	}
 
-	result, err := catalog.ListModels(context.Background(), "codex")
+	result, err := catalog.ListModels(context.Background(), AgentModelCatalogInput{Provider: "codex"})
 	if err != nil {
 		t.Fatalf("ListModels returned error: %v", err)
 	}
@@ -80,7 +80,7 @@ func TestAgentModelCatalogCustomModelProviderKeepsConfiguredCatalog(t *testing.T
 		},
 	}
 
-	result, err := catalog.ListModels(context.Background(), "codex")
+	result, err := catalog.ListModels(context.Background(), AgentModelCatalogInput{Provider: "codex"})
 	if err != nil {
 		t.Fatalf("ListModels returned error: %v", err)
 	}
@@ -118,7 +118,7 @@ func TestAgentModelCatalogCustomModelProviderRejectsUnrelatedConfiguredCatalog(t
 		},
 	}
 
-	result, err := catalog.ListModels(context.Background(), "codex")
+	result, err := catalog.ListModels(context.Background(), AgentModelCatalogInput{Provider: "codex"})
 	if err != nil {
 		t.Fatalf("ListModels returned error: %v", err)
 	}
@@ -145,7 +145,7 @@ func TestAgentModelCatalogDefaultProviderKeepsOfficialListWithConfiguredDefault(
 		},
 	}
 
-	result, err := catalog.ListModels(context.Background(), "codex")
+	result, err := catalog.ListModels(context.Background(), AgentModelCatalogInput{Provider: "codex"})
 	if err != nil {
 		t.Fatalf("ListModels returned error: %v", err)
 	}
@@ -164,7 +164,7 @@ func TestAgentModelCatalogDoesNotReturnClaudeStaticModels(t *testing.T) {
 		},
 	}
 
-	if _, err := catalog.ListModels(context.Background(), "claude-code"); !errors.Is(err, ErrInvalidArgument) {
+	if _, err := catalog.ListModels(context.Background(), AgentModelCatalogInput{Provider: "claude-code"}); !errors.Is(err, ErrInvalidArgument) {
 		t.Fatalf("ListModels error = %v, want ErrInvalidArgument", err)
 	}
 }
@@ -181,10 +181,10 @@ func TestAgentModelCatalogInvalidateDropsCodexCacheBeforeTTL(t *testing.T) {
 		},
 	}
 
-	if _, err := catalog.ListModels(context.Background(), "codex"); err != nil {
+	if _, err := catalog.ListModels(context.Background(), AgentModelCatalogInput{Provider: "codex"}); err != nil {
 		t.Fatalf("first ListModels returned error: %v", err)
 	}
-	if _, err := catalog.ListModels(context.Background(), "codex"); err != nil {
+	if _, err := catalog.ListModels(context.Background(), AgentModelCatalogInput{Provider: "codex"}); err != nil {
 		t.Fatalf("second ListModels returned error: %v", err)
 	}
 	if lister.calls != 1 {
@@ -192,7 +192,7 @@ func TestAgentModelCatalogInvalidateDropsCodexCacheBeforeTTL(t *testing.T) {
 	}
 
 	catalog.Invalidate("codex")
-	if _, err := catalog.ListModels(context.Background(), "codex"); err != nil {
+	if _, err := catalog.ListModels(context.Background(), AgentModelCatalogInput{Provider: "codex"}); err != nil {
 		t.Fatalf("ListModels after invalidate returned error: %v", err)
 	}
 	if lister.calls != 2 {
@@ -212,11 +212,11 @@ func TestAgentModelCatalogInvalidateIgnoresOtherProviders(t *testing.T) {
 		},
 	}
 
-	if _, err := catalog.ListModels(context.Background(), "codex"); err != nil {
+	if _, err := catalog.ListModels(context.Background(), AgentModelCatalogInput{Provider: "codex"}); err != nil {
 		t.Fatalf("first ListModels returned error: %v", err)
 	}
 	catalog.Invalidate("claude-code", "unknown-provider")
-	if _, err := catalog.ListModels(context.Background(), "codex"); err != nil {
+	if _, err := catalog.ListModels(context.Background(), AgentModelCatalogInput{Provider: "codex"}); err != nil {
 		t.Fatalf("second ListModels returned error: %v", err)
 	}
 	if lister.calls != 1 {
@@ -243,7 +243,7 @@ func TestAgentModelCatalogEnrichesOpenCodeModelsWithImageCapability(t *testing.T
 		},
 	}
 
-	result, err := catalog.ListModels(context.Background(), "opencode")
+	result, err := catalog.ListModels(context.Background(), AgentModelCatalogInput{Provider: "opencode"})
 	if err != nil {
 		t.Fatalf("ListModels returned error: %v", err)
 	}
@@ -252,6 +252,68 @@ func TestAgentModelCatalogEnrichesOpenCodeModelsWithImageCapability(t *testing.T
 	}
 	if result.Models[0].SupportsImageInput == nil || !*result.Models[0].SupportsImageInput {
 		t.Fatalf("supportsImageInput = %#v, want true", result.Models[0].SupportsImageInput)
+	}
+}
+
+func TestAgentModelCatalogDoesNotCacheOpenCodeModels(t *testing.T) {
+	lister := &fakeAgentModelLister{
+		models: []AgentModelOption{{ID: "opencode/big-pickle", DisplayName: "Big Pickle"}},
+	}
+	catalog := &CachedAgentModelCatalog{OpenCode: lister}
+	input := AgentModelCatalogInput{Provider: "opencode", Cwd: "/workspace"}
+
+	if _, err := catalog.ListModels(context.Background(), input); err != nil {
+		t.Fatalf("first ListModels returned error: %v", err)
+	}
+	if _, err := catalog.ListModels(context.Background(), input); err != nil {
+		t.Fatalf("second ListModels returned error: %v", err)
+	}
+	if lister.calls != 2 {
+		t.Fatalf("lister calls = %d, want 2 uncached OpenCode fetches", lister.calls)
+	}
+	if _, ok := catalog.cache["opencode"]; ok {
+		t.Fatal("OpenCode result must not be stored in the model catalog cache")
+	}
+}
+
+func TestAgentModelCatalogDoesNotCacheOpenCodeErrors(t *testing.T) {
+	lister := &fakeAgentModelLister{err: errors.New("opencode unavailable")}
+	catalog := &CachedAgentModelCatalog{OpenCode: lister}
+	input := AgentModelCatalogInput{Provider: "opencode", Cwd: "/workspace"}
+
+	for attempt := 0; attempt < 2; attempt++ {
+		if _, err := catalog.ListModels(context.Background(), input); err == nil {
+			t.Fatalf("ListModels attempt %d returned no error", attempt+1)
+		}
+	}
+	if lister.calls != 2 {
+		t.Fatalf("lister calls = %d, want 2 uncached OpenCode failures", lister.calls)
+	}
+	if _, ok := catalog.cache["opencode"]; ok {
+		t.Fatal("OpenCode error must not be stored in the model catalog cache")
+	}
+}
+
+func TestAgentModelCatalogCachePolicyAcrossProviders(t *testing.T) {
+	tests := []struct {
+		provider string
+		cached   bool
+	}{
+		{provider: "codex", cached: true},
+		{provider: "opencode", cached: false},
+		{provider: "tutti-agent", cached: true},
+	}
+	if len(agentModelCatalogSpecs) != len(tests) {
+		t.Fatalf("model catalog specs = %d, want reviewed cache policy for %d providers", len(agentModelCatalogSpecs), len(tests))
+	}
+	for _, test := range tests {
+		spec, ok := agentModelCatalogSpecs[test.provider]
+		if !ok {
+			t.Fatalf("model catalog spec missing for %s", test.provider)
+		}
+		if got := specCachesModelCatalog(spec); got != test.cached {
+			t.Fatalf("provider %s cached = %v, want %v", test.provider, got, test.cached)
+		}
 	}
 }
 
@@ -267,11 +329,11 @@ func TestAgentModelCatalogListsTuttiAgentModelsFromLiveLister(t *testing.T) {
 		},
 	}
 
-	first, err := catalog.ListModels(context.Background(), "tutti-agent")
+	first, err := catalog.ListModels(context.Background(), AgentModelCatalogInput{Provider: "tutti-agent"})
 	if err != nil {
 		t.Fatalf("first ListModels returned error: %v", err)
 	}
-	second, err := catalog.ListModels(context.Background(), "tutti-agent")
+	second, err := catalog.ListModels(context.Background(), AgentModelCatalogInput{Provider: "tutti-agent"})
 	if err != nil {
 		t.Fatalf("second ListModels returned error: %v", err)
 	}

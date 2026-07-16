@@ -24,7 +24,8 @@ const defaultProviderAuthChangeCoalesceDelay = 1 * time.Second
 const providerAuthFileMaxContentBytes = 32 << 20
 
 // ProviderAuthWatchEntry describes the on-disk auth/config files whose changes
-// invalidate the cached model catalog of one provider.
+// refresh one provider's model catalog consumers and invalidate any cached
+// catalog for that provider.
 type ProviderAuthWatchEntry struct {
 	Provider string
 	Paths    []string
@@ -40,8 +41,8 @@ type ProviderAuthWatchEntry struct {
 // DefaultProviderAuthWatchEntries returns the auth/config marker files for the
 // providers whose model catalog depends on the active credentials. External
 // credential switchers (for example cc-switch) rewrite these files without
-// going through tuttid, so the daemon watches them to know when cached model
-// lists went stale.
+// going through tuttid, so the daemon watches them to refresh open composers;
+// providers that cache model lists also drop those cached results.
 func DefaultProviderAuthWatchEntries() []ProviderAuthWatchEntry {
 	home, err := os.UserHomeDir()
 	if err != nil {

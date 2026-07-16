@@ -3,6 +3,7 @@ import test from "node:test";
 import {
   buildMentionPaletteModel,
   buildMentionPaletteModelFromTriggerMatches,
+  mentionPaletteExpandLabel,
   mentionPaletteGroup,
   moveMentionPaletteHighlight,
   nextMentionPaletteCategory,
@@ -22,6 +23,22 @@ const categories = [
 ] as const;
 
 const getItemKey = (item: Item) => item.key;
+
+test("mentionPaletteExpandLabel keeps the count fallback for transient states", () => {
+  const group = { totalCount: 12, visibleCount: 10 };
+  assert.equal(
+    mentionPaletteExpandLabel({ ...group, expandStatus: "loading" }),
+    "+2"
+  );
+  assert.equal(
+    mentionPaletteExpandLabel({ ...group, expandStatus: "error" }),
+    "+2"
+  );
+  assert.equal(
+    mentionPaletteExpandLabel({ ...group, expandStatus: "idle" }),
+    "+2"
+  );
+});
 
 function makeMatch(
   providerId: string,

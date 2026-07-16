@@ -41,6 +41,8 @@ type AgentSessionService interface {
 	Delete(context.Context, string, string) (bool, error)
 	CancelTurn(context.Context, string, string, string) (agentservice.CancelTurnResult, error)
 	GoalControl(ctx context.Context, workspaceID string, agentSessionID string, action string, objective string) (agentservice.GoalControlSessionResult, error)
+	GetGoalState(context.Context, string, string) (agentservice.GoalStateSessionResult, error)
+	ReconcileGoal(context.Context, string, string) (agentservice.GoalStateSessionResult, error)
 	SendInput(context.Context, string, string, agentservice.SendInput) (agentservice.SendInputResult, error)
 	UpdatePin(context.Context, string, string, bool) (agentservice.Session, error)
 	UpdateTitle(context.Context, string, string, string) (agentservice.Session, error)
@@ -721,6 +723,7 @@ func generatedAgentSession(session agentservice.Session) tuttigenerated.Workspac
 		Provider:               tuttigenerated.WorkspaceAgentProvider(session.Provider),
 		ProviderSessionId:      stringPointer(strings.TrimSpace(session.ProviderSessionID)),
 		PinnedAtUnixMs:         int64Pointer(session.PinnedAtUnixMS),
+		RailSectionKey:         strings.TrimSpace(session.RailSectionKey),
 		Resumable:              session.Resumable,
 		RootAgentSessionId:     optionalStringPointer(strings.TrimSpace(session.RootAgentSessionID)),
 		RootTurnId:             optionalStringPointer(strings.TrimSpace(session.RootTurnID)),

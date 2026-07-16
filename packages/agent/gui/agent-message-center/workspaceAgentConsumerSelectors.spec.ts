@@ -43,6 +43,7 @@ describe("workspaceAgentConsumerSelectors", () => {
           activeTurn: {
             turnId: "turn-1",
             agentSessionId: "session-1",
+            origin: "user_prompt",
             phase: "running",
             startedAtUnixMs: 10,
             updatedAtUnixMs: 20
@@ -155,6 +156,7 @@ describe("workspaceAgentConsumerSelectors", () => {
           activeTurn: {
             turnId: "turn-completed",
             agentSessionId: "session-1",
+            origin: "user_prompt",
             phase: "settled",
             outcome: "completed",
             startedAtUnixMs: 10,

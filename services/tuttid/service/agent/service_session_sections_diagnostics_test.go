@@ -47,11 +47,14 @@ func TestSessionSectionsDiagnosticsRecordSlowAndFailedRequests(t *testing.T) {
 	slog.SetDefault(slog.New(slog.NewTextHandler(&output, nil)))
 	t.Cleanup(func() { slog.SetDefault(previousLogger) })
 	diagnostics := &sessionSectionsDiagnostics{
-		hydrateDuration: 30 * time.Millisecond,
-		projectDuration: 10 * time.Millisecond,
-		sectionCount:    4,
-		sessionCount:    12,
-		storeDuration:   220 * time.Millisecond,
+		currentProjectCount:     2,
+		hydrateDuration:         30 * time.Millisecond,
+		nonEmptyProjectCount:    1,
+		projectDuration:         10 * time.Millisecond,
+		railVisibleSessionCount: 42,
+		returnedSessionCount:    12,
+		sectionCount:            4,
+		storeDuration:           220 * time.Millisecond,
 	}
 
 	logSessionSectionsDiagnostics(
@@ -83,8 +86,11 @@ func TestSessionSectionsDiagnosticsRecordSlowAndFailedRequests(t *testing.T) {
 		"projects_ms=10",
 		"store_ms=220",
 		"hydrate_ms=30",
+		"current_project_count=2",
+		"non_empty_project_count=1",
+		"rail_visible_session_count=42",
+		"returned_session_count=12",
 		"section_count=4",
-		"session_count=12",
 		"failure_stage=store",
 	} {
 		if !strings.Contains(logs, expected) {

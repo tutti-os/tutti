@@ -465,35 +465,52 @@ Turn state, loading, cancel, restore, file-change undo, rail projection, event u
 - Symptom:
   Pinning or unpinning a conversation backed by a live runtime succeeds in the
   daemon, but the rail does not move the row or update its action until a later
-  list refresh. Old conversations without a live runtime update immediately.
+  list refresh. Old conversations without a live runtime update immediately. In
+  another variant, the pin command completes quickly but the whole rail becomes
+  disabled or changes to a skeleton while section membership refreshes.
 - Quick checks:
   Correlate `pin_result` with `agent.activity.store.session_version_regression`.
   Compare the command response's `updatedAtUnixMs` with the engine's current
   session version, then inspect the exported session for a newer
   `pinnedAtUnixMs`. A fast command carrying the new pin value but an older
   `updatedAtUnixMs` identifies a stale runtime projection, not a slow database
-  write.
+  write. If the pin value applies promptly, correlate
+  `agent_gui.conversation_rail.first_pages_slow` with
+  `workspace.agent_session.sections.list_slow`. The renderer event should report
+  `refreshReason=membership_change`; the daemon event separates
+  `projects_ms`, `store_ms`, and `hydrate_ms` and reports current/non-empty
+  project counts, target-scoped visible sessions, and returned first-page rows.
 - Root cause:
   Durable metadata updates advance the persisted session timestamp. When a live
   runtime session is also present, the service merges persisted metadata such
   as `pinnedAtUnixMs` into the runtime projection. If that merge keeps the older
   runtime timestamp, the frontend's monotonic session reducer correctly rejects
   the whole stale response, including the new pin value.
+  When the entity update is accepted, pin membership still requires an
+  authoritative section refresh. Treating every pending section request as an
+  unresolved list load turns that same-scope background refresh into a blocking
+  skeleton even though valid membership is already available.
 - Fix:
   Merge session freshness monotonically across runtime and persistence using
   the newer timestamp. Pin responses that advance the session version must also
   include protocol-v2 active/latest turn state so accepting the metadata update
   cannot clear a running turn. Do not weaken frontend version checks or hide the
-  mismatch behind delayed refetches.
+  mismatch behind delayed refetches. For an accepted membership update, keep the
+  resolved section page visible during the same-scope refresh and reveal the rail
+  skeleton only when no first page has resolved. Lock scope-sensitive actions
+  only while the displayed membership belongs to a different or unresolved
+  scope; do not patch daemon-owned membership locally.
 - Validation:
   Cover a live runtime session whose persisted pin update is newer, a newer
   runtime snapshot that must not regress, and a running turn that remains
   attached to the pin response. Run `go test ./services/tuttid/service/agent`
-  plus daemon lint, tests, and build.
+  plus daemon lint, tests, and build. Add controller coverage for initial load,
+  same-scope membership refresh, scope change, and stale request cancellation.
 - References:
   [service.go](../../../services/tuttid/service/agent/service.go)
   [service_session.go](../../../services/tuttid/service/agent/service_session.go)
   [sessionEntities.reducer.ts](../../../packages/agent/activity-core/src/engine/sessionEntities.reducer.ts)
+  [AgentGUIConversationRailQueryController.ts](../../../packages/agent/gui/agent-gui/agentGuiNode/controller/AgentGUIConversationRailQueryController.ts)
 
 ### AgentGUI model switch changes defaults but not the active session
 
@@ -626,14 +643,22 @@ Turn state, loading, cancel, restore, file-change undo, rail projection, event u
   must instead use `idx_workspace_agent_sessions_rail_section_target_page` and
   `idx_workspace_agent_sessions_pinned_target_page` with an exact target
   predicate; an optional `OR` predicate cannot narrow the index range. For a
-  reported slow switch, correlate
+  rail that shows only the active/new session, inspect `*_failed` events for
+  `no such index`, then compare those required indexes with `sqlite_master`
+  even when their migration markers exist. Store startup must idempotently
+  restore missing rail pagination indexes; do not weaken `INDEXED BY` or fall
+  back to a full session scan. For a reported slow switch, correlate
   `agent_gui.conversation_rail.first_pages_slow` with
   `workspace.agent_session.sections.list_slow`: the renderer event separates
   request and controller-apply time, while the daemon event separates current
   projects, store, and hydration time. Corresponding `*_failed` events record
   real failures. Successful requests below 250 ms, aborted requests, and stale
   responses are intentionally silent; these diagnostics must not log project
-  paths, section keys, session titles, or prompts.
+  paths, section keys, session titles, or prompts. Use `refreshReason` to
+  distinguish attach, scope change, and membership invalidation. Interpret
+  `rail_visible_session_count` as the target-scoped total across requested
+  sections and `returned_session_count` as only the bounded first-page rows;
+  neither requires another full-workspace count query.
 - Root cause:
   A second React summary cache mixed entity data, section membership, active
   selection, and visible-item limits. Effects manually patched section rows
@@ -645,6 +670,10 @@ Turn state, loading, cancel, restore, file-change undo, rail projection, event u
   the workspace DB retains history for removed projects. Scanning that full
   history or repeating canonical turn / interaction hydration per section makes
   the rail wait scale with project count even when every leaf query looks fast.
+  A database opened by different worktrees or intermediate builds can retain a
+  migration marker after a required physical index disappears; treating the
+  marker alone as proof of the schema invariant makes every section bootstrap
+  fail while an active-session overlay can misleadingly remain visible.
 - Fix:
   Keep page sessions in the workspace engine. Cache only ordered membership ids,
   cursor, `hasMore`, and `totalCount` in the controller query, then join ids to
@@ -655,6 +684,10 @@ Turn state, loading, cancel, restore, file-change undo, rail projection, event u
   bootstrap as a required narrow repository seam: one requested-section-driven
   batch query, independent pinned and ordinary index branches, count/sort/limit
   on narrow session ids, then one cross-section canonical entity hydration.
+  Reassert required rail indexes with idempotent `CREATE INDEX IF NOT EXISTS`
+  during every store migration pass, including when the corresponding marker is
+  already recorded, so schema drift repairs itself without rewriting session
+  data.
   Do not add one `UNION ALL` arm per section; that restores section-count scaling
   and inherits SQLite's compound-select term limit.
 - Validation:
@@ -699,17 +732,14 @@ Turn state, loading, cancel, restore, file-change undo, rail projection, event u
   record its own scratch cwd under
   `Documents/Codex/<yyyy-mm-dd>/<conversation>`.
 - Root cause:
-  Conversation project grouping is a view-model join of `cwd x userProjects`.
-  If a generated no-project cwd is not recognized before prefix/parent project
-  matching, the longest-parent project match can assign the session to a broad
-  project such as `$HOME`. Keep generated-path recognition in the host
-  `isNoProjectPath` callback because it has the user home-directory context;
-  a package-level suffix check would misclassify real projects that contain a
-  `Documents/tutti/session-<uuid>` subdirectory. External import has a similar
-  trap because provider transcripts may record `$HOME` or a provider-owned
-  scratch working directory as the cwd when no project was selected; that intent
-  must be persisted as session metadata rather than inferred later from
-  user-project prefix matching. A second loss point is runtime state projection:
+  Rail membership is classified once by the daemon when the session is first
+  persisted, using `cwd`, runtime no-project markers, and current user projects.
+  If a generated no-project marker is lost before that write, longest-parent
+  matching can assign the immutable `railSectionKey` to a broad project such as
+  `$HOME`. External import has a similar trap because provider transcripts may
+  record `$HOME` or a provider-owned scratch working directory as the cwd when
+  no project was selected; that intent must reach initial persistence as session
+  metadata. A second loss point is runtime state projection:
   rebuilding `runtimeContext` from only `cwd`, title, permissions, and visibility,
   or replacing it wholesale with `StateAdapter` output, drops launch-scoped
   markers such as `noProject` before durable rail classification runs.
@@ -724,8 +754,12 @@ Turn state, loading, cancel, restore, file-change undo, rail projection, event u
   upsert should both use that classifier, matching exact user projects first,
   then preserving no-project/provider scratch cwd shapes as conversations, then
   applying longest parent-project matches. Do not rederive historical rail
-  assignment from the current user-project list during read pagination; keep
-  existing rail fields stable when a session's final cwd has not changed.
+  assignment from the current user-project list or a later cwd observation;
+  preserve every valid existing rail key unconditionally. A successful Create
+  response must synchronously read back the persisted session and its nonblank
+  key rather than racing the runtime's asynchronous activity reporter. AgentGUI
+  must project sessions only by exact key equality and must not retain a cwd-based
+  grouping fallback.
 - Validation:
   Run
   `pnpm --filter @tutti-os/agent-gui test -- agent-gui/agentGuiNode/model/agentGuiConversationModel.spec.ts`,
@@ -1413,3 +1447,36 @@ Turn state, loading, cancel, restore, file-change undo, rail projection, event u
   [activity_messages.go](../../../packages/agent/store-sqlite/activity_messages.go)
   [activity_message_read.go](../../../packages/agent/store-sqlite/activity_message_read.go)
   [repository.go](../../../packages/agent/store-sqlite/repository.go)
+
+### Goal clear stays planning and leaves the session running
+
+- Symptom:
+  Immediately clearing a newly set Goal leaves the first response in thinking,
+  `/goal clear` in planning, or the conversation permanently running.
+- Quick checks:
+  Inspect the Goal control response: its Turn ID must be empty. List persisted
+  Turns and verify no Turn was created solely for the clear action. Inspect the
+  Goal state endpoint for `desired`, `observed`, `revision`, `syncStatus`, and
+  `pendingOperationId`. For any real Goal Turn, verify `origin` and source Goal
+  operation/revision are present.
+- Root cause:
+  The prompt path allocated a Turn ID before classifying `/goal`. Provider Goal
+  control is session-level and did not start that Turn, but message persistence
+  manufactured a row for the unknown ID. With no real `turn_started` or
+  terminal event, loading and session-running projections never settled.
+- Fix:
+  Route Goal controls through the typed Goal API before Turn allocation. Persist
+  desired/observed Goal state and an independent operation, reject messages that
+  reference unknown Turns, and adopt only provider-started continuation Turns.
+  Use durable origin and revision correlation so clear does not cancel unrelated
+  user work and stale continuation timers cannot revive an older Goal.
+- Validation:
+  Set then immediately clear a Goal and assert that no control Turn exists, the
+  operation reaches a terminal state, and the session has no phantom active
+  Turn. Cover unknown-Turn message rejection, Claude goal-arm quiescing, Codex
+  adopted continuation provenance, stale observation protection, and revision-
+  guarded continuation nudges.
+- References:
+  [Agent Goal Control Design](../../specs/2026-07-15-agent-goal-control-design.md)
+  [controller_exec.go](../../../packages/agent/daemon/runtime/controller_exec.go)
+  [goal_state.go](../../../packages/agent/store-sqlite/goal_state.go)

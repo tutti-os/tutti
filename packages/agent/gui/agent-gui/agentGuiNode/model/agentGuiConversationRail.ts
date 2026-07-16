@@ -3,10 +3,7 @@ import type {
   AgentActivityRuntimeSessionSection
 } from "../../../agentActivityRuntime";
 import type { AgentGUINodeViewModel } from "./agentGuiNodeTypes";
-import {
-  groupConversations,
-  type ConversationSection
-} from "../agentGuiNodeViewConversation";
+import type { ConversationSection } from "../agentGuiNodeViewConversation";
 import { resolveAgentGUIConversationSortTimeUnixMs } from "./agentGuiConversationModel";
 import { normalizeAgentGUIProjectPath } from "./agentGuiConversationProjectResolver";
 
@@ -41,6 +38,16 @@ export interface ConversationRailQueryState {
   resolvedScopeKey: string | null;
   sectionPageStates: ReadonlyMap<string, ConversationRailSectionPageState>;
   sections: ConversationRailSectionMembership[] | null;
+}
+
+export function isConversationRailInitialLoadPending(input: {
+  pending: boolean;
+  runtimeSectionsEnabled: boolean;
+  sections: ConversationRailSectionMembership[] | null;
+}): boolean {
+  return (
+    input.runtimeSectionsEnabled && input.pending && input.sections === null
+  );
 }
 
 export interface ConversationRailActiveOverlay {
@@ -81,12 +88,13 @@ export function projectConversationRailSectionsWithTransientConversations(input:
   const loadedIds = new Set(
     input.sections.flatMap((section) => section.items.map((item) => item.id))
   );
-  const transientSections = groupConversations(
-    transientConversations.filter(
+  const transientSections = projectConversationsByExactRailSectionKey({
+    conversations: transientConversations.filter(
       (conversation) => !loadedIds.has(conversation.id)
     ),
-    input.labels
-  );
+    labels: input.labels,
+    sections: input.sections
+  });
   if (transientSections.length === 0) {
     return input.sections;
   }
@@ -166,52 +174,37 @@ export function projectConversationRailSectionsWithActiveConversation(input: {
     return { activeOverlay: null, sections: input.sections };
   }
 
-  const loadedSection = input.sections.find((section) =>
-    section.items.some((item) => item.id === activeConversationId)
-  );
-  if (loadedSection) {
-    return {
-      activeOverlay: {
-        conversation:
-          loadedSection.kind === "project"
-            ? conversationWithRailProject(
-                activeConversation,
-                loadedSection.project
-              )
-            : activeConversation,
-        sectionId: loadedSection.id
-      },
-      sections: input.sections
-    };
-  }
-
-  const activeSection = groupConversations(
-    [activeConversation],
-    input.labels
-  )[0];
-  if (!activeSection) {
+  const activeSectionId = conversationRailSectionId(activeConversation);
+  if (!activeSectionId) {
     return { activeOverlay: null, sections: input.sections };
   }
-
-  const matchingSectionIndex = input.sections.findIndex(
-    (section) => section.id === activeSection.id
+  const matchingSection = input.sections.find(
+    (section) => section.id === activeSectionId
   );
-  if (matchingSectionIndex >= 0) {
-    const matchingSection = input.sections[matchingSectionIndex];
+  if (matchingSection) {
     return {
       activeOverlay: {
         conversation:
-          matchingSection?.kind === "project"
+          matchingSection.kind === "project"
             ? conversationWithRailProject(
                 activeConversation,
                 matchingSection.project
               )
             : activeConversation,
-        sectionId: activeSection.id
+        sectionId: matchingSection.id
       },
       sections: input.sections
     };
   }
+
+  const activeSection = createExactConversationRailSection(
+    activeConversation,
+    input.labels
+  );
+  if (!activeSection) {
+    return { activeOverlay: null, sections: input.sections };
+  }
+  const projectedConversation = activeSection.items[0] ?? activeConversation;
 
   const transientSection = { ...activeSection, items: [] };
   let sections: ConversationSection[];
@@ -236,7 +229,7 @@ export function projectConversationRailSectionsWithActiveConversation(input: {
   }
   return {
     activeOverlay: {
-      conversation: activeConversation,
+      conversation: projectedConversation,
       sectionId: activeSection.id
     },
     sections
@@ -250,6 +243,171 @@ function conversationWithRailProject(
   return conversationProjectsRenderEqual(conversation.project, project)
     ? conversation
     : { ...conversation, project };
+}
+
+function conversationRailSectionId(
+  conversation: AgentGUINodeViewModel["rail"]["conversations"][number]
+): string | null {
+  if ((conversation.pinnedAtUnixMs ?? 0) > 0) {
+    return "pinned";
+  }
+  const sectionKey = conversation.railSectionKey?.trim() ?? "";
+  return sectionKey || null;
+}
+
+function createExactConversationRailSection(
+  conversation: AgentGUINodeViewModel["rail"]["conversations"][number],
+  labels: ConversationRailLabels
+): ConversationSection | null {
+  const sectionId = conversationRailSectionId(conversation);
+  if (!sectionId) {
+    return null;
+  }
+  if (sectionId === "pinned") {
+    return {
+      id: sectionId,
+      kind: "pinned",
+      label: labels.sectionPinned,
+      project: null,
+      items: [{ ...conversation, project: null }]
+    };
+  }
+  if (sectionId === "conversations") {
+    return {
+      id: sectionId,
+      kind: "conversations",
+      label: labels.sectionConversations,
+      project: null,
+      items: [{ ...conversation, project: null }]
+    };
+  }
+  const project = conversation.project;
+  if (project?.sectionKey?.trim() !== sectionId) {
+    return null;
+  }
+  return {
+    id: sectionId,
+    kind: "project",
+    label: project.label,
+    project,
+    items: [conversationWithRailProject(conversation, project)]
+  };
+}
+
+function projectConversationsByExactRailSectionKey(input: {
+  conversations: AgentGUINodeViewModel["rail"]["conversations"];
+  labels: ConversationRailLabels;
+  sections: readonly ConversationSection[];
+  includeEmptySections?: boolean;
+}): ConversationSection[] {
+  const sectionTemplates = new Map(
+    input.sections.map((section) => [section.id, section] as const)
+  );
+  const projected = new Map<string, ConversationSection>();
+  if (input.includeEmptySections) {
+    for (const section of input.sections) {
+      if (section.kind === "pinned") continue;
+      projected.set(section.id, { ...section, items: [] });
+    }
+  }
+  for (const conversation of input.conversations) {
+    const sectionId = conversationRailSectionId(conversation);
+    if (!sectionId) continue;
+    const template = sectionTemplates.get(sectionId);
+    const section =
+      template ??
+      createExactConversationRailSection(conversation, input.labels);
+    if (!section) continue;
+    const projectedConversation =
+      section.kind === "project"
+        ? conversationWithRailProject(conversation, section.project)
+        : conversation.project
+          ? { ...conversation, project: null }
+          : conversation;
+    const existing = projected.get(sectionId);
+    if (existing) {
+      existing.items.push(projectedConversation);
+      continue;
+    }
+    projected.set(sectionId, {
+      ...section,
+      items: [projectedConversation]
+    });
+  }
+  const sorted = new Map(
+    [...projected].map(([id, section]) => [
+      id,
+      {
+        ...section,
+        items:
+          section.kind === "pinned"
+            ? sortPinnedConversations(section.items)
+            : sortConversations(section.items)
+      }
+    ])
+  );
+  const result: ConversationSection[] = [];
+  const append = (id: string) => {
+    const section = sorted.get(id);
+    if (!section) return;
+    result.push(section);
+    sorted.delete(id);
+  };
+  append("pinned");
+  for (const section of input.sections) {
+    if (section.kind === "pinned" || section.kind === "conversations") {
+      continue;
+    }
+    append(section.id);
+  }
+  [...sorted.values()]
+    .filter((section) => section.kind === "project")
+    .sort((left, right) => left.id.localeCompare(right.id))
+    .forEach((section) => append(section.id));
+  for (const section of input.sections) {
+    if (section.kind === "conversations") append(section.id);
+  }
+  append("conversations");
+  [...sorted.keys()].sort().forEach(append);
+  return result;
+}
+
+export function projectConversationRailSectionsByExactKey(input: {
+  conversations: AgentGUINodeViewModel["rail"]["conversations"];
+  labels: ConversationRailLabels;
+  userProjects: AgentGUINodeViewModel["rail"]["userProjects"];
+  includeEmptySections?: boolean;
+}): ConversationSection[] {
+  const seen = new Set<string>();
+  const sections: ConversationSection[] = input.userProjects.flatMap(
+    (project) => {
+      const sectionKey = project.sectionKey?.trim() ?? "";
+      if (!sectionKey || seen.has(sectionKey)) return [];
+      seen.add(sectionKey);
+      return [
+        {
+          id: sectionKey,
+          kind: "project" as const,
+          label: project.label,
+          project,
+          items: []
+        }
+      ];
+    }
+  );
+  sections.push({
+    id: "conversations",
+    kind: "conversations",
+    label: input.labels.sectionConversations,
+    project: null,
+    items: []
+  });
+  return projectConversationsByExactRailSectionKey({
+    conversations: input.conversations,
+    labels: input.labels,
+    sections,
+    includeEmptySections: input.includeEmptySections
+  });
 }
 
 export type ConversationRailMembershipRefreshPlan =
@@ -416,6 +574,8 @@ export function projectConversationRailMemberships(input: {
     items: section.sessionIds.flatMap((id) => {
       const conversation = conversationsById.get(id);
       if (!conversation) return [];
+      const exactSectionId = conversationRailSectionId(conversation);
+      if (exactSectionId !== section.id) return [];
       return [
         section.kind === "project"
           ? { ...conversation, project: section.project }
@@ -423,6 +583,14 @@ export function projectConversationRailMemberships(input: {
       ];
     })
   }));
+}
+
+export function projectConversationRailSearchSections(input: {
+  conversations: AgentGUINodeViewModel["rail"]["conversations"];
+  labels: ConversationRailLabels;
+  sections: readonly ConversationSection[];
+}): ConversationSection[] {
+  return projectConversationsByExactRailSectionKey(input);
 }
 
 export function stabilizeConversationSections(
@@ -571,6 +739,7 @@ export function conversationSummariesRenderEqual(
     left.titleFallback === right.titleFallback &&
     left.status === right.status &&
     left.cwd === right.cwd &&
+    left.railSectionKey === right.railSectionKey &&
     left.pinnedAtUnixMs === right.pinnedAtUnixMs &&
     left.sortTimeUnixMs === right.sortTimeUnixMs &&
     left.updatedAtUnixMs === right.updatedAtUnixMs &&
@@ -592,6 +761,7 @@ export function conversationProjectsRenderEqual(
       ? !left && !right
       : left.id === right.id &&
         left.path === right.path &&
+        left.sectionKey === right.sectionKey &&
         left.label === right.label &&
         left.createdAtUnixMs === right.createdAtUnixMs &&
         left.updatedAtUnixMs === right.updatedAtUnixMs &&

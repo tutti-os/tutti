@@ -76,6 +76,7 @@ test("WorkspaceAgentActivityService.sendInput preserves the authoritative ready 
         workspaceId: "ws-1"
       }),
       sendWorkspaceAgentSessionInput: async () => ({
+        kind: "turn",
         session: readySession,
         turnId: "turn-1",
         turn: workspaceAgentTurn({ phase: "submitted" })
@@ -99,6 +100,10 @@ test("WorkspaceAgentActivityService.sendInput preserves the authoritative ready 
     .sessions.find((session) => session.agentSessionId === "session-1");
 
   assert.equal(result.session.activeTurn, null);
+  assert.notEqual(result.kind, "goalControl");
+  if (result.kind === "goalControl") {
+    throw new Error("expected a Turn-producing send result");
+  }
   assert.equal(result.turn.phase, "submitted");
   assert.equal(snapshotSession?.activeTurn, null);
 });
@@ -1785,6 +1790,7 @@ function workspaceAgentSession(overrides: {
     pendingInteractions: [],
     permissionConfig: { configurable: false, modes: [] },
     pinnedAtUnixMs: null,
+    railSectionKey: "conversations",
     resumable: true,
     settings: overrides.settings ?? {},
     title: "Session 1",

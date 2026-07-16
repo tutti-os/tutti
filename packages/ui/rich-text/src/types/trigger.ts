@@ -28,6 +28,25 @@ export interface RichTextTriggerQueryInput {
   trigger: RichTextTrigger;
 }
 
+export interface RichTextTriggerQueryGroup<TItem = unknown> {
+  /** Stable provider-owned identity used only by candidate-panel state. */
+  id: string;
+  label: string;
+  items: readonly TItem[];
+  totalCount: number;
+  nextCursor?: string;
+}
+
+export interface RichTextTriggerGroupedQueryResult<TItem = unknown> {
+  groups: readonly RichTextTriggerQueryGroup<TItem>[];
+}
+
+export interface RichTextTriggerGroupPageQueryInput extends RichTextTriggerQueryInput {
+  groupId: string;
+  cursor: string;
+  pageSize: number;
+}
+
 export interface RichTextMentionTriggerInsertResult {
   kind: "mention";
   mention: RichTextMentionInsert;
@@ -56,6 +75,18 @@ export interface RichTextTriggerProvider<TItem = unknown> {
   query(
     input: RichTextTriggerQueryInput
   ): Promise<readonly TItem[]> | readonly TItem[];
+  /** Optional grouped/cursor query used by candidate panels that support it. */
+  queryGroups?(
+    input: RichTextTriggerQueryInput
+  ):
+    | Promise<RichTextTriggerGroupedQueryResult<TItem>>
+    | RichTextTriggerGroupedQueryResult<TItem>;
+  /** Load one page for one group without re-querying sibling groups. */
+  queryGroupPage?(
+    input: RichTextTriggerGroupPageQueryInput
+  ):
+    | Promise<RichTextTriggerQueryGroup<TItem>>
+    | RichTextTriggerQueryGroup<TItem>;
   getItemKey(item: TItem): string;
   getItemLabel(item: TItem): string;
   getItemSubtitle?(item: TItem): string | null | undefined;

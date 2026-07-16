@@ -19,6 +19,7 @@ interface AgentGUIActivateInputBase {
   agentSessionId: string;
   cwd?: string;
   initialContent?: AgentPromptContentBlock[];
+  initialTurnExpected?: boolean;
   initialDisplayPrompt?: string;
   runtimeContent?: AgentPromptContentBlock[];
   submitDiagnostics?: AgentActivitySubmitDiagnostics;
@@ -118,6 +119,9 @@ export function useAgentGUIActivation({
         ...(input.initialContent ? { content: input.initialContent } : {}),
         ...(input.cwd !== undefined ? { cwd: input.cwd } : {}),
         expiresAtUnixMs: requestedAtUnixMs + ACTIVATION_EXPIRY_MS,
+        ...(input.initialTurnExpected !== undefined
+          ? { initialTurnExpected: input.initialTurnExpected }
+          : {}),
         ...(input.initialDisplayPrompt
           ? { initialDisplayPrompt: input.initialDisplayPrompt }
           : {}),

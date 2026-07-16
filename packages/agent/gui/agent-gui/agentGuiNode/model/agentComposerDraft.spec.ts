@@ -14,7 +14,8 @@ import {
   emptyAgentComposerDraft,
   extractPastedTextArchivePaths,
   linkifyPastedTextReferences,
-  normalizeAgentPromptContentBlocks
+  normalizeAgentPromptContentBlocks,
+  projectAgentComposerDraftSubmission
 } from "./agentComposerDraft";
 
 describe("agentComposerDraft", () => {
@@ -147,6 +148,118 @@ describe("agentComposerDraft", () => {
         path: "/skills/review-code/SKILL.md"
       }
     ]);
+  });
+
+  it("projects prompt-item aliases into runtime content while preserving visible text", () => {
+    expect(
+      projectAgentComposerDraftSubmission({
+        draft: buildAgentComposerDraft({
+          prompt: "/review-code inspect this"
+        }),
+        skills: [
+          {
+            name: "review-code",
+            trigger: "$review-code",
+            invocation: "promptItem",
+            sourceKind: "personal",
+            path: "/skills/review-code/SKILL.md"
+          }
+        ]
+      })
+    ).toEqual({
+      content: [
+        { type: "text", text: "$review-code inspect this" },
+        {
+          type: "skill",
+          name: "review-code",
+          path: "/skills/review-code/SKILL.md"
+        }
+      ],
+      displayPrompt: "/review-code inspect this"
+    });
+  });
+
+  it("projects text-trigger aliases into runtime content while preserving visible text", () => {
+    expect(
+      projectAgentComposerDraftSubmission({
+        draft: buildAgentComposerDraft({ prompt: "$foo inspect this" }),
+        skills: [
+          {
+            name: "foo",
+            trigger: "/foo",
+            invocation: "textTrigger",
+            sourceKind: "plugin"
+          }
+        ]
+      })
+    ).toEqual({
+      content: [{ type: "text", text: "/foo inspect this" }],
+      displayPrompt: "$foo inspect this"
+    });
+  });
+
+  it("omits display prompts for native skill prefixes and ordinary text", () => {
+    const skill = {
+      name: "review-code",
+      trigger: "$review-code",
+      invocation: "promptItem" as const,
+      sourceKind: "personal" as const,
+      path: "/skills/review-code/SKILL.md"
+    };
+
+    expect(
+      projectAgentComposerDraftSubmission({
+        draft: buildAgentComposerDraft({
+          prompt: "$review-code inspect this"
+        }),
+        skills: [skill]
+      })
+    ).toEqual({
+      content: [
+        { type: "text", text: "$review-code inspect this" },
+        {
+          type: "skill",
+          name: "review-code",
+          path: "/skills/review-code/SKILL.md"
+        }
+      ]
+    });
+    expect(
+      projectAgentComposerDraftSubmission({
+        draft: buildAgentComposerDraft({ prompt: "inspect this" }),
+        skills: [skill]
+      })
+    ).toEqual({ content: [{ type: "text", text: "inspect this" }] });
+  });
+
+  it("prefers an explicit rich display prompt over derived submission text", () => {
+    const draft = buildAgentComposerDraft({
+      prompt: "Summarize this",
+      largeTexts: [
+        {
+          id: "11111111-1111-4111-8111-111111111111",
+          name: "pasted-text.txt",
+          text: "first line\nsecond line",
+          sizeBytes: 22,
+          path: "/archive/aa/deadbeef.txt"
+        }
+      ]
+    });
+
+    expect(projectAgentComposerDraftSubmission({ draft, skills: [] })).toEqual({
+      content: [
+        { type: "text", text: "Summarize this" },
+        {
+          type: "file",
+          kind: "pasted-text",
+          path: "/archive/aa/deadbeef.txt",
+          name: "first line…",
+          sizeBytes: 22
+        }
+      ],
+      displayPrompt:
+        "Summarize this\n[@first line…](mention://pasted-text/11111111-1111-4111-8111-111111111111?path=%2Farchive%2Faa%2Fdeadbeef.txt&size=22)"
+    });
   });
 
   it("submits a landed pasted-text draft as a structured file block", () => {

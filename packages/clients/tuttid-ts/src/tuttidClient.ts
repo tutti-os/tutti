@@ -505,18 +505,20 @@ export function createTuttidClient(
       return unwrapData(response, "Workspace workbench request failed.")
         .snapshot;
     },
-    async listWorkspaceIssues(workspaceID, request) {
+    async listWorkspaceIssues(workspaceID, request, requestOptions) {
       const response = await listWorkspaceIssues({
         client,
         path: { workspaceID },
-        query: request
+        query: request,
+        ...requestOptions
       });
       return unwrapData(response, "Workspace issues request failed.");
     },
-    async listWorkspaceIssueTopics(workspaceID) {
+    async listWorkspaceIssueTopics(workspaceID, requestOptions) {
       const response = await listWorkspaceIssueTopics({
         client,
-        path: { workspaceID }
+        path: { workspaceID },
+        ...requestOptions
       });
       return unwrapData(response, "Workspace issue topics request failed.");
     },

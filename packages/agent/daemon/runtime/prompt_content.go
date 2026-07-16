@@ -198,7 +198,11 @@ func userPromptActivityPayload(content []PromptContentBlock, displayPrompt strin
 }
 
 func userPromptActivityPayloadExtraFromExecMetadata(ctx context.Context, extra map[string]any) map[string]any {
-	clientSubmitID := metadataString(execMetadataFromContext(ctx), "clientSubmitId")
+	return userPromptActivityPayloadExtraFromMetadata(execMetadataFromContext(ctx), extra)
+}
+
+func userPromptActivityPayloadExtraFromMetadata(metadata map[string]any, extra map[string]any) map[string]any {
+	clientSubmitID := metadataString(metadata, "clientSubmitId")
 	if clientSubmitID == "" {
 		return clonePayload(extra)
 	}

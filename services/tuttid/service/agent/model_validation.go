@@ -110,7 +110,7 @@ func (s *Service) availableComposerModelsForValidationProfile(
 		if s.ModelCatalog == nil {
 			return nil, false, nil
 		}
-		result, err := s.ModelCatalog.ListModels(ctx, provider)
+		result, err := s.ModelCatalog.ListModels(ctx, AgentModelCatalogInput{Provider: provider, Cwd: cwd})
 		if err != nil {
 			return nil, false, nil
 		}

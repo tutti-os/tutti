@@ -213,7 +213,8 @@ function requestActivation(
     errorCode: null,
     errorMessage: null,
     expiresAtUnixMs: intent.expiresAtUnixMs,
-    initialTurnExpected: runtimeContent.length > 0,
+    initialTurnExpected:
+      intent.initialTurnExpected ?? runtimeContent.length > 0,
     ...(intent.submitDiagnostics
       ? { submitDiagnostics: { ...intent.submitDiagnostics } }
       : {}),

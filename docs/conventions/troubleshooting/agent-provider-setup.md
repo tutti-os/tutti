@@ -1031,6 +1031,41 @@ invalid_grant`. Daemon logs may also show an extra `claude-code` process start
   `low` / `medium` / `high` / `max` variants, remembered-setting sanitization,
   and runtime rejection before any ACP call for an unadvertised value.
 
+### OpenCode model picker has fewer models than the terminal
+
+- Symptom:
+  `opencode models --verbose` lists more models in a local terminal than the
+  OpenCode model picker in Agent GUI. Custom provider ids or recently published
+  model variants are commonly absent.
+- Quick checks:
+  Run `opencode models --verbose` from the same workspace cwd passed to the
+  composer. Count exact `provider/model` lines and compare them with the
+  composer-options model config. Confirm daemon logs do not contain
+  `composer model catalog lookup failed`. A `models.dev` cache hit only affects
+  image-input metadata and cannot remove a model option.
+- Root cause:
+  OpenCode resolves project configuration relative to the command cwd. The
+  daemon previously ran model discovery in its own inherited cwd and stored the
+  resulting provider-wide list for six hours. A smaller result from the wrong
+  project context therefore remained visible even after the terminal catalog
+  changed.
+- Fix:
+  Pass the composer workspace cwd through the daemon model-catalog request and
+  set it as the `opencode models --verbose` process directory. Do not cache
+  OpenCode model-list successes or failures. Keep one request-scoped catalog
+  projection so a composer-options request starts the CLI only once. Preserve
+  the auth/config invalidation event so an already-open composer refreshes when
+  global OpenCode credentials or config files change.
+- Validation:
+  Cover cwd propagation, repeated uncached OpenCode lookups, all provider/model
+  prefixes from verbose output, one catalog lookup per composer-options request,
+  and unchanged cache policies for Codex and Tutti Agent. Run
+  `cd services/tuttid && go test ./service/agent` and `pnpm check:changed`.
+- References:
+  [opencode_model_catalog.go](../../../services/tuttid/service/agent/opencode_model_catalog.go)
+  [model_catalog.go](../../../services/tuttid/service/agent/model_catalog.go)
+  [composer_options.go](../../../services/tuttid/service/agent/composer_options.go)
+
 ### Agent slash palette only shows Browser
 
 - Symptom:

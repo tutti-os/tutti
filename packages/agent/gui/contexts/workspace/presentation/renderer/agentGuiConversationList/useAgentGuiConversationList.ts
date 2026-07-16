@@ -72,6 +72,7 @@ export function projectCanonicalAgentGUIConversationSummaries(
       id: item.session.agentSessionId,
       pinnedAtUnixMs: item.session.pinnedAtUnixMs ?? null,
       provider,
+      railSectionKey: item.session.railSectionKey,
       resumable: item.session.resumable,
       sortTimeUnixMs: resolveWorkspaceAgentSessionSortTimeUnixMs({
         createdAtUnixMs: item.session.createdAtUnixMs,

@@ -224,6 +224,7 @@ function canonicalTurn(
 ): AgentActivityTurn {
   return {
     agentSessionId: "session-1",
+    origin: "user_prompt",
     outcome,
     phase,
     ...(phase === "settled" ? { settledAtUnixMs: 2 } : {}),

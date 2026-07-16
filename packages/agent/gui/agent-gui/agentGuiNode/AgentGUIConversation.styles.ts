@@ -2,6 +2,8 @@ const styles = {
   interactivePrompt: "agent-gui-conversation__interactive-prompt",
   interactivePromptCard: "agent-gui-conversation__interactive-prompt-card",
   interactivePromptHeader: "agent-gui-conversation__interactive-prompt-header",
+  interactivePromptLeadContent:
+    "agent-gui-conversation__interactive-prompt-lead-content",
   interactivePromptLead: "agent-gui-conversation__interactive-prompt-lead",
   interactivePromptMeta: "agent-gui-conversation__interactive-prompt-meta",
   interactivePromptQuestion:

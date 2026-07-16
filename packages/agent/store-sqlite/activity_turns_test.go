@@ -149,7 +149,7 @@ func TestSettleStaleTurnsClosesSplitRuntimeSuccessStateOnRestart(t *testing.T) {
 		t.Fatalf("startup system messages = %#v ok=%v error=%v", page.Messages, ok, err)
 	}
 	message := page.Messages[0]
-	if message.MessageID != "system-stale-turn-turn-1" || message.TurnID != "" || message.Payload["noticeKind"] != "stale_turn_reconciled" {
+	if message.MessageID != "system-stale-turn-turn-1" || message.TurnID != "turn-1" || message.Payload["noticeKind"] != "stale_turn_reconciled" {
 		t.Fatalf("startup system message = %#v", message)
 	}
 }
@@ -378,6 +378,51 @@ func TestReportActivityStateRollsBackSessionAndTurnWhenInteractionFails(t *testi
 	}
 }
 
+func TestReportActivityStateRejectsMismatchedTurnAndInteractionAtomically(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		name          string
+		seedExistingB bool
+	}{
+		{name: "both_new"},
+		{name: "existing_turn_b", seedExistingB: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			store := openTestStore(t, testOptions(&staticProjectPaths{}))
+			ctx := context.Background()
+			if tc.seedExistingB {
+				seedTurnTestSession(t, store, "ws-1", "session-1")
+				seedInteractionTurn(t, store, "ws-1", "session-1", "turn-b", 10)
+			}
+			_, err := store.ReportActivityState(ctx, ActivityStateReport{
+				Session: SessionStateReport{
+					WorkspaceID: "ws-1", AgentSessionID: "session-1", Origin: "runtime",
+					Provider: "codex", OccurredAtUnixMS: 100,
+				},
+				Turn: &TurnTransition{
+					WorkspaceID: "ws-1", AgentSessionID: "session-1", TurnID: "turn-a",
+					Phase: TurnPhaseWaiting, Origin: TurnOriginProviderInitiated, OccurredAtUnixMS: 100,
+				},
+				Interaction: &InteractionUpsert{
+					WorkspaceID: "ws-1", AgentSessionID: "session-1", TurnID: "turn-b",
+					RequestID: "request-1", Kind: InteractionKindQuestion,
+					Status: InteractionStatusPending, OccurredAtUnixMS: 100,
+				},
+			})
+			if err == nil {
+				t.Fatal("ReportActivityState() error = nil, want turn identity mismatch")
+			}
+			if _, ok, getErr := store.GetTurn(ctx, "ws-1", "session-1", "turn-a"); getErr != nil || ok {
+				t.Fatalf("proposed turn A ok=%v error=%v, want rolled back", ok, getErr)
+			}
+			interactions, listErr := store.ListSessionInteractions(ctx, ListSessionInteractionsInput{WorkspaceID: "ws-1", AgentSessionID: "session-1"})
+			if listErr != nil || len(interactions) != 0 {
+				t.Fatalf("interactions=%#v error=%v, want none", interactions, listErr)
+			}
+		})
+	}
+}
+
 func TestReportActivityStateCommitsSessionTurnAndInteractionTogether(t *testing.T) {
 	t.Parallel()
 	store := openTestStore(t, testOptions(&staticProjectPaths{}))
@@ -390,7 +435,7 @@ func TestReportActivityStateCommitsSessionTurnAndInteractionTogether(t *testing.
 		},
 		Turn: &TurnTransition{
 			WorkspaceID: "ws-1", AgentSessionID: "session-1", TurnID: "turn-1",
-			Phase: TurnPhaseWaiting, OccurredAtUnixMS: 100,
+			Phase: TurnPhaseWaiting, Origin: TurnOriginProviderInitiated, OccurredAtUnixMS: 100,
 		},
 		Interaction: &InteractionUpsert{
 			WorkspaceID: "ws-1", AgentSessionID: "session-1", RequestID: "request-1",
@@ -410,7 +455,7 @@ func TestReportActivityStateCommitsSessionTurnAndInteractionTogether(t *testing.
 		t.Fatalf("GetSession() session=%#v ok=%v error=%v", session, ok, err)
 	}
 	turn, ok, err := store.GetTurn(ctx, "ws-1", "session-1", "turn-1")
-	if err != nil || !ok || turn.Phase != TurnPhaseWaiting {
+	if err != nil || !ok || turn.Phase != TurnPhaseWaiting || turn.Origin != TurnOriginProviderInitiated {
 		t.Fatalf("GetTurn() turn=%#v ok=%v error=%v", turn, ok, err)
 	}
 	interactions, err := store.ListSessionInteractions(ctx, ListSessionInteractionsInput{
@@ -435,11 +480,79 @@ func TestReportActivityStateCommitsSessionTurnAndInteractionTogether(t *testing.
 	}
 }
 
+func TestProviderInteractionDoesNotReclassifyExistingUserTurn(t *testing.T) {
+	t.Parallel()
+	store := openTestStore(t, testOptions(&staticProjectPaths{}))
+	ctx := context.Background()
+	seedTurnTestSession(t, store, "ws-1", "session-1")
+	if _, accepted, err := store.RecordTurnTransition(ctx, TurnTransition{
+		WorkspaceID: "ws-1", AgentSessionID: "session-1", TurnID: "turn-1",
+		Phase: TurnPhaseRunning, Origin: TurnOriginUserPrompt, OccurredAtUnixMS: 10,
+	}); err != nil || !accepted {
+		t.Fatalf("seed user turn accepted=%v error=%v", accepted, err)
+	}
+	result, err := store.ReportActivityState(ctx, ActivityStateReport{
+		Session: SessionStateReport{
+			WorkspaceID: "ws-1", AgentSessionID: "session-1", Origin: "runtime",
+			Provider: "codex", OccurredAtUnixMS: 20,
+		},
+		Turn: &TurnTransition{
+			WorkspaceID: "ws-1", AgentSessionID: "session-1", TurnID: "turn-1",
+			Phase: TurnPhaseWaiting, Origin: TurnOriginProviderInitiated, OccurredAtUnixMS: 20,
+		},
+		Interaction: &InteractionUpsert{
+			WorkspaceID: "ws-1", AgentSessionID: "session-1", TurnID: "turn-1",
+			RequestID: "request-1", Kind: InteractionKindQuestion,
+			Status: InteractionStatusPending, OccurredAtUnixMS: 20,
+		},
+	})
+	if err != nil || !result.TurnAccepted || result.InteractionResult != InteractionTransitionApplied {
+		t.Fatalf("provider interaction result=%#v error=%v", result, err)
+	}
+	if result.Turn.Origin != TurnOriginUserPrompt {
+		t.Fatalf("existing origin=%q, want immutable user_prompt", result.Turn.Origin)
+	}
+}
+
+func TestProviderInitiatedTurnAndInteractionCommitWhenSessionSnapshotIsReplay(t *testing.T) {
+	t.Parallel()
+	store := openTestStore(t, testOptions(&staticProjectPaths{}))
+	ctx := context.Background()
+	session := SessionStateReport{
+		WorkspaceID: "ws-1", AgentSessionID: "session-1", Origin: "runtime",
+		Provider: "codex", OccurredAtUnixMS: 100,
+	}
+	if _, err := store.ReportSessionState(ctx, session); err != nil {
+		t.Fatal(err)
+	}
+	report := ActivityStateReport{
+		Session: session,
+		Turn: &TurnTransition{
+			WorkspaceID: "ws-1", AgentSessionID: "session-1", TurnID: "turn-provider",
+			Phase: TurnPhaseWaiting, Origin: TurnOriginProviderInitiated, OccurredAtUnixMS: 100,
+		},
+		Interaction: &InteractionUpsert{
+			WorkspaceID: "ws-1", AgentSessionID: "session-1", TurnID: "turn-provider",
+			RequestID: "request-1", Kind: InteractionKindQuestion,
+			Status: InteractionStatusPending, OccurredAtUnixMS: 100,
+		},
+	}
+	result, err := store.ReportActivityState(ctx, report)
+	if err != nil || !result.TurnAccepted || result.InteractionResult != InteractionTransitionApplied {
+		t.Fatalf("replay-session composite result=%#v error=%v", result, err)
+	}
+	replayed, err := store.ReportActivityState(ctx, report)
+	if err != nil || replayed.InteractionResult != InteractionTransitionAlreadyApplied {
+		t.Fatalf("composite replay result=%#v error=%v", replayed, err)
+	}
+}
+
 func TestUpsertInteractionKeepsIndependentPendingRequests(t *testing.T) {
 	t.Parallel()
 	store := openTestStore(t, testOptions(&staticProjectPaths{}))
 	ctx := context.Background()
 	seedTurnTestSession(t, store, "ws-1", "session-1")
+	seedInteractionTurn(t, store, "ws-1", "session-1", "turn-1", 90)
 
 	for index, requestID := range []string{"request-1", "request-2"} {
 		if _, accepted, err := store.UpsertInteraction(ctx, InteractionUpsert{
@@ -462,7 +575,7 @@ func TestUpsertInteractionKeepsIndependentPendingRequests(t *testing.T) {
 	}
 }
 
-func TestUpsertInteractionCreatesCanonicalWaitingTurnAndActivePointer(t *testing.T) {
+func TestUpsertInteractionRejectsUnknownTurnWithoutManufacturingOne(t *testing.T) {
 	t.Parallel()
 	store := openTestStore(t, testOptions(&staticProjectPaths{}))
 	ctx := context.Background()
@@ -472,16 +585,16 @@ func TestUpsertInteractionCreatesCanonicalWaitingTurnAndActivePointer(t *testing
 		WorkspaceID: "ws-1", AgentSessionID: "session-1", RequestID: "request-1",
 		TurnID: "turn-1", Kind: InteractionKindQuestion, Status: InteractionStatusPending,
 		OccurredAtUnixMS: 100,
-	}); err != nil || accepted != InteractionTransitionApplied {
-		t.Fatalf("UpsertInteraction() accepted=%v error=%v", accepted, err)
+	}); err == nil || accepted != InteractionTransitionConflict {
+		t.Fatalf("UpsertInteraction() accepted=%v error=%v, want unknown-turn conflict", accepted, err)
 	}
 	turn, ok, err := store.GetTurn(ctx, "ws-1", "session-1", "turn-1")
-	if err != nil || !ok || turn.Phase != TurnPhaseWaiting {
-		t.Fatalf("GetTurn() turn=%#v ok=%v error=%v", turn, ok, err)
+	if err != nil || ok {
+		t.Fatalf("GetTurn() turn=%#v ok=%v error=%v, want absent", turn, ok, err)
 	}
 	session, ok, err := store.GetSession(ctx, "ws-1", "session-1")
-	if err != nil || !ok || session.ActiveTurnID != "turn-1" {
-		t.Fatalf("GetSession() session=%#v ok=%v error=%v", session, ok, err)
+	if err != nil || !ok || session.ActiveTurnID != "" {
+		t.Fatalf("GetSession() session=%#v ok=%v error=%v, want no active turn", session, ok, err)
 	}
 }
 
@@ -490,6 +603,7 @@ func TestUpsertInteractionDistinguishesReplayFromConflictAndPreservesFirstTermin
 	store := openTestStore(t, testOptions(&staticProjectPaths{}))
 	ctx := context.Background()
 	seedTurnTestSession(t, store, "ws-1", "session-1")
+	seedInteractionTurn(t, store, "ws-1", "session-1", "turn-1", 90)
 
 	base := InteractionUpsert{
 		WorkspaceID: "ws-1", AgentSessionID: "session-1", RequestID: "request-1",
@@ -535,6 +649,7 @@ func TestUpsertInteractionConflictsWhenImmutableIdentityChanges(t *testing.T) {
 	store := openTestStore(t, testOptions(&staticProjectPaths{}))
 	ctx := context.Background()
 	seedTurnTestSession(t, store, "ws-1", "session-1")
+	seedInteractionTurn(t, store, "ws-1", "session-1", "turn-1", 90)
 
 	for _, input := range []struct {
 		occurred   int64
@@ -602,12 +717,23 @@ func seedTurnTestSession(t *testing.T, store *Store, workspaceID string, agentSe
 	}
 }
 
+func seedInteractionTurn(t *testing.T, store *Store, workspaceID string, agentSessionID string, turnID string, occurredAt int64) {
+	t.Helper()
+	if _, accepted, err := store.RecordTurnTransition(context.Background(), TurnTransition{
+		WorkspaceID: workspaceID, AgentSessionID: agentSessionID, TurnID: turnID,
+		Phase: TurnPhaseWaiting, Origin: TurnOriginProviderInitiated, OccurredAtUnixMS: occurredAt,
+	}); err != nil || !accepted {
+		t.Fatalf("RecordTurnTransition(%s) accepted=%v error=%v", turnID, accepted, err)
+	}
+}
+
 func TestInteractionsAllowSameRequestIDInDifferentTurns(t *testing.T) {
 	t.Parallel()
 	store := openTestStore(t, testOptions(&staticProjectPaths{}))
 	ctx := context.Background()
 	seedTurnTestSession(t, store, "ws-1", "session-1")
 	for index, turnID := range []string{"turn-1", "turn-2"} {
+		seedInteractionTurn(t, store, "ws-1", "session-1", turnID, int64(10+index))
 		interaction, accepted, err := store.UpsertInteraction(ctx, InteractionUpsert{
 			WorkspaceID: "ws-1", AgentSessionID: "session-1", TurnID: turnID,
 			RequestID: "same-request", Kind: InteractionKindApproval,
@@ -667,7 +793,7 @@ func TestMessageTurnReferenceAllowsNullAndRejectsOrphans(t *testing.T) {
 INSERT INTO workspace_agent_messages (
   workspace_id, agent_session_id, message_id, version, turn_id,
   role, kind, payload_json, created_at_unix_ms, updated_at_unix_ms
-) VALUES ('ws-1', 'session-1', 'session-notice', 1, NULL, 'system', 'notice', '{}', 1, 1)
+) VALUES ('ws-1', 'session-1', 'session-audit', 1, NULL, 'system', 'session_audit', '{}', 1, 1)
 `); err != nil {
 		t.Fatalf("insert session-level message: %v", err)
 	}

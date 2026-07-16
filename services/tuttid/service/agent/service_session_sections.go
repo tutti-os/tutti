@@ -20,12 +20,15 @@ const (
 )
 
 type sessionSectionsDiagnostics struct {
-	failureStage    string
-	hydrateDuration time.Duration
-	projectDuration time.Duration
-	sectionCount    int
-	sessionCount    int
-	storeDuration   time.Duration
+	currentProjectCount     int
+	failureStage            string
+	hydrateDuration         time.Duration
+	nonEmptyProjectCount    int
+	projectDuration         time.Duration
+	railVisibleSessionCount int
+	returnedSessionCount    int
+	sectionCount            int
+	storeDuration           time.Duration
 }
 
 func (s *Service) ListSessionSections(
@@ -95,6 +98,7 @@ func (s *Service) listSessionSectionsBatched(
 		sectionKeys = append(sectionKeys, project.SectionKey)
 	}
 	sectionKeys = append(sectionKeys, sessionSectionKeyConversations)
+	diagnostics.currentProjectCount = len(normalizedProjects)
 	diagnostics.failureStage = "store"
 	storeStartedAt := time.Now()
 	page, ok, err := reader.ListSessionSections(ctx, agentactivitybiz.ListSessionSectionsInput{
@@ -119,9 +123,15 @@ func (s *Service) listSessionSectionsBatched(
 		}
 		rawPagesByKey[sectionKey] = section
 		rawSessions = append(rawSessions, section.Sessions...)
+		diagnostics.railVisibleSessionCount += section.TotalCount
 	}
 	diagnostics.sectionCount = len(page.Sections)
-	diagnostics.sessionCount = len(rawSessions)
+	diagnostics.returnedSessionCount = len(rawSessions)
+	for _, project := range normalizedProjects {
+		if rawPage, ok := rawPagesByKey[project.SectionKey]; ok && rawPage.TotalCount > 0 {
+			diagnostics.nonEmptyProjectCount++
+		}
+	}
 	diagnostics.failureStage = "hydrate"
 	hydrateStartedAt := time.Now()
 	sessions, err := s.sessionsFromActivity(ctx, workspaceID, rawSessions)
@@ -228,8 +238,11 @@ func logSessionSectionsDiagnostics(
 		"projects_ms", diagnostics.projectDuration.Milliseconds(),
 		"store_ms", diagnostics.storeDuration.Milliseconds(),
 		"hydrate_ms", diagnostics.hydrateDuration.Milliseconds(),
+		"current_project_count", diagnostics.currentProjectCount,
+		"non_empty_project_count", diagnostics.nonEmptyProjectCount,
+		"rail_visible_session_count", diagnostics.railVisibleSessionCount,
+		"returned_session_count", diagnostics.returnedSessionCount,
 		"section_count", diagnostics.sectionCount,
-		"session_count", diagnostics.sessionCount,
 	}
 	if err != nil {
 		args = append(args, "error", err)

@@ -5,12 +5,15 @@ export type {
   RichTextTrigger,
   RichTextTriggerBoundary,
   RichTextTriggerConfig,
+  RichTextTriggerGroupedQueryResult,
+  RichTextTriggerGroupPageQueryInput,
   RichTextTriggerInsertResult,
   RichTextTriggerProvider,
   RichTextTriggerProviderContext,
   RichTextTriggerQueryMatch,
   RichTextTriggerRegistry,
-  RichTextTriggerQueryInput
+  RichTextTriggerQueryInput,
+  RichTextTriggerQueryGroup
 } from "./trigger.ts";
 export type {
   RichTextMentionAttrs,
