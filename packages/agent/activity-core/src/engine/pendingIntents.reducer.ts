@@ -47,6 +47,7 @@ export function pendingIntentsReducer(
     settingsResultValidation?: ScopedSessionResultValidation | null;
     planFeedbackAccepted?: boolean;
     submitRequestAccepted?: boolean;
+    submitDeliveryIsQueuePending?: boolean;
   } = {
     deletedSessionIds: {},
     turnsById: {}
@@ -121,7 +122,11 @@ export function pendingIntentsReducer(
     case "engine/intentExpired":
       return intent.expiryId.startsWith("activation:")
         ? expireActivation(state, intent.expiryId)
-        : expireSubmit(state, intent.expiryId);
+        : expireSubmit(state, intent.expiryId, {
+            deliveryIsQueuePending:
+              context.submitDeliveryIsQueuePending === true,
+            dueAtUnixMs: intent.dueAtUnixMs
+          });
     case "session/removed":
       return removeSessionIntents(state, intent.agentSessionId);
     default:

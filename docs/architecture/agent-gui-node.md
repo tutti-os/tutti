@@ -2292,6 +2292,13 @@ turn remains blocked; cancel-then-send records the selected prompt as
 after the cancel result validates or the canonical turn settles. Metadata-only
 session patches and locally inferred idle states cannot unlock the queue.
 
+A pending submit confirmation deadline is not a queue-wait deadline. While the
+same `clientSubmitId` still has a queue-owned delivery that has not failed or
+entered uncertain delivery, expiry rolls the confirmation window forward
+instead of marking the submit failed. An explicit `queue/sendPrompt` failure
+still fails the submit immediately, while a timed-out delivery keeps its
+uncertain reconciliation and terminal expiry behavior.
+
 A user stop is an intent, not just a turn cancel: `interruptCurrentTurn`
 suspends the session's prompt queue (`suspendReason: "user_stop"`) before
 issuing the cancel, so the drainer must not fire the next queued prompt the

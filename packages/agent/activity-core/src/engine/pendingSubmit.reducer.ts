@@ -156,7 +156,11 @@ export function confirmFromSessions(
 
 export function expireSubmit(
   state: PendingIntentsState,
-  expiryId: string
+  expiryId: string,
+  options: {
+    deliveryIsQueuePending?: boolean;
+    dueAtUnixMs?: number;
+  } = {}
 ): EngineReducerResult<PendingIntentsState> {
   if (!expiryId.startsWith("submit:")) {
     return unchanged(state);
@@ -165,6 +169,26 @@ export function expireSubmit(
   const record = state.submitsByClientSubmitId[clientSubmitId];
   if (!record) {
     return unchanged(state);
+  }
+  if (options.deliveryIsQueuePending) {
+    const confirmationWindowMs = Math.max(
+      1,
+      record.expiresAtUnixMs - record.requestedAtUnixMs
+    );
+    return {
+      commands: [
+        {
+          dueAtUnixMs:
+            Math.max(
+              record.expiresAtUnixMs,
+              options.dueAtUnixMs ?? record.expiresAtUnixMs
+            ) + confirmationWindowMs,
+          expiryId,
+          type: "engine/scheduleExpiry"
+        }
+      ],
+      state
+    };
   }
   if (record.status === "accepted" || record.status === "confirmed") {
     return {

@@ -10,7 +10,10 @@ import {
   resolvePromptSendNowStrategy,
   resolveQueuedPromptSendNowStrategy
 } from "./promptQueue.sendNow.ts";
-import { canCancelQueuedSubmit } from "./promptQueue.lookup.ts";
+import {
+  canCancelQueuedSubmit,
+  isQueuedSubmitDeliveryPending
+} from "./promptQueue.lookup.ts";
 import {
   createInitialPendingIntentsState,
   pendingIntentsReducer
@@ -254,6 +257,13 @@ export function rootEngineReducer(
     submitRequestAccepted,
     sendNowStrategy
   });
+  const expiringSubmitId =
+    intent.type === "engine/intentExpired" &&
+    intent.expiryId.startsWith("submit:")
+      ? intent.expiryId.slice("submit:".length)
+      : "";
+  const expiringSubmit =
+    state.pendingIntents.submitsByClientSubmitId[expiringSubmitId];
   const planDecisions = planDecisionReducer(state.planDecisions, intent, {
     feedbackAccepted,
     planTurnValid
@@ -297,6 +307,14 @@ export function rootEngineReducer(
       ),
     planFeedbackAccepted: feedbackAccepted,
     submitRequestAccepted,
+    submitDeliveryIsQueuePending: Boolean(
+      expiringSubmit &&
+      isQueuedSubmitDeliveryPending(
+        state.promptQueue,
+        expiringSubmit.agentSessionId,
+        expiringSubmitId
+      )
+    ),
     sendResultValidation,
     settingsResultValidation
   });
