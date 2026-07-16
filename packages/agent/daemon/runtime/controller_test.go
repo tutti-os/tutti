@@ -5259,6 +5259,63 @@ func TestControllerFinishTurnDoesNotRestoreClosedSession(t *testing.T) {
 	}
 }
 
+func TestControllerFinishTurnDoesNotOverwriteRestartedSession(t *testing.T) {
+	t.Parallel()
+
+	adapter := &recordingStartAdapter{provider: ProviderCodex}
+	controller := NewController([]Adapter{adapter}, nil)
+	started, err := controller.Start(context.Background(), StartInput{
+		RoomID:         "room-1",
+		AgentSessionID: "agent-session-1",
+		Provider:       ProviderCodex,
+		Title:          "old session",
+	})
+	if err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+
+	turnID := "turn-1"
+	staleTurnSession := started.Session
+	staleTurnSession.Status = SessionStatusCanceled
+	staleTurnSession.TurnLifecycle = &TurnLifecycle{
+		ActiveTurnID: &turnID,
+		Phase:        "running",
+	}
+	controller.store(staleTurnSession)
+	controller.mu.Lock()
+	controller.turns[sessionKey(staleTurnSession.RoomID, staleTurnSession.AgentSessionID)] = activeTurn{turnID: turnID}
+	controller.mu.Unlock()
+
+	if _, err := controller.Close(context.Background(), CloseInput{
+		RoomID:         staleTurnSession.RoomID,
+		AgentSessionID: staleTurnSession.AgentSessionID,
+	}); err != nil {
+		t.Fatalf("Close: %v", err)
+	}
+	if _, err := controller.Start(context.Background(), StartInput{
+		RoomID:         staleTurnSession.RoomID,
+		AgentSessionID: staleTurnSession.AgentSessionID,
+		Provider:       ProviderCodex,
+		Title:          "fresh session",
+	}); err != nil {
+		t.Fatalf("restart: %v", err)
+	}
+
+	// The canceled turn can unwind after a same-ID session has restarted. Its
+	// stale snapshot must not replace the fresh controller session.
+	if controller.storeTurnSession(staleTurnSession, turnID) {
+		t.Fatal("late turn event stored stale session after restart")
+	}
+	controller.finishTurn(staleTurnSession, turnID)
+	restarted, ok := controller.Session(staleTurnSession.RoomID, staleTurnSession.AgentSessionID)
+	if !ok {
+		t.Fatal("restarted session missing")
+	}
+	if restarted.Title != "fresh session" || restarted.Status != SessionStatusReady {
+		t.Fatalf("restarted session overwritten by stale turn: %#v", restarted)
+	}
+}
+
 func TestControllerFinishTurnReconcilesCreatedStatusToReady(t *testing.T) {
 	t.Parallel()
 

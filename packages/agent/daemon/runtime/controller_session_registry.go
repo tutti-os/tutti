@@ -394,6 +394,34 @@ func (c *Controller) applyCommandSnapshot(session Session, snapshot AgentSession
 	c.hub.Publish(roomID, agentSessionID, []StreamEvent{commandSnapshotStreamEvent(snapshot)})
 }
 
+func (c *Controller) applyTurnCommandSnapshot(session Session, turnID string, snapshot AgentSessionCommandSnapshot) {
+	if c == nil {
+		return
+	}
+	roomID := strings.TrimSpace(session.RoomID)
+	agentSessionID := strings.TrimSpace(firstNonEmpty(snapshot.AgentSessionID, session.AgentSessionID))
+	turnID = strings.TrimSpace(turnID)
+	if roomID == "" || agentSessionID == "" || turnID == "" {
+		return
+	}
+	snapshot.AgentSessionID = agentSessionID
+	snapshot.Commands = cloneAgentSessionCommands(snapshot.Commands)
+	key := sessionKey(roomID, agentSessionID)
+	c.mu.Lock()
+	active, ok := c.turns[key]
+	if !ok || strings.TrimSpace(active.turnID) != turnID {
+		c.mu.Unlock()
+		return
+	}
+	if _, ok := c.sessions[key]; !ok {
+		c.mu.Unlock()
+		return
+	}
+	c.commands[key] = snapshot
+	c.mu.Unlock()
+	c.hub.Publish(roomID, agentSessionID, []StreamEvent{commandSnapshotStreamEvent(snapshot)})
+}
+
 func (c *Controller) applyCommandSnapshotByAgentSessionID(snapshot AgentSessionCommandSnapshot) {
 	if c == nil {
 		return

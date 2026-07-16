@@ -6,23 +6,44 @@ import (
 	activityshared "github.com/tutti-os/tutti/packages/agent/daemon/activity/events"
 )
 
-func (c *Controller) finishTurn(session Session, turnID string) {
+func (c *Controller) storeTurnSession(session Session, turnID string) bool {
 	if c == nil {
-		return
+		return false
 	}
 	key := sessionKey(session.RoomID, session.AgentSessionID)
 	c.mu.Lock()
-	if active, ok := c.turns[key]; ok && active.turnID == turnID {
-		delete(c.turns, key)
+	defer c.mu.Unlock()
+	active, ok := c.turns[key]
+	if !ok || strings.TrimSpace(active.turnID) != strings.TrimSpace(turnID) {
+		return false
 	}
+	if _, ok := c.sessions[key]; !ok {
+		return false
+	}
+	c.sessions[key] = session
+	return true
+}
+
+func (c *Controller) finishTurn(session Session, turnID string) bool {
+	if c == nil {
+		return false
+	}
+	key := sessionKey(session.RoomID, session.AgentSessionID)
+	c.mu.Lock()
+	active, ok := c.turns[key]
+	if !ok || strings.TrimSpace(active.turnID) != strings.TrimSpace(turnID) {
+		c.mu.Unlock()
+		return false
+	}
+	delete(c.turns, key)
 	current, ok := c.sessions[key]
 	if !ok {
 		c.mu.Unlock()
-		return
+		return false
 	}
 	if sessionHasDifferentLiveTurn(current, turnID) {
 		c.mu.Unlock()
-		return
+		return false
 	}
 	session = c.preserveCurrentSessionSettingsLocked(key, session)
 	if session.LifecycleAuthority {
@@ -40,12 +61,13 @@ func (c *Controller) finishTurn(session Session, turnID string) {
 		if needsFallback {
 			c.applySessionEventsByAgentSessionID(session.AgentSessionID, settledFallbackTurnEvents(session, turnID))
 		}
-		return
+		return true
 	}
 	session = settleFinishedTurnLifecycle(session, turnID)
 	session = c.reconcileSessionStatusLocked(key, session)
 	c.sessions[key] = session
 	c.mu.Unlock()
+	return true
 }
 
 // settledFallbackTurnEvents builds the controller-origin settled snapshot the

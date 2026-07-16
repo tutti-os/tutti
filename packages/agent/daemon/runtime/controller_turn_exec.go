@@ -63,7 +63,9 @@ func (c *Controller) runExecTurn(ctx context.Context, session Session, adapter A
 			session.UpdatedAtUnixMS = unixMS(now())
 		}
 		session = c.preserveCurrentSessionSettings(session)
-		c.store(session)
+		if !c.storeTurnSession(session, turnID) {
+			return
+		}
 		emitted = append(emitted, events...)
 		c.publish(session, events)
 		c.enqueueSessionReport(ctx, session, events)
@@ -74,7 +76,7 @@ func (c *Controller) runExecTurn(ctx context.Context, session Session, adapter A
 		})
 	}
 	emitCommands := func(snapshot AgentSessionCommandSnapshot) {
-		c.applyCommandSnapshot(session, snapshot)
+		c.applyTurnCommandSnapshot(session, turnID, snapshot)
 	}
 	events, err := adapter.Exec(ctx, session, content, displayPrompt, turnID, emit, emitCommands)
 	rootProviderLifecycle := adapterUsesRootProviderTurnLifecycle(adapter)
@@ -125,7 +127,7 @@ func (c *Controller) runExecTurn(ctx context.Context, session Session, adapter A
 		// Exec returning closes only the provider invocation. The controller's
 		// active root turn remains addressable for guidance/cancel until the
 		// daemon commits and reconciles canonical root settlement.
-		c.store(session)
+		c.storeTurnSession(session, turnID)
 		return
 	}
 	c.finishTurn(session, turnID)
@@ -141,12 +143,12 @@ func (c *Controller) runAsyncExecTurn(ctx context.Context, session Session, adap
 	logAgentSubmitTrace("runtime.async_turn_started", session, turnID, metadata, nil)
 	var mu sync.Mutex
 	finished := false
-	finish := func(next Session) {
+	finish := func(next Session) bool {
 		if finished {
-			return
+			return false
 		}
 		finished = true
-		c.finishTurn(next, turnID)
+		return c.finishTurn(next, turnID)
 	}
 	emit := func(events []activityshared.Event) {
 		if len(events) == 0 {
@@ -170,9 +172,13 @@ func (c *Controller) runAsyncExecTurn(ctx context.Context, session Session, adap
 			// Remove the controller's active-turn record before publishing a
 			// terminal/ready session. Consumers must never observe a ready session
 			// while HasActiveTurn still reports the finished turn.
-			finish(session)
+			if !finish(session) {
+				return
+			}
 		} else {
-			c.store(session)
+			if !c.storeTurnSession(session, turnID) {
+				return
+			}
 		}
 		c.publish(session, events)
 		c.enqueueSessionReport(ctx, session, events)
@@ -185,7 +191,7 @@ func (c *Controller) runAsyncExecTurn(ctx context.Context, session Session, adap
 	emitCommands := func(snapshot AgentSessionCommandSnapshot) {
 		mu.Lock()
 		defer mu.Unlock()
-		c.applyCommandSnapshot(session, snapshot)
+		c.applyTurnCommandSnapshot(session, turnID, snapshot)
 	}
 	if err := adapter.ExecAsync(ctx, session, content, displayPrompt, turnID, emit, emitCommands); err != nil {
 		events := []activityshared.Event{newTurnActivityEvent(session, EventTurnFailed, turnID, SessionStatusFailed, "", "", map[string]any{
@@ -210,7 +216,7 @@ func (c *Controller) asyncTurnEventsReadyForFold(session Session, turnID string,
 	defer c.mu.Unlock()
 	turn, ok := c.turns[key]
 	if !ok || strings.TrimSpace(turn.turnID) != turnID {
-		return events
+		return nil
 	}
 	if turn.openCallIDs == nil {
 		turn.openCallIDs = make(map[string]struct{})
