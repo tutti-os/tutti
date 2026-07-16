@@ -65,6 +65,9 @@ func (a agentRuntimeAdapter) GoalControl(ctx context.Context, input agentservice
 		AgentSessionID: input.AgentSessionID,
 		Action:         agentruntime.GoalControlAction(input.Action),
 		Objective:      input.Objective,
+		OperationID:    input.OperationID,
+		GoalRevision:   input.GoalRevision,
+		RepairEpoch:    input.RepairEpoch,
 	})
 	if err != nil {
 		return agentservice.RuntimeGoalControlResult{}, mapAgentRuntimeError(err)
@@ -72,7 +75,29 @@ func (a agentRuntimeAdapter) GoalControl(ctx context.Context, input agentservice
 	return agentservice.RuntimeGoalControlResult{
 		AgentSessionID: result.AgentSessionID,
 		Goal:           result.Goal,
+		Evidence:       result.Evidence,
+		ProviderPhase:  result.ProviderPhase,
 	}, nil
+}
+
+func (a agentRuntimeAdapter) ReconcileGoal(ctx context.Context, input agentservice.RuntimeGoalControlInput) (agentservice.RuntimeGoalReconcileResult, error) {
+	result, err := a.controller.ReconcileGoal(ctx, agentruntime.GoalReconcileInput{
+		RoomID: input.WorkspaceID, AgentSessionID: input.AgentSessionID,
+	})
+	if err != nil {
+		return agentservice.RuntimeGoalReconcileResult{}, mapAgentRuntimeError(err)
+	}
+	return agentservice.RuntimeGoalReconcileResult{
+		AgentSessionID: result.AgentSessionID, Goal: result.Goal, Evidence: result.Evidence,
+	}, nil
+}
+
+func (a agentRuntimeAdapter) GoalRecoveryPolicy(ctx context.Context, input agentservice.RuntimeGoalControlInput) (agentservice.RuntimeGoalRecoveryPolicy, error) {
+	capabilities, err := a.controller.GoalCapabilities(ctx, agentruntime.GoalReconcileInput{RoomID: input.WorkspaceID, AgentSessionID: input.AgentSessionID})
+	if err != nil {
+		return agentservice.RuntimeGoalRecoveryPolicy{}, mapAgentRuntimeError(err)
+	}
+	return agentservice.RuntimeGoalRecoveryPolicy{QuerySupported: capabilities.QuerySupported, ReplaySetAfterRestart: capabilities.ReplaySetAfterRestart}, nil
 }
 
 func agentRuntimeSessionSettings(settings agentservice.ComposerSettings) *agentruntime.SessionSettings {

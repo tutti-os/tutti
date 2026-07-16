@@ -40,6 +40,7 @@ func (s *Store) upsertAgentMessageTx(
 	agentSessionID string,
 	input MessageUpdate,
 	now int64,
+	allowLegacyTurnless bool,
 ) (Message, bool, error) {
 	existing, ok, err := getAgentMessageForUpdate(ctx, tx, workspaceID, agentSessionID, input.MessageID)
 	if err != nil {
@@ -66,18 +67,19 @@ func (s *Store) upsertAgentMessageTx(
 	if !accepted {
 		return Message{}, false, nil
 	}
-	if turnID := strings.TrimSpace(message.TurnID); turnID != "" {
+	turnID := strings.TrimSpace(message.TurnID)
+	kind := strings.TrimSpace(message.Kind)
+	if kind == "session_audit" {
+		if turnID != "" {
+			return Message{}, false, fmt.Errorf("workspace agent session audit must not reference turn %q", turnID)
+		}
+	} else if turnID == "" && !allowLegacyTurnless {
+		return Message{}, false, fmt.Errorf("workspace agent message %q kind %q is missing turn", message.MessageID, kind)
+	} else if turnID != "" {
 		if _, exists, err := getAgentTurnTx(ctx, tx, workspaceID, agentSessionID, turnID); err != nil {
 			return Message{}, false, err
 		} else if !exists {
-			if _, accepted, err := s.recordTurnTransitionTx(ctx, tx, TurnTransition{
-				WorkspaceID: workspaceID, AgentSessionID: agentSessionID, TurnID: turnID,
-				Phase: TurnPhaseSubmitted, OccurredAtUnixMS: message.OccurredAtUnixMS,
-			}, now); err != nil {
-				return Message{}, false, fmt.Errorf("ensure workspace agent turn for message: %w", err)
-			} else if !accepted {
-				return Message{}, false, errors.New("workspace agent message turn transition was rejected")
-			}
+			return Message{}, false, fmt.Errorf("workspace agent message references unknown turn %q", turnID)
 		}
 	}
 	version, err := incrementAgentSessionMessageVersion(ctx, tx, workspaceID, agentSessionID)

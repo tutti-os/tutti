@@ -33,6 +33,12 @@ func TestListWorkspaceGeneratedFilesFiltersAgentTargetsBeforeScanLimit(t *testin
 		}); err != nil {
 			t.Fatalf("ReportSessionState(%s) error = %v", session.id, err)
 		}
+		if _, accepted, err := store.RecordTurnTransition(ctx, TurnTransition{
+			WorkspaceID: workspaceID, AgentSessionID: session.id, TurnID: "turn-" + session.id,
+			Phase: TurnPhaseSettled, Outcome: TurnOutcomeCompleted, Origin: TurnOriginLegacyUnknown, OccurredAtUnixMS: 11,
+		}); err != nil || !accepted {
+			t.Fatalf("RecordTurnTransition(%s) accepted=%v error=%v", session.id, accepted, err)
+		}
 	}
 
 	if _, err := store.ReportSessionMessages(ctx, SessionMessageReport{
@@ -41,6 +47,7 @@ func TestListWorkspaceGeneratedFilesFiltersAgentTargetsBeforeScanLimit(t *testin
 		Origin:         "runtime",
 		Messages: []MessageUpdate{{
 			MessageID: "wanted-message",
+			TurnID:    "turn-wanted-session",
 			Role:      "assistant",
 			Kind:      "tool_call",
 			Status:    "completed",
@@ -60,6 +67,7 @@ func TestListWorkspaceGeneratedFilesFiltersAgentTargetsBeforeScanLimit(t *testin
 	for index := range otherMessages {
 		otherMessages[index] = MessageUpdate{
 			MessageID: fmt.Sprintf("other-message-%03d", index),
+			TurnID:    "turn-other-session",
 			Role:      "assistant",
 			Kind:      "tool_call",
 			Status:    "completed",

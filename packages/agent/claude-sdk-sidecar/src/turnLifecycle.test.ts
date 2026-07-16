@@ -24,6 +24,48 @@ test("turn lifecycle activates and settles a queued turn", () => {
   });
 });
 
+test("turn lifecycle announces a goal arm before its first output", () => {
+  const { lifecycle, events } = createLifecycle();
+  lifecycle.enqueue({
+    turnId: "goal-arm-1",
+    promptUuid: "prompt-goal",
+    origin: "goal_arm",
+    settled: false
+  });
+
+  lifecycle.activateForUserMessage("prompt-goal");
+
+  assert.deepEqual(events[0], {
+    type: "turn_started",
+    payload: { turnId: "goal-arm-1", turnOrigin: "goal_arm" }
+  });
+});
+
+test("goal activation carries its immutable command identity", () => {
+  const { lifecycle, events } = createLifecycle();
+  lifecycle.enqueue({
+    turnId: "goal-arm-immutable",
+    promptUuid: "prompt-goal-immutable",
+    origin: "goal_arm",
+    goalOperationId: "goal-op-1",
+    goalRevision: 1,
+    goalRepairEpoch: 7,
+    goalAction: "set",
+    settled: false
+  });
+
+  lifecycle.activateForUserMessage("prompt-goal-immutable");
+
+  const applied = events.find((event) => event.type === "goal_command_started");
+  assert.equal(applied?.payload?.operationId, "goal-op-1");
+  assert.equal(applied?.payload?.revision, 1);
+  assert.equal(applied?.payload?.repairEpoch, 7);
+  const started = events.find((event) => event.type === "turn_started");
+  assert.equal(started?.payload?.sourceGoalOperationId, "goal-op-1");
+  assert.equal(started?.payload?.sourceGoalRevision, 1);
+  assert.equal(started?.payload?.sourceGoalRepairEpoch, 7);
+});
+
 test("turn lifecycle creates an explicit synthetic turn for orphan assistant output", () => {
   const { lifecycle, events } = createLifecycle();
 

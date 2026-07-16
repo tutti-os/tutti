@@ -49,6 +49,14 @@ type Repository interface {
 	UpdateSessionTitle(context.Context, string, string, string) (Session, bool, error)
 }
 
+// GoalProvenanceLedger is a narrow optional persistence capability. It stays
+// separate from Repository so read-only/custom activity repositories do not
+// need to implement provider-specific Goal attribution.
+type GoalProvenanceLedger interface {
+	BindGoalProvenance(context.Context, BindGoalProvenanceInput) (GoalProvenanceBinding, error)
+	LookupGoalProvenance(context.Context, LookupGoalProvenanceInput) (GoalProvenanceBinding, bool, error)
+}
+
 type ClearSessionsResult struct {
 	RemovedMessages   int
 	RemovedSessions   int
@@ -215,10 +223,18 @@ const (
 	TurnOutcomeFailed      = "failed"
 	TurnOutcomeCanceled    = "canceled"
 	TurnOutcomeInterrupted = "interrupted"
+
+	TurnOriginUserPrompt        = "user_prompt"
+	TurnOriginGoalArm           = "goal_arm"
+	TurnOriginGoalContinuation  = "goal_continuation"
+	TurnOriginProviderInitiated = "provider_initiated"
+	TurnOriginLegacyUnknown     = "legacy_unknown"
 )
 
-// Turn is the protocol v2 turn entity: one turn inside either a root or child
-// session, with its own phase, outcome, error, and file changes.
+// Turn is the protocol v2 execution entity inside either a root or child
+// session. It may originate from a user prompt, Goal control, or an explicit
+// provider-initiated interaction and carries both Goal provenance and the
+// root-provider completion projection.
 type Turn struct {
 	WorkspaceID                            string
 	AgentSessionID                         string
@@ -235,6 +251,10 @@ type Turn struct {
 	SettledAtUnixMS                        int64
 	CreatedAtUnixMS                        int64
 	UpdatedAtUnixMS                        int64
+	Origin                                 string
+	SourceGoalOperationID                  string
+	SourceGoalRevision                     int64
+	SourceGoalRepairEpoch                  int64
 	RootProviderTurnID                     string
 	RootProviderTurnPhase                  string
 	RootProviderTurnOutcome                string
@@ -279,6 +299,10 @@ type TurnTransition struct {
 	FileChanges            map[string]any
 	CompletedCommandKind   string
 	CompletedCommandStatus string
+	Origin                 string
+	SourceGoalOperationID  string
+	SourceGoalRevision     int64
+	SourceGoalRepairEpoch  int64
 	StartedAtUnixMS        int64
 	SettledAtUnixMS        int64
 	OccurredAtUnixMS       int64
@@ -391,7 +415,11 @@ type SessionMessageReport struct {
 	AgentSessionID string
 	Origin         string
 	Provider       string
-	Messages       []MessageUpdate
+	// HistoricalImport is an internal-only compatibility boundary for
+	// read-only external transcript imports that predate Turn identities. It
+	// must never be populated from runtime/API report payloads.
+	HistoricalImport bool
+	Messages         []MessageUpdate
 }
 
 type MessageUpdate struct {

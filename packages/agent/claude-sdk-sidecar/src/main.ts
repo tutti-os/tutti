@@ -3,7 +3,7 @@ import { stdin } from "node:process";
 import { pathToFileURL } from "node:url";
 import { errorMessage } from "./errors.ts";
 import { emit } from "./eventSink.ts";
-import { recordValue } from "./normalizer.ts";
+import { numberValue, recordValue } from "./normalizer.ts";
 import { sidecarClaudeOptionsFromPayload } from "./options.ts";
 import {
   parseClaudeSDKSidecarRequest,
@@ -15,7 +15,9 @@ import { SessionRuntime } from "./sessionRuntime.ts";
 
 const sessions = new Map<string, SessionRuntime>();
 
-async function handleRequest(request: ClaudeSDKSidecarRequest): Promise<void> {
+export async function handleRequest(
+  request: ClaudeSDKSidecarRequest
+): Promise<void> {
   const id = typeof request.id === "string" ? request.id : undefined;
   try {
     switch (request.type) {
@@ -50,7 +52,19 @@ async function handleRequest(request: ClaudeSDKSidecarRequest): Promise<void> {
           stringValue(payload.turnId),
           // Prefer structured content; prompt is the legacy text fallback.
           stringValue(payload.prompt),
-          payload.content
+          payload.content,
+          stringValue(payload.turnOrigin),
+          stringValue(payload.goalOperationId) &&
+            numberValue(payload.goalRevision) > 0 &&
+            (stringValue(payload.goalAction) === "set" ||
+              stringValue(payload.goalAction) === "clear")
+            ? {
+                operationId: stringValue(payload.goalOperationId),
+                revision: numberValue(payload.goalRevision),
+                repairEpoch: numberValue(payload.goalRepairEpoch),
+                action: stringValue(payload.goalAction) as "set" | "clear"
+              }
+            : undefined
         );
         emit({ id, type: "ok" });
         return;
@@ -69,8 +83,8 @@ async function handleRequest(request: ClaudeSDKSidecarRequest): Promise<void> {
       case "cancel": {
         const payload = request.payload ?? {};
         const session = requireSession(stringValue(payload.agentSessionId));
-        await session.cancel();
-        emit({ id, type: "ok" });
+        const canceled = await session.cancel(stringValue(payload.turnId));
+        emit({ id, type: "ok", payload: { canceled } });
         return;
       }
       case "submit_interactive": {
@@ -127,6 +141,21 @@ async function handleRequest(request: ClaudeSDKSidecarRequest): Promise<void> {
       }
     });
   }
+}
+
+export function withSidecarSessionForTest(
+  agentSessionId: string,
+  session: SessionRuntime
+): () => void {
+  const previous = sessions.get(agentSessionId);
+  sessions.set(agentSessionId, session);
+  return () => {
+    if (previous) {
+      sessions.set(agentSessionId, previous);
+    } else {
+      sessions.delete(agentSessionId);
+    }
+  };
 }
 
 function requireSession(agentSessionId: string): SessionRuntime {

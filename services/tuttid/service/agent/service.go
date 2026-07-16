@@ -85,9 +85,14 @@ func (s *Service) Create(ctx context.Context, workspaceID string, input CreateSe
 	logAgentSubmitTrace("service.create.content_normalized", workspaceID, input.AgentSessionID, input.Metadata, map[string]any{
 		"content_block_count": len(normalizedContent),
 	})
+	typedGoal, isTypedGoal := parseTypedGoalControl(
+		normalizedContent,
+		firstNonEmptyString(strings.TrimSpace(input.InitialDisplayPrompt), normalizedPromptText),
+		false,
+	)
 	var submitClaim agentactivitybiz.SubmitClaim
 	claimPending := false
-	if len(normalizedContent) > 0 {
+	if len(normalizedContent) > 0 && !isTypedGoal {
 		submitClaim, claimPending, err = s.prepareSubmitClaim(ctx, workspaceID, input.AgentSessionID, input.Metadata)
 		if err != nil {
 			return Session{}, err
@@ -195,7 +200,7 @@ func (s *Service) Create(ctx context.Context, workspaceID string, input CreateSe
 			),
 			ConversationDetailMode: input.ConversationDetailMode,
 			Visible:                input.Visible,
-			Provisional:            len(normalizedContent) > 0,
+			Provisional:            len(normalizedContent) > 0 && !isTypedGoal,
 		})
 	}()
 	if err != nil {
@@ -207,6 +212,14 @@ func (s *Service) Create(ctx context.Context, workspaceID string, input CreateSe
 	logAgentSubmitTrace("service.create.runtime_start_resolved", workspaceID, session.ID, input.Metadata, map[string]any{
 		"provider_runtime_status": session.Status,
 	})
+	if isTypedGoal {
+		result, goalErr := s.GoalControl(ctx, workspaceID, session.ID, typedGoal.Action, typedGoal.Objective)
+		if goalErr != nil {
+			closeErr := s.controller().Close(ctx, RuntimeCloseInput{WorkspaceID: workspaceID, AgentSessionID: session.ID})
+			return Session{}, cleanupPrepared(errors.Join(goalErr, closeErr))
+		}
+		return result.Session, nil
+	}
 	if len(normalizedContent) == 0 {
 		return serviceSessionWithComposerSkillOptions(
 			session,

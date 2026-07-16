@@ -471,11 +471,12 @@ func (s *Service) importExternalSession(ctx context.Context, workspaceID string,
 			end = len(updates)
 		}
 		report, err := s.ExternalImportStore.ReportSessionMessages(ctx, agentactivitybiz.SessionMessageReport{
-			WorkspaceID:    workspaceID,
-			AgentSessionID: agentSessionID,
-			Origin:         WorkspaceAgentSessionOriginImported,
-			Provider:       session.Provider,
-			Messages:       updates[start:end],
+			WorkspaceID:      workspaceID,
+			AgentSessionID:   agentSessionID,
+			Origin:           WorkspaceAgentSessionOriginImported,
+			Provider:         session.Provider,
+			HistoricalImport: true,
+			Messages:         updates[start:end],
 		})
 		if err != nil {
 			return importedMessages, true, err

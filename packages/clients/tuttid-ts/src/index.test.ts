@@ -239,6 +239,43 @@ test("shared tuttid client cancels one exact workspace agent turn", async () => 
   );
 });
 
+test("shared tuttid client exposes goal state calibration routes", async () => {
+  const requests: Array<{ method: string; path: string }> = [];
+  const client = createTuttidClient({
+    fetch: async (input, init) => {
+      const request =
+        input instanceof Request ? input : new Request(input, init);
+      requests.push({
+        method: request.method,
+        path: new URL(request.url).pathname
+      });
+      return Response.json({
+        session: { id: "session-1" },
+        state: {
+          revision: 2,
+          tombstoned: true,
+          syncStatus: "synced",
+          lastEvidence: {},
+          updatedAtUnixMs: 10
+        }
+      });
+    }
+  });
+
+  await client.getWorkspaceAgentSessionGoal("ws-1", "session-1");
+  await client.reconcileWorkspaceAgentSessionGoal("ws-1", "session-1");
+  assert.deepEqual(requests, [
+    {
+      method: "GET",
+      path: "/v1/workspaces/ws-1/agent-sessions/session-1/goal"
+    },
+    {
+      method: "POST",
+      path: "/v1/workspaces/ws-1/agent-sessions/session-1/goal/reconcile"
+    }
+  ]);
+});
+
 test("shared tuttid client forwards bearer auth tokens", async () => {
   let authorizationHeader = "";
 

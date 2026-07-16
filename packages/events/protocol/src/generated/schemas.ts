@@ -868,9 +868,10 @@ export const agentActivityUpdatedPayloadSchema = {
                     minimum: 1
                   },
                   turnId: {
-                    type: ["string", "null"],
+                    type: "string",
+                    minLength: 1,
                     description:
-                      "Protocol v2 message ownership: a non-empty turnId attaches the message to that turn; null marks a session-level message. Empty strings are a deprecated legacy encoding."
+                      "Turn-scoped messages always reference a real persisted Turn. Session audits use the separate session_audit event."
                   },
                   status: {
                     type: "string"
@@ -895,6 +896,74 @@ export const agentActivityUpdatedPayloadSchema = {
                     type: "integer",
                     minimum: 0
                   }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      type: "object",
+      additionalProperties: false,
+      required: ["workspaceId", "agentSessionId", "eventType", "data"],
+      properties: {
+        workspaceId: {
+          type: "string",
+          minLength: 1
+        },
+        agentSessionId: {
+          type: "string",
+          minLength: 1
+        },
+        eventType: {
+          const: "session_audit"
+        },
+        data: {
+          type: "object",
+          additionalProperties: false,
+          required: ["workspaceId", "agentSessionId", "eventType", "audit"],
+          properties: {
+            workspaceId: {
+              type: "string",
+              minLength: 1
+            },
+            agentSessionId: {
+              type: "string",
+              minLength: 1
+            },
+            eventType: {
+              const: "session_audit"
+            },
+            audit: {
+              type: "object",
+              additionalProperties: false,
+              required: [
+                "auditId",
+                "role",
+                "payload",
+                "occurredAtUnixMs",
+                "version"
+              ],
+              properties: {
+                auditId: {
+                  type: "string",
+                  minLength: 1
+                },
+                role: {
+                  type: "string",
+                  minLength: 1
+                },
+                payload: {
+                  type: "object"
+                },
+                occurredAtUnixMs: {
+                  type: "integer",
+                  minimum: 1
+                },
+                version: {
+                  type: "integer",
+                  minimum: 1
                 }
               }
             }
@@ -955,6 +1024,7 @@ export const agentActivityUpdatedPayloadSchema = {
                 "turnId",
                 "agentSessionId",
                 "phase",
+                "origin",
                 "outcome",
                 "error",
                 "fileChanges",
@@ -982,9 +1052,31 @@ export const agentActivityUpdatedPayloadSchema = {
                     "settled"
                   ]
                 },
+                origin: {
+                  type: "string",
+                  enum: [
+                    "user_prompt",
+                    "goal_arm",
+                    "goal_continuation",
+                    "provider_initiated",
+                    "legacy_unknown"
+                  ]
+                },
+                sourceGoalOperationId: {
+                  type: ["string", "null"],
+                  minLength: 1
+                },
+                sourceGoalRevision: {
+                  type: ["integer", "null"],
+                  minimum: 0
+                },
+                sourceGoalRepairEpoch: {
+                  type: ["integer", "null"],
+                  minimum: 0
+                },
                 outcome: {
                   type: ["string", "null"],
-                  enum: ["completed", "failed", "canceled", "interrupted"]
+                  enum: [null, "completed", "failed", "canceled", "interrupted"]
                 },
                 error: {
                   type: ["object", "null"],
@@ -1153,6 +1245,7 @@ export const agentActivityUpdatedPayloadSchema = {
       enum: [
         "session_reconcile_required",
         "session_deleted",
+        "session_audit",
         "message_update",
         "turn_update",
         "interaction_update"

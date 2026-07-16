@@ -61,11 +61,16 @@ func statePatchFromSessionEvent(source agentsessionstore.EventSource, event acti
 		event.Type != activityshared.EventRootProviderTurnStarted &&
 		event.Type != activityshared.EventRootProviderTurnCompleted {
 		patch.Turn = &agentsessionstore.WorkspaceAgentTurnPatch{
-			TurnID:  turnID,
-			Phase:   strings.TrimSpace(event.Payload.TurnPhase),
-			Outcome: strings.TrimSpace(event.Payload.TurnOutcome),
+			TurnID:                turnID,
+			Origin:                stringFromPayload(event.Payload.Metadata, "turnOrigin"),
+			SourceGoalOperationID: stringFromPayload(event.Payload.Metadata, "sourceGoalOperationId"),
+			SourceGoalRevision:    payloadInt64(event.Payload.Metadata, "sourceGoalRevision"),
+			SourceGoalRepairEpoch: payloadInt64(event.Payload.Metadata, "sourceGoalRepairEpoch"),
+			Phase:                 strings.TrimSpace(event.Payload.TurnPhase),
+			Outcome:               strings.TrimSpace(event.Payload.TurnOutcome),
 		}
 	}
+	applyProviderInitiatedInteractionTurnToPatch(&patch, event)
 	if !applyLifecycleSnapshotToPatch(&patch, event) {
 		applyExplicitTurnLifecycleToPatch(&patch, event)
 	}
@@ -126,6 +131,24 @@ func statePatchFromSessionEvent(source agentsessionstore.EventSource, event acti
 		}
 	}
 	return patch, true
+}
+
+// applyProviderInitiatedInteractionTurnToPatch makes the Turn creation an
+// explicit part of the provider event projection. ReportActivityState then
+// commits this Turn and its first interaction atomically; the interaction
+// repository is deliberately unable to synthesize a missing Turn.
+func applyProviderInitiatedInteractionTurnToPatch(patch *agentsessionstore.WorkspaceAgentStatePatch, event activityshared.Event) {
+	if patch == nil || event.Type != activityshared.EventInteractionRequested || patch.InteractionTransition == nil || patch.Turn == nil {
+		return
+	}
+	if strings.TrimSpace(patch.Turn.Phase) == "" {
+		patch.Turn.Phase = "waiting"
+	}
+	if strings.TrimSpace(patch.Turn.Origin) == "" {
+		patch.Turn.Origin = "provider_initiated"
+	}
+	activeTurnID := strings.TrimSpace(patch.Turn.TurnID)
+	patch.Turn.ActiveTurnID = &activeTurnID
 }
 
 func cloneStringPointer(value *string) *string {

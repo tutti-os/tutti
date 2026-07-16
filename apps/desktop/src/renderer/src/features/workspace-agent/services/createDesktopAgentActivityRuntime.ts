@@ -348,12 +348,19 @@ export function createDesktopAgentActivityRuntime(
         event: "activity_runtime.send.resolved",
         submitDiagnostics: input.submitDiagnostics,
         workspaceId: input.workspaceId,
-        fields: {
-          provider: result.session.provider,
-          turnOutcome: result.turn.outcome ?? null,
-          turnId: result.turnId,
-          turnPhase: result.turn.phase
-        }
+        fields:
+          result.kind === "goalControl"
+            ? {
+                provider: result.session.provider,
+                resultKind: "goalControl"
+              }
+            : {
+                provider: result.session.provider,
+                resultKind: "turn",
+                turnOutcome: result.turn.outcome ?? null,
+                turnId: result.turnId,
+                turnPhase: result.turn.phase
+              }
       });
       await safeTrackAgentNodeResult(nodeResultTracker, {
         agentSessionId: result.session.agentSessionId,

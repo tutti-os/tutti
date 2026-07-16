@@ -62,6 +62,69 @@ test("guidance prompt stays on the active SDK turn", async () => {
   }
 });
 
+test("goal set scheduling ack followed by immediate clear coalesces before SDK activation", async () => {
+  const events: Array<{ type: string; payload?: Record<string, unknown> }> = [];
+  const restoreSink = withSidecarEventSinkForTest((event) =>
+    events.push(event)
+  );
+  try {
+    const session = new SessionRuntime(
+      "provider-session-goal",
+      "/repo",
+      {},
+      false,
+      false,
+      {
+        model: "",
+        permissionModeId: "default",
+        planMode: false,
+        effort: "",
+        speed: ""
+      },
+      sidecarClaudeOptionsFromPayload({}),
+      undefined,
+      ({ prompt }) => fakeSimpleResultQuery(prompt)
+    );
+
+    await session.start();
+    // Both calls have crossed the sidecar scheduling/ACK boundary before the
+    // deferred Goal dispatcher hands either command to the SDK iterable.
+    session.exec("goal-set-turn", "/goal ship it", undefined, "goal_arm", {
+      operationId: "goal-op-set",
+      revision: 1,
+      action: "set"
+    });
+    session.exec("goal-clear-command", "/goal clear", undefined, undefined, {
+      operationId: "goal-op-clear",
+      revision: 2,
+      action: "clear"
+    });
+
+    await waitForEvent(events, "goal_command_started");
+    await waitForEvent(events, "turn_completed");
+
+    assert.equal(
+      events.some(
+        (event) =>
+          event.type === "turn_started" &&
+          event.payload?.turnId === "goal-set-turn"
+      ),
+      false
+    );
+    const superseded = events.find(
+      (event) => event.type === "goal_command_superseded"
+    );
+    assert.equal(superseded?.payload?.operationId, "goal-op-set");
+    const started = events.find(
+      (event) => event.type === "goal_command_started"
+    );
+    assert.equal(started?.payload?.operationId, "goal-op-clear");
+    assert.equal(started?.payload?.revision, 2);
+  } finally {
+    restoreSink();
+  }
+});
+
 test("query enables bypass permission capability for later live mode switch", async () => {
   const events: Array<{ type: string; payload?: Record<string, unknown> }> = [];
   const restoreSink = withSidecarEventSinkForTest((event) =>

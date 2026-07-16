@@ -1011,6 +1011,7 @@ describe("agentGuiConversationModel", () => {
         ...conversationSource,
         activeTurn: {
           agentSessionId: "session-1",
+          origin: "user_prompt",
           phase: "running",
           startedAtUnixMs: 10,
           turnId: "turn-1",

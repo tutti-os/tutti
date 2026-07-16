@@ -10,6 +10,21 @@ import (
 
 func (s *Service) SendInput(ctx context.Context, workspaceID string, agentSessionID string, input SendInput) (SendInputResult, error) {
 	logAgentSubmitTrace("service.send.entered", workspaceID, agentSessionID, input.Metadata, nil)
+	nodeStartedAt := time.Now()
+	normalizedContent, normalizedPromptText, err := normalizePromptContent(input.Content)
+	if err != nil {
+		s.reportAgentServiceNodeFailure(ctx, agentSessionID, "message_send", "content_normalized", "", nodeStartedAt, err)
+		return SendInputResult{}, err
+	}
+	s.reportAgentServiceNodeSuccess(ctx, agentSessionID, "message_send", "content_normalized", "", nodeStartedAt)
+	visiblePrompt := firstNonEmptyString(strings.TrimSpace(input.DisplayPrompt), normalizedPromptText)
+	if goal, ok := parseTypedGoalControl(normalizedContent, visiblePrompt, input.Guidance); ok {
+		result, err := s.GoalControl(ctx, workspaceID, agentSessionID, goal.Action, goal.Objective)
+		if err != nil {
+			return SendInputResult{}, err
+		}
+		return SendInputResult{Session: result.Session, Kind: "goalControl", GoalControl: &result}, nil
+	}
 	submitClaim, claimPending, err := s.prepareSubmitClaim(ctx, workspaceID, agentSessionID, input.Metadata)
 	if err != nil {
 		return SendInputResult{}, err
@@ -25,13 +40,6 @@ func (s *Service) SendInput(ctx context.Context, workspaceID string, agentSessio
 			s.abandonSubmitClaim(workspaceID, agentSessionID, submitClaim.ClientSubmitID)
 		}
 	}()
-	nodeStartedAt := time.Now()
-	normalizedContent, normalizedPromptText, err := normalizePromptContent(input.Content)
-	if err != nil {
-		s.reportAgentServiceNodeFailure(ctx, agentSessionID, "message_send", "content_normalized", "", nodeStartedAt, err)
-		return SendInputResult{}, err
-	}
-	s.reportAgentServiceNodeSuccess(ctx, agentSessionID, "message_send", "content_normalized", "", nodeStartedAt)
 	logAgentSubmitTrace("service.send.content_normalized", workspaceID, agentSessionID, input.Metadata, map[string]any{
 		"content_block_count": len(normalizedContent),
 	})
@@ -116,6 +124,7 @@ func (s *Service) SendInput(ctx context.Context, workspaceID string, agentSessio
 	s.reportAgentServiceNodeSuccess(ctx, agentSessionID, "message_send", "session_refreshed", provider, nodeStartedAt)
 	return SendInputResult{
 		Session:            session,
+		Kind:               "turn",
 		TurnID:             strings.TrimSpace(result.TurnID),
 		TurnLifecycle:      result.TurnLifecycle,
 		SubmitAvailability: result.SubmitAvailability,

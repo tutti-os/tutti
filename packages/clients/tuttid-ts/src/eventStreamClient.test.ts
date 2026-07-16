@@ -128,6 +128,63 @@ test("tuttid event stream client dispatches typed topic events", async () => {
   client.dispose();
 });
 
+test("tuttid event stream client round-trips a first-class session audit", async () => {
+  const sockets: FakeEventStreamSocket[] = [];
+  const events: unknown[] = [];
+  const client = createTuttidEventStreamClient({
+    resolveUrl: () => "ws://127.0.0.1:4545/v1/events/ws",
+    webSocketFactory(url) {
+      const socket = new FakeEventStreamSocket(url);
+      sockets.push(socket);
+      return socket;
+    }
+  });
+  client.subscribe("agent.activity.updated", (event) => events.push(event));
+  const connectPromise = client.connect();
+  await Promise.resolve();
+  const socket = sockets[0];
+  assert.ok(socket);
+  socket.emitMessage({
+    catalogRevision: businessEventCatalogRevision,
+    kind: "ready",
+    protocolVersion: 1,
+    serverTime: "2026-07-16T00:00:00Z"
+  });
+  await connectPromise;
+  socket.emitMessage({
+    event: {
+      emittedAt: "2026-07-16T00:00:00Z",
+      id: "event-audit-1",
+      payload: {
+        workspaceId: "workspace-1",
+        agentSessionId: "session-1",
+        eventType: "session_audit",
+        data: {
+          workspaceId: "workspace-1",
+          agentSessionId: "session-1",
+          eventType: "session_audit",
+          audit: {
+            auditId: "goal-control:op-1",
+            role: "user",
+            payload: { text: "/goal clear" },
+            occurredAtUnixMs: 1,
+            version: 1
+          }
+        }
+      },
+      topic: "agent.activity.updated",
+      version: 2
+    },
+    kind: "event"
+  });
+  assert.equal(events.length, 1);
+  assert.equal(
+    (events[0] as { payload: { eventType: string } }).payload.eventType,
+    "session_audit"
+  );
+  client.dispose();
+});
+
 test("tuttid event stream client sends and filters scoped subscriptions", async () => {
   const sockets: FakeEventStreamSocket[] = [];
   const events: unknown[] = [];

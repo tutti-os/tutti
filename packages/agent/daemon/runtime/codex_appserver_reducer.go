@@ -29,6 +29,13 @@ func (r codexAppServerReducer) ReduceNotification(
 	normalizer *acpTurnNormalizer,
 	emitCommands CommandSnapshotSink,
 ) codexAppServerReduction {
+	return r.reduceNotification(client, session, turnID, message, normalizer, emitCommands, false)
+}
+
+func (r codexAppServerReducer) reduceNotification(
+	client *codexAppServerClient, session Session, turnID string, message acpMessage,
+	normalizer *acpTurnNormalizer, emitCommands CommandSnapshotSink, replayingBuffered bool,
+) codexAppServerReduction {
 	a := r.adapter
 	if a == nil {
 		return codexAppServerReduction{}
@@ -37,6 +44,12 @@ func (r codexAppServerReducer) ReduceNotification(
 	params := map[string]any{}
 	if len(message.Params) > 0 {
 		_ = json.Unmarshal(message.Params, &params)
+	}
+	providerTurnID := appServerNotificationProviderTurnID(params)
+	if !replayingBuffered && message.Method != appServerNotifyTurnStarted &&
+		message.Method != appServerNotifyThreadGoalUpdated &&
+		a.bufferPendingGoalTurnNotification(session.AgentSessionID, providerTurnID, message) {
+		return codexAppServerReduction{}
 	}
 	route := a.appServerNotificationRoute(session, turnID, message.Method, params)
 	if route.drop {
@@ -76,7 +89,7 @@ func (r codexAppServerReducer) ReduceNotification(
 		// turn/completed and awaitTurnCompletion would never settle. After
 		// completion clears the id, the next turn/started (for example a goal
 		// continuation) records normally.
-		providerTurnID := strings.TrimSpace(asString(payloadObject(params["turn"])["id"]))
+		providerTurnID = strings.TrimSpace(asString(payloadObject(params["turn"])["id"]))
 		if activeTurn := a.sessionActiveTurn(session.AgentSessionID); activeTurn != nil {
 			if turn := payloadObject(params["turn"]); turn != nil {
 				providerTurnID = strings.TrimSpace(asString(turn["id"]))
@@ -130,9 +143,10 @@ func (r codexAppServerReducer) ReduceNotification(
 					providerTurnID, "goal paused")
 			case len(goal) > 0:
 				// A goal exists (in whatever state — codex may legitimately run
-				// a wrap-up turn while flipping the goal to complete): adopt the
-				// turn so its output stays visible.
-				a.adoptServerInitiatedTurn(session, providerTurnID)
+				// a wrap-up turn while flipping the goal to complete). Presence of
+				// that mutable snapshot is not provenance: wait for the provider's
+				// turn-scoped goal generation evidence before adopting.
+				a.queueGoalTurnForProvenance(session, providerTurnID)
 			default:
 				slog.Info("agent session app-server unowned turn ignored",
 					"event", "agent_session.app_server.turn.unowned",
@@ -231,7 +245,9 @@ func (r codexAppServerReducer) ReduceNotification(
 		// Goal updates are session-scoped metadata: emit through the session
 		// sink so the GUI banner refreshes even while no turn context exists
 		// (returned reduction events are dropped without an active turn).
-		_, newStatus, statusChanged := a.applyGoalUpdate(session.AgentSessionID, payloadObject(params["goal"]))
+		goal := payloadObject(params["goal"])
+		a.observeGoalTurnGeneration(session, strings.TrimSpace(asString(params["turnId"])), goal)
+		_, newStatus, statusChanged := a.applyGoalUpdate(session.AgentSessionID, goal)
 		goalEvents := []activityshared.Event{}
 		if event, ok := normalizedGoalUpdatedEvent(session, "thread_goal_update"); ok {
 			goalEvents = append(goalEvents, event)

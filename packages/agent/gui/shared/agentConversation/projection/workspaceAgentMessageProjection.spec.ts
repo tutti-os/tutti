@@ -814,6 +814,7 @@ function session(
           activeTurn: {
             agentSessionId: "session-1",
             outcome: null,
+            origin: "user_prompt",
             phase: phase === "working" ? "running" : phase,
             settledAtUnixMs: null,
             startedAtUnixMs: 1,
