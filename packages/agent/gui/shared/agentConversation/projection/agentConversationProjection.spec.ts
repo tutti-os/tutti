@@ -1444,8 +1444,13 @@ describe("projectAgentConversationVM", () => {
   });
 
   it("uses canonical live turn timing instead of generic processing", () => {
+    const baseDetail = detailViewModel();
     const conversation = projectAgentConversationVM(
       detailViewModel({
+        session: {
+          ...baseDetail.session,
+          activeTurnId: "turn-1"
+        },
         sessionTurns: [
           {
             agentSessionId: "session-1",
@@ -1466,10 +1471,15 @@ describe("projectAgentConversationVM", () => {
   });
 
   it("uses active semantic progress instead of appending generic processing", () => {
-    const baseTurn = detailViewModel().turns[0]!;
+    const baseDetail = detailViewModel();
+    const baseTurn = baseDetail.turns[0]!;
     const compactNotice = compactNoticeMessage("turn-1", "running");
     const conversation = projectAgentConversationVM(
       detailViewModel({
+        session: {
+          ...baseDetail.session,
+          activeTurnId: "turn-1"
+        },
         turns: [
           {
             ...baseTurn,
@@ -1524,7 +1534,8 @@ describe("projectAgentConversationVM", () => {
   );
 
   it("does not let progress from an older turn suppress current processing", () => {
-    const firstTurn = detailViewModel().turns[0]!;
+    const baseDetail = detailViewModel();
+    const firstTurn = baseDetail.turns[0]!;
     const compactNotice = compactNoticeMessage("turn-1", "running");
     const secondTurn = {
       id: "turn-2",
@@ -1538,6 +1549,10 @@ describe("projectAgentConversationVM", () => {
     };
     const conversation = projectAgentConversationVM(
       detailViewModel({
+        session: {
+          ...baseDetail.session,
+          activeTurnId: "turn-2"
+        },
         turns: [
           {
             ...firstTurn,

@@ -10,7 +10,7 @@ export function projectAgentProcessingRow(
   if (!detail.showProcessingIndicator) {
     return null;
   }
-  const turnId = detail.session.activeTurnId ?? detail.turns.at(-1)?.id ?? null;
+  const turnId = detail.session.activeTurnId;
   const canonicalTurn = detail.sessionTurns?.find(
     (turn) => turn.turnId === turnId
   );
