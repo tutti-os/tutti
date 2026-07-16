@@ -1,0 +1,41 @@
+{
+  "$schema": "../../schemas/core/event-definition.schema.json",
+  "topic": "workspace.tuttimode.updated",
+  "version": 1,
+  "direction": "server->client",
+  "owner": "workspace",
+  "scope": "workspace",
+  "payloadSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "required": [
+      "agentSessionId",
+      "activationId",
+      "revision",
+      "status",
+      "changeKind"
+    ],
+    "properties": {
+      "agentSessionId": {
+        "type": "string",
+        "minLength": 1
+      },
+      "activationId": {
+        "type": "string",
+        "format": "uuid"
+      },
+      "revision": {
+        "type": "integer",
+        "minimum": 1
+      },
+      "status": {
+        "type": "string",
+        "enum": ["active", "inactive"]
+      },
+      "changeKind": {
+        "type": "string",
+        "enum": ["activated", "deactivated"]
+      }
+    }
+  }
+}

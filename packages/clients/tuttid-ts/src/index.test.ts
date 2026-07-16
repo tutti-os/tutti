@@ -1787,6 +1787,141 @@ test("shared tuttid client runs agent provider actions", async () => {
   });
 });
 
+test("shared tuttid client lists recoverable workspace workflows by session", async () => {
+  const client = createTuttidClient({
+    fetch: async (input, init) => {
+      const request =
+        input instanceof Request ? input : new Request(input, init);
+      const url = new URL(request.url);
+      assert.equal(request.method, "GET");
+      assert.equal(url.pathname, "/v1/workspaces/workspace-1/workflows");
+      assert.equal(url.searchParams.get("sourceSessionId"), "session-1");
+      assert.equal(url.searchParams.get("checkpointStatus"), "pending");
+      return new Response(JSON.stringify({ workflows: [] }), {
+        status: 200,
+        headers: { "content-type": "application/json" }
+      });
+    }
+  });
+
+  assert.deepEqual(
+    await client.listPendingWorkspaceWorkflows("workspace-1", "session-1"),
+    []
+  );
+});
+
+test("shared tuttid client reads and revision-updates Tutti mode activation", async () => {
+  const activation = {
+    agentSessionId: "session-1",
+    createdAtUnixMs: 10,
+    currentRevision: {
+      activationId: "activation-1",
+      createdAtUnixMs: 20,
+      revision: 2,
+      source: "badge_remove" as const,
+      status: "inactive" as const
+    },
+    id: "activation-1",
+    status: "inactive" as const,
+    updatedAtUnixMs: 20,
+    workspaceId: "workspace-1"
+  };
+  const requests: Request[] = [];
+  const client = createTuttidClient({
+    fetch: async (input, init) => {
+      const request =
+        input instanceof Request ? input : new Request(input, init);
+      requests.push(request.clone());
+      return new Response(
+        JSON.stringify(
+          request.method === "GET"
+            ? { activation: null }
+            : { activation, changed: true }
+        ),
+        { status: 200, headers: { "content-type": "application/json" } }
+      );
+    }
+  });
+
+  assert.equal(
+    await client.getWorkspaceAgentSessionTuttiModeActivation(
+      "workspace-1",
+      "session-1"
+    ),
+    null
+  );
+  assert.deepEqual(
+    await client.updateWorkspaceAgentSessionTuttiModeActivation(
+      "workspace-1",
+      "session-1",
+      {
+        expectedRevision: 1,
+        source: "badge_remove",
+        status: "inactive"
+      }
+    ),
+    { activation, changed: true }
+  );
+  assert.deepEqual(
+    requests.map((request) => ({
+      method: request.method,
+      path: new URL(request.url).pathname
+    })),
+    [
+      {
+        method: "GET",
+        path: "/v1/workspaces/workspace-1/agent-sessions/session-1/tutti-mode-activation"
+      },
+      {
+        method: "PUT",
+        path: "/v1/workspaces/workspace-1/agent-sessions/session-1/tutti-mode-activation"
+      }
+    ]
+  );
+  assert.deepEqual(await requests[1]?.json(), {
+    expectedRevision: 1,
+    source: "badge_remove",
+    status: "inactive"
+  });
+});
+
+test("shared tuttid client submits a user checkpoint decision", async () => {
+  const snapshot = { workflow: { id: "workflow-1" } };
+  const client = createTuttidClient({
+    fetch: async (input, init) => {
+      const request =
+        input instanceof Request ? input : new Request(input, init);
+      assert.equal(request.method, "POST");
+      assert.equal(
+        new URL(request.url).pathname,
+        "/v1/workspaces/workspace-1/workflows/workflow-1/checkpoints/checkpoint-1/decision"
+      );
+      assert.deepEqual(await request.json(), {
+        decision: "rejected",
+        decidedBy: "user-1",
+        reason: "Split the verification step"
+      });
+      return new Response(JSON.stringify(snapshot), {
+        status: 200,
+        headers: { "content-type": "application/json" }
+      });
+    }
+  });
+
+  const result = await client.decideWorkspaceWorkflowCheckpoint(
+    "workspace-1",
+    "workflow-1",
+    "checkpoint-1",
+    {
+      decision: "rejected",
+      decidedBy: "user-1",
+      reason: "Split the verification step"
+    }
+  );
+
+  assert.equal(result.workflow.id, "workflow-1");
+});
+
 test("shared tuttid client deletes workspace agent sessions", async () => {
   let requestMethod = "";
   let requestPath = "";

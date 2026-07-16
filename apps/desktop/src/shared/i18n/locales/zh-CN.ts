@@ -141,7 +141,7 @@ export const zhCN = {
       handoffRequest: "继续来源会话并接手后续步骤。",
       issueFromPlanCreated: "已从确认的方案创建 Issue。",
       issueFromTraditionalPlanCreated:
-        "Issue 已创建。下次可直接选择 Ultra Plan，一次完成规划与编排。",
+        "Issue 已创建。需要持久化规划工作流时可添加 /tutti",
       issueFromPlanDefaultTopic: "收件箱",
       issueFromPlanDefaultTitle: "已确认的方案",
       issueFromPlanFailed: "无法将确认的方案转换为 Issue。",

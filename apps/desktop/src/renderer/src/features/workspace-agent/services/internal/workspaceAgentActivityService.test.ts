@@ -676,6 +676,10 @@ test("WorkspaceAgentActivityService starts session-event streams and preserves u
     },
     {
       scope: { workspaceId: "ws-1" },
+      topic: "workspace.tuttimode.updated"
+    },
+    {
+      scope: { workspaceId: "ws-1" },
       topic: "agent.model.configuration.changed"
     },
     {
@@ -738,6 +742,75 @@ test("WorkspaceAgentActivityService starts session-event streams and preserves u
   });
 
   assert.deepEqual(await receivedTurnEvent, turnEvent);
+});
+
+test("WorkspaceAgentActivityService reconciles the session when Tutti activation changes", async () => {
+  const listenersByTopic = new Map<string, (event: unknown) => void>();
+  const initial = workspaceAgentSession({ status: "ready" });
+  const active = {
+    ...initial,
+    tuttiModeActivation: {
+      agentSessionId: "session-1",
+      createdAtUnixMs: 10,
+      currentRevision: {
+        activationId: "activation-1",
+        createdAtUnixMs: 10,
+        revision: 1,
+        source: "slash_command",
+        status: "active"
+      },
+      id: "activation-1",
+      status: "active",
+      updatedAtUnixMs: 10,
+      workspaceId: "ws-1"
+    }
+  };
+  let sessionReads = 0;
+  const service = new WorkspaceAgentActivityService({
+    eventStreamClient: {
+      connect: async () => {},
+      dispose: () => {},
+      publishIntent: async () => {},
+      subscribe: (topic: string, listener: (event: unknown) => void) => {
+        listenersByTopic.set(topic, listener);
+        return () => {};
+      },
+      subscribeConnectionState: () => () => {}
+    } as never,
+    tuttidClient: {
+      getWorkspaceAgentSession: async () => {
+        sessionReads += 1;
+        return { childSessions: [], session: active };
+      },
+      listWorkspaceAgentSessions: async () => ({
+        hasMore: false,
+        sessions: [initial],
+        workspaceId: "ws-1"
+      })
+    } as unknown as TuttidClient,
+    runtimeApi: { logTerminalDiagnostic: async () => {} }
+  });
+
+  await service.load("ws-1");
+  const listener = listenersByTopic.get("workspace.tuttimode.updated");
+  assert.ok(listener);
+  listener({
+    payload: {
+      activationId: "activation-1",
+      agentSessionId: "session-1",
+      changeKind: "activated",
+      revision: 1,
+      status: "active",
+      workspaceId: "ws-1"
+    }
+  });
+  await new Promise((resolve) => setImmediate(resolve));
+
+  assert.equal(sessionReads, 1);
+  assert.equal(
+    service.getSnapshot("ws-1").sessions[0]?.tuttiModeActivation?.status,
+    "active"
+  );
 });
 
 test("WorkspaceAgentActivityService preserves realtime turn provenance for attention", async () => {
@@ -1874,6 +1947,7 @@ function workspaceAgentSession(overrides: {
     createdAtUnixMs: Date.parse("2026-06-16T00:00:00.000Z"),
     endedAtUnixMs: null,
     goal: null,
+    tuttiModeActivation: null,
     id: "session-1",
     imported: false,
     provider: overrides.provider ?? "codex",

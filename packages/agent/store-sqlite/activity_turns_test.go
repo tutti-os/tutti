@@ -44,6 +44,299 @@ INSERT INTO workspace_agent_turns (
 	}
 }
 
+func TestRecordTurnTransitionPersistsCapabilityReferencesFromFirstProjection(t *testing.T) {
+	t.Parallel()
+	store := openTestStore(t, testOptions(&staticProjectPaths{}))
+	ctx := context.Background()
+	seedTurnTestSession(t, store, "ws-1", "session-1")
+
+	submitted, accepted, err := store.RecordTurnTransition(ctx, TurnTransition{
+		WorkspaceID: "ws-1", AgentSessionID: "session-1", TurnID: "turn-1",
+		Phase: TurnPhaseSubmitted, OccurredAtUnixMS: 100,
+		CapabilityRefs: []CapabilityReference{
+			{Capability: " tutti ", Source: "slash_command"},
+			{Capability: "tutti", Source: "slash_command"},
+		},
+	})
+	if err != nil || !accepted {
+		t.Fatalf("RecordTurnTransition(submitted) accepted=%v error=%v", accepted, err)
+	}
+	if len(submitted.CapabilityRefs) != 1 || submitted.CapabilityRefs[0] != (CapabilityReference{Capability: "tutti", Source: "slash_command"}) {
+		t.Fatalf("submitted capability refs = %#v", submitted.CapabilityRefs)
+	}
+
+	running, accepted, err := store.RecordTurnTransition(ctx, TurnTransition{
+		WorkspaceID: "ws-1", AgentSessionID: "session-1", TurnID: "turn-1",
+		Phase: TurnPhaseRunning, OccurredAtUnixMS: 110,
+	})
+	if err != nil || !accepted {
+		t.Fatalf("RecordTurnTransition(running) accepted=%v error=%v", accepted, err)
+	}
+	if len(running.CapabilityRefs) != 1 || running.CapabilityRefs[0] != (CapabilityReference{Capability: "tutti", Source: "slash_command"}) {
+		t.Fatalf("running capability refs = %#v, want submitted provenance preserved", running.CapabilityRefs)
+	}
+
+	replayed, accepted, err := store.RecordTurnTransition(ctx, TurnTransition{
+		WorkspaceID: "ws-1", AgentSessionID: "session-1", TurnID: "turn-1",
+		Phase: TurnPhaseRunning, OccurredAtUnixMS: 110,
+		CapabilityRefs: []CapabilityReference{{Capability: "tutti", Source: "slash_command"}},
+	})
+	if err != nil || !accepted || len(replayed.CapabilityRefs) != 1 {
+		t.Fatalf("replayed transition = %#v accepted=%v error=%v", replayed, accepted, err)
+	}
+}
+
+func TestRecordTurnTransitionMergesGuidanceCapabilityReferencesIntoRunningTurn(t *testing.T) {
+	t.Parallel()
+	store := openTestStore(t, testOptions(&staticProjectPaths{}))
+	ctx := context.Background()
+	seedTurnTestSession(t, store, "ws-1", "session-guidance")
+
+	if _, accepted, err := store.RecordTurnTransition(ctx, TurnTransition{
+		WorkspaceID: "ws-1", AgentSessionID: "session-guidance", TurnID: "turn-1",
+		Phase: TurnPhaseRunning, OccurredAtUnixMS: 100,
+	}); err != nil || !accepted {
+		t.Fatalf("RecordTurnTransition(initial running) accepted=%v error=%v", accepted, err)
+	}
+	for attempt := range 2 {
+		turn, accepted, err := store.RecordTurnTransition(ctx, TurnTransition{
+			WorkspaceID: "ws-1", AgentSessionID: "session-guidance", TurnID: "turn-1",
+			Phase: TurnPhaseRunning, OccurredAtUnixMS: int64(110 + attempt),
+			CapabilityRefs: []CapabilityReference{{
+				Capability: "tutti",
+				Source:     "slash_command",
+			}},
+		})
+		if err != nil || !accepted || len(turn.CapabilityRefs) != 1 ||
+			turn.CapabilityRefs[0] != (CapabilityReference{Capability: "tutti", Source: "slash_command"}) {
+			t.Fatalf("guidance transition %d = %#v accepted=%v error=%v", attempt, turn, accepted, err)
+		}
+	}
+}
+
+func TestRecordTurnTransitionCapabilityOnlyPatchPreservesWaitingLifecycle(t *testing.T) {
+	t.Parallel()
+	store := openTestStore(t, testOptions(&staticProjectPaths{}))
+	ctx := context.Background()
+	seedTurnTestSession(t, store, "ws-1", "session-guidance-waiting")
+
+	if _, accepted, err := store.RecordTurnTransition(ctx, TurnTransition{
+		WorkspaceID: "ws-1", AgentSessionID: "session-guidance-waiting", TurnID: "turn-1",
+		Phase: TurnPhaseWaiting, OccurredAtUnixMS: 100,
+	}); err != nil || !accepted {
+		t.Fatalf("RecordTurnTransition(waiting) accepted=%v error=%v", accepted, err)
+	}
+	metadataOnly := TurnTransition{
+		WorkspaceID: "ws-1", AgentSessionID: "session-guidance-waiting", TurnID: "turn-1",
+		OccurredAtUnixMS: 200,
+		CapabilityRefs: []CapabilityReference{{
+			Capability: "tutti",
+			Source:     "slash_command",
+		}},
+	}
+	turn, accepted, err := store.RecordTurnTransition(ctx, metadataOnly)
+	if err != nil || !accepted {
+		t.Fatalf("RecordTurnTransition(capability only) accepted=%v error=%v", accepted, err)
+	}
+	if turn.Phase != TurnPhaseWaiting || turn.UpdatedAtUnixMS != 100 || len(turn.CapabilityRefs) != 1 {
+		t.Fatalf("turn after capability-only merge = %#v", turn)
+	}
+
+	replayed, accepted, err := store.RecordTurnTransition(ctx, metadataOnly)
+	if err != nil || accepted || replayed.Phase != TurnPhaseWaiting || replayed.UpdatedAtUnixMS != 100 {
+		t.Fatalf("replayed capability-only transition = %#v accepted=%v error=%v", replayed, accepted, err)
+	}
+}
+
+func TestRecordTurnTransitionCapabilityOnlyPatchRequiresExistingTurn(t *testing.T) {
+	t.Parallel()
+	store := openTestStore(t, testOptions(&staticProjectPaths{}))
+	ctx := context.Background()
+	seedTurnTestSession(t, store, "ws-1", "session-guidance-missing-turn")
+
+	turn, accepted, err := store.RecordTurnTransition(ctx, TurnTransition{
+		WorkspaceID: "ws-1", AgentSessionID: "session-guidance-missing-turn", TurnID: "turn-missing",
+		CapabilityRefs: []CapabilityReference{{
+			Capability: "tutti",
+			Source:     "slash_command",
+		}},
+	})
+	if err == nil || accepted || turn.TurnID != "" {
+		t.Fatalf("missing-turn capability merge = %#v accepted=%v error=%v", turn, accepted, err)
+	}
+	if _, ok, getErr := store.GetTurn(ctx, "ws-1", "session-guidance-missing-turn", "turn-missing"); getErr != nil || ok {
+		t.Fatalf("missing turn was created ok=%v error=%v", ok, getErr)
+	}
+}
+
+func TestRecordTurnTransitionMergesLateSubmittedCapabilityReferencesWithoutRegressingRunningTurn(t *testing.T) {
+	t.Parallel()
+	store := openTestStore(t, testOptions(&staticProjectPaths{}))
+	ctx := context.Background()
+	seedTurnTestSession(t, store, "ws-1", "session-late-submitted")
+
+	if _, accepted, err := store.RecordTurnTransition(ctx, TurnTransition{
+		WorkspaceID: "ws-1", AgentSessionID: "session-late-submitted", TurnID: "turn-1",
+		Phase: TurnPhaseRunning, OccurredAtUnixMS: 200,
+	}); err != nil || !accepted {
+		t.Fatalf("RecordTurnTransition(running) accepted=%v error=%v", accepted, err)
+	}
+	late := TurnTransition{
+		WorkspaceID: "ws-1", AgentSessionID: "session-late-submitted", TurnID: "turn-1",
+		Phase: TurnPhaseSubmitted, OccurredAtUnixMS: 100,
+		CapabilityRefs: []CapabilityReference{{Capability: "tutti", Source: "slash_command"}},
+	}
+	turn, accepted, err := store.RecordTurnTransition(ctx, late)
+	if err != nil || !accepted {
+		t.Fatalf("RecordTurnTransition(late submitted) accepted=%v error=%v", accepted, err)
+	}
+	if turn.Phase != TurnPhaseRunning || turn.Outcome != "" || turn.UpdatedAtUnixMS != 200 ||
+		len(turn.CapabilityRefs) != 1 {
+		t.Fatalf("turn after late submitted provenance = %#v", turn)
+	}
+
+	replayed, accepted, err := store.RecordTurnTransition(ctx, late)
+	if err != nil || accepted {
+		t.Fatalf("RecordTurnTransition(replayed late submitted) accepted=%v error=%v", accepted, err)
+	}
+	if replayed.Phase != TurnPhaseRunning || replayed.UpdatedAtUnixMS != 200 || len(replayed.CapabilityRefs) != 1 {
+		t.Fatalf("turn after replayed late submitted provenance = %#v", replayed)
+	}
+}
+
+func TestRecordTurnTransitionMergesLateGuidanceCapabilityReferencesWithoutReopeningSettledTurn(t *testing.T) {
+	t.Parallel()
+	store := openTestStore(t, testOptions(&staticProjectPaths{}))
+	ctx := context.Background()
+	seedTurnTestSession(t, store, "ws-1", "session-late-guidance")
+
+	if _, accepted, err := store.RecordTurnTransition(ctx, TurnTransition{
+		WorkspaceID: "ws-1", AgentSessionID: "session-late-guidance", TurnID: "turn-1",
+		Phase: TurnPhaseRunning, OccurredAtUnixMS: 100,
+	}); err != nil || !accepted {
+		t.Fatalf("RecordTurnTransition(running) accepted=%v error=%v", accepted, err)
+	}
+	if _, accepted, err := store.RecordTurnTransition(ctx, TurnTransition{
+		WorkspaceID: "ws-1", AgentSessionID: "session-late-guidance", TurnID: "turn-1",
+		Phase: TurnPhaseSettled, Outcome: TurnOutcomeFailed,
+		OccurredAtUnixMS: 200, SettledAtUnixMS: 200,
+	}); err != nil || !accepted {
+		t.Fatalf("RecordTurnTransition(settled) accepted=%v error=%v", accepted, err)
+	}
+	late := TurnTransition{
+		WorkspaceID: "ws-1", AgentSessionID: "session-late-guidance", TurnID: "turn-1",
+		Phase: TurnPhaseRunning, OccurredAtUnixMS: 210,
+		CapabilityRefs: []CapabilityReference{{Capability: "tutti", Source: "slash_command"}},
+	}
+	turn, accepted, err := store.RecordTurnTransition(ctx, late)
+	if err != nil || !accepted {
+		t.Fatalf("RecordTurnTransition(late guidance) accepted=%v error=%v", accepted, err)
+	}
+	if turn.Phase != TurnPhaseSettled || turn.Outcome != TurnOutcomeFailed ||
+		turn.SettledAtUnixMS != 200 || turn.UpdatedAtUnixMS != 200 || len(turn.CapabilityRefs) != 1 {
+		t.Fatalf("turn after late guidance provenance = %#v", turn)
+	}
+
+	replayed, accepted, err := store.RecordTurnTransition(ctx, late)
+	if err != nil || accepted {
+		t.Fatalf("RecordTurnTransition(replayed late guidance) accepted=%v error=%v", accepted, err)
+	}
+	if replayed.Phase != TurnPhaseSettled || replayed.Outcome != TurnOutcomeFailed ||
+		replayed.SettledAtUnixMS != 200 || replayed.UpdatedAtUnixMS != 200 || len(replayed.CapabilityRefs) != 1 {
+		t.Fatalf("turn after replayed late guidance provenance = %#v", replayed)
+	}
+}
+
+func TestReportActivityStateMergesCapabilityReferencesFromStaleSessionEnvelope(t *testing.T) {
+	t.Parallel()
+	store := openTestStore(t, testOptions(&staticProjectPaths{}))
+	ctx := context.Background()
+
+	initial, err := store.ReportActivityState(ctx, ActivityStateReport{
+		Session: SessionStateReport{
+			WorkspaceID: "ws-1", AgentSessionID: "session-stale-envelope", Origin: "runtime",
+			Provider: "codex", Status: "working", OccurredAtUnixMS: 200,
+		},
+		Turn: &TurnTransition{
+			WorkspaceID: "ws-1", AgentSessionID: "session-stale-envelope", TurnID: "turn-1",
+			Phase: TurnPhaseRunning, OccurredAtUnixMS: 200,
+		},
+	})
+	if err != nil || !initial.State.Accepted || !initial.TurnAccepted {
+		t.Fatalf("initial ReportActivityState() result=%#v error=%v", initial, err)
+	}
+	stale := ActivityStateReport{
+		Session: SessionStateReport{
+			WorkspaceID: "ws-1", AgentSessionID: "session-stale-envelope", Origin: "runtime",
+			Provider: "codex", Status: "working", OccurredAtUnixMS: 100,
+		},
+		Turn: &TurnTransition{
+			WorkspaceID: "ws-1", AgentSessionID: "session-stale-envelope", TurnID: "turn-1",
+			Phase: TurnPhaseSubmitted, OccurredAtUnixMS: 100,
+			CapabilityRefs: []CapabilityReference{{Capability: "tutti", Source: "slash_command"}},
+		},
+	}
+	result, err := store.ReportActivityState(ctx, stale)
+	if err != nil || !result.State.Accepted || result.State.StateApplied || result.State.LastEventUnixMS != 200 || !result.TurnAccepted {
+		t.Fatalf("stale ReportActivityState() result=%#v error=%v", result, err)
+	}
+	if result.Turn.Phase != TurnPhaseRunning || result.Turn.UpdatedAtUnixMS != 200 || len(result.Turn.CapabilityRefs) != 1 {
+		t.Fatalf("turn from stale session envelope = %#v", result.Turn)
+	}
+
+	replayed, err := store.ReportActivityState(ctx, stale)
+	if err != nil || !replayed.State.Accepted || replayed.State.StateApplied || replayed.State.LastEventUnixMS != 200 || replayed.TurnAccepted {
+		t.Fatalf("replayed stale ReportActivityState() result=%#v error=%v", replayed, err)
+	}
+	turn, ok, err := store.GetTurn(ctx, "ws-1", "session-stale-envelope", "turn-1")
+	if err != nil || !ok || turn.Phase != TurnPhaseRunning || turn.UpdatedAtUnixMS != 200 || len(turn.CapabilityRefs) != 1 {
+		t.Fatalf("stored turn after replay = %#v ok=%v error=%v", turn, ok, err)
+	}
+}
+
+func TestReportActivityStateDoesNotMergeCapabilityReferencesIntoSoftDeletedSession(t *testing.T) {
+	t.Parallel()
+	store := openTestStore(t, testOptions(&staticProjectPaths{}))
+	ctx := context.Background()
+	seedTurnTestSession(t, store, "ws-1", "session-deleted")
+
+	if _, accepted, err := store.RecordTurnTransition(ctx, TurnTransition{
+		WorkspaceID: "ws-1", AgentSessionID: "session-deleted", TurnID: "turn-1",
+		Phase: TurnPhaseRunning, OccurredAtUnixMS: 200,
+	}); err != nil || !accepted {
+		t.Fatalf("RecordTurnTransition(running) accepted=%v error=%v", accepted, err)
+	}
+	if _, err := store.db.ExecContext(ctx, `
+UPDATE workspace_agent_sessions
+SET deleted_at_unix_ms = 300, updated_at_unix_ms = 300
+WHERE workspace_id = 'ws-1' AND agent_session_id = 'session-deleted'
+`); err != nil {
+		t.Fatalf("soft delete session: %v", err)
+	}
+
+	result, err := store.ReportActivityState(ctx, ActivityStateReport{
+		Session: SessionStateReport{
+			WorkspaceID: "ws-1", AgentSessionID: "session-deleted", Origin: "runtime",
+			Provider: "codex", Status: "working", OccurredAtUnixMS: 400,
+		},
+		Turn: &TurnTransition{
+			WorkspaceID: "ws-1", AgentSessionID: "session-deleted", TurnID: "turn-1",
+			Phase: TurnPhaseRunning, OccurredAtUnixMS: 400,
+			CapabilityRefs: []CapabilityReference{{Capability: "tutti", Source: "slash_command"}},
+		},
+	})
+	if err != nil || result.State.Accepted || result.TurnAccepted {
+		t.Fatalf("deleted-session ReportActivityState() result=%#v error=%v", result, err)
+	}
+	turn, ok, err := store.GetTurn(ctx, "ws-1", "session-deleted", "turn-1")
+	if err != nil || !ok {
+		t.Fatalf("GetTurn() ok=%v error=%v", ok, err)
+	}
+	if turn.Phase != TurnPhaseRunning || turn.UpdatedAtUnixMS != 200 || len(turn.CapabilityRefs) != 0 {
+		t.Fatalf("soft-deleted session turn was mutated = %#v", turn)
+	}
+}
+
 func TestLatestTurnInteractionsBulkReadIncludesTerminalStates(t *testing.T) {
 	t.Parallel()
 	store := openTestStore(t, testOptions(&staticProjectPaths{}))
@@ -375,6 +668,142 @@ func TestReportActivityStateRollsBackSessionAndTurnWhenInteractionFails(t *testi
 	}
 	if _, ok, getErr := store.GetTurn(ctx, "ws-1", "session-1", "turn-1"); getErr != nil || ok {
 		t.Fatalf("GetTurn() after rollback ok=%v error=%v, want absent", ok, getErr)
+	}
+}
+
+func TestReportActivityStateRollsBackSessionAndTurnWhenMessageFails(t *testing.T) {
+	t.Parallel()
+	store := openTestStore(t, testOptions(&staticProjectPaths{}))
+	ctx := context.Background()
+	if _, err := store.db.ExecContext(ctx, `
+CREATE TRIGGER fail_submit_provenance_message
+BEFORE INSERT ON workspace_agent_messages
+BEGIN
+  SELECT RAISE(ABORT, 'forced submit provenance message failure');
+END
+`); err != nil {
+		t.Fatalf("create message failure trigger: %v", err)
+	}
+
+	_, err := store.ReportActivityState(ctx, ActivityStateReport{
+		Session: SessionStateReport{
+			WorkspaceID: "ws-1", AgentSessionID: "session-1", Origin: "runtime",
+			Provider: "codex", OccurredAtUnixMS: 100,
+		},
+		Turn: &TurnTransition{
+			WorkspaceID: "ws-1", AgentSessionID: "session-1", TurnID: "turn-1",
+			Phase: TurnPhaseSubmitted, OccurredAtUnixMS: 100,
+		},
+		Messages: []MessageUpdate{{
+			MessageID: "client-submit:submit-1", TurnID: "turn-1", Role: "user",
+			Kind: "text", Status: "completed", Payload: map[string]any{"clientSubmitId": "submit-1"},
+			OccurredAtUnixMS: 100,
+		}},
+	})
+	if err == nil {
+		t.Fatal("ReportActivityState() error = nil, want message write failure")
+	}
+	if _, ok, getErr := store.GetSession(ctx, "ws-1", "session-1"); getErr != nil || ok {
+		t.Fatalf("GetSession() after message rollback ok=%v error=%v, want absent", ok, getErr)
+	}
+	if _, ok, getErr := store.GetTurn(ctx, "ws-1", "session-1", "turn-1"); getErr != nil || ok {
+		t.Fatalf("GetTurn() after message rollback ok=%v error=%v, want absent", ok, getErr)
+	}
+}
+
+func TestReportActivityStateCommitsSubmitProvenanceAtomically(t *testing.T) {
+	t.Parallel()
+	store := openTestStore(t, testOptions(&staticProjectPaths{}))
+	ctx := context.Background()
+
+	result, err := store.ReportActivityState(ctx, ActivityStateReport{
+		Session: SessionStateReport{
+			WorkspaceID: "ws-1", AgentSessionID: "session-1", Origin: "runtime",
+			Provider: "codex", OccurredAtUnixMS: 100,
+		},
+		Turn: &TurnTransition{
+			WorkspaceID: "ws-1", AgentSessionID: "session-1", TurnID: "turn-1",
+			Phase: TurnPhaseSubmitted, OccurredAtUnixMS: 100,
+		},
+		Messages: []MessageUpdate{{
+			MessageID: "client-submit:submit-1", TurnID: "turn-1", Role: "user",
+			Kind: "text", Status: "completed", Payload: map[string]any{"clientSubmitId": "submit-1"},
+			OccurredAtUnixMS: 100,
+		}},
+	})
+	if err != nil {
+		t.Fatalf("ReportActivityState() error = %v", err)
+	}
+	if !result.State.Accepted || !result.TurnAccepted || result.Messages.AcceptedCount != 1 {
+		t.Fatalf("ReportActivityState() result = %#v, want session, turn, and message accepted", result)
+	}
+	turnID, found, err := store.FindTurnByClientSubmitID(ctx, "ws-1", "session-1", "submit-1")
+	if err != nil || !found || turnID != "turn-1" {
+		t.Fatalf("FindTurnByClientSubmitID() turnID=%q found=%v error=%v", turnID, found, err)
+	}
+}
+
+func TestReportActivityStateCommitsGuidanceProvenanceWithoutRegressingOrDuplicating(t *testing.T) {
+	t.Parallel()
+	store := openTestStore(t, testOptions(&staticProjectPaths{}))
+	ctx := context.Background()
+	if _, err := store.ReportActivityState(ctx, ActivityStateReport{
+		Session: SessionStateReport{
+			WorkspaceID: "ws-1", AgentSessionID: "session-guidance", Origin: "runtime",
+			Provider: "codex", OccurredAtUnixMS: 100,
+		},
+		Turn: &TurnTransition{
+			WorkspaceID: "ws-1", AgentSessionID: "session-guidance", TurnID: "turn-active",
+			Phase: TurnPhaseRunning, OccurredAtUnixMS: 100,
+		},
+	}); err != nil {
+		t.Fatalf("seed running turn: %v", err)
+	}
+
+	reports := make(map[string]ActivityStateReport)
+	for index, clientSubmitID := range []string{"guidance-1", "guidance-2"} {
+		report := ActivityStateReport{
+			Session: SessionStateReport{
+				WorkspaceID: "ws-1", AgentSessionID: "session-guidance", Origin: "runtime",
+				Provider: "codex", OccurredAtUnixMS: int64(200 + index),
+			},
+			Messages: []MessageUpdate{{
+				MessageID: "client-submit:" + clientSubmitID, TurnID: "turn-active", Role: "user",
+				Kind: "text", Status: "completed",
+				Payload:          map[string]any{"clientSubmitId": clientSubmitID, "content": "guide"},
+				OccurredAtUnixMS: int64(200 + index),
+			}},
+		}
+		reports[clientSubmitID] = report
+		result, err := store.ReportActivityState(ctx, report)
+		if err != nil || result.Messages.AcceptedCount != 1 {
+			t.Fatalf("ReportActivityState(%s) result=%#v error=%v", clientSubmitID, result, err)
+		}
+		turnID, found, err := store.FindTurnByClientSubmitID(ctx, "ws-1", "session-guidance", clientSubmitID)
+		if err != nil || !found || turnID != "turn-active" {
+			t.Fatalf("FindTurnByClientSubmitID(%s) turnID=%q found=%v error=%v", clientSubmitID, turnID, found, err)
+		}
+	}
+	turn, found, err := store.GetTurn(ctx, "ws-1", "session-guidance", "turn-active")
+	if err != nil || !found || turn.Phase != TurnPhaseRunning {
+		t.Fatalf("GetTurn() turn=%#v found=%v error=%v, want running", turn, found, err)
+	}
+
+	pageBefore, _, err := store.ListSessionMessages(ctx, ListSessionMessagesInput{
+		WorkspaceID: "ws-1", AgentSessionID: "session-guidance", Order: MessageOrderAsc, Limit: 10,
+	})
+	if err != nil || len(pageBefore.Messages) != 2 {
+		t.Fatalf("ListSessionMessages(before replay) page=%#v error=%v", pageBefore, err)
+	}
+	replayed, err := store.ReportActivityState(ctx, reports["guidance-1"])
+	if err != nil || replayed.Messages.AcceptedCount != 1 || replayed.Messages.LatestVersion != pageBefore.LatestVersion {
+		t.Fatalf("replayed provenance result=%#v error=%v", replayed, err)
+	}
+	pageAfter, _, err := store.ListSessionMessages(ctx, ListSessionMessagesInput{
+		WorkspaceID: "ws-1", AgentSessionID: "session-guidance", Order: MessageOrderAsc, Limit: 10,
+	})
+	if err != nil || len(pageAfter.Messages) != 2 || pageAfter.LatestVersion != pageBefore.LatestVersion {
+		t.Fatalf("ListSessionMessages(after replay) page=%#v error=%v", pageAfter, err)
 	}
 }
 

@@ -2,6 +2,7 @@ package storesqlite
 
 import (
 	"database/sql"
+	"encoding/json"
 	"fmt"
 	"strings"
 )
@@ -12,7 +13,7 @@ SELECT workspace_id, agent_session_id, turn_id, phase, outcome, error_json,
        started_at_unix_ms, settled_at_unix_ms, created_at_unix_ms, updated_at_unix_ms,
        root_provider_turn_id, root_provider_turn_phase, root_provider_turn_outcome,
        root_provider_turn_error_json, root_provider_turn_completed_command_json,
-       root_provider_turn_updated_at_unix_ms
+       root_provider_turn_updated_at_unix_ms, capability_refs_json
 FROM workspace_agent_turns`
 
 func scanAgentTurn(scanner rowScanner) (Turn, error) {
@@ -24,6 +25,7 @@ func scanAgentTurn(scanner rowScanner) (Turn, error) {
 	var settledAt sql.NullInt64
 	var rootProviderTurnID, rootProviderTurnPhase, rootProviderTurnOutcome sql.NullString
 	var rootProviderTurnErrorJSON, rootProviderTurnCompletedCommandJSON sql.NullString
+	var capabilityRefsJSON string
 	var backfilled int
 	err := scanner.Scan(
 		&turn.WorkspaceID,
@@ -45,6 +47,7 @@ func scanAgentTurn(scanner rowScanner) (Turn, error) {
 		&rootProviderTurnErrorJSON,
 		&rootProviderTurnCompletedCommandJSON,
 		&turn.RootProviderTurnUpdatedAtUnixMS,
+		&capabilityRefsJSON,
 	)
 	if err != nil {
 		return Turn{}, err
@@ -55,6 +58,9 @@ func scanAgentTurn(scanner rowScanner) (Turn, error) {
 	turn.RootProviderTurnID = strings.TrimSpace(rootProviderTurnID.String)
 	turn.RootProviderTurnPhase = strings.TrimSpace(rootProviderTurnPhase.String)
 	turn.RootProviderTurnOutcome = strings.TrimSpace(rootProviderTurnOutcome.String)
+	if err := json.Unmarshal([]byte(capabilityRefsJSON), &turn.CapabilityRefs); err != nil {
+		return Turn{}, fmt.Errorf("decode workspace agent turn capability refs: %w", err)
+	}
 	if errorJSON.Valid && strings.TrimSpace(errorJSON.String) != "" {
 		decoded, err := unmarshalJSONMap(errorJSON.String)
 		if err != nil {

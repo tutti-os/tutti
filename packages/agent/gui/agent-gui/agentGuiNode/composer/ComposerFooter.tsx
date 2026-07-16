@@ -1,9 +1,6 @@
 import { type Dispatch, type ReactNode, type SetStateAction } from "react";
-import { ListChecks, SlidersHorizontal, Target, X } from "lucide-react";
+import { ListChecks, Sparkles, Target, X } from "lucide-react";
 import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
   Select,
   SelectContent,
   SelectItem,
@@ -24,12 +21,9 @@ import {
 import { textPromptContent } from "../model/agentComposerDraft";
 import type { AgentGUIAgentTarget } from "../../../types";
 import type {
-  AgentComposerExecutionMode,
   AgentComposerProps,
   AgentComposerUsage
 } from "./AgentComposer.types";
-import { PlanIssueBudgetPresetSurface } from "../../../shared/agentConversation/components/PlanIssueBudgetPresetSurface";
-import { defaultPlanIssueBudgetPreset } from "../../../shared/agentConversation/planImplementationPresentation";
 import {
   AgentComposerHandoffIcon,
   AgentComposerMaskIcon,
@@ -55,9 +49,9 @@ interface Props {
   isSendingTurn: boolean;
   isHeroLayout: boolean;
   isGoalModeActive: boolean;
-  executionMode: AgentComposerExecutionMode;
-  onExecutionModeChange: (mode: AgentComposerExecutionMode) => void;
-  onPlanIssueBudgetPresetChange: AgentComposerProps["onPlanIssueBudgetPresetChange"];
+  isPlanModeActive: boolean;
+  isTuttiModeActive: boolean;
+  isTuttiModeUpdating: boolean;
   composerActionButton: ReactNode;
   showHandoffSelect: boolean;
   handoffDisabled: boolean;
@@ -80,6 +74,8 @@ interface Props {
   onSettingsChange: AgentComposerProps["onSettingsChange"];
   onSubmit: AgentComposerProps["onSubmit"];
   onClearGoalMode: () => void;
+  onClearPlanMode: () => void;
+  onClearTuttiMode: () => void;
 }
 
 export function ComposerFooter({
@@ -96,9 +92,9 @@ export function ComposerFooter({
   isSendingTurn,
   isHeroLayout,
   isGoalModeActive,
-  executionMode,
-  onExecutionModeChange,
-  onPlanIssueBudgetPresetChange,
+  isPlanModeActive,
+  isTuttiModeActive,
+  isTuttiModeUpdating,
   composerActionButton,
   showHandoffSelect,
   handoffDisabled,
@@ -120,7 +116,9 @@ export function ComposerFooter({
   onMentionPaletteButton: handleMentionPaletteButton,
   onSettingsChange,
   onSubmit,
-  onClearGoalMode: clearGoalModeBadge
+  onClearGoalMode: clearGoalModeBadge,
+  onClearPlanMode,
+  onClearTuttiMode
 }: Props) {
   const showSettingsLoadingPlaceholders = composerSettings.isSettingsLoading;
   return (
@@ -128,103 +126,6 @@ export function ComposerFooter({
       <div className={styles.composerFooter}>
         <div className={composerStyles.footerGroup}>
           <div className="inline-flex shrink-0 items-center gap-1">
-            {composerSettings.supportsPlanMode ? (
-              <Select
-                value={executionMode}
-                disabled={settingsControlsDisabled}
-                onValueChange={(value) =>
-                  onExecutionModeChange(value as AgentComposerExecutionMode)
-                }
-              >
-                <SelectTrigger
-                  size="sm"
-                  aria-label={labels.planModeLabel}
-                  className={cn(styles.composerMenuTrigger, "w-auto")}
-                  data-testid="agent-composer-execution-mode"
-                >
-                  <span className="flex min-w-0 items-center gap-1.5">
-                    <ListChecks aria-hidden className="size-3.5" />
-                    <span className="truncate">
-                      {executionMode === "ultra_plan"
-                        ? labels.ultraPlanModeLabel
-                        : executionMode === "plan"
-                          ? labels.planModeLabel
-                          : (labels.normalModeLabel ?? labels.planModeOffLabel)}
-                    </span>
-                  </span>
-                </SelectTrigger>
-                <SelectContent align="start">
-                  <ExecutionModeItem
-                    description={labels.normalModeDescription}
-                    label={labels.normalModeLabel ?? labels.planModeOffLabel}
-                    value="normal"
-                  />
-                  <ExecutionModeItem
-                    description={labels.planModeDescription}
-                    label={labels.planModeLabel}
-                    value="plan"
-                  />
-                  {composerSettings.supportsUltraPlan &&
-                  labels.ultraPlanModeLabel ? (
-                    <ExecutionModeItem
-                      description={labels.ultraPlanModeDescription}
-                      label={labels.ultraPlanModeLabel}
-                      value="ultra_plan"
-                    />
-                  ) : null}
-                </SelectContent>
-              </Select>
-            ) : null}
-            {executionMode !== "normal" && onPlanIssueBudgetPresetChange ? (
-              <Popover>
-                <PopoverTrigger asChild>
-                  <button
-                    aria-label={
-                      labels.planIssuePresetLabel ?? labels.planIssueReviewTitle
-                    }
-                    className={cn(styles.composerMenuTrigger, "w-auto")}
-                    data-testid="agent-composer-plan-budget-preset"
-                    disabled={settingsControlsDisabled}
-                    type="button"
-                  >
-                    <SlidersHorizontal aria-hidden className="size-3.5" />
-                    <span className="truncate">
-                      {labels.planIssuePresetLabel ??
-                        labels.planIssueReviewTitle ??
-                        labels.planModeLabel}
-                    </span>
-                  </button>
-                </PopoverTrigger>
-                <PopoverContent align="start" className="w-80 p-3">
-                  <div className="mb-3 text-[13px] font-semibold text-[var(--text-primary)]">
-                    {labels.planIssuePresetLabel ??
-                      labels.planIssueReviewTitle ??
-                      labels.planModeLabel}
-                  </div>
-                  <PlanIssueBudgetPresetSurface
-                    disabled={settingsControlsDisabled}
-                    labels={{
-                      reasoning:
-                        labels.planIssueReasoning ?? labels.planModeLabel,
-                      orchestration:
-                        labels.planIssueOrchestration ?? labels.planModeLabel,
-                      budgetAuto:
-                        labels.planIssueBudgetAuto ?? labels.planModeLabel,
-                      budgetFixed:
-                        labels.planIssueBudgetFixed ?? labels.planModeLabel,
-                      tokenBudget:
-                        labels.planIssueTokenBudget ?? labels.planModeLabel
-                    }}
-                    preset={
-                      composerSettings.planIssueBudgetPreset ??
-                      defaultPlanIssueBudgetPreset()
-                    }
-                    taskCount={1}
-                    onChange={onPlanIssueBudgetPresetChange}
-                  />
-                </PopoverContent>
-              </Popover>
-            ) : null}
             {previewMode ? (
               <TooltipProvider delayDuration={120}>
                 <Tooltip>
@@ -462,6 +363,50 @@ export function ComposerFooter({
               </SelectContent>
             </Select>
           ) : null}
+          {isPlanModeActive ? (
+            <button
+              type="button"
+              disabled={settingsControlsDisabled}
+              aria-label={labels.planModeLabel}
+              title={labels.planModeDescription ?? labels.planModeLabel}
+              data-agent-plan-mode-badge="true"
+              className={cn(
+                styles.composerMenuTrigger,
+                "group w-auto",
+                "disabled:cursor-not-allowed disabled:opacity-60"
+              )}
+              onClick={onClearPlanMode}
+            >
+              <span className="flex min-w-0 items-center gap-1.5 overflow-hidden">
+                <RemovableBadgeIcon
+                  icon={<ListChecks className="size-3.5" />}
+                />
+                <span className="min-w-0 truncate">{labels.planModeLabel}</span>
+              </span>
+            </button>
+          ) : null}
+          {isTuttiModeActive ? (
+            <button
+              type="button"
+              disabled={isTuttiModeUpdating}
+              aria-label={labels.tuttiModeLabel}
+              title={labels.tuttiModeDescription}
+              data-agent-tutti-mode-badge="true"
+              className={cn(
+                styles.composerMenuTrigger,
+                "group w-auto",
+                "disabled:cursor-not-allowed disabled:opacity-60"
+              )}
+              onClick={onClearTuttiMode}
+            >
+              <span className="flex min-w-0 items-center gap-1.5 overflow-hidden">
+                <RemovableBadgeIcon icon={<Sparkles className="size-3.5" />} />
+                <span className="min-w-0 truncate">
+                  {labels.tuttiModeLabel}
+                </span>
+              </span>
+            </button>
+          ) : null}
           {isGoalModeActive ? (
             <button
               type="button"
@@ -585,25 +530,24 @@ export function ComposerFooter({
   );
 }
 
-function ExecutionModeItem({
-  description,
-  label,
-  value
-}: {
-  description?: string;
-  label: string;
-  value: AgentComposerExecutionMode;
-}) {
+function RemovableBadgeIcon({ icon }: { icon: ReactNode }) {
   return (
-    <SelectItem value={value}>
-      <span className="grid min-w-0 gap-0.5 py-0.5">
-        <span className="text-[13px] text-[var(--text-primary)]">{label}</span>
-        {description ? (
-          <span className="max-w-[260px] whitespace-normal text-[11px] text-[var(--text-secondary)]">
-            {description}
-          </span>
-        ) : null}
+    <span className="relative flex size-3.5 shrink-0 items-center justify-center">
+      <span
+        aria-hidden
+        className="transition-opacity duration-150 group-hover:opacity-0 group-focus-visible:opacity-0"
+      >
+        {icon}
       </span>
-    </SelectItem>
+      <span
+        aria-hidden
+        className="absolute inset-0 flex items-center justify-center rounded-full bg-[var(--text-secondary)] opacity-0 transition-opacity duration-150 group-hover:opacity-100 group-focus-visible:opacity-100 group-disabled:opacity-0"
+      >
+        <X
+          className="size-2.5 text-[var(--background-fronted)]"
+          strokeWidth={3}
+        />
+      </span>
+    </span>
   );
 }

@@ -37,6 +37,121 @@ type reportCall struct {
 	report agentsessionstore.ReportActivityInput
 }
 
+type turnProjectionGateReporter struct {
+	entered   chan struct{}
+	release   chan struct{}
+	completed chan agentsessionstore.ReportActivityInput
+	once      sync.Once
+}
+
+type submitProvenanceGateReporter struct {
+	clientSubmitID string
+	submitted      chan struct{}
+	streaming      chan struct{}
+	entered        chan struct{}
+	release        chan struct{}
+	completed      chan agentsessionstore.ReportActivityInput
+	once           sync.Once
+}
+
+type reentrantDurableActivityReporter struct {
+	controller *Controller
+	roomID     string
+	sessionID  string
+}
+
+func (*reentrantDurableActivityReporter) Report(context.Context, agentsessionstore.ReportActivityInput) error {
+	return nil
+}
+
+func (r *reentrantDurableActivityReporter) ReportSubmitProvenance(ctx context.Context, _ agentsessionstore.ReportActivityInput) error {
+	_, err := r.controller.SetTitle(ctx, r.roomID, r.sessionID, "title from submit observer")
+	return err
+}
+
+func newTurnProjectionGateReporter() *turnProjectionGateReporter {
+	return &turnProjectionGateReporter{
+		entered:   make(chan struct{}),
+		release:   make(chan struct{}),
+		completed: make(chan agentsessionstore.ReportActivityInput, 1),
+	}
+}
+
+func newSubmitProvenanceGateReporter(clientSubmitID string) *submitProvenanceGateReporter {
+	return &submitProvenanceGateReporter{
+		clientSubmitID: clientSubmitID,
+		submitted:      make(chan struct{}),
+		streaming:      make(chan struct{}),
+		entered:        make(chan struct{}),
+		release:        make(chan struct{}),
+		completed:      make(chan agentsessionstore.ReportActivityInput, 1),
+	}
+}
+
+func (r *turnProjectionGateReporter) Report(_ context.Context, report agentsessionstore.ReportActivityInput) error {
+	for _, patch := range report.StatePatches {
+		if patch.Turn == nil || len(patch.Turn.CapabilityRefs) == 0 {
+			continue
+		}
+		r.once.Do(func() { close(r.entered) })
+		<-r.release
+		r.completed <- report
+		break
+	}
+	return nil
+}
+
+func (r *turnProjectionGateReporter) ReportSubmitProvenance(ctx context.Context, report agentsessionstore.ReportActivityInput) error {
+	return r.Report(ctx, report)
+}
+
+func (r *submitProvenanceGateReporter) Report(_ context.Context, report agentsessionstore.ReportActivityInput) error {
+	for _, patch := range report.StatePatches {
+		if patch.Turn != nil && patch.Turn.Phase == "submitted" {
+			select {
+			case <-r.submitted:
+			default:
+				close(r.submitted)
+			}
+		}
+	}
+	for _, update := range report.MessageUpdates {
+		if update.MessageID == "stream-before-submit-provenance" {
+			select {
+			case <-r.streaming:
+			default:
+				close(r.streaming)
+			}
+		}
+	}
+	return nil
+}
+
+func (r *submitProvenanceGateReporter) ReportSubmitProvenance(_ context.Context, report agentsessionstore.ReportActivityInput) error {
+	select {
+	case <-r.submitted:
+	default:
+		return errors.New("submit provenance barrier overtook the submitted report")
+	}
+	select {
+	case <-r.streaming:
+	default:
+		return errors.New("submit provenance barrier overtook a coalesced streaming report")
+	}
+	for _, update := range report.MessageUpdates {
+		if update.Payload["clientSubmitId"] != r.clientSubmitID {
+			continue
+		}
+		r.once.Do(func() {
+			close(r.entered)
+			<-r.release
+			r.completed <- report
+		})
+		break
+	}
+	return nil
+}
+
 func stringPtr(value string) *string {
 	return &value
 }
@@ -56,6 +171,10 @@ func (r *recordingReporter) Report(_ context.Context, report agentsessionstore.R
 		}
 	}
 	return nil
+}
+
+func (r *recordingReporter) ReportSubmitProvenance(ctx context.Context, report agentsessionstore.ReportActivityInput) error {
+	return r.Report(ctx, report)
 }
 
 func (r *recordingReporter) snapshot() []reportCall {
@@ -137,6 +256,207 @@ func TestControllerStartFailureDoesNotCreateCanonicalSessionOrTurnlessMessage(t 
 	if len(controller.pendingCommandSnapshots) != 0 || len(controller.pendingConfigOptionsUpdates) != 0 {
 		t.Fatalf("pending snapshots survived failed start: commands=%#v config=%#v", controller.pendingCommandSnapshots, controller.pendingConfigOptionsUpdates)
 	}
+}
+
+func TestControllerExecReturnsBeforeCapabilityReferenceTurnProjection(t *testing.T) {
+	t.Parallel()
+	adapter := newBlockingExecAdapter()
+	reporter := newTurnProjectionGateReporter()
+	controller := NewController([]Adapter{adapter}, reporter)
+	started, err := controller.Start(context.Background(), StartInput{
+		RoomID: "room-1", AgentSessionID: "agent-session-1", Provider: ProviderCodex,
+	})
+	if err != nil {
+		t.Fatalf("Start() error = %v", err)
+	}
+
+	resultCh := make(chan ExecResult, 1)
+	errCh := make(chan error, 1)
+	go func() {
+		result, execErr := controller.Exec(context.Background(), ExecInput{
+			RoomID:         "room-1",
+			AgentSessionID: started.Session.AgentSessionID,
+			Content:        textPrompt("use tutti"),
+			CapabilityRefs: []CapabilityReference{{Capability: "tutti", Source: "slash_command"}},
+		})
+		resultCh <- result
+		errCh <- execErr
+	}()
+
+	select {
+	case <-reporter.entered:
+	case <-time.After(2 * time.Second):
+		t.Fatal("capability-reference turn projection did not reach reporter")
+	}
+	var result ExecResult
+	select {
+	case result = <-resultCh:
+		if execErr := <-errCh; execErr != nil {
+			t.Fatalf("Exec() error = %v", execErr)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("Exec() waited for the asynchronous turn projection")
+	}
+	if result.TurnID == "" {
+		t.Fatalf("Exec() result = %#v", result)
+	}
+
+	close(reporter.release)
+	var projected agentsessionstore.ReportActivityInput
+	select {
+	case projected = <-reporter.completed:
+	case <-time.After(2 * time.Second):
+		t.Fatal("capability-reference turn projection did not complete")
+	}
+	found := false
+	for _, patch := range projected.StatePatches {
+		if patch.Turn != nil && patch.Turn.TurnID == result.TurnID && len(patch.Turn.CapabilityRefs) == 1 {
+			found = patch.Turn.CapabilityRefs[0] == (agentsessionstore.WorkspaceAgentCapabilityReference{Capability: "tutti", Source: "slash_command"})
+		}
+	}
+	if !found {
+		t.Fatalf("projected state patches = %#v", projected.StatePatches)
+	}
+
+	adapter.waitForPrompt(t, "use tutti")
+	adapter.releaseNext()
+	waitForSessionStatus(t, controller, "room-1", started.Session.AgentSessionID, SessionStatusReady)
+}
+
+func TestControllerDurablyReportSubmitProvenanceWaitsForItsFIFOReport(t *testing.T) {
+	t.Parallel()
+
+	const clientSubmitID = "submit-durable-1"
+	adapter := newBlockingExecAdapter()
+	reporter := newSubmitProvenanceGateReporter(clientSubmitID)
+	controller := NewController([]Adapter{adapter}, reporter)
+	started, err := controller.Start(context.Background(), StartInput{
+		RoomID: "room-1", AgentSessionID: "agent-session-1", Provider: ProviderCodex,
+	})
+	if err != nil {
+		t.Fatalf("Start() error = %v", err)
+	}
+	execResult, err := controller.Exec(context.Background(), ExecInput{
+		RoomID: "room-1", AgentSessionID: started.Session.AgentSessionID,
+		TurnID: "turn-durable-1", Content: textPrompt("persist me"),
+	})
+	if err != nil {
+		t.Fatalf("Exec() error = %v", err)
+	}
+	adapter.waitForPrompt(t, "persist me")
+	controller.enqueueReport(context.Background(), agentsessionstore.ReportActivityInput{
+		WorkspaceID: "room-1",
+		Source: agentsessionstore.EventSource{
+			AgentID: started.Session.AgentSessionID, Provider: ProviderCodex,
+			SessionOrigin: agentsessionstore.WorkspaceAgentSessionOriginRuntime,
+		},
+		MessageUpdates: []agentsessionstore.WorkspaceAgentMessageUpdate{{
+			AgentSessionID: started.Session.AgentSessionID,
+			MessageID:      "stream-before-submit-provenance",
+			TurnID:         execResult.TurnID,
+			Role:           RoleAssistant,
+			Kind:           "text",
+			Status:         "streaming",
+			Payload:        map[string]any{"text": "partial"},
+		}},
+	})
+
+	done := make(chan error, 1)
+	go func() {
+		done <- controller.DurablyReportSubmitProvenance(context.Background(), SubmitProvenanceInput{
+			RoomID:         "room-1",
+			AgentSessionID: started.Session.AgentSessionID,
+			TurnID:         execResult.TurnID,
+			ClientSubmitID: clientSubmitID,
+			Content:        textPrompt("persist me"),
+		})
+	}()
+
+	select {
+	case <-reporter.entered:
+	case <-time.After(2 * time.Second):
+		t.Fatal("durable provenance report did not reach the reporter")
+	}
+	select {
+	case err := <-done:
+		close(reporter.release)
+		adapter.releaseNext()
+		t.Fatalf("DurablyReportSubmitProvenance() returned before persistence barrier: %v", err)
+	case <-time.After(50 * time.Millisecond):
+	}
+	close(reporter.release)
+	if err := <-done; err != nil {
+		t.Fatalf("DurablyReportSubmitProvenance() error = %v", err)
+	}
+
+	var persisted agentsessionstore.ReportActivityInput
+	select {
+	case persisted = <-reporter.completed:
+	case <-time.After(2 * time.Second):
+		t.Fatal("durable provenance report did not complete")
+	}
+	if len(persisted.MessageUpdates) != 1 ||
+		persisted.MessageUpdates[0].TurnID != execResult.TurnID ||
+		persisted.MessageUpdates[0].Payload["clientSubmitId"] != clientSubmitID {
+		t.Fatalf("persisted submit provenance = %#v", persisted.MessageUpdates)
+	}
+	for _, patch := range persisted.StatePatches {
+		if patch.Turn != nil {
+			t.Fatalf("submit provenance barrier replayed turn lifecycle: %#v", patch.Turn)
+		}
+	}
+
+	adapter.releaseNext()
+	waitForSessionStatus(t, controller, "room-1", started.Session.AgentSessionID, SessionStatusReady)
+}
+
+func TestControllerDurableSubmitProvenanceReporterCanReenterSessionLifecycle(t *testing.T) {
+	t.Parallel()
+
+	adapter := newBlockingExecAdapter()
+	reporter := &reentrantDurableActivityReporter{}
+	controller := NewController([]Adapter{adapter}, reporter)
+	started, err := controller.Start(context.Background(), StartInput{
+		RoomID: "room-1", AgentSessionID: "agent-session-1", Provider: ProviderCodex,
+	})
+	if err != nil {
+		t.Fatalf("Start() error = %v", err)
+	}
+	reporter.controller = controller
+	reporter.roomID = started.Session.RoomID
+	reporter.sessionID = started.Session.AgentSessionID
+	execResult, err := controller.Exec(context.Background(), ExecInput{
+		RoomID: "room-1", AgentSessionID: started.Session.AgentSessionID,
+		TurnID: "turn-reentrant-1", Content: textPrompt("persist me"),
+	})
+	if err != nil {
+		t.Fatalf("Exec() error = %v", err)
+	}
+	adapter.waitForPrompt(t, "persist me")
+
+	done := make(chan error, 1)
+	go func() {
+		done <- controller.DurablyReportSubmitProvenance(context.Background(), SubmitProvenanceInput{
+			RoomID: "room-1", AgentSessionID: started.Session.AgentSessionID,
+			TurnID: execResult.TurnID, ClientSubmitID: "submit-reentrant-1",
+			Content: textPrompt("persist me"),
+		})
+	}()
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatalf("DurablyReportSubmitProvenance() error = %v", err)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("submit provenance observer deadlocked reentering the session lifecycle lock")
+	}
+	session, ok := controller.Session("room-1", started.Session.AgentSessionID)
+	if !ok || session.Title != "title from submit observer" {
+		t.Fatalf("session after observer reentry = %#v ok=%v", session, ok)
+	}
+
+	adapter.releaseNext()
+	waitForSessionStatus(t, controller, "room-1", started.Session.AgentSessionID, SessionStatusReady)
 }
 
 func TestControllerProvisionalStartRollsBackWithoutCanonicalReport(t *testing.T) {
@@ -1347,15 +1667,28 @@ func TestControllerExecGuidanceDuringActiveTurn(t *testing.T) {
 		t.Fatalf("first Exec: %v", err)
 	}
 	adapter.waitForPrompt(t, "first prompt")
+	stream, unsubscribe, ok := controller.Subscribe(started.Session.RoomID, started.Session.AgentSessionID)
+	if !ok {
+		t.Fatal("Subscribe() ok=false")
+	}
+	defer unsubscribe()
+	// Drop the subscription snapshot and any already-buffered first-turn events;
+	// the assertion below is specifically about guidance provenance.
+	for draining := true; draining; {
+		select {
+		case <-stream:
+		default:
+			draining = false
+		}
+	}
 
 	result, err := controller.Exec(ctx, ExecInput{
 		RoomID:         started.Session.RoomID,
 		AgentSessionID: started.Session.AgentSessionID,
 		Content:        textPrompt("guide current turn"),
 		Guidance:       true,
-		Metadata: map[string]any{
-			"clientSubmitId": "guidance-submit-1",
-		},
+		CapabilityRefs: []CapabilityReference{{Capability: "tutti", Source: "slash_command"}},
+		ClientSubmitID: "guidance-submit-1",
 	})
 	if err != nil {
 		t.Fatalf("guidance Exec: %v", err)
@@ -1369,15 +1702,22 @@ func TestControllerExecGuidanceDuringActiveTurn(t *testing.T) {
 	if prompts := adapter.prompts(); len(prompts) != 1 || prompts[0] != "first prompt" {
 		t.Fatalf("adapter prompts after guidance = %#v, want only first prompt running", prompts)
 	}
-	reports := reporter.waitForReports(t, "guidance user message report", func(calls []reportCall) bool {
+	reports := reporter.waitForReports(t, "guidance message and capability-reference reports", func(calls []reportCall) bool {
+		hasMessage := false
+		hasCapabilityRefs := false
 		for _, call := range calls {
 			for _, update := range call.report.MessageUpdates {
 				if update.Payload["clientSubmitId"] == "guidance-submit-1" {
-					return true
+					hasMessage = true
+				}
+			}
+			for _, patch := range call.report.StatePatches {
+				if patch.Turn != nil && patch.Turn.TurnID == first.TurnID && len(patch.Turn.CapabilityRefs) > 0 {
+					hasCapabilityRefs = true
 				}
 			}
 		}
-		return false
+		return hasMessage && hasCapabilityRefs
 	})
 	var guidanceUpdate *agentsessionstore.WorkspaceAgentMessageUpdate
 	for _, report := range reportInputs(reports) {
@@ -1394,6 +1734,37 @@ func TestControllerExecGuidanceDuringActiveTurn(t *testing.T) {
 	}
 	if guidanceUpdate == nil || guidanceUpdate.TurnID != first.TurnID {
 		t.Fatalf("guidance message update = %#v, want active turn id %q", guidanceUpdate, first.TurnID)
+	}
+	var capabilityPatch *agentsessionstore.WorkspaceAgentStatePatch
+	for _, report := range reportInputs(reports) {
+		for index := range report.StatePatches {
+			patch := &report.StatePatches[index]
+			if patch.Turn != nil && patch.Turn.TurnID == first.TurnID && len(patch.Turn.CapabilityRefs) > 0 {
+				capabilityPatch = patch
+			}
+		}
+	}
+	if capabilityPatch == nil || len(capabilityPatch.Turn.CapabilityRefs) != 1 ||
+		capabilityPatch.Turn.CapabilityRefs[0] != (agentsessionstore.WorkspaceAgentCapabilityReference{Capability: "tutti", Source: "slash_command"}) {
+		t.Fatalf("guidance capability patch = %#v", capabilityPatch)
+	}
+	if capabilityPatch.CurrentPhase != "" || capabilityPatch.TurnLifecycle != nil ||
+		capabilityPatch.SubmitAvailability != nil || capabilityPatch.Turn.Phase != "" {
+		t.Fatalf("guidance capability patch claims lifecycle = %#v", capabilityPatch)
+	}
+	deadline := time.NewTimer(100 * time.Millisecond)
+	defer deadline.Stop()
+	checkingStream := true
+	for checkingStream {
+		select {
+		case event := <-stream:
+			patch, ok := event.Data.(agentsessionstore.WorkspaceAgentStatePatch)
+			if ok && patch.Turn != nil && len(patch.Turn.CapabilityRefs) > 0 {
+				t.Fatalf("guidance provenance published directly to runtime stream: %#v", event)
+			}
+		case <-deadline.C:
+			checkingStream = false
+		}
 	}
 
 	adapter.releaseNext()

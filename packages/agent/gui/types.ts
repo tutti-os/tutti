@@ -69,7 +69,7 @@ export interface AgentGUINodeData {
     string,
     AgentGUIModelConfigurationState
   > | null;
-  /** Remembered defaults for Plan/Ultra Plan decomposition review. */
+  /** Remembered defaults for provider Plan decomposition review. */
   planIssueBudgetPreset?: PlanIssueBudgetPreset | null;
 }
 

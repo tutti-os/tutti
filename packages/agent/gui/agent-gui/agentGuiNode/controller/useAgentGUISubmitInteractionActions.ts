@@ -57,10 +57,6 @@ import {
   type UseAgentGUISubmitInteractionActionsInput
 } from "./agentGuiSubmitInteractionContracts";
 
-const ULTRA_PLAN_RUNTIME_INSTRUCTION = `You are in Tutti Ultra Plan mode. Do not implement the requested work or decompose it into Issue tasks in this turn. Produce only a thorough, reviewable plan narrative. The host will ask the user to confirm Issue-level reasoning, orchestration, and token-budget settings before a later Planning Agent turn creates the task graph.
-
-End the response with the exact HTML comment <!-- tutti-ultra-plan-v1 -->. Do not emit a tutti-issue-plan-v1 block yet. Never invent credentials, owner ids, provider account metadata, prices, Agents, Model Plans, or models.`;
-
 export function useAgentGUISubmitInteractionActions(
   input: UseAgentGUISubmitInteractionActionsInput
 ) {
@@ -125,6 +121,7 @@ export function useAgentGUISubmitInteractionActions(
       content: AgentPromptContentBlock[],
       displayPrompt?: string,
       options?: {
+        capabilityRefs?: AgentComposerSubmitOptions["capabilityRefs"];
         immediate?: boolean;
         requiredSettingsPatch?: AgentComposerSubmitOptions["requiredSettingsPatch"];
         sendNow?: boolean;
@@ -185,6 +182,9 @@ export function useAgentGUISubmitInteractionActions(
       });
       sessionEngine.dispatch({
         agentSessionId,
+        ...(options?.capabilityRefs?.length
+          ? { capabilityRefs: options.capabilityRefs }
+          : {}),
         clientSubmitId: submitTrace.clientSubmitId,
         content: normalizedContent,
         expiresAtUnixMs: submittedAtUnixMs + 120_000,
@@ -289,6 +289,7 @@ export function useAgentGUISubmitInteractionActions(
       normalizedContent: AgentPromptContentBlock[],
       displayPromptText?: string,
       options?: {
+        capabilityRefs?: AgentComposerSubmitOptions["capabilityRefs"];
         requiredSettingsPatch?: AgentComposerSubmitOptions["requiredSettingsPatch"];
         sendNow?: boolean;
         sourceScopeKey?: string;
@@ -317,6 +318,7 @@ export function useAgentGUISubmitInteractionActions(
         return;
       }
       executePrompt(agentSessionId, normalizedContent, displayPromptText, {
+        capabilityRefs: options?.capabilityRefs,
         requiredSettingsPatch: options?.requiredSettingsPatch,
         sendNow: options?.sendNow === true,
         sourceScopeKey: options?.sourceScopeKey,
@@ -393,13 +395,6 @@ export function useAgentGUISubmitInteractionActions(
         setDetailError(translate("agentHost.agentGui.promptImagesUnsupported"));
         return;
       }
-      const ultraPlan = options?.executionMode === "ultra_plan";
-      const effectiveContent = ultraPlan
-        ? [
-            ...textPromptContent(ULTRA_PLAN_RUNTIME_INSTRUCTION),
-            ...normalizedContent
-          ]
-        : normalizedContent;
       if (!agentSessionId) {
         if (!isComposerHomeRef.current) {
           const promptLength =
@@ -435,12 +430,10 @@ export function useAgentGUISubmitInteractionActions(
             persistActiveConversation(recoveredAgentSessionId);
             submitExistingPrompt(
               recoveredAgentSessionId,
-              effectiveContent,
-              displayPromptText ??
-                (ultraPlan
-                  ? agentPromptContentDisplayText(normalizedContent)
-                  : undefined),
+              normalizedContent,
+              displayPromptText,
               {
+                capabilityRefs: options?.capabilityRefs,
                 requiredSettingsPatch: options?.requiredSettingsPatch,
                 sourceScopeKey: resolveAgentComposerDraftScopeKey({}),
                 trackDraft: true
@@ -454,11 +447,8 @@ export function useAgentGUISubmitInteractionActions(
           draftByScopeKeyRef.current[homeDraftKey] ?? emptyAgentComposerDraft()
         );
         const activationResult = startConversation(
-          effectiveContent,
-          displayPromptText ??
-            (ultraPlan
-              ? agentPromptContentDisplayText(normalizedContent)
-              : undefined),
+          normalizedContent,
+          displayPromptText,
           options
         );
         if (activationResult) {
@@ -501,7 +491,7 @@ export function useAgentGUISubmitInteractionActions(
               { sessionUri: sourceSessionUri }
             )
           ),
-          ...effectiveContent
+          ...normalizedContent
         ];
         const activationResult = startConversation(
           crossPlanContent,
@@ -534,12 +524,10 @@ export function useAgentGUISubmitInteractionActions(
       }
       submitExistingPrompt(
         agentSessionId,
-        effectiveContent,
-        displayPromptText ??
-          (ultraPlan
-            ? agentPromptContentDisplayText(normalizedContent)
-            : undefined),
+        normalizedContent,
+        displayPromptText,
         {
+          capabilityRefs: options?.capabilityRefs,
           requiredSettingsPatch: options?.requiredSettingsPatch,
           trackDraft: true
         }
@@ -564,7 +552,11 @@ export function useAgentGUISubmitInteractionActions(
   }, [submitPrompt]);
 
   const submitGuidancePrompt = useCallback(
-    (content: AgentPromptContentBlock[], displayPrompt?: string) => {
+    (
+      content: AgentPromptContentBlock[],
+      displayPrompt?: string,
+      options?: AgentComposerSubmitOptions
+    ) => {
       const agentSessionId = activeConversationIdRef.current;
       const normalizedContent = normalizeAgentPromptContentBlocks(content);
       if (!agentSessionId || normalizedContent.length === 0) {
@@ -587,7 +579,7 @@ export function useAgentGUISubmitInteractionActions(
         agentSessionId,
         normalizedContent,
         displayPromptText,
-        { sendNow: true }
+        { capabilityRefs: options?.capabilityRefs, sendNow: true }
       );
     },
     [

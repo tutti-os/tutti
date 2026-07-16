@@ -369,6 +369,9 @@ function createWorkspaceAgentActivityService(): IWorkspaceAgentActivityService {
     updateSessionSettings: async () => {
       throw new Error("not implemented");
     },
+    updateTuttiModeActivation: async () => {
+      throw new Error("not implemented");
+    },
     getSnapshot: () => {
       throw new Error("not implemented");
     },

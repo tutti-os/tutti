@@ -64,6 +64,25 @@ func TestServiceCreatesAndListsSessions(t *testing.T) {
 	}
 }
 
+func TestServiceCreateCarriesCapabilityReferencesIntoTheRuntimeOwnedSubmittedTransition(t *testing.T) {
+	runtime := newFakeRuntime()
+	service := newTestService(runtime)
+
+	_, err := service.Create(context.Background(), "ws-1", CreateSessionInput{
+		AgentSessionID: "session-capability-create",
+		AgentTargetID:  agenttargetbiz.IDLocalCodex,
+		InitialContent: TextPromptContent("use tutti"),
+		CapabilityRefs: []CapabilityReference{{Capability: "tutti", Source: "slash_command"}},
+	})
+	if err != nil {
+		t.Fatalf("Create() error = %v; runtime acceptance must not wait for the asynchronous turn projection", err)
+	}
+	if len(runtime.execCalls) != 1 || len(runtime.execCalls[0].CapabilityRefs) != 1 ||
+		runtime.execCalls[0].CapabilityRefs[0] != (CapabilityReference{Capability: "tutti", Source: "slash_command"}) {
+		t.Fatalf("runtime exec capability refs = %#v", runtime.execCalls)
+	}
+}
+
 func TestServiceAppliesAutomationRuleOverrideBeforeInitialExec(t *testing.T) {
 	runtime := newFakeRuntime()
 	writer := &recordingAutomationRuleOverrideWriter{
@@ -560,11 +579,22 @@ func TestServiceCreateReportsNodeResults(t *testing.T) {
 
 func TestServiceCreateDoesNotExecuteDuplicateInitialSubmit(t *testing.T) {
 	runtime := newFakeRuntime()
+	store := openAgentServiceSQLiteStore(t)
+	if err := store.Create(context.Background(), workspacebiz.Summary{ID: "ws-1", Name: "Idempotent create"}); err != nil {
+		t.Fatal(err)
+	}
+	runtime.execHook = func(input RuntimeExecInput) (RuntimeExecResult, error) {
+		seedDurableClientSubmitEvidence(t, store, input.AgentSessionID, input.TurnID, "submit-create-1", "client-submit:submit-create-1", 100)
+		return RuntimeExecResult{
+			AgentSessionID: input.AgentSessionID, TurnID: input.TurnID, Accepted: true,
+			SessionStatus: "working", TurnLifecycle: TurnLifecycle{Phase: "submitted"},
+		}, nil
+	}
 	service := newTestService(runtime)
-	service.SubmitClaimStore = openAgentServiceSQLiteStore(t)
+	service.SubmitClaimStore = store
 	input := CreateSessionInput{
 		AgentSessionID: "session-create-idempotent", AgentTargetID: agenttargetbiz.IDLocalCodex,
-		InitialContent: TextPromptContent("hello"), Metadata: map[string]any{"clientSubmitId": "submit-create-1"},
+		InitialContent: TextPromptContent("hello"), ClientSubmitID: "submit-create-1",
 	}
 	if _, err := service.Create(context.Background(), "ws-1", input); err != nil {
 		t.Fatalf("first Create() error = %v", err)
@@ -1827,11 +1857,12 @@ func TestServiceCreatePassesPlanModeToRuntime(t *testing.T) {
 	planMode := true
 
 	session, err := service.Create(context.Background(), "ws-1", CreateSessionInput{
-		AgentSessionID: "11111111-1111-4111-8111-111111111111",
-		AgentTargetID:  agenttargetbiz.IDLocalClaudeCode,
-		InitialContent: TextPromptContent("hello"),
-		PlanMode:       &planMode,
-		Provider:       "claude-code",
+		AgentSessionID:       "11111111-1111-4111-8111-111111111111",
+		AgentTargetID:        agenttargetbiz.IDLocalClaudeCode,
+		InitialContent:       TextPromptContent("hello"),
+		InitialDisplayPrompt: "hello",
+		PlanMode:             &planMode,
+		Provider:             "claude-code",
 	})
 	if err != nil {
 		t.Fatalf("Create returned error: %v", err)
@@ -1844,6 +1875,16 @@ func TestServiceCreatePassesPlanModeToRuntime(t *testing.T) {
 	}
 	if session.Settings == nil || !session.Settings.PlanMode {
 		t.Fatalf("session settings = %#v, want plan mode true", session.Settings)
+	}
+	if len(runtime.execCalls) != 1 {
+		t.Fatalf("exec calls = %d, want 1", len(runtime.execCalls))
+	}
+	exec := runtime.execCalls[0]
+	if len(exec.Content) != 1 || exec.Content[0].Text != "hello" {
+		t.Fatalf("exec content = %#v, want only the user-authored prompt", exec.Content)
+	}
+	if exec.DisplayPrompt != "hello" {
+		t.Fatalf("exec display prompt = %q, want original user prompt", exec.DisplayPrompt)
 	}
 }
 
@@ -2152,9 +2193,9 @@ func TestServiceCreatePassesInitialDisplayPromptToRuntime(t *testing.T) {
 		Provider:             "codex",
 		InitialContent:       TextPromptContent("real automation prompt"),
 		InitialDisplayPrompt: "Run Automation",
+		ClientSubmitID:       " submit-create-1 ",
 		Metadata: map[string]any{
 			"":                        "drop",
-			"clientSubmitId":          "submit-create-1",
 			"clientSubmittedAtUnixMs": int64(12345),
 			" spacedDiagnosticKey ":   "trimmed",
 		},
@@ -2172,8 +2213,11 @@ func TestServiceCreatePassesInitialDisplayPromptToRuntime(t *testing.T) {
 	if call.DisplayPrompt != "Run Automation" {
 		t.Fatalf("runtime display prompt = %q", call.DisplayPrompt)
 	}
-	if call.Metadata["clientSubmitId"] != "submit-create-1" || call.Metadata["spacedDiagnosticKey"] != "trimmed" {
+	if call.ClientSubmitID != "submit-create-1" || call.Metadata["spacedDiagnosticKey"] != "trimmed" {
 		t.Fatalf("runtime metadata = %#v", call.Metadata)
+	}
+	if _, ok := call.Metadata["clientSubmitId"]; ok {
+		t.Fatalf("runtime metadata retained typed clientSubmitId: %#v", call.Metadata)
 	}
 	if _, ok := call.Metadata[""]; ok {
 		t.Fatalf("runtime metadata includes blank key: %#v", call.Metadata)
@@ -2296,14 +2340,17 @@ func TestServiceSendInputPassesDisplayPromptToRuntime(t *testing.T) {
 		Provider:    "codex",
 		Status:      "ready",
 		Visible:     true,
+		TurnLifecycle: &TurnLifecycle{
+			ActiveTurnID: stringPointer("turn-1"),
+		},
 	}
 
 	_, err := service.SendInput(context.Background(), "ws-1", "session-1", SendInput{
-		Content:       TextPromptContent("real repair prompt"),
-		DisplayPrompt: "Fix the app",
-		Guidance:      true,
+		Content:        TextPromptContent("real repair prompt"),
+		DisplayPrompt:  "Fix the app",
+		Guidance:       true,
+		ClientSubmitID: " submit-1 ",
 		Metadata: map[string]any{
-			"clientSubmitId":             "submit-1",
 			"clientSubmittedAtUnixMs":    int64(1234),
 			" ignoredBlankKeyIsRemoved ": true,
 			"":                           "drop",
@@ -2325,17 +2372,44 @@ func TestServiceSendInputPassesDisplayPromptToRuntime(t *testing.T) {
 	if !call.Guidance {
 		t.Fatal("runtime guidance = false, want true")
 	}
-	if call.Metadata["clientSubmitId"] != "submit-1" ||
+	if call.ClientSubmitID != "submit-1" ||
 		call.Metadata["clientSubmittedAtUnixMs"] != int64(1234) ||
 		call.Metadata["ignoredBlankKeyIsRemoved"] != true {
 		t.Fatalf("runtime metadata = %#v", call.Metadata)
+	}
+	if _, ok := call.Metadata["clientSubmitId"]; ok {
+		t.Fatalf("runtime metadata retained typed clientSubmitId: %#v", call.Metadata)
 	}
 	if _, ok := call.Metadata[""]; ok {
 		t.Fatalf("runtime metadata includes blank key: %#v", call.Metadata)
 	}
 }
 
-func TestServiceSendInputDoesNotExecuteDuplicateClientSubmitID(t *testing.T) {
+func TestServiceSendInputCarriesCapabilityReferencesIntoTheRuntimeOwnedSubmittedTransition(t *testing.T) {
+	runtime := newFakeRuntime()
+	service := newIsolatedAgentService(runtime)
+	runtime.sessions["ws-1:session-1"] = ProviderRuntimeSession{
+		ID:          "session-1",
+		WorkspaceID: "ws-1",
+		Provider:    "codex",
+		Status:      "ready",
+		Visible:     true,
+	}
+
+	_, err := service.SendInput(context.Background(), "ws-1", "session-1", SendInput{
+		Content:        TextPromptContent("use tutti"),
+		CapabilityRefs: []CapabilityReference{{Capability: "tutti", Source: "slash_command"}},
+	})
+	if err != nil {
+		t.Fatalf("SendInput() error = %v; runtime acceptance must not wait for the asynchronous turn projection", err)
+	}
+	if len(runtime.execCalls) != 1 || len(runtime.execCalls[0].CapabilityRefs) != 1 ||
+		runtime.execCalls[0].CapabilityRefs[0] != (CapabilityReference{Capability: "tutti", Source: "slash_command"}) {
+		t.Fatalf("runtime exec capability refs = %#v", runtime.execCalls)
+	}
+}
+
+func TestServiceAcceptedRuntimeKeepsClaimPreparedWithoutDurableSubmitProvenance(t *testing.T) {
 	runtime := newFakeRuntime()
 	service := newTestService(runtime)
 	store := openAgentServiceSQLiteStore(t)
@@ -2345,15 +2419,19 @@ func TestServiceSendInputDoesNotExecuteDuplicateClientSubmitID(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("Create() error = %v", err)
 	}
-	input := SendInput{Content: TextPromptContent("hello"), Metadata: map[string]any{"clientSubmitId": "submit-1"}}
-	if _, err := service.SendInput(context.Background(), "ws-1", "session-idempotent", input); err != nil {
-		t.Fatalf("first SendInput() error = %v", err)
+	input := SendInput{Content: TextPromptContent("hello"), ClientSubmitID: "submit-1"}
+	if _, err := service.SendInput(context.Background(), "ws-1", "session-idempotent", input); !errors.Is(err, ErrSubmitDeliveryUnknown) {
+		t.Fatalf("first SendInput() error = %v, want delivery unknown without durable provenance", err)
 	}
 	if _, err := service.SendInput(context.Background(), "ws-1", "session-idempotent", input); !errors.Is(err, ErrSubmitDeliveryUnknown) {
 		t.Fatalf("duplicate SendInput() error = %v, want delivery unknown without replay", err)
 	}
 	if len(runtime.execCalls) != 1 {
 		t.Fatalf("exec calls = %d, want 1", len(runtime.execCalls))
+	}
+	claim, found, err := store.GetSubmitClaim(context.Background(), "ws-1", "session-idempotent", "submit-1")
+	if err != nil || !found || claim.Status != "prepared" || claim.CanonicalTurnID != runtime.execCalls[0].TurnID {
+		t.Fatalf("claim=%#v found=%v error=%v, want prepared immutable dispatch fence", claim, found, err)
 	}
 }
 
@@ -5541,7 +5619,11 @@ type fakeRuntime struct {
 	closeErr               error
 	closeCalls             []RuntimeCloseInput
 	execErr                error
+	execHook               func(RuntimeExecInput) (RuntimeExecResult, error)
 	execCalls              []RuntimeExecInput
+	provenanceErr          error
+	provenanceHook         func(RuntimeSubmitProvenanceInput) error
+	provenanceCalls        []RuntimeSubmitProvenanceInput
 	resumeCalls            []RuntimeResumeInput
 	sessions               map[string]ProviderRuntimeSession
 	submitInteractiveCalls []RuntimeSubmitInteractiveInput
@@ -5840,6 +5922,9 @@ func (*fakeRuntime) CanResume(input RuntimeResumeInput) bool {
 
 func (f *fakeRuntime) Exec(_ context.Context, input RuntimeExecInput) (RuntimeExecResult, error) {
 	f.execCalls = append(f.execCalls, input)
+	if f.execHook != nil {
+		return f.execHook(input)
+	}
 	if f.execErr != nil {
 		return RuntimeExecResult{}, f.execErr
 	}
@@ -5854,14 +5939,26 @@ func (f *fakeRuntime) Exec(_ context.Context, input RuntimeExecInput) (RuntimeEx
 		session.UpdatedAtUnixMS = time.Now().UnixMilli()
 		f.sessions[key] = session
 	}
+	turnID := strings.TrimSpace(input.TurnID)
+	if turnID == "" {
+		turnID = "turn-1"
+	}
 	return RuntimeExecResult{
 		AgentSessionID: input.AgentSessionID,
 		Status:         "started",
 		Accepted:       true,
 		SessionStatus:  "working",
-		TurnID:         "turn-1",
+		TurnID:         turnID,
 		TurnLifecycle:  TurnLifecycle{Phase: "submitted"},
 	}, nil
+}
+
+func (f *fakeRuntime) DurablyReportSubmitProvenance(_ context.Context, input RuntimeSubmitProvenanceInput) error {
+	f.provenanceCalls = append(f.provenanceCalls, input)
+	if f.provenanceHook != nil {
+		return f.provenanceHook(input)
+	}
+	return f.provenanceErr
 }
 
 func (f *fakeRuntime) ValidatePromptContent(_ context.Context, input RuntimeExecInput) error {

@@ -22,6 +22,7 @@ import {
 import type { CancelResultValidation } from "./commandResult.validation.ts";
 import { promptQueuePromptIdForClientSubmit } from "./promptQueue.lookup.ts";
 import {
+  clonePromptCapabilityReferences,
   clonePromptRequiredSettingsPatch,
   normalizeQueuedPrompt
 } from "./promptQueue.prompt.ts";
@@ -34,6 +35,7 @@ import {
   canRequestQueuedPromptSendNow,
   type PromptQueueSendNowStrategy
 } from "./promptQueue.sendNow.ts";
+import { queuedPromptFromSubmitIntent } from "./promptQueue.submit.ts";
 
 const NO_COMMANDS: readonly EngineCommand[] = [];
 const QUEUE_SEND_TIMEOUT_MS = 30_000;
@@ -261,6 +263,7 @@ function enqueueSubmit(
       commands: [
         {
           agentSessionId: intent.agentSessionId,
+          ...clonePromptCapabilityReferences(intent.capabilityRefs),
           commandId: `submit:send:${intent.clientSubmitId}`,
           clientSubmitId: intent.clientSubmitId,
           correlationId: intent.clientSubmitId,
@@ -297,29 +300,7 @@ function enqueueSubmit(
     resumed.state,
     {
       agentSessionId: intent.agentSessionId,
-      prompt: {
-        clientSubmitId: intent.clientSubmitId,
-        content: intent.content,
-        createdAtUnixMs: intent.requestedAtUnixMs,
-        ...(intent.displayPrompt
-          ? { displayPrompt: intent.displayPrompt }
-          : {}),
-        id: intent.clientSubmitId,
-        ...clonePromptRequiredSettingsPatch(intent.requiredSettingsPatch),
-        submitDiagnostics: {
-          ...(intent.submitDiagnostics ?? {}),
-          blockCount:
-            intent.submitDiagnostics?.blockCount ?? intent.content.length,
-          queued: visibleInQueue,
-          submittedAtUnixMs:
-            intent.submitDiagnostics?.submittedAtUnixMs ??
-            intent.requestedAtUnixMs
-        },
-        ...(intent.runtimeContent
-          ? { runtimeContent: intent.runtimeContent }
-          : {}),
-        visibleInQueue
-      },
+      prompt: queuedPromptFromSubmitIntent(intent, visibleInQueue),
       type: "queue/enqueued",
       workspaceId: intent.workspaceId
     },
@@ -615,6 +596,7 @@ function startEligibleCommand(
     commands: [
       {
         agentSessionId: record.agentSessionId,
+        ...clonePromptCapabilityReferences(head.capabilityRefs),
         commandId,
         ...(head.clientSubmitId ? { correlationId: head.clientSubmitId } : {}),
         clientSubmitId: head.clientSubmitId ?? head.id,

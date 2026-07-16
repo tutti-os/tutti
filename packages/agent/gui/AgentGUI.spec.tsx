@@ -22,6 +22,9 @@ vi.mock("./agent-gui/agentGuiNode/AgentGUINode", async () => {
   const { useOptionalAgentActivityRuntime } = await vi.importActual<
     typeof import("./agentActivityRuntime")
   >("./agentActivityRuntime");
+  const { useOptionalTuttiModePlanReviewRuntime } = await vi.importActual<
+    typeof import("./workspaceWorkflow")
+  >("./workspaceWorkflow");
   const { Tooltip, TooltipContent, TooltipTrigger } = await vi.importActual<
     typeof import("@tutti-os/ui-system")
   >("@tutti-os/ui-system");
@@ -32,6 +35,7 @@ vi.mock("./agent-gui/agentGuiNode/AgentGUINode", async () => {
     }) => {
       const { t } = useTranslation();
       const activityRuntime = useOptionalAgentActivityRuntime();
+      const workflowRuntime = useOptionalTuttiModePlanReviewRuntime();
       return (
         <>
           <div data-testid="agent-gui-language-probe">
@@ -39,6 +43,9 @@ vi.mock("./agent-gui/agentGuiNode/AgentGUINode", async () => {
           </div>
           <div data-testid="agent-gui-runtime-probe">
             {activityRuntime ? "provided" : "missing"}
+          </div>
+          <div data-testid="workspace-workflow-runtime-probe">
+            {workflowRuntime ? "provided" : "missing"}
           </div>
           <div data-testid="agent-gui-disabled-suggestions-probe">
             {JSON.stringify(
@@ -91,6 +98,21 @@ describe("AgentGUI i18n", () => {
     expect(screen.getByTestId("agent-gui-runtime-probe")).toHaveTextContent(
       "provided"
     );
+  });
+
+  it("provides the optional workspace workflow runtime to the AgentGUI node", () => {
+    render(
+      <AgentGUI
+        {...createAgentGUIProps("en")}
+        tuttiModePlanReviewRuntime={
+          {} as AgentGUIProps["tuttiModePlanReviewRuntime"]
+        }
+      />
+    );
+
+    expect(
+      screen.getByTestId("workspace-workflow-runtime-probe")
+    ).toHaveTextContent("provided");
   });
 
   it("forwards disabled home suggestions to the internal node", () => {

@@ -19,6 +19,10 @@ import {
 } from "./agent-gui/agentGuiNode/AgentGUINode";
 import { AgentActivityHostProvider } from "./agentActivityHost";
 import { AgentGuiI18nProvider, type AgentGuiI18nLocale } from "./i18n/index";
+import {
+  TuttiModePlanReviewRuntimeProvider,
+  type TuttiModePlanReviewRuntime
+} from "./workspaceWorkflow";
 
 export type { AgentGUIHomeSuggestionId } from "./types";
 export type { ReferenceProvenanceCatalog as AgentGUIReferenceProvenanceFilterCatalog } from "@tutti-os/workspace-file-reference/contracts";
@@ -46,6 +50,7 @@ export interface AgentGUIProps extends Omit<
   renderAgentsEmpty?: AgentGUIAgentsEmptyRenderer;
   agentActivityRuntime: AgentActivityRuntime;
   agentHostApi?: AgentHostInputApi | null;
+  tuttiModePlanReviewRuntime?: TuttiModePlanReviewRuntime | null;
   /** Starter entries to hide below the empty new-session composer. */
   disabled?: readonly AgentGUIHomeSuggestionId[];
   i18n?: I18nRuntime<string> | null;
@@ -57,6 +62,7 @@ export interface AgentGUIProps extends Omit<
 export const AgentGUI = memo(function AgentGUI({
   agentActivityRuntime,
   agentHostApi,
+  tuttiModePlanReviewRuntime,
   agentDirectory,
   allAgentsPresentation = null,
   renderAgentsEmpty,
@@ -88,12 +94,14 @@ export const AgentGUI = memo(function AgentGUI({
   };
   const content = (
     <AgentGuiI18nProvider runtime={i18n} locale={locale}>
-      <AgentActivityHostProvider
-        agentActivityRuntime={agentActivityRuntime}
-        agentHostApi={agentHostApi}
-      >
-        <AgentGUINode {...nodeProps} />
-      </AgentActivityHostProvider>
+      <TuttiModePlanReviewRuntimeProvider runtime={tuttiModePlanReviewRuntime}>
+        <AgentActivityHostProvider
+          agentActivityRuntime={agentActivityRuntime}
+          agentHostApi={agentHostApi}
+        >
+          <AgentGUINode {...nodeProps} />
+        </AgentActivityHostProvider>
+      </TuttiModePlanReviewRuntimeProvider>
     </AgentGuiI18nProvider>
   );
   return props.frame.previewMode ? (

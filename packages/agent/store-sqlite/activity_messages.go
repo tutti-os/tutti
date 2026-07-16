@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"reflect"
 	"strings"
 	"time"
 
@@ -40,6 +41,7 @@ func (s *Store) upsertAgentMessageTx(
 	agentSessionID string,
 	input MessageUpdate,
 	now int64,
+	ensureMissingTurn bool,
 ) (Message, bool, error) {
 	existing, ok, err := getAgentMessageForUpdate(ctx, tx, workspaceID, agentSessionID, input.MessageID)
 	if err != nil {
@@ -66,10 +68,19 @@ func (s *Store) upsertAgentMessageTx(
 	if !accepted {
 		return Message{}, false, nil
 	}
+	if ok && agentMessageProjectionAlreadyApplied(existing, message) {
+		return existing, true, nil
+	}
+	if ok && !ensureMissingTurn {
+		return Message{}, false, fmt.Errorf(
+			"workspace agent activity message %q conflicts with durable submit provenance",
+			input.MessageID,
+		)
+	}
 	if turnID := strings.TrimSpace(message.TurnID); turnID != "" {
 		if _, exists, err := getAgentTurnTx(ctx, tx, workspaceID, agentSessionID, turnID); err != nil {
 			return Message{}, false, err
-		} else if !exists {
+		} else if !exists && ensureMissingTurn {
 			if _, accepted, err := s.recordTurnTransitionTx(ctx, tx, TurnTransition{
 				WorkspaceID: workspaceID, AgentSessionID: agentSessionID, TurnID: turnID,
 				Phase: TurnPhaseSubmitted, OccurredAtUnixMS: message.OccurredAtUnixMS,
@@ -78,6 +89,11 @@ func (s *Store) upsertAgentMessageTx(
 			} else if !accepted {
 				return Message{}, false, errors.New("workspace agent message turn transition was rejected")
 			}
+		} else if !exists {
+			return Message{}, false, fmt.Errorf(
+				"workspace agent activity message turn %q does not exist",
+				turnID,
+			)
 		}
 	}
 	version, err := incrementAgentSessionMessageVersion(ctx, tx, workspaceID, agentSessionID)
@@ -122,6 +138,17 @@ ON CONFLICT(workspace_id, agent_session_id, message_id) DO UPDATE SET
 		return Message{}, false, fmt.Errorf("read accepted workspace agent message: %w", sql.ErrNoRows)
 	}
 	return acceptedMessage, true, nil
+}
+
+func agentMessageProjectionAlreadyApplied(
+	existing Message,
+	projected agentactivityprojection.MessageSnapshot,
+) bool {
+	return strings.TrimSpace(existing.TurnID) == strings.TrimSpace(projected.TurnID) &&
+		strings.TrimSpace(existing.Role) == strings.TrimSpace(projected.Role) &&
+		strings.TrimSpace(existing.Kind) == strings.TrimSpace(projected.Kind) &&
+		strings.TrimSpace(existing.Status) == strings.TrimSpace(projected.Status) &&
+		reflect.DeepEqual(existing.Payload, projected.Payload)
 }
 
 func getAgentMessageForUpdate(

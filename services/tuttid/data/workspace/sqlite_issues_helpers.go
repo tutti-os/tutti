@@ -265,6 +265,13 @@ func scanWorkspaceIssue(scanner issueScanner) (workspaceissues.Issue, error) {
 	item.Budget.Mode = workspaceissues.BudgetMode(budgetMode)
 	item.Budget.HasRemainingQuota = hasRemainingQuota != 0
 	item.Budget.Status = workspaceissues.BudgetStatus(budgetStatus)
+	if err == nil {
+		normalizedBudget, ok := workspaceissues.NormalizeBudget(item.Budget)
+		if !ok {
+			return workspaceissues.Issue{}, fmt.Errorf("invalid persisted workspace issue budget")
+		}
+		item.Budget = normalizedBudget
+	}
 	return item, err
 }
 

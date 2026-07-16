@@ -77,6 +77,7 @@ export function createTuttiWorkbenchProductProfile(
           "defaultAgentProvider",
           "dockIcons",
           "dockPreviewCache",
+          "eventStreamClient",
           "hostFilesApi",
           "hostWindowApi",
           "i18n",

@@ -8,6 +8,7 @@ export function StandaloneAgentWorkspaceWindow() {
         agentProviderStatusService,
         desktopApi,
         environmentMode,
+        eventStreamClient,
         hostWindowApi,
         reporterService,
         richTextAtService,
@@ -22,6 +23,7 @@ export function StandaloneAgentWorkspaceWindow() {
           agentProviderStatusService={agentProviderStatusService}
           desktopApi={desktopApi}
           enableWindowCloseGuard={environmentMode === "desktop"}
+          eventStreamClient={eventStreamClient}
           hostWindowApi={hostWindowApi}
           reporterService={reporterService}
           richTextAtService={richTextAtService}

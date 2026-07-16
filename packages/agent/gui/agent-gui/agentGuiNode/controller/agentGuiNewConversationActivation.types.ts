@@ -43,6 +43,7 @@ export interface UseAgentGUINewConversationActivationInput {
   activeSessionState: AgentSessionState | null;
   lastActiveModelByProviderRef: RefObject<Record<string, string>>;
   sessionEngine: AgentSessionEngine;
+  tuttiModeDraftKey: string;
   conversationListQuery: AgentGUIConversationListQuery | null;
   currentUserId: string | null | undefined;
   persistActiveConversation: (agentSessionId: string | null) => void;

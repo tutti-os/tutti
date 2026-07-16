@@ -69,6 +69,7 @@ type Message = agentstore.Message
 type MessagePage = agentstore.MessagePage
 
 type Turn = agentstore.Turn
+type CapabilityReference = agentstore.CapabilityReference
 
 type TurnTransition = agentstore.TurnTransition
 type RootProviderTurnTransition = agentstore.RootProviderTurnTransition

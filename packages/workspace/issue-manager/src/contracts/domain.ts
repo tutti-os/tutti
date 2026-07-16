@@ -16,7 +16,7 @@ export type IssueManagerPriority = "high" | "medium" | "low" | (string & {});
 
 export type IssueManagerPlanningSource =
   | "manual"
-  | "ultra_plan"
+  | "tutti_mode_plan"
   | "traditional_plan";
 export type IssueManagerBudgetMode = "auto" | "fixed";
 export type IssueManagerBudgetStatus = "active" | "soft_limited";

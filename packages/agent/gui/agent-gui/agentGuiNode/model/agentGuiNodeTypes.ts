@@ -267,8 +267,6 @@ export interface AgentGUIComposerSettingsVM {
   supportsPlanMode: boolean;
   /** Persisted defaults applied when the next Plan enters Issue review. */
   planIssueBudgetPreset?: PlanIssueBudgetPreset;
-  /** Ultra Plan requires the target's authoritative plan-to-issue capability. */
-  supportsUltraPlan?: boolean;
   // Descriptor-derived plan/permission exclusivity.
   planExclusiveWithPermissionMode?: boolean;
   supportsBrowser?: boolean;
@@ -376,6 +374,14 @@ export interface AgentGUIComposerViewModel {
   /** Provider goal exposes a real paused state and pause/resume controls. */
   goalPauseSupported: boolean;
   canSubmit: boolean;
+  isTuttiModeActive: boolean;
+  isTuttiModeUpdating: boolean;
+  tuttiModeUpdateStatus:
+    | "idle"
+    | "pending_create"
+    | "updating"
+    | "failed"
+    | "uncertain";
   composerSettings: AgentGUIComposerSettingsVM;
   queuedPrompts: AgentGUIQueuedPromptVM[];
   queueStatus: AgentGUIQueueStatus;

@@ -91,6 +91,8 @@ import type {
   UpdateWorkspaceAgentSessionPinRequest,
   UpdateWorkspaceAgentSessionTitleRequest,
   UpdateWorkspaceAgentSessionVisibilityRequest,
+  UpdateTuttiModeActivationRequest,
+  UpdateTuttiModeActivationResponse,
   WorkspaceGitPatchRequest,
   WorkspaceGitPatchResponse,
   UpdateIssueManagerIssueRequest,
@@ -100,7 +102,10 @@ import type {
   UseUserProjectRequest,
   WriteWorkspaceFileTextRequest,
   WorkbenchSnapshot,
+  WorkspaceWorkflowSnapshot,
+  DecideWorkspaceWorkflowCheckpointRequest,
   WorkspaceAgentSession,
+  TuttiModeActivation,
   WorkspaceAgentSessionDetailResponse,
   WorkspaceAgentPlanDecisionResponse,
   WorkspaceAgentProvider,
@@ -351,6 +356,27 @@ export interface TuttidClient
     terminalID: string
   ): Promise<WorkspaceTerminalSnapshot>;
   getWorkspaceWorkbench(workspaceID: string): Promise<WorkbenchSnapshot>;
+  getWorkspaceAgentSessionTuttiModeActivation(
+    workspaceID: string,
+    agentSessionID: string,
+    requestOptions?: TuttidRequestOptions
+  ): Promise<TuttiModeActivation | null>;
+  updateWorkspaceAgentSessionTuttiModeActivation(
+    workspaceID: string,
+    agentSessionID: string,
+    request: UpdateTuttiModeActivationRequest,
+    requestOptions?: TuttidRequestOptions
+  ): Promise<UpdateTuttiModeActivationResponse>;
+  listPendingWorkspaceWorkflows(
+    workspaceID: string,
+    sourceSessionID: string
+  ): Promise<WorkspaceWorkflowSnapshot[]>;
+  decideWorkspaceWorkflowCheckpoint(
+    workspaceID: string,
+    workflowID: string,
+    checkpointID: string,
+    request: DecideWorkspaceWorkflowCheckpointRequest
+  ): Promise<WorkspaceWorkflowSnapshot>;
   listWorkspaceApps(workspaceID: string): Promise<WorkspaceAppListResponse>;
   listWorkspaceAppReferences(
     workspaceID: string,

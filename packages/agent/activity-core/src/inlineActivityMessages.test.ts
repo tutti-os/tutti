@@ -45,12 +45,43 @@ test("does not inline turn or interaction updates", () => {
       occurredAtUnixMs: 20,
       turn: {
         agentSessionId: "session-1",
+        capabilityRefs: [{ capability: "tutti", source: "slash_command" }],
         completedCommand: null,
         error: null,
         fileChanges: null,
         outcome: "completed",
         phase: "settled",
         settledAtUnixMs: 20,
+        startedAtUnixMs: 10,
+        turnId: "turn-1",
+        updatedAtUnixMs: 20
+      },
+      workspaceId: "workspace-1"
+    },
+    eventType: "turn_update",
+    workspaceId: "workspace-1"
+  };
+
+  assert.deepEqual(parseInlineActivityMessages(event), []);
+});
+
+test("accepts live turn events with nullable outcome and capability provenance", () => {
+  const event: AgentActivityUpdatedEvent = {
+    agentSessionId: "session-1",
+    data: {
+      activeTurnId: "turn-1",
+      agentSessionId: "session-1",
+      eventType: "turn_update",
+      occurredAtUnixMs: 20,
+      turn: {
+        agentSessionId: "session-1",
+        capabilityRefs: [{ capability: "tutti", source: "slash_command" }],
+        completedCommand: null,
+        error: null,
+        fileChanges: null,
+        outcome: null,
+        phase: "running",
+        settledAtUnixMs: null,
         startedAtUnixMs: 10,
         turnId: "turn-1",
         updatedAtUnixMs: 20

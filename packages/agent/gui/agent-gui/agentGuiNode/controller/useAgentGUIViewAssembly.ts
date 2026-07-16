@@ -16,6 +16,7 @@ import type { useAgentGUISessionDetailTransport } from "./useAgentGUISessionDeta
 import { resolveAgentGUIProviderReadinessGateForView } from "../model/agentGuiProviderReadiness";
 import { defaultPlanIssueBudgetPreset } from "../../../shared/agentConversation/planImplementationPresentation";
 import { planOrchestrationCatalogFromRuntime } from "../model/planOrchestrationCatalog";
+import type { useAgentGUITuttiModeActivation } from "./useAgentGUITuttiModeActivation";
 
 type ConversationPresentationInput = Parameters<
   typeof useAgentGUIConversationPresentation
@@ -72,6 +73,7 @@ type UseAgentGUIViewAssemblyInput = ConversationPresentationInput &
       typeof useAgentGUIControllerActions
     >[0]["selectConversation"];
     providerRailMode: AgentGUIProviderRailMode | undefined;
+    tuttiModeActivation: ReturnType<typeof useAgentGUITuttiModeActivation>;
   };
 
 export function useAgentGUIViewAssembly(input: UseAgentGUIViewAssemblyInput) {
@@ -131,6 +133,8 @@ export function useAgentGUIViewAssembly(input: UseAgentGUIViewAssemblyInput) {
     ...providerHome,
     loadOlderConversationMessages: input.loadOlderConversationMessages,
     selectConversation: input.selectConversation,
+    setTuttiModeActive: input.tuttiModeActivation.setActive,
+    retryTuttiModeActivation: input.tuttiModeActivation.retry,
     updateSelectedProjectPath: input.updateSelectedProjectPath
   });
   const viewData =
@@ -189,6 +193,9 @@ export function useAgentGUIViewAssembly(input: UseAgentGUIViewAssemblyInput) {
       compactSupported: input.compactSupported,
       goalPauseSupported: input.goalPauseSupported,
       canSubmit: session.canSubmit,
+      isTuttiModeActive: input.tuttiModeActivation.active,
+      isTuttiModeUpdating: input.tuttiModeActivation.updatePending,
+      tuttiModeUpdateStatus: input.tuttiModeActivation.updateStatus,
       composerSettings: stableComposerSettings,
       queueStatus: detail.queueStatus,
       queuedPrompts: detail.queuedPrompts,

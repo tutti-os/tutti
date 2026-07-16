@@ -352,8 +352,6 @@ export function useAgentGUIComposerPresentation(
       supportsPlanMode: input.composerSupport.plan,
       planIssueBudgetPreset:
         input.data.planIssueBudgetPreset ?? defaultPlanIssueBudgetPreset(),
-      supportsUltraPlan:
-        input.composerSupport.plan && input.composerSupport.planImplementation,
       planExclusiveWithPermissionMode:
         input.providerComposerOptions?.behavior
           ?.planModeExclusiveWithPermissionMode === true,

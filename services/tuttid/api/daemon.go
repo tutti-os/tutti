@@ -28,29 +28,31 @@ type EventStreamService interface {
 }
 
 type DaemonAPI struct {
-	UserProjectService        UserProjectService
-	AgentTargetService        AgentTargetService
-	PreferencesService        preferencesapi.Service
-	ManagedCredentialsService *managedcredentialsservice.Service
-	ModelPlanService          ModelPlanService
-	WorkspaceAgentService     WorkspaceAgentService
-	AutomationRuleService     AutomationRuleService
-	AgentModelBindingService  AgentModelBindingService
-	ModelPolicyService        ModelPolicyService
-	CollaborationRunService   CollaborationRunService
-	AccountService            AccountService
-	EventStreamService        EventStreamService
-	WorkspaceService          workspaceapi.CatalogService
-	WorkbenchService          workspaceapi.WorkbenchService
-	AppCenterService          workspaceapi.AppCenterService
-	AppFactoryService         AppFactoryService
-	FileService               workspaceapi.FileService
-	AgentSessionService       AgentSessionService
-	AgentStatusService        AgentProviderStatusService
-	TerminalService           workspaceapi.TerminalService
-	IssueService              workspaceapi.IssueManagerService
-	CLIRegistry               *cliservice.Registry
-	AnalyticsReporter         reporterservice.Reporter
+	UserProjectService         UserProjectService
+	AgentTargetService         AgentTargetService
+	PreferencesService         preferencesapi.Service
+	ManagedCredentialsService  *managedcredentialsservice.Service
+	ModelPlanService           ModelPlanService
+	WorkspaceAgentService      WorkspaceAgentService
+	AutomationRuleService      AutomationRuleService
+	AgentModelBindingService   AgentModelBindingService
+	ModelPolicyService         ModelPolicyService
+	CollaborationRunService    CollaborationRunService
+	AccountService             AccountService
+	EventStreamService         EventStreamService
+	WorkspaceService           workspaceapi.CatalogService
+	WorkbenchService           workspaceapi.WorkbenchService
+	AppCenterService           workspaceapi.AppCenterService
+	AppFactoryService          AppFactoryService
+	FileService                workspaceapi.FileService
+	AgentSessionService        AgentSessionService
+	AgentStatusService         AgentProviderStatusService
+	TerminalService            workspaceapi.TerminalService
+	IssueService               workspaceapi.IssueManagerService
+	TuttiModePlanService       TuttiModePlanService
+	TuttiModeActivationService TuttiModeActivationService
+	CLIRegistry                *cliservice.Registry
+	AnalyticsReporter          reporterservice.Reporter
 }
 
 type AgentProviderStatusService interface {

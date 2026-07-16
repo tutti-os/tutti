@@ -47,6 +47,7 @@ func (s *Service) LaunchCollaborationTarget(ctx context.Context, input collabrun
 		AgentTargetID:        input.TargetAgentTargetID,
 		InitialContent:       []PromptContentBlock{{Type: "text", Text: prompt}},
 		InitialDisplayPrompt: strings.TrimSpace(input.Question),
+		ClientSubmitID:       "collaboration-run:" + input.RunID,
 		Cwd:                  cwdPointer,
 		Model:                model,
 		ModelPlanID:          modelPlanID,
@@ -59,7 +60,6 @@ func (s *Service) LaunchCollaborationTarget(ctx context.Context, input collabrun
 			},
 		},
 		Metadata: map[string]any{
-			"clientSubmitId":     "collaboration-run:" + input.RunID,
 			"collaborationRunId": input.RunID,
 		},
 	})

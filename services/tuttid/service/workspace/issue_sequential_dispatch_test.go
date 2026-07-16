@@ -59,7 +59,7 @@ func TestIssueSequentialExecutionDispatchesSuccessorOnlyAfterUserAcceptance(t *t
 			IssueID:             "issue-sequential",
 			TopicID:             workspaceissues.DefaultTopicID,
 			Title:               "Sequential issue",
-			PlanningSource:      string(workspaceissues.PlanningSourceUltraPlan),
+			PlanningSource:      string(workspaceissues.PlanningSourceTraditionalPlan),
 			SourceSessionID:     "planning-session",
 			SequentialExecution: true,
 		},
@@ -144,7 +144,7 @@ func TestIssueParallelExecutionDispatchesIndependentRootsAndWaitsForAcceptedDepe
 			IssueID:           "issue-parallel",
 			TopicID:           workspaceissues.DefaultTopicID,
 			Title:             "Parallel issue",
-			PlanningSource:    string(workspaceissues.PlanningSourceUltraPlan),
+			PlanningSource:    string(workspaceissues.PlanningSourceTraditionalPlan),
 			ParallelExecution: true,
 		},
 		Tasks: []CreateIssueManagerTaskItemInput{
@@ -215,7 +215,7 @@ func TestIssueParallelExecutionHonorsWorkspaceConcurrencyAndRefillsSlots(t *test
 	detail, err := service.CreateIssueFromPlan(ctx, "workspace-parallel-limit", CreateIssueManagerIssueFromPlanInput{
 		Issue: CreateIssueManagerIssueInput{
 			IssueID: "issue-parallel-limit", TopicID: workspaceissues.DefaultTopicID, Title: "Bounded parallel",
-			PlanningSource: string(workspaceissues.PlanningSourceUltraPlan), ParallelExecution: true,
+			PlanningSource: string(workspaceissues.PlanningSourceTraditionalPlan), ParallelExecution: true,
 		},
 		Tasks: tasks,
 	})
@@ -246,7 +246,7 @@ func TestIssueParallelExecutionRejectsSharedExecutionDirectory(t *testing.T) {
 		Issue: CreateIssueManagerIssueInput{
 			TopicID:           workspaceissues.DefaultTopicID,
 			Title:             "Unsafe parallel issue",
-			PlanningSource:    string(workspaceissues.PlanningSourceUltraPlan),
+			PlanningSource:    string(workspaceissues.PlanningSourceTraditionalPlan),
 			ParallelExecution: true,
 		},
 		Tasks: []CreateIssueManagerTaskItemInput{
@@ -282,7 +282,7 @@ func TestIssueAgentSessionSettlementCompletesRunWithUsageAndAgentClaim(t *testin
 			IssueID:             "issue-settlement",
 			TopicID:             workspaceissues.DefaultTopicID,
 			Title:               "Settle from Agent state",
-			PlanningSource:      string(workspaceissues.PlanningSourceUltraPlan),
+			PlanningSource:      string(workspaceissues.PlanningSourceTraditionalPlan),
 			SequentialExecution: true,
 		},
 		Tasks: []CreateIssueManagerTaskItemInput{{
@@ -364,7 +364,7 @@ func TestIssueBudgetRecoveryUpdateResumesEligibleDispatch(t *testing.T) {
 			IssueID:             "issue-budget-recovery",
 			TopicID:             workspaceissues.DefaultTopicID,
 			Title:               "Recover budget",
-			PlanningSource:      string(workspaceissues.PlanningSourceUltraPlan),
+			PlanningSource:      string(workspaceissues.PlanningSourceTraditionalPlan),
 			SequentialExecution: true,
 			HasBudget:           true,
 			Budget: workspaceissues.Budget{
@@ -435,7 +435,7 @@ func TestIssueLowerIntensityRecoveryReleasesPreDispatchBudgetGate(t *testing.T) 
 			IssueID:             "issue-intensity-recovery",
 			TopicID:             workspaceissues.DefaultTopicID,
 			Title:               "Lower intensity",
-			PlanningSource:      string(workspaceissues.PlanningSourceUltraPlan),
+			PlanningSource:      string(workspaceissues.PlanningSourceTraditionalPlan),
 			SequentialExecution: true,
 			HasBudget:           true,
 			Budget: workspaceissues.Budget{
@@ -515,7 +515,7 @@ func TestIssueExplicitPauseBlocksOnlyFutureDispatchAndResumeContinues(t *testing
 			IssueID:             "issue-dispatch-pause",
 			TopicID:             workspaceissues.DefaultTopicID,
 			Title:               "Pause dispatch",
-			PlanningSource:      string(workspaceissues.PlanningSourceUltraPlan),
+			PlanningSource:      string(workspaceissues.PlanningSourceTraditionalPlan),
 			SequentialExecution: true,
 		},
 		Tasks: []CreateIssueManagerTaskItemInput{

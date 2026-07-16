@@ -23,6 +23,10 @@ type CreateIssueManagerIssueInput struct {
 	HasExecutionProfile bool
 	Budget              workspaceissues.Budget
 	HasBudget           bool
+	// TuttiModeWorkflowOwned is an internal authority marker. Transport and
+	// generic CLI adapters never set it; only the accepted workflow materializer
+	// may create an Issue in the reserved deterministic namespace.
+	TuttiModeWorkflowOwned bool
 }
 
 type CreateIssueManagerIssueFromPlanInput struct {

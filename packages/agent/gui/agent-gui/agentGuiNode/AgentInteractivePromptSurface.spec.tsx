@@ -1423,13 +1423,13 @@ describe("AgentInteractivePromptSurface", () => {
     });
   });
 
-  it("shows Ultra budget confirmation before the task preview", () => {
+  it("keeps unstructured provider plans on the traditional review path", () => {
     const onSubmit = vi.fn();
     const issueDraft = {
       title: "Migration",
       content: "Plan the migration.",
       stage: "budget" as const,
-      planningSource: "ultra_plan" as const,
+      planningSource: "traditional_plan" as const,
       executionProfile: {
         reasoningIntensity: 70,
         orchestrationIntensity: 80
@@ -1453,7 +1453,7 @@ describe("AgentInteractivePromptSurface", () => {
       <AgentInteractivePromptSurface
         prompt={{
           kind: "plan-implementation",
-          requestId: "plan-ultra",
+          requestId: "plan-unstructured",
           title: "Session",
           issueDraft
         }}
@@ -1464,12 +1464,12 @@ describe("AgentInteractivePromptSurface", () => {
     );
 
     expect(
-      screen.queryByTestId("agent-plan-implementation-implement")
-    ).toBeNull();
+      screen.getByTestId("agent-plan-implementation-implement")
+    ).toBeTruthy();
     expect(screen.queryByText("Task preview")).toBeNull();
     expect(
-      screen.getByTestId("agent-plan-implementation-start-orchestration")
-    ).toBeTruthy();
+      screen.queryByTestId("agent-plan-implementation-start-orchestration")
+    ).toBeNull();
   });
 
   it("uses compatible assignment selectors and shows a priced task preview", async () => {
@@ -1484,7 +1484,7 @@ describe("AgentInteractivePromptSurface", () => {
             title: "Ship",
             content: "Ship the feature.",
             stage: "preview",
-            planningSource: "ultra_plan",
+            planningSource: "traditional_plan",
             executionProfile: {
               reasoningIntensity: 70,
               orchestrationIntensity: 80
@@ -1632,7 +1632,7 @@ describe("AgentInteractivePromptSurface", () => {
             title: "Ship",
             content: "Ship the feature.",
             stage: "preview",
-            planningSource: "ultra_plan",
+            planningSource: "traditional_plan",
             executionProfile: {
               reasoningIntensity: 50,
               orchestrationIntensity: 50
@@ -1722,7 +1722,7 @@ describe("AgentInteractivePromptSurface", () => {
               title: "Ship",
               content: "Ship the feature.",
               stage: "preview",
-              planningSource: "ultra_plan",
+              planningSource: "traditional_plan",
               executionProfile: {
                 reasoningIntensity: 50,
                 orchestrationIntensity: 50

@@ -1032,6 +1032,8 @@ function createDependenciesStub(): {
       listWorkspaceGitBranches: fail,
       resolveWorkspaceGitPatchSupport: fail,
       updateWorkspaceAgentSessionSettings: fail,
+      getWorkspaceAgentSessionTuttiModeActivation: fail,
+      updateWorkspaceAgentSessionTuttiModeActivation: fail,
       updateWorkspaceAgentSessionPin: fail,
       submitWorkspaceAgentInteractive: fail,
       searchWorkspaceFiles: fail,
@@ -1045,7 +1047,9 @@ function createDependenciesStub(): {
       updateWorkspaceIssueTask: fail,
       updateWorkspace: fail,
       uploadWorkspaceFiles: fail,
-      useUserProject: fail
+      useUserProject: fail,
+      listPendingWorkspaceWorkflows: fail,
+      decideWorkspaceWorkflowCheckpoint: fail
     },
     platformApi: {
       homeDirectory: "/Users/local",

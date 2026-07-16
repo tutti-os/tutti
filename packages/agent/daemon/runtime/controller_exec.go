@@ -20,6 +20,15 @@ func (c *Controller) Exec(ctx context.Context, input ExecInput) (ExecResult, err
 		return ExecResult{}, err
 	}
 	metadata := cloneExecMetadata(input.Metadata)
+	delete(metadata, "clientSubmitId")
+	if clientSubmitID := strings.TrimSpace(input.ClientSubmitID); clientSubmitID != "" {
+		if metadata == nil {
+			metadata = make(map[string]any)
+		}
+		// Runtime adapters still consume execution context metadata internally;
+		// derive this compatibility projection from the typed host contract.
+		metadata["clientSubmitId"] = clientSubmitID
+	}
 	accessRequest := sharedAgentAccessRequestForSession(SharedAgentAccessTurn, session)
 	accessRequest.Capability = sharedAgentCapability(metadata)
 	if err := c.applySharedAgentAccess(ctx, accessRequest); err != nil {
@@ -52,7 +61,7 @@ func (c *Controller) Exec(ctx context.Context, input ExecInput) (ExecResult, err
 		}
 	}
 	if input.Guidance {
-		return c.guideActiveTurn(ctx, session, adapter, content, displayPrompt, metadata)
+		return c.guideActiveTurn(ctx, session, adapter, content, displayPrompt, metadata, input.CapabilityRefs)
 	}
 	titleUpdated := false
 	if initialTitle := strings.TrimSpace(input.InitialTitle); initialTitle != "" &&
@@ -63,14 +72,22 @@ func (c *Controller) Exec(ctx context.Context, input ExecInput) (ExecResult, err
 		session.UpdatedAtUnixMS = unixMS(now())
 		titleUpdated = true
 	}
-	turnID := newID()
+	turnID := strings.TrimSpace(input.TurnID)
+	if turnID == "" {
+		// Internal callers that do not cross the daemon service boundary retain
+		// backwards-compatible allocation. External service submissions always
+		// preallocate and durably bind this canonical id before dispatch.
+		turnID = newID()
+	}
 	runCtx, cancel := context.WithCancel(context.Background())
 	if len(metadata) > 0 {
 		runCtx = context.WithValue(runCtx, execMetadataContextKey{}, metadata)
 	}
+	tuttiModeSnapshot := normalizeTuttiModeTurnSnapshot(input.TuttiModeSnapshot)
+	runCtx = withTuttiModeTurnSnapshot(runCtx, tuttiModeSnapshot)
 	// beginTurn returns the zero session on failure; keep the real session
 	// for the goal-control fallback below.
-	startedSession, err := c.beginTurn(session, turnID, cancel)
+	startedSession, err := c.beginTurnWithTuttiModeSnapshot(session, turnID, cancel, tuttiModeSnapshot)
 	if err != nil {
 		cancel()
 		if errors.Is(err, ErrSessionActiveTurn) {
@@ -91,7 +108,7 @@ func (c *Controller) Exec(ctx context.Context, input ExecInput) (ExecResult, err
 		delete(c.provisionalSessions, key)
 	}
 	c.mu.Unlock()
-	submitEvents := submittedTurnActivityEvents(session, turnID)
+	submitEvents := submittedTurnActivityEvents(session, turnID, input.CapabilityRefs)
 	if titleUpdated {
 		submitEvents = append([]activityshared.Event{newSessionTitleActivityEvent(session, session.Title)}, submitEvents...)
 	}
@@ -127,6 +144,7 @@ func (c *Controller) guideActiveTurn(
 	content []PromptContentBlock,
 	displayPrompt string,
 	metadata map[string]any,
+	capabilityRefs []activityshared.CapabilityReference,
 ) (ExecResult, error) {
 	guidanceAdapter, ok := adapter.(ActiveTurnGuidanceAdapter)
 	if !ok {
@@ -140,6 +158,10 @@ func (c *Controller) guideActiveTurn(
 	if len(metadata) > 0 {
 		runCtx = context.WithValue(ctx, execMetadataContextKey{}, metadata)
 	}
+	// Guidance belongs to the already-running canonical turn. Reuse the
+	// snapshot frozen when that turn began rather than observing a later badge
+	// toggle from the session.
+	runCtx = withTuttiModeTurnSnapshot(runCtx, c.activeTurnTuttiModeSnapshot(session.RoomID, session.AgentSessionID))
 	var emittedMu sync.Mutex
 	var emitted []activityshared.Event
 	emit := func(next []activityshared.Event) {
@@ -165,12 +187,18 @@ func (c *Controller) guideActiveTurn(
 	remaining := unemittedActivityEvents(events, emitted)
 	emittedMu.Unlock()
 	c.applySessionEventsByAgentSessionID(session.AgentSessionID, remaining)
-	logAgentSubmitTrace("runtime.exec.guidance", session, turnID, metadata, map[string]any{
-		"activity_event_count": len(events),
-	})
 	if refreshed, ok := c.get(session.RoomID, session.AgentSessionID); ok {
 		session = refreshed
 	}
+	if provenancePatch, ok := guidanceTurnCapabilityReferenceStatePatch(session, turnID, capabilityRefs); ok {
+		// Capability provenance is metadata on the existing turn, not a
+		// lifecycle event. Persist it through the reporter and let the
+		// post-commit canonical turn_update invalidate AgentGUI.
+		c.enqueueSessionStatePatchReport(ctx, session, provenancePatch)
+	}
+	logAgentSubmitTrace("runtime.exec.guidance", session, turnID, metadata, map[string]any{
+		"activity_event_count": len(events),
+	})
 	result := ExecResult{
 		AgentSessionID: session.AgentSessionID,
 		Status:         ExecStatusStarted,

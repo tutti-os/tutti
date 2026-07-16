@@ -12,7 +12,6 @@ import (
 	runtimeprep "github.com/tutti-os/tutti/packages/agent/runtimeprep"
 	agentactivitybiz "github.com/tutti-os/tutti/services/tuttid/biz/agentactivity"
 	agenttargetbiz "github.com/tutti-os/tutti/services/tuttid/biz/agenttarget"
-	automationrulebiz "github.com/tutti-os/tutti/services/tuttid/biz/automationrule"
 	preferencesbiz "github.com/tutti-os/tutti/services/tuttid/biz/preferences"
 	workspacedata "github.com/tutti-os/tutti/services/tuttid/data/workspace"
 	claudecodeservice "github.com/tutti-os/tutti/services/tuttid/service/claudecode"
@@ -76,7 +75,8 @@ func (s *Service) Create(ctx context.Context, workspaceID string, input CreateSe
 		input.PermissionModeID = nil
 	}
 	input.AgentSessionID = agentSessionIDOrNew(input.AgentSessionID)
-	logAgentSubmitTrace("service.create.entered", workspaceID, input.AgentSessionID, input.Metadata, map[string]any{
+	input.ClientSubmitID = strings.TrimSpace(input.ClientSubmitID)
+	logAgentSubmitTrace("service.create.entered", workspaceID, input.AgentSessionID, input.ClientSubmitID, input.Metadata, map[string]any{
 		"provider": provider,
 	})
 	var normalizedContent []PromptContentBlock
@@ -91,18 +91,26 @@ func (s *Service) Create(ctx context.Context, workspaceID string, input CreateSe
 		}
 		s.reportAgentServiceNodeSuccess(ctx, input.AgentSessionID, "session_create", "content_normalized", provider, nodeStartedAt)
 	}
-	logAgentSubmitTrace("service.create.content_normalized", workspaceID, input.AgentSessionID, input.Metadata, map[string]any{
+	logAgentSubmitTrace("service.create.content_normalized", workspaceID, input.AgentSessionID, input.ClientSubmitID, input.Metadata, map[string]any{
 		"content_block_count": len(normalizedContent),
 	})
 	var submitClaim agentactivitybiz.SubmitClaim
 	claimPending := false
+	canonicalTurnID := ""
 	if len(normalizedContent) > 0 {
-		submitClaim, claimPending, err = s.prepareSubmitClaim(ctx, workspaceID, input.AgentSessionID, input.Metadata)
+		canonicalTurnID, submitClaim, claimPending, err = s.prepareSubmitClaimForDispatch(ctx, workspaceID, input.AgentSessionID, false, input.ClientSubmitID)
 		if err != nil {
 			return Session{}, err
 		}
 		if submitClaim.ClientSubmitID != "" && !claimPending {
 			if submitClaim.Status == "accepted" {
+				return s.Get(ctx, workspaceID, input.AgentSessionID)
+			}
+			reconciled, reconcileErr := s.reconcilePreparedSubmitClaim(ctx, workspaceID, input.AgentSessionID, submitClaim)
+			if reconcileErr != nil {
+				return Session{}, deliveryUnknownError(reconcileErr)
+			}
+			if reconciled {
 				return s.Get(ctx, workspaceID, input.AgentSessionID)
 			}
 			return Session{}, ErrSubmitDeliveryUnknown
@@ -119,7 +127,7 @@ func (s *Service) Create(ctx context.Context, workspaceID string, input CreateSe
 		return Session{}, err
 	}
 	s.reportAgentServiceNodeSuccess(ctx, input.AgentSessionID, "session_create", "provider_runtime_checked", provider, nodeStartedAt)
-	logAgentSubmitTrace("service.create.provider_ready", workspaceID, input.AgentSessionID, input.Metadata, nil)
+	logAgentSubmitTrace("service.create.provider_ready", workspaceID, input.AgentSessionID, input.ClientSubmitID, input.Metadata, nil)
 	requestedModel := value(input.Model)
 	nodeStartedAt = time.Now()
 	planResolution, err := s.resolveCreateSessionModelForPlanOrProvider(ctx, workspaceID, provider, requestedModel, &input)
@@ -129,7 +137,7 @@ func (s *Service) Create(ctx context.Context, workspaceID string, input CreateSe
 	}
 	s.reportAgentServiceNodeSuccess(ctx, input.AgentSessionID, "session_create", "model_validated", provider, nodeStartedAt)
 	input.RuntimeContext = runtimeContextWithSessionRuntimeSnapshot(input.RuntimeContext, input, provider, planResolution)
-	logAgentSubmitTrace("service.create.model_validated", workspaceID, input.AgentSessionID, input.Metadata, map[string]any{
+	logAgentSubmitTrace("service.create.model_validated", workspaceID, input.AgentSessionID, input.ClientSubmitID, input.Metadata, map[string]any{
 		"model": value(input.Model),
 	})
 	if err := s.applyCreateSessionReasoningIntensity(ctx, provider, value(input.Model), &input); err != nil {
@@ -148,7 +156,7 @@ func (s *Service) Create(ctx context.Context, workspaceID string, input CreateSe
 		return Session{}, err
 	}
 	s.reportAgentServiceNodeSuccess(ctx, input.AgentSessionID, "session_create", "cwd_resolved", provider, nodeStartedAt)
-	logAgentSubmitTrace("service.create.cwd_resolved", workspaceID, input.AgentSessionID, input.Metadata, map[string]any{
+	logAgentSubmitTrace("service.create.cwd_resolved", workspaceID, input.AgentSessionID, input.ClientSubmitID, input.Metadata, map[string]any{
 		"cwd": cwd,
 	})
 	nodeStartedAt = time.Now()
@@ -158,7 +166,7 @@ func (s *Service) Create(ctx context.Context, workspaceID string, input CreateSe
 		return Session{}, err
 	}
 	s.reportAgentServiceNodeSuccess(ctx, input.AgentSessionID, "session_create", "runtime_prepared", provider, nodeStartedAt)
-	logAgentSubmitTrace("service.create.runtime_prepared", workspaceID, input.AgentSessionID, input.Metadata, map[string]any{
+	logAgentSubmitTrace("service.create.runtime_prepared", workspaceID, input.AgentSessionID, input.ClientSubmitID, input.Metadata, map[string]any{
 		"cwd":       prepared.Cwd,
 		"env_count": len(prepared.Env),
 	})
@@ -169,7 +177,7 @@ func (s *Service) Create(ctx context.Context, workspaceID string, input CreateSe
 		}
 		return errors.Join(cause, cleanupErr)
 	}
-	logAgentSubmitTrace("service.create.runtime_start_requested", workspaceID, input.AgentSessionID, input.Metadata, nil)
+	logAgentSubmitTrace("service.create.runtime_start_requested", workspaceID, input.AgentSessionID, input.ClientSubmitID, input.Metadata, nil)
 	nodeStartedAt = time.Now()
 	// Wait out any in-flight Claude startup so this session never overlaps
 	// another credential-touching Claude process during OAuth refresh. Released
@@ -229,15 +237,20 @@ func (s *Service) Create(ctx context.Context, workspaceID string, input CreateSe
 		planResolution.Endpoint,
 		input.AgentTargetID,
 	)
-	logAgentSubmitTrace("service.create.runtime_start_resolved", workspaceID, session.ID, input.Metadata, map[string]any{
+	logAgentSubmitTrace("service.create.runtime_start_resolved", workspaceID, session.ID, input.ClientSubmitID, input.Metadata, map[string]any{
 		"provider_runtime_status": session.Status,
 	})
 	if len(normalizedContent) == 0 {
-		return serviceSessionWithComposerSkillOptions(
+		if err := s.applyInitialTuttiModeActivation(ctx, workspaceID, session.ID, input.InitialTuttiModeActivation); err != nil {
+			closeErr := s.controller().Close(ctx, RuntimeCloseInput{WorkspaceID: workspaceID, AgentSessionID: session.ID})
+			return Session{}, cleanupPrepared(errors.Join(err, closeErr))
+		}
+		created := serviceSessionWithComposerSkillOptions(
 			session,
 			s.controller().CanResume(runtimeResumeInputFromRuntimeSession(session)),
 			s.discoverComposerSkillOptions(session.Provider, session.Cwd, session.Env),
-		), nil
+		)
+		return s.projectSessionForResponse(ctx, workspaceID, created)
 	}
 	nodeStartedAt = time.Now()
 	if err := s.validatePromptContentForExec(ctx, workspaceID, session.ID, normalizedContent); err != nil {
@@ -249,7 +262,7 @@ func (s *Service) Create(ctx context.Context, workspaceID string, input CreateSe
 		return Session{}, cleanupPrepared(errors.Join(err, closeErr))
 	}
 	s.reportAgentServiceNodeSuccess(ctx, session.ID, "session_create", "prompt_validated", session.Provider, nodeStartedAt)
-	logAgentSubmitTrace("service.create.prompt_validated", workspaceID, session.ID, input.Metadata, nil)
+	logAgentSubmitTrace("service.create.prompt_validated", workspaceID, session.ID, input.ClientSubmitID, input.Metadata, nil)
 	nodeStartedAt = time.Now()
 	content, preparedDisplayPrompt, err := s.prepareNormalizedPromptContentForExec(workspaceID, session.ID, normalizedContent, "")
 	if err != nil {
@@ -261,7 +274,7 @@ func (s *Service) Create(ctx context.Context, workspaceID string, input CreateSe
 		return Session{}, cleanupPrepared(errors.Join(err, closeErr))
 	}
 	s.reportAgentServiceNodeSuccess(ctx, session.ID, "session_create", "prompt_prepared", session.Provider, nodeStartedAt)
-	logAgentSubmitTrace("service.create.prompt_prepared", workspaceID, session.ID, input.Metadata, map[string]any{
+	logAgentSubmitTrace("service.create.prompt_prepared", workspaceID, session.ID, input.ClientSubmitID, input.Metadata, map[string]any{
 		"content_block_count": len(content),
 	})
 	displayPrompt := strings.TrimSpace(input.InitialDisplayPrompt)
@@ -270,59 +283,58 @@ func (s *Service) Create(ctx context.Context, workspaceID string, input CreateSe
 	if !session.InitialTitleEstablished {
 		initialTitle = titletext.DeriveInitial(session.Title, visiblePrompt)
 	}
-	logAgentSubmitTrace("service.create.exec_requested", workspaceID, session.ID, input.Metadata, nil)
+	logAgentSubmitTrace("service.create.exec_requested", workspaceID, session.ID, input.ClientSubmitID, input.Metadata, nil)
 	nodeStartedAt = time.Now()
-	execResult, err := s.controller().Exec(ctx, RuntimeExecInput{
-		WorkspaceID:      workspaceID,
-		AgentSessionID:   session.ID,
-		Content:          content,
-		DisplayPrompt:    displayPrompt,
-		InitialTitle:     initialTitle,
-		InitialTitleBase: session.Title,
-		Metadata:         cloneMetadata(input.Metadata),
+	if err := s.applyInitialTuttiModeActivation(ctx, workspaceID, session.ID, input.InitialTuttiModeActivation); err != nil {
+		closeErr := s.controller().Close(ctx, RuntimeCloseInput{WorkspaceID: workspaceID, AgentSessionID: session.ID})
+		return Session{}, cleanupPrepared(errors.Join(err, closeErr))
+	}
+	execResult, disposition, err := s.execWithTuttiModeSnapshot(ctx, workspaceID, session.ID, false, session, canonicalTurnID, func(turnID string, snapshot *TuttiModeTurnSnapshot) (RuntimeExecResult, error) {
+		return s.execAndDurablyReportSubmitProvenance(ctx, RuntimeExecInput{
+			WorkspaceID:       workspaceID,
+			AgentSessionID:    session.ID,
+			TurnID:            turnID,
+			ClientSubmitID:    input.ClientSubmitID,
+			CapabilityRefs:    append([]CapabilityReference(nil), input.CapabilityRefs...),
+			Content:           content,
+			DisplayPrompt:     displayPrompt,
+			InitialTitle:      initialTitle,
+			InitialTitleBase:  session.Title,
+			Metadata:          cloneMetadata(input.Metadata),
+			TuttiModeSnapshot: snapshot,
+		})
 	})
 	if err != nil {
 		normalizedErr := normalizeRuntimeError(err)
 		s.reportAgentServiceNodeFailure(ctx, session.ID, "session_create", "runtime_exec", session.Provider, nodeStartedAt, normalizedErr)
+		if disposition == submitDeliveryUnknown {
+			claimPending = false
+			return Session{}, normalizedErr
+		}
 		closeErr := s.controller().Close(ctx, RuntimeCloseInput{
 			WorkspaceID:    workspaceID,
 			AgentSessionID: session.ID,
 		})
-		return Session{}, cleanupPrepared(errors.Join(normalizedErr, closeErr))
+		activationCleanupErr := s.deleteTuttiModeActivationSessionState(ctx, workspaceID, session.ID)
+		return Session{}, cleanupPrepared(errors.Join(normalizedErr, closeErr, activationCleanupErr))
 	}
 	if submitClaim.ClientSubmitID != "" {
 		claimPending = false
-		if err := s.acceptSubmitClaim(workspaceID, session.ID, submitClaim.ClientSubmitID, execResult.TurnID); err != nil {
-			return Session{}, err
+		if err := s.confirmAndAcceptSubmitClaim(ctx, workspaceID, session.ID, submitClaim.ClientSubmitID, execResult.TurnID); err != nil {
+			return Session{}, deliveryUnknownError(err)
 		}
 	}
 	s.reportAgentServiceNodeSuccess(ctx, session.ID, "session_create", "runtime_exec", session.Provider, nodeStartedAt)
-	logAgentSubmitTrace("service.create.exec_resolved", workspaceID, session.ID, input.Metadata, nil)
+	logAgentSubmitTrace("service.create.exec_resolved", workspaceID, session.ID, input.ClientSubmitID, input.Metadata, nil)
 	if refreshed, ok := s.controller().Session(workspaceID, session.ID); ok {
 		session = refreshed
 	}
-	return serviceSessionWithComposerSkillOptions(
+	created := serviceSessionWithComposerSkillOptions(
 		session,
 		s.controller().CanResume(runtimeResumeInputFromRuntimeSession(session)),
 		s.discoverComposerSkillOptions(session.Provider, session.Cwd, session.Env),
-	), nil
-}
-
-func (s *Service) applyInitialAutomationRuleOverride(ctx context.Context, workspaceID string, agentSessionID string, input *automationrulebiz.SessionOverride) error {
-	if input == nil {
-		return nil
-	}
-	if s.AutomationRuleOverrides == nil {
-		return errors.New("automation rule session override service is unavailable")
-	}
-	override := *input
-	override.WorkspaceID = strings.TrimSpace(workspaceID)
-	override.AgentSessionID = strings.TrimSpace(agentSessionID)
-	override.RuleIDs = append([]string(nil), input.RuleIDs...)
-	if _, err := s.AutomationRuleOverrides.SetSessionOverride(ctx, override); err != nil {
-		return fmt.Errorf("set initial automation rule override: %w", err)
-	}
-	return nil
+	)
+	return s.projectSessionForResponse(ctx, workspaceID, created)
 }
 
 type resolvedCreateSessionLaunch struct {
@@ -512,7 +524,7 @@ func (s *Service) GetDetail(ctx context.Context, workspaceID string, agentSessio
 	for _, persisted := range persistedChildren {
 		children = append(children, sessionFromPersisted(persisted, false))
 	}
-	children, err = s.withProtocolV2TurnStates(ctx, strings.TrimSpace(workspaceID), children)
+	children, err = s.projectSessionsForResponse(ctx, workspaceID, children)
 	if err != nil {
 		return SessionDetail{}, err
 	}
@@ -571,7 +583,7 @@ func (s *Service) get(ctx context.Context, workspaceID string, agentSessionID st
 				service = serviceSessionWithPersistedFreshness(session, persisted, resumable)
 			}
 		}
-		return s.withProtocolV2TurnState(ctx, workspaceID, service)
+		return s.projectSessionForResponse(ctx, workspaceID, service)
 	}
 	if s.SessionReader != nil {
 		if persisted, ok := s.SessionReader.GetSession(workspaceID, agentSessionID); ok {
@@ -581,75 +593,13 @@ func (s *Service) get(ctx context.Context, workspaceID string, agentSessionID st
 				}
 				return Session{}, ErrSessionNotFound
 			}
-			return s.withProtocolV2TurnState(ctx, workspaceID, sessionFromPersisted(
+			return s.projectSessionForResponse(ctx, workspaceID, sessionFromPersisted(
 				persisted,
 				persistedSessionCanResume(s.controller(), persisted),
 			))
 		}
 	}
 	return Session{}, ErrSessionNotFound
-}
-
-func (s *Service) Delete(ctx context.Context, workspaceID string, agentSessionID string) (bool, error) {
-	workspaceID = strings.TrimSpace(workspaceID)
-	agentSessionID = strings.TrimSpace(agentSessionID)
-	if workspaceID == "" || agentSessionID == "" {
-		return false, ErrInvalidArgument
-	}
-	runtimeClosed := false
-	if _, ok := s.controller().Session(workspaceID, agentSessionID); ok {
-		if err := s.controller().Close(ctx, RuntimeCloseInput{
-			WorkspaceID:    workspaceID,
-			AgentSessionID: agentSessionID,
-		}); err != nil {
-			return false, normalizeRuntimeError(err)
-		}
-		runtimeClosed = true
-	}
-	deleter, ok := s.SessionReader.(SessionDeleter)
-	if !ok {
-		if runtimeClosed {
-			if err := s.cleanupRuntime(ctx, workspaceID, agentSessionID); err != nil {
-				return false, err
-			}
-			return true, nil
-		}
-		return false, ErrSessionNotFound
-	}
-	removed, err := deleter.DeleteSession(ctx, workspaceID, agentSessionID)
-	if err != nil {
-		return false, err
-	}
-	if !removed && !runtimeClosed {
-		return false, ErrSessionNotFound
-	}
-	if err := s.cleanupRuntime(ctx, workspaceID, agentSessionID); err != nil {
-		return false, err
-	}
-	return removed || runtimeClosed, nil
-}
-
-func (s *Service) Clear(ctx context.Context, workspaceID string) (ClearSessionsResult, error) {
-	workspaceID = strings.TrimSpace(workspaceID)
-	if workspaceID == "" {
-		return ClearSessionsResult{}, ErrInvalidArgument
-	}
-	for _, session := range s.controller().Sessions(workspaceID) {
-		if err := s.controller().Close(ctx, RuntimeCloseInput{
-			WorkspaceID:    workspaceID,
-			AgentSessionID: session.ID,
-		}); err != nil {
-			return ClearSessionsResult{}, normalizeRuntimeError(err)
-		}
-		if err := s.cleanupRuntime(ctx, workspaceID, session.ID); err != nil {
-			return ClearSessionsResult{}, err
-		}
-	}
-	clearer, ok := s.SessionReader.(SessionClearer)
-	if !ok {
-		return ClearSessionsResult{}, ErrSessionNotFound
-	}
-	return clearer.ClearSessions(ctx, workspaceID)
 }
 
 func (s *Service) UpdatePin(ctx context.Context, workspaceID string, agentSessionID string, pinned bool) (Session, error) {
@@ -674,16 +624,20 @@ func (s *Service) UpdatePin(ctx context.Context, workspaceID string, agentSessio
 			runtime,
 			s.controller().CanResume(runtimeResumeInputFromRuntimeSession(runtime)),
 		)
-		return s.withProtocolV2TurnState(
+		return s.projectSessionForResponse(
 			ctx,
 			workspaceID,
 			mergePersistedSessionState(service, persisted),
 		)
 	}
-	return sessionFromPersisted(
-		persisted,
-		persistedSessionCanResume(s.controller(), persisted),
-	), nil
+	return s.projectSessionForResponse(
+		ctx,
+		workspaceID,
+		sessionFromPersisted(
+			persisted,
+			persistedSessionCanResume(s.controller(), persisted),
+		),
+	)
 }
 
 func (s *Service) cleanupRuntime(ctx context.Context, workspaceID string, agentSessionID string) error {

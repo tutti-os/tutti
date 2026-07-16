@@ -529,6 +529,7 @@ func statePatchFromSessionState(agentSessionID string, state WorkspaceAgentSessi
 	if state.Turn != nil {
 		patch.Turn = &WorkspaceAgentTurnPatch{
 			TurnID:             strings.TrimSpace(state.Turn.TurnID),
+			CapabilityRefs:     cloneCapabilityReferences(state.Turn.CapabilityRefs),
 			ActiveTurnID:       cloneStringPointer(state.Turn.ActiveTurnID),
 			Phase:              strings.TrimSpace(state.Turn.Phase),
 			Outcome:            strings.TrimSpace(state.Turn.Outcome),

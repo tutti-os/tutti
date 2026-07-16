@@ -87,6 +87,10 @@ func (s *Store) ReportActivityState(
 		LastEventUnixMS: lastEventUnixMS,
 		Session:         session,
 	}}
+	result.Messages.LatestVersion = session.MessageVersion
+	if !accepted && len(input.Messages) > 0 {
+		return ActivityStateReportResult{}, errors.New("workspace agent activity session rejected atomic messages")
+	}
 	if accepted && input.Turn != nil {
 		result.Turn, result.TurnAccepted, err = s.recordTurnTransitionTx(ctx, tx, *input.Turn, now)
 		if err != nil {
@@ -125,6 +129,41 @@ func (s *Store) ReportActivityState(
 			return ActivityStateReportResult{}, errors.New("workspace agent activity interaction transition conflicts with immutable identity")
 		}
 	}
+	if accepted {
+		for index, message := range input.Messages {
+			message.MessageID = strings.TrimSpace(message.MessageID)
+			message.TurnID = strings.TrimSpace(message.TurnID)
+			if message.MessageID == "" || message.TurnID == "" {
+				return ActivityStateReportResult{}, fmt.Errorf(
+					"workspace agent activity message %d requires message id and turn id",
+					index,
+				)
+			}
+			acceptedMessage, messageAccepted, err := s.upsertAgentMessageTx(
+				ctx,
+				tx,
+				workspaceID,
+				agentSessionID,
+				message,
+				now,
+				false,
+			)
+			if err != nil {
+				return ActivityStateReportResult{}, err
+			}
+			if !messageAccepted {
+				return ActivityStateReportResult{}, fmt.Errorf(
+					"workspace agent activity message %q was rejected",
+					message.MessageID,
+				)
+			}
+			result.Messages.AcceptedCount++
+			if acceptedMessage.Version > result.Messages.LatestVersion {
+				result.Messages.LatestVersion = acceptedMessage.Version
+			}
+			result.Messages.Messages = append(result.Messages.Messages, acceptedMessage)
+		}
+	}
 	if err := tx.Commit(); err != nil {
 		return ActivityStateReportResult{}, fmt.Errorf("commit workspace agent activity state report: %w", err)
 	}
@@ -133,6 +172,20 @@ func (s *Store) ReportActivityState(
 }
 
 func turnTransitionAlreadyApplied(stored Turn, incoming TurnTransition) bool {
+	if capabilityReferencesAlreadyApplied(stored.CapabilityRefs, incoming.CapabilityRefs) {
+		if strings.TrimSpace(incoming.Phase) == "" {
+			return true
+		}
+		// A replay of the original submitted envelope may arrive after its
+		// capability refs were merged into a later lifecycle phase. This is the
+		// sole cross-phase idempotency case; refs must already be present and the
+		// submitted event must not be newer than the stored turn.
+		if strings.TrimSpace(incoming.Phase) == TurnPhaseSubmitted &&
+			incoming.OccurredAtUnixMS > 0 &&
+			incoming.OccurredAtUnixMS <= stored.UpdatedAtUnixMS {
+			return true
+		}
+	}
 	if stored.TurnID == "" || stored.Phase != strings.TrimSpace(incoming.Phase) {
 		return false
 	}
@@ -144,6 +197,23 @@ func turnTransitionAlreadyApplied(stored Turn, incoming TurnTransition) bool {
 		outcome = TurnOutcomeCompleted
 	}
 	return stored.Outcome == outcome
+}
+
+func capabilityReferencesAlreadyApplied(stored, incoming []CapabilityReference) bool {
+	normalizedIncoming := normalizeCapabilityReferences(incoming)
+	if len(normalizedIncoming) == 0 {
+		return false
+	}
+	storedKeys := make(map[string]struct{}, len(stored))
+	for _, reference := range normalizeCapabilityReferences(stored) {
+		storedKeys[reference.Source+"\x00"+reference.Capability] = struct{}{}
+	}
+	for _, reference := range normalizedIncoming {
+		if _, ok := storedKeys[reference.Source+"\x00"+reference.Capability]; !ok {
+			return false
+		}
+	}
+	return true
 }
 
 func validateActivityStateChildScope(workspaceID string, agentSessionID string, input ActivityStateReport) error {
@@ -217,7 +287,7 @@ func (s *Store) ReportSessionMessages(
 		if message.MessageID == "" {
 			continue
 		}
-		acceptedMessage, accepted, err := s.upsertAgentMessageTx(ctx, tx, workspaceID, agentSessionID, message, now)
+		acceptedMessage, accepted, err := s.upsertAgentMessageTx(ctx, tx, workspaceID, agentSessionID, message, now, true)
 		if err != nil {
 			return MessageReportResult{}, err
 		}

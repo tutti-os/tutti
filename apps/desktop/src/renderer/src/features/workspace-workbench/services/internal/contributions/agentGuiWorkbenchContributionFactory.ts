@@ -15,6 +15,7 @@ type AgentGuiWorkbenchContributionContext = Pick<
   | "defaultAgentProvider"
   | "dockIcons"
   | "dockPreviewCache"
+  | "eventStreamClient"
   | "hostFilesApi"
   | "hostWindowApi"
   | "i18n"
@@ -46,6 +47,7 @@ export const agentGuiWorkbenchContributionFactory: DesktopWorkbenchContributionF
         dockPreviewCache: context.dockPreviewCache,
         defaultAgentProvider: context.defaultAgentProvider,
         hostFilesApi: context.hostFilesApi,
+        eventStreamClient: context.eventStreamClient,
         hostWindowApi: context.hostWindowApi,
         i18n: context.i18n,
         onCapabilitySettingsRequest: context.onCapabilitySettingsRequest,

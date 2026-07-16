@@ -40,6 +40,9 @@ export type DesktopAgentGUIConversationRailToggleDetail =
 export interface DesktopAgentGUIWorkbenchBodyProps {
   agentActivityRuntime: AgentActivityRuntime;
   agentHostApi: AgentHostInputApi;
+  tuttiModePlanReviewRuntime: NonNullable<
+    AgentGUIProps["tuttiModePlanReviewRuntime"]
+  >;
   appCenterService: IWorkspaceAppCenterService;
   agentProviderStatusService?: IAgentProviderStatusService;
   context: WorkbenchHostNodeBodyContext;
@@ -133,6 +136,7 @@ export function areDesktopAgentGUIWorkbenchBodyPropsEqual(
   return (
     previous.agentActivityRuntime === next.agentActivityRuntime &&
     previous.agentHostApi === next.agentHostApi &&
+    previous.tuttiModePlanReviewRuntime === next.tuttiModePlanReviewRuntime &&
     previous.appCenterService === next.appCenterService &&
     previous.agentProviderStatusService === next.agentProviderStatusService &&
     previous.computerUseApi === next.computerUseApi &&

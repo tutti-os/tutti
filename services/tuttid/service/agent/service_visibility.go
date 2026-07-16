@@ -19,9 +19,13 @@ func (s *Service) UpdateVisible(ctx context.Context, workspaceID string, agentSe
 	if err != nil {
 		return Session{}, normalizeRuntimeError(err)
 	}
-	return serviceSessionWithComposerSkillOptions(
-		session,
-		s.controller().CanResume(runtimeResumeInputFromRuntimeSession(session)),
-		s.discoverComposerSkillOptions(session.Provider, session.Cwd, session.Env),
-	), nil
+	return s.projectSessionForResponse(
+		ctx,
+		workspaceID,
+		serviceSessionWithComposerSkillOptions(
+			session,
+			s.controller().CanResume(runtimeResumeInputFromRuntimeSession(session)),
+			s.discoverComposerSkillOptions(session.Provider, session.Cwd, session.Env),
+		),
+	)
 }

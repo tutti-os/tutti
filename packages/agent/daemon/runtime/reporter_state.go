@@ -61,9 +61,10 @@ func statePatchFromSessionEvent(source agentsessionstore.EventSource, event acti
 		event.Type != activityshared.EventRootProviderTurnStarted &&
 		event.Type != activityshared.EventRootProviderTurnCompleted {
 		patch.Turn = &agentsessionstore.WorkspaceAgentTurnPatch{
-			TurnID:  turnID,
-			Phase:   strings.TrimSpace(event.Payload.TurnPhase),
-			Outcome: strings.TrimSpace(event.Payload.TurnOutcome),
+			TurnID:         turnID,
+			CapabilityRefs: activityCapabilityReferencesFromEvent(event),
+			Phase:          strings.TrimSpace(event.Payload.TurnPhase),
+			Outcome:        strings.TrimSpace(event.Payload.TurnOutcome),
 		}
 	}
 	if !applyLifecycleSnapshotToPatch(&patch, event) {
@@ -126,6 +127,23 @@ func statePatchFromSessionEvent(source agentsessionstore.EventSource, event acti
 		}
 	}
 	return patch, true
+}
+
+func activityCapabilityReferencesFromEvent(
+	event activityshared.Event,
+) []agentsessionstore.WorkspaceAgentCapabilityReference {
+	references := activityshared.TurnCapabilityReferencesFromEvent(event)
+	if len(references) == 0 {
+		return nil
+	}
+	mapped := make([]agentsessionstore.WorkspaceAgentCapabilityReference, 0, len(references))
+	for _, reference := range references {
+		mapped = append(mapped, agentsessionstore.WorkspaceAgentCapabilityReference{
+			Capability: reference.Capability,
+			Source:     reference.Source,
+		})
+	}
+	return mapped
 }
 
 func cloneStringPointer(value *string) *string {

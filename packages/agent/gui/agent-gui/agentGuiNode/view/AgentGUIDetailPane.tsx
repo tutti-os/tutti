@@ -7,11 +7,10 @@ import {
   useState,
   type CSSProperties
 } from "react";
-import { ScrollArea } from "@tutti-os/ui-system/components";
+import { Button, ScrollArea } from "@tutti-os/ui-system/components";
 import type { WorkspaceUserProjectI18nRuntime } from "@tutti-os/workspace-user-project/i18n";
 import type { WorkspaceLinkAction } from "../../../actions/workspaceLinkActions";
 import type { UiLanguage } from "../../../contexts/settings/domain/agentSettings";
-import type { AgentPromptContentBlock } from "../../../shared/contracts/dto";
 import type { AgentMessageMarkdownWorkspaceAppIcon } from "../../../shared/AgentMessageMarkdown";
 import type { AgentCollaborationVM } from "../../../shared/agentConversation/contracts/agentCollaborationVM";
 import { AGENT_GUI_WORKBENCH_OPEN_EXTERNAL_IMPORT_EVENT } from "../../../workbench/contribution";
@@ -58,6 +57,10 @@ import { useAgentGUIDetailScroll } from "./useAgentGUIDetailScroll";
 import { useAgentGUIDetailModel } from "./useAgentGUIDetailModel";
 import { useAgentGUIProviderRailPreferences } from "./useAgentGUIProviderRailPreferences";
 import type { AgentGUIComposerEngagement } from "../engagement/agentGUIEngagement.types";
+import {
+  TuttiModePlanPanel,
+  useTuttiModePlanPanels
+} from "../../../workspaceWorkflow";
 
 const AGENT_GUI_TIMELINE_SCROLL_AREA_CONTENT_STYLE: CSSProperties = {
   width: "100%",
@@ -190,6 +193,12 @@ export const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
     slashStatusLimitsUnavailable,
     viewModel
   });
+  const tuttiModePlanPanels = useTuttiModePlanPanels({
+    enabled: !previewMode,
+    workspaceId: viewModel.shell.workspaceId,
+    sourceSessionId: viewModel.rail.activeConversationId,
+    decidedBy: viewModel.shell.currentUserId?.trim() || "local"
+  });
   const handleInterruptCurrentTurn = useCallback(() => {
     actions.interruptCurrentTurn(labels.noRunningResponse);
   }, [actions.interruptCurrentTurn, labels.noRunningResponse]);
@@ -197,6 +206,13 @@ export const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
     actions.submitApprovalOption
   );
   const retryActivation = useStableEventCallback(actions.retryActivation);
+  const retryTuttiModeActivation = useStableEventCallback(
+    actions.retryTuttiModeActivation
+  );
+  const retryInlineNotice =
+    viewModel.composer.tuttiModeUpdateStatus === "failed"
+      ? retryTuttiModeActivation
+      : retryActivation;
   const continueInNewConversation = useStableEventCallback(
     actions.continueInNewConversation
   );
@@ -207,6 +223,7 @@ export const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
   const updateComposerSettings = useStableEventCallback(
     actions.updateComposerSettings
   );
+  const setTuttiModeActive = useStableEventCallback(actions.setTuttiModeActive);
   const updatePlanIssueBudgetPreset = useStableEventCallback(
     actions.updatePlanIssueBudgetPreset
   );
@@ -272,13 +289,9 @@ export const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
     [requestSubmittedPromptScrollToBottom, submitPrompt]
   );
   const submitGuidancePromptAndScrollToBottom = useCallback(
-    (content: AgentPromptContentBlock[], displayPrompt?: string): void => {
+    (...args: Parameters<typeof submitGuidancePrompt>): void => {
       requestSubmittedPromptScrollToBottom();
-      if (displayPrompt === undefined) {
-        submitGuidancePrompt(content);
-        return;
-      }
-      submitGuidancePrompt(content, displayPrompt);
+      submitGuidancePrompt(...args);
     },
     [requestSubmittedPromptScrollToBottom, submitGuidancePrompt]
   );
@@ -403,6 +416,8 @@ export const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
       disabled: composerDisabled || timelineInteractionLocked,
       disabledReason: composerDisabledReason,
       submitDisabled: submitDisabled || timelineInteractionLocked,
+      tuttiModeActive: viewModel.composer.isTuttiModeActive,
+      tuttiModeUpdating: viewModel.composer.isTuttiModeUpdating,
       composerSettings: viewModel.composer.composerSettings,
       queueStatus: viewModel.composer.queueStatus,
       queuedPrompts: viewModel.composer.queuedPrompts,
@@ -436,6 +451,7 @@ export const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
       onDraftContentChange: updateDraftContent,
       onProjectPathChange: updateSelectedProjectPath,
       onSettingsChange: updateComposerSettings,
+      onTuttiModeChange: setTuttiModeActive,
       onPlanIssueBudgetPresetChange: updatePlanIssueBudgetPreset,
       onSubmit: submitPromptAndScrollToBottom,
       onSubmitGuidance: submitGuidancePromptAndScrollToBottom,
@@ -493,6 +509,7 @@ export const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
       showStopButton,
       slashStatus,
       submitDisabled,
+      setTuttiModeActive,
       submitInteractivePrompt,
       submitPromptAndScrollToBottom,
       submitGuidancePromptAndScrollToBottom,
@@ -518,6 +535,8 @@ export const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
       viewModel.composer.drainingQueuedPromptId,
       viewModel.detail.hasSentUserMessage,
       viewModel.composer.isInterrupting,
+      viewModel.composer.isTuttiModeActive,
+      viewModel.composer.isTuttiModeUpdating,
       viewModel.interaction.isRespondingApproval,
       viewModel.composer.promptImagesSupported,
       viewModel.composer.queueStatus,
@@ -669,20 +688,50 @@ export const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
             />
           )
         ) : (
-          <AgentGUIConversationTimelinePane
-            conversation={conversation}
-            isLoading={showTimelineSkeleton}
-            isLoadingOlderMessages={viewModel.detail.isLoadingOlderMessages}
-            loadingLabel={labels.loadingConversation}
-            empty={conversationFlowEmpty}
-            onLinkAction={stableLinkAction}
-            onReviseCollaboration={reviseFailedCollaboration}
-            onAuthLogin={authLogin}
-            availableSkills={viewModel.composer.availableSkills}
-            workspaceAppIcons={workspaceAppIcons}
-            previewMode={previewMode}
-            labels={conversationFlowLabels}
-          />
+          <>
+            <AgentGUIConversationTimelinePane
+              conversation={conversation}
+              isLoading={showTimelineSkeleton}
+              isLoadingOlderMessages={viewModel.detail.isLoadingOlderMessages}
+              loadingLabel={labels.loadingConversation}
+              empty={conversationFlowEmpty}
+              onLinkAction={stableLinkAction}
+              onReviseCollaboration={reviseFailedCollaboration}
+              onAuthLogin={authLogin}
+              availableSkills={viewModel.composer.availableSkills}
+              workspaceAppIcons={workspaceAppIcons}
+              previewMode={previewMode}
+              labels={conversationFlowLabels}
+            />
+            {tuttiModePlanPanels.panels.map((panel) => (
+              <TuttiModePlanPanel
+                key={panel.id}
+                labels={labels.tuttiModePlanPanel}
+                panel={panel}
+                submitting={
+                  tuttiModePlanPanels.submittingCheckpointId ===
+                  panel.checkpoint.id
+                }
+                onDecide={tuttiModePlanPanels.decide}
+              />
+            ))}
+            {tuttiModePlanPanels.error ? (
+              <div
+                className="mx-auto flex w-full max-w-[860px] items-center justify-between gap-3 rounded-md border border-border bg-card px-4 py-3 text-sm text-muted-foreground"
+                role="alert"
+              >
+                <span>{labels.tuttiModePlanLoadFailed}</span>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="secondary"
+                  onClick={tuttiModePlanPanels.retry}
+                >
+                  {labels.tuttiModePlanRetry}
+                </Button>
+              </div>
+            ) : null}
+          </>
         )}
       </ScrollArea>
       {hasActiveConversation ? (
@@ -703,6 +752,7 @@ export const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
           promptLabels={interactivePromptLabels}
           onSubmitApprovalOption={submitApprovalOption}
           onRetryActivation={retryActivation}
+          onRetryInlineNotice={retryInlineNotice}
           onAuthLogin={authLogin}
           onContinueInNewConversation={continueInNewConversation}
           onSubmitBottomDockInteractivePrompt={

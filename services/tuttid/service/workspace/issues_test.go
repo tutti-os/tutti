@@ -3,6 +3,7 @@ package workspace
 import (
 	"context"
 	"errors"
+	"math"
 	"path/filepath"
 	"testing"
 	"time"
@@ -12,10 +13,124 @@ import (
 	modelplanbiz "github.com/tutti-os/tutti/services/tuttid/biz/modelplan"
 	workspacebiz "github.com/tutti-os/tutti/services/tuttid/biz/workspace"
 	workspaceagentbiz "github.com/tutti-os/tutti/services/tuttid/biz/workspaceagent"
+	workflowbiz "github.com/tutti-os/tutti/services/tuttid/biz/workspaceworkflow"
 	workspacedata "github.com/tutti-os/tutti/services/tuttid/data/workspace"
 	agentservice "github.com/tutti-os/tutti/services/tuttid/service/agent"
 	eventstreamservice "github.com/tutti-os/tutti/services/tuttid/service/eventstream"
 )
+
+func TestIssueManagerRejectsNonFiniteBudgetBeforePersistence(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	store := openIssueServiceStore(t)
+	if err := store.Create(ctx, workspacebiz.Summary{ID: "workspace-nonfinite", Name: "Nonfinite"}); err != nil {
+		t.Fatalf("Create() workspace error = %v", err)
+	}
+	service := IssueManagerService{Store: store}
+	_, err := service.CreateIssue(ctx, "workspace-nonfinite", CreateIssueManagerIssueInput{
+		IssueID: "issue-nonfinite", TopicID: workspaceissues.DefaultTopicID, Title: "Invalid budget",
+		HasBudget: true,
+		Budget: workspaceissues.Budget{
+			Mode: workspaceissues.BudgetModeAuto, QuotaWaterlinePercent: math.NaN(),
+		},
+	})
+	if !errors.Is(err, workspaceissues.ErrInvalidArgument) {
+		t.Fatalf("CreateIssue() error = %v, want ErrInvalidArgument", err)
+	}
+	if _, err := store.GetIssue(ctx, "workspace-nonfinite", "issue-nonfinite"); !errors.Is(err, workspaceissues.ErrIssueNotFound) {
+		t.Fatalf("GetIssue() error = %v, want no persisted invalid issue", err)
+	}
+}
+
+func TestIssueManagerReservesTuttiModePlanIssueIDsForWorkflowMaterialization(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	store := openIssueServiceStore(t)
+	const workspaceID = "workspace-reserved-tutti-issue"
+	if err := store.Create(ctx, workspacebiz.Summary{ID: workspaceID, Name: "Reserved Tutti Issue"}); err != nil {
+		t.Fatalf("Create() workspace error = %v", err)
+	}
+	service := IssueManagerService{Store: store}
+	task := []CreateIssueManagerTaskItemInput{{TaskID: "task-1", Title: "Implement"}}
+
+	if _, err := service.CreateIssue(ctx, workspaceID, CreateIssueManagerIssueInput{
+		IssueID: workflowbiz.TuttiModePlanIssueIDPrefix + "manual",
+		TopicID: workspaceissues.DefaultTopicID,
+		Title:   "Manual preemption",
+	}); !errors.Is(err, workspaceissues.ErrInvalidArgument) {
+		t.Fatalf("CreateIssue() error = %v, want ErrInvalidArgument", err)
+	}
+	if _, err := service.CreateIssue(ctx, workspaceID, CreateIssueManagerIssueInput{
+		IssueID:         "ordinary-forged-tutti",
+		TopicID:         workspaceissues.DefaultTopicID,
+		Title:           "Forged Tutti provenance",
+		PlanningSource:  string(workspaceissues.PlanningSourceTuttiModePlan),
+		SourceSessionID: "session-1",
+	}); !errors.Is(err, workspaceissues.ErrInvalidArgument) {
+		t.Fatalf("CreateIssue(forged Tutti provenance) error = %v, want ErrInvalidArgument", err)
+	}
+
+	for name, issue := range map[string]CreateIssueManagerIssueInput{
+		"traditional plan cannot use reserved id": {
+			IssueID:        workflowbiz.TuttiModePlanIssueIDPrefix + "traditional",
+			TopicID:        workspaceissues.DefaultTopicID,
+			Title:          "Traditional preemption",
+			PlanningSource: string(workspaceissues.PlanningSourceTraditionalPlan),
+		},
+		"untrusted tutti source cannot use reserved id": {
+			IssueID:         workflowbiz.TuttiModePlanIssueIDPrefix + "untrusted-tutti",
+			TopicID:         workspaceissues.DefaultTopicID,
+			Title:           "Untrusted Tutti preemption",
+			PlanningSource:  string(workspaceissues.PlanningSourceTuttiModePlan),
+			SourceSessionID: "session-1",
+		},
+		"workflow authority cannot escape reserved namespace": {
+			IssueID:                "ordinary-issue",
+			TopicID:                workspaceissues.DefaultTopicID,
+			Title:                  "Invalid workflow authority",
+			PlanningSource:         string(workspaceissues.PlanningSourceTuttiModePlan),
+			SourceSessionID:        "session-1",
+			TuttiModeWorkflowOwned: true,
+		},
+		"ordinary id cannot forge tutti provenance": {
+			IssueID:         "ordinary-forged-tutti-plan",
+			TopicID:         workspaceissues.DefaultTopicID,
+			Title:           "Forged Tutti plan provenance",
+			PlanningSource:  string(workspaceissues.PlanningSourceTuttiModePlan),
+			SourceSessionID: "session-1",
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			if _, err := service.CreateIssueFromPlan(ctx, workspaceID, CreateIssueManagerIssueFromPlanInput{
+				Issue: issue,
+				Tasks: task,
+			}); !errors.Is(err, workspaceissues.ErrInvalidArgument) {
+				t.Fatalf("CreateIssueFromPlan() error = %v, want ErrInvalidArgument", err)
+			}
+		})
+	}
+
+	reservedID := workflowbiz.TuttiModePlanIssueIDPrefix + "workflow-1"
+	detail, err := service.CreateIssueFromPlan(ctx, workspaceID, CreateIssueManagerIssueFromPlanInput{
+		Issue: CreateIssueManagerIssueInput{
+			IssueID:                reservedID,
+			TopicID:                workspaceissues.DefaultTopicID,
+			Title:                  "Accepted Tutti workflow",
+			PlanningSource:         string(workspaceissues.PlanningSourceTuttiModePlan),
+			SourceSessionID:        "session-1",
+			TuttiModeWorkflowOwned: true,
+		},
+		Tasks: task,
+	})
+	if err != nil {
+		t.Fatalf("CreateIssueFromPlan(workflow-owned) error = %v", err)
+	}
+	if detail.Issue.IssueID != reservedID || detail.Issue.PlanningSource != workspaceissues.PlanningSourceTuttiModePlan {
+		t.Fatalf("materialized detail = %#v", detail)
+	}
+}
 
 func TestIssueManagerServiceValidatesTaskModelPlanAssignmentAtSave(t *testing.T) {
 	t.Parallel()
@@ -235,7 +350,7 @@ func TestIssueManagerServiceReportsPlanIssueReverseLink(t *testing.T) {
 	if _, err := service.CreateIssueFromPlan(ctx, "workspace-1", CreateIssueManagerIssueFromPlanInput{
 		Issue: CreateIssueManagerIssueInput{
 			IssueID: "issue-1", TopicID: workspaceissues.DefaultTopicID, Title: "Plan migration",
-			PlanningSource: string(workspaceissues.PlanningSourceUltraPlan), SourceSessionID: "session-1",
+			PlanningSource: string(workspaceissues.PlanningSourceTraditionalPlan), SourceSessionID: "session-1",
 		},
 		Tasks: []CreateIssueManagerTaskItemInput{{TaskID: "task-1", Title: "Implement", Priority: string(workspaceissues.PriorityMedium)}},
 	}); err != nil {

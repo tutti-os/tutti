@@ -21,6 +21,7 @@ var reservedScopes = map[string]struct{}{
 	"agent":  {},
 	"help":   {},
 	"issue":  {},
+	"plan":   {},
 	"status": {},
 }
 

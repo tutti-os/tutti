@@ -140,16 +140,17 @@ const (
 )
 
 type WorkspaceAgentTurnStateUpdate struct {
-	TurnID             string                            `json:"turnId"`
-	ActiveTurnID       *string                           `json:"activeTurnId,omitempty"`
-	Phase              string                            `json:"phase,omitempty"`
-	Outcome            string                            `json:"outcome,omitempty"`
-	Settling           bool                              `json:"settling,omitempty"`
-	CompletedCommand   *WorkspaceAgentCompletedCommand   `json:"completedCommand,omitempty"`
-	SubmitAvailability *WorkspaceAgentSubmitAvailability `json:"submitAvailability,omitempty"`
-	FileChanges        map[string]any                    `json:"fileChanges,omitempty"`
-	StartedAtUnixMS    int64                             `json:"startedAtUnixMs,omitempty"`
-	CompletedAtUnixMS  int64                             `json:"completedAtUnixMs,omitempty"`
+	TurnID             string                              `json:"turnId"`
+	CapabilityRefs     []WorkspaceAgentCapabilityReference `json:"capabilityRefs,omitempty"`
+	ActiveTurnID       *string                             `json:"activeTurnId,omitempty"`
+	Phase              string                              `json:"phase,omitempty"`
+	Outcome            string                              `json:"outcome,omitempty"`
+	Settling           bool                                `json:"settling,omitempty"`
+	CompletedCommand   *WorkspaceAgentCompletedCommand     `json:"completedCommand,omitempty"`
+	SubmitAvailability *WorkspaceAgentSubmitAvailability   `json:"submitAvailability,omitempty"`
+	FileChanges        map[string]any                      `json:"fileChanges,omitempty"`
+	StartedAtUnixMS    int64                               `json:"startedAtUnixMs,omitempty"`
+	CompletedAtUnixMS  int64                               `json:"completedAtUnixMs,omitempty"`
 }
 
 type WorkspaceAgentCompletedCommand struct {
@@ -405,16 +406,17 @@ type WorkspaceAgentStatePatch struct {
 }
 
 type WorkspaceAgentTurnPatch struct {
-	TurnID             string                            `json:"turnId"`
-	ActiveTurnID       *string                           `json:"activeTurnId,omitempty"`
-	Phase              string                            `json:"phase,omitempty"`
-	Outcome            string                            `json:"outcome,omitempty"`
-	Settling           bool                              `json:"settling,omitempty"`
-	CompletedCommand   *WorkspaceAgentCompletedCommand   `json:"completedCommand,omitempty"`
-	SubmitAvailability *WorkspaceAgentSubmitAvailability `json:"submitAvailability,omitempty"`
-	FileChanges        map[string]any                    `json:"fileChanges,omitempty"`
-	StartedAtUnixMS    int64                             `json:"startedAtUnixMs,omitempty"`
-	CompletedAtUnixMS  int64                             `json:"completedAtUnixMs,omitempty"`
+	TurnID             string                              `json:"turnId"`
+	CapabilityRefs     []WorkspaceAgentCapabilityReference `json:"capabilityRefs,omitempty"`
+	ActiveTurnID       *string                             `json:"activeTurnId,omitempty"`
+	Phase              string                              `json:"phase,omitempty"`
+	Outcome            string                              `json:"outcome,omitempty"`
+	Settling           bool                                `json:"settling,omitempty"`
+	CompletedCommand   *WorkspaceAgentCompletedCommand     `json:"completedCommand,omitempty"`
+	SubmitAvailability *WorkspaceAgentSubmitAvailability   `json:"submitAvailability,omitempty"`
+	FileChanges        map[string]any                      `json:"fileChanges,omitempty"`
+	StartedAtUnixMS    int64                               `json:"startedAtUnixMs,omitempty"`
+	CompletedAtUnixMS  int64                               `json:"completedAtUnixMs,omitempty"`
 }
 
 type WorkspaceAgentEntityPatch struct {

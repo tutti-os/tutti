@@ -23,7 +23,7 @@ type PlanningSource string
 
 const (
 	PlanningSourceManual          PlanningSource = "manual"
-	PlanningSourceUltraPlan       PlanningSource = "ultra_plan"
+	PlanningSourceTuttiModePlan   PlanningSource = "tutti_mode_plan"
 	PlanningSourceTraditionalPlan PlanningSource = "traditional_plan"
 )
 

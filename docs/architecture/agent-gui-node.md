@@ -490,6 +490,10 @@ action.
 UI-local state may include draft text, selected panel, rail layout, open menus,
 scroll position, and temporary presentation focus. UI-local state must not own
 session lifecycle, turn lifecycle, queue delivery, or durable workflow status.
+Preview-mode AgentGUI clones are passive projections. React hooks may remain
+unconditionally mounted to preserve hook ordering, but workflow hooks must
+accept a disabled scope that performs no fetch, event subscription, decision,
+or retry reconciliation until the full detail surface is active.
 
 ## Agent GUI Module Shape
 
@@ -953,6 +957,16 @@ field. Before invoking a provider, the daemon persists a submit claim scoped by
 workspace, session, and client submit ID. A duplicate accepted claim returns
 the existing turn; a prepared claim reports delivery as unknown/confirming and
 must never invoke the provider again.
+
+Provider `Accepted=true` is followed by a daemon-owned durability barrier after
+the controller releases its Session lifecycle lock. The same reporter FIFO
+must first persist the ordinary submitted Turn; the barrier then atomically
+persists a stable client-submit user message against that existing Turn. It
+does not emit a second visible message because replay uses the same message ID,
+and it never replays `submitted` over a Turn that may already be running. Only
+after `FindTurnByClientSubmitID` reads the exact canonical Turn may the submit
+claim become accepted. A missing atomic reporter capability or barrier failure
+keeps the claim and Tutti snapshot prepared and returns delivery-unknown.
 
 Creating a session with initial content is one transaction. Provider startup
 may create provisional runtime state, but the Session is not published or
@@ -1941,66 +1955,69 @@ authorization or its mandatory audit write fails.
 See [Model Access Plans And Workspace Agents](./model-access-plans.md) for the
 daemon side.
 
-### Plan And Ultra Plan Issue Handoff
+### Plan And Tutti Mode
 
-The composer exposes three explicit modes: `normal`, `plan`, and
-`ultra_plan`. Plan and Ultra Plan set provider plan mode for the submitted
-turn; Ultra Plan is hidden unless the selected Agent supports both planning and
-plan implementation. Ultra Plan is staged: the first turn produces only a
-reviewable plan narrative marked with `tutti-ultra-plan-v1`; the host then asks
-for Issue-level reasoning/orchestration and auto/fixed token-budget choices.
-When Plan or Ultra Plan is selected, the composer also exposes an optional
-pre-planning budget control. Its two intensity values and auto/fixed token
-budget are persisted in AgentGUI workbench state and seed the later mandatory
-review whenever the generated artifact does not explicitly carry already-
-confirmed values. The mandatory review remains authoritative.
-Only after confirmation does a private Planning-Agent turn receive the real
-credential-free Agent, Plan, billing-mode, model, tier/capability/pricing, and
-directory catalogs and emit the fenced
-`tutti-issue-plan-v1` task graph. The artifact must not contain credentials,
-fabricated owner identity, or task-level strength/budget.
+Provider Plan mode and Tutti Mode are independent, compatible composer
+modifiers. `/plan` activates the provider's native Plan setting and shows a
+removable Plan badge. `/tutti` shows a separate removable Tutti badge and
+creates or advances a daemon-owned `TuttiModeActivation`. Activating one must
+not replace or hide the other. These host-owned slash names are reserved in
+the composer; provider-advertised entries with those exact names cannot shadow
+them. Only a bare `/plan` or `/tutti` submission is consumed as a local
+modifier. An invocation with arguments remains normal submit content so the
+composer never silently discards the user's task text.
 
-Full Plan prompt cards offer `implement` and `create_issue`. Traditional Plan
-uses **Break into an Issue**; Ultra Plan uses the same review flow with its
-structured payload. AgentGUI converts the plan text into an ephemeral review
-draft only: users can adjust the two Issue-level intensities, auto/fixed budget,
-and each task's Agent/Plan/model/directory while seeing dependencies. Agent
-protocol filters compatible Plans; selecting a Plan resolves a valid default
-model. The preview estimates monetary cost only for explicit `api_metered`
-catalog pricing; `subscription_quota` plans retain quota semantics and unknown
-prices never become zero. The confirmed reasoning
-intensity biases capability versus cost, while orchestration intensity biases
-meaningful specialization versus fewer handoffs. The final review offers
-`create only`, sequential `create and start`, and parallel `create and start`.
-It then dispatches the selected action and plan-turn identity. It does not
-persist tasks or launch agents.
-After a traditional Plan completes this conversion, Desktop shows the
-localized Ultra Plan entry hint required by the product funnel; Ultra Plan
-conversions keep the ordinary creation confirmation.
+The activation is an independent Tutti entity associated with the Agent
+Session; it is not Session-owned settings, durable workflow state, or a special
+provider planning mode. AgentSessionEngine normalizes its Session read
+projection into a dedicated entity slice. Before Session creation, an
+engine-owned pending draft intent supplies the optimistic badge. The create
+correlation reconciles that intent with the authoritative activation without a
+home-to-Session gap. Existing-session changes go through an engine command and
+revision-checked daemon update; React components never own the durable truth.
 
-Desktop owns the host adapter:
+Each submitted Turn binds an immutable activation revision. The runtime derives
+Tutti Host Context only from that snapshot, not from `capabilityRefs`, user
+text, or the latest Turn. Capability references may remain as audit
+projections, but they cannot hydrate the badge or determine current state. The
+Agent remains free to combine the always-available daemon CLI capabilities it
+has been given. A Tutti Mode Plan begins only when the Agent invokes
+`tutti plan propose`; no activation, transcript marker, or provider Plan card
+may create or classify it.
+
+AgentGUI receives a narrow `TuttiModePlanReviewRuntime` from the Desktop host.
+Its React provider and lookup hook remain package-private implementation
+details; only the host integration contract is exported. The active detail
+pane lists pending Tutti-owned workflows scoped by workspace and
+source session, projects the authoritative current Markdown revision into a
+review panel, and subscribes to `workspace.workflow.updated` only as a pull
+invalidation signal. The panel posts accept, reject, or cancel to the daemon's
+checkpoint decision endpoint; rejection requires feedback. Closing or
+reopening the GUI reconstructs the panel from daemon state rather than from
+React state, the Agent transcript, or provider interactions.
+
+Desktop owns only the transport adapter:
 
 ```text
-AgentGUI plan action
-  -> read authoritative plan-turn messages
-  -> parse submitted review draft (or one-task traditional fallback)
-  -> for parallel start, Desktop creates/reuses one isolated Git worktree per assigned Task
-  -> tuttid create Issue from Plan with sequential or parallel execution policy
-  -> daemon validates parallel Task directories are unique absolute paths
-  -> sequential: start one stable eligible Task; wait for explicit acceptance
-  -> parallel: start every DAG-ready root; accepted dependencies unlock successors
+/tutti pending intent -> tuttid TuttiModeActivation -> immutable Turn snapshot
+                                                   -> provider Host Context
+Agent turn -> tutti plan propose/revise/get/wait -> durable WorkspaceWorkflow
+workspace.workflow.updated -> Desktop adapter -> authoritative HTTP snapshot
+                                             -> AgentGUI review projection
+user decision -> Desktop adapter -> tuttid checkpoint state machine
+accepted task graph -> tuttid ActionableItem projection -> Workspace Issue
 ```
 
-Parallel start fails closed before Issue creation when Desktop cannot provide
-an isolated worktree for every assigned Task (including non-Git workspaces or
-hosts without the worktree capability). The localized failure leaves the
-review intact so the user can choose sequential start or supply explicit
-isolated directories. The daemon remains the scheduler in both modes.
+AgentGUI never converts the plan narrative into an Issue and never asks the
+Agent to repeat Issue creation. The daemon derives executable work only from
+the accepted current task-graph revision, records an idempotent operation, and
+materializes the Issue. The Issue domain then owns DAG validation, budgets,
+usage/cost aggregation, dispatch, and the
+`agent_claimed -> auto_checked -> user_accepted` gate.
 
-The Issue domain owns DAG validation, budgets, usage/cost aggregation, and the
-`agent_claimed -> auto_checked -> user_accepted` gate. AgentGUI must not infer
-task completion from plan-card state or close a task when an agent merely
-claims success. See [Workspace Issue Manager](./workspace-issue-manager.md).
+See [Tutti Mode Activation And Workspace Workflows](./workspace-workflows.md) for the
+entity model and state transitions, and
+[Workspace Issue Manager](./workspace-issue-manager.md) for execution.
 
 ### Layer Ownership Summary
 
@@ -2691,6 +2708,9 @@ sink for AgentGUI diagnostics such as composer upload/submit state, message page
 requests/resolutions, render-state changes, and caught errors. Hosts can set
 `devDiagnosticConsoleSink: false` to keep a development runtime silent;
 production remains silent by default.
+Raw daemon, provider, and transport error codes or messages remain diagnostic
+evidence. User-visible notices render stable localized copy and must not append
+those technical details.
 
 Production AgentGUI code should not call legacy `AgentHostApi.workspaceAgents`
 or `AgentHostApi.agentSessions` as a list, timeline, message, or write source.

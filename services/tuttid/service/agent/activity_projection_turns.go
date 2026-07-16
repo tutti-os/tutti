@@ -6,7 +6,6 @@ import (
 	"strings"
 
 	agentsessionstore "github.com/tutti-os/tutti/packages/agent/daemon/activity"
-	tuttigenerated "github.com/tutti-os/tutti/services/tuttid/api/generated"
 	agentactivitybiz "github.com/tutti-os/tutti/services/tuttid/biz/agentactivity"
 )
 
@@ -98,9 +97,10 @@ func interactionTransitionFromStateInput(
 }
 
 // turnTransitionFromStateInput derives one closed-vocabulary canonical turn
-// transition from an explicit structured Turn patch. TurnLifecycle is a
-// runtime/session snapshot for presentation and must not implicitly mutate a
-// WorkspaceAgentTurn.
+// transition from an explicit structured Turn patch. A phase-less patch is
+// accepted only when it carries capability provenance for a metadata-only
+// merge. TurnLifecycle is a runtime/session snapshot for presentation and
+// must not implicitly mutate a WorkspaceAgentTurn.
 func turnTransitionFromStateInput(
 	input agentsessionstore.ReportSessionStateInput,
 ) (agentactivitybiz.TurnTransition, bool) {
@@ -109,14 +109,26 @@ func turnTransitionFromStateInput(
 	agentSessionID := strings.TrimSpace(input.AgentSessionID)
 
 	if turn := state.Turn; turn != nil && strings.TrimSpace(turn.TurnID) != "" {
+		capabilityRefs := capabilityReferencesFromTurnPatch(turn.CapabilityRefs)
+		rawPhase := strings.TrimSpace(turn.Phase)
 		phase := normalizeTurnPhaseV2(turn.Phase, turn.Settling)
 		if phase == "" {
-			return agentactivitybiz.TurnTransition{}, false
+			if rawPhase != "" || len(capabilityRefs) == 0 {
+				return agentactivitybiz.TurnTransition{}, false
+			}
+			return agentactivitybiz.TurnTransition{
+				WorkspaceID:      workspaceID,
+				AgentSessionID:   agentSessionID,
+				TurnID:           strings.TrimSpace(turn.TurnID),
+				CapabilityRefs:   capabilityRefs,
+				OccurredAtUnixMS: state.OccurredAtUnixMS,
+			}, true
 		}
 		transition := agentactivitybiz.TurnTransition{
 			WorkspaceID:      workspaceID,
 			AgentSessionID:   agentSessionID,
 			TurnID:           strings.TrimSpace(turn.TurnID),
+			CapabilityRefs:   capabilityRefs,
 			Phase:            phase,
 			Outcome:          normalizeTurnOutcomeV2(turn.Outcome),
 			FileChanges:      clonePayload(turn.FileChanges),
@@ -135,6 +147,22 @@ func turnTransitionFromStateInput(
 	}
 
 	return agentactivitybiz.TurnTransition{}, false
+}
+
+func capabilityReferencesFromTurnPatch(
+	references []agentsessionstore.WorkspaceAgentCapabilityReference,
+) []agentactivitybiz.CapabilityReference {
+	if len(references) == 0 {
+		return nil
+	}
+	mapped := make([]agentactivitybiz.CapabilityReference, 0, len(references))
+	for _, reference := range references {
+		mapped = append(mapped, agentactivitybiz.CapabilityReference{
+			Capability: strings.TrimSpace(reference.Capability),
+			Source:     strings.TrimSpace(reference.Source),
+		})
+	}
+	return mapped
 }
 
 // normalizeTurnPhaseV2 maps the open runtime phase vocabulary onto the
@@ -195,72 +223,96 @@ func normalizeInteractionKind(kind string) string {
 	}
 }
 
-// GeneratedWorkspaceAgentTurn is the completeness-guarded projection from the
-// stored turn record to the generated transport type (refactor plan rule
-// six): every WorkspaceAgentTurn field is assigned explicitly, and
-// TestGeneratedTurnFromStoredCoversAllFields fails when the generated type
-// grows a field this projection does not populate.
-func GeneratedWorkspaceAgentTurn(turn agentactivitybiz.Turn) tuttigenerated.WorkspaceAgentTurn {
-	var outcome *tuttigenerated.WorkspaceAgentTurnOutcome
-	if trimmed := strings.TrimSpace(turn.Outcome); trimmed != "" {
-		value := tuttigenerated.WorkspaceAgentTurnOutcome(trimmed)
+type activityTurnUpdateEventTurn struct {
+	TurnID           string                                 `json:"turnId"`
+	AgentSessionID   string                                 `json:"agentSessionId"`
+	CapabilityRefs   []agentactivitybiz.CapabilityReference `json:"capabilityRefs,omitempty"`
+	Phase            string                                 `json:"phase"`
+	Outcome          *string                                `json:"outcome"`
+	Error            *activityTurnUpdateEventError          `json:"error"`
+	FileChanges      map[string]any                         `json:"fileChanges"`
+	CompletedCommand *activityTurnUpdateCompletedCommand    `json:"completedCommand"`
+	StartedAtUnixMS  int64                                  `json:"startedAtUnixMs"`
+	SettledAtUnixMS  *int64                                 `json:"settledAtUnixMs"`
+	UpdatedAtUnixMS  int64                                  `json:"updatedAtUnixMs"`
+}
+
+type activityTurnUpdateEventError struct {
+	Message string  `json:"message"`
+	Code    *string `json:"code,omitempty"`
+}
+
+type activityTurnUpdateCompletedCommand struct {
+	Kind   string `json:"kind"`
+	Status string `json:"status"`
+}
+
+type activityInteractionUpdateEventInteraction struct {
+	RequestID       string         `json:"requestId"`
+	AgentSessionID  string         `json:"agentSessionId"`
+	TurnID          string         `json:"turnId"`
+	Kind            string         `json:"kind"`
+	Status          string         `json:"status"`
+	ToolName        *string        `json:"toolName"`
+	Input           map[string]any `json:"input"`
+	Output          map[string]any `json:"output"`
+	Metadata        map[string]any `json:"metadata"`
+	CreatedAtUnixMS int64          `json:"createdAtUnixMs"`
+	UpdatedAtUnixMS int64          `json:"updatedAtUnixMs"`
+}
+
+func activityTurnUpdateEventTurnFromStored(turn agentactivitybiz.Turn) activityTurnUpdateEventTurn {
+	var outcome *string
+	if value := strings.TrimSpace(turn.Outcome); value != "" {
 		outcome = &value
 	}
-	var turnError *tuttigenerated.WorkspaceAgentTurnError
+	var turnError *activityTurnUpdateEventError
 	if message := strings.TrimSpace(turn.ErrorMessage); message != "" &&
 		(turn.Outcome == agentactivitybiz.TurnOutcomeFailed || turn.Outcome == agentactivitybiz.TurnOutcomeInterrupted) {
-		turnError = &tuttigenerated.WorkspaceAgentTurnError{
-			Message: message,
-			Code:    optionalStringPointerValue(turn.ErrorCode),
-		}
+		turnError = &activityTurnUpdateEventError{Message: message, Code: optionalStringPointerValue(turn.ErrorCode)}
 	}
-	var completedCommand *tuttigenerated.WorkspaceAgentCompletedCommand
+	var completedCommand *activityTurnUpdateCompletedCommand
 	if kind := strings.TrimSpace(turn.CompletedCommandKind); kind != "" {
-		completedCommand = &tuttigenerated.WorkspaceAgentCompletedCommand{
-			Kind:   tuttigenerated.WorkspaceAgentCompletedCommandKind(kind),
-			Status: tuttigenerated.WorkspaceAgentCompletedCommandStatus(strings.TrimSpace(turn.CompletedCommandStatus)),
+		completedCommand = &activityTurnUpdateCompletedCommand{
+			Kind:   kind,
+			Status: strings.TrimSpace(turn.CompletedCommandStatus),
 		}
-	}
-	var fileChanges *map[string]any
-	if len(turn.FileChanges) > 0 {
-		cloned := clonePayload(turn.FileChanges)
-		fileChanges = &cloned
 	}
 	var settledAt *int64
 	if turn.SettledAtUnixMS > 0 {
 		value := turn.SettledAtUnixMS
 		settledAt = &value
 	}
-	return tuttigenerated.WorkspaceAgentTurn{
-		AgentSessionId:   strings.TrimSpace(turn.AgentSessionID),
-		CompletedCommand: completedCommand,
-		Error:            turnError,
-		FileChanges:      fileChanges,
+	return activityTurnUpdateEventTurn{
+		TurnID:           strings.TrimSpace(turn.TurnID),
+		AgentSessionID:   strings.TrimSpace(turn.AgentSessionID),
+		CapabilityRefs:   append([]agentactivitybiz.CapabilityReference(nil), turn.CapabilityRefs...),
+		Phase:            strings.TrimSpace(turn.Phase),
 		Outcome:          outcome,
-		Phase:            tuttigenerated.WorkspaceAgentTurnPhase(turn.Phase),
-		SettledAtUnixMs:  settledAt,
-		StartedAtUnixMs:  turn.StartedAtUnixMS,
-		TurnId:           strings.TrimSpace(turn.TurnID),
-		UpdatedAtUnixMs:  turn.UpdatedAtUnixMS,
+		Error:            turnError,
+		FileChanges:      clonePayload(turn.FileChanges),
+		CompletedCommand: completedCommand,
+		StartedAtUnixMS:  turn.StartedAtUnixMS,
+		SettledAtUnixMS:  settledAt,
+		UpdatedAtUnixMS:  turn.UpdatedAtUnixMS,
 	}
 }
 
-// GeneratedWorkspaceAgentInteraction is the completeness-guarded projection from
-// the stored interaction record to the generated transport type; see
-// GeneratedWorkspaceAgentTurn.
-func GeneratedWorkspaceAgentInteraction(interaction agentactivitybiz.Interaction) tuttigenerated.WorkspaceAgentInteraction {
-	return tuttigenerated.WorkspaceAgentInteraction{
-		AgentSessionId:  strings.TrimSpace(interaction.AgentSessionID),
-		CreatedAtUnixMs: interaction.CreatedAtUnixMS,
-		Input:           optionalPayloadPointer(interaction.Input),
-		Kind:            tuttigenerated.WorkspaceAgentInteractionKind(interaction.Kind),
-		Metadata:        optionalPayloadPointer(interaction.Metadata),
-		Output:          optionalPayloadPointer(interaction.Output),
-		RequestId:       strings.TrimSpace(interaction.RequestID),
-		Status:          tuttigenerated.WorkspaceAgentInteractionStatus(interaction.Status),
+func activityInteractionUpdateEventInteractionFromStored(
+	interaction agentactivitybiz.Interaction,
+) activityInteractionUpdateEventInteraction {
+	return activityInteractionUpdateEventInteraction{
+		RequestID:       strings.TrimSpace(interaction.RequestID),
+		AgentSessionID:  strings.TrimSpace(interaction.AgentSessionID),
+		TurnID:          strings.TrimSpace(interaction.TurnID),
+		Kind:            strings.TrimSpace(interaction.Kind),
+		Status:          strings.TrimSpace(interaction.Status),
 		ToolName:        optionalStringPointerValue(interaction.ToolName),
-		TurnId:          strings.TrimSpace(interaction.TurnID),
-		UpdatedAtUnixMs: interaction.UpdatedAtUnixMS,
+		Input:           clonePayload(interaction.Input),
+		Output:          clonePayload(interaction.Output),
+		Metadata:        clonePayload(interaction.Metadata),
+		CreatedAtUnixMS: interaction.CreatedAtUnixMS,
+		UpdatedAtUnixMS: interaction.UpdatedAtUnixMS,
 	}
 }
 
@@ -280,7 +332,7 @@ func activityTurnUpdateEventPayload(
 		"eventType":        "turn_update",
 		"occurredAtUnixMs": firstNonZeroInt64(occurredAtUnixMS, turn.UpdatedAtUnixMS),
 		"activeTurnId":     activeTurnID,
-		"turn":             generatedTypePayload(GeneratedWorkspaceAgentTurn(turn)),
+		"turn":             typedEventPayload(activityTurnUpdateEventTurnFromStored(turn)),
 	}
 }
 
@@ -295,14 +347,13 @@ func activityInteractionUpdateEventPayload(
 		"agentSessionId":   strings.TrimSpace(agentSessionID),
 		"eventType":        "interaction_update",
 		"occurredAtUnixMs": firstNonZeroInt64(occurredAtUnixMS, interaction.UpdatedAtUnixMS),
-		"interaction":      generatedTypePayload(GeneratedWorkspaceAgentInteraction(interaction)),
+		"interaction":      typedEventPayload(activityInteractionUpdateEventInteractionFromStored(interaction)),
 	}
 }
 
-// generatedTypePayload projects a generated transport struct into the
-// map-based publisher payload through its canonical JSON encoding, so event
-// payload shapes come from the generated types instead of hand-built maps.
-func generatedTypePayload(value any) map[string]any {
+// typedEventPayload preserves the event-specific JSON field contract while the
+// publisher seam remains map-based.
+func typedEventPayload(value any) map[string]any {
 	encoded, err := json.Marshal(value)
 	if err != nil {
 		return nil
@@ -320,12 +371,4 @@ func optionalStringPointerValue(value string) *string {
 		return nil
 	}
 	return &trimmed
-}
-
-func optionalPayloadPointer(payload map[string]any) *map[string]any {
-	if len(payload) == 0 {
-		return nil
-	}
-	cloned := clonePayload(payload)
-	return &cloned
 }

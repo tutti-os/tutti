@@ -6,6 +6,7 @@ import (
 	"fmt"
 
 	workspaceissues "github.com/tutti-os/tutti/packages/workspace/issues"
+	workflowbiz "github.com/tutti-os/tutti/services/tuttid/biz/workspaceworkflow"
 	cliservice "github.com/tutti-os/tutti/services/tuttid/service/cli"
 	"github.com/tutti-os/tutti/services/tuttid/service/cli/framework"
 	workspaceservice "github.com/tutti-os/tutti/services/tuttid/service/workspace"
@@ -28,7 +29,7 @@ type issueCreateInput struct {
 	TopicID                string   `cli:"topic-id" validate:"required" description:"Required topic id. Use issue topic list to discover workspace topics." hint:"Use issue topic list to discover workspace topics."`
 	Title                  string   `cli:"title" validate:"required"`
 	Content                string   `cli:"content"`
-	PlanningSource         string   `cli:"planning-source" enum:"manual,ultra_plan,traditional_plan" description:"Origin of the plan that produced this issue."`
+	PlanningSource         string   `cli:"planning-source" enum:"manual,traditional_plan" description:"Origin of the plan that produced this issue."`
 	SourceSessionID        string   `cli:"source-session-id" description:"AgentGUI session that produced the plan."`
 	ReasoningIntensity     *int     `cli:"reasoning-intensity" validate:"min=0,max=100" description:"Default task reasoning intensity from 0 to 100."`
 	OrchestrationIntensity *int     `cli:"orchestration-intensity" validate:"min=0,max=100" description:"Planning and collaboration intensity from 0 to 100."`
@@ -181,7 +182,7 @@ func (p Provider) newIssueCreateFromPlanCommand() cliservice.Command {
 		ID:          appID + ".issue.create-from-plan",
 		Path:        []string{"issue", "create-from-plan"},
 		Summary:     "Create an executable issue from a reviewed plan",
-		Description: "Persist a reviewed Ultra Plan or traditional Plan as one issue with an ordered, validated task dependency graph.",
+		Description: "Persist a reviewed traditional Plan as one issue with an ordered, validated task dependency graph. Tutti mode plans are materialized only by the daemon workflow after checkpoint approval.",
 		Kind:        framework.KindAction,
 		Workspace:   framework.WorkspaceRequired,
 		Workspaces:  p.workspaces,
@@ -249,6 +250,9 @@ func (p Provider) runIssueCreate(ctx context.Context, invoke framework.InvokeCon
 	if err := p.requireIssueManager(); err != nil {
 		return nil, err
 	}
+	if workflowbiz.IsReservedTuttiModePlanIssueID(input.IssueID) {
+		return nil, cliservice.InvalidInputKeyError("issue-id")
+	}
 	return p.issues.CreateIssue(ctx, invoke.WorkspaceID, issueCreateServiceInput(input))
 }
 
@@ -256,12 +260,15 @@ func (p Provider) runIssueCreateFromPlan(ctx context.Context, invoke framework.I
 	if err := p.requireIssueManager(); err != nil {
 		return nil, err
 	}
+	if input.PlanningSource != string(workspaceissues.PlanningSourceTraditionalPlan) {
+		return nil, cliservice.InvalidInputKeyError("planning-source")
+	}
+	if workflowbiz.IsReservedTuttiModePlanIssueID(input.IssueID) {
+		return nil, cliservice.InvalidInputKeyError("issue-id")
+	}
 	manager, ok := p.issues.(issueFromPlanManager)
 	if !ok {
 		return nil, workspaceissues.ErrInvalidArgument
-	}
-	if input.PlanningSource != string(workspaceissues.PlanningSourceUltraPlan) && input.PlanningSource != string(workspaceissues.PlanningSourceTraditionalPlan) {
-		return nil, cliservice.InvalidInputKeyError("planning-source")
 	}
 	var parsed []taskCreateBatchItemInput
 	if err := json.Unmarshal([]byte(input.TasksJSON), &parsed); err != nil || len(parsed) == 0 {

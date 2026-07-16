@@ -24,6 +24,12 @@ function createTransportClient(
   overrides: Partial<TuttidClient> = {}
 ): TuttidClient {
   return {
+    async getWorkspaceAgentSessionTuttiModeActivation() {
+      throw new Error("not used");
+    },
+    async updateWorkspaceAgentSessionTuttiModeActivation() {
+      throw new Error("not used");
+    },
     async listAgentTargets() {
       throw new Error("not used");
     },
@@ -506,6 +512,12 @@ function createTransportClient(
     },
     async trackEvents() {},
     async useUserProject() {
+      throw new Error("not used");
+    },
+    async listPendingWorkspaceWorkflows() {
+      throw new Error("not used");
+    },
+    async decideWorkspaceWorkflowCheckpoint() {
       throw new Error("not used");
     },
     ...overrides

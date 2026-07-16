@@ -107,7 +107,8 @@ export type EngineIntent =
   | SessionReconcileIntent
   | SessionCommandsIntent
   | SessionLifecycleIntent
-  | ComposerOptionsIntent;
+  | ComposerOptionsIntent
+  | TuttiModeActivationIntent;
 
 // ---------------------------------------------------------------------------
 // Commands: descriptions returned by reducers. Internal commands are handled
@@ -157,7 +158,8 @@ export type EngineExternalCommand =
   | SessionUnactivateCommand
   | SessionReconcileCommand
   | TurnCancelCommand
-  | ComposerOptionsCommand;
+  | ComposerOptionsCommand
+  | TuttiModeActivationCommand;
 
 export type EngineCommand = EngineExternalCommand | EngineInternalCommand;
 
@@ -206,6 +208,7 @@ export interface AgentSessionEngineState {
   sessionLifecycle: SessionLifecycleState;
   sessionMessages: SessionMessagesState;
   composerOptions: ComposerOptionsState;
+  tuttiModeActivation: TuttiModeActivationState;
 }
 
 export interface EngineReducerResult<TState> {
@@ -319,3 +322,8 @@ import type {
   CollaborationOperationsIntent,
   CollaborationOperationsState
 } from "./collaborationOperations.types.ts";
+import type {
+  TuttiModeActivationCommand,
+  TuttiModeActivationIntent,
+  TuttiModeActivationState
+} from "./tuttiModeActivation.types.ts";

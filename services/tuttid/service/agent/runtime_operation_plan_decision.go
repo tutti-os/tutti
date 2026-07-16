@@ -199,8 +199,8 @@ func (s *Service) executePlanImplementationRuntimeOperation(
 		return operation, err
 	}
 	_, sendErr := s.SendInput(ctx, operation.WorkspaceID, operation.AgentSessionID, SendInput{
-		Content:  []PromptContentBlock{{Type: "text", Text: planImplementationPrompt}},
-		Metadata: map[string]any{"clientSubmitId": clientSubmitID},
+		Content:        []PromptContentBlock{{Type: "text", Text: planImplementationPrompt}},
+		ClientSubmitID: clientSubmitID,
 	})
 	if sendErr != nil {
 		// Once send_dispatched is durable, any returned error can race provider

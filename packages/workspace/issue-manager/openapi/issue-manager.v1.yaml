@@ -1075,7 +1075,7 @@ components:
       description: How the issue entered the durable execution workflow.
       enum:
         - manual
-        - ultra_plan
+        - tutti_mode_plan
         - traditional_plan
     IssueManagerBudgetMode:
       type: string

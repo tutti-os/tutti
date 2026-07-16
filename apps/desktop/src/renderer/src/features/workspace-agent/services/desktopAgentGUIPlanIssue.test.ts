@@ -5,7 +5,7 @@ import {
   prepareParallelIssueExecution
 } from "./desktopAgentGUIPlanIssue.ts";
 
-test("buildIssueFromPlanRequest preserves an Ultra Plan task graph and assignments", () => {
+test("buildIssueFromPlanRequest preserves an provider Plan task graph and assignments", () => {
   const request = buildIssueFromPlanRequest({
     agentTargetId: "local:codex",
     agentSessionId: "session-1",
@@ -19,7 +19,7 @@ test("buildIssueFromPlanRequest preserves an Ultra Plan task graph and assignmen
 \`\`\``
   });
 
-  assert.equal(request.issue.planningSource, "ultra_plan");
+  assert.equal(request.issue.planningSource, "traditional_plan");
   assert.deepEqual(request.issue.executionProfile, {
     reasoningIntensity: 70,
     orchestrationIntensity: 80

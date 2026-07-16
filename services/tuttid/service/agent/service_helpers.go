@@ -219,7 +219,7 @@ func cloneMetadata(metadata map[string]any) map[string]any {
 	}
 	cloned := make(map[string]any, len(metadata))
 	for key, value := range metadata {
-		if trimmed := strings.TrimSpace(key); trimmed != "" {
+		if trimmed := strings.TrimSpace(key); trimmed != "" && trimmed != "clientSubmitId" {
 			cloned[trimmed] = value
 		}
 	}

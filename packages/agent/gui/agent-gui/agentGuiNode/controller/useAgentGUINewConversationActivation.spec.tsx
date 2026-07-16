@@ -20,8 +20,13 @@ describe("useAgentGUINewConversationActivation", () => {
     const activate = vi.fn(
       (input: {
         agentSessionId: string;
+        initialTuttiModeActivation?: {
+          source: "slash_command";
+          status: "active";
+        };
         optimisticTitle?: string;
         settings?: Record<string, unknown>;
+        tuttiModeDraftKey?: string;
       }) => `activation:${input.agentSessionId}`
     );
     const activation = {
@@ -37,54 +42,89 @@ describe("useAgentGUINewConversationActivation", () => {
     const setIntent = vi.fn();
     const setIsComposerHome = vi.fn();
     const persistActiveConversation = vi.fn();
-    const { result } = renderHook(() =>
-      useAgentGUINewConversationActivation({
-        getCachedComposerOptions: () => null,
-        selectedAgentTargetRef: { current: target },
-        selectedComposerTargetDataRef: {
-          current: {
-            agentTargetId,
-            data,
-            provider: "codex",
-            targetId: target.targetId
+    const agentActivityRuntime = {} as AgentActivityRuntime;
+    const isCurrentConversation = () => false;
+    const isConversationStale = () => false;
+    const loadSelectedConversationMessages = vi.fn();
+    const loadSessionState = vi.fn();
+    const syncConversationListProjection = vi.fn();
+    const refreshMessagesFromSnapshot = vi.fn();
+    const tuttiModeDraftKey = "agent-gui:node-1:tutti-mode:home";
+    const inactiveTuttiModeDraftKey = "agent-gui:node-2:tutti-mode:home";
+    const activeTuttiModeEngine = {
+      getSnapshot: () => ({
+        tuttiModeActivation: {
+          draftsByKey: {
+            [tuttiModeDraftKey]: { active: true }
           }
-        },
-        agentTargetsProvidedRef: { current: true },
-        selectedAgentTargetIsExplicitRef: { current: true },
-        setDetailError: vi.fn(),
-        isCreatingConversationRef: { current: false },
-        onDataChangeRef: { current: vi.fn() },
-        selectedProjectPathRef: { current: null },
-        draftByScopeKeyRef: { current: {} },
-        submittedDraftSnapshotsRef: { current: {} },
-        draftSettingsBySessionIdRef: { current: {} },
-        agentActivityRuntime: {} as AgentActivityRuntime,
-        workspaceId: "workspace-1",
-        activeConversationIdRef,
-        isComposerHomeRef,
-        conversationsRef: { current: [] },
-        activeSessionState: null,
-        lastActiveModelByProviderRef: { current: {} },
-        sessionEngine: {
-          getSnapshot: () => ({})
-        } as never,
-        conversationListQuery: null,
-        currentUserId: "user-1",
-        persistActiveConversation,
-        setActiveConversationId,
-        setIntent,
-        setIsComposerHome,
-        setIsLoadingMessages: vi.fn(),
-        activation,
-        isCurrentConversation: () => false,
-        isConversationStale: () => false,
-        loadSelectedConversationMessages: vi.fn(),
-        loadSessionState: vi.fn(),
-        syncConversationListProjection: vi.fn(),
-        data,
-        defaultReasoningEffort: "medium",
-        refreshMessagesFromSnapshot: vi.fn()
+        }
       })
+    } as never;
+    const inactiveTuttiModeEngine = {
+      getSnapshot: () => ({
+        tuttiModeActivation: { draftsByKey: {} }
+      })
+    } as never;
+    const { result, rerender } = renderHook(
+      ({
+        sessionEngine,
+        tuttiModeDraftKey: currentTuttiModeDraftKey
+      }: {
+        sessionEngine: never;
+        tuttiModeDraftKey: string;
+      }) =>
+        useAgentGUINewConversationActivation({
+          getCachedComposerOptions: () => null,
+          selectedAgentTargetRef: { current: target },
+          selectedComposerTargetDataRef: {
+            current: {
+              agentTargetId,
+              data,
+              provider: "codex",
+              targetId: target.targetId
+            }
+          },
+          agentTargetsProvidedRef: { current: true },
+          selectedAgentTargetIsExplicitRef: { current: true },
+          setDetailError: vi.fn(),
+          isCreatingConversationRef: { current: false },
+          onDataChangeRef: { current: vi.fn() },
+          selectedProjectPathRef: { current: null },
+          draftByScopeKeyRef: { current: {} },
+          submittedDraftSnapshotsRef: { current: {} },
+          draftSettingsBySessionIdRef: { current: {} },
+          agentActivityRuntime,
+          workspaceId: "workspace-1",
+          activeConversationIdRef,
+          isComposerHomeRef,
+          conversationsRef: { current: [] },
+          activeSessionState: null,
+          lastActiveModelByProviderRef: { current: {} },
+          sessionEngine,
+          tuttiModeDraftKey: currentTuttiModeDraftKey,
+          conversationListQuery: null,
+          currentUserId: "user-1",
+          persistActiveConversation,
+          setActiveConversationId,
+          setIntent,
+          setIsComposerHome,
+          setIsLoadingMessages: vi.fn(),
+          activation,
+          isCurrentConversation,
+          isConversationStale,
+          loadSelectedConversationMessages,
+          loadSessionState,
+          syncConversationListProjection,
+          data,
+          defaultReasoningEffort: "medium",
+          refreshMessagesFromSnapshot
+        }),
+      {
+        initialProps: {
+          sessionEngine: activeTuttiModeEngine,
+          tuttiModeDraftKey
+        }
+      }
     );
 
     let firstResult: ReturnType<typeof result.current> = null;
@@ -98,6 +138,10 @@ describe("useAgentGUINewConversationActivation", () => {
     const firstSessionId = activate.mock.calls[0]?.[0].agentSessionId;
     activeConversationIdRef.current = null;
     isComposerHomeRef.current = true;
+    rerender({
+      sessionEngine: inactiveTuttiModeEngine,
+      tuttiModeDraftKey: inactiveTuttiModeDraftKey
+    });
     let secondResult: ReturnType<typeof result.current> = null;
     act(() => {
       secondResult = result.current(
@@ -115,6 +159,13 @@ describe("useAgentGUINewConversationActivation", () => {
     expect(activate.mock.calls[0]?.[0].settings).toMatchObject({
       computerUse: true
     });
+    expect(activate.mock.calls[0]?.[0]).toMatchObject({
+      initialTuttiModeActivation: {
+        source: "slash_command",
+        status: "active"
+      },
+      tuttiModeDraftKey
+    });
     expect(activate.mock.calls[1]?.[0].optimisticTitle).toBe("second");
     expect(firstSessionId).toBeTruthy();
     expect(secondSessionId).toBeTruthy();
@@ -122,6 +173,10 @@ describe("useAgentGUINewConversationActivation", () => {
     expect(activate.mock.calls[1]?.[0]).toMatchObject({
       settings: { model: "gpt-plan", modelPlanId: "plan-2" }
     });
+    expect(
+      activate.mock.calls[1]?.[0].initialTuttiModeActivation
+    ).toBeUndefined();
+    expect(activate.mock.calls[1]?.[0].tuttiModeDraftKey).toBeUndefined();
     expect(firstResult).toEqual({
       agentSessionId: firstSessionId,
       requestId: `activation:${firstSessionId}`

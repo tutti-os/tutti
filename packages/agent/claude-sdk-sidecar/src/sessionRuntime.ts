@@ -232,7 +232,12 @@ export class SessionRuntime {
     });
   }
 
-  exec(turnId: string, prompt: string, content?: unknown): void {
+  exec(
+    turnId: string,
+    prompt: string,
+    content?: unknown,
+    hostContext = ""
+  ): void {
     if (this.driver) {
       this.driver.exec(turnId, prompt);
       return;
@@ -262,6 +267,21 @@ export class SessionRuntime {
           prompt
         ) as unknown as SDKUserMessage["message"]["content"];
         this.turns.enqueue(turn);
+        if (hostContext.trim()) {
+          this.promptQueue.push({
+            uuid: crypto.randomUUID(),
+            type: "user",
+            session_id: this.providerSessionId,
+            parent_tool_use_id: null,
+            isSynthetic: true,
+            shouldQuery: false,
+            origin: { kind: "coordinator" },
+            message: {
+              role: "user",
+              content: hostContext.trim()
+            }
+          } as SDKUserMessage);
+        }
         this.promptQueue.push({
           uuid: turn.promptUuid,
           type: "user",

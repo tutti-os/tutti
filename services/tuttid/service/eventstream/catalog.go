@@ -19,6 +19,8 @@ const (
 	TopicPreferencesDesktopUpdateRequested     = "preferences.desktop.update.requested"
 	TopicPreferencesDesktopUpdated             = "preferences.desktop.updated"
 	TopicWorkspaceIssueUpdated                 = "workspace.issue.updated"
+	TopicWorkspaceWorkflowUpdated              = "workspace.workflow.updated"
+	TopicWorkspaceTuttiModeUpdated             = "workspace.tuttimode.updated"
 	TopicWorkspaceAppFactoryJobUpdated         = "workspace.appfactory.job.updated"
 	TopicWorkspaceAppUpdated                   = "workspace.app.updated"
 	TopicWorkspaceWorkbenchNodeLaunchRequested = "workspace.workbench.node.launch.requested"
@@ -171,6 +173,26 @@ func DefaultCatalog() StaticCatalog {
 			directions:         []Direction{DirectionServerToClient},
 			validators: map[Direction]PayloadValidator{
 				DirectionServerToClient: validateWorkspaceIssueUpdatedPayload,
+			},
+		},
+		{
+			Name:               TopicWorkspaceWorkflowUpdated,
+			ClientCanPublish:   false,
+			ClientCanSubscribe: true,
+			Version:            1,
+			directions:         []Direction{DirectionServerToClient},
+			validators: map[Direction]PayloadValidator{
+				DirectionServerToClient: validateWorkspaceWorkflowUpdatedPayload,
+			},
+		},
+		{
+			Name:               TopicWorkspaceTuttiModeUpdated,
+			ClientCanPublish:   false,
+			ClientCanSubscribe: true,
+			Version:            1,
+			directions:         []Direction{DirectionServerToClient},
+			validators: map[Direction]PayloadValidator{
+				DirectionServerToClient: validateWorkspaceTuttiModeUpdatedPayload,
 			},
 		},
 		{
@@ -336,26 +358,6 @@ type agentActivityMessageData struct {
 	UpdatedAtMS    *int64         `json:"updatedAtUnixMs,omitempty"`
 }
 
-type agentActivityTurnUpdateData struct {
-	agentActivityUpdatedDataHeader
-	OccurredAtUnixMS *int64                `json:"occurredAtUnixMs"`
-	ActiveTurnID     *string               `json:"activeTurnId"`
-	Turn             agentActivityTurnData `json:"turn"`
-}
-
-type agentActivityTurnData struct {
-	TurnID           string                         `json:"turnId"`
-	AgentSessionID   string                         `json:"agentSessionId"`
-	Phase            string                         `json:"phase"`
-	Outcome          *string                        `json:"outcome"`
-	Error            *agentActivityTurnErrorData    `json:"error"`
-	FileChanges      *map[string]any                `json:"fileChanges"`
-	CompletedCommand *agentActivityCompletedCommand `json:"completedCommand"`
-	StartedAtUnixMS  *int64                         `json:"startedAtUnixMs"`
-	SettledAtUnixMS  *int64                         `json:"settledAtUnixMs"`
-	UpdatedAtUnixMS  *int64                         `json:"updatedAtUnixMs"`
-}
-
 type agentActivityTurnErrorData struct {
 	Message string  `json:"message"`
 	Code    *string `json:"code"`
@@ -394,14 +396,6 @@ type workbenchNodeLaunchRequestedPayload struct {
 	DockEntryID  string          `json:"dockEntryId,omitempty"`
 	RequestID    string          `json:"requestId,omitempty"`
 	Payload      json.RawMessage `json:"payload,omitempty"`
-}
-
-type workspaceIssueUpdatedPayload struct {
-	WorkspaceID string `json:"workspaceId"`
-	IssueID     string `json:"issueId"`
-	TaskID      string `json:"taskId,omitempty"`
-	RunID       string `json:"runId,omitempty"`
-	ChangeKind  string `json:"changeKind"`
 }
 
 func validateAnalyticsDebugReportedPayload(payload []byte) error {
@@ -730,6 +724,11 @@ func validateAgentActivityUpdatedData(decoded agentActivityUpdatedPayload) error
 		if data.Turn.Outcome != nil && !isOneOf(*data.Turn.Outcome, "completed", "failed", "canceled", "interrupted") {
 			return fmt.Errorf("data.turn.outcome is invalid")
 		}
+		for index, reference := range data.Turn.CapabilityRefs {
+			if reference.Capability != "tutti" || reference.Source != "slash_command" {
+				return fmt.Errorf("data.turn.capabilityRefs[%d] is invalid", index)
+			}
+		}
 		if data.Turn.Phase == "settled" {
 			if data.ActiveTurnID != nil || data.Turn.Outcome == nil || data.Turn.SettledAtUnixMS == nil {
 				return fmt.Errorf("settled turn must clear activeTurnId and include outcome/settledAtUnixMs")
@@ -785,40 +784,6 @@ func validateWorkspaceWorkbenchNodeLaunchRequestedPayload(payload []byte) error 
 	}
 	if decoded.RequestID != "" && strings.TrimSpace(decoded.RequestID) == "" {
 		return fmt.Errorf("requestId must not be blank")
-	}
-	return nil
-}
-
-func validateWorkspaceIssueUpdatedPayload(payload []byte) error {
-	var decoded workspaceIssueUpdatedPayload
-	if err := json.Unmarshal(payload, &decoded); err != nil {
-		return fmt.Errorf("decode payload: %w", err)
-	}
-	if strings.TrimSpace(decoded.WorkspaceID) == "" {
-		return fmt.Errorf("workspaceId is required")
-	}
-	if strings.TrimSpace(decoded.IssueID) == "" {
-		return fmt.Errorf("issueId is required")
-	}
-	if decoded.TaskID != "" && strings.TrimSpace(decoded.TaskID) == "" {
-		return fmt.Errorf("taskId must not be blank")
-	}
-	if decoded.RunID != "" && strings.TrimSpace(decoded.RunID) == "" {
-		return fmt.Errorf("runId must not be blank")
-	}
-	switch strings.TrimSpace(decoded.ChangeKind) {
-	case "issue_created",
-		"issue_updated",
-		"issue_deleted",
-		"issue_context_refs_updated",
-		"task_created",
-		"task_updated",
-		"task_deleted",
-		"task_context_refs_updated",
-		"run_created",
-		"run_completed":
-	default:
-		return fmt.Errorf("changeKind is unsupported")
 	}
 	return nil
 }

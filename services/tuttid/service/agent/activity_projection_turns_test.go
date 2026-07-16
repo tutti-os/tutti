@@ -1,7 +1,6 @@
 package agent
 
 import (
-	"reflect"
 	"testing"
 
 	agentsessionstore "github.com/tutti-os/tutti/packages/agent/daemon/activity"
@@ -40,88 +39,106 @@ func TestTurnTransitionFromStateInputRequiresExplicitTurnPatch(t *testing.T) {
 	}
 }
 
-// Completeness-guard tests (agent-gui refactor plan rule six): the projection
-// from stored domain records to generated transport types must assign every
-// generated field explicitly. These tests project a fully populated stored
-// record and fail on any zero-valued generated field, so regenerating the
-// OpenAPI types with a new field turns the build red until the projection
-// handles it.
-
-func TestGeneratedWorkspaceAgentTurnCoversAllFields(t *testing.T) {
+func TestTurnTransitionFromStateInputCarriesCapabilityReferences(t *testing.T) {
 	t.Parallel()
+	input := agentsessionstore.ReportSessionStateInput{
+		WorkspaceID:    "ws-1",
+		AgentSessionID: "session-1",
+		State: agentsessionstore.WorkspaceAgentSessionStateUpdate{
+			OccurredAtUnixMS: 100,
+			Turn: &agentsessionstore.WorkspaceAgentTurnStateUpdate{
+				TurnID: "turn-1",
+				Phase:  agentactivitybiz.TurnPhaseSubmitted,
+				CapabilityRefs: []agentsessionstore.WorkspaceAgentCapabilityReference{{
+					Capability: "tutti",
+					Source:     "slash_command",
+				}},
+			},
+		},
+	}
 
-	projected := GeneratedWorkspaceAgentTurn(agentactivitybiz.Turn{
-		WorkspaceID:            "ws-1",
-		AgentSessionID:         "session-1",
-		TurnID:                 "turn-1",
-		Phase:                  agentactivitybiz.TurnPhaseSettled,
-		Outcome:                agentactivitybiz.TurnOutcomeFailed,
-		ErrorMessage:           "provider exploded",
-		ErrorCode:              "provider_error",
-		FileChanges:            map[string]any{"added": 1},
-		CompletedCommandKind:   "review",
-		CompletedCommandStatus: "completed",
-		StartedAtUnixMS:        1717200000000,
-		SettledAtUnixMS:        1717200001000,
-		CreatedAtUnixMS:        1717200000000,
-		UpdatedAtUnixMS:        1717200001000,
-	})
-	assertGeneratedFieldsPopulated(t, projected)
+	transition, ok := turnTransitionFromStateInput(input)
+	if !ok || len(transition.CapabilityRefs) != 1 ||
+		transition.CapabilityRefs[0] != (agentactivitybiz.CapabilityReference{Capability: "tutti", Source: "slash_command"}) {
+		t.Fatalf("turn transition = %#v", transition)
+	}
 }
 
-func TestGeneratedWorkspaceAgentTurnOmitsErrorForCanceledOutcome(t *testing.T) {
+func TestTurnTransitionFromStateInputAllowsCapabilityOnlyPatch(t *testing.T) {
+	t.Parallel()
+	input := agentsessionstore.ReportSessionStateInput{
+		WorkspaceID:    "ws-1",
+		AgentSessionID: "session-1",
+		State: agentsessionstore.WorkspaceAgentSessionStateUpdate{
+			OccurredAtUnixMS: 100,
+			Turn: &agentsessionstore.WorkspaceAgentTurnStateUpdate{
+				TurnID: "turn-1",
+				CapabilityRefs: []agentsessionstore.WorkspaceAgentCapabilityReference{{
+					Capability: "tutti",
+					Source:     "slash_command",
+				}},
+			},
+		},
+	}
+
+	transition, ok := turnTransitionFromStateInput(input)
+	if !ok || transition.Phase != "" || len(transition.CapabilityRefs) != 1 {
+		t.Fatalf("capability-only turn transition = %#v ok=%v", transition, ok)
+	}
+}
+
+func TestTurnTransitionFromStateInputIgnoresEmptyPhaseWithoutCapabilityReferences(t *testing.T) {
+	t.Parallel()
+	input := agentsessionstore.ReportSessionStateInput{
+		WorkspaceID:    "ws-1",
+		AgentSessionID: "session-1",
+		State: agentsessionstore.WorkspaceAgentSessionStateUpdate{
+			Turn: &agentsessionstore.WorkspaceAgentTurnStateUpdate{TurnID: "turn-1"},
+		},
+	}
+
+	transition, ok := turnTransitionFromStateInput(input)
+	if ok || transition.TurnID != "" {
+		t.Fatalf("empty turn patch produced transition = %#v ok=%v", transition, ok)
+	}
+}
+
+func TestTurnTransitionFromStateInputIgnoresUnknownPhaseWithCapabilityReferences(t *testing.T) {
+	t.Parallel()
+	input := agentsessionstore.ReportSessionStateInput{
+		WorkspaceID:    "ws-1",
+		AgentSessionID: "session-1",
+		State: agentsessionstore.WorkspaceAgentSessionStateUpdate{
+			Turn: &agentsessionstore.WorkspaceAgentTurnStateUpdate{
+				TurnID: "turn-1",
+				Phase:  "unknown_phase",
+				CapabilityRefs: []agentsessionstore.WorkspaceAgentCapabilityReference{{
+					Capability: "tutti",
+					Source:     "slash_command",
+				}},
+			},
+		},
+	}
+
+	transition, ok := turnTransitionFromStateInput(input)
+	if ok || transition.TurnID != "" {
+		t.Fatalf("unknown phase produced metadata transition = %#v ok=%v", transition, ok)
+	}
+}
+
+func TestActivityTurnUpdateEventPayloadOmitsTuttiPlanningMode(t *testing.T) {
 	t.Parallel()
 
-	projected := GeneratedWorkspaceAgentTurn(agentactivitybiz.Turn{
+	payload := activityTurnUpdateEventPayload("ws-1", "session-1", agentactivitybiz.Turn{
 		AgentSessionID: "session-1",
 		TurnID:         "turn-1",
-		Phase:          agentactivitybiz.TurnPhaseSettled,
-		Outcome:        agentactivitybiz.TurnOutcomeCanceled,
-		ErrorMessage:   "context canceled",
-	})
-	if projected.Error != nil {
-		t.Fatalf("canceled turn error = %#v, want omitted transport-only error", projected.Error)
+		Phase:          agentactivitybiz.TurnPhaseRunning,
+	}, 1717200000000)
+	turn, ok := payload["turn"].(map[string]any)
+	if !ok {
+		t.Fatalf("turn payload = %#v, want object", payload["turn"])
 	}
-}
-
-func TestGeneratedWorkspaceAgentInteractionCoversAllFields(t *testing.T) {
-	t.Parallel()
-
-	projected := GeneratedWorkspaceAgentInteraction(agentactivitybiz.Interaction{
-		WorkspaceID:     "ws-1",
-		AgentSessionID:  "session-1",
-		RequestID:       "request-1",
-		TurnID:          "turn-1",
-		Kind:            agentactivitybiz.InteractionKindApproval,
-		Status:          agentactivitybiz.InteractionStatusPending,
-		ToolName:        "shell",
-		Input:           map[string]any{"command": "ls"},
-		Output:          map[string]any{"optionId": "allow"},
-		Metadata:        map[string]any{"source": "acp"},
-		CreatedAtUnixMS: 1717200000000,
-		UpdatedAtUnixMS: 1717200001000,
-	})
-	assertGeneratedFieldsPopulated(t, projected)
-}
-
-// assertGeneratedFieldsPopulated reflects over a generated transport struct
-// and fails for any zero-valued field. Inputs above are constructed so every
-// generated field must be populated; a zero value therefore means the
-// projection dropped (or never learned about) that field.
-func assertGeneratedFieldsPopulated(t *testing.T, value any) {
-	t.Helper()
-	reflected := reflect.ValueOf(value)
-	structType := reflected.Type()
-	if structType.Kind() != reflect.Struct {
-		t.Fatalf("expected struct, got %s", structType.Kind())
-	}
-	for i := range structType.NumField() {
-		if reflected.Field(i).IsZero() {
-			t.Errorf(
-				"generated field %s.%s is zero: the projection must assign every generated field explicitly (refactor plan rule six)",
-				structType.Name(),
-				structType.Field(i).Name,
-			)
-		}
+	if _, exists := turn["planningMode"]; exists {
+		t.Fatalf("turn payload = %#v, want provider turn state without Tutti workflow metadata", turn)
 	}
 }

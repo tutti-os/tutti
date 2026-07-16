@@ -131,6 +131,47 @@ func (p *ActivityProjection) ReportSessionState(
 	}
 	input.SessionOrigin = sessionOrigin
 	input.Source = source
+	activityReport, canonicalTargetID, err := p.activityStateReport(ctx, input)
+	if err != nil {
+		return agentsessionstore.ReportSessionStateReply{}, err
+	}
+	activityResult, err := p.repo.ReportActivityState(ctx, activityReport)
+	if err != nil {
+		return agentsessionstore.ReportSessionStateReply{}, err
+	}
+	result := activityResult.State
+	reply := agentsessionstore.ReportSessionStateReply{
+		Accepted:          result.Accepted,
+		StateApplied:      result.StateApplied,
+		LastEventAtUnixMS: result.LastEventUnixMS,
+		RequestBodyBytes:  result.RequestBodyBytes,
+	}
+	p.publishPersistedTurnState(ctx, input, activityResult)
+	if result.Accepted {
+		p.publishActivityUpdated(
+			ctx,
+			input.WorkspaceID,
+			input.AgentSessionID,
+			"session_reconcile_required",
+			activitySessionUpdateEventPayload(
+				input.WorkspaceID,
+				input.AgentSessionID,
+				result.LastEventUnixMS,
+				canonicalTargetID,
+			),
+		)
+		if result.StateApplied {
+			p.reportFailedRuntimeNodeResult(ctx, input)
+		}
+	}
+	p.observeSessionState(ctx, input, reply)
+	return reply, nil
+}
+
+func (p *ActivityProjection) activityStateReport(
+	ctx context.Context,
+	input agentsessionstore.ReportSessionStateInput,
+) (agentactivitybiz.ActivityStateReport, string, error) {
 	canonicalTargetID, runtimeContext := p.canonicalizeAgentTargetID(
 		ctx,
 		input.WorkspaceID,
@@ -174,40 +215,10 @@ func (p *ActivityProjection) ReportSessionState(
 	}
 	interaction, err := interactionTransitionFromStateInput(input)
 	if err != nil {
-		return agentsessionstore.ReportSessionStateReply{}, err
+		return agentactivitybiz.ActivityStateReport{}, "", err
 	}
 	activityReport.Interaction = interaction
-	activityResult, err := p.repo.ReportActivityState(ctx, activityReport)
-	if err != nil {
-		return agentsessionstore.ReportSessionStateReply{}, err
-	}
-	result := activityResult.State
-	reply := agentsessionstore.ReportSessionStateReply{
-		Accepted:          result.Accepted,
-		StateApplied:      result.StateApplied,
-		LastEventAtUnixMS: result.LastEventUnixMS,
-		RequestBodyBytes:  result.RequestBodyBytes,
-	}
-	p.publishPersistedTurnState(ctx, input, activityResult)
-	if result.Accepted {
-		p.publishActivityUpdated(
-			ctx,
-			input.WorkspaceID,
-			input.AgentSessionID,
-			"session_reconcile_required",
-			activitySessionUpdateEventPayload(
-				input.WorkspaceID,
-				input.AgentSessionID,
-				result.LastEventUnixMS,
-				canonicalTargetID,
-			),
-		)
-		if result.StateApplied {
-			p.reportFailedRuntimeNodeResult(ctx, input)
-		}
-	}
-	p.observeSessionState(ctx, input, reply)
-	return reply, nil
+	return activityReport, canonicalTargetID, nil
 }
 
 func (p *ActivityProjection) reportFailedRuntimeNodeResult(ctx context.Context, input agentsessionstore.ReportSessionStateInput) {
@@ -448,7 +459,7 @@ func (p *ActivityProjection) DeleteSession(ctx context.Context, workspaceID stri
 		return false, err
 	}
 	if removed {
-		p.publishActivityUpdated(ctx, workspaceID, agentSessionID, "session_deleted", activitySessionDeletedEventPayload(workspaceID, agentSessionID))
+		p.PublishSessionDeleted(ctx, workspaceID, agentSessionID)
 	}
 	return removed, nil
 }
@@ -494,7 +505,7 @@ func (p *ActivityProjection) DeleteSessionsBatch(
 		if agentSessionID == "" {
 			continue
 		}
-		p.publishActivityUpdated(ctx, input.WorkspaceID, agentSessionID, "session_deleted", activitySessionDeletedEventPayload(input.WorkspaceID, agentSessionID))
+		p.PublishSessionDeleted(ctx, input.WorkspaceID, agentSessionID)
 	}
 	return result, nil
 }
@@ -513,13 +524,24 @@ func (p *ActivityProjection) ClearSessions(ctx context.Context, workspaceID stri
 		if agentSessionID == "" {
 			continue
 		}
-		p.publishActivityUpdated(ctx, workspaceID, agentSessionID, "session_deleted", activitySessionDeletedEventPayload(workspaceID, agentSessionID))
+		p.PublishSessionDeleted(ctx, workspaceID, agentSessionID)
 	}
 	return ClearSessionsResult{
 		RemovedMessages:   result.RemovedMessages,
 		RemovedSessions:   result.RemovedSessions,
 		RemovedSessionIDs: result.RemovedSessionIDs,
 	}, nil
+}
+
+// PublishSessionDeleted emits the canonical activity invalidation after a
+// deletion transaction owned by another service has committed.
+func (p *ActivityProjection) PublishSessionDeleted(ctx context.Context, workspaceID string, agentSessionID string) {
+	workspaceID = strings.TrimSpace(workspaceID)
+	agentSessionID = strings.TrimSpace(agentSessionID)
+	if workspaceID == "" || agentSessionID == "" {
+		return
+	}
+	p.publishActivityUpdated(ctx, workspaceID, agentSessionID, "session_deleted", activitySessionDeletedEventPayload(workspaceID, agentSessionID))
 }
 
 func (p *ActivityProjection) UpdateSessionPinned(ctx context.Context, workspaceID string, agentSessionID string, pinned bool) (PersistedSession, bool, error) {

@@ -16,7 +16,6 @@ import {
   shouldAutoCollapseAgentGUIConversationRail
 } from "@tutti-os/agent-gui";
 import type { AgentGUIComposerAppendRequest } from "@tutti-os/agent-gui";
-import type { WorkspaceSummary } from "@tutti-os/client-tuttid-ts";
 import {
   AGENT_GUI_WORKBENCH_CONVERSATION_RAIL_TOGGLE_EVENT,
   AGENT_GUI_WORKBENCH_NEW_CONVERSATION_EVENT,
@@ -24,16 +23,9 @@ import {
   type AgentGuiWorkbenchConversationRailToggleDetail,
   type AgentGuiWorkbenchNewConversationDetail
 } from "@tutti-os/agent-gui/workbench/contribution";
-import type {
-  WorkbenchContribution,
-  WorkbenchHostHandle,
-  WorkbenchHostNodeBodyContext
-} from "@tutti-os/workbench-surface";
-import type { I18nRuntime } from "@tutti-os/ui-i18n-runtime";
+import type { WorkbenchHostNodeBodyContext } from "@tutti-os/workbench-surface";
 import { createDesktopAgentGUIWorkbenchHostInput } from "@renderer/features/workspace-agent/services/createDesktopAgentGUIWorkbenchHostInput.ts";
 import { IAgentsService } from "@renderer/features/workspace-agent/services/agentsService.interface.ts";
-import type { IAgentProviderStatusService as AgentProviderStatusService } from "@renderer/features/workspace-agent/services/agentProviderStatusService.interface.ts";
-import type { IWorkspaceAgentActivityService as WorkspaceAgentActivityService } from "@renderer/features/workspace-agent/services/workspaceAgentActivityService.interface.ts";
 import type { DesktopAgentGUIPrefillPromptRequest } from "@renderer/features/workspace-agent/services/desktopAgentGUIPrefillPromptActivation.ts";
 import { isDesktopAgentGUIProvider } from "@renderer/features/workspace-agent/desktopAgentGUINodeState.ts";
 import {
@@ -41,25 +33,13 @@ import {
   type DesktopAgentGUIProvider,
   type DesktopAgentGUIWorkbenchState
 } from "@renderer/features/workspace-agent/desktopAgentGUINodeState.ts";
-import {
-  IWorkspaceAppSurfaceHost,
-  type IWorkspaceAppCenterService
-} from "@renderer/features/workspace-app-center";
+import { IWorkspaceAppSurfaceHost } from "@renderer/features/workspace-app-center";
 import { useService } from "@tutti-os/infra/di";
 import {
   IWorkspaceFileManagerService,
   IWorkspaceFilePreviewSurfaceHost
 } from "@renderer/features/workspace-file-manager";
-import type {
-  DesktopApi,
-  DesktopHostWindowApi,
-  DesktopWorkspaceAppExternalHostApi
-} from "@preload/types";
-import type { TuttidClient } from "@tutti-os/client-tuttid-ts";
 import type { TuttiExternalFileOpenInput } from "@tutti-os/workspace-external-core/contracts";
-import type { IReporterService } from "@renderer/features/analytics";
-import type { IDesktopRichTextAtService } from "@renderer/features/rich-text-at";
-import type { IWorkspaceUserProjectService } from "@renderer/features/workspace-user-project";
 import { DesktopAgentGUIWorkbenchBody } from "@renderer/features/workspace-agent/ui/DesktopAgentGUIWorkbenchBody.tsx";
 import { useTranslation } from "@renderer/i18n";
 import { AppUpdateStatus } from "@renderer/features/app-update";
@@ -86,6 +66,9 @@ import { Toast } from "@renderer/lib/toast";
 import { createStandaloneAgentWorkspaceAppSurfacePresenter } from "../services/standaloneAgentWorkspaceAppSurfacePresenter.ts";
 import { createStandaloneAgentWorkspaceFilePreviewPresenter } from "../services/standaloneAgentWorkspaceFilePreviewPresenter.ts";
 import { resolveStandaloneAgentLaunchConfiguration } from "./standaloneAgentLaunchProvider.ts";
+import type { StandaloneAgentWindowProps } from "./StandaloneAgentWindow.types.ts";
+
+export type { StandaloneAgentWindowProps } from "./StandaloneAgentWindow.types.ts";
 
 const LazyWorkspaceAccountMenu = lazy(() =>
   import("./WorkspaceAccountMenu").then(({ WorkspaceAccountMenu }) => ({
@@ -111,38 +94,11 @@ function renderStandaloneAgentSidebarFooter(): ReactNode {
   );
 }
 
-export interface StandaloneAgentWindowProps {
-  agentProviderStatusService: AgentProviderStatusService;
-  defaultAgentProvider: DesktopAgentGUIProvider;
-  desktopApi: DesktopApi;
-  hostWindowApi: Pick<
-    DesktopHostWindowApi,
-    | "approveClose"
-    | "minimize"
-    | "openAgentWindow"
-    | "resizeContentWidth"
-    | "toggleMaximize"
-  >;
-  reporterService: Pick<IReporterService, "trackEvents">;
-  richTextAtService: IDesktopRichTextAtService;
-  tuttidClient: TuttidClient;
-  workspaceAgentActivityService: WorkspaceAgentActivityService;
-  workspaceAppCenterService: IWorkspaceAppCenterService;
-  workspaceAppExternalApi?: DesktopWorkspaceAppExternalHostApi;
-  toolWorkbench: {
-    appI18n: I18nRuntime<string>;
-    contributions: readonly WorkbenchContribution[] | undefined;
-    onHostReady(host: WorkbenchHostHandle | null): void;
-    requestWindowClose(): Promise<"approved" | "blocked">;
-  };
-  workspace: WorkspaceSummary;
-  workspaceUserProjectService: IWorkspaceUserProjectService;
-}
-
 export function StandaloneAgentWindow({
   agentProviderStatusService,
   defaultAgentProvider,
   desktopApi,
+  eventStreamClient,
   hostWindowApi,
   reporterService,
   richTextAtService,
@@ -395,6 +351,7 @@ export function StandaloneAgentWindow({
     () =>
       createDesktopAgentGUIWorkbenchHostInput({
         hostFilesApi: desktopApi.host.files,
+        eventStreamClient,
         tuttidClient,
         platformApi: desktopApi.platform,
         reporterService,
@@ -410,6 +367,7 @@ export function StandaloneAgentWindow({
       desktopApi.host.files,
       desktopApi.platform,
       desktopApi.runtime,
+      eventStreamClient,
       reporterService,
       richTextAtService,
       tuttidClient,
@@ -719,6 +677,9 @@ export function StandaloneAgentWindow({
           <DesktopAgentGUIWorkbenchBody
             agentActivityRuntime={agentGuiHostInput.agentActivityRuntime}
             agentHostApi={agentGuiHostInput.agentHostApi}
+            tuttiModePlanReviewRuntime={
+              agentGuiHostInput.tuttiModePlanReviewRuntime
+            }
             appCenterService={workspaceAppCenterService}
             agentProviderStatusService={agentProviderStatusService}
             context={context}

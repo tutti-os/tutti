@@ -76,6 +76,7 @@ import {
 function DesktopAgentGUIWorkbenchBodyImpl({
   agentActivityRuntime,
   agentHostApi,
+  tuttiModePlanReviewRuntime,
   appCenterService,
   agentProviderStatusService,
   context,
@@ -745,6 +746,7 @@ function DesktopAgentGUIWorkbenchBodyImpl({
         renderAgentsEmpty={renderAgentsEmpty}
         agentActivityRuntime={agentActivityRuntime}
         agentHostApi={agentHostApiWithToast}
+        tuttiModePlanReviewRuntime={tuttiModePlanReviewRuntime}
         i18n={i18n}
         locale={locale}
         identity={{

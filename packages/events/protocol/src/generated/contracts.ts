@@ -18,7 +18,9 @@ export type BusinessEventTopic =
   | "workspace.app.updated"
   | "workspace.appfactory.job.updated"
   | "workspace.issue.updated"
-  | "workspace.workbench.node.launch.requested";
+  | "workspace.tuttimode.updated"
+  | "workspace.workbench.node.launch.requested"
+  | "workspace.workflow.updated";
 
 export interface BusinessEventScopeV1 {
   workspaceId?: string;
@@ -284,8 +286,12 @@ export type AgentActivityUpdatedPayloadV1 =
         turn: {
           turnId: string;
           agentSessionId: string;
+          capabilityRefs?: readonly {
+            capability: "tutti";
+            source: "slash_command";
+          }[];
           phase: "submitted" | "running" | "waiting" | "settling" | "settled";
-          outcome: "completed" | "failed" | "canceled" | "interrupted";
+          outcome: "completed" | "failed" | "canceled" | "interrupted" | null;
           error: Record<string, unknown> | null;
           fileChanges: unknown;
           completedCommand: Record<string, unknown> | null;
@@ -395,6 +401,14 @@ export interface WorkspaceIssueUpdatedPayloadV1 {
     | "run_completed";
 }
 
+export interface WorkspaceTuttimodeUpdatedPayloadV1 {
+  agentSessionId: string;
+  activationId: string;
+  revision: number;
+  status: "active" | "inactive";
+  changeKind: "activated" | "deactivated";
+}
+
 export interface WorkspaceWorkbenchNodeLaunchRequestedPayloadV1 {
   workspaceId: string;
   typeId: string;
@@ -403,6 +417,17 @@ export interface WorkspaceWorkbenchNodeLaunchRequestedPayloadV1 {
   dockEntryId?: string;
   requestId?: string;
   payload?: unknown;
+}
+
+export interface WorkspaceWorkflowUpdatedPayloadV1 {
+  workflowId: string;
+  sourceSessionId: string;
+  checkpointId: string;
+  changeKind:
+    | "proposal_created"
+    | "revision_created"
+    | "checkpoint_decided"
+    | "operation_updated";
 }
 
 export type AgentActivityUpdatedEventV1 = BusinessEventEnvelopeV1<
@@ -471,12 +496,24 @@ export type WorkspaceIssueUpdatedEventV1 = BusinessEventEnvelopeV1<
   1
 >;
 
+export type WorkspaceTuttimodeUpdatedEventV1 = BusinessEventEnvelopeV1<
+  "workspace.tuttimode.updated",
+  WorkspaceTuttimodeUpdatedPayloadV1,
+  1
+>;
+
 export type WorkspaceWorkbenchNodeLaunchRequestedEventV1 =
   BusinessEventEnvelopeV1<
     "workspace.workbench.node.launch.requested",
     WorkspaceWorkbenchNodeLaunchRequestedPayloadV1,
     1
   >;
+
+export type WorkspaceWorkflowUpdatedEventV1 = BusinessEventEnvelopeV1<
+  "workspace.workflow.updated",
+  WorkspaceWorkflowUpdatedPayloadV1,
+  1
+>;
 
 export type ClientToServerEventTopic = "preferences.desktop.update.requested";
 
@@ -491,7 +528,9 @@ export type ServerToClientEventTopic =
   | "workspace.app.updated"
   | "workspace.appfactory.job.updated"
   | "workspace.issue.updated"
-  | "workspace.workbench.node.launch.requested";
+  | "workspace.tuttimode.updated"
+  | "workspace.workbench.node.launch.requested"
+  | "workspace.workflow.updated";
 
 export type ClientToServerEventV1 = PreferencesDesktopUpdateRequestedEventV1;
 
@@ -506,7 +545,9 @@ export type ServerToClientEventV1 =
   | WorkspaceAppUpdatedEventV1
   | WorkspaceAppfactoryJobUpdatedEventV1
   | WorkspaceIssueUpdatedEventV1
-  | WorkspaceWorkbenchNodeLaunchRequestedEventV1;
+  | WorkspaceTuttimodeUpdatedEventV1
+  | WorkspaceWorkbenchNodeLaunchRequestedEventV1
+  | WorkspaceWorkflowUpdatedEventV1;
 
 export type BusinessEventV1 = ClientToServerEventV1 | ServerToClientEventV1;
 

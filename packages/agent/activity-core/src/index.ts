@@ -1,4 +1,5 @@
 export type { AgentActivityAdapter } from "./adapter.ts";
+export { normalizeAgentActivityCapabilityReferences } from "./capabilityReferences.ts";
 export {
   normalizeAgentActivitySession,
   type AgentActivitySessionInput
@@ -70,6 +71,18 @@ export type {
 } from "./engine/types.ts";
 export { AGENT_SESSION_ENGINE_LOCAL_ORIGIN } from "./engine/types.ts";
 export { selectWorkspaceReconcileState } from "./engine/engineRuntime.selectors.ts";
+export {
+  selectTuttiModeActivationPresentation,
+  selectTuttiModeDraftIsActive,
+  tuttiModeActivationPresentationsEqual,
+  type TuttiModeActivationPresentation
+} from "./engine/tuttiModeActivation.selectors.ts";
+export type {
+  TuttiModeActivationCommand,
+  TuttiModeActivationIntent,
+  TuttiModeActivationState,
+  TuttiModeActivationUpdateCommand
+} from "./engine/tuttiModeActivation.types.ts";
 export { selectCollaborationOperation } from "./engine/collaborationOperations.selectors.ts";
 export { dispatchCollaborationOperation } from "./engine/collaborationOperations.dispatch.ts";
 export type {
@@ -258,6 +271,7 @@ export type {
   AgentActivityCollaborationTriggerSource,
   AgentActivityCollaborationUsage,
   AgentActivityAutomationRuleOverride,
+  AgentActivityCapabilityReference,
   AgentActivityCreateSessionInput,
   AgentActivityDeleteSessionInput,
   AgentActivityDeleteSessionResult,
@@ -289,6 +303,13 @@ export type {
   AgentActivitySessionKind,
   AgentActivitySessionEventEnvelope,
   AgentActivitySessionList,
+  AgentActivityInitialTuttiModeActivation,
+  AgentActivityTuttiModeActivation,
+  AgentActivityTuttiModeActivationRevision,
+  AgentActivityTuttiModeActivationSource,
+  AgentActivityTuttiModeActivationStatus,
+  AgentActivityUpdateTuttiModeActivationInput,
+  AgentActivityUpdateTuttiModeActivationResult,
   AgentActivitySubmitInteractiveInput,
   AgentActivitySubmitInteractiveResult,
   AgentActivitySnapshot,

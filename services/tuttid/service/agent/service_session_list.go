@@ -41,7 +41,7 @@ func (s *Service) ListPage(ctx context.Context, workspaceID string, input ListSe
 	if hasMore && len(result) > 0 {
 		nextCursor = sessionListCursor(result[len(result)-1]).String()
 	}
-	result, err = s.withProtocolV2TurnStates(ctx, strings.TrimSpace(workspaceID), result)
+	result, err = s.projectSessionsForResponse(ctx, workspaceID, result)
 	if err != nil {
 		return SessionListPage{}, err
 	}

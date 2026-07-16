@@ -170,26 +170,24 @@ export function AgentPermissionModeDropdown({
   return (
     <Select
       open={isSelectOpen}
-      value={selectedValue ?? undefined}
+      value={selectedValue ?? ""}
       disabled={selectDisabled}
       onOpenChange={setIsSelectOpen}
       onValueChange={applyPermissionModeId}
     >
-      {isLoading ? (
-        // The trigger is disabled while loading, so pointer events never reach
-        // it. Target the tooltip at a focusable wrapper span (Radix's pattern
-        // for disabled triggers) so hover/focus reliably surfaces the hint.
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <span className="inline-flex" tabIndex={0}>
-              {selectTrigger}
-            </span>
-          </TooltipTrigger>
+      {/* Keep one trigger/ref composition for the Select lifetime. The trigger
+          is disabled while loading, so the stable wrapper also provides the
+          focusable tooltip target during that phase. */}
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <span className="inline-flex" tabIndex={isLoading ? 0 : undefined}>
+            {selectTrigger}
+          </span>
+        </TooltipTrigger>
+        {isLoading ? (
           <TooltipContent side="top">{labels.loadingOptions}</TooltipContent>
-        </Tooltip>
-      ) : (
-        selectTrigger
-      )}
+        ) : null}
+      </Tooltip>
       {isSelectOpen ? (
         <SelectContent
           align="end"

@@ -34,8 +34,12 @@ func (api DaemonAPI) GoalControlWorkspaceAgentSession(ctx context.Context, reque
 	if err != nil {
 		return writeGoalControlWorkspaceAgentSessionError(err), nil
 	}
+	generatedSession, err := generatedAgentSession(result.Session)
+	if err != nil {
+		return writeGoalControlWorkspaceAgentSessionError(err), nil
+	}
 	response := tuttigenerated.GoalControlWorkspaceAgentSession200JSONResponse{
-		Session: generatedAgentSession(result.Session),
+		Session: generatedSession,
 	}
 	if len(result.Goal) > 0 {
 		var goal tuttigenerated.WorkspaceAgentSessionGoal

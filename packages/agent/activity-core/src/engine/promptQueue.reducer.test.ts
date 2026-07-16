@@ -78,6 +78,36 @@ test("queued capability submit preserves its required settings through delivery"
   );
 });
 
+test("queued Tutti capability reference remains structured through delivery", () => {
+  const loaded = reduce(createInitialPromptQueueState(), {
+    type: "session/snapshotReceived",
+    sessions: [session("running", 1)]
+  });
+  const capabilityRefs = [
+    { capability: "tutti" as const, source: "slash_command" as const }
+  ];
+  const queued = reduce(loaded.state, {
+    ...submit("prompt-tutti"),
+    capabilityRefs
+  });
+
+  assert.deepEqual(
+    queued.state.recordsBySessionId["session-1"]?.prompts[0]?.capabilityRefs,
+    capabilityRefs
+  );
+
+  const settled = reduce(queued.state, {
+    type: "session/snapshotReceived",
+    sessions: [session("settled", 2)]
+  });
+  assert.deepEqual(
+    settled.commands[0]?.type === "queue/sendPrompt"
+      ? settled.commands[0].capabilityRefs
+      : null,
+    capabilityRefs
+  );
+});
+
 test("enqueue drains immediately against the engine's available snapshot", () => {
   const loaded = reduce(createInitialPromptQueueState(), {
     type: "session/snapshotReceived",
@@ -93,9 +123,13 @@ test("enqueue drains immediately against the engine's available snapshot", () =>
   );
 });
 
-test("immediate submit preserves diagnostics on the send command", () => {
+test("immediate submit preserves diagnostics and Tutti audit references on the send command", () => {
+  const capabilityRefs = [
+    { capability: "tutti" as const, source: "slash_command" as const }
+  ];
   const result = reduce(createInitialPromptQueueState(), {
     ...submit("prompt-immediate"),
+    capabilityRefs,
     routing: "immediate"
   });
   assert.deepEqual(
@@ -103,6 +137,45 @@ test("immediate submit preserves diagnostics on the send command", () => {
       ? result.commands[0].submitDiagnostics
       : null,
     submitDiagnostics
+  );
+  assert.deepEqual(
+    result.commands[0]?.type === "queue/sendPrompt"
+      ? result.commands[0].capabilityRefs
+      : null,
+    capabilityRefs
+  );
+});
+
+test("Plan feedback preserves Tutti audit references when both modes coexist", () => {
+  const capabilityRefs = [
+    { capability: "tutti" as const, source: "slash_command" as const }
+  ];
+  const loaded = reduce(createInitialPromptQueueState(), {
+    type: "session/snapshotReceived",
+    sessions: [session("settled", 1)]
+  });
+  const result = promptQueueReducer(
+    loaded.state,
+    {
+      agentSessionId: "session-1",
+      capabilityRefs,
+      clientSubmitId: "plan-feedback-1",
+      content: [{ type: "text", text: "Revise it" }],
+      expiresAtUnixMs: 60_000,
+      requestedAtUnixMs: 2,
+      requestId: "turn-1",
+      turnId: "turn-1",
+      type: "plan/feedbackRequested",
+      workspaceId: "workspace-1"
+    },
+    { deletedSessionIds: {}, planFeedbackAccepted: true }
+  );
+
+  assert.deepEqual(
+    result.commands[0]?.type === "queue/sendPrompt"
+      ? result.commands[0].capabilityRefs
+      : null,
+    capabilityRefs
   );
 });
 

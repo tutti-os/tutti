@@ -1607,6 +1607,9 @@ function createWorkspaceAgentActivityService(
         session: { ...emptySession(), agentSessionId: input.agentSessionId }
       };
     },
+    async updateTuttiModeActivation() {
+      throw new Error("not implemented");
+    },
     async getSession(_workspaceId, agentSessionId) {
       return {
         ...emptySession(),

@@ -41,6 +41,7 @@ func FromStruct[T any]() InputSpec {
 			Hidden:             field.Tag.Get("hidden") == "true",
 			AdvertisedRequired: field.Tag.Get("advertise-required") == "true",
 			Hint:               strings.TrimSpace(field.Tag.Get("hint")),
+			Default:            typedDefault(field.Type, field.Tag.Get("default")),
 		}
 		applyValidateTag(&fieldSpec, field.Tag.Get("validate"))
 		fieldSpec.Enum = parseCSVTag(field.Tag.Get("enum"))
@@ -80,6 +81,9 @@ func Schema(input InputSpec) map[string]any {
 		}
 		if len(field.Enum) > 0 {
 			property["enum"] = field.Enum
+		}
+		if field.Default != nil {
+			property["default"] = field.Default
 		}
 		properties[field.Name] = property
 		if field.Required || field.AdvertisedRequired {
@@ -132,6 +136,10 @@ func BindInput[T any](spec InputSpec, input map[string]any) (T, error) {
 			continue
 		}
 		raw, exists := input[name]
+		if (!exists || raw == nil) && fieldSpec.Default != nil {
+			raw = fieldSpec.Default
+			exists = true
+		}
 		if !exists || raw == nil {
 			if fieldSpec.Required {
 				return result, missingRequiredError(fieldSpec)
@@ -146,6 +154,31 @@ func BindInput[T any](spec InputSpec, input map[string]any) (T, error) {
 		}
 	}
 	return result, nil
+}
+
+func typedDefault(fieldType reflect.Type, raw string) any {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return nil
+	}
+	for fieldType.Kind() == reflect.Pointer {
+		fieldType = fieldType.Elem()
+	}
+	switch fieldType.Kind() {
+	case reflect.String:
+		return raw
+	case reflect.Bool:
+		value, err := strconv.ParseBool(raw)
+		if err == nil {
+			return value
+		}
+	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
+		value, err := strconv.ParseInt(raw, 10, 64)
+		if err == nil {
+			return value
+		}
+	}
+	return nil
 }
 
 func setFieldValue(field reflect.Value, spec FieldSpec, raw any) error {

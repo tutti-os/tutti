@@ -165,8 +165,8 @@ func (s IssueManagerService) startIssueTask(ctx context.Context, issue workspace
 			issue.ExecutionProfile.OrchestrationIntensity,
 		),
 		InitialContent: []agentservice.PromptContentBlock{{Type: "text", Text: sequentialTaskPrompt(issue, task, executionDirectory)}},
+		ClientSubmitID: "issue-run:" + run.RunID,
 		Metadata: map[string]any{
-			"clientSubmitId":     "issue-run:" + run.RunID,
 			"collaborationRunId": collaborationRunID,
 		},
 		Title:       &title,

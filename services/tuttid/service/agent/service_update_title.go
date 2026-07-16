@@ -57,10 +57,14 @@ func (s *Service) UpdateTitle(ctx context.Context, workspaceID string, agentSess
 		merged := mergePersistedSessionState(service, persisted)
 		merged.Title = stringPointer(persisted.Title)
 		merged.UpdatedAt = timeFromUnixMSPointer(persisted.UpdatedAtUnixMS)
-		return merged, nil
+		return s.projectSessionForResponse(ctx, workspaceID, merged)
 	}
-	return sessionFromPersisted(
-		persisted,
-		persistedSessionCanResume(s.controller(), persisted),
-	), nil
+	return s.projectSessionForResponse(
+		ctx,
+		workspaceID,
+		sessionFromPersisted(
+			persisted,
+			persistedSessionCanResume(s.controller(), persisted),
+		),
+	)
 }

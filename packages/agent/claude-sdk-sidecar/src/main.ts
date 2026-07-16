@@ -50,7 +50,8 @@ async function handleRequest(request: ClaudeSDKSidecarRequest): Promise<void> {
           stringValue(payload.turnId),
           // Prefer structured content; prompt is the legacy text fallback.
           stringValue(payload.prompt),
-          payload.content
+          payload.content,
+          stringValue(payload.hostContext)
         );
         emit({ id, type: "ok" });
         return;

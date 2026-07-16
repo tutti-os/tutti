@@ -35,7 +35,7 @@ func (c *streamingReportCoalescer) add(request reportRequest) []reportRequest {
 		return []reportRequest{request}
 	}
 	sessionKey := reportCoalesceSessionKey(request.report)
-	if isCoalescibleStreamingReport(request.report) {
+	if !request.submitProvenance && request.done == nil && isCoalescibleStreamingReport(request.report) {
 		c.merge(sessionKey, request)
 		c.ensureTimer()
 		return nil

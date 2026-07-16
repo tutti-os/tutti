@@ -41,6 +41,7 @@ export interface PlanDecisionRequestedIntent {
 export interface PlanFeedbackRequestedIntent {
   type: "plan/feedbackRequested";
   agentSessionId: string;
+  capabilityRefs?: readonly import("../types.ts").AgentActivityCapabilityReference[];
   clientSubmitId: string;
   content: readonly import("../types.ts").AgentPromptContentBlock[];
   displayPrompt?: string;
