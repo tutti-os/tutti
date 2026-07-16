@@ -164,6 +164,7 @@ function engineCommandErrorFields(error: unknown): {
   errorCode?: string;
   errorReason?: string;
   errorMessage: string;
+  errorStatusCode?: number;
 } {
   const record =
     error && typeof error === "object"
@@ -171,6 +172,10 @@ function engineCommandErrorFields(error: unknown): {
       : null;
   const code = typeof record?.code === "string" ? record.code.trim() : "";
   const reason = typeof record?.reason === "string" ? record.reason.trim() : "";
+  const statusCode =
+    typeof record?.statusCode === "number" && Number.isFinite(record.statusCode)
+      ? record.statusCode
+      : null;
   const message =
     error instanceof Error
       ? error.message
@@ -180,6 +185,9 @@ function engineCommandErrorFields(error: unknown): {
   return {
     ...(code ? { errorCode: code } : {}),
     ...(reason ? { errorReason: reason } : {}),
+    ...(statusCode !== null && statusCode > 0
+      ? { errorStatusCode: statusCode }
+      : {}),
     errorMessage: message
   };
 }

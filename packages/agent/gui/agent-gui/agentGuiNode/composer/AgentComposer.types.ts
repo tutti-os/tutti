@@ -115,6 +115,8 @@ export interface AgentComposerProps {
     modelTooltipVersionLabel: string;
     defaultModel: string;
     loadingOptions: string;
+    optionsLoadFailed: string;
+    optionsLoadFailedRetry: string;
     inheritedUnavailable: string;
     loadingConversation: string;
     reasoningLabel: string;
@@ -319,6 +321,8 @@ export interface AgentComposerProps {
     computerUse?: boolean;
     permissionModeId?: string | null;
   }) => void;
+  /** Re-issues the composer-options load from the error-state affordance. */
+  onRetryComposerOptions?: () => void;
   onTuttiModeChange?: (active: boolean) => void;
   onPlanIssueBudgetPresetChange?: (preset: PlanIssueBudgetPreset) => void;
   capabilityMenuState?: AgentComposerCapabilityMenuState;

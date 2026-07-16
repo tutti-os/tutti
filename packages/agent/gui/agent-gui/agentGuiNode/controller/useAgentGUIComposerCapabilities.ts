@@ -15,6 +15,7 @@ import { composerSettingsSupportFromOptions } from "../model/composerSettingsSup
 import { normalizeOptionalText } from "./agentGuiController.promptHelpers";
 import {
   composerOptionsForTarget,
+  composerOptionsLoadFailedForTarget,
   composerOptionsLoadingForTarget
 } from "./agentGuiController.providerHelpers";
 import {
@@ -47,6 +48,10 @@ export function useAgentGUIComposerCapabilities(
     target: composerTargetData
   });
   const composerOptionsLoading = composerOptionsLoadingForTarget({
+    snapshot: input.agentActivitySnapshot,
+    target: composerTargetData
+  });
+  const composerOptionsLoadFailed = composerOptionsLoadFailedForTarget({
     snapshot: input.agentActivitySnapshot,
     target: composerTargetData
   });
@@ -120,6 +125,7 @@ export function useAgentGUIComposerCapabilities(
       }),
     composerSupport,
     composerOptionsLoading,
+    composerOptionsLoadFailed,
     composerTargetData,
     defaultReasoningEffort,
     goalPauseSupported:

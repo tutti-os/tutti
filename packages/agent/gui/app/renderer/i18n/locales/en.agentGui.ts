@@ -78,6 +78,8 @@ export const enAgentGui = {
   modelSelectionLabel: "Model selection",
   defaultModel: "Default model",
   loadingOptions: "Loading…",
+  optionsLoadFailed: "Failed to load",
+  optionsLoadFailedRetry: "Options failed to load. Click to retry.",
   inheritedUnavailable: "Inherited / unavailable",
   reasoningLabel: "Reasoning",
   reasoningDegreeLabel: "Reasoning level",

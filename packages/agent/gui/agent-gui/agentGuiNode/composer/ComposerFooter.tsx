@@ -71,6 +71,7 @@ interface Props {
   onWorkspaceReferencePicker: () => void;
   onMentionPaletteButton: () => void;
   onSettingsChange: AgentComposerProps["onSettingsChange"];
+  onRetryComposerOptions?: AgentComposerProps["onRetryComposerOptions"];
   onSubmit: AgentComposerProps["onSubmit"];
   onClearGoalMode: () => void;
   onClearPlanMode: () => void;
@@ -114,12 +115,17 @@ export function ComposerFooter({
   onWorkspaceReferencePicker: handleWorkspaceReferencePicker,
   onMentionPaletteButton: handleMentionPaletteButton,
   onSettingsChange,
+  onRetryComposerOptions,
   onSubmit,
   onClearGoalMode: clearGoalModeBadge,
   onClearPlanMode,
   onClearTuttiMode
 }: Props) {
-  const showSettingsLoadingPlaceholders = composerSettings.isSettingsLoading;
+  // A terminal options-load failure keeps both dropdown slots mounted so the
+  // recoverable error affordance can render where the menus normally live.
+  const showSettingsLoadingPlaceholders =
+    composerSettings.isSettingsLoading ||
+    composerSettings.settingsLoadFailed === true;
   return (
     <>
       <div className={styles.composerFooter}>
@@ -435,8 +441,11 @@ export function ComposerFooter({
               provider={provider}
               labels={{
                 permissionLabel: labels.permissionLabel,
-                loadingOptions: labels.loadingOptions
+                loadingOptions: labels.loadingOptions,
+                optionsLoadFailed: labels.optionsLoadFailed,
+                optionsLoadFailedRetry: labels.optionsLoadFailedRetry
               }}
+              onRetryOptions={onRetryComposerOptions}
               onSettingsChange={(patch) => onSettingsChange(patch)}
             />
           ) : null}
@@ -474,8 +483,11 @@ export function ComposerFooter({
                 modelDescriptions: labels.modelDescriptions,
                 defaultModel: labels.defaultModel,
                 loadingOptions: labels.loadingOptions,
+                optionsLoadFailed: labels.optionsLoadFailed,
+                optionsLoadFailedRetry: labels.optionsLoadFailedRetry,
                 inheritedUnavailable: labels.inheritedUnavailable
               }}
+              onRetryOptions={onRetryComposerOptions}
               onSettingsChange={onSettingsChange}
             />
           ) : null}

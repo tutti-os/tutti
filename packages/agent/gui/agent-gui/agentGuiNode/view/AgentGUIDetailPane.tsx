@@ -220,6 +220,9 @@ export const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
   const updateComposerSettings = useStableEventCallback(
     actions.updateComposerSettings
   );
+  const retryComposerOptions = useStableEventCallback(
+    actions.retryComposerOptions
+  );
   const setTuttiModeActive = useStableEventCallback(actions.setTuttiModeActive);
   const updatePlanIssueBudgetPreset = useStableEventCallback(
     actions.updatePlanIssueBudgetPreset
@@ -449,6 +452,7 @@ export const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
       onDraftContentChange: updateDraftContent,
       onProjectPathChange: updateSelectedProjectPath,
       onSettingsChange: updateComposerSettings,
+      onRetryComposerOptions: retryComposerOptions,
       onTuttiModeChange: setTuttiModeActive,
       onPlanIssueBudgetPresetChange: updatePlanIssueBudgetPreset,
       onSubmit: submitPromptAndScrollToBottom,
@@ -517,6 +521,7 @@ export const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
       stableSelectProjectDirectory,
       stableRequestWorkspaceReferences,
       updateComposerSettings,
+      retryComposerOptions,
       updatePlanIssueBudgetPreset,
       updateDraftContent,
       updateSelectedProjectPath,

@@ -13,6 +13,8 @@ const labels: AgentComposerSettingsMenuLabels = {
   modelTooltipVersionLabel: "Version",
   defaultModel: "Default model",
   loadingOptions: "Loading…",
+  optionsLoadFailed: "Failed to load",
+  optionsLoadFailedRetry: "Options failed to load. Click to retry.",
   inheritedUnavailable: "Unavailable",
   reasoningLabel: "Reasoning",
   reasoningDegreeLabel: "Reasoning degree",
@@ -469,6 +471,27 @@ describe("buildComposerModelMenuModel", () => {
         labels
       ).trigger.modelLabel
     ).toBe("Loading…");
+  });
+
+  it("shows the failure copy on the trigger after options failed to load", () => {
+    const failedVm = vm({
+      availableModels: [],
+      availableReasoningEfforts: [],
+      availableSpeeds: [],
+      draftSettings: {
+        model: null,
+        reasoningEffort: null,
+        speed: null,
+        planMode: false,
+        permissionModeId: null
+      },
+      isSettingsLoading: false,
+      settingsLoadFailed: true
+    });
+    const menu = buildComposerModelMenuModel(failedVm, labels);
+    expect(menu.trigger.modelLabel).toBe("Failed to load");
+    expect(menu.trigger.modelLabel).not.toBe(labels.loadingOptions);
+    expect(menu.disabled).toBe(true);
   });
 
   it("disables the menu while settings load or nothing is configurable", () => {

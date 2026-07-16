@@ -634,6 +634,7 @@ export function AgentComposerView(input: Props): React.JSX.Element {
             onWorkspaceReferencePicker={handleWorkspaceReferencePicker}
             onMentionPaletteButton={handleMentionPaletteButton}
             onSettingsChange={onSettingsChange}
+            onRetryComposerOptions={input.props.onRetryComposerOptions}
             onSubmit={onSubmit}
             onClearGoalMode={clearGoalModeBadge}
           />

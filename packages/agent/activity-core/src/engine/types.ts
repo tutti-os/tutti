@@ -80,6 +80,8 @@ export interface EngineCommandResultIntent {
   errorCode?: string;
   errorReason?: string;
   errorMessage?: string;
+  /** HTTP-ish status carried by the failing transport error, when known. */
+  errorStatusCode?: number;
 }
 
 /**
@@ -121,6 +123,12 @@ export interface EngineScheduleExpiryCommand {
   type: "engine/scheduleExpiry";
   expiryId: string;
   dueAtUnixMs: number;
+  /**
+   * Relative deadline for reducers that have no wall-clock anchor (command
+   * results carry no timestamp). When present the expiry clock schedules
+   * `delayMs` from now and `dueAtUnixMs` is informational only.
+   */
+  delayMs?: number;
 }
 
 export interface EngineCancelExpiryCommand {
