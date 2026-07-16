@@ -80,7 +80,7 @@ describe("AgentTurnWorkSection", () => {
     }
   });
 
-  it("does not show or tick processed time while the active turn is waiting", () => {
+  it("shows and ticks wall-clock time while the active turn is waiting", () => {
     vi.useFakeTimers();
     vi.setSystemTime(50_000);
 
@@ -98,14 +98,16 @@ describe("AgentTurnWorkSection", () => {
         />
       );
 
-      expect(screen.queryByText(/Processed for/)).toBeNull();
-      expect(vi.getTimerCount()).toBe(0);
+      expect(screen.getByText("Processed for 45s")).toBeTruthy();
+      expect(vi.getTimerCount()).toBe(1);
+      act(() => vi.advanceTimersByTime(5_000));
+      expect(screen.getByText("Processed for 50s")).toBeTruthy();
     } finally {
       vi.useRealTimers();
     }
   });
 
-  it("stops the live timer when a running turn transitions to waiting", () => {
+  it("keeps the live timer when a running turn transitions to waiting", () => {
     vi.useFakeTimers();
     vi.setSystemTime(50_000);
     const renderRow = (row: AgentTranscriptRowVM, rowIndex: number) => (
@@ -137,8 +139,10 @@ describe("AgentTurnWorkSection", () => {
         />
       );
 
-      expect(screen.queryByText(/Processed for/)).toBeNull();
-      expect(vi.getTimerCount()).toBe(0);
+      expect(screen.getByText("Processed for 45s")).toBeTruthy();
+      expect(vi.getTimerCount()).toBe(1);
+      act(() => vi.advanceTimersByTime(5_000));
+      expect(screen.getByText("Processed for 50s")).toBeTruthy();
     } finally {
       vi.useRealTimers();
     }

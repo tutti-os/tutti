@@ -20,13 +20,13 @@ describe("agentTurnWorkSectionModel", () => {
 
     expect(
       resolveAgentTurnTiming(canonicalTurn({ phase: "waiting" }), true)
-    ).toBeNull();
+    ).toEqual({ kind: "live", startedAtUnixMs: 5_000 });
     expect(
       resolveAgentTurnTiming(canonicalTurn({ phase: "submitted" }), true)
-    ).toBeNull();
+    ).toEqual({ kind: "live", startedAtUnixMs: 5_000 });
     expect(
       resolveAgentTurnTiming(canonicalTurn({ phase: "settling" }), true)
-    ).toBeNull();
+    ).toEqual({ kind: "live", startedAtUnixMs: 5_000 });
 
     expect(
       resolveAgentTurnTiming(
