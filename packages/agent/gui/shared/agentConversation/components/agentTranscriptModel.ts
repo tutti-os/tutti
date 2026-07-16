@@ -123,7 +123,13 @@ export function hasAgentResponseForTurn(
   const turnId = userRow.turnId ?? null;
   for (let index = userRowIndex + 1; index < rows.length; index += 1) {
     const row = rows[index];
-    if (!row || row.kind !== "message") {
+    if (!row) {
+      continue;
+    }
+    if (row.kind === "generated-image") {
+      return !turnId || row.turnId === turnId;
+    }
+    if (row.kind !== "message") {
       continue;
     }
     if (row.speaker === "user") {

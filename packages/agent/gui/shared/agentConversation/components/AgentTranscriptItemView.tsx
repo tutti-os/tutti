@@ -4,6 +4,7 @@ import type { AgentMessageMarkdownWorkspaceAppIcon } from "../../AgentMessageMar
 import type { AgentGUIProviderSkillOption } from "../../../agent-gui/agentGuiNode/model/agentGuiNodeTypes";
 import { resolveAgentConversationLinkAction } from "../actions/agentConversationLinkActions";
 import type { AgentTranscriptRowVM } from "../contracts/agentTranscriptRowVM";
+import { AgentGeneratedImageRow } from "./AgentGeneratedImageRow";
 import { AgentMessageBlock } from "./AgentMessageBlock";
 import { AgentProcessingRow } from "./AgentProcessingRow";
 import { AgentToolGroupRow } from "./AgentToolGroupRow";
@@ -65,6 +66,8 @@ export const AgentTranscriptItemView = memo(function AgentTranscriptItemView({
     [basePath, onLinkAction, workspaceRoot]
   );
   switch (row.kind) {
+    case "generated-image":
+      return <AgentGeneratedImageRow row={row} />;
     case "message":
       return (
         <AgentMessageBlock

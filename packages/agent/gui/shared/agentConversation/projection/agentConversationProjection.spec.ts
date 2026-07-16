@@ -125,6 +125,122 @@ describe("projectAgentConversationVM", () => {
     ]);
   });
 
+  it("promotes a completed generated image beside its retained tool-call group", () => {
+    const imageCall = {
+      id: "call:image-1",
+      name: "Generate image",
+      toolName: "image_generation",
+      callType: "tool",
+      status: "Completed",
+      statusKind: "completed" as const,
+      summary: "Generated image",
+      payload: {
+        input: {
+          prompt: "A friendly corgi"
+        },
+        output: {
+          savedPath: "/workspace/output/generated-corgi.png",
+          content: [
+            {
+              type: "image",
+              uri: "/workspace/output/generated-corgi.png",
+              mimeType: "image/png"
+            }
+          ]
+        }
+      }
+    };
+    const conversation = projectAgentConversationVM(
+      detailViewModel({
+        turns: [
+          {
+            id: "turn-image",
+            userMessage: { id: "user-image", body: "Generate a corgi" },
+            userMessages: [{ id: "user-image", body: "Generate a corgi" }],
+            agentMessages: [],
+            toolCalls: [imageCall],
+            toolCallCount: 1,
+            hasFailedToolCall: false,
+            agentItems: [
+              {
+                kind: "tool-calls",
+                id: "tools-image",
+                toolCalls: [imageCall],
+                toolCallCount: 1,
+                hasFailedToolCall: false
+              }
+            ]
+          }
+        ],
+        showProcessingIndicator: false
+      })
+    );
+
+    expect(
+      conversation.rows.filter((row) => row.kind === "tool-group")
+    ).toHaveLength(1);
+    expect(
+      conversation.rows.find((row) => row.kind === "generated-image")
+    ).toMatchObject({
+      kind: "generated-image",
+      id: "generated-image:call:image-1",
+      turnId: "turn-image",
+      sourceCallId: "call:image-1",
+      uri: "/workspace/output/generated-corgi.png",
+      mimeType: "image/png",
+      prompt: "A friendly corgi"
+    });
+  });
+
+  it("does not promote an image before generation completes", () => {
+    const imageCall = {
+      id: "call:image-running",
+      name: "Generate image",
+      toolName: "image_generation",
+      callType: "tool",
+      status: "Running",
+      statusKind: "working" as const,
+      summary: "Generating image",
+      payload: {
+        input: {
+          prompt: "A friendly corgi"
+        },
+        output: {
+          savedPath: "/workspace/output/generated-corgi.png"
+        }
+      }
+    };
+    const conversation = projectAgentConversationVM(
+      detailViewModel({
+        turns: [
+          {
+            id: "turn-image-running",
+            userMessage: { id: "user-image", body: "Generate a corgi" },
+            userMessages: [{ id: "user-image", body: "Generate a corgi" }],
+            agentMessages: [],
+            toolCalls: [imageCall],
+            toolCallCount: 1,
+            hasFailedToolCall: false,
+            agentItems: [
+              {
+                kind: "tool-calls",
+                id: "tools-image",
+                toolCalls: [imageCall],
+                toolCallCount: 1,
+                hasFailedToolCall: false
+              }
+            ]
+          }
+        ],
+        showProcessingIndicator: false
+      })
+    );
+
+    expect(
+      conversation.rows.some((row) => row.kind === "generated-image")
+    ).toBe(false);
+  });
+
   const tailChainConversation = (latestTail: {
     status: string;
     statusKind: "completed" | "working" | "waiting";

@@ -75,6 +75,10 @@ function calculateTurnScore(
 
   for (const { row } of rows) {
     rowCount += 1;
+    if (row.kind === "generated-image") {
+      imageCount += 1;
+      continue;
+    }
     if (row.kind === "message") {
       for (const message of row.messages) {
         charCount += message.body.length;

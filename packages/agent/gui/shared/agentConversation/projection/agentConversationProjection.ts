@@ -2,11 +2,14 @@ import type {
   WorkspaceAgentSessionDetailTurn,
   WorkspaceAgentSessionDetailViewModel
 } from "../../workspaceAgentSessionDetailViewModel";
+import { extractImageGenerationPreview } from "../../imageGenerationTool";
 import type { AgentConversationVM } from "../contracts/agentConversationVM";
+import type { AgentGeneratedImageRowVM } from "../contracts/agentGeneratedImageRowVM";
 import type {
   AgentMessageContentVM,
   AgentMessageRowVM
 } from "../contracts/agentMessageRowVM";
+import type { AgentToolCallVM } from "../contracts/agentToolCallVM";
 import type { AgentTranscriptRowVM } from "../contracts/agentTranscriptRowVM";
 import { computeAgentToolGroups } from "./agentToolGroupingProjection";
 import { buildAgentTurnSequenceItems } from "./agentTurnSequenceProjection";
@@ -604,11 +607,71 @@ function projectTurnConversationRows(
     options
   );
   const skippedIndices = new Set([...groupedIndices, ...suppressedIndices]);
-  return projectTurnRows(
-    sequence,
-    groups,
-    skippedIndices,
-    turn.id,
-    options.agentSessionId
+  return promoteGeneratedImageRows(
+    projectTurnRows(
+      sequence,
+      groups,
+      skippedIndices,
+      turn.id,
+      options.agentSessionId
+    )
   );
+}
+
+function promoteGeneratedImageRows(
+  rows: readonly AgentTranscriptRowVM[]
+): AgentTranscriptRowVM[] {
+  const promoted: AgentTranscriptRowVM[] = [];
+  for (const row of rows) {
+    promoted.push(row);
+    if (row.kind !== "tool-group") {
+      continue;
+    }
+    for (const call of row.calls) {
+      const artifact = projectGeneratedImageRow(call, row.turnId);
+      if (artifact) {
+        promoted.push(artifact);
+      }
+    }
+  }
+  return promoted;
+}
+
+function projectGeneratedImageRow(
+  call: AgentToolCallVM,
+  turnId: string
+): AgentGeneratedImageRowVM | null {
+  if (
+    call.rendererKind !== "image-generation" ||
+    call.statusKind !== "completed"
+  ) {
+    return null;
+  }
+  const image = extractImageGenerationPreview({
+    toolName: call.toolName,
+    displayName: call.name,
+    content: call.content,
+    outputContent: call.output?.content,
+    outputSavedPath: call.output?.savedPath ?? call.output?.saved_path,
+    inputPrompt: call.input?.prompt,
+    payloadInputPrompt:
+      call.payload?.input &&
+      typeof call.payload.input === "object" &&
+      !Array.isArray(call.payload.input)
+        ? (call.payload.input as Record<string, unknown>).prompt
+        : null
+  });
+  if (!image.imageUri) {
+    return null;
+  }
+  return {
+    kind: "generated-image",
+    id: `generated-image:${call.id}`,
+    turnId,
+    sourceCallId: call.id,
+    uri: image.imageUri,
+    mimeType: image.mimeType,
+    prompt: image.prompt,
+    occurredAtUnixMs: call.occurredAtUnixMs
+  };
 }
