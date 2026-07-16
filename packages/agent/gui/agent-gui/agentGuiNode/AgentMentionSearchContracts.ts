@@ -25,14 +25,19 @@ export type AgentMentionStaticGroupId =
   | "my_sessions"
   | "collab_sessions"
   | "issues";
+export type AgentMentionIssueTopicGroupId = `issue-topic:${string}`;
+export type AgentMentionProvenanceGroupId = `agent:${string}`;
 export type AgentMentionGroupId =
   | AgentMentionStaticGroupId
-  | `issue-topic:${string}`;
+  | AgentMentionIssueTopicGroupId
+  | AgentMentionProvenanceGroupId;
 
-export type AgentMentionRawGroupId = Exclude<
-  AgentMentionStaticGroupId,
-  "files"
->;
+export type AgentMentionRawGroupId =
+  | Exclude<
+      AgentMentionStaticGroupId,
+      "files" | "my_sessions" | "collab_sessions"
+    >
+  | "sessions";
 export type AgentMentionRawGroups = Record<
   AgentMentionRawGroupId,
   AgentContextMentionItem[]

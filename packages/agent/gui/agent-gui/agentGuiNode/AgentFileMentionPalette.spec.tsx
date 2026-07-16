@@ -1331,6 +1331,78 @@ describe("AgentFileMentionPalette", () => {
     );
   });
 
+  it("renders provenance catalog labels for session groups", () => {
+    const session = (
+      targetId: string,
+      agentTargetId: string,
+      title: string
+    ): AgentContextMentionItem => ({
+      kind: "session",
+      href: `mention://agent-session/${targetId}?workspaceId=room-1`,
+      workspaceId: "room-1",
+      targetId,
+      agentTargetId,
+      name: title,
+      title,
+      scope: "my_sessions",
+      initiatorName: "User",
+      agentName: "Codex"
+    });
+    const state: AgentMentionSearchState = {
+      status: "ready",
+      query: "",
+      mode: "browse",
+      filter: "session",
+      categories: [],
+      groups: [
+        {
+          id: "agent:codex-main",
+          label: "Me · Codex",
+          items: [session("session-local", "codex-main", "Local build")],
+          totalCount: 1,
+          visibleCount: 1,
+          hasMore: false
+        },
+        {
+          id: "agent:shared-agent%3Ashared-codex",
+          label: "Lin · Codex",
+          items: [
+            session(
+              "session-shared",
+              "shared-agent:shared-codex",
+              "Shared build"
+            )
+          ],
+          totalCount: 1,
+          visibleCount: 1,
+          hasMore: false
+        }
+      ],
+      error: null
+    };
+
+    render(
+      <AgentFileMentionPalette
+        state={state}
+        highlightedKey={null}
+        label="mention palette"
+        loadingLabel="loading"
+        emptyLabel="empty"
+        errorLabel="error"
+        tabHintLabel="hint"
+        maxHeightPx={320}
+        onHighlightChange={vi.fn()}
+        onSelectItem={vi.fn()}
+        onSelectCategory={vi.fn()}
+        onSelectFilter={vi.fn()}
+        onExpandGroup={vi.fn()}
+      />
+    );
+
+    expect(screen.getByText("Me · Codex")).toBeVisible();
+    expect(screen.getByText("Lin · Codex")).toBeVisible();
+  });
+
   it("hides a duplicate group heading when the active filter has one matching group", () => {
     const state: AgentMentionSearchState = {
       status: "ready",

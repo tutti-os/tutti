@@ -3191,9 +3191,12 @@ directories. Ordinary opened-file and issue-summary records do not currently
 carry durable provenance and therefore fail closed when either an Agent or
 Member constraint is active. A typed File query must route to the
 provenance-aware generated-file provider for either active dimension, even when
-the ordinary generated-files group is otherwise disabled. Existing result
-groups remain unchanged; the filter narrows their contents and does not
-introduce a second grouping layer.
+the ordinary generated-files group is otherwise disabled. Generated-file and
+picker result groups remain source-owned. The Agent Session `@` list is the
+exception: when a host injects an Agent provenance catalog, it groups returned
+sessions by exact `agentTargetId` in catalog order and uses the catalog option
+label as the group heading. This grouping is presentation only; the provider
+still applies the selected provenance constraint before pagination.
 
 Only catalog entries with a durable `agentTargetId` participate in filtering;
 host target ids are not substitutes. Catalogs and filters are normalized at the
