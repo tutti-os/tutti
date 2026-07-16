@@ -132,6 +132,11 @@ export class WorkspaceAppCenterService implements IWorkspaceAppCenterService {
     this.store = store;
   }
 
+  dispose(): void {
+    this.updates?.dispose();
+    this.updates = null;
+  }
+
   consumeError(): string | null {
     return this.controller.consumeError();
   }

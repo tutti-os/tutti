@@ -162,6 +162,7 @@ export interface AgentGUIAgentTarget {
   heroImageUrl?: string | null;
   badge?: AgentGUIAgentTargetBadge | null;
   ownerLabel?: string;
+  availability?: AgentGUIAgentAvailability;
   disabled?: boolean;
   unavailableReason?: string;
 }

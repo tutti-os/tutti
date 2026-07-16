@@ -26,6 +26,7 @@ func generatedAgentSessionMessages(messages []agentservice.SessionMessage) ([]tu
 			OccurredAtUnixMs:  normalizedGeneratedMessageOccurredAtUnixMS(message),
 			Payload:           clonePayloadPointer(message.Payload),
 			Role:              strings.TrimSpace(message.Role),
+			Sequence:          int64(message.ID),
 			StartedAtUnixMs:   int64Pointer(message.StartedAtUnixMS),
 			Status:            stringPointer(strings.TrimSpace(message.Status)),
 			TurnId:            turnID,

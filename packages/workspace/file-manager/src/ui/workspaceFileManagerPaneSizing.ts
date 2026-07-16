@@ -1,6 +1,7 @@
 export const workspaceFileManagerSidebarDefaultWidth = 460;
 export const workspaceFileManagerSidebarMinWidth = 180;
 export const workspaceFileManagerContentMinWidth = 580;
+export const workspaceFileManagerContentWithoutPreviewMinWidth = 320;
 export const workspaceFileManagerPaneResizeStep = 24;
 export const workspaceFileManagerPreviewDefaultWidth = 348;
 export const workspaceFileManagerSidebarWidthStorageKey =
@@ -38,14 +39,18 @@ export function writeWorkspaceFileManagerPreviewWidth(width: number): void {
 
 export function clampWorkspaceFileManagerSidebarWidth(input: {
   containerWidth: number;
+  contentMinWidth?: number;
   width: number;
 }): number {
+  const contentMinWidth = resolveWorkspaceFileManagerContentMinWidth(
+    input.contentMinWidth
+  );
   const containerWidth = Number.isFinite(input.containerWidth)
     ? input.containerWidth
-    : workspaceFileManagerSidebarMinWidth + workspaceFileManagerContentMinWidth;
+    : workspaceFileManagerSidebarMinWidth + contentMinWidth;
   const maxWidth = Math.max(
     workspaceFileManagerSidebarMinWidth,
-    containerWidth - workspaceFileManagerContentMinWidth
+    containerWidth - contentMinWidth
   );
   const width = Number.isFinite(input.width)
     ? input.width
@@ -57,17 +62,30 @@ export function clampWorkspaceFileManagerSidebarWidth(input: {
 }
 
 export function resolveWorkspaceFileManagerSidebarMaxWidth(
-  containerWidth: number
+  containerWidth: number,
+  contentMinWidth?: number
 ): number {
+  const resolvedContentMinWidth =
+    resolveWorkspaceFileManagerContentMinWidth(contentMinWidth);
   const resolvedContainerWidth = Number.isFinite(containerWidth)
     ? containerWidth
-    : workspaceFileManagerSidebarMinWidth + workspaceFileManagerContentMinWidth;
+    : workspaceFileManagerSidebarMinWidth + resolvedContentMinWidth;
   return Math.round(
     Math.max(
       workspaceFileManagerSidebarMinWidth,
-      resolvedContainerWidth - workspaceFileManagerContentMinWidth
+      resolvedContainerWidth - resolvedContentMinWidth
     )
   );
+}
+
+function resolveWorkspaceFileManagerContentMinWidth(
+  contentMinWidth: number | undefined
+): number {
+  return typeof contentMinWidth === "number" &&
+    Number.isFinite(contentMinWidth) &&
+    contentMinWidth > 0
+    ? contentMinWidth
+    : workspaceFileManagerContentMinWidth;
 }
 
 function readWorkspaceFileManagerPaneWidth(

@@ -11,14 +11,10 @@ import {
 import { agentGuiDockIconUrls } from "../dockIcons.ts";
 import {
   agentGuiWorkbenchDockIdentityFromIdentifier,
-  agentGuiWorkbenchProviderFromIdentifier,
   agentGuiWorkbenchTypeId,
   agentGuiWorkbenchUnifiedDockEntryId
 } from "./launch.ts";
-import {
-  agentGuiWorkbenchProviderFromInstanceId,
-  normalizeAgentGuiWorkbenchState
-} from "./state.ts";
+import { normalizeAgentGuiWorkbenchState } from "./state.ts";
 import {
   agentGuiWorkbenchDefaultDockProviders,
   isAgentGuiWorkbenchProvider,
@@ -544,11 +540,15 @@ export function createAgentGuiWorkbenchPreviewContent(input: {
     input.resolveDockPopupIdentity?.(state)?.title ??
     input.resolveDockPopupTitle?.(state) ??
     node.title;
-  const provider =
-    input.provider ??
-    agentGuiWorkbenchProviderFromIdentifier(node.data.instanceId) ??
-    agentGuiWorkbenchProviderFromInstanceId(node.data.instanceId);
-  const label = input.label ?? resolveAgentGuiWorkbenchProviderLabel(provider);
+  const agentTargetId = state.agentTargetId?.trim() ?? "";
+  const agent = input.agentDirectory
+    .getSnapshot()
+    .agents.find((candidate) => candidate.agentTargetId === agentTargetId);
+  const provider = input.provider ?? agent?.provider ?? null;
+  const label =
+    input.label ??
+    agent?.name ??
+    (provider ? resolveAgentGuiWorkbenchProviderLabel(provider) : node.title);
   const lines = [label, state.lastActiveAgentSessionId].filter(
     (line): line is string => Boolean(line?.trim())
   );
@@ -559,11 +559,12 @@ export function createAgentGuiWorkbenchPreviewContent(input: {
         agentDirectory: input.agentDirectory,
         nodeTypeId: agentGuiWorkbenchTypeId,
         onStateChange: () => undefined,
+        agentTargetId: agentTargetId || null,
         provider
       }
     ),
     kind: "component",
-    revision: `${provider}\n${title}\n${lines.join("\n")}`
+    revision: `${agentTargetId}\n${provider ?? ""}\n${title}\n${lines.join("\n")}`
   };
 }
 

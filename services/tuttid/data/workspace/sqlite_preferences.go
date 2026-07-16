@@ -15,11 +15,11 @@ import (
 const desktopPreferencesRowID = "desktop"
 
 func (s *SQLiteStore) GetDesktopPreferences(ctx context.Context) (preferencesbiz.DesktopPreferences, error) {
-	if s == nil || s.db == nil {
+	if s == nil || s.writeDB == nil {
 		return preferencesbiz.DesktopPreferences{}, errors.New("workspace database is not initialized")
 	}
 
-	row := s.db.QueryRowContext(ctx, `
+	row := s.readDB.QueryRowContext(ctx, `
 SELECT default_agent_provider, agent_conversation_detail_mode, agent_dock_layout, dock_icon_style, dock_placement, locale, theme_source, sleep_prevention_mode, update_channel, update_policy, agent_composer_defaults_by_provider_json, agent_composer_defaults_by_agent_target_json, agent_gui_conversation_rail_collapsed_by_provider_json, browser_use_connection_mode, file_default_openers_by_extension_json, app_catalog_channel, minimize_animation, show_app_developer_sources, workbench_window_snapping_enabled, workbench_window_snapping_shortcut_preset, feature_flags_json, workbench_shortcuts_json
 FROM desktop_preferences
 WHERE id = ?
@@ -103,7 +103,7 @@ WHERE id = ?
 }
 
 func (s *SQLiteStore) PutDesktopPreferences(ctx context.Context, preferences preferencesbiz.DesktopPreferences) (preferencesbiz.DesktopPreferences, error) {
-	if s == nil || s.db == nil {
+	if s == nil || s.writeDB == nil {
 		return preferencesbiz.DesktopPreferences{}, errors.New("workspace database is not initialized")
 	}
 
@@ -132,7 +132,7 @@ func (s *SQLiteStore) PutDesktopPreferences(ctx context.Context, preferences pre
 	if err != nil {
 		return preferencesbiz.DesktopPreferences{}, fmt.Errorf("encode desktop preferences workbench shortcuts: %w", err)
 	}
-	_, err = s.db.ExecContext(ctx, `
+	_, err = s.writeDB.ExecContext(ctx, `
 INSERT INTO desktop_preferences (
   id,
   default_agent_provider,

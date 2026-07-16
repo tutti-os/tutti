@@ -27,6 +27,7 @@ function conversation(
   pinnedAtUnixMs: number | null = null
 ): AgentGUIConversationSummary {
   return {
+    agentTargetId: "local:codex",
     cwd: "/workspace",
     id,
     pinnedAtUnixMs,
@@ -143,7 +144,12 @@ describe("planRuntimeRailMembershipRefresh", () => {
         next: [conversation("brand-new"), recent],
         previous: [recent]
       })
-    ).toEqual({ kind: "refresh_first_pages", reconcilingSessionIds: [] });
+    ).toEqual({
+      kind: "refresh_pages",
+      pageIds: ["project:/workspace"],
+      reconcilingSessionIds: [],
+      refreshSearch: false
+    });
   });
 
   it("refreshes for removal and pin membership changes", () => {
@@ -156,14 +162,24 @@ describe("planRuntimeRailMembershipRefresh", () => {
         next: [first],
         previous: [first, second]
       })
-    ).toEqual({ kind: "refresh_first_pages", reconcilingSessionIds: [] });
+    ).toEqual({
+      kind: "refresh_pages",
+      pageIds: ["project:/workspace"],
+      reconcilingSessionIds: [],
+      refreshSearch: false
+    });
     expect(
       planRuntimeRailMembershipRefresh({
         loadedSections: membership([first]),
         next: [conversation("first", 100)],
         previous: [first]
       })
-    ).toEqual({ kind: "refresh_first_pages", reconcilingSessionIds: [] });
+    ).toEqual({
+      kind: "refresh_pages",
+      pageIds: ["project:/workspace", "pinned"],
+      reconcilingSessionIds: [],
+      refreshSearch: false
+    });
   });
 
   it("ignores pending activation add and removal", () => {
@@ -217,8 +233,28 @@ describe("planRuntimeRailMembershipRefresh", () => {
         previous: [pending, recent]
       })
     ).toEqual({
-      kind: "refresh_first_pages",
-      reconcilingSessionIds: ["new-session"]
+      kind: "refresh_pages",
+      pageIds: ["project:/workspace"],
+      reconcilingSessionIds: ["new-session"],
+      refreshSearch: false
+    });
+  });
+
+  it("refreshes search only when a title changes under an active query", () => {
+    const previous = conversation("session-1");
+
+    expect(
+      planRuntimeRailMembershipRefresh({
+        loadedSections: membership([previous]),
+        next: [{ ...previous, title: "Renamed" }],
+        previous: [previous],
+        searchActive: true
+      })
+    ).toEqual({
+      kind: "refresh_pages",
+      pageIds: [],
+      reconcilingSessionIds: [],
+      refreshSearch: true
     });
   });
 });

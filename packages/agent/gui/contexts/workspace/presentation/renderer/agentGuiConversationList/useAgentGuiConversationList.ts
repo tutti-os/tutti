@@ -1,5 +1,6 @@
 import { useMemo } from "react";
 import {
+  isPendingActivationViable,
   selectWorkspaceAgentConsumerSessions,
   selectPendingActivations,
   selectWorkspaceReconcileState,
@@ -125,7 +126,7 @@ export function useAgentGuiConversationList(
       pendingActivations
         .filter(
           (activation) =>
-            activation.mode === "new" && activation.status !== "failed"
+            activation.mode === "new" && isPendingActivationViable(activation)
         )
         .map((activation) => [activation.agentSessionId, activation] as const)
     );
@@ -133,7 +134,7 @@ export function useAgentGuiConversationList(
       .filter(
         (activation) =>
           activation.mode === "new" &&
-          activation.status !== "failed" &&
+          isPendingActivationViable(activation) &&
           !canonicalIds.has(activation.agentSessionId)
       )
       .map((activation): AgentGUIConversationSummary => {

@@ -47,7 +47,6 @@ export function useAgentGUIControllerRefs(
   const userProjectsRef = useRef(input.userProjects);
   const isNoProjectPathRef = useRef(input.isNoProjectPath);
   const userProjectsLoadSeqRef = useRef(0);
-  const composerOptionsProjectKeyRef = useRef<string | null>(null);
   const conversationsRef = useRef(input.conversations);
   const isMountedRef = useRef(true);
   const agentActivitySnapshotRef = useRef(input.agentActivitySnapshot);
@@ -140,7 +139,6 @@ export function useAgentGUIControllerRefs(
   return {
     activeConversationIdRef,
     agentActivitySnapshotRef,
-    composerOptionsProjectKeyRef,
     conversationIdsRef,
     conversationsRef,
     dataRef,

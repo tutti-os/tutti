@@ -44,7 +44,8 @@ It owns:
   and attention state inside one workspace engine
 - memoized projection from engine state to the `AgentActivitySnapshot` runtime
   contract
-- message merge, version ordering, and duplicate handling
+- message merge, immutable presentation-sequence ordering, mutable version
+  cursor handling, and duplicate handling
 - selectors for reusable derived state
 - `selectNeedsAttentionCount`
 - `selectNeedsAttentionItems`
@@ -134,6 +135,11 @@ Activating a conversation must not by itself call `listSessionSections` again.
 Likewise, active detail provider changes should not reload section first pages.
 Page sessions must be upserted into the workspace engine, while the rail query
 cache retains only ordered session ids, cursors, totals, and section metadata.
+Desktop keeps that cache on the workspace-scoped runtime rather than a mounted
+AgentGUI controller. Fresh first pages are reused for 30 seconds across panel
+remounts and repeated target switches; stale pages remain visible while one
+coalesced background request revalidates the scope. The cache never owns session
+entities, titles, lifecycle, or interaction state.
 Section first-page reloads should be tied to workspace, rail filter, user
 project, or session membership changes.
 Historical rows already owned by loaded section pages can be absent from a
@@ -283,7 +289,10 @@ Interaction persistence returns `applied`, `already_applied`, or `conflict`.
 Exact replays and late transitions after the first terminal state are
 `already_applied`; a changed immutable identity (`kind`, `toolName`, `input`, or
 `metadata`) is a hard `conflict` for the whole state report. A terminal state
-never transitions back to `pending`.
+never transitions back to `pending`. A settled owning Turn cannot acquire a new
+pending Interaction: persistence treats that late provider report as an
+idempotent stale transition and stores no actionable row. Terminal reports may
+still be recorded for replay and reconciliation evidence.
 
 Protocol-v2 session responses expose `activeTurnId` (required and nullable),
 `pendingInteractions` (required and never null), independent `activeTurn` /
@@ -429,6 +438,10 @@ erase a usable preloaded model or reasoning selection while live metadata is
 still arriving. Because the effective settings are request-dependent,
 composer-options cache freshness and in-flight reuse include normalized `cwd`
 and normalized requested settings in addition to the target key.
+Ordinary home-target and project switches use that signature-aware cache and
+must not force a second transport request from the click handler. Forced loads
+are reserved for explicit catalog invalidation, activation/creation settlement,
+or provider-declared draft-session prewarming.
 
 Composer-options loading may be suppressed while a new-session activation is
 pending, but that guard follows the current engine state rather than a

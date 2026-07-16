@@ -12,7 +12,7 @@ import (
 )
 
 func (s *SQLiteStore) PutAppFactoryJob(ctx context.Context, job workspacebiz.AppFactoryJob) error {
-	if s == nil || s.db == nil {
+	if s == nil || s.writeDB == nil {
 		return errors.New("workspace database is not initialized")
 	}
 
@@ -33,7 +33,7 @@ func (s *SQLiteStore) PutAppFactoryJob(ctx context.Context, job workspacebiz.App
 		updatedAt = now
 	}
 
-	_, err := s.db.ExecContext(ctx, `
+	_, err := s.writeDB.ExecContext(ctx, `
 INSERT INTO app_factory_jobs (
   workspace_id, job_id, status, prompt, app_id, display_name, description,
   agent_target_id, provider, model, reasoning_effort, agent_session_id, draft_dir, runtime_dir, data_dir, log_dir,
@@ -77,7 +77,7 @@ ON CONFLICT(workspace_id, job_id) DO UPDATE SET
 }
 
 func (s *SQLiteStore) GetAppFactoryJob(ctx context.Context, workspaceID string, jobID string) (workspacebiz.AppFactoryJob, error) {
-	if s == nil || s.db == nil {
+	if s == nil || s.writeDB == nil {
 		return workspacebiz.AppFactoryJob{}, errors.New("workspace database is not initialized")
 	}
 	workspaceID = strings.TrimSpace(workspaceID)
@@ -86,7 +86,7 @@ func (s *SQLiteStore) GetAppFactoryJob(ctx context.Context, workspaceID string, 
 		return workspacebiz.AppFactoryJob{}, errors.New("workspace id and app factory job id are required")
 	}
 
-	row := s.db.QueryRowContext(ctx, `
+	row := s.readDB.QueryRowContext(ctx, `
 SELECT workspace_id, job_id, status, prompt, app_id, display_name, description,
   agent_target_id, provider, model, reasoning_effort, agent_session_id, draft_dir, runtime_dir, data_dir, log_dir,
   package_dir, validation_result_json, failure_reason, published_version,
@@ -105,7 +105,7 @@ WHERE workspace_id = ? AND job_id = ?
 }
 
 func (s *SQLiteStore) ListAppFactoryJobs(ctx context.Context, workspaceID string) ([]workspacebiz.AppFactoryJob, error) {
-	if s == nil || s.db == nil {
+	if s == nil || s.writeDB == nil {
 		return nil, errors.New("workspace database is not initialized")
 	}
 	workspaceID = strings.TrimSpace(workspaceID)
@@ -113,7 +113,7 @@ func (s *SQLiteStore) ListAppFactoryJobs(ctx context.Context, workspaceID string
 		return nil, errors.New("workspace id is required")
 	}
 
-	rows, err := s.db.QueryContext(ctx, `
+	rows, err := s.readDB.QueryContext(ctx, `
 SELECT workspace_id, job_id, status, prompt, app_id, display_name, description,
   agent_target_id, provider, model, reasoning_effort, agent_session_id, draft_dir, runtime_dir, data_dir, log_dir,
   package_dir, validation_result_json, failure_reason, published_version,
@@ -142,7 +142,7 @@ ORDER BY updated_at_unix_ms DESC, job_id ASC
 }
 
 func (s *SQLiteStore) DeleteAppFactoryJob(ctx context.Context, workspaceID string, jobID string) error {
-	if s == nil || s.db == nil {
+	if s == nil || s.writeDB == nil {
 		return errors.New("workspace database is not initialized")
 	}
 	workspaceID = strings.TrimSpace(workspaceID)
@@ -151,7 +151,7 @@ func (s *SQLiteStore) DeleteAppFactoryJob(ctx context.Context, workspaceID strin
 		return errors.New("workspace id and app factory job id are required")
 	}
 
-	result, err := s.db.ExecContext(ctx, `
+	result, err := s.writeDB.ExecContext(ctx, `
 DELETE FROM app_factory_jobs
 WHERE workspace_id = ? AND job_id = ?
 `, workspaceID, jobID)

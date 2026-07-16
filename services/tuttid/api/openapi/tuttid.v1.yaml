@@ -1046,6 +1046,12 @@ paths:
           required: false
           schema:
             type: boolean
+        - name: refresh
+          in: query
+          required: false
+          description: Bypass the daemon provider-readiness cache.
+          schema:
+            type: boolean
       responses:
         "200":
           description: Agent provider status snapshot
@@ -2323,6 +2329,12 @@ paths:
             proxy reachability). Off by default so the common detection path
             stays local and never blocks on the network; only the agent-env
             wizard's network diagnostic sets this.
+          schema:
+            type: boolean
+        - name: refresh
+          in: query
+          required: false
+          description: Bypass the daemon provider-readiness cache.
           schema:
             type: boolean
       responses:
@@ -7249,6 +7261,7 @@ components:
       required:
         - session
         - childSessions
+        - turns
       properties:
         session:
           $ref: "#/components/schemas/WorkspaceAgentSession"
@@ -7259,6 +7272,14 @@ components:
             Clients reconstruct the tree from the immutable parent fields.
           items:
             $ref: "#/components/schemas/WorkspaceAgentSession"
+        turns:
+          type: array
+          description: >-
+            Ordered durable turns owned by session. This detail-only collection
+            is the canonical source for turn-scoped history such as file changes;
+            clients must not reconstruct it from provider tool payloads.
+          items:
+            $ref: "#/components/schemas/WorkspaceAgentTurn"
     SendWorkspaceAgentSessionInputResponse:
       type: object
       additionalProperties: false
@@ -7696,6 +7717,7 @@ components:
       required:
         - agentSessionId
         - messageId
+        - sequence
         - turnId
         - role
         - kind
@@ -7708,6 +7730,14 @@ components:
         messageId:
           type: string
           minLength: 1
+        sequence:
+          type: integer
+          format: int64
+          minimum: 1
+          description: >-
+            Stable message presentation order assigned when the durable message
+            row is first created. Updating the same message does not change this
+            value; version remains the mutable snapshot change cursor.
         turnId:
           type: string
           nullable: true

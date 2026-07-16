@@ -7,11 +7,14 @@ export interface DesktopAgentProviderVisibilityRefreshOptions {
     "addEventListener" | "removeEventListener" | "visibilityState"
   >;
   minIntervalMs?: number;
+  freshnessMs?: number;
+  now?: () => number;
   window?: Pick<Window, "addEventListener" | "removeEventListener">;
 }
 
 export function bindDesktopManagedAgentProviderVisibilityRefresh(
-  service: Pick<IAgentProviderStatusService, "refresh">,
+  service: Pick<IAgentProviderStatusService, "refresh"> &
+    Partial<Pick<IAgentProviderStatusService, "getSnapshot">>,
   options: DesktopAgentProviderVisibilityRefreshOptions = {}
 ): () => void {
   const windowRef =
@@ -23,18 +26,28 @@ export function bindDesktopManagedAgentProviderVisibilityRefresh(
   }
 
   const minIntervalMs = options.minIntervalMs ?? 10_000;
+  const freshnessMs = options.freshnessMs ?? 30 * 60 * 1_000;
+  const now = options.now ?? Date.now;
   const providers = [...desktopManagedAgentProviders];
-  let lastRefreshAt = 0;
+  let lastRefreshAt = Number.NEGATIVE_INFINITY;
 
   const refreshStatuses = (): void => {
     if (documentRef.visibilityState !== "visible") {
       return;
     }
-    const now = Date.now();
-    if (now - lastRefreshAt < minIntervalMs) {
+    const currentTime = now();
+    if (currentTime - lastRefreshAt < minIntervalMs) {
       return;
     }
-    lastRefreshAt = now;
+    const capturedAt = service.getSnapshot?.().capturedAt;
+    const capturedAtMs = capturedAt ? Date.parse(capturedAt) : Number.NaN;
+    if (
+      Number.isFinite(capturedAtMs) &&
+      currentTime - capturedAtMs < freshnessMs
+    ) {
+      return;
+    }
+    lastRefreshAt = currentTime;
     void service.refresh(providers).catch(() => {});
   };
 

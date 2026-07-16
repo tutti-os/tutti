@@ -162,6 +162,38 @@ func TestServiceListProviderAvailabilityUsesShortCache(t *testing.T) {
 	}
 }
 
+func TestServiceInvalidatesProviderAvailabilityCaches(t *testing.T) {
+	lister := &fakeAgentProviderStatusLister{
+		snapshot: agentstatusservice.Snapshot{
+			Providers: []agentstatusservice.ProviderStatus{{
+				Provider: "codex",
+				Availability: agentstatusservice.Availability{
+					Status: agentstatusservice.AvailabilityReady,
+				},
+			}},
+		},
+	}
+	service := newIsolatedAgentService(newFakeRuntime())
+	service.AvailabilityChecker = AgentStatusProviderAvailabilityChecker{Service: lister}
+
+	if _, err := service.ListProviderAvailability(context.Background(), ProviderAvailabilityInput{}); err != nil {
+		t.Fatalf("ListProviderAvailability(all) error = %v", err)
+	}
+	if _, err := service.ListProviderAvailability(context.Background(), ProviderAvailabilityInput{Provider: "codex"}); err != nil {
+		t.Fatalf("ListProviderAvailability(codex) error = %v", err)
+	}
+	service.invalidateProviderAvailability("codex")
+	if _, err := service.ListProviderAvailability(context.Background(), ProviderAvailabilityInput{}); err != nil {
+		t.Fatalf("ListProviderAvailability(all) after invalidation error = %v", err)
+	}
+	if _, err := service.ListProviderAvailability(context.Background(), ProviderAvailabilityInput{Provider: "codex"}); err != nil {
+		t.Fatalf("ListProviderAvailability(codex) after invalidation error = %v", err)
+	}
+	if lister.callCount != 4 {
+		t.Fatalf("status lister calls = %d, want 4 after invalidating both cache shapes", lister.callCount)
+	}
+}
+
 func TestServiceListProviderAvailabilityCacheCanBeDisabled(t *testing.T) {
 	lister := &fakeAgentProviderStatusLister{
 		snapshot: agentstatusservice.Snapshot{

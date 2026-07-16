@@ -63,7 +63,6 @@ export function StandaloneAgentBrowserToolPanel({
           navigationActions={
             <BrowserElementContextAction
               copy={elementContextCopy}
-              surfaceId={nodeId}
               workspaceId={workspaceId}
               onAppendMention={onAppendBrowserElementMention}
               onError={onBrowserElementError}

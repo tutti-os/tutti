@@ -201,7 +201,7 @@ func TestSQLiteStoreMigrateUpgradesLegacyDatabaseWithoutReplayingAgentMigrations
 		"workspace_agent_activity_rail_v1": 27,
 	} {
 		var appliedAt int64
-		if err := store.db.QueryRowContext(ctx, `
+		if err := store.writeDB.QueryRowContext(ctx, `
 SELECT applied_at_unix_ms FROM agent_store_schema_migrations WHERE id = ?
 `, migrationID).Scan(&appliedAt); err != nil {
 			t.Fatalf("claimed migration %s missing from agent store ledger: %v", migrationID, err)
@@ -275,7 +275,7 @@ SELECT applied_at_unix_ms FROM agent_store_schema_migrations WHERE id = ?
 
 	// The final entity migration normalizes the claimed legacy table onto the
 	// package-owned schema and replaces host coupling with the active-turn FK.
-	rows, err := store.db.QueryContext(ctx, `PRAGMA foreign_key_list(workspace_agent_sessions)`)
+	rows, err := store.writeDB.QueryContext(ctx, `PRAGMA foreign_key_list(workspace_agent_sessions)`)
 	if err != nil {
 		t.Fatalf("foreign_key_list error = %v", err)
 	}
@@ -311,7 +311,7 @@ SELECT applied_at_unix_ms FROM agent_store_schema_migrations WHERE id = ?
 		t.Fatalf("Delete() error = %v", err)
 	}
 	var sessionCount int
-	if err := store.db.QueryRowContext(ctx, `
+	if err := store.writeDB.QueryRowContext(ctx, `
 SELECT COUNT(*) FROM workspace_agent_sessions WHERE workspace_id = 'ws-upgrade'
 `).Scan(&sessionCount); err != nil {
 		t.Fatalf("count sessions after delete: %v", err)
@@ -349,7 +349,7 @@ func TestSQLiteStoreWorkspaceDeleteClearsAgentSessionsWithoutForeignKey(t *testi
 	}
 
 	var sessionCount int
-	if err := store.db.QueryRowContext(ctx, `
+	if err := store.writeDB.QueryRowContext(ctx, `
 SELECT COUNT(*) FROM workspace_agent_sessions WHERE workspace_id = ?
 `, "ws-delete-cascade").Scan(&sessionCount); err != nil {
 		t.Fatalf("count sessions after delete: %v", err)

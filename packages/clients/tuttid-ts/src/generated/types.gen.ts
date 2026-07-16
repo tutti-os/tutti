@@ -1370,6 +1370,10 @@ export type WorkspaceAgentSessionDetailResponse = {
    * Flat collection of every nested child session below session. Clients reconstruct the tree from the immutable parent fields.
    */
   childSessions: Array<WorkspaceAgentSession>;
+  /**
+   * Ordered durable turns owned by session. This detail-only collection is the canonical source for turn-scoped history such as file changes; clients must not reconstruct it from provider tool payloads.
+   */
+  turns: Array<WorkspaceAgentTurn>;
 };
 
 export type SendWorkspaceAgentSessionInputResponse = {
@@ -1566,6 +1570,10 @@ export type AgentActivityMessageSemantics = {
 export type WorkspaceAgentSessionMessage = {
   agentSessionId: string;
   messageId: string;
+  /**
+   * Stable message presentation order assigned when the durable message row is first created. Updating the same message does not change this value; version remains the mutable snapshot change cursor.
+   */
+  sequence: number;
   /**
    * A non-empty turnId attaches a Turn-scoped message to a real persisted Turn. Null is valid only when kind is session_audit; empty strings are forbidden. Legacy stored turnless rows are read as compatibility data and are never assigned a guessed Turn.
    */
@@ -2669,6 +2677,9 @@ export type IssueManagerPageToken = string;
 
 export type IssueManagerStatusFilter2 = IssueManagerStatusFilter;
 
+/**
+ * Case-insensitive substring search over the visible title only.
+ */
 export type IssueManagerSearchQuery = string;
 
 export type GetHealthData = {
@@ -4284,6 +4295,10 @@ export type GetWorkspaceAppAgentProviderStatusesData = {
   query?: {
     providers?: Array<WorkspaceAgentProvider>;
     includeNetwork?: boolean;
+    /**
+     * Bypass the daemon provider-readiness cache.
+     */
+    refresh?: boolean;
   };
   url: "/v1/workspaces/{workspaceID}/apps/{appID}/agent-providers/status";
 };
@@ -6151,6 +6166,10 @@ export type GetAgentProviderStatusesData = {
      * Opt into the network connectivity probe (registry / provider API / proxy reachability). Off by default so the common detection path stays local and never blocks on the network; only the agent-env wizard's network diagnostic sets this.
      */
     includeNetwork?: boolean;
+    /**
+     * Bypass the daemon provider-readiness cache.
+     */
+    refresh?: boolean;
   };
   url: "/v1/agent-providers/status";
 };
@@ -8596,6 +8615,9 @@ export type ListWorkspaceIssuesData = {
     pageToken?: string;
     topicId: string;
     statusFilter?: IssueManagerStatusFilter;
+    /**
+     * Case-insensitive substring search over the visible title only.
+     */
     searchQuery?: string;
   };
   url: "/v1/workspaces/{workspaceID}/issues";
@@ -9214,6 +9236,9 @@ export type ListWorkspaceIssueTasksData = {
     pageSize?: number;
     pageToken?: string;
     statusFilter?: IssueManagerStatusFilter;
+    /**
+     * Case-insensitive substring search over the visible title only.
+     */
     searchQuery?: string;
   };
   url: "/v1/workspaces/{workspaceID}/issues/{issueID}/tasks";

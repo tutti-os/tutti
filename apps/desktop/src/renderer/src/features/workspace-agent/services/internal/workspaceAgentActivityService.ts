@@ -305,9 +305,6 @@ export class WorkspaceAgentActivityService
         workspaceId
       });
     }
-    if (removedSessionIds.length > 0) {
-      await this.load(workspaceId, input.signal);
-    }
     return {
       removedMessages: response.removedMessages,
       removedSessionIds,
@@ -627,17 +624,12 @@ export class WorkspaceAgentActivityService
   ) {
     const workspaceId = normalizeWorkspaceId(input.workspaceId);
     const agentSessionId = input.agentSessionId.trim();
-    const entry = this.entry(workspaceId);
-    const result = await entry.adapter.deleteSession(input);
-    if (result.removed) {
-      this.markSessionDeleted({
-        agentSessionId,
-        data: { deletedAtUnixMs: Date.now() },
-        workspaceId
-      });
-      await this.load(workspaceId, input.signal);
-    }
-    return result;
+    const result = await this.deleteSessionsBatch({
+      sessionIds: [agentSessionId],
+      signal: input.signal,
+      workspaceId
+    });
+    return { removed: result.removedSessionIds.includes(agentSessionId) };
   }
 
   async renameSession(

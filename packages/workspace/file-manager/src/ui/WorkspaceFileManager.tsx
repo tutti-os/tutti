@@ -41,6 +41,8 @@ import {
   clampWorkspaceFileManagerSidebarWidth,
   readWorkspaceFileManagerSidebarWidth,
   resolveWorkspaceFileManagerSidebarMaxWidth,
+  workspaceFileManagerContentMinWidth,
+  workspaceFileManagerContentWithoutPreviewMinWidth,
   workspaceFileManagerPaneResizeStep,
   workspaceFileManagerSidebarDefaultWidth,
   workspaceFileManagerSidebarMinWidth,
@@ -60,6 +62,11 @@ import {
   collectWorkspaceFileManagerVisibleTreeEntries,
   type WorkspaceFileManagerVisibleTreeRow
 } from "./workspaceFileManagerVisibleTree.ts";
+import {
+  resolveWorkspaceFileManagerPreservedNameColumnWidth,
+  workspaceFileManagerTableNameColumnSelector,
+  workspaceFileManagerTableNameMinWidthProperty
+} from "./workspaceFileManagerTableSizing.ts";
 import { workspaceFileSearchEntryToEntry } from "../services/workspaceFileManagerModel.ts";
 import { findWorkspaceFileLocationById } from "../services/workspaceFileManagerLocations.ts";
 import {
@@ -145,19 +152,29 @@ export function WorkspaceFileManager({
   const hasLocationSidebar = rootView.locationSections.some(
     (section) => section.locations.length > 0
   );
+  const sidebarContentMinWidth = showPreviewPanel
+    ? workspaceFileManagerContentMinWidth
+    : workspaceFileManagerContentWithoutPreviewMinWidth;
   const sidebarMaxWidth =
     containerWidth > 0
-      ? resolveWorkspaceFileManagerSidebarMaxWidth(containerWidth)
+      ? resolveWorkspaceFileManagerSidebarMaxWidth(
+          containerWidth,
+          sidebarContentMinWidth
+        )
       : workspaceFileManagerSidebarDefaultWidth;
 
-  const updateSidebarWidth = useCallback((width: number): number => {
-    const nextWidth = clampWorkspaceFileManagerSidebarWidth({
-      containerWidth: rootRef.current?.getBoundingClientRect().width ?? 0,
-      width
-    });
-    setSidebarWidth(nextWidth);
-    return nextWidth;
-  }, []);
+  const updateSidebarWidth = useCallback(
+    (width: number): number => {
+      const nextWidth = clampWorkspaceFileManagerSidebarWidth({
+        containerWidth: rootRef.current?.getBoundingClientRect().width ?? 0,
+        contentMinWidth: sidebarContentMinWidth,
+        width
+      });
+      setSidebarWidth(nextWidth);
+      return nextWidth;
+    },
+    [sidebarContentMinWidth]
+  );
 
   useLayoutEffect(() => {
     const element = rootRef.current;
@@ -173,6 +190,7 @@ export function WorkspaceFileManager({
       setSidebarWidth((currentWidth) =>
         clampWorkspaceFileManagerSidebarWidth({
           containerWidth: nextContainerWidth,
+          contentMinWidth: sidebarContentMinWidth,
           width: currentWidth
         })
       );
@@ -191,12 +209,26 @@ export function WorkspaceFileManager({
     return () => {
       observer.disconnect();
     };
-  }, [hasLocationSidebar]);
+  }, [hasLocationSidebar, sidebarContentMinWidth]);
 
   const handleSidebarResizePointerDown = useCallback(
     (event: ReactPointerEvent<HTMLDivElement>): void => {
       if (event.button !== 0) {
         return;
+      }
+      const root = rootRef.current;
+      const nameColumn = root?.querySelector<HTMLElement>(
+        workspaceFileManagerTableNameColumnSelector
+      );
+      if (root && nameColumn) {
+        const preservedWidth =
+          resolveWorkspaceFileManagerPreservedNameColumnWidth(
+            nameColumn.getBoundingClientRect().width
+          );
+        root.style.setProperty(
+          workspaceFileManagerTableNameMinWidthProperty,
+          `${preservedWidth}px`
+        );
       }
       event.preventDefault();
       event.currentTarget.setPointerCapture(event.pointerId);

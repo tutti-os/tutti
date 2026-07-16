@@ -29,7 +29,8 @@ export default defineConfig({
     "workbench/sessionTitle": "workbench/sessionTitle.ts",
     "workbench/state": "workbench/state.ts",
     "workbench/types": "workbench/types.ts",
-    "workspace-agent-generated-files": "shared/workspaceAgentGeneratedFiles.ts"
+    "workspace-agent-generated-files": "shared/workspaceAgentGeneratedFiles.ts",
+    "workspace-query-cache": "shared/query/workspaceQueryCache.ts"
   },
   external: ["react", "react-dom"],
   format: ["esm"],

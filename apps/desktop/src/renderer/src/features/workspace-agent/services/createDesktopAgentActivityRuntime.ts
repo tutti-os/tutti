@@ -1,4 +1,8 @@
 import type { AgentActivityRuntime } from "@tutti-os/agent-gui";
+import {
+  createWorkspaceQueryCache,
+  type WorkspaceQueryCache
+} from "@tutti-os/agent-gui/workspace-query-cache";
 import { AGENT_SESSION_ENGINE_LOCAL_ORIGIN } from "@tutti-os/agent-activity-core";
 import type {
   AgentActivityMessagePage,
@@ -66,6 +70,10 @@ export function createDesktopAgentActivityRuntime(
 ): AgentActivityRuntime {
   const runtimeSnapshotDiagnosticSignatures = new Map<string, string>();
   const runtimeMessagePageDiagnosticSignatures = new Map<string, string>();
+  const sessionSectionsQueryCaches = new Map<
+    string,
+    WorkspaceQueryCache<unknown>
+  >();
   const reportRuntimeDiagnostic = (input: {
     details?: Record<string, unknown>;
     event: string;
@@ -158,6 +166,14 @@ export function createDesktopAgentActivityRuntime(
     },
     getSessionEngine(workspaceId) {
       return workspaceAgentActivityService.getSessionEngine(workspaceId);
+    },
+    getSessionSectionsQueryCache(workspaceId) {
+      const key = workspaceId.trim();
+      const current = sessionSectionsQueryCaches.get(key);
+      if (current) return current;
+      const created = createWorkspaceQueryCache<unknown>();
+      sessionSectionsQueryCaches.set(key, created);
+      return created;
     },
     async activateSession(input) {
       reportAgentSubmitTraceDiagnostic(options.runtimeApi, {

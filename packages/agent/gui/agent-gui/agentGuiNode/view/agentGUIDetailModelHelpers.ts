@@ -236,6 +236,28 @@ export function resolveActiveConversationBusyStatus(input: {
   return null;
 }
 
+export function shouldShowAgentGUIStopButton(input: {
+  hasPendingApproval: boolean;
+  hasPendingInteractivePrompt: boolean;
+  isAuthBlocked: boolean;
+  isCancelPending: boolean;
+  isConversationBusy: boolean;
+  isCreatingConversation: boolean;
+  isInterrupting: boolean;
+  isSubmitting: boolean;
+  isUnavailable: boolean;
+}): boolean {
+  if (input.isUnavailable || input.isAuthBlocked) return false;
+  if (input.isCreatingConversation || input.isCancelPending) return true;
+  return (
+    !input.isSubmitting &&
+    (input.isConversationBusy ||
+      input.hasPendingApproval ||
+      input.hasPendingInteractivePrompt ||
+      input.isInterrupting)
+  );
+}
+
 export function buildAgentConversationHandoffPrompt(input: {
   activeConversation: AgentGUINodeViewModel["rail"]["activeConversation"];
   currentUserId?: string | null;

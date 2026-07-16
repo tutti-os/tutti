@@ -4,11 +4,29 @@ import {
   createLocalAgentGUIAgentTarget,
   createLocalAgentGUIAgentTargets,
   createSharedAgentGUIAgentTarget,
+  isAgentGUIAgentTargetComingSoon,
   normalizeAgentGUIAgentTargets,
   resolveAgentGUIAgentTarget
 } from "./agentTargets";
 
 describe("agent gui provider targets", () => {
+  it("does not classify every disabled target as coming soon", () => {
+    const unavailable = {
+      ...createLocalAgentGUIAgentTarget("codex"),
+      availability: { status: "unavailable" as const },
+      disabled: true
+    };
+    const comingSoon = {
+      ...createLocalAgentGUIAgentTarget("codex"),
+      availability: { status: "coming_soon" as const },
+      disabled: true
+    };
+
+    expect(isAgentGUIAgentTargetComingSoon(unavailable)).toBe(false);
+    expect(isAgentGUIAgentTargetComingSoon(comingSoon)).toBe(true);
+    expect(isAgentGUIAgentTargetComingSoon(unavailable, ["codex"])).toBe(true);
+  });
+
   it("keeps migration-window default providers unique", () => {
     const providers = createLocalAgentGUIAgentTargets().map(
       (target) => target.provider

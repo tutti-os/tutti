@@ -3,6 +3,7 @@ import {
   type AgentActivityAdapter,
   type AgentActivityMessage,
   type AgentActivitySession,
+  type AgentActivityTurn,
   type AgentPromptContentBlock
 } from "@tutti-os/agent-activity-core";
 import type {
@@ -13,7 +14,8 @@ import type {
   SendWorkspaceAgentSessionInputRequest,
   WorkspaceAgentProvider,
   WorkspaceAgentSession,
-  WorkspaceAgentSessionMessage
+  WorkspaceAgentSessionMessage,
+  WorkspaceAgentTurn
 } from "@tutti-os/client-tuttid-ts";
 import type { DesktopRuntimeApi } from "@preload/types";
 import { getActiveLocale } from "../../../i18n/runtime.ts";
@@ -105,30 +107,56 @@ export function createDesktopAgentActivityAdapter({
       }
     },
     async loadComposerOptions(input) {
+      const startedAt = Date.now();
       const cwd = input.cwd?.trim();
       const agentTargetId = input.agentTargetId?.trim();
-      const result = await withAbortableRequestTimeout(
-        (signal) =>
-          tuttidClient.getAgentProviderComposerOptions(
-            workspaceAgentProvider(input.provider),
-            {
-              ...(agentTargetId ? { agentTargetId } : {}),
-              ...(cwd ? { cwd } : {}),
-              workspaceId: input.workspaceId,
-              settings: input.settings ?? {}
-            },
-            { signal }
-          ),
-        {
-          signal: input.signal,
-          timeoutMessage: "Agent composer options request timed out.",
-          timeoutMs: composerOptionsRequestTimeoutMs
-        }
-      );
-      return agentActivityComposerOptionsFromTuttidResult(
-        input.provider,
-        result
-      );
+      try {
+        const result = await withAbortableRequestTimeout(
+          (signal) =>
+            tuttidClient.getAgentProviderComposerOptions(
+              workspaceAgentProvider(input.provider),
+              {
+                ...(agentTargetId ? { agentTargetId } : {}),
+                ...(cwd ? { cwd } : {}),
+                workspaceId: input.workspaceId,
+                settings: input.settings ?? {}
+              },
+              { signal }
+            ),
+          {
+            signal: input.signal,
+            timeoutMessage: "Agent composer options request timed out.",
+            timeoutMs: composerOptionsRequestTimeoutMs
+          }
+        );
+        reportDesktopAgentComposerOptionsDiagnostic(
+          runtimeApi,
+          input.workspaceId,
+          {
+            agentTargetId: agentTargetId ?? null,
+            durationMs: Date.now() - startedAt,
+            provider: input.provider,
+            status: "ready"
+          }
+        );
+        return agentActivityComposerOptionsFromTuttidResult(
+          input.provider,
+          result
+        );
+      } catch (error) {
+        reportDesktopAgentComposerOptionsDiagnostic(
+          runtimeApi,
+          input.workspaceId,
+          {
+            agentTargetId: agentTargetId ?? null,
+            durationMs: Date.now() - startedAt,
+            provider: input.provider,
+            status: "error",
+            ...normalizeDesktopAgentDiagnosticError(error)
+          }
+        );
+        throw error;
+      }
     },
     async createSession(input) {
       reportDesktopAgentSubmitTrace(runtimeApi, {
@@ -366,6 +394,25 @@ function reportDesktopAgentMessageListDiagnostic(
   }
 }
 
+function reportDesktopAgentComposerOptionsDiagnostic(
+  runtimeApi: Pick<DesktopRuntimeApi, "logTerminalDiagnostic">,
+  workspaceId: string,
+  details: Record<string, string | number | boolean | null>
+): void {
+  try {
+    void runtimeApi
+      .logTerminalDiagnostic({
+        details,
+        event: "agent.composer_options.load",
+        level: details.status === "error" ? "warn" : "info",
+        workspaceId
+      })
+      .catch(() => {});
+  } catch {
+    // Diagnostic logging must not affect composer option loading.
+  }
+}
+
 function normalizeDesktopAgentDiagnosticError(
   error: unknown
 ): Record<string, string | number | boolean | null> {
@@ -516,6 +563,33 @@ export function agentActivitySessionFromTuttidSession(
   };
 }
 
+export function agentActivityTurnFromTuttidTurn(
+  turn: WorkspaceAgentTurn
+): AgentActivityTurn {
+  return {
+    agentSessionId: turn.agentSessionId,
+    completedCommand: turn.completedCommand,
+    error: turn.error,
+    fileChanges: turn.fileChanges,
+    outcome: turn.outcome,
+    origin: turn.origin,
+    phase: turn.phase,
+    ...(turn.sourceGoalOperationId !== undefined
+      ? { sourceGoalOperationId: turn.sourceGoalOperationId }
+      : {}),
+    ...(turn.sourceGoalRevision !== undefined
+      ? { sourceGoalRevision: turn.sourceGoalRevision }
+      : {}),
+    ...(turn.sourceGoalRepairEpoch !== undefined
+      ? { sourceGoalRepairEpoch: turn.sourceGoalRepairEpoch }
+      : {}),
+    settledAtUnixMs: turn.settledAtUnixMs,
+    startedAtUnixMs: turn.startedAtUnixMs,
+    turnId: turn.turnId,
+    updatedAtUnixMs: turn.updatedAtUnixMs
+  };
+}
+
 function assertProtocolV2SessionContract(session: WorkspaceAgentSession): void {
   const value = session as unknown as Record<string, unknown>;
   const missing = [
@@ -560,6 +634,7 @@ export function agentActivityMessageFromTuttidMessage(
     occurredAtUnixMs: normalizedTuttidMessageOccurredAtUnixMs(message),
     payload: recordValue(message.payload),
     role: message.role,
+    sequence: message.sequence,
     ...(message.semantics != null
       ? {
           semantics: {
@@ -582,6 +657,7 @@ export function agentActivityMessageFromTuttidMessage(
         }
       : {}),
     startedAtUnixMs: message.startedAtUnixMs ?? undefined,
+    createdAtUnixMs: message.createdAtUnixMs ?? undefined,
     status: message.status ?? undefined,
     turnId: normalizedTuttidMessageTurnId(message),
     version: message.version

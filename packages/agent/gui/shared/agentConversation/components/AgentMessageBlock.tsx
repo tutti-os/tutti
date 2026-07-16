@@ -26,7 +26,7 @@ import type {
 import { AgentMessageDetailsDisclosure } from "./AgentMessageDetailsDisclosure";
 import {
   AgentVisibleErrorMessage,
-  recoverVisibleErrorFromFailedMessage
+  recoverVisibleErrorFromMessage
 } from "./AgentVisibleErrorMessage";
 import { AgentThinkingDisclosure } from "./AgentThinkingDisclosure";
 import { RawTimelineJsonDisclosure } from "./RawTimelineJsonDisclosure";
@@ -146,12 +146,12 @@ export function AgentMessageBlock({
               label={rawTimelineJsonLabel}
             />
           ) : null;
-        // Recover a structured error card from a failed message that the provider
-        // reported as plain text (e.g. a dropped-login 401), so it still gets the
-        // wizard call-to-action instead of a dead red message.
+        // Recover a structured error card from a terminal message that the
+        // provider reported as plain text, including Claude SDK's completed
+        // standalone login notice.
         const recoveredError =
-          !isUser && !message.visibleError && message.statusKind === "failed"
-            ? recoverVisibleErrorFromFailedMessage(message, provider)
+          !isUser && !message.visibleError
+            ? recoverVisibleErrorFromMessage(message, provider)
             : null;
         const content =
           isUser && message.contentKind === "image-grid" ? (

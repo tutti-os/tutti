@@ -832,6 +832,7 @@ export const agentActivityUpdatedPayloadSchema = {
                   "occurredAtUnixMs",
                   "payload",
                   "role",
+                  "sequence",
                   "turnId",
                   "version"
                 ],
@@ -854,6 +855,12 @@ export const agentActivityUpdatedPayloadSchema = {
                   role: {
                     type: "string",
                     minLength: 1
+                  },
+                  sequence: {
+                    type: "integer",
+                    minimum: 1,
+                    description:
+                      "Stable message presentation order assigned when the durable message row is first created."
                   },
                   version: {
                     type: "integer",

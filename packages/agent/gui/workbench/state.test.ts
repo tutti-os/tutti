@@ -1,7 +1,5 @@
 import { describe, expect, it } from "vitest";
 import {
-  agentGuiWorkbenchProviderFromInstanceId,
-  agentGuiWorkbenchProviderFromInstanceIdOrNull,
   areAgentGuiWorkbenchStatesEqual,
   createAgentGuiWorkbenchNodeStateSource,
   createDefaultAgentGuiWorkbenchNodeState,
@@ -143,45 +141,6 @@ describe("agent gui workbench state", () => {
         })
       )
     ).toBe(true);
-  });
-
-  it("derives providers from workbench instance ids", () => {
-    expect(() => agentGuiWorkbenchProviderFromInstanceId("agent-gui")).toThrow(
-      "agent_gui_workbench.instance_provider_required"
-    );
-    expect(
-      agentGuiWorkbenchProviderFromInstanceId("agent-gui:claude-code")
-    ).toBe("claude-code");
-    expect(
-      agentGuiWorkbenchProviderFromInstanceId("agent-gui:hermes:panel:abc")
-    ).toBe("hermes");
-    expect(
-      agentGuiWorkbenchProviderFromInstanceId(
-        "agent-gui:acp%3Agemini:target:extension%3Agemini"
-      )
-    ).toBe("acp:gemini");
-    expect(
-      agentGuiWorkbenchProviderFromInstanceId(
-        "agent-gui:acp:gemini:target:extension%3Agemini"
-      )
-    ).toBe("acp:gemini");
-    expect(
-      agentGuiWorkbenchProviderFromInstanceId("agent-gui:unsupported")
-    ).toBe("unsupported");
-  });
-
-  it("returns null instead of defaulting when the provider is unresolved", () => {
-    expect(
-      agentGuiWorkbenchProviderFromInstanceIdOrNull("agent-gui")
-    ).toBeNull();
-    expect(agentGuiWorkbenchProviderFromInstanceIdOrNull("")).toBeNull();
-    expect(agentGuiWorkbenchProviderFromInstanceIdOrNull(undefined)).toBeNull();
-    expect(
-      agentGuiWorkbenchProviderFromInstanceIdOrNull("agent-gui:unsupported")
-    ).toBe("unsupported");
-    expect(
-      agentGuiWorkbenchProviderFromInstanceIdOrNull("agent-gui:tutti-agent")
-    ).toBe("tutti-agent");
   });
 
   it("uses instance launch state only until node state is written", () => {
@@ -330,20 +289,20 @@ describe("agent gui workbench state", () => {
       workspaceId: "workspace-1"
     });
 
-    // A conversation started fresh: its launch instanceId is panel-scoped (not
-    // session-keyed), and its live state is written under a node-scoped key.
+    // Instance identity stays opaque; the live session binding is written
+    // under a node-scoped state key.
     source.writeNodeState({
-      instanceId: "agent-gui:codex:panel:abc123",
+      instanceId: "agent-gui:instance:abc123",
       nodeId: "node-1",
       state: { lastActiveAgentSessionId: "session-xyz" },
       typeId: "agent-gui"
     });
 
     expect(source.findInstanceIdByAgentSessionId("session-xyz")).toBe(
-      "agent-gui:codex:panel:abc123"
+      "agent-gui:instance:abc123"
     );
     expect(source.findInstanceIdByAgentSessionId("  session-xyz  ")).toBe(
-      "agent-gui:codex:panel:abc123"
+      "agent-gui:instance:abc123"
     );
     expect(source.findInstanceIdByAgentSessionId("other-session")).toBeNull();
     expect(source.findInstanceIdByAgentSessionId("")).toBeNull();

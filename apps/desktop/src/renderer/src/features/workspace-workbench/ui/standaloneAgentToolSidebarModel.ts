@@ -54,6 +54,7 @@ export const standaloneAgentToolPanelMaxWidthById: Record<
 export const standaloneAgentMainMinWidth = 280;
 
 export interface StandaloneAgentToolTab {
+  appId?: string;
   id: string;
   panel: StandaloneAgentToolPanelId;
 }
@@ -112,11 +113,13 @@ export interface StandaloneAgentToolSidebarState {
 
 export type StandaloneAgentToolSidebarAction =
   | {
+      appId?: string;
       panel: StandaloneAgentToolPanelId;
       tabId: string;
       type: "open-panel";
     }
   | {
+      appId?: string;
       panel: StandaloneAgentToolPanelId;
       tabId: string;
       type: "add-panel";
@@ -162,11 +165,12 @@ function addTab(
 
 function findLastTabByPanel(
   tabs: readonly StandaloneAgentToolTab[],
-  panel: StandaloneAgentToolPanelId
+  panel: StandaloneAgentToolPanelId,
+  appId?: string
 ): StandaloneAgentToolTab | null {
   for (let index = tabs.length - 1; index >= 0; index -= 1) {
     const tab = tabs[index];
-    if (tab?.panel === panel) {
+    if (tab?.panel === panel && (tab.appId ?? undefined) === appId) {
       return tab;
     }
   }
@@ -217,9 +221,17 @@ export function reduceStandaloneAgentToolSidebarState(
       };
     }
     case "add-panel":
-      return addTab(state, { id: action.tabId, panel: action.panel });
+      return addTab(state, {
+        ...(action.appId ? { appId: action.appId } : {}),
+        id: action.tabId,
+        panel: action.panel
+      });
     case "open-panel": {
-      const existingTab = findLastTabByPanel(state.mountedTabs, action.panel);
+      const existingTab = findLastTabByPanel(
+        state.mountedTabs,
+        action.panel,
+        action.appId
+      );
       if (existingTab) {
         return {
           ...state,
@@ -227,7 +239,11 @@ export function reduceStandaloneAgentToolSidebarState(
           activeTabId: existingTab.id
         };
       }
-      return addTab(state, { id: action.tabId, panel: action.panel });
+      return addTab(state, {
+        ...(action.appId ? { appId: action.appId } : {}),
+        id: action.tabId,
+        panel: action.panel
+      });
     }
   }
 }
@@ -291,6 +307,38 @@ export function resolveStandaloneAgentToolSidebarWidth(input: {
     viewportWidth: input.viewportWidth,
     width: Math.max(input.preferredWidth, outwardWidth)
   });
+}
+
+export function resolveStandaloneAgentToolPanelPreferredWidth(input: {
+  isExpanded: boolean;
+  manuallyResizedWidth?: number | null;
+  panelWidth: number;
+}): number {
+  if (
+    !input.isExpanded &&
+    typeof input.manuallyResizedWidth === "number" &&
+    Number.isFinite(input.manuallyResizedWidth)
+  ) {
+    return input.manuallyResizedWidth;
+  }
+  return input.panelWidth;
+}
+
+export function shouldResizeStandaloneAgentToolWindow(input: {
+  currentWidth: number;
+  lastResize?: {
+    actualWidth: number;
+    requestedWidth: number;
+  } | null;
+  requestedWidth: number;
+}): boolean {
+  if (input.currentWidth === input.requestedWidth) {
+    return false;
+  }
+  return !(
+    input.lastResize?.requestedWidth === input.requestedWidth &&
+    input.lastResize.actualWidth === input.currentWidth
+  );
 }
 
 export function resolveStandaloneAgentToolSidebarLayoutWidth(input: {

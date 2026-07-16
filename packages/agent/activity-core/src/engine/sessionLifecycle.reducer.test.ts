@@ -655,6 +655,7 @@ test("cancel request targets the exact active turn and deduplicates", () => {
   }).state;
   const requested = reduce(state, {
     type: "session/cancelRequested",
+    workspaceId: "workspace-1",
     agentSessionId: "session-1",
     awaitingTurnExpiresAtUnixMs: 30_000,
     commandId: "cancel-1"
@@ -670,6 +671,7 @@ test("cancel request targets the exact active turn and deduplicates", () => {
   assert.equal(
     reduce(requested.state, {
       type: "session/cancelRequested",
+      workspaceId: "workspace-1",
       agentSessionId: "session-1",
       awaitingTurnExpiresAtUnixMs: 30_000,
       commandId: "cancel-2"
@@ -685,6 +687,7 @@ test("cancel requested before turn creation waits for a v2 turn entity", () => {
   }).state;
   const waiting = reduce(state, {
     type: "session/cancelRequested",
+    workspaceId: "workspace-1",
     agentSessionId: "session-1",
     awaitingTurnExpiresAtUnixMs: 30_000,
     commandId: "cancel-1"
@@ -700,6 +703,42 @@ test("cancel requested before turn creation waits for a v2 turn entity", () => {
   assert.ok(started.commands.some((command) => command.type === "turn/cancel"));
 });
 
+for (const provider of ["cursor", "codex", "claude-code"]) {
+  test(`stop requested before ${provider} activation survives snapshots and cancels the first turn`, () => {
+    const waiting = reduce(createInitialSessionLifecycleState(), {
+      type: "session/stopRequested",
+      agentSessionId: "session-1",
+      awaitingTurnExpiresAtUnixMs: 30_000,
+      commandId: `stop-${provider}`,
+      workspaceId: "workspace-1"
+    });
+    assert.equal(
+      waiting.state.operationBySessionId["session-1"]?.cancel.status,
+      "awaitingTurn"
+    );
+
+    const reconciled = reduce(waiting.state, {
+      type: "session/snapshotReceived",
+      sessions: []
+    });
+    assert.equal(
+      reconciled.state.operationBySessionId["session-1"]?.cancel.status,
+      "awaitingTurn"
+    );
+
+    const started = reduce(reconciled.state, {
+      type: "session/upserted",
+      session: session(activeTurn(2), 2, provider)
+    });
+    assert.ok(
+      started.commands.some(
+        (command) =>
+          command.type === "turn/cancel" && command.turnId === "turn-1"
+      )
+    );
+  });
+}
+
 test("metadata updates do not abandon an awaiting cancel before its expiry", () => {
   let state = reduce(createInitialSessionLifecycleState(), {
     type: "session/snapshotReceived",
@@ -707,6 +746,7 @@ test("metadata updates do not abandon an awaiting cancel before its expiry", () 
   }).state;
   state = reduce(state, {
     type: "session/cancelRequested",
+    workspaceId: "workspace-1",
     agentSessionId: "session-1",
     awaitingTurnExpiresAtUnixMs: 30_000,
     commandId: "cancel-1"
@@ -728,6 +768,7 @@ test("awaiting cancel expires deterministically and cannot cancel a future turn"
   }).state;
   const waiting = reduce(state, {
     type: "session/cancelRequested",
+    workspaceId: "workspace-1",
     agentSessionId: "session-1",
     awaitingTurnExpiresAtUnixMs: 100,
     commandId: "cancel-1"
@@ -762,6 +803,7 @@ test("idempotent not-found cancel clears only its target and requests reconcile"
   }).state;
   state = reduce(state, {
     type: "session/cancelRequested",
+    workspaceId: "workspace-1",
     agentSessionId: "session-1",
     awaitingTurnExpiresAtUnixMs: 30_000,
     commandId: "cancel-1"
@@ -794,6 +836,7 @@ test("authoritative settled state clears a cancel timeout failure", () => {
   }).state;
   state = reduce(state, {
     type: "session/cancelRequested",
+    workspaceId: "workspace-1",
     agentSessionId: "session-1",
     awaitingTurnExpiresAtUnixMs: 30_000,
     commandId: "cancel-1"
@@ -829,6 +872,7 @@ test("cancel result for another session cannot enter canonical turn state", () =
   }).state;
   state = reduce(state, {
     type: "session/cancelRequested",
+    workspaceId: "workspace-1",
     agentSessionId: "session-1",
     awaitingTurnExpiresAtUnixMs: 30_000,
     commandId: "cancel-1"
@@ -862,6 +906,7 @@ test("late cancel result for turn A cannot overwrite newer turn B", () => {
   }).state;
   state = reduce(state, {
     type: "session/cancelRequested",
+    workspaceId: "workspace-1",
     agentSessionId: "session-1",
     awaitingTurnExpiresAtUnixMs: 30_000,
     commandId: "cancel-1"
@@ -1107,7 +1152,8 @@ function reduce(
 
 function session(
   turn: AgentActivityTurn | null,
-  updatedAtUnixMs: number
+  updatedAtUnixMs: number,
+  provider = "codex"
 ): AgentActivitySession {
   return normalizeAgentActivitySession({
     ...{
@@ -1117,7 +1163,7 @@ function session(
     },
     workspaceId: "workspace-1",
     agentSessionId: "session-1",
-    provider: "codex",
+    provider,
     cwd: "/workspace",
     title: "Session",
     activeTurnId: turn?.turnId ?? null,

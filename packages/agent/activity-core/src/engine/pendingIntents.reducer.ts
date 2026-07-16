@@ -1,10 +1,11 @@
 import type { AgentActivitySessionInput } from "../sessionNormalization.ts";
 import type { SendInputResultValidation } from "./commandResult.validation.ts";
 import type { ScopedSessionResultValidation } from "./commandResult.validation.ts";
-import type {
-  PendingActivationIntentRecord,
-  PendingIntentsState,
-  SessionActivationRequestedIntent
+import {
+  isPendingActivationViable,
+  type PendingActivationIntentRecord,
+  type PendingIntentsState,
+  type SessionActivationRequestedIntent
 } from "./pendingIntents.types.ts";
 import {
   confirmFromMessages,
@@ -24,7 +25,12 @@ import type {
 } from "./types.ts";
 
 const NO_COMMANDS: readonly EngineCommand[] = [];
-const ACTIVATION_COMMAND_TIMEOUT_MS = 30_000;
+const EXISTING_SESSION_ACTIVATION_COMMAND_TIMEOUT_MS = 30_000;
+// A new activation includes process spawn and ACP initialize before session/new.
+// Keep the outer command alive long enough for session/new to receive its own
+// full 30-second protocol timeout instead of inheriting a partially spent UI
+// deadline.
+const NEW_SESSION_ACTIVATION_COMMAND_TIMEOUT_MS = 90_000;
 
 export function createInitialPendingIntentsState(): PendingIntentsState {
   return {
@@ -69,6 +75,8 @@ export function pendingIntentsReducer(
       return clearActivationFailure(state, intent.agentSessionId);
     case "activation/unactivateRequested":
       return requestUnactivation(state, intent);
+    case "session/stopRequested":
+      return stopPendingActivation(state, intent);
     case "submit/requested":
       if (context.submitRequestAccepted === false) return unchanged(state);
       if (context.deletedSessionIds[intent.agentSessionId.trim()]) {
@@ -144,7 +152,7 @@ function patchActivationSettings(
       (candidate) =>
         candidate.agentSessionId === agentSessionId &&
         candidate.mode === "new" &&
-        candidate.status !== "failed"
+        isPendingActivationViable(candidate)
     )
     .sort((left, right) => right.requestedAtUnixMs - left.requestedAtUnixMs)[0];
   if (!record) return unchanged(state);
@@ -268,7 +276,7 @@ function requestActivation(
               : {}),
             mode: "new" as const,
             ...(intent.settings ? { settings: { ...intent.settings } } : {}),
-            timeoutMs: ACTIVATION_COMMAND_TIMEOUT_MS,
+            timeoutMs: NEW_SESSION_ACTIVATION_COMMAND_TIMEOUT_MS,
             ...(intent.title?.trim() ? { title: intent.title.trim() } : {}),
             type: "session/activate",
             ...(intent.visible !== undefined
@@ -291,7 +299,7 @@ function requestActivation(
               : {}),
             mode: "existing" as const,
             ...(intent.settings ? { settings: { ...intent.settings } } : {}),
-            timeoutMs: ACTIVATION_COMMAND_TIMEOUT_MS,
+            timeoutMs: EXISTING_SESSION_ACTIVATION_COMMAND_TIMEOUT_MS,
             ...(intent.title?.trim() ? { title: intent.title.trim() } : {}),
             type: "session/activate" as const,
             ...(intent.visible !== undefined
@@ -408,6 +416,38 @@ function requestUnactivation(
   };
 }
 
+function stopPendingActivation(
+  state: PendingIntentsState,
+  intent: Extract<EngineIntent, { type: "session/stopRequested" }>
+): EngineReducerResult<PendingIntentsState> {
+  const agentSessionId = intent.agentSessionId.trim();
+  const workspaceId = intent.workspaceId.trim();
+  const activation = Object.values(state.activationsByRequestId)
+    .filter(
+      (record) =>
+        record.agentSessionId === agentSessionId &&
+        record.workspaceId === workspaceId &&
+        (record.status === "requested" || record.status === "uncertain")
+    )
+    .sort((left, right) => right.requestedAtUnixMs - left.requestedAtUnixMs)[0];
+  if (!activation) return unchanged(state);
+  return {
+    commands: [
+      {
+        type: "engine/abortExternalCommand",
+        reason: "agent session activation canceled by user",
+        targetCommandId: `activate:${activation.requestId}`
+      }
+    ],
+    state: replaceActivation(state, {
+      ...activation,
+      errorCode: null,
+      errorMessage: null,
+      status: "canceled"
+    })
+  };
+}
+
 function settleActivationCommand(
   state: PendingIntentsState,
   intent: EngineCommandResultIntent
@@ -417,6 +457,7 @@ function settleActivationCommand(
   if (!record) {
     return unchanged(state);
   }
+  if (record.status === "canceled") return unchanged(state);
   if (
     intent.outcome === "succeeded" &&
     isActivationCommandResult(intent.value)
@@ -587,6 +628,9 @@ function expireActivation(
   }
   if (record.status === "confirmed") {
     return unchanged(state);
+  }
+  if (record.status === "canceled") {
+    return { commands: NO_COMMANDS, state: deleteActivation(state, requestId) };
   }
   return {
     commands: NO_COMMANDS,

@@ -11,8 +11,10 @@ import {
   resolveStandaloneAgentToolPanelMaxWidth,
   resolveStandaloneAgentToolPanelExpansionReset,
   resolveStandaloneAgentToolPanelExpansionTransfer,
+  resolveStandaloneAgentToolPanelPreferredWidth,
   resolveStandaloneAgentToolSidebarLayoutWidth,
   resolveStandaloneAgentToolSidebarWidth,
+  shouldResizeStandaloneAgentToolWindow,
   standaloneAgentToolPanelDefaultWidthById,
   standaloneAgentToolPanelMinWidthById,
   type StandaloneAgentToolPanelId
@@ -52,12 +54,19 @@ export function useStandaloneAgentToolSidebarLayout({
   const [panelWidths, setPanelWidths] = useState<ToolPanelWidths>(() => ({
     ...standaloneAgentToolPanelDefaultWidthById
   }));
+  const [manuallyResizedWidth, setManuallyResizedWidth] = useState<
+    number | null
+  >(null);
   const [expandedPanel, setExpandedPanel] =
     useState<StandaloneAgentToolPanelId | null>(null);
   const expandedPanelRef = useRef<StandaloneAgentToolPanelId | null>(null);
   const baselineViewportWidthRef = useRef<number | null>(null);
   const panelWidthBeforeExpandRef = useRef<Partial<ToolPanelWidths>>({});
   const resizeRequestRef = useRef(0);
+  const lastWindowResizeRef = useRef<{
+    actualWidth: number;
+    requestedWidth: number;
+  } | null>(null);
   const resizeStateRef = useRef<ToolPanelResizeState | null>(null);
   const resizeStyleRef = useRef<{
     cursor: string;
@@ -95,7 +104,11 @@ export function useStandaloneAgentToolSidebarLayout({
           baselineViewportWidthRef.current ?? viewportWidth,
         isActivePanelExpanded,
         mainContentMinWidthPx,
-        panelWidth: panelWidths[activePanel],
+        panelWidth: resolveStandaloneAgentToolPanelPreferredWidth({
+          isExpanded: isActivePanelExpanded,
+          manuallyResizedWidth,
+          panelWidth: panelWidths[activePanel]
+        }),
         viewportWidth
       })
     : 0;
@@ -128,9 +141,15 @@ export function useStandaloneAgentToolSidebarLayout({
         const transfer = resolveStandaloneAgentToolPanelExpansionTransfer({
           expandedPanel: expandedPanelRef.current,
           nextPanel,
-          nextPanelWidth: panelWidths[nextPanel],
+          nextPanelWidth: resolveStandaloneAgentToolPanelPreferredWidth({
+            isExpanded: false,
+            manuallyResizedWidth,
+            panelWidth: panelWidths[nextPanel]
+          }),
           widthBeforeExpansion:
-            panelWidthBeforeExpandRef.current[expandedPanelRef.current!]
+            panelWidthBeforeExpandRef.current[expandedPanelRef.current!] ??
+            manuallyResizedWidth ??
+            undefined
         });
         if (!transfer) {
           return null;
@@ -158,7 +177,7 @@ export function useStandaloneAgentToolSidebarLayout({
       delete panelWidthBeforeExpandRef.current[reset.panel];
       return "reset";
     },
-    [panelWidths]
+    [manuallyResizedWidth, panelWidths]
   );
 
   const resizeForPanel = useCallback(
@@ -183,23 +202,42 @@ export function useStandaloneAgentToolSidebarLayout({
         nextPanel === null
           ? baselineViewportWidth
           : (baselineViewportWidth ?? window.innerWidth) +
-            resolvePreferredWidth(preferredWidth, panelWidths[nextPanel]);
+            resolvePreferredWidth(
+              preferredWidth,
+              resolveStandaloneAgentToolPanelPreferredWidth({
+                isExpanded: expandedPanelRef.current === nextPanel,
+                manuallyResizedWidth,
+                panelWidth: panelWidths[nextPanel]
+              })
+            );
 
       if (requestedWidth !== null) {
-        try {
-          const result = await resizeWindowContentWidth(
-            requestedWidth,
-            options?.animateWindow
-          );
-          if (requestId !== resizeRequestRef.current) {
-            return false;
-          }
-          if (result.width > 0) {
-            setViewportWidth(result.width);
-          }
-        } catch {
-          if (requestId !== resizeRequestRef.current) {
-            return false;
+        const currentWidth = window.innerWidth;
+        const shouldResize = shouldResizeStandaloneAgentToolWindow({
+          currentWidth,
+          lastResize: lastWindowResizeRef.current,
+          requestedWidth
+        });
+        if (shouldResize) {
+          try {
+            const result = await resizeWindowContentWidth(
+              requestedWidth,
+              options?.animateWindow
+            );
+            if (requestId !== resizeRequestRef.current) {
+              return false;
+            }
+            if (result.width > 0) {
+              lastWindowResizeRef.current = {
+                actualWidth: result.width,
+                requestedWidth
+              };
+              setViewportWidth(result.width);
+            }
+          } catch {
+            if (requestId !== resizeRequestRef.current) {
+              return false;
+            }
           }
         }
       }
@@ -209,7 +247,12 @@ export function useStandaloneAgentToolSidebarLayout({
       }
       return true;
     },
-    [panelWidths, resetPanelExpansion, resizeWindowContentWidth]
+    [
+      manuallyResizedWidth,
+      panelWidths,
+      resetPanelExpansion,
+      resizeWindowContentWidth
+    ]
   );
 
   const resetWindowResizeBaseline = useCallback(() => {
@@ -218,16 +261,15 @@ export function useStandaloneAgentToolSidebarLayout({
 
   const updatePanelWidth = useCallback(
     (panel: StandaloneAgentToolPanelId, width: number) => {
-      setPanelWidths((current) => ({
-        ...current,
-        [panel]: clampStandaloneAgentToolPanelWidth({
-          allowFullWidth: expandedPanel === panel,
-          mainContentMinWidth: mainContentMinWidthPx,
-          panel,
-          viewportWidth,
-          width
-        })
-      }));
+      const nextWidth = clampStandaloneAgentToolPanelWidth({
+        allowFullWidth: expandedPanel === panel,
+        mainContentMinWidth: mainContentMinWidthPx,
+        panel,
+        viewportWidth,
+        width
+      });
+      setManuallyResizedWidth(nextWidth);
+      setPanelWidths((current) => ({ ...current, [panel]: nextWidth }));
     },
     [expandedPanel, mainContentMinWidthPx, viewportWidth]
   );
@@ -243,11 +285,16 @@ export function useStandaloneAgentToolSidebarLayout({
       expandedPanelRef.current = panel;
       setExpandedPanel(panel);
       setPanelWidths((current) => {
-        panelWidthBeforeExpandRef.current[panel] = current[panel];
+        panelWidthBeforeExpandRef.current[panel] =
+          resolveStandaloneAgentToolPanelPreferredWidth({
+            isExpanded: false,
+            manuallyResizedWidth,
+            panelWidth: current[panel]
+          });
         return { ...current, [panel]: Number.MAX_SAFE_INTEGER };
       });
     },
-    [resetPanelExpansion]
+    [manuallyResizedWidth, resetPanelExpansion]
   );
 
   const stopResizing = useCallback(() => {

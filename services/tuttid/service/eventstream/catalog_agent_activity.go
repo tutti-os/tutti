@@ -30,6 +30,7 @@ type agentActivityMessageData struct {
 	MessageID      string         `json:"messageId"`
 	Payload        map[string]any `json:"payload"`
 	Role           string         `json:"role"`
+	Sequence       *uint64        `json:"sequence"`
 	Version        *uint64        `json:"version"`
 	TurnID         *string        `json:"turnId"`
 	Status         string         `json:"status,omitempty"`

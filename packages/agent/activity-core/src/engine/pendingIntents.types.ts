@@ -9,8 +9,21 @@ import type {
 export type PendingActivationStatus =
   | "requested"
   | "confirmed"
+  | "canceled"
   | "uncertain"
   | "failed";
+
+/** True while an activation may still yield, or already yielded, a session. */
+export function isPendingActivationViable(
+  activation: { status: PendingActivationStatus } | null | undefined
+): boolean {
+  return (
+    activation !== null &&
+    activation !== undefined &&
+    activation.status !== "failed" &&
+    activation.status !== "canceled"
+  );
+}
 
 interface PendingActivationIntentRecordBase {
   agentSessionId: string;

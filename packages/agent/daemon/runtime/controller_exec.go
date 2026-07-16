@@ -194,6 +194,11 @@ type GoalControlResult struct {
 // session-level control operation — like Cancel, it never opens a turn, so it
 // works regardless of what is currently running.
 func (c *Controller) GoalControl(ctx context.Context, input GoalControlInput) (GoalControlResult, error) {
+	releaseLifecycleLock, err := c.acquireLifecycleLockContext(ctx, input.RoomID, input.AgentSessionID)
+	if err != nil {
+		return GoalControlResult{}, err
+	}
+	defer releaseLifecycleLock()
 	session, adapter, err := c.sessionAndAdapter(input.RoomID, input.AgentSessionID)
 	if err != nil {
 		return GoalControlResult{}, err

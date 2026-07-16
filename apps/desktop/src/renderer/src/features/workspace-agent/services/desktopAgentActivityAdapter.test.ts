@@ -10,11 +10,25 @@ import type {
 } from "@tutti-os/client-tuttid-ts";
 import { TuttidProtocolError } from "@tutti-os/client-tuttid-ts";
 import {
+  agentActivityMessageFromTuttidMessage,
   agentActivitySessionFromTuttidSession,
   createDesktopAgentActivityAdapter
 } from "./desktopAgentActivityAdapter.ts";
 
 const workspaceId = "workspace-1";
+
+test("desktop agent activity adapter preserves durable message sequence", () => {
+  const message = agentActivityMessageFromTuttidMessage(
+    workspaceId,
+    createMessage({
+      sequence: 42,
+      createdAtUnixMs: 100
+    })
+  );
+
+  assert.equal(message.sequence, 42);
+  assert.equal(message.createdAtUnixMs, 100);
+});
 
 test("desktop agent activity adapter rejects missing protocol v2 session fields", () => {
   for (const field of [
@@ -259,11 +273,13 @@ test("desktop agent activity adapter maps tuttid sessions and messages", async (
       {
         agentSessionId: "agent-session-1",
         completedAtUnixMs: 1717200003000,
+        createdAtUnixMs: undefined,
         kind: "text",
         messageId: "message-5",
         occurredAtUnixMs: 1717200001000,
         payload: { text: "hello" },
         role: "assistant",
+        sequence: 1,
         startedAtUnixMs: 1717200002000,
         status: "completed",
         turnId: "turn-1",
@@ -631,6 +647,7 @@ test("desktop agent activity adapter submits interactive responses through tutti
 
 test("desktop agent activity adapter normalizes provider composer options", async () => {
   const calls: unknown[] = [];
+  const diagnostics: unknown[] = [];
   const adapter = createDesktopAgentActivityAdapter({
     tuttidClient: createTuttidClient({
       async getAgentProviderComposerOptions(provider, request) {
@@ -708,7 +725,7 @@ test("desktop agent activity adapter normalizes provider composer options", asyn
         };
       }
     }),
-    runtimeApi: createRuntimeApi()
+    runtimeApi: createRuntimeApi(diagnostics)
   });
 
   const options = await adapter.loadComposerOptions({
@@ -763,6 +780,25 @@ test("desktop agent activity adapter normalizes provider composer options", asyn
   assert.equal(options.capabilities?.planMode, true);
   assert.equal(options.capabilities?.browserUse, true);
   assert.equal(options.capabilities?.activeTurnGuidance, true);
+  assert.equal(diagnostics.length, 1);
+  const diagnostic = diagnostics[0] as {
+    details: Record<string, unknown>;
+    event: string;
+    level: string;
+    workspaceId: string;
+  };
+  assert.equal(diagnostic.event, "agent.composer_options.load");
+  assert.equal(diagnostic.level, "info");
+  assert.equal(diagnostic.workspaceId, workspaceId);
+  assert.deepEqual(
+    { ...diagnostic.details, durationMs: typeof diagnostic.details.durationMs },
+    {
+      agentTargetId: null,
+      durationMs: "number",
+      provider: "codex",
+      status: "ready"
+    }
+  );
 });
 
 test("desktop agent activity adapter cancels composer options when caller aborts", async () => {
@@ -1741,6 +1777,7 @@ function createMessage(
     occurredAtUnixMs: 1717200001000,
     payload: {},
     role: "assistant",
+    sequence: 1,
     turnId: "turn-1",
     version: 1,
     ...overrides

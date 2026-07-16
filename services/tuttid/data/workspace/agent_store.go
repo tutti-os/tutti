@@ -2,6 +2,7 @@ package workspace
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"fmt"
 	"strings"
@@ -22,9 +23,11 @@ var _ agentactivitybiz.Repository = (*SQLiteStore)(nil)
 const legacyIDLocalCodex = "local-codex"
 const legacyIDLocalClaudeCode = "local-claude-code"
 
-func (s *SQLiteStore) newAgentStore() *agentstore.Store {
-	return agentstore.New(s.db, agentstore.Options{
-		WorkspaceExists:        s.ensureWorkspaceExists,
+func newAgentStore(db *sql.DB) *agentstore.Store {
+	return agentstore.New(db, agentstore.Options{
+		WorkspaceExists: func(ctx context.Context, workspaceID string) error {
+			return ensureWorkspaceExistsOn(ctx, db, workspaceID)
+		},
 		ProjectPaths:           userProjectPathsQuerier{},
 		NormalizeTarget:        normalizeStoreAgentTarget,
 		IsSkippableTargetError: isSkippableAgentTargetRowError,
@@ -52,7 +55,17 @@ func (s *SQLiteStore) agentStore() *agentstore.Store {
 	if s == nil {
 		return nil
 	}
-	return s.agent
+	return s.agentWriter
+}
+
+func (s *SQLiteStore) agentReadStore() *agentstore.Store {
+	if s == nil {
+		return nil
+	}
+	if s.agentReader != nil {
+		return s.agentReader
+	}
+	return s.agentWriter
 }
 
 // userProjectPathsQuerier feeds the user_projects table into the agent
@@ -98,7 +111,7 @@ func (s *SQLiteStore) BindGoalProvenance(ctx context.Context, input agentactivit
 }
 
 func (s *SQLiteStore) LookupGoalProvenance(ctx context.Context, input agentactivitybiz.LookupGoalProvenanceInput) (agentactivitybiz.GoalProvenanceBinding, bool, error) {
-	return s.agentStore().LookupGoalProvenance(ctx, input)
+	return s.agentReadStore().LookupGoalProvenance(ctx, input)
 }
 
 func (s *SQLiteStore) ReportActivityState(ctx context.Context, input agentactivitybiz.ActivityStateReport) (agentactivitybiz.ActivityStateReportResult, error) {
@@ -114,7 +127,7 @@ func (s *SQLiteStore) PutGoalReconcileInbox(ctx context.Context, input agentacti
 }
 
 func (s *SQLiteStore) ListClaimableGoalReconcileInbox(ctx context.Context, now int64, limit int) ([]agentactivitybiz.GoalReconcileInboxItem, error) {
-	return s.agentStore().ListClaimableGoalReconcileInbox(ctx, now, limit)
+	return s.agentReadStore().ListClaimableGoalReconcileInbox(ctx, now, limit)
 }
 
 func (s *SQLiteStore) ClaimGoalReconcileInbox(ctx context.Context, input agentactivitybiz.ClaimGoalReconcileInboxInput) (agentactivitybiz.GoalReconcileInboxItem, bool, error) {
@@ -134,39 +147,39 @@ func (s *SQLiteStore) RequeueLeasedGoalReconcileInboxOnStartup(ctx context.Conte
 }
 
 func (s *SQLiteStore) GetSession(ctx context.Context, workspaceID string, agentSessionID string) (agentactivitybiz.Session, bool, error) {
-	return s.agentStore().GetSession(ctx, workspaceID, agentSessionID)
+	return s.agentReadStore().GetSession(ctx, workspaceID, agentSessionID)
 }
 
 func (s *SQLiteStore) ListChildSessions(ctx context.Context, workspaceID string, agentSessionID string) ([]agentactivitybiz.Session, error) {
-	return s.agentStore().ListChildSessions(ctx, workspaceID, agentSessionID)
+	return s.agentReadStore().ListChildSessions(ctx, workspaceID, agentSessionID)
 }
 
 func (s *SQLiteStore) SessionDeleted(ctx context.Context, workspaceID string, agentSessionID string) (bool, error) {
-	return s.agentStore().SessionDeleted(ctx, workspaceID, agentSessionID)
+	return s.agentReadStore().SessionDeleted(ctx, workspaceID, agentSessionID)
 }
 
 func (s *SQLiteStore) ListSessions(ctx context.Context, workspaceID string) ([]agentactivitybiz.Session, bool, error) {
-	return s.agentStore().ListSessions(ctx, workspaceID)
+	return s.agentReadStore().ListSessions(ctx, workspaceID)
 }
 
 func (s *SQLiteStore) ListSessionSection(ctx context.Context, input agentactivitybiz.ListSessionSectionInput) (agentactivitybiz.SessionSectionPage, bool, error) {
-	return s.agentStore().ListSessionSection(ctx, input)
+	return s.agentReadStore().ListSessionSection(ctx, input)
 }
 
 func (s *SQLiteStore) ListSessionSections(ctx context.Context, input agentactivitybiz.ListSessionSectionsInput) (agentactivitybiz.SessionSectionsPage, bool, error) {
-	return s.agentStore().ListSessionSections(ctx, input)
+	return s.agentReadStore().ListSessionSections(ctx, input)
 }
 
 func (s *SQLiteStore) ListSessionSectionDeletionCandidates(ctx context.Context, input agentactivitybiz.ListSessionSectionDeletionCandidatesInput) (agentactivitybiz.SessionSectionDeletionCandidates, bool, error) {
-	return s.agentStore().ListSessionSectionDeletionCandidates(ctx, input)
+	return s.agentReadStore().ListSessionSectionDeletionCandidates(ctx, input)
 }
 
 func (s *SQLiteStore) ListSessionMessages(ctx context.Context, input agentactivitybiz.ListSessionMessagesInput) (agentactivitybiz.MessagePage, bool, error) {
-	return s.agentStore().ListSessionMessages(ctx, input)
+	return s.agentReadStore().ListSessionMessages(ctx, input)
 }
 
 func (s *SQLiteStore) ListWorkspaceGeneratedFiles(ctx context.Context, input agentactivitybiz.ListWorkspaceGeneratedFilesInput) (agentactivitybiz.GeneratedFileList, bool, error) {
-	return s.agentStore().ListWorkspaceGeneratedFiles(ctx, input)
+	return s.agentReadStore().ListWorkspaceGeneratedFiles(ctx, input)
 }
 
 func (s *SQLiteStore) DeleteSession(ctx context.Context, workspaceID string, agentSessionID string) (bool, error) {
@@ -194,31 +207,31 @@ func (s *SQLiteStore) UpdateSessionTitle(ctx context.Context, workspaceID string
 }
 
 func (s *SQLiteStore) GetTurn(ctx context.Context, workspaceID string, agentSessionID string, turnID string) (agentactivitybiz.Turn, bool, error) {
-	return s.agentStore().GetTurn(ctx, workspaceID, agentSessionID, turnID)
+	return s.agentReadStore().GetTurn(ctx, workspaceID, agentSessionID, turnID)
 }
 
 func (s *SQLiteStore) GetLatestTurn(ctx context.Context, workspaceID string, agentSessionID string) (agentactivitybiz.Turn, bool, error) {
-	return s.agentStore().GetLatestTurn(ctx, workspaceID, agentSessionID)
+	return s.agentReadStore().GetLatestTurn(ctx, workspaceID, agentSessionID)
 }
 
 func (s *SQLiteStore) ListLatestTurns(ctx context.Context, workspaceID string, agentSessionIDs []string) (map[string]agentactivitybiz.Turn, error) {
-	return s.agentStore().ListLatestTurns(ctx, workspaceID, agentSessionIDs)
+	return s.agentReadStore().ListLatestTurns(ctx, workspaceID, agentSessionIDs)
 }
 
 func (s *SQLiteStore) ListLatestTurnInteractions(ctx context.Context, workspaceID string, agentSessionIDs []string) (map[string][]agentactivitybiz.Interaction, error) {
-	return s.agentStore().ListLatestTurnInteractions(ctx, workspaceID, agentSessionIDs)
+	return s.agentReadStore().ListLatestTurnInteractions(ctx, workspaceID, agentSessionIDs)
 }
 
 func (s *SQLiteStore) ListTurnsBySession(ctx context.Context, workspaceID string, turnIDBySessionID map[string]string) (map[string]agentactivitybiz.Turn, error) {
-	return s.agentStore().ListTurnsBySession(ctx, workspaceID, turnIDBySessionID)
+	return s.agentReadStore().ListTurnsBySession(ctx, workspaceID, turnIDBySessionID)
 }
 
 func (s *SQLiteStore) ListPendingInteractionsBySession(ctx context.Context, workspaceID string, agentSessionIDs []string) (map[string][]agentactivitybiz.Interaction, error) {
-	return s.agentStore().ListPendingInteractionsBySession(ctx, workspaceID, agentSessionIDs)
+	return s.agentReadStore().ListPendingInteractionsBySession(ctx, workspaceID, agentSessionIDs)
 }
 
 func (s *SQLiteStore) ListSessionTurns(ctx context.Context, workspaceID string, agentSessionID string) ([]agentactivitybiz.Turn, error) {
-	return s.agentStore().ListSessionTurns(ctx, workspaceID, agentSessionID)
+	return s.agentReadStore().ListSessionTurns(ctx, workspaceID, agentSessionID)
 }
 
 func (s *SQLiteStore) SettleStaleTurns(ctx context.Context) ([]agentactivitybiz.StaleTurnSettlement, error) {
@@ -226,7 +239,7 @@ func (s *SQLiteStore) SettleStaleTurns(ctx context.Context) ([]agentactivitybiz.
 }
 
 func (s *SQLiteStore) ListSessionInteractions(ctx context.Context, input agentactivitybiz.ListSessionInteractionsInput) ([]agentactivitybiz.Interaction, error) {
-	return s.agentStore().ListSessionInteractions(ctx, input)
+	return s.agentReadStore().ListSessionInteractions(ctx, input)
 }
 
 func (s *SQLiteStore) PrepareRuntimeOperation(ctx context.Context, input agentactivitybiz.RuntimeOperationPrepare) (agentactivitybiz.RuntimeOperation, bool, error) {
@@ -238,7 +251,7 @@ func (s *SQLiteStore) PrepareGoalControlOperation(ctx context.Context, input age
 }
 
 func (s *SQLiteStore) GetGoalControlAudit(ctx context.Context, workspaceID string, agentSessionID string, operationID string) (agentactivitybiz.Message, bool, error) {
-	return s.agentStore().GetGoalControlAudit(ctx, workspaceID, agentSessionID, operationID)
+	return s.agentReadStore().GetGoalControlAudit(ctx, workspaceID, agentSessionID, operationID)
 }
 
 func (s *SQLiteStore) MarkGoalControlOperationDispatched(ctx context.Context, workspaceID, operationID string, occurredAtUnixMS int64) (agentactivitybiz.GoalControlOperation, bool, error) {
@@ -254,7 +267,7 @@ func (s *SQLiteStore) CompleteGoalControlOperation(ctx context.Context, input ag
 }
 
 func (s *SQLiteStore) GetSessionGoalState(ctx context.Context, workspaceID, agentSessionID string) (agentactivitybiz.SessionGoalState, bool, error) {
-	return s.agentStore().GetSessionGoalState(ctx, workspaceID, agentSessionID)
+	return s.agentReadStore().GetSessionGoalState(ctx, workspaceID, agentSessionID)
 }
 
 func (s *SQLiteStore) ReconcileSessionGoalObservation(ctx context.Context, input agentactivitybiz.GoalObservationReconcile) (agentactivitybiz.SessionGoalState, error) {
@@ -262,11 +275,11 @@ func (s *SQLiteStore) ReconcileSessionGoalObservation(ctx context.Context, input
 }
 
 func (s *SQLiteStore) GetGoalControlOperation(ctx context.Context, workspaceID, operationID string) (agentactivitybiz.GoalControlOperation, bool, error) {
-	return s.agentStore().GetGoalControlOperation(ctx, workspaceID, operationID)
+	return s.agentReadStore().GetGoalControlOperation(ctx, workspaceID, operationID)
 }
 
 func (s *SQLiteStore) ListClaimableGoalControlOperations(ctx context.Context, input agentactivitybiz.ListClaimableGoalControlOperationsInput) ([]agentactivitybiz.GoalControlOperation, error) {
-	return s.agentStore().ListClaimableGoalControlOperations(ctx, input)
+	return s.agentReadStore().ListClaimableGoalControlOperations(ctx, input)
 }
 
 func (s *SQLiteStore) ClaimGoalControlOperation(ctx context.Context, input agentactivitybiz.ClaimGoalControlOperationInput) (agentactivitybiz.GoalControlOperation, bool, error) {
@@ -306,11 +319,11 @@ func (s *SQLiteStore) DeleteSubmitClaim(ctx context.Context, workspaceID, agentS
 }
 
 func (s *SQLiteStore) GetRuntimeOperation(ctx context.Context, workspaceID string, operationID string) (agentactivitybiz.RuntimeOperation, bool, error) {
-	return s.agentStore().GetRuntimeOperation(ctx, workspaceID, operationID)
+	return s.agentReadStore().GetRuntimeOperation(ctx, workspaceID, operationID)
 }
 
 func (s *SQLiteStore) ListClaimableRuntimeOperations(ctx context.Context, input agentactivitybiz.ListClaimableRuntimeOperationsInput) ([]agentactivitybiz.RuntimeOperation, error) {
-	return s.agentStore().ListClaimableRuntimeOperations(ctx, input)
+	return s.agentReadStore().ListClaimableRuntimeOperations(ctx, input)
 }
 
 func (s *SQLiteStore) ClaimRuntimeOperationLease(ctx context.Context, input agentactivitybiz.ClaimRuntimeOperationLeaseInput) (agentactivitybiz.RuntimeOperation, bool, error) {
@@ -342,11 +355,11 @@ func (s *SQLiteStore) CompletePlanDecisionRuntimeOperation(ctx context.Context, 
 }
 
 func (s *SQLiteStore) FindTurnByClientSubmitID(ctx context.Context, workspaceID string, agentSessionID string, clientSubmitID string) (string, bool, error) {
-	return s.agentStore().FindTurnByClientSubmitID(ctx, workspaceID, agentSessionID, clientSubmitID)
+	return s.agentReadStore().FindTurnByClientSubmitID(ctx, workspaceID, agentSessionID, clientSubmitID)
 }
 
 func (s *SQLiteStore) ListPendingRuntimeOperationEvents(ctx context.Context, workspaceID string, limit int) ([]agentactivitybiz.RuntimeOperationEvent, error) {
-	return s.agentStore().ListPendingRuntimeOperationEvents(ctx, workspaceID, limit)
+	return s.agentReadStore().ListPendingRuntimeOperationEvents(ctx, workspaceID, limit)
 }
 
 func (s *SQLiteStore) MarkRuntimeOperationEventPublished(ctx context.Context, workspaceID string, eventID int64, publishedAtUnixMS int64) (bool, error) {
@@ -354,7 +367,7 @@ func (s *SQLiteStore) MarkRuntimeOperationEventPublished(ctx context.Context, wo
 }
 
 func (s *SQLiteStore) ListAgentTargets(ctx context.Context) ([]agenttargetbiz.Target, error) {
-	targets, err := s.agentStore().ListAgentTargets(ctx)
+	targets, err := s.agentReadStore().ListAgentTargets(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -366,7 +379,7 @@ func (s *SQLiteStore) ListAgentTargets(ctx context.Context) ([]agenttargetbiz.Ta
 }
 
 func (s *SQLiteStore) GetAgentTarget(ctx context.Context, id string) (agenttargetbiz.Target, error) {
-	target, err := s.agentStore().GetAgentTarget(ctx, id)
+	target, err := s.agentReadStore().GetAgentTarget(ctx, id)
 	if err != nil {
 		return agenttargetbiz.Target{}, err
 	}

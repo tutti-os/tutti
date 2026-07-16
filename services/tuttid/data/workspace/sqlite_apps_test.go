@@ -158,14 +158,14 @@ func TestSQLiteStoreListAppPackagesSkipsInvalidActivePackage(t *testing.T) {
 	}
 
 	const invalidManifestJSON = `{"schemaVersion":"tutti.app.manifest.v1","appId":"invalid-app","version":"1.0.0","name":"Invalid App","description":"Invalid app","runtime":{"bootstrap":"start.sh","healthcheckPath":"/ready"},"references":{"searchEndpoint":"/references/search"}}`
-	if _, err := store.db.ExecContext(ctx, `
+	if _, err := store.writeDB.ExecContext(ctx, `
 INSERT INTO app_packages (
   app_id, version, package_dir, manifest_json, source, factory_job_id, created_in_workspace_id, created_at_unix_ms, updated_at_unix_ms
 ) VALUES (?, ?, ?, ?, ?, '', '', 1, 1)
 `, "invalid-app", "1.0.0", "/tmp/invalid-app", invalidManifestJSON, string(workspacebiz.AppPackageSourceBuiltin)); err != nil {
 		t.Fatalf("insert invalid app package error = %v", err)
 	}
-	if _, err := store.db.ExecContext(ctx, `
+	if _, err := store.writeDB.ExecContext(ctx, `
 INSERT INTO app_catalog_entries (
   app_id, active_version, source, created_in_workspace_id, created_at_unix_ms, updated_at_unix_ms
 ) VALUES (?, ?, ?, '', 1, 1)
@@ -188,7 +188,7 @@ func TestSQLiteStoreListAppPackageFileRecordsAllowsInvalidManifest(t *testing.T)
 	store := openTestSQLiteStore(t)
 	ctx := context.Background()
 	const invalidManifestJSON = `{"schemaVersion":"tutti.app.manifest.v1","appId":"invalid-app","version":"1.0.0","name":"Invalid App","description":"Invalid app","runtime":{"bootstrap":"start.sh","healthcheckPath":"/ready"},"references":{"searchEndpoint":"/references/search"}}`
-	if _, err := store.db.ExecContext(ctx, `
+	if _, err := store.writeDB.ExecContext(ctx, `
 INSERT INTO app_packages (
   app_id, version, package_dir, manifest_json, source, factory_job_id, created_in_workspace_id, created_at_unix_ms, updated_at_unix_ms
 ) VALUES (?, ?, ?, ?, ?, '', '', 1, 1)
@@ -238,14 +238,14 @@ func TestSQLiteStoreListAppPackagesRepairsInvalidActivePackageToValidVersion(t *
 	}
 
 	const invalidManifestJSON = `{"schemaVersion":"tutti.app.manifest.v1","appId":"repair-app","version":"1.1.0","name":"Repair App","description":"Repair app","runtime":{"bootstrap":"start.sh","healthcheckPath":"/ready"},"references":{"searchEndpoint":"/references/search"}}`
-	if _, err := store.db.ExecContext(ctx, `
+	if _, err := store.writeDB.ExecContext(ctx, `
 INSERT INTO app_packages (
   app_id, version, package_dir, manifest_json, source, factory_job_id, created_in_workspace_id, created_at_unix_ms, updated_at_unix_ms
 ) VALUES (?, ?, ?, ?, ?, '', '', 2, 2)
 `, "repair-app", "1.1.0", "/tmp/repair-app-1.1.0", invalidManifestJSON, string(workspacebiz.AppPackageSourceBuiltin)); err != nil {
 		t.Fatalf("insert invalid app package error = %v", err)
 	}
-	if _, err := store.db.ExecContext(ctx, `
+	if _, err := store.writeDB.ExecContext(ctx, `
 UPDATE app_catalog_entries
 SET active_version = ?, updated_at_unix_ms = 2
 WHERE app_id = ?

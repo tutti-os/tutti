@@ -46,6 +46,9 @@ func TestDaemonAPIRoutesAgentProviderStatuses(t *testing.T) {
 				if len(input.Providers) != 1 || input.Providers[0] != "claude-code" {
 					t.Fatalf("providers = %#v, want [claude-code]", input.Providers)
 				}
+				if !input.ForceRefresh {
+					t.Fatal("ForceRefresh = false, want true")
+				}
 				return agentstatusservice.Snapshot{
 					CapturedAt: capturedAt,
 					Providers: []agentstatusservice.ProviderStatus{{
@@ -76,7 +79,7 @@ func TestDaemonAPIRoutesAgentProviderStatuses(t *testing.T) {
 		},
 	}))
 
-	recorder := performGeneratedRouteRequest(t, mux, http.MethodGet, "/v1/agent-providers/status?providers=claude-code", nil)
+	recorder := performGeneratedRouteRequest(t, mux, http.MethodGet, "/v1/agent-providers/status?providers=claude-code&refresh=true", nil)
 	if recorder.Code != http.StatusOK {
 		t.Fatalf("status = %d, want %d; body: %s", recorder.Code, http.StatusOK, recorder.Body.String())
 	}

@@ -76,6 +76,15 @@ function buildFailedTextRow(body: string): AgentMessageRowVM {
   };
 }
 
+function buildCompletedTextRow(body: string): AgentMessageRowVM {
+  const row = buildFailedTextRow(body);
+  const message = row.messages[0];
+  if (message) {
+    message.statusKind = "completed";
+  }
+  return row;
+}
+
 afterEach(() => {
   closeAgentEnvPanel();
   vi.restoreAllMocks();
@@ -256,6 +265,19 @@ describe("AgentVisibleErrorMessage", () => {
     expect(store.open).toBe(true);
     expect(store.provider).toBe("claude-code");
     expect(store.focus).toBe("auth");
+  });
+
+  it("recovers Claude SDK's completed login notice into the wizard card", () => {
+    const { getByText, queryByText } = renderBlock(
+      buildCompletedTextRow("Not logged in · Please run /login"),
+      "claude-code"
+    );
+
+    expect(
+      getByText("Claude Code needs authentication or configuration")
+    ).toBeTruthy();
+    expect(getByText("Sign in")).toBeTruthy();
+    expect(queryByText("Not logged in · Please run /login")).toBeNull();
   });
 
   it("leaves a non-env failed message as plain text (no card)", () => {

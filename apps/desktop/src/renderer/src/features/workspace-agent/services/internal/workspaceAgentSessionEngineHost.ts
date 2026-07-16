@@ -20,6 +20,7 @@ import {
 export interface WorkspaceAgentSessionEngineHost {
   adapter: AgentActivityAdapter;
   engine: AgentSessionEngine;
+  dispose(): void;
 }
 
 interface CreateWorkspaceAgentSessionEngineHostInput {
@@ -212,26 +213,36 @@ export function createWorkspaceAgentSessionEngineHost(
       }
     }
   });
-  input.subscribeSessionEvents(input.workspaceId, (event) => {
-    if (!event || typeof event !== "object") return;
-    const candidate = event as {
-      eventType?: unknown;
-      data?: { agentSessionId?: unknown; commands?: unknown };
-    };
-    if (
-      candidate.eventType !== "available_commands_update" ||
-      typeof candidate.data?.agentSessionId !== "string" ||
-      !Array.isArray(candidate.data.commands)
-    )
-      return;
-    engine.dispatch({
-      agentSessionId: candidate.data.agentSessionId,
-      commands: candidate.data.commands,
-      type: "session/availableCommandsReceived",
-      workspaceId: input.workspaceId
-    });
-  });
-  return { adapter, engine };
+  const unsubscribeSessionEvents = input.subscribeSessionEvents(
+    input.workspaceId,
+    (event) => {
+      if (!event || typeof event !== "object") return;
+      const candidate = event as {
+        eventType?: unknown;
+        data?: { agentSessionId?: unknown; commands?: unknown };
+      };
+      if (
+        candidate.eventType !== "available_commands_update" ||
+        typeof candidate.data?.agentSessionId !== "string" ||
+        !Array.isArray(candidate.data.commands)
+      )
+        return;
+      engine.dispatch({
+        agentSessionId: candidate.data.agentSessionId,
+        commands: candidate.data.commands,
+        type: "session/availableCommandsReceived",
+        workspaceId: input.workspaceId
+      });
+    }
+  );
+  return {
+    adapter,
+    engine,
+    dispose() {
+      unsubscribeSessionEvents();
+      engine.dispose();
+    }
+  };
 }
 
 function activationInput(

@@ -6,4 +6,5 @@ export {
   type BrowserNodeChromeProps,
   type BrowserNodeWorkbenchHeaderProps
 } from "./BrowserNodeChrome.tsx";
+export { useActiveBrowserNodeWebview } from "./browserNodeWebviewContext.ts";
 export type { BrowserNodeWebviewTag } from "./webviewTag.ts";

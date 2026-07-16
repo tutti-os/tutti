@@ -576,6 +576,42 @@
   [StandaloneAgentToolSidebar.tsx](../../../apps/desktop/src/renderer/src/features/workspace-workbench/ui/StandaloneAgentToolSidebar.tsx)
   [standaloneAgentWindowBounds.ts](../../../apps/desktop/src/main/windows/standaloneAgentWindowBounds.ts)
 
+### Renderer services initialize twice and consume one event twice
+
+- Symptom:
+  One daemon lifecycle transition produces duplicate renderer work, such as two
+  identical completion toasts, repeated reconcile requests, or two service
+  instance IDs applying the same state transition.
+- Quick checks:
+  Compare daemon and renderer logs by workspace, session, turn, and event time.
+  Confirm whether the daemon emitted one settled transition while the renderer
+  applied the same payload twice. Check `workspace_runtime.created`,
+  `workspace_runtime.committed`, and `workspace_runtime.duplicate_detected` by
+  `rendererInstanceId` and `runtimeInstanceId` before blaming the transport.
+- Root cause:
+  A renderer-window service graph was constructed from React render instead of
+  an explicit renderer bootstrap owner. A discarded render or remounted host
+  could leave its subscriptions alive because cleanup belonged only to the
+  committed component tree and several services did not retain their
+  unsubscribe handles.
+- Fix:
+  Dynamically load and create one workspace-window runtime before
+  `createRoot().render`, then pass it through props and DI context. Give that
+  runtime one idempotent `dispose()` that releases controllers, service
+  subscriptions, analytics leases, host listeners, DI services, and the shared
+  event-stream client. Keep a stable workspace/session/turn toast ID only as a
+  presentation-boundary defense, not as the ownership fix.
+- Validation:
+  Assert one active runtime per renderer realm, zero subscriptions after
+  disposal, and one notification for repeated delivery of the same turn. Run
+  targeted service tests, TypeScript lint and typecheck, changed-aware checks,
+  and the production desktop build.
+- References:
+  [main.tsx](../../../apps/desktop/src/renderer/src/main.tsx)
+  [createWorkspaceWindowContainer.ts](../../../apps/desktop/src/renderer/src/app/windows/workspace/createWorkspaceWindowContainer.ts)
+  [workspaceAgentActivityReconcileBridge.ts](../../../apps/desktop/src/renderer/src/features/workspace-agent/services/internal/workspaceAgentActivityReconcileBridge.ts)
+  [workspaceAgentOutcomeNotification.ts](../../../apps/desktop/src/renderer/src/features/workspace-workbench/services/workspaceAgentOutcomeNotification.ts)
+
 ### Dialog action reacts to Enter but ignores pointer clicks
 
 - Symptom:

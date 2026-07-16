@@ -22,7 +22,6 @@ export function useAgentGUIComposerOptionsSync(input: {
   activeConversationId: string | null;
   activeConversationIdRef: RefObject<string | null>;
   agentActivityRuntime: AgentActivityRuntime;
-  composerOptionsProjectKeyRef: RefObject<string | null>;
   composerTargetData: AgentGUIComposerTargetData;
   conversationFilter: unknown;
   currentUserId: string | null | undefined;
@@ -111,22 +110,6 @@ export function useAgentGUIComposerOptionsSync(input: {
   input.loadDraftComposerOptionsRef.current = loadDraftComposerOptions;
 
   useEffect(() => {
-    if (input.previewMode) return;
-    const projectKey = `${input.composerTargetData.agentTargetId ?? input.composerTargetData.provider}\0${input.selectedProjectPath ?? ""}`;
-    const previous = input.composerOptionsProjectKeyRef.current;
-    input.composerOptionsProjectKeyRef.current = projectKey;
-    if (previous !== null && previous !== projectKey) {
-      loadDraftComposerOptions({ force: true });
-    }
-  }, [
-    input.composerTargetData.agentTargetId,
-    input.composerTargetData.provider,
-    input.previewMode,
-    input.selectedProjectPath,
-    loadDraftComposerOptions
-  ]);
-
-  useEffect(() => {
     if (input.previewMode) return undefined;
     return subscribeCoalesced(
       "agent-model-catalog-invalidated",
@@ -191,6 +174,7 @@ export function useAgentGUIComposerOptionsSync(input: {
     input.isCreatingConversation,
     input.previewMode,
     input.providerComposerOptions?.behavior?.prewarmDraftSession,
+    input.selectedProjectPath,
     loadDraftComposerOptions
   ]);
 
@@ -216,6 +200,7 @@ export function useAgentGUIComposerOptionsSync(input: {
     );
     if (
       activation?.status === "failed" ||
+      activation?.status === "canceled" ||
       activation?.status === "requested" ||
       activation?.status === "uncertain"
     ) {
@@ -232,5 +217,5 @@ export function useAgentGUIComposerOptionsSync(input: {
     input.sessionEngine
   ]);
 
-  return { loadComposerOptionsForTarget, loadDraftComposerOptions };
+  return { loadDraftComposerOptions };
 }

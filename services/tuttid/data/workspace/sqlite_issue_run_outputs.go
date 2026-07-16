@@ -48,7 +48,7 @@ LIMIT ?
 `, strings.Join(where, " AND "))
 	args = append(args, params.Limit)
 
-	rows, err := s.db.QueryContext(ctx, query, args...)
+	rows, err := s.readDB.QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, fmt.Errorf("search workspace issue run outputs: %w", err)
 	}

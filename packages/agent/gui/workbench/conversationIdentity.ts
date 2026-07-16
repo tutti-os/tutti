@@ -1,4 +1,5 @@
 import {
+  isPendingActivationViable,
   selectLatestActivationForSession,
   selectSessionMessages,
   selectWorkspaceAgentConsumerSession,
@@ -50,7 +51,7 @@ export function resolveAgentGuiWorkbenchConversationIdentity(input: {
     agentSessionId
   );
   const optimisticTitle =
-    activation?.mode === "new" && activation.status !== "failed"
+    activation?.mode === "new" && isPendingActivationViable(activation)
       ? activation.optimisticTitle
       : null;
   const agentTargetId =
@@ -107,7 +108,7 @@ export function resolveAgentGuiWorkbenchTitleDisplayPrompt(input: {
     content: readonly AgentPromptContentBlock[];
     displayPrompt?: string;
     mode: "existing" | "new";
-    status: string;
+    status: import("@tutti-os/agent-activity-core").PendingActivationStatus;
   } | null;
   allowEmptyTitle?: boolean;
   messages: readonly AgentActivityMessage[];

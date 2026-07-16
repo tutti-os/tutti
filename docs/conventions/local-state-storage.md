@@ -233,6 +233,23 @@ Tutti provider startup.
 - workspace apps receive `<state-dir>/app-toolchains` as the shared cache root
   for reusable app-managed binaries
 
+## SQLite Connection Governance
+
+The daemon owns one SQLite database file and opens separate `database/sql`
+pools for writes and reads. The write pool has exactly one connection because
+SQLite serializes writers and several migrations rely on connection-scoped
+PRAGMA state. The read-only pool uses WAL snapshots and may grow on demand to a
+small bounded number of connections; its connections use SQLite read-only and
+`query_only` modes.
+
+Route independent queries through the read pool. Writes, migrations,
+read-modify-write sequences, and reads that must share a write transaction's
+snapshot stay on the write connection or its `sql.Tx`. Configure
+connection-scoped PRAGMAs in the SQLite DSN so every dynamically opened
+connection receives the same settings; executing a PRAGMA once through
+`sql.DB` is not sufficient for a multi-connection pool. Long-lived read
+transactions must be avoided because they can delay WAL checkpoints.
+
 ## Validation
 
 The repository includes a transport smoke test:

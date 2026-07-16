@@ -460,6 +460,90 @@ func TestSQLiteIssueStoreListIssuesPagination(t *testing.T) {
 	}
 }
 
+func TestSQLiteIssueStoreListSearchMatchesTitlesOnly(t *testing.T) {
+	t.Parallel()
+
+	store := openTestSQLiteStore(t)
+	ctx := context.Background()
+	if err := store.Create(ctx, workspacebiz.Summary{
+		ID:   "ws-title-search",
+		Name: "Title Search Workspace",
+	}); err != nil {
+		t.Fatalf("Create() workspace error = %v", err)
+	}
+
+	service := testIssueService(store)
+	titleMatch, err := service.CreateIssue(ctx, workspaceissues.CreateIssueInput{
+		WorkspaceID: "ws-title-search",
+		TopicID:     workspaceissues.DefaultTopicID,
+		ActorUserID: "user-1",
+		Title:       "Build a toy website",
+		Content:     "Read the project first",
+	})
+	if err != nil {
+		t.Fatalf("CreateIssue() title match error = %v", err)
+	}
+	if _, err := service.CreateIssue(ctx, workspaceissues.CreateIssueInput{
+		WorkspaceID: "ws-title-search",
+		TopicID:     workspaceissues.DefaultTopicID,
+		ActorUserID: "user-1",
+		Title:       "Read the project",
+		Content:     "Build a toy website",
+	}); err != nil {
+		t.Fatalf("CreateIssue() content-only match error = %v", err)
+	}
+
+	issues, err := service.ListIssues(ctx, workspaceissues.IssueListFilter{
+		WorkspaceID: "ws-title-search",
+		TopicID:     workspaceissues.DefaultTopicID,
+		SearchQuery: "TOY",
+	})
+	if err != nil {
+		t.Fatalf("ListIssues() error = %v", err)
+	}
+	if len(issues.Items) != 1 || issues.Items[0].IssueID != titleMatch.IssueID {
+		t.Fatalf("ListIssues() items = %+v, want only title match %q", issues.Items, titleMatch.IssueID)
+	}
+	if issues.TotalCount != 1 || issues.StatusCounts.All != 1 {
+		t.Fatalf("ListIssues() counts = total:%d statuses:%+v, want one", issues.TotalCount, issues.StatusCounts)
+	}
+
+	titleTask, err := service.CreateTask(ctx, workspaceissues.CreateTaskInput{
+		WorkspaceID: "ws-title-search",
+		IssueID:     titleMatch.IssueID,
+		ActorUserID: "user-1",
+		Title:       "Paint the toy model",
+		Content:     "Use the reference image",
+	})
+	if err != nil {
+		t.Fatalf("CreateTask() title match error = %v", err)
+	}
+	if _, err := service.CreateTask(ctx, workspaceissues.CreateTaskInput{
+		WorkspaceID: "ws-title-search",
+		IssueID:     titleMatch.IssueID,
+		ActorUserID: "user-1",
+		Title:       "Read the reference image",
+		Content:     "Paint the toy model",
+	}); err != nil {
+		t.Fatalf("CreateTask() content-only match error = %v", err)
+	}
+
+	tasks, err := service.ListTasks(ctx, workspaceissues.TaskListFilter{
+		WorkspaceID: "ws-title-search",
+		IssueID:     titleMatch.IssueID,
+		SearchQuery: "TOY",
+	})
+	if err != nil {
+		t.Fatalf("ListTasks() error = %v", err)
+	}
+	if len(tasks.Items) != 1 || tasks.Items[0].TaskID != titleTask.TaskID {
+		t.Fatalf("ListTasks() items = %+v, want only title match %q", tasks.Items, titleTask.TaskID)
+	}
+	if tasks.TotalCount != 1 || tasks.StatusCounts.All != 1 {
+		t.Fatalf("ListTasks() counts = total:%d statuses:%+v, want one", tasks.TotalCount, tasks.StatusCounts)
+	}
+}
+
 func TestSQLiteIssueStoreListStatusCountsIgnoreStatusFilter(t *testing.T) {
 	t.Parallel()
 

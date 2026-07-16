@@ -251,9 +251,11 @@ test("user stop suspension blocks drain until explicit resume", () => {
   state = reduce(
     state,
     {
-      type: "queue/suspended",
       agentSessionId: "session-1",
-      reason: "user_stop"
+      awaitingTurnExpiresAtUnixMs: 30_000,
+      commandId: "stop-1",
+      type: "session/stopRequested",
+      workspaceId: "workspace-1"
     },
     running
   ).state;

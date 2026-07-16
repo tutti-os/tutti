@@ -179,7 +179,7 @@ func TestSQLiteStoreDesktopPreferencesAgentConversationDetailModeMigrationAndNor
 		t.Fatal("desktop_preferences.agent_conversation_detail_mode column missing after migration")
 	}
 
-	_, err = store.db.ExecContext(ctx, `
+	_, err = store.writeDB.ExecContext(ctx, `
 INSERT INTO desktop_preferences (
   id,
   default_agent_provider,
@@ -294,7 +294,7 @@ func TestSQLiteStoreMigrationBackfillsAgentComposerDefaultsByAgentTarget(t *test
 	if _, err := store.PutDesktopPreferences(context.Background(), legacy); err != nil {
 		t.Fatalf("PutDesktopPreferences() error = %v", err)
 	}
-	if _, err := store.db.ExecContext(context.Background(), `
+	if _, err := store.writeDB.ExecContext(context.Background(), `
 DELETE FROM tuttid_schema_migrations WHERE id = ?
 `, schemaMigrationDesktopPreferencesAgentComposerDefaultsByAgentTargetV1); err != nil {
 		t.Fatalf("reset migration marker: %v", err)

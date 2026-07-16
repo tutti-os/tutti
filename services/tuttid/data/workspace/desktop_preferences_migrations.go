@@ -20,7 +20,7 @@ func (s *SQLiteStore) applyDesktopPreferencesV1(ctx context.Context) error {
 	}
 
 	now := unixMs(time.Now().UTC())
-	_, err = s.db.ExecContext(ctx, `
+	_, err = s.writeDB.ExecContext(ctx, `
 CREATE TABLE IF NOT EXISTS desktop_preferences (
   id TEXT PRIMARY KEY,
   agent_dock_layout TEXT NOT NULL DEFAULT 'unified',
@@ -71,13 +71,13 @@ func (s *SQLiteStore) applyDesktopPreferencesAgentDockLayoutV1(ctx context.Conte
 		return err
 	}
 	if !hasAgentDockLayout {
-		if _, err := s.db.ExecContext(ctx, `
+		if _, err := s.writeDB.ExecContext(ctx, `
 ALTER TABLE desktop_preferences
   ADD COLUMN agent_dock_layout TEXT NOT NULL DEFAULT 'unified';`); err != nil {
 			return fmt.Errorf("migrate workspace database for desktop agent dock layout: %w", err)
 		}
 	}
-	_, err = s.db.ExecContext(ctx, `
+	_, err = s.writeDB.ExecContext(ctx, `
 INSERT INTO tuttid_schema_migrations (id, applied_at_unix_ms)
   VALUES (?, ?);
 `, schemaMigrationDesktopPreferencesAgentDockLayoutV1, now)
@@ -103,13 +103,13 @@ func (s *SQLiteStore) applyDesktopPreferencesAgentConversationDetailModeV1(ctx c
 		return err
 	}
 	if !hasAgentConversationDetailMode {
-		if _, err := s.db.ExecContext(ctx, `
+		if _, err := s.writeDB.ExecContext(ctx, `
 ALTER TABLE desktop_preferences
   ADD COLUMN agent_conversation_detail_mode TEXT NOT NULL DEFAULT 'coding';`); err != nil {
 			return fmt.Errorf("migrate workspace database for desktop agent conversation detail mode: %w", err)
 		}
 	}
-	_, err = s.db.ExecContext(ctx, `
+	_, err = s.writeDB.ExecContext(ctx, `
 INSERT INTO tuttid_schema_migrations (id, applied_at_unix_ms)
   VALUES (?, ?);
 `, schemaMigrationDesktopPreferencesAgentConversationDetailModeV1, now)
@@ -145,13 +145,13 @@ func (s *SQLiteStore) applyDesktopPreferencesFeatureFlagsV1(ctx context.Context)
 		if hasColumn {
 			continue
 		}
-		if _, err := s.db.ExecContext(ctx, fmt.Sprintf(`
+		if _, err := s.writeDB.ExecContext(ctx, fmt.Sprintf(`
 ALTER TABLE desktop_preferences
   ADD COLUMN %s %s;`, column.name, column.definition)); err != nil {
 			return fmt.Errorf("migrate workspace database for desktop feature flags preferences %s: %w", column.name, err)
 		}
 	}
-	_, err = s.db.ExecContext(ctx, `
+	_, err = s.writeDB.ExecContext(ctx, `
 INSERT INTO tuttid_schema_migrations (id, applied_at_unix_ms)
   VALUES (?, ?);
 `, schemaMigrationDesktopPreferencesFeatureFlagsV1, now)
@@ -177,13 +177,13 @@ func (s *SQLiteStore) applyDesktopPreferencesShowAppDeveloperSourcesV1(ctx conte
 		return err
 	}
 	if !hasShowAppDeveloperSources {
-		if _, err := s.db.ExecContext(ctx, `
+		if _, err := s.writeDB.ExecContext(ctx, `
 ALTER TABLE desktop_preferences
   ADD COLUMN show_app_developer_sources INTEGER NOT NULL DEFAULT 0;`); err != nil {
 			return fmt.Errorf("migrate workspace database for desktop app developer sources: %w", err)
 		}
 	}
-	_, err = s.db.ExecContext(ctx, `
+	_, err = s.writeDB.ExecContext(ctx, `
 INSERT INTO tuttid_schema_migrations (id, applied_at_unix_ms)
   VALUES (?, ?);
 `, schemaMigrationDesktopPreferencesShowAppDeveloperSourcesV1, now)
@@ -209,13 +209,13 @@ func (s *SQLiteStore) applyDesktopPreferencesFileDefaultOpenersV1(ctx context.Co
 		return err
 	}
 	if !hasFileDefaultOpeners {
-		if _, err := s.db.ExecContext(ctx, `
+		if _, err := s.writeDB.ExecContext(ctx, `
 ALTER TABLE desktop_preferences
   ADD COLUMN file_default_openers_by_extension_json TEXT NOT NULL DEFAULT '{"htm":"appBrowser","html":"appBrowser","shtml":"appBrowser","xhtml":"appBrowser"}';`); err != nil {
 			return fmt.Errorf("migrate workspace database for desktop file default openers: %w", err)
 		}
 	}
-	_, err = s.db.ExecContext(ctx, `
+	_, err = s.writeDB.ExecContext(ctx, `
 INSERT INTO tuttid_schema_migrations (id, applied_at_unix_ms)
   VALUES (?, ?);
 `, schemaMigrationDesktopPreferencesFileDefaultOpenersV1, now)
@@ -241,13 +241,13 @@ func (s *SQLiteStore) applyDesktopPreferencesAppCatalogChannelV1(ctx context.Con
 		return err
 	}
 	if !hasAppCatalogChannel {
-		if _, err := s.db.ExecContext(ctx, `
+		if _, err := s.writeDB.ExecContext(ctx, `
 ALTER TABLE desktop_preferences
   ADD COLUMN app_catalog_channel TEXT NOT NULL DEFAULT 'production';`); err != nil {
 			return fmt.Errorf("migrate workspace database for desktop app catalog channel: %w", err)
 		}
 	}
-	_, err = s.db.ExecContext(ctx, `
+	_, err = s.writeDB.ExecContext(ctx, `
 INSERT INTO tuttid_schema_migrations (id, applied_at_unix_ms)
   VALUES (?, ?);
 `, schemaMigrationDesktopPreferencesAppCatalogChannelV1, now)
@@ -274,7 +274,7 @@ func (s *SQLiteStore) applyDesktopPreferencesMinimizeAnimationV1(ctx context.Con
 
 	now := unixMs(time.Now().UTC())
 	if !hasMinimizeAnimation {
-		_, err = s.db.ExecContext(ctx, `
+		_, err = s.writeDB.ExecContext(ctx, `
 ALTER TABLE desktop_preferences ADD COLUMN minimize_animation TEXT NOT NULL DEFAULT 'scale';
 INSERT INTO tuttid_schema_migrations (id, applied_at_unix_ms)
   VALUES (?, ?);
@@ -285,7 +285,7 @@ INSERT INTO tuttid_schema_migrations (id, applied_at_unix_ms)
 		return nil
 	}
 
-	_, err = s.db.ExecContext(ctx, `
+	_, err = s.writeDB.ExecContext(ctx, `
 INSERT INTO tuttid_schema_migrations (id, applied_at_unix_ms)
   VALUES (?, ?);
 `, schemaMigrationDesktopPreferencesMinimizeAnimationV1, now)
@@ -310,13 +310,13 @@ func (s *SQLiteStore) applyDesktopPreferencesAgentGUIConversationRailV1(ctx cont
 		return err
 	}
 	if !hasAgentGUIConversationRail {
-		if _, err := s.db.ExecContext(ctx, `
+		if _, err := s.writeDB.ExecContext(ctx, `
 ALTER TABLE desktop_preferences
   ADD COLUMN agent_gui_conversation_rail_collapsed_by_provider_json TEXT NOT NULL DEFAULT '{}';`); err != nil {
 			return fmt.Errorf("migrate workspace database for desktop agent gui conversation rail: %w", err)
 		}
 	}
-	_, err = s.db.ExecContext(ctx, `
+	_, err = s.writeDB.ExecContext(ctx, `
 INSERT INTO tuttid_schema_migrations (id, applied_at_unix_ms)
   VALUES (?, ?);
 `, schemaMigrationDesktopPreferencesAgentGUIConversationRailV1, now)
@@ -342,7 +342,7 @@ func (s *SQLiteStore) applyDesktopPreferencesWindowSnappingV1(ctx context.Contex
 		return err
 	}
 	if !hasWindowSnappingEnabled {
-		if _, err := s.db.ExecContext(ctx, `
+		if _, err := s.writeDB.ExecContext(ctx, `
 ALTER TABLE desktop_preferences
   ADD COLUMN workbench_window_snapping_enabled INTEGER NOT NULL DEFAULT 0;`); err != nil {
 			return fmt.Errorf("migrate workspace database for desktop workbench window snapping enabled: %w", err)
@@ -353,13 +353,13 @@ ALTER TABLE desktop_preferences
 		return err
 	}
 	if !hasWindowSnappingShortcutPreset {
-		if _, err := s.db.ExecContext(ctx, `
+		if _, err := s.writeDB.ExecContext(ctx, `
 ALTER TABLE desktop_preferences
   ADD COLUMN workbench_window_snapping_shortcut_preset TEXT NOT NULL DEFAULT 'commandArrows';`); err != nil {
 			return fmt.Errorf("migrate workspace database for desktop workbench window snapping shortcut preset: %w", err)
 		}
 	}
-	_, err = s.db.ExecContext(ctx, `
+	_, err = s.writeDB.ExecContext(ctx, `
 INSERT INTO tuttid_schema_migrations (id, applied_at_unix_ms)
   VALUES (?, ?);
 `, schemaMigrationDesktopPreferencesWindowSnappingV1, now)
@@ -385,7 +385,7 @@ func (s *SQLiteStore) applyDesktopPreferencesUpdateSettingsV1(ctx context.Contex
 		return err
 	}
 	if !hasUpdateChannel {
-		if _, err := s.db.ExecContext(ctx, `
+		if _, err := s.writeDB.ExecContext(ctx, `
 ALTER TABLE desktop_preferences
   ADD COLUMN update_channel TEXT NOT NULL DEFAULT 'stable';`); err != nil {
 			return fmt.Errorf("migrate workspace database for desktop update channel: %w", err)
@@ -396,13 +396,13 @@ ALTER TABLE desktop_preferences
 		return err
 	}
 	if !hasUpdatePolicy {
-		if _, err := s.db.ExecContext(ctx, `
+		if _, err := s.writeDB.ExecContext(ctx, `
 ALTER TABLE desktop_preferences
   ADD COLUMN update_policy TEXT NOT NULL DEFAULT 'prompt';`); err != nil {
 			return fmt.Errorf("migrate workspace database for desktop update policy: %w", err)
 		}
 	}
-	_, err = s.db.ExecContext(ctx, `
+	_, err = s.writeDB.ExecContext(ctx, `
 INSERT INTO tuttid_schema_migrations (id, applied_at_unix_ms)
   VALUES (?, ?);
 `, schemaMigrationDesktopPreferencesUpdateSettingsV1, now)
@@ -432,13 +432,13 @@ func (s *SQLiteStore) applyDesktopPreferencesSleepPreventionModeV1(ctx context.C
 		return err
 	}
 	if !hasSleepPreventionMode {
-		if _, err := s.db.ExecContext(ctx, `
+		if _, err := s.writeDB.ExecContext(ctx, `
 ALTER TABLE desktop_preferences
   ADD COLUMN sleep_prevention_mode TEXT NOT NULL DEFAULT 'never';`); err != nil {
 			return fmt.Errorf("migrate workspace database for desktop sleep prevention mode: %w", err)
 		}
 		if hasLegacyPreventSleepEnabled {
-			if _, err := s.db.ExecContext(ctx, `
+			if _, err := s.writeDB.ExecContext(ctx, `
 UPDATE desktop_preferences
 SET sleep_prevention_mode = 'whileAgentRunning'
 WHERE prevent_sleep_while_agent_running_enabled = 1;`); err != nil {
@@ -446,7 +446,7 @@ WHERE prevent_sleep_while_agent_running_enabled = 1;`); err != nil {
 			}
 		}
 	}
-	_, err = s.db.ExecContext(ctx, `
+	_, err = s.writeDB.ExecContext(ctx, `
 INSERT INTO tuttid_schema_migrations (id, applied_at_unix_ms)
   VALUES (?, ?);
 `, schemaMigrationDesktopPreferencesSleepPreventionModeV1, now)
@@ -472,13 +472,13 @@ func (s *SQLiteStore) applyDesktopPreferencesDockPlacementV1(ctx context.Context
 		return err
 	}
 	if !hasDockPlacement {
-		if _, err := s.db.ExecContext(ctx, `
+		if _, err := s.writeDB.ExecContext(ctx, `
 ALTER TABLE desktop_preferences
   ADD COLUMN dock_placement TEXT NOT NULL DEFAULT 'bottom';`); err != nil {
 			return fmt.Errorf("migrate workspace database for desktop dock placement: %w", err)
 		}
 	}
-	_, err = s.db.ExecContext(ctx, `
+	_, err = s.writeDB.ExecContext(ctx, `
 INSERT INTO tuttid_schema_migrations (id, applied_at_unix_ms)
   VALUES (?, ?);
 `, schemaMigrationDesktopPreferencesDockPlacementV1, now)
@@ -504,13 +504,13 @@ func (s *SQLiteStore) applyDesktopPreferencesDockIconStyleV1(ctx context.Context
 		return err
 	}
 	if !hasDockIconStyle {
-		if _, err := s.db.ExecContext(ctx, `
+		if _, err := s.writeDB.ExecContext(ctx, `
 ALTER TABLE desktop_preferences
   ADD COLUMN dock_icon_style TEXT NOT NULL DEFAULT 'flat';`); err != nil {
 			return fmt.Errorf("migrate workspace database for desktop dock icon style: %w", err)
 		}
 	}
-	_, err = s.db.ExecContext(ctx, `
+	_, err = s.writeDB.ExecContext(ctx, `
 INSERT INTO tuttid_schema_migrations (id, applied_at_unix_ms)
   VALUES (?, ?);
 `, schemaMigrationDesktopPreferencesDockIconStyleV1, now)
@@ -536,13 +536,13 @@ func (s *SQLiteStore) applyDesktopPreferencesDefaultAgentProviderV1(ctx context.
 		return err
 	}
 	if !hasDefaultAgentProvider {
-		if _, err := s.db.ExecContext(ctx, `
+		if _, err := s.writeDB.ExecContext(ctx, `
 ALTER TABLE desktop_preferences
   ADD COLUMN default_agent_provider TEXT NOT NULL DEFAULT 'codex';`); err != nil {
 			return fmt.Errorf("migrate workspace database for desktop default agent provider: %w", err)
 		}
 	}
-	_, err = s.db.ExecContext(ctx, `
+	_, err = s.writeDB.ExecContext(ctx, `
 INSERT INTO tuttid_schema_migrations (id, applied_at_unix_ms)
   VALUES (?, ?);
 `, schemaMigrationDesktopPreferencesDefaultAgentProviderV1, now)
@@ -568,13 +568,13 @@ func (s *SQLiteStore) applyDesktopPreferencesAgentComposerDefaultsV1(ctx context
 		return err
 	}
 	if !hasAgentComposerDefaults {
-		if _, err := s.db.ExecContext(ctx, `
+		if _, err := s.writeDB.ExecContext(ctx, `
 ALTER TABLE desktop_preferences
   ADD COLUMN agent_composer_defaults_by_provider_json TEXT NOT NULL DEFAULT '{}';`); err != nil {
 			return fmt.Errorf("migrate workspace database for desktop agent composer defaults: %w", err)
 		}
 	}
-	_, err = s.db.ExecContext(ctx, `
+	_, err = s.writeDB.ExecContext(ctx, `
 INSERT INTO tuttid_schema_migrations (id, applied_at_unix_ms)
   VALUES (?, ?);
 `, schemaMigrationDesktopPreferencesAgentComposerDefaultsV1, now)
@@ -600,7 +600,7 @@ func (s *SQLiteStore) applyDesktopPreferencesAgentComposerDefaultsByAgentTargetV
 		return err
 	}
 	if !hasColumn {
-		if _, err := s.db.ExecContext(ctx, `
+		if _, err := s.writeDB.ExecContext(ctx, `
 ALTER TABLE desktop_preferences
   ADD COLUMN agent_composer_defaults_by_agent_target_json TEXT NOT NULL DEFAULT '{}';`); err != nil {
 			return fmt.Errorf("migrate workspace database for desktop agent composer defaults by agent target: %w", err)
@@ -609,7 +609,7 @@ ALTER TABLE desktop_preferences
 	if err := s.backfillAgentComposerDefaultsByAgentTarget(ctx); err != nil {
 		return fmt.Errorf("migrate workspace database for desktop agent composer defaults by agent target: %w", err)
 	}
-	_, err = s.db.ExecContext(ctx, `
+	_, err = s.writeDB.ExecContext(ctx, `
 INSERT INTO tuttid_schema_migrations (id, applied_at_unix_ms)
   VALUES (?, ?);
 `, schemaMigrationDesktopPreferencesAgentComposerDefaultsByAgentTargetV1, now)
@@ -625,7 +625,7 @@ INSERT INTO tuttid_schema_migrations (id, applied_at_unix_ms)
 // this data migration nothing reads the legacy column anymore, so remembered
 // defaults (including explicit clears) are fully owned by the new column.
 func (s *SQLiteStore) backfillAgentComposerDefaultsByAgentTarget(ctx context.Context) error {
-	row := s.db.QueryRowContext(ctx, `
+	row := s.writeDB.QueryRowContext(ctx, `
 SELECT agent_composer_defaults_by_provider_json, agent_composer_defaults_by_agent_target_json
 FROM desktop_preferences
 WHERE id = ?
@@ -665,7 +665,7 @@ WHERE id = ?
 	if err != nil {
 		return err
 	}
-	_, err = s.db.ExecContext(ctx, `
+	_, err = s.writeDB.ExecContext(ctx, `
 UPDATE desktop_preferences
 SET agent_composer_defaults_by_agent_target_json = ?
 WHERE id = ?
@@ -688,13 +688,13 @@ func (s *SQLiteStore) applyDesktopPreferencesBrowserUseConnectionModeV1(ctx cont
 		return err
 	}
 	if !hasBrowserUseConnectionMode {
-		if _, err := s.db.ExecContext(ctx, `
+		if _, err := s.writeDB.ExecContext(ctx, `
 ALTER TABLE desktop_preferences
   ADD COLUMN browser_use_connection_mode TEXT NOT NULL DEFAULT 'isolated';`); err != nil {
 			return fmt.Errorf("migrate workspace database for desktop browser use connection mode: %w", err)
 		}
 	}
-	_, err = s.db.ExecContext(ctx, `
+	_, err = s.writeDB.ExecContext(ctx, `
 INSERT INTO tuttid_schema_migrations (id, applied_at_unix_ms)
   VALUES (?, ?);
 `, schemaMigrationDesktopPreferencesBrowserUseConnectionModeV1, now)

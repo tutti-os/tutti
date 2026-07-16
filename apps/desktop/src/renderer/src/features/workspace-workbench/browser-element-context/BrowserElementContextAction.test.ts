@@ -63,3 +63,14 @@ test("browser element selection captures a readable path from the app root", () 
   assert.match(selectorSource, /return "#app"/u);
   assert.match(selectorSource, /return `\$\{tagName\}\$\{classNames\}`/u);
 });
+
+test("browser element selection follows tab switches and guest navigation", () => {
+  assert.match(source, /useActiveBrowserNodeWebview/u);
+  assert.match(source, /did-start-loading/u);
+  assert.match(source, /dom-ready/u);
+  assert.match(source, /session\.attempt/u);
+  assert.match(
+    source,
+    /A guest navigation destroys the injected Promise[\s\S]*navigationPending/u
+  );
+});

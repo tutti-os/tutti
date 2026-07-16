@@ -16,7 +16,7 @@ func (s *SQLiteStore) applyManagedCredentialsV1(ctx context.Context) error {
 	}
 
 	now := unixMs(time.Now().UTC())
-	_, err = s.db.ExecContext(ctx, `
+	_, err = s.writeDB.ExecContext(ctx, `
 CREATE TABLE IF NOT EXISTS managed_model_provider_credentials (
   workspace_id TEXT NOT NULL,
   provider_id TEXT NOT NULL,

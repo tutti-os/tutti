@@ -245,6 +245,55 @@ describe("projectWorkspaceAgentMessagesToConversationVM", () => {
     ]);
   });
 
+  it("keeps a streaming assistant message before a later tool call by durable sequence", () => {
+    const conversation = projectWorkspaceAgentMessagesToConversationVM({
+      activity: activity(),
+      session: session(),
+      messages: [
+        message({
+          messageId: "assistant-intro",
+          sequence: 2,
+          version: 8,
+          role: "assistant",
+          kind: "text",
+          status: "completed",
+          payload: { text: "I will start the agents." },
+          createdAtUnixMs: 100,
+          occurredAtUnixMs: 201
+        }),
+        message({
+          messageId: "tool-1",
+          sequence: 3,
+          version: 11,
+          role: "assistant",
+          kind: "tool_call",
+          status: "completed",
+          payload: {
+            callId: "task-1",
+            title: "Task",
+            toolName: "Task"
+          },
+          createdAtUnixMs: 202,
+          startedAtUnixMs: 200,
+          occurredAtUnixMs: 300,
+          completedAtUnixMs: 300
+        })
+      ]
+    });
+
+    expect(
+      conversation.rows.map((row) => {
+        if (row.kind === "message") {
+          return `assistant:${row.messages[0]?.body}`;
+        }
+        if (row.kind === "tool-group") {
+          return `tool:${row.calls[0]?.toolName}`;
+        }
+        return row.kind;
+      })
+    ).toEqual(["assistant:I will start the agents.", "tool:Agent"]);
+  });
+
   it("projects text, reasoning, errors, and unknown kinds conservatively", () => {
     const conversation = projectWorkspaceAgentMessagesToConversationVM({
       activity: activity(),

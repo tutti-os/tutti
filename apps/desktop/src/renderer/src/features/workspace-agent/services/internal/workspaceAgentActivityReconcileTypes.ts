@@ -1,5 +1,6 @@
 import type {
   AgentActivitySession,
+  AgentActivityTurn,
   AgentActivityUpdatedEvent
 } from "@tutti-os/agent-activity-core";
 import type {
@@ -17,6 +18,7 @@ export interface WorkspaceAgentActivityReconcileDependencies {
 export interface AgentActivitySessionDetail {
   session: AgentActivitySession;
   childSessions: AgentActivitySession[];
+  turns: AgentActivityTurn[];
 }
 
 export type WorkspaceAgentActivityBridgeEvent =

@@ -4,7 +4,7 @@ import { translate } from "../../../i18n/index";
 import { workspaceAgentProviderLabel } from "../../workspaceAgentProviderLabel";
 import { openAgentEnvPanel } from "../../agentEnv/agentEnvPanelStore";
 import {
-  classifyFailedAgentMessage,
+  classifyRecoverableAgentMessage,
   isProviderPlanLimitMessage,
   resolveAgentErrorPresentation
 } from "../../agentEnv/agentErrorPresentation";
@@ -17,13 +17,16 @@ import { AgentMessageDetailsDisclosure } from "./AgentMessageDetailsDisclosure";
 const ERROR_BANNER_CLASS_NAME =
   "border-[var(--on-danger-hover)] bg-[var(--on-danger)] text-[var(--state-danger)]";
 
-// Builds a synthetic visibleError from a plain failed message whose text is a
-// recognizable env failure, so it renders as the structured remediation card.
-export function recoverVisibleErrorFromFailedMessage(
+// Builds a synthetic visibleError from a plain message whose text and terminal
+// status identify a recognizable environment failure.
+export function recoverVisibleErrorFromMessage(
   message: AgentMessageContentVM,
   provider: string | null | undefined
 ): AgentMessageContentVM | null {
-  const code = classifyFailedAgentMessage(message.body);
+  const code = classifyRecoverableAgentMessage({
+    body: message.body,
+    statusKind: message.statusKind
+  });
   if (!code) {
     return null;
   }

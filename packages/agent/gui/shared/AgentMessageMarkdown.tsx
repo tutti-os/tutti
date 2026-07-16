@@ -53,7 +53,6 @@ import {
   isClickableMarkdownHref,
   isLocalAbsolutePath,
   isMentionOnlyMarkdownContent,
-  linkBareLocalAbsolutePaths,
   markdownUrlTransform,
   normalizeMentionMarkdownLinks,
   normalizeLocalPathMarkdownLinks,
@@ -194,15 +193,13 @@ export function AgentMessageMarkdown({
   const ContainerTag = inline ? "span" : "div";
   const normalizedContent = useMemo(
     () =>
-      linkBareLocalAbsolutePaths(
-        normalizeLocalPathMarkdownLinks(
-          normalizeMentionMarkdownLinks(
-            normalizePlainIssueMentionTitle
-              ? normalizePlainIssueMentionTitleContent(
-                  normalizePlainSessionMentionTitle(stabilizedContent)
-                )
-              : normalizePlainSessionMentionTitle(stabilizedContent)
-          )
+      normalizeLocalPathMarkdownLinks(
+        normalizeMentionMarkdownLinks(
+          normalizePlainIssueMentionTitle
+            ? normalizePlainIssueMentionTitleContent(
+                normalizePlainSessionMentionTitle(stabilizedContent)
+              )
+            : normalizePlainSessionMentionTitle(stabilizedContent)
         )
       ),
     [normalizePlainIssueMentionTitle, stabilizedContent]
@@ -249,9 +246,7 @@ export function AgentMessageMarkdown({
           previewMode={previewMode}
         />
       ),
-      code: (props: MarkdownDomProps<"code">) => (
-        <MarkdownCode {...props} onLinkClick={handleLinkClick} />
-      ),
+      code: (props: MarkdownDomProps<"code">) => <MarkdownCode {...props} />,
       img: (props: MarkdownDomProps<"img">) => (
         <MarkdownMedia {...props} enableZoom={enableImageZoom} />
       ),

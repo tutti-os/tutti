@@ -241,55 +241,6 @@ export function releaseCachedMarkdownMedia(
   }, CACHED_MARKDOWN_MEDIA_REVOKE_DELAY_MS);
 }
 
-export function isHttpUrl(value: string): boolean {
-  const candidate = value.trim();
-  if (!candidate || /\s/.test(candidate)) {
-    return false;
-  }
-  try {
-    const url = new URL(candidate);
-    return url.protocol === "http:" || url.protocol === "https:";
-  } catch {
-    return false;
-  }
-}
-
-export function linkBareLocalAbsolutePaths(content: string): string {
-  let out = "";
-  for (let index = 0; index < content.length; ) {
-    const markdownLinkEnd = markdownLinkEndIndex(content, index);
-    if (markdownLinkEnd > index) {
-      out += content.slice(index, markdownLinkEnd);
-      index = markdownLinkEnd;
-      continue;
-    }
-
-    const codeSpanEnd = codeSpanEndIndex(content, index);
-    if (codeSpanEnd > index) {
-      out += content.slice(index, codeSpanEnd);
-      index = codeSpanEnd;
-      continue;
-    }
-
-    if (isLocalPathStart(content, index)) {
-      const end = bareLocalPathEndIndex(content, index);
-      const rawPath = trimTrailingPathPunctuation(content.slice(index, end));
-      const trailing = content.slice(index + rawPath.length, end);
-      if (isLocalAbsolutePath(rawPath)) {
-        out += `[${escapeMarkdownLinkLabel(rawPath)}](${rawPath})${trailing}`;
-      } else {
-        out += content.slice(index, end);
-      }
-      index = end;
-      continue;
-    }
-
-    out += content[index];
-    index += 1;
-  }
-  return out;
-}
-
 export function normalizeLocalPathMarkdownLinks(content: string): string {
   let out = "";
   for (let index = 0; index < content.length; ) {
@@ -645,37 +596,4 @@ export function codeSpanEndIndex(content: string, index: number): number {
   const fence = "`".repeat(tickCount);
   const end = content.indexOf(fence, index + tickCount);
   return end < 0 ? -1 : end + tickCount;
-}
-
-export function isLocalPathStart(content: string, index: number): boolean {
-  if (content[index] !== "/" || content[index + 1] === "/") {
-    return false;
-  }
-  const previous = content[index - 1];
-  return (
-    previous === undefined ||
-    /\s/.test(previous) ||
-    previous === "(" ||
-    previous === "["
-  );
-}
-
-export function bareLocalPathEndIndex(content: string, index: number): number {
-  let end = index;
-  while (end < content.length) {
-    const char = content[end];
-    if (!char || /[\s<>[\](){}"'`]/.test(char)) {
-      break;
-    }
-    end += 1;
-  }
-  return end;
-}
-
-export function trimTrailingPathPunctuation(path: string): string {
-  return path.replace(/[.,;:!?，。；：！？]+$/g, "");
-}
-
-export function escapeMarkdownLinkLabel(label: string): string {
-  return label.replace(/([\\[\]])/g, "\\$1");
 }

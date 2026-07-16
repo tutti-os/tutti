@@ -265,6 +265,7 @@ func buildDaemonAPI(ctx context.Context, store workspacedata.CatalogStore, analy
 		AnalyticsReporter: analyticsReporter,
 		ManagedRuntime:    managedRuntimeResolver,
 		RunOutcomes:       runOutcomes,
+		StatusCache:       agentstatusservice.NewProviderStatusCache(),
 	}
 	accountService := accountservice.NewService("")
 	agentProcessTransport := agentdaemon.NewLocalProcessTransport()

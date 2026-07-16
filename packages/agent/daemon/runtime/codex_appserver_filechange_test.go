@@ -3,6 +3,8 @@ package agentruntime
 import (
 	"encoding/json"
 	"testing"
+
+	activityshared "github.com/tutti-os/tutti/packages/agent/daemon/activity/events"
 )
 
 func TestAppServerFileChangePreservesCwdInRawInput(t *testing.T) {
@@ -33,6 +35,35 @@ func TestAppServerFileChangePreservesCwdInRawInput(t *testing.T) {
 	}
 	if rawInput["changes"] == nil {
 		t.Fatalf("rawInput.changes was not preserved")
+	}
+}
+
+func TestAppServerFileChangeCompletionUpdatesCanonicalTurn(t *testing.T) {
+	t.Parallel()
+
+	session := standardTestSession(ProviderCodex)
+	normalizer := newACPTurnNormalizer()
+	update, ok := appServerItemToolCallUpdate(map[string]any{
+		"id":     "item-delete",
+		"type":   "fileChange",
+		"status": "completed",
+		"cwd":    "/workspace/project",
+		"changes": []any{map[string]any{
+			"path": "/workspace/project/obsolete.ts",
+			"kind": map[string]any{"type": "delete"},
+			"diff": "@@ -1 +0,0 @@\n-obsolete",
+		}},
+	}, true)
+	if !ok {
+		t.Fatal("fileChange item did not produce a tool-call update")
+	}
+	events, ok := normalizer.ToolCallEvents(session, "turn-1", update)
+	if !ok || len(events) != 2 || events[1].Type != activityshared.EventTurnUpdated {
+		t.Fatalf("fileChange events = %#v, want completed call followed by turn.updated", events)
+	}
+	files := payloadArray(payloadMap(events[1].Payload.Metadata, "fileChanges")["files"])
+	if len(files) != 1 || files[0]["change"] != "deleted" {
+		t.Fatalf("turn file changes = %#v, want deleted", files)
 	}
 }
 

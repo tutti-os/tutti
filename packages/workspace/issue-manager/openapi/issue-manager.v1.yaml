@@ -935,6 +935,7 @@ components:
       name: searchQuery
       in: query
       required: false
+      description: Case-insensitive substring search over the visible title only.
       schema:
         type: string
   responses:

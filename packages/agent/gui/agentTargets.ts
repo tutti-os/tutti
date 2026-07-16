@@ -201,6 +201,17 @@ export function resolveAgentGUIAgentTarget(input: {
   );
 }
 
+export function isAgentGUIAgentTargetComingSoon(
+  target: AgentGUIAgentTarget | null | undefined,
+  comingSoonProviders: readonly AgentGUIProvider[] = []
+): boolean {
+  return Boolean(
+    target &&
+    (target.availability?.status === "coming_soon" ||
+      comingSoonProviders.includes(target.provider))
+  );
+}
+
 export function agentGUIAgentTargetRefsEqual(
   left: AgentGUIAgentTargetRef | null | undefined,
   right: AgentGUIAgentTargetRef | null | undefined

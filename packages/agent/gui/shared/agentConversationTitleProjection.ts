@@ -1,7 +1,9 @@
 import { AGENT_PROVIDER_LABEL } from "../contexts/settings/domain/agentSettings.providerMeta.ts";
-import type {
-  AgentActivityMessage,
-  AgentPromptContentBlock
+import {
+  isPendingActivationViable,
+  type PendingActivationStatus,
+  type AgentActivityMessage,
+  type AgentPromptContentBlock
 } from "@tutti-os/agent-activity-core";
 import {
   extractRichTextLinksFromContent,
@@ -135,7 +137,7 @@ export function resolveAgentGUIConversationTitleDisplayPrompt(input: {
     content: readonly AgentPromptContentBlock[];
     displayPrompt?: string;
     mode: "existing" | "new";
-    status: string;
+    status: PendingActivationStatus;
   } | null;
   allowEmptyTitle?: boolean;
   firstUserDisplayPrompt?: string | null;
@@ -162,7 +164,7 @@ export function resolveAgentGUIConversationBrowserFreeTitle(input: {
     content: readonly AgentPromptContentBlock[];
     displayPrompt?: string;
     mode: "existing" | "new";
-    status: string;
+    status: PendingActivationStatus;
   } | null;
   allowEmptyTitle?: boolean;
   firstUserDisplayPrompt?: string | null;
@@ -265,13 +267,14 @@ function resolveAgentGUIConversationTitlePrompt(input: {
     content: readonly AgentPromptContentBlock[];
     displayPrompt?: string;
     mode: "existing" | "new";
-    status: string;
+    status: PendingActivationStatus;
   } | null;
   firstUserDisplayPrompt?: string | null;
   messages?: readonly AgentActivityMessage[];
 }): string {
   const activationPrompt =
-    input.activation?.mode === "new" && input.activation.status !== "failed"
+    input.activation?.mode === "new" &&
+    isPendingActivationViable(input.activation)
       ? agentGUIActivationPromptText(
           input.activation.content,
           input.activation.displayPrompt ?? null

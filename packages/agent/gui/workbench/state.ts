@@ -6,7 +6,6 @@ import {
   agentGuiWorkbenchProviders,
   normalizeAgentGuiWorkbenchProvider
 } from "./providerCatalog.ts";
-import { agentGuiWorkbenchProviderFromIdentifier } from "./launch.ts";
 import type {
   AgentGuiWorkbenchComposerOverrides,
   AgentGuiWorkbenchComposerOverridesByAgentTargetId,
@@ -168,30 +167,6 @@ export function areAgentGuiWorkbenchNodeStatesEqual(
     left.provider === right.provider &&
     (left.agentTargetId ?? null) === (right.agentTargetId ?? null)
   );
-}
-
-export function agentGuiWorkbenchProviderFromInstanceId(
-  instanceId: string | null | undefined
-): AgentGuiWorkbenchProvider {
-  const provider = agentGuiWorkbenchProviderFromInstanceIdOrNull(instanceId);
-  if (!provider) {
-    throw new Error("agent_gui_workbench.instance_provider_required");
-  }
-  return provider;
-}
-
-/**
- * Like {@link agentGuiWorkbenchProviderFromInstanceId} but returns `null`
- * instead of defaulting to `"codex"` when the provider cannot be determined
- * yet (e.g. a freshly created session whose instanceId does not encode a
- * provider). Callers that render a provider icon use this so they can show a
- * neutral placeholder during that transient window instead of flashing the
- * wrong provider's icon.
- */
-export function agentGuiWorkbenchProviderFromInstanceIdOrNull(
-  instanceId: string | null | undefined
-): AgentGuiWorkbenchProvider | null {
-  return agentGuiWorkbenchProviderFromIdentifier(instanceId);
 }
 
 export function createAgentGuiWorkbenchNodeStateSource(input: {

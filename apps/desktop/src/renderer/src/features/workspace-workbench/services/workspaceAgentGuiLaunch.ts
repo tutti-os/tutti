@@ -1,6 +1,4 @@
 import {
-  agentGuiWorkbenchInstanceId,
-  agentGuiWorkbenchProviderFromIdentifier,
   agentGuiWorkbenchProviderFromLaunchRequest,
   agentGuiWorkbenchTypeId,
   agentGuiWorkbenchUnifiedDockEntryId,
@@ -11,8 +9,6 @@ import {
 } from "@tutti-os/agent-gui/workbench/launch";
 
 export {
-  agentGuiWorkbenchInstanceId as workspaceAgentGuiInstanceId,
-  agentGuiWorkbenchProviderFromIdentifier as workspaceAgentGuiProviderFromIdentifier,
   agentGuiWorkbenchProviderFromLaunchRequest as workspaceAgentGuiProviderFromLaunchRequest,
   agentGuiWorkbenchTypeId as workspaceAgentGuiNodeID,
   agentGuiWorkbenchUnifiedDockEntryId as workspaceAgentGuiUnifiedDockEntryId,

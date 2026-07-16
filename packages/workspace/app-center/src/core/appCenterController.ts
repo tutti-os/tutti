@@ -432,6 +432,7 @@ export class WorkspaceAppCenterController extends WorkspaceAppCenterControllerSt
     const sequence = ++this.appLoadSequence;
     this.store.workspaceId = normalizedWorkspaceId;
     this.store.error = null;
+    this.store.catalogStatus = "loading";
     try {
       const snapshot =
         await this.dependencies.gateway.refreshWorkspaceAppCatalog(
@@ -465,6 +466,7 @@ export class WorkspaceAppCenterController extends WorkspaceAppCenterControllerSt
         });
         return;
       }
+      this.store.catalogStatus = "failed";
       this.setUnavailableError(error, {
         operation: "app_center.refresh_catalog",
         workspaceId: normalizedWorkspaceId

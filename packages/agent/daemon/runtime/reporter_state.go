@@ -71,6 +71,11 @@ func statePatchFromSessionEvent(source agentsessionstore.EventSource, event acti
 		}
 	}
 	applyProviderInitiatedInteractionTurnToPatch(&patch, event)
+	if patch.Turn != nil {
+		if fileChanges := payloadMap(event.Payload.Metadata, "fileChanges"); len(fileChanges) > 0 {
+			patch.Turn.FileChanges = clonePayload(fileChanges)
+		}
+	}
 	if !applyLifecycleSnapshotToPatch(&patch, event) {
 		applyExplicitTurnLifecycleToPatch(&patch, event)
 	}

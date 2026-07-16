@@ -301,8 +301,7 @@ export function resolveWorkspaceFileManagerContextMenuViewState(input: {
       !isSearchMode,
     showOpenInAppBrowserAction:
       state.capabilities.canOpenInAppBrowser && !isExternalLocation,
-    showOpenInDefaultBrowserAction:
-      state.capabilities.canOpenInDefaultBrowser && !isExternalLocation,
+    showOpenInDefaultBrowserAction: state.capabilities.canOpenInDefaultBrowser,
     showOpenInFileViewerAction:
       contextMenuEntry !== null &&
       isContextMenuFile &&

@@ -272,7 +272,7 @@ describe("agent GUI workbench contribution copy", () => {
       dockEntryId: agentGuiWorkbenchUnifiedDockEntryId(),
       title: "Agent"
     });
-    expect(launchResult?.instanceId).toContain("agent-gui:claude-code:panel:");
+    expect(launchResult?.instanceId).toMatch(/^agent-gui:instance:/);
   });
 
   it("clears stale target state when opening a session without a target payload", () => {
@@ -339,7 +339,7 @@ describe("agent GUI workbench contribution copy", () => {
     });
   });
 
-  it("clears the active session when prefill launches reuse an agent node", () => {
+  it("opens prefill launches in a fresh node without overwriting an active session", () => {
     const contribution = createTestAgentGuiWorkbenchContribution({
       renderBody: () => null,
       workspaceId: "workspace-1"
@@ -381,7 +381,7 @@ describe("agent GUI workbench contribution copy", () => {
       | null
       | undefined;
 
-    expect(prefillLaunch?.instanceId).toBe(sessionLaunch?.instanceId);
+    expect(prefillLaunch?.instanceId).not.toBe(sessionLaunch?.instanceId);
     expect(
       contribution.externalStateSource?.getSnapshotNodeState?.({
         instanceId: prefillLaunch?.instanceId ?? "",
@@ -392,6 +392,17 @@ describe("agent GUI workbench contribution copy", () => {
       conversationRailCollapsed: false,
       conversationRailWidthPx: null,
       lastActiveAgentSessionId: null
+    });
+    expect(
+      contribution.externalStateSource?.getSnapshotNodeState?.({
+        instanceId: sessionLaunch?.instanceId ?? "",
+        typeId: agentGuiWorkbenchTypeId
+      } as never)
+    ).toEqual({
+      agentTargetId: "local:codex",
+      conversationRailCollapsed: false,
+      conversationRailWidthPx: null,
+      lastActiveAgentSessionId: "session-codex-1"
     });
   });
 
@@ -441,9 +452,7 @@ describe("agent GUI workbench contribution copy", () => {
       reuseDockEntryNode: true,
       title: "Agent"
     });
-    expect(launchResult?.instanceId).toBe(
-      "agent-gui:claude-code:target:local%3Aclaude-code"
-    );
+    expect(launchResult?.instanceId).toMatch(/^agent-gui:instance:/);
     expect(
       contribution.externalStateSource?.getSnapshotNodeState?.({
         instanceId: launchResult?.instanceId ?? "",
@@ -519,9 +528,7 @@ describe("agent GUI workbench contribution copy", () => {
       ["local:codex"],
       ["local:claude-code"]
     ]);
-    expect(launchResult?.instanceId).toBe(
-      "agent-gui:claude-code:target:local%3Aclaude-code"
-    );
+    expect(launchResult?.instanceId).toMatch(/^agent-gui:instance:/);
     unsubscribe();
   });
 
@@ -555,9 +562,7 @@ describe("agent GUI workbench contribution copy", () => {
       reuseDockEntryNode: true,
       title: "Agent"
     });
-    expect(launchResult?.instanceId).toBe(
-      "agent-gui:claude-code:target:local%3Aclaude-code"
-    );
+    expect(launchResult?.instanceId).toMatch(/^agent-gui:instance:/);
     expect(
       contribution.externalStateSource?.getSnapshotNodeState?.({
         instanceId: launchResult?.instanceId ?? "",
@@ -581,7 +586,7 @@ describe("agent GUI workbench contribution copy", () => {
     });
     const [dockEntry] = contribution.dockEntries ?? [];
 
-    // The regular launch reuses the target-keyed instance...
+    // The regular launch can reuse the contribution's opaque target binding...
     expect(dockEntry?.launchPayload).not.toHaveProperty("openInNewWindow");
     // ...while the "New window" payload forces a fresh window.
     expect(dockEntry?.newWindowLaunchPayload).toMatchObject({
@@ -604,12 +609,9 @@ describe("agent GUI workbench contribution copy", () => {
       | null
       | undefined;
 
-    // A unique per-launch panel instance (not the shared target-keyed id) so
+    // A unique opaque per-launch instance so
     // the workbench opens a new node instead of re-focusing the existing one.
-    expect(launchResult?.instanceId).toMatch(/^agent-gui:claude-code:panel:/);
-    expect(launchResult?.instanceId).not.toBe(
-      "agent-gui:claude-code:target:local%3Aclaude-code"
-    );
+    expect(launchResult?.instanceId).toMatch(/^agent-gui:instance:/);
     expect(launchResult?.cascadeOffset).toBeDefined();
     // The new window still commits to the resolved target/provider.
     expect(
@@ -1046,8 +1048,8 @@ describe("agent GUI workbench contribution copy", () => {
       }
     });
 
-    expect(existingLaunch?.instanceId).toContain("agent-gui:codex:panel:");
-    expect(newWindowLaunch?.instanceId).toContain("agent-gui:codex:panel:");
+    expect(existingLaunch?.instanceId).toMatch(/^agent-gui:instance:/);
+    expect(newWindowLaunch?.instanceId).toMatch(/^agent-gui:instance:/);
     expect(newWindowLaunch?.instanceId).not.toBe(existingLaunch?.instanceId);
     expect(existingLaunch?.cascadeOffset).toBeUndefined();
     expect(newWindowLaunch?.cascadeOffset).toEqual(
@@ -1100,10 +1102,64 @@ describe("agent GUI workbench contribution copy", () => {
       payload
     });
 
-    expect(firstLaunch?.instanceId).toContain("agent-gui:codex:panel:");
+    expect(firstLaunch?.instanceId).toMatch(/^agent-gui:instance:/);
     expect(relaunch?.instanceId).toBe(firstLaunch?.instanceId);
     expect(firstLaunch?.preserveExistingNodeFrame).not.toBe(true);
     expect(relaunch?.preserveExistingNodeFrame).toBe(true);
+  });
+
+  it("keeps different sessions on the same target in different nodes", async () => {
+    const contribution = createTestAgentGuiWorkbenchContribution({
+      renderBody: () => null,
+      workspaceId: "workspace-1"
+    });
+    const baseRequest = {
+      layoutConstraints: testLaunchLayout.layoutConstraints,
+      reason: "host" as const,
+      surfaceSize: testLaunchLayout.surfaceSize,
+      typeId: "agent-gui",
+      workspaceId: "workspace-1"
+    };
+    const launchSession = (agentSessionId: string) =>
+      contribution.onLaunchRequest?.({
+        ...baseRequest,
+        payload: {
+          agentSessionId,
+          agentTargetId: "local:codex",
+          provider: "codex"
+        }
+      });
+
+    const firstSessionLaunch = await launchSession("session-1");
+    const secondSessionLaunch = await launchSession("session-2");
+    const secondSessionRelaunch = await launchSession("session-2");
+
+    expect(firstSessionLaunch?.instanceId).toMatch(/^agent-gui:instance:/);
+    expect(secondSessionLaunch?.instanceId).toMatch(/^agent-gui:instance:/);
+    expect(secondSessionLaunch?.instanceId).not.toBe(
+      firstSessionLaunch?.instanceId
+    );
+    expect(secondSessionRelaunch?.instanceId).toBe(
+      secondSessionLaunch?.instanceId
+    );
+    expect(
+      contribution.externalStateSource?.getSnapshotNodeState?.({
+        instanceId: firstSessionLaunch?.instanceId ?? "",
+        typeId: agentGuiWorkbenchTypeId
+      } as never)
+    ).toMatchObject({
+      agentTargetId: "local:codex",
+      lastActiveAgentSessionId: "session-1"
+    });
+    expect(
+      contribution.externalStateSource?.getSnapshotNodeState?.({
+        instanceId: secondSessionLaunch?.instanceId ?? "",
+        typeId: agentGuiWorkbenchTypeId
+      } as never)
+    ).toMatchObject({
+      agentTargetId: "local:codex",
+      lastActiveAgentSessionId: "session-2"
+    });
   });
 
   it("does not treat a drifted session-keyed window as the requested session", async () => {
@@ -1154,7 +1210,7 @@ describe("agent GUI workbench contribution copy", () => {
     });
 
     expect(relaunch?.instanceId).not.toBe("agent-gui:codex:session:session-1");
-    expect(relaunch?.instanceId).toContain("agent-gui:codex:panel:");
+    expect(relaunch?.instanceId).toMatch(/^agent-gui:instance:/);
     expect(relaunch?.preserveExistingNodeFrame).not.toBe(true);
   });
 
@@ -1671,6 +1727,7 @@ describe("agent GUI workbench contribution copy", () => {
         displayMode: "floating",
         dragHandleProps: {},
         externalNodeState: {
+          agentTargetId: "local:codex",
           conversationRailCollapsed: false,
           conversationRailWidthPx: 360,
           lastActiveAgentSessionId: "session-1"
@@ -1750,7 +1807,7 @@ describe("agent GUI workbench contribution copy", () => {
     fireEvent.click(detachedWindowButton);
     expect(openDetachedWindow).toHaveBeenCalledWith({
       agentSessionId: "session-1",
-      agentTargetId: null,
+      agentTargetId: "local:codex",
       provider: "codex",
       workspaceId: "workspace-1"
     });
@@ -1950,6 +2007,9 @@ describe("agent GUI workbench contribution copy", () => {
     );
     expect(css).toMatch(
       /\.agent-gui-conversation__interactive-feedback-composer\s+\.agent-gui-conversation__interactive-prompt-textarea\s*{[^}]*min-height:\s*36px;[^}]*border:\s*0;[^}]*padding:\s*9px 10px;/s
+    );
+    expect(css).toMatch(
+      /\.agent-gui-conversation__interactive-feedback-send-button\s+\.agent-gui-conversation__interactive-option-spinner\s*{[^}]*position:\s*static;[^}]*top:\s*auto;[^}]*right:\s*auto;[^}]*transform:\s*none;/s
     );
   });
 

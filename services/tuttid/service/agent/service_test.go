@@ -546,7 +546,6 @@ func TestServiceCreateReportsNodeResults(t *testing.T) {
 
 	assertAgentNodeSequence(t, reporter.events, []string{
 		"content_normalized",
-		"provider_runtime_checked",
 		"model_validated",
 		"cwd_resolved",
 		"runtime_prepared",
@@ -1888,6 +1887,8 @@ func TestServiceCreateCleansPreparedRuntimeWhenStartFails(t *testing.T) {
 	runtime := newFakeRuntime()
 	runtime.startErr = startErr
 	service := newTestService(runtime)
+	checker := &fakeProviderAvailabilityChecker{}
+	service.AvailabilityChecker = checker
 	cleanupCalls := make([]runtimeprep.CleanupInput, 0)
 	service.RuntimePreparer = fakeRuntimePreparer{
 		result:       runtimeprep.PreparedRuntime{Cwd: "/prepared/workdir"},
@@ -1907,6 +1908,12 @@ func TestServiceCreateCleansPreparedRuntimeWhenStartFails(t *testing.T) {
 		cleanupCalls[0].WorkspaceID != "ws-1" ||
 		cleanupCalls[0].AgentSessionID != "session-1" {
 		t.Fatalf("cleanup calls = %#v", cleanupCalls)
+	}
+	if checker.callCount != 0 {
+		t.Fatalf("availability checker calls = %d, want 0", checker.callCount)
+	}
+	if len(checker.invalidations) != 1 || checker.invalidations[0] != "codex" {
+		t.Fatalf("availability invalidations = %#v, want [codex]", checker.invalidations)
 	}
 }
 
@@ -1936,7 +1943,7 @@ func TestServiceCreateRejectsInvalidContentBeforePreparingRuntime(t *testing.T) 
 	}
 }
 
-func TestServiceCreateChecksProviderAdapterBeforePreparingRuntime(t *testing.T) {
+func TestServiceCreateDoesNotRunProviderStatusBeforePreparingRuntime(t *testing.T) {
 	runtime := newFakeRuntime()
 	service := newTestService(runtime)
 	var prepareInput runtimeprep.PrepareInput
@@ -1969,28 +1976,20 @@ func TestServiceCreateChecksProviderAdapterBeforePreparingRuntime(t *testing.T) 
 		InitialContent: TextPromptContent("hello"),
 		Provider:       "claude-code",
 	})
-	var unavailable *ProviderUnavailableError
-	if !errors.As(err, &unavailable) {
-		t.Fatalf("Create error = %v, want ProviderUnavailableError", err)
+	if err != nil {
+		t.Fatalf("Create error = %v, want nil", err)
 	}
-	if unavailable.Provider != "claude-code" ||
-		unavailable.ReasonCode != "acp_adapter_not_found" ||
-		unavailable.Message != "ACP adapter not found" {
-		t.Fatalf("provider unavailable error = %#v", unavailable)
+	if checker.callCount != 0 {
+		t.Fatalf("availability checker callCount = %d, want 0", checker.callCount)
 	}
-	if checker.callCount != 1 ||
-		len(checker.providers) != 1 ||
-		checker.providers[0] != "claude-code" {
-		t.Fatalf("availability checker providers = %#v, callCount = %d", checker.providers, checker.callCount)
+	if prepareInput.WorkspaceID != "ws-1" {
+		t.Fatalf("runtime preparer input = %#v, want workspace ws-1", prepareInput)
 	}
-	if prepareInput.WorkspaceID != "" {
-		t.Fatalf("runtime preparer input = %#v, want not called", prepareInput)
+	if len(runtime.startCalls) != 1 {
+		t.Fatalf("start calls = %d, want 1", len(runtime.startCalls))
 	}
-	if len(runtime.startCalls) != 0 {
-		t.Fatalf("start calls = %d, want 0", len(runtime.startCalls))
-	}
-	if len(runtime.execCalls) != 0 {
-		t.Fatalf("exec calls = %d, want 0", len(runtime.execCalls))
+	if len(runtime.execCalls) != 1 {
+		t.Fatalf("exec calls = %d, want 1", len(runtime.execCalls))
 	}
 }
 
@@ -2029,7 +2028,7 @@ func TestServiceCreateDoesNotTreatAuthRequiredAsInstallNeeded(t *testing.T) {
 	}
 }
 
-func TestServiceCreateCachesProviderAvailabilityCheck(t *testing.T) {
+func TestServiceCreateNeverRepeatsApplicationProviderProbe(t *testing.T) {
 	runtime := newFakeRuntime()
 	service := newTestService(runtime)
 	checker := &fakeProviderAvailabilityChecker{
@@ -2051,8 +2050,8 @@ func TestServiceCreateCachesProviderAvailabilityCheck(t *testing.T) {
 			t.Fatalf("Create(%s) error = %v, want nil", sessionID, err)
 		}
 	}
-	if checker.callCount != 1 {
-		t.Fatalf("availability checker calls = %d, want 1", checker.callCount)
+	if checker.callCount != 0 {
+		t.Fatalf("availability checker calls = %d, want 0", checker.callCount)
 	}
 	if len(runtime.startCalls) != 2 {
 		t.Fatalf("start calls = %d, want 2", len(runtime.startCalls))
@@ -6893,10 +6892,11 @@ type fakeMessageReader struct {
 }
 
 type fakeProviderAvailabilityChecker struct {
-	err       error
-	providers []string
-	result    []ProviderAvailability
-	callCount int
+	err           error
+	providers     []string
+	result        []ProviderAvailability
+	invalidations []string
+	callCount     int
 }
 
 func (f *fakeProviderAvailabilityChecker) ListProviderAvailability(_ context.Context, providers []string) ([]ProviderAvailability, error) {
@@ -6906,6 +6906,10 @@ func (f *fakeProviderAvailabilityChecker) ListProviderAvailability(_ context.Con
 		return nil, f.err
 	}
 	return append([]ProviderAvailability(nil), f.result...), nil
+}
+
+func (f *fakeProviderAvailabilityChecker) InvalidateProviderAvailability(provider string) {
+	f.invalidations = append(f.invalidations, provider)
 }
 
 type fakeSessionReader struct {

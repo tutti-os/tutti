@@ -1,4 +1,5 @@
 import {
+  isPendingActivationViable,
   selectEngineSessionDetailHydrated,
   selectLatestActivationForSession,
   type AgentSessionEngine,
@@ -122,7 +123,7 @@ export function useAgentGUIConversationSelectionController(
   useEffect(() => {
     if (
       activePendingActivation?.mode === "new" &&
-      activePendingActivation.status === "failed" &&
+      !isPendingActivationViable(activePendingActivation) &&
       activeConversationIdRef.current === activePendingActivation.agentSessionId
     ) {
       activeConversationIdRef.current = null;
@@ -136,10 +137,12 @@ export function useAgentGUIConversationSelectionController(
           activePendingActivation.agentSessionId
         )
       );
-      setDetailError(
-        activePendingActivation.errorMessage ||
-          translate("agentHost.agentGui.sessionActivationFailed")
-      );
+      if (activePendingActivation.status === "failed") {
+        setDetailError(
+          activePendingActivation.errorMessage ||
+            translate("agentHost.agentGui.sessionActivationFailed")
+        );
+      }
       return;
     }
     if (!activeConversationId) return;

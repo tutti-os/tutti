@@ -345,7 +345,6 @@ export function useAgentGUINodeController({
   const {
     activeConversationIdRef,
     agentActivitySnapshotRef,
-    composerOptionsProjectKeyRef,
     conversationIdsRef,
     conversationsRef,
     dataRef,
@@ -616,35 +615,33 @@ export function useAgentGUINodeController({
     workspaceId
   });
 
-  const { loadComposerOptionsForTarget, loadDraftComposerOptions } =
-    useAgentGUIComposerOptionsSync({
-      activeConversationId,
-      activeConversationIdRef,
-      agentActivityRuntime,
-      composerOptionsProjectKeyRef,
-      composerTargetData,
-      conversationFilter,
-      currentUserId,
-      data,
-      dataRef,
-      defaultReasoningEffort,
-      draftSettingsBySessionIdRef,
-      isComposerHome,
-      isComposerHomeRef,
-      isCreatingConversation,
-      loadDraftComposerOptionsRef,
-      loadSessionState,
-      previewMode,
-      providerComposerOptions,
-      reloadSelectedConversation,
-      selectedComposerTargetDataRef,
-      selectedProjectPath,
-      selectedProjectPathRef,
-      sessionEngine,
-      syncConversationListProjection,
-      workspaceId,
-      workspacePath
-    });
+  const { loadDraftComposerOptions } = useAgentGUIComposerOptionsSync({
+    activeConversationId,
+    activeConversationIdRef,
+    agentActivityRuntime,
+    composerTargetData,
+    conversationFilter,
+    currentUserId,
+    data,
+    dataRef,
+    defaultReasoningEffort,
+    draftSettingsBySessionIdRef,
+    isComposerHome,
+    isComposerHomeRef,
+    isCreatingConversation,
+    loadDraftComposerOptionsRef,
+    loadSessionState,
+    previewMode,
+    providerComposerOptions,
+    reloadSelectedConversation,
+    selectedComposerTargetDataRef,
+    selectedProjectPath,
+    selectedProjectPathRef,
+    sessionEngine,
+    syncConversationListProjection,
+    workspaceId,
+    workspacePath
+  });
   const operationActions = useAgentGUIOperationActions({
     ...providerCatalogSelection,
     ...localState,
@@ -739,7 +736,6 @@ export function useAgentGUINodeController({
     isCreatingConversation,
     isLoadingConversations,
     isLoadingMessages,
-    loadComposerOptionsForTarget,
     normalizedComingSoonProviders,
     operationActions,
     persistActiveConversation,

@@ -135,6 +135,8 @@ function reduceQueueOwnedState(
       );
     case "queue/suspended":
       return suspendQueue(state, intent.agentSessionId, intent.reason);
+    case "session/stopRequested":
+      return suspendQueue(state, intent.agentSessionId, "user_stop");
     case "queue/resumed":
       return context.deletedSessionIds[intent.agentSessionId.trim()]
         ? unchanged(state)

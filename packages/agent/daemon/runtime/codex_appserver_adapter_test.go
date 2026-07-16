@@ -101,6 +101,7 @@ type scriptedAppServerConnection struct {
 	goal                            map[string]any
 	goalStartsTurn                  bool
 	goalNotificationsBeforeResponse bool
+	goalUpdatedOmitsTurnID          bool
 	goalTurnsStarted                int
 	goalCompletionAfterTurns        int
 	goalTurnFailAtTurn              int // goal-driven turn number (1-based) that settles as "failed" instead of "completed"
@@ -647,14 +648,17 @@ func (c *scriptedAppServerConnection) Send(data []byte) error {
 				if goalStatus == "complete" && goalTurnNumber > 1 {
 					messageText = "Goal complete."
 				}
-				// Real Codex exposes the only turn-scoped Goal provenance on
-				// thread/goal/updated. Tests must not let turn/started inherit
-				// the adapter's mutable current Goal identity.
-				c.notify(appServerNotifyThreadGoalUpdated, map[string]any{
+				goalUpdate := map[string]any{
 					"threadId": "codex-thread-1",
-					"turnId":   turnID,
 					"goal":     goal,
-				})
+				}
+				c.mu.Lock()
+				omitTurnID := c.goalUpdatedOmitsTurnID
+				c.mu.Unlock()
+				if !omitTurnID {
+					goalUpdate["turnId"] = turnID
+				}
+				c.notify(appServerNotifyThreadGoalUpdated, goalUpdate)
 				c.notify(appServerNotifyTurnStarted, map[string]any{
 					"threadId": "codex-thread-1",
 					"turn":     map[string]any{"id": turnID, "status": "inProgress", "items": []any{}},
@@ -3694,6 +3698,227 @@ func TestCodexGoalContinuationNudgeDropsSupersededRevision(t *testing.T) {
 	}
 }
 
+func TestCodexGoalSetAdoptsTurnWhenGoalUpdatedOmitsTurnID(t *testing.T) {
+	adapter, transport, session := startedAppServerAdapter(t)
+	adapter.goalContinuationGraceWindow = time.Hour
+	transport.conn.mu.Lock()
+	transport.conn.goalStartsTurn = true
+	transport.conn.goalCompletionAfterTurns = 2
+	transport.conn.goalUpdatedOmitsTurnID = true
+	transport.conn.mu.Unlock()
+
+	var sinkMu sync.Mutex
+	var sinkEvents []activityshared.Event
+	adapter.SetSessionEventSink(func(_ string, events []activityshared.Event) {
+		sinkMu.Lock()
+		defer sinkMu.Unlock()
+		sinkEvents = append(sinkEvents, events...)
+	})
+
+	_, err := adapter.ApplyGoal(context.Background(), session, GoalApplyInput{
+		Action: GoalControlSet, Objective: "ship the compatibility fix",
+		OperationID: "goal-op-no-turn-id", Revision: 1,
+	})
+	if err != nil {
+		t.Fatalf("ApplyGoal: %v", err)
+	}
+
+	waitForCondition(t, func() bool {
+		sinkMu.Lock()
+		defer sinkMu.Unlock()
+		for _, event := range sinkEvents {
+			if event.Type == activityshared.EventMessageAppended &&
+				event.Payload.Role == activityshared.MessageRoleAssistant &&
+				event.Payload.Content == "I'll work on the goal." {
+				return true
+			}
+		}
+		return false
+	})
+
+	sinkMu.Lock()
+	foundClaimedTurn := false
+	for _, event := range sinkEvents {
+		if event.Type == activityshared.EventTurnStarted &&
+			event.Payload.Metadata["sourceGoalOperationId"] == "goal-op-no-turn-id" &&
+			event.Payload.Metadata["goalProvenanceMode"] == "ordered_goal_continuation_claim" {
+			foundClaimedTurn = true
+		}
+	}
+	sinkMu.Unlock()
+	if !foundClaimedTurn {
+		t.Fatalf("missing compatibility-provenance turn start: %#v", sinkEvents)
+	}
+	if requests := appServerRequestParamsList(t, transport.conn, appServerMethodTurnInterrupt); len(requests) != 0 {
+		t.Fatalf("goal turn without notification turnId was interrupted: %#v", requests)
+	}
+}
+
+func TestNormalizeCodexGoalObservationUsesCanonicalSessionFields(t *testing.T) {
+	t.Parallel()
+
+	goal := normalizedCodexGoal(map[string]any{
+		"threadId":        "codex-thread-1",
+		"objective":       "ship it",
+		"status":          "usage_limited",
+		"tokenBudget":     int64(200000),
+		"tokensUsed":      int64(116818),
+		"timeUsedSeconds": int64(163),
+		"createdAt":       int64(1750000000),
+		"updatedAt":       int64(1750000001),
+	})
+
+	if got := asString(goal["objective"]); got != "ship it" {
+		t.Fatalf("objective = %q, want ship it", got)
+	}
+	if got := asString(goal["status"]); got != "usageLimited" {
+		t.Fatalf("status = %q, want usageLimited", got)
+	}
+	if got, ok := int64Value(goal["durationMs"]); !ok || got != 163000 {
+		t.Fatalf("durationMs = %#v, want 163000", goal["durationMs"])
+	}
+	if got, ok := int64Value(goal["tokens"]); !ok || got != 116818 {
+		t.Fatalf("tokens = %#v, want 116818", goal["tokens"])
+	}
+	for _, providerField := range []string{
+		"threadId", "tokenBudget", "tokensUsed", "timeUsedSeconds", "createdAt", "updatedAt",
+	} {
+		if _, exists := goal[providerField]; exists {
+			t.Fatalf("canonical goal retained provider field %q: %#v", providerField, goal)
+		}
+	}
+
+	// Normalization is idempotent because status-only local updates may pass a
+	// previously normalized snapshot back through applyGoalUpdate.
+	normalizedAgain := normalizedCodexGoal(goal)
+	if got, ok := int64Value(normalizedAgain["durationMs"]); !ok || got != 163000 {
+		t.Fatalf("idempotent durationMs = %#v, want 163000", normalizedAgain["durationMs"])
+	}
+	if got, ok := int64Value(normalizedAgain["tokens"]); !ok || got != 116818 {
+		t.Fatalf("idempotent tokens = %#v, want 116818", normalizedAgain["tokens"])
+	}
+}
+
+func TestCodexGoalContinuationClaimChainsAcrossSettledTurns(t *testing.T) {
+	adapter, _, session := startedAppServerAdapter(t)
+	identity := goalOperationIdentity{operationID: "goal-op-chain", revision: 3}
+	adapter.replaceGoalOperationIdentity(session.AgentSessionID, identity.operationID, identity.revision, 0)
+	adapter.applyGoalUpdate(session.AgentSessionID, map[string]any{
+		"threadId":  session.ProviderSessionID,
+		"objective": "finish the chain",
+		"status":    "active",
+	})
+	adapter.armGoalContinuationClaim(session.AgentSessionID, identity)
+
+	appSession := adapter.getSession(session.AgentSessionID)
+	reducer := newCodexAppServerReducer(adapter)
+	startTurn := func(providerTurnID string) {
+		reducer.ReduceNotification(appSession.client, session, "", acpMessage{
+			Method: appServerNotifyTurnStarted,
+			Params: mustJSONRawMessage(t, map[string]any{
+				"threadId": session.ProviderSessionID,
+				"turn":     map[string]any{"id": providerTurnID, "status": "inProgress", "items": []any{}},
+			}),
+		}, nil, nil)
+	}
+
+	startTurn("provider-goal-chain-1")
+	waitForCondition(t, func() bool {
+		return adapter.sessionActiveTurnID(session.AgentSessionID) == "provider-goal-chain-1"
+	})
+	reducer.ReduceNotification(appSession.client, session, "", acpMessage{
+		Method: appServerNotifyTurnCompleted,
+		Params: mustJSONRawMessage(t, map[string]any{
+			"threadId": session.ProviderSessionID,
+			"turn":     map[string]any{"id": "provider-goal-chain-1", "status": "completed", "items": []any{}},
+		}),
+	}, nil, nil)
+	waitForCondition(t, func() bool {
+		return adapter.sessionActiveTurn(session.AgentSessionID) == nil
+	})
+
+	startTurn("provider-goal-chain-2")
+	waitForCondition(t, func() bool {
+		active := adapter.sessionActiveTurn(session.AgentSessionID)
+		return active != nil &&
+			adapter.sessionActiveTurnID(session.AgentSessionID) == "provider-goal-chain-2" &&
+			active.goalIdentity == identity &&
+			active.goalProvenance == "ordered_goal_continuation_claim"
+	})
+}
+
+func TestCodexGoalContinuationClaimRejectsSupersededRevision(t *testing.T) {
+	adapter, transport, session := startedAppServerAdapter(t)
+	adapter.goalProvenanceGraceWindow = 10 * time.Millisecond
+	oldIdentity := goalOperationIdentity{operationID: "goal-op-old-claim", revision: 1}
+	adapter.replaceGoalOperationIdentity(session.AgentSessionID, oldIdentity.operationID, oldIdentity.revision, 0)
+	adapter.applyGoalUpdate(session.AgentSessionID, map[string]any{
+		"threadId":  session.ProviderSessionID,
+		"objective": "old",
+		"status":    "active",
+	})
+	adapter.armGoalContinuationClaim(session.AgentSessionID, oldIdentity)
+	adapter.replaceGoalOperationIdentity(session.AgentSessionID, "goal-op-new-claim", 2, 0)
+
+	appSession := adapter.getSession(session.AgentSessionID)
+	reducer := newCodexAppServerReducer(adapter)
+	reducer.ReduceNotification(appSession.client, session, "", acpMessage{
+		Method: appServerNotifyTurnStarted,
+		Params: mustJSONRawMessage(t, map[string]any{
+			"threadId": session.ProviderSessionID,
+			"turn":     map[string]any{"id": "provider-delayed-old", "status": "inProgress", "items": []any{}},
+		}),
+	}, nil, nil)
+
+	waitForCondition(t, func() bool {
+		for _, request := range appServerRequestParamsList(t, transport.conn, appServerMethodTurnInterrupt) {
+			if asString(request["turnId"]) == "provider-delayed-old" {
+				return true
+			}
+		}
+		return false
+	})
+	if active := adapter.sessionActiveTurn(session.AgentSessionID); active != nil {
+		t.Fatalf("superseded claim adopted delayed turn: %#v", active)
+	}
+}
+
+func TestCodexPreparedGoalContinuationClaimDefersPendingTurnExpiry(t *testing.T) {
+	adapter, transport, session := startedAppServerAdapter(t)
+	adapter.goalProvenanceGraceWindow = 10 * time.Millisecond
+	identity := goalOperationIdentity{operationID: "goal-op-preparing", revision: 1}
+	adapter.replaceGoalOperationIdentity(session.AgentSessionID, identity.operationID, identity.revision, 0)
+	adapter.applyGoalUpdate(session.AgentSessionID, map[string]any{
+		"threadId":  session.ProviderSessionID,
+		"objective": "wait for durable binding",
+		"status":    "active",
+	})
+	adapter.prepareGoalContinuationClaim(session.AgentSessionID, identity)
+
+	appSession := adapter.getSession(session.AgentSessionID)
+	reducer := newCodexAppServerReducer(adapter)
+	reducer.ReduceNotification(appSession.client, session, "", acpMessage{
+		Method: appServerNotifyTurnStarted,
+		Params: mustJSONRawMessage(t, map[string]any{
+			"threadId": session.ProviderSessionID,
+			"turn":     map[string]any{"id": "provider-preparing", "status": "inProgress", "items": []any{}},
+		}),
+	}, nil, nil)
+
+	time.Sleep(35 * time.Millisecond)
+	if requests := appServerRequestParamsList(t, transport.conn, appServerMethodTurnInterrupt); len(requests) != 0 {
+		t.Fatalf("prepared claim allowed pending turn to expire: %#v", requests)
+	}
+	if active := adapter.sessionActiveTurn(session.AgentSessionID); active != nil {
+		t.Fatalf("prepared claim adopted before durable binding: %#v", active)
+	}
+
+	adapter.armGoalContinuationClaim(session.AgentSessionID, identity)
+	waitForCondition(t, func() bool {
+		return adapter.sessionActiveTurnID(session.AgentSessionID) == "provider-preparing"
+	})
+}
+
 // A server-initiated turn/started with no registered turn context and no goal
 // keeps the legacy drop behavior (stray turns such as compaction).
 func TestCodexAppServerAdapterUnownedTurnIgnoredWithoutGoal(t *testing.T) {
@@ -4938,7 +5163,12 @@ func TestCodexLateSupersededGoalTurnKeepsOriginalIdentityAndContinues(t *testing
 	}); err != nil {
 		t.Fatalf("set1: %v", err)
 	}
-	oldGoal := adapter.sessionGoal(session.AgentSessionID)
+	// Keep the provider-authored generation payload for the delayed
+	// notification. sessionGoal intentionally exposes only canonical public
+	// fields and therefore omits immutable provenance fields.
+	transport.conn.mu.Lock()
+	oldGoal := clonePayload(transport.conn.goal)
+	transport.conn.mu.Unlock()
 	if _, err := adapter.ApplyGoal(context.Background(), session, GoalApplyInput{
 		Action: GoalControlClear, OperationID: "goal-clear", Revision: 2,
 	}); err != nil {

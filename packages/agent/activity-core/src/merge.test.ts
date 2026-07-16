@@ -37,6 +37,41 @@ test("mergeAgentActivityMessages ignores stale updates", () => {
   assert.equal(merged[0]?.status, "completed");
 });
 
+test("mergeAgentActivityMessages keeps durable sequence order across mutable snapshot versions", () => {
+  const merged = mergeAgentActivityMessages(
+    [
+      message({
+        messageId: "assistant-intro",
+        sequence: 1,
+        version: 8,
+        occurredAtUnixMs: 300
+      }),
+      message({
+        messageId: "tool-1",
+        sequence: 2,
+        version: 11,
+        occurredAtUnixMs: 200
+      })
+    ],
+    [
+      message({
+        messageId: "assistant-intro",
+        version: 12,
+        occurredAtUnixMs: 400,
+        status: "completed"
+      })
+    ]
+  );
+
+  assert.deepEqual(
+    merged.map((item) => [item.messageId, item.sequence, item.version]),
+    [
+      ["assistant-intro", 1, 12],
+      ["tool-1", 2, 11]
+    ]
+  );
+});
+
 test("latestAgentActivityMessageVersion returns highest cached version", () => {
   assert.equal(
     latestAgentActivityMessageVersion([

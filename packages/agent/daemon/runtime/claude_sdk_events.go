@@ -189,21 +189,21 @@ func (a *ClaudeCodeSDKAdapter) sidecarTurnEvents(adapterSession *claudeSDKAdapte
 			return nil, false, nil
 		}
 		events := adapterSession.claudeSDKToolEvents(session, rootTurnID, event.Payload, EventCallStarted, messageStreamStateStreaming, event.Type)
-		a.trackClaudeSDKTurnCallEvents(adapterSession, events)
+		events = a.projectClaudeSDKTurnCallEvents(adapterSession, events)
 		return events, false, nil
 	case "tool_completed":
 		if a.claudeSDKToolEventTargetsClosedTurn(adapterSession, rootTurnID, event.Payload) {
 			return nil, false, nil
 		}
 		events := adapterSession.claudeSDKToolEvents(session, rootTurnID, event.Payload, EventCallCompleted, messageStreamStateCompleted, event.Type)
-		a.trackClaudeSDKTurnCallEvents(adapterSession, events)
+		events = a.projectClaudeSDKTurnCallEvents(adapterSession, events)
 		return events, false, nil
 	case "tool_failed":
 		if a.claudeSDKToolEventTargetsClosedTurn(adapterSession, rootTurnID, event.Payload) {
 			return nil, false, nil
 		}
 		events := adapterSession.claudeSDKToolEvents(session, rootTurnID, event.Payload, EventCallFailed, messageStreamStateFailed, event.Type)
-		a.trackClaudeSDKTurnCallEvents(adapterSession, events)
+		events = a.projectClaudeSDKTurnCallEvents(adapterSession, events)
 		return events, false, nil
 	case "task_started", "task_progress", "task_completed":
 		if child, ok := adapterSession.claudeSDKChildForPayload(event.Payload); ok &&

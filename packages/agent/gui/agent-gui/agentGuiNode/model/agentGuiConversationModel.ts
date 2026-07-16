@@ -220,6 +220,7 @@ export function buildAgentGUIConversationDetail({
   const detail = buildWorkspaceAgentSessionDetailViewModel({
     activity: resolvedActivity,
     session,
+    sessionTurns: conversation.sessionTurns,
     timelineItems: [...timelineItems],
     workspaceRoot
   });

@@ -339,7 +339,7 @@ describe("AgentMessageMarkdown", () => {
     render(
       <AgentMessageMarkdown
         content={
-          "图片在这里： `/Users/local/.tutti-dev/agent/runs/session-1/codex-home/generated_images/imagegen/ig_123.png`"
+          "图片在这里： [/Users/local/.tutti-dev/agent/runs/session-1/codex-home/generated_images/imagegen/ig_123.png](/Users/local/.tutti-dev/agent/runs/session-1/codex-home/generated_images/imagegen/ig_123.png)"
         }
         onLinkAction={onLinkAction}
         workspaceLinkContext={{
@@ -1365,7 +1365,7 @@ describe("AgentMessageMarkdown", () => {
     expect(screen.queryByText(/mention:\/\/session/)).toBeNull();
   });
 
-  it("turns inline code paths into clickable links", () => {
+  it("keeps inline code paths as code instead of inferring links", () => {
     const onLinkClick = vi.fn();
     render(
       <AgentMessageMarkdown
@@ -1376,14 +1376,14 @@ describe("AgentMessageMarkdown", () => {
       />
     );
 
-    fireEvent.click(
-      screen.getByRole("link", { name: "/Users/example/demo/abc" })
-    );
-
-    expect(onLinkClick).toHaveBeenCalledWith("/Users/example/demo/abc");
+    expect(
+      screen.queryByRole("link", { name: "/Users/example/demo/abc" })
+    ).toBeNull();
+    expect(screen.getByText("/Users/example/demo/abc")).toBeInTheDocument();
+    expect(onLinkClick).not.toHaveBeenCalled();
   });
 
-  it("turns inline code home-relative paths into clickable links", () => {
+  it("keeps inline code home-relative paths as code", () => {
     const onLinkAction = vi.fn();
     render(
       <AgentMessageMarkdown
@@ -1397,18 +1397,12 @@ describe("AgentMessageMarkdown", () => {
       />
     );
 
-    fireEvent.click(screen.getByRole("link", { name: "~/docs/a.md" }));
-
-    expect(onLinkAction).toHaveBeenCalledWith({
-      type: "open-workspace-file",
-      path: "~/docs/a.md",
-      directoryPath: "~/docs",
-      workspaceRoot: "/Users/example/demo",
-      source: "agent-markdown"
-    });
+    expect(screen.queryByRole("link", { name: "~/docs/a.md" })).toBeNull();
+    expect(screen.getByText("~/docs/a.md")).toBeInTheDocument();
+    expect(onLinkAction).not.toHaveBeenCalled();
   });
 
-  it("turns inline code Windows absolute paths into clickable links", () => {
+  it("keeps inline code Windows absolute paths as code", () => {
     const onLinkAction = vi.fn();
     render(
       <AgentMessageMarkdown
@@ -1422,22 +1416,18 @@ describe("AgentMessageMarkdown", () => {
       />
     );
 
-    fireEvent.click(
-      screen.getByRole("link", {
+    expect(
+      screen.queryByRole("link", {
         name: "C:\\Users\\local\\project\\docs\\README.md"
       })
-    );
-
-    expect(onLinkAction).toHaveBeenCalledWith({
-      type: "open-workspace-file",
-      path: "C:/Users/local/project/docs/README.md",
-      directoryPath: "C:/Users/local/project/docs",
-      workspaceRoot: "C:/Users/local/project",
-      source: "agent-markdown"
-    });
+    ).toBeNull();
+    expect(
+      screen.getByText("C:\\Users\\local\\project\\docs\\README.md")
+    ).toBeInTheDocument();
+    expect(onLinkAction).not.toHaveBeenCalled();
   });
 
-  it("turns inline code http urls into clickable links", () => {
+  it("keeps inline code http urls as code", () => {
     const onLinkClick = vi.fn();
     render(
       <AgentMessageMarkdown
@@ -1446,11 +1436,11 @@ describe("AgentMessageMarkdown", () => {
       />
     );
 
-    fireEvent.click(
-      screen.getByRole("link", { name: "http://127.0.0.1:9999" })
-    );
-
-    expect(onLinkClick).toHaveBeenCalledWith("http://127.0.0.1:9999");
+    expect(
+      screen.queryByRole("link", { name: "http://127.0.0.1:9999" })
+    ).toBeNull();
+    expect(screen.getByText("http://127.0.0.1:9999")).toBeInTheDocument();
+    expect(onLinkClick).not.toHaveBeenCalled();
   });
 
   it("prevents default navigation for markdown http links", () => {
@@ -1482,26 +1472,30 @@ describe("AgentMessageMarkdown", () => {
     expect(onLinkClick).toHaveBeenCalledWith("http://127.0.0.1:9999");
   });
 
-  it("turns bare local absolute paths into clickable links", () => {
+  it("keeps bare local absolute paths and slash commands as plain text", () => {
     const onLinkClick = vi.fn();
     render(
       <AgentMessageMarkdown
         content={
-          "已创建空的 txt 文件：\n\n/Users/example/demo/83c66a52-4ff2-436a-a300-e346c9fdd9d2/note.txt\n\n当前大小：0 bytes。"
+          "已创建空的 txt 文件：\n\n/Users/example/demo/83c66a52-4ff2-436a-a300-e346c9fdd9d2/note.txt\n\nNot logged in · Please run /login"
         }
         onLinkClick={onLinkClick}
       />
     );
 
-    fireEvent.click(
-      screen.getByRole("link", {
+    expect(
+      screen.queryByRole("link", {
         name: "/Users/example/demo/83c66a52-4ff2-436a-a300-e346c9fdd9d2/note.txt"
       })
-    );
-
-    expect(onLinkClick).toHaveBeenCalledWith(
-      "/Users/example/demo/83c66a52-4ff2-436a-a300-e346c9fdd9d2/note.txt"
-    );
+    ).toBeNull();
+    expect(screen.queryByRole("link", { name: "/login" })).toBeNull();
+    expect(
+      screen.getByText(
+        "/Users/example/demo/83c66a52-4ff2-436a-a300-e346c9fdd9d2/note.txt"
+      )
+    ).toBeInTheDocument();
+    expect(screen.getByText(/Please run \/login/)).toBeInTheDocument();
+    expect(onLinkClick).not.toHaveBeenCalled();
   });
 
   it("does not auto-link bare relative paths", () => {

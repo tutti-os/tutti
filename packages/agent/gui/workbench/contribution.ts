@@ -10,7 +10,6 @@ import {
   resolveAgentGUIExpandedWindowFrame,
   shouldAutoCollapseAgentGUIConversationRail
 } from "../agent-gui/agentGuiNode/model/agentGuiRailLayout.ts";
-import { resolveAgentGuiSessionProviderIconUrl } from "../agentGuiSessionProviderIconUrls.ts";
 import { AgentGuiWorkbenchReactiveHeader } from "./AgentGuiWorkbenchReactiveHeader.tsx";
 import { setAgentGuiWorkbenchBodyRenderError } from "./bodyRenderErrorRegistry.ts";
 import {
@@ -23,8 +22,6 @@ import {
   createAgentGuiWorkbenchLaunchDescriptor
 } from "./launch.ts";
 import {
-  agentGuiWorkbenchProviderFromInstanceId,
-  agentGuiWorkbenchProviderFromInstanceIdOrNull,
   createAgentGuiWorkbenchNodeStateSource,
   migrateLegacyAgentGuiWorkbenchState,
   normalizeAgentGuiWorkbenchNodeState,
@@ -81,9 +78,10 @@ export type AgentGuiWorkbenchContributionCopyOverrides =
 
 export interface AgentGuiWorkbenchRenderBodyHelpers {
   agentDirectory: AgentGUIAgentDirectoryPort;
+  agentTargetId: string | null;
   nodeTypeId: string;
   onStateChange(state: AgentGuiWorkbenchState): void;
-  provider: AgentGuiWorkbenchProvider;
+  provider: AgentGuiWorkbenchProvider | null;
 }
 
 export interface CreateAgentGuiWorkbenchContributionInput {
@@ -163,30 +161,43 @@ export function createAgentGuiWorkbenchContribution(
         onBodyRenderErrorChange: ({ hasError, node }) => {
           setAgentGuiWorkbenchBodyRenderError(node.id, hasError);
         },
-        renderBody: (context) =>
-          input.renderBody(
+        renderBody: (context) => {
+          const persistedState = normalizeAgentGuiWorkbenchState(
+            context.externalNodeState ?? context.node?.data.snapshotNodeState
+          );
+          const activationAgentTargetId = agentTargetIdFromActivation(
+            context.activation
+          );
+          const state =
+            activationAgentTargetId && !persistedState.agentTargetId
+              ? { ...persistedState, agentTargetId: activationAgentTargetId }
+              : persistedState;
+          const agent = resolveAgentGuiWorkbenchStateAgent(
+            state,
+            input.agentDirectory
+          );
+          return input.renderBody(
             context as WorkbenchHostNodeBodyContext<
               AgentGuiWorkbenchState | null,
               unknown
             >,
             {
               agentDirectory: input.agentDirectory,
+              agentTargetId: state.agentTargetId ?? null,
               nodeTypeId: agentGuiWorkbenchTypeId,
-              onStateChange: (state) => {
+              onStateChange: (nextState) => {
                 nodeStateSource.writeNodeState({
                   instanceId: context.instanceId,
                   nodeId: context.node.id,
-                  state,
+                  state: nextState,
                   typeId: agentGuiWorkbenchTypeId
                 });
               },
-              provider:
-                providerFromActivation(context.activation) ??
-                agentGuiWorkbenchProviderFromInstanceId(context.instanceId)
+              provider: agent?.provider ?? null
             }
-          ),
+          );
+        },
         renderHeader: ({
-          activation,
           dragHandleProps,
           displayMode,
           externalNodeState,
@@ -196,9 +207,6 @@ export function createAgentGuiWorkbenchContribution(
           surfaceSize,
           windowActions
         }) => {
-          const provider =
-            providerFromActivation(activation) ??
-            agentGuiWorkbenchProviderFromInstanceId(instanceId);
           const headerTitle = copy.nodeTitle;
           const rawWorkbenchState = (externalNodeState ??
             node.data.runtimeNodeState) as
@@ -210,6 +218,11 @@ export function createAgentGuiWorkbenchContribution(
           const workbenchState = normalizeAgentGuiWorkbenchState(
             migratedWorkbenchState
           );
+          const selectedAgent = resolveAgentGuiWorkbenchStateAgent(
+            workbenchState,
+            input.agentDirectory
+          );
+          const provider = selectedAgent?.provider ?? "unknown";
           const nodeState = normalizeAgentGuiWorkbenchNodeState(
             migratedWorkbenchState,
             provider
@@ -235,20 +248,11 @@ export function createAgentGuiWorkbenchContribution(
           // must not inherit the provider icon from the workbench instance.
           // Once a local session id exists, keep the provider icon available
           // while the canonical conversation title is still being persisted.
-          const iconProvider =
-            providerFromActivation(activation) ??
-            agentGuiWorkbenchProviderFromInstanceIdOrNull(instanceId);
           const hasConversation = Boolean(
             workbenchState.lastActiveAgentSessionId?.trim()
           );
           const conversationIconFallbackUrl =
-            hasConversation && iconProvider
-              ? (resolveAgentGuiSessionProviderIconUrl(iconProvider) ??
-                resolveAgentGuiWorkbenchProviderIconUrl({
-                  dockIconUrls: input.dockIconUrls,
-                  provider: iconProvider
-                }))
-              : null;
+            hasConversation && selectedAgent ? selectedAgent.iconUrl : null;
           const conversationIconUrl =
             conversationIdentity?.iconUrl ?? conversationIconFallbackUrl;
           const persistConversationRailCollapsed = (collapsed: boolean) => {
@@ -306,14 +310,16 @@ export function createAgentGuiWorkbenchContribution(
             ...dragHandleProps,
             onCreateConversation: announceNewConversation,
             onOpenDetachedWindow: input.onOpenDetachedWindow
-              ? () => {
-                  void input.onOpenDetachedWindow?.({
-                    agentSessionId: workbenchState.lastActiveAgentSessionId,
-                    agentTargetId: nodeState.agentTargetId,
-                    provider,
-                    workspaceId: input.workspaceId
-                  });
-                }
+              ? selectedAgent
+                ? () => {
+                    void input.onOpenDetachedWindow?.({
+                      agentSessionId: workbenchState.lastActiveAgentSessionId,
+                      agentTargetId: selectedAgent.agentTargetId,
+                      provider: selectedAgent.provider,
+                      workspaceId: input.workspaceId
+                    });
+                  }
+                : undefined
               : undefined,
             onPointerDown: (event) => {
               dragHandleProps.onPointerDown?.(event);
@@ -414,26 +420,27 @@ export function createAgentGuiWorkbenchContribution(
         instanceId: descriptorInstanceId,
         openInNewWindow,
         provider,
-        reuseDockEntryNode,
-        reuseExistingSessionNode,
+        reusePolicy,
         targetAgentSessionId
       } = createAgentGuiWorkbenchLaunchDescriptor({
         ...request,
         payload: launchPayload
       });
-      // Locate an already-open node currently showing this session (its launch
-      // instanceId may differ from the session-keyed one, e.g. a conversation
-      // started fresh as a draft) so we focus it instead of opening a duplicate.
-      const existingInstanceId =
-        targetAgentSessionId && reuseExistingSessionNode
-          ? nodeStateSource.findInstanceIdByAgentSessionId(targetAgentSessionId)
-          : null;
-      const instanceId = existingInstanceId ?? descriptorInstanceId;
-      const title = copy.nodeTitle;
       const providerTarget = providerTargetLaunchPayloadFromRequest(
         launchPayload,
         provider
       );
+      // Locate an already-open node currently showing this session (its launch
+      // instanceId may differ from the session-keyed one, e.g. a conversation
+      // started fresh as a draft) so we focus it instead of opening a duplicate.
+      const existingInstanceId =
+        reusePolicy.kind === "current-session"
+          ? nodeStateSource.findInstanceIdByAgentSessionId(
+              reusePolicy.agentSessionId
+            )
+          : null;
+      const instanceId = existingInstanceId ?? descriptorInstanceId;
+      const title = copy.nodeTitle;
       const launchAgentTargetId = providerTarget.agentTargetId;
       if (targetAgentSessionId) {
         const previousState = nodeStateSource.readNodeState({
@@ -487,12 +494,41 @@ export function createAgentGuiWorkbenchContribution(
         // (e.g. clicking a completion notification) should just focus it,
         // not reset it back to the default size/position.
         preserveExistingNodeFrame: existingInstanceId !== null,
-        reuseDockEntryNode,
+        reuseDockEntryNode: reusePolicy.kind === "dock-entry",
         title,
         typeId: agentGuiWorkbenchTypeId
       };
     }
   };
+}
+
+function resolveAgentGuiWorkbenchStateAgent(
+  state: AgentGuiWorkbenchState | null,
+  directory: AgentGUIAgentDirectoryPort
+) {
+  const agentTargetId = state?.agentTargetId?.trim();
+  if (!agentTargetId) {
+    return null;
+  }
+  return (
+    directory
+      .getSnapshot()
+      .agents.find((agent) => agent.agentTargetId === agentTargetId) ?? null
+  );
+}
+
+function agentTargetIdFromActivation(activation: unknown): string | null {
+  if (!activation || typeof activation !== "object") {
+    return null;
+  }
+  const payload = (activation as { payload?: unknown }).payload;
+  if (!payload || typeof payload !== "object") {
+    return null;
+  }
+  const agentTargetId = (payload as { agentTargetId?: unknown }).agentTargetId;
+  return typeof agentTargetId === "string" && agentTargetId.trim()
+    ? agentTargetId.trim()
+    : null;
 }
 
 function hasAgentSessionId(payload: unknown): boolean {
@@ -513,11 +549,9 @@ import {
   buildAgentGuiDockEntries,
   createAgentGuiWorkbenchPreviewContent,
   isAgentGuiWorkbenchCompactVisibleFrame,
-  providerFromActivation,
   providerFromState,
   providerTargetLaunchPayloadFromRequest,
   resolveAgentGuiWorkbenchLaunchPayload,
-  resolveAgentGuiWorkbenchProviderIconUrl,
   resolveAgentGuiWorkbenchContributionCopy,
   resolveAgentGuiWorkbenchDefaultLaunchFrame
 } from "./contributionDock.tsx";

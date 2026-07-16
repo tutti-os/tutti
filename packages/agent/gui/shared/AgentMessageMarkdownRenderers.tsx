@@ -1,6 +1,5 @@
 import {
   useCallback,
-  useContext,
   useRef,
   useState,
   type CSSProperties,
@@ -11,41 +10,14 @@ import { Check, Copy } from "lucide-react";
 import { translate } from "../i18n/index";
 import { cn } from "../app/renderer/lib/utils";
 import type { MarkdownDomProps } from "./AgentMessageMarkdown";
-import { MarkdownLinkContext } from "./agentMessageMarkdownContext";
-import {
-  isExplicitWorkspaceFilePath,
-  isHttpUrl
-} from "./agentMessageMarkdownLinks";
-import {
-  activateMarkdownLink,
-  activateMarkdownLinkFromKey,
-  activateMarkdownLinkFromPointer
-} from "./agentMessageMarkdownRuntime";
 
 export function MarkdownCode({
   node: _node,
   children,
   className,
-  onLinkClick,
   ...props
-}: MarkdownDomProps<"code"> & {
-  onLinkClick?: (href: string) => void;
-}): JSX.Element {
+}: MarkdownDomProps<"code">): JSX.Element {
   "use memo";
-  const isInsideLink = useContext(MarkdownLinkContext);
-  const text = textFromReactNode(children).trim();
-  const isLinkablePath =
-    !isInsideLink &&
-    onLinkClick &&
-    !className &&
-    (isExplicitWorkspaceFilePath(text) || isHttpUrl(text));
-  if (isLinkablePath) {
-    return (
-      <PathLink href={text} onLinkClick={onLinkClick}>
-        {children}
-      </PathLink>
-    );
-  }
   return (
     <code {...props} className={className}>
       {children}
@@ -127,37 +99,6 @@ export function MarkdownParagraph({
     return <span {...props} />;
   }
   return <p {...props} />;
-}
-
-function PathLink({
-  href,
-  children,
-  onLinkClick
-}: {
-  href: string;
-  children: ReactNode;
-  onLinkClick: (href: string) => void;
-}): JSX.Element {
-  "use memo";
-  return (
-    <a
-      className="cursor-pointer"
-      data-agent-link-href={href}
-      role="link"
-      tabIndex={0}
-      onClick={(event) => {
-        activateMarkdownLink(event, href, onLinkClick);
-      }}
-      onPointerDown={(event) => {
-        activateMarkdownLinkFromPointer(event, href, onLinkClick);
-      }}
-      onKeyDown={(event) => {
-        activateMarkdownLinkFromKey(event, href, onLinkClick);
-      }}
-    >
-      {children}
-    </a>
-  );
 }
 
 export function textFromReactNode(node: ReactNode): string {

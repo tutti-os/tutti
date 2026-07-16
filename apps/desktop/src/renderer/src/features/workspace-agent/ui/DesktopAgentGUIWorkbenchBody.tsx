@@ -1,7 +1,6 @@
 import {
   useCallback,
   useEffect,
-  useLayoutEffect,
   memo,
   useMemo,
   useRef,
@@ -10,10 +9,6 @@ import {
 } from "react";
 import { AgentGUI } from "@tutti-os/agent-gui/agent-gui";
 import type { AgentGUIProps, AgentHostInputApi } from "@tutti-os/agent-gui";
-import {
-  AGENT_GUI_WORKBENCH_NEW_CONVERSATION_EVENT,
-  type AgentGuiWorkbenchNewConversationDetail
-} from "@tutti-os/agent-gui/workbench/contribution";
 import { requestWorkspaceAgentGuiLaunch } from "../services/workspaceAgentGuiLaunchCoordinator.ts";
 import { registerWorkspaceAgentGuiOpenSession } from "../../workspace-workbench/services/workspaceAgentGuiOpenSessionCoordinator.ts";
 import { workbenchFocusInputActivationType } from "@tutti-os/workbench-surface";
@@ -50,20 +45,22 @@ import {
 import { useDesktopAgentProbes } from "./useDesktopAgentProbes.ts";
 import {
   AGENT_PROBE_REFRESH_DEBOUNCE_MS,
-  DESKTOP_AGENT_GUI_CONVERSATION_RAIL_TOGGLE_EVENT,
   DESKTOP_AGENT_GUI_AGENT_SETTINGS,
   DESKTOP_AGENT_GUI_NOOP,
   DESKTOP_AGENT_GUI_POSITION,
   areDesktopAgentGUIWorkbenchBodyPropsEqual,
   handleDesktopAgentGUIShowMessage,
   resolveComputerUseAuthorizationState,
-  type DesktopAgentGUIConversationRailToggleDetail,
+  type DesktopAgentGUISurfaceContext,
+  type DesktopAgentGUISurfaceProps,
   type DesktopAgentGUIWorkbenchBodyProps
 } from "./desktopAgentGUIWorkbenchModel.ts";
 export { DESKTOP_AGENT_GUI_CONVERSATION_RAIL_TOGGLE_EVENT } from "./desktopAgentGUIWorkbenchModel.ts";
 export type { DesktopAgentGUIConversationRailToggleDetail } from "./desktopAgentGUIWorkbenchModel.ts";
 import { useDesktopAgentGUIContextMentions } from "./useDesktopAgentGUIContextMentions.ts";
 import { useDesktopAgentGUIReadiness } from "./useDesktopAgentGUIReadiness.ts";
+import { useDesktopAgentGUIOpenConversationWindow } from "./useDesktopAgentGUIOpenConversationWindow.ts";
+import { useDesktopAgentGUIWorkbenchEvents } from "./useDesktopAgentGUIWorkbenchEvents.ts";
 import { preloadDesktopAgentGuiMentionBrowse } from "../services/preloadDesktopAgentGuiMentionBrowse.ts";
 import { DESKTOP_AGENT_GUI_CURRENT_USER_ID } from "../services/desktopAgentGuiIdentity.ts";
 import {
@@ -71,12 +68,12 @@ import {
   isFeatureEnabled
 } from "../../../../../shared/featureFlags/catalog.ts";
 
-function DesktopAgentGUIWorkbenchBodyImpl({
+function DesktopAgentGUISurfaceImpl({
   agentActivityRuntime,
   agentHostApi,
   appCenterService,
   agentProviderStatusService,
-  context,
+  surface,
   computerUseApi,
   composerAppendRequest = null,
   conversationRailAutoCollapseWidthPx = null,
@@ -107,11 +104,19 @@ function DesktopAgentGUIWorkbenchBodyImpl({
   resolveMentionReferenceTarget,
   resolveWorkspaceReferenceInitialTarget,
   workspaceId
-}: DesktopAgentGUIWorkbenchBodyProps): JSX.Element {
+}: DesktopAgentGUISurfaceProps): JSX.Element {
   const agents = agentDirectory.agents;
   const { i18n, locale } = useTranslation();
   const { service: desktopPreferencesService, state: desktopPreferencesState } =
     useDesktopPreferencesService();
+  const rawWorkbenchState = normalizeDesktopAgentGUIWorkbenchState(
+    surface.state
+  );
+  const requestedAgentTargetId =
+    rawWorkbenchState.agentTargetId?.trim() || defaultAgentTargetId;
+  const readinessProvider =
+    agents.find((agent) => agent.agentTargetId === requestedAgentTargetId)
+      ?.provider ?? null;
   const {
     computerUseStatus,
     handleAgentProviderLogin,
@@ -122,8 +127,8 @@ function DesktopAgentGUIWorkbenchBodyImpl({
     agentActivityRuntime,
     agentProviderStatusService,
     computerUseApi,
-    host: context.host,
-    instanceId: context.instanceId,
+    host: surface.host,
+    provider: readinessProvider,
     previewMode,
     providerStatusBootstrapSnapshot,
     trackAgentProviderChatReady,
@@ -135,7 +140,7 @@ function DesktopAgentGUIWorkbenchBodyImpl({
       appCenterService,
       contextMentionProviders,
       dockPreviewCache,
-      host: context.host,
+      host: surface.host,
       previewMode,
       workspaceId
     });
@@ -146,14 +151,6 @@ function DesktopAgentGUIWorkbenchBodyImpl({
       workspaceId
     });
   }, [agentActivityRuntime, effectiveContextMentionProviders, workspaceId]);
-  const rawWorkbenchStateSource = useMemo(
-    () => context.externalNodeState ?? context.node.data.runtimeNodeState,
-    [context.externalNodeState, context.node.data.runtimeNodeState]
-  );
-  const rawWorkbenchState = useMemo(
-    () => normalizeDesktopAgentGUIWorkbenchState(rawWorkbenchStateSource),
-    [rawWorkbenchStateSource]
-  );
   // Pin the host's defensive state copy so downstream work tracks real changes.
   const workbenchStateRef = useRef(rawWorkbenchState);
   if (
@@ -171,7 +168,7 @@ function DesktopAgentGUIWorkbenchBodyImpl({
       resolveDesktopAgentGUIProviderForAgentTarget(
         workbenchAgentTargetId,
         agents,
-        provider
+        provider ?? "unknown"
       ),
     [agents, provider, workbenchAgentTargetId]
   );
@@ -183,7 +180,7 @@ function DesktopAgentGUIWorkbenchBodyImpl({
       ] ?? null)
     : null;
   const hasExplicitConversationRailCollapsedState =
-    hasDesktopAgentGUIConversationRailCollapsedState(rawWorkbenchStateSource);
+    hasDesktopAgentGUIConversationRailCollapsedState(surface.state);
   const preferredConversationRailCollapsed =
     isDesktopAgentProvider(nodeProvider) &&
     desktopPreferencesState.agentGuiConversationRailCollapsedByProvider[
@@ -220,12 +217,12 @@ function DesktopAgentGUIWorkbenchBodyImpl({
   // already visible, so it can skip a redundant in-app interruption.
   useEffect(() => {
     const agentSessionId = workbenchState.lastActiveAgentSessionId?.trim();
-    if (previewMode || !agentSessionId || context.node.isMinimized) {
+    if (previewMode || !agentSessionId || surface.isMinimized) {
       return undefined;
     }
     return registerWorkspaceAgentGuiOpenSession(workspaceId, agentSessionId);
   }, [
-    context.node.isMinimized,
+    surface.isMinimized,
     previewMode,
     workbenchState.lastActiveAgentSessionId,
     workspaceId
@@ -244,8 +241,6 @@ function DesktopAgentGUIWorkbenchBodyImpl({
     useState<DesktopAgentGUIPrefillPromptRequest | null>(
       () => prefillPromptBootstrapRequest
     );
-  const [newConversationRequestSequence, setNewConversationRequestSequence] =
-    useState(0);
   const handledOpenSessionActivationSequenceRef = useRef<number | null>(null);
   const handledPrefillPromptActivationSequenceRef = useRef<number | null>(null);
   // onStateChange is recreated on every host render; pin it so the writer stays
@@ -391,15 +386,18 @@ function DesktopAgentGUIWorkbenchBodyImpl({
   );
 
   useEffect(() => {
+    if (!provider) {
+      return;
+    }
     consumeDesktopAgentGUIOpenSessionActivation({
-      activation: context.activation,
+      activation: surface.activation,
       agentActivityRuntime,
-      clearNodeActivation: context.host.clearNodeActivation?.bind(context.host),
+      clearNodeActivation: surface.host.clearNodeActivation?.bind(surface.host),
       handledSequence: handledOpenSessionActivationSequenceRef.current,
       markHandled: (sequence) => {
         handledOpenSessionActivationSequenceRef.current = sequence;
       },
-      nodeId: context.node.id,
+      nodeId: surface.nodeId,
       onActivationError: handleOpenSessionActivationError,
       onOpenSessionRequest: setOpenSessionRequest,
       // Persistence is owned by handleUpdateNode (the single writer).
@@ -416,9 +414,9 @@ function DesktopAgentGUIWorkbenchBodyImpl({
     });
   }, [
     agentActivityRuntime,
-    context.activation,
-    context.host,
-    context.node.id,
+    surface.activation,
+    surface.host,
+    surface.nodeId,
     handleOpenSessionActivationError,
     handleUpdateNode,
     provider,
@@ -431,13 +429,13 @@ function DesktopAgentGUIWorkbenchBodyImpl({
       return;
     }
     const request = consumeDesktopAgentGUIPrefillPromptActivation({
-      activation: context.activation,
-      clearNodeActivation: context.host.clearNodeActivation?.bind(context.host),
+      activation: surface.activation,
+      clearNodeActivation: surface.host.clearNodeActivation?.bind(surface.host),
       handledSequence: handledPrefillPromptActivationSequenceRef.current,
       markHandled: (sequence) => {
         handledPrefillPromptActivationSequenceRef.current = sequence;
       },
-      nodeId: context.node.id
+      nodeId: surface.nodeId
     });
     if (request) {
       if (request.agentTargetId || request.provider) {
@@ -460,120 +458,33 @@ function DesktopAgentGUIWorkbenchBodyImpl({
       setPrefillPromptRequest(request);
     }
   }, [
-    context.activation,
-    context.host,
-    context.node.id,
+    surface.activation,
+    surface.host,
+    surface.nodeId,
     handleUpdateNode,
     previewMode
   ]);
 
-  useEffect(() => {
-    if (previewMode) {
-      return;
-    }
-    const handleOptimisticConversationRailToggle = (event: Event) => {
-      const detail = (event as CustomEvent<unknown>).detail;
-      if (
-        !detail ||
-        typeof detail !== "object" ||
-        !("instanceId" in detail) ||
-        !("conversationRailCollapsed" in detail)
-      ) {
-        return;
-      }
-
-      const toggle = detail as DesktopAgentGUIConversationRailToggleDetail;
-      if (
-        toggle.instanceId !== context.instanceId ||
-        typeof toggle.conversationRailCollapsed !== "boolean"
-      ) {
-        return;
-      }
-
+  const newConversationRequestSequence = useDesktopAgentGUIWorkbenchEvents({
+    instanceId: surface.instanceId,
+    onConversationRailToggle: (conversationRailCollapsed) => {
       handleUpdateNode((current) => ({
         ...current,
-        conversationRailCollapsed: toggle.conversationRailCollapsed
+        conversationRailCollapsed
       }));
-    };
-
-    window.addEventListener(
-      DESKTOP_AGENT_GUI_CONVERSATION_RAIL_TOGGLE_EVENT,
-      handleOptimisticConversationRailToggle
-    );
-    return () => {
-      window.removeEventListener(
-        DESKTOP_AGENT_GUI_CONVERSATION_RAIL_TOGGLE_EVENT,
-        handleOptimisticConversationRailToggle
-      );
-    };
-  }, [context.instanceId, handleUpdateNode, previewMode]);
-
-  useEffect(() => {
-    if (previewMode) {
-      return;
-    }
-    const handleNewConversationRequest = (event: Event) => {
-      const detail = (event as CustomEvent<unknown>).detail;
-      if (!detail || typeof detail !== "object" || !("instanceId" in detail)) {
-        return;
-      }
-
-      const request = detail as AgentGuiWorkbenchNewConversationDetail;
-      if (request.instanceId !== context.instanceId) {
-        return;
-      }
-
-      setNewConversationRequestSequence((current) => current + 1);
-    };
-
-    window.addEventListener(
-      AGENT_GUI_WORKBENCH_NEW_CONVERSATION_EVENT,
-      handleNewConversationRequest
-    );
-    return () => {
-      window.removeEventListener(
-        AGENT_GUI_WORKBENCH_NEW_CONVERSATION_EVENT,
-        handleNewConversationRequest
-      );
-    };
-  }, [context.instanceId, previewMode]);
-
-  const openConversationWindowRef = useRef({
-    onOpenAgentConversationWindow,
-    previewMode,
-    provider,
-    workspaceId
+    },
+    previewMode
   });
-  useLayoutEffect(() => {
-    openConversationWindowRef.current = {
+
+  const handleOpenConversationWindow = useDesktopAgentGUIOpenConversationWindow(
+    {
+      agentTargetId: workbenchAgentTargetId,
       onOpenAgentConversationWindow,
       previewMode,
-      provider,
+      provider: nodeProvider,
       workspaceId
-    };
-  }, [onOpenAgentConversationWindow, previewMode, provider, workspaceId]);
-  const canOpenConversationWindow =
-    !previewMode && Boolean(onOpenAgentConversationWindow);
-  const handleOpenConversationWindow = useMemo(() => {
-    if (!canOpenConversationWindow) {
-      return undefined;
     }
-    return (agentSessionId: string) => {
-      const current = openConversationWindowRef.current;
-      if (current.previewMode || !current.onOpenAgentConversationWindow) {
-        return;
-      }
-      const trimmedAgentSessionId = agentSessionId.trim();
-      if (!trimmedAgentSessionId) {
-        return;
-      }
-      void current.onOpenAgentConversationWindow({
-        agentSessionId: trimmedAgentSessionId,
-        provider: current.provider,
-        workspaceId: current.workspaceId
-      });
-    };
-  }, [canOpenConversationWindow]);
+  );
 
   useEffect(() => {
     if (
@@ -643,7 +554,7 @@ function DesktopAgentGUIWorkbenchBodyImpl({
     [desktopPreferencesService, previewMode, runtimeApi, workspaceId]
   );
 
-  const frame = context.node.frame;
+  const frame = surface.frame;
   const agentHostApiWithToast = useMemo<AgentHostInputApi>(
     () => ({
       ...agentHostApi,
@@ -664,9 +575,9 @@ function DesktopAgentGUIWorkbenchBodyImpl({
   );
   const composerFocusRequestSequence =
     composerAppendRequest?.sequence ??
-    (context.activation?.type === workbenchFocusInputActivationType ||
-    context.activation?.type === desktopAgentGUIPrefillPromptActivationType
-      ? context.activation.sequence
+    (surface.activation?.type === workbenchFocusInputActivationType ||
+    surface.activation?.type === desktopAgentGUIPrefillPromptActivationType
+      ? surface.activation.sequence
       : (prefillPromptRequest?.sequence ?? null));
   const capabilityMenuState = useMemo<
     AgentGUIProps["hostCapabilities"]["capabilityMenuState"]
@@ -725,10 +636,10 @@ function DesktopAgentGUIWorkbenchBodyImpl({
         i18n={i18n}
         locale={locale}
         identity={{
-          nodeId: context.node.id,
+          nodeId: surface.nodeId,
           workspaceId,
           currentUserId: DESKTOP_AGENT_GUI_CURRENT_USER_ID,
-          title: context.node.title
+          title: surface.nodeTitle
         }}
         workspace={{
           path: "",
@@ -761,11 +672,11 @@ function DesktopAgentGUIWorkbenchBodyImpl({
           width: frame.width,
           height: frame.height,
           desktopSize,
-          isMaximized: context.displayMode === "fullscreen",
-          isActive: context.isFocused,
+          isMaximized: surface.displayMode === "fullscreen",
+          isActive: surface.isFocused,
           isVisible:
-            context.presentationMode !== "mission-control" &&
-            context.node.isMinimized !== true,
+            surface.presentationMode !== "mission-control" &&
+            surface.isMinimized !== true,
           embedded: true,
           previewMode,
           conversationRailAutoCollapseWidthPx
@@ -829,7 +740,30 @@ function DesktopAgentGUIWorkbenchBodyImpl({
   );
 }
 
+export const DesktopAgentGUISurface = DesktopAgentGUISurfaceImpl;
+
+function DesktopAgentGUIWorkbenchBodyAdapter({
+  context,
+  ...props
+}: DesktopAgentGUIWorkbenchBodyProps): JSX.Element {
+  const surface: DesktopAgentGUISurfaceContext = {
+    activation: context.activation,
+    displayMode: context.displayMode,
+    frame: context.node.frame,
+    host: context.host,
+    instanceId: context.instanceId,
+    isFocused: context.isFocused,
+    isMinimized: context.node.isMinimized === true,
+    nodeId: context.node.id,
+    nodeTitle: context.node.title,
+    presentationMode: context.presentationMode,
+    state:
+      context.externalNodeState ?? context.node.data.runtimeNodeState ?? null
+  };
+  return <DesktopAgentGUISurface {...props} surface={surface} />;
+}
+
 export const DesktopAgentGUIWorkbenchBody = memo(
-  DesktopAgentGUIWorkbenchBodyImpl,
+  DesktopAgentGUIWorkbenchBodyAdapter,
   areDesktopAgentGUIWorkbenchBodyPropsEqual
 );

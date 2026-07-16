@@ -16,7 +16,7 @@ func (s *SQLiteStore) applyWorkspaceAppsV1(ctx context.Context) error {
 	}
 
 	now := unixMs(time.Now().UTC())
-	_, err = s.db.ExecContext(ctx, `
+	_, err = s.writeDB.ExecContext(ctx, `
 CREATE TABLE IF NOT EXISTS app_packages (
   app_id TEXT PRIMARY KEY,
   version TEXT NOT NULL,
@@ -65,14 +65,14 @@ func (s *SQLiteStore) applyWorkspaceAppsV2(ctx context.Context) error {
 
 	now := unixMs(time.Now().UTC())
 	if !hasManifestJSON {
-		if _, err := s.db.ExecContext(ctx, `
+		if _, err := s.writeDB.ExecContext(ctx, `
 ALTER TABLE app_packages ADD COLUMN manifest_json TEXT NOT NULL DEFAULT '';
 `); err != nil {
 			return fmt.Errorf("migrate workspace database apps v2: %w", err)
 		}
 	}
 
-	_, err = s.db.ExecContext(ctx, `
+	_, err = s.writeDB.ExecContext(ctx, `
 INSERT INTO tuttid_schema_migrations (id, applied_at_unix_ms)
   VALUES (?, ?);
 `, schemaMigrationWorkspaceAppsV2, now)
@@ -92,14 +92,14 @@ func (s *SQLiteStore) applyWorkspaceAppsV3(ctx context.Context) error {
 	}
 
 	now := unixMs(time.Now().UTC())
-	if _, err := s.db.ExecContext(ctx, `PRAGMA foreign_keys = OFF`); err != nil {
+	if _, err := s.writeDB.ExecContext(ctx, `PRAGMA foreign_keys = OFF`); err != nil {
 		return fmt.Errorf("disable sqlite foreign keys for workspace apps v3 migration: %w", err)
 	}
 	defer func() {
-		_, _ = s.db.ExecContext(context.Background(), `PRAGMA foreign_keys = ON`)
+		_, _ = s.writeDB.ExecContext(context.Background(), `PRAGMA foreign_keys = ON`)
 	}()
 
-	tx, err := s.db.BeginTx(ctx, nil)
+	tx, err := s.writeDB.BeginTx(ctx, nil)
 	if err != nil {
 		return fmt.Errorf("begin workspace apps v3 migration: %w", err)
 	}
@@ -181,7 +181,7 @@ INSERT INTO tuttid_schema_migrations (id, applied_at_unix_ms)
 	if err := tx.Commit(); err != nil {
 		return fmt.Errorf("commit workspace apps v3 migration: %w", err)
 	}
-	if _, err := s.db.ExecContext(ctx, `PRAGMA foreign_keys = ON`); err != nil {
+	if _, err := s.writeDB.ExecContext(ctx, `PRAGMA foreign_keys = ON`); err != nil {
 		return fmt.Errorf("re-enable sqlite foreign keys for workspace apps v3 migration: %w", err)
 	}
 	return nil
@@ -197,7 +197,7 @@ func (s *SQLiteStore) applyAppFactoryJobsV1(ctx context.Context) error {
 	}
 
 	now := unixMs(time.Now().UTC())
-	_, err = s.db.ExecContext(ctx, `
+	_, err = s.writeDB.ExecContext(ctx, `
 CREATE TABLE IF NOT EXISTS app_factory_jobs (
   workspace_id TEXT NOT NULL,
   job_id TEXT NOT NULL,
@@ -245,7 +245,7 @@ func (s *SQLiteStore) applyAppFactoryJobsV2(ctx context.Context) error {
 	}
 
 	now := unixMs(time.Now().UTC())
-	_, err = s.db.ExecContext(ctx, `
+	_, err = s.writeDB.ExecContext(ctx, `
 ALTER TABLE app_factory_jobs
   ADD COLUMN reasoning_effort TEXT NOT NULL DEFAULT '';
 INSERT INTO tuttid_schema_migrations (id, applied_at_unix_ms)
@@ -271,7 +271,7 @@ func (s *SQLiteStore) applyAppFactoryJobsV3(ctx context.Context) error {
 		return err
 	}
 	if !hasAgentTargetID {
-		if _, err := s.db.ExecContext(ctx, `
+		if _, err := s.writeDB.ExecContext(ctx, `
 ALTER TABLE app_factory_jobs ADD COLUMN agent_target_id TEXT NOT NULL DEFAULT '';
 `); err != nil {
 			return fmt.Errorf("migrate workspace app factory jobs agent target id: %w", err)
@@ -284,7 +284,7 @@ ALTER TABLE app_factory_jobs ADD COLUMN agent_target_id TEXT NOT NULL DEFAULT ''
 	if codexTargetID == "" {
 		return fmt.Errorf("migrate workspace app factory jobs agent target id: codex target descriptor is missing")
 	}
-	if _, err := s.db.ExecContext(ctx, `
+	if _, err := s.writeDB.ExecContext(ctx, `
 UPDATE app_factory_jobs
 SET agent_target_id = CASE provider
   WHEN ? THEN ?
@@ -295,7 +295,7 @@ WHERE agent_target_id = '';
 `, "codex", codexTargetID); err != nil {
 		return fmt.Errorf("backfill workspace app factory job agent target ids: %w", err)
 	}
-	_, err = s.db.ExecContext(ctx, `
+	_, err = s.writeDB.ExecContext(ctx, `
 INSERT INTO tuttid_schema_migrations (id, applied_at_unix_ms)
   VALUES (?, ?);
 `, schemaMigrationAppFactoryJobsV3, now)

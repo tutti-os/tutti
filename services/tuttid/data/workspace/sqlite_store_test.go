@@ -33,6 +33,93 @@ func TestSQLiteStoreListEmptyDatabase(t *testing.T) {
 	}
 }
 
+func TestSQLiteStoreConfiguresSeparateReadAndWritePools(t *testing.T) {
+	t.Parallel()
+
+	store := openTestSQLiteStore(t)
+	if got := store.writeDB.Stats().MaxOpenConnections; got != 1 {
+		t.Fatalf("write pool max open connections = %d, want 1", got)
+	}
+	if got := store.readDB.Stats().MaxOpenConnections; got != defaultSQLiteReaderConnections {
+		t.Fatalf("read pool max open connections = %d, want %d", got, defaultSQLiteReaderConnections)
+	}
+
+	ctx := context.Background()
+	connections := make([]*sql.Conn, 0, defaultSQLiteReaderConnections)
+	defer func() {
+		for _, connection := range connections {
+			_ = connection.Close()
+		}
+	}()
+	for index := 0; index < defaultSQLiteReaderConnections; index++ {
+		connection, err := store.readDB.Conn(ctx)
+		if err != nil {
+			t.Fatalf("read pool connection %d: %v", index, err)
+		}
+		connections = append(connections, connection)
+
+		var queryOnly int
+		if err := connection.QueryRowContext(ctx, "PRAGMA query_only").Scan(&queryOnly); err != nil {
+			t.Fatalf("read pool connection %d query_only: %v", index, err)
+		}
+		if queryOnly != 1 {
+			t.Fatalf("read pool connection %d query_only = %d, want 1", index, queryOnly)
+		}
+
+		var busyTimeout int
+		if err := connection.QueryRowContext(ctx, "PRAGMA busy_timeout").Scan(&busyTimeout); err != nil {
+			t.Fatalf("read pool connection %d busy_timeout: %v", index, err)
+		}
+		if busyTimeout != defaultSQLiteBusyTimeoutMillisec {
+			t.Fatalf("read pool connection %d busy_timeout = %d, want %d", index, busyTimeout, defaultSQLiteBusyTimeoutMillisec)
+		}
+	}
+
+	if _, err := connections[0].ExecContext(ctx, "CREATE TABLE read_pool_must_not_write (id INTEGER)"); err == nil {
+		t.Fatal("read pool write succeeded, want read-only error")
+	}
+}
+
+func TestSQLiteStoreReadsCommittedDataWhileWriterConnectionIsBusy(t *testing.T) {
+	t.Parallel()
+
+	store := openTestSQLiteStore(t)
+	ctx := context.Background()
+	const workspaceID = "ws-read-write-pools"
+	if err := store.Create(ctx, workspacebiz.Summary{ID: workspaceID, Name: "Committed"}); err != nil {
+		t.Fatalf("Create() error = %v", err)
+	}
+	if _, err := store.ReportSessionState(ctx, agentactivitybiz.SessionStateReport{
+		WorkspaceID:      workspaceID,
+		AgentSessionID:   "session-visible-to-reader",
+		Origin:           agentsessionstore.WorkspaceAgentSessionOriginRuntime,
+		Provider:         "codex",
+		Status:           "running",
+		OccurredAtUnixMS: 100,
+	}); err != nil {
+		t.Fatalf("ReportSessionState() error = %v", err)
+	}
+
+	tx, err := store.writeDB.BeginTx(ctx, nil)
+	if err != nil {
+		t.Fatalf("BeginTx() error = %v", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+	if _, err := tx.ExecContext(ctx, "UPDATE workspaces SET name = ? WHERE id = ?", "Uncommitted", workspaceID); err != nil {
+		t.Fatalf("hold writer transaction: %v", err)
+	}
+
+	readCtx, cancel := context.WithTimeout(ctx, time.Second)
+	defer cancel()
+	sessions, ok, err := store.ListSessions(readCtx, workspaceID)
+	if err != nil {
+		t.Fatalf("ListSessions() while writer is busy error = %v", err)
+	}
+	if !ok || len(sessions) != 1 || sessions[0].ID != "session-visible-to-reader" {
+		t.Fatalf("ListSessions() while writer is busy = %#v, ok=%v", sessions, ok)
+	}
+}
+
 func TestSQLiteStoreMigrationDropsLegacyLocalPathColumn(t *testing.T) {
 	t.Parallel()
 
@@ -718,7 +805,7 @@ func TestSQLiteStoreAgentSessionRailPreservesKeyAcrossCwdChangesAndRepairsMissin
 	}); err != nil {
 		t.Fatalf("ReportSessionState(empty rail initial) error = %v", err)
 	}
-	if _, err := store.db.ExecContext(ctx, `
+	if _, err := store.writeDB.ExecContext(ctx, `
 UPDATE workspace_agent_sessions
 SET rail_section_kind = '',
     rail_project_path = '',
@@ -950,7 +1037,7 @@ func TestSQLiteStoreMigrationBackfillsAgentSessionRailSectionsFromUserProjects(t
 	repoCanonical := normalizeAgentSessionRailPath(repo)
 
 	ctx := context.Background()
-	if _, err := store.db.ExecContext(ctx, `
+	if _, err := store.writeDB.ExecContext(ctx, `
 CREATE TABLE tuttid_schema_migrations (
   id TEXT PRIMARY KEY,
   applied_at_unix_ms INTEGER NOT NULL
@@ -977,13 +1064,13 @@ CREATE TABLE workspace_agent_sessions (
 `); err != nil {
 		t.Fatalf("create legacy rail schema error = %v", err)
 	}
-	if _, err := store.db.ExecContext(ctx, `
+	if _, err := store.writeDB.ExecContext(ctx, `
 INSERT INTO user_projects (id, path, label, created_at_unix_ms, updated_at_unix_ms, last_used_at_unix_ms)
 VALUES ('project-repo', ?, 'repo', 1, 1, 1);
 `, repo); err != nil {
 		t.Fatalf("insert legacy user project error = %v", err)
 	}
-	if _, err := store.db.ExecContext(ctx, `
+	if _, err := store.writeDB.ExecContext(ctx, `
 INSERT INTO workspace_agent_sessions (workspace_id, agent_session_id, runtime_context_json, cwd, deleted_at_unix_ms, updated_at_unix_ms)
 VALUES
   ('ws-agent-rail-migration', 'session-project', '{}', ?, 0, 1),
@@ -2464,7 +2551,7 @@ func getTestAgentSessionRailSection(
 ) testAgentSessionRailSection {
 	t.Helper()
 
-	row := store.db.QueryRowContext(context.Background(), `
+	row := store.writeDB.QueryRowContext(context.Background(), `
 SELECT rail_section_kind, rail_project_path, rail_section_key
 FROM workspace_agent_sessions
 WHERE workspace_id = ? AND agent_session_id = ?

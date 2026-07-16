@@ -46,7 +46,7 @@ func (s *SQLiteStore) ListTopics(ctx context.Context, workspaceID string) (works
 		return workspaceissues.TopicList{}, err
 	}
 
-	rows, err := s.db.QueryContext(ctx, fmt.Sprintf(`
+	rows, err := s.readDB.QueryContext(ctx, fmt.Sprintf(`
 SELECT %s
 FROM workspace_issue_topics
 WHERE workspace_id = ?
@@ -76,7 +76,7 @@ func (s *SQLiteStore) CreateTopic(ctx context.Context, topic workspaceissues.Top
 		return workspaceissues.Topic{}, err
 	}
 
-	_, err := s.db.ExecContext(ctx, `
+	_, err := s.writeDB.ExecContext(ctx, `
 INSERT INTO workspace_issue_topics (
   topic_id, workspace_id, title, summary, is_default, pinned_at_unix_ms,
   last_activity_at_unix_ms, created_at_unix_ms, updated_at_unix_ms
@@ -97,7 +97,7 @@ func (s *SQLiteStore) GetTopic(ctx context.Context, workspaceID string, topicID 
 		return workspaceissues.Topic{}, err
 	}
 
-	row := s.db.QueryRowContext(ctx, fmt.Sprintf(`
+	row := s.readDB.QueryRowContext(ctx, fmt.Sprintf(`
 SELECT %s
 FROM workspace_issue_topics
 WHERE workspace_id = ? AND topic_id = ?
@@ -117,7 +117,7 @@ func (s *SQLiteStore) UpdateTopic(ctx context.Context, topic workspaceissues.Top
 		return workspaceissues.Topic{}, err
 	}
 
-	result, err := s.db.ExecContext(ctx, `
+	result, err := s.writeDB.ExecContext(ctx, `
 UPDATE workspace_issue_topics
 SET title = ?, summary = ?, pinned_at_unix_ms = ?, updated_at_unix_ms = ?
 WHERE workspace_id = ? AND topic_id = ?
@@ -136,7 +136,7 @@ func (s *SQLiteStore) DeleteTopic(ctx context.Context, workspaceID string, topic
 		return false, err
 	}
 
-	result, err := s.db.ExecContext(ctx, `
+	result, err := s.writeDB.ExecContext(ctx, `
 DELETE FROM workspace_issue_topics
 WHERE workspace_id = ? AND topic_id = ?
 `, workspaceID, topicID)
@@ -150,7 +150,7 @@ func (s *SQLiteStore) TouchTopicActivity(ctx context.Context, workspaceID string
 	if err := s.ensureIssueDatabase(); err != nil {
 		return err
 	}
-	result, err := s.db.ExecContext(ctx, `
+	result, err := s.writeDB.ExecContext(ctx, `
 UPDATE workspace_issue_topics
 SET last_activity_at_unix_ms = ?
 WHERE workspace_id = ? AND topic_id = ?
@@ -203,7 +203,7 @@ ORDER BY updated_at_unix_ms DESC, id DESC%s
 		args = append(args, limit)
 	}
 
-	rows, err := s.db.QueryContext(ctx, query, args...)
+	rows, err := s.readDB.QueryContext(ctx, query, args...)
 	if err != nil {
 		return workspaceissues.IssueList{}, fmt.Errorf("list workspace issues: %w", err)
 	}
@@ -241,7 +241,7 @@ func (s *SQLiteStore) CreateIssue(ctx context.Context, issue workspaceissues.Iss
 		return workspaceissues.Issue{}, err
 	}
 
-	_, err := s.db.ExecContext(ctx, `
+	_, err := s.writeDB.ExecContext(ctx, `
 INSERT INTO workspace_issues (
   issue_id, topic_id, workspace_id, title, content, search_text, status,
   task_count, not_started_count, running_count, pending_acceptance_count,
@@ -267,7 +267,7 @@ func (s *SQLiteStore) GetIssue(ctx context.Context, workspaceID string, issueID 
 		return workspaceissues.Issue{}, err
 	}
 
-	row := s.db.QueryRowContext(ctx, fmt.Sprintf(`
+	row := s.readDB.QueryRowContext(ctx, fmt.Sprintf(`
 SELECT %s
 FROM workspace_issues
 WHERE workspace_id = ? AND issue_id = ?
@@ -287,7 +287,7 @@ func (s *SQLiteStore) UpdateIssue(ctx context.Context, issue workspaceissues.Iss
 		return workspaceissues.Issue{}, err
 	}
 
-	result, err := s.db.ExecContext(ctx, `
+	result, err := s.writeDB.ExecContext(ctx, `
 UPDATE workspace_issues
 SET title = ?, content = ?, search_text = ?, status = ?, updated_at_unix_ms = ?
 WHERE workspace_id = ? AND issue_id = ?
@@ -307,7 +307,7 @@ func (s *SQLiteStore) DeleteIssue(ctx context.Context, workspaceID string, issue
 		return false, err
 	}
 
-	result, err := s.db.ExecContext(ctx, `
+	result, err := s.writeDB.ExecContext(ctx, `
 DELETE FROM workspace_issues
 WHERE workspace_id = ? AND issue_id = ?
 `, workspaceID, issueID)
@@ -328,7 +328,7 @@ func (s *SQLiteStore) RecalculateIssueProjection(ctx context.Context, workspaceI
 	}
 	status := workspaceissues.ProjectIssueStatus(counts)
 	now := unixMs(time.Now().UTC())
-	result, err := s.db.ExecContext(ctx, `
+	result, err := s.writeDB.ExecContext(ctx, `
 UPDATE workspace_issues
 SET status = ?, task_count = ?, not_started_count = ?, running_count = ?,
     pending_acceptance_count = ?, completed_count = ?, failed_count = ?,
@@ -356,7 +356,7 @@ func (s *SQLiteStore) AddContextRefs(ctx context.Context, refs []workspaceissues
 		return nil, err
 	}
 
-	tx, err := s.db.BeginTx(ctx, nil)
+	tx, err := s.writeDB.BeginTx(ctx, nil)
 	if err != nil {
 		return nil, fmt.Errorf("begin workspace issue context refs transaction: %w", err)
 	}
@@ -403,7 +403,7 @@ func (s *SQLiteStore) ListContextRefs(
 		return nil, err
 	}
 
-	rows, err := s.db.QueryContext(ctx, `
+	rows, err := s.readDB.QueryContext(ctx, `
 SELECT id, context_ref_id, workspace_id, issue_id, task_id, parent_kind,
        ref_type, path, display_name, created_at_unix_ms
 FROM workspace_issue_context_refs
@@ -441,7 +441,7 @@ func (s *SQLiteStore) RemoveContextRef(
 		return false, err
 	}
 
-	result, err := s.db.ExecContext(ctx, `
+	result, err := s.writeDB.ExecContext(ctx, `
 DELETE FROM workspace_issue_context_refs
 WHERE workspace_id = ? AND issue_id = ? AND task_id = ? AND parent_kind = ? AND context_ref_id = ?
 `, workspaceID, issueID, taskID, string(parentKind), contextRefID)
@@ -463,7 +463,7 @@ func (s *SQLiteStore) CreateRun(ctx context.Context, run workspaceissues.Run) (w
 		return workspaceissues.Run{}, err
 	}
 
-	_, err := s.db.ExecContext(ctx, `
+	_, err := s.writeDB.ExecContext(ctx, `
 INSERT INTO workspace_issue_runs (
   run_id, task_id, issue_id, workspace_id, requester_user_id, agent_user_id,
   agent_target_id, agent_session_id, agent_provider, status, summary,
@@ -488,7 +488,7 @@ func (s *SQLiteStore) CompleteRun(ctx context.Context, run workspaceissues.Run, 
 		return workspaceissues.Run{}, nil, err
 	}
 
-	tx, err := s.db.BeginTx(ctx, nil)
+	tx, err := s.writeDB.BeginTx(ctx, nil)
 	if err != nil {
 		return workspaceissues.Run{}, nil, fmt.Errorf("begin workspace issue run transaction: %w", err)
 	}
@@ -564,7 +564,7 @@ ORDER BY created_at_unix_ms DESC, id DESC
 		args = append(args, taskID)
 	}
 	query = strings.Replace(query, "FROM workspace_issue_runs\n", "FROM workspace_issue_runs\n"+where+"\n", 1)
-	rows, err := s.db.QueryContext(ctx, query, args...)
+	rows, err := s.readDB.QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, fmt.Errorf("list workspace issue runs: %w", err)
 	}
@@ -592,7 +592,7 @@ func (s *SQLiteStore) ListRunningRuns(ctx context.Context, workspaceID string, l
 		limit = 100
 	}
 
-	rows, err := s.db.QueryContext(ctx, fmt.Sprintf(`
+	rows, err := s.readDB.QueryContext(ctx, fmt.Sprintf(`
 SELECT %s
 FROM workspace_issue_runs
 WHERE workspace_id = ? AND status = ? AND TRIM(agent_session_id) <> ''
@@ -623,7 +623,7 @@ func (s *SQLiteStore) GetRun(ctx context.Context, workspaceID string, issueID st
 		return workspaceissues.Run{}, err
 	}
 
-	row := s.db.QueryRowContext(ctx, fmt.Sprintf(`
+	row := s.readDB.QueryRowContext(ctx, fmt.Sprintf(`
 SELECT %s
 FROM workspace_issue_runs
 WHERE workspace_id = ? AND issue_id = ? AND task_id = ? AND run_id = ?
@@ -643,7 +643,7 @@ func (s *SQLiteStore) ListRunOutputs(ctx context.Context, workspaceID string, is
 		return nil, err
 	}
 
-	rows, err := s.db.QueryContext(ctx, fmt.Sprintf(`
+	rows, err := s.readDB.QueryContext(ctx, fmt.Sprintf(`
 SELECT %s
 FROM workspace_issue_run_outputs
 WHERE workspace_id = ? AND issue_id = ? AND task_id = ? AND run_id = ?

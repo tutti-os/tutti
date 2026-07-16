@@ -379,6 +379,7 @@ type WorkspaceAgentSessionMessage struct {
 func (m *WorkspaceAgentSessionMessage) UnmarshalJSON(data []byte) error {
 	var raw struct {
 		ID                     flexibleUint64                  `json:"id"`
+		Sequence               flexibleUint64                  `json:"sequence"`
 		AgentSessionID         string                          `json:"agentSessionId"`
 		AgentSessionIDSnake    string                          `json:"agent_session_id"`
 		MessageID              string                          `json:"messageId"`
@@ -406,7 +407,7 @@ func (m *WorkspaceAgentSessionMessage) UnmarshalJSON(data []byte) error {
 		return err
 	}
 	*m = WorkspaceAgentSessionMessage{
-		ID:             uint64(raw.ID),
+		ID:             uint64(firstNonZeroFlexibleUint64(raw.Sequence, raw.ID)),
 		AgentSessionID: firstNonEmptyString(raw.AgentSessionID, raw.AgentSessionIDSnake),
 		MessageID:      firstNonEmptyString(raw.MessageID, raw.MessageIDSnake),
 		TurnID:         firstNonEmptyString(raw.TurnID, raw.TurnIDSnake),

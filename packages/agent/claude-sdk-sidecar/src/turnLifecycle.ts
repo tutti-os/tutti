@@ -27,7 +27,6 @@ export class TurnLifecycle {
   private pendingOrphanCount = 0;
   private cancelledValue = false;
   private completedTurnCount = 0;
-  private forceCancelTimer: ReturnType<typeof setTimeout> | undefined;
   private continuationStartTimer: ReturnType<typeof setTimeout> | undefined;
   private rejectingTimedOutContinuation = false;
 
@@ -93,7 +92,7 @@ export class TurnLifecycle {
       return;
     }
     const matched = this.turns.find(
-      (turn) => !turn.settled && turn.promptUuid === promptUuid,
+      (turn) => !turn.settled && turn.promptUuid === promptUuid
     );
     if (matched) {
       if (!matched.synthetic) {
@@ -136,7 +135,7 @@ export class TurnLifecycle {
       turnId: `synthetic-${crypto.randomUUID()}`,
       promptUuid: "",
       synthetic: true,
-      settled: false,
+      settled: false
     };
     this.turns.push(turn);
     this.activate(turn);
@@ -160,7 +159,7 @@ export class TurnLifecycle {
       this.rejectingTimedOutContinuation = true;
       this.settleActive("turn_completed", {
         stopReason: "background_agent_continuation_timeout",
-        syntheticTimeout: true,
+        syntheticTimeout: true
       });
       this.onContinuationStartTimeout();
     }, this.continuationStartTimeoutMs);
@@ -189,7 +188,7 @@ export class TurnLifecycle {
 
   settleActive(
     type: TerminalEvent,
-    payload: Record<string, unknown> = {},
+    payload: Record<string, unknown> = {}
   ): void {
     const turn = this.active;
     if (!turn || turn.settled) {
@@ -198,7 +197,6 @@ export class TurnLifecycle {
     turn.settled = true;
     this.completedTurnCount += 1;
     this.emit({ type, payload: { ...payload, turnId: turn.turnId } });
-    this.clearForceCancelTimer();
     this.clearContinuationStartTimer();
     this.active = undefined;
     this.activeIdValue = "";
@@ -209,7 +207,7 @@ export class TurnLifecycle {
   failLiveTurns(error: string): void {
     if (this.active) {
       this.settleActive(this.cancelledValue ? "turn_canceled" : "turn_failed", {
-        error,
+        error
       });
     }
     this.failQueuedTurns(error);
@@ -223,7 +221,7 @@ export class TurnLifecycle {
       this.settleQueuedTurn(
         turn,
         this.cancelledValue ? "turn_canceled" : "turn_failed",
-        { error },
+        { error }
       );
     }
     this.compactQueue();
@@ -256,14 +254,6 @@ export class TurnLifecycle {
     this.cancelledValue = true;
     return true;
   }
-
-  scheduleForceCancel(callback: () => void, graceMs: number): void {
-    if (!this.active || this.forceCancelTimer) {
-      return;
-    }
-    this.forceCancelTimer = setTimeout(callback, graceMs);
-  }
-
   clearCancelled(): void {
     this.cancelledValue = false;
   }
@@ -281,7 +271,6 @@ export class TurnLifecycle {
   }
 
   close(): void {
-    this.clearForceCancelTimer();
     this.clearContinuationStartTimer();
   }
 
@@ -302,8 +291,8 @@ export class TurnLifecycle {
           operationId: turn.goalOperationId,
           revision: turn.goalRevision,
           repairEpoch: turn.goalRepairEpoch ?? 0,
-          action: turn.goalAction,
-        },
+          action: turn.goalAction
+        }
       });
     }
     if (turn.synthetic || turn.origin) {
@@ -321,8 +310,8 @@ export class TurnLifecycle {
             : {}),
           ...(turn.goalRepairEpoch
             ? { sourceGoalRepairEpoch: turn.goalRepairEpoch }
-            : {}),
-        },
+            : {})
+        }
       });
     }
   }
@@ -346,7 +335,7 @@ export class TurnLifecycle {
   private settleQueuedTurn(
     turn: RuntimeTurn,
     type: "turn_canceled" | "turn_failed",
-    payload: Record<string, unknown> = {},
+    payload: Record<string, unknown> = {}
   ): void {
     if (turn.settled) {
       return;
@@ -359,13 +348,5 @@ export class TurnLifecycle {
     while (this.turns[0]?.settled) {
       this.turns.shift();
     }
-  }
-
-  private clearForceCancelTimer(): void {
-    if (!this.forceCancelTimer) {
-      return;
-    }
-    clearTimeout(this.forceCancelTimer);
-    this.forceCancelTimer = undefined;
   }
 }

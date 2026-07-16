@@ -3616,6 +3616,9 @@ aside.workspace-agents-status-panel
 .agent-gui-conversation__interactive-feedback-send-button
   .agent-gui-conversation__interactive-option-spinner {
   position: static;
+  top: auto;
+  right: auto;
+  transform: none;
 }
 
 .agent-gui-conversation__interactive-prompt-footer {
@@ -9366,6 +9369,31 @@ html[data-theme="light"] [data-message-center-item-id].agent-gui-edge-glow {
   opacity: 0.38;
 }
 
+/* "Beta" tag straddling the selected icon's bottom border: its centerline sits
+   on the selected-state stroke, horizontally centered on the icon. */
+.agent-gui-node__provider-rail-beta-badge {
+  position: absolute;
+  top: calc(100% - 1px);
+  left: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 2;
+  display: inline-flex;
+  align-items: center;
+  height: 16px;
+  padding: 0 4px;
+  border-radius: 4px;
+  background: var(--tutti-purple-bg);
+  color: var(--tutti-purple);
+  font-family: var(--font-sans, inherit);
+  font-size: 9px;
+  font-weight: 600;
+  font-style: normal;
+  line-height: 1;
+  letter-spacing: 0.01em;
+  white-space: nowrap;
+  pointer-events: none;
+}
+
 .agent-gui-node__provider-rail-tile:hover:not(:disabled)
   .agent-gui-node__provider-rail-avatar {
   background: var(--fill-secondary);
@@ -9616,9 +9644,9 @@ html[data-theme="light"] [data-message-center-item-id].agent-gui-edge-glow {
   --agent-gui-hero-carousel-scale: 0.8;
 
   /* The stage measures the body's placeholder slot and pins the layer to it;
-     the calc() remains only as the first-paint estimate. */
+     the calc()/50% fallbacks remain only as the first-paint estimate. */
   top: var(--agent-gui-hero-carousel-slot-top, calc(50% - 210px));
-  left: 50%;
+  left: var(--agent-gui-hero-carousel-slot-left, 50%);
   width: round(nearest, min(400px, calc(100% - 64px)), 1px);
   min-width: 320px;
   transform: translateX(-50%) scale(var(--agent-gui-hero-carousel-scale));
@@ -9700,6 +9728,34 @@ html[data-theme="light"] [data-message-center-item-id].agent-gui-edge-glow {
   height: 416px;
   object-fit: fill;
   pointer-events: none;
+}
+
+/* "Beta" tag centered on the turntable's vertical centerline, just above it.
+   The player renders at 0.25 (root) × 0.8 (hero layer) = 0.2 on screen, so the
+   pill is counter-scaled ×5 to net 1.0 and hit true 13px text / 20px height;
+   position lengths stay in the 440px local space (× 0.2 on screen). */
+.agent-gui-vinyl-player__beta {
+  position: absolute;
+  top: -90px;
+  left: 220px;
+  z-index: 3;
+  display: inline-flex;
+  align-items: center;
+  height: 20px;
+  padding: 0 8px;
+  border-radius: 4px;
+  background: var(--tutti-purple-bg);
+  color: var(--tutti-purple);
+  font-family: var(--font-sans, inherit);
+  font-style: normal;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1;
+  letter-spacing: 0.01em;
+  white-space: nowrap;
+  pointer-events: none;
+  transform: translate(-50%, -50%) scale(5);
+  transform-origin: center;
 }
 
 .agent-gui-vinyl-player__indicator {

@@ -44,6 +44,7 @@ export interface WorkspaceAgentServiceRegistrationResult {
   agentsService: IAgentsService;
   agentProviderStatusService: IAgentProviderStatusService;
   workspaceAgentActivityService: IWorkspaceAgentActivityService;
+  dispose(): void;
 }
 
 export function registerWorkspaceAgentServices(
@@ -63,7 +64,10 @@ export function registerWorkspaceAgentServices(
     IAgentProviderStatusService,
     agentProviderStatusService
   );
-  bindDesktopManagedAgentProviderVisibilityRefresh(agentProviderStatusService);
+  const disposeManagedAgentProviderVisibilityRefresh =
+    bindDesktopManagedAgentProviderVisibilityRefresh(
+      agentProviderStatusService
+    );
   startManagedAgentInstallBootstraps(agentProviderStatusService);
   const agentsService = new DesktopAgentsService({
     resolveAgentTargetIconUrl: input.resolveAgentTargetIconUrl,
@@ -89,6 +93,9 @@ export function registerWorkspaceAgentServices(
   return {
     agentsService,
     agentProviderStatusService,
-    workspaceAgentActivityService
+    workspaceAgentActivityService,
+    dispose() {
+      disposeManagedAgentProviderVisibilityRefresh();
+    }
   };
 }

@@ -255,6 +255,7 @@ export type AgentActivityUpdatedPayloadV1 =
           messageId: string;
           payload: Record<string, unknown>;
           role: string;
+          sequence: number;
           version: number;
           turnId: string;
           status?: string;

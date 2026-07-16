@@ -249,8 +249,14 @@ emitted before this method can be called`, especially after HMR, navigation,
   web contents id; otherwise wait for its `dom-ready` event with a bounded
   timeout. Treat cancellation during navigation or unmount as best-effort and
   guard the full method call with `try`/`catch`, including synchronous throws.
+  For the element selector specifically, keep the selection session independent
+  from one guest: consume BrowserNode's active-webview context, move the
+  selector to the newly active webview, and re-arm it after navigation
+  `dom-ready`. Increment an attempt token whenever the target changes so a late
+  result from the previous page cannot finish the new page's selection.
 - Validation:
-  Test delayed `dom-ready`, detached webviews, and unmount cancellation. Run the
+  Test delayed `dom-ready`, detached webviews, unmount cancellation, switching
+  tabs while selecting, and navigating the active tab while selecting. Run the
   desktop typecheck, changed-aware checks, and production build. Confirm the
   guest action is bundled with the standalone Agent browser adapter, then reload
   the standalone Agent window before a manual page-selection smoke test.

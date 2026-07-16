@@ -349,6 +349,72 @@ Turn state, loading, cancel, restore, file-change undo, rail projection, event u
   [codex_appserver_goal.go](../../../packages/agent/daemon/runtime/codex_appserver_goal.go)
   [codex_appserver_adapter_test.go](../../../packages/agent/daemon/runtime/codex_appserver_adapter_test.go)
 
+### Codex goal shows active but produces no response
+
+- Symptom:
+  Sending `/goal …` updates the Goal banner to active, but no assistant text or
+  tool activity appears. Logs show `turn/started`, followed shortly by
+  `agent_session.app_server.goal.turn_provenance_unproven` and an exact
+  `turn/interrupt`.
+- Quick checks:
+  Inspect the installed Codex app-server schema and the raw
+  `thread/goal/updated` payload. In affected versions, `turnId` is optional and
+  the external `thread/goal/set` update omits it. Verify the Goal operation and
+  generation fingerprint were persisted successfully before investigating
+  transport or model failures.
+- Root cause:
+  Tutti required `thread/goal/updated.turnId` as the only Goal-to-Turn
+  correlation signal. Codex externally applies the Goal, emits a session-scoped
+  update without `turnId`, then starts the continuation Turn. The adapter
+  therefore treated valid work as unproven and deliberately interrupted it
+  after the provenance grace window.
+- Fix:
+  Keep exact turn-scoped Goal evidence as the preferred path. For versions that
+  omit `turnId`, use an adapter-local, single-use continuation claim scoped to
+  the successful Goal RPC's immutable operation/revision. Chain the next claim
+  only from settlement of an adopted Goal Turn, serialize Goal control against
+  ordinary submit setup, and invalidate the claim on revision change, inactive
+  status, restart, or multiple unowned Turns. Never bind an arbitrary unowned
+  Turn from the mutable current Goal snapshot and do not fix this by merely
+  extending the provenance timeout.
+- Validation:
+  Reproduce the real protocol order
+  `goal/set response -> goal/updated without turnId -> turn/started` and verify
+  assistant output is persisted without an interrupt. Also cover chained
+  continuation Turns without another Goal RPC and a delayed old Turn after a
+  newer revision, which must still be interrupted.
+- References:
+  [codex_appserver_goal_provenance.go](../../../packages/agent/daemon/runtime/codex_appserver_goal_provenance.go)
+  [codex_appserver_goal.go](../../../packages/agent/daemon/runtime/codex_appserver_goal.go)
+  [controller_exec.go](../../../packages/agent/daemon/runtime/controller_exec.go)
+  [codex_appserver_adapter_test.go](../../../packages/agent/daemon/runtime/codex_appserver_adapter_test.go)
+
+### Active Codex goal has no elapsed timer
+
+- Symptom:
+  The Goal banner shows an active objective but no elapsed value, even though
+  Codex continues working and its Goal database reports non-zero usage time.
+- Root cause:
+  Codex exposes `timeUsedSeconds` and `tokensUsed`, while Tutti's canonical
+  session Goal contract exposes `durationMs` and `tokens`. Passing provider
+  fields through runtime context causes the typed durable session boundary to
+  discard them. A newly created Goal may also omit canonical `durationMs`
+  because zero is an optional counter.
+- Fix:
+  Normalize provider counters in the Codex adapter before publishing session
+  state or Goal observations. The renderer reads only `durationMs`, hides time
+  while the Goal is an optimistic projection, and starts only after canonical
+  provider state arrives. If that canonical state omits the optional zero
+  baseline, start at zero and advance locally between server updates.
+- Validation:
+  Verify provider-to-canonical normalization with non-zero counters, verify an
+  optimistic Goal shows no time, verify canonical confirmation adopts the
+  provider duration and advances, and verify a paused Goal without a duration
+  still omits the timer.
+- References:
+  [codex_appserver_goal.go](../../../packages/agent/daemon/runtime/codex_appserver_goal.go)
+  [AgentGoalBanner.tsx](../../../packages/agent/gui/agent-gui/agentGuiNode/AgentGoalBanner.tsx)
+
 ### Codex goal reappears after pause, edit, or clear
 
 - Symptom:
@@ -486,26 +552,29 @@ Turn state, loading, cancel, restore, file-change undo, rail projection, event u
   as `pinnedAtUnixMs` into the runtime projection. If that merge keeps the older
   runtime timestamp, the frontend's monotonic session reducer correctly rejects
   the whole stale response, including the new pin value.
-  When the entity update is accepted, pin membership still requires an
-  authoritative section refresh. Treating every pending section request as an
-  unresolved list load turns that same-scope background refresh into a blocking
-  skeleton even though valid membership is already available.
+  When the entity update is accepted, pin membership still requires
+  authoritative pinned and ordinary first-page reads. Triggering an aggregate
+  section query or workspace activity load turns that narrow reconciliation
+  into a multi-second blocking reload on large histories.
 - Fix:
   Merge session freshness monotonically across runtime and persistence using
   the newer timestamp. Pin responses that advance the session version must also
   include protocol-v2 active/latest turn state so accepting the metadata update
   cannot clear a running turn. Do not weaken frontend version checks or hide the
-  mismatch behind delayed refetches. For an accepted membership update, keep the
-  resolved section page visible during the same-scope refresh and reveal the rail
-  skeleton only when no first page has resolved. Lock scope-sensitive actions
-  only while the displayed membership belongs to a different or unresolved
-  scope; do not patch daemon-owned membership locally.
+  mismatch behind delayed refetches. For an accepted membership update, compare
+  canonical before/after membership and request only pinned plus the exact
+  ordinary section page. Keep resolved pages visible and use the canonical row
+  as a transient overlay until both responses apply atomically. Do not call
+  `listSessionSections` or workspace `load` from delete, pin/unpin, or rename.
+  Lock scope-sensitive actions only while displayed membership belongs to a
+  different or unresolved scope; do not patch daemon-owned membership locally.
 - Validation:
   Cover a live runtime session whose persisted pin update is newer, a newer
   runtime snapshot that must not regress, and a running turn that remains
   attached to the pin response. Run `go test ./services/tuttid/service/agent`
-  plus daemon lint, tests, and build. Add controller coverage for initial load,
-  same-scope membership refresh, scope change, and stale request cancellation.
+  plus daemon lint, tests, and build. Add controller coverage proving a
+  same-scope pin/unpin calls only the pinned and exact ordinary page endpoints,
+  keeps `pending=false`, and does not call the aggregate section endpoint.
 - References:
   [service.go](../../../services/tuttid/service/agent/service.go)
   [service_session.go](../../../services/tuttid/service/agent/service_session.go)
@@ -659,6 +728,14 @@ Turn state, loading, cancel, restore, file-change undo, rail projection, event u
   `rail_visible_session_count` as the target-scoped total across requested
   sections and `returned_session_count` as only the bounded first-page rows;
   neither requires another full-workspace count query.
+  For provider switching, inspect `agent_gui.provider_switch.completed` or
+  `agent_gui.provider_switch.failed`. They report source/target ids, fresh/stale/
+  miss cache status, request time, controller-apply time, and total controller
+  readiness time. Correlate target and timestamp with
+  `agent.composer_options.load`, which records composer transport duration and
+  status. A fresh rail hit with no composer transport indicates both caches were
+  reused; a long rail request isolates section loading, while a long composer
+  event isolates target option discovery.
 - Root cause:
   A second React summary cache mixed entity data, section membership, active
   selection, and visible-item limits. Effects manually patched section rows
@@ -884,6 +961,45 @@ Turn state, loading, cancel, restore, file-change undo, rail projection, event u
   [agentPatchMetadata.ts](../../../packages/agent/gui/shared/agentConversation/rules/agentPatchMetadata.ts)
   [git_patch.go](../../../services/tuttid/service/agent/git_patch.go)
 
+### Cursor deleted files appear as created or modified
+
+- Symptom:
+  After Cursor deletes a file, the settled turn's changed-files summary or tool
+  detail labels it as created or modified instead of deleted.
+- Quick checks:
+  Inspect the original completed ACP tool payload, its following `turn.updated`
+  event, and the durable turn row. Cursor reports deletion with ACP
+  `kind = delete`, but its canonical tool name is still `Write`. The
+  `turn.updated.metadata.fileChanges.files[]` entry and durable
+  `file_changes_json` must both say `change = deleted`.
+- Root cause:
+  The canonical tool name describes the file-writing tool family, not the
+  change direction. Inferring every `Write` as creation discards Cursor's
+  explicit ACP delete semantic. A second failure mode is normalizing the tool
+  call correctly but omitting canonical `fileChanges` from the subsequent turn
+  state patch, leaving AgentGUI without its authoritative response-tail input.
+- Fix:
+  Normalize recognized provider change kinds inside the shared runtime
+  file-change projector, accumulate the result per turn, and persist it through
+  `turn.updated`. The session-detail response must return all durable root turns,
+  and the desktop reconcile bridge must insert them into the existing activity
+  engine turn store. AgentGUI reads only the matching canonical turn's
+  `fileChanges`; do not add Cursor/ACP/Codex/Claude field inference to
+  conversation projection. Keep tool `changes` payloads independently for
+  Undo/Reapply patch batches. Do not backfill sessions whose historical turns
+  have no canonical file changes.
+- Validation:
+  Cover the Cursor completed-call to `turn.updated` path, durable turn state,
+  and canonical AgentGUI projection. Also cover Codex `changes[].kind.type` and
+  Claude Code started/completed tool merging because all three providers share
+  the same turn-level contract.
+- References:
+  [tool_file_changes.go](../../../packages/agent/daemon/runtime/tool_file_changes.go)
+  [acp_turn_normalizer.go](../../../packages/agent/daemon/runtime/acp_turn_normalizer.go)
+  [reporter_message.go](../../../packages/agent/daemon/runtime/reporter_message.go)
+  [reporter_state.go](../../../packages/agent/daemon/runtime/reporter_state.go)
+  [agentTurnSummaryProjection.ts](../../../packages/agent/gui/shared/agentConversation/projection/agentTurnSummaryProjection.ts)
+
 ### Remote agent cancel does not stop the local turn
 
 - Symptom:
@@ -963,6 +1079,47 @@ Turn state, loading, cancel, restore, file-change undo, rail projection, event u
   [controller_turn_state.go](../../../packages/agent/daemon/runtime/controller_turn_state.go)
   [acp_turn_normalizer.go](../../../packages/agent/daemon/runtime/acp_turn_normalizer.go)
   [acp_turn_normalizer_snapshots.go](../../../packages/agent/daemon/runtime/acp_turn_normalizer_snapshots.go)
+
+### Claude Code starts another command after Stop
+
+- Symptom:
+  User stops a Claude Code turn after a Bash command becomes a background task.
+  The turn settles as canceled, but background completion is followed by a new
+  assistant continuation, approval, or Bash command such as `ls`. The new
+  provider id may be synthetic even though no sub-agent exists.
+- Quick checks:
+  Correlate provider session id, canonical root turn id, and sidecar events. If
+  a background `task_notification` arrives after `turn_canceled`, followed by
+  synthetic `turn_started` or `approval_requested`, inspect SDK Query lifetime.
+  Confirm the exported session has no child-session relation before classifying
+  the continuation as a sub-agent.
+- Root cause:
+  Claude Agent SDK `interrupt()` stops current query execution but does not
+  terminate the Query or all background resources. Reusing that Query lets a
+  late background completion trigger another root inference. Filtering the
+  synthetic event in AgentGUI or daemon persistence is too late: provider code
+  may already have requested or executed the tool, especially under
+  `bypassPermissions`.
+- Fix:
+  Treat each SDK Query as an execution generation. Cancel revokes the generation
+  before calling the SDK, rejects its pending interactions, awaits the interrupt
+  acknowledgment, then closes it in cleanup. Fence messages, hooks, and
+  `canUseTool` by generation identity. Give the next real user prompt a fresh
+  prompt queue and Query using `resume: providerSessionId`. Consume a canceled
+  generation's replayed terminal task notification and paired result before
+  they can settle the new canonical Turn. Keep normal non-canceled child
+  completion continuations enabled. As defense in depth, reject a new pending
+  Interaction whose canonical owning Turn is already settled.
+- Validation:
+  Run `pnpm --filter @tutti-os/claude-sdk-sidecar test` and
+  `go test ./packages/agent/store-sqlite -run 'TestUpsertInteractionRejectsNewPendingRequestOnSettledTurn'`.
+  Cover default and `bypassPermissions`, assert no synthetic turn, approval, or
+  tool permission after cancel, then assert a new real prompt resumes the same
+  provider session.
+- References:
+  [sessionRuntime.ts](../../../packages/agent/claude-sdk-sidecar/src/sessionRuntime.ts)
+  [queryGeneration.ts](../../../packages/agent/claude-sdk-sidecar/src/queryGeneration.ts)
+  [activity_turns.go](../../../packages/agent/store-sqlite/activity_turns.go)
 
 ### AgentGUI freezes when session history is large
 
@@ -1261,6 +1418,79 @@ Turn state, loading, cancel, restore, file-change undo, rail projection, event u
   [command_catalog.go](../../services/tuttid/service/agentsidecar/command_catalog.go)
   [controller_session_lifecycle.go](../../packages/agent/daemon/runtime/controller_session_lifecycle.go)
   [agent_runtime_adapter.go](../../services/tuttid/agent_runtime_adapter.go)
+
+### AgentGUI cannot stop Cursor immediately after the first message
+
+- Symptom:
+  The first Cursor message enters an activating state, but Stop is absent or
+  does nothing until a canonical session and Turn appear. Codex and Claude Code
+  often appear unaffected because their startup completes before a user can hit
+  the same window.
+- Quick checks:
+  Correlate the activation request with process spawn, ACP `initialize`,
+  `session/new`, and the first Turn. If Stop becomes available only after the
+  Turn id is known, the UI and engine are treating cancellation as turn-only.
+  Also inspect failed-create cleanup after request cancellation for provisional
+  runtime state left under the session id.
+- Root cause:
+  New-session activation is an abortable engine command before it becomes a
+  canonical Turn. A turn-only Stop gate cannot target that command, and a cancel
+  operation stored only under existing session entities is lost on an empty
+  reconciliation snapshot. Cleanup that reuses the canceled request context
+  can then fail to close the provisional runtime.
+- Fix:
+  Dispatch one provider-neutral session Stop intent. Abort the exact activation
+  command by command id, preserve a detached workspace/session-scoped
+  `awaitingTurn` cancel through snapshots, and convert it to exact-turn cancel
+  when the first Turn arrives. Expire the detached operation after a bounded
+  window. Run failed-create close and cleanup with a bounded context detached
+  from request cancellation.
+- Validation:
+  Cover immediate activation abort, empty-snapshot preservation, late first-Turn
+  cancel, expiry before an unrelated future Turn, and identical lifecycle
+  behavior for Cursor, Codex, and Claude Code. Verify AgentGUI exposes Stop
+  while new-conversation activation is still submitting.
+- References:
+  [createAgentSessionEngine.ts](../../../packages/agent/activity-core/src/engine/createAgentSessionEngine.ts)
+  [sessionLifecycle.reducer.ts](../../../packages/agent/activity-core/src/engine/sessionLifecycle.reducer.ts)
+  [pendingIntents.reducer.ts](../../../packages/agent/activity-core/src/engine/pendingIntents.reducer.ts)
+  [useAgentGUIDetailModel.tsx](../../../packages/agent/gui/agent-gui/agentGuiNode/view/useAgentGUIDetailModel.tsx)
+  [service.go](../../../services/tuttid/service/agent/service.go)
+
+### Cursor session/new is canceled before its 30-second timeout
+
+- Symptom:
+  Sending the first message to Cursor leaves AgentGUI activating until Tutti
+  reports a timeout. Cursor logs show `session/new` started, but it is canceled
+  substantially before the ACP runtime's configured 30-second deadline.
+- Quick checks:
+  Correlate `service.create.entered`, provider-status completion,
+  `runtime_start_requested`, ACP `initialize`, and `session/new`. If a full
+  provider-status probe runs inside `Service.Create`, or the renderer activation
+  expires 30 seconds after the click rather than 30 seconds after `session/new`
+  starts, the protocol call is receiving only a leftover budget.
+- Root cause:
+  Provider readiness was treated as a per-session precondition even though it
+  performs application-scoped binary, version, and auth detection. Cursor auth
+  fallback commands can consume several seconds before ACP starts. An outer
+  30-second activation timer then propagates cancellation into the daemon and
+  truncates the independent 30-second `session/new` timeout.
+- Fix:
+  Cache provider readiness in `tuttid` per provider with completion-time TTL and
+  single-flight refresh. Explicit setup refreshes bypass that cache; ordinary
+  session creation does not run status, version, auth, network, or hidden model
+  discovery. Let the actual process spawn and ACP handshake be authoritative.
+  Give new-session activation a larger outer safety deadline while preserving
+  the ACP runtime's own 30-second `session/new` deadline.
+- Validation:
+  Cover cache reuse across all-provider and single-provider requests, forced
+  refresh, concurrent single-flight reads, absence of availability checks from
+  `Service.Create`, and a new-session activation timeout larger than 30 seconds.
+- References:
+  [status_cache.go](../../../services/tuttid/service/agentstatus/status_cache.go)
+  [service.go](../../../services/tuttid/service/agent/service.go)
+  [pendingIntents.reducer.ts](../../../packages/agent/activity-core/src/engine/pendingIntents.reducer.ts)
+  [acp_shared.go](../../../packages/agent/daemon/runtime/acp_shared.go)
 
 ### Cursor auto-continue invents interrupted work after a network drop
 

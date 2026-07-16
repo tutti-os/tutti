@@ -26,7 +26,13 @@ the shared UI.
 
 The optional React surface persists the adjustable locations-sidebar and
 details-panel widths on the current device. Restored widths are clamped to the
-available surface so the central file list keeps its minimum usable width.
+available surface so the central file list keeps its minimum usable width. The
+locations sidebar can use the space normally reserved for file details when a
+host hides the details panel, which keeps long location names readable in
+compact tool-sidebar layouts. In narrow list layouts, the name column keeps a
+usable minimum width. Starting a locations-sidebar resize preserves the name
+column's current width so modified-time and size metadata shrink from the first
+drag movement.
 
 Hosts now provide one app-level i18n runtime and scope it into the file-manager
 namespace, rather than hand-assembling package-local message objects.

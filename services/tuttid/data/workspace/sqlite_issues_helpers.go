@@ -17,7 +17,7 @@ type issueScanner interface {
 }
 
 func (s *SQLiteStore) ensureIssueDatabase() error {
-	if s == nil || s.db == nil {
+	if s == nil || s.writeDB == nil {
 		return workspaceissues.ErrStoreNotConfigured
 	}
 	return nil
@@ -71,9 +71,9 @@ func issueListWhereForFilter(filter workspaceissues.IssueListFilter, includeStat
 		args = append(args, string(filter.StatusFilter))
 	}
 	if searchQuery := strings.TrimSpace(filter.SearchQuery); searchQuery != "" {
-		where = append(where, "(LOWER(title) LIKE ? OR LOWER(search_text) LIKE ?)")
+		where = append(where, "LOWER(title) LIKE ?")
 		like := "%" + strings.ToLower(searchQuery) + "%"
-		args = append(args, like, like)
+		args = append(args, like)
 	}
 	return where, args
 }
@@ -94,9 +94,9 @@ func taskListWhereForFilter(filter workspaceissues.TaskListFilter, includeStatus
 		args = append(args, string(filter.StatusFilter))
 	}
 	if searchQuery := strings.TrimSpace(filter.SearchQuery); searchQuery != "" {
-		where = append(where, "(LOWER(title) LIKE ? OR LOWER(search_text) LIKE ?)")
+		where = append(where, "LOWER(title) LIKE ?")
 		like := "%" + strings.ToLower(searchQuery) + "%"
-		args = append(args, like, like)
+		args = append(args, like)
 	}
 	return where, args
 }
@@ -126,7 +126,7 @@ func issueLimitClause(limit int) string {
 }
 
 func (s *SQLiteStore) countIssueRows(ctx context.Context, tableName string, where string, args []any) (int, error) {
-	row := s.db.QueryRowContext(ctx, fmt.Sprintf(`
+	row := s.readDB.QueryRowContext(ctx, fmt.Sprintf(`
 SELECT COUNT(*)
 FROM %s
 WHERE %s
@@ -140,7 +140,7 @@ WHERE %s
 }
 
 func (s *SQLiteStore) countIssueStatuses(ctx context.Context, tableName string, where string, args []any) (workspaceissues.StatusCounts, error) {
-	rows, err := s.db.QueryContext(ctx, fmt.Sprintf(`
+	rows, err := s.readDB.QueryContext(ctx, fmt.Sprintf(`
 SELECT status, COUNT(*)
 FROM %s
 WHERE %s

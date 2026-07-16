@@ -126,6 +126,9 @@ The Browser Node package owns:
 - address bar rendering and generic input resolution
 - session, profile, and incognito partition logic
 - React body and shared two-row tab/header surface
+- the active guest webview context exposed to navigation actions, so host
+  actions operate on the actual active Tab webview rather than reconstructing
+  that identity from DOM markers
 - workbench node definition helpers
 - Electron webview registration and unregistration coordination
 - Electron guest `webContents` state synchronization

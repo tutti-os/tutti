@@ -2041,6 +2041,9 @@ func TestDaemonAPIGeneratedRoutesListAgentSessionMessages(t *testing.T) {
 	if response.Messages[0].MessageId != "msg-1" {
 		t.Fatalf("messageId = %q, want msg-1", response.Messages[0].MessageId)
 	}
+	if response.Messages[0].Sequence != 8 {
+		t.Fatalf("sequence = %d, want durable message id 8", response.Messages[0].Sequence)
+	}
 	if response.Messages[0].TurnId == nil || *response.Messages[0].TurnId != "turn-1" {
 		t.Fatalf("turnId = %v, want turn-1", response.Messages[0].TurnId)
 	}

@@ -57,16 +57,18 @@ import {
   writeWorkspaceFileManagerPreviewWidth
 } from "./workspaceFileManagerPaneSizing.ts";
 import type { WorkspaceFileManagerVisibleTreeRow } from "./workspaceFileManagerVisibleTree.ts";
+import {
+  workspaceFileManagerCompactTableGridClassName,
+  workspaceFileManagerCompactTableGridTemplate,
+  workspaceFileManagerTableGridClassName,
+  workspaceFileManagerTableGridTemplate
+} from "./workspaceFileManagerTableSizing.ts";
 
-const workspaceFileManagerTableGridClassName =
-  "grid-cols-[minmax(0,_1fr)_148px_96px]";
 const workspaceFileManagerTableGridStyle: CSSProperties = {
-  gridTemplateColumns: "minmax(0, 1fr) 148px 96px"
+  gridTemplateColumns: workspaceFileManagerTableGridTemplate
 };
-const workspaceFileManagerCompactTableGridClassName =
-  "grid-cols-[minmax(0,_1fr)_96px_72px]";
 const workspaceFileManagerCompactTableGridStyle: CSSProperties = {
-  gridTemplateColumns: "minmax(0, 1fr) 96px 72px"
+  gridTemplateColumns: workspaceFileManagerCompactTableGridTemplate
 };
 const workspaceFileManagerPreviewDetailGridStyle: CSSProperties = {
   gridTemplateColumns: "minmax(82px, 0.8fr) minmax(0, 1.2fr)"
@@ -632,16 +634,22 @@ export function WorkspaceFileManagerPanels({
                 )}
                 style={tableGridStyle}
               >
-                <span className={tableCellPaddingClassName}>
+                <span
+                  className={cn(
+                    "min-w-0 overflow-hidden",
+                    tableCellPaddingClassName
+                  )}
+                  data-workspace-file-manager-name-column=""
+                >
                   {copy.t("nameLabel")}
                 </span>
                 <span
-                  className={cn("whitespace-nowrap", tableCellPaddingClassName)}
+                  className={cn("min-w-0 truncate", tableCellPaddingClassName)}
                 >
                   {dateColumnLabel}
                 </span>
                 <span
-                  className={cn("whitespace-nowrap", tableCellPaddingClassName)}
+                  className={cn("min-w-0 truncate", tableCellPaddingClassName)}
                 >
                   {copy.t("sizeLabel")}
                 </span>
@@ -974,7 +982,7 @@ function EntryRow({
     }
   };
   const nameCell = (
-    <span className={tableCellPaddingClassName}>
+    <span className={cn("min-w-0 overflow-hidden", tableCellPaddingClassName)}>
       <EntryNameCell
         copy={copy}
         contextLabel={contextLabel}

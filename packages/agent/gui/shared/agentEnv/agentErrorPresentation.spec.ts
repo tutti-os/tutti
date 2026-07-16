@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   classifyFailedAgentMessage,
+  classifyRecoverableAgentMessage,
   isProviderPlanLimitMessage,
   resolveAgentErrorPresentation
 } from "./agentErrorPresentation";
@@ -40,6 +41,35 @@ describe("classifyFailedAgentMessage", () => {
     expect(classifyFailedAgentMessage("Add a payment method to continue")).toBe(
       "quota_or_rate_limit"
     );
+  });
+});
+
+describe("classifyRecoverableAgentMessage", () => {
+  it("recovers the standalone Claude Code login notice even when SDK marks it completed", () => {
+    expect(
+      classifyRecoverableAgentMessage({
+        body: "Not logged in · Please run /login",
+        statusKind: "completed"
+      })
+    ).toBe("auth_required");
+  });
+
+  it("does not reinterpret other completed messages", () => {
+    expect(
+      classifyRecoverableAgentMessage({
+        body: "Authentication is configured and the request completed.",
+        statusKind: "completed"
+      })
+    ).toBeNull();
+  });
+
+  it("does not reinterpret a normal Claude answer that discusses the notice", () => {
+    expect(
+      classifyRecoverableAgentMessage({
+        body: 'The message "Not logged in · Please run /login" means authentication is required.',
+        statusKind: "completed"
+      })
+    ).toBeNull();
   });
 });
 

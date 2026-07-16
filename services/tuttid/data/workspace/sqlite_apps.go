@@ -23,7 +23,7 @@ func (s *SQLiteStore) PutAppPackageVersion(ctx context.Context, appPackage works
 }
 
 func (s *SQLiteStore) putAppPackage(ctx context.Context, appPackage workspacebiz.AppPackage, activate bool) error {
-	if s == nil || s.db == nil {
+	if s == nil || s.writeDB == nil {
 		return errors.New("workspace database is not initialized")
 	}
 
@@ -59,7 +59,7 @@ func (s *SQLiteStore) putAppPackage(ctx context.Context, appPackage workspacebiz
 		source = string(workspacebiz.AppPackageSourceBuiltin)
 	}
 
-	tx, err := s.db.BeginTx(ctx, nil)
+	tx, err := s.writeDB.BeginTx(ctx, nil)
 	if err != nil {
 		return fmt.Errorf("begin workspace app package write: %w", err)
 	}
@@ -117,7 +117,7 @@ ON CONFLICT(app_id) DO NOTHING
 }
 
 func (s *SQLiteStore) GetAppPackage(ctx context.Context, appID string) (workspacebiz.AppPackage, error) {
-	if s == nil || s.db == nil {
+	if s == nil || s.writeDB == nil {
 		return workspacebiz.AppPackage{}, errors.New("workspace database is not initialized")
 	}
 
@@ -126,7 +126,7 @@ func (s *SQLiteStore) GetAppPackage(ctx context.Context, appID string) (workspac
 		return workspacebiz.AppPackage{}, errors.New("workspace app id is required")
 	}
 
-	row := s.db.QueryRowContext(ctx, `
+	row := s.readDB.QueryRowContext(ctx, `
 SELECT p.app_id, p.version, p.package_dir, p.manifest_json, p.source, p.factory_job_id, p.created_in_workspace_id, c.created_at_unix_ms
 FROM app_catalog_entries c
 JOIN app_packages p ON p.app_id = c.app_id AND p.version = c.active_version
@@ -144,7 +144,7 @@ WHERE c.app_id = ?
 }
 
 func (s *SQLiteStore) GetAppPackageVersion(ctx context.Context, appID string, version string) (workspacebiz.AppPackage, error) {
-	if s == nil || s.db == nil {
+	if s == nil || s.writeDB == nil {
 		return workspacebiz.AppPackage{}, errors.New("workspace database is not initialized")
 	}
 
@@ -154,7 +154,7 @@ func (s *SQLiteStore) GetAppPackageVersion(ctx context.Context, appID string, ve
 		return workspacebiz.AppPackage{}, errors.New("workspace app id and version are required")
 	}
 
-	row := s.db.QueryRowContext(ctx, `
+	row := s.readDB.QueryRowContext(ctx, `
 SELECT app_id, version, package_dir, manifest_json, source, factory_job_id, created_in_workspace_id, created_at_unix_ms
 FROM app_packages
 WHERE app_id = ? AND version = ?
@@ -171,11 +171,11 @@ WHERE app_id = ? AND version = ?
 }
 
 func (s *SQLiteStore) ListAppPackages(ctx context.Context) ([]workspacebiz.AppPackage, error) {
-	if s == nil || s.db == nil {
+	if s == nil || s.writeDB == nil {
 		return nil, errors.New("workspace database is not initialized")
 	}
 
-	rows, err := s.db.QueryContext(ctx, `
+	rows, err := s.readDB.QueryContext(ctx, `
 SELECT p.app_id, p.version, p.package_dir, p.manifest_json, p.source, p.factory_job_id, p.created_in_workspace_id, c.created_at_unix_ms
 FROM app_catalog_entries c
 JOIN app_packages p ON p.app_id = c.app_id AND p.version = c.active_version
@@ -245,11 +245,11 @@ type invalidAppPackageScan struct {
 func (s *SQLiteStore) repairInvalidActiveAppPackage(ctx context.Context, invalidPackage workspacebiz.AppPackage, scanErr error) (workspacebiz.AppPackage, bool) {
 	appID := strings.TrimSpace(invalidPackage.AppID)
 	activeVersion := strings.TrimSpace(invalidPackage.Version)
-	if s == nil || s.db == nil || appID == "" || activeVersion == "" {
+	if s == nil || s.writeDB == nil || appID == "" || activeVersion == "" {
 		return workspacebiz.AppPackage{}, false
 	}
 
-	rows, err := s.db.QueryContext(ctx, `
+	rows, err := s.writeDB.QueryContext(ctx, `
 SELECT app_id, version, package_dir, manifest_json, source, factory_job_id, created_in_workspace_id, created_at_unix_ms
 FROM app_packages
 WHERE app_id = ? AND version <> ?
@@ -336,7 +336,7 @@ ORDER BY updated_at_unix_ms DESC, version DESC
 }
 
 func (s *SQLiteStore) ListAppPackageVersions(ctx context.Context, appID string) ([]workspacebiz.AppPackage, error) {
-	if s == nil || s.db == nil {
+	if s == nil || s.writeDB == nil {
 		return nil, errors.New("workspace database is not initialized")
 	}
 	appID = strings.TrimSpace(appID)
@@ -344,7 +344,7 @@ func (s *SQLiteStore) ListAppPackageVersions(ctx context.Context, appID string) 
 		return nil, errors.New("workspace app id is required")
 	}
 
-	rows, err := s.db.QueryContext(ctx, `
+	rows, err := s.readDB.QueryContext(ctx, `
 SELECT app_id, version, package_dir, manifest_json, source, factory_job_id, created_in_workspace_id, created_at_unix_ms
 FROM app_packages
 WHERE app_id = ?
@@ -370,7 +370,7 @@ ORDER BY updated_at_unix_ms DESC, version DESC
 }
 
 func (s *SQLiteStore) ListAppPackageFileRecords(ctx context.Context, appID string) ([]workspacebiz.AppPackageFileRecord, error) {
-	if s == nil || s.db == nil {
+	if s == nil || s.writeDB == nil {
 		return nil, errors.New("workspace database is not initialized")
 	}
 	appID = strings.TrimSpace(appID)
@@ -378,7 +378,7 @@ func (s *SQLiteStore) ListAppPackageFileRecords(ctx context.Context, appID strin
 		return nil, errors.New("workspace app id is required")
 	}
 
-	rows, err := s.db.QueryContext(ctx, `
+	rows, err := s.readDB.QueryContext(ctx, `
 SELECT app_id, version, package_dir, source
 FROM app_packages
 WHERE app_id = ?
@@ -410,7 +410,7 @@ ORDER BY updated_at_unix_ms DESC, version DESC
 }
 
 func (s *SQLiteStore) SetActiveAppPackageVersion(ctx context.Context, appID string, version string) error {
-	if s == nil || s.db == nil {
+	if s == nil || s.writeDB == nil {
 		return errors.New("workspace database is not initialized")
 	}
 	appID = strings.TrimSpace(appID)
@@ -424,7 +424,7 @@ func (s *SQLiteStore) SetActiveAppPackageVersion(ctx context.Context, appID stri
 		return err
 	}
 	now := unixMs(time.Now().UTC())
-	result, err := s.db.ExecContext(ctx, `
+	result, err := s.writeDB.ExecContext(ctx, `
 UPDATE app_catalog_entries
 SET active_version = ?, source = ?, created_in_workspace_id = ?, updated_at_unix_ms = ?
 WHERE app_id = ?
@@ -443,7 +443,7 @@ WHERE app_id = ?
 }
 
 func (s *SQLiteStore) DeleteAppPackage(ctx context.Context, appID string) error {
-	if s == nil || s.db == nil {
+	if s == nil || s.writeDB == nil {
 		return errors.New("workspace database is not initialized")
 	}
 
@@ -452,7 +452,7 @@ func (s *SQLiteStore) DeleteAppPackage(ctx context.Context, appID string) error 
 		return errors.New("workspace app id is required")
 	}
 
-	tx, err := s.db.BeginTx(ctx, nil)
+	tx, err := s.writeDB.BeginTx(ctx, nil)
 	if err != nil {
 		return fmt.Errorf("begin workspace app package delete: %w", err)
 	}
@@ -489,7 +489,7 @@ WHERE app_id = ?
 }
 
 func (s *SQLiteStore) DeleteAppPackageVersion(ctx context.Context, appID string, version string) error {
-	if s == nil || s.db == nil {
+	if s == nil || s.writeDB == nil {
 		return errors.New("workspace database is not initialized")
 	}
 
@@ -499,7 +499,7 @@ func (s *SQLiteStore) DeleteAppPackageVersion(ctx context.Context, appID string,
 		return errors.New("workspace app id and version are required")
 	}
 
-	result, err := s.db.ExecContext(ctx, `
+	result, err := s.writeDB.ExecContext(ctx, `
 DELETE FROM app_packages
 WHERE app_id = ? AND version = ?
   AND NOT EXISTS (
@@ -528,7 +528,7 @@ WHERE app_id = ? AND version = ?
 }
 
 func (s *SQLiteStore) PutWorkspaceAppInstallation(ctx context.Context, installation workspacebiz.AppInstallation) error {
-	if s == nil || s.db == nil {
+	if s == nil || s.writeDB == nil {
 		return errors.New("workspace database is not initialized")
 	}
 
@@ -539,7 +539,7 @@ func (s *SQLiteStore) PutWorkspaceAppInstallation(ctx context.Context, installat
 	}
 
 	now := unixMs(time.Now().UTC())
-	_, err := s.db.ExecContext(ctx, `
+	_, err := s.writeDB.ExecContext(ctx, `
 INSERT INTO workspace_app_installations (
   workspace_id, app_id, enabled, created_at_unix_ms, updated_at_unix_ms
 )
@@ -556,7 +556,7 @@ ON CONFLICT(workspace_id, app_id) DO UPDATE SET
 }
 
 func (s *SQLiteStore) DeleteWorkspaceAppInstallation(ctx context.Context, workspaceID string, appID string) error {
-	if s == nil || s.db == nil {
+	if s == nil || s.writeDB == nil {
 		return errors.New("workspace database is not initialized")
 	}
 
@@ -566,7 +566,7 @@ func (s *SQLiteStore) DeleteWorkspaceAppInstallation(ctx context.Context, worksp
 		return errors.New("workspace id and app id are required")
 	}
 
-	result, err := s.db.ExecContext(ctx, `
+	result, err := s.writeDB.ExecContext(ctx, `
 DELETE FROM workspace_app_installations
 WHERE workspace_id = ? AND app_id = ?
 `, workspaceID, appID)
@@ -586,7 +586,7 @@ WHERE workspace_id = ? AND app_id = ?
 }
 
 func (s *SQLiteStore) ListWorkspaceAppInstallations(ctx context.Context, workspaceID string) ([]workspacebiz.AppInstallation, error) {
-	if s == nil || s.db == nil {
+	if s == nil || s.writeDB == nil {
 		return nil, errors.New("workspace database is not initialized")
 	}
 
@@ -595,7 +595,7 @@ func (s *SQLiteStore) ListWorkspaceAppInstallations(ctx context.Context, workspa
 		return nil, errors.New("workspace id is required")
 	}
 
-	rows, err := s.db.QueryContext(ctx, `
+	rows, err := s.readDB.QueryContext(ctx, `
 SELECT workspace_id, app_id, enabled
 FROM workspace_app_installations
 WHERE workspace_id = ?
@@ -624,7 +624,7 @@ ORDER BY app_id ASC
 }
 
 func (s *SQLiteStore) ListWorkspaceAppInstallationsByApp(ctx context.Context, appID string) ([]workspacebiz.AppInstallation, error) {
-	if s == nil || s.db == nil {
+	if s == nil || s.writeDB == nil {
 		return nil, errors.New("workspace database is not initialized")
 	}
 
@@ -633,7 +633,7 @@ func (s *SQLiteStore) ListWorkspaceAppInstallationsByApp(ctx context.Context, ap
 		return nil, errors.New("workspace app id is required")
 	}
 
-	rows, err := s.db.QueryContext(ctx, `
+	rows, err := s.readDB.QueryContext(ctx, `
 SELECT workspace_id, app_id, enabled
 FROM workspace_app_installations
 WHERE app_id = ?

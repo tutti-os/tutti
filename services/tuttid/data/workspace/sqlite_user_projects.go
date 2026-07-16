@@ -10,11 +10,11 @@ import (
 )
 
 func (s *SQLiteStore) ListUserProjects(ctx context.Context) ([]userprojectbiz.Project, error) {
-	if s == nil || s.db == nil {
+	if s == nil || s.writeDB == nil {
 		return nil, errors.New("workspace database is not initialized")
 	}
 
-	rows, err := s.db.QueryContext(ctx, `
+	rows, err := s.readDB.QueryContext(ctx, `
 SELECT id, path, label, created_at_unix_ms, updated_at_unix_ms, last_used_at_unix_ms
 FROM user_projects
 ORDER BY last_used_at_unix_ms DESC, updated_at_unix_ms DESC, label ASC, id ASC
@@ -48,10 +48,10 @@ ORDER BY last_used_at_unix_ms DESC, updated_at_unix_ms DESC, label ASC, id ASC
 }
 
 func (s *SQLiteStore) DeleteUserProject(ctx context.Context, id string) error {
-	if s == nil || s.db == nil {
+	if s == nil || s.writeDB == nil {
 		return errors.New("workspace database is not initialized")
 	}
-	_, err := s.db.ExecContext(ctx, `
+	_, err := s.writeDB.ExecContext(ctx, `
 DELETE FROM user_projects
 WHERE id = ?
 `, id)
@@ -68,10 +68,10 @@ WHERE id = ?
 // on every call can silently miss the row if that derivation ever drifts from
 // what was actually stored, leaving the "removed" project in place.
 func (s *SQLiteStore) DeleteUserProjectByPath(ctx context.Context, path string) error {
-	if s == nil || s.db == nil {
+	if s == nil || s.writeDB == nil {
 		return errors.New("workspace database is not initialized")
 	}
-	_, err := s.db.ExecContext(ctx, `
+	_, err := s.writeDB.ExecContext(ctx, `
 DELETE FROM user_projects
 WHERE path = ?
 `, path)
@@ -82,7 +82,7 @@ WHERE path = ?
 }
 
 func (s *SQLiteStore) PutUserProject(ctx context.Context, project userprojectbiz.Project) (userprojectbiz.Project, error) {
-	if s == nil || s.db == nil {
+	if s == nil || s.writeDB == nil {
 		return userprojectbiz.Project{}, errors.New("workspace database is not initialized")
 	}
 
@@ -94,7 +94,7 @@ func (s *SQLiteStore) PutUserProject(ctx context.Context, project userprojectbiz
 		project.LastUsedAtUnixMS = now
 	}
 	project.UpdatedAtUnixMS = project.LastUsedAtUnixMS
-	_, err := s.db.ExecContext(ctx, `
+	_, err := s.writeDB.ExecContext(ctx, `
 INSERT INTO user_projects (
   id, path, label, created_at_unix_ms, updated_at_unix_ms, last_used_at_unix_ms
 )
@@ -108,7 +108,7 @@ ON CONFLICT(path) DO UPDATE SET
 		return userprojectbiz.Project{}, fmt.Errorf("put user project: %w", err)
 	}
 
-	row := s.db.QueryRowContext(ctx, `
+	row := s.writeDB.QueryRowContext(ctx, `
 SELECT id, path, label, created_at_unix_ms, updated_at_unix_ms, last_used_at_unix_ms
 FROM user_projects
 WHERE path = ?
@@ -129,13 +129,13 @@ WHERE path = ?
 }
 
 func (s *SQLiteStore) TouchUserProject(ctx context.Context, id string, atUnixMS int64) error {
-	if s == nil || s.db == nil {
+	if s == nil || s.writeDB == nil {
 		return errors.New("workspace database is not initialized")
 	}
 	if atUnixMS <= 0 {
 		atUnixMS = unixMs(time.Now().UTC())
 	}
-	_, err := s.db.ExecContext(ctx, `
+	_, err := s.writeDB.ExecContext(ctx, `
 UPDATE user_projects
 SET last_used_at_unix_ms = ?, updated_at_unix_ms = ?
 WHERE id = ?

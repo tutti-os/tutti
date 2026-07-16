@@ -20,10 +20,10 @@ import (
 )
 
 func (s *SQLiteStore) ListManagedModelProviderConfigs(ctx context.Context, workspaceID string) ([]managedcredentialsbiz.ProviderConfig, error) {
-	if s == nil || s.db == nil {
+	if s == nil || s.writeDB == nil {
 		return nil, errors.New("workspace database is not initialized")
 	}
-	rows, err := s.db.QueryContext(ctx, `
+	rows, err := s.readDB.QueryContext(ctx, `
 SELECT workspace_id, provider_id, enabled, api_key_ciphertext, base_url, models_json, updated_at_unix_ms
 FROM managed_model_provider_credentials
 WHERE workspace_id = ?
@@ -49,10 +49,10 @@ ORDER BY provider_id
 }
 
 func (s *SQLiteStore) GetManagedModelProviderConfig(ctx context.Context, workspaceID string, providerID managedcredentialsbiz.ProviderID) (managedcredentialsbiz.ProviderConfig, error) {
-	if s == nil || s.db == nil {
+	if s == nil || s.writeDB == nil {
 		return managedcredentialsbiz.ProviderConfig{}, errors.New("workspace database is not initialized")
 	}
-	row := s.db.QueryRowContext(ctx, `
+	row := s.readDB.QueryRowContext(ctx, `
 SELECT workspace_id, provider_id, enabled, api_key_ciphertext, base_url, models_json, updated_at_unix_ms
 FROM managed_model_provider_credentials
 WHERE workspace_id = ? AND provider_id = ?
@@ -68,7 +68,7 @@ WHERE workspace_id = ? AND provider_id = ?
 }
 
 func (s *SQLiteStore) PutManagedModelProviderConfig(ctx context.Context, config managedcredentialsbiz.ProviderConfig) error {
-	if s == nil || s.db == nil {
+	if s == nil || s.writeDB == nil {
 		return errors.New("workspace database is not initialized")
 	}
 	modelsJSON, err := json.Marshal(config.Models)
@@ -80,7 +80,7 @@ func (s *SQLiteStore) PutManagedModelProviderConfig(ctx context.Context, config 
 		return err
 	}
 	now := unixMs(time.Now().UTC())
-	_, err = s.db.ExecContext(ctx, `
+	_, err = s.writeDB.ExecContext(ctx, `
 INSERT INTO managed_model_provider_credentials (
   workspace_id, provider_id, enabled, api_key_ciphertext, base_url, models_json, updated_at_unix_ms
 ) VALUES (?, ?, ?, ?, ?, ?, ?)
@@ -98,10 +98,10 @@ ON CONFLICT(workspace_id, provider_id) DO UPDATE SET
 }
 
 func (s *SQLiteStore) DeleteManagedModelProviderConfig(ctx context.Context, workspaceID string, providerID managedcredentialsbiz.ProviderID) error {
-	if s == nil || s.db == nil {
+	if s == nil || s.writeDB == nil {
 		return errors.New("workspace database is not initialized")
 	}
-	_, err := s.db.ExecContext(ctx, `
+	_, err := s.writeDB.ExecContext(ctx, `
 DELETE FROM managed_model_provider_credentials
 WHERE workspace_id = ? AND provider_id = ?
 `, workspaceID, providerID)
@@ -112,7 +112,7 @@ WHERE workspace_id = ? AND provider_id = ?
 }
 
 func (s *SQLiteStore) PutManagedModelGrant(ctx context.Context, grant managedcredentialsbiz.Grant) error {
-	if s == nil || s.db == nil {
+	if s == nil || s.writeDB == nil {
 		return errors.New("workspace database is not initialized")
 	}
 	providersJSON, err := json.Marshal(grant.ProviderIDs)
@@ -123,7 +123,7 @@ func (s *SQLiteStore) PutManagedModelGrant(ctx context.Context, grant managedcre
 	if err != nil {
 		return fmt.Errorf("marshal managed grant scopes: %w", err)
 	}
-	_, err = s.db.ExecContext(ctx, `
+	_, err = s.writeDB.ExecContext(ctx, `
 INSERT INTO managed_model_app_grants (
   workspace_id, app_id, grant_ref, provider_ids_json, scopes_json, created_at_unix_ms, expires_at_unix_ms, revoked_at_unix_ms
 ) VALUES (?, ?, ?, ?, ?, ?, ?, NULL)
@@ -140,10 +140,10 @@ ON CONFLICT(workspace_id, app_id, grant_ref) DO UPDATE SET
 }
 
 func (s *SQLiteStore) GetManagedModelGrant(ctx context.Context, workspaceID string, appID string, grantRef string) (managedcredentialsbiz.Grant, error) {
-	if s == nil || s.db == nil {
+	if s == nil || s.writeDB == nil {
 		return managedcredentialsbiz.Grant{}, errors.New("workspace database is not initialized")
 	}
-	row := s.db.QueryRowContext(ctx, `
+	row := s.readDB.QueryRowContext(ctx, `
 SELECT workspace_id, app_id, grant_ref, provider_ids_json, scopes_json, created_at_unix_ms, expires_at_unix_ms, revoked_at_unix_ms
 FROM managed_model_app_grants
 WHERE workspace_id = ? AND app_id = ? AND grant_ref = ?
@@ -166,10 +166,10 @@ WHERE workspace_id = ? AND app_id = ? AND grant_ref = ?
 }
 
 func (s *SQLiteStore) RevokeManagedModelGrant(ctx context.Context, workspaceID string, appID string, grantRef string) error {
-	if s == nil || s.db == nil {
+	if s == nil || s.writeDB == nil {
 		return errors.New("workspace database is not initialized")
 	}
-	_, err := s.db.ExecContext(ctx, `
+	_, err := s.writeDB.ExecContext(ctx, `
 UPDATE managed_model_app_grants
 SET revoked_at_unix_ms = ?
 WHERE workspace_id = ? AND app_id = ? AND grant_ref = ?
@@ -181,10 +181,10 @@ WHERE workspace_id = ? AND app_id = ? AND grant_ref = ?
 }
 
 func (s *SQLiteStore) DeleteManagedModelGrant(ctx context.Context, workspaceID string, appID string, grantRef string) error {
-	if s == nil || s.db == nil {
+	if s == nil || s.writeDB == nil {
 		return errors.New("workspace database is not initialized")
 	}
-	_, err := s.db.ExecContext(ctx, `
+	_, err := s.writeDB.ExecContext(ctx, `
 DELETE FROM managed_model_app_grants
 WHERE workspace_id = ? AND app_id = ? AND grant_ref = ?
 `, workspaceID, appID, grantRef)

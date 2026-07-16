@@ -35,6 +35,7 @@ export class DesktopAgentsService implements IAgentsService {
   private readonly dependencies: DesktopAgentsServiceDependencies;
   private readonly listeners = new Set<() => void>();
   private loadPromise: Promise<AgentsSnapshot> | null = null;
+  private disposed = false;
   private requestSequence = 0;
   private retryTimer: ReturnType<typeof setTimeout> | null = null;
   private snapshot: AgentsSnapshot = EMPTY_AGENTS_SNAPSHOT;
@@ -45,6 +46,16 @@ export class DesktopAgentsService implements IAgentsService {
 
   getSnapshot(): AgentsSnapshot {
     return this.snapshot;
+  }
+
+  dispose(): void {
+    if (this.disposed) {
+      return;
+    }
+    this.disposed = true;
+    this.requestSequence += 1;
+    this.clearScheduledRetry();
+    this.listeners.clear();
   }
 
   getAgentTarget(input: {
@@ -154,7 +165,7 @@ export class DesktopAgentsService implements IAgentsService {
   }
 
   private scheduleRetry(): void {
-    if (this.retryTimer) {
+    if (this.disposed || this.retryTimer) {
       return;
     }
     const schedule = this.dependencies.setTimeout ?? setTimeout;
@@ -180,6 +191,9 @@ export class DesktopAgentsService implements IAgentsService {
   }
 
   private emit(): void {
+    if (this.disposed) {
+      return;
+    }
     for (const listener of this.listeners) {
       listener();
     }

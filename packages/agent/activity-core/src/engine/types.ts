@@ -124,6 +124,13 @@ export interface EngineCancelExpiryCommand {
   expiryId: string;
 }
 
+/** Cancels one in-flight external command without coupling reducers to I/O. */
+export interface EngineAbortExternalCommand {
+  type: "engine/abortExternalCommand";
+  reason: string;
+  targetCommandId: string;
+}
+
 export interface EngineExternalCommandBase {
   commandId: string;
   timeoutMs?: number;
@@ -139,9 +146,13 @@ export interface EngineReconcileWorkspaceCommand extends EngineExternalCommandBa
   workspaceId: string;
 }
 
-export type EngineInternalCommand =
+export type EngineExpiryCommand =
   | EngineCancelExpiryCommand
   | EngineScheduleExpiryCommand;
+
+export type EngineInternalCommand =
+  | EngineAbortExternalCommand
+  | EngineExpiryCommand;
 
 export type EngineExternalCommand =
   | AttentionReadCommand
@@ -163,6 +174,7 @@ export function isEngineInternalCommand(
   command: EngineCommand
 ): command is EngineInternalCommand {
   return (
+    command.type === "engine/abortExternalCommand" ||
     command.type === "engine/cancelExpiry" ||
     command.type === "engine/scheduleExpiry"
   );

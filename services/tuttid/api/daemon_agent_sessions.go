@@ -112,7 +112,16 @@ func (api DaemonAPI) GetWorkspaceAgentSession(ctx context.Context, request tutti
 	return tuttigenerated.GetWorkspaceAgentSession200JSONResponse{
 		Session:       generatedAgentSession(detail.Session),
 		ChildSessions: generatedAgentSessions(detail.ChildSessions),
+		Turns:         generatedAgentTurns(detail.Turns),
 	}, nil
+}
+
+func generatedAgentTurns(turns []agentactivitybiz.Turn) []tuttigenerated.WorkspaceAgentTurn {
+	result := make([]tuttigenerated.WorkspaceAgentTurn, 0, len(turns))
+	for _, turn := range turns {
+		result = append(result, agentservice.GeneratedWorkspaceAgentTurn(turn))
+	}
+	return result
 }
 
 func (api DaemonAPI) DeleteWorkspaceAgentSession(ctx context.Context, request tuttigenerated.DeleteWorkspaceAgentSessionRequestObject) (tuttigenerated.DeleteWorkspaceAgentSessionResponseObject, error) {

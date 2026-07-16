@@ -357,6 +357,7 @@ function LayoutModeToggle({
             align="end"
             className="min-w-[236px] px-1 py-1"
             sideOffset={7}
+            style={{ zIndex: "var(--z-panel-popover)" }}
           >
             <DropdownMenuRadioGroup
               value={arrangeMode}

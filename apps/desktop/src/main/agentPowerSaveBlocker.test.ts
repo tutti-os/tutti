@@ -160,7 +160,7 @@ function createFakeTuttidClient(input: {
       if (!session) {
         throw new Error("session not found");
       }
-      return { session, childSessions: [] };
+      return { session, childSessions: [], turns: [] };
     },
     async listWorkspaceAgentSessions(workspaceID) {
       return {

@@ -122,6 +122,7 @@ export function stabilizeConversationDetail(
     previous.workspaceRoot === next.workspaceRoot &&
     previous.showProcessingIndicator === next.showProcessingIndicator &&
     previous.turns === next.turns &&
+    previous.sessionTurns === next.sessionTurns &&
     previous.session === session &&
     previous.activity === activity
   ) {

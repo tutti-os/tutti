@@ -22,6 +22,7 @@ export interface CreateEngineEffectExecutorInput {
 }
 
 export interface EngineEffectExecutor {
+  abort(commandId: string, reason: string): void;
   dispose(): void;
   execute(command: EngineExternalCommand): void;
 }
@@ -34,7 +35,7 @@ export function createEngineEffectExecutor({
 }: CreateEngineEffectExecutorInput): EngineEffectExecutor {
   let disposed = false;
   const timeoutTasks = new Set<EngineScheduledTask>();
-  const abortControllers = new Set<AbortController>();
+  const abortControllersByCommandId = new Map<string, AbortController>();
 
   const settle = (intent: EngineCommandResultIntent): void => {
     if (disposed) {
@@ -48,25 +49,34 @@ export function createEngineEffectExecutor({
   };
 
   return {
+    abort(commandId, reason) {
+      const controller = abortControllersByCommandId.get(commandId.trim());
+      if (!controller || controller.signal.aborted) return;
+      controller.abort(new Error(reason.trim() || "engine command aborted"));
+    },
     dispose() {
       disposed = true;
       for (const task of timeoutTasks) {
         task.cancel();
       }
       timeoutTasks.clear();
-      for (const controller of abortControllers) {
+      for (const controller of abortControllersByCommandId.values()) {
         controller.abort(new Error("engine disposed"));
       }
-      abortControllers.clear();
+      abortControllersByCommandId.clear();
     },
     execute(command) {
       let settled = false;
       let timeoutTask: EngineScheduledTask | null = null;
       const abortController = new AbortController();
-      abortControllers.add(abortController);
+      abortControllersByCommandId.set(command.commandId, abortController);
 
       const finishTimeoutTask = (): void => {
-        abortControllers.delete(abortController);
+        if (
+          abortControllersByCommandId.get(command.commandId) === abortController
+        ) {
+          abortControllersByCommandId.delete(command.commandId);
+        }
         if (timeoutTask !== null) {
           timeoutTasks.delete(timeoutTask);
           timeoutTask.cancel();

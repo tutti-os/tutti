@@ -85,8 +85,9 @@ export const AgentGUIBottomDockPane = memo(function AgentGUIBottomDockPane({
   const goalObjective = goal ? stringValue(goal.objective) : "";
   const goalStatus = goal ? stringValue(goal.status) : "";
   const goalTokenBudget = goal ? numberValue(goal.tokenBudget) : null;
-  const goalTokensUsed = goal ? numberValue(goal.tokensUsed) : null;
-  const goalTimeUsedSeconds = goal ? numberValue(goal.timeUsedSeconds) : null;
+  const goalTokensUsed = goal ? numberValue(goal.tokens) : null;
+  const goalDurationMs = goal ? numberValue(goal.durationMs) : null;
+  const goalIsOptimistic = sessionChrome.rawState?.goalIsOptimistic === true;
   const showGoalBanner = isGoalBannerVisible(goalObjective, goalStatus);
 
   return (
@@ -154,7 +155,8 @@ export const AgentGUIBottomDockPane = memo(function AgentGUIBottomDockPane({
           status={goalStatus}
           tokenBudget={goalTokenBudget ?? undefined}
           tokensUsed={goalTokensUsed ?? undefined}
-          timeUsedSeconds={goalTimeUsedSeconds ?? undefined}
+          durationMs={goalDurationMs ?? undefined}
+          optimistic={goalIsOptimistic}
           labels={goalBannerLabels}
           onPauseGoal={
             goalPauseSupported ? () => onGoalControl("pause") : undefined

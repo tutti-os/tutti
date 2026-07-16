@@ -301,6 +301,53 @@ test("hides open-with actions for directory context-menu entries", () => {
   assert.equal(directoryContextMenuView.showOpenWithOtherAction, false);
 });
 
+test("keeps default-browser opening available in external locations", () => {
+  const store = createStore(
+    createCapabilities({
+      canOpenInAppBrowser: true,
+      canOpenInDefaultBrowser: true
+    })
+  );
+  const fileEntry = {
+    hasChildren: false,
+    kind: "file" as const,
+    mtimeMs: null,
+    name: "index.html",
+    path: "/Users/demo/project/index.html",
+    sizeBytes: 12
+  };
+
+  store.locationSections = [
+    {
+      id: "references",
+      label: "References",
+      locations: [
+        {
+          externalType: "workspace-reference",
+          id: "reference:artifact:1",
+          kind: "external",
+          label: "Artifact",
+          metadata: {}
+        }
+      ]
+    }
+  ];
+  store.selectedLocationId = "reference:artifact:1";
+  store.entries = [fileEntry];
+  store.contextMenu = {
+    entryPath: fileEntry.path,
+    x: 12,
+    y: 24
+  };
+
+  const contextMenuView = resolveWorkspaceFileManagerContextMenuViewState({
+    state: store
+  });
+
+  assert.equal(contextMenuView.showOpenInAppBrowserAction, false);
+  assert.equal(contextMenuView.showOpenInDefaultBrowserAction, true);
+});
+
 test("keeps create context-menu action behind create capabilities", () => {
   const store = createStore(
     createCapabilities({

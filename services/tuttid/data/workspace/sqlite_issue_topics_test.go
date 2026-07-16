@@ -81,7 +81,7 @@ func TestSQLiteStoreIssueTopicsMigrationRepairsMissingDefaultTopic(t *testing.T)
 		t.Fatalf("Create() workspace error = %v", err)
 	}
 
-	if _, err := store.db.ExecContext(ctx, `
+	if _, err := store.writeDB.ExecContext(ctx, `
 DELETE FROM workspace_issue_topics
 WHERE workspace_id = ?;
 `, "ws-repair-default-topic"); err != nil {
@@ -194,7 +194,7 @@ func TestSQLiteStoreIssueTopicsMigrationRepairsMissingMarker(t *testing.T) {
 		t.Fatalf("Migrate() initial error = %v", err)
 	}
 
-	if _, err := store.db.ExecContext(ctx, `
+	if _, err := store.writeDB.ExecContext(ctx, `
 DELETE FROM tuttid_schema_migrations
 WHERE id = ?;
 INSERT INTO tuttid_schema_migrations (id, applied_at_unix_ms)

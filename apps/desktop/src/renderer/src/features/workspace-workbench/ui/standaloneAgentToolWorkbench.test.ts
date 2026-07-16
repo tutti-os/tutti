@@ -85,13 +85,13 @@ test("standalone Agent tools load their OS node UI on demand", () => {
     standaloneAgentToolSidebarPanelSource,
     /<LazyStandaloneAgentAppCenterToolPanel/
   );
+  assert.match(
+    standaloneAgentToolSidebarPanelSource,
+    /<LazyStandaloneAgentAppViewerToolPanel/
+  );
   assert.doesNotMatch(
     standaloneAgentToolSidebarPanelSource,
     /<WorkspaceAppCenterPane/
-  );
-  assert.match(
-    standaloneAgentToolSidebarPanelSource,
-    /workspace\.appCenter\.backToApps/
   );
   assert.match(
     standaloneAgentMessageCenterToolPanelSource,
@@ -287,7 +287,11 @@ test("standalone Agent panel tab buttons switch the active mounted panel", () =>
 test("standalone Agent panel tabs render semantic icons before their labels", () => {
   assert.match(
     standaloneAgentToolSidebarSource,
-    /<ToolSidebarTabIcon tab=\{tab\} \/>[\s\S]*?resolveToolTabLabel\(tab, copy\)/
+    /resolveToolTabLabel\(tab, copy, app, locale\)/
+  );
+  assert.match(
+    standaloneAgentToolSidebarSource,
+    /<ToolSidebarTabIcon app=\{app\} tab=\{tab\} \/>[\s\S]*?<span className="truncate">\{label\}<\/span>/
   );
   assert.match(
     standaloneAgentToolSidebarToolbarSource,
@@ -379,14 +383,22 @@ test("standalone Agent hides internal open-with actions without changing the OS 
   );
 });
 
-test("standalone Agent right sidebar reserves layout animation for empty or ready content", () => {
+test("standalone Agent right sidebar keeps tool-switch layout width stable", () => {
   assert.match(
     standaloneAgentToolSidebarSource,
     /const shouldAnimateSidebarLayout =\s*state\.mountedTabs\.length === 0 \|\| isActivePanelContentReady/
   );
   assert.match(
     standaloneAgentToolSidebarSource,
-    /shouldAnimateSidebarLayout &&\s+"motion-safe:transition-\[width\] motion-safe:duration-\[260ms\] motion-safe:ease-in-out motion-reduce:transition-none"/
+    /const shouldAnimateSidebarWidth = isEmptySidebarSurface;/
+  );
+  assert.match(
+    standaloneAgentToolSidebarSource,
+    /shouldAnimateSidebarWidth &&\s+"motion-safe:transition-\[width\] motion-safe:duration-\[260ms\] motion-safe:ease-in-out motion-reduce:transition-none"/
+  );
+  assert.doesNotMatch(
+    standaloneAgentToolSidebarSource,
+    /shouldAnimateSidebarLayout &&\s+"motion-safe:transition-\[width\]/
   );
   assert.match(
     standaloneAgentToolSidebarSource,

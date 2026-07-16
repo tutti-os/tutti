@@ -12,9 +12,7 @@ export {
   createWorkspaceAgentGuiLaunchDescriptor,
   createWorkspaceAgentGuiInstanceId,
   createWorkspaceAgentGuiSessionLaunchRequest,
-  workspaceAgentGuiInstanceId,
   workspaceAgentGuiNodeID,
-  workspaceAgentGuiProviderFromIdentifier,
   workspaceAgentGuiProviderFromLaunchRequest,
   type WorkspaceAgentGuiProvider
 } from "../workspaceAgentGuiLaunch.ts";

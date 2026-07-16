@@ -89,6 +89,7 @@ export class WorkspaceFileManagerService implements IWorkspaceFileManagerService
   >();
   private readonly sharedService = createWorkspaceFileManagerService();
   private readonly sessions = new Map<string, WorkspaceFileManagerSession>();
+  private readonly unsubscribeUserProjects: () => void;
 
   constructor(
     dependencies: WorkspaceFileManagerServiceDependencies,
@@ -98,9 +99,22 @@ export class WorkspaceFileManagerService implements IWorkspaceFileManagerService
     this.dependencies = dependencies;
     this.filePreviewSurfaceHost = filePreviewSurfaceHost;
     this.notifications = notifications;
-    dependencies.workspaceUserProjectService?.subscribe(() => {
-      void this.refreshAllSessionLocations();
-    });
+    this.unsubscribeUserProjects =
+      dependencies.workspaceUserProjectService?.subscribe(() => {
+        void this.refreshAllSessionLocations();
+      }) ?? (() => {});
+  }
+
+  dispose(): void {
+    this.unsubscribeUserProjects();
+    for (const session of this.sessions.values()) {
+      session.dispose();
+    }
+    this.sessions.clear();
+    this.listeners.clear();
+    this.i18nRuntimeByWorkspace.clear();
+    this.locationRefreshSnapshotByWorkspace.clear();
+    this.referenceSourceAggregators.clear();
   }
 
   get hostOs(): NodeJS.Platform {

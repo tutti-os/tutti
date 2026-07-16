@@ -20,6 +20,7 @@ const liveModelDiscoveryDeleteDelay = 10 * time.Minute
 const liveModelDiscoveryLifecycleTimeout = 10 * time.Minute
 const claudeModelCatalogInvalidationDebugPrefix = "CLAUDE_MODEL_CATALOG_INVALIDATION_DEBUG"
 const agentExtensionComposerDebugPrefix = "AGENT_EXTENSION_COMPOSER_DEBUG"
+const hiddenModelDiscoveryTriggeredEvent = "agent.model_discovery.hidden_session_triggered"
 
 func logAgentExtensionComposerDebug(stage string, payload map[string]any) {
 	payload["stage"] = stage
@@ -28,6 +29,15 @@ func logAgentExtensionComposerDebug(stage string, payload map[string]any) {
 		encoded = []byte(`{"stage":"debug_payload_unavailable"}`)
 	}
 	slog.Info(agentExtensionComposerDebugPrefix, "payload_json", string(encoded))
+}
+
+func logHiddenModelDiscoveryTriggered(provider string, agentSessionID string) {
+	slog.Info(
+		"agent hidden model discovery session triggered",
+		"event", hiddenModelDiscoveryTriggeredEvent,
+		"provider", agentprovider.NormalizeOpen(provider),
+		"agent_session_id", strings.TrimSpace(agentSessionID),
+	)
 }
 
 var claudeModelCatalogDebugSafeFields = map[string]struct{}{
@@ -216,9 +226,6 @@ func (s *Service) discoverLiveComposerModelsUncachedForScope(
 		providerTargetRefKind(providerTargetRef) != "agent_extension" {
 		return nil, errLiveModelDiscoveryAlreadyAttempted
 	}
-	if err := s.ensureProviderRuntimeInstalledForLaunch(ctx, scope.provider, providerTargetRef); err != nil {
-		return nil, err
-	}
 	releaseStartup, err := s.awaitClaudeStartupSlot(ctx, scope.provider)
 	if err != nil {
 		return nil, err
@@ -248,6 +255,7 @@ func (s *Service) discoverLiveComposerModelsUncachedForScope(
 		Speed:             stringPointer(strings.TrimSpace(settings.Speed)),
 		Visible:           &visible,
 	}
+	logHiddenModelDiscoveryTriggered(scope.provider, startInput.AgentSessionID)
 	session, err = func() (ProviderRuntimeSession, error) {
 		defer releaseStartup()
 		prepared, prepareErr := s.prepareRuntime(ctx, scope.workspaceID, resolvedCwd, startInput)
@@ -281,6 +289,7 @@ func (s *Service) discoverLiveComposerModelsUncachedForScope(
 		return runtimeSession, nil
 	}()
 	if err != nil {
+		s.invalidateProviderAvailability(scope.provider)
 		if isExtension {
 			logAgentExtensionComposerDebug("runtime_start_failed", map[string]any{
 				"agentTargetId": scope.agentTargetID,

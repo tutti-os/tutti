@@ -24,8 +24,7 @@ describe("projectWorkspaceAgentTimelineToConversationVM", () => {
       "message",
       "message",
       "tool-group",
-      "tool-group",
-      "turn-summary"
+      "tool-group"
     ]);
 
     const groupedRows = conversation.rows.filter(
@@ -60,9 +59,7 @@ describe("projectWorkspaceAgentTimelineToConversationVM", () => {
         { kind: "turn-summary" }
       > => row.kind === "turn-summary"
     );
-    expect(summaryRow?.files.map((file) => file.path)).toEqual([
-      "/workspace/demo/src/App.tsx"
-    ]);
+    expect(summaryRow).toBeUndefined();
   });
 
   it("builds canonical detail turns directly from timeline items without the legacy detail builder", () => {
@@ -170,8 +167,7 @@ describe("projectWorkspaceAgentTimelineToConversationVM", () => {
       "message",
       "message",
       "tool-group",
-      "tool-group",
-      "turn-summary"
+      "tool-group"
     ]);
   });
 
@@ -614,6 +610,24 @@ function session(
     title: "Codex",
     createdAtUnixMs: 1,
     updatedAtUnixMs: 10,
+    latestTurn: {
+      agentSessionId: "session-1",
+      turnId: "turn-1",
+      phase: "settled",
+      origin: "user_prompt",
+      outcome: "completed",
+      startedAtUnixMs: 1,
+      settledAtUnixMs: 10,
+      updatedAtUnixMs: 10,
+      fileChanges: {
+        files: [
+          {
+            path: "/workspace/demo/src/App.tsx",
+            change: "modified"
+          }
+        ]
+      }
+    },
     ...canonical
   });
 }

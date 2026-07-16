@@ -104,6 +104,7 @@ func (a *CodexAppServerAdapter) applyAccountUpdate(agentSessionID string, params
 // transition so callers can emit user-visible notices when the goal stops
 // progressing (paused/blocked/usageLimited/budgetLimited).
 func (a *CodexAppServerAdapter) applyGoalUpdate(agentSessionID string, goal map[string]any) (oldStatus, newStatus string, statusChanged bool) {
+	goal = normalizedCodexGoal(goal)
 	if len(goal) == 0 {
 		return "", "", false
 	}
@@ -116,6 +117,9 @@ func (a *CodexAppServerAdapter) applyGoalUpdate(agentSessionID string, goal map[
 	oldStatus = strings.TrimSpace(asString(appSession.goal["status"]))
 	appSession.goal = clonePayload(goal)
 	newStatus = strings.TrimSpace(asString(appSession.goal["status"]))
+	if newStatus != "active" {
+		appSession.goalContinuationClaim = nil
+	}
 	if oldStatus != newStatus {
 		slog.Info("agent session app-server goal status changed",
 			"event", "agent_session.app_server.goal.status_changed",
@@ -142,6 +146,7 @@ func (a *CodexAppServerAdapter) applyGoalClear(agentSessionID string) {
 		)
 	}
 	appSession.goal = nil
+	appSession.goalContinuationClaim = nil
 }
 
 func appServerRateLimitQuotas(snapshot map[string]any) []map[string]any {

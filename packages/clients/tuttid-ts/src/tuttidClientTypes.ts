@@ -309,6 +309,8 @@ export interface TuttidClient {
      * agent-env wizard's network diagnostic sets this.
      */
     includeNetwork?: boolean;
+    /** Bypass the daemon provider-readiness cache. */
+    refresh?: boolean;
   }): Promise<AgentProviderStatusListResponse>;
   probeAgentProvider(
     provider: WorkspaceAgentProvider

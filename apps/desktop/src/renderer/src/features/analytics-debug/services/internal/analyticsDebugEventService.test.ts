@@ -49,6 +49,7 @@ test("analytics debug event service records immutable snapshots and notifies lis
 
 test("analytics debug event service records final daemon events from event stream", () => {
   let connectCalls = 0;
+  let unsubscribeCalls = 0;
   let subscribedTopic = "";
   let listener: unknown = null;
   const service = new AnalyticsDebugEventService({
@@ -59,7 +60,9 @@ test("analytics debug event service records final daemon events from event strea
       subscribe(topic, nextListener) {
         subscribedTopic = topic;
         listener = nextListener;
-        return () => {};
+        return () => {
+          unsubscribeCalls += 1;
+        };
       }
     }
   });
@@ -97,6 +100,9 @@ test("analytics debug event service records final daemon events from event strea
       }
     }
   ]);
+  service.dispose();
+  service.dispose();
+  assert.equal(unsubscribeCalls, 1);
 });
 
 function emitDebugReportedEvent(

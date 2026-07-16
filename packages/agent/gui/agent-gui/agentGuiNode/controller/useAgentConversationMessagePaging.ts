@@ -422,6 +422,7 @@ export function useAgentConversationMessagePaging(
         current.reload.getActivationStatus(agentSessionId);
       if (
         activationStatus === "failed" ||
+        activationStatus === "canceled" ||
         activationStatus === "requested" ||
         activationStatus === "uncertain"
       )

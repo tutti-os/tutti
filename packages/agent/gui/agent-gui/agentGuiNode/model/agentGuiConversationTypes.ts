@@ -10,7 +10,8 @@ import type {
 } from "../../../shared/agentConversationTitleProjection.ts";
 import type {
   AgentActivitySession,
-  AgentActivitySnapshot
+  AgentActivitySnapshot,
+  AgentActivityTurn
 } from "@tutti-os/agent-activity-core";
 import { WORKSPACE_AGENT_ACTIVITY_RUNTIME_SESSION_ORIGIN } from "../../../shared/workspaceAgentSessionOrigin";
 import type { AgentGUIConversationFilter } from "./agentGuiConversationFilter";
@@ -73,7 +74,9 @@ export type AgentGUIConversationProjectionSource = Pick<
   | "sortTimeUnixMs"
   | "updatedAtUnixMs"
   | "activeTurn"
->;
+> & {
+  sessionTurns?: readonly AgentActivityTurn[];
+};
 
 export interface AgentGUIConversationProjectResolutionContext {
   projectResolver: AgentGUIConversationProjectResolver;

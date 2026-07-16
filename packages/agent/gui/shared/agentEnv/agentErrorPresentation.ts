@@ -189,6 +189,39 @@ export function classifyFailedAgentMessage(
   return null;
 }
 
+const COMPLETED_AUTH_MESSAGE_MAX_LENGTH = 160;
+const COMPLETED_AUTH_MESSAGE_PATTERN =
+  /^not logged in\s*(?:[·•:—-]|\.)?\s*please run\s+\/login[.!]?$/i;
+
+/**
+ * Resolves a plain assistant message that should be recovered into a visible
+ * error card. Failed messages keep the provider-agnostic fallback above.
+ *
+ * Claude Code demonstrates why completed messages need a narrow exception: its
+ * SDK can return the standalone "Not logged in · Please run /login" notice
+ * together with a successful result. Match the provider-owned output shape,
+ * rather than branching on provider identity, and keep it short and
+ * whole-message anchored so normal answers are not reclassified.
+ */
+export function classifyRecoverableAgentMessage(input: {
+  body: string | null | undefined;
+  statusKind: string | null | undefined;
+}): AgentRunErrorCode | null {
+  if (input.statusKind === "failed") {
+    return classifyFailedAgentMessage(input.body);
+  }
+  if (
+    input.statusKind !== "completed" ||
+    !input.body ||
+    input.body.length > COMPLETED_AUTH_MESSAGE_MAX_LENGTH
+  ) {
+    return null;
+  }
+  return COMPLETED_AUTH_MESSAGE_PATTERN.test(input.body.trim())
+    ? "auth_required"
+    : null;
+}
+
 /** True when detail text is a provider plan/payment gate (not a generic quota). */
 export function isProviderPlanLimitMessage(
   detail: string | null | undefined

@@ -1442,6 +1442,38 @@ func TestStandardACPNormalizerKeepsCanonicalToolIdentityAcrossDynamicTitles(t *t
 	}
 }
 
+func TestCursorACPDeleteToolPreservesDeletedFileChangeKind(t *testing.T) {
+	t.Parallel()
+
+	session := standardTestSession(ProviderCursor)
+	normalizer := newACPTurnNormalizer()
+	events := standardACPUpdateEvents(standardACPConfig{provider: ProviderCursor}, session, "turn-1", json.RawMessage(`{
+		"update": {
+			"sessionUpdate": "tool_call_update",
+			"toolCallId": "delete-1",
+			"title": "Delete obsolete.txt",
+			"status": "completed",
+			"kind": "delete",
+			"content": [{
+				"type": "diff",
+				"path": "/workspace/obsolete.txt",
+				"oldText": "obsolete\n",
+				"newText": ""
+			}]
+		}
+	}`), normalizer)
+	if len(events) != 2 || events[0].Type != activityshared.EventCallCompleted || events[1].Type != activityshared.EventTurnUpdated {
+		t.Fatalf("delete events = %#v, want completed call followed by turn.updated", events)
+	}
+	if events[0].Payload.Metadata["toolName"] != "Write" {
+		t.Fatalf("delete tool name = %#v, want Cursor-compatible Write", events[0].Payload.Metadata["toolName"])
+	}
+	files := payloadArray(payloadMap(events[1].Payload.Metadata, "fileChanges")["files"])
+	if len(files) != 1 || files[0]["change"] != "deleted" {
+		t.Fatalf("turn file changes = %#v, want one deleted file", files)
+	}
+}
+
 func TestACPToolNameRecognizesOpenCodeTodoPayload(t *testing.T) {
 	t.Parallel()
 	if got := acpToolName("todo-1", "0 todos", "other", map[string]any{"todos": []any{}}); got != "TodoWrite" {
@@ -2175,7 +2207,7 @@ func TestStandardACPAdapterExecAddsInternalMentionRoutingPromptForGemini(t *test
 	if texts[0] != prompt {
 		t.Fatalf("user prompt text = %q, want unmodified prompt %q", texts[0], prompt)
 	}
-	if texts[len(texts)-1] != tuttiAgentMentionRoutingReminder {
+	if texts[len(texts)-1] != tuttiMentionRoutingReminder {
 		t.Fatalf("routing prompt = %q, want internal mention routing", texts[len(texts)-1])
 	}
 }

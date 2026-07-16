@@ -110,9 +110,9 @@ const startupModelSteadyRetryCount = 36
 const defaultCodexAppServerGoalContinuationGraceWindow = 1500 * time.Millisecond
 
 // defaultCodexAppServerGoalProvenanceGraceWindow bounds how long an
-// unowned provider turn may wait for the app-server's turn-scoped
-// thread/goal/updated evidence. turn/started alone carries no Goal generation
-// and must never inherit the session's latest desired Goal identity.
+// unowned provider turn may wait for exact turn-scoped goal evidence or an
+// operation-scoped continuation claim. turn/started alone carries no Goal
+// generation and must never inherit the session's latest desired Goal identity.
 const defaultCodexAppServerGoalProvenanceGraceWindow = 250 * time.Millisecond
 
 type CodexAppServerAdapter struct {
@@ -184,12 +184,21 @@ type codexAppServerSession struct {
 	// Goal provenance is deliberately separate from the mutable desired Goal
 	// identity above. A provider turn may only consume an immutable association
 	// established by matching a provider Goal generation observed in both a
-	// successful goal/set response and a turn-scoped goal/updated notification.
+	// successful goal/set response and a turn-scoped goal/updated notification,
+	// or by consuming the bounded continuation claim for versions that omit
+	// notification.turnId.
 	goalGenerationBindings           map[string]codexGoalGenerationBinding
 	goalGenerationOrder              []string
 	currentGoalGenerationFingerprint string
 	goalTurnEvidence                 map[string]*codexGoalTurnEvidence
 	pendingGoalTurns                 map[string]*codexPendingGoalTurn
+	// goalContinuationClaim is an in-process, single-use compatibility fence
+	// for Codex versions whose thread/goal/updated notification omits turnId.
+	// A successful Goal RPC seeds the first claim; each adopted Goal turn may
+	// seed the next one after settlement. The claim is usable only while its
+	// immutable operation identity is still current, so a newer set/clear
+	// invalidates delayed work without rebinding it to the latest Goal.
+	goalContinuationClaim *codexGoalContinuationClaim
 	// provenanceDegraded is fail-closed for the lifetime of this provider
 	// session. Once bounded evidence can no longer preserve ambiguity, no later
 	// notification may rebuild a partial cache and become adoptable.
@@ -280,6 +289,8 @@ type codexAppServerActiveTurn struct {
 	emitCommands   CommandSnapshotSink
 	kind           codexAppServerTurnKind
 	phase          codexAppServerTurnPhase
+	goalIdentity   goalOperationIdentity
+	goalProvenance string
 	terminal       chan codexAppServerTurnTerminal
 	// terminated is closed exactly once when the Exec goroutine for this turn
 	// returns (turn fully finalized). Cancel waits on it so it only responds

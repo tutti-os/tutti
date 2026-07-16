@@ -56,7 +56,7 @@ func TestSQLiteStoreListAgentTargetsSkipsInvalidRows(t *testing.T) {
 	ctx := context.Background()
 	store := openTestSQLiteStore(t)
 	now := int64(1700000000000)
-	if _, err := store.db.ExecContext(ctx, `
+	if _, err := store.writeDB.ExecContext(ctx, `
 	INSERT INTO agent_targets (
 	  id,
 	  provider,
@@ -96,13 +96,13 @@ func TestSQLiteStoreSeedReconcilesLegacySystemAgentTargetIDs(t *testing.T) {
 	ctx := context.Background()
 	store := openTestSQLiteStore(t)
 	now := int64(1700000000000)
-	if _, err := store.db.ExecContext(ctx, `
+	if _, err := store.writeDB.ExecContext(ctx, `
 INSERT INTO workspaces (id, name, created_at_unix_ms, updated_at_unix_ms)
 VALUES ('ws-legacy-targets', 'Legacy Targets', ?, ?);
 `, now, now); err != nil {
 		t.Fatalf("insert legacy workspace fixture: %v", err)
 	}
-	if _, err := store.db.ExecContext(ctx, `
+	if _, err := store.writeDB.ExecContext(ctx, `
 INSERT INTO agent_targets (
   id,
   provider,
@@ -119,7 +119,7 @@ VALUES (?, 'codex', ?, 'Legacy Codex', 'codex', 1, 'system', 10, ?, ?);
 `, legacyIDLocalCodex, agenttargetbiz.MustLocalCLILaunchRefJSON("codex"), now, now); err != nil {
 		t.Fatalf("insert legacy agent target fixture: %v", err)
 	}
-	if _, err := store.db.ExecContext(ctx, `
+	if _, err := store.writeDB.ExecContext(ctx, `
 INSERT INTO workspace_agent_sessions (
   workspace_id,
   agent_session_id,

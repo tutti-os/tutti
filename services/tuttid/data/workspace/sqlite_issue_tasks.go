@@ -52,7 +52,7 @@ ORDER BY sort_index ASC, id ASC%s
 		args = append(args, limit)
 	}
 
-	rows, err := s.db.QueryContext(ctx, query, args...)
+	rows, err := s.readDB.QueryContext(ctx, query, args...)
 	if err != nil {
 		return workspaceissues.TaskList{}, fmt.Errorf("list workspace issue tasks: %w", err)
 	}
@@ -89,7 +89,7 @@ func (s *SQLiteStore) AppendTasks(ctx context.Context, tasks []workspaceissues.T
 
 	workspaceID := tasks[0].WorkspaceID
 	issueID := tasks[0].IssueID
-	tx, err := s.db.BeginTx(ctx, nil)
+	tx, err := s.writeDB.BeginTx(ctx, nil)
 	if err != nil {
 		return nil, fmt.Errorf("begin append workspace issue tasks: %w", err)
 	}
@@ -158,7 +158,7 @@ func (s *SQLiteStore) GetTask(ctx context.Context, workspaceID string, issueID s
 		return workspaceissues.Task{}, err
 	}
 
-	row := s.db.QueryRowContext(ctx, `
+	row := s.readDB.QueryRowContext(ctx, `
 SELECT `+taskSelectColumns+`
 FROM workspace_issue_tasks
 WHERE workspace_id = ? AND issue_id = ? AND task_id = ?
@@ -178,7 +178,7 @@ func (s *SQLiteStore) UpdateTask(ctx context.Context, task workspaceissues.Task)
 		return workspaceissues.Task{}, err
 	}
 
-	result, err := s.db.ExecContext(ctx, `
+	result, err := s.writeDB.ExecContext(ctx, `
 UPDATE workspace_issue_tasks
 SET title = ?, content = ?, search_text = ?, status = ?, priority = ?,
     sort_index = ?, due_at_unix_ms = ?, latest_run_id = ?, updated_at_unix_ms = ?
@@ -199,7 +199,7 @@ func (s *SQLiteStore) DeleteTask(ctx context.Context, workspaceID string, issueI
 		return false, err
 	}
 
-	result, err := s.db.ExecContext(ctx, `
+	result, err := s.writeDB.ExecContext(ctx, `
 DELETE FROM workspace_issue_tasks
 WHERE workspace_id = ? AND issue_id = ? AND task_id = ?
 `, workspaceID, issueID, taskID)

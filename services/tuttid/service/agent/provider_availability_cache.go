@@ -6,7 +6,7 @@ import (
 	"time"
 )
 
-const defaultProviderAvailabilityCacheTTL = 10 * time.Second
+const defaultProviderAvailabilityCacheTTL = 30 * time.Minute
 
 type providerAvailabilityCache struct {
 	mu      sync.Mutex
@@ -50,6 +50,19 @@ func (c *providerAvailabilityCache) set(key string, now time.Time, availability 
 	c.entries[key] = providerAvailabilityCacheEntry{
 		cachedAt:     now,
 		availability: cloneProviderAvailability(availability),
+	}
+}
+
+func (c *providerAvailabilityCache) invalidate(provider string) {
+	if c == nil {
+		return
+	}
+	provider = strings.TrimSpace(provider)
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	delete(c.entries, providerAvailabilityCacheKey(nil))
+	if provider != "" {
+		delete(c.entries, providerAvailabilityCacheKey([]string{provider}))
 	}
 }
 

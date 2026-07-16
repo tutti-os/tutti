@@ -12,7 +12,7 @@ import (
 )
 
 func (s *SQLiteStore) GetWorkbenchSnapshot(ctx context.Context, workspaceID string) (workspacebiz.WorkbenchSnapshot, error) {
-	if s == nil || s.db == nil {
+	if s == nil || s.writeDB == nil {
 		return workspacebiz.WorkbenchSnapshot{}, errors.New("workspace database is not initialized")
 	}
 
@@ -21,11 +21,11 @@ func (s *SQLiteStore) GetWorkbenchSnapshot(ctx context.Context, workspaceID stri
 		return workspacebiz.WorkbenchSnapshot{}, errors.New("workspace id is required")
 	}
 
-	if err := s.ensureWorkspaceExists(ctx, workspaceID); err != nil {
+	if err := ensureWorkspaceExistsOn(ctx, s.readDB, workspaceID); err != nil {
 		return workspacebiz.WorkbenchSnapshot{}, err
 	}
 
-	row := s.db.QueryRowContext(ctx, `
+	row := s.readDB.QueryRowContext(ctx, `
 SELECT workspace_id, schema_version, snapshot_json
 FROM workspace_workbench_snapshots
 WHERE workspace_id = ?
@@ -45,7 +45,7 @@ WHERE workspace_id = ?
 }
 
 func (s *SQLiteStore) PutWorkbenchSnapshot(ctx context.Context, snapshot workspacebiz.WorkbenchSnapshot) error {
-	if s == nil || s.db == nil {
+	if s == nil || s.writeDB == nil {
 		return errors.New("workspace database is not initialized")
 	}
 
@@ -60,12 +60,12 @@ func (s *SQLiteStore) PutWorkbenchSnapshot(ctx context.Context, snapshot workspa
 		return errors.New("workbench snapshot json is required")
 	}
 
-	if err := s.ensureWorkspaceExists(ctx, workspaceID); err != nil {
+	if err := ensureWorkspaceExistsOn(ctx, s.writeDB, workspaceID); err != nil {
 		return err
 	}
 
 	now := unixMs(time.Now().UTC())
-	_, err := s.db.ExecContext(ctx, `
+	_, err := s.writeDB.ExecContext(ctx, `
 INSERT INTO workspace_workbench_snapshots (
   workspace_id,
   schema_version,
@@ -86,8 +86,8 @@ ON CONFLICT(workspace_id) DO UPDATE SET
 	return nil
 }
 
-func (s *SQLiteStore) ensureWorkspaceExists(ctx context.Context, workspaceID string) error {
-	row := s.db.QueryRowContext(ctx, `
+func ensureWorkspaceExistsOn(ctx context.Context, db *sql.DB, workspaceID string) error {
+	row := db.QueryRowContext(ctx, `
 SELECT 1
 FROM workspaces
 WHERE id = ?

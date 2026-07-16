@@ -13,6 +13,7 @@ const schemaMigrationWorkspacesV2 = "workspaces_v2"
 const schemaMigrationWorkspacesV3 = "workspaces_v3"
 const schemaMigrationWorkspacesV4 = "workspaces_v4"
 const schemaMigrationWorkspaceWorkbenchAgentGUIUnifiedDockV1 = "workspace_workbench_agent_gui_unified_dock_v1"
+const schemaMigrationWorkspaceWorkbenchAgentTargetIdentityV1 = "workspace_workbench_agent_target_identity_v1"
 const schemaMigrationWorkspaceIssuesV1 = "workspace_issues_v1"
 const schemaMigrationWorkspaceIssuesV2 = "workspace_issues_v2"
 const schemaMigrationWorkspaceIssuesV3 = "workspace_issues_v3"
@@ -46,11 +47,11 @@ const schemaMigrationAppFactoryJobsV2 = "app_factory_jobs_v2"
 const schemaMigrationAppFactoryJobsV3 = "app_factory_jobs_v3"
 
 func (s *SQLiteStore) Migrate(ctx context.Context) error {
-	if s == nil || s.db == nil {
+	if s == nil || s.writeDB == nil {
 		return errors.New("workspace database is not initialized")
 	}
 
-	_, err := s.db.ExecContext(ctx, `
+	_, err := s.writeDB.ExecContext(ctx, `
 CREATE TABLE IF NOT EXISTS tuttid_schema_migrations (
   id TEXT PRIMARY KEY,
   applied_at_unix_ms INTEGER NOT NULL
@@ -174,6 +175,9 @@ INSERT OR IGNORE INTO tuttid_schema_migrations (id, applied_at_unix_ms)
 	if err := s.agentStore().Migrate(ctx); err != nil {
 		return err
 	}
+	if err := s.applyWorkspaceWorkbenchAgentTargetIdentityV1(ctx); err != nil {
+		return err
+	}
 
 	if err := s.applyWorkspaceAppsV1(ctx); err != nil {
 		return err
@@ -193,7 +197,10 @@ INSERT OR IGNORE INTO tuttid_schema_migrations (id, applied_at_unix_ms)
 	if err := s.applyAppFactoryJobsV2(ctx); err != nil {
 		return err
 	}
-	return s.applyAppFactoryJobsV3(ctx)
+	if err := s.applyAppFactoryJobsV3(ctx); err != nil {
+		return err
+	}
+	return s.openReadPool(ctx)
 }
 
 func (s *SQLiteStore) applyWorkspacesV2(ctx context.Context) error {
@@ -206,7 +213,7 @@ func (s *SQLiteStore) applyWorkspacesV2(ctx context.Context) error {
 	}
 
 	now := unixMs(time.Now().UTC())
-	_, err = s.db.ExecContext(ctx, `
+	_, err = s.writeDB.ExecContext(ctx, `
 ALTER TABLE workspaces ADD COLUMN last_opened_at_unix_ms INTEGER;
 CREATE INDEX IF NOT EXISTS idx_workspaces_last_opened_at
   ON workspaces(last_opened_at_unix_ms DESC);
@@ -230,7 +237,7 @@ func (s *SQLiteStore) applyWorkspacesV3(ctx context.Context) error {
 	}
 
 	now := unixMs(time.Now().UTC())
-	_, err = s.db.ExecContext(ctx, `
+	_, err = s.writeDB.ExecContext(ctx, `
 CREATE TABLE IF NOT EXISTS workspace_workbench_snapshots (
   workspace_id TEXT PRIMARY KEY,
   schema_version INTEGER NOT NULL,
@@ -265,7 +272,7 @@ func (s *SQLiteStore) applyWorkspacesV4(ctx context.Context) error {
 
 	now := unixMs(time.Now().UTC())
 	if !hasLocalPath {
-		_, err = s.db.ExecContext(ctx, `
+		_, err = s.writeDB.ExecContext(ctx, `
 CREATE INDEX IF NOT EXISTS idx_workspaces_last_opened_at
   ON workspaces(last_opened_at_unix_ms DESC);
 INSERT INTO tuttid_schema_migrations (id, applied_at_unix_ms)
@@ -277,14 +284,14 @@ INSERT INTO tuttid_schema_migrations (id, applied_at_unix_ms)
 		return nil
 	}
 
-	if _, err := s.db.ExecContext(ctx, `PRAGMA foreign_keys = OFF`); err != nil {
+	if _, err := s.writeDB.ExecContext(ctx, `PRAGMA foreign_keys = OFF`); err != nil {
 		return fmt.Errorf("disable sqlite foreign keys for workspace v4 migration: %w", err)
 	}
 	defer func() {
-		_, _ = s.db.ExecContext(context.Background(), `PRAGMA foreign_keys = ON`)
+		_, _ = s.writeDB.ExecContext(context.Background(), `PRAGMA foreign_keys = ON`)
 	}()
 
-	tx, err := s.db.BeginTx(ctx, nil)
+	tx, err := s.writeDB.BeginTx(ctx, nil)
 	if err != nil {
 		return fmt.Errorf("begin workspace database v4 migration: %w", err)
 	}
@@ -323,7 +330,7 @@ INSERT INTO tuttid_schema_migrations (id, applied_at_unix_ms)
 		return fmt.Errorf("commit workspace database v4 migration: %w", err)
 	}
 
-	if _, err := s.db.ExecContext(ctx, `PRAGMA foreign_keys = ON`); err != nil {
+	if _, err := s.writeDB.ExecContext(ctx, `PRAGMA foreign_keys = ON`); err != nil {
 		return fmt.Errorf("re-enable sqlite foreign keys for workspace v4 migration: %w", err)
 	}
 
@@ -340,7 +347,7 @@ func (s *SQLiteStore) applyWorkspaceIssuesV1(ctx context.Context) error {
 	}
 
 	now := unixMs(time.Now().UTC())
-	_, err = s.db.ExecContext(ctx, `
+	_, err = s.writeDB.ExecContext(ctx, `
 CREATE TABLE IF NOT EXISTS workspace_issues (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   issue_id TEXT NOT NULL,
@@ -486,7 +493,7 @@ func (s *SQLiteStore) applyWorkspaceIssuesV2(ctx context.Context) error {
 	}
 
 	now := unixMs(time.Now().UTC())
-	_, err = s.db.ExecContext(ctx, `
+	_, err = s.writeDB.ExecContext(ctx, `
 PRAGMA foreign_keys = OFF;
 
 ALTER TABLE workspace_issue_run_outputs RENAME TO workspace_issue_run_outputs_v1;
@@ -585,7 +592,7 @@ func (s *SQLiteStore) applyUserProjectsV1(ctx context.Context) error {
 	}
 
 	now := unixMs(time.Now().UTC())
-	_, err = s.db.ExecContext(ctx, `
+	_, err = s.writeDB.ExecContext(ctx, `
 CREATE TABLE IF NOT EXISTS user_projects (
   id TEXT PRIMARY KEY,
   path TEXT NOT NULL UNIQUE,
@@ -607,7 +614,7 @@ INSERT INTO tuttid_schema_migrations (id, applied_at_unix_ms)
 }
 
 func (s *SQLiteStore) hasMigration(ctx context.Context, migrationID string) (bool, error) {
-	row := s.db.QueryRowContext(ctx, `
+	row := s.writeDB.QueryRowContext(ctx, `
 SELECT 1
 FROM tuttid_schema_migrations
 WHERE id = ?
@@ -625,7 +632,7 @@ WHERE id = ?
 }
 
 func (s *SQLiteStore) hasColumn(ctx context.Context, tableName string, columnName string) (bool, error) {
-	rows, err := s.db.QueryContext(ctx, fmt.Sprintf("PRAGMA table_info(%s)", tableName))
+	rows, err := s.writeDB.QueryContext(ctx, fmt.Sprintf("PRAGMA table_info(%s)", tableName))
 	if err != nil {
 		return false, fmt.Errorf("inspect workspace table %s: %w", tableName, err)
 	}

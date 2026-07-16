@@ -318,6 +318,7 @@ type ChildSessionReader interface {
 type SessionDetail struct {
 	Session       Session
 	ChildSessions []Session
+	Turns         []agentactivitybiz.Turn
 }
 
 type SessionSectionsReader interface {

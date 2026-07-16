@@ -21,7 +21,6 @@ type AgentGuiWorkbenchLaunchRequestInput = Pick<
 
 export const agentGuiWorkbenchTypeId = "agent-gui";
 
-const agentGuiWorkbenchDockEntryPrefix = "agent-gui:";
 const agentGuiWorkbenchUnifiedDockEntryIdValue = "agent-gui:unified";
 const agentGuiWorkbenchDockPopupNewWindowLaunchSource = "dock-popup-new-window";
 let agentGuiWorkbenchInstanceSequence = 0;
@@ -44,60 +43,9 @@ export function agentGuiWorkbenchUnifiedDockEntryId(): string {
   return agentGuiWorkbenchUnifiedDockEntryIdValue;
 }
 
-export function agentGuiWorkbenchInstanceId(
-  provider: AgentGuiWorkbenchProvider
-): string {
-  return `${agentGuiWorkbenchDockEntryPrefix}${encodeAgentGuiWorkbenchInstanceSegment(
-    provider
-  )}`;
-}
-
-export function createAgentGuiWorkbenchInstanceId(input: {
-  agentSessionId?: string | null;
-  agentTargetId?: string | null;
-  provider: AgentGuiWorkbenchProvider;
-}): string {
-  const prefix = agentGuiWorkbenchInstanceId(input.provider);
-  const agentSessionId = input.agentSessionId?.trim();
-  if (agentSessionId) {
-    return `${prefix}:session:${encodeAgentGuiWorkbenchInstanceSegment(
-      agentSessionId
-    )}`;
-  }
-  const agentTargetId = input.agentTargetId?.trim();
-  if (agentTargetId) {
-    return `${prefix}:target:${encodeAgentGuiWorkbenchInstanceSegment(
-      agentTargetId
-    )}`;
-  }
-
+export function createAgentGuiWorkbenchInstanceId(): string {
   agentGuiWorkbenchInstanceSequence += 1;
-  return [
-    prefix,
-    "panel",
-    `${Date.now().toString(36)}-${agentGuiWorkbenchInstanceSequence.toString(36)}`
-  ].join(":");
-}
-
-export function agentGuiWorkbenchProviderFromIdentifier(
-  value: string | null | undefined
-): AgentGuiWorkbenchProvider | null {
-  if (agentGuiWorkbenchDockIdentityFromIdentifier(value)) {
-    return null;
-  }
-  const normalized = value?.trim();
-  if (!normalized?.startsWith(agentGuiWorkbenchDockEntryPrefix)) {
-    return null;
-  }
-  const identifier = normalized.slice(agentGuiWorkbenchDockEntryPrefix.length);
-  const structuredSuffix = identifier.match(
-    /:(?:panel|session|target):[^:]*$/u
-  );
-  const encodedProvider = structuredSuffix
-    ? identifier.slice(0, structuredSuffix.index)
-    : identifier;
-  const provider = decodeAgentGuiWorkbenchInstanceSegment(encodedProvider);
-  return isAgentGuiWorkbenchProvider(provider) ? provider : null;
+  return `agent-gui:instance:${Date.now().toString(36)}-${agentGuiWorkbenchInstanceSequence.toString(36)}`;
 }
 
 export function agentGuiWorkbenchDockIdentityFromIdentifier(
@@ -196,10 +144,14 @@ export interface AgentGuiWorkbenchLaunchDescriptor {
   instanceId: string;
   openInNewWindow: boolean;
   provider: AgentGuiWorkbenchProvider;
-  reuseDockEntryNode: boolean;
-  reuseExistingSessionNode: boolean;
+  reusePolicy: AgentGuiWorkbenchReusePolicy;
   targetAgentSessionId: string | null;
 }
+
+export type AgentGuiWorkbenchReusePolicy =
+  | { kind: "dock-entry" }
+  | { agentSessionId: string; kind: "current-session" }
+  | { kind: "none" };
 
 export function createAgentGuiWorkbenchLaunchDescriptor(
   request: AgentGuiWorkbenchLaunchRequestInput
@@ -215,34 +167,17 @@ export function createAgentGuiWorkbenchLaunchDescriptor(
         type: agentGuiWorkbenchPrefillPromptActivationType
       },
       dockEntryId,
-      instanceId: createAgentGuiWorkbenchInstanceId({
-        agentTargetId: openInNewWindow
-          ? null
-          : agentTargetIdFromLaunchPayload(request.payload),
-        provider
-      }),
+      instanceId: createAgentGuiWorkbenchInstanceId(),
       openInNewWindow,
       provider,
-      reuseDockEntryNode:
-        !openInNewWindow &&
-        shouldReuseAgentGuiWorkbenchDockEntryNode({
-          dockEntryId,
-          launchKind: "prefill"
-        }),
-      reuseExistingSessionNode: !openInNewWindow,
+      reusePolicy: { kind: "none" },
       targetAgentSessionId: null
     };
   }
 
   const targetAgentSessionId = agentSessionIdFromLaunchPayload(request.payload);
   const openInNewWindow = openInNewWindowFromLaunchRequest(request);
-  const instanceId = createAgentGuiWorkbenchInstanceId({
-    agentSessionId: null,
-    agentTargetId: openInNewWindow
-      ? null
-      : agentTargetIdFromLaunchPayload(request.payload),
-    provider
-  });
+  const instanceId = createAgentGuiWorkbenchInstanceId();
 
   return {
     activation: targetAgentSessionId
@@ -257,31 +192,13 @@ export function createAgentGuiWorkbenchLaunchDescriptor(
     instanceId,
     openInNewWindow,
     provider,
-    reuseDockEntryNode:
-      !openInNewWindow &&
-      shouldReuseAgentGuiWorkbenchDockEntryNode({
-        dockEntryId,
-        launchKind: targetAgentSessionId ? "session" : "empty"
-      }),
-    reuseExistingSessionNode: !openInNewWindow,
+    reusePolicy: openInNewWindow
+      ? { kind: "none" }
+      : targetAgentSessionId
+        ? { agentSessionId: targetAgentSessionId, kind: "current-session" }
+        : { kind: "dock-entry" },
     targetAgentSessionId
   };
-}
-
-export function shouldReuseAgentGuiWorkbenchDockEntryNode(input: {
-  dockEntryId: string;
-  launchKind: "empty" | "prefill" | "session";
-}): boolean {
-  if (input.launchKind === "empty") {
-    return true;
-  }
-  if (input.launchKind === "session") {
-    return false;
-  }
-  return (
-    agentGuiWorkbenchDockIdentityFromIdentifier(input.dockEntryId)?.kind !==
-    "unifiedAggregate"
-  );
 }
 
 /**
@@ -293,18 +210,6 @@ export function resolveAgentGuiWorkbenchLaunchDockEntryId(_input: {
   requestedDockEntryId?: string | null;
 }): string {
   return agentGuiWorkbenchUnifiedDockEntryId();
-}
-
-function encodeAgentGuiWorkbenchInstanceSegment(value: string): string {
-  return encodeURIComponent(value.trim());
-}
-
-function decodeAgentGuiWorkbenchInstanceSegment(value: string): string | null {
-  try {
-    return decodeURIComponent(value).trim();
-  } catch {
-    return null;
-  }
 }
 
 function prefillPromptFromLaunchPayload(

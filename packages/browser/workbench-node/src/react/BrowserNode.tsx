@@ -20,11 +20,13 @@ import type {
   BrowserNodeRuntimeError,
   BrowserNodeSessionMode
 } from "../core/types.ts";
+import type { BrowserNodeWebviewTag } from "./webviewTag.ts";
 import {
   BrowserNodeChrome,
   BrowserNodeHeader,
   useBrowserNodeTabsState
 } from "./BrowserNodeChrome.tsx";
+import { BrowserNodeWebviewContext } from "./browserNodeWebviewContext.ts";
 import {
   openBrowserNodeExternal,
   resolveBrowserNodeOpenExternalUrl
@@ -156,49 +158,77 @@ function TabbedBrowserNode({
   syncDefaultUrl
 }: Omit<BrowserNodeProps, "tabs">): JSX.Element {
   const tabsState = useBrowserNodeTabsState(feature, nodeId, defaultUrl);
+  const activeTabIdRef = useRef(tabsState.activeTabId);
+  const webviewsRef = useRef(new Map<string, BrowserNodeWebviewTag>());
+  const [activeWebview, setActiveWebview] =
+    useState<BrowserNodeWebviewTag | null>(null);
+  activeTabIdRef.current = tabsState.activeTabId;
+
+  const handleTabWebviewChange = useCallback(
+    (tabId: string, webview: BrowserNodeWebviewTag | null): void => {
+      if (webview) {
+        webviewsRef.current.set(tabId, webview);
+      } else {
+        webviewsRef.current.delete(tabId);
+      }
+      if (activeTabIdRef.current === tabId) {
+        setActiveWebview(webview);
+      }
+    },
+    []
+  );
+
+  useEffect(() => {
+    setActiveWebview(webviewsRef.current.get(tabsState.activeTabId) ?? null);
+  }, [tabsState.activeTabId]);
 
   return (
-    <div className="flex h-full min-h-0 flex-col overflow-hidden bg-[var(--background-panel)]">
-      {showHeader ? (
-        <BrowserNodeChrome
-          defaultUrl={defaultUrl}
-          feature={feature}
-          navigationActions={navigationActions}
-          onFocusRequest={onFocusRequest}
-          surfaceNodeId={nodeId}
-        />
-      ) : null}
-      <div className="relative min-h-0 flex-1 overflow-hidden">
-        {tabsState.tabs.map((tab) => {
-          const active = tab.id === tabsState.activeTabId;
-          return (
-            <div
-              className={cn(
-                "absolute inset-0",
-                active ? "visible" : "invisible pointer-events-none"
-              )}
-              data-browser-node-tab-content-active={active ? "true" : "false"}
-              key={tab.id}
-            >
-              <BrowserNodeContent
-                defaultUrl={tab.defaultUrl}
-                feature={feature}
-                hidden={hidden || !active}
-                navigationPolicy={navigationPolicy}
-                nodeId={tab.nodeId}
-                onFocusRequest={onFocusRequest}
-                onNavigated={active ? onNavigated : undefined}
-                profileId={profileId}
-                sessionMode={sessionMode}
-                sessionPartition={sessionPartition}
-                showHeader={false}
-                syncDefaultUrl={syncDefaultUrl}
-              />
-            </div>
-          );
-        })}
+    <BrowserNodeWebviewContext.Provider value={activeWebview}>
+      <div className="flex h-full min-h-0 flex-col overflow-hidden bg-[var(--background-panel)]">
+        {showHeader ? (
+          <BrowserNodeChrome
+            defaultUrl={defaultUrl}
+            feature={feature}
+            navigationActions={navigationActions}
+            onFocusRequest={onFocusRequest}
+            surfaceNodeId={nodeId}
+          />
+        ) : null}
+        <div className="relative min-h-0 flex-1 overflow-hidden">
+          {tabsState.tabs.map((tab) => {
+            const active = tab.id === tabsState.activeTabId;
+            return (
+              <div
+                className={cn(
+                  "absolute inset-0",
+                  active ? "visible" : "invisible pointer-events-none"
+                )}
+                data-browser-node-tab-content-active={active ? "true" : "false"}
+                key={tab.id}
+              >
+                <BrowserNodeContent
+                  defaultUrl={tab.defaultUrl}
+                  feature={feature}
+                  hidden={hidden || !active}
+                  navigationPolicy={navigationPolicy}
+                  nodeId={tab.nodeId}
+                  onFocusRequest={onFocusRequest}
+                  onNavigated={active ? onNavigated : undefined}
+                  onWebviewChange={(webview) =>
+                    handleTabWebviewChange(tab.id, webview)
+                  }
+                  profileId={profileId}
+                  sessionMode={sessionMode}
+                  sessionPartition={sessionPartition}
+                  showHeader={false}
+                  syncDefaultUrl={syncDefaultUrl}
+                />
+              </div>
+            );
+          })}
+        </div>
       </div>
-    </div>
+    </BrowserNodeWebviewContext.Provider>
   );
 }
 
@@ -211,12 +241,15 @@ function BrowserNodeContent({
   nodeId,
   onFocusRequest,
   onNavigated,
+  onWebviewChange,
   profileId = null,
   sessionMode = "shared",
   sessionPartition = null,
   showHeader = false,
   syncDefaultUrl = false
-}: Omit<BrowserNodeProps, "tabs">): JSX.Element {
+}: Omit<BrowserNodeProps, "tabs"> & {
+  onWebviewChange?: (webview: BrowserNodeWebviewTag | null) => void;
+}): JSX.Element {
   const { state } = useBrowserNodeController({
     defaultUrl,
     feature,
@@ -261,6 +294,17 @@ function BrowserNodeContent({
     sessionMode,
     sessionPartition
   });
+  const [webview, setWebview] = useState<BrowserNodeWebviewTag | null>(null);
+  const onWebviewChangeRef = useRef(onWebviewChange);
+  onWebviewChangeRef.current = onWebviewChange;
+  const handleWebviewRef = useCallback(
+    (element: BrowserNodeWebviewTag | null): void => {
+      setWebviewRef(element);
+      setWebview(element);
+      onWebviewChangeRef.current?.(element);
+    },
+    [setWebviewRef]
+  );
 
   useEffect(() => {
     const navigatedUrl = state.runtime.url?.trim() ?? "";
@@ -285,107 +329,109 @@ function BrowserNodeContent({
   ]);
 
   return (
-    <div className="flex h-full min-h-0 flex-col overflow-hidden bg-[var(--background-panel)]">
-      {showHeader ? (
-        <BrowserNodeHeader
-          defaultUrl={defaultUrl}
-          feature={feature}
-          navigationActions={navigationActions}
-          nodeId={nodeId}
-          onFocusRequest={onFocusRequest}
-        />
-      ) : null}
-      <div className="relative min-h-0 flex-1 overflow-hidden bg-[var(--background-panel)]">
-        {shouldRenderWebview ? (
-          <webview
-            allowpopups={browserNodeAllowPopupsAttribute}
-            key={webviewKey}
-            ref={setWebviewRef}
-            className={cn(
-              "absolute inset-0 h-full w-full border-0 bg-[var(--background-panel)]",
-              isShowingLoadError ? "hidden pointer-events-none" : "visible",
-              shouldHideBrowserNodeWebview({
-                hidden,
-                isHostMinimizing,
-                isHostOverlayOpen:
-                  isHostOverlayOpen || devToolsContextMenu !== null
-              }) && "invisible"
-            )}
-            data-browser-node-webview="true"
-            partition={webviewPartition}
-            src={webviewSrc}
+    <BrowserNodeWebviewContext.Provider value={webview}>
+      <div className="flex h-full min-h-0 flex-col overflow-hidden bg-[var(--background-panel)]">
+        {showHeader ? (
+          <BrowserNodeHeader
+            defaultUrl={defaultUrl}
+            feature={feature}
+            navigationActions={navigationActions}
+            nodeId={nodeId}
+            onFocusRequest={onFocusRequest}
           />
         ) : null}
-        {errorMessage ? (
-          <div className="absolute inset-0 z-10 flex items-center justify-center bg-[var(--background-panel)] px-8 py-10 text-center">
-            <div
-              className="flex w-full max-w-[440px] flex-col items-center"
-              role="status"
-              aria-live="polite"
-            >
-              <div className="flex size-11 items-center justify-center rounded-full border border-[color-mix(in_srgb,var(--state-danger)_22%,transparent)] bg-[color-mix(in_srgb,var(--state-danger)_8%,transparent)] text-[var(--state-danger)]">
-                <WarningLinedIcon className="size-5" />
-              </div>
-              <div className="mt-4 text-lg font-semibold text-[var(--text-primary)]">
-                {feature.i18n.t("loadFailed")}
-              </div>
-              <div className="mt-1 max-w-[360px] text-[13px] leading-5 text-[var(--text-secondary)]">
-                {errorMessage}
-              </div>
-              {errorStatus ? (
-                <div className="mt-4 rounded-full border border-border bg-[var(--transparency-block)] px-2.5 py-1 text-[11px] font-medium text-[var(--text-secondary)]">
-                  {errorStatus}
+        <div className="relative min-h-0 flex-1 overflow-hidden bg-[var(--background-panel)]">
+          {shouldRenderWebview ? (
+            <webview
+              allowpopups={browserNodeAllowPopupsAttribute}
+              key={webviewKey}
+              ref={handleWebviewRef}
+              className={cn(
+                "absolute inset-0 h-full w-full border-0 bg-[var(--background-panel)]",
+                isShowingLoadError ? "hidden pointer-events-none" : "visible",
+                shouldHideBrowserNodeWebview({
+                  hidden,
+                  isHostMinimizing,
+                  isHostOverlayOpen:
+                    isHostOverlayOpen || devToolsContextMenu !== null
+                }) && "invisible"
+              )}
+              data-browser-node-webview="true"
+              partition={webviewPartition}
+              src={webviewSrc}
+            />
+          ) : null}
+          {errorMessage ? (
+            <div className="absolute inset-0 z-10 flex items-center justify-center bg-[var(--background-panel)] px-8 py-10 text-center">
+              <div
+                className="flex w-full max-w-[440px] flex-col items-center"
+                role="status"
+                aria-live="polite"
+              >
+                <div className="flex size-11 items-center justify-center rounded-full border border-[color-mix(in_srgb,var(--state-danger)_22%,transparent)] bg-[color-mix(in_srgb,var(--state-danger)_8%,transparent)] text-[var(--state-danger)]">
+                  <WarningLinedIcon className="size-5" />
                 </div>
-              ) : null}
-              {openExternalUrl ? (
-                <div className="mt-5 flex flex-wrap items-center justify-center gap-2">
-                  <Button
-                    size="sm"
-                    type="button"
-                    variant="outline"
-                    onClick={() => {
-                      void openBrowserNodeExternal(feature, openExternalUrl);
-                    }}
-                  >
-                    <LaunchIcon className="size-3.5" />
-                    {feature.i18n.t("actions.openExternal")}
-                  </Button>
+                <div className="mt-4 text-lg font-semibold text-[var(--text-primary)]">
+                  {feature.i18n.t("loadFailed")}
                 </div>
-              ) : null}
+                <div className="mt-1 max-w-[360px] text-[13px] leading-5 text-[var(--text-secondary)]">
+                  {errorMessage}
+                </div>
+                {errorStatus ? (
+                  <div className="mt-4 rounded-full border border-border bg-[var(--transparency-block)] px-2.5 py-1 text-[11px] font-medium text-[var(--text-secondary)]">
+                    {errorStatus}
+                  </div>
+                ) : null}
+                {openExternalUrl ? (
+                  <div className="mt-5 flex flex-wrap items-center justify-center gap-2">
+                    <Button
+                      size="sm"
+                      type="button"
+                      variant="outline"
+                      onClick={() => {
+                        void openBrowserNodeExternal(feature, openExternalUrl);
+                      }}
+                    >
+                      <LaunchIcon className="size-3.5" />
+                      {feature.i18n.t("actions.openExternal")}
+                    </Button>
+                  </div>
+                ) : null}
+              </div>
             </div>
-          </div>
-        ) : null}
-        {devToolsContextMenu ? (
-          <ViewportMenuSurface
-            open
-            className="w-44"
-            dismissOnEscape
-            dismissOnPointerDownOutside
-            onDismiss={dismissDevToolsContextMenu}
-            placement={{
-              type: "point",
-              point: devToolsContextMenu,
-              alignX: "start",
-              alignY: "start",
-              estimatedSize: {
-                width: 176,
-                height: 40
-              }
-            }}
-          >
-            <button
-              className={cn(menuItemClassName, "w-full")}
-              type="button"
-              onClick={() => {
-                void openDevToolsFromContextMenu().catch(() => undefined);
+          ) : null}
+          {devToolsContextMenu ? (
+            <ViewportMenuSurface
+              open
+              className="w-44"
+              dismissOnEscape
+              dismissOnPointerDownOutside
+              onDismiss={dismissDevToolsContextMenu}
+              placement={{
+                type: "point",
+                point: devToolsContextMenu,
+                alignX: "start",
+                alignY: "start",
+                estimatedSize: {
+                  width: 176,
+                  height: 40
+                }
               }}
             >
-              {feature.i18n.t("actions.openDevTools")}
-            </button>
-          </ViewportMenuSurface>
-        ) : null}
+              <button
+                className={cn(menuItemClassName, "w-full")}
+                type="button"
+                onClick={() => {
+                  void openDevToolsFromContextMenu().catch(() => undefined);
+                }}
+              >
+                {feature.i18n.t("actions.openDevTools")}
+              </button>
+            </ViewportMenuSurface>
+          ) : null}
+        </div>
       </div>
-    </div>
+    </BrowserNodeWebviewContext.Provider>
   );
 }
 

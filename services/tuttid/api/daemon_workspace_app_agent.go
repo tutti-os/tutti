@@ -81,6 +81,7 @@ func (api DaemonAPI) GetWorkspaceAppAgentProviderStatuses(
 		Params: tuttigenerated.GetAgentProviderStatusesParams{
 			Providers:      providers,
 			IncludeNetwork: request.Params.IncludeNetwork,
+			Refresh:        request.Params.Refresh,
 		},
 	})
 	if err != nil {

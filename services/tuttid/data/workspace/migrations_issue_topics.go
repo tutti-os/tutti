@@ -22,7 +22,7 @@ func (s *SQLiteStore) applyWorkspaceIssuesV3(ctx context.Context) error {
 		return s.ensureDefaultIssueTopics(ctx)
 	}
 	if v3SchemaPresent {
-		if _, err := s.db.ExecContext(ctx, `
+		if _, err := s.writeDB.ExecContext(ctx, `
 INSERT OR IGNORE INTO tuttid_schema_migrations (id, applied_at_unix_ms)
   VALUES (?, ?);
 `, schemaMigrationWorkspaceIssuesV3, now); err != nil {
@@ -31,14 +31,14 @@ INSERT OR IGNORE INTO tuttid_schema_migrations (id, applied_at_unix_ms)
 		return s.ensureDefaultIssueTopics(ctx)
 	}
 
-	if _, err := s.db.ExecContext(ctx, `PRAGMA foreign_keys = OFF`); err != nil {
+	if _, err := s.writeDB.ExecContext(ctx, `PRAGMA foreign_keys = OFF`); err != nil {
 		return fmt.Errorf("disable sqlite foreign keys for workspace issue topics migration: %w", err)
 	}
 	defer func() {
-		_, _ = s.db.ExecContext(context.Background(), `PRAGMA foreign_keys = ON`)
+		_, _ = s.writeDB.ExecContext(context.Background(), `PRAGMA foreign_keys = ON`)
 	}()
 
-	tx, err := s.db.BeginTx(ctx, nil)
+	tx, err := s.writeDB.BeginTx(ctx, nil)
 	if err != nil {
 		return fmt.Errorf("begin workspace issue topics migration: %w", err)
 	}
@@ -284,7 +284,7 @@ INSERT OR IGNORE INTO tuttid_schema_migrations (id, applied_at_unix_ms)
 		return fmt.Errorf("commit workspace issue topics migration: %w", err)
 	}
 
-	if _, err := s.db.ExecContext(ctx, `PRAGMA foreign_keys = ON`); err != nil {
+	if _, err := s.writeDB.ExecContext(ctx, `PRAGMA foreign_keys = ON`); err != nil {
 		return fmt.Errorf("re-enable sqlite foreign keys for workspace issue topics migration: %w", err)
 	}
 
@@ -307,11 +307,11 @@ func (s *SQLiteStore) applyWorkspaceIssuesV4(ctx context.Context) error {
 
 	now := unixMs(time.Now().UTC())
 	if !hasExecutionDirectory {
-		if _, err := s.db.ExecContext(ctx, `ALTER TABLE workspace_issue_runs ADD COLUMN execution_directory TEXT NOT NULL DEFAULT '';`); err != nil {
+		if _, err := s.writeDB.ExecContext(ctx, `ALTER TABLE workspace_issue_runs ADD COLUMN execution_directory TEXT NOT NULL DEFAULT '';`); err != nil {
 			return fmt.Errorf("migrate workspace issue runs execution directory: %w", err)
 		}
 	}
-	if _, err := s.db.ExecContext(ctx, `
+	if _, err := s.writeDB.ExecContext(ctx, `
 INSERT INTO tuttid_schema_migrations (id, applied_at_unix_ms)
   VALUES (?, ?);
 `, schemaMigrationWorkspaceIssuesV4, now); err != nil {
@@ -336,7 +336,7 @@ func (s *SQLiteStore) applyWorkspaceIssuesV5(ctx context.Context) error {
 
 	now := unixMs(time.Now().UTC())
 	if !hasAgentTargetID {
-		if _, err := s.db.ExecContext(ctx, `ALTER TABLE workspace_issue_runs ADD COLUMN agent_target_id TEXT NOT NULL DEFAULT '';`); err != nil {
+		if _, err := s.writeDB.ExecContext(ctx, `ALTER TABLE workspace_issue_runs ADD COLUMN agent_target_id TEXT NOT NULL DEFAULT '';`); err != nil {
 			return fmt.Errorf("migrate workspace issue runs agent target id: %w", err)
 		}
 	}
@@ -345,7 +345,7 @@ func (s *SQLiteStore) applyWorkspaceIssuesV5(ctx context.Context) error {
 	if codexTargetID == "" {
 		return fmt.Errorf("migrate workspace issue runs agent target id: codex target descriptor is missing")
 	}
-	if _, err := s.db.ExecContext(ctx, `
+	if _, err := s.writeDB.ExecContext(ctx, `
 UPDATE workspace_issue_runs
 SET agent_target_id = CASE agent_provider
   WHEN ? THEN ?
@@ -356,7 +356,7 @@ WHERE agent_target_id = '';
 `, "codex", codexTargetID); err != nil {
 		return fmt.Errorf("backfill workspace issue run agent target ids: %w", err)
 	}
-	if _, err := s.db.ExecContext(ctx, `
+	if _, err := s.writeDB.ExecContext(ctx, `
 INSERT INTO tuttid_schema_migrations (id, applied_at_unix_ms)
   VALUES (?, ?);
 `, schemaMigrationWorkspaceIssuesV5, now); err != nil {
@@ -367,7 +367,7 @@ INSERT INTO tuttid_schema_migrations (id, applied_at_unix_ms)
 
 func (s *SQLiteStore) ensureDefaultIssueTopics(ctx context.Context) error {
 	now := unixMs(time.Now().UTC())
-	if _, err := s.db.ExecContext(ctx, `
+	if _, err := s.writeDB.ExecContext(ctx, `
 UPDATE workspace_issue_topics
 SET is_default = 1, updated_at_unix_ms = ?
 WHERE topic_id = ?
@@ -382,7 +382,7 @@ WHERE topic_id = ?
 		return fmt.Errorf("repair default workspace issue topic flags: %w", err)
 	}
 
-	if _, err := s.db.ExecContext(ctx, `
+	if _, err := s.writeDB.ExecContext(ctx, `
 INSERT INTO workspace_issue_topics (
   topic_id, workspace_id, title, summary, is_default, pinned_at_unix_ms,
   last_activity_at_unix_ms, created_at_unix_ms, updated_at_unix_ms

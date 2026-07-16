@@ -344,6 +344,87 @@ test("rescheduling an expiry id replaces the previous deadline", () => {
   assert.equal(engine.getSnapshot().engineRuntime.lastExpiredIntentId, "e-3");
 });
 
+test("stop aborts activation immediately and cancels the first turn when it arrives", () => {
+  const { commandPort, engine } = createHarness();
+  engine.dispatch({
+    agentSessionId: "session-1",
+    agentTargetId: "cursor",
+    clientSubmitId: "submit-1",
+    content: [{ type: "text", text: "hello" }],
+    cwd: "/workspace",
+    expiresAtUnixMs: 60_000,
+    mode: "new",
+    requestedAtUnixMs: 1,
+    requestId: "activation-1",
+    type: "activation/requested",
+    workspaceId: "ws-1"
+  });
+  assert.equal(
+    commandPort.abortSignalsByCommandId.get("activate:activation-1")?.aborted,
+    false
+  );
+
+  engine.dispatch({
+    agentSessionId: "session-1",
+    awaitingTurnExpiresAtUnixMs: 30_000,
+    commandId: "stop-1",
+    type: "session/stopRequested",
+    workspaceId: "ws-1"
+  });
+
+  assert.equal(
+    commandPort.abortSignalsByCommandId.get("activate:activation-1")?.aborted,
+    true
+  );
+  assert.equal(
+    engine.getSnapshot().pendingIntents.activationsByRequestId["activation-1"]
+      ?.status,
+    "canceled"
+  );
+  assert.equal(
+    engine.getSnapshot().sessionLifecycle.operationBySessionId["session-1"]
+      ?.cancel.status,
+    "awaitingTurn"
+  );
+
+  engine.dispatch({
+    session: {
+      activeTurn: {
+        agentSessionId: "session-1",
+        origin: "user_prompt",
+        phase: "running",
+        startedAtUnixMs: 2,
+        turnId: "turn-1",
+        updatedAtUnixMs: 2
+      },
+      activeTurnId: "turn-1",
+      agentSessionId: "session-1",
+      cwd: "/workspace",
+      latestTurnInteractions: [],
+      pendingInteractions: [],
+      provider: "cursor",
+      title: "Session",
+      updatedAtUnixMs: 2,
+      workspaceId: "ws-1"
+    },
+    type: "session/upserted"
+  });
+
+  assert.deepEqual(
+    commandPort.executedCommands.find(
+      (command) => command.type === "turn/cancel"
+    ),
+    {
+      agentSessionId: "session-1",
+      commandId: "stop-1",
+      timeoutMs: 30_000,
+      turnId: "turn-1",
+      type: "turn/cancel",
+      workspaceId: "ws-1"
+    }
+  );
+});
+
 test("interleaving: expiry firing between probe start and probe result", async () => {
   const { commandPort, engine, timer } = createHarness();
   engine.dispatch({ probeId: "p-4", type: "engine/probeRequested" });

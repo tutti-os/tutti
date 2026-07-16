@@ -230,7 +230,7 @@ test("activation intent owns the transport command and confirmation deadline", (
       submitDiagnostics: { submittedAtUnixMs: 1 },
       mode: "new",
       settings: { model: "model-1" },
-      timeoutMs: 30_000,
+      timeoutMs: 90_000,
       title: "New session",
       type: "session/activate",
       workspaceId: "workspace-1"
@@ -262,7 +262,7 @@ test("control activation can carry content without expecting a Turn", () => {
       submitDiagnostics: { submittedAtUnixMs: 1 },
       mode: "new",
       settings: { model: "model-1" },
-      timeoutMs: 30_000,
+      timeoutMs: 90_000,
       title: "New session",
       type: "session/activate",
       workspaceId: "workspace-1"

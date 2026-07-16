@@ -110,6 +110,8 @@ export function sessionLifecycleReducer(
       }));
     case "session/cancelRequested":
       return requestCancel(state, intent);
+    case "session/stopRequested":
+      return requestCancel(state, intent);
     case "session/settingsUpdateRequested":
       return requestSettingsUpdate(state, intent);
     case "submit/requested":
@@ -120,7 +122,8 @@ export function sessionLifecycleReducer(
             commandId: `submit:cancel:${intent.clientSubmitId}`,
             awaitingTurnExpiresAtUnixMs:
               intent.requestedAtUnixMs + TURN_CANCEL_TIMEOUT_MS,
-            timeoutMs: TURN_CANCEL_TIMEOUT_MS
+            timeoutMs: TURN_CANCEL_TIMEOUT_MS,
+            workspaceId: intent.workspaceId
           })
         : unchanged(state);
     case "queue/sendNowRequested":
@@ -130,7 +133,10 @@ export function sessionLifecycleReducer(
             agentSessionId: intent.agentSessionId,
             commandId: intent.cancelCommandId,
             awaitingTurnExpiresAtUnixMs: intent.awaitingTurnExpiresAtUnixMs,
-            timeoutMs: intent.timeoutMs
+            timeoutMs: intent.timeoutMs,
+            workspaceId:
+              state.sessionsById[intent.agentSessionId.trim()]?.workspaceId ??
+              ""
           })
         : unchanged(state);
     case "session/cancelAbandoned":
@@ -374,40 +380,51 @@ function patchSessionMetadata(
 
 function requestCancel(
   state: SessionLifecycleState,
-  intent: Extract<EngineIntent, { type: "session/cancelRequested" }>
+  intent: Extract<
+    EngineIntent,
+    { type: "session/cancelRequested" | "session/stopRequested" }
+  >
 ): EngineReducerResult<SessionLifecycleState> {
   const id = intent.agentSessionId.trim();
-  const operation = state.operationBySessionId[id];
   const session = state.sessionsById[id];
-  if (!operation || !session || cancelPending(operation.cancel))
+  const workspaceId = intent.workspaceId.trim();
+  if (
+    !id ||
+    !workspaceId ||
+    state.deletedSessionIds[id] ||
+    (session && session.workspaceId !== workspaceId)
+  ) {
     return unchanged(state);
-  const turn = session.activeTurnId
-    ? state.turnsById[canonicalTurnKey(id, session.activeTurnId)]
+  }
+  let nextState = state;
+  let operation = state.operationBySessionId[id];
+  if (!operation) {
+    operation = initialOperation();
+    nextState = setOperation(state, id, operation);
+  }
+  if (cancelPending(operation.cancel)) return unchanged(nextState);
+  const activeTurnId = session?.activeTurnId ?? null;
+  const turn = activeTurnId
+    ? state.turnsById[canonicalTurnKey(id, activeTurnId)]
     : null;
   if (turn && turn.phase !== "settled") {
     const next = setCancel(
-      state,
+      nextState,
       id,
-      requestedCancel(intent.commandId, turn.turnId, session.workspaceId)
+      requestedCancel(intent.commandId, turn.turnId, workspaceId)
     );
     return {
       commands: [
-        cancelCommand(
-          session.workspaceId,
-          id,
-          turn,
-          intent.commandId,
-          intent.timeoutMs
-        )
+        cancelCommand(workspaceId, id, turn, intent.commandId, intent.timeoutMs)
       ],
       state: next
     };
   }
   const expiryId = `cancel:awaiting-turn:${intent.commandId}`;
-  const next = setCancel(state, id, {
-    ...requestedCancel(intent.commandId, null, session.workspaceId),
+  const next = setCancel(nextState, id, {
+    ...requestedCancel(intent.commandId, null, workspaceId),
     expiryId,
-    requestedSessionVersion: sessionVersion(session),
+    requestedSessionVersion: session ? sessionVersion(session) : null,
     status: "awaitingTurn"
   });
   return {
@@ -605,12 +622,24 @@ function clearCancel(
 ): EngineReducerResult<SessionLifecycleState> {
   const operation = state.operationBySessionId[id];
   if (!operation || operation.cancel.status === "idle") return unchanged(state);
+  const nextState = state.sessionsById[id]
+    ? setCancel(state, id, initialCancel())
+    : removeDetachedOperation(state, id);
   return {
     commands: operation.cancel.expiryId
       ? [{ type: "engine/cancelExpiry", expiryId: operation.cancel.expiryId }]
       : NO_COMMANDS,
-    state: setCancel(state, id, initialCancel())
+    state: nextState
   };
+}
+
+function removeDetachedOperation(
+  state: SessionLifecycleState,
+  id: string
+): SessionLifecycleState {
+  const operationBySessionId = { ...state.operationBySessionId };
+  delete operationBySessionId[id];
+  return { ...state, operationBySessionId };
 }
 
 function updateOperation(

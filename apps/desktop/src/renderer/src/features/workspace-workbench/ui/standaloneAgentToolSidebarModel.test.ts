@@ -8,9 +8,11 @@ import {
   reduceStandaloneAgentToolSidebarState,
   resolveStandaloneAgentToolPanelExpansionReset,
   resolveStandaloneAgentToolPanelExpansionTransfer,
+  resolveStandaloneAgentToolPanelPreferredWidth,
   resolveStandaloneAgentToolSidebarLayoutWidth,
   resolveStandaloneAgentToolSidebarWidth,
   resolveStandaloneAgentToolPanelMaxWidth,
+  shouldResizeStandaloneAgentToolWindow,
   standaloneAgentEmptyToolSidebarWidth,
   standaloneAgentToolPanelDefaultWidthById
 } from "./standaloneAgentToolSidebarModel.ts";
@@ -40,6 +42,39 @@ test("standalone agent tool sidebar opens, swaps, and hides one active tab at a 
     { id: "files:1", panel: "files" },
     { id: "apps:1", panel: "apps" }
   ]);
+});
+
+test("standalone agent tool sidebar opens each app in its own sibling tab beside the app store", () => {
+  const storeOpen = reduceStandaloneAgentToolSidebarState(
+    createStandaloneAgentToolSidebarState(),
+    { panel: "apps", tabId: "apps:1", type: "open-panel" }
+  );
+  const appAOpen = reduceStandaloneAgentToolSidebarState(storeOpen, {
+    appId: "app-a",
+    panel: "apps",
+    tabId: "apps:2",
+    type: "open-panel"
+  });
+  const appBOpen = reduceStandaloneAgentToolSidebarState(appAOpen, {
+    appId: "app-b",
+    panel: "apps",
+    tabId: "apps:3",
+    type: "open-panel"
+  });
+  const appAReopened = reduceStandaloneAgentToolSidebarState(appBOpen, {
+    appId: "app-a",
+    panel: "apps",
+    tabId: "apps:4",
+    type: "open-panel"
+  });
+
+  assert.deepEqual(appBOpen.mountedTabs, [
+    { id: "apps:1", panel: "apps" },
+    { appId: "app-a", id: "apps:2", panel: "apps" },
+    { appId: "app-b", id: "apps:3", panel: "apps" }
+  ]);
+  assert.equal(appAReopened.activeTabId, "apps:2");
+  assert.deepEqual(appAReopened.mountedTabs, appBOpen.mountedTabs);
 });
 
 test("standalone agent right-sidebar panels are mutually exclusive for every switch", () => {
@@ -204,6 +239,58 @@ test("standalone agent browser and apps open at the same roomy default width", (
       width: standaloneAgentToolPanelDefaultWidthById.apps
     }),
     720
+  );
+});
+
+test("standalone agent tool panels reuse the latest manual width across panels", () => {
+  assert.equal(
+    resolveStandaloneAgentToolPanelPreferredWidth({
+      isExpanded: false,
+      manuallyResizedWidth: 936,
+      panelWidth: standaloneAgentToolPanelDefaultWidthById.browser
+    }),
+    936
+  );
+  assert.equal(
+    resolveStandaloneAgentToolPanelPreferredWidth({
+      isExpanded: true,
+      manuallyResizedWidth: 936,
+      panelWidth: Number.MAX_SAFE_INTEGER
+    }),
+    Number.MAX_SAFE_INTEGER
+  );
+  assert.equal(
+    resolveStandaloneAgentToolPanelPreferredWidth({
+      isExpanded: false,
+      manuallyResizedWidth: null,
+      panelWidth: standaloneAgentToolPanelDefaultWidthById.browser
+    }),
+    standaloneAgentToolPanelDefaultWidthById.browser
+  );
+});
+
+test("standalone agent tool switches skip redundant native window resizes", () => {
+  assert.equal(
+    shouldResizeStandaloneAgentToolWindow({
+      currentWidth: 2_100,
+      requestedWidth: 2_100
+    }),
+    false
+  );
+  assert.equal(
+    shouldResizeStandaloneAgentToolWindow({
+      currentWidth: 2_000,
+      lastResize: { actualWidth: 2_000, requestedWidth: 2_100 },
+      requestedWidth: 2_100
+    }),
+    false
+  );
+  assert.equal(
+    shouldResizeStandaloneAgentToolWindow({
+      currentWidth: 2_000,
+      requestedWidth: 2_100
+    }),
+    true
   );
 });
 

@@ -1,12 +1,43 @@
 package agent
 
 import (
+	"bytes"
 	"context"
+	"log/slog"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/tutti-os/tutti/services/tuttid/biz/agenttarget"
 )
+
+func TestHiddenModelDiscoveryTriggeredLogIsInfoAndSanitized(t *testing.T) {
+	var output bytes.Buffer
+	previousLogger := slog.Default()
+	slog.SetDefault(slog.New(slog.NewTextHandler(&output, &slog.HandlerOptions{
+		Level: slog.LevelInfo,
+	})))
+	t.Cleanup(func() { slog.SetDefault(previousLogger) })
+
+	logHiddenModelDiscoveryTriggered("claude-code", "discovery-session-1")
+
+	logLine := output.String()
+	for _, expected := range []string{
+		"level=INFO",
+		"event=" + hiddenModelDiscoveryTriggeredEvent,
+		"provider=claude-code",
+		"agent_session_id=discovery-session-1",
+	} {
+		if !strings.Contains(logLine, expected) {
+			t.Fatalf("discovery trigger log %q does not contain %q", logLine, expected)
+		}
+	}
+	for _, sensitiveKey := range []string{"cwd=", "workspace_id=", "model=", "token="} {
+		if strings.Contains(logLine, sensitiveKey) {
+			t.Fatalf("discovery trigger log contains sensitive field %q: %q", sensitiveKey, logLine)
+		}
+	}
+}
 
 func TestClaudeModelCatalogDebugPayloadDropsSensitiveDiagnostics(t *testing.T) {
 	payload := claudeModelCatalogDebugPayload("discovery_uncached_failed", map[string]any{

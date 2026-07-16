@@ -5,6 +5,7 @@ import {
   readWorkspaceFileManagerPreviewWidth,
   readWorkspaceFileManagerSidebarWidth,
   resolveWorkspaceFileManagerSidebarMaxWidth,
+  workspaceFileManagerContentWithoutPreviewMinWidth,
   workspaceFileManagerPreviewDefaultWidth,
   workspaceFileManagerPreviewWidthStorageKey,
   workspaceFileManagerSidebarDefaultWidth,
@@ -42,6 +43,24 @@ test("workspace file manager keeps a useful list and detail area when resizing l
     workspaceFileManagerSidebarMinWidth
   );
   assert.equal(resolveWorkspaceFileManagerSidebarMaxWidth(900), 320);
+});
+
+test("workspace file manager lets locations grow when the detail panel is hidden", () => {
+  assert.equal(
+    clampWorkspaceFileManagerSidebarWidth({
+      containerWidth: 900,
+      contentMinWidth: workspaceFileManagerContentWithoutPreviewMinWidth,
+      width: 800
+    }),
+    580
+  );
+  assert.equal(
+    resolveWorkspaceFileManagerSidebarMaxWidth(
+      900,
+      workspaceFileManagerContentWithoutPreviewMinWidth
+    ),
+    580
+  );
 });
 
 test("workspace file manager persists both adjustable pane widths", () => {

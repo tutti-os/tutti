@@ -5822,6 +5822,24 @@ func TestGoalCapabilitiesWaitObservesContextCancellation(t *testing.T) {
 	}
 }
 
+func TestGoalControlWaitObservesContextCancellation(t *testing.T) {
+	controller := NewController(nil, nil)
+	release := controller.acquireLifecycleLock("room-1", "session-1")
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Millisecond)
+	defer cancel()
+	_, err := controller.GoalControl(ctx, GoalControlInput{RoomID: "room-1", AgentSessionID: "session-1"})
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("GoalControl error = %v", err)
+	}
+	release()
+	controller.mu.Lock()
+	remaining := len(controller.lifecycleLocks)
+	controller.mu.Unlock()
+	if remaining != 0 {
+		t.Fatalf("lifecycle lock references leaked: %d", remaining)
+	}
+}
+
 // TestControllerCancelLeavesSettledSessionUntouched guards against the
 // reconciliation disturbing healthy sessions: a session that is already settled
 // must not be re-settled or re-reported when stop is pressed with no active turn.

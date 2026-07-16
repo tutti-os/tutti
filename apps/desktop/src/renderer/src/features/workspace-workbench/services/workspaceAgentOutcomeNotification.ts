@@ -19,6 +19,7 @@ export interface WorkspaceAgentOutcomeNotification {
   level: "error" | "success";
   provider: string;
   status: "completed" | "failed";
+  turnId: string;
   workspaceId: string;
 }
 
@@ -31,6 +32,7 @@ export interface WorkspaceAgentOutcomeForegroundNotification {
   level: "error" | "success";
   provider: string;
   statusLabel: string;
+  turnId: string;
   workspaceId: string;
 }
 
@@ -42,6 +44,7 @@ export interface WorkspaceAgentOutcomeNotificationControllerInput {
   foreground?: WorkspaceAgentOutcomeForegroundNotificationPresenter;
   notifications: Pick<NotificationService, "notify">;
   translate(key: DesktopI18nKey, params?: I18nParams): string;
+  onNotificationEmitted?(notification: WorkspaceAgentOutcomeNotification): void;
   workspaceAgentActivityService: Pick<
     IWorkspaceAgentActivityService,
     "getSessionEngine" | "onSessionEvent"
@@ -85,6 +88,7 @@ export function createWorkspaceAgentOutcomeNotificationController(
           turn
         });
       if (!notification) continue;
+      input.onNotificationEmitted?.(notification);
       input.foreground?.show(
         workspaceAgentOutcomeForegroundNotification(
           notification,
@@ -156,6 +160,7 @@ export function buildWorkspaceAgentOutcomeNotificationFromSettledTurn(input: {
     level: status === "completed" ? "success" : "error",
     provider,
     status,
+    turnId: input.turn.turnId,
     workspaceId
   };
 }
@@ -216,8 +221,23 @@ function workspaceAgentOutcomeForegroundNotification(
         ? "workspace.agentMessageCenter.outcomeNotificationCompletedStatus"
         : "workspace.agentMessageCenter.outcomeNotificationFailedStatus"
     ),
+    turnId: notification.turnId,
     workspaceId: notification.workspaceId
   };
+}
+
+export function workspaceAgentOutcomeNotificationKey(
+  notification: Pick<
+    WorkspaceAgentOutcomeNotification,
+    "agentSessionId" | "turnId" | "workspaceId"
+  >
+): string {
+  return [
+    "workspace-agent-outcome",
+    notification.workspaceId,
+    notification.agentSessionId,
+    notification.turnId
+  ].join(":");
 }
 
 function outcomeStatusFromTurnOutcome(

@@ -42,6 +42,7 @@ import {
 export function buildCanonicalWorkspaceAgentDetailView({
   activity,
   session,
+  sessionTurns = [],
   timelineItems,
   workspaceRoot = null
 }: BuildWorkspaceAgentSessionDetailInput): WorkspaceAgentSessionDetailViewModel {
@@ -196,6 +197,7 @@ export function buildCanonicalWorkspaceAgentDetailView({
   return {
     activity,
     session,
+    sessionTurns,
     cwd: session.cwd.trim(),
     workspaceRoot: workspaceRoot?.trim() || null,
     turns: visibleTurns,

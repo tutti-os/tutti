@@ -18,6 +18,11 @@ import type {
 import { CloseIcon, cn } from "@tutti-os/ui-system";
 import type { WorkspaceAgentActivityService } from "@renderer/features/workspace-agent";
 import type { DesktopBrowserApi } from "@preload/types";
+import {
+  resolveWorkspaceAppDisplayName,
+  useWorkspaceAppCenterService
+} from "@renderer/features/workspace-app-center";
+import type { WorkspaceAppCenterApp } from "@tutti-os/workspace-app-center";
 import { useTranslation } from "@renderer/i18n";
 import type { StandaloneAgentIssueManagerOpenRequest } from "../services/standaloneAgentIssueManagerLaunch.ts";
 import {
@@ -93,6 +98,8 @@ export function StandaloneAgentToolSidebar({
   workspaceId
 }: StandaloneAgentToolSidebarProps): ReactNode {
   const { i18n, locale } = useTranslation();
+  const { service: appCenterService, state: appCenterState } =
+    useWorkspaceAppCenterService();
   const [state, dispatch] = useReducer(
     reduceStandaloneAgentToolSidebarState,
     undefined,
@@ -154,6 +161,7 @@ export function StandaloneAgentToolSidebar({
     activeTabId !== null && contentReadyTabIds.includes(activeTabId);
   const shouldAnimateSidebarLayout =
     state.mountedTabs.length === 0 || isActivePanelContentReady;
+  const shouldAnimateSidebarWidth = isEmptySidebarSurface;
   const {
     activePanelLayoutWidth,
     activePanelMaxWidth,
@@ -240,8 +248,9 @@ export function StandaloneAgentToolSidebar({
     onAppsOpen();
     showSidebar();
     dispatch({
+      appId: normalizedAppOpenId,
       panel: "apps",
-      tabId: resolveToolTabId(state.mountedTabs, "apps"),
+      tabId: resolveToolAppTabId(state.mountedTabs, normalizedAppOpenId),
       type: "open-panel"
     });
     scheduleResizeForPanel("apps");
@@ -384,6 +393,7 @@ export function StandaloneAgentToolSidebar({
   ]);
   const closePanelTab = useCallback(
     (tabId: string) => {
+      const closingTab = state.mountedTabs.find((tab) => tab.id === tabId);
       const closingIndex = state.mountedTabs.findIndex(
         (tab) => tab.id === tabId
       );
@@ -394,13 +404,63 @@ export function StandaloneAgentToolSidebar({
             remainingTabs[0] ??
             null)
           : (state.mountedTabs.find((tab) => tab.id === activeTabId) ?? null);
-      setIsSidebarOpen(nextTab !== null);
+      setIsSidebarOpen(true);
       dispatch({ tabId, type: "close-tab" });
-      const nextPanel = nextTab?.panel ?? null;
-      scheduleResizeForPanel(nextPanel);
+      if (closingTab?.panel === "apps" && closingTab.appId) {
+        if (lastHandledAppOpenIdRef.current === closingTab.appId) {
+          lastHandledAppOpenIdRef.current = null;
+        }
+        if (
+          appCenterService.getViewState(workspaceId).openAppId ===
+          closingTab.appId
+        ) {
+          appCenterService.setViewState({
+            state: { openAppId: null },
+            workspaceId
+          });
+        }
+      }
+      if (nextTab === null) {
+        const reducedMotion = window.matchMedia?.(
+          "(prefers-reduced-motion: reduce)"
+        ).matches;
+        scheduleResizeForPanel("files", standaloneAgentEmptyToolSidebarWidth, {
+          animateWindow: !reducedMotion
+        });
+        return;
+      }
+      scheduleResizeForPanel(nextTab.panel);
     },
-    [activeTabId, scheduleResizeForPanel, state.mountedTabs]
+    [
+      activeTabId,
+      appCenterService,
+      scheduleResizeForPanel,
+      state.mountedTabs,
+      workspaceId
+    ]
   );
+  useEffect(() => {
+    if (appCenterState.catalogStatus !== "ready") {
+      return;
+    }
+    const availableAppIds = new Set(
+      appCenterState.apps.map((app) => app.appId)
+    );
+    for (const tab of state.mountedTabs) {
+      if (
+        tab.panel === "apps" &&
+        tab.appId &&
+        !availableAppIds.has(tab.appId)
+      ) {
+        closePanelTab(tab.id);
+      }
+    }
+  }, [
+    appCenterState.apps,
+    appCenterState.catalogStatus,
+    closePanelTab,
+    state.mountedTabs
+  ]);
   const activatePanelTab = useCallback(
     (tab: StandaloneAgentToolTab) => {
       if (tab.panel === "apps") {
@@ -449,7 +509,9 @@ export function StandaloneAgentToolSidebar({
             {activeTabId ? (
               <ToolSidebarTabBar
                 activeTabId={activeTabId}
+                apps={appCenterState.apps}
                 copy={copy}
+                locale={locale}
                 mountedTabs={state.mountedTabs}
                 onClosePanel={closePanelTab}
                 onOpenPanel={activatePanelTab}
@@ -480,7 +542,7 @@ export function StandaloneAgentToolSidebar({
             aria-hidden={!isSidebarOpen}
             className={cn(
               "relative h-full min-h-0 shrink-0 overflow-hidden [contain:layout_paint]",
-              shouldAnimateSidebarLayout &&
+              shouldAnimateSidebarWidth &&
                 "motion-safe:transition-[width] motion-safe:duration-[260ms] motion-safe:ease-in-out motion-reduce:transition-none",
               isActivePanelExpanded && "border-l border-[var(--line-1)]",
               !isSidebarOpen && "pointer-events-none"
@@ -619,13 +681,17 @@ export function StandaloneAgentToolSidebar({
 
 function ToolSidebarTabBar({
   activeTabId,
+  apps,
   copy,
+  locale,
   mountedTabs,
   onClosePanel,
   onOpenPanel
 }: {
   activeTabId: string;
+  apps: readonly WorkspaceAppCenterApp[];
   copy: ToolSidebarCopy;
+  locale: ReturnType<typeof useTranslation>["locale"];
   mountedTabs: StandaloneAgentToolTab[];
   onClosePanel: (tabId: string) => void;
   onOpenPanel: (tab: StandaloneAgentToolTab) => void;
@@ -639,38 +705,44 @@ function ToolSidebarTabBar({
       onPointerDown={(event) => event.stopPropagation()}
     >
       <div className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto">
-        {mountedTabs.map((tab) => (
-          <div
-            className={cn(
-              "group flex h-7 max-w-44 shrink-0 items-center rounded-sm overflow-hidden border text-xs text-[var(--text-tertiary)]",
-              activeTabId === tab.id
-                ? "border-[var(--line-2)] bg-[var(--background-fronted)] text-[var(--text-primary)]"
-                : "border-transparent"
-            )}
-            key={tab.id}
-          >
-            <button
-              aria-selected={activeTabId === tab.id}
-              className="nodrag flex h-full min-w-0 flex-1 items-center gap-1.5 overflow-hidden px-2 text-left outline-none [-webkit-app-region:no-drag] focus-visible:ring-2 focus-visible:ring-[var(--border-focus)]"
-              data-standalone-agent-tool-tab={tab.panel}
-              data-standalone-agent-tool-tab-id={tab.id}
-              role="tab"
-              type="button"
-              onClick={() => onOpenPanel(tab)}
+        {mountedTabs.map((tab) => {
+          const app = tab.appId
+            ? (apps.find((candidate) => candidate.appId === tab.appId) ?? null)
+            : null;
+          const label = resolveToolTabLabel(tab, copy, app, locale);
+          return (
+            <div
+              className={cn(
+                "group flex h-7 max-w-44 shrink-0 items-center rounded-sm overflow-hidden border text-xs text-[var(--text-tertiary)]",
+                activeTabId === tab.id
+                  ? "border-[var(--line-2)] bg-[var(--background-fronted)] text-[var(--text-primary)]"
+                  : "border-transparent"
+              )}
+              key={tab.id}
             >
-              <ToolSidebarTabIcon tab={tab} />
-              <span className="truncate">{resolveToolTabLabel(tab, copy)}</span>
-            </button>
-            <button
-              aria-label={`${copy.close} ${resolveToolTabLabel(tab, copy)}`}
-              className="nodrag mr-1 rounded p-0.5 opacity-100 hover:bg-[var(--transparency-block)] [-webkit-app-region:no-drag]"
-              type="button"
-              onClick={() => onClosePanel(tab.id)}
-            >
-              <CloseIcon aria-hidden className="size-3" />
-            </button>
-          </div>
-        ))}
+              <button
+                aria-selected={activeTabId === tab.id}
+                className="nodrag flex h-full min-w-0 flex-1 items-center gap-1.5 overflow-hidden px-2 text-left outline-none [-webkit-app-region:no-drag] focus-visible:ring-2 focus-visible:ring-[var(--border-focus)]"
+                data-standalone-agent-tool-tab={tab.panel}
+                data-standalone-agent-tool-tab-id={tab.id}
+                role="tab"
+                type="button"
+                onClick={() => onOpenPanel(tab)}
+              >
+                <ToolSidebarTabIcon app={app} tab={tab} />
+                <span className="truncate">{label}</span>
+              </button>
+              <button
+                aria-label={`${copy.close} ${label}`}
+                className="nodrag mr-1 rounded p-0.5 opacity-100 hover:bg-[var(--transparency-block)] [-webkit-app-region:no-drag]"
+                type="button"
+                onClick={() => onClosePanel(tab.id)}
+              >
+                <CloseIcon aria-hidden className="size-3" />
+              </button>
+            </div>
+          );
+        })}
       </div>
     </div>
   );
@@ -689,18 +761,54 @@ function resolveToolTabId(
   return createToolTabId(panel);
 }
 
+function resolveToolAppTabId(
+  tabs: readonly StandaloneAgentToolTab[],
+  appId: string
+): string {
+  for (let index = tabs.length - 1; index >= 0; index -= 1) {
+    const tab = tabs[index];
+    if (tab?.panel === "apps" && tab.appId === appId) {
+      return tab.id;
+    }
+  }
+  return createToolTabId("apps");
+}
+
 function resolveToolTabLabel(
   tab: StandaloneAgentToolTab,
-  copy: ToolSidebarCopy
+  copy: ToolSidebarCopy,
+  app: WorkspaceAppCenterApp | null,
+  locale: ReturnType<typeof useTranslation>["locale"]
 ): string {
+  if (tab.appId) {
+    return app ? resolveWorkspaceAppDisplayName(app, locale) : tab.appId;
+  }
   return copy[tab.panel];
 }
 
 function ToolSidebarTabIcon({
+  app,
   tab
 }: {
+  app: WorkspaceAppCenterApp | null;
   tab: StandaloneAgentToolTab;
 }): ReactNode {
+  if (tab.appId) {
+    return app?.iconUrl ? (
+      <img
+        alt=""
+        aria-hidden
+        className="size-3.5 shrink-0 rounded-[3px] object-cover"
+        src={app.iconUrl}
+      />
+    ) : (
+      <ToolSidebarPanelIcon
+        aria-hidden
+        className="size-3.5 shrink-0"
+        panel={tab.panel}
+      />
+    );
+  }
   return (
     <ToolSidebarPanelIcon
       aria-hidden

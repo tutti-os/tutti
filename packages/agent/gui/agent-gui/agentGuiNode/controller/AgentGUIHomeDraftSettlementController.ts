@@ -57,7 +57,8 @@ export class AgentGUIHomeDraftSettlementController {
       const activation = activationsByClientSubmitId.get(clientSubmitId);
       if (
         activation?.status === "confirmed" ||
-        activation?.status === "failed"
+        activation?.status === "failed" ||
+        activation?.status === "canceled"
       ) {
         this.applyDraftUpdate((drafts) =>
           activation.status === "confirmed"

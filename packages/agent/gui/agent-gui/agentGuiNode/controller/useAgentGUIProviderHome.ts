@@ -58,10 +58,6 @@ interface UseAgentGUIProviderHomeInput {
   homeComposerTargetOverride: AgentGUIAgentTarget | null;
   isComposerHomeRef: CurrentValue<boolean>;
   isLoadingConversations: boolean;
-  loadComposerOptionsForTarget(
-    targetData: AgentGUIComposerTargetData,
-    options?: { force?: boolean }
-  ): void;
   normalizedExplicitProviderTargets: readonly AgentGUIAgentTarget[];
   normalizedProviderTargets: readonly AgentGUIAgentTarget[];
   onDataChangeRef: CurrentValue<
@@ -150,11 +146,6 @@ export function useAgentGUIProviderHome(input: UseAgentGUIProviderHomeInput) {
       ...nextTargetData.data,
       lastActiveAgentSessionId: null
     };
-    if (nextTarget.disabled !== true) {
-      currentInput.loadComposerOptionsForTarget(nextTargetData, {
-        force: true
-      });
-    }
   }, [resolveDefaultHomeComposerTarget]);
 
   const updateConversationFilter = useCallback(
@@ -194,11 +185,6 @@ export function useAgentGUIProviderHome(input: UseAgentGUIProviderHomeInput) {
             target.targetId === nextTarget.targetId &&
             agentGUIAgentTargetRefsEqual(target.ref, nextTarget.ref)
         );
-      const nextTargetData = composerTargetDataFromProviderTarget({
-        current: currentInput.dataRef.current,
-        isExplicit: nextTargetIsExplicit,
-        target: nextTarget
-      });
       const shouldSyncScopedRailFilter =
         currentInput.conversationFilterRef.current.kind === "agentTarget";
       currentInput.setHomeComposerTargetOverride(nextTarget);
@@ -253,11 +239,6 @@ export function useAgentGUIProviderHome(input: UseAgentGUIProviderHomeInput) {
         currentInput.dataRef.current = nextData;
         return nextData;
       });
-      if (nextTarget.disabled !== true) {
-        currentInput.loadComposerOptionsForTarget(nextTargetData, {
-          force: true
-        });
-      }
     },
     []
   );
