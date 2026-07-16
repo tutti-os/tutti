@@ -465,35 +465,52 @@ Turn state, loading, cancel, restore, file-change undo, rail projection, event u
 - Symptom:
   Pinning or unpinning a conversation backed by a live runtime succeeds in the
   daemon, but the rail does not move the row or update its action until a later
-  list refresh. Old conversations without a live runtime update immediately.
+  list refresh. Old conversations without a live runtime update immediately. In
+  another variant, the pin command completes quickly but the whole rail becomes
+  disabled or changes to a skeleton while section membership refreshes.
 - Quick checks:
   Correlate `pin_result` with `agent.activity.store.session_version_regression`.
   Compare the command response's `updatedAtUnixMs` with the engine's current
   session version, then inspect the exported session for a newer
   `pinnedAtUnixMs`. A fast command carrying the new pin value but an older
   `updatedAtUnixMs` identifies a stale runtime projection, not a slow database
-  write.
+  write. If the pin value applies promptly, correlate
+  `agent_gui.conversation_rail.first_pages_slow` with
+  `workspace.agent_session.sections.list_slow`. The renderer event should report
+  `refreshReason=membership_change`; the daemon event separates
+  `projects_ms`, `store_ms`, and `hydrate_ms` and reports current/non-empty
+  project counts, target-scoped visible sessions, and returned first-page rows.
 - Root cause:
   Durable metadata updates advance the persisted session timestamp. When a live
   runtime session is also present, the service merges persisted metadata such
   as `pinnedAtUnixMs` into the runtime projection. If that merge keeps the older
   runtime timestamp, the frontend's monotonic session reducer correctly rejects
   the whole stale response, including the new pin value.
+  When the entity update is accepted, pin membership still requires an
+  authoritative section refresh. Treating every pending section request as an
+  unresolved list load turns that same-scope background refresh into a blocking
+  skeleton even though valid membership is already available.
 - Fix:
   Merge session freshness monotonically across runtime and persistence using
   the newer timestamp. Pin responses that advance the session version must also
   include protocol-v2 active/latest turn state so accepting the metadata update
   cannot clear a running turn. Do not weaken frontend version checks or hide the
-  mismatch behind delayed refetches.
+  mismatch behind delayed refetches. For an accepted membership update, keep the
+  resolved section page visible during the same-scope refresh and reveal the rail
+  skeleton only when no first page has resolved. Lock scope-sensitive actions
+  only while the displayed membership belongs to a different or unresolved
+  scope; do not patch daemon-owned membership locally.
 - Validation:
   Cover a live runtime session whose persisted pin update is newer, a newer
   runtime snapshot that must not regress, and a running turn that remains
   attached to the pin response. Run `go test ./services/tuttid/service/agent`
-  plus daemon lint, tests, and build.
+  plus daemon lint, tests, and build. Add controller coverage for initial load,
+  same-scope membership refresh, scope change, and stale request cancellation.
 - References:
   [service.go](../../../services/tuttid/service/agent/service.go)
   [service_session.go](../../../services/tuttid/service/agent/service_session.go)
   [sessionEntities.reducer.ts](../../../packages/agent/activity-core/src/engine/sessionEntities.reducer.ts)
+  [AgentGUIConversationRailQueryController.ts](../../../packages/agent/gui/agent-gui/agentGuiNode/controller/AgentGUIConversationRailQueryController.ts)
 
 ### AgentGUI model switch changes defaults but not the active session
 
@@ -633,7 +650,11 @@ Turn state, loading, cancel, restore, file-change undo, rail projection, event u
   projects, store, and hydration time. Corresponding `*_failed` events record
   real failures. Successful requests below 250 ms, aborted requests, and stale
   responses are intentionally silent; these diagnostics must not log project
-  paths, section keys, session titles, or prompts.
+  paths, section keys, session titles, or prompts. Use `refreshReason` to
+  distinguish attach, scope change, and membership invalidation. Interpret
+  `rail_visible_session_count` as the target-scoped total across requested
+  sections and `returned_session_count` as only the bounded first-page rows;
+  neither requires another full-workspace count query.
 - Root cause:
   A second React summary cache mixed entity data, section membership, active
   selection, and visible-item limits. Effects manually patched section rows

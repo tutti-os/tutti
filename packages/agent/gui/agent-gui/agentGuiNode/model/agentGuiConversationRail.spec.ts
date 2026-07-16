@@ -4,6 +4,7 @@ import type { ConversationSection } from "../agentGuiNodeViewConversation";
 import {
   insertConversationRailSectionOverlay,
   conversationSummariesRenderEqual,
+  isConversationRailInitialLoadPending,
   projectConversationRailSectionsWithActiveConversation,
   planRuntimeRailMembershipRefresh,
   projectRuntimeSectionsToConversationRailMemberships,
@@ -45,6 +46,32 @@ function section(
     }
   ];
 }
+
+describe("isConversationRailInitialLoadPending", () => {
+  it("blocks only while the first runtime membership page is unresolved", () => {
+    expect(
+      isConversationRailInitialLoadPending({
+        pending: true,
+        runtimeSectionsEnabled: true,
+        sections: null
+      })
+    ).toBe(true);
+    expect(
+      isConversationRailInitialLoadPending({
+        pending: true,
+        runtimeSectionsEnabled: true,
+        sections: []
+      })
+    ).toBe(false);
+    expect(
+      isConversationRailInitialLoadPending({
+        pending: false,
+        runtimeSectionsEnabled: true,
+        sections: null
+      })
+    ).toBe(false);
+  });
+});
 
 function membership(
   items: readonly AgentGUIConversationSummary[]

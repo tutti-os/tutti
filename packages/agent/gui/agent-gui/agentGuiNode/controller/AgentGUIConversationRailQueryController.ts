@@ -17,7 +17,8 @@ import {
   CONVERSATION_RAIL_SLOW_DIAGNOSTIC_THRESHOLD_MS,
   createConversationRailDiagnosticLogger,
   emitConversationRailFirstPagesDiagnostic,
-  type ConversationRailDiagnosticLogger
+  type ConversationRailDiagnosticLogger,
+  type ConversationRailRefreshReason
 } from "./agentGuiConversationRailDiagnostics";
 import {
   mergeConversationRailSessionIds,
@@ -112,7 +113,8 @@ export class AgentGUIConversationRailQueryController {
   readonly getSnapshot = (): AgentGUIConversationRailQuerySnapshot =>
     this.snapshot;
   readonly isInteractionLocked = (): boolean =>
-    this.snapshot.runtimeRailSectionsPending &&
+    this.queryState.pending &&
+    this.queryState.resolvedScopeKey !== this.railSectionQueryKey &&
     !(this.searchQuery && this.snapshot.railSearch.enabled);
   readonly subscribe = (listener: Listener): (() => void) => {
     this.listeners.add(listener);
@@ -171,7 +173,7 @@ export class AgentGUIConversationRailQueryController {
     this.unsubscribeEngine = this.engine.subscribe((state) => {
       this.handleEngineState(state);
     });
-    if (this.scope) this.refreshFirstPages();
+    if (this.scope) this.refreshFirstPages("attach");
     if (this.searchQuery) this.requestSearch();
     return () => this.detach();
   }
@@ -208,7 +210,7 @@ export class AgentGUIConversationRailQueryController {
       reconcilingSessionIds: []
     };
     this.emit();
-    if (this.attached) this.refreshFirstPages();
+    if (this.attached) this.refreshFirstPages("scope_change");
     if (this.searchQuery) this.requestSearch();
   }
 
@@ -432,10 +434,12 @@ export class AgentGUIConversationRailQueryController {
       )
     };
     this.emit();
-    this.refreshFirstPages();
+    this.refreshFirstPages("membership_change");
   }
 
-  private refreshFirstPages(): void {
+  private refreshFirstPages(
+    refreshReason: ConversationRailRefreshReason
+  ): void {
     const listSections = this.runtime.listSessionSections;
     const scopeKey = this.railSectionQueryKey;
     if (!this.runtimeSectionsEnabled() || !listSections || !scopeKey) {
@@ -507,13 +511,14 @@ export class AgentGUIConversationRailQueryController {
           durationMs: Math.max(0, completedAt - requestStartedAt),
           requestId: requestSequence,
           requestMs: Math.max(0, requestResolvedAt - requestStartedAt),
-          sectionCount: page.sections.length + (page.pinned ? 1 : 0),
-          sessionCount:
+          refreshReason,
+          returnedSessionCount:
             (page.pinned?.sessions.length ?? 0) +
             page.sections.reduce(
               (count, section) => count + section.sessions.length,
               0
             ),
+          sectionCount: page.sections.length + (page.pinned ? 1 : 0),
           status: "ready",
           workspaceId: this.workspaceId
         });
@@ -536,8 +541,9 @@ export class AgentGUIConversationRailQueryController {
           error,
           requestId: requestSequence,
           requestMs: Math.max(0, failedAt - requestStartedAt),
+          refreshReason,
+          returnedSessionCount: 0,
           sectionCount: 0,
-          sessionCount: 0,
           status: "error",
           workspaceId: this.workspaceId
         });

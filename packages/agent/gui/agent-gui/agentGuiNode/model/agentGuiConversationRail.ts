@@ -43,6 +43,16 @@ export interface ConversationRailQueryState {
   sections: ConversationRailSectionMembership[] | null;
 }
 
+export function isConversationRailInitialLoadPending(input: {
+  pending: boolean;
+  runtimeSectionsEnabled: boolean;
+  sections: ConversationRailSectionMembership[] | null;
+}): boolean {
+  return (
+    input.runtimeSectionsEnabled && input.pending && input.sections === null
+  );
+}
+
 export interface ConversationRailActiveOverlay {
   conversation: NonNullable<
     AgentGUINodeViewModel["rail"]["activeConversation"]

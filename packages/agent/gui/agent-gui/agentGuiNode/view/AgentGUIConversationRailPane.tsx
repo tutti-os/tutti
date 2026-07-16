@@ -31,6 +31,7 @@ import {
   type ConversationSection
 } from "../agentGuiNodeViewConversation";
 import {
+  isConversationRailInitialLoadPending,
   projectConversationRailMemberships,
   projectConversationRailSectionsWithActiveConversation,
   projectConversationRailSectionsWithTransientConversations,
@@ -233,8 +234,7 @@ export const AgentGUIConversationRailPane = memo(
     const railConversationEntities = [...railConversationEntitiesById.values()];
     const hasConversationQuery = conversationQuery.trim().length > 0;
     const backendSearchActive = hasConversationQuery && railSearch.enabled;
-    const railInteractionsLocked =
-      runtimeRailSectionsPending && !backendSearchActive;
+    const railInteractionsLocked = isInteractionLocked();
     const backendSearchConversations = backendSearchActive
       ? railSearch.sessionIds.flatMap((id) => {
           const conversation = railConversationEntitiesById.get(id);
@@ -463,9 +463,11 @@ export const AgentGUIConversationRailPane = memo(
         sectionAgentTargetId
       ]
     );
-    const isRuntimeRailLoading =
-      runtimeSectionsEnabled &&
-      (runtimeRailSections === null || runtimeRailSectionsPending);
+    const isRuntimeRailLoading = isConversationRailInitialLoadPending({
+      pending: runtimeRailSectionsPending,
+      runtimeSectionsEnabled,
+      sections: runtimeRailMemberships
+    });
     const isConversationRailListLoading = backendSearchActive
       ? railSearch.pending
       : isRuntimeRailLoading ||
@@ -571,10 +573,7 @@ export const AgentGUIConversationRailPane = memo(
               </span>
             </div>
           ) : (
-            <fieldset
-              className="contents"
-              disabled={runtimeRailSectionsPending && !backendSearchActive}
-            >
+            <fieldset className="contents" disabled={railInteractionsLocked}>
               {groupedConversations.map((section, sectionIndex) => {
                 const projectPath =
                   section.kind === "project"

@@ -1322,6 +1322,15 @@ filtering pinned rows after section pagination corrupts page size and totals.
 If a refresh of an already-resolved section scope fails, keep its membership,
 cursor, and totals; only an unresolved or newly selected scope may resolve to an
 empty failure state.
+Section-query `pending` has two presentation meanings. An unresolved first page
+is blocking and may reveal the delayed rail skeleton. A same-scope membership
+refresh, including pin or unpin invalidation, is non-blocking: keep the resolved
+membership visible and interactive until the authoritative daemon page replaces
+it. A scope change may also keep the previous page visible to avoid destructive
+layout churn, but actions whose section or target scope could be stale remain
+locked until the new scope resolves. Derive these meanings inside the dedicated
+rail query controller from its current and resolved scope keys; do not add engine
+state, manually move rows, or make the view reinterpret raw request state.
 The active conversation is a
 display overlay, not a pageable row: it may render beside the first five rows,
 but it must not consume the local visible-item limit or advance the cursor.
