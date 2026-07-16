@@ -33,6 +33,7 @@ export interface MentionPaletteStateAdapterInput<TItem> {
    */
   categoryCycleOrder?: readonly MentionPaletteCycleCategory[];
   getItemKey: (item: TItem, groupId: string) => string;
+  isItemDisabled?: (item: TItem, groupId: string) => boolean;
   callbacks?: MentionPaletteStateCallbacks<TItem>;
 }
 
@@ -49,6 +50,7 @@ export interface MentionPaletteStateAdapter<TItem> {
     | "state"
     | "highlightedKey"
     | "getItemKey"
+    | "isItemDisabled"
     | "onHighlightChange"
     | "onSelectItem"
     | "onSelectCategory"
@@ -85,7 +87,8 @@ export function createMentionPaletteStateAdapter<TItem>(
       state: input.state,
       currentKey: input.highlightedKey,
       delta,
-      getItemKey: input.getItemKey
+      getItemKey: input.getItemKey,
+      isItemDisabled: input.isItemDisabled
     });
     if (nextKey !== null) {
       input.callbacks?.onHighlightChange?.(nextKey);
@@ -113,14 +116,16 @@ export function createMentionPaletteStateAdapter<TItem>(
   const selectedItem = selectedMentionPaletteItem({
     state: input.state,
     key: input.highlightedKey,
-    getItemKey: input.getItemKey
+    getItemKey: input.getItemKey,
+    isItemDisabled: input.isItemDisabled
   });
 
   const commitHighlighted = (): MentionPaletteStateCommitResult<TItem> => {
     const activeEntry = findMentionPaletteEntry({
       state: input.state,
       key: input.highlightedKey,
-      getItemKey: input.getItemKey
+      getItemKey: input.getItemKey,
+      isItemDisabled: input.isItemDisabled
     });
     const fallbackCategoryId = categoryIdFromKey(input.highlightedKey);
 
@@ -159,7 +164,8 @@ export function createMentionPaletteStateAdapter<TItem>(
       const item = selectedMentionPaletteItem({
         state: input.state,
         key: activeEntry.key,
-        getItemKey: input.getItemKey
+        getItemKey: input.getItemKey,
+        isItemDisabled: input.isItemDisabled
       });
       if (item !== null) {
         input.callbacks?.onSelectItem?.(item);
@@ -176,6 +182,8 @@ export function createMentionPaletteStateAdapter<TItem>(
       state: input.state,
       highlightedKey: input.highlightedKey,
       getItemKey: getPaletteItemKey,
+      isItemDisabled: (item, group) =>
+        input.isItemDisabled?.(item, group.id) ?? false,
       onHighlightChange: (key) => {
         input.callbacks?.onHighlightChange?.(key);
       },

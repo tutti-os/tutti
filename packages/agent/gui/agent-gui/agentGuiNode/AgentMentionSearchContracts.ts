@@ -27,10 +27,12 @@ export type AgentMentionStaticGroupId =
   | "issues";
 export type AgentMentionIssueTopicGroupId = `issue-topic:${string}`;
 export type AgentMentionProvenanceGroupId = `agent:${string}`;
+export type AgentMentionMemberGroupId = `member:${string}`;
 export type AgentMentionGroupId =
   | AgentMentionStaticGroupId
   | AgentMentionIssueTopicGroupId
-  | AgentMentionProvenanceGroupId;
+  | AgentMentionProvenanceGroupId
+  | AgentMentionMemberGroupId;
 
 export type AgentMentionRawGroupId =
   | Exclude<

@@ -45,7 +45,9 @@ vi.mock("../../i18n/index", async () => {
     "agentHost.workspaceAgentActivityStatusEnd": "已完成",
     "agentHost.workspaceAgentActivityStatusCompleted": "已完成",
     "agentHost.workspaceAgentActivityStatusCanceled": "已取消",
-    "agentHost.workspaceAgentActivityStatusFailed": "错误"
+    "agentHost.workspaceAgentActivityStatusFailed": "错误",
+    "agentHost.agentGui.mentionAgentTargetAvailable": "可用",
+    "agentHost.agentGui.mentionAgentTargetUnavailable": "不可用"
   };
 
   return {
@@ -60,6 +62,61 @@ vi.mock("../../i18n/index", async () => {
 });
 
 describe("AgentFileMentionPalette", () => {
+  it("shows unavailable agent targets but prevents selecting them", () => {
+    const unavailableAgent = {
+      kind: "agent-target" as const,
+      href: "mention://agent-target/shared-agent:codex?workspaceId=room-1",
+      workspaceId: "room-1",
+      targetId: "shared-agent:codex",
+      name: "Lin 的 Codex",
+      agentProviderId: "codex",
+      availabilityStatus: "unavailable"
+    } satisfies AgentContextMentionItem;
+    const state: AgentMentionSearchState = {
+      status: "ready",
+      query: "",
+      mode: "browse",
+      filter: "agent",
+      categories: [],
+      groups: [
+        {
+          id: "member:user-lin",
+          label: "Lin",
+          items: [unavailableAgent],
+          totalCount: 1,
+          visibleCount: 1,
+          hasMore: false
+        }
+      ],
+      error: null
+    };
+    const onSelectItem = vi.fn();
+
+    render(
+      <AgentFileMentionPalette
+        state={state}
+        highlightedKey={null}
+        label="mention palette"
+        loadingLabel="loading"
+        emptyLabel="empty"
+        errorLabel="error"
+        tabHintLabel="hint"
+        maxHeightPx={320}
+        onHighlightChange={vi.fn()}
+        onSelectItem={onSelectItem}
+        onSelectCategory={vi.fn()}
+        onSelectFilter={vi.fn()}
+        onExpandGroup={vi.fn()}
+      />
+    );
+
+    const row = screen.getByRole("option", { name: /Lin 的 Codex/ });
+    expect(row).toBeDisabled();
+    expect(screen.getByText("不可用")).toBeVisible();
+    fireEvent.click(row);
+    expect(onSelectItem).not.toHaveBeenCalled();
+  });
+
   it("renders issue mentions with room issue status labels instead of agent session labels", () => {
     const state: AgentMentionSearchState = {
       status: "ready",

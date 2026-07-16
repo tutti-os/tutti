@@ -419,6 +419,13 @@ selected agent's availability so coming-soon entries remain inspectable but
 cannot start sessions. Hosts may use `renderAgentUnavailableState` and
 `renderAgentReadinessState` for product-specific presentation, with actions
 routed through `onAgentAvailabilityAction`.
+Agent-target mention directories follow the same discoverability rule. A host
+may keep an unavailable shared target in the injected mention provider so room
+membership and ownership grouping remain visible, but it must project the
+non-ready status explicitly. The mention palette renders that target as
+unavailable and excludes it from pointer and keyboard selection until it is
+ready; absence from the mention directory is reserved for targets that are no
+longer shared or otherwise intentionally hidden.
 `disabled` is interaction state, not an availability classification. A disabled
 target is coming soon only when its explicit availability is `coming_soon` (or
 the host's explicit coming-soon catalog says so); unavailable, not-installed,
@@ -3417,14 +3424,20 @@ Member constraint is active. A typed File query must route to the
 provenance-aware generated-file provider for either active dimension, even when
 the ordinary generated-files group is otherwise disabled. Generated-file and
 picker result groups remain source-owned. The Agent Session and Agent target
-`@` lists are the exceptions: when a host injects an Agent provenance catalog,
-they group returned rows by exact `agentTargetId` in catalog order and use the
-catalog option label as the group heading. An Agent target row matches with its
-target id; AgentGUI does not synthesize owner-aware row labels because that
-presentation remains host-owned. Rows outside the catalog remain visible in
-stable uncatalogued groups only while no explicit Agent filter is selected.
+`@` lists are the exceptions when a host injects an Agent provenance catalog.
+Session rows group by exact `agentTargetId` in Agent catalog order. Agent target
+rows use each Agent option's `parentMemberId` to group under the matching Member
+catalog entry, so one member's targets share a group while filtering still uses
+the individual target ids. Collaboration hosts should build this catalog from
+the complete Agent directory, using `AgentGUIAgent.owner.userId` for shared
+targets, rather than deriving ownership only from sessions; targets without
+history must still join their owner's group. Hosts that omit a matching Member entry retain the
+per-Agent group. AgentGUI does not synthesize owner-aware row labels because
+that presentation remains host-owned. Rows outside the catalog remain visible
+in stable uncatalogued groups only while no explicit Agent filter is selected.
 This grouping is presentation only; the provider still applies the selected
-provenance constraint before pagination.
+provenance constraint before pagination. A host may provide Member entries for
+grouping without enabling the Member filter dimension.
 
 Only catalog entries with a durable `agentTargetId` participate in filtering;
 host target ids are not substitutes. Catalogs and filters are normalized at the

@@ -118,6 +118,30 @@ test("browse mode with items produces item and expand entries, no categories", (
   });
 });
 
+test("disabled items stay in groups but are omitted from keyboard entries", () => {
+  const enabled = { id: "enabled", kind: "file" } satisfies Item;
+  const disabled = { id: "disabled", kind: "file" } satisfies Item;
+  const state = browseState([
+    makeGroup("my_group", [disabled, enabled], false)
+  ]);
+
+  const entries = flattenMentionPaletteEntries(
+    state,
+    getItemKey,
+    (item) => item.id === "disabled"
+  );
+
+  assert.deepEqual(entries, [
+    {
+      key: "my_group:file:enabled",
+      type: "item",
+      groupId: "my_group",
+      itemIndex: 1
+    }
+  ]);
+  assert.equal(state.groups[0]?.items.length, 2);
+});
+
 // browse mode with items but no hasMore → no expand entry
 test("browse mode items without hasMore produces no expand entry", () => {
   const items: Item[] = [{ id: "x", kind: "session" }];

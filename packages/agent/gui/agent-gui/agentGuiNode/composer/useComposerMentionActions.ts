@@ -22,7 +22,10 @@ import {
 } from "../agentRichText/agentFileMentionExtension";
 import { isAgentRichTextImeComposing } from "../agentRichText/agentRichTextIme";
 import { AGENT_MENTION_FILTER_TAB_ORDER } from "../agentMentionSearchHelpers";
-import { agentMentionItemKey } from "../AgentFileMentionPalette";
+import {
+  agentMentionItemKey,
+  isAgentMentionItemDisabled
+} from "../AgentFileMentionPalette";
 import { MENTION_PALETTE_DISMISS_INTERACTION_SELECTOR } from "./AgentComposerChrome";
 import { updateAgentComposerDraft } from "../model/agentComposerDraft";
 import {
@@ -178,6 +181,7 @@ export function useComposerMentionActions(input: Input) {
             ? mentionSearchState.categories
             : AGENT_MENTION_FILTER_TAB_ORDER,
         getItemKey: agentMentionItemKey,
+        isItemDisabled: isAgentMentionItemDisabled,
         callbacks: {
           onHighlightChange: (key) => {
             setShouldCenterMentionHighlight(true);

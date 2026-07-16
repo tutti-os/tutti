@@ -689,6 +689,7 @@ export const enAgentGui = {
   mentionAgentGeneratedFolderBack: "Back",
   mentionAgentGeneratedFolderFileCount: "Contains {{count}} files",
   mentionAgentTargetAvailable: "Available",
+  mentionAgentTargetUnavailable: "Unavailable",
   mentionNoMatchingFiles: "No matching files",
   mentionOpenReferences: "View output",
   issueRunPrompt: {

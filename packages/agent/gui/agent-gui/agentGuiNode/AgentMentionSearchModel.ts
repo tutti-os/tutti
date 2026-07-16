@@ -191,25 +191,27 @@ function buildAgentProvenanceGroups(input: {
   const catalogAgentTargetIds = new Set(
     input.provenanceCatalog.agentOptions.map((option) => option.id)
   );
-  const catalogGroups = input.provenanceCatalog.agentOptions.flatMap(
-    (option) => {
-      const items = sourceItems.filter(
-        (item) => agentTargetIdForMentionItem(item) === option.id
-      );
-      if (items.length === 0) {
-        return [];
-      }
-      return [
-        buildAgentProvenanceGroup({
-          currentFilter: input.currentFilter,
-          expandedCounts: input.expandedCounts,
-          id: agentProvenanceMentionGroupId(option.id),
-          label: option.label,
-          items
-        })
-      ];
+  const catalogGroups = agentProvenanceGroupSpecs(
+    input.currentFilter,
+    input.provenanceCatalog
+  ).flatMap((group) => {
+    const items = sourceItems.filter((item) => {
+      const agentTargetId = agentTargetIdForMentionItem(item);
+      return agentTargetId !== null && group.agentTargetIds.has(agentTargetId);
+    });
+    if (items.length === 0) {
+      return [];
     }
-  );
+    return [
+      buildAgentProvenanceGroup({
+        currentFilter: input.currentFilter,
+        expandedCounts: input.expandedCounts,
+        id: group.id,
+        label: group.label,
+        items
+      })
+    ];
+  });
   if (selectedAgentTargetIdSet !== null) {
     return catalogGroups;
   }
@@ -249,6 +251,55 @@ function buildAgentProvenanceGroups(input: {
       })
     )
   ];
+}
+
+function agentProvenanceGroupSpecs(
+  currentFilter: AgentMentionFilterId,
+  catalog: ReferenceProvenanceCatalog
+): Array<{
+  id: AgentMentionGroupId;
+  label: string;
+  agentTargetIds: ReadonlySet<string>;
+}> {
+  if (currentFilter === "session") {
+    return catalog.agentOptions.map((option) => ({
+      id: agentProvenanceMentionGroupId(option.id),
+      label: option.label,
+      agentTargetIds: new Set([option.id])
+    }));
+  }
+
+  const groupedAgentTargetIds = new Set<string>();
+  const memberGroups = catalog.memberOptions.flatMap((member) => {
+    const agentTargetIds = catalog.agentOptions.flatMap((option) =>
+      option.parentMemberId?.trim() === member.id ? [option.id] : []
+    );
+    if (agentTargetIds.length === 0) {
+      return [];
+    }
+    agentTargetIds.forEach((agentTargetId) =>
+      groupedAgentTargetIds.add(agentTargetId)
+    );
+    return [
+      {
+        id: memberProvenanceMentionGroupId(member.id),
+        label: member.label,
+        agentTargetIds: new Set(agentTargetIds)
+      }
+    ];
+  });
+  const unownedAgentGroups = catalog.agentOptions.flatMap((option) =>
+    groupedAgentTargetIds.has(option.id)
+      ? []
+      : [
+          {
+            id: agentProvenanceMentionGroupId(option.id),
+            label: option.label,
+            agentTargetIds: new Set([option.id])
+          }
+        ]
+  );
+  return [...memberGroups, ...unownedAgentGroups];
 }
 
 function agentProvenanceItemsForFilter(input: {
@@ -304,7 +355,7 @@ function unmatchedAgentProvenanceLabel(
 function buildAgentProvenanceGroup(input: {
   currentFilter: AgentMentionFilterId;
   expandedCounts: Partial<Record<AgentMentionGroupId, number>>;
-  id: `agent:${string}`;
+  id: AgentMentionGroupId;
   label: string;
   items: AgentContextMentionItem[];
 }): AgentMentionGroup {
@@ -327,6 +378,12 @@ export function agentProvenanceMentionGroupId(
   agentTargetId: string
 ): `agent:${string}` {
   return `agent:${encodeURIComponent(agentTargetId)}`;
+}
+
+export function memberProvenanceMentionGroupId(
+  memberId: string
+): `member:${string}` {
+  return `member:${encodeURIComponent(memberId)}`;
 }
 
 export function emptyAgentMentionRawGroups(): AgentMentionRawGroups {
@@ -560,7 +617,8 @@ export function providerItemToAgentMentionItem(input: {
         compactText(input.subtitle) ||
         undefined,
       agentProviderId,
-      iconUrl: presentation.iconUrl?.trim() || undefined
+      iconUrl: presentation.iconUrl?.trim() || undefined,
+      availabilityStatus: presentation.status?.trim() || undefined
     };
   }
   if (input.providerId === AGENT_SESSION_PROVIDER_ID) {

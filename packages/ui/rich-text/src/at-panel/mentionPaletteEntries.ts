@@ -33,7 +33,8 @@ function hasResolvedGroupData<TItem>(
  */
 export function flattenMentionPaletteEntries<TItem>(
   state: MentionPaletteState<TItem>,
-  getItemKey: (item: TItem, groupId: string) => string
+  getItemKey: (item: TItem, groupId: string) => string,
+  isItemDisabled?: (item: TItem, groupId: string) => boolean
 ): MentionPaletteEntry[] {
   // Browse mode with no resolved group content → show category nav only.
   // This only applies while the active category truly has no answer yet
@@ -55,6 +56,9 @@ export function flattenMentionPaletteEntries<TItem>(
 
   for (const group of state.groups) {
     group.items.forEach((item, index) => {
+      if (isItemDisabled?.(item, group.id)) {
+        return;
+      }
       entries.push({
         key: `${group.id}:${getItemKey(item, group.id)}`,
         type: "item",

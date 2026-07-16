@@ -643,6 +643,7 @@ export const zhCNAgentGui = {
   mentionAgentGeneratedFolderBack: "返回",
   mentionAgentGeneratedFolderFileCount: "包含 {{count}} 个文件",
   mentionAgentTargetAvailable: "可用",
+  mentionAgentTargetUnavailable: "不可用",
   mentionNoMatchingFiles: "没有匹配到文件",
   mentionOpenReferences: "查看产物",
   issueRunPrompt: {

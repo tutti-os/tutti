@@ -109,3 +109,39 @@ test("commitHighlighted still lets Enter drill into an unselected category from 
   const result = adapter.commitHighlighted();
   assert.deepEqual(result, { type: "category", categoryId: "issue" });
 });
+
+test("disabled items cannot be selected or committed", () => {
+  const disabled = { id: "disabled" };
+  const enabled = { id: "enabled" };
+  const state: MentionPaletteState<Item> = {
+    status: "ready",
+    query: "",
+    mode: "browse",
+    filter: "session",
+    categories,
+    groups: [
+      {
+        id: "agents",
+        items: [disabled, enabled],
+        totalCount: 2,
+        visibleCount: 2,
+        hasMore: false
+      }
+    ],
+    error: null
+  };
+  const onSelectItem = () => {
+    throw new Error("disabled item must not be selected");
+  };
+  const adapter = createMentionPaletteStateAdapter({
+    state,
+    highlightedKey: "agents:disabled",
+    getItemKey,
+    isItemDisabled: (item) => item.id === "disabled",
+    callbacks: { onSelectItem }
+  });
+
+  assert.equal(adapter.selectedItem, null);
+  assert.deepEqual(adapter.commitHighlighted(), { type: "none" });
+  assert.equal(adapter.moveSelection(1), "agents:enabled");
+});

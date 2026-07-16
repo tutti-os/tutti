@@ -110,6 +110,7 @@ export function MentionPalette<TItem>(
     state,
     highlightedKey,
     getItemKey,
+    isItemDisabled,
     renderItem,
     labels,
     hintLabels,
@@ -142,7 +143,11 @@ export function MentionPalette<TItem>(
 
   const interactiveEntries = flattenMentionPaletteEntries(
     state,
-    (item, groupId) => getItemKey(item, findGroup(state.groups, groupId))
+    (item, groupId) => getItemKey(item, findGroup(state.groups, groupId)),
+    isItemDisabled
+      ? (item, groupId) =>
+          isItemDisabled(item, findGroup(state.groups, groupId))
+      : undefined
   );
   const hasInteractiveEntries = interactiveEntries.some(
     (entry) => entry.type === "item" || entry.type === "expand"
@@ -254,6 +259,7 @@ export function MentionPalette<TItem>(
         highlightedKey={highlightedKey}
         highlightedOptionRef={highlightedOptionRef}
         getItemKey={getItemKey}
+        isItemDisabled={isItemDisabled}
         renderItem={renderItem}
         onHighlightChange={onHighlightChange}
         onSelectItem={onSelectItem}
@@ -385,6 +391,7 @@ function MentionPaletteGroups<TItem>({
   highlightedKey,
   highlightedOptionRef,
   getItemKey,
+  isItemDisabled,
   renderItem,
   onHighlightChange,
   onSelectItem,
@@ -396,6 +403,7 @@ function MentionPaletteGroups<TItem>({
   highlightedKey: string | null;
   highlightedOptionRef: MutableRefObject<HTMLButtonElement | null>;
   getItemKey: (item: TItem, group: MentionPaletteGroup<TItem>) => string;
+  isItemDisabled?: (item: TItem, group: MentionPaletteGroup<TItem>) => boolean;
   renderItem: (
     item: TItem,
     ctx: { active: boolean; group: MentionPaletteGroup<TItem> }
@@ -434,6 +442,7 @@ function MentionPaletteGroups<TItem>({
               {group.items.map((item) => {
                 const entryKey = `${group.id}:${getItemKey(item, group)}`;
                 const isHighlighted = entryKey === highlightedKey;
+                const disabled = isItemDisabled?.(item, group) ?? false;
                 return (
                   <button
                     key={entryKey}
@@ -441,15 +450,21 @@ function MentionPaletteGroups<TItem>({
                     type="button"
                     className={paletteStyles.rowButton}
                     role="option"
+                    disabled={disabled}
+                    aria-disabled={disabled || undefined}
                     aria-selected={isHighlighted}
                     data-highlighted={isHighlighted ? "" : undefined}
                     onPointerMove={() => {
-                      if (!isHighlighted) {
+                      if (!disabled && !isHighlighted) {
                         onHighlightChange(entryKey);
                       }
                     }}
                     onMouseDown={(event) => event.preventDefault()}
-                    onClick={() => onSelectItem(item, group)}
+                    onClick={() => {
+                      if (!disabled) {
+                        onSelectItem(item, group);
+                      }
+                    }}
                   >
                     {renderItem(item, { active: isHighlighted, group })}
                   </button>
