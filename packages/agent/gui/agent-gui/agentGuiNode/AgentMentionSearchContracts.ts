@@ -16,7 +16,7 @@ export type AgentMentionFilterId =
   | "issue"
   | "agent"
   | "app";
-export type AgentMentionGroupId =
+export type AgentMentionStaticGroupId =
   | "apps"
   | "agents"
   | "files"
@@ -25,8 +25,17 @@ export type AgentMentionGroupId =
   | "my_sessions"
   | "collab_sessions"
   | "issues";
+export type AgentMentionProvenanceGroupId = `agent:${string}`;
+export type AgentMentionGroupId =
+  | AgentMentionStaticGroupId
+  | AgentMentionProvenanceGroupId;
 
-export type AgentMentionRawGroupId = Exclude<AgentMentionGroupId, "files">;
+export type AgentMentionRawGroupId =
+  | Exclude<
+      AgentMentionStaticGroupId,
+      "files" | "my_sessions" | "collab_sessions"
+    >
+  | "sessions";
 export type AgentMentionRawGroups = Record<
   AgentMentionRawGroupId,
   AgentContextMentionItem[]

@@ -19,7 +19,10 @@ import {
 } from "./AgentMentionSearchCache";
 import { diagnosticErrorKind } from "./AgentMentionSearchModel";
 import { AgentMentionSearchControllerBase } from "./AgentMentionSearchControllerBase";
-import type { ReferenceProvenanceFilter } from "@tutti-os/workspace-file-reference/contracts";
+import type {
+  ReferenceProvenanceCatalog,
+  ReferenceProvenanceFilter
+} from "@tutti-os/workspace-file-reference/contracts";
 import { referenceProvenanceFilterCacheKey } from "@tutti-os/workspace-file-reference/core";
 
 export type {
@@ -32,6 +35,21 @@ export type {
 export { MAX_BROWSE_CACHE_ENTRIES, resetAgentMentionSearchBrowseCacheForTests };
 
 export class AgentMentionSearchController extends AgentMentionSearchControllerBase {
+  setProvenanceCatalog(catalog: ReferenceProvenanceCatalog | null): void {
+    if (this.currentProvenanceCatalog === catalog) return;
+    this.currentProvenanceCatalog = catalog;
+    if (
+      this.currentFilter !== "session" ||
+      (this.state.status !== "ready" && this.state.status !== "loading")
+    ) {
+      return;
+    }
+    this.setState({
+      ...this.state,
+      groups: this.groupsFromRawGroups()
+    });
+  }
+
   setProvenanceFilter(filter: ReferenceProvenanceFilter | null): void {
     const previousKey = this.currentProvenanceFilter
       ? referenceProvenanceFilterCacheKey(this.currentProvenanceFilter)

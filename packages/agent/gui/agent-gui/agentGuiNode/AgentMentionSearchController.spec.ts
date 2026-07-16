@@ -38,6 +38,7 @@ interface TestAgentTargetMentionItem {
 }
 
 interface TestSessionMentionItem {
+  agentTargetId?: string;
   agentName: string;
   id: string;
   initiatorName: string;
@@ -336,6 +337,7 @@ function createTestSessionProvider(
             })) ||
             session.agentSessionId;
           return {
+            agentTargetId: session.agentTargetId,
             agentName: testProviderLabel(session.provider),
             id: session.agentSessionId,
             initiatorAvatarUrl: profile?.avatar ?? "",
@@ -386,6 +388,7 @@ function createTestSessionProvider(
         entityId: item.id,
         label: item.title,
         scope: {
+          ...(item.agentTargetId ? { agentTargetId: item.agentTargetId } : {}),
           scope: item.scope ?? "",
           userId: item.userId,
           workspaceId: item.workspaceId
@@ -551,6 +554,68 @@ describe("AgentMentionSearchController", () => {
     });
     expect(queryFiles).not.toHaveBeenCalled();
     expect(queryIssues).not.toHaveBeenCalled();
+  });
+
+  it("groups session mentions in provenance catalog order", async () => {
+    const controller = new AgentMentionSearchController({
+      querySessions: vi.fn().mockResolvedValue({
+        sessions: [
+          {
+            agentSessionId: "session-shared",
+            agentTargetId: "shared-agent:shared-codex",
+            provider: "codex",
+            title: "Shared build",
+            userId: "user-2"
+          },
+          {
+            agentSessionId: "session-local",
+            agentTargetId: "codex-main",
+            provider: "codex",
+            title: "Local build",
+            userId: "user-1"
+          }
+        ]
+      })
+    });
+    const states: unknown[] = [];
+    controller.subscribe((state) => states.push(state));
+    controller.setProvenanceCatalog({
+      enabledDimensions: ["agent"],
+      agentOptions: [
+        { id: "codex-main", label: "Me · Codex" },
+        {
+          id: "shared-agent:shared-codex",
+          label: "Lin · Codex"
+        }
+      ],
+      memberOptions: []
+    });
+
+    controller.updateQuery({
+      workspaceId: "room-1",
+      currentUserId: "user-1",
+      query: ""
+    });
+
+    await vi.waitFor(() =>
+      expect(states.at(-1)).toMatchObject({
+        status: "ready",
+        filter: "session",
+        groups: [
+          {
+            id: "agent:codex-main",
+            label: "Me · Codex",
+            items: [expect.objectContaining({ targetId: "session-local" })]
+          },
+          {
+            id: "agent:shared-agent%3Ashared-codex",
+            label: "Lin · Codex",
+            items: [expect.objectContaining({ targetId: "session-shared" })]
+          }
+        ]
+      })
+    );
+    controller.dispose();
   });
 
   it("loads the app provider when switching to the app tab for blank queries", async () => {

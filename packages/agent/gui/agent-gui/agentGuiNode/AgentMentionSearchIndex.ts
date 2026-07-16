@@ -4,7 +4,7 @@ import type { AgentContextMentionProvider } from "./agentContextMentionProvider"
 import type { AgentMentionProviderQueryDiagnostic } from "./agentMentionSearchDiagnostics";
 import {
   emptyAgentMentionRawGroups,
-  normalizeSessionMentionItemsForMySessions,
+  normalizeSessionMentionItems,
   providerItemToAgentMentionItem,
   totalCountsFromRawGroups
 } from "./AgentMentionSearchModel";
@@ -108,8 +108,7 @@ export async function fetchAgentMentionFilterResult(input: {
         provenanceFilter: input.provenanceFilter
       });
       const rawGroups = emptyAgentMentionRawGroups();
-      rawGroups.my_sessions = normalizeSessionMentionItemsForMySessions({
-        currentUserId: input.currentUserId,
+      rawGroups.sessions = normalizeSessionMentionItems({
         items: sessionItems
       });
       return {

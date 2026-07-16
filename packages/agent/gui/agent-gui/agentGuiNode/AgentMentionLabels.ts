@@ -22,6 +22,8 @@ export function agentMentionGroupLabel(groupId: AgentMentionGroupId): string {
       return translate("agentHost.agentGui.mentionGroupCollabSessions");
     case "issues":
       return translate("agentHost.agentGui.mentionGroupIssues");
+    default:
+      return "";
   }
 }
 
@@ -65,6 +67,9 @@ export function agentMentionEmptyGroupLabel(
   }
   if (groupId === "collab_sessions") {
     return translate("agentHost.agentGui.mentionEmptyCollabSessions");
+  }
+  if (groupId.startsWith("agent:")) {
+    return translate("agentHost.agentGui.mentionEmptyMySessions");
   }
   return translate("agentHost.agentGui.mentionEmptyIssues");
 }
