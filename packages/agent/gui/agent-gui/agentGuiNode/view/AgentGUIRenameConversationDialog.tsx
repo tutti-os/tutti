@@ -1,5 +1,5 @@
 import { memo, useCallback, useEffect, useRef, useState } from "react";
-import { ConfirmationDialog } from "@tutti-os/ui-system";
+import { ConfirmationDialog, Input } from "@tutti-os/ui-system";
 import { Button } from "../../../app/renderer/components/ui/button";
 import type { AgentGUINodeViewModel } from "../model/agentGuiNodeTypes";
 import type { AgentGUIViewLabels } from "./AgentGUINodeView.types";
@@ -175,10 +175,11 @@ export const AgentGUIRenameConversationDialog = memo(
         onConfirm={confirmRename}
         onOpenChange={onOpenChange}
       >
-        <input
+        <Input
           ref={inputRef}
           aria-label={labels.renameSessionTitle}
-          className="h-10 w-full rounded-md border border-border bg-background px-3 text-[14px] font-medium leading-5 text-text-primary shadow-none outline-none transition-colors placeholder:text-text-tertiary focus:border-primary"
+          className="h-9"
+          variant="md"
           placeholder={labels.renameSessionPlaceholder}
           value={title}
           onChange={(event) => setTitle(event.currentTarget.value)}

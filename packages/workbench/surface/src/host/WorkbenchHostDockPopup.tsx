@@ -232,7 +232,6 @@ export function WorkbenchHostDockPopup({
   onRunDockRetentionAction,
   onSelectNode,
   onShowAllWindows,
-  openLabel,
   onQuit,
   placement = "bottom",
   quitLabel,
@@ -270,7 +269,6 @@ export function WorkbenchHostDockPopup({
   onRunDockRetentionAction?: () => void;
   onSelectNode: (nodeId: string) => void;
   onShowAllWindows?: () => void;
-  openLabel?: string;
   onQuit?: () => void;
   placement?: WorkbenchDockPlacement;
   quitLabel?: string;
@@ -871,7 +869,6 @@ export function WorkbenchHostDockPopup({
             onRunDockRetentionAction={onRunDockRetentionAction}
             onSelectNode={onSelectNode}
             onShowAllWindows={onShowAllWindows}
-            openLabel={openLabel}
             quitLabel={quitLabel}
             showAllWindowsLabel={showAllWindowsLabel}
             showOpen={showOpen === true}
@@ -1018,7 +1015,6 @@ function WorkbenchHostDockContextMenu({
   onRunDockRetentionAction,
   onSelectNode,
   onShowAllWindows,
-  openLabel,
   quitLabel,
   showAllWindowsLabel,
   showOpen
@@ -1038,7 +1034,6 @@ function WorkbenchHostDockContextMenu({
   onRunDockRetentionAction?: () => void;
   onSelectNode: (nodeId: string) => void;
   onShowAllWindows?: () => void;
-  openLabel?: string;
   quitLabel?: string;
   showAllWindowsLabel?: string;
   showOpen: boolean;
@@ -1099,7 +1094,7 @@ function WorkbenchHostDockContextMenu({
         <WorkbenchHostDockContextMenuItem
           disabled={!showOpen}
           icon={<FileCreateIcon aria-hidden="true" className="size-4" />}
-          label={openLabel}
+          label={newWindowLabel}
           onSelect={onCreateNew}
         />
       ) : null}

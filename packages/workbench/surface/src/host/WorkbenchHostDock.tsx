@@ -2263,7 +2263,6 @@ export function WorkbenchHostDock({
           label={popupEntry.entry.label}
           labelMode={popupEntry.entry.popupCardLabelMode}
           newWindowLabel={i18n.t("newWindow")}
-          openLabel={i18n.t("dockContextMenu.open")}
           closeWindowLabel={(title) => i18n.t("closeWindow", { title })}
           fullscreenLabel={i18n.t("dockContextMenu.fullscreen")}
           hideLabel={i18n.t("dockContextMenu.hide")}

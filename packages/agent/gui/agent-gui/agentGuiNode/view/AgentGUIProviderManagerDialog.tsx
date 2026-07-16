@@ -419,7 +419,7 @@ export function AgentGUIProviderManagerDialog({
             {availableTargets.length > 0 ? (
               <div
                 aria-label={labels.manageAgentsAvailable}
-                className="grid grid-cols-5 gap-x-3 gap-y-4"
+                className="grid grid-cols-5 gap-x-3 gap-y-4 rounded-[8px] border border-dashed border-[var(--border-1)] px-3 py-4"
                 data-editing={editing ? "true" : "false"}
                 onClick={exitEditingFromBlankSpace}
                 role="list"
@@ -580,7 +580,7 @@ export function AgentGUIProviderManagerDialog({
             {disabledTargets.length > 0 ? (
               <div
                 aria-label={labels.manageAgentsDisabled}
-                className="grid grid-cols-5 gap-x-3 gap-y-4"
+                className="grid grid-cols-5 gap-x-3 gap-y-4 rounded-[8px] border border-dashed border-[var(--border-1)] px-3 py-4"
                 data-editing={editing ? "true" : "false"}
                 onClick={exitEditingFromBlankSpace}
                 role="list"
