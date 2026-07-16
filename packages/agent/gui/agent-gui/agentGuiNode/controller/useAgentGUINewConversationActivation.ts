@@ -1,4 +1,7 @@
-import { selectLatestActivationForSession } from "@tutti-os/agent-activity-core";
+import {
+  isPendingActivationViable,
+  selectLatestActivationForSession
+} from "@tutti-os/agent-activity-core";
 import { useCallback } from "react";
 import { translate } from "../../../i18n/index";
 import type { AgentPromptContentBlock } from "../../../shared/contracts/dto";
@@ -185,10 +188,12 @@ export function useAgentGUINewConversationActivation(
       const agentSessionId =
         prewarmedSessionId &&
         activation.stateFor(prewarmedSessionId) === "inactive" &&
-        selectLatestActivationForSession(
-          sessionEngine.getSnapshot(),
-          prewarmedSessionId
-        )?.status !== "failed"
+        isPendingActivationViable(
+          selectLatestActivationForSession(
+            sessionEngine.getSnapshot(),
+            prewarmedSessionId
+          )
+        )
           ? prewarmedSessionId
           : createAgentGUIConversationId();
       const submitTrace = createAgentSubmitTraceState({

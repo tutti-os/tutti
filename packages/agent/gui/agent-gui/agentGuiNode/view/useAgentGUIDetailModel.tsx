@@ -15,6 +15,7 @@ import {
   resolveActiveConversationBusyStatus,
   resolveConversationDetailStatus,
   resolveSlashStatus,
+  shouldShowAgentGUIStopButton,
   useStableSlashStatus
 } from "./agentGUIDetailModelHelpers";
 import { useAgentGUITimelineTransition } from "./useAgentGUITimelineTransition";
@@ -208,14 +209,18 @@ export function useAgentGUIDetailModel(input: Input) {
         viewModel.composer.isSubmitting ||
         viewModel.composer.isInterrupting ||
         viewModel.composer.isCreatingConversation));
-  const showStopButton =
-    !viewModel.composer.isSubmitting &&
-    viewModel.readiness.activeLiveState !== "failed" &&
-    sessionChrome.auth === null &&
-    (activeConversationTurnBusy ||
-      viewModel.interaction.pendingApproval !== null ||
-      viewModel.interaction.pendingInteractivePrompt !== null ||
-      viewModel.composer.isInterrupting);
+  const showStopButton = shouldShowAgentGUIStopButton({
+    hasPendingApproval: viewModel.interaction.pendingApproval !== null,
+    hasPendingInteractivePrompt:
+      viewModel.interaction.pendingInteractivePrompt !== null,
+    isAuthBlocked: sessionChrome.auth !== null,
+    isCancelPending: viewModel.composer.isCancelPending,
+    isConversationBusy: activeConversationTurnBusy,
+    isCreatingConversation: viewModel.composer.isCreatingConversation,
+    isInterrupting: viewModel.composer.isInterrupting,
+    isSubmitting: viewModel.composer.isSubmitting,
+    isUnavailable: viewModel.readiness.activeLiveState === "failed"
+  });
   const conversationFlowLabels = useMemo(
     () => ({
       thinkingLabel: labels.thinkingLabel,

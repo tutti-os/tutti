@@ -146,6 +146,16 @@ export interface SessionCancelRequestedIntent {
   commandId: string;
   awaitingTurnExpiresAtUnixMs: number;
   timeoutMs?: number;
+  workspaceId: string;
+}
+
+export interface SessionStopRequestedIntent {
+  type: "session/stopRequested";
+  agentSessionId: string;
+  commandId: string;
+  awaitingTurnExpiresAtUnixMs: number;
+  timeoutMs?: number;
+  workspaceId: string;
 }
 
 export interface SessionCancelAbandonedIntent {
@@ -174,6 +184,7 @@ export type SessionLifecycleIntent =
   | SessionRemovedIntent
   | SessionSettingsUpdateRequestedIntent
   | SessionSnapshotReceivedIntent
+  | SessionStopRequestedIntent
   | SessionUpsertedIntent
   | TurnUpsertedIntent;
 

@@ -15,6 +15,7 @@ import {
   canonicalTurnKey
 } from "./sessionEntityKeys.ts";
 import { selectLatestActivationForSession } from "./pendingIntents.selectors.ts";
+import { isPendingActivationViable } from "./pendingIntents.types.ts";
 import { deriveCanonicalSubmitAvailability } from "./sessionLifecycle.availability.ts";
 
 export interface WorkspaceAgentConsumerSession {
@@ -397,6 +398,6 @@ function initialActivationTurnIsPending(
   return (
     activation?.mode === "new" &&
     activation.initialTurnExpected &&
-    activation.status !== "failed"
+    isPendingActivationViable(activation)
   );
 }

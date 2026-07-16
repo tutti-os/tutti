@@ -216,6 +216,7 @@ export function useAgentGUIComposerOptionsSync(input: {
     );
     if (
       activation?.status === "failed" ||
+      activation?.status === "canceled" ||
       activation?.status === "requested" ||
       activation?.status === "uncertain"
     ) {

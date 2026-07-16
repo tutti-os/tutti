@@ -466,7 +466,8 @@ export const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
       providerSelectLabel: labels.providerSwitchLabel,
       handoffLabel: labels.handoffConversation,
       handoffMenuLabel: labels.handoffConversationMenu,
-      isInterrupting: viewModel.composer.isInterrupting,
+      isInterrupting:
+        viewModel.composer.isInterrupting || viewModel.composer.isCancelPending,
       isSendingTurn: isComposerSending,
       isSubmittingPrompt: viewModel.interaction.isRespondingApproval,
       uiLanguage,

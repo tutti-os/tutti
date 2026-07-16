@@ -64,6 +64,14 @@ export function replaceCanonicalSessionSnapshot(
         state.operationBySessionId[id] ?? createOperation();
     }
   }
+  for (const [id, operation] of Object.entries(state.operationBySessionId)) {
+    if (
+      !operationBySessionId[id] &&
+      operation.cancel.status === "awaitingTurn"
+    ) {
+      operationBySessionId[id] = operation;
+    }
+  }
   for (const turn of Object.values(state.turnsById)) {
     const key = canonicalTurnKey(turn.agentSessionId, turn.turnId);
     if (sessionsById[turn.agentSessionId] && !turnsById[key]) {

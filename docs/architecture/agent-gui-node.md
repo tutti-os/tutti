@@ -1029,6 +1029,15 @@ The session engine owns activation deadlines. It passes one cancellation signal
 through the desktop command port and HTTP adapter. Adapters must not race the
 engine with an independent timeout budget; command timeout, cancellation, and
 uncertain-delivery reconciliation are one engine workflow.
+Stop is also engine-owned during activation. The provider-neutral
+`session/stopRequested` intent aborts the exact in-flight activation command and
+keeps a workspace/session-scoped `awaitingTurn` cancel until the first canonical
+Turn arrives. That transition then emits an exact `turn/cancel`; a bounded
+expiry removes the detached operation so a later, unrelated Turn cannot be
+canceled. Empty reconcile snapshots must preserve this detached operation.
+When request cancellation causes create to fail, daemon rollback uses a bounded
+context detached from the canceled request so provisional runtime state is
+still closed and removed.
 The outer new-session activation deadline must also leave room for process spawn
 and `initialize` before ACP `session/new` starts its own full 30-second timeout;
 an activation timer that starts at the user's click must not cancel
@@ -2459,12 +2468,14 @@ still fails the submit immediately, while a timed-out delivery keeps its
 uncertain reconciliation and terminal expiry behavior.
 
 A user stop is an intent, not just a turn cancel: `interruptCurrentTurn`
-suspends the session's prompt queue (`suspendReason: "user_stop"`) before
-issuing the cancel, so the drainer must not fire the next queued prompt the
-moment the session becomes available. Only an explicit user send lifts the
-hold — composer submit resumes the queue, and a send-now intent clears the
-suspension in the queue core. The send-now cancel path never suspends: intent is
-captured at its source, never inferred from the cancel outcome.
+dispatches one provider-neutral `session/stopRequested` intent. The engine
+atomically suspends the session's prompt queue (`suspendReason: "user_stop"`),
+aborts any matching activation command, and requests or awaits exact-turn
+cancel. The drainer therefore cannot fire the next queued prompt the moment the
+session becomes available. Only an explicit user send lifts the hold — composer
+submit resumes the queue, and a send-now intent clears the suspension in the
+queue core. The send-now cancel path never suspends: intent is captured at its
+source, never inferred from the cancel outcome.
 
 Queue suspension must also remain visible in the presentation projection.
 AgentGUI controllers map the queue record's `suspendReason` to the internal

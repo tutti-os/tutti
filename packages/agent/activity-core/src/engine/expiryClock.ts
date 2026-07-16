@@ -1,7 +1,7 @@
 import type {
   EngineClock,
+  EngineExpiryCommand,
   EngineIntentExpiredIntent,
-  EngineInternalCommand,
   EngineScheduledTask,
   EngineScheduler
 } from "./types.ts";
@@ -18,7 +18,7 @@ export interface CreateEngineExpiryClockInput {
 }
 
 export interface EngineExpiryClock {
-  apply(command: EngineInternalCommand): void;
+  apply(command: EngineExpiryCommand): void;
   dispose(): void;
 }
 

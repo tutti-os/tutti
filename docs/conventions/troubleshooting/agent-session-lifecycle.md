@@ -1342,6 +1342,44 @@ Turn state, loading, cancel, restore, file-change undo, rail projection, event u
   [controller_session_lifecycle.go](../../packages/agent/daemon/runtime/controller_session_lifecycle.go)
   [agent_runtime_adapter.go](../../services/tuttid/agent_runtime_adapter.go)
 
+### AgentGUI cannot stop Cursor immediately after the first message
+
+- Symptom:
+  The first Cursor message enters an activating state, but Stop is absent or
+  does nothing until a canonical session and Turn appear. Codex and Claude Code
+  often appear unaffected because their startup completes before a user can hit
+  the same window.
+- Quick checks:
+  Correlate the activation request with process spawn, ACP `initialize`,
+  `session/new`, and the first Turn. If Stop becomes available only after the
+  Turn id is known, the UI and engine are treating cancellation as turn-only.
+  Also inspect failed-create cleanup after request cancellation for provisional
+  runtime state left under the session id.
+- Root cause:
+  New-session activation is an abortable engine command before it becomes a
+  canonical Turn. A turn-only Stop gate cannot target that command, and a cancel
+  operation stored only under existing session entities is lost on an empty
+  reconciliation snapshot. Cleanup that reuses the canceled request context
+  can then fail to close the provisional runtime.
+- Fix:
+  Dispatch one provider-neutral session Stop intent. Abort the exact activation
+  command by command id, preserve a detached workspace/session-scoped
+  `awaitingTurn` cancel through snapshots, and convert it to exact-turn cancel
+  when the first Turn arrives. Expire the detached operation after a bounded
+  window. Run failed-create close and cleanup with a bounded context detached
+  from request cancellation.
+- Validation:
+  Cover immediate activation abort, empty-snapshot preservation, late first-Turn
+  cancel, expiry before an unrelated future Turn, and identical lifecycle
+  behavior for Cursor, Codex, and Claude Code. Verify AgentGUI exposes Stop
+  while new-conversation activation is still submitting.
+- References:
+  [createAgentSessionEngine.ts](../../../packages/agent/activity-core/src/engine/createAgentSessionEngine.ts)
+  [sessionLifecycle.reducer.ts](../../../packages/agent/activity-core/src/engine/sessionLifecycle.reducer.ts)
+  [pendingIntents.reducer.ts](../../../packages/agent/activity-core/src/engine/pendingIntents.reducer.ts)
+  [useAgentGUIDetailModel.tsx](../../../packages/agent/gui/agent-gui/agentGuiNode/view/useAgentGUIDetailModel.tsx)
+  [service.go](../../../services/tuttid/service/agent/service.go)
+
 ### Cursor session/new is canceled before its 30-second timeout
 
 - Symptom:

@@ -149,12 +149,18 @@ func (s *Service) Create(ctx context.Context, workspaceID string, input CreateSe
 		"cwd":       prepared.Cwd,
 		"env_count": len(prepared.Env),
 	})
-	cleanupPrepared := func(cause error) error {
-		cleanupErr := s.cleanupRuntime(ctx, workspaceID, strings.TrimSpace(input.AgentSessionID))
-		if cleanupErr == nil {
-			return cause
+	cleanupCreateFailure := func(cause error, startedSessionID string) error {
+		cleanupCtx, cancelCleanup := context.WithTimeout(context.WithoutCancel(ctx), 10*time.Second)
+		defer cancelCleanup()
+		var closeErr error
+		if startedSessionID = strings.TrimSpace(startedSessionID); startedSessionID != "" {
+			closeErr = s.controller().Close(cleanupCtx, RuntimeCloseInput{
+				WorkspaceID:    workspaceID,
+				AgentSessionID: startedSessionID,
+			})
 		}
-		return errors.Join(cause, cleanupErr)
+		cleanupErr := s.cleanupRuntime(cleanupCtx, workspaceID, strings.TrimSpace(input.AgentSessionID))
+		return errors.Join(cause, closeErr, cleanupErr)
 	}
 	logAgentSubmitTrace("service.create.runtime_start_requested", workspaceID, input.AgentSessionID, input.Metadata, nil)
 	nodeStartedAt = time.Now()
@@ -163,7 +169,7 @@ func (s *Service) Create(ctx context.Context, workspaceID string, input CreateSe
 	// as soon as this session has started.
 	releaseStartup, err := s.awaitClaudeStartupSlot(ctx, provider)
 	if err != nil {
-		return Session{}, cleanupPrepared(err)
+		return Session{}, cleanupCreateFailure(err, "")
 	}
 	session, err := func() (ProviderRuntimeSession, error) {
 		defer releaseStartup()
@@ -200,7 +206,7 @@ func (s *Service) Create(ctx context.Context, workspaceID string, input CreateSe
 		s.invalidateProviderAvailability(provider)
 		normalizedErr := normalizeRuntimeError(err)
 		s.reportAgentServiceNodeFailure(ctx, input.AgentSessionID, "session_create", "runtime_started", provider, nodeStartedAt, normalizedErr)
-		return Session{}, cleanupPrepared(normalizedErr)
+		return Session{}, cleanupCreateFailure(normalizedErr, "")
 	}
 	s.reportAgentServiceNodeSuccess(ctx, session.ID, "session_create", "runtime_started", session.Provider, nodeStartedAt)
 	logAgentSubmitTrace("service.create.runtime_start_resolved", workspaceID, session.ID, input.Metadata, map[string]any{
@@ -209,18 +215,13 @@ func (s *Service) Create(ctx context.Context, workspaceID string, input CreateSe
 	persistedSession, err := s.initializeRuntimeSession(ctx, session)
 	if err != nil {
 		s.reportAgentServiceNodeFailure(ctx, session.ID, "session_create", "session_persisted", session.Provider, nodeStartedAt, err)
-		closeErr := s.controller().Close(ctx, RuntimeCloseInput{
-			WorkspaceID:    workspaceID,
-			AgentSessionID: session.ID,
-		})
-		return Session{}, cleanupPrepared(errors.Join(err, closeErr))
+		return Session{}, cleanupCreateFailure(err, session.ID)
 	}
 	s.reportAgentServiceNodeSuccess(ctx, session.ID, "session_create", "session_persisted", session.Provider, nodeStartedAt)
 	if isTypedGoal {
 		result, goalErr := s.goalControl(ctx, workspaceID, session.ID, typedGoal.Action, typedGoal.Objective, input.Metadata)
 		if goalErr != nil {
-			closeErr := s.controller().Close(ctx, RuntimeCloseInput{WorkspaceID: workspaceID, AgentSessionID: session.ID})
-			return Session{}, cleanupPrepared(errors.Join(goalErr, closeErr))
+			return Session{}, cleanupCreateFailure(goalErr, session.ID)
 		}
 		return result.Session, nil
 	}
@@ -234,11 +235,7 @@ func (s *Service) Create(ctx context.Context, workspaceID string, input CreateSe
 	nodeStartedAt = time.Now()
 	if err := s.validatePromptContentForExec(ctx, workspaceID, session.ID, normalizedContent); err != nil {
 		s.reportAgentServiceNodeFailure(ctx, session.ID, "session_create", "prompt_validated", session.Provider, nodeStartedAt, err)
-		closeErr := s.controller().Close(ctx, RuntimeCloseInput{
-			WorkspaceID:    workspaceID,
-			AgentSessionID: session.ID,
-		})
-		return Session{}, cleanupPrepared(errors.Join(err, closeErr))
+		return Session{}, cleanupCreateFailure(err, session.ID)
 	}
 	s.reportAgentServiceNodeSuccess(ctx, session.ID, "session_create", "prompt_validated", session.Provider, nodeStartedAt)
 	logAgentSubmitTrace("service.create.prompt_validated", workspaceID, session.ID, input.Metadata, nil)
@@ -246,11 +243,7 @@ func (s *Service) Create(ctx context.Context, workspaceID string, input CreateSe
 	content, preparedDisplayPrompt, err := s.prepareNormalizedPromptContentForExec(workspaceID, session.ID, normalizedContent, "")
 	if err != nil {
 		s.reportAgentServiceNodeFailure(ctx, session.ID, "session_create", "prompt_prepared", session.Provider, nodeStartedAt, err)
-		closeErr := s.controller().Close(ctx, RuntimeCloseInput{
-			WorkspaceID:    workspaceID,
-			AgentSessionID: session.ID,
-		})
-		return Session{}, cleanupPrepared(errors.Join(err, closeErr))
+		return Session{}, cleanupCreateFailure(err, session.ID)
 	}
 	s.reportAgentServiceNodeSuccess(ctx, session.ID, "session_create", "prompt_prepared", session.Provider, nodeStartedAt)
 	logAgentSubmitTrace("service.create.prompt_prepared", workspaceID, session.ID, input.Metadata, map[string]any{
@@ -276,11 +269,7 @@ func (s *Service) Create(ctx context.Context, workspaceID string, input CreateSe
 	if err != nil {
 		normalizedErr := normalizeRuntimeError(err)
 		s.reportAgentServiceNodeFailure(ctx, session.ID, "session_create", "runtime_exec", session.Provider, nodeStartedAt, normalizedErr)
-		closeErr := s.controller().Close(ctx, RuntimeCloseInput{
-			WorkspaceID:    workspaceID,
-			AgentSessionID: session.ID,
-		})
-		return Session{}, cleanupPrepared(errors.Join(normalizedErr, closeErr))
+		return Session{}, cleanupCreateFailure(normalizedErr, session.ID)
 	}
 	if submitClaim.ClientSubmitID != "" {
 		claimPending = false

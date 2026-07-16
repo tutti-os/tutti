@@ -124,7 +124,9 @@ export function createAgentSessionEngine({
         const result = rootEngineReducer(state, intent);
         state = result.state;
         for (const command of result.commands) {
-          if (isEngineInternalCommand(command)) {
+          if (command.type === "engine/abortExternalCommand") {
+            effectExecutor.abort(command.targetCommandId, command.reason);
+          } else if (isEngineInternalCommand(command)) {
             expiryClock.apply(command);
           } else {
             effectExecutor.execute(command);

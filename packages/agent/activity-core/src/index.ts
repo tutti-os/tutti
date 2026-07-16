@@ -198,6 +198,7 @@ export type {
   SubmitDismissedIntent,
   SubmitRequestedIntent
 } from "./engine/pendingIntents.types.ts";
+export { isPendingActivationViable } from "./engine/pendingIntents.types.ts";
 export {
   pendingSubmitRecordListsEqual,
   selectPendingActivationByRequestId,

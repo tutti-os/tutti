@@ -713,25 +713,17 @@ export function useAgentGUISubmitInteractionActions(
         return;
       }
       void noRunningResponseMessage;
-      // A user stop means "stop everything": hold the queued prompts instead
-      // of letting the drainer fire the next one the moment the session
-      // becomes available. An explicit user send (submit or send-now on a
-      // queued item) lifts the hold.
-      sessionEngine.dispatch({
-        agentSessionId,
-        reason: "user_stop",
-        type: "queue/suspended"
-      });
       setDetailError(null);
       sessionEngine.dispatch({
         agentSessionId,
         awaitingTurnExpiresAtUnixMs: Date.now() + 30_000,
         commandId: createAgentGUIConversationId(),
         timeoutMs: 30_000,
-        type: "session/cancelRequested"
+        type: "session/stopRequested",
+        workspaceId
       });
     },
-    [sessionEngine]
+    [sessionEngine, workspaceId]
   );
 
   const updateDraftContent = useCallback(

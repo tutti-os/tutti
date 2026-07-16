@@ -1,4 +1,5 @@
 import {
+  isPendingActivationViable,
   selectLatestActivationForSession,
   selectPendingSubmitsForSession,
   type AgentActivityMessage,
@@ -62,7 +63,7 @@ export function useAgentGUIActiveMessages(input: {
       );
     const pendingActivationMessage =
       activePendingActivation?.mode === "new" &&
-      activePendingActivation.status !== "failed" &&
+      isPendingActivationViable(activePendingActivation) &&
       activePendingActivation.clientSubmitId &&
       activePendingActivation.content.length > 0
         ? createOptimisticPromptMessage({

@@ -152,7 +152,9 @@ export function selectSessionActivationPresentations(
             ? "active"
             : activation.status === "failed"
               ? "failed"
-              : "activating"
+              : activation.status === "canceled"
+                ? "inactive"
+                : "activating"
     };
   }
   for (const agentSessionId of Object.keys(

@@ -1,4 +1,5 @@
 import {
+  isPendingActivationViable,
   selectEngineSessionReconcile,
   selectLatestActivationForSession,
   selectWorkspaceAgentConsumerSession,
@@ -137,10 +138,13 @@ export function useAgentGUIConversationRouting(
         sessionEngine.getSnapshot(),
         intent.id
       );
-      if (activation?.mode === "new" && activation.status === "failed") {
-        // Failure settlement clears the optimistic selection in an earlier
-        // effect. Do not let this effect's stale active/requested intent select
-        // the failed provisional session again during the same effect flush.
+      if (
+        activation?.mode === "new" &&
+        !isPendingActivationViable(activation)
+      ) {
+        // Terminal activation settlement clears the optimistic selection in an
+        // earlier effect. Do not let this effect's stale active/requested intent
+        // select the provisional session again during the same effect flush.
         setIntent({ tag: "home" });
         return;
       }

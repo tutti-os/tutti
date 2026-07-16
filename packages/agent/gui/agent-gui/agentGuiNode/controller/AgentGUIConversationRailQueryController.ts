@@ -1,6 +1,4 @@
 import {
-  selectPendingActivations,
-  selectWorkspaceAgentConsumerSessions,
   type AgentActivitySession,
   type AgentSessionEngine,
   type AgentSessionEngineState
@@ -28,6 +26,7 @@ import {
   type ConversationRailSectionMembership,
   type ConversationRailSectionPageState
 } from "../model/agentGuiConversationRail";
+import { projectConversationRailMembershipRecords } from "../model/agentGuiConversationRailMembershipRecords";
 
 const SECTION_PAGE_SIZE = 5;
 const SEARCH_PAGE_SIZE = 100;
@@ -145,7 +144,9 @@ export class AgentGUIConversationRailQueryController {
   private searchRequestSequence = 0;
   private attached = false;
   private ingestingSessions = false;
-  private previousMembershipRecords: ReturnType<typeof membershipRecords>;
+  private previousMembershipRecords: ReturnType<
+    typeof projectConversationRailMembershipRecords
+  >;
   private unsubscribeEngine: (() => void) | null = null;
 
   constructor(input: ControllerInput) {
@@ -161,7 +162,7 @@ export class AgentGUIConversationRailQueryController {
     this.runtime = input.runtime;
     this.scheduler = input.scheduler ?? agentGuiScheduler;
     this.workspaceId = input.workspaceId;
-    this.previousMembershipRecords = membershipRecords(
+    this.previousMembershipRecords = projectConversationRailMembershipRecords(
       this.engine.getSnapshot()
     );
     this.snapshot = this.buildSnapshot();
@@ -413,7 +414,7 @@ export class AgentGUIConversationRailQueryController {
   };
 
   private handleEngineState(state: AgentSessionEngineState): void {
-    const next = membershipRecords(state);
+    const next = projectConversationRailMembershipRecords(state);
     if (this.ingestingSessions || !this.runtimeSectionsEnabled()) {
       this.previousMembershipRecords = next;
       return;
@@ -683,7 +684,7 @@ export class AgentGUIConversationRailQueryController {
       }
     } finally {
       this.ingestingSessions = false;
-      this.previousMembershipRecords = membershipRecords(
+      this.previousMembershipRecords = projectConversationRailMembershipRecords(
         this.engine.getSnapshot()
       );
     }
@@ -749,31 +750,6 @@ export class AgentGUIConversationRailQueryController {
     this.searchAbortController?.abort();
     this.searchAbortController = null;
   }
-}
-
-function membershipRecords(state: AgentSessionEngineState) {
-  const sessions = selectWorkspaceAgentConsumerSessions(state);
-  const canonicalIds = new Set(
-    sessions.map((item) => item.session.agentSessionId)
-  );
-  return [
-    ...sessions.map((item) => ({
-      id: item.session.agentSessionId,
-      pinnedAtUnixMs: item.session.pinnedAtUnixMs ?? null
-    })),
-    ...selectPendingActivations(state)
-      .filter(
-        (record) =>
-          record.mode === "new" &&
-          record.status !== "failed" &&
-          !canonicalIds.has(record.agentSessionId)
-      )
-      .map((record) => ({
-        id: record.agentSessionId,
-        pinnedAtUnixMs: null,
-        projectionSource: "pending_activation" as const
-      }))
-  ];
 }
 
 function pageState(page: {

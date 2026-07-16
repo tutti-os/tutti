@@ -161,6 +161,30 @@ describe("new-conversation home draft lifecycle", () => {
   });
 });
 
+describe("conversation stop", () => {
+  it("dispatches one unified stop intent for activation and active-turn states", () => {
+    const goalControl = vi.fn(async () => undefined);
+    const { input, sessionEngine } = createGoalControlInput(
+      goalControl as never
+    );
+    const dispatch = vi.spyOn(sessionEngine, "dispatch");
+    const { result } = renderHook(() =>
+      useAgentGUISubmitInteractionActions(input)
+    );
+
+    act(() => result.current.interruptCurrentTurn("not running"));
+
+    expect(dispatch).toHaveBeenCalledTimes(1);
+    expect(dispatch).toHaveBeenCalledWith(
+      expect.objectContaining({
+        agentSessionId: "session-1",
+        type: "session/stopRequested",
+        workspaceId: "workspace-1"
+      })
+    );
+  });
+});
+
 describe("goal controls", () => {
   it("publishes an optimistic goal before the control API settles", async () => {
     const goalControl = vi.fn(() => new Promise<void>(() => {}));
