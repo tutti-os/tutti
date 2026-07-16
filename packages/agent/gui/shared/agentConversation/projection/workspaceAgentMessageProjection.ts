@@ -257,6 +257,8 @@ function mergeMessageSnapshot(
   return {
     ...previous,
     ...next,
+    sequence: next.sequence ?? previous?.sequence,
+    createdAtUnixMs: next.createdAtUnixMs ?? previous?.createdAtUnixMs,
     ...(semantics ? { semantics } : {}),
     payload: {
       ...(previous?.payload ?? {}),
@@ -336,10 +338,14 @@ function compareMessagesByDisplayOrder(
   left: AgentActivityMessage,
   right: AgentActivityMessage
 ): number {
-  // This comparator decides the rendered message position. startedAt is the
-  // start time for long-running items, occurredAt is the append time for plain
-  // messages, and completedAt is only a last fallback. Version orders messages
-  // that share or lack a display time. Exact ties preserve source stream order.
+  // Durable sequence is assigned once when the message is first stored and is
+  // not changed by later streaming snapshots. Timestamps are compatibility
+  // fallbacks for messages produced by older runtimes.
+  const leftSequence = normalizedPositiveNumber(left.sequence);
+  const rightSequence = normalizedPositiveNumber(right.sequence);
+  if (leftSequence > 0 && rightSequence > 0 && leftSequence !== rightSequence) {
+    return leftSequence - rightSequence;
+  }
   const leftTime = messageDisplayOrderTime(left);
   const rightTime = messageDisplayOrderTime(right);
   if (leftTime > 0 && rightTime > 0 && leftTime !== rightTime) {
@@ -371,6 +377,7 @@ function normalizedPositiveNumber(value: number | undefined): number {
 function messageDisplayOrderTime(message: AgentActivityMessage): number {
   return (
     normalizedPositiveNumber(message.startedAtUnixMs) ||
+    normalizedPositiveNumber(message.createdAtUnixMs) ||
     normalizedPositiveNumber(message.occurredAtUnixMs) ||
     normalizedPositiveNumber(message.completedAtUnixMs)
   );

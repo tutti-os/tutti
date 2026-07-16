@@ -733,6 +733,7 @@ func activityMessagesEventPayload(messages []agentactivitybiz.Message) []map[str
 			"occurredAtUnixMs": message.OccurredAtUnixMS,
 			"payload":          clonePayload(message.Payload),
 			"role":             strings.TrimSpace(message.Role),
+			"sequence":         message.ID,
 			"turnId":           turnID,
 			"version":          message.Version,
 		}

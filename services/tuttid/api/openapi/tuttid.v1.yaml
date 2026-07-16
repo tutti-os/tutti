@@ -7609,6 +7609,7 @@ components:
       required:
         - agentSessionId
         - messageId
+        - sequence
         - turnId
         - role
         - kind
@@ -7621,6 +7622,14 @@ components:
         messageId:
           type: string
           minLength: 1
+        sequence:
+          type: integer
+          format: int64
+          minimum: 1
+          description: >-
+            Stable message presentation order assigned when the durable message
+            row is first created. Updating the same message does not change this
+            value; version remains the mutable snapshot change cursor.
         turnId:
           type: string
           nullable: true

@@ -300,6 +300,7 @@ type agentActivityMessageData struct {
 	MessageID      string         `json:"messageId"`
 	Payload        map[string]any `json:"payload"`
 	Role           string         `json:"role"`
+	Sequence       *uint64        `json:"sequence"`
 	Version        *uint64        `json:"version"`
 	TurnID         *string        `json:"turnId"`
 	Status         string         `json:"status,omitempty"`
@@ -697,6 +698,9 @@ func validateAgentActivityUpdatedData(decoded agentActivityUpdatedPayload) error
 			}
 			if strings.TrimSpace(message.Role) == "" {
 				return fmt.Errorf("data.messages[%d].role is required", index)
+			}
+			if message.Sequence == nil || *message.Sequence == 0 {
+				return fmt.Errorf("data.messages[%d].sequence is required", index)
 			}
 			if message.Version == nil || *message.Version == 0 {
 				return fmt.Errorf("data.messages[%d].version is required", index)

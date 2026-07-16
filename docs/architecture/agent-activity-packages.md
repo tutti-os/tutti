@@ -44,7 +44,8 @@ It owns:
   and attention state inside one workspace engine
 - memoized projection from engine state to the `AgentActivitySnapshot` runtime
   contract
-- message merge, version ordering, and duplicate handling
+- message merge, immutable presentation-sequence ordering, mutable version
+  cursor handling, and duplicate handling
 - selectors for reusable derived state
 - `selectNeedsAttentionCount`
 - `selectNeedsAttentionItems`

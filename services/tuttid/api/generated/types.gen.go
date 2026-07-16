@@ -3999,8 +3999,11 @@ type WorkspaceAgentSessionMessage struct {
 	Payload           *map[string]interface{}        `json:"payload,omitempty"`
 	Role              string                         `json:"role"`
 	Semantics         *AgentActivityMessageSemantics `json:"semantics,omitempty"`
-	StartedAtUnixMs   *int64                         `json:"startedAtUnixMs,omitempty"`
-	Status            *string                        `json:"status,omitempty"`
+
+	// Sequence Stable message presentation order assigned when the durable message row is first created. Updating the same message does not change this value; version remains the mutable snapshot change cursor.
+	Sequence        int64   `json:"sequence"`
+	StartedAtUnixMs *int64  `json:"startedAtUnixMs,omitempty"`
+	Status          *string `json:"status,omitempty"`
 
 	// TurnId Protocol v2 message ownership is an explicit choice: a non-empty turnId attaches the message to that turn; null marks a session-level message (system notices, imported history). Empty strings are forbidden.
 	TurnId          *string `json:"turnId"`

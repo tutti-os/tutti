@@ -125,6 +125,10 @@ func TestAgentActivityProjectionPublishesEventHubUpdatesAndSupportsReconcile(t *
 	if !ok || len(messages) != 1 {
 		t.Fatalf("message event data = %#v, want one inline message", messageData)
 	}
+	inlineMessage, ok := messages[0].(map[string]any)
+	if !ok || inlineMessage["sequence"] != float64(1) {
+		t.Fatalf("inline message = %#v, want durable sequence 1", messages[0])
+	}
 
 	page, ok := projection.ListSessionMessages(agentactivitybiz.ListSessionMessagesInput{
 		WorkspaceID:    workspaceID,

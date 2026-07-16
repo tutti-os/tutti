@@ -2,9 +2,31 @@ package agentsessionstore
 
 import (
 	"context"
+	"encoding/json"
 	"strings"
 	"testing"
 )
+
+func TestSessionMessageDecodesDurableSequenceAsInternalID(t *testing.T) {
+	t.Parallel()
+
+	var message WorkspaceAgentSessionMessage
+	if err := json.Unmarshal([]byte(`{
+		"sequence": 42,
+		"agentSessionId": "session-1",
+		"messageId": "message-1",
+		"role": "assistant",
+		"kind": "text",
+		"occurredAtUnixMs": 100,
+		"version": 7
+	}`), &message); err != nil {
+		t.Fatal(err)
+	}
+
+	if message.ID != 42 {
+		t.Fatalf("ID = %d, want sequence 42", message.ID)
+	}
+}
 
 func TestSessionMessageUpdateFromActivityUpdateUsesLifecycleTimeBeforeSeq(t *testing.T) {
 	t.Parallel()

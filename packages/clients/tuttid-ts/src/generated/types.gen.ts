@@ -1545,6 +1545,10 @@ export type WorkspaceAgentSessionMessage = {
   agentSessionId: string;
   messageId: string;
   /**
+   * Stable message presentation order assigned when the durable message row is first created. Updating the same message does not change this value; version remains the mutable snapshot change cursor.
+   */
+  sequence: number;
+  /**
    * Protocol v2 message ownership is an explicit choice: a non-empty turnId attaches the message to that turn; null marks a session-level message (system notices, imported history). Empty strings are forbidden.
    */
   turnId: string | null;

@@ -495,6 +495,7 @@ func TestAgentActivityPublisherPublishesScopedUpdate(t *testing.T) {
 					"occurredAtUnixMs": float64(3000),
 					"payload":          map[string]any{},
 					"role":             "assistant",
+					"sequence":         float64(3),
 					"turnId":           "turn-3",
 					"version":          float64(3),
 				},

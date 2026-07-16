@@ -16,7 +16,9 @@ test("parses normalized realtime messages including a nullable turn id", () => {
           agentSessionId: "session-1",
           kind: "text",
           messageId: "message-1",
+          sequence: 7,
           occurredAtUnixMs: 20,
+          createdAtUnixMs: 10,
           payload: { text: "history" },
           role: "assistant",
           turnId: null,
@@ -32,6 +34,8 @@ test("parses normalized realtime messages including a nullable turn id", () => {
   const messages = parseInlineActivityMessages(event);
   assert.equal(messages.length, 1);
   assert.equal(messages[0]?.turnId, null);
+  assert.equal(messages[0]?.sequence, 7);
+  assert.equal(messages[0]?.createdAtUnixMs, 10);
   assert.deepEqual(messages[0]?.payload, { text: "history" });
 });
 
