@@ -40,16 +40,20 @@ type ProviderLaunchPrepareResult = agentruntime.ProviderLaunchPrepareResult
 type ProviderLaunchPreparer = agentruntime.ProviderLaunchPreparer
 type ProviderLaunchPreparerAdapter = agentruntime.ProviderLaunchPreparerAdapter
 type AdapterResolver = agentruntime.AdapterResolver
+type SharedAgentAccessController = agentruntime.SharedAgentAccessController
+type SharedAgentAccessAuditor = agentruntime.SharedAgentAccessAuditor
 
 type Config struct {
-	Reporter                ActivityReporter
-	ProcessTransport        ProcessTransport
-	HostMetadata            HostMetadata
-	ProviderCommandResolver ProviderCommandResolver
-	ProviderLaunchPreparer  ProviderLaunchPreparer
-	AdapterResolver         AdapterResolver
-	Adapters                []Adapter
-	LiveSessionReaper       LiveSessionReaperConfig
+	Reporter                    ActivityReporter
+	ProcessTransport            ProcessTransport
+	HostMetadata                HostMetadata
+	ProviderCommandResolver     ProviderCommandResolver
+	ProviderLaunchPreparer      ProviderLaunchPreparer
+	AdapterResolver             AdapterResolver
+	SharedAgentAccessController SharedAgentAccessController
+	SharedAgentAccessAuditor    SharedAgentAccessAuditor
+	Adapters                    []Adapter
+	LiveSessionReaper           LiveSessionReaperConfig
 }
 
 type LiveSessionReaperConfig struct {
@@ -81,13 +85,16 @@ func NewRuntime(config Config) (*Runtime, error) {
 			config.Reporter,
 			config.ProcessTransport,
 			agentruntime.ControllerOptions{
-				HostMetadata:            config.HostMetadata,
-				ProviderCommandResolver: config.ProviderCommandResolver,
-				ProviderLaunchPreparer:  config.ProviderLaunchPreparer,
-				AdapterResolver:         config.AdapterResolver,
+				HostMetadata:                config.HostMetadata,
+				ProviderCommandResolver:     config.ProviderCommandResolver,
+				ProviderLaunchPreparer:      config.ProviderLaunchPreparer,
+				AdapterResolver:             config.AdapterResolver,
+				SharedAgentAccessController: config.SharedAgentAccessController,
+				SharedAgentAccessAuditor:    config.SharedAgentAccessAuditor,
 			},
 		)
 	}
+	controller.ConfigureSharedAgentAccess(config.SharedAgentAccessController, config.SharedAgentAccessAuditor)
 	runtime := &Runtime{controller: controller}
 	runtime.startLiveSessionReaper(config.LiveSessionReaper)
 	return runtime, nil

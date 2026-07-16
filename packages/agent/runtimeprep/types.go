@@ -30,8 +30,18 @@ type PrepareInput struct {
 	Model                  string
 	ReasoningEffort        string
 	ConversationDetailMode string
-	ExtraSkills            []ProviderSkillBundle
-	Metadata               map[string]any
+	// AgentInstructions and the accompanying capability lists come from the
+	// immutable WorkspaceAgent revision selected for this session. They are
+	// non-secret and may be materialized into provider instructions.
+	AgentName                 string
+	AgentPurpose              string
+	AgentInstructions         string
+	AgentCapabilitiesExplicit bool
+	AgentSkills               []string
+	AgentTools                []string
+	AgentPermissions          []string
+	ExtraSkills               []ProviderSkillBundle
+	Metadata                  map[string]any
 	// ModelEndpoint routes the session through a managed model access plan
 	// endpoint when the agent target is bound to one. Nil keeps the
 	// provider's native credential source. Credentials must never reach

@@ -193,6 +193,29 @@ describe("agent gui provider targets", () => {
     });
   });
 
+  it("disables shared targets when the owner snapshot is offline", () => {
+    const target = createSharedAgentGUIAgentTarget({
+      provider: "codex",
+      sharedAgentId: "agent-1",
+      label: "Owner's Codex",
+      sharedAccess: {
+        grantId: "grant-1",
+        ownerUserId: "owner-1",
+        ownerOnline: false,
+        auditRequired: true
+      }
+    });
+
+    expect(target.disabled).toBe(true);
+    expect(target.unavailableReason).toBe("owner_offline");
+    expect(target.ref.sharedAccess).toEqual({
+      grantId: "grant-1",
+      ownerUserId: "owner-1",
+      ownerOnline: false,
+      auditRequired: true
+    });
+  });
+
   it("drops whitespace-only optional target metadata during normalization", () => {
     const [target] = normalizeAgentGUIAgentTargets(
       [

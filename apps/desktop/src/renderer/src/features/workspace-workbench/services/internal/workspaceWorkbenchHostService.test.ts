@@ -92,6 +92,13 @@ test("workspace workbench host delegates workspace lifecycle to the DI coordinat
   assert.match(workspaceWorkbenchSource, /key=\{hostSession\.bindingId\}/);
 });
 
+test("workspace workbench host prioritizes the first ready agent provider during startup", () => {
+  assert.match(
+    workspaceWorkbenchHostServiceSource,
+    /ensureAgentProviderStatusesLoaded\(\): Promise<void> \{[\s\S]*?ensureDesktopManagedAgentProviderStatuses\(/
+  );
+});
+
 test("workspace workbench host releases owned wallpaper URLs on disposal", () => {
   assert.match(
     workspaceWorkbenchHostServiceSource,

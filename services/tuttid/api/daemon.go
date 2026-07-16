@@ -33,6 +33,8 @@ type DaemonAPI struct {
 	PreferencesService        preferencesapi.Service
 	ManagedCredentialsService *managedcredentialsservice.Service
 	ModelPlanService          ModelPlanService
+	WorkspaceAgentService     WorkspaceAgentService
+	AutomationRuleService     AutomationRuleService
 	AgentModelBindingService  AgentModelBindingService
 	ModelPolicyService        ModelPolicyService
 	CollaborationRunService   CollaborationRunService

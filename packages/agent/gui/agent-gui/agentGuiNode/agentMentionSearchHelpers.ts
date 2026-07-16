@@ -215,6 +215,7 @@ export const AGENT_MENTION_FILTER_TAB_ORDER = [
   "file",
   "issue",
   "agent",
+  "model",
   "app"
 ] as const satisfies readonly AgentMentionFilterId[];
 
@@ -255,6 +256,8 @@ export function groupIdsForFilter(
       return ["my_sessions"];
     case "issue":
       return ["issues"];
+    case "model":
+      return ["models"];
   }
 }
 
@@ -281,6 +284,9 @@ export function shouldShowEmptyGroup(
   }
   if (groupId === "collab_sessions") {
     return false;
+  }
+  if (groupId === "models") {
+    return filter === "model";
   }
   return filter === "issue";
 }

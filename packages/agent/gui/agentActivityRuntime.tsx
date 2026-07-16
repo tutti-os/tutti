@@ -7,6 +7,8 @@ import {
 } from "react";
 import type {
   AgentActivityActivateSessionResult,
+  AgentActivityAutomationRuleOverride,
+  AgentActivityCancelCollaborationInput,
   AgentActivityCollaborationRun,
   AgentActivityGoalControlInput,
   AgentActivityGoalControlResult,
@@ -18,6 +20,7 @@ import type {
   AgentActivityMessageOrder,
   AgentActivityMessagePage,
   AgentActivityRenameSessionInput,
+  AgentActivityRetryCollaborationInput,
   AgentActivitySendInput,
   AgentActivitySendInputResult,
   AgentActivitySession,
@@ -26,6 +29,7 @@ import type {
   AgentActivitySnapshot,
   AgentActivitySnapshotListener,
   AgentActivityStartModelConsultInput,
+  AgentActivityStartAgentCollaborationInput,
   AgentActivitySubmitInteractiveInput,
   AgentActivitySubmitInteractiveResult,
   AgentSessionEngine
@@ -40,6 +44,34 @@ export interface AgentActivityRuntimeUpdateSessionSettingsResult {
   settings: AgentHostAgentSessionComposerSettings;
   session: AgentActivitySession;
 }
+
+export interface AgentActivityAutomationRuleSummary {
+  id: string;
+  name: string;
+  enabled: boolean;
+  trigger: string;
+  action: string;
+}
+
+export interface AgentActivityAutomationRuleListResult {
+  rules: AgentActivityAutomationRuleSummary[];
+}
+
+export interface AgentActivityAutomationRuleOverrideResult extends AgentActivityAutomationRuleOverride {
+  agentSessionId: string;
+  workspaceId: string;
+}
+
+export interface AgentActivityAutomationRuleSessionInput {
+  agentSessionId: string;
+  workspaceId: string;
+  signal?: AbortSignal;
+}
+
+export interface AgentActivitySetAutomationRuleOverrideInput
+  extends
+    AgentActivityAutomationRuleSessionInput,
+    AgentActivityAutomationRuleOverride {}
 
 export interface AgentActivityRuntimeListSessionMessagesInput {
   afterVersion?: number;
@@ -196,6 +228,7 @@ export interface AgentActivityRuntimeDiagnosticInput {
 
 interface AgentActivityRuntimeActivateSessionInputBase {
   agentSessionId: string;
+  automationRuleOverride?: AgentActivityAutomationRuleOverride | null;
   cwd?: string;
   initialContent?: AgentActivitySendInput["content"];
   /** 仅展示用首轮文本(bundle 折叠成一个 chip);initialContent 仍带展开后的文件。 */
@@ -437,6 +470,10 @@ export interface AgentActivityRuntime {
   startModelConsult?(
     input: AgentActivityStartModelConsultInput
   ): Promise<AgentActivityCollaborationRun>;
+  /** Start a daemon-owned fork/delegate/handoff target session. */
+  startAgentCollaboration?(
+    input: AgentActivityStartAgentCollaborationInput
+  ): Promise<AgentActivityCollaborationRun>;
   /**
    * Record whether a consult/delegate collaboration outcome was adopted.
    * Optional alongside startModelConsult; hosts without support omit it and
@@ -445,6 +482,27 @@ export interface AgentActivityRuntime {
   setCollaborationAdoption?(
     input: AgentActivitySetCollaborationAdoptionInput
   ): Promise<AgentActivityCollaborationRun>;
+  /** Cancel a running consult or target-session collaboration turn. */
+  cancelCollaboration?(
+    input: AgentActivityCancelCollaborationInput
+  ): Promise<AgentActivityCollaborationRun>;
+  /** Replay one failed durable collaboration as a linked new attempt. */
+  retryCollaboration?(
+    input: AgentActivityRetryCollaborationInput
+  ): Promise<AgentActivityCollaborationRun>;
+  /** List workspace rules for a session-local Composer selection. */
+  listAutomationRules?(input: {
+    workspaceId: string;
+    signal?: AbortSignal;
+  }): Promise<AgentActivityAutomationRuleListResult>;
+  /** Read one active Session's durable AutomationRule override. */
+  getAutomationRuleOverride?(
+    input: AgentActivityAutomationRuleSessionInput
+  ): Promise<AgentActivityAutomationRuleOverrideResult>;
+  /** Disable automation or select an explicit rule subset for one Session. */
+  setAutomationRuleOverride?(
+    input: AgentActivitySetAutomationRuleOverrideInput
+  ): Promise<AgentActivityAutomationRuleOverrideResult>;
   /**
    * List workspace model access plans for the consult picker. Optional
    * alongside startModelConsult.

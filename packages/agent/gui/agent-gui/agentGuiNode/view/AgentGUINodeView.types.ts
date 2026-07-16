@@ -35,6 +35,7 @@ import type {
   AgentGUINodeViewModel
 } from "../model/agentGuiNodeTypes";
 import type { AgentGUIEngagementEventSink } from "../engagement/agentGUIEngagement.types";
+import type { PlanIssueBudgetPreset } from "../../../shared/agentConversation/planImplementationPresentation";
 
 export type AgentMentionReferenceTargetResolver = (
   item: AgentContextMentionItem
@@ -111,6 +112,11 @@ export interface AgentGUIViewLabels {
     professionalLongRunning: string;
   };
   planModeLabel: string;
+  normalModeLabel?: string;
+  normalModeDescription?: string;
+  ultraPlanModeLabel?: string;
+  ultraPlanModeDescription?: string;
+  planModeDescription?: string;
   planModeOnLabel: string;
   planModeOffLabel: string;
   planUnavailable: string;
@@ -336,6 +342,27 @@ export interface AgentGUIViewLabels {
   usageCompactAction: string;
   planImplementationLead: string;
   planImplementationConfirm: string;
+  planIssueReviewTitle?: string;
+  planIssuePresetLabel?: string;
+  planIssueReasoning?: string;
+  planIssueOrchestration?: string;
+  planIssueBudgetAuto?: string;
+  planIssueBudgetFixed?: string;
+  planIssueTokenBudget?: string;
+  planIssueTaskPreview?: string;
+  planIssueAgentTarget?: string;
+  planIssueModelPlan?: string;
+  planIssueModel?: string;
+  planIssueDirectory?: string;
+  planIssueDependencies?: string;
+  planIssueCreateOnly?: string;
+  planIssueCreateAndStart?: string;
+  planIssueCreateAndStartParallel?: string;
+  planIssueStartOrchestration?: string;
+  planIssueEstimatedCost?: string;
+  planIssueCostUnavailable?: string;
+  planIssueCostPartial?: string;
+  planIssueUnassigned?: string;
   planImplementationFeedbackPlaceholder: string;
   planImplementationSend: string;
   planImplementationSkip: string;
@@ -380,6 +407,7 @@ export interface AgentGUINodeViewProps {
     agentTargetId?: string | null;
     draftPrompt: string;
     provider: AgentGUIProvider;
+    sourceAgentSessionId: string;
     userProjectPath?: string | null;
   }) => void | Promise<void>;
   capabilityMenuState?: AgentComposerProps["capabilityMenuState"];
@@ -458,6 +486,7 @@ export interface AgentGUINodeViewProps {
       planMode?: boolean;
       permissionMode?: string;
     }) => void;
+    updatePlanIssueBudgetPreset: (preset: PlanIssueBudgetPreset) => void;
     selectHomeComposerAgentTarget: (input: {
       provider: AgentGUIProvider;
       agentTargetId?: string | null;

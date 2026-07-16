@@ -13,6 +13,7 @@ export default defineConfig({
     "mention-search": "agent-gui/agentGuiNode/AgentMentionSearchController.ts",
     "agent-message-center/index": "agent-message-center/index.ts",
     "agent-conversation/index": "agent-conversation/index.ts",
+    "plan-issue": "shared/agentConversation/planImplementationPresentation.ts",
     "agent-env/index": "shared/agentEnv/index.ts",
     "context-mention-palette/index": "context-mention-palette/index.ts",
     "context-mention-provider":

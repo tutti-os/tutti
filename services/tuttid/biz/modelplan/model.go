@@ -2,8 +2,9 @@
 //
 // A model access plan is a named, reusable model access configuration
 // (credential, protocol, base URL, model list, detection state). Plans are
-// workspace-global resources referenced by agent targets, model usage
-// policies, and workspace apps; multiple named plans may share one protocol.
+// workspace-global resources referenced by WorkspaceAgents, automation rules,
+// legacy agent-target bindings and policies, and workspace apps; multiple
+// named plans may share one protocol.
 package modelplan
 
 import (
@@ -30,8 +31,8 @@ func IsProtocol(value string) bool {
 	}
 }
 
-// TemplateKind is the access-scheme template a plan was created from. It is a
-// presentation and guidance hint; runtime behavior derives from Protocol.
+// TemplateKind is the access scheme a plan was created from. Protocol owns
+// transport behavior; TemplateKind determines the budget/cost semantic.
 type TemplateKind string
 
 const (
@@ -48,6 +49,24 @@ func IsTemplateKind(value string) bool {
 		return true
 	default:
 		return false
+	}
+}
+
+// BillingMode distinguishes metered API cost from subscription quota
+// protection. Subscription plans never expose a fabricated monetary amount.
+type BillingMode string
+
+const (
+	BillingAPIMetered        BillingMode = "api_metered"
+	BillingSubscriptionQuota BillingMode = "subscription_quota"
+)
+
+func (kind TemplateKind) BillingMode() BillingMode {
+	switch kind {
+	case TemplateOfficialSubscription, TemplateCodingPlan:
+		return BillingSubscriptionQuota
+	default:
+		return BillingAPIMetered
 	}
 }
 
@@ -155,15 +174,55 @@ const (
 type Model struct {
 	ID   string `json:"id"`
 	Name string `json:"name"`
+	// Tier is the user-facing capability/cost tier used for deliberate task
+	// assignment and explainable recommendations. It never carries provider
+	// account or pricing data; Pricing remains optional and model-specific.
+	Tier ModelTier `json:"tier"`
 	// Capabilities uses the shared capability vocabulary (for example
 	// "vision", "reasoning", "functionCalling"). Empty means unknown.
-	Capabilities []string `json:"capabilities,omitempty"`
+	Capabilities []string      `json:"capabilities,omitempty"`
+	Pricing      *ModelPricing `json:"pricing,omitempty"`
+}
+
+// ModelTier is the stable three-level model taxonomy used by Model Plans.
+type ModelTier string
+
+const (
+	ModelTierFlagship ModelTier = "flagship"
+	ModelTierStandard ModelTier = "standard"
+	ModelTierEconomy  ModelTier = "economy"
+)
+
+func NormalizeModelTier(value ModelTier) ModelTier {
+	switch ModelTier(strings.ToLower(strings.TrimSpace(string(value)))) {
+	case ModelTierFlagship:
+		return ModelTierFlagship
+	case ModelTierEconomy:
+		return ModelTierEconomy
+	default:
+		return ModelTierStandard
+	}
+}
+
+// ModelPricing stores user/provider supplied unit prices as currency micros
+// per one million tokens. It is metadata only and never contains credentials.
+type ModelPricing struct {
+	Currency                   string `json:"currency"`
+	InputMicrosPerMillion      int64  `json:"inputMicrosPerMillion"`
+	OutputMicrosPerMillion     int64  `json:"outputMicrosPerMillion"`
+	CacheReadMicrosPerMillion  int64  `json:"cacheReadMicrosPerMillion"`
+	CacheWriteMicrosPerMillion int64  `json:"cacheWriteMicrosPerMillion"`
 }
 
 // Plan is the durable model access plan record.
 type Plan struct {
-	ID           string
-	WorkspaceID  string
+	ID          string
+	WorkspaceID string
+	// Revision is a monotonically increasing immutable configuration version.
+	// Historical revisions keep the encrypted credential in daemon-owned
+	// storage so an existing session can resume against the exact endpoint it
+	// started with without putting secrets in session runtime context.
+	Revision     uint64
 	Name         string
 	TemplateKind TemplateKind
 	Protocol     Protocol
@@ -190,6 +249,9 @@ func (p Plan) Status() PlanStatus {
 	if !p.Detection.CorePassed() {
 		return StatusDetectionFailed
 	}
+	if runtime, ok := p.Detection.StageOutcome(StageAgentRuntime); ok && runtime.Status == StageFailed {
+		return StatusDetectionFailed
+	}
 	if p.FirstUse.Status != FirstUseCompleted {
 		return StatusPendingFirstUse
 	}
@@ -200,8 +262,10 @@ func (p Plan) Status() PlanStatus {
 type PublicPlan struct {
 	ID           string            `json:"id"`
 	WorkspaceID  string            `json:"workspaceId"`
+	Revision     uint64            `json:"revision"`
 	Name         string            `json:"name"`
 	TemplateKind TemplateKind      `json:"templateKind"`
+	BillingMode  BillingMode       `json:"billingMode"`
 	Protocol     Protocol          `json:"protocol"`
 	HasAPIKey    bool              `json:"hasApiKey"`
 	BaseURL      string            `json:"baseUrl,omitempty"`
@@ -217,15 +281,21 @@ type PublicPlan struct {
 
 // Public projects a plan into its redaction-safe form.
 func Public(plan Plan) PublicPlan {
+	models := CloneModels(plan.Models)
+	if plan.TemplateKind.BillingMode() == BillingSubscriptionQuota {
+		stripModelPricing(models)
+	}
 	return PublicPlan{
 		ID:           plan.ID,
 		WorkspaceID:  plan.WorkspaceID,
+		Revision:     plan.Revision,
 		Name:         plan.Name,
 		TemplateKind: plan.TemplateKind,
+		BillingMode:  plan.TemplateKind.BillingMode(),
 		Protocol:     plan.Protocol,
 		HasAPIKey:    plan.APIKey != "",
 		BaseURL:      plan.BaseURL,
-		Models:       CloneModels(plan.Models),
+		Models:       models,
 		DefaultModel: plan.DefaultModel,
 		Enabled:      plan.Enabled,
 		Status:       plan.Status(),
@@ -240,9 +310,11 @@ func Public(plan Plan) PublicPlan {
 type ReferenceKind string
 
 const (
-	ReferenceAgentTarget  ReferenceKind = "agent_target"
-	ReferenceModelPolicy  ReferenceKind = "model_policy"
-	ReferenceWorkspaceApp ReferenceKind = "workspace_app"
+	ReferenceAgentTarget    ReferenceKind = "agent_target"
+	ReferenceWorkspaceAgent ReferenceKind = "workspace_agent"
+	ReferenceAutomationRule ReferenceKind = "automation_rule"
+	ReferenceModelPolicy    ReferenceKind = "model_policy"
+	ReferenceWorkspaceApp   ReferenceKind = "workspace_app"
 )
 
 // Reference is one consumer that currently references a plan. Deleting a plan
@@ -273,6 +345,9 @@ func Normalize(plan Plan) (Plan, error) {
 	if plan.WorkspaceID == "" {
 		return Plan{}, fmt.Errorf("%w: workspace id is required", ErrInvalidPlan)
 	}
+	if plan.Revision == 0 {
+		plan.Revision = 1
+	}
 	if plan.Name == "" {
 		return Plan{}, fmt.Errorf("%w: name is required", ErrInvalidPlan)
 	}
@@ -286,6 +361,9 @@ func Normalize(plan Plan) (Plan, error) {
 		return Plan{}, fmt.Errorf("%w: template kind is unsupported", ErrInvalidPlan)
 	}
 	plan.Models = NormalizeModels(plan.Models)
+	if plan.TemplateKind.BillingMode() == BillingSubscriptionQuota {
+		stripModelPricing(plan.Models)
+	}
 	if plan.DefaultModel != "" && !ModelsContain(plan.Models, plan.DefaultModel) {
 		return Plan{}, fmt.Errorf("%w: default model is not in the model list", ErrInvalidPlan)
 	}
@@ -293,6 +371,12 @@ func Normalize(plan Plan) (Plan, error) {
 		plan.FirstUse.Status = FirstUsePending
 	}
 	return plan, nil
+}
+
+func stripModelPricing(models []Model) {
+	for index := range models {
+		models[index].Pricing = nil
+	}
 }
 
 // NormalizeModels trims, de-duplicates by id, and defaults names to ids.
@@ -322,7 +406,8 @@ func NormalizeModels(models []Model) []Model {
 		if len(capabilities) == 0 {
 			capabilities = nil
 		}
-		normalized = append(normalized, Model{ID: id, Name: name, Capabilities: capabilities})
+		pricing := NormalizeModelPricing(model.Pricing)
+		normalized = append(normalized, Model{ID: id, Name: name, Tier: NormalizeModelTier(model.Tier), Capabilities: capabilities, Pricing: pricing})
 	}
 	return normalized
 }
@@ -343,5 +428,29 @@ func CloneModels(models []Model) []Model {
 	if len(models) == 0 {
 		return []Model{}
 	}
-	return append([]Model(nil), models...)
+	cloned := append([]Model(nil), models...)
+	for index := range cloned {
+		cloned[index].Capabilities = append([]string(nil), cloned[index].Capabilities...)
+		if cloned[index].Pricing != nil {
+			pricing := *cloned[index].Pricing
+			cloned[index].Pricing = &pricing
+		}
+	}
+	return cloned
+}
+
+func NormalizeModelPricing(value *ModelPricing) *ModelPricing {
+	if value == nil {
+		return nil
+	}
+	pricing := *value
+	pricing.Currency = strings.ToUpper(strings.TrimSpace(pricing.Currency))
+	if pricing.Currency == "" {
+		pricing.Currency = "USD"
+	}
+	if len(pricing.Currency) != 3 || pricing.InputMicrosPerMillion < 0 || pricing.OutputMicrosPerMillion < 0 ||
+		pricing.CacheReadMicrosPerMillion < 0 || pricing.CacheWriteMicrosPerMillion < 0 {
+		return nil
+	}
+	return &pricing
 }

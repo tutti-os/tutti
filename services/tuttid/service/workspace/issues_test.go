@@ -2,19 +2,249 @@ package workspace
 
 import (
 	"context"
+	"errors"
 	"path/filepath"
 	"testing"
 	"time"
 
 	workspaceissues "github.com/tutti-os/tutti/packages/workspace/issues"
+	agenttargetbiz "github.com/tutti-os/tutti/services/tuttid/biz/agenttarget"
+	modelplanbiz "github.com/tutti-os/tutti/services/tuttid/biz/modelplan"
 	workspacebiz "github.com/tutti-os/tutti/services/tuttid/biz/workspace"
+	workspaceagentbiz "github.com/tutti-os/tutti/services/tuttid/biz/workspaceagent"
 	workspacedata "github.com/tutti-os/tutti/services/tuttid/data/workspace"
 	agentservice "github.com/tutti-os/tutti/services/tuttid/service/agent"
 	eventstreamservice "github.com/tutti-os/tutti/services/tuttid/service/eventstream"
 )
 
+func TestIssueManagerServiceValidatesTaskModelPlanAssignmentAtSave(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	store := openIssueServiceStore(t)
+	if err := store.Create(ctx, workspacebiz.Summary{ID: "workspace-1", Name: "Workspace One"}); err != nil {
+		t.Fatalf("Create() workspace error = %v", err)
+	}
+	for _, target := range agenttargetbiz.DefaultSystemTargets(time.Now().UnixMilli()) {
+		if _, err := store.PutAgentTarget(ctx, target); err != nil {
+			t.Fatalf("PutAgentTarget(%q) error = %v", target.ID, err)
+		}
+	}
+	putIssueAssignmentPlan(t, store, issueAssignmentPlan("workspace-1", "openai-ready", modelplanbiz.ProtocolOpenAI, true, true))
+	putIssueAssignmentPlan(t, store, issueAssignmentPlan("workspace-1", "anthropic-ready", modelplanbiz.ProtocolAnthropic, true, true))
+	putIssueAssignmentPlan(t, store, issueAssignmentPlan("workspace-1", "openai-undetected", modelplanbiz.ProtocolOpenAI, true, false))
+
+	service := IssueManagerService{
+		Store:             store,
+		AgentTargetReader: store,
+		ModelPlanReader:   store,
+	}
+	if _, err := service.CreateIssue(ctx, "workspace-1", CreateIssueManagerIssueInput{
+		IssueID: "issue-1",
+		TopicID: workspaceissues.DefaultTopicID,
+		Title:   "Issue One",
+	}); err != nil {
+		t.Fatalf("CreateIssue() error = %v", err)
+	}
+	created, err := service.CreateTask(ctx, "workspace-1", "issue-1", CreateIssueManagerTaskInput{
+		TaskID:        "task-valid",
+		Title:         "Valid task",
+		AgentTargetID: agenttargetbiz.IDLocalCodex,
+		ModelPlanID:   "openai-ready",
+		Model:         "model-a",
+	})
+	if err != nil {
+		t.Fatalf("CreateTask(valid) error = %v", err)
+	}
+	if created.ModelPlanID != "openai-ready" || created.Model != "model-a" {
+		t.Fatalf("created assignment = %#v", created)
+	}
+
+	for name, input := range map[string]CreateIssueManagerTaskInput{
+		"missing plan": {
+			TaskID: "task-missing", Title: "Missing", AgentTargetID: agenttargetbiz.IDLocalCodex, ModelPlanID: "missing",
+		},
+		"protocol mismatch": {
+			TaskID: "task-protocol", Title: "Protocol", AgentTargetID: agenttargetbiz.IDLocalCodex, ModelPlanID: "anthropic-ready",
+		},
+		"undetected plan": {
+			TaskID: "task-undetected", Title: "Undetected", AgentTargetID: agenttargetbiz.IDLocalCodex, ModelPlanID: "openai-undetected",
+		},
+		"unknown model": {
+			TaskID: "task-model", Title: "Model", AgentTargetID: agenttargetbiz.IDLocalCodex, ModelPlanID: "openai-ready", Model: "unknown",
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			if _, err := service.CreateTask(ctx, "workspace-1", "issue-1", input); !errors.Is(err, workspaceissues.ErrInvalidArgument) {
+				t.Fatalf("CreateTask() error = %v, want ErrInvalidArgument", err)
+			}
+		})
+	}
+
+	if _, err := service.UpdateTask(ctx, "workspace-1", "issue-1", "task-valid", UpdateIssueManagerTaskInput{
+		Model:    "unknown",
+		HasModel: true,
+	}); !errors.Is(err, workspaceissues.ErrInvalidArgument) {
+		t.Fatalf("UpdateTask() error = %v, want ErrInvalidArgument", err)
+	}
+}
+
+func TestIssueManagerServiceValidatesWorkspaceAgentAssignmentThroughOwner(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	store := openIssueServiceStore(t)
+	if err := store.Create(ctx, workspacebiz.Summary{ID: "workspace-agent-assignment", Name: "Agent Assignment"}); err != nil {
+		t.Fatalf("Create() workspace error = %v", err)
+	}
+	targets := agenttargetbiz.DefaultSystemTargets(time.Now().UnixMilli())
+	if len(targets) == 0 {
+		t.Fatal("expected default system targets")
+	}
+	plan := issueAssignmentPlan("workspace-agent-assignment", "openai-ready", modelplanbiz.ProtocolOpenAI, true, true)
+	putIssueAssignmentPlan(t, store, plan)
+	service := IssueManagerService{
+		Store:           store,
+		ModelPlanReader: store,
+		WorkspaceAgents: staticIssueWorkspaceAgentResolver{resolved: workspaceagentbiz.Resolved{
+			Agent: workspaceagentbiz.Agent{
+				ID:                   "workspace-agent:writer",
+				WorkspaceID:          "workspace-agent-assignment",
+				Name:                 "Writer",
+				HarnessAgentTargetID: targets[0].ID,
+				Enabled:              true,
+				Source:               workspaceagentbiz.SourceUser,
+				Revision:             1,
+			},
+			HarnessTarget:  targets[0],
+			ModelPlan:      &plan,
+			EffectiveModel: "model-a",
+		}},
+	}
+	if _, err := service.CreateIssue(ctx, "workspace-agent-assignment", CreateIssueManagerIssueInput{
+		IssueID: "issue-agent",
+		TopicID: workspaceissues.DefaultTopicID,
+		Title:   "Issue Agent",
+	}); err != nil {
+		t.Fatalf("CreateIssue() error = %v", err)
+	}
+	if _, err := service.CreateTask(ctx, "workspace-agent-assignment", "issue-agent", CreateIssueManagerTaskInput{
+		TaskID:        "task-agent",
+		Title:         "Workspace Agent task",
+		AgentTargetID: "workspace-agent:writer",
+		ModelPlanID:   "openai-ready",
+		Model:         "model-a",
+	}); err != nil {
+		t.Fatalf("CreateTask(workspace agent) error = %v", err)
+	}
+	if _, err := service.CreateTask(ctx, "workspace-agent-assignment", "issue-agent", CreateIssueManagerTaskInput{
+		TaskID:        "task-agent-invalid-model",
+		Title:         "Invalid workspace Agent model",
+		AgentTargetID: "workspace-agent:writer",
+		Model:         "unknown",
+	}); !errors.Is(err, workspaceissues.ErrInvalidArgument) {
+		t.Fatalf("CreateTask(invalid workspace agent model) error = %v, want ErrInvalidArgument", err)
+	}
+}
+
+type staticIssueWorkspaceAgentResolver struct {
+	resolved workspaceagentbiz.Resolved
+	err      error
+}
+
+func (s staticIssueWorkspaceAgentResolver) Resolve(context.Context, string, string) (workspaceagentbiz.Resolved, error) {
+	return s.resolved, s.err
+}
+
+func issueAssignmentPlan(workspaceID string, id string, protocol modelplanbiz.Protocol, enabled bool, detected bool) modelplanbiz.Plan {
+	plan := modelplanbiz.Plan{
+		ID:           id,
+		WorkspaceID:  workspaceID,
+		Name:         id,
+		Protocol:     protocol,
+		TemplateKind: modelplanbiz.TemplateCustom,
+		Models:       []modelplanbiz.Model{{ID: "model-a", Name: "Model A"}},
+		DefaultModel: "model-a",
+		Enabled:      enabled,
+		FirstUse:     modelplanbiz.FirstUse{Status: modelplanbiz.FirstUsePending},
+		CreatedAt:    time.Now(),
+		UpdatedAt:    time.Now(),
+	}
+	if detected {
+		for _, stage := range []modelplanbiz.DetectionStage{
+			modelplanbiz.StageNetwork,
+			modelplanbiz.StageAuth,
+			modelplanbiz.StageModelDiscovery,
+			modelplanbiz.StageInference,
+		} {
+			plan.Detection.Stages = append(plan.Detection.Stages, modelplanbiz.StageResult{
+				Stage: stage, Status: modelplanbiz.StagePassed,
+			})
+		}
+	}
+	return plan
+}
+
+func putIssueAssignmentPlan(t *testing.T, store *workspacedata.SQLiteStore, plan modelplanbiz.Plan) {
+	t.Helper()
+	normalized, err := modelplanbiz.Normalize(plan)
+	if err != nil {
+		t.Fatalf("Normalize(plan) error = %v", err)
+	}
+	if err := store.PutModelPlan(context.Background(), normalized); err != nil {
+		t.Fatalf("PutModelPlan(%q) error = %v", normalized.ID, err)
+	}
+}
+
 type issueEventPublisherRecorder struct {
 	updates []eventstreamservice.WorkspaceIssueUpdate
+}
+
+type issuePlanningTimelineRecorder struct {
+	workspaceID string
+	sessionID   string
+	issueID     string
+	topicID     string
+	title       string
+}
+
+func (r *issuePlanningTimelineRecorder) ReportIssuePlanningLink(
+	_ context.Context,
+	workspaceID string,
+	sessionID string,
+	issueID string,
+	topicID string,
+	title string,
+	_ time.Time,
+) {
+	r.workspaceID = workspaceID
+	r.sessionID = sessionID
+	r.issueID = issueID
+	r.topicID = topicID
+	r.title = title
+}
+
+func TestIssueManagerServiceReportsPlanIssueReverseLink(t *testing.T) {
+	ctx := context.Background()
+	store := openIssueServiceStore(t)
+	if err := store.Create(ctx, workspacebiz.Summary{ID: "workspace-1", Name: "Workspace One"}); err != nil {
+		t.Fatalf("Create() workspace error = %v", err)
+	}
+	reporter := &issuePlanningTimelineRecorder{}
+	service := IssueManagerService{Store: store, PlanningTimeline: reporter}
+	if _, err := service.CreateIssueFromPlan(ctx, "workspace-1", CreateIssueManagerIssueFromPlanInput{
+		Issue: CreateIssueManagerIssueInput{
+			IssueID: "issue-1", TopicID: workspaceissues.DefaultTopicID, Title: "Plan migration",
+			PlanningSource: string(workspaceissues.PlanningSourceUltraPlan), SourceSessionID: "session-1",
+		},
+		Tasks: []CreateIssueManagerTaskItemInput{{TaskID: "task-1", Title: "Implement", Priority: string(workspaceissues.PriorityMedium)}},
+	}); err != nil {
+		t.Fatalf("CreateIssueFromPlan() error = %v", err)
+	}
+	if reporter.workspaceID != "workspace-1" || reporter.sessionID != "session-1" ||
+		reporter.issueID != "issue-1" || reporter.topicID != workspaceissues.DefaultTopicID || reporter.title != "Plan migration" {
+		t.Fatalf("planning timeline report = %#v", reporter)
+	}
 }
 
 func (r *issueEventPublisherRecorder) PublishWorkspaceIssueUpdated(_ context.Context, update eventstreamservice.WorkspaceIssueUpdate) error {

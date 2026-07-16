@@ -93,6 +93,9 @@ export function agentActivityComposerOptionsFromTuttidResult(
     behavior: composerBehaviorFromValue(result.behavior),
     slashCommandPolicy: slashCommandPolicyFromValue(result.slashCommandPolicy),
     modelPlan: composerModelPlanFromValue(runtimeContext.modelPlan),
+    modelConfiguration: composerModelConfigurationFromValue(
+      runtimeContext.modelConfiguration
+    ),
     loadedAtUnixMs: Date.now()
   };
 }
@@ -119,6 +122,28 @@ function commandOptionsFromValue(value: unknown) {
     });
   }
   return commands;
+}
+
+function composerModelConfigurationFromValue(
+  value: unknown
+): AgentActivityComposerOptions["modelConfiguration"] {
+  const configuration = recordValue(value);
+  const agentTargetId = normalizeText(configuration.agentTargetId);
+  const fingerprint = normalizeText(configuration.fingerprint);
+  const source = normalizeText(configuration.source);
+  if (
+    !agentTargetId ||
+    !fingerprint ||
+    (source !== "model-plan" && source !== "provider-native")
+  ) {
+    return null;
+  }
+  return {
+    agentTargetId,
+    defaultModel: normalizeText(configuration.defaultModel),
+    fingerprint,
+    source
+  };
 }
 
 function composerModelPlanFromValue(

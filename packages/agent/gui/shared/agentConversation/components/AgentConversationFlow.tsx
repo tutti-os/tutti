@@ -2,6 +2,7 @@ import { memo, type ReactNode, type JSX } from "react";
 import type { WorkspaceLinkAction } from "../../../contexts/workspace/presentation/renderer/actions/workspaceLinkActions";
 import type { AgentMessageMarkdownWorkspaceAppIcon } from "../../AgentMessageMarkdown";
 import type { AgentConversationVM } from "../contracts/agentConversationVM";
+import type { AgentCollaborationVM } from "../contracts/agentCollaborationVM";
 import { AgentTranscriptSkeleton } from "./AgentTranscriptSkeleton";
 import { AgentTranscriptView } from "./AgentTranscriptView";
 import type { AgentGUIProviderSkillOption } from "../../../agent-gui/agentGuiNode/model/agentGuiNodeTypes";
@@ -13,6 +14,7 @@ interface AgentConversationFlowProps {
   loadingTestId?: string;
   empty: ReactNode;
   onLinkAction?: (action: WorkspaceLinkAction) => void;
+  onReviseCollaboration?: (collaboration: AgentCollaborationVM) => void;
   onAuthLogin?: (provider?: string | null) => void;
   availableSkills?: readonly AgentGUIProviderSkillOption[];
   workspaceAppIcons?: readonly AgentMessageMarkdownWorkspaceAppIcon[];
@@ -35,6 +37,7 @@ export const AgentConversationFlow = memo(function AgentConversationFlow({
   loadingTestId,
   empty,
   onLinkAction,
+  onReviseCollaboration,
   onAuthLogin,
   availableSkills,
   workspaceAppIcons,
@@ -58,6 +61,7 @@ export const AgentConversationFlow = memo(function AgentConversationFlow({
     <AgentTranscriptView
       conversation={conversation}
       onLinkAction={onLinkAction}
+      onReviseCollaboration={onReviseCollaboration}
       onAuthLogin={onAuthLogin}
       availableSkills={availableSkills}
       workspaceAppIcons={workspaceAppIcons}

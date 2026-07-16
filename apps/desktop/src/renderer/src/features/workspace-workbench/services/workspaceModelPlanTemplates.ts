@@ -1,4 +1,5 @@
 import type { DesktopI18nKey } from "@shared/i18n";
+import { resolveAgentGUIProviderCatalogIdentity } from "@tutti-os/agent-gui/provider-catalog";
 import type {
   WorkspaceModelPlanModel,
   WorkspaceModelPlanProtocol,
@@ -10,7 +11,6 @@ const ANTHROPIC_API_KEYS_URL = "https://console.anthropic.com/settings/keys";
 const DEEPSEEK_API_KEYS_URL = "https://platform.deepseek.com/api_keys";
 const MINIMAX_API_KEYS_URL = "https://platform.minimax.io/console/access";
 const MIMO_API_KEYS_URL = "https://platform.xiaomimimo.com/console/api-keys";
-const OPENAI_API_KEYS_URL = "https://platform.openai.com/api-keys";
 
 const deepseekModels = [
   "deepseek-v4-flash",
@@ -73,18 +73,18 @@ export const workspaceModelPlanTemplateGroups: readonly WorkspaceModelPlanTempla
           labelKey: presetKey("anthropicOfficial"),
           protocol: "anthropic",
           protocolLocked: true,
-          baseUrl: "https://api.anthropic.com/v1",
-          apiKeyUrl: ANTHROPIC_API_KEYS_URL,
-          models: ["claude-sonnet-4-6", "claude-opus-4-8", "claude-haiku-4-5"]
+          baseUrl: "",
+          apiKeyUrl: null,
+          models: []
         },
         {
           id: "openai-official",
           labelKey: presetKey("openaiOfficial"),
           protocol: "openai",
           protocolLocked: true,
-          baseUrl: "https://api.openai.com/v1",
-          apiKeyUrl: OPENAI_API_KEYS_URL,
-          models: ["gpt-5.5", "gpt-5.4", "gpt-5.4-mini", "gpt-5.4-nano"]
+          baseUrl: "",
+          apiKeyUrl: null,
+          models: []
         }
       ]
     },
@@ -235,6 +235,18 @@ export function getWorkspaceModelPlanTemplateGroup(
   );
 }
 
+export function workspaceModelPlanUsesSubscriptionQuota(
+  kind: WorkspaceModelPlanTemplateKind
+): boolean {
+  return kind === "official_subscription" || kind === "coding_plan";
+}
+
+export function workspaceModelPlanUsesNativeLogin(
+  templateKind: WorkspaceModelPlanTemplateKind
+): boolean {
+  return templateKind === "official_subscription";
+}
+
 export function getWorkspaceModelPlanTemplatePreset(
   templateId: string | null
 ): WorkspaceModelPlanTemplatePreset | null {
@@ -255,7 +267,33 @@ export function getWorkspaceModelPlanTemplatePreset(
 export function toWorkspaceModelPlanPresetModels(
   preset: WorkspaceModelPlanTemplatePreset
 ): WorkspaceModelPlanModel[] {
-  return preset.models.map((id) => ({ id, name: id }));
+  return preset.models.map((id) => ({
+    id,
+    name: id,
+    tier: presetModelTier(id)
+  }));
+}
+
+function presetModelTier(modelID: string): WorkspaceModelPlanModel["tier"] {
+  const normalized = modelID.toLowerCase();
+  if (
+    normalized.includes("opus") ||
+    normalized.includes("reasoner") ||
+    normalized.endsWith("-pro") ||
+    normalized === "gpt-5.5"
+  ) {
+    return "flagship";
+  }
+  if (
+    normalized.includes("haiku") ||
+    normalized.includes("mini") ||
+    normalized.includes("nano") ||
+    normalized.includes("flash") ||
+    normalized.includes("highspeed")
+  ) {
+    return "economy";
+  }
+  return "standard";
 }
 
 /**
@@ -265,13 +303,7 @@ export function toWorkspaceModelPlanPresetModels(
 export function modelPlanProtocolForAgentProvider(
   provider: string
 ): WorkspaceModelPlanProtocol | null {
-  switch (provider) {
-    case "codex":
-    case "tutti-agent":
-      return "openai";
-    case "claude-code":
-      return "anthropic";
-    default:
-      return null;
-  }
+  return (
+    resolveAgentGUIProviderCatalogIdentity(provider)?.modelPlanProtocol || null
+  );
 }

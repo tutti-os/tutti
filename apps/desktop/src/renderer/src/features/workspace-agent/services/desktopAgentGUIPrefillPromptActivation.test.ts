@@ -12,6 +12,8 @@ test("resolveDesktopAgentGUIPrefillPromptActivation extracts valid prefill reque
       payload: {
         agentTargetId: " local:codex ",
         draftPrompt: " Review this issue ",
+        model: " gpt-5.4 ",
+        modelPlanId: " plan-codex ",
         provider: "codex",
         userProjectPath: " /workspace/app/ "
       },
@@ -21,6 +23,8 @@ test("resolveDesktopAgentGUIPrefillPromptActivation extracts valid prefill reque
     {
       agentTargetId: "local:codex",
       draftPrompt: "Review this issue",
+      model: "gpt-5.4",
+      modelPlanId: "plan-codex",
       provider: "codex",
       sequence: 7,
       userProjectPath: "/workspace/app/"

@@ -15,6 +15,7 @@ import {
   type AgentGuiWorkbenchNewConversationDetail
 } from "@tutti-os/agent-gui/workbench/contribution";
 import { requestWorkspaceAgentGuiLaunch } from "../services/workspaceAgentGuiLaunchCoordinator.ts";
+import { startDesktopAgentGUIHandoff } from "../services/desktopAgentGUIHandoff.ts";
 import { registerWorkspaceAgentGuiOpenSession } from "../../workspace-workbench/services/workspaceAgentGuiOpenSessionCoordinator.ts";
 import { workbenchFocusInputActivationType } from "@tutti-os/workbench-surface";
 import { useTranslation } from "@renderer/i18n";
@@ -45,6 +46,7 @@ import {
 import {
   hasDesktopAgentGUIConversationRailCollapsedState,
   resolveDesktopAgentGUIProviderForAgentTarget,
+  withDesktopAgentGUIModelConfiguration,
   withDesktopAgentGUIProviderComposerDefaults
 } from "./desktopAgentGUIWorkbenchStateHelpers.ts";
 import { useDesktopAgentProbes } from "./useDesktopAgentProbes.ts";
@@ -84,6 +86,7 @@ function DesktopAgentGUIWorkbenchBodyImpl({
   onLinkAction,
   onCapabilitySettingsRequest,
   onOpenAgentConversationWindow,
+  onCreateIssueFromPlan,
   onStateChange,
   prefillPromptBootstrapRequest = null,
   previewMode = false,
@@ -201,12 +204,12 @@ function DesktopAgentGUIWorkbenchBodyImpl({
       preferredConversationRailCollapsed
         ? { ...baseState, conversationRailCollapsed: true }
         : baseState;
-    const nextState = withDesktopAgentGUIProviderComposerDefaults(
+    const rememberedDefaultsState = withDesktopAgentGUIProviderComposerDefaults(
       railState,
       nodeProvider,
       providerComposerDefaults
     );
-    return nextState;
+    return withDesktopAgentGUIModelConfiguration(rememberedDefaultsState);
   }, [
     hasExplicitConversationRailCollapsedState,
     preferredConversationRailCollapsed,
@@ -702,16 +705,36 @@ function DesktopAgentGUIWorkbenchBodyImpl({
     NonNullable<AgentGUIProps["hostActions"]["onHandoffConversation"]>
   >(
     async (request) => {
-      await requestWorkspaceAgentGuiLaunch({
-        agentTargetId: request.agentTargetId,
-        draftPrompt: request.draftPrompt,
-        openInNewWindow: true,
-        provider: normalizeDesktopAgentGUIProvider(request.provider),
-        userProjectPath: request.userProjectPath,
-        workspaceId
-      });
+      const targetAgentTargetId = request.agentTargetId?.trim();
+      if (!targetAgentTargetId) {
+        Toast.Error(i18n.t("workspace.agentGui.handoffFailed"));
+        return;
+      }
+      try {
+        await startDesktopAgentGUIHandoff({
+          agentActivityRuntime,
+          question: request.draftPrompt,
+          sourceAgentSessionId: request.sourceAgentSessionId,
+          targetAgentTargetId,
+          workspaceId,
+          openTargetSession: async (agentSessionId) => {
+            const opened = await requestWorkspaceAgentGuiLaunch({
+              agentSessionId,
+              agentTargetId: targetAgentTargetId,
+              openInNewWindow: true,
+              provider: normalizeDesktopAgentGUIProvider(request.provider),
+              workspaceId
+            });
+            if (!opened) {
+              throw new Error("agent_handoff_window_unavailable");
+            }
+          }
+        });
+      } catch {
+        Toast.Error(i18n.t("workspace.agentGui.handoffFailed"));
+      }
     },
-    [workspaceId]
+    [agentActivityRuntime, i18n, workspaceId]
   );
 
   return (
@@ -819,7 +842,39 @@ function DesktopAgentGUIWorkbenchBodyImpl({
           onOpenConversationWindow:
             previewMode || !onOpenAgentConversationWindow
               ? undefined
-              : handleOpenConversationWindow
+              : handleOpenConversationWindow,
+          onCreateIssueFromPlan: previewMode
+            ? undefined
+            : async (request) => {
+                if (!onCreateIssueFromPlan) {
+                  throw new Error(
+                    i18n.t("workspace.agentGui.issueFromPlanUnavailable")
+                  );
+                }
+                try {
+                  const result = await onCreateIssueFromPlan(request);
+                  Toast.tips(
+                    i18n.t(
+                      request.creationOptions?.draft.planningSource ===
+                        "traditional_plan"
+                        ? "workspace.agentGui.issueFromTraditionalPlanCreated"
+                        : "workspace.agentGui.issueFromPlanCreated"
+                    )
+                  );
+                  onLinkAction?.({
+                    type: "open-workspace-issue",
+                    workspaceId: request.workspaceId,
+                    issueId: result.issueId,
+                    topicId: result.topicId,
+                    source: "agent-plan"
+                  });
+                  return result;
+                } catch {
+                  throw new Error(
+                    i18n.t("workspace.agentGui.issueFromPlanFailed")
+                  );
+                }
+              }
         }}
         renderSlots={{
           sidebarFooter: previewMode ? undefined : renderSidebarFooter

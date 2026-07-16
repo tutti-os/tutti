@@ -51,6 +51,41 @@ func ResolveProviderID(value string) (string, bool) {
 	return migratedDescriptors[index].Identity.ID, true
 }
 
+// ResolveModelPlanProtocol returns the model API protocol declared by a
+// migrated provider runtime. Providers without endpoint injection support are
+// intentionally unresolved.
+func ResolveModelPlanProtocol(value string) (ModelPlanProtocol, bool) {
+	index, ok := providerDescriptorIndex[normalize(value)]
+	if !ok {
+		return "", false
+	}
+	protocol := migratedDescriptors[index].Runtime.Endpoint.ModelPlanProtocol
+	return protocol, protocol != ""
+}
+
+// NativeSubscriptionTarget is the credential-free local runtime route used to
+// validate one official subscription protocol.
+type NativeSubscriptionTarget struct {
+	ProviderID    string
+	AgentTargetID string
+}
+
+// ResolveNativeSubscriptionTarget returns the registry-owned official
+// subscription probe route. ValidateMigrated guarantees at most one route per
+// protocol, so consumers never branch on provider identity.
+func ResolveNativeSubscriptionTarget(protocol ModelPlanProtocol) (NativeSubscriptionTarget, bool) {
+	for _, descriptor := range migratedDescriptors {
+		endpoint := descriptor.Runtime.Endpoint
+		if endpoint.NativeSubscription && endpoint.ModelPlanProtocol == protocol {
+			return NativeSubscriptionTarget{
+				ProviderID:    descriptor.Identity.ID,
+				AgentTargetID: descriptor.Target.ID,
+			}, true
+		}
+	}
+	return NativeSubscriptionTarget{}, false
+}
+
 // EventProvider describes the small immutable event-normalization projection
 // consumed on per-event hot paths.
 type EventProvider struct {
@@ -72,11 +107,19 @@ func ValidateMigrated() error {
 	defaultProviderPriorities := map[int]string{}
 	statusProbePriorities := map[int]string{}
 	managedOrders := map[int]string{}
+	nativeSubscriptionProtocols := map[ModelPlanProtocol]string{}
 	for _, descriptor := range Migrated() {
 		if err := Validate(descriptor); err != nil {
 			return err
 		}
 		providerID := normalize(descriptor.Identity.ID)
+		if descriptor.Runtime.Endpoint.NativeSubscription {
+			protocol := descriptor.Runtime.Endpoint.ModelPlanProtocol
+			if owner, exists := nativeSubscriptionProtocols[protocol]; exists {
+				return fmt.Errorf("native subscription protocol %q is shared by %q and %q", protocol, owner, providerID)
+			}
+			nativeSubscriptionProtocols[protocol] = providerID
+		}
 		for _, key := range append([]string{providerID}, descriptor.Identity.Aliases...) {
 			normalizedKey := normalize(key)
 			if owner, exists := providerKeys[normalizedKey]; exists {
@@ -242,6 +285,24 @@ func Validate(descriptor ProviderDescriptor) error {
 	case "", EndpointConfigKindCodexCLI, EndpointConfigKindClaudeSettings:
 	default:
 		return fmt.Errorf("provider %q endpoint config kind %q is unsupported", providerID, descriptor.Runtime.Endpoint.ConfigKind)
+	}
+	switch descriptor.Runtime.Endpoint.ModelPlanProtocol {
+	case "", ModelPlanProtocolAnthropic, ModelPlanProtocolOpenAI:
+	default:
+		return fmt.Errorf("provider %q model plan protocol %q is unsupported", providerID, descriptor.Runtime.Endpoint.ModelPlanProtocol)
+	}
+	if descriptor.Runtime.Endpoint.NativeSubscription && descriptor.Runtime.Endpoint.ModelPlanProtocol == "" {
+		return fmt.Errorf("provider %q native subscription requires a model plan protocol", providerID)
+	}
+	hasModelPlanBinding := false
+	for _, capability := range descriptor.ComposerProfile.Capabilities {
+		if capability == CapabilityModelPlanBinding {
+			hasModelPlanBinding = true
+			break
+		}
+	}
+	if hasModelPlanBinding != (descriptor.Runtime.Endpoint.ModelPlanProtocol != "") {
+		return fmt.Errorf("provider %q model plan capability and protocol must be declared together", providerID)
 	}
 	switch descriptor.Status.Kind {
 	case StatusKindCodexCLI, StatusKindClaudeCLI, StatusKindOpenCodeCLI, StatusKindGenericCLI:
@@ -747,83 +808,4 @@ func validateSlashCommandPolicy(policy SlashCommandPolicyDescriptor) error {
 
 func normalize(value string) string {
 	return strings.ToLower(strings.TrimSpace(value))
-}
-
-func buildProviderDescriptorIndex(descriptors []ProviderDescriptor) map[string]int {
-	result := make(map[string]int, len(descriptors))
-	for index, descriptor := range descriptors {
-		for _, key := range append([]string{descriptor.Identity.ID}, descriptor.Identity.Aliases...) {
-			result[normalize(key)] = index
-		}
-	}
-	return result
-}
-
-func buildEventProviderIndex(descriptors []ProviderDescriptor) map[string]EventProvider {
-	result := make(map[string]EventProvider, len(descriptors))
-	for _, descriptor := range descriptors {
-		if !descriptor.Events.Enabled {
-			continue
-		}
-		resolved := EventProvider{
-			ProviderID:              descriptor.Identity.ID,
-			TurnLifecycleProjection: descriptor.Events.TurnLifecycleProjection,
-		}
-		for _, key := range append([]string{descriptor.Identity.ID}, descriptor.Events.Aliases...) {
-			result[normalize(key)] = resolved
-		}
-	}
-	return result
-}
-
-func cloneDescriptor(value ProviderDescriptor) ProviderDescriptor {
-	value.Identity.Aliases = append([]string(nil), value.Identity.Aliases...)
-	value.Runtime.Command = append([]string(nil), value.Runtime.Command...)
-	value.Runtime.Endpoint.BaseURLEnvVars = append([]string(nil), value.Runtime.Endpoint.BaseURLEnvVars...)
-	value.Runtime.StandardACP.PermissionModes = append([]RuntimePermissionModeDescriptor(nil), value.Runtime.StandardACP.PermissionModes...)
-	value.Runtime.StandardACP.SettingsEnvironment.JSONFields = append(
-		[]RuntimeSettingsJSONFieldDescriptor(nil),
-		value.Runtime.StandardACP.SettingsEnvironment.JSONFields...,
-	)
-	value.Status.BinaryNames = append([]string(nil), value.Status.BinaryNames...)
-	value.Status.AdapterBinaryNames = append([]string(nil), value.Status.AdapterBinaryNames...)
-	value.Status.AuthStatusCommand = append([]string(nil), value.Status.AuthStatusCommand...)
-	value.Status.AuthMarkerPaths = append([]string(nil), value.Status.AuthMarkerPaths...)
-	value.Status.APIEndpoints = append([]string(nil), value.Status.APIEndpoints...)
-	value.Status.CustomConfigEnvVars = append([]string(nil), value.Status.CustomConfigEnvVars...)
-	value.Status.CredentialEnvVars = append([]string(nil), value.Status.CredentialEnvVars...)
-	value.Status.LoginArgs = append([]string(nil), value.Status.LoginArgs...)
-	value.Status.Install.FailureReasonMarkers = cloneStringSliceMap(value.Status.Install.FailureReasonMarkers)
-	value.Status.AuthWatch.Sources = cloneAuthWatchSources(value.Status.AuthWatch.Sources)
-	value.ComposerProfile.ReasoningEffortValues = append([]string(nil), value.ComposerProfile.ReasoningEffortValues...)
-	value.ComposerProfile.Capabilities = append([]string(nil), value.ComposerProfile.Capabilities...)
-	value.ComposerProfile.PermissionModes = append([]PermissionModeDescriptor(nil), value.ComposerProfile.PermissionModes...)
-	value.ComposerProfile.SlashCommandPolicy.FallbackCommands = append([]string(nil), value.ComposerProfile.SlashCommandPolicy.FallbackCommands...)
-	value.ComposerProfile.SlashCommandPolicy.CommandEffects = append([]SlashCommandEffectDescriptor(nil), value.ComposerProfile.SlashCommandPolicy.CommandEffects...)
-	value.Events.Aliases = append([]string(nil), value.Events.Aliases...)
-	value.ExternalImport.ScanDirectories = append([]string(nil), value.ExternalImport.ScanDirectories...)
-	value.ExternalImport.SkipDirectoryPrefixes = append([]string(nil), value.ExternalImport.SkipDirectoryPrefixes...)
-	return value
-}
-
-func cloneStringSliceMap(values map[string][]string) map[string][]string {
-	if values == nil {
-		return nil
-	}
-	result := make(map[string][]string, len(values))
-	for key, entries := range values {
-		result[key] = append([]string(nil), entries...)
-	}
-	return result
-}
-
-func cloneAuthWatchSources(values []AuthWatchSourceDescriptor) []AuthWatchSourceDescriptor {
-	result := make([]AuthWatchSourceDescriptor, len(values))
-	for index, source := range values {
-		result[index] = source
-		result[index].PathEnvVars = append([]string(nil), source.PathEnvVars...)
-		result[index].RootCandidates = append([]AuthWatchRootCandidateDescriptor(nil), source.RootCandidates...)
-		result[index].Paths = append([]string(nil), source.Paths...)
-	}
-	return result
 }

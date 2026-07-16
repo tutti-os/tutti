@@ -14,7 +14,8 @@ export const TUTTI_EXTERNAL_AT_PROVIDER_IDS = {
   agentTarget: "agent-target",
   file: "file",
   workspaceApp: "workspace-app",
-  workspaceIssue: "workspace-issue"
+  workspaceIssue: "workspace-issue",
+  workspaceModel: "workspace-model"
 } as const;
 
 export type TuttiExternalAtProviderId =
@@ -26,6 +27,7 @@ export const tuttiExternalAtProviderIds = [
   TUTTI_EXTERNAL_AT_PROVIDER_IDS.workspaceApp,
   TUTTI_EXTERNAL_AT_PROVIDER_IDS.agentTarget,
   TUTTI_EXTERNAL_AT_PROVIDER_IDS.agentSession,
+  TUTTI_EXTERNAL_AT_PROVIDER_IDS.workspaceModel,
   TUTTI_EXTERNAL_AT_PROVIDER_IDS.agentGeneratedFile
 ] as const satisfies readonly TuttiExternalAtProviderId[];
 
@@ -128,11 +130,14 @@ export interface TuttiExternalManagedAiModel {
   id: string;
   name?: string;
   provider: TuttiExternalManagedAiModelProviderId;
+  modelPlanId?: string;
+  modelPlanName?: string;
 }
 
 export interface TuttiExternalPermissionRequestInput {
   permission: "managed-ai-models";
   nonce: string;
+  modelPlanIds?: readonly string[];
   providers?: readonly TuttiExternalManagedAiModelProviderId[];
   scopes: readonly string[];
   state: string;
@@ -142,6 +147,7 @@ export interface TuttiExternalPermissionRequestResult {
   code: string;
   contextToken?: string;
   expiresAt?: string;
+  modelPlanIds?: readonly string[];
   models?: readonly TuttiExternalManagedAiModel[];
   providers?: readonly TuttiExternalManagedAiModelProviderId[];
 }

@@ -236,6 +236,47 @@ test("activation intent owns the transport command and confirmation deadline", (
   ]);
 });
 
+test("new-session activation carries a defensive copy of its AutomationRule override", () => {
+  const requestedOverride = {
+    disabled: false,
+    ruleIds: ["rule-review", "rule-security"]
+  };
+  const result = reduce(createInitialPendingIntentsState(), {
+    ...activation(),
+    automationRuleOverride: requestedOverride
+  });
+  requestedOverride.ruleIds.push("rule-late-mutation");
+
+  assert.deepEqual(
+    result.state.activationsByRequestId["activation-1"]?.automationRuleOverride,
+    {
+      disabled: false,
+      ruleIds: ["rule-review", "rule-security"]
+    }
+  );
+  assert.deepEqual(result.commands[1], {
+    agentSessionId: "session-new",
+    agentTargetId: "target-1",
+    automationRuleOverride: {
+      disabled: false,
+      ruleIds: ["rule-review", "rule-security"]
+    },
+    clientSubmitId: "submit-new",
+    commandId: "activate:activation-1",
+    correlationId: "activation-1",
+    cwd: "/workspace",
+    initialContent: [{ type: "text", text: "runtime instructions" }],
+    initialDisplayPrompt: "/browser",
+    submitDiagnostics: { submittedAtUnixMs: 1 },
+    mode: "new",
+    settings: { model: "model-1" },
+    timeoutMs: 30_000,
+    title: "New session",
+    type: "session/activate",
+    workspaceId: "workspace-1"
+  });
+});
+
 test("timed out activation remains uncertain until its exact session appears", () => {
   let state = reduce(createInitialPendingIntentsState(), activation()).state;
   state = reduce(state, {

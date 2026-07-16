@@ -202,6 +202,10 @@ test("WorkspaceAgentActivityService.activateSession creates target-backed sessio
   await service.activateSession({
     agentSessionId: "11111111-1111-4111-8111-111111111111",
     agentTargetId: "local:codex",
+    automationRuleOverride: {
+      disabled: false,
+      ruleIds: ["rule-review"]
+    },
     clientSubmitId: "submit-activate-codex",
     cwd: "/workspace",
     initialContent: [{ type: "text", text: "hello" }],
@@ -217,6 +221,10 @@ test("WorkspaceAgentActivityService.activateSession creates target-backed sessio
     request: {
       agentSessionId: "11111111-1111-4111-8111-111111111111",
       agentTargetId: "local:codex",
+      automationRuleOverride: {
+        disabled: false,
+        ruleIds: ["rule-review"]
+      },
       clientSubmitId: "submit-activate-codex",
       cwd: "/workspace",
       initialContent: [{ type: "text", text: "hello" }],
@@ -346,6 +354,7 @@ test("WorkspaceAgentActivityService returns the authoritative canonical session 
   assert.equal(result.agentSessionId, "session-1");
   assert.deepEqual(result.settings, {
     model: "opus",
+    modelPlanId: null,
     permissionModeId: null,
     planMode: true,
     reasoningEffort: null,
@@ -520,6 +529,92 @@ test("WorkspaceAgentActivityService model catalog invalidation drops composer ca
   assert.equal(composerOptionCalls, 2);
 });
 
+test("WorkspaceAgentActivityService model configuration changes invalidate only affected targets", async () => {
+  const topicHandlers = new Map<string, (event: unknown) => void>();
+  const composerOptionCalls: string[] = [];
+  const service = new WorkspaceAgentActivityService({
+    eventStreamClient: {
+      connect: async () => {},
+      dispose: () => {},
+      publishIntent: async () => {},
+      subscribe: (topic: string, listener: (event: unknown) => void) => {
+        topicHandlers.set(topic, listener);
+        return () => {};
+      },
+      subscribeConnectionState: () => () => {}
+    } as never,
+    tuttidClient: {
+      getAgentProviderComposerOptions: async (
+        provider: string,
+        request: { agentTargetId?: string }
+      ) => {
+        const agentTargetId = request.agentTargetId ?? "";
+        composerOptionCalls.push(agentTargetId);
+        return {
+          provider,
+          modelConfig: {
+            configurable: true,
+            options: [
+              { value: `${agentTargetId}-${composerOptionCalls.length}` }
+            ]
+          },
+          runtimeContext: {}
+        };
+      }
+    } as unknown as TuttidClient,
+    runtimeApi: { logTerminalDiagnostic: async () => {} }
+  });
+
+  for (const agentTargetId of ["local:codex", "shared:codex"]) {
+    await service.getComposerOptions({
+      agentTargetId,
+      provider: "codex",
+      workspaceId: "ws-1"
+    });
+  }
+
+  const received: unknown[] = [];
+  service.onModelConfigurationChanged((event) => received.push(event));
+  const configurationHandler = topicHandlers.get(
+    "agent.model.configuration.changed"
+  );
+  assert.ok(
+    configurationHandler,
+    "service must subscribe to model configuration changes"
+  );
+  configurationHandler({
+    payload: {
+      workspaceId: "ws-1",
+      agentTargetIds: ["local:codex"],
+      defaultModels: { "local:codex": "gpt-new" },
+      resetComposerModel: true,
+      occurredAtUnixMs: 2000
+    }
+  });
+
+  assert.deepEqual(received, [
+    {
+      workspaceId: "ws-1",
+      agentTargetIds: ["local:codex"],
+      defaultModels: { "local:codex": "gpt-new" },
+      resetComposerModel: true,
+      occurredAtUnixMs: 2000
+    }
+  ]);
+  for (const agentTargetId of ["local:codex", "shared:codex"]) {
+    await service.getComposerOptions({
+      agentTargetId,
+      provider: "codex",
+      workspaceId: "ws-1"
+    });
+  }
+  assert.deepEqual(composerOptionCalls, [
+    "local:codex",
+    "shared:codex",
+    "local:codex"
+  ]);
+});
+
 test("WorkspaceAgentActivityService starts session-event streams and preserves uncached outcome patches", async () => {
   const subscriptions: Array<{
     scope: unknown;
@@ -578,6 +673,10 @@ test("WorkspaceAgentActivityService starts session-event streams and preserves u
     {
       scope: { workspaceId: "ws-1" },
       topic: "agent.activity.updated"
+    },
+    {
+      scope: { workspaceId: "ws-1" },
+      topic: "agent.model.configuration.changed"
     },
     {
       scope: null,
@@ -1896,7 +1995,13 @@ function collaborationRunResponseBody(
     model: "kimi-k2",
     status: "completed",
     adoption: "pending",
-    usage: { inputTokens: 812, outputTokens: 96 },
+    attempt: 1,
+    usage: {
+      inputTokens: 812,
+      outputTokens: 96,
+      cacheReadTokens: 320,
+      cacheWriteTokens: 40
+    },
     durationMs: 5200,
     startedAt: "2026-07-12T00:00:00.000Z",
     completedAt: "2026-07-12T00:00:05.200Z",
@@ -1959,9 +2064,66 @@ test("WorkspaceAgentActivityService.startModelConsult posts a user-triggered con
   assert.equal(run.id, "run-1");
   assert.equal(run.status, "completed");
   assert.equal(run.adoption, "pending");
-  assert.deepEqual(run.usage, { inputTokens: 812, outputTokens: 96 });
+  assert.deepEqual(run.usage, {
+    inputTokens: 812,
+    outputTokens: 96,
+    cacheReadTokens: 320,
+    cacheWriteTokens: 40
+  });
   assert.equal(run.durationMs, 5200);
   assert.equal(run.startedAtUnixMs, Date.parse("2026-07-12T00:00:00.000Z"));
+});
+
+test("WorkspaceAgentActivityService.startAgentCollaboration asks the daemon to launch the target", async () => {
+  const observedRequests: Array<{ body: unknown; url: string }> = [];
+  const service = createCollaborationService((async (
+    input: RequestInfo | URL,
+    init?: RequestInit
+  ) => {
+    const request = new Request(input, init);
+    observedRequests.push({ body: await request.json(), url: request.url });
+    return new Response(
+      JSON.stringify(
+        collaborationRunResponseBody({
+          mode: "delegate",
+          status: "running",
+          targetAgentTargetId: "workspace-agent:reviewer",
+          targetSessionId: "target-session"
+        })
+      ),
+      {
+        headers: { "Content-Type": "application/json" },
+        status: 200
+      }
+    );
+  }) as typeof fetch);
+
+  const run = await service.startAgentCollaboration({
+    agentSessionId: "session-1",
+    contextScope: "recent",
+    contextText: "Focus on rollback.",
+    mode: "delegate",
+    question: "Review this migration",
+    targetAgentTargetId: "workspace-agent:reviewer",
+    workspaceId: "ws-1"
+  });
+
+  assert.equal(
+    observedRequests[0]?.url,
+    "http://127.0.0.1:7777/v1/workspaces/ws-1/collaboration-runs"
+  );
+  assert.deepEqual(observedRequests[0]?.body, {
+    contextScope: "recent",
+    contextText: "Focus on rollback.",
+    mode: "delegate",
+    question: "Review this migration",
+    sourceSessionId: "session-1",
+    targetAgentTargetId: "workspace-agent:reviewer",
+    triggerReason: "composer_agent_mention",
+    triggerSource: "user"
+  });
+  assert.equal(run.status, "running");
+  assert.equal(run.targetSessionId, "target-session");
 });
 
 test("WorkspaceAgentActivityService.setCollaborationAdoption posts the adoption decision", async () => {
@@ -1996,6 +2158,88 @@ test("WorkspaceAgentActivityService.setCollaborationAdoption posts the adoption 
   assert.equal(run.adoption, "adopted");
 });
 
+test("WorkspaceAgentActivityService.cancelCollaboration cancels the durable run", async () => {
+  const observedRequests: Array<{ method: string; url: string }> = [];
+  const service = createCollaborationService((async (
+    input: RequestInfo | URL,
+    init?: RequestInit
+  ) => {
+    const request = new Request(input, init);
+    observedRequests.push({ method: request.method, url: request.url });
+    return new Response(
+      JSON.stringify(
+        collaborationRunResponseBody({
+          failureReason: "canceled",
+          status: "canceled"
+        })
+      ),
+      {
+        headers: { "Content-Type": "application/json" },
+        status: 200
+      }
+    );
+  }) as typeof fetch);
+
+  const run = await service.cancelCollaboration({
+    runId: "run-1",
+    workspaceId: "ws-1"
+  });
+
+  assert.deepEqual(observedRequests, [
+    {
+      method: "POST",
+      url: "http://127.0.0.1:7777/v1/workspaces/ws-1/collaboration-runs/run-1/cancel"
+    }
+  ]);
+  assert.equal(run.status, "canceled");
+  assert.equal(run.failureReason, "canceled");
+});
+
+test("WorkspaceAgentActivityService.retryCollaboration starts a linked durable attempt", async () => {
+  const observedRequests: Array<{ method: string; url: string }> = [];
+  const service = createCollaborationService((async (
+    input: RequestInfo | URL,
+    init?: RequestInit
+  ) => {
+    const request = new Request(input, init);
+    observedRequests.push({ method: request.method, url: request.url });
+    return new Response(
+      JSON.stringify(
+        collaborationRunResponseBody({
+          attempt: 2,
+          cost: { currency: "USD", estimatedMicros: 125_000 },
+          id: "run-2",
+          retryOfRunId: "run-1",
+          status: "running"
+        })
+      ),
+      {
+        headers: { "Content-Type": "application/json" },
+        status: 200
+      }
+    );
+  }) as typeof fetch);
+
+  const run = await service.retryCollaboration({
+    runId: "run-1",
+    workspaceId: "ws-1"
+  });
+
+  assert.deepEqual(observedRequests, [
+    {
+      method: "POST",
+      url: "http://127.0.0.1:7777/v1/workspaces/ws-1/collaboration-runs/run-1/retry"
+    }
+  ]);
+  assert.equal(run.id, "run-2");
+  assert.equal(run.attempt, 2);
+  assert.equal(run.retryOfRunId, "run-1");
+  assert.deepEqual(run.cost, {
+    currency: "USD",
+    estimatedMicros: 125_000
+  });
+});
+
 test("WorkspaceAgentActivityService.listModelPlans maps credential-free plan summaries", async () => {
   const service = createCollaborationService((async () => {
     return new Response(
@@ -2006,6 +2250,7 @@ test("WorkspaceAgentActivityService.listModelPlans maps credential-free plan sum
             workspaceId: "ws-1",
             name: "Volc Coding Plan",
             templateKind: "coding_plan",
+            billingMode: "subscription_quota",
             protocol: "openai",
             hasApiKey: true,
             models: [
@@ -2034,12 +2279,25 @@ test("WorkspaceAgentActivityService.listModelPlans maps credential-free plan sum
   assert.deepEqual(result, {
     plans: [
       {
+        billingMode: "subscription_quota",
         defaultModel: "kimi-k2",
         enabled: true,
         id: "plan-1",
         models: [
-          { id: "kimi-k2", name: "Kimi K2" },
-          { id: "glm-5", name: "GLM 5" }
+          {
+            capabilities: [],
+            id: "kimi-k2",
+            name: "Kimi K2",
+            pricing: null,
+            tier: undefined
+          },
+          {
+            capabilities: [],
+            id: "glm-5",
+            name: "GLM 5",
+            pricing: null,
+            tier: undefined
+          }
         ],
         name: "Volc Coding Plan",
         protocol: "openai",
@@ -2047,6 +2305,95 @@ test("WorkspaceAgentActivityService.listModelPlans maps credential-free plan sum
       }
     ]
   });
+});
+
+test("WorkspaceAgentActivityService exposes durable AutomationRule session overrides", async () => {
+  const calls: unknown[] = [];
+  const service = new WorkspaceAgentActivityService({
+    tuttidClient: {
+      async listAutomationRules(workspaceId: string) {
+        calls.push(["list", workspaceId]);
+        return {
+          rules: [
+            {
+              id: "rule-review",
+              name: "Review completed work",
+              enabled: true,
+              trigger: "on_task_complete",
+              action: "consult"
+            }
+          ]
+        };
+      },
+      async getAgentSessionAutomationRuleOverride(
+        workspaceId: string,
+        agentSessionId: string
+      ) {
+        calls.push(["get", workspaceId, agentSessionId]);
+        return {
+          agentSessionId,
+          workspaceId,
+          disabled: false,
+          ruleIds: ["rule-review"]
+        };
+      },
+      async setAgentSessionAutomationRuleOverride(
+        workspaceId: string,
+        agentSessionId: string,
+        request: { disabled: boolean; ruleIds: string[] }
+      ) {
+        calls.push(["set", workspaceId, agentSessionId, request]);
+        return { agentSessionId, workspaceId, ...request };
+      }
+    } as unknown as TuttidClient,
+    runtimeApi: { logTerminalDiagnostic: async () => {} }
+  });
+
+  assert.deepEqual(
+    await service.listAutomationRules({ workspaceId: " ws-1 " }),
+    {
+      rules: [
+        {
+          action: "consult",
+          enabled: true,
+          id: "rule-review",
+          name: "Review completed work",
+          trigger: "on_task_complete"
+        }
+      ]
+    }
+  );
+  assert.deepEqual(
+    await service.getAutomationRuleOverride({
+      agentSessionId: "session-1",
+      workspaceId: " ws-1 "
+    }),
+    {
+      agentSessionId: "session-1",
+      workspaceId: "ws-1",
+      disabled: false,
+      ruleIds: ["rule-review"]
+    }
+  );
+  assert.deepEqual(
+    await service.setAutomationRuleOverride({
+      agentSessionId: "session-1",
+      workspaceId: " ws-1 ",
+      disabled: true,
+      ruleIds: []
+    }),
+    {
+      agentSessionId: "session-1",
+      workspaceId: "ws-1",
+      disabled: true,
+      ruleIds: []
+    }
+  );
+  assert.deepEqual(calls, [
+    ["list", "ws-1"],
+    ["get", "ws-1", "session-1"],
+    ["set", "ws-1", "session-1", { disabled: true, ruleIds: [] }]
+  ]);
 });
 
 test("WorkspaceAgentActivityService.startModelConsult fails clearly without a backend config resolver", async () => {

@@ -14,6 +14,8 @@ import type { useAgentGUILocalState } from "./useAgentGUILocalState";
 import type { useAgentGUIComposerCapabilities } from "./useAgentGUIComposerCapabilities";
 import type { useAgentGUISessionDetailTransport } from "./useAgentGUISessionDetailTransport";
 import { resolveAgentGUIProviderReadinessGateForView } from "../model/agentGuiProviderReadiness";
+import { defaultPlanIssueBudgetPreset } from "../../../shared/agentConversation/planImplementationPresentation";
+import { planOrchestrationCatalogFromRuntime } from "../model/planOrchestrationCatalog";
 
 type ConversationPresentationInput = Parameters<
   typeof useAgentGUIConversationPresentation
@@ -38,6 +40,8 @@ type SessionPresentationInput = Omit<
   | "conversation"
   | "isInterrupting"
   | "pendingApproval"
+  | "planIssueAssignmentCatalog"
+  | "planIssueBudgetPreset"
   | "serverInteractivePrompt"
 >;
 type ProviderHomeInput = Parameters<typeof useAgentGUIProviderHome>[0];
@@ -97,9 +101,14 @@ export function useAgentGUIViewAssembly(input: UseAgentGUIViewAssemblyInput) {
     activeConversation,
     activeSessionView: stableActiveSessionViewProjection
   });
-  const { stableComposerSettings } = useAgentGUIComposerPresentation({
-    ...input,
-    activeConversation
+  const { modelPlans, stableComposerSettings } =
+    useAgentGUIComposerPresentation({
+      ...input,
+      activeConversation
+    });
+  const planIssueAssignmentCatalog = planOrchestrationCatalogFromRuntime({
+    agentTargets: input.normalizedProviderTargets,
+    modelPlans
   });
   const session = useAgentGUISessionPresentation({
     ...input,
@@ -110,6 +119,10 @@ export function useAgentGUIViewAssembly(input: UseAgentGUIViewAssemblyInput) {
     conversation: detail.conversation,
     isInterrupting: detail.isInterrupting,
     pendingApproval: detail.pendingApproval,
+    planIssueAssignmentCatalog,
+    planIssueBudgetPreset:
+      stableComposerSettings.planIssueBudgetPreset ??
+      defaultPlanIssueBudgetPreset(),
     serverInteractivePrompt: detail.serverInteractivePrompt
   });
   const providerHome = useAgentGUIProviderHome(input);

@@ -402,19 +402,19 @@ func (e AgentProviderSkillOptionSourceKind) Valid() bool {
 
 // Defines values for AgentSessionAcceptanceState.
 const (
-	AgentClaimed AgentSessionAcceptanceState = "agent_claimed"
-	AutoChecked  AgentSessionAcceptanceState = "auto_checked"
-	UserAccepted AgentSessionAcceptanceState = "user_accepted"
+	AgentSessionAcceptanceStateAgentClaimed AgentSessionAcceptanceState = "agent_claimed"
+	AgentSessionAcceptanceStateAutoChecked  AgentSessionAcceptanceState = "auto_checked"
+	AgentSessionAcceptanceStateUserAccepted AgentSessionAcceptanceState = "user_accepted"
 )
 
 // Valid indicates whether the value is a known member of the AgentSessionAcceptanceState enum.
 func (e AgentSessionAcceptanceState) Valid() bool {
 	switch e {
-	case AgentClaimed:
+	case AgentSessionAcceptanceStateAgentClaimed:
 		return true
-	case AutoChecked:
+	case AgentSessionAcceptanceStateAutoChecked:
 		return true
-	case UserAccepted:
+	case AgentSessionAcceptanceStateUserAccepted:
 		return true
 	default:
 		return false
@@ -501,6 +501,7 @@ func (e AgentTargetSource) Valid() bool {
 
 // Defines values for ApiErrorDetailsCode.
 const (
+	AutomationRuleNotFound         ApiErrorDetailsCode = "automation_rule_not_found"
 	CollaborationRunNotFound       ApiErrorDetailsCode = "collaboration_run_not_found"
 	InvalidRequest                 ApiErrorDetailsCode = "invalid_request"
 	MethodNotAllowed               ApiErrorDetailsCode = "method_not_allowed"
@@ -509,6 +510,7 @@ const (
 	PreferencesOperationFailed     ApiErrorDetailsCode = "preferences_operation_failed"
 	ServiceUnavailable             ApiErrorDetailsCode = "service_unavailable"
 	Unauthorized                   ApiErrorDetailsCode = "unauthorized"
+	WorkspaceAgentNotFound         ApiErrorDetailsCode = "workspace_agent_not_found"
 	WorkspaceAppNotFound           ApiErrorDetailsCode = "workspace_app_not_found"
 	WorkspaceFileNotFound          ApiErrorDetailsCode = "workspace_file_not_found"
 	WorkspaceIssueResourceExists   ApiErrorDetailsCode = "workspace_issue_resource_exists"
@@ -521,6 +523,8 @@ const (
 // Valid indicates whether the value is a known member of the ApiErrorDetailsCode enum.
 func (e ApiErrorDetailsCode) Valid() bool {
 	switch e {
+	case AutomationRuleNotFound:
+		return true
 	case CollaborationRunNotFound:
 		return true
 	case InvalidRequest:
@@ -536,6 +540,8 @@ func (e ApiErrorDetailsCode) Valid() bool {
 	case ServiceUnavailable:
 		return true
 	case Unauthorized:
+		return true
+	case WorkspaceAgentNotFound:
 		return true
 	case WorkspaceAppNotFound:
 		return true
@@ -610,6 +616,66 @@ const (
 func (e AppReferenceListReferenceItemType) Valid() bool {
 	switch e {
 	case AppReferenceListReferenceItemTypeReference:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for AutomationRuleAction.
+const (
+	AutomationRuleActionConsult  AutomationRuleAction = "consult"
+	AutomationRuleActionDelegate AutomationRuleAction = "delegate"
+	AutomationRuleActionFork     AutomationRuleAction = "fork"
+	AutomationRuleActionHandoff  AutomationRuleAction = "handoff"
+)
+
+// Valid indicates whether the value is a known member of the AutomationRuleAction enum.
+func (e AutomationRuleAction) Valid() bool {
+	switch e {
+	case AutomationRuleActionConsult:
+		return true
+	case AutomationRuleActionDelegate:
+		return true
+	case AutomationRuleActionFork:
+		return true
+	case AutomationRuleActionHandoff:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for AutomationRuleTargetKind.
+const (
+	AutomationRuleTargetKindAgent AutomationRuleTargetKind = "agent"
+	AutomationRuleTargetKindModel AutomationRuleTargetKind = "model"
+)
+
+// Valid indicates whether the value is a known member of the AutomationRuleTargetKind enum.
+func (e AutomationRuleTargetKind) Valid() bool {
+	switch e {
+	case AutomationRuleTargetKindAgent:
+		return true
+	case AutomationRuleTargetKindModel:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for AutomationRuleTrigger.
+const (
+	AutomationRuleTriggerOnTaskComplete AutomationRuleTrigger = "on_task_complete"
+	AutomationRuleTriggerOnTaskFailed   AutomationRuleTrigger = "on_task_failed"
+)
+
+// Valid indicates whether the value is a known member of the AutomationRuleTrigger enum.
+func (e AutomationRuleTrigger) Valid() bool {
+	switch e {
+	case AutomationRuleTriggerOnTaskComplete:
+		return true
+	case AutomationRuleTriggerOnTaskFailed:
 		return true
 	default:
 		return false
@@ -702,22 +768,22 @@ func (e CollaborationRunAdoption) Valid() bool {
 
 // Defines values for CollaborationRunMode.
 const (
-	Consult  CollaborationRunMode = "consult"
-	Delegate CollaborationRunMode = "delegate"
-	Fork     CollaborationRunMode = "fork"
-	Handoff  CollaborationRunMode = "handoff"
+	CollaborationRunModeConsult  CollaborationRunMode = "consult"
+	CollaborationRunModeDelegate CollaborationRunMode = "delegate"
+	CollaborationRunModeFork     CollaborationRunMode = "fork"
+	CollaborationRunModeHandoff  CollaborationRunMode = "handoff"
 )
 
 // Valid indicates whether the value is a known member of the CollaborationRunMode enum.
 func (e CollaborationRunMode) Valid() bool {
 	switch e {
-	case Consult:
+	case CollaborationRunModeConsult:
 		return true
-	case Delegate:
+	case CollaborationRunModeDelegate:
 		return true
-	case Fork:
+	case CollaborationRunModeFork:
 		return true
-	case Handoff:
+	case CollaborationRunModeHandoff:
 		return true
 	default:
 		return false
@@ -750,19 +816,43 @@ func (e CollaborationRunStatus) Valid() bool {
 
 // Defines values for CollaborationRunTriggerSource.
 const (
-	Agent  CollaborationRunTriggerSource = "agent"
-	Policy CollaborationRunTriggerSource = "policy"
-	User   CollaborationRunTriggerSource = "user"
+	CollaborationRunTriggerSourceAgent      CollaborationRunTriggerSource = "agent"
+	CollaborationRunTriggerSourceAutomation CollaborationRunTriggerSource = "automation"
+	CollaborationRunTriggerSourcePolicy     CollaborationRunTriggerSource = "policy"
+	CollaborationRunTriggerSourceUser       CollaborationRunTriggerSource = "user"
 )
 
 // Valid indicates whether the value is a known member of the CollaborationRunTriggerSource enum.
 func (e CollaborationRunTriggerSource) Valid() bool {
 	switch e {
-	case Agent:
+	case CollaborationRunTriggerSourceAgent:
 		return true
-	case Policy:
+	case CollaborationRunTriggerSourceAutomation:
 		return true
-	case User:
+	case CollaborationRunTriggerSourcePolicy:
+		return true
+	case CollaborationRunTriggerSourceUser:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for CreateCollaborationRunRequestContextScope.
+const (
+	CreateCollaborationRunRequestContextScopeFull   CreateCollaborationRunRequestContextScope = "full"
+	CreateCollaborationRunRequestContextScopeNone   CreateCollaborationRunRequestContextScope = "none"
+	CreateCollaborationRunRequestContextScopeRecent CreateCollaborationRunRequestContextScope = "recent"
+)
+
+// Valid indicates whether the value is a known member of the CreateCollaborationRunRequestContextScope enum.
+func (e CreateCollaborationRunRequestContextScope) Valid() bool {
+	switch e {
+	case CreateCollaborationRunRequestContextScopeFull:
+		return true
+	case CreateCollaborationRunRequestContextScopeNone:
+		return true
+	case CreateCollaborationRunRequestContextScopeRecent:
 		return true
 	default:
 		return false
@@ -1078,6 +1168,63 @@ func (e HealthStatusResponseStatus) Valid() bool {
 	}
 }
 
+// Defines values for IssueManagerAcceptanceState.
+const (
+	IssueManagerAcceptanceStateAgentClaimed IssueManagerAcceptanceState = "agent_claimed"
+	IssueManagerAcceptanceStateAutoChecked  IssueManagerAcceptanceState = "auto_checked"
+	IssueManagerAcceptanceStateUserAccepted IssueManagerAcceptanceState = "user_accepted"
+)
+
+// Valid indicates whether the value is a known member of the IssueManagerAcceptanceState enum.
+func (e IssueManagerAcceptanceState) Valid() bool {
+	switch e {
+	case IssueManagerAcceptanceStateAgentClaimed:
+		return true
+	case IssueManagerAcceptanceStateAutoChecked:
+		return true
+	case IssueManagerAcceptanceStateUserAccepted:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for IssueManagerBudgetMode.
+const (
+	IssueManagerBudgetModeAuto  IssueManagerBudgetMode = "auto"
+	IssueManagerBudgetModeFixed IssueManagerBudgetMode = "fixed"
+)
+
+// Valid indicates whether the value is a known member of the IssueManagerBudgetMode enum.
+func (e IssueManagerBudgetMode) Valid() bool {
+	switch e {
+	case IssueManagerBudgetModeAuto:
+		return true
+	case IssueManagerBudgetModeFixed:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for IssueManagerBudgetStatus.
+const (
+	IssueManagerBudgetStatusActive      IssueManagerBudgetStatus = "active"
+	IssueManagerBudgetStatusSoftLimited IssueManagerBudgetStatus = "soft_limited"
+)
+
+// Valid indicates whether the value is a known member of the IssueManagerBudgetStatus enum.
+func (e IssueManagerBudgetStatus) Valid() bool {
+	switch e {
+	case IssueManagerBudgetStatusActive:
+		return true
+	case IssueManagerBudgetStatusSoftLimited:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for IssueManagerIssueContextRefParentKind.
 const (
 	IssueManagerIssueContextRefParentKindIssue IssueManagerIssueContextRefParentKind = "issue"
@@ -1087,6 +1234,27 @@ const (
 func (e IssueManagerIssueContextRefParentKind) Valid() bool {
 	switch e {
 	case IssueManagerIssueContextRefParentKindIssue:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for IssueManagerPlanningSource.
+const (
+	Manual          IssueManagerPlanningSource = "manual"
+	TraditionalPlan IssueManagerPlanningSource = "traditional_plan"
+	UltraPlan       IssueManagerPlanningSource = "ultra_plan"
+)
+
+// Valid indicates whether the value is a known member of the IssueManagerPlanningSource enum.
+func (e IssueManagerPlanningSource) Valid() bool {
+	switch e {
+	case Manual:
+		return true
+	case TraditionalPlan:
+		return true
+	case UltraPlan:
 		return true
 	default:
 		return false
@@ -1213,6 +1381,24 @@ func (e IssueManagerTaskContextRefParentKind) Valid() bool {
 	}
 }
 
+// Defines values for ModelPlanBillingMode.
+const (
+	ApiMetered        ModelPlanBillingMode = "api_metered"
+	SubscriptionQuota ModelPlanBillingMode = "subscription_quota"
+)
+
+// Valid indicates whether the value is a known member of the ModelPlanBillingMode enum.
+func (e ModelPlanBillingMode) Valid() bool {
+	switch e {
+	case ApiMetered:
+		return true
+	case SubscriptionQuota:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for ModelPlanDetectionStage.
 const (
 	AgentRuntime   ModelPlanDetectionStage = "agent_runtime"
@@ -1258,6 +1444,27 @@ func (e ModelPlanFirstUseStatus) Valid() bool {
 	}
 }
 
+// Defines values for ModelPlanModelTier.
+const (
+	ModelPlanModelTierEconomy  ModelPlanModelTier = "economy"
+	ModelPlanModelTierFlagship ModelPlanModelTier = "flagship"
+	ModelPlanModelTierStandard ModelPlanModelTier = "standard"
+)
+
+// Valid indicates whether the value is a known member of the ModelPlanModelTier enum.
+func (e ModelPlanModelTier) Valid() bool {
+	switch e {
+	case ModelPlanModelTierEconomy:
+		return true
+	case ModelPlanModelTierFlagship:
+		return true
+	case ModelPlanModelTierStandard:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for ModelPlanProtocol.
 const (
 	Anthropic ModelPlanProtocol = "anthropic"
@@ -1278,9 +1485,11 @@ func (e ModelPlanProtocol) Valid() bool {
 
 // Defines values for ModelPlanReferenceKind.
 const (
-	ModelPlanReferenceKindAgentTarget  ModelPlanReferenceKind = "agent_target"
-	ModelPlanReferenceKindModelPolicy  ModelPlanReferenceKind = "model_policy"
-	ModelPlanReferenceKindWorkspaceApp ModelPlanReferenceKind = "workspace_app"
+	ModelPlanReferenceKindAgentTarget    ModelPlanReferenceKind = "agent_target"
+	ModelPlanReferenceKindAutomationRule ModelPlanReferenceKind = "automation_rule"
+	ModelPlanReferenceKindModelPolicy    ModelPlanReferenceKind = "model_policy"
+	ModelPlanReferenceKindWorkspaceAgent ModelPlanReferenceKind = "workspace_agent"
+	ModelPlanReferenceKindWorkspaceApp   ModelPlanReferenceKind = "workspace_app"
 )
 
 // Valid indicates whether the value is a known member of the ModelPlanReferenceKind enum.
@@ -1288,7 +1497,11 @@ func (e ModelPlanReferenceKind) Valid() bool {
 	switch e {
 	case ModelPlanReferenceKindAgentTarget:
 		return true
+	case ModelPlanReferenceKindAutomationRule:
+		return true
 	case ModelPlanReferenceKindModelPolicy:
+		return true
+	case ModelPlanReferenceKindWorkspaceAgent:
 		return true
 	case ModelPlanReferenceKindWorkspaceApp:
 		return true
@@ -1377,13 +1590,13 @@ func (e ModelPlanTemplateKind) Valid() bool {
 
 // Defines values for ModelPolicyReviewRuleTrigger.
 const (
-	OnTaskComplete ModelPolicyReviewRuleTrigger = "on_task_complete"
+	ModelPolicyReviewRuleTriggerOnTaskComplete ModelPolicyReviewRuleTrigger = "on_task_complete"
 )
 
 // Valid indicates whether the value is a known member of the ModelPolicyReviewRuleTrigger enum.
 func (e ModelPolicyReviewRuleTrigger) Valid() bool {
 	switch e {
-	case OnTaskComplete:
+	case ModelPolicyReviewRuleTriggerOnTaskComplete:
 		return true
 	default:
 		return false
@@ -1392,28 +1605,28 @@ func (e ModelPolicyReviewRuleTrigger) Valid() bool {
 
 // Defines values for PermissionModeSemantic.
 const (
-	AcceptEdits    PermissionModeSemantic = "accept-edits"
-	AskBeforeWrite PermissionModeSemantic = "ask-before-write"
-	Auto           PermissionModeSemantic = "auto"
-	FullAccess     PermissionModeSemantic = "full-access"
-	LockedDown     PermissionModeSemantic = "locked-down"
-	Unconfigurable PermissionModeSemantic = "unconfigurable"
+	PermissionModeSemanticAcceptEdits    PermissionModeSemantic = "accept-edits"
+	PermissionModeSemanticAskBeforeWrite PermissionModeSemantic = "ask-before-write"
+	PermissionModeSemanticAuto           PermissionModeSemantic = "auto"
+	PermissionModeSemanticFullAccess     PermissionModeSemantic = "full-access"
+	PermissionModeSemanticLockedDown     PermissionModeSemantic = "locked-down"
+	PermissionModeSemanticUnconfigurable PermissionModeSemantic = "unconfigurable"
 )
 
 // Valid indicates whether the value is a known member of the PermissionModeSemantic enum.
 func (e PermissionModeSemantic) Valid() bool {
 	switch e {
-	case AcceptEdits:
+	case PermissionModeSemanticAcceptEdits:
 		return true
-	case AskBeforeWrite:
+	case PermissionModeSemanticAskBeforeWrite:
 		return true
-	case Auto:
+	case PermissionModeSemanticAuto:
 		return true
-	case FullAccess:
+	case PermissionModeSemanticFullAccess:
 		return true
-	case LockedDown:
+	case PermissionModeSemanticLockedDown:
 		return true
-	case Unconfigurable:
+	case PermissionModeSemanticUnconfigurable:
 		return true
 	default:
 		return false
@@ -1528,6 +1741,21 @@ func (e WorkspaceAgentCompletedCommandStatus) Valid() bool {
 	}
 }
 
+// Defines values for WorkspaceAgentGeneratedAutomationRuleAction.
+const (
+	Consult WorkspaceAgentGeneratedAutomationRuleAction = "consult"
+)
+
+// Valid indicates whether the value is a known member of the WorkspaceAgentGeneratedAutomationRuleAction enum.
+func (e WorkspaceAgentGeneratedAutomationRuleAction) Valid() bool {
+	switch e {
+	case Consult:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for WorkspaceAgentInteractionKind.
 const (
 	Approval WorkspaceAgentInteractionKind = "approval"
@@ -1551,19 +1779,19 @@ func (e WorkspaceAgentInteractionKind) Valid() bool {
 
 // Defines values for WorkspaceAgentInteractionStatus.
 const (
-	Answered   WorkspaceAgentInteractionStatus = "answered"
-	Pending    WorkspaceAgentInteractionStatus = "pending"
-	Superseded WorkspaceAgentInteractionStatus = "superseded"
+	WorkspaceAgentInteractionStatusAnswered   WorkspaceAgentInteractionStatus = "answered"
+	WorkspaceAgentInteractionStatusPending    WorkspaceAgentInteractionStatus = "pending"
+	WorkspaceAgentInteractionStatusSuperseded WorkspaceAgentInteractionStatus = "superseded"
 )
 
 // Valid indicates whether the value is a known member of the WorkspaceAgentInteractionStatus enum.
 func (e WorkspaceAgentInteractionStatus) Valid() bool {
 	switch e {
-	case Answered:
+	case WorkspaceAgentInteractionStatusAnswered:
 		return true
-	case Pending:
+	case WorkspaceAgentInteractionStatusPending:
 		return true
-	case Superseded:
+	case WorkspaceAgentInteractionStatusSuperseded:
 		return true
 	default:
 		return false
@@ -1617,28 +1845,28 @@ func (e WorkspaceAgentSessionAttachmentResponseMimeType) Valid() bool {
 
 // Defines values for WorkspaceAgentSessionGoalStatus.
 const (
-	Active        WorkspaceAgentSessionGoalStatus = "active"
-	Blocked       WorkspaceAgentSessionGoalStatus = "blocked"
-	BudgetLimited WorkspaceAgentSessionGoalStatus = "budgetLimited"
-	Complete      WorkspaceAgentSessionGoalStatus = "complete"
-	Paused        WorkspaceAgentSessionGoalStatus = "paused"
-	UsageLimited  WorkspaceAgentSessionGoalStatus = "usageLimited"
+	WorkspaceAgentSessionGoalStatusActive        WorkspaceAgentSessionGoalStatus = "active"
+	WorkspaceAgentSessionGoalStatusBlocked       WorkspaceAgentSessionGoalStatus = "blocked"
+	WorkspaceAgentSessionGoalStatusBudgetLimited WorkspaceAgentSessionGoalStatus = "budgetLimited"
+	WorkspaceAgentSessionGoalStatusComplete      WorkspaceAgentSessionGoalStatus = "complete"
+	WorkspaceAgentSessionGoalStatusPaused        WorkspaceAgentSessionGoalStatus = "paused"
+	WorkspaceAgentSessionGoalStatusUsageLimited  WorkspaceAgentSessionGoalStatus = "usageLimited"
 )
 
 // Valid indicates whether the value is a known member of the WorkspaceAgentSessionGoalStatus enum.
 func (e WorkspaceAgentSessionGoalStatus) Valid() bool {
 	switch e {
-	case Active:
+	case WorkspaceAgentSessionGoalStatusActive:
 		return true
-	case Blocked:
+	case WorkspaceAgentSessionGoalStatusBlocked:
 		return true
-	case BudgetLimited:
+	case WorkspaceAgentSessionGoalStatusBudgetLimited:
 		return true
-	case Complete:
+	case WorkspaceAgentSessionGoalStatusComplete:
 		return true
-	case Paused:
+	case WorkspaceAgentSessionGoalStatusPaused:
 		return true
-	case UsageLimited:
+	case WorkspaceAgentSessionGoalStatusUsageLimited:
 		return true
 	default:
 		return false
@@ -1699,6 +1927,24 @@ func (e WorkspaceAgentSessionSectionKind) Valid() bool {
 	case Conversations:
 		return true
 	case Project:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for WorkspaceAgentSource.
+const (
+	LegacyBinding WorkspaceAgentSource = "legacy_binding"
+	User          WorkspaceAgentSource = "user"
+)
+
+// Valid indicates whether the value is a known member of the WorkspaceAgentSource enum.
+func (e WorkspaceAgentSource) Valid() bool {
+	switch e {
+	case LegacyBinding:
+		return true
+	case User:
 		return true
 	default:
 		return false
@@ -2185,6 +2431,27 @@ func (e WorkspaceGitPatchTarget) Valid() bool {
 	case StagedAndUnstaged:
 		return true
 	case Unstaged:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for WorkspaceModelRecommendationTier.
+const (
+	WorkspaceModelRecommendationTierEconomy  WorkspaceModelRecommendationTier = "economy"
+	WorkspaceModelRecommendationTierFlagship WorkspaceModelRecommendationTier = "flagship"
+	WorkspaceModelRecommendationTierStandard WorkspaceModelRecommendationTier = "standard"
+)
+
+// Valid indicates whether the value is a known member of the WorkspaceModelRecommendationTier enum.
+func (e WorkspaceModelRecommendationTier) Valid() bool {
+	switch e {
+	case WorkspaceModelRecommendationTierEconomy:
+		return true
+	case WorkspaceModelRecommendationTierFlagship:
+		return true
+	case WorkspaceModelRecommendationTierStandard:
 		return true
 	default:
 		return false
@@ -2689,10 +2956,22 @@ type AgentSessionAcceptanceResponse struct {
 	Acceptance *AgentSessionAcceptance `json:"acceptance,omitempty"`
 }
 
+// AgentSessionAutomationRuleOverride defines model for AgentSessionAutomationRuleOverride.
+type AgentSessionAutomationRuleOverride struct {
+	AgentSessionId string     `json:"agentSessionId"`
+	Disabled       bool       `json:"disabled"`
+	RuleIds        []string   `json:"ruleIds"`
+	UpdatedAt      *time.Time `json:"updatedAt,omitempty"`
+	WorkspaceId    string     `json:"workspaceId"`
+}
+
 // AgentSessionComposerSettings defines model for AgentSessionComposerSettings.
 type AgentSessionComposerSettings struct {
-	BrowserUse       *bool   `json:"browserUse,omitempty"`
-	Model            *string `json:"model,omitempty"`
+	BrowserUse *bool   `json:"browserUse,omitempty"`
+	Model      *string `json:"model,omitempty"`
+
+	// ModelPlanId Immutable Model Plan identity recorded for this Session. Supplying a different value requires creating a new Session.
+	ModelPlanId      *string `json:"modelPlanId,omitempty"`
 	PermissionModeId *string `json:"permissionModeId,omitempty"`
 	PlanMode         *bool   `json:"planMode,omitempty"`
 	ReasoningEffort  *string `json:"reasoningEffort,omitempty"`
@@ -2902,6 +3181,67 @@ type AppReferenceSearchResponse struct {
 	WorkspaceId string                          `json:"workspaceId"`
 }
 
+// AutomationRule defines model for AutomationRule.
+type AutomationRule struct {
+	Action AutomationRuleAction `json:"action"`
+
+	// Budget Independent per-source-session limit. Zero uses the daemon safety default and never means unlimited.
+	Budget    AutomationRuleBudget `json:"budget"`
+	CreatedAt time.Time            `json:"createdAt"`
+	Enabled   bool                 `json:"enabled"`
+	Id        string               `json:"id"`
+	Name      string               `json:"name"`
+
+	// Permissions Authority narrowing applied to automatically launched WorkspaceAgents. Consult is always tool-free and ignores these fields.
+	Permissions AutomationRulePermissions `json:"permissions"`
+	Prompt      string                    `json:"prompt"`
+
+	// SourceWorkspaceAgentId Optional source-session Agent filter. Empty means all non-automation-origin sessions.
+	SourceWorkspaceAgentId *string              `json:"sourceWorkspaceAgentId,omitempty"`
+	Target                 AutomationRuleTarget `json:"target"`
+
+	// Trigger Lifecycle outcome that evaluates the rule. A failed-turn rule can delegate to a stronger WorkspaceAgent as a bounded escalation attempt; automated outcomes never final-accept the source task.
+	Trigger     AutomationRuleTrigger `json:"trigger"`
+	UpdatedAt   time.Time             `json:"updatedAt"`
+	WorkspaceId string                `json:"workspaceId"`
+}
+
+// AutomationRuleAction defines model for AutomationRuleAction.
+type AutomationRuleAction string
+
+// AutomationRuleBudget Independent per-source-session limit. Zero uses the daemon safety default and never means unlimited.
+type AutomationRuleBudget struct {
+	MaxRunsPerSession        int   `json:"maxRunsPerSession"`
+	MaxTotalTokensPerSession int64 `json:"maxTotalTokensPerSession"`
+}
+
+// AutomationRulePermissions Authority narrowing applied to automatically launched WorkspaceAgents. Consult is always tool-free and ignores these fields.
+type AutomationRulePermissions struct {
+	AllowedTools     []string `json:"allowedTools"`
+	PermissionModeId *string  `json:"permissionModeId,omitempty"`
+}
+
+// AutomationRuleTarget defines model for AutomationRuleTarget.
+type AutomationRuleTarget struct {
+	Kind AutomationRuleTargetKind `json:"kind"`
+
+	// Model Optional consult model; defaults to the target ModelPlan default model.
+	Model *string `json:"model,omitempty"`
+
+	// ModelPlanId Required for consult. The ModelPlan must be enabled.
+	ModelPlanId          *string  `json:"modelPlanId,omitempty"`
+	RequiredCapabilities []string `json:"requiredCapabilities"`
+
+	// WorkspaceAgentId Required for fork, delegate, and handoff. The Agent must be enabled and launchable.
+	WorkspaceAgentId *string `json:"workspaceAgentId,omitempty"`
+}
+
+// AutomationRuleTargetKind defines model for AutomationRuleTargetKind.
+type AutomationRuleTargetKind string
+
+// AutomationRuleTrigger Lifecycle outcome that evaluates the rule. A failed-turn rule can delegate to a stronger WorkspaceAgent as a bounded escalation attempt; automated outcomes never final-accept the source task.
+type AutomationRuleTrigger string
+
 // CheckUserProjectPathRequest defines model for CheckUserProjectPathRequest.
 type CheckUserProjectPathRequest struct {
 	Path string `json:"path"`
@@ -3035,28 +3375,38 @@ type CliTableOutput struct {
 // CollaborationRun One recorded collaboration run with full accounting. Credentials never appear on run records; consults resolve the plan credential at call time only.
 type CollaborationRun struct {
 	// Adoption Whether the run outcome was taken up by the source task. Fork and handoff runs report not_applicable.
-	Adoption    CollaborationRunAdoption `json:"adoption"`
-	CompletedAt *time.Time               `json:"completedAt,omitempty"`
+	Adoption CollaborationRunAdoption `json:"adoption"`
+
+	// Attempt One-based attempt number across a retry chain.
+	Attempt     int        `json:"attempt"`
+	CompletedAt *time.Time `json:"completedAt,omitempty"`
 
 	// ContextScope How much source context was carried over, for example none, summary, or full.
-	ContextScope *string   `json:"contextScope,omitempty"`
-	CreatedAt    time.Time `json:"createdAt"`
-	DurationMs   int64     `json:"durationMs"`
+	ContextScope *string               `json:"contextScope,omitempty"`
+	Cost         *CollaborationRunCost `json:"cost,omitempty"`
+	CreatedAt    time.Time             `json:"createdAt"`
+	DurationMs   int64                 `json:"durationMs"`
 
 	// FailureReason Machine-readable failure code such as unauthorized, model_rejected, or canceled.
 	FailureReason *string `json:"failureReason,omitempty"`
-	Id            string  `json:"id"`
+
+	// FailureStage Execution stage that failed, such as provider_completion, target_launch, or target_execution.
+	FailureStage *string `json:"failureStage,omitempty"`
+	Id           string  `json:"id"`
 
 	// Mode Collaboration kind. consult is a daemon-side advisory completion (advice only, no tools, ownership never changes); fork, delegate, and handoff link to a target session created through the session-create path.
 	Mode        CollaborationRunMode `json:"mode"`
 	Model       *string              `json:"model,omitempty"`
 	ModelPlanId *string              `json:"modelPlanId,omitempty"`
 
-	// Prompt Stored consult input (context plus question).
+	// Prompt Stored original consult question or target-session work request. Legacy consult rows may contain the already-composed prompt.
 	Prompt *string `json:"prompt,omitempty"`
 
 	// ResultText Consult output text.
-	ResultText          *string                       `json:"resultText,omitempty"`
+	ResultText *string `json:"resultText,omitempty"`
+
+	// RetryOfRunId Previous failed run replayed by this attempt. Null for an original request.
+	RetryOfRunId        *string                       `json:"retryOfRunId,omitempty"`
 	SourceSessionId     *string                       `json:"sourceSessionId,omitempty"`
 	StartedAt           *time.Time                    `json:"startedAt,omitempty"`
 	Status              CollaborationRunStatus        `json:"status"`
@@ -3072,6 +3422,12 @@ type CollaborationRun struct {
 // CollaborationRunAdoption Whether the run outcome was taken up by the source task. Fork and handoff runs report not_applicable.
 type CollaborationRunAdoption string
 
+// CollaborationRunCost Estimated metered API cost derived from provider-reported token usage and the selected model's configured price. Subscription-quota plans and models without configured prices omit this value.
+type CollaborationRunCost struct {
+	Currency        string `json:"currency"`
+	EstimatedMicros int64  `json:"estimatedMicros"`
+}
+
 // CollaborationRunMode Collaboration kind. consult is a daemon-side advisory completion (advice only, no tools, ownership never changes); fork, delegate, and handoff link to a target session created through the session-create path.
 type CollaborationRunMode string
 
@@ -3083,8 +3439,10 @@ type CollaborationRunTriggerSource string
 
 // CollaborationRunUsage defines model for CollaborationRunUsage.
 type CollaborationRunUsage struct {
-	InputTokens  int64 `json:"inputTokens"`
-	OutputTokens int64 `json:"outputTokens"`
+	CacheReadTokens  int64 `json:"cacheReadTokens"`
+	CacheWriteTokens int64 `json:"cacheWriteTokens"`
+	InputTokens      int64 `json:"inputTokens"`
+	OutputTokens     int64 `json:"outputTokens"`
 }
 
 // CompleteIssueManagerRunOutputItem defines model for CompleteIssueManagerRunOutputItem.
@@ -3098,10 +3456,15 @@ type CompleteIssueManagerRunOutputItem struct {
 
 // CompleteIssueManagerRunRequest defines model for CompleteIssueManagerRunRequest.
 type CompleteIssueManagerRunRequest struct {
+	Cost         *IssueManagerCost                   `json:"cost,omitempty"`
 	ErrorMessage *string                             `json:"errorMessage,omitempty"`
 	Outputs      []CompleteIssueManagerRunOutputItem `json:"outputs"`
-	Status       IssueManagerRunCompletionStatus     `json:"status"`
-	Summary      *string                             `json:"summary,omitempty"`
+
+	// RemainingQuotaPercent Provider-reported remaining subscription quota after this run.
+	RemainingQuotaPercent *float64                        `json:"remainingQuotaPercent,omitempty"`
+	Status                IssueManagerRunCompletionStatus `json:"status"`
+	Summary               *string                         `json:"summary,omitempty"`
+	Usage                 *IssueManagerTokenUsage         `json:"usage,omitempty"`
 }
 
 // CompleteWorkspaceAppUploadResponse defines model for CompleteWorkspaceAppUploadResponse.
@@ -3116,9 +3479,10 @@ type CopyWorkspaceFileEntryRequest struct {
 
 // CreateCollaborationRunRequest defines model for CreateCollaborationRunRequest.
 type CreateCollaborationRunRequest struct {
-	ContextScope *string `json:"contextScope,omitempty"`
+	// ContextScope Source transcript transferred to a daemon-launched target session. Supported values are none, recent, and full; recent is the default.
+	ContextScope *CreateCollaborationRunRequestContextScope `json:"contextScope,omitempty"`
 
-	// ContextText Optional prepared context prepended to the consult question.
+	// ContextText Optional user-supplied context supplement. Consult prepends it to the question; daemon-launched session-backed runs append it to context selected from the source session.
 	ContextText *string `json:"contextText,omitempty"`
 
 	// MaxTokens Consult completion output token cap.
@@ -3133,23 +3497,48 @@ type CreateCollaborationRunRequest struct {
 	// ModelPlanId Required for consult runs; the plan must exist and be enabled.
 	ModelPlanId *string `json:"modelPlanId,omitempty"`
 
-	// Question Consult question; required for consult runs.
+	// Question Consult question or target-session work request. Required for consult and daemon-launched session-backed runs.
 	Question *string `json:"question,omitempty"`
 
-	// SourceSessionId Required for consult runs; consults are capped per source session.
-	SourceSessionId     *string                       `json:"sourceSessionId,omitempty"`
-	TargetAgentTargetId *string                       `json:"targetAgentTargetId,omitempty"`
-	TargetSessionId     *string                       `json:"targetSessionId,omitempty"`
-	TriggerReason       *string                       `json:"triggerReason,omitempty"`
-	TriggerSource       CollaborationRunTriggerSource `json:"triggerSource"`
+	// SourceSessionId Required for consult and daemon-launched session-backed runs. Consults are capped per source session.
+	SourceSessionId *string `json:"sourceSessionId,omitempty"`
+
+	// TargetAgentTargetId Required when the daemon creates a fork, delegate, or handoff target session.
+	TargetAgentTargetId *string `json:"targetAgentTargetId,omitempty"`
+
+	// TargetSessionId Existing target session to track. Omit for fork, delegate, or handoff to let the daemon create the target session.
+	TargetSessionId *string                       `json:"targetSessionId,omitempty"`
+	TriggerReason   *string                       `json:"triggerReason,omitempty"`
+	TriggerSource   CollaborationRunTriggerSource `json:"triggerSource"`
+}
+
+// CreateCollaborationRunRequestContextScope Source transcript transferred to a daemon-launched target session. Supported values are none, recent, and full; recent is the default.
+type CreateCollaborationRunRequestContextScope string
+
+// CreateIssueManagerIssueFromPlanRequest defines model for CreateIssueManagerIssueFromPlanRequest.
+type CreateIssueManagerIssueFromPlanRequest struct {
+	Issue CreateIssueManagerIssueRequest  `json:"issue"`
+	Tasks []CreateIssueManagerTaskRequest `json:"tasks"`
 }
 
 // CreateIssueManagerIssueRequest defines model for CreateIssueManagerIssueRequest.
 type CreateIssueManagerIssueRequest struct {
-	Content *string `json:"content,omitempty"`
-	IssueId *string `json:"issueId,omitempty"`
-	Title   string  `json:"title"`
-	TopicId string  `json:"topicId"`
+	Budget           *IssueManagerBudget           `json:"budget,omitempty"`
+	Content          *string                       `json:"content,omitempty"`
+	ExecutionProfile *IssueManagerExecutionProfile `json:"executionProfile,omitempty"`
+	IssueId          *string                       `json:"issueId,omitempty"`
+
+	// ParallelExecution Persist the user's parallel Create-and-Start choice. Mutually exclusive with sequentialExecution.
+	ParallelExecution *bool `json:"parallelExecution,omitempty"`
+
+	// PlanningSource How the issue entered the durable execution workflow.
+	PlanningSource *IssueManagerPlanningSource `json:"planningSource,omitempty"`
+
+	// SequentialExecution Persist the user's Create-and-Start choice so successor dispatch survives desktop restarts.
+	SequentialExecution *bool   `json:"sequentialExecution,omitempty"`
+	SourceSessionId     *string `json:"sourceSessionId,omitempty"`
+	Title               string  `json:"title"`
+	TopicId             string  `json:"topicId"`
 }
 
 // CreateIssueManagerRunRequest defines model for CreateIssueManagerRunRequest.
@@ -3160,16 +3549,23 @@ type CreateIssueManagerRunRequest struct {
 	AgentTargetId      string  `json:"agentTargetId"`
 	AgentUserId        *string `json:"agentUserId,omitempty"`
 	ExecutionDirectory *string `json:"executionDirectory,omitempty"`
+	Model              *string `json:"model,omitempty"`
+	ModelPlanId        *string `json:"modelPlanId,omitempty"`
 	RunId              *string `json:"runId,omitempty"`
 }
 
 // CreateIssueManagerTaskRequest defines model for CreateIssueManagerTaskRequest.
 type CreateIssueManagerTaskRequest struct {
-	Content   *string               `json:"content,omitempty"`
-	DueAtUnix *int64                `json:"dueAtUnix,omitempty"`
-	Priority  *IssueManagerPriority `json:"priority,omitempty"`
-	TaskId    *string               `json:"taskId,omitempty"`
-	Title     string                `json:"title"`
+	AgentTargetId      *string               `json:"agentTargetId,omitempty"`
+	Content            *string               `json:"content,omitempty"`
+	DependencyTaskIds  *[]string             `json:"dependencyTaskIds,omitempty"`
+	DueAtUnix          *int64                `json:"dueAtUnix,omitempty"`
+	ExecutionDirectory *string               `json:"executionDirectory,omitempty"`
+	Model              *string               `json:"model,omitempty"`
+	ModelPlanId        *string               `json:"modelPlanId,omitempty"`
+	Priority           *IssueManagerPriority `json:"priority,omitempty"`
+	TaskId             *string               `json:"taskId,omitempty"`
+	Title              string                `json:"title"`
 }
 
 // CreateIssueManagerTasksRequest defines model for CreateIssueManagerTasksRequest.
@@ -3189,15 +3585,21 @@ type CreateWorkspaceAgentSessionRequest struct {
 	AgentSessionId openapi_types.UUID `json:"agentSessionId"`
 
 	// AgentTargetId Required target-first session launch authority. The daemon derives provider and providerTargetRef from the stored agent target launchRef and rejects mismatched provider values.
-	AgentTargetId  string                    `json:"agentTargetId"`
-	BrowserUse     *bool                     `json:"browserUse,omitempty"`
-	ClientSubmitId string                    `json:"clientSubmitId"`
-	Cwd            *string                   `json:"cwd,omitempty"`
-	InitialContent []AgentPromptContentBlock `json:"initialContent"`
+	AgentTargetId string `json:"agentTargetId"`
+
+	// AutomationRuleOverride Optional session-local AutomationRule selection written before the initial turn starts. Omit to inherit every enabled workspace rule; disabled=true disables automation for this session, while ruleIds selects an explicit subset.
+	AutomationRuleOverride *SetAgentSessionAutomationRuleOverrideRequest `json:"automationRuleOverride,omitempty"`
+	BrowserUse             *bool                                         `json:"browserUse,omitempty"`
+	ClientSubmitId         string                                        `json:"clientSubmitId"`
+	Cwd                    *string                                       `json:"cwd,omitempty"`
+	InitialContent         []AgentPromptContentBlock                     `json:"initialContent"`
 
 	// InitialDisplayPrompt Optional display-only text for the first turn (e.g. a folder bundle shown as one chip while initialContent carries the expanded files).
 	InitialDisplayPrompt *string `json:"initialDisplayPrompt,omitempty"`
 	Model                *string `json:"model,omitempty"`
+
+	// ModelPlanId Optional workspace Model Plan override for this launch. The daemon resolves credentials, validates provider protocol and model compatibility, and records the effective Plan revision.
+	ModelPlanId *string `json:"modelPlanId,omitempty"`
 
 	// NoProject Classifies a session that is intentionally not attached to a workspace project.
 	NoProject         *bool                   `json:"noProject,omitempty"`
@@ -3247,6 +3649,11 @@ type CreateWorkspaceTerminalRequest struct {
 	Rows         *int    `json:"rows,omitempty"`
 }
 
+// DeleteAutomationRuleResponse defines model for DeleteAutomationRuleResponse.
+type DeleteAutomationRuleResponse struct {
+	AutomationRuleId string `json:"automationRuleId"`
+}
+
 // DeleteIssueManagerContextRefResponse defines model for DeleteIssueManagerContextRefResponse.
 type DeleteIssueManagerContextRefResponse struct {
 	Removed bool `json:"removed"`
@@ -3280,6 +3687,11 @@ type DeleteModelPolicyResponse struct {
 // DeleteUserProjectRequest defines model for DeleteUserProjectRequest.
 type DeleteUserProjectRequest struct {
 	Path string `json:"path"`
+}
+
+// DeleteWorkspaceAgentResponse defines model for DeleteWorkspaceAgentResponse.
+type DeleteWorkspaceAgentResponse struct {
+	WorkspaceAgentId string `json:"workspaceAgentId"`
 }
 
 // DeleteWorkspaceAgentSessionResponse defines model for DeleteWorkspaceAgentSessionResponse.
@@ -3469,6 +3881,9 @@ type DetectModelPlanRequest struct {
 	// PlanId When set, omitted fields fall back to the stored plan and the outcome persists onto it.
 	PlanId   *string            `json:"planId,omitempty"`
 	Protocol *ModelPlanProtocol `json:"protocol,omitempty"`
+
+	// TemplateKind Required for unsaved drafts whose detection path depends on the access scheme, such as an official provider subscription.
+	TemplateKind *ModelPlanTemplateKind `json:"templateKind,omitempty"`
 }
 
 // DetectModelPlanResponse defines model for DetectModelPlanResponse.
@@ -3485,6 +3900,12 @@ type DismissAccountRegistrationCreditsRewardRequest struct {
 // DuplicateModelPlanRequest defines model for DuplicateModelPlanRequest.
 type DuplicateModelPlanRequest struct {
 	Name *string `json:"name,omitempty"`
+}
+
+// EstimateIssueManagerAutoTokenBudgetRequest defines model for EstimateIssueManagerAutoTokenBudgetRequest.
+type EstimateIssueManagerAutoTokenBudgetRequest struct {
+	ExecutionProfile IssueManagerExecutionProfile           `json:"executionProfile"`
+	Tasks            []IssueManagerAutoTokenBudgetTaskInput `json:"tasks"`
 }
 
 // ExportWorkspaceAppRequest defines model for ExportWorkspaceAppRequest.
@@ -3583,6 +4004,18 @@ type FixWorkspaceAppFactoryJobRequest struct {
 	Prompt string `json:"prompt"`
 }
 
+// GenerateWorkspaceAgentDraftRequest defines model for GenerateWorkspaceAgentDraftRequest.
+type GenerateWorkspaceAgentDraftRequest struct {
+	HarnessAgentTargetId string `json:"harnessAgentTargetId"`
+
+	// Model Defaults to the selected ModelPlan default model.
+	Model       *string `json:"model,omitempty"`
+	ModelPlanId string  `json:"modelPlanId"`
+
+	// Requirements Optional user guidance. An empty value asks for a generally useful configuration for the selected Harness.
+	Requirements string `json:"requirements"`
+}
+
 // GetAgentProviderComposerOptionsRequest defines model for GetAgentProviderComposerOptionsRequest.
 type GetAgentProviderComposerOptionsRequest struct {
 	// AgentTargetId Agent target whose provider and runtime context the composer options resolve against. Optional; when omitted the provider path parameter is used directly.
@@ -3630,6 +4063,55 @@ type InstallWorkspaceAppRequest struct {
 	RestartRunning *bool `json:"restartRunning,omitempty"`
 }
 
+// IssueManagerAcceptanceState Three-step completion ladder. Only user_accepted closes a successful task.
+type IssueManagerAcceptanceState string
+
+// IssueManagerAutoTokenBudgetEstimate defines model for IssueManagerAutoTokenBudgetEstimate.
+type IssueManagerAutoTokenBudgetEstimate struct {
+	// DeterministicTokenLimit Scale and intensity estimate before historical calibration.
+	DeterministicTokenLimit int64 `json:"deterministicTokenLimit"`
+
+	// HistoricalTokenEstimate Sum of comparable completed-run averages before headroom and blending.
+	HistoricalTokenEstimate int64 `json:"historicalTokenEstimate"`
+
+	// MatchedTaskCount Proposed tasks with at least one comparable completed run.
+	MatchedTaskCount int `json:"matchedTaskCount"`
+
+	// TokenLimit Effective auto budget that Issue creation will compile for the same input.
+	TokenLimit int64 `json:"tokenLimit"`
+}
+
+// IssueManagerAutoTokenBudgetTaskInput defines model for IssueManagerAutoTokenBudgetTaskInput.
+type IssueManagerAutoTokenBudgetTaskInput struct {
+	AgentTargetId *string `json:"agentTargetId,omitempty"`
+	Model         *string `json:"model,omitempty"`
+	ModelPlanId   *string `json:"modelPlanId,omitempty"`
+}
+
+// IssueManagerBudget defines model for IssueManagerBudget.
+type IssueManagerBudget struct {
+	ConsumedTokens int64                  `json:"consumedTokens"`
+	Mode           IssueManagerBudgetMode `json:"mode"`
+
+	// QuotaWaterlinePercent Subscription plans gate on the remaining-quota waterline instead of fake monetary cost.
+	QuotaWaterlinePercent float64 `json:"quotaWaterlinePercent"`
+
+	// RemainingQuotaPercent Last provider-reported subscription quota percentage. Omitted when the provider cannot report quota.
+	RemainingQuotaPercent *float64 `json:"remainingQuotaPercent,omitempty"`
+
+	// Status soft_limited pauses future dispatch without canceling in-flight runs.
+	Status IssueManagerBudgetStatus `json:"status"`
+
+	// TokenLimit Compiled token soft limit. In auto mode the daemon owns this value; zero means no token gate is currently available.
+	TokenLimit int64 `json:"tokenLimit"`
+}
+
+// IssueManagerBudgetMode defines model for IssueManagerBudgetMode.
+type IssueManagerBudgetMode string
+
+// IssueManagerBudgetStatus soft_limited pauses future dispatch without canceling in-flight runs.
+type IssueManagerBudgetStatus string
+
 // IssueManagerContextRef defines model for IssueManagerContextRef.
 type IssueManagerContextRef struct {
 	union json.RawMessage
@@ -3640,26 +4122,62 @@ type IssueManagerContextRefsResponse struct {
 	ContextRefs []IssueManagerContextRef `json:"contextRefs"`
 }
 
+// IssueManagerCost defines model for IssueManagerCost.
+type IssueManagerCost struct {
+	ActualMicros int64 `json:"actualMicros"`
+
+	// Currency ISO 4217 currency code. USD is used when a ModelPlan publishes API prices.
+	Currency        string `json:"currency"`
+	EstimatedMicros int64  `json:"estimatedMicros"`
+}
+
+// IssueManagerExecutionProfile defines model for IssueManagerExecutionProfile.
+type IssueManagerExecutionProfile struct {
+	// OrchestrationIntensity Issue-owned decomposition, dependency, review, and retry strength.
+	OrchestrationIntensity int `json:"orchestrationIntensity"`
+
+	// ReasoningIntensity Issue-owned reasoning strength inherited by every task and run.
+	ReasoningIntensity int `json:"reasoningIntensity"`
+}
+
 // IssueManagerIssue defines model for IssueManagerIssue.
 type IssueManagerIssue struct {
-	CanceledCount          int                `json:"canceledCount"`
-	CompletedCount         int                `json:"completedCount"`
-	Content                string             `json:"content"`
-	CreatedAtUnix          int64              `json:"createdAtUnix"`
-	CreatorAvatarUrl       string             `json:"creatorAvatarUrl"`
-	CreatorDisplayName     string             `json:"creatorDisplayName"`
-	CreatorUserId          string             `json:"creatorUserId"`
-	FailedCount            int                `json:"failedCount"`
-	IssueId                string             `json:"issueId"`
-	NotStartedCount        int                `json:"notStartedCount"`
-	PendingAcceptanceCount int                `json:"pendingAcceptanceCount"`
-	RunningCount           int                `json:"runningCount"`
-	Status                 IssueManagerStatus `json:"status"`
-	TaskCount              int                `json:"taskCount"`
-	Title                  string             `json:"title"`
-	TopicId                string             `json:"topicId"`
-	UpdatedAtUnix          int64              `json:"updatedAtUnix"`
-	WorkspaceId            string             `json:"workspaceId"`
+	Budget             IssueManagerBudget `json:"budget"`
+	CanceledCount      int                `json:"canceledCount"`
+	CompletedCount     int                `json:"completedCount"`
+	Content            string             `json:"content"`
+	Cost               IssueManagerCost   `json:"cost"`
+	CreatedAtUnix      int64              `json:"createdAtUnix"`
+	CreatorAvatarUrl   string             `json:"creatorAvatarUrl"`
+	CreatorDisplayName string             `json:"creatorDisplayName"`
+	CreatorUserId      string             `json:"creatorUserId"`
+
+	// DispatchPaused When true, the daemon pauses future task dispatch without canceling or interrupting work already in flight.
+	DispatchPaused   bool                         `json:"dispatchPaused"`
+	ExecutionProfile IssueManagerExecutionProfile `json:"executionProfile"`
+	FailedCount      int                          `json:"failedCount"`
+	IssueId          string                       `json:"issueId"`
+	NotStartedCount  int                          `json:"notStartedCount"`
+
+	// ParallelExecution When true, the daemon dispatches every dependency-ready task whose execution directory is isolated; dependencies still require user acceptance.
+	ParallelExecution      bool `json:"parallelExecution"`
+	PendingAcceptanceCount int  `json:"pendingAcceptanceCount"`
+
+	// PlanningSource How the issue entered the durable execution workflow.
+	PlanningSource IssueManagerPlanningSource `json:"planningSource"`
+	RunningCount   int                        `json:"runningCount"`
+
+	// SequentialExecution When true, the daemon dispatches the next eligible task after each user acceptance while budget remains active.
+	SequentialExecution bool `json:"sequentialExecution"`
+
+	// SourceSessionId Optional Agent session that produced the plan. Empty for manually created issues.
+	SourceSessionId string             `json:"sourceSessionId"`
+	Status          IssueManagerStatus `json:"status"`
+	TaskCount       int                `json:"taskCount"`
+	Title           string             `json:"title"`
+	TopicId         string             `json:"topicId"`
+	UpdatedAtUnix   int64              `json:"updatedAtUnix"`
+	WorkspaceId     string             `json:"workspaceId"`
 }
 
 // IssueManagerIssueContextRef defines model for IssueManagerIssueContextRef.
@@ -3700,6 +4218,9 @@ type IssueManagerIssueResponse struct {
 	Issue IssueManagerIssue `json:"issue"`
 }
 
+// IssueManagerPlanningSource How the issue entered the durable execution workflow.
+type IssueManagerPlanningSource string
+
 // IssueManagerPriority defines model for IssueManagerPriority.
 type IssueManagerPriority string
 
@@ -3733,24 +4254,29 @@ type IssueManagerReferenceSearchResponse struct {
 
 // IssueManagerRun defines model for IssueManagerRun.
 type IssueManagerRun struct {
-	AgentProvider      string             `json:"agentProvider"`
-	AgentSessionId     string             `json:"agentSessionId"`
-	AgentTargetId      string             `json:"agentTargetId"`
-	AgentUserId        string             `json:"agentUserId"`
-	CompletedAtUnix    int64              `json:"completedAtUnix"`
-	CreatedAtUnix      int64              `json:"createdAtUnix"`
-	ErrorMessage       string             `json:"errorMessage"`
-	ExecutionDirectory string             `json:"executionDirectory"`
-	IssueId            string             `json:"issueId"`
-	OutputDir          string             `json:"outputDir"`
-	RequesterUserId    string             `json:"requesterUserId"`
-	RunId              string             `json:"runId"`
-	StartedAtUnix      int64              `json:"startedAtUnix"`
-	Status             IssueManagerStatus `json:"status"`
-	Summary            string             `json:"summary"`
-	TaskId             *string            `json:"taskId,omitempty"`
-	UpdatedAtUnix      int64              `json:"updatedAtUnix"`
-	WorkspaceId        string             `json:"workspaceId"`
+	AgentProvider      string                 `json:"agentProvider"`
+	AgentSessionId     string                 `json:"agentSessionId"`
+	AgentTargetId      string                 `json:"agentTargetId"`
+	AgentUserId        string                 `json:"agentUserId"`
+	CompletedAtUnix    int64                  `json:"completedAtUnix"`
+	Cost               IssueManagerCost       `json:"cost"`
+	CreatedAtUnix      int64                  `json:"createdAtUnix"`
+	ErrorMessage       string                 `json:"errorMessage"`
+	ExecutionDirectory string                 `json:"executionDirectory"`
+	IssueId            string                 `json:"issueId"`
+	Model              string                 `json:"model"`
+	ModelPlanId        string                 `json:"modelPlanId"`
+	OutputDir          string                 `json:"outputDir"`
+	ReasoningIntensity int                    `json:"reasoningIntensity"`
+	RequesterUserId    string                 `json:"requesterUserId"`
+	RunId              string                 `json:"runId"`
+	StartedAtUnix      int64                  `json:"startedAtUnix"`
+	Status             IssueManagerStatus     `json:"status"`
+	Summary            string                 `json:"summary"`
+	TaskId             *string                `json:"taskId,omitempty"`
+	UpdatedAtUnix      int64                  `json:"updatedAtUnix"`
+	Usage              IssueManagerTokenUsage `json:"usage"`
+	WorkspaceId        string                 `json:"workspaceId"`
 }
 
 // IssueManagerRunCompletionStatus defines model for IssueManagerRunCompletionStatus.
@@ -3805,21 +4331,35 @@ type IssueManagerStatusFilter string
 
 // IssueManagerTask defines model for IssueManagerTask.
 type IssueManagerTask struct {
-	Content            string               `json:"content"`
-	CreatedAtUnix      int64                `json:"createdAtUnix"`
-	CreatorAvatarUrl   string               `json:"creatorAvatarUrl"`
-	CreatorDisplayName string               `json:"creatorDisplayName"`
-	CreatorUserId      string               `json:"creatorUserId"`
-	DueAtUnix          int64                `json:"dueAtUnix"`
-	IssueId            string               `json:"issueId"`
-	LatestRunId        string               `json:"latestRunId"`
-	Priority           IssueManagerPriority `json:"priority"`
-	SortIndex          int                  `json:"sortIndex"`
-	Status             IssueManagerStatus   `json:"status"`
-	TaskId             string               `json:"taskId"`
-	Title              string               `json:"title"`
-	UpdatedAtUnix      int64                `json:"updatedAtUnix"`
-	WorkspaceId        string               `json:"workspaceId"`
+	// AcceptanceState Three-step completion ladder. Only user_accepted closes a successful task.
+	AcceptanceState   IssueManagerAcceptanceState `json:"acceptanceState"`
+	AcceptanceSummary string                      `json:"acceptanceSummary"`
+
+	// AgentTargetId Opaque WorkspaceAgent assignment. Empty means not assigned yet.
+	AgentTargetId      string   `json:"agentTargetId"`
+	Content            string   `json:"content"`
+	CreatedAtUnix      int64    `json:"createdAtUnix"`
+	CreatorAvatarUrl   string   `json:"creatorAvatarUrl"`
+	CreatorDisplayName string   `json:"creatorDisplayName"`
+	CreatorUserId      string   `json:"creatorUserId"`
+	DependencyTaskIds  []string `json:"dependencyTaskIds"`
+	DueAtUnix          int64    `json:"dueAtUnix"`
+	ExecutionDirectory string   `json:"executionDirectory"`
+	IssueId            string   `json:"issueId"`
+	LatestRunId        string   `json:"latestRunId"`
+
+	// Model Explicit model assignment. Empty delegates to the assigned Agent/Plan default.
+	Model string `json:"model"`
+
+	// ModelPlanId Explicit Plan assignment. Empty delegates to the WorkspaceAgent default.
+	ModelPlanId   string               `json:"modelPlanId"`
+	Priority      IssueManagerPriority `json:"priority"`
+	SortIndex     int                  `json:"sortIndex"`
+	Status        IssueManagerStatus   `json:"status"`
+	TaskId        string               `json:"taskId"`
+	Title         string               `json:"title"`
+	UpdatedAtUnix int64                `json:"updatedAtUnix"`
+	WorkspaceId   string               `json:"workspaceId"`
 }
 
 // IssueManagerTaskContextRef defines model for IssueManagerTaskContextRef.
@@ -3865,6 +4405,14 @@ type IssueManagerTasksResponse struct {
 	Tasks []IssueManagerTask `json:"tasks"`
 }
 
+// IssueManagerTokenUsage defines model for IssueManagerTokenUsage.
+type IssueManagerTokenUsage struct {
+	CacheReadTokens  int64 `json:"cacheReadTokens"`
+	CacheWriteTokens int64 `json:"cacheWriteTokens"`
+	InputTokens      int64 `json:"inputTokens"`
+	OutputTokens     int64 `json:"outputTokens"`
+}
+
 // IssueManagerTopic defines model for IssueManagerTopic.
 type IssueManagerTopic struct {
 	CreatedAtUnix      int64  `json:"createdAtUnix"`
@@ -3898,6 +4446,11 @@ type ListAgentTargetsResponse struct {
 	Targets []AgentTarget `json:"targets"`
 }
 
+// ListAutomationRulesResponse defines model for ListAutomationRulesResponse.
+type ListAutomationRulesResponse struct {
+	Rules []AutomationRule `json:"rules"`
+}
+
 // ListCollaborationRunsResponse defines model for ListCollaborationRunsResponse.
 type ListCollaborationRunsResponse struct {
 	Runs []CollaborationRun `json:"runs"`
@@ -3911,6 +4464,11 @@ type ListModelPlansResponse struct {
 // ListModelPoliciesResponse defines model for ListModelPoliciesResponse.
 type ListModelPoliciesResponse struct {
 	Policies []ModelUsagePolicy `json:"policies"`
+}
+
+// ListWorkspaceAgentsResponse defines model for ListWorkspaceAgentsResponse.
+type ListWorkspaceAgentsResponse struct {
+	Agents []WorkspaceAgent `json:"agents"`
 }
 
 // ListWorkspacesResponse defines model for ListWorkspacesResponse.
@@ -3928,28 +4486,35 @@ type LoadLocalWorkspaceAppRequest struct {
 
 // ModelPlan Workspace-level model access plan. Credentials are stored daemon-side only; hasApiKey is the only credential signal in responses.
 type ModelPlan struct {
-	BaseUrl      *string            `json:"baseUrl,omitempty"`
-	CreatedAt    time.Time          `json:"createdAt"`
-	DefaultModel *string            `json:"defaultModel,omitempty"`
-	Detection    ModelPlanDetection `json:"detection"`
-	Enabled      bool               `json:"enabled"`
-	FirstUse     ModelPlanFirstUse  `json:"firstUse"`
-	HasApiKey    bool               `json:"hasApiKey"`
-	Id           string             `json:"id"`
-	Models       []ModelPlanModel   `json:"models"`
-	Name         string             `json:"name"`
+	BaseUrl *string `json:"baseUrl,omitempty"`
+
+	// BillingMode Budget and cost semantic derived from the access scheme. Subscription quota plans never expose fabricated monetary cost.
+	BillingMode  ModelPlanBillingMode `json:"billingMode"`
+	CreatedAt    time.Time            `json:"createdAt"`
+	DefaultModel *string              `json:"defaultModel,omitempty"`
+	Detection    ModelPlanDetection   `json:"detection"`
+	Enabled      bool                 `json:"enabled"`
+	FirstUse     ModelPlanFirstUse    `json:"firstUse"`
+	HasApiKey    bool                 `json:"hasApiKey"`
+	Id           string               `json:"id"`
+	Models       []ModelPlanModel     `json:"models"`
+	Name         string               `json:"name"`
 
 	// Protocol Wire protocol family used to call the plan's models.
 	Protocol ModelPlanProtocol `json:"protocol"`
+	Revision int64             `json:"revision"`
 
 	// Status Derived plan lifecycle status. pending_first_use means detection passed but no real agent call has completed yet; only ready plans are fully usable.
 	Status ModelPlanStatus `json:"status"`
 
-	// TemplateKind Access-scheme template the plan was created from. Presentation and guidance hint; runtime behavior derives from protocol.
+	// TemplateKind Access-scheme template the plan was created from. It determines the billing semantic while protocol determines runtime transport.
 	TemplateKind ModelPlanTemplateKind `json:"templateKind"`
 	UpdatedAt    time.Time             `json:"updatedAt"`
 	WorkspaceId  string                `json:"workspaceId"`
 }
+
+// ModelPlanBillingMode Budget and cost semantic derived from the access scheme. Subscription quota plans never expose fabricated monetary cost.
+type ModelPlanBillingMode string
 
 // ModelPlanDetection defines model for ModelPlanDetection.
 type ModelPlanDetection struct {
@@ -3977,9 +4542,25 @@ type ModelPlanFirstUseStatus string
 
 // ModelPlanModel defines model for ModelPlanModel.
 type ModelPlanModel struct {
-	Capabilities *[]string `json:"capabilities,omitempty"`
-	Id           string    `json:"id"`
-	Name         string    `json:"name"`
+	Capabilities *[]string         `json:"capabilities,omitempty"`
+	Id           string            `json:"id"`
+	Name         string            `json:"name"`
+	Pricing      *ModelPlanPricing `json:"pricing,omitempty"`
+
+	// Tier User-facing model capability/cost tier. Omitted input defaults to standard.
+	Tier *ModelPlanModelTier `json:"tier,omitempty"`
+}
+
+// ModelPlanModelTier User-facing model capability/cost tier. Omitted input defaults to standard.
+type ModelPlanModelTier string
+
+// ModelPlanPricing defines model for ModelPlanPricing.
+type ModelPlanPricing struct {
+	CacheReadMicrosPerMillion  int64  `json:"cacheReadMicrosPerMillion"`
+	CacheWriteMicrosPerMillion int64  `json:"cacheWriteMicrosPerMillion"`
+	Currency                   string `json:"currency"`
+	InputMicrosPerMillion      int64  `json:"inputMicrosPerMillion"`
+	OutputMicrosPerMillion     int64  `json:"outputMicrosPerMillion"`
 }
 
 // ModelPlanProtocol Wire protocol family used to call the plan's models.
@@ -4024,7 +4605,7 @@ type ModelPlanStageStatus string
 // ModelPlanStatus Derived plan lifecycle status. pending_first_use means detection passed but no real agent call has completed yet; only ready plans are fully usable.
 type ModelPlanStatus string
 
-// ModelPlanTemplateKind Access-scheme template the plan was created from. Presentation and guidance hint; runtime behavior derives from protocol.
+// ModelPlanTemplateKind Access-scheme template the plan was created from. It determines the billing semantic while protocol determines runtime transport.
 type ModelPlanTemplateKind string
 
 // ModelPolicyReviewRule defines model for ModelPolicyReviewRule.
@@ -4116,6 +4697,25 @@ type PublishWorkspaceAppFactoryJobResponse struct {
 	WorkspaceId string                 `json:"workspaceId"`
 }
 
+// PutAutomationRuleRequest defines model for PutAutomationRuleRequest.
+type PutAutomationRuleRequest struct {
+	Action AutomationRuleAction `json:"action"`
+
+	// Budget Independent per-source-session limit. Zero uses the daemon safety default and never means unlimited.
+	Budget  AutomationRuleBudget `json:"budget"`
+	Enabled bool                 `json:"enabled"`
+	Name    string               `json:"name"`
+
+	// Permissions Authority narrowing applied to automatically launched WorkspaceAgents. Consult is always tool-free and ignores these fields.
+	Permissions            AutomationRulePermissions `json:"permissions"`
+	Prompt                 string                    `json:"prompt"`
+	SourceWorkspaceAgentId *string                   `json:"sourceWorkspaceAgentId,omitempty"`
+	Target                 AutomationRuleTarget      `json:"target"`
+
+	// Trigger Lifecycle outcome that evaluates the rule. A failed-turn rule can delegate to a stronger WorkspaceAgent as a bounded escalation attempt; automated outcomes never final-accept the source task.
+	Trigger AutomationRuleTrigger `json:"trigger"`
+}
+
 // PutDesktopPreferencesRequest defines model for PutDesktopPreferencesRequest.
 type PutDesktopPreferencesRequest struct {
 	Preferences DesktopPreferences `json:"preferences"`
@@ -4145,9 +4745,42 @@ type PutModelPolicyRequest struct {
 	ReviewRule *ModelPolicyReviewRule `json:"reviewRule,omitempty"`
 }
 
+// PutWorkspaceAgentRequest defines model for PutWorkspaceAgentRequest.
+type PutWorkspaceAgentRequest struct {
+	CallConditions []string `json:"callConditions"`
+
+	// CapabilitiesExplicit When true, Skills and tools are an explicit allowlist, including the ability to select none. Omit on update to preserve the stored mode; new Agents default to automatic compatible capabilities.
+	CapabilitiesExplicit *bool   `json:"capabilitiesExplicit,omitempty"`
+	DefaultModel         *string `json:"defaultModel,omitempty"`
+	Enabled              bool    `json:"enabled"`
+	HarnessAgentTargetId string  `json:"harnessAgentTargetId"`
+	Instructions         string  `json:"instructions"`
+
+	// ModelFallbacks Ordered fallback Plan/model references. Omit or pass an empty array to disable failover.
+	ModelFallbacks *[]WorkspaceAgentModelRef `json:"modelFallbacks,omitempty"`
+	ModelPlanId    *string                   `json:"modelPlanId,omitempty"`
+	Name           string                    `json:"name"`
+	Permissions    []string                  `json:"permissions"`
+	Purpose        string                    `json:"purpose"`
+	Skills         []string                  `json:"skills"`
+	Tools          []string                  `json:"tools"`
+}
+
 // PutWorkspaceWorkbenchRequest defines model for PutWorkspaceWorkbenchRequest.
 type PutWorkspaceWorkbenchRequest struct {
 	Snapshot WorkbenchSnapshot `json:"snapshot"`
+}
+
+// RecommendWorkspaceModelsRequest defines model for RecommendWorkspaceModelsRequest.
+type RecommendWorkspaceModelsRequest struct {
+	Limit                *int      `json:"limit,omitempty"`
+	PreferredPlanId      *string   `json:"preferredPlanId,omitempty"`
+	RequiredCapabilities *[]string `json:"requiredCapabilities,omitempty"`
+}
+
+// RecommendWorkspaceModelsResponse defines model for RecommendWorkspaceModelsResponse.
+type RecommendWorkspaceModelsResponse struct {
+	Recommendations []WorkspaceModelRecommendation `json:"recommendations"`
 }
 
 // ReloadLocalWorkspaceAppRequest defines model for ReloadLocalWorkspaceAppRequest.
@@ -4206,6 +4839,12 @@ type SetAgentModelBindingRequest struct {
 	DefaultModel  *string `json:"defaultModel,omitempty"`
 	ModelPlanId   *string `json:"modelPlanId,omitempty"`
 	ModelPolicyId *string `json:"modelPolicyId,omitempty"`
+}
+
+// SetAgentSessionAutomationRuleOverrideRequest defines model for SetAgentSessionAutomationRuleOverrideRequest.
+type SetAgentSessionAutomationRuleOverrideRequest struct {
+	Disabled bool     `json:"disabled"`
+	RuleIds  []string `json:"ruleIds"`
 }
 
 // SetAgentSessionModelPolicyOverrideRequest defines model for SetAgentSessionModelPolicyOverrideRequest.
@@ -4270,19 +4909,32 @@ type TrackEventsRequest struct {
 
 // UpdateIssueManagerIssueRequest defines model for UpdateIssueManagerIssueRequest.
 type UpdateIssueManagerIssueRequest struct {
+	Budget  *IssueManagerBudget `json:"budget,omitempty"`
 	Content *string             `json:"content,omitempty"`
-	Status  *IssueManagerStatus `json:"status,omitempty"`
-	Title   *string             `json:"title,omitempty"`
+
+	// DispatchPaused Pause or resume future daemon dispatch. In-flight runs are not canceled.
+	DispatchPaused   *bool                         `json:"dispatchPaused,omitempty"`
+	ExecutionProfile *IssueManagerExecutionProfile `json:"executionProfile,omitempty"`
+	Status           *IssueManagerStatus           `json:"status,omitempty"`
+	Title            *string                       `json:"title,omitempty"`
 }
 
 // UpdateIssueManagerTaskRequest defines model for UpdateIssueManagerTaskRequest.
 type UpdateIssueManagerTaskRequest struct {
-	Content   *string               `json:"content,omitempty"`
-	DueAtUnix *int64                `json:"dueAtUnix,omitempty"`
-	Priority  *IssueManagerPriority `json:"priority,omitempty"`
-	SortIndex *int                  `json:"sortIndex,omitempty"`
-	Status    *IssueManagerStatus   `json:"status,omitempty"`
-	Title     *string               `json:"title,omitempty"`
+	// AcceptanceState Three-step completion ladder. Only user_accepted closes a successful task.
+	AcceptanceState    *IssueManagerAcceptanceState `json:"acceptanceState,omitempty"`
+	AcceptanceSummary  *string                      `json:"acceptanceSummary,omitempty"`
+	AgentTargetId      *string                      `json:"agentTargetId,omitempty"`
+	Content            *string                      `json:"content,omitempty"`
+	DependencyTaskIds  *[]string                    `json:"dependencyTaskIds,omitempty"`
+	DueAtUnix          *int64                       `json:"dueAtUnix,omitempty"`
+	ExecutionDirectory *string                      `json:"executionDirectory,omitempty"`
+	Model              *string                      `json:"model,omitempty"`
+	ModelPlanId        *string                      `json:"modelPlanId,omitempty"`
+	Priority           *IssueManagerPriority        `json:"priority,omitempty"`
+	SortIndex          *int                         `json:"sortIndex,omitempty"`
+	Status             *IssueManagerStatus          `json:"status,omitempty"`
+	Title              *string                      `json:"title,omitempty"`
 }
 
 // UpdateIssueManagerTopicRequest defines model for UpdateIssueManagerTopicRequest.
@@ -4408,6 +5060,41 @@ type WorkbenchSnapshotSpace struct {
 	NodeIds []string        `json:"nodeIds"`
 }
 
+// WorkspaceAgent A selectable, workspace-scoped Agent made from one Harness target plus an optional model access plan and Agent-specific behavior configuration.
+type WorkspaceAgent struct {
+	// AgentTargetId Compatibility alias of id for AgentGUI and session creation surfaces.
+	AgentTargetId string `json:"agentTargetId"`
+
+	// CallConditions Explicit, user-editable conditions that explain when another Agent or user should invoke this Agent.
+	CallConditions []string `json:"callConditions"`
+
+	// CapabilitiesExplicit False keeps Skills and tools synchronized with all capabilities compatible with the selected Harness. True makes the Skills and tools arrays an explicit allowlist; empty arrays then mean none.
+	CapabilitiesExplicit bool                  `json:"capabilitiesExplicit"`
+	CreatedAt            time.Time             `json:"createdAt"`
+	DefaultModel         *string               `json:"defaultModel,omitempty"`
+	Enabled              bool                  `json:"enabled"`
+	Harness              WorkspaceAgentHarness `json:"harness"`
+
+	// Id Opaque Agent option id. New ids use the workspace-agent prefix and may be passed to workspace Agent session APIs.
+	Id           string `json:"id"`
+	Instructions string `json:"instructions"`
+
+	// ModelFallbacks Ordered, explicit fallback chain used only when starting a new session and the primary Plan/model is not usable. Credentials remain daemon-owned.
+	ModelFallbacks []WorkspaceAgentModelRef `json:"modelFallbacks"`
+	ModelPlanId    *string                  `json:"modelPlanId,omitempty"`
+	Name           string                   `json:"name"`
+	Permissions    []string                 `json:"permissions"`
+	Purpose        string                   `json:"purpose"`
+	Revision       int64                    `json:"revision"`
+	Skills         []string                 `json:"skills"`
+
+	// Source Origin of the workspace Agent configuration. legacy_binding rows were migrated from the former fixed-target binding model.
+	Source      WorkspaceAgentSource `json:"source"`
+	Tools       []string             `json:"tools"`
+	UpdatedAt   time.Time            `json:"updatedAt"`
+	WorkspaceId string               `json:"workspaceId"`
+}
+
 // WorkspaceAgentCapabilities Protocol v2 daemon-issued capability descriptor. Clients branch on these booleans instead of provider identity. Field names mirror the canonical capability keys in packages/agent/daemon/runtime/capabilities.go.
 type WorkspaceAgentCapabilities struct {
 	// ActiveTurnGuidance The provider can accept a user prompt as guidance for the currently running turn without canceling it or creating a normal next turn.
@@ -4448,6 +5135,36 @@ type WorkspaceAgentCompletedCommandKind string
 // WorkspaceAgentCompletedCommandStatus defines model for WorkspaceAgentCompletedCommand.Status.
 type WorkspaceAgentCompletedCommandStatus string
 
+// WorkspaceAgentDraftGeneration defines model for WorkspaceAgentDraftGeneration.
+type WorkspaceAgentDraftGeneration struct {
+	AutomationRules []WorkspaceAgentGeneratedAutomationRule `json:"automationRules"`
+	CallConditions  []string                                `json:"callConditions"`
+	Instructions    string                                  `json:"instructions"`
+	Name            string                                  `json:"name"`
+	Purpose         string                                  `json:"purpose"`
+	Skills          []string                                `json:"skills"`
+	Usage           WorkspaceAgentGenerationUsage           `json:"usage"`
+	UsedModel       string                                  `json:"usedModel"`
+	UsedModelPlanId string                                  `json:"usedModelPlanId"`
+}
+
+// WorkspaceAgentGeneratedAutomationRule defines model for WorkspaceAgentGeneratedAutomationRule.
+type WorkspaceAgentGeneratedAutomationRule struct {
+	Action                   WorkspaceAgentGeneratedAutomationRuleAction `json:"action"`
+	MaxRunsPerSession        int                                         `json:"maxRunsPerSession"`
+	MaxTotalTokensPerSession int64                                       `json:"maxTotalTokensPerSession"`
+	Model                    *string                                     `json:"model,omitempty"`
+	ModelPlanId              string                                      `json:"modelPlanId"`
+	Name                     string                                      `json:"name"`
+	Prompt                   string                                      `json:"prompt"`
+
+	// Trigger Lifecycle outcome that evaluates the rule. A failed-turn rule can delegate to a stronger WorkspaceAgent as a bounded escalation attempt; automated outcomes never final-accept the source task.
+	Trigger AutomationRuleTrigger `json:"trigger"`
+}
+
+// WorkspaceAgentGeneratedAutomationRuleAction defines model for WorkspaceAgentGeneratedAutomationRule.Action.
+type WorkspaceAgentGeneratedAutomationRuleAction string
+
 // WorkspaceAgentGeneratedFileEntry defines model for WorkspaceAgentGeneratedFileEntry.
 type WorkspaceAgentGeneratedFileEntry struct {
 	Label string `json:"label"`
@@ -4458,6 +5175,24 @@ type WorkspaceAgentGeneratedFileEntry struct {
 type WorkspaceAgentGeneratedFileListResponse struct {
 	Entries     []WorkspaceAgentGeneratedFileEntry `json:"entries"`
 	WorkspaceId string                             `json:"workspaceId"`
+}
+
+// WorkspaceAgentGenerationUsage defines model for WorkspaceAgentGenerationUsage.
+type WorkspaceAgentGenerationUsage struct {
+	InputTokens  int64 `json:"inputTokens"`
+	OutputTokens int64 `json:"outputTokens"`
+}
+
+// WorkspaceAgentHarness defines model for WorkspaceAgentHarness.
+type WorkspaceAgentHarness struct {
+	AgentTargetId string `json:"agentTargetId"`
+
+	// Available False when the referenced Harness target no longer exists. The Agent remains listable so it can be repaired or deleted.
+	Available bool                 `json:"available"`
+	Enabled   *bool                `json:"enabled,omitempty"`
+	IconKey   *string              `json:"iconKey,omitempty"`
+	Name      *string              `json:"name,omitempty"`
+	Provider  *AgentTargetProvider `json:"provider,omitempty"`
 }
 
 // WorkspaceAgentInteraction Protocol v2 interaction entity. An agent-initiated approval, question, or plan confirmation raised during a turn. Pending means present in a collection with status pending; replaces the tri-state null pendingInteractive protocol.
@@ -4480,6 +5215,12 @@ type WorkspaceAgentInteractionKind string
 
 // WorkspaceAgentInteractionStatus defines model for WorkspaceAgentInteractionStatus.
 type WorkspaceAgentInteractionStatus string
+
+// WorkspaceAgentModelRef defines model for WorkspaceAgentModelRef.
+type WorkspaceAgentModelRef struct {
+	Model       *string `json:"model,omitempty"`
+	ModelPlanId string  `json:"modelPlanId"`
+}
 
 // WorkspaceAgentPlanDecisionOperation defines model for WorkspaceAgentPlanDecisionOperation.
 type WorkspaceAgentPlanDecisionOperation struct {
@@ -4740,6 +5481,9 @@ type WorkspaceAgentSessionSectionsResponse struct {
 	Sections    []WorkspaceAgentSessionSection `json:"sections"`
 	WorkspaceId string                         `json:"workspaceId"`
 }
+
+// WorkspaceAgentSource Origin of the workspace Agent configuration. legacy_binding rows were migrated from the former fixed-target binding model.
+type WorkspaceAgentSource string
 
 // WorkspaceAgentTurn Protocol v2 turn entity. One user-submission-driven execution: submit, run, wait, settle. Owns phase, outcome, error, and file changes; the session only keeps an activeTurnId reference.
 type WorkspaceAgentTurn struct {
@@ -5183,6 +5927,29 @@ type WorkspaceGitPatchSupportResponse struct {
 // WorkspaceGitPatchTarget defines model for WorkspaceGitPatchTarget.
 type WorkspaceGitPatchTarget string
 
+// WorkspaceModelRecommendation defines model for WorkspaceModelRecommendation.
+type WorkspaceModelRecommendation struct {
+	// BillingMode Budget and cost semantic derived from the access scheme. Subscription quota plans never expose fabricated monetary cost.
+	BillingMode  ModelPlanBillingMode `json:"billingMode"`
+	Capabilities []string             `json:"capabilities"`
+	ModelId      string               `json:"modelId"`
+	ModelName    string               `json:"modelName"`
+	PlanId       string               `json:"planId"`
+	PlanName     string               `json:"planName"`
+	Pricing      *ModelPlanPricing    `json:"pricing,omitempty"`
+	Rank         int                  `json:"rank"`
+
+	// Reasons Stable machine-readable explanations such as status:ready, preferred_plan, default_model, capability:vision, and priced:USD.
+	Reasons []string `json:"reasons"`
+
+	// Status Derived plan lifecycle status. pending_first_use means detection passed but no real agent call has completed yet; only ready plans are fully usable.
+	Status ModelPlanStatus                   `json:"status"`
+	Tier   *WorkspaceModelRecommendationTier `json:"tier,omitempty"`
+}
+
+// WorkspaceModelRecommendationTier defines model for WorkspaceModelRecommendation.Tier.
+type WorkspaceModelRecommendationTier string
+
 // WorkspaceResponse defines model for WorkspaceResponse.
 type WorkspaceResponse struct {
 	Workspace WorkspaceSummary `json:"workspace"`
@@ -5282,6 +6049,9 @@ type AgentSessionID = string
 // AgentTurnID defines model for AgentTurnID.
 type AgentTurnID = string
 
+// AutomationRuleID defines model for AutomationRuleID.
+type AutomationRuleID = string
+
 // CliCommandID defines model for CliCommandID.
 type CliCommandID = string
 
@@ -5326,6 +6096,9 @@ type TerminalAfterSeq = int64
 
 // TerminalID defines model for TerminalID.
 type TerminalID = string
+
+// WorkspaceAgentID defines model for WorkspaceAgentID.
+type WorkspaceAgentID = string
 
 // WorkspaceAppFactoryJobID defines model for WorkspaceAppFactoryJobID.
 type WorkspaceAppFactoryJobID = string
@@ -5639,6 +6412,9 @@ type ImportWorkspaceExternalAgentSessionsJSONRequestBody = ImportExternalAgentSe
 // ScanWorkspaceExternalAgentSessionImportsJSONRequestBody defines body for ScanWorkspaceExternalAgentSessionImports for application/json ContentType.
 type ScanWorkspaceExternalAgentSessionImportsJSONRequestBody = ExternalAgentImportScanRequest
 
+// SetAgentSessionAutomationRuleOverrideJSONRequestBody defines body for SetAgentSessionAutomationRuleOverride for application/json ContentType.
+type SetAgentSessionAutomationRuleOverrideJSONRequestBody = SetAgentSessionAutomationRuleOverrideRequest
+
 // GoalControlWorkspaceAgentSessionJSONRequestBody defines body for GoalControlWorkspaceAgentSession for application/json ContentType.
 type GoalControlWorkspaceAgentSessionJSONRequestBody = WorkspaceAgentSessionGoalControlRequest
 
@@ -5665,6 +6441,15 @@ type SubmitWorkspaceAgentPlanDecisionJSONRequestBody = SubmitWorkspaceAgentPlanD
 
 // UpdateWorkspaceAgentSessionVisibilityJSONRequestBody defines body for UpdateWorkspaceAgentSessionVisibility for application/json ContentType.
 type UpdateWorkspaceAgentSessionVisibilityJSONRequestBody = UpdateWorkspaceAgentSessionVisibilityRequest
+
+// CreateWorkspaceAgentJSONRequestBody defines body for CreateWorkspaceAgent for application/json ContentType.
+type CreateWorkspaceAgentJSONRequestBody = PutWorkspaceAgentRequest
+
+// GenerateWorkspaceAgentDraftJSONRequestBody defines body for GenerateWorkspaceAgentDraft for application/json ContentType.
+type GenerateWorkspaceAgentDraftJSONRequestBody = GenerateWorkspaceAgentDraftRequest
+
+// UpdateWorkspaceAgentJSONRequestBody defines body for UpdateWorkspaceAgent for application/json ContentType.
+type UpdateWorkspaceAgentJSONRequestBody = PutWorkspaceAgentRequest
 
 // GetWorkspaceAppFactoryAgentTargetComposerOptionsJSONRequestBody defines body for GetWorkspaceAppFactoryAgentTargetComposerOptions for application/json ContentType.
 type GetWorkspaceAppFactoryAgentTargetComposerOptionsJSONRequestBody = GetWorkspaceAppFactoryAgentTargetComposerOptionsRequest
@@ -5707,6 +6492,12 @@ type RollbackWorkspaceAppJSONRequestBody = RollbackWorkspaceAppRequest
 
 // PrepareWorkspaceAppUploadJSONRequestBody defines body for PrepareWorkspaceAppUpload for application/json ContentType.
 type PrepareWorkspaceAppUploadJSONRequestBody = PrepareWorkspaceAppUploadRequest
+
+// CreateAutomationRuleJSONRequestBody defines body for CreateAutomationRule for application/json ContentType.
+type CreateAutomationRuleJSONRequestBody = PutAutomationRuleRequest
+
+// UpdateAutomationRuleJSONRequestBody defines body for UpdateAutomationRule for application/json ContentType.
+type UpdateAutomationRuleJSONRequestBody = PutAutomationRuleRequest
 
 // CreateCollaborationRunJSONRequestBody defines body for CreateCollaborationRun for application/json ContentType.
 type CreateCollaborationRunJSONRequestBody = CreateCollaborationRunRequest
@@ -5756,6 +6547,12 @@ type UpdateWorkspaceIssueTopicJSONRequestBody = UpdateIssueManagerTopicRequest
 // CreateWorkspaceIssueJSONRequestBody defines body for CreateWorkspaceIssue for application/json ContentType.
 type CreateWorkspaceIssueJSONRequestBody = CreateIssueManagerIssueRequest
 
+// EstimateWorkspaceIssueAutoTokenBudgetJSONRequestBody defines body for EstimateWorkspaceIssueAutoTokenBudget for application/json ContentType.
+type EstimateWorkspaceIssueAutoTokenBudgetJSONRequestBody = EstimateIssueManagerAutoTokenBudgetRequest
+
+// CreateWorkspaceIssueFromPlanJSONRequestBody defines body for CreateWorkspaceIssueFromPlan for application/json ContentType.
+type CreateWorkspaceIssueFromPlanJSONRequestBody = CreateIssueManagerIssueFromPlanRequest
+
 // UpdateWorkspaceIssueJSONRequestBody defines body for UpdateWorkspaceIssue for application/json ContentType.
 type UpdateWorkspaceIssueJSONRequestBody = UpdateIssueManagerIssueRequest
 
@@ -5791,6 +6588,9 @@ type CreateModelPlanJSONRequestBody = PutModelPlanRequest
 
 // DetectModelPlanJSONRequestBody defines body for DetectModelPlan for application/json ContentType.
 type DetectModelPlanJSONRequestBody = DetectModelPlanRequest
+
+// RecommendWorkspaceModelsJSONRequestBody defines body for RecommendWorkspaceModels for application/json ContentType.
+type RecommendWorkspaceModelsJSONRequestBody = RecommendWorkspaceModelsRequest
 
 // UpdateModelPlanJSONRequestBody defines body for UpdateModelPlan for application/json ContentType.
 type UpdateModelPlanJSONRequestBody = PutModelPlanRequest

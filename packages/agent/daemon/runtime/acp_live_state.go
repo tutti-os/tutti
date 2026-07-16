@@ -32,6 +32,7 @@ type acpUsageState struct {
 	contextWindowTokens int64
 	contextKnown        bool
 	contextModel        string
+	tokens              runtimeTokenUsage
 	quotas              []map[string]any
 }
 
@@ -81,10 +82,13 @@ func snapshotACPLiveState(state acpLiveState) acpLiveStateSnapshot {
 }
 
 func acpUsageRuntimeContext(usage acpUsageState) map[string]any {
-	if !usage.contextKnown && len(usage.quotas) == 0 {
+	if !usage.contextKnown && !usage.tokens.known && len(usage.quotas) == 0 {
 		return nil
 	}
-	result := map[string]any{}
+	result := usage.tokens.runtimeContextFields()
+	if result == nil {
+		result = map[string]any{}
+	}
 	if usage.contextKnown {
 		result["contextWindow"] = map[string]any{
 			"usedTokens":  usage.contextUsedTokens,
@@ -178,6 +182,9 @@ func mergeACPUsageState(previous acpUsageState, next acpUsageState) acpUsageStat
 	if len(merged.quotas) == 0 && len(previous.quotas) > 0 {
 		merged.quotas = cloneUsageQuotas(previous.quotas)
 	}
+	if !merged.tokens.known && previous.tokens.known {
+		merged.tokens = previous.tokens
+	}
 	return merged
 }
 
@@ -215,7 +222,8 @@ func acpUsageValue(update map[string]any) (acpUsageState, bool) {
 		"limit",
 		"max",
 	)
-	if !usedOK || !totalOK {
+	tokens := runtimeTokenUsageFromPayload(update)
+	if (!usedOK || !totalOK) && !tokens.known {
 		return acpUsageState{}, false
 	}
 	if used < 0 {
@@ -227,7 +235,8 @@ func acpUsageValue(update map[string]any) (acpUsageState, bool) {
 	return acpUsageState{
 		contextUsedTokens:   used,
 		contextWindowTokens: total,
-		contextKnown:        true,
+		contextKnown:        usedOK && totalOK,
+		tokens:              tokens,
 	}, true
 }
 

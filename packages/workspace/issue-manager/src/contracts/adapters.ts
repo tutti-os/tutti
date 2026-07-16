@@ -97,11 +97,32 @@ export interface IssueManagerAgentTargetOption {
   iconUrl?: string | null;
   label: string;
   provider: string;
+  modelPlanProtocol?: string;
 }
 
 export interface IssueManagerAgentTargetOptionsAdapter {
   getOptions(): readonly IssueManagerAgentTargetOption[];
   subscribe?(listener: () => void): () => void;
+}
+
+export interface IssueManagerModelPlanModelOption {
+  id: string;
+  name: string;
+  tier?: string;
+}
+
+export interface IssueManagerModelPlanOption {
+  id: string;
+  name: string;
+  protocol: string;
+  defaultModel?: string;
+  models: readonly IssueManagerModelPlanModelOption[];
+}
+
+export interface IssueManagerModelPlanOptionsAdapter {
+  loadOptions():
+    | readonly IssueManagerModelPlanOption[]
+    | Promise<readonly IssueManagerModelPlanOption[]>;
 }
 
 export type IssueManagerOpenSource =

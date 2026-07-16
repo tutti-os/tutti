@@ -209,6 +209,14 @@ export function normalizeTuttiExternalPermissionRequestInput(
   return {
     nonce,
     permission: "managed-ai-models",
+    ...(input.modelPlanIds !== undefined && input.modelPlanIds !== null
+      ? {
+          modelPlanIds: normalizeRequiredStringList(
+            input.modelPlanIds,
+            "permissions.request modelPlanIds"
+          )
+        }
+      : {}),
     providers: normalizeManagedAiModelProviders(input.providers),
     scopes,
     state

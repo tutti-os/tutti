@@ -71,8 +71,9 @@ func TestComposerSettingsStatePayloadPreservesPlanModeFalse(t *testing.T) {
 func TestCreateSessionInputFromPersistedPreservesBrowserUse(t *testing.T) {
 	falseValue := false
 	input := createSessionInputFromPersisted(PersistedSession{
-		ID:       "session-1",
-		Provider: "codex",
+		ID:            "session-1",
+		AgentTargetID: "workspace-agent:writer",
+		Provider:      "codex",
 		Settings: ComposerSettings{
 			BrowserUse: &falseValue,
 			Model:      "gpt-5",
@@ -83,6 +84,9 @@ func TestCreateSessionInputFromPersistedPreservesBrowserUse(t *testing.T) {
 	}
 	if input.Model == nil || *input.Model != "gpt-5" {
 		t.Fatalf("Model = %#v, want gpt-5", input.Model)
+	}
+	if input.AgentTargetID != "workspace-agent:writer" {
+		t.Fatalf("AgentTargetID = %q, want preserved target", input.AgentTargetID)
 	}
 }
 

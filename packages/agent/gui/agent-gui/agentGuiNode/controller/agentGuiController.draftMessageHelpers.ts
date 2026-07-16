@@ -94,6 +94,9 @@ export function composerSettingsFromPendingRecord(
   if (typeof value.model === "string" || value.model === null) {
     settings.model = value.model;
   }
+  if (typeof value.modelPlanId === "string" || value.modelPlanId === null) {
+    settings.modelPlanId = value.modelPlanId;
+  }
   if (
     typeof value.reasoningEffort === "string" ||
     value.reasoningEffort === null

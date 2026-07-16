@@ -4,10 +4,12 @@ import (
 	"context"
 	"strings"
 	"testing"
+	"time"
 
 	agentsessionstore "github.com/tutti-os/tutti/packages/agent/daemon/activity"
 	agenttargetbiz "github.com/tutti-os/tutti/services/tuttid/biz/agenttarget"
 	workspacebiz "github.com/tutti-os/tutti/services/tuttid/biz/workspace"
+	workspaceagentbiz "github.com/tutti-os/tutti/services/tuttid/biz/workspaceagent"
 	workspacedata "github.com/tutti-os/tutti/services/tuttid/data/workspace"
 )
 
@@ -17,6 +19,52 @@ import (
 type fakeAgentTargetRegistry struct {
 	targets map[string]agenttargetbiz.Target
 	aliases map[string]string
+}
+
+func TestActivityProjectionPreservesWorkspaceScopedAgentIDOnlyInOwningWorkspace(t *testing.T) {
+	ctx := context.Background()
+	store := openAgentServiceSQLiteStore(t)
+	for _, workspaceID := range []string{"ws-1", "ws-2"} {
+		if err := store.Create(ctx, workspacebiz.Summary{ID: workspaceID, Name: workspaceID}); err != nil {
+			t.Fatalf("Create(%s) error = %v", workspaceID, err)
+		}
+	}
+	now := time.UnixMilli(1700000000000).UTC()
+	const agentID = "workspace-agent:writer"
+	if err := store.PutWorkspaceAgent(ctx, workspaceagentbiz.Agent{
+		ID: agentID, WorkspaceID: "ws-1", Name: "Writer",
+		HarnessAgentTargetID: agenttargetbiz.IDLocalCodex,
+		Enabled:              true, Source: workspaceagentbiz.SourceUser, Revision: 1,
+		CreatedAt: now, UpdatedAt: now,
+	}); err != nil {
+		t.Fatalf("PutWorkspaceAgent() error = %v", err)
+	}
+	projection := NewActivityProjection(store)
+	projection.SetAgentTargetResolver(testSharedAgentTargetRegistry())
+	projection.SetWorkspaceAgentTargetResolver(store)
+	for _, workspaceID := range []string{"ws-1", "ws-2"} {
+		sessionID := "session-" + workspaceID
+		if _, err := projection.ReportSessionState(ctx, agentsessionstore.ReportSessionStateInput{
+			WorkspaceID: workspaceID, AgentSessionID: sessionID,
+			SessionOrigin: agentsessionstore.WorkspaceAgentSessionOriginRuntime,
+			State: agentsessionstore.WorkspaceAgentSessionStateUpdate{
+				AgentTargetID: agentID, Provider: "codex", CurrentPhase: "idle", OccurredAtUnixMS: 1000,
+			},
+		}); err != nil {
+			t.Fatalf("ReportSessionState(%s) error = %v", workspaceID, err)
+		}
+		session, ok := projection.GetSession(workspaceID, sessionID)
+		if !ok {
+			t.Fatalf("GetSession(%s) not found", workspaceID)
+		}
+		want := ""
+		if workspaceID == "ws-1" {
+			want = agentID
+		}
+		if session.AgentTargetID != want {
+			t.Fatalf("workspace %s agentTargetId = %q, want %q", workspaceID, session.AgentTargetID, want)
+		}
+	}
 }
 
 func (f fakeAgentTargetRegistry) GetAgentTarget(_ context.Context, id string) (agenttargetbiz.Target, error) {

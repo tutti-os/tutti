@@ -14,6 +14,7 @@
     "./mention-search": "./agent-gui/agentGuiNode/AgentMentionSearchController.ts",
     "./agent-message-center": "./agent-message-center/index.ts",
     "./agent-conversation": "./agent-conversation/index.ts",
+    "./plan-issue": "./shared/agentConversation/planImplementationPresentation.ts",
     "./agent-env": "./shared/agentEnv/index.ts",
     "./workspace-settings-panel": "./shared/workspaceSettingsPanel/workspaceSettingsPanelStore.ts",
     "./context-mention-palette": "./context-mention-palette/index.ts",
@@ -144,6 +145,10 @@
         "types": "./dist/agent-conversation/index.d.ts",
         "import": "./dist/agent-conversation/index.js"
       },
+      "./plan-issue": {
+        "types": "./dist/plan-issue.d.ts",
+        "import": "./dist/plan-issue.js"
+      },
       "./agent-env": {
         "types": "./dist/agent-env/index.d.ts",
         "import": "./dist/agent-env/index.js"
@@ -236,6 +241,9 @@
         ],
         "agent-conversation": [
           "./dist/agent-conversation/index.d.ts"
+        ],
+        "plan-issue": [
+          "./dist/plan-issue.d.ts"
         ],
         "agent-env": [
           "./dist/agent-env/index.d.ts"

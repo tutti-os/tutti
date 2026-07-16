@@ -10,7 +10,8 @@ import {
 } from "@tutti-os/agent-activity-core";
 import type {
   WorkspaceAgentActivityEnsureSessionSynchronizedInput,
-  WorkspaceAgentModelCatalogInvalidatedEvent
+  WorkspaceAgentModelCatalogInvalidatedEvent,
+  WorkspaceAgentModelConfigurationChangedEvent
 } from "../workspaceAgentActivityService.interface.ts";
 import type { WorkspaceAgentSessionEngineHost } from "./workspaceAgentSessionEngineHost.ts";
 import {
@@ -28,6 +29,7 @@ import type {
   WorkspaceAgentActivityBridgeEvent,
   WorkspaceAgentActivityReconcileDependencies
 } from "./workspaceAgentActivityReconcileTypes.ts";
+import { subscribeWorkspaceAgentModelConfigurationChanges } from "./workspaceAgentModelConfigurationBridge.ts";
 
 export abstract class WorkspaceAgentActivityReconcileBridge {
   private readonly reconcileDependencies: WorkspaceAgentActivityReconcileDependencies;
@@ -45,6 +47,9 @@ export abstract class WorkspaceAgentActivityReconcileBridge {
   >();
   private readonly modelCatalogInvalidatedListeners = new Set<
     (event: WorkspaceAgentModelCatalogInvalidatedEvent) => void
+  >();
+  private readonly modelConfigurationChangedListeners = new Set<
+    (event: WorkspaceAgentModelConfigurationChangedEvent) => void
   >();
   private readonly latestStateEventBySessionKey = new Map<
     string,
@@ -139,6 +144,13 @@ export abstract class WorkspaceAgentActivityReconcileBridge {
   ): () => void {
     this.modelCatalogInvalidatedListeners.add(listener);
     return () => this.modelCatalogInvalidatedListeners.delete(listener);
+  }
+
+  onModelConfigurationChanged(
+    listener: (event: WorkspaceAgentModelConfigurationChangedEvent) => void
+  ): () => void {
+    this.modelConfigurationChangedListeners.add(listener);
+    return () => this.modelConfigurationChangedListeners.delete(listener);
   }
 
   protected async fetchActivitySessionDetail(
@@ -369,6 +381,12 @@ export abstract class WorkspaceAgentActivityReconcileBridge {
       },
       { scope: { workspaceId } }
     );
+    subscribeWorkspaceAgentModelConfigurationChanges({
+      eventStreamClient,
+      listeners: this.modelConfigurationChangedListeners,
+      sessionEngineHost: this.entries.get(workspaceId),
+      workspaceId
+    });
   }
 
   private startEventStreamConnection(): void {

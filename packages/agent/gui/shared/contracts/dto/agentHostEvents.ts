@@ -109,6 +109,16 @@ export interface AgentHostAgentModelCatalogInvalidatedEvent extends AgentHostEve
   occurredAtUnixMs: number;
 }
 
+export interface AgentHostAgentModelConfigurationChangedEvent extends AgentHostEventBase {
+  scope: "room";
+  type: "agent-model-configuration-changed";
+  workspaceId: string;
+  agentTargetIds: string[];
+  defaultModels: Record<string, string | null>;
+  resetComposerModel: boolean;
+  occurredAtUnixMs: number;
+}
+
 export type AgentHostEventScope = "global" | "room" | "window";
 
 interface AgentHostEventBase {
@@ -258,4 +268,5 @@ export type AgentHostEvent =
   | AgentHostWorkspaceHistoryEvent
   | AgentHostManagedAgentsStateEvent
   | AgentHostManagedAgentActionProgressEvent
-  | AgentHostAgentModelCatalogInvalidatedEvent;
+  | AgentHostAgentModelCatalogInvalidatedEvent
+  | AgentHostAgentModelConfigurationChangedEvent;

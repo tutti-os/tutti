@@ -79,11 +79,14 @@ func codexConfigWithModelPlanEndpoint(content string, endpoint *ModelEndpointCon
 	if model := strings.TrimSpace(endpoint.Model); model != "" {
 		next = codexConfigWithTopLevelAssignment(next, "model", strconv.Quote(model))
 	}
+	if modelEndpointIsOpenRouter(endpoint.BaseURL) {
+		next = codexConfigWithOpenRouterFunctionToolsOnly(next)
+	}
 	table := "[model_providers." + codexModelPlanProviderID + "]\n" +
 		"name = " + strconv.Quote(planProviderDisplayName(endpoint)) + "\n" +
 		"base_url = " + strconv.Quote(strings.TrimSpace(endpoint.BaseURL)) + "\n" +
 		"env_key = " + strconv.Quote(codexModelPlanAPIKeyEnv) + "\n" +
-		"wire_api = \"chat\"\n"
+		"wire_api = \"responses\"\n"
 	if !strings.Contains(next, "[model_providers."+codexModelPlanProviderID+"]") {
 		if strings.TrimSpace(next) == "" {
 			next = table
@@ -92,6 +95,44 @@ func codexConfigWithModelPlanEndpoint(content string, endpoint *ModelEndpointCon
 		}
 	}
 	return next, next != content
+}
+
+func modelEndpointIsOpenRouter(baseURL string) bool {
+	parsed, err := url.Parse(strings.TrimSpace(baseURL))
+	if err != nil {
+		return false
+	}
+	hostname := strings.ToLower(parsed.Hostname())
+	return hostname == "openrouter.ai" || strings.HasSuffix(hostname, ".openrouter.ai")
+}
+
+// codexConfigWithOpenRouterFunctionToolsOnly keeps OpenRouter-backed model
+// plans usable with Codex releases that emit native Responses API namespace
+// tools. OpenRouter currently cannot route those tools to models such as
+// DeepSeek, so the run-scoped config disables every known namespace source and
+// hosted tool while preserving Codex's ordinary function-based coding tools.
+// The user's global Codex config is never changed.
+func codexConfigWithOpenRouterFunctionToolsOnly(content string) string {
+	next := codexConfigWithoutTablePrefix(content, "mcp_servers")
+	next = codexConfigWithTopLevelAssignment(next, "web_search", strconv.Quote("disabled"))
+	for _, feature := range []string{
+		"apps",
+		"current_time_reminder",
+		"image_generation",
+		"imagegenext",
+		"memories",
+		"multi_agent",
+		"multi_agent_v2",
+		"plugins",
+		"standalone_web_search",
+		"tool_suggest",
+	} {
+		next = codexConfigWithTableAssignment(next, "features", feature, "false")
+	}
+	for _, table := range []string{"orchestrator.mcp", "orchestrator.skills"} {
+		next = codexConfigWithTableAssignment(next, table, "enabled", "false")
+	}
+	return next
 }
 
 func planProviderDisplayName(endpoint *ModelEndpointConfig) string {
@@ -126,4 +167,92 @@ func codexConfigWithTopLevelAssignment(content string, key string, encodedValue 
 		return line + "\n"
 	}
 	return line + "\n" + strings.TrimLeft(content, "\r\n")
+}
+
+// codexConfigWithTableAssignment replaces or inserts a simple assignment in a
+// TOML table. Codex's generated config only needs scalar feature flags here,
+// so preserving the rest of the user's run-scoped copy is safer than
+// re-serializing the whole document.
+func codexConfigWithTableAssignment(content string, table string, key string, encodedValue string) string {
+	line := key + " = " + encodedValue
+	lines := strings.Split(strings.ReplaceAll(content, "\r\n", "\n"), "\n")
+	for tableStart, existingLine := range lines {
+		name, ok := codexConfigTableName(existingLine)
+		if !ok || name != table {
+			continue
+		}
+		tableEnd := len(lines)
+		for index := tableStart + 1; index < len(lines); index++ {
+			if _, ok := codexConfigTableName(lines[index]); ok {
+				tableEnd = index
+				break
+			}
+		}
+		for index := tableStart + 1; index < tableEnd; index++ {
+			trimmed := strings.TrimSpace(lines[index])
+			if trimmed == "" || strings.HasPrefix(trimmed, "#") || !codexConfigLineHasKey(trimmed, key) {
+				continue
+			}
+			if trimmed == line {
+				return content
+			}
+			nextLines := append([]string{}, lines...)
+			nextLines[index] = line
+			return strings.Join(nextLines, "\n")
+		}
+		nextLines := make([]string, 0, len(lines)+1)
+		nextLines = append(nextLines, lines[:tableEnd]...)
+		nextLines = append(nextLines, line)
+		nextLines = append(nextLines, lines[tableEnd:]...)
+		return strings.Join(nextLines, "\n")
+	}
+	block := "[" + table + "]\n" + line + "\n"
+	if strings.TrimSpace(content) == "" {
+		return block
+	}
+	return strings.TrimRight(content, "\r\n") + "\n\n" + block
+}
+
+// codexConfigWithoutTablePrefix removes a table and all of its descendants
+// from the run-scoped TOML copy. This is used for mcp_servers because merely
+// disabling one known server still leaves other MCP namespaces in the model
+// request.
+func codexConfigWithoutTablePrefix(content string, prefix string) string {
+	lines := strings.Split(strings.ReplaceAll(content, "\r\n", "\n"), "\n")
+	nextLines := make([]string, 0, len(lines))
+	removing := false
+	changed := false
+	for _, line := range lines {
+		if table, ok := codexConfigTableName(line); ok {
+			removing = table == prefix || strings.HasPrefix(table, prefix+".")
+		}
+		if removing {
+			changed = true
+			continue
+		}
+		nextLines = append(nextLines, line)
+	}
+	if !changed {
+		return content
+	}
+	return strings.TrimRight(strings.Join(nextLines, "\n"), "\n") + "\n"
+}
+
+func codexConfigTableName(line string) (string, bool) {
+	trimmed := strings.TrimSpace(line)
+	if !strings.HasPrefix(trimmed, "[") {
+		return "", false
+	}
+	if strings.HasPrefix(trimmed, "[[") {
+		end := strings.Index(trimmed[2:], "]]")
+		if end < 0 {
+			return "", false
+		}
+		return strings.TrimSpace(trimmed[2 : end+2]), true
+	}
+	end := strings.IndexByte(trimmed[1:], ']')
+	if end < 0 {
+		return "", false
+	}
+	return strings.TrimSpace(trimmed[1 : end+1]), true
 }

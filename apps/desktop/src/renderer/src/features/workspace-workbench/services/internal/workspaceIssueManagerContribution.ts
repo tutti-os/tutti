@@ -1,6 +1,7 @@
 import { createElement } from "react";
 import type { AgentGUIAgent } from "@tutti-os/agent-gui";
 import { agentGuiDockIconUrls } from "@tutti-os/agent-gui/dock-icons";
+import { resolveAgentGUIProviderCatalogIdentity } from "@tutti-os/agent-gui/provider-catalog";
 import { createRichTextMentionHref } from "@tutti-os/ui-rich-text/core";
 import type {
   AgentProviderStatus,
@@ -92,6 +93,32 @@ export function createWorkspaceIssueManagerContribution(input: {
         };
       }
     },
+    modelPlanOptions: {
+      loadOptions: async () => {
+        const response = await input.tuttidClient.listWorkspaceModelPlans(
+          input.workspaceId
+        );
+        return response.plans
+          .filter(
+            (plan) =>
+              plan.enabled &&
+              (plan.status === "pending_first_use" || plan.status === "ready")
+          )
+          .map((plan) => ({
+            id: plan.id,
+            name: plan.name,
+            protocol: plan.protocol,
+            ...(plan.defaultModel?.trim()
+              ? { defaultModel: plan.defaultModel.trim() }
+              : {}),
+            models: plan.models.map((model) => ({
+              id: model.id,
+              name: model.name,
+              tier: model.tier
+            }))
+          }));
+      }
+    },
     agentSessionCreator: input.workspaceAgentPromptSessionService,
     eventStreamClient: input.eventStreamClient,
     hostFilesApi: input.hostFilesApi,
@@ -101,6 +128,8 @@ export function createWorkspaceIssueManagerContribution(input: {
         agentSessionId: request.agentSessionId,
         draftPrompt: request.draftPrompt,
         agentTargetId: request.agentTargetId,
+        model: request.model,
+        modelPlanId: request.modelPlanId,
         openInNewWindow: request.openInNewWindow,
         provider: normalizeDesktopAgentGUIProvider(request.provider),
         userProjectPath: request.userProjectPath,
@@ -275,7 +304,10 @@ function resolveIssueManagerReadyAgentTargetOptions(
       agentTargetId: agent.agentTargetId.trim(),
       iconUrl: agent.iconUrl || agentGuiDockIconUrls[agent.provider],
       label: agent.name.trim() || resolveWorkspaceAgentGuiLabel(agent.provider),
-      provider: agent.provider
+      provider: agent.provider,
+      modelPlanProtocol:
+        resolveAgentGUIProviderCatalogIdentity(agent.provider)
+          ?.modelPlanProtocol || undefined
     }));
   const defaultAgentTargetId = resolveDefaultAppFactoryProvider(
     options,

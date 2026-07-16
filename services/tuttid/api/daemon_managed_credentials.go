@@ -24,6 +24,7 @@ type managedProviderModelsRequest struct {
 
 type managedGrantCreateRequest struct {
 	ContextToken string   `json:"contextToken"`
+	ModelPlanIDs []string `json:"modelPlanIds"`
 	Nonce        string   `json:"nonce"`
 	Providers    []string `json:"providers"`
 	Scopes       []string `json:"scopes"`
@@ -39,9 +40,10 @@ type managedGrantExchangeRequest struct {
 }
 
 type managedGrantCredentialRequest struct {
-	Capability string `json:"capability"`
-	Model      string `json:"model"`
-	Provider   string `json:"provider"`
+	Capability  string `json:"capability"`
+	Model       string `json:"model"`
+	ModelPlanID string `json:"modelPlanId"`
+	Provider    string `json:"provider"`
 }
 
 func (r daemonRoutes) HandleManagedModelProviders(w http.ResponseWriter, req *http.Request, workspaceID string) {
@@ -171,6 +173,7 @@ func (r daemonRoutes) HandleManagedModelGrants(w http.ResponseWriter, req *http.
 		AppID:        appID,
 		Nonce:        body.Nonce,
 		ProviderIDs:  body.Providers,
+		ModelPlanIDs: body.ModelPlanIDs,
 		Scopes:       body.Scopes,
 		State:        body.State,
 	})
@@ -179,10 +182,11 @@ func (r daemonRoutes) HandleManagedModelGrants(w http.ResponseWriter, req *http.
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
-		"grantCode": result.GrantCode,
-		"expiresAt": result.Grant.ExpiresAt,
-		"providers": result.Grant.ProviderIDs,
-		"models":    result.Models,
+		"grantCode":    result.GrantCode,
+		"expiresAt":    result.Grant.ExpiresAt,
+		"providers":    result.Grant.ProviderIDs,
+		"modelPlanIds": result.Grant.ModelPlanIDs,
+		"models":       result.Models,
 	})
 }
 
@@ -244,6 +248,7 @@ func (r daemonRoutes) HandleManagedModelGrantCredential(w http.ResponseWriter, r
 		AppID:       appID,
 		GrantRef:    grantRef,
 		Provider:    body.Provider,
+		ModelPlanID: body.ModelPlanID,
 		Model:       body.Model,
 		Capability:  body.Capability,
 	})
@@ -283,10 +288,11 @@ func (r daemonRoutes) HandleManagedModelGrantExchange(w http.ResponseWriter, req
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
-		"expiresAt": result.ExpiresAt,
-		"grantRef":  result.GrantRef,
-		"providers": result.Providers,
-		"models":    result.Models,
+		"expiresAt":    result.ExpiresAt,
+		"grantRef":     result.GrantRef,
+		"providers":    result.Providers,
+		"modelPlanIds": result.ModelPlanIDs,
+		"models":       result.Models,
 	})
 }
 
@@ -297,7 +303,9 @@ func writeManagedCredentialGrantError(w http.ResponseWriter, err error) {
 		status = http.StatusUnauthorized
 	case managedcredentialsservice.ErrGrantExpired, managedcredentialsservice.ErrGrantRevoked:
 		status = http.StatusForbidden
-	case managedcredentialsservice.ErrProviderNotConfigured:
+	case managedcredentialsservice.ErrProviderNotConfigured,
+		managedcredentialsservice.ErrModelPlanNotConfigured,
+		managedcredentialsservice.ErrModelPlanSelectionRequired:
 		status = http.StatusConflict
 	}
 	writeManagedCredentialError(w, status, err.Error())

@@ -104,6 +104,16 @@ func DefaultCatalog() StaticCatalog {
 			},
 		},
 		{
+			Name:               TopicAgentAutomationRulesChanged,
+			ClientCanPublish:   false,
+			ClientCanSubscribe: true,
+			Version:            1,
+			directions:         []Direction{DirectionServerToClient},
+			validators: map[Direction]PayloadValidator{
+				DirectionServerToClient: validateAgentAutomationRulesChangedPayload,
+			},
+		},
+		{
 			Name:               TopicAgentCollaborationUpdated,
 			ClientCanPublish:   false,
 			ClientCanSubscribe: true,
@@ -121,6 +131,16 @@ func DefaultCatalog() StaticCatalog {
 			directions:         []Direction{DirectionServerToClient},
 			validators: map[Direction]PayloadValidator{
 				DirectionServerToClient: validateAgentModelCatalogInvalidatedPayload,
+			},
+		},
+		{
+			Name:               TopicAgentModelConfigurationChanged,
+			ClientCanPublish:   false,
+			ClientCanSubscribe: true,
+			Version:            1,
+			directions:         []Direction{DirectionServerToClient},
+			validators: map[Direction]PayloadValidator{
+				DirectionServerToClient: validateAgentModelConfigurationChangedPayload,
 			},
 		},
 		{
@@ -274,11 +294,6 @@ type agentActivityUpdatedPayload struct {
 	AgentTargetID  string          `json:"agentTargetId,omitempty"`
 	EventType      string          `json:"eventType"`
 	Data           json.RawMessage `json:"data"`
-}
-
-type agentModelCatalogInvalidatedPayload struct {
-	Providers        []string `json:"providers"`
-	OccurredAtUnixMS int64    `json:"occurredAtUnixMs"`
 }
 
 type agentActivityUpdatedDataHeader struct {
@@ -612,28 +627,6 @@ func validateAgentActivityUpdatedPayload(payload []byte) error {
 		return fmt.Errorf("data is required")
 	}
 	return validateAgentActivityUpdatedData(decoded)
-}
-
-func validateAgentModelCatalogInvalidatedPayload(payload []byte) error {
-	var decoded agentModelCatalogInvalidatedPayload
-	if err := decodeJSONStrict(payload, &decoded); err != nil {
-		return fmt.Errorf("decode payload: %w", err)
-	}
-	if len(decoded.Providers) == 0 {
-		return fmt.Errorf("providers is required")
-	}
-	for _, provider := range decoded.Providers {
-		if strings.TrimSpace(provider) == "" {
-			return fmt.Errorf("providers must not contain empty entries")
-		}
-		if !agentproviderbiz.IsSupported(provider) {
-			return fmt.Errorf("providers contains unsupported provider %q", provider)
-		}
-	}
-	if decoded.OccurredAtUnixMS <= 0 {
-		return fmt.Errorf("occurredAtUnixMs is required")
-	}
-	return nil
 }
 
 func decodeJSONStrict(payload []byte, target any) error {

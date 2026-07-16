@@ -228,6 +228,8 @@ func TestDefaultPreparerCodexWritesInstructionsSkillManifestAndEnv(t *testing.T)
 	if !strings.Contains(string(skill), "local Tutti daemon") ||
 		!strings.Contains(string(skill), "localhost/IPC") ||
 		!strings.Contains(string(skill), "execution environment") ||
+		!strings.Contains(string(skill), "agent recommend-models --required-capability <capability> --json") ||
+		!strings.Contains(string(skill), "never as proof of one universally best model") ||
 		!strings.Contains(string(skill), "Issue execution sequencing belongs to `$issue-manager`") {
 		t.Fatalf("skill content = %q, want local daemon environment guidance", string(skill))
 	}

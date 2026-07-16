@@ -11,6 +11,7 @@ import type {
   IssueManagerFileReference,
   IssueManagerIssueDetail,
   IssueManagerIssueSummary,
+  IssueManagerModelPlanOption,
   IssueManagerNodeState,
   IssueManagerOpenSource,
   IssueManagerPriority,
@@ -28,6 +29,7 @@ import type { IssueManagerI18nRuntime } from "../../../../i18n/issueManagerI18n.
 import type { IssueManagerControllerService } from "../../../../services/issueManagerControllerService.interface.ts";
 import {
   resolveIssueManagerAgentTargetOptions,
+  normalizeIssueManagerModelPlanOptions,
   resolveIssueManagerControllerCapabilities
 } from "./IssueManagerControllerCapabilities.ts";
 import type { IssueManagerFloatingNoticeViewState } from "../shell/IssueManagerNoticeState.ts";
@@ -90,6 +92,7 @@ export interface IssueManagerController {
   nodeState: IssueManagerNodeState;
   notification: IssueManagerNotificationState | null;
   openAgentSession: (run: IssueManagerRun) => Promise<void>;
+  openPlanningSession: (issue: IssueManagerIssueSummary) => Promise<void>;
   openMention: (mention: RichTextMentionAttrs) => Promise<void>;
   openReference: (reference: IssueManagerFileReference) => Promise<void>;
   moveTask: (input: {
@@ -99,6 +102,7 @@ export interface IssueManagerController {
     visibleTaskIds?: readonly string[];
   }) => Promise<void>;
   agentTargetOptions: readonly IssueManagerAgentTargetOption[];
+  modelPlanOptions?: readonly IssueManagerModelPlanOption[];
   executionDirectoryProjectService: WorkspaceUserProjectService | null;
   reportIssueSearchUsage: (query: string) => void;
   refreshAll: () => void;
@@ -217,6 +221,30 @@ export function useIssueManagerController({
     });
   }, [feature]);
 
+  const [modelPlanOptions, setModelPlanOptions] = useState<
+    readonly IssueManagerModelPlanOption[]
+  >([]);
+  useEffect(() => {
+    let active = true;
+    const loadOptions = feature.modelPlanOptions?.loadOptions;
+    if (!loadOptions) {
+      setModelPlanOptions([]);
+      return;
+    }
+    void Promise.resolve(loadOptions())
+      .then((options) => {
+        if (active) {
+          setModelPlanOptions(normalizeIssueManagerModelPlanOptions(options));
+        }
+      })
+      .catch(() => {
+        if (active) setModelPlanOptions([]);
+      });
+    return () => {
+      active = false;
+    };
+  }, [feature]);
+
   const actions = createIssueManagerControllerActionsBridge({
     controllerSession,
     copy,
@@ -316,6 +344,7 @@ export function useIssueManagerController({
       });
     },
     agentTargetOptions,
+    modelPlanOptions,
     executionDirectoryProjectService:
       feature.executionDirectoryPicker?.service ?? null,
     workspaceUserProjectI18n: feature.workspaceUserProjectI18n,

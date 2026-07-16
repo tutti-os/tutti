@@ -144,6 +144,7 @@ export const AgentGUINode = memo(function AgentGUINode({
     onCapabilitySettingsRequest,
     onAgentProviderLogin,
     onOpenConversationWindow,
+    onCreateIssueFromPlan,
     onClose,
     onResize,
     onUpdateNode,
@@ -307,6 +308,7 @@ export const AgentGUINode = memo(function AgentGUINode({
     previewMode,
     onDataChange: handleDataChange,
     onRememberComposerDefaults,
+    onCreateIssueFromPlan,
     onShowMessage
   });
   const handleCreateConversation = useCallback(

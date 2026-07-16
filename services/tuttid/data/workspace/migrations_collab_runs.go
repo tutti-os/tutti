@@ -59,3 +59,84 @@ INSERT INTO tuttid_schema_migrations (id, applied_at_unix_ms)
 	}
 	return nil
 }
+
+func (s *SQLiteStore) applyCollabRunsRetryV1(ctx context.Context) error {
+	applied, err := s.hasMigration(ctx, schemaMigrationCollabRunsRetryV1)
+	if err != nil {
+		return err
+	}
+	if applied {
+		return nil
+	}
+	columns := []struct {
+		name       string
+		definition string
+	}{
+		{"context_text", "TEXT NOT NULL DEFAULT ''"},
+		{"request_text", "TEXT NOT NULL DEFAULT ''"},
+		{"retry_of_run_id", "TEXT NOT NULL DEFAULT ''"},
+		{"attempt", "INTEGER NOT NULL DEFAULT 1"},
+		{"failure_stage", "TEXT NOT NULL DEFAULT ''"},
+		{"cost_currency", "TEXT NOT NULL DEFAULT ''"},
+		{"estimated_cost_micros", "INTEGER NOT NULL DEFAULT 0"},
+	}
+	for _, column := range columns {
+		hasColumn, err := s.hasColumn(ctx, "collaboration_runs", column.name)
+		if err != nil {
+			return err
+		}
+		if hasColumn {
+			continue
+		}
+		if _, err := s.db.ExecContext(ctx, "ALTER TABLE collaboration_runs ADD COLUMN "+column.name+" "+column.definition+";"); err != nil {
+			return fmt.Errorf("add collaboration retry column %s: %w", column.name, err)
+		}
+	}
+	if _, err := s.db.ExecContext(ctx, `
+CREATE INDEX IF NOT EXISTS idx_collaboration_runs_retry_parent
+  ON collaboration_runs(workspace_id, retry_of_run_id);
+INSERT INTO tuttid_schema_migrations (id, applied_at_unix_ms)
+  VALUES (?, ?);
+`, schemaMigrationCollabRunsRetryV1, unixMs(time.Now().UTC())); err != nil {
+		return fmt.Errorf("migrate collaboration retry v1: %w", err)
+	}
+	return nil
+}
+
+// applyCollabRunsUsageV1 preserves provider-reported cache token categories
+// instead of folding or dropping them from collaboration accounting.
+func (s *SQLiteStore) applyCollabRunsUsageV1(ctx context.Context) error {
+	applied, err := s.hasMigration(ctx, schemaMigrationCollabRunsUsageV1)
+	if err != nil {
+		return err
+	}
+	if applied {
+		return nil
+	}
+	columns := []struct {
+		name       string
+		definition string
+	}{
+		{"cache_read_tokens", "INTEGER NOT NULL DEFAULT 0"},
+		{"cache_write_tokens", "INTEGER NOT NULL DEFAULT 0"},
+	}
+	for _, column := range columns {
+		hasColumn, err := s.hasColumn(ctx, "collaboration_runs", column.name)
+		if err != nil {
+			return err
+		}
+		if hasColumn {
+			continue
+		}
+		if _, err := s.db.ExecContext(ctx, "ALTER TABLE collaboration_runs ADD COLUMN "+column.name+" "+column.definition+";"); err != nil {
+			return fmt.Errorf("add collaboration usage column %s: %w", column.name, err)
+		}
+	}
+	if _, err := s.db.ExecContext(ctx, `
+INSERT INTO tuttid_schema_migrations (id, applied_at_unix_ms)
+  VALUES (?, ?);
+`, schemaMigrationCollabRunsUsageV1, unixMs(time.Now().UTC())); err != nil {
+		return fmt.Errorf("migrate collaboration usage v1: %w", err)
+	}
+	return nil
+}

@@ -1443,6 +1443,9 @@ func TestDaemonAPIGeneratedRoutesCreateAgentSessionAllowsTargetOnlyRequest(t *te
 				if input.Provider != "" {
 					t.Fatalf("provider = %q, want empty pre-service target-only authority", input.Provider)
 				}
+				if input.AutomationRuleOverride == nil || input.AutomationRuleOverride.Disabled || !slices.Equal(input.AutomationRuleOverride.RuleIDs, []string{"rule-review"}) {
+					t.Fatalf("automation override = %#v", input.AutomationRuleOverride)
+				}
 				return agentservice.Session{
 					ID:            input.AgentSessionID,
 					AgentTargetID: input.AgentTargetID,
@@ -1456,7 +1459,12 @@ func TestDaemonAPIGeneratedRoutesCreateAgentSessionAllowsTargetOnlyRequest(t *te
 	recorder := performGeneratedRouteRequest(t, mux, http.MethodPost, "/v1/workspaces/ws-1/agent-sessions", map[string]any{
 		"agentSessionId": "11111111-1111-4111-8111-111111111111",
 		"agentTargetId":  agenttargetbiz.IDLocalCodex,
+		"clientSubmitId": "submit-1",
 		"initialContent": []map[string]any{{"type": "text", "text": "hello"}},
+		"automationRuleOverride": map[string]any{
+			"disabled": false,
+			"ruleIds":  []string{"rule-review"},
+		},
 	})
 	if recorder.Code != http.StatusCreated {
 		t.Fatalf("status = %d, want %d; body: %s", recorder.Code, http.StatusCreated, recorder.Body.String())

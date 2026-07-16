@@ -23,6 +23,8 @@ export async function handleStandaloneAgentGuiLaunch(
   const agentSessionId = normalizeOptionalString(request.agentSessionId);
   const agentTargetId = normalizeOptionalNullableString(request.agentTargetId);
   const provider = request.provider ?? context.headerProvider;
+  const model = normalizeOptionalString(request.model);
+  const modelPlanId = normalizeOptionalString(request.modelPlanId);
 
   if (agentSessionId && !draftPrompt && request.openInNewWindow !== true) {
     context.activateAgentSession({
@@ -41,6 +43,8 @@ export async function handleStandaloneAgentGuiLaunch(
       ? {
           ...(request.autoSubmit === true ? { autoSubmit: true } : {}),
           draftPrompt,
+          ...(model ? { model } : {}),
+          ...(modelPlanId ? { modelPlanId } : {}),
           ...(userProjectPath ? { userProjectPath } : {})
         }
       : {}),

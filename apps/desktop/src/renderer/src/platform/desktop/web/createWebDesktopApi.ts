@@ -284,6 +284,9 @@ function createWebHostApi(): DesktopHostApi {
       readLocalFileText() {
         return Promise.reject(electronDebugRequired("readLocalFileText"));
       },
+      createGitWorktree() {
+        return Promise.resolve(null);
+      },
       readLocalPreviewFile() {
         return Promise.reject(electronDebugRequired("readLocalPreviewFile"));
       },

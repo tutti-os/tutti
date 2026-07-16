@@ -84,43 +84,6 @@ export function projectAgentConversationVM(
   };
 }
 
-/**
- * Latest plain assistant reply in the projected transcript (newest first).
- * Used as the optional consult context; error cards, system notices, plan and
- * collaboration cards are skipped so only ordinary reply text qualifies.
- */
-export function latestAssistantMessageText(
-  conversation: Pick<AgentConversationVM, "rows"> | null | undefined
-): string | null {
-  if (!conversation) {
-    return null;
-  }
-  for (let rowIndex = conversation.rows.length - 1; rowIndex >= 0; rowIndex--) {
-    const row = conversation.rows[rowIndex];
-    if (row?.kind !== "message" || row.speaker !== "assistant") {
-      continue;
-    }
-    for (
-      let messageIndex = row.messages.length - 1;
-      messageIndex >= 0;
-      messageIndex--
-    ) {
-      const message = row.messages[messageIndex];
-      if (!message || message.visibleError || message.systemNotice) {
-        continue;
-      }
-      if (message.contentKind && message.contentKind !== "text") {
-        continue;
-      }
-      const body = message.body.trim();
-      if (body) {
-        return body;
-      }
-    }
-  }
-  return null;
-}
-
 export function reconcileProjectedAgentConversationVM(
   previous: AgentConversationVM | null | undefined,
   next: AgentConversationVM

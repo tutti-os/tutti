@@ -29,7 +29,7 @@ export function composerOptionsReducer(
     case "composerOptions/loadRequested":
       return requestLoad(state, intent);
     case "composerOptions/invalidated":
-      return invalidate(state, intent.providers);
+      return invalidate(state, intent.providers, intent.targetKeys);
     case "engine/commandResult":
       return intent.commandType === "composerOptions/load"
         ? settleLoad(state, intent)
@@ -150,12 +150,16 @@ function settleLoad(
 
 function invalidate(
   state: ComposerOptionsState,
-  providers: readonly string[] | undefined
+  providers: readonly string[] | undefined,
+  targetKeys: readonly string[] | undefined
 ): EngineReducerResult<ComposerOptionsState> {
-  const providerSet = providers?.length ? new Set(providers) : null;
+  const providerSet = normalizedFilter(providers);
+  const targetKeySet = normalizedFilter(targetKeys);
   let entriesByTargetKey: Record<string, ComposerOptionsEntry> | null = null;
   for (const [targetKey, entry] of Object.entries(state.entriesByTargetKey)) {
-    const matches = providerSet === null || providerSet.has(entry.provider);
+    const matches =
+      (providerSet === null || providerSet.has(entry.provider)) &&
+      (targetKeySet === null || targetKeySet.has(targetKey));
     if (!matches) continue;
     entriesByTargetKey ??= { ...state.entriesByTargetKey };
     entriesByTargetKey[targetKey] = {
@@ -171,6 +175,18 @@ function invalidate(
   return entriesByTargetKey
     ? changed({ ...state, entriesByTargetKey })
     : unchanged(state);
+}
+
+function normalizedFilter(
+  values: readonly string[] | undefined
+): Set<string> | null {
+  if (!values?.length) {
+    return null;
+  }
+  const normalized = new Set(
+    values.map((value) => value.trim()).filter(Boolean)
+  );
+  return normalized.size > 0 ? normalized : null;
 }
 
 function composerOptionsFromValue(

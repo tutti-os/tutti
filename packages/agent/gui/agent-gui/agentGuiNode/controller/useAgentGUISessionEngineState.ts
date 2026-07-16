@@ -104,6 +104,7 @@ export function useAgentGUISessionEngineState(input: {
   const activeCanonicalComposerSettings = useMemo<AgentSessionComposerSettings>(
     () => ({
       model: activeEngineSession?.settings?.model ?? undefined,
+      modelPlanId: activeEngineSession?.settings?.modelPlanId ?? undefined,
       permissionModeId:
         activeEngineSession?.settings?.permissionModeId ?? undefined,
       planMode: activeEngineSession?.settings?.planMode ?? undefined,

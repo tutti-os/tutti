@@ -41,24 +41,24 @@ func (p Provider) Commands() []cliservice.Command {
 }
 
 func (p Provider) newExchangeCommand() cliservice.Command {
-	return p.command(commandGrantExchange, []string{"managed-model", "grant", "exchange"}, "Exchange a managed-model grant", []string{"contextToken", "grantCode", "nonce", "state"}, p.exchange)
+	return p.command(commandGrantExchange, []string{"managed-model", "grant", "exchange"}, "Exchange a managed-model grant", []string{"contextToken", "grantCode", "nonce", "state"}, nil, p.exchange)
 }
 
 func (p Provider) newModelsCommand() cliservice.Command {
-	return p.command(commandModels, []string{"managed-model", "models"}, "List managed-model grant models", []string{"grantRef"}, p.models)
+	return p.command(commandModels, []string{"managed-model", "models"}, "List managed-model grant models", []string{"grantRef"}, nil, p.models)
 }
 
 func (p Provider) newCredentialCommand() cliservice.Command {
-	return p.command(commandCredential, []string{"managed-model", "credential"}, "Lease a managed-model provider credential", []string{"grantRef", "provider", "model", "capability"}, p.credential)
+	return p.command(commandCredential, []string{"managed-model", "credential"}, "Lease a managed-model provider credential", []string{"grantRef", "provider", "model", "capability"}, []string{"modelPlanId"}, p.credential)
 }
 
 func (p Provider) newRevokeCommand() cliservice.Command {
-	return p.command(commandRevoke, []string{"managed-model", "revoke"}, "Revoke a managed-model grant", []string{"grantRef"}, p.revoke)
+	return p.command(commandRevoke, []string{"managed-model", "revoke"}, "Revoke a managed-model grant", []string{"grantRef"}, nil, p.revoke)
 }
 
-func (p Provider) command(id string, path []string, summary string, required []string, run func(context.Context, cliservice.InvokeRequest) (map[string]any, error)) cliservice.Command {
+func (p Provider) command(id string, path []string, summary string, required []string, optional []string, run func(context.Context, cliservice.InvokeRequest) (map[string]any, error)) cliservice.Command {
 	properties := map[string]any{}
-	for _, name := range required {
+	for _, name := range append(append([]string(nil), required...), optional...) {
 		properties[name] = map[string]any{"type": "string"}
 	}
 	return cliservice.Command{
@@ -78,7 +78,7 @@ func (p Provider) command(id string, path []string, summary string, required []s
 			if p.service == nil {
 				return cliservice.CommandOutput{}, cliservice.ServiceUnavailableError("managed_model_service_unavailable", fmt.Errorf("managed model service is unavailable"))
 			}
-			if err := requireExactInput(request.Input, required); err != nil {
+			if err := requireExactInput(request.Input, required, optional); err != nil {
 				return cliservice.CommandOutput{}, err
 			}
 			if err := requireAppContext(request.Context); err != nil {
@@ -106,10 +106,11 @@ func (p Provider) exchange(ctx context.Context, request cliservice.InvokeRequest
 		return nil, err
 	}
 	return map[string]any{
-		"expiresAt": formatTime(result.ExpiresAt),
-		"grantRef":  result.GrantRef,
-		"models":    result.Models,
-		"providers": result.Providers,
+		"expiresAt":    formatTime(result.ExpiresAt),
+		"grantRef":     result.GrantRef,
+		"modelPlanIds": result.ModelPlanIDs,
+		"models":       result.Models,
+		"providers":    result.Providers,
 	}, nil
 }
 
@@ -127,6 +128,7 @@ func (p Provider) credential(ctx context.Context, request cliservice.InvokeReque
 		Capability:  request.Input["capability"].(string),
 		GrantRef:    request.Input["grantRef"].(string),
 		Model:       request.Input["model"].(string),
+		ModelPlanID: optionalString(request.Input, "modelPlanId"),
 		Provider:    request.Input["provider"].(string),
 		WorkspaceID: request.Context.WorkspaceID,
 	})
@@ -154,7 +156,7 @@ func requireAppContext(context cliservice.InvokeContext) error {
 	return nil
 }
 
-func requireExactInput(input map[string]any, required []string) error {
+func requireExactInput(input map[string]any, required []string, optional []string) error {
 	if input == nil {
 		return fmt.Errorf("%w: command input is required", cliservice.ErrInvalidInput)
 	}
@@ -166,12 +168,26 @@ func requireExactInput(input map[string]any, required []string) error {
 			return fmt.Errorf("%w: %s is required", cliservice.ErrInvalidInput, name)
 		}
 	}
+	for _, name := range optional {
+		allowed[name] = struct{}{}
+		if value, ok := input[name]; ok {
+			text, valid := value.(string)
+			if !valid || strings.TrimSpace(text) == "" {
+				return fmt.Errorf("%w: %s must be a non-empty string when provided", cliservice.ErrInvalidInput, name)
+			}
+		}
+	}
 	for name := range input {
 		if _, ok := allowed[name]; !ok {
 			return fmt.Errorf("%w: %s is not supported", cliservice.ErrInvalidInput, name)
 		}
 	}
 	return nil
+}
+
+func optionalString(input map[string]any, key string) string {
+	value, _ := input[key].(string)
+	return strings.TrimSpace(value)
 }
 
 func formatTime(value time.Time) string {

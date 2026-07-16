@@ -16,6 +16,7 @@ import (
 	runtimeprep "github.com/tutti-os/tutti/packages/agent/runtimeprep"
 	agentactivitybiz "github.com/tutti-os/tutti/services/tuttid/biz/agentactivity"
 	agenttargetbiz "github.com/tutti-os/tutti/services/tuttid/biz/agenttarget"
+	automationrulebiz "github.com/tutti-os/tutti/services/tuttid/biz/automationrule"
 	userprojectbiz "github.com/tutti-os/tutti/services/tuttid/biz/userproject"
 	workspacebiz "github.com/tutti-os/tutti/services/tuttid/biz/workspace"
 	workspacedata "github.com/tutti-os/tutti/services/tuttid/data/workspace"
@@ -60,6 +61,41 @@ func TestServiceCreatesAndListsSessions(t *testing.T) {
 	}
 	if got.ID != session.ID {
 		t.Fatalf("got session ID = %q, want %q", got.ID, session.ID)
+	}
+}
+
+func TestServiceAppliesAutomationRuleOverrideBeforeInitialExec(t *testing.T) {
+	runtime := newFakeRuntime()
+	writer := &recordingAutomationRuleOverrideWriter{
+		beforeSet: func() {
+			if len(runtime.execCalls) != 0 {
+				t.Fatalf("initial exec started before AutomationRule override was persisted")
+			}
+		},
+	}
+	service := newTestService(runtime)
+	service.AutomationRuleOverrides = writer
+
+	_, err := service.Create(context.Background(), "ws-1", CreateSessionInput{
+		AgentSessionID: "11111111-1111-4111-8111-111111111111",
+		AgentTargetID:  agenttargetbiz.IDLocalCodex,
+		InitialContent: TextPromptContent("hello"),
+		AutomationRuleOverride: &automationrulebiz.SessionOverride{
+			RuleIDs: []string{"rule-review"},
+		},
+	})
+	if err != nil {
+		t.Fatalf("Create returned error: %v", err)
+	}
+	if len(writer.calls) != 1 {
+		t.Fatalf("override calls = %#v, want one", writer.calls)
+	}
+	got := writer.calls[0]
+	if got.WorkspaceID != "ws-1" || got.AgentSessionID != "11111111-1111-4111-8111-111111111111" || !slices.Equal(got.RuleIDs, []string{"rule-review"}) {
+		t.Fatalf("override = %#v", got)
+	}
+	if len(runtime.execCalls) != 1 {
+		t.Fatalf("exec calls = %d, want one after override", len(runtime.execCalls))
 	}
 }
 
@@ -391,6 +427,21 @@ func TestServiceCreateResolvesAgentTargetID(t *testing.T) {
 	}
 	if got := runtime.startCalls[0].ProviderTargetRef["targetId"]; got != "local-codex" {
 		t.Fatalf("provider target ref targetId = %#v, want local-codex", got)
+	}
+}
+
+func TestServiceCreateStrictPermissionModeRejectsUnsupportedAutomationAuthority(t *testing.T) {
+	service := newTestService(newFakeRuntime())
+	unsupported := "definitely-not-a-codex-mode"
+	_, err := service.Create(context.Background(), "ws-1", CreateSessionInput{
+		AgentSessionID:       "strict-permission-session",
+		AgentTargetID:        agenttargetbiz.IDLocalCodex,
+		PermissionModeID:     &unsupported,
+		StrictPermissionMode: true,
+		InitialContent:       TextPromptContent("hello"),
+	})
+	if !errors.Is(err, ErrInvalidArgument) {
+		t.Fatalf("Create() error = %v, want ErrInvalidArgument", err)
 	}
 }
 
@@ -4905,6 +4956,7 @@ func TestServiceResumesPersistedSessionBeforeInput(t *testing.T) {
 			"ws-1:session-1": {
 				ID:                "session-1",
 				WorkspaceID:       "ws-1",
+				AgentTargetID:     "workspace-agent:writer",
 				Provider:          "codex",
 				ProviderSessionID: "provider-session-1",
 				ActiveTurnID:      "turn-1",
@@ -4925,6 +4977,9 @@ func TestServiceResumesPersistedSessionBeforeInput(t *testing.T) {
 	}
 	if len(runtime.resumeCalls) != 1 {
 		t.Fatalf("resume calls = %d, want 1", len(runtime.resumeCalls))
+	}
+	if runtime.resumeCalls[0].AgentTargetID != "workspace-agent:writer" {
+		t.Fatalf("resume agent target id = %q, want preserved target", runtime.resumeCalls[0].AgentTargetID)
 	}
 	if len(runtime.execCalls) != 1 {
 		t.Fatalf("exec calls = %d, want 1", len(runtime.execCalls))
@@ -5501,6 +5556,20 @@ type fakeRuntime struct {
 	validateCalls          []RuntimeExecInput
 }
 
+type recordingAutomationRuleOverrideWriter struct {
+	beforeSet func()
+	calls     []automationrulebiz.SessionOverride
+	err       error
+}
+
+func (w *recordingAutomationRuleOverrideWriter) SetSessionOverride(_ context.Context, override automationrulebiz.SessionOverride) (automationrulebiz.SessionOverride, error) {
+	if w.beforeSet != nil {
+		w.beforeSet()
+	}
+	w.calls = append(w.calls, override)
+	return override, w.err
+}
+
 type fakeAgentTargetStore struct {
 	err     error
 	targets map[string]agenttargetbiz.Target
@@ -6045,6 +6114,7 @@ func (f fakeAgentTargetLookup) GetAgentTarget(_ context.Context, id string) (age
 type activityProjectionRepoStub struct {
 	clearResult    agentactivitybiz.ClearSessionsResult
 	settleStaleErr error
+	settlements    []agentactivitybiz.StaleTurnSettlement
 	stateResult    agentactivitybiz.StateReportResult
 	stateInput     agentactivitybiz.SessionStateReport
 	messageInput   agentactivitybiz.SessionMessageReport
@@ -6230,7 +6300,7 @@ func (*activityProjectionRepoStub) RecordTurnTransition(_ context.Context, trans
 }
 
 func (r *activityProjectionRepoStub) SettleStaleTurns(context.Context) ([]agentactivitybiz.StaleTurnSettlement, error) {
-	return nil, r.settleStaleErr
+	return append([]agentactivitybiz.StaleTurnSettlement(nil), r.settlements...), r.settleStaleErr
 }
 
 func (*activityProjectionRepoStub) UpsertInteraction(_ context.Context, upsert agentactivitybiz.InteractionUpsert) (agentactivitybiz.Interaction, agentactivitybiz.InteractionTransitionResult, error) {

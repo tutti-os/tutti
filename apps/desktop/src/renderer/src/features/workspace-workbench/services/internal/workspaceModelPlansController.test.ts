@@ -15,21 +15,25 @@ import { createWorkspaceSettingsStore } from "./workspaceSettingsStore.ts";
 
 type ModelPlansClient = WorkspaceModelPlansControllerDependencies["client"];
 
-test("WorkspaceModelPlansController loads plans and enabled agent targets", async () => {
+test("WorkspaceModelPlansController keeps default refresh Plan-only", async () => {
+  let bindingLoads = 0;
+  let targetLoads = 0;
   const { controller, store } = createController({
     listModelPlans: async () => [createPlan("plan-1", "openai")],
-    listAgentTargets: async () => [
-      createAgentTarget("local:codex", "codex", true, 2),
-      createAgentTarget("local:claude-code", "claude-code", true, 1),
-      createAgentTarget("local:cursor", "cursor", false, 3)
-    ],
-    listAgentModelBindings: async () => [
-      {
-        agentTargetId: "local:codex",
-        defaultModel: "gpt-5.5",
-        modelPlanId: "plan-1"
-      }
-    ]
+    listAgentTargets: async () => {
+      targetLoads += 1;
+      return [createAgentTarget("local:codex", "codex", true, 2)];
+    },
+    listAgentModelBindings: async () => {
+      bindingLoads += 1;
+      return [
+        {
+          agentTargetId: "local:codex",
+          defaultModel: "gpt-5.5",
+          modelPlanId: "plan-1"
+        }
+      ];
+    }
   });
 
   await controller.refresh();
@@ -38,15 +42,91 @@ test("WorkspaceModelPlansController loads plans and enabled agent targets", asyn
     store.modelPlans.plans.map((plan) => plan.id),
     ["plan-1"]
   );
+  assert.equal(targetLoads, 0);
+  assert.equal(bindingLoads, 0);
+  assert.equal(store.modelPlans.bindings.agentTargets.length, 0);
+
+  await controller.refreshBindings();
+
   assert.deepEqual(
     store.modelPlans.bindings.agentTargets.map((target) => target.id),
-    ["local:claude-code", "local:codex"]
+    ["local:codex"]
   );
   assert.equal(store.modelPlans.bindings.bindings[0]?.modelPlanId, "plan-1");
+  assert.equal(targetLoads, 1);
+  assert.equal(bindingLoads, 1);
+});
+
+test("WorkspaceModelPlansController owns first-use launch assembly and state", async () => {
+  const launches: Parameters<
+    NonNullable<WorkspaceModelPlansControllerDependencies["launchAgentGui"]>
+  >[0][] = [];
+  const { controller, store } = createController(
+    {
+      listModelPlans: async () => [
+        {
+          ...createPlan("plan-1", "openai"),
+          defaultModel: "gpt-5.5",
+          name: "OpenAI Plan"
+        }
+      ],
+      listAgentTargets: async () => [
+        createAgentTarget("local:codex", "codex", true, 1),
+        createAgentTarget("local:claude", "claude_code", true, 2)
+      ]
+    },
+    async (input) => {
+      launches.push(input);
+      assert.equal(store.modelPlans.firstUseLaunchingPlanID, "plan-1");
+      return true;
+    }
+  );
+
+  await controller.refreshPlans();
+  store.agents.harnessTargets = [
+    {
+      enabled: true,
+      id: "local:codex",
+      name: "Codex",
+      provider: "codex"
+    },
+    {
+      enabled: true,
+      id: "local:claude",
+      name: "Claude Code",
+      provider: "claude_code"
+    }
+  ];
+  await controller.launchFirstUse("plan-1", "local:codex");
+
+  assert.equal(launches.length, 1);
+  assert.deepEqual(
+    {
+      ...launches[0],
+      draftPrompt: undefined
+    },
+    {
+      agentTargetId: "local:codex",
+      draftPrompt: undefined,
+      model: "gpt-5.5",
+      modelPlanId: "plan-1",
+      openInNewWindow: true,
+      provider: "codex",
+      workspaceId: "workspace-1"
+    }
+  );
+  assert.match(launches[0]?.draftPrompt ?? "", /OpenAI Plan/);
+  assert.equal(store.modelPlans.firstUseLaunchingPlanID, null);
+  assert.equal(store.modelPlans.firstUseLaunchFailedPlanID, null);
+
+  await controller.launchFirstUse("plan-1", "local:claude");
+  assert.equal(launches.length, 1);
+  assert.equal(store.modelPlans.firstUseLaunchFailedPlanID, "plan-1");
 });
 
 test("WorkspaceModelPlansController saves a new plan draft", async () => {
   const created: unknown[] = [];
+  const detectRequests: unknown[] = [];
   const { controller, store } = createController({
     createModelPlan: async (_workspaceID, input) => {
       created.push(input);
@@ -54,18 +134,42 @@ test("WorkspaceModelPlansController saves a new plan draft", async () => {
         ...createPlan("plan-new", input.protocol),
         name: input.name
       };
-    }
+    },
+    detectModelPlan: async (_workspaceID, input) => {
+      detectRequests.push(input);
+      return { detection: passedCoreDetection(), discoveredModels: [] };
+    },
+    listModelPlans: async () => [
+      {
+        ...createPlan("plan-new", "openai"),
+        detection: passedCoreDetection(),
+        name: "DeepSeek"
+      }
+    ]
   });
 
   controller.beginDraft({
     baseUrl: "https://api.deepseek.com",
-    models: [{ id: "deepseek-chat", name: "deepseek-chat" }],
+    models: [
+      {
+        id: "deepseek-chat",
+        name: "deepseek-chat",
+        pricing: {
+          currency: "USD",
+          inputMicrosPerMillion: 140_000,
+          outputMicrosPerMillion: 280_000,
+          cacheReadMicrosPerMillion: 14_000,
+          cacheWriteMicrosPerMillion: 28_000
+        }
+      }
+    ],
     name: "DeepSeek",
     protocol: "openai",
     templateId: "deepseek-openai",
     templateKind: "domestic"
   });
   controller.updateDraft({ apiKey: "sk-test" });
+  await controller.detectDraft();
   await controller.saveDraft();
 
   assert.deepEqual(created, [
@@ -74,17 +178,64 @@ test("WorkspaceModelPlansController saves a new plan draft", async () => {
       baseUrl: "https://api.deepseek.com",
       defaultModel: "deepseek-chat",
       enabled: true,
-      models: [{ id: "deepseek-chat", name: "deepseek-chat" }],
+      models: [
+        {
+          id: "deepseek-chat",
+          name: "deepseek-chat",
+          pricing: {
+            currency: "USD",
+            inputMicrosPerMillion: 140_000,
+            outputMicrosPerMillion: 280_000,
+            cacheReadMicrosPerMillion: 14_000,
+            cacheWriteMicrosPerMillion: 28_000
+          },
+          tier: "standard"
+        }
+      ],
       name: "DeepSeek",
       protocol: "openai",
       templateKind: "domestic"
     }
   ]);
   assert.equal(store.modelPlans.draft, null);
+  assert.deepEqual(detectRequests, [
+    {
+      apiKey: "sk-test",
+      baseUrl: "https://api.deepseek.com",
+      model: "deepseek-chat",
+      models: [{ id: "deepseek-chat", name: "deepseek-chat" }],
+      protocol: "openai",
+      templateKind: "domestic"
+    },
+    { planId: "plan-new" }
+  ]);
   assert.deepEqual(
     store.modelPlans.plans.map((plan) => plan.id),
     ["plan-new"]
   );
+});
+
+test("WorkspaceModelPlansController requires a successful connection check before creating", async () => {
+  let createCalls = 0;
+  const { controller, store } = createController({
+    createModelPlan: async () => {
+      createCalls += 1;
+      throw new Error("unexpected");
+    }
+  });
+
+  controller.beginDraft({
+    baseUrl: "https://api.example.com/v1",
+    name: "Example",
+    protocol: "openai",
+    templateKind: "custom"
+  });
+  controller.updateDraft({ apiKey: "sk-test" });
+  await controller.saveDraft();
+
+  assert.equal(createCalls, 0);
+  assert.equal(store.modelPlans.draftFeedback?.kind, "detectionRequired");
+  assert.notEqual(store.modelPlans.draft, null);
 });
 
 test("WorkspaceModelPlansController blocks a draft save without required fields", async () => {
@@ -128,6 +279,55 @@ test("WorkspaceModelPlansController keeps the stored key when editing without a 
   assert.equal(store.modelPlans.draft, null);
 });
 
+test("WorkspaceModelPlansController previews references before saving a changed model range", async () => {
+  const updates: unknown[] = [];
+  const stored = {
+    ...createPlan("plan-1", "openai"),
+    defaultModel: "gpt-5",
+    models: [{ id: "gpt-5", name: "GPT-5", tier: "flagship" as const }]
+  };
+  const { controller, store } = createController({
+    listModelPlanReferences: async () => [
+      {
+        id: "workspace-agent:reviewer",
+        kind: "workspace_agent",
+        name: "Reviewer",
+        role: "default"
+      }
+    ],
+    listModelPlans: async () => [stored],
+    updateModelPlan: async (_workspaceID, _planID, input) => {
+      updates.push(input);
+      return {
+        ...stored,
+        defaultModel: input.defaultModel ?? null,
+        models: input.models
+      };
+    }
+  });
+
+  await controller.refreshPlans();
+  controller.beginEditPlan("plan-1");
+  controller.updateDraft({
+    defaultModel: "gpt-5-mini",
+    models: [{ id: "gpt-5-mini", name: "GPT-5 mini", tier: "economy" }]
+  });
+
+  await controller.saveDraft();
+
+  assert.equal(updates.length, 0);
+  assert.equal(store.modelPlans.draftSaveImpact?.planID, "plan-1");
+  assert.equal(
+    store.modelPlans.draftSaveImpact?.references[0]?.name,
+    "Reviewer"
+  );
+
+  await controller.saveDraft();
+
+  assert.equal(updates.length, 1);
+  assert.equal(store.modelPlans.draft, null);
+});
+
 test("WorkspaceModelPlansController detects an unsaved draft without a plan id", async () => {
   const detectRequests: unknown[] = [];
   const { controller, store } = createController({
@@ -144,19 +344,16 @@ test("WorkspaceModelPlansController detects an unsaved draft without a plan id",
   });
 
   controller.beginDraft({
-    baseUrl: "https://api.openai.com/v1",
     name: "OpenAI",
     protocol: "openai",
     templateKind: "official_subscription"
   });
-  controller.updateDraft({ apiKey: "sk-test" });
   await controller.detectDraft();
 
   assert.deepEqual(detectRequests, [
     {
-      apiKey: "sk-test",
-      baseUrl: "https://api.openai.com/v1",
-      protocol: "openai"
+      protocol: "openai",
+      templateKind: "official_subscription"
     }
   ]);
   assert.equal(store.modelPlans.draftDetection?.stages.length, 1);
@@ -183,6 +380,66 @@ test("WorkspaceModelPlansController detects a saved plan through its plan id", a
   await controller.detectDraft();
 
   assert.equal(detectRequests[0]?.planId, "plan-1");
+});
+
+test("WorkspaceModelPlansController saves an official subscription without endpoint credentials", async () => {
+  const creates: unknown[] = [];
+  const { controller, store } = createController({
+    createModelPlan: async (_workspaceID, input) => {
+      creates.push(input);
+      return {
+        ...createPlan("plan-native", "openai"),
+        baseUrl: null,
+        defaultModel: input.defaultModel ?? null,
+        hasApiKey: false,
+        models: input.models,
+        name: input.name
+      };
+    },
+    detectModelPlan: async (_workspaceID, input) => ({
+      detection: passedCoreDetection(),
+      discoveredModels: input.planId
+        ? []
+        : [{ id: "gpt-native", name: "GPT Native", tier: "flagship" }]
+    }),
+    listModelPlans: async () => [
+      {
+        ...createPlan("plan-native", "openai"),
+        baseUrl: null,
+        defaultModel: "gpt-native",
+        detection: passedCoreDetection(),
+        hasApiKey: false,
+        models: [{ id: "gpt-native", name: "GPT Native", tier: "flagship" }]
+      }
+    ]
+  });
+
+  controller.beginDraft({
+    name: "Codex subscription",
+    protocol: "openai",
+    templateKind: "official_subscription"
+  });
+  await controller.detectDraft();
+  await controller.saveDraft();
+
+  assert.deepEqual(creates, [
+    {
+      baseUrl: "",
+      defaultModel: "gpt-native",
+      enabled: true,
+      models: [
+        {
+          id: "gpt-native",
+          name: "GPT Native",
+          tier: "flagship"
+        }
+      ],
+      name: "Codex subscription",
+      protocol: "openai",
+      templateKind: "official_subscription"
+    }
+  ]);
+  assert.equal(store.modelPlans.draft, null);
 });
 
 test("WorkspaceModelPlansController blocks deletion while references exist", async () => {
@@ -301,7 +558,10 @@ test("WorkspaceModelPlansController records a failed enable toggle inline", asyn
   assert.equal(store.modelPlans.plans[0]?.enabled, true);
 });
 
-function createController(overrides: Partial<ModelPlansClient>): {
+function createController(
+  overrides: Partial<ModelPlansClient>,
+  launchAgentGui?: WorkspaceModelPlansControllerDependencies["launchAgentGui"]
+): {
   controller: WorkspaceModelPlansController;
   notifications: string[];
   store: ReturnType<typeof createWorkspaceSettingsStore>;
@@ -311,6 +571,7 @@ function createController(overrides: Partial<ModelPlansClient>): {
   const notifications: string[] = [];
   const controller = new WorkspaceModelPlansController({
     client: createModelPlansClient(overrides),
+    launchAgentGui,
     notifications: createNotificationRecorder(notifications),
     store
   });
@@ -368,10 +629,24 @@ function createPlan(
     models: [],
     name: id,
     protocol,
+    billingMode: "subscription_quota",
     status: "pending_first_use",
     templateKind: "official_subscription",
     updatedAt: "2026-07-12T00:00:00Z",
     workspaceId: "workspace-1"
+  };
+}
+
+function passedCoreDetection() {
+  return {
+    checkedAt: "2026-07-12T00:00:00Z",
+    stages: [
+      { stage: "network" as const, status: "passed" as const },
+      { stage: "auth" as const, status: "passed" as const },
+      { stage: "model_discovery" as const, status: "passed" as const },
+      { stage: "inference" as const, status: "passed" as const },
+      { stage: "agent_runtime" as const, status: "pending" as const }
+    ]
   };
 }
 
@@ -386,7 +661,7 @@ function createAgentTarget(
     enabled,
     iconKey: provider,
     id,
-    launchRef: { provider, type: "local_cli" },
+    launchRef: { provider, type: "builtin_local" },
     name: id,
     provider,
     sortOrder,

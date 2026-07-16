@@ -133,6 +133,8 @@ async function showStandaloneAgentWindow(
         autoSubmit: input.autoSubmit,
         dockPlacement: options.getDockPlacement(),
         draftPrompt: input.draftPrompt,
+        model: input.model,
+        modelPlanId: input.modelPlanId,
         locale: options.getLocale(),
         providerStatusSnapshot: input.providerStatusSnapshot,
         provider: input.provider,

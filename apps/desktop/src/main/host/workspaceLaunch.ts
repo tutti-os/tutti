@@ -26,6 +26,8 @@ export interface WorkspaceLaunchAgentWindowInput {
   agentTargetID?: string | null;
   autoSubmit?: boolean;
   draftPrompt?: string | null;
+  model?: string | null;
+  modelPlanId?: string | null;
   openerBounds?: Electron.Rectangle | null;
   openerWindowKind?: "agent" | "workspace" | null;
   offsetFromSourceWindow?: boolean;

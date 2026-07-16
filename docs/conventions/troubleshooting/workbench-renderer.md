@@ -69,14 +69,16 @@
 - Symptom:
   A local development launch creates the standalone Agent native window, but
   only the window chrome is visible for several seconds before the Agent header,
-  rail, conversation, and composer appear. A related failure leaves the window
-  black permanently because the renderer root throws before AgentGUI mounts.
+  rail, conversation, and composer appear. A related persistent-black variant
+  never reaches the Agent shell and repeatedly reports
+  `react.uncaught: agent_gui_workbench.invalid_provider`.
 - Quick checks:
-  Check `tutti-desktop.log` for `react.uncaught` before profiling cold startup.
-  If the error is `agent_gui_workbench.invalid_provider`, compare the encoded
-  Agent window intent with the standalone route's launch-provider resolution.
-  A primary standalone Agent startup may legitimately omit both provider and
-  Agent Target metadata while the directory is still loading.
+  Search `tutti-desktop.log` for `renderer_event="react.uncaught"` before
+  investigating the daemon. If the stack starts in
+  `normalizeAgentGuiWorkbenchProvider` and reaches `StandaloneAgentWindow`,
+  inspect the `view=agent` window intent: a startup Agent window legitimately
+  carries only `workspaceId`, while detached/session launches may additionally
+  carry `provider`, `agentTargetId`, and directory bootstrap data.
   Compare desktop-ready, first renderer diagnostic, standalone route mount,
   AgentGUI body mount, and composer-ready timestamps. Time the daemon workspace,
   session-list, rail, target, and provider-status endpoints independently. If
@@ -96,11 +98,13 @@
   step times overlap, so compare the largest step with the provider total rather
   than summing every step.
 - Root cause:
-  For the permanent-black variant, an optional startup provider can be passed
-  directly to the strict workbench provider normalizer. The generic primary
-  Agent window starts with workspace identity only, so normalizing that absent
-  value throws during React render even while the daemon and provider probes
-  remain healthy.
+  The persistent-black variant is a renderer crash, not a daemon or provider
+  availability failure. The Agent window contract makes `provider` optional so
+  startup can be workspace-only and target-first launches can use
+  `agentTargetId`. Passing that optional value directly to the strict provider
+  normalizer throws during the React root's first render and removes the whole
+  shell.
+
   Development Vite transforms source modules on demand. An Agent-only route can
   therefore remain on a black Suspense fallback while nested lazy boundaries
   discover large dependency graphs. In the desktop renderer, enabling Babel
@@ -114,11 +118,14 @@
   Workspace App polling at mount can also prepare every app runtime during the
   same cold compile. Separately, a single global in-flight provider-status
   promise makes the active provider wait behind a slow all-provider scan.
+
 - Fix:
-  Resolve the absent startup provider to the existing workbench default at the
-  standalone route boundary, then use the strict normalizer only for a supplied
-  provider. Keep malformed non-empty values as errors, and keep Agent Target
-  directory resolution authoritative once it loads.
+  Resolve the standalone launch provider at the window-intent boundary. Prefer
+  an explicit valid provider, then the provider of the matching target in the
+  transferred Agent directory snapshot, then the user's configured default.
+  Keep the shared provider normalizer strict for state and launch contracts;
+  do not weaken it globally or hardcode Codex in the window component.
+
   Keep workspace and standalone Agent routes separate. Let both already-lazy
   routes statically own the full AgentGUI body so neither adds a second import
   waterfall beneath its route fallback. Render
@@ -140,6 +147,7 @@
   requests by request scope, prioritize the selected provider, merge responses
   per provider, and ignore stale results for a provider already refreshed by a
   newer request.
+
 - Validation:
   Keep a focused regression test for an Agent window intent with no provider;
   it must reach the startup shell without weakening extension-provider
@@ -166,6 +174,7 @@
 - References:
   [agent-gui-node.md](../../architecture/agent-gui-node.md)
   [WorkspaceWindow.tsx](../../../apps/desktop/src/renderer/src/app/windows/workspace/WorkspaceWindow.tsx)
+  [standaloneAgentLaunchProvider.ts](../../../apps/desktop/src/renderer/src/features/workspace-workbench/ui/standaloneAgentLaunchProvider.ts)
   [StandaloneAgentToolSidebar.tsx](../../../apps/desktop/src/renderer/src/features/workspace-workbench/ui/StandaloneAgentToolSidebar.tsx)
   [desktopAgentProviderStatusService.ts](../../../apps/desktop/src/renderer/src/features/workspace-agent/services/internal/desktopAgentProviderStatusService.ts)
   [desktopAgentProviderStatusDiagnostics.ts](../../../apps/desktop/src/renderer/src/features/workspace-agent/services/internal/desktopAgentProviderStatusDiagnostics.ts)

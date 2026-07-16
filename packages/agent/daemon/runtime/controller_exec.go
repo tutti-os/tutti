@@ -20,6 +20,11 @@ func (c *Controller) Exec(ctx context.Context, input ExecInput) (ExecResult, err
 		return ExecResult{}, err
 	}
 	metadata := cloneExecMetadata(input.Metadata)
+	accessRequest := sharedAgentAccessRequestForSession(SharedAgentAccessTurn, session)
+	accessRequest.Capability = sharedAgentCapability(metadata)
+	if err := c.applySharedAgentAccess(ctx, accessRequest); err != nil {
+		return ExecResult{}, err
+	}
 	logAgentSubmitTrace("runtime.exec.entered", session, "", metadata, map[string]any{
 		"content_block_count": len(input.Content),
 	})

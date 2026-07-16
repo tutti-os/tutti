@@ -1,6 +1,8 @@
 export interface AgentCollaborationUsageVM {
   inputTokens: number;
   outputTokens: number;
+  cacheReadTokens: number;
+  cacheWriteTokens: number;
 }
 
 /**
@@ -18,7 +20,7 @@ export interface AgentCollaborationVM {
   agentSessionId: string | null;
   mode: "consult" | "fork" | "delegate" | "handoff" | (string & {});
   status: "running" | "completed" | "failed" | "canceled" | (string & {});
-  triggerSource: "user" | "agent" | "policy" | (string & {});
+  triggerSource: "user" | "agent" | "policy" | "automation" | (string & {});
   triggerReason: string | null;
   targetSessionId: string | null;
   targetAgentTargetId: string | null;
@@ -27,10 +29,19 @@ export interface AgentCollaborationVM {
   modelPlanName: string | null;
   model: string | null;
   contextScope: string | null;
+  retryOfRunId: string | null;
+  attempt: number;
+  /** Original credential-free request, used to revise a failed collaboration. */
+  requestText: string | null;
   resultText: string | null;
   failureReason: string | null;
+  failureStage: string | null;
   durationMs: number | null;
   usage: AgentCollaborationUsageVM | null;
+  cost: {
+    currency: string;
+    estimatedMicros: number;
+  } | null;
   adoption:
     | "pending"
     | "adopted"

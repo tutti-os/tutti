@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"log/slog"
 	"time"
+
+	agentsessionstore "github.com/tutti-os/tutti/packages/agent/daemon/activity"
 )
 
 // SettleStaleTurnsOnStartup is the daemon-start reconciliation of protocol v2
@@ -46,6 +48,26 @@ func (p *ActivityProjection) SettleStaleTurnsOnStartup(ctx context.Context) erro
 		}
 		p.publishActivityUpdated(ctx, settlement.WorkspaceID, settlement.AgentSessionID, "turn_update",
 			activityTurnUpdateEventPayload(settlement.WorkspaceID, settlement.AgentSessionID, turn, now))
+		outcome := turn.Outcome
+		p.observeSessionState(ctx, agentsessionstore.ReportSessionStateInput{
+			WorkspaceID:    settlement.WorkspaceID,
+			AgentSessionID: settlement.AgentSessionID,
+			SessionOrigin:  agentsessionstore.WorkspaceAgentSessionOriginRuntime,
+			State: agentsessionstore.WorkspaceAgentSessionStateUpdate{
+				LastError: turn.ErrorMessage,
+				TurnLifecycle: &agentsessionstore.WorkspaceAgentTurnLifecycle{
+					Phase:   turn.Phase,
+					Outcome: &outcome,
+				},
+				Turn: &agentsessionstore.WorkspaceAgentTurnStateUpdate{
+					TurnID:            turn.TurnID,
+					Phase:             turn.Phase,
+					Outcome:           turn.Outcome,
+					StartedAtUnixMS:   turn.StartedAtUnixMS,
+					CompletedAtUnixMS: turn.SettledAtUnixMS,
+				},
+			},
+		}, agentsessionstore.ReportSessionStateReply{Accepted: true, StateApplied: true, LastEventAtUnixMS: now})
 	}
 	return nil
 }

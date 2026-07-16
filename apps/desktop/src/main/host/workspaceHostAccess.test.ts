@@ -27,6 +27,42 @@ function createTransportClient(
     async listAgentTargets() {
       throw new Error("not used");
     },
+    async listWorkspaceAgents() {
+      throw new Error("not used");
+    },
+    async createWorkspaceAgent() {
+      throw new Error("not used");
+    },
+    async generateWorkspaceAgentDraft() {
+      throw new Error("not used");
+    },
+    async updateWorkspaceAgent() {
+      throw new Error("not used");
+    },
+    async deleteWorkspaceAgent() {
+      throw new Error("not used");
+    },
+    async listAutomationRules() {
+      throw new Error("not used");
+    },
+    async getAutomationRule() {
+      throw new Error("not used");
+    },
+    async createAutomationRule() {
+      throw new Error("not used");
+    },
+    async updateAutomationRule() {
+      throw new Error("not used");
+    },
+    async deleteAutomationRule() {
+      throw new Error("not used");
+    },
+    async getAgentSessionAutomationRuleOverride() {
+      throw new Error("not used");
+    },
+    async setAgentSessionAutomationRuleOverride() {
+      throw new Error("not used");
+    },
     async setSystemAgentTargetEnabled() {
       throw new Error("not used");
     },
@@ -55,6 +91,9 @@ function createTransportClient(
       throw new Error("not used");
     },
     async listWorkspaceAppMentionCandidates() {
+      throw new Error("not used");
+    },
+    async listWorkspaceModelPlans() {
       throw new Error("not used");
     },
     async addWorkspaceIssueContextRefs() {

@@ -107,6 +107,78 @@ func TestDefaultPreparerIncludesHostSkillSources(t *testing.T) {
 	}
 }
 
+func TestWorkspaceAgentSkillSelectionFiltersHostSkillsButKeepsCorePacks(t *testing.T) {
+	preparer := NewDefaultPreparer(t.TempDir())
+	preparer.SkillSources = []SkillSource{staticSkillSource{
+		{ID: "host/reviewer", Name: "reviewer", Files: map[string]string{"SKILL.md": "# Reviewer\n"}},
+		{ID: "host/deployer", Name: "deployer", Files: map[string]string{"SKILL.md": "# Deployer\n"}},
+	}}
+	bundle, err := preparer.RenderSkillBundle(t.Context(), PrepareInput{
+		WorkspaceID: "workspace-1", AgentSessionID: "session-1", Provider: "claude-code",
+		AgentSkills: []string{"host/reviewer"},
+	})
+	if err != nil {
+		t.Fatalf("RenderSkillBundle() error = %v", err)
+	}
+	if skillBundleRecord(bundle.Skills, "reviewer").SkillID != "host/reviewer" {
+		t.Fatalf("selected host skill missing from bundle: %#v", bundle.Skills)
+	}
+	if record := skillBundleRecord(bundle.Skills, "deployer"); record.SkillID != "" {
+		t.Fatalf("unselected host skill = %#v, want absent", record)
+	}
+	if record := skillBundleRecord(bundle.Skills, tuttiSkillName); record.SkillID == "" {
+		t.Fatalf("core pack skill missing from bundle: %#v", bundle.Skills)
+	}
+}
+
+func TestWorkspaceAgentExplicitEmptySkillSelectionKeepsOnlyCorePacks(t *testing.T) {
+	preparer := NewDefaultPreparer(t.TempDir())
+	preparer.SkillSources = []SkillSource{staticSkillSource{{
+		ID: "host/reviewer", Name: "reviewer", Files: map[string]string{"SKILL.md": "# Reviewer\n"},
+	}}}
+	bundle, err := preparer.RenderSkillBundle(t.Context(), PrepareInput{
+		WorkspaceID: "workspace-1", AgentSessionID: "session-1", Provider: "claude-code",
+		AgentCapabilitiesExplicit: true,
+	})
+	if err != nil {
+		t.Fatalf("RenderSkillBundle() error = %v", err)
+	}
+	if record := skillBundleRecord(bundle.Skills, "reviewer"); record.SkillID != "" {
+		t.Fatalf("unselected host skill = %#v, want absent", record)
+	}
+	if record := skillBundleRecord(bundle.Skills, tuttiSkillName); record.SkillID == "" {
+		t.Fatalf("core pack skill missing from bundle: %#v", bundle.Skills)
+	}
+}
+
+func TestWorkspaceAgentDefinitionIsAppendedToRuntimePolicy(t *testing.T) {
+	policy := tuttiCLIPolicy(PrepareInput{
+		WorkspaceID:       "workspace-1",
+		AgentSessionID:    "session-1",
+		Provider:          "codex",
+		AgentName:         "Careful Reviewer",
+		AgentPurpose:      "Catch correctness regressions.",
+		AgentInstructions: "Review changes before editing.",
+		AgentSkills:       []string{"host/reviewer"},
+		AgentTools:        []string{"browser"},
+		AgentPermissions:  []string{"workspace-write"},
+	})
+	for _, want := range []string{
+		"# Workspace Agent Configuration",
+		"Careful Reviewer",
+		"Catch correctness regressions.",
+		"Review changes before editing.",
+		"`host/reviewer`",
+		"`browser`",
+		"`workspace-write`",
+		"cannot override its security",
+	} {
+		if !strings.Contains(policy, want) {
+			t.Fatalf("policy missing %q: %s", want, policy)
+		}
+	}
+}
+
 func TestResolveCapabilitiesRejectsSkillPathTraversal(t *testing.T) {
 	profile := DeploymentProfile{Name: "test", Packs: []CapabilityPack{{
 		Name: "unsafe", Resolve: staticCapability(SkillSpec{

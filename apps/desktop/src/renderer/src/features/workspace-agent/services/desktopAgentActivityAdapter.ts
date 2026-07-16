@@ -154,6 +154,14 @@ export function createDesktopAgentActivityAdapter({
         const request: CreateWorkspaceAgentSessionRequest = {
           agentSessionId,
           agentTargetId,
+          ...(input.automationRuleOverride
+            ? {
+                automationRuleOverride: {
+                  disabled: input.automationRuleOverride.disabled,
+                  ruleIds: [...input.automationRuleOverride.ruleIds]
+                }
+              }
+            : {}),
           clientSubmitId: input.clientSubmitId,
           cwd: input.cwd ?? null,
           initialContent: toTuttidPromptContentBlocks(
@@ -168,6 +176,9 @@ export function createDesktopAgentActivityAdapter({
               }
             : {}),
           model: input.model ?? null,
+          ...(input.modelPlanId?.trim()
+            ? { modelPlanId: input.modelPlanId.trim() }
+            : {}),
           noProject:
             input.noProject ?? (normalizeText(input.cwd) ? null : true),
           planMode: input.planMode ?? null,

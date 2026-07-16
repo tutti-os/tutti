@@ -34,6 +34,7 @@ import {
   createAgentSessionAtContributor,
   createAgentTargetAtContributor
 } from "./desktopRichTextAtAgentContributors.ts";
+import { createWorkspaceModelAtContributor } from "./desktopRichTextAtModelContributor.ts";
 import {
   compactMentionPresentation,
   compactStringRecord,
@@ -141,7 +142,8 @@ export class DesktopRichTextAtService implements IDesktopRichTextAtService {
       createWorkspaceAppAtContributor({
         tuttidClient: dependencies.tuttidClient,
         getLocale: dependencies.getLocale
-      })
+      }),
+      createWorkspaceModelAtContributor(dependencies.tuttidClient)
     ];
   }
 

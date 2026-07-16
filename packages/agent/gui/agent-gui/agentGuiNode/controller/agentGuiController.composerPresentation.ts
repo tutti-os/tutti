@@ -111,6 +111,7 @@ export function effectiveComposerSettingsFromOptions(
   }
   return {
     model: normalizeOptionalText(settings.model),
+    modelPlanId: normalizeOptionalText(settings.modelPlanId),
     reasoningEffort: normalizeOptionalText(
       settings.reasoningEffort
     ) as AgentSessionReasoningEffort | null,
@@ -140,6 +141,7 @@ export function sanitizeComposerSettingsForOptions(
     options.permissionConfig?.modes.map((mode) => mode.id) ?? []
   );
   const model = normalizeOptionalText(settings.model);
+  const modelPlanId = normalizeOptionalText(settings.modelPlanId);
   const reasoningEffort = normalizeOptionalText(settings.reasoningEffort);
   const speed = normalizeOptionalText(settings.speed);
   const permissionModeId = normalizeOptionalText(settings.permissionModeId);
@@ -153,10 +155,12 @@ export function sanitizeComposerSettingsForOptions(
     model:
       options.behavior?.modelOptionsAuthoritative === true &&
       model &&
+      !modelPlanId &&
       modelValues.size > 0 &&
       !modelValues.has(model)
         ? null
         : model,
+    modelPlanId,
     reasoningEffort:
       modelReasoningSelection !== null
         ? modelReasoningSelection.currentValue
@@ -204,7 +208,12 @@ export function resolvePresentedComposerSettings(input: {
     input.homeSettings
   ];
   const firstText = (
-    field: "model" | "reasoningEffort" | "speed" | "permissionModeId"
+    field:
+      | "model"
+      | "modelPlanId"
+      | "reasoningEffort"
+      | "speed"
+      | "permissionModeId"
   ): string | null => {
     for (const layer of layers) {
       const value = normalizeOptionalText(layer?.[field]);
@@ -228,6 +237,7 @@ export function resolvePresentedComposerSettings(input: {
   };
   return {
     model: firstText("model"),
+    modelPlanId: firstText("modelPlanId"),
     reasoningEffort: firstText(
       "reasoningEffort"
     ) as AgentSessionReasoningEffort | null,

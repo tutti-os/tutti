@@ -3,6 +3,7 @@ package agent
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 )
 
@@ -67,18 +68,16 @@ func (s *Service) ensureRuntimeSessionResult(
 		runtimeContext := persistedSessionRuntimeContext(persisted)
 		var providerTargetRef map[string]any
 		if strings.TrimSpace(persisted.AgentTargetID) != "" {
-			launch, launchErr := s.resolveCreateSessionLaunch(ctx, CreateSessionInput{
-				AgentTargetID: persisted.AgentTargetID,
-				Provider:      persisted.Provider,
-			})
+			resolvedRef, launchErr := s.resolveProviderTargetRefForResume(ctx, persisted)
 			if launchErr != nil {
 				return ProviderRuntimeSession{}, launchErr
 			}
-			providerTargetRef = launch.ProviderTargetRef
+			providerTargetRef = resolvedRef
 		}
 		return s.controller().Resume(ctx, RuntimeResumeInput{
 			WorkspaceID:       strings.TrimSpace(persisted.WorkspaceID),
 			AgentSessionID:    strings.TrimSpace(persisted.ID),
+			AgentTargetID:     strings.TrimSpace(persisted.AgentTargetID),
 			Provider:          strings.TrimSpace(persisted.Provider),
 			ProviderSessionID: strings.TrimSpace(persisted.ProviderSessionID),
 			Cwd:               strings.TrimSpace(prepared.Cwd),
@@ -100,7 +99,73 @@ func (s *Service) ensureRuntimeSessionResult(
 	return ensuredRuntimeSession{Session: session}, nil
 }
 
+func (s *Service) resolveProviderTargetRefForResume(ctx context.Context, persisted PersistedSession) (map[string]any, error) {
+	snapshot, exists, err := sessionRuntimeSnapshotFromContext(persisted.InternalRuntimeContext)
+	if err != nil {
+		return nil, err
+	}
+	if exists {
+		input := CreateSessionInput{}
+		if err := s.applyHarnessFromSessionRuntimeSnapshot(ctx, snapshot, &input); err != nil {
+			return nil, err
+		}
+		return clonePayload(input.ProviderTargetRef), nil
+	}
+	// Legacy persisted sessions can carry the new WorkspaceAgent-shaped target
+	// id without an immutable runtime snapshot. Isolated/older integrations may
+	// not have the WorkspaceAgent resolver wired; preserve the target identity
+	// and let the provider resume its existing session in that compatibility
+	// case. Newly created WorkspaceAgent sessions always take the snapshot path
+	// above.
+	if strings.HasPrefix(strings.TrimSpace(persisted.AgentTargetID), workspaceAgentIDPrefix) && s.WorkspaceAgentResolver == nil {
+		return nil, nil
+	}
+	input := CreateSessionInput{
+		AgentTargetID: persisted.AgentTargetID,
+		Provider:      persisted.Provider,
+	}
+	launch, err := s.resolveCreateSessionLaunch(ctx, persisted.WorkspaceID, &input)
+	if err != nil {
+		return nil, err
+	}
+	return clonePayload(launch.ProviderTargetRef), nil
+}
+
 func (s *Service) prepareRuntimeForResume(ctx context.Context, session PersistedSession) (preparedRuntime, error) {
 	input := createSessionInputFromPersisted(session)
-	return s.prepareRuntime(ctx, strings.TrimSpace(session.WorkspaceID), strings.TrimSpace(session.Cwd), input)
+	snapshot, exists, err := sessionRuntimeSnapshotFromContext(session.InternalRuntimeContext)
+	if err != nil {
+		return preparedRuntime{}, err
+	}
+	if !exists {
+		// Legacy sessions predate immutable runtime snapshots and retain the old
+		// current-binding behavior for compatibility.
+		return s.prepareRuntime(ctx, strings.TrimSpace(session.WorkspaceID), strings.TrimSpace(session.Cwd), input)
+	}
+	if strings.TrimSpace(session.AgentTargetID) != snapshot.AgentTargetID || strings.TrimSpace(session.Provider) != snapshot.Provider {
+		return preparedRuntime{}, fmt.Errorf("%w: persisted launch identity does not match snapshot", ErrSessionRuntimeSnapshotUnavailable)
+	}
+	input.HarnessAgentTargetID = snapshot.HarnessAgentTargetID
+	input.WorkspaceAgentRevision = snapshot.WorkspaceAgentRevision
+	input.AgentName = snapshot.Name
+	input.AgentPurpose = snapshot.Purpose
+	input.AgentDefaultModel = snapshot.ModelDefaultModel
+	input.AgentInstructions = snapshot.Instructions
+	input.AgentCallConditions = append([]string(nil), snapshot.CallConditions...)
+	input.AgentCapabilitiesExplicit = snapshot.CapabilitiesExplicit || len(snapshot.Skills) > 0 || len(snapshot.Tools) > 0
+	input.AgentSkills = append([]string(nil), snapshot.Skills...)
+	input.AgentTools = append([]string(nil), snapshot.Tools...)
+	input.AgentPermissions = append([]string(nil), snapshot.Permissions...)
+	if err := s.applyHarnessFromSessionRuntimeSnapshot(ctx, snapshot, &input); err != nil {
+		return preparedRuntime{}, err
+	}
+	if strings.TrimSpace(value(input.Model)) == "" && snapshot.Model != "" {
+		model := snapshot.Model
+		input.Model = &model
+	}
+	endpoint, err := s.modelEndpointFromSessionRuntimeSnapshot(ctx, strings.TrimSpace(session.WorkspaceID), snapshot, value(input.Model))
+	if err != nil {
+		return preparedRuntime{}, err
+	}
+	return s.prepareRuntimeWithModelEndpoint(ctx, strings.TrimSpace(session.WorkspaceID), strings.TrimSpace(session.Cwd), input, endpoint)
 }

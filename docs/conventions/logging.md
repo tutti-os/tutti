@@ -232,6 +232,19 @@ Examples:
 
 This avoids a failure mode where the daemon dies before usable file logging is available.
 
+## Developer Diagnostics Export
+
+The desktop developer-log archive includes `runtime-context.json` for
+environment and local transport diagnostics. Treat this file as a deliberately
+small diagnostic contract rather than a dump of live runtime objects.
+
+Rules:
+
+- serialize transport context through an explicit allowlist
+- include only `boundAddr`, `listenerInfoPath`, `pidPath`, and `requestedAddr`
+- never export transport access tokens, authorization values, or unknown fields
+- apply the same sanitization to both normal and empty log archives
+
 ## Current Recommendation
 
 Use:

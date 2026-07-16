@@ -20,6 +20,8 @@ tags:
   - name: terminal
   - name: agent-session
   - name: agent-target
+  - name: workspace-agent
+  - name: automation-rule
   - name: agent-context
   - name: app-center
   - name: app-factory
@@ -732,6 +734,318 @@ paths:
           $ref: "#/components/responses/WorkspaceOperationError"
         "503":
           $ref: "#/components/responses/ServiceUnavailableError"
+  /v1/workspaces/{workspaceID}/agents:
+    parameters:
+      - $ref: "#/components/parameters/WorkspaceID"
+    get:
+      operationId: listWorkspaceAgents
+      tags:
+        - workspace-agent
+      summary: List the configured Agent options for one workspace
+      description: Returns explicit workspace Agent configurations. Each Agent maps one harness target to an optional model access plan and carries its own instructions, skills, tools, and permissions.
+      responses:
+        "200":
+          description: Workspace Agent configurations
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ListWorkspaceAgentsResponse"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "400":
+          $ref: "#/components/responses/InvalidRequestError"
+        "405":
+          $ref: "#/components/responses/MethodNotAllowedError"
+        "502":
+          $ref: "#/components/responses/WorkspaceOperationError"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailableError"
+    post:
+      operationId: createWorkspaceAgent
+      tags:
+        - workspace-agent
+      summary: Create one selectable workspace Agent
+      description: Creates an explicit Agent option from a harness target plus an optional model access plan. It does not generate a Harness by ModelPlan Cartesian product.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PutWorkspaceAgentRequest"
+      responses:
+        "201":
+          description: Created workspace Agent
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkspaceAgent"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "400":
+          $ref: "#/components/responses/InvalidRequestError"
+        "404":
+          $ref: "#/components/responses/WorkspaceNotFoundError"
+        "405":
+          $ref: "#/components/responses/MethodNotAllowedError"
+        "502":
+          $ref: "#/components/responses/WorkspaceOperationError"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailableError"
+  /v1/workspaces/{workspaceID}/agents/generate-draft:
+    parameters:
+      - $ref: "#/components/parameters/WorkspaceID"
+    post:
+      operationId: generateWorkspaceAgentDraft
+      tags:
+        - workspace-agent
+      summary: Generate a reviewable workspace Agent configuration draft
+      description: Uses the explicitly selected ModelPlan/model for one tool-free generation call. The result is never persisted by this operation; generated automation suggestions are conservative consult rules that callers must save disabled and let the user review before enabling.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/GenerateWorkspaceAgentDraftRequest"
+      responses:
+        "200":
+          description: Generated Agent configuration draft
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkspaceAgentDraftGeneration"
+        "400":
+          $ref: "#/components/responses/InvalidRequestError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "404":
+          $ref: "#/components/responses/WorkspaceNotFoundError"
+        "405":
+          $ref: "#/components/responses/MethodNotAllowedError"
+        "502":
+          $ref: "#/components/responses/WorkspaceOperationError"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailableError"
+  /v1/workspaces/{workspaceID}/agents/{workspaceAgentID}:
+    parameters:
+      - $ref: "#/components/parameters/WorkspaceID"
+      - $ref: "#/components/parameters/WorkspaceAgentID"
+    get:
+      operationId: getWorkspaceAgent
+      tags:
+        - workspace-agent
+      summary: Get one workspace Agent configuration
+      responses:
+        "200":
+          description: Workspace Agent configuration
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkspaceAgent"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "400":
+          $ref: "#/components/responses/InvalidRequestError"
+        "404":
+          $ref: "#/components/responses/WorkspaceNotFoundError"
+        "405":
+          $ref: "#/components/responses/MethodNotAllowedError"
+        "502":
+          $ref: "#/components/responses/WorkspaceOperationError"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailableError"
+    put:
+      operationId: updateWorkspaceAgent
+      tags:
+        - workspace-agent
+      summary: Replace one workspace Agent configuration
+      description: Replaces mutable fields and increments the Agent revision. Omitted or null modelPlanId/defaultModel clear those fields. Existing sessions continue using their recorded runtime configuration.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PutWorkspaceAgentRequest"
+      responses:
+        "200":
+          description: Updated workspace Agent
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkspaceAgent"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "400":
+          $ref: "#/components/responses/InvalidRequestError"
+        "404":
+          $ref: "#/components/responses/WorkspaceNotFoundError"
+        "405":
+          $ref: "#/components/responses/MethodNotAllowedError"
+        "502":
+          $ref: "#/components/responses/WorkspaceOperationError"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailableError"
+    delete:
+      operationId: deleteWorkspaceAgent
+      tags:
+        - workspace-agent
+      summary: Delete one workspace Agent configuration
+      description: Deletes only the named workspace Agent. Its Harness target and ModelPlan remain unchanged.
+      responses:
+        "200":
+          description: Workspace Agent deleted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DeleteWorkspaceAgentResponse"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "400":
+          $ref: "#/components/responses/InvalidRequestError"
+        "404":
+          $ref: "#/components/responses/WorkspaceNotFoundError"
+        "405":
+          $ref: "#/components/responses/MethodNotAllowedError"
+        "502":
+          $ref: "#/components/responses/WorkspaceOperationError"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailableError"
+  /v1/workspaces/{workspaceID}/automation-rules:
+    parameters:
+      - $ref: "#/components/parameters/WorkspaceID"
+    get:
+      operationId: listAutomationRules
+      tags:
+        - automation-rule
+      summary: List workspace automation rules
+      description: Returns action-centric rules that react to Agent session lifecycle events. Rules target either a ModelPlan for a tool-free consult or a WorkspaceAgent for fork, delegate, and handoff actions.
+      responses:
+        "200":
+          description: Workspace automation rules
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ListAutomationRulesResponse"
+        "400":
+          $ref: "#/components/responses/InvalidRequestError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "405":
+          $ref: "#/components/responses/MethodNotAllowedError"
+        "502":
+          $ref: "#/components/responses/WorkspaceOperationError"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailableError"
+    post:
+      operationId: createAutomationRule
+      tags:
+        - automation-rule
+      summary: Create a workspace automation rule
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PutAutomationRuleRequest"
+      responses:
+        "201":
+          description: Created automation rule
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AutomationRule"
+        "400":
+          $ref: "#/components/responses/InvalidRequestError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "405":
+          $ref: "#/components/responses/MethodNotAllowedError"
+        "502":
+          $ref: "#/components/responses/WorkspaceOperationError"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailableError"
+  /v1/workspaces/{workspaceID}/automation-rules/{automationRuleID}:
+    parameters:
+      - $ref: "#/components/parameters/WorkspaceID"
+      - $ref: "#/components/parameters/AutomationRuleID"
+    get:
+      operationId: getAutomationRule
+      tags:
+        - automation-rule
+      summary: Get a workspace automation rule
+      responses:
+        "200":
+          description: Workspace automation rule
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AutomationRule"
+        "400":
+          $ref: "#/components/responses/InvalidRequestError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "404":
+          $ref: "#/components/responses/WorkspaceNotFoundError"
+        "405":
+          $ref: "#/components/responses/MethodNotAllowedError"
+        "502":
+          $ref: "#/components/responses/WorkspaceOperationError"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailableError"
+    put:
+      operationId: updateAutomationRule
+      tags:
+        - automation-rule
+      summary: Replace a workspace automation rule
+      description: Replaces mutable rule fields. Changes apply only to future trigger evaluations; already-started actions keep their recorded configuration.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PutAutomationRuleRequest"
+      responses:
+        "200":
+          description: Updated automation rule
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AutomationRule"
+        "400":
+          $ref: "#/components/responses/InvalidRequestError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "404":
+          $ref: "#/components/responses/WorkspaceNotFoundError"
+        "405":
+          $ref: "#/components/responses/MethodNotAllowedError"
+        "502":
+          $ref: "#/components/responses/WorkspaceOperationError"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailableError"
+    delete:
+      operationId: deleteAutomationRule
+      tags:
+        - automation-rule
+      summary: Delete a workspace automation rule
+      responses:
+        "200":
+          description: Automation rule deleted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DeleteAutomationRuleResponse"
+        "400":
+          $ref: "#/components/responses/InvalidRequestError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "404":
+          $ref: "#/components/responses/WorkspaceNotFoundError"
+        "405":
+          $ref: "#/components/responses/MethodNotAllowedError"
+        "502":
+          $ref: "#/components/responses/WorkspaceOperationError"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailableError"
   /v1/workspaces/{workspaceID}/model-plans:
     parameters:
       - $ref: "#/components/parameters/WorkspaceID"
@@ -821,6 +1135,38 @@ paths:
           $ref: "#/components/responses/WorkspaceOperationError"
         "503":
           $ref: "#/components/responses/ServiceUnavailableError"
+  /v1/workspaces/{workspaceID}/model-plans/recommend:
+    parameters:
+      - $ref: "#/components/parameters/WorkspaceID"
+    post:
+      operationId: recommendWorkspaceModels
+      tags:
+        - model-plan
+      summary: Recommend compatible workspace models
+      description: Filters enabled model access plans by required capabilities and returns an explainable deterministic ranking. Detection health outranks preference; price is used only between routes that publish the same currency. The response never contains credentials.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RecommendWorkspaceModelsRequest"
+      responses:
+        "200":
+          description: Ranked compatible model routes
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RecommendWorkspaceModelsResponse"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "400":
+          $ref: "#/components/responses/InvalidRequestError"
+        "405":
+          $ref: "#/components/responses/MethodNotAllowedError"
+        "502":
+          $ref: "#/components/responses/WorkspaceOperationError"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailableError"
   /v1/workspaces/{workspaceID}/model-plans/{modelPlanID}:
     parameters:
       - $ref: "#/components/parameters/WorkspaceID"
@@ -885,7 +1231,7 @@ paths:
       tags:
         - model-plan
       summary: Delete one model access plan
-      description: Deletion is blocked with a 409 while any agent target, model usage policy, or workspace app still references the plan. Callers rebind or disable those consumers first; the references endpoint lists them.
+      description: Deletion is blocked with a 409 while any WorkspaceAgent, automation rule, legacy agent-target binding, model usage policy, or workspace app still references the plan. Callers rebind or remove those consumers first; the references endpoint lists them.
       responses:
         "200":
           description: Model access plan deleted
@@ -1052,7 +1398,7 @@ paths:
       tags:
         - collaboration-run
       summary: Start or record one collaboration run
-      description: Mode consult executes a daemon-side advisory completion against a workspace model access plan synchronously and returns the completed or failed run; the advisor never executes tools and task ownership never changes. Modes fork, delegate, and handoff record a run for a target session the GUI already created through the session-create path.
+      description: Mode consult executes a daemon-side advisory completion against a workspace model access plan synchronously and returns the completed or failed run; the advisor never executes tools and task ownership never changes. Modes fork, delegate, and handoff create a running record for a target session. When targetSessionId is omitted, the daemon creates the target session from targetAgentTargetId, question, and the selected source-context scope. The daemon updates that record from the target turn lifecycle so completion, failure, cancellation, duration, actual model identity, and reported usage remain aligned with execution.
       requestBody:
         required: true
         content:
@@ -1121,11 +1467,40 @@ paths:
       operationId: cancelCollaborationRun
       tags:
         - collaboration-run
-      summary: Cancel a running consult
-      description: Marks a still-running consult canceled and aborts its in-flight completion call. Settled runs are returned unchanged.
+      summary: Cancel a running collaboration
+      description: Cancels a still-running consult completion or target session turn, then records the collaboration as canceled. Settled runs are returned unchanged.
       responses:
         "200":
           description: Collaboration run after the cancel request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CollaborationRun"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "400":
+          $ref: "#/components/responses/InvalidRequestError"
+        "404":
+          $ref: "#/components/responses/WorkspaceNotFoundError"
+        "405":
+          $ref: "#/components/responses/MethodNotAllowedError"
+        "502":
+          $ref: "#/components/responses/WorkspaceOperationError"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailableError"
+  /v1/workspaces/{workspaceID}/collaboration-runs/{collaborationRunID}/retry:
+    parameters:
+      - $ref: "#/components/parameters/WorkspaceID"
+      - $ref: "#/components/parameters/CollaborationRunID"
+    post:
+      operationId: retryCollaborationRun
+      tags:
+        - collaboration-run
+      summary: Retry a failed collaboration
+      description: Replays the durable request inputs from a failed consult, fork, delegate, or handoff as a new linked attempt. The failed run remains immutable and visible; the response is the newly created run.
+      responses:
+        "200":
+          description: Newly created collaboration retry
           content:
             application/json:
               schema:
@@ -1147,10 +1522,11 @@ paths:
       - $ref: "#/components/parameters/WorkspaceID"
     get:
       operationId: listAgentModelBindings
+      deprecated: true
       tags:
         - model-plan
-      summary: List per-workspace agent target model bindings
-      description: Returns the default model plan, default model, and model usage policy bound to each agent target in the workspace. Targets without a binding keep their provider-native model source.
+      summary: List legacy per-target model bindings
+      description: Compatibility endpoint for clients predating WorkspaceAgent. New clients create a WorkspaceAgent that combines a Harness target with a ModelPlan/default model.
       responses:
         "200":
           description: Agent model bindings
@@ -1179,10 +1555,11 @@ paths:
           minLength: 1
     put:
       operationId: setAgentModelBinding
+      deprecated: true
       tags:
         - model-plan
-      summary: Set or clear one agent target model binding
-      description: Binds the agent target to a default model plan, model, and model usage policy for the workspace. An all-empty body clears the binding. Changes affect only sessions that have not started; running sessions keep their recorded configuration.
+      summary: Set or clear one legacy agent target model binding
+      description: Compatibility endpoint for clients predating WorkspaceAgent. New clients create or update a WorkspaceAgent instead. An all-empty body clears the legacy binding; running sessions keep their recorded configuration.
       requestBody:
         required: true
         content:
@@ -1208,14 +1585,74 @@ paths:
           $ref: "#/components/responses/WorkspaceOperationError"
         "503":
           $ref: "#/components/responses/ServiceUnavailableError"
+  /v1/workspaces/{workspaceID}/agent-sessions/{agentSessionID}/automation-rule-override:
+    parameters:
+      - $ref: "#/components/parameters/WorkspaceID"
+      - $ref: "#/components/parameters/AgentSessionID"
+    get:
+      operationId: getAgentSessionAutomationRuleOverride
+      tags:
+        - automation-rule
+      summary: Get the session-level automation rule override
+      description: An absent override returns disabled=false and an empty rule id list.
+      responses:
+        "200":
+          description: Session automation rule override
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentSessionAutomationRuleOverride"
+        "400":
+          $ref: "#/components/responses/InvalidRequestError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "405":
+          $ref: "#/components/responses/MethodNotAllowedError"
+        "502":
+          $ref: "#/components/responses/WorkspaceOperationError"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailableError"
+    put:
+      operationId: setAgentSessionAutomationRuleOverride
+      tags:
+        - automation-rule
+      summary: Disable or select automation rules for one session
+      description: Disabled stops every future rule evaluation for this session. A non-empty ruleIds list replaces the workspace rule set for this session; an empty list uses all enabled workspace rules. Already-started actions are unchanged.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SetAgentSessionAutomationRuleOverrideRequest"
+      responses:
+        "200":
+          description: Updated session automation rule override
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentSessionAutomationRuleOverride"
+        "400":
+          $ref: "#/components/responses/InvalidRequestError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "404":
+          $ref: "#/components/responses/WorkspaceNotFoundError"
+        "405":
+          $ref: "#/components/responses/MethodNotAllowedError"
+        "502":
+          $ref: "#/components/responses/WorkspaceOperationError"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailableError"
   /v1/workspaces/{workspaceID}/model-policies:
     parameters:
       - $ref: "#/components/parameters/WorkspaceID"
     get:
       operationId: listModelPolicies
+      deprecated: true
       tags:
         - model-plan
-      summary: List workspace model usage policies
+      summary: List legacy role-based model policies
+      description: Compatibility-only. New workflows use WorkspaceAgent for runtime model configuration and AutomationRule for optional collaboration actions.
       responses:
         "200":
           description: Model usage policies
@@ -1235,10 +1672,11 @@ paths:
           $ref: "#/components/responses/ServiceUnavailableError"
     post:
       operationId: createModelPolicy
+      deprecated: true
       tags:
         - model-plan
-      summary: Create one model usage policy
-      description: A policy binds execution, planning, and review roles to plan models and carries the fixed on_task_complete review rule with run and token limits. Automated review can never replace user acceptance.
+      summary: Create one legacy role-based model policy
+      description: Compatibility-only. The production daemon does not execute this policy's role map or fixed review runner; create a WorkspaceAgent and AutomationRule for new workflows.
       requestBody:
         required: true
         content:
@@ -1268,9 +1706,11 @@ paths:
       - $ref: "#/components/parameters/ModelPolicyID"
     get:
       operationId: getModelPolicy
+      deprecated: true
       tags:
         - model-plan
-      summary: Get one model usage policy
+      summary: Get one legacy role-based model policy
+      description: Compatibility-only. The policy is retained for persisted data and acceptance records.
       responses:
         "200":
           description: Model usage policy
@@ -1292,10 +1732,11 @@ paths:
           $ref: "#/components/responses/ServiceUnavailableError"
     put:
       operationId: updateModelPolicy
+      deprecated: true
       tags:
         - model-plan
-      summary: Update one model usage policy
-      description: Changes affect only calls that have not started yet.
+      summary: Update one legacy role-based model policy
+      description: Compatibility-only. Changes do not drive the production Agent runtime or AutomationRule engine.
       requestBody:
         required: true
         content:
@@ -1323,9 +1764,10 @@ paths:
           $ref: "#/components/responses/ServiceUnavailableError"
     delete:
       operationId: deleteModelPolicy
+      deprecated: true
       tags:
         - model-plan
-      summary: Delete one model usage policy
+      summary: Delete one legacy role-based model policy
       responses:
         "200":
           description: Model usage policy deleted
@@ -1351,9 +1793,11 @@ paths:
       - $ref: "#/components/parameters/AgentSessionID"
     get:
       operationId: getAgentSessionModelPolicyOverride
+      deprecated: true
       tags:
         - model-plan
-      summary: Get the session-level model policy override
+      summary: Get the legacy session model-policy override
+      description: Compatibility-only. Use the AutomationRule session override for new workflows.
       responses:
         "200":
           description: Session policy override; absent override returns disabled=false with no policy id
@@ -1373,10 +1817,11 @@ paths:
           $ref: "#/components/responses/ServiceUnavailableError"
     put:
       operationId: setAgentSessionModelPolicyOverride
+      deprecated: true
       tags:
         - model-plan
-      summary: Disable or replace the model usage policy for one session
-      description: Session-level automation control. Disabling stops policy-triggered review for this session; a policy id override replaces the binding default. Changes affect only calls that have not started.
+      summary: Set the legacy session model-policy override
+      description: Compatibility-only. The legacy review runner is not wired in production; use the AutomationRule session override to select or disable future actions.
       requestBody:
         required: true
         content:
@@ -4492,6 +4937,20 @@ components:
       schema:
         type: string
         minLength: 1
+    WorkspaceAgentID:
+      name: workspaceAgentID
+      in: path
+      required: true
+      schema:
+        type: string
+        minLength: 1
+    AutomationRuleID:
+      name: automationRuleID
+      in: path
+      required: true
+      schema:
+        type: string
+        minLength: 1
     ModelPlanID:
       name: modelPlanID
       in: path
@@ -4766,7 +5225,7 @@ components:
                   reason: workspace_operation_failed
                   developerMessage: workspace operation failed
     ModelPlanReferencedError:
-      description: Model plan is still referenced by agent targets, model usage policies, or workspace apps
+      description: Model plan is still referenced by WorkspaceAgents, automation rules, legacy agent-target bindings, model usage policies, or workspace apps
       content:
         application/json:
           schema:
@@ -5404,6 +5863,8 @@ components:
             - workspace_issue_resource_not_found
             - workspace_operation_failed
             - preferences_operation_failed
+            - workspace_agent_not_found
+            - automation_rule_not_found
             - model_plan_not_found
             - model_plan_referenced
             - collaboration_run_not_found
@@ -5884,6 +6345,565 @@ components:
       properties:
         workspaceId:
           type: string
+    WorkspaceAgentSource:
+      type: string
+      description: Origin of the workspace Agent configuration. legacy_binding rows were migrated from the former fixed-target binding model.
+      enum:
+        - user
+        - legacy_binding
+    WorkspaceAgentHarness:
+      type: object
+      additionalProperties: false
+      required:
+        - agentTargetId
+        - available
+      properties:
+        agentTargetId:
+          type: string
+          minLength: 1
+        available:
+          type: boolean
+          description: False when the referenced Harness target no longer exists. The Agent remains listable so it can be repaired or deleted.
+        provider:
+          allOf:
+            - $ref: "#/components/schemas/AgentTargetProvider"
+          nullable: true
+        name:
+          type: string
+          nullable: true
+        iconKey:
+          type: string
+          nullable: true
+        enabled:
+          type: boolean
+          nullable: true
+    WorkspaceAgent:
+      type: object
+      additionalProperties: false
+      description: A selectable, workspace-scoped Agent made from one Harness target plus an optional model access plan and Agent-specific behavior configuration.
+      required:
+        - id
+        - agentTargetId
+        - workspaceId
+        - name
+        - purpose
+        - harness
+        - modelFallbacks
+        - instructions
+        - callConditions
+        - capabilitiesExplicit
+        - skills
+        - tools
+        - permissions
+        - enabled
+        - source
+        - revision
+        - createdAt
+        - updatedAt
+      properties:
+        id:
+          type: string
+          minLength: 1
+          description: Opaque Agent option id. New ids use the workspace-agent prefix and may be passed to workspace Agent session APIs.
+        agentTargetId:
+          type: string
+          minLength: 1
+          description: Compatibility alias of id for AgentGUI and session creation surfaces.
+        workspaceId:
+          type: string
+          minLength: 1
+        name:
+          type: string
+          minLength: 1
+        purpose:
+          type: string
+        harness:
+          $ref: "#/components/schemas/WorkspaceAgentHarness"
+        modelPlanId:
+          type: string
+          nullable: true
+        defaultModel:
+          type: string
+          nullable: true
+        modelFallbacks:
+          type: array
+          description: Ordered, explicit fallback chain used only when starting a new session and the primary Plan/model is not usable. Credentials remain daemon-owned.
+          items:
+            $ref: "#/components/schemas/WorkspaceAgentModelRef"
+        instructions:
+          type: string
+        callConditions:
+          type: array
+          description: Explicit, user-editable conditions that explain when another Agent or user should invoke this Agent.
+          items:
+            type: string
+            minLength: 1
+        capabilitiesExplicit:
+          type: boolean
+          description: >-
+            False keeps Skills and tools synchronized with all capabilities
+            compatible with the selected Harness. True makes the Skills and
+            tools arrays an explicit allowlist; empty arrays then mean none.
+        skills:
+          type: array
+          items:
+            type: string
+            minLength: 1
+        tools:
+          type: array
+          items:
+            type: string
+            minLength: 1
+        permissions:
+          type: array
+          items:
+            type: string
+            minLength: 1
+        enabled:
+          type: boolean
+        source:
+          $ref: "#/components/schemas/WorkspaceAgentSource"
+        revision:
+          type: integer
+          format: int64
+          minimum: 1
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+    ListWorkspaceAgentsResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - agents
+      properties:
+        agents:
+          type: array
+          items:
+            $ref: "#/components/schemas/WorkspaceAgent"
+    PutWorkspaceAgentRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - name
+        - purpose
+        - harnessAgentTargetId
+        - instructions
+        - callConditions
+        - skills
+        - tools
+        - permissions
+        - enabled
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 120
+        purpose:
+          type: string
+          maxLength: 1000
+        harnessAgentTargetId:
+          type: string
+          minLength: 1
+        modelPlanId:
+          type: string
+          nullable: true
+        defaultModel:
+          type: string
+          nullable: true
+        modelFallbacks:
+          type: array
+          description: Ordered fallback Plan/model references. Omit or pass an empty array to disable failover.
+          items:
+            $ref: "#/components/schemas/WorkspaceAgentModelRef"
+        instructions:
+          type: string
+          maxLength: 100000
+        callConditions:
+          type: array
+          items:
+            type: string
+            minLength: 1
+        capabilitiesExplicit:
+          type: boolean
+          description: >-
+            When true, Skills and tools are an explicit allowlist, including
+            the ability to select none. Omit on update to preserve the stored
+            mode; new Agents default to automatic compatible capabilities.
+        skills:
+          type: array
+          items:
+            type: string
+            minLength: 1
+        tools:
+          type: array
+          items:
+            type: string
+            minLength: 1
+        permissions:
+          type: array
+          items:
+            type: string
+            minLength: 1
+        enabled:
+          type: boolean
+    GenerateWorkspaceAgentDraftRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - harnessAgentTargetId
+        - modelPlanId
+        - requirements
+      properties:
+        harnessAgentTargetId:
+          type: string
+          minLength: 1
+        modelPlanId:
+          type: string
+          minLength: 1
+        model:
+          type: string
+          nullable: true
+          description: Defaults to the selected ModelPlan default model.
+        requirements:
+          type: string
+          maxLength: 10000
+          description: Optional user guidance. An empty value asks for a generally useful configuration for the selected Harness.
+    WorkspaceAgentGeneratedAutomationRule:
+      type: object
+      additionalProperties: false
+      required:
+        - name
+        - trigger
+        - action
+        - modelPlanId
+        - prompt
+        - maxRunsPerSession
+        - maxTotalTokensPerSession
+      properties:
+        name:
+          type: string
+          minLength: 1
+        trigger:
+          $ref: "#/components/schemas/AutomationRuleTrigger"
+        action:
+          type: string
+          enum:
+            - consult
+        modelPlanId:
+          type: string
+          minLength: 1
+        model:
+          type: string
+          nullable: true
+        prompt:
+          type: string
+        maxRunsPerSession:
+          type: integer
+          minimum: 1
+          maximum: 3
+        maxTotalTokensPerSession:
+          type: integer
+          format: int64
+          minimum: 1
+          maximum: 200000
+    WorkspaceAgentGenerationUsage:
+      type: object
+      additionalProperties: false
+      required:
+        - inputTokens
+        - outputTokens
+      properties:
+        inputTokens:
+          type: integer
+          format: int64
+          minimum: 0
+        outputTokens:
+          type: integer
+          format: int64
+          minimum: 0
+    WorkspaceAgentDraftGeneration:
+      type: object
+      additionalProperties: false
+      required:
+        - name
+        - purpose
+        - instructions
+        - callConditions
+        - skills
+        - automationRules
+        - usedModelPlanId
+        - usedModel
+        - usage
+      properties:
+        name:
+          type: string
+          minLength: 1
+        purpose:
+          type: string
+        instructions:
+          type: string
+        callConditions:
+          type: array
+          items:
+            type: string
+            minLength: 1
+        skills:
+          type: array
+          items:
+            type: string
+            minLength: 1
+        automationRules:
+          type: array
+          items:
+            $ref: "#/components/schemas/WorkspaceAgentGeneratedAutomationRule"
+        usedModelPlanId:
+          type: string
+          minLength: 1
+        usedModel:
+          type: string
+          minLength: 1
+        usage:
+          $ref: "#/components/schemas/WorkspaceAgentGenerationUsage"
+    WorkspaceAgentModelRef:
+      type: object
+      additionalProperties: false
+      required:
+        - modelPlanId
+      properties:
+        modelPlanId:
+          type: string
+          minLength: 1
+        model:
+          type: string
+          nullable: true
+    DeleteWorkspaceAgentResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - workspaceAgentId
+      properties:
+        workspaceAgentId:
+          type: string
+    AutomationRuleTrigger:
+      type: string
+      description: Lifecycle outcome that evaluates the rule. A failed-turn rule can delegate to a stronger WorkspaceAgent as a bounded escalation attempt; automated outcomes never final-accept the source task.
+      enum:
+        - on_task_complete
+        - on_task_failed
+    AutomationRuleAction:
+      type: string
+      enum:
+        - consult
+        - fork
+        - delegate
+        - handoff
+    AutomationRuleTargetKind:
+      type: string
+      enum:
+        - model
+        - agent
+    AutomationRuleTarget:
+      type: object
+      additionalProperties: false
+      required:
+        - kind
+        - requiredCapabilities
+      properties:
+        kind:
+          $ref: "#/components/schemas/AutomationRuleTargetKind"
+        workspaceAgentId:
+          type: string
+          nullable: true
+          description: Required for fork, delegate, and handoff. The Agent must be enabled and launchable.
+        modelPlanId:
+          type: string
+          nullable: true
+          description: Required for consult. The ModelPlan must be enabled.
+        model:
+          type: string
+          nullable: true
+          description: Optional consult model; defaults to the target ModelPlan default model.
+        requiredCapabilities:
+          type: array
+          items:
+            type: string
+            minLength: 1
+    AutomationRulePermissions:
+      type: object
+      additionalProperties: false
+      required:
+        - allowedTools
+      description: Authority narrowing applied to automatically launched WorkspaceAgents. Consult is always tool-free and ignores these fields.
+      properties:
+        permissionModeId:
+          type: string
+          nullable: true
+        allowedTools:
+          type: array
+          items:
+            type: string
+            minLength: 1
+    AutomationRuleBudget:
+      type: object
+      additionalProperties: false
+      required:
+        - maxRunsPerSession
+        - maxTotalTokensPerSession
+      description: Independent per-source-session limit. Zero uses the daemon safety default and never means unlimited.
+      properties:
+        maxRunsPerSession:
+          type: integer
+          minimum: 0
+        maxTotalTokensPerSession:
+          type: integer
+          format: int64
+          minimum: 0
+    AutomationRule:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - workspaceId
+        - name
+        - enabled
+        - trigger
+        - action
+        - target
+        - permissions
+        - budget
+        - prompt
+        - createdAt
+        - updatedAt
+      properties:
+        id:
+          type: string
+          minLength: 1
+        workspaceId:
+          type: string
+          minLength: 1
+        name:
+          type: string
+          minLength: 1
+        enabled:
+          type: boolean
+        trigger:
+          $ref: "#/components/schemas/AutomationRuleTrigger"
+        action:
+          $ref: "#/components/schemas/AutomationRuleAction"
+        sourceWorkspaceAgentId:
+          type: string
+          nullable: true
+          description: Optional source-session Agent filter. Empty means all non-automation-origin sessions.
+        target:
+          $ref: "#/components/schemas/AutomationRuleTarget"
+        permissions:
+          $ref: "#/components/schemas/AutomationRulePermissions"
+        budget:
+          $ref: "#/components/schemas/AutomationRuleBudget"
+        prompt:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+    ListAutomationRulesResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - rules
+      properties:
+        rules:
+          type: array
+          items:
+            $ref: "#/components/schemas/AutomationRule"
+    PutAutomationRuleRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - name
+        - enabled
+        - trigger
+        - action
+        - target
+        - permissions
+        - budget
+        - prompt
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 120
+        enabled:
+          type: boolean
+        trigger:
+          $ref: "#/components/schemas/AutomationRuleTrigger"
+        action:
+          $ref: "#/components/schemas/AutomationRuleAction"
+        sourceWorkspaceAgentId:
+          type: string
+          nullable: true
+        target:
+          $ref: "#/components/schemas/AutomationRuleTarget"
+        permissions:
+          $ref: "#/components/schemas/AutomationRulePermissions"
+        budget:
+          $ref: "#/components/schemas/AutomationRuleBudget"
+        prompt:
+          type: string
+          maxLength: 100000
+    DeleteAutomationRuleResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - automationRuleId
+      properties:
+        automationRuleId:
+          type: string
+    AgentSessionAutomationRuleOverride:
+      type: object
+      additionalProperties: false
+      required:
+        - workspaceId
+        - agentSessionId
+        - disabled
+        - ruleIds
+      properties:
+        workspaceId:
+          type: string
+          minLength: 1
+        agentSessionId:
+          type: string
+          minLength: 1
+        disabled:
+          type: boolean
+        ruleIds:
+          type: array
+          items:
+            type: string
+            minLength: 1
+        updatedAt:
+          type: string
+          format: date-time
+          nullable: true
+    SetAgentSessionAutomationRuleOverrideRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - disabled
+        - ruleIds
+      properties:
+        disabled:
+          type: boolean
+        ruleIds:
+          type: array
+          items:
+            type: string
+            minLength: 1
     ModelPlanProtocol:
       type: string
       description: Wire protocol family used to call the plan's models.
@@ -5892,13 +6912,19 @@ components:
         - anthropic
     ModelPlanTemplateKind:
       type: string
-      description: Access-scheme template the plan was created from. Presentation and guidance hint; runtime behavior derives from protocol.
+      description: Access-scheme template the plan was created from. It determines the billing semantic while protocol determines runtime transport.
       enum:
         - official_subscription
         - coding_plan
         - domestic
         - relay
         - custom
+    ModelPlanBillingMode:
+      type: string
+      description: Budget and cost semantic derived from the access scheme. Subscription quota plans never expose fabricated monetary cost.
+      enum:
+        - api_metered
+        - subscription_quota
     ModelPlanStatus:
       type: string
       description: Derived plan lifecycle status. pending_first_use means detection passed but no real agent call has completed yet; only ready plans are fully usable.
@@ -5995,6 +7021,36 @@ components:
           type: string
           format: date-time
           nullable: true
+    ModelPlanPricing:
+      type: object
+      additionalProperties: false
+      required:
+        - currency
+        - inputMicrosPerMillion
+        - outputMicrosPerMillion
+        - cacheReadMicrosPerMillion
+        - cacheWriteMicrosPerMillion
+      properties:
+        currency:
+          type: string
+          minLength: 3
+          maxLength: 3
+        inputMicrosPerMillion:
+          type: integer
+          format: int64
+          minimum: 0
+        outputMicrosPerMillion:
+          type: integer
+          format: int64
+          minimum: 0
+        cacheReadMicrosPerMillion:
+          type: integer
+          format: int64
+          minimum: 0
+        cacheWriteMicrosPerMillion:
+          type: integer
+          format: int64
+          minimum: 0
     ModelPlanModel:
       type: object
       additionalProperties: false
@@ -6006,11 +7062,20 @@ components:
           type: string
         name:
           type: string
+        tier:
+          type: string
+          enum:
+            - flagship
+            - standard
+            - economy
+          description: User-facing model capability/cost tier. Omitted input defaults to standard.
         capabilities:
           type: array
           nullable: true
           items:
             type: string
+        pricing:
+          $ref: "#/components/schemas/ModelPlanPricing"
     ModelPlan:
       type: object
       additionalProperties: false
@@ -6018,8 +7083,10 @@ components:
       required:
         - id
         - workspaceId
+        - revision
         - name
         - templateKind
+        - billingMode
         - protocol
         - hasApiKey
         - models
@@ -6034,10 +7101,16 @@ components:
           type: string
         workspaceId:
           type: string
+        revision:
+          type: integer
+          format: int64
+          minimum: 1
         name:
           type: string
         templateKind:
           $ref: "#/components/schemas/ModelPlanTemplateKind"
+        billingMode:
+          $ref: "#/components/schemas/ModelPlanBillingMode"
         protocol:
           $ref: "#/components/schemas/ModelPlanProtocol"
         hasApiKey:
@@ -6076,6 +7149,80 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/ModelPlan"
+    RecommendWorkspaceModelsRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        requiredCapabilities:
+          type: array
+          maxItems: 32
+          items:
+            type: string
+            minLength: 1
+        preferredPlanId:
+          type: string
+          nullable: true
+        limit:
+          type: integer
+          minimum: 1
+          maximum: 100
+          nullable: true
+    WorkspaceModelRecommendation:
+      type: object
+      additionalProperties: false
+      required:
+        - planId
+        - planName
+        - billingMode
+        - modelId
+        - modelName
+        - capabilities
+        - status
+        - rank
+        - reasons
+      properties:
+        planId:
+          type: string
+        planName:
+          type: string
+        billingMode:
+          $ref: "#/components/schemas/ModelPlanBillingMode"
+        modelId:
+          type: string
+        modelName:
+          type: string
+        tier:
+          type: string
+          enum:
+            - flagship
+            - standard
+            - economy
+        capabilities:
+          type: array
+          items:
+            type: string
+        pricing:
+          $ref: "#/components/schemas/ModelPlanPricing"
+        status:
+          $ref: "#/components/schemas/ModelPlanStatus"
+        rank:
+          type: integer
+          minimum: 1
+        reasons:
+          type: array
+          description: Stable machine-readable explanations such as status:ready, preferred_plan, default_model, capability:vision, and priced:USD.
+          items:
+            type: string
+    RecommendWorkspaceModelsResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - recommendations
+      properties:
+        recommendations:
+          type: array
+          items:
+            $ref: "#/components/schemas/WorkspaceModelRecommendation"
     PutModelPlanRequest:
       type: object
       additionalProperties: false
@@ -6133,6 +7280,11 @@ components:
           type: string
           nullable: true
           description: When set, omitted fields fall back to the stored plan and the outcome persists onto it.
+        templateKind:
+          allOf:
+            - $ref: "#/components/schemas/ModelPlanTemplateKind"
+          nullable: true
+          description: Required for unsaved drafts whose detection path depends on the access scheme, such as an official provider subscription.
         protocol:
           allOf:
             - $ref: "#/components/schemas/ModelPlanProtocol"
@@ -6176,6 +7328,8 @@ components:
           type: string
           enum:
             - agent_target
+            - workspace_agent
+            - automation_rule
             - model_policy
             - workspace_app
         id:
@@ -6394,6 +7548,7 @@ components:
         - user
         - agent
         - policy
+        - automation
     CollaborationRunStatus:
       type: string
       enum:
@@ -6415,6 +7570,8 @@ components:
       required:
         - inputTokens
         - outputTokens
+        - cacheReadTokens
+        - cacheWriteTokens
       properties:
         inputTokens:
           type: integer
@@ -6422,6 +7579,26 @@ components:
         outputTokens:
           type: integer
           format: int64
+        cacheReadTokens:
+          type: integer
+          format: int64
+        cacheWriteTokens:
+          type: integer
+          format: int64
+    CollaborationRunCost:
+      type: object
+      additionalProperties: false
+      description: Estimated metered API cost derived from provider-reported token usage and the selected model's configured price. Subscription-quota plans and models without configured prices omit this value.
+      required:
+        - currency
+        - estimatedMicros
+      properties:
+        currency:
+          type: string
+        estimatedMicros:
+          type: integer
+          format: int64
+          minimum: 0
     CollaborationRun:
       type: object
       additionalProperties: false
@@ -6434,6 +7611,7 @@ components:
         - status
         - adoption
         - usage
+        - attempt
         - durationMs
         - createdAt
         - updatedAt
@@ -6468,10 +7646,18 @@ components:
           type: string
           nullable: true
           description: How much source context was carried over, for example none, summary, or full.
+        retryOfRunId:
+          type: string
+          nullable: true
+          description: Previous failed run replayed by this attempt. Null for an original request.
+        attempt:
+          type: integer
+          minimum: 1
+          description: One-based attempt number across a retry chain.
         prompt:
           type: string
           nullable: true
-          description: Stored consult input (context plus question).
+          description: Stored original consult question or target-session work request. Legacy consult rows may contain the already-composed prompt.
         resultText:
           type: string
           nullable: true
@@ -6480,12 +7666,20 @@ components:
           type: string
           nullable: true
           description: Machine-readable failure code such as unauthorized, model_rejected, or canceled.
+        failureStage:
+          type: string
+          nullable: true
+          description: Execution stage that failed, such as provider_completion, target_launch, or target_execution.
         status:
           $ref: "#/components/schemas/CollaborationRunStatus"
         adoption:
           $ref: "#/components/schemas/CollaborationRunAdoption"
         usage:
           $ref: "#/components/schemas/CollaborationRunUsage"
+        cost:
+          allOf:
+            - $ref: "#/components/schemas/CollaborationRunCost"
+          nullable: true
         startedAt:
           type: string
           format: date-time
@@ -6525,13 +7719,15 @@ components:
         sourceSessionId:
           type: string
           nullable: true
-          description: Required for consult runs; consults are capped per source session.
+          description: Required for consult and daemon-launched session-backed runs. Consults are capped per source session.
         targetSessionId:
           type: string
           nullable: true
+          description: Existing target session to track. Omit for fork, delegate, or handoff to let the daemon create the target session.
         targetAgentTargetId:
           type: string
           nullable: true
+          description: Required when the daemon creates a fork, delegate, or handoff target session.
         modelPlanId:
           type: string
           nullable: true
@@ -6543,14 +7739,19 @@ components:
         question:
           type: string
           nullable: true
-          description: Consult question; required for consult runs.
+          description: Consult question or target-session work request. Required for consult and daemon-launched session-backed runs.
         contextText:
           type: string
           nullable: true
-          description: Optional prepared context prepended to the consult question.
+          description: Optional user-supplied context supplement. Consult prepends it to the question; daemon-launched session-backed runs append it to context selected from the source session.
         contextScope:
           type: string
           nullable: true
+          description: Source transcript transferred to a daemon-launched target session. Supported values are none, recent, and full; recent is the default.
+          enum:
+            - none
+            - recent
+            - full
         triggerSource:
           $ref: "#/components/schemas/CollaborationRunTriggerSource"
         triggerReason:
@@ -7795,6 +8996,10 @@ components:
         model:
           type: string
           nullable: true
+        modelPlanId:
+          type: string
+          nullable: true
+          description: Immutable Model Plan identity recorded for this Session. Supplying a different value requires creating a new Session.
         permissionModeId:
           type: string
           nullable: true
@@ -9735,6 +10940,10 @@ components:
         model:
           type: string
           nullable: true
+        modelPlanId:
+          type: string
+          nullable: true
+          description: Optional workspace Model Plan override for this launch. The daemon resolves credentials, validates provider protocol and model compatibility, and records the effective Plan revision.
         reasoningEffort:
           type: string
           nullable: true
@@ -9751,6 +10960,11 @@ components:
         browserUse:
           type: boolean
           nullable: true
+        automationRuleOverride:
+          allOf:
+            - $ref: "#/components/schemas/SetAgentSessionAutomationRuleOverrideRequest"
+          nullable: true
+          description: Optional session-local AutomationRule selection written before the initial turn starts. Omit to inherit every enabled workspace rule; disabled=true disables automation for this session, while ruleIds selects an explicit subset.
         visible:
           type: boolean
           nullable: true

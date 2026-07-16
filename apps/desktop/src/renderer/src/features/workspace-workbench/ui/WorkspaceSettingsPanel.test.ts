@@ -30,7 +30,7 @@ test("workspace settings developer panel exposes analytics debug switch only whe
 test("workspace settings panel lists appearance below general", () => {
   assert.match(
     source,
-    /id: "general" as const,[\s\S]*id: "agent" as const,[\s\S]*id: "appearance" as const,[\s\S]*id: "apps" as const,[\s\S]*id: "account" as const,[\s\S]*id: "about" as const,[\s\S]*id: "developer" as const/
+    /id: "general" as const,[\s\S]*id: "agent" as const,[\s\S]*id: "model" as const,[\s\S]*id: "appearance" as const,[\s\S]*id: "account" as const,[\s\S]*id: "about" as const,[\s\S]*id: "developer" as const/
   );
 });
 
@@ -427,21 +427,13 @@ test("workspace settings window snapping is controlled by one dropdown", () => {
 });
 
 test("workspace settings app source control lives in developer settings", () => {
-  const appsSectionStart = source.indexOf(
-    "function WorkspaceAppsSettingsSection"
-  );
   const developerSectionStart = source.indexOf(
     "function WorkspaceDeveloperSettingsSection"
   );
   const controlStart = source.indexOf("function AppCatalogChannelControl");
 
-  assert.ok(appsSectionStart >= 0);
-  assert.ok(developerSectionStart > appsSectionStart);
+  assert.ok(developerSectionStart >= 0);
   assert.ok(controlStart > developerSectionStart);
-  assert.doesNotMatch(
-    source.slice(appsSectionStart, developerSectionStart),
-    /appCatalogChannel/
-  );
   assert.match(
     source.slice(developerSectionStart, controlStart),
     /<AppCatalogChannelControl/
@@ -470,12 +462,83 @@ test("workspace settings release channel control lives in developer settings", (
   assert.match(developerSection, /<ReleaseChannelControl/);
 });
 
-test("workspace settings apps section hosts model plans and agent bindings", () => {
+test("workspace settings model tab hosts plans; agent tab hosts Agents and automation rules", () => {
   assert.match(
     source,
-    /function WorkspaceAppsSettingsSection\(\) \{\s*return \(\s*<SettingsRows>\s*<WorkspaceModelPlansSection \/>\s*<WorkspaceAgentModelBindingSection \/>/
+    /function WorkspaceModelSettingsSection\(\) \{\s*return \(\s*<SettingsRows>\s*<WorkspaceModelPlansSection \/>\s*<\/SettingsRows>/
   );
+  const agentSectionStart = source.indexOf(
+    "function WorkspaceAgentSettingsSection"
+  );
+  const generalSectionStart = source.indexOf(
+    "function WorkspaceGeneralSettingsSection"
+  );
+  assert.ok(agentSectionStart >= 0);
+  assert.ok(generalSectionStart > agentSectionStart);
+  const agentSection = source.slice(agentSectionStart, generalSectionStart);
+  assert.match(
+    agentSection,
+    /<ComputerUseSetupRow[\s\S]*\/>\s*<WorkspaceAgentsSection \/>\s*<WorkspaceAutomationRulesSection \/>/
+  );
+  assert.doesNotMatch(agentSection, /<WorkspaceModelPlansSection \/>/);
+  assert.doesNotMatch(source, /function WorkspaceAppsSettingsSection/);
+  assert.doesNotMatch(source, /WorkspaceAgentModelBindingSection/);
   assert.doesNotMatch(source, /managedModels/);
+});
+
+test("workspace Agent editor maps Harness and ModelPlan without model roles", () => {
+  const editorSource = readFileSync(
+    resolve(
+      dirname(fileURLToPath(import.meta.url)),
+      "WorkspaceAgentEditor.tsx"
+    ),
+    "utf8"
+  );
+
+  assert.match(editorSource, /harnessAgentTargetId/);
+  assert.match(editorSource, /modelPlanId/);
+  assert.match(editorSource, /defaultModel/);
+  assert.match(editorSource, /draft\.instructions/);
+  assert.match(editorSource, /draft\.skills/);
+  assert.match(editorSource, /draft\.tools/);
+  assert.match(editorSource, /draft\.permissions/);
+  assert.doesNotMatch(editorSource, /executionRole|planningRole|reviewRole/);
+});
+
+test("workspace model plan references cover Agents and automation rules", () => {
+  const modelPlansSource = readFileSync(
+    resolve(
+      dirname(fileURLToPath(import.meta.url)),
+      "WorkspaceModelPlansSection.tsx"
+    ),
+    "utf8"
+  );
+
+  assert.match(modelPlansSource, /workspace_agent:/);
+  assert.match(modelPlansSource, /automation_rule:/);
+  assert.match(modelPlansSource, /referenceKinds\.workspaceAgent/);
+  assert.match(modelPlansSource, /referenceKinds\.automationRule/);
+});
+
+test("workspace automation editor exposes action targets and bounded authority", () => {
+  const editorSource = readFileSync(
+    resolve(
+      dirname(fileURLToPath(import.meta.url)),
+      "WorkspaceAutomationRuleEditor.tsx"
+    ),
+    "utf8"
+  );
+
+  assert.match(editorSource, /"consult",\s*"fork",\s*"delegate",\s*"handoff"/);
+  assert.match(editorSource, /draft\.sourceWorkspaceAgentId/);
+  assert.match(editorSource, /draft\.modelPlanId/);
+  assert.match(editorSource, /draft\.targetWorkspaceAgentId/);
+  assert.match(editorSource, /draft\.requiredCapabilities/);
+  assert.match(editorSource, /draft\.permissionModeId/);
+  assert.match(editorSource, /draft\.allowedTools/);
+  assert.match(editorSource, /draft\.maxRunsPerSession/);
+  assert.match(editorSource, /draft\.maxTotalTokensPerSession/);
+  assert.doesNotMatch(editorSource, /executionRole|planningRole|reviewRole/);
 });
 
 test("workspace model plan API key is masked until toggled visible", () => {

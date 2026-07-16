@@ -1,4 +1,5 @@
 export {
   desktopManagedAgentProviders,
-  ensureAllDesktopManagedAgentProviderStatuses
+  ensureAllDesktopManagedAgentProviderStatuses,
+  ensureDesktopManagedAgentProviderStatuses
 } from "./internal/desktopManagedAgentProviders.ts";

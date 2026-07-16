@@ -3,6 +3,7 @@ import { useCallback } from "react";
 import { translate } from "../../../i18n/index";
 import type { AgentPromptContentBlock } from "../../../shared/contracts/dto";
 import { deriveAgentGUIOptimisticConversationTitle } from "../../../shared/agentConversationTitleProjection";
+import type { AgentSessionComposerSettings } from "../../../shared/agentSessionTypes";
 import {
   agentPromptContentDisplayText,
   emptyAgentComposerDraft,
@@ -83,7 +84,9 @@ export function useAgentGUINewConversationActivation(
     (
       initialContentInput?: unknown,
       displayPrompt?: string,
-      submitOptions?: AgentComposerSubmitOptions
+      submitOptions?: AgentComposerSubmitOptions,
+      settingsOverride?: AgentSessionComposerSettings,
+      sourceScopeKeyOverride?: string
     ): AgentGUINewConversationActivationResult | null => {
       const target = selectedAgentTargetRef.current;
       const targetData = selectedComposerTargetDataRef.current;
@@ -140,6 +143,9 @@ export function useAgentGUINewConversationActivation(
         homeSettings: targetSafeInitialSettings,
         options: snapshotComposerOptions
       });
+      const overriddenInitialSettings = settingsOverride
+        ? { ...initialSettings, ...settingsOverride }
+        : initialSettings;
       const currentActiveConversationId = activeConversationIdRef.current;
       const currentActiveConversation = currentActiveConversationId
         ? resolveConversationSummaryById(
@@ -148,7 +154,7 @@ export function useAgentGUINewConversationActivation(
           )
         : null;
       const inheritedModel =
-        normalizeOptionalText(targetSafeInitialSettings.model) === null
+        normalizeOptionalText(overriddenInitialSettings.model) === null
           ? (resolveSameProviderActiveSessionModel({
               activeProvider: currentActiveConversation?.provider ?? null,
               agentSessionId: currentActiveConversationId,
@@ -165,11 +171,11 @@ export function useAgentGUINewConversationActivation(
         settings:
           inheritedModel === null
             ? {
-                ...initialSettings,
+                ...overriddenInitialSettings,
                 ...submitOptions?.requiredSettingsPatch
               }
             : {
-                ...initialSettings,
+                ...overriddenInitialSettings,
                 model: inheritedModel,
                 ...submitOptions?.requiredSettingsPatch
               },
@@ -197,7 +203,8 @@ export function useAgentGUINewConversationActivation(
         queued: false,
         startedAtUnixMs: Date.now()
       });
-      const sourceScopeKey = resolveAgentComposerDraftScopeKey({});
+      const sourceScopeKey =
+        sourceScopeKeyOverride ?? resolveAgentComposerDraftScopeKey({});
       const submittedDraft =
         draftByScopeKeyRef.current[sourceScopeKey] ?? emptyAgentComposerDraft();
       submittedDraftSnapshotsRef.current[submitTrace.clientSubmitId] = {
@@ -215,6 +222,9 @@ export function useAgentGUINewConversationActivation(
         mode: "new",
         agentSessionId,
         agentTargetId,
+        ...(submitOptions?.automationRuleOverride
+          ? { automationRuleOverride: submitOptions.automationRuleOverride }
+          : {}),
         clientSubmitId: submitTrace.clientSubmitId,
         cwd: selectedProjectPath ?? "",
         initialContent: normalizedInitialContent,

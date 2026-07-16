@@ -64,6 +64,7 @@ test("keeps the default provider set explicit", () => {
     "workspace-app",
     "agent-target",
     "agent-session",
+    "workspace-model",
     "agent-generated-file"
   ]);
 });
@@ -190,6 +191,7 @@ test("normalizes managed AI model permission requests", () => {
     normalizeTuttiExternalPermissionRequestInput({
       nonce: " nonce-1 ",
       permission: "managed-ai-models",
+      modelPlanIds: [" plan-1 ", "plan-1", "plan-2"],
       providers: ["openai", "openai", "anthropic"],
       scopes: [" model:invoke ", "model:invoke"],
       state: " state-1 "
@@ -197,6 +199,7 @@ test("normalizes managed AI model permission requests", () => {
     {
       nonce: "nonce-1",
       permission: "managed-ai-models",
+      modelPlanIds: ["plan-1", "plan-2"],
       providers: ["openai", "anthropic"],
       scopes: ["model:invoke"],
       state: "state-1"
@@ -235,6 +238,17 @@ test("rejects invalid managed AI model permission requests", () => {
         state: "state-1"
       }),
     /provider is unsupported/
+  );
+  assert.throws(
+    () =>
+      normalizeTuttiExternalPermissionRequestInput({
+        nonce: "nonce-1",
+        permission: "managed-ai-models",
+        modelPlanIds: [""],
+        scopes: ["model:invoke"],
+        state: "state-1"
+      }),
+    /modelPlanIds contains an invalid value/
   );
 });
 

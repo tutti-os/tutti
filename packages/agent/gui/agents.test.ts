@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   normalizeAgentGUIAgents,
+  projectAgentGUIAgentsToInternalTargets,
   resolveAgentGUISelectedDirectoryAgent
 } from "./agents";
 import type { AgentGUIAgent } from "./types";
@@ -61,6 +62,37 @@ describe("normalizeAgentGUIAgents", () => {
         provider: "codex"
       }
     ]);
+  });
+
+  it("projects owner, quota, concurrency, and audit access without credentials", () => {
+    const [agent] = normalizeAgentGUIAgents([
+      createAgent("shared-agent:one", {
+        owner: { userId: " owner-1 ", name: "Owner" },
+        sharedAccess: {
+          grantId: " grant-1 ",
+          ownerUserId: " owner-1 ",
+          ownerOnline: true,
+          auditRequired: true,
+          quota: { unit: "tokens", remaining: 0, limit: 10_000 },
+          concurrency: { active: 1, limit: 2 }
+        }
+      })
+    ]);
+    expect(agent).toBeDefined();
+    if (!agent) throw new Error("expected normalized shared Agent");
+
+    expect(agent.availability).toEqual({
+      status: "unavailable",
+      reason: "share_quota_exhausted"
+    });
+    expect(agent.owner?.userId).toBe("owner-1");
+    const [target] = projectAgentGUIAgentsToInternalTargets([agent]);
+    expect(target).toBeDefined();
+    if (!target) throw new Error("expected projected shared target");
+    expect(target.disabled).toBe(true);
+    expect(target.unavailableReason).toBe("share_quota_exhausted");
+    expect(target.ref.sharedAccess).toEqual(agent.sharedAccess);
+    expect(JSON.stringify(target)).not.toContain("credential");
   });
 });
 

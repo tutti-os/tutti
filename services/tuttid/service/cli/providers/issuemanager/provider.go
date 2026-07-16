@@ -40,6 +40,10 @@ type IssueManager interface {
 	SearchIssueOutputs(context.Context, workspaceissues.RunOutputSearchParams) ([]workspaceissues.RunOutputSearchHit, error)
 }
 
+type issueFromPlanManager interface {
+	CreateIssueFromPlan(context.Context, string, workspaceservice.CreateIssueManagerIssueFromPlanInput) (workspaceissues.IssueDetail, error)
+}
+
 type Provider struct {
 	workspaces cliservice.WorkspaceCatalog
 	issues     IssueManager
@@ -68,6 +72,7 @@ func (p Provider) Commands() []cliservice.Command {
 		p.newIssueListCommand(),
 		p.newIssueGetCommand(),
 		p.newIssueCreateCommand(),
+		p.newIssueCreateFromPlanCommand(),
 		p.newIssueUpdateCommand(),
 		p.newIssueDeleteCommand(),
 		p.newTaskListCommand(),

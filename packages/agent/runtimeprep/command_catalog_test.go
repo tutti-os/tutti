@@ -332,7 +332,7 @@ func TestCommandGuideSummaryIncludesScopeDescriptions(t *testing.T) {
 	})
 
 	for _, want := range []string{
-		"- `tutti-dev agent ...` - agent discovery, launches, sessions, waits, summaries, turn resources, active peers.",
+		"- `tutti-dev agent ...` - agent discovery, launches, sessions, waits, summaries, turn resources, active peers, model consults.",
 		"- `tutti-dev app ...` - open/show installed app windows only when explicitly requested.",
 		"- `tutti-dev issue ...` - issue/topic/task/run inspection and execution state.",
 		"- `tutti-dev aimc ...` - workspace app commands for AI Canvas (App id: ai-media-canvas).",

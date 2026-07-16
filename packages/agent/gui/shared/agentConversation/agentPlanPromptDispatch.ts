@@ -5,6 +5,7 @@ import {
   type AgentSessionEngineState
 } from "@tutti-os/agent-activity-core";
 import {
+  PLAN_IMPLEMENTATION_ACTION_CREATE_ISSUE,
   PLAN_IMPLEMENTATION_ACTION_FEEDBACK,
   PLAN_IMPLEMENTATION_ACTION_IMPLEMENT,
   PLAN_IMPLEMENTATION_ACTION_SKIP
@@ -12,6 +13,7 @@ import {
 
 export type AgentPlanPromptAction =
   | typeof PLAN_IMPLEMENTATION_ACTION_IMPLEMENT
+  | typeof PLAN_IMPLEMENTATION_ACTION_CREATE_ISSUE
   | typeof PLAN_IMPLEMENTATION_ACTION_FEEDBACK
   | typeof PLAN_IMPLEMENTATION_ACTION_SKIP;
 
@@ -36,6 +38,7 @@ export function dispatchAgentPlanPromptAction(input: {
   agentSessionId: string;
   engine: AgentSessionEngine;
   feedbackText?: string;
+  runtimeFeedbackText?: string;
   nowUnixMs?: () => number;
   requestId: string;
   workspaceId: string;
@@ -52,6 +55,11 @@ export function dispatchAgentPlanPromptAction(input: {
     input.agentSessionId,
     turn.turnId
   ].join(":");
+  // This action is consumed by the workspace host and must never be sent as a
+  // provider-native plan decision.
+  if (input.action === PLAN_IMPLEMENTATION_ACTION_CREATE_ISSUE) {
+    return false;
+  }
   if (input.action === PLAN_IMPLEMENTATION_ACTION_IMPLEMENT) {
     const existing = selectPlanDecisionForTurn(
       input.engine.getSnapshot(),
@@ -87,6 +95,7 @@ export function dispatchAgentPlanPromptAction(input: {
   }
   const text = input.feedbackText?.trim() ?? "";
   if (!text) return false;
+  const runtimeText = input.runtimeFeedbackText?.trim() || text;
   const requestedAtUnixMs = (input.nowUnixMs ?? Date.now)();
   input.engine.dispatch({
     type: "plan/feedbackRequested",
@@ -97,7 +106,7 @@ export function dispatchAgentPlanPromptAction(input: {
     expiresAtUnixMs: requestedAtUnixMs + 120_000,
     requestedAtUnixMs,
     requestId: input.requestId,
-    runtimeContent: [{ type: "text", text }],
+    runtimeContent: [{ type: "text", text: runtimeText }],
     turnId: turn.turnId,
     workspaceId: input.workspaceId
   });

@@ -14,6 +14,44 @@ export type IssueManagerTaskStatusUpdate =
 
 export type IssueManagerPriority = "high" | "medium" | "low" | (string & {});
 
+export type IssueManagerPlanningSource =
+  | "manual"
+  | "ultra_plan"
+  | "traditional_plan";
+export type IssueManagerBudgetMode = "auto" | "fixed";
+export type IssueManagerBudgetStatus = "active" | "soft_limited";
+export type IssueManagerAcceptanceState =
+  | "agent_claimed"
+  | "auto_checked"
+  | "user_accepted";
+
+export interface IssueManagerExecutionProfile {
+  reasoningIntensity: number;
+  orchestrationIntensity: number;
+}
+
+export interface IssueManagerBudget {
+  mode: IssueManagerBudgetMode;
+  tokenLimit: number;
+  consumedTokens: number;
+  quotaWaterlinePercent: number;
+  remainingQuotaPercent?: number;
+  status: IssueManagerBudgetStatus;
+}
+
+export interface IssueManagerTokenUsage {
+  inputTokens: number;
+  outputTokens: number;
+  cacheReadTokens: number;
+  cacheWriteTokens: number;
+}
+
+export interface IssueManagerCost {
+  currency: string;
+  estimatedMicros: number;
+  actualMicros: number;
+}
+
 export type IssueManagerContextRefParentKind = "issue" | "task";
 
 export interface IssueManagerScope {
@@ -49,6 +87,14 @@ export interface IssueManagerIssueSummary {
   title: string;
   content?: string;
   status: IssueManagerStatus;
+  planningSource?: IssueManagerPlanningSource;
+  sourceSessionId?: string;
+  sequentialExecution?: boolean;
+  parallelExecution?: boolean;
+  dispatchPaused?: boolean;
+  executionProfile?: IssueManagerExecutionProfile;
+  budget?: IssueManagerBudget;
+  cost?: IssueManagerCost;
   taskCount?: number;
   notStartedCount?: number;
   runningCount?: number;
@@ -77,6 +123,13 @@ export interface IssueManagerTaskSummary {
   creatorDisplayName?: string;
   creatorAvatarUrl?: string;
   latestRunId?: string;
+  agentTargetId?: string;
+  modelPlanId?: string;
+  model?: string;
+  executionDirectory?: string;
+  dependencyTaskIds?: string[];
+  acceptanceState?: IssueManagerAcceptanceState;
+  acceptanceSummary?: string;
   createdAtUnix?: number;
   updatedAtUnix?: number;
 }
@@ -91,6 +144,11 @@ export interface IssueManagerRun {
   agentTargetId?: string | null;
   agentSessionId?: string;
   agentProvider: string;
+  modelPlanId?: string;
+  model?: string;
+  reasoningIntensity?: number;
+  usage?: IssueManagerTokenUsage;
+  cost?: IssueManagerCost;
   status: IssueManagerStatus;
   summary?: string;
   errorMessage?: string;
@@ -186,15 +244,23 @@ export interface IssueManagerListTasksResult {
 }
 
 export interface IssueManagerCreateIssueInput extends IssueManagerScope {
+  budget?: IssueManagerBudget;
   content?: string;
+  executionProfile?: IssueManagerExecutionProfile;
   issueId?: string;
+  planningSource?: IssueManagerPlanningSource;
+  sourceSessionId?: string;
   title: string;
   topicId: string;
 }
 
 export interface IssueManagerUpdateIssueInput extends IssueManagerScope {
+  budget?: IssueManagerBudget;
   content?: string;
+  dispatchPaused?: boolean;
+  executionProfile?: IssueManagerExecutionProfile;
   issueId: string;
+  status?: IssueManagerStatus;
   title?: string;
 }
 
@@ -216,18 +282,30 @@ export interface IssueManagerUpdateTopicInput extends IssueManagerScope {
 }
 
 export interface IssueManagerCreateTaskInput extends IssueManagerScope {
+  agentTargetId?: string;
   content?: string;
+  dependencyTaskIds?: string[];
   dueAtUnix?: number;
   issueId: string;
+  executionDirectory?: string;
+  model?: string;
+  modelPlanId?: string;
   priority?: IssueManagerPriority;
   taskId?: string;
   title: string;
 }
 
 export interface IssueManagerUpdateTaskInput extends IssueManagerScope {
+  acceptanceState?: IssueManagerAcceptanceState;
+  acceptanceSummary?: string;
+  agentTargetId?: string;
   content?: string;
+  dependencyTaskIds?: string[];
   dueAtUnix?: number;
   issueId: string;
+  executionDirectory?: string;
+  model?: string;
+  modelPlanId?: string;
   priority?: IssueManagerPriority;
   sortIndex?: number;
   status?: IssueManagerStatus;
@@ -260,6 +338,8 @@ export interface IssueManagerCreateRunInput extends IssueManagerScope {
   agentUserId?: string;
   executionDirectory?: string;
   issueId: string;
+  model?: string;
+  modelPlanId?: string;
   runId?: string;
   taskId?: string;
 }
@@ -278,6 +358,7 @@ export type IssueManagerRunCompletionStatus = Extract<
 >;
 
 export interface IssueManagerCompleteRunInput extends IssueManagerScope {
+  cost?: IssueManagerCost;
   errorMessage?: string;
   issueId: string;
   outputs: IssueManagerCompleteRunOutputInput[];
@@ -285,6 +366,13 @@ export interface IssueManagerCompleteRunInput extends IssueManagerScope {
   status: IssueManagerRunCompletionStatus;
   summary?: string;
   taskId?: string;
+  usage?: IssueManagerTokenUsage;
+  remainingQuotaPercent?: number;
+}
+
+export interface IssueManagerCreateIssueFromPlanInput extends IssueManagerScope {
+  issue: Omit<IssueManagerCreateIssueInput, "workspaceId">;
+  tasks: Array<Omit<IssueManagerCreateTaskInput, "workspaceId" | "issueId">>;
 }
 
 export interface IssueManagerRunEnvelope {

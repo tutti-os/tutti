@@ -184,6 +184,86 @@ describe("AgentGUINode memoization", () => {
 
     expect(agentGuiNodeViewSpy).toHaveBeenCalledTimes(1);
   });
+
+  it("rerenders when a target model configuration fingerprint changes", () => {
+    mockViewModel = createViewModel();
+    const props = createProps({
+      state: createState({
+        agentTargetId: "target-a",
+        modelConfigurationsByAgentTargetId: {
+          "target-a": {
+            defaultModel: "gpt-5",
+            fingerprint: "plan-1:v1",
+            selectedModel: "gpt-5",
+            source: "model-plan"
+          }
+        }
+      })
+    });
+    const { rerender } = render(<AgentGUINode {...props} />);
+
+    agentGuiNodeViewSpy.mockClear();
+    rerender(
+      <AgentGUINode
+        {...props}
+        state={createState({
+          agentTargetId: "target-a",
+          modelConfigurationsByAgentTargetId: {
+            "target-a": {
+              defaultModel: "gpt-5.1",
+              fingerprint: "plan-1:v2",
+              selectedModel: "gpt-5.1",
+              source: "model-plan"
+            }
+          }
+        })}
+      />
+    );
+
+    expect(agentGuiNodeViewSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it("rerenders when the remembered planning budget changes", () => {
+    mockViewModel = createViewModel();
+    const props = createProps({
+      state: createState({
+        planIssueBudgetPreset: {
+          executionProfile: {
+            reasoningIntensity: 50,
+            orchestrationIntensity: 50
+          },
+          budget: {
+            mode: "fixed",
+            tokenLimit: 60_000,
+            quotaWaterlinePercent: 10
+          }
+        }
+      })
+    });
+    const { rerender } = render(<AgentGUINode {...props} />);
+
+    agentGuiNodeViewSpy.mockClear();
+    rerender(
+      <AgentGUINode
+        {...props}
+        state={createState({
+          planIssueBudgetPreset: {
+            executionProfile: {
+              reasoningIntensity: 50,
+              orchestrationIntensity: 50
+            },
+            budget: {
+              mode: "fixed",
+              tokenLimit: 70_000,
+              quotaWaterlinePercent: 10
+            }
+          }
+        })}
+      />
+    );
+
+    expect(agentGuiNodeViewSpy).toHaveBeenCalledTimes(1);
+  });
 });
 
 function createProps(

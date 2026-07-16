@@ -2,7 +2,6 @@ package agent
 
 import (
 	"context"
-	"log/slog"
 	"strings"
 
 	"github.com/tutti-os/tutti/packages/agent/daemon/providerregistry"
@@ -51,7 +50,11 @@ type ComposerConfigOptionValue struct {
 }
 
 type ComposerSettings struct {
-	Model            string
+	Model string
+	// ModelPlanID is the immutable Model Plan identity captured when the
+	// Session starts. It is projected to clients so a cross-Plan model choice
+	// can create a new Session instead of mutating the running runtime.
+	ModelPlanID      string
 	PermissionModeID string
 	PlanMode         bool
 	// BrowserUse is tri-state: nil means "use the default" (on), so the
@@ -73,7 +76,10 @@ type ComposerOptionsInput struct {
 	WorkspaceID              string
 	Settings                 ComposerSettings
 	IncludeCapabilityCatalog *bool
-	providerTargetRef        map[string]any
+	// IgnoreModelPlanBinding is reserved for provider-native availability and
+	// subscription probes that must not inherit the workspace target binding.
+	IgnoreModelPlanBinding bool
+	providerTargetRef      map[string]any
 }
 
 type ComposerSkillOption struct {
@@ -120,11 +126,13 @@ type ComposerOptions struct {
 func (s *Service) GetComposerOptions(ctx context.Context, input ComposerOptionsInput) (ComposerOptions, error) {
 	provider := agentprovider.Normalize(input.Provider)
 	agentTargetID := strings.TrimSpace(input.AgentTargetID)
+	launchInput := CreateSessionInput{}
 	if agentTargetID != "" {
-		launch, err := s.resolveCreateSessionLaunch(ctx, CreateSessionInput{
+		launchInput = CreateSessionInput{
 			AgentTargetID: agentTargetID,
 			Provider:      provider,
-		})
+		}
+		launch, err := s.resolveCreateSessionLaunch(ctx, input.WorkspaceID, &launchInput)
 		if err != nil {
 			return ComposerOptions{}, err
 		}
@@ -141,7 +149,7 @@ func (s *Service) GetComposerOptions(ctx context.Context, input ComposerOptionsI
 	if provider == "" {
 		return ComposerOptions{}, ErrInvalidArgument
 	}
-	settings := normalizeComposerSettingsForProvider(provider, ComposerSettings{
+	requestedSettings := ComposerSettings{
 		Model:            strings.TrimSpace(input.Settings.Model),
 		PermissionModeID: strings.TrimSpace(input.Settings.PermissionModeID),
 		PlanMode:         input.Settings.PlanMode,
@@ -149,17 +157,69 @@ func (s *Service) GetComposerOptions(ctx context.Context, input ComposerOptionsI
 		ComputerUse:      input.Settings.ComputerUse,
 		ReasoningEffort:  strings.TrimSpace(input.Settings.ReasoningEffort),
 		Speed:            strings.TrimSpace(input.Settings.Speed),
-	})
+	}
+	if strings.TrimSpace(requestedSettings.PermissionModeID) == "" {
+		requestedSettings.PermissionModeID = value(launchInput.PermissionModeID)
+	}
+	if requestedSettings.BrowserUse == nil {
+		requestedSettings.BrowserUse = cloneBoolPointer(launchInput.BrowserUse)
+	}
+	if requestedSettings.ComputerUse == nil {
+		requestedSettings.ComputerUse = cloneBoolPointer(launchInput.ComputerUse)
+	}
+	settings := normalizeComposerSettingsForProvider(provider, requestedSettings)
 	if providerTargetRefKind(input.providerTargetRef) == "agent_extension" {
-		settings.Model = strings.TrimSpace(input.Settings.Model)
-		settings.PermissionModeID = strings.TrimSpace(input.Settings.PermissionModeID)
-		settings.PlanMode = input.Settings.PlanMode
+		settings.Model = strings.TrimSpace(requestedSettings.Model)
+		settings.PermissionModeID = strings.TrimSpace(requestedSettings.PermissionModeID)
+		settings.PlanMode = requestedSettings.PlanMode
+	}
+	modelPlanResolution := modelPlanResolution{}
+	if input.IgnoreModelPlanBinding {
+		modelPlanResolution.ModelConfiguration = newProviderNativeModelConfiguration(
+			provider,
+			input.AgentTargetID,
+		)
+	} else if launchInput.ResolvedModelPlan != nil {
+		requestedModel := settings.Model
+		if requestedModel == "" {
+			requestedModel = strings.TrimSpace(value(launchInput.Model))
+			settings.Model = requestedModel
+		}
+		var err error
+		modelPlanResolution, err = resolveProvidedModelPlan(
+			provider,
+			input.AgentTargetID,
+			*launchInput.ResolvedModelPlan,
+			launchInput.AgentDefaultModel,
+			requestedModel,
+		)
+		if err != nil {
+			return ComposerOptions{}, err
+		}
+	} else {
+		modelPlanResolution = s.resolveModelPlan(
+			ctx,
+			input.WorkspaceID,
+			input.AgentTargetID,
+			provider,
+			settings.Model,
+		)
+	}
+	planEndpoint := modelPlanResolution.Endpoint
+	planModels := modelPlanResolution.Models
+	modelCatalog := s.ModelCatalog
+	if planEndpoint != nil {
+		// A bound plan owns both the endpoint and the authorized model list.
+		// Avoid waiting for provider-native discovery whose result would be
+		// replaced by the plan overlay below.
+		settings.Model = planEndpoint.Model
+		modelCatalog = nil
 	}
 	effectiveSettings := resolveComposerEffectiveSettings(
 		ctx,
 		provider,
 		settings,
-		s.ModelCatalog,
+		modelCatalog,
 	)
 	locale := normalizeComposerLocale(input.Locale)
 	permissionConfig := composerPermissionConfig(provider, effectiveSettings.PermissionModeID, locale)
@@ -170,12 +230,13 @@ func (s *Service) GetComposerOptions(ctx context.Context, input ComposerOptionsI
 	reasoningOptions := composerReasoningOptionValues(provider, effectiveSettings.ReasoningEffort, locale)
 	capabilities := composerProviderCapabilities(provider, s.computerUseAvailable())
 	runtimeContext := map[string]any{
-		"capabilities":     capabilities,
-		"configOptions":    composerConfigOptions(provider, effectiveSettings, modelOptions, reasoningOptions),
-		"model":            nullableString(effectiveSettings.Model),
-		"permissionModeId": nullableString(effectiveSettings.PermissionModeID),
-		"reasoningEffort":  nullableString(effectiveSettings.ReasoningEffort),
-		"speed":            nullableString(effectiveSettings.Speed),
+		"capabilities":       capabilities,
+		"configOptions":      composerConfigOptions(provider, effectiveSettings, modelOptions, reasoningOptions),
+		"model":              nullableString(effectiveSettings.Model),
+		"modelConfiguration": modelPlanResolution.ModelConfiguration.runtimeContext(),
+		"permissionModeId":   nullableString(effectiveSettings.PermissionModeID),
+		"reasoningEffort":    nullableString(effectiveSettings.ReasoningEffort),
+		"speed":              nullableString(effectiveSettings.Speed),
 	}
 	if commands := s.composerCommandsFromRunningSession(
 		input.WorkspaceID,
@@ -188,18 +249,43 @@ func (s *Service) GetComposerOptions(ctx context.Context, input ComposerOptionsI
 	if agentTargetID != "" {
 		runtimeContext["agentTargetId"] = agentTargetID
 	}
-	skills := s.discoverComposerSkillOptionsForLaunch(ctx, provider, input.Cwd, nil, input.providerTargetRef)
+	if launchInput.WorkspaceAgentRevision > 0 {
+		runtimeContext["workspaceAgentRevision"] = launchInput.WorkspaceAgentRevision
+		runtimeContext["harnessAgentTargetId"] = launchInput.HarnessAgentTargetID
+	}
+	skills := filterWorkspaceAgentComposerSkills(
+		s.discoverComposerSkillOptionsForLaunch(ctx, provider, input.Cwd, nil, input.providerTargetRef),
+		launchInput.AgentSkills,
+		launchInput.AgentCapabilitiesExplicit,
+	)
 	capabilityCatalog := []ComposerCapabilityOption{}
 	capabilityErrors := []string(nil)
 	if composerOptionsIncludeCapabilityCatalog(input) {
 		capabilityCatalog, capabilityErrors = s.listComposerCapabilityOptions(ctx, provider, input.Cwd, skills)
+		capabilityCatalog = filterWorkspaceAgentComposerCapabilities(
+			capabilityCatalog,
+			launchInput.AgentTools,
+			launchInput.AgentCapabilitiesExplicit,
+		)
 	}
 	runtimeContext["skills"] = composerSkillOptionsRuntimeContext(skills)
+	if launchInput.WorkspaceAgentRevision > 0 {
+		runtimeContext["workspaceAgent"] = map[string]any{
+			"id":                   agentTargetID,
+			"revision":             launchInput.WorkspaceAgentRevision,
+			"harnessId":            launchInput.HarnessAgentTargetID,
+			"name":                 strings.TrimSpace(launchInput.AgentName),
+			"purpose":              strings.TrimSpace(launchInput.AgentPurpose),
+			"capabilitiesExplicit": launchInput.AgentCapabilitiesExplicit,
+			"skills":               append([]string(nil), launchInput.AgentSkills...),
+			"tools":                append([]string(nil), launchInput.AgentTools...),
+		}
+	}
 	runtimeContext["capabilityCatalog"] = composerCapabilityOptionsRuntimeContext(capabilityCatalog)
 	if len(capabilityErrors) > 0 {
 		runtimeContext["capabilityCatalogErrors"] = capabilityErrors
 	}
-	if composerOptionsProviderUsesModelCatalog(provider) {
+	if planEndpoint == nil && composerOptionsProviderUsesModelCatalog(provider) {
 		if catalogProjection, ok := composerModelOptionsFromCatalog(ctx, s.ModelCatalog, provider, effectiveSettings.Model); ok {
 			modelOptions = s.enrichModelCapabilityOptions(ctx, provider, catalogProjection.ModelOptions)
 			runtimeContext["modelCatalogSource"] = catalogProjection.Source
@@ -242,15 +328,15 @@ func (s *Service) GetComposerOptions(ctx context.Context, input ComposerOptionsI
 		Behavior:           composerProfileFor(provider).Behavior,
 		SlashCommandPolicy: slashCommandPolicy,
 	}
-	if composerProfileFor(provider).LiveModelDiscovery ||
-		providerTargetRefKind(input.providerTargetRef) == "agent_extension" {
+	if planEndpoint == nil && (composerProfileFor(provider).LiveModelDiscovery ||
+		providerTargetRefKind(input.providerTargetRef) == "agent_extension") {
 		var err error
 		options, err = s.mergeLiveComposerModelsForComposerOptions(ctx, input, effectiveSettings, options)
 		if err != nil {
 			return ComposerOptions{}, err
 		}
 	}
-	options = s.applyModelPlanComposerOverlay(ctx, input, options)
+	options = applyResolvedModelPlanComposerOverlay(options, planEndpoint, planModels)
 	return options, nil
 }
 
@@ -610,134 +696,6 @@ func permissionModeConfigHasModeID(config PermissionConfig, modeID string) bool 
 		}
 	}
 	return false
-}
-
-func composerOptionsProviderUsesModelCatalog(provider string) bool {
-	return composerProfileFor(provider).UsesModelCatalog
-}
-
-func composerModelConfig(provider string, selected string, options []ComposerConfigOptionValue) ComposerConfigOption {
-	if composerProfileFor(provider).Behavior.ModelOptionsAuthoritative {
-		return ComposerConfigOption{}
-	}
-	values := make([]ComposerConfigOptionValue, 0, len(options))
-	for _, option := range options {
-		value := strings.TrimSpace(option.Value)
-		if value == "" {
-			continue
-		}
-		label := strings.TrimSpace(option.Label)
-		if label == "" {
-			label = value
-		}
-		values = append(values, ComposerConfigOptionValue{
-			ID:                 value,
-			Label:              label,
-			Value:              value,
-			Description:        strings.TrimSpace(option.Description),
-			SupportsImageInput: option.SupportsImageInput,
-		})
-	}
-	selected = strings.TrimSpace(selected)
-	return ComposerConfigOption{
-		Configurable: composerProfileFor(provider).ModelSelection,
-		CurrentValue: selected,
-		DefaultValue: selected,
-		Options:      values,
-	}
-}
-
-type composerModelCatalogProjection struct {
-	ModelOptions               []ComposerConfigOptionValue
-	ReasoningProfiles          map[string]composerModelReasoningProfile
-	DefaultReasoningEffort     string
-	ReasoningEfforts           []AgentModelReasoningEffortOption
-	ReasoningEffortsAdvertised bool
-	Source                     string
-}
-
-func composerModelOptionsFromCatalog(ctx context.Context, catalog AgentModelCatalog, provider string, selectedModel string) (composerModelCatalogProjection, bool) {
-	if catalog == nil {
-		return composerModelCatalogProjection{}, false
-	}
-	result, err := catalog.ListModels(ctx, provider)
-	if err != nil {
-		// The model list drives the composer's model selector; when it fails the
-		// selector renders empty. Surface the cause instead of swallowing it so a
-		// "no model options" report is diagnosable from the daemon logs.
-		slog.Warn("composer model catalog lookup failed",
-			"provider", provider,
-			"error", err,
-		)
-		return composerModelCatalogProjection{}, false
-	}
-	options := make([]ComposerConfigOptionValue, 0, len(result.Models)+1)
-	reasoningProfiles := make(map[string]composerModelReasoningProfile)
-	for _, model := range result.Models {
-		id := strings.TrimSpace(model.ID)
-		if id == "" {
-			continue
-		}
-		if containsModelOption(options, id) {
-			continue
-		}
-		name := strings.TrimSpace(model.DisplayName)
-		if name == "" {
-			name = id
-		}
-		options = append(options, ComposerConfigOptionValue{
-			ID:                 id,
-			Label:              name,
-			Value:              id,
-			Description:        strings.TrimSpace(model.Description),
-			SupportsImageInput: model.SupportsImageInput,
-		})
-		if model.ReasoningEffortsAdvertised {
-			reasoningProfiles[id] = composerModelReasoningProfile{
-				DefaultReasoningEffort: strings.TrimSpace(model.DefaultReasoningEffort),
-				ReasoningEfforts: append(
-					[]AgentModelReasoningEffortOption(nil),
-					model.SupportedReasoningEfforts...,
-				),
-			}
-		}
-	}
-	selected := strings.TrimSpace(selectedModel)
-	if selected != "" && !containsModelOption(options, selected) {
-		options = append(options, ComposerConfigOptionValue{ID: selected, Label: selected, Value: selected})
-	}
-	projection := composerModelCatalogProjection{
-		ModelOptions:      options,
-		ReasoningProfiles: reasoningProfiles,
-		Source:            strings.TrimSpace(result.Source),
-	}
-	if profile, ok := reasoningProfiles[selected]; ok {
-		projection.DefaultReasoningEffort = profile.DefaultReasoningEffort
-		projection.ReasoningEfforts = append([]AgentModelReasoningEffortOption(nil), profile.ReasoningEfforts...)
-		projection.ReasoningEffortsAdvertised = true
-	}
-	return projection, true
-}
-
-func containsModelOption(options []ComposerConfigOptionValue, value string) bool {
-	for _, option := range options {
-		if option.Value == value {
-			return true
-		}
-	}
-	return false
-}
-
-func composerSelectedModelOptions(model string) []ComposerConfigOptionValue {
-	model = strings.TrimSpace(model)
-	if model == "" {
-		return []ComposerConfigOptionValue{}
-	}
-	return []ComposerConfigOptionValue{{ID: model, Label: model, Value: model}}
-}
-
-func reasoningConfigOptionID(provider string) string {
-	return strings.TrimSpace(composerProfileFor(provider).ReasoningConfigOptionID)
 }
 
 const (

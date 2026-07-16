@@ -324,6 +324,7 @@ test("controller actions save edited issues without reporting created", async ()
   assert.deepEqual(updateIssueCalls, [
     {
       content: "Updated issue body",
+      dispatchPaused: false,
       issueId: "issue-1",
       title: "Updated issue",
       workspaceId: "workspace-1"
@@ -839,6 +840,32 @@ test("controller actions ignore runs without agent session ids", async () => {
   );
 
   assert.deepEqual(openCalls, []);
+});
+
+test("controller actions open the planning Session linked by an Issue", async () => {
+  const openCalls: IssueManagerAgentSessionOpenInput[] = [];
+  const harness = createControllerActionsHarness({
+    agentSessionOpener: {
+      openSession(input) {
+        openCalls.push(input);
+      }
+    }
+  });
+
+  await harness.actions.openPlanningSession(
+    createIssueSummary({
+      issueId: "issue-1",
+      sourceSessionId: " planning-session-1 ",
+      title: "Plan migration"
+    })
+  );
+
+  assert.deepEqual(openCalls, [
+    {
+      agentSessionId: "planning-session-1",
+      workspaceId: "workspace-1"
+    }
+  ]);
 });
 
 test("controller actions update an issue-level execution task status without selecting it", async () => {

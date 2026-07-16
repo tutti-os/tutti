@@ -13,6 +13,7 @@ import {
 } from "./desktopAgentGUINodeState.ts";
 import {
   resolveDesktopAgentGUIProviderForAgentTarget,
+  withDesktopAgentGUIModelConfiguration,
   withDesktopAgentGUIProviderComposerDefaults
 } from "./ui/desktopAgentGUIWorkbenchStateHelpers.ts";
 
@@ -174,6 +175,96 @@ test("desktop agent gui composer defaults are agent target keyed", () => {
   });
   assert.equal(state.composerOverridesByProvider, null);
   assert.equal(state.composerOverrides, null);
+});
+
+test("desktop agent gui model plan overrides only the remembered model", () => {
+  const rememberedState = withDesktopAgentGUIProviderComposerDefaults(
+    {
+      ...createDefaultDesktopAgentGUINodeState("codex"),
+      agentTargetId: "local:codex",
+      modelConfigurationsByAgentTargetId: {
+        "local:codex": {
+          fingerprint: "plan-1:v2",
+          source: "model-plan",
+          defaultModel: "x-ai/grok-4.5",
+          selectedModel: null
+        }
+      }
+    },
+    "codex",
+    {
+      model: "deepseek/deepseek-v4-pro",
+      permissionModeId: "full-access",
+      reasoningEffort: "xhigh",
+      speed: "fast"
+    }
+  );
+
+  const state = withDesktopAgentGUIModelConfiguration(rememberedState);
+
+  assert.deepEqual(state.composerOverridesByAgentTargetId, {
+    "local:codex": {
+      model: "x-ai/grok-4.5",
+      permissionModeId: "full-access",
+      reasoningEffort: "xhigh",
+      speed: "fast"
+    }
+  });
+});
+
+test("desktop agent gui model plan prefers its selected model", () => {
+  const state = withDesktopAgentGUIModelConfiguration({
+    ...createDefaultDesktopAgentGUINodeState("codex"),
+    agentTargetId: "local:codex",
+    composerOverridesByAgentTargetId: {
+      "local:codex": {
+        model: "remembered-model",
+        permissionModeId: "read-only"
+      }
+    },
+    modelConfigurationsByAgentTargetId: {
+      "local:codex": {
+        fingerprint: "plan-1:v2",
+        source: "model-plan",
+        defaultModel: "plan-default",
+        selectedModel: "plan-selection"
+      }
+    }
+  });
+
+  assert.deepEqual(state.composerOverridesByAgentTargetId?.["local:codex"], {
+    model: "plan-selection",
+    permissionModeId: "read-only"
+  });
+});
+
+test("desktop agent gui provider-native configuration keeps the remembered model", () => {
+  const rememberedState = withDesktopAgentGUIProviderComposerDefaults(
+    {
+      ...createDefaultDesktopAgentGUINodeState("codex"),
+      agentTargetId: "local:codex",
+      modelConfigurationsByAgentTargetId: {
+        "local:codex": {
+          fingerprint: "provider-native:v1",
+          source: "provider-native",
+          defaultModel: null,
+          selectedModel: null
+        }
+      }
+    },
+    "codex",
+    {
+      model: "gpt-5.1",
+      permissionModeId: "full-access"
+    }
+  );
+
+  const state = withDesktopAgentGUIModelConfiguration(rememberedState);
+
+  assert.deepEqual(state.composerOverridesByAgentTargetId?.["local:codex"], {
+    model: "gpt-5.1",
+    permissionModeId: "full-access"
+  });
 });
 
 test("desktop agent gui target state resolves composer defaults from the target provider", () => {

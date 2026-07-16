@@ -3,6 +3,7 @@ import test from "node:test";
 import { createDefaultWorkspaceUserProjectI18nRuntime } from "@tutti-os/workspace-user-project/i18n";
 import type { IssueManagerFeature } from "../../../../core/index.ts";
 import {
+  normalizeIssueManagerModelPlanOptions,
   resolveIssueManagerAgentTargetOptions,
   resolveIssueManagerControllerCapabilities
 } from "./IssueManagerControllerCapabilities.ts";
@@ -159,7 +160,8 @@ test("agent target options trim labels and providers from the host adapter", () 
             agentTargetId: " local:claude-code ",
             iconUrl: " claude.png ",
             label: "  Claude Code ",
-            provider: " claude-code "
+            provider: " claude-code ",
+            modelPlanProtocol: " anthropic "
           },
           {
             agentTargetId: " local:openclaw ",
@@ -175,12 +177,40 @@ test("agent target options trim labels and providers from the host adapter", () 
         agentTargetId: "local:claude-code",
         iconUrl: "claude.png",
         label: "Claude Code",
-        provider: "claude-code"
+        provider: "claude-code",
+        modelPlanProtocol: "anthropic"
       },
       {
         agentTargetId: "local:openclaw",
         label: "openclaw",
         provider: "openclaw"
+      }
+    ]
+  );
+});
+
+test("model plan options trim ids and discard malformed catalog entries", () => {
+  assert.deepEqual(
+    normalizeIssueManagerModelPlanOptions([
+      {
+        id: " plan-1 ",
+        name: " OpenAI Plan ",
+        protocol: " openai ",
+        defaultModel: " gpt-5 ",
+        models: [
+          { id: " gpt-5 ", name: " GPT-5 ", tier: " flagship " },
+          { id: " ", name: "ignored" }
+        ]
+      },
+      { id: "", name: "ignored", protocol: "openai", models: [] }
+    ]),
+    [
+      {
+        id: "plan-1",
+        name: "OpenAI Plan",
+        protocol: "openai",
+        defaultModel: "gpt-5",
+        models: [{ id: "gpt-5", name: "GPT-5", tier: "flagship" }]
       }
     ]
   );

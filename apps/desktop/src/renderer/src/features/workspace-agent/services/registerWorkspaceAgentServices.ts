@@ -42,6 +42,7 @@ export interface WorkspaceAgentServiceRegistrationInput {
   }) => string;
   isAgentTargetProviderGated?: (provider: string) => boolean;
   terminalCommandRunner: AgentProviderTerminalCommandRunner;
+  workspaceId: string;
   workspaceUserProjectService?: IWorkspaceUserProjectService;
 }
 
@@ -73,7 +74,8 @@ export function registerWorkspaceAgentServices(
   const agentsService = new DesktopAgentsService({
     resolveAgentTargetIconUrl: input.resolveAgentTargetIconUrl,
     isAgentTargetProviderGated: input.isAgentTargetProviderGated,
-    tuttidClient: input.tuttidClient
+    tuttidClient: input.tuttidClient,
+    workspaceId: input.workspaceId
   });
   registry.registerInstance(IAgentsService, agentsService);
   const workspaceAgentActivityService = new WorkspaceAgentActivityService({

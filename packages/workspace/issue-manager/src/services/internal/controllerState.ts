@@ -136,7 +136,14 @@ export function syncIssueManagerIssueDraftFromDetail(
     return current;
   }
   return {
+    ...(detail?.issue.budget === undefined
+      ? {}
+      : { budget: detail.issue.budget }),
     content: normalizeIssueManagerContent(detail?.issue.content ?? ""),
+    dispatchPaused: detail?.issue.dispatchPaused ?? false,
+    ...(detail?.issue.executionProfile === undefined
+      ? {}
+      : { executionProfile: detail.issue.executionProfile }),
     title: detail?.issue.title ?? ""
   };
 }
@@ -150,7 +157,20 @@ export function syncIssueManagerTaskDraftFromDetail(
     return current;
   }
   return {
+    ...(detail?.task.agentTargetId === undefined
+      ? {}
+      : { agentTargetId: detail.task.agentTargetId }),
     content: normalizeIssueManagerContent(detail?.task.content ?? ""),
+    ...(detail?.task.dependencyTaskIds === undefined
+      ? {}
+      : { dependencyTaskIds: detail.task.dependencyTaskIds }),
+    ...(detail?.task.executionDirectory === undefined
+      ? {}
+      : { executionDirectory: detail.task.executionDirectory }),
+    ...(detail?.task.model === undefined ? {} : { model: detail.task.model }),
+    ...(detail?.task.modelPlanId === undefined
+      ? {}
+      : { modelPlanId: detail.task.modelPlanId }),
     priority: detail?.task.priority ?? defaultTaskPriority,
     title: detail?.task.title ?? ""
   };

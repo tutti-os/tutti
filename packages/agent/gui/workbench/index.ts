@@ -8,6 +8,7 @@ export {
   resolveAgentGuiUnifiedDockLaunchPayload,
   resolveAgentGuiWorkbenchContributionCopy
 } from "./contribution.ts";
+export type { AgentGUIModelConfigurationState } from "../types.ts";
 export type {
   AgentGuiWorkbenchProviderAvailability,
   AgentGuiWorkbenchContributionCopy,

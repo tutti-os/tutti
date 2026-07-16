@@ -10,6 +10,7 @@ import type {
   TerminalRuntimeKind,
   WebsiteWindowSessionMode
 } from "./shared/contracts/dto";
+import type { PlanIssueBudgetPreset } from "./shared/agentConversation/planImplementationPresentation";
 
 export type { AgentRuntimeStatus } from "./contexts/agent/domain/types";
 
@@ -42,6 +43,13 @@ export interface AgentNodeData {
   shouldCreateDirectory: boolean;
 }
 
+export interface AgentGUIModelConfigurationState {
+  fingerprint: string;
+  source: "model-plan" | "provider-native";
+  defaultModel: string | null;
+  selectedModel: string | null;
+}
+
 export interface AgentGUINodeData {
   provider: AgentGUIProvider;
   agentTargetId?: string | null;
@@ -57,6 +65,12 @@ export interface AgentGUINodeData {
   composerOverridesByProvider?: Partial<
     Record<AgentGUIProvider, AgentHostAgentSessionComposerSettings | null>
   > | null;
+  modelConfigurationsByAgentTargetId?: Record<
+    string,
+    AgentGUIModelConfigurationState
+  > | null;
+  /** Remembered defaults for Plan/Ultra Plan decomposition review. */
+  planIssueBudgetPreset?: PlanIssueBudgetPreset | null;
 }
 
 /**
@@ -96,8 +110,52 @@ export interface AgentGUIAgentAvailability {
 }
 
 export interface AgentGUIAgentOwner {
+  userId?: string | null;
   name?: string | null;
   avatarUrl?: string | null;
+}
+
+export interface AgentGUISharedAgentQuota {
+  unit: "runs" | "tokens";
+  remaining: number;
+  limit?: number;
+  resetAt?: string | null;
+}
+
+export interface AgentGUISharedAgentConcurrency {
+  active: number;
+  limit: number;
+}
+
+export interface AgentGUISharedAgentCostQuota {
+  currency: string;
+  remainingMicros: number;
+  limitMicros?: number;
+}
+
+export interface AgentGUISharedAgentAllowedModel {
+  modelPlanId?: string | null;
+  model: string;
+}
+
+export interface AgentGUISharedAgentPolicyPermissions {
+  consult: boolean;
+  review: boolean;
+  delegate: boolean;
+  upgrade: boolean;
+}
+
+/** Credential-free access snapshot supplied by the shared-Agent control plane. */
+export interface AgentGUISharedAgentAccess {
+  grantId: string;
+  ownerUserId: string;
+  ownerOnline: boolean;
+  auditRequired: boolean;
+  quota?: AgentGUISharedAgentQuota | null;
+  concurrency?: AgentGUISharedAgentConcurrency | null;
+  costQuota?: AgentGUISharedAgentCostQuota | null;
+  allowedModels?: readonly AgentGUISharedAgentAllowedModel[] | null;
+  policyPermissions?: AgentGUISharedAgentPolicyPermissions | null;
 }
 
 /**
@@ -114,6 +172,7 @@ export interface AgentGUIAgent {
   heroImageUrl?: string | null;
   description?: string | null;
   owner?: AgentGUIAgentOwner | null;
+  sharedAccess?: AgentGUISharedAgentAccess | null;
   availability: AgentGUIAgentAvailability;
   provider: AgentGUIProvider;
 }

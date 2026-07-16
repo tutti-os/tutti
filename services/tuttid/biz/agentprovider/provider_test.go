@@ -28,3 +28,12 @@ func TestNormalizeUsesMigratedProviderIdentity(t *testing.T) {
 		}
 	}
 }
+
+func TestModelPlanProtocol(t *testing.T) {
+	if protocol, ok := ModelPlanProtocol("claude"); !ok || protocol != "anthropic" {
+		t.Fatalf("ModelPlanProtocol(claude) = %q, %v", protocol, ok)
+	}
+	if protocol, ok := ModelPlanProtocol("cursor"); ok || protocol != "" {
+		t.Fatalf("ModelPlanProtocol(cursor) = %q, %v", protocol, ok)
+	}
+}

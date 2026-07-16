@@ -133,6 +133,8 @@ func TestTuttiCLIPolicyUsesPreparedCLICommandForAgentCatalogHandoff(t *testing.T
 		"## CLI Reference",
 		"`tutti-dev <scope> --help`",
 		"App id mapping: read `command-guide.md` from visible `$tutti-cli` skill files.",
+		"use `$tutti-cli` recommendations; consult",
+		"do not switch Session or claim unique best",
 	} {
 		if !strings.Contains(policy, want) {
 			t.Fatalf("tutti CLI policy missing %q: %q", want, policy)

@@ -17,39 +17,61 @@ type runGetInput struct {
 }
 
 type taskRunCreateInput struct {
-	IssueID        string `cli:"issue-id" validate:"required"`
-	TaskID         string `cli:"task-id" validate:"required"`
-	RunID          string `cli:"run-id"`
-	AgentTargetID  string `cli:"agent-target-id" validate:"required"`
-	AgentUserID    string `cli:"agent-user-id"`
-	AgentSessionID string `cli:"agent-session-id" description:"Optional override; defaults to the current AgentGUI session when invoked from an agent runtime."`
+	IssueID            string `cli:"issue-id" validate:"required"`
+	TaskID             string `cli:"task-id" validate:"required"`
+	RunID              string `cli:"run-id"`
+	AgentTargetID      string `cli:"agent-target-id" description:"Agent target override; defaults to the task assignment."`
+	AgentUserID        string `cli:"agent-user-id"`
+	AgentSessionID     string `cli:"agent-session-id" description:"Optional override; defaults to the current AgentGUI session when invoked from an agent runtime."`
+	ModelPlanID        string `cli:"model-plan-id" description:"Model Plan override; defaults to the task assignment."`
+	Model              string `cli:"model" description:"Concrete model override; defaults to the task assignment."`
+	ExecutionDirectory string `cli:"execution-directory" description:"Run-specific execution directory."`
 }
 
 type issueRunCreateInput struct {
-	IssueID        string `cli:"issue-id" validate:"required"`
-	RunID          string `cli:"run-id"`
-	AgentTargetID  string `cli:"agent-target-id" validate:"required"`
-	AgentUserID    string `cli:"agent-user-id"`
-	AgentSessionID string `cli:"agent-session-id" description:"Optional override; defaults to the current AgentGUI session when invoked from an agent runtime."`
+	IssueID            string `cli:"issue-id" validate:"required"`
+	RunID              string `cli:"run-id"`
+	AgentTargetID      string `cli:"agent-target-id" description:"Agent target override; defaults to the issue task assignment when available."`
+	AgentUserID        string `cli:"agent-user-id"`
+	AgentSessionID     string `cli:"agent-session-id" description:"Optional override; defaults to the current AgentGUI session when invoked from an agent runtime."`
+	ModelPlanID        string `cli:"model-plan-id"`
+	Model              string `cli:"model"`
+	ExecutionDirectory string `cli:"execution-directory"`
 }
 
 type taskRunCompleteInput struct {
-	IssueID      string `cli:"issue-id" validate:"required"`
-	TaskID       string `cli:"task-id" validate:"required"`
-	RunID        string `cli:"run-id" validate:"required"`
-	Status       string `cli:"status" validate:"required" enum:"completed,failed,canceled"`
-	Summary      string `cli:"summary"`
-	ErrorMessage string `cli:"error-message"`
-	Outputs      string `cli:"outputs"`
+	IssueID               string   `cli:"issue-id" validate:"required"`
+	TaskID                string   `cli:"task-id" validate:"required"`
+	RunID                 string   `cli:"run-id" validate:"required"`
+	Status                string   `cli:"status" validate:"required" enum:"completed,failed,canceled"`
+	Summary               string   `cli:"summary"`
+	ErrorMessage          string   `cli:"error-message"`
+	Outputs               string   `cli:"outputs"`
+	InputTokens           int64    `cli:"input-tokens" validate:"min=0"`
+	OutputTokens          int64    `cli:"output-tokens" validate:"min=0"`
+	CacheReadTokens       int64    `cli:"cache-read-tokens" validate:"min=0"`
+	CacheWriteTokens      int64    `cli:"cache-write-tokens" validate:"min=0"`
+	Currency              string   `cli:"currency" description:"ISO 4217 currency for run cost; defaults to USD."`
+	EstimatedMicros       int64    `cli:"estimated-cost-micros" validate:"min=0"`
+	ActualMicros          int64    `cli:"actual-cost-micros" validate:"min=0"`
+	RemainingQuotaPercent *float64 `cli:"remaining-quota-percent" validate:"min=0,max=100" description:"Provider-reported remaining subscription quota."`
 }
 
 type issueRunCompleteInput struct {
-	IssueID      string `cli:"issue-id" validate:"required"`
-	RunID        string `cli:"run-id" validate:"required"`
-	Status       string `cli:"status" validate:"required" enum:"completed,failed,canceled"`
-	Summary      string `cli:"summary"`
-	ErrorMessage string `cli:"error-message"`
-	Outputs      string `cli:"outputs"`
+	IssueID               string   `cli:"issue-id" validate:"required"`
+	RunID                 string   `cli:"run-id" validate:"required"`
+	Status                string   `cli:"status" validate:"required" enum:"completed,failed,canceled"`
+	Summary               string   `cli:"summary"`
+	ErrorMessage          string   `cli:"error-message"`
+	Outputs               string   `cli:"outputs"`
+	InputTokens           int64    `cli:"input-tokens" validate:"min=0"`
+	OutputTokens          int64    `cli:"output-tokens" validate:"min=0"`
+	CacheReadTokens       int64    `cli:"cache-read-tokens" validate:"min=0"`
+	CacheWriteTokens      int64    `cli:"cache-write-tokens" validate:"min=0"`
+	Currency              string   `cli:"currency" description:"ISO 4217 currency for run cost; defaults to USD."`
+	EstimatedMicros       int64    `cli:"estimated-cost-micros" validate:"min=0"`
+	ActualMicros          int64    `cli:"actual-cost-micros" validate:"min=0"`
+	RemainingQuotaPercent *float64 `cli:"remaining-quota-percent" validate:"min=0,max=100" description:"Provider-reported remaining subscription quota."`
 }
 
 func (p Provider) newRunListCommand() cliservice.Command {
@@ -215,10 +237,13 @@ func (p Provider) runTaskRunCreate(ctx context.Context, invoke framework.InvokeC
 		return nil, err
 	}
 	return p.issues.CreateRun(ctx, invoke.WorkspaceID, input.IssueID, input.TaskID, workspaceservice.CreateIssueManagerRunInput{
-		RunID:          input.RunID,
-		AgentTargetID:  input.AgentTargetID,
-		AgentUserID:    input.AgentUserID,
-		AgentSessionID: agentSessionID,
+		RunID:              input.RunID,
+		AgentTargetID:      input.AgentTargetID,
+		AgentUserID:        input.AgentUserID,
+		AgentSessionID:     agentSessionID,
+		ModelPlanID:        input.ModelPlanID,
+		Model:              input.Model,
+		ExecutionDirectory: input.ExecutionDirectory,
 	})
 }
 
@@ -231,10 +256,13 @@ func (p Provider) runIssueRunCreate(ctx context.Context, invoke framework.Invoke
 		return nil, err
 	}
 	return p.issues.CreateRun(ctx, invoke.WorkspaceID, input.IssueID, "", workspaceservice.CreateIssueManagerRunInput{
-		RunID:          input.RunID,
-		AgentTargetID:  input.AgentTargetID,
-		AgentUserID:    input.AgentUserID,
-		AgentSessionID: agentSessionID,
+		RunID:              input.RunID,
+		AgentTargetID:      input.AgentTargetID,
+		AgentUserID:        input.AgentUserID,
+		AgentSessionID:     agentSessionID,
+		ModelPlanID:        input.ModelPlanID,
+		Model:              input.Model,
+		ExecutionDirectory: input.ExecutionDirectory,
 	})
 }
 
@@ -264,6 +292,15 @@ func (p Provider) runTaskRunComplete(ctx context.Context, invoke framework.Invok
 		Summary:      input.Summary,
 		ErrorMessage: input.ErrorMessage,
 		Outputs:      outputs,
+		Usage: workspaceissues.TokenUsage{
+			InputTokens:      input.InputTokens,
+			OutputTokens:     input.OutputTokens,
+			CacheReadTokens:  input.CacheReadTokens,
+			CacheWriteTokens: input.CacheWriteTokens,
+		},
+		Cost:                     workspaceissues.Cost{Currency: input.Currency, EstimatedMicros: input.EstimatedMicros, ActualMicros: input.ActualMicros},
+		RemainingQuotaPercent:    float64Value(input.RemainingQuotaPercent),
+		HasRemainingQuotaPercent: input.RemainingQuotaPercent != nil,
 	})
 }
 
@@ -280,7 +317,23 @@ func (p Provider) runIssueRunComplete(ctx context.Context, invoke framework.Invo
 		Summary:      input.Summary,
 		ErrorMessage: input.ErrorMessage,
 		Outputs:      outputs,
+		Usage: workspaceissues.TokenUsage{
+			InputTokens:      input.InputTokens,
+			OutputTokens:     input.OutputTokens,
+			CacheReadTokens:  input.CacheReadTokens,
+			CacheWriteTokens: input.CacheWriteTokens,
+		},
+		Cost:                     workspaceissues.Cost{Currency: input.Currency, EstimatedMicros: input.EstimatedMicros, ActualMicros: input.ActualMicros},
+		RemainingQuotaPercent:    float64Value(input.RemainingQuotaPercent),
+		HasRemainingQuotaPercent: input.RemainingQuotaPercent != nil,
 	})
+}
+
+func float64Value(value *float64) float64 {
+	if value == nil {
+		return 0
+	}
+	return *value
 }
 
 func completedRunJSONValue(result any) map[string]any {

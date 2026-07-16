@@ -14,9 +14,11 @@ import (
 
 type CollaborationRunService interface {
 	StartConsult(ctx context.Context, input collabrunservice.StartConsultInput) (collabrunbiz.Run, error)
+	StartAgentRun(ctx context.Context, input collabrunservice.StartAgentRunInput) (collabrunbiz.Run, error)
 	RecordRun(ctx context.Context, input collabrunservice.RecordRunInput) (collabrunbiz.Run, error)
 	SetAdoption(ctx context.Context, workspaceID string, runID string, adoption string) (collabrunbiz.Run, error)
-	CancelConsult(ctx context.Context, workspaceID string, runID string) (collabrunbiz.Run, error)
+	CancelRun(ctx context.Context, workspaceID string, runID string) (collabrunbiz.Run, error)
+	RetryRun(ctx context.Context, workspaceID string, runID string) (collabrunbiz.Run, error)
 	ListRuns(ctx context.Context, workspaceID string, sourceSessionID string, limit int) ([]collabrunbiz.Run, error)
 }
 
@@ -57,7 +59,7 @@ func (api DaemonAPI) CreateCollaborationRun(ctx context.Context, request tuttige
 	}
 	var run collabrunbiz.Run
 	var err error
-	if request.Body.Mode == tuttigenerated.Consult {
+	if request.Body.Mode == tuttigenerated.CollaborationRunModeConsult {
 		maxTokens := 0
 		if request.Body.MaxTokens != nil {
 			maxTokens = *request.Body.MaxTokens
@@ -73,6 +75,20 @@ func (api DaemonAPI) CreateCollaborationRun(ctx context.Context, request tuttige
 			TriggerReason:   stringValue(request.Body.TriggerReason),
 			MaxTokens:       maxTokens,
 		})
+	} else if stringValue(request.Body.TargetSessionId) == "" {
+		run, err = api.CollaborationRunService.StartAgentRun(ctx, collabrunservice.StartAgentRunInput{
+			WorkspaceID:         request.WorkspaceID,
+			Mode:                string(request.Body.Mode),
+			SourceSessionID:     stringValue(request.Body.SourceSessionId),
+			TargetAgentTargetID: stringValue(request.Body.TargetAgentTargetId),
+			ModelPlanID:         stringValue(request.Body.ModelPlanId),
+			Model:               stringValue(request.Body.Model),
+			Question:            stringValue(request.Body.Question),
+			ContextText:         derefString(request.Body.ContextText),
+			ContextScope:        collaborationContextScopeValue(request.Body.ContextScope),
+			TriggerSource:       string(request.Body.TriggerSource),
+			TriggerReason:       stringValue(request.Body.TriggerReason),
+		})
 	} else {
 		run, err = api.CollaborationRunService.RecordRun(ctx, collabrunservice.RecordRunInput{
 			WorkspaceID:         request.WorkspaceID,
@@ -82,7 +98,7 @@ func (api DaemonAPI) CreateCollaborationRun(ctx context.Context, request tuttige
 			TargetAgentTargetID: stringValue(request.Body.TargetAgentTargetId),
 			ModelPlanID:         stringValue(request.Body.ModelPlanId),
 			Model:               stringValue(request.Body.Model),
-			ContextScope:        stringValue(request.Body.ContextScope),
+			ContextScope:        collaborationContextScopeValue(request.Body.ContextScope),
 			TriggerSource:       string(request.Body.TriggerSource),
 			TriggerReason:       stringValue(request.Body.TriggerReason),
 		})
@@ -145,7 +161,7 @@ func (api DaemonAPI) CancelCollaborationRun(ctx context.Context, request tuttige
 			ServiceUnavailableErrorJSONResponse: collaborationRunServiceUnavailable(),
 		}, nil
 	}
-	run, err := api.CollaborationRunService.CancelConsult(ctx, request.WorkspaceID, request.CollaborationRunID)
+	run, err := api.CollaborationRunService.CancelRun(ctx, request.WorkspaceID, request.CollaborationRunID)
 	if err != nil {
 		switch {
 		case errors.Is(err, workspacedata.ErrCollaborationRunNotFound):
@@ -164,6 +180,35 @@ func (api DaemonAPI) CancelCollaborationRun(ctx context.Context, request tuttige
 	return tuttigenerated.CancelCollaborationRun200JSONResponse(generatedCollaborationRun(run)), nil
 }
 
+func (api DaemonAPI) RetryCollaborationRun(ctx context.Context, request tuttigenerated.RetryCollaborationRunRequestObject) (tuttigenerated.RetryCollaborationRunResponseObject, error) {
+	if api.CollaborationRunService == nil {
+		return tuttigenerated.RetryCollaborationRun503JSONResponse{
+			ServiceUnavailableErrorJSONResponse: collaborationRunServiceUnavailable(),
+		}, nil
+	}
+	run, err := api.CollaborationRunService.RetryRun(ctx, request.WorkspaceID, request.CollaborationRunID)
+	if err != nil {
+		switch {
+		case errors.Is(err, workspacedata.ErrCollaborationRunNotFound):
+			return tuttigenerated.RetryCollaborationRun404JSONResponse{
+				WorkspaceNotFoundErrorJSONResponse: collaborationRunNotFoundError(),
+			}, nil
+		case errors.Is(err, collabrunservice.ErrRunNotRetryable),
+			errors.Is(err, collabrunservice.ErrInvalidRunInput),
+			errors.Is(err, collabrunservice.ErrConsultLimitReached),
+			errors.Is(err, collabrunservice.ErrPlanNotUsable),
+			errors.Is(err, collabrunservice.ErrModelNotInPlan):
+			return tuttigenerated.RetryCollaborationRun400JSONResponse{
+				InvalidRequestErrorJSONResponse: invalidRequestError(apierrors.InvalidRequest("collaboration_run_not_retryable", apierrors.WithDeveloperMessage(err.Error()))),
+			}, nil
+		}
+		return tuttigenerated.RetryCollaborationRun502JSONResponse{
+			WorkspaceOperationErrorJSONResponse: workspaceOperationError(apierrors.WorkspaceOperationFailed(apierrors.WithCause(err))),
+		}, nil
+	}
+	return tuttigenerated.RetryCollaborationRun200JSONResponse(generatedCollaborationRun(run)), nil
+}
+
 func generatedCollaborationRun(run collabrunbiz.Run) tuttigenerated.CollaborationRun {
 	result := tuttigenerated.CollaborationRun{
 		Id:            run.ID,
@@ -173,10 +218,13 @@ func generatedCollaborationRun(run collabrunbiz.Run) tuttigenerated.Collaboratio
 		Status:        tuttigenerated.CollaborationRunStatus(run.Status),
 		Adoption:      tuttigenerated.CollaborationRunAdoption(run.Adoption),
 		Usage: tuttigenerated.CollaborationRunUsage{
-			InputTokens:  run.Usage.InputTokens,
-			OutputTokens: run.Usage.OutputTokens,
+			InputTokens:      run.Usage.InputTokens,
+			OutputTokens:     run.Usage.OutputTokens,
+			CacheReadTokens:  run.Usage.CacheReadTokens,
+			CacheWriteTokens: run.Usage.CacheWriteTokens,
 		},
 		DurationMs: run.DurationMs,
+		Attempt:    run.Attempt,
 		CreatedAt:  run.CreatedAt,
 		UpdatedAt:  run.UpdatedAt,
 	}
@@ -201,6 +249,9 @@ func generatedCollaborationRun(run collabrunbiz.Run) tuttigenerated.Collaboratio
 	if run.ContextScope != "" {
 		result.ContextScope = stringPointer(run.ContextScope)
 	}
+	if run.RetryOfRunID != "" {
+		result.RetryOfRunId = stringPointer(run.RetryOfRunID)
+	}
 	if run.Prompt != "" {
 		result.Prompt = stringPointer(run.Prompt)
 	}
@@ -209,6 +260,15 @@ func generatedCollaborationRun(run collabrunbiz.Run) tuttigenerated.Collaboratio
 	}
 	if run.FailureReason != "" {
 		result.FailureReason = stringPointer(run.FailureReason)
+	}
+	if run.FailureStage != "" {
+		result.FailureStage = stringPointer(run.FailureStage)
+	}
+	if run.Cost.Currency != "" {
+		result.Cost = &tuttigenerated.CollaborationRunCost{
+			Currency:        run.Cost.Currency,
+			EstimatedMicros: run.Cost.EstimatedMicros,
+		}
 	}
 	if !run.StartedAt.IsZero() {
 		startedAt := run.StartedAt
@@ -239,4 +299,11 @@ func derefString(value *string) string {
 		return ""
 	}
 	return *value
+}
+
+func collaborationContextScopeValue(value *tuttigenerated.CreateCollaborationRunRequestContextScope) string {
+	if value == nil {
+		return ""
+	}
+	return string(*value)
 }

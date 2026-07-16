@@ -38,6 +38,8 @@ export interface ComposerOptionsLoadRequestedIntent {
 export interface ComposerOptionsInvalidatedIntent {
   type: "composerOptions/invalidated";
   providers?: readonly string[];
+  /** Exact opaque target keys; intersected with providers when both exist. */
+  targetKeys?: readonly string[];
 }
 
 export type ComposerOptionsIntent =

@@ -975,6 +975,7 @@ test("workspace app external bridge invokes permission request with activation",
     await bridge.permissions.request({
       nonce: "nonce-1",
       permission: "managed-ai-models",
+      modelPlanIds: ["plan-1"],
       providers: ["openai"],
       scopes: ["model:invoke"],
       state: "state-1"
@@ -987,6 +988,7 @@ test("workspace app external bridge invokes permission request with activation",
       payload: {
         nonce: "nonce-1",
         permission: "managed-ai-models",
+        modelPlanIds: ["plan-1"],
         providers: ["openai"],
         scopes: ["model:invoke"],
         state: "state-1"

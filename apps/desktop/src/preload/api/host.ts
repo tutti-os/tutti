@@ -126,6 +126,12 @@ export function createHostDesktopApi(): DesktopHostApi {
           path
         );
       },
+      createGitWorktree(input) {
+        return invokeDesktopApi(
+          desktopIpcChannels.host.files.createGitWorktree,
+          input
+        );
+      },
       readLocalPreviewFile(path: string): Promise<Uint8Array> {
         return invokeDesktopApi(
           desktopIpcChannels.host.files.readLocalPreviewFile,

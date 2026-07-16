@@ -243,6 +243,11 @@ func resolveCapabilities(ctx context.Context, input PrepareInput, profile Deploy
 		resolved.Skills = append(resolved.Skills, skills...)
 	}
 	resolved.Skills = append(resolved.Skills, input.ExtraSkills...)
+	resolved.Skills = filterWorkspaceAgentSkills(
+		resolved.Skills,
+		input.AgentSkills,
+		input.AgentCapabilitiesExplicit,
+	)
 	if err := validateResolvedSkills(resolved.Skills, input.Provider); err != nil {
 		return nil, err
 	}
@@ -257,6 +262,36 @@ func resolveCapabilities(ctx context.Context, input PrepareInput, profile Deploy
 		return lhs.Key < rhs.Key
 	})
 	return resolved, nil
+}
+
+// filterWorkspaceAgentSkills applies a WorkspaceAgent selection to host/user
+// skill sources while retaining daemon capability-pack skills required for
+// Tutti routing and safety. An empty selection preserves legacy discover-all
+// behavior.
+func filterWorkspaceAgentSkills(skills []SkillSpec, selected []string, capabilitiesExplicit bool) []SkillSpec {
+	selected = normalizedAgentConfigurationValues(selected)
+	if !capabilitiesExplicit && len(selected) == 0 {
+		return skills
+	}
+	wanted := make(map[string]struct{}, len(selected))
+	for _, value := range selected {
+		wanted[value] = struct{}{}
+	}
+	result := make([]SkillSpec, 0, len(skills))
+	for _, skill := range skills {
+		if strings.HasPrefix(strings.TrimSpace(skill.Source), "pack:") {
+			result = append(result, skill)
+			continue
+		}
+		id := strings.TrimSpace(skill.ID)
+		name := strings.TrimSpace(skill.Name)
+		_, idSelected := wanted[id]
+		_, nameSelected := wanted[name]
+		if idSelected || nameSelected {
+			result = append(result, skill)
+		}
+	}
+	return result
 }
 
 func validateResolvedSkills(skills []SkillSpec, provider string) error {

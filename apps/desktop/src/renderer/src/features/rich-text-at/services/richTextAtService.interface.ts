@@ -5,6 +5,7 @@ export type DesktopRichTextAtCapability =
   | "file"
   | "workspace-app"
   | "workspace-issue"
+  | "workspace-model"
   | "agent-target"
   | "agent-session"
   | (string & {});

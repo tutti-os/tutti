@@ -55,6 +55,9 @@ import type {
   CopyWorkspaceFileEntryData,
   CopyWorkspaceFileEntryErrors,
   CopyWorkspaceFileEntryResponses,
+  CreateAutomationRuleData,
+  CreateAutomationRuleErrors,
+  CreateAutomationRuleResponses,
   CreateCollaborationRunData,
   CreateCollaborationRunErrors,
   CreateCollaborationRunResponses,
@@ -64,6 +67,9 @@ import type {
   CreateModelPolicyData,
   CreateModelPolicyErrors,
   CreateModelPolicyResponses,
+  CreateWorkspaceAgentData,
+  CreateWorkspaceAgentErrors,
+  CreateWorkspaceAgentResponses,
   CreateWorkspaceAgentSessionData,
   CreateWorkspaceAgentSessionErrors,
   CreateWorkspaceAgentSessionResponses,
@@ -80,6 +86,9 @@ import type {
   CreateWorkspaceFileResponses,
   CreateWorkspaceIssueData,
   CreateWorkspaceIssueErrors,
+  CreateWorkspaceIssueFromPlanData,
+  CreateWorkspaceIssueFromPlanErrors,
+  CreateWorkspaceIssueFromPlanResponses,
   CreateWorkspaceIssueResponses,
   CreateWorkspaceIssueRunData,
   CreateWorkspaceIssueRunErrors,
@@ -100,6 +109,9 @@ import type {
   CreateWorkspaceTerminalData,
   CreateWorkspaceTerminalErrors,
   CreateWorkspaceTerminalResponses,
+  DeleteAutomationRuleData,
+  DeleteAutomationRuleErrors,
+  DeleteAutomationRuleResponses,
   DeleteModelPlanData,
   DeleteModelPlanErrors,
   DeleteModelPlanResponses,
@@ -109,6 +121,9 @@ import type {
   DeleteUserProjectData,
   DeleteUserProjectErrors,
   DeleteUserProjectResponses,
+  DeleteWorkspaceAgentData,
+  DeleteWorkspaceAgentErrors,
+  DeleteWorkspaceAgentResponses,
   DeleteWorkspaceAgentSessionData,
   DeleteWorkspaceAgentSessionErrors,
   DeleteWorkspaceAgentSessionResponses,
@@ -145,12 +160,18 @@ import type {
   DuplicateModelPlanData,
   DuplicateModelPlanErrors,
   DuplicateModelPlanResponses,
+  EstimateWorkspaceIssueAutoTokenBudgetData,
+  EstimateWorkspaceIssueAutoTokenBudgetErrors,
+  EstimateWorkspaceIssueAutoTokenBudgetResponses,
   ExportWorkspaceAppData,
   ExportWorkspaceAppErrors,
   ExportWorkspaceAppResponses,
   FixWorkspaceAppFactoryJobData,
   FixWorkspaceAppFactoryJobErrors,
   FixWorkspaceAppFactoryJobResponses,
+  GenerateWorkspaceAgentDraftData,
+  GenerateWorkspaceAgentDraftErrors,
+  GenerateWorkspaceAgentDraftResponses,
   GetAccountLoginStatusData,
   GetAccountLoginStatusErrors,
   GetAccountLoginStatusResponses,
@@ -169,9 +190,15 @@ import type {
   GetAgentSessionAcceptanceData,
   GetAgentSessionAcceptanceErrors,
   GetAgentSessionAcceptanceResponses,
+  GetAgentSessionAutomationRuleOverrideData,
+  GetAgentSessionAutomationRuleOverrideErrors,
+  GetAgentSessionAutomationRuleOverrideResponses,
   GetAgentSessionModelPolicyOverrideData,
   GetAgentSessionModelPolicyOverrideErrors,
   GetAgentSessionModelPolicyOverrideResponses,
+  GetAutomationRuleData,
+  GetAutomationRuleErrors,
+  GetAutomationRuleResponses,
   GetDesktopPreferencesData,
   GetDesktopPreferencesErrors,
   GetDesktopPreferencesResponses,
@@ -187,6 +214,9 @@ import type {
   GetStartupWorkspaceData,
   GetStartupWorkspaceErrors,
   GetStartupWorkspaceResponses,
+  GetWorkspaceAgentData,
+  GetWorkspaceAgentErrors,
+  GetWorkspaceAgentResponses,
   GetWorkspaceAgentSessionData,
   GetWorkspaceAgentSessionErrors,
   GetWorkspaceAgentSessionResponses,
@@ -256,6 +286,9 @@ import type {
   ListAgentTargetsData,
   ListAgentTargetsErrors,
   ListAgentTargetsResponses,
+  ListAutomationRulesData,
+  ListAutomationRulesErrors,
+  ListAutomationRulesResponses,
   ListCliCapabilitiesData,
   ListCliCapabilitiesErrors,
   ListCliCapabilitiesResponses,
@@ -280,6 +313,8 @@ import type {
   ListWorkspaceAgentPinnedSessionPageData,
   ListWorkspaceAgentPinnedSessionPageErrors,
   ListWorkspaceAgentPinnedSessionPageResponses,
+  ListWorkspaceAgentsData,
+  ListWorkspaceAgentsErrors,
   ListWorkspaceAgentSessionGitBranchesData,
   ListWorkspaceAgentSessionGitBranchesErrors,
   ListWorkspaceAgentSessionGitBranchesResponses,
@@ -298,6 +333,7 @@ import type {
   ListWorkspaceAgentSessionSectionsResponses,
   ListWorkspaceAgentSessionsErrors,
   ListWorkspaceAgentSessionsResponses,
+  ListWorkspaceAgentsResponses,
   ListWorkspaceAppFactoryJobsData,
   ListWorkspaceAppFactoryJobsErrors,
   ListWorkspaceAppFactoryJobsResponses,
@@ -382,6 +418,9 @@ import type {
   ReadWorkspaceFilePreviewData,
   ReadWorkspaceFilePreviewErrors,
   ReadWorkspaceFilePreviewResponses,
+  RecommendWorkspaceModelsData,
+  RecommendWorkspaceModelsErrors,
+  RecommendWorkspaceModelsResponses,
   RefreshWorkspaceAppCatalogData,
   RefreshWorkspaceAppCatalogErrors,
   RefreshWorkspaceAppCatalogResponses,
@@ -406,6 +445,9 @@ import type {
   ResolveWorkspaceGitPatchSupportData,
   ResolveWorkspaceGitPatchSupportErrors,
   ResolveWorkspaceGitPatchSupportResponses,
+  RetryCollaborationRunData,
+  RetryCollaborationRunErrors,
+  RetryCollaborationRunResponses,
   RetryWorkspaceAppData,
   RetryWorkspaceAppErrors,
   RetryWorkspaceAppFactoryJobValidationData,
@@ -436,6 +478,9 @@ import type {
   SetAgentModelBindingData,
   SetAgentModelBindingErrors,
   SetAgentModelBindingResponses,
+  SetAgentSessionAutomationRuleOverrideData,
+  SetAgentSessionAutomationRuleOverrideErrors,
+  SetAgentSessionAutomationRuleOverrideResponses,
   SetAgentSessionModelPolicyOverrideData,
   SetAgentSessionModelPolicyOverrideErrors,
   SetAgentSessionModelPolicyOverrideResponses,
@@ -472,12 +517,18 @@ import type {
   UninstallWorkspaceAppData,
   UninstallWorkspaceAppErrors,
   UninstallWorkspaceAppResponses,
+  UpdateAutomationRuleData,
+  UpdateAutomationRuleErrors,
+  UpdateAutomationRuleResponses,
   UpdateModelPlanData,
   UpdateModelPlanErrors,
   UpdateModelPlanResponses,
   UpdateModelPolicyData,
   UpdateModelPolicyErrors,
   UpdateModelPolicyResponses,
+  UpdateWorkspaceAgentData,
+  UpdateWorkspaceAgentErrors,
+  UpdateWorkspaceAgentResponses,
   UpdateWorkspaceAgentSessionPinData,
   UpdateWorkspaceAgentSessionPinErrors,
   UpdateWorkspaceAgentSessionPinResponses,
@@ -1047,6 +1098,218 @@ export const putWorkspaceWorkbench = <ThrowOnError extends boolean = false>(
   });
 
 /**
+ * List the configured Agent options for one workspace
+ *
+ * Returns explicit workspace Agent configurations. Each Agent maps one harness target to an optional model access plan and carries its own instructions, skills, tools, and permissions.
+ */
+export const listWorkspaceAgents = <ThrowOnError extends boolean = false>(
+  options: Options<ListWorkspaceAgentsData, ThrowOnError>
+) =>
+  (options.client ?? client).get<
+    ListWorkspaceAgentsResponses,
+    ListWorkspaceAgentsErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/v1/workspaces/{workspaceID}/agents",
+    ...options
+  });
+
+/**
+ * Create one selectable workspace Agent
+ *
+ * Creates an explicit Agent option from a harness target plus an optional model access plan. It does not generate a Harness by ModelPlan Cartesian product.
+ */
+export const createWorkspaceAgent = <ThrowOnError extends boolean = false>(
+  options: Options<CreateWorkspaceAgentData, ThrowOnError>
+) =>
+  (options.client ?? client).post<
+    CreateWorkspaceAgentResponses,
+    CreateWorkspaceAgentErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/v1/workspaces/{workspaceID}/agents",
+    ...options,
+    headers: {
+      "Content-Type": "application/json",
+      ...options.headers
+    }
+  });
+
+/**
+ * Generate a reviewable workspace Agent configuration draft
+ *
+ * Uses the explicitly selected ModelPlan/model for one tool-free generation call. The result is never persisted by this operation; generated automation suggestions are conservative consult rules that callers must save disabled and let the user review before enabling.
+ */
+export const generateWorkspaceAgentDraft = <
+  ThrowOnError extends boolean = false
+>(
+  options: Options<GenerateWorkspaceAgentDraftData, ThrowOnError>
+) =>
+  (options.client ?? client).post<
+    GenerateWorkspaceAgentDraftResponses,
+    GenerateWorkspaceAgentDraftErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/v1/workspaces/{workspaceID}/agents/generate-draft",
+    ...options,
+    headers: {
+      "Content-Type": "application/json",
+      ...options.headers
+    }
+  });
+
+/**
+ * Delete one workspace Agent configuration
+ *
+ * Deletes only the named workspace Agent. Its Harness target and ModelPlan remain unchanged.
+ */
+export const deleteWorkspaceAgent = <ThrowOnError extends boolean = false>(
+  options: Options<DeleteWorkspaceAgentData, ThrowOnError>
+) =>
+  (options.client ?? client).delete<
+    DeleteWorkspaceAgentResponses,
+    DeleteWorkspaceAgentErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/v1/workspaces/{workspaceID}/agents/{workspaceAgentID}",
+    ...options
+  });
+
+/**
+ * Get one workspace Agent configuration
+ */
+export const getWorkspaceAgent = <ThrowOnError extends boolean = false>(
+  options: Options<GetWorkspaceAgentData, ThrowOnError>
+) =>
+  (options.client ?? client).get<
+    GetWorkspaceAgentResponses,
+    GetWorkspaceAgentErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/v1/workspaces/{workspaceID}/agents/{workspaceAgentID}",
+    ...options
+  });
+
+/**
+ * Replace one workspace Agent configuration
+ *
+ * Replaces mutable fields and increments the Agent revision. Omitted or null modelPlanId/defaultModel clear those fields. Existing sessions continue using their recorded runtime configuration.
+ */
+export const updateWorkspaceAgent = <ThrowOnError extends boolean = false>(
+  options: Options<UpdateWorkspaceAgentData, ThrowOnError>
+) =>
+  (options.client ?? client).put<
+    UpdateWorkspaceAgentResponses,
+    UpdateWorkspaceAgentErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/v1/workspaces/{workspaceID}/agents/{workspaceAgentID}",
+    ...options,
+    headers: {
+      "Content-Type": "application/json",
+      ...options.headers
+    }
+  });
+
+/**
+ * List workspace automation rules
+ *
+ * Returns action-centric rules that react to Agent session lifecycle events. Rules target either a ModelPlan for a tool-free consult or a WorkspaceAgent for fork, delegate, and handoff actions.
+ */
+export const listAutomationRules = <ThrowOnError extends boolean = false>(
+  options: Options<ListAutomationRulesData, ThrowOnError>
+) =>
+  (options.client ?? client).get<
+    ListAutomationRulesResponses,
+    ListAutomationRulesErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/v1/workspaces/{workspaceID}/automation-rules",
+    ...options
+  });
+
+/**
+ * Create a workspace automation rule
+ */
+export const createAutomationRule = <ThrowOnError extends boolean = false>(
+  options: Options<CreateAutomationRuleData, ThrowOnError>
+) =>
+  (options.client ?? client).post<
+    CreateAutomationRuleResponses,
+    CreateAutomationRuleErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/v1/workspaces/{workspaceID}/automation-rules",
+    ...options,
+    headers: {
+      "Content-Type": "application/json",
+      ...options.headers
+    }
+  });
+
+/**
+ * Delete a workspace automation rule
+ */
+export const deleteAutomationRule = <ThrowOnError extends boolean = false>(
+  options: Options<DeleteAutomationRuleData, ThrowOnError>
+) =>
+  (options.client ?? client).delete<
+    DeleteAutomationRuleResponses,
+    DeleteAutomationRuleErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/v1/workspaces/{workspaceID}/automation-rules/{automationRuleID}",
+    ...options
+  });
+
+/**
+ * Get a workspace automation rule
+ */
+export const getAutomationRule = <ThrowOnError extends boolean = false>(
+  options: Options<GetAutomationRuleData, ThrowOnError>
+) =>
+  (options.client ?? client).get<
+    GetAutomationRuleResponses,
+    GetAutomationRuleErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/v1/workspaces/{workspaceID}/automation-rules/{automationRuleID}",
+    ...options
+  });
+
+/**
+ * Replace a workspace automation rule
+ *
+ * Replaces mutable rule fields. Changes apply only to future trigger evaluations; already-started actions keep their recorded configuration.
+ */
+export const updateAutomationRule = <ThrowOnError extends boolean = false>(
+  options: Options<UpdateAutomationRuleData, ThrowOnError>
+) =>
+  (options.client ?? client).put<
+    UpdateAutomationRuleResponses,
+    UpdateAutomationRuleErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/v1/workspaces/{workspaceID}/automation-rules/{automationRuleID}",
+    ...options,
+    headers: {
+      "Content-Type": "application/json",
+      ...options.headers
+    }
+  });
+
+/**
  * List workspace model access plans
  *
  * Returns every named model access plan for the workspace. Credentials never appear in responses; only hasApiKey is exposed.
@@ -1109,9 +1372,31 @@ export const detectModelPlan = <ThrowOnError extends boolean = false>(
   });
 
 /**
+ * Recommend compatible workspace models
+ *
+ * Filters enabled model access plans by required capabilities and returns an explainable deterministic ranking. Detection health outranks preference; price is used only between routes that publish the same currency. The response never contains credentials.
+ */
+export const recommendWorkspaceModels = <ThrowOnError extends boolean = false>(
+  options: Options<RecommendWorkspaceModelsData, ThrowOnError>
+) =>
+  (options.client ?? client).post<
+    RecommendWorkspaceModelsResponses,
+    RecommendWorkspaceModelsErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/v1/workspaces/{workspaceID}/model-plans/recommend",
+    ...options,
+    headers: {
+      "Content-Type": "application/json",
+      ...options.headers
+    }
+  });
+
+/**
  * Delete one model access plan
  *
- * Deletion is blocked with a 409 while any agent target, model usage policy, or workspace app still references the plan. Callers rebind or disable those consumers first; the references endpoint lists them.
+ * Deletion is blocked with a 409 while any WorkspaceAgent, automation rule, legacy agent-target binding, model usage policy, or workspace app still references the plan. Callers rebind or remove those consumers first; the references endpoint lists them.
  */
 export const deleteModelPlan = <ThrowOnError extends boolean = false>(
   options: Options<DeleteModelPlanData, ThrowOnError>
@@ -1247,7 +1532,7 @@ export const listCollaborationRuns = <ThrowOnError extends boolean = false>(
 /**
  * Start or record one collaboration run
  *
- * Mode consult executes a daemon-side advisory completion against a workspace model access plan synchronously and returns the completed or failed run; the advisor never executes tools and task ownership never changes. Modes fork, delegate, and handoff record a run for a target session the GUI already created through the session-create path.
+ * Mode consult executes a daemon-side advisory completion against a workspace model access plan synchronously and returns the completed or failed run; the advisor never executes tools and task ownership never changes. Modes fork, delegate, and handoff create a running record for a target session. When targetSessionId is omitted, the daemon creates the target session from targetAgentTargetId, question, and the selected source-context scope. The daemon updates that record from the target turn lifecycle so completion, failure, cancellation, duration, actual model identity, and reported usage remain aligned with execution.
  */
 export const createCollaborationRun = <ThrowOnError extends boolean = false>(
   options: Options<CreateCollaborationRunData, ThrowOnError>
@@ -1291,9 +1576,9 @@ export const setCollaborationRunAdoption = <
   });
 
 /**
- * Cancel a running consult
+ * Cancel a running collaboration
  *
- * Marks a still-running consult canceled and aborts its in-flight completion call. Settled runs are returned unchanged.
+ * Cancels a still-running consult completion or target session turn, then records the collaboration as canceled. Settled runs are returned unchanged.
  */
 export const cancelCollaborationRun = <ThrowOnError extends boolean = false>(
   options: Options<CancelCollaborationRunData, ThrowOnError>
@@ -1309,9 +1594,29 @@ export const cancelCollaborationRun = <ThrowOnError extends boolean = false>(
   });
 
 /**
- * List per-workspace agent target model bindings
+ * Retry a failed collaboration
  *
- * Returns the default model plan, default model, and model usage policy bound to each agent target in the workspace. Targets without a binding keep their provider-native model source.
+ * Replays the durable request inputs from a failed consult, fork, delegate, or handoff as a new linked attempt. The failed run remains immutable and visible; the response is the newly created run.
+ */
+export const retryCollaborationRun = <ThrowOnError extends boolean = false>(
+  options: Options<RetryCollaborationRunData, ThrowOnError>
+) =>
+  (options.client ?? client).post<
+    RetryCollaborationRunResponses,
+    RetryCollaborationRunErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/v1/workspaces/{workspaceID}/collaboration-runs/{collaborationRunID}/retry",
+    ...options
+  });
+
+/**
+ * List legacy per-target model bindings
+ *
+ * Compatibility endpoint for clients predating WorkspaceAgent. New clients create a WorkspaceAgent that combines a Harness target with a ModelPlan/default model.
+ *
+ * @deprecated
  */
 export const listAgentModelBindings = <ThrowOnError extends boolean = false>(
   options: Options<ListAgentModelBindingsData, ThrowOnError>
@@ -1327,9 +1632,11 @@ export const listAgentModelBindings = <ThrowOnError extends boolean = false>(
   });
 
 /**
- * Set or clear one agent target model binding
+ * Set or clear one legacy agent target model binding
  *
- * Binds the agent target to a default model plan, model, and model usage policy for the workspace. An all-empty body clears the binding. Changes affect only sessions that have not started; running sessions keep their recorded configuration.
+ * Compatibility endpoint for clients predating WorkspaceAgent. New clients create or update a WorkspaceAgent instead. An all-empty body clears the legacy binding; running sessions keep their recorded configuration.
+ *
+ * @deprecated
  */
 export const setAgentModelBinding = <ThrowOnError extends boolean = false>(
   options: Options<SetAgentModelBindingData, ThrowOnError>
@@ -1349,7 +1656,55 @@ export const setAgentModelBinding = <ThrowOnError extends boolean = false>(
   });
 
 /**
- * List workspace model usage policies
+ * Get the session-level automation rule override
+ *
+ * An absent override returns disabled=false and an empty rule id list.
+ */
+export const getAgentSessionAutomationRuleOverride = <
+  ThrowOnError extends boolean = false
+>(
+  options: Options<GetAgentSessionAutomationRuleOverrideData, ThrowOnError>
+) =>
+  (options.client ?? client).get<
+    GetAgentSessionAutomationRuleOverrideResponses,
+    GetAgentSessionAutomationRuleOverrideErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/v1/workspaces/{workspaceID}/agent-sessions/{agentSessionID}/automation-rule-override",
+    ...options
+  });
+
+/**
+ * Disable or select automation rules for one session
+ *
+ * Disabled stops every future rule evaluation for this session. A non-empty ruleIds list replaces the workspace rule set for this session; an empty list uses all enabled workspace rules. Already-started actions are unchanged.
+ */
+export const setAgentSessionAutomationRuleOverride = <
+  ThrowOnError extends boolean = false
+>(
+  options: Options<SetAgentSessionAutomationRuleOverrideData, ThrowOnError>
+) =>
+  (options.client ?? client).put<
+    SetAgentSessionAutomationRuleOverrideResponses,
+    SetAgentSessionAutomationRuleOverrideErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/v1/workspaces/{workspaceID}/agent-sessions/{agentSessionID}/automation-rule-override",
+    ...options,
+    headers: {
+      "Content-Type": "application/json",
+      ...options.headers
+    }
+  });
+
+/**
+ * List legacy role-based model policies
+ *
+ * Compatibility-only. New workflows use WorkspaceAgent for runtime model configuration and AutomationRule for optional collaboration actions.
+ *
+ * @deprecated
  */
 export const listModelPolicies = <ThrowOnError extends boolean = false>(
   options: Options<ListModelPoliciesData, ThrowOnError>
@@ -1365,9 +1720,11 @@ export const listModelPolicies = <ThrowOnError extends boolean = false>(
   });
 
 /**
- * Create one model usage policy
+ * Create one legacy role-based model policy
  *
- * A policy binds execution, planning, and review roles to plan models and carries the fixed on_task_complete review rule with run and token limits. Automated review can never replace user acceptance.
+ * Compatibility-only. The production daemon does not execute this policy's role map or fixed review runner; create a WorkspaceAgent and AutomationRule for new workflows.
+ *
+ * @deprecated
  */
 export const createModelPolicy = <ThrowOnError extends boolean = false>(
   options: Options<CreateModelPolicyData, ThrowOnError>
@@ -1387,7 +1744,9 @@ export const createModelPolicy = <ThrowOnError extends boolean = false>(
   });
 
 /**
- * Delete one model usage policy
+ * Delete one legacy role-based model policy
+ *
+ * @deprecated
  */
 export const deleteModelPolicy = <ThrowOnError extends boolean = false>(
   options: Options<DeleteModelPolicyData, ThrowOnError>
@@ -1403,7 +1762,11 @@ export const deleteModelPolicy = <ThrowOnError extends boolean = false>(
   });
 
 /**
- * Get one model usage policy
+ * Get one legacy role-based model policy
+ *
+ * Compatibility-only. The policy is retained for persisted data and acceptance records.
+ *
+ * @deprecated
  */
 export const getModelPolicy = <ThrowOnError extends boolean = false>(
   options: Options<GetModelPolicyData, ThrowOnError>
@@ -1419,9 +1782,11 @@ export const getModelPolicy = <ThrowOnError extends boolean = false>(
   });
 
 /**
- * Update one model usage policy
+ * Update one legacy role-based model policy
  *
- * Changes affect only calls that have not started yet.
+ * Compatibility-only. Changes do not drive the production Agent runtime or AutomationRule engine.
+ *
+ * @deprecated
  */
 export const updateModelPolicy = <ThrowOnError extends boolean = false>(
   options: Options<UpdateModelPolicyData, ThrowOnError>
@@ -1441,7 +1806,11 @@ export const updateModelPolicy = <ThrowOnError extends boolean = false>(
   });
 
 /**
- * Get the session-level model policy override
+ * Get the legacy session model-policy override
+ *
+ * Compatibility-only. Use the AutomationRule session override for new workflows.
+ *
+ * @deprecated
  */
 export const getAgentSessionModelPolicyOverride = <
   ThrowOnError extends boolean = false
@@ -1459,9 +1828,11 @@ export const getAgentSessionModelPolicyOverride = <
   });
 
 /**
- * Disable or replace the model usage policy for one session
+ * Set the legacy session model-policy override
  *
- * Session-level automation control. Disabling stops policy-triggered review for this session; a policy id override replaces the binding default. Changes affect only calls that have not started.
+ * Compatibility-only. The legacy review runner is not wired in production; use the AutomationRule session override to select or disable future actions.
+ *
+ * @deprecated
  */
 export const setAgentSessionModelPolicyOverride = <
   ThrowOnError extends boolean = false
@@ -3327,6 +3698,54 @@ export const createWorkspaceIssue = <ThrowOnError extends boolean = false>(
   >({
     security: [{ scheme: "bearer", type: "http" }],
     url: "/v1/workspaces/{workspaceID}/issues",
+    ...options,
+    headers: {
+      "Content-Type": "application/json",
+      ...options.headers
+    }
+  });
+
+/**
+ * Create one executable Issue and its tasks from an Ultra or traditional Plan
+ *
+ * The returned Issue remains durable even when execution is started later. Task assignments and dependencies are validated as one graph before task execution can start.
+ */
+export const createWorkspaceIssueFromPlan = <
+  ThrowOnError extends boolean = false
+>(
+  options: Options<CreateWorkspaceIssueFromPlanData, ThrowOnError>
+) =>
+  (options.client ?? client).post<
+    CreateWorkspaceIssueFromPlanResponses,
+    CreateWorkspaceIssueFromPlanErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/v1/workspaces/{workspaceID}/issues/from-plan",
+    ...options,
+    headers: {
+      "Content-Type": "application/json",
+      ...options.headers
+    }
+  });
+
+/**
+ * Estimate the authoritative automatic token budget for a proposed Issue graph
+ *
+ * Uses the same scale, intensity, and comparable completed-run history compiler as Issue creation. No Issue or task is persisted.
+ */
+export const estimateWorkspaceIssueAutoTokenBudget = <
+  ThrowOnError extends boolean = false
+>(
+  options: Options<EstimateWorkspaceIssueAutoTokenBudgetData, ThrowOnError>
+) =>
+  (options.client ?? client).post<
+    EstimateWorkspaceIssueAutoTokenBudgetResponses,
+    EstimateWorkspaceIssueAutoTokenBudgetErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/v1/workspaces/{workspaceID}/issues/auto-token-budget-estimate",
     ...options,
     headers: {
       "Content-Type": "application/json",

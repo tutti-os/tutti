@@ -44,7 +44,6 @@ func TestSQLiteIssueStoreLifecycle(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CreateTask() error = %v", err)
 	}
-
 	refs, err := service.AddContextRefs(ctx, workspaceissues.AddContextRefsInput{
 		WorkspaceID: "ws-issue-1",
 		IssueID:     issue.IssueID,
@@ -358,6 +357,15 @@ func TestSQLiteIssueStoreListRunningRunsFiltersByWorkspaceAndSession(t *testing.
 	if err != nil {
 		t.Fatalf("CreateTask() error = %v", err)
 	}
+	noSessionTask, err := service.CreateTask(ctx, workspaceissues.CreateTaskInput{
+		WorkspaceID: "ws-running-1",
+		IssueID:     issue.IssueID,
+		ActorUserID: "user-1",
+		Title:       "Task without session",
+	})
+	if err != nil {
+		t.Fatalf("CreateTask(no session) error = %v", err)
+	}
 	running, err := service.CreateRun(ctx, workspaceissues.CreateRunInput{
 		WorkspaceID:    "ws-running-1",
 		IssueID:        issue.IssueID,
@@ -374,7 +382,7 @@ func TestSQLiteIssueStoreListRunningRunsFiltersByWorkspaceAndSession(t *testing.
 	withoutSession, err := service.CreateRun(ctx, workspaceissues.CreateRunInput{
 		WorkspaceID:   "ws-running-1",
 		IssueID:       issue.IssueID,
-		TaskID:        task.TaskID,
+		TaskID:        noSessionTask.TaskID,
 		ActorUserID:   "user-1",
 		RunID:         "run-no-session",
 		AgentProvider: "codex",
@@ -386,7 +394,7 @@ func TestSQLiteIssueStoreListRunningRunsFiltersByWorkspaceAndSession(t *testing.
 	if _, _, err := service.CompleteRun(ctx, workspaceissues.CompleteRunInput{
 		WorkspaceID: "ws-running-1",
 		IssueID:     issue.IssueID,
-		TaskID:      task.TaskID,
+		TaskID:      noSessionTask.TaskID,
 		RunID:       withoutSession.RunID,
 		ActorUserID: "user-1",
 		Status:      string(workspaceissues.StatusFailed),
@@ -400,6 +408,84 @@ func TestSQLiteIssueStoreListRunningRunsFiltersByWorkspaceAndSession(t *testing.
 	}
 	if len(runs) != 1 || runs[0].RunID != running.RunID {
 		t.Fatalf("running runs = %+v, want only %q", runs, running.RunID)
+	}
+}
+
+func TestSQLiteIssueStoreAtomicallyClaimsOneRunPerTask(t *testing.T) {
+	t.Parallel()
+
+	store := openTestSQLiteStore(t)
+	ctx := context.Background()
+	if err := store.Create(ctx, workspacebiz.Summary{ID: "ws-claim", Name: "Claim"}); err != nil {
+		t.Fatalf("Create() workspace error = %v", err)
+	}
+	service := testIssueService(store)
+	issue, err := service.CreateIssue(ctx, workspaceissues.CreateIssueInput{
+		WorkspaceID: "ws-claim",
+		TopicID:     workspaceissues.DefaultTopicID,
+		ActorUserID: "user-1",
+		Title:       "Claim once",
+	})
+	if err != nil {
+		t.Fatalf("CreateIssue() error = %v", err)
+	}
+	task, err := service.CreateTask(ctx, workspaceissues.CreateTaskInput{
+		WorkspaceID: "ws-claim",
+		IssueID:     issue.IssueID,
+		ActorUserID: "user-1",
+		Title:       "Claimed task",
+	})
+	if err != nil {
+		t.Fatalf("CreateTask() error = %v", err)
+	}
+
+	start := make(chan struct{})
+	results := make(chan error, 2)
+	for _, runID := range []string{"run-claim-a", "run-claim-b"} {
+		runID := runID
+		go func() {
+			<-start
+			_, createErr := service.CreateRun(ctx, workspaceissues.CreateRunInput{
+				WorkspaceID:   "ws-claim",
+				IssueID:       issue.IssueID,
+				TaskID:        task.TaskID,
+				RunID:         runID,
+				ActorUserID:   "user-1",
+				AgentTargetID: "local:codex",
+			})
+			results <- createErr
+		}()
+	}
+	close(start)
+	succeeded := 0
+	alreadyClaimed := 0
+	for range 2 {
+		result := <-results
+		switch {
+		case result == nil:
+			succeeded++
+		case errors.Is(result, workspaceissues.ErrTaskAlreadyClaimed):
+			alreadyClaimed++
+		default:
+			t.Fatalf("CreateRun() unexpected error = %v", result)
+		}
+	}
+	if succeeded != 1 || alreadyClaimed != 1 {
+		t.Fatalf("claim results succeeded=%d alreadyClaimed=%d, want 1/1", succeeded, alreadyClaimed)
+	}
+	runs, err := store.ListRuns(ctx, "ws-claim", issue.IssueID, task.TaskID)
+	if err != nil {
+		t.Fatalf("ListRuns() error = %v", err)
+	}
+	if len(runs) != 1 {
+		t.Fatalf("runs = %#v, want exactly one", runs)
+	}
+	claimedTask, err := store.GetTask(ctx, "ws-claim", issue.IssueID, task.TaskID)
+	if err != nil {
+		t.Fatalf("GetTask() error = %v", err)
+	}
+	if claimedTask.Status != workspaceissues.StatusRunning || claimedTask.LatestRunID != runs[0].RunID {
+		t.Fatalf("claimed task = %#v, run = %#v", claimedTask, runs[0])
 	}
 }
 
@@ -772,6 +858,40 @@ func TestSQLiteIssueStoreDuplicateResourceIDsReturnTypedErrors(t *testing.T) {
 		AgentTargetID: "local:codex",
 	}); !errors.Is(err, workspaceissues.ErrRunAlreadyExists) {
 		t.Fatalf("CreateRun() duplicate error = %v, want ErrRunAlreadyExists", err)
+	}
+}
+
+func TestSQLiteIssueStoreRollsBackIssueWhenBatchTaskInsertFails(t *testing.T) {
+	t.Parallel()
+
+	store := openTestSQLiteStore(t)
+	ctx := context.Background()
+	if err := store.Create(ctx, workspacebiz.Summary{
+		ID:   "ws-issue-batch-rollback",
+		Name: "Batch Rollback Workspace",
+	}); err != nil {
+		t.Fatalf("Create() workspace error = %v", err)
+	}
+	service := testIssueService(store)
+	_, _, err := service.CreateIssueWithTasks(ctx, workspaceissues.CreateIssueWithTasksInput{
+		Issue: workspaceissues.CreateIssueInput{
+			WorkspaceID:    "ws-issue-batch-rollback",
+			TopicID:        workspaceissues.DefaultTopicID,
+			ActorUserID:    "user-1",
+			IssueID:        "issue-batch-rollback",
+			Title:          "Atomic Plan issue",
+			PlanningSource: string(workspaceissues.PlanningSourceUltraPlan),
+		},
+		Tasks: []workspaceissues.CreateTaskItemInput{
+			{TaskID: "duplicate-task", Title: "First"},
+			{TaskID: "duplicate-task", Title: "Second"},
+		},
+	})
+	if !errors.Is(err, workspaceissues.ErrTaskAlreadyExists) {
+		t.Fatalf("CreateIssueWithTasks() error = %v, want ErrTaskAlreadyExists", err)
+	}
+	if _, err := store.GetIssue(ctx, "ws-issue-batch-rollback", "issue-batch-rollback"); !errors.Is(err, workspaceissues.ErrIssueNotFound) {
+		t.Fatalf("GetIssue() after rollback error = %v, want ErrIssueNotFound", err)
 	}
 }
 

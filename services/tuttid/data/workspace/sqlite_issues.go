@@ -15,6 +15,11 @@ var _ workspaceissues.Store = (*SQLiteStore)(nil)
 
 const issueSelectColumns = `
 id, issue_id, topic_id, workspace_id, title, content, search_text, status,
+planning_source, source_session_id, sequential_execution, parallel_execution, dispatch_paused, reasoning_intensity, orchestration_intensity,
+budget_mode, budget_token_limit, budget_consumed_tokens,
+budget_quota_waterline_percent, budget_remaining_quota_percent,
+budget_has_remaining_quota, budget_status, cost_currency,
+estimated_cost_micros, actual_cost_micros,
 task_count, not_started_count, running_count, pending_acceptance_count,
 completed_count, failed_count, canceled_count, creator_user_id,
 creator_display_name, creator_avatar_url, created_at_unix_ms, updated_at_unix_ms`
@@ -25,12 +30,16 @@ last_activity_at_unix_ms, created_at_unix_ms, updated_at_unix_ms`
 
 const taskSelectColumns = `
 id, task_id, issue_id, workspace_id, title, content, search_text, status,
-priority, sort_index, due_at_unix_ms, creator_user_id, creator_display_name,
+priority, sort_index, due_at_unix_ms, agent_target_id, model_plan_id, model,
+execution_directory, dependency_task_ids_json,
+acceptance_state, acceptance_summary, creator_user_id, creator_display_name,
 creator_avatar_url, latest_run_id, created_at_unix_ms, updated_at_unix_ms`
 
 const runSelectColumns = `
 id, run_id, task_id, issue_id, workspace_id, requester_user_id, agent_user_id,
-agent_target_id, agent_session_id, agent_provider, status, summary,
+agent_target_id, agent_session_id, agent_provider, model_plan_id, model,
+reasoning_intensity, status, input_tokens, output_tokens, cache_read_tokens,
+cache_write_tokens, cost_currency, estimated_cost_micros, actual_cost_micros, summary,
 error_message, output_dir, execution_directory, created_at_unix_ms,
 started_at_unix_ms, completed_at_unix_ms, updated_at_unix_ms`
 
@@ -241,14 +250,36 @@ func (s *SQLiteStore) CreateIssue(ctx context.Context, issue workspaceissues.Iss
 		return workspaceissues.Issue{}, err
 	}
 
-	_, err := s.db.ExecContext(ctx, `
+	if _, err := insertWorkspaceIssue(ctx, s.db, issue); err != nil {
+		return workspaceissues.Issue{}, err
+	}
+
+	return s.GetIssue(ctx, issue.WorkspaceID, issue.IssueID)
+}
+
+type workspaceIssueExecer interface {
+	ExecContext(context.Context, string, ...any) (sql.Result, error)
+}
+
+func insertWorkspaceIssue(ctx context.Context, execer workspaceIssueExecer, issue workspaceissues.Issue) (workspaceissues.Issue, error) {
+	result, err := execer.ExecContext(ctx, `
 INSERT INTO workspace_issues (
   issue_id, topic_id, workspace_id, title, content, search_text, status,
+  planning_source, source_session_id, sequential_execution, parallel_execution, dispatch_paused, reasoning_intensity, orchestration_intensity,
+  budget_mode, budget_token_limit, budget_consumed_tokens,
+  budget_quota_waterline_percent, budget_remaining_quota_percent,
+  budget_has_remaining_quota, budget_status, cost_currency,
+  estimated_cost_micros, actual_cost_micros,
   task_count, not_started_count, running_count, pending_acceptance_count,
   completed_count, failed_count, canceled_count, creator_user_id,
   creator_display_name, creator_avatar_url, created_at_unix_ms, updated_at_unix_ms
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 `, issue.IssueID, issue.TopicID, issue.WorkspaceID, issue.Title, issue.Content, issue.SearchText, string(issue.Status),
+		string(issue.PlanningSource), issue.SourceSessionID, boolToInt(issue.SequentialExecution), boolToInt(issue.ParallelExecution), boolToInt(issue.DispatchPaused), issue.ExecutionProfile.ReasoningIntensity,
+		issue.ExecutionProfile.OrchestrationIntensity, string(issue.Budget.Mode), issue.Budget.TokenLimit,
+		issue.Budget.ConsumedTokens, issue.Budget.QuotaWaterlinePercent, issue.Budget.RemainingQuotaPercent,
+		boolToInt(issue.Budget.HasRemainingQuota), string(issue.Budget.Status),
+		issue.Cost.Currency, issue.Cost.EstimatedMicros, issue.Cost.ActualMicros,
 		issue.TaskCount, issue.NotStartedCount, issue.RunningCount, issue.PendingAcceptanceCount,
 		issue.CompletedCount, issue.FailedCount, issue.CanceledCount, issue.CreatorUserID,
 		issue.CreatorDisplayName, issue.CreatorAvatarURL, issue.CreatedAtUnixMS, issue.UpdatedAtUnixMS)
@@ -258,8 +289,12 @@ INSERT INTO workspace_issues (
 		}
 		return workspaceissues.Issue{}, fmt.Errorf("create workspace issue: %w", err)
 	}
-
-	return s.GetIssue(ctx, issue.WorkspaceID, issue.IssueID)
+	id, err := result.LastInsertId()
+	if err != nil {
+		return workspaceissues.Issue{}, fmt.Errorf("read created workspace issue id: %w", err)
+	}
+	issue.ID = uint64(id)
+	return issue, nil
 }
 
 func (s *SQLiteStore) GetIssue(ctx context.Context, workspaceID string, issueID string) (workspaceissues.Issue, error) {
@@ -289,9 +324,18 @@ func (s *SQLiteStore) UpdateIssue(ctx context.Context, issue workspaceissues.Iss
 
 	result, err := s.db.ExecContext(ctx, `
 UPDATE workspace_issues
-SET title = ?, content = ?, search_text = ?, status = ?, updated_at_unix_ms = ?
+SET title = ?, content = ?, search_text = ?, status = ?,
+    dispatch_paused = ?, reasoning_intensity = ?, orchestration_intensity = ?, budget_mode = ?,
+    budget_token_limit = ?, budget_consumed_tokens = ?,
+    budget_quota_waterline_percent = ?, budget_remaining_quota_percent = ?,
+    budget_has_remaining_quota = ?, budget_status = ?, cost_currency = ?,
+    estimated_cost_micros = ?, actual_cost_micros = ?, updated_at_unix_ms = ?
 WHERE workspace_id = ? AND issue_id = ?
-`, issue.Title, issue.Content, issue.SearchText, string(issue.Status), issue.UpdatedAtUnixMS,
+`, issue.Title, issue.Content, issue.SearchText, string(issue.Status), boolToInt(issue.DispatchPaused), issue.ExecutionProfile.ReasoningIntensity,
+		issue.ExecutionProfile.OrchestrationIntensity, string(issue.Budget.Mode), issue.Budget.TokenLimit,
+		issue.Budget.ConsumedTokens, issue.Budget.QuotaWaterlinePercent, issue.Budget.RemainingQuotaPercent,
+		boolToInt(issue.Budget.HasRemainingQuota), string(issue.Budget.Status),
+		issue.Cost.Currency, issue.Cost.EstimatedMicros, issue.Cost.ActualMicros, issue.UpdatedAtUnixMS,
 		issue.WorkspaceID, issue.IssueID)
 	if err != nil {
 		return workspaceissues.Issue{}, fmt.Errorf("update workspace issue: %w", err)
@@ -451,27 +495,75 @@ WHERE workspace_id = ? AND issue_id = ? AND task_id = ? AND parent_kind = ? AND 
 	return rowsWereAffected(result, "remove workspace issue context ref")
 }
 
-func (s *SQLiteStore) CreateRun(ctx context.Context, run workspaceissues.Run) (workspaceissues.Run, error) {
+func (s *SQLiteStore) ClaimTaskRun(ctx context.Context, run workspaceissues.Run) (workspaceissues.Run, error) {
 	if err := s.ensureIssueDatabase(); err != nil {
 		return workspaceissues.Run{}, err
 	}
-	if run.TaskID != "" {
-		if _, err := s.GetTask(ctx, run.WorkspaceID, run.IssueID, run.TaskID); err != nil {
-			return workspaceissues.Run{}, err
-		}
-	} else if _, err := s.GetIssue(ctx, run.WorkspaceID, run.IssueID); err != nil {
-		return workspaceissues.Run{}, err
+	if run.TaskID == "" {
+		return workspaceissues.Run{}, workspaceissues.ErrTaskNotFound
 	}
 
-	_, err := s.db.ExecContext(ctx, `
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return workspaceissues.Run{}, fmt.Errorf("begin workspace issue task claim: %w", err)
+	}
+	defer func() {
+		_ = tx.Rollback()
+	}()
+	var duplicateRun int
+	if err := tx.QueryRowContext(ctx, `
+SELECT 1
+FROM workspace_issue_runs
+WHERE workspace_id = ? AND issue_id = ? AND task_id = ? AND run_id = ?
+`, run.WorkspaceID, run.IssueID, run.TaskID, run.RunID).Scan(&duplicateRun); err == nil {
+		return workspaceissues.Run{}, workspaceissues.ErrRunAlreadyExists
+	} else if !errors.Is(err, sql.ErrNoRows) {
+		return workspaceissues.Run{}, fmt.Errorf("check duplicate workspace issue run: %w", err)
+	}
+	claim, err := tx.ExecContext(ctx, `
+UPDATE workspace_issue_tasks
+SET status = ?, acceptance_state = ?, acceptance_summary = '',
+    latest_run_id = ?, updated_at_unix_ms = ?
+WHERE workspace_id = ? AND issue_id = ? AND task_id = ? AND status IN (?, ?, ?, ?, ?)
+`, string(workspaceissues.StatusRunning), string(workspaceissues.AcceptanceAgentClaimed),
+		run.RunID, run.UpdatedAtUnixMS, run.WorkspaceID, run.IssueID, run.TaskID,
+		string(workspaceissues.StatusNotStarted), string(workspaceissues.StatusPendingAcceptance), string(workspaceissues.StatusCompleted),
+		string(workspaceissues.StatusFailed), string(workspaceissues.StatusCanceled))
+	if err != nil {
+		return workspaceissues.Run{}, fmt.Errorf("claim workspace issue task run: %w", err)
+	}
+	claimed, err := claim.RowsAffected()
+	if err != nil {
+		return workspaceissues.Run{}, fmt.Errorf("read workspace issue task claim result: %w", err)
+	}
+	if claimed == 0 {
+		var status string
+		if err := tx.QueryRowContext(ctx, `
+SELECT status
+FROM workspace_issue_tasks
+WHERE workspace_id = ? AND issue_id = ? AND task_id = ?
+`, run.WorkspaceID, run.IssueID, run.TaskID).Scan(&status); errors.Is(err, sql.ErrNoRows) {
+			return workspaceissues.Run{}, workspaceissues.ErrTaskNotFound
+		} else if err != nil {
+			return workspaceissues.Run{}, fmt.Errorf("read workspace issue task claim state: %w", err)
+		}
+		return workspaceissues.Run{}, workspaceissues.ErrTaskAlreadyClaimed
+	}
+
+	_, err = tx.ExecContext(ctx, `
 INSERT INTO workspace_issue_runs (
   run_id, task_id, issue_id, workspace_id, requester_user_id, agent_user_id,
-  agent_target_id, agent_session_id, agent_provider, status, summary,
+  agent_target_id, agent_session_id, agent_provider, model_plan_id, model,
+  reasoning_intensity, status, input_tokens, output_tokens, cache_read_tokens,
+  cache_write_tokens, cost_currency, estimated_cost_micros, actual_cost_micros, summary,
   error_message, output_dir, execution_directory, created_at_unix_ms,
   started_at_unix_ms, completed_at_unix_ms, updated_at_unix_ms
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 `, run.RunID, run.TaskID, run.IssueID, run.WorkspaceID, run.RequesterUserID, run.AgentUserID,
-		run.AgentTargetID, run.AgentSessionID, run.AgentProvider, string(run.Status), run.Summary,
+		run.AgentTargetID, run.AgentSessionID, run.AgentProvider, run.ModelPlanID, run.Model,
+		run.ReasoningIntensity, string(run.Status), run.Usage.InputTokens, run.Usage.OutputTokens,
+		run.Usage.CacheReadTokens, run.Usage.CacheWriteTokens, run.Cost.Currency,
+		run.Cost.EstimatedMicros, run.Cost.ActualMicros, run.Summary,
 		run.ErrorMessage, run.OutputDir, run.ExecutionDirectory, run.CreatedAtUnixMS,
 		run.StartedAtUnixMS, run.CompletedAtUnixMS, run.UpdatedAtUnixMS)
 	if err != nil {
@@ -479,6 +571,9 @@ INSERT INTO workspace_issue_runs (
 			return workspaceissues.Run{}, workspaceissues.ErrRunAlreadyExists
 		}
 		return workspaceissues.Run{}, fmt.Errorf("create workspace issue run: %w", err)
+	}
+	if err := tx.Commit(); err != nil {
+		return workspaceissues.Run{}, fmt.Errorf("commit workspace issue task claim: %w", err)
 	}
 	return s.GetRun(ctx, run.WorkspaceID, run.IssueID, run.TaskID, run.RunID)
 }
@@ -498,9 +593,14 @@ func (s *SQLiteStore) CompleteRun(ctx context.Context, run workspaceissues.Run, 
 
 	result, err := tx.ExecContext(ctx, `
 UPDATE workspace_issue_runs
-SET status = ?, summary = ?, error_message = ?, completed_at_unix_ms = ?, updated_at_unix_ms = ?
+SET status = ?, input_tokens = ?, output_tokens = ?, cache_read_tokens = ?,
+    cache_write_tokens = ?, cost_currency = ?, estimated_cost_micros = ?,
+    actual_cost_micros = ?, summary = ?, error_message = ?,
+    completed_at_unix_ms = ?, updated_at_unix_ms = ?
 WHERE workspace_id = ? AND issue_id = ? AND task_id = ? AND run_id = ?
-`, string(run.Status), run.Summary, run.ErrorMessage, run.CompletedAtUnixMS, run.UpdatedAtUnixMS,
+`, string(run.Status), run.Usage.InputTokens, run.Usage.OutputTokens, run.Usage.CacheReadTokens,
+		run.Usage.CacheWriteTokens, run.Cost.Currency, run.Cost.EstimatedMicros, run.Cost.ActualMicros,
+		run.Summary, run.ErrorMessage, run.CompletedAtUnixMS, run.UpdatedAtUnixMS,
 		run.WorkspaceID, run.IssueID, run.TaskID, run.RunID)
 	if err != nil {
 		return workspaceissues.Run{}, nil, fmt.Errorf("complete workspace issue run: %w", err)
@@ -557,8 +657,12 @@ SELECT %s
 FROM workspace_issue_runs
 ORDER BY created_at_unix_ms DESC, id DESC
 `, runSelectColumns)
-	args := []any{workspaceID, issueID}
-	where := "WHERE workspace_id = ? AND issue_id = ?"
+	args := []any{workspaceID}
+	where := "WHERE workspace_id = ?"
+	if issueID != "" {
+		where += " AND issue_id = ?"
+		args = append(args, issueID)
+	}
 	if taskID != "" {
 		where += " AND task_id = ?"
 		args = append(args, taskID)

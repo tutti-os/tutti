@@ -45,9 +45,30 @@ export interface AgentInteractivePromptSurfaceProps {
     waitingForAnswer: string;
     planImplementationLead: string;
     planImplementationConfirm: string;
+    planImplementationCreateIssue?: string;
     planImplementationFeedbackPlaceholder: string;
     planImplementationSend: string;
     planImplementationSkip: string;
+    planIssueReviewTitle?: string;
+    planIssueReasoning?: string;
+    planIssueOrchestration?: string;
+    planIssueBudgetAuto?: string;
+    planIssueBudgetFixed?: string;
+    planIssueTokenBudget?: string;
+    planIssueTaskPreview?: string;
+    planIssueAgentTarget?: string;
+    planIssueModelPlan?: string;
+    planIssueModel?: string;
+    planIssueDirectory?: string;
+    planIssueDependencies?: string;
+    planIssueCreateOnly?: string;
+    planIssueCreateAndStart?: string;
+    planIssueCreateAndStartParallel?: string;
+    planIssueStartOrchestration?: string;
+    planIssueEstimatedCost?: string;
+    planIssueCostUnavailable?: string;
+    planIssueCostPartial?: string;
+    planIssueUnassigned?: string;
   };
 }
 

@@ -239,6 +239,14 @@ function activationInput(
 ): Parameters<AgentActivityRuntime["activateSession"]>[0] {
   const shared = {
     agentSessionId: command.agentSessionId,
+    ...(command.automationRuleOverride
+      ? {
+          automationRuleOverride: {
+            disabled: command.automationRuleOverride.disabled,
+            ruleIds: [...command.automationRuleOverride.ruleIds]
+          }
+        }
+      : {}),
     ...(command.cwd !== undefined ? { cwd: command.cwd } : {}),
     ...(command.initialContent
       ? { initialContent: [...command.initialContent] }

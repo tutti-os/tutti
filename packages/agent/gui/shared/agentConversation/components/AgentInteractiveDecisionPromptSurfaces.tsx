@@ -10,11 +10,15 @@ import {
 } from "../approvalOptionPresentation";
 import type { AgentConversationPromptVM } from "../contracts/agentConversationVM";
 import {
+  PLAN_IMPLEMENTATION_ACTION_CREATE_ISSUE,
   PLAN_IMPLEMENTATION_ACTION_FEEDBACK,
   PLAN_IMPLEMENTATION_ACTION_IMPLEMENT,
+  PLAN_IMPLEMENTATION_ACTION_ORCHESTRATE,
   PLAN_IMPLEMENTATION_ACTION_SKIP
 } from "../planImplementationPresentation";
+import type { PlanIssueDraft } from "../planImplementationPresentation";
 import type { AgentInteractivePromptSurfaceProps } from "./AgentInteractivePromptSurface";
+import { PlanIssueReviewSurface } from "./PlanIssueReviewSurface";
 import {
   approvalFeedbackOptionId,
   approvalOptionShortcutLabel,
@@ -466,6 +470,19 @@ export function PlanImplementationSurface({
 }) {
   "use memo";
   const [feedback, setFeedback] = useState("");
+  const [reviewDraftState, setReviewDraftState] = useState<{
+    draft: PlanIssueDraft | null;
+    requestId: string;
+  }>({ draft: prompt.issueDraft ?? null, requestId: prompt.requestId });
+  const [breakdownRequestId, setBreakdownRequestId] = useState<string | null>(
+    null
+  );
+  const autoBudgetRequestSequenceRef = useRef(0);
+  const agentHostApi = useOptionalAgentHostApi();
+  const issueDraft =
+    reviewDraftState.requestId === prompt.requestId
+      ? reviewDraftState.draft
+      : (prompt.issueDraft ?? null);
   const trimmed = feedback.trim();
   const continueLabel =
     trimmed === ""
@@ -475,6 +492,122 @@ export function PlanImplementationSurface({
   // Refining or staying in plan mode is deferred to the conversation, reachable
   // via the card's "open conversation" jump.
   const showFeedbackFooter = variant !== "compact";
+  const budgetStage = issueDraft?.stage === "budget";
+  const traditionalBudgetStage =
+    budgetStage && issueDraft?.planningSource === "traditional_plan";
+  const breakdownRequested = breakdownRequestId === prompt.requestId;
+  const canReviewIssue =
+    showFeedbackFooter &&
+    issueDraft !== null &&
+    (!traditionalBudgetStage || breakdownRequested);
+  const updateReviewDraft = (
+    updater: (draft: PlanIssueDraft) => PlanIssueDraft
+  ) => {
+    if (!issueDraft) return;
+    const nextDraft = updater(issueDraft);
+    setReviewDraftState({ draft: nextDraft, requestId: prompt.requestId });
+    const sequence = ++autoBudgetRequestSequenceRef.current;
+    const estimate = agentHostApi?.workspaceIssues?.estimateAutoTokenBudget;
+    if (!estimate || nextDraft.budget.mode !== "auto") return;
+    const request = planIssueAutoBudgetRequest(nextDraft);
+    const requestKey = JSON.stringify(request);
+    void Promise.resolve(estimate(request))
+      .then((result) => {
+        if (
+          sequence !== autoBudgetRequestSequenceRef.current ||
+          !Number.isSafeInteger(result.tokenLimit) ||
+          result.tokenLimit <= 0
+        ) {
+          return;
+        }
+        setReviewDraftState((current) => {
+          const currentDraft = current.draft;
+          if (
+            current.requestId !== prompt.requestId ||
+            !currentDraft ||
+            currentDraft.budget.mode !== "auto" ||
+            JSON.stringify(planIssueAutoBudgetRequest(currentDraft)) !==
+              requestKey ||
+            currentDraft.budget.tokenLimit === result.tokenLimit
+          ) {
+            return current;
+          }
+          return {
+            ...current,
+            draft: {
+              ...currentDraft,
+              budget: {
+                ...currentDraft.budget,
+                tokenLimit: result.tokenLimit
+              }
+            }
+          };
+        });
+      })
+      .catch(() => {
+        // The deterministic local compiler stays visible when an older host
+        // or a transient daemon failure cannot provide history calibration.
+      });
+  };
+  const showDirectImplement =
+    issueDraft === null || (traditionalBudgetStage && !breakdownRequested);
+  const reviewLabels = {
+    title: labels.planIssueReviewTitle ?? "Execution review",
+    reasoning: labels.planIssueReasoning ?? "Reasoning intensity",
+    orchestration: labels.planIssueOrchestration ?? "Orchestration intensity",
+    budgetAuto: labels.planIssueBudgetAuto ?? "Auto budget",
+    budgetFixed: labels.planIssueBudgetFixed ?? "Fixed budget",
+    tokenBudget: labels.planIssueTokenBudget ?? "Token budget",
+    taskPreview: labels.planIssueTaskPreview ?? "Task preview",
+    agentTarget: labels.planIssueAgentTarget ?? "Agent",
+    modelPlan: labels.planIssueModelPlan ?? "Model Plan",
+    model: labels.planIssueModel ?? "Model",
+    directory: labels.planIssueDirectory ?? "Directory",
+    dependencies: labels.planIssueDependencies ?? "Dependencies",
+    startOrchestration:
+      labels.planIssueStartOrchestration ?? "Start orchestration",
+    createOnly: labels.planIssueCreateOnly ?? "Create Issue",
+    createAndStart: labels.planIssueCreateAndStart ?? "Create and Start",
+    createAndStartParallel:
+      labels.planIssueCreateAndStartParallel ?? "Create and Start in Parallel",
+    estimatedCost:
+      labels.planIssueEstimatedCost ??
+      labels.planIssueTaskPreview ??
+      labels.planImplementationConfirm,
+    costUnavailable:
+      labels.planIssueCostUnavailable ?? labels.planImplementationConfirm,
+    costPartial:
+      labels.planIssueCostPartial ?? labels.planImplementationConfirm,
+    unassigned: labels.planIssueUnassigned ?? labels.planImplementationConfirm
+  };
+  const startOrchestration = () => {
+    if (!issueDraft || issueDraft.stage !== "budget") return;
+    onSubmit({
+      requestId: prompt.requestId,
+      action: PLAN_IMPLEMENTATION_ACTION_ORCHESTRATE,
+      payload: {
+        draft: issueDraft,
+        displayPrompt: reviewLabels.startOrchestration
+      }
+    });
+  };
+  const submitIssue = (
+    startExecution: boolean,
+    executionMode: "sequential" | "parallel" = "sequential"
+  ) => {
+    if (!issueDraft) return;
+    onSubmit({
+      requestId: prompt.requestId,
+      action: PLAN_IMPLEMENTATION_ACTION_CREATE_ISSUE,
+      payload: {
+        creationOptions: {
+          startExecution,
+          ...(startExecution ? { executionMode } : {}),
+          draft: issueDraft
+        }
+      }
+    });
+  };
 
   return (
     <section className={interactivePromptClassName(embedded)}>
@@ -483,22 +616,58 @@ export function PlanImplementationSurface({
           {stripPromptTitlePunctuation(labels.planImplementationLead)}
         </div>
         <div className={styles.interactivePromptOptions}>
-          <button
-            type="button"
-            className={styles.interactiveOptionButton}
-            data-testid="agent-plan-implementation-implement"
-            disabled={isSubmitting}
-            onClick={() =>
-              onSubmit({
-                requestId: prompt.requestId,
-                action: PLAN_IMPLEMENTATION_ACTION_IMPLEMENT
-              })
-            }
-          >
-            <span className={styles.interactiveOptionTitle}>
-              {labels.planImplementationConfirm}
-            </span>
-          </button>
+          {showDirectImplement ? (
+            <button
+              type="button"
+              className={styles.interactiveOptionButton}
+              data-testid="agent-plan-implementation-implement"
+              disabled={isSubmitting}
+              onClick={() =>
+                onSubmit({
+                  requestId: prompt.requestId,
+                  action: PLAN_IMPLEMENTATION_ACTION_IMPLEMENT
+                })
+              }
+            >
+              <span className={styles.interactiveOptionTitle}>
+                {labels.planImplementationConfirm}
+              </span>
+            </button>
+          ) : null}
+          {canReviewIssue ? (
+            <PlanIssueReviewSurface
+              disabled={isSubmitting}
+              draft={issueDraft}
+              assignmentCatalog={prompt.assignmentCatalog}
+              labels={reviewLabels}
+              onChange={updateReviewDraft}
+              onStartOrchestration={startOrchestration}
+              onCreate={submitIssue}
+            />
+          ) : (issueDraft === null || traditionalBudgetStage) &&
+            showFeedbackFooter &&
+            labels.planImplementationCreateIssue ? (
+            <button
+              type="button"
+              className={styles.interactiveOptionButton}
+              data-testid="agent-plan-implementation-create-issue"
+              disabled={isSubmitting}
+              onClick={() => {
+                if (issueDraft === null) {
+                  onSubmit({
+                    requestId: prompt.requestId,
+                    action: PLAN_IMPLEMENTATION_ACTION_CREATE_ISSUE
+                  });
+                  return;
+                }
+                setBreakdownRequestId(prompt.requestId);
+              }}
+            >
+              <span className={styles.interactiveOptionTitle}>
+                {labels.planImplementationCreateIssue}
+              </span>
+            </button>
+          ) : null}
         </div>
         {showFeedbackFooter ? (
           <div className={styles.interactivePromptFooter}>
@@ -534,4 +703,15 @@ export function PlanImplementationSurface({
       </div>
     </section>
   );
+}
+
+function planIssueAutoBudgetRequest(draft: PlanIssueDraft) {
+  return {
+    executionProfile: draft.executionProfile,
+    tasks: draft.tasks.map((task) => ({
+      ...(task.agentTargetId ? { agentTargetId: task.agentTargetId } : {}),
+      ...(task.modelPlanId ? { modelPlanId: task.modelPlanId } : {}),
+      ...(task.model ? { model: task.model } : {})
+    }))
+  };
 }

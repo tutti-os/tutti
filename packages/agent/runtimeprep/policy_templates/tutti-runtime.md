@@ -13,13 +13,14 @@
 
 ### Routes
 
-| URI                                                             | Skill            | Fallback CLI Command                                                                       |
-| --------------------------------------------------------------- | ---------------- | ------------------------------------------------------------------------------------------ |
-| `mention://workspace-issue/<issueId>?workspaceId=...`           | `$issue-manager` | `{{CLI_COMMAND}} issue get --issue-id <issue-id> --json`                                   |
-| `mention://workspace-app/<appId>?workspaceId=...`               | `$workspace-app` | match `App id: <appId>` in command guide                                                   |
-| `mention://workspace-reference/<id>?source=...&workspaceId=...` | `$reference`     | `{{CLI_COMMAND}} reference list --source <source> --id <id> [--group-id <groupId>] --json` |
-| `mention://agent-session/<sessionId>?workspaceId=...`           | `$tutti-handoff` | `{{CLI_COMMAND}} agent wait --session-id <session-id> --json`                              |
-| `mention://agent-target/<targetId>?workspaceId=...`             | `$tutti-handoff` | verify with `agent list`; hand off, do not do it yourself                                  |
+| URI                                                                   | Skill            | Fallback CLI Command                                                                                         |
+| --------------------------------------------------------------------- | ---------------- | ------------------------------------------------------------------------------------------------------------ |
+| `mention://workspace-issue/<issueId>?workspaceId=...`                 | `$issue-manager` | `{{CLI_COMMAND}} issue get --issue-id <issue-id> --json`                                                     |
+| `mention://workspace-app/<appId>?workspaceId=...`                     | `$workspace-app` | match `App id: <appId>` in command guide                                                                     |
+| `mention://workspace-reference/<id>?source=...&workspaceId=...`       | `$reference`     | `{{CLI_COMMAND}} reference list --source <source> --id <id> [--group-id <groupId>] --json`                   |
+| `mention://agent-session/<sessionId>?workspaceId=...`                 | `$tutti-handoff` | `{{CLI_COMMAND}} agent wait --session-id <session-id> --json`                                                |
+| `mention://agent-target/<targetId>?workspaceId=...`                   | `$tutti-handoff` | verify with `agent list`; hand off, do not do it yourself                                                    |
+| `mention://workspace-model/<modelId>?modelPlanId=...&workspaceId=...` | `$tutti-cli`     | `{{CLI_COMMAND}} agent consult --model-plan-id <modelPlanId> --model <modelId> --question <question> --json` |
 
 ### Rules
 
@@ -32,6 +33,8 @@
 - Do not skip skill because CLI command is listed.
 - Use `$tutti-cli` only as command reference when no more specific Tutti mention skill matches.
 - Agent handoff decisions (who executes, which task, follow-ups after a delegation) -> `$tutti-handoff`; `$tutti-cli` stays the command reference.
+- A model mention = "consult this model": run `{{CLI_COMMAND}} agent consult` with the mention's plan/model, use the reply as advice, and keep executing the task yourself. It is not a handoff and not a session launch.
+- Stronger advice: use `$tutti-cli` recommendations; consult; do not switch Session or claim unique best.
 
 {{PROVIDER_SPECIFIC_MENTION_ROUTING}}
 

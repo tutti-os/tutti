@@ -1,0 +1,40 @@
+export const zhCNAgentGuiCollaboration = {
+  collaborationCancel: "取消",
+  collaborationCancelFailed: "取消协作失败。",
+  collaborationRetry: "重试",
+  collaborationRetryFailed: "重试协作失败。",
+  collaborationRevise: "更换模型或 Agent",
+  collaborationReturnUser: "返回用户处理",
+  automationSessionLabel: "自动化",
+  automationSessionDefaults: "工作区默认规则",
+  automationSessionOff: "本会话关闭",
+  automationSessionSelectedCount: "已选择 {{count}} 条规则",
+  automationSessionSaveFailed: "更新本会话自动化规则失败。",
+  collaborationComposerTitle: "与 {{name}} 协作",
+  collaborationComposerModeLabel: "协作模式",
+  collaborationComposerModePlaceholder: "请选择必需的协作模式",
+  collaborationComposerModeRequired: "发送前请选择 Fork、委派或 Handoff。",
+  collaborationComposerContextLabel: "共享上下文",
+  collaborationComposerContextNone: "不共享",
+  collaborationComposerContextRecent: "最近内容（最多 12 条消息）",
+  collaborationComposerContextFull: "完整内容（最多 48 条消息）",
+  collaborationComposerContextPreview: "预览将共享的上下文（{{count}}）",
+  collaborationComposerContextLoading: "正在加载上下文预览…",
+  collaborationComposerContextEmpty: "没有选中的用户或 Agent 消息。",
+  collaborationComposerContextLoadFailed:
+    "无法加载上下文预览。请选择“不共享”或重试。",
+  collaborationComposerContextSupplementLabel: "补充上下文",
+  collaborationComposerContextSupplementPlaceholder:
+    "可选：给目标 Agent 的额外说明或上下文",
+  collaborationComposerNoSession: "请先打开一个来源会话，再与 Agent 协作。",
+  collaborationComposerUnavailable: "当前宿主尚不能启动 Agent 协作。",
+  collaborationComposerPolicyDenied: "Agent 所有者策略不允许委派。",
+  collaborationComposerSingleAgentOnly:
+    "每条消息只能 @ 一个 Agent，以便为每次协作明确选择模式和上下文。",
+  collaborationComposerAttachmentsUnsupported:
+    "Agent 直接协作暂不支持携带附件。请改用 @ 引用，或在发送前移除附件。",
+  collaborationComposerStartFailed: "启动 Agent 协作失败。",
+  collaborationComposerRetry: "重试",
+  collaborationComposerChooseAnotherMode: "改用其他模式",
+  collaborationComposerReturnToSession: "交还原会话"
+} as const;

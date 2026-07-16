@@ -7,6 +7,7 @@ import { workspaceAgentSessionStatus } from "@tutti-os/agent-activity-core";
 import { AGENT_CONTEXT_MENTION_PROVIDER_IDS } from "@tutti-os/agent-gui/context-mention-provider";
 import { resolveAgentGUIProviderCatalogIdentity } from "@tutti-os/agent-gui/provider-catalog";
 import { resolveAgentGUIProviderIdentity } from "@tutti-os/agent-gui/provider-identity";
+import type { AgentGUIAgent } from "@tutti-os/agent-gui";
 import type { ReferenceProvenanceFilter } from "@tutti-os/workspace-file-reference/contracts";
 import type {
   AgentTargetPresentation,
@@ -40,6 +41,7 @@ interface AgentSessionAtItem {
 }
 
 interface AgentTargetAtItem {
+  description?: string;
   displayName: string;
   iconUrl: string;
   provider: WorkspaceAgentProvider;
@@ -66,7 +68,8 @@ export function createAgentTargetAtContributor(contributorInput: {
               searchInput.abortSignal
             );
             if (searchInput.abortSignal?.aborted || !response) return [];
-            return agentTargetAtItemsFromTargets({
+            return agentTargetAtItemsFromDirectory({
+              agents: response.agents,
               agentProviderStatuses: contributorInput.agentProviderStatuses?.(),
               isTuttiAgentSwitchEnabled:
                 contributorInput.isTuttiAgentSwitchEnabled,
@@ -78,6 +81,7 @@ export function createAgentTargetAtContributor(contributorInput: {
           },
           getItemKey: (item) => item.targetId,
           getItemLabel: (item) => item.displayName,
+          getItemSubtitle: (item) => item.description ?? "",
           getItemIconUrl: (item) => item.iconUrl,
           toInsertResult(item) {
             return createDesktopRichTextMentionInsertResult({
@@ -86,7 +90,8 @@ export function createAgentTargetAtContributor(contributorInput: {
               scope: compactStringRecord({ workspaceId: item.workspaceId }),
               presentation: compactMentionPresentation({
                 agentProviderId: item.provider,
-                iconUrl: item.iconUrl
+                iconUrl: item.iconUrl,
+                subtitle: item.description ?? ""
               })
             });
           },
@@ -96,7 +101,8 @@ export function createAgentTargetAtContributor(contributorInput: {
             return resolveMentionSafely(async () => {
               const response = await contributorInput.agentsService?.load();
               if (!response) return null;
-              const item = agentTargetAtItemsFromTargets({
+              const item = agentTargetAtItemsFromDirectory({
+                agents: response.agents,
                 agentProviderStatuses:
                   contributorInput.agentProviderStatuses?.(),
                 isTuttiAgentSwitchEnabled:
@@ -158,6 +164,7 @@ export function createAgentSessionAtContributor(contributorInput: {
             return response.sessions.map((session) => {
               const agentTarget = resolveSessionAgentTarget(
                 session.agentTargetId,
+                agentDirectory?.agents,
                 agentDirectory?.agentTargets
               );
               return {
@@ -226,6 +233,7 @@ export function createAgentSessionAtContributor(contributorInput: {
               const session = detail.session;
               const agentTarget = resolveSessionAgentTarget(
                 session.agentTargetId,
+                agentDirectory?.agents,
                 agentDirectory?.agentTargets
               );
               return {
@@ -254,15 +262,120 @@ export function createAgentSessionAtContributor(contributorInput: {
 
 function resolveSessionAgentTarget(
   agentTargetId: string | null | undefined,
+  agents: readonly AgentGUIAgent[] | undefined,
   targets: readonly AgentTargetPresentation[] | undefined
 ): Pick<AgentTargetPresentation, "iconUrl" | "name"> | null {
   const targetId = agentTargetId?.trim() ?? "";
   if (!targetId) {
     return null;
   }
+  const agent = agents?.find(
+    (candidate) => candidate.agentTargetId.trim() === targetId
+  );
+  if (agent) {
+    return { iconUrl: agent.iconUrl, name: agent.name };
+  }
   return (
     targets?.find((target) => target.agentTargetId.trim() === targetId) ?? null
   );
+}
+
+function agentTargetAtItemsFromDirectory(input: {
+  agents: readonly AgentGUIAgent[];
+  agentProviderStatuses?: readonly AgentProviderStatus[];
+  isTuttiAgentSwitchEnabled?: () => boolean;
+  keyword: string;
+  maxResults?: number;
+  targets: readonly AgentTargetPresentation[];
+  workspaceId: string;
+}): AgentTargetAtItem[] {
+  const agentItems = agentTargetAtItemsFromAgents({
+    ...input,
+    maxResults: undefined
+  });
+  const targetItems = agentTargetAtItemsFromTargets({
+    ...input,
+    maxResults: undefined,
+    targets:
+      input.agents.length === 0
+        ? input.targets
+        : input.targets.filter(
+            (target) => target.launchRefType === "agent_extension"
+          )
+  });
+  const seen = new Set<string>();
+  const items = [...agentItems, ...targetItems]
+    .filter((item) => {
+      if (seen.has(item.targetId)) return false;
+      seen.add(item.targetId);
+      return true;
+    })
+    .sort(compareAgentTargetAtItems);
+  return input.maxResults === undefined
+    ? items
+    : items.slice(0, Math.max(0, input.maxResults));
+}
+
+function agentTargetAtItemsFromAgents(input: {
+  agents: readonly AgentGUIAgent[];
+  agentProviderStatuses?: readonly AgentProviderStatus[];
+  isTuttiAgentSwitchEnabled?: () => boolean;
+  keyword: string;
+  maxResults?: number;
+  workspaceId: string;
+}): AgentTargetAtItem[] {
+  const keyword = input.keyword.trim().toLowerCase();
+  const items = input.agents
+    .filter((agent) => agent.availability.status === "ready")
+    .map((agent, sortOrder): AgentTargetAtItem | null => {
+      const identity = resolveAgentGUIProviderCatalogIdentity(agent.provider);
+      const provider = agent.provider.trim() as WorkspaceAgentProvider;
+      if (!provider) return null;
+      if (
+        identity?.desktop.visibilityGate === "tutti_agent" &&
+        input.isTuttiAgentSwitchEnabled?.() !== true
+      ) {
+        return null;
+      }
+      if (
+        identity &&
+        input.agentProviderStatuses !== undefined &&
+        !input.agentProviderStatuses.some(
+          (status) =>
+            status.provider === provider &&
+            status.availability.status === "ready"
+        )
+      ) {
+        return null;
+      }
+      const targetId = agent.agentTargetId.trim();
+      if (!targetId) return null;
+      const label =
+        normalizeText(agent.name) ?? resolveAgentSessionProviderLabel(provider);
+      const description = normalizeText(agent.description) ?? "";
+      return {
+        description: description === label ? "" : description,
+        displayName: label,
+        iconUrl: agent.iconUrl,
+        provider,
+        sortOrder,
+        targetId,
+        workspaceId: input.workspaceId
+      };
+    })
+    .filter((item): item is AgentTargetAtItem => item !== null)
+    .filter((item) =>
+      !keyword
+        ? true
+        : [item.targetId, item.provider, item.displayName, item.description]
+            .join("\n")
+            .toLowerCase()
+            .includes(keyword)
+    )
+    .sort(compareAgentTargetAtItems);
+  return input.maxResults === undefined
+    ? items
+    : items.slice(0, Math.max(0, input.maxResults));
 }
 
 function agentTargetAtItemsFromTargets(input: {
@@ -279,14 +392,11 @@ function agentTargetAtItemsFromTargets(input: {
     .map((target): AgentTargetAtItem | null => {
       const identity = resolveAgentGUIProviderCatalogIdentity(target.provider);
       const provider = target.provider.trim() as WorkspaceAgentProvider;
-      if (!provider) return null;
+      if (!provider || target.availability.status !== "ready") return null;
       if (
         identity?.desktop.visibilityGate === "tutti_agent" &&
         input.isTuttiAgentSwitchEnabled?.() !== true
       ) {
-        return null;
-      }
-      if (target.availability.status !== "ready") {
         return null;
       }
       if (
@@ -323,18 +433,23 @@ function agentTargetAtItemsFromTargets(input: {
             .toLowerCase()
             .includes(keyword)
     )
-    .sort((left, right) => {
-      return (
-        left.sortOrder - right.sortOrder ||
-        left.displayName.localeCompare(right.displayName, undefined, {
-          sensitivity: "base"
-        }) ||
-        left.targetId.localeCompare(right.targetId)
-      );
-    });
+    .sort(compareAgentTargetAtItems);
   return input.maxResults === undefined
     ? items
     : items.slice(0, Math.max(0, input.maxResults));
+}
+
+function compareAgentTargetAtItems(
+  left: AgentTargetAtItem,
+  right: AgentTargetAtItem
+): number {
+  return (
+    left.sortOrder - right.sortOrder ||
+    left.displayName.localeCompare(right.displayName, undefined, {
+      sensitivity: "base"
+    }) ||
+    left.targetId.localeCompare(right.targetId)
+  );
 }
 
 function metadataString(

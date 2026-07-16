@@ -2,6 +2,7 @@ import {
   type AgentActivityAdapter,
   type AgentActivityGoalControlResult,
   type AgentActivityMessagePage,
+  type AgentActivityModelPlanSummary,
   type AgentActivitySession,
   type AgentSessionEngine,
   type AgentActivitySnapshot
@@ -15,10 +16,12 @@ import type {
   TuttidEventStreamClient
 } from "@tutti-os/client-tuttid-ts";
 import {
+  cancelCollaborationRun,
   createClient,
   createCollaborationRun,
   listModelPlans as listModelPlansRequest,
   normalizeTuttidError,
+  retryCollaborationRun,
   setCollaborationRunAdoption
 } from "@tutti-os/client-tuttid-ts";
 import type { DesktopHostFilesApi, DesktopRuntimeApi } from "@preload/types";
@@ -486,11 +489,13 @@ export class WorkspaceAgentActivityService
         workspaceId,
         agentSessionId: requestedAgentSessionId,
         agentTargetId: input.agentTargetId,
+        automationRuleOverride: input.automationRuleOverride ?? null,
         cwd: resolvedCwd?.cwd ?? null,
         initialContent: input.initialContent ?? [],
         initialDisplayPrompt: input.initialDisplayPrompt ?? null,
         submitDiagnostics: input.submitDiagnostics,
         model: input.settings?.model ?? null,
+        modelPlanId: input.settings?.modelPlanId ?? null,
         planMode: input.settings?.planMode ?? null,
         permissionModeId: resolveComposerPermissionMode(input.settings),
         reasoningEffort: input.settings?.reasoningEffort ?? null,
@@ -636,6 +641,37 @@ export class WorkspaceAgentActivityService
     );
   }
 
+  async startAgentCollaboration(
+    input: Parameters<
+      NonNullable<IWorkspaceAgentActivityService["startAgentCollaboration"]>
+    >[0]
+  ): ReturnType<
+    NonNullable<IWorkspaceAgentActivityService["startAgentCollaboration"]>
+  > {
+    const workspaceId = normalizeWorkspaceId(input.workspaceId);
+    const client = await this.resolveCollaborationClient();
+    const response = await createCollaborationRun({
+      body: {
+        contextScope: input.contextScope,
+        contextText: input.contextText?.trim() || undefined,
+        mode: input.mode,
+        model: input.model?.trim() || undefined,
+        modelPlanId: input.modelPlanId?.trim() || undefined,
+        question: input.question,
+        sourceSessionId: input.agentSessionId,
+        targetAgentTargetId: input.targetAgentTargetId,
+        triggerReason: input.triggerReason?.trim() || "composer_agent_mention",
+        triggerSource: "user"
+      },
+      client,
+      path: { workspaceID: workspaceId },
+      signal: input.signal
+    });
+    return agentActivityCollaborationRunFromTuttid(
+      unwrapCollaborationData(response, "Agent collaboration request failed.")
+    );
+  }
+
   async setCollaborationAdoption(
     input: Parameters<
       NonNullable<IWorkspaceAgentActivityService["setCollaborationAdoption"]>
@@ -662,6 +698,50 @@ export class WorkspaceAgentActivityService
     );
   }
 
+  async cancelCollaboration(
+    input: Parameters<
+      NonNullable<IWorkspaceAgentActivityService["cancelCollaboration"]>
+    >[0]
+  ): ReturnType<
+    NonNullable<IWorkspaceAgentActivityService["cancelCollaboration"]>
+  > {
+    const workspaceId = normalizeWorkspaceId(input.workspaceId);
+    const client = await this.resolveCollaborationClient();
+    const response = await cancelCollaborationRun({
+      client,
+      path: {
+        collaborationRunID: input.runId,
+        workspaceID: workspaceId
+      },
+      signal: input.signal
+    });
+    return agentActivityCollaborationRunFromTuttid(
+      unwrapCollaborationData(response, "Collaboration cancel request failed.")
+    );
+  }
+
+  async retryCollaboration(
+    input: Parameters<
+      NonNullable<IWorkspaceAgentActivityService["retryCollaboration"]>
+    >[0]
+  ): ReturnType<
+    NonNullable<IWorkspaceAgentActivityService["retryCollaboration"]>
+  > {
+    const workspaceId = normalizeWorkspaceId(input.workspaceId);
+    const client = await this.resolveCollaborationClient();
+    const response = await retryCollaborationRun({
+      client,
+      path: {
+        collaborationRunID: input.runId,
+        workspaceID: workspaceId
+      },
+      signal: input.signal
+    });
+    return agentActivityCollaborationRunFromTuttid(
+      unwrapCollaborationData(response, "Collaboration retry request failed.")
+    );
+  }
+
   async listModelPlans(
     input: Parameters<
       NonNullable<IWorkspaceAgentActivityService["listModelPlans"]>
@@ -679,6 +759,70 @@ export class WorkspaceAgentActivityService
       "Model plans request failed."
     ).plans;
     return { plans: plans.map(agentActivityModelPlanSummaryFromTuttid) };
+  }
+
+  async listAutomationRules(
+    input: Parameters<
+      NonNullable<IWorkspaceAgentActivityService["listAutomationRules"]>
+    >[0]
+  ): ReturnType<
+    NonNullable<IWorkspaceAgentActivityService["listAutomationRules"]>
+  > {
+    const workspaceId = normalizeWorkspaceId(input.workspaceId);
+    const response =
+      await this.dependencies.tuttidClient.listAutomationRules(workspaceId);
+    return {
+      rules: response.rules.map((rule) => ({
+        id: rule.id,
+        name: rule.name,
+        enabled: rule.enabled,
+        trigger: rule.trigger,
+        action: rule.action
+      }))
+    };
+  }
+
+  async getAutomationRuleOverride(
+    input: Parameters<
+      NonNullable<IWorkspaceAgentActivityService["getAutomationRuleOverride"]>
+    >[0]
+  ): ReturnType<
+    NonNullable<IWorkspaceAgentActivityService["getAutomationRuleOverride"]>
+  > {
+    const workspaceId = normalizeWorkspaceId(input.workspaceId);
+    const override =
+      await this.dependencies.tuttidClient.getAgentSessionAutomationRuleOverride(
+        workspaceId,
+        input.agentSessionId
+      );
+    return {
+      agentSessionId: override.agentSessionId,
+      workspaceId: override.workspaceId,
+      disabled: override.disabled,
+      ruleIds: [...override.ruleIds]
+    };
+  }
+
+  async setAutomationRuleOverride(
+    input: Parameters<
+      NonNullable<IWorkspaceAgentActivityService["setAutomationRuleOverride"]>
+    >[0]
+  ): ReturnType<
+    NonNullable<IWorkspaceAgentActivityService["setAutomationRuleOverride"]>
+  > {
+    const workspaceId = normalizeWorkspaceId(input.workspaceId);
+    const override =
+      await this.dependencies.tuttidClient.setAgentSessionAutomationRuleOverride(
+        workspaceId,
+        input.agentSessionId,
+        { disabled: input.disabled, ruleIds: [...input.ruleIds] }
+      );
+    return {
+      agentSessionId: override.agentSessionId,
+      workspaceId: override.workspaceId,
+      disabled: override.disabled,
+      ruleIds: [...override.ruleIds]
+    };
   }
 
   private async resolveCollaborationClient(): Promise<Client> {
@@ -910,15 +1054,19 @@ function unwrapCollaborationData<TResult>(
 
 function agentActivityCollaborationRunFromTuttid(run: CollaborationRun): {
   adoption: CollaborationRun["adoption"];
+  attempt: number;
   completedAtUnixMs: number | null;
   contextScope: string | null;
   durationMs: number | null;
+  cost: { currency: string; estimatedMicros: number } | null;
   failureReason: string | null;
+  failureStage: string | null;
   id: string;
   mode: CollaborationRun["mode"];
   model: string | null;
   modelPlanId: string | null;
   resultText: string | null;
+  retryOfRunId: string | null;
   sourceSessionId: string | null;
   startedAtUnixMs: number | null;
   status: CollaborationRun["status"];
@@ -926,20 +1074,34 @@ function agentActivityCollaborationRunFromTuttid(run: CollaborationRun): {
   targetSessionId: string | null;
   triggerReason: string | null;
   triggerSource: CollaborationRun["triggerSource"];
-  usage: { inputTokens: number; outputTokens: number } | null;
+  usage: {
+    inputTokens: number;
+    outputTokens: number;
+    cacheReadTokens: number;
+    cacheWriteTokens: number;
+  } | null;
   workspaceId: string;
 } {
   return {
     adoption: run.adoption,
+    attempt: run.attempt,
     completedAtUnixMs: unixMsFromIsoTimestamp(run.completedAt),
     contextScope: run.contextScope ?? null,
     durationMs: run.durationMs ?? null,
+    cost: run.cost
+      ? {
+          currency: run.cost.currency,
+          estimatedMicros: run.cost.estimatedMicros
+        }
+      : null,
     failureReason: run.failureReason ?? null,
+    failureStage: run.failureStage ?? null,
     id: run.id,
     mode: run.mode,
     model: run.model ?? null,
     modelPlanId: run.modelPlanId ?? null,
     resultText: run.resultText ?? null,
+    retryOfRunId: run.retryOfRunId ?? null,
     sourceSessionId: run.sourceSessionId ?? null,
     startedAtUnixMs: unixMsFromIsoTimestamp(run.startedAt),
     status: run.status,
@@ -950,27 +1112,30 @@ function agentActivityCollaborationRunFromTuttid(run: CollaborationRun): {
     usage: run.usage
       ? {
           inputTokens: run.usage.inputTokens,
-          outputTokens: run.usage.outputTokens
+          outputTokens: run.usage.outputTokens,
+          cacheReadTokens: run.usage.cacheReadTokens,
+          cacheWriteTokens: run.usage.cacheWriteTokens
         }
       : null,
     workspaceId: run.workspaceId
   };
 }
 
-function agentActivityModelPlanSummaryFromTuttid(plan: ModelPlan): {
-  defaultModel: string | null;
-  enabled: boolean;
-  id: string;
-  models: Array<{ id: string; name: string }>;
-  name: string;
-  protocol: string;
-  status: string;
-} {
+function agentActivityModelPlanSummaryFromTuttid(
+  plan: ModelPlan
+): AgentActivityModelPlanSummary {
   return {
+    billingMode: plan.billingMode,
     defaultModel: plan.defaultModel ?? null,
     enabled: plan.enabled,
     id: plan.id,
-    models: plan.models.map((model) => ({ id: model.id, name: model.name })),
+    models: plan.models.map((model) => ({
+      id: model.id,
+      name: model.name,
+      tier: model.tier,
+      capabilities: [...(model.capabilities ?? [])],
+      pricing: model.pricing ?? null
+    })),
     name: plan.name,
     protocol: plan.protocol,
     status: plan.status

@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	eventsgenerated "github.com/tutti-os/tutti/services/tuttid/api/events/generated"
 	collabrunbiz "github.com/tutti-os/tutti/services/tuttid/biz/collabrun"
 )
 
@@ -42,24 +43,26 @@ func TestAgentCollaborationPublisherPublishesRunPayload(t *testing.T) {
 	if event.Topic != TopicAgentCollaborationUpdated {
 		t.Fatalf("event topic = %q, want %q", event.Topic, TopicAgentCollaborationUpdated)
 	}
-	var payload agentCollaborationUpdatedPayload
+	var payload eventsgenerated.AgentCollaborationUpdatedPayload
 	if err := json.Unmarshal(event.Payload, &payload); err != nil {
 		t.Fatalf("unmarshal payload: %v", err)
 	}
-	if payload.WorkspaceID != "ws-1" || payload.RunID != "cr-1" {
-		t.Fatalf("payload identity = %q/%q, want ws-1/cr-1", payload.WorkspaceID, payload.RunID)
+	if payload.WorkspaceId != "ws-1" || payload.RunId != "cr-1" {
+		t.Fatalf("payload identity = %q/%q, want ws-1/cr-1", payload.WorkspaceId, payload.RunId)
 	}
 	if payload.Mode != "consult" || payload.Status != "completed" || payload.TriggerSource != "user" {
 		t.Fatalf("payload = %#v, want consult/completed/user", payload)
 	}
-	if payload.SourceSessionID != "session-1" || payload.ModelPlanID != "mp-1" || payload.Model != "fake-mini" {
+	if payload.SourceSessionId == nil || *payload.SourceSessionId != "session-1" ||
+		payload.ModelPlanId == nil || *payload.ModelPlanId != "mp-1" ||
+		payload.Model == nil || *payload.Model != "fake-mini" {
 		t.Fatalf("payload references = %#v", payload)
 	}
-	if payload.Adoption != "pending" {
-		t.Fatalf("payload adoption = %q, want pending", payload.Adoption)
+	if payload.Adoption == nil || *payload.Adoption != "pending" {
+		t.Fatalf("payload adoption = %#v, want pending", payload.Adoption)
 	}
-	if payload.OccurredAtUnixMS != 1_720_000_000_000 {
-		t.Fatalf("payload occurredAtUnixMs = %d, want 1720000000000", payload.OccurredAtUnixMS)
+	if payload.OccurredAtUnixMs != 1_720_000_000_000 {
+		t.Fatalf("payload occurredAtUnixMs = %d, want 1720000000000", payload.OccurredAtUnixMs)
 	}
 }
 
@@ -101,9 +104,14 @@ func TestAgentCollaborationUpdatedValidationRejectsBadPayloads(t *testing.T) {
 	}
 
 	if err := validateAgentCollaborationUpdatedPayload(
-		[]byte(`{"workspaceId":"ws","runId":"cr-1","mode":"fork","status":"completed","sourceSessionId":"s1","targetSessionId":"s2","modelPlanId":"mp-1","model":"m1","triggerSource":"agent","adoption":"not_applicable","occurredAtUnixMs":1000}`),
+		[]byte(`{"workspaceId":"ws","runId":"cr-1","mode":"fork","status":"completed","sourceSessionId":"s1","targetSessionId":"s2","modelPlanId":"mp-1","model":"m1","triggerSource":"automation","adoption":"not_applicable","occurredAtUnixMs":1000}`),
 	); err != nil {
 		t.Fatalf("valid payload rejected: %v", err)
+	}
+	if err := validateAgentCollaborationUpdatedPayload(
+		[]byte(`{"workspaceId":"ws","runId":"cr-1","mode":"fork","status":"completed","triggerSource":"automation","occurredAtUnixMs":0}`),
+	); err != nil {
+		t.Fatalf("zero schema-minimum timestamp rejected: %v", err)
 	}
 }
 
@@ -113,18 +121,18 @@ func TestAgentCollaborationUpdatedValidationRejectsBadPayloads(t *testing.T) {
 func TestAgentCollaborationPublisherPayloadPassesCatalogValidation(t *testing.T) {
 	t.Parallel()
 
-	payload, err := json.Marshal(agentCollaborationUpdatedPayload{
-		WorkspaceID:      "ws-1",
-		RunID:            "cr-1",
+	payload, err := json.Marshal(eventsgenerated.AgentCollaborationUpdatedPayload{
+		WorkspaceId:      "ws-1",
+		RunId:            "cr-1",
 		Mode:             string(collabrunbiz.ModeConsult),
 		Status:           string(collabrunbiz.StatusFailed),
-		SourceSessionID:  "session-1",
-		TargetSessionID:  "session-2",
-		ModelPlanID:      "mp-1",
-		Model:            "fake-mini",
+		SourceSessionId:  optionalEventString("session-1"),
+		TargetSessionId:  optionalEventString("session-2"),
+		ModelPlanId:      optionalEventString("mp-1"),
+		Model:            optionalEventString("fake-mini"),
 		TriggerSource:    string(collabrunbiz.TriggerPolicy),
-		Adoption:         string(collabrunbiz.AdoptionRejected),
-		OccurredAtUnixMS: 1_720_000_000_000,
+		Adoption:         optionalEventString(string(collabrunbiz.AdoptionRejected)),
+		OccurredAtUnixMs: 1_720_000_000_000,
 	})
 	if err != nil {
 		t.Fatalf("marshal payload: %v", err)

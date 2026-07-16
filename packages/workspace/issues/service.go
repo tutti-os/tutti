@@ -33,12 +33,28 @@ type Service struct {
 }
 
 type CreateIssueInput struct {
-	IssueID     string
-	TopicID     string
-	WorkspaceID string
-	ActorUserID string
-	Title       string
-	Content     string
+	IssueID             string
+	TopicID             string
+	WorkspaceID         string
+	ActorUserID         string
+	Title               string
+	Content             string
+	PlanningSource      string
+	SourceSessionID     string
+	SequentialExecution bool
+	ParallelExecution   bool
+	ExecutionProfile    ExecutionProfile
+	HasExecutionProfile bool
+	Budget              Budget
+	HasBudget           bool
+	// AutoTokenBudgetHistoryHint is the summed observed usage of comparable
+	// completed task runs. It is ignored for fixed budgets.
+	AutoTokenBudgetHistoryHint int64
+}
+
+type CreateIssueWithTasksInput struct {
+	Issue CreateIssueInput
+	Tasks []CreateTaskItemInput
 }
 
 type CreateTopicInput struct {
@@ -62,34 +78,50 @@ type UpdateTopicInput struct {
 }
 
 type UpdateIssueInput struct {
-	IssueID     string
-	WorkspaceID string
-	ActorUserID string
-	Title       string
-	HasTitle    bool
-	Content     string
-	HasContent  bool
-	Status      string
-	HasStatus   bool
+	IssueID             string
+	WorkspaceID         string
+	ActorUserID         string
+	Title               string
+	HasTitle            bool
+	Content             string
+	HasContent          bool
+	Status              string
+	HasStatus           bool
+	DispatchPaused      bool
+	HasDispatchPaused   bool
+	ExecutionProfile    ExecutionProfile
+	HasExecutionProfile bool
+	Budget              Budget
+	HasBudget           bool
 }
 
 type CreateTaskInput struct {
-	TaskID      string
-	IssueID     string
-	WorkspaceID string
-	ActorUserID string
-	Title       string
-	Content     string
-	Priority    string
-	DueAtUnixMS int64
+	TaskID             string
+	IssueID            string
+	WorkspaceID        string
+	ActorUserID        string
+	Title              string
+	Content            string
+	Priority           string
+	DueAtUnixMS        int64
+	AgentTargetID      string
+	ModelPlanID        string
+	Model              string
+	ExecutionDirectory string
+	DependencyTaskIDs  []string
 }
 
 type CreateTaskItemInput struct {
-	TaskID      string
-	Title       string
-	Content     string
-	Priority    string
-	DueAtUnixMS int64
+	TaskID             string
+	Title              string
+	Content            string
+	Priority           string
+	DueAtUnixMS        int64
+	AgentTargetID      string
+	ModelPlanID        string
+	Model              string
+	ExecutionDirectory string
+	DependencyTaskIDs  []string
 }
 
 type CreateTasksInput struct {
@@ -100,22 +132,36 @@ type CreateTasksInput struct {
 }
 
 type UpdateTaskInput struct {
-	TaskID       string
-	IssueID      string
-	WorkspaceID  string
-	ActorUserID  string
-	Title        string
-	HasTitle     bool
-	Content      string
-	HasContent   bool
-	Status       string
-	HasStatus    bool
-	Priority     string
-	HasPriority  bool
-	DueAtUnixMS  int64
-	HasDueAt     bool
-	SortIndex    int
-	HasSortIndex bool
+	TaskID                string
+	IssueID               string
+	WorkspaceID           string
+	ActorUserID           string
+	Title                 string
+	HasTitle              bool
+	Content               string
+	HasContent            bool
+	Status                string
+	HasStatus             bool
+	Priority              string
+	HasPriority           bool
+	DueAtUnixMS           int64
+	HasDueAt              bool
+	SortIndex             int
+	HasSortIndex          bool
+	AgentTargetID         string
+	HasAgentTargetID      bool
+	ModelPlanID           string
+	HasModelPlanID        bool
+	Model                 string
+	HasModel              bool
+	ExecutionDirectory    string
+	HasExecutionDirectory bool
+	DependencyTaskIDs     []string
+	HasDependencyTaskIDs  bool
+	AcceptanceState       string
+	HasAcceptanceState    bool
+	AcceptanceSummary     string
+	HasAcceptanceSummary  bool
 }
 
 type CreateRunInput struct {
@@ -129,6 +175,8 @@ type CreateRunInput struct {
 	AgentUserID        string
 	AgentSessionID     string
 	ExecutionDirectory string
+	ModelPlanID        string
+	Model              string
 }
 
 type CompleteRunOutputInput struct {
@@ -140,15 +188,19 @@ type CompleteRunOutputInput struct {
 }
 
 type CompleteRunInput struct {
-	RunID        string
-	TaskID       string
-	IssueID      string
-	WorkspaceID  string
-	ActorUserID  string
-	Status       string
-	Summary      string
-	ErrorMessage string
-	Outputs      []CompleteRunOutputInput
+	RunID                    string
+	TaskID                   string
+	IssueID                  string
+	WorkspaceID              string
+	ActorUserID              string
+	Status                   string
+	Summary                  string
+	ErrorMessage             string
+	Outputs                  []CompleteRunOutputInput
+	Usage                    TokenUsage
+	Cost                     Cost
+	RemainingQuotaPercent    float64
+	HasRemainingQuotaPercent bool
 }
 
 type AddContextRefsInput struct {
@@ -250,13 +302,7 @@ func (s Service) CreateRun(ctx context.Context, input CreateRunInput) (Run, erro
 	actorUserID := strings.TrimSpace(input.ActorUserID)
 	agentTargetID := strings.TrimSpace(input.AgentTargetID)
 	agentProvider := strings.ToLower(strings.TrimSpace(input.AgentProvider))
-	if agentTargetID == "" {
-		agentTargetID = legacyAgentTargetIDForProvider(agentProvider)
-	}
-	if agentProvider == "" {
-		agentProvider = agentProviderForAgentTargetID(agentTargetID)
-	}
-	if workspaceID == "" || issueID == "" || actorUserID == "" || agentTargetID == "" {
+	if workspaceID == "" || issueID == "" || actorUserID == "" {
 		return Run{}, ErrInvalidArgument
 	}
 	issue, task, err := getRunParent(ctx, store, workspaceID, issueID, taskID)
@@ -270,6 +316,31 @@ func (s Service) CreateRun(ctx context.Context, input CreateRunInput) (Run, erro
 		}
 		taskID = task.TaskID
 	}
+	if !IssueBudgetAllowsNextAutomaticRun(issue) {
+		return Run{}, ErrIssueBudgetSoftLimited
+	}
+	if !taskDependenciesAccepted(ctx, store, workspaceID, issueID, *task) {
+		return Run{}, ErrTaskDependenciesIncomplete
+	}
+	if agentTargetID == "" {
+		agentTargetID = strings.TrimSpace(task.AgentTargetID)
+	}
+	if agentTargetID == "" {
+		agentTargetID = legacyAgentTargetIDForProvider(agentProvider)
+	}
+	if agentProvider == "" {
+		agentProvider = agentProviderForAgentTargetID(agentTargetID)
+	}
+	if agentTargetID == "" {
+		return Run{}, ErrInvalidArgument
+	}
+	modelPlanID := firstNonEmpty(input.ModelPlanID, task.ModelPlanID)
+	model := firstNonEmpty(input.Model, task.Model)
+	reasoningIntensity := issue.ExecutionProfile.ReasoningIntensity
+	if reasoningIntensity < 0 || reasoningIntensity > 100 {
+		return Run{}, ErrInvalidArgument
+	}
+	executionDirectory := firstNonEmpty(input.ExecutionDirectory, task.ExecutionDirectory)
 	now := s.nowUnixMS()
 	resolvedRunID := s.resolveID(IDKindRun, input.RunID)
 	run := Run{
@@ -280,10 +351,14 @@ func (s Service) CreateRun(ctx context.Context, input CreateRunInput) (Run, erro
 		RequesterUserID:    actorUserID,
 		AgentTargetID:      agentTargetID,
 		AgentProvider:      agentProvider,
+		ModelPlanID:        modelPlanID,
+		Model:              model,
+		ReasoningIntensity: reasoningIntensity,
 		AgentUserID:        firstNonEmpty(input.AgentUserID, actorUserID),
 		AgentSessionID:     strings.TrimSpace(input.AgentSessionID),
 		Status:             StatusRunning,
-		ExecutionDirectory: strings.TrimSpace(input.ExecutionDirectory),
+		ExecutionDirectory: executionDirectory,
+		Cost:               Cost{Currency: "USD"},
 		CreatedAtUnixMS:    now,
 		StartedAtUnixMS:    now,
 		UpdatedAtUnixMS:    now,
@@ -291,14 +366,8 @@ func (s Service) CreateRun(ctx context.Context, input CreateRunInput) (Run, erro
 	if run.RunID == "" {
 		return Run{}, ErrInvalidArgument
 	}
-	created, err := store.CreateRun(ctx, run)
+	created, err := store.ClaimTaskRun(ctx, run)
 	if err != nil {
-		return Run{}, err
-	}
-	task.Status = StatusRunning
-	task.LatestRunID = created.RunID
-	task.UpdatedAtUnixMS = now
-	if _, err := store.UpdateTask(ctx, *task); err != nil {
 		return Run{}, err
 	}
 	if _, err := store.RecalculateIssueProjection(ctx, workspaceID, issueID); err != nil {
@@ -308,6 +377,19 @@ func (s Service) CreateRun(ctx context.Context, input CreateRunInput) (Run, erro
 		return Run{}, err
 	}
 	return created, nil
+}
+
+func taskDependenciesAccepted(ctx context.Context, store Store, workspaceID string, issueID string, task Task) bool {
+	if len(task.DependencyTaskIDs) == 0 {
+		return true
+	}
+	for _, dependencyID := range task.DependencyTaskIDs {
+		dependency, err := store.GetTask(ctx, workspaceID, issueID, dependencyID)
+		if err != nil || dependency.Status != StatusCompleted || dependency.AcceptanceState != AcceptanceUserAccepted {
+			return false
+		}
+	}
+	return true
 }
 
 func legacyAgentTargetIDForProvider(provider string) string {
@@ -348,6 +430,7 @@ func (s Service) ensureIssueRunTask(ctx context.Context, store Store, issue Issu
 		Title:           strings.TrimSpace(issue.Title),
 		Status:          StatusNotStarted,
 		Priority:        PriorityMedium,
+		AcceptanceState: AcceptanceAgentClaimed,
 		CreatorUserID:   actorUserID,
 		CreatedAtUnixMS: now,
 		UpdatedAtUnixMS: now,
@@ -395,6 +478,17 @@ func (s Service) CompleteRun(ctx context.Context, input CompleteRunInput) (Run, 
 	}
 	status, ok := NormalizeRunCompletionStatus(input.Status)
 	if !ok {
+		return Run{}, nil, ErrInvalidArgument
+	}
+	usage, ok := NormalizeTokenUsage(input.Usage)
+	if !ok {
+		return Run{}, nil, ErrInvalidArgument
+	}
+	cost, ok := NormalizeCost(input.Cost)
+	if !ok {
+		return Run{}, nil, ErrInvalidArgument
+	}
+	if input.HasRemainingQuotaPercent && (input.RemainingQuotaPercent < 0 || input.RemainingQuotaPercent > 100) {
 		return Run{}, nil, ErrInvalidArgument
 	}
 	if taskID == "" {
@@ -450,6 +544,8 @@ func (s Service) CompleteRun(ctx context.Context, input CompleteRunInput) (Run, 
 		})
 	}
 	run.Status = status
+	run.Usage = usage
+	run.Cost = cost
 	run.Summary = strings.TrimSpace(input.Summary)
 	run.ErrorMessage = strings.TrimSpace(input.ErrorMessage)
 	run.CompletedAtUnixMS = now
@@ -460,20 +556,50 @@ func (s Service) CompleteRun(ctx context.Context, input CompleteRunInput) (Run, 
 	}
 	if task != nil {
 		task.Status = TaskStatusForCompletedRun(status)
+		if status == StatusCompleted {
+			// A successful executor turn is the Agent's completion claim. It is
+			// not evidence that an independent automated Review passed.
+			task.AcceptanceState = AcceptanceAgentClaimed
+			task.AcceptanceSummary = strings.TrimSpace(input.Summary)
+		} else {
+			task.AcceptanceState = AcceptanceAgentClaimed
+		}
 		task.LatestRunID = completed.RunID
 		task.UpdatedAtUnixMS = now
 		if _, err := store.UpdateTask(ctx, *task); err != nil {
 			return Run{}, nil, err
 		}
-		if _, err := store.RecalculateIssueProjection(ctx, workspaceID, issueID); err != nil {
+		projected, err := store.RecalculateIssueProjection(ctx, workspaceID, issueID)
+		if err != nil {
 			return Run{}, nil, err
 		}
+		issue = projected
 	} else {
 		issue.Status = TaskStatusForCompletedRun(status)
 		issue.UpdatedAtUnixMS = now
 		if _, err := store.UpdateIssue(ctx, issue); err != nil {
 			return Run{}, nil, err
 		}
+	}
+	issue.Budget.ConsumedTokens += usage.Total()
+	if input.HasRemainingQuotaPercent {
+		issue.Budget.RemainingQuotaPercent = input.RemainingQuotaPercent
+		issue.Budget.HasRemainingQuota = true
+	}
+	if issue.Budget.TokenLimit > 0 && issue.Budget.ConsumedTokens >= issue.Budget.TokenLimit {
+		issue.Budget.Status = BudgetStatusSoftLimited
+	}
+	if issue.Budget.HasRemainingQuota && issue.Budget.RemainingQuotaPercent <= issue.Budget.QuotaWaterlinePercent {
+		issue.Budget.Status = BudgetStatusSoftLimited
+	}
+	issue.Cost.EstimatedMicros += cost.EstimatedMicros
+	issue.Cost.ActualMicros += cost.ActualMicros
+	if issue.Cost.Currency == "" {
+		issue.Cost.Currency = cost.Currency
+	}
+	issue.UpdatedAtUnixMS = now
+	if _, err := store.UpdateIssue(ctx, issue); err != nil {
+		return Run{}, nil, err
 	}
 	if err := store.TouchTopicActivity(ctx, workspaceID, issue.TopicID, now); err != nil {
 		return Run{}, nil, err

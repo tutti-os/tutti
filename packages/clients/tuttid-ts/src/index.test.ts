@@ -17,7 +17,9 @@ import {
   type CreateWorkspaceAgentSessionRequest,
   type IssueManagerReferenceSearchResponse,
   type ListAgentTargetsResponse,
+  type ListAutomationRulesResponse,
   type ListWorkspacesResponse,
+  type PutAutomationRuleRequest,
   type WorkspaceFilePreviewResponse,
   type WorkspaceGitPatchSupportResponse,
   type WorkspaceGitPatchResponse
@@ -180,6 +182,344 @@ test("shared tuttid client unwraps agent target responses", async () => {
       }
     ]
   } satisfies ListAgentTargetsResponse);
+});
+
+test("shared tuttid client unwraps workspace Agent directory responses", async () => {
+  const client = createTuttidClient({
+    fetch: async (input, init) => {
+      const request =
+        input instanceof Request ? input : new Request(input, init);
+      assert.equal(
+        new URL(request.url).pathname,
+        "/v1/workspaces/workspace-1/agents"
+      );
+      return Response.json({
+        agents: [
+          {
+            agentTargetId: "workspace-agent:reviewer",
+            createdAt: "2026-07-12T00:00:00Z",
+            enabled: true,
+            harness: {
+              agentTargetId: "local:codex",
+              available: true,
+              enabled: true,
+              name: "Codex",
+              provider: "codex"
+            },
+            id: "workspace-agent:reviewer",
+            instructions: "Review carefully",
+            name: "Reviewer",
+            permissions: ["workspace.read"],
+            purpose: "Review changes",
+            revision: 1,
+            skills: ["react"],
+            source: "user",
+            tools: ["terminal"],
+            updatedAt: "2026-07-12T00:00:00Z",
+            workspaceId: "workspace-1"
+          }
+        ]
+      });
+    }
+  });
+
+  const response = await client.listWorkspaceAgents("workspace-1");
+
+  assert.equal(response.agents[0]?.id, "workspace-agent:reviewer");
+  assert.equal(response.agents[0]?.harness.agentTargetId, "local:codex");
+});
+
+test("shared tuttid client unwraps workspace automation rule responses", async () => {
+  const client = createTuttidClient({
+    fetch: async (input, init) => {
+      const request =
+        input instanceof Request ? input : new Request(input, init);
+      assert.equal(
+        new URL(request.url).pathname,
+        "/v1/workspaces/workspace-1/automation-rules"
+      );
+      return Response.json({
+        rules: [
+          {
+            action: "consult",
+            budget: {
+              maxRunsPerSession: 2,
+              maxTotalTokensPerSession: 40000
+            },
+            createdAt: "2026-07-12T00:00:00Z",
+            enabled: true,
+            id: "automation-rule:one",
+            name: "Review completion",
+            permissions: { allowedTools: [] },
+            prompt: "Check correctness",
+            target: {
+              kind: "model",
+              modelPlanId: "plan-1",
+              requiredCapabilities: ["reasoning"]
+            },
+            trigger: "on_task_complete",
+            updatedAt: "2026-07-12T00:00:00Z",
+            workspaceId: "workspace-1"
+          }
+        ]
+      });
+    }
+  });
+
+  const response = await client.listAutomationRules("workspace-1");
+  assert.equal(response.rules[0]?.id, "automation-rule:one");
+  assert.equal(response.rules[0]?.target.kind, "model");
+  assert.equal(response.rules[0]?.budget.maxRunsPerSession, 2);
+  assert.deepEqual(response, response satisfies ListAutomationRulesResponse);
+});
+
+test("shared tuttid client mutates automation rules and session overrides", async () => {
+  const automationRuleID = "automation-rule:one";
+  const request = {
+    action: "delegate",
+    budget: {
+      maxRunsPerSession: 1,
+      maxTotalTokensPerSession: 50000
+    },
+    enabled: false,
+    name: "Delegate follow-up",
+    permissions: {
+      allowedTools: ["terminal"],
+      permissionModeId: "workspace-write"
+    },
+    prompt: "Handle the bounded follow-up.",
+    sourceWorkspaceAgentId: "workspace-agent:source",
+    target: {
+      kind: "agent",
+      requiredCapabilities: [],
+      workspaceAgentId: "workspace-agent:target"
+    },
+    trigger: "on_task_complete"
+  } satisfies PutAutomationRuleRequest;
+  const seen: Array<{ body: unknown; method: string; pathname: string }> = [];
+  const client = createTuttidClient({
+    fetch: async (input, init) => {
+      const httpRequest =
+        input instanceof Request ? input : new Request(input, init);
+      const pathname = new URL(httpRequest.url).pathname;
+      const body =
+        httpRequest.method === "GET" || httpRequest.method === "DELETE"
+          ? null
+          : await httpRequest.json();
+      seen.push({ body, method: httpRequest.method, pathname });
+
+      if (pathname.endsWith("/automation-rule-override")) {
+        return Response.json({
+          agentSessionId: "session-1",
+          disabled:
+            httpRequest.method === "PUT" &&
+            (body as { disabled: boolean }).disabled,
+          ruleIds:
+            httpRequest.method === "PUT"
+              ? (body as { ruleIds: string[] }).ruleIds
+              : [],
+          updatedAt: "2026-07-12T00:00:00Z",
+          workspaceId: "workspace-1"
+        });
+      }
+      if (httpRequest.method === "DELETE") {
+        return Response.json({ automationRuleId: automationRuleID });
+      }
+      return Response.json({
+        ...request,
+        createdAt: "2026-07-12T00:00:00Z",
+        id: automationRuleID,
+        updatedAt: "2026-07-12T00:00:00Z",
+        workspaceId: "workspace-1"
+      });
+    }
+  });
+
+  const created = await client.createAutomationRule("workspace-1", request);
+  const updated = await client.updateAutomationRule(
+    "workspace-1",
+    automationRuleID,
+    request
+  );
+  const deleted = await client.deleteAutomationRule(
+    "workspace-1",
+    automationRuleID
+  );
+  const defaultOverride = await client.getAgentSessionAutomationRuleOverride(
+    "workspace-1",
+    "session-1"
+  );
+  const savedOverride = await client.setAgentSessionAutomationRuleOverride(
+    "workspace-1",
+    "session-1",
+    { disabled: true, ruleIds: [automationRuleID] }
+  );
+
+  assert.equal(created.id, automationRuleID);
+  assert.equal(updated.target.workspaceAgentId, "workspace-agent:target");
+  assert.equal(deleted.automationRuleId, automationRuleID);
+  assert.equal(defaultOverride.disabled, false);
+  assert.deepEqual(savedOverride.ruleIds, [automationRuleID]);
+  assert.deepEqual(
+    seen.map(({ method, pathname }) => ({ method, pathname })),
+    [
+      {
+        method: "POST",
+        pathname: "/v1/workspaces/workspace-1/automation-rules"
+      },
+      {
+        method: "PUT",
+        pathname:
+          "/v1/workspaces/workspace-1/automation-rules/automation-rule%3Aone"
+      },
+      {
+        method: "DELETE",
+        pathname:
+          "/v1/workspaces/workspace-1/automation-rules/automation-rule%3Aone"
+      },
+      {
+        method: "GET",
+        pathname:
+          "/v1/workspaces/workspace-1/agent-sessions/session-1/automation-rule-override"
+      },
+      {
+        method: "PUT",
+        pathname:
+          "/v1/workspaces/workspace-1/agent-sessions/session-1/automation-rule-override"
+      }
+    ]
+  );
+});
+
+test("shared tuttid client creates, updates, and deletes workspace Agents", async () => {
+  const methods: string[] = [];
+  const request = {
+    callConditions: ["Before release"],
+    defaultModel: "gpt-5",
+    enabled: true,
+    harnessAgentTargetId: "local:codex",
+    instructions: "Review carefully",
+    modelPlanId: "plan-1",
+    name: "Reviewer",
+    permissions: ["workspace.read"],
+    purpose: "Review changes",
+    skills: ["react"],
+    tools: ["terminal"]
+  };
+  const client = createTuttidClient({
+    fetch: async (input, init) => {
+      const httpRequest =
+        input instanceof Request ? input : new Request(input, init);
+      methods.push(httpRequest.method);
+      const pathname = new URL(httpRequest.url).pathname;
+      if (httpRequest.method === "DELETE") {
+        assert.equal(
+          pathname,
+          "/v1/workspaces/workspace-1/agents/workspace-agent%3Areviewer"
+        );
+        return Response.json({
+          workspaceAgentId: "workspace-agent:reviewer"
+        });
+      }
+      assert.equal(
+        pathname,
+        httpRequest.method === "POST"
+          ? "/v1/workspaces/workspace-1/agents"
+          : "/v1/workspaces/workspace-1/agents/workspace-agent%3Areviewer"
+      );
+      assert.deepEqual(await httpRequest.json(), request);
+      return Response.json({
+        agentTargetId: "workspace-agent:reviewer",
+        callConditions: request.callConditions,
+        createdAt: "2026-07-12T00:00:00Z",
+        defaultModel: request.defaultModel,
+        enabled: request.enabled,
+        harness: {
+          agentTargetId: request.harnessAgentTargetId,
+          available: true,
+          enabled: true,
+          name: "Codex",
+          provider: "codex"
+        },
+        id: "workspace-agent:reviewer",
+        instructions: request.instructions,
+        modelPlanId: request.modelPlanId,
+        name: request.name,
+        permissions: request.permissions,
+        purpose: request.purpose,
+        revision: httpRequest.method === "POST" ? 1 : 2,
+        skills: request.skills,
+        source: "user",
+        tools: request.tools,
+        updatedAt: "2026-07-12T00:00:00Z",
+        workspaceId: "workspace-1"
+      });
+    }
+  });
+
+  const created = await client.createWorkspaceAgent("workspace-1", request);
+  const updated = await client.updateWorkspaceAgent(
+    "workspace-1",
+    created.id,
+    request
+  );
+  const deleted = await client.deleteWorkspaceAgent("workspace-1", created.id);
+
+  assert.equal(updated.revision, 2);
+  assert.equal(deleted.workspaceAgentId, created.id);
+  assert.deepEqual(methods, ["POST", "PUT", "DELETE"]);
+});
+
+test("shared tuttid client generates a reviewable workspace Agent draft", async () => {
+  const client = createTuttidClient({
+    fetch: async (input, init) => {
+      const request =
+        input instanceof Request ? input : new Request(input, init);
+      assert.equal(
+        new URL(request.url).pathname,
+        "/v1/workspaces/workspace-1/agents/generate-draft"
+      );
+      assert.equal(request.method, "POST");
+      assert.deepEqual(await request.json(), {
+        harnessAgentTargetId: "local:codex",
+        modelPlanId: "plan-1",
+        model: "gpt-5",
+        requirements: "Review releases"
+      });
+      return Response.json({
+        automationRules: [
+          {
+            action: "consult",
+            maxRunsPerSession: 1,
+            maxTotalTokensPerSession: 50000,
+            model: "gpt-5",
+            modelPlanId: "plan-1",
+            name: "Completion review",
+            prompt: "Return VERDICT: PASS or VERDICT: FAIL.",
+            trigger: "on_task_complete"
+          }
+        ],
+        callConditions: ["Before release"],
+        instructions: "Review evidence.",
+        name: "Release Reviewer",
+        purpose: "Review release readiness",
+        skills: ["code-review"],
+        usage: { inputTokens: 20, outputTokens: 10 },
+        usedModel: "gpt-5",
+        usedModelPlanId: "plan-1"
+      });
+    }
+  });
+
+  const generated = await client.generateWorkspaceAgentDraft("workspace-1", {
+    harnessAgentTargetId: "local:codex",
+    modelPlanId: "plan-1",
+    model: "gpt-5",
+    requirements: "Review releases"
+  });
+
+  assert.equal(generated.name, "Release Reviewer");
+  assert.equal(generated.automationRules[0]?.action, "consult");
 });
 
 test("shared tuttid client updates system agent target visibility", async () => {
@@ -883,6 +1223,56 @@ test("shared tuttid client searches workspace issue references with exact body",
   assert.equal(response.items.length, 1);
   assert.equal(response.items[0]?.issueTitle, "Ship landing page");
   assert.equal(response.items[0]?.output.displayName, "login.html");
+});
+
+test("shared tuttid client estimates an Issue auto token budget without persisting", async () => {
+  let requestMethod = "";
+  let requestPath = "";
+  let requestBody: unknown;
+  const client = createTuttidClient({
+    fetch: async (input, init) => {
+      const request =
+        input instanceof Request ? input : new Request(input, init);
+      requestMethod = request.method;
+      requestPath = new URL(request.url).pathname;
+      requestBody = await request.json();
+      return new Response(
+        JSON.stringify({
+          tokenLimit: 1032000,
+          deterministicTokenLimit: 64000,
+          historicalTokenEstimate: 10000000,
+          matchedTaskCount: 1
+        }),
+        { status: 200, headers: { "content-type": "application/json" } }
+      );
+    }
+  });
+
+  const result = await client.estimateWorkspaceIssueAutoTokenBudget?.("ws-1", {
+    executionProfile: {
+      reasoningIntensity: 50,
+      orchestrationIntensity: 50
+    },
+    tasks: [
+      { agentTargetId: "local:codex", modelPlanId: "plan-1", model: "model-1" }
+    ]
+  });
+
+  assert.equal(requestMethod, "POST");
+  assert.equal(
+    requestPath,
+    "/v1/workspaces/ws-1/issues/auto-token-budget-estimate"
+  );
+  assert.deepEqual(requestBody, {
+    executionProfile: {
+      reasoningIntensity: 50,
+      orchestrationIntensity: 50
+    },
+    tasks: [
+      { agentTargetId: "local:codex", modelPlanId: "plan-1", model: "model-1" }
+    ]
+  });
+  assert.equal(result?.tokenLimit, 1032000);
 });
 
 test("shared tuttid client deletes user projects with bearer auth", async () => {

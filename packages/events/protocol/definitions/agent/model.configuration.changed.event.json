@@ -1,0 +1,46 @@
+{
+  "$schema": "../../schemas/core/event-definition.schema.json",
+  "topic": "agent.model.configuration.changed",
+  "version": 1,
+  "direction": "server->client",
+  "owner": "agent",
+  "scope": "workspace",
+  "payloadSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "required": [
+      "workspaceId",
+      "agentTargetIds",
+      "defaultModels",
+      "resetComposerModel",
+      "occurredAtUnixMs"
+    ],
+    "properties": {
+      "workspaceId": {
+        "type": "string",
+        "minLength": 1
+      },
+      "agentTargetIds": {
+        "type": "array",
+        "minItems": 1,
+        "items": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "defaultModels": {
+        "type": "object",
+        "additionalProperties": {
+          "type": "string"
+        }
+      },
+      "resetComposerModel": {
+        "type": "boolean"
+      },
+      "occurredAtUnixMs": {
+        "type": "integer",
+        "minimum": 0
+      }
+    }
+  }
+}

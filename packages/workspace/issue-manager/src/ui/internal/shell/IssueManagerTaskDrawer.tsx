@@ -132,6 +132,7 @@ export function IssueManagerTaskDrawer({
           <IssueManagerTaskDrawerHeader
             controller={controller}
             onClose={() => onClose("header_back")}
+            selectedIssue={selectedIssue}
             selectedTask={selectedTask}
             view={view}
           />

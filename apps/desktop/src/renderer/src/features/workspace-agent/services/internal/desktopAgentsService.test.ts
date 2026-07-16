@@ -1,10 +1,11 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import type { AgentTarget } from "@tutti-os/client-tuttid-ts";
+import type { AgentTarget, WorkspaceAgent } from "@tutti-os/client-tuttid-ts";
 import {
   DesktopAgentsService,
   mapAgentTargetsToPresentations,
-  mapAgentTargetPresentationsToAgents
+  mapAgentTargetPresentationsToAgents,
+  mapWorkspaceAgentsToAgents
 } from "./desktopAgentsService.ts";
 
 test("desktop agents service publishes explicit idle, loading, and ready lifecycle snapshots", async () => {
@@ -12,8 +13,10 @@ test("desktop agents service publishes explicit idle, loading, and ready lifecyc
   const service = new DesktopAgentsService({
     now: () => 1780272000123,
     tuttidClient: {
-      listAgentTargets: () => request.promise
-    }
+      listAgentTargets: () => request.promise,
+      listWorkspaceAgents: async () => ({ agents: [] })
+    },
+    workspaceId: "workspace-1"
   });
   const snapshots: string[] = [];
   service.subscribe(() => {
@@ -64,8 +67,10 @@ test("desktop agents service publishes failures, retains cached data, and owns r
           throw new Error("directory unavailable");
         }
         return { targets: [target] };
-      }
-    }
+      },
+      listWorkspaceAgents: async () => ({ agents: [] })
+    },
+    workspaceId: "workspace-1"
   });
 
   const readySnapshot = await service.load();
@@ -89,8 +94,10 @@ test("desktop agents service hydrates a detached-window bootstrap snapshot befor
     tuttidClient: {
       async listAgentTargets() {
         return { targets: [] };
-      }
-    }
+      },
+      listWorkspaceAgents: async () => ({ agents: [] })
+    },
+    workspaceId: "workspace-1"
   });
   const target = createAgentTarget({
     id: "local:codex",
@@ -175,6 +182,142 @@ test("desktop agents service maps enabled daemon targets into the AgentGUI agent
   ]);
 });
 
+test("desktop agents service resolves target iconKey before provider artwork", () => {
+  const [presentation] = mapAgentTargetsToPresentations(
+    [
+      {
+        ...createAgentTarget({
+          id: "shared:alice",
+          name: "Alice's Codex",
+          provider: "codex",
+          sortOrder: 10
+        }),
+        iconKey: "alice-custom"
+      }
+    ],
+    {
+      resolveAgentTargetIconUrl: ({ iconKey, provider }) =>
+        `tutti-asset://agent/${iconKey ?? provider}.png`
+    }
+  );
+
+  assert.equal(presentation?.iconUrl, "tutti-asset://agent/alice-custom.png");
+});
+
+test("desktop agents service projects provider gates to targets and AgentGUI agents", async () => {
+  const service = new DesktopAgentsService({
+    isAgentTargetProviderGated: (provider) => provider === "codex",
+    tuttidClient: {
+      listAgentTargets: async () => ({
+        targets: [
+          createAgentTarget({
+            id: "local:codex",
+            name: "Codex",
+            provider: "codex",
+            sortOrder: 10
+          })
+        ]
+      }),
+      listWorkspaceAgents: async () => ({ agents: [] })
+    },
+    workspaceId: "workspace-1"
+  });
+
+  const snapshot = await service.load();
+
+  assert.equal(snapshot.agentTargets[0]?.enabled, false);
+  assert.deepEqual(snapshot.agents, [
+    {
+      agentTargetId: "local:codex",
+      availability: { status: "coming_soon" },
+      iconUrl: "",
+      name: "Codex",
+      provider: "codex"
+    }
+  ]);
+});
+
+test("desktop agents service projects explicit workspace Agents as opaque AgentGUI identities", () => {
+  const agents = mapWorkspaceAgentsToAgents(
+    [
+      createWorkspaceAgent({
+        id: "workspace-agent:reviewer",
+        name: "Reviewer",
+        purpose: "Review changes"
+      }),
+      createWorkspaceAgent({
+        id: "workspace-agent:builder",
+        name: "Builder",
+        purpose: "Implement changes"
+      })
+    ],
+    {
+      resolveAgentTargetIconUrl: ({ iconKey, provider }) =>
+        `tutti-asset://agent/${iconKey ?? provider}.png`
+    }
+  );
+
+  assert.deepEqual(
+    agents.map((agent) => ({
+      agentTargetId: agent.agentTargetId,
+      description: agent.description,
+      name: agent.name,
+      provider: agent.provider
+    })),
+    [
+      {
+        agentTargetId: "workspace-agent:reviewer",
+        description: "Review changes",
+        name: "Reviewer",
+        provider: "codex"
+      },
+      {
+        agentTargetId: "workspace-agent:builder",
+        description: "Implement changes",
+        name: "Builder",
+        provider: "codex"
+      }
+    ]
+  );
+});
+
+test("desktop agents service prefers explicit workspace Agents over fixed Harness targets", async () => {
+  const service = new DesktopAgentsService({
+    tuttidClient: {
+      listAgentTargets: async () => ({
+        targets: [
+          createAgentTarget({
+            id: "local:codex",
+            name: "Codex",
+            provider: "codex",
+            sortOrder: 10
+          })
+        ]
+      }),
+      listWorkspaceAgents: async () => ({
+        agents: [
+          createWorkspaceAgent({
+            id: "workspace-agent:reviewer",
+            name: "Reviewer"
+          })
+        ]
+      })
+    },
+    workspaceId: "workspace-1"
+  });
+
+  const snapshot = await service.load();
+
+  assert.deepEqual(
+    snapshot.agents.map((agent) => agent.agentTargetId),
+    ["workspace-agent:reviewer"]
+  );
+  assert.deepEqual(
+    snapshot.agentTargets.map((target) => target.agentTargetId),
+    ["local:codex"]
+  );
+});
+
 function createAgentTarget(input: {
   enabled?: boolean;
   id: string;
@@ -221,4 +364,38 @@ async function waitFor(predicate: () => boolean): Promise<void> {
     await new Promise((resolve) => setTimeout(resolve, 0));
   }
   assert.fail("condition was not reached");
+}
+
+function createWorkspaceAgent(
+  input: Partial<WorkspaceAgent> & { id: string; name: string }
+): WorkspaceAgent {
+  const { id, name, ...overrides } = input;
+  return {
+    agentTargetId: id,
+    createdAt: "2026-07-12T00:00:00Z",
+    enabled: true,
+    harness: {
+      agentTargetId: "local:codex",
+      available: true,
+      enabled: true,
+      iconKey: "codex",
+      name: "Codex",
+      provider: "codex"
+    },
+    id,
+    instructions: "",
+    name,
+    permissions: [],
+    purpose: "",
+    revision: 1,
+    skills: [],
+    source: "user",
+    tools: [],
+    updatedAt: "2026-07-12T00:00:00Z",
+    workspaceId: "workspace-1",
+    ...overrides,
+    capabilitiesExplicit: overrides.capabilitiesExplicit ?? false,
+    callConditions: overrides.callConditions ?? [],
+    modelFallbacks: overrides.modelFallbacks ?? []
+  };
 }

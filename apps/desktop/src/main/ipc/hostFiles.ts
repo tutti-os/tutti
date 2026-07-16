@@ -4,6 +4,7 @@ import {
   type DesktopArchiveAgentPromptFileResult,
   type DesktopClipboardImagePayload,
   type DesktopCreateUserDocumentsProjectDirectoryInput,
+  type DesktopGitWorktreeInput,
   type DesktopTerminalLinkPathPayload,
   type DesktopWorkspaceFileEntryIconPayload,
   type DesktopWorkspaceFilePathPayload
@@ -19,6 +20,7 @@ import {
 } from "../host/clipboardFiles.ts";
 import type { DesktopFileDialogAccess } from "../host/desktopFileDialogAccess";
 import { createWorkspaceFileHostAccess } from "../host/workspaceFileHostAccess.ts";
+import { createDesktopGitWorktree } from "../host/gitWorktree.ts";
 import type { WorkspaceFileIconCacheStore } from "../host/workspaceFileIconCacheStore.ts";
 import { registerDesktopIpcHandler } from "./handle";
 import { resolveOwnerWindowFromEvent } from "./ownerWindow";
@@ -105,6 +107,11 @@ export function registerHostFilesIpc(deps: HostFilesIpcDependencies): void {
   registerDesktopIpcHandler(
     desktopIpcChannels.host.files.readLocalFileText,
     (_event, payload: string) => hostAccess.readLocalFileText(payload)
+  );
+  registerDesktopIpcHandler(
+    desktopIpcChannels.host.files.createGitWorktree,
+    (_event, payload: DesktopGitWorktreeInput) =>
+      createDesktopGitWorktree(payload)
   );
   registerDesktopIpcHandler(
     desktopIpcChannels.host.files.readLocalPreviewFile,

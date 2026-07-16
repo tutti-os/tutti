@@ -1,6 +1,7 @@
 import {
   type Dispatch,
   type MutableRefObject,
+  type ReactNode,
   type RefObject,
   type SetStateAction
 } from "react";
@@ -33,7 +34,10 @@ import { AgentSlashCommandPalette } from "../AgentSlashCommandPalette";
 import { AgentSlashStatusPanel } from "../AgentSlashStatusPanel";
 import { AgentReviewPickerPanel } from "../AgentReviewPickerPanel";
 import { ComposerFloatingMenuSurface } from "../composerFloatingMenu/ComposerFloatingMenuSurface";
-import type { AgentComposerProps } from "./AgentComposer.types";
+import type {
+  AgentComposerExecutionMode,
+  AgentComposerProps
+} from "./AgentComposer.types";
 import type { AgentHostApi } from "../../../host/agentHostApi";
 import {
   EMPTY_PROVIDER_SKILLS,
@@ -55,12 +59,12 @@ import type { useMentionPaletteFrame } from "./useMentionPaletteFrame";
 import {
   agentComposerDraftHasContent,
   agentComposerDraftImages,
-  agentComposerDraftPrompt,
   updateAgentComposerDraft
 } from "../model/agentComposerDraft";
 
 interface Props {
   props: AgentComposerProps;
+  collaborationControls: ReactNode;
   paletteCatalog: ReturnType<typeof useComposerPaletteCatalog>;
   mentionFrame: ReturnType<typeof useMentionPaletteFrame>;
   slashActions: ReturnType<typeof useComposerSlashActions>;
@@ -98,6 +102,9 @@ interface Props {
   isHandoffIconPlaying: boolean;
   setIsHandoffIconPlaying: Dispatch<SetStateAction<boolean>>;
   isGoalModeActive: boolean;
+  executionMode: AgentComposerExecutionMode;
+  onExecutionModeChange: (mode: AgentComposerExecutionMode) => void;
+  onPlanIssueBudgetPresetChange: AgentComposerProps["onPlanIssueBudgetPresetChange"];
   isPromptTipOverflowing: boolean;
 }
 
@@ -135,12 +142,10 @@ export function AgentComposerView(input: Props): React.JSX.Element {
     onProviderSelect,
     onHandoffConversation,
     compactSupported = null,
-    hasCompactableContext = true,
-    modelConsult = null
+    hasCompactableContext = true
   } = input.props;
   const draftImages = agentComposerDraftImages(draftContent);
   const slashStatusAgentSessionId = slashStatus?.agentSessionId ?? null;
-  const draftPrompt = agentComposerDraftPrompt(draftContent);
   const { availableCapabilities, slashPaletteEntries, slashQuery } =
     input.paletteCatalog;
   const { mentionPaletteFrame, mentionPaletteHeightPx, mentionPaletteStyle } =
@@ -257,6 +262,29 @@ export function AgentComposerView(input: Props): React.JSX.Element {
               waitingForAnswer: labels.waitingForAnswer,
               planImplementationLead: labels.planImplementationLead,
               planImplementationConfirm: labels.planImplementationConfirm,
+              planImplementationCreateIssue:
+                labels.planImplementationCreateIssue,
+              planIssueReviewTitle: labels.planIssueReviewTitle,
+              planIssueReasoning: labels.planIssueReasoning,
+              planIssueOrchestration: labels.planIssueOrchestration,
+              planIssueBudgetAuto: labels.planIssueBudgetAuto,
+              planIssueBudgetFixed: labels.planIssueBudgetFixed,
+              planIssueTokenBudget: labels.planIssueTokenBudget,
+              planIssueTaskPreview: labels.planIssueTaskPreview,
+              planIssueAgentTarget: labels.planIssueAgentTarget,
+              planIssueModelPlan: labels.planIssueModelPlan,
+              planIssueModel: labels.planIssueModel,
+              planIssueDirectory: labels.planIssueDirectory,
+              planIssueDependencies: labels.planIssueDependencies,
+              planIssueCreateOnly: labels.planIssueCreateOnly,
+              planIssueCreateAndStart: labels.planIssueCreateAndStart,
+              planIssueCreateAndStartParallel:
+                labels.planIssueCreateAndStartParallel,
+              planIssueStartOrchestration: labels.planIssueStartOrchestration,
+              planIssueEstimatedCost: labels.planIssueEstimatedCost,
+              planIssueCostUnavailable: labels.planIssueCostUnavailable,
+              planIssueCostPartial: labels.planIssueCostPartial,
+              planIssueUnassigned: labels.planIssueUnassigned,
               planImplementationFeedbackPlaceholder:
                 labels.planImplementationFeedbackPlaceholder,
               planImplementationSend: labels.planImplementationSend,
@@ -558,8 +586,8 @@ export function AgentComposerView(input: Props): React.JSX.Element {
               />
             </ComposerFloatingMenuSurface>
           </Popover>
+          {input.collaborationControls}
           <ComposerFooter
-            workspaceId={workspaceId}
             labels={labels}
             composerSettings={composerSettings}
             usage={usage}
@@ -573,6 +601,9 @@ export function AgentComposerView(input: Props): React.JSX.Element {
             isSendingTurn={input.props.isSendingTurn}
             isHeroLayout={isHeroLayout}
             isGoalModeActive={input.isGoalModeActive}
+            executionMode={input.executionMode}
+            onExecutionModeChange={input.onExecutionModeChange}
+            onPlanIssueBudgetPresetChange={input.onPlanIssueBudgetPresetChange}
             composerActionButton={composerActionButton}
             showHandoffSelect={showHandoffSelect}
             handoffDisabled={handoffDisabled}
@@ -595,8 +626,6 @@ export function AgentComposerView(input: Props): React.JSX.Element {
             onSettingsChange={onSettingsChange}
             onSubmit={onSubmit}
             onClearGoalMode={clearGoalModeBadge}
-            modelConsult={modelConsult}
-            draftPrompt={draftPrompt}
           />
         </div>
         {showProjectRow ? (

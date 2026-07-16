@@ -3,7 +3,17 @@ package agent
 import (
 	"context"
 	"strings"
+	"time"
+
+	agentsessionstore "github.com/tutti-os/tutti/packages/agent/daemon/activity"
 )
+
+type sessionStateReporter interface {
+	ReportSessionState(
+		context.Context,
+		agentsessionstore.ReportSessionStateInput,
+	) (agentsessionstore.ReportSessionStateReply, error)
+}
 
 func (s *Service) clampReasoningEffortForModel(
 	ctx context.Context,
@@ -67,6 +77,16 @@ func (s *Service) UpdateSettings(ctx context.Context, workspaceID string, agentS
 	if err != nil {
 		return Session{}, err
 	}
+	if settings.Model != nil {
+		if err := s.validateSessionModelAgainstRuntimeSnapshot(
+			ctx,
+			strings.TrimSpace(workspaceID),
+			ensured.Session.RuntimeContext,
+			strings.TrimSpace(*settings.Model),
+		); err != nil {
+			return Session{}, err
+		}
+	}
 	provider := strings.TrimSpace(ensured.Session.Provider)
 	selectedModel := ""
 	selectedReasoningEffort := ""
@@ -106,9 +126,39 @@ func (s *Service) UpdateSettings(ctx context.Context, workspaceID string, agentS
 	}); err != nil {
 		return Session{}, normalizeRuntimeError(err)
 	}
+	if err := s.persistUpdatedRuntimeSettings(ctx, workspaceID, agentSessionID); err != nil {
+		return Session{}, err
+	}
 	session, err := s.Get(ctx, workspaceID, agentSessionID)
 	if err != nil {
 		return Session{}, err
 	}
 	return session, nil
+}
+
+func (s *Service) persistUpdatedRuntimeSettings(ctx context.Context, workspaceID string, agentSessionID string) error {
+	reporter, ok := s.SessionReader.(sessionStateReporter)
+	if !ok {
+		return nil
+	}
+	session, ok := s.controller().Session(workspaceID, agentSessionID)
+	if !ok || session.Settings == nil {
+		return nil
+	}
+	_, err := reporter.ReportSessionState(ctx, agentsessionstore.ReportSessionStateInput{
+		WorkspaceID:    strings.TrimSpace(workspaceID),
+		AgentSessionID: strings.TrimSpace(agentSessionID),
+		SessionOrigin:  agentsessionstore.WorkspaceAgentSessionOriginRuntime,
+		State: agentsessionstore.WorkspaceAgentSessionStateUpdate{
+			AgentTargetID:     strings.TrimSpace(session.AgentTargetID),
+			Provider:          strings.TrimSpace(session.Provider),
+			ProviderSessionID: strings.TrimSpace(session.ProviderSessionID),
+			Model:             strings.TrimSpace(session.Settings.Model),
+			Settings:          composerSettingsToStatePayload(*session.Settings),
+			CWD:               strings.TrimSpace(session.Cwd),
+			Title:             strings.TrimSpace(session.Title),
+			OccurredAtUnixMS:  time.Now().UnixMilli(),
+		},
+	})
+	return err
 }

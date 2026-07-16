@@ -1,8 +1,15 @@
 import type {
   AgentActivityComposerOptions,
+  AgentActivityModelPlanSummary,
   AgentActivitySession
 } from "@tutti-os/agent-activity-core";
-import { useEffect, useMemo, type Dispatch, type SetStateAction } from "react";
+import {
+  useEffect,
+  useMemo,
+  useState,
+  type Dispatch,
+  type SetStateAction
+} from "react";
 import type { AgentActivityRuntime } from "../../../agentActivityRuntime";
 import type {
   AgentSessionComposerSettings,
@@ -10,9 +17,21 @@ import type {
   AgentSessionSpeed,
   AgentSessionState
 } from "../../../shared/agentSessionTypes";
-import type { AgentGUINodeData, AgentGUIProvider } from "../../../types";
+import type {
+  AgentGUINodeData,
+  AgentGUIProvider,
+  AgentGUIAgentTarget,
+  AgentGUISharedAgentAccess
+} from "../../../types";
 import type { AgentGUIConversationSummary } from "../model/agentGuiConversationModel";
 import type { AgentGUIComposerSettingsVM } from "../model/agentGuiNodeTypes";
+import {
+  aggregateCompatibleModelPlanOptions,
+  modelPlanSelectionValue
+} from "../model/composerAggregatedModelPlans";
+import { resolveAgentGUIProviderCatalogIdentity } from "../../../providerIdentityCatalog";
+import { translate } from "../../../i18n/index";
+import { defaultPlanIssueBudgetPreset } from "../../../shared/agentConversation/planImplementationPresentation";
 import { slashCommandPolicyFromComposerOptions } from "../model/agentSlashCommandProviderPolicy";
 import { composerSettingsSupportFromOptions } from "../model/composerSettingsSupport";
 import {
@@ -35,6 +54,7 @@ import {
   type AgentGUIComposerTargetData
 } from "./agentGuiController.composerPresentation";
 import { normalizeOptionalText } from "./agentGuiController.promptHelpers";
+import { normalizeAgentGUISharedAgentAccess } from "../../../sharedAgentAccess";
 import {
   useStableComposerSettings,
   useStableComposerSettingsVM
@@ -63,16 +83,39 @@ interface UseAgentGUIComposerPresentationInput {
     (updater: (current: AgentGUINodeData) => AgentGUINodeData) => void
   >;
   providerComposerOptions: AgentActivityComposerOptions | null;
+  normalizedProviderTargets: readonly AgentGUIAgentTarget[];
   selectedComposerTargetData: AgentGUIComposerTargetData;
   selectedProjectPath: string | null;
   setDraftSettingsBySessionId: Dispatch<
     SetStateAction<Record<string, AgentSessionComposerSettings>>
   >;
+  workspaceId?: string;
 }
 
 export function useAgentGUIComposerPresentation(
   input: UseAgentGUIComposerPresentationInput
 ) {
+  const [modelPlans, setModelPlans] = useState<
+    readonly AgentActivityModelPlanSummary[]
+  >([]);
+  useEffect(() => {
+    const listModelPlans = input.agentActivityRuntime.listModelPlans;
+    const workspaceId = input.workspaceId?.trim() ?? "";
+    if (!listModelPlans || !workspaceId) {
+      return;
+    }
+    const abort = new AbortController();
+    void listModelPlans({ workspaceId, signal: abort.signal })
+      .then((result) => {
+        if (!abort.signal.aborted) setModelPlans(result.plans);
+      })
+      .catch(() => {
+        if (!abort.signal.aborted) {
+          setModelPlans((current) => (current.length === 0 ? current : []));
+        }
+      });
+    return () => abort.abort();
+  }, [input.agentActivityRuntime, input.workspaceId]);
   const sessionSettings = useStableComposerSettings(
     cloneComposerSettings(input.activeSessionState?.settings ?? null)
   );
@@ -171,6 +214,7 @@ export function useAgentGUIComposerPresentation(
   const draftModel = usesPlaceholderDraftModel
     ? (liveConfigModel ?? persistedDraftModel)
     : persistedDraftModel;
+  const draftModelPlanId = normalizeOptionalText(draftSettings.modelPlanId);
   const draftReasoningEffort = (
     input.composerSupport.reasoning
       ? normalizeOptionalText(draftSettings.reasoningEffort)
@@ -208,6 +252,63 @@ export function useAgentGUIComposerPresentation(
     [draftSpeed, input.providerComposerOptions]
   );
   const composerSettings = useMemo<AgentGUIComposerSettingsVM>(() => {
+    const target = input.normalizedProviderTargets.find(
+      (candidate) =>
+        candidate.targetId === input.selectedComposerTargetData.targetId ||
+        candidate.agentTargetId ===
+          input.selectedComposerTargetData.agentTargetId
+    );
+    const sharedAccess = normalizeAgentGUISharedAgentAccess(
+      target?.ref.sharedAccess as AgentGUISharedAgentAccess | null | undefined
+    );
+    const protocol =
+      resolveAgentGUIProviderCatalogIdentity(input.composerTargetProvider)
+        ?.modelPlanProtocol ?? "";
+    const aggregateModelOptions = aggregateCompatibleModelPlanOptions({
+      activeSession: input.activeConversationId !== null,
+      copy: {
+        billingApiMetered: translate(
+          "agentHost.agentGui.composerModelBillingApiMetered"
+        ),
+        billingSubscriptionQuota: translate(
+          "agentHost.agentGui.composerModelBillingSubscriptionQuota"
+        ),
+        capabilities: (value) =>
+          translate("agentHost.agentGui.composerModelCapabilitiesMetadata", {
+            value
+          }),
+        effectNewSession: translate(
+          "agentHost.agentGui.composerModelSwitchNewSessionHint"
+        ),
+        effectNextCall: translate(
+          "agentHost.agentGui.composerModelSwitchNextTurnHint"
+        ),
+        pricing: (inputPrice, outputPrice) =>
+          translate("agentHost.agentGui.composerModelPricingMetadata", {
+            input: inputPrice,
+            output: outputPrice
+          }),
+        tier: (value) =>
+          translate(
+            value === "flagship"
+              ? "agentHost.agentGui.composerModelTierFlagship"
+              : value === "economy"
+                ? "agentHost.agentGui.composerModelTierEconomy"
+                : "agentHost.agentGui.composerModelTierStandard"
+          )
+      },
+      currentModelPlanId:
+        normalizeOptionalText(sessionSettings?.modelPlanId) ??
+        input.providerComposerOptions?.modelPlan?.id ??
+        null,
+      currentModel:
+        normalizeOptionalText(sessionSettings?.model) ??
+        activeSessionModelSelection?.currentValue ??
+        draftModel,
+      plans: modelPlans,
+      protocol,
+      sharedAccess
+    });
     const permissionConfig = permissionConfigFromComposerOptions(
       input.providerComposerOptions
     );
@@ -227,6 +328,7 @@ export function useAgentGUIComposerPresentation(
       sessionSettings,
       draftSettings: {
         model: draftModel,
+        modelPlanId: draftModelPlanId,
         reasoningEffort: presentedReasoningEffort,
         speed: draftSpeed,
         planMode: Boolean(draftSettings.planMode),
@@ -248,6 +350,10 @@ export function useAgentGUIComposerPresentation(
       ),
       supportsPermissionMode,
       supportsPlanMode: input.composerSupport.plan,
+      planIssueBudgetPreset:
+        input.data.planIssueBudgetPreset ?? defaultPlanIssueBudgetPreset(),
+      supportsUltraPlan:
+        input.composerSupport.plan && input.composerSupport.planImplementation,
       planExclusiveWithPermissionMode:
         input.providerComposerOptions?.behavior
           ?.planModeExclusiveWithPermissionMode === true,
@@ -278,7 +384,11 @@ export function useAgentGUIComposerPresentation(
         sessionSettings === null &&
         supportsPermissionMode &&
         selectedPermissionModeValue === null,
-      selectedModelValue: draftModel,
+      selectedModelValue:
+        draftModel && draftModelPlanId
+          ? modelPlanSelectionValue(draftModelPlanId, draftModel)
+          : draftModel,
+      aggregatedModelPlans: aggregateModelOptions.length > 0,
       selectedReasoningEffortValue: presentedReasoningEffort,
       selectedSpeedValue: draftSpeed,
       selectedPermissionModeValue,
@@ -297,11 +407,13 @@ export function useAgentGUIComposerPresentation(
         input.activeConversationId !== null &&
         input.composerSupport.modelSwitch,
       availableModels:
-        input.composerSupport.model &&
-        hasOptionsSource &&
-        activeSessionModelSelection !== null
-          ? activeSessionModelSelection.options
-          : [],
+        input.composerSupport.model && aggregateModelOptions.length > 0
+          ? aggregateModelOptions
+          : input.composerSupport.model &&
+              hasOptionsSource &&
+              activeSessionModelSelection !== null
+            ? activeSessionModelSelection.options
+            : [],
       availableReasoningEfforts:
         input.composerSupport.reasoning &&
         hasOptionsSource &&
@@ -323,6 +435,7 @@ export function useAgentGUIComposerPresentation(
     activeSessionReasoningSelection,
     activeSessionSpeedSelection,
     draftModel,
+    draftModelPlanId,
     draftReasoningEffort,
     draftSettings,
     draftSpeed,
@@ -332,9 +445,12 @@ export function useAgentGUIComposerPresentation(
     input.composerSupport,
     input.composerOptionsLoading,
     input.composerTargetProvider,
+    input.normalizedProviderTargets,
     input.providerComposerOptions,
+    input.selectedComposerTargetData,
     input.selectedProjectPath,
     presentedReasoningEffort,
+    modelPlans,
     sessionSettings
   ]);
 
@@ -344,6 +460,7 @@ export function useAgentGUIComposerPresentation(
     draftSettings,
     draftSpeed,
     sessionSettings,
+    modelPlans,
     stableComposerSettings: useStableComposerSettingsVM(composerSettings)
   };
 }

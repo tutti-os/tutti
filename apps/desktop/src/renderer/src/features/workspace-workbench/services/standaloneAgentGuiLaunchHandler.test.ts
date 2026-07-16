@@ -57,6 +57,8 @@ test("standalone Agent draft launches open a new window with the complete bootst
       agentTargetId: " target-2 ",
       autoSubmit: true,
       draftPrompt: " Fix the app ",
+      model: " gpt-5.4 ",
+      modelPlanId: " plan-codex ",
       openInNewWindow: true,
       provider: "claude-code",
       userProjectPath: " /workspace/app ",
@@ -90,6 +92,8 @@ test("standalone Agent draft launches open a new window with the complete bootst
       agentTargetId: "target-2",
       autoSubmit: true,
       draftPrompt: "Fix the app",
+      model: "gpt-5.4",
+      modelPlanId: "plan-codex",
       providerStatusSnapshot: {
         capturedAt: "2026-07-13T00:00:00.000Z",
         defaultProvider: "codex",

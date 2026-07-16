@@ -19,6 +19,68 @@ const (
 	PriorityLow    Priority = "low"
 )
 
+type PlanningSource string
+
+const (
+	PlanningSourceManual          PlanningSource = "manual"
+	PlanningSourceUltraPlan       PlanningSource = "ultra_plan"
+	PlanningSourceTraditionalPlan PlanningSource = "traditional_plan"
+)
+
+type BudgetMode string
+
+const (
+	BudgetModeAuto  BudgetMode = "auto"
+	BudgetModeFixed BudgetMode = "fixed"
+)
+
+type BudgetStatus string
+
+const (
+	BudgetStatusActive      BudgetStatus = "active"
+	BudgetStatusSoftLimited BudgetStatus = "soft_limited"
+)
+
+type AcceptanceState string
+
+const (
+	AcceptanceAgentClaimed AcceptanceState = "agent_claimed"
+	AcceptanceAutoChecked  AcceptanceState = "auto_checked"
+	AcceptanceUserAccepted AcceptanceState = "user_accepted"
+)
+
+type ExecutionProfile struct {
+	ReasoningIntensity     int
+	OrchestrationIntensity int
+}
+
+type Budget struct {
+	Mode                  BudgetMode
+	TokenLimit            int64
+	ConsumedTokens        int64
+	QuotaWaterlinePercent float64
+	RemainingQuotaPercent float64
+	HasRemainingQuota     bool
+	Status                BudgetStatus
+}
+
+type TokenUsage struct {
+	InputTokens      int64
+	OutputTokens     int64
+	CacheReadTokens  int64
+	CacheWriteTokens int64
+}
+
+func (u TokenUsage) Total() int64 {
+	return u.InputTokens + u.OutputTokens + u.CacheReadTokens + u.CacheWriteTokens
+}
+
+type Cost struct {
+	Currency        string
+	EstimatedMicros int64
+	ActualMicros    int64
+}
+
 type ContextRefParentKind string
 
 const (
@@ -50,6 +112,14 @@ type Issue struct {
 	Content                string
 	SearchText             string
 	Status                 Status
+	PlanningSource         PlanningSource
+	SourceSessionID        string
+	SequentialExecution    bool
+	ParallelExecution      bool
+	DispatchPaused         bool
+	ExecutionProfile       ExecutionProfile
+	Budget                 Budget
+	Cost                   Cost
 	TaskCount              int
 	NotStartedCount        int
 	RunningCount           int
@@ -76,6 +146,13 @@ type Task struct {
 	Priority           Priority
 	SortIndex          int
 	DueAtUnixMS        int64
+	AgentTargetID      string
+	ModelPlanID        string
+	Model              string
+	ExecutionDirectory string
+	DependencyTaskIDs  []string
+	AcceptanceState    AcceptanceState
+	AcceptanceSummary  string
 	CreatorUserID      string
 	CreatorDisplayName string
 	CreatorAvatarURL   string
@@ -95,7 +172,12 @@ type Run struct {
 	AgentTargetID      string
 	AgentSessionID     string
 	AgentProvider      string
+	ModelPlanID        string
+	Model              string
+	ReasoningIntensity int
 	Status             Status
+	Usage              TokenUsage
+	Cost               Cost
 	Summary            string
 	ErrorMessage       string
 	OutputDir          string

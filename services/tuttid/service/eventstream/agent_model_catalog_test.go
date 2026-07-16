@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"testing"
 	"time"
+
+	eventsgenerated "github.com/tutti-os/tutti/services/tuttid/api/events/generated"
 )
 
 func TestAgentModelCatalogPublisherPublishesNormalizedProviders(t *testing.T) {
@@ -36,7 +38,7 @@ func TestAgentModelCatalogPublisherPublishesNormalizedProviders(t *testing.T) {
 	if event.Topic != TopicAgentModelCatalogInvalidated {
 		t.Fatalf("event topic = %q, want %q", event.Topic, TopicAgentModelCatalogInvalidated)
 	}
-	var payload agentModelCatalogInvalidatedPayload
+	var payload eventsgenerated.AgentModelCatalogInvalidatedPayload
 	if err := json.Unmarshal(event.Payload, &payload); err != nil {
 		t.Fatalf("unmarshal payload: %v", err)
 	}
@@ -44,8 +46,8 @@ func TestAgentModelCatalogPublisherPublishesNormalizedProviders(t *testing.T) {
 	if len(payload.Providers) != 2 || payload.Providers[0] != "codex" || payload.Providers[1] != "claude-code" {
 		t.Fatalf("payload providers = %v, want [codex claude-code]", payload.Providers)
 	}
-	if payload.OccurredAtUnixMS != 1_720_000_000_000 {
-		t.Fatalf("payload occurredAtUnixMs = %d, want 1720000000000", payload.OccurredAtUnixMS)
+	if payload.OccurredAtUnixMs != 1_720_000_000_000 {
+		t.Fatalf("payload occurredAtUnixMs = %d, want 1720000000000", payload.OccurredAtUnixMs)
 	}
 }
 
@@ -91,5 +93,10 @@ func TestAgentModelCatalogInvalidatedValidationRejectsBadPayloads(t *testing.T) 
 		[]byte(`{"providers":["codex","claude-code"],"occurredAtUnixMs":1000}`),
 	); err != nil {
 		t.Fatalf("valid payload rejected: %v", err)
+	}
+	if err := validateAgentModelCatalogInvalidatedPayload(
+		[]byte(`{"providers":["codex","claude-code"],"occurredAtUnixMs":0}`),
+	); err != nil {
+		t.Fatalf("zero schema-minimum timestamp rejected: %v", err)
 	}
 }

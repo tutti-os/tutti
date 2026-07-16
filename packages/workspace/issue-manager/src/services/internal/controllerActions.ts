@@ -3,6 +3,7 @@ import type {
   IssueManagerContextRef,
   IssueManagerFileReference,
   IssueManagerIssueDetail,
+  IssueManagerIssueSummary,
   IssueManagerReferenceBundle,
   IssueManagerRun,
   IssueManagerNodeState,
@@ -629,6 +630,28 @@ export function createIssueManagerControllerActions(
           agentSessionId,
           agentTargetId: run.agentTargetId,
           provider: run.agentProvider,
+          workspaceId
+        });
+      } catch (error) {
+        notifyTip(
+          resolveIssueManagerErrorMessage(
+            error,
+            copy,
+            "messages.agentSessionOpenFailed"
+          )
+        );
+      }
+    },
+
+    async openPlanningSession(issue: IssueManagerIssueSummary) {
+      const agentSessionId = issue.sourceSessionId?.trim() ?? "";
+      if (!agentSessionId || !feature.agentSessionOpener?.openSession) {
+        return;
+      }
+
+      try {
+        await feature.agentSessionOpener.openSession({
+          agentSessionId,
           workspaceId
         });
       } catch (error) {

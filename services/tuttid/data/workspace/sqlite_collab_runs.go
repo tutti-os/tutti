@@ -15,9 +15,11 @@ var ErrCollaborationRunNotFound = errors.New("collaboration run not found")
 
 const collaborationRunColumns = `workspace_id, run_id, mode, trigger_source, trigger_reason,
   source_session_id, target_session_id, target_agent_target_id, model_plan_id, model,
-  context_scope, prompt, result_text, failure_reason, status, adoption,
-  input_tokens, output_tokens, started_at_unix_ms, completed_at_unix_ms, duration_ms,
-  created_at_unix_ms, updated_at_unix_ms`
+  context_scope, prompt, request_text, context_text, retry_of_run_id, attempt, result_text,
+  failure_reason, failure_stage, status, adoption,
+  input_tokens, output_tokens, cache_read_tokens, cache_write_tokens,
+  started_at_unix_ms, completed_at_unix_ms, duration_ms,
+  cost_currency, estimated_cost_micros, created_at_unix_ms, updated_at_unix_ms`
 
 // ListCollaborationRuns returns workspace runs newest first. A non-empty
 // sourceSessionID narrows to one source session; limit <= 0 means no limit.
@@ -87,7 +89,7 @@ func (s *SQLiteStore) PutCollaborationRun(ctx context.Context, run collabrunbiz.
 	_, err := s.db.ExecContext(ctx, `
 INSERT INTO collaboration_runs (
   `+collaborationRunColumns+`
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 ON CONFLICT(workspace_id, run_id) DO UPDATE SET
   mode = excluded.mode,
   trigger_source = excluded.trigger_source,
@@ -99,20 +101,32 @@ ON CONFLICT(workspace_id, run_id) DO UPDATE SET
   model = excluded.model,
   context_scope = excluded.context_scope,
   prompt = excluded.prompt,
+  request_text = excluded.request_text,
+  context_text = excluded.context_text,
+  retry_of_run_id = excluded.retry_of_run_id,
+  attempt = excluded.attempt,
   result_text = excluded.result_text,
   failure_reason = excluded.failure_reason,
+  failure_stage = excluded.failure_stage,
   status = excluded.status,
   adoption = excluded.adoption,
   input_tokens = excluded.input_tokens,
   output_tokens = excluded.output_tokens,
+  cache_read_tokens = excluded.cache_read_tokens,
+  cache_write_tokens = excluded.cache_write_tokens,
   started_at_unix_ms = excluded.started_at_unix_ms,
   completed_at_unix_ms = excluded.completed_at_unix_ms,
   duration_ms = excluded.duration_ms,
+  cost_currency = excluded.cost_currency,
+  estimated_cost_micros = excluded.estimated_cost_micros,
   updated_at_unix_ms = excluded.updated_at_unix_ms
 `, run.WorkspaceID, run.ID, string(run.Mode), string(run.TriggerSource), run.TriggerReason,
 		run.SourceSessionID, run.TargetSessionID, run.TargetAgentTargetID, run.ModelPlanID, run.Model,
-		run.ContextScope, run.Prompt, run.ResultText, run.FailureReason, string(run.Status), string(run.Adoption),
-		run.Usage.InputTokens, run.Usage.OutputTokens, unixMsOrZero(run.StartedAt), unixMsOrZero(run.CompletedAt), run.DurationMs,
+		run.ContextScope, run.Prompt, run.RequestText, run.ContextText, run.RetryOfRunID, run.Attempt, run.ResultText,
+		run.FailureReason, run.FailureStage, string(run.Status), string(run.Adoption),
+		run.Usage.InputTokens, run.Usage.OutputTokens, run.Usage.CacheReadTokens, run.Usage.CacheWriteTokens,
+		unixMsOrZero(run.StartedAt), unixMsOrZero(run.CompletedAt), run.DurationMs,
+		run.Cost.Currency, run.Cost.EstimatedMicros,
 		unixMs(run.CreatedAt), unixMs(run.UpdatedAt))
 	if err != nil {
 		return fmt.Errorf("put collaboration run: %w", err)
@@ -132,8 +146,11 @@ func scanCollaborationRun(row managedProviderScanner) (collabrunbiz.Run, error) 
 	var updatedAtUnixMS int64
 	if err := row.Scan(&run.WorkspaceID, &run.ID, &mode, &triggerSource, &run.TriggerReason,
 		&run.SourceSessionID, &run.TargetSessionID, &run.TargetAgentTargetID, &run.ModelPlanID, &run.Model,
-		&run.ContextScope, &run.Prompt, &run.ResultText, &run.FailureReason, &status, &adoption,
-		&run.Usage.InputTokens, &run.Usage.OutputTokens, &startedAtUnixMS, &completedAtUnixMS, &run.DurationMs,
+		&run.ContextScope, &run.Prompt, &run.RequestText, &run.ContextText, &run.RetryOfRunID, &run.Attempt, &run.ResultText,
+		&run.FailureReason, &run.FailureStage, &status, &adoption,
+		&run.Usage.InputTokens, &run.Usage.OutputTokens, &run.Usage.CacheReadTokens, &run.Usage.CacheWriteTokens,
+		&startedAtUnixMS, &completedAtUnixMS, &run.DurationMs,
+		&run.Cost.Currency, &run.Cost.EstimatedMicros,
 		&createdAtUnixMS, &updatedAtUnixMS); err != nil {
 		return collabrunbiz.Run{}, err
 	}

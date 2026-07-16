@@ -149,6 +149,13 @@ Current renderer shell mapping:
 - Agent-only window -> `view=agent&workspaceId=<id>`
 
 The renderer still shares one preload entry and one renderer bundle today. Separate window shells are resolved inside renderer bootstrap code rather than through fully separate apps.
+An Agent-only startup intent may contain only the workspace id. The renderer
+resolves its initial provider from an explicit intent provider, then from the
+matching `agentTargetId` in transferred directory bootstrap data when present,
+and finally from the user's configured default Agent provider. The strict
+provider normalizer remains downstream of that boundary so an optional launch
+field cannot crash the React root while invalid persisted/runtime provider
+state still fails validation.
 Agent-only windows also share host-window preload capabilities; their
 AgentGUI header close, minimize, and maximize controls call typed host window
 IPC instead of relying on native traffic lights.

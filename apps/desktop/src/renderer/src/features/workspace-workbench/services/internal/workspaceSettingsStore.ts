@@ -1,5 +1,7 @@
 import { proxy } from "valtio";
 import type {
+  WorkspaceSettingsAutomationRulesMutableState,
+  WorkspaceSettingsWorkspaceAgentsMutableState,
   WorkspaceSettingsModelPlansMutableState,
   WorkspaceSettingsStoreState
 } from "../workspaceSettingsTypes";
@@ -23,7 +25,10 @@ export function createWorkspaceSettingsModelPlansState(): WorkspaceSettingsModel
     draftDetection: null,
     draftDiscoveredModels: [],
     draftFeedback: null,
+    draftSaveImpact: null,
     duplicatingPlanID: null,
+    firstUseLaunchFailedPlanID: null,
+    firstUseLaunchingPlanID: null,
     loading: false,
     planFeedback: {},
     plans: [],
@@ -32,9 +37,44 @@ export function createWorkspaceSettingsModelPlansState(): WorkspaceSettingsModel
   };
 }
 
+export function createWorkspaceSettingsAgentsState(): WorkspaceSettingsWorkspaceAgentsMutableState {
+  return {
+    agents: [],
+    confirmingDeleteAgentID: null,
+    deletingAgentID: null,
+    draft: null,
+    feedback: null,
+    capabilityCatalog: [],
+    capabilityCatalogHarnessTargetID: null,
+    capabilityCatalogLoadFailed: false,
+    capabilityCatalogLoading: false,
+    harnessTargets: [],
+    loadFailed: false,
+    loading: false,
+    generating: false,
+    recommendingFallback: false,
+    saving: false
+  };
+}
+
+export function createWorkspaceSettingsAutomationRulesState(): WorkspaceSettingsAutomationRulesMutableState {
+  return {
+    confirmingDeleteRuleID: null,
+    deletingRuleID: null,
+    draft: null,
+    feedback: null,
+    loadFailed: false,
+    loading: false,
+    rules: [],
+    saving: false
+  };
+}
+
 export function createWorkspaceSettingsStore(): WorkspaceSettingsStoreState {
   return proxy({
     activeSection: "general",
+    agents: createWorkspaceSettingsAgentsState(),
+    automationRules: createWorkspaceSettingsAutomationRulesState(),
     developerPanelVisible: readDeveloperPanelVisible(),
     developerLogs: {
       clearing: false,

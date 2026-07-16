@@ -1,0 +1,23 @@
+{
+  "$schema": "../../schemas/core/event-definition.schema.json",
+  "topic": "agent.automation.rules.changed",
+  "version": 1,
+  "direction": "server->client",
+  "owner": "agent",
+  "scope": "workspace",
+  "payloadSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "required": ["workspaceId", "occurredAtUnixMs"],
+    "properties": {
+      "workspaceId": {
+        "type": "string",
+        "minLength": 1
+      },
+      "occurredAtUnixMs": {
+        "type": "integer",
+        "minimum": 0
+      }
+    }
+  }
+}

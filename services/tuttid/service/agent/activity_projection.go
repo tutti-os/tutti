@@ -13,13 +13,14 @@ import (
 )
 
 type ActivityProjection struct {
-	repo                   agentactivitybiz.Repository
-	analyticsReporter      reporterservice.Reporter
-	publisher              ActivityUpdatePublisher
-	sessionMessageObserver SessionMessageObserver
-	sessionStateObserver   SessionStateObserver
-	agentTargetResolver    AgentTargetResolver
-	rootTurnObserver       RootTurnObserver
+	repo                         agentactivitybiz.Repository
+	analyticsReporter            reporterservice.Reporter
+	publisher                    ActivityUpdatePublisher
+	sessionMessageObserver       SessionMessageObserver
+	sessionStateObserver         SessionStateObserver
+	agentTargetResolver          AgentTargetResolver
+	workspaceAgentTargetResolver WorkspaceAgentTargetResolver
+	rootTurnObserver             RootTurnObserver
 }
 
 func NewActivityProjection(repo agentactivitybiz.Repository) *ActivityProjection {
@@ -132,6 +133,7 @@ func (p *ActivityProjection) ReportSessionState(
 	input.Source = source
 	canonicalTargetID, runtimeContext := p.canonicalizeAgentTargetID(
 		ctx,
+		input.WorkspaceID,
 		firstNonEmptyString(input.State.AgentTargetID, input.Source.AgentTargetID),
 		input.State.RuntimeContext,
 	)

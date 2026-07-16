@@ -154,6 +154,8 @@ export function createAgentGuiWorkbenchDraftLaunchRequest(input: {
   agentTargetId?: string | null;
   autoSubmit?: boolean;
   draftPrompt: string;
+  model?: string | null;
+  modelPlanId?: string | null;
   openInNewWindow?: boolean;
   provider: unknown;
   userProjectPath?: string | null;
@@ -171,6 +173,10 @@ export function createAgentGuiWorkbenchDraftLaunchRequest(input: {
         ? { agentTargetId: input.agentTargetId.trim() }
         : {}),
       ...(input.autoSubmit ? { autoSubmit: true } : {}),
+      ...(input.model?.trim() ? { model: input.model.trim() } : {}),
+      ...(input.modelPlanId?.trim()
+        ? { modelPlanId: input.modelPlanId.trim() }
+        : {}),
       ...(input.openInNewWindow ? { openInNewWindow: true } : {}),
       ...(userProjectPath ? { userProjectPath } : {})
     },
@@ -319,6 +325,8 @@ function prefillPromptFromLaunchPayload(
   }
   const autoSubmit = (payload as { autoSubmit?: unknown }).autoSubmit === true;
   const provider = (payload as { provider?: unknown }).provider;
+  const model = (payload as { model?: unknown }).model;
+  const modelPlanId = (payload as { modelPlanId?: unknown }).modelPlanId;
   const agentTargetId = agentTargetIdFromLaunchPayload(payload);
   const userProjectPath = (payload as { userProjectPath?: unknown })
     .userProjectPath;
@@ -330,6 +338,12 @@ function prefillPromptFromLaunchPayload(
     draftPrompt,
     ...(agentTargetId ? { agentTargetId } : {}),
     ...(autoSubmit ? { autoSubmit: true } : {}),
+    ...(typeof model === "string" && model.trim()
+      ? { model: model.trim() }
+      : {}),
+    ...(typeof modelPlanId === "string" && modelPlanId.trim()
+      ? { modelPlanId: modelPlanId.trim() }
+      : {}),
     ...(isAgentGuiWorkbenchProvider(provider) ? { provider } : {}),
     ...(normalizedUserProjectPath
       ? { userProjectPath: normalizedUserProjectPath }

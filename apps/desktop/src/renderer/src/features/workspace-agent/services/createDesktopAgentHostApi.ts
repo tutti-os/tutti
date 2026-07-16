@@ -159,17 +159,37 @@ export function createDesktopAgentHostApi({
         )
     },
     // The desktop host forwards daemon business events the Agent GUI event bus
-    // understands. Today that is the model-catalog invalidation broadcast; the
-    // GUI reacts by force-reloading composer options and session state.
-    onHostEvent: (listener: (event: unknown) => void) =>
-      agentActivityService.onModelCatalogInvalidated((event) => {
-        listener({
-          scope: "global",
-          type: "agent-model-catalog-invalidated",
-          providers: event.providers,
-          occurredAtUnixMs: event.occurredAtUnixMs
-        });
-      }),
+    // understands. Catalog invalidation refreshes provider-owned options;
+    // workspace model-configuration changes additionally reset only affected
+    // new-conversation drafts.
+    onHostEvent: (listener: (event: unknown) => void) => {
+      const unsubscribeCatalog = agentActivityService.onModelCatalogInvalidated(
+        (event) => {
+          listener({
+            scope: "global",
+            type: "agent-model-catalog-invalidated",
+            providers: event.providers,
+            occurredAtUnixMs: event.occurredAtUnixMs
+          });
+        }
+      );
+      const unsubscribeConfiguration =
+        agentActivityService.onModelConfigurationChanged?.((event) => {
+          listener({
+            scope: "room",
+            workspaceId: event.workspaceId,
+            type: "agent-model-configuration-changed",
+            agentTargetIds: event.agentTargetIds,
+            defaultModels: event.defaultModels,
+            resetComposerModel: event.resetComposerModel,
+            occurredAtUnixMs: event.occurredAtUnixMs
+          });
+        }) ?? (() => {});
+      return () => {
+        unsubscribeCatalog();
+        unsubscribeConfiguration();
+      };
+    },
     persistence: {
       readWorkspaceAgentReadState: readDesktopWorkspaceAgentReadState,
       writeWorkspaceAgentReadState: writeDesktopWorkspaceAgentReadState

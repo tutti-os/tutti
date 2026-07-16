@@ -1100,6 +1100,7 @@ async function requestManagedAiModelPermission(
     {
       body: JSON.stringify({
         contextToken,
+        modelPlanIds: input.modelPlanIds ?? [],
         nonce: input.nonce,
         providers: input.providers ?? [],
         scopes: input.scopes,
@@ -1154,6 +1155,9 @@ function normalizeManagedAiModelPermissionResponse(
     ...(typeof value.expiresAt === "string"
       ? { expiresAt: value.expiresAt }
       : {}),
+    ...(Array.isArray(value.modelPlanIds)
+      ? { modelPlanIds: normalizeManagedAiModelPlanIds(value.modelPlanIds) }
+      : {}),
     ...(Array.isArray(value.models)
       ? { models: normalizeManagedAiModels(value.models) }
       : {}),
@@ -1177,8 +1181,25 @@ function normalizeManagedAiModels(
     return {
       id: value.id,
       ...(typeof value.name === "string" ? { name: value.name } : {}),
+      ...(typeof value.modelPlanId === "string"
+        ? { modelPlanId: value.modelPlanId }
+        : {}),
+      ...(typeof value.modelPlanName === "string"
+        ? { modelPlanName: value.modelPlanName }
+        : {}),
       provider: value.provider
     };
+  });
+}
+
+function normalizeManagedAiModelPlanIds(values: unknown[]): string[] {
+  return values.map((value) => {
+    if (typeof value !== "string" || value.trim() === "") {
+      throw new Error(
+        "Managed AI model permission response model Plan is invalid."
+      );
+    }
+    return value.trim();
   });
 }
 

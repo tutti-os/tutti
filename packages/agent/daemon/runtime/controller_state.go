@@ -46,6 +46,9 @@ func (c *Controller) UpdateSettings(ctx context.Context, input UpdateSettingsInp
 		nextSession.PermissionModeID = normalized
 	}
 	nextSession.Settings = cloneSessionSettings(settings)
+	if err := c.applySharedAgentAccess(ctx, sharedAgentAccessRequestForSession(SharedAgentAccessSettings, nextSession)); err != nil {
+		return UpdateSettingsResult{}, err
+	}
 	if newSessionAdapter, ok := adapter.(NewSessionSettingsAdapter); ok && newSessionAdapter.RequiresNewSessionForSettings(session, input.Settings) {
 		return UpdateSettingsResult{}, ErrSessionSettingsRequireNewSession
 	}

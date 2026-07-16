@@ -18,6 +18,14 @@ func (api DaemonAPI) UpdateWorkspaceAgentSessionSettings(ctx context.Context, re
 			InvalidRequestErrorJSONResponse: invalidRequestError(apierrors.EmptyBody(apierrors.WithDeveloperMessage("empty body"))),
 		}, nil
 	}
+	if request.Body.ModelPlanId != nil {
+		return tuttigenerated.UpdateWorkspaceAgentSessionSettings400JSONResponse{
+			InvalidRequestErrorJSONResponse: invalidRequestError(apierrors.InvalidRequest(
+				"agent_session_model_plan_immutable",
+				apierrors.WithDeveloperMessage("modelPlanId is immutable; create a new Session to use a different Model Plan"),
+			)),
+		}, nil
+	}
 	session, err := api.AgentSessionService.UpdateSettings(
 		ctx,
 		string(request.WorkspaceID),

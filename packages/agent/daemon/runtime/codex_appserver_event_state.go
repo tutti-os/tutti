@@ -53,13 +53,21 @@ func appServerTokenUsageState(params map[string]any) (acpUsageState, bool) {
 		used, usedOK = firstInt64Value(payloadObject(tokenUsage["total"]), "totalTokens")
 	}
 	window, windowOK := firstInt64Value(tokenUsage, "modelContextWindow")
-	if !usedOK || !windowOK {
+	tokens := runtimeTokenUsageFromPayload(tokenUsage)
+	// Codex reports cachedInputTokens as a subset of inputTokens. Normalize
+	// input to the uncached portion because the durable Issue accounting adds
+	// cache-read tokens as a separate category.
+	if tokens.known && tokens.cacheReadTokens > 0 && tokens.inputTokens >= tokens.cacheReadTokens {
+		tokens.inputTokens -= tokens.cacheReadTokens
+	}
+	if (!usedOK || !windowOK) && !tokens.known {
 		return acpUsageState{}, false
 	}
 	return acpUsageState{
 		contextUsedTokens:   used,
 		contextWindowTokens: window,
-		contextKnown:        true,
+		contextKnown:        usedOK && windowOK,
+		tokens:              tokens,
 	}, true
 }
 

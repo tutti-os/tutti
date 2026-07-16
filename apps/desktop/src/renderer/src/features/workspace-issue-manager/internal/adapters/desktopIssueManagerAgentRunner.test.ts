@@ -29,6 +29,8 @@ test("desktop issue-manager agent runner opens execute prompt as an agent draft"
   assert.equal(capturedLaunch?.agentSessionId, undefined);
   assert.equal(capturedLaunch?.agentTargetId, "local:codex");
   assert.equal(capturedLaunch?.openInNewWindow, true);
+  assert.equal(capturedLaunch?.model, "gpt-5.4");
+  assert.equal(capturedLaunch?.modelPlanId, "plan-codex");
   assert.equal(capturedLaunch?.provider, "codex");
   assert.equal(capturedLaunch?.userProjectPath, undefined);
   assert.equal(capturedLaunch?.workspaceId, "workspace-1");
@@ -271,6 +273,8 @@ function createRunRequest(input?: {
       creatorUserId: "local",
       issueId: "issue-1",
       priority: "high" as const,
+      model: "gpt-5.4",
+      modelPlanId: "plan-codex",
       status: "not_started" as const,
       taskId: "task-1",
       title: "Port renderer",

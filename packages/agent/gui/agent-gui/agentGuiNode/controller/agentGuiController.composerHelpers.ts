@@ -366,6 +366,7 @@ export function resolveEffectiveComposerSettings(input: {
 }): AgentSessionComposerSettings {
   return {
     model: normalizeOptionalText(input.settings.model) ?? null,
+    modelPlanId: normalizeOptionalText(input.settings.modelPlanId) ?? null,
     reasoningEffort:
       (normalizeOptionalText(
         input.settings.reasoningEffort
@@ -403,6 +404,7 @@ export function sameComposerSettings(
 ): boolean {
   return (
     (left?.model ?? null) === (right?.model ?? null) &&
+    (left?.modelPlanId ?? null) === (right?.modelPlanId ?? null) &&
     (left?.reasoningEffort ?? null) === (right?.reasoningEffort ?? null) &&
     (left?.speed ?? null) === (right?.speed ?? null) &&
     Boolean(left?.planMode) === Boolean(right?.planMode) &&
@@ -424,6 +426,7 @@ export function buildNodeDefaultComposerSettings(
   const composerOverrides = nodeComposerOverridesForProvider(data) ?? {};
   return {
     model: normalizeOptionalText(composerOverrides.model),
+    modelPlanId: normalizeOptionalText(composerOverrides.modelPlanId),
     reasoningEffort:
       (normalizeOptionalText(
         composerOverrides.reasoningEffort
@@ -480,6 +483,7 @@ export function nodeDataFromComposerSettings(
   // Generic cleanup only — provider-level clamping is owned by the daemon.
   const composerOverrides = {
     model: normalizeOptionalText(settings.model),
+    modelPlanId: normalizeOptionalText(settings.modelPlanId),
     reasoningEffort: normalizeOptionalText(settings.reasoningEffort),
     speed: normalizeOptionalText(settings.speed),
     planMode: Boolean(settings.planMode),
@@ -491,12 +495,25 @@ export function nodeDataFromComposerSettings(
   };
   const agentTargetId = normalizeOptionalText(current.agentTargetId);
   if (agentTargetId) {
+    const modelConfiguration =
+      current.modelConfigurationsByAgentTargetId?.[agentTargetId] ?? null;
+    const modelConfigurationsByAgentTargetId =
+      modelConfiguration?.source === "model-plan"
+        ? {
+            ...(current.modelConfigurationsByAgentTargetId ?? {}),
+            [agentTargetId]: {
+              ...modelConfiguration,
+              selectedModel: composerOverrides.model
+            }
+          }
+        : current.modelConfigurationsByAgentTargetId;
     return {
       ...current,
       composerOverridesByAgentTargetId: {
         ...(current.composerOverridesByAgentTargetId ?? {}),
         [agentTargetId]: composerOverrides
-      }
+      },
+      modelConfigurationsByAgentTargetId
     };
   }
   return {

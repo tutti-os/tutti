@@ -1,4 +1,4 @@
-import { useCallback, useState, type JSX } from "react";
+import { useState, type JSX } from "react";
 import {
   ArrowRightLeft,
   ChevronDown,
@@ -6,9 +6,11 @@ import {
   GitFork,
   LoaderCircle,
   MessageCircleQuestion,
+  RefreshCw,
+  Square,
   Users
 } from "lucide-react";
-import { toast } from "@tutti-os/ui-system";
+import { Button, toast } from "@tutti-os/ui-system";
 import { translate } from "../../../i18n/index";
 import { useOptionalAgentHostApi } from "../../../agentActivityHost";
 import { useOptionalAgentActivityRuntime } from "../../../agentActivityRuntime";
@@ -33,6 +35,7 @@ export function AgentCollaborationRow({
   basePath,
   onLinkAction,
   workspaceAppIcons,
+  onReviseCollaboration,
   previewMode = false
 }: {
   collaboration: AgentCollaborationVM;
@@ -40,6 +43,7 @@ export function AgentCollaborationRow({
   basePath: string;
   onLinkAction?: (action: WorkspaceLinkAction) => void;
   workspaceAppIcons?: readonly AgentMessageMarkdownWorkspaceAppIcon[];
+  onReviseCollaboration?: (collaboration: AgentCollaborationVM) => void;
   previewMode?: boolean;
 }): JSX.Element {
   "use memo";
@@ -47,6 +51,8 @@ export function AgentCollaborationRow({
   const runtime = useOptionalAgentActivityRuntime();
   const [resultExpanded, setResultExpanded] = useState(false);
   const [adoptionPending, setAdoptionPending] = useState(false);
+  const [cancelPending, setCancelPending] = useState(false);
+  const [retryPending, setRetryPending] = useState(false);
   // Optimistic echo until the daemon's in-place message update arrives.
   const [localAdoption, setLocalAdoption] = useState<string | null>(null);
 
@@ -63,49 +69,141 @@ export function AgentCollaborationRow({
     adoption !== "not_applicable" &&
     collaboration.status === "completed" &&
     canSubmitAdoption;
-
-  const submitAdoption = useCallback(
-    async (nextAdoption: "adopted" | "rejected") => {
-      const setCollaborationAdoption = runtime?.setCollaborationAdoption;
-      if (
-        !setCollaborationAdoption ||
-        !collaboration.workspaceId ||
-        !collaboration.agentSessionId ||
-        adoptionPending
-      ) {
-        return;
-      }
-      setAdoptionPending(true);
-      try {
-        const run = await setCollaborationAdoption({
-          adoption: nextAdoption,
-          agentSessionId: collaboration.agentSessionId,
-          runId: collaboration.runId,
-          workspaceId: collaboration.workspaceId
-        });
-        setLocalAdoption(run.adoption);
-      } catch {
-        const message = translate(
-          "agentHost.agentGui.collaborationAdoptionFailed"
-        );
-        if (agentHostApi?.toast?.error) {
-          agentHostApi.toast.error(message);
-        } else {
-          toast.error(message);
-        }
-      } finally {
-        setAdoptionPending(false);
-      }
-    },
-    [
-      adoptionPending,
-      agentHostApi,
-      collaboration.agentSessionId,
-      collaboration.runId,
-      collaboration.workspaceId,
-      runtime
-    ]
+  const canCancel = Boolean(
+    runtime?.cancelCollaboration &&
+    collaboration.workspaceId &&
+    collaboration.status === "running" &&
+    !previewMode
   );
+  const canRetry = Boolean(
+    runtime?.retryCollaboration &&
+    collaboration.workspaceId &&
+    collaboration.status === "failed" &&
+    !previewMode
+  );
+  const canReturnFailed =
+    collaboration.status === "failed" &&
+    (collaboration.mode === "consult" || collaboration.mode === "delegate") &&
+    adoption === "pending" &&
+    canSubmitAdoption;
+  const canReviseFailed = Boolean(
+    collaboration.status === "failed" &&
+    collaboration.requestText?.trim() &&
+    onReviseCollaboration &&
+    !previewMode
+  );
+
+  const retryCollaboration = async (): Promise<void> => {
+    const retry = runtime?.retryCollaboration;
+    if (
+      !retry ||
+      !collaboration.workspaceId ||
+      collaboration.status !== "failed" ||
+      retryPending
+    ) {
+      return;
+    }
+    setRetryPending(true);
+    try {
+      await retry({
+        runId: collaboration.runId,
+        workspaceId: collaboration.workspaceId
+      });
+    } catch (error) {
+      void agentHostApi?.debug?.logRuntimeDiagnostics?.({
+        details: {
+          error: error instanceof Error ? error.message : String(error),
+          runId: collaboration.runId
+        },
+        event: "agent_gui.collaboration_retry.failed"
+      });
+      const message = translate("agentHost.agentGui.collaborationRetryFailed");
+      if (agentHostApi?.toast?.error) {
+        agentHostApi.toast.error(message);
+      } else {
+        toast.error(message);
+      }
+    } finally {
+      setRetryPending(false);
+    }
+  };
+
+  const cancelCollaboration = async (): Promise<void> => {
+    const cancel = runtime?.cancelCollaboration;
+    if (
+      !cancel ||
+      !collaboration.workspaceId ||
+      collaboration.status !== "running" ||
+      cancelPending
+    ) {
+      return;
+    }
+    setCancelPending(true);
+    try {
+      await cancel({
+        runId: collaboration.runId,
+        workspaceId: collaboration.workspaceId
+      });
+    } catch (error) {
+      void agentHostApi?.debug?.logRuntimeDiagnostics?.({
+        details: {
+          error: error instanceof Error ? error.message : String(error),
+          runId: collaboration.runId
+        },
+        event: "agent_gui.collaboration_cancel.failed"
+      });
+      const message = translate("agentHost.agentGui.collaborationCancelFailed");
+      if (agentHostApi?.toast?.error) {
+        agentHostApi.toast.error(message);
+      } else {
+        toast.error(message);
+      }
+    } finally {
+      setCancelPending(false);
+    }
+  };
+
+  const submitAdoption = async (
+    nextAdoption: "adopted" | "rejected"
+  ): Promise<void> => {
+    const setCollaborationAdoption = runtime?.setCollaborationAdoption;
+    if (
+      !setCollaborationAdoption ||
+      !collaboration.workspaceId ||
+      !collaboration.agentSessionId ||
+      adoptionPending
+    ) {
+      return;
+    }
+    setAdoptionPending(true);
+    try {
+      const run = await setCollaborationAdoption({
+        adoption: nextAdoption,
+        agentSessionId: collaboration.agentSessionId,
+        runId: collaboration.runId,
+        workspaceId: collaboration.workspaceId
+      });
+      setLocalAdoption(run.adoption);
+    } catch (error) {
+      void agentHostApi?.debug?.logRuntimeDiagnostics?.({
+        details: {
+          error: error instanceof Error ? error.message : String(error),
+          runId: collaboration.runId
+        },
+        event: "agent_gui.collaboration_adoption.failed"
+      });
+      const message = translate(
+        "agentHost.agentGui.collaborationAdoptionFailed"
+      );
+      if (agentHostApi?.toast?.error) {
+        agentHostApi.toast.error(message);
+      } else {
+        toast.error(message);
+      }
+    } finally {
+      setAdoptionPending(false);
+    }
+  };
 
   const ModeIcon = collaborationModeIcon(collaboration.mode);
   const planText = collaboration.modelPlanName ?? collaboration.modelPlanId;
@@ -178,7 +276,32 @@ export function AgentCollaborationRow({
         >
           {translate("agentHost.agentGui.collaborationUsageTokens", {
             input: String(collaboration.usage.inputTokens),
-            output: String(collaboration.usage.outputTokens)
+            output: String(collaboration.usage.outputTokens),
+            cacheRead: String(collaboration.usage.cacheReadTokens),
+            cacheWrite: String(collaboration.usage.cacheWriteTokens)
+          })}
+        </div>
+      ) : null}
+      <div
+        data-testid="agent-collaboration-attempt"
+        className="mt-1 text-[11px] text-[var(--text-tertiary)]"
+      >
+        {translate("agentHost.agentGui.collaborationAttempt", {
+          attempt: String(collaboration.attempt)
+        })}
+        {collaboration.retryOfRunId
+          ? ` · ${translate("agentHost.agentGui.collaborationRetryOf", {
+              runId: collaboration.retryOfRunId
+            })}`
+          : null}
+      </div>
+      {collaboration.cost ? (
+        <div
+          data-testid="agent-collaboration-cost"
+          className="mt-1 text-[11px] text-[var(--text-tertiary)]"
+        >
+          {translate("agentHost.agentGui.collaborationEstimatedCost", {
+            cost: formatCollaborationCost(collaboration.cost)
           })}
         </div>
       ) : null}
@@ -190,6 +313,89 @@ export function AgentCollaborationRow({
           {translate("agentHost.agentGui.collaborationFailureReason", {
             reason: collaboration.failureReason
           })}
+        </div>
+      ) : null}
+      {collaboration.failureStage ? (
+        <div
+          data-testid="agent-collaboration-failure-stage"
+          className="mt-1 text-[11px] text-[var(--text-tertiary)]"
+        >
+          {translate("agentHost.agentGui.collaborationFailureStage", {
+            stage: collaboration.failureStage
+          })}
+        </div>
+      ) : null}
+      {canRetry || canReviseFailed || canReturnFailed ? (
+        <div className="mt-2 flex flex-wrap items-center gap-1.5">
+          {canRetry ? (
+            <Button
+              data-testid="agent-collaboration-retry"
+              disabled={retryPending || adoptionPending}
+              size="sm"
+              type="button"
+              onClick={() => void retryCollaboration()}
+            >
+              {retryPending ? (
+                <LoaderCircle
+                  className="animate-spin"
+                  size={12}
+                  strokeWidth={2}
+                  aria-hidden="true"
+                />
+              ) : (
+                <RefreshCw size={12} strokeWidth={2} aria-hidden="true" />
+              )}
+              {translate("agentHost.agentGui.collaborationRetry")}
+            </Button>
+          ) : null}
+          {canReviseFailed ? (
+            <Button
+              data-testid="agent-collaboration-revise"
+              disabled={retryPending || adoptionPending}
+              size="sm"
+              type="button"
+              variant="secondary"
+              onClick={() => onReviseCollaboration?.(collaboration)}
+            >
+              <ArrowRightLeft size={12} strokeWidth={2} aria-hidden="true" />
+              {translate("agentHost.agentGui.collaborationRevise")}
+            </Button>
+          ) : null}
+          {canReturnFailed ? (
+            <Button
+              data-testid="agent-collaboration-return-user"
+              disabled={retryPending || adoptionPending}
+              size="sm"
+              type="button"
+              variant="secondary"
+              onClick={() => void submitAdoption("rejected")}
+            >
+              {translate("agentHost.agentGui.collaborationReturnUser")}
+            </Button>
+          ) : null}
+        </div>
+      ) : null}
+      {canCancel ? (
+        <div className="mt-2">
+          <button
+            type="button"
+            data-testid="agent-collaboration-cancel"
+            disabled={cancelPending}
+            className="inline-flex h-6 items-center gap-1 rounded-[6px] border border-[var(--line-2)] px-2 text-[12px] text-[var(--text-secondary)] transition-colors hover:text-[var(--state-danger)] disabled:cursor-not-allowed disabled:opacity-60"
+            onClick={() => void cancelCollaboration()}
+          >
+            {cancelPending ? (
+              <LoaderCircle
+                size={12}
+                strokeWidth={2}
+                aria-hidden="true"
+                className="animate-spin"
+              />
+            ) : (
+              <Square size={11} strokeWidth={2} aria-hidden="true" />
+            )}
+            {translate("agentHost.agentGui.collaborationCancel")}
+          </button>
         </div>
       ) : null}
       {collaboration.mode === "consult" && resultText ? (
@@ -274,6 +480,21 @@ export function AgentCollaborationRow({
   );
 }
 
+function formatCollaborationCost(
+  cost: NonNullable<AgentCollaborationVM["cost"]>
+): string {
+  const amount = cost.estimatedMicros / 1_000_000;
+  try {
+    return new Intl.NumberFormat(undefined, {
+      style: "currency",
+      currency: cost.currency,
+      maximumFractionDigits: 6
+    }).format(amount);
+  } catch {
+    return `${cost.currency} ${amount.toFixed(6)}`;
+  }
+}
+
 function collaborationModeIcon(
   mode: AgentCollaborationVM["mode"]
 ): typeof MessageCircleQuestion {
@@ -314,6 +535,8 @@ function collaborationTriggerLabel(
       return translate("agentHost.agentGui.collaborationTriggerAgent");
     case "policy":
       return translate("agentHost.agentGui.collaborationTriggerPolicy");
+    case "automation":
+      return translate("agentHost.agentGui.collaborationTriggerAutomation");
     default:
       return triggerSource;
   }

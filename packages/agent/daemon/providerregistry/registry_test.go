@@ -28,6 +28,9 @@ func TestMigratedCodexDescriptorIsComplete(t *testing.T) {
 	if descriptor.Runtime.Endpoint.ConfigKind != EndpointConfigKindCodexCLI {
 		t.Fatalf("Runtime.Endpoint.ConfigKind = %q", descriptor.Runtime.Endpoint.ConfigKind)
 	}
+	if descriptor.Runtime.Endpoint.ModelPlanProtocol != ModelPlanProtocolOpenAI {
+		t.Fatalf("Runtime.Endpoint.ModelPlanProtocol = %q", descriptor.Runtime.Endpoint.ModelPlanProtocol)
+	}
 	if descriptor.Events.TurnLifecycleProjection != TurnLifecycleProjectionExplicit {
 		t.Fatalf("Events.TurnLifecycleProjection = %q", descriptor.Events.TurnLifecycleProjection)
 	}
@@ -210,6 +213,48 @@ func TestMigratedClaudeCodeDescriptorIsComplete(t *testing.T) {
 		!descriptor.ComposerProfile.Behavior.PrewarmDraftSession ||
 		!descriptor.ComposerProfile.Behavior.PlanModeExclusiveWithPermissionMode {
 		t.Fatalf("composer behavior = %#v", descriptor.ComposerProfile.Behavior)
+	}
+	if descriptor.Runtime.Endpoint.ModelPlanProtocol != ModelPlanProtocolAnthropic {
+		t.Fatalf("Runtime.Endpoint.ModelPlanProtocol = %q", descriptor.Runtime.Endpoint.ModelPlanProtocol)
+	}
+}
+
+func TestResolveModelPlanProtocolUsesProviderStrategy(t *testing.T) {
+	tests := []struct {
+		provider string
+		want     ModelPlanProtocol
+		wantOK   bool
+	}{
+		{provider: "codex", want: ModelPlanProtocolOpenAI, wantOK: true},
+		{provider: "Claude Code", want: ModelPlanProtocolAnthropic, wantOK: true},
+		{provider: "tutti-agent", want: ModelPlanProtocolOpenAI, wantOK: true},
+		{provider: "cursor", want: "", wantOK: false},
+		{provider: "acp:custom", want: "", wantOK: false},
+	}
+	for _, test := range tests {
+		got, ok := ResolveModelPlanProtocol(test.provider)
+		if got != test.want || ok != test.wantOK {
+			t.Errorf("ResolveModelPlanProtocol(%q) = %q, %v; want %q, %v", test.provider, got, ok, test.want, test.wantOK)
+		}
+	}
+}
+
+func TestResolveNativeSubscriptionTargetUsesProviderStrategy(t *testing.T) {
+	tests := []struct {
+		protocol ModelPlanProtocol
+		provider string
+		target   string
+		wantOK   bool
+	}{
+		{protocol: ModelPlanProtocolOpenAI, provider: CodexProviderID, target: CodexTargetID, wantOK: true},
+		{protocol: ModelPlanProtocolAnthropic, provider: ClaudeCodeProviderID, target: ClaudeCodeTargetID, wantOK: true},
+		{protocol: "unknown", wantOK: false},
+	}
+	for _, test := range tests {
+		got, ok := ResolveNativeSubscriptionTarget(test.protocol)
+		if got.ProviderID != test.provider || got.AgentTargetID != test.target || ok != test.wantOK {
+			t.Errorf("ResolveNativeSubscriptionTarget(%q) = %#v, %v; want provider=%q target=%q ok=%v", test.protocol, got, ok, test.provider, test.target, test.wantOK)
+		}
 	}
 }
 

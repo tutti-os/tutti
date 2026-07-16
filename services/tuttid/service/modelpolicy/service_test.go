@@ -127,6 +127,12 @@ func (s staticBindings) GetAgentModelBinding(context.Context, string, string) (m
 	return s.binding, nil
 }
 
+type panicBindings struct{}
+
+func (panicBindings) GetAgentModelBinding(context.Context, string, string) (modelbindingbiz.Binding, error) {
+	panic("legacy policy binding must not be resolved without an explicit compatibility runner")
+}
+
 type recordingRunner struct {
 	mu     sync.Mutex
 	inputs []ReviewConsultInput
@@ -247,6 +253,19 @@ func TestReviewRuleRunsAndMarksAutoChecked(t *testing.T) {
 	time.Sleep(50 * time.Millisecond)
 	if len(runner.inputs) != 1 {
 		t.Fatalf("same turn should not re-trigger: %#v", runner.inputs)
+	}
+}
+
+func TestCompletedTurnWithoutLegacyRunnerOnlyRecordsAcceptance(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	service := newPolicyTestService(newMemoryPolicyStore())
+	service.Bindings = panicBindings{}
+	service.ObserveAgentSessionState(ctx, settledCompletedInput("turn-no-legacy-runner"), agentsessionstore.ReportSessionStateReply{})
+	acceptance, ok, err := service.GetAcceptance(ctx, "ws", "session-1")
+	if err != nil || !ok || acceptance.State != modelpolicybiz.AcceptanceAgentClaimed {
+		t.Fatalf("acceptance = %#v ok=%v err=%v", acceptance, ok, err)
 	}
 }
 

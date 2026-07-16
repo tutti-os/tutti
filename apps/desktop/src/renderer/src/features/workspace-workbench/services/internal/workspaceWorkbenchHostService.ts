@@ -45,6 +45,7 @@ import {
 } from "../../../workspace-agent/services/workspaceAgentPromptSessionService.interface.ts";
 import { IWorkspaceAppCenterService } from "@renderer/features/workspace-app-center/services/workspaceAppCenterService.interface.ts";
 import { createDesktopAgentGeneratedFileMentionProvider } from "@renderer/features/workspace-agent/services/createDesktopAgentGeneratedFileMentionProvider.ts";
+import { ensureDesktopManagedAgentProviderStatuses } from "@renderer/features/workspace-agent/services/desktopManagedAgentProviders.ts";
 import { IWorkspaceFileManagerService } from "../../../workspace-file-manager/services/workspaceFileManagerService.interface.ts";
 import { createDesktopWorkspaceFileReferenceAdapter } from "../../../workspace-file-manager/services/createDesktopWorkspaceFileReferenceAdapter.ts";
 import { IWorkspaceUserProjectService } from "../../../workspace-user-project/services/workspaceUserProjectService.interface.ts";
@@ -591,7 +592,9 @@ export class WorkspaceWorkbenchHostService implements IWorkspaceWorkbenchHostSer
   }
 
   async ensureAgentProviderStatusesLoaded(): Promise<void> {
-    await this.dependencies.agentProviderStatusService.ensureLoaded();
+    await ensureDesktopManagedAgentProviderStatuses(
+      this.dependencies.agentProviderStatusService
+    );
   }
 
   subscribeWallpaperChanges(listener: () => void): () => void {

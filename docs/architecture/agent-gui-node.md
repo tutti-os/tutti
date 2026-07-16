@@ -282,8 +282,11 @@ Every renderer shell that exposes one of those launchers must register the
 workspace-scoped AgentGUI launch coordinator locally. The OS workspace handler
 launches a workbench node. The standalone Agent handler opens draft-prefill and
 explicit new-window requests in another native Agent window, carrying the
-target, provider, draft, auto-submit flag, and user-project path through the
-typed window intent. The standalone route injects that immutable launch draft
+target, provider, draft, optional pre-session Model Plan/model assignment,
+auto-submit flag, and user-project path through the typed window intent. The
+assignment applies only to the new-conversation draft; launch routing must
+never rewrite an active Session's immutable Plan. The standalone route injects
+that immutable launch draft
 as the AgentGUI body's first-render prefill bootstrap request; it must not depend
 on a mount effect to copy and clear a synthetic workbench activation. An
 existing-session request without a new-window flag activates that session in the
@@ -1466,6 +1469,7 @@ composer submit with no activeConversationId
   -> mark conversation-list create pending
   -> create optimistic conversation id + user message
   -> enter optimistic conversation detail
+  -> carry optional AutomationRule override in the pending activation
   -> activation.activate(mode="new")
   -> AgentActivityRuntime.activateSession
   -> WorkspaceAgentActivityService.activateSession
@@ -1474,6 +1478,7 @@ composer submit with no activeConversationId
   -> agent.Service.Create
   -> provider install/check + prepareRuntime
   -> RuntimeController.Start
+  -> persist optional AutomationRule session override
   -> RuntimeController.Exec when initialContent exists
   -> activation succeeds
   -> replace transient summary with durable conversation
@@ -1539,6 +1544,16 @@ Claude Code,
 session before calling `sendWorkspaceAgentSessionInput`. Create-time-only launch
 options must opt out of that promotion path because the hidden draft has already
 created and prepared its runtime.
+
+Session-local AutomationRule selection follows the same activation ownership.
+The home Composer stages the choice in its submit options; the pending intent,
+workspace engine host, activity service, and desktop adapter preserve a
+defensive copy until it reaches `CreateWorkspaceAgentSessionRequest`. The daemon
+persists that override before the first `Exec`, so a completion/failure trigger
+cannot observe workspace defaults for a turn that was submitted with a
+different choice. For an active Session, AgentGUI reads and writes the override
+through optional `AgentActivityRuntime` list/get/set commands. It does not call
+the Tutti client directly or mirror durable override state in the desktop host.
 
 ### Sending To An Existing Conversation
 
@@ -1856,26 +1871,136 @@ records (`services/tuttid/service/collabrun`). The daemon projects each run
 into the source session transcript as a durable message of kind
 `"collaboration"` with message id `collab:<runId>`; status transitions update
 that one message in place through the normal `message_update` pipeline.
+Session-backed runs are recorded before launch and remain running until the
+exact target turn settles. Their terminal card therefore reflects real
+completed/failed/canceled state and duration instead of treating successful
+session creation as completed work. Daemon restart interruption also settles
+the card as failed, and the collaboration cancel endpoint delegates to exact
+target-turn cancellation.
 AgentGUI renders it through the pure `agentCollaborationProjection` into
 `AgentCollaborationRow`; malformed payloads degrade to plain message rows.
 Collaboration rows never merge into assistant prose and never contribute
 copy-text. Adoption (采纳/不采纳) is a runtime command
 (`setCollaborationAdoption`); the durable state returns via activity events.
+Running cards expose `cancelCollaboration`; the desktop host calls the daemon
+run-cancel endpoint and waits for the same durable in-place activity update.
+Preview cards and terminal runs never expose the action. A failed card shows
+its failure stage, immutable attempt number and retry parent, recorded usage,
+and known metered cost. It exposes daemon-backed Retry as a new linked attempt
+and Return to user; it never rewrites or hides the failed attempt. The daemon
+also keeps the credential-free original request on the durable card. **Change
+model or Agent** copies that request back into the active Composer and focuses
+it, where the user can replace the `workspace-model` or `agent-target` mention
+before submitting a new collaboration. This is a new user-selected run, not a
+mutation of the failed attempt.
 
-The composer consult entry (`AgentModelConsultControl`) is active-session-only
-chrome next to the model select. It reads enabled plans via the optional
-`listModelPlans` runtime command and submits `startModelConsult`; hosts that do
-not implement these optional commands hide the affordance entirely. The
-composer draft seeds the question text and is never cleared by a consult.
+An `agent-target` @-mention in an active source Session changes Composer from a
+normal prompt send into an explicit Agent collaboration launch. Composer must
+show the resolved target, require exactly one of Fork / Delegate / Handoff,
+and require a context scope before it can send. The supported scopes are
+`none`, `recent` (up to 12 messages / 8 KiB), and `full` (up to 48 messages /
+32 KiB). The renderer may preview those messages, but it sends only the scope
+and an optional user supplement; the daemon reads the canonical source
+transcript and constructs the target prompt so a renderer cannot substitute
+different history. One prompt may name only one Agent, and direct attachment
+blocks are rejected until the collaboration request contract can carry them;
+users can insert durable `@` references instead. Successful launch clears only
+the captured draft scope and only when the draft was not edited in flight.
+Transport or launch failure preserves the draft for retry. Hosts that omit the
+optional `startAgentCollaboration` runtime command render the mention as
+unavailable rather than falling back to an ordinary text send.
 
-When an agent target is bound to a workspace model access plan, daemon
-composer options replace provider-native model options with the plan's models
-and set `runtimeContext.modelPlan = {id, name, protocol}`; the composer model
-menu shows the source plan badge and per-option plan labels. Model favorites
-and recents are per-`agentTargetId` browser-local chrome state
-(`composerModelChoiceHistory`), never controller or durable state. See
-[Model Access Plans And Model Governance](./model-access-plans.md) for the
+There is no composer consult button: users reference a model with a
+`workspace-model` @-mention in the prompt, and the agent starts the consult
+itself through `tutti agent consult` (see
+[Model Access Plans And Workspace Agents](./model-access-plans.md)). The
+optional `listModelPlans`/`startModelConsult` runtime commands remain the
+host-gated programmatic surface behind that flow.
+
+Daemon composer options still resolve the selected WorkspaceAgent to its
+trusted Harness and primary Plan, but the visible model menu is a
+workspace-global protocol-compatible projection of every enabled usable Plan.
+Each row keeps its composite Plan/model identity and shows source, tier,
+capabilities, optional price, and whether it applies on the next call or in a
+new Session. Search, favorites, and recents use the composite value and remain
+per-`agentTargetId` browser-local chrome (`composerModelChoiceHistory`), never
+controller or durable state. Same-Plan choices use the live settings command.
+Cross-Plan choices are staged locally; the next submit creates a new Session
+for the same WorkspaceAgent with a minimal previous-Session mention. The
+daemon-returned immutable `settings.modelPlanId` is the comparison authority.
+For a shared target, AgentGUI additionally intersects the aggregate list with
+the owner's credential-free allowed-model projection. When the Owner denies
+`upgrade`, the aggregate menu retains only the target's current Plan/model;
+when the Owner denies `delegate`, the `agent-target` collaboration Composer
+disables Fork/Delegate/Handoff and fails closed before calling the host.
+Quota, cost-quota, concurrency, and owner-online exhaustion already disable
+the target at the directory boundary. Runtime remains
+authoritative: start, settings changes, and turns send the actual Plan/model
+and requested capability back to the owner control plane and fail closed when
+authorization or its mandatory audit write fails.
+See [Model Access Plans And Workspace Agents](./model-access-plans.md) for the
 daemon side.
+
+### Plan And Ultra Plan Issue Handoff
+
+The composer exposes three explicit modes: `normal`, `plan`, and
+`ultra_plan`. Plan and Ultra Plan set provider plan mode for the submitted
+turn; Ultra Plan is hidden unless the selected Agent supports both planning and
+plan implementation. Ultra Plan is staged: the first turn produces only a
+reviewable plan narrative marked with `tutti-ultra-plan-v1`; the host then asks
+for Issue-level reasoning/orchestration and auto/fixed token-budget choices.
+When Plan or Ultra Plan is selected, the composer also exposes an optional
+pre-planning budget control. Its two intensity values and auto/fixed token
+budget are persisted in AgentGUI workbench state and seed the later mandatory
+review whenever the generated artifact does not explicitly carry already-
+confirmed values. The mandatory review remains authoritative.
+Only after confirmation does a private Planning-Agent turn receive the real
+credential-free Agent, Plan, billing-mode, model, tier/capability/pricing, and
+directory catalogs and emit the fenced
+`tutti-issue-plan-v1` task graph. The artifact must not contain credentials,
+fabricated owner identity, or task-level strength/budget.
+
+Full Plan prompt cards offer `implement` and `create_issue`. Traditional Plan
+uses **Break into an Issue**; Ultra Plan uses the same review flow with its
+structured payload. AgentGUI converts the plan text into an ephemeral review
+draft only: users can adjust the two Issue-level intensities, auto/fixed budget,
+and each task's Agent/Plan/model/directory while seeing dependencies. Agent
+protocol filters compatible Plans; selecting a Plan resolves a valid default
+model. The preview estimates monetary cost only for explicit `api_metered`
+catalog pricing; `subscription_quota` plans retain quota semantics and unknown
+prices never become zero. The confirmed reasoning
+intensity biases capability versus cost, while orchestration intensity biases
+meaningful specialization versus fewer handoffs. The final review offers
+`create only`, sequential `create and start`, and parallel `create and start`.
+It then dispatches the selected action and plan-turn identity. It does not
+persist tasks or launch agents.
+After a traditional Plan completes this conversion, Desktop shows the
+localized Ultra Plan entry hint required by the product funnel; Ultra Plan
+conversions keep the ordinary creation confirmation.
+
+Desktop owns the host adapter:
+
+```text
+AgentGUI plan action
+  -> read authoritative plan-turn messages
+  -> parse submitted review draft (or one-task traditional fallback)
+  -> for parallel start, Desktop creates/reuses one isolated Git worktree per assigned Task
+  -> tuttid create Issue from Plan with sequential or parallel execution policy
+  -> daemon validates parallel Task directories are unique absolute paths
+  -> sequential: start one stable eligible Task; wait for explicit acceptance
+  -> parallel: start every DAG-ready root; accepted dependencies unlock successors
+```
+
+Parallel start fails closed before Issue creation when Desktop cannot provide
+an isolated worktree for every assigned Task (including non-Git workspaces or
+hosts without the worktree capability). The localized failure leaves the
+review intact so the user can choose sequential start or supply explicit
+isolated directories. The daemon remains the scheduler in both modes.
+
+The Issue domain owns DAG validation, budgets, usage/cost aggregation, and the
+`agent_claimed -> auto_checked -> user_accepted` gate. AgentGUI must not infer
+task completion from plan-card state or close a task when an agent merely
+claims success. See [Workspace Issue Manager](./workspace-issue-manager.md).
 
 ### Layer Ownership Summary
 
@@ -2267,6 +2392,15 @@ User-visible rules:
   by a directory-resolved `agentTargetId`. They have no provider-keyed fallback,
   so two targets under the same provider cannot share model, permission,
   reasoning, speed, or draft state by accident.
+- Workspace model-plan or binding events only invalidate the affected target's
+  composer options. The authoritative `runtimeContext.modelConfiguration`
+  fingerprint/default returned by the daemon drives reconciliation on initial
+  load, remount, reconnect, and event refresh. Persist the resulting model-only
+  state by workspace/target in workbench state; keep ordinary permission,
+  reasoning, speed, and draft overrides on their existing ownership paths.
+  Reset only a home/new-conversation model when the fingerprint changes, keep a
+  user's selected model when it does not, and never rewrite an active session
+  or desktop-wide remembered default during automatic reconciliation.
 - Active session settings are session state. Opening, restoring, or editing an
   active session must not promote that session's model, permission mode, or
   reasoning setting into user defaults.
@@ -2732,11 +2866,24 @@ re-authenticate the current user and workspace and resolve launch authority.
 An agent may represent shared, local, remote, or other host-owned launch
 mechanisms, but those meanings stay outside AgentGUI.
 
-Desktop workbench feeds the renderer `AgentsService` `/agents` snapshot into
-AgentGUI. Product feature gates may filter that array before rendering; a
-loaded empty result remains empty. Availability states that should stay visible
-must remain in the array with the matching non-ready status instead of becoming
-synthetic provider placeholders. OpenCode remains gated by the
+Desktop workbench feeds the renderer `AgentsService` workspace-scoped
+`/v1/workspaces/{workspaceID}/agents` snapshot into AgentGUI. Each directory
+entry is an explicit named Workspace Agent that maps one Harness target to an
+optional ModelPlan and carries its own instructions, skills, tools, and
+permissions. Its Workspace Agent `id` is the opaque `agentTargetId`; the nested
+Harness target and provider are metadata and must not replace that identity.
+The global `/v1/agent-targets` snapshot remains the Harness catalog for Agent
+configuration and historical resolution. Desktop may project enabled legacy
+system targets only when the workspace endpoint returns no Workspace Agents,
+so an upgraded workspace is not left without a launch option while migration
+catches up. Once any Workspace Agent exists, the explicit workspace directory
+is authoritative and fixed Harness targets must not appear as parallel Agent
+choices.
+
+Product feature gates may filter that array before rendering; a loaded empty
+result remains empty after the explicit legacy-fallback decision. Availability
+states that should stay visible must remain in the array with the matching
+non-ready status instead of becoming synthetic provider placeholders. OpenCode remains gated by the
 `enableOpenCodeAgent` developer preference. Tutti Agent visibility is owned by
 the daemon's `local:tutti-agent` Agent Target: disabled daemon targets stay in
 the presentation snapshot for history and settings, but are omitted from the
@@ -3153,6 +3300,13 @@ for example, OpenCode model and reasoning-effort changes are live ACP
 `session/set_config_option` updates, while spawn-time-only provider settings may
 return the `agent.settings_require_new_session` reason. The UI should surface
 that reason as guidance, not as an unhandled runtime error.
+
+AutomationRule selection is session policy, not a provider composer setting.
+Workspace defaults are represented by `disabled=false` with no selected rule
+ids, session-off by `disabled=true`, and an explicit override by selected rule
+ids. New-session values travel with activation; active-session changes use the
+runtime command immediately. Keep this control outside provider option caches
+and do not infer its value from transcript cards.
 
 ### Mention Or File Reference
 

@@ -6,6 +6,7 @@ import type {
 } from "@tutti-os/agent-activity-core";
 import type {
   AgentModelCatalogInvalidatedEvent,
+  AgentModelConfigurationChangedEvent,
   AgentSessionCommand,
   AgentSessionComposerSettings
 } from "../../../shared/agentSessionTypes";
@@ -67,6 +68,31 @@ export function mergeAgentModelCatalogInvalidationEvents(
   return {
     ...lastEvent,
     providers: [...providers],
+    occurredAtUnixMs: occurredAtUnixMs || lastEvent.occurredAtUnixMs
+  };
+}
+
+export function mergeAgentModelConfigurationChangedEvents(
+  events: AgentModelConfigurationChangedEvent[]
+): AgentModelConfigurationChangedEvent {
+  const agentTargetIds = new Set<string>();
+  const defaultModels: Record<string, string | null> = {};
+  let occurredAtUnixMs = 0;
+  let resetComposerModel = false;
+  for (const event of events) {
+    occurredAtUnixMs = Math.max(occurredAtUnixMs, event.occurredAtUnixMs);
+    resetComposerModel ||= event.resetComposerModel;
+    for (const agentTargetId of event.agentTargetIds) {
+      agentTargetIds.add(agentTargetId);
+    }
+    Object.assign(defaultModels, event.defaultModels);
+  }
+  const lastEvent = events[events.length - 1]!;
+  return {
+    ...lastEvent,
+    agentTargetIds: [...agentTargetIds],
+    defaultModels,
+    resetComposerModel,
     occurredAtUnixMs: occurredAtUnixMs || lastEvent.occurredAtUnixMs
   };
 }

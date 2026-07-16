@@ -9,6 +9,7 @@ import type {
 import type { AgentProviderId } from "../../../shared/contracts/dto";
 import type { WorkspaceAgentActivityCard } from "../../../shared/workspaceAgentActivityListViewModel";
 import { isWorkspaceAgentUntitledConversation } from "../../../shared/workspaceAgentLatestActivitySummary";
+import { planIssueBudgetPresetsEqual } from "../../../shared/agentConversation/planImplementationPresentation";
 import type { WorkspaceAgentSessionDetailViewModel } from "../../../shared/workspaceAgentSessionDetailViewModel";
 import { type AgentGUIConversationSummary } from "../model/agentGuiConversationModel";
 import type {
@@ -441,6 +442,11 @@ export function areComposerSettingsVMsEqual(
     (left.supportsPermissionMode ?? false) ===
       (right.supportsPermissionMode ?? false) &&
     left.supportsPlanMode === right.supportsPlanMode &&
+    planIssueBudgetPresetsEqual(
+      left.planIssueBudgetPreset,
+      right.planIssueBudgetPreset
+    ) &&
+    left.supportsUltraPlan === right.supportsUltraPlan &&
     (left.supportsBrowser ?? false) === (right.supportsBrowser ?? false) &&
     (left.supportsComputerUse ?? false) ===
       (right.supportsComputerUse ?? false) &&

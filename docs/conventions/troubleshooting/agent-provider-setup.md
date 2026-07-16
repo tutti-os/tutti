@@ -134,6 +134,44 @@ Provider discovery, installation, authentication, models, configuration, and run
   [composer_live_model_discovery.go](../../../services/tuttid/service/agent/composer_live_model_discovery.go)
   [composer_live_model_cache.go](../../../services/tuttid/service/agent/composer_live_model_cache.go)
 
+### AgentGUI keeps the old model after a model-plan switch
+
+- Symptom:
+  Workspace settings show a new model-plan default or binding, but the
+  AgentGUI new-conversation composer still shows the previous model. A newly
+  created session also records the old model when that model remains present
+  in the plan's model list. Already-running sessions showing the old model are
+  expected and are not this bug.
+- Quick checks:
+  Compare the plan/binding state with the composer request and the new
+  session's `settings.model`. If the daemon validates the old requested model,
+  the plan changed successfully but the target's composer cache or persisted
+  home selection was stale. Also check whether the configuration event could
+  have been missed because AgentGUI was closed or the event stream reconnected.
+- Root cause:
+  A force reload alone is insufficient because session model resolution
+  intentionally gives an explicit requested model priority over the plan
+  default. A live-only reset is also insufficient: event streams are not a
+  durable replay log, and ordinary composer overrides are not persisted in the
+  workbench snapshot.
+- Fix:
+  Treat the target-scoped configuration event as an invalidation hint. Return a
+  redaction-safe authoritative `runtimeContext.modelConfiguration` fingerprint
+  and default from every composer-options request, then reconcile and persist
+  only the workspace/target model state. A changed fingerprint resets the home
+  model; an unchanged fingerprint preserves a user's selection. Never mutate
+  an active session during this reconciliation.
+- Validation:
+  Cover a live default change where the refresh request still carries the old
+  model, initial mount with an old desktop remembered model, active-session
+  preservation followed by a corrected home composer, event loss/remount, and
+  protocol-mismatch/provider-native fallback. Run AgentGUI, desktop activity,
+  workbench-state, and daemon model-plan tests.
+- References:
+  [model_plan_binding.go](../../../services/tuttid/service/agent/model_plan_binding.go)
+  [useAgentGUINodeController.ts](../../../packages/agent/gui/agent-gui/agentGuiNode/controller/useAgentGUINodeController.ts)
+  [state.ts](../../../packages/agent/gui/workbench/state.ts)
+
 ### Claude SDK context window shows 200k for 1M models
 
 - Symptom:
@@ -527,6 +565,76 @@ file or directory`. If the CLI path exists but `codex app-server` cannot
 - References:
   [codex_model_catalog.go](../../../services/tuttid/service/agent/codex_model_catalog.go)
   [codex_model_catalog_test.go](../../../services/tuttid/service/agent/codex_model_catalog_test.go)
+
+### Codex model-plan session fails because wire_api chat is unsupported
+
+- Symptom:
+  A Codex-bound model access plan passes network, authentication, model
+  discovery, and inference detection, but creating a conversation fails with
+  `agent session is not connected`. Daemon logs show `thread/start` rejecting
+  the run-scoped `config.toml` because `wire_api = "chat"` is no longer
+  supported.
+- Quick checks:
+  Confirm the selected model was validated, then inspect the first
+  `agent_session.acp.request.failed` event for `method=thread/start`. Check the
+  generated provider table under the run-scoped `codex-home/config.toml`; do
+  not edit that temporary file or the user's global Codex config.
+- Root cause:
+  Current Codex releases require custom providers to use the Responses API.
+  A model-plan provider generated with the legacy Chat Completions wire API is
+  rejected before the thread receives a provider session id, so the later
+  `not connected` message hides the actionable configuration error.
+- Fix:
+  Generate model-plan Codex providers with `wire_api = "responses"`. The
+  configured gateway must expose an OpenAI-compatible `/responses` endpoint;
+  passing a Chat Completions detection call alone is not proof of Codex
+  compatibility.
+- Validation:
+  Add `runtimeprep` coverage that the generated provider contains `responses`
+  and never `chat`, then run `cd packages/agent/runtimeprep && go test ./...`.
+  Rebuild the daemon and create a fresh session so Tutti generates a new
+  run-scoped config.
+- References:
+  [model_endpoint.go](../../../packages/agent/runtimeprep/model_endpoint.go)
+  [model_endpoint_test.go](../../../packages/agent/runtimeprep/model_endpoint_test.go)
+
+### OpenRouter model-plan turn fails because namespace tools are unsupported
+
+- Symptom:
+  A Codex-bound OpenRouter plan creates its session and starts a turn, but the
+  first inference request fails with HTTP 400 and
+  `No endpoints found that support the native namespace tool type`. The model,
+  API key, and `/responses` endpoint may all have passed setup detection.
+- Quick checks:
+  Confirm `thread/start` and `turn/start` succeeded before the failure. Inspect
+  the first `turn.failed` or `provider_error` event and verify the request was
+  sent to OpenRouter. MCP servers, Codex Apps/Plugins, and multi-agent tools can
+  each independently add a native `type = "namespace"` tool, so disabling only
+  one MCP server is not sufficient.
+- Root cause:
+  Codex custom providers advertise native namespace-tool capability by
+  default. OpenRouter can route ordinary function tools, but models such as
+  DeepSeek currently have no endpoint that accepts Codex's native Responses
+  namespace representation. OpenRouter provider filters can only select among
+  compatible endpoints; they cannot translate the tool schema.
+- Fix:
+  Keep the model-plan provider on `wire_api = "responses"`. For OpenRouter
+  plans, generate a session-scoped function-tools-only profile: disable hosted
+  web search, image generation, multi-agent, Apps, Plugins, and Tool Suggest,
+  and remove inherited `mcp_servers` tables from the copied config. This keeps
+  the core shell and file-editing tools available and leaves the user's global
+  Codex config unchanged. Browser, Computer Use, connectors, MCP tools, and
+  sub-agents are unavailable in that OpenRouter session; use a provider and
+  model with native namespace support when those capabilities are required.
+- Validation:
+  Add `runtimeprep` coverage that an OpenRouter endpoint removes every MCP
+  table and disables all namespace sources, that the rewrite is idempotent,
+  and that other providers retain their configured tools. Run
+  `cd packages/agent/runtimeprep && go test ./...`, rebuild the daemon, and
+  create a fresh session so it receives the compatibility profile.
+- References:
+  [model_endpoint.go](../../../packages/agent/runtimeprep/model_endpoint.go)
+  [model_endpoint_test.go](../../../packages/agent/runtimeprep/model_endpoint_test.go)
 
 ### Codex custom model_provider mixes models, duplicates replies, or shows metadata warnings
 

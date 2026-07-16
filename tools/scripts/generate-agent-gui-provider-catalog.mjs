@@ -139,6 +139,11 @@ export function validateRegistryCatalog(catalog) {
         throw new TypeError(`provider identity catalog ${key} is required`);
       }
     }
+    if (!["", "anthropic", "openai"].includes(entry.modelPlanProtocol)) {
+      throw new TypeError(
+        `invalid model plan protocol for provider: ${entry.providerId}`
+      );
+    }
     if (!Array.isArray(entry.aliases)) {
       throw new TypeError("provider identity catalog aliases must be an array");
     }
@@ -232,7 +237,6 @@ export function validateRegistryCatalogAgainstOpenAPI(catalog, openapi) {
       `openapi provider schema drift: ${schemaName}`
     );
   }
-
   const defaultProviderIds =
     openapi?.components?.schemas?.DesktopDefaultAgentProvider?.enum;
   if (!Array.isArray(defaultProviderIds)) {

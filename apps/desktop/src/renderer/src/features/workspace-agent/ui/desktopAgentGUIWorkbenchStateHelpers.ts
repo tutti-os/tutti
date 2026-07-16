@@ -72,6 +72,49 @@ export function withDesktopAgentGUIProviderComposerDefaults(
   );
 }
 
+/**
+ * Applies the workspace-scoped model-plan selection after global remembered
+ * defaults have seeded the remaining composer settings. Provider-native
+ * configurations intentionally keep using the global remembered model.
+ */
+export function withDesktopAgentGUIModelConfiguration(
+  state: DesktopAgentGUINodeState
+): DesktopAgentGUINodeState {
+  const agentTargetId = state.agentTargetId?.trim() || null;
+  if (!agentTargetId) {
+    return state;
+  }
+  const configuration =
+    state.modelConfigurationsByAgentTargetId?.[agentTargetId];
+  if (configuration?.source !== "model-plan") {
+    return state;
+  }
+
+  const model =
+    configuration.selectedModel?.trim() ||
+    configuration.defaultModel?.trim() ||
+    null;
+  const currentOverrides =
+    state.composerOverridesByAgentTargetId?.[agentTargetId] ?? null;
+  if ((currentOverrides?.model?.trim() || null) === model) {
+    return state;
+  }
+
+  return normalizeDesktopAgentGUINodeState(
+    {
+      ...state,
+      composerOverridesByAgentTargetId: {
+        ...(state.composerOverridesByAgentTargetId ?? {}),
+        [agentTargetId]: {
+          ...(currentOverrides ?? {}),
+          model
+        }
+      }
+    },
+    state.provider
+  );
+}
+
 export function hasDesktopAgentGUIConversationRailCollapsedState(
   value: unknown
 ): boolean {

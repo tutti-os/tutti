@@ -20,7 +20,7 @@ import { StandaloneAgentStartupShell } from "./StandaloneAgentStartupShell.tsx";
 
 export interface StandaloneAgentWorkbenchProps extends Omit<
   StandaloneAgentWindowProps,
-  "toolWorkbench" | "workspace"
+  "defaultAgentProvider" | "toolWorkbench" | "workspace"
 > {
   enableWindowCloseGuard: boolean;
   workspaceID: string | null;
@@ -69,7 +69,10 @@ export function StandaloneAgentWorkbench({
 }
 
 function StandaloneAgentWindowWithSession(
-  props: Omit<StandaloneAgentWindowProps, "toolWorkbench"> & {
+  props: Omit<
+    StandaloneAgentWindowProps,
+    "defaultAgentProvider" | "toolWorkbench"
+  > & {
     enableWindowCloseGuard: boolean;
     platform: NodeJS.Platform;
   }
@@ -107,7 +110,10 @@ function StandaloneAgentWindowWithToolRuntime({
   hostSession,
   platform,
   ...props
-}: Omit<StandaloneAgentWindowProps, "toolWorkbench"> & {
+}: Omit<
+  StandaloneAgentWindowProps,
+  "defaultAgentProvider" | "toolWorkbench"
+> & {
   enableWindowCloseGuard: boolean;
   hostSession: WorkspaceWorkbenchHostSessionBinding;
   platform: NodeJS.Platform;
@@ -137,7 +143,11 @@ function StandaloneAgentWindowWithToolRuntime({
 
   return (
     <>
-      <StandaloneAgentWindow {...props} toolWorkbench={toolWorkbench} />
+      <StandaloneAgentWindow
+        {...props}
+        defaultAgentProvider={runtime.defaultAgentProvider}
+        toolWorkbench={toolWorkbench}
+      />
       <WorkspaceCloseGuardDialog
         request={runtime.closeDialog.request}
         onCancel={runtime.closeDialog.onCancel}

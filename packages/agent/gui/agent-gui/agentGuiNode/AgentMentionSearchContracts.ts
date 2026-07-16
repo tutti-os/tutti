@@ -15,6 +15,7 @@ export type AgentMentionFilterId =
   | "file"
   | "issue"
   | "agent"
+  | "model"
   | "app";
 export type AgentMentionGroupId =
   | "apps"
@@ -24,7 +25,8 @@ export type AgentMentionGroupId =
   | "agent_generated_files"
   | "my_sessions"
   | "collab_sessions"
-  | "issues";
+  | "issues"
+  | "models";
 
 export type AgentMentionRawGroupId = Exclude<AgentMentionGroupId, "files">;
 export type AgentMentionRawGroups = Record<
@@ -99,5 +101,6 @@ export const {
   agentTarget: AGENT_TARGET_PROVIDER_ID,
   file: FILE_PROVIDER_ID,
   workspaceApp: WORKSPACE_APP_PROVIDER_ID,
-  workspaceIssue: WORKSPACE_ISSUE_PROVIDER_ID
+  workspaceIssue: WORKSPACE_ISSUE_PROVIDER_ID,
+  workspaceModel: WORKSPACE_MODEL_PROVIDER_ID
 } = AGENT_CONTEXT_MENTION_PROVIDER_IDS;

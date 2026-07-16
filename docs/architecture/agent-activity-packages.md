@@ -403,7 +403,10 @@ recorded for the active or most recent request rather than deriving provider
 identity from the key or from possibly stale cached options. Invalidation
 clears cache validity but must not detach an in-flight command from its caller:
 that caller still receives a terminal result, and the next request performs a
-fresh load.
+fresh load. Target-based invalidation matches exact opaque `targetKeys`; when
+provider and target filters are supplied together, both must match. If a fresh
+request supersedes an invalidated in-flight load, its command id prevents the
+older response from overwriting the newer target snapshot.
 While a live session refreshes its catalog, UI may continue presenting an
 already loaded target snapshot, but a genuinely missing target snapshot remains
 loading until target-scoped options arrive.

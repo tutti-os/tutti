@@ -102,6 +102,171 @@ Issue run creation is target-first. UI, CLI, and AgentGUI sidecar flows pass
 `agentTargetId`/`--agent-target-id` as the launch authority; the daemon derives
 and persists the provider for display, filtering, and legacy compatibility.
 
+## Plan Conversion And Execution Orchestration
+
+AgentGUI exposes `normal`, `plan`, and `ultra_plan` composer modes. Ultra Plan
+is available only when the selected Agent reports both planning and plan-
+implementation support. Traditional Plan results can use **Break into an
+Issue**. Ultra Plan requires a fenced `tutti-issue-plan-v1` JSON payload with
+Issue metadata; task dependencies; Agent/Plan/model/directory assignments; and
+the Issue-owned execution profile and budget. It plans only and does not
+implement before conversion.
+
+Before conversion, the shared AgentGUI presentation parses the structured
+payload (or derives one traditional task from unstructured Plan text) into an
+editable review surface. It provides independent Issue-level
+reasoning/orchestration controls, auto-recalculated or fixed token budget, and
+per-task assignment/directory/dependency preview. The review consumes a
+credential-free runtime catalog: Agent protocol constrains Model Plan choices,
+each Agent entry includes its name, purpose, and current availability, Plan
+selection resolves its valid default model, tiers remain visible, and a
+budget-based cost range is shown only for known pricing on an explicitly
+`api_metered` Plan. The range applies the lowest and highest published
+input/output/cache token rates because the token mix is not yet known during
+decomposition. `subscription_quota` Plans show quota-waterline semantics and
+never a fabricated monetary amount; unknown pricing remains unknown rather
+than becoming zero. The confirmed reasoning intensity is compiled twice: the
+Planning Agent receives only the credential-free available catalog and must
+select compatible economy/standard/flagship models according to the confirmed
+range, then each dispatched Session compiles the same Issue value into the
+selected provider/model's advertised reasoning-effort vocabulary. The
+confirmed orchestration intensity independently controls decomposition depth
+and daemon-owned Review/failure-rescue automation. Task preview exposes Agent,
+Model Plan, model, and readable dependency checkboxes directly; changing an
+Agent clears an incompatible Plan/model instead of preserving an impossible
+suggestion. Users can continue planning,
+create only, or create and start. Desktop re-reads the authoritative turn,
+converts the submitted review draft, and calls
+`POST /v1/workspaces/{workspaceID}/issues/from-plan`. The high-level tuttid
+service validates assignments before handing the Issue and its initial task
+graph to one domain/store transaction. The SQLite adapter commits the Issue,
+all Tasks, and topic activity atomically; task failure rolls the Issue back,
+and update events are published only after commit. `planningSource` records
+`ultra_plan` or `traditional_plan`.
+
+`sourceSessionId` is the durable planning link. Issue and Task headers can open
+that source Session, while successful atomic creation projects one idempotent,
+credential-free workspace-Issue mention back into the source timeline. This
+is a bidirectional navigation contract, not a second Plan record: the Issue
+remains the only durable plan entity and the source Session remains the
+reasoning history.
+
+The Plan/Ultra Plan composer exposes the same intensity and token-budget model
+before submission as an optional remembered preset. AgentGUI persists it with
+the workbench node and uses it as the initial value in mandatory decomposition
+review when the plan did not return explicit confirmed settings. Structured
+settings emitted after budget confirmation take precedence over the preset.
+
+`Create only` persists the graph without dispatch. Sequential `Create and
+start` records `sequentialExecution=true`; after successful conversion, tuttid
+creates one durable Run and starts only the first stable eligible Task. The
+dispatcher is daemon-owned so progress does not depend on an open Desktop
+window. It refuses to dispatch while the Issue's explicit future-dispatch pause
+is set, a Run is active, a Task awaits acceptance, a failure needs user action,
+or the Issue budget gate is active. Pausing is durable and does not cancel or
+interrupt already-running work; clearing it immediately re-evaluates eligible
+Tasks.
+After a successful Run, no successor starts until the user explicitly accepts
+that Task. Acceptance then re-evaluates dependencies and starts at most one
+next Task in stable order.
+
+Parallel `Create and start` records `parallelExecution=true`. Desktop creates
+or reuses a distinct Git worktree for every assigned Task before it submits the
+atomic graph. The daemon rejects parallel Issues unless every assigned Task
+has a unique absolute execution directory. It then starts every stable
+DAG-ready root in the same dispatch pass, subject to a workspace-wide maximum
+of four running Issue Runs. Every completion refills the available slots. A
+successor still waits until every
+dependency is completed and explicitly user-accepted. A failed Task blocks new
+dispatch, while already-running independent roots remain durable and visible.
+Sequential and parallel flags are mutually exclusive.
+Each daemon-dispatched Task is also a `delegate` CollaborationRun. The daemon
+creates the running collaboration before the Agent Session, links the exact
+Task Agent/Plan/model and target Session, and projects it into the originating
+planning Session timeline when the Issue has a source Session. Target turn
+settlement updates the same collaboration card; launch failure settles both
+the Issue Run and CollaborationRun as failed.
+
+Desktop does not run a second Issue scheduler. It submits the graph once and
+projects the authoritative Task states returned by tuttid; compatibility with
+daemons that predate daemon-owned dispatch is intentionally unsupported because
+renderer fallback scheduling can bypass budget, acceptance, CollaborationRun,
+and atomic-claim rules. A Task's explicit execution directory is respected.
+Otherwise the daemon inherits the source planning Session directory. Launch
+failure completes the matching Run as failed and never satisfies a dependency.
+
+Tasks carry optional WorkspaceAgent, ModelPlan/model, execution directory, and
+dependency ids. Strength and budget are never task-level controls: every Task
+inherits the Issue execution profile and budget policy. The domain rejects
+missing/self/cycle dependencies and incompatible assignment values before
+persistence. The shared Issue detail editor uses the same host-supplied Agent
+and Model Plan catalogs for structured selectors and protocol filtering. An
+external host that has no Model Plan catalog adapter retains the generic text
+fallback, but Tutti Desktop supplies the authoritative workspace catalog.
+Dispatch carries the saved Task Plan/model through both embedded-workbench and
+standalone-window draft launch paths and applies it to the new Session draft;
+it never mutates an active Session. Run-level Agent/Plan/model overrides record the actual attempt
+without rewriting task defaults. Desktop passes an assigned `modelPlanId`
+through the session-create contract; `tuttid` resolves the secret-bearing Plan
+and rejects disabled, protocol-incompatible, or model-incompatible launches, so
+the Run audit record cannot claim a Plan that the runtime did not use.
+
+Completion uses a three-step acceptance ladder:
+
+```text
+agent_claimed -> auto_checked -> user_accepted
+```
+
+A successful Run moves its task to `pending_acceptance`/`agent_claimed`; it is
+only the executor's completion claim. An enabled fixed Review AutomationRule
+must independently complete with a syntactically valid final
+`VERDICT: PASS` line before the task advances to `auto_checked`. A FAIL or
+malformed verdict records the review summary without advancing acceptance.
+Only an explicit user acceptance reaches `user_accepted` and closes the Task as
+`completed`. Failed Runs leave the task retryable and do not satisfy
+dependencies. Repeated terminal completion and review settlement are
+idempotent.
+
+## Usage, Budget, Quota, And Cost
+
+Issue and Run usage records four token categories: input, output, cache read,
+and cache write. Run completion aggregates all four into the Issue ledger.
+Budgets are either fixed or auto-compiled, bounded to
+32,000–2,000,000 tokens. The deterministic compiler starts from task count and
+the Issue's reasoning/orchestration profile. When the workspace has completed
+runs with the same explicit Plan/model assignments as the proposed Tasks,
+tuttid sums their average usage, adds 25% headroom, and blends that history
+50/50 with the deterministic result. Missing history keeps the deterministic
+result. Reasoning/orchestration intensity is stored on the profile as
+`0..100`; it influences the auto budget but does not grant permissions.
+
+The budget is a soft dispatch gate. Before each automatic dispatch, the daemon
+reserves one conservative per-Run allowance compiled from the current Issue
+intensities; parallel dispatch also counts allowances for Runs already started
+in the same scheduling pass. If consumed plus reserved tokens would exceed the
+limit, or a reported subscription `remainingQuotaPercent` crosses its
+configured waterline, the Issue moves to `soft_limited` and no new Run starts.
+In-flight Runs continue and can report their final usage. Subscription quota
+remains a provider-reported percentage; it is never converted into fake
+currency.
+
+The execution overview keeps a soft-limit recovery surface visible: users can
+raise the budget, lower intensity for future dispatch, or continue remaining
+tasks manually. Lowering intensity reduces both Issue-level controls, clears
+the soft limit, and deliberately leaves automatic dispatch paused so the user
+can review/rearrange assignments before explicitly resuming. Raising the
+budget can recover normal dispatch immediately; manual execution remains a
+separate user-authorized path. New estimates use matching completed Task runs
+from the same workspace (same explicit Plan/model) when history exists;
+otherwise they fall back to the Issue's remaining per-task budget allocation.
+
+Optional pricing on an `api_metered` ModelPlan supplies currency micros per
+million tokens for all four categories. tuttid computes exact estimates from
+recorded usage and a projected Issue estimate from remaining budget and known
+rates. Reported actual cost is preserved. `subscription_quota` Plans bypass
+monetary lookup even if a legacy record contains price metadata. Unknown prices
+remain unknown, and currencies are not silently converted.
+
 The npm package name should be `@tutti-os/workspace-issue-manager`.
 It participates in the shared public npm release group documented in
 [npm Package Release](../conventions/npm-package-release.md).
@@ -152,25 +317,10 @@ OpenClaw, Hermes, or any other supported provider.
 This boundary lets `tutti` and `tsh` share the issue-manager UX while keeping
 their runtime/session integration separate.
 
-## Landing Slices
+## Current Adapters
 
-The boundary-setting slice established the reusable package shape. The current
-repository already includes the published TypeScript issue-manager package and
-this section tracks the broader cross-host rollout model:
-
-1. Add this architecture document.
-2. Scaffold `packages/workspace/issues` with models, service, store interface,
-   and focused service tests against a fake store.
-3. Scaffold `packages/workspace/issue-manager` with contracts, adapter
-   interfaces, i18n defaults, and workbench registration types.
-
-The next local-first slice wires `tuttid` to the shared contracts:
-
-- `tuttid` SQLite adapter and OpenAPI routes under `/v1/workspaces/{workspaceID}`
-- generated `@tutti-os/client-tuttid-ts` issue-manager methods
-
-Later slices can add:
-
-- full React node UI migration from `tsh`
-- `tsh-server` adapter from room-scoped APIs to the shared package
-- `tsh-desktop` adapter from existing IPC to the shared workbench feature
+The reusable Go domain, TypeScript feature/UI, OpenAPI fragment, tuttid SQLite
+adapter, generated Tutti client, Desktop host adapter, and Issue CLI commands
+are implemented. A remote room host still owns its own membership, visitor,
+invite, storage, and Agent proxy adapter; those policies do not move into the
+shared workspace core.

@@ -419,6 +419,7 @@ func generatedAgentSessionSection(section agentservice.SessionSection) tuttigene
 func composerSettingsFromGenerated(settings tuttigenerated.AgentSessionComposerSettings) agentservice.ComposerSettings {
 	return agentservice.ComposerSettings{
 		Model:            optionalStringValue(settings.Model),
+		ModelPlanID:      optionalStringValue(settings.ModelPlanId),
 		PermissionModeID: optionalStringValue(settings.PermissionModeId),
 		PlanMode:         settings.PlanMode != nil && *settings.PlanMode,
 		BrowserUse:       settings.BrowserUse,
@@ -545,6 +546,7 @@ func generatedAgentSlashCommandPolicy(
 func generatedAgentSessionComposerSettings(settings agentservice.ComposerSettings) tuttigenerated.AgentSessionComposerSettings {
 	result := tuttigenerated.AgentSessionComposerSettings{
 		Model:            optionalStringPointer(strings.TrimSpace(settings.Model)),
+		ModelPlanId:      optionalStringPointer(strings.TrimSpace(settings.ModelPlanID)),
 		PermissionModeId: optionalStringPointer(strings.TrimSpace(settings.PermissionModeID)),
 		PlanMode:         boolPointer(settings.PlanMode),
 		ReasoningEffort:  optionalStringPointer(strings.TrimSpace(settings.ReasoningEffort)),

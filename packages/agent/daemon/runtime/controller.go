@@ -29,6 +29,8 @@ type Controller struct {
 	sessions                    map[string]Session
 	adapters                    map[string]Adapter
 	adapterResolver             AdapterResolver
+	sharedAgentAccessController SharedAgentAccessController
+	sharedAgentAccessAuditor    SharedAgentAccessAuditor
 	turns                       map[string]activeTurn
 	commands                    map[string]AgentSessionCommandSnapshot
 	pendingCommandSnapshots     map[string]AgentSessionCommandSnapshot
@@ -169,5 +171,7 @@ func NewDefaultControllerWithOptions(
 	host := options.HostMetadata
 	adapters := newMigratedProviderAdapters(transport, host, options.ProviderCommandResolver)
 	setProviderLaunchPreparer(adapters, options.ProviderLaunchPreparer)
-	return NewControllerWithAdapterResolver(adapters, reporter, options.AdapterResolver)
+	controller := NewControllerWithAdapterResolver(adapters, reporter, options.AdapterResolver)
+	controller.ConfigureSharedAgentAccess(options.SharedAgentAccessController, options.SharedAgentAccessAuditor)
+	return controller
 }

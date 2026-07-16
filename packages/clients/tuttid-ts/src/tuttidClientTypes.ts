@@ -137,6 +137,8 @@ import type {
   UserProjectListResponse,
   UserProjectPathCheckResponse
 } from "./generated/index.ts";
+import type { WorkspaceAgentConfigurationClient } from "./workspaceAgentConfigurationClient.ts";
+import type { WorkspaceIssueOrchestrationClient } from "./workspaceIssueOrchestrationClient.ts";
 
 export type TuttidRequestOptions = Omit<
   RequestInit,
@@ -146,7 +148,8 @@ export type TuttidRequestOptions = Omit<
 export type TuttidTrackEvent = TrackEvent;
 export type TuttidTrackEventsRequest = TrackEventsRequest;
 
-export interface TuttidClient {
+export interface TuttidClient
+  extends WorkspaceAgentConfigurationClient, WorkspaceIssueOrchestrationClient {
   listAgentTargets(): Promise<ListAgentTargetsResponse>;
   setSystemAgentTargetEnabled(
     agentTargetID: string,

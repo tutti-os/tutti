@@ -46,6 +46,20 @@ func (r CollaborationTimelineReporter) ReportCollaborationTimeline(ctx context.C
 		"status":        string(run.Status),
 		"triggerSource": string(run.TriggerSource),
 		"adoption":      string(run.Adoption),
+		"attempt":       run.Attempt,
+	}
+	requestText := strings.TrimSpace(run.RequestText)
+	if requestText == "" {
+		requestText = strings.TrimSpace(run.Prompt)
+	}
+	if requestText != "" {
+		// Keep the original user request on the durable source-session card so
+		// failure recovery can return it to Composer for a different Model or
+		// Agent without reconstructing text from transient UI state.
+		payload["requestText"] = requestText
+	}
+	if run.RetryOfRunID != "" {
+		payload["retryOfRunId"] = run.RetryOfRunID
 	}
 	if run.TriggerReason != "" {
 		payload["triggerReason"] = run.TriggerReason
@@ -71,13 +85,24 @@ func (r CollaborationTimelineReporter) ReportCollaborationTimeline(ctx context.C
 	if run.FailureReason != "" {
 		payload["failureReason"] = run.FailureReason
 	}
+	if run.FailureStage != "" {
+		payload["failureStage"] = run.FailureStage
+	}
 	if run.DurationMs > 0 {
 		payload["durationMs"] = run.DurationMs
 	}
-	if run.Usage.InputTokens > 0 || run.Usage.OutputTokens > 0 {
+	if run.Usage.Total() > 0 {
 		payload["usage"] = map[string]any{
-			"inputTokens":  run.Usage.InputTokens,
-			"outputTokens": run.Usage.OutputTokens,
+			"inputTokens":      run.Usage.InputTokens,
+			"outputTokens":     run.Usage.OutputTokens,
+			"cacheReadTokens":  run.Usage.CacheReadTokens,
+			"cacheWriteTokens": run.Usage.CacheWriteTokens,
+		}
+	}
+	if run.Cost.Currency != "" {
+		payload["cost"] = map[string]any{
+			"currency":        run.Cost.Currency,
+			"estimatedMicros": run.Cost.EstimatedMicros,
 		}
 	}
 	update := agentsessionstore.WorkspaceAgentSessionMessageUpdate{

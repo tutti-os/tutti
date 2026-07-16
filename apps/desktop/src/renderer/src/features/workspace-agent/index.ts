@@ -8,8 +8,9 @@ export { createDesktopAgentHostApi } from "./services/createDesktopAgentHostApi"
 export { createDesktopAgentGeneratedFileMentionProvider } from "./services/internal/createDesktopAgentGeneratedFileMentionProvider";
 export {
   desktopManagedAgentProviders,
+  ensureDesktopManagedAgentProviderStatuses,
   ensureAllDesktopManagedAgentProviderStatuses
-} from "./services/internal/desktopManagedAgentProviders";
+} from "./services/desktopManagedAgentProviders";
 export { IWorkspaceAgentActivityService } from "./services/workspaceAgentActivityService.interface";
 export { IWorkspaceAgentPromptSessionService } from "./services/workspaceAgentPromptSessionService.interface";
 export {

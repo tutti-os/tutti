@@ -11,9 +11,16 @@
       },
       "output": {
         "grantRef": "grant-ref-test",
+        "modelPlanIds": ["plan-test"],
         "providers": ["openai"],
         "models": [
-          { "id": "gpt-test", "name": "GPT Test", "provider": "openai" }
+          {
+            "id": "gpt-test",
+            "name": "GPT Test",
+            "provider": "openai",
+            "modelPlanId": "plan-test",
+            "modelPlanName": "Test Plan"
+          }
         ],
         "expiresAt": "2026-07-12T00:10:00Z"
       }
@@ -23,7 +30,13 @@
       "input": { "grantRef": "grant-ref-test" },
       "output": {
         "models": [
-          { "id": "gpt-test", "name": "GPT Test", "provider": "openai" }
+          {
+            "id": "gpt-test",
+            "name": "GPT Test",
+            "provider": "openai",
+            "modelPlanId": "plan-test",
+            "modelPlanName": "Test Plan"
+          }
         ],
         "expiresAt": "2026-07-12T00:10:00Z"
       }
@@ -34,18 +47,33 @@
         "grantRef": "grant-ref-test",
         "provider": "openai",
         "model": "gpt-test",
+        "modelPlanId": "plan-test",
         "capability": "agent"
       },
       "output": {
         "credential": {
           "provider": "openai",
+          "modelPlanId": "plan-test",
+          "modelPlanName": "Test Plan",
           "apiKey": "fixture-only-key",
           "models": [
-            { "id": "gpt-test", "name": "GPT Test", "provider": "openai" }
+            {
+              "id": "gpt-test",
+              "name": "GPT Test",
+              "provider": "openai",
+              "modelPlanId": "plan-test",
+              "modelPlanName": "Test Plan"
+            }
           ]
         },
         "models": [
-          { "id": "gpt-test", "name": "GPT Test", "provider": "openai" }
+          {
+            "id": "gpt-test",
+            "name": "GPT Test",
+            "provider": "openai",
+            "modelPlanId": "plan-test",
+            "modelPlanName": "Test Plan"
+          }
         ],
         "expiresAt": "2026-07-12T00:05:00Z"
       }

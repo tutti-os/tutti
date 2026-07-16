@@ -13,7 +13,7 @@ import type { WorkspaceLinkAction } from "../../../actions/workspaceLinkActions"
 import type { UiLanguage } from "../../../contexts/settings/domain/agentSettings";
 import type { AgentPromptContentBlock } from "../../../shared/contracts/dto";
 import type { AgentMessageMarkdownWorkspaceAppIcon } from "../../../shared/AgentMessageMarkdown";
-import { latestAssistantMessageText } from "../../../shared/agentConversation/projection/agentConversationProjection";
+import type { AgentCollaborationVM } from "../../../shared/agentConversation/contracts/agentCollaborationVM";
 import { AGENT_GUI_WORKBENCH_OPEN_EXTERNAL_IMPORT_EVENT } from "../../../workbench/contribution";
 import { resolveAgentGuiWorkbenchProviderLabel } from "../../../workbench/providerCatalog";
 import type {
@@ -52,7 +52,6 @@ import { AgentGUIDetailHeader } from "./AgentGUIDetailHeader";
 import { AgentGUIContentToast } from "./AgentGUIContentToast";
 import { AgentGUIConversationTimelinePane } from "./AgentGUIConversationTimelinePane";
 import {
-  stringValue,
   useOptionalStableEventCallback,
   useStableEventCallback
 } from "./agentGUIViewUtils";
@@ -105,52 +104,6 @@ export interface AgentGUIDetailPaneProps {
   contextMentionProviders?: readonly AgentContextMentionProvider[];
   workspaceAppIcons?: readonly AgentMessageMarkdownWorkspaceAppIcon[];
   renderProviderUnavailableState?: AgentGUIProviderUnavailableStateRenderer;
-}
-
-export function mergeWorkspaceAppIconsFromCommands(input: {
-  commands: AgentGUINodeViewModel["composer"]["availableCommands"];
-  workspaceAppIcons: readonly AgentMessageMarkdownWorkspaceAppIcon[];
-  workspaceId: string;
-}): readonly AgentMessageMarkdownWorkspaceAppIcon[] {
-  const seen = new Set(
-    input.workspaceAppIcons.flatMap((icon) => {
-      const appId = icon.appId.trim();
-      const iconUrl = icon.iconUrl?.trim() ?? "";
-      if (!appId || !iconUrl) {
-        return [];
-      }
-      return [
-        workspaceAppIconKey(appId, icon.workspaceId?.trim() ?? ""),
-        workspaceAppIconKey(appId, "")
-      ];
-    })
-  );
-  let next: AgentMessageMarkdownWorkspaceAppIcon[] | null = null;
-  for (const command of input.commands) {
-    const source = commandAppSource(command);
-    if (!source) {
-      continue;
-    }
-    const appId = stringValue(source.appId).trim();
-    const iconUrl = stringValue(source.iconUrl).trim();
-    if (!appId || !iconUrl) {
-      continue;
-    }
-    const key = workspaceAppIconKey(appId, input.workspaceId);
-    if (seen.has(key)) {
-      continue;
-    }
-    if (!next) {
-      next = [...input.workspaceAppIcons];
-    }
-    next.push({
-      appId,
-      iconUrl,
-      workspaceId: input.workspaceId
-    });
-    seen.add(key);
-  }
-  return next ?? input.workspaceAppIcons;
 }
 
 export const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
@@ -256,6 +209,9 @@ export const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
   const updateComposerSettings = useStableEventCallback(
     actions.updateComposerSettings
   );
+  const updatePlanIssueBudgetPreset = useStableEventCallback(
+    actions.updatePlanIssueBudgetPreset
+  );
   const selectHomeComposerAgentTarget = useStableEventCallback(
     actions.selectHomeComposerAgentTarget
   );
@@ -287,6 +243,16 @@ export const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
     },
     []
   );
+  const reviseFailedCollaboration = useStableEventCallback(
+    (collaboration: AgentCollaborationVM) => {
+      const prompt = collaboration.requestText?.trim();
+      if (!prompt) return;
+      updateDraftContent(
+        updateAgentComposerDraft(viewModel.composer.draftContent, { prompt })
+      );
+      onRequestComposerFocus();
+    }
+  );
   const submitPrompt = useStableEventCallback(actions.submitPrompt);
   const goalControl = useStableEventCallback(actions.goalControl);
   const submitGuidancePrompt = useStableEventCallback(
@@ -301,17 +267,9 @@ export const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
     pendingPrependScrollAnchorRef.current = null;
   }, [viewModel.rail.activeConversationId]);
   const submitPromptAndScrollToBottom = useCallback(
-    (
-      content: AgentPromptContentBlock[],
-      displayPrompt?: string,
-      options?: Parameters<AgentComposerProps["onSubmit"]>[2]
-    ): void => {
+    (...args: Parameters<typeof submitPrompt>): void => {
       requestSubmittedPromptScrollToBottom();
-      if (displayPrompt === undefined) {
-        submitPrompt(content, undefined, options);
-        return;
-      }
-      submitPrompt(content, displayPrompt, options);
+      submitPrompt(...args);
     },
     [requestSubmittedPromptScrollToBottom, submitPrompt]
   );
@@ -406,6 +364,7 @@ export const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
               workspaceId: viewModel.shell.workspaceId
             }),
             provider: target.provider,
+            sourceAgentSessionId: viewModel.rail.activeConversationId,
             userProjectPath: handoffProjectPathForConversation(
               viewModel.rail.activeConversation
             )
@@ -415,6 +374,7 @@ export const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
   const bottomDockComposerProps = useMemo<AgentComposerProps>(
     () => ({
       workspaceId: viewModel.shell.workspaceId,
+      agentSessionId: viewModel.rail.activeConversationId,
       workspacePath: viewModel.shell.workspacePath,
       currentUserId: viewModel.shell.currentUserId,
       provider: composerProvider,
@@ -467,13 +427,6 @@ export const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
       providerSelectLabel: labels.providerSwitchLabel,
       handoffLabel: labels.handoffConversation,
       handoffMenuLabel: labels.handoffConversationMenu,
-      modelConsult:
-        viewModel.rail.activeConversationId !== null
-          ? {
-              agentSessionId: viewModel.rail.activeConversationId,
-              lastAssistantMessageText: latestAssistantMessageText(conversation)
-            }
-          : null,
       isInterrupting: viewModel.composer.isInterrupting,
       isSendingTurn: isComposerSending,
       isSubmittingPrompt: viewModel.interaction.isRespondingApproval,
@@ -484,6 +437,7 @@ export const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
       onDraftContentChange: updateDraftContent,
       onProjectPathChange: updateSelectedProjectPath,
       onSettingsChange: updateComposerSettings,
+      onPlanIssueBudgetPresetChange: updatePlanIssueBudgetPreset,
       onSubmit: submitPromptAndScrollToBottom,
       onSubmitGuidance: submitGuidancePromptAndScrollToBottom,
       onPromptImagesUnsupported: showPromptImagesUnsupported,
@@ -511,7 +465,6 @@ export const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
       composerEngagement,
       composerHandoffProviderTargets,
       composerLabels,
-      conversation,
       composerProviderTargets,
       composerSelectedProviderTarget,
       timelineInteractionLocked,
@@ -550,6 +503,7 @@ export const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
       stableSelectProjectDirectory,
       stableRequestWorkspaceReferences,
       updateComposerSettings,
+      updatePlanIssueBudgetPreset,
       updateDraftContent,
       updateSelectedProjectPath,
       viewModel.rail.activeConversationId,
@@ -723,6 +677,7 @@ export const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
             loadingLabel={labels.loadingConversation}
             empty={conversationFlowEmpty}
             onLinkAction={stableLinkAction}
+            onReviseCollaboration={reviseFailedCollaboration}
             onAuthLogin={authLogin}
             availableSkills={viewModel.composer.availableSkills}
             workspaceAppIcons={workspaceAppIcons}

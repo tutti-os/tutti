@@ -30,9 +30,22 @@ const (
 	EndpointConfigKindClaudeSettings EndpointConfigKind = "claude_settings"
 )
 
+// ModelPlanProtocol identifies the external model API protocol that a runtime
+// can consume through Tutti's model-plan endpoint injection.
+type ModelPlanProtocol string
+
+const (
+	ModelPlanProtocolAnthropic ModelPlanProtocol = "anthropic"
+	ModelPlanProtocolOpenAI    ModelPlanProtocol = "openai"
+)
+
 type RuntimeEndpointDescriptor struct {
-	BaseURLEnvVars []string
-	ConfigKind     EndpointConfigKind
+	BaseURLEnvVars    []string
+	ConfigKind        EndpointConfigKind
+	ModelPlanProtocol ModelPlanProtocol
+	// NativeSubscription marks the one local runtime that can validate an
+	// official subscription for this protocol without API credentials.
+	NativeSubscription bool
 }
 
 // InstallerKind is a transport-neutral installer identifier. tuttid converts

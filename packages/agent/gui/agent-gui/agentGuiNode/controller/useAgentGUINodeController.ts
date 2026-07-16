@@ -11,6 +11,10 @@ import {
 import { useAccountStore } from "../../../host/agentHostAccountStore";
 import type { AgentHostUserProject } from "../../../host/agentHostApi";
 import type { AgentSessionComposerSettings } from "../../../shared/agentSessionTypes";
+import type {
+  PlanIssueCreationOptions,
+  PlanIssueDraft
+} from "../../../shared/agentConversation/planImplementationPresentation";
 import { useEngineSelector } from "../../../shared/engine/useEngineSelector";
 import type {
   AgentGUINodeData,
@@ -133,6 +137,14 @@ interface UseAgentGUINodeControllerInput {
   onRememberComposerDefaults?: (
     input: AgentGUIRememberComposerDefaultsInput
   ) => void | Promise<void>;
+  onCreateIssueFromPlan?: (input: {
+    agentSessionId: string;
+    creationOptions?: PlanIssueCreationOptions;
+    planTurnId: string;
+    workspaceId: string;
+  }) =>
+    | Promise<{ issueId: string; topicId: string }>
+    | { issueId: string; topicId: string };
   onShowMessage?: (
     message: string,
     tone?: "info" | "warning" | "error"
@@ -161,6 +173,7 @@ export function useAgentGUINodeController({
   previewMode = false,
   onDataChange,
   onRememberComposerDefaults,
+  onCreateIssueFromPlan,
   onShowMessage
 }: UseAgentGUINodeControllerInput) {
   const agentActivityRuntime = useAgentActivityRuntime();
@@ -225,6 +238,7 @@ export function useAgentGUINodeController({
     selectedProjectPath,
     setActiveConversationId,
     setDetailError,
+    setDraftSettingsBySessionId,
     setIntent,
     setIsComposerHome,
     setIsLoadingMessages,
@@ -298,10 +312,18 @@ export function useAgentGUINodeController({
   // Bridges submitInteractivePrompt (defined earlier) to the client-side plan
   // decision handlers (defined later); assigned after those callbacks.
   const planActionsRef = useRef<{
+    createIssue: (creationOptions?: PlanIssueCreationOptions) => void;
     implement: () => void;
+    orchestrate: (draft: PlanIssueDraft, displayPrompt: string) => void;
     feedback: (text: string) => void;
     skip: () => void;
-  }>({ implement: () => {}, feedback: () => {}, skip: () => {} });
+  }>({
+    createIssue: () => {},
+    implement: () => {},
+    orchestrate: () => {},
+    feedback: () => {},
+    skip: () => {}
+  });
   const composerCapabilities = useAgentGUIComposerCapabilities({
     activeConversationId,
     activeEngineSession,
@@ -629,11 +651,13 @@ export function useAgentGUINodeController({
       dataRef,
       defaultReasoningEffort,
       draftSettingsBySessionIdRef,
+      setDraftSettingsBySessionId,
       isComposerHome,
       isComposerHomeRef,
       isCreatingConversation,
       loadDraftComposerOptionsRef,
       loadSessionState,
+      onDataChangeRef,
       previewMode,
       providerComposerOptions,
       reloadSelectedConversation,
@@ -672,6 +696,8 @@ export function useAgentGUINodeController({
     loadDraftComposerOptions,
     normalizedExplicitProviderTargets,
     normalizedProviderTargets,
+    onCreateIssueFromPlan,
+    onShowMessage,
     planActionsRef,
     planImplementationTurnIdRef,
     prefillPromptRequest,

@@ -233,6 +233,13 @@ export function useAgentGUIViewLabels(input: {
         )
       },
       planModeLabel: t("agentHost.agentGui.planModeLabel"),
+      normalModeLabel: t("agentHost.agentGui.normalModeLabel"),
+      normalModeDescription: t("agentHost.agentGui.normalModeDescription"),
+      ultraPlanModeLabel: t("agentHost.agentGui.ultraPlanModeLabel"),
+      ultraPlanModeDescription: t(
+        "agentHost.agentGui.ultraPlanModeDescription"
+      ),
+      planModeDescription: t("agentHost.agentGui.planModeDescription"),
       planModeOnLabel: t("agentHost.agentGui.planModeOnLabel"),
       planModeOffLabel: t("agentHost.agentGui.planModeOffLabel"),
       planUnavailable: t("agentHost.agentGui.planUnavailable"),
@@ -295,6 +302,36 @@ export function useAgentGUIViewLabels(input: {
       planImplementationConfirm: t(
         "agentHost.agentGui.planImplementationConfirm"
       ),
+      planImplementationCreateIssue: t(
+        "agentHost.agentGui.planImplementationCreateIssue"
+      ),
+      planIssueReviewTitle: t("agentHost.agentGui.planIssueReviewTitle"),
+      planIssuePresetLabel: t("agentHost.agentGui.planIssuePresetLabel"),
+      planIssueReasoning: t("agentHost.agentGui.planIssueReasoning"),
+      planIssueOrchestration: t("agentHost.agentGui.planIssueOrchestration"),
+      planIssueBudgetAuto: t("agentHost.agentGui.planIssueBudgetAuto"),
+      planIssueBudgetFixed: t("agentHost.agentGui.planIssueBudgetFixed"),
+      planIssueTokenBudget: t("agentHost.agentGui.planIssueTokenBudget"),
+      planIssueTaskPreview: t("agentHost.agentGui.planIssueTaskPreview"),
+      planIssueAgentTarget: t("agentHost.agentGui.planIssueAgentTarget"),
+      planIssueModelPlan: t("agentHost.agentGui.planIssueModelPlan"),
+      planIssueModel: t("agentHost.agentGui.planIssueModel"),
+      planIssueDirectory: t("agentHost.agentGui.planIssueDirectory"),
+      planIssueDependencies: t("agentHost.agentGui.planIssueDependencies"),
+      planIssueCreateOnly: t("agentHost.agentGui.planIssueCreateOnly"),
+      planIssueCreateAndStart: t("agentHost.agentGui.planIssueCreateAndStart"),
+      planIssueCreateAndStartParallel: t(
+        "agentHost.agentGui.planIssueCreateAndStartParallel"
+      ),
+      planIssueStartOrchestration: t(
+        "agentHost.agentGui.planIssueStartOrchestration"
+      ),
+      planIssueEstimatedCost: t("agentHost.agentGui.planIssueEstimatedCost"),
+      planIssueCostUnavailable: t(
+        "agentHost.agentGui.planIssueCostUnavailable"
+      ),
+      planIssueCostPartial: t("agentHost.agentGui.planIssueCostPartial"),
+      planIssueUnassigned: t("agentHost.agentGui.planIssueUnassigned"),
       planImplementationFeedbackPlaceholder: t(
         "agentHost.agentGui.planImplementationFeedbackPlaceholder"
       ),

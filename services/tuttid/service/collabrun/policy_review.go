@@ -28,7 +28,7 @@ func (s *Service) RunPolicyReviewConsult(ctx context.Context, input modelpolicys
 		RunID:       run.ID,
 		ResultText:  run.ResultText,
 		Failed:      run.Status != collabrunbiz.StatusCompleted,
-		TotalTokens: run.Usage.InputTokens + run.Usage.OutputTokens,
+		TotalTokens: run.Usage.Total(),
 	}, nil
 }
 
@@ -47,7 +47,7 @@ func (s *Service) SumPolicyReviewUsage(ctx context.Context, workspaceID string, 
 			continue
 		}
 		count++
-		totalTokens += run.Usage.InputTokens + run.Usage.OutputTokens
+		totalTokens += run.Usage.Total()
 	}
 	return count, totalTokens, nil
 }

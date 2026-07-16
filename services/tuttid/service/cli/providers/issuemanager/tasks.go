@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 
 	workspaceissues "github.com/tutti-os/tutti/packages/workspace/issues"
 	cliservice "github.com/tutti-os/tutti/services/tuttid/service/cli"
@@ -25,12 +26,17 @@ type issueTaskInput struct {
 }
 
 type taskCreateInput struct {
-	IssueID   string `cli:"issue-id" validate:"required" description:"Issue that owns the task."`
-	TaskID    string `cli:"task-id" description:"Stable task id to create; generated when omitted."`
-	Title     string `cli:"title" validate:"required" description:"Task title."`
-	Content   string `cli:"content" description:"Task instructions or notes."`
-	Priority  string `cli:"priority" description:"Task priority." enum:"high,medium,low"`
-	DueAtUnix int64  `cli:"due-at-unix" description:"Due time as a Unix timestamp in seconds."`
+	IssueID            string `cli:"issue-id" validate:"required" description:"Issue that owns the task."`
+	TaskID             string `cli:"task-id" description:"Stable task id to create; generated when omitted."`
+	Title              string `cli:"title" validate:"required" description:"Task title."`
+	Content            string `cli:"content" description:"Task instructions or notes."`
+	Priority           string `cli:"priority" description:"Task priority." enum:"high,medium,low"`
+	DueAtUnix          int64  `cli:"due-at-unix" description:"Due time as a Unix timestamp in seconds."`
+	AgentTargetID      string `cli:"agent-target-id" description:"Workspace Agent or local target assigned to execute this task."`
+	ModelPlanID        string `cli:"model-plan-id" description:"Model Plan override for the assigned Agent."`
+	Model              string `cli:"model" description:"Concrete model override for the assigned Agent."`
+	ExecutionDirectory string `cli:"execution-directory" description:"Workspace-relative execution directory."`
+	DependencyTaskIDs  string `cli:"dependency-task-ids" description:"Comma-separated predecessor task ids."`
 }
 
 type taskCreateBatchInput struct {
@@ -39,21 +45,33 @@ type taskCreateBatchInput struct {
 }
 
 type taskCreateBatchItemInput struct {
-	TaskID    string `json:"taskId"`
-	Title     string `json:"title"`
-	Content   string `json:"content"`
-	Priority  string `json:"priority"`
-	DueAtUnix int64  `json:"dueAtUnix"`
+	TaskID             string   `json:"taskId"`
+	Title              string   `json:"title"`
+	Content            string   `json:"content"`
+	Priority           string   `json:"priority"`
+	DueAtUnix          int64    `json:"dueAtUnix"`
+	AgentTargetID      string   `json:"agentTargetId"`
+	ModelPlanID        string   `json:"modelPlanId"`
+	Model              string   `json:"model"`
+	ExecutionDirectory string   `json:"executionDirectory"`
+	DependencyTaskIDs  []string `json:"dependencyTaskIds"`
 }
 
 type taskUpdateInput struct {
-	IssueID   string  `cli:"issue-id" validate:"required" description:"Issue that owns the task."`
-	TaskID    string  `cli:"task-id" validate:"required" description:"Task to update."`
-	Title     *string `cli:"title" description:"Replace the task title."`
-	Content   *string `cli:"content" description:"Replace the task instructions or notes."`
-	Status    *string `cli:"status" description:"Task status." enum:"not_started,running,pending_acceptance,completed,failed,canceled"`
-	Priority  *string `cli:"priority" description:"Task priority." enum:"high,medium,low"`
-	DueAtUnix *int64  `cli:"due-at-unix" description:"Set due time as a Unix timestamp in seconds."`
+	IssueID            string  `cli:"issue-id" validate:"required" description:"Issue that owns the task."`
+	TaskID             string  `cli:"task-id" validate:"required" description:"Task to update."`
+	Title              *string `cli:"title" description:"Replace the task title."`
+	Content            *string `cli:"content" description:"Replace the task instructions or notes."`
+	Status             *string `cli:"status" description:"Task status." enum:"not_started,running,pending_acceptance,completed,failed,canceled"`
+	Priority           *string `cli:"priority" description:"Task priority." enum:"high,medium,low"`
+	DueAtUnix          *int64  `cli:"due-at-unix" description:"Set due time as a Unix timestamp in seconds."`
+	AgentTargetID      *string `cli:"agent-target-id" description:"Replace or clear the assigned Agent target."`
+	ModelPlanID        *string `cli:"model-plan-id" description:"Replace or clear the Model Plan override."`
+	Model              *string `cli:"model" description:"Replace or clear the concrete model override."`
+	ExecutionDirectory *string `cli:"execution-directory" description:"Replace or clear the workspace-relative execution directory."`
+	DependencyTaskIDs  *string `cli:"dependency-task-ids" description:"Replace predecessor ids with a comma-separated list; pass an empty value to clear."`
+	AcceptanceState    *string `cli:"acceptance-state" enum:"agent_claimed,auto_checked,user_accepted" description:"Advance the task acceptance state."`
+	AcceptanceSummary  *string `cli:"acceptance-summary" description:"Automatic check or user acceptance summary."`
 }
 
 func (p Provider) newTaskListCommand() cliservice.Command {
@@ -256,11 +274,16 @@ func (p Provider) runTaskCreate(ctx context.Context, invoke framework.InvokeCont
 		return nil, err
 	}
 	return p.issues.CreateTask(ctx, invoke.WorkspaceID, input.IssueID, workspaceservice.CreateIssueManagerTaskInput{
-		TaskID:      input.TaskID,
-		Title:       input.Title,
-		Content:     input.Content,
-		Priority:    input.Priority,
-		DueAtUnixMS: input.DueAtUnix * 1000,
+		TaskID:             input.TaskID,
+		Title:              input.Title,
+		Content:            input.Content,
+		Priority:           input.Priority,
+		DueAtUnixMS:        input.DueAtUnix * 1000,
+		AgentTargetID:      input.AgentTargetID,
+		ModelPlanID:        input.ModelPlanID,
+		Model:              input.Model,
+		ExecutionDirectory: input.ExecutionDirectory,
+		DependencyTaskIDs:  splitTaskIDs(input.DependencyTaskIDs),
 	})
 }
 
@@ -277,13 +300,7 @@ func (p Provider) runTaskCreateBatch(ctx context.Context, invoke framework.Invok
 	}
 	tasks := make([]workspaceservice.CreateIssueManagerTaskItemInput, 0, len(parsed))
 	for _, item := range parsed {
-		tasks = append(tasks, workspaceservice.CreateIssueManagerTaskItemInput{
-			TaskID:      item.TaskID,
-			Title:       item.Title,
-			Content:     item.Content,
-			Priority:    item.Priority,
-			DueAtUnixMS: item.DueAtUnix * 1000,
-		})
+		tasks = append(tasks, taskCreateBatchServiceInput(item))
 	}
 	return p.issues.CreateTasks(ctx, invoke.WorkspaceID, input.IssueID, workspaceservice.CreateIssueManagerTasksInput{
 		Tasks: tasks,
@@ -294,15 +311,22 @@ func (p Provider) runTaskUpdate(ctx context.Context, invoke framework.InvokeCont
 	if err := p.requireIssueManager(); err != nil {
 		return nil, err
 	}
-	if input.Title == nil && input.Content == nil && input.Status == nil && input.Priority == nil && input.DueAtUnix == nil {
+	if input.Title == nil && input.Content == nil && input.Status == nil && input.Priority == nil && input.DueAtUnix == nil && input.AgentTargetID == nil && input.ModelPlanID == nil && input.Model == nil && input.ExecutionDirectory == nil && input.DependencyTaskIDs == nil && input.AcceptanceState == nil && input.AcceptanceSummary == nil {
 		return nil, workspaceissues.ErrInvalidArgument
 	}
 	update := workspaceservice.UpdateIssueManagerTaskInput{
-		HasTitle:    input.Title != nil,
-		HasContent:  input.Content != nil,
-		HasStatus:   input.Status != nil,
-		HasPriority: input.Priority != nil,
-		HasDueAt:    input.DueAtUnix != nil,
+		HasTitle:              input.Title != nil,
+		HasContent:            input.Content != nil,
+		HasStatus:             input.Status != nil,
+		HasPriority:           input.Priority != nil,
+		HasDueAt:              input.DueAtUnix != nil,
+		HasAgentTargetID:      input.AgentTargetID != nil,
+		HasModelPlanID:        input.ModelPlanID != nil,
+		HasModel:              input.Model != nil,
+		HasExecutionDirectory: input.ExecutionDirectory != nil,
+		HasDependencyTaskIDs:  input.DependencyTaskIDs != nil,
+		HasAcceptanceState:    input.AcceptanceState != nil,
+		HasAcceptanceSummary:  input.AcceptanceSummary != nil,
 	}
 	if input.Title != nil {
 		update.Title = *input.Title
@@ -319,7 +343,47 @@ func (p Provider) runTaskUpdate(ctx context.Context, invoke framework.InvokeCont
 	if input.DueAtUnix != nil {
 		update.DueAtUnixMS = *input.DueAtUnix * 1000
 	}
+	if input.AgentTargetID != nil {
+		update.AgentTargetID = *input.AgentTargetID
+	}
+	if input.ModelPlanID != nil {
+		update.ModelPlanID = *input.ModelPlanID
+	}
+	if input.Model != nil {
+		update.Model = *input.Model
+	}
+	if input.ExecutionDirectory != nil {
+		update.ExecutionDirectory = *input.ExecutionDirectory
+	}
+	if input.DependencyTaskIDs != nil {
+		update.DependencyTaskIDs = splitTaskIDs(*input.DependencyTaskIDs)
+	}
+	if input.AcceptanceState != nil {
+		update.AcceptanceState = *input.AcceptanceState
+	}
+	if input.AcceptanceSummary != nil {
+		update.AcceptanceSummary = *input.AcceptanceSummary
+	}
 	return p.issues.UpdateTask(ctx, invoke.WorkspaceID, input.IssueID, input.TaskID, update)
+}
+
+func taskCreateBatchServiceInput(item taskCreateBatchItemInput) workspaceservice.CreateIssueManagerTaskItemInput {
+	return workspaceservice.CreateIssueManagerTaskItemInput{
+		TaskID:             item.TaskID,
+		Title:              item.Title,
+		Content:            item.Content,
+		Priority:           item.Priority,
+		DueAtUnixMS:        item.DueAtUnix * 1000,
+		AgentTargetID:      item.AgentTargetID,
+		ModelPlanID:        item.ModelPlanID,
+		Model:              item.Model,
+		ExecutionDirectory: item.ExecutionDirectory,
+		DependencyTaskIDs:  item.DependencyTaskIDs,
+	}
+}
+
+func splitTaskIDs(raw string) []string {
+	return strings.FieldsFunc(raw, func(r rune) bool { return r == ',' })
 }
 
 func (p Provider) runTaskDelete(ctx context.Context, invoke framework.InvokeContext, input issueTaskInput) (any, error) {

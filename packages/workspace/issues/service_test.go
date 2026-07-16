@@ -10,6 +10,40 @@ import (
 	"time"
 )
 
+func TestCompileAutoTokenBudgetWithHistoryBlendsScaleAndObservedUsage(t *testing.T) {
+	t.Parallel()
+	profile := ExecutionProfile{ReasoningIntensity: 50, OrchestrationIntensity: 50}
+	compiled := CompileAutoTokenBudget(2, profile)
+	got := CompileAutoTokenBudgetWithHistory(2, profile, 240_000)
+	want := compiled/2 + 300_000/2
+	if got != want {
+		t.Fatalf("CompileAutoTokenBudgetWithHistory() = %d, want %d", got, want)
+	}
+	if fallback := CompileAutoTokenBudgetWithHistory(2, profile, 0); fallback != compiled {
+		t.Fatalf("history-free budget = %d, want %d", fallback, compiled)
+	}
+}
+
+func TestIssueBudgetAllowsNextAutomaticRunUsesCompiledIntensityAllowance(t *testing.T) {
+	t.Parallel()
+	issue := Issue{
+		ExecutionProfile: ExecutionProfile{ReasoningIntensity: 50, OrchestrationIntensity: 50},
+		Budget: Budget{
+			Mode:           BudgetModeFixed,
+			Status:         BudgetStatusActive,
+			TokenLimit:     60_000,
+			ConsumedTokens: 30_000,
+		},
+	}
+	if IssueBudgetAllowsNextAutomaticRun(issue) {
+		t.Fatal("default-intensity run unexpectedly fits 30,000 remaining tokens")
+	}
+	issue.ExecutionProfile = ExecutionProfile{}
+	if !IssueBudgetAllowsNextAutomaticRun(issue) {
+		t.Fatal("lower-intensity run should fit 30,000 remaining tokens")
+	}
+}
+
 func TestServiceCreateIssueAndTaskProjection(t *testing.T) {
 	store := newFakeStore()
 	service := testService(store)
@@ -1073,6 +1107,41 @@ func (s *fakeStore) CreateIssue(_ context.Context, issue Issue) (Issue, error) {
 	return issue, nil
 }
 
+func (s *fakeStore) CreateIssueWithTasks(_ context.Context, issue Issue, tasks []Task) (Issue, []Task, error) {
+	issueKeyValue := issueKey(issue.WorkspaceID, issue.IssueID)
+	if _, exists := s.issues[issueKeyValue]; exists {
+		return Issue{}, nil, ErrIssueAlreadyExists
+	}
+	if len(tasks) == 0 {
+		return Issue{}, nil, ErrInvalidArgument
+	}
+	for _, task := range tasks {
+		if task.WorkspaceID != issue.WorkspaceID || task.IssueID != issue.IssueID {
+			return Issue{}, nil, ErrInvalidArgument
+		}
+		if _, exists := s.tasks[taskKey(task.WorkspaceID, task.IssueID, task.TaskID)]; exists {
+			return Issue{}, nil, ErrTaskAlreadyExists
+		}
+	}
+	s.nextID++
+	issue.ID = s.nextID
+	createdTasks := make([]Task, 0, len(tasks))
+	for index, task := range tasks {
+		s.nextID++
+		task.ID = s.nextID
+		task.SortIndex = index + 1
+		createdTasks = append(createdTasks, task)
+	}
+	s.issues[issueKeyValue] = issue
+	for _, task := range createdTasks {
+		s.tasks[taskKey(task.WorkspaceID, task.IssueID, task.TaskID)] = task
+	}
+	topic := s.topics[topicKey(issue.WorkspaceID, issue.TopicID)]
+	topic.LastActivityAtUnixMS = issue.UpdatedAtUnixMS
+	s.topics[topicKey(issue.WorkspaceID, issue.TopicID)] = topic
+	return issue, createdTasks, nil
+}
+
 func (s *fakeStore) GetIssue(_ context.Context, workspaceID string, issueID string) (Issue, error) {
 	issue, ok := s.issues[issueKey(workspaceID, issueID)]
 	if !ok {
@@ -1256,16 +1325,22 @@ func (s *fakeStore) RemoveContextRef(_ context.Context, workspaceID string, issu
 	return false, nil
 }
 
-func (s *fakeStore) CreateRun(_ context.Context, run Run) (Run, error) {
-	if run.TaskID != "" {
-		if _, ok := s.tasks[taskKey(run.WorkspaceID, run.IssueID, run.TaskID)]; !ok {
-			return Run{}, ErrTaskNotFound
-		}
-	} else if _, ok := s.issues[issueKey(run.WorkspaceID, run.IssueID)]; !ok {
+func (s *fakeStore) ClaimTaskRun(_ context.Context, run Run) (Run, error) {
+	task, ok := s.tasks[taskKey(run.WorkspaceID, run.IssueID, run.TaskID)]
+	if !ok {
 		return Run{}, ErrTaskNotFound
+	}
+	if task.Status == StatusRunning {
+		return Run{}, ErrTaskAlreadyClaimed
 	}
 	s.nextID++
 	run.ID = s.nextID
+	task.Status = StatusRunning
+	task.AcceptanceState = AcceptanceAgentClaimed
+	task.AcceptanceSummary = ""
+	task.LatestRunID = run.RunID
+	task.UpdatedAtUnixMS = run.UpdatedAtUnixMS
+	s.tasks[taskKey(run.WorkspaceID, run.IssueID, run.TaskID)] = task
 	s.runs[runKey(run.WorkspaceID, run.IssueID, run.TaskID, run.RunID)] = run
 	return run, nil
 }
@@ -1289,7 +1364,7 @@ func (s *fakeStore) CompleteRun(_ context.Context, run Run, outputs []RunOutput)
 func (s *fakeStore) ListRuns(_ context.Context, workspaceID string, issueID string, taskID string) ([]Run, error) {
 	runs := make([]Run, 0)
 	for _, run := range s.runs {
-		if run.WorkspaceID == workspaceID && run.IssueID == issueID && (taskID == "" || run.TaskID == taskID) {
+		if run.WorkspaceID == workspaceID && (issueID == "" || run.IssueID == issueID) && (taskID == "" || run.TaskID == taskID) {
 			runs = append(runs, run)
 		}
 	}

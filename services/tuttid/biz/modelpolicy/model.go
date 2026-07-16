@@ -1,9 +1,9 @@
-// Package modelpolicy defines workspace model usage policies: which model
-// access plan and model each role (execution, planning, review) uses, plus
-// the first fixed automation rule — run a review with a designated model
-// after a task-completing turn — bounded by run-count and token budgets.
+// Package modelpolicy defines the legacy role-based model usage policy kept
+// for persisted-data/API compatibility. New runtime configuration belongs to
+// WorkspaceAgent and AutomationRule; execution/planning/review roles must not
+// be introduced into new workflows.
 //
-// Automated review never replaces user acceptance: acceptance states move
+// Legacy automated review never replaces user acceptance: acceptance states move
 // from agent_claimed to auto_checked to user_accepted, and only the last one
 // may close work.
 package modelpolicy

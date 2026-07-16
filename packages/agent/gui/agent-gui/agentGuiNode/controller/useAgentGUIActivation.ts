@@ -1,6 +1,7 @@
 import {
   selectSessionActivationPresentations,
   sessionActivationPresentationMapsEqual,
+  type AgentActivityAutomationRuleOverride,
   type AgentActivitySubmitDiagnostics,
   type PendingActivationIntentRecord,
   type AgentSessionEngine
@@ -17,6 +18,7 @@ type AgentGUILiveState = "inactive" | "activating" | "active" | "failed";
 
 interface AgentGUIActivateInputBase {
   agentSessionId: string;
+  automationRuleOverride?: AgentActivityAutomationRuleOverride | null;
   cwd?: string;
   initialContent?: AgentPromptContentBlock[];
   initialDisplayPrompt?: string;
@@ -115,6 +117,14 @@ export function useAgentGUIActivation({
       const sharedIntent = {
         type: "activation/requested",
         agentSessionId,
+        ...(input.automationRuleOverride
+          ? {
+              automationRuleOverride: {
+                disabled: input.automationRuleOverride.disabled,
+                ruleIds: [...input.automationRuleOverride.ruleIds]
+              }
+            }
+          : {}),
         ...(input.initialContent ? { content: input.initialContent } : {}),
         ...(input.cwd !== undefined ? { cwd: input.cwd } : {}),
         expiresAtUnixMs: requestedAtUnixMs + ACTIVATION_EXPIRY_MS,
