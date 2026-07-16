@@ -27,6 +27,7 @@ export function createWorkspaceSettingsModelPlansState(): WorkspaceSettingsModel
     draftFeedback: null,
     draftSaveImpact: null,
     duplicatingPlanID: null,
+    fetchingDraftModels: false,
     firstUseLaunchFailedPlanID: null,
     firstUseLaunchingPlanID: null,
     loading: false,

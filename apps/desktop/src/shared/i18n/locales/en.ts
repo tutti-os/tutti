@@ -972,7 +972,6 @@ export const en = {
           }
         },
         modelPlans: {
-          addDiscoveredModel: "Add {{model}}",
           addModel: "Add model",
           addPlan: "Add plan",
           agentRuntimePendingHint:
@@ -994,8 +993,7 @@ export const en = {
             title: "Agent bindings",
             unsupported: "Binding not supported yet"
           },
-          defaultModelLabel: "Default model",
-          defaultModelNone: "Not set",
+          defaultMarker: "Default",
           delete: "Delete",
           deleteBlockedDescription:
             "Rebind or disable the consumers below before deleting this plan.",
@@ -1012,7 +1010,6 @@ export const en = {
             "Complete a successful connection check before saving this plan.",
           detecting: "Checking...",
           detectionTitle: "Connection check",
-          discoveredModels: "Detected models",
           duplicate: "Duplicate",
           duplicateFailed: "Couldn't duplicate — try again.",
           edit: "Edit",
@@ -1044,42 +1041,30 @@ export const en = {
             unauthorized: "The endpoint rejected the credentials.",
             unknown: "The check failed."
           },
+          fetchModels: "Fetch models",
+          fetchModelsEmpty:
+            "The endpoint returned no models. You can still type a model ID manually.",
+          fetchModelsFailed:
+            "Couldn't fetch the model list — check the credentials and Base URL, then try again.",
+          fetchModelsResult: "Fetched {{count}} selectable models",
+          fetchingModels: "Fetching...",
           getApiKey: "Get {{provider}} API key",
           hideApiKey: "Hide key",
           keepExistingKey: "Leave blank to keep the saved key",
           lastDetectedAt: "Checked {{time}}",
           loadFailed: "We couldn't load model plans.",
           modelCount: "{{count}} models",
-          modelCapabilities: "Capabilities: {{capabilities}}",
           modelId: "Model ID",
-          modelIdPlaceholder: "model-id",
+          modelPickerEmpty: "No matching models.",
+          modelPickerPlaceholder: "Select or type a model ID",
+          modelPickerSearchPlaceholder: "Search model IDs or names",
+          modelPickerUseCustom: "Use “{{model}}”",
           nativeLoginHint:
             "This plan uses the existing Codex or Claude Code login on this device. Sign in from Agent settings if needed, then run the connection check; no API key or Base URL is stored in this plan.",
           modelRangeImpactDescription:
             "These consumers may use the changed model range on their next call. Review the impact, then confirm to save; running calls are unchanged.",
           modelRangeImpactTitle: "Review affected consumers",
           models: "Models",
-          noDiscoveredModelsMatch: "No detected models match this search.",
-          priceCurrency: "Currency",
-          priceInput: "Input / 1M",
-          priceOutput: "Output / 1M",
-          priceCacheRead: "Cache read / 1M",
-          priceCacheWrite: "Cache write / 1M",
-          searchDiscoveredModels: "Search detected models",
-          searchDiscoveredModelsPlaceholder: "Search model IDs or names",
-          selectAllDiscoveredModels: "Select all shown",
-          subscriptionQuotaPricingHint:
-            "Subscription quota is protected by a remaining-quota waterline. Tutti does not invent a monetary token price for this access scheme.",
-          tier: "Tier",
-          tierFlagship: "Flagship",
-          tierStandard: "Standard",
-          tierEconomy: "Economy",
-          tierUsageFlagship:
-            "Best for complex reasoning, architecture, and quality-critical work.",
-          tierUsageStandard:
-            "Balanced for everyday coding, review, and general Agent work.",
-          tierUsageEconomy:
-            "Best for fast, high-volume, or straightforward tasks.",
           nameLabel: "Name",
           namePlaceholder: "My model plan",
           neverDetected: "Not checked yet",
@@ -1128,6 +1113,7 @@ export const en = {
             selectModel: "Select a model first."
           },
           removeModel: "Remove model",
+          setDefaultModel: "Set {{model}} as the default model",
           requiredFieldsMissing:
             "Fill in the name and model list. Endpoint plans also require an API key and Base URL.",
           save: "Save",

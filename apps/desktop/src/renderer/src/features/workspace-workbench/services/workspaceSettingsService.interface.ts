@@ -54,7 +54,6 @@ export interface WorkspaceAgentModelBindingChange {
  * legacy compatibility surface and are not part of the default settings load.
  */
 export interface IWorkspaceModelPlansController {
-  addDiscoveredModelToDraft(modelID: string): void;
   beginDraft(seed: WorkspaceModelPlanDraftSeed): void;
   beginEditPlan(planID: string): void;
   cancelDeletePlan(): void;
@@ -62,6 +61,7 @@ export interface IWorkspaceModelPlansController {
   confirmDeletePlan(planID: string): Promise<void>;
   detectDraft(): Promise<void>;
   duplicatePlan(planID: string): Promise<void>;
+  fetchDraftModels(): Promise<void>;
   launchFirstUse(planID: string, agentTargetID: string): Promise<void>;
   refresh(): Promise<void>;
   refreshBindings(): Promise<void>;
