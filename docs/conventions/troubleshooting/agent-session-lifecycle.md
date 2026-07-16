@@ -349,6 +349,72 @@ Turn state, loading, cancel, restore, file-change undo, rail projection, event u
   [codex_appserver_goal.go](../../../packages/agent/daemon/runtime/codex_appserver_goal.go)
   [codex_appserver_adapter_test.go](../../../packages/agent/daemon/runtime/codex_appserver_adapter_test.go)
 
+### Codex goal shows active but produces no response
+
+- Symptom:
+  Sending `/goal …` updates the Goal banner to active, but no assistant text or
+  tool activity appears. Logs show `turn/started`, followed shortly by
+  `agent_session.app_server.goal.turn_provenance_unproven` and an exact
+  `turn/interrupt`.
+- Quick checks:
+  Inspect the installed Codex app-server schema and the raw
+  `thread/goal/updated` payload. In affected versions, `turnId` is optional and
+  the external `thread/goal/set` update omits it. Verify the Goal operation and
+  generation fingerprint were persisted successfully before investigating
+  transport or model failures.
+- Root cause:
+  Tutti required `thread/goal/updated.turnId` as the only Goal-to-Turn
+  correlation signal. Codex externally applies the Goal, emits a session-scoped
+  update without `turnId`, then starts the continuation Turn. The adapter
+  therefore treated valid work as unproven and deliberately interrupted it
+  after the provenance grace window.
+- Fix:
+  Keep exact turn-scoped Goal evidence as the preferred path. For versions that
+  omit `turnId`, use an adapter-local, single-use continuation claim scoped to
+  the successful Goal RPC's immutable operation/revision. Chain the next claim
+  only from settlement of an adopted Goal Turn, serialize Goal control against
+  ordinary submit setup, and invalidate the claim on revision change, inactive
+  status, restart, or multiple unowned Turns. Never bind an arbitrary unowned
+  Turn from the mutable current Goal snapshot and do not fix this by merely
+  extending the provenance timeout.
+- Validation:
+  Reproduce the real protocol order
+  `goal/set response -> goal/updated without turnId -> turn/started` and verify
+  assistant output is persisted without an interrupt. Also cover chained
+  continuation Turns without another Goal RPC and a delayed old Turn after a
+  newer revision, which must still be interrupted.
+- References:
+  [codex_appserver_goal_provenance.go](../../../packages/agent/daemon/runtime/codex_appserver_goal_provenance.go)
+  [codex_appserver_goal.go](../../../packages/agent/daemon/runtime/codex_appserver_goal.go)
+  [controller_exec.go](../../../packages/agent/daemon/runtime/controller_exec.go)
+  [codex_appserver_adapter_test.go](../../../packages/agent/daemon/runtime/codex_appserver_adapter_test.go)
+
+### Active Codex goal has no elapsed timer
+
+- Symptom:
+  The Goal banner shows an active objective but no elapsed value, even though
+  Codex continues working and its Goal database reports non-zero usage time.
+- Root cause:
+  Codex exposes `timeUsedSeconds` and `tokensUsed`, while Tutti's canonical
+  session Goal contract exposes `durationMs` and `tokens`. Passing provider
+  fields through runtime context causes the typed durable session boundary to
+  discard them. A newly created Goal may also omit canonical `durationMs`
+  because zero is an optional counter.
+- Fix:
+  Normalize provider counters in the Codex adapter before publishing session
+  state or Goal observations. The renderer reads only `durationMs`, hides time
+  while the Goal is an optimistic projection, and starts only after canonical
+  provider state arrives. If that canonical state omits the optional zero
+  baseline, start at zero and advance locally between server updates.
+- Validation:
+  Verify provider-to-canonical normalization with non-zero counters, verify an
+  optimistic Goal shows no time, verify canonical confirmation adopts the
+  provider duration and advances, and verify a paused Goal without a duration
+  still omits the timer.
+- References:
+  [codex_appserver_goal.go](../../../packages/agent/daemon/runtime/codex_appserver_goal.go)
+  [AgentGoalBanner.tsx](../../../packages/agent/gui/agent-gui/agentGuiNode/AgentGoalBanner.tsx)
+
 ### Codex goal reappears after pause, edit, or clear
 
 - Symptom:

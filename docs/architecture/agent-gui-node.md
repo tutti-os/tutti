@@ -92,6 +92,29 @@ newer desired state or clear tombstone. Provider differences are normalized by
 the daemon `GoalAdapter`; GUI and service code use the typed Goal API rather
 than sending goal banner actions through the prompt pipeline.
 
+Codex Goal continuation provenance has two ordered paths. A
+`thread/goal/updated` notification with `turnId` remains exact provider
+evidence and takes precedence. Codex versions that omit that optional field use
+an adapter-local, single-use continuation claim instead: a successful
+`thread/goal/set` response seeds the first claim for its immutable durable Goal
+operation/revision, and settlement of an adopted Goal Turn may seed the next
+claim in the same chain. Goal control and ordinary submit setup share the
+session lifecycle lock, so a concurrent user submit cannot open a competing
+provider Turn while the initial claim is established. A newer Goal operation,
+inactive Goal status, adapter restart, multiple simultaneous unowned Turns, or
+any conflicting exact evidence invalidates the compatibility claim and fails
+closed. The claim is never reconstructed from the mutable latest Goal snapshot
+and is not durable across provider-process replacement.
+
+Provider Goal payloads are normalized at the daemon adapter boundary before
+they enter session state. In particular, Codex `timeUsedSeconds` and
+`tokensUsed` become the canonical `durationMs` and `tokens` fields. Durable
+storage, APIs, and renderer code consume only the canonical Goal contract; the
+provider-authored payload remains local to provenance matching. Optimistic Goal
+presentation does not start an elapsed timer. The timer becomes visible only
+after canonical provider state confirms the Goal, using `durationMs` as its
+baseline and ticking locally between authoritative updates.
+
 ## Workspace Engine Ownership
 
 One `AgentSessionEngine` instance owns agent state for one workspace and runtime

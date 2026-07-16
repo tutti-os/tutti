@@ -40,6 +40,7 @@ type codexPendingGoalTurn struct {
 	session        Session
 	notifications  []acpMessage
 	state          string
+	provenanceMode string
 }
 
 const (
@@ -185,9 +186,10 @@ func (a *CodexAppServerAdapter) bindGoalGeneration(_ context.Context, session Se
 	return nil
 }
 
-// observeGoalTurnGeneration consumes the only turn-scoped Goal provenance in
-// the Codex protocol: ThreadGoalUpdatedNotification.turnId + goal snapshot.
-// turn/started alone is deliberately insufficient.
+// observeGoalTurnGeneration consumes exact turn-scoped Goal provenance from
+// ThreadGoalUpdatedNotification.turnId + goal snapshot. turn/started alone is
+// deliberately insufficient; the compatibility path additionally requires a
+// single-use claim established by a successful ordered Goal mutation.
 func (a *CodexAppServerAdapter) observeGoalTurnGeneration(session Session, providerTurnID string, goal map[string]any) {
 	providerTurnID = strings.TrimSpace(providerTurnID)
 	fingerprint := codexGoalGenerationFingerprint(goal)
@@ -612,18 +614,45 @@ func (a *CodexAppServerAdapter) tryResolvePendingGoalTurn(agentSessionID, provid
 	if evidence != nil {
 		a.resolveGoalTurnEvidenceLocked(appSession, evidence)
 	}
-	if evidence == nil || (!evidence.bound && !evidence.ambiguous) {
+	identity := goalOperationIdentity{}
+	provenanceMode := ""
+	switch {
+	case evidence != nil && evidence.bound:
+		identity = evidence.identity
+		provenanceMode = "turn_scoped_goal_update"
+	case evidence != nil && evidence.ambiguous:
+		// Exact provider evidence always wins over compatibility inference.
+	case evidence != nil:
 		a.mu.Unlock()
 		return false
-	}
-	identity := goalOperationIdentity{}
-	if evidence.bound {
-		identity = evidence.identity
+	default:
+		claim := appSession.goalContinuationClaim
+		current := goalOperationIdentity{
+			operationID: appSession.goalOperationID,
+			revision:    appSession.goalRevision,
+			repairEpoch: appSession.goalRepairEpoch,
+		}
+		if claim == nil || !claim.ready || claim.identity != current || !claim.identity.valid() ||
+			strings.TrimSpace(asString(appSession.goal["status"])) != "active" {
+			a.mu.Unlock()
+			return false
+		}
+		if len(appSession.pendingGoalTurns) != 1 {
+			// More than one unowned provider turn cannot be causally ordered
+			// against a single-use claim. Leave all of them to fail closed.
+			appSession.goalContinuationClaim = nil
+			a.mu.Unlock()
+			return false
+		}
+		identity = claim.identity
+		provenanceMode = "ordered_goal_continuation_claim"
+		appSession.goalContinuationClaim = nil
 	}
 	// A newer set/clear changes future Goal scheduling, not work the provider
 	// already accepted. Provenance is immutable, so a superseded but fully
 	// proven Turn is adopted with its original identity and allowed to settle.
 	shouldAdopt := identity.valid() && appSession.activeTurn == nil
+	pending.provenanceMode = provenanceMode
 	session := pending.session
 	a.mu.Unlock()
 
@@ -661,6 +690,20 @@ func (a *CodexAppServerAdapter) expirePendingGoalTurn(agentSessionID, providerTu
 	}
 	evidence := appSession.goalTurnEvidence[strings.TrimSpace(providerTurnID)]
 	if evidence != nil && evidence.lookupInFlight > 0 {
+		grace := a.goalProvenanceGraceWindow
+		if grace <= 0 {
+			grace = defaultCodexAppServerGoalProvenanceGraceWindow
+		}
+		a.mu.Unlock()
+		a.schedulePendingGoalTurnExpiry(agentSessionID, providerTurnID, grace)
+		return
+	}
+	current := goalOperationIdentity{
+		operationID: appSession.goalOperationID,
+		revision:    appSession.goalRevision,
+		repairEpoch: appSession.goalRepairEpoch,
+	}
+	if claim := appSession.goalContinuationClaim; claim != nil && !claim.ready && claim.identity == current {
 		grace := a.goalProvenanceGraceWindow
 		if grace <= 0 {
 			grace = defaultCodexAppServerGoalProvenanceGraceWindow

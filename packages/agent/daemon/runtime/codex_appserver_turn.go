@@ -168,6 +168,9 @@ func (a *CodexAppServerAdapter) finalizeSettledTurn(agentSessionID string, appTu
 	appTurn.processMu.Unlock()
 	a.endActiveTurn(agentSessionID, appTurn)
 	appTurn.markTerminated()
+	if appTurn.kind == codexAppServerTurnKindGoalAdopted && appTurn.goalIdentity.valid() {
+		a.armGoalContinuationClaim(agentSessionID, appTurn.goalIdentity)
+	}
 	// With an active goal, codex normally auto-starts the next turn; the
 	// nudge covers the case where it does not. This must run regardless of
 	// how the turn settled: a mid-goal turn can end failed (a transient tool

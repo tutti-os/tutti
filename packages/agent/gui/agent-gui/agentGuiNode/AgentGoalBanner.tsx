@@ -23,7 +23,8 @@ export interface AgentGoalBannerProps {
   status: string;
   tokenBudget?: number;
   tokensUsed?: number;
-  timeUsedSeconds?: number;
+  durationMs?: number;
+  optimistic?: boolean;
   labels: AgentGoalBannerLabels;
   /** Called with the edited objective when the inline edit is confirmed. */
   onEditObjective?: (objective: string) => void;
@@ -129,16 +130,18 @@ export function describeGoal(input: {
  * with the codex desktop goal bar: "<status title> <objective> · <elapsed>"
  * plus icon controls for edit / pause-resume / delete.
  *
- * The elapsed time is the server-reported timeUsedSeconds; while the goal is
- * active the banner ticks it forward locally between goal updates. Without
- * action callbacks the banner falls back to the read-only "/goal clear" hint.
+ * The elapsed time is the server-reported canonical durationMs; while the goal
+ * is active the banner ticks it forward locally between goal updates.
+ * Optimistic Goal projections never show or start the timer; after canonical
+ * provider state arrives, an omitted zero-valued duration starts from zero.
  */
 export function AgentGoalBanner({
   objective,
   status,
   tokenBudget,
   tokensUsed,
-  timeUsedSeconds,
+  durationMs,
+  optimistic = false,
   labels,
   onEditObjective,
   onPauseGoal,
@@ -150,10 +153,13 @@ export function AgentGoalBanner({
   const [editDraft, setEditDraft] = useState<string | null>(null);
   const normalizedStatus = normalizeGoalStatus(status);
   const isActive = normalizedStatus === "" || normalizedStatus === "active";
-  const serverSeconds =
-    typeof timeUsedSeconds === "number" && timeUsedSeconds >= 0
-      ? Math.floor(timeUsedSeconds)
-      : null;
+  const serverSeconds = optimistic
+    ? null
+    : typeof durationMs === "number" && durationMs >= 0
+      ? Math.floor(durationMs / 1000)
+      : isActive
+        ? 0
+        : null;
   const [localElapsed, setLocalElapsed] = useState(0);
   useEffect(() => {
     setLocalElapsed(0);

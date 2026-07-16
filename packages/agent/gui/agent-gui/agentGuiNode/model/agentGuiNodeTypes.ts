@@ -54,7 +54,11 @@ export interface AgentGUISessionChrome {
         canRetry?: never;
       }
     | null;
-  rawState: Pick<CanonicalAgentSession, "agentSessionId" | "goal"> | null;
+  rawState:
+    | (Pick<CanonicalAgentSession, "agentSessionId" | "goal"> & {
+        goalIsOptimistic: boolean;
+      })
+    | null;
 }
 
 export interface AgentGUIOptimisticGoalControl {

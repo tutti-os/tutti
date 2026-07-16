@@ -89,6 +89,15 @@ func (a *CodexAppServerAdapter) ApplyGoal(
 		return GoalAdapterResult{}, fmt.Errorf("unsupported goal control action %q", action)
 	}
 	previousOperationID, previousRevision, previousRepairEpoch := a.replaceGoalOperationIdentity(session.AgentSessionID, input.OperationID, input.Revision, input.RepairEpoch)
+	expectedIdentity := goalOperationIdentity{
+		operationID: strings.TrimSpace(input.OperationID),
+		revision:    input.Revision,
+		repairEpoch: input.RepairEpoch,
+	}
+	if action == GoalControlSet || action == GoalControlResume {
+		a.prepareGoalContinuationClaim(session.AgentSessionID, expectedIdentity)
+		defer a.clearPreparedGoalContinuationClaim(session.AgentSessionID, expectedIdentity)
+	}
 	slog.Info("agent session app-server goal control",
 		"event", "agent_session.app_server.goal.control",
 		"agent_session_id", session.AgentSessionID,
@@ -107,19 +116,11 @@ func (a *CodexAppServerAdapter) ApplyGoal(
 	} else {
 		goal = appServerGoalFromResult(result)
 		if len(goal) > 0 {
-			if bindErr := a.bindGoalGeneration(ctx, session, goal, goalOperationIdentity{
-				operationID: strings.TrimSpace(input.OperationID),
-				revision:    input.Revision,
-				repairEpoch: input.RepairEpoch,
-			}); bindErr != nil {
+			if bindErr := a.bindGoalGeneration(ctx, session, goal, expectedIdentity); bindErr != nil {
 				return GoalAdapterResult{}, fmt.Errorf("persist goal provenance: %w", bindErr)
 			}
 			a.applyGoalUpdate(session.AgentSessionID, goal)
-		} else if action == GoalControlSet && (goalOperationIdentity{
-			operationID: strings.TrimSpace(input.OperationID),
-			revision:    input.Revision,
-			repairEpoch: input.RepairEpoch,
-		}).valid() {
+		} else if action == GoalControlSet && expectedIdentity.valid() {
 			err := errors.New("provider returned no Goal generation for durable Goal set")
 			a.failGoalProvenanceSession(session, err)
 			return GoalAdapterResult{}, err
@@ -136,6 +137,9 @@ func (a *CodexAppServerAdapter) ApplyGoal(
 				a.applyGoalUpdate(session.AgentSessionID, goal)
 			}
 		}
+	}
+	if (action == GoalControlSet || action == GoalControlResume) && len(goal) > 0 {
+		a.armGoalContinuationClaim(session.AgentSessionID, expectedIdentity)
 	}
 	var events []activityshared.Event
 	if event, ok := normalizedGoalUpdatedEvent(session, goalUpdateType); ok {
@@ -190,7 +194,44 @@ func (a *CodexAppServerAdapter) ReconcileGoal(ctx context.Context, session Sessi
 }
 
 func (*CodexAppServerAdapter) NormalizeGoalObservation(raw map[string]any) map[string]any {
-	return clonePayload(raw)
+	return normalizedCodexGoal(raw)
+}
+
+// normalizedCodexGoal translates provider-specific app-server fields into the
+// canonical Tutti SessionGoal contract. Provider payloads use seconds and
+// tokensUsed; the durable/public model uses milliseconds and tokens.
+func normalizedCodexGoal(raw map[string]any) map[string]any {
+	if len(raw) == 0 {
+		return nil
+	}
+	goal := map[string]any{}
+	if objective := strings.TrimSpace(asStringRaw(raw["objective"])); objective != "" {
+		goal["objective"] = objective
+	}
+	status := appServerGoalStatus(asString(raw["status"]))
+	if status == "" {
+		status = strings.TrimSpace(asString(raw["status"]))
+	}
+	if status != "" {
+		goal["status"] = status
+	}
+	if reason := strings.TrimSpace(asStringRaw(raw["reason"])); reason != "" {
+		goal["reason"] = reason
+	}
+	if iterations, ok := int64Value(raw["iterations"]); ok && iterations >= 0 {
+		goal["iterations"] = iterations
+	}
+	if durationMS, ok := int64Value(raw["durationMs"]); ok && durationMS >= 0 {
+		goal["durationMs"] = durationMS
+	} else if timeUsedSeconds, ok := int64Value(raw["timeUsedSeconds"]); ok && timeUsedSeconds >= 0 {
+		goal["durationMs"] = timeUsedSeconds * int64(time.Second/time.Millisecond)
+	}
+	if tokens, ok := int64Value(raw["tokens"]); ok && tokens >= 0 {
+		goal["tokens"] = tokens
+	} else if tokensUsed, ok := int64Value(raw["tokensUsed"]); ok && tokensUsed >= 0 {
+		goal["tokens"] = tokensUsed
+	}
+	return goal
 }
 
 // ExecGoalControl executes a /goal control command as a thread-level
@@ -544,6 +585,7 @@ func (a *CodexAppServerAdapter) adoptServerInitiatedTurn(session Session, provid
 		"agent_session_id", session.AgentSessionID,
 		"provider_turn_id", providerTurnID,
 		"turn_id", turnID,
+		"provenance_mode", appTurn.goalProvenance,
 	)
 	emitEvents([]activityshared.Event{
 		newTurnActivityEvent(session, EventTurnStarted, turnID, SessionStatusWorking, "", "", map[string]any{
@@ -552,6 +594,7 @@ func (a *CodexAppServerAdapter) adoptServerInitiatedTurn(session Session, provid
 			"sourceGoalOperationId": identity.operationID,
 			"sourceGoalRevision":    identity.revision,
 			"sourceGoalRepairEpoch": identity.repairEpoch,
+			"goalProvenanceMode":    appTurn.goalProvenance,
 		}),
 	})
 	if a.goalHandoffCommittedHook != nil {
@@ -582,6 +625,11 @@ func (a *CodexAppServerAdapter) beginGoalTurnHandoff(agentSessionID, providerTur
 	pending.state = codexGoalTurnAdopting
 	appSession.activeTurn = turn
 	appSession.activeTurnID = strings.TrimSpace(providerTurnID)
+	turn.goalIdentity = identity
+	turn.goalProvenance = strings.TrimSpace(pending.provenanceMode)
+	if turn.goalProvenance == "" {
+		turn.goalProvenance = "turn_scoped_goal_update"
+	}
 	// Main's provider-turn lifecycle is emitted from appTurn, while Goal
 	// provenance settlement matches through the session slot. Bind both sides
 	// atomically so an adopted turn never falls back to its local Turn ID when
@@ -706,6 +754,8 @@ func (a *CodexAppServerAdapter) scheduleGoalContinuationNudge(session Session) {
 		)
 		nudgeCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 		defer cancel()
+		a.prepareGoalContinuationClaim(agentSessionID, expectedIdentity)
+		defer a.clearPreparedGoalContinuationClaim(agentSessionID, expectedIdentity)
 		// NoHandler: the continuation turn's notifications must keep flowing
 		// to the session-level handler while this RPC is in flight.
 		result, err := client.ThreadGoalSetNoHandler(nudgeCtx, params)
@@ -731,6 +781,7 @@ func (a *CodexAppServerAdapter) scheduleGoalContinuationNudge(session Session) {
 			// session teardown/replacement and future lock implementations.
 			if current := a.goalOperationIdentity(agentSessionID); current == expectedIdentity {
 				a.applyGoalUpdate(agentSessionID, nextGoal)
+				a.armGoalContinuationClaim(agentSessionID, expectedIdentity)
 			}
 		}
 	}()

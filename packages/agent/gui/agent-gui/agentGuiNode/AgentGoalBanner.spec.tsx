@@ -82,7 +82,7 @@ describe("AgentGoalBanner", () => {
       <AgentGoalBanner
         objective="Finish the migration"
         status="active"
-        timeUsedSeconds={2}
+        durationMs={2000}
         labels={labels}
       />
     );
@@ -240,7 +240,7 @@ describe("AgentGoalBanner", () => {
         <AgentGoalBanner
           objective="Ship it"
           status="active"
-          timeUsedSeconds={2}
+          durationMs={2000}
           labels={labels}
         />
       );
@@ -259,7 +259,7 @@ describe("AgentGoalBanner", () => {
         <AgentGoalBanner
           objective="Ship it"
           status="paused"
-          timeUsedSeconds={40}
+          durationMs={40000}
           labels={labels}
         />
       );
@@ -270,6 +270,55 @@ describe("AgentGoalBanner", () => {
       expect(
         screen.getByTestId("agent-gui-goal-banner-description").textContent
       ).toBe("Ship it · 40s");
+    });
+
+    it("starts an active goal at zero when the optional duration is omitted", () => {
+      render(
+        <AgentGoalBanner objective="Ship it" status="active" labels={labels} />
+      );
+
+      const description = () =>
+        screen.getByTestId("agent-gui-goal-banner-description").textContent;
+      expect(description()).toBe("Ship it · 0s");
+      act(() => {
+        vi.advanceTimersByTime(3000);
+      });
+      expect(description()).toBe("Ship it · 3s");
+    });
+
+    it("does not show or start elapsed time for an optimistic goal", () => {
+      const { rerender } = render(
+        <AgentGoalBanner
+          objective="Ship it"
+          status="active"
+          durationMs={4000}
+          optimistic={true}
+          labels={labels}
+        />
+      );
+
+      const description = () =>
+        screen.getByTestId("agent-gui-goal-banner-description").textContent;
+      expect(description()).toBe("Ship it");
+      act(() => {
+        vi.advanceTimersByTime(3000);
+      });
+      expect(description()).toBe("Ship it");
+
+      rerender(
+        <AgentGoalBanner
+          objective="Ship it"
+          status="active"
+          durationMs={7000}
+          optimistic={false}
+          labels={labels}
+        />
+      );
+      expect(description()).toBe("Ship it · 7s");
+      act(() => {
+        vi.advanceTimersByTime(2000);
+      });
+      expect(description()).toBe("Ship it · 9s");
     });
   });
 });

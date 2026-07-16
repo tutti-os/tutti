@@ -192,7 +192,8 @@ export function useAgentGUISessionPresentation(
       agentSessionId,
       goal: optimisticGoalControl
         ? optimisticGoalControl.goal
-        : (input.activeEngineSession?.goal ?? null)
+        : (input.activeEngineSession?.goal ?? null),
+      goalIsOptimistic: optimisticGoalControl !== null
     };
   }, [
     input.activeConversationId,
