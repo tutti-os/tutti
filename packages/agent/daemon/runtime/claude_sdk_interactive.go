@@ -331,6 +331,10 @@ func (a *ClaudeCodeSDKAdapter) claudeSDKInteractiveRequested(
 	callType := "approval"
 	status := string(activityshared.TurnPhaseWaitingApproval)
 	input := normalizedApprovalInput(toolCall, options, requestID, nil)
+	approvalPurpose := ""
+	if interactivePrompt == nil {
+		approvalPurpose = normalizedApprovalPurpose(toolCall)
+	}
 	eventPayload := map[string]any{
 		"callId":   callID,
 		"callType": "approval",
@@ -338,6 +342,9 @@ func (a *ClaudeCodeSDKAdapter) claudeSDKInteractiveRequested(
 		"toolName": "Approval",
 		"status":   status,
 		"input":    input,
+	}
+	if approvalPurpose != "" {
+		eventPayload["approvalPurpose"] = approvalPurpose
 	}
 	if interactivePrompt != nil {
 		callType = "interactive"
@@ -376,13 +383,14 @@ func (a *ClaudeCodeSDKAdapter) claudeSDKInteractiveRequested(
 			payloadString(payload, "turnID"),
 			strings.TrimSpace(providerTurnID),
 		),
-		input:    input,
-		kind:     firstNonEmpty(interactivePromptKind(interactivePrompt), "approval"),
-		name:     title,
-		toolName: firstNonEmpty(asString(eventPayload["toolName"]), title),
-		prompt:   interactivePrompt,
-		options:  options,
-		response: make(chan pendingInteractiveResponse, 1),
+		input:           input,
+		kind:            firstNonEmpty(interactivePromptKind(interactivePrompt), "approval"),
+		approvalPurpose: approvalPurpose,
+		name:            title,
+		toolName:        firstNonEmpty(asString(eventPayload["toolName"]), title),
+		prompt:          interactivePrompt,
+		options:         options,
+		response:        make(chan pendingInteractiveResponse, 1),
 	}
 	a.storeClaudeSDKPendingRequest(adapterSession, pending)
 	events := []activityshared.Event{

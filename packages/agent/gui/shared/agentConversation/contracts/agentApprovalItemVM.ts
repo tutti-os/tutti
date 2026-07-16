@@ -1,3 +1,5 @@
+import type { AgentApprovalPurpose } from "../agentApprovalPurpose";
+
 export interface AgentApprovalOptionVM {
   id: string;
   label: string;
@@ -11,6 +13,7 @@ export interface AgentApprovalItemVM {
   turnId: string;
   requestId: string;
   callId: string;
+  approvalPurpose?: AgentApprovalPurpose;
   title: string;
   toolName: string | null;
   status: string | null;

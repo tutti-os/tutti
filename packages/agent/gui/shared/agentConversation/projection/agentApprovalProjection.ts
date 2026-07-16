@@ -1,5 +1,6 @@
 import type { WorkspaceAgentSessionDetailToolCall } from "../../workspaceAgentSessionDetailViewModel";
 import { extractAgentMcpToolTarget } from "../../agentMcpToolTarget";
+import { normalizeAgentApprovalPurpose } from "../agentApprovalPurpose";
 import type {
   AgentApprovalItemVM,
   AgentApprovalOptionVM
@@ -35,12 +36,16 @@ export function projectAgentApprovalItem(
     toolName: call.toolName,
     name: call.name
   });
+  const approvalPurpose = normalizeAgentApprovalPurpose(
+    call.payload?.approvalPurpose
+  );
   return {
     kind: "approval",
     id: call.id,
     turnId: call.turnId ?? "turn:unknown",
     requestId,
     callId: call.id.replace(/^call:/, ""),
+    ...(approvalPurpose ? { approvalPurpose } : {}),
     title: mcpTarget?.displayName ?? (call.summary.trim() || call.name),
     toolName: call.toolName,
     status: stringValue(call.payload?.status) ?? call.status,

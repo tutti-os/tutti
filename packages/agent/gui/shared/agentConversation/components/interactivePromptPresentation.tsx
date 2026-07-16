@@ -1,4 +1,5 @@
 import type { JSX } from "react";
+import type { AgentApprovalItemVM } from "../contracts/agentApprovalItemVM";
 import { translate } from "../../../i18n/index";
 import {
   Spinner,
@@ -118,7 +119,7 @@ export interface LabeledPromptToolDetail {
 }
 
 export interface ApprovalPromptToolPresentation {
-  isFileChange: boolean;
+  lead: string;
   leadDetails: LabeledPromptToolDetail[];
   cardDetails: LabeledPromptToolDetail[];
 }
@@ -135,9 +136,10 @@ export function formatToolDetails(
 }
 
 export function formatApprovalToolPresentation(
-  input: Record<string, unknown> | null
+  prompt: Pick<AgentApprovalItemVM, "approvalPurpose" | "input">,
+  labels: { approvalLead: string; fileChangeApprovalLead: string }
 ): ApprovalPromptToolPresentation {
-  const details = formatToolDetails(input);
+  const details = formatToolDetails(prompt.input);
   const hasFileChanges = details.some((detail) => detail.kind === "files");
   const isLeadDetail = (detail: LabeledPromptToolDetail): boolean =>
     detail.kind === "reason" ||
@@ -154,8 +156,15 @@ export function formatApprovalToolPresentation(
           candidate.value === detail.value && candidate.meta === detail.meta
       ) === index
   );
+  const purposeLeads = {
+    generic: labels.approvalLead,
+    "edit-files": labels.fileChangeApprovalLead
+  } satisfies Record<
+    NonNullable<AgentApprovalItemVM["approvalPurpose"]> | "generic",
+    string
+  >;
   return {
-    isFileChange: hasFileChanges,
+    lead: purposeLeads[prompt.approvalPurpose ?? "generic"],
     leadDetails,
     cardDetails: details.filter((detail) => !isLeadDetail(detail))
   };

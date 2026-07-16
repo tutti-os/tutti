@@ -65,7 +65,7 @@ func TestAppServerFileChangeApprovalUsesStartedItemChanges(t *testing.T) {
 	}
 
 	adapter := &CodexAppServerAdapter{}
-	_, pending, err := adapter.appServerApprovalRequested(
+	events, pending, err := adapter.appServerApprovalRequested(
 		session,
 		"turn-1",
 		json.RawMessage(`1`),
@@ -82,6 +82,13 @@ func TestAppServerFileChangeApprovalUsesStartedItemChanges(t *testing.T) {
 	}
 	if pending == nil {
 		t.Fatal("pending approval is nil")
+	}
+	if pending.approvalPurpose != approvalPurposeEditFiles {
+		t.Fatalf("pending approval purpose = %q, want %q", pending.approvalPurpose, approvalPurposeEditFiles)
+	}
+	interaction := events[len(events)-1].Payload.Interaction
+	if interaction == nil || asString(interaction.Metadata["approvalPurpose"]) != approvalPurposeEditFiles {
+		t.Fatalf("interaction approval purpose = %#v, want %q", interaction, approvalPurposeEditFiles)
 	}
 	changes, ok := pending.input["changes"].([]any)
 	if !ok || len(changes) != 1 {

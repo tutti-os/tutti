@@ -6,6 +6,7 @@ import type {
   AgentSessionEngineState,
   WorkspaceAgentConsumerSession
 } from "@tutti-os/agent-activity-core";
+import { normalizeAgentApprovalPurpose } from "../shared/agentConversation/agentApprovalPurpose";
 import {
   selectEngineInteractionResponse,
   selectPendingSubmitsForSession,
@@ -268,12 +269,16 @@ function promptFromInteraction(
         ]
       : [];
   });
+  const approvalPurpose = normalizeAgentApprovalPurpose(
+    interaction.metadata?.approvalPurpose
+  );
   return {
     kind: "approval",
     id: `approval:${interaction.requestId}`,
     turnId: interaction.turnId,
     requestId: interaction.requestId,
     callId: textValue(input.callId) ?? interaction.requestId,
+    ...(approvalPurpose ? { approvalPurpose } : {}),
     title: interactionSummary(interaction),
     toolName: interaction.toolName ?? null,
     status: interaction.status,

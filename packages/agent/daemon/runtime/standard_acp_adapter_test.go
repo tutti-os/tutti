@@ -632,7 +632,7 @@ func TestACPPermissionRequestFallsBackToKnownFileChanges(t *testing.T) {
 		t.Fatal("empty tool-call update was not projected")
 	}
 
-	_, pending, err := standardACPPermissionRequested(adapter, session, "turn-1", json.RawMessage(`3`), json.RawMessage(`{
+	events, pending, err := standardACPPermissionRequested(adapter, session, "turn-1", json.RawMessage(`3`), json.RawMessage(`{
 		"toolCall": {
 			"toolCallId": "file-change-1",
 			"title": "Apply file changes",
@@ -649,6 +649,13 @@ func TestACPPermissionRequestFallsBackToKnownFileChanges(t *testing.T) {
 	}
 	if pending == nil {
 		t.Fatal("pending approval is nil")
+	}
+	if pending.approvalPurpose != approvalPurposeEditFiles {
+		t.Fatalf("pending approval purpose = %q, want %q", pending.approvalPurpose, approvalPurposeEditFiles)
+	}
+	interaction := events[len(events)-1].Payload.Interaction
+	if interaction == nil || asString(interaction.Metadata["approvalPurpose"]) != approvalPurposeEditFiles {
+		t.Fatalf("interaction approval purpose = %#v, want %q", interaction, approvalPurposeEditFiles)
 	}
 	changes, ok := pending.input["changes"].([]any)
 	if !ok || len(changes) != 2 {
