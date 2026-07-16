@@ -69,7 +69,12 @@ test("settings timeout requires an explicit retry before sending again", () => {
   }).state;
   const requested = reduce(state, settingsUpdateRequested("settings-1"));
   assert.equal(requested.commands[0]?.type, "session/updateSettings");
-  state = reduce(requested.state, {
+  const queued = reduce(
+    requested.state,
+    settingsUpdateRequested("settings-queued", { planMode: true })
+  );
+  assert.deepEqual(queued.commands, []);
+  state = reduce(queued.state, {
     commandId: "settings-1",
     commandType: "session/updateSettings",
     correlationId: "session-1",
@@ -77,13 +82,27 @@ test("settings timeout requires an explicit retry before sending again", () => {
     type: "engine/commandResult"
   }).state;
 
-  const dropped = reduce(state, settingsUpdateRequested("settings-2"));
+  const dropped = reduce(
+    state,
+    settingsUpdateRequested("settings-2", { speed: "fast" })
+  );
   assert.deepEqual(dropped.commands, []);
   const retried = reduce(state, {
-    ...settingsUpdateRequested("settings-2"),
+    ...settingsUpdateRequested("settings-2", { speed: "fast" }),
     retry: true
   });
-  assert.equal(retried.commands[0]?.type, "session/updateSettings");
+  assert.deepEqual(retried.commands[0], {
+    agentSessionId: "session-1",
+    commandId: "settings-2",
+    correlationId: "session-1",
+    settings: {
+      permissionModeId: "acceptEdits",
+      planMode: true,
+      speed: "fast"
+    },
+    type: "session/updateSettings",
+    workspaceId: "workspace-1"
+  });
 });
 
 test("bounded snapshots preserve page-loaded session entities omitted from the response", () => {
@@ -1049,12 +1068,17 @@ function interactionResponseRequested(commandId: string) {
   };
 }
 
-function settingsUpdateRequested(commandId: string) {
+function settingsUpdateRequested(
+  commandId: string,
+  settings: Readonly<Record<string, unknown>> = {
+    permissionModeId: "acceptEdits"
+  }
+) {
   return {
     type: "session/settingsUpdateRequested" as const,
     agentSessionId: "session-1",
     commandId,
-    settings: { permissionModeId: "acceptEdits" },
+    settings,
     workspaceId: "workspace-1"
   };
 }

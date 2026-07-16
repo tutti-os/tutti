@@ -26,7 +26,10 @@ func (s *Service) ensureRuntimeSessionResult(
 ) (ensuredRuntimeSession, error) {
 	workspaceID = strings.TrimSpace(workspaceID)
 	agentSessionID = strings.TrimSpace(agentSessionID)
-	release := s.acquireSessionSettingsLock(workspaceID, agentSessionID)
+	release, err := s.acquireSessionSettingsLock(ctx, workspaceID, agentSessionID)
+	if err != nil {
+		return ensuredRuntimeSession{}, err
+	}
 	defer release()
 	return s.ensureRuntimeSessionResultLocked(ctx, workspaceID, agentSessionID)
 }

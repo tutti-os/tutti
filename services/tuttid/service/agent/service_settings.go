@@ -68,7 +68,10 @@ func (s *Service) UpdateSettings(ctx context.Context, workspaceID string, agentS
 	if workspaceID == "" || agentSessionID == "" {
 		return Session{}, ErrInvalidArgument
 	}
-	release := s.acquireSessionSettingsLock(workspaceID, agentSessionID)
+	release, err := s.acquireSessionSettingsLock(ctx, workspaceID, agentSessionID)
+	if err != nil {
+		return Session{}, err
+	}
 	defer release()
 	if _, live := s.controller().Session(workspaceID, agentSessionID); !live {
 		return s.updatePersistedSessionSettings(ctx, workspaceID, agentSessionID, settings)

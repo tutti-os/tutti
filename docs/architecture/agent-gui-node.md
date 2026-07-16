@@ -3122,7 +3122,10 @@ Active-session settings are first-class session state, not composer defaults.
 The controller should submit exactly one engine intent for one menu selection;
 it must not also promote the active value into target defaults. The engine owns
 the operation state. A timed-out update remains `unknown`, and the next explicit
-user selection carries retry intent instead of being silently dropped.
+user selection carries retry intent instead of being silently dropped. That
+retry merges the unresolved in-flight patch, any queued patch, and the latest
+selection in that order, so the newest value wins without losing settings that
+the daemon may not have applied before the timeout.
 
 The daemon selects the mutation path from session liveness. A live session
 updates through its provider adapter. A historical session updates the durable
@@ -3130,8 +3133,9 @@ activity projection directly and publishes reconciliation without resuming the
 provider runtime or starting a sidecar. This keeps historical settings available
 for the next explicit continuation while avoiding hidden startup latency and
 provider side effects. Runtime resume and durable settings read-modify-write
-share a per-session daemon serialization boundary, so a concurrent continuation
-cannot restore stale settings and partial patches cannot overwrite one another.
+share a context-aware per-session daemon serialization boundary, so a canceled
+caller does not remain blocked behind a slow resume, a concurrent continuation
+cannot restore stale settings, and partial patches cannot overwrite one another.
 Workflows that must continue the same provider
 conversation, such as plan implementation, explicitly resume first and then use
 the live settings path; they must not depend on a generic settings call to wake

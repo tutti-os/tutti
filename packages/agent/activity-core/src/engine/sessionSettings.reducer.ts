@@ -58,7 +58,14 @@ export function requestSettingsUpdate(
   }
   if (operation.settingsUpdate.status === "unknown" && intent.retry !== true)
     return unchanged(state);
-  const settings = { ...intent.settings };
+  const settings =
+    operation.settingsUpdate.status === "unknown"
+      ? {
+          ...(operation.settingsUpdate.settings ?? {}),
+          ...(operation.settingsUpdate.queuedSettings ?? {}),
+          ...intent.settings
+        }
+      : { ...intent.settings };
   return {
     commands: [
       settingsCommand(id, workspaceId, commandId, settings, intent.timeoutMs)
