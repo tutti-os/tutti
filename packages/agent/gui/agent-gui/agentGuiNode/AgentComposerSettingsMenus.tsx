@@ -113,16 +113,6 @@ export function AgentPermissionModeDropdown({
       })
     );
   };
-  const handleSelectedItemPointerDown = (
-    event: React.PointerEvent,
-    permissionModeId: string
-  ): void => {
-    if (selectDisabled || event.button !== 0 || event.ctrlKey) {
-      return;
-    }
-    applyPermissionModeId(permissionModeId);
-  };
-
   const trigger = (
     <button
       type="button"
@@ -205,9 +195,6 @@ export function AgentPermissionModeDropdown({
               value={option.value}
               disabled={selectDisabled}
               className={cn(styles.composerMenuItem, "group/composer-option")}
-              onPointerDown={(event) =>
-                handleSelectedItemPointerDown(event, option.value)
-              }
             >
               <span className="flex min-w-0 items-center gap-1.5">
                 <span className="min-w-0 truncate">{option.label}</span>

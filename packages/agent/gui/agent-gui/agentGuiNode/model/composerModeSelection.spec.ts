@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
   permissionModeSelectionPatch,
-  resolvePermissionModeControlsDisabled
+  resolvePermissionModeControlsDisabled,
+  shouldRetrySessionSettingsUpdate
 } from "./composerModeSelection";
 
 describe("permissionModeSelectionPatch", () => {
@@ -67,4 +68,17 @@ describe("resolvePermissionModeControlsDisabled", () => {
       })
     ).toBe(false);
   });
+});
+
+describe("shouldRetrySessionSettingsUpdate", () => {
+  it("treats a new user selection as an explicit retry after an unknown result", () => {
+    expect(shouldRetrySessionSettingsUpdate("unknown")).toBe(true);
+  });
+
+  it.each([null, "idle", "inFlight", "failed"])(
+    "does not mark %s as an uncertain retry",
+    (status) => {
+      expect(shouldRetrySessionSettingsUpdate(status)).toBe(false);
+    }
+  );
 });

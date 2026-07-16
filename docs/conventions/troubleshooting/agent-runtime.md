@@ -47,6 +47,7 @@ Turn state, loading, cancel, restore, rail projection, event updates, imports, a
 - [AgentGUI loading disappears before active turn settles](./agent-session-lifecycle.md#agentgui-loading-disappears-before-active-turn-settles)
 - [Agent session stays loading after a completed turn](./agent-session-lifecycle.md#agent-session-stays-loading-after-a-completed-turn)
 - [AgentGUI model switch changes defaults but not the active session](./agent-session-lifecycle.md#agentgui-model-switch-changes-defaults-but-not-the-active-session)
+- [Historical AgentGUI permission changes time out or stop responding](./agent-session-lifecycle.md#historical-agentgui-permission-changes-time-out-or-stop-responding)
 - [AgentGUI pin or unpin appears stuck for a live session](./agent-session-lifecycle.md#agentgui-pin-or-unpin-appears-stuck-for-a-live-session)
 - [Agent GUI provider tab shows fused or stale conversations](./agent-session-lifecycle.md#agent-gui-provider-tab-shows-fused-or-stale-conversations)
 - [Agent GUI no-project sessions appear under a user project](./agent-session-lifecycle.md#agent-gui-no-project-sessions-appear-under-a-user-project)

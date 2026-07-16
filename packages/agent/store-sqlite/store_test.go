@@ -308,6 +308,16 @@ func TestStoreReportAndListSessionLifecycle(t *testing.T) {
 		t.Fatalf("UpdateSessionTitle() = %#v ok=%v error=%v", renamed, ok, err)
 	}
 
+	updatedSettings, ok, err := store.UpdateSessionSettings(ctx, "ws-1", "session-1", "gpt-5.4", map[string]any{
+		"model":            "gpt-5.4",
+		"permissionModeId": "full-access",
+	})
+	if err != nil || !ok || updatedSettings.Model != "gpt-5.4" ||
+		updatedSettings.Settings["permissionModeId"] != "full-access" ||
+		updatedSettings.UpdatedAtUnixMS < renamed.UpdatedAtUnixMS {
+		t.Fatalf("UpdateSessionSettings() = %#v ok=%v error=%v", updatedSettings, ok, err)
+	}
+
 	blankRenamed, ok, err := store.UpdateSessionTitle(ctx, "ws-1", "session-1", "   ")
 	if err != nil || ok {
 		t.Fatalf("UpdateSessionTitle(blank) = %#v ok=%v error=%v, want no update", blankRenamed, ok, err)

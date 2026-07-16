@@ -62,6 +62,49 @@ test("snapshot restores a settled latest turn without an active turn", () => {
   );
 });
 
+test("settings timeout requires an explicit retry before sending again", () => {
+  let state = reduce(createInitialSessionLifecycleState(), {
+    type: "session/snapshotReceived",
+    sessions: [session(null, 1)]
+  }).state;
+  const requested = reduce(state, settingsUpdateRequested("settings-1"));
+  assert.equal(requested.commands[0]?.type, "session/updateSettings");
+  const queued = reduce(
+    requested.state,
+    settingsUpdateRequested("settings-queued", { planMode: true })
+  );
+  assert.deepEqual(queued.commands, []);
+  state = reduce(queued.state, {
+    commandId: "settings-1",
+    commandType: "session/updateSettings",
+    correlationId: "session-1",
+    outcome: "timedOut",
+    type: "engine/commandResult"
+  }).state;
+
+  const dropped = reduce(
+    state,
+    settingsUpdateRequested("settings-2", { speed: "fast" })
+  );
+  assert.deepEqual(dropped.commands, []);
+  const retried = reduce(state, {
+    ...settingsUpdateRequested("settings-2", { speed: "fast" }),
+    retry: true
+  });
+  assert.deepEqual(retried.commands[0], {
+    agentSessionId: "session-1",
+    commandId: "settings-2",
+    correlationId: "session-1",
+    settings: {
+      permissionModeId: "acceptEdits",
+      planMode: true,
+      speed: "fast"
+    },
+    type: "session/updateSettings",
+    workspaceId: "workspace-1"
+  });
+});
+
 test("bounded snapshots preserve page-loaded session entities omitted from the response", () => {
   const pageLoaded = {
     ...session(null, 2),
@@ -1021,6 +1064,21 @@ function interactionResponseRequested(commandId: string) {
     requestId: "request-1",
     turnId: "turn-1",
     timeoutMs: 30_000,
+    workspaceId: "workspace-1"
+  };
+}
+
+function settingsUpdateRequested(
+  commandId: string,
+  settings: Readonly<Record<string, unknown>> = {
+    permissionModeId: "acceptEdits"
+  }
+) {
+  return {
+    type: "session/settingsUpdateRequested" as const,
+    agentSessionId: "session-1",
+    commandId,
+    settings,
     workspaceId: "workspace-1"
   };
 }
