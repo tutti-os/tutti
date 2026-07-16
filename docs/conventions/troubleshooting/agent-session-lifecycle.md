@@ -4,6 +4,36 @@
 
 Turn state, loading, cancel, restore, file-change undo, rail projection, event updates, imports, and performance.
 
+### Codex WebSocket reconnect rejects a long prompt metadata header
+
+- Symptom:
+  A long-running Codex turn disconnects, then its WebSocket reconnect fails with
+  `did not receive a valid HTTP request; Separator is found, but chunk is longer than limit`.
+  The same prompt may succeed when the original connection stays open.
+- Quick checks:
+  Inspect the Codex app-server `turn/start` params without logging prompt text.
+  Compare prompt byte count with any client metadata byte count. An unbounded
+  prompt copy in `responsesapiClientMetadata` can cross a WebSocket HTTP
+  parser's roughly 32 KiB line limit during reconnect.
+- Root cause:
+  Codex may forward Responses API client metadata through the WebSocket HTTP
+  handshake. Duplicating the full prompt into that metadata turns prompt size
+  into header size. Reconnect then fails before the provider can process the
+  normal `input` payload.
+- Fix:
+  Keep the full materialized prompt in `turn/start.input`. Do not duplicate it
+  into auxiliary metadata, truncate it in AgentGUI, or compensate with reconnect
+  retries. Provider-specific metadata stays inside the provider adapter and must
+  follow a demonstrated provider contract.
+- Validation:
+  Cover a prompt larger than 32 KiB. Assert `turn/start.input` preserves it
+  exactly and `responsesapiClientMetadata` contains no prompt copy. Run
+  `go test ./packages/agent/daemon/runtime`.
+- References:
+  [codex_appserver_event_params.go](../../../packages/agent/daemon/runtime/codex_appserver_event_params.go)
+  [codex_appserver_adapter_test.go](../../../packages/agent/daemon/runtime/codex_appserver_adapter_test.go)
+  [agent-gui-node.md](../../architecture/agent-gui-node.md)
+
 ### AgentGUI turn actions return plain-text route 404s
 
 - Symptom:

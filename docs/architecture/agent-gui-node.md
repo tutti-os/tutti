@@ -1522,6 +1522,10 @@ content in the pending record. Activation and existing-session submit share this
 contract. Their optimistic user messages use the authoritative payload shape:
 `content`, optional `displayPrompt`, and `text` resolved from `displayPrompt`
 before content-derived text.
+Provider adapters must carry the materialized prompt in the provider's input
+field only. Auxiliary request metadata must not duplicate unbounded prompt
+content; provider-specific wire metadata remains adapter-owned and limited to
+the provider contract.
 Timeline admission must treat renderable structured prompt content as a user
 message even when that derived text is empty. In particular, an image-only
 pending prompt projects through the same canonical user-message path and

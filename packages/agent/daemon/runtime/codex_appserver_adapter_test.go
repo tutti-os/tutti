@@ -1507,9 +1507,8 @@ func TestCodexAppServerAdapterExecStreamsTurn(t *testing.T) {
 	if len(input) != 1 || asString(payloadObject(input[0])["text"]) != "inspect the repo" {
 		t.Fatalf("turn/start input = %#v", turnStart["input"])
 	}
-	metadata := payloadObject(turnStart["responsesapiClientMetadata"])
-	if asString(metadata["user_prompt_preview"]) != "inspect the repo" {
-		t.Fatalf("turn/start responsesapiClientMetadata = %#v", turnStart["responsesapiClientMetadata"])
+	if _, ok := turnStart["responsesapiClientMetadata"]; ok {
+		t.Fatalf("turn/start responsesapiClientMetadata = %#v, want omitted", turnStart["responsesapiClientMetadata"])
 	}
 
 	messages := eventsOfType(events, activityshared.EventMessageAppended)
@@ -1587,20 +1586,24 @@ func TestCodexAppServerAdapterExecStreamsTurn(t *testing.T) {
 	}
 }
 
-func TestCodexAppServerUserPromptPreviewUsesFullVisibleText(t *testing.T) {
+func TestCodexAppServerTurnStartKeepsLargePromptInInputOnly(t *testing.T) {
 	t.Parallel()
 
-	longVisibleText := strings.Repeat("a", 500)
-	got := appServerUserPromptPreview([]PromptContentBlock{
-		{Type: "text", Text: "provider text"},
-		{Type: "text", Text: "injected routing text"},
-	}, longVisibleText)
-	if got != longVisibleText {
-		t.Fatalf("preview = %q, want full visible text", got)
+	longPrompt := strings.Repeat("a", 33*1024)
+	params := appServerTurnStartParams(
+		Session{},
+		"codex-thread-1",
+		[]PromptContentBlock{{Type: "text", Text: longPrompt}},
+		nil,
+		nil,
+		"",
+	)
+	if _, ok := params["responsesapiClientMetadata"]; ok {
+		t.Fatalf("responsesapiClientMetadata = %#v, want omitted", params["responsesapiClientMetadata"])
 	}
-
-	if got := appServerUserPromptPreview([]PromptContentBlock{{Type: "image"}}, ""); got != "[Image]" {
-		t.Fatalf("image-only preview = %q, want [Image]", got)
+	input, ok := params["input"].([]map[string]any)
+	if !ok || len(input) != 1 || asString(input[0]["text"]) != longPrompt {
+		t.Fatalf("turn/start input did not preserve the full prompt")
 	}
 }
 
