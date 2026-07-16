@@ -1,0 +1,562 @@
+name: Promote Desktop Release
+
+on:
+  workflow_call:
+    inputs:
+      release_tag:
+        description: Existing GitHub draft release tag to promote
+        required: true
+        type: string
+      expected_target:
+        description: Optional expected commit SHA for caller-side consistency checks
+        required: false
+        type: string
+        default: ""
+      expected_channel:
+        description: Optional expected stable, rc, or beta channel
+        required: false
+        type: string
+        default: ""
+      source_ref:
+        description: Source ref recorded in public release metadata
+        required: false
+        type: string
+        default: ""
+      notify_feishu:
+        description: Send a Feishu card after promotion
+        required: false
+        type: boolean
+        default: true
+    outputs:
+      release_url:
+        description: Promoted GitHub release URL
+        value: ${{ jobs.promote.outputs.release_url }}
+    secrets:
+      AGNES_API_KEY:
+        required: false
+      FEISHU_RELEASE_WEBHOOK_URL:
+        required: false
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: GitHub draft release tag to promote, such as v0.1.25
+        required: true
+        type: string
+      notify_feishu:
+        description: Send a Feishu card after promotion
+        required: false
+        type: boolean
+        default: true
+
+permissions:
+  contents: write
+  id-token: write
+
+concurrency:
+  group: desktop-release-promotion
+  cancel-in-progress: false
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  resolve:
+    name: Validate Draft Release
+    runs-on: ubuntu-latest
+    outputs:
+      release_channel: ${{ steps.release.outputs.release_channel }}
+      release_make_latest: ${{ steps.release.outputs.release_make_latest }}
+      release_prerelease: ${{ steps.release.outputs.release_prerelease }}
+      release_tag: ${{ steps.release.outputs.release_tag }}
+      release_target: ${{ steps.release.outputs.release_target }}
+      release_url: ${{ steps.release.outputs.release_url }}
+      release_version: ${{ steps.release.outputs.release_version }}
+      source_ref: ${{ steps.release.outputs.source_ref }}
+
+    steps:
+      - name: Checkout release tooling
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Validate release candidate
+        id: release
+        shell: bash
+        env:
+          EXPECTED_CHANNEL: ${{ inputs.expected_channel }}
+          EXPECTED_TARGET: ${{ inputs.expected_target }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          INPUT_RELEASE_TAG: ${{ inputs.release_tag }}
+          INPUT_SOURCE_REF: ${{ inputs.source_ref }}
+        run: |
+          release_tag="${INPUT_RELEASE_TAG}"
+          if [[ "${release_tag}" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)-rc\.(0|[1-9][0-9]*)$ ]]; then
+            release_channel=rc
+            release_prerelease=true
+            release_make_latest=false
+          elif [[ "${release_tag}" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)-beta\.(0|[1-9][0-9]*)$ ]]; then
+            release_channel=beta
+            release_prerelease=true
+            release_make_latest=false
+          elif [[ "${release_tag}" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]; then
+            release_channel=stable
+            release_prerelease=false
+            release_make_latest=true
+          else
+            echo "release_tag must be vX.Y.Z, vX.Y.Z-rc.N, or vX.Y.Z-beta.N." >&2
+            exit 1
+          fi
+
+          release_version="${release_tag#v}"
+          if [[ -n "${EXPECTED_CHANNEL}" && "${EXPECTED_CHANNEL}" != "${release_channel}" ]]; then
+            echo "Release channel mismatch: expected ${EXPECTED_CHANNEL}, got ${release_channel}." >&2
+            exit 1
+          fi
+
+          gh release view "${release_tag}" \
+            --json assets,isDraft,isPrerelease,tagName,targetCommitish,url > release.json
+          actual_tag="$(jq -r .tagName release.json)"
+          is_draft="$(jq -r .isDraft release.json)"
+          actual_prerelease="$(jq -r .isPrerelease release.json)"
+          asset_count="$(jq '.assets | length' release.json)"
+          if [[ "${actual_tag}" != "${release_tag}" ]]; then
+            echo "GitHub release tag mismatch: expected ${release_tag}, got ${actual_tag}." >&2
+            exit 1
+          fi
+          if [[ "${actual_prerelease}" != "${release_prerelease}" ]]; then
+            echo "GitHub release prerelease flag does not match ${release_channel}." >&2
+            exit 1
+          fi
+          if (( asset_count == 0 )); then
+            echo "GitHub release ${release_tag} has no staged assets." >&2
+            exit 1
+          fi
+          if [[ "${is_draft}" != "true" ]]; then
+            if [[ "${release_channel}" != "stable" ]]; then
+              echo "Prerelease ${release_tag} must remain a GitHub draft." >&2
+              exit 1
+            fi
+            latest_stable_tag="$(gh release list \
+              --exclude-drafts \
+              --exclude-pre-releases \
+              --limit 200 \
+              --json tagName,isLatest \
+              --jq '[.[] | select(.tagName != "stable")] | (map(select(.isLatest)) | first) // first | .tagName // ""')"
+            if [[ "${latest_stable_tag}" != "${release_tag}" ]]; then
+              echo "Only the current public stable release may be promoted again." >&2
+              exit 1
+            fi
+          fi
+          if ! jq -e '.assets[] | select(.name == "SHA256SUMS.txt")' release.json >/dev/null; then
+            echo "GitHub release ${release_tag} is missing SHA256SUMS.txt." >&2
+            exit 1
+          fi
+
+          git fetch --force origin "refs/tags/${release_tag}:refs/tags/${release_tag}"
+          release_target="$(git rev-list -n 1 "${release_tag}")"
+          if [[ -n "${EXPECTED_TARGET}" ]]; then
+            expected_target_sha="$(git rev-parse "${EXPECTED_TARGET}^{commit}")"
+            if [[ "${release_target}" != "${expected_target_sha}" ]]; then
+              echo "Release target mismatch: expected ${expected_target_sha}, got ${release_target}." >&2
+              exit 1
+            fi
+          fi
+
+          source_ref="${INPUT_SOURCE_REF:-$(jq -r '.targetCommitish // ""' release.json)}"
+          release_url="$(jq -r .url release.json)"
+          echo "release_channel=${release_channel}" >> "$GITHUB_OUTPUT"
+          echo "release_make_latest=${release_make_latest}" >> "$GITHUB_OUTPUT"
+          echo "release_prerelease=${release_prerelease}" >> "$GITHUB_OUTPUT"
+          echo "release_tag=${release_tag}" >> "$GITHUB_OUTPUT"
+          echo "release_target=${release_target}" >> "$GITHUB_OUTPUT"
+          echo "release_url=${release_url}" >> "$GITHUB_OUTPUT"
+          echo "release_version=${release_version}" >> "$GITHUB_OUTPUT"
+          echo "source_ref=${source_ref}" >> "$GITHUB_OUTPUT"
+
+  promote:
+    name: Publish External Release
+    needs: resolve
+    runs-on: ubuntu-latest
+    outputs:
+      release_url: ${{ steps.release-url.outputs.release_url }}
+    env:
+      AWS_REGION: ${{ vars.AWS_REGION }}
+      TUTTI_ARTIFACTS_AWS_ROLE_ARN: ${{ vars.TUTTI_ARTIFACTS_AWS_ROLE_ARN }}
+      TUTTI_DESKTOP_RELEASE_ASSETS_BASE_URL: ${{ vars.TUTTI_DESKTOP_RELEASE_ASSETS_BASE_URL }}
+      TUTTI_DESKTOP_RELEASE_ASSETS_S3_BUCKET: ${{ vars.TUTTI_DESKTOP_RELEASE_ASSETS_S3_BUCKET }}
+      TUTTI_DESKTOP_RELEASE_ASSETS_S3_PREFIX: ${{ vars.TUTTI_DESKTOP_RELEASE_ASSETS_S3_PREFIX }}
+      TUTTI_DESKTOP_RELEASE_CHANNEL: ${{ needs.resolve.outputs.release_channel }}
+      TUTTI_DESKTOP_RELEASE_MAKE_LATEST: ${{ needs.resolve.outputs.release_make_latest }}
+      TUTTI_DESKTOP_RELEASE_PRERELEASE: ${{ needs.resolve.outputs.release_prerelease }}
+      TUTTI_DESKTOP_RELEASE_TAG: ${{ needs.resolve.outputs.release_tag }}
+      TUTTI_DESKTOP_RELEASE_TARGET: ${{ needs.resolve.outputs.release_target }}
+      TUTTI_DESKTOP_RELEASE_VERSION: ${{ needs.resolve.outputs.release_version }}
+
+    steps:
+      - name: Checkout release target
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ env.TUTTI_DESKTOP_RELEASE_TARGET }}
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version-file: .node-version
+
+      - name: Download staged GitHub release assets
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release download "${TUTTI_DESKTOP_RELEASE_TAG}" --dir release-assets
+
+      - name: Verify staged release assets
+        run: |
+          test -f release-assets/SHA256SUMS.txt
+          if ! grep -Eq "  .+\.(dmg|zip|exe|AppImage)$" release-assets/SHA256SUMS.txt; then
+            echo "SHA256SUMS.txt does not contain an installable desktop artifact." >&2
+            exit 1
+          fi
+          (
+            cd release-assets
+            sha256sum --check SHA256SUMS.txt
+          )
+
+      - name: Install AWS CLI
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends unzip
+          if ! command -v aws >/dev/null 2>&1; then
+            case "$(uname -m)" in
+              x86_64) awscli_arch="x86_64" ;;
+              aarch64|arm64) awscli_arch="aarch64" ;;
+              *)
+                echo "Unsupported architecture for AWS CLI installer: $(uname -m)" >&2
+                exit 1
+                ;;
+            esac
+            curl -fsSL "https://awscli.amazonaws.com/awscli-exe-linux-${awscli_arch}.zip" -o /tmp/awscliv2.zip
+            unzip -q /tmp/awscliv2.zip -d /tmp
+            sudo /tmp/aws/install --update
+          fi
+          aws --version
+
+      - name: Validate AWS S3 release asset configuration
+        run: |
+          missing=()
+          for name in AWS_REGION TUTTI_ARTIFACTS_AWS_ROLE_ARN TUTTI_DESKTOP_RELEASE_ASSETS_S3_BUCKET TUTTI_DESKTOP_RELEASE_ASSETS_S3_PREFIX; do
+            if [[ -z "${!name:-}" ]]; then
+              missing+=("$name")
+            fi
+          done
+          if (( ${#missing[@]} > 0 )); then
+            echo "Missing required AWS S3 release asset configuration: ${missing[*]}" >&2
+            exit 1
+          fi
+          if [[ -z "${TUTTI_DESKTOP_RELEASE_ASSETS_BASE_URL:-}" ]]; then
+            echo "TUTTI_DESKTOP_RELEASE_ASSETS_BASE_URL=https://${TUTTI_DESKTOP_RELEASE_ASSETS_S3_BUCKET}.s3-accelerate.amazonaws.com/${TUTTI_DESKTOP_RELEASE_ASSETS_S3_PREFIX%/}" >> "$GITHUB_ENV"
+          fi
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ env.TUTTI_ARTIFACTS_AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Prevent release channel rollback
+        env:
+          RELEASE_CHANNEL: ${{ env.TUTTI_DESKTOP_RELEASE_CHANNEL }}
+          RELEASE_VERSION: ${{ env.TUTTI_DESKTOP_RELEASE_VERSION }}
+        run: |
+          case "${RELEASE_CHANNEL}" in
+            stable) pointer_path=latest.json ;;
+            rc) pointer_path=channels/rc/latest.json ;;
+            beta) pointer_path=channels/beta/latest.json ;;
+          esac
+          prefix="${TUTTI_DESKTOP_RELEASE_ASSETS_S3_PREFIX%/}"
+          current_pointer="s3://${TUTTI_DESKTOP_RELEASE_ASSETS_S3_BUCKET}/${prefix}/${pointer_path}"
+          if aws s3 cp "${current_pointer}" current-release-pointer.json 2> current-pointer-download.err; then
+            node <<'NODE'
+          const fs = require("node:fs");
+          const current = JSON.parse(fs.readFileSync("current-release-pointer.json", "utf8"));
+          const candidate = process.env.RELEASE_VERSION;
+          const parse = (value) => {
+            const match = /^(\d+)\.(\d+)\.(\d+)(?:-(rc|beta)\.(\d+))?$/.exec(value);
+            if (!match) throw new Error(`Invalid release version: ${value}`);
+            return [Number(match[1]), Number(match[2]), Number(match[3]), Number(match[5] ?? -1)];
+          };
+          const currentParts = parse(String(current.version ?? ""));
+          const candidateParts = parse(candidate);
+          const comparison = candidateParts.findIndex((part, index) => part !== currentParts[index]);
+          if (comparison >= 0 && candidateParts[comparison] < currentParts[comparison]) {
+            throw new Error(`Refusing to move ${process.env.RELEASE_CHANNEL} from ${current.version} back to ${candidate}.`);
+          }
+          if (comparison < 0 && current.tag !== process.env.TUTTI_DESKTOP_RELEASE_TAG) {
+            throw new Error(`Release version ${candidate} is already published by ${current.tag}.`);
+          }
+          NODE
+          elif ! grep -Eq "(404|NoSuchKey|Not Found)" current-pointer-download.err; then
+            cat current-pointer-download.err >&2
+            exit 1
+          fi
+
+      - name: Upload immutable release assets to AWS S3
+        run: |
+          remote_dir="s3://${TUTTI_DESKTOP_RELEASE_ASSETS_S3_BUCKET}/${TUTTI_DESKTOP_RELEASE_ASSETS_S3_PREFIX%/}/${TUTTI_DESKTOP_RELEASE_TAG}"
+          aws s3 sync release-assets "${remote_dir}" \
+            --size-only \
+            --cache-control "public, max-age=31536000, immutable"
+
+      - name: Generate desktop release summary
+        env:
+          AGNES_API_KEY: ${{ secrets.AGNES_API_KEY }}
+          RELEASE_CHANNEL: ${{ env.TUTTI_DESKTOP_RELEASE_CHANNEL }}
+          RELEASE_TAG: ${{ env.TUTTI_DESKTOP_RELEASE_TAG }}
+          RELEASE_TARGET: ${{ env.TUTTI_DESKTOP_RELEASE_TARGET }}
+        run: node apps/desktop/scripts/generate-release-summary.mjs --output release-summary.json
+
+      - name: Upload desktop release summary artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: promoted-desktop-release-summary-${{ env.TUTTI_DESKTOP_RELEASE_TAG }}
+          path: release-summary.json
+
+      - name: Update release notes with summary and direct downloads
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_TAG: ${{ env.TUTTI_DESKTOP_RELEASE_TAG }}
+        run: |
+          export RELEASE_ASSET_BASE_URL="${TUTTI_DESKTOP_RELEASE_ASSETS_BASE_URL}"
+          gh release view "${RELEASE_TAG}" --json body --jq .body > release-body.md
+          node apps/desktop/scripts/upsert-release-summary.mjs \
+            release-body.md \
+            release-summary.json \
+            release-body-with-summary.md
+          node apps/desktop/scripts/upsert-release-download-links.mjs \
+            release-body-with-summary.md \
+            release-assets \
+            updated-release-body.md
+          gh release edit "${RELEASE_TAG}" --notes-file updated-release-body.md
+
+      - name: Build public release pointer
+        env:
+          RELEASE_CHANNEL: ${{ env.TUTTI_DESKTOP_RELEASE_CHANNEL }}
+          RELEASE_GIT_SHA: ${{ env.TUTTI_DESKTOP_RELEASE_TARGET }}
+          RELEASE_SOURCE_REF: ${{ needs.resolve.outputs.source_ref }}
+          RELEASE_TAG: ${{ env.TUTTI_DESKTOP_RELEASE_TAG }}
+        run: |
+          export RELEASE_ASSET_BASE_URL="${TUTTI_DESKTOP_RELEASE_ASSETS_BASE_URL}"
+          node apps/desktop/scripts/build-release-latest.mjs release-assets release-latest.json
+
+      - name: Update stable changelog metadata
+        if: ${{ needs.resolve.outputs.release_channel == 'stable' }}
+        run: |
+          prefix="${TUTTI_DESKTOP_RELEASE_ASSETS_S3_PREFIX%/}"
+          s3_root="s3://${TUTTI_DESKTOP_RELEASE_ASSETS_S3_BUCKET}/${prefix}"
+          if ! aws s3 cp "${s3_root}/changelog.json" existing-changelog.json 2> changelog-download.err; then
+            if grep -Eq "(404|NoSuchKey|Not Found)" changelog-download.err; then
+              echo '{"schemaVersion":"tutti.desktop.changelog.v1","entries":[]}' > existing-changelog.json
+            else
+              cat changelog-download.err >&2
+              exit 1
+            fi
+          fi
+          node apps/desktop/scripts/upsert-release-changelog.mjs \
+            existing-changelog.json \
+            release-summary.json \
+            changelog.json
+          aws s3 cp changelog.json "${s3_root}/changelog.json" \
+            --content-type "application/json" \
+            --cache-control "public, max-age=60"
+
+      - name: Publish stable GitHub release
+        if: ${{ needs.resolve.outputs.release_channel == 'stable' }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release edit "${TUTTI_DESKTOP_RELEASE_TAG}" --draft=false --latest
+
+      - name: Archive public GitHub prereleases
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh api "repos/${GITHUB_REPOSITORY}/releases?per_page=100" --paginate \
+            --jq '.[] | select(.prerelease and (.draft | not)) | .id' |
+            while IFS= read -r release_id; do
+              if [[ -n "${release_id}" ]]; then
+                gh api --method PATCH "repos/${GITHUB_REPOSITORY}/releases/${release_id}" \
+                  -F draft=true >/dev/null
+              fi
+            done
+
+      - name: Publish release pointer to AWS S3
+        run: |
+          prefix="${TUTTI_DESKTOP_RELEASE_ASSETS_S3_PREFIX%/}"
+          s3_root="s3://${TUTTI_DESKTOP_RELEASE_ASSETS_S3_BUCKET}/${prefix}"
+          if [[ "${TUTTI_DESKTOP_RELEASE_CHANNEL}" == "stable" ]]; then
+            aws s3 cp release-latest.json "${s3_root}/latest.json" \
+              --content-type "application/json" \
+              --cache-control "public, max-age=60"
+          elif [[ "${TUTTI_DESKTOP_RELEASE_CHANNEL}" == "rc" ]]; then
+            aws s3 cp release-latest.json "${s3_root}/channels/preview/latest.json" \
+              --content-type "application/json" \
+              --cache-control "public, max-age=60"
+            aws s3 cp release-latest.json "${s3_root}/channels/rc/latest.json" \
+              --content-type "application/json" \
+              --cache-control "public, max-age=60"
+          else
+            aws s3 cp release-latest.json "${s3_root}/channels/beta/latest.json" \
+              --content-type "application/json" \
+              --cache-control "public, max-age=60"
+          fi
+
+      - name: Refresh stable release alias
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if [[ "${TUTTI_DESKTOP_RELEASE_CHANNEL}" == "stable" ]]; then
+            stable_tag="${TUTTI_DESKTOP_RELEASE_TAG}"
+          else
+            stable_tag="$(gh release list \
+              --exclude-drafts \
+              --exclude-pre-releases \
+              --limit 200 \
+              --json tagName,isLatest,publishedAt \
+              --jq '[.[] | select(.tagName != "stable" and (.tagName | test("^v[0-9]+\\.[0-9]+\\.[0-9]+$")))] | (map(select(.isLatest)) | first) // first | .tagName // ""')"
+          fi
+          if [[ -z "${stable_tag}" ]]; then
+            echo "Could not resolve the current stable desktop release tag for the stable alias." >&2
+            exit 1
+          fi
+
+          git fetch --force origin "refs/tags/${stable_tag}:refs/tags/${stable_tag}"
+          stable_sha="$(git rev-list -n 1 "${stable_tag}")"
+          stable_tree="$(git rev-parse "${stable_sha}^{tree}")"
+          gh release view "${stable_tag}" --json body,name,tagName,url > stable-release.json
+          node apps/desktop/scripts/build-stable-release-alias-body.mjs \
+            stable-release.json \
+            stable-release-body.md
+
+          stable_alias_time="$(date -u +'%Y-%m-%dT%H:%M:%SZ')"
+          stable_alias_sha="$(
+            printf '%s\n' \
+              "chore(release): refresh stable alias for ${stable_tag}" \
+              "" \
+              "Canonical stable release: ${stable_tag}" \
+              "" \
+              "Signed-off-by: github-actions[bot] <41898282+github-actions[bot]@users.noreply.github.com>" |
+              GIT_AUTHOR_NAME="github-actions[bot]" \
+              GIT_AUTHOR_EMAIL="41898282+github-actions[bot]@users.noreply.github.com" \
+              GIT_AUTHOR_DATE="${stable_alias_time}" \
+              GIT_COMMITTER_NAME="github-actions[bot]" \
+              GIT_COMMITTER_EMAIL="41898282+github-actions[bot]@users.noreply.github.com" \
+              GIT_COMMITTER_DATE="${stable_alias_time}" \
+              git commit-tree "${stable_tree}" -p "${stable_sha}"
+          )"
+          stable_alias_tree="$(git rev-parse "${stable_alias_sha}^{tree}")"
+          stable_alias_parent="$(git rev-parse "${stable_alias_sha}^")"
+          if [[ "${stable_alias_tree}" != "${stable_tree}" ]]; then
+            echo "Stable alias tree mismatch: expected ${stable_tree}, got ${stable_alias_tree}." >&2
+            exit 1
+          fi
+          if [[ "${stable_alias_parent}" != "${stable_sha}" ]]; then
+            echo "Stable alias parent mismatch: expected ${stable_sha}, got ${stable_alias_parent}." >&2
+            exit 1
+          fi
+
+          git tag -f stable "${stable_alias_sha}"
+          git push origin refs/tags/stable --force
+          if gh release view stable >/dev/null 2>&1; then
+            gh release delete stable --yes
+          fi
+          gh release create stable \
+            --verify-tag \
+            --title "Stable (Recommended)" \
+            --notes-file stable-release-body.md \
+            --latest=false
+          gh release edit "${stable_tag}" --latest
+
+      - name: Verify public release pointer
+        env:
+          RELEASE_CHANNEL: ${{ env.TUTTI_DESKTOP_RELEASE_CHANNEL }}
+          RELEASE_TAG: ${{ env.TUTTI_DESKTOP_RELEASE_TAG }}
+        run: |
+          case "${RELEASE_CHANNEL}" in
+            stable) pointer_path=latest.json ;;
+            rc) pointer_path=channels/rc/latest.json ;;
+            beta) pointer_path=channels/beta/latest.json ;;
+          esac
+          pointer_url="${TUTTI_DESKTOP_RELEASE_ASSETS_BASE_URL%/}/${pointer_path}"
+          for attempt in {1..13}; do
+            actual_tag="$(curl -fsSL "${pointer_url}" | jq -r '.tag // ""' || true)"
+            if [[ "${actual_tag}" == "${RELEASE_TAG}" ]]; then
+              exit 0
+            fi
+            if (( attempt < 13 )); then
+              sleep 5
+            fi
+          done
+          echo "Public release pointer did not resolve to ${RELEASE_TAG}: ${pointer_url}" >&2
+          exit 1
+
+      - name: Resolve final GitHub release URL
+        id: release-url
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          release_url="$(gh release view "${TUTTI_DESKTOP_RELEASE_TAG}" --json url --jq .url)"
+          echo "release_url=${release_url}" >> "$GITHUB_OUTPUT"
+
+  notify-feishu:
+    name: Notify Feishu
+    needs: [resolve, promote]
+    if: ${{ needs.promote.result == 'success' && inputs.notify_feishu == true }}
+    runs-on: ubuntu-latest
+    env:
+      FEISHU_WEBHOOK_URL: ${{ secrets.FEISHU_RELEASE_WEBHOOK_URL }}
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      TUTTI_DESKTOP_RELEASE_ASSETS_BASE_URL: ${{ vars.TUTTI_DESKTOP_RELEASE_ASSETS_BASE_URL }}
+      TUTTI_DESKTOP_RELEASE_ASSETS_S3_BUCKET: ${{ vars.TUTTI_DESKTOP_RELEASE_ASSETS_S3_BUCKET }}
+      TUTTI_DESKTOP_RELEASE_ASSETS_S3_PREFIX: ${{ vars.TUTTI_DESKTOP_RELEASE_ASSETS_S3_PREFIX }}
+      RELEASE_ACTOR: ${{ github.actor }}
+      RELEASE_BRANCH: ${{ needs.resolve.outputs.source_ref }}
+      RELEASE_PUBLICATION_STATUS: published
+      RELEASE_TAG: ${{ needs.resolve.outputs.release_tag }}
+      RELEASE_TARGET: ${{ needs.resolve.outputs.release_target }}
+      RELEASE_URL: ${{ needs.promote.outputs.release_url }}
+      RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+
+    steps:
+      - name: Checkout notification script
+        if: env.FEISHU_WEBHOOK_URL != ''
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ needs.resolve.outputs.release_target }}
+
+      - name: Setup Node.js
+        if: env.FEISHU_WEBHOOK_URL != ''
+        uses: actions/setup-node@v6
+        with:
+          node-version-file: .node-version
+
+      - name: Download promoted release assets
+        if: env.FEISHU_WEBHOOK_URL != ''
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release download "${RELEASE_TAG}" --dir release-assets
+
+      - name: Download release summary
+        if: env.FEISHU_WEBHOOK_URL != ''
+        uses: actions/download-artifact@v4
+        with:
+          name: promoted-desktop-release-summary-${{ needs.resolve.outputs.release_tag }}
+          path: release-summary
+
+      - name: Send release card
+        if: env.FEISHU_WEBHOOK_URL != ''
+        env:
+          RELEASE_ASSET_DIRECTORY: release-assets
+          RELEASE_SUMMARY_PATH: release-summary/release-summary.json
+        run: node apps/desktop/scripts/send-release-feishu-card.mjs
+
+      - name: Skip Feishu card
+        if: env.FEISHU_WEBHOOK_URL == ''
+        run: echo "FEISHU_RELEASE_WEBHOOK_URL is not configured; skipping Feishu notification."

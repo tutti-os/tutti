@@ -46,17 +46,26 @@ function resolveDisplayValue(value, fallback = "unknown") {
   return value || fallback;
 }
 
-function resolveReleaseKind(tag) {
+function resolveReleaseKind(tag, publicationStatus = "published") {
   if (/-rc\.(0|[1-9]\d*)$/i.test(tag)) {
-    return "Release candidate prerelease";
+    return publicationStatus === "draft"
+      ? "Draft release candidate prerelease"
+      : "Release candidate prerelease";
   }
   if (/-beta\.(0|[1-9]\d*)$/i.test(tag)) {
-    return "Beta prerelease";
+    return publicationStatus === "draft"
+      ? "Draft beta prerelease"
+      : "Beta prerelease";
   }
-  return "Stable latest release";
+  return publicationStatus === "draft"
+    ? "Draft stable candidate"
+    : "Stable latest release";
 }
 
-function resolveIntroText(tag) {
+function resolveIntroText(tag, publicationStatus = "published") {
+  if (publicationStatus === "draft") {
+    return `**${tag}** 已构建并上传版本固定下载目录，GitHub Release 仍为 Draft，尚未更新公开下载通道。`;
+  }
   if (/-rc\.(0|[1-9]\d*)$/i.test(tag)) {
     return `**${tag}** 已构建并同步到 RC 预览通道，可从下方入口下载安装包。`;
   }
@@ -242,6 +251,7 @@ function buildCardPayload({
   actor,
   branch,
   macUrl,
+  publicationStatus = "published",
   releaseUrl,
   runUrl,
   summary,
@@ -271,7 +281,7 @@ function buildCardPayload({
         {
           tag: "div",
           text: {
-            content: resolveIntroText(tag),
+            content: resolveIntroText(tag, publicationStatus),
             tag: "lark_md"
           }
         },
@@ -286,7 +296,7 @@ function buildCardPayload({
             {
               is_short: true,
               text: {
-                content: `**构建类型**\n${resolveReleaseKind(tag)}`,
+                content: `**构建类型**\n${resolveReleaseKind(tag, publicationStatus)}`,
                 tag: "lark_md"
               }
             },
@@ -321,8 +331,14 @@ function buildCardPayload({
         { actions, tag: "action" }
       ],
       header: {
-        template: "blue",
-        title: { content: "Tutti 发布完成", tag: "plain_text" }
+        template: publicationStatus === "draft" ? "orange" : "blue",
+        title: {
+          content:
+            publicationStatus === "draft"
+              ? "Tutti Draft 构建完成"
+              : "Tutti 发布完成",
+          tag: "plain_text"
+        }
       }
     },
     msg_type: "interactive"
@@ -359,6 +375,15 @@ async function main() {
   const target = readOption(args, "target", "RELEASE_TARGET");
   const branch = readOption(args, "branch", "RELEASE_BRANCH");
   const actor = readOption(args, "actor", "RELEASE_ACTOR");
+  const publicationStatus = readOption(
+    args,
+    "publication-status",
+    "RELEASE_PUBLICATION_STATUS",
+    "published"
+  );
+  if (publicationStatus !== "draft" && publicationStatus !== "published") {
+    throw new Error("RELEASE_PUBLICATION_STATUS must be draft or published");
+  }
   const releaseUrl = readOption(
     args,
     "release-url",
@@ -407,6 +432,7 @@ async function main() {
     branch,
     macUrl:
       mirroredMacUrl || findAssetUrl(release, /\.dmg$/i, releaseAssetBaseUrl),
+    publicationStatus,
     releaseUrl,
     runUrl,
     summary,
