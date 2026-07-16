@@ -1,12 +1,13 @@
-import { useEffect, useRef, useState } from "react";
+import { useState } from "react";
 import {
   AddIcon,
   Button,
   CloseIcon,
+  Combobox,
   DeleteIcon,
   EyeIcon,
-  Input,
   OpenLinkLinedIcon,
+  RadioIndicator,
   Select,
   SelectContent,
   SelectItem,
@@ -20,9 +21,19 @@ import {
   getWorkspaceModelPlanTemplateGroup,
   getWorkspaceModelPlanTemplatePreset,
   toWorkspaceModelPlanPresetModels,
-  workspaceModelPlanUsesNativeLogin,
-  workspaceModelPlanUsesSubscriptionQuota
+  workspaceModelPlanUsesNativeLogin
 } from "../services/workspaceModelPlanTemplates";
+import {
+  buildWorkspaceModelPlanCandidateCatalog,
+  createCustomWorkspaceModelPlanCandidate,
+  workspaceModelPlanCandidatesForSlot
+} from "../services/workspaceModelPlanCandidates";
+import {
+  createEmptyWorkspaceModelPlanDraftModel,
+  reconcileWorkspaceModelPlanDraftModelsForPreset,
+  removeWorkspaceModelPlanDraftModel,
+  replaceWorkspaceModelPlanDraftModel
+} from "../services/workspaceModelPlanDraftModels";
 import type {
   WorkspaceModelPlanDetection,
   WorkspaceModelPlanDraft,
@@ -33,14 +44,11 @@ import type {
   WorkspaceModelPlanSaveImpact
 } from "../services/workspaceSettingsTypes";
 import { WorkspaceModelPlanDetectionSteps } from "./WorkspaceModelPlanDetectionSteps";
-import { WorkspaceModelPlanPriceField } from "./WorkspaceModelPlanPriceField";
 import {
   workspaceSettingsInputClass,
   workspaceSettingsSelectContentClass,
   workspaceSettingsSelectTriggerClass
 } from "./workspaceSettingsFieldStyles";
-
-const workspaceModelPlanInputClass = `${workspaceSettingsInputClass} focus-visible:!border-[var(--border-1)]`;
 
 const referenceKindLabelKeys: Record<
   WorkspaceModelPlanReferenceKind,
@@ -76,6 +84,14 @@ const draftFeedbackConfig: Record<
     className: "text-[var(--state-danger)]",
     messageKey: "workspace.settings.apps.modelPlans.duplicateFailed"
   },
+  fetchModelsEmpty: {
+    className: "text-[var(--text-secondary)]",
+    messageKey: "workspace.settings.apps.modelPlans.fetchModelsEmpty"
+  },
+  fetchModelsFailed: {
+    className: "text-[var(--state-danger)]",
+    messageKey: "workspace.settings.apps.modelPlans.fetchModelsFailed"
+  },
   requiredFields: {
     className: "text-[var(--state-danger)]",
     messageKey: "workspace.settings.apps.modelPlans.requiredFieldsMissing"
@@ -108,8 +124,9 @@ export function WorkspaceModelPlanFeedbackLine({
 }
 
 /**
- * Inline editor for one model plan draft: template preset, credentials,
- * staged connection detection, model selection, and default model.
+ * Inline editor for one model plan draft, ordered as the user works:
+ * credentials, explicit model fetch, model selection with an inline default
+ * marker, then the connection check as the final gate before saving.
  */
 export function WorkspaceModelPlanEditor({
   detecting,
@@ -117,11 +134,12 @@ export function WorkspaceModelPlanEditor({
   discoveredModels,
   draft,
   feedback,
+  fetchingModels,
   saveImpact,
   saving,
-  onAddDiscoveredModel,
   onCancel,
   onDetect,
+  onFetchModels,
   onSave,
   onUpdate
 }: {
@@ -130,104 +148,48 @@ export function WorkspaceModelPlanEditor({
   discoveredModels: readonly WorkspaceModelPlanModel[];
   draft: Readonly<WorkspaceModelPlanDraft>;
   feedback: WorkspaceModelPlanFeedback | null;
+  fetchingModels: boolean;
   saveImpact: WorkspaceModelPlanSaveImpact | null;
   saving: boolean;
-  onAddDiscoveredModel: (modelID: string) => void;
   onCancel: () => void;
   onDetect: () => void;
+  onFetchModels: () => void;
   onSave: () => void;
   onUpdate: (patch: Partial<WorkspaceModelPlanDraft>) => void;
 }) {
   const { t } = useTranslation();
   const [apiKeyVisible, setApiKeyVisible] = useState(false);
-  const [discoveredModelSearch, setDiscoveredModelSearch] = useState("");
-  const modelInputRefs = useRef(new Map<number, HTMLInputElement>());
-  const [pendingFocusModelIndex, setPendingFocusModelIndex] = useState<
-    number | null
-  >(null);
-
-  useEffect(() => {
-    if (pendingFocusModelIndex === null) {
-      return;
-    }
-    const input = modelInputRefs.current.get(pendingFocusModelIndex);
-    if (!input) {
-      return;
-    }
-    input.focus();
-    setPendingFocusModelIndex(null);
-  }, [draft.models.length, pendingFocusModelIndex]);
 
   const group = getWorkspaceModelPlanTemplateGroup(draft.templateKind);
-  const usesSubscriptionQuota = workspaceModelPlanUsesSubscriptionQuota(
-    draft.templateKind
-  );
   const usesNativeLogin = workspaceModelPlanUsesNativeLogin(draft.templateKind);
   const preset = getWorkspaceModelPlanTemplatePreset(draft.templateId);
   const apiKeyUrl = preset?.apiKeyUrl ?? null;
   const protocolLocked = preset?.protocolLocked ?? false;
-  const availableDiscoveredModels = discoveredModels.filter(
-    (candidate) => !draft.models.some((model) => model.id === candidate.id)
+  const candidateCatalog = buildWorkspaceModelPlanCandidateCatalog(
+    preset ? toWorkspaceModelPlanPresetModels(preset) : [],
+    discoveredModels
   );
-  const normalizedDiscoveredModelSearch = discoveredModelSearch
-    .trim()
-    .toLocaleLowerCase();
-  const visibleDiscoveredModels = normalizedDiscoveredModelSearch
-    ? availableDiscoveredModels.filter((model) =>
-        `${model.id}\n${model.name}`
-          .toLocaleLowerCase()
-          .includes(normalizedDiscoveredModelSearch)
-      )
-    : availableDiscoveredModels;
   const editing = draft.planId !== null;
+  const isFetchFeedback =
+    feedback?.kind === "fetchModelsFailed" ||
+    feedback?.kind === "fetchModelsEmpty";
+  const fetchFeedback = isFetchFeedback ? feedback : null;
+  const generalFeedback = isFetchFeedback ? null : feedback;
 
-  const updateModels = (models: readonly WorkspaceModelPlanModel[]) => {
-    onUpdate({ models });
-  };
-  const updateModelPricing = (
-    index: number,
-    field:
-      | "currency"
-      | "inputMicrosPerMillion"
-      | "outputMicrosPerMillion"
-      | "cacheReadMicrosPerMillion"
-      | "cacheWriteMicrosPerMillion",
-    raw: string
-  ) => {
-    updateModels(
-      draft.models.map((model, modelIndex) => {
-        if (modelIndex !== index) return model;
-        const pricing = model.pricing ?? {
-          currency: "USD",
-          inputMicrosPerMillion: 0,
-          outputMicrosPerMillion: 0,
-          cacheReadMicrosPerMillion: 0,
-          cacheWriteMicrosPerMillion: 0
-        };
-        return {
-          ...model,
-          pricing: {
-            ...pricing,
-            [field]:
-              field === "currency"
-                ? raw.toUpperCase().slice(0, 3)
-                : Math.max(
-                    0,
-                    Math.round((Number.parseFloat(raw) || 0) * 1_000_000)
-                  )
-          }
-        };
+  const selectSlotModel = (index: number, value: string) => {
+    const model =
+      candidateCatalog.find((candidate) => candidate.id === value) ??
+      createCustomWorkspaceModelPlanCandidate(value);
+    if (!model) {
+      return;
+    }
+    onUpdate(
+      replaceWorkspaceModelPlanDraftModel({
+        defaultModel: draft.defaultModel,
+        index,
+        model,
+        models: draft.models
       })
-    );
-  };
-  const updateModelTier = (
-    index: number,
-    tier: WorkspaceModelPlanModel["tier"]
-  ) => {
-    updateModels(
-      draft.models.map((model, modelIndex) =>
-        modelIndex === index ? { ...model, tier } : model
-      )
     );
   };
 
@@ -276,10 +238,13 @@ export function WorkspaceModelPlanEditor({
                 }
                 onUpdate({
                   baseUrl: nextPreset.baseUrl,
-                  defaultModel: nextPreset.models[0] ?? "",
-                  models: toWorkspaceModelPlanPresetModels(nextPreset),
                   protocol: nextPreset.protocol,
-                  templateId: nextPreset.id
+                  templateId: nextPreset.id,
+                  ...reconcileWorkspaceModelPlanDraftModelsForPreset({
+                    defaultModel: draft.defaultModel,
+                    models: draft.models,
+                    presetModels: toWorkspaceModelPlanPresetModels(nextPreset)
+                  })
                 });
               }}
             >
@@ -426,6 +391,145 @@ export function WorkspaceModelPlanEditor({
         </button>
       ) : null}
 
+      <div className="flex flex-col gap-1.5">
+        <div className="flex flex-wrap items-center gap-2">
+          <Button
+            disabled={fetchingModels || detecting}
+            size="sm"
+            type="button"
+            variant="secondary"
+            onClick={onFetchModels}
+          >
+            {fetchingModels
+              ? t("workspace.settings.apps.modelPlans.fetchingModels")
+              : t("workspace.settings.apps.modelPlans.fetchModels")}
+          </Button>
+          {discoveredModels.length > 0 ? (
+            <span className="text-[11px] text-[var(--text-tertiary)]">
+              {t("workspace.settings.apps.modelPlans.fetchModelsResult", {
+                count: String(discoveredModels.length)
+              })}
+            </span>
+          ) : null}
+        </div>
+        <WorkspaceModelPlanFeedbackLine feedback={fetchFeedback} />
+      </div>
+
+      <div className="flex flex-col gap-2">
+        <span className="text-[11px] font-medium text-[var(--text-secondary)]">
+          {t("workspace.settings.apps.modelPlans.models")}
+        </span>
+        <div className="flex flex-col gap-1.5">
+          {draft.models.map((model, index) => {
+            const modelID = model.id.trim();
+            const isDefault =
+              modelID.length > 0 && modelID === draft.defaultModel;
+            return (
+              <div
+                // Index keys keep slot identity stable while a slot's id
+                // changes through the combobox; blank slots share the empty
+                // id, so ids cannot key the rows.
+                // eslint-disable-next-line react/no-array-index-key
+                key={index}
+                className="grid grid-cols-[minmax(0,1fr)_auto_32px] items-center gap-1.5 rounded-[8px] border border-[var(--border-1)] p-2"
+              >
+                <Combobox
+                  allowCustomValue
+                  aria-label={t("workspace.settings.apps.modelPlans.modelId")}
+                  className={workspaceSettingsSelectTriggerClass}
+                  contentStyle={{ zIndex: "var(--z-panel-popover)" }}
+                  customValueLabel={(query) =>
+                    t(
+                      "workspace.settings.apps.modelPlans.modelPickerUseCustom",
+                      {
+                        model: query
+                      }
+                    )
+                  }
+                  emptyMessage={t(
+                    "workspace.settings.apps.modelPlans.modelPickerEmpty"
+                  )}
+                  options={workspaceModelPlanCandidatesForSlot(
+                    candidateCatalog,
+                    draft.models,
+                    index
+                  ).map((candidate) => ({
+                    description:
+                      candidate.name && candidate.name !== candidate.id
+                        ? candidate.name
+                        : undefined,
+                    keywords: candidate.name ? [candidate.name] : undefined,
+                    label: candidate.id,
+                    value: candidate.id
+                  }))}
+                  placeholder={t(
+                    "workspace.settings.apps.modelPlans.modelPickerPlaceholder"
+                  )}
+                  searchPlaceholder={t(
+                    "workspace.settings.apps.modelPlans.modelPickerSearchPlaceholder"
+                  )}
+                  value={model.id}
+                  onValueChange={(value) => selectSlotModel(index, value)}
+                />
+                <button
+                  aria-label={t(
+                    "workspace.settings.apps.modelPlans.setDefaultModel",
+                    { model: modelID }
+                  )}
+                  aria-pressed={isDefault}
+                  className={cn(
+                    "flex h-8 items-center gap-1.5 rounded-[6px] px-2 text-[12px] transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--border-focus)]",
+                    isDefault
+                      ? "text-[var(--text-primary)]"
+                      : "text-[var(--text-secondary)] hover:bg-[var(--transparency-hover)] hover:text-[var(--text-primary)]",
+                    !modelID && "cursor-not-allowed opacity-50"
+                  )}
+                  disabled={!modelID}
+                  type="button"
+                  onClick={() => onUpdate({ defaultModel: modelID })}
+                >
+                  <RadioIndicator checked={isDefault} disabled={!modelID} />
+                  {t("workspace.settings.apps.modelPlans.defaultMarker")}
+                </button>
+                <button
+                  aria-label={t(
+                    "workspace.settings.apps.modelPlans.removeModel"
+                  )}
+                  className="flex size-8 items-center justify-center rounded-[6px] text-[var(--text-secondary)] transition-colors duration-150 hover:bg-[var(--transparency-hover)] hover:text-[var(--text-primary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--border-focus)]"
+                  type="button"
+                  onClick={() =>
+                    onUpdate(
+                      removeWorkspaceModelPlanDraftModel({
+                        defaultModel: draft.defaultModel,
+                        index,
+                        models: draft.models
+                      })
+                    )
+                  }
+                >
+                  <DeleteIcon aria-hidden="true" size={15} />
+                </button>
+              </div>
+            );
+          })}
+          <button
+            className="flex h-9 items-center justify-center gap-1.5 rounded-[8px] border border-dashed border-[var(--border-1)] text-[12px] font-medium text-[var(--text-secondary)] transition-colors duration-150 hover:bg-[var(--transparency-hover)] hover:text-[var(--text-primary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--border-focus)]"
+            type="button"
+            onClick={() => {
+              onUpdate({
+                models: [
+                  ...draft.models,
+                  createEmptyWorkspaceModelPlanDraftModel()
+                ]
+              });
+            }}
+          >
+            <AddIcon className="size-3.5" />
+            {t("workspace.settings.apps.modelPlans.addModel")}
+          </button>
+        </div>
+      </div>
+
       <div className="flex flex-col gap-2">
         <div className="flex items-center justify-between gap-2">
           <span className="text-[11px] font-medium text-[var(--text-secondary)]">
@@ -433,7 +537,7 @@ export function WorkspaceModelPlanEditor({
           </span>
           <Button
             className="h-auto px-0 text-[12px] font-medium text-[var(--text-primary)] hover:bg-transparent hover:text-[var(--text-primary)]"
-            disabled={detecting}
+            disabled={detecting || fetchingModels}
             size="sm"
             type="button"
             variant="ghost"
@@ -450,285 +554,7 @@ export function WorkspaceModelPlanEditor({
         />
       </div>
 
-      <div className="flex flex-col gap-2">
-        <span className="text-[11px] font-medium text-[var(--text-secondary)]">
-          {t("workspace.settings.apps.modelPlans.models")}
-        </span>
-        <div className="flex flex-col gap-1.5">
-          {draft.models.map((model, index) => (
-            <div
-              // Index keys keep the input mounted (and focused) while the
-              // model id is being typed.
-              // eslint-disable-next-line react/no-array-index-key
-              key={index}
-              className="grid gap-1.5 rounded-[8px] border border-[var(--border-1)] p-2"
-            >
-              <div className="grid grid-cols-[minmax(0,1fr)_32px] items-center gap-1.5">
-                <Input
-                  aria-label={t("workspace.settings.apps.modelPlans.modelId")}
-                  className={workspaceModelPlanInputClass}
-                  placeholder={t(
-                    "workspace.settings.apps.modelPlans.modelIdPlaceholder"
-                  )}
-                  ref={(input) => {
-                    if (input) {
-                      modelInputRefs.current.set(index, input);
-                      return;
-                    }
-                    modelInputRefs.current.delete(index);
-                  }}
-                  value={model.id}
-                  onChange={(event) => {
-                    const id = event.currentTarget.value;
-                    updateModels(
-                      draft.models.map((row, rowIndex) =>
-                        rowIndex === index
-                          ? { ...row, id, name: id.trim() || row.name }
-                          : row
-                      )
-                    );
-                  }}
-                />
-                <button
-                  aria-label={t(
-                    "workspace.settings.apps.modelPlans.removeModel"
-                  )}
-                  className="flex size-8 items-center justify-center rounded-[6px] text-[var(--text-secondary)] transition-colors duration-150 hover:bg-[var(--transparency-hover)] hover:text-[var(--text-primary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--border-focus)]"
-                  type="button"
-                  onClick={() =>
-                    updateModels(
-                      draft.models.filter((_, rowIndex) => rowIndex !== index)
-                    )
-                  }
-                >
-                  <DeleteIcon aria-hidden="true" size={15} />
-                </button>
-              </div>
-              <div
-                className={cn(
-                  "grid gap-1.5",
-                  usesSubscriptionQuota
-                    ? "grid-cols-1"
-                    : "grid-cols-6 max-[760px]:grid-cols-2"
-                )}
-              >
-                <label className="flex min-w-0 flex-col gap-1">
-                  <span className="truncate text-[10px] text-[var(--text-tertiary)]">
-                    {t("workspace.settings.apps.modelPlans.tier")}
-                  </span>
-                  <Select
-                    value={model.tier ?? "standard"}
-                    onValueChange={(tier) =>
-                      updateModelTier(
-                        index,
-                        tier as NonNullable<WorkspaceModelPlanModel["tier"]>
-                      )
-                    }
-                  >
-                    <SelectTrigger
-                      className={workspaceSettingsSelectTriggerClass}
-                    >
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent
-                      className={workspaceSettingsSelectContentClass}
-                    >
-                      <SelectItem value="flagship">
-                        {t("workspace.settings.apps.modelPlans.tierFlagship")}
-                      </SelectItem>
-                      <SelectItem value="standard">
-                        {t("workspace.settings.apps.modelPlans.tierStandard")}
-                      </SelectItem>
-                      <SelectItem value="economy">
-                        {t("workspace.settings.apps.modelPlans.tierEconomy")}
-                      </SelectItem>
-                    </SelectContent>
-                  </Select>
-                </label>
-                {usesSubscriptionQuota ? (
-                  <span className="text-[11px] leading-[1.4] text-[var(--text-tertiary)]">
-                    {t(
-                      "workspace.settings.apps.modelPlans.subscriptionQuotaPricingHint"
-                    )}
-                  </span>
-                ) : (
-                  <>
-                    <WorkspaceModelPlanPriceField
-                      label={t(
-                        "workspace.settings.apps.modelPlans.priceCurrency"
-                      )}
-                      value={model.pricing?.currency ?? "USD"}
-                      onChange={(value) =>
-                        updateModelPricing(index, "currency", value)
-                      }
-                    />
-                    {(
-                      [
-                        [
-                          "inputMicrosPerMillion",
-                          t("workspace.settings.apps.modelPlans.priceInput")
-                        ],
-                        [
-                          "outputMicrosPerMillion",
-                          t("workspace.settings.apps.modelPlans.priceOutput")
-                        ],
-                        [
-                          "cacheReadMicrosPerMillion",
-                          t("workspace.settings.apps.modelPlans.priceCacheRead")
-                        ],
-                        [
-                          "cacheWriteMicrosPerMillion",
-                          t(
-                            "workspace.settings.apps.modelPlans.priceCacheWrite"
-                          )
-                        ]
-                      ] as const
-                    ).map(([field, label]) => (
-                      <WorkspaceModelPlanPriceField
-                        key={field}
-                        inputMode="decimal"
-                        label={label}
-                        value={String(
-                          (model.pricing?.[field] ?? 0) / 1_000_000
-                        )}
-                        onChange={(value) =>
-                          updateModelPricing(index, field, value)
-                        }
-                      />
-                    ))}
-                  </>
-                )}
-              </div>
-              <p className="m-0 text-[11px] leading-[1.4] text-[var(--text-tertiary)]">
-                {t(
-                  model.tier === "flagship"
-                    ? "workspace.settings.apps.modelPlans.tierUsageFlagship"
-                    : model.tier === "economy"
-                      ? "workspace.settings.apps.modelPlans.tierUsageEconomy"
-                      : "workspace.settings.apps.modelPlans.tierUsageStandard"
-                )}
-              </p>
-              {model.capabilities && model.capabilities.length > 0 ? (
-                <p className="m-0 text-[11px] leading-[1.4] text-[var(--text-tertiary)]">
-                  {t("workspace.settings.apps.modelPlans.modelCapabilities", {
-                    capabilities: model.capabilities.join(", ")
-                  })}
-                </p>
-              ) : null}
-            </div>
-          ))}
-        </div>
-        {availableDiscoveredModels.length > 0 ? (
-          <div className="flex flex-col gap-1.5">
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <span className="text-[11px] text-[var(--text-tertiary)]">
-                {t("workspace.settings.apps.modelPlans.discoveredModels")}
-              </span>
-              <Button
-                className="h-auto px-0 text-[11px] font-medium text-[var(--text-primary)] hover:bg-transparent hover:text-[var(--text-primary)]"
-                disabled={visibleDiscoveredModels.length === 0}
-                size="sm"
-                type="button"
-                variant="ghost"
-                onClick={() => {
-                  for (const model of visibleDiscoveredModels) {
-                    onAddDiscoveredModel(model.id);
-                  }
-                }}
-              >
-                {t(
-                  "workspace.settings.apps.modelPlans.selectAllDiscoveredModels"
-                )}
-              </Button>
-            </div>
-            <Input
-              aria-label={t(
-                "workspace.settings.apps.modelPlans.searchDiscoveredModels"
-              )}
-              className={workspaceModelPlanInputClass}
-              placeholder={t(
-                "workspace.settings.apps.modelPlans.searchDiscoveredModelsPlaceholder"
-              )}
-              type="search"
-              value={discoveredModelSearch}
-              onChange={(event) =>
-                setDiscoveredModelSearch(event.currentTarget.value)
-              }
-            />
-            {visibleDiscoveredModels.length > 0 ? (
-              <div className="flex flex-wrap gap-1.5">
-                {visibleDiscoveredModels.map((model) => (
-                  <button
-                    key={model.id}
-                    aria-label={t(
-                      "workspace.settings.apps.modelPlans.addDiscoveredModel",
-                      { model: model.id }
-                    )}
-                    className="inline-flex items-center gap-1 rounded-full border border-[var(--border-1)] px-2.5 py-1 text-[11px] text-[var(--text-secondary)] transition-colors duration-150 hover:bg-[var(--transparency-hover)] hover:text-[var(--text-primary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--border-focus)]"
-                    type="button"
-                    onClick={() => onAddDiscoveredModel(model.id)}
-                  >
-                    <AddIcon aria-hidden="true" className="size-3" />
-                    {model.id}
-                  </button>
-                ))}
-              </div>
-            ) : (
-              <span className="text-[11px] text-[var(--text-tertiary)]">
-                {t(
-                  "workspace.settings.apps.modelPlans.noDiscoveredModelsMatch"
-                )}
-              </span>
-            )}
-          </div>
-        ) : null}
-      </div>
-
-      <div className="grid grid-cols-2 gap-3 max-[640px]:grid-cols-1">
-        <label className="flex flex-col gap-1.5">
-          <span className="text-[11px] font-medium text-[var(--text-secondary)]">
-            {t("workspace.settings.apps.modelPlans.defaultModelLabel")}
-          </span>
-          <Select
-            disabled={
-              draft.models.filter((model) => model.id.trim()).length === 0
-            }
-            value={
-              draft.models.some((model) => model.id === draft.defaultModel)
-                ? draft.defaultModel
-                : ""
-            }
-            onValueChange={(value) => onUpdate({ defaultModel: value })}
-          >
-            <SelectTrigger
-              aria-label={t(
-                "workspace.settings.apps.modelPlans.defaultModelLabel"
-              )}
-              className={workspaceSettingsSelectTriggerClass}
-            >
-              <SelectValue
-                placeholder={t(
-                  "workspace.settings.apps.modelPlans.defaultModelNone"
-                )}
-              />
-            </SelectTrigger>
-            <SelectContent
-              className={workspaceSettingsSelectContentClass}
-              style={{ zIndex: "var(--z-panel-popover)" }}
-            >
-              {draft.models
-                .filter((model) => model.id.trim())
-                .map((model) => (
-                  <SelectItem key={model.id} value={model.id}>
-                    {model.id}
-                  </SelectItem>
-                ))}
-            </SelectContent>
-          </Select>
-        </label>
-      </div>
-
-      <WorkspaceModelPlanFeedbackLine feedback={feedback} />
+      <WorkspaceModelPlanFeedbackLine feedback={generalFeedback} />
 
       {saveImpact ? (
         <section className="grid gap-2 rounded-[8px] border border-[var(--state-warning)] bg-[var(--transparency-block)] p-3">
@@ -753,35 +579,19 @@ export function WorkspaceModelPlanEditor({
         </section>
       ) : null}
 
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <Button
-          className="h-auto px-0 text-[12px] font-medium text-[var(--text-primary)] hover:bg-transparent hover:text-[var(--text-primary)]"
-          size="sm"
-          type="button"
-          variant="ghost"
-          onClick={() => {
-            const nextIndex = draft.models.length;
-            setPendingFocusModelIndex(nextIndex);
-            updateModels([...draft.models, { id: "", name: "" }]);
-          }}
-        >
-          <AddIcon className="size-3.5" />
-          {t("workspace.settings.apps.modelPlans.addModel")}
+      <div className="flex flex-wrap items-center justify-end gap-2">
+        <Button type="button" variant="secondary" onClick={onCancel}>
+          {t("common.cancel")}
         </Button>
-        <div className="flex flex-wrap justify-end gap-2">
-          <Button type="button" variant="secondary" onClick={onCancel}>
-            {t("common.cancel")}
-          </Button>
-          <Button disabled={saving} type="button" onClick={onSave}>
-            {saving
-              ? t("workspace.settings.apps.modelPlans.saving")
-              : t(
-                  saveImpact
-                    ? "workspace.settings.apps.modelPlans.confirmModelRangeImpact"
-                    : "workspace.settings.apps.modelPlans.save"
-                )}
-          </Button>
-        </div>
+        <Button disabled={saving} type="button" onClick={onSave}>
+          {saving
+            ? t("workspace.settings.apps.modelPlans.saving")
+            : t(
+                saveImpact
+                  ? "workspace.settings.apps.modelPlans.confirmModelRangeImpact"
+                  : "workspace.settings.apps.modelPlans.save"
+              )}
+        </Button>
       </div>
     </section>
   );

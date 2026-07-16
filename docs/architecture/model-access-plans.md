@@ -114,6 +114,12 @@ Providers without a `/models` catalog (404 on every candidate) keep working:
 discovery is `skipped` when manual models exist and the inference stage
 becomes the authoritative credential check.
 
+Provider discovery is a candidate catalog, not a user selection. When an
+endpoint-backed draft has no selected model but discovery returns candidates,
+detection may use the first candidate only as the ephemeral inference target
+for that run. The tested id is recorded in the detection snapshot, while the
+Plan's `models` and `defaultModel` remain unchanged until the user selects one.
+
 Official subscriptions use the same visible stage model with different
 authorities: `network` verifies that the matching built-in Agent runtime is
 installed and enabled, `auth` verifies its provider-native login,

@@ -16,7 +16,6 @@ import {
 import { useTranslation } from "@renderer/i18n";
 import type { DesktopI18nKey } from "../../../../../shared/i18n/index.ts";
 import {
-  toWorkspaceModelPlanPresetModels,
   workspaceModelPlanTemplateGroups,
   type WorkspaceModelPlanTemplateGroup
 } from "../services/workspaceModelPlanTemplates";
@@ -98,7 +97,6 @@ export function WorkspaceModelPlansSection() {
     }
     service.modelPlans.beginDraft({
       baseUrl: preset.baseUrl,
-      models: toWorkspaceModelPlanPresetModels(preset),
       name: t(preset.labelKey),
       protocol: preset.protocol,
       templateId: preset.id,
@@ -180,14 +178,15 @@ export function WorkspaceModelPlansSection() {
                 discoveredModels={modelPlans.draftDiscoveredModels}
                 draft={draft}
                 feedback={modelPlans.draftFeedback}
+                fetchingModels={modelPlans.fetchingDraftModels}
                 saveImpact={modelPlans.draftSaveImpact}
                 saving={modelPlans.saving}
-                onAddDiscoveredModel={(modelID) =>
-                  service.modelPlans.addDiscoveredModelToDraft(modelID)
-                }
                 onCancel={() => service.modelPlans.cancelDraft()}
                 onDetect={() => {
                   void service.modelPlans.detectDraft();
+                }}
+                onFetchModels={() => {
+                  void service.modelPlans.fetchDraftModels();
                 }}
                 onSave={() => {
                   void service.modelPlans.saveDraft();
@@ -210,14 +209,15 @@ export function WorkspaceModelPlansSection() {
               discoveredModels={modelPlans.draftDiscoveredModels}
               draft={draft}
               feedback={modelPlans.draftFeedback}
+              fetchingModels={modelPlans.fetchingDraftModels}
               saveImpact={modelPlans.draftSaveImpact}
               saving={modelPlans.saving}
-              onAddDiscoveredModel={(modelID) =>
-                service.modelPlans.addDiscoveredModelToDraft(modelID)
-              }
               onCancel={() => service.modelPlans.cancelDraft()}
               onDetect={() => {
                 void service.modelPlans.detectDraft();
+              }}
+              onFetchModels={() => {
+                void service.modelPlans.fetchDraftModels();
               }}
               onSave={() => {
                 void service.modelPlans.saveDraft();

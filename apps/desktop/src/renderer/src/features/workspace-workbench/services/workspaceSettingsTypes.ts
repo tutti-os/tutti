@@ -256,7 +256,6 @@ export interface WorkspaceModelPlanDraft {
 
 export interface WorkspaceModelPlanDraftSeed {
   baseUrl?: string;
-  models?: readonly WorkspaceModelPlanModel[];
   name?: string;
   protocol: WorkspaceModelPlanProtocol;
   templateId?: string | null;
@@ -268,6 +267,8 @@ export type WorkspaceModelPlanFeedbackKind =
   | "detectionRequired"
   | "deleteFailed"
   | "duplicateFailed"
+  | "fetchModelsEmpty"
+  | "fetchModelsFailed"
   | "requiredFields"
   | "saveFailed"
   | "toggleFailed";
@@ -308,6 +309,7 @@ export interface WorkspaceSettingsModelPlansMutableState {
   draftFeedback: WorkspaceModelPlanFeedback | null;
   draftSaveImpact: WorkspaceModelPlanSaveImpact | null;
   duplicatingPlanID: string | null;
+  fetchingDraftModels: boolean;
   firstUseLaunchFailedPlanID: string | null;
   firstUseLaunchingPlanID: string | null;
   loading: boolean;
@@ -338,6 +340,7 @@ export interface WorkspaceSettingsModelPlansSnapshotState {
   readonly draftFeedback: Readonly<WorkspaceModelPlanFeedback> | null;
   readonly draftSaveImpact: WorkspaceModelPlanSaveImpact | null;
   readonly duplicatingPlanID: string | null;
+  readonly fetchingDraftModels: boolean;
   readonly firstUseLaunchFailedPlanID: string | null;
   readonly firstUseLaunchingPlanID: string | null;
   readonly loading: boolean;
