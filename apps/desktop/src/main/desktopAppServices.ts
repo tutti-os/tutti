@@ -83,16 +83,7 @@ export async function createDesktopAppServices(
     });
   });
 
-  try {
-    await resolveCliShim(factories, {
-      isPackaged: Boolean(options.isPackaged)
-    });
-  } catch (error) {
-    options.logger.warn("failed to install tutti cli shim", {
-      error: formatErrorMessage(error),
-      error_code: classifyDesktopErrorCode(error)
-    });
-  }
+  void ensureCliShimInBackground(options, factories);
 
   const hostServices = await resolveHostServices(factories, {
     browserNodeGuestPreloadPath: options.browserNodeGuestPreloadPath,
@@ -111,6 +102,32 @@ export async function createDesktopAppServices(
     ...hostServices,
     updateService
   };
+}
+
+async function ensureCliShimInBackground(
+  options: CreateDesktopAppServicesOptions,
+  factories?: Partial<DesktopAppServiceFactories>
+): Promise<void> {
+  try {
+    const cliShim = await resolveCliShim(factories, {
+      isPackaged: Boolean(options.isPackaged)
+    });
+    if (cliShim.pathShimPath) {
+      options.logger.info("tutti cli shim ready", {
+        path_shim_path: cliShim.pathShimPath,
+        shim_path: cliShim.shimPath
+      });
+    } else {
+      options.logger.warn("tutti cli shim is not discoverable on user PATH", {
+        shim_path: cliShim.shimPath
+      });
+    }
+  } catch (error) {
+    options.logger.warn("failed to install tutti cli shim", {
+      error: formatErrorMessage(error),
+      error_code: classifyDesktopErrorCode(error)
+    });
+  }
 }
 
 async function resolveDaemonRuntime(

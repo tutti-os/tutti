@@ -2,6 +2,40 @@
 
 [Back to troubleshooting index](./README.md)
 
+### Packaged Tutti starts but external shells cannot find `tutti`
+
+- Symptom:
+  The packaged desktop app starts normally and `~/.tutti/bin/tutti status`
+  succeeds, but a new terminal reports `command not found: tutti`.
+- Quick checks:
+  Run `command -v tutti`, print the login-shell `PATH`, and inspect
+  `~/.tutti/bin/tutti`. Check `~/.tutti/logs/tutti-desktop.log` for
+  `tutti cli shim is not discoverable on user PATH` and check whether an
+  unrelated `tutti` executable already exists earlier on `PATH`.
+- Root cause:
+  Creating the canonical shim under the state root does not make it shell
+  discoverable unless `<state-dir>/bin` is already on `PATH`. Desktop apps
+  launched from Finder may also inherit a smaller `PATH` than the user's login
+  shell, so using only the Electron process environment misses user bin
+  directories.
+- Fix:
+  Reuse the cached login-shell environment resolved for the managed daemon.
+  Keep `<state-dir>/bin/tutti` canonical, and install a forwarding shim only in
+  writable `~/.local/bin` or `~/bin` directories already present on the login
+  shell's `PATH`. Repair Tutti-owned shims on later startups, preserve unrelated
+  commands, and do not edit shell profiles or write `/usr/local/bin`. Keep this
+  installation best-effort so a slow or invalid shell environment cannot delay
+  desktop window creation.
+- Validation:
+  Start packaged Tutti, open a new login shell, and verify `command -v tutti`
+  resolves to a user bin directory and `tutti status` succeeds. Cover creation,
+  repair, canonical-PATH, no-supported-directory, and third-party-command
+  conflict cases in desktop tests.
+- References:
+  [cliInstaller.ts](../../../apps/desktop/src/main/cli/cliInstaller.ts)
+  [userShellEnv.ts](../../../apps/desktop/src/main/daemon/userShellEnv.ts)
+  [desktop-transport.md](../../architecture/desktop-transport.md)
+
 ### Desktop stable release alias disappears or is not first on Releases
 
 - Symptom:

@@ -151,9 +151,14 @@ with restrictive permissions and contains the daemon loopback address plus the
 current per-run bearer token. CLI clients should read it directly and send the
 token in the HTTP `Authorization` header.
 
-The packaged desktop app may repair the user-level CLI shim during startup. The
-shim path derives from the same state root and must not mutate shell profiles or
-write to global locations such as `/usr/local/bin`.
+The packaged desktop app repairs the canonical user-level CLI shim during
+startup. The canonical shim path derives from the same state root. To expose the
+command to external shells on macOS and Linux, desktop may also install or
+repair a Tutti-owned forwarding shim in `~/.local/bin` or `~/bin`, but only
+when that directory is already present in the user's login-shell `PATH` and
+writable. It must not overwrite a non-Tutti command, mutate shell profiles, or
+write to global locations such as `/usr/local/bin`. PATH exposure is a
+best-effort background startup task and must not delay desktop window creation.
 
 Local development scripts install a separate `tutti-dev` command so developer
 shells can target the development daemon without shadowing a packaged `tutti`
