@@ -5,6 +5,7 @@ import type { AgentGUINodeData } from "../../../types";
 import type { AgentGUIConversationSummary } from "../model/agentGuiConversationModel";
 import type {
   AgentComposerDraft,
+  AgentGUIOptimisticGoalControl,
   AgentGUIProjectConversationDeleteTarget,
   SubmittedDraftSnapshot
 } from "../model/agentGuiNodeTypes";
@@ -59,6 +60,8 @@ export function useAgentGUILocalState({
   const [listError, setListError] = useState<string | null>(null);
   const [detailError, setDetailError] = useState<string | null>(null);
   const [goalClearNoticeSequence, setGoalClearNoticeSequence] = useState(0);
+  const [optimisticGoalControl, setOptimisticGoalControl] =
+    useState<AgentGUIOptimisticGoalControl | null>(null);
 
   return {
     activeConversationId,
@@ -72,6 +75,7 @@ export function useAgentGUILocalState({
     isDeletingProjectConversations,
     isLoadingMessages,
     listError,
+    optimisticGoalControl,
     pendingDeleteConversation,
     pendingDeleteProjectConversations,
     selectedProjectPath,
@@ -86,6 +90,7 @@ export function useAgentGUILocalState({
     setIsDeletingProjectConversations,
     setIsLoadingMessages,
     setListError,
+    setOptimisticGoalControl,
     setPendingDeleteConversation,
     setPendingDeleteProjectConversations,
     setSelectedProjectPath,

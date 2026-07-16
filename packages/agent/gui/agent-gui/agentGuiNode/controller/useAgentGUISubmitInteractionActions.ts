@@ -22,6 +22,7 @@ import {
 } from "../model/agentComposerDraft";
 import type {
   AgentComposerDraft,
+  AgentGUIOptimisticGoalControl,
   SubmittedDraftSnapshot
 } from "../model/agentGuiNodeTypes";
 import { resolveAgentComposerDraftScopeKey } from "../model/agentComposerDraftScope";
@@ -62,6 +63,7 @@ import {
 } from "./useAgentConversationSelection";
 import type { useAgentGUIActivation } from "./useAgentGUIActivation";
 import type { AgentGUINewConversationActivationResult } from "./agentGuiNewConversationActivation.types";
+import { useAgentGUIGoalControlActions } from "./useAgentGUIGoalControlActions";
 
 interface UseAgentGUISubmitInteractionActionsInput {
   activation: ReturnType<typeof useAgentGUIActivation>;
@@ -99,6 +101,7 @@ interface UseAgentGUISubmitInteractionActionsInput {
   }>;
   previewMode: boolean;
   promptImagesSupported: boolean;
+  optimisticGoalControl: AgentGUIOptimisticGoalControl | null;
   sessionEngine: AgentSessionEngine;
   setActiveConversationId: Dispatch<SetStateAction<string | null>>;
   setDetailError: Dispatch<SetStateAction<string | null>>;
@@ -107,6 +110,9 @@ interface UseAgentGUISubmitInteractionActionsInput {
   >;
   setGoalClearNoticeSequence: Dispatch<SetStateAction<number>>;
   setIntent: Dispatch<SetStateAction<ConversationIntent>>;
+  setOptimisticGoalControl: Dispatch<
+    SetStateAction<AgentGUIOptimisticGoalControl | null>
+  >;
   submittedDraftSnapshotsRef: RefObject<Record<string, SubmittedDraftSnapshot>>;
   startConversation(
     content: AgentPromptContentBlock[],
@@ -176,18 +182,35 @@ export function useAgentGUISubmitInteractionActions(
     planActionsRef,
     previewMode,
     promptImagesSupported,
+    optimisticGoalControl,
     sessionEngine,
     setActiveConversationId,
     setDetailError,
     setDraftByScopeKey,
     setGoalClearNoticeSequence,
     setIntent,
+    setOptimisticGoalControl,
     submittedDraftSnapshotsRef,
     startConversation,
     submitPromptRef,
     transientConversation,
     workspaceId
   } = input;
+  const { beginOptimisticGoalControl, goalControl } =
+    useAgentGUIGoalControlActions({
+      activeConversationIdRef,
+      agentActivityRuntime,
+      draftByScopeKeyRef,
+      isCurrentConversation,
+      optimisticGoalControl,
+      previewMode,
+      sessionEngine,
+      setDetailError,
+      setDraftByScopeKey,
+      setGoalClearNoticeSequence,
+      setOptimisticGoalControl,
+      workspaceId
+    });
   const retryActivation = useCallback(() => {
     const agentSessionId = activeConversationIdRef.current;
     if (!agentSessionId) {
@@ -416,71 +439,6 @@ export function useAgentGUISubmitInteractionActions(
     [activation, executePrompt, isSessionMarkedNonResumable, workspaceId]
   );
 
-  const goalControl = useCallback(
-    (
-      action: AgentActivityGoalControlAction,
-      objective?: string,
-      submittedDraftScopeKey?: string
-    ) => {
-      if (previewMode) {
-        return;
-      }
-      const agentSessionId = activeConversationIdRef.current;
-      if (!agentSessionId) {
-        return;
-      }
-      const submittedDraftSnapshot = submittedDraftScopeKey
-        ? {
-            sourceScopeKey: submittedDraftScopeKey,
-            content: snapshotAgentComposerDraft(
-              draftByScopeKeyRef.current[submittedDraftScopeKey] ??
-                emptyAgentComposerDraft()
-            ),
-            targetAgentSessionId: agentSessionId
-          }
-        : null;
-      setDetailError(null);
-      void agentActivityRuntime
-        .goalControl({
-          workspaceId,
-          agentSessionId,
-          action,
-          ...(objective !== undefined ? { objective } : {})
-        })
-        .then(() => {
-          if (submittedDraftSnapshot) {
-            setDraftByScopeKey((current) => {
-              const next = clearSubmittedDraftIfUnchanged({
-                drafts: current,
-                snapshot: submittedDraftSnapshot
-              });
-              draftByScopeKeyRef.current = next;
-              return next;
-            });
-          }
-          if (action !== "clear" || !isCurrentConversation(agentSessionId)) {
-            return;
-          }
-          setGoalClearNoticeSequence((current) => current + 1);
-        })
-        .catch((error: unknown) => {
-          if (!isCurrentConversation(agentSessionId)) {
-            return;
-          }
-          setDetailError(getAgentGUIErrorMessage(error));
-        });
-    },
-    [
-      agentActivityRuntime,
-      isCurrentConversation,
-      previewMode,
-      setDraftByScopeKey,
-      setDetailError,
-      setGoalClearNoticeSequence,
-      workspaceId
-    ]
-  );
-
   const submitPrompt = useCallback(
     (
       content: AgentPromptContentBlock[],
@@ -573,6 +531,15 @@ export function useAgentGUISubmitInteractionActions(
           typedGoal ? false : undefined
         );
         if (activationResult) {
+          if (typedGoal) {
+            beginOptimisticGoalControl(
+              activationResult.agentSessionId,
+              typedGoal.action,
+              typedGoal.objective,
+              `goal-activation:${activationResult.requestId}`,
+              true
+            );
+          }
           draftByScopeKeyRef.current = clearSubmittedAgentGUIHomeDraft({
             draftKey: homeDraftKey,
             drafts: draftByScopeKeyRef.current,
@@ -608,6 +575,7 @@ export function useAgentGUISubmitInteractionActions(
     },
     [
       agentActivityRuntime,
+      beginOptimisticGoalControl,
       conversationListQuery,
       previewMode,
       promptImagesSupported,

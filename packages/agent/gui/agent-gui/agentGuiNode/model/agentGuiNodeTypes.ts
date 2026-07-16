@@ -1,4 +1,5 @@
 import type {
+  AgentActivitySessionGoal,
   AgentActivityUsage,
   CanonicalAgentSession
 } from "@tutti-os/agent-activity-core";
@@ -54,6 +55,13 @@ export interface AgentGUISessionChrome {
       }
     | null;
   rawState: Pick<CanonicalAgentSession, "agentSessionId" | "goal"> | null;
+}
+
+export interface AgentGUIOptimisticGoalControl {
+  agentSessionId: string;
+  goal: AgentActivitySessionGoal | null;
+  reconcileOnObjectiveMatch: boolean;
+  requestId: string;
 }
 
 export interface AgentGUIInlineNotice {
