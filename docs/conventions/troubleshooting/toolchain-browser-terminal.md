@@ -84,6 +84,36 @@
   Search workflows for `pnpm/action-setup` and confirm no step still passes a
   `version` input. Push a new commit to rerun the PR checks.
 
+### Pre-push tests replace the local branch with a fixture commit
+
+- Symptom:
+  `pnpm check:full` passes during `git push`, but the local branch immediately
+  gains an unexpected fixture commit such as `init`; `git status` then reports
+  most repository files as untracked while the remote still points to the
+  intended commit.
+- Quick checks:
+  Inspect `git reflog`, the unexpected commit author and tree, and tests that
+  run `git init`, `git add`, or `git commit` in temporary directories. Compare
+  the commit timestamp with the pre-push validation window.
+- Root cause:
+  Git hooks export repository-routing variables including `GIT_DIR` and
+  sometimes `GIT_WORK_TREE` or `GIT_INDEX_FILE`. A fixture Git subprocess that
+  changes `cwd` but inherits those variables can still operate on the caller's
+  real repository metadata.
+- Fix:
+  Build a dedicated environment for temporary Git subprocesses and remove all
+  inherited `GIT_*` variables before `git init` or any later fixture command.
+  Restore the affected local branch and index from the verified pushed commit
+  with a non-destructive mixed reset; do not delete the working files.
+- Validation:
+  Add a test that proves the fixture environment removes repository-routing
+  variables, run the affected test with synthetic `GIT_DIR`, `GIT_WORK_TREE`,
+  and `GIT_INDEX_FILE` values, then run the real pre-push flow and verify local
+  and remote HEAD remain identical.
+- References:
+  [check-agent-gui-degradation.test.mjs](../../../tools/scripts/check-agent-gui-degradation.test.mjs)
+  [Local Git Hooks](../local-git-hooks.md)
+
 ### Browser CLI cold start timeout looks like an unreachable daemon
 
 - Symptom:

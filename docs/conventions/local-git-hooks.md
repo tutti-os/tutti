@@ -94,6 +94,11 @@ Rules:
 - `pre-push` should stay aligned with first-pass pull-request CI checks
 - slower cross-workspace validation belongs here rather than in `pre-commit`
 - if a check is too expensive for `pre-commit`, keep it in `pre-push` and CI
+- tests or validation scripts that create temporary Git repositories must remove
+  inherited `GIT_*` repository-routing variables from child-process
+  environments; Git exports variables such as `GIT_DIR` while running hooks,
+  and allowing a fixture command to inherit them can mutate the caller's real
+  branch or index instead of the temporary repository
 
 TypeScript package tests and Go workspace tests use discovery-based runners
 instead of root package/module whitelists. Successful runs print compact
