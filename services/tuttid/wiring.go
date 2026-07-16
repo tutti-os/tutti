@@ -41,6 +41,7 @@ import (
 	issuemanagercli "github.com/tutti-os/tutti/services/tuttid/service/cli/providers/issuemanager"
 	managedmodelscli "github.com/tutti-os/tutti/services/tuttid/service/cli/providers/managedmodels"
 	referencescli "github.com/tutti-os/tutti/services/tuttid/service/cli/providers/references"
+	tuttimodeplancli "github.com/tutti-os/tutti/services/tuttid/service/cli/providers/tuttimodeplan"
 	workbenchappscli "github.com/tutti-os/tutti/services/tuttid/service/cli/providers/workbenchapps"
 	collabrunservice "github.com/tutti-os/tutti/services/tuttid/service/collabrun"
 	computersvc "github.com/tutti-os/tutti/services/tuttid/service/computer"
@@ -53,6 +54,8 @@ import (
 	preferencesservice "github.com/tutti-os/tutti/services/tuttid/service/preferences"
 	reporterservice "github.com/tutti-os/tutti/services/tuttid/service/reporter"
 	tuttiagentservice "github.com/tutti-os/tutti/services/tuttid/service/tuttiagent"
+	tuttimodeactivationservice "github.com/tutti-os/tutti/services/tuttid/service/tuttimodeactivation"
+	tuttimodeplanservice "github.com/tutti-os/tutti/services/tuttid/service/tuttimodeplan"
 	userprojectservice "github.com/tutti-os/tutti/services/tuttid/service/userproject"
 	workspaceservice "github.com/tutti-os/tutti/services/tuttid/service/workspace"
 	workspaceagentservice "github.com/tutti-os/tutti/services/tuttid/service/workspaceagent"
@@ -284,10 +287,17 @@ func buildDaemonAPI(ctx context.Context, store workspacedata.CatalogStore, analy
 	userProjectStore, _ := store.(workspacedata.UserProjectStore)
 	appStore, _ := store.(workspacedata.AppStore)
 	appFactoryStore, _ := store.(workspacedata.AppFactoryStore)
+	workflowStore, _ := store.(tuttimodeplanservice.Store)
+	sourceSessionDeletionStore, _ := store.(tuttimodeplanservice.SourceSessionDeletionStore)
+	tuttiModeActivationStore, _ := store.(tuttimodeactivationservice.Store)
 	fileAdapter := workspacedata.LocalFilesAdapter{}
 
 	events := eventstreamservice.NewService(eventstreamservice.DefaultCatalog(), nil)
 	preferencesPublisher := eventstreamservice.DesktopPreferencesPublisher{Service: events}
+	tuttiModeActivations := &tuttimodeactivationservice.Service{
+		Store:     tuttiModeActivationStore,
+		Publisher: eventstreamservice.TuttiModeActivationPublisher{Service: events},
+	}
 	preferences := &preferencesservice.Service{
 		Store:                          preferencesStore,
 		Publisher:                      preferencesPublisher,
@@ -424,8 +434,8 @@ func buildDaemonAPI(ctx context.Context, store workspacedata.CatalogStore, analy
 	agentTargetSetup.AuthInvalidation = runOutcomes
 	agentRuntime, err := agentdaemon.NewRuntime(agentdaemon.Config{
 		Reporter: agentRunOutcomeReporter{
-			inner: agentActivityProjection,
-			store: runOutcomes,
+			DurableActivityReporter: agentActivityProjection,
+			store:                   runOutcomes,
 		},
 		ProcessTransport: agentProcessTransport,
 		AdapterResolver: agentextensionservice.RuntimeResolver{
@@ -498,6 +508,7 @@ func buildDaemonAPI(ctx context.Context, store workspacedata.CatalogStore, analy
 	agentSessionService.CommitObserver = agentActivityProjection
 	agentSessionService.SubmitClaimStore = agentActivityRepo
 	agentSessionService.RuntimeOperationEventPublisher = agentActivityProjection
+	agentSessionService.TuttiModeActivations = tuttiModeActivations
 	agentSessionService.RuntimeOperationOwner = uuid.NewString()
 	agentSessionService.StaleTurnSettler = agentActivityProjection
 	agentSessionService.GoalOperationOwner = uuid.NewString()
@@ -590,6 +601,26 @@ func buildDaemonAPI(ctx context.Context, store workspacedata.CatalogStore, analy
 		AgentSessionReader: agentActivityProjection,
 		Publisher:          eventstreamservice.WorkspaceIssuePublisher{Service: events},
 		Store:              issueStore,
+	}
+	tuttiModePlans := &tuttimodeplanservice.Service{
+		Store:                  workflowStore,
+		SourceSessionDeletions: sourceSessionDeletionStore,
+		Revisions:              workspacedata.WorkflowRevisionFiles{StateDir: tuttitypes.DefaultStateDir()},
+		Publisher:              eventstreamservice.WorkspaceWorkflowPublisher{Service: events},
+		IssueMaterializer:      tuttimodeplanservice.WorkspaceIssueMaterializer{Issues: &issueService},
+	}
+	if sourceSessionDeletionStore != nil {
+		agentSessionService.SourceSessionDeletions = tuttiModePlans
+		agentSessionService.SessionDeletionEvents = agentActivityProjection
+	}
+	// Recover accepted Tutti Mode plans before buildDaemonAPI returns the
+	// public service graph. This is a one-shot durable recovery pass, not a
+	// background worker; deterministic Issue materialization makes retries
+	// converge after a response or process loss.
+	if workflowStore != nil {
+		if err := tuttiModePlans.RecoverCreateIssueOperations(ctx); err != nil {
+			return tuttiapi.DaemonAPI{}, nil, nil, nil, fmt.Errorf("recover Tutti Mode plan operations: %w", err)
+		}
 	}
 	issueService.RunReconcileQueue = workspaceservice.NewIssueRunReconcileQueue(workspaceservice.IssueRunReconcileQueueOptions{
 		Delay:     3 * time.Second,
@@ -692,6 +723,7 @@ func buildDaemonAPI(ctx context.Context, store workspacedata.CatalogStore, analy
 			agentTargets,
 			preferences,
 		),
+		tuttimodeplancli.NewProvider(workspaceService, tuttiModePlans),
 	}
 	if browserService != nil {
 		cliProviders = append(cliProviders, browsercli.NewProvider(workspaceService, browserService))
@@ -772,12 +804,14 @@ func buildDaemonAPI(ctx context.Context, store workspacedata.CatalogStore, analy
 		FileService: workspaceservice.FileService{
 			Adapter: fileAdapter,
 		},
-		AgentSessionService: agentSessionService,
-		AgentStatusService:  &agentStatusService,
-		TerminalService:     terminalService,
-		IssueService:        issueService,
-		CLIRegistry:         cliRegistry,
-		AnalyticsReporter:   analyticsReporter,
+		AgentSessionService:        agentSessionService,
+		AgentStatusService:         &agentStatusService,
+		TerminalService:            terminalService,
+		IssueService:               issueService,
+		TuttiModePlanService:       tuttiModePlans,
+		TuttiModeActivationService: tuttiModeActivations,
+		CLIRegistry:                cliRegistry,
+		AnalyticsReporter:          analyticsReporter,
 	}, appCenterService, agentRuntime, providerAuthWatcher, nil
 }
 

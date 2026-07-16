@@ -5,6 +5,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	activityshared "github.com/tutti-os/tutti/packages/agent/daemon/activity/events"
 	"github.com/tutti-os/tutti/packages/agent/daemon/providerregistry"
 )
 
@@ -104,14 +105,53 @@ type CloseInput struct {
 }
 
 type ExecInput struct {
-	RoomID           string
-	AgentSessionID   string
-	Content          []PromptContentBlock
-	DisplayPrompt    string
-	InitialTitle     string
-	InitialTitleBase string
-	Metadata         map[string]any
-	Guidance         bool
+	RoomID         string
+	AgentSessionID string
+	TurnID         string
+	// ClientSubmitID is a typed host identity. The controller may project it
+	// into adapter execution metadata, but callers must not encode it there.
+	ClientSubmitID    string
+	CapabilityRefs    []CapabilityReference
+	TuttiModeSnapshot *TuttiModeTurnSnapshot
+	Content           []PromptContentBlock
+	DisplayPrompt     string
+	InitialTitle      string
+	InitialTitleBase  string
+	Metadata          map[string]any
+	Guidance          bool
+}
+
+// SubmitProvenanceInput describes the canonical user submit that an adapter
+// has already accepted. It is reported separately from Exec so waiting for
+// durable provenance never happens while Exec holds the session lifecycle
+// lock.
+type SubmitProvenanceInput struct {
+	RoomID         string
+	AgentSessionID string
+	TurnID         string
+	ClientSubmitID string
+	Content        []PromptContentBlock
+	DisplayPrompt  string
+	Guidance       bool
+}
+
+type CapabilityReference = activityshared.CapabilityReference
+
+const (
+	TuttiModeStateActive   = "active"
+	TuttiModeStateInactive = "inactive"
+)
+
+// TuttiModeTurnSnapshot is the immutable runtime projection of the durable
+// TuttiModeActivation revision selected for one canonical turn. It carries
+// facts only; provider-facing instruction text is rendered inside this
+// package so callers cannot smuggle arbitrary prompt content through it.
+type TuttiModeTurnSnapshot struct {
+	ActivationID string
+	RevisionID   string
+	Revision     int64
+	State        string
+	Source       string
 }
 
 type CancelInput struct {

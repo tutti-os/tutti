@@ -401,6 +401,21 @@ export abstract class WorkspaceAgentActivityReconcileBridge {
           this.scheduleAgentActivityUpdate(payload);
         },
         { scope: { workspaceId } }
+      ),
+      eventStreamClient.subscribe(
+        "workspace.tuttimode.updated",
+        (event) => {
+          const agentSessionId = event.payload.agentSessionId.trim();
+          if (!agentSessionId) return;
+          this.entries.get(workspaceId)?.engine.dispatch({
+            agentSessionId,
+            needsMessages: false,
+            needsState: true,
+            type: "session/reconcileRequested",
+            workspaceId
+          });
+        },
+        { scope: { workspaceId } }
       )
     );
   }

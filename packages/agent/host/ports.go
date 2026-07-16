@@ -86,6 +86,10 @@ type RuntimeController interface {
 	Close(context.Context, RuntimeCloseInput) error
 }
 
+type RuntimeSubmitProvenanceReporter interface {
+	DurablyReportSubmitProvenance(context.Context, RuntimeSubmitProvenanceInput) error
+}
+
 // RuntimeOperationStore is the complete durable coordinator boundary. Keeping
 // every transition on one port prevents adapters from reimplementing only the
 // transport-facing half of the state machine.

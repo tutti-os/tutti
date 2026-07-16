@@ -63,4 +63,13 @@ describe("ComposerFooter trigger composition", () => {
       "onBeforeOpen: closeQuickPromptCompetingDisclosure"
     );
   });
+
+  it("renders Plan and Tutti as independent removable badges without an execution-mode dropdown", () => {
+    expect(source).not.toContain('data-testid="agent-composer-execution-mode"');
+    expect(source).toContain('data-agent-plan-mode-badge="true"');
+    expect(source).toContain('data-agent-tutti-mode-badge="true"');
+    expect(source).toContain("isPlanModeActive ?");
+    expect(source).toContain("isTuttiModeActive ?");
+    expect(source).toContain("disabled={isTuttiModeUpdating}");
+  });
 });

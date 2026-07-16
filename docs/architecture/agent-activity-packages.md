@@ -368,6 +368,72 @@ from the daemon. Desktop adapters preserve those fields and must not recreate
 them from `runtimeContext`, `lastError`, or module-global per-session defaults.
 Provider-native child work is represented only by child sessions and their
 turns; there is no parallel session metadata summary for it.
+Create/send intents carry the provider `planMode` setting independently from a
+Tutti-owned activation intent. `/plan` controls the boolean provider setting;
+`/tutti` creates or advances a durable `TuttiModeActivation`. Pending draft
+intent, creation, revision-checked updates, daemon projection, and canonical
+Turn snapshots preserve both values without treating them as a mutually
+exclusive mode enum. Historical `capabilityRefs` remain audit data and are
+trimmed and deduplicated by source plus capability, but they do not own the
+activation. Every submit route, including immediate sends, active-turn
+guidance, queued delivery, and provider Plan feedback, preserves that audit
+metadata when Tutti is active.
+
+A create timeout does not negate the optimistic Tutti activation: the draft
+and badge remain pending until a canonical active revision arrives or the
+operation reaches a definitive failure/confirmation expiry. Revision-checked
+updates own their follow-up reconcile command. Unrelated hydration cannot clear
+an uncertain update unless a newer revision with the requested status is
+semantic proof; a failed or inconclusive owned reconcile becomes a retryable
+failed update instead of permanently blocking the composer.
+
+Capability references describe historical submission provenance; they are not
+current activation and are not a workflow state machine. AgentSessionEngine
+normalizes the independent `TuttiModeActivation` read projection separately
+from Session entities, and uses an engine-owned pending draft intent before a
+Session exists. Tutti Mode Plan state is created only by an Agent CLI invocation
+and lives in daemon-owned workspace workflow entities. Renderer code must not
+infer provider Plan intent, Tutti activation, or a Tutti workflow from the
+latest Turn, transcript ordering, arbitrary assistant text, or compatibility
+markers. The schema-first event definitions remain the authority for realtime
+updates; OpenAPI-generated HTTP DTOs stay confined to API projections.
+
+Runtime acceptance is not itself a durable submit receipt. The API, Agent
+service, and runtime adapter carry `ClientSubmitID` through typed inputs; submit
+claims and durability decisions never recover it from diagnostics metadata.
+After `Exec` reports acceptance, the Agent service calls the required
+`RuntimeController.DurablyReportSubmitProvenance` method before accepting the
+Tutti snapshot or submit claim. The runtime reporter FIFO first persists the
+ordinary submitted Turn, then executes that uncoalesced barrier. The barrier
+atomically writes the enriched Session projection and a stable
+`client-submit:user:<clientSubmitId>` user message that references the exact
+canonical Turn; it requires the Turn to exist and never replays or regresses
+its lifecycle. The service accepts a submit claim only after
+`FindTurnByClientSubmitID` reads that same Turn back. Runtime hosts must provide
+the required `DurableActivityReporter`; plain `ActivityReporter` compatibility
+adapters do not satisfy this contract because state and message writes may be
+separate transactions. Reporter decorators preserve the required interface by
+construction instead of probing and forwarding an optional capability.
+
+Source-session deletion is coordinated by the Tutti Mode Plan service, not by
+the workspace data store. `DeleteSession`, `DeleteSessionsBatch`, and
+`ClearSessions` delegate to that use-case boundary in production. The service
+chooses which workflow, checkpoint, and operation states are cancellable and
+supplies the actor, reason, target states, and transition time. The workspace
+store only executes that explicit command, atomically removing the Agent
+Session closure and Tutti activation/Turn snapshots while applying the
+authorized workflow transitions. A persistence-only deletion must never infer
+or repeat the policy.
+
+The transaction result reports every removed Session and each affected
+workflow/checkpoint identity. After commit, the Tutti Mode Plan service emits
+the canonical workflow invalidations and the Agent service emits one
+`session_deleted` invalidation per reported Session. The activity projection
+does not perform a second deletion on that path. Persistence-only deleters and
+standalone activation cleanup remain test/legacy-orphan fallbacks only; normal
+daemon composition wires the coordinator so retries cannot split ownership or
+publish duplicate deletion events.
+
 Before a session exists, composer options carry the same typed capability
 descriptor. The active session descriptor takes precedence once available.
 An omitted pre-session descriptor means the connected daemon predates the

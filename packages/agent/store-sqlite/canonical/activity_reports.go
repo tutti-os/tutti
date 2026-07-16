@@ -90,21 +90,27 @@ type WorkspaceAgentRootProviderTurnTransition struct {
 }
 
 type WorkspaceAgentTurnStateUpdate struct {
-	TurnID                  string                            `json:"turnId"`
-	Origin                  string                            `json:"origin,omitempty"`
-	SourceGoalOperationID   string                            `json:"sourceGoalOperationId,omitempty"`
-	SourceGoalRevision      int64                             `json:"sourceGoalRevision,omitempty"`
-	SourceGoalRepairEpoch   int64                             `json:"sourceGoalRepairEpoch,omitempty"`
-	ActiveTurnID            *string                           `json:"activeTurnId,omitempty"`
-	Phase                   string                            `json:"phase,omitempty"`
-	Outcome                 string                            `json:"outcome,omitempty"`
-	Settling                bool                              `json:"settling,omitempty"`
-	CompletedCommand        *WorkspaceAgentCompletedCommand   `json:"completedCommand,omitempty"`
-	SubmitAvailability      *WorkspaceAgentSubmitAvailability `json:"submitAvailability,omitempty"`
-	FileChanges             map[string]any                    `json:"fileChanges,omitempty"`
-	StartedAtUnixMS         int64                             `json:"startedAtUnixMs,omitempty"`
-	CompletedAtUnixMS       int64                             `json:"completedAtUnixMs,omitempty"`
-	FinalAssistantMessageID string                            `json:"finalAssistantMessageId,omitempty"`
+	TurnID                  string                              `json:"turnId"`
+	CapabilityRefs          []WorkspaceAgentCapabilityReference `json:"capabilityRefs,omitempty"`
+	Origin                  string                              `json:"origin,omitempty"`
+	SourceGoalOperationID   string                              `json:"sourceGoalOperationId,omitempty"`
+	SourceGoalRevision      int64                               `json:"sourceGoalRevision,omitempty"`
+	SourceGoalRepairEpoch   int64                               `json:"sourceGoalRepairEpoch,omitempty"`
+	ActiveTurnID            *string                             `json:"activeTurnId,omitempty"`
+	Phase                   string                              `json:"phase,omitempty"`
+	Outcome                 string                              `json:"outcome,omitempty"`
+	Settling                bool                                `json:"settling,omitempty"`
+	CompletedCommand        *WorkspaceAgentCompletedCommand     `json:"completedCommand,omitempty"`
+	SubmitAvailability      *WorkspaceAgentSubmitAvailability   `json:"submitAvailability,omitempty"`
+	FileChanges             map[string]any                      `json:"fileChanges,omitempty"`
+	StartedAtUnixMS         int64                               `json:"startedAtUnixMs,omitempty"`
+	CompletedAtUnixMS       int64                               `json:"completedAtUnixMs,omitempty"`
+	FinalAssistantMessageID string                              `json:"finalAssistantMessageId,omitempty"`
+}
+
+type WorkspaceAgentCapabilityReference struct {
+	Capability string `json:"capability"`
+	Source     string `json:"source"`
 }
 
 type WorkspaceAgentCompletedCommand struct {

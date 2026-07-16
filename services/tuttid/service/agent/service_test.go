@@ -6961,7 +6961,11 @@ type fakeRuntime struct {
 	closeErr               error
 	closeCalls             []RuntimeCloseInput
 	execErr                error
+	execHook               func(RuntimeExecInput) (RuntimeExecResult, error)
 	execCalls              []RuntimeExecInput
+	provenanceErr          error
+	provenanceHook         func(RuntimeSubmitProvenanceInput) error
+	provenanceCalls        []RuntimeSubmitProvenanceInput
 	goalControlCalls       []RuntimeGoalControlInput
 	goalControlHook        func(context.Context, RuntimeGoalControlInput) (RuntimeGoalControlResult, error)
 	goalReconcileCalls     []RuntimeGoalControlInput
@@ -7448,6 +7452,9 @@ func (f *fakeRuntime) CanResume(input RuntimeResumeInput) bool {
 
 func (f *fakeRuntime) Exec(_ context.Context, input RuntimeExecInput) (RuntimeExecResult, error) {
 	f.execCalls = append(f.execCalls, input)
+	if f.execHook != nil {
+		return f.execHook(input)
+	}
 	if f.execErr != nil {
 		return RuntimeExecResult{}, f.execErr
 	}
@@ -7462,14 +7469,26 @@ func (f *fakeRuntime) Exec(_ context.Context, input RuntimeExecInput) (RuntimeEx
 		session.UpdatedAtUnixMS = time.Now().UnixMilli()
 		f.sessions[key] = session
 	}
+	turnID := strings.TrimSpace(input.TurnID)
+	if turnID == "" {
+		turnID = "turn-1"
+	}
 	return RuntimeExecResult{
 		AgentSessionID: input.AgentSessionID,
 		Status:         "started",
 		Accepted:       true,
 		SessionStatus:  "working",
-		TurnID:         "turn-1",
+		TurnID:         turnID,
 		TurnLifecycle:  TurnLifecycle{Phase: "submitted"},
 	}, nil
+}
+
+func (f *fakeRuntime) DurablyReportSubmitProvenance(_ context.Context, input RuntimeSubmitProvenanceInput) error {
+	f.provenanceCalls = append(f.provenanceCalls, input)
+	if f.provenanceHook != nil {
+		return f.provenanceHook(input)
+	}
+	return f.provenanceErr
 }
 
 func (f *fakeRuntime) ValidatePromptContent(_ context.Context, input RuntimeExecInput) error {

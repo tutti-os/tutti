@@ -31,7 +31,7 @@ func TestGeneratedAgentSessionIncludesIndependentLatestTurnProjection(t *testing
 			Status: agentactivitybiz.InteractionStatusSuperseded,
 		},
 	}
-	generated := generatedAgentSession(agentservice.Session{
+	generated, err := generatedAgentSession(agentservice.Session{
 		ID:                     "session-1",
 		Kind:                   agentactivitybiz.SessionKindRoot,
 		Provider:               "codex",
@@ -49,6 +49,9 @@ func TestGeneratedAgentSessionIncludesIndependentLatestTurnProjection(t *testing
 			Imported: true,
 		},
 	})
+	if err != nil {
+		t.Fatalf("generatedAgentSession() error = %v", err)
+	}
 	if generated.ActiveTurn != nil || generated.ActiveTurnId != nil {
 		t.Fatalf("active turn = %#v id=%#v, want none", generated.ActiveTurn, generated.ActiveTurnId)
 	}

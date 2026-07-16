@@ -89,6 +89,10 @@ func (s *Store) ReportActivityState(
 		LastEventUnixMS: lastEventUnixMS,
 		Session:         session,
 	}}
+	result.Messages.LatestVersion = session.MessageVersion
+	if !accepted && len(input.Messages) > 0 {
+		return ActivityStateReportResult{}, errors.New("workspace agent activity session rejected atomic messages")
+	}
 	// Turn transitions have their own monotonic state machine and may be the
 	// first durable evidence attached to an otherwise exact-replay session
 	// snapshot (notably provider-initiated interactions). Apply them regardless
@@ -131,6 +135,35 @@ func (s *Store) ReportActivityState(
 			return ActivityStateReportResult{}, errors.New("workspace agent activity interaction transition conflicts with immutable identity")
 		}
 	}
+	if accepted {
+		for index, message := range input.Messages {
+			message.MessageID = strings.TrimSpace(message.MessageID)
+			message.TurnID = strings.TrimSpace(message.TurnID)
+			if message.MessageID == "" || message.TurnID == "" {
+				return ActivityStateReportResult{}, fmt.Errorf(
+					"workspace agent activity message %d requires message id and turn id",
+					index,
+				)
+			}
+			acceptedMessage, messageAccepted, messageErr := s.upsertAgentMessageTx(
+				ctx, tx, workspaceID, agentSessionID, message, now, false,
+			)
+			if messageErr != nil {
+				return ActivityStateReportResult{}, messageErr
+			}
+			if !messageAccepted {
+				return ActivityStateReportResult{}, fmt.Errorf(
+					"workspace agent activity message %q was rejected",
+					message.MessageID,
+				)
+			}
+			result.Messages.AcceptedCount++
+			if acceptedMessage.Version > result.Messages.LatestVersion {
+				result.Messages.LatestVersion = acceptedMessage.Version
+			}
+			result.Messages.Messages = append(result.Messages.Messages, acceptedMessage)
+		}
+	}
 	mutations := activityStateMutations(result)
 	delta, err := s.commitTransaction(ctx, tx, workspaceID, mutations)
 	if err != nil {
@@ -147,7 +180,7 @@ func (s *Store) ReportActivityState(
 }
 
 func activityStateMutations(result ActivityStateReportResult) []TransactionMutation {
-	mutations := make([]TransactionMutation, 0, 4)
+	mutations := make([]TransactionMutation, 0, 4+len(result.Messages.Messages))
 	if result.State.Accepted {
 		session := result.State.Session
 		mutations = append(mutations, transactionMutation(session.WorkspaceID, session.ID, MutationEntitySession, session.ID, "upsert", session.UpdatedAtUnixMS))
@@ -165,10 +198,30 @@ func activityStateMutations(result ActivityStateReportResult) []TransactionMutat
 			"upsert", result.Interaction.UpdatedAtUnixMS,
 		))
 	}
+	for _, message := range result.Messages.Messages {
+		mutations = append(mutations, transactionMutation(
+			result.State.Session.WorkspaceID, message.AgentSessionID, MutationEntityMessage,
+			message.MessageID, "upsert", int64(message.Version),
+		))
+	}
 	return mutations
 }
 
 func turnTransitionAlreadyApplied(stored Turn, incoming TurnTransition) bool {
+	if capabilityReferencesAlreadyApplied(stored.CapabilityRefs, incoming.CapabilityRefs) {
+		if strings.TrimSpace(incoming.Phase) == "" {
+			return true
+		}
+		// A replay of the original submitted envelope may arrive after its
+		// capability refs were merged into a later lifecycle phase. This is the
+		// sole cross-phase idempotency case; refs must already be present and the
+		// submitted event must not be newer than the stored turn.
+		if strings.TrimSpace(incoming.Phase) == TurnPhaseSubmitted &&
+			incoming.OccurredAtUnixMS > 0 &&
+			incoming.OccurredAtUnixMS <= stored.UpdatedAtUnixMS {
+			return true
+		}
+	}
 	if stored.TurnID == "" || stored.Phase != strings.TrimSpace(incoming.Phase) {
 		return false
 	}
@@ -180,6 +233,23 @@ func turnTransitionAlreadyApplied(stored Turn, incoming TurnTransition) bool {
 		outcome = TurnOutcomeCompleted
 	}
 	return stored.Outcome == outcome
+}
+
+func capabilityReferencesAlreadyApplied(stored, incoming []CapabilityReference) bool {
+	normalizedIncoming := normalizeCapabilityReferences(incoming)
+	if len(normalizedIncoming) == 0 {
+		return false
+	}
+	storedKeys := make(map[string]struct{}, len(stored))
+	for _, reference := range normalizeCapabilityReferences(stored) {
+		storedKeys[reference.Source+"\x00"+reference.Capability] = struct{}{}
+	}
+	for _, reference := range normalizedIncoming {
+		if _, ok := storedKeys[reference.Source+"\x00"+reference.Capability]; !ok {
+			return false
+		}
+	}
+	return true
 }
 
 func validateActivityStateChildScope(workspaceID string, agentSessionID string, input ActivityStateReport) error {

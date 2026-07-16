@@ -15,9 +15,95 @@ import {
   fakeFailedCompactQuery,
   fakeGuidancePromptQuery,
   fakePermissionCheckQuery,
-  fakeStatusOnlyCompactQuery
+  fakeStatusOnlyCompactQuery,
+  userPromptText
 } from "./sessionRuntimeTestQueries.session.ts";
 import { waitForEvent } from "./sessionRuntimeTestQueries.nested.ts";
+
+test("tutti host context is a synthetic coordinator message before unchanged user input", async () => {
+  const events: Array<{ type: string; payload?: Record<string, unknown> }> = [];
+  const messages: Array<{
+    text: string;
+    isSynthetic?: boolean;
+    shouldQuery?: boolean;
+    origin?: unknown;
+  }> = [];
+  const restoreSink = withSidecarEventSinkForTest((event) =>
+    events.push(event)
+  );
+  try {
+    const session = new SessionRuntime(
+      "provider-session-1",
+      "/repo",
+      {},
+      false,
+      false,
+      {
+        model: "",
+        permissionModeId: "default",
+        planMode: false,
+        effort: "",
+        speed: ""
+      },
+      sidecarClaudeOptionsFromPayload({}),
+      undefined,
+      ({ prompt }) => ({
+        async *[Symbol.asyncIterator]() {
+          const iterator = prompt[Symbol.asyncIterator]();
+          for (let index = 0; index < 2; index += 1) {
+            const next = await iterator.next();
+            const message = next.value!;
+            messages.push({
+              text: userPromptText(message),
+              isSynthetic: message.isSynthetic,
+              shouldQuery: message.shouldQuery,
+              origin: message.origin
+            });
+            yield {
+              ...message,
+              type: "user",
+              parent_tool_use_id: null,
+              session_id: "provider-session-1"
+            } as never;
+          }
+          yield { type: "result", subtype: "success" } as never;
+        },
+        close() {}
+      })
+    );
+
+    await session.start();
+    session.exec(
+      "turn-1",
+      "what mode is active?",
+      undefined,
+      "<tutti-host-context>active</tutti-host-context>"
+    );
+    await waitForEvent(events, "turn_completed");
+
+    assert.deepEqual(messages, [
+      {
+        text: "<tutti-host-context>active</tutti-host-context>",
+        isSynthetic: true,
+        shouldQuery: false,
+        origin: { kind: "coordinator" }
+      },
+      {
+        text: "what mode is active?",
+        isSynthetic: undefined,
+        shouldQuery: undefined,
+        origin: undefined
+      }
+    ]);
+    assert.equal(
+      JSON.stringify(events).includes("<tutti-host-context>"),
+      false,
+      "host-owned context must not be projected as user-visible activity"
+    );
+  } finally {
+    restoreSink();
+  }
+});
 
 test("guidance prompt stays on the active SDK turn", async () => {
   const events: Array<{ type: string; payload?: Record<string, unknown> }> = [];

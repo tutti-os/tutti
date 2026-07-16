@@ -6,6 +6,7 @@ import (
 	"time"
 
 	workspaceissues "github.com/tutti-os/tutti/packages/workspace/issues"
+	workflowbiz "github.com/tutti-os/tutti/services/tuttid/biz/workspaceworkflow"
 	agentservice "github.com/tutti-os/tutti/services/tuttid/service/agent"
 	eventstreamservice "github.com/tutti-os/tutti/services/tuttid/service/eventstream"
 )
@@ -32,10 +33,27 @@ type ListIssueManagerItemsInput struct {
 }
 
 type CreateIssueManagerIssueInput struct {
-	IssueID string
-	TopicID string
-	Title   string
-	Content string
+	IssueID             string
+	TopicID             string
+	Title               string
+	Content             string
+	PlanningSource      string
+	SourceSessionID     string
+	SequentialExecution bool
+	ParallelExecution   bool
+	ExecutionProfile    workspaceissues.ExecutionProfile
+	HasExecutionProfile bool
+	Budget              workspaceissues.Budget
+	HasBudget           bool
+	// TuttiModeWorkflowOwned is an internal authority marker. Transport and
+	// generic CLI adapters never set it; only the accepted workflow materializer
+	// may create an Issue in the reserved deterministic namespace.
+	TuttiModeWorkflowOwned bool
+}
+
+type CreateIssueManagerIssueFromPlanInput struct {
+	Issue CreateIssueManagerIssueInput
+	Tasks []CreateIssueManagerTaskItemInput
 }
 
 type CreateIssueManagerTopicInput struct {
@@ -71,11 +89,16 @@ type CreateIssueManagerTaskInput struct {
 }
 
 type CreateIssueManagerTaskItemInput struct {
-	TaskID      string
-	Title       string
-	Content     string
-	Priority    string
-	DueAtUnixMS int64
+	TaskID             string
+	Title              string
+	Content            string
+	Priority           string
+	DueAtUnixMS        int64
+	AgentTargetID      string
+	ModelPlanID        string
+	Model              string
+	ExecutionDirectory string
+	DependencyTaskIDs  []string
 }
 
 type CreateIssueManagerTasksInput struct {
@@ -179,13 +202,25 @@ func (s IssueManagerService) DeleteTopic(ctx context.Context, workspaceID string
 }
 
 func (s IssueManagerService) CreateIssue(ctx context.Context, workspaceID string, input CreateIssueManagerIssueInput) (workspaceissues.Issue, error) {
+	if workflowbiz.IsReservedTuttiModePlanIssueID(input.IssueID) ||
+		input.PlanningSource == string(workspaceissues.PlanningSourceTuttiModePlan) {
+		return workspaceissues.Issue{}, workspaceissues.ErrInvalidArgument
+	}
 	issue, err := s.domainService().CreateIssue(ctx, workspaceissues.CreateIssueInput{
-		IssueID:     input.IssueID,
-		TopicID:     input.TopicID,
-		WorkspaceID: workspaceID,
-		ActorUserID: issueManagerLocalActorUserID,
-		Title:       input.Title,
-		Content:     input.Content,
+		IssueID:             input.IssueID,
+		TopicID:             input.TopicID,
+		WorkspaceID:         workspaceID,
+		ActorUserID:         issueManagerLocalActorUserID,
+		Title:               input.Title,
+		Content:             input.Content,
+		PlanningSource:      input.PlanningSource,
+		SourceSessionID:     input.SourceSessionID,
+		SequentialExecution: input.SequentialExecution,
+		ParallelExecution:   input.ParallelExecution,
+		ExecutionProfile:    input.ExecutionProfile,
+		HasExecutionProfile: input.HasExecutionProfile,
+		Budget:              input.Budget,
+		HasBudget:           input.HasBudget,
 	})
 	if err != nil {
 		return workspaceissues.Issue{}, err
@@ -196,6 +231,71 @@ func (s IssueManagerService) CreateIssue(ctx context.Context, workspaceID string
 		ChangeKind:  eventstreamservice.WorkspaceIssueChangeIssueCreated,
 	})
 	return issue, nil
+}
+
+func (s IssueManagerService) CreateIssueFromPlan(ctx context.Context, workspaceID string, input CreateIssueManagerIssueFromPlanInput) (workspaceissues.IssueDetail, error) {
+	if input.Issue.PlanningSource != string(workspaceissues.PlanningSourceTuttiModePlan) && input.Issue.PlanningSource != string(workspaceissues.PlanningSourceTraditionalPlan) {
+		return workspaceissues.IssueDetail{}, workspaceissues.ErrInvalidArgument
+	}
+	if len(input.Tasks) == 0 {
+		return workspaceissues.IssueDetail{}, workspaceissues.ErrInvalidArgument
+	}
+	reservedTuttiID := workflowbiz.IsReservedTuttiModePlanIssueID(input.Issue.IssueID)
+	tuttiPlanningSource := input.Issue.PlanningSource == string(workspaceissues.PlanningSourceTuttiModePlan)
+	if reservedTuttiID != input.Issue.TuttiModeWorkflowOwned || tuttiPlanningSource != input.Issue.TuttiModeWorkflowOwned {
+		return workspaceissues.IssueDetail{}, workspaceissues.ErrInvalidArgument
+	}
+	taskItems := make([]workspaceissues.CreateTaskItemInput, 0, len(input.Tasks))
+	for _, task := range input.Tasks {
+		taskItems = append(taskItems, workspaceissues.CreateTaskItemInput{
+			TaskID:             task.TaskID,
+			Title:              task.Title,
+			Content:            task.Content,
+			Priority:           task.Priority,
+			DueAtUnixMS:        task.DueAtUnixMS,
+			AgentTargetID:      task.AgentTargetID,
+			ModelPlanID:        task.ModelPlanID,
+			Model:              task.Model,
+			ExecutionDirectory: task.ExecutionDirectory,
+			DependencyTaskIDs:  task.DependencyTaskIDs,
+		})
+	}
+	issue, tasks, err := s.domainService().CreateIssueWithTasks(ctx, workspaceissues.CreateIssueWithTasksInput{
+		Issue: workspaceissues.CreateIssueInput{
+			IssueID:             input.Issue.IssueID,
+			TopicID:             input.Issue.TopicID,
+			WorkspaceID:         workspaceID,
+			ActorUserID:         issueManagerLocalActorUserID,
+			Title:               input.Issue.Title,
+			Content:             input.Issue.Content,
+			PlanningSource:      input.Issue.PlanningSource,
+			SourceSessionID:     input.Issue.SourceSessionID,
+			SequentialExecution: input.Issue.SequentialExecution,
+			ParallelExecution:   input.Issue.ParallelExecution,
+			ExecutionProfile:    input.Issue.ExecutionProfile,
+			HasExecutionProfile: input.Issue.HasExecutionProfile,
+			Budget:              input.Issue.Budget,
+			HasBudget:           input.Issue.HasBudget,
+		},
+		Tasks: taskItems,
+	})
+	if err != nil {
+		return workspaceissues.IssueDetail{}, err
+	}
+	s.publishWorkspaceIssueUpdated(ctx, eventstreamservice.WorkspaceIssueUpdate{
+		WorkspaceID: issue.WorkspaceID,
+		IssueID:     issue.IssueID,
+		ChangeKind:  eventstreamservice.WorkspaceIssueChangeIssueCreated,
+	})
+	for _, task := range tasks {
+		s.publishWorkspaceIssueUpdated(ctx, eventstreamservice.WorkspaceIssueUpdate{
+			WorkspaceID: task.WorkspaceID,
+			IssueID:     task.IssueID,
+			TaskID:      task.TaskID,
+			ChangeKind:  eventstreamservice.WorkspaceIssueChangeTaskCreated,
+		})
+	}
+	return s.GetIssueDetail(ctx, workspaceID, issue.IssueID)
 }
 
 func (s IssueManagerService) GetIssueDetail(ctx context.Context, workspaceID string, issueID string) (workspaceissues.IssueDetail, error) {

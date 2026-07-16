@@ -106,14 +106,24 @@ func turnTransitionFromStateInput(
 	agentSessionID := strings.TrimSpace(input.AgentSessionID)
 
 	if turn := state.Turn; turn != nil && strings.TrimSpace(turn.TurnID) != "" {
+		capabilityRefs := capabilityReferencesFromTurnPatch(turn.CapabilityRefs)
+		rawPhase := strings.TrimSpace(turn.Phase)
 		phase := normalizeTurnPhaseV2(turn.Phase, turn.Settling)
 		if phase == "" {
-			return agentactivitybiz.TurnTransition{}, false
+			if rawPhase != "" || len(capabilityRefs) == 0 {
+				return agentactivitybiz.TurnTransition{}, false
+			}
+			return agentactivitybiz.TurnTransition{
+				WorkspaceID: workspaceID, AgentSessionID: agentSessionID,
+				TurnID: strings.TrimSpace(turn.TurnID), CapabilityRefs: capabilityRefs,
+				OccurredAtUnixMS: state.OccurredAtUnixMS,
+			}, true
 		}
 		transition := agentactivitybiz.TurnTransition{
 			WorkspaceID:             workspaceID,
 			AgentSessionID:          agentSessionID,
 			TurnID:                  strings.TrimSpace(turn.TurnID),
+			CapabilityRefs:          capabilityRefs,
 			Phase:                   phase,
 			Outcome:                 normalizeTurnOutcomeV2(turn.Outcome),
 			FileChanges:             clonePayload(turn.FileChanges),
@@ -137,6 +147,22 @@ func turnTransitionFromStateInput(
 	}
 
 	return agentactivitybiz.TurnTransition{}, false
+}
+
+func capabilityReferencesFromTurnPatch(
+	references []canonical.WorkspaceAgentCapabilityReference,
+) []agentactivitybiz.CapabilityReference {
+	if len(references) == 0 {
+		return nil
+	}
+	mapped := make([]agentactivitybiz.CapabilityReference, 0, len(references))
+	for _, reference := range references {
+		mapped = append(mapped, agentactivitybiz.CapabilityReference{
+			Capability: strings.TrimSpace(reference.Capability),
+			Source:     strings.TrimSpace(reference.Source),
+		})
+	}
+	return mapped
 }
 
 // normalizeTurnPhaseV2 maps the open runtime phase vocabulary onto the
@@ -248,8 +274,20 @@ func GeneratedWorkspaceAgentTurn(turn agentactivitybiz.Turn) tuttigenerated.Work
 		value := turn.SourceGoalRepairEpoch
 		sourceGoalRepairEpoch = &value
 	}
+	var capabilityRefs *[]tuttigenerated.WorkspaceAgentCapabilityReference
+	if len(turn.CapabilityRefs) > 0 {
+		mapped := make([]tuttigenerated.WorkspaceAgentCapabilityReference, 0, len(turn.CapabilityRefs))
+		for _, reference := range turn.CapabilityRefs {
+			mapped = append(mapped, tuttigenerated.WorkspaceAgentCapabilityReference{
+				Capability: tuttigenerated.WorkspaceAgentCapabilityReferenceCapability(strings.TrimSpace(reference.Capability)),
+				Source:     tuttigenerated.WorkspaceAgentCapabilityReferenceSource(strings.TrimSpace(reference.Source)),
+			})
+		}
+		capabilityRefs = &mapped
+	}
 	return tuttigenerated.WorkspaceAgentTurn{
 		AgentSessionId:        strings.TrimSpace(turn.AgentSessionID),
+		CapabilityRefs:        capabilityRefs,
 		CompletedCommand:      completedCommand,
 		Error:                 turnError,
 		FileChanges:           fileChanges,

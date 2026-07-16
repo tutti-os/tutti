@@ -574,6 +574,8 @@ export function createDesktopAgentActivityRuntime(
       });
       return normalizedResult;
     },
+    updateTuttiModeActivation: (input) =>
+      workspaceAgentActivityService.updateTuttiModeActivation(input),
     async trackSettingsProjectChange(input) {
       await new AgentSettingsProjectChangedReporter(
         {

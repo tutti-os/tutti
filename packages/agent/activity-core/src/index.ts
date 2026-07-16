@@ -1,5 +1,6 @@
 export type { AgentActivityAdapter } from "./adapter.ts";
 export type { AgentActivityComposerModelConfiguration } from "./composerModelConfiguration.types.ts";
+export { normalizeAgentActivityCapabilityReferences } from "./capabilityReferences.ts";
 export {
   normalizeAgentActivitySession,
   type AgentActivitySessionInput
@@ -89,6 +90,18 @@ export type {
   SessionsDeleteCommand,
   SessionsDeleteRequestedIntent
 } from "./engine/sessionMutations.types.ts";
+export {
+  selectTuttiModeActivationPresentation,
+  selectTuttiModeDraftIsActive,
+  tuttiModeActivationPresentationsEqual,
+  type TuttiModeActivationPresentation
+} from "./engine/tuttiModeActivation.selectors.ts";
+export type {
+  TuttiModeActivationCommand,
+  TuttiModeActivationIntent,
+  TuttiModeActivationState,
+  TuttiModeActivationUpdateCommand
+} from "./engine/tuttiModeActivation.types.ts";
 export {
   selectAttentionReadState,
   selectSessionAttention
@@ -265,6 +278,7 @@ export type {
   AgentActivitySlashCommandEffect,
   AgentActivitySlashCommandPolicy,
   AgentActivityComposerSkillOption,
+  AgentActivityCapabilityReference,
   AgentActivityCollaborationAdoption,
   AgentActivityCollaborationMode,
   AgentActivityCollaborationRun,
@@ -302,6 +316,13 @@ export type {
   AgentActivitySessionKind,
   AgentActivitySessionEventEnvelope,
   AgentActivitySessionList,
+  AgentActivityInitialTuttiModeActivation,
+  AgentActivityTuttiModeActivation,
+  AgentActivityTuttiModeActivationRevision,
+  AgentActivityTuttiModeActivationSource,
+  AgentActivityTuttiModeActivationStatus,
+  AgentActivityUpdateTuttiModeActivationInput,
+  AgentActivityUpdateTuttiModeActivationResult,
   AgentActivitySubmitInteractiveInput,
   AgentActivitySubmitInteractiveResult,
   AgentActivitySnapshot,

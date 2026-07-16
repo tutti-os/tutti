@@ -57,7 +57,10 @@ import type {
   DesktopHostWindowApi,
   DesktopWorkspaceAppExternalHostApi
 } from "@preload/types";
-import type { TuttidClient } from "@tutti-os/client-tuttid-ts";
+import type {
+  TuttidClient,
+  TuttidEventStreamClient
+} from "@tutti-os/client-tuttid-ts";
 import type { TuttiExternalFileOpenInput } from "@tutti-os/workspace-external-core/contracts";
 import type { IReporterService } from "@renderer/features/analytics";
 import {
@@ -119,6 +122,7 @@ function renderStandaloneAgentSidebarFooter(): ReactNode {
 export interface StandaloneAgentWindowProps {
   agentProviderStatusService: AgentProviderStatusService;
   desktopApi: DesktopApi;
+  eventStreamClient: TuttidEventStreamClient;
   hostWindowApi: Pick<
     DesktopHostWindowApi,
     | "approveClose"
@@ -147,6 +151,7 @@ export interface StandaloneAgentWindowProps {
 export function StandaloneAgentWindow({
   agentProviderStatusService,
   desktopApi,
+  eventStreamClient,
   hostWindowApi,
   reporterService,
   richTextAtService,
@@ -466,6 +471,7 @@ export function StandaloneAgentWindow({
       createDesktopAgentGUIWorkbenchHostInput({
         agentQuickPromptService,
         hostFilesApi: desktopApi.host.files,
+        eventStreamClient,
         tuttidClient,
         platformApi: desktopApi.platform,
         reporterService,
@@ -482,6 +488,7 @@ export function StandaloneAgentWindow({
       desktopApi.host.files,
       desktopApi.platform,
       desktopApi.runtime,
+      eventStreamClient,
       reporterService,
       richTextAtService,
       tuttidClient,
@@ -781,6 +788,9 @@ export function StandaloneAgentWindow({
             <DesktopAgentGUISurface
               agentActivityRuntime={agentGuiHostInput.agentActivityRuntime}
               agentHostApi={agentGuiHostInput.agentHostApi}
+              tuttiModePlanReviewRuntime={
+                agentGuiHostInput.tuttiModePlanReviewRuntime
+              }
               appCenterService={workspaceAppCenterService}
               agentProviderStatusService={agentProviderStatusService}
               surface={surface}
@@ -792,6 +802,7 @@ export function StandaloneAgentWindow({
               dockPreviewCache={dockPreviewCache}
               onLinkAction={handleLinkAction}
               onCapabilitySettingsRequest={handleCapabilitySettingsRequest}
+              onCreateIssueFromPlan={agentGuiHostInput.createIssueFromPlan}
               onOpenAgentConversationWindow={({
                 agentSessionId,
                 agentTargetId,

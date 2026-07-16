@@ -36,7 +36,8 @@ test("desktop agent activity adapter rejects missing protocol v2 session fields"
     "activeTurnId",
     "latestTurnInteractions",
     "pendingInteractions",
-    "railSectionKey"
+    "railSectionKey",
+    "tuttiModeActivation"
   ] as const) {
     const malformed = { ...createSession() } as Record<string, unknown>;
     delete malformed[field];
@@ -383,6 +384,7 @@ test("desktop agent activity adapter forwards typed submit diagnostics", async (
     clientSubmitId: "submit-1",
     workspaceId,
     agentSessionId: "agent-session-1",
+    capabilityRefs: [{ capability: "tutti", source: "slash_command" }],
     content: [{ type: "text", text: "hello" }],
     guidance: true,
     submitDiagnostics: {
@@ -395,6 +397,7 @@ test("desktop agent activity adapter forwards typed submit diagnostics", async (
     {
       agentSessionId: "agent-session-1",
       request: {
+        capabilityRefs: [{ capability: "tutti", source: "slash_command" }],
         clientSubmitId: "submit-1",
         content: [{ type: "text", text: "hello" }],
         displayPrompt: null,
@@ -496,6 +499,106 @@ test("desktop agent activity adapter marks empty-cwd creates as no-project", asy
   });
 
   assert.deepEqual((createBody as { noProject?: boolean }).noProject, true);
+});
+
+test("desktop agent activity adapter creates, projects, and revision-updates the independent Tutti activation", async () => {
+  const activeActivation = {
+    agentSessionId: "agent-session-1",
+    createdAtUnixMs: 10,
+    currentRevision: {
+      activationId: "activation-1",
+      createdAtUnixMs: 10,
+      id: "revision-1",
+      revision: 1,
+      source: "slash_command" as const,
+      status: "active" as const
+    },
+    id: "activation-1",
+    status: "active" as const,
+    updatedAtUnixMs: 10,
+    workspaceId
+  };
+  const inactiveActivation = {
+    ...activeActivation,
+    currentRevision: {
+      activationId: "activation-1",
+      createdAtUnixMs: 20,
+      id: "revision-2",
+      revision: 2,
+      source: "badge_remove" as const,
+      status: "inactive" as const
+    },
+    status: "inactive" as const,
+    updatedAtUnixMs: 20
+  };
+  const createBodies: CreateWorkspaceAgentSessionRequest[] = [];
+  let updateCall: unknown = null;
+  const adapter = createDesktopAgentActivityAdapter({
+    tuttidClient: createTuttidClient({
+      async createWorkspaceAgentSession(_workspaceId, body) {
+        createBodies.push(body);
+        return createSession({
+          id: body.agentSessionId,
+          tuttiModeActivation: activeActivation
+        });
+      },
+      async updateWorkspaceAgentSessionTuttiModeActivation(
+        updateWorkspaceId,
+        agentSessionId,
+        request,
+        requestOptions
+      ) {
+        updateCall = {
+          agentSessionId,
+          request,
+          signal: requestOptions?.signal,
+          workspaceId: updateWorkspaceId
+        };
+        return { activation: inactiveActivation, changed: true };
+      }
+    }),
+    runtimeApi: createRuntimeApi()
+  });
+
+  const created = await adapter.createSession({
+    agentSessionId: "agent-session-1",
+    agentTargetId: "local:codex",
+    clientSubmitId: "submit-tutti",
+    initialTuttiModeActivation: {
+      source: "slash_command",
+      status: "active"
+    },
+    workspaceId
+  });
+  assert.deepEqual(createBodies[0]?.initialTuttiModeActivation, {
+    source: "slash_command",
+    status: "active"
+  });
+  assert.deepEqual(created.tuttiModeActivation, activeActivation);
+
+  const controller = new AbortController();
+  const updated = await adapter.updateTuttiModeActivation({
+    agentSessionId: "agent-session-1",
+    expectedRevision: 1,
+    signal: controller.signal,
+    source: "badge_remove",
+    status: "inactive",
+    workspaceId
+  });
+  assert.deepEqual(updateCall, {
+    agentSessionId: "agent-session-1",
+    request: {
+      expectedRevision: 1,
+      source: "badge_remove",
+      status: "inactive"
+    },
+    signal: controller.signal,
+    workspaceId
+  });
+  assert.deepEqual(updated, {
+    activation: inactiveActivation,
+    changed: true
+  });
 });
 
 test("desktop agent activity adapter forwards HTTPS image URLs structurally", async () => {
@@ -1766,6 +1869,7 @@ function createSession(
     usage: null,
     visible: true,
     ...canonicalOverrides,
+    tuttiModeActivation: canonicalOverrides.tuttiModeActivation ?? null,
     kind: canonicalOverrides.kind ?? "root",
     rootAgentSessionId: canonicalOverrides.rootAgentSessionId ?? null,
     rootTurnId: canonicalOverrides.rootTurnId ?? null,

@@ -35,8 +35,12 @@ func (api DaemonAPI) GoalControlWorkspaceAgentSession(ctx context.Context, reque
 	if err != nil {
 		return writeGoalControlWorkspaceAgentSessionError(err), nil
 	}
+	generatedSession, err := generatedAgentSession(result.Session)
+	if err != nil {
+		return writeGoalControlWorkspaceAgentSessionError(err), nil
+	}
 	response := tuttigenerated.GoalControlWorkspaceAgentSession200JSONResponse{
-		Session: generatedAgentSession(result.Session),
+		Session: generatedSession,
 	}
 	if result.OperationID != "" {
 		response.OperationId = &result.OperationID
@@ -72,8 +76,14 @@ func (api DaemonAPI) GetWorkspaceAgentSessionGoal(ctx context.Context, request t
 			WorkspaceOperationErrorJSONResponse: workspaceOperationError(protocolErr),
 		}, nil
 	}
+	session, err := generatedAgentSession(result.Session)
+	if err != nil {
+		return tuttigenerated.GetWorkspaceAgentSessionGoal502JSONResponse{
+			WorkspaceOperationErrorJSONResponse: workspaceOperationError(apierrors.Classify(err)),
+		}, nil
+	}
 	return tuttigenerated.GetWorkspaceAgentSessionGoal200JSONResponse{
-		Session: generatedAgentSession(result.Session),
+		Session: session,
 		State:   generatedAgentSessionGoalState(result.State),
 	}, nil
 }
@@ -96,8 +106,14 @@ func (api DaemonAPI) ReconcileWorkspaceAgentSessionGoal(ctx context.Context, req
 			WorkspaceOperationErrorJSONResponse: workspaceOperationError(protocolErr),
 		}, nil
 	}
+	session, err := generatedAgentSession(result.Session)
+	if err != nil {
+		return tuttigenerated.ReconcileWorkspaceAgentSessionGoal502JSONResponse{
+			WorkspaceOperationErrorJSONResponse: workspaceOperationError(apierrors.Classify(err)),
+		}, nil
+	}
 	return tuttigenerated.ReconcileWorkspaceAgentSessionGoal200JSONResponse{
-		Session: generatedAgentSession(result.Session),
+		Session: session,
 		State:   generatedAgentSessionGoalState(result.State),
 	}, nil
 }

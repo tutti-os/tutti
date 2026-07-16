@@ -6,6 +6,7 @@
 
 - session: `{{AGENT_SESSION_ID}}`
 - provider: `{{PROVIDER}}`
+- `<tutti-host-context>`: Tutti-owned; independent of Default/Plan; Tutti CLI is always available.
 
 {{ENVIRONMENT_POLICY_SECTIONS}}
 
@@ -24,7 +25,6 @@
 ### Rules
 
 - `mention://...` = internal data. Not URL/path.
-- Prefer matching skill first.
 - Use matching skill before files, browser/web, MCP, raw CLI, code.
 - Provider Skill tool exists -> call exact visible name for matching `$...` skill.
 - Skill missing/fails -> read matching materialized `SKILL.md` from provider/runtime listing.
@@ -38,7 +38,6 @@
 ## Execution Environment
 
 - `{{CLI_COMMAND}}` talks to local daemon over localhost/IPC.
-- Run `{{CLI_COMMAND}}` where localhost/IPC is available.
 - If provider offers env/permission choices, choose the local-daemon-capable one.
 - Do not change global sandbox settings yourself.
 - If the daemon is unavailable, say so; do not guess from files.

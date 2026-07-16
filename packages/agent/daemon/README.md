@@ -112,6 +112,25 @@ and must not introduce a second mapping in between.
   `WithMessageCursorStore` persists message sync cursors so pulls resume after
   a restart. Both are opt-in; without them behavior is unchanged.
 
+`ActivityReporter` and `SessionActivityReporterAdapter` are compatibility
+projection contracts; they are not sufficient to host a runtime controller
+because their state and message writes may use separate transactions.
+`agentdaemon.Config.Reporter` requires `DurableActivityReporter`, whose
+`ReportSubmitProvenance` method must atomically persist the canonical
+client-submit message against an already-durable Turn and return only after
+that message can be queried by `clientSubmitId`. A host decorator embeds or
+otherwise preserves this required interface; there is no optional capability
+probe to forward manually.
+
+The daemon service passes `ClientSubmitID` through typed create/send and runtime
+inputs. After `Exec` reports provider acceptance, the service explicitly calls
+the required `RuntimeController.DurablyReportSubmitProvenance` method before it
+accepts any submit claim. The runtime adapter delegates that call to the
+controller after `Exec` has released the session lifecycle lock; the controller
+places the uncoalesced barrier behind earlier reports in the same FIFO. A
+barrier failure is delivery-unknown, and provider work is never blindly
+replayed.
+
 ```go
 client := agentsessionstore.NewClient(agentsessionstore.Config{
     BaseURL: "https://controlplane.example.com",

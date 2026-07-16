@@ -82,6 +82,7 @@ function session(): AgentActivitySession {
     settings: {},
     startedAtUnixMs: 1,
     title: "Session",
+    tuttiModeActivation: null,
     updatedAtUnixMs: 20,
     usage: null,
     visible: true,

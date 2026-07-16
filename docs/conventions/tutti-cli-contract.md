@@ -365,6 +365,46 @@ After a successful claim, an authoritative terminal runtime disposition still
 wins; for example, a runtime `superseded` result must not be rewritten to
 `answered` merely because the durable claim already marked the Interaction.
 
+## Tutti Mode Plan Commands
+
+`tutti plan` is the Agent-callable observation and proposal surface for the
+Tutti-owned workspace workflow. It is available independently of the current
+Tutti Mode activation badge and independently of a provider's Default or Plan
+collaboration mode. The badge is host preference state; it is not CLI
+authorization and it is not evidence that a workflow exists.
+
+The public command set is deliberately narrow:
+
+- `tutti plan propose --file <absolute-path> --request-id <stable-id>` creates
+  the initial configuration revision and review checkpoint;
+- `tutti plan revise --workflow-id <id> --file <absolute-path> --request-id
+<stable-id>` appends the next immutable revision permitted by the current
+  workflow state;
+- `tutti plan get --workflow-id <id>` returns the caller-session-scoped
+  authoritative snapshot;
+- `tutti plan wait --workflow-id <id> --checkpoint-id <id>` performs a bounded
+  wait for a durable user decision or operation outcome.
+
+There is no Agent CLI approval command. Accept, reject, feedback, and cancel
+remain user-owned daemon interactions. The Agent may only observe the committed
+result and continue with the returned next action.
+
+`propose` and `revise` require caller-generated request IDs because response
+loss must not cause an unintentional second mutation. The durable identity is
+`(workspace, source session, mutation kind, workflow scope, request ID)`.
+Retrying the same key with the same exact Markdown bytes returns the original
+workflow, revision, and checkpoint and reports `replayed: true`. Reusing that
+key with different bytes is a conflict. A new request ID is an intentional new
+mutation even when the bytes and content-addressed file are identical; a
+content digest is integrity evidence, not user intent.
+
+Workflow lookup is isolated to the Agent session supplied by the daemon CLI
+runtime context. A workflow created by another source session is reported as
+not found. App CLI parent-command identity is not Agent Turn or tool-call
+provenance and must never be stored as such. Proposal input files must be
+absolute, bounded in size, parsed by the daemon, and retained as immutable
+Markdown content; CLI clients must not implement the workflow state machine.
+
 `agent turn-resources --json` is the narrow helper for looking up resources from
 one explicit session turn. It requires `--session-id` and `--turn-id`, filters at
 the message query layer, and returns resource-bearing user messages with images
@@ -463,6 +503,7 @@ Workspace apps must not claim these scopes:
 - `agent`
 - `help`
 - `issue`
+- `plan`
 - `status`
 
 ## Input Schema

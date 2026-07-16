@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 
 	agentruntime "github.com/tutti-os/tutti/packages/agent/daemon/runtime"
 	agenthost "github.com/tutti-os/tutti/packages/agent/host"
@@ -151,26 +152,36 @@ func (a agentRuntimeAdapter) Close(ctx context.Context, input agentservice.Runti
 }
 
 func (a agentRuntimeAdapter) Exec(ctx context.Context, input agentservice.RuntimeExecInput) (agentservice.RuntimeExecResult, error) {
-	agentservice.LogSubmitTrace("runtime_adapter.exec.entered", input.WorkspaceID, input.AgentSessionID, input.Metadata, map[string]any{
+	if !input.Guidance && strings.TrimSpace(input.TurnID) == "" {
+		return agentservice.RuntimeExecResult{}, fmt.Errorf(
+			"%w: canonical turn id is required for a new agent turn",
+			agentservice.ErrInvalidArgument,
+		)
+	}
+	agentservice.LogSubmitTrace("runtime_adapter.exec.entered", input.WorkspaceID, input.AgentSessionID, input.ClientSubmitID, input.Metadata, map[string]any{
 		"content_block_count": len(input.Content),
 	})
 	result, err := a.controller.Exec(ctx, agentruntime.ExecInput{
-		RoomID:           input.WorkspaceID,
-		AgentSessionID:   input.AgentSessionID,
-		Content:          runtimePromptContentFromService(input.Content),
-		DisplayPrompt:    input.DisplayPrompt,
-		InitialTitle:     input.InitialTitle,
-		InitialTitleBase: input.InitialTitleBase,
-		Guidance:         input.Guidance,
-		Metadata:         cloneRuntimeContext(input.Metadata),
+		RoomID:            input.WorkspaceID,
+		AgentSessionID:    input.AgentSessionID,
+		TurnID:            input.TurnID,
+		ClientSubmitID:    input.ClientSubmitID,
+		CapabilityRefs:    runtimeCapabilityReferencesFromService(input.CapabilityRefs),
+		Content:           runtimePromptContentFromService(input.Content),
+		DisplayPrompt:     input.DisplayPrompt,
+		InitialTitle:      input.InitialTitle,
+		InitialTitleBase:  input.InitialTitleBase,
+		Guidance:          input.Guidance,
+		Metadata:          cloneRuntimeContext(input.Metadata),
+		TuttiModeSnapshot: runtimeTuttiModeSnapshotFromService(input.TuttiModeSnapshot),
 	})
 	if err != nil {
-		agentservice.LogSubmitTrace("runtime_adapter.exec.failed", input.WorkspaceID, input.AgentSessionID, input.Metadata, map[string]any{
+		agentservice.LogSubmitTrace("runtime_adapter.exec.failed", input.WorkspaceID, input.AgentSessionID, input.ClientSubmitID, input.Metadata, map[string]any{
 			"error": err.Error(),
 		})
 		return agentservice.RuntimeExecResult{}, mapAgentRuntimeError(err)
 	}
-	agentservice.LogSubmitTrace("runtime_adapter.exec.resolved", input.WorkspaceID, input.AgentSessionID, input.Metadata, map[string]any{
+	agentservice.LogSubmitTrace("runtime_adapter.exec.resolved", input.WorkspaceID, input.AgentSessionID, input.ClientSubmitID, input.Metadata, map[string]any{
 		"turn_id":        result.TurnID,
 		"session_status": result.SessionStatus,
 		"turn_phase":     result.TurnLifecycle.Phase,
@@ -184,6 +195,56 @@ func (a agentRuntimeAdapter) Exec(ctx context.Context, input agentservice.Runtim
 		TurnLifecycle:      serviceTurnLifecycleFromRuntime(result.TurnLifecycle),
 		SubmitAvailability: serviceSubmitAvailabilityFromRuntime(result.SubmitAvailability),
 	}, nil
+}
+
+func (a agentRuntimeAdapter) DurablyReportSubmitProvenance(
+	ctx context.Context,
+	input agentservice.RuntimeSubmitProvenanceInput,
+) error {
+	err := a.controller.DurablyReportSubmitProvenance(ctx, agentruntime.SubmitProvenanceInput{
+		RoomID:         input.WorkspaceID,
+		AgentSessionID: input.AgentSessionID,
+		TurnID:         input.TurnID,
+		ClientSubmitID: input.ClientSubmitID,
+		Content:        runtimePromptContentFromService(input.Content),
+		DisplayPrompt:  input.DisplayPrompt,
+		Guidance:       input.Guidance,
+	})
+	if err != nil {
+		return mapAgentRuntimeError(err)
+	}
+	return nil
+}
+
+func runtimeTuttiModeSnapshotFromService(
+	snapshot *agentservice.TuttiModeTurnSnapshot,
+) *agentruntime.TuttiModeTurnSnapshot {
+	if snapshot == nil {
+		return nil
+	}
+	return &agentruntime.TuttiModeTurnSnapshot{
+		ActivationID: snapshot.ActivationID,
+		RevisionID:   snapshot.RevisionID,
+		Revision:     snapshot.Revision,
+		State:        snapshot.State,
+		Source:       snapshot.Source,
+	}
+}
+
+func runtimeCapabilityReferencesFromService(
+	references []agentservice.CapabilityReference,
+) []agentruntime.CapabilityReference {
+	if len(references) == 0 {
+		return nil
+	}
+	mapped := make([]agentruntime.CapabilityReference, 0, len(references))
+	for _, reference := range references {
+		mapped = append(mapped, agentruntime.CapabilityReference{
+			Capability: reference.Capability,
+			Source:     reference.Source,
+		})
+	}
+	return mapped
 }
 
 func serviceSubmitAvailabilityFromRuntime(value agentruntime.SubmitAvailability) agentservice.SubmitAvailability {

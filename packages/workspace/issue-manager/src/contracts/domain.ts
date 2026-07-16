@@ -14,6 +14,27 @@ export type IssueManagerTaskStatusUpdate =
 
 export type IssueManagerPriority = "high" | "medium" | "low" | (string & {});
 
+export type IssueManagerPlanningSource =
+  | "manual"
+  | "tutti_mode_plan"
+  | "traditional_plan";
+export type IssueManagerBudgetMode = "auto" | "fixed";
+export type IssueManagerBudgetStatus = "active" | "soft_limited";
+
+export interface IssueManagerExecutionProfile {
+  reasoningIntensity: number;
+  orchestrationIntensity: number;
+}
+
+export interface IssueManagerBudget {
+  mode: IssueManagerBudgetMode;
+  tokenLimit: number;
+  consumedTokens: number;
+  quotaWaterlinePercent: number;
+  remainingQuotaPercent?: number;
+  status: IssueManagerBudgetStatus;
+}
+
 export type IssueManagerContextRefParentKind = "issue" | "task";
 
 export interface IssueManagerScope {

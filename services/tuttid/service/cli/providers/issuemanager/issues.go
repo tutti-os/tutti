@@ -2,8 +2,11 @@ package issuemanager
 
 import (
 	"context"
+	"encoding/json"
+	"fmt"
 
 	workspaceissues "github.com/tutti-os/tutti/packages/workspace/issues"
+	workflowbiz "github.com/tutti-os/tutti/services/tuttid/biz/workspaceworkflow"
 	cliservice "github.com/tutti-os/tutti/services/tuttid/service/cli"
 	"github.com/tutti-os/tutti/services/tuttid/service/cli/framework"
 	workspaceservice "github.com/tutti-os/tutti/services/tuttid/service/workspace"
@@ -22,10 +25,22 @@ type issueGetInput struct {
 }
 
 type issueCreateInput struct {
-	IssueID string `cli:"issue-id"`
-	TopicID string `cli:"topic-id" validate:"required" description:"Required topic id. Use issue topic list to discover workspace topics." hint:"Use issue topic list to discover workspace topics."`
-	Title   string `cli:"title" validate:"required"`
-	Content string `cli:"content"`
+	IssueID                string   `cli:"issue-id"`
+	TopicID                string   `cli:"topic-id" validate:"required" description:"Required topic id. Use issue topic list to discover workspace topics." hint:"Use issue topic list to discover workspace topics."`
+	Title                  string   `cli:"title" validate:"required"`
+	Content                string   `cli:"content"`
+	PlanningSource         string   `cli:"planning-source" enum:"manual,traditional_plan" description:"Origin of the plan that produced this issue."`
+	SourceSessionID        string   `cli:"source-session-id" description:"AgentGUI session that produced the plan."`
+	ReasoningIntensity     *int     `cli:"reasoning-intensity" validate:"min=0,max=100" description:"Default task reasoning intensity from 0 to 100."`
+	OrchestrationIntensity *int     `cli:"orchestration-intensity" validate:"min=0,max=100" description:"Planning and collaboration intensity from 0 to 100."`
+	BudgetMode             string   `cli:"budget-mode" enum:"auto,fixed" description:"Automatic or fixed token budget."`
+	TokenBudget            *int64   `cli:"token-budget" validate:"min=1" description:"Fixed token limit; required when budget-mode is fixed."`
+	QuotaWaterlinePercent  *float64 `cli:"quota-waterline-percent" validate:"min=0,max=100" description:"Pause new dispatch when subscription quota reaches this percentage."`
+}
+
+type issueCreateFromPlanInput struct {
+	issueCreateInput
+	TasksJSON string `cli:"tasks-json" validate:"required" description:"Ordered JSON task array. Each task supports taskId, title, content, priority, agentTargetId, modelPlanId, model, executionDirectory, and dependencyTaskIds."`
 }
 
 type issueUpdateInput struct {
@@ -157,6 +172,31 @@ func (p Provider) newIssueCreateCommand() cliservice.Command {
 	})
 }
 
+func (p Provider) newIssueCreateFromPlanCommand() cliservice.Command {
+	return framework.Register(framework.CommandSpec[issueCreateFromPlanInput]{
+		ID:          appID + ".issue.create-from-plan",
+		Path:        []string{"issue", "create-from-plan"},
+		Summary:     "Create an executable issue from a reviewed plan",
+		Description: "Persist a reviewed traditional Plan as one issue with an ordered, validated task dependency graph. Tutti mode plans are materialized only by the daemon workflow after checkpoint approval.",
+		Kind:        framework.KindAction,
+		Workspace:   framework.WorkspaceRequired,
+		Workspaces:  p.workspaces,
+		Inputs:      framework.FromStruct[issueCreateFromPlanInput](),
+		Output: framework.OutputSpec{
+			DefaultMode: cliservice.OutputModeJSON,
+			DefaultView: framework.ViewSummary,
+			JSON:        true,
+			JSONViews: map[framework.OutputView]func(any) map[string]any{
+				framework.ViewSummary: func(result any) map[string]any {
+					detail := result.(workspaceissues.IssueDetail)
+					return map[string]any{"issue": issueDetailValue(detail.Issue), "tasks": taskSummaryValues(detail.Tasks)}
+				},
+			},
+		},
+		Run: p.runIssueCreateFromPlan,
+	})
+}
+
 func (p Provider) newIssueUpdateCommand() cliservice.Command {
 	return framework.Register(framework.CommandSpec[issueUpdateInput]{
 		ID:          appID + ".issue.update",
@@ -205,12 +245,70 @@ func (p Provider) runIssueCreate(ctx context.Context, invoke framework.InvokeCon
 	if err := p.requireIssueManager(); err != nil {
 		return nil, err
 	}
-	return p.issues.CreateIssue(ctx, invoke.WorkspaceID, workspaceservice.CreateIssueManagerIssueInput{
-		IssueID: input.IssueID,
-		TopicID: input.TopicID,
-		Title:   input.Title,
-		Content: input.Content,
+	if workflowbiz.IsReservedTuttiModePlanIssueID(input.IssueID) {
+		return nil, cliservice.InvalidInputKeyError("issue-id")
+	}
+	return p.issues.CreateIssue(ctx, invoke.WorkspaceID, issueCreateServiceInput(input))
+}
+
+func (p Provider) runIssueCreateFromPlan(ctx context.Context, invoke framework.InvokeContext, input issueCreateFromPlanInput) (any, error) {
+	if err := p.requireIssueManager(); err != nil {
+		return nil, err
+	}
+	if input.PlanningSource != string(workspaceissues.PlanningSourceTraditionalPlan) {
+		return nil, cliservice.InvalidInputKeyError("planning-source")
+	}
+	if workflowbiz.IsReservedTuttiModePlanIssueID(input.IssueID) {
+		return nil, cliservice.InvalidInputKeyError("issue-id")
+	}
+	manager, ok := p.issues.(issueFromPlanManager)
+	if !ok {
+		return nil, workspaceissues.ErrInvalidArgument
+	}
+	var parsed []taskCreateBatchItemInput
+	if err := json.Unmarshal([]byte(input.TasksJSON), &parsed); err != nil || len(parsed) == 0 {
+		return nil, fmt.Errorf("%w: tasks-json must be a non-empty task array", cliservice.ErrInvalidInput)
+	}
+	tasks := make([]workspaceservice.CreateIssueManagerTaskItemInput, 0, len(parsed))
+	for _, item := range parsed {
+		tasks = append(tasks, taskCreateBatchServiceInput(item))
+	}
+	return manager.CreateIssueFromPlan(ctx, invoke.WorkspaceID, workspaceservice.CreateIssueManagerIssueFromPlanInput{
+		Issue: issueCreateServiceInput(input.issueCreateInput),
+		Tasks: tasks,
 	})
+}
+
+func issueCreateServiceInput(input issueCreateInput) workspaceservice.CreateIssueManagerIssueInput {
+	profile := workspaceissues.DefaultExecutionProfile()
+	if input.ReasoningIntensity != nil {
+		profile.ReasoningIntensity = *input.ReasoningIntensity
+	}
+	if input.OrchestrationIntensity != nil {
+		profile.OrchestrationIntensity = *input.OrchestrationIntensity
+	}
+	budget := workspaceissues.DefaultBudget()
+	if input.BudgetMode != "" {
+		budget.Mode = workspaceissues.BudgetMode(input.BudgetMode)
+	}
+	if input.TokenBudget != nil {
+		budget.TokenLimit = *input.TokenBudget
+	}
+	if input.QuotaWaterlinePercent != nil {
+		budget.QuotaWaterlinePercent = *input.QuotaWaterlinePercent
+	}
+	return workspaceservice.CreateIssueManagerIssueInput{
+		IssueID:             input.IssueID,
+		TopicID:             input.TopicID,
+		Title:               input.Title,
+		Content:             input.Content,
+		PlanningSource:      input.PlanningSource,
+		SourceSessionID:     input.SourceSessionID,
+		ExecutionProfile:    profile,
+		HasExecutionProfile: input.ReasoningIntensity != nil || input.OrchestrationIntensity != nil,
+		Budget:              budget,
+		HasBudget:           input.BudgetMode != "" || input.TokenBudget != nil || input.QuotaWaterlinePercent != nil,
+	}
 }
 
 func (p Provider) runIssueUpdate(ctx context.Context, invoke framework.InvokeContext, input issueUpdateInput) (any, error) {

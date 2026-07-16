@@ -19,6 +19,43 @@ const (
 	PriorityLow    Priority = "low"
 )
 
+type PlanningSource string
+
+const (
+	PlanningSourceManual          PlanningSource = "manual"
+	PlanningSourceTuttiModePlan   PlanningSource = "tutti_mode_plan"
+	PlanningSourceTraditionalPlan PlanningSource = "traditional_plan"
+)
+
+type BudgetMode string
+
+const (
+	BudgetModeAuto  BudgetMode = "auto"
+	BudgetModeFixed BudgetMode = "fixed"
+)
+
+type BudgetStatus string
+
+const (
+	BudgetStatusActive      BudgetStatus = "active"
+	BudgetStatusSoftLimited BudgetStatus = "soft_limited"
+)
+
+type ExecutionProfile struct {
+	ReasoningIntensity     int
+	OrchestrationIntensity int
+}
+
+type Budget struct {
+	Mode                  BudgetMode
+	TokenLimit            int64
+	ConsumedTokens        int64
+	QuotaWaterlinePercent float64
+	RemainingQuotaPercent float64
+	HasRemainingQuota     bool
+	Status                BudgetStatus
+}
+
 type ContextRefParentKind string
 
 const (
@@ -60,6 +97,12 @@ type Issue struct {
 	CreatorUserID          string
 	CreatorDisplayName     string
 	CreatorAvatarURL       string
+	PlanningSource         PlanningSource
+	SourceSessionID        string
+	SequentialExecution    bool
+	ParallelExecution      bool
+	ExecutionProfile       ExecutionProfile
+	Budget                 Budget
 	CreatedAtUnixMS        int64
 	UpdatedAtUnixMS        int64
 }
@@ -80,6 +123,11 @@ type Task struct {
 	CreatorDisplayName string
 	CreatorAvatarURL   string
 	LatestRunID        string
+	AgentTargetID      string
+	ModelPlanID        string
+	Model              string
+	ExecutionDirectory string
+	DependencyTaskIDs  []string
 	CreatedAtUnixMS    int64
 	UpdatedAtUnixMS    int64
 }

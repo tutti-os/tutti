@@ -19,7 +19,10 @@ export type {
   AgentQuickpromptUpdatedPayloadV1,
   AgentQuickpromptUpdatedEventV1,
   WorkspaceWorkbenchNodeLaunchRequestedEventV1,
-  WorkspaceIssueUpdatedEventV1
+  WorkspaceIssueUpdatedEventV1,
+  WorkspaceTuttimodeUpdatedEventV1,
+  WorkspaceTuttimodeUpdatedPayloadV1,
+  WorkspaceWorkflowUpdatedEventV1
 } from "@tutti-os/event-protocol";
 export {
   createTuttidClient,

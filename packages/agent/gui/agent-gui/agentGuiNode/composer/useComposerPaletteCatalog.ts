@@ -93,7 +93,8 @@ export function useComposerPaletteCatalog({
         compactSupported,
         planSupported: composerSettings.supportsPlanMode,
         browserSupported: Boolean(composerSettings.supportsBrowser),
-        computerSupported: Boolean(composerSettings.supportsComputerUse)
+        computerSupported: Boolean(composerSettings.supportsComputerUse),
+        tuttiSupported: true
       }).filter(
         (command) =>
           goalSupported || command.name.trim().toLowerCase() !== "goal"
@@ -168,27 +169,33 @@ export function useComposerPaletteCatalog({
           const computerUseAuthorization =
             capabilityMenuState?.computerUse?.authorization ?? null;
           const capLabel =
-            command.capability === "computerUse"
-              ? labels.computerUseCapabilityLabel
-              : labels.browserUseCapabilityLabel;
+            command.capability === "tutti"
+              ? labels.tuttiModeLabel
+              : command.capability === "computerUse"
+                ? labels.computerUseCapabilityLabel
+                : labels.browserUseCapabilityLabel;
           const capDescription =
-            command.capability === "computerUse"
-              ? computerUseInstalled === false
-                ? labels.computerUseCapabilitySetupRequiredDescription
-                : computerUseAuthorization === "needs-authorization"
-                  ? labels.computerUseCapabilityAuthorizationRequiredDescription
-                  : computerUseAuthorization === "unknown"
-                    ? labels.computerUseCapabilityAuthorizationUnknownDescription
-                    : labels.computerUseCapabilityDescription
-              : browserConnectionMode === "autoConnect"
-                ? labels.browserUseCapabilityDescriptionAutoConnect
-                : browserConnectionMode === "isolated"
-                  ? labels.browserUseCapabilityDescriptionIsolated
-                  : labels.browserUseCapabilityDescription;
+            command.capability === "tutti"
+              ? labels.tuttiModeDescription
+              : command.capability === "computerUse"
+                ? computerUseInstalled === false
+                  ? labels.computerUseCapabilitySetupRequiredDescription
+                  : computerUseAuthorization === "needs-authorization"
+                    ? labels.computerUseCapabilityAuthorizationRequiredDescription
+                    : computerUseAuthorization === "unknown"
+                      ? labels.computerUseCapabilityAuthorizationUnknownDescription
+                      : labels.computerUseCapabilityDescription
+                : browserConnectionMode === "autoConnect"
+                  ? labels.browserUseCapabilityDescriptionAutoConnect
+                  : browserConnectionMode === "isolated"
+                    ? labels.browserUseCapabilityDescriptionIsolated
+                    : labels.browserUseCapabilityDescription;
           const capSettingsLabel =
-            command.capability === "computerUse"
-              ? labels.computerUseCapabilitySettingsLabel
-              : labels.browserUseCapabilitySettingsLabel;
+            command.capability === "tutti"
+              ? labels.tuttiModeLabel
+              : command.capability === "computerUse"
+                ? labels.computerUseCapabilitySettingsLabel
+                : labels.browserUseCapabilitySettingsLabel;
           const capabilityEntry: AgentSlashPaletteEntry = {
             type: "capability",
             key: `capability:${command.capability}`,
@@ -257,6 +264,8 @@ export function useComposerPaletteCatalog({
     labels.computerUseCapabilitySetupRequiredDescription,
     labels.computerUseCapabilityLabel,
     labels.computerUseCapabilitySettingsLabel,
+    labels.tuttiModeDescription,
+    labels.tuttiModeLabel,
     labels.slashCommandCompactLabel,
     labels.slashCommandContextLabel,
     labels.slashCommandFastLabel,

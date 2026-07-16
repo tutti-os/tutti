@@ -206,6 +206,12 @@ WHERE id = ?
 	if _, err := s.agentStore().ClearSessionsTx(ctx, tx, workspaceID); err != nil {
 		return fmt.Errorf("clear agent sessions for deleted workspace: %w", err)
 	}
+	// Older Tutti-mode schemas predate the workspace foreign key on immutable
+	// turn snapshots. Keep deletion explicit so upgraded databases cannot retain
+	// orphaned reservations.
+	if _, err := tx.ExecContext(ctx, `DELETE FROM tutti_mode_turn_snapshots WHERE workspace_id = ?`, workspaceID); err != nil {
+		return fmt.Errorf("clear Tutti mode turn snapshots for deleted workspace: %w", err)
+	}
 
 	if err := tx.Commit(); err != nil {
 		return fmt.Errorf("commit delete workspace: %w", err)

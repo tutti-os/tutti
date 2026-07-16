@@ -2,10 +2,12 @@ import {
   AGENT_SESSION_ENGINE_LOCAL_ORIGIN,
   createAgentSessionEngine,
   type AgentActivityAdapter,
+  type AgentActivitySendInput,
   type AgentSessionEngine,
   type PromptQueueSendCommand,
   type SessionActivateCommand,
-  type SessionReconcileCommand
+  type SessionReconcileCommand,
+  type TuttiModeActivationUpdateCommand
 } from "@tutti-os/agent-activity-core";
 import type { AgentActivityRuntime } from "@tutti-os/agent-gui";
 import type { TuttidClient } from "@tutti-os/client-tuttid-ts";
@@ -32,17 +34,7 @@ interface CreateWorkspaceAgentSessionEngineHostInput {
   }): Promise<unknown>;
   reconcileSession(command: SessionReconcileCommand): Promise<unknown>;
   runtimeApi: Pick<DesktopRuntimeApi, "logTerminalDiagnostic">;
-  sendInput(input: {
-    agentSessionId: string;
-    clientSubmitId: string;
-    content: Parameters<AgentActivityRuntime["sendInput"]>[0]["content"];
-    displayPrompt?: string | null;
-    guidance?: boolean;
-    submitDiagnostics?: Parameters<
-      AgentActivityRuntime["sendInput"]
-    >[0]["submitDiagnostics"];
-    workspaceId: string;
-  }): Promise<unknown>;
+  sendInput(input: AgentActivitySendInput): Promise<unknown>;
   submitInteractive: AgentActivityRuntime["submitInteractive"];
   submitPlanDecision(input: {
     action: "implement";
@@ -59,6 +51,7 @@ interface CreateWorkspaceAgentSessionEngineHostInput {
   ): () => void;
   unactivateSession: AgentActivityRuntime["unactivateSession"];
   updateSessionSettings: AgentActivityRuntime["updateSessionSettings"];
+  updateTuttiModeActivation: AgentActivityRuntime["updateTuttiModeActivation"];
   tuttidClient: TuttidClient;
   workspaceId: string;
 }
@@ -81,6 +74,9 @@ export async function executeWorkspaceAgentPromptSendCommand(
   }
   return input.sendInput({
     agentSessionId: command.agentSessionId,
+    ...(command.capabilityRefs?.length
+      ? { capabilityRefs: command.capabilityRefs }
+      : {}),
     clientSubmitId: command.clientSubmitId,
     content: [...command.content],
     displayPrompt: command.displayPrompt ?? null,
@@ -88,6 +84,26 @@ export async function executeWorkspaceAgentPromptSendCommand(
     ...(command.submitDiagnostics
       ? { submitDiagnostics: { ...command.submitDiagnostics } }
       : {}),
+    workspaceId: command.workspaceId
+  });
+}
+
+export function executeWorkspaceAgentTuttiModeUpdateCommand(
+  input: Pick<
+    CreateWorkspaceAgentSessionEngineHostInput,
+    "updateTuttiModeActivation"
+  >,
+  command: TuttiModeActivationUpdateCommand,
+  signal?: AbortSignal
+): Promise<unknown> {
+  return input.updateTuttiModeActivation({
+    agentSessionId: command.agentSessionId,
+    ...(command.expectedRevision === undefined
+      ? {}
+      : { expectedRevision: command.expectedRevision }),
+    signal,
+    source: command.source,
+    status: command.status,
     workspaceId: command.workspaceId
   });
 }
@@ -191,6 +207,12 @@ export function createWorkspaceAgentSessionEngineHost(
               signal: options?.signal,
               workspaceId: command.workspaceId
             });
+          case "tuttiMode/update":
+            return executeWorkspaceAgentTuttiModeUpdateCommand(
+              input,
+              command,
+              options?.signal
+            );
           case "engine/probe":
             return Promise.resolve({ ok: true });
           case "engine/reconcileWorkspace": {
@@ -271,6 +293,13 @@ function activationInput(
       : {}),
     ...(command.initialDisplayPrompt !== undefined
       ? { initialDisplayPrompt: command.initialDisplayPrompt }
+      : {}),
+    ...(command.initialTuttiModeActivation
+      ? {
+          initialTuttiModeActivation: {
+            ...command.initialTuttiModeActivation
+          }
+        }
       : {}),
     ...(command.submitDiagnostics
       ? { submitDiagnostics: { ...command.submitDiagnostics } }

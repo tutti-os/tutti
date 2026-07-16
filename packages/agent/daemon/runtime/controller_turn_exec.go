@@ -13,6 +13,15 @@ import (
 )
 
 func (c *Controller) beginTurn(session Session, turnID string, cancel context.CancelFunc) (Session, error) {
+	return c.beginTurnWithTuttiModeSnapshot(session, turnID, cancel, nil)
+}
+
+func (c *Controller) beginTurnWithTuttiModeSnapshot(
+	session Session,
+	turnID string,
+	cancel context.CancelFunc,
+	tuttiModeSnapshot *TuttiModeTurnSnapshot,
+) (Session, error) {
 	if c == nil {
 		return Session{}, fmt.Errorf("agent session controller is unavailable")
 	}
@@ -27,7 +36,11 @@ func (c *Controller) beginTurn(session Session, turnID string, cancel context.Ca
 		return Session{}, ErrSessionActiveTurn
 	}
 	c.sessions[key] = session
-	c.turns[key] = activeTurn{turnID: turnID, cancel: cancel}
+	c.turns[key] = activeTurn{
+		turnID:            turnID,
+		cancel:            cancel,
+		tuttiModeSnapshot: cloneTuttiModeTurnSnapshot(tuttiModeSnapshot),
+	}
 	return session, nil
 }
 
@@ -44,6 +57,20 @@ func (c *Controller) rollbackSubmittedTurn(session Session, turnID string) {
 	}
 	delete(c.turns, key)
 	c.sessions[key] = session
+}
+
+func (c *Controller) activeTurnTuttiModeSnapshot(roomID string, agentSessionID string) *TuttiModeTurnSnapshot {
+	if c == nil {
+		return nil
+	}
+	key := sessionKey(roomID, agentSessionID)
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	turn, ok := c.turns[key]
+	if !ok {
+		return nil
+	}
+	return cloneTuttiModeTurnSnapshot(turn.tuttiModeSnapshot)
 }
 
 func (c *Controller) runExecTurn(ctx context.Context, session Session, adapter Adapter, content []PromptContentBlock, displayPrompt string, turnID string) {

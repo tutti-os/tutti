@@ -64,7 +64,8 @@ export async function handleRequest(
                 repairEpoch: numberValue(payload.goalRepairEpoch),
                 action: stringValue(payload.goalAction) as "set" | "clear"
               }
-            : undefined
+            : undefined,
+          stringValue(payload.hostContext)
         );
         emit({ id, type: "ok" });
         return;

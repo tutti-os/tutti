@@ -233,6 +233,30 @@ func RegisterRoutes(mux *http.ServeMux, routes Routes) {
 		}
 	})
 
+	mux.HandleFunc("/v1/workspaces/{workspaceID}/workflows", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			tuttitypes.WriteMethodNotAllowed(w)
+			return
+		}
+		wrapper.ListWorkspaceWorkflows(w, r)
+	})
+
+	mux.HandleFunc("/v1/workspaces/{workspaceID}/workflows/{workflowID}", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			tuttitypes.WriteMethodNotAllowed(w)
+			return
+		}
+		wrapper.GetWorkspaceWorkflow(w, r)
+	})
+
+	mux.HandleFunc("/v1/workspaces/{workspaceID}/workflows/{workflowID}/checkpoints/{checkpointID}/decision", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			tuttitypes.WriteMethodNotAllowed(w)
+			return
+		}
+		wrapper.DecideWorkspaceWorkflowCheckpoint(w, r)
+	})
+
 	mux.HandleFunc("/v1/workspaces/{workspaceID}/agent-context/workspace-app-mentions", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet {
 			tuttitypes.WriteMethodNotAllowed(w)
@@ -523,6 +547,17 @@ func RegisterRoutes(mux *http.ServeMux, routes Routes) {
 			wrapper.GetWorkspaceAgentSession(w, r)
 		case http.MethodDelete:
 			wrapper.DeleteWorkspaceAgentSession(w, r)
+		default:
+			tuttitypes.WriteMethodNotAllowed(w)
+		}
+	})
+
+	mux.HandleFunc("/v1/workspaces/{workspaceID}/agent-sessions/{agentSessionID}/tutti-mode-activation", func(w http.ResponseWriter, r *http.Request) {
+		switch r.Method {
+		case http.MethodGet:
+			wrapper.GetWorkspaceAgentSessionTuttiModeActivation(w, r)
+		case http.MethodPut:
+			wrapper.UpdateWorkspaceAgentSessionTuttiModeActivation(w, r)
 		default:
 			tuttitypes.WriteMethodNotAllowed(w)
 		}

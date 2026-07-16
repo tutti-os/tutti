@@ -63,6 +63,7 @@ type FieldSpec struct {
 	Min                *int64
 	Max                *int64
 	Enum               []string
+	Default            any
 }
 
 type InputSpec struct {

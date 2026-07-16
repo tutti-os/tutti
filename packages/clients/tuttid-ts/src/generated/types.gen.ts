@@ -2013,6 +2013,61 @@ export type AgentProviderStatusListResponse = {
   providers: Array<AgentProviderStatus>;
 };
 
+export type TuttiModeActivationStatus = "active" | "inactive";
+
+/**
+ * User-visible interaction that created this activation revision.
+ */
+export type TuttiModeActivationSource = "slash_command" | "badge_remove";
+
+export type TuttiModeActivationRevision = {
+  id: string;
+  activationId: string;
+  revision: number;
+  status: TuttiModeActivationStatus;
+  source: TuttiModeActivationSource;
+  createdAtUnixMs: number;
+};
+
+export type TuttiModeActivation = {
+  id: string;
+  workspaceId: string;
+  agentSessionId: string;
+  status: TuttiModeActivationStatus;
+  currentRevision: TuttiModeActivationRevision;
+  createdAtUnixMs: number;
+  updatedAtUnixMs: number;
+};
+
+export type TuttiModeActivationIntent = {
+  status: TuttiModeActivationStatus;
+  source: TuttiModeActivationSource;
+};
+
+export type TuttiModeActivationResponse = {
+  /**
+   * Null until the session has its first Tutti mode activation revision.
+   */
+  activation: TuttiModeActivation | null;
+};
+
+export type UpdateTuttiModeActivationRequest = {
+  status: TuttiModeActivationStatus;
+  source: TuttiModeActivationSource;
+  /**
+   * Optional optimistic-concurrency guard. Zero means no activation revision exists yet.
+   */
+  expectedRevision?: number | null;
+};
+
+export type UpdateTuttiModeActivationResponse = {
+  activation: TuttiModeActivation | null;
+  /**
+   * False for an idempotent update that did not create a new revision.
+   */
+  changed: boolean;
+};
+
 /**
  * Root sessions are user-visible conversations. Child sessions are provider-native agents reached through their immutable parent fields.
  */
@@ -2084,6 +2139,10 @@ export type WorkspaceAgentSession = {
    * Protocol v2. Explicit field extracted from runtimeContext.
    */
   goal: WorkspaceAgentSessionGoal | null;
+  /**
+   * Independent, session-scoped Tutti mode activation projection. Null until the first activation revision exists; capability references are audit records and never determine this state.
+   */
+  tuttiModeActivation: TuttiModeActivation | null;
   /**
    * Protocol v2. True when the session was imported from external provider history. Explicit field extracted from runtimeContext.
    */
@@ -2178,6 +2237,14 @@ export type WorkspaceAgentTurnError = {
 };
 
 /**
+ * A structured user-submission reference to a daemon-owned capability. This is provenance for UI and durable workflow linkage; it is not injected into provider prompt text and does not gate CLI availability.
+ */
+export type WorkspaceAgentCapabilityReference = {
+  capability: "tutti";
+  source: "slash_command";
+};
+
+/**
  * Protocol v2 closed-enum replacement for AgentActivityCompletedCommand.
  */
 export type WorkspaceAgentCompletedCommand = {
@@ -2210,6 +2277,7 @@ export type WorkspaceAgentTurn = {
     [key: string]: unknown;
   } | null;
   completedCommand: WorkspaceAgentCompletedCommand | null;
+  capabilityRefs?: Array<WorkspaceAgentCapabilityReference>;
   startedAtUnixMs: number;
   settledAtUnixMs: number | null;
   updatedAtUnixMs: number;
@@ -2626,6 +2694,14 @@ export type CreateWorkspaceAgentSessionRequest = {
   speed?: string | null;
   planMode?: boolean | null;
   browserUse?: boolean | null;
+  /**
+   * Structured capability references attached to the initial submission. They are persisted on the turn but never converted into provider prompt text.
+   */
+  capabilityRefs?: Array<WorkspaceAgentCapabilityReference>;
+  /**
+   * Optional independent Tutti mode activation intent applied before the first turn starts.
+   */
+  initialTuttiModeActivation?: TuttiModeActivationIntent | null;
   visible?: boolean | null;
 };
 
@@ -2637,6 +2713,10 @@ export type SendWorkspaceAgentSessionInputRequest = {
    * Optional display-only text shown in the conversation (e.g. a folder bundle rendered as one chip while content carries the expanded files).
    */
   displayPrompt?: string | null;
+  /**
+   * Structured capability references attached to this submission. They are persisted on the turn but never converted into provider prompt text.
+   */
+  capabilityRefs?: Array<WorkspaceAgentCapabilityReference>;
   /**
    * When true, send this input as guidance to the currently active turn instead of starting a new turn.
    */
@@ -3068,6 +3148,149 @@ export type PutWorkspaceWorkbenchRequest = {
   snapshot: WorkbenchSnapshot;
 };
 
+export type WorkspaceWorkflowStatus =
+  | "pending_review"
+  | "in_progress"
+  | "accepted"
+  | "rejected"
+  | "completed"
+  | "failed"
+  | "canceled";
+
+export type WorkspaceWorkflow = {
+  id: string;
+  workspaceId: string;
+  type: "tutti_mode_plan";
+  owner: "tutti";
+  triggerKind: "agent_cli";
+  sourceSessionId: string;
+  sourceTurnId: string | null;
+  sourceToolCallId: string | null;
+  status: WorkspaceWorkflowStatus;
+  currentRevisionId: string;
+  createdAtUnixMs: number;
+  updatedAtUnixMs: number;
+};
+
+export type TuttiModePlanExecution = {
+  mode: "sequential" | "parallel";
+  reasoningIntensity: number;
+  orchestrationIntensity: number;
+};
+
+export type TuttiModePlanBudget = {
+  mode: "auto" | "fixed";
+  tokenLimit: number;
+  quotaWaterlinePercent: number;
+};
+
+export type TuttiModePlanTask = {
+  id: string;
+  title: string;
+  content: string;
+  priority: "high" | "medium" | "low";
+  agentTargetId: string | null;
+  modelPlanId: string | null;
+  model: string | null;
+  executionDirectory: string | null;
+  dependsOn: Array<string>;
+};
+
+export type TuttiModePlanDocument = {
+  schema: "tutti-mode-plan/v1";
+  phase: "configuration" | "task_graph";
+  title: string;
+  topicId: string;
+  markdownBody: string;
+  execution: TuttiModePlanExecution;
+  budget: TuttiModePlanBudget;
+  tasks: Array<TuttiModePlanTask>;
+};
+
+export type WorkspaceWorkflowPlanRevision = {
+  id: string;
+  workflowId: string;
+  sequence: number;
+  schemaVersion: "tutti-mode-plan/v1";
+  documentPath: string;
+  sha256: string;
+  producedByTurnId: string | null;
+  createdAtUnixMs: number;
+  document: TuttiModePlanDocument;
+};
+
+export type WorkspaceWorkflowCheckpoint = {
+  id: string;
+  workflowId: string;
+  kind: "configuration_review" | "task_review";
+  revisionId: string;
+  status: "pending" | "accepted" | "rejected" | "superseded" | "canceled";
+  decidedBy: string | null;
+  decisionReason: string | null;
+  createdAtUnixMs: number;
+  updatedAtUnixMs: number;
+  decidedAtUnixMs: number | null;
+};
+
+export type WorkspaceWorkflowTurnLink = {
+  workflowId: string;
+  turnId: string;
+  relation: "source" | "decomposition" | "revision" | "feedback";
+  createdAtUnixMs: number;
+};
+
+export type WorkspaceWorkflowOperation = {
+  id: string;
+  workflowId: string;
+  kind:
+    | "generate_task_graph"
+    | "create_revision"
+    | "create_issue"
+    | "start_issue";
+  status: "pending" | "running" | "succeeded" | "failed" | "canceled";
+  revisionId: string | null;
+  issueId: string | null;
+  errorCode: string | null;
+  errorMessage: string | null;
+  createdAtUnixMs: number;
+  updatedAtUnixMs: number;
+  startedAtUnixMs: number | null;
+  completedAtUnixMs: number | null;
+};
+
+export type WorkspaceWorkflowSnapshot = {
+  workflow: WorkspaceWorkflow;
+  revisions: Array<WorkspaceWorkflowPlanRevision>;
+  checkpoints: Array<WorkspaceWorkflowCheckpoint>;
+  turnLinks: Array<WorkspaceWorkflowTurnLink>;
+  operations: Array<WorkspaceWorkflowOperation>;
+  /**
+   * Read-only projection of the accepted current task graph; never an independent mutable record.
+   */
+  actionableItems: Array<WorkspaceWorkflowActionableItem>;
+};
+
+export type WorkspaceWorkflowActionableItem = {
+  id: string;
+  sourceWorkflowId: string;
+  sourceRevisionId: string;
+  ordinal: number;
+  topicId: string;
+  execution: TuttiModePlanExecution;
+  budget: TuttiModePlanBudget;
+  task: TuttiModePlanTask;
+};
+
+export type WorkspaceWorkflowListResponse = {
+  workflows: Array<WorkspaceWorkflowSnapshot>;
+};
+
+export type DecideWorkspaceWorkflowCheckpointRequest = {
+  decision: "accepted" | "rejected" | "canceled";
+  decidedBy: string;
+  reason?: string | null;
+};
+
 export type CreateWorkspaceRequest = {
   name: string;
 };
@@ -3099,6 +3322,50 @@ export type IssueManagerRunCompletionStatus =
   | "canceled";
 
 export type IssueManagerPriority = "high" | "medium" | "low";
+
+/**
+ * How the issue entered the durable execution workflow.
+ */
+export type IssueManagerPlanningSource =
+  | "manual"
+  | "tutti_mode_plan"
+  | "traditional_plan";
+
+export type IssueManagerBudgetMode = "auto" | "fixed";
+
+/**
+ * soft_limited pauses future dispatch without canceling in-flight runs.
+ */
+export type IssueManagerBudgetStatus = "active" | "soft_limited";
+
+export type IssueManagerExecutionProfile = {
+  /**
+   * Issue-owned reasoning strength inherited by every task and run.
+   */
+  reasoningIntensity: number;
+  /**
+   * Issue-owned decomposition, dependency, review, and retry strength.
+   */
+  orchestrationIntensity: number;
+};
+
+export type IssueManagerBudget = {
+  mode: IssueManagerBudgetMode;
+  /**
+   * Compiled token soft limit. In auto mode the daemon owns this value; zero means no token gate is currently available.
+   */
+  tokenLimit: number;
+  consumedTokens: number;
+  /**
+   * Subscription plans gate on the remaining-quota waterline instead of fake monetary cost.
+   */
+  quotaWaterlinePercent: number;
+  /**
+   * Last provider-reported subscription quota percentage. Omitted when the provider cannot report quota.
+   */
+  remainingQuotaPercent?: number;
+  status: IssueManagerBudgetStatus;
+};
 
 export type IssueManagerStatusCounts = {
   all: number;
@@ -6359,6 +6626,166 @@ export type AcceptAgentSessionWorkResponses = {
 export type AcceptAgentSessionWorkResponse =
   AcceptAgentSessionWorkResponses[keyof AcceptAgentSessionWorkResponses];
 
+export type ListWorkspaceWorkflowsData = {
+  body?: never;
+  path: {
+    workspaceID: string;
+  };
+  query: {
+    sourceSessionId: string;
+    /**
+     * Currently only pending checkpoints are listable.
+     */
+    checkpointStatus?: "pending";
+  };
+  url: "/v1/workspaces/{workspaceID}/workflows";
+};
+
+export type ListWorkspaceWorkflowsErrors = {
+  /**
+   * Request payload or parameters are invalid
+   */
+  400: ApiErrorResponse;
+  /**
+   * Bearer token is missing or invalid
+   */
+  401: ApiErrorResponse;
+  /**
+   * Workspace id was not found
+   */
+  404: ApiErrorResponse;
+  /**
+   * HTTP method is not supported on this route
+   */
+  405: ApiErrorResponse;
+  /**
+   * Workspace operation failed in an upstream adapter or command
+   */
+  502: ApiErrorResponse;
+  /**
+   * Required daemon service dependency is unavailable
+   */
+  503: ApiErrorResponse;
+};
+
+export type ListWorkspaceWorkflowsError =
+  ListWorkspaceWorkflowsErrors[keyof ListWorkspaceWorkflowsErrors];
+
+export type ListWorkspaceWorkflowsResponses = {
+  /**
+   * Matching authoritative workflow snapshots
+   */
+  200: WorkspaceWorkflowListResponse;
+};
+
+export type ListWorkspaceWorkflowsResponse =
+  ListWorkspaceWorkflowsResponses[keyof ListWorkspaceWorkflowsResponses];
+
+export type GetWorkspaceWorkflowData = {
+  body?: never;
+  path: {
+    workspaceID: string;
+    workflowID: string;
+  };
+  query?: never;
+  url: "/v1/workspaces/{workspaceID}/workflows/{workflowID}";
+};
+
+export type GetWorkspaceWorkflowErrors = {
+  /**
+   * Request payload or parameters are invalid
+   */
+  400: ApiErrorResponse;
+  /**
+   * Bearer token is missing or invalid
+   */
+  401: ApiErrorResponse;
+  /**
+   * Workspace id was not found
+   */
+  404: ApiErrorResponse;
+  /**
+   * HTTP method is not supported on this route
+   */
+  405: ApiErrorResponse;
+  /**
+   * Workspace operation failed in an upstream adapter or command
+   */
+  502: ApiErrorResponse;
+  /**
+   * Required daemon service dependency is unavailable
+   */
+  503: ApiErrorResponse;
+};
+
+export type GetWorkspaceWorkflowError =
+  GetWorkspaceWorkflowErrors[keyof GetWorkspaceWorkflowErrors];
+
+export type GetWorkspaceWorkflowResponses = {
+  /**
+   * Authoritative workflow snapshot
+   */
+  200: WorkspaceWorkflowSnapshot;
+};
+
+export type GetWorkspaceWorkflowResponse =
+  GetWorkspaceWorkflowResponses[keyof GetWorkspaceWorkflowResponses];
+
+export type DecideWorkspaceWorkflowCheckpointData = {
+  body: DecideWorkspaceWorkflowCheckpointRequest;
+  path: {
+    workspaceID: string;
+    workflowID: string;
+    checkpointID: string;
+  };
+  query?: never;
+  url: "/v1/workspaces/{workspaceID}/workflows/{workflowID}/checkpoints/{checkpointID}/decision";
+};
+
+export type DecideWorkspaceWorkflowCheckpointErrors = {
+  /**
+   * Request payload or parameters are invalid
+   */
+  400: ApiErrorResponse;
+  /**
+   * Bearer token is missing or invalid
+   */
+  401: ApiErrorResponse;
+  /**
+   * Workspace id was not found
+   */
+  404: ApiErrorResponse;
+  /**
+   * HTTP method is not supported on this route
+   */
+  405: ApiErrorResponse;
+  /**
+   * Checkpoint was already decided differently or is no longer current
+   */
+  409: ApiErrorResponse;
+  /**
+   * Workspace operation failed in an upstream adapter or command
+   */
+  502: ApiErrorResponse;
+  /**
+   * Required daemon service dependency is unavailable
+   */
+  503: ApiErrorResponse;
+};
+
+export type DecideWorkspaceWorkflowCheckpointError =
+  DecideWorkspaceWorkflowCheckpointErrors[keyof DecideWorkspaceWorkflowCheckpointErrors];
+
+export type DecideWorkspaceWorkflowCheckpointResponses = {
+  /**
+   * Updated authoritative workflow snapshot
+   */
+  200: WorkspaceWorkflowSnapshot;
+};
+
+export type DecideWorkspaceWorkflowCheckpointResponse =
+  DecideWorkspaceWorkflowCheckpointResponses[keyof DecideWorkspaceWorkflowCheckpointResponses];
+
 export type ListWorkspaceAppsData = {
   body?: never;
   path: {
@@ -8834,6 +9261,110 @@ export type GetWorkspaceAgentSessionResponses = {
 
 export type GetWorkspaceAgentSessionResponse =
   GetWorkspaceAgentSessionResponses[keyof GetWorkspaceAgentSessionResponses];
+
+export type GetWorkspaceAgentSessionTuttiModeActivationData = {
+  body?: never;
+  path: {
+    workspaceID: string;
+    agentSessionID: string;
+  };
+  query?: never;
+  url: "/v1/workspaces/{workspaceID}/agent-sessions/{agentSessionID}/tutti-mode-activation";
+};
+
+export type GetWorkspaceAgentSessionTuttiModeActivationErrors = {
+  /**
+   * Request payload or parameters are invalid
+   */
+  400: ApiErrorResponse;
+  /**
+   * Bearer token is missing or invalid
+   */
+  401: ApiErrorResponse;
+  /**
+   * Workspace id was not found
+   */
+  404: ApiErrorResponse;
+  /**
+   * HTTP method is not supported on this route
+   */
+  405: ApiErrorResponse;
+  /**
+   * Workspace operation failed in an upstream adapter or command
+   */
+  502: ApiErrorResponse;
+  /**
+   * Required daemon service dependency is unavailable
+   */
+  503: ApiErrorResponse;
+};
+
+export type GetWorkspaceAgentSessionTuttiModeActivationError =
+  GetWorkspaceAgentSessionTuttiModeActivationErrors[keyof GetWorkspaceAgentSessionTuttiModeActivationErrors];
+
+export type GetWorkspaceAgentSessionTuttiModeActivationResponses = {
+  /**
+   * Tutti mode activation projection
+   */
+  200: TuttiModeActivationResponse;
+};
+
+export type GetWorkspaceAgentSessionTuttiModeActivationResponse =
+  GetWorkspaceAgentSessionTuttiModeActivationResponses[keyof GetWorkspaceAgentSessionTuttiModeActivationResponses];
+
+export type UpdateWorkspaceAgentSessionTuttiModeActivationData = {
+  body: UpdateTuttiModeActivationRequest;
+  path: {
+    workspaceID: string;
+    agentSessionID: string;
+  };
+  query?: never;
+  url: "/v1/workspaces/{workspaceID}/agent-sessions/{agentSessionID}/tutti-mode-activation";
+};
+
+export type UpdateWorkspaceAgentSessionTuttiModeActivationErrors = {
+  /**
+   * Request payload or parameters are invalid
+   */
+  400: ApiErrorResponse;
+  /**
+   * Bearer token is missing or invalid
+   */
+  401: ApiErrorResponse;
+  /**
+   * Workspace id was not found
+   */
+  404: ApiErrorResponse;
+  /**
+   * HTTP method is not supported on this route
+   */
+  405: ApiErrorResponse;
+  /**
+   * Tutti mode activation revision conflict
+   */
+  409: ApiErrorResponse;
+  /**
+   * Workspace operation failed in an upstream adapter or command
+   */
+  502: ApiErrorResponse;
+  /**
+   * Required daemon service dependency is unavailable
+   */
+  503: ApiErrorResponse;
+};
+
+export type UpdateWorkspaceAgentSessionTuttiModeActivationError =
+  UpdateWorkspaceAgentSessionTuttiModeActivationErrors[keyof UpdateWorkspaceAgentSessionTuttiModeActivationErrors];
+
+export type UpdateWorkspaceAgentSessionTuttiModeActivationResponses = {
+  /**
+   * Updated Tutti mode activation projection
+   */
+  200: UpdateTuttiModeActivationResponse;
+};
+
+export type UpdateWorkspaceAgentSessionTuttiModeActivationResponse =
+  UpdateWorkspaceAgentSessionTuttiModeActivationResponses[keyof UpdateWorkspaceAgentSessionTuttiModeActivationResponses];
 
 export type ListWorkspaceAgentPinnedSessionPageData = {
   body?: never;

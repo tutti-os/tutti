@@ -12,6 +12,7 @@ import type {
   AgentPromptContentBlock as TuttidAgentPromptContentBlock,
   CreateWorkspaceAgentSessionRequest,
   SendWorkspaceAgentSessionInputRequest,
+  TuttiModeActivation,
   WorkspaceAgentProvider,
   WorkspaceAgentSession,
   WorkspaceAgentSessionMessage,
@@ -253,6 +254,13 @@ export function createDesktopAgentActivityAdapter({
       });
       const request: SendWorkspaceAgentSessionInputRequest = {
         clientSubmitId: input.clientSubmitId,
+        ...(input.capabilityRefs?.length
+          ? {
+              capabilityRefs: input.capabilityRefs.map(
+                toTuttidCapabilityReference
+              )
+            }
+          : {}),
         content: toTuttidPromptContentBlocks(input.content),
         displayPrompt: input.displayPrompt ?? null,
         ...(input.guidance === true ? { guidance: true } : {}),
@@ -318,6 +326,30 @@ export function createDesktopAgentActivityAdapter({
         ),
         turnId: result.turnId,
         turn: result.turn
+      };
+    },
+    async updateTuttiModeActivation(input) {
+      const response =
+        await tuttidClient.updateWorkspaceAgentSessionTuttiModeActivation(
+          input.workspaceId,
+          input.agentSessionId,
+          {
+            ...(input.expectedRevision === undefined
+              ? {}
+              : { expectedRevision: input.expectedRevision }),
+            source: input.source,
+            status: input.status
+          },
+          { signal: input.signal }
+        );
+      if (!response.activation) {
+        throw new Error("workspace_agent.tutti_mode_activation_required");
+      }
+      return {
+        activation: agentActivityTuttiModeActivationFromTuttid(
+          response.activation
+        ),
+        changed: response.changed
       };
     },
     async goalControl(input) {
@@ -394,6 +426,18 @@ export function createDesktopAgentActivityAdapter({
       return agentActivitySessionFromTuttidSession(input.workspaceId, session);
     }
   };
+}
+
+function toTuttidCapabilityReference(reference: {
+  capability: string;
+  source: "slash_command";
+}): { capability: "tutti"; source: "slash_command" } {
+  if (reference.capability !== "tutti") {
+    throw new Error(
+      `Unsupported workspace agent capability reference: ${reference.capability}`
+    );
+  }
+  return { capability: "tutti", source: reference.source };
 }
 
 function reportDesktopAgentMessageListDiagnostic(
@@ -571,6 +615,9 @@ export function agentActivitySessionFromTuttidSession(
       : null,
     usage: session.usage ? structuredClone(session.usage) : null,
     goal: session.goal ? structuredClone(session.goal) : null,
+    tuttiModeActivation: session.tuttiModeActivation
+      ? agentActivityTuttiModeActivationFromTuttid(session.tuttiModeActivation)
+      : null,
     imported: session.imported ?? false,
     visible: session.visible ?? true,
     resumable: session.resumable ?? false,
@@ -617,7 +664,8 @@ function assertProtocolV2SessionContract(session: WorkspaceAgentSession): void {
     "activeTurnId",
     "latestTurnInteractions",
     "pendingInteractions",
-    "railSectionKey"
+    "railSectionKey",
+    "tuttiModeActivation"
   ].filter((field) => !Object.prototype.hasOwnProperty.call(value, field));
   if (missing.length > 0) {
     throw new Error(
@@ -640,6 +688,15 @@ function assertProtocolV2SessionContract(session: WorkspaceAgentSession): void {
       "Protocol v2 contract error: workspace agent railSectionKey must be a non-empty string"
     );
   }
+}
+
+function agentActivityTuttiModeActivationFromTuttid(
+  activation: TuttiModeActivation
+) {
+  return {
+    ...activation,
+    currentRevision: { ...activation.currentRevision }
+  };
 }
 
 export function agentActivityMessageFromTuttidMessage(

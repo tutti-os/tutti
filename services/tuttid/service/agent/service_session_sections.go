@@ -338,17 +338,64 @@ func (s *Service) DeleteSessionsBatch(
 	if workspaceID == "" || err != nil {
 		return DeleteSessionsBatchResult{}, ErrInvalidArgument
 	}
-	result, err := s.ApplicationHost().DeleteSessions(ctx, agenthost.DeleteSessionsInput{
+	if s.SourceSessionDeletions != nil {
+		if _, hasPersistenceFallback := s.SessionReader.(SessionBatchDeleter); !hasPersistenceFallback {
+			return DeleteSessionsBatchResult{}, fmt.Errorf("%w: session batch deleter is unavailable", ErrInvalidArgument)
+		}
+		runtimeClosed := make(map[string]struct{})
+		for _, agentSessionID := range sessionIDs {
+			if _, ok := s.controller().Session(workspaceID, agentSessionID); ok {
+				if err := s.controller().Close(ctx, RuntimeCloseInput{
+					WorkspaceID:    workspaceID,
+					AgentSessionID: agentSessionID,
+				}); err != nil {
+					return DeleteSessionsBatchResult{}, normalizeRuntimeError(err)
+				}
+				runtimeClosed[agentSessionID] = struct{}{}
+			}
+		}
+		deletionInput := agentactivitybiz.DeleteSessionsBatchInput{
+			WorkspaceID: workspaceID,
+			SessionIDs:  sessionIDs,
+		}
+		result, err := s.SourceSessionDeletions.DeleteSourceSessionsBatch(ctx, deletionInput)
+		if err != nil {
+			return DeleteSessionsBatchResult{}, err
+		}
+		s.publishSessionDeletedEvents(ctx, workspaceID, result.RemovedSessionIDs)
+		removedSessionIDs := make(map[string]struct{}, len(result.RemovedSessionIDs))
+		cleanupSessionIDs := make(map[string]struct{}, len(result.RemovedSessionIDs)+len(runtimeClosed))
+		for _, sessionID := range result.RemovedSessionIDs {
+			if sessionID = strings.TrimSpace(sessionID); sessionID != "" {
+				removedSessionIDs[sessionID] = struct{}{}
+				cleanupSessionIDs[sessionID] = struct{}{}
+			}
+		}
+		for sessionID := range runtimeClosed {
+			cleanupSessionIDs[sessionID] = struct{}{}
+		}
+		for sessionID := range cleanupSessionIDs {
+			if err := s.cleanupRuntime(ctx, workspaceID, sessionID); err != nil {
+				return DeleteSessionsBatchResult{}, err
+			}
+		}
+		return DeleteSessionsBatchResult{
+			RemovedMessages:   result.RemovedMessages,
+			RemovedSessions:   result.RemovedSessions,
+			RemovedSessionIDs: result.RemovedSessionIDs,
+		}, nil
+	}
+	hostResult, err := s.ApplicationHost().DeleteSessions(ctx, agenthost.DeleteSessionsInput{
 		WorkspaceID: workspaceID, SessionIDs: sessionIDs,
 	})
 	if err != nil {
 		return DeleteSessionsBatchResult{}, err
 	}
 	return DeleteSessionsBatchResult{
-		RemovedMessages:         result.RemovedMessages,
-		RemovedSessions:         result.RemovedSessions,
-		RemovedSessionIDs:       result.RemovedSessionIDs,
-		CleanupFailedSessionIDs: result.CleanupFailedIDs,
+		RemovedMessages:         hostResult.RemovedMessages,
+		RemovedSessions:         hostResult.RemovedSessions,
+		RemovedSessionIDs:       hostResult.RemovedSessionIDs,
+		CleanupFailedSessionIDs: hostResult.CleanupFailedIDs,
 	}, nil
 }
 
@@ -537,7 +584,7 @@ func (s *Service) sessionsFromActivity(ctx context.Context, workspaceID string, 
 			s.persistedSessionCanResume(ctx, persisted),
 		))
 	}
-	return s.withProtocolV2TurnStates(ctx, workspaceID, result)
+	return s.projectSessionsForResponse(ctx, workspaceID, result)
 }
 
 func userProjectWithSectionKey(project userprojectbiz.Project) userprojectbiz.Project {

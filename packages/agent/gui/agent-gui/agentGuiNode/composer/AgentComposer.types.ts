@@ -37,6 +37,12 @@ export interface AgentComposerReferenceProvenanceFilter {
 
 export interface AgentComposerSubmitOptions {
   requiredSettingsPatch?: AgentActivitySubmitSettingsPatch;
+  capabilityRefs?: readonly AgentComposerCapabilityReference[];
+}
+
+export interface AgentComposerCapabilityReference {
+  capability: "tutti";
+  source: "slash_command";
 }
 
 export interface AgentComposerProps {
@@ -57,6 +63,10 @@ export interface AgentComposerProps {
   disabled: boolean;
   disabledReason?: string | null;
   submitDisabled: boolean;
+  /** Canonical engine projection of the independent TuttiModeActivation. */
+  tuttiModeActive?: boolean;
+  /** Blocks submission/removal while activation CAS or creation is unresolved. */
+  tuttiModeUpdating?: boolean;
   placeholder: string;
   composerSettings: AgentGUIComposerSettingsVM;
   queueStatus?: AgentGUIQueueStatus;
@@ -134,6 +144,9 @@ export interface AgentComposerProps {
       professionalLongRunning: string;
     };
     planModeLabel: string;
+    tuttiModeLabel: string;
+    tuttiModeDescription: string;
+    planModeDescription?: string;
     planModeOnLabel: string;
     planModeOffLabel: string;
     planUnavailable: string;
@@ -290,6 +303,7 @@ export interface AgentComposerProps {
     computerUse?: boolean;
     permissionModeId?: string | null;
   }) => void;
+  onTuttiModeChange?: (active: boolean) => void;
   capabilityMenuState?: AgentComposerCapabilityMenuState;
   capabilityControlsReadOnly?: boolean;
   onCapabilitySettingsRequest?: (
@@ -305,7 +319,8 @@ export interface AgentComposerProps {
   ) => void;
   onSubmitGuidance?: (
     content: AgentPromptContentBlock[],
-    displayPrompt?: string
+    displayPrompt?: string,
+    options?: AgentComposerSubmitOptions
   ) => void;
   onSendQueuedPromptNext: (queuedPromptId: string) => void;
   onRemoveQueuedPrompt: (queuedPromptId: string) => void;
@@ -332,8 +347,10 @@ export interface AgentComposerProps {
   referenceProvenanceFilter?: AgentComposerReferenceProvenanceFilter | null;
 }
 
-export type AgentComposerCapabilitySettingsTarget =
-  AgentSlashCommandCapability["capability"];
+export type AgentComposerCapabilitySettingsTarget = Exclude<
+  AgentSlashCommandCapability["capability"],
+  "tutti"
+>;
 
 export interface AgentComposerCapabilityMenuState {
   browserUse?: {

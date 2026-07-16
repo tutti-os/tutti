@@ -56,14 +56,26 @@ func appServerTurnStartParams(
 	defaultModeMask map[string]any,
 	defaultModel string,
 	commandNetworkAccess bool,
+	tuttiModeHostContext string,
 ) map[string]any {
 	settings := session.SettingsValue()
+	userInput := appServerUserInput(content)
 	params := map[string]any{
 		"threadId": threadID,
-		"input":    appServerUserInput(content),
+		"input":    userInput,
 	}
-	if collaborationMode := appServerCollaborationMode(settings, planModeMask, defaultModeMask, defaultModel); collaborationMode != nil {
+	if collaborationMode := appServerCollaborationMode(settings, planModeMask, defaultModeMask, defaultModel, tuttiModeHostContext); collaborationMode != nil {
 		params["collaborationMode"] = collaborationMode
+	} else if hostContext := strings.TrimSpace(tuttiModeHostContext); hostContext != "" {
+		// collaborationMode/list is an experimental capability and can be absent
+		// or fail transiently. Preserve Tutti-owned turn state through a
+		// provider-transport-only synthetic block instead of silently dropping
+		// it. User prompt previews and activity projection continue to use the
+		// original content passed to this function.
+		params["input"] = append(userInput, map[string]any{
+			"type": "text",
+			"text": hostContext,
+		})
 	}
 	if model := strings.TrimSpace(settings.Model); model != "" {
 		params["model"] = model
@@ -99,6 +111,7 @@ func appServerCollaborationMode(
 	planModeMask map[string]any,
 	defaultModeMask map[string]any,
 	defaultModel string,
+	tuttiModeHostContext string,
 ) map[string]any {
 	if planModeMask == nil && defaultModeMask == nil {
 		return nil
@@ -116,9 +129,18 @@ func appServerCollaborationMode(
 	if model == "" {
 		return nil
 	}
-	collaborationSettings := map[string]any{
-		"model":                  model,
-		"developer_instructions": appServerCollaborationModeDeveloperInstructions(modeMask),
+	baseDeveloperInstructions, _ := appServerCollaborationModeDeveloperInstructions(modeMask).(string)
+	developerInstructions := strings.TrimSpace(baseDeveloperInstructions)
+	if hostContext := strings.TrimSpace(tuttiModeHostContext); hostContext != "" {
+		if developerInstructions == "" {
+			developerInstructions = hostContext
+		} else {
+			developerInstructions += "\n\n" + hostContext
+		}
+	}
+	collaborationSettings := map[string]any{"model": model}
+	if developerInstructions != "" {
+		collaborationSettings["developer_instructions"] = developerInstructions
 	}
 	if effort := codexAppServerReasoningEffortValue(settings.ReasoningEffort); effort != "" {
 		collaborationSettings["reasoning_effort"] = effort

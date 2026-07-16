@@ -110,9 +110,17 @@ func (api DaemonAPI) GetWorkspaceAgentSession(ctx context.Context, request tutti
 	if err != nil {
 		return writeGetWorkspaceAgentSessionError(err), nil
 	}
+	generatedSession, err := generatedAgentSession(detail.Session)
+	if err != nil {
+		return writeGetWorkspaceAgentSessionError(err), nil
+	}
+	generatedChildren, err := generatedAgentSessions(detail.ChildSessions)
+	if err != nil {
+		return writeGetWorkspaceAgentSessionError(err), nil
+	}
 	return tuttigenerated.GetWorkspaceAgentSession200JSONResponse{
-		Session:       generatedAgentSession(detail.Session),
-		ChildSessions: generatedAgentSessions(detail.ChildSessions),
+		Session:       generatedSession,
+		ChildSessions: generatedChildren,
 		Turns:         generatedAgentTurns(detail.Turns),
 	}, nil
 }
@@ -383,57 +391,77 @@ func (api DaemonAPI) SubmitWorkspaceAgentInteractive(ctx context.Context, reques
 	if err != nil {
 		return writeSubmitWorkspaceAgentInteractiveError(err), nil
 	}
+	generatedSession, err := generatedAgentSession(session)
+	if err != nil {
+		return writeSubmitWorkspaceAgentInteractiveError(err), nil
+	}
 	return tuttigenerated.SubmitWorkspaceAgentInteractive200JSONResponse{
-		Session: generatedAgentSession(session),
+		Session: generatedSession,
 	}, nil
 }
 
-func generatedAgentSessions(sessions []agentservice.Session) []tuttigenerated.WorkspaceAgentSession {
+func generatedAgentSessions(sessions []agentservice.Session) ([]tuttigenerated.WorkspaceAgentSession, error) {
 	result := make([]tuttigenerated.WorkspaceAgentSession, 0, len(sessions))
 	for _, session := range sessions {
-		result = append(result, generatedAgentSession(session))
+		generated, err := generatedAgentSession(session)
+		if err != nil {
+			return nil, err
+		}
+		result = append(result, generated)
 	}
-	return result
+	return result, nil
 }
 
-func generatedAgentSessionPage(page agentservice.SessionPage) tuttigenerated.WorkspaceAgentSessionPage {
+func generatedAgentSessionPage(page agentservice.SessionPage) (tuttigenerated.WorkspaceAgentSessionPage, error) {
+	sessions, err := generatedAgentSessions(page.Sessions)
+	if err != nil {
+		return tuttigenerated.WorkspaceAgentSessionPage{}, err
+	}
 	response := tuttigenerated.WorkspaceAgentSessionPage{
 		HasMore:    page.HasMore,
-		Sessions:   generatedAgentSessions(page.Sessions),
+		Sessions:   sessions,
 		TotalCount: page.TotalCount,
 	}
 	if strings.TrimSpace(page.NextCursor) != "" {
 		response.NextCursor = &page.NextCursor
 	}
-	return response
+	return response, nil
 }
 
-func generatedAgentSessionSections(sections []agentservice.SessionSection) []tuttigenerated.WorkspaceAgentSessionSection {
+func generatedAgentSessionSections(sections []agentservice.SessionSection) ([]tuttigenerated.WorkspaceAgentSessionSection, error) {
 	result := make([]tuttigenerated.WorkspaceAgentSessionSection, 0, len(sections))
 	for _, section := range sections {
-		result = append(result, generatedAgentSessionSection(section))
+		generated, err := generatedAgentSessionSection(section)
+		if err != nil {
+			return nil, err
+		}
+		result = append(result, generated)
 	}
-	return result
+	return result, nil
 }
 
-func generatedAgentSessionSection(section agentservice.SessionSection) tuttigenerated.WorkspaceAgentSessionSection {
+func generatedAgentSessionSection(section agentservice.SessionSection) (tuttigenerated.WorkspaceAgentSessionSection, error) {
 	var userProject *tuttigenerated.UserProject
 	if section.UserProject != nil {
 		value := generatedUserProject(*section.UserProject)
 		userProject = &value
 	}
+	sessions, err := generatedAgentSessions(section.Sessions)
+	if err != nil {
+		return tuttigenerated.WorkspaceAgentSessionSection{}, err
+	}
 	response := tuttigenerated.WorkspaceAgentSessionSection{
 		HasMore:     section.HasMore,
 		Kind:        tuttigenerated.WorkspaceAgentSessionSectionKind(section.Kind),
 		SectionKey:  section.SectionKey,
-		Sessions:    generatedAgentSessions(section.Sessions),
+		Sessions:    sessions,
 		TotalCount:  section.TotalCount,
 		UserProject: userProject,
 	}
 	if strings.TrimSpace(section.NextCursor) != "" {
 		response.NextCursor = &section.NextCursor
 	}
-	return response
+	return response, nil
 }
 
 func composerSettingsFromGenerated(settings tuttigenerated.AgentSessionComposerSettings) agentservice.ComposerSettings {
@@ -646,7 +674,7 @@ func agentPromptContentFromGenerated(content []tuttigenerated.AgentPromptContent
 	return result
 }
 
-func generatedAgentSession(session agentservice.Session) tuttigenerated.WorkspaceAgentSession {
+func generatedAgentSession(session agentservice.Session) (tuttigenerated.WorkspaceAgentSession, error) {
 	var settings *tuttigenerated.AgentSessionComposerSettings
 	if session.Settings != nil {
 		value := generatedAgentSessionComposerSettings(*session.Settings)
@@ -656,21 +684,21 @@ func generatedAgentSession(session agentservice.Session) tuttigenerated.Workspac
 	// plus the embedded active turn and pending interactions.
 	var activeTurn *tuttigenerated.WorkspaceAgentTurn
 	if session.ActiveTurn != nil {
-		turn := agentservice.GeneratedWorkspaceAgentTurn(*session.ActiveTurn)
+		turn := generatedWorkspaceAgentTurn(*session.ActiveTurn)
 		activeTurn = &turn
 	}
 	var latestTurn *tuttigenerated.WorkspaceAgentTurn
 	if session.LatestTurn != nil {
-		turn := agentservice.GeneratedWorkspaceAgentTurn(*session.LatestTurn)
+		turn := generatedWorkspaceAgentTurn(*session.LatestTurn)
 		latestTurn = &turn
 	}
 	pendingInteractions := make([]tuttigenerated.WorkspaceAgentInteraction, 0, len(session.PendingInteractions))
 	for _, interaction := range session.PendingInteractions {
-		pendingInteractions = append(pendingInteractions, agentservice.GeneratedWorkspaceAgentInteraction(interaction))
+		pendingInteractions = append(pendingInteractions, generatedWorkspaceAgentInteraction(interaction))
 	}
 	latestTurnInteractions := make([]tuttigenerated.WorkspaceAgentInteraction, 0, len(session.LatestTurnInteractions))
 	for _, interaction := range session.LatestTurnInteractions {
-		latestTurnInteractions = append(latestTurnInteractions, agentservice.GeneratedWorkspaceAgentInteraction(interaction))
+		latestTurnInteractions = append(latestTurnInteractions, generatedWorkspaceAgentInteraction(interaction))
 	}
 	updatedAtUnixMS := session.CreatedAt.UnixMilli()
 	if session.UpdatedAt != nil {
@@ -684,6 +712,10 @@ func generatedAgentSession(session agentservice.Session) tuttigenerated.Workspac
 	generatedSettings := tuttigenerated.AgentSessionComposerSettings{}
 	if settings != nil {
 		generatedSettings = *settings
+	}
+	tuttiModeActivation, err := generatedTuttiModeActivation(session.TuttiModeActivation)
+	if err != nil {
+		return tuttigenerated.WorkspaceAgentSession{}, err
 	}
 	return tuttigenerated.WorkspaceAgentSession{
 		ActiveTurn:             activeTurn,
@@ -713,10 +745,11 @@ func generatedAgentSession(session agentservice.Session) tuttigenerated.Workspac
 		RootTurnId:             optionalStringPointer(strings.TrimSpace(session.RootTurnID)),
 		Settings:               generatedSettings,
 		Title:                  session.Title,
+		TuttiModeActivation:    tuttiModeActivation,
 		UpdatedAtUnixMs:        updatedAtUnixMS,
 		Usage:                  generatedAgentSessionUsage(session.Metadata.Usage),
 		Visible:                session.Visible,
-	}
+	}, nil
 }
 
 func int64Pointer(value int64) *int64 {

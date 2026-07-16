@@ -1,4 +1,12 @@
+import { normalizeAgentActivityCapabilityReferences } from "../capabilityReferences.ts";
 import type { EngineQueuedPrompt } from "./promptQueue.types.ts";
+
+export function clonePromptCapabilityReferences(
+  references: EngineQueuedPrompt["capabilityRefs"]
+): Pick<EngineQueuedPrompt, "capabilityRefs"> {
+  const normalized = normalizeAgentActivityCapabilityReferences(references);
+  return normalized.length > 0 ? { capabilityRefs: normalized } : {};
+}
 
 export function clonePromptRequiredSettingsPatch(
   patch: EngineQueuedPrompt["requiredSettingsPatch"]
@@ -15,6 +23,7 @@ export function normalizeQueuedPrompt(
     ...(prompt.clientSubmitId?.trim()
       ? { clientSubmitId: prompt.clientSubmitId.trim() }
       : {}),
+    ...clonePromptCapabilityReferences(prompt.capabilityRefs),
     content: prompt.content.map((block) => ({ ...block })),
     createdAtUnixMs: prompt.createdAtUnixMs,
     ...(prompt.displayPrompt?.trim()

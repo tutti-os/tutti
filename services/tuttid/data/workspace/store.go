@@ -3,6 +3,7 @@ package workspace
 import (
 	"context"
 	"errors"
+	"time"
 
 	agentstore "github.com/tutti-os/tutti/packages/agent/store-sqlite"
 	agentactivitybiz "github.com/tutti-os/tutti/services/tuttid/biz/agentactivity"
@@ -14,9 +15,11 @@ import (
 	modelbindingbiz "github.com/tutti-os/tutti/services/tuttid/biz/modelbinding"
 	modelplanbiz "github.com/tutti-os/tutti/services/tuttid/biz/modelplan"
 	preferencesbiz "github.com/tutti-os/tutti/services/tuttid/biz/preferences"
+	activationbiz "github.com/tutti-os/tutti/services/tuttid/biz/tuttimodeactivation"
 	userprojectbiz "github.com/tutti-os/tutti/services/tuttid/biz/userproject"
 	workspacebiz "github.com/tutti-os/tutti/services/tuttid/biz/workspace"
 	workspaceagentbiz "github.com/tutti-os/tutti/services/tuttid/biz/workspaceagent"
+	workflowbiz "github.com/tutti-os/tutti/services/tuttid/biz/workspaceworkflow"
 )
 
 var ErrWorkspaceNotFound = errors.New("workspace not found")
@@ -25,6 +28,12 @@ var ErrWorkspaceAppNotFound = errors.New("workspace app not found")
 var ErrWorkspaceAppFactoryJobNotFound = errors.New("workspace app factory job not found")
 var ErrUserProjectNotFound = errors.New("user project not found")
 var ErrUserProjectPartitionMismatch = errors.New("user project move crosses pinned partition")
+var ErrWorkspaceWorkflowNotFound = errors.New("workspace workflow not found")
+var ErrWorkflowCheckpointNotFound = errors.New("workspace workflow checkpoint not found")
+var ErrWorkflowOperationNotFound = errors.New("workspace workflow operation not found")
+var ErrWorkflowRevisionConflict = errors.New("workspace workflow revision conflicts with durable history")
+var ErrWorkflowMutationConflict = errors.New("workspace workflow mutation request conflicts with durable history")
+var ErrTuttiModeActivationRevisionConflict = errors.New("tutti mode activation revision conflicts with durable state")
 
 // ErrAgentTargetNotFound aliases the embedded agent store's sentinel so
 // existing errors.Is checks keep working across the delegation boundary.
@@ -67,6 +76,7 @@ type AgentActivityStore interface {
 	EnsureOrWakeGoalRepairOperation(context.Context, agentactivitybiz.EnsureGoalRepairOperationInput) (agentactivitybiz.GoalControlOperation, agentactivitybiz.SessionGoalState, bool, error)
 	RequeueLeasedGoalControlOperationsOnStartup(context.Context, int64) (int64, error)
 	PrepareSubmitClaim(context.Context, agentactivitybiz.SubmitClaimPrepare) (agentactivitybiz.SubmitClaim, bool, error)
+	GetSubmitClaim(context.Context, string, string, string) (agentactivitybiz.SubmitClaim, bool, error)
 	AcceptSubmitClaim(context.Context, string, string, string, string, int64) (agentactivitybiz.SubmitClaim, bool, error)
 	DeleteSubmitClaim(context.Context, string, string, string) (bool, error)
 }
@@ -146,6 +156,133 @@ type CollaborationRunsStore interface {
 	GetCollaborationRun(context.Context, string, string) (collabrunbiz.Run, error)
 	ListCollaborationRuns(context.Context, string, string, int) ([]collabrunbiz.Run, error)
 	PutCollaborationRun(context.Context, collabrunbiz.Run) error
+}
+
+// WorkspaceWorkflowsStore persists Tutti-owned workflow truth. Source agent
+// session/turn/tool-call ids are provenance only and intentionally do not
+// create cross-owner foreign keys into the provider activity store.
+type WorkspaceWorkflowsStore interface {
+	CreateWorkspaceWorkflowProposal(context.Context, workflowbiz.ProposalAggregate) error
+	CreateWorkspaceWorkflowProposalWithMutation(context.Context, CreateWorkspaceWorkflowProposalMutationInput) (workflowbiz.WorkflowMutation, bool, error)
+	GetWorkspaceWorkflowMutation(context.Context, GetWorkspaceWorkflowMutationInput) (workflowbiz.WorkflowMutation, bool, error)
+	GetWorkspaceWorkflowSnapshot(context.Context, string, string) (workflowbiz.Snapshot, error)
+	ListPendingWorkflowCheckpointsBySourceSession(context.Context, string, string) ([]workflowbiz.PendingCheckpoint, error)
+	AppendWorkspaceWorkflowPlanRevision(context.Context, AppendWorkspaceWorkflowPlanRevisionInput) error
+	AppendWorkspaceWorkflowPlanRevisionWithMutation(context.Context, AppendWorkspaceWorkflowPlanRevisionMutationInput) (workflowbiz.WorkflowMutation, bool, error)
+	AppendWorkspaceWorkflowTurnLink(context.Context, string, workflowbiz.WorkflowTurnLink) error
+	DecideWorkspaceWorkflowCheckpoint(context.Context, DecideWorkspaceWorkflowCheckpointInput) (workflowbiz.WorkflowCheckpoint, bool, error)
+	RecordWorkspaceWorkflowOperation(context.Context, string, workflowbiz.WorkflowOperation) error
+	RetryWorkspaceWorkflowOperation(context.Context, RetryWorkspaceWorkflowOperationInput) (workflowbiz.WorkflowOperation, bool, error)
+	CompleteWorkspaceWorkflowOperation(context.Context, CompleteWorkspaceWorkflowOperationInput) (workflowbiz.WorkflowOperation, bool, error)
+	ListRecoverableCreateIssueOperations(context.Context) ([]RecoverableCreateIssueOperation, error)
+}
+
+type TuttiModeActivationsStore interface {
+	GetTuttiModeActivation(context.Context, string, string) (activationbiz.Activation, bool, error)
+	ListTuttiModeActivations(context.Context, string, []string) (map[string]activationbiz.Activation, error)
+	SetTuttiModeActivation(context.Context, SetTuttiModeActivationInput) (activationbiz.Activation, bool, error)
+	GetTuttiModeTurnSnapshot(context.Context, string, string, string) (activationbiz.TurnSnapshot, bool, error)
+	PutTuttiModeTurnSnapshot(context.Context, string, string, string, activationbiz.TurnSnapshot, time.Time) (activationbiz.TurnSnapshot, bool, error)
+	AcceptTuttiModeTurnSnapshot(context.Context, string, string, string, time.Time) (bool, error)
+	IsTuttiModeTurnSnapshotAccepted(context.Context, string, string, string) (bool, error)
+	AbandonTuttiModeTurnSnapshot(context.Context, string, string, string, activationbiz.TurnSnapshot) (bool, error)
+	DeleteTuttiModeActivationSessionState(context.Context, string, string) error
+}
+
+type SetTuttiModeActivationInput struct {
+	WorkspaceID      string
+	AgentSessionID   string
+	ActivationID     string
+	RevisionID       string
+	ExpectedRevision *int64
+	State            activationbiz.State
+	Source           activationbiz.Source
+	ChangedAt        time.Time
+}
+
+type AppendWorkspaceWorkflowPlanRevisionInput struct {
+	WorkspaceID               string
+	WorkflowID                string
+	ExpectedSourceSessionID   string
+	ExpectedCurrentRevisionID string
+	ExpectedWorkflowStatus    workflowbiz.WorkflowStatus
+	ExpectedCheckpointID      string
+	ExpectedCheckpointStatus  workflowbiz.CheckpointStatus
+	Revision                  workflowbiz.PlanRevision
+	Checkpoint                workflowbiz.WorkflowCheckpoint
+	TurnLinks                 []workflowbiz.WorkflowTurnLink
+	CompleteOperation         *AppendWorkspaceWorkflowOperationCompletion
+	UpdatedAt                 time.Time
+}
+
+type CreateWorkspaceWorkflowProposalMutationInput struct {
+	Aggregate workflowbiz.ProposalAggregate
+	Mutation  workflowbiz.WorkflowMutation
+}
+
+type AppendWorkspaceWorkflowPlanRevisionMutationInput struct {
+	Append   AppendWorkspaceWorkflowPlanRevisionInput
+	Mutation workflowbiz.WorkflowMutation
+}
+
+type GetWorkspaceWorkflowMutationInput struct {
+	WorkspaceID     string
+	SourceSessionID string
+	Kind            workflowbiz.MutationKind
+	ScopeID         string
+	RequestID       string
+}
+
+type RecoverableCreateIssueOperation struct {
+	WorkspaceID     string
+	SourceSessionID string
+	Checkpoint      workflowbiz.WorkflowCheckpoint
+	Operation       workflowbiz.WorkflowOperation
+}
+
+// AppendWorkspaceWorkflowOperationCompletion closes the exact Agent follow-up
+// operation whose output is the newly appended revision. The append and
+// completion share one SQLite transaction so a revision cannot be committed
+// while its deterministic generate/revise operation remains pending.
+type AppendWorkspaceWorkflowOperationCompletion struct {
+	OperationID    string
+	Kind           workflowbiz.OperationKind
+	RevisionID     string
+	ExpectedStatus workflowbiz.OperationStatus
+}
+
+type DecideWorkspaceWorkflowCheckpointInput struct {
+	WorkspaceID               string
+	WorkflowID                string
+	CheckpointID              string
+	ExpectedStatus            workflowbiz.CheckpointStatus
+	ExpectedCurrentRevisionID string
+	ExpectedWorkflowStatus    workflowbiz.WorkflowStatus
+	Decision                  workflowbiz.CheckpointStatus
+	DecidedBy                 string
+	DecisionReason            string
+	DecidedAt                 time.Time
+	WorkflowStatus            workflowbiz.WorkflowStatus
+	Operation                 *workflowbiz.WorkflowOperation
+}
+
+type CompleteWorkspaceWorkflowOperationInput struct {
+	WorkspaceID    string
+	WorkflowID     string
+	OperationID    string
+	ExpectedStatus workflowbiz.OperationStatus
+	Status         workflowbiz.OperationStatus
+	IssueID        string
+	ErrorCode      string
+	ErrorMessage   string
+	CompletedAt    time.Time
+}
+
+type RetryWorkspaceWorkflowOperationInput struct {
+	WorkspaceID string
+	WorkflowID  string
+	OperationID string
+	RetriedAt   time.Time
 }
 
 type ManagedCredentialsStore interface {

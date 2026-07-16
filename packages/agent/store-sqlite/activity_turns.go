@@ -3,6 +3,7 @@ package storesqlite
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
@@ -15,8 +16,10 @@ import (
 // owning session's active_turn_id reference in sync: a live phase points the
 // session at this turn, a settled phase clears the pointer (only if it still
 // points at this turn). A turn that is already settled is terminal; later
-// transitions are rejected (accepted=false) so cancel races and replays stay
-// idempotent.
+// lifecycle transitions are rejected so cancel races and replays stay
+// idempotent. Capability provenance is independent metadata and may still be
+// merged when its report arrives after the lifecycle advanced. A phase-less
+// transition is accepted only for this merge-only form.
 func (s *Store) RecordTurnTransition(ctx context.Context, transition TurnTransition) (Turn, bool, error) {
 	if s == nil || s.db == nil {
 		return Turn{}, false, errors.New("workspace database is not initialized")
@@ -59,10 +62,12 @@ func (*Store) recordTurnTransitionTx(
 	agentSessionID := strings.TrimSpace(transition.AgentSessionID)
 	turnID := strings.TrimSpace(transition.TurnID)
 	phase := strings.TrimSpace(transition.Phase)
+	capabilityRefs := normalizeCapabilityReferences(transition.CapabilityRefs)
 	if workspaceID == "" || agentSessionID == "" || turnID == "" {
 		return Turn{}, false, errors.New("workspace id, agent session id, and turn id are required")
 	}
-	if !isKnownTurnPhase(phase) {
+	metadataOnly := phase == "" && len(capabilityRefs) > 0
+	if !metadataOnly && !isKnownTurnPhase(phase) {
 		return Turn{}, false, fmt.Errorf("unknown workspace agent turn phase %q", phase)
 	}
 	if transition.Outcome != "" && !isKnownTurnOutcome(transition.Outcome) {
@@ -84,15 +89,30 @@ func (*Store) recordTurnTransitionTx(
 	if err != nil {
 		return Turn{}, false, err
 	}
-	if hasExisting && existing.Phase == TurnPhaseSettled && !existing.Backfilled {
-		// Terminal: reject silently so replays are idempotent. Backfilled
+	if metadataOnly {
+		if !hasExisting {
+			return Turn{}, false, fmt.Errorf("merge workspace agent turn capability refs: %w", sql.ErrNoRows)
+		}
+		return mergeTurnCapabilityReferencesTx(ctx, tx, existing, capabilityRefs)
+	}
+	lifecycleRejected := hasExisting && existing.Phase == TurnPhaseSettled && !existing.Backfilled
+	if hasExisting && !existing.Backfilled &&
+		(occurred < existing.UpdatedAtUnixMS || !isAllowedTurnPhaseTransition(existing.Phase, phase)) {
+		lifecycleRejected = true
+	}
+	if lifecycleRejected {
+		if len(capabilityRefs) > 0 {
+			stored, changed, err := mergeTurnCapabilityReferencesTx(ctx, tx, existing, capabilityRefs)
+			return stored, changed, err
+		}
+		// Reject stale, illegal, or terminal lifecycle mutations silently so
+		// replays are idempotent. Capability provenance above is independent
+		// metadata and may still arrive after the lifecycle advanced. Backfilled
 		// placeholder rows stay writable so live reports can enrich them.
 		return existing, false, nil
 	}
-	if hasExisting && !existing.Backfilled {
-		if occurred < existing.UpdatedAtUnixMS || !isAllowedTurnPhaseTransition(existing.Phase, phase) {
-			return existing, false, nil
-		}
+	if err := validateLiveTurnSlotTx(ctx, tx, workspaceID, agentSessionID, turnID, phase); err != nil {
+		return Turn{}, false, err
 	}
 
 	merged := mergeTurnTransition(existing, hasExisting, transition, phase, occurred, now)
@@ -110,14 +130,19 @@ func (*Store) recordTurnTransitionTx(
 	if err != nil {
 		return Turn{}, false, fmt.Errorf("encode workspace agent turn file changes: %w", err)
 	}
+	capabilityRefsJSON, err := json.Marshal(merged.CapabilityRefs)
+	if err != nil {
+		return Turn{}, false, fmt.Errorf("encode workspace agent turn capability refs: %w", err)
+	}
 	if _, err := tx.ExecContext(ctx, `
 INSERT INTO workspace_agent_turns (
-  workspace_id, agent_session_id, turn_id, phase, outcome, error_json,
+  workspace_id, agent_session_id, turn_id, capability_refs_json, phase, outcome, error_json,
   file_changes_json, completed_command_json, backfilled,
   started_at_unix_ms, settled_at_unix_ms, created_at_unix_ms, updated_at_unix_ms,
   turn_origin, source_goal_operation_id, source_goal_revision, source_goal_repair_epoch
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?, ?, ?, ?)
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?, ?, ?, ?)
 ON CONFLICT(workspace_id, agent_session_id, turn_id) DO UPDATE SET
+  capability_refs_json = excluded.capability_refs_json,
   phase = excluded.phase,
   outcome = excluded.outcome,
   error_json = excluded.error_json,
@@ -127,7 +152,7 @@ ON CONFLICT(workspace_id, agent_session_id, turn_id) DO UPDATE SET
   started_at_unix_ms = excluded.started_at_unix_ms,
   settled_at_unix_ms = excluded.settled_at_unix_ms,
   updated_at_unix_ms = excluded.updated_at_unix_ms
-`, workspaceID, agentSessionID, turnID, merged.Phase, nullString(merged.Outcome),
+`, workspaceID, agentSessionID, turnID, string(capabilityRefsJSON), merged.Phase, nullString(merged.Outcome),
 		encodeTurnErrorJSON(merged.ErrorMessage, merged.ErrorCode),
 		fileChangesJSON,
 		encodeCompletedCommandJSON(merged.CompletedCommandKind, merged.CompletedCommandStatus, finalAssistantWatermark{
@@ -244,6 +269,10 @@ func mergeTurnTransition(existing Turn, hasExisting bool, transition TurnTransit
 		merged.SourceGoalRepairEpoch = transition.SourceGoalRepairEpoch
 	}
 	merged.Phase = phase
+	merged.CapabilityRefs = normalizeCapabilityReferences(append(
+		append([]CapabilityReference(nil), existing.CapabilityRefs...),
+		transition.CapabilityRefs...,
+	))
 	merged.Backfilled = false
 	merged.UpdatedAtUnixMS = occurred
 	if transition.ErrorMessage != "" {

@@ -39,6 +39,12 @@ export interface AgentActivitySession {
   capabilities: AgentActivitySessionCapabilities | null;
   usage: AgentActivitySessionUsage | null;
   goal: AgentActivitySessionGoal | null;
+  /**
+   * Read projection of the independent daemon-owned TuttiModeActivation.
+   * The session does not own this lifecycle; activity-core normalizes it into
+   * its dedicated activation slice.
+   */
+  tuttiModeActivation: AgentActivityTuttiModeActivation | null;
   imported: boolean;
   visible: boolean;
   resumable: boolean;
@@ -416,6 +422,7 @@ export interface AgentActivityTurnUpdatedEvent {
 export interface AgentActivityEventTurn {
   turnId: string;
   agentSessionId: string;
+  capabilityRefs?: readonly AgentActivityCapabilityReference[];
   phase: AgentActivityTurnPhase;
   origin: AgentActivityTurnOrigin;
   sourceGoalOperationId?: string | null;
@@ -454,6 +461,39 @@ export interface AgentActivityUpdatedApplyResult {
   session: AgentActivitySession | null;
 }
 
+export interface AgentActivityCapabilityReference {
+  capability: "tutti";
+  source: "slash_command";
+}
+
+export type AgentActivityTuttiModeActivationStatus = "active" | "inactive";
+export type AgentActivityTuttiModeActivationSource =
+  | "slash_command"
+  | "badge_remove";
+
+export interface AgentActivityTuttiModeActivationRevision {
+  activationId: string;
+  revision: number;
+  status: AgentActivityTuttiModeActivationStatus;
+  source: AgentActivityTuttiModeActivationSource;
+  createdAtUnixMs: number;
+}
+
+export interface AgentActivityTuttiModeActivation {
+  id: string;
+  workspaceId: string;
+  agentSessionId: string;
+  status: AgentActivityTuttiModeActivationStatus;
+  currentRevision: AgentActivityTuttiModeActivationRevision;
+  createdAtUnixMs: number;
+  updatedAtUnixMs: number;
+}
+
+export interface AgentActivityInitialTuttiModeActivation {
+  status: "active";
+  source: "slash_command";
+}
+
 export interface AgentActivityCreateSessionInput {
   clientSubmitId: string;
   workspaceId: string;
@@ -461,6 +501,8 @@ export interface AgentActivityCreateSessionInput {
   agentTargetId: string;
   cwd?: string | null;
   noProject?: boolean | null;
+  capabilityRefs?: readonly AgentActivityCapabilityReference[] | null;
+  initialTuttiModeActivation?: AgentActivityInitialTuttiModeActivation | null;
   initialContent?: AgentPromptContentBlock[] | null;
   /** 仅展示用的首轮文本(bundle 折叠成一个 chip);initialContent 仍带展开后的文件。 */
   initialDisplayPrompt?: string | null;
@@ -475,10 +517,26 @@ export interface AgentActivityCreateSessionInput {
   signal?: AbortSignal;
 }
 
+export interface AgentActivityUpdateTuttiModeActivationInput {
+  workspaceId: string;
+  agentSessionId: string;
+  status: AgentActivityTuttiModeActivationStatus;
+  source: AgentActivityTuttiModeActivationSource;
+  expectedRevision?: number | null;
+  signal?: AbortSignal;
+}
+
+export interface AgentActivityUpdateTuttiModeActivationResult {
+  activation: AgentActivityTuttiModeActivation;
+  changed: boolean;
+}
+
+
 export interface AgentActivitySendInput {
   clientSubmitId: string;
   workspaceId: string;
   agentSessionId: string;
+  capabilityRefs?: readonly AgentActivityCapabilityReference[] | null;
   content: AgentPromptContentBlock[];
   /** 仅展示用文本(bundle 折叠成一个 chip);content 仍带展开后的文件。 */
   displayPrompt?: string | null;
@@ -664,6 +722,8 @@ export interface AgentActivityCompletedCommand {
 
 export interface AgentActivityTurn {
   agentSessionId: string;
+  /** Audit-only capability provenance for the turn; never current mode state. */
+  capabilityRefs?: readonly AgentActivityCapabilityReference[];
   completedCommand?: AgentActivityCompletedCommand | null;
   error?: { code?: string; message: string } | null;
   fileChanges?: Record<string, unknown> | null;

@@ -1,5 +1,5 @@
 import { type ReactNode } from "react";
-import { ListChecks, Target, X } from "lucide-react";
+import { ListChecks, Sparkles, Target, X } from "lucide-react";
 import {
   Select,
   SelectContent,
@@ -50,6 +50,9 @@ interface Props {
   isSendingTurn: boolean;
   isHeroLayout: boolean;
   isGoalModeActive: boolean;
+  isPlanModeActive: boolean;
+  isTuttiModeActive: boolean;
+  isTuttiModeUpdating: boolean;
   composerActionButton: ReactNode;
   quickPromptControl?: ReactNode;
   showHandoffSelect: boolean;
@@ -73,6 +76,8 @@ interface Props {
   onSubmit: AgentComposerProps["onSubmit"];
   onClearGoalMode: () => void;
   draftPrompt: string;
+  onClearPlanMode: () => void;
+  onClearTuttiMode: () => void;
 }
 
 export function ComposerFooter({
@@ -91,6 +96,9 @@ export function ComposerFooter({
   isSendingTurn,
   isHeroLayout,
   isGoalModeActive,
+  isPlanModeActive,
+  isTuttiModeActive,
+  isTuttiModeUpdating,
   composerActionButton,
   quickPromptControl,
   showHandoffSelect,
@@ -113,7 +121,9 @@ export function ComposerFooter({
   onSettingsChange,
   onSubmit,
   onClearGoalMode: clearGoalModeBadge,
-  draftPrompt: _draftPrompt
+  draftPrompt: _draftPrompt,
+  onClearPlanMode,
+  onClearTuttiMode
 }: Props) {
   const showSettingsLoadingPlaceholders = composerSettings.isSettingsLoading;
   return (
@@ -311,38 +321,47 @@ export function ComposerFooter({
             </Select>
           ) : null}
           {quickPromptControl}
-          {composerSettings.supportsPlanMode &&
-          composerSettings.draftSettings.planMode ? (
+          {composerSettings.supportsPlanMode && isPlanModeActive ? (
             <button
               type="button"
               disabled={settingsControlsDisabled}
               aria-label={labels.planModeLabel}
-              title={labels.planModeLabel}
+              title={labels.planModeDescription ?? labels.planModeLabel}
               data-agent-plan-mode-badge="true"
               className={cn(
                 styles.composerMenuTrigger,
                 "group w-auto",
                 "disabled:cursor-not-allowed disabled:opacity-60"
               )}
-              onClick={() => onSettingsChange({ planMode: false })}
+              onClick={onClearPlanMode}
             >
               <span className="flex min-w-0 items-center gap-1.5 overflow-hidden">
-                <span className="relative flex size-3.5 shrink-0 items-center justify-center">
-                  <ListChecks
-                    aria-hidden
-                    className="size-3.5 transition-opacity duration-150 group-hover:opacity-0 group-focus-visible:opacity-0"
-                  />
-                  <span
-                    aria-hidden
-                    className="absolute inset-0 flex items-center justify-center rounded-full bg-[var(--text-secondary)] opacity-0 transition-opacity duration-150 group-hover:opacity-100 group-focus-visible:opacity-100 group-disabled:opacity-0"
-                  >
-                    <X
-                      className="size-2.5 text-[var(--background-fronted)]"
-                      strokeWidth={3}
-                    />
-                  </span>
-                </span>
+                <RemovableBadgeIcon
+                  icon={<ListChecks className="size-3.5" />}
+                />
                 <span className="min-w-0 truncate">{labels.planModeLabel}</span>
+              </span>
+            </button>
+          ) : null}
+          {isTuttiModeActive ? (
+            <button
+              type="button"
+              disabled={isTuttiModeUpdating}
+              aria-label={labels.tuttiModeLabel}
+              title={labels.tuttiModeDescription}
+              data-agent-tutti-mode-badge="true"
+              className={cn(
+                styles.composerMenuTrigger,
+                "group w-auto",
+                "disabled:cursor-not-allowed disabled:opacity-60"
+              )}
+              onClick={onClearTuttiMode}
+            >
+              <span className="flex min-w-0 items-center gap-1.5 overflow-hidden">
+                <RemovableBadgeIcon icon={<Sparkles className="size-3.5" />} />
+                <span className="min-w-0 truncate">
+                  {labels.tuttiModeLabel}
+                </span>
               </span>
             </button>
           ) : null}
@@ -473,5 +492,27 @@ export function ComposerFooter({
         </div>
       </div>
     </>
+  );
+}
+
+function RemovableBadgeIcon({ icon }: { icon: ReactNode }) {
+  return (
+    <span className="relative flex size-3.5 shrink-0 items-center justify-center">
+      <span
+        aria-hidden
+        className="transition-opacity duration-150 group-hover:opacity-0 group-focus-visible:opacity-0"
+      >
+        {icon}
+      </span>
+      <span
+        aria-hidden
+        className="absolute inset-0 flex items-center justify-center rounded-full bg-[var(--text-secondary)] opacity-0 transition-opacity duration-150 group-hover:opacity-100 group-focus-visible:opacity-100 group-disabled:opacity-0"
+      >
+        <X
+          className="size-2.5 text-[var(--background-fronted)]"
+          strokeWidth={3}
+        />
+      </span>
+    </span>
   );
 }

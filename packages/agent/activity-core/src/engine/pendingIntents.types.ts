@@ -1,5 +1,7 @@
 import type {
+  AgentActivityCapabilityReference,
   AgentActivityInitialGoalControl,
+  AgentActivityInitialTuttiModeActivation,
   AgentActivityMessage,
   AgentActivitySessionSettings,
   AgentActivitySubmitDiagnostics,
@@ -28,6 +30,7 @@ export function isPendingActivationViable(
 
 interface PendingActivationIntentRecordBase {
   agentSessionId: string;
+  capabilityRefs?: readonly AgentActivityCapabilityReference[];
   content: readonly AgentPromptContentBlock[];
   displayPrompt?: string;
   cwd: string;
@@ -46,6 +49,8 @@ interface PendingActivationIntentRecordBase {
   status: PendingActivationStatus;
   title: string | null;
   workspaceId: string;
+  initialTuttiModeActivation?: AgentActivityInitialTuttiModeActivation;
+  tuttiModeDraftKey?: string;
 }
 
 export type PendingActivationIntentRecord =
@@ -73,6 +78,7 @@ export interface PendingSubmitIntentRecord {
   acceptedSessionVersion: number | null;
   agentSessionId: string;
   clientSubmitId: string;
+  capabilityRefs?: readonly AgentActivityCapabilityReference[];
   content: readonly AgentPromptContentBlock[];
   displayPrompt?: string;
   errorCode: string | null;
@@ -96,6 +102,7 @@ export interface PendingIntentsState {
 interface SessionActivationRequestedIntentBase {
   type: "activation/requested";
   agentSessionId: string;
+  capabilityRefs?: readonly AgentActivityCapabilityReference[];
   content?: readonly AgentPromptContentBlock[];
   cwd?: string;
   expiresAtUnixMs: number;
@@ -111,6 +118,8 @@ interface SessionActivationRequestedIntentBase {
   title?: string;
   visible?: boolean;
   workspaceId: string;
+  initialTuttiModeActivation?: AgentActivityInitialTuttiModeActivation;
+  tuttiModeDraftKey?: string;
 }
 
 export type SessionActivationRequestedIntent =
@@ -163,12 +172,14 @@ export interface SessionUnactivationRequestedIntent {
 interface SessionActivateCommandBase {
   type: "session/activate";
   agentSessionId: string;
+  capabilityRefs?: readonly AgentActivityCapabilityReference[];
   commandId: string;
   correlationId: string;
   cwd?: string;
   initialContent?: readonly AgentPromptContentBlock[];
   initialDisplayPrompt?: string;
   initialGoalControl?: Readonly<AgentActivityInitialGoalControl>;
+  initialTuttiModeActivation?: AgentActivityInitialTuttiModeActivation;
   submitDiagnostics?: Readonly<AgentActivitySubmitDiagnostics>;
   settings?: AgentActivitySessionSettings;
   timeoutMs?: number;
@@ -209,6 +220,7 @@ export interface SubmitRequestedIntent {
   type: "submit/requested";
   agentSessionId: string;
   clientSubmitId: string;
+  capabilityRefs?: readonly AgentActivityCapabilityReference[];
   content: readonly AgentPromptContentBlock[];
   displayPrompt?: string;
   expiresAtUnixMs: number;

@@ -21,6 +21,8 @@ var _ AgentActivityStore = (*SQLiteStore)(nil)
 // database handle. The delegation below keeps tuttid's persistence seams thin
 // while store-sqlite owns canonical query and migration behavior.
 
+var _ AgentActivityStore = (*SQLiteStore)(nil)
+
 const legacyIDLocalCodex = "local-codex"
 const legacyIDLocalClaudeCode = "local-claude-code"
 
@@ -197,8 +199,20 @@ func (s *SQLiteStore) ListWorkspaceGeneratedFileTurns(ctx context.Context, input
 	return s.agentReadStore().ListWorkspaceGeneratedFileTurns(ctx, input)
 }
 
+func (s *SQLiteStore) DeleteSession(ctx context.Context, workspaceID string, agentSessionID string) (bool, error) {
+	result, err := s.deleteAgentSessionsWithTuttiModeTx(ctx, agentactivitybiz.DeleteSessionsBatchInput{
+		WorkspaceID: workspaceID,
+		SessionIDs:  []string{agentSessionID},
+	})
+	return result.RemovedSessions > 0, err
+}
+
+func (s *SQLiteStore) DeleteSessionWithCommit(ctx context.Context, workspaceID string, agentSessionID string) (agentactivitybiz.DeleteSessionResult, error) {
+	return s.agentStore().DeleteSessionWithCommit(ctx, workspaceID, agentSessionID)
+}
+
 func (s *SQLiteStore) DeleteSessionsBatch(ctx context.Context, input agentactivitybiz.DeleteSessionsBatchInput) (agentactivitybiz.DeleteSessionsBatchResult, error) {
-	return s.agentStore().DeleteSessionsBatch(ctx, input)
+	return s.deleteAgentSessionsWithTuttiModeTx(ctx, input)
 }
 
 func (s *SQLiteStore) PlanDeleteSessions(ctx context.Context, input agentactivitybiz.DeleteSessionsBatchInput) (agentactivitybiz.DeleteSessionsPlan, error) {
@@ -210,7 +224,77 @@ func (s *SQLiteStore) PlanClearSessions(ctx context.Context, workspaceID string)
 }
 
 func (s *SQLiteStore) ClearSessions(ctx context.Context, workspaceID string) (agentactivitybiz.ClearSessionsResult, error) {
-	return s.agentStore().ClearSessions(ctx, workspaceID)
+	if s == nil || s.writeDB == nil {
+		return agentactivitybiz.ClearSessionsResult{}, errors.New("workspace database is not initialized")
+	}
+	workspaceID = strings.TrimSpace(workspaceID)
+	if workspaceID == "" {
+		return agentactivitybiz.ClearSessionsResult{}, nil
+	}
+	tx, err := s.writeDB.BeginTx(ctx, nil)
+	if err != nil {
+		return agentactivitybiz.ClearSessionsResult{}, fmt.Errorf("begin clear agent and Tutti mode sessions: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+	result, err := s.agentStore().ClearSessionsTx(ctx, tx, workspaceID)
+	if err != nil {
+		return agentactivitybiz.ClearSessionsResult{}, err
+	}
+	if err := deleteTuttiModeWorkspaceSessionStateTx(ctx, tx, workspaceID); err != nil {
+		return agentactivitybiz.ClearSessionsResult{}, err
+	}
+	if err := tx.Commit(); err != nil {
+		return agentactivitybiz.ClearSessionsResult{}, fmt.Errorf("commit clear agent and Tutti mode sessions: %w", err)
+	}
+	return result, nil
+}
+
+func (s *SQLiteStore) deleteAgentSessionsWithTuttiModeTx(ctx context.Context, input agentactivitybiz.DeleteSessionsBatchInput) (agentactivitybiz.DeleteSessionsBatchResult, error) {
+	if s == nil || s.writeDB == nil {
+		return agentactivitybiz.DeleteSessionsBatchResult{}, errors.New("workspace database is not initialized")
+	}
+	tx, err := s.writeDB.BeginTx(ctx, nil)
+	if err != nil {
+		return agentactivitybiz.DeleteSessionsBatchResult{}, fmt.Errorf("begin delete agent and Tutti mode sessions: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+	result, err := s.agentStore().DeleteSessionsBatchTx(ctx, tx, input)
+	if err != nil {
+		return agentactivitybiz.DeleteSessionsBatchResult{}, err
+	}
+	if err := deleteTuttiModeSessionStatesTx(ctx, tx, strings.TrimSpace(input.WorkspaceID), result.RemovedSessionIDs); err != nil {
+		return agentactivitybiz.DeleteSessionsBatchResult{}, err
+	}
+	if err := tx.Commit(); err != nil {
+		return agentactivitybiz.DeleteSessionsBatchResult{}, fmt.Errorf("commit delete agent and Tutti mode sessions: %w", err)
+	}
+	return result, nil
+}
+
+func deleteTuttiModeSessionStatesTx(ctx context.Context, tx *sql.Tx, workspaceID string, sessionIDs []string) error {
+	for _, sessionID := range sessionIDs {
+		sessionID = strings.TrimSpace(sessionID)
+		if sessionID == "" {
+			continue
+		}
+		if _, err := tx.ExecContext(ctx, `DELETE FROM tutti_mode_turn_snapshots WHERE workspace_id = ? AND agent_session_id = ?`, workspaceID, sessionID); err != nil {
+			return fmt.Errorf("delete Tutti mode turn snapshots with agent session: %w", err)
+		}
+		if _, err := tx.ExecContext(ctx, `DELETE FROM tutti_mode_activations WHERE workspace_id = ? AND agent_session_id = ?`, workspaceID, sessionID); err != nil {
+			return fmt.Errorf("delete Tutti mode activation with agent session: %w", err)
+		}
+	}
+	return nil
+}
+
+func deleteTuttiModeWorkspaceSessionStateTx(ctx context.Context, tx *sql.Tx, workspaceID string) error {
+	if _, err := tx.ExecContext(ctx, `DELETE FROM tutti_mode_turn_snapshots WHERE workspace_id = ?`, workspaceID); err != nil {
+		return fmt.Errorf("clear Tutti mode turn snapshots with agent sessions: %w", err)
+	}
+	if _, err := tx.ExecContext(ctx, `DELETE FROM tutti_mode_activations WHERE workspace_id = ?`, workspaceID); err != nil {
+		return fmt.Errorf("clear Tutti mode activations with agent sessions: %w", err)
+	}
+	return nil
 }
 
 func (s *SQLiteStore) PurgeDeletedSessions(ctx context.Context, input agentactivitybiz.PurgeDeletedSessionsInput) (agentactivitybiz.PurgeDeletedSessionsResult, error) {
@@ -339,6 +423,10 @@ func (s *SQLiteStore) RequeueLeasedGoalControlOperationsOnStartup(ctx context.Co
 
 func (s *SQLiteStore) PrepareSubmitClaim(ctx context.Context, input agentactivitybiz.SubmitClaimPrepare) (agentactivitybiz.SubmitClaim, bool, error) {
 	return s.agentStore().PrepareSubmitClaim(ctx, input)
+}
+
+func (s *SQLiteStore) GetSubmitClaim(ctx context.Context, workspaceID, agentSessionID, clientSubmitID string) (agentactivitybiz.SubmitClaim, bool, error) {
+	return s.agentStore().GetSubmitClaim(ctx, workspaceID, agentSessionID, clientSubmitID)
 }
 
 func (s *SQLiteStore) AcceptSubmitClaim(ctx context.Context, workspaceID, agentSessionID, clientSubmitID, turnID string, nowUnixMS int64) (agentactivitybiz.SubmitClaim, bool, error) {

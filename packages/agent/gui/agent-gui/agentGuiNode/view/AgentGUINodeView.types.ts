@@ -36,6 +36,7 @@ import type {
 } from "../model/agentGuiNodeTypes";
 import type { AgentGUIEngagementEventSink } from "../engagement/agentGUIEngagement.types";
 import type { OpenAgentEnvPanelInput } from "../../../shared/agentEnv";
+import type { TuttiModePlanPanelLabels } from "../../../workspaceWorkflow";
 
 export type AgentMentionReferenceTargetResolver = (
   item: AgentContextMentionItem
@@ -120,6 +121,16 @@ export interface AgentGUIViewLabels {
     professionalLongRunning: string;
   };
   planModeLabel: string;
+  normalModeLabel?: string;
+  normalModeDescription?: string;
+  tuttiModeLabel: string;
+  tuttiModeDescription: string;
+  tuttiModeUpdateFailed: string;
+  tuttiModeUpdateUncertain: string;
+  tuttiModePlanPanel: TuttiModePlanPanelLabels;
+  tuttiModePlanLoadFailed: string;
+  tuttiModePlanRetry: string;
+  planModeDescription?: string;
   planModeOnLabel: string;
   planModeOffLabel: string;
   planUnavailable: string;
@@ -566,7 +577,8 @@ export interface AgentGUINodeViewProps {
     ) => void;
     submitGuidancePrompt: (
       content: AgentPromptContentBlock[],
-      displayPrompt?: string
+      displayPrompt?: string,
+      options?: Parameters<AgentComposerProps["onSubmit"]>[2]
     ) => void;
     loadOlderConversationMessages: () => void;
     showPromptImagesUnsupported: () => void;
@@ -589,6 +601,8 @@ export interface AgentGUINodeViewProps {
       planMode?: boolean;
       permissionMode?: string;
     }) => void;
+    setTuttiModeActive: (active: boolean) => void;
+    retryTuttiModeActivation: () => void;
     selectHomeComposerAgentTarget: (input: {
       provider: AgentGUIProvider;
       agentTargetId?: string | null;

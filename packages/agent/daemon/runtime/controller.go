@@ -37,8 +37,8 @@ type Controller struct {
 	provisionalSessions         map[string]bool
 	lifecycleLocks              map[string]*sessionLifecycleLock
 	hub                         *EventHub
-	reporter                    ActivityReporter
-	reportCh                    chan reportRequest
+	reporter                    DurableActivityReporter
+	reportQueue                 *reportRequestQueue
 	terminalInteractions        terminalInteractiveDispositionStore
 }
 
@@ -50,13 +50,16 @@ type sessionLifecycleLock struct {
 type activeTurn struct {
 	turnID                string
 	cancel                context.CancelFunc
+	tuttiModeSnapshot     *TuttiModeTurnSnapshot
 	openCallIDs           map[string]struct{}
 	pendingTerminalEvents []activityshared.Event
 }
 
 type reportRequest struct {
-	ctx    context.Context
-	report agentsessionstore.ReportActivityInput
+	ctx              context.Context
+	report           agentsessionstore.ReportActivityInput
+	submitProvenance bool
+	done             chan error
 }
 
 type ReleaseIdleLiveSessionsInput struct {
@@ -85,15 +88,15 @@ type CloseAllLiveSessionsResult struct {
 }
 
 type asyncActivityReporter interface {
-	ActivityReporter
+	DurableActivityReporter
 	AsyncActivityReporter()
 }
 
-func NewController(adapters []Adapter, reporter ActivityReporter) *Controller {
+func NewController(adapters []Adapter, reporter DurableActivityReporter) *Controller {
 	return NewControllerWithAdapterResolver(adapters, reporter, nil)
 }
 
-func NewControllerWithAdapterResolver(adapters []Adapter, reporter ActivityReporter, resolver AdapterResolver) *Controller {
+func NewControllerWithAdapterResolver(adapters []Adapter, reporter DurableActivityReporter, resolver AdapterResolver) *Controller {
 	byProvider := make(map[string]Adapter, len(adapters))
 	for _, adapter := range adapters {
 		if adapter == nil {
@@ -120,7 +123,7 @@ func NewControllerWithAdapterResolver(adapters []Adapter, reporter ActivityRepor
 	}
 	if reporter != nil {
 		if _, ok := reporter.(asyncActivityReporter); !ok {
-			controller.reportCh = make(chan reportRequest, 1024)
+			controller.reportQueue = newReportRequestQueue()
 			go controller.runReportWorker()
 		}
 	}
@@ -158,12 +161,12 @@ func (c *Controller) configureAdapter(adapter Adapter) {
 	}
 }
 
-func NewDefaultController(reporter ActivityReporter) *Controller {
+func NewDefaultController(reporter DurableActivityReporter) *Controller {
 	return NewDefaultControllerWithProcessTransport(reporter, nil)
 }
 
 func NewDefaultControllerWithProcessTransport(
-	reporter ActivityReporter,
+	reporter DurableActivityReporter,
 	transport ProcessTransport,
 ) *Controller {
 	return NewDefaultControllerWithOptions(reporter, transport, ControllerOptions{
@@ -172,7 +175,7 @@ func NewDefaultControllerWithProcessTransport(
 }
 
 func NewDefaultControllerWithOptions(
-	reporter ActivityReporter,
+	reporter DurableActivityReporter,
 	transport ProcessTransport,
 	options ControllerOptions,
 ) *Controller {

@@ -158,6 +158,10 @@ Migrated agent runtime state should derive from the same root:
 
 ```text
 ~/.tutti[-dev]/
+  tutti-mode-plans/
+    <workflow-id>/
+      revisions/
+        <sha256>.md
   agent/
     discovery/
       claude-code/
@@ -360,6 +364,7 @@ Tutti provider startup.
 ## Current Usage
 
 - `tuttid` SQLite database defaults to `<state-dir>/tuttid.db`
+- immutable Tutti mode plan revisions live under `<state-dir>/tutti-mode-plans/<workflow-id>/revisions/<sha256>.md`; the daemon writes each revision atomically and verifies its content digest when reading it
 - desktop-managed local development starts `tuttid` with `TUTTI_ENV=development`
 - packaged desktop builds start `tuttid` with `TUTTI_ENV=production`
 - path helpers reserve `<state-dir>/logs` and `<state-dir>/run` for daemon log, listener-info, and pid files

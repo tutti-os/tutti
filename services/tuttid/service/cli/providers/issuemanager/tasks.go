@@ -39,11 +39,16 @@ type taskCreateBatchInput struct {
 }
 
 type taskCreateBatchItemInput struct {
-	TaskID    string `json:"taskId"`
-	Title     string `json:"title"`
-	Content   string `json:"content"`
-	Priority  string `json:"priority"`
-	DueAtUnix int64  `json:"dueAtUnix"`
+	TaskID             string   `json:"taskId"`
+	Title              string   `json:"title"`
+	Content            string   `json:"content"`
+	Priority           string   `json:"priority"`
+	DueAtUnix          int64    `json:"dueAtUnix"`
+	AgentTargetID      string   `json:"agentTargetId"`
+	ModelPlanID        string   `json:"modelPlanId"`
+	Model              string   `json:"model"`
+	ExecutionDirectory string   `json:"executionDirectory"`
+	DependencyTaskIDs  []string `json:"dependencyTaskIds"`
 }
 
 type taskUpdateInput struct {
@@ -288,6 +293,21 @@ func (p Provider) runTaskCreateBatch(ctx context.Context, invoke framework.Invok
 	return p.issues.CreateTasks(ctx, invoke.WorkspaceID, input.IssueID, workspaceservice.CreateIssueManagerTasksInput{
 		Tasks: tasks,
 	})
+}
+
+func taskCreateBatchServiceInput(item taskCreateBatchItemInput) workspaceservice.CreateIssueManagerTaskItemInput {
+	return workspaceservice.CreateIssueManagerTaskItemInput{
+		TaskID:             item.TaskID,
+		Title:              item.Title,
+		Content:            item.Content,
+		Priority:           item.Priority,
+		DueAtUnixMS:        item.DueAtUnix * 1000,
+		AgentTargetID:      item.AgentTargetID,
+		ModelPlanID:        item.ModelPlanID,
+		Model:              item.Model,
+		ExecutionDirectory: item.ExecutionDirectory,
+		DependencyTaskIDs:  item.DependencyTaskIDs,
+	}
 }
 
 func (p Provider) runTaskUpdate(ctx context.Context, invoke framework.InvokeContext, input taskUpdateInput) (any, error) {

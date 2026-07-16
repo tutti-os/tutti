@@ -22,6 +22,7 @@ tags:
   - name: terminal
   - name: agent-session
   - name: agent-target
+  - name: workspace-workflow
   - name: agent-context
   - name: app-center
   - name: app-factory
@@ -1824,6 +1825,133 @@ paths:
           $ref: "#/components/responses/WorkspaceOperationError"
         "503":
           $ref: "#/components/responses/ServiceUnavailableError"
+  /v1/workspaces/{workspaceID}/workflows:
+    parameters:
+      - $ref: "#/components/parameters/WorkspaceID"
+    get:
+      operationId: listWorkspaceWorkflows
+      tags:
+        - workspace-workflow
+      summary: List recoverable Tutti-owned workflows for a source Agent session
+      parameters:
+        - name: sourceSessionId
+          in: query
+          required: true
+          schema:
+            type: string
+            minLength: 1
+        - name: checkpointStatus
+          in: query
+          required: false
+          schema:
+            type: string
+            enum:
+              - pending
+          description: Currently only pending checkpoints are listable.
+      responses:
+        "200":
+          description: Matching authoritative workflow snapshots
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkspaceWorkflowListResponse"
+        "400":
+          $ref: "#/components/responses/InvalidRequestError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "404":
+          $ref: "#/components/responses/WorkspaceNotFoundError"
+        "405":
+          $ref: "#/components/responses/MethodNotAllowedError"
+        "502":
+          $ref: "#/components/responses/WorkspaceOperationError"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailableError"
+  /v1/workspaces/{workspaceID}/workflows/{workflowID}:
+    parameters:
+      - $ref: "#/components/parameters/WorkspaceID"
+      - name: workflowID
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    get:
+      operationId: getWorkspaceWorkflow
+      tags:
+        - workspace-workflow
+      summary: Get one authoritative Tutti-owned workflow snapshot
+      responses:
+        "200":
+          description: Authoritative workflow snapshot
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkspaceWorkflowSnapshot"
+        "400":
+          $ref: "#/components/responses/InvalidRequestError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "404":
+          $ref: "#/components/responses/WorkspaceNotFoundError"
+        "405":
+          $ref: "#/components/responses/MethodNotAllowedError"
+        "502":
+          $ref: "#/components/responses/WorkspaceOperationError"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailableError"
+  /v1/workspaces/{workspaceID}/workflows/{workflowID}/checkpoints/{checkpointID}/decision:
+    parameters:
+      - $ref: "#/components/parameters/WorkspaceID"
+      - name: workflowID
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - name: checkpointID
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    post:
+      operationId: decideWorkspaceWorkflowCheckpoint
+      tags:
+        - workspace-workflow
+      summary: Decide one Tutti-owned workflow checkpoint
+      description: This user-facing API is the only decision boundary; Agent CLI capabilities cannot self-approve a checkpoint.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DecideWorkspaceWorkflowCheckpointRequest"
+      responses:
+        "200":
+          description: Updated authoritative workflow snapshot
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkspaceWorkflowSnapshot"
+        "400":
+          $ref: "#/components/responses/InvalidRequestError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "404":
+          $ref: "#/components/responses/WorkspaceNotFoundError"
+        "405":
+          $ref: "#/components/responses/MethodNotAllowedError"
+        "409":
+          description: Checkpoint was already decided differently or is no longer current
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+        "502":
+          $ref: "#/components/responses/WorkspaceOperationError"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailableError"
   /v1/workspaces/{workspaceID}/apps:
     parameters:
       - $ref: "#/components/parameters/WorkspaceID"
@@ -3515,6 +3643,70 @@ paths:
           $ref: "#/components/responses/WorkspaceNotFoundError"
         "405":
           $ref: "#/components/responses/MethodNotAllowedError"
+        "502":
+          $ref: "#/components/responses/WorkspaceOperationError"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailableError"
+  /v1/workspaces/{workspaceID}/agent-sessions/{agentSessionID}/tutti-mode-activation:
+    parameters:
+      - $ref: "#/components/parameters/WorkspaceID"
+      - $ref: "#/components/parameters/AgentSessionID"
+    get:
+      operationId: getWorkspaceAgentSessionTuttiModeActivation
+      tags:
+        - agent-session
+      summary: Get the independent Tutti mode activation for one agent session
+      responses:
+        "200":
+          description: Tutti mode activation projection
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TuttiModeActivationResponse"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "400":
+          $ref: "#/components/responses/InvalidRequestError"
+        "404":
+          $ref: "#/components/responses/WorkspaceNotFoundError"
+        "405":
+          $ref: "#/components/responses/MethodNotAllowedError"
+        "502":
+          $ref: "#/components/responses/WorkspaceOperationError"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailableError"
+    put:
+      operationId: updateWorkspaceAgentSessionTuttiModeActivation
+      tags:
+        - agent-session
+      summary: Update the independent Tutti mode activation for one agent session
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateTuttiModeActivationRequest"
+      responses:
+        "200":
+          description: Updated Tutti mode activation projection
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UpdateTuttiModeActivationResponse"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "400":
+          $ref: "#/components/responses/InvalidRequestError"
+        "404":
+          $ref: "#/components/responses/WorkspaceNotFoundError"
+        "405":
+          $ref: "#/components/responses/MethodNotAllowedError"
+        "409":
+          description: Tutti mode activation revision conflict
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
         "502":
           $ref: "#/components/responses/WorkspaceOperationError"
         "503":
@@ -10232,6 +10424,132 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/AgentProviderStatus"
+    TuttiModeActivationStatus:
+      type: string
+      enum:
+        - active
+        - inactive
+    TuttiModeActivationSource:
+      type: string
+      description: User-visible interaction that created this activation revision.
+      enum:
+        - slash_command
+        - badge_remove
+    TuttiModeActivationRevision:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - activationId
+        - revision
+        - status
+        - source
+        - createdAtUnixMs
+      properties:
+        id:
+          type: string
+          format: uuid
+        activationId:
+          type: string
+          format: uuid
+        revision:
+          type: integer
+          format: int64
+          minimum: 1
+        status:
+          $ref: "#/components/schemas/TuttiModeActivationStatus"
+        source:
+          $ref: "#/components/schemas/TuttiModeActivationSource"
+        createdAtUnixMs:
+          type: integer
+          format: int64
+          minimum: 0
+    TuttiModeActivation:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - workspaceId
+        - agentSessionId
+        - status
+        - currentRevision
+        - createdAtUnixMs
+        - updatedAtUnixMs
+      properties:
+        id:
+          type: string
+          format: uuid
+        workspaceId:
+          type: string
+          minLength: 1
+        agentSessionId:
+          type: string
+          minLength: 1
+        status:
+          $ref: "#/components/schemas/TuttiModeActivationStatus"
+        currentRevision:
+          $ref: "#/components/schemas/TuttiModeActivationRevision"
+        createdAtUnixMs:
+          type: integer
+          format: int64
+          minimum: 0
+        updatedAtUnixMs:
+          type: integer
+          format: int64
+          minimum: 0
+    TuttiModeActivationIntent:
+      type: object
+      additionalProperties: false
+      required:
+        - status
+        - source
+      properties:
+        status:
+          $ref: "#/components/schemas/TuttiModeActivationStatus"
+        source:
+          $ref: "#/components/schemas/TuttiModeActivationSource"
+    TuttiModeActivationResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - activation
+      properties:
+        activation:
+          allOf:
+            - $ref: "#/components/schemas/TuttiModeActivation"
+          nullable: true
+          description: Null until the session has its first Tutti mode activation revision.
+    UpdateTuttiModeActivationRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - status
+        - source
+      properties:
+        status:
+          $ref: "#/components/schemas/TuttiModeActivationStatus"
+        source:
+          $ref: "#/components/schemas/TuttiModeActivationSource"
+        expectedRevision:
+          type: integer
+          format: int64
+          nullable: true
+          minimum: 0
+          description: Optional optimistic-concurrency guard. Zero means no activation revision exists yet.
+    UpdateTuttiModeActivationResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - activation
+        - changed
+      properties:
+        activation:
+          allOf:
+            - $ref: "#/components/schemas/TuttiModeActivation"
+          nullable: true
+        changed:
+          type: boolean
+          description: False for an idempotent update that did not create a new revision.
     WorkspaceAgentSessionKind:
       type: string
       description: >-
@@ -10273,6 +10591,7 @@ components:
         - capabilities
         - usage
         - goal
+        - tuttiModeActivation
         - imported
       properties:
         id:
@@ -10392,6 +10711,14 @@ components:
             - $ref: "#/components/schemas/WorkspaceAgentSessionGoal"
           nullable: true
           description: Protocol v2. Explicit field extracted from runtimeContext.
+        tuttiModeActivation:
+          allOf:
+            - $ref: "#/components/schemas/TuttiModeActivation"
+          nullable: true
+          description: >-
+            Independent, session-scoped Tutti mode activation projection. Null
+            until the first activation revision exists; capability references
+            are audit records and never determine this state.
         imported:
           type: boolean
           description: >-
@@ -10557,6 +10884,25 @@ components:
           minLength: 1
         code:
           type: string
+    WorkspaceAgentCapabilityReference:
+      type: object
+      description: >-
+        A structured user-submission reference to a daemon-owned capability.
+        This is provenance for UI and durable workflow linkage; it is not
+        injected into provider prompt text and does not gate CLI availability.
+      additionalProperties: false
+      required:
+        - capability
+        - source
+      properties:
+        capability:
+          type: string
+          enum:
+            - tutti
+        source:
+          type: string
+          enum:
+            - slash_command
     WorkspaceAgentCompletedCommand:
       type: object
       description: >-
@@ -10646,6 +10992,11 @@ components:
           allOf:
             - $ref: "#/components/schemas/WorkspaceAgentCompletedCommand"
           nullable: true
+        capabilityRefs:
+          type: array
+          uniqueItems: true
+          items:
+            $ref: "#/components/schemas/WorkspaceAgentCapabilityReference"
         startedAtUnixMs:
           type: integer
           format: int64
@@ -11677,6 +12028,17 @@ components:
         browserUse:
           type: boolean
           nullable: true
+        capabilityRefs:
+          type: array
+          uniqueItems: true
+          items:
+            $ref: "#/components/schemas/WorkspaceAgentCapabilityReference"
+          description: Structured capability references attached to the initial submission. They are persisted on the turn but never converted into provider prompt text.
+        initialTuttiModeActivation:
+          allOf:
+            - $ref: "#/components/schemas/TuttiModeActivationIntent"
+          nullable: true
+          description: Optional independent Tutti mode activation intent applied before the first turn starts.
         visible:
           type: boolean
           nullable: true
@@ -11701,6 +12063,12 @@ components:
           type: string
           nullable: true
           description: Optional display-only text shown in the conversation (e.g. a folder bundle rendered as one chip while content carries the expanded files).
+        capabilityRefs:
+          type: array
+          uniqueItems: true
+          items:
+            $ref: "#/components/schemas/WorkspaceAgentCapabilityReference"
+          description: Structured capability references attached to this submission. They are persisted on the turn but never converted into provider prompt text.
         guidance:
           type: boolean
           description: When true, send this input as guidance to the currently active turn instead of starting a new turn.
@@ -12863,6 +13231,491 @@ components:
       properties:
         snapshot:
           $ref: "#/components/schemas/WorkbenchSnapshot"
+    WorkspaceWorkflowStatus:
+      type: string
+      enum:
+        - pending_review
+        - in_progress
+        - accepted
+        - rejected
+        - completed
+        - failed
+        - canceled
+    WorkspaceWorkflow:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - workspaceId
+        - type
+        - owner
+        - triggerKind
+        - sourceSessionId
+        - sourceTurnId
+        - sourceToolCallId
+        - status
+        - currentRevisionId
+        - createdAtUnixMs
+        - updatedAtUnixMs
+      properties:
+        id:
+          type: string
+          format: uuid
+        workspaceId:
+          type: string
+          minLength: 1
+        type:
+          type: string
+          enum:
+            - tutti_mode_plan
+        owner:
+          type: string
+          enum:
+            - tutti
+        triggerKind:
+          type: string
+          enum:
+            - agent_cli
+        sourceSessionId:
+          type: string
+          minLength: 1
+        sourceTurnId:
+          type: string
+          nullable: true
+        sourceToolCallId:
+          type: string
+          nullable: true
+        status:
+          $ref: "#/components/schemas/WorkspaceWorkflowStatus"
+        currentRevisionId:
+          type: string
+          format: uuid
+        createdAtUnixMs:
+          type: integer
+          format: int64
+          minimum: 0
+        updatedAtUnixMs:
+          type: integer
+          format: int64
+          minimum: 0
+    TuttiModePlanExecution:
+      type: object
+      additionalProperties: false
+      required:
+        - mode
+        - reasoningIntensity
+        - orchestrationIntensity
+      properties:
+        mode:
+          type: string
+          enum:
+            - sequential
+            - parallel
+        reasoningIntensity:
+          type: integer
+          minimum: 0
+          maximum: 100
+        orchestrationIntensity:
+          type: integer
+          minimum: 0
+          maximum: 100
+    TuttiModePlanBudget:
+      type: object
+      additionalProperties: false
+      required:
+        - mode
+        - tokenLimit
+        - quotaWaterlinePercent
+      properties:
+        mode:
+          type: string
+          enum:
+            - auto
+            - fixed
+        tokenLimit:
+          type: integer
+          format: int64
+          minimum: 0
+        quotaWaterlinePercent:
+          type: number
+          format: double
+          minimum: 0
+          maximum: 100
+    TuttiModePlanTask:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - title
+        - content
+        - priority
+        - agentTargetId
+        - modelPlanId
+        - model
+        - executionDirectory
+        - dependsOn
+      properties:
+        id:
+          type: string
+          minLength: 1
+        title:
+          type: string
+          minLength: 1
+        content:
+          type: string
+        priority:
+          type: string
+          enum:
+            - high
+            - medium
+            - low
+        agentTargetId:
+          type: string
+          nullable: true
+        modelPlanId:
+          type: string
+          nullable: true
+        model:
+          type: string
+          nullable: true
+        executionDirectory:
+          type: string
+          nullable: true
+        dependsOn:
+          type: array
+          uniqueItems: true
+          items:
+            type: string
+            minLength: 1
+    TuttiModePlanDocument:
+      type: object
+      additionalProperties: false
+      required:
+        - schema
+        - phase
+        - title
+        - topicId
+        - markdownBody
+        - execution
+        - budget
+        - tasks
+      properties:
+        schema:
+          type: string
+          enum:
+            - tutti-mode-plan/v1
+        phase:
+          type: string
+          enum:
+            - configuration
+            - task_graph
+        title:
+          type: string
+          minLength: 1
+        topicId:
+          type: string
+          minLength: 1
+        markdownBody:
+          type: string
+          minLength: 1
+        execution:
+          $ref: "#/components/schemas/TuttiModePlanExecution"
+        budget:
+          $ref: "#/components/schemas/TuttiModePlanBudget"
+        tasks:
+          type: array
+          items:
+            $ref: "#/components/schemas/TuttiModePlanTask"
+    WorkspaceWorkflowPlanRevision:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - workflowId
+        - sequence
+        - schemaVersion
+        - documentPath
+        - sha256
+        - producedByTurnId
+        - createdAtUnixMs
+        - document
+      properties:
+        id:
+          type: string
+          format: uuid
+        workflowId:
+          type: string
+          format: uuid
+        sequence:
+          type: integer
+          minimum: 1
+        schemaVersion:
+          type: string
+          enum:
+            - tutti-mode-plan/v1
+        documentPath:
+          type: string
+          minLength: 1
+        sha256:
+          type: string
+          pattern: "^[0-9a-f]{64}$"
+        producedByTurnId:
+          type: string
+          nullable: true
+        createdAtUnixMs:
+          type: integer
+          format: int64
+          minimum: 0
+        document:
+          $ref: "#/components/schemas/TuttiModePlanDocument"
+    WorkspaceWorkflowCheckpoint:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - workflowId
+        - kind
+        - revisionId
+        - status
+        - decidedBy
+        - decisionReason
+        - createdAtUnixMs
+        - updatedAtUnixMs
+        - decidedAtUnixMs
+      properties:
+        id:
+          type: string
+          format: uuid
+        workflowId:
+          type: string
+          format: uuid
+        kind:
+          type: string
+          enum:
+            - configuration_review
+            - task_review
+        revisionId:
+          type: string
+          format: uuid
+        status:
+          type: string
+          enum:
+            - pending
+            - accepted
+            - rejected
+            - superseded
+            - canceled
+        decidedBy:
+          type: string
+          nullable: true
+        decisionReason:
+          type: string
+          nullable: true
+        createdAtUnixMs:
+          type: integer
+          format: int64
+          minimum: 0
+        updatedAtUnixMs:
+          type: integer
+          format: int64
+          minimum: 0
+        decidedAtUnixMs:
+          type: integer
+          format: int64
+          minimum: 0
+          nullable: true
+    WorkspaceWorkflowTurnLink:
+      type: object
+      additionalProperties: false
+      required:
+        - workflowId
+        - turnId
+        - relation
+        - createdAtUnixMs
+      properties:
+        workflowId:
+          type: string
+          format: uuid
+        turnId:
+          type: string
+          minLength: 1
+        relation:
+          type: string
+          enum:
+            - source
+            - decomposition
+            - revision
+            - feedback
+        createdAtUnixMs:
+          type: integer
+          format: int64
+          minimum: 0
+    WorkspaceWorkflowOperation:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - workflowId
+        - kind
+        - status
+        - revisionId
+        - issueId
+        - errorCode
+        - errorMessage
+        - createdAtUnixMs
+        - updatedAtUnixMs
+        - startedAtUnixMs
+        - completedAtUnixMs
+      properties:
+        id:
+          type: string
+          format: uuid
+        workflowId:
+          type: string
+          format: uuid
+        kind:
+          type: string
+          enum:
+            - generate_task_graph
+            - create_revision
+            - create_issue
+            - start_issue
+        status:
+          type: string
+          enum:
+            - pending
+            - running
+            - succeeded
+            - failed
+            - canceled
+        revisionId:
+          type: string
+          format: uuid
+          nullable: true
+        issueId:
+          type: string
+          nullable: true
+        errorCode:
+          type: string
+          nullable: true
+        errorMessage:
+          type: string
+          nullable: true
+        createdAtUnixMs:
+          type: integer
+          format: int64
+          minimum: 0
+        updatedAtUnixMs:
+          type: integer
+          format: int64
+          minimum: 0
+        startedAtUnixMs:
+          type: integer
+          format: int64
+          minimum: 0
+          nullable: true
+        completedAtUnixMs:
+          type: integer
+          format: int64
+          minimum: 0
+          nullable: true
+    WorkspaceWorkflowSnapshot:
+      type: object
+      additionalProperties: false
+      required:
+        - workflow
+        - revisions
+        - checkpoints
+        - turnLinks
+        - operations
+        - actionableItems
+      properties:
+        workflow:
+          $ref: "#/components/schemas/WorkspaceWorkflow"
+        revisions:
+          type: array
+          items:
+            $ref: "#/components/schemas/WorkspaceWorkflowPlanRevision"
+        checkpoints:
+          type: array
+          items:
+            $ref: "#/components/schemas/WorkspaceWorkflowCheckpoint"
+        turnLinks:
+          type: array
+          items:
+            $ref: "#/components/schemas/WorkspaceWorkflowTurnLink"
+        operations:
+          type: array
+          items:
+            $ref: "#/components/schemas/WorkspaceWorkflowOperation"
+        actionableItems:
+          type: array
+          description: Read-only projection of the accepted current task graph; never an independent mutable record.
+          items:
+            $ref: "#/components/schemas/WorkspaceWorkflowActionableItem"
+    WorkspaceWorkflowActionableItem:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - sourceWorkflowId
+        - sourceRevisionId
+        - ordinal
+        - topicId
+        - execution
+        - budget
+        - task
+      properties:
+        id:
+          type: string
+          minLength: 1
+        sourceWorkflowId:
+          type: string
+          format: uuid
+        sourceRevisionId:
+          type: string
+          format: uuid
+        ordinal:
+          type: integer
+          minimum: 1
+        topicId:
+          type: string
+          minLength: 1
+        execution:
+          $ref: "#/components/schemas/TuttiModePlanExecution"
+        budget:
+          $ref: "#/components/schemas/TuttiModePlanBudget"
+        task:
+          $ref: "#/components/schemas/TuttiModePlanTask"
+    WorkspaceWorkflowListResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - workflows
+      properties:
+        workflows:
+          type: array
+          items:
+            $ref: "#/components/schemas/WorkspaceWorkflowSnapshot"
+    DecideWorkspaceWorkflowCheckpointRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - decision
+        - decidedBy
+      properties:
+        decision:
+          type: string
+          enum:
+            - accepted
+            - rejected
+            - canceled
+        decidedBy:
+          type: string
+          minLength: 1
+        reason:
+          type: string
+          nullable: true
     CreateWorkspaceRequest:
       type: object
       additionalProperties: false

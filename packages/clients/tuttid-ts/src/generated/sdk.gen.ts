@@ -112,6 +112,9 @@ import type {
   CreateWorkspaceTerminalData,
   CreateWorkspaceTerminalErrors,
   CreateWorkspaceTerminalResponses,
+  DecideWorkspaceWorkflowCheckpointData,
+  DecideWorkspaceWorkflowCheckpointErrors,
+  DecideWorkspaceWorkflowCheckpointResponses,
   DeleteAgentQuickPromptData,
   DeleteAgentQuickPromptErrors,
   DeleteAgentQuickPromptResponses,
@@ -226,6 +229,9 @@ import type {
   GetWorkspaceAgentSessionGoalErrors,
   GetWorkspaceAgentSessionGoalResponses,
   GetWorkspaceAgentSessionResponses,
+  GetWorkspaceAgentSessionTuttiModeActivationData,
+  GetWorkspaceAgentSessionTuttiModeActivationErrors,
+  GetWorkspaceAgentSessionTuttiModeActivationResponses,
   GetWorkspaceAppAgentPreferencesData,
   GetWorkspaceAppAgentPreferencesErrors,
   GetWorkspaceAppAgentPreferencesResponses,
@@ -268,6 +274,9 @@ import type {
   GetWorkspaceWorkbenchData,
   GetWorkspaceWorkbenchErrors,
   GetWorkspaceWorkbenchResponses,
+  GetWorkspaceWorkflowData,
+  GetWorkspaceWorkflowErrors,
+  GetWorkspaceWorkflowResponses,
   GoalControlWorkspaceAgentSessionData,
   GoalControlWorkspaceAgentSessionErrors,
   GoalControlWorkspaceAgentSessionResponses,
@@ -388,6 +397,9 @@ import type {
   ListWorkspaceTerminalsData,
   ListWorkspaceTerminalsErrors,
   ListWorkspaceTerminalsResponses,
+  ListWorkspaceWorkflowsData,
+  ListWorkspaceWorkflowsErrors,
+  ListWorkspaceWorkflowsResponses,
   LoadLocalWorkspaceAppData,
   LoadLocalWorkspaceAppErrors,
   LoadLocalWorkspaceAppResponses,
@@ -562,6 +574,9 @@ import type {
   UpdateWorkspaceAgentSessionTitleData,
   UpdateWorkspaceAgentSessionTitleErrors,
   UpdateWorkspaceAgentSessionTitleResponses,
+  UpdateWorkspaceAgentSessionTuttiModeActivationData,
+  UpdateWorkspaceAgentSessionTuttiModeActivationErrors,
+  UpdateWorkspaceAgentSessionTuttiModeActivationResponses,
   UpdateWorkspaceAgentSessionVisibilityData,
   UpdateWorkspaceAgentSessionVisibilityErrors,
   UpdateWorkspaceAgentSessionVisibilityResponses,
@@ -1835,6 +1850,62 @@ export const acceptAgentSessionWork = <ThrowOnError extends boolean = false>(
   });
 
 /**
+ * List recoverable Tutti-owned workflows for a source Agent session
+ */
+export const listWorkspaceWorkflows = <ThrowOnError extends boolean = false>(
+  options: Options<ListWorkspaceWorkflowsData, ThrowOnError>
+) =>
+  (options.client ?? client).get<
+    ListWorkspaceWorkflowsResponses,
+    ListWorkspaceWorkflowsErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/v1/workspaces/{workspaceID}/workflows",
+    ...options
+  });
+
+/**
+ * Get one authoritative Tutti-owned workflow snapshot
+ */
+export const getWorkspaceWorkflow = <ThrowOnError extends boolean = false>(
+  options: Options<GetWorkspaceWorkflowData, ThrowOnError>
+) =>
+  (options.client ?? client).get<
+    GetWorkspaceWorkflowResponses,
+    GetWorkspaceWorkflowErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/v1/workspaces/{workspaceID}/workflows/{workflowID}",
+    ...options
+  });
+
+/**
+ * Decide one Tutti-owned workflow checkpoint
+ *
+ * This user-facing API is the only decision boundary; Agent CLI capabilities cannot self-approve a checkpoint.
+ */
+export const decideWorkspaceWorkflowCheckpoint = <
+  ThrowOnError extends boolean = false
+>(
+  options: Options<DecideWorkspaceWorkflowCheckpointData, ThrowOnError>
+) =>
+  (options.client ?? client).post<
+    DecideWorkspaceWorkflowCheckpointResponses,
+    DecideWorkspaceWorkflowCheckpointErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/v1/workspaces/{workspaceID}/workflows/{workflowID}/checkpoints/{checkpointID}/decision",
+    ...options,
+    headers: {
+      "Content-Type": "application/json",
+      ...options.headers
+    }
+  });
+
+/**
  * List app catalog and installation state for one workspace
  */
 export const listWorkspaceApps = <ThrowOnError extends boolean = false>(
@@ -2790,6 +2861,52 @@ export const getWorkspaceAgentSession = <ThrowOnError extends boolean = false>(
     security: [{ scheme: "bearer", type: "http" }],
     url: "/v1/workspaces/{workspaceID}/agent-sessions/{agentSessionID}",
     ...options
+  });
+
+/**
+ * Get the independent Tutti mode activation for one agent session
+ */
+export const getWorkspaceAgentSessionTuttiModeActivation = <
+  ThrowOnError extends boolean = false
+>(
+  options: Options<
+    GetWorkspaceAgentSessionTuttiModeActivationData,
+    ThrowOnError
+  >
+) =>
+  (options.client ?? client).get<
+    GetWorkspaceAgentSessionTuttiModeActivationResponses,
+    GetWorkspaceAgentSessionTuttiModeActivationErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/v1/workspaces/{workspaceID}/agent-sessions/{agentSessionID}/tutti-mode-activation",
+    ...options
+  });
+
+/**
+ * Update the independent Tutti mode activation for one agent session
+ */
+export const updateWorkspaceAgentSessionTuttiModeActivation = <
+  ThrowOnError extends boolean = false
+>(
+  options: Options<
+    UpdateWorkspaceAgentSessionTuttiModeActivationData,
+    ThrowOnError
+  >
+) =>
+  (options.client ?? client).put<
+    UpdateWorkspaceAgentSessionTuttiModeActivationResponses,
+    UpdateWorkspaceAgentSessionTuttiModeActivationErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/v1/workspaces/{workspaceID}/agent-sessions/{agentSessionID}/tutti-mode-activation",
+    ...options,
+    headers: {
+      "Content-Type": "application/json",
+      ...options.headers
+    }
   });
 
 /**

@@ -15,6 +15,7 @@ import {
 import { type AgentFileMentionSuggestionState } from "./agentRichText/agentFileMentionExtension";
 import { formatSlashStatusTokenCount } from "./AgentSlashStatusPanel";
 import { useOptionalAgentActivityRuntime } from "../../agentActivityRuntime";
+import { normalizeAgentActivityCapabilityReferences } from "@tutti-os/agent-activity-core";
 import { useComposerDraftAttachments } from "./composer/useComposerDraftAttachments";
 import { goalDraftObjectiveFromPrompt } from "./composer/composerDraftUtils";
 import { useComposerLayout } from "./composer/useComposerLayout";
@@ -97,6 +98,8 @@ export function AgentComposer(props: AgentComposerProps): React.JSX.Element {
     disabled,
     disabledReason,
     submitDisabled,
+    tuttiModeActive = false,
+    tuttiModeUpdating = false,
     placeholder,
     composerSettings,
     selectedAgentTarget = null,
@@ -126,6 +129,7 @@ export function AgentComposer(props: AgentComposerProps): React.JSX.Element {
     labels,
     onDraftContentChange,
     onSettingsChange,
+    onTuttiModeChange = () => {},
     capabilityMenuState,
     capabilityControlsReadOnly = false,
     onSubmit,
@@ -173,6 +177,36 @@ export function AgentComposer(props: AgentComposerProps): React.JSX.Element {
   };
   const [isPaletteOpen, setIsPaletteOpen] = useState(true);
   const [isReviewPickerOpen, setIsReviewPickerOpen] = useState(false);
+  const submitWithComposerModifiers: AgentComposerProps["onSubmit"] = (
+    content,
+    displayPrompt,
+    options
+  ) => {
+    onSubmit(content, displayPrompt, {
+      ...options,
+      ...(tuttiModeActive
+        ? {
+            capabilityRefs: normalizeAgentActivityCapabilityReferences([
+              ...(options?.capabilityRefs ?? []),
+              { capability: "tutti", source: "slash_command" }
+            ])
+          }
+        : {})
+    });
+  };
+  const submitGuidanceWithComposerModifiers: NonNullable<
+    AgentComposerProps["onSubmitGuidance"]
+  > = (content, displayPrompt) => {
+    onSubmitGuidance?.(
+      content,
+      displayPrompt,
+      tuttiModeActive
+        ? {
+            capabilityRefs: [{ capability: "tutti", source: "slash_command" }]
+          }
+        : undefined
+    );
+  };
   const [highlightedIndex, setHighlightedIndex] = useState(0);
   const [mentionHighlightedKey, setMentionHighlightedKey] = useState<
     string | null
@@ -370,12 +404,13 @@ export function AgentComposer(props: AgentComposerProps): React.JSX.Element {
     capabilityControlsReadOnly,
     onDraftContentChange,
     onSettingsChange,
-    onSubmit,
-    onSubmitGuidance,
+    onSubmit: submitWithComposerModifiers,
+    onSubmitGuidance: submitGuidanceWithComposerModifiers,
     onCapabilitySettingsRequest,
     onSlashStatusOpen,
     onPromptImagesUnsupported,
     onRequestGitBranches,
+    onTuttiModeActivate: () => onTuttiModeChange(true),
     draftContent,
     selectedProjectPath,
     slashStatusAgentSessionId,
@@ -640,6 +675,11 @@ export function AgentComposer(props: AgentComposerProps): React.JSX.Element {
       setIsPaletteOpen={setIsPaletteOpen}
       setHighlightedIndex={setHighlightedIndex}
       isGoalModeActive={isGoalModeActive}
+      isPlanModeActive={composerSettings.draftSettings.planMode}
+      isTuttiModeActive={tuttiModeActive}
+      isTuttiModeUpdating={tuttiModeUpdating}
+      onClearPlanMode={() => onSettingsChange({ planMode: false })}
+      onClearTuttiMode={() => onTuttiModeChange(false)}
       isPromptTipOverflowing={isPromptTipOverflowing}
     />
   );

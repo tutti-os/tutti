@@ -95,6 +95,32 @@ test("immediate submit bypasses queue storage and preserves diagnostics", () => 
   );
 });
 
+test("queued Tutti capability reference remains structured through delivery", () => {
+  const loaded = reduce(createInitialPromptQueueState(), {
+    type: "session/snapshotReceived",
+    sessions: [session("running", 1)]
+  });
+  const capabilityRefs = [
+    { capability: "tutti" as const, source: "slash_command" as const }
+  ];
+  const queued = reduce(loaded.state, {
+    ...submit("prompt-tutti"),
+    capabilityRefs
+  });
+
+  assert.deepEqual(
+    queued.state.recordsBySessionId["session-1"]?.prompts[0]?.capabilityRefs,
+    capabilityRefs
+  );
+
+  const sending = reduce(
+    queued.state,
+    turnUpserted(settledTurn("turn-1", 2)),
+    canonicalLifecycle("settled", 2)
+  );
+  assert.deepEqual(send(sending.commands[0]).capabilityRefs, capabilityRefs);
+});
+
 test("send-now native guidance can send against a canonical active turn", () => {
   const lifecycle = canonicalLifecycle("running", 1);
   let state = reduce(

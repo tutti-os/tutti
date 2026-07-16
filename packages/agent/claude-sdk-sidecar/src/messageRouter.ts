@@ -107,6 +107,9 @@ export class SDKMessageRouter {
     }
 
     if (message.type === "user") {
+      if (isTuttiHostContextUserMessage(message)) {
+        return;
+      }
       this.handleUser(message, parentToolUseID);
       return;
     }
@@ -401,4 +404,18 @@ export class SDKMessageRouter {
       });
     }
   }
+}
+
+function isTuttiHostContextUserMessage(message: SDKMessage): boolean {
+  const userMessage = message as SDKMessage & {
+    isSynthetic?: boolean;
+    origin?: { kind?: string };
+    message?: { content?: unknown };
+  };
+  if (!userMessage.isSynthetic || userMessage.origin?.kind !== "coordinator") {
+    return false;
+  }
+  return readUserMessageNotificationText(userMessage)
+    .trimStart()
+    .startsWith("<tutti-host-context");
 }

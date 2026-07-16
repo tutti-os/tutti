@@ -313,13 +313,16 @@ const (
 )
 
 // ActivityStateReport persists the session projection and its optional v2
-// turn/interaction entities as one atomic unit. Child entities must identify
-// the same workspace and session as Session.
+// turn/interaction/message entities as one atomic unit. Child entities must
+// identify the same workspace and session as Session. Messages must reference
+// a turn that already exists in the transaction; unlike the standalone
+// message report, this boundary never synthesizes a missing turn.
 type ActivityStateReport struct {
 	Session          SessionStateReport
 	Turn             *TurnTransition
 	RootProviderTurn *RootProviderTurnTransition
 	Interaction      *InteractionUpsert
+	Messages         []MessageUpdate
 }
 
 type ActivityStateReportResult struct {
@@ -332,6 +335,7 @@ type ActivityStateReportResult struct {
 	RootTurnAccepted  bool
 	Interaction       Interaction
 	InteractionResult InteractionTransitionResult
+	Messages          MessageReportResult
 }
 
 // Closed protocol v2 turn phase vocabulary. The storage CHECK constraints
@@ -368,6 +372,7 @@ type Turn struct {
 	WorkspaceID                            string
 	AgentSessionID                         string
 	TurnID                                 string
+	CapabilityRefs                         []CapabilityReference
 	Phase                                  string
 	Outcome                                string
 	ErrorMessage                           string
@@ -430,6 +435,11 @@ type SessionTurnSummaryPage struct {
 	HasMore bool
 }
 
+type CapabilityReference struct {
+	Capability string `json:"capability"`
+	Source     string `json:"source"`
+}
+
 const (
 	RootProviderTurnPhaseRunning   = canonical.RootProviderTurnPhaseRunning
 	RootProviderTurnPhaseCompleted = canonical.RootProviderTurnPhaseCompleted
@@ -452,11 +462,13 @@ type RootProviderTurnTransition struct {
 // TurnTransition records one turn phase transition. Transitions are written
 // synchronously per phase change (no batching); a settled turn is terminal
 // and rejects further transitions, which makes replays and cancel races
-// idempotent.
+// idempotent. A transition with an empty Phase and non-empty CapabilityRefs is
+// a metadata-only merge for an existing turn and must not alter lifecycle.
 type TurnTransition struct {
 	WorkspaceID             string
 	AgentSessionID          string
 	TurnID                  string
+	CapabilityRefs          []CapabilityReference
 	Phase                   string
 	Outcome                 string
 	ErrorMessage            string

@@ -38,8 +38,12 @@ export const businessEventTopicWorkspaceAppfactoryJobUpdated =
   "workspace.appfactory.job.updated" as const;
 export const businessEventTopicWorkspaceIssueUpdated =
   "workspace.issue.updated" as const;
+export const businessEventTopicWorkspaceTuttimodeUpdated =
+  "workspace.tuttimode.updated" as const;
 export const businessEventTopicWorkspaceWorkbenchNodeLaunchRequested =
   "workspace.workbench.node.launch.requested" as const;
+export const businessEventTopicWorkspaceWorkflowUpdated =
+  "workspace.workflow.updated" as const;
 
 export interface BusinessEventDefinition {
   topic: BusinessEventTopic;
@@ -49,7 +53,7 @@ export interface BusinessEventDefinition {
   scope: BusinessEventScopeName;
 }
 
-export const businessEventCatalogRevision = "sha256:e235d56c79f0ab66" as const;
+export const businessEventCatalogRevision = "sha256:6f1fb9e158ba8186" as const;
 
 export const businessEventDefinitions = [
   {
@@ -158,10 +162,24 @@ export const businessEventDefinitions = [
     scope: "workspace"
   },
   {
+    topic: "workspace.tuttimode.updated",
+    version: 1,
+    direction: "server->client",
+    owner: "workspace",
+    scope: "workspace"
+  },
+  {
     topic: "workspace.workbench.node.launch.requested",
     version: 1,
     direction: "server->client",
     owner: "core",
+    scope: "workspace"
+  },
+  {
+    topic: "workspace.workflow.updated",
+    version: 1,
+    direction: "server->client",
+    owner: "workspace",
     scope: "workspace"
   }
 ] as const satisfies readonly BusinessEventDefinition[];
@@ -272,11 +290,25 @@ export const businessEventDefinitionByTopic = {
     owner: "workspace",
     scope: "workspace"
   },
+  "workspace.tuttimode.updated": {
+    topic: "workspace.tuttimode.updated",
+    version: 1,
+    direction: "server->client",
+    owner: "workspace",
+    scope: "workspace"
+  },
   "workspace.workbench.node.launch.requested": {
     topic: "workspace.workbench.node.launch.requested",
     version: 1,
     direction: "server->client",
     owner: "core",
+    scope: "workspace"
+  },
+  "workspace.workflow.updated": {
+    topic: "workspace.workflow.updated",
+    version: 1,
+    direction: "server->client",
+    owner: "workspace",
     scope: "workspace"
   }
 } as const satisfies Record<BusinessEventTopic, BusinessEventDefinition>;

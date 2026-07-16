@@ -6,13 +6,13 @@ import (
 	"time"
 )
 
-func logAgentSubmitTrace(event string, workspaceID string, agentSessionID string, metadata map[string]any, fields map[string]any) {
-	LogSubmitTrace(event, workspaceID, agentSessionID, metadata, fields)
+func logAgentSubmitTrace(event string, workspaceID string, agentSessionID string, clientSubmitID string, metadata map[string]any, fields map[string]any) {
+	LogSubmitTrace(event, workspaceID, agentSessionID, clientSubmitID, metadata, fields)
 }
 
 // LogSubmitTrace records cross-layer timings for client-initiated agent submits.
-func LogSubmitTrace(event string, workspaceID string, agentSessionID string, metadata map[string]any, fields map[string]any) {
-	clientSubmitID := metadataString(metadata, "clientSubmitId")
+func LogSubmitTrace(event string, workspaceID string, agentSessionID string, clientSubmitID string, metadata map[string]any, fields map[string]any) {
+	clientSubmitID = strings.TrimSpace(clientSubmitID)
 	if clientSubmitID == "" {
 		return
 	}
@@ -35,14 +35,6 @@ func LogSubmitTrace(event string, workspaceID string, agentSessionID string, met
 		}
 	}
 	slog.Info("agent submit trace", args...)
-}
-
-func metadataString(metadata map[string]any, key string) string {
-	if len(metadata) == 0 {
-		return ""
-	}
-	value, _ := metadata[key].(string)
-	return strings.TrimSpace(value)
 }
 
 func metadataInt64(metadata map[string]any, key string) int64 {

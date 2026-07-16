@@ -52,6 +52,116 @@ const OPENCODE_POLICY = {
 describe("agentSlashCommandProviderPolicy", () => {
   const reviewPickerProviders = ["codex", "claude-code"] as const;
 
+  it("surfaces compatible Plan and Tutti modifiers as independent slash entries", () => {
+    const commands = resolveSlashCommandsForProvider({
+      provider: "codex",
+      policy: CODEX_POLICY,
+      commands: [],
+      planSupported: true,
+      tuttiSupported: true
+    });
+
+    expect(commands.map((command) => command.name)).toEqual([
+      "compact",
+      "status",
+      "fast",
+      "goal",
+      "review",
+      "plan",
+      "tutti"
+    ]);
+    expect(
+      resolveSlashCommandSelectionEffect({
+        provider: "codex",
+        policy: CODEX_POLICY,
+        command: commands.find((command) => command.name === "plan")!,
+        currentDraft: "/plan"
+      })
+    ).toEqual({ kind: "enablePlanMode" });
+    expect(
+      resolveSlashCommandSelectionEffect({
+        provider: "codex",
+        policy: CODEX_POLICY,
+        command: commands.find((command) => command.name === "tutti")!,
+        currentDraft: "/tutti"
+      })
+    ).toEqual({ kind: "activateTuttiMode" });
+  });
+
+  it("activates Tutti mode independently without synthesizing a capability reference or agent prompt", () => {
+    const commands = resolveSlashCommandsForProvider({
+      provider: "claude-code",
+      policy: CLAUDE_POLICY,
+      commands: [],
+      tuttiSupported: true
+    });
+
+    expect(
+      resolveSlashCommandSubmitEffect({
+        provider: "claude-code",
+        policy: CLAUDE_POLICY,
+        commands,
+        draft: "/tutti",
+        tuttiSupported: true
+      })
+    ).toEqual({ kind: "activateTuttiMode" });
+  });
+
+  it("keeps /tutti arguments in the draft for normal agent submission", () => {
+    const commands = resolveSlashCommandsForProvider({
+      provider: "codex",
+      policy: CODEX_POLICY,
+      commands: [],
+      tuttiSupported: true
+    });
+
+    expect(
+      resolveSlashCommandSubmitEffect({
+        provider: "codex",
+        policy: CODEX_POLICY,
+        commands,
+        draft: "/tutti inspect the failing tests",
+        tuttiSupported: true
+      })
+    ).toBeNull();
+  });
+
+  it("reserves the local Tutti command when a provider advertises the same name", () => {
+    const commands = resolveSlashCommandsForProvider({
+      provider: "extension-provider",
+      commands: [{ name: "tutti" }, { name: "provider-status" }],
+      tuttiSupported: true
+    });
+
+    expect(commands.map((command) => command.name)).toEqual([
+      "provider-status",
+      "tutti"
+    ]);
+    const tutti = commands.find((command) => command.name === "tutti")!;
+    expect("kind" in tutti && tutti.kind).toBe("capability");
+    expect(
+      resolveSlashCommandSubmitEffect({
+        provider: "extension-provider",
+        commands,
+        draft: "/tutti",
+        tuttiSupported: true
+      })
+    ).toEqual({ kind: "activateTuttiMode" });
+  });
+
+  it("reserves the local Plan command when Plan is supported", () => {
+    const commands = resolveSlashCommandsForProvider({
+      provider: "codex",
+      policy: CODEX_POLICY,
+      commands: [{ name: "plan" }],
+      planSupported: true
+    });
+
+    expect(commands.filter((command) => command.name === "plan")).toEqual([
+      { name: "plan" }
+    ]);
+  });
+
   it("adds browser-use as a composer capability when browser use is supported", () => {
     const commands = resolveSlashCommandsForProvider({
       provider: "codex",
@@ -368,7 +478,7 @@ describe("agentSlashCommandProviderPolicy", () => {
         command: { name: "plan" },
         currentDraft: "/pla"
       })
-    ).toEqual({ kind: "togglePlanMode" });
+    ).toEqual({ kind: "enablePlanMode" });
   });
 
   it("handles Claude Code local status without provider prompts", () => {
@@ -387,7 +497,7 @@ describe("agentSlashCommandProviderPolicy", () => {
         command: { name: "plan" },
         currentDraft: "/pla"
       })
-    ).toEqual({ kind: "togglePlanMode" });
+    ).toEqual({ kind: "enablePlanMode" });
   });
 
   it("submits advertised Claude Code compact command as provider-native prompt", () => {
@@ -435,7 +545,7 @@ describe("agentSlashCommandProviderPolicy", () => {
         commands,
         draft: "/plan"
       })
-    ).toEqual({ kind: "togglePlanMode" });
+    ).toEqual({ kind: "enablePlanMode" });
     expect(
       resolveSlashCommandSubmitEffect({
         provider: "codex",
@@ -469,7 +579,7 @@ describe("agentSlashCommandProviderPolicy", () => {
         commands,
         draft: "/plan"
       })
-    ).toEqual({ kind: "togglePlanMode" });
+    ).toEqual({ kind: "enablePlanMode" });
     expect(
       resolveSlashCommandSubmitEffect({
         provider: "claude-code",
@@ -477,7 +587,7 @@ describe("agentSlashCommandProviderPolicy", () => {
         commands,
         draft: "/plan refactor auth"
       })
-    ).toEqual({ kind: "togglePlanMode" });
+    ).toBeNull();
   });
 
   it("surfaces /plan only when plan mode is supported", () => {

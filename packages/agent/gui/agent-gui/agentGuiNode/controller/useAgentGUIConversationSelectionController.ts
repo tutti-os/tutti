@@ -138,6 +138,7 @@ export function useAgentGUIConversationSelectionController(
     workspaceId
   } = input;
   const previousAttentionActiveConversationIdRef = useRef<string | null>(null);
+  const failedActivationRollbackSessionIdRef = useRef<string | null>(null);
 
   useEffect(() => {
     const userId = currentUserId?.trim() ?? "";
@@ -157,6 +158,8 @@ export function useAgentGUIConversationSelectionController(
       !isPendingActivationViable(activePendingActivation) &&
       activeConversationIdRef.current === activePendingActivation.agentSessionId
     ) {
+      failedActivationRollbackSessionIdRef.current =
+        activePendingActivation.agentSessionId;
       activeConversationIdRef.current = null;
       setActiveConversationId(null);
       isComposerHomeRef.current = true;
@@ -209,6 +212,17 @@ export function useAgentGUIConversationSelectionController(
 
   useEffect(() => {
     const externalId = data.lastActiveAgentSessionId?.trim() ?? "";
+    const failedActivationRollbackSessionId =
+      failedActivationRollbackSessionIdRef.current;
+    if (failedActivationRollbackSessionId) {
+      if (externalId === failedActivationRollbackSessionId) {
+        // The workbench state update that clears a failed optimistic session
+        // can reach this component after the local rollback. Until that echo
+        // arrives, the old persisted id is not a new external selection.
+        return;
+      }
+      failedActivationRollbackSessionIdRef.current = null;
+    }
     if (externalId === (activeConversationIdRef.current ?? "")) return;
     if (!externalId) {
       const previous = activeConversationIdRef.current;

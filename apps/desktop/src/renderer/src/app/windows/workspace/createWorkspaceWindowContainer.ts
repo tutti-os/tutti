@@ -56,7 +56,10 @@ import type {
   DesktopRuntimeApi,
   DesktopWorkspaceAppExternalHostApi
 } from "@preload/types";
-import type { TuttidClient } from "@tutti-os/client-tuttid-ts";
+import type {
+  TuttidClient,
+  TuttidEventStreamClient
+} from "@tutti-os/client-tuttid-ts";
 import type { IReporterService } from "@renderer/features/analytics/services/reporterService.interface.ts";
 import type { IDesktopRichTextAtService } from "@renderer/features/rich-text-at/services/richTextAtService.interface.ts";
 import type { IWorkspaceUserProjectService } from "@renderer/features/workspace-user-project/services/workspaceUserProjectService.interface.ts";
@@ -71,6 +74,7 @@ export interface WorkspaceWindowContainerResult {
   container: InstantiationService;
   desktopApi: ReturnType<typeof resolveDesktopEnvironment>["desktopApi"];
   environmentMode: "desktop" | "web";
+  eventStreamClient: TuttidEventStreamClient;
   hostWindowApi: DesktopHostWindowApi;
   reporterService: Pick<IReporterService, "trackEvents">;
   richTextAtService: IDesktopRichTextAtService;
@@ -385,6 +389,7 @@ export function createWorkspaceWindowContainer(): WorkspaceWindowContainerResult
     container,
     desktopApi,
     environmentMode: environment.mode,
+    eventStreamClient: tuttidEventStreamClient,
     hostWindowApi: desktopApi.host.window,
     reporterService,
     richTextAtService,

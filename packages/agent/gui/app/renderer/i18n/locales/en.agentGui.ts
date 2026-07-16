@@ -6,6 +6,7 @@ import { enAgentGuiModelPlans } from "./en.agentGuiModelPlans.ts";
 import { enAgentGuiSlashPalette } from "./en.agentGuiSlashPalette.ts";
 import { enAgentGuiSessionActions } from "./en.agentGuiSessionActions.ts";
 import { enAgentGuiCollaboration } from "./en.agentGuiCollaboration.ts";
+import { enTuttiModePlan } from "./en.tuttiModePlan.ts";
 
 export const enAgentGui = {
   initialPlaceholder: "Type @ to reference sessions, files, tasks, and apps",
@@ -266,6 +267,16 @@ export const enAgentGui = {
   },
   permissionLabel: "Run permissions",
   planModeLabel: "Plan Mode",
+  normalModeLabel: "Normal",
+  normalModeDescription: "Execute the request directly",
+  tuttiModeLabel: "Tutti",
+  tuttiModeDescription:
+    "Ask the agent to prefer Tutti's native workflow capabilities",
+  tuttiModeUpdateFailed: "Tutti mode couldn't be updated. Try again.",
+  tuttiModeUpdateUncertain:
+    "Tutti mode is still being reconciled. Try again after it finishes.",
+  tuttiModePlan: enTuttiModePlan,
+  planModeDescription: "Plan first, then implement or break down into an Issue",
   planModeOnLabel: "On",
   planModeOffLabel: "Off",
   planUnavailable: "Plan unavailable",

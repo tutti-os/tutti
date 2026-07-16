@@ -47,6 +47,10 @@ func (api DaemonAPI) ListWorkspaceAgentSessions(ctx context.Context, request tut
 	if err != nil {
 		return writeListWorkspaceAgentSessionsError(err), nil
 	}
+	generatedSessions, err := generatedAgentSessions(page.Sessions)
+	if err != nil {
+		return writeListWorkspaceAgentSessionsError(err), nil
+	}
 	slog.Info("workspace agent sessions list completed",
 		"event", "workspace.agent_session.api.list_completed",
 		"workspace_id", workspaceID,
@@ -54,7 +58,7 @@ func (api DaemonAPI) ListWorkspaceAgentSessions(ctx context.Context, request tut
 	)
 	response := tuttigenerated.ListWorkspaceAgentSessions200JSONResponse{
 		HasMore:     page.HasMore,
-		Sessions:    generatedAgentSessions(page.Sessions),
+		Sessions:    generatedSessions,
 		WorkspaceId: workspaceID,
 	}
 	if page.NextCursor != "" {
@@ -83,9 +87,17 @@ func (api DaemonAPI) ListWorkspaceAgentSessionSections(ctx context.Context, requ
 	if err != nil {
 		return writeListWorkspaceAgentSessionSectionsError(err), nil
 	}
+	generatedPinned, err := generatedAgentSessionPage(page.Pinned)
+	if err != nil {
+		return writeListWorkspaceAgentSessionSectionsError(err), nil
+	}
+	generatedSections, err := generatedAgentSessionSections(page.Sections)
+	if err != nil {
+		return writeListWorkspaceAgentSessionSectionsError(err), nil
+	}
 	return tuttigenerated.ListWorkspaceAgentSessionSections200JSONResponse{
-		Pinned:      generatedAgentSessionPage(page.Pinned),
-		Sections:    generatedAgentSessionSections(page.Sections),
+		Pinned:      generatedPinned,
+		Sections:    generatedSections,
 		WorkspaceId: page.WorkspaceID,
 	}, nil
 }
@@ -116,8 +128,12 @@ func (api DaemonAPI) ListWorkspaceAgentSessionSectionPage(ctx context.Context, r
 	if err != nil {
 		return writeListWorkspaceAgentSessionSectionPageError(err), nil
 	}
+	generatedSection, err := generatedAgentSessionSection(section)
+	if err != nil {
+		return writeListWorkspaceAgentSessionSectionPageError(err), nil
+	}
 	return tuttigenerated.ListWorkspaceAgentSessionSectionPage200JSONResponse{
-		Section:     generatedAgentSessionSection(section),
+		Section:     generatedSection,
 		WorkspaceId: string(request.WorkspaceID),
 	}, nil
 }
@@ -223,8 +239,12 @@ func (api DaemonAPI) ListWorkspaceAgentPinnedSessionPage(ctx context.Context, re
 	if err != nil {
 		return writeListWorkspaceAgentPinnedSessionPageError(err), nil
 	}
+	generatedPage, err := generatedAgentSessionPage(page)
+	if err != nil {
+		return writeListWorkspaceAgentPinnedSessionPageError(err), nil
+	}
 	return tuttigenerated.ListWorkspaceAgentPinnedSessionPage200JSONResponse{
-		Page:        generatedAgentSessionPage(page),
+		Page:        generatedPage,
 		WorkspaceId: string(request.WorkspaceID),
 	}, nil
 }

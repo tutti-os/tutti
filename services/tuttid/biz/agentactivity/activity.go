@@ -90,6 +90,7 @@ type SessionTurnCursor = agentstore.SessionTurnCursor
 type ListSessionTurnSummariesInput = agentstore.ListSessionTurnSummariesInput
 type SessionTurnSummary = agentstore.SessionTurnSummary
 type SessionTurnSummaryPage = agentstore.SessionTurnSummaryPage
+type CapabilityReference = agentstore.CapabilityReference
 
 type TurnTransition = agentstore.TurnTransition
 type RootProviderTurnTransition = agentstore.RootProviderTurnTransition

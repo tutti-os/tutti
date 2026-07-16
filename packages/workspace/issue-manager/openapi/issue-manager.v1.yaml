@@ -1001,6 +1001,76 @@ components:
         - IssueManagerPriorityHigh
         - IssueManagerPriorityMedium
         - IssueManagerPriorityLow
+    IssueManagerPlanningSource:
+      type: string
+      description: How the issue entered the durable execution workflow.
+      enum:
+        - manual
+        - tutti_mode_plan
+        - traditional_plan
+    IssueManagerBudgetMode:
+      type: string
+      enum:
+        - auto
+        - fixed
+    IssueManagerBudgetStatus:
+      type: string
+      description: soft_limited pauses future dispatch without canceling in-flight runs.
+      enum:
+        - active
+        - soft_limited
+    IssueManagerExecutionProfile:
+      type: object
+      additionalProperties: false
+      required:
+        - reasoningIntensity
+        - orchestrationIntensity
+      properties:
+        reasoningIntensity:
+          type: integer
+          minimum: 0
+          maximum: 100
+          description: Issue-owned reasoning strength inherited by every task and run.
+        orchestrationIntensity:
+          type: integer
+          minimum: 0
+          maximum: 100
+          description: Issue-owned decomposition, dependency, review, and retry strength.
+    IssueManagerBudget:
+      type: object
+      additionalProperties: false
+      required:
+        - mode
+        - tokenLimit
+        - consumedTokens
+        - quotaWaterlinePercent
+        - status
+      properties:
+        mode:
+          $ref: "#/components/schemas/IssueManagerBudgetMode"
+        tokenLimit:
+          type: integer
+          format: int64
+          minimum: 0
+          description: Compiled token soft limit. In auto mode the daemon owns this value; zero means no token gate is currently available.
+        consumedTokens:
+          type: integer
+          format: int64
+          minimum: 0
+        quotaWaterlinePercent:
+          type: number
+          format: double
+          minimum: 0
+          maximum: 100
+          description: Subscription plans gate on the remaining-quota waterline instead of fake monetary cost.
+        remainingQuotaPercent:
+          type: number
+          format: double
+          minimum: 0
+          maximum: 100
+          description: Last provider-reported subscription quota percentage. Omitted when the provider cannot report quota.
+        status:
+          $ref: "#/components/schemas/IssueManagerBudgetStatus"
     IssueManagerStatusCounts:
       type: object
       additionalProperties: false

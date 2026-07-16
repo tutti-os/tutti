@@ -6,8 +6,8 @@ import (
 	"time"
 )
 
-func logAgentSubmitTrace(event string, workspaceID string, agentSessionID string, metadata map[string]any, fields map[string]any) {
-	clientSubmitID := metadataString(metadata, "clientSubmitId")
+func logAgentSubmitTrace(event string, workspaceID string, agentSessionID string, clientSubmitID string, metadata map[string]any, fields map[string]any) {
+	clientSubmitID = strings.TrimSpace(clientSubmitID)
 	if clientSubmitID == "" {
 		return
 	}
@@ -32,7 +32,7 @@ func logAgentSubmitTrace(event string, workspaceID string, agentSessionID string
 	slog.Info("agent submit trace", args...)
 }
 
-func logCreateAgentSubmitTrace(event string, workspaceID string, agentSessionID string, metadata map[string]any, provider string, sessionStatus string, err error) {
+func logCreateAgentSubmitTrace(event string, workspaceID string, agentSessionID string, clientSubmitID string, metadata map[string]any, provider string, sessionStatus string, err error) {
 	fields := map[string]any{}
 	if strings.TrimSpace(provider) != "" {
 		fields["provider"] = strings.TrimSpace(provider)
@@ -43,10 +43,10 @@ func logCreateAgentSubmitTrace(event string, workspaceID string, agentSessionID 
 	if err != nil {
 		fields["error"] = err.Error()
 	}
-	logAgentSubmitTrace(event, workspaceID, agentSessionID, metadata, fields)
+	logAgentSubmitTrace(event, workspaceID, agentSessionID, clientSubmitID, metadata, fields)
 }
 
-func logSendAgentSubmitTrace(event string, workspaceID string, agentSessionID string, metadata map[string]any, sessionStatus string, turnID string, turnPhase string, err error) {
+func logSendAgentSubmitTrace(event string, workspaceID string, agentSessionID string, clientSubmitID string, metadata map[string]any, sessionStatus string, turnID string, turnPhase string, err error) {
 	fields := map[string]any{}
 	if strings.TrimSpace(sessionStatus) != "" {
 		fields["session_status"] = strings.TrimSpace(sessionStatus)
@@ -60,15 +60,7 @@ func logSendAgentSubmitTrace(event string, workspaceID string, agentSessionID st
 	if err != nil {
 		fields["error"] = err.Error()
 	}
-	logAgentSubmitTrace(event, workspaceID, agentSessionID, metadata, fields)
-}
-
-func metadataString(metadata map[string]any, key string) string {
-	if len(metadata) == 0 {
-		return ""
-	}
-	value, _ := metadata[key].(string)
-	return strings.TrimSpace(value)
+	logAgentSubmitTrace(event, workspaceID, agentSessionID, clientSubmitID, metadata, fields)
 }
 
 func metadataInt64(metadata map[string]any, key string) int64 {

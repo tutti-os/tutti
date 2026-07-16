@@ -244,7 +244,8 @@ export class SessionRuntime {
     prompt: string,
     content?: unknown,
     turnOrigin?: string,
-    goal?: GoalCommandDispatch
+    goal?: GoalCommandDispatch,
+    hostContext = ""
   ): void {
     if (this.driver) {
       this.driver.exec(turnId, prompt);
@@ -309,6 +310,21 @@ export class SessionRuntime {
           prompt
         ) as unknown as SDKUserMessage["message"]["content"];
         generation.expectPromptEcho(turn.promptUuid);
+        if (hostContext.trim()) {
+          generation.promptQueue.push({
+            uuid: crypto.randomUUID(),
+            type: "user",
+            session_id: this.providerSessionId,
+            parent_tool_use_id: null,
+            isSynthetic: true,
+            shouldQuery: false,
+            origin: { kind: "coordinator" },
+            message: {
+              role: "user",
+              content: hostContext.trim()
+            }
+          } as SDKUserMessage);
+        }
         generation.promptQueue.push({
           uuid: turn.promptUuid,
           type: "user",

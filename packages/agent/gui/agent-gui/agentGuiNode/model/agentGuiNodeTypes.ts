@@ -389,6 +389,14 @@ export interface AgentGUIComposerViewModel {
   /** Provider goal exposes a real paused state and pause/resume controls. */
   goalPauseSupported: boolean;
   canSubmit: boolean;
+  isTuttiModeActive: boolean;
+  isTuttiModeUpdating: boolean;
+  tuttiModeUpdateStatus:
+    | "idle"
+    | "pending_create"
+    | "updating"
+    | "failed"
+    | "uncertain";
   composerSettings: AgentGUIComposerSettingsVM;
   queuedPrompts: AgentGUIQueuedPromptVM[];
   queueStatus: AgentGUIQueueStatus;

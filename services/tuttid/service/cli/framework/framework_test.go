@@ -31,6 +31,10 @@ type hiddenInput struct {
 	Provider string `cli:"provider" hidden:"true"`
 }
 
+type defaultInput struct {
+	TimeoutMS *int `cli:"timeout-ms" default:"30000" validate:"min=0,max=60000"`
+}
+
 func TestFromStructGeneratesInputSchema(t *testing.T) {
 	schema := Schema(FromStruct[sampleInput]())
 	properties := schema["properties"].(map[string]any)
@@ -59,6 +63,21 @@ func TestFromStructGeneratesInputSchema(t *testing.T) {
 	}
 	if required := schema["required"].([]string); !reflect.DeepEqual(required, []string{"topic-id"}) {
 		t.Fatalf("required = %#v", required)
+	}
+}
+
+func TestFromStructPublishesAndBindsTypedDefault(t *testing.T) {
+	spec := FromStruct[defaultInput]()
+	property := Schema(spec)["properties"].(map[string]any)["timeout-ms"].(map[string]any)
+	if property["default"] != int64(30000) {
+		t.Fatalf("default = %#v", property["default"])
+	}
+	input, err := BindInput[defaultInput](spec, nil)
+	if err != nil {
+		t.Fatalf("BindInput: %v", err)
+	}
+	if input.TimeoutMS == nil || *input.TimeoutMS != 30000 {
+		t.Fatalf("input = %#v", input)
 	}
 }
 

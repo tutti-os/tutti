@@ -103,6 +103,44 @@ Issue run creation is target-first. UI, CLI, and AgentGUI sidecar flows pass
 `agentTargetId`/`--agent-target-id` as the launch authority; the daemon derives
 and persists the provider for display, filtering, and legacy compatibility.
 
+## Plan Conversion And Execution Orchestration
+
+Issue Manager accepts two distinct planning origins:
+
+- A provider-native Plan can still be converted through the traditional
+  AgentGUI **Break into an Issue** flow. Its source is
+  `traditional_plan`.
+- An accepted Tutti Mode Plan task graph is materialized by the daemon-owned
+  workspace workflow service. Its source is `tutti_mode_plan`.
+
+Tutti Mode Plan does not masquerade as a provider interaction and does not
+send an ephemeral renderer draft through the traditional conversion path.
+The Agent creates immutable `tutti-mode-plan/v1` revisions through the Tutti
+CLI; the user decides daemon-owned checkpoints; and tuttid projects tasks only
+from the accepted current task-graph revision. See
+[Workspace Workflows And Tutti Mode Plan](./workspace-workflows.md).
+
+For the Tutti-owned path, the Markdown revision already contains the
+Issue-level reasoning/orchestration profile, auto/fixed token budget, task
+assignments, model choices, execution directories, and dependencies. The
+workflow service derives read-only `ActionableItem`s, then invokes Issue
+Manager with one atomic Issue-and-task-graph request. The SQLite adapter commits
+the Issue, all Tasks, and topic activity atomically; task failure rolls the
+Issue back, and update events are published only after commit. A deterministic
+workflow operation and Issue ID make repeated decisions and waiters
+idempotent. The reserved Issue namespace is owned by the daemon
+`workspaceworkflow` business model rather than the reusable workspace Issue
+package, so generic Issue consumers cannot become a second Tutti workflow
+authority. AgentGUI neither parses an Agent message into this graph nor calls
+Issue creation itself.
+
+`sourceSessionId` is the durable planning link for both origins. Issue and Task
+headers can open that source Session, while successful atomic creation projects
+one idempotent, credential-free workspace-Issue mention back into the source
+timeline. Tutti Mode Plan additionally keeps its durable workflow, immutable
+revisions, checkpoints, and the operation's `issueId`; those records represent
+review provenance and do not compete with the Issue as the execution entity.
+
 The npm package name should be `@tutti-os/workspace-issue-manager`.
 It participates in the shared public npm release group documented in
 [npm Package Release](../conventions/npm-package-release.md).

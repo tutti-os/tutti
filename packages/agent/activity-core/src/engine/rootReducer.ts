@@ -62,6 +62,10 @@ import {
   createInitialSessionMutationsState,
   sessionMutationsReducer
 } from "./sessionMutations.reducer.ts";
+import {
+  createInitialTuttiModeActivationState,
+  tuttiModeActivationReducer
+} from "./tuttiModeActivation.reducer.ts";
 
 // Root reducer: static composition of domain reducers, zero business logic.
 // Cross-domain read-only context is passed explicitly; domains still own all
@@ -79,7 +83,8 @@ export function createInitialAgentSessionEngineState(): AgentSessionEngineState 
     sessionCommands: createInitialSessionCommandsState(),
     sessionLifecycle: createInitialSessionLifecycleState(),
     sessionMessages: createInitialSessionMessagesState(),
-    composerOptions: createInitialComposerOptionsState()
+    composerOptions: createInitialComposerOptionsState(),
+    tuttiModeActivation: createInitialTuttiModeActivationState()
   };
 }
 
@@ -373,6 +378,11 @@ export function rootEngineReducer(
     }
   );
   const composerOptions = composerOptionsReducer(state.composerOptions, intent);
+  const tuttiModeActivation = tuttiModeActivationReducer(
+    state.tuttiModeActivation,
+    intent,
+    { sessionsById: sessionLifecycle.state.sessionsById }
+  );
   const unchanged =
     attentionReadState.state === state.attentionReadState &&
     engineRuntime.state === state.engineRuntime &&
@@ -384,7 +394,8 @@ export function rootEngineReducer(
     sessionCommands.state === state.sessionCommands &&
     sessionLifecycle.state === state.sessionLifecycle &&
     sessionMessages.state === state.sessionMessages &&
-    composerOptions.state === state.composerOptions;
+    composerOptions.state === state.composerOptions &&
+    tuttiModeActivation.state === state.tuttiModeActivation;
   const nextState = unchanged
     ? state
     : {
@@ -398,7 +409,8 @@ export function rootEngineReducer(
         sessionCommands: sessionCommands.state,
         sessionLifecycle: sessionLifecycle.state,
         sessionMessages: sessionMessages.state,
-        composerOptions: composerOptions.state
+        composerOptions: composerOptions.state,
+        tuttiModeActivation: tuttiModeActivation.state
       };
   return {
     commands: [
@@ -411,7 +423,8 @@ export function rootEngineReducer(
       ...sessionCommands.commands,
       ...sessionLifecycle.commands,
       ...promptQueue.commands,
-      ...composerOptions.commands
+      ...composerOptions.commands,
+      ...tuttiModeActivation.commands
     ],
     ...(sessionMutations.followUpIntents
       ? { followUpIntents: sessionMutations.followUpIntents }

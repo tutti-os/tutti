@@ -70,7 +70,7 @@ func TestSQLiteStorePutUserProjectKeepsDurableOrderWhenReused(t *testing.T) {
 
 func TestSQLiteStoreUserProjectOrderMigrationPreservesLegacyVisualOrder(t *testing.T) {
 	ctx := context.Background()
-	dbPath := filepath.Join(t.TempDir(), "legacy-user-projects.db")
+	dbPath := filepath.Join(t.TempDir(), "legacy-user-projects.writeDB")
 	store, err := OpenSQLiteStore(dbPath)
 	if err != nil {
 		t.Fatalf("OpenSQLiteStore() error = %v", err)
@@ -114,7 +114,7 @@ INSERT INTO user_projects (id, path, label, created_at_unix_ms, updated_at_unix_
 
 func TestSQLiteStoreUserProjectPinMigrationPreservesDurableOrder(t *testing.T) {
 	ctx := context.Background()
-	dbPath := filepath.Join(t.TempDir(), "ordered-user-projects.db")
+	dbPath := filepath.Join(t.TempDir(), "ordered-user-projects.writeDB")
 	store, err := OpenSQLiteStore(dbPath)
 	if err != nil {
 		t.Fatalf("OpenSQLiteStore() error = %v", err)

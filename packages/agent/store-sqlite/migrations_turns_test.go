@@ -117,7 +117,7 @@ UPDATE workspace_agent_messages SET deleted_at_unix_ms = 130 WHERE workspace_id 
 
 	// Simulate a legacy database that has messages but predates the turns
 	// migration, then re-run Migrate so the backfill executes against them.
-	if _, err := store.db.ExecContext(ctx, `DELETE FROM `+schemaMigrationsTable+` WHERE id IN (?, ?)`, schemaMigrationWorkspaceAgentActivityTurnsV1, schemaMigrationWorkspaceAgentActivityTurnIntegrityV1); err != nil {
+	if _, err := store.db.ExecContext(ctx, `DELETE FROM `+schemaMigrationsTable+` WHERE id IN (?, ?, ?)`, schemaMigrationWorkspaceAgentActivityTurnsV1, schemaMigrationWorkspaceAgentActivityTurnIntegrityV1, schemaMigrationWorkspaceAgentTurnCapabilityRefsV1); err != nil {
 		t.Fatalf("reset turns migration ledger: %v", err)
 	}
 	if _, err := store.db.ExecContext(ctx, `PRAGMA foreign_keys = OFF`); err != nil {
@@ -270,6 +270,7 @@ func TestWorkspaceAgentTurnsMigrationRollsBackSchemaBackfillAndLedger(t *testing
 
 	for _, statement := range []string{
 		`DELETE FROM ` + schemaMigrationsTable + ` WHERE id = '` + schemaMigrationWorkspaceAgentActivityTurnsV1 + `'`,
+		`DELETE FROM ` + schemaMigrationsTable + ` WHERE id = '` + schemaMigrationWorkspaceAgentTurnCapabilityRefsV1 + `'`,
 		`PRAGMA foreign_keys = OFF`,
 		`DROP TABLE workspace_agent_interactions`,
 		`DROP TABLE workspace_agent_turns`,
@@ -301,6 +302,9 @@ func TestWorkspaceAgentTurnsMigrationRollsBackSchemaBackfillAndLedger(t *testing
 	}
 	if err := store.applyWorkspaceAgentActivityTurnsV1(ctx); err != nil {
 		t.Fatalf("retry turns migration: %v", err)
+	}
+	if err := store.applyWorkspaceAgentTurnCapabilityRefsV1(ctx); err != nil {
+		t.Fatalf("retry turn capability refs migration: %v", err)
 	}
 	if turn, ok, err := store.GetTurn(ctx, "ws-1", "session-rollback", "turn-1"); err != nil || !ok || !turn.Backfilled {
 		t.Fatalf("retried backfill turn=%#v ok=%v error=%v", turn, ok, err)

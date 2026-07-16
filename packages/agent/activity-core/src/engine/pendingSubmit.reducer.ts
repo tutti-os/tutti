@@ -1,3 +1,4 @@
+import { normalizeAgentActivityCapabilityReferences } from "../capabilityReferences.ts";
 import type { AgentActivityMessage } from "../types.ts";
 import type { SendInputResultValidation } from "./commandResult.validation.ts";
 import type {
@@ -28,10 +29,14 @@ export function requestSubmit(
   ) {
     return unchanged(state);
   }
+  const capabilityRefs = normalizeAgentActivityCapabilityReferences(
+    intent.capabilityRefs
+  );
   const record: PendingSubmitIntentRecord = {
     acceptedSessionVersion: null,
     agentSessionId,
     clientSubmitId,
+    ...(capabilityRefs.length > 0 ? { capabilityRefs } : {}),
     content: intent.content.map((block) => ({ ...block })),
     ...(intent.displayPrompt?.trim()
       ? { displayPrompt: intent.displayPrompt.trim() }

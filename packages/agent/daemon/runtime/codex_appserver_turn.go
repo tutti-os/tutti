@@ -364,6 +364,7 @@ func (a *CodexAppServerAdapter) execBlocking(
 		appSession.defaultModeMask,
 		execState.defaultModel,
 		a.config.commandNetworkAccess,
+		renderTuttiModeHostContext(tuttiModeTurnSnapshotFromContext(ctx)),
 	)
 	trace.Log("turn.start.params", codexAppServerTraceTurnStartParams(session, turnParams, providerContent))
 	turnStartedAt := time.Now()

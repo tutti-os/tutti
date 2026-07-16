@@ -1042,6 +1042,27 @@ func (e CollaborationRunTriggerSource) Valid() bool {
 	}
 }
 
+// Defines values for DecideWorkspaceWorkflowCheckpointRequestDecision.
+const (
+	DecideWorkspaceWorkflowCheckpointRequestDecisionAccepted DecideWorkspaceWorkflowCheckpointRequestDecision = "accepted"
+	DecideWorkspaceWorkflowCheckpointRequestDecisionCanceled DecideWorkspaceWorkflowCheckpointRequestDecision = "canceled"
+	DecideWorkspaceWorkflowCheckpointRequestDecisionRejected DecideWorkspaceWorkflowCheckpointRequestDecision = "rejected"
+)
+
+// Valid indicates whether the value is a known member of the DecideWorkspaceWorkflowCheckpointRequestDecision enum.
+func (e DecideWorkspaceWorkflowCheckpointRequestDecision) Valid() bool {
+	switch e {
+	case DecideWorkspaceWorkflowCheckpointRequestDecisionAccepted:
+		return true
+	case DecideWorkspaceWorkflowCheckpointRequestDecisionCanceled:
+		return true
+	case DecideWorkspaceWorkflowCheckpointRequestDecisionRejected:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for DeletedAgentConversationRetentionDays.
 const (
 	N15 DeletedAgentConversationRetentionDays = 15
@@ -1369,6 +1390,42 @@ func (e HealthStatusResponseStatus) Valid() bool {
 	}
 }
 
+// Defines values for IssueManagerBudgetMode.
+const (
+	IssueManagerBudgetModeAuto  IssueManagerBudgetMode = "auto"
+	IssueManagerBudgetModeFixed IssueManagerBudgetMode = "fixed"
+)
+
+// Valid indicates whether the value is a known member of the IssueManagerBudgetMode enum.
+func (e IssueManagerBudgetMode) Valid() bool {
+	switch e {
+	case IssueManagerBudgetModeAuto:
+		return true
+	case IssueManagerBudgetModeFixed:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for IssueManagerBudgetStatus.
+const (
+	IssueManagerBudgetStatusActive      IssueManagerBudgetStatus = "active"
+	IssueManagerBudgetStatusSoftLimited IssueManagerBudgetStatus = "soft_limited"
+)
+
+// Valid indicates whether the value is a known member of the IssueManagerBudgetStatus enum.
+func (e IssueManagerBudgetStatus) Valid() bool {
+	switch e {
+	case IssueManagerBudgetStatusActive:
+		return true
+	case IssueManagerBudgetStatusSoftLimited:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for IssueManagerIssueContextRefParentKind.
 const (
 	IssueManagerIssueContextRefParentKindIssue IssueManagerIssueContextRefParentKind = "issue"
@@ -1378,6 +1435,27 @@ const (
 func (e IssueManagerIssueContextRefParentKind) Valid() bool {
 	switch e {
 	case IssueManagerIssueContextRefParentKindIssue:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for IssueManagerPlanningSource.
+const (
+	IssueManagerPlanningSourceManual          IssueManagerPlanningSource = "manual"
+	IssueManagerPlanningSourceTraditionalPlan IssueManagerPlanningSource = "traditional_plan"
+	IssueManagerPlanningSourceTuttiModePlan   IssueManagerPlanningSource = "tutti_mode_plan"
+)
+
+// Valid indicates whether the value is a known member of the IssueManagerPlanningSource enum.
+func (e IssueManagerPlanningSource) Valid() bool {
+	switch e {
+	case IssueManagerPlanningSourceManual:
+		return true
+	case IssueManagerPlanningSourceTraditionalPlan:
+		return true
+	case IssueManagerPlanningSourceTuttiModePlan:
 		return true
 	default:
 		return false
@@ -1683,28 +1761,28 @@ func (e ModelPolicyReviewRuleTrigger) Valid() bool {
 
 // Defines values for PermissionModeSemantic.
 const (
-	AcceptEdits    PermissionModeSemantic = "accept-edits"
-	AskBeforeWrite PermissionModeSemantic = "ask-before-write"
-	Auto           PermissionModeSemantic = "auto"
-	FullAccess     PermissionModeSemantic = "full-access"
-	LockedDown     PermissionModeSemantic = "locked-down"
-	Unconfigurable PermissionModeSemantic = "unconfigurable"
+	PermissionModeSemanticAcceptEdits    PermissionModeSemantic = "accept-edits"
+	PermissionModeSemanticAskBeforeWrite PermissionModeSemantic = "ask-before-write"
+	PermissionModeSemanticAuto           PermissionModeSemantic = "auto"
+	PermissionModeSemanticFullAccess     PermissionModeSemantic = "full-access"
+	PermissionModeSemanticLockedDown     PermissionModeSemantic = "locked-down"
+	PermissionModeSemanticUnconfigurable PermissionModeSemantic = "unconfigurable"
 )
 
 // Valid indicates whether the value is a known member of the PermissionModeSemantic enum.
 func (e PermissionModeSemantic) Valid() bool {
 	switch e {
-	case AcceptEdits:
+	case PermissionModeSemanticAcceptEdits:
 		return true
-	case AskBeforeWrite:
+	case PermissionModeSemanticAskBeforeWrite:
 		return true
-	case Auto:
+	case PermissionModeSemanticAuto:
 		return true
-	case FullAccess:
+	case PermissionModeSemanticFullAccess:
 		return true
-	case LockedDown:
+	case PermissionModeSemanticLockedDown:
 		return true
-	case Unconfigurable:
+	case PermissionModeSemanticUnconfigurable:
 		return true
 	default:
 		return false
@@ -1771,6 +1849,132 @@ func (e SubmitWorkspaceAgentPlanDecisionRequestPromptKind) Valid() bool {
 	}
 }
 
+// Defines values for TuttiModeActivationSource.
+const (
+	TuttiModeActivationSourceBadgeRemove  TuttiModeActivationSource = "badge_remove"
+	TuttiModeActivationSourceSlashCommand TuttiModeActivationSource = "slash_command"
+)
+
+// Valid indicates whether the value is a known member of the TuttiModeActivationSource enum.
+func (e TuttiModeActivationSource) Valid() bool {
+	switch e {
+	case TuttiModeActivationSourceBadgeRemove:
+		return true
+	case TuttiModeActivationSourceSlashCommand:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for TuttiModeActivationStatus.
+const (
+	TuttiModeActivationStatusActive   TuttiModeActivationStatus = "active"
+	TuttiModeActivationStatusInactive TuttiModeActivationStatus = "inactive"
+)
+
+// Valid indicates whether the value is a known member of the TuttiModeActivationStatus enum.
+func (e TuttiModeActivationStatus) Valid() bool {
+	switch e {
+	case TuttiModeActivationStatusActive:
+		return true
+	case TuttiModeActivationStatusInactive:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for TuttiModePlanBudgetMode.
+const (
+	Auto  TuttiModePlanBudgetMode = "auto"
+	Fixed TuttiModePlanBudgetMode = "fixed"
+)
+
+// Valid indicates whether the value is a known member of the TuttiModePlanBudgetMode enum.
+func (e TuttiModePlanBudgetMode) Valid() bool {
+	switch e {
+	case Auto:
+		return true
+	case Fixed:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for TuttiModePlanDocumentPhase.
+const (
+	Configuration TuttiModePlanDocumentPhase = "configuration"
+	TaskGraph     TuttiModePlanDocumentPhase = "task_graph"
+)
+
+// Valid indicates whether the value is a known member of the TuttiModePlanDocumentPhase enum.
+func (e TuttiModePlanDocumentPhase) Valid() bool {
+	switch e {
+	case Configuration:
+		return true
+	case TaskGraph:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for TuttiModePlanDocumentSchema.
+const (
+	TuttiModePlanDocumentSchemaTuttiModePlanv1 TuttiModePlanDocumentSchema = "tutti-mode-plan/v1"
+)
+
+// Valid indicates whether the value is a known member of the TuttiModePlanDocumentSchema enum.
+func (e TuttiModePlanDocumentSchema) Valid() bool {
+	switch e {
+	case TuttiModePlanDocumentSchemaTuttiModePlanv1:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for TuttiModePlanExecutionMode.
+const (
+	Parallel   TuttiModePlanExecutionMode = "parallel"
+	Sequential TuttiModePlanExecutionMode = "sequential"
+)
+
+// Valid indicates whether the value is a known member of the TuttiModePlanExecutionMode enum.
+func (e TuttiModePlanExecutionMode) Valid() bool {
+	switch e {
+	case Parallel:
+		return true
+	case Sequential:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for TuttiModePlanTaskPriority.
+const (
+	High   TuttiModePlanTaskPriority = "high"
+	Low    TuttiModePlanTaskPriority = "low"
+	Medium TuttiModePlanTaskPriority = "medium"
+)
+
+// Valid indicates whether the value is a known member of the TuttiModePlanTaskPriority enum.
+func (e TuttiModePlanTaskPriority) Valid() bool {
+	switch e {
+	case High:
+		return true
+	case Low:
+		return true
+	case Medium:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for WorkbenchSnapshotSchemaVersion.
 const (
 	N1 WorkbenchSnapshotSchemaVersion = 1
@@ -1798,6 +2002,36 @@ func (e WorkbenchSnapshotNodeDisplayMode) Valid() bool {
 	case Floating:
 		return true
 	case Fullscreen:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for WorkspaceAgentCapabilityReferenceCapability.
+const (
+	WorkspaceAgentCapabilityReferenceCapabilityTutti WorkspaceAgentCapabilityReferenceCapability = "tutti"
+)
+
+// Valid indicates whether the value is a known member of the WorkspaceAgentCapabilityReferenceCapability enum.
+func (e WorkspaceAgentCapabilityReferenceCapability) Valid() bool {
+	switch e {
+	case WorkspaceAgentCapabilityReferenceCapabilityTutti:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for WorkspaceAgentCapabilityReferenceSource.
+const (
+	WorkspaceAgentCapabilityReferenceSourceSlashCommand WorkspaceAgentCapabilityReferenceSource = "slash_command"
+)
+
+// Valid indicates whether the value is a known member of the WorkspaceAgentCapabilityReferenceSource enum.
+func (e WorkspaceAgentCapabilityReferenceSource) Valid() bool {
+	switch e {
+	case WorkspaceAgentCapabilityReferenceSourceSlashCommand:
 		return true
 	default:
 		return false
@@ -2124,22 +2358,22 @@ func (e WorkspaceAgentTurnCancelResultReason) Valid() bool {
 
 // Defines values for WorkspaceAgentTurnOutcome.
 const (
-	Canceled    WorkspaceAgentTurnOutcome = "canceled"
-	Completed   WorkspaceAgentTurnOutcome = "completed"
-	Failed      WorkspaceAgentTurnOutcome = "failed"
-	Interrupted WorkspaceAgentTurnOutcome = "interrupted"
+	WorkspaceAgentTurnOutcomeCanceled    WorkspaceAgentTurnOutcome = "canceled"
+	WorkspaceAgentTurnOutcomeCompleted   WorkspaceAgentTurnOutcome = "completed"
+	WorkspaceAgentTurnOutcomeFailed      WorkspaceAgentTurnOutcome = "failed"
+	WorkspaceAgentTurnOutcomeInterrupted WorkspaceAgentTurnOutcome = "interrupted"
 )
 
 // Valid indicates whether the value is a known member of the WorkspaceAgentTurnOutcome enum.
 func (e WorkspaceAgentTurnOutcome) Valid() bool {
 	switch e {
-	case Canceled:
+	case WorkspaceAgentTurnOutcomeCanceled:
 		return true
-	case Completed:
+	case WorkspaceAgentTurnOutcomeCompleted:
 		return true
-	case Failed:
+	case WorkspaceAgentTurnOutcomeFailed:
 		return true
-	case Interrupted:
+	case WorkspaceAgentTurnOutcomeInterrupted:
 		return true
 	default:
 		return false
@@ -2662,6 +2896,219 @@ func (e WorkspaceTerminalStatus) Valid() bool {
 	}
 }
 
+// Defines values for WorkspaceWorkflowOwner.
+const (
+	WorkspaceWorkflowOwnerTutti WorkspaceWorkflowOwner = "tutti"
+)
+
+// Valid indicates whether the value is a known member of the WorkspaceWorkflowOwner enum.
+func (e WorkspaceWorkflowOwner) Valid() bool {
+	switch e {
+	case WorkspaceWorkflowOwnerTutti:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for WorkspaceWorkflowTriggerKind.
+const (
+	AgentCli WorkspaceWorkflowTriggerKind = "agent_cli"
+)
+
+// Valid indicates whether the value is a known member of the WorkspaceWorkflowTriggerKind enum.
+func (e WorkspaceWorkflowTriggerKind) Valid() bool {
+	switch e {
+	case AgentCli:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for WorkspaceWorkflowType.
+const (
+	WorkspaceWorkflowTypeTuttiModePlan WorkspaceWorkflowType = "tutti_mode_plan"
+)
+
+// Valid indicates whether the value is a known member of the WorkspaceWorkflowType enum.
+func (e WorkspaceWorkflowType) Valid() bool {
+	switch e {
+	case WorkspaceWorkflowTypeTuttiModePlan:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for WorkspaceWorkflowCheckpointKind.
+const (
+	ConfigurationReview WorkspaceWorkflowCheckpointKind = "configuration_review"
+	TaskReview          WorkspaceWorkflowCheckpointKind = "task_review"
+)
+
+// Valid indicates whether the value is a known member of the WorkspaceWorkflowCheckpointKind enum.
+func (e WorkspaceWorkflowCheckpointKind) Valid() bool {
+	switch e {
+	case ConfigurationReview:
+		return true
+	case TaskReview:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for WorkspaceWorkflowCheckpointStatus.
+const (
+	WorkspaceWorkflowCheckpointStatusAccepted   WorkspaceWorkflowCheckpointStatus = "accepted"
+	WorkspaceWorkflowCheckpointStatusCanceled   WorkspaceWorkflowCheckpointStatus = "canceled"
+	WorkspaceWorkflowCheckpointStatusPending    WorkspaceWorkflowCheckpointStatus = "pending"
+	WorkspaceWorkflowCheckpointStatusRejected   WorkspaceWorkflowCheckpointStatus = "rejected"
+	WorkspaceWorkflowCheckpointStatusSuperseded WorkspaceWorkflowCheckpointStatus = "superseded"
+)
+
+// Valid indicates whether the value is a known member of the WorkspaceWorkflowCheckpointStatus enum.
+func (e WorkspaceWorkflowCheckpointStatus) Valid() bool {
+	switch e {
+	case WorkspaceWorkflowCheckpointStatusAccepted:
+		return true
+	case WorkspaceWorkflowCheckpointStatusCanceled:
+		return true
+	case WorkspaceWorkflowCheckpointStatusPending:
+		return true
+	case WorkspaceWorkflowCheckpointStatusRejected:
+		return true
+	case WorkspaceWorkflowCheckpointStatusSuperseded:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for WorkspaceWorkflowOperationKind.
+const (
+	CreateIssue       WorkspaceWorkflowOperationKind = "create_issue"
+	CreateRevision    WorkspaceWorkflowOperationKind = "create_revision"
+	GenerateTaskGraph WorkspaceWorkflowOperationKind = "generate_task_graph"
+	StartIssue        WorkspaceWorkflowOperationKind = "start_issue"
+)
+
+// Valid indicates whether the value is a known member of the WorkspaceWorkflowOperationKind enum.
+func (e WorkspaceWorkflowOperationKind) Valid() bool {
+	switch e {
+	case CreateIssue:
+		return true
+	case CreateRevision:
+		return true
+	case GenerateTaskGraph:
+		return true
+	case StartIssue:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for WorkspaceWorkflowOperationStatus.
+const (
+	WorkspaceWorkflowOperationStatusCanceled  WorkspaceWorkflowOperationStatus = "canceled"
+	WorkspaceWorkflowOperationStatusFailed    WorkspaceWorkflowOperationStatus = "failed"
+	WorkspaceWorkflowOperationStatusPending   WorkspaceWorkflowOperationStatus = "pending"
+	WorkspaceWorkflowOperationStatusRunning   WorkspaceWorkflowOperationStatus = "running"
+	WorkspaceWorkflowOperationStatusSucceeded WorkspaceWorkflowOperationStatus = "succeeded"
+)
+
+// Valid indicates whether the value is a known member of the WorkspaceWorkflowOperationStatus enum.
+func (e WorkspaceWorkflowOperationStatus) Valid() bool {
+	switch e {
+	case WorkspaceWorkflowOperationStatusCanceled:
+		return true
+	case WorkspaceWorkflowOperationStatusFailed:
+		return true
+	case WorkspaceWorkflowOperationStatusPending:
+		return true
+	case WorkspaceWorkflowOperationStatusRunning:
+		return true
+	case WorkspaceWorkflowOperationStatusSucceeded:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for WorkspaceWorkflowPlanRevisionSchemaVersion.
+const (
+	WorkspaceWorkflowPlanRevisionSchemaVersionTuttiModePlanv1 WorkspaceWorkflowPlanRevisionSchemaVersion = "tutti-mode-plan/v1"
+)
+
+// Valid indicates whether the value is a known member of the WorkspaceWorkflowPlanRevisionSchemaVersion enum.
+func (e WorkspaceWorkflowPlanRevisionSchemaVersion) Valid() bool {
+	switch e {
+	case WorkspaceWorkflowPlanRevisionSchemaVersionTuttiModePlanv1:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for WorkspaceWorkflowStatus.
+const (
+	Accepted      WorkspaceWorkflowStatus = "accepted"
+	Canceled      WorkspaceWorkflowStatus = "canceled"
+	Completed     WorkspaceWorkflowStatus = "completed"
+	Failed        WorkspaceWorkflowStatus = "failed"
+	InProgress    WorkspaceWorkflowStatus = "in_progress"
+	PendingReview WorkspaceWorkflowStatus = "pending_review"
+	Rejected      WorkspaceWorkflowStatus = "rejected"
+)
+
+// Valid indicates whether the value is a known member of the WorkspaceWorkflowStatus enum.
+func (e WorkspaceWorkflowStatus) Valid() bool {
+	switch e {
+	case Accepted:
+		return true
+	case Canceled:
+		return true
+	case Completed:
+		return true
+	case Failed:
+		return true
+	case InProgress:
+		return true
+	case PendingReview:
+		return true
+	case Rejected:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for WorkspaceWorkflowTurnLinkRelation.
+const (
+	Decomposition WorkspaceWorkflowTurnLinkRelation = "decomposition"
+	Feedback      WorkspaceWorkflowTurnLinkRelation = "feedback"
+	Revision      WorkspaceWorkflowTurnLinkRelation = "revision"
+	Source        WorkspaceWorkflowTurnLinkRelation = "source"
+)
+
+// Valid indicates whether the value is a known member of the WorkspaceWorkflowTurnLinkRelation enum.
+func (e WorkspaceWorkflowTurnLinkRelation) Valid() bool {
+	switch e {
+	case Decomposition:
+		return true
+	case Feedback:
+		return true
+	case Revision:
+		return true
+	case Source:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for ListWorkspaceAgentSessionMessagesParamsOrder.
 const (
 	Asc  ListWorkspaceAgentSessionMessagesParamsOrder = "asc"
@@ -2674,6 +3121,21 @@ func (e ListWorkspaceAgentSessionMessagesParamsOrder) Valid() bool {
 	case Asc:
 		return true
 	case Desc:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ListWorkspaceWorkflowsParamsCheckpointStatus.
+const (
+	Pending ListWorkspaceWorkflowsParamsCheckpointStatus = "pending"
+)
+
+// Valid indicates whether the value is a known member of the ListWorkspaceWorkflowsParamsCheckpointStatus enum.
+func (e ListWorkspaceWorkflowsParamsCheckpointStatus) Valid() bool {
+	switch e {
+	case Pending:
 		return true
 	default:
 		return false
@@ -3838,15 +4300,21 @@ type CreateWorkspaceAgentSessionRequest struct {
 	AgentSessionId openapi_types.UUID `json:"agentSessionId"`
 
 	// AgentTargetId Required target-first session launch authority. The daemon derives provider and providerTargetRef from the stored agent target launchRef and rejects mismatched provider values.
-	AgentTargetId  string                    `json:"agentTargetId"`
-	BrowserUse     *bool                     `json:"browserUse,omitempty"`
-	ClientSubmitId string                    `json:"clientSubmitId"`
-	Cwd            *string                   `json:"cwd,omitempty"`
-	InitialContent []AgentPromptContentBlock `json:"initialContent"`
+	AgentTargetId string `json:"agentTargetId"`
+	BrowserUse    *bool  `json:"browserUse,omitempty"`
+
+	// CapabilityRefs Structured capability references attached to the initial submission. They are persisted on the turn but never converted into provider prompt text.
+	CapabilityRefs *[]WorkspaceAgentCapabilityReference `json:"capabilityRefs,omitempty"`
+	ClientSubmitId string                               `json:"clientSubmitId"`
+	Cwd            *string                              `json:"cwd,omitempty"`
+	InitialContent []AgentPromptContentBlock            `json:"initialContent"`
 
 	// InitialDisplayPrompt Optional display-only text for the first turn (e.g. a folder bundle shown as one chip while initialContent carries the expanded files).
 	InitialDisplayPrompt *string `json:"initialDisplayPrompt,omitempty"`
-	Model                *string `json:"model,omitempty"`
+
+	// InitialTuttiModeActivation Optional independent Tutti mode activation intent applied before the first turn starts.
+	InitialTuttiModeActivation *TuttiModeActivationIntent `json:"initialTuttiModeActivation,omitempty"`
+	Model                      *string                    `json:"model,omitempty"`
 
 	// NoProject Classifies a session that is intentionally not attached to a workspace project.
 	NoProject         *bool                   `json:"noProject,omitempty"`
@@ -3896,6 +4364,16 @@ type CreateWorkspaceTerminalRequest struct {
 	ProfileId    *string `json:"profileId,omitempty"`
 	Rows         *int    `json:"rows,omitempty"`
 }
+
+// DecideWorkspaceWorkflowCheckpointRequest defines model for DecideWorkspaceWorkflowCheckpointRequest.
+type DecideWorkspaceWorkflowCheckpointRequest struct {
+	DecidedBy string                                           `json:"decidedBy"`
+	Decision  DecideWorkspaceWorkflowCheckpointRequestDecision `json:"decision"`
+	Reason    *string                                          `json:"reason,omitempty"`
+}
+
+// DecideWorkspaceWorkflowCheckpointRequestDecision defines model for DecideWorkspaceWorkflowCheckpointRequest.Decision.
+type DecideWorkspaceWorkflowCheckpointRequestDecision string
 
 // DeleteAgentQuickPromptRequest defines model for DeleteAgentQuickPromptRequest.
 type DeleteAgentQuickPromptRequest struct {
@@ -4312,6 +4790,30 @@ type InstallWorkspaceAppRequest struct {
 	RestartRunning *bool `json:"restartRunning,omitempty"`
 }
 
+// IssueManagerBudget defines model for IssueManagerBudget.
+type IssueManagerBudget struct {
+	ConsumedTokens int64                  `json:"consumedTokens"`
+	Mode           IssueManagerBudgetMode `json:"mode"`
+
+	// QuotaWaterlinePercent Subscription plans gate on the remaining-quota waterline instead of fake monetary cost.
+	QuotaWaterlinePercent float64 `json:"quotaWaterlinePercent"`
+
+	// RemainingQuotaPercent Last provider-reported subscription quota percentage. Omitted when the provider cannot report quota.
+	RemainingQuotaPercent *float64 `json:"remainingQuotaPercent,omitempty"`
+
+	// Status soft_limited pauses future dispatch without canceling in-flight runs.
+	Status IssueManagerBudgetStatus `json:"status"`
+
+	// TokenLimit Compiled token soft limit. In auto mode the daemon owns this value; zero means no token gate is currently available.
+	TokenLimit int64 `json:"tokenLimit"`
+}
+
+// IssueManagerBudgetMode defines model for IssueManagerBudgetMode.
+type IssueManagerBudgetMode string
+
+// IssueManagerBudgetStatus soft_limited pauses future dispatch without canceling in-flight runs.
+type IssueManagerBudgetStatus string
+
 // IssueManagerContextRef defines model for IssueManagerContextRef.
 type IssueManagerContextRef struct {
 	union json.RawMessage
@@ -4320,6 +4822,15 @@ type IssueManagerContextRef struct {
 // IssueManagerContextRefsResponse defines model for IssueManagerContextRefsResponse.
 type IssueManagerContextRefsResponse struct {
 	ContextRefs []IssueManagerContextRef `json:"contextRefs"`
+}
+
+// IssueManagerExecutionProfile defines model for IssueManagerExecutionProfile.
+type IssueManagerExecutionProfile struct {
+	// OrchestrationIntensity Issue-owned decomposition, dependency, review, and retry strength.
+	OrchestrationIntensity int `json:"orchestrationIntensity"`
+
+	// ReasoningIntensity Issue-owned reasoning strength inherited by every task and run.
+	ReasoningIntensity int `json:"reasoningIntensity"`
 }
 
 // IssueManagerIssue defines model for IssueManagerIssue.
@@ -4381,6 +4892,9 @@ type IssueManagerIssueListResponse struct {
 type IssueManagerIssueResponse struct {
 	Issue IssueManagerIssue `json:"issue"`
 }
+
+// IssueManagerPlanningSource How the issue entered the durable execution workflow.
+type IssueManagerPlanningSource string
 
 // IssueManagerPriority defines model for IssueManagerPriority.
 type IssueManagerPriority string
@@ -4944,8 +5458,10 @@ type SendWorkspaceAgentSessionInputGoalControlResponseKind string
 
 // SendWorkspaceAgentSessionInputRequest defines model for SendWorkspaceAgentSessionInputRequest.
 type SendWorkspaceAgentSessionInputRequest struct {
-	ClientSubmitId string                    `json:"clientSubmitId"`
-	Content        []AgentPromptContentBlock `json:"content"`
+	// CapabilityRefs Structured capability references attached to this submission. They are persisted on the turn but never converted into provider prompt text.
+	CapabilityRefs *[]WorkspaceAgentCapabilityReference `json:"capabilityRefs,omitempty"`
+	ClientSubmitId string                               `json:"clientSubmitId"`
+	Content        []AgentPromptContentBlock            `json:"content"`
 
 	// DisplayPrompt Optional display-only text shown in the conversation (e.g. a folder bundle rendered as one chip while content carries the expanded files).
 	DisplayPrompt *string `json:"displayPrompt,omitempty"`
@@ -5047,6 +5563,102 @@ type TrackEventsRequest struct {
 	Events []TrackEvent `json:"events"`
 }
 
+// TuttiModeActivation defines model for TuttiModeActivation.
+type TuttiModeActivation struct {
+	AgentSessionId  string                      `json:"agentSessionId"`
+	CreatedAtUnixMs int64                       `json:"createdAtUnixMs"`
+	CurrentRevision TuttiModeActivationRevision `json:"currentRevision"`
+	Id              openapi_types.UUID          `json:"id"`
+	Status          TuttiModeActivationStatus   `json:"status"`
+	UpdatedAtUnixMs int64                       `json:"updatedAtUnixMs"`
+	WorkspaceId     string                      `json:"workspaceId"`
+}
+
+// TuttiModeActivationIntent defines model for TuttiModeActivationIntent.
+type TuttiModeActivationIntent struct {
+	// Source User-visible interaction that created this activation revision.
+	Source TuttiModeActivationSource `json:"source"`
+	Status TuttiModeActivationStatus `json:"status"`
+}
+
+// TuttiModeActivationResponse defines model for TuttiModeActivationResponse.
+type TuttiModeActivationResponse struct {
+	// Activation Null until the session has its first Tutti mode activation revision.
+	Activation *TuttiModeActivation `json:"activation"`
+}
+
+// TuttiModeActivationRevision defines model for TuttiModeActivationRevision.
+type TuttiModeActivationRevision struct {
+	ActivationId    openapi_types.UUID `json:"activationId"`
+	CreatedAtUnixMs int64              `json:"createdAtUnixMs"`
+	Id              openapi_types.UUID `json:"id"`
+	Revision        int64              `json:"revision"`
+
+	// Source User-visible interaction that created this activation revision.
+	Source TuttiModeActivationSource `json:"source"`
+	Status TuttiModeActivationStatus `json:"status"`
+}
+
+// TuttiModeActivationSource User-visible interaction that created this activation revision.
+type TuttiModeActivationSource string
+
+// TuttiModeActivationStatus defines model for TuttiModeActivationStatus.
+type TuttiModeActivationStatus string
+
+// TuttiModePlanBudget defines model for TuttiModePlanBudget.
+type TuttiModePlanBudget struct {
+	Mode                  TuttiModePlanBudgetMode `json:"mode"`
+	QuotaWaterlinePercent float64                 `json:"quotaWaterlinePercent"`
+	TokenLimit            int64                   `json:"tokenLimit"`
+}
+
+// TuttiModePlanBudgetMode defines model for TuttiModePlanBudget.Mode.
+type TuttiModePlanBudgetMode string
+
+// TuttiModePlanDocument defines model for TuttiModePlanDocument.
+type TuttiModePlanDocument struct {
+	Budget       TuttiModePlanBudget         `json:"budget"`
+	Execution    TuttiModePlanExecution      `json:"execution"`
+	MarkdownBody string                      `json:"markdownBody"`
+	Phase        TuttiModePlanDocumentPhase  `json:"phase"`
+	Schema       TuttiModePlanDocumentSchema `json:"schema"`
+	Tasks        []TuttiModePlanTask         `json:"tasks"`
+	Title        string                      `json:"title"`
+	TopicId      string                      `json:"topicId"`
+}
+
+// TuttiModePlanDocumentPhase defines model for TuttiModePlanDocument.Phase.
+type TuttiModePlanDocumentPhase string
+
+// TuttiModePlanDocumentSchema defines model for TuttiModePlanDocument.Schema.
+type TuttiModePlanDocumentSchema string
+
+// TuttiModePlanExecution defines model for TuttiModePlanExecution.
+type TuttiModePlanExecution struct {
+	Mode                   TuttiModePlanExecutionMode `json:"mode"`
+	OrchestrationIntensity int                        `json:"orchestrationIntensity"`
+	ReasoningIntensity     int                        `json:"reasoningIntensity"`
+}
+
+// TuttiModePlanExecutionMode defines model for TuttiModePlanExecution.Mode.
+type TuttiModePlanExecutionMode string
+
+// TuttiModePlanTask defines model for TuttiModePlanTask.
+type TuttiModePlanTask struct {
+	AgentTargetId      *string                   `json:"agentTargetId"`
+	Content            string                    `json:"content"`
+	DependsOn          []string                  `json:"dependsOn"`
+	ExecutionDirectory *string                   `json:"executionDirectory"`
+	Id                 string                    `json:"id"`
+	Model              *string                   `json:"model"`
+	ModelPlanId        *string                   `json:"modelPlanId"`
+	Priority           TuttiModePlanTaskPriority `json:"priority"`
+	Title              string                    `json:"title"`
+}
+
+// TuttiModePlanTaskPriority defines model for TuttiModePlanTask.Priority.
+type TuttiModePlanTaskPriority string
+
 // UpdateAgentQuickPromptRequest defines model for UpdateAgentQuickPromptRequest.
 type UpdateAgentQuickPromptRequest struct {
 	Content         string `json:"content"`
@@ -5076,6 +5688,24 @@ type UpdateIssueManagerTopicRequest struct {
 	Pinned  *bool   `json:"pinned,omitempty"`
 	Summary *string `json:"summary,omitempty"`
 	Title   *string `json:"title,omitempty"`
+}
+
+// UpdateTuttiModeActivationRequest defines model for UpdateTuttiModeActivationRequest.
+type UpdateTuttiModeActivationRequest struct {
+	// ExpectedRevision Optional optimistic-concurrency guard. Zero means no activation revision exists yet.
+	ExpectedRevision *int64 `json:"expectedRevision,omitempty"`
+
+	// Source User-visible interaction that created this activation revision.
+	Source TuttiModeActivationSource `json:"source"`
+	Status TuttiModeActivationStatus `json:"status"`
+}
+
+// UpdateTuttiModeActivationResponse defines model for UpdateTuttiModeActivationResponse.
+type UpdateTuttiModeActivationResponse struct {
+	Activation *TuttiModeActivation `json:"activation"`
+
+	// Changed False for an idempotent update that did not create a new revision.
+	Changed bool `json:"changed"`
 }
 
 // UpdateWorkspaceAgentSessionPinRequest defines model for UpdateWorkspaceAgentSessionPinRequest.
@@ -5258,6 +5888,18 @@ type WorkspaceAgentCapabilities struct {
 	TokenUsage                     bool `json:"tokenUsage"`
 }
 
+// WorkspaceAgentCapabilityReference A structured user-submission reference to a daemon-owned capability. This is provenance for UI and durable workflow linkage; it is not injected into provider prompt text and does not gate CLI availability.
+type WorkspaceAgentCapabilityReference struct {
+	Capability WorkspaceAgentCapabilityReferenceCapability `json:"capability"`
+	Source     WorkspaceAgentCapabilityReferenceSource     `json:"source"`
+}
+
+// WorkspaceAgentCapabilityReferenceCapability defines model for WorkspaceAgentCapabilityReference.Capability.
+type WorkspaceAgentCapabilityReferenceCapability string
+
+// WorkspaceAgentCapabilityReferenceSource defines model for WorkspaceAgentCapabilityReference.Source.
+type WorkspaceAgentCapabilityReferenceSource string
+
 // WorkspaceAgentCompletedCommand Protocol v2 closed-enum replacement for AgentActivityCompletedCommand.
 type WorkspaceAgentCompletedCommand struct {
 	Kind   WorkspaceAgentCompletedCommandKind   `json:"kind"`
@@ -5411,6 +6053,9 @@ type WorkspaceAgentSession struct {
 	RootTurnId *string                      `json:"rootTurnId"`
 	Settings   AgentSessionComposerSettings `json:"settings"`
 	Title      *string                      `json:"title"`
+
+	// TuttiModeActivation Independent, session-scoped Tutti mode activation projection. Null until the first activation revision exists; capability references are audit records and never determine this state.
+	TuttiModeActivation *TuttiModeActivation `json:"tuttiModeActivation"`
 
 	// UpdatedAtUnixMs Protocol v2. Unix milliseconds replacement for updatedAt.
 	UpdatedAtUnixMs int64 `json:"updatedAtUnixMs"`
@@ -5626,10 +6271,11 @@ type WorkspaceAgentSource string
 
 // WorkspaceAgentTurn Protocol v2 turn entity. One user-submission-driven execution: submit, run, wait, settle. Owns phase, outcome, error, and file changes; the session only keeps an activeTurnId reference.
 type WorkspaceAgentTurn struct {
-	AgentSessionId   string                          `json:"agentSessionId"`
-	CompletedCommand *WorkspaceAgentCompletedCommand `json:"completedCommand"`
-	Error            *WorkspaceAgentTurnError        `json:"error"`
-	FileChanges      *map[string]interface{}         `json:"fileChanges"`
+	AgentSessionId   string                               `json:"agentSessionId"`
+	CapabilityRefs   *[]WorkspaceAgentCapabilityReference `json:"capabilityRefs,omitempty"`
+	CompletedCommand *WorkspaceAgentCompletedCommand      `json:"completedCommand"`
+	Error            *WorkspaceAgentTurnError             `json:"error"`
+	FileChanges      *map[string]interface{}              `json:"fileChanges"`
 
 	// Origin Durable business provenance; steer is input on an existing turn and is never an origin.
 	Origin  WorkspaceAgentTurnOrigin   `json:"origin"`
@@ -6154,6 +6800,131 @@ type WorkspaceWorkbenchResponse struct {
 	Snapshot WorkbenchSnapshot `json:"snapshot"`
 }
 
+// WorkspaceWorkflow defines model for WorkspaceWorkflow.
+type WorkspaceWorkflow struct {
+	CreatedAtUnixMs   int64                        `json:"createdAtUnixMs"`
+	CurrentRevisionId openapi_types.UUID           `json:"currentRevisionId"`
+	Id                openapi_types.UUID           `json:"id"`
+	Owner             WorkspaceWorkflowOwner       `json:"owner"`
+	SourceSessionId   string                       `json:"sourceSessionId"`
+	SourceToolCallId  *string                      `json:"sourceToolCallId"`
+	SourceTurnId      *string                      `json:"sourceTurnId"`
+	Status            WorkspaceWorkflowStatus      `json:"status"`
+	TriggerKind       WorkspaceWorkflowTriggerKind `json:"triggerKind"`
+	Type              WorkspaceWorkflowType        `json:"type"`
+	UpdatedAtUnixMs   int64                        `json:"updatedAtUnixMs"`
+	WorkspaceId       string                       `json:"workspaceId"`
+}
+
+// WorkspaceWorkflowOwner defines model for WorkspaceWorkflow.Owner.
+type WorkspaceWorkflowOwner string
+
+// WorkspaceWorkflowTriggerKind defines model for WorkspaceWorkflow.TriggerKind.
+type WorkspaceWorkflowTriggerKind string
+
+// WorkspaceWorkflowType defines model for WorkspaceWorkflow.Type.
+type WorkspaceWorkflowType string
+
+// WorkspaceWorkflowActionableItem defines model for WorkspaceWorkflowActionableItem.
+type WorkspaceWorkflowActionableItem struct {
+	Budget           TuttiModePlanBudget    `json:"budget"`
+	Execution        TuttiModePlanExecution `json:"execution"`
+	Id               string                 `json:"id"`
+	Ordinal          int                    `json:"ordinal"`
+	SourceRevisionId openapi_types.UUID     `json:"sourceRevisionId"`
+	SourceWorkflowId openapi_types.UUID     `json:"sourceWorkflowId"`
+	Task             TuttiModePlanTask      `json:"task"`
+	TopicId          string                 `json:"topicId"`
+}
+
+// WorkspaceWorkflowCheckpoint defines model for WorkspaceWorkflowCheckpoint.
+type WorkspaceWorkflowCheckpoint struct {
+	CreatedAtUnixMs int64                             `json:"createdAtUnixMs"`
+	DecidedAtUnixMs *int64                            `json:"decidedAtUnixMs"`
+	DecidedBy       *string                           `json:"decidedBy"`
+	DecisionReason  *string                           `json:"decisionReason"`
+	Id              openapi_types.UUID                `json:"id"`
+	Kind            WorkspaceWorkflowCheckpointKind   `json:"kind"`
+	RevisionId      openapi_types.UUID                `json:"revisionId"`
+	Status          WorkspaceWorkflowCheckpointStatus `json:"status"`
+	UpdatedAtUnixMs int64                             `json:"updatedAtUnixMs"`
+	WorkflowId      openapi_types.UUID                `json:"workflowId"`
+}
+
+// WorkspaceWorkflowCheckpointKind defines model for WorkspaceWorkflowCheckpoint.Kind.
+type WorkspaceWorkflowCheckpointKind string
+
+// WorkspaceWorkflowCheckpointStatus defines model for WorkspaceWorkflowCheckpoint.Status.
+type WorkspaceWorkflowCheckpointStatus string
+
+// WorkspaceWorkflowListResponse defines model for WorkspaceWorkflowListResponse.
+type WorkspaceWorkflowListResponse struct {
+	Workflows []WorkspaceWorkflowSnapshot `json:"workflows"`
+}
+
+// WorkspaceWorkflowOperation defines model for WorkspaceWorkflowOperation.
+type WorkspaceWorkflowOperation struct {
+	CompletedAtUnixMs *int64                           `json:"completedAtUnixMs"`
+	CreatedAtUnixMs   int64                            `json:"createdAtUnixMs"`
+	ErrorCode         *string                          `json:"errorCode"`
+	ErrorMessage      *string                          `json:"errorMessage"`
+	Id                openapi_types.UUID               `json:"id"`
+	IssueId           *string                          `json:"issueId"`
+	Kind              WorkspaceWorkflowOperationKind   `json:"kind"`
+	RevisionId        *openapi_types.UUID              `json:"revisionId"`
+	StartedAtUnixMs   *int64                           `json:"startedAtUnixMs"`
+	Status            WorkspaceWorkflowOperationStatus `json:"status"`
+	UpdatedAtUnixMs   int64                            `json:"updatedAtUnixMs"`
+	WorkflowId        openapi_types.UUID               `json:"workflowId"`
+}
+
+// WorkspaceWorkflowOperationKind defines model for WorkspaceWorkflowOperation.Kind.
+type WorkspaceWorkflowOperationKind string
+
+// WorkspaceWorkflowOperationStatus defines model for WorkspaceWorkflowOperation.Status.
+type WorkspaceWorkflowOperationStatus string
+
+// WorkspaceWorkflowPlanRevision defines model for WorkspaceWorkflowPlanRevision.
+type WorkspaceWorkflowPlanRevision struct {
+	CreatedAtUnixMs  int64                                      `json:"createdAtUnixMs"`
+	Document         TuttiModePlanDocument                      `json:"document"`
+	DocumentPath     string                                     `json:"documentPath"`
+	Id               openapi_types.UUID                         `json:"id"`
+	ProducedByTurnId *string                                    `json:"producedByTurnId"`
+	SchemaVersion    WorkspaceWorkflowPlanRevisionSchemaVersion `json:"schemaVersion"`
+	Sequence         int                                        `json:"sequence"`
+	Sha256           string                                     `json:"sha256"`
+	WorkflowId       openapi_types.UUID                         `json:"workflowId"`
+}
+
+// WorkspaceWorkflowPlanRevisionSchemaVersion defines model for WorkspaceWorkflowPlanRevision.SchemaVersion.
+type WorkspaceWorkflowPlanRevisionSchemaVersion string
+
+// WorkspaceWorkflowSnapshot defines model for WorkspaceWorkflowSnapshot.
+type WorkspaceWorkflowSnapshot struct {
+	// ActionableItems Read-only projection of the accepted current task graph; never an independent mutable record.
+	ActionableItems []WorkspaceWorkflowActionableItem `json:"actionableItems"`
+	Checkpoints     []WorkspaceWorkflowCheckpoint     `json:"checkpoints"`
+	Operations      []WorkspaceWorkflowOperation      `json:"operations"`
+	Revisions       []WorkspaceWorkflowPlanRevision   `json:"revisions"`
+	TurnLinks       []WorkspaceWorkflowTurnLink       `json:"turnLinks"`
+	Workflow        WorkspaceWorkflow                 `json:"workflow"`
+}
+
+// WorkspaceWorkflowStatus defines model for WorkspaceWorkflowStatus.
+type WorkspaceWorkflowStatus string
+
+// WorkspaceWorkflowTurnLink defines model for WorkspaceWorkflowTurnLink.
+type WorkspaceWorkflowTurnLink struct {
+	CreatedAtUnixMs int64                             `json:"createdAtUnixMs"`
+	Relation        WorkspaceWorkflowTurnLinkRelation `json:"relation"`
+	TurnId          string                            `json:"turnId"`
+	WorkflowId      openapi_types.UUID                `json:"workflowId"`
+}
+
+// WorkspaceWorkflowTurnLinkRelation defines model for WorkspaceWorkflowTurnLink.Relation.
+type WorkspaceWorkflowTurnLinkRelation string
+
 // WriteWorkspaceFileTextRequest defines model for WriteWorkspaceFileTextRequest.
 type WriteWorkspaceFileTextRequest struct {
 	Content string `json:"content"`
@@ -6526,6 +7297,17 @@ type AttachWorkspaceTerminalParams struct {
 	AfterSeq *TerminalAfterSeq `form:"afterSeq,omitempty" json:"afterSeq,omitempty"`
 }
 
+// ListWorkspaceWorkflowsParams defines parameters for ListWorkspaceWorkflows.
+type ListWorkspaceWorkflowsParams struct {
+	SourceSessionId string `form:"sourceSessionId" json:"sourceSessionId"`
+
+	// CheckpointStatus Currently only pending checkpoints are listable.
+	CheckpointStatus *ListWorkspaceWorkflowsParamsCheckpointStatus `form:"checkpointStatus,omitempty" json:"checkpointStatus,omitempty"`
+}
+
+// ListWorkspaceWorkflowsParamsCheckpointStatus defines parameters for ListWorkspaceWorkflows.
+type ListWorkspaceWorkflowsParamsCheckpointStatus string
+
 // DismissAccountRegistrationCreditsRewardJSONRequestBody defines body for DismissAccountRegistrationCreditsReward for application/json ContentType.
 type DismissAccountRegistrationCreditsRewardJSONRequestBody = DismissAccountRegistrationCreditsRewardRequest
 
@@ -6618,6 +7400,9 @@ type UpdateWorkspaceAgentSessionTitleJSONRequestBody = UpdateWorkspaceAgentSessi
 
 // SubmitWorkspaceAgentPlanDecisionJSONRequestBody defines body for SubmitWorkspaceAgentPlanDecision for application/json ContentType.
 type SubmitWorkspaceAgentPlanDecisionJSONRequestBody = SubmitWorkspaceAgentPlanDecisionRequest
+
+// UpdateWorkspaceAgentSessionTuttiModeActivationJSONRequestBody defines body for UpdateWorkspaceAgentSessionTuttiModeActivation for application/json ContentType.
+type UpdateWorkspaceAgentSessionTuttiModeActivationJSONRequestBody = UpdateTuttiModeActivationRequest
 
 // UpdateWorkspaceAgentSessionVisibilityJSONRequestBody defines body for UpdateWorkspaceAgentSessionVisibility for application/json ContentType.
 type UpdateWorkspaceAgentSessionVisibilityJSONRequestBody = UpdateWorkspaceAgentSessionVisibilityRequest
@@ -6789,6 +7574,9 @@ type ResizeWorkspaceTerminalJSONRequestBody = ResizeWorkspaceTerminalRequest
 
 // PutWorkspaceWorkbenchJSONRequestBody defines body for PutWorkspaceWorkbench for application/json ContentType.
 type PutWorkspaceWorkbenchJSONRequestBody = PutWorkspaceWorkbenchRequest
+
+// DecideWorkspaceWorkflowCheckpointJSONRequestBody defines body for DecideWorkspaceWorkflowCheckpoint for application/json ContentType.
+type DecideWorkspaceWorkflowCheckpointJSONRequestBody = DecideWorkspaceWorkflowCheckpointRequest
 
 // AsAgentTargetBuiltinLocalLaunchRef returns the union data inside the AgentTargetLaunchRef as a AgentTargetBuiltinLocalLaunchRef
 func (t AgentTargetLaunchRef) AsAgentTargetBuiltinLocalLaunchRef() (AgentTargetBuiltinLocalLaunchRef, error) {

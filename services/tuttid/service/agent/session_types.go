@@ -14,10 +14,12 @@ import (
 	automationrulebiz "github.com/tutti-os/tutti/services/tuttid/biz/automationrule"
 	modelplanbiz "github.com/tutti-os/tutti/services/tuttid/biz/modelplan"
 	preferencesbiz "github.com/tutti-os/tutti/services/tuttid/biz/preferences"
+	tuttimodeactivationbiz "github.com/tutti-os/tutti/services/tuttid/biz/tuttimodeactivation"
 	userprojectbiz "github.com/tutti-os/tutti/services/tuttid/biz/userproject"
 	workspaceagentbiz "github.com/tutti-os/tutti/services/tuttid/biz/workspaceagent"
 	claudecodeservice "github.com/tutti-os/tutti/services/tuttid/service/claudecode"
 	reporterservice "github.com/tutti-os/tutti/services/tuttid/service/reporter"
+	tuttimodeactivationservice "github.com/tutti-os/tutti/services/tuttid/service/tuttimodeactivation"
 )
 
 type Service struct {
@@ -43,6 +45,9 @@ type Service struct {
 	GoalReconcileInboxStore        GoalReconcileInboxStore
 	SubmitClaimStore               SubmitClaimStore
 	RuntimeOperationEventPublisher RuntimeOperationEventPublisher
+	TuttiModeActivations           TuttiModeActivationCoordinator
+	SourceSessionDeletions         SourceSessionDeletionCoordinator
+	SessionDeletionEvents          SessionDeletionEventPublisher
 	RuntimeOperationClock          func() time.Time
 	RuntimeOperationOwner          string
 	StaleTurnSettler               agenthost.StaleTurnSettler
@@ -95,10 +100,24 @@ type Service struct {
 
 type GoalReconcileInboxStore = agenthost.GoalReconcileInboxStore
 
+type TuttiModeActivationCoordinator interface {
+	Get(context.Context, string, string) (*tuttimodeactivationbiz.Activation, error)
+	List(context.Context, string, []string) (map[string]tuttimodeactivationbiz.Activation, error)
+	Set(context.Context, tuttimodeactivationservice.SetInput) (tuttimodeactivationservice.SetResult, error)
+	SnapshotForNewTurn(context.Context, string, string) (tuttimodeactivationbiz.TurnSnapshot, error)
+	ExistingTurnSnapshot(context.Context, string, string, string) (tuttimodeactivationbiz.TurnSnapshot, error)
+	BindTurnSnapshot(context.Context, string, string, string, tuttimodeactivationbiz.TurnSnapshot) (tuttimodeactivationbiz.TurnSnapshot, bool, error)
+	AcceptTurnSnapshot(context.Context, string, string, string) (bool, error)
+	AbandonTurnSnapshot(context.Context, string, string, string, tuttimodeactivationbiz.TurnSnapshot) (bool, error)
+	DeleteSessionState(context.Context, string, string) error
+}
+
 type SubmitClaimStore interface {
 	PrepareSubmitClaim(context.Context, agentactivitybiz.SubmitClaimPrepare) (agentactivitybiz.SubmitClaim, bool, error)
+	GetSubmitClaim(context.Context, string, string, string) (agentactivitybiz.SubmitClaim, bool, error)
 	AcceptSubmitClaim(context.Context, string, string, string, string, int64) (agentactivitybiz.SubmitClaim, bool, error)
 	DeleteSubmitClaim(context.Context, string, string, string) (bool, error)
+	FindTurnByClientSubmitID(context.Context, string, string, string) (string, bool, error)
 }
 
 type RuntimeController interface {
@@ -106,6 +125,11 @@ type RuntimeController interface {
 	GoalControl(context.Context, RuntimeGoalControlInput) (RuntimeGoalControlResult, error)
 	CanResume(RuntimeResumeInput) bool
 	Close(context.Context, RuntimeCloseInput) error
+	// Exec acknowledges provider dispatch only. For a new turn, a non-nil
+	// error or Accepted=false means the controller did not pass beginTurn and
+	// did not dispatch provider work. Guidance acts on an existing turn and
+	// cannot make that guarantee, so the service treats guidance errors as
+	// delivery-unknown. Accepted=true is not a durable provenance receipt.
 	Exec(context.Context, RuntimeExecInput) (RuntimeExecResult, error)
 	Resume(context.Context, RuntimeResumeInput) (ProviderRuntimeSession, error)
 	Session(workspaceID string, agentSessionID string) (ProviderRuntimeSession, bool)
@@ -223,6 +247,7 @@ type Session struct {
 	LatestTurn             *agentactivitybiz.Turn
 	LatestTurnInteractions []agentactivitybiz.Interaction
 	PendingInteractions    []agentactivitybiz.Interaction
+	TuttiModeActivation    *tuttimodeactivationbiz.Activation
 }
 
 type SessionIsolation struct {
@@ -416,6 +441,9 @@ type SessionSectionDeletionCandidateReader interface {
 type SessionBatchDeleter interface {
 	PlanClearSessions(context.Context, string) (agentactivitybiz.DeleteSessionsPlan, error)
 	PlanDeleteSessions(context.Context, agentactivitybiz.DeleteSessionsBatchInput) (agentactivitybiz.DeleteSessionsPlan, error)
+	// DeleteSessionsBatch is a persistence-only fallback for isolated stores.
+	// Production deletion uses SourceSessionDeletionCoordinator so workflow
+	// policy remains in the Tutti mode plan service.
 	DeleteSessionsBatch(context.Context, agentactivitybiz.DeleteSessionsBatchInput) (agentactivitybiz.DeleteSessionsBatchResult, error)
 }
 
@@ -430,8 +458,18 @@ type ClearSessionsResult struct {
 	CleanupFailedSessionIDs []string
 }
 
+type SessionClearer interface {
+	// ClearSessions is a persistence-only fallback for isolated stores.
+	ClearSessions(context.Context, string) (ClearSessionsResult, error)
+}
+
 type AgentSessionResourceReleaser interface {
 	ReleaseAgent(context.Context, string) error
+}
+
+type SessionDeleter interface {
+	// DeleteSession is a persistence-only fallback for isolated stores.
+	DeleteSession(context.Context, string, string) (bool, error)
 }
 
 type SessionPinUpdater interface {
@@ -478,6 +516,8 @@ type RuntimeCloseInput = agenthost.RuntimeCloseInput
 type RuntimeSubmitInteractiveInput = agenthost.RuntimeSubmitInteractiveInput
 type RuntimeSubmitInteractiveResult = agenthost.RuntimeSubmitInteractiveResult
 type RuntimeInteractiveDisposition = agenthost.RuntimeInteractiveDisposition
+
+type TuttiModeTurnSnapshot = agenthost.TuttiModeTurnSnapshot
 
 const (
 	RuntimeInteractiveDispositionPending     = agenthost.RuntimeInteractiveDispositionPending
@@ -534,6 +574,7 @@ type CreateSessionInput struct {
 	// as a user-facing session setting.
 	IgnoreModelPlanBinding bool
 	Provider               string
+	CapabilityRefs         []CapabilityReference
 	InitialContent         []PromptContentBlock
 	InitialDisplayPrompt   string
 	Metadata               map[string]any
@@ -592,6 +633,7 @@ type SessionSkillBundle struct {
 }
 
 type SendInput = agenthost.SendInput
+type CapabilityReference = agenthost.CapabilityReference
 
 type SendInputResult struct {
 	Session            Session

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -93,6 +94,7 @@ type stubAgentSessionService struct {
 	clearFn                         func(context.Context, string) (agentservice.ClearSessionsResult, error)
 	composerOptionsFn               func(context.Context, agentservice.ComposerOptionsInput) (agentservice.ComposerOptions, error)
 	createFn                        func(context.Context, string, agentservice.CreateSessionInput) (agentservice.Session, error)
+	getFn                           func(context.Context, string, string) (agentservice.Session, error)
 	deleteFn                        func(context.Context, string, string) (agentservice.DeleteSessionResult, error)
 	listSectionDeletionCandidatesFn func(context.Context, string, agentservice.ListSessionSectionDeletionCandidatesInput) (agentservice.SessionSectionDeletionCandidates, error)
 	deleteSessionsBatchFn           func(context.Context, string, agentservice.DeleteSessionsBatchInput) (agentservice.DeleteSessionsBatchResult, error)
@@ -345,8 +347,11 @@ func (s stubAgentSessionService) Create(ctx context.Context, workspaceID string,
 	return s.createFn(ctx, workspaceID, input)
 }
 
-func (stubAgentSessionService) Get(context.Context, string, string) (agentservice.Session, error) {
-	return agentservice.Session{}, nil
+func (s stubAgentSessionService) Get(ctx context.Context, workspaceID, agentSessionID string) (agentservice.Session, error) {
+	if s.getFn == nil {
+		return agentservice.Session{}, nil
+	}
+	return s.getFn(ctx, workspaceID, agentSessionID)
 }
 
 func (stubAgentSessionService) GetDetail(context.Context, string, string) (agentservice.SessionDetail, error) {
@@ -842,6 +847,15 @@ func TestDaemonAPIGeneratedRoutesSendAgentSessionInputForwardsGuidance(t *testin
 				if !input.Guidance {
 					t.Fatal("input guidance = false, want true")
 				}
+				if input.ClientSubmitID != "submit-1" {
+					t.Fatalf("client submit id = %q, want submit-1", input.ClientSubmitID)
+				}
+				if _, ok := input.Metadata["clientSubmitId"]; ok {
+					t.Fatalf("client submit id leaked into diagnostics metadata: %#v", input.Metadata)
+				}
+				if len(input.CapabilityRefs) != 1 || input.CapabilityRefs[0] != (agentservice.CapabilityReference{Capability: "tutti", Source: "slash_command"}) {
+					t.Fatalf("input capability refs = %#v", input.CapabilityRefs)
+				}
 				if len(input.Content) != 1 || input.Content[0].Text != "guide current turn" {
 					t.Fatalf("input content = %#v", input.Content)
 				}
@@ -871,6 +885,11 @@ func TestDaemonAPIGeneratedRoutesSendAgentSessionInputForwardsGuidance(t *testin
 		http.MethodPost,
 		"/v1/workspaces/ws-1/agent-sessions/agent-session-1/input",
 		map[string]any{
+			"clientSubmitId": "submit-1",
+			"capabilityRefs": []map[string]any{{
+				"capability": "tutti",
+				"source":     "slash_command",
+			}},
 			"content": []map[string]any{{
 				"type": "text",
 				"text": "guide current turn",
@@ -971,6 +990,62 @@ func TestDaemonAPIGeneratedRoutesSendTurnRejectsMissingExactTurn(t *testing.T) {
 	)
 	if recorder.Code != http.StatusBadGateway {
 		t.Fatalf("status = %d, want %d; body: %s", recorder.Code, http.StatusBadGateway, recorder.Body.String())
+	}
+}
+
+func TestDaemonAPIGeneratedRoutesRejectsUnsupportedAgentCapabilityReferences(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name   string
+		method string
+		path   string
+		body   map[string]any
+	}{
+		{
+			name:   "create",
+			method: http.MethodPost,
+			path:   "/v1/workspaces/ws-1/agent-sessions",
+			body: map[string]any{
+				"agentSessionId": "11111111-1111-4111-8111-111111111111",
+				"agentTargetId":  agenttargetbiz.IDLocalCodex,
+				"clientSubmitId": "submit-1",
+				"capabilityRefs": []map[string]any{{"capability": "other", "source": "slash_command"}},
+			},
+		},
+		{
+			name:   "send",
+			method: http.MethodPost,
+			path:   "/v1/workspaces/ws-1/agent-sessions/agent-session-1/input",
+			body: map[string]any{
+				"clientSubmitId": "submit-1",
+				"capabilityRefs": []map[string]any{{"capability": "tutti", "source": "other"}},
+				"content":        []map[string]any{{"type": "text", "text": "hello"}},
+			},
+		},
+	}
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			mux := http.NewServeMux()
+			RegisterRoutes(mux, NewRoutes(DaemonAPI{
+				AgentSessionService: stubAgentSessionService{
+					createFn: func(context.Context, string, agentservice.CreateSessionInput) (agentservice.Session, error) {
+						t.Fatal("Create should not be called for unsupported capability refs")
+						return agentservice.Session{}, nil
+					},
+					sendInputFn: func(context.Context, string, string, agentservice.SendInput) (agentservice.SendInputResult, error) {
+						t.Fatal("SendInput should not be called for unsupported capability refs")
+						return agentservice.SendInputResult{}, nil
+					},
+				},
+			}))
+
+			recorder := performGeneratedRouteRequest(t, mux, tt.method, tt.path, tt.body)
+			if recorder.Code != http.StatusBadRequest {
+				t.Fatalf("status = %d, want %d; body: %s", recorder.Code, http.StatusBadRequest, recorder.Body.String())
+			}
+		})
 	}
 }
 
@@ -2988,6 +3063,37 @@ func TestDaemonAPIGeneratedRoutesCreateWorkspaceIssueMapsDuplicateIDTo409(t *tes
 		apierrors.ReasonWorkspaceIssueExists,
 		workspaceissues.ErrIssueAlreadyExists.Error(),
 	)
+}
+
+func TestDaemonAPIGeneratedRoutesRejectForgedTuttiModeIssueProvenance(t *testing.T) {
+	store := openIssueRouteSQLiteStore(t)
+	ctx := context.Background()
+	const workspaceID = "ws-issue-route-tutti-provenance"
+	if err := store.Create(ctx, workspacebiz.Summary{
+		ID:   workspaceID,
+		Name: "Issue Tutti Provenance Workspace",
+	}); err != nil {
+		t.Fatalf("Create() workspace error = %v", err)
+	}
+
+	mux := http.NewServeMux()
+	RegisterRoutes(mux, NewRoutes(DaemonAPI{
+		IssueService: workspaceservice.IssueManagerService{Store: store},
+	}))
+	recorder := performGeneratedRouteRequest(t, mux, http.MethodPost, "/v1/workspaces/"+workspaceID+"/issues", map[string]any{
+		"issueId":         "ordinary-forged-tutti",
+		"topicId":         workspaceissues.DefaultTopicID,
+		"title":           "Forged Tutti provenance",
+		"planningSource":  string(workspaceissues.PlanningSourceTuttiModePlan),
+		"sourceSessionId": "session-1",
+	})
+
+	if recorder.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want %d; body: %s", recorder.Code, http.StatusBadRequest, recorder.Body.String())
+	}
+	if _, err := store.GetIssue(ctx, workspaceID, "ordinary-forged-tutti"); !errors.Is(err, workspaceissues.ErrIssueNotFound) {
+		t.Fatalf("GetIssue() error = %v, want no forged Issue", err)
+	}
 }
 
 func TestDaemonAPIGeneratedRoutesIssueTopicLifecycle(t *testing.T) {

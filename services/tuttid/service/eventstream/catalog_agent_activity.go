@@ -62,20 +62,26 @@ type agentActivityTurnUpdateData struct {
 }
 
 type agentActivityTurnData struct {
-	TurnID                string                         `json:"turnId"`
-	AgentSessionID        string                         `json:"agentSessionId"`
-	Phase                 string                         `json:"phase"`
-	Origin                string                         `json:"origin"`
-	SourceGoalOperationID *string                        `json:"sourceGoalOperationId,omitempty"`
-	SourceGoalRevision    *int64                         `json:"sourceGoalRevision,omitempty"`
-	SourceGoalRepairEpoch *int64                         `json:"sourceGoalRepairEpoch,omitempty"`
-	Outcome               *string                        `json:"outcome"`
-	Error                 *agentActivityTurnErrorData    `json:"error"`
-	FileChanges           *map[string]any                `json:"fileChanges"`
-	CompletedCommand      *agentActivityCompletedCommand `json:"completedCommand"`
-	StartedAtUnixMS       *int64                         `json:"startedAtUnixMs"`
-	SettledAtUnixMS       *int64                         `json:"settledAtUnixMs"`
-	UpdatedAtUnixMS       *int64                         `json:"updatedAtUnixMs"`
+	TurnID                string                                 `json:"turnId"`
+	AgentSessionID        string                                 `json:"agentSessionId"`
+	CapabilityRefs        []agentActivityCapabilityReferenceData `json:"capabilityRefs,omitempty"`
+	Phase                 string                                 `json:"phase"`
+	Origin                string                                 `json:"origin"`
+	SourceGoalOperationID *string                                `json:"sourceGoalOperationId,omitempty"`
+	SourceGoalRevision    *int64                                 `json:"sourceGoalRevision,omitempty"`
+	SourceGoalRepairEpoch *int64                                 `json:"sourceGoalRepairEpoch,omitempty"`
+	Outcome               *string                                `json:"outcome"`
+	Error                 *agentActivityTurnErrorData            `json:"error"`
+	FileChanges           *map[string]any                        `json:"fileChanges"`
+	CompletedCommand      *agentActivityCompletedCommand         `json:"completedCommand"`
+	StartedAtUnixMS       *int64                                 `json:"startedAtUnixMs"`
+	SettledAtUnixMS       *int64                                 `json:"settledAtUnixMs"`
+	UpdatedAtUnixMS       *int64                                 `json:"updatedAtUnixMs"`
+}
+
+type agentActivityCapabilityReferenceData struct {
+	Capability string `json:"capability"`
+	Source     string `json:"source"`
 }
 
 type agentActivityTurnErrorData struct {
