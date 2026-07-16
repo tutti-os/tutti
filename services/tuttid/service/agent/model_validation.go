@@ -66,15 +66,6 @@ func (s *Service) validateComposerModelForCreate(
 	}
 }
 
-func (s *Service) availableComposerModelsForValidation(
-	ctx context.Context,
-	provider string,
-	workspaceID string,
-	cwd string,
-) ([]string, bool, error) {
-	return s.availableComposerModelsForValidationTarget(ctx, provider, workspaceID, cwd, "")
-}
-
 func (s *Service) availableComposerModelsForValidationTarget(
 	ctx context.Context,
 	provider string,
