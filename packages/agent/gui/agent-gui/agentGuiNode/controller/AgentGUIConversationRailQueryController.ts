@@ -606,7 +606,8 @@ export class AgentGUIConversationRailQueryController {
     this.deferredMembershipRefresh.flushIfReady(
       !this.queryState.pending &&
         this.queryState.resolvedScopeKey === this.railSectionQueryKey &&
-        this.queryState.sections !== null
+        this.queryState.sections !== null &&
+        this.queryState.sections.length > 0
     );
   }
 
