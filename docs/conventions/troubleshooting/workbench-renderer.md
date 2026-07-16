@@ -521,19 +521,30 @@
   and React commits. Search repeated item components for per-item observers,
   global `resize` listeners, and reads such as `scrollWidth`, `clientWidth`,
   `scrollHeight`, or `clientHeight`. Count these subscriptions per rendered
-  item instead of evaluating only one card in isolation.
+  item instead of evaluating only one card in isolation. For a floating
+  Workbench node, also check whether every intermediate frame update rerenders
+  the complete node body. For wallpaper-aware chrome, count canvas draws and
+  pixel readbacks while resizing.
 - Root cause:
   A text-overflow tooltip or similar decoration can create an observer and an
   initial layout measurement for every repeated text node. Mounting the whole
   list then schedules many layout reads and state updates together. Permanent
   `will-change` hints on every item can add avoidable compositing work at the
-  same time.
+  same time. A host adapter can also treat every drag or resize frame as a body
+  data change even though the Workbench shell already owns live geometry.
+  Recreating a canvas and reading the same static wallpaper pixels on each
+  resize frame adds independent main-thread work.
 - Fix:
   When overflow state is needed only to decide whether an interaction tooltip
   should open, measure on pointer or focus interaction and reuse a pure overflow
   predicate. Keep continuous observation only when the UI must react while it
   remains visible; in that case prefer one owner-level observer over one
   observer per repeated child. Do not leave `will-change` on idle list items.
+  Let the outer Workbench shell apply live frame geometry; expensive body
+  adapters may gate frame-only renders with body-context `isDragging` and
+  `isResizing`, then consume the final frame when the interaction ends. Cache
+  immutable wallpaper image samples and read cached RGBA bytes instead of
+  repeating `drawImage` or `getImageData` during resize.
 - Validation:
   Verify the panel mounts without item-level observer callbacks, then confirm
   truncated and non-truncated text still show the correct tooltip after a
@@ -542,6 +553,8 @@
 - References:
   [AppCard.tsx](../../../packages/workspace/app-center/src/ui/AppCard.tsx)
   [appCardTextOverflow.ts](../../../packages/workspace/app-center/src/ui/appCardTextOverflow.ts)
+  [hostNodeContext.ts](../../../packages/workbench/surface/src/host/hostNodeContext.ts)
+  [dockWallpaperSampling.ts](../../../packages/workbench/surface/src/host/dockWallpaperSampling.ts)
 
 ### Adjacent sidebar animation repeatedly reflows its content and message flow
 

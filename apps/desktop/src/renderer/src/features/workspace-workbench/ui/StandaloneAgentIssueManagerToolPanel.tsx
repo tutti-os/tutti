@@ -112,7 +112,9 @@ export function StandaloneAgentIssueManagerToolPanel({
     host: directHost.host,
     instanceId: standaloneAgentIssueManagerNodeId,
     instanceKey: standaloneAgentIssueManagerNodeId,
+    isDragging: false,
     isFocused: active,
+    isResizing: false,
     node,
     setNodeRuntimeState: () => undefined,
     setSnapshotNodeState: () => undefined

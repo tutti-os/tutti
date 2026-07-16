@@ -19,3 +19,16 @@ test("Agent GUI context equality observes presentation and minimized state", () 
     /previous\.node\.isMinimized === next\.node\.isMinimized/
   );
 });
+
+test("Agent GUI context equality suppresses frame ticks during direct manipulation", () => {
+  assert.match(source, /previous\.isDragging === next\.isDragging/);
+  assert.match(source, /previous\.isResizing === next\.isResizing/);
+  assert.match(
+    source,
+    /if \(next\.isDragging \|\| next\.isResizing\) \{\s*return true;/
+  );
+  assert.match(
+    source,
+    /previous\.node\.frame\.width === next\.node\.frame\.width/
+  );
+});

@@ -43,8 +43,10 @@ export interface DesktopAgentGUISurfaceContext {
   frame: WorkbenchHostNodeBodyContext["node"]["frame"];
   host: WorkbenchHostNodeBodyContext["host"];
   instanceId: string;
+  isDragging: boolean;
   isFocused: boolean;
   isMinimized: boolean;
+  isResizing: boolean;
   nodeId: string;
   nodeTitle: string;
   presentationMode: WorkbenchHostNodeBodyContext["presentationMode"];
@@ -212,16 +214,30 @@ export function areDesktopAgentGUIWorkbenchBodyContextsEqual(
       previous.host === next.host &&
       previous.instanceId === next.instanceId &&
       previous.instanceKey === next.instanceKey &&
+      previous.isDragging === next.isDragging &&
       previous.isFocused === next.isFocused &&
+      previous.isResizing === next.isResizing &&
       previous.presentationMode === next.presentationMode &&
       previous.node.id === next.node.id &&
       previous.node.isMinimized === next.node.isMinimized &&
       previous.node.title === next.node.title &&
-      previous.node.frame.width === next.node.frame.width &&
-      previous.node.frame.height === next.node.frame.height &&
-      previous.node.frame.x === next.node.frame.x &&
-      previous.node.frame.y === next.node.frame.y &&
+      areDesktopAgentGUIWorkbenchFramesEqual(previous, next) &&
       previous.node.data.runtimeNodeState === next.node.data.runtimeNodeState)
+  );
+}
+
+function areDesktopAgentGUIWorkbenchFramesEqual(
+  previous: WorkbenchHostNodeBodyContext,
+  next: WorkbenchHostNodeBodyContext
+): boolean {
+  if (next.isDragging || next.isResizing) {
+    return true;
+  }
+  return (
+    previous.node.frame.width === next.node.frame.width &&
+    previous.node.frame.height === next.node.frame.height &&
+    previous.node.frame.x === next.node.frame.x &&
+    previous.node.frame.y === next.node.frame.y
   );
 }
 

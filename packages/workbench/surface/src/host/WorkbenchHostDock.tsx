@@ -37,6 +37,10 @@ import {
 } from "./dockMagnification.ts";
 import { resolveDockLabelTooltipAnchorRect } from "./dockLabelTooltipAnchor.ts";
 import {
+  getDockWallpaperImageSample,
+  sampleDockWallpaperLuminanceAtElement
+} from "./dockWallpaperSampling.ts";
+import {
   resolveWorkbenchHostDockScrollState,
   type WorkbenchHostDockScrollState
 } from "./dockScrollState.ts";
@@ -3481,8 +3485,8 @@ async function resolveDockWallpaperTones({
     return new Map();
   }
 
-  const sampleCanvas = createDockWallpaperSampleCanvas(wallpaperImage);
-  if (!sampleCanvas) {
+  const wallpaperSample = getDockWallpaperImageSample(wallpaperImage);
+  if (!wallpaperSample) {
     return new Map();
   }
 
@@ -3502,7 +3506,7 @@ async function resolveDockWallpaperTones({
     const luminance = sampleDockWallpaperLuminanceAtElement({
       elementRect: element.getBoundingClientRect(),
       renderedImageRect,
-      sampleCanvas,
+      sample: wallpaperSample,
       wallpaperRect
     });
     if (luminance === null) {
@@ -3541,31 +3545,6 @@ function loadDockWallpaperImage(url: string): Promise<HTMLImageElement | null> {
   });
   dockWallpaperImageCache.set(url, promise);
   return promise;
-}
-
-function createDockWallpaperSampleCanvas(
-  image: HTMLImageElement
-): HTMLCanvasElement | null {
-  if (image.naturalWidth <= 0 || image.naturalHeight <= 0) {
-    return null;
-  }
-  const canvas = document.createElement("canvas");
-  const scale =
-    dockWallpaperSampleCanvasMaxSizePx /
-    Math.max(image.naturalWidth, image.naturalHeight);
-  canvas.width = Math.max(1, Math.round(image.naturalWidth * scale));
-  canvas.height = Math.max(1, Math.round(image.naturalHeight * scale));
-  const context = canvas.getContext("2d", { willReadFrequently: true });
-  if (!context) {
-    return null;
-  }
-  try {
-    context.drawImage(image, 0, 0, canvas.width, canvas.height);
-    context.getImageData(0, 0, 1, 1);
-  } catch {
-    return null;
-  }
-  return canvas;
 }
 
 function resolveDockWallpaperRenderedImageRect({
@@ -3640,66 +3619,6 @@ function resolveDockWallpaperPositionOffset(
     return availableSpace;
   }
   return availableSpace / 2;
-}
-
-function sampleDockWallpaperLuminanceAtElement({
-  elementRect,
-  renderedImageRect,
-  sampleCanvas,
-  wallpaperRect
-}: {
-  elementRect: DOMRect;
-  renderedImageRect: {
-    height: number;
-    left: number;
-    top: number;
-    width: number;
-  };
-  sampleCanvas: HTMLCanvasElement;
-  wallpaperRect: DOMRect;
-}): number | null {
-  const context = sampleCanvas.getContext("2d", { willReadFrequently: true });
-  if (!context) {
-    return null;
-  }
-  const isVerticalElement = elementRect.height >= elementRect.width;
-  let luminanceSum = 0;
-  let samples = 0;
-
-  for (let index = 0; index < dockWallpaperToneSampleCount; index += 1) {
-    const ratio = index / (dockWallpaperToneSampleCount - 1);
-    const clientX = isVerticalElement
-      ? elementRect.left + elementRect.width / 2
-      : elementRect.left + elementRect.width * ratio;
-    const clientY = isVerticalElement
-      ? elementRect.top + elementRect.height * ratio
-      : elementRect.top + elementRect.height / 2;
-    const imageX =
-      (clientX - wallpaperRect.left - renderedImageRect.left) /
-      renderedImageRect.width;
-    const imageY =
-      (clientY - wallpaperRect.top - renderedImageRect.top) /
-      renderedImageRect.height;
-    if (imageX < 0 || imageX > 1 || imageY < 0 || imageY > 1) {
-      continue;
-    }
-    const canvasX = Math.min(
-      sampleCanvas.width - 1,
-      Math.max(0, Math.round(imageX * (sampleCanvas.width - 1)))
-    );
-    const canvasY = Math.min(
-      sampleCanvas.height - 1,
-      Math.max(0, Math.round(imageY * (sampleCanvas.height - 1)))
-    );
-    const pixel = context.getImageData(canvasX, canvasY, 1, 1).data;
-    const red = pixel[0] ?? 0;
-    const green = pixel[1] ?? 0;
-    const blue = pixel[2] ?? 0;
-    luminanceSum += 0.2126 * red + 0.7152 * green + 0.0722 * blue;
-    samples += 1;
-  }
-
-  return samples > 0 ? luminanceSum / samples : null;
 }
 
 function dockWallpaperToneMapsEqual(
@@ -3797,8 +3716,6 @@ const dockHoverPanelCloseDelayMs = 160;
 const dockHoverPanelHitSlopPx = 12;
 const dockHoverPanelBridgeSlopPx = 6;
 const dockHoverPanelPointerRestTolerancePx = 4;
-const dockWallpaperSampleCanvasMaxSizePx = 192;
-const dockWallpaperToneSampleCount = 7;
 const dockWallpaperDarkLuminanceThreshold = 132;
 
 function rectContainsPoint(

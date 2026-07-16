@@ -31,6 +31,8 @@ export interface WorkbenchRenderNodeContext<TData = unknown> {
   node: WorkbenchNode<TData>;
   layout: WorkbenchNodeRenderFrame;
   controller: WorkbenchController<TData>;
+  isDragging: boolean;
+  isResizing: boolean;
 }
 
 export interface WorkbenchDockContext<TData = unknown> {

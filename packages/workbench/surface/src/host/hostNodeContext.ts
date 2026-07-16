@@ -37,7 +37,6 @@ export function createWorkbenchHostNodeBodyContext<
     node: context.node,
     workspaceId
   });
-
   return {
     activation: context.node.data.activation ?? null,
     displayMode: context.node.displayMode,
@@ -50,8 +49,10 @@ export function createWorkbenchHostNodeBodyContext<
     host,
     instanceId: context.node.data.instanceId,
     instanceKey: context.node.data.instanceKey ?? null,
+    isDragging: context.isDragging,
     isFocused:
       selectFocusedWorkbenchNode(host.getSnapshot())?.id === context.node.id,
+    isResizing: context.isResizing,
     presentationMode: context.layout.presentation?.mode ?? null,
     node: context.node,
     setNodeRuntimeState(state) {

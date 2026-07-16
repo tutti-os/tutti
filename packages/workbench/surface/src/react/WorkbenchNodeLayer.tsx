@@ -276,6 +276,12 @@ function WorkbenchNodeLayerItem<TData>({
   const isFocused = useWorkbenchSelector(
     (state) => selectFocusedWorkbenchNode(state)?.id === nodeID
   );
+  const isDragging = useWorkbenchSelector(
+    (state) => state.activeDragNodeId === nodeID
+  );
+  const isResizing = useWorkbenchSelector(
+    (state) => state.activeResizeNodeId === nodeID
+  );
   const zIndex = useWorkbenchSelector((state) =>
     selectWorkbenchNodeZIndex(state, nodeID)
   );
@@ -308,6 +314,8 @@ function WorkbenchNodeLayerItem<TData>({
     >
       {renderNode({
         node,
+        isDragging,
+        isResizing,
         layout: {
           frame: node.frame,
           presentation,

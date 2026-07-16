@@ -502,9 +502,11 @@ export function StandaloneAgentWindow({
       frame,
       host,
       instanceId,
+      isDragging: false,
       // Standalone has one node; document focus is tracked live by engagement.
       isFocused: true,
       isMinimized: false,
+      isResizing: false,
       nodeId: standaloneAgentNodeId,
       nodeTitle: i18n.t("workspace.agentGui.fallbackAgentLabel"),
       presentationMode: undefined,
