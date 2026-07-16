@@ -30,6 +30,7 @@ import {
 } from "./AgentVisibleErrorMessage";
 import { AgentThinkingDisclosure } from "./AgentThinkingDisclosure";
 import { RawTimelineJsonDisclosure } from "./RawTimelineJsonDisclosure";
+import { useElapsedSeconds } from "./useElapsedSeconds";
 import styles from "../../../agent-gui/agentGuiNode/AgentGUIConversation.styles";
 import { CanvasNodeGhostIconButton } from "../../../contexts/workspace/presentation/renderer/components/shared/CanvasNodeGhostIconButton";
 import { AgentUserImageGrid } from "./AgentMessageImages";
@@ -493,21 +494,6 @@ function ContextCompactionProgressDivider({
       ? label
       : `${label} · ${formatElapsedSeconds(elapsedSeconds)}`;
   return <ContextCompactionDivider text={text} />;
-}
-
-function useElapsedSeconds(startUnixMs: number | null): number | null {
-  const [nowUnixMs, setNowUnixMs] = useState(() => Date.now());
-  useEffect(() => {
-    if (startUnixMs === null) {
-      return;
-    }
-    const timer = setInterval(() => setNowUnixMs(Date.now()), 1000);
-    return () => clearInterval(timer);
-  }, [startUnixMs]);
-  if (startUnixMs === null) {
-    return null;
-  }
-  return Math.max(0, Math.floor((nowUnixMs - startUnixMs) / 1000));
 }
 
 function formatElapsedSeconds(seconds: number): string {

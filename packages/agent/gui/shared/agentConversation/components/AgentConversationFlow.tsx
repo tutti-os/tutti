@@ -4,6 +4,7 @@ import type { AgentMessageMarkdownWorkspaceAppIcon } from "../../AgentMessageMar
 import type { AgentConversationVM } from "../contracts/agentConversationVM";
 import { AgentTranscriptSkeleton } from "./AgentTranscriptSkeleton";
 import { AgentTranscriptView } from "./AgentTranscriptView";
+import { AgentTurnDisclosureProvider } from "./AgentTurnDisclosureContext";
 import type { AgentGUIProviderSkillOption } from "../../../agent-gui/agentGuiNode/model/agentGuiNodeTypes";
 
 interface AgentConversationFlowProps {
@@ -44,26 +45,27 @@ export const AgentConversationFlow = memo(function AgentConversationFlow({
 }: AgentConversationFlowProps): JSX.Element {
   "use memo";
 
+  let content: JSX.Element;
   if (isLoading) {
-    return (
+    content = (
       <AgentTranscriptSkeleton label={loadingLabel} testId={loadingTestId} />
+    );
+  } else if (!conversation || conversation.rows.length === 0) {
+    content = <>{empty}</>;
+  } else {
+    content = (
+      <AgentTranscriptView
+        conversation={conversation}
+        onLinkAction={onLinkAction}
+        onAuthLogin={onAuthLogin}
+        availableSkills={availableSkills}
+        workspaceAppIcons={workspaceAppIcons}
+        previewMode={previewMode}
+        labels={labels}
+        showRawTimelineJson={showRawTimelineJson}
+      />
     );
   }
 
-  if (!conversation || conversation.rows.length === 0) {
-    return <>{empty}</>;
-  }
-
-  return (
-    <AgentTranscriptView
-      conversation={conversation}
-      onLinkAction={onLinkAction}
-      onAuthLogin={onAuthLogin}
-      availableSkills={availableSkills}
-      workspaceAppIcons={workspaceAppIcons}
-      previewMode={previewMode}
-      labels={labels}
-      showRawTimelineJson={showRawTimelineJson}
-    />
-  );
+  return <AgentTurnDisclosureProvider>{content}</AgentTurnDisclosureProvider>;
 });

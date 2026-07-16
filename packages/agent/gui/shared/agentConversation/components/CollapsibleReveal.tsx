@@ -14,6 +14,7 @@ interface CollapsibleRevealProps {
   expanded: boolean;
   children: ReactNode;
   className?: string;
+  innerClassName?: string;
   preMountOnIdle?: boolean;
 }
 
@@ -21,6 +22,7 @@ export function CollapsibleReveal({
   expanded,
   children,
   className,
+  innerClassName,
   preMountOnIdle = false
 }: CollapsibleRevealProps): JSX.Element | null {
   "use memo";
@@ -89,8 +91,7 @@ export function CollapsibleReveal({
       setVisible(false);
       setRevealHeight("0px");
       const animationFrame = requestAnimationFrame(() => {
-        measuredHeightRef.current =
-          measuredHeightRef.current ?? root.scrollHeight;
+        measuredHeightRef.current = root.scrollHeight;
         setVisible(true);
         setRevealHeight(`${measuredHeightRef.current}px`);
       });
@@ -103,7 +104,10 @@ export function CollapsibleReveal({
       return undefined;
     }
 
-    const measuredHeight = measuredHeightRef.current ?? root.scrollHeight;
+    const renderedHeight = root.getBoundingClientRect().height;
+    const cachedHeight = measuredHeightRef.current;
+    const measuredHeight =
+      renderedHeight > 0 ? renderedHeight : (cachedHeight ?? root.scrollHeight);
     measuredHeightRef.current = measuredHeight;
     setRevealHeight(`${measuredHeight}px`);
     setVisible(false);
@@ -126,11 +130,11 @@ export function CollapsibleReveal({
 
     let animationFrame: number | null = null;
     const resizeObserver = new ResizeObserver((entries) => {
-      if (heightRef.current === "auto") {
-        return;
-      }
+      const innerScrollHeight = inner.scrollHeight;
       const nextHeight = Math.ceil(
-        entries[0]?.contentRect.height ?? inner.scrollHeight
+        innerScrollHeight > 0
+          ? innerScrollHeight
+          : (entries[0]?.contentRect.height ?? 0)
       );
       const previousHeight = measuredHeightRef.current;
       if (!nextHeight || previousHeight === nextHeight) {
@@ -138,6 +142,9 @@ export function CollapsibleReveal({
       }
 
       measuredHeightRef.current = nextHeight;
+      if (heightRef.current === "auto") {
+        return;
+      }
       setRevealHeight(
         `${previousHeight ?? root.getBoundingClientRect().height}px`
       );
@@ -193,7 +200,12 @@ export function CollapsibleReveal({
       style={rootStyle}
       onTransitionEnd={handleTransitionEnd}
     >
-      <div ref={innerRef} className="agent-collapsible-reveal__inner">
+      <div
+        ref={innerRef}
+        className={["agent-collapsible-reveal__inner", innerClassName ?? ""]
+          .filter(Boolean)
+          .join(" ")}
+      >
         {children}
       </div>
     </div>

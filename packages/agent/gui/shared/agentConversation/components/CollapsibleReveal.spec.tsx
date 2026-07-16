@@ -114,7 +114,7 @@ describe("CollapsibleReveal", () => {
     expect(window.requestAnimationFrame).not.toHaveBeenCalled();
   });
 
-  it("uses the cached expanded height when collapsing pre-mounted content", async () => {
+  it("collapses pre-mounted content without re-reading a stale layout height", async () => {
     let scheduledFrame: FrameRequestCallback | null = null;
     let scrollHeightReads = 0;
     Object.defineProperty(HTMLElement.prototype, "scrollHeight", {
@@ -156,7 +156,8 @@ describe("CollapsibleReveal", () => {
     });
 
     expect(reveal).toHaveStyle({ height: "42px" });
-    expect(scrollHeightReads).toBe(1);
+    const readsAfterExpansion = scrollHeightReads;
+    expect(readsAfterExpansion).toBeGreaterThan(0);
 
     fireEvent.transitionEnd(reveal as HTMLElement, { propertyName: "height" });
     await waitFor(() => expect(reveal).toHaveStyle({ height: "auto" }));
@@ -168,7 +169,7 @@ describe("CollapsibleReveal", () => {
     );
 
     expect(reveal).toHaveStyle({ height: "42px" });
-    expect(scrollHeightReads).toBe(1);
+    expect(scrollHeightReads).toBe(readsAfterExpansion);
     act(() => {
       scheduledFrame?.(32);
     });
@@ -177,7 +178,7 @@ describe("CollapsibleReveal", () => {
     expect(screen.getByText("detail content")).toBeInTheDocument();
   });
 
-  it("does not animate resize updates after an expanded reveal has settled to auto height", () => {
+  it("tracks resize updates at auto height without animating and collapses from the latest size", () => {
     let resizeCallback: ResizeObserverCallback | null = null;
     const observe = vi.fn();
     const disconnect = vi.fn();
@@ -192,7 +193,7 @@ describe("CollapsibleReveal", () => {
     );
     vi.spyOn(window, "requestAnimationFrame");
 
-    render(
+    const { rerender } = render(
       <CollapsibleReveal expanded>
         <div>streaming detail content</div>
       </CollapsibleReveal>
@@ -201,6 +202,11 @@ describe("CollapsibleReveal", () => {
     const reveal = screen
       .getByText("streaming detail content")
       .closest(".agent-collapsible-reveal");
+    const inner = reveal?.querySelector(".agent-collapsible-reveal__inner");
+    Object.defineProperty(inner as Element, "scrollHeight", {
+      configurable: true,
+      value: 84
+    });
 
     expect(reveal).toHaveStyle({ height: "auto" });
     expect(observe).toHaveBeenCalled();
@@ -218,5 +224,13 @@ describe("CollapsibleReveal", () => {
 
     expect(window.requestAnimationFrame).not.toHaveBeenCalled();
     expect(reveal).toHaveStyle({ height: "auto" });
+
+    rerender(
+      <CollapsibleReveal expanded={false}>
+        <div>streaming detail content</div>
+      </CollapsibleReveal>
+    );
+
+    expect(reveal).toHaveStyle({ height: "84px" });
   });
 });

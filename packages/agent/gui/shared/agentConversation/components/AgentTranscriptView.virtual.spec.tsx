@@ -10,6 +10,7 @@ const virtualizerMockState = vi.hoisted(() => ({
 }));
 
 vi.mock("../../../i18n/index", () => ({
+  getActiveUiLanguage: () => "en",
   useTranslation: () => ({
     t: (key: string) => key
   }),
@@ -97,8 +98,66 @@ describe("AgentTranscriptView virtual rendering", () => {
       expect(screen.getByText("turn 10 user row")).toBeTruthy();
       expect(screen.getByText("turn 10 assistant row")).toBeTruthy();
     });
+    const virtualTurn = document.querySelector<HTMLElement>(
+      "[data-agent-transcript-virtual-turn='turn-10']"
+    );
+    expect(virtualTurn?.style.paddingBottom).toBe("12px");
+    expect(
+      virtualTurn?.querySelectorAll(":scope > .agent-gui-transcript-row")
+    ).toHaveLength(2);
+    expect(
+      virtualTurn?.querySelector("[data-agent-turn-work-section]")
+    ).toBeNull();
     expect(screen.queryByText("turn 9 user row")).toBeNull();
     expect(screen.queryByText("turn 11 assistant row")).toBeNull();
+  });
+
+  it("keeps completed turn disclosure interactive inside the virtual window", async () => {
+    virtualizerMockState.virtualIndexes = [10];
+
+    render(
+      <div
+        data-testid="agent-gui-timeline"
+        style={{ height: "480px", overflow: "auto" }}
+      >
+        <AgentTranscriptView
+          conversation={conversationWithCollapsibleTurns(40)}
+          labels={{
+            thinkingLabel: "Thought process",
+            toolCallsLabel: (count) => `Tool calls (${count})`,
+            processing: "Planning next moves",
+            turnSummary: "Changed files"
+          }}
+        />
+      </div>
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText("turn 10 assistant row")).toBeTruthy();
+    });
+    expect(
+      screen.queryByRole("button", { name: "Thought process" })
+    ).toBeNull();
+
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: "agentHost.agentGui.expandTurnWork"
+      })
+    );
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("button", { name: "Thought process" })
+      ).toBeTruthy();
+    });
+    expect(
+      document.querySelector("[data-agent-transcript-virtual-turn='turn-10']")
+    ).toBeTruthy();
+    expect(
+      document.querySelector<HTMLElement>(
+        "[data-agent-transcript-virtual-turn='turn-10']"
+      )?.style.paddingBottom
+    ).toBe("24px");
   });
 
   it("enables virtualization once the transcript reaches 30 turns", () => {
@@ -404,6 +463,49 @@ function conversationWithMultiRowTurns(turnCount: number): AgentConversationVM {
         toolCallCount: 0,
         hasFailedToolCall: false,
         agentItems: []
+      }))
+    }
+  };
+}
+
+function conversationWithCollapsibleTurns(
+  turnCount: number
+): AgentConversationVM {
+  const conversation = conversationWithMultiRowTurns(turnCount);
+  return {
+    ...conversation,
+    rows: conversation.rows.map((row) =>
+      row.kind === "message" && row.speaker === "assistant"
+        ? {
+            ...row,
+            messages: row.messages.map((message) => ({
+              ...message,
+              copyText: message.body,
+              isTurnFinalText: true as const
+            })),
+            thinking: [
+              {
+                kind: "thinking-content" as const,
+                id: `thinking-${row.turnId}`,
+                turnId: row.turnId,
+                body: `${row.turnId.replace("turn-", "turn ")} thinking`,
+                occurredAtUnixMs: 2
+              }
+            ]
+          }
+        : row
+    ),
+    sourceDetail: {
+      ...conversation.sourceDetail,
+      sessionTurns: Array.from({ length: turnCount }, (_, index) => ({
+        agentSessionId: "session-1",
+        origin: "user_prompt" as const,
+        phase: "settled" as const,
+        outcome: "completed" as const,
+        startedAtUnixMs: 1,
+        settledAtUnixMs: 3,
+        turnId: `turn-${index}`,
+        updatedAtUnixMs: 3
       }))
     }
   };

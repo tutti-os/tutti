@@ -13,6 +13,7 @@ import {
   AgentTranscriptView,
   areAgentTranscriptViewPropsEqual
 } from "./AgentTranscriptView";
+import { AgentTurnDisclosureProvider } from "./AgentTurnDisclosureContext";
 import { projectAgentConversationVM } from "../projection/agentConversationProjection";
 
 vi.mock("../../../i18n/index", async (importOriginal) => {
@@ -20,7 +21,8 @@ vi.mock("../../../i18n/index", async (importOriginal) => {
   return {
     ...actual,
     useTranslation: () => ({
-      t: (key: string) => key
+      t: (key: string, options?: Record<string, unknown>) =>
+        translateTestKey(key, options)
     }),
     translate: (key: string) => key
   };
@@ -49,6 +51,267 @@ describe("AgentTranscriptView", () => {
         { conversation: statusOnlyConversation, labels }
       )
     ).toBe(true);
+  });
+
+  it("rerenders when canonical turn timing changes", () => {
+    const labels = {
+      thinkingLabel: "Thought process",
+      toolCallsLabel: (count: number) => `Tool calls (${count})`,
+      processing: "Planning next moves",
+      turnSummary: "Changed files"
+    };
+    const conversation = projectAgentConversationVM(
+      detailViewModel({ sessionTurns: [canonicalTurn()] })
+    );
+    const settledConversation = projectAgentConversationVM(
+      detailViewModel({
+        sessionTurns: [
+          canonicalTurn({
+            phase: "settled",
+            outcome: "completed",
+            settledAtUnixMs: 12_000
+          })
+        ]
+      })
+    );
+
+    expect(
+      areAgentTranscriptViewPropsEqual(
+        { conversation, labels },
+        { conversation: settledConversation, labels }
+      )
+    ).toBe(false);
+  });
+
+  it("rerenders when canonical active-turn identity enables live timing", () => {
+    const labels = {
+      thinkingLabel: "Thought process",
+      toolCallsLabel: (count: number) => `Tool calls (${count})`,
+      processing: "Planning next moves",
+      turnSummary: "Changed files"
+    };
+    const conversation = projectAgentConversationVM(
+      detailViewModel({ sessionTurns: [canonicalTurn()] })
+    );
+    const activeConversation = {
+      ...conversation,
+      sourceDetail: {
+        ...conversation.sourceDetail,
+        session: {
+          ...conversation.sourceDetail.session,
+          activeTurnId: "turn-1"
+        }
+      }
+    };
+
+    expect(
+      areAgentTranscriptViewPropsEqual(
+        { conversation, labels },
+        { conversation: activeConversation, labels }
+      )
+    ).toBe(false);
+  });
+
+  it("keeps the legacy transcript rows flat when canonical timing is unavailable", () => {
+    const { container } = render(
+      <AgentTranscriptView
+        conversation={projectAgentConversationVM(detailViewModel())}
+        labels={{
+          thinkingLabel: "Thought process",
+          toolCallsLabel: (count) => `Tool calls (${count})`,
+          processing: "Planning next moves",
+          turnSummary: "Changed files"
+        }}
+      />
+    );
+
+    const directRows = container.querySelectorAll(
+      ":scope > .agent-gui-transcript-row"
+    );
+    const allRows = container.querySelectorAll(".agent-gui-transcript-row");
+    expect(directRows).toHaveLength(allRows.length);
+    expect(directRows.length).toBeGreaterThan(1);
+    expect(
+      container.querySelector("[data-agent-turn-work-section]")
+    ).toBeNull();
+    expect(container.querySelector(".agent-gui-transcript-turn")).toBeNull();
+  });
+
+  it("ticks canonical live turn duration once per second", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(50_000);
+    const turn = canonicalTurn();
+    const baseDetail = detailViewModel();
+    try {
+      render(
+        <AgentTranscriptView
+          conversation={projectAgentConversationVM(
+            detailViewModel({
+              session: {
+                ...baseDetail.session,
+                activeTurnId: turn.turnId,
+                activeTurn: turn
+              },
+              sessionTurns: [turn],
+              showProcessingIndicator: true
+            })
+          )}
+          labels={{
+            thinkingLabel: "Thought process",
+            toolCallsLabel: (count) => `Tool calls (${count})`,
+            processing: "Planning next moves",
+            turnSummary: "Changed files"
+          }}
+        />
+      );
+
+      expect(screen.getByText("Processed for 45s")).toBeTruthy();
+      act(() => {
+        vi.advanceTimersByTime(2_000);
+      });
+      expect(screen.getByText("Processed for 47s")).toBeTruthy();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("freezes settled duration, auto-collapses work, and keeps manual expansion", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(500_000);
+    const labels = {
+      thinkingLabel: "Thought process",
+      toolCallsLabel: (count: number) => `Tool calls (${count})`,
+      processing: "Planning next moves",
+      turnSummary: "Changed files"
+    };
+    const settledTurn = canonicalTurn({
+      phase: "settled",
+      outcome: "completed",
+      settledAtUnixMs: 132_000
+    });
+    const conversation = projectAgentConversationVM(
+      detailViewModel({ sessionTurns: [settledTurn] })
+    );
+
+    try {
+      const { rerender } = render(
+        <AgentTranscriptView conversation={conversation} labels={labels} />
+      );
+
+      expect(document.querySelector(".agent-gui-transcript-turn")).toBeNull();
+      expect(
+        document.querySelectorAll("[data-agent-turn-work-section]")
+      ).toHaveLength(1);
+      expect(screen.getByText("Total 2m 7s")).toBeTruthy();
+      expect(
+        screen.getAllByText(
+          (_, node) => node?.textContent === "Assistant answer with README"
+        )[0]
+      ).toBeTruthy();
+      expect(
+        screen.queryByRole("button", { name: "Thought process" })
+      ).toBeNull();
+
+      const expand = screen.getByRole("button", {
+        name: "Expand task details"
+      });
+      expect(expand).toHaveAttribute("aria-expanded", "false");
+      fireEvent.click(expand);
+      act(() => {
+        vi.advanceTimersByTime(16);
+      });
+      act(() => {
+        vi.advanceTimersByTime(16);
+      });
+      expect(
+        screen.getByRole("button", { name: "Thought process", hidden: true })
+      ).toBeTruthy();
+
+      vi.advanceTimersByTime(20_000);
+      expect(screen.getByText("Total 2m 7s")).toBeTruthy();
+
+      rerender(
+        <AgentTranscriptView
+          conversation={{
+            ...conversation,
+            sourceDetail: {
+              ...conversation.sourceDetail,
+              sessionTurns: [{ ...settledTurn, updatedAtUnixMs: 140_000 }]
+            }
+          }}
+          labels={labels}
+        />
+      );
+      expect(
+        screen.getByRole("button", { name: "Thought process", hidden: true })
+      ).toBeTruthy();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("remembers manual expansion while switching sessions in one panel", () => {
+    const labels = {
+      thinkingLabel: "Thought process",
+      toolCallsLabel: (count: number) => `Tool calls (${count})`,
+      processing: "Planning next moves",
+      turnSummary: "Changed files"
+    };
+    const settledTurn = canonicalTurn({
+      phase: "settled",
+      outcome: "completed",
+      settledAtUnixMs: 15_000
+    });
+    const sessionOne = projectAgentConversationVM(
+      detailViewModel({ sessionTurns: [settledTurn] })
+    );
+    const sessionTwo = {
+      ...sessionOne,
+      sourceDetail: {
+        ...sessionOne.sourceDetail,
+        session: {
+          ...sessionOne.sourceDetail.session,
+          agentSessionId: "session-2"
+        },
+        sessionTurns: [
+          {
+            ...settledTurn,
+            agentSessionId: "session-2",
+            updatedAtUnixMs: 7_000
+          }
+        ]
+      }
+    };
+    const { rerender } = render(
+      <AgentTurnDisclosureProvider>
+        <AgentTranscriptView conversation={sessionOne} labels={labels} />
+      </AgentTurnDisclosureProvider>
+    );
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Expand task details" })
+    );
+    expect(
+      screen.getByRole("button", { name: "Collapse task details" })
+    ).toBeTruthy();
+
+    rerender(
+      <AgentTurnDisclosureProvider>
+        <AgentTranscriptView conversation={sessionTwo} labels={labels} />
+      </AgentTurnDisclosureProvider>
+    );
+    expect(
+      screen.getByRole("button", { name: "Expand task details" })
+    ).toBeTruthy();
+
+    rerender(
+      <AgentTurnDisclosureProvider>
+        <AgentTranscriptView conversation={sessionOne} labels={labels} />
+      </AgentTurnDisclosureProvider>
+    );
+    expect(
+      screen.getByRole("button", { name: "Collapse task details" })
+    ).toBeTruthy();
   });
 
   it("renders workspace-agent turns with markdown, thinking, and tool disclosures", async () => {
@@ -1453,6 +1716,11 @@ describe("AgentTranscriptView", () => {
       />
     );
 
+    fireEvent.click(
+      screen.getByRole("button", { name: "Expand task details" })
+    );
+    await flushCollapsibleRevealFrames();
+    await flushCollapsibleRevealFrames();
     expect(
       screen.getByText("agentHost.agentGui.turnSummaryFilesChanged")
     ).toBeTruthy();
@@ -1651,4 +1919,48 @@ function detailViewModel(
     ],
     ...overrides
   };
+}
+
+function canonicalTurn(
+  overrides: Partial<
+    NonNullable<WorkspaceAgentSessionDetailViewModel["sessionTurns"]>[number]
+  > = {}
+): NonNullable<WorkspaceAgentSessionDetailViewModel["sessionTurns"]>[number] {
+  return {
+    agentSessionId: "session-1",
+    origin: "user_prompt",
+    phase: "running",
+    startedAtUnixMs: 5_000,
+    turnId: "turn-1",
+    updatedAtUnixMs: 6_000,
+    ...overrides
+  };
+}
+
+function translateTestKey(
+  key: string,
+  options: Record<string, unknown> = {}
+): string {
+  const minutes = Number(options.minutes ?? 0);
+  const seconds = Number(options.seconds ?? 0);
+  switch (key) {
+    case "agentHost.agentGui.turnProcessedSeconds":
+      return `Processed for ${seconds}s`;
+    case "agentHost.agentGui.turnProcessedMinutes":
+      return `Processed for ${minutes}m`;
+    case "agentHost.agentGui.turnProcessedMinutesSeconds":
+      return `Processed for ${minutes}m ${seconds}s`;
+    case "agentHost.agentGui.turnTotalSeconds":
+      return `Total ${seconds}s`;
+    case "agentHost.agentGui.turnTotalMinutes":
+      return `Total ${minutes}m`;
+    case "agentHost.agentGui.turnTotalMinutesSeconds":
+      return `Total ${minutes}m ${seconds}s`;
+    case "agentHost.agentGui.expandTurnWork":
+      return "Expand task details";
+    case "agentHost.agentGui.collapseTurnWork":
+      return "Collapse task details";
+    default:
+      return key;
+  }
 }

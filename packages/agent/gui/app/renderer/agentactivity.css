@@ -6925,6 +6925,7 @@ button.agent-gui-node__conversation-section-toggle:hover
   width: 100%;
   min-width: 0;
   contain: layout;
+  overflow-anchor: none;
 }
 
 .agent-gui-transcript-virtual-item {

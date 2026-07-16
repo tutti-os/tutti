@@ -756,6 +756,69 @@ describe("projectAgentConversationVM", () => {
     expect(assistantRows[0]?.messages[0]?.systemNotice).toBeNull();
   });
 
+  it("keeps processing when normalized rows cannot host canonical live timing", () => {
+    const baseDetail = detailViewModel();
+    const activeTurn = {
+      agentSessionId: "session-1",
+      turnId: "turn-1",
+      phase: "running" as const,
+      origin: "user_prompt" as const,
+      startedAtUnixMs: 1,
+      updatedAtUnixMs: 10
+    };
+    const runtimeWarning =
+      "Skill descriptions were shortened to fit the 2% skills context budget. Codex can still see every skill, but some descriptions are shorter.";
+
+    const conversation = projectAgentConversationVM(
+      detailViewModel({
+        session: {
+          ...baseDetail.session,
+          activeTurnId: "turn-1",
+          activeTurn,
+          latestTurn: activeTurn
+        },
+        sessionTurns: [activeTurn],
+        turns: [
+          {
+            id: "turn-1",
+            userMessage: null,
+            userMessages: [],
+            agentMessages: [],
+            toolCalls: [],
+            toolCallCount: 0,
+            hasFailedToolCall: false,
+            agentItems: [
+              {
+                kind: "message",
+                message: {
+                  id: "assistant-warning-1",
+                  body: runtimeWarning,
+                  systemNotice: {
+                    noticeKind: "warning",
+                    severity: "warning",
+                    source: "runtime",
+                    title: runtimeWarning,
+                    detail: runtimeWarning,
+                    retryable: null
+                  }
+                }
+              }
+            ]
+          }
+        ],
+        showProcessingIndicator: true
+      })
+    );
+
+    expect(conversation.rows).toEqual([
+      expect.objectContaining({
+        kind: "processing",
+        id: "processing:turn-1",
+        turnId: "turn-1"
+      })
+    ]);
+  });
+
   it("drops Codex model metadata fallback runtime warning notices", () => {
     const metadataWarning =
       "Model metadata for `minimax/minimax-m2.5` not found. Defaulting to fallback metadata; this can degrade performance and cause issues.";
@@ -1309,7 +1372,7 @@ describe("projectAgentConversationVM", () => {
     );
   });
 
-  it("scopes the transient processing row identity to the latest turn", () => {
+  it("preserves the latest transcript turn as processing fallback identity", () => {
     const firstTurn = detailViewModel().turns[0]!;
     const secondTurn = {
       id: "turn-2",
@@ -1347,11 +1410,109 @@ describe("projectAgentConversationVM", () => {
     );
   });
 
+  it("lets latest-turn semantic progress suppress legacy processing fallback", () => {
+    const firstTurn = detailViewModel().turns[0]!;
+    const compactNotice = compactNoticeMessage("turn-2", "running");
+    const conversation = projectAgentConversationVM(
+      detailViewModel({
+        turns: [
+          firstTurn,
+          {
+            id: "turn-2",
+            userMessage: {
+              id: "user-2",
+              body: "Follow-up request",
+              turnId: "turn-2"
+            },
+            userMessages: [
+              { id: "user-2", body: "Follow-up request", turnId: "turn-2" }
+            ],
+            agentMessages: [compactNotice],
+            toolCalls: [],
+            toolCallCount: 0,
+            hasFailedToolCall: false,
+            agentItems: [{ kind: "message", message: compactNotice }]
+          }
+        ],
+        showProcessingIndicator: true
+      })
+    );
+
+    expect(conversation.rows.some((row) => row.kind === "processing")).toBe(
+      false
+    );
+  });
+
+  it("scopes transient processing to the canonical active turn", () => {
+    const baseDetail = detailViewModel();
+    const conversation = projectAgentConversationVM(
+      detailViewModel({
+        session: {
+          ...baseDetail.session,
+          activeTurnId: "turn-2"
+        },
+        turns: [
+          baseDetail.turns[0]!,
+          {
+            id: "turn-2",
+            userMessage: null,
+            userMessages: [],
+            agentMessages: [],
+            toolCalls: [],
+            toolCallCount: 0,
+            hasFailedToolCall: false,
+            agentItems: []
+          }
+        ],
+        showProcessingIndicator: true
+      })
+    );
+
+    expect(conversation.rows.find((row) => row.kind === "processing")).toEqual(
+      expect.objectContaining({
+        id: "processing:turn-2",
+        turnId: "turn-2"
+      })
+    );
+  });
+
+  it("uses canonical live turn timing instead of generic processing", () => {
+    const baseDetail = detailViewModel();
+    const conversation = projectAgentConversationVM(
+      detailViewModel({
+        session: {
+          ...baseDetail.session,
+          activeTurnId: "turn-1"
+        },
+        sessionTurns: [
+          {
+            agentSessionId: "session-1",
+            origin: "user_prompt",
+            phase: "running",
+            startedAtUnixMs: 5_000,
+            turnId: "turn-1",
+            updatedAtUnixMs: 6_000
+          }
+        ],
+        showProcessingIndicator: true
+      })
+    );
+
+    expect(conversation.rows.some((row) => row.kind === "processing")).toBe(
+      false
+    );
+  });
+
   it("uses active semantic progress instead of appending generic processing", () => {
-    const baseTurn = detailViewModel().turns[0]!;
+    const baseDetail = detailViewModel();
+    const baseTurn = baseDetail.turns[0]!;
     const compactNotice = compactNoticeMessage("turn-1", "running");
     const conversation = projectAgentConversationVM(
       detailViewModel({
+        session: {
+          ...baseDetail.session,
+          activeTurnId: "turn-1"
+        },
         turns: [
           {
             ...baseTurn,
@@ -1406,7 +1567,8 @@ describe("projectAgentConversationVM", () => {
   );
 
   it("does not let progress from an older turn suppress current processing", () => {
-    const firstTurn = detailViewModel().turns[0]!;
+    const baseDetail = detailViewModel();
+    const firstTurn = baseDetail.turns[0]!;
     const compactNotice = compactNoticeMessage("turn-1", "running");
     const secondTurn = {
       id: "turn-2",
@@ -1420,6 +1582,10 @@ describe("projectAgentConversationVM", () => {
     };
     const conversation = projectAgentConversationVM(
       detailViewModel({
+        session: {
+          ...baseDetail.session,
+          activeTurnId: "turn-2"
+        },
         turns: [
           {
             ...firstTurn,
@@ -1607,11 +1773,20 @@ describe("projectAgentConversationVM", () => {
     expect(
       assistantMessages.map((message) => ({
         id: message.id,
-        copyText: message.copyText ?? null
+        copyText: message.copyText ?? null,
+        isTurnFinalText: message.isTurnFinalText === true
       }))
     ).toEqual([
-      { id: "assistant-1", copyText: "Older answer" },
-      { id: "assistant-2", copyText: "Latest answer" }
+      {
+        id: "assistant-1",
+        copyText: "Older answer",
+        isTurnFinalText: true
+      },
+      {
+        id: "assistant-2",
+        copyText: "Latest answer",
+        isTurnFinalText: true
+      }
     ]);
   });
 
@@ -1682,11 +1857,20 @@ describe("projectAgentConversationVM", () => {
     expect(
       assistantMessages.map((message) => ({
         id: message.id,
-        copyText: message.copyText ?? null
+        copyText: message.copyText ?? null,
+        isTurnFinalText: message.isTurnFinalText === true
       }))
     ).toEqual([
-      { id: "assistant-1", copyText: "Prior answer" },
-      { id: "assistant-2", copyText: null }
+      {
+        id: "assistant-1",
+        copyText: "Prior answer",
+        isTurnFinalText: true
+      },
+      {
+        id: "assistant-2",
+        copyText: null,
+        isTurnFinalText: false
+      }
     ]);
   });
 

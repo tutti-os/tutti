@@ -12,6 +12,7 @@ export interface AgentMessageContentVM {
   copyText?: string | null;
   statusKind?: ToolCallStatusKind | null;
   contentKind?: "text" | "image-grid" | "plan";
+  isTurnFinalText?: true;
   images?: AgentMessageImageVM[];
   occurredAtUnixMs: number | null;
   visibleError?: {

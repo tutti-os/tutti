@@ -214,6 +214,62 @@ Timeline-specific parsing may produce display-only card content, while request
 identity, options, and response commands come only from canonical pending
 Interaction projections.
 
+Turn elapsed-time and work-disclosure presentation reads canonical
+`sessionTurns`; transcript message timestamps are not a lifecycle fallback.
+Only the Turn identified by the session's canonical `activeTurnId` may tick
+locally from `startedAtUnixMs` throughout every non-settled phase. In particular,
+an active Turn awaiting an approval, question, or plan response remains the same
+Turn and continues displaying its wall-clock "processed" duration while
+`waiting`; the wait is included when timing resumes and in the final total.
+Once the Turn settles, `activeTurnId` clears and its duration freezes at
+`settledAtUnixMs`, so time spent waiting for the user's next ordinary prompt is
+not added to the completed Turn. That second-level state stays inside the
+duration label so transcript rows do not re-render on every tick. A successfully
+completed Turn may start with tool calls, thinking, progress, and file summaries
+collapsed when the projection has a distinct final assistant text target
+independent of copy availability. Work classification is an explicit allowlist:
+thinking, tool groups, specific progress or turn-boundary messages, transient
+processing, and file summaries may collapse. Ordinary assistant content and
+every user message remain visible, including earlier assistant replies and
+mid-Turn user guidance before a later final answer. The disclosure model
+partitions that Turn in source order rather than globally separating user and
+agent rows: only the initial contiguous user prompt stays above the duration
+header, while the remaining visible and work segments retain their authoritative
+chronology. Split presentation rows keep their canonical row identity and use
+separate render keys.
+
+Turn disclosure is a capability branch, not a transcript-wide container
+replacement. Only a Turn with valid canonical timing enters the Turn-level
+layout container, which owns its internal row spacing while the outer timeline
+owns inter-Turn spacing. A group without canonical timing renders through the
+legacy flat-row path, preserving direct-row DOM adjacency, CSS selectors, and
+virtualized spacing. Failed, canceled, interrupted, visible-error,
+generated-image, or final-text-free Turns fail open so important output is
+never hidden. Manual disclosure state is UI-local, keyed by session and Turn,
+and may survive conversation switches while the Agent panel remains mounted;
+it is not persisted or written back to the engine.
+
+Disclosure spacing that appears or disappears must live inside the measured
+reveal height. Do not place a conditionally mounted reveal directly in a parent
+`gap`: removing the zero-height node also removes an unanimated gap and creates
+a terminal height jump. A reveal that has settled to `height: auto` must keep
+tracking content resizes and lock its current rendered height before collapse,
+so streaming or asynchronously rendered work cannot collapse from a stale
+measurement. In virtualized transcripts, the virtualizer is the sole scroll
+anchor owner; opt its measured subtree out of browser-native scroll anchoring
+to avoid two independent corrections moving the whole timeline and then
+snapping it back.
+
+Generic processing fallback is decided only after transcript normalization has
+removed diagnostic-only notices and merged presentation rows. Canonical live
+Turn timing suppresses that fallback only when a surviving row with the exact
+`activeTurnId` can host the duration header; otherwise projection appends a
+processing row scoped to that active Turn. Rows from an older Turn must not
+suppress the current fallback. When canonical active-Turn identity is absent,
+the generic processing compatibility path retains the latest transcript Turn
+only as row placement and suppression identity. It must not use transcript
+timestamps or messages to infer lifecycle or enable elapsed-time disclosure.
+
 Ordinary consecutive tool calls project into one stable transcript disclosure
 starting with the first call. Working, waiting, completed, and failed updates
 change the calls and accumulated count inside that disclosure; they must not
