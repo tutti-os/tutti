@@ -602,7 +602,11 @@ Turn state, loading, cancel, restore, file-change undo, rail projection, event u
 - Symptom:
   Switching the Agent GUI aggregation rail between All, Cursor, Codex, or Claude
   makes the selected row disappear, collapses a loaded page, or briefly flashes
-  missing Show more controls. Five page rows plus one selected overlay may show
+  missing Show more controls. The same switch may remain visibly blocked even
+  when each individual session query takes only tens of milliseconds, because
+  the first-page bootstrap repeats count, sort, entity projection, and turn /
+  interaction hydration once per current project section. Five page rows plus
+  one selected overlay may show
   Show more/Show less even when only six sessions exist, or a nine-session
   section may ignore the first Show more click. Restart can reproduce the same
   selected-row loss.
@@ -612,21 +616,39 @@ Turn state, loading, cancel, restore, file-change undo, rail projection, event u
   and responses preserve `totalCount`, `hasMore`, and `nextCursor`. In the
   renderer, distinguish daemon-owned section membership ids from engine-owned
   session entities; activating or hydrating one session must not rewrite the
-  loaded membership page.
+  loaded membership page. For latency, count repository section reads per
+  bootstrap: production must issue one `ListSessionSections` batch read, not one
+  `ListSessionSection` call per project plus pinned and Chats. Run
+  `EXPLAIN QUERY PLAN` and confirm ordinary branches use
+  `idx_workspace_agent_sessions_rail_section_page`, pinned branches use
+  `idx_workspace_agent_sessions_pinned_page`, and selected page entities load
+  by the session primary key after narrow id trimming. A target-filtered rail
+  must instead use `idx_workspace_agent_sessions_rail_section_target_page` and
+  `idx_workspace_agent_sessions_pinned_target_page` with an exact target
+  predicate; an optional `OR` predicate cannot narrow the index range.
 - Root cause:
   A second React summary cache mixed entity data, section membership, active
   selection, and visible-item limits. Effects manually patched section rows
   from changing conversation summaries, so provider/detail reconciliation could
   collapse pages or synthesize membership. Counting the active overlay as a
   pageable row also corrupted Show more decisions. Bounded engine snapshots can
-  recreate the loss if omission is treated as deletion.
+  recreate the loss if omission is treated as deletion. The latency variant is
+  an N-section daemon read: current projects are a small requested set, while
+  the workspace DB retains history for removed projects. Scanning that full
+  history or repeating canonical turn / interaction hydration per section makes
+  the rail wait scale with project count even when every leaf query looks fast.
 - Fix:
   Keep page sessions in the workspace engine. Cache only ordered membership ids,
   cursor, `hasMore`, and `totalCount` in the controller query, then join ids to
   engine entities with a pure model projection. Keep active and pending sessions
   as display overlays outside pagination. Preserve old scope chrome and metadata
   atomically while a provider refetch is pending. Engine snapshots merge
-  monotonically; only explicit `session/removed` owns deletion.
+  monotonically; only explicit `session/removed` owns deletion. Keep first-page
+  bootstrap as a required narrow repository seam: one requested-section-driven
+  batch query, independent pinned and ordinary index branches, count/sort/limit
+  on narrow session ids, then one cross-section canonical entity hydration.
+  Do not add one `UNION ALL` arm per section; that restores section-count scaling
+  and inherits SQLite's compound-select term limit.
 - Validation:
   Run `pnpm --filter @tutti-os/agent-gui test`,
   `pnpm --filter @tutti-os/agent-activity-core test`, and
@@ -634,7 +656,10 @@ Turn state, loading, cancel, restore, file-change undo, rail projection, event u
   `cd packages/agent/store-sqlite && go test ./... -run 'SessionSection|TurnsBackfill'`
   and
   `cd services/tuttid && go test ./service/agent ./api -run 'ListPage|SessionList|SessionSection'`
-  so cursor metadata and daemon ordering are covered. Cover Codex -> All -> Codex,
+  so cursor metadata and daemon ordering are covered. Run
+  `cd packages/agent/store-sqlite && go test -run '^$' -bench 'BenchmarkStoreListSessionSectionsLargeRemovedProjectHistory' -benchmem`
+  to compare the batch reader with the serial reference across sparse and dense
+  requested-section histories. Cover Codex -> All -> Codex,
   client restart restore, active row outside first page, five-plus-active totals,
   nine-session Show more, slow provider refetch, and bounded snapshot omission.
 - References:

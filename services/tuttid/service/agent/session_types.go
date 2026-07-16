@@ -286,8 +286,12 @@ type SessionDetail struct {
 	ChildSessions []Session
 }
 
+type SessionSectionsReader interface {
+	ListSessionSections(context.Context, agentactivitybiz.ListSessionSectionsInput) (agentactivitybiz.SessionSectionsPage, bool, error)
+}
+
 type SessionSectionReader interface {
-	ListSessionSection(context.Context, agentactivitybiz.ListSessionSectionInput) (agentactivitybiz.SessionSectionPage, bool)
+	ListSessionSection(context.Context, agentactivitybiz.ListSessionSectionInput) (agentactivitybiz.SessionSectionPage, bool, error)
 }
 
 type SessionSectionDeletionCandidateReader interface {

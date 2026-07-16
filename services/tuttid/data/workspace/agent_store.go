@@ -12,6 +12,8 @@ import (
 	agenttargetbiz "github.com/tutti-os/tutti/services/tuttid/biz/agenttarget"
 )
 
+var _ agentactivitybiz.Repository = (*SQLiteStore)(nil)
+
 // Agent activity and agent target persistence is delegated to the
 // embeddable packages/agent/store-sqlite module, sharing this store's
 // database handle. The delegation below keeps SQLiteStore satisfying the
@@ -117,6 +119,10 @@ func (s *SQLiteStore) ListSessions(ctx context.Context, workspaceID string) ([]a
 
 func (s *SQLiteStore) ListSessionSection(ctx context.Context, input agentactivitybiz.ListSessionSectionInput) (agentactivitybiz.SessionSectionPage, bool, error) {
 	return s.agentStore().ListSessionSection(ctx, input)
+}
+
+func (s *SQLiteStore) ListSessionSections(ctx context.Context, input agentactivitybiz.ListSessionSectionsInput) (agentactivitybiz.SessionSectionsPage, bool, error) {
+	return s.agentStore().ListSessionSections(ctx, input)
 }
 
 func (s *SQLiteStore) ListSessionSectionDeletionCandidates(ctx context.Context, input agentactivitybiz.ListSessionSectionDeletionCandidatesInput) (agentactivitybiz.SessionSectionDeletionCandidates, bool, error) {

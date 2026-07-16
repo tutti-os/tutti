@@ -28,6 +28,8 @@ const schemaMigrationWorkspaceAgentActivityV5 = "workspace_agent_activity_v5"
 const schemaMigrationWorkspaceAgentActivityV6 = "workspace_agent_activity_v6"
 const schemaMigrationWorkspaceAgentActivityV7 = "workspace_agent_activity_v7"
 const schemaMigrationWorkspaceAgentActivityV8 = "workspace_agent_activity_v8"
+const schemaMigrationWorkspaceAgentActivityV9 = "workspace_agent_activity_v9"
+const schemaMigrationWorkspaceAgentActivityV10 = "workspace_agent_activity_v10"
 const schemaMigrationWorkspaceAgentActivityRailV1 = "workspace_agent_activity_rail_v1"
 const schemaMigrationWorkspaceAgentActivityTurnsV1 = "workspace_agent_activity_turns_v1"
 const schemaMigrationWorkspaceAgentActivityInteractionsV2 = "workspace_agent_activity_interactions_v2"
@@ -138,6 +140,12 @@ CREATE TABLE IF NOT EXISTS `+schemaMigrationsTable+` (
 		return err
 	}
 	if err := s.applyWorkspaceAgentSessionEntitiesV3(ctx); err != nil {
+		return err
+	}
+	if err := s.applyWorkspaceAgentActivityV9(ctx); err != nil {
+		return err
+	}
+	if err := s.applyWorkspaceAgentActivityV10(ctx); err != nil {
 		return err
 	}
 	if err := s.applyWorkspaceAgentEntityInvariantsV1(ctx); err != nil {

@@ -25,6 +25,7 @@ type Repository interface {
 	ListTurnsBySession(context.Context, string, map[string]string) (map[string]Turn, error)
 	ListPendingInteractionsBySession(context.Context, string, []string) (map[string][]Interaction, error)
 	ListSessionSection(context.Context, ListSessionSectionInput) (SessionSectionPage, bool, error)
+	ListSessionSections(context.Context, ListSessionSectionsInput) (SessionSectionsPage, bool, error)
 	ListSessionSectionDeletionCandidates(context.Context, ListSessionSectionDeletionCandidatesInput) (SessionSectionDeletionCandidates, bool, error)
 	ListSessionTurns(context.Context, string, string) ([]Turn, error)
 	ListSessions(context.Context, string) ([]Session, bool, error)
@@ -101,6 +102,16 @@ type ListSessionSectionInput struct {
 	Limit                int
 }
 
+// ListSessionSectionsInput describes the first-page bootstrap for every rail
+// section in one workspace query. SectionKeys includes the synthetic pinned
+// page key when the caller needs pinned conversations.
+type ListSessionSectionsInput struct {
+	WorkspaceID     string
+	SectionKeys     []string
+	AgentTargetID   string
+	LimitPerSection int
+}
+
 type ListSessionSectionDeletionCandidatesInput struct {
 	WorkspaceID   string
 	SectionKey    string
@@ -136,6 +147,11 @@ type SessionSectionPage struct {
 	HasMore     bool
 	TotalCount  int
 	NextCursor  string
+}
+
+type SessionSectionsPage struct {
+	WorkspaceID string
+	Sections    []SessionSectionPage
 }
 
 type Session struct {

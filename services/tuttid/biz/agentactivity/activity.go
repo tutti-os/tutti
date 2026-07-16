@@ -33,7 +33,11 @@ type GeneratedFileList = agentstore.GeneratedFileList
 
 type ListSessionSectionInput = agentstore.ListSessionSectionInput
 
+type ListSessionSectionsInput = agentstore.ListSessionSectionsInput
+
 type SessionSectionPage = agentstore.SessionSectionPage
+
+type SessionSectionsPage = agentstore.SessionSectionsPage
 
 type Session = agentstore.Session
 type SessionMetadata = agentstore.SessionMetadata

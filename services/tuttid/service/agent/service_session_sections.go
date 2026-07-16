@@ -29,29 +29,141 @@ func (s *Service) ListSessionSections(
 	if err != nil {
 		return SessionSectionsPage{}, err
 	}
-	pinned, err := s.sessionPinnedPage(ctx, workspaceID, "", input.LimitPerSection, agentTargetID)
-	if err != nil {
-		return SessionSectionsPage{}, err
+	reader, ok := s.SessionReader.(SessionSectionsReader)
+	if !ok {
+		return SessionSectionsPage{}, ErrInvalidArgument
 	}
-	sections := make([]SessionSection, 0, len(projects)+1)
+	return s.listSessionSectionsBatched(
+		ctx,
+		reader,
+		workspaceID,
+		projects,
+		input.LimitPerSection,
+		agentTargetID,
+	)
+}
+
+func (s *Service) listSessionSectionsBatched(
+	ctx context.Context,
+	reader SessionSectionsReader,
+	workspaceID string,
+	projects []userprojectbiz.Project,
+	limitPerSection int,
+	agentTargetID string,
+) (SessionSectionsPage, error) {
+	normalizedProjects := make([]userprojectbiz.Project, 0, len(projects))
+	sectionKeys := make([]string, 0, len(projects)+2)
+	sectionKeys = append(sectionKeys, agentactivitybiz.PinnedSessionPageKey)
 	for _, project := range projects {
 		project = userProjectWithSectionKey(project)
-		section, err := s.sessionSectionPage(ctx, workspaceID, sessionSectionKindProject, project.SectionKey, &project, "", input.LimitPerSection, agentTargetID)
-		if err != nil {
-			return SessionSectionsPage{}, err
+		if strings.TrimSpace(project.SectionKey) == "" {
+			continue
 		}
-		sections = append(sections, section)
+		normalizedProjects = append(normalizedProjects, project)
+		sectionKeys = append(sectionKeys, project.SectionKey)
 	}
-	conversations, err := s.sessionSectionPage(ctx, workspaceID, sessionSectionKindConversations, sessionSectionKeyConversations, nil, "", input.LimitPerSection, agentTargetID)
+	sectionKeys = append(sectionKeys, sessionSectionKeyConversations)
+	page, ok, err := reader.ListSessionSections(ctx, agentactivitybiz.ListSessionSectionsInput{
+		WorkspaceID:     workspaceID,
+		SectionKeys:     sectionKeys,
+		AgentTargetID:   strings.TrimSpace(agentTargetID),
+		LimitPerSection: limitPerSection,
+	})
 	if err != nil {
 		return SessionSectionsPage{}, err
 	}
-	sections = append(sections, conversations)
+	if !ok {
+		return SessionSectionsPage{}, ErrInvalidArgument
+	}
+	rawPagesByKey := make(map[string]agentactivitybiz.SessionSectionPage, len(page.Sections))
+	rawSessions := make([]agentactivitybiz.Session, 0, len(page.Sections)*limitPerSection)
+	for _, section := range page.Sections {
+		sectionKey := strings.TrimSpace(section.SectionKey)
+		if sectionKey == "" {
+			return SessionSectionsPage{}, ErrInvalidArgument
+		}
+		rawPagesByKey[sectionKey] = section
+		rawSessions = append(rawSessions, section.Sessions...)
+	}
+	sessions, err := s.sessionsFromActivity(ctx, workspaceID, rawSessions)
+	if err != nil {
+		return SessionSectionsPage{}, err
+	}
+	sessionsByID := make(map[string]Session, len(sessions))
+	for _, session := range sessions {
+		sessionsByID[session.ID] = session
+	}
+
+	pinnedPage, ok := rawPagesByKey[agentactivitybiz.PinnedSessionPageKey]
+	if !ok {
+		return SessionSectionsPage{}, ErrInvalidArgument
+	}
+	pinnedSessions, ok := sessionsForSectionPage(pinnedPage, sessionsByID)
+	if !ok {
+		return SessionSectionsPage{}, ErrInvalidArgument
+	}
+	sections := make([]SessionSection, 0, len(normalizedProjects)+1)
+	for i := range normalizedProjects {
+		project := normalizedProjects[i]
+		rawPage, ok := rawPagesByKey[project.SectionKey]
+		if !ok {
+			return SessionSectionsPage{}, ErrInvalidArgument
+		}
+		projectSessions, ok := sessionsForSectionPage(rawPage, sessionsByID)
+		if !ok {
+			return SessionSectionsPage{}, ErrInvalidArgument
+		}
+		sections = append(sections, SessionSection{
+			Kind:        sessionSectionKindProject,
+			SectionKey:  project.SectionKey,
+			UserProject: &project,
+			Sessions:    projectSessions,
+			HasMore:     rawPage.HasMore,
+			TotalCount:  rawPage.TotalCount,
+			NextCursor:  rawPage.NextCursor,
+		})
+	}
+	conversationsPage, ok := rawPagesByKey[sessionSectionKeyConversations]
+	if !ok {
+		return SessionSectionsPage{}, ErrInvalidArgument
+	}
+	conversationSessions, ok := sessionsForSectionPage(conversationsPage, sessionsByID)
+	if !ok {
+		return SessionSectionsPage{}, ErrInvalidArgument
+	}
+	sections = append(sections, SessionSection{
+		Kind:       sessionSectionKindConversations,
+		SectionKey: sessionSectionKeyConversations,
+		Sessions:   conversationSessions,
+		HasMore:    conversationsPage.HasMore,
+		TotalCount: conversationsPage.TotalCount,
+		NextCursor: conversationsPage.NextCursor,
+	})
 	return SessionSectionsPage{
 		WorkspaceID: workspaceID,
-		Pinned:      pinned,
-		Sections:    sections,
+		Pinned: SessionPage{
+			Sessions:   pinnedSessions,
+			HasMore:    pinnedPage.HasMore,
+			TotalCount: pinnedPage.TotalCount,
+			NextCursor: pinnedPage.NextCursor,
+		},
+		Sections: sections,
 	}, nil
+}
+
+func sessionsForSectionPage(
+	page agentactivitybiz.SessionSectionPage,
+	sessionsByID map[string]Session,
+) ([]Session, bool) {
+	sessions := make([]Session, 0, len(page.Sessions))
+	for _, rawSession := range page.Sessions {
+		session, ok := sessionsByID[strings.TrimSpace(rawSession.ID)]
+		if !ok {
+			return nil, false
+		}
+		sessions = append(sessions, session)
+	}
+	return sessions, true
 }
 
 func (s *Service) ListSessionSectionPage(
@@ -247,7 +359,7 @@ func (s *Service) sessionSectionPage(
 			return SessionSection{}, err
 		}
 	}
-	page, ok := reader.ListSessionSection(ctx, agentactivitybiz.ListSessionSectionInput{
+	page, ok, err := reader.ListSessionSection(ctx, agentactivitybiz.ListSessionSectionInput{
 		WorkspaceID:          workspaceID,
 		SectionKey:           sectionKey,
 		AgentTargetID:        strings.TrimSpace(agentTargetID),
@@ -255,6 +367,9 @@ func (s *Service) sessionSectionPage(
 		CursorSessionID:      parsedCursor.ID,
 		Limit:                limit,
 	})
+	if err != nil {
+		return SessionSection{}, err
+	}
 	if !ok {
 		return SessionSection{}, ErrInvalidArgument
 	}
@@ -316,7 +431,7 @@ func (s *Service) sessionPinnedPage(
 			return SessionPage{}, err
 		}
 	}
-	page, ok := reader.ListSessionSection(ctx, agentactivitybiz.ListSessionSectionInput{
+	page, ok, err := reader.ListSessionSection(ctx, agentactivitybiz.ListSessionSectionInput{
 		WorkspaceID:          workspaceID,
 		SectionKey:           agentactivitybiz.PinnedSessionPageKey,
 		AgentTargetID:        strings.TrimSpace(agentTargetID),
@@ -324,6 +439,9 @@ func (s *Service) sessionPinnedPage(
 		CursorSessionID:      parsedCursor.ID,
 		Limit:                limit,
 	})
+	if err != nil {
+		return SessionPage{}, err
+	}
 	if !ok {
 		return SessionPage{}, ErrInvalidArgument
 	}

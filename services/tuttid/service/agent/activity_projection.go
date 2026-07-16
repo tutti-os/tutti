@@ -22,6 +22,11 @@ type ActivityProjection struct {
 	rootTurnObserver       RootTurnObserver
 }
 
+var (
+	_ SessionReader         = (*ActivityProjection)(nil)
+	_ SessionSectionsReader = (*ActivityProjection)(nil)
+)
+
 func NewActivityProjection(repo agentactivitybiz.Repository) *ActivityProjection {
 	return &ActivityProjection{repo: repo}
 }
@@ -415,24 +420,21 @@ func (p *ActivityProjection) ListChildSessions(
 func (p *ActivityProjection) ListSessionSection(
 	ctx context.Context,
 	input agentactivitybiz.ListSessionSectionInput,
-) (agentactivitybiz.SessionSectionPage, bool) {
+) (agentactivitybiz.SessionSectionPage, bool, error) {
 	if p == nil || p.repo == nil {
-		return agentactivitybiz.SessionSectionPage{}, false
+		return agentactivitybiz.SessionSectionPage{}, false, nil
 	}
-	page, ok, err := p.repo.ListSessionSection(ctx, input)
-	if err != nil {
-		slog.Warn("list workspace agent session section failed",
-			"event", "workspace.agent_session.section.list_failed",
-			"workspace_id", input.WorkspaceID,
-			"section_key", input.SectionKey,
-			"error", err,
-		)
-		return agentactivitybiz.SessionSectionPage{}, false
+	return p.repo.ListSessionSection(ctx, input)
+}
+
+func (p *ActivityProjection) ListSessionSections(
+	ctx context.Context,
+	input agentactivitybiz.ListSessionSectionsInput,
+) (agentactivitybiz.SessionSectionsPage, bool, error) {
+	if p == nil || p.repo == nil {
+		return agentactivitybiz.SessionSectionsPage{}, false, nil
 	}
-	if !ok {
-		return agentactivitybiz.SessionSectionPage{}, false
-	}
-	return page, true
+	return p.repo.ListSessionSections(ctx, input)
 }
 
 func (p *ActivityProjection) DeleteSession(ctx context.Context, workspaceID string, agentSessionID string) (bool, error) {

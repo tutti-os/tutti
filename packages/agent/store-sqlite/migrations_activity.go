@@ -249,6 +249,52 @@ CREATE INDEX IF NOT EXISTS idx_workspace_agent_sessions_pinned_page
 	return s.recordMigration(ctx, schemaMigrationWorkspaceAgentActivityV8)
 }
 
+// applyWorkspaceAgentActivityV9 restores the pinned-page index after the v3
+// session-entity table rebuild. It runs after that rebuild for both fresh and
+// upgraded databases, including databases that already recorded activity v8.
+func (s *Store) applyWorkspaceAgentActivityV9(ctx context.Context) error {
+	applied, err := s.hasMigration(ctx, schemaMigrationWorkspaceAgentActivityV9)
+	if err != nil {
+		return err
+	}
+	if applied {
+		return nil
+	}
+
+	if _, err := s.db.ExecContext(ctx, `
+CREATE INDEX IF NOT EXISTS idx_workspace_agent_sessions_pinned_page
+  ON workspace_agent_sessions(workspace_id, deleted_at_unix_ms, pinned_at_unix_ms DESC, agent_session_id ASC);
+`); err != nil {
+		return fmt.Errorf("migrate workspace agent activity to v9 pinned pagination index: %w", err)
+	}
+
+	return s.recordMigration(ctx, schemaMigrationWorkspaceAgentActivityV9)
+}
+
+// applyWorkspaceAgentActivityV10 adds target-scoped rail indexes. Provider
+// rail switches must narrow by target inside the index instead of scanning all
+// providers in each requested section and filtering rows afterwards.
+func (s *Store) applyWorkspaceAgentActivityV10(ctx context.Context) error {
+	applied, err := s.hasMigration(ctx, schemaMigrationWorkspaceAgentActivityV10)
+	if err != nil {
+		return err
+	}
+	if applied {
+		return nil
+	}
+
+	if _, err := s.db.ExecContext(ctx, `
+CREATE INDEX IF NOT EXISTS idx_workspace_agent_sessions_rail_section_target_page
+  ON workspace_agent_sessions(workspace_id, rail_section_key, agent_target_id, deleted_at_unix_ms, pinned_at_unix_ms, agent_session_id);
+CREATE INDEX IF NOT EXISTS idx_workspace_agent_sessions_pinned_target_page
+  ON workspace_agent_sessions(workspace_id, agent_target_id, deleted_at_unix_ms, pinned_at_unix_ms DESC, agent_session_id ASC);
+`); err != nil {
+		return fmt.Errorf("migrate workspace agent activity to v10 target-scoped rail indexes: %w", err)
+	}
+
+	return s.recordMigration(ctx, schemaMigrationWorkspaceAgentActivityV10)
+}
+
 func (s *Store) backfillSystemAgentTargetIDs(ctx context.Context) error {
 	providers := make([]string, 0, len(s.opts.TargetIDBackfillByProvider))
 	for provider := range s.opts.TargetIDBackfillByProvider {

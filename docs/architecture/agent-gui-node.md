@@ -1281,6 +1281,21 @@ to engine entities. Do not keep a second summary cache or manually patch
 section rows from conversation summaries. Removing a project removes that rail
 section from the section list; re-adding the same path reveals historical
 sessions with the same section key.
+The daemon first-page reader is a required production repository seam, not an
+optional fast path with a per-section fallback. Its SQLite query must be driven
+by the requested section keys: ordinary branches use the rail-section page
+index, and pinned rows use a separate pinned-page index branch. Do not scan the
+workspace session history and test section membership row by row; workspaces
+retain historical sessions for removed projects that are not part of the
+current rail. Count, sort, and first-page trimming operate on narrow session-id
+rows; load full session entities only after that trimming. The query shape must
+not add one compound-select arm per requested section or inherit SQLite's
+compound-select term limit as a Rail project-count limit.
+When `agentTargetId` narrows the provider rail, use an exact target predicate
+and target-scoped ordinary/pinned composite indexes. An optional
+`(? = '' OR agent_target_id = ?)` predicate on an unscoped index only filters
+after scanning every provider row in the section and is not an acceptable
+provider-switch query plan.
 Rail search is a separate UI-local query over
 `GET /v1/workspaces/{workspaceID}/agent-sessions`. Its `searchQuery` and active
 `agentTargetId` are applied by the daemon before cursor pagination, so results
