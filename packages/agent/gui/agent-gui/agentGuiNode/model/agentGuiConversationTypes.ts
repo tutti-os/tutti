@@ -42,6 +42,7 @@ export interface AgentGUIConversationSummary {
   titleFallback?: AgentGUIConversationTitleFallback;
   status: AgentGUIConversationStatus;
   cwd: string;
+  railSectionKey?: string;
   project?: AgentGUIConversationProjectSummary | null;
   projectMode?: "none";
   pinnedAtUnixMs?: number | null;
@@ -65,6 +66,7 @@ export type AgentGUIConversationProjectionSource = Pick<
   | "titleFallback"
   | "status"
   | "cwd"
+  | "railSectionKey"
   | "project"
   | "projectMode"
   | "pinnedAtUnixMs"

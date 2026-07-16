@@ -92,8 +92,27 @@ func (s *Store) upsertAgentSessionTx(
 		now,
 	)
 	if !projected.Accepted {
+		existingRail, railErr := getExistingAgentSessionRailSectionTx(
+			ctx,
+			tx,
+			workspaceID,
+			agentSessionID,
+		)
+		if railErr != nil {
+			return false, false, 0, Session{}, railErr
+		}
 		dto, dtoErr := projectionSessionToDTO(projected.Session)
-		return false, false, projected.LastEventUnixMS, dto, dtoErr
+		if dtoErr != nil {
+			return false, false, projected.LastEventUnixMS, Session{}, dtoErr
+		}
+		if !existingRail.Found || !existingRail.Valid {
+			return false, false, projected.LastEventUnixMS, Session{}, fmt.Errorf(
+				"workspace agent session %q has no valid rail section",
+				agentSessionID,
+			)
+		}
+		dto.RailSectionKey = existingRail.Section.Key
+		return false, false, projected.LastEventUnixMS, dto, nil
 	}
 	session := projected.Session
 	settingsJSON, err := marshalJSONMap(session.Settings)
@@ -117,8 +136,6 @@ func (s *Store) upsertAgentSessionTx(
 		tx,
 		workspaceID,
 		agentSessionID,
-		hasExisting,
-		existing.CWD,
 		session.CWD,
 		session.RuntimeContext,
 	)
@@ -174,5 +191,6 @@ WHERE workspace_agent_sessions.deleted_at_unix_ms = 0
 	if err != nil {
 		return false, false, 0, Session{}, err
 	}
+	dto.RailSectionKey = railSection.Key
 	return accepted, sessionStateReportApplied(input, projected.Session), projected.LastEventUnixMS, dto, nil
 }

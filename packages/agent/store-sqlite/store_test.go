@@ -500,7 +500,7 @@ func TestStoreClassifiesRailSectionsWithInjectedProjectPaths(t *testing.T) {
 	projects.paths = []string{repo}
 	repoCanonical := NormalizeProjectPath(repo)
 
-	if _, err := store.ReportSessionState(ctx, SessionStateReport{
+	projectResult, err := store.ReportSessionState(ctx, SessionStateReport{
 		WorkspaceID:      "ws-rail",
 		AgentSessionID:   "session-project",
 		Origin:           "runtime",
@@ -508,9 +508,35 @@ func TestStoreClassifiesRailSectionsWithInjectedProjectPaths(t *testing.T) {
 		Cwd:              repoSubdir,
 		Status:           "completed",
 		OccurredAtUnixMS: 100,
-	}); err != nil {
+	})
+	if err != nil {
 		t.Fatalf("ReportSessionState(project) error = %v", err)
 	}
+	wantProjectKey := RailSectionKeyForProject(repoCanonical)
+	if projectResult.Session.RailSectionKey != wantProjectKey {
+		t.Fatalf("ReportSessionState(project) rail key = %q, want %q", projectResult.Session.RailSectionKey, wantProjectKey)
+	}
+	projects.paths = []string{otherDir}
+	updatedProjectResult, err := store.ReportSessionState(ctx, SessionStateReport{
+		WorkspaceID:      "ws-rail",
+		AgentSessionID:   "session-project",
+		Origin:           "runtime",
+		Provider:         "codex",
+		Cwd:              otherDir,
+		Status:           "completed",
+		OccurredAtUnixMS: 200,
+	})
+	if err != nil {
+		t.Fatalf("ReportSessionState(project cwd changed) error = %v", err)
+	}
+	if updatedProjectResult.Session.RailSectionKey != wantProjectKey {
+		t.Fatalf(
+			"ReportSessionState(project cwd changed) rail key = %q, want immutable %q",
+			updatedProjectResult.Session.RailSectionKey,
+			wantProjectKey,
+		)
+	}
+	projects.paths = []string{repo}
 	if _, err := store.ReportSessionState(ctx, SessionStateReport{
 		WorkspaceID:      "ws-rail",
 		AgentSessionID:   "session-other",
@@ -525,14 +551,18 @@ func TestStoreClassifiesRailSectionsWithInjectedProjectPaths(t *testing.T) {
 
 	projectPage, ok, err := store.ListSessionSection(ctx, ListSessionSectionInput{
 		WorkspaceID: "ws-rail",
-		SectionKey:  RailSectionKeyForProject(repoCanonical),
+		SectionKey:  wantProjectKey,
 		Limit:       10,
 	})
 	if err != nil || !ok {
 		t.Fatalf("ListSessionSection(project) ok=%v error=%v", ok, err)
 	}
-	if len(projectPage.Sessions) != 1 || projectPage.Sessions[0].ID != "session-project" {
+	if len(projectPage.Sessions) != 1 || projectPage.Sessions[0].ID != "session-project" || projectPage.Sessions[0].RailSectionKey != wantProjectKey {
 		t.Fatalf("project page = %#v, want session-project", projectPage.Sessions)
+	}
+	projectSession, ok, err := store.GetSession(ctx, "ws-rail", "session-project")
+	if err != nil || !ok || projectSession.RailSectionKey != wantProjectKey {
+		t.Fatalf("GetSession(project) = %#v ok=%v error=%v, want rail key %q", projectSession, ok, err, wantProjectKey)
 	}
 
 	conversationsPage, ok, err := store.ListSessionSection(ctx, ListSessionSectionInput{
@@ -543,7 +573,7 @@ func TestStoreClassifiesRailSectionsWithInjectedProjectPaths(t *testing.T) {
 	if err != nil || !ok {
 		t.Fatalf("ListSessionSection(conversations) ok=%v error=%v", ok, err)
 	}
-	if len(conversationsPage.Sessions) != 1 || conversationsPage.Sessions[0].ID != "session-other" {
+	if len(conversationsPage.Sessions) != 1 || conversationsPage.Sessions[0].ID != "session-other" || conversationsPage.Sessions[0].RailSectionKey != RailSectionKeyConversations {
 		t.Fatalf("conversations page = %#v, want session-other", conversationsPage.Sessions)
 	}
 }

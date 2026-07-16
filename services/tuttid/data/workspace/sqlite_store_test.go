@@ -641,7 +641,7 @@ func TestSQLiteStoreAgentSessionRailProjectDeletionDoesNotRewriteHistory(t *test
 	}
 }
 
-func TestSQLiteStoreAgentSessionRailReclassifiesWhenCwdChangesOrRailMissing(t *testing.T) {
+func TestSQLiteStoreAgentSessionRailPreservesKeyAcrossCwdChangesAndRepairsMissingRail(t *testing.T) {
 	t.Parallel()
 
 	store := openTestSQLiteStore(t)
@@ -683,6 +683,12 @@ func TestSQLiteStoreAgentSessionRailReclassifiesWhenCwdChangesOrRailMissing(t *t
 	}); err != nil {
 		t.Fatalf("ReportSessionState(project cwd) error = %v", err)
 	}
+	initial := getTestAgentSessionRailSection(t, store, "ws-agent-rail-reclassify", "session-cwd-change")
+	if initial.Kind != agentSessionRailSectionKindProject ||
+		initial.ProjectPath != repoCanonical ||
+		initial.Key != agentSessionRailSectionKeyForProject(repoCanonical) {
+		t.Fatalf("initial rail = %#v, want project %q", initial, repoCanonical)
+	}
 	if _, err := store.ReportSessionState(ctx, agentactivitybiz.SessionStateReport{
 		WorkspaceID:      "ws-agent-rail-reclassify",
 		AgentSessionID:   "session-cwd-change",
@@ -695,10 +701,8 @@ func TestSQLiteStoreAgentSessionRailReclassifiesWhenCwdChangesOrRailMissing(t *t
 		t.Fatalf("ReportSessionState(other cwd) error = %v", err)
 	}
 	changed := getTestAgentSessionRailSection(t, store, "ws-agent-rail-reclassify", "session-cwd-change")
-	if changed.Kind != agentSessionRailSectionKindConversations ||
-		changed.ProjectPath != "" ||
-		changed.Key != agentSessionRailSectionKeyConversations {
-		t.Fatalf("changed cwd rail = %#v, want conversations", changed)
+	if changed != initial {
+		t.Fatalf("changed cwd rail = %#v, want immutable %#v", changed, initial)
 	}
 
 	if _, err := store.ReportSessionState(ctx, agentactivitybiz.SessionStateReport{

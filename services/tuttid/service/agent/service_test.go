@@ -63,6 +63,72 @@ func TestServiceCreatesAndListsSessions(t *testing.T) {
 	}
 }
 
+func TestServiceCreateSynchronouslyPersistsRailSectionKey(t *testing.T) {
+	ctx := context.Background()
+	store := openAgentServiceSQLiteStore(t)
+	if err := store.Create(ctx, workspacebiz.Summary{ID: "ws-rail-create", Name: "Rail Create"}); err != nil {
+		t.Fatalf("Create workspace error = %v", err)
+	}
+	projectPath := t.TempDir()
+	if canonical, ok := canonicalExistingDir(projectPath); ok {
+		projectPath = canonical
+	}
+	if _, err := store.PutUserProject(ctx, userprojectbiz.Project{
+		ID:         "project-1",
+		Path:       projectPath,
+		Label:      "Project",
+		SectionKey: userprojectbiz.SectionKeyFromPath(projectPath),
+	}); err != nil {
+		t.Fatalf("PutUserProject error = %v", err)
+	}
+	runtime := newFakeRuntime()
+	service := newTestService(runtime)
+	projection := NewActivityProjection(store)
+	service.SessionInitializer = projection
+	service.SessionReader = projection
+
+	session, err := service.Create(ctx, "ws-rail-create", CreateSessionInput{
+		AgentSessionID: "22222222-2222-4222-8222-222222222222",
+		AgentTargetID:  agenttargetbiz.IDLocalCodex,
+		Provider:       "codex",
+		Cwd:            stringRef(projectPath),
+		InitialContent: TextPromptContent("hello"),
+	})
+	if err != nil {
+		t.Fatalf("Create returned error: %v", err)
+	}
+	wantKey := userprojectbiz.SectionKeyFromPath(projectPath)
+	if session.RailSectionKey != wantKey {
+		t.Fatalf("Create railSectionKey = %q, want %q", session.RailSectionKey, wantKey)
+	}
+	persisted, ok := projection.GetSession("ws-rail-create", session.ID)
+	if !ok || persisted.RailSectionKey != wantKey {
+		t.Fatalf("persisted session = %#v ok=%v, want rail key %q", persisted, ok, wantKey)
+	}
+}
+
+func TestServiceCreateClosesRuntimeWhenSessionInitializationFails(t *testing.T) {
+	runtime := newFakeRuntime()
+	service := newTestService(runtime)
+	want := errors.New("persist session shell")
+	service.SessionInitializer = fakeSessionInitializer{err: want}
+
+	_, err := service.Create(context.Background(), "ws-1", CreateSessionInput{
+		AgentSessionID: "33333333-3333-4333-8333-333333333333",
+		AgentTargetID:  agenttargetbiz.IDLocalCodex,
+		Provider:       "codex",
+	})
+	if !errors.Is(err, want) {
+		t.Fatalf("Create error = %v, want %v", err, want)
+	}
+	if len(runtime.closeCalls) != 1 || runtime.closeCalls[0].AgentSessionID != "33333333-3333-4333-8333-333333333333" {
+		t.Fatalf("runtime close calls = %#v, want failed session closed", runtime.closeCalls)
+	}
+	if _, ok := runtime.Session("ws-1", "33333333-3333-4333-8333-333333333333"); ok {
+		t.Fatal("runtime session still exists after initialization failure")
+	}
+}
+
 func TestServiceUpdateTitleReturnsPersistedTitleForLiveRuntimeSession(t *testing.T) {
 	runtime := newFakeRuntime()
 	runtime.sessions["ws-1:session-1"] = ProviderRuntimeSession{
@@ -484,6 +550,7 @@ func TestServiceCreateReportsNodeResults(t *testing.T) {
 		"cwd_resolved",
 		"runtime_prepared",
 		"runtime_started",
+		"session_persisted",
 		"prompt_validated",
 		"prompt_prepared",
 		"runtime_exec",
@@ -946,7 +1013,7 @@ func TestServiceImportedCodexWorktreeSessionGroupsUnderExistingMainCheckoutProje
 	}
 	if session.Cwd != mainRoot {
 		t.Fatalf(
-			"session.Cwd = %q, want it resolved to the main checkout %q so the GUI groups the conversation under the existing project instead of the ungrouped bucket",
+			"session.Cwd = %q, want it resolved to the main checkout %q before durable rail classification",
 			session.Cwd, mainRoot,
 		)
 	}
@@ -5772,6 +5839,7 @@ func (isolatedComposerCapabilityLister) ListComposerCapabilityOptions(
 func newIsolatedAgentService(runtime RuntimeController) *Service {
 	service := NewService(runtime)
 	service.CapabilityLister = isolatedComposerCapabilityLister{}
+	service.SessionInitializer = fakeSessionInitializer{}
 	return service
 }
 
@@ -5815,6 +5883,40 @@ type fakeSessionReader struct {
 	sessions   map[string]PersistedSession
 	tombstoned map[string]bool
 	children   map[string][]PersistedSession
+}
+
+type fakeSessionInitializer struct {
+	err error
+}
+
+func (f fakeSessionInitializer) InitializeRuntimeSession(
+	_ context.Context,
+	session ProviderRuntimeSession,
+) (PersistedSession, error) {
+	if f.err != nil {
+		return PersistedSession{}, f.err
+	}
+	settings := cloneComposerSettingsPointerValue(session.Settings)
+	return PersistedSession{
+		ID:                     strings.TrimSpace(session.ID),
+		WorkspaceID:            strings.TrimSpace(session.WorkspaceID),
+		Kind:                   agentactivitybiz.SessionKindRoot,
+		UserID:                 strings.TrimSpace(session.UserID),
+		AgentTargetID:          strings.TrimSpace(session.AgentTargetID),
+		Provider:               strings.TrimSpace(session.Provider),
+		ProviderSessionID:      strings.TrimSpace(session.ProviderSessionID),
+		Cwd:                    strings.TrimSpace(session.Cwd),
+		RailSectionKey:         "conversations",
+		Settings:               settings,
+		Metadata:               agentactivitybiz.SessionMetadata{Visible: session.Visible, Capabilities: []string{}},
+		InternalRuntimeContext: clonePayload(session.RuntimeContext),
+		Title:                  strings.TrimSpace(session.Title),
+		PinnedAtUnixMS:         session.PinnedAtUnixMS,
+		LastEventUnixMS:        session.UpdatedAtUnixMS,
+		StartedAtUnixMS:        session.CreatedAtUnixMS,
+		CreatedAtUnixMS:        session.CreatedAtUnixMS,
+		UpdatedAtUnixMS:        session.UpdatedAtUnixMS,
+	}, nil
 }
 
 type fakeSectionReader struct {
@@ -6108,6 +6210,9 @@ func (f *fakeRuntime) Sessions(workspaceID string) []ProviderRuntimeSession {
 
 func (f fakeSessionReader) GetSession(workspaceID string, agentSessionID string) (PersistedSession, bool) {
 	session, ok := f.sessions[workspaceID+":"+agentSessionID]
+	if ok && strings.TrimSpace(session.RailSectionKey) == "" {
+		session.RailSectionKey = "conversations"
+	}
 	return session, ok
 }
 
@@ -6119,6 +6224,9 @@ func (f fakeSessionReader) ListSessions(workspaceID string) ([]PersistedSession,
 	result := make([]PersistedSession, 0)
 	for _, session := range f.sessions {
 		if session.WorkspaceID == workspaceID {
+			if strings.TrimSpace(session.RailSectionKey) == "" {
+				session.RailSectionKey = "conversations"
+			}
 			result = append(result, session)
 		}
 	}

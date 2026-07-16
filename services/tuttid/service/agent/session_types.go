@@ -22,6 +22,7 @@ type Service struct {
 	ModelCatalog                   AgentModelCatalog
 	ModelCapabilities              ModelCapabilitiesResolver
 	AgentTargetStore               AgentTargetStore
+	SessionInitializer             SessionInitializer
 	SessionReader                  SessionReader
 	UserProjectReader              UserProjectReader
 	MessageReader                  MessageReader
@@ -129,6 +130,7 @@ type Session struct {
 	Provider             string
 	ProviderSessionID    string
 	Cwd                  string
+	RailSectionKey       string
 	Visible              bool
 	Resumable            bool
 	Settings             *ComposerSettings
@@ -241,6 +243,7 @@ type PersistedSession struct {
 	Provider               string
 	ProviderSessionID      string
 	Cwd                    string
+	RailSectionKey         string
 	Settings               ComposerSettings
 	Metadata               agentactivitybiz.SessionMetadata
 	InternalRuntimeContext map[string]any
@@ -275,6 +278,13 @@ type SessionReader interface {
 	GetSession(workspaceID string, agentSessionID string) (PersistedSession, bool)
 	ListSessions(workspaceID string) ([]PersistedSession, bool)
 	SessionDeleted(ctx context.Context, workspaceID string, agentSessionID string) (bool, error)
+}
+
+// SessionInitializer synchronously persists the canonical session shell that
+// every successful Create response must expose. In particular, it assigns the
+// immutable railSectionKey before the response leaves the daemon.
+type SessionInitializer interface {
+	InitializeRuntimeSession(context.Context, ProviderRuntimeSession) (PersistedSession, error)
 }
 
 type ChildSessionReader interface {

@@ -3895,7 +3895,10 @@ type WorkspaceAgentSession struct {
 	PinnedAtUnixMs      *int64                      `json:"pinnedAtUnixMs"`
 	Provider            WorkspaceAgentProvider      `json:"provider"`
 	ProviderSessionId   *string                     `json:"providerSessionId"`
-	Resumable           bool                        `json:"resumable"`
+
+	// RailSectionKey Persisted conversation-rail membership key. Clients must use this exact key for section placement and must not infer membership from cwd or project paths.
+	RailSectionKey string `json:"railSectionKey"`
+	Resumable      bool   `json:"resumable"`
 
 	// RootAgentSessionId Root session that owns this child session. Null when kind is root.
 	RootAgentSessionId *string `json:"rootAgentSessionId"`

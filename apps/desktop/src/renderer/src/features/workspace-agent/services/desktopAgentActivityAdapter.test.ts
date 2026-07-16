@@ -20,7 +20,8 @@ test("desktop agent activity adapter rejects missing protocol v2 session fields"
   for (const field of [
     "activeTurnId",
     "latestTurnInteractions",
-    "pendingInteractions"
+    "pendingInteractions",
+    "railSectionKey"
   ] as const) {
     const malformed = { ...createSession() } as Record<string, unknown>;
     delete malformed[field];
@@ -33,6 +34,17 @@ test("desktop agent activity adapter rejects missing protocol v2 session fields"
       new RegExp(`Protocol v2 contract error:.*${field}`)
     );
   }
+});
+
+test("desktop agent activity adapter rejects a blank rail section key", () => {
+  assert.throws(
+    () =>
+      agentActivitySessionFromTuttidSession(
+        workspaceId,
+        createSession({ railSectionKey: "  " })
+      ),
+    /railSectionKey must be a non-empty string/
+  );
 });
 
 test("desktop agent activity adapter preserves a settled latest turn on reload", () => {
@@ -104,6 +116,7 @@ test("desktop agent activity adapter maps typed canonical session control fields
       endedAtUnixMs: 30,
       goal: { objective: "Ship it", status: "active" },
       imported: true,
+      railSectionKey: "project:repo-1",
       permissionConfig: {
         configurable: true,
         defaultValue: "ask",
@@ -130,6 +143,7 @@ test("desktop agent activity adapter maps typed canonical session control fields
   assert.equal(session.endedAtUnixMs, 30);
   assert.deepEqual(session.goal, { objective: "Ship it", status: "active" });
   assert.equal(session.imported, true);
+  assert.equal(session.railSectionKey, "project:repo-1");
   assert.equal(session.permissionConfig?.defaultValue, "ask");
   assert.deepEqual(session.settings, { model: "gpt-5", planMode: true });
   assert.deepEqual(session.usage, {
@@ -1634,6 +1648,7 @@ function createSession(
     pinnedAtUnixMs: null,
     provider: "codex",
     providerSessionId: null,
+    railSectionKey: "conversations",
     resumable: true,
     settings: {},
     title: "Agent session",

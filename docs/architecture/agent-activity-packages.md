@@ -94,6 +94,15 @@ Hosts must pass those calls through to the daemon section endpoints so project
 sections come from current user projects and session membership comes from
 persisted `rail_section_key`, not frontend cwd grouping or project-root
 filters.
+Every daemon `WorkspaceAgentSession` response carries the persisted membership
+as required `railSectionKey`. The desktop adapter rejects a missing or blank
+value as a protocol contract error; it must not manufacture `conversations` or
+derive a project key from `cwd`.
+The session service synchronously persists and reads back the initial runtime
+session before returning a successful Create response, so the response never
+races the runtime's asynchronous activity reporter. The store assigns
+`railSectionKey` on that first persistence and preserves it for the lifetime of
+the session, even if later runtime reports change `cwd` or the user-project list.
 Section and pinned-page results include required `totalCount` for the complete
 target-filtered scope before cursor pagination. AgentGUI uses it to subtract a
 transient active-row overlay from remaining unseen rows; hosts must preserve the
@@ -114,7 +123,11 @@ before cursor pagination; this is not a filter over already-loaded section
 pages. Search pages follow the same normalized ownership rule as section pages:
 returned sessions are upserted into the workspace engine, while the search
 query retains only ordered ids, cursor, and request state. The UI joins those
-ids to canonical engine entities. Hosts without this optional query may keep a
+ids to canonical engine entities. Search rows are placed by exact equality
+between the session's `railSectionKey` and a daemon-returned section key;
+`pinnedAtUnixMs` remains the independent pinned projection. Missing keys are
+invalid desktop protocol data, not a signal to infer membership from cwd or a
+resolved project. Hosts without this optional query may keep a
 loaded-row-only local title filter for previews, but desktop hosts must pass the
 backend query and pagination fields through unchanged.
 Activating a conversation must not by itself call `listSessionSections` again.
