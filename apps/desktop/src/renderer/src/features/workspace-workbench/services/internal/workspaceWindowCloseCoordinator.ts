@@ -21,7 +21,7 @@ export async function confirmWorkspaceWindowClose(input: {
     if (host) {
       const focusedNodeId = resolveFocusedVisibleNodeId(host);
       if (focusedNodeId) {
-        host.minimizeNode(focusedNodeId);
+        host.requestNodeClose(focusedNodeId);
         return "blocked";
       }
     }

@@ -5,7 +5,7 @@ import { createWindowCloseRequestTracker } from "../windowCloseRequestTracker.ts
 import type { WorkspaceWorkbenchHostInput } from "../workspaceWorkbenchHostService.interface.ts";
 import { confirmWorkspaceWindowClose } from "./workspaceWindowCloseCoordinator.ts";
 
-test("confirmWorkspaceWindowClose minimizes focused workbench node before window close", async () => {
+test("confirmWorkspaceWindowClose requests focused workbench node close before window close", async () => {
   let approvedCloseCount = 0;
   let closeGuardCount = 0;
   const events: string[] = [];
@@ -34,9 +34,8 @@ test("confirmWorkspaceWindowClose minimizes focused workbench node before window
       focusedNodeId: "workspace-app-1",
       nodeIds: ["workspace-app-1"],
       onCloseNode: () => assert.fail("window close should not close nodes"),
-      onMinimizeNode: (nodeId) => {
-        events.push(`node-minimize:${nodeId}`);
-      },
+      onMinimizeNode: () =>
+        assert.fail("window close should not minimize nodes"),
       onRequestNodeClose: (nodeId) => {
         events.push(`node-request-close:${nodeId}`);
       }
@@ -51,7 +50,7 @@ test("confirmWorkspaceWindowClose minimizes focused workbench node before window
 
   assert.equal(closeGuardCount, 0);
   assert.equal(approvedCloseCount, 0);
-  assert.deepEqual(events, ["node-minimize:workspace-app-1"]);
+  assert.deepEqual(events, ["node-request-close:workspace-app-1"]);
   assert.equal(outcome, "blocked");
 });
 
@@ -129,9 +128,8 @@ test("confirmWorkspaceWindowClose falls back to visible node when focused id is 
     host: createWorkbenchHostHandleStub({
       focusedNodeId: "stale-node",
       nodeIds: ["live-node"],
-      onMinimizeNode: (nodeId) => {
-        events.push(`node-minimize:${nodeId}`);
-      },
+      onMinimizeNode: () =>
+        assert.fail("window close should not minimize nodes"),
       onRequestNodeClose: (nodeId) => {
         events.push(`node-request-close:${nodeId}`);
       }
@@ -144,11 +142,11 @@ test("confirmWorkspaceWindowClose falls back to visible node when focused id is 
     tracker: createWindowCloseRequestTracker()
   });
 
-  assert.deepEqual(events, ["node-minimize:live-node"]);
+  assert.deepEqual(events, ["node-request-close:live-node"]);
   assert.equal(outcome, "blocked");
 });
 
-test("confirmWorkspaceWindowClose minimizes last visible node when focus stack is empty", async () => {
+test("confirmWorkspaceWindowClose requests last visible node close when focus stack is empty", async () => {
   const events: string[] = [];
   const hostInput: WorkspaceWorkbenchHostInput = {
     snapshotRepository: {} as never,
@@ -159,8 +157,10 @@ test("confirmWorkspaceWindowClose minimizes last visible node when focus stack i
     confirmCloseGuard: async () => true,
     host: createWorkbenchHostHandleStub({
       nodeIds: ["workspace-files", "workspace-app-1"],
-      onMinimizeNode: (nodeId) => {
-        events.push(`node-minimize:${nodeId}`);
+      onMinimizeNode: () =>
+        assert.fail("window close should not minimize nodes"),
+      onRequestNodeClose: (nodeId) => {
+        events.push(`node-request-close:${nodeId}`);
       }
     }),
     hostInput,
@@ -171,7 +171,7 @@ test("confirmWorkspaceWindowClose minimizes last visible node when focus stack i
     tracker: createWindowCloseRequestTracker()
   });
 
-  assert.deepEqual(events, ["node-minimize:workspace-app-1"]);
+  assert.deepEqual(events, ["node-request-close:workspace-app-1"]);
   assert.equal(outcome, "blocked");
 });
 
