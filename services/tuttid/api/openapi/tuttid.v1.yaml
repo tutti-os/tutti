@@ -7281,6 +7281,40 @@ components:
           items:
             $ref: "#/components/schemas/WorkspaceAgentTurn"
     SendWorkspaceAgentSessionInputResponse:
+      oneOf:
+        - $ref: "#/components/schemas/SendWorkspaceAgentSessionInputTurnResponse"
+        - $ref: "#/components/schemas/SendWorkspaceAgentSessionInputGoalControlResponse"
+      discriminator:
+        propertyName: kind
+        mapping:
+          turn: "#/components/schemas/SendWorkspaceAgentSessionInputTurnResponse"
+          goalControl: "#/components/schemas/SendWorkspaceAgentSessionInputGoalControlResponse"
+    SendWorkspaceAgentSessionInputTurnResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - session
+        - kind
+        - turnId
+        - turn
+      properties:
+        session:
+          $ref: "#/components/schemas/WorkspaceAgentSession"
+        kind:
+          type: string
+          enum:
+            - turn
+          x-enum-varnames:
+            - SendWorkspaceAgentSessionInputTurnResponseKindTurn
+        turnId:
+          type: string
+          minLength: 1
+        turn:
+          $ref: "#/components/schemas/WorkspaceAgentTurn"
+          description: >-
+            Protocol v2. Durable snapshot of the exact turn accepted by this
+            submission; optimistic client intents reconcile against its turnId.
+    SendWorkspaceAgentSessionInputGoalControlResponse:
       type: object
       additionalProperties: false
       required:
@@ -7291,20 +7325,10 @@ components:
           $ref: "#/components/schemas/WorkspaceAgentSession"
         kind:
           type: string
-          description: Discriminates a Turn-producing input from a typed session-level Goal control.
           enum:
-            - turn
             - goalControl
-        turnId:
-          type: string
-          nullable: true
-          minLength: 1
-        turn:
-          $ref: "#/components/schemas/WorkspaceAgentTurn"
-          nullable: true
-          description: >-
-            Protocol v2. Snapshot of the turn created by this submission;
-            optimistic client intents reconcile against its turnId.
+          x-enum-varnames:
+            - SendWorkspaceAgentSessionInputGoalControlResponseKindGoalControl
         operationId:
           type: string
           nullable: true

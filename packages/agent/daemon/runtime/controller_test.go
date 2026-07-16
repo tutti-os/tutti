@@ -47,6 +47,34 @@ type goalPrepareBarrierReporter struct {
 
 type blockingGoalReconcileReporter struct{}
 
+type submittedTurnBarrierReporter struct {
+	entered chan struct{}
+	release chan struct{}
+	err     error
+	once    sync.Once
+}
+
+func (r *submittedTurnBarrierReporter) Report(ctx context.Context, _ agentsessionstore.ReportActivityInput) error {
+	r.once.Do(func() { close(r.entered) })
+	select {
+	case <-r.release:
+		return r.err
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+}
+
+type executionSignalAdapter struct {
+	recordingStartAdapter
+	executed chan struct{}
+	once     sync.Once
+}
+
+func (a *executionSignalAdapter) Exec(context.Context, Session, []PromptContentBlock, string, string, EventSink, CommandSnapshotSink) ([]activityshared.Event, error) {
+	a.once.Do(func() { close(a.executed) })
+	return nil, nil
+}
+
 func (blockingGoalReconcileReporter) Report(ctx context.Context, _ agentsessionstore.ReportActivityInput) error {
 	<-ctx.Done()
 	return ctx.Err()
@@ -279,6 +307,97 @@ func TestControllerProvisionalStartCommitsWithFirstTurn(t *testing.T) {
 	defer controller.mu.Unlock()
 	if controller.provisionalSessions[sessionKey("room-1", "agent-session-1")] {
 		t.Fatal("session remained provisional after first turn acceptance")
+	}
+}
+
+func TestControllerExecWaitsForSubmittedTurnDurableReportBeforeProviderStart(t *testing.T) {
+	t.Parallel()
+	reporter := &submittedTurnBarrierReporter{entered: make(chan struct{}), release: make(chan struct{})}
+	adapter := &executionSignalAdapter{
+		recordingStartAdapter: recordingStartAdapter{provider: ProviderCodex},
+		executed:              make(chan struct{}),
+	}
+	controller := NewController([]Adapter{adapter}, reporter)
+	_, err := controller.Start(context.Background(), StartInput{
+		RoomID: "room-1", AgentSessionID: "agent-session-1", Provider: ProviderCodex, Provisional: true,
+	})
+	if err != nil {
+		t.Fatalf("Start() error = %v", err)
+	}
+	execDone := make(chan error, 1)
+	go func() {
+		_, execErr := controller.Exec(context.Background(), ExecInput{
+			RoomID: "room-1", AgentSessionID: "agent-session-1", Content: textPrompt("hello"),
+		})
+		execDone <- execErr
+	}()
+	select {
+	case <-reporter.entered:
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for submitted-turn report")
+	}
+	select {
+	case <-adapter.executed:
+		t.Fatal("provider started before submitted Turn became durable")
+	case err := <-execDone:
+		t.Fatalf("Exec returned before submitted Turn became durable: %v", err)
+	case <-time.After(50 * time.Millisecond):
+	}
+	close(reporter.release)
+	select {
+	case err := <-execDone:
+		if err != nil {
+			t.Fatalf("Exec() error = %v", err)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("Exec did not return after durable report")
+	}
+	select {
+	case <-adapter.executed:
+	case <-time.After(2 * time.Second):
+		t.Fatal("provider did not start after durable report")
+	}
+}
+
+func TestControllerExecRollsBackWhenSubmittedTurnDurableReportFails(t *testing.T) {
+	t.Parallel()
+	reporter := &submittedTurnBarrierReporter{
+		entered: make(chan struct{}), release: make(chan struct{}), err: errors.New("sqlite unavailable"),
+	}
+	close(reporter.release)
+	adapter := &executionSignalAdapter{
+		recordingStartAdapter: recordingStartAdapter{provider: ProviderCodex},
+		executed:              make(chan struct{}),
+	}
+	controller := NewController([]Adapter{adapter}, reporter)
+	_, err := controller.Start(context.Background(), StartInput{
+		RoomID: "room-1", AgentSessionID: "agent-session-1", Provider: ProviderCodex, Provisional: true,
+	})
+	if err != nil {
+		t.Fatalf("Start() error = %v", err)
+	}
+	if _, err := controller.Exec(context.Background(), ExecInput{
+		RoomID: "room-1", AgentSessionID: "agent-session-1", Content: textPrompt("hello"),
+	}); err == nil || !strings.Contains(err.Error(), "persist submitted agent turn") {
+		t.Fatalf("Exec() error = %v, want durable report failure", err)
+	}
+	select {
+	case <-adapter.executed:
+		t.Fatal("provider started after submitted Turn report failed")
+	default:
+	}
+	if controller.HasActiveTurn("room-1", "agent-session-1") {
+		t.Fatal("active Turn survived submitted report rollback")
+	}
+	stored, ok := controller.Session("room-1", "agent-session-1")
+	if !ok || stored.Status != SessionStatusReady || stored.TurnLifecycle != nil {
+		t.Fatalf("rolled-back session = %#v, ok=%v", stored, ok)
+	}
+	controller.mu.Lock()
+	provisional := controller.provisionalSessions[sessionKey("room-1", "agent-session-1")]
+	controller.mu.Unlock()
+	if !provisional {
+		t.Fatal("failed first Turn committed provisional session")
 	}
 }
 
@@ -1134,9 +1253,16 @@ userMessagePublished:
 	if cancelResult.Canceled {
 		t.Fatalf("Cancel result = %#v, want no active turn cancel", cancelResult)
 	}
-	if len(reportCalls[0].report.StatePatches) == 0 ||
-		reportCalls[0].report.StatePatches[0].LifecycleStatus != string(activityshared.SessionLifecycleStatusActive) {
-		t.Fatalf("first report = %#v, want session started state patch", reportCalls[0].report)
+	var hasSessionStartedPatch bool
+	for _, call := range reportCalls {
+		for _, patch := range call.report.StatePatches {
+			if patch.LifecycleStatus == string(activityshared.SessionLifecycleStatusActive) {
+				hasSessionStartedPatch = true
+			}
+		}
+	}
+	if !hasSessionStartedPatch {
+		t.Fatalf("report calls = %#v, want session started state patch", reportCalls)
 	}
 	turnReport, ok := reportWithTimelineItem(reportInputs(reportCalls), "message.user")
 	if !ok || !hasTimelineItem(turnReport, "message.user", "completed", "hello") {

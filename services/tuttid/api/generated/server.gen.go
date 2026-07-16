@@ -11695,6 +11695,14 @@ type SendWorkspaceAgentSessionInputResponseObject interface {
 
 type SendWorkspaceAgentSessionInput200JSONResponse SendWorkspaceAgentSessionInputResponse
 
+func (t SendWorkspaceAgentSessionInput200JSONResponse) MarshalJSON() ([]byte, error) {
+	return SendWorkspaceAgentSessionInputResponse(t).MarshalJSON()
+}
+
+func (t *SendWorkspaceAgentSessionInput200JSONResponse) UnmarshalJSON(b []byte) error {
+	return (*SendWorkspaceAgentSessionInputResponse)(t).UnmarshalJSON(b)
+}
+
 func (response SendWorkspaceAgentSessionInput200JSONResponse) VisitSendWorkspaceAgentSessionInputResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer

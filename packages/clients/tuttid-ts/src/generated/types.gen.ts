@@ -1376,14 +1376,24 @@ export type WorkspaceAgentSessionDetailResponse = {
   turns: Array<WorkspaceAgentTurn>;
 };
 
-export type SendWorkspaceAgentSessionInputResponse = {
+export type SendWorkspaceAgentSessionInputResponse =
+  | ({
+      kind: "turn";
+    } & SendWorkspaceAgentSessionInputTurnResponse)
+  | ({
+      kind: "goalControl";
+    } & SendWorkspaceAgentSessionInputGoalControlResponse);
+
+export type SendWorkspaceAgentSessionInputTurnResponse = {
   session: WorkspaceAgentSession;
-  /**
-   * Discriminates a Turn-producing input from a typed session-level Goal control.
-   */
-  kind: "turn" | "goalControl";
-  turnId?: string | null;
-  turn?: WorkspaceAgentTurn;
+  kind: "turn";
+  turnId: string;
+  turn: WorkspaceAgentTurn;
+};
+
+export type SendWorkspaceAgentSessionInputGoalControlResponse = {
+  session: WorkspaceAgentSession;
+  kind: "goalControl";
   /**
    * Durable GoalControlOperation identity when kind is goalControl.
    */

@@ -5,6 +5,7 @@ import type {
   TuttidClient,
   PermissionModeSemantic,
   SendWorkspaceAgentSessionInputRequest,
+  SendWorkspaceAgentSessionInputResponse,
   WorkspaceAgentSession,
   WorkspaceAgentSessionMessage
 } from "@tutti-os/client-tuttid-ts";
@@ -416,7 +417,7 @@ test("desktop agent activity adapter rejects send responses without a canonical 
         const { turn: _turn, ...response } = createSendInputResponse(
           createSession({ id: agentSessionId, status: "running" })
         );
-        return response;
+        return response as unknown as SendWorkspaceAgentSessionInputResponse;
       }
     }),
     runtimeApi: createRuntimeApi()

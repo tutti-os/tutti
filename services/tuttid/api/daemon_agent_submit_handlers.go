@@ -98,36 +98,45 @@ func (api DaemonAPI) SendWorkspaceAgentSessionInput(ctx context.Context, request
 		return writeSendWorkspaceAgentSessionInputError(err), nil
 	}
 	logSendAgentSubmitTrace("api.send.completed", string(request.WorkspaceID), string(request.AgentSessionID), metadata, agentSessionTurnPhase(result.Session), result.TurnID, result.TurnLifecycle.Phase, nil)
-	response := tuttigenerated.SendWorkspaceAgentSessionInput200JSONResponse{
-		Session: generatedAgentSession(result.Session),
-		Kind:    tuttigenerated.SendWorkspaceAgentSessionInputResponseKind(result.Kind),
-	}
+	var response tuttigenerated.SendWorkspaceAgentSessionInputResponse
 	if result.Kind == "goalControl" && result.GoalControl != nil {
 		goalResult := result.GoalControl
+		goalResponse := tuttigenerated.SendWorkspaceAgentSessionInputGoalControlResponse{
+			Kind:    tuttigenerated.SendWorkspaceAgentSessionInputGoalControlResponseKindGoalControl,
+			Session: generatedAgentSession(result.Session),
+		}
 		if goalResult.OperationID != "" {
-			response.OperationId = &goalResult.OperationID
+			goalResponse.OperationId = &goalResult.OperationID
 		}
 		if goalResult.GoalState != nil {
 			state := generatedAgentSessionGoalState(*goalResult.GoalState)
-			response.GoalState = &state
+			goalResponse.GoalState = &state
 		}
 		if len(goalResult.Goal) > 0 {
 			var goal tuttigenerated.WorkspaceAgentSessionGoal
 			if decodeTypedAgentSessionField(goalResult.Goal, &goal) {
-				response.Goal = &goal
+				goalResponse.Goal = &goal
 			}
 		}
-		return response, nil
+		if err := response.FromSendWorkspaceAgentSessionInputGoalControlResponse(goalResponse); err != nil {
+			return nil, err
+		}
+		return tuttigenerated.SendWorkspaceAgentSessionInput200JSONResponse(response), nil
 	}
 	turnID := strings.TrimSpace(result.TurnID)
-	response.TurnId = &turnID
-	// Protocol v2: the accepted submission's turn entity rides along when the
-	// session projection already carries it.
-	if result.Session.ActiveTurn != nil {
-		turn := agentservice.GeneratedWorkspaceAgentTurn(*result.Session.ActiveTurn)
-		response.Turn = &turn
+	if turnID == "" || result.Turn == nil || strings.TrimSpace(result.Turn.TurnID) != turnID {
+		return writeSendWorkspaceAgentSessionInputError(agentservice.ErrSubmitDeliveryUnknown), nil
 	}
-	return response, nil
+	turnResponse := tuttigenerated.SendWorkspaceAgentSessionInputTurnResponse{
+		Kind:    tuttigenerated.SendWorkspaceAgentSessionInputTurnResponseKindTurn,
+		Session: generatedAgentSession(result.Session),
+		TurnId:  turnID,
+		Turn:    agentservice.GeneratedWorkspaceAgentTurn(*result.Turn),
+	}
+	if err := response.FromSendWorkspaceAgentSessionInputTurnResponse(turnResponse); err != nil {
+		return nil, err
+	}
+	return tuttigenerated.SendWorkspaceAgentSessionInput200JSONResponse(response), nil
 }
 
 func agentSessionTurnPhase(session agentservice.Session) string {

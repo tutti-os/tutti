@@ -6215,6 +6215,15 @@ func TestServiceSendInputContinuesImportedSession(t *testing.T) {
 func TestServiceSendInputReturnsRuntimeExecStatusOverStalePersistedStatus(t *testing.T) {
 	runtime := newFakeRuntime()
 	service := newIsolatedAgentService(runtime)
+	exactTurn := agentactivitybiz.Turn{
+		WorkspaceID: "ws-1", AgentSessionID: "session-1", TurnID: "turn-1",
+		Phase: agentactivitybiz.TurnPhaseSubmitted, Origin: agentactivitybiz.TurnOriginUserPrompt,
+		StartedAtUnixMS: 3000, UpdatedAtUnixMS: 3000,
+	}
+	service.TurnStore = failingTurnStore{
+		session: agentactivitybiz.Session{WorkspaceID: "ws-1", ID: "session-1", ActiveTurnID: "turn-1"},
+		turn:    exactTurn, latestTurn: exactTurn,
+	}
 	service.SessionReader = fakeSessionReader{
 		sessions: map[string]PersistedSession{
 			"ws-1:session-1": {
@@ -6235,6 +6244,9 @@ func TestServiceSendInputReturnsRuntimeExecStatusOverStalePersistedStatus(t *tes
 	}
 	if result.Session.EndedAt != nil {
 		t.Fatalf("endedAt = %#v, want nil for accepted input", result.Session.EndedAt)
+	}
+	if result.Turn == nil || result.Turn.TurnID != "turn-1" || result.Turn.Phase != agentactivitybiz.TurnPhaseSubmitted {
+		t.Fatalf("turn = %#v, want exact durable submitted turn", result.Turn)
 	}
 }
 

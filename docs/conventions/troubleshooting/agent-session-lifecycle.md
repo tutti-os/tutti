@@ -1384,6 +1384,44 @@ Turn state, loading, cancel, restore, file-change undo, rail projection, event u
   [desktopAgentActivityAdapter.ts](../../apps/desktop/src/renderer/src/features/workspace-agent/services/desktopAgentActivityAdapter.ts)
   [useAgentGUISubmitInteractionActions.ts](../../packages/agent/gui/agent-gui/agentGuiNode/controller/useAgentGUISubmitInteractionActions.ts)
 
+### AgentGUI send reports `workspace_agent.send_response_turn_required`
+
+- Symptom:
+  Sending or continuing a conversation reaches the provider, but the renderer
+  rejects the HTTP result with `workspace_agent.send_response_turn_required`.
+  A realtime reconcile may make the conversation recover moments later, so the
+  failure can appear release- or timing-dependent.
+- Quick checks:
+  Correlate one `clientSubmitId` across `runtime.submitted`,
+  `api.send.completed`, and the following `turn_update`. If the API completes
+  with a submitted runtime Turn while its session projection is still settled,
+  then the response raced the asynchronous activity report. Inspect the raw
+  response: a Turn-producing branch missing either `turnId` or `turn` violates
+  the protocol even if realtime state arrives afterward.
+- Root cause:
+  `RuntimeController.Exec` queued the submitted Turn report asynchronously,
+  started provider work, and returned. The service immediately refreshed the
+  older durable Session, while the API conditionally copied `session.activeTurn`.
+  The exact Turn therefore disappeared from an otherwise successful response.
+- Fix:
+  Make the submitted Turn report a synchronous durable-acceptance barrier.
+  Commit the session pointer and Turn atomically before publishing or starting
+  provider work; roll runtime state back on report failure. Read the exact Turn
+  by the runtime-returned `turnId` in the service, and model send output as an
+  OpenAPI discriminated union whose Turn branch requires both fields. Keep Goal
+  control Turn-less. Do not add renderer polling, sleeps, or synthetic Turns.
+- Validation:
+  Block the activity reporter and prove both `Exec` and provider startup wait;
+  fail it and prove no provider execution or active Turn survives. Cover stale
+  Session plus exact-Turn service reads, required API Turn output, and the
+  Turn-less Goal-control branch. Run API generation drift checks and the Agent
+  session engine suite.
+- References:
+  [agent-gui-node.md](../../architecture/agent-gui-node.md)
+  [controller_exec.go](../../../packages/agent/daemon/runtime/controller_exec.go)
+  [service_send_input.go](../../../services/tuttid/service/agent/service_send_input.go)
+  [daemon_agent_submit_handlers.go](../../../services/tuttid/api/daemon_agent_submit_handlers.go)
+
 ### AgentGUI new session times out and appears completed without a reply
 
 - Symptom:

@@ -648,6 +648,7 @@ type SendInputResult struct {
 	Session            Session
 	Kind               string
 	TurnID             string
+	Turn               *agentactivitybiz.Turn
 	TurnLifecycle      TurnLifecycle
 	SubmitAvailability SubmitAvailability
 	GoalControl        *GoalControlSessionResult

@@ -94,5 +94,5 @@ func (s *Service) acceptedSubmitResult(ctx context.Context, workspaceID, agentSe
 	if session.ActiveTurnID != "" {
 		availability = SubmitAvailability{State: "blocked", Reason: "active_turn"}
 	}
-	return SendInputResult{Session: session, Kind: "turn", TurnID: claim.TurnID, TurnLifecycle: turnLifecycleFromEntity(turn), SubmitAvailability: availability}, nil
+	return SendInputResult{Session: session, Kind: "turn", TurnID: claim.TurnID, Turn: turn, TurnLifecycle: turnLifecycleFromEntity(turn), SubmitAvailability: availability}, nil
 }

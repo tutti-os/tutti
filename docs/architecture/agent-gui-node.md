@@ -1798,15 +1798,23 @@ composer submit with activeConversationId
   -> agent.Service.SendInput
   -> validate/prepare prompt content
   -> RuntimeController.Exec
-  -> authoritative session returned
-  -> runtime reports publish agent.activity.updated
+  -> build submitted Turn transition in runtime memory
+  -> ActivityReporter synchronously commits session + submitted Turn
+  -> publish agent.activity.updated and start provider execution
+  -> service reads back the exact durable Turn by returned turnId
+  -> authoritative session + exact Turn returned
   -> snapshot/projection/UI refresh
 ```
 
-The local working patch is a latency bridge only. If the runtime returns a
-ready-looking session while the turn is still being processed, the desktop
-service can preserve optimistic `working` until a later authoritative event
-settles the session.
+The local working patch is a latency bridge only. A successful Turn-producing
+response is a durable acceptance acknowledgement: `turnId` and `turn` are both
+required and identify the exact submitted Turn. Runtime must not publish the
+submitted transition, start provider execution, or return success before the
+atomic session/Turn report commits. If that report fails, it rolls back the
+in-memory active Turn and provisional Session state. Goal control remains a
+separate Turn-less response branch. The renderer may keep a defensive contract
+guard, but must not repair a missing Turn with polling, delay, or a synthetic
+entity.
 
 When an existing conversation is busy, normal composer submits enter the
 workspace engine's prompt queue so the next turn can run after the current one
@@ -1879,6 +1887,7 @@ path must stop instead of creating a shadow session.
 ```text
 tuttid agent.Service.Create or SendInput
   -> RuntimeController.Start / Exec
+  -> submitted Turn durable-acceptance barrier
   -> provider adapter process or ACP connection
   -> provider emits lifecycle, phase, tool, message, prompt, and final events
   -> ActivityProjection.ReportSessionState / ReportSessionMessages
