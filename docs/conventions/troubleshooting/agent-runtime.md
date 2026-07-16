@@ -53,6 +53,7 @@ Turn state, loading, cancel, restore, rail projection, event updates, imports, a
 - [AgentGUI pin or unpin appears stuck for a live session](./agent-session-lifecycle.md#agentgui-pin-or-unpin-appears-stuck-for-a-live-session)
 - [Agent GUI provider tab shows fused or stale conversations](./agent-session-lifecycle.md#agent-gui-provider-tab-shows-fused-or-stale-conversations)
 - [Agent GUI no-project sessions appear under a user project](./agent-session-lifecycle.md#agent-gui-no-project-sessions-appear-under-a-user-project)
+- [Agent GUI context usage is absent or has the wrong total](./agent-session-lifecycle.md#agent-gui-context-usage-is-absent-or-has-the-wrong-total)
 - [Agent session restore breaks when durable snapshot ownership is split](./agent-session-lifecycle.md#agent-session-restore-breaks-when-durable-snapshot-ownership-is-split)
 - [Agent activity live updates fail after event schema changes](./agent-session-lifecycle.md#agent-activity-live-updates-fail-after-event-schema-changes)
 - [AgentGUI file-change undo reports a generic failure](./agent-session-lifecycle.md#agentgui-file-change-undo-reports-a-generic-failure)

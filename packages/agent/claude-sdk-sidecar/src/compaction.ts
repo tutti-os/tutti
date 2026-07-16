@@ -56,22 +56,22 @@ export class CompactionTracker {
   async emitContextUsageSnapshot(
     turnId: string,
     options: { modelUsage?: unknown } = {}
-  ): Promise<void> {
-    const getContextUsage = this.getQuery()?.getContextUsage;
-    if (!getContextUsage) {
-      return;
+  ): Promise<boolean> {
+    const query = this.getQuery();
+    if (!query?.getContextUsage) {
+      return false;
     }
     try {
-      const contextUsage = recordValue(await getContextUsage());
+      const contextUsage = recordValue(await query.getContextUsage());
       if (!contextUsage) {
-        return;
+        return false;
       }
       const usedTokens = numberValue(contextUsage.totalTokens);
       const contextWindowTokens =
         contextWindowTokensFromModelUsage(options.modelUsage) ||
         numberValue(contextUsage.maxTokens);
       if (usedTokens <= 0 && contextWindowTokens <= 0) {
-        return;
+        return false;
       }
       emitUsageUpdated(this.emit, turnId, {
         contextWindow: {
@@ -82,8 +82,10 @@ export class CompactionTracker {
           compactsAutomatically: contextUsage.isAutoCompactEnabled === true
         }
       });
+      return true;
     } catch {
       // Context usage is best-effort; result usage remains available.
+      return false;
     }
   }
 

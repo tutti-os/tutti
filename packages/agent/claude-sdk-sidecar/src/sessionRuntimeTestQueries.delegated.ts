@@ -281,7 +281,8 @@ export function fakeDelegatedAssistantParentQuery({
 }
 
 export function fakeSimpleResultQuery(
-  prompt: AsyncIterable<SDKUserMessage>
+  prompt: AsyncIterable<SDKUserMessage>,
+  result: Record<string, unknown> = {}
 ): AsyncIterable<SDKMessage> {
   return {
     async *[Symbol.asyncIterator]() {
@@ -298,7 +299,8 @@ export function fakeSimpleResultQuery(
       } as SDKMessage;
       yield {
         type: "result",
-        subtype: "success"
+        subtype: "success",
+        ...result
       } as unknown as SDKMessage;
     },
     close() {}
@@ -311,7 +313,12 @@ export function fakeContextUsageQuery(
   getContextUsage: () => Promise<unknown>;
   close: () => void;
 } {
-  return {
+  const query = {
+    contextUsage: {
+      totalTokens: 36_092,
+      maxTokens: 200_000,
+      rawMaxTokens: 1_000_000
+    },
     async *[Symbol.asyncIterator]() {
       const firstPrompt = await prompt[Symbol.asyncIterator]().next();
       const promptMessage = firstPrompt.value as SDKUserMessage & {
@@ -327,6 +334,14 @@ export function fakeContextUsageQuery(
       yield {
         type: "result",
         subtype: "success",
+        num_turns: 5,
+        usage: {
+          input_tokens: 26_694,
+          output_tokens: 473,
+          cache_read_input_tokens: 110_952,
+          cache_creation_input_tokens: 27_961,
+          iterations: null
+        },
         modelUsage: {
           "claude-sonnet-5": {
             inputTokens: 12,
@@ -342,12 +357,9 @@ export function fakeContextUsageQuery(
       } as unknown as SDKMessage;
     },
     async getContextUsage() {
-      return {
-        totalTokens: 36_092,
-        maxTokens: 200_000,
-        rawMaxTokens: 1_000_000
-      };
+      return this.contextUsage;
     },
     close() {}
   };
+  return query;
 }

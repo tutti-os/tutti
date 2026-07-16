@@ -350,14 +350,17 @@ export class SDKMessageRouter {
     ) {
       return;
     }
-    emitUsageUpdated(this.emit, this.turns.activeId, {
-      usage: result.usage,
-      modelUsage: result.modelUsage,
-      totalCostUsd: result.total_cost_usd
-    });
-    await this.compaction.emitContextUsageSnapshot(this.turns.activeId, {
-      modelUsage: result.modelUsage
-    });
+    const contextSnapshotEmitted =
+      await this.compaction.emitContextUsageSnapshot(this.turns.activeId, {
+        modelUsage: result.modelUsage
+      });
+    if (!contextSnapshotEmitted) {
+      emitUsageUpdated(this.emit, this.turns.activeId, {
+        usage: result.usage,
+        modelUsage: result.modelUsage,
+        totalCostUsd: result.total_cost_usd
+      });
+    }
     await this.onMaybeTitle();
     if (this.turns.cancelled) {
       this.turns.settleActive("turn_canceled");

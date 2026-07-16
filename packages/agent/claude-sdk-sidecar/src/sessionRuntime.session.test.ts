@@ -285,6 +285,64 @@ test("context usage prefers result modelUsage window over SDK maxTokens", async 
       : undefined;
     assert.equal(contextWindow?.usedTokens, 36_092);
     assert.equal(contextWindow?.totalTokens, 1_000_000);
+    assert.equal(
+      events.some(
+        (event) =>
+          event.type === "usage_updated" && isRecord(event.payload?.usage)
+      ),
+      false,
+      "cumulative result usage must not replace the authoritative context snapshot"
+    );
+  } finally {
+    restoreSink();
+  }
+});
+
+test("result usage remains available when context snapshot is unavailable", async () => {
+  const events: Array<{ type: string; payload?: Record<string, unknown> }> = [];
+  const restoreSink = withSidecarEventSinkForTest((event) =>
+    events.push(event)
+  );
+  try {
+    const session = new SessionRuntime(
+      "provider-session-1",
+      "/repo",
+      {},
+      false,
+      false,
+      {
+        model: "haiku",
+        permissionModeId: "default",
+        planMode: false,
+        effort: "",
+        speed: ""
+      },
+      sidecarClaudeOptionsFromPayload({}),
+      undefined,
+      ({ prompt }) =>
+        fakeSimpleResultQuery(prompt, {
+          usage: {
+            input_tokens: 120,
+            output_tokens: 8,
+            cache_read_input_tokens: 72,
+            cache_creation_input_tokens: 0
+          }
+        })
+    );
+
+    await session.start();
+    session.exec("turn-usage-fallback", "hi");
+    await waitForEvent(events, "turn_completed");
+
+    const usage = events.find(
+      (event) =>
+        event.type === "usage_updated" && isRecord(event.payload?.usage)
+    );
+    assert.ok(
+      usage,
+      "expected result usage when no context query is available"
+    );
+    assert.equal(usage.payload?.turnId, "turn-usage-fallback");
   } finally {
     restoreSink();
   }

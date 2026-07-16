@@ -1514,7 +1514,9 @@ Turn state, loading, cancel, restore, file-change undo, rail projection, event u
   The Agent GUI composer never shows context usage even though provider usage
   logs are present. Alternatively, Claude Code GUI usage shows a 200k context
   window for a model that should have 1M context, or a 200k model keeps showing
-  the prior 1M total after a model switch.
+  the prior 1M total after a model switch. After one Claude Code request runs
+  several tools, the used-token count may also jump from the latest iteration's
+  value to nearly the sum of every iteration in that turn.
 - Quick checks:
   Trace the provider update first: use
   `agent_session.claude_sdk.usage_update` for Claude SDK and
@@ -1530,7 +1532,10 @@ Turn state, loading, cancel, restore, file-change undo, rail projection, event u
   model-usage context window. If `previous_context_model` and
   `current_context_model` differ but `current_total_tokens` equals
   `previous_total_tokens`, daemon usage normalization reused a stale context
-  window across models.
+  window across models. For a tool-loop spike, compare the streamed
+  `normalized_used_tokens` values with the final Result update. If the final
+  value equals their sum, the cumulative Result usage was mistaken for current
+  context occupancy.
 - Root cause:
   Protocol v2 intentionally removed raw `runtimeContext` from the public
   session model. If the refactor removes that legacy field without adding a
@@ -1541,7 +1546,13 @@ Turn state, loading, cancel, restore, file-change undo, rail projection, event u
   keyed by model id, for example
   `modelUsage["claude-sonnet-5"].contextWindow`. If either sidecar or daemon
   only parses array-shaped `modelUsage`, the context-window total is missing and
-  daemon normalization falls back to 200k.
+  daemon normalization falls back to 200k. Claude SDK Result `usage` is
+  cumulative across the model iterations in a client-side tool loop, whereas
+  each streamed usage update describes one iteration. The authoritative
+  `Query.getContextUsage()` snapshot must therefore win at Result time. Calling
+  that method after detaching it from the Query object loses its `this` binding;
+  if the best-effort error is swallowed, the cumulative fallback remains
+  visible as a false context spike.
 - Fix:
   Define usage in the protocol-v2 OpenAPI contract and carry it as typed durable
   session metadata through the generated client, desktop adapter, canonical
@@ -1550,15 +1561,21 @@ Turn state, loading, cancel, restore, file-change undo, rail projection, event u
   Parse `modelUsage` recursively as both arrays and maps before using fallback
   context-window values. Track the model associated with a cached context
   window, and only reuse the previous total for the same model or when the model
-  is unknown. Do not hard-code alias-to-model mappings in Tutti.
+  is unknown. Do not hard-code alias-to-model mappings in Tutti. Invoke
+  `getContextUsage()` through its owning Query object and emit that snapshot
+  before considering Result usage as a fallback, so cumulative billing totals
+  never overwrite an available context snapshot.
 - Validation:
   Cover runtime-context splitting and metadata persistence, generated API
   projection, desktop canonical-session adaptation, activity-core usage
   resolution, and the composer hook.
   Add sidecar and daemon coverage with map-shaped `modelUsage` carrying
   `contextWindow: 1_000_000`, plus daemon coverage for Haiku -> Sonnet5 -> Haiku
-  usage updates where the last payload lacks `totalTokens`. Then run the Claude
-  SDK sidecar tests, daemon Go tests, AgentGUI tests, and typechecks.
+  usage updates where the last payload lacks `totalTokens`. Add a sidecar query
+  fixture whose `getContextUsage()` depends on `this`, and give its Result a
+  multi-iteration cumulative usage total; assert that only the authoritative
+  context snapshot is emitted. Then run the Claude SDK sidecar tests, daemon Go
+  tests, AgentGUI tests, and typechecks.
 - References:
   [agent-activity-packages.md](../architecture/agent-activity-packages.md)
   [session_metadata.go](../../packages/agent/store-sqlite/session_metadata.go)
@@ -1566,6 +1583,9 @@ Turn state, loading, cancel, restore, file-change undo, rail projection, event u
   [main.ts](../../packages/agent/claude-sdk-sidecar/src/main.ts)
   [main.test.ts](../../packages/agent/claude-sdk-sidecar/src/main.test.ts)
   [claude_sdk_adapter.go](../../packages/agent/daemon/runtime/claude_sdk_adapter.go)
+  [compaction.ts](../../../packages/agent/claude-sdk-sidecar/src/compaction.ts)
+  [messageRouter.ts](../../../packages/agent/claude-sdk-sidecar/src/messageRouter.ts)
+  [sessionRuntime.session.test.ts](../../../packages/agent/claude-sdk-sidecar/src/sessionRuntime.session.test.ts)
 
 ### AgentActivity replication repeatedly rejects message batches as invalid
 
