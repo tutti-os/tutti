@@ -524,6 +524,46 @@ test("a full settled snapshot preserves the observed turn needed by a late send 
   assert.equal(completed.commands[0]?.type, "queue/sendPrompt");
 });
 
+test("a terminal latest turn releases a queue when the session timestamp is unchanged", () => {
+  const running = session("running", 100);
+  running.activeTurn = {
+    ...running.activeTurn!,
+    updatedAtUnixMs: 90
+  };
+  running.latestTurn = running.activeTurn;
+  let state = reduce(createInitialPromptQueueState(), {
+    type: "session/snapshotReceived",
+    sessions: [running]
+  }).state;
+  state = reduce(state, enqueue("prompt-1")).state;
+
+  const settled = session("settled", 100);
+  settled.latestTurn = {
+    agentSessionId: "session-1",
+    turnId: "turn-1",
+    phase: "settled",
+    outcome: "completed",
+    settledAtUnixMs: 110,
+    startedAtUnixMs: 1,
+    updatedAtUnixMs: 110
+  };
+  const released = reduce(state, {
+    type: "session/snapshotReceived",
+    sessions: [settled]
+  });
+
+  assert.equal(released.commands[0]?.type, "queue/sendPrompt");
+  assert.equal(
+    released.state.recordsBySessionId["session-1"]?.availability.state,
+    "available"
+  );
+  assert.equal(
+    released.state.recordsBySessionId["session-1"]?.availability
+      .lastTurnVersion,
+    110
+  );
+});
+
 test("same-millisecond stale settled turn cannot replace a different running turn", () => {
   let state = reduce(createInitialPromptQueueState(), {
     type: "session/snapshotReceived",

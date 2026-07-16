@@ -19,7 +19,11 @@ export function promptQueueAvailabilityFromSession(
       interaction.agentSessionId === session.agentSessionId
   );
   const turnIsLive = Boolean(activeTurn && activeTurn.phase !== "settled");
-  const observedTurn = session.activeTurn ?? null;
+  // A terminal session clears activeTurn by contract while retaining the
+  // completed entity as latestTurn. Keep that terminal entity in the queue's
+  // monotonicity cursor so an available snapshot cannot look older merely
+  // because its active turn disappeared.
+  const observedTurn = session.activeTurn ?? session.latestTurn ?? null;
   return {
     activeTurnId,
     lastTurnId: observedTurn?.turnId ?? null,
@@ -141,6 +145,7 @@ function activityVersion(session: AgentActivitySessionInput): number | null {
       session.createdAtUnixMs ??
       session.startedAtUnixMs,
     session.activeTurn?.updatedAtUnixMs,
+    session.latestTurn?.updatedAtUnixMs,
     ...session.pendingInteractions.map(
       (interaction) => interaction.updatedAtUnixMs
     )
