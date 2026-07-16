@@ -11,6 +11,10 @@ const workflowPath = new URL(
   "../../.github/workflows/desktop-release.yml",
   import.meta.url
 );
+const promoteWorkflowPath = new URL(
+  "../../.github/workflows/desktop-release-promote.yml",
+  import.meta.url
+);
 const buildScriptPath = new URL(
   "../../tools/scripts/build-desktop-package.sh",
   import.meta.url
@@ -183,7 +187,7 @@ test("desktop release workflow passes tsh-aligned Feishu card context", async ()
   );
   assert.match(
     workflow,
-    /RELEASE_URL:\s+\${{\s*needs\.publish\.outputs\.release_url\s*}}/
+    /RELEASE_URL:\s+\${{\s*needs\.stage\.outputs\.release_url\s*}}/
   );
   assert.match(workflow, /RELEASE_ASSET_DIRECTORY:\s+release-assets/);
 });
@@ -204,16 +208,16 @@ test("desktop release workflow defaults Feishu notifications on outside manual d
 test("desktop release workflow downloads Feishu artifacts after checkout", async () => {
   const workflow = await readFile(workflowPath, "utf8");
   const notifyJobMatch = workflow.match(
-    /notify-feishu:[\s\S]*?(?=\n\s{2}[a-z][a-z0-9_-]+:\n|$)/
+    /notify-draft-feishu:[\s\S]*?(?=\n\s{2}[a-z][a-z0-9_-]+:\n|$)/
   );
 
-  assert.ok(notifyJobMatch, "notify-feishu job should exist");
+  assert.ok(notifyJobMatch, "draft notify job should exist");
 
   const notifyJob = notifyJobMatch[0];
   const checkoutIndex = notifyJob.indexOf("name: Checkout notification script");
   const setupNodeIndex = notifyJob.indexOf("name: Setup Node.js");
   const downloadIndex = notifyJob.indexOf("name: Download built artifacts");
-  const sendIndex = notifyJob.indexOf("name: Send release card");
+  const sendIndex = notifyJob.indexOf("name: Send draft release card");
 
   assert.notEqual(checkoutIndex, -1, "notify job should checkout the script");
   assert.notEqual(setupNodeIndex, -1, "notify job should setup Node.js");
@@ -229,91 +233,77 @@ test("desktop release workflow downloads Feishu artifacts after checkout", async
 
 test("desktop release workflow can mirror release assets to S3 and upsert direct download links", async () => {
   const workflow = await readFile(workflowPath, "utf8");
+  const promoteWorkflow = await readFile(promoteWorkflowPath, "utf8");
 
   assert.match(
     workflow,
     /permissions:\s*\n\s*contents:\s*write\s*\n\s*id-token:\s*write/
   );
-  assert.match(workflow, /Upload release assets to AWS S3/);
+  assert.match(workflow, /Upload immutable draft assets to AWS S3/);
   assert.match(workflow, /aws-actions\/configure-aws-credentials@v4/);
   assert.match(
     workflow,
     /TUTTI_DESKTOP_RELEASE_ASSETS_BASE_URL=https:\/\/\${TUTTI_DESKTOP_RELEASE_ASSETS_S3_BUCKET}\.s3-accelerate\.amazonaws\.com\/\${TUTTI_DESKTOP_RELEASE_ASSETS_S3_PREFIX%\/}/
   );
   assert.match(
-    workflow,
+    `${workflow}\n${promoteWorkflow}`,
     /apps\/desktop\/scripts\/upsert-release-download-links\.mjs/
   );
-  assert.match(workflow, /Build desktop release latest metadata/);
-  assert.match(workflow, /apps\/desktop\/scripts\/build-release-latest\.mjs/);
+  assert.match(promoteWorkflow, /Build public release pointer/);
   assert.match(
-    workflow,
+    promoteWorkflow,
+    /apps\/desktop\/scripts\/build-release-latest\.mjs/
+  );
+  assert.match(
+    promoteWorkflow,
     /aws s3 cp release-latest\.json "\$\{s3_root\}\/latest\.json"/
   );
 });
 
 test("desktop release workflow only publishes root latest metadata for stable releases", async () => {
   const workflow = await readFile(workflowPath, "utf8");
-  const latestBuildStep = workflow.match(
-    /- name: Build desktop release latest metadata[\s\S]*?run: node apps\/desktop\/scripts\/build-release-latest\.mjs[^\n]*/
-  )?.[0];
-  const latestUploadStep = workflow.match(
-    /- name: Upload desktop release latest metadata to AWS S3[\s\S]*?aws s3 cp release-latest\.json "\$\{s3_root\}\/latest\.json"/
-  )?.[0];
+  const promoteWorkflow = await readFile(promoteWorkflowPath, "utf8");
 
-  assert.ok(latestBuildStep, "latest metadata build step should exist");
-  assert.ok(latestUploadStep, "latest metadata upload step should exist");
-  assert.match(
-    latestBuildStep,
-    /needs\.resolve\.outputs\.release_make_latest\s*==\s*'true'/
-  );
-  assert.match(
-    latestUploadStep,
-    /needs\.resolve\.outputs\.release_make_latest\s*==\s*'true'/
-  );
-  assert.match(workflow, /Build desktop prerelease channel latest metadata/);
+  assert.match(workflow, /publication_mode:[\s\S]*?- publish\n\s*- draft_only/);
   assert.match(
     workflow,
-    /needs\.resolve\.outputs\.release_channel\s*!=\s*'stable'/
+    /needs\.resolve\.outputs\.publication_mode\s*==\s*'publish'/
+  );
+  assert.doesNotMatch(workflow, /channels\/rc\/latest\.json/);
+  assert.doesNotMatch(workflow, /aws s3 cp release-latest\.json/);
+  assert.match(
+    promoteWorkflow,
+    /if \[\[ "\$\{TUTTI_DESKTOP_RELEASE_CHANNEL\}" == "stable" \]\]; then[\s\S]*"\$\{s3_root\}\/latest\.json"/
   );
   assert.match(
-    workflow,
+    promoteWorkflow,
     /channels\/preview\/latest\.json[\s\S]*channels\/rc\/latest\.json/
   );
-  assert.match(workflow, /channels\/beta\/latest\.json/);
+  assert.match(promoteWorkflow, /channels\/beta\/latest\.json/);
 });
 
 test("desktop release workflow publishes immutable updater files before channel pointers", async () => {
   const workflow = await readFile(workflowPath, "utf8");
-  const publishJobMatch = workflow.match(
-    /publish:[\s\S]*?(?=\n\s{2}[a-z][a-z0-9_-]+:\n|$)/
+  const promoteWorkflow = await readFile(promoteWorkflowPath, "utf8");
+  const draftAssetsIndex = workflow.indexOf(
+    "name: Upload immutable draft assets to AWS S3"
+  );
+  const promoteAssetsIndex = promoteWorkflow.indexOf(
+    "name: Upload immutable release assets to AWS S3"
+  );
+  const pointerBuildIndex = promoteWorkflow.indexOf(
+    "name: Build public release pointer"
+  );
+  const pointerUploadIndex = promoteWorkflow.indexOf(
+    "name: Publish release pointer to AWS S3"
   );
 
-  assert.ok(publishJobMatch, "publish job should exist");
-  const publishJob = publishJobMatch[0];
-  const assetsIndex = publishJob.indexOf(
-    "name: Upload release assets to AWS S3"
-  );
-  const stableBuildIndex = publishJob.indexOf(
-    "name: Build desktop release latest metadata"
-  );
-  const stablePointerIndex = publishJob.indexOf(
-    "name: Upload desktop release latest metadata to AWS S3"
-  );
-  const rcBuildIndex = publishJob.indexOf(
-    "name: Build desktop prerelease channel latest metadata"
-  );
-  const rcPointerIndex = publishJob.indexOf(
-    "name: Upload desktop prerelease channel latest metadata to AWS S3"
-  );
-
-  assert.ok(assetsIndex >= 0, "immutable release assets should upload");
-  assert.ok(stableBuildIndex > assetsIndex);
-  assert.ok(stablePointerIndex > stableBuildIndex);
-  assert.ok(rcBuildIndex > assetsIndex);
-  assert.ok(rcPointerIndex > rcBuildIndex);
-  assert.match(publishJob, /channels\/rc\/latest\.json/);
-  assert.match(publishJob, /--cache-control "public, max-age=60"/);
+  assert.ok(draftAssetsIndex >= 0, "draft assets should upload immutably");
+  assert.ok(promoteAssetsIndex >= 0, "promotion should repair missing assets");
+  assert.ok(pointerBuildIndex > promoteAssetsIndex);
+  assert.ok(pointerUploadIndex > pointerBuildIndex);
+  assert.match(promoteWorkflow, /channels\/rc\/latest\.json/);
+  assert.match(promoteWorkflow, /--cache-control "public, max-age=60"/);
 });
 
 test("desktop package uses the CloudFront generic updater provider", async () => {
@@ -329,58 +319,67 @@ test("desktop package uses the CloudFront generic updater provider", async () =>
 
 test("desktop release workflow generates summaries and stable changelog metadata", async () => {
   const workflow = await readFile(workflowPath, "utf8");
+  const promoteWorkflow = await readFile(promoteWorkflowPath, "utf8");
+  const releaseWorkflows = `${workflow}\n${promoteWorkflow}`;
 
-  assert.match(workflow, /Generate desktop release summary/);
+  assert.match(releaseWorkflows, /Generate desktop release summary/);
   assert.match(
-    workflow,
+    releaseWorkflows,
     /apps\/desktop\/scripts\/generate-release-summary\.mjs/
   );
-  assert.match(workflow, /secrets\.AGNES_API_KEY/);
-  assert.match(workflow, /Upload desktop release summary artifact/);
-  assert.match(workflow, /Update release notes with summary/);
-  assert.match(workflow, /apps\/desktop\/scripts\/upsert-release-summary\.mjs/);
-  assert.match(workflow, /Update desktop release changelog metadata/);
+  assert.match(releaseWorkflows, /secrets\.AGNES_API_KEY/);
+  assert.match(releaseWorkflows, /Upload desktop release summary artifact/);
+  assert.match(releaseWorkflows, /Update release notes with summary/);
   assert.match(
-    workflow,
+    releaseWorkflows,
+    /apps\/desktop\/scripts\/upsert-release-summary\.mjs/
+  );
+  assert.match(promoteWorkflow, /Update stable changelog metadata/);
+  assert.match(
+    promoteWorkflow,
     /apps\/desktop\/scripts\/upsert-release-changelog\.mjs/
   );
   assert.match(
-    workflow,
+    promoteWorkflow,
     /grep -Eq "\(404\|NoSuchKey\|Not Found\)" changelog-download\.err/
   );
-  assert.match(workflow, /"schemaVersion":"tutti\.desktop\.changelog\.v1"/);
-  assert.match(workflow, /"\$\{s3_root\}\/changelog\.json"/);
-  assert.match(workflow, /Download release summary/);
   assert.match(
-    workflow,
+    promoteWorkflow,
+    /"schemaVersion":"tutti\.desktop\.changelog\.v1"/
+  );
+  assert.match(promoteWorkflow, /"\$\{s3_root\}\/changelog\.json"/);
+  assert.match(releaseWorkflows, /Download release summary/);
+  assert.match(
+    releaseWorkflows,
     /RELEASE_SUMMARY_PATH:\s+release-summary\/release-summary\.json/
   );
 });
 
 test("desktop release workflow keeps prereleases as drafts and reserves the public list for stable", async () => {
   const workflow = await readFile(workflowPath, "utf8");
-  const publishJobMatch = workflow.match(
-    /publish:[\s\S]*?(?=\n\s{2}[a-z][a-z0-9_-]+:\n|$)/
+  const promoteWorkflow = await readFile(promoteWorkflowPath, "utf8");
+  const stageJobMatch = workflow.match(
+    /stage:[\s\S]*?(?=\n\s{2}[a-z][a-z0-9_-]+:\n|$)/
   );
 
-  assert.ok(publishJobMatch, "publish job should exist");
-  const publishJob = publishJobMatch[0];
-  const stageIndex = publishJob.indexOf("name: Stage GitHub release assets");
-  const s3Index = publishJob.indexOf("name: Upload release assets to AWS S3");
-  const notesIndex = publishJob.indexOf(
-    "name: Update release notes with direct downloads"
+  assert.ok(stageJobMatch, "stage job should exist");
+  const stageJob = stageJobMatch[0];
+  const stageIndex = stageJob.indexOf("name: Stage GitHub release assets");
+  const s3Index = stageJob.indexOf(
+    "name: Upload immutable draft assets to AWS S3"
   );
-  const publishIndex = publishJob.indexOf(
+  const publishIndex = promoteWorkflow.indexOf(
     "name: Publish stable GitHub release"
   );
-  const archiveIndex = publishJob.indexOf(
+  const archiveIndex = promoteWorkflow.indexOf(
     "name: Archive public GitHub prereleases"
   );
-  const stableAliasIndex = publishJob.indexOf(
+  const stableAliasIndex = promoteWorkflow.indexOf(
     "name: Refresh stable release alias"
   );
 
   assert.notEqual(stageIndex, -1, "release assets should be staged");
+  assert.notEqual(s3Index, -1, "draft assets should be uploaded to AWS");
   assert.notEqual(
     publishIndex,
     -1,
@@ -392,43 +391,65 @@ test("desktop release workflow keeps prereleases as drafts and reserves the publ
     "legacy public prereleases should be archived"
   );
   assert.notEqual(stableAliasIndex, -1, "stable release alias should refresh");
-  assert.match(publishJob, /draft:\s*true/);
+  assert.match(stageJob, /draft:\s*true/);
+  assert.doesNotMatch(stageJob, /latest\.json/);
+  assert.doesNotMatch(stageJob, /--draft=false/);
   assert.match(
-    publishJob,
-    /gh release edit "\$\{TUTTI_DESKTOP_RELEASE_TAG\}" --draft=false/
+    workflow,
+    /uses:\s+\.\/\.github\/workflows\/desktop-release-promote\.yml/
   );
   assert.match(
-    publishJob,
-    /if:\s*\$\{\{\s*needs\.resolve\.outputs\.release_prerelease\s*!=\s*'true'\s*\}\}/
+    workflow,
+    /needs\.resolve\.outputs\.publication_mode\s*==\s*'publish'/
   );
   assert.match(
-    publishJob,
+    promoteWorkflow,
+    /if:\s*\$\{\{\s*needs\.resolve\.outputs\.release_channel\s*==\s*'stable'\s*\}\}/
+  );
+  assert.match(
+    promoteWorkflow,
+    /gh release edit "\$\{TUTTI_DESKTOP_RELEASE_TAG\}" --draft=false --latest/
+  );
+  assert.match(
+    promoteWorkflow,
     /gh api "repos\/\$\{GITHUB_REPOSITORY\}\/releases\?per_page=100" --paginate/
   );
   assert.match(
-    publishJob,
+    promoteWorkflow,
     /select\(\.prerelease and \(\.draft \| not\)\) \| \.id/
   );
   assert.match(
-    publishJob,
+    promoteWorkflow,
     /gh api --method PATCH "repos\/\$\{GITHUB_REPOSITORY\}\/releases\/\$\{release_id\}"[\s\\]*-F draft=true/
   );
   assert.ok(stageIndex < s3Index);
-  assert.ok(s3Index < notesIndex);
-  assert.ok(notesIndex < publishIndex);
   assert.ok(publishIndex < archiveIndex);
   assert.ok(archiveIndex < stableAliasIndex);
 });
 
-test("desktop release workflow refreshes the stable alias without taking Latest", async () => {
-  const workflow = await readFile(workflowPath, "utf8");
-  const publishJobMatch = workflow.match(
-    /publish:[\s\S]*?(?=\n\s{2}[a-z][a-z0-9_-]+:\n|$)/
-  );
+test("desktop promotion validates draft identity, checksums, and channel ordering", async () => {
+  const promoteWorkflow = await readFile(promoteWorkflowPath, "utf8");
 
-  assert.ok(publishJobMatch, "publish job should exist");
-  const publishJob = publishJobMatch[0];
-  const stableAliasStep = publishJob.match(
+  assert.match(promoteWorkflow, /workflow_call:/);
+  assert.match(promoteWorkflow, /workflow_dispatch:/);
+  assert.match(promoteWorkflow, /group:\s+desktop-release-promotion/);
+  assert.match(
+    promoteWorkflow,
+    /gh release view "\$\{release_tag\}"[\s\S]*assets,isDraft,isPrerelease,tagName,targetCommitish,url/
+  );
+  assert.match(
+    promoteWorkflow,
+    /git fetch --force origin "refs\/tags\/\$\{release_tag\}:refs\/tags\/\$\{release_tag\}"/
+  );
+  assert.match(promoteWorkflow, /sha256sum --check SHA256SUMS\.txt/);
+  assert.match(promoteWorkflow, /name:\s+Prevent release channel rollback/);
+  assert.match(promoteWorkflow, /Refusing to move/);
+  assert.match(promoteWorkflow, /name:\s+Verify public release pointer/);
+});
+
+test("desktop release workflow refreshes the stable alias without taking Latest", async () => {
+  const promoteWorkflow = await readFile(promoteWorkflowPath, "utf8");
+  const stableAliasStep = promoteWorkflow.match(
     /- name: Refresh stable release alias[\s\S]*?(?=\n\s{6}- name:|\n\s{2}[a-z][a-z0-9_-]+:\n|$)/
   )?.[0];
 
@@ -511,25 +532,25 @@ test("desktop release workflow refreshes the stable alias without taking Latest"
 
 test("desktop release workflow publishes only macOS release assets for now", async () => {
   const workflow = await readFile(workflowPath, "utf8");
-  const publishJobMatch = workflow.match(
-    /publish:[\s\S]*?(?=\n\s{2}[a-z][a-z0-9_-]+:\n|$)/
+  const stageJobMatch = workflow.match(
+    /stage:[\s\S]*?(?=\n\s{2}[a-z][a-z0-9_-]+:\n|$)/
   );
   const notifyJobMatch = workflow.match(
-    /notify-feishu:[\s\S]*?(?=\n\s{2}[a-z][a-z0-9_-]+:\n|$)/
+    /notify-draft-feishu:[\s\S]*?(?=\n\s{2}[a-z][a-z0-9_-]+:\n|$)/
   );
 
-  assert.ok(publishJobMatch, "publish job should exist");
-  assert.ok(notifyJobMatch, "notify-feishu job should exist");
+  assert.ok(stageJobMatch, "stage job should exist");
+  assert.ok(notifyJobMatch, "draft notify job should exist");
   assert.doesNotMatch(workflow, /\n\s{2}build-windows:\n/);
   assert.doesNotMatch(workflow, /\n\s{2}build-linux:\n/);
-  assert.match(publishJobMatch[0], /needs:\s+\[resolve, build-macos\]/);
-  assert.doesNotMatch(publishJobMatch[0], /build-windows|build-linux/);
+  assert.match(stageJobMatch[0], /needs:\s+\[resolve, build-macos\]/);
+  assert.doesNotMatch(stageJobMatch[0], /build-windows|build-linux/);
   assert.match(
-    publishJobMatch[0],
+    stageJobMatch[0],
     /pattern:\s+tutti-desktop-release-assets-macos/
   );
   assert.doesNotMatch(
-    publishJobMatch[0],
+    stageJobMatch[0],
     /pattern:\s+tutti-desktop-release-assets-\*/
   );
   assert.match(
