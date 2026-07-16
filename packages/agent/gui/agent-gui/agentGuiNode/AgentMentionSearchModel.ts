@@ -355,6 +355,7 @@ export function providerItemToAgentMentionItem(input: {
       }),
       workspaceId,
       targetId,
+      sourceLabel: label,
       name: label,
       summary:
         compactText(presentation.subtitle) ||

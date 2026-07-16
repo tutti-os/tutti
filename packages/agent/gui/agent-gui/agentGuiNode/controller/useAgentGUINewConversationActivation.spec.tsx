@@ -103,6 +103,7 @@ describe("useAgentGUINewConversationActivation", () => {
       secondResult = result.current(
         [{ type: "text", text: "second" }],
         "second",
+        undefined,
         { model: "gpt-plan", modelPlanId: "plan-2" },
         "agent-session:source"
       );

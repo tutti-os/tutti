@@ -1,9 +1,9 @@
 import type {
   AgentActivityRuntime,
   AgentGUIProps,
-  AgentHostInputApi,
-  PlanIssueCreationOptions
+  AgentHostInputApi
 } from "@tutti-os/agent-gui";
+import type { PlanIssueCreationOptions } from "@tutti-os/agent-gui/plan-issue";
 import type { AgentContextMentionProvider } from "@tutti-os/agent-gui/context-mention-provider";
 import type { TuttidClient } from "@tutti-os/client-tuttid-ts";
 import type { RichTextTriggerProvider } from "@tutti-os/ui-rich-text/types";

@@ -70,6 +70,14 @@ export type {
 } from "./engine/types.ts";
 export { AGENT_SESSION_ENGINE_LOCAL_ORIGIN } from "./engine/types.ts";
 export { selectWorkspaceReconcileState } from "./engine/engineRuntime.selectors.ts";
+export { selectCollaborationOperation } from "./engine/collaborationOperations.selectors.ts";
+export { dispatchCollaborationOperation } from "./engine/collaborationOperations.dispatch.ts";
+export type {
+  CollaborationOperationKind,
+  CollaborationOperationRequestedIntent,
+  CollaborationOperationRecord,
+  CollaborationOperationsState
+} from "./engine/collaborationOperations.types.ts";
 export {
   selectAttentionReadState,
   selectSessionAttention

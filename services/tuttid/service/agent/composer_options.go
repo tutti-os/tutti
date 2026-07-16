@@ -206,7 +206,6 @@ func (s *Service) GetComposerOptions(ctx context.Context, input ComposerOptionsI
 		)
 	}
 	planEndpoint := modelPlanResolution.Endpoint
-	planModels := modelPlanResolution.Models
 	modelCatalog := s.ModelCatalog
 	if planEndpoint != nil {
 		// A bound plan owns both the endpoint and the authorized model list.
@@ -336,7 +335,7 @@ func (s *Service) GetComposerOptions(ctx context.Context, input ComposerOptionsI
 			return ComposerOptions{}, err
 		}
 	}
-	options = applyResolvedModelPlanComposerOverlay(options, planEndpoint, planModels)
+	options = applyResolvedModelPlanComposerOverlay(options, modelPlanResolution)
 	return options, nil
 }
 

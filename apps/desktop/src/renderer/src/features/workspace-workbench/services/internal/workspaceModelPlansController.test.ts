@@ -1,12 +1,14 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import type { AgentTarget } from "@tutti-os/client-tuttid-ts";
+import {
+  TuttidProtocolError,
+  type AgentTarget
+} from "@tutti-os/client-tuttid-ts";
 import type { NotificationService } from "@tutti-os/ui-notifications";
 import type {
   WorkspaceModelPlan,
   WorkspaceModelPlanProtocol
 } from "../workspaceSettingsTypes.ts";
-import { DesktopWorkspaceSettingsDaemonError } from "./adapters/desktopWorkspaceSettingsClient.ts";
 import {
   WorkspaceModelPlansController,
   type WorkspaceModelPlansControllerDependencies
@@ -28,6 +30,7 @@ test("WorkspaceModelPlansController keeps default refresh Plan-only", async () =
       bindingLoads += 1;
       return [
         {
+          workspaceId: "workspace-1",
           agentTargetId: "local:codex",
           defaultModel: "gpt-5.5",
           modelPlanId: "plan-1"
@@ -260,7 +263,7 @@ test("WorkspaceModelPlansController blocks a draft save without required fields"
 });
 
 test("WorkspaceModelPlansController keeps the stored key when editing without a new one", async () => {
-  const updates: Array<{ apiKey?: string }> = [];
+  const updates: Array<{ apiKey?: string | null }> = [];
   const { controller, store } = createController({
     listModelPlans: async () => [createPlan("plan-1", "anthropic")],
     updateModelPlan: async (_workspaceID, _planID, input) => {
@@ -301,7 +304,7 @@ test("WorkspaceModelPlansController previews references before saving a changed 
       return {
         ...stored,
         defaultModel: input.defaultModel ?? null,
-        models: input.models
+        models: input.models ?? stored.models
       };
     }
   });
@@ -366,7 +369,7 @@ test("WorkspaceModelPlansController detects an unsaved draft without a plan id",
 });
 
 test("WorkspaceModelPlansController detects a saved plan through its plan id", async () => {
-  const detectRequests: Array<{ planId?: string }> = [];
+  const detectRequests: Array<{ planId?: string | null }> = [];
   const { controller } = createController({
     listModelPlans: async () => [createPlan("plan-1", "openai")],
     detectModelPlan: async (_workspaceID, input) => {
@@ -392,7 +395,7 @@ test("WorkspaceModelPlansController saves an official subscription without endpo
         baseUrl: null,
         defaultModel: input.defaultModel ?? null,
         hasApiKey: false,
-        models: input.models,
+        models: input.models ?? [],
         name: input.name
       };
     },
@@ -483,10 +486,10 @@ test("WorkspaceModelPlansController surfaces a 409 referenced delete as a block"
   const { controller, store } = createController({
     listModelPlans: async () => [createPlan("plan-1", "openai")],
     deleteModelPlan: async () => {
-      throw new DesktopWorkspaceSettingsDaemonError(
-        409,
-        "model_plan_referenced"
-      );
+      throw new TuttidProtocolError({
+        code: "model_plan_referenced",
+        statusCode: 409
+      });
     },
     listModelPlanReferences: async () => [
       { id: "local:codex", kind: "agent_target", name: "Codex" }
@@ -512,6 +515,7 @@ test("WorkspaceModelPlansController persists agent bindings and clears them", as
     setAgentModelBinding: async (_workspaceID, agentTargetID, input) => {
       puts.push({ agentTargetID, input });
       return {
+        workspaceId: "workspace-1",
         agentTargetId: agentTargetID,
         defaultModel: input.defaultModel ?? null,
         modelPlanId: input.modelPlanId ?? null
@@ -626,6 +630,7 @@ function createPlan(
     firstUse: { status: "pending" },
     hasApiKey: true,
     id,
+    revision: 1,
     models: [],
     name: id,
     protocol,

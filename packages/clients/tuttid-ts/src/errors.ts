@@ -14,6 +14,11 @@ const tuttidProtocolErrorCodes = new Set<TuttidProtocolErrorCode>([
   "workspace_issue_resource_not_found",
   "workspace_terminal_not_found",
   "workspace_app_not_found",
+  "workspace_agent_not_found",
+  "automation_rule_not_found",
+  "model_plan_not_found",
+  "model_plan_referenced",
+  "collaboration_run_not_found",
   "workspace_operation_failed",
   "preferences_operation_failed"
 ]);

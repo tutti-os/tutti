@@ -60,9 +60,13 @@ Engine rules:
   surfaces subscribe through the single `useEngineSelector` binding in
   `@tutti-os/agent-gui`.
 
-The current state tree carries only the skeleton `engineRuntime` domain;
-business domains (turn lifecycle, queue send, optimistic intents) land as
-sibling reducers in later refactor slices.
+The state tree composes session lifecycle, canonical session/turn/interaction
+entities, prompt queue, composer options, attention, plan decisions, and
+collaboration operations as sibling reducers. Collaboration start, adoption,
+cancel, and retry are command-backed intents: React surfaces derive pending
+state from the engine and consume terminal command results through
+`dispatchCollaborationOperation`. They must not call host runtime mutation
+methods or maintain a second optimistic state machine.
 
 ## Adapter Contract
 

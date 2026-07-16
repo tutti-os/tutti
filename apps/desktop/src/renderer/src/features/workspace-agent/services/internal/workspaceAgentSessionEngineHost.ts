@@ -24,12 +24,14 @@ export interface WorkspaceAgentSessionEngineHost {
 
 interface CreateWorkspaceAgentSessionEngineHostInput {
   activateSession: AgentActivityRuntime["activateSession"];
+  cancelCollaboration: NonNullable<AgentActivityRuntime["cancelCollaboration"]>;
   cancelTurn(input: {
     agentSessionId: string;
     turnId: string;
     workspaceId: string;
   }): Promise<unknown>;
   reconcileSession(command: SessionReconcileCommand): Promise<unknown>;
+  retryCollaboration: NonNullable<AgentActivityRuntime["retryCollaboration"]>;
   runtimeApi: Pick<DesktopRuntimeApi, "logTerminalDiagnostic">;
   sendInput(input: {
     agentSessionId: string;
@@ -43,6 +45,12 @@ interface CreateWorkspaceAgentSessionEngineHostInput {
     workspaceId: string;
   }): Promise<unknown>;
   submitInteractive: AgentActivityRuntime["submitInteractive"];
+  startAgentCollaboration: NonNullable<
+    AgentActivityRuntime["startAgentCollaboration"]
+  >;
+  setCollaborationAdoption: NonNullable<
+    AgentActivityRuntime["setCollaborationAdoption"]
+  >;
   submitPlanDecision(input: {
     action: "implement";
     agentSessionId: string;
@@ -103,6 +111,26 @@ export function createWorkspaceAgentSessionEngineHost(
     commandPort: {
       execute: async (command, options) => {
         switch (command.type) {
+          case "collaboration/start":
+            return input.startAgentCollaboration({
+              ...command.input,
+              signal: options?.signal
+            });
+          case "collaboration/setAdoption":
+            return input.setCollaborationAdoption({
+              ...command.input,
+              signal: options?.signal
+            });
+          case "collaboration/cancel":
+            return input.cancelCollaboration({
+              ...command.input,
+              signal: options?.signal
+            });
+          case "collaboration/retry":
+            return input.retryCollaboration({
+              ...command.input,
+              signal: options?.signal
+            });
           case "attention/readState/read":
             return readDesktopWorkspaceAgentReadState({
               roomId: command.workspaceId,

@@ -108,18 +108,6 @@ export {
 } from "./shared/agentConversation/agentPlanPromptDispatch";
 export type { AgentPlanPromptAction } from "./shared/agentConversation/agentPlanPromptDispatch";
 export {
-  autoTokenBudget,
-  planIssueDraftFromPlanText,
-  planIssueDraftFromTimelineItems
-} from "./shared/agentConversation/planImplementationPresentation";
-export type {
-  PlanIssueBudget,
-  PlanIssueCreationOptions,
-  PlanIssueDraft,
-  PlanIssueExecutionProfile,
-  PlanIssueTaskDraft
-} from "./shared/agentConversation/planImplementationPresentation";
-export {
   AgentActivityRuntimeProvider,
   resetAgentActivityRuntimeForTests,
   setAgentActivityRuntimeForTests,

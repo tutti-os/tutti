@@ -372,6 +372,8 @@ export interface AgentActivityRuntime {
    * means the canonical local origin.
    */
   origin?: string;
+  /** Collaboration mutations are routed through this runtime's session engine. */
+  collaborationCommandSupport?: boolean;
   /**
    * The session cwd is not resolvable on the local filesystem (e.g. a
    * shared/cloud sandbox not mounted locally), so AgentGUI must not run its

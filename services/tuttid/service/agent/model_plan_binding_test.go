@@ -318,8 +318,14 @@ func TestObserveAgentSessionStateMarksFirstUseOnCompletedTurn(t *testing.T) {
 
 	ctx := context.Background()
 	service, firstUse := newPlanBoundService(modelplanbiz.ProtocolOpenAI, true)
-	endpoint, _ := service.resolveModelPlanEndpoint(ctx, "ws", "local:codex", "codex", "")
-	service.registerPendingPlanFirstUse("ws", "session-1", endpoint, "local:codex")
+	resolution := service.resolveModelPlan(ctx, "ws", "local:codex", "codex", "")
+	service.registerPendingPlanFirstUse(
+		"ws",
+		"session-1",
+		resolution.ModelConfiguration.ModelPlanID,
+		resolution.Endpoint,
+		"local:codex",
+	)
 
 	completed := "completed"
 	failed := "failed"

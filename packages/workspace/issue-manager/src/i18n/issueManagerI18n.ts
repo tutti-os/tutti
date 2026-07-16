@@ -373,9 +373,9 @@ const issueManagerZhCN = {
     boardView: "看板",
     budgetAuto: "自动编译",
     budgetSoftLimited:
-      "Issue 已达到预算软限制。正在运行的工作会继续，新的调度已暂停。",
+      "Issue 已达到预算软限制。正在运行的工作会继续，新的调度已暂停",
     budgetRecoveryRearrangeHint:
-      "保存后会继续暂停派发。请按降低后的强度重新指派或拆解剩余任务，再恢复派发。",
+      "保存后会继续暂停派发。请按降低后的强度重新指派或拆解剩余任务，再恢复派发",
     budgetFixed: "固定 Token 上限",
     budgetMode: "预算模式",
     content: "内容",
@@ -388,7 +388,7 @@ const issueManagerZhCN = {
     description: "描述",
     dispatchPaused: "暂停后续调度",
     dispatchPausedDescription:
-      "正在运行的工作会继续；恢复调度前不会启动新的任务。",
+      "正在运行的工作会继续；恢复调度前不会启动新的任务",
     estimatedCost: "预估成本",
     executionAssignment: "执行分配",
     executionDirectory: "执行目录",

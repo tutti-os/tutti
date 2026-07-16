@@ -57,7 +57,7 @@ type CapabilityContribution struct {
 
 type CapabilityPack struct {
 	Name    string
-	Resolve func(context.Context, PrepareInput) (CapabilityContribution, error)
+	Resolve func(context.Context, PrepareContext) (CapabilityContribution, error)
 }
 
 type DeploymentProfile struct {
@@ -122,7 +122,8 @@ func StandardProfile() DeploymentProfile {
 // routing skills. Deployment profiles should include this pack when they want
 // the shared skills without inheriting Tutti desktop-host policy.
 func CoreSkillsPack() CapabilityPack {
-	return CapabilityPack{Name: "tutti-core-skills", Resolve: func(_ context.Context, input PrepareInput) (CapabilityContribution, error) {
+	return CapabilityPack{Name: "tutti-core-skills", Resolve: func(_ context.Context, contextInput PrepareContext) (CapabilityContribution, error) {
+		input := contextInput.instructionInput()
 		return CapabilityContribution{Enabled: true, Skills: []SkillSpec{
 			{ID: "tutti/tutti-cli", Name: tuttiSkillName, Files: map[string]string{"SKILL.md": tuttiCLISkill(input), commandGuideReferencePath: commandGuideReference(input)}},
 			{ID: "tutti/tutti-handoff", Name: tuttiHandoffSkillName, Files: map[string]string{"SKILL.md": tuttiHandoffSkill(input)}},
@@ -136,7 +137,8 @@ func CoreSkillsPack() CapabilityPack {
 // TuttiDesktopHostPack contributes policy that is true for the local Tutti
 // desktop host but not necessarily for other deployments such as managed VMs.
 func TuttiDesktopHostPack() CapabilityPack {
-	return CapabilityPack{Name: "tutti-desktop-host", Resolve: func(_ context.Context, input PrepareInput) (CapabilityContribution, error) {
+	return CapabilityPack{Name: "tutti-desktop-host", Resolve: func(_ context.Context, contextInput PrepareContext) (CapabilityContribution, error) {
+		input := contextInput.instructionInput()
 		return CapabilityContribution{Enabled: true, PolicySections: []PolicySection{
 			{
 				Anchor: PolicyAnchorTools,
@@ -156,7 +158,8 @@ func TuttiDesktopHostPack() CapabilityPack {
 }
 
 func BrowserUsePack() CapabilityPack {
-	return CapabilityPack{Name: "browser-use", Resolve: func(_ context.Context, input PrepareInput) (CapabilityContribution, error) {
+	return CapabilityPack{Name: "browser-use", Resolve: func(_ context.Context, contextInput PrepareContext) (CapabilityContribution, error) {
+		input := contextInput.instructionInput()
 		enabled := input.BrowserUse && BrowserUseDefaultEnabled()
 		return CapabilityContribution{Enabled: enabled,
 			Skills:         []SkillSpec{{ID: "tutti/browser-use", Name: browserUseSkillName, Files: map[string]string{"SKILL.md": browserUseSkill(input)}}},
@@ -167,7 +170,8 @@ func BrowserUsePack() CapabilityPack {
 }
 
 func ComputerUsePack() CapabilityPack {
-	return CapabilityPack{Name: "computer-use", Resolve: func(_ context.Context, input PrepareInput) (CapabilityContribution, error) {
+	return CapabilityPack{Name: "computer-use", Resolve: func(_ context.Context, contextInput PrepareContext) (CapabilityContribution, error) {
+		input := contextInput.instructionInput()
 		enabled := input.ComputerUse && ComputerUseDefaultEnabled()
 		return CapabilityContribution{Enabled: enabled,
 			Skills:         []SkillSpec{{ID: "tutti/computer-use", Name: computerUseSkillName, Files: map[string]string{"SKILL.md": computerUseSkill(input)}}},
@@ -198,7 +202,7 @@ func resolveCapabilities(ctx context.Context, input PrepareInput, profile Deploy
 			return nil, fmt.Errorf("runtime preparation capability pack %q is duplicated", name)
 		}
 		packNames[name] = struct{}{}
-		contribution, err := pack.Resolve(ctx, input)
+		contribution, err := pack.Resolve(ctx, prepareContext(input))
 		if err != nil {
 			return nil, fmt.Errorf("resolve capability pack %s: %w", name, err)
 		}

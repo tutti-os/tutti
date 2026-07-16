@@ -93,6 +93,7 @@ export interface EngineIntentExpiredIntent {
 
 export type EngineIntent =
   | AttentionReadIntent
+  | CollaborationOperationsIntent
   | EngineCommandResultIntent
   | EngineConnectionChangedIntent
   | EngineExpiryCancelRequestedIntent
@@ -145,6 +146,7 @@ export type EngineInternalCommand =
 
 export type EngineExternalCommand =
   | AttentionReadCommand
+  | CollaborationOperationsCommand
   | EngineProbeCommand
   | EngineReconcileWorkspaceCommand
   | InteractionRespondCommand
@@ -194,6 +196,7 @@ export interface EngineRuntimeState {
 
 export interface AgentSessionEngineState {
   attentionReadState: AttentionReadState;
+  collaborationOperations: CollaborationOperationsState;
   engineRuntime: EngineRuntimeState;
   pendingIntents: PendingIntentsState;
   planDecisions: PlanDecisionState;
@@ -311,3 +314,8 @@ import type {
   ComposerOptionsIntent,
   ComposerOptionsState
 } from "./composerOptions.types.ts";
+import type {
+  CollaborationOperationsCommand,
+  CollaborationOperationsIntent,
+  CollaborationOperationsState
+} from "./collaborationOperations.types.ts";

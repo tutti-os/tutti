@@ -222,7 +222,13 @@ func (s *Service) Create(ctx context.Context, workspaceID string, input CreateSe
 		})
 		return Session{}, cleanupPrepared(errors.Join(err, closeErr))
 	}
-	s.registerPendingPlanFirstUse(workspaceID, session.ID, planResolution.Endpoint, input.AgentTargetID)
+	s.registerPendingPlanFirstUse(
+		workspaceID,
+		session.ID,
+		planResolution.ModelConfiguration.ModelPlanID,
+		planResolution.Endpoint,
+		input.AgentTargetID,
+	)
 	logAgentSubmitTrace("service.create.runtime_start_resolved", workspaceID, session.ID, input.Metadata, map[string]any{
 		"provider_runtime_status": session.Status,
 	})

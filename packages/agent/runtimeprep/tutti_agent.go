@@ -19,7 +19,7 @@ const (
 // tutti-agent provider. Account-token bootstrap remains a host responsibility
 // and can be injected through BeforePrepare.
 type TuttiAgentPreparer struct {
-	BeforePrepare func(context.Context, PrepareInput)
+	BeforePrepare func(context.Context, PrepareContext)
 }
 
 func (TuttiAgentPreparer) Provider() string {
@@ -30,7 +30,7 @@ func (p TuttiAgentPreparer) Prepare(ctx context.Context, input ProviderPrepareIn
 	home := filepath.Join(input.RuntimeRoot, "tutti-agent-home")
 	logRuntimePrepareTrace("runtime_prepare.tutti_agent.entered", input.PrepareInput, nil)
 	if p.BeforePrepare != nil {
-		p.BeforePrepare(ctx, input.PrepareInput)
+		p.BeforePrepare(ctx, prepareContext(input.PrepareInput))
 	}
 	if err := PrepareTuttiAgentHome(home, input.PrepareInput); err != nil {
 		return ProviderPrepareResult{}, err

@@ -38,3 +38,30 @@ export function useEngineSelector<TState, TSelected>(
     isEqual
   );
 }
+
+const EMPTY_OPTIONAL_ENGINE_SNAPSHOT = Object.freeze({});
+const EMPTY_OPTIONAL_ENGINE_STORE = {
+  getSnapshot: () => EMPTY_OPTIONAL_ENGINE_SNAPSHOT,
+  subscribe: () => () => {}
+};
+
+export function useOptionalEngineSelector<TState, TSelected>(
+  engine: EngineStateStore<TState> | null | undefined,
+  selector: (state: TState) => TSelected,
+  fallback: TSelected,
+  isEqual?: (a: TSelected, b: TSelected) => boolean
+): TSelected {
+  const store = (engine ?? EMPTY_OPTIONAL_ENGINE_STORE) as EngineStateStore<
+    TState | typeof EMPTY_OPTIONAL_ENGINE_SNAPSHOT
+  >;
+  return useSyncExternalStoreWithSelector(
+    store.subscribe,
+    store.getSnapshot,
+    store.getSnapshot,
+    (snapshot) =>
+      snapshot === EMPTY_OPTIONAL_ENGINE_SNAPSHOT
+        ? fallback
+        : selector(snapshot as TState),
+    isEqual
+  );
+}

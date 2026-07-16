@@ -1017,12 +1017,16 @@ export class WorkspaceAgentActivityService
   protected createEntry(workspaceId: string): WorkspaceAgentActivityEntry {
     return createWorkspaceAgentSessionEngineHost({
       activateSession: (input) => this.activateSession(input),
+      cancelCollaboration: (input) => this.cancelCollaboration(input),
       cancelTurn: (input) => this.cancelTurn(input),
       reconcileSession: (command) =>
         this.executeSessionReconcileCommand(command),
+      retryCollaboration: (input) => this.retryCollaboration(input),
       runtimeApi: this.dependencies.runtimeApi,
       sendInput: (input) => this.sendInput(input),
       submitInteractive: (input) => this.submitInteractive(input),
+      startAgentCollaboration: (input) => this.startAgentCollaboration(input),
+      setCollaborationAdoption: (input) => this.setCollaborationAdoption(input),
       submitPlanDecision: (input) => this.submitPlanDecision(input),
       subscribeSessionEvents: (workspaceId, listener) =>
         this.onSessionEvent(workspaceId, listener),
