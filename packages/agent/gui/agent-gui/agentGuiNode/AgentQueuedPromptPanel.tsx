@@ -538,53 +538,74 @@ export function AgentQueuedPromptPanel({
                 </div>
               </div>
               <div className={styles.composerQueuedPromptActions}>
-                <CanvasNodeGhostIconButton
-                  aria-label={labels.sendQueuedPromptNext}
-                  disabled={isDraining}
-                  onClick={() => onSendQueuedPromptNext(queuedPrompt.id)}
-                >
-                  <CanvasNodeGuideLinedIcon aria-hidden="true" />
-                </CanvasNodeGhostIconButton>
-                <CanvasNodeGhostIconButton
-                  aria-label={labels.deleteQueuedPrompt}
-                  disabled={isDraining}
-                  onClick={() => onRemoveQueuedPrompt(queuedPrompt.id)}
-                >
-                  <CanvasNodeTrashLinedIcon aria-hidden="true" />
-                </CanvasNodeGhostIconButton>
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <CanvasNodeGhostIconButton
-                      aria-label={labels.queuedPromptMoreActions}
-                      disabled={isDraining}
-                      stopsEventPropagation={false}
-                      onClick={(event) => event.stopPropagation()}
+                <TooltipProvider delayDuration={200}>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <CanvasNodeGhostIconButton
+                        aria-label={labels.sendQueuedPromptNext}
+                        disabled={isDraining}
+                        onClick={() => onSendQueuedPromptNext(queuedPrompt.id)}
+                      >
+                        <CanvasNodeGuideLinedIcon aria-hidden="true" />
+                      </CanvasNodeGhostIconButton>
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      {labels.sendQueuedPromptNext}
+                    </TooltipContent>
+                  </Tooltip>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <CanvasNodeGhostIconButton
+                        aria-label={labels.deleteQueuedPrompt}
+                        disabled={isDraining}
+                        onClick={() => onRemoveQueuedPrompt(queuedPrompt.id)}
+                      >
+                        <CanvasNodeTrashLinedIcon aria-hidden="true" />
+                      </CanvasNodeGhostIconButton>
+                    </TooltipTrigger>
+                    <TooltipContent>{labels.deleteQueuedPrompt}</TooltipContent>
+                  </Tooltip>
+                  <DropdownMenu>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <DropdownMenuTrigger asChild>
+                          <CanvasNodeGhostIconButton
+                            aria-label={labels.queuedPromptMoreActions}
+                            disabled={isDraining}
+                            stopsEventPropagation={false}
+                            onClick={(event) => event.stopPropagation()}
+                          >
+                            <CanvasNodeMoreLinedIcon aria-hidden="true" />
+                          </CanvasNodeGhostIconButton>
+                        </DropdownMenuTrigger>
+                      </TooltipTrigger>
+                      <TooltipContent>
+                        {labels.queuedPromptMoreActions}
+                      </TooltipContent>
+                    </Tooltip>
+                    <DropdownMenuContent
+                      align="end"
+                      className={styles.composerMenuContent}
+                      sideOffset={8}
                     >
-                      <CanvasNodeMoreLinedIcon aria-hidden="true" />
-                    </CanvasNodeGhostIconButton>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent
-                    align="end"
-                    className={styles.composerMenuContent}
-                    sideOffset={8}
-                  >
-                    <DropdownMenuItem
-                      className={styles.composerMenuItem}
-                      disabled={isDraining}
-                      onPointerDown={(event) => {
-                        handleEditQueuedPromptPointerDown(
-                          event,
-                          queuedPrompt.id
-                        );
-                      }}
-                      onSelect={() => {
-                        handleEditQueuedPromptSelect(queuedPrompt.id);
-                      }}
-                    >
-                      <span>{labels.editQueuedPrompt}</span>
-                    </DropdownMenuItem>
-                  </DropdownMenuContent>
-                </DropdownMenu>
+                      <DropdownMenuItem
+                        className={styles.composerMenuItem}
+                        disabled={isDraining}
+                        onPointerDown={(event) => {
+                          handleEditQueuedPromptPointerDown(
+                            event,
+                            queuedPrompt.id
+                          );
+                        }}
+                        onSelect={() => {
+                          handleEditQueuedPromptSelect(queuedPrompt.id);
+                        }}
+                      >
+                        <span>{labels.editQueuedPrompt}</span>
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                </TooltipProvider>
               </div>
             </div>
           );

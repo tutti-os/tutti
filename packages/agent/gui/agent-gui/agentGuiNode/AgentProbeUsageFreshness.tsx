@@ -101,7 +101,7 @@ export function AgentProbeUsageFreshness({
       type="button"
       data-testid={testId}
       data-state={isLoading ? "loading" : didFail ? "failed" : "idle"}
-      className={`nodrag inline-flex shrink-0 cursor-pointer items-center gap-1 rounded-[5px] px-1 py-0.5 text-[11px] leading-4 transition-colors hover:bg-[var(--transparency-hover)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--border-focus)] disabled:cursor-default disabled:opacity-70 disabled:hover:bg-transparent [-webkit-app-region:no-drag] ${stateClassName}`}
+      className={`nodrag inline-flex shrink-0 cursor-pointer items-center gap-1 rounded-[5px] px-1 py-0.5 text-[11px] leading-4 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--border-focus)] disabled:cursor-default disabled:opacity-70 [-webkit-app-region:no-drag] ${stateClassName}`}
       onClick={handleClick}
       disabled={isLoading || disabled}
       aria-label={labels.refreshAria}

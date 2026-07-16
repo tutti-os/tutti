@@ -200,6 +200,7 @@ export function AgentComposerView(input: Props): React.JSX.Element {
   const {
     activePromptTip,
     activePromptTipText,
+    composerStyle,
     inputShellStyle,
     promptInputAreaStyle,
     showEdgeGlow,
@@ -224,6 +225,7 @@ export function AgentComposerView(input: Props): React.JSX.Element {
       ref={input.composerRef}
       className={composerClassName}
       data-layout={layoutMode}
+      style={composerStyle}
       onSubmit={submit}
     >
       {fileDropOverlay}

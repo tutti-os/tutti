@@ -7553,10 +7553,14 @@ button.agent-gui-node__conversation-section-toggle:hover
   background: var(--agent-gui-accent-bg);
 }
 
+/* In dock layout a growing draft overhangs upward past the composer's top
+   edge (the dock only reserves the collapsed input height in flow), so the
+   floating panels anchored at bottom: 100% must be lifted by that overhang
+   (--agent-gui-composer-input-overflow) or the grown input covers them. */
 .agent-gui-node__composer-floating-prompt {
   position: absolute;
   right: 12px;
-  bottom: calc(100% + 8px);
+  bottom: calc(100% + 8px + var(--agent-gui-composer-input-overflow, 0px));
   left: 12px;
   z-index: 5;
 }
@@ -7564,7 +7568,7 @@ button.agent-gui-node__conversation-section-toggle:hover
 .agent-gui-node__composer-floating-prompt--queued {
   z-index: 1;
   right: 24px;
-  bottom: 100%;
+  bottom: calc(100% + var(--agent-gui-composer-input-overflow, 0px));
   left: 24px;
 }
 
@@ -7691,7 +7695,9 @@ button.agent-gui-node__conversation-section-toggle:hover
 }
 
 .agent-gui-node__composer[data-layout="dock"]
-  .agent-gui-node__composer-send-button {
+  .agent-gui-node__composer-send-button,
+.agent-gui-node__composer[data-layout="dock"]
+  .agent-gui-node__composer-stop-button {
   align-self: end;
 }
 
@@ -8257,9 +8263,39 @@ html[data-theme="light"] [data-message-center-item-id].agent-gui-edge-glow {
   white-space: nowrap;
 }
 
-.agent-gui-node__composer-queued-prompt-markdown p {
+/* Queued rows are single-line previews. Flatten every markdown block
+   (lists, code blocks, quotes, headings) to plain inline text — including
+   their box styling from the markdown renderer — so the row's nowrap +
+   overflow: hidden + "…" overlay can truncate instead of the blocks
+   stacking extra lines. Scoped under the text wrapper to outrank the
+   renderer's own [&_ol]/[&_pre]-style utilities. */
+.agent-gui-node__composer-queued-prompt-text
+  .agent-gui-node__composer-queued-prompt-markdown
+  :is(p, ul, ol, li, blockquote, pre, h1, h2, h3, h4, h5, h6) {
   display: inline;
   margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  font-size: inherit;
+  font-weight: inherit;
+  line-height: inherit;
+  white-space: nowrap;
+}
+
+.agent-gui-node__composer-queued-prompt-text
+  .agent-gui-node__composer-queued-prompt-markdown
+  pre
+  code {
+  white-space: nowrap;
+}
+
+/* Media, tables, rules, and explicit line breaks cannot collapse into one
+   text line — drop them from the preview entirely. */
+.agent-gui-node__composer-queued-prompt-text
+  .agent-gui-node__composer-queued-prompt-markdown
+  :is(img, video, table, hr, br, input) {
+  display: none;
 }
 
 .agent-gui-node__composer-queued-prompt-markdown
@@ -8810,6 +8846,12 @@ html[data-theme="light"] [data-message-center-item-id].agent-gui-edge-glow {
 
 .agent-gui-node__composer[data-layout="dock"] .agent-gui-node__composer-footer {
   position: relative;
+  /* The base rule's width: 100% keeps the parent's content width, so the
+     negative margins only shift the row left instead of widening it: the
+     right edge falls 24px short of the composer edge and strands the model
+     dropdown far from the send button above. width: auto lets
+     justify-self: stretch + the negative margins span the full row. */
+  width: auto;
   margin: 0 -12px -12px;
   padding: 0 14px 12px;
   background: var(--agent-gui-session-flow-background);

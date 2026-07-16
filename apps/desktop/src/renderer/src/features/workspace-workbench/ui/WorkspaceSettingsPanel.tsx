@@ -4136,14 +4136,23 @@ function WorkspaceGeneralSettingsSection({
                 onClick={() => onWorkspaceUiModeChange(mode)}
               >
                 <span className="flex min-w-0 flex-1 flex-col items-start gap-1">
-                  <span className="text-[13px] font-semibold leading-4">
-                    {mode === "agent"
-                      ? t(
-                          "workspace.settings.general.workspaceUiModeOptions.agentTitle"
-                        )
-                      : t(
-                          "workspace.settings.general.workspaceUiModeOptions.osTitle"
+                  <span className="flex min-w-0 items-center gap-1.5">
+                    <span className="text-[13px] font-semibold leading-4">
+                      {mode === "agent"
+                        ? t(
+                            "workspace.settings.general.workspaceUiModeOptions.agentTitle"
+                          )
+                        : t(
+                            "workspace.settings.general.workspaceUiModeOptions.osTitle"
+                          )}
+                    </span>
+                    {mode === "agent" ? (
+                      <span className="inline-flex h-4 shrink-0 items-center rounded-[4px] bg-[color-mix(in_srgb,var(--tutti-purple)_12%,transparent)] px-1.5 text-[10px] font-semibold leading-none text-[var(--tutti-purple)]">
+                        {t(
+                          "workspace.settings.general.workspaceUiModeOptions.agentBadge"
                         )}
+                      </span>
+                    ) : null}
                   </span>
                   <span className="text-[12px] leading-[1.3] text-[var(--text-secondary)]">
                     {mode === "agent"

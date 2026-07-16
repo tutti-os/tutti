@@ -302,6 +302,23 @@ export function useComposerLayout({
     isHeroLayout,
     paletteDraftPrompt
   ]);
+  const composerStyle = useMemo<CSSProperties | undefined>(
+    () =>
+      isHeroLayout
+        ? undefined
+        : ({
+            // The dock keeps only the collapsed 56px input row in flow; a
+            // growing draft overhangs upward past the composer's top edge.
+            // Floating panels anchored to that edge (queued prompts, the
+            // interactive prompt) read this var to stay above the grown input
+            // instead of being covered by it.
+            "--agent-gui-composer-input-overflow": `${Math.max(
+              0,
+              dockComposerInputHeight - DOCK_COMPOSER_INPUT_MIN_HEIGHT
+            )}px`
+          } as CSSProperties),
+    [dockComposerInputHeight, isHeroLayout]
+  );
   const inputShellStyle = useMemo<CSSProperties | undefined>(
     () =>
       showFileMentionPalette || showFloatingCommandMenu
@@ -334,6 +351,7 @@ export function useComposerLayout({
   return {
     activePromptTip,
     activePromptTipText,
+    composerStyle,
     inputShellStyle,
     promptInputAreaStyle,
     promptTipStyle,

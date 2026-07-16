@@ -146,6 +146,12 @@ Shared primitives should read as product infrastructure.
 - badges should separate identity, state, and metadata roles
 - status treatments should feel systematic and repeatable
 - avoid decorative badge proliferation
+- error and system-notice banners (conversation notices, failure cards,
+  degradation notices) always use the light-red danger surface: `--on-danger`
+  background, `--on-danger-hover` border, `--state-danger` accents
+- never use yellow/warning surfaces (`--state-warning`-tinted fills or
+  borders) for banner or notice boxes; reserve `--state-warning` for small
+  inline accents such as status dots, usage meters, and icon or text tints
 
 ### Icons
 

@@ -52,7 +52,7 @@ export const en = {
     availableTitle: "Update to New Version",
     badge: "update",
     checkingTitle: "Checking for updates",
-    downloadAction: "Download update",
+    downloadAction: "Update",
     downloadedTitle: "Ready to install",
     downloadingTitle: "Downloading {{percent}}",
     errorTitle: "Unable to check for updates",
@@ -143,7 +143,6 @@ export const en = {
       expandConversationRail: "Show sidebar",
       fallbackAgentLabel: "Agent",
       newConversation: "New session",
-      openDetachedWindow: "Open in detached window",
       openNewWindow: "Open new window",
       untitledConversation: "Untitled conversation",
       openSessionUnavailableDescription:
@@ -516,6 +515,7 @@ export const en = {
         workspaceUiModeLabel: "Window interaction mode",
         workspaceUiModeOptions: {
           agentTitle: "Standalone Agent window mode",
+          agentBadge: "Beta",
           agentDescription:
             "Launch directly into a standalone Agent window, with files, tools, and more opening in the right-side panel",
           osTitle: "Immersive OS mode",

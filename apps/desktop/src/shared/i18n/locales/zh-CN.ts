@@ -141,7 +141,6 @@ export const zhCN = {
       expandConversationRail: "显示侧边栏",
       fallbackAgentLabel: "Agent",
       newConversation: "新建会话",
-      openDetachedWindow: "独立agent窗口模式",
       openNewWindow: "打开新窗口",
       untitledConversation: "未命名对话",
       openSessionUnavailableDescription: "这个 Agent 会话已不存在或无法打开。",
@@ -491,6 +490,7 @@ export const zhCN = {
         workspaceUiModeLabel: "窗口交互模式",
         workspaceUiModeOptions: {
           agentTitle: "独立 Agent 窗口模式",
+          agentBadge: "Beta",
           agentDescription:
             "启动独立的 Agent 窗口，文件、工具等通过右侧面板打开",
           osTitle: "沉浸 OS 模式",

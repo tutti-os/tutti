@@ -465,7 +465,7 @@
 
 .workbench-dock-frame {
   --workbench-left-dock-bottom-inset: 24px;
-  --workbench-left-dock-left-inset: 4px;
+  --workbench-left-dock-left-inset: 0px;
   --workbench-left-dock-top-inset: 54px;
   position: absolute;
   right: 0;
@@ -1448,8 +1448,10 @@
   will-change: transform;
 }
 
+/* Grow magnified icons in place; growing from the left edge would push the
+   icon's hit area over windows sitting flush against the dock. */
 .desktop-dock[data-dock-placement="left"] .desktop-dock__icon-shell {
-  transform-origin: left center;
+  transform-origin: center;
 }
 
 .desktop-dock__slot[data-entry-state="disabled"] .desktop-dock__icon-shell,
@@ -1648,7 +1650,7 @@
 }
 
 .desktop-dock[data-dock-placement="left"] .desktop-dock__minimized-preview {
-  transform-origin: left center;
+  transform-origin: center;
 }
 
 .desktop-dock__minimized-preview-image {
