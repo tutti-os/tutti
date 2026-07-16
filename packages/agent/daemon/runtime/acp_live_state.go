@@ -2,6 +2,7 @@ package agentruntime
 
 import (
 	"encoding/json"
+	"sort"
 	"strconv"
 	"strings"
 )
@@ -415,6 +416,67 @@ func applyACPModelsResult(state *acpLiveState, raw json.RawMessage) {
 	applyACPConfigOptionDescriptors(state, descriptors)
 }
 
+func applyACPModesResult(state *acpLiveState, raw json.RawMessage) {
+	if state == nil || len(raw) == 0 {
+		return
+	}
+	var payload struct {
+		Modes *struct {
+			AvailableModes []struct {
+				Description string `json:"description"`
+				ID          string `json:"id"`
+				Name        string `json:"name"`
+			} `json:"availableModes"`
+			CurrentModeID string `json:"currentModeId"`
+		} `json:"modes"`
+	}
+	if err := json.Unmarshal(raw, &payload); err != nil || payload.Modes == nil {
+		return
+	}
+	options := make([]any, 0, len(payload.Modes.AvailableModes))
+	for _, mode := range payload.Modes.AvailableModes {
+		id := strings.TrimSpace(mode.ID)
+		if id == "" {
+			continue
+		}
+		label := strings.TrimSpace(mode.Name)
+		if label == "" {
+			label = id
+		}
+		option := map[string]any{"value": id, "label": label}
+		if description := strings.TrimSpace(mode.Description); description != "" {
+			option["description"] = description
+		}
+		options = append(options, option)
+	}
+	if len(options) == 0 {
+		return
+	}
+	current := strings.TrimSpace(payload.Modes.CurrentModeID)
+	descriptor := map[string]any{
+		"id":           "mode",
+		"name":         "Mode",
+		"currentValue": current,
+		"options":      options,
+	}
+	descriptors := cloneConfigOptionDescriptors(state.configOptionDescriptors)
+	replaced := false
+	for index := range descriptors {
+		if strings.TrimSpace(asString(descriptors[index]["id"])) == "mode" {
+			descriptors[index] = descriptor
+			replaced = true
+			break
+		}
+	}
+	if !replaced {
+		descriptors = append(descriptors, descriptor)
+	}
+	applyACPConfigOptionDescriptors(state, descriptors)
+	if current != "" {
+		state.currentMode = current
+	}
+}
+
 func applyACPConfigOptionDescriptors(state *acpLiveState, descriptors []map[string]any) {
 	if state == nil || len(descriptors) == 0 {
 		return
@@ -547,6 +609,114 @@ func cloneConfigOptionDescriptors(descriptors []map[string]any) []map[string]any
 	return out
 }
 
+func canonicalACPConfigForRuntimeContext(config map[string]any) map[string]any {
+	if len(config) == 0 {
+		return nil
+	}
+	out := make(map[string]any, len(config))
+	keys := make([]string, 0, len(config))
+	for key := range config {
+		keys = append(keys, key)
+	}
+	sort.SliceStable(keys, func(i, j int) bool {
+		leftPriority := acpConfigOptionCanonicalPriority(keys[i])
+		rightPriority := acpConfigOptionCanonicalPriority(keys[j])
+		if leftPriority != rightPriority {
+			return leftPriority < rightPriority
+		}
+		return keys[i] < keys[j]
+	})
+	for _, key := range keys {
+		value := config[key]
+		canonicalKey := canonicalACPConfigOptionID(key)
+		if _, exists := out[canonicalKey]; exists {
+			continue
+		}
+		out[canonicalKey] = clonePayloadValue(value)
+	}
+	return out
+}
+
+func canonicalACPConfigOptionDescriptorsForRuntimeContext(descriptors []map[string]any) []map[string]any {
+	if len(descriptors) == 0 {
+		return nil
+	}
+	type selectedDescriptor struct {
+		descriptor map[string]any
+		index      int
+		priority   int
+	}
+	selected := map[string]selectedDescriptor{}
+	for _, descriptor := range descriptors {
+		if len(descriptor) == 0 {
+			continue
+		}
+		cloned := clonePayloadDeep(descriptor)
+		rawID := strings.TrimSpace(asString(cloned["id"]))
+		canonicalID := canonicalACPConfigOptionID(rawID)
+		if canonicalID == "" {
+			continue
+		}
+		priority := acpConfigOptionCanonicalPriority(rawID)
+		index := len(selected)
+		if previous, ok := selected[canonicalID]; ok {
+			if previous.priority <= priority {
+				continue
+			}
+			index = previous.index
+		}
+		cloned["id"] = canonicalID
+		if rawID != "" && rawID != canonicalID {
+			cloned["runtimeId"] = rawID
+		}
+		selected[canonicalID] = selectedDescriptor{
+			descriptor: cloned,
+			index:      index,
+			priority:   priority,
+		}
+	}
+	values := make([]selectedDescriptor, 0, len(selected))
+	for _, value := range selected {
+		values = append(values, value)
+	}
+	sort.SliceStable(values, func(i, j int) bool {
+		if values[i].index != values[j].index {
+			return values[i].index < values[j].index
+		}
+		return asString(values[i].descriptor["id"]) < asString(values[j].descriptor["id"])
+	})
+	out := make([]map[string]any, 0, len(values))
+	for _, value := range values {
+		out = append(out, value.descriptor)
+	}
+	return out
+}
+
+func acpConfigOptionCanonicalPriority(id string) int {
+	switch strings.TrimSpace(id) {
+	case "reasoning_effort":
+		return 0
+	case "model_reasoning_effort":
+		return 1
+	case "effort":
+		return 2
+	case "thought_level":
+		return 3
+	default:
+		return 0
+	}
+}
+
+func canonicalACPConfigOptionID(id string) string {
+	id = strings.TrimSpace(id)
+	switch id {
+	case "model_reasoning_effort", "effort", "thought_level":
+		return "reasoning_effort"
+	default:
+		return id
+	}
+}
+
 func sessionSettingsWithACPConfig(
 	base *SessionSettings,
 	provider string,
@@ -564,6 +734,7 @@ func sessionSettingsWithACPConfig(
 		asString(config["reasoning_effort"]),
 		asString(config["model_reasoning_effort"]),
 		asString(config["effort"]),
+		asString(config["thought_level"]),
 	); reasoning != "" {
 		settings.ReasoningEffort = reasoning
 		hasSettings = true
@@ -580,4 +751,19 @@ func sessionSettingsWithACPConfig(
 		return nil
 	}
 	return cloneSessionSettings(settings)
+}
+
+func acpLiveStateReasoningConfigOptionID(state acpLiveStateSnapshot) string {
+	supported := make(map[string]bool, len(state.configOptionDescriptors))
+	for _, descriptor := range state.configOptionDescriptors {
+		if id := strings.TrimSpace(asString(descriptor["id"])); id != "" {
+			supported[id] = true
+		}
+	}
+	if len(supported) == 0 {
+		for id := range state.configOptions {
+			supported[id] = true
+		}
+	}
+	return acpReasoningConfigOptionID(supported)
 }

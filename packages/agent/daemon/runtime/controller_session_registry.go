@@ -103,6 +103,9 @@ func (c *Controller) adapter(provider string) Adapter {
 func (c *Controller) resolveAdapter(ctx context.Context, input AdapterResolveInput) (Adapter, error) {
 	provider := strings.TrimSpace(input.Provider)
 	if adapter := c.adapter(provider); adapter != nil {
+		if bound, ok := adapter.(ResolveInputBoundAdapter); ok && !bound.MatchesAdapterResolveInput(input) {
+			return nil, fmt.Errorf("cached adapter binding mismatch for %q", provider)
+		}
 		return adapter, nil
 	}
 	if c == nil || c.adapterResolver == nil {
@@ -118,6 +121,10 @@ func (c *Controller) resolveAdapter(ctx context.Context, input AdapterResolveInp
 	c.configureAdapter(adapter)
 	c.mu.Lock()
 	if existing := c.adapters[provider]; existing != nil {
+		if bound, ok := existing.(ResolveInputBoundAdapter); ok && !bound.MatchesAdapterResolveInput(input) {
+			c.mu.Unlock()
+			return nil, fmt.Errorf("cached adapter binding mismatch for %q", provider)
+		}
 		adapter = existing
 	} else {
 		c.adapters[provider] = adapter

@@ -94,6 +94,7 @@ func (s *Service) ensureRuntimeSessionResultLocked(
 		return s.controller().Resume(ctx, RuntimeResumeInput{
 			WorkspaceID:       strings.TrimSpace(persisted.WorkspaceID),
 			AgentSessionID:    strings.TrimSpace(persisted.ID),
+			AgentTargetID:     strings.TrimSpace(persisted.AgentTargetID),
 			Provider:          strings.TrimSpace(persisted.Provider),
 			ProviderSessionID: strings.TrimSpace(persisted.ProviderSessionID),
 			Cwd:               strings.TrimSpace(prepared.Cwd),

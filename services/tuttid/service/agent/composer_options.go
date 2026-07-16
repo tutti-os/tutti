@@ -5,7 +5,6 @@ import (
 	"strings"
 
 	"github.com/tutti-os/tutti/packages/agent/daemon/providerregistry"
-	runtimeprep "github.com/tutti-os/tutti/packages/agent/runtimeprep"
 	"github.com/tutti-os/tutti/services/tuttid/biz/agentprovider"
 	preferencesbiz "github.com/tutti-os/tutti/services/tuttid/biz/preferences"
 )
@@ -73,6 +72,7 @@ type ComposerOptionsInput struct {
 	Settings                 ComposerSettings
 	IncludeCapabilityCatalog *bool
 	providerTargetRef        map[string]any
+	extensionComposerProfile ExtensionComposerProfile
 }
 
 type ComposerSkillOption struct {
@@ -101,19 +101,32 @@ type ComposerCapabilityOption struct {
 	Invocation  string
 }
 
+type ComposerCommandOption struct {
+	Name        string
+	Description string
+	InputHint   string
+}
+
+type ComposerReasoningProfile struct {
+	DefaultValue string
+	Options      []ComposerConfigOptionValue
+}
+
 type ComposerOptions struct {
-	Provider           string
-	Capabilities       []string
-	ModelConfig        ComposerConfigOption
-	PermissionConfig   PermissionConfig
-	ReasoningConfig    ComposerConfigOption
-	SpeedConfig        ComposerConfigOption
-	EffectiveSettings  ComposerSettings
-	RuntimeContext     map[string]any
-	Skills             []ComposerSkillOption
-	CapabilityCatalog  []ComposerCapabilityOption
-	Behavior           providerregistry.ComposerBehaviorDescriptor
-	SlashCommandPolicy *providerregistry.SlashCommandPolicyDescriptor
+	Provider                string
+	Capabilities            []string
+	Commands                []ComposerCommandOption
+	ModelConfig             ComposerConfigOption
+	PermissionConfig        PermissionConfig
+	ReasoningConfig         ComposerConfigOption
+	ReasoningOptionsByModel map[string]ComposerReasoningProfile
+	SpeedConfig             ComposerConfigOption
+	EffectiveSettings       ComposerSettings
+	RuntimeContext          map[string]any
+	Skills                  []ComposerSkillOption
+	CapabilityCatalog       []ComposerCapabilityOption
+	Behavior                providerregistry.ComposerBehaviorDescriptor
+	SlashCommandPolicy      *providerregistry.SlashCommandPolicyDescriptor
 }
 
 func (s *Service) GetComposerOptions(ctx context.Context, input ComposerOptionsInput) (ComposerOptions, error) {
@@ -128,7 +141,7 @@ func (s *Service) GetComposerOptions(ctx context.Context, input ComposerOptionsI
 			return ComposerOptions{}, err
 		}
 		// The Agent Target is the authority for an extension-owned provider
-		// identity. Preserve open provider ids (for example acp:gemini) after the
+		// identity. Preserve an authorized open provider id after the
 		// target lookup has validated the launch binding; the closed built-in
 		// normalizer would otherwise erase them and reject target-scoped composer
 		// option requests before the runtime can start.
@@ -153,6 +166,17 @@ func (s *Service) GetComposerOptions(ctx context.Context, input ComposerOptionsI
 		settings.Model = strings.TrimSpace(input.Settings.Model)
 		settings.PermissionModeID = strings.TrimSpace(input.Settings.PermissionModeID)
 		settings.PlanMode = input.Settings.PlanMode
+		settings.ReasoningEffort = strings.TrimSpace(input.Settings.ReasoningEffort)
+		settings.Speed = strings.TrimSpace(input.Settings.Speed)
+	}
+	extensionProfile := ExtensionComposerProfile{}
+	if providerTargetRefKind(input.providerTargetRef) == "agent_extension" {
+		var err error
+		extensionProfile, err = s.extensionComposerProfileForLaunch(ctx, input.providerTargetRef)
+		if err != nil {
+			return ComposerOptions{}, err
+		}
+		input.extensionComposerProfile = extensionProfile
 	}
 	catalogProjection := composerModelCatalogProjection{}
 	catalogProjectionOK := false
@@ -182,6 +206,9 @@ func (s *Service) GetComposerOptions(ctx context.Context, input ComposerOptionsI
 	}
 	reasoningOptions := composerReasoningOptionValues(provider, effectiveSettings.ReasoningEffort, locale)
 	capabilities := composerProviderCapabilities(provider, s.computerUseAvailable())
+	if providerTargetRefKind(input.providerTargetRef) == "agent_extension" {
+		capabilities = nil
+	}
 	runtimeContext := map[string]any{
 		"capabilities":     capabilities,
 		"configOptions":    composerConfigOptions(provider, effectiveSettings, modelOptions, reasoningOptions),
@@ -190,14 +217,20 @@ func (s *Service) GetComposerOptions(ctx context.Context, input ComposerOptionsI
 		"reasoningEffort":  nullableString(effectiveSettings.ReasoningEffort),
 		"speed":            nullableString(effectiveSettings.Speed),
 	}
-	if commands := s.composerCommandsFromRunningSession(
-		input.WorkspaceID,
-		provider,
-		agentTargetID,
-	); len(commands) > 0 {
-		runtimeContext["availableCommands"] = commands
-	}
+	commands := []ComposerCommandOption{}
 	slashCommandPolicy := composerSlashCommandPolicy(provider)
+	if policy := composerSlashCommandPolicyFromExtensionProfile(extensionProfile); policy != nil {
+		slashCommandPolicy = policy
+	}
+	if providerTargetRefKind(input.providerTargetRef) != "agent_extension" {
+		if runtimeCommands := filterComposerCommandsBySlashPolicy(s.composerCommandsFromRunningSession(
+			input.WorkspaceID,
+			provider,
+			agentTargetID,
+		), slashCommandPolicy); len(runtimeCommands) > 0 {
+			commands = composerCommandOptions(runtimeCommands)
+		}
+	}
 	if agentTargetID != "" {
 		runtimeContext["agentTargetId"] = agentTargetID
 	}
@@ -212,11 +245,12 @@ func (s *Service) GetComposerOptions(ctx context.Context, input ComposerOptionsI
 	if len(capabilityErrors) > 0 {
 		runtimeContext["capabilityCatalogErrors"] = capabilityErrors
 	}
+	reasoningOptionsByModel := map[string]ComposerReasoningProfile{}
 	if catalogProjectionOK {
 		modelOptions = s.enrichModelCapabilityOptions(ctx, provider, catalogProjection.ModelOptions)
 		runtimeContext["modelCatalogSource"] = catalogProjection.Source
 		if len(catalogProjection.ReasoningProfiles) > 0 {
-			runtimeContext["modelReasoningOptionsByModel"] = composerModelReasoningOptionsRuntimeContext(
+			reasoningOptionsByModel = composerModelReasoningOptionsByModel(
 				provider,
 				locale,
 				catalogProjection.ReasoningProfiles,
@@ -240,18 +274,20 @@ func (s *Service) GetComposerOptions(ctx context.Context, input ComposerOptionsI
 		runtimeContext["configOptions"] = composerConfigOptions(provider, effectiveSettings, modelOptions, reasoningOptions)
 	}
 	options := ComposerOptions{
-		Provider:           provider,
-		Capabilities:       capabilities,
-		ModelConfig:        composerModelConfig(provider, effectiveSettings.Model, modelOptions),
-		PermissionConfig:   permissionConfig,
-		ReasoningConfig:    composerReasoningConfigFromOptions(provider, effectiveSettings.ReasoningEffort, reasoningOptions),
-		SpeedConfig:        composerSpeedConfig(provider, effectiveSettings.Speed, locale),
-		EffectiveSettings:  effectiveSettings,
-		RuntimeContext:     runtimeContext,
-		Skills:             skills,
-		CapabilityCatalog:  capabilityCatalog,
-		Behavior:           composerProfileFor(provider).Behavior,
-		SlashCommandPolicy: slashCommandPolicy,
+		Provider:                provider,
+		Capabilities:            capabilities,
+		Commands:                commands,
+		ModelConfig:             composerModelConfig(provider, effectiveSettings.Model, modelOptions),
+		PermissionConfig:        permissionConfig,
+		ReasoningConfig:         composerReasoningConfigFromOptions(provider, effectiveSettings.ReasoningEffort, reasoningOptions),
+		ReasoningOptionsByModel: reasoningOptionsByModel,
+		SpeedConfig:             composerSpeedConfig(provider, effectiveSettings.Speed, locale),
+		EffectiveSettings:       effectiveSettings,
+		RuntimeContext:          runtimeContext,
+		Skills:                  skills,
+		CapabilityCatalog:       capabilityCatalog,
+		Behavior:                composerProfileFor(provider).Behavior,
+		SlashCommandPolicy:      slashCommandPolicy,
 	}
 	if composerProfileFor(provider).LiveModelDiscovery ||
 		providerTargetRefKind(input.providerTargetRef) == "agent_extension" {
@@ -261,43 +297,15 @@ func (s *Service) GetComposerOptions(ctx context.Context, input ComposerOptionsI
 			return ComposerOptions{}, err
 		}
 	}
+	if providerTargetRefKind(input.providerTargetRef) == "agent_extension" {
+		options = s.mergeRuntimeComposerContextForComposerOptions(input, effectiveSettings, locale, extensionProfile, options)
+		options = applyExtensionComposerCapabilities(options, extensionProfile)
+	}
 	return options, nil
 }
 
 func composerOptionsIncludeCapabilityCatalog(input ComposerOptionsInput) bool {
 	return input.IncludeCapabilityCatalog == nil || *input.IncludeCapabilityCatalog
-}
-
-// composerProviderCapabilities is the conservative static default used to
-// render the composer before a session exists. Once a session is live the
-// adapter-reported typed session capabilities take precedence in the GUI.
-// Keys mirror packages/agent/daemon/runtime/capabilities.go.
-func composerProviderCapabilities(provider string, computerUseAvailable bool) []string {
-	if !composerProfileKnown(provider) {
-		return nil
-	}
-	profile := composerProfileFor(provider)
-	capabilities := append([]string(nil), profile.Capabilities...)
-	// Browser use is delivered as a default MCP server to every provider, so the
-	// composer advertises it up front when enabled. Live sessions re-report it
-	// from session env (runtime adapters), which takes precedence in the GUI.
-	if runtimeprep.BrowserUseDefaultEnabled() {
-		capabilities = append(capabilities, "browserUse")
-	}
-	// Computer use requires a local cua-driver before the composer advertises it
-	// up front. Live sessions re-report it from session env (runtime adapters),
-	// which takes precedence in the GUI.
-	if computerUseAvailable && runtimeprep.ComputerUseDefaultEnabled() {
-		capabilities = append(capabilities, "computerUse")
-	}
-	return capabilities
-}
-
-func (s *Service) computerUseAvailable() bool {
-	if s == nil || s.ComputerUseAvailable == nil {
-		return false
-	}
-	return s.ComputerUseAvailable()
 }
 
 func resolveComposerEffectiveSettings(
@@ -334,7 +342,7 @@ func resolveComposerEffectiveSettings(
 	if requested.Speed != "" {
 		effective.Speed = requested.Speed
 	}
-	return normalizeComposerSettingsForProvider(provider, effective)
+	return normalizeObservedComposerSettingsForProvider(provider, effective)
 }
 
 // composerDefaultSpeed returns the default speed tier for providers that expose
@@ -523,60 +531,11 @@ func clampComposerPlanModeForProvider(provider string, planMode bool) bool {
 	return planMode && composerProviderSupportsPlanMode(agentprovider.Normalize(provider))
 }
 
-// composerProviderSupportsPlanMode mirrors the static capability defaults so
-// the daemon clamps plan mode for providers that never negotiate it.
-func composerProviderSupportsPlanMode(provider string) bool {
-	return composerProviderSupportsCapability(provider, "planMode")
-}
-
-// clampComposerBrowserUseForProvider resolves the tri-state browser-use toggle
-// to a concrete bool. Browser use defaults on (nil request → on) but is forced
-// off for providers that never advertise the capability.
-func clampComposerBrowserUseForProvider(provider string, browserUse *bool) bool {
-	if !composerProviderSupportsBrowserUse(agentprovider.Normalize(provider)) {
-		return false
+func clampComposerPlanModeForLaunch(provider string, providerTargetRef map[string]any, planMode bool) bool {
+	if providerTargetRefKind(providerTargetRef) == "agent_extension" {
+		return planMode
 	}
-	// nil means "use the default" (on).
-	return browserUse == nil || *browserUse
-}
-
-// composerProviderSupportsBrowserUse mirrors the static capability defaults so
-// the daemon clamps browser use for providers that never advertise it.
-func composerProviderSupportsBrowserUse(provider string) bool {
-	return composerProviderSupportsCapability(provider, "browserUse")
-}
-
-// clampComposerComputerUseForProvider resolves the tri-state computer-use toggle
-// into a concrete bool, clamped for the provider.
-func clampComposerComputerUseForProvider(provider string, computerUse *bool) bool {
-	if !composerProviderSupportsComputerUse(agentprovider.Normalize(provider)) {
-		return false
-	}
-	return computerUse == nil || *computerUse
-}
-
-// composerProviderSupportsComputerUse mirrors the static capability defaults so
-// the service layer can gate computer use for providers that cannot use it.
-func composerProviderSupportsComputerUse(provider string) bool {
-	return composerProviderSupportsCapability(provider, "computerUse")
-}
-
-func composerProviderSupportsCapability(provider string, capability string) bool {
-	if !composerProfileKnown(provider) {
-		return false
-	}
-	if capability == "browserUse" {
-		return runtimeprep.BrowserUseDefaultEnabled()
-	}
-	if capability == "computerUse" {
-		return runtimeprep.ComputerUseDefaultEnabled()
-	}
-	for _, advertised := range composerProfileFor(provider).Capabilities {
-		if advertised == capability {
-			return true
-		}
-	}
-	return false
+	return clampComposerPlanModeForProvider(provider, planMode)
 }
 
 func normalizeComposerSettingsPointerForProvider(provider string, settings *ComposerSettings) *ComposerSettings {

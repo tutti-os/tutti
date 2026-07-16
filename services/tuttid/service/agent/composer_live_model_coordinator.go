@@ -22,17 +22,15 @@ func (s *Service) discoverLiveComposerModels(
 	input ComposerOptionsInput,
 	settings ComposerSettings,
 ) ([]ComposerConfigOptionValue, error) {
-	scope := newComposerLiveModelScope(input.Provider, input.WorkspaceID, input.Cwd, input.AgentTargetID)
+	scope := newComposerLiveModelScopeForInput(input, settings)
 	if scope.workspaceID == "" {
 		return nil, ErrInvalidArgument
 	}
 	cacheKey := scope.key()
 	resultCh := s.liveModelDiscoveryGroup.DoChan(cacheKey, func() (any, error) {
-		lifecycleCtx, cancelLifecycle := context.WithTimeout(context.WithoutCancel(ctx), liveModelDiscoveryLifecycleTimeout)
+		lifecycleCtx, cancelLifecycle := context.WithTimeout(ctx, liveModelDiscoveryLifecycleTimeout)
 		defer cancelLifecycle()
-		if newComposerLiveModelScope(
-			scope.provider, scope.workspaceID, scope.cwd, scope.agentTargetID,
-		).key() != cacheKey {
+		if newComposerLiveModelScopeForInput(input, settings).key() != cacheKey {
 			return nil, errLiveModelDiscoverySuperseded
 		}
 		invalidatedAtStart := s.liveModelInvalidatedAtUnixMSForProvider(scope.provider)

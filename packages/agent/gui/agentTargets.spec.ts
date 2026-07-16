@@ -329,7 +329,7 @@ describe("agent gui provider targets", () => {
     );
   });
 
-  it("resolves targets only within the selected real provider", () => {
+  it("does not replace a missing explicit target with a provider sibling", () => {
     const targets = normalizeAgentGUIAgentTargets([
       {
         targetId: "shared-agent:codex-1",
@@ -360,10 +360,7 @@ describe("agent gui provider targets", () => {
         provider: "codex",
         agentTargets: targets
       })
-    ).toMatchObject({
-      targetId: "shared-agent:codex-1",
-      provider: "codex"
-    });
+    ).toBeNull();
   });
 
   it("resolves agent target ids across providers before using provider fallback", () => {

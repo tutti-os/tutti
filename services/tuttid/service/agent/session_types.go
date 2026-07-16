@@ -129,7 +129,19 @@ type ExtensionComposerProfileResolver interface {
 }
 
 type ExtensionComposerProfile struct {
-	Skills *ExtensionComposerSkillProfile
+	Capabilities                     []string
+	ModelConfigOptionID              string
+	PermissionConfigOptionID         string
+	PermissionModes                  []ExtensionComposerPermissionMode
+	ReasoningConfigOptionID          string
+	Skills                           *ExtensionComposerSkillProfile
+	SlashCommands                    []ExtensionComposerSlashCommand
+	SlashCommandCatalogAuthoritative bool
+}
+
+type ExtensionComposerPermissionMode struct {
+	RuntimeID string
+	Semantic  PermissionModeSemantic
 }
 
 type ExtensionComposerSkillProfile struct {
@@ -141,6 +153,11 @@ type ExtensionComposerSkillProfile struct {
 type ExtensionComposerSkillRoot struct {
 	Scope string
 	Path  string
+}
+
+type ExtensionComposerSlashCommand struct {
+	Name   string
+	Effect string
 }
 
 type Session struct {

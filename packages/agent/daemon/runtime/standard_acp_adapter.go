@@ -66,13 +66,28 @@ type standardACPConfig struct {
 	projectCurrentMode             bool
 	startupDiagnostics             bool
 	toolAliases                    map[string]string
+	modelConfigOptionID            string
+	permissionConfigOptionID       string
+	reasoningConfigOptionID        string
+	restrictConfigOptions          bool
 	messageDiagnostics             *standardACPMessageDiagnostics
+	capabilities                   []string
+	agentTargetID                  string
+	installationID                 string
 }
 
 type standardACPMessageDiagnostics struct {
 	method         string
 	observeMessage func(standardACPConfig, Session, string, acpMessage, *acpTurnNormalizer)
 	observeUpdate  func(standardACPConfig, Session, string, string, map[string]any)
+}
+
+func (a *standardACPAdapter) MatchesAdapterResolveInput(input AdapterResolveInput) bool {
+	if a == nil || a.config.installationID == "" {
+		return true
+	}
+	installationID := strings.TrimSpace(asString(input.ProviderTargetRef["extensionInstallationId"]))
+	return strings.TrimSpace(input.AgentTargetID) == a.config.agentTargetID && installationID == a.config.installationID
 }
 
 type standardACPAdapter struct {

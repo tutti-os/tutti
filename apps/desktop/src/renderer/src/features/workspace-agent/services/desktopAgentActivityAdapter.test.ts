@@ -722,6 +722,8 @@ test("desktop agent activity adapter normalizes provider composer options", asyn
             tokenUsage: false
           },
           capabilityCatalog: [],
+          reasoningOptionsByModel: {},
+          commands: [],
           runtimeContext: {}
         };
       }
@@ -993,7 +995,7 @@ test("desktop agent activity adapter rejects unuploaded file prompt blocks", asy
   );
 });
 
-test("desktop agent activity adapter normalizes legacy runtime config options", async () => {
+test("desktop agent activity adapter ignores legacy runtime model and reasoning options", async () => {
   const adapter = createDesktopAgentActivityAdapter({
     tuttidClient: createTuttidClient({
       async getAgentProviderComposerOptions(provider) {
@@ -1002,6 +1004,7 @@ test("desktop agent activity adapter normalizes legacy runtime config options", 
           effectiveSettings: {},
           modelConfig: {
             configurable: true,
+            currentValue: "gpt-5.4",
             options: []
           },
           permissionConfig: {
@@ -1040,7 +1043,9 @@ test("desktop agent activity adapter normalizes legacy runtime config options", 
             prewarmDraftSession: false,
             planModeExclusiveWithPermissionMode: false
           },
-          capabilityCatalog: []
+          capabilityCatalog: [],
+          reasoningOptionsByModel: {},
+          commands: []
         };
       }
     }),
@@ -1052,14 +1057,10 @@ test("desktop agent activity adapter normalizes legacy runtime config options", 
     provider: "codex"
   });
 
-  assert.deepEqual(options.models, [
-    { value: "gpt-5.5", label: "GPT-5.5" },
-    { value: "gpt-5.4", label: "gpt-5.4" }
-  ]);
+  assert.deepEqual(options.models, [{ value: "gpt-5.4", label: "gpt-5.4" }]);
   assert.deepEqual(options.reasoningEfforts, [
-    { value: "medium", label: "中" },
-    { value: "ultra", label: "Ultra" },
-    { value: "high", label: "high" }
+    { value: "low", label: "Low" },
+    { value: "ultra", label: "Ultra" }
   ]);
 });
 
@@ -1075,14 +1076,14 @@ test("desktop agent activity adapter preserves ACP labels over synthesized confi
           reasoningConfig: {
             configurable: true,
             currentValue: "ultra",
-            options: []
+            options: [{ id: "ultra", value: "ultra", label: "ACP Ultra" }]
           },
           runtimeContext: {
             configOptions: [
               {
                 id: "reasoning_effort",
                 currentValue: "ultra",
-                options: [{ value: "ultra", name: "ACP Ultra" }]
+                options: [{ value: "ultra", name: "Legacy Ultra" }]
               }
             ]
           },
@@ -1094,7 +1095,9 @@ test("desktop agent activity adapter preserves ACP labels over synthesized confi
             prewarmDraftSession: false,
             planModeExclusiveWithPermissionMode: false
           },
-          capabilityCatalog: []
+          capabilityCatalog: [],
+          reasoningOptionsByModel: {},
+          commands: []
         };
       }
     }),
@@ -1149,7 +1152,9 @@ test("desktop agent activity adapter uses Claude draft live model list", async (
             prewarmDraftSession: false,
             planModeExclusiveWithPermissionMode: false
           },
-          capabilityCatalog: []
+          capabilityCatalog: [],
+          reasoningOptionsByModel: {},
+          commands: []
         };
       }
     }),
@@ -1176,7 +1181,7 @@ test("desktop agent activity adapter uses Claude draft live model list", async (
   assert.deepEqual(calls, [["claude-code", { settings: {}, workspaceId }]]);
 });
 
-test("desktop agent activity adapter flattens grouped runtime config options", async () => {
+test("desktop agent activity adapter preserves typed model metadata over legacy runtime options", async () => {
   const adapter = createDesktopAgentActivityAdapter({
     tuttidClient: createTuttidClient({
       async getAgentProviderComposerOptions(provider) {
@@ -1186,7 +1191,15 @@ test("desktop agent activity adapter flattens grouped runtime config options", a
           modelConfig: {
             configurable: true,
             currentValue: "sonnet",
-            options: []
+            options: [
+              {
+                id: "sonnet",
+                value: "sonnet",
+                label: "Sonnet",
+                description: "Best for everyday tasks",
+                supportsImageInput: true
+              }
+            ]
           },
           permissionConfig: { configurable: false, modes: [] },
           reasoningConfig: { configurable: false, options: [] },
@@ -1202,9 +1215,7 @@ test("desktop agent activity adapter flattens grouped runtime config options", a
                     options: [
                       {
                         value: "sonnet",
-                        name: "Sonnet",
-                        description: "Best for everyday tasks",
-                        supportsImageInput: true
+                        name: "Legacy Sonnet"
                       }
                     ]
                   }
@@ -1220,7 +1231,9 @@ test("desktop agent activity adapter flattens grouped runtime config options", a
             prewarmDraftSession: false,
             planModeExclusiveWithPermissionMode: false
           },
-          capabilityCatalog: []
+          capabilityCatalog: [],
+          reasoningOptionsByModel: {},
+          commands: []
         };
       }
     }),
@@ -1280,7 +1293,9 @@ test("desktop agent activity adapter loads Claude models via composer options re
             prewarmDraftSession: false,
             planModeExclusiveWithPermissionMode: false
           },
-          capabilityCatalog: []
+          capabilityCatalog: [],
+          reasoningOptionsByModel: {},
+          commands: []
         };
       }
     }),
@@ -1530,7 +1545,9 @@ test("desktop agent activity adapter loads Claude options without mutating draft
             prewarmDraftSession: false,
             planModeExclusiveWithPermissionMode: false
           },
-          capabilityCatalog: []
+          capabilityCatalog: [],
+          reasoningOptionsByModel: {},
+          commands: []
         };
       },
       async createWorkspaceAgentSession(_workspaceId, request) {
@@ -1625,7 +1642,9 @@ function createTuttidClient(
           prewarmDraftSession: false,
           planModeExclusiveWithPermissionMode: false
         },
-        capabilityCatalog: []
+        capabilityCatalog: [],
+        reasoningOptionsByModel: {},
+        commands: []
       };
     },
     async submitWorkspaceAgentInteractive() {

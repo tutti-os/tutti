@@ -13,6 +13,7 @@ import (
 	"time"
 
 	agentsessionstore "github.com/tutti-os/tutti/packages/agent/daemon/activity"
+	"github.com/tutti-os/tutti/packages/agent/daemon/providerregistry"
 	"github.com/tutti-os/tutti/packages/agent/daemon/titletext"
 	runtimeprep "github.com/tutti-os/tutti/packages/agent/runtimeprep"
 	agentactivitybiz "github.com/tutti-os/tutti/services/tuttid/biz/agentactivity"
@@ -2757,55 +2758,178 @@ func TestServiceGetComposerOptionsResolvesProviderFromAgentTargetID(t *testing.T
 	}
 }
 
-func TestServiceGetComposerOptionsPreservesExtensionProviderFromAgentTargetID(t *testing.T) {
+func TestServiceGetComposerOptionsPreservesGenericExtensionTargetAndProjectsSignedLiveComposerData(t *testing.T) {
 	runtime := newFakeRuntime()
 	runtime.startHook = func(input RuntimeStartInput, session ProviderRuntimeSession) ProviderRuntimeSession {
 		if input.Visible != nil && !*input.Visible {
-			session.RuntimeContext = map[string]any{
+			runtimeContext := clonePayload(session.RuntimeContext)
+			for key, value := range map[string]any{
 				"configOptions": []any{
 					map[string]any{
-						"id": "model",
+						"currentValue": "example-pro",
+						"id":           "model-choice",
 						"options": []any{
-							map[string]any{"value": "gemini-2.5-pro", "name": "Gemini 2.5 Pro"},
+							map[string]any{"value": "example-pro", "name": "Example Pro"},
+						},
+					},
+					map[string]any{
+						"currentValue": "default",
+						"id":           "approval-mode",
+						"options": []any{
+							map[string]any{"value": "default", "name": "Default"},
+							map[string]any{"value": "acceptEdits", "name": "Accept edits"},
+							map[string]any{"value": "auto", "name": "Auto"},
+							map[string]any{"value": "dontAsk", "name": "Don't ask"},
+							map[string]any{"value": "bypassPermissions", "name": "Bypass permissions"},
+							map[string]any{"value": "fullAccess", "name": "Full access"},
+							map[string]any{"value": "plan", "name": "Plan"},
+						},
+					},
+					map[string]any{
+						"currentValue": "enabled",
+						"id":           "reasoning_effort",
+						"runtimeId":    "thought_level",
+						"options": []any{
+							map[string]any{"value": "disabled", "name": "Off"},
+							map[string]any{"value": "enabled", "name": "On"},
+							map[string]any{"value": "deep", "name": "Deep"},
+						},
+					},
+					map[string]any{
+						"currentValue": "false",
+						"id":           "sandbox",
+						"options": []any{
+							map[string]any{"value": "false", "name": "Off"},
+							map[string]any{"value": "true", "name": "On"},
 						},
 					},
 				},
+				"capabilities": []any{"compact", "compact", "planMode", "unknown"},
+				"availableCommands": []any{
+					map[string]any{"name": "compact", "description": "Compact history", "inputHint": "optional focus"},
+					map[string]any{"name": "status", "description": "Show status"},
+					map[string]any{"name": "goal", "description": "Set goal"},
+					map[string]any{"name": "plan", "description": "Toggle plan"},
+					map[string]any{"name": "review", "description": "Review code"},
+					map[string]any{"name": "effort", "description": "Set thinking effort"},
+				},
+			} {
+				runtimeContext[key] = value
 			}
+			session.RuntimeContext = runtimeContext
 		}
 		return session
 	}
 	service := newIsolatedAgentService(runtime)
 	service.AgentTargetStore = fakeAgentTargetStore{targets: map[string]agenttargetbiz.Target{
-		"extension:gemini": {
-			ID:            "extension:gemini",
-			Provider:      "acp:gemini",
-			LaunchRefJSON: `{"type":"agent_extension","extensionInstallationId":"gemini@1.0.0"}`,
-			Name:          "Gemini CLI",
+		"extension:example": {
+			ID:            "extension:example",
+			Provider:      "acp:example",
+			LaunchRefJSON: `{"type":"agent_extension","extensionInstallationId":"example@1.0.0"}`,
+			Name:          "Example Agent",
 			Enabled:       true,
 			Source:        agenttargetbiz.SourceSystem,
 		},
 	}}
 	service.CapabilityLister = &recordingComposerCapabilityLister{}
+	service.ExtensionComposerProfiles = extensionComposerProfileResolverStub{
+		profile: ExtensionComposerProfile{
+			Capabilities:             []string{"compact", "compact", "planMode", "unknown"},
+			ModelConfigOptionID:      "model-choice",
+			PermissionConfigOptionID: "approval-mode",
+			ReasoningConfigOptionID:  "thought_level",
+			PermissionModes: []ExtensionComposerPermissionMode{
+				{RuntimeID: "default", Semantic: PermissionModeSemanticAskBeforeWrite},
+				{RuntimeID: "acceptEdits", Semantic: PermissionModeSemanticAcceptEdits},
+				{RuntimeID: "auto", Semantic: PermissionModeSemanticAuto},
+				{RuntimeID: "dontAsk", Semantic: PermissionModeSemanticLockedDown},
+				{RuntimeID: "bypassPermissions", Semantic: PermissionModeSemanticFullAccess},
+				{RuntimeID: "fullAccess", Semantic: PermissionModeSemanticFullAccess},
+			},
+			SlashCommandCatalogAuthoritative: true,
+			SlashCommands: []ExtensionComposerSlashCommand{
+				{Name: "compact", Effect: string(providerregistry.SlashCommandEffectSubmitImmediate)},
+				{Name: "status", Effect: string(providerregistry.SlashCommandEffectShowStatus)},
+				{Name: "goal", Effect: string(providerregistry.SlashCommandEffectActivateGoalMode)},
+				{Name: "plan", Effect: string(providerregistry.SlashCommandEffectTogglePlanMode)},
+			},
+		},
+	}
 
 	options, err := service.GetComposerOptions(context.Background(), ComposerOptionsInput{
-		AgentTargetID: "extension:gemini",
-		Provider:      "acp:gemini",
+		AgentTargetID: "extension:example",
+		Provider:      "acp:example",
 		WorkspaceID:   "workspace-1",
+		Cwd:           t.TempDir(),
+		Settings: ComposerSettings{
+			PermissionModeID: "ask-before-write",
+			ReasoningEffort:  "deep",
+		},
 	})
 	if err != nil {
 		t.Fatalf("GetComposerOptions returned error: %v", err)
 	}
-	if options.Provider != "acp:gemini" {
-		t.Fatalf("provider = %q, want acp:gemini", options.Provider)
+	if options.Provider != "acp:example" {
+		t.Fatalf("provider = %q, want acp:example", options.Provider)
 	}
-	if options.RuntimeContext["agentTargetId"] != "extension:gemini" {
-		t.Fatalf("runtimeContext agentTargetId = %#v, want extension:gemini", options.RuntimeContext["agentTargetId"])
+	if options.RuntimeContext["agentTargetId"] != "extension:example" {
+		t.Fatalf("runtimeContext agentTargetId = %#v, want extension:example", options.RuntimeContext["agentTargetId"])
 	}
-	if !options.ModelConfig.Configurable || len(options.ModelConfig.Options) != 1 || options.ModelConfig.Options[0].Value != "gemini-2.5-pro" {
+	if !options.ModelConfig.Configurable || len(options.ModelConfig.Options) != 1 || options.ModelConfig.Options[0].Value != "example-pro" {
 		t.Fatalf("modelConfig = %#v, want live extension model options", options.ModelConfig)
+	}
+	if !options.PermissionConfig.Configurable ||
+		options.PermissionConfig.DefaultValue != "ask-before-write" ||
+		len(options.PermissionConfig.Modes) != 5 ||
+		options.PermissionConfig.Modes[1].Semantic != PermissionModeSemanticAcceptEdits ||
+		options.PermissionConfig.Modes[4].Semantic != PermissionModeSemanticFullAccess {
+		t.Fatalf("permissionConfig = %#v, want runtime extension permission modes", options.PermissionConfig)
+	}
+	permissionModeIDs := make([]string, 0, len(options.PermissionConfig.Modes))
+	for _, mode := range options.PermissionConfig.Modes {
+		permissionModeIDs = append(permissionModeIDs, mode.ID)
+	}
+	if !slices.Equal(permissionModeIDs, []string{"ask-before-write", "accept-edits", "auto", "locked-down", "full-access"}) {
+		t.Fatalf("permission mode ids = %#v, want semantic representatives", permissionModeIDs)
+	}
+	if !options.ReasoningConfig.Configurable ||
+		options.ReasoningConfig.CurrentValue != "enabled" ||
+		len(options.ReasoningConfig.Options) != 3 ||
+		options.ReasoningConfig.Options[2].Value != "deep" {
+		t.Fatalf("reasoningConfig = %#v, want runtime extension thought_level options", options.ReasoningConfig)
+	}
+	if !slices.Equal(options.Capabilities, []string{"compact", "planMode"}) {
+		t.Fatalf("capabilities = %#v, want deduplicated signed/live known capabilities", options.Capabilities)
+	}
+	if options.SlashCommandPolicy == nil ||
+		!options.SlashCommandPolicy.CommandCatalogAuthoritative ||
+		!slices.Equal(options.SlashCommandPolicy.FallbackCommands, []string{"compact", "status", "goal", "plan"}) ||
+		len(options.SlashCommandPolicy.CommandEffects) != 4 ||
+		options.SlashCommandPolicy.CommandEffects[2].Effect != providerregistry.SlashCommandEffectActivateGoalMode {
+		t.Fatalf("slashCommandPolicy = %#v, want extension slash command profile", options.SlashCommandPolicy)
+	}
+	commands := options.Commands
+	if len(commands) != 4 || commands[0].Name != "compact" || commands[0].Description != "Compact history" || commands[0].InputHint != "optional focus" || commands[3].Name != "plan" {
+		t.Fatalf("commands = %#v, want filtered runtime commands", commands)
+	}
+	configOptions, ok := options.RuntimeContext["configOptions"].([]map[string]any)
+	if !ok || len(configOptions) != 5 ||
+		configOptions[0]["id"] != "model" ||
+		configOptions[1]["id"] != "model-choice" ||
+		configOptions[2]["id"] != "approval-mode" ||
+		configOptions[3]["id"] != "reasoning_effort" ||
+		configOptions[3]["runtimeId"] != "thought_level" ||
+		configOptions[4]["id"] != "sandbox" {
+		t.Fatalf("configOptions = %#v, want model + runtime extension config options", options.RuntimeContext["configOptions"])
 	}
 	if len(runtime.startCalls) != 1 || runtime.startCalls[0].ProviderTargetRef["kind"] != "agent_extension" {
 		t.Fatalf("runtime start calls = %#v, want one target-scoped extension discovery", runtime.startCalls)
+	}
+	if runtime.startCalls[0].PermissionModeID != "ask-before-write" || runtime.startCalls[0].ReasoningEffort != "deep" {
+		t.Fatalf("runtime start settings = %#v, want signed semantic permission and requested reasoning", runtime.startCalls[0])
+	}
+	if len(runtime.closeCalls) != 1 || len(runtime.sessions) != 0 {
+		t.Fatalf("runtime cleanup = calls %#v sessions %#v, want hidden discovery closed immediately", runtime.closeCalls, runtime.sessions)
 	}
 }
 
@@ -3001,12 +3125,9 @@ func TestServiceGetsComposerOptionsFromCodexModelCatalog(t *testing.T) {
 	if options.RuntimeContext["modelCatalogSource"] != "codex-cli" {
 		t.Fatalf("modelCatalogSource = %#v, want codex-cli", options.RuntimeContext["modelCatalogSource"])
 	}
-	reasoningProfiles, ok := options.RuntimeContext["modelReasoningOptionsByModel"].(map[string]any)
-	if !ok {
-		t.Fatalf("modelReasoningOptionsByModel = %#v", options.RuntimeContext["modelReasoningOptionsByModel"])
-	}
-	gpt5Reasoning, ok := reasoningProfiles["gpt-5"].(map[string]any)
-	if !ok || gpt5Reasoning["defaultValue"] != "minimal" {
+	reasoningProfiles := options.ReasoningOptionsByModel
+	gpt5Reasoning, ok := reasoningProfiles["gpt-5"]
+	if !ok || gpt5Reasoning.DefaultValue != "minimal" {
 		t.Fatalf("gpt-5 reasoning profile = %#v", reasoningProfiles["gpt-5"])
 	}
 	if len(runtime.sessions) != 0 {
@@ -3120,20 +3241,17 @@ func TestServiceGetsComposerOptionsFromOpenCodeModelCatalogWithReasoning(t *test
 	if !ok || len(modelOptions) == 0 || modelOptions[0]["supportsImageInput"] != true {
 		t.Fatalf("model options = %#v, want supportsImageInput true", configOptions[0]["options"])
 	}
-	profiles, ok := options.RuntimeContext["modelReasoningOptionsByModel"].(map[string]any)
-	if !ok {
-		t.Fatalf("model reasoning profiles = %#v", options.RuntimeContext["modelReasoningOptionsByModel"])
-	}
-	sparkProfile, ok := profiles["openai/gpt-5.3-codex-spark"].(map[string]any)
-	if !ok || sparkProfile["defaultValue"] != "low" {
+	profiles := options.ReasoningOptionsByModel
+	sparkProfile, ok := profiles["openai/gpt-5.3-codex-spark"]
+	if !ok || sparkProfile.DefaultValue != "low" {
 		t.Fatalf("spark reasoning profile = %#v", sparkProfile)
 	}
-	bigPickleProfile, ok := profiles["opencode/big-pickle"].(map[string]any)
+	bigPickleProfile, ok := profiles["opencode/big-pickle"]
 	if !ok {
 		t.Fatalf("Big Pickle reasoning profile = %#v", profiles["opencode/big-pickle"])
 	}
-	if reasoningOptions, ok := bigPickleProfile["options"].([]map[string]string); !ok || len(reasoningOptions) != 0 {
-		t.Fatalf("Big Pickle reasoning options = %#v, want empty", bigPickleProfile["options"])
+	if len(bigPickleProfile.Options) != 0 {
+		t.Fatalf("Big Pickle reasoning options = %#v, want empty", bigPickleProfile.Options)
 	}
 	if options.RuntimeContext["modelCatalogSource"] != "opencode-cli" {
 		t.Fatalf("modelCatalogSource = %#v, want opencode-cli", options.RuntimeContext["modelCatalogSource"])
@@ -3241,14 +3359,10 @@ func TestServiceGetsComposerOptionsPreservesCodexModelCatalogReasoningEffort(t *
 	if !slices.Equal(values, []string{"low", "medium", "high", "xhigh", "max"}) {
 		t.Fatalf("reasoningConfig values = %#v, want selected Luna model capabilities", values)
 	}
-	profiles, ok := options.RuntimeContext["modelReasoningOptionsByModel"].(map[string]any)
-	if !ok {
-		t.Fatalf("modelReasoningOptionsByModel = %#v", options.RuntimeContext["modelReasoningOptionsByModel"])
-	}
-	solProfile := profiles["gpt-5.6-sol"].(map[string]any)
-	lunaProfile := profiles["gpt-5.6-luna"].(map[string]any)
-	if len(solProfile["options"].([]map[string]string)) != 2 ||
-		len(lunaProfile["options"].([]map[string]string)) != 5 {
+	profiles := options.ReasoningOptionsByModel
+	solProfile := profiles["gpt-5.6-sol"]
+	lunaProfile := profiles["gpt-5.6-luna"]
+	if len(solProfile.Options) != 2 || len(lunaProfile.Options) != 5 {
 		t.Fatalf("reasoning profiles = %#v, want model-specific option counts", profiles)
 	}
 }
@@ -3281,17 +3395,13 @@ func TestServiceGetsComposerOptionsPreservesAdvertisedEmptyReasoningEfforts(t *t
 	if options.EffectiveSettings.ReasoningEffort != "" || len(options.ReasoningConfig.Options) != 0 {
 		t.Fatalf("reasoningConfig = %#v, want authoritative empty options", options.ReasoningConfig)
 	}
-	profiles, ok := options.RuntimeContext["modelReasoningOptionsByModel"].(map[string]any)
-	if !ok {
-		t.Fatalf("modelReasoningOptionsByModel = %#v", options.RuntimeContext["modelReasoningOptionsByModel"])
-	}
-	profile, ok := profiles["no-reasoning"].(map[string]any)
+	profiles := options.ReasoningOptionsByModel
+	profile, ok := profiles["no-reasoning"]
 	if !ok {
 		t.Fatalf("no-reasoning profile = %#v", profiles["no-reasoning"])
 	}
-	profileOptions, ok := profile["options"].([]map[string]string)
-	if !ok || len(profileOptions) != 0 {
-		t.Fatalf("no-reasoning profile options = %#v, want empty", profile["options"])
+	if len(profile.Options) != 0 {
+		t.Fatalf("no-reasoning profile options = %#v, want empty", profile.Options)
 	}
 }
 

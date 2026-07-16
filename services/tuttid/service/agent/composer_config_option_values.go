@@ -32,9 +32,8 @@ func composerConfigOptionValuesToRuntimeModelOptions(options []ComposerConfigOpt
 			"name":  label,
 			"value": value,
 		}
-		// Carry the per-model description through to RuntimeContext. The desktop
-		// composer projection prefers this live model list over ModelConfig.Options,
-		// so dropping the description here removes the model hover detail.
+		// Preserve descriptions in the internal runtime snapshot so a later
+		// typed ModelConfig projection can retain model hover detail.
 		if description := strings.TrimSpace(option.Description); description != "" {
 			entry["description"] = description
 		}

@@ -15,80 +15,37 @@ export function agentActivityComposerOptionsFromTuttidResult(
 ): AgentActivityComposerOptions {
   const result = recordValue(value);
   const runtimeContext = recordValue(result.runtimeContext);
-  const rawConfigOptions = Array.isArray(runtimeContext.configOptions)
-    ? runtimeContext.configOptions
-    : [];
   const modelConfig = recordValue(result.modelConfig);
   const reasoningConfig = recordValue(result.reasoningConfig);
   const speedConfig = recordValue(result.speedConfig);
   const effectiveSettings = composerSettingsFromValue(result.effectiveSettings);
   const modelsFromConfig = settingOptionsFromComposerConfig(modelConfig);
-  // The live agent's advertised model list reflects what the running session
-  // can actually use, so it takes precedence when present.
-  const modelsFromLiveConfig = settingOptionsFromConfigOption(
-    rawConfigOptions,
-    ["model"]
-  );
   const reasoningEffortsFromConfig =
     settingOptionsFromComposerConfig(reasoningConfig);
-  const reasoningEffortsFromLiveConfig = settingOptionsFromConfigOption(
-    rawConfigOptions,
-    ["reasoning_effort", "model_reasoning_effort", "effort"]
-  );
   const speedsFromConfig = settingOptionsFromComposerConfig(speedConfig);
-  const speedsFromLiveConfig = settingOptionsFromConfigOption(
-    rawConfigOptions,
-    ["service_tier", "speed", "fast"]
-  );
   const skillsFromResult = skillOptionsFromValue(result.skills);
-  const skillsFromRuntimeContext = skillOptionsFromValue(runtimeContext.skills);
-  const capabilitiesFromResult = capabilityOptionsFromValue(
+  const capabilityCatalog = capabilityOptionsFromValue(
     result.capabilityCatalog
   );
-  const capabilitiesFromRuntimeContext = capabilityOptionsFromValue(
-    runtimeContext.capabilityCatalog
-  );
-  const capabilityCatalog =
-    capabilitiesFromResult.length > 0
-      ? capabilitiesFromResult
-      : capabilitiesFromRuntimeContext;
   return {
     provider: normalizeText(result.provider) ?? provider,
     capabilities: sessionCapabilitiesFromValue(result.capabilities),
-    models:
-      modelsFromLiveConfig.length > 0 ? modelsFromLiveConfig : modelsFromConfig,
-    reasoningEfforts:
-      reasoningEffortsFromLiveConfig.length > 0
-        ? settingOptionsWithLocalizedPresentation(
-            reasoningEffortsFromLiveConfig,
-            reasoningEffortsFromConfig
-          )
-        : reasoningEffortsFromConfig,
+    models: modelsFromConfig,
+    reasoningEfforts: reasoningEffortsFromConfig,
     reasoningOptionsByModel: reasoningOptionsByModelFromValue(
-      runtimeContext.modelReasoningOptionsByModel
+      result.reasoningOptionsByModel
     ),
-    speeds:
-      speedsFromConfig.length > 0 ? speedsFromConfig : speedsFromLiveConfig,
-    modelConfigurable:
-      modelConfig.configurable === true ||
-      (modelConfig.configurable === undefined &&
-        modelsFromLiveConfig.length > 0),
-    reasoningConfigurable:
-      reasoningConfig.configurable === true ||
-      (reasoningConfig.configurable === undefined &&
-        reasoningEffortsFromLiveConfig.length > 0),
-    speedConfigurable:
-      speedConfig.configurable === true ||
-      (speedConfig.configurable === undefined &&
-        speedsFromLiveConfig.length > 0),
+    speeds: speedsFromConfig,
+    modelConfigurable: modelConfig.configurable === true,
+    reasoningConfigurable: reasoningConfig.configurable === true,
+    speedConfigurable: speedConfig.configurable === true,
     effectiveSettings,
     permissionConfig: permissionConfigFromValue(result.permissionConfig),
     draftAgentSessionId: normalizeText(runtimeContext.draftAgentSessionId),
     modelOptionsLoading:
       recordValue(runtimeContext.appServerStartup).models === "loading",
-    skills:
-      skillsFromResult.length > 0 ? skillsFromResult : skillsFromRuntimeContext,
-    commands: commandOptionsFromValue(runtimeContext.availableCommands),
+    skills: skillsFromResult,
+    commands: commandOptionsFromValue(result.commands),
     capabilityCatalog,
     behavior: composerBehaviorFromValue(result.behavior),
     slashCommandPolicy: slashCommandPolicyFromValue(result.slashCommandPolicy),
@@ -118,34 +75,6 @@ function commandOptionsFromValue(value: unknown) {
     });
   }
   return commands;
-}
-
-function settingOptionsWithLocalizedPresentation(
-  options: AgentActivityComposerSettingOption[],
-  localizedOptions: AgentActivityComposerSettingOption[]
-): AgentActivityComposerSettingOption[] {
-  if (options.length === 0 || localizedOptions.length === 0) {
-    return options;
-  }
-  const localizedByValue = new Map(
-    localizedOptions.map((option) => [option.value, option] as const)
-  );
-  return options.map((option) => {
-    const localized = localizedByValue.get(option.value);
-    if (!localized) {
-      return option;
-    }
-    const localizedOption = {
-      ...option,
-      label:
-        localized.label !== localized.value || option.label === option.value
-          ? localized.label
-          : option.label
-    };
-    return localized.description
-      ? { ...localizedOption, description: localized.description }
-      : localizedOption;
-  });
 }
 
 function sessionCapabilitiesFromValue(
@@ -291,29 +220,6 @@ function settingOptionsFromComposerConfig(
   });
   const currentValue = normalizeText(
     config.currentValue ?? config.current_value ?? config.defaultValue
-  );
-  return appendCurrentOption(options, currentValue);
-}
-
-function settingOptionsFromConfigOption(
-  rawConfigOptions: unknown[],
-  ids: readonly string[]
-): AgentActivityComposerSettingOption[] {
-  const idSet = new Set(ids);
-  const configOption =
-    rawConfigOptions.map(recordValue).find((option) => {
-      const id = normalizeText(option.id);
-      return id ? idSet.has(id) : false;
-    }) ?? null;
-  if (!configOption) {
-    return [];
-  }
-  const options = settingOptionsFromRawOptions(configOption.options, {
-    labelKeys: ["name", "label", "displayName"],
-    valueKeys: ["value", "id"]
-  });
-  const currentValue = normalizeText(
-    configOption.currentValue ?? configOption.current_value
   );
   return appendCurrentOption(options, currentValue);
 }

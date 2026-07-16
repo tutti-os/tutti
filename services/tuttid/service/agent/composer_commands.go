@@ -116,3 +116,15 @@ func cloneComposerCommands(commands []map[string]any) []map[string]any {
 	}
 	return result
 }
+
+func composerCommandOptions(commands []map[string]any) []ComposerCommandOption {
+	result := make([]ComposerCommandOption, 0, len(commands))
+	for _, command := range cloneComposerCommands(commands) {
+		result = append(result, ComposerCommandOption{
+			Name:        strings.TrimSpace(stringFromAny(command["name"])),
+			Description: strings.TrimSpace(stringFromAny(command["description"])),
+			InputHint:   strings.TrimSpace(stringFromAny(command["inputHint"])),
+		})
+	}
+	return result
+}

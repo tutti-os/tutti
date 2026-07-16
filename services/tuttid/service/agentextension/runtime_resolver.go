@@ -15,6 +15,18 @@ type RuntimeResolver struct {
 	Host      agentruntime.HostMetadata
 }
 
+type RuntimeBinding struct {
+	Installation             Installation
+	Command                  []string
+	ToolAliases              map[string]string
+	ModelConfigOptionID      string
+	PermissionConfigOptionID string
+	ReasoningConfigOptionID  string
+	PermissionModes          map[string]string
+	PlanModeRuntimeID        string
+	Capabilities             []string
+}
+
 func (r RuntimeResolver) ResolveAdapter(ctx context.Context, input agentruntime.AdapterResolveInput) (agentruntime.Adapter, error) {
 	if r.Manager == nil || r.Transport == nil {
 		return nil, errors.New("agent extension runtime resolver is not configured")
@@ -35,13 +47,20 @@ func (r RuntimeResolver) ResolveAdapter(ctx context.Context, input agentruntime.
 		return nil, errors.New("agent extension provider does not match installation")
 	}
 	return agentruntime.NewStandardACPAdapter(agentruntime.StandardACPAdapterConfig{
-		Provider:          binding.Installation.Provider,
-		Name:              binding.Installation.AgentKey + "-acp",
-		DisplayName:       binding.Installation.DisplayName,
-		Command:           binding.Command,
-		AuthMessage:       binding.Installation.AuthMessage,
-		ToolAliases:       binding.ToolAliases,
-		PermissionModes:   binding.PermissionModes,
-		PlanModeRuntimeID: binding.PlanModeRuntimeID,
+		Provider:                 binding.Installation.Provider,
+		Name:                     binding.Installation.AgentKey + "-acp",
+		DisplayName:              binding.Installation.DisplayName,
+		Command:                  binding.Command,
+		AuthMessage:              binding.Installation.AuthMessage,
+		ToolAliases:              binding.ToolAliases,
+		ModelConfigOptionID:      binding.ModelConfigOptionID,
+		PermissionConfigOptionID: binding.PermissionConfigOptionID,
+		ReasoningConfigOptionID:  binding.ReasoningConfigOptionID,
+		RestrictConfigOptions:    true,
+		PermissionModes:          binding.PermissionModes,
+		PlanModeRuntimeID:        binding.PlanModeRuntimeID,
+		Capabilities:             binding.Capabilities,
+		AgentTargetID:            strings.TrimSpace(input.AgentTargetID),
+		InstallationID:           binding.Installation.ID,
 	}, r.Transport, r.Host)
 }

@@ -16,8 +16,9 @@ type composerLiveModelCache struct {
 }
 
 type composerLiveModelCacheEntry struct {
-	cachedAt time.Time
-	options  []ComposerConfigOptionValue
+	cachedAt       time.Time
+	options        []ComposerConfigOptionValue
+	runtimeContext map[string]any
 }
 
 func newComposerLiveModelCache() *composerLiveModelCache {
@@ -53,10 +54,39 @@ func (c *composerLiveModelCache) set(key string, now time.Time, options []Compos
 	}
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	c.entries[key] = composerLiveModelCacheEntry{
-		cachedAt: now,
-		options:  cloneComposerConfigOptionValues(options),
+	entry := c.entries[key]
+	entry.cachedAt = now
+	entry.options = cloneComposerConfigOptionValues(options)
+	c.entries[key] = entry
+}
+
+func (c *composerLiveModelCache) getRuntimeContext(key string, now time.Time, ttl time.Duration) (map[string]any, bool) {
+	if c == nil {
+		return nil, false
 	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	entry, ok := c.entries[key]
+	if !ok || len(entry.runtimeContext) == 0 {
+		return nil, false
+	}
+	if ttl > 0 && now.Sub(entry.cachedAt) > ttl {
+		delete(c.entries, key)
+		return nil, false
+	}
+	return clonePayload(entry.runtimeContext), true
+}
+
+func (c *composerLiveModelCache) setRuntimeContext(key string, now time.Time, runtimeContext map[string]any) {
+	if c == nil || len(runtimeContext) == 0 {
+		return
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	entry := c.entries[key]
+	entry.cachedAt = now
+	entry.runtimeContext = clonePayload(runtimeContext)
+	c.entries[key] = entry
 }
 
 func (c *composerLiveModelCache) invalidateProvider(provider string) int {
@@ -160,6 +190,14 @@ func (s *Service) setLiveComposerModelOptionsForScope(scope composerLiveModelSco
 		return
 	}
 	s.liveComposerModelCache().set(scope.key(), now, options)
+}
+
+func (s *Service) getComposerRuntimeContextForScope(scope composerLiveModelScope, now time.Time) (map[string]any, bool) {
+	return s.liveComposerModelCache().getRuntimeContext(scope.key(), now, s.liveModelCacheTTL(scope.provider))
+}
+
+func (s *Service) setComposerRuntimeContextForScope(scope composerLiveModelScope, now time.Time, runtimeContext map[string]any) {
+	s.liveComposerModelCache().setRuntimeContext(scope.key(), now, runtimeContext)
 }
 
 // composerLiveModelCacheKey buckets the cache by provider, workspace, cwd scope,

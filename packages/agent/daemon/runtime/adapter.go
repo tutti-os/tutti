@@ -81,6 +81,12 @@ type TargetedCancelResult struct {
 	ConfirmedTargets []CancelTarget
 }
 
+// ResolveInputBoundAdapter lets a provider-keyed migration cache fail closed
+// when a dynamic adapter was created for a different trusted Target binding.
+type ResolveInputBoundAdapter interface {
+	MatchesAdapterResolveInput(AdapterResolveInput) bool
+}
+
 type AsyncExecAdapter interface {
 	ExecAsync(context.Context, Session, []PromptContentBlock, string, string, EventSink, CommandSnapshotSink) error
 }
@@ -269,6 +275,12 @@ type PermissionModeAdapter interface {
 
 type LiveSettingsAdapter interface {
 	ApplySessionSettings(context.Context, Session, SessionSettingsPatch) error
+}
+
+// SessionSettingsValidationAdapter validates a settings patch against live
+// runtime facts before the controller mutates or applies any part of it.
+type SessionSettingsValidationAdapter interface {
+	ValidateSessionSettings(Session, SessionSettingsPatch) error
 }
 
 type NewSessionSettingsAdapter interface {

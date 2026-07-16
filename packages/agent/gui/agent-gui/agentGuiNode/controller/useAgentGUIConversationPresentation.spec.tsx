@@ -78,6 +78,96 @@ describe("useAgentGUIConversationPresentation", () => {
     );
     expect(rendered.result.current.activeConversation?.resumable).toBe(false);
   });
+
+  it("preserves the active agent target identity for open-provider fallback conversations", () => {
+    const conversation = createConversation();
+    const input = createInput({
+      ...conversation,
+      agentTargetId: "extension:example",
+      provider: "acp:example"
+    });
+    const rendered = renderHook(() =>
+      useAgentGUIConversationPresentation({
+        ...input,
+        conversations: [],
+        data: {
+          ...input.data,
+          agentTargetId: "extension:example",
+          provider: "acp:example"
+        },
+        dataRef: {
+          current: {
+            ...input.dataRef.current,
+            agentTargetId: "extension:example",
+            provider: "acp:example"
+          }
+        },
+        normalizedProviderTargets: [
+          {
+            agentTargetId: "extension:example",
+            label: "Example Agent",
+            provider: "acp:example",
+            ref: {
+              kind: "agent_extension",
+              provider: "acp:example"
+            },
+            targetId: "extension:example"
+          }
+        ]
+      })
+    );
+
+    expect(rendered.result.current.activeConversation?.title).toBe("");
+    expect(rendered.result.current.activeConversation?.titleFallback).toBe(
+      "untitled-conversation"
+    );
+    expect(rendered.result.current.activeConversation?.agentTargetId).toBe(
+      "extension:example"
+    );
+  });
+
+  it("preserves a missing explicit target instead of selecting a provider sibling", () => {
+    const conversation = createConversation();
+    const input = createInput({
+      ...conversation,
+      agentTargetId: "extension:missing",
+      provider: "acp:example"
+    });
+    const rendered = renderHook(() =>
+      useAgentGUIConversationPresentation({
+        ...input,
+        conversations: [],
+        data: {
+          ...input.data,
+          agentTargetId: "extension:missing",
+          provider: "acp:example"
+        },
+        dataRef: {
+          current: {
+            ...input.dataRef.current,
+            agentTargetId: "extension:missing",
+            provider: "acp:example"
+          }
+        },
+        normalizedProviderTargets: [
+          {
+            agentTargetId: "extension:sibling",
+            label: "Sibling Agent",
+            provider: "acp:example",
+            ref: {
+              kind: "agent_extension",
+              provider: "acp:example"
+            },
+            targetId: "extension:sibling"
+          }
+        ]
+      })
+    );
+
+    expect(rendered.result.current.activeConversation?.agentTargetId).toBe(
+      "extension:missing"
+    );
+  });
 });
 
 function createInput(

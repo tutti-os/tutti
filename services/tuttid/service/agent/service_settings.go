@@ -3,6 +3,8 @@ package agent
 import (
 	"context"
 	"strings"
+
+	"github.com/tutti-os/tutti/services/tuttid/biz/agentprovider"
 )
 
 func (s *Service) clampReasoningEffortForModel(
@@ -46,11 +48,32 @@ func (s *Service) clampReasoningEffortPointerForModel(
 	return &clamped
 }
 
+func (s *Service) clampReasoningEffortPointerForLaunch(
+	ctx context.Context,
+	provider string,
+	providerTargetRef map[string]any,
+	model string,
+	selected *string,
+) *string {
+	if selected == nil {
+		return nil
+	}
+	if providerTargetRefKind(providerTargetRef) == "agent_extension" {
+		value := strings.TrimSpace(*selected)
+		return &value
+	}
+	return s.clampReasoningEffortPointerForModel(ctx, provider, model, selected)
+}
+
 func (s *Service) clampPersistedSessionReasoningEffortForResume(
 	ctx context.Context,
 	session PersistedSession,
 ) PersistedSession {
 	if strings.TrimSpace(session.Settings.ReasoningEffort) == "" {
+		return session
+	}
+	if agentprovider.Normalize(session.Provider) == "" {
+		session.Settings.ReasoningEffort = strings.TrimSpace(session.Settings.ReasoningEffort)
 		return session
 	}
 	session.Settings.ReasoningEffort = s.clampReasoningEffortForModel(
@@ -98,18 +121,19 @@ func (s *Service) UpdateSettings(ctx context.Context, workspaceID string, agentS
 	// remains the authority for pre-session create/resume only.
 	if (settings.Model != nil || settings.ReasoningEffort != nil) &&
 		!composerProviderUsesModelReasoningCatalog(provider) {
-		clampedReasoningEffort := s.clampReasoningEffortForModel(
-			ctx,
-			provider,
-			selectedModel,
-			selectedReasoningEffort,
-		)
+		clampedReasoningEffort := strings.TrimSpace(selectedReasoningEffort)
+		if agentprovider.Normalize(provider) != "" {
+			clampedReasoningEffort = s.clampReasoningEffortForModel(ctx, provider, selectedModel, selectedReasoningEffort)
+		}
 		if settings.ReasoningEffort != nil || clampedReasoningEffort != selectedReasoningEffort {
 			settings.ReasoningEffort = &clampedReasoningEffort
 		}
 	}
 	if settings.Speed != nil {
-		normalizedSpeed := normalizeSpeedForProvider(provider, *settings.Speed)
+		normalizedSpeed := strings.TrimSpace(*settings.Speed)
+		if agentprovider.Normalize(provider) != "" {
+			normalizedSpeed = normalizeSpeedForProvider(provider, normalizedSpeed)
+		}
 		settings.Speed = &normalizedSpeed
 	}
 	if err := s.controller().UpdateSettings(ctx, RuntimeUpdateSettingsInput{

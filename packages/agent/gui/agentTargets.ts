@@ -173,16 +173,18 @@ export function resolveAgentGUIAgentTarget(input: {
   agentTargets: readonly AgentGUIAgentTarget[];
   useStaticCatalog?: boolean;
 }): AgentGUIAgentTarget | null {
+  const explicitAgentTargetId = input.agentTargetId?.trim() ?? "";
   const targetByAgentTargetId = new Map(
     input.agentTargets.flatMap((target) =>
       target.agentTargetId ? [[target.agentTargetId, target] as const] : []
     )
   );
-  const agentTarget = targetByAgentTargetId.get(
-    input.agentTargetId?.trim() ?? ""
-  );
+  const agentTarget = targetByAgentTargetId.get(explicitAgentTargetId);
   if (agentTarget) {
     return agentTarget;
+  }
+  if (explicitAgentTargetId) {
+    return null;
   }
   const agentTargets = input.agentTargets.filter(
     (target) => target.provider === input.provider

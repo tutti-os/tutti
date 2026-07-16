@@ -36,9 +36,13 @@ const (
 // standardACPCapabilities derives the canonical capability list for ACP
 // family providers from the live session state.
 func standardACPCapabilities(provider string, promptImage bool, state acpLiveStateSnapshot) []string {
+	return standardACPCapabilitiesWithDeclared(provider, promptImage, state, nil)
+}
+
+func standardACPCapabilitiesWithDeclared(provider string, promptImage bool, state acpLiveStateSnapshot, declared []string) []string {
 	descriptor, ok := providerregistry.Find(provider)
 	if !ok {
-		return nil
+		return effectiveOpenStandardACPCapabilities(promptImage, state, declared)
 	}
 	profile := descriptor.ComposerProfile
 	capabilities := make([]string, 0, len(profile.Capabilities)+2)
@@ -63,7 +67,96 @@ func standardACPCapabilities(provider string, promptImage bool, state acpLiveSta
 			}
 		}
 	}
-	return capabilities
+	return dedupeCapabilities(capabilities)
+}
+
+func effectiveOpenStandardACPCapabilities(promptImage bool, state acpLiveStateSnapshot, declared []string) []string {
+	if len(declared) == 0 {
+		return nil
+	}
+	runtimeFacts := map[string]bool{
+		CapabilityImageInput: promptImage,
+		CapabilityInterrupt:  true,
+		CapabilityTokenUsage: state.usage.contextKnown,
+		CapabilityRateLimits: len(state.usage.quotas) > 0,
+	}
+	for _, command := range state.availableCommands {
+		switch normalizeCapabilityEvidenceID(command.Name) {
+		case "compact":
+			runtimeFacts[CapabilityCompact] = true
+		case "plan":
+			runtimeFacts[CapabilityPlanMode] = true
+		case "review":
+			runtimeFacts[CapabilityReview] = true
+		}
+	}
+	for _, descriptor := range state.configOptionDescriptors {
+		if strings.TrimSpace(asString(descriptor["id"])) != "mode" {
+			continue
+		}
+		if len(configOptionEntries(descriptor["options"])) > 0 {
+			runtimeFacts[CapabilityPermissionModeChangeDuringTurn] = true
+		}
+		for _, option := range configOptionEntries(descriptor["options"]) {
+			if normalizeCapabilityEvidenceID(asString(option["value"])) == "plan" {
+				runtimeFacts[CapabilityPlanMode] = true
+			}
+		}
+	}
+	result := make([]string, 0, len(declared))
+	for _, capability := range dedupeCapabilities(declared) {
+		if runtimeFacts[capability] {
+			result = append(result, capability)
+		}
+	}
+	return result
+}
+
+func normalizeCapabilityEvidenceID(value string) string {
+	value = strings.ToLower(strings.TrimSpace(value))
+	value = strings.TrimPrefix(value, "/")
+	value = strings.ReplaceAll(value, "_", "")
+	value = strings.ReplaceAll(value, "-", "")
+	return value
+}
+
+func filterDeclaredCapabilities(values []string, declared []string) []string {
+	if len(values) == 0 || len(declared) == 0 {
+		return nil
+	}
+	allowed := make(map[string]struct{}, len(declared))
+	for _, capability := range declared {
+		if providerregistry.IsKnownCapability(capability) {
+			allowed[capability] = struct{}{}
+		}
+	}
+	result := make([]string, 0, len(values))
+	for _, capability := range dedupeCapabilities(values) {
+		if _, ok := allowed[capability]; ok {
+			result = append(result, capability)
+		}
+	}
+	return result
+}
+
+func dedupeCapabilities(values []string) []string {
+	if len(values) == 0 {
+		return nil
+	}
+	result := make([]string, 0, len(values))
+	seen := map[string]struct{}{}
+	for _, value := range values {
+		capability := strings.TrimSpace(value)
+		if capability == "" {
+			continue
+		}
+		if _, ok := seen[capability]; ok {
+			continue
+		}
+		seen[capability] = struct{}{}
+		result = append(result, capability)
+	}
+	return result
 }
 
 func migratedProviderHasCapability(provider string, capability string) bool {

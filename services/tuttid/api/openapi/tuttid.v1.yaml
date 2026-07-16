@@ -6494,8 +6494,10 @@ components:
         - modelConfig
         - permissionConfig
         - reasoningConfig
+        - reasoningOptionsByModel
         - effectiveSettings
         - runtimeContext
+        - commands
         - skills
         - capabilityCatalog
         - behavior
@@ -6508,6 +6510,8 @@ components:
           $ref: "#/components/schemas/PermissionConfig"
         reasoningConfig:
           $ref: "#/components/schemas/AgentProviderComposerConfig"
+        reasoningOptionsByModel:
+          $ref: "#/components/schemas/AgentProviderComposerReasoningOptionsByModel"
         speedConfig:
           $ref: "#/components/schemas/AgentProviderComposerConfig"
         effectiveSettings:
@@ -6515,6 +6519,15 @@ components:
         runtimeContext:
           type: object
           additionalProperties: true
+          description: >-
+            Opaque provider runtime metadata retained for legacy and diagnostic
+            consumers. Typed composer fields are authoritative; new composer
+            capabilities must not be added to this object.
+        commands:
+          type: array
+          description: Commands advertised by the resolved runtime session.
+          items:
+            $ref: "#/components/schemas/AgentProviderComposerCommandOption"
         capabilities:
           $ref: "#/components/schemas/WorkspaceAgentCapabilities"
           description: >-
@@ -6534,6 +6547,35 @@ components:
           $ref: "#/components/schemas/AgentProviderComposerBehavior"
         slashCommandPolicy:
           $ref: "#/components/schemas/AgentSlashCommandPolicy"
+    AgentProviderComposerCommandOption:
+      type: object
+      additionalProperties: false
+      required:
+        - name
+      properties:
+        name:
+          type: string
+        description:
+          type: string
+        inputHint:
+          type: string
+    AgentProviderComposerReasoningOptionsByModel:
+      type: object
+      additionalProperties:
+        $ref: "#/components/schemas/AgentProviderComposerReasoningProfile"
+    AgentProviderComposerReasoningProfile:
+      type: object
+      additionalProperties: false
+      required:
+        - options
+      properties:
+        defaultValue:
+          type: string
+          nullable: true
+        options:
+          type: array
+          items:
+            $ref: "#/components/schemas/AgentProviderComposerConfigOptionValue"
     AgentProviderComposerBehavior:
       type: object
       additionalProperties: false

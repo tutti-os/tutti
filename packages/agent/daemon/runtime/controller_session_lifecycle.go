@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	activityshared "github.com/tutti-os/tutti/packages/agent/daemon/activity/events"
+	"github.com/tutti-os/tutti/packages/agent/daemon/providerregistry"
 	"github.com/tutti-os/tutti/packages/agent/daemon/titletext"
 )
 
@@ -344,8 +345,11 @@ func defaultPermissionModeIDForProvider(provider string) string {
 }
 
 func permissionModeIDAllowedForProvider(provider string, mode string) bool {
+	mode = strings.TrimSpace(mode)
+	if mode == "" {
+		return false
+	}
 	if profile, ok := migratedProviderComposerProfile(provider); ok {
-		mode = strings.TrimSpace(mode)
 		for _, candidate := range profile.PermissionModes {
 			if strings.TrimSpace(candidate.ID) == mode {
 				return true
@@ -353,7 +357,8 @@ func permissionModeIDAllowedForProvider(provider string, mode string) bool {
 		}
 		return false
 	}
-	return false
+	_, ok := providerregistry.NormalizeOpenProviderID(provider)
+	return ok
 }
 
 func normalizeSessionSettings(settings *SessionSettings, provider string, defaultPermissionModeID string) SessionSettings {

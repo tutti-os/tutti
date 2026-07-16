@@ -155,6 +155,30 @@ test("a superseded load result is ignored", () => {
   assert.equal(result.state, state);
 });
 
+test("a late result from an older project request cannot overwrite the current target scope", () => {
+  let state = composerOptionsReducer(createInitialComposerOptionsState(), {
+    ...loadRequest(),
+    cwd: "/workspace/old"
+  }).state;
+  state = composerOptionsReducer(state, {
+    ...loadRequest(),
+    commandId: "cmd-2",
+    cwd: "/workspace/new"
+  }).state;
+
+  const stale = composerOptionsReducer(state, {
+    type: "engine/commandResult",
+    commandId: "cmd-1",
+    commandType: "composerOptions/load",
+    correlationId: "target-1",
+    outcome: "succeeded",
+    value: options({ models: [{ value: "stale-model", label: "Stale" }] })
+  });
+
+  assert.equal(stale.state, state);
+  assert.equal(stale.state.optionsByTargetKey["target-1"], undefined);
+});
+
 test("invalidate clears cache validity so the next request refetches", () => {
   let state = composerOptionsReducer(
     createInitialComposerOptionsState(),

@@ -105,6 +105,29 @@ func TestLiveModelOptionsFromRunningSessionFiltersProvider(t *testing.T) {
 	}
 }
 
+func TestLiveModelOptionsFromRunningSessionBreaksTimestampTiesBySessionID(t *testing.T) {
+	t.Parallel()
+	runtime := newFakeRuntime()
+	runtime.sessions["cursor-a"] = ProviderRuntimeSession{
+		ID: "cursor-a", WorkspaceID: "ws-1", Provider: "cursor", UpdatedAtUnixMS: 900,
+		RuntimeContext: map[string]any{
+			"configOptions": []any{map[string]any{
+				"id":      "model",
+				"options": []any{map[string]any{"value": "older-tie", "name": "Older tie"}},
+			}},
+		},
+	}
+	runtime.sessions["cursor-z"] = ProviderRuntimeSession{
+		ID: "cursor-z", WorkspaceID: "ws-1", Provider: "cursor", UpdatedAtUnixMS: 900,
+		RuntimeContext: cursorModelRuntimeContext(),
+	}
+
+	options, ok := newIsolatedAgentService(runtime).liveModelOptionsFromRunningSession("ws-1", "cursor")
+	if !ok || len(options) != 3 || options[0].Value != "default[]" {
+		t.Fatalf("options = %#v ok = %v, want lexically latest tied session", options, ok)
+	}
+}
+
 func TestGetComposerOptionsStartsHiddenProbeBeforeFirstCursorSession(t *testing.T) {
 	t.Setenv("TUTTI_STATE_DIR", t.TempDir())
 	runtime := newFakeRuntime()
@@ -290,6 +313,10 @@ func TestLiveModelOptionsFromPersistedSessionsPicksNewestAndSkipsStale(t *testin
 			"ws-1:newer": {
 				ID: "newer", WorkspaceID: "ws-1", Provider: "cursor",
 				InternalRuntimeContext: cursorModelRuntimeContext(), UpdatedAtUnixMS: 900,
+			},
+			"ws-1:aaa-newer-tie": {
+				ID: "aaa-newer-tie", WorkspaceID: "ws-1", Provider: "cursor",
+				InternalRuntimeContext: oldContext, UpdatedAtUnixMS: 900,
 			},
 			"ws-1:hidden": {
 				ID: "hidden", WorkspaceID: "ws-1", Provider: "cursor",

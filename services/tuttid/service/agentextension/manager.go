@@ -154,14 +154,6 @@ type DiscoveryProfile struct {
 	} `json:"candidates"`
 }
 
-type RuntimeBinding struct {
-	Installation      Installation
-	Command           []string
-	ToolAliases       map[string]string
-	PermissionModes   map[string]string
-	PlanModeRuntimeID string
-}
-
 func (m *Manager) Reconcile(ctx context.Context) []error {
 	var errs []error
 	for _, source := range m.Sources {
@@ -222,12 +214,25 @@ func (m *Manager) ResolveRuntime(ctx context.Context, installationID string) (Ru
 			if err != nil {
 				return RuntimeBinding{}, err
 			}
+			capabilities, err := loadDeclaredCapabilities(installation)
+			if err != nil {
+				return RuntimeBinding{}, err
+			}
+			composerProfile, err := m.LoadComposerProfile(installation.ID)
+			if err != nil {
+				return RuntimeBinding{}, err
+			}
+			modelConfigOptionID, permissionConfigOptionID, reasoningConfigOptionID := composerProfile.ACPConfigOptionIDs()
 			return RuntimeBinding{
-				Installation:      installation,
-				Command:           append([]string{path}, candidate.LaunchArgs...),
-				ToolAliases:       aliases,
-				PermissionModes:   permissionModes,
-				PlanModeRuntimeID: planModeRuntimeID,
+				Installation:             installation,
+				Command:                  append([]string{path}, candidate.LaunchArgs...),
+				ToolAliases:              aliases,
+				ModelConfigOptionID:      modelConfigOptionID,
+				PermissionConfigOptionID: permissionConfigOptionID,
+				ReasoningConfigOptionID:  reasoningConfigOptionID,
+				PermissionModes:          permissionModes,
+				PlanModeRuntimeID:        planModeRuntimeID,
+				Capabilities:             capabilities,
 			}, nil
 		}
 	}
@@ -614,23 +619,8 @@ func validateInstalledPackage(root, key, version string) (Manifest, error) {
 			return Manifest{}, fmt.Errorf("installed extension locale is missing: %s", locale.File)
 		}
 	}
-	for file, schema := range map[string]string{
-		manifest.Profiles.Discovery:    "tutti.agent.discovery.v1",
-		manifest.Profiles.Tools:        "tutti.agent.tools.v1",
-		manifest.Profiles.Capabilities: "tutti.agent.capabilities.v1",
-		manifest.Profiles.Composer:     "tutti.agent.composer.v1",
-		manifest.Profiles.Events:       "tutti.agent.events.v1",
-	} {
-		if file == "" {
-			continue
-		}
-		var header struct {
-			SchemaVersion string `json:"schemaVersion"`
-		}
-		raw, readErr := os.ReadFile(filepath.Join(root, filepath.FromSlash(file)))
-		if readErr != nil || json.Unmarshal(raw, &header) != nil || header.SchemaVersion != schema {
-			return Manifest{}, fmt.Errorf("installed extension profile %s must use %s", file, schema)
-		}
+	if err := validateInstalledProfiles(root, manifest); err != nil {
+		return Manifest{}, fmt.Errorf("validate installed extension profiles: %w", err)
 	}
 	return manifest, nil
 }

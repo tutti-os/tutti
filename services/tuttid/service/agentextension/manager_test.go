@@ -144,6 +144,175 @@ func TestValidateComposerProfileAcceptsDeclarativeSkillRoots(t *testing.T) {
 	}
 }
 
+func TestComposerProfileACPConfigOptionIDs(t *testing.T) {
+	t.Run("canonical", func(t *testing.T) {
+		profile := ComposerProfile{SchemaVersion: "tutti.agent.composer.v1"}
+		profile.ConfigOptions = &struct {
+			Model      ComposerConfigOptionReference `json:"model"`
+			Permission ComposerConfigOptionReference `json:"permission"`
+			Reasoning  ComposerConfigOptionReference `json:"reasoning"`
+		}{
+			Model:      ComposerConfigOptionReference{ACPOptionID: "model-choice"},
+			Permission: ComposerConfigOptionReference{ACPOptionID: "approval-mode"},
+			Reasoning:  ComposerConfigOptionReference{ACPOptionID: "thought-level"},
+		}
+		model, permission, reasoning := profile.ACPConfigOptionIDs()
+		if model != "model-choice" || permission != "approval-mode" || reasoning != "thought-level" {
+			t.Fatalf("config option ids = %q, %q, %q", model, permission, reasoning)
+		}
+	})
+
+	t.Run("legacy", func(t *testing.T) {
+		profile := ComposerProfile{
+			SchemaVersion: "tutti.agent.composer.v1",
+			Model:         json.RawMessage(`{"source":"acp-session-models"}`),
+			Permission:    json.RawMessage(`{"source":"acp-session-modes"}`),
+		}
+		model, permission, reasoning := profile.ACPConfigOptionIDs()
+		if model != "model" || permission != "mode" || reasoning != "reasoning_effort" {
+			t.Fatalf("legacy config option ids = %q, %q, %q", model, permission, reasoning)
+		}
+	})
+
+	t.Run("absent", func(t *testing.T) {
+		model, permission, reasoning := (ComposerProfile{}).ACPConfigOptionIDs()
+		if model != "" || permission != "" || reasoning != "" {
+			t.Fatalf("absent config option ids = %q, %q, %q", model, permission, reasoning)
+		}
+	})
+}
+
+func TestLoadComposerModesKeepsDistinctGenericRuntimeModes(t *testing.T) {
+	packageDir := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(packageDir, "profiles"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(packageDir, "profiles", "composer.json"), []byte(`{
+		"schemaVersion":"tutti.agent.composer.v1",
+		"model":{"source":"acp-session-modes"},
+		"permission":{"source":"acp-session-modes"},
+		"permissionModes":[
+			{"runtimeId":"default","semantic":"ask-before-write"},
+			{"runtimeId":"acceptEdits","semantic":"accept-edits"},
+			{"runtimeId":"auto","semantic":"auto"},
+			{"runtimeId":"dontAsk","semantic":"locked-down"},
+			{"runtimeId":"bypassPermissions","semantic":"full-access"},
+			{"runtimeId":"fullAccess","semantic":"full-access"},
+			{"runtimeId":"plan","semantic":"read-only"}
+		]
+	}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	manifest := Manifest{}
+	manifest.Profiles.Composer = "profiles/composer.json"
+	modes, planModeRuntimeID, err := loadComposerModes(Installation{
+		PackageDir: packageDir,
+		Manifest:   manifest,
+	})
+	if err != nil {
+		t.Fatalf("loadComposerModes() error = %v", err)
+	}
+	if modes["read-only"] != "default" ||
+		modes["accept-edits"] != "acceptEdits" ||
+		modes["auto"] != "auto" ||
+		modes["locked-down"] != "dontAsk" ||
+		modes["dontask"] != "dontAsk" ||
+		modes["full-access"] != "bypassPermissions" ||
+		modes["fullaccess"] != "fullAccess" ||
+		modes["plan"] != "plan" ||
+		planModeRuntimeID != "plan" {
+		t.Fatalf("composer modes = %#v, plan = %q", modes, planModeRuntimeID)
+	}
+}
+
+func TestValidateComposerProfileRejectsInvalidSignedCommandDeclarations(t *testing.T) {
+	tests := []struct {
+		name string
+		raw  string
+	}{
+		{
+			name: "schema",
+			raw:  `{"schemaVersion":"tutti.agent.composer.v2"}`,
+		},
+		{
+			name: "duplicate command",
+			raw:  `{"schemaVersion":"tutti.agent.composer.v1","slashCommands":{"commands":[{"name":"status"},{"name":"STATUS"}]}}`,
+		},
+		{
+			name: "invalid command name",
+			raw:  `{"schemaVersion":"tutti.agent.composer.v1","slashCommands":{"commands":[{"name":"bad command"}]}}`,
+		},
+		{
+			name: "unsupported effect",
+			raw:  `{"schemaVersion":"tutti.agent.composer.v1","slashCommands":{"commands":[{"name":"status","effect":"runArbitraryCode"}]}}`,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var profile ComposerProfile
+			if err := json.Unmarshal([]byte(tt.raw), &profile); err != nil {
+				t.Fatal(err)
+			}
+			if err := validateComposerProfile(profile); err == nil {
+				t.Fatal("validateComposerProfile() error = nil, want signed profile rejection")
+			}
+		})
+	}
+}
+
+func TestLoadExtensionComposerSlashCommandsAndCapabilities(t *testing.T) {
+	packageDir := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(packageDir, "profiles"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(packageDir, "profiles", "composer.json"), []byte(`{
+		"schemaVersion":"tutti.agent.composer.v1",
+		"model":{"source":"acp-session-models"},
+		"permission":{"source":"acp-session-modes"},
+		"permissionModes":[
+			{"runtimeId":"default","semantic":"ask-before-write"}
+		],
+		"slashCommands":{
+			"commandCatalogAuthoritative":true,
+			"commands":[
+				{"name":"compact","effect":"submitImmediate"},
+				{"name":"status","effect":"showStatus"},
+				{"name":"goal","effect":"activateGoalMode"},
+				{"name":"plan","effect":"togglePlanMode"}
+			]
+		}
+	}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(packageDir, "profiles", "capabilities.json"), []byte(`{
+		"schemaVersion":"tutti.agent.capabilities.v1",
+		"declared":{
+			"compact":true,
+			"planMode":true,
+			"modelSelection":true
+		}
+	}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	installation := Installation{PackageDir: packageDir}
+	installation.Manifest.Profiles.Composer = "profiles/composer.json"
+	installation.Manifest.Profiles.Capabilities = "profiles/capabilities.json"
+	var profile ComposerProfile
+	if err := readJSON(filepath.Join(packageDir, "profiles", "composer.json"), &profile); err != nil {
+		t.Fatal(err)
+	}
+	if err := validateComposerProfile(profile); err != nil {
+		t.Fatalf("validateComposerProfile() error = %v", err)
+	}
+	capabilities, err := loadDeclaredCapabilities(installation)
+	if err != nil {
+		t.Fatalf("loadDeclaredCapabilities() error = %v", err)
+	}
+	if strings.Join(capabilities, ",") != "compact,planMode" {
+		t.Fatalf("capabilities = %#v, want only known agent capability keys", capabilities)
+	}
+}
+
 func TestManagerReconcilePreservesRemoteErrorWhenNoOfflineInstallationExists(t *testing.T) {
 	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		http.Error(w, "unavailable", http.StatusServiceUnavailable)

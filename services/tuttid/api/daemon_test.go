@@ -1722,7 +1722,12 @@ func TestDaemonAPIGeneratedRoutesGetAgentProviderComposerOptions(t *testing.T) {
 					t.Fatalf("settings = %#v", input.Settings)
 				}
 				return agentservice.ComposerOptions{
-					Capabilities:      []string{"imageInput", "planMode", "browserUse"},
+					Capabilities: []string{"imageInput", "planMode", "browserUse"},
+					Commands: []agentservice.ComposerCommandOption{{
+						Name:        "memory",
+						Description: "Manage memory",
+						InputHint:   "show | refresh",
+					}},
 					EffectiveSettings: input.Settings,
 					ModelConfig: agentservice.ComposerConfigOption{
 						Configurable: true,
@@ -1754,6 +1759,14 @@ func TestDaemonAPIGeneratedRoutesGetAgentProviderComposerOptions(t *testing.T) {
 							Label: "高",
 							Value: "high",
 						}},
+					},
+					ReasoningOptionsByModel: map[string]agentservice.ComposerReasoningProfile{
+						"gpt-5": {
+							DefaultValue: "high",
+							Options: []agentservice.ComposerConfigOptionValue{{
+								ID: "high", Label: "高", Value: "high",
+							}},
+						},
 					},
 					RuntimeContext: map[string]any{
 						"configOptions": []map[string]any{
@@ -1823,6 +1836,12 @@ func TestDaemonAPIGeneratedRoutesGetAgentProviderComposerOptions(t *testing.T) {
 	}
 	if response.ReasoningConfig.Options[0].Label != "高" {
 		t.Fatalf("reasoningConfig = %#v", response.ReasoningConfig)
+	}
+	if profile, ok := response.ReasoningOptionsByModel["gpt-5"]; !ok || profile.DefaultValue == nil || *profile.DefaultValue != "high" || len(profile.Options) != 1 {
+		t.Fatalf("reasoningOptionsByModel = %#v", response.ReasoningOptionsByModel)
+	}
+	if len(response.Commands) != 1 || response.Commands[0].Name != "memory" || response.Commands[0].Description == nil || *response.Commands[0].Description != "Manage memory" {
+		t.Fatalf("commands = %#v", response.Commands)
 	}
 	if response.RuntimeContext["configOptions"] == nil {
 		t.Fatalf("runtimeContext = %#v", response.RuntimeContext)

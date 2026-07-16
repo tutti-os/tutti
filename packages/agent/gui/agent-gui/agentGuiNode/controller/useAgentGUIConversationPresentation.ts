@@ -142,6 +142,13 @@ export function useAgentGUIConversationPresentation(
       );
     }
     if (!input.activeConversationId) return stabilize(null);
+    const fallbackAgentTarget = resolveAgentGUIAgentTarget({
+      agentTargetId: input.data.agentTargetId,
+      defaultAgentTargetId: input.defaultAgentTargetId,
+      provider: input.data.provider,
+      agentTargets: input.normalizedProviderTargets,
+      useStaticCatalog: input.shouldUseStaticProviderTargets
+    });
     const fallbackStatus =
       input.isSubmitting ||
       input.isCreatingConversation ||
@@ -164,6 +171,9 @@ export function useAgentGUIConversationPresentation(
         : Date.now();
     return stabilize({
       id: input.activeConversationId,
+      agentTargetId:
+        normalizeOptionalText(input.data.agentTargetId) ??
+        fallbackAgentTarget?.agentTargetId,
       userId: input.currentUserId?.trim() || undefined,
       provider: input.data.provider,
       title: "",
@@ -183,12 +193,16 @@ export function useAgentGUIConversationPresentation(
     input.activeLatestPendingSubmitTurnId,
     input.activityDisplayStatuses,
     input.currentUserId,
+    input.data.agentTargetId,
     input.data.provider,
+    input.defaultAgentTargetId,
     input.draftByScopeKey,
     input.hasUnconfirmedSubmit,
     input.isCreatingConversation,
     input.isNoProjectPath,
     input.isSubmitting,
+    input.normalizedProviderTargets,
+    input.shouldUseStaticProviderTargets,
     input.userProjects,
     conversationProjection.semanticConversations,
     input.workspacePath

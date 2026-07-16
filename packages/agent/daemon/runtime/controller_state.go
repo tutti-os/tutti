@@ -12,6 +12,11 @@ func (c *Controller) UpdateSettings(ctx context.Context, input UpdateSettingsInp
 	if err != nil {
 		return UpdateSettingsResult{}, err
 	}
+	if validator, ok := adapter.(SessionSettingsValidationAdapter); ok {
+		if err := validator.ValidateSessionSettings(session, input.Settings); err != nil {
+			return UpdateSettingsResult{}, err
+		}
+	}
 	nextSession := session
 	settings := normalizeSessionSettings(nextSession.Settings, nextSession.Provider, nextSession.PermissionModeID)
 	if input.Settings.Model != nil {

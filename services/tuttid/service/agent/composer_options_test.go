@@ -274,11 +274,11 @@ func TestComposerConfigConfigurableTruthTable(t *testing.T) {
 	}
 }
 
-func TestComposerModelReasoningOptionsRuntimeContextPreservesCatalogOptions(t *testing.T) {
+func TestComposerModelReasoningOptionsByModelPreservesCatalogOptions(t *testing.T) {
 	t.Parallel()
 	for _, provider := range []string{"codex", "tutti-agent"} {
 		t.Run(provider, func(t *testing.T) {
-			runtimeContext := composerModelReasoningOptionsRuntimeContext(
+			profiles := composerModelReasoningOptionsByModel(
 				provider,
 				"en",
 				map[string]composerModelReasoningProfile{
@@ -291,15 +291,15 @@ func TestComposerModelReasoningOptionsRuntimeContextPreservesCatalogOptions(t *t
 					},
 				},
 			)
-			modelOptions, ok := runtimeContext["model-1"].(map[string]any)
-			if !ok || modelOptions["defaultValue"] != "ultra" {
-				t.Fatalf("model options = %#v", runtimeContext["model-1"])
+			modelOptions, ok := profiles["model-1"]
+			if !ok || modelOptions.DefaultValue != "ultra" {
+				t.Fatalf("model options = %#v", profiles["model-1"])
 			}
-			options, ok := modelOptions["options"].([]map[string]string)
-			if !ok || len(options) != 2 {
-				t.Fatalf("reasoning options = %#v", modelOptions["options"])
+			options := modelOptions.Options
+			if len(options) != 2 {
+				t.Fatalf("reasoning options = %#v", options)
 			}
-			if options[1]["value"] != "ultra" {
+			if options[1].Value != "ultra" {
 				t.Fatalf("reasoning options = %#v, want runtime-advertised ultra preserved", options)
 			}
 		})

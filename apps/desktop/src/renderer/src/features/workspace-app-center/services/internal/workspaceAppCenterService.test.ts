@@ -1451,7 +1451,9 @@ test("WorkspaceAppCenterService normalizes provider configuration", async () => 
             prewarmDraftSession: false,
             planModeExclusiveWithPermissionMode: false
           },
-          capabilityCatalog: []
+          capabilityCatalog: [],
+          reasoningOptionsByModel: {},
+          commands: []
         };
       }
     })
@@ -1523,7 +1525,9 @@ test("WorkspaceAppCenterService makes effective permission default visible", asy
             prewarmDraftSession: false,
             planModeExclusiveWithPermissionMode: false
           },
-          capabilityCatalog: []
+          capabilityCatalog: [],
+          reasoningOptionsByModel: {},
+          commands: []
         };
       }
     })
@@ -1570,7 +1574,11 @@ test("WorkspaceAppCenterService passes workspace id and prefers live composer mo
           modelConfig: {
             configurable: true,
             currentValue: "default",
-            options: [{ id: "default", label: "Default", value: "default" }]
+            options: [
+              { id: "default", label: "Default", value: "default" },
+              { id: "sonnet", label: "Sonnet", value: "sonnet" },
+              { id: "haiku", label: "Haiku", value: "haiku" }
+            ]
           },
           permissionConfig: {
             configurable: true,
@@ -1595,9 +1603,8 @@ test("WorkspaceAppCenterService passes workspace id and prefers live composer mo
                 currentValue: "sonnet",
                 id: "model",
                 options: [
-                  { name: "Default", value: "default" },
-                  { name: "Sonnet", value: "sonnet" },
-                  { name: "Haiku", value: "haiku" }
+                  { name: "Legacy Default", value: "default" },
+                  { name: "Legacy Sonnet", value: "sonnet" }
                 ]
               }
             ]
@@ -1610,7 +1617,9 @@ test("WorkspaceAppCenterService passes workspace id and prefers live composer mo
             prewarmDraftSession: false,
             planModeExclusiveWithPermissionMode: false
           },
-          capabilityCatalog: []
+          capabilityCatalog: [],
+          reasoningOptionsByModel: {},
+          commands: []
         };
       }
     })
@@ -1951,7 +1960,9 @@ function createTuttidClient(
           prewarmDraftSession: false,
           planModeExclusiveWithPermissionMode: false
         },
-        capabilityCatalog: []
+        capabilityCatalog: [],
+        reasoningOptionsByModel: {},
+        commands: []
       };
     },
     ...overrides

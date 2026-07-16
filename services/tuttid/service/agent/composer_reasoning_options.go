@@ -12,12 +12,12 @@ type composerModelReasoningProfile struct {
 	ReasoningEfforts       []AgentModelReasoningEffortOption
 }
 
-func composerModelReasoningOptionsRuntimeContext(
+func composerModelReasoningOptionsByModel(
 	provider string,
 	locale string,
 	profiles map[string]composerModelReasoningProfile,
-) map[string]any {
-	result := make(map[string]any, len(profiles))
+) map[string]ComposerReasoningProfile {
+	result := make(map[string]ComposerReasoningProfile, len(profiles))
 	for model, profile := range profiles {
 		model = strings.TrimSpace(model)
 		if model == "" {
@@ -35,9 +35,9 @@ func composerModelReasoningOptionsRuntimeContext(
 			locale,
 			profile.ReasoningEfforts,
 		)
-		result[model] = map[string]any{
-			"defaultValue": defaultValue,
-			"options":      composerReasoningOptionValuesToRuntimeOptions(options),
+		result[model] = ComposerReasoningProfile{
+			DefaultValue: defaultValue,
+			Options:      options,
 		}
 	}
 	return result

@@ -1025,16 +1025,39 @@ export type AgentProviderComposerOptionsResponse = {
   modelConfig: AgentProviderComposerConfig;
   permissionConfig: PermissionConfig;
   reasoningConfig: AgentProviderComposerConfig;
+  reasoningOptionsByModel: AgentProviderComposerReasoningOptionsByModel;
   speedConfig?: AgentProviderComposerConfig;
   effectiveSettings: AgentSessionComposerSettings;
+  /**
+   * Opaque provider runtime metadata retained for legacy and diagnostic consumers. Typed composer fields are authoritative; new composer capabilities must not be added to this object.
+   */
   runtimeContext: {
     [key: string]: unknown;
   };
+  /**
+   * Commands advertised by the resolved runtime session.
+   */
+  commands: Array<AgentProviderComposerCommandOption>;
   capabilities?: WorkspaceAgentCapabilities;
   skills: Array<AgentProviderSkillOption>;
   capabilityCatalog: Array<AgentProviderCapabilityOption>;
   behavior: AgentProviderComposerBehavior;
   slashCommandPolicy?: AgentSlashCommandPolicy;
+};
+
+export type AgentProviderComposerCommandOption = {
+  name: string;
+  description?: string;
+  inputHint?: string;
+};
+
+export type AgentProviderComposerReasoningOptionsByModel = {
+  [key: string]: AgentProviderComposerReasoningProfile;
+};
+
+export type AgentProviderComposerReasoningProfile = {
+  defaultValue?: string | null;
+  options: Array<AgentProviderComposerConfigOptionValue>;
 };
 
 export type AgentProviderComposerBehavior = {

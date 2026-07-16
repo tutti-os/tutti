@@ -2340,6 +2340,13 @@ type AgentProviderComposerBehavior struct {
 	RefreshModelOptionsAfterSettings    bool `json:"refreshModelOptionsAfterSettings"`
 }
 
+// AgentProviderComposerCommandOption defines model for AgentProviderComposerCommandOption.
+type AgentProviderComposerCommandOption struct {
+	Description *string `json:"description,omitempty"`
+	InputHint   *string `json:"inputHint,omitempty"`
+	Name        string  `json:"name"`
+}
+
 // AgentProviderComposerConfig defines model for AgentProviderComposerConfig.
 type AgentProviderComposerConfig struct {
 	Configurable bool                                     `json:"configurable"`
@@ -2362,17 +2369,32 @@ type AgentProviderComposerOptionsResponse struct {
 	Behavior AgentProviderComposerBehavior `json:"behavior"`
 
 	// Capabilities Protocol v2 daemon-issued capability descriptor. Clients branch on these booleans instead of provider identity. Field names mirror the canonical capability keys in packages/agent/daemon/runtime/capabilities.go.
-	Capabilities       *WorkspaceAgentCapabilities     `json:"capabilities,omitempty"`
-	CapabilityCatalog  []AgentProviderCapabilityOption `json:"capabilityCatalog"`
-	EffectiveSettings  AgentSessionComposerSettings    `json:"effectiveSettings"`
-	ModelConfig        AgentProviderComposerConfig     `json:"modelConfig"`
-	PermissionConfig   PermissionConfig                `json:"permissionConfig"`
-	Provider           WorkspaceAgentProvider          `json:"provider"`
-	ReasoningConfig    AgentProviderComposerConfig     `json:"reasoningConfig"`
-	RuntimeContext     map[string]interface{}          `json:"runtimeContext"`
-	Skills             []AgentProviderSkillOption      `json:"skills"`
-	SlashCommandPolicy *AgentSlashCommandPolicy        `json:"slashCommandPolicy,omitempty"`
-	SpeedConfig        *AgentProviderComposerConfig    `json:"speedConfig,omitempty"`
+	Capabilities      *WorkspaceAgentCapabilities     `json:"capabilities,omitempty"`
+	CapabilityCatalog []AgentProviderCapabilityOption `json:"capabilityCatalog"`
+
+	// Commands Commands advertised by the resolved runtime session.
+	Commands                []AgentProviderComposerCommandOption         `json:"commands"`
+	EffectiveSettings       AgentSessionComposerSettings                 `json:"effectiveSettings"`
+	ModelConfig             AgentProviderComposerConfig                  `json:"modelConfig"`
+	PermissionConfig        PermissionConfig                             `json:"permissionConfig"`
+	Provider                WorkspaceAgentProvider                       `json:"provider"`
+	ReasoningConfig         AgentProviderComposerConfig                  `json:"reasoningConfig"`
+	ReasoningOptionsByModel AgentProviderComposerReasoningOptionsByModel `json:"reasoningOptionsByModel"`
+
+	// RuntimeContext Opaque provider runtime metadata retained for legacy and diagnostic consumers. Typed composer fields are authoritative; new composer capabilities must not be added to this object.
+	RuntimeContext     map[string]interface{}       `json:"runtimeContext"`
+	Skills             []AgentProviderSkillOption   `json:"skills"`
+	SlashCommandPolicy *AgentSlashCommandPolicy     `json:"slashCommandPolicy,omitempty"`
+	SpeedConfig        *AgentProviderComposerConfig `json:"speedConfig,omitempty"`
+}
+
+// AgentProviderComposerReasoningOptionsByModel defines model for AgentProviderComposerReasoningOptionsByModel.
+type AgentProviderComposerReasoningOptionsByModel map[string]AgentProviderComposerReasoningProfile
+
+// AgentProviderComposerReasoningProfile defines model for AgentProviderComposerReasoningProfile.
+type AgentProviderComposerReasoningProfile struct {
+	DefaultValue *string                                  `json:"defaultValue,omitempty"`
+	Options      []AgentProviderComposerConfigOptionValue `json:"options"`
 }
 
 // AgentProviderNetworkEndpoint defines model for AgentProviderNetworkEndpoint.

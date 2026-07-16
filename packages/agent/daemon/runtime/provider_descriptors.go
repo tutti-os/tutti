@@ -124,14 +124,21 @@ func newStandardACPAdapterFromProviderDescriptor(
 }
 
 type StandardACPAdapterConfig struct {
-	Provider          string
-	Name              string
-	DisplayName       string
-	Command           []string
-	AuthMessage       string
-	ToolAliases       map[string]string
-	PermissionModes   map[string]string
-	PlanModeRuntimeID string
+	Provider                 string
+	Name                     string
+	DisplayName              string
+	Command                  []string
+	AuthMessage              string
+	ToolAliases              map[string]string
+	ModelConfigOptionID      string
+	PermissionConfigOptionID string
+	ReasoningConfigOptionID  string
+	RestrictConfigOptions    bool
+	PermissionModes          map[string]string
+	PlanModeRuntimeID        string
+	Capabilities             []string
+	AgentTargetID            string
+	InstallationID           string
 }
 
 // NewStandardACPAdapter creates the generic, data-driven ACP adapter used by
@@ -146,17 +153,24 @@ func NewStandardACPAdapter(config StandardACPAdapterConfig, transport ProcessTra
 	permissionModes := cloneStandardACPToolAliases(config.PermissionModes)
 	return &standardACPAdapter{
 		config: standardACPConfig{
-			provider:            provider,
-			adapterName:         strings.TrimSpace(config.Name),
-			command:             append([]string(nil), config.Command...),
-			defaultTitle:        strings.TrimSpace(config.DisplayName),
-			defaultTitleAliases: []string{strings.TrimSpace(config.DisplayName), provider},
-			authRequiredMessage: strings.TrimSpace(config.AuthMessage),
-			toolAliases:         cloneStandardACPToolAliases(config.ToolAliases),
-			permissionModeID:    func(input string) string { return permissionModes[strings.ToLower(strings.TrimSpace(input))] },
-			planModeRuntimeID:   strings.TrimSpace(config.PlanModeRuntimeID),
-			initializeParams:    func() map[string]any { return defaultACPInitializeParams(host) },
-			env:                 func(session Session) []string { return standardACPEnv(session, host) },
+			provider:                 provider,
+			adapterName:              strings.TrimSpace(config.Name),
+			command:                  append([]string(nil), config.Command...),
+			defaultTitle:             strings.TrimSpace(config.DisplayName),
+			defaultTitleAliases:      []string{strings.TrimSpace(config.DisplayName), provider},
+			authRequiredMessage:      strings.TrimSpace(config.AuthMessage),
+			toolAliases:              cloneStandardACPToolAliases(config.ToolAliases),
+			modelConfigOptionID:      strings.TrimSpace(config.ModelConfigOptionID),
+			permissionConfigOptionID: strings.TrimSpace(config.PermissionConfigOptionID),
+			reasoningConfigOptionID:  strings.TrimSpace(config.ReasoningConfigOptionID),
+			restrictConfigOptions:    config.RestrictConfigOptions,
+			capabilities:             append([]string(nil), config.Capabilities...),
+			agentTargetID:            strings.TrimSpace(config.AgentTargetID),
+			installationID:           strings.TrimSpace(config.InstallationID),
+			permissionModeID:         func(input string) string { return permissionModes[strings.ToLower(strings.TrimSpace(input))] },
+			planModeRuntimeID:        strings.TrimSpace(config.PlanModeRuntimeID),
+			initializeParams:         func() map[string]any { return defaultACPInitializeParams(host) },
+			env:                      func(session Session) []string { return standardACPEnv(session, host) },
 		},
 		transport: transport, host: host, sessions: make(map[string]*standardACPSession),
 	}, nil

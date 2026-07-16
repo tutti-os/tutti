@@ -11,16 +11,12 @@ test("agent composer options keep SDK fast speed configurable after reload", () 
       prewarmDraftSession: true,
       planModeExclusiveWithPermissionMode: true
     },
-    runtimeContext: {
-      configOptions: [
-        {
-          id: "fast",
-          currentValue: "fast",
-          options: [
-            { name: "Standard", value: "standard" },
-            { name: "Fast", value: "fast" }
-          ]
-        }
+    speedConfig: {
+      configurable: true,
+      currentValue: "fast",
+      options: [
+        { label: "Standard", value: "standard" },
+        { label: "Fast", value: "fast" }
       ]
     }
   });
@@ -40,6 +36,44 @@ test("agent composer options keep SDK fast speed configurable after reload", () 
   assert.equal("runtimeContext" in options, false);
 });
 
+test("agent composer options do not expand typed capabilities from runtime context", () => {
+  const options = agentActivityComposerOptionsFromTuttidResult("acp:gemini", {
+    skills: [],
+    capabilityCatalog: [],
+    runtimeContext: {
+      configOptions: [
+        {
+          id: "speed",
+          currentValue: "poison",
+          options: [{ name: "Poison", value: "poison" }]
+        }
+      ],
+      skills: [
+        {
+          name: "Poison skill",
+          trigger: "/poison",
+          sourceKind: "plugin"
+        }
+      ],
+      capabilityCatalog: [
+        {
+          id: "poison-plugin",
+          invocation: "textTrigger",
+          kind: "plugin",
+          label: "Poison plugin",
+          name: "poison-plugin",
+          status: "available"
+        }
+      ]
+    }
+  });
+
+  assert.deepEqual(options.skills, []);
+  assert.deepEqual(options.capabilityCatalog, []);
+  assert.deepEqual(options.speeds, []);
+  assert.equal(options.speedConfigurable, false);
+});
+
 test("agent composer options preserve an advertised empty model reasoning profile", () => {
   const options = agentActivityComposerOptionsFromTuttidResult("opencode", {
     modelConfig: {
@@ -49,9 +83,12 @@ test("agent composer options preserve an advertised empty model reasoning profil
     },
     reasoningConfig: { configurable: false, options: [] },
     effectiveSettings: { model: "opencode/big-pickle" },
+    reasoningOptionsByModel: {
+      "opencode/big-pickle": { defaultValue: null, options: [] }
+    },
     runtimeContext: {
       modelReasoningOptionsByModel: {
-        "opencode/big-pickle": { defaultValue: null, options: [] }
+        poison: { defaultValue: "poison", options: [] }
       }
     }
   });
@@ -95,16 +132,21 @@ test("agent composer options project the typed slash command policy", () => {
 
 test("agent composer options restore commands advertised by a running ACP session", () => {
   const options = agentActivityComposerOptionsFromTuttidResult("acp:gemini", {
+    commands: [
+      {
+        name: "memory",
+        description: "Manage memory",
+        inputHint: "show | refresh"
+      },
+      { name: "help" },
+      { name: "memory" },
+      { description: "invalid" }
+    ],
     runtimeContext: {
       availableCommands: [
         {
-          name: "memory",
-          description: "Manage memory",
-          inputHint: "show | refresh"
-        },
-        { name: "help" },
-        { name: "memory" },
-        { description: "invalid" }
+          name: "legacy-command-that-must-not-win"
+        }
       ]
     }
   });
