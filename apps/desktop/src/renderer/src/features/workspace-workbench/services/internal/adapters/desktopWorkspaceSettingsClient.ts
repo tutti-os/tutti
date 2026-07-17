@@ -48,6 +48,15 @@ export type SetAgentModelBindingInput = SetAgentModelBindingRequest;
 export type PutWorkspaceAgentInput = PutWorkspaceAgentRequest;
 export type PutAutomationRuleInput = PutAutomationRuleRequest;
 
+/**
+ * Permission-mode and tool option catalogs resolved from one target Agent's
+ * composer capability directory.
+ */
+export interface AutomationTargetCatalogResult {
+  permissionModes: { id: string; label: string }[];
+  tools: { id: string; label: string }[];
+}
+
 export function isModelPlanReferencedError(error: unknown): boolean {
   return getTuttidProtocolErrorCode(error) === "model_plan_referenced";
 }
@@ -86,6 +95,11 @@ export interface DesktopWorkspaceSettingsClient {
     workspaceID: string,
     automationRuleID: string
   ): Promise<void>;
+  getAutomationTargetCatalog(
+    workspaceID: string,
+    provider: string,
+    agentTargetID: string
+  ): Promise<AutomationTargetCatalogResult>;
   listWorkspaceAgents(workspaceID: string): Promise<WorkspaceAgentDefinition[]>;
   createWorkspaceAgent(
     workspaceID: string,
@@ -161,6 +175,7 @@ export function createDesktopWorkspaceSettingsClient(input: {
     | "createWorkspaceAgent"
     | "deleteAutomationRule"
     | "deleteWorkspaceAgent"
+    | "getAgentProviderComposerOptions"
     | "listAgentTargets"
     | "listAgentModelBindings"
     | "listAutomationRules"
@@ -235,6 +250,24 @@ export function createDesktopWorkspaceSettingsClient(input: {
         workspaceID,
         automationRuleID
       );
+    },
+    async getAutomationTargetCatalog(workspaceID, provider, agentTargetID) {
+      const options = await input.tuttidClient.getAgentProviderComposerOptions(
+        provider as AgentTarget["provider"],
+        { agentTargetId: agentTargetID, workspaceId: workspaceID }
+      );
+      return {
+        permissionModes: options.permissionConfig.modes.map((mode) => ({
+          id: mode.id,
+          label: mode.label
+        })),
+        tools: options.capabilityCatalog
+          .filter(
+            (option) =>
+              option.kind !== "skill" && option.status !== "unsupported"
+          )
+          .map((option) => ({ id: option.id, label: option.label }))
+      };
     },
     async listWorkspaceAgents(workspaceID) {
       return (await input.tuttidClient.listWorkspaceAgents(workspaceID)).agents;

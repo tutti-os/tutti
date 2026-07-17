@@ -769,42 +769,15 @@ func (e AppReferenceListReferenceItemType) Valid() bool {
 	}
 }
 
-// Defines values for AutomationRuleAction.
-const (
-	AutomationRuleActionConsult  AutomationRuleAction = "consult"
-	AutomationRuleActionDelegate AutomationRuleAction = "delegate"
-	AutomationRuleActionFork     AutomationRuleAction = "fork"
-	AutomationRuleActionHandoff  AutomationRuleAction = "handoff"
-)
-
-// Valid indicates whether the value is a known member of the AutomationRuleAction enum.
-func (e AutomationRuleAction) Valid() bool {
-	switch e {
-	case AutomationRuleActionConsult:
-		return true
-	case AutomationRuleActionDelegate:
-		return true
-	case AutomationRuleActionFork:
-		return true
-	case AutomationRuleActionHandoff:
-		return true
-	default:
-		return false
-	}
-}
-
 // Defines values for AutomationRuleTargetKind.
 const (
 	AutomationRuleTargetKindAgent AutomationRuleTargetKind = "agent"
-	AutomationRuleTargetKindModel AutomationRuleTargetKind = "model"
 )
 
 // Valid indicates whether the value is a known member of the AutomationRuleTargetKind enum.
 func (e AutomationRuleTargetKind) Valid() bool {
 	switch e {
 	case AutomationRuleTargetKindAgent:
-		return true
-	case AutomationRuleTargetKindModel:
 		return true
 	default:
 		return false
@@ -2115,13 +2088,13 @@ func (e WorkspaceAgentCompletedCommandStatus) Valid() bool {
 
 // Defines values for WorkspaceAgentGeneratedAutomationRuleAction.
 const (
-	Consult WorkspaceAgentGeneratedAutomationRuleAction = "consult"
+	WorkspaceAgentGeneratedAutomationRuleActionConsult WorkspaceAgentGeneratedAutomationRuleAction = "consult"
 )
 
 // Valid indicates whether the value is a known member of the WorkspaceAgentGeneratedAutomationRuleAction enum.
 func (e WorkspaceAgentGeneratedAutomationRuleAction) Valid() bool {
 	switch e {
-	case Consult:
+	case WorkspaceAgentGeneratedAutomationRuleActionConsult:
 		return true
 	default:
 		return false
@@ -3945,10 +3918,8 @@ type AuthenticateAgentTargetRuntimeRequest struct {
 	MethodId       string `json:"methodId"`
 }
 
-// AutomationRule defines model for AutomationRule.
+// AutomationRule One workspace automation rule. A triggered rule launches a new target-Agent session whose first message carries the rule prompt, a source-session mention, and a short event note.
 type AutomationRule struct {
-	Action AutomationRuleAction `json:"action"`
-
 	// Budget Independent per-source-session limit. Zero uses the daemon safety default and never means unlimited.
 	Budget    AutomationRuleBudget `json:"budget"`
 	CreatedAt time.Time            `json:"createdAt"`
@@ -3956,7 +3927,7 @@ type AutomationRule struct {
 	Id        string               `json:"id"`
 	Name      string               `json:"name"`
 
-	// Permissions Authority narrowing applied to automatically launched WorkspaceAgents. Consult is always tool-free and ignores these fields.
+	// Permissions Authority narrowing applied to the automatically launched target session. The option catalogs follow the selected target Agent's capability directory.
 	Permissions AutomationRulePermissions `json:"permissions"`
 	Prompt      string                    `json:"prompt"`
 
@@ -3964,14 +3935,11 @@ type AutomationRule struct {
 	SourceWorkspaceAgentId *string              `json:"sourceWorkspaceAgentId,omitempty"`
 	Target                 AutomationRuleTarget `json:"target"`
 
-	// Trigger Lifecycle outcome that evaluates the rule. A failed-turn rule can delegate to a stronger WorkspaceAgent as a bounded escalation attempt; automated outcomes never final-accept the source task.
+	// Trigger Lifecycle outcome that evaluates the rule. A failed-turn rule can escalate to a stronger Agent as a bounded rescue attempt; automated outcomes never final-accept the source task.
 	Trigger     AutomationRuleTrigger `json:"trigger"`
 	UpdatedAt   time.Time             `json:"updatedAt"`
 	WorkspaceId string                `json:"workspaceId"`
 }
-
-// AutomationRuleAction defines model for AutomationRuleAction.
-type AutomationRuleAction string
 
 // AutomationRuleBudget Independent per-source-session limit. Zero uses the daemon safety default and never means unlimited.
 type AutomationRuleBudget struct {
@@ -3979,7 +3947,7 @@ type AutomationRuleBudget struct {
 	MaxTotalTokensPerSession int64 `json:"maxTotalTokensPerSession"`
 }
 
-// AutomationRulePermissions Authority narrowing applied to automatically launched WorkspaceAgents. Consult is always tool-free and ignores these fields.
+// AutomationRulePermissions Authority narrowing applied to the automatically launched target session. The option catalogs follow the selected target Agent's capability directory.
 type AutomationRulePermissions struct {
 	AllowedTools     []string `json:"allowedTools"`
 	PermissionModeId *string  `json:"permissionModeId,omitempty"`
@@ -3987,23 +3955,26 @@ type AutomationRulePermissions struct {
 
 // AutomationRuleTarget defines model for AutomationRuleTarget.
 type AutomationRuleTarget struct {
+	// Kind Every rule targets a launchable Agent. The legacy model kind retired with the consult action and no longer appears.
 	Kind AutomationRuleTargetKind `json:"kind"`
 
-	// Model Optional consult model; defaults to the target ModelPlan default model.
+	// Model Retired consult-era field; always empty.
 	Model *string `json:"model,omitempty"`
 
-	// ModelPlanId Required for consult. The ModelPlan must be enabled.
-	ModelPlanId          *string  `json:"modelPlanId,omitempty"`
+	// ModelPlanId Retired consult-era field; always empty. Launches inherit the target Agent's model configuration.
+	ModelPlanId *string `json:"modelPlanId,omitempty"`
+
+	// RequiredCapabilities Retired consult-era field; always empty.
 	RequiredCapabilities []string `json:"requiredCapabilities"`
 
-	// WorkspaceAgentId Required for fork, delegate, and handoff. The Agent must be enabled and launchable.
+	// WorkspaceAgentId Target Agent that receives the automated follow-up session. Accepts a WorkspaceAgent id or a built-in Harness AgentTarget id; the Agent must be enabled and launchable.
 	WorkspaceAgentId *string `json:"workspaceAgentId,omitempty"`
 }
 
-// AutomationRuleTargetKind defines model for AutomationRuleTargetKind.
+// AutomationRuleTargetKind Every rule targets a launchable Agent. The legacy model kind retired with the consult action and no longer appears.
 type AutomationRuleTargetKind string
 
-// AutomationRuleTrigger Lifecycle outcome that evaluates the rule. A failed-turn rule can delegate to a stronger WorkspaceAgent as a bounded escalation attempt; automated outcomes never final-accept the source task.
+// AutomationRuleTrigger Lifecycle outcome that evaluates the rule. A failed-turn rule can escalate to a stronger Agent as a bounded rescue attempt; automated outcomes never final-accept the source task.
 type AutomationRuleTrigger string
 
 // CheckUserProjectPathRequest defines model for CheckUserProjectPathRequest.
@@ -5509,20 +5480,18 @@ type PublishWorkspaceAppFactoryJobResponse struct {
 
 // PutAutomationRuleRequest defines model for PutAutomationRuleRequest.
 type PutAutomationRuleRequest struct {
-	Action AutomationRuleAction `json:"action"`
-
 	// Budget Independent per-source-session limit. Zero uses the daemon safety default and never means unlimited.
 	Budget  AutomationRuleBudget `json:"budget"`
 	Enabled bool                 `json:"enabled"`
 	Name    string               `json:"name"`
 
-	// Permissions Authority narrowing applied to automatically launched WorkspaceAgents. Consult is always tool-free and ignores these fields.
+	// Permissions Authority narrowing applied to the automatically launched target session. The option catalogs follow the selected target Agent's capability directory.
 	Permissions            AutomationRulePermissions `json:"permissions"`
 	Prompt                 string                    `json:"prompt"`
 	SourceWorkspaceAgentId *string                   `json:"sourceWorkspaceAgentId,omitempty"`
 	Target                 AutomationRuleTarget      `json:"target"`
 
-	// Trigger Lifecycle outcome that evaluates the rule. A failed-turn rule can delegate to a stronger WorkspaceAgent as a bounded escalation attempt; automated outcomes never final-accept the source task.
+	// Trigger Lifecycle outcome that evaluates the rule. A failed-turn rule can escalate to a stronger Agent as a bounded rescue attempt; automated outcomes never final-accept the source task.
 	Trigger AutomationRuleTrigger `json:"trigger"`
 }
 
@@ -6135,7 +6104,7 @@ type WorkspaceAgentGeneratedAutomationRule struct {
 	Name                     string                                      `json:"name"`
 	Prompt                   string                                      `json:"prompt"`
 
-	// Trigger Lifecycle outcome that evaluates the rule. A failed-turn rule can delegate to a stronger WorkspaceAgent as a bounded escalation attempt; automated outcomes never final-accept the source task.
+	// Trigger Lifecycle outcome that evaluates the rule. A failed-turn rule can escalate to a stronger Agent as a bounded rescue attempt; automated outcomes never final-accept the source task.
 	Trigger AutomationRuleTrigger `json:"trigger"`
 }
 

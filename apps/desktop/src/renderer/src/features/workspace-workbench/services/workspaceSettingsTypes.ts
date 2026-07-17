@@ -5,7 +5,6 @@ import type {
 import type {
   AgentModelBinding,
   AutomationRule,
-  AutomationRuleAction,
   AutomationRuleTrigger,
   ModelPlan,
   ModelPlanBillingMode,
@@ -148,29 +147,49 @@ export interface WorkspaceSettingsWorkspaceAgentsSnapshotState {
   readonly saving: boolean;
 }
 
-export type WorkspaceAutomationRuleAction = AutomationRuleAction;
 export type WorkspaceAutomationRuleTrigger = AutomationRuleTrigger;
 
 export type WorkspaceAutomationRule = WorkspaceSettingsReadonly<AutomationRule>;
 
 /**
- * Local edit buffer for one daemon-owned AutomationRule. Separate model and
- * Agent target fields let an action switch safely without retaining an
- * invalid target shape in the request.
+ * One selectable automation launch target: a built-in Harness target or an
+ * enabled WorkspaceAgent. Built-ins stay selectable even when no
+ * WorkspaceAgent exists.
+ */
+export interface WorkspaceAutomationTargetOption {
+  readonly id: string;
+  readonly name: string;
+  readonly provider: string;
+  readonly kind: "builtin" | "workspaceAgent";
+}
+
+/**
+ * Permission-mode and tool option catalogs resolved from the selected target
+ * Agent's composer capability directory.
+ */
+export interface WorkspaceAutomationTargetCatalog {
+  agentTargetId: string;
+  loading: boolean;
+  loadFailed: boolean;
+  permissionModes: readonly { readonly id: string; readonly label: string }[];
+  tools: readonly { readonly id: string; readonly label: string }[];
+}
+
+/**
+ * Local edit buffer for one daemon-owned AutomationRule. A rule has exactly
+ * one behavior: launch a new target-Agent session that mentions the source
+ * session, so the buffer carries a single target plus its narrowed
+ * permissions.
  */
 export interface WorkspaceAutomationRuleDraft {
   automationRuleId: string | null;
   name: string;
   enabled: boolean;
   trigger: WorkspaceAutomationRuleTrigger;
-  action: WorkspaceAutomationRuleAction;
   sourceWorkspaceAgentId: string;
-  targetWorkspaceAgentId: string;
-  modelPlanId: string;
-  model: string;
-  requiredCapabilities: string;
+  targetAgentId: string;
   permissionModeId: string;
-  allowedTools: string;
+  allowedTools: readonly string[];
   maxRunsPerSession: string;
   maxTotalTokensPerSession: string;
   prompt: string;
@@ -195,6 +214,8 @@ export interface WorkspaceSettingsAutomationRulesMutableState {
   loadFailed: boolean;
   loading: boolean;
   saving: boolean;
+  targetOptions: WorkspaceAutomationTargetOption[];
+  targetCatalog: WorkspaceAutomationTargetCatalog | null;
 }
 
 export interface WorkspaceSettingsAutomationRulesSnapshotState {
@@ -206,6 +227,8 @@ export interface WorkspaceSettingsAutomationRulesSnapshotState {
   readonly loadFailed: boolean;
   readonly loading: boolean;
   readonly saving: boolean;
+  readonly targetOptions: readonly WorkspaceAutomationTargetOption[];
+  readonly targetCatalog: Readonly<WorkspaceAutomationTargetCatalog> | null;
 }
 
 /**

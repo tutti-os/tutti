@@ -128,6 +128,11 @@ type AutomationRulesStore interface {
 	UpdateAutomationRule(context.Context, automationrulebiz.Rule) (automationrulebiz.Rule, error)
 	GetAutomationRuleSessionOverride(context.Context, string, string) (automationrulebiz.SessionOverride, bool, error)
 	PutAutomationRuleSessionOverride(context.Context, automationrulebiz.SessionOverride) error
+	RecordAutomationRuleExecution(context.Context, automationrulebiz.Execution) error
+	MarkAutomationRuleExecutionLaunchFailed(ctx context.Context, workspaceID string, targetSessionID string, failureReason string) error
+	AutomationRuleExecutionExists(ctx context.Context, workspaceID string, sourceSessionID string, ruleID string, triggerID string) (bool, error)
+	AutomationRuleUsage(ctx context.Context, workspaceID string, sourceSessionID string, ruleID string) (int, int64, error)
+	RecordAutomationTargetUsage(ctx context.Context, workspaceID string, targetSessionID string, totalTokens int64) error
 }
 
 type CollaborationRunsStore interface {

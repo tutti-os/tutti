@@ -674,7 +674,10 @@ export class WorkspaceAgentActivityService
         name: rule.name,
         enabled: rule.enabled,
         trigger: rule.trigger,
-        action: rule.action
+        // The automation domain retired its action split; every rule
+        // launches a follow-up session. The runtime summary field stays for
+        // contract stability and is no longer populated from the daemon.
+        action: ""
       }))
     };
   }

@@ -343,6 +343,116 @@
   (b) codex home 的聚合模型菜單在 options 未載入時只展示方案模型，無任何
   provider 原生模型可選。兩者建議回派給 ⑤/模型綁定 owner。
 
+## Wave 4-③（自動化規則重構：單一動作語義 + 目標/權限/工具目錄）
+
+### W4③-1 action 欄位選「移除」：OpenAPI + biz 全退役，v2 遷移歸一存量
+
+- 問題：D2 允許「移除或 dormant」。dormant 會留下「consult 規則無 agent 目標
+  卻被要求 launch」的殭屍態，且 IsAcceptanceReview 等分支仍纏繞編譯面。
+- 決策：**移除**。`AutomationRuleAction` schema、`AutomationRule.action`、
+  `PutAutomationRuleRequest.action` 從 OpenAPI 刪除並 regen；biz 刪除
+  Action/IsAction/IsAcceptanceReview/ParseReviewVerdict；`automation_rules_v2`
+  遷移 **刪除 consult/model-target/空目標行**（無法表達新語義；dev 環境需求方
+  已確認可安全歸一），其餘 agent-target 行清空 action 判別值。SQLite 物理列
+  保留（寫 '' 常量），避免重建表；`target_kind` 枚舉收斂為僅 `agent`，
+  modelPlanId/model/requiredCapabilities 作為 retired 欄位 dormant 保留
+  （恆空，寫入被 Normalize 拒絕）——這保住了 ListAutomationRulesByPlan 與
+  模型方案刪除守衛的既有形狀。
+- 影響：舊 daemon 降級讀新庫會因空 action 失敗（dev-only，可接受）。
+
+### W4③-2 防護資料源從 CollaborationRun 遷到 automation_rule_executions
+
+- 問題：「不再產生 CollaborationRun 卡片」但「防護保留不動」——原 dedup/
+  次數/token 預算全部查 collabrun ledger。
+- 決策：新增 `automation_rule_executions` 表（主鍵 workspace/rule/source/
+  trigger），launch 前先落行（重複觸發/重啟不會二次 launch），launch 失敗行
+  標記 `launch_failed` 並照舊計入 run 次數（與舊語義一致）。token 記錄改為
+  在目標會話首個終局 turn（completed/failed/interrupted，含 cancel 出局的
+  interrupted）時，把其 runtimeContext.usage 四項 settle-once 進該行。
+- **計量口徑如實說明**：runtimeContext 頂層 usage 四項來自
+  `runtimeTokenUsage`，是「最近一次模型請求」的用量（codex 取
+  tokenUsage["last"]，見 packages/agent/daemon/runtime/token_usage.go 註釋），
+  **不是會話累計**。因此 token 預算對 spawn 型執行實際幾乎只靠 maxRuns
+  兜底——這與被退役的 collabrun agent-action 路徑同源同語義（collabrun
+  observer 讀的是同一份 runtimeContext），屬平移而非回歸。若預算要成為
+  真實限流，需把口徑改為會話累計（runtime 需上報 cumulative 計數或
+  daemon 側自行累加），留待需求方決定。
+- 已知邊界：歷史 collabrun 記錄不再參與 dedup/預算統計（切表起點歸零；
+  in-flight 觸發窗口極窄，dev 可接受）。
+
+### W4③-3 acceptance review 隨 consult 動作一併退役（連帶語義）
+
+- 影響鏈：issue orchestration 強度檔位中 34-66（原「啟用固定驗收 Review」）
+  現在與 <34 相同 = 該會話自動化停用；≥67 僅選 on_task_failed 規則。
+  runRule 的 ReviewOutcomes 記錄分支、tuttid 根部 recorder 已刪；
+  `IssueManagerService.RecordAutomationReviewOutcome` 與 modelpolicy
+  `RecordAutomatedReviewOutcome` 保留 dormant（issues/legacy 域資產，本波
+  不擴大刪除面）。agent-gui 的 AgentActivityAutomationRuleSummary.action
+  契約欄位保留（agent-gui 本波凍結），desktop 映射恆填 ""。
+- 建議：若需求方仍要「自動驗收」，應以新語義重新設計（例如目標 Agent 會話
+  產出結構化結論回寫 Issue），不建議復活 consult 特例。
+
+### W4③-4 允許的工具目錄 = capabilityCatalog 非 skill 條目
+
+- 假設：3-3 的「能力目錄」取 composer options `capabilityCatalog`
+  （plugin/connector/mcpServer/mcpTool，排除 unsupported 與 skill——Wave 3-②
+  已回到 skills 自動同步全部），值為 option.id，與 WorkspaceAgent tools
+  存儲值先例一致；空選擇 = 不加約束（繼承目標配置），文案已提示。
+- 影響：原自由文本可寫 "browser"/"computer" 控制 daemon 級瀏覽器/計算機
+  開關；目錄化後這兩個開關不在 capabilityCatalog 中，暫不可經自動化規則
+  表達（daemon constrainWorkspaceAgentTools 語義未動）。
+- 建議：若需要，後續給目錄追加兩個合成條目（browser/computer）即可，
+  daemon 側無需改動。
+
+### W4③-5 內建 target 的保存校驗只認「存在 + enabled」
+
+- 假設：validateReferences 對非 `workspace-agent:` 前綴目標經新
+  `AgentTargetReader`（GetAgentTarget）校驗存在與 enabled，不做
+  NormalizeTarget/launch-ref 深校驗——與 issues 域 assignment 校驗先例
+  同層級；launch 時 session-create 路徑仍是嚴格權威（StrictPermissionMode
+  fail-closed、provider/launch-ref 校驗）。
+
+### W4③-6 首條消息不再內聯來源轉錄，mention 是唯一上下文通道
+
+- 決策：按 D2 字面「提示詞 + mention + 事件說明」三段組成首條消息；原
+  48 條/32KB 內聯轉錄複製移除，ContextReader 縮減為僅取來源會話 cwd
+  （SourceReader.AutomationSourceCwd）。目標 Agent 經 $tutti-handoff /
+  tutti-cli skill 解析 mention 讀取來源上下文。
+- 影響：不具 Tutti CLI mention 解析能力的目標（理論上無）拿不到來源正文；
+  換來的是首條消息不再無條件外洩整段對話。
+
+### W4③-7 智能生成鏈（Wave 3-② dormant 契約）解耦自動化域
+
+- 現狀：generation.go 的 GeneratedRule.Action 原引用 automationrulebiz
+  枚舉；退役後改為普通字串常量 "consult"（preview-only 契約原樣保留，
+  等 D1「全鏈路刪除」的契約清理波處置）。生成建議已無法落成自動化規則
+  （PUT 無 action 且 consult 目標形狀被拒），純展示殘留。
+
+### W4③-8 執行期失敗完全不可見（review 回派記錄）
+
+- 問題：規則保存後目標可能失效——存量規則的目標 Agent 被 disable/刪除，
+  或陳舊 permissionModeId 在觸發時被 StrictPermissionMode fail-closed
+  拒絕。此時 launch 落 `launch_failed` 行（消耗該 trigger 並計入 run
+  次數，行為安全），但 `automation_rule_executions` 沒有任何 list API 或
+  GUI 展示面，用戶只看到「規則沒反應」，唯一線索是 daemon slog
+  `automation_rule.session_launch_failed`。
+- 附帶：PutRule 保存時不校驗 permissionModeId 的有效性——校驗需按
+  provider 拉 composer catalog，save 路徑不宜引入該依賴；編輯器目錄
+  （3-3）已在 UI 層把非法值擋在常規路徑之外，陳舊值只在觸發時被拒。
+- 建議：後續為 executions 增加查看面（list API + 設定頁規則行內最近
+  執行狀態），或至少把 launch_failed 以通知/消息中心形式冒泡。
+
+### W4③-9 無 turn id 的 settle 靠 occurred:<ts> 兜底 dedup（記錄即可）
+
+- 現狀：settledTurnID（service.go）在 Turn 與 TurnLifecycle 均無 turn id
+  時退化為 `occurred:<OccurredAtUnixMS>` 作為 trigger 鍵。若某 provider 的
+  settled patch 不帶 turn id 且重放時 OccurredAtUnixMS 改變，同一次完成
+  理論上可雙發（durable dedup 主鍵含 trigger_id，鍵不同即視為新觸發）。
+- 評估：三大主 adapter（codex/claude/cursor）的 settled 報告均攜帶
+  turn id，窗口極窄；此兜底邏輯為既有語義原樣保留（本波未改）。
+- 建議：若未來接入不帶 turn id 的 provider，應在 adapter 層合成穩定
+  turn id，而非依賴時間戳兜底。
+
 ## 主線 GUI 走查觀察（Wave 3-④ e2e，追加）
 
 ### W3-GUI-4 Agent 缺乏 plan 文檔格式規格來源，被遺留舊格式檔誤導

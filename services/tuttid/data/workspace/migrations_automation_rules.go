@@ -13,6 +13,7 @@ import (
 )
 
 const schemaMigrationAutomationRulesV1 = "automation_rules_v1"
+const schemaMigrationAutomationRulesV2 = "automation_rules_v2"
 
 const migratedReviewPrompt = "Review the work this coding agent session just claimed to complete. Judge whether the claimed outcome is plausible and internally consistent. Answer with your findings, then end with exactly one final line: VERDICT: PASS or VERDICT: FAIL."
 
@@ -89,6 +90,73 @@ VALUES (?, ?)
 	}
 	if err := tx.Commit(); err != nil {
 		return fmt.Errorf("commit automation rules v1 migration: %w", err)
+	}
+	return nil
+}
+
+// applyAutomationRulesV2 retires the four-action automation split. Rules now
+// have exactly one behavior — launch a new target-Agent session — so
+// model-target consult rows (which have no launchable target) are removed,
+// the action discriminator is cleared on the remaining agent-target rows,
+// and the durable execution ledger that replaces CollaborationRun
+// bookkeeping for automation is created.
+func (s *SQLiteStore) applyAutomationRulesV2(ctx context.Context) error {
+	applied, err := s.hasMigration(ctx, schemaMigrationAutomationRulesV2)
+	if err != nil {
+		return err
+	}
+	if applied {
+		return nil
+	}
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin automation rules v2 migration: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+	if _, err := tx.ExecContext(ctx, `
+CREATE TABLE IF NOT EXISTS automation_rule_executions (
+  workspace_id TEXT NOT NULL,
+  rule_id TEXT NOT NULL,
+  source_session_id TEXT NOT NULL,
+  trigger_id TEXT NOT NULL,
+  target_session_id TEXT NOT NULL,
+  status TEXT NOT NULL,
+  failure_reason TEXT NOT NULL DEFAULT '',
+  total_tokens INTEGER NOT NULL DEFAULT 0,
+  created_at_unix_ms INTEGER NOT NULL,
+  updated_at_unix_ms INTEGER NOT NULL,
+  PRIMARY KEY (workspace_id, rule_id, source_session_id, trigger_id),
+  FOREIGN KEY (workspace_id) REFERENCES workspaces(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_automation_rule_executions_source
+  ON automation_rule_executions(workspace_id, source_session_id, rule_id);
+CREATE INDEX IF NOT EXISTS idx_automation_rule_executions_target
+  ON automation_rule_executions(workspace_id, target_session_id);
+`); err != nil {
+		return fmt.Errorf("create automation rule executions schema: %w", err)
+	}
+	if _, err := tx.ExecContext(ctx, `
+DELETE FROM automation_rules
+WHERE action = 'consult' OR target_kind = 'model' OR target_workspace_agent_id = '';
+`); err != nil {
+		return fmt.Errorf("retire consult automation rules: %w", err)
+	}
+	if _, err := tx.ExecContext(ctx, `
+UPDATE automation_rules
+SET action = '', target_kind = 'agent', model_plan_id = '', model = '',
+    required_capabilities_json = '[]';
+`); err != nil {
+		return fmt.Errorf("normalize automation rules to launch semantics: %w", err)
+	}
+	if _, err := tx.ExecContext(ctx, `
+INSERT INTO tuttid_schema_migrations (id, applied_at_unix_ms)
+VALUES (?, ?)
+`, schemaMigrationAutomationRulesV2, unixMs(time.Now().UTC())); err != nil {
+		return fmt.Errorf("record automation rules v2 migration: %w", err)
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit automation rules v2 migration: %w", err)
 	}
 	return nil
 }

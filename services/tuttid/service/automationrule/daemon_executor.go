@@ -2,74 +2,46 @@ package automationrule
 
 import (
 	"context"
-	"crypto/sha256"
 	"fmt"
+	"log/slog"
 	"net/url"
 	"strings"
+	"time"
 
 	"github.com/google/uuid"
-	agentactivitybiz "github.com/tutti-os/tutti/services/tuttid/biz/agentactivity"
 	automationrulebiz "github.com/tutti-os/tutti/services/tuttid/biz/automationrule"
-	collabrunbiz "github.com/tutti-os/tutti/services/tuttid/biz/collabrun"
 	agentservice "github.com/tutti-os/tutti/services/tuttid/service/agent"
-	collabrunservice "github.com/tutti-os/tutti/services/tuttid/service/collabrun"
 )
 
-const (
-	maxAutomationContextMessages = 48
-	maxAutomationContextChars    = 32 * 1024
-)
+// ExecutionRecorder persists automation launch attempts. The durable row is
+// written before the target session exists so a duplicate trigger delivery
+// or a daemon restart can never launch the same follow-up twice.
+type ExecutionRecorder interface {
+	RecordAutomationRuleExecution(context.Context, automationrulebiz.Execution) error
+	MarkAutomationRuleExecutionLaunchFailed(ctx context.Context, workspaceID string, targetSessionID string, failureReason string) error
+}
 
-// DaemonExecutor uses the existing collaboration ledger and agent-session
-// creation path. It also implements ContextReader and UsageReader, so one
-// instance can be wired into all three Service collaborators.
+// DaemonExecutor launches the single automation behavior: one new target
+// Agent session whose first message carries the rule prompt, a source
+// session mention, and a short event note. It records an audit slog entry
+// and a durable execution row instead of a CollaborationRun; the
+// CollaborationRun infrastructure remains reserved for explicit user
+// collaboration (@model consult, handoff menu).
 type DaemonExecutor struct {
 	Agents       *agentservice.Service
-	Runs         *collabrunservice.Service
+	Ledger       ExecutionRecorder
 	IssueRescues IssueRescueCoordinator
 }
 
 func (e *DaemonExecutor) ExecuteAutomationRule(ctx context.Context, input ExecutionInput) (ExecutionResult, error) {
-	if e == nil || e.Runs == nil {
-		return ExecutionResult{}, fmt.Errorf("automation collaboration runner is unavailable")
-	}
-	rule := input.Rule
-	reason := automationTriggerReason(rule.ID, input.TriggerID)
-	if rule.Action == automationrulebiz.ActionConsult {
-		question := strings.TrimSpace(rule.Prompt)
-		if question == "" {
-			question = "Review the completed work and identify correctness risks, missing validation, and concrete follow-up actions."
-		}
-		maxTokens := input.MaxOutputTokens
-		if maxTokens <= 0 || maxTokens > 2048 {
-			maxTokens = 2048
-		}
-		run, err := e.Runs.StartConsult(ctx, collabrunservice.StartConsultInput{
-			WorkspaceID:     input.WorkspaceID,
-			SourceSessionID: input.SourceSessionID,
-			ModelPlanID:     rule.Target.ModelPlanID,
-			Model:           rule.Target.Model,
-			Question:        question,
-			ContextText:     input.SourceContext,
-			TriggerSource:   string(collabrunbiz.TriggerAutomation),
-			TriggerReason:   reason,
-			MaxTokens:       maxTokens,
-		})
-		if err != nil {
-			return ExecutionResult{}, err
-		}
-		return ExecutionResult{
-			RunID:       run.ID,
-			TotalTokens: run.Usage.Total(),
-			ResultText:  run.ResultText,
-			Failed:      run.Status != collabrunbiz.StatusCompleted,
-		}, nil
-	}
-	if e.Agents == nil {
+	if e == nil || e.Agents == nil {
 		return ExecutionResult{}, fmt.Errorf("automation agent session service is unavailable")
 	}
-	instruction := automationAgentInstruction(rule)
-	prompt := automationAgentPrompt(instruction, input.WorkspaceID, input.SourceSessionID, input.SourceContext)
+	if e.Ledger == nil {
+		return ExecutionResult{}, fmt.Errorf("automation execution ledger is unavailable")
+	}
+	rule := input.Rule
+	prompt := automationLaunchPrompt(rule, input.WorkspaceID, input.SourceSessionID)
 	cwd := strings.TrimSpace(input.SourceCwd)
 	var cwdPointer *string
 	if cwd != "" {
@@ -89,37 +61,32 @@ func (e *DaemonExecutor) ExecuteAutomationRule(ctx context.Context, input Execut
 			SourceSessionID:     input.SourceSessionID,
 			TargetSessionID:     targetSessionID,
 			TargetAgentTargetID: rule.Target.WorkspaceAgentID,
-			ModelPlanID:         rule.Target.ModelPlanID,
-			Model:               rule.Target.Model,
 			ExecutionDirectory:  cwd,
 		})
 		if err != nil {
 			return ExecutionResult{}, err
 		}
 	}
-	run, err := e.Runs.RecordRun(ctx, collabrunservice.RecordRunInput{
-		WorkspaceID:         input.WorkspaceID,
-		Mode:                string(rule.Action),
-		SourceSessionID:     input.SourceSessionID,
-		TargetSessionID:     targetSessionID,
-		TargetAgentTargetID: rule.Target.WorkspaceAgentID,
-		ModelPlanID:         rule.Target.ModelPlanID,
-		Model:               rule.Target.Model,
-		ContextScope:        automationContextScope(input.SourceContext),
-		Prompt:              instruction,
-		RequestText:         instruction,
-		ContextText:         input.SourceContext,
-		TriggerSource:       string(collabrunbiz.TriggerAutomation),
-		TriggerReason:       reason,
+	execution, err := automationrulebiz.NormalizeExecution(automationrulebiz.Execution{
+		WorkspaceID:     input.WorkspaceID,
+		RuleID:          rule.ID,
+		SourceSessionID: input.SourceSessionID,
+		TriggerID:       input.TriggerID,
+		TargetSessionID: targetSessionID,
+		Status:          automationrulebiz.ExecutionLaunched,
+		CreatedAt:       time.Now().UTC(),
 	})
 	if err != nil {
+		return ExecutionResult{}, e.failIssueRescue(ctx, rescuePreparation, input.WorkspaceID, targetSessionID, err)
+	}
+	if err := e.Ledger.RecordAutomationRuleExecution(ctx, execution); err != nil {
 		return ExecutionResult{}, e.failIssueRescue(ctx, rescuePreparation, input.WorkspaceID, targetSessionID, err)
 	}
 	_, err = e.Agents.Create(ctx, input.WorkspaceID, agentservice.CreateSessionInput{
 		AgentSessionID:         targetSessionID,
 		AgentTargetID:          rule.Target.WorkspaceAgentID,
 		InitialContent:         []agentservice.PromptContentBlock{{Type: "text", Text: prompt}},
-		InitialDisplayPrompt:   automationAgentDisplayPrompt(rule, input.SourceSessionID),
+		InitialDisplayPrompt:   automationLaunchDisplayPrompt(rule, input.SourceSessionID),
 		Cwd:                    cwdPointer,
 		PermissionModeID:       permissionModeID,
 		StrictPermissionMode:   permissionModeID != nil,
@@ -129,25 +96,46 @@ func (e *DaemonExecutor) ExecuteAutomationRule(ctx context.Context, input Execut
 		RuntimeContext: map[string]any{
 			"automation": map[string]any{
 				"ruleId":          rule.ID,
-				"action":          string(rule.Action),
 				"sourceSessionId": input.SourceSessionID,
 				"depth":           input.AutomationDepth + 1,
 			},
 		},
 		Metadata: map[string]any{
 			"automationRuleId": rule.ID,
-			"automationAction": string(rule.Action),
 		},
 	})
 	if err != nil {
-		_, _ = e.Runs.SettleRun(ctx, input.WorkspaceID, run.ID, collabrunservice.SettleRunInput{
-			Status:        string(collabrunbiz.StatusFailed),
-			FailureReason: err.Error(),
-			FailureStage:  "target_launch",
-		})
+		if markErr := e.Ledger.MarkAutomationRuleExecutionLaunchFailed(ctx, input.WorkspaceID, targetSessionID, err.Error()); markErr != nil {
+			slog.Warn("automation execution failure bookkeeping failed",
+				"event", "automation_rule.execution_mark_failed",
+				"workspace_id", input.WorkspaceID,
+				"rule_id", rule.ID,
+				"target_session_id", targetSessionID,
+				"error", markErr)
+		}
+		slog.Warn("automation rule target session launch failed",
+			"event", "automation_rule.session_launch_failed",
+			"workspace_id", input.WorkspaceID,
+			"rule_id", rule.ID,
+			"trigger", string(rule.Trigger),
+			"source_session_id", input.SourceSessionID,
+			"target_session_id", targetSessionID,
+			"agent_target_id", rule.Target.WorkspaceAgentID,
+			"error", err)
 		return ExecutionResult{}, e.failIssueRescue(ctx, rescuePreparation, input.WorkspaceID, targetSessionID, err)
 	}
-	return ExecutionResult{RunID: run.ID}, nil
+	slog.Info("automation rule launched target session",
+		"event", "automation_rule.session_launched",
+		"workspace_id", input.WorkspaceID,
+		"rule_id", rule.ID,
+		"trigger", string(rule.Trigger),
+		"source_session_id", input.SourceSessionID,
+		"target_session_id", targetSessionID,
+		"agent_target_id", rule.Target.WorkspaceAgentID,
+		"permission_mode_id", rule.Permissions.PermissionModeID,
+		"allowed_tools", len(rule.Permissions.AllowedTools),
+		"automation_depth", input.AutomationDepth+1)
+	return ExecutionResult{TargetSessionID: targetSessionID}, nil
 }
 
 func (e *DaemonExecutor) failIssueRescue(
@@ -170,146 +158,36 @@ func (e *DaemonExecutor) failIssueRescue(
 	return cause
 }
 
-func (e *DaemonExecutor) AutomationRuleUsage(ctx context.Context, workspaceID string, sourceSessionID string, ruleID string) (int, int64, error) {
-	if e == nil || e.Runs == nil {
-		return 0, 0, fmt.Errorf("automation collaboration runner is unavailable")
-	}
-	runs, err := e.Runs.ListRuns(ctx, workspaceID, sourceSessionID, 0)
-	if err != nil {
-		return 0, 0, err
-	}
-	prefix := automationTriggerReasonPrefix(ruleID)
-	count := 0
-	var tokens int64
-	for _, run := range runs {
-		if run.TriggerSource != collabrunbiz.TriggerAutomation || !strings.HasPrefix(run.TriggerReason, prefix) {
-			continue
-		}
-		count++
-		tokens += run.Usage.Total()
-	}
-	return count, tokens, nil
-}
-
-func (e *DaemonExecutor) AutomationRuleExecutionExists(ctx context.Context, workspaceID string, sourceSessionID string, ruleID string, triggerID string) (bool, error) {
-	if e == nil || e.Runs == nil {
-		return false, fmt.Errorf("automation collaboration runner is unavailable")
-	}
-	runs, err := e.Runs.ListRuns(ctx, workspaceID, sourceSessionID, 0)
-	if err != nil {
-		return false, err
-	}
-	reason := automationTriggerReason(ruleID, triggerID)
-	for _, run := range runs {
-		if run.TriggerSource == collabrunbiz.TriggerAutomation && run.TriggerReason == reason {
-			return true, nil
-		}
-	}
-	return false, nil
-}
-
-func (e *DaemonExecutor) AutomationSourceContext(ctx context.Context, workspaceID string, sessionID string) (string, string, error) {
+// AutomationSourceCwd implements SourceReader. Only the working directory is
+// copied from the source session; conversation context travels through the
+// session mention in the first message.
+func (e *DaemonExecutor) AutomationSourceCwd(ctx context.Context, workspaceID string, sessionID string) (string, error) {
 	if e == nil || e.Agents == nil {
-		return "", "", fmt.Errorf("automation agent session service is unavailable")
+		return "", fmt.Errorf("automation agent session service is unavailable")
 	}
 	session, err := e.Agents.Get(ctx, workspaceID, sessionID)
 	if err != nil {
-		return "", "", err
+		return "", err
 	}
-	page, err := e.Agents.ListMessages(ctx, workspaceID, sessionID, agentservice.ListMessagesInput{
-		Limit: maxAutomationContextMessages,
-		Order: agentactivitybiz.MessageOrderDesc,
-	})
-	if err != nil {
-		return "", "", err
-	}
-	// The API returns newest-first for a descending page; reverse the bounded
-	// page so the model sees conversational order.
-	lines := make([]string, 0, len(page.Messages))
-	for index := len(page.Messages) - 1; index >= 0; index-- {
-		message := page.Messages[index]
-		role := strings.TrimSpace(message.Role)
-		if role != "user" && role != "assistant" {
-			continue
-		}
-		text := automationMessageText(message.Payload)
-		if text == "" {
-			continue
-		}
-		lines = append(lines, strings.ToUpper(role[:1])+role[1:]+": "+text)
-	}
-	contextText := strings.Join(lines, "\n\n")
-	if len(contextText) > maxAutomationContextChars {
-		contextText = contextText[len(contextText)-maxAutomationContextChars:]
-		contextText = "[Earlier context omitted]\n\n" + strings.TrimLeft(contextText, "\n")
-	}
-	return strings.TrimSpace(session.Cwd), strings.TrimSpace(contextText), nil
+	return strings.TrimSpace(session.Cwd), nil
 }
 
-func automationMessageText(payload map[string]any) string {
-	for _, key := range []string{"text", "content", "message"} {
-		if value, ok := payload[key].(string); ok && strings.TrimSpace(value) != "" {
-			return strings.TrimSpace(value)
-		}
-	}
-	blocks, _ := payload["content"].([]any)
-	parts := make([]string, 0, len(blocks))
-	for _, raw := range blocks {
-		block, _ := raw.(map[string]any)
-		text, _ := block["text"].(string)
-		if strings.TrimSpace(text) != "" {
-			parts = append(parts, strings.TrimSpace(text))
-		}
-	}
-	return strings.Join(parts, "\n")
-}
-
-func automationAgentInstruction(rule automationrulebiz.Rule) string {
+// automationLaunchPrompt composes the fixed first-message contract: rule
+// prompt, source session mention, then a short event note.
+func automationLaunchPrompt(rule automationrulebiz.Rule, workspaceID string, sourceSessionID string) string {
 	instruction := strings.TrimSpace(rule.Prompt)
 	if instruction == "" {
-		switch rule.Action {
-		case automationrulebiz.ActionFork:
-			instruction = "Create an independent continuation of this work. Re-evaluate the approach and produce a complete result in this new session."
-		case automationrulebiz.ActionDelegate:
-			instruction = "Take ownership of the delegated follow-up. Complete it and report the result clearly."
-		case automationrulebiz.ActionHandoff:
-			instruction = "Continue the work from the source session and take ownership of the next steps."
-		}
+		instruction = "Take over the follow-up work for the source session's task and report the result clearly."
 	}
-	return instruction
+	mention := "Source session: mention://agent-session/" + strings.TrimSpace(sourceSessionID) +
+		"?workspaceId=" + url.QueryEscape(strings.TrimSpace(workspaceID))
+	note := "Automation event: the source session's task completed."
+	if rule.Trigger == automationrulebiz.TriggerOnTaskFailed {
+		note = "Automation event: the source session's task failed or was interrupted."
+	}
+	return strings.Join([]string{instruction, mention, note}, "\n\n")
 }
 
-func automationAgentPrompt(instruction string, workspaceID string, sourceSessionID string, sourceContext string) string {
-	sections := []string{
-		strings.TrimSpace(instruction),
-		"Source session: mention://agent-session/" + strings.TrimSpace(sourceSessionID) + "?workspaceId=" + url.QueryEscape(strings.TrimSpace(workspaceID)),
-	}
-	if contextText := strings.TrimSpace(sourceContext); contextText != "" {
-		sections = append(sections, "Source conversation context:\n\n"+contextText)
-	}
-	return strings.Join(sections, "\n\n")
-}
-
-func automationAgentDisplayPrompt(rule automationrulebiz.Rule, sourceSessionID string) string {
-	action := string(rule.Action)
-	if action != "" {
-		action = strings.ToUpper(action[:1]) + action[1:]
-	}
-	return fmt.Sprintf("%s from session %s", action, strings.TrimSpace(sourceSessionID))
-}
-
-func automationTriggerReason(ruleID string, triggerID string) string {
-	digest := sha256.Sum256([]byte(strings.TrimSpace(triggerID)))
-	return fmt.Sprintf("%s%x", automationTriggerReasonPrefix(ruleID), digest[:8])
-}
-
-func automationTriggerReasonPrefix(ruleID string) string {
-	return "automation_rule:" + strings.TrimSpace(ruleID) + ":"
-}
-
-func automationContextScope(value string) string {
-	if strings.TrimSpace(value) == "" {
-		return "none"
-	}
-	return "bounded_transcript"
+func automationLaunchDisplayPrompt(rule automationrulebiz.Rule, sourceSessionID string) string {
+	return fmt.Sprintf("Automation %q follow-up for session %s", rule.Name, strings.TrimSpace(sourceSessionID))
 }

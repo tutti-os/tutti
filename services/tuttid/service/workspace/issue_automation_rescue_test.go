@@ -24,26 +24,23 @@ func TestAutomationIssueRescueCreatesANewRunForTheFailedTask(t *testing.T) {
 			t.Fatalf("PutAgentTarget(%q) error = %v", target.ID, err)
 		}
 	}
-	review := automationrulebiz.Rule{
-		ID:      "review",
+	completion := automationrulebiz.Rule{
+		ID:      "completion",
 		Enabled: true,
 		Trigger: automationrulebiz.TriggerOnTaskComplete,
-		Action:  automationrulebiz.ActionConsult,
-		Target:  automationrulebiz.Target{Kind: automationrulebiz.TargetModel},
-		Prompt:  "End with VERDICT: PASS or VERDICT: FAIL",
+		Target:  automationrulebiz.Target{Kind: automationrulebiz.TargetAgent, WorkspaceAgentID: "workspace-agent:reporter"},
 	}
 	rescue := automationrulebiz.Rule{
 		ID:      "rescue",
 		Enabled: true,
 		Trigger: automationrulebiz.TriggerOnTaskFailed,
-		Action:  automationrulebiz.ActionDelegate,
-		Target:  automationrulebiz.Target{Kind: automationrulebiz.TargetAgent},
+		Target:  automationrulebiz.Target{Kind: automationrulebiz.TargetAgent, WorkspaceAgentID: "workspace-agent:stronger"},
 	}
 	service := IssueManagerService{
 		Store:             store,
 		AgentTargetReader: store,
 		AutomationRules: issueAutomationRuleReaderStub{rules: []automationrulebiz.Rule{
-			review,
+			completion,
 			rescue,
 		}},
 	}
@@ -97,8 +94,8 @@ func TestAutomationIssueRescueCreatesANewRunForTheFailedTask(t *testing.T) {
 	if prepared.ReasoningIntensity == nil || *prepared.ReasoningIntensity != 80 {
 		t.Fatalf("rescue reasoning intensity = %#v, want 80", prepared.ReasoningIntensity)
 	}
-	if got := prepared.AutomationRuleOverride.RuleIDs; len(got) != 2 || got[0] != "rescue" || got[1] != "review" {
-		t.Fatalf("rescue rule ids = %v, want rescue+review", got)
+	if got := prepared.AutomationRuleOverride.RuleIDs; len(got) != 1 || got[0] != "rescue" {
+		t.Fatalf("rescue rule ids = %v, want only the failure rescue rule", got)
 	}
 	rescued, err := service.GetIssueDetail(ctx, "workspace-rescue", detail.Issue.IssueID)
 	if err != nil {

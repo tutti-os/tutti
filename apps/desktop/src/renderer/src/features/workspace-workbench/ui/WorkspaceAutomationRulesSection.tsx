@@ -77,11 +77,18 @@ export function WorkspaceAutomationRulesSection() {
                 agents={state.agents.agents}
                 draft={draft}
                 feedback={automationRulesState.feedback}
-                modelPlans={state.modelPlans.plans}
                 saving={automationRulesState.saving}
+                targetCatalog={automationRulesState.targetCatalog}
+                targetOptions={automationRulesState.targetOptions}
                 onCancel={() => service.automationRules.cancelDraft()}
+                onRetryTargetCatalog={() => {
+                  void service.automationRules.retryTargetCatalog();
+                }}
                 onSave={() => {
                   void service.automationRules.saveDraft();
+                }}
+                onSelectTarget={(targetAgentID) => {
+                  void service.automationRules.selectDraftTarget(targetAgentID);
                 }}
                 onUpdate={(patch) => service.automationRules.updateDraft(patch)}
               />
@@ -90,7 +97,6 @@ export function WorkspaceAutomationRulesSection() {
                 key={rule.id}
                 agents={state.agents.agents}
                 automationRulesState={automationRulesState}
-                modelPlans={state.modelPlans.plans}
                 rule={rule}
               />
             )
@@ -100,11 +106,18 @@ export function WorkspaceAutomationRulesSection() {
               agents={state.agents.agents}
               draft={draft}
               feedback={automationRulesState.feedback}
-              modelPlans={state.modelPlans.plans}
               saving={automationRulesState.saving}
+              targetCatalog={automationRulesState.targetCatalog}
+              targetOptions={automationRulesState.targetOptions}
               onCancel={() => service.automationRules.cancelDraft()}
+              onRetryTargetCatalog={() => {
+                void service.automationRules.retryTargetCatalog();
+              }}
               onSave={() => {
                 void service.automationRules.saveDraft();
+              }}
+              onSelectTarget={(targetAgentID) => {
+                void service.automationRules.selectDraftTarget(targetAgentID);
               }}
               onUpdate={(patch) => service.automationRules.updateDraft(patch)}
             />

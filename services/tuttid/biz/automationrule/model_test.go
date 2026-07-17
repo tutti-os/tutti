@@ -6,38 +6,55 @@ import (
 	"testing"
 )
 
-func TestNormalizeConsultRule(t *testing.T) {
+func TestNormalizeLaunchRuleDefaultsAgentTargetKind(t *testing.T) {
 	rule, err := Normalize(Rule{
 		ID:          " rule-1 ",
 		WorkspaceID: " ws ",
-		Name:        " Review ",
-		Action:      ActionConsult,
-		Target: Target{
-			ModelPlanID:          " plan-1 ",
-			RequiredCapabilities: []string{" reasoning ", "reasoning", ""},
+		Name:        " Follow up ",
+		Target:      Target{WorkspaceAgentID: " workspace-agent:one "},
+		Permissions: PermissionPolicy{
+			PermissionModeID: " full ",
+			AllowedTools:     []string{" terminal ", "terminal", ""},
 		},
-		Permissions: PermissionPolicy{PermissionModeID: "full", AllowedTools: []string{"shell"}},
 	})
 	if err != nil {
 		t.Fatalf("Normalize() error = %v", err)
 	}
-	if rule.Trigger != TriggerOnTaskComplete || rule.Target.Kind != TargetModel {
+	if rule.Trigger != TriggerOnTaskComplete || rule.Target.Kind != TargetAgent {
 		t.Fatalf("normalized trigger/target = %q/%q", rule.Trigger, rule.Target.Kind)
 	}
-	if !reflect.DeepEqual(rule.Target.RequiredCapabilities, []string{"reasoning"}) {
-		t.Fatalf("required capabilities = %#v", rule.Target.RequiredCapabilities)
+	if rule.Target.WorkspaceAgentID != "workspace-agent:one" {
+		t.Fatalf("target agent = %q", rule.Target.WorkspaceAgentID)
 	}
-	if !reflect.DeepEqual(rule.Permissions, PermissionPolicy{}) {
-		t.Fatalf("consult permissions = %#v, want empty", rule.Permissions)
+	if !reflect.DeepEqual(rule.Permissions, PermissionPolicy{
+		PermissionModeID: "full",
+		AllowedTools:     []string{"terminal"},
+	}) {
+		t.Fatalf("permissions = %#v", rule.Permissions)
 	}
 }
 
-func TestNormalizeAgentActionRequiresAgentTarget(t *testing.T) {
+func TestNormalizeAcceptsBuiltinHarnessTarget(t *testing.T) {
+	rule, err := Normalize(Rule{
+		ID:          "rule-1",
+		WorkspaceID: "ws",
+		Name:        "Escalate",
+		Trigger:     TriggerOnTaskFailed,
+		Target:      Target{WorkspaceAgentID: "local:claude-code"},
+	})
+	if err != nil {
+		t.Fatalf("Normalize() error = %v", err)
+	}
+	if rule.Target.WorkspaceAgentID != "local:claude-code" {
+		t.Fatalf("target agent = %q", rule.Target.WorkspaceAgentID)
+	}
+}
+
+func TestNormalizeRequiresAgentTarget(t *testing.T) {
 	_, err := Normalize(Rule{
 		ID:          "rule-1",
 		WorkspaceID: "ws",
-		Name:        "Delegate",
-		Action:      ActionDelegate,
+		Name:        "Follow up",
 		Target:      Target{Kind: TargetAgent},
 	})
 	if !errors.Is(err, ErrInvalidRule) {
@@ -45,12 +62,23 @@ func TestNormalizeAgentActionRequiresAgentTarget(t *testing.T) {
 	}
 }
 
-func TestNormalizeAgentActionRejectsPlanOverride(t *testing.T) {
+func TestNormalizeRejectsRetiredModelTarget(t *testing.T) {
 	_, err := Normalize(Rule{
 		ID:          "rule-1",
 		WorkspaceID: "ws",
-		Name:        "Fork",
-		Action:      ActionFork,
+		Name:        "Consult",
+		Target:      Target{Kind: "model", ModelPlanID: "plan-1"},
+	})
+	if !errors.Is(err, ErrInvalidRule) {
+		t.Fatalf("Normalize() error = %v, want ErrInvalidRule", err)
+	}
+}
+
+func TestNormalizeRejectsPlanOverride(t *testing.T) {
+	_, err := Normalize(Rule{
+		ID:          "rule-1",
+		WorkspaceID: "ws",
+		Name:        "Follow up",
 		Target: Target{
 			WorkspaceAgentID: "workspace-agent:one",
 			ModelPlanID:      "plan-override",
@@ -61,12 +89,11 @@ func TestNormalizeAgentActionRejectsPlanOverride(t *testing.T) {
 	}
 }
 
-func TestNormalizeAgentActionRejectsCapabilityOverride(t *testing.T) {
+func TestNormalizeRejectsCapabilityOverride(t *testing.T) {
 	_, err := Normalize(Rule{
 		ID:          "rule-1",
 		WorkspaceID: "ws",
-		Name:        "Delegate",
-		Action:      ActionDelegate,
+		Name:        "Follow up",
 		Target: Target{
 			WorkspaceAgentID:     "workspace-agent:one",
 			RequiredCapabilities: []string{"reasoning"},
@@ -87,29 +114,21 @@ func TestBudgetDefaults(t *testing.T) {
 	}
 }
 
-func TestAcceptanceReviewProtocolRequiresExplicitFinalVerdict(t *testing.T) {
-	rule := Rule{
-		Trigger: TriggerOnTaskComplete,
-		Action:  ActionConsult,
-		Target:  Target{Kind: TargetModel},
-		Prompt:  "Review the result and end with VERDICT: PASS or VERDICT: FAIL.",
+func TestNormalizeExecutionRequiresIdentity(t *testing.T) {
+	execution, err := NormalizeExecution(Execution{
+		WorkspaceID:     " ws ",
+		RuleID:          " rule-1 ",
+		SourceSessionID: " session-1 ",
+		TriggerID:       " turn-1 ",
+		TargetSessionID: " target-1 ",
+	})
+	if err != nil {
+		t.Fatalf("NormalizeExecution() error = %v", err)
 	}
-	if !IsAcceptanceReview(rule) {
-		t.Fatal("fixed verdict consult was not recognized as an acceptance review")
+	if execution.WorkspaceID != "ws" || execution.TriggerID != "turn-1" || execution.Status != ExecutionLaunched {
+		t.Fatalf("execution = %#v", execution)
 	}
-	if passed, valid := ParseReviewVerdict("Looks good.\nVERDICT: PASS"); !passed || !valid {
-		t.Fatalf("PASS verdict = (%v, %v)", passed, valid)
-	}
-	if passed, valid := ParseReviewVerdict("Problems found.\nVERDICT: FAIL"); passed || !valid {
-		t.Fatalf("FAIL verdict = (%v, %v)", passed, valid)
-	}
-	for _, malformed := range []string{
-		"VERDICT: PASS\nextra text",
-		"I think it passes",
-		"VERDICT: PASS OR VERDICT: FAIL",
-	} {
-		if passed, valid := ParseReviewVerdict(malformed); passed || valid {
-			t.Fatalf("malformed verdict %q = (%v, %v), want invalid", malformed, passed, valid)
-		}
+	if _, err := NormalizeExecution(Execution{WorkspaceID: "ws"}); !errors.Is(err, ErrInvalidRule) {
+		t.Fatalf("NormalizeExecution(missing) error = %v, want ErrInvalidRule", err)
 	}
 }

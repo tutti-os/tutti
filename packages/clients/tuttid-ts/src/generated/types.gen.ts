@@ -745,33 +745,37 @@ export type DeleteWorkspaceAgentResponse = {
 };
 
 /**
- * Lifecycle outcome that evaluates the rule. A failed-turn rule can delegate to a stronger WorkspaceAgent as a bounded escalation attempt; automated outcomes never final-accept the source task.
+ * Lifecycle outcome that evaluates the rule. A failed-turn rule can escalate to a stronger Agent as a bounded rescue attempt; automated outcomes never final-accept the source task.
  */
 export type AutomationRuleTrigger = "on_task_complete" | "on_task_failed";
 
-export type AutomationRuleAction = "consult" | "fork" | "delegate" | "handoff";
-
-export type AutomationRuleTargetKind = "model" | "agent";
+/**
+ * Every rule targets a launchable Agent. The legacy model kind retired with the consult action and no longer appears.
+ */
+export type AutomationRuleTargetKind = "agent";
 
 export type AutomationRuleTarget = {
   kind: AutomationRuleTargetKind;
   /**
-   * Required for fork, delegate, and handoff. The Agent must be enabled and launchable.
+   * Target Agent that receives the automated follow-up session. Accepts a WorkspaceAgent id or a built-in Harness AgentTarget id; the Agent must be enabled and launchable.
    */
   workspaceAgentId?: string | null;
   /**
-   * Required for consult. The ModelPlan must be enabled.
+   * Retired consult-era field; always empty. Launches inherit the target Agent's model configuration.
    */
   modelPlanId?: string | null;
   /**
-   * Optional consult model; defaults to the target ModelPlan default model.
+   * Retired consult-era field; always empty.
    */
   model?: string | null;
+  /**
+   * Retired consult-era field; always empty.
+   */
   requiredCapabilities: Array<string>;
 };
 
 /**
- * Authority narrowing applied to automatically launched WorkspaceAgents. Consult is always tool-free and ignores these fields.
+ * Authority narrowing applied to the automatically launched target session. The option catalogs follow the selected target Agent's capability directory.
  */
 export type AutomationRulePermissions = {
   permissionModeId?: string | null;
@@ -786,13 +790,15 @@ export type AutomationRuleBudget = {
   maxTotalTokensPerSession: number;
 };
 
+/**
+ * One workspace automation rule. A triggered rule launches a new target-Agent session whose first message carries the rule prompt, a source-session mention, and a short event note.
+ */
 export type AutomationRule = {
   id: string;
   workspaceId: string;
   name: string;
   enabled: boolean;
   trigger: AutomationRuleTrigger;
-  action: AutomationRuleAction;
   /**
    * Optional source-session Agent filter. Empty means all non-automation-origin sessions.
    */
@@ -813,7 +819,6 @@ export type PutAutomationRuleRequest = {
   name: string;
   enabled: boolean;
   trigger: AutomationRuleTrigger;
-  action: AutomationRuleAction;
   sourceWorkspaceAgentId?: string | null;
   target: AutomationRuleTarget;
   permissions: AutomationRulePermissions;

@@ -7,17 +7,40 @@ import (
 	automationrulebiz "github.com/tutti-os/tutti/services/tuttid/biz/automationrule"
 )
 
-func TestAutomationAgentPromptIncludesWorkspaceScopedSourceMention(t *testing.T) {
-	instruction := automationAgentInstruction(automationrulebiz.Rule{
-		Action: automationrulebiz.ActionDelegate,
-	})
-	prompt := automationAgentPrompt(instruction, "workspace one", "session-1", "User: finish the task")
+func TestAutomationLaunchPromptComposesInstructionMentionAndEventNote(t *testing.T) {
+	prompt := automationLaunchPrompt(automationrulebiz.Rule{
+		Trigger: automationrulebiz.TriggerOnTaskComplete,
+		Prompt:  "Review the finished work and file follow-up issues.",
+	}, "workspace one", "session-1")
 
-	if !strings.Contains(prompt, "mention://agent-session/session-1?workspaceId=workspace+one") {
-		t.Fatalf("prompt source mention = %q", prompt)
+	sections := strings.Split(prompt, "\n\n")
+	if len(sections) != 3 {
+		t.Fatalf("prompt sections = %d, want 3: %q", len(sections), prompt)
 	}
-	if !strings.Contains(prompt, "Source conversation context") {
-		t.Fatalf("prompt missing bounded source context = %q", prompt)
+	if sections[0] != "Review the finished work and file follow-up issues." {
+		t.Fatalf("prompt instruction = %q", sections[0])
+	}
+	if sections[1] != "Source session: mention://agent-session/session-1?workspaceId=workspace+one" {
+		t.Fatalf("prompt source mention = %q", sections[1])
+	}
+	if !strings.Contains(sections[2], "task completed") {
+		t.Fatalf("prompt event note = %q", sections[2])
+	}
+	if strings.Contains(prompt, "Source conversation context") {
+		t.Fatalf("prompt must not inline a transcript copy: %q", prompt)
+	}
+}
+
+func TestAutomationLaunchPromptUsesFailureNoteAndDefaultInstruction(t *testing.T) {
+	prompt := automationLaunchPrompt(automationrulebiz.Rule{
+		Trigger: automationrulebiz.TriggerOnTaskFailed,
+	}, "ws", "session-9")
+
+	if !strings.Contains(prompt, "failed or was interrupted") {
+		t.Fatalf("failure prompt event note missing: %q", prompt)
+	}
+	if !strings.HasPrefix(prompt, "Take over the follow-up work") {
+		t.Fatalf("default instruction missing: %q", prompt)
 	}
 }
 

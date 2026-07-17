@@ -296,6 +296,9 @@ INSERT OR IGNORE INTO tuttid_schema_migrations (id, applied_at_unix_ms)
 	if err := s.applyAutomationRulesV1(ctx); err != nil {
 		return err
 	}
+	if err := s.applyAutomationRulesV2(ctx); err != nil {
+		return err
+	}
 	if err := s.applyAppFactoryJobsV1(ctx); err != nil {
 		return err
 	}

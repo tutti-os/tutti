@@ -19,9 +19,13 @@ func TestSQLiteStoreAutomationRuleRoundTrip(t *testing.T) {
 	createModelPlanTestWorkspace(t, store, "ws-automation")
 	now := time.UnixMilli(1700000000000).UTC()
 	rule, err := automationrulebiz.Normalize(automationrulebiz.Rule{
-		ID: "automation-rule:one", WorkspaceID: "ws-automation", Name: "Consult after completion",
-		Enabled: true, Action: automationrulebiz.ActionConsult,
-		Target: automationrulebiz.Target{ModelPlanID: "plan-1", Model: "reasoner", RequiredCapabilities: []string{"reasoning"}},
+		ID: "automation-rule:one", WorkspaceID: "ws-automation", Name: "Launch after completion",
+		Enabled: true,
+		Target:  automationrulebiz.Target{WorkspaceAgentID: "workspace-agent:reviewer"},
+		Permissions: automationrulebiz.PermissionPolicy{
+			PermissionModeID: "workspace-write",
+			AllowedTools:     []string{"terminal"},
+		},
 		Budget: automationrulebiz.Budget{MaxRunsPerSession: 2, MaxTotalTokensPerSession: 5000},
 		Prompt: "Review the result.", CreatedAt: now, UpdatedAt: now,
 	})
@@ -35,17 +39,19 @@ func TestSQLiteStoreAutomationRuleRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetAutomationRule() error = %v", err)
 	}
-	if loaded.Target.Model != "reasoner" || len(loaded.Target.RequiredCapabilities) != 1 || loaded.Budget.MaxRunsPerSession != 2 {
+	if loaded.Target.WorkspaceAgentID != "workspace-agent:reviewer" ||
+		loaded.Permissions.PermissionModeID != "workspace-write" ||
+		loaded.Budget.MaxRunsPerSession != 2 {
 		t.Fatalf("loaded rule = %#v", loaded)
 	}
 	updateInput := loaded
-	updateInput.Name = "Updated consult"
+	updateInput.Name = "Updated launch"
 	updateInput.UpdatedAt = now.Add(time.Minute)
 	updated, err := store.UpdateAutomationRule(ctx, updateInput)
 	if err != nil {
 		t.Fatalf("UpdateAutomationRule() error = %v", err)
 	}
-	if updated.Name != "Updated consult" || !updated.CreatedAt.Equal(now) || !updated.UpdatedAt.Equal(updateInput.UpdatedAt) {
+	if updated.Name != "Updated launch" || !updated.CreatedAt.Equal(now) || !updated.UpdatedAt.Equal(updateInput.UpdatedAt) {
 		t.Fatalf("updated rule = %#v", updated)
 	}
 	if err := store.PutAutomationRuleSessionOverride(ctx, automationrulebiz.SessionOverride{
@@ -68,7 +74,63 @@ func TestSQLiteStoreAutomationRuleRoundTrip(t *testing.T) {
 	}
 }
 
-func TestAutomationRulesMigrationBackfillsBoundReviewPolicy(t *testing.T) {
+func TestSQLiteStoreAutomationRuleExecutionLedger(t *testing.T) {
+	ctx := context.Background()
+	store := openTestSQLiteStore(t)
+	createModelPlanTestWorkspace(t, store, "ws-executions")
+
+	execution := automationrulebiz.Execution{
+		WorkspaceID:     "ws-executions",
+		RuleID:          "rule-1",
+		SourceSessionID: "session-src",
+		TriggerID:       "turn-1",
+		TargetSessionID: "session-target",
+	}
+	if err := store.RecordAutomationRuleExecution(ctx, execution); err != nil {
+		t.Fatalf("RecordAutomationRuleExecution() error = %v", err)
+	}
+	if err := store.RecordAutomationRuleExecution(ctx, execution); err == nil {
+		t.Fatal("RecordAutomationRuleExecution() duplicate trigger must fail")
+	}
+
+	exists, err := store.AutomationRuleExecutionExists(ctx, "ws-executions", "session-src", "rule-1", "turn-1")
+	if err != nil || !exists {
+		t.Fatalf("AutomationRuleExecutionExists() = %v, %v", exists, err)
+	}
+	exists, err = store.AutomationRuleExecutionExists(ctx, "ws-executions", "session-src", "rule-1", "turn-2")
+	if err != nil || exists {
+		t.Fatalf("AutomationRuleExecutionExists(other turn) = %v, %v", exists, err)
+	}
+
+	if err := store.RecordAutomationTargetUsage(ctx, "ws-executions", "session-target", 1234); err != nil {
+		t.Fatalf("RecordAutomationTargetUsage() error = %v", err)
+	}
+	// The settle-once contract ignores later, larger totals.
+	if err := store.RecordAutomationTargetUsage(ctx, "ws-executions", "session-target", 99999); err != nil {
+		t.Fatalf("RecordAutomationTargetUsage(second) error = %v", err)
+	}
+	runs, tokens, err := store.AutomationRuleUsage(ctx, "ws-executions", "session-src", "rule-1")
+	if err != nil || runs != 1 || tokens != 1234 {
+		t.Fatalf("AutomationRuleUsage() = %d runs, %d tokens, %v", runs, tokens, err)
+	}
+
+	second := execution
+	second.TriggerID = "turn-2"
+	second.TargetSessionID = "session-target-2"
+	if err := store.RecordAutomationRuleExecution(ctx, second); err != nil {
+		t.Fatalf("RecordAutomationRuleExecution(second) error = %v", err)
+	}
+	if err := store.MarkAutomationRuleExecutionLaunchFailed(ctx, "ws-executions", "session-target-2", "boom"); err != nil {
+		t.Fatalf("MarkAutomationRuleExecutionLaunchFailed() error = %v", err)
+	}
+	// Failed launches still count toward the per-source-session run budget.
+	runs, _, err = store.AutomationRuleUsage(ctx, "ws-executions", "session-src", "rule-1")
+	if err != nil || runs != 2 {
+		t.Fatalf("AutomationRuleUsage(after failure) = %d runs, %v", runs, err)
+	}
+}
+
+func TestAutomationRulesMigrationRetiresConsultRowsAndKeepsAgentLaunches(t *testing.T) {
 	ctx := context.Background()
 	store := openTestSQLiteStore(t)
 	createModelPlanTestWorkspace(t, store, "ws-legacy-automation")
@@ -95,27 +157,14 @@ func TestAutomationRulesMigrationBackfillsBoundReviewPolicy(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("PutModelPolicy() error = %v", err)
 	}
-	if err := store.PutModelPolicy(ctx, modelpolicybiz.Policy{
-		ID: "policy-no-review", WorkspaceID: "ws-legacy-automation", Name: "No Review",
-		CreatedAt: now, UpdatedAt: now,
-	}); err != nil {
-		t.Fatalf("PutModelPolicy(no review) error = %v", err)
-	}
-	if err := store.PutModelPolicySessionOverride(ctx, modelpolicybiz.SessionOverride{
-		WorkspaceID: "ws-legacy-automation", AgentSessionID: "session-1", ModelPolicyID: "policy-review", UpdatedAt: now,
-	}); err != nil {
-		t.Fatalf("PutModelPolicySessionOverride() error = %v", err)
-	}
-	if err := store.PutModelPolicySessionOverride(ctx, modelpolicybiz.SessionOverride{
-		WorkspaceID: "ws-legacy-automation", AgentSessionID: "session-no-review", ModelPolicyID: "policy-no-review", UpdatedAt: now,
-	}); err != nil {
-		t.Fatalf("PutModelPolicySessionOverride(no review) error = %v", err)
-	}
 
-	if _, err := store.writeDB.ExecContext(ctx, `DELETE FROM tuttid_schema_migrations WHERE id IN (?, ?, ?, ?, ?)`, schemaMigrationWorkspaceAgentsV1, schemaMigrationWorkspaceAgentsV2, schemaMigrationWorkspaceAgentsV3, schemaMigrationWorkspaceAgentsV4, schemaMigrationAutomationRulesV1); err != nil {
+	// Reset to a pre-v1 state, then replay v1 (which backfills a legacy
+	// consult row) plus a surviving agent-target row, and verify v2
+	// normalizes storage to the single launch semantic.
+	if _, err := store.writeDB.ExecContext(ctx, `DELETE FROM tuttid_schema_migrations WHERE id IN (?, ?, ?, ?, ?, ?)`, schemaMigrationWorkspaceAgentsV1, schemaMigrationWorkspaceAgentsV2, schemaMigrationWorkspaceAgentsV3, schemaMigrationWorkspaceAgentsV4, schemaMigrationAutomationRulesV1, schemaMigrationAutomationRulesV2); err != nil {
 		t.Fatalf("reset migration markers error = %v", err)
 	}
-	if _, err := store.writeDB.ExecContext(ctx, `DROP TABLE workspace_agents; DROP TABLE automation_rule_session_overrides; DROP TABLE automation_rules;`); err != nil {
+	if _, err := store.writeDB.ExecContext(ctx, `DROP TABLE workspace_agents; DROP TABLE automation_rule_session_overrides; DROP TABLE automation_rules; DROP TABLE automation_rule_executions;`); err != nil {
 		t.Fatalf("drop migrated tables error = %v", err)
 	}
 	if err := store.applyWorkspaceAgentsV1(ctx); err != nil {
@@ -133,6 +182,21 @@ func TestAutomationRulesMigrationBackfillsBoundReviewPolicy(t *testing.T) {
 	if err := store.applyAutomationRulesV1(ctx); err != nil {
 		t.Fatalf("applyAutomationRulesV1() error = %v", err)
 	}
+	if _, err := store.writeDB.ExecContext(ctx, `
+INSERT INTO automation_rules (
+  workspace_id, rule_id, name, enabled, trigger, action,
+  source_workspace_agent_id, target_kind, target_workspace_agent_id,
+  model_plan_id, model, required_capabilities_json, permission_mode_id,
+  allowed_tools_json, max_runs_per_session, max_total_tokens_per_session,
+  prompt, legacy_policy_id, created_at_unix_ms, updated_at_unix_ms
+) VALUES ('ws-legacy-automation', 'automation-rule:launch', 'Escalate', 1, 'on_task_failed', 'delegate',
+  '', 'agent', 'workspace-agent:stronger', '', '', '[]', '', '[]', 1, 20000, 'Rescue it.', '', ?, ?)
+`, unixMs(now), unixMs(now)); err != nil {
+		t.Fatalf("seed legacy delegate rule error = %v", err)
+	}
+	if err := store.applyAutomationRulesV2(ctx); err != nil {
+		t.Fatalf("applyAutomationRulesV2() error = %v", err)
+	}
 
 	agentID := workspaceagentbiz.LegacyBindingID("ws-legacy-automation", "local:codex")
 	if _, err := store.GetWorkspaceAgent(ctx, "ws-legacy-automation", agentID); err != nil {
@@ -143,18 +207,15 @@ func TestAutomationRulesMigrationBackfillsBoundReviewPolicy(t *testing.T) {
 		t.Fatalf("ListAutomationRules() error = %v", err)
 	}
 	if len(rules) != 1 {
-		t.Fatalf("migrated rules = %#v, want one", rules)
+		t.Fatalf("post-v2 rules = %#v, want only the agent-target launch rule", rules)
 	}
 	rule := rules[0]
-	if rule.Action != automationrulebiz.ActionConsult || rule.SourceWorkspaceAgentID != agentID || rule.Target.ModelPlanID != "plan-review" || rule.Budget.MaxRunsPerSession != 2 {
-		t.Fatalf("migrated rule = %#v", rule)
+	if rule.ID != "automation-rule:launch" || rule.Target.WorkspaceAgentID != "workspace-agent:stronger" ||
+		rule.Trigger != automationrulebiz.TriggerOnTaskFailed || rule.Target.Kind != automationrulebiz.TargetAgent {
+		t.Fatalf("post-v2 rule = %#v", rule)
 	}
-	override, found, err := store.GetAutomationRuleSessionOverride(ctx, "ws-legacy-automation", "session-1")
-	if err != nil || !found || len(override.RuleIDs) != 1 || override.RuleIDs[0] != rule.ID {
-		t.Fatalf("migrated override = %#v, %v", override, err)
-	}
-	noReviewOverride, found, err := store.GetAutomationRuleSessionOverride(ctx, "ws-legacy-automation", "session-no-review")
-	if err != nil || !found || !noReviewOverride.Disabled || len(noReviewOverride.RuleIDs) != 0 {
-		t.Fatalf("migrated no-review override = %#v, %v", noReviewOverride, err)
+	// The v2 executions ledger must exist after replay.
+	if _, _, err := store.AutomationRuleUsage(ctx, "ws-legacy-automation", "session-x", "rule-x"); err != nil {
+		t.Fatalf("AutomationRuleUsage(after v2) error = %v", err)
 	}
 }
