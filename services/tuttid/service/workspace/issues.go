@@ -338,6 +338,7 @@ func (s IssueManagerService) CreateIssueFromPlan(ctx context.Context, workspaceI
 			AutoAccept:         task.AutoAccept,
 		})
 	}
+	normalizeParallelizableAgainstDependencies(taskItems)
 	issue, tasks, err := s.domainService().CreateIssueWithTasks(ctx, workspaceissues.CreateIssueWithTasksInput{
 		Issue: workspaceissues.CreateIssueInput{
 			IssueID:             input.Issue.IssueID,
@@ -605,6 +606,35 @@ func (s IssueManagerService) UpdateTask(ctx context.Context, workspaceID string,
 		s.dispatchEligibleIssueTasks(ctx, workspaceID, issueID)
 	}
 	return task, nil
+}
+
+// normalizeParallelizableAgainstDependencies keeps the durable parallelizable
+// flag honest: a task that depends on a member of its own consecutive
+// parallelizable group can never actually run alongside it — dependencies
+// always outrank the flag at dispatch — so the misleading flag is stripped and
+// the group splits there. Dependencies are never touched; they are the safe
+// side of the contradiction.
+func normalizeParallelizableAgainstDependencies(items []workspaceissues.CreateTaskItemInput) {
+	group := make(map[string]struct{})
+	for index := range items {
+		if !items[index].Parallelizable {
+			group = make(map[string]struct{})
+			continue
+		}
+		conflicted := false
+		for _, dependencyID := range items[index].DependencyTaskIDs {
+			if _, inGroup := group[dependencyID]; inGroup {
+				conflicted = true
+				break
+			}
+		}
+		if conflicted {
+			items[index].Parallelizable = false
+			group = make(map[string]struct{})
+			continue
+		}
+		group[items[index].TaskID] = struct{}{}
+	}
 }
 
 // notifyTuttiPlanIssueCompletedBestEffort hands control back to the planning

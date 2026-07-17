@@ -111,19 +111,19 @@ func (s IssueManagerService) dispatchEligibleIssueTasks(ctx context.Context, wor
 				// Exclusive task: launch only into an idle Issue, and bar
 				// everything behind it until it completes and is accepted.
 				if inflight == 0 && launchedConcurrent == 0 {
-					s.startIssueTask(ctx, detail.Issue, task, issueTaskIsolation{})
+					s.startIssueTask(ctx, detail.Issue, task, issueTaskIsolation{}, s.dependencyWorktreeOutputs(ctx, detail.Issue, task, byID))
 				}
 				return
 			}
 			if concurrentSlots <= 0 {
 				return
 			}
-			s.startIssueTask(ctx, detail.Issue, task, isolation)
+			s.startIssueTask(ctx, detail.Issue, task, isolation, s.dependencyWorktreeOutputs(ctx, detail.Issue, task, byID))
 			concurrentSlots--
 			launchedConcurrent++
 			continue
 		}
-		s.startIssueTask(ctx, detail.Issue, task, issueTaskIsolation{})
+		s.startIssueTask(ctx, detail.Issue, task, issueTaskIsolation{}, s.dependencyWorktreeOutputs(ctx, detail.Issue, task, byID))
 		concurrentSlots--
 		if concurrentSlots <= 0 {
 			return
@@ -131,7 +131,51 @@ func (s IssueManagerService) dispatchEligibleIssueTasks(ctx context.Context, wor
 	}
 }
 
-func (s IssueManagerService) startIssueTask(ctx context.Context, issue workspaceissues.Issue, task workspaceissues.Task, isolation issueTaskIsolation) {
+// issueTaskDependencyOutput points a successor task at a prerequisite whose
+// work landed on an isolated per-run worktree branch instead of the base
+// checkout. Successor prompts carry these so parallel results never strand.
+type issueTaskDependencyOutput struct {
+	taskID       string
+	title        string
+	branch       string
+	worktreePath string
+}
+
+// dependencyWorktreeOutputs collects the isolated-branch outputs of a task's
+// direct dependencies. Dependencies that ran in the base checkout need no
+// pointer: their work is already in the successor's working tree.
+func (s IssueManagerService) dependencyWorktreeOutputs(
+	ctx context.Context,
+	issue workspaceissues.Issue,
+	task workspaceissues.Task,
+	byID map[string]workspaceissues.Task,
+) []issueTaskDependencyOutput {
+	worktreeRoot := filepath.Join(s.taskWorktreeRoot(), issue.IssueID) + string(filepath.Separator)
+	outputs := make([]issueTaskDependencyOutput, 0, len(task.DependencyTaskIDs))
+	for _, dependencyID := range task.DependencyTaskIDs {
+		dependency, ok := byID[dependencyID]
+		if !ok || strings.TrimSpace(dependency.LatestRunID) == "" {
+			continue
+		}
+		runDetail, err := s.domainService().GetRunDetail(ctx, issue.WorkspaceID, issue.IssueID, dependency.TaskID, dependency.LatestRunID)
+		if err != nil {
+			continue
+		}
+		executionDirectory := strings.TrimSpace(runDetail.Run.ExecutionDirectory)
+		if !strings.HasPrefix(executionDirectory, worktreeRoot) {
+			continue
+		}
+		outputs = append(outputs, issueTaskDependencyOutput{
+			taskID:       dependency.TaskID,
+			title:        dependency.Title,
+			branch:       "tutti/task/" + filepath.Base(executionDirectory),
+			worktreePath: executionDirectory,
+		})
+	}
+	return outputs
+}
+
+func (s IssueManagerService) startIssueTask(ctx context.Context, issue workspaceissues.Issue, task workspaceissues.Task, isolation issueTaskIsolation, dependencyOutputs []issueTaskDependencyOutput) {
 	agentSessionID := uuid.NewString()
 	runID := uuid.NewString()
 	executionDirectory := s.resolveIssueTaskBaseDirectory(issue, task)
@@ -192,7 +236,7 @@ func (s IssueManagerService) startIssueTask(ctx context.Context, issue workspace
 		ReasoningEffort:      reasoningEffort,
 		PermissionModeID:     permissionModeID,
 		StrictPermissionMode: permissionModeID != nil,
-		InitialContent:       []agentservice.PromptContentBlock{{Type: "text", Text: issueTaskPrompt(issue, task, executionDirectory, worktreeBase, worktreeBranch)}},
+		InitialContent:       []agentservice.PromptContentBlock{{Type: "text", Text: issueTaskPrompt(issue, task, executionDirectory, worktreeBase, worktreeBranch, dependencyOutputs)}},
 		ClientSubmitID:       "issue-run:" + run.RunID,
 		Title:                &title,
 		Cwd:                  cwd,
@@ -209,7 +253,7 @@ func (s IssueManagerService) startIssueTask(ctx context.Context, issue workspace
 	})
 }
 
-func issueTaskPrompt(issue workspaceissues.Issue, task workspaceissues.Task, executionDirectory string, worktreeBase string, worktreeBranch string) string {
+func issueTaskPrompt(issue workspaceissues.Issue, task workspaceissues.Task, executionDirectory string, worktreeBase string, worktreeBranch string, dependencyOutputs []issueTaskDependencyOutput) string {
 	prompt := fmt.Sprintf(`Execute this Issue task and report a concise result with validation evidence.
 
 Issue: %s
@@ -236,6 +280,16 @@ Isolation: your working directory is a dedicated git worktree of %s on branch %s
 			worktreeBase,
 			worktreeBranch,
 		)
+	}
+	if len(dependencyOutputs) > 0 {
+		lines := make([]string, 0, len(dependencyOutputs))
+		for _, output := range dependencyOutputs {
+			lines = append(lines, fmt.Sprintf("- %s (%s): branch %s (worktree %s)", output.taskID, output.title, output.branch, output.worktreePath))
+		}
+		prompt += fmt.Sprintf(`
+
+Dependency outputs: these prerequisite tasks ran in isolated worktrees, so their results are NOT in your working tree yet. Merge each branch below (same repository, e.g. `+"`git merge <branch>`"+`) and resolve any overlaps before building on their results:
+%s`, strings.Join(lines, "\n"))
 	}
 	return prompt
 }

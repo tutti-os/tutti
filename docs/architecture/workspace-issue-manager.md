@@ -153,6 +153,17 @@ only the executor's completion claim. Only an explicit user acceptance reaches
 retryable and do not satisfy dependencies. Repeated terminal completion and
 review settlement are idempotent.
 
+Parallelism stays honest at two boundaries. Materializing a plan normalizes
+the durable `parallelizable` flag against dependencies: a task that depends on
+a member of its own consecutive parallelizable group can never run alongside
+it, so the misleading flag is stripped (dependencies are never touched — they
+are the safe side of the contradiction). At dispatch, a successor whose direct
+dependencies ran in isolated per-run worktrees receives their exact branch
+names in its launch prompt ("Dependency outputs"), so parallel results are
+merged forward instead of stranding on `tutti/task/*` branches; the planning
+guide pairs this with the convention of an integration task after every
+parallel group.
+
 Two adjacent flows reuse this ladder without weakening it. A task whose
 durable `autoAccept` flag is set (proposed by the planning agent, adjustable
 in plan review) skips the human gate: run completion is accepted

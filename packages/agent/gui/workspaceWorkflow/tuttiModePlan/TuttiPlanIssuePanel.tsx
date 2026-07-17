@@ -89,7 +89,9 @@ type TuttiPlanIssueStage = {
 };
 
 /** Mirrors the dispatcher grouping: consecutive parallelizable tasks share a
- * stage; every exclusive task stands alone. */
+ * stage only while they stay independent of each other — a task that depends
+ * on a member of the running stage can never actually run alongside it
+ * (dependencies outrank the flag at dispatch), so it starts a new stage. */
 export function groupTuttiPlanIssueTasksIntoStages(
   tasks: readonly TuttiPlanIssueTaskSnapshot[]
 ): TuttiPlanIssueStage[] {
@@ -99,7 +101,13 @@ export function groupTuttiPlanIssueTasksIntoStages(
   const stages: TuttiPlanIssueStage[] = [];
   for (const task of ordered) {
     const previous = stages.at(-1);
-    if (task.parallelizable && previous?.kind === "parallel") {
+    if (
+      task.parallelizable &&
+      previous?.kind === "parallel" &&
+      !task.dependencyTaskIds.some((dependencyId) =>
+        previous.tasks.some((member) => member.taskId === dependencyId)
+      )
+    ) {
       previous.tasks.push(task);
       continue;
     }

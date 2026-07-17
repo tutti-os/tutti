@@ -1072,3 +1072,74 @@ func TestFailedRunNotifiesPlanningConversationAndReworkRedispatches(t *testing.T
 		t.Fatalf("reworked task status = %q, want running", updated.Tasks[0].Status)
 	}
 }
+
+func TestChainedParallelizableFlagsNormalizeToDependencyOrder(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	service, _, _ := newParallelizableDispatchService(t, "ws-par-normalize")
+	detail, err := service.CreateIssueFromPlan(ctx, "ws-par-normalize", CreateIssueManagerIssueFromPlanInput{
+		Issue: CreateIssueManagerIssueInput{
+			IssueID:             "issue-normalize",
+			TopicID:             workspaceissues.DefaultTopicID,
+			Title:               "Normalize issue",
+			PlanningSource:      string(workspaceissues.PlanningSourceTraditionalPlan),
+			SequentialExecution: true,
+		},
+		// A chained "parallel" group: p2 depends on its neighbor p1, so its
+		// flag is a lie the dispatcher would ignore; p3 depends on p2 (now
+		// exclusive) and may honestly stay parallelizable for future siblings.
+		Tasks: []CreateIssueManagerTaskItemInput{
+			{TaskID: "p1", Title: "First", AgentTargetID: agenttargetbiz.IDLocalCodex, Parallelizable: true},
+			{TaskID: "p2", Title: "Second", AgentTargetID: agenttargetbiz.IDLocalCodex, Parallelizable: true, DependencyTaskIDs: []string{"p1"}},
+			{TaskID: "p3", Title: "Third", AgentTargetID: agenttargetbiz.IDLocalCodex, Parallelizable: true, DependencyTaskIDs: []string{"p2"}},
+		},
+	})
+	if err != nil {
+		t.Fatalf("CreateIssueFromPlan() error = %v", err)
+	}
+	flags := map[string]bool{}
+	for _, task := range detail.Tasks {
+		flags[task.TaskID] = task.Parallelizable
+	}
+	if !flags["p1"] || flags["p2"] || !flags["p3"] {
+		t.Fatalf("normalized parallelizable flags = %v, want p1=true p2=false p3=true", flags)
+	}
+}
+
+func TestIntegrationTaskPromptCarriesDependencyWorktreeBranches(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	repo := initIssueTaskGitRepo(t)
+	service, creator, _ := newParallelizableDispatchService(t, "ws-par-integrate")
+	if _, err := service.CreateIssueFromPlan(ctx, "ws-par-integrate", CreateIssueManagerIssueFromPlanInput{
+		Issue: CreateIssueManagerIssueInput{
+			IssueID:             "issue-integrate",
+			TopicID:             workspaceissues.DefaultTopicID,
+			Title:               "Integrate issue",
+			PlanningSource:      string(workspaceissues.PlanningSourceTraditionalPlan),
+			SequentialExecution: true,
+		},
+		Tasks: []CreateIssueManagerTaskItemInput{
+			{TaskID: "p1", Title: "First parallel", AgentTargetID: agenttargetbiz.IDLocalCodex, ExecutionDirectory: repo, Parallelizable: true},
+			{TaskID: "p2", Title: "Second parallel", AgentTargetID: agenttargetbiz.IDLocalCodex, ExecutionDirectory: repo, Parallelizable: true},
+			{TaskID: "integrate", Title: "Integrate", AgentTargetID: agenttargetbiz.IDLocalCodex, ExecutionDirectory: repo, DependencyTaskIDs: []string{"p1", "p2"}},
+		},
+	}); err != nil {
+		t.Fatalf("CreateIssueFromPlan() error = %v", err)
+	}
+	if len(creator.inputs) != 2 {
+		t.Fatalf("initial dispatches = %d, want the parallel pair", len(creator.inputs))
+	}
+	acceptIssueTask(t, service, "ws-par-integrate", "issue-integrate", "p1")
+	acceptIssueTask(t, service, "ws-par-integrate", "issue-integrate", "p2")
+	if len(creator.inputs) != 3 {
+		t.Fatalf("dispatches after acceptance = %d, want the integration task", len(creator.inputs))
+	}
+	prompt := creator.inputs[2].InitialContent[0].Text
+	if !strings.Contains(prompt, "Dependency outputs") ||
+		!strings.Contains(prompt, "branch tutti/task/p1-") ||
+		!strings.Contains(prompt, "branch tutti/task/p2-") ||
+		!strings.Contains(prompt, "git merge") {
+		t.Fatalf("integration prompt lacks dependency branch pointers: %q", prompt)
+	}
+}

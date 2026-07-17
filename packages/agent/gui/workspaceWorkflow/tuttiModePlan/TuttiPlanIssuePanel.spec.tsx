@@ -68,6 +68,47 @@ const issue: TuttiPlanIssueSnapshot = {
 };
 
 describe("groupTuttiPlanIssueTasksIntoStages", () => {
+  it("splits chained parallelizable tasks into separate stages", () => {
+    // A parallelizable task that depends on a member of the running stage can
+    // never actually run alongside it, so the display must not pretend it can.
+    const chained: TuttiPlanIssueSnapshot["tasks"] = [
+      {
+        taskId: "c1",
+        title: "First",
+        content: "",
+        status: "not_started",
+        sortIndex: 1,
+        parallelizable: true,
+        autoAccept: false,
+        dependencyTaskIds: []
+      },
+      {
+        taskId: "c2",
+        title: "Second",
+        content: "",
+        status: "not_started",
+        sortIndex: 2,
+        parallelizable: true,
+        autoAccept: false,
+        dependencyTaskIds: ["c1"]
+      },
+      {
+        taskId: "c3",
+        title: "Third",
+        content: "",
+        status: "not_started",
+        sortIndex: 3,
+        parallelizable: true,
+        autoAccept: false,
+        dependencyTaskIds: []
+      }
+    ];
+    const stages = groupTuttiPlanIssueTasksIntoStages(chained);
+    expect(
+      stages.map((stage) => stage.tasks.map((task) => task.taskId))
+    ).toEqual([["c1"], ["c2", "c3"]]);
+  });
+
   it("mirrors dispatcher semantics: parallel batch then exclusive stage", () => {
     const stages = groupTuttiPlanIssueTasksIntoStages(issue.tasks);
     expect(stages.map((stage) => stage.kind)).toEqual([
