@@ -650,6 +650,14 @@ func buildDaemonAPI(ctx context.Context, store workspacedata.CatalogStore, analy
 	}
 	agentActivityProjection.SetSessionMessageObserver(appFactoryService)
 	agentActivityProjection.SetSessionStateObserver(agentservice.SessionStateObservers{appFactoryService, agentSessionService, &issueService, modelPolicies, automationRules, collabRuns})
+	// Canonical root-turn settlements (root-provider aggregation, child-drain
+	// reconcile, cancel) fan out at-least-once to this dedicated opt-in list
+	// only. Automation rules are the only consumer cleared for it today: the
+	// general session-state observers historically never received live turn
+	// settles, and each needs its own semantic ruling before opting in
+	// (W4③-11 — the Issue-run observer, for example, would complete
+	// multi-turn runs on their first settled turn).
+	agentActivityProjection.SetRootTurnSettleStateObserver(agentservice.SessionStateObservers{automationRules})
 	if _, err := appFactoryService.ReconcileInterruptedJobs(ctx); err != nil {
 		agentRuntime.Close()
 		return tuttiapi.DaemonAPI{}, nil, nil, nil, fmt.Errorf("reconcile interrupted app factory jobs: %w", err)

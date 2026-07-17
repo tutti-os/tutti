@@ -30,6 +30,29 @@ import {
 const NO_SOURCE_VALUE = "__all_sources__";
 const NO_TARGET_AGENT_VALUE = "__no_target_agent__";
 const DEFAULT_PERMISSION_MODE_VALUE = "__target_default__";
+
+/**
+ * The draft may briefly hold a permission mode the rendered catalog does not
+ * offer: while a switched target's catalog is still loading (selections are
+ * pruned only once the catalog answers) or after a failed catalog load. A
+ * Select value without a matching item renders empty trigger text, so the
+ * display falls back to the "use the target Agent's default" sentinel until
+ * the mode resolves in the ready catalog.
+ */
+function permissionModeSelectValue(
+  permissionModeId: string,
+  catalogReady: boolean,
+  permissionModes: readonly { readonly id: string }[]
+): string {
+  if (
+    permissionModeId &&
+    catalogReady &&
+    permissionModes.some((mode) => mode.id === permissionModeId)
+  ) {
+    return permissionModeId;
+  }
+  return DEFAULT_PERMISSION_MODE_VALUE;
+}
 const textareaClass =
   "min-h-[88px] resize-y border-[var(--border-1)] bg-[var(--transparency-block)] text-[13px] text-[var(--text-primary)] placeholder:text-[var(--text-tertiary)] hover:bg-[var(--transparency-hover)] focus-visible:border-[var(--border-focus)] focus-visible:ring-0";
 const selectContentStyle = { zIndex: "var(--z-panel-popover)" } as const;
@@ -246,7 +269,11 @@ export function WorkspaceAutomationRuleEditor({
             disabled={
               !catalogReady || targetCatalog.permissionModes.length === 0
             }
-            value={draft.permissionModeId || DEFAULT_PERMISSION_MODE_VALUE}
+            value={permissionModeSelectValue(
+              draft.permissionModeId,
+              catalogReady,
+              targetCatalog?.permissionModes ?? []
+            )}
             onValueChange={(value) =>
               onUpdate({
                 permissionModeId:

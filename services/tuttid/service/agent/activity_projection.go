@@ -26,6 +26,13 @@ type ActivityProjection struct {
 	agentTargetResolver          AgentTargetResolver
 	workspaceAgentTargetResolver WorkspaceAgentTargetResolver
 	rootTurnObserver             RootTurnObserver
+	// rootTurnSettleStateObserver is the dedicated, opt-in consumer list for
+	// synthesized canonical root-turn settlement states. It is deliberately
+	// separate from sessionStateObserver: the general observers historically
+	// never received live turn settles (root-provider-lifecycle adapters do
+	// not report settled state patches), and each one needs its own semantic
+	// review before opting in (see W4③-11).
+	rootTurnSettleStateObserver SessionStateObserver
 }
 
 var (
@@ -151,6 +158,16 @@ func activityGoalProvenanceBinding(binding agentactivitybiz.GoalProvenanceBindin
 		OperationID: binding.OperationID, Revision: binding.Revision, RepairEpoch: binding.RepairEpoch,
 		Ambiguous: binding.Ambiguous, CreatedAtUnixMS: binding.CreatedAtUnixMS, UpdatedAtUnixMS: binding.UpdatedAtUnixMS,
 	}
+}
+
+// SetRootTurnSettleStateObserver registers the dedicated, opt-in consumer of
+// synthesized canonical root-turn settlement states (automation rules today).
+// Delivery is at-least-once; observers must be idempotent per settled turn.
+func (p *ActivityProjection) SetRootTurnSettleStateObserver(observer SessionStateObserver) {
+	if p == nil {
+		return
+	}
+	p.rootTurnSettleStateObserver = observer
 }
 
 func normalizeReportSessionOrigins(
