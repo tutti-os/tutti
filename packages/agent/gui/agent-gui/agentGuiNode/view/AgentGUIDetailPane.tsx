@@ -306,9 +306,24 @@ export const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
     });
   });
   const jumpToPlanIssuePanel = useStableEventCallback((): void => {
-    timelineRef.current
-      ?.querySelector('[data-testid="tutti-plan-issue-panel"]')
-      ?.scrollIntoView({ behavior: "smooth", block: "start" });
+    const target = timelineRef.current?.querySelector<HTMLElement>(
+      '[data-testid="tutti-plan-issue-panel"]'
+    );
+    if (!target) return;
+    target.scrollIntoView({ behavior: "smooth", block: "start" });
+    // The panel usually sits at the timeline tail and is often already in
+    // view, so the jump always answers with a visible pulse, not just a
+    // (possibly zero-distance) scroll.
+    const accent =
+      getComputedStyle(target).getPropertyValue("--tutti-purple").trim() ||
+      "#7c5cff";
+    target.animate?.(
+      [
+        { boxShadow: `0 0 0 2px ${accent}` },
+        { boxShadow: "0 0 0 2px transparent" }
+      ],
+      { duration: 1400, easing: "ease-out" }
+    );
   });
   // Turning Tutti mode off with a review still pending also cancels the
   // checkpoint: the banner and composer decision semantics clear with it, and
