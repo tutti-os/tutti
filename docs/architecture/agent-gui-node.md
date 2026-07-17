@@ -383,9 +383,41 @@ create/send commands. Once a session is active, the composer agent select is
 display-only and must not switch the running session. The conversation rail
 agent grid is a navigation surface: clicking an agent scopes the visible rail
 list by its exact `agentTargetId`. If the active conversation belongs to that
-target, it remains active. Otherwise the click enters that agent's empty home
-composer; it must not implicitly activate another matching history item.
+target, it remains active. Otherwise the click restores the last conversation
+that this AgentGUI node or standalone Agent window activated for that exact
+target. This memory is keyed by `agentTargetId` in node-local state; it must not
+come from a workspace-global recent conversation or group targets by provider.
+If no remembered conversation exists, or canonical state proves that the
+remembered session was deleted or belongs to another target, the click enters
+that agent's empty home composer. A remembered bounded-history session may be
+activated before its rail row is loaded, then reconciled through the normal
+session-authoritative detail path.
 Empty-home rail clicks may also sync the home composer launch target.
+The conversation rail keeps one in-memory view scope for each exact target and
+the all-target view. Returning to a visited scope restores its scroll offset,
+collapsed project sections, and per-section visible item limits only after the
+query controller confirms that the rendered memberships belong to that exact
+scope. The rendered request scope is synchronous view intent, while the query
+controller snapshot supplies resolved-scope evidence. Readiness must compare
+those identities during render instead of waiting for passive controller
+configuration; otherwise a layout effect can restore and record the new
+scope's scroll position against the previous scope's DOM. A committed stale
+membership snapshot for the resolved scope is ready for restoration while its
+background revalidation is pending; only an initial load with no committed
+membership blocks restoration. Search is a transient
+navigation mode: each changed query starts at the top and exiting search
+restores the underlying target scope without retaining one permanent view-state
+entry per query string.
+Scope restoration takes precedence over active-session reveal. A first visit
+may reveal its active session, but `activeConversationId` is selection truth,
+not an implicit DOM scroll command. Rail row clicks and provider session
+restoration never scroll again; the clicked row is already visible and the
+restored provider owns its remembered offset. Only explicit reveal intents,
+currently external session opens and newly created sessions, may reveal a row
+in an already settled scope. These view scopes and reveal intents belong to the
+mounted AgentGUI node's React conversation-list
+module. They are not persisted node data, engine state, query-controller data,
+or a module-global store.
 In an active session, the composer footer may replace the display-only provider
 select with a handoff affordance. Handoff is a workbench launch, not an
 in-session provider switch: AgentGUI serializes the active session as a single

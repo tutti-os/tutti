@@ -3,7 +3,6 @@ import {
   memo,
   useCallback,
   useEffect,
-  useLayoutEffect,
   useMemo,
   useRef,
   useState
@@ -39,6 +38,7 @@ import {
   stabilizeConversationSections
 } from "../model/agentGuiConversationRail";
 import { preserveConversationRailSectionTemplates } from "../model/agentGuiConversationRailSectionTemplates";
+import { agentGUIConversationRailViewScopeKey } from "../model/agentGuiConversationRailViewState";
 import type { useAgentGUIConversationRailQuery } from "../controller/useAgentGUIConversationRailQuery";
 import { AgentGUIConversationRailSection } from "./AgentGUIConversationRailSection";
 import { AgentGUIProjectRailHeader } from "./AgentGUIConversationRailItem";
@@ -48,6 +48,7 @@ import {
   roundAgentGuiPerfMs
 } from "./agentGUIViewUtils";
 import styles from "../AgentGUINode.styles";
+import { useAgentGUIConversationRailViewState } from "./useAgentGUIConversationRailViewState";
 
 const AGENT_GUI_CONFIRMATION_DIALOG_CLASS_NAME =
   "nodrag tsh-desktop-no-drag [-webkit-app-region:no-drag]";
@@ -75,6 +76,7 @@ export interface AgentGUIConversationRailControllerProps {
   userProjects: AgentGUINodeViewModel["rail"]["userProjects"];
   activeConversation: AgentGUINodeViewModel["rail"]["activeConversation"];
   activeConversationId: string | null;
+  revealRequest: AgentGUINodeViewModel["rail"]["revealRequest"];
   pendingDeleteConversationId: string | null;
   isLoadingConversations: boolean;
   isDeletingConversation: boolean;
@@ -161,6 +163,7 @@ export const AgentGUIConversationRailPane = memo(
     userProjects,
     activeConversation,
     activeConversationId,
+    revealRequest,
     pendingDeleteConversationId,
     isLoadingConversations,
     isDeletingConversation,
@@ -192,8 +195,6 @@ export const AgentGUIConversationRailPane = memo(
     onConversationQueryChange
   }: AgentGUIConversationRailPaneProps): React.JSX.Element {
     "use memo";
-    const [collapsedProjectSectionIds, setCollapsedProjectSectionIds] =
-      useState<ReadonlySet<string>>(() => new Set());
     const [currentTimeMs, setCurrentTimeMs] = useState(() => Date.now());
     const [pendingProjectAction, setPendingProjectAction] =
       useState<AgentGUIProjectActionDialog | null>(null);
@@ -201,12 +202,6 @@ export const AgentGUIConversationRailPane = memo(
       useState(false);
     const { railSearch } = railQuery;
     const railElementRef = useRef<HTMLElement | null>(null);
-    const conversationListRef = useRef<HTMLDivElement | null>(null);
-    const conversationItemElementsRef = useRef(
-      new Map<string, HTMLDivElement>()
-    );
-    const activeConversationScrollCompletedRef = useRef<string | null>(null);
-    const previousActiveConversationIdRef = useRef<string | null>(null);
     const railActiveConversationRef = useRef<
       AgentGUINodeViewModel["rail"]["conversations"]
     >([]);
@@ -218,6 +213,7 @@ export const AgentGUIConversationRailPane = memo(
       runtimeRailConversations,
       runtimeRailMemberships,
       runtimeRailReconcilingSessionIds,
+      runtimeRailScopeResolved,
       runtimeRailSectionsPending,
       sectionPageStates
     } = railQuery;
@@ -404,22 +400,11 @@ export const AgentGUIConversationRailPane = memo(
       userProjects
     ]);
     const groupedConversations = groupedConversationResult.groups;
-    const sectionPaginationScopeKey = `${
-      conversationFilter.kind === "agentTarget"
-        ? `${workspaceId}:agentTarget:${conversationFilter.agentTargetId.trim()}`
-        : `${workspaceId}:all:${sectionAgentTargetFallbackId?.trim() ?? ""}`
-    }:search:${conversationQuery.trim()}`;
-    const toggleProjectSectionCollapsed = useCallback((sectionId: string) => {
-      setCollapsedProjectSectionIds((current) => {
-        const next = new Set(current);
-        if (next.has(sectionId)) {
-          next.delete(sectionId);
-        } else {
-          next.add(sectionId);
-        }
-        return next;
-      });
-    }, []);
+    const railViewScopeKey = agentGUIConversationRailViewScopeKey({
+      conversationFilter,
+      sectionAgentTargetFallbackId,
+      workspaceId
+    });
     const groupedConversationIdentityKey = useMemo(
       () =>
         `${groupedConversations
@@ -491,38 +476,18 @@ export const AgentGUIConversationRailPane = memo(
       backendSearchActive &&
       railSearch.failed &&
       railSearch.sessionIds.length === 0;
-    const registerConversationItemElement = useCallback(
-      (itemId: string, element: HTMLDivElement | null) => {
-        if (element) {
-          conversationItemElementsRef.current.set(itemId, element);
-        } else {
-          conversationItemElementsRef.current.delete(itemId);
-        }
-      },
-      []
-    );
-
-    useLayoutEffect(() => {
-      const activeId = activeConversationId?.trim() ?? "";
-      if (!activeId) {
-        previousActiveConversationIdRef.current = null;
-        activeConversationScrollCompletedRef.current = null;
-        return;
-      }
-      if (previousActiveConversationIdRef.current !== activeId) {
-        previousActiveConversationIdRef.current = activeId;
-        activeConversationScrollCompletedRef.current = null;
-      }
-      if (activeConversationScrollCompletedRef.current === activeId) {
-        return;
-      }
-      const activeElement = conversationItemElementsRef.current.get(activeId);
-      if (!activeElement) {
-        return;
-      }
-      activeElement.scrollIntoView({ block: "nearest" });
-      activeConversationScrollCompletedRef.current = activeId;
-    }, [activeConversationId, groupedConversationIdentityKey]);
+    const railViewState = useAgentGUIConversationRailViewState({
+      activeConversationId,
+      contentReady:
+        (backendSearchActive
+          ? !railSearch.pending
+          : runtimeRailScopeResolved && !isRuntimeRailLoading) &&
+        !shouldShowConversationSkeleton,
+      groupedConversationIdentityKey,
+      revealRequest,
+      searchQuery: conversationQuery,
+      scopeKey: railViewScopeKey
+    });
 
     return (
       <aside
@@ -552,7 +517,7 @@ export const AgentGUIConversationRailPane = memo(
         <ScrollArea
           scrollbarMode="native"
           className="min-h-0 flex-1 [&_[data-orientation=vertical][data-slot=scroll-area-scrollbar]]:opacity-100"
-          viewportRef={conversationListRef}
+          viewportRef={railViewState.conversationListRef}
           viewportClassName={styles.conversationList}
         >
           {shouldShowConversationSkeleton ? (
@@ -598,7 +563,7 @@ export const AgentGUIConversationRailPane = memo(
                     groupedConversations[sectionIndex - 1]?.kind === "pinned");
                 const isSectionCollapsed =
                   isProjectSection &&
-                  collapsedProjectSectionIds.has(section.id);
+                  railViewState.collapsedSectionIds.has(section.id);
                 const sectionPageState = sectionPageStates.get(section.id);
                 const searchSectionHasMore =
                   backendSearchActive &&
@@ -680,14 +645,18 @@ export const AgentGUIConversationRailPane = memo(
                       isSectionCollapsed={isSectionCollapsed}
                       labels={labels}
                       pendingDeleteConversationId={pendingDeleteConversationId}
-                      paginationScopeKey={sectionPaginationScopeKey}
                       previewMode={previewMode}
                       projectLabel={projectLabel}
                       projectPath={projectPath}
-                      registerItemElement={registerConversationItemElement}
+                      registerItemElement={
+                        railViewState.registerConversationItemElement
+                      }
                       section={section}
                       sectionHasMore={sectionHasMore}
                       sectionTotalCount={sectionTotalCount}
+                      visibleItemLimit={railViewState.visibleItemLimitForSection(
+                        section.id
+                      )}
                       uiLanguage={uiLanguage}
                       workspaceId={workspaceId}
                       onCancelDeleteConversation={onCancelDeleteConversation}
@@ -710,7 +679,10 @@ export const AgentGUIConversationRailPane = memo(
                       onOpenProjectFiles={onOpenProjectFiles}
                       onOpenConversationWindow={onOpenConversationWindow}
                       onToggleProjectSectionCollapsed={
-                        toggleProjectSectionCollapsed
+                        railViewState.toggleProjectSectionCollapsed
+                      }
+                      onVisibleItemLimitChange={
+                        railViewState.setSectionVisibleItemLimit
                       }
                     />
                   </Fragment>

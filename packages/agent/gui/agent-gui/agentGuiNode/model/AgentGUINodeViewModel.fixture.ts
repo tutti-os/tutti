@@ -41,6 +41,7 @@ export function groupAgentGUINodeViewModelFixture(
       userProjects: flat.userProjects,
       activeConversation: flat.activeConversation,
       activeConversationId: flat.activeConversationId,
+      revealRequest: flat.revealRequest,
       isLoadingConversations: flat.isLoadingConversations,
       listError: flat.listError
     },

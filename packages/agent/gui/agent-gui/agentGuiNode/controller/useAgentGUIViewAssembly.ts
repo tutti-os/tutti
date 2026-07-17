@@ -147,6 +147,7 @@ export function useAgentGUIViewAssembly(input: UseAgentGUIViewAssemblyInput) {
       userProjects: input.userProjects,
       activeConversation,
       activeConversationId: input.activeConversationId,
+      revealRequest: input.railRevealRequest,
       isLoadingConversations: input.isLoadingConversations,
       listError: input.listError
     },

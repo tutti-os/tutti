@@ -36,6 +36,9 @@ test("desktop agent gui workbench state only preserves whitelisted data", () => 
     conversationRailCollapsed: true,
     agentTargetId: "daemon-hermes",
     lastActiveAgentSessionId: "session-1",
+    lastActiveAgentSessionIdByAgentTargetId: {
+      "daemon-hermes": "session-1"
+    },
     lastActiveConversationTitle: "A title",
     provider: "hermes"
   });
@@ -44,7 +47,10 @@ test("desktop agent gui workbench state only preserves whitelisted data", () => 
     agentTargetId: "daemon-hermes",
     conversationRailCollapsed: true,
     conversationRailWidthPx: null,
-    lastActiveAgentSessionId: "session-1"
+    lastActiveAgentSessionId: "session-1",
+    lastActiveAgentSessionIdByAgentTargetId: {
+      "daemon-hermes": "session-1"
+    }
   });
 });
 
@@ -57,13 +63,19 @@ test("desktop agent gui workbench projection preserves rail state and permission
       conversationRailCollapsed: true,
       conversationRailWidthPx: 360.4,
       agentTargetId: "daemon-hermes",
-      lastActiveAgentSessionId: "session-1"
+      lastActiveAgentSessionId: "session-1",
+      lastActiveAgentSessionIdByAgentTargetId: {
+        "daemon-hermes": "session-1"
+      }
     }),
     {
       agentTargetId: "daemon-hermes",
       conversationRailCollapsed: true,
       conversationRailWidthPx: 360,
-      lastActiveAgentSessionId: "session-1"
+      lastActiveAgentSessionId: "session-1",
+      lastActiveAgentSessionIdByAgentTargetId: {
+        "daemon-hermes": "session-1"
+      }
     }
   );
 });

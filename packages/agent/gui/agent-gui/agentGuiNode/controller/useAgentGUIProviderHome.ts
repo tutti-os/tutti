@@ -6,7 +6,12 @@ import {
   type SetStateAction
 } from "react";
 import type { AgentActivityRuntime } from "../../../agentActivityRuntime";
-import type { PendingActivationIntentRecord } from "@tutti-os/agent-activity-core";
+import {
+  selectEngineSession,
+  selectEngineSessionDeleted,
+  type AgentSessionEngine,
+  type PendingActivationIntentRecord
+} from "@tutti-os/agent-activity-core";
 import {
   agentGUIAgentTargetRefsEqual,
   resolveAgentGUIAgentTarget
@@ -23,6 +28,12 @@ import {
   type AgentGUIConversationFilter
 } from "../model/agentGuiConversationFilter";
 import type { AgentGUIConversationSummary } from "../model/agentGuiConversationModel";
+import {
+  forgetAgentGUISessionMemories,
+  rememberAgentGUIActiveConversation,
+  resolveAgentGUIRememberedSessionSelection,
+  resolveAgentGUISessionMemoryTarget
+} from "../model/agentGuiSessionNavigationMemory";
 import { type AgentGUIComposerTargetData } from "./agentGuiController.composerPresentation";
 import {
   agentGUINodeDataHasComposerTarget,
@@ -45,6 +56,7 @@ interface UseAgentGUIProviderHomeInput {
   activeConversationIdRef: CurrentValue<string | null>;
   activePendingActivation: PendingActivationIntentRecord | null;
   agentActivityRuntime: AgentActivityRuntime;
+  clearRailRevealRequest(): void;
   conversationFilter: AgentGUIConversationFilter;
   conversationFilterRef: CurrentValue<AgentGUIConversationFilter>;
   conversationListInitialized: boolean;
@@ -70,6 +82,11 @@ interface UseAgentGUIProviderHomeInput {
   > | null;
   agentTargetsLoading: boolean;
   selectedComposerTargetDataRef: CurrentValue<AgentGUIComposerTargetData>;
+  selectConversation(
+    agentSessionId: string,
+    options?: { reloadConversations?: boolean }
+  ): void;
+  sessionEngine: AgentSessionEngine;
   setActiveConversationId: Dispatch<SetStateAction<string | null>>;
   setConversationFilter: Dispatch<SetStateAction<AgentGUIConversationFilter>>;
   setDetailError: Dispatch<SetStateAction<string | null>>;
@@ -178,6 +195,7 @@ export function useAgentGUIProviderHome(input: UseAgentGUIProviderHomeInput) {
         useStaticCatalog: currentInput.shouldUseStaticProviderTargets
       });
       if (!nextTarget) return;
+      currentInput.clearRailRevealRequest();
       const nextTargetIsExplicit =
         currentInput.normalizedExplicitProviderTargets.some(
           (target) =>
@@ -197,6 +215,22 @@ export function useAgentGUIProviderHome(input: UseAgentGUIProviderHomeInput) {
         );
       }
       const previous = currentInput.activeConversationIdRef.current;
+      const previousSummary = resolveConversationSummaryById(
+        currentInput.conversationsRef.current,
+        previous,
+        currentInput.transientConversation
+      );
+      const previousAgentTargetId = resolveAgentGUISessionMemoryTarget({
+        agentSessionId: previous,
+        canonicalAgentTargetId: previous
+          ? selectEngineSession(
+              currentInput.sessionEngine.getSnapshot(),
+              previous
+            )?.agentTargetId
+          : null,
+        pendingActivation: currentInput.activePendingActivation,
+        projectedAgentTargetId: previousSummary?.agentTargetId
+      });
       if (
         previous &&
         !isPendingNewConversationActivationForSession(
@@ -215,8 +249,15 @@ export function useAgentGUIProviderHome(input: UseAgentGUIProviderHomeInput) {
       currentInput.setDetailError(null);
       currentInput.persistActiveConversation(null);
       currentInput.onDataChangeRef.current((current) => {
+        const rememberedCurrent = previous
+          ? rememberAgentGUIActiveConversation(
+              current,
+              previous,
+              previousAgentTargetId
+            )
+          : current;
         const currentNextTargetData = composerTargetDataFromProviderTarget({
-          current,
+          current: rememberedCurrent,
           isExplicit: nextTargetIsExplicit,
           target: nextTarget
         });
@@ -228,13 +269,13 @@ export function useAgentGUIProviderHome(input: UseAgentGUIProviderHomeInput) {
           ((currentTargetId !== null || nextAgentTargetId !== null) &&
             currentTargetId !== nextTargetId);
         const nextData: AgentGUINodeData = {
-          ...current,
+          ...rememberedCurrent,
           provider: currentNextTargetData.provider,
           agentTargetId: currentNextTargetData.agentTargetId,
           lastActiveAgentSessionId: null,
           composerOverrides: providerTargetChanged
             ? null
-            : current.composerOverrides
+            : rememberedCurrent.composerOverrides
         };
         currentInput.dataRef.current = nextData;
         return nextData;
@@ -317,6 +358,7 @@ export function useAgentGUIProviderHome(input: UseAgentGUIProviderHomeInput) {
         });
         return;
       }
+      current.clearRailRevealRequest();
       const agentTargetId = nextTarget.agentTargetId?.trim() ?? "";
       const nextFilter = agentTargetId
         ? { kind: "agentTarget" as const, agentTargetId }
@@ -335,6 +377,49 @@ export function useAgentGUIProviderHome(input: UseAgentGUIProviderHomeInput) {
         }) === "keep-active-conversation"
       ) {
         return;
+      }
+      const rememberedAgentSessionId =
+        agentTargetId &&
+        current.dataRef.current.lastActiveAgentSessionIdByAgentTargetId?.[
+          agentTargetId
+        ];
+      const rememberedSummary = resolveConversationSummaryById(
+        current.conversationsRef.current,
+        rememberedAgentSessionId,
+        current.transientConversation
+      );
+      const rememberedEngineSession = selectEngineSession(
+        current.sessionEngine.getSnapshot(),
+        rememberedAgentSessionId
+      );
+      const rememberedSelection = resolveAgentGUIRememberedSessionSelection({
+        data: current.dataRef.current,
+        deleted: selectEngineSessionDeleted(
+          current.sessionEngine.getSnapshot(),
+          rememberedAgentSessionId
+        ),
+        knownAgentTargetId:
+          rememberedEngineSession?.agentTargetId ??
+          rememberedSummary?.agentTargetId ??
+          null,
+        targetAgentTargetId: agentTargetId || null
+      });
+      if (rememberedSelection.kind === "restore") {
+        selectHomeComposerAgentTarget(selection);
+        current.selectConversation(rememberedSelection.agentSessionId, {
+          reloadConversations: false
+        });
+        return;
+      }
+      if (rememberedSelection.kind === "stale") {
+        const staleIds = new Set([rememberedSelection.agentSessionId]);
+        current.onDataChangeRef.current((data) =>
+          forgetAgentGUISessionMemories(data, staleIds)
+        );
+        current.dataRef.current = forgetAgentGUISessionMemories(
+          current.dataRef.current,
+          staleIds
+        );
       }
       selectHomeComposerAgentTarget(selection);
     },

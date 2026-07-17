@@ -496,9 +496,9 @@ export class AgentGUIConversationRailQueryController {
           return;
         }
         const requestResolvedAt = this.diagnosticNow();
-      this.applyCachedFirstPages(entry);
-      this.sectionPublicationState = "idle";
-      this.publishIfReady(undefined, true);
+        this.applyCachedFirstPages(entry);
+        this.sectionPublicationState = "idle";
+        this.publishIfReady(undefined, true);
         const completedAt = this.diagnosticNow();
         this.providerSwitchDiagnostics.complete(scopeKey, {
           cacheStatus,
@@ -724,7 +724,6 @@ export class AgentGUIConversationRailQueryController {
   private searchEnabled(): boolean {
     return Boolean(!this.scope?.previewMode && this.runtime.listSessionsPage);
   }
-
   private publishIfReady(
     state: AgentSessionEngineState = this.engine.getSnapshot(),
     force = false

@@ -86,6 +86,7 @@ function createViewModel(): AgentGUINodeViewModel {
       userProjects: [],
       activeConversation: null,
       activeConversationId: null,
+      revealRequest: null,
       isLoadingConversations: false,
       listError: null
     },

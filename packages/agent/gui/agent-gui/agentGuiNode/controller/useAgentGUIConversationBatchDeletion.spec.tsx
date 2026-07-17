@@ -29,6 +29,7 @@ function createInput(agentActivityRuntime: AgentActivityRuntime) {
     isDeletingProjectConversations: false,
     markSelectedConversationDetailPending: vi.fn(() => null),
     persistActiveConversation: vi.fn(),
+    removeConversations: vi.fn(),
     sessionViewRef: (agentSessionId: string | null | undefined) => ({
       agentSessionId,
       origin: "local",
@@ -95,6 +96,10 @@ describe("useAgentGUIConversationBatchDeletion", () => {
     await waitFor(() =>
       expect(input.deleteAgentSessionView).toHaveBeenCalledTimes(2)
     );
+    expect(input.removeConversations).toHaveBeenCalledWith([
+      "loaded-session",
+      "unloaded-session"
+    ]);
   });
 
   it("refreshes activity and does not delete when the candidate snapshot is empty", async () => {

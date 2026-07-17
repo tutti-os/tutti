@@ -6,6 +6,7 @@ import {
   AgentGUIConversationRailQueryController,
   type AgentGUIConversationRailQuerySnapshot
 } from "./AgentGUIConversationRailQueryController";
+import { resolveConversationRailQueryScope } from "./agentGuiConversationRailQueryTypes";
 
 export interface AgentGUIConversationRailInput {
   activeConversationId: string | null;
@@ -67,6 +68,22 @@ export function useAgentGUIConversationRailQuery({
     identitySnapshot,
     Object.is
   );
+  const requestedRailScopeKey = useMemo(
+    () =>
+      resolveConversationRailQueryScope(workspaceId, {
+        conversationFilter,
+        previewMode,
+        sectionAgentTargetFallbackId,
+        userProjects
+      }).scopeKey,
+    [
+      conversationFilter,
+      previewMode,
+      sectionAgentTargetFallbackId,
+      userProjects,
+      workspaceId
+    ]
+  );
   return useMemo(
     () => ({
       ...querySnapshot,
@@ -77,9 +94,12 @@ export function useAgentGUIConversationRailQuery({
         loadMore: controller.loadMoreSearchResults,
         retry: controller.retrySearchResults
       },
+      runtimeRailScopeResolved:
+        !querySnapshot.runtimeSectionsEnabled ||
+        querySnapshot.runtimeRailResolvedScopeKey === requestedRailScopeKey,
       runtimeRailConversations: querySnapshot.runtimeRailConversations
     }),
-    [controller, querySnapshot]
+    [controller, querySnapshot, requestedRailScopeKey]
   );
 }
 

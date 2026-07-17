@@ -24,6 +24,7 @@ export function useAgentGUIViewModel(
       candidate.rail.isLoadingConversations,
       candidate.rail.listError,
       candidate.rail.providerRailMode,
+      candidate.rail.revealRequest,
       candidate.rail.agentTargets,
       candidate.rail.agentTargetsLoading,
       candidate.rail.selectedAgentTarget,

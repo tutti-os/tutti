@@ -5,8 +5,10 @@ import { createWorkspaceQueryCache } from "../../../shared/query/workspaceQueryC
 import {
   AgentGUIConversationRailQueryController,
   CONVERSATION_SEARCH_DEBOUNCE_MS,
+  type ConversationRailQueryScope,
   type ConversationRailQueryRuntime
 } from "./AgentGUIConversationRailQueryController";
+import { resolveConversationRailQueryScope } from "./agentGuiConversationRailQueryTypes";
 
 describe("AgentGUIConversationRailQueryController", () => {
   it("does not treat workspace hydration as a rail membership mutation", async () => {
@@ -232,21 +234,32 @@ describe("AgentGUIConversationRailQueryController", () => {
       },
       workspaceId: "test-workspace"
     });
-    controller.configure({
+    const initialScope: ConversationRailQueryScope = {
       conversationFilter: { kind: "all" },
       previewMode: false,
       sectionAgentTargetFallbackId: null,
       userProjects: []
-    });
+    };
+    const initialScopeKey = resolveConversationRailQueryScope(
+      "test-workspace",
+      initialScope
+    ).scopeKey;
+    controller.configure(initialScope);
 
     const detach = controller.attach();
     expect(controller.isInteractionLocked()).toBe(true);
+    expect(controller.getSnapshot().runtimeRailResolvedScopeKey).not.toBe(
+      initialScopeKey
+    );
 
     sectionResolvers.shift()?.();
     await vi.waitFor(() =>
       expect(controller.getSnapshot().runtimeRailSectionsPending).toBe(false)
     );
     expect(controller.isInteractionLocked()).toBe(false);
+    expect(controller.getSnapshot().runtimeRailResolvedScopeKey).toBe(
+      initialScopeKey
+    );
     let visiblePinnedAt =
       controller.getSnapshot().runtimeRailConversations[0]?.pinnedAtUnixMs ??
       null;
@@ -324,7 +337,7 @@ describe("AgentGUIConversationRailQueryController", () => {
     expect(controller.isInteractionLocked()).toBe(false);
     expect(visibleDeleteChanges).toBe(1);
 
-    controller.configure({
+    const nextScope: ConversationRailQueryScope = {
       conversationFilter: {
         agentTargetId: "local:claude-code",
         kind: "agentTarget"
@@ -332,8 +345,12 @@ describe("AgentGUIConversationRailQueryController", () => {
       previewMode: false,
       sectionAgentTargetFallbackId: null,
       userProjects: []
-    });
+    };
+    controller.configure(nextScope);
     expect(controller.isInteractionLocked()).toBe(true);
+    expect(controller.getSnapshot().runtimeRailResolvedScopeKey).not.toBe(
+      resolveConversationRailQueryScope("test-workspace", nextScope).scopeKey
+    );
 
     unsubscribeDelete();
     unsubscribe();

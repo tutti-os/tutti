@@ -10,8 +10,8 @@ import {
   screen,
   waitFor
 } from "@testing-library/react";
-import { Profiler, type PropsWithChildren } from "react";
-import { describe, expect, it } from "vitest";
+import { Profiler, useLayoutEffect, type PropsWithChildren } from "react";
+import { describe, expect, it, vi } from "vitest";
 import {
   AgentActivityRuntimeProvider,
   type AgentActivityRuntime,
@@ -24,6 +24,76 @@ import type { AgentGUIViewLabels } from "../view/AgentGUINodeView.types";
 import { createDefaultWorkspaceUserProjectI18nRuntime } from "@tutti-os/workspace-user-project/i18n";
 
 describe("useAgentGUIConversationRailQuery search", () => {
+  it("marks a newly rendered target unresolved before its controller effect settles", async () => {
+    const engine = createTestAgentSessionEngine("workspace-1");
+    const sectionResolvers: Array<() => void> = [];
+    const runtime = {
+      getSessionEngine: () => engine,
+      listSessionSections: vi.fn(
+        (input: { workspaceId: string }) =>
+          new Promise<{ sections: []; workspaceId: string }>((resolve) => {
+            sectionResolvers.push(() =>
+              resolve({ sections: [], workspaceId: input.workspaceId })
+            );
+          })
+      ),
+      listSessionSectionPage: vi.fn()
+    } as unknown as AgentActivityRuntime;
+    const wrapper = ({ children }: PropsWithChildren) => (
+      <AgentActivityRuntimeProvider runtime={runtime}>
+        {children}
+      </AgentActivityRuntimeProvider>
+    );
+    const layoutObservations: Array<{
+      agentTargetId: string;
+      scopeResolved: boolean;
+    }> = [];
+    function ScopeResolutionProbe({
+      agentTargetId
+    }: {
+      agentTargetId: string;
+    }): null {
+      const query = useAgentGUIConversationRailQuery({
+        activeConversationId: null,
+        conversationFilter: { agentTargetId, kind: "agentTarget" },
+        conversationQuery: "",
+        previewMode: false,
+        sectionAgentTargetFallbackId: null,
+        userProjects: [],
+        workspaceId: "workspace-1"
+      });
+      useLayoutEffect(() => {
+        layoutObservations.push({
+          agentTargetId,
+          scopeResolved: query.runtimeRailScopeResolved
+        });
+      }, [agentTargetId, query.runtimeRailScopeResolved]);
+      return null;
+    }
+    const view = render(<ScopeResolutionProbe agentTargetId="local:codex" />, {
+      wrapper
+    });
+
+    await waitFor(() => expect(sectionResolvers).toHaveLength(1));
+    await act(async () => sectionResolvers.shift()?.());
+    await waitFor(() =>
+      expect(layoutObservations).toContainEqual({
+        agentTargetId: "local:codex",
+        scopeResolved: true
+      })
+    );
+
+    const observationCountBeforeSwitch = layoutObservations.length;
+    view.rerender(<ScopeResolutionProbe agentTargetId="local:claude-code" />);
+
+    expect(layoutObservations[observationCountBeforeSwitch]).toEqual({
+      agentTargetId: "local:claude-code",
+      scopeResolved: false
+    });
+    view.unmount();
+    engine.dispose();
+  });
+
   it("searches every backend page and stores returned entities in the workspace engine", async () => {
     const engine = createTestAgentSessionEngine("workspace-1");
     const calls: AgentActivityRuntimeListSessionsPageInput[] = [];
@@ -258,6 +328,7 @@ describe("useAgentGUIConversationRailQuery search", () => {
           }}
         >
           <AgentGUIConversationRailPane
+            revealRequest={null}
             activeConversation={activeConversation}
             activeConversationId="session-1"
             agentTargets={[]}
@@ -348,6 +419,7 @@ describe("useAgentGUIConversationRailQuery search", () => {
       });
       return (
         <AgentGUIConversationRailPane
+          revealRequest={null}
           activeConversation={null}
           activeConversationId={null}
           agentTargets={[]}
