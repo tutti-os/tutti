@@ -188,10 +188,6 @@ func (m *Manager) resolveRuntime(ctx context.Context, installationID, cwd string
 	return RuntimeBinding{}, fmt.Errorf("compatible local runtime for %s is not installed", installation.AgentKey)
 }
 
-func (m *Manager) managedRuntimeRoot(installation Installation) string {
-	return filepath.Join(strings.TrimSpace(m.RuntimeInstallDir), installation.AgentKey, installation.Version)
-}
-
 func (m *Manager) ensureDiscoveryRoot(ctx context.Context) (string, error) {
 	if m.Discovery == nil {
 		return "", errors.New("agent extension discovery directory is not configured")

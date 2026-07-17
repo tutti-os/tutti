@@ -17,6 +17,7 @@ type managedRuntimeEntry struct {
 
 func (m *Manager) managedRuntimeEntry(
 	installation Installation,
+	finalRoot string,
 	declaredExecutable string,
 	relativeExecutable string,
 ) (managedRuntimeEntry, error) {
@@ -29,7 +30,7 @@ func (m *Manager) managedRuntimeEntry(
 	if commandName == "" || commandName == "." || commandName == string(filepath.Separator) {
 		return managedRuntimeEntry{}, errors.New("managed runtime executable name is invalid")
 	}
-	finalRoot := m.managedRuntimeRoot(installation)
+	finalRoot = filepath.Clean(finalRoot)
 	finalExecutable := filepath.Clean(filepath.Join(finalRoot, filepath.FromSlash(relativeExecutable)))
 	if !pathWithin(finalExecutable, finalRoot) {
 		return managedRuntimeEntry{}, errors.New("managed runtime executable entry escapes install root")

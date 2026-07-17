@@ -209,8 +209,8 @@ Agent Extension executables are user-local programs rather than daemon state:
 ~/.local/share/tutti/agent-runtimes/
   <agent-key>/
     bin/
-      <agent-command> -> ../<extension-version>/<runtime-executable>
-    <extension-version>/
+      <agent-command> -> ../<runtime-identity>/<runtime-executable>
+    <runtime-identity>/
       activation.json
       node_modules/
   claude-code/

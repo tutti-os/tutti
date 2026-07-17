@@ -154,13 +154,19 @@ exact package identity, install root, executable, launch arguments, and SHA-256
 plan digest. Renderer input cannot replace any execution field.
 
 Runtime roots use
-`~/.local/share/tutti/agent-runtimes/<agentKey>/<extensionVersion>`. This stable
-user-local root is shared by development and production; daemon state keeps
-only setup action metadata. `${platform}` resolves to Go's
-`<GOOS>-<GOARCH>` pair. Plan digests bind the Target, fixed extension
-installation, platform, and complete resolved command, so one managed
-installation is reused across workspaces. Every install action recomputes the
-plan and compares its digest before creating files or processes.
+`~/.local/share/tutti/agent-runtimes/<agentKey>/<runtimeIdentity>`, where
+`runtimeIdentity` is derived from the runtime contract: Agent key, runtime
+kind, platform, install runner and argv, exact package identity, launch
+executable and args, and discovery profile. Extension metadata changes such as
+localized copy or presentation assets do not force a reinstall when this
+runtime contract is unchanged. This stable user-local root is shared by
+development and production; daemon state keeps only setup action metadata.
+`${platform}` resolves to Go's `<GOOS>-<GOARCH>` pair. Plan digests still bind
+the Target and fixed extension installation in addition to the runtime
+identity, platform, and complete resolved command, so one managed runtime is
+reused across workspaces while setup actions remain tied to the exact Target
+installation that the user confirmed. Every install action recomputes the plan
+and compares its digest before creating files or processes.
 
 The validated manifest inside the installed extension package is authoritative
 for runtime commands. The copied manifest in `installation.json` is metadata,
@@ -186,7 +192,7 @@ file before activation and launch.
 Successful activation also publishes the manifest launch executable's basename
 at `~/.local/bin/<agent-command>`. The user entry is a Tutti-owned symlink to
 `~/.local/share/tutti/agent-runtimes/<agentKey>/bin/<agent-command>`; that
-stable per-Agent link points to the executable in the fixed version root and is
+stable per-Agent link points to the executable in the fixed runtime root and is
 atomically repointed on upgrade. A pre-existing regular file or foreign symlink
 at either entry is never overwritten. Feature disablement and daemon shutdown
 do not remove a published command, so it remains usable outside Tutti while the
@@ -197,12 +203,16 @@ through the managed activation record. It therefore remains `source=managed`
 and retains fingerprint verification instead of being mistaken for an
 independent local installation. Both links are activation integrity: a missing,
 foreign, broken, or unexpectedly repointed entry produces
-`runtime_integrity_failed` and an explicit reinstall plan. Existing managed
-runtimes from before this invariant are not silently migrated during discovery.
+`runtime_integrity_failed` and an explicit reinstall plan. Existing
+extension-version roots may be adopted into the runtime-identity root only when
+their Tutti activation record, package identity, executable fingerprint, and
+current discovery version check all match; otherwise they are ignored and the
+user receives an explicit reinstall plan.
 
 The managed-runtime activation record persists the resolved executable's
-SHA-256 and byte size. Every managed-runtime resolution recomputes both before
-the version or ACP probe. A replacement, even one reporting the same compatible
+runtime identity, package identity, SHA-256, and byte size. Every
+managed-runtime resolution recomputes both fingerprint fields before the
+version or ACP probe. A replacement, even one reporting the same compatible
 version, is rejected with `runtime_integrity_failed` and returns the exact
 reinstall plan.
 

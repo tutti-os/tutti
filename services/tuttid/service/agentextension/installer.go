@@ -154,7 +154,7 @@ func (s *SetupService) executeInstall(
 	}
 	activation := managedRuntimeActivation{
 		SchemaVersion: managedRuntimeActivationSchema, ExtensionInstallationID: installation.ID,
-		PackageName: plan.PackageName, PackageVersion: plan.PackageVersion,
+		RuntimeIdentity: plan.RuntimeIdentity, PackageName: plan.PackageName, PackageVersion: plan.PackageVersion,
 		ExecutableRelativePath: filepath.ToSlash(relativeExecutable), InstalledAt: time.Now().UTC(),
 	}
 	activation.ExecutableFingerprint, err = fingerprintRuntimeExecutable(realExecutable)
@@ -164,11 +164,11 @@ func (s *SetupService) executeInstall(
 	if err := writeJSONAtomic(filepath.Join(staging, "activation.json"), activation); err != nil {
 		return fmt.Errorf("%w: write activation: %w", ErrRuntimeActivateFailed, err)
 	}
-	entry, err := s.Plans.Manager.managedRuntimeEntry(installation, plan.Executable, activation.ExecutableRelativePath)
+	entry, err := s.Plans.Manager.managedRuntimeEntry(installation, plan.InstallRoot, plan.Executable, activation.ExecutableRelativePath)
 	if err != nil {
 		return fmt.Errorf("%w: derive user executable entry: %w", ErrRuntimeActivateFailed, err)
 	}
-	if err := activateManagedRuntime(installation, staging, plan.InstallRoot, s.Plans.Manager.RuntimeInstallDir, entry); err != nil {
+	if err := activateManagedRuntime(installation, staging, plan, s.Plans.Manager.RuntimeInstallDir, entry); err != nil {
 		return fmt.Errorf("%w: %w", ErrRuntimeActivateFailed, err)
 	}
 	return nil
@@ -213,8 +213,9 @@ func cleanInstallEnvironment(scratch string) []string {
 	)
 }
 
-func activateManagedRuntime(installation Installation, staging, finalRoot, runtimeInstallDir string, entry managedRuntimeEntry) error {
-	if err := validateManagedRuntimeRoot(finalRoot, runtimeInstallDir, installation); err != nil {
+func activateManagedRuntime(installation Installation, staging string, plan InstallPlan, runtimeInstallDir string, entry managedRuntimeEntry) error {
+	finalRoot := plan.InstallRoot
+	if err := validateManagedRuntimeRoot(finalRoot, runtimeInstallDir, installation.AgentKey, plan.RuntimeIdentity); err != nil {
 		return err
 	}
 	if err := validateManagedRuntimeEntry(entry); err != nil {

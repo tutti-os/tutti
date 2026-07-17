@@ -44,6 +44,7 @@ type InstallPlan struct {
 	ExtensionInstallationID string   `json:"extensionInstallationId"`
 	AgentKey                string   `json:"agentKey"`
 	ExtensionVersion        string   `json:"extensionVersion"`
+	RuntimeIdentity         string   `json:"runtimeIdentity"`
 	RuntimeKind             string   `json:"runtimeKind"`
 	Platform                string   `json:"platform"`
 	Runner                  string   `json:"runner"`
@@ -91,17 +92,26 @@ func (s InstallPlanService) GetInstallPlan(ctx context.Context, input InstallPla
 	if installation.Provider != target.Provider {
 		return InstallPlan{}, fmt.Errorf("%w: target provider does not match extension installation", ErrUnsupportedInstallTarget)
 	}
-	return buildInstallPlan(target.ID, s.Manager.managedRuntimeRoot(installation), s.Manager.RuntimeInstallDir, installation)
+	return buildInstallPlan(target.ID, s.Manager.RuntimeInstallDir, installation)
 }
 
-func buildInstallPlan(targetID, installRoot, runtimeInstallDir string, installation Installation) (InstallPlan, error) {
+func buildInstallPlan(targetID, runtimeInstallDir string, installation Installation) (InstallPlan, error) {
 	manifest := installation.Manifest
 	packageName, packageVersion, err := exactRuntimePackage(manifest.Runtime.Install.Runner, manifest.Runtime.Install.Args)
 	if err != nil {
 		return InstallPlan{}, err
 	}
 	platform := runtime.GOOS + "-" + runtime.GOARCH
-	if err := validateManagedRuntimeRoot(installRoot, runtimeInstallDir, installation); err != nil {
+	var profile DiscoveryProfile
+	if err := readJSON(filepath.Join(installation.PackageDir, installation.Manifest.Profiles.Discovery), &profile); err != nil {
+		return InstallPlan{}, fmt.Errorf("read discovery profile: %w", err)
+	}
+	runtimeIdentity, err := managedRuntimeIdentity(installation, profile, packageName, packageVersion, platform)
+	if err != nil {
+		return InstallPlan{}, err
+	}
+	installRoot := managedRuntimeRoot(runtimeInstallDir, installation.AgentKey, runtimeIdentity)
+	if err := validateManagedRuntimeRoot(installRoot, runtimeInstallDir, installation.AgentKey, runtimeIdentity); err != nil {
 		return InstallPlan{}, err
 	}
 	resolve := func(value string) string {
@@ -125,7 +135,7 @@ func buildInstallPlan(targetID, installRoot, runtimeInstallDir string, installat
 	plan := InstallPlan{
 		AgentTargetID:           targetID,
 		ExtensionInstallationID: installation.ID, AgentKey: installation.AgentKey,
-		ExtensionVersion: installation.Version, RuntimeKind: manifest.Runtime.Kind,
+		ExtensionVersion: installation.Version, RuntimeIdentity: runtimeIdentity, RuntimeKind: manifest.Runtime.Kind,
 		Platform: platform, Runner: manifest.Runtime.Install.Runner,
 		PackageName: packageName, PackageVersion: packageVersion, InstallRoot: installRoot,
 		InstallCommand: append([]string{manifest.Runtime.Install.Runner}, installArgs...),
@@ -138,6 +148,53 @@ func buildInstallPlan(targetID, installRoot, runtimeInstallDir string, installat
 	digest := sha256.Sum256(encoded)
 	plan.PlanDigest = hex.EncodeToString(digest[:])
 	return plan, nil
+}
+
+func managedRuntimeIdentity(
+	installation Installation,
+	profile DiscoveryProfile,
+	packageName string,
+	packageVersion string,
+	platform string,
+) (string, error) {
+	value := struct {
+		SchemaVersion  string           `json:"schemaVersion"`
+		AgentKey       string           `json:"agentKey"`
+		RuntimeKind    string           `json:"runtimeKind"`
+		Platform       string           `json:"platform"`
+		Runner         string           `json:"runner"`
+		PackageName    string           `json:"packageName"`
+		PackageVersion string           `json:"packageVersion"`
+		InstallArgs    []string         `json:"installArgs"`
+		Launch         runtimeLaunchKey `json:"launch"`
+		Discovery      DiscoveryProfile `json:"discovery"`
+	}{
+		SchemaVersion: "tutti.agent.managed-runtime-identity.v1",
+		AgentKey:      installation.AgentKey, RuntimeKind: installation.Manifest.Runtime.Kind,
+		Platform: platform, Runner: installation.Manifest.Runtime.Install.Runner,
+		PackageName: packageName, PackageVersion: packageVersion,
+		InstallArgs: append([]string(nil), installation.Manifest.Runtime.Install.Args...),
+		Launch: runtimeLaunchKey{
+			Executable: installation.Manifest.Runtime.Launch.Executable,
+			Args:       append([]string(nil), installation.Manifest.Runtime.Launch.Args...),
+		},
+		Discovery: profile,
+	}
+	encoded, err := json.Marshal(value)
+	if err != nil {
+		return "", fmt.Errorf("encode managed runtime identity: %w", err)
+	}
+	digest := sha256.Sum256(encoded)
+	return "runtime-" + hex.EncodeToString(digest[:])[:16], nil
+}
+
+type runtimeLaunchKey struct {
+	Executable string   `json:"executable"`
+	Args       []string `json:"args"`
+}
+
+func managedRuntimeRoot(runtimeInstallDir, agentKey, runtimeIdentity string) string {
+	return filepath.Join(strings.TrimSpace(runtimeInstallDir), agentKey, runtimeIdentity)
 }
 
 func exactRuntimePackage(runner string, arguments []string) (string, string, error) {
@@ -185,12 +242,15 @@ func pathWithin(path, root string) bool {
 	return err == nil && relative != ".." && !strings.HasPrefix(relative, ".."+string(filepath.Separator))
 }
 
-func validateManagedRuntimeRoot(installRoot, runtimeInstallDir string, installation Installation) error {
+func validateManagedRuntimeRoot(installRoot, runtimeInstallDir, agentKey, runtimeIdentity string) error {
 	runtimeInstallDir = strings.TrimSpace(runtimeInstallDir)
 	if runtimeInstallDir == "" || !filepath.IsAbs(runtimeInstallDir) {
 		return fmt.Errorf("%w: managed runtime install directory is invalid", ErrInvalidInstallPlanRequest)
 	}
-	expected := filepath.Join(runtimeInstallDir, installation.AgentKey, installation.Version)
+	if strings.TrimSpace(agentKey) == "" || strings.TrimSpace(runtimeIdentity) == "" || strings.Contains(runtimeIdentity, string(filepath.Separator)) {
+		return fmt.Errorf("%w: managed runtime identity is invalid", ErrInvalidInstallPlanRequest)
+	}
+	expected := filepath.Join(runtimeInstallDir, agentKey, runtimeIdentity)
 	if filepath.Clean(installRoot) != expected {
 		return fmt.Errorf("%w: managed runtime root is invalid", ErrInvalidInstallPlanRequest)
 	}

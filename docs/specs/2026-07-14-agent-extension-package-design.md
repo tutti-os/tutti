@@ -357,14 +357,16 @@ Discovery Profile 只允许声明受限的路径候选、argv、版本解析、A
 安装根目录固定为用户级 `~/.local` 下的 Tutti-owned 隔离目录：
 
 ```text
-~/.local/share/tutti/agent-runtimes/<agentKey>/<extensionVersion>/
+~/.local/share/tutti/agent-runtimes/<agentKey>/<runtimeIdentity>/
 ```
+
+`runtimeIdentity` 由 Agent key、runtime kind、平台、安装 runner/argv、精确 runtime package、launch executable/args 和 discovery profile 计算。Extension 只改文案、资产或其他不影响 runtime contract 的 metadata 时，复用同一个托管 Runtime；plan digest 仍绑定固定 Extension installation，保证用户确认的 setup action 不跨 Target/版本漂移。
 
 标准安装命令在 daemon-owned scratch 目录运行，package manager 的 prefix、target 或 environment 必须指向 `<installRoot>`。安装不得修改任意项目的 `package.json`、lockfile、Python environment、`node_modules` 或全局 package manager 状态。
 
 安装完成后必须从 manifest 的 `runtime.launch` 解析托管 executable，再执行与本地候选相同的版本检查和 ACP handshake。只有 probe 成功才能原子切换为 active managed runtime binding。
 
-激活同时发布 `~/.local/bin/<agent-command>`。该入口只链接到 Tutti-owned 的 `~/.local/share/tutti/agent-runtimes/<agentKey>/bin/<agent-command>` 稳定入口，后者再链接到固定版本目录内的真实 executable。升级只原子切换稳定入口；不得覆盖已有普通文件或非 Tutti-owned symlink。dev/prod 和所有 workspace 共用同一入口与版本化 Runtime，环境隔离仅作用于 daemon state。Tutti 自己发布的 PATH 入口仍按 managed runtime 校验，不能降级为 local source；入口缺失、断链或指向异常时必须要求显式重装，不能在 discovery 读路径中静默迁移。
+激活同时发布 `~/.local/bin/<agent-command>`。该入口只链接到 Tutti-owned 的 `~/.local/share/tutti/agent-runtimes/<agentKey>/bin/<agent-command>` 稳定入口，后者再链接到固定 runtime identity 目录内的真实 executable。升级只原子切换稳定入口；不得覆盖已有普通文件或非 Tutti-owned symlink。dev/prod 和所有 workspace 共用同一入口与版本化 Runtime，环境隔离仅作用于 daemon state。Tutti 自己发布的 PATH 入口仍按 managed runtime 校验，不能降级为 local source；入口缺失、断链或指向异常时必须要求显式重装。旧 extension-version 目录只有在 activation、package identity、fingerprint 和当前 discovery 版本检查都匹配时，才可迁移到 runtime identity 目录。
 
 包管理器安装可能执行第三方 package lifecycle code。Agent 本体本来就是第三方可执行代码，因此首次托管安装前必须展示发布者、精确版本、最终命令、安装目录和风险，并要求用户确认；后台自动更新只能在用户明确启用该策略后发生。
 
