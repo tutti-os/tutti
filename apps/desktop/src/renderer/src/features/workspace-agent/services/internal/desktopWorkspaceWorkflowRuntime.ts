@@ -84,7 +84,9 @@ function toReviewSnapshot(
           permissionModeId: task.permissionModeId,
           reasoningEffort: task.reasoningEffort,
           executionDirectory: task.executionDirectory,
-          dependsOn: [...task.dependsOn],
+          // Same daemon omit-empty hazard as issue task dependencyTaskIds:
+          // spreading an omitted array throws and would reject the review load.
+          dependsOn: task.dependsOn ? [...task.dependsOn] : [],
           parallelizable: task.parallelizable,
           autoAccept: task.autoAccept
         }))
@@ -394,7 +396,14 @@ function createPlanIssueSource(
           sortIndex: task.sortIndex,
           parallelizable: task.parallelizable === true,
           autoAccept: task.autoAccept === true,
-          dependencyTaskIds: [...task.dependencyTaskIds]
+          // The daemon omits empty arrays, so dependencyTaskIds arrives
+          // undefined for any task with no dependencies (e.g. the first task of
+          // every plan) despite the generated type declaring it required.
+          // Spreading undefined throws, which rejected getSessionPlanIssue and
+          // left the embedded panel permanently empty. Coalesce before spread.
+          dependencyTaskIds: task.dependencyTaskIds
+            ? [...task.dependencyTaskIds]
+            : []
         }))
       };
     },

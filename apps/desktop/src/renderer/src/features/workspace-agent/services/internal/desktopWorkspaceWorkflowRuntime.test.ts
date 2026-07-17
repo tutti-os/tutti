@@ -486,6 +486,78 @@ test("desktop workflow runtime scopes workflow events to the workspace", async (
   ]);
 });
 
+test("plan issue source tolerates the daemon omitting empty dependency arrays", async () => {
+  // The daemon omits empty arrays, so a task with no dependencies arrives with
+  // dependencyTaskIds undefined even though the generated type declares it
+  // required. Spreading undefined used to throw here, reject getSessionPlanIssue,
+  // and leave the embedded panel permanently empty (the first task of every
+  // plan has no dependencies, so this fired on every plan).
+  const runtime = createDesktopTuttiModePlanReviewRuntime({
+    tuttidClient: {
+      async listWorkspaceIssueTopics() {
+        return { topics: [{ topicId: "default" }] };
+      },
+      async listWorkspaceIssues() {
+        return {
+          issues: [
+            {
+              issueId: "tutti-mode-plan-1",
+              topicId: "default",
+              title: "Plan issue",
+              planningSource: "tutti_mode_plan",
+              sourceSessionId: "session-1",
+              updatedAtUnix: 100
+            }
+          ]
+        };
+      },
+      async getWorkspaceIssueDetail() {
+        return {
+          issue: {
+            issueId: "tutti-mode-plan-1",
+            topicId: "default",
+            title: "Plan issue"
+          },
+          tasks: [
+            // No dependencyTaskIds field at all — the exact daemon shape.
+            {
+              taskId: "task-1",
+              title: "First",
+              content: "",
+              status: "running",
+              sortIndex: 1,
+              parallelizable: true,
+              autoAccept: true
+            },
+            {
+              taskId: "task-2",
+              title: "Second",
+              content: "",
+              status: "not_started",
+              sortIndex: 2,
+              parallelizable: false,
+              autoAccept: false,
+              dependencyTaskIds: ["task-1"]
+            }
+          ]
+        };
+      }
+    } as never,
+    eventStreamClient: null
+  });
+
+  const issue = await runtime.planIssues!.getSessionPlanIssue({
+    workspaceId: "workspace-1",
+    sourceSessionId: "session-1"
+  });
+  assert.ok(issue, "expected the plan issue to resolve, not reject");
+  assert.equal(issue.issueId, "tutti-mode-plan-1");
+  assert.deepEqual(
+    issue.tasks.map((task) => task.dependencyTaskIds),
+    [[], ["task-1"]]
+  );
+});
+
 test("desktop workflow runtime invalidates current scopes on every connected state", async () => {
   let connectionListener: ((state: string) => void) | undefined;
   const eventStreamClient = {
