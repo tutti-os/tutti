@@ -2701,6 +2701,154 @@ describe("AgentMentionSearchController", () => {
     setAgentGuiI18nTestLocale("en");
   });
 
+  it("keeps workspace and agent-generated folder navigation independent", async () => {
+    setAgentGuiI18nTestLocale("zh-CN");
+    const queryFiles = vi.fn(
+      async ({ directoryPath }: { directoryPath?: string }) => ({
+        entries:
+          directoryPath === "/workspace/src"
+            ? [
+                {
+                  path: "/workspace/src/index.ts",
+                  name: "index.ts",
+                  kind: "file"
+                }
+              ]
+            : [
+                {
+                  path: "/workspace/src",
+                  name: "src",
+                  kind: "directory",
+                  childCount: 1
+                }
+              ]
+      })
+    );
+    const controller = new AgentMentionSearchController({
+      queryFiles,
+      queryAgentGeneratedFiles: vi.fn().mockResolvedValue({
+        entries: [
+          {
+            path: "/workspace/generated/app.js",
+            name: "app.js"
+          },
+          {
+            path: "/workspace/generated/index.html",
+            name: "index.html"
+          }
+        ]
+      })
+    });
+    const states: AgentMentionSearchState[] = [];
+    controller.subscribe((state) => states.push(state));
+
+    controller.updateQuery({ workspaceId: "room-1", query: "" });
+    controller.setFilter("file");
+
+    await vi.waitFor(() =>
+      expect(states.at(-1)?.groups).toEqual([
+        expect.objectContaining({
+          id: "opened_files",
+          items: [
+            expect.objectContaining({
+              mentionNavigation: "workspace-folder",
+              path: "/workspace/src"
+            })
+          ]
+        }),
+        expect.objectContaining({
+          id: "agent_generated_files",
+          items: [
+            expect.objectContaining({
+              mentionNavigation: "agent-generated-folder",
+              path: "/workspace/generated"
+            })
+          ]
+        })
+      ])
+    );
+
+    const workspaceFolder = states
+      .at(-1)
+      ?.groups.find((group) => group.id === "opened_files")
+      ?.items.find(
+        (item) =>
+          item.kind === "file" && item.mentionNavigation === "workspace-folder"
+      );
+    expect(workspaceFolder).toBeDefined();
+    expect(controller.selectFileMentionNavigationItem(workspaceFolder!)).toBe(
+      true
+    );
+
+    await vi.waitFor(() =>
+      expect(
+        states
+          .at(-1)
+          ?.groups.find((group) => group.id === "opened_files")
+          ?.items.at(0)
+      ).toMatchObject({ mentionNavigation: "workspace-folder-back" })
+    );
+
+    const generatedFolder = states
+      .at(-1)
+      ?.groups.find((group) => group.id === "agent_generated_files")
+      ?.items.find(
+        (item) =>
+          item.kind === "file" &&
+          item.mentionNavigation === "agent-generated-folder"
+      );
+    expect(generatedFolder).toBeDefined();
+    expect(controller.selectFileMentionNavigationItem(generatedFolder!)).toBe(
+      true
+    );
+
+    const bothNestedState = states.at(-1);
+    const workspaceBack = bothNestedState?.groups
+      .find((group) => group.id === "opened_files")
+      ?.items.find(
+        (item) =>
+          item.kind === "file" &&
+          item.mentionNavigation === "workspace-folder-back"
+      );
+    const generatedBack = bothNestedState?.groups
+      .find((group) => group.id === "agent_generated_files")
+      ?.items.find(
+        (item) =>
+          item.kind === "file" &&
+          item.mentionNavigation === "agent-generated-folder-back"
+      );
+    expect(workspaceBack).toBeDefined();
+    expect(generatedBack).toBeDefined();
+
+    expect(controller.selectFileMentionNavigationItem(workspaceBack!)).toBe(
+      true
+    );
+    await vi.waitFor(() =>
+      expect(
+        states
+          .at(-1)
+          ?.groups.find((group) => group.id === "opened_files")
+          ?.items.some(
+            (item) =>
+              item.kind === "file" &&
+              item.mentionNavigation === "workspace-folder-back"
+          )
+      ).toBe(false)
+    );
+    expect(
+      states
+        .at(-1)
+        ?.groups.find((group) => group.id === "agent_generated_files")
+        ?.items.at(0)
+    ).toMatchObject({ mentionNavigation: "agent-generated-folder-back" });
+
+    expect(controller.selectFileMentionNavigationItem(generatedBack!)).toBe(
+      true
+    );
+    controller.dispose();
+    setAgentGuiI18nTestLocale("en");
+  });
+
   it("loads default session items in browse mode when switching to the session tab", async () => {
     const querySessions = vi.fn().mockResolvedValue({
       presences: [],

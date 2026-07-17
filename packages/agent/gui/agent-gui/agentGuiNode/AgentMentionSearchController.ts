@@ -334,7 +334,6 @@ export class AgentMentionSearchController extends AgentMentionSearchControllerBa
       return false;
     }
     if (item.mentionNavigation === "agent-generated-folder") {
-      this.resetWorkspaceFileBrowsePaths();
       this.agentGeneratedBrowsePath = item.path;
       this.expandedCounts.agent_generated_files = mentionGroupPageSize(
         this.currentFilter,
@@ -369,7 +368,6 @@ export class AgentMentionSearchController extends AgentMentionSearchControllerBa
       if (!path || this.currentFilter !== "file" || this.currentQuery) {
         return false;
       }
-      this.resetAgentGeneratedBrowsePath();
       this.workspaceFileBrowsePaths.push(path);
       this.loadWorkspaceFileDirectory(path);
       return true;

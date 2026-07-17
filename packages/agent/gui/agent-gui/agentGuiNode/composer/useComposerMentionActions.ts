@@ -117,11 +117,8 @@ export function useComposerMentionActions(input: Input) {
   } = input;
   const selectFileMention = useCallback(
     (entry: AgentContextMentionItem): void => {
-      if (
-        entry.kind === "file" &&
-        entry.mentionNavigation &&
-        mentionControllerRef.current?.selectFileMentionNavigationItem(entry)
-      ) {
+      if (entry.kind === "file" && entry.mentionNavigation) {
+        mentionControllerRef.current?.selectFileMentionNavigationItem(entry);
         return;
       }
       fileMentionSuggestion?.command(entry);
