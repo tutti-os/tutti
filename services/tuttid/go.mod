@@ -13,6 +13,7 @@ require (
 	github.com/tutti-os/tutti/packages/agent/daemon v0.0.0
 	github.com/tutti-os/tutti/packages/agent/runtimeprep v0.0.0
 	github.com/tutti-os/tutti/packages/agent/store-sqlite v0.0.0
+	github.com/tutti-os/tutti/packages/agent/store-sqlite/canonical v0.0.0
 	github.com/tutti-os/tutti/packages/appcli/core v0.0.0
 	github.com/tutti-os/tutti/packages/auth/bridge-go v0.0.0
 	github.com/tutti-os/tutti/packages/events/stream-go v0.0.0
@@ -35,6 +36,8 @@ replace github.com/tutti-os/tutti/packages/agent/daemon => ../../packages/agent/
 replace github.com/tutti-os/tutti/packages/agent/runtimeprep => ../../packages/agent/runtimeprep
 
 replace github.com/tutti-os/tutti/packages/agent/store-sqlite => ../../packages/agent/store-sqlite
+
+replace github.com/tutti-os/tutti/packages/agent/store-sqlite/canonical => ../../packages/agent/store-sqlite/canonical
 
 replace github.com/tutti-os/tutti/packages/workspace/files => ../../packages/workspace/files
 
