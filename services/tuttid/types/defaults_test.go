@@ -48,7 +48,7 @@ func TestResolveDefaultsFromEnvAppliesOverrides(t *testing.T) {
 	assertEqual(t, got.Transport.TCPAddr, "127.0.0.1:1111")
 }
 
-func TestResolveAgentExtensionSourcesAppliesEnabledOverride(t *testing.T) {
+func TestResolveAgentExtensionSourcesIgnoresRemovedEnabledOverride(t *testing.T) {
 	t.Setenv("TUTTI_AGENT_EXTENSION_GEMINI_ENABLED", "true")
 
 	sources := ResolveAgentExtensionSources()
@@ -57,8 +57,8 @@ func TestResolveAgentExtensionSourcesAppliesEnabledOverride(t *testing.T) {
 		byKey[source.Key] = source
 	}
 	gemini, ok := byKey["gemini"]
-	if !ok || !gemini.Enabled {
-		t.Fatalf("gemini source override not applied: %#v", sources)
+	if !ok || gemini.Enabled {
+		t.Fatalf("gemini source was enabled by removed env override: %#v", sources)
 	}
 	codebuddy, ok := byKey["codebuddy"]
 	if !ok || codebuddy.Enabled {
@@ -69,6 +69,34 @@ func TestResolveAgentExtensionSourcesAppliesEnabledOverride(t *testing.T) {
 			t.Fatalf("agent extension trust configuration is incomplete: %#v", source)
 		}
 	}
+}
+
+func TestResolveAgentExtensionSourcesAppliesLocalPackageOnlyInDevelopment(t *testing.T) {
+	packageDir := filepath.Join(t.TempDir(), "package")
+	t.Setenv("TUTTI_ENV", "development")
+	t.Setenv("TUTTI_AGENT_EXTENSION_CODEBUDDY_PACKAGE_DIR", packageDir)
+
+	development := agentExtensionSourceByKey(t, ResolveAgentExtensionSources(), "codebuddy")
+	if development.Enabled || development.LocalPackageDir != packageDir {
+		t.Fatalf("development local package override not applied: %#v", development)
+	}
+
+	t.Setenv("TUTTI_ENV", "production")
+	production := agentExtensionSourceByKey(t, ResolveAgentExtensionSources(), "codebuddy")
+	if production.Enabled || production.LocalPackageDir != "" {
+		t.Fatalf("production local package override must be ignored: %#v", production)
+	}
+}
+
+func agentExtensionSourceByKey(t *testing.T, sources []AgentExtensionSource, key string) AgentExtensionSource {
+	t.Helper()
+	for _, source := range sources {
+		if source.Key == key {
+			return source
+		}
+	}
+	t.Fatalf("agent extension source %q not found", key)
+	return AgentExtensionSource{}
 }
 
 func TestDesktopLoginCallbackURLUsesEnvironmentScheme(t *testing.T) {

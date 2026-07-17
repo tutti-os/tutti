@@ -122,6 +122,10 @@ export type {
 } from "./agentActivityRuntime";
 export type {
   AgentHostApi,
+  AgentHostAgentTargetAuthenticatedAccount,
+  AgentHostAgentTargetSetupSnapshot,
+  AgentHostAgentTargetSetupState,
+  AgentHostAgentTargetSetupWatch,
   AgentHostApplyWorkspaceGitPatchInput,
   AgentHostInputApi,
   AgentHostSelectFilesInput,

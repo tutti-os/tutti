@@ -228,10 +228,13 @@ type Service struct {
 	Registry                    Registry
 	ExternalAgentRegistry       externalagentregistry.Store
 	ManagedRuntime              managedruntime.Resolver
-	// ClaudeCodeStateDir overrides the tutti state root that hosts the
-	// provisioned claude runtime binary (tests); empty uses DefaultStateDir.
+	// ClaudeCodeStateDir overrides the tutti state root that hosts the managed
+	// binary pointer (tests); empty uses DefaultStateDir.
 	ClaudeCodeStateDir string
-	AnalyticsReporter  reporterservice.Reporter
+	// ClaudeCodeRuntimeDir is the user-local root that hosts provisioned Claude
+	// binaries. It is required for Claude Code runtime provisioning.
+	ClaudeCodeRuntimeDir string
+	AnalyticsReporter    reporterservice.Reporter
 	// RunOutcomes lets a runtime auth failure override a stale "logged in" marker
 	// so the dock/wizard surface that login dropped. Shared pointer across copies.
 	RunOutcomes *RunOutcomeStore

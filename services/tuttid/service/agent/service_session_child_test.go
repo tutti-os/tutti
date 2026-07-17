@@ -9,18 +9,19 @@ import (
 func TestPersistedChildSessionCannotResumeIndependently(t *testing.T) {
 	t.Parallel()
 	runtime := &fakeRuntime{}
+	service := newIsolatedAgentService(runtime)
 	child := PersistedSession{
 		Kind:     agentactivitybiz.SessionKindChild,
 		Provider: "codex",
 	}
-	if persistedSessionCanResume(runtime, child) {
+	if service.persistedSessionCanResume(t.Context(), child) {
 		t.Fatal("child session resumable = true, want root runtime routing only")
 	}
 	root := PersistedSession{
 		Kind:     agentactivitybiz.SessionKindRoot,
 		Provider: "codex",
 	}
-	if !persistedSessionCanResume(runtime, root) {
+	if !service.persistedSessionCanResume(t.Context(), root) {
 		t.Fatal("root session resumable = false, want provider resume capability")
 	}
 }

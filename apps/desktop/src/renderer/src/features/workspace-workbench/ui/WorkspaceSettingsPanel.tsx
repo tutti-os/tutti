@@ -51,7 +51,6 @@ import {
   UploadIcon,
   WebIcon
 } from "@tutti-os/ui-system";
-import { useAnalyticsDebugPreferenceService } from "@renderer/features/analytics-debug";
 import { useDesktopPreferencesService } from "@renderer/features/desktop-preferences/ui/useDesktopPreferencesService";
 import { useTranslation } from "@renderer/i18n";
 import { cn } from "@renderer/lib/format";
@@ -59,7 +58,6 @@ import {
   setAgentDiagnosticsConsent,
   useAgentDiagnosticsConsent
 } from "@renderer/lib/agentDiagnosticsConsent";
-import { formatWorkspaceSettingsBytes } from "../services/workspaceSettingsFormat";
 import type { WorkspaceSettingsDeveloperLogsSnapshotState } from "../services/workspaceSettingsTypes";
 import type {
   WorkspaceManagedModel,
@@ -78,34 +76,25 @@ import {
 import {
   type DesktopDefaultAgentProvider,
   desktopAgentConversationDetailModes,
-  desktopAppCatalogChannels,
   desktopBrowserUseConnectionModes,
   desktopDockPlacements,
-  desktopFileDefaultOpeners,
   desktopMinimizeAnimations,
   desktopSleepPreventionModes,
   desktopWorkspaceUiModes,
-  desktopUpdateChannels,
   desktopWorkbenchWindowSnappingShortcutPresets,
   formatDesktopShortcutBinding,
-  normalizeDesktopFileExtension,
-  type DesktopAppCatalogChannel,
   type DesktopAgentConversationDetailMode,
   type DesktopBrowserUseConnectionMode,
   type DesktopDockPlacement,
   type DesktopFeatureFlags,
   type DesktopWorkspaceUiMode,
-  type DesktopFileDefaultOpener,
-  type DesktopFileDefaultOpenersByExtension,
   type DesktopMinimizeAnimation,
   type DesktopSleepPreventionMode,
-  type DesktopUpdateChannel,
   type DesktopWorkbenchShortcuts,
   type DesktopWorkbenchWindowSnapping,
   type DesktopWorkbenchWindowSnappingShortcutPreset
 } from "../../../../../shared/preferences/index.ts";
 import {
-  AGENT_REFERENCE_PROVENANCE_FILTER_FLAG,
   isFeatureEnabled,
   LAB_ENABLED_FLAG,
   LAB_WORKBENCH_SHORTCUTS_FLAG,
@@ -120,6 +109,8 @@ import {
 import { useWorkspaceSettingsService } from "./useWorkspaceSettingsService";
 import { useWorkspaceWorkbenchHostService } from "./useWorkspaceWorkbenchHostService";
 import { useAccountService } from "./useAccountService";
+import { WorkspaceDeveloperSettingsSection } from "./WorkspaceDeveloperSettingsSection";
+import { SettingsRows } from "./WorkspaceSettingsRows";
 import {
   normalizeWorkspaceSettingsDefaultAgentProvider,
   workspaceSettingsDefaultAgentProviders
@@ -183,12 +174,7 @@ export function WorkspaceSettingsPanel({
 }) {
   const { t } = useTranslation();
   const notifications = useService(INotificationService);
-  const {
-    service: analyticsDebugPreferenceService,
-    state: analyticsDebugPreferenceState
-  } = useAnalyticsDebugPreferenceService();
-  const { service: desktopPreferencesService, state: desktopPreferencesState } =
-    useDesktopPreferencesService();
+  const { state: desktopPreferencesState } = useDesktopPreferencesService();
   const { service: settingsService, state: settingsState } =
     useWorkspaceSettingsService();
   const versionTapCountRef = useRef(0);
@@ -497,92 +483,7 @@ export function WorkspaceSettingsPanel({
                 onVersionTap={handleVersionTap}
               />
             ) : (
-              <WorkspaceDeveloperSettingsSection
-                analyticsDebugAvailable={
-                  analyticsDebugPreferenceState.available
-                }
-                analyticsDebugEnabled={analyticsDebugPreferenceState.enabled}
-                appCatalogChannel={desktopPreferencesState.appCatalogChannel}
-                changingAppCatalogChannel={
-                  desktopPreferencesState.changingAppCatalogChannel
-                }
-                changingUpdateChannel={
-                  desktopPreferencesState.changingUpdateChannel
-                }
-                developerLogs={settingsState.developerLogs}
-                developerPanelVisible={settingsState.developerPanelVisible}
-                fileDefaultOpenersByExtension={
-                  desktopPreferencesState.fileDefaultOpenersByExtension
-                }
-                labEnabled={isFeatureEnabled(
-                  pendingFeatureFlags,
-                  LAB_ENABLED_FLAG
-                )}
-                referenceProvenanceFilterEnabled={isFeatureEnabled(
-                  pendingFeatureFlags,
-                  AGENT_REFERENCE_PROVENANCE_FILTER_FLAG
-                )}
-                featureFlagsUpdating={
-                  desktopPreferencesState.changingFeatureFlags !== null
-                }
-                showAppDeveloperSources={
-                  desktopPreferencesState.showAppDeveloperSources
-                }
-                tuttiAgentSwitchEnabled={settingsState.tuttiAgentSwitchEnabled}
-                updateChannel={desktopPreferencesState.updateChannel}
-                onAppCatalogChannelChange={(channel) => {
-                  void settingsService.changeAppCatalogChannel(channel);
-                }}
-                onAnalyticsDebugEnabledChange={(enabled) => {
-                  analyticsDebugPreferenceService.setEnabled(enabled);
-                }}
-                onClearConversationHistory={() => {
-                  if (
-                    window.confirm(
-                      t(
-                        "workspace.settings.developer.clearConversationHistoryConfirm"
-                      )
-                    )
-                  ) {
-                    void settingsService.clearConversationHistory();
-                  }
-                }}
-                onClearLogs={() => {
-                  void settingsService.clearDeveloperLogs();
-                }}
-                onDeveloperPanelVisibleChange={(visible) => {
-                  settingsService.setDeveloperPanelVisible(visible);
-                }}
-                onLabEnabledChange={(enabled) => {
-                  void settingsService.changeFeatureFlags({
-                    ...pendingFeatureFlags,
-                    [LAB_ENABLED_FLAG]: enabled
-                  });
-                }}
-                onReferenceProvenanceFilterEnabledChange={(enabled) => {
-                  void settingsService.changeFeatureFlags({
-                    ...pendingFeatureFlags,
-                    [AGENT_REFERENCE_PROVENANCE_FILTER_FLAG]: enabled
-                  });
-                }}
-                onTuttiAgentSwitchEnabledChange={(enabled) => {
-                  settingsService.setTuttiAgentSwitchEnabled(enabled);
-                }}
-                onUpdateChannelChange={(channel) => {
-                  void settingsService.changeUpdateChannel(channel);
-                }}
-                onShowAppDeveloperSourcesChange={(show) => {
-                  void settingsService.changeShowAppDeveloperSources(show);
-                }}
-                onExportLogs={() => {
-                  void settingsService.exportDeveloperLogs();
-                }}
-                onFileDefaultOpenersChange={(openersByExtension) => {
-                  void desktopPreferencesService.setFileDefaultOpenersByExtension(
-                    openersByExtension
-                  );
-                }}
-              />
+              <WorkspaceDeveloperSettingsSection />
             )}
           </div>
         </div>
@@ -1747,623 +1648,6 @@ function WorkspaceLabShortcutRow({
   );
 }
 
-type FileDefaultOpenerDraft = {
-  committedExtension: string | null;
-  extension: string;
-  id: number;
-  opener: DesktopFileDefaultOpener;
-};
-
-function WorkspaceDeveloperSettingsSection({
-  analyticsDebugAvailable,
-  analyticsDebugEnabled,
-  appCatalogChannel,
-  changingAppCatalogChannel,
-  changingUpdateChannel,
-  developerLogs,
-  developerPanelVisible,
-  fileDefaultOpenersByExtension,
-  labEnabled,
-  referenceProvenanceFilterEnabled,
-  featureFlagsUpdating,
-  showAppDeveloperSources,
-  tuttiAgentSwitchEnabled,
-  updateChannel,
-  onAnalyticsDebugEnabledChange,
-  onAppCatalogChannelChange,
-  onClearConversationHistory,
-  onClearLogs,
-  onDeveloperPanelVisibleChange,
-  onExportLogs,
-  onFileDefaultOpenersChange,
-  onLabEnabledChange,
-  onReferenceProvenanceFilterEnabledChange,
-  onShowAppDeveloperSourcesChange,
-  onTuttiAgentSwitchEnabledChange,
-  onUpdateChannelChange
-}: {
-  analyticsDebugAvailable: boolean;
-  analyticsDebugEnabled: boolean;
-  appCatalogChannel: DesktopAppCatalogChannel;
-  changingAppCatalogChannel: DesktopAppCatalogChannel | null;
-  changingUpdateChannel: DesktopUpdateChannel | null;
-  developerLogs: WorkspaceSettingsDeveloperLogsSnapshotState;
-  developerPanelVisible: boolean;
-  fileDefaultOpenersByExtension: DesktopFileDefaultOpenersByExtension;
-  labEnabled: boolean;
-  referenceProvenanceFilterEnabled: boolean;
-  featureFlagsUpdating: boolean;
-  showAppDeveloperSources: boolean;
-  tuttiAgentSwitchEnabled: boolean;
-  updateChannel: DesktopUpdateChannel;
-  onAnalyticsDebugEnabledChange: (enabled: boolean) => void;
-  onAppCatalogChannelChange: (channel: DesktopAppCatalogChannel) => void;
-  onClearConversationHistory: () => void;
-  onClearLogs: () => void;
-  onDeveloperPanelVisibleChange: (visible: boolean) => void;
-  onExportLogs: () => void;
-  onFileDefaultOpenersChange: (
-    openersByExtension: DesktopFileDefaultOpenersByExtension
-  ) => void;
-  onLabEnabledChange: (enabled: boolean) => void;
-  onReferenceProvenanceFilterEnabledChange: (enabled: boolean) => void;
-  onShowAppDeveloperSourcesChange: (show: boolean) => void;
-  onTuttiAgentSwitchEnabledChange: (enabled: boolean) => void;
-  onUpdateChannelChange: (channel: DesktopUpdateChannel) => void;
-}) {
-  const { t } = useTranslation();
-  const logs = developerLogs.logs;
-  const [fileDefaultOpenerDrafts, setFileDefaultOpenerDrafts] = useState<
-    FileDefaultOpenerDraft[]
-  >([]);
-  const fileDefaultOpenerDraftIDRef = useRef(0);
-  const fileDefaultOpenerInputRefs = useRef(
-    new Map<number, HTMLInputElement>()
-  );
-  const [pendingFileDefaultOpenerDraftID, setPendingFileDefaultOpenerDraftID] =
-    useState<number | null>(null);
-  const draftCommittedExtensions = new Set(
-    fileDefaultOpenerDrafts.flatMap((draft) =>
-      draft.committedExtension ? [draft.committedExtension] : []
-    )
-  );
-  const fileDefaultOpeners = Object.entries(fileDefaultOpenersByExtension)
-    .filter(([extension]) => !draftCommittedExtensions.has(extension))
-    .sort(([left], [right]) => left.localeCompare(right));
-
-  const addFileDefaultOpener = useCallback(() => {
-    const id = fileDefaultOpenerDraftIDRef.current++;
-    setFileDefaultOpenerDrafts((drafts) => [
-      ...drafts,
-      { committedExtension: null, extension: "", id, opener: "fileViewer" }
-    ]);
-    setPendingFileDefaultOpenerDraftID(id);
-  }, []);
-
-  useEffect(() => {
-    if (pendingFileDefaultOpenerDraftID === null) {
-      return;
-    }
-    const input = fileDefaultOpenerInputRefs.current.get(
-      pendingFileDefaultOpenerDraftID
-    );
-    if (!input) {
-      return;
-    }
-    input.focus();
-    setPendingFileDefaultOpenerDraftID(null);
-  }, [fileDefaultOpenerDrafts.length, pendingFileDefaultOpenerDraftID]);
-
-  const updateFileDefaultOpenerDraft = useCallback(
-    (id: number, patch: Partial<Omit<FileDefaultOpenerDraft, "id">>) => {
-      setFileDefaultOpenerDrafts((drafts) =>
-        drafts.map((draft) => {
-          if (draft.id !== id) {
-            return draft;
-          }
-          const nextDraft = { ...draft, ...patch };
-          const normalizedExtension = normalizeDesktopFileExtension(
-            nextDraft.extension
-          );
-          const nextOpeners = { ...fileDefaultOpenersByExtension };
-          if (draft.committedExtension) {
-            delete nextOpeners[draft.committedExtension];
-          }
-          const canCommitExtension =
-            normalizedExtension &&
-            (fileDefaultOpenersByExtension[normalizedExtension] === undefined ||
-              normalizedExtension === draft.committedExtension);
-          if (canCommitExtension) {
-            nextOpeners[normalizedExtension] = nextDraft.opener;
-            nextDraft.committedExtension = normalizedExtension;
-          } else if (normalizedExtension && draft.committedExtension) {
-            nextOpeners[draft.committedExtension] = draft.opener;
-            nextDraft.committedExtension = draft.committedExtension;
-          } else {
-            nextDraft.committedExtension = null;
-          }
-          onFileDefaultOpenersChange(nextOpeners);
-          return nextDraft;
-        })
-      );
-    },
-    [fileDefaultOpenersByExtension, onFileDefaultOpenersChange]
-  );
-
-  const removeFileDefaultOpenerDraft = useCallback(
-    (id: number) => {
-      const draft = fileDefaultOpenerDrafts.find(
-        (candidate) => candidate.id === id
-      );
-      if (!draft) {
-        return;
-      }
-      if (draft.committedExtension) {
-        const { [draft.committedExtension]: _removed, ...remaining } =
-          fileDefaultOpenersByExtension;
-        onFileDefaultOpenersChange(remaining);
-      }
-      setFileDefaultOpenerDrafts((drafts) =>
-        drafts.filter((candidate) => candidate.id !== id)
-      );
-    },
-    [
-      fileDefaultOpenerDrafts,
-      fileDefaultOpenersByExtension,
-      onFileDefaultOpenersChange
-    ]
-  );
-
-  return (
-    <SettingsRows>
-      <div className="flex w-full items-center justify-between gap-4 max-[560px]:flex-col max-[560px]:items-stretch">
-        <div className="flex min-w-0 flex-1 flex-col gap-1 max-[560px]:w-full">
-          <strong className="text-[13px] font-semibold text-[var(--text-primary)]">
-            {t("workspace.settings.developer.visibilityLabel")}
-          </strong>
-          <p className="m-0 text-[13px] leading-[1.3] text-[var(--text-secondary)]">
-            {t("workspace.settings.developer.visibilityDescription")}
-          </p>
-        </div>
-        <Switch
-          aria-label={t("workspace.settings.developer.visibilityLabel")}
-          checked={developerPanelVisible}
-          onCheckedChange={onDeveloperPanelVisibleChange}
-        />
-      </div>
-
-      <div className="flex w-full items-center justify-between gap-4 max-[560px]:flex-col max-[560px]:items-stretch">
-        <div className="flex min-w-0 flex-1 flex-col gap-1 max-[560px]:w-full">
-          <strong className="text-[13px] font-semibold text-[var(--text-primary)]">
-            {t("workspace.settings.developer.referenceProvenanceFilterLabel")}
-          </strong>
-          <p className="m-0 text-[13px] leading-[1.3] text-[var(--text-secondary)]">
-            {t(
-              "workspace.settings.developer.referenceProvenanceFilterDescription"
-            )}
-          </p>
-        </div>
-        <Switch
-          aria-label={t(
-            "workspace.settings.developer.referenceProvenanceFilterLabel"
-          )}
-          checked={referenceProvenanceFilterEnabled}
-          disabled={featureFlagsUpdating}
-          onCheckedChange={onReferenceProvenanceFilterEnabledChange}
-        />
-      </div>
-
-      <div className="flex w-full items-center justify-between gap-4 max-[560px]:flex-col max-[560px]:items-stretch">
-        <div className="flex min-w-0 flex-1 flex-col gap-1 max-[560px]:w-full">
-          <strong className="text-[13px] font-semibold text-[var(--text-primary)]">
-            {t("workspace.settings.developer.labVisibilityLabel")}
-          </strong>
-          <p className="m-0 text-[13px] leading-[1.3] text-[var(--text-secondary)]">
-            {t("workspace.settings.developer.labVisibilityDescription")}
-          </p>
-        </div>
-        <Switch
-          aria-label={t("workspace.settings.developer.labVisibilityLabel")}
-          checked={labEnabled}
-          disabled={featureFlagsUpdating}
-          onCheckedChange={onLabEnabledChange}
-        />
-      </div>
-
-      <AppCatalogChannelControl
-        appCatalogChannel={appCatalogChannel}
-        changingAppCatalogChannel={changingAppCatalogChannel}
-        onAppCatalogChannelChange={onAppCatalogChannelChange}
-      />
-
-      <ReleaseChannelControl
-        changingUpdateChannel={changingUpdateChannel}
-        updateChannel={updateChannel}
-        onUpdateChannelChange={onUpdateChannelChange}
-      />
-
-      <div className="flex w-full items-center justify-between gap-4 max-[560px]:flex-col max-[560px]:items-stretch">
-        <div className="flex min-w-0 flex-1 flex-col gap-1 max-[560px]:w-full">
-          <strong className="text-[13px] font-semibold text-[var(--text-primary)]">
-            {t("workspace.settings.developer.tuttiAgentSwitchLabel")}
-          </strong>
-          <p className="m-0 text-[13px] leading-[1.3] text-[var(--text-secondary)]">
-            {t("workspace.settings.developer.tuttiAgentSwitchDescription")}
-          </p>
-        </div>
-        <Switch
-          aria-label={t("workspace.settings.developer.tuttiAgentSwitchLabel")}
-          checked={tuttiAgentSwitchEnabled}
-          onCheckedChange={onTuttiAgentSwitchEnabledChange}
-        />
-      </div>
-
-      <div className="flex w-full items-center justify-between gap-4 max-[560px]:flex-col max-[560px]:items-stretch">
-        <div className="flex min-w-0 flex-1 flex-col gap-1 max-[560px]:w-full">
-          <strong className="text-[13px] font-semibold text-[var(--text-primary)]">
-            {t("workspace.settings.developer.showAppDeveloperSourcesLabel")}
-          </strong>
-          <p className="m-0 text-[13px] leading-[1.3] text-[var(--text-secondary)]">
-            {t(
-              "workspace.settings.developer.showAppDeveloperSourcesDescription"
-            )}
-          </p>
-        </div>
-        <Switch
-          aria-label={t(
-            "workspace.settings.developer.showAppDeveloperSourcesLabel"
-          )}
-          checked={showAppDeveloperSources}
-          onCheckedChange={onShowAppDeveloperSourcesChange}
-        />
-      </div>
-
-      {analyticsDebugAvailable ? (
-        <div className="flex w-full items-center justify-between gap-4 max-[560px]:flex-col max-[560px]:items-stretch">
-          <div className="flex min-w-0 flex-1 flex-col gap-1 max-[560px]:w-full">
-            <strong className="text-[13px] font-semibold text-[var(--text-primary)]">
-              {t("workspace.settings.developer.analyticsDebugLabel")}
-            </strong>
-            <p className="m-0 text-[13px] leading-[1.3] text-[var(--text-secondary)]">
-              {t("workspace.settings.developer.analyticsDebugDescription")}
-            </p>
-          </div>
-          <Switch
-            aria-label={t("workspace.settings.developer.analyticsDebugLabel")}
-            checked={analyticsDebugEnabled}
-            onCheckedChange={onAnalyticsDebugEnabledChange}
-          />
-        </div>
-      ) : null}
-
-      <div className="flex w-full flex-col gap-3">
-        <div className="flex min-w-0 flex-col gap-1">
-          <strong className="text-[13px] font-semibold text-[var(--text-primary)]">
-            {t("workspace.settings.developer.fileDefaultOpenersLabel")}
-          </strong>
-          <p className="m-0 text-[13px] leading-[1.3] text-[var(--text-secondary)]">
-            {t("workspace.settings.developer.fileDefaultOpenersDescription")}
-          </p>
-        </div>
-        <div className="flex w-full flex-col gap-2 rounded-[10px] bg-[var(--transparency-block)] p-4">
-          <div className="grid gap-2">
-            {fileDefaultOpeners.map(([extension, opener]) => (
-              <div
-                key={extension}
-                className="grid grid-cols-[minmax(70px,0.7fr)_minmax(130px,1fr)_auto] items-center gap-2"
-              >
-                <span className="min-w-0 truncate text-[13px] text-[var(--text-primary)]">
-                  .{extension}
-                </span>
-                <Select
-                  value={opener}
-                  onValueChange={(value) => {
-                    onFileDefaultOpenersChange({
-                      ...fileDefaultOpenersByExtension,
-                      [extension]: value as DesktopFileDefaultOpener
-                    });
-                  }}
-                >
-                  <SelectTrigger
-                    aria-label={t(
-                      "workspace.settings.developer.fileDefaultOpenerActionLabel",
-                      { extension }
-                    )}
-                    className={workspaceSettingsSelectTriggerClass}
-                  >
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent
-                    className={workspaceSettingsSelectContentClass}
-                    style={{ zIndex: "var(--z-panel-popover)" }}
-                  >
-                    {desktopFileDefaultOpeners.map((candidate) => (
-                      <SelectItem key={candidate} value={candidate}>
-                        {t(
-                          workspaceSettingsFileDefaultOpenerLabelKey(candidate)
-                        )}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                <Button
-                  aria-label={t(
-                    "workspace.settings.developer.removeFileDefaultOpener",
-                    { extension }
-                  )}
-                  className="text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
-                  variant="ghost"
-                  type="button"
-                  onClick={() => {
-                    const { [extension]: _removed, ...remaining } =
-                      fileDefaultOpenersByExtension;
-                    onFileDefaultOpenersChange(remaining);
-                  }}
-                >
-                  <DeleteIcon className="size-3.5" />
-                </Button>
-              </div>
-            ))}
-            {fileDefaultOpenerDrafts.map((draft) => (
-              <div
-                key={draft.id}
-                className="grid grid-cols-[minmax(70px,0.7fr)_minmax(130px,1fr)_auto] items-center gap-2"
-              >
-                <Input
-                  aria-label={t(
-                    "workspace.settings.developer.fileDefaultOpenerExtensionLabel"
-                  )}
-                  className={workspaceSettingsInputClass}
-                  placeholder={t(
-                    "workspace.settings.developer.fileDefaultOpenerExtensionPlaceholder"
-                  )}
-                  ref={(input) => {
-                    if (input) {
-                      fileDefaultOpenerInputRefs.current.set(draft.id, input);
-                      return;
-                    }
-                    fileDefaultOpenerInputRefs.current.delete(draft.id);
-                  }}
-                  value={draft.extension}
-                  onChange={(event) =>
-                    updateFileDefaultOpenerDraft(draft.id, {
-                      extension: event.currentTarget.value
-                    })
-                  }
-                />
-                <Select
-                  value={draft.opener}
-                  onValueChange={(value) =>
-                    updateFileDefaultOpenerDraft(draft.id, {
-                      opener: value as DesktopFileDefaultOpener
-                    })
-                  }
-                >
-                  <SelectTrigger
-                    aria-label={t(
-                      "workspace.settings.developer.fileDefaultOpenerNewActionLabel"
-                    )}
-                    className={workspaceSettingsSelectTriggerClass}
-                  >
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent
-                    className={workspaceSettingsSelectContentClass}
-                    style={{ zIndex: "var(--z-panel-popover)" }}
-                  >
-                    {desktopFileDefaultOpeners.map((candidate) => (
-                      <SelectItem key={candidate} value={candidate}>
-                        {t(
-                          workspaceSettingsFileDefaultOpenerLabelKey(candidate)
-                        )}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                <Button
-                  aria-label={t(
-                    "workspace.settings.developer.removeFileDefaultOpener",
-                    { extension: draft.extension }
-                  )}
-                  className="text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
-                  variant="ghost"
-                  type="button"
-                  onClick={() => removeFileDefaultOpenerDraft(draft.id)}
-                >
-                  <DeleteIcon className="size-3.5" />
-                </Button>
-              </div>
-            ))}
-            <Button
-              className="w-fit"
-              variant="ghost"
-              type="button"
-              onClick={addFileDefaultOpener}
-            >
-              <AddLinedIcon className="size-3.5" />
-              {t("workspace.settings.developer.addFileDefaultOpener")}
-            </Button>
-          </div>
-        </div>
-      </div>
-
-      <SettingsRow label={t("workspace.settings.developer.logsSizeLabel")}>
-        <p className="m-0 text-right text-[13px] leading-5 text-[var(--text-secondary)] max-[560px]:text-left">
-          {developerLogs.loading || logs === null
-            ? t("common.loading")
-            : t("workspace.settings.developer.logsSummary", {
-                count: String(logs.totalFiles),
-                size: formatWorkspaceSettingsBytes(logs.totalSizeBytes)
-              })}
-        </p>
-      </SettingsRow>
-
-      <SettingsRow label={t("workspace.settings.developer.actionsLabel")}>
-        <div className="flex flex-wrap justify-end gap-2 max-[560px]:justify-start">
-          <Button
-            variant="secondary"
-            type="button"
-            onClick={onExportLogs}
-            disabled={developerLogs.exporting}
-          >
-            {developerLogs.exporting
-              ? t("workspace.settings.developer.exportingLogs")
-              : t("workspace.settings.developer.exportLogs")}
-          </Button>
-          <Button
-            variant="secondary"
-            type="button"
-            onClick={onClearLogs}
-            disabled={developerLogs.clearing || developerLogs.exporting}
-          >
-            {developerLogs.clearing
-              ? t("workspace.settings.developer.clearingLogs")
-              : t("workspace.settings.developer.clearLogs")}
-          </Button>
-          <Button
-            variant="secondary"
-            type="button"
-            onClick={onClearConversationHistory}
-            disabled={developerLogs.clearingConversationHistory}
-          >
-            <DeleteIcon className="size-3.5" />
-            {developerLogs.clearingConversationHistory
-              ? t("workspace.settings.developer.clearingConversationHistory")
-              : t("workspace.settings.developer.clearConversationHistory")}
-          </Button>
-        </div>
-      </SettingsRow>
-    </SettingsRows>
-  );
-}
-
-function AppCatalogChannelControl({
-  appCatalogChannel,
-  changingAppCatalogChannel,
-  onAppCatalogChannelChange
-}: {
-  appCatalogChannel: DesktopAppCatalogChannel;
-  changingAppCatalogChannel: DesktopAppCatalogChannel | null;
-  onAppCatalogChannelChange: (channel: DesktopAppCatalogChannel) => void;
-}) {
-  const { t } = useTranslation();
-  const effectiveAppCatalogChannel =
-    changingAppCatalogChannel ?? appCatalogChannel;
-
-  return (
-    <div className="flex w-full items-center justify-between gap-4 max-[560px]:flex-col max-[560px]:items-stretch">
-      <div className="flex min-w-0 flex-1 flex-col gap-1 max-[560px]:w-full">
-        <strong className="text-[13px] font-semibold text-[var(--text-primary)]">
-          {t("workspace.settings.apps.appCatalogChannelLabel")}
-        </strong>
-        <p className="m-0 text-[13px] leading-[1.3] text-[var(--text-secondary)]">
-          {t("workspace.settings.apps.appCatalogChannelDescription")}
-        </p>
-      </div>
-      <div
-        aria-label={t("workspace.settings.apps.appCatalogChannelLabel")}
-        className="grid h-8 shrink-0 grid-cols-2 overflow-hidden rounded-[6px] bg-[var(--transparency-block)] p-0.5"
-        role="group"
-      >
-        {desktopAppCatalogChannels.map((channel) => {
-          const selected = effectiveAppCatalogChannel === channel;
-          return (
-            <button
-              key={channel}
-              aria-pressed={selected}
-              className={cn(
-                "min-w-[92px] rounded-[5px] border-0 px-3 text-[13px] font-semibold leading-none outline-none transition-colors duration-150 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-[var(--border-focus)]",
-                selected
-                  ? "bg-[var(--background-fronted)] text-[var(--text-primary)] shadow-none"
-                  : "bg-transparent text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
-              )}
-              disabled={changingAppCatalogChannel !== null}
-              type="button"
-              onClick={() => onAppCatalogChannelChange(channel)}
-            >
-              {t(workspaceSettingsAppCatalogChannelOptionLabelKey(channel))}
-            </button>
-          );
-        })}
-      </div>
-    </div>
-  );
-}
-
-function workspaceSettingsAppCatalogChannelOptionLabelKey(
-  channel: DesktopAppCatalogChannel
-): DesktopI18nKey {
-  switch (channel) {
-    case "production":
-      return "workspace.settings.apps.appCatalogChannelOptions.production";
-    case "staging":
-      return "workspace.settings.apps.appCatalogChannelOptions.staging";
-  }
-}
-
-function ReleaseChannelControl({
-  changingUpdateChannel,
-  updateChannel,
-  onUpdateChannelChange
-}: {
-  changingUpdateChannel: DesktopUpdateChannel | null;
-  updateChannel: DesktopUpdateChannel;
-  onUpdateChannelChange: (channel: DesktopUpdateChannel) => void;
-}) {
-  const { t } = useTranslation();
-  const effectiveUpdateChannel = changingUpdateChannel ?? updateChannel;
-
-  return (
-    <div className="flex w-full items-center justify-between gap-4 max-[560px]:flex-col max-[560px]:items-stretch">
-      <div className="flex min-w-0 flex-1 flex-col gap-1 max-[560px]:w-full">
-        <strong className="text-[13px] font-semibold text-[var(--text-primary)]">
-          {t("workspace.settings.developer.releaseChannelLabel")}
-        </strong>
-        <p className="m-0 text-[13px] leading-[1.3] text-[var(--text-secondary)]">
-          {t("workspace.settings.developer.releaseChannelDescription")}
-        </p>
-      </div>
-      <div
-        aria-label={t("workspace.settings.developer.releaseChannelLabel")}
-        className="grid h-8 shrink-0 grid-cols-2 overflow-hidden rounded-[6px] bg-[var(--transparency-block)] p-0.5"
-        role="group"
-      >
-        {desktopUpdateChannels.map((channel) => {
-          const selected = effectiveUpdateChannel === channel;
-          return (
-            <button
-              key={channel}
-              aria-pressed={selected}
-              className={cn(
-                "min-w-[92px] rounded-[5px] border-0 px-3 text-[13px] font-semibold leading-none outline-none transition-colors duration-150 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-[var(--border-focus)]",
-                selected
-                  ? "bg-[var(--background-fronted)] text-[var(--text-primary)] shadow-none"
-                  : "bg-transparent text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
-              )}
-              disabled={changingUpdateChannel !== null}
-              type="button"
-              onClick={() => onUpdateChannelChange(channel)}
-            >
-              {t(workspaceSettingsUpdateChannelOptionLabelKey(channel))}
-            </button>
-          );
-        })}
-      </div>
-    </div>
-  );
-}
-
-function workspaceSettingsUpdateChannelOptionLabelKey(
-  channel: DesktopUpdateChannel
-): DesktopI18nKey {
-  switch (channel) {
-    case "stable":
-      return "workspace.settings.developer.releaseChannelOptions.stable";
-    case "rc":
-      return "workspace.settings.developer.releaseChannelOptions.rc";
-  }
-}
-
 function workspaceSettingsMinimizeAnimationOptionLabelKey(
   animation: DesktopMinimizeAnimation
 ): DesktopI18nKey {
@@ -2391,12 +1675,6 @@ function workspaceSettingsWindowSnappingShortcutLabelKey(
 type WorkspaceSettingsWindowSnappingSelectValue =
   | "off"
   | DesktopWorkbenchWindowSnappingShortcutPreset;
-
-function workspaceSettingsFileDefaultOpenerLabelKey(
-  opener: DesktopFileDefaultOpener
-): DesktopI18nKey {
-  return `workspace.settings.developer.fileDefaultOpenerOptions.${opener}`;
-}
 
 function WorkspaceSettingsPanelPortal({
   children,
@@ -2441,48 +1719,6 @@ function WorkspaceSettingsPanelPortal({
   }
 
   return createPortal(panel, document.body);
-}
-
-function SettingsRows({
-  children,
-  className
-}: {
-  children: React.ReactNode;
-  className?: string;
-}) {
-  return (
-    <div className={cn("flex w-full flex-col gap-8 pb-[22px] pt-5", className)}>
-      {children}
-    </div>
-  );
-}
-
-function SettingsRow({
-  children,
-  label,
-  valueClassName
-}: {
-  children: React.ReactNode;
-  label: string;
-  valueClassName?: string;
-}) {
-  return (
-    <div className="flex w-full items-center justify-between gap-4 max-[560px]:flex-col max-[560px]:items-stretch">
-      <div className="min-w-0">
-        <strong className="text-[13px] font-semibold text-[var(--text-primary)]">
-          {label}
-        </strong>
-      </div>
-      <div
-        className={cn(
-          "flex min-w-0 justify-end max-[560px]:justify-start",
-          valueClassName
-        )}
-      >
-        {children}
-      </div>
-    </div>
-  );
 }
 
 function ComputerUseSetupRow({

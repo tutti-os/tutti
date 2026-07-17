@@ -18,6 +18,15 @@ func TestMessageLooksLikeAuthFailureMatchesRealClaude401(t *testing.T) {
 	}
 }
 
+func TestMessageLooksLikeAuthFailureMatchesRealGeminiVertexADCFailure(t *testing.T) {
+	payload := map[string]any{
+		"text": "Could not load the default credentials. Browse to Google Cloud authentication documentation for more information",
+	}
+	if !messageLooksLikeAuthFailure("failed", payload) {
+		t.Fatal("a failed Gemini Vertex ADC message should be classified as an auth failure")
+	}
+}
+
 func TestMessageLooksLikeAuthFailureUsesStructuredCode(t *testing.T) {
 	if !messageLooksLikeAuthFailure("failed", map[string]any{"code": "auth_required"}) {
 		t.Fatal("an explicit auth_required code should classify as auth failure")

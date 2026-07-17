@@ -64,7 +64,8 @@ func runtimeResumeInputFromPersistedSession(session PersistedSession) RuntimeRes
 
 const WorkspaceAgentSessionOriginImported = "WORKSPACE_AGENT_SESSION_ORIGIN_IMPORTED"
 
-func persistedSessionCanResume(controller RuntimeController, session PersistedSession) bool {
+func (s *Service) persistedSessionCanResume(ctx context.Context, session PersistedSession) bool {
+	controller := s.controller()
 	if controller == nil {
 		return false
 	}
@@ -75,7 +76,19 @@ func persistedSessionCanResume(controller RuntimeController, session PersistedSe
 		!externalImportResumeSupported(session.InternalRuntimeContext) {
 		return false
 	}
-	return controller.CanResume(runtimeResumeInputFromPersistedSession(session))
+	input := runtimeResumeInputFromPersistedSession(session)
+	if input.AgentTargetID != "" {
+		launch, err := s.resolveCreateSessionLaunch(ctx, CreateSessionInput{
+			AgentTargetID: input.AgentTargetID,
+			Provider:      input.Provider,
+		})
+		if err != nil {
+			return false
+		}
+		input.Provider = launch.Provider
+		input.ProviderTargetRef = launch.ProviderTargetRef
+	}
+	return controller.CanResume(input)
 }
 
 func externalImportResumeSupported(runtimeContext map[string]any) bool {

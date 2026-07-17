@@ -564,6 +564,84 @@ func TestCursorAdapterStartCreatesStandardACPSession(t *testing.T) {
 	}
 }
 
+func TestRunStandardACPSetupAuthenticatesWithFreshAdvertisedMethod(t *testing.T) {
+	t.Parallel()
+
+	transport := newStandardACPTransport("Example Agent", "setup-session")
+	transport.conn.authMethods = []map[string]any{{
+		"id": "oauth-personal", "name": "Log in with Google", "description": "Google account",
+	}}
+	transport.conn.requireAuthentication = true
+	transport.conn.authenticateResult = map[string]any{
+		"_meta": map[string]any{
+			"codebuddy.ai/userinfo": map[string]any{
+				"userId": "user-1", "userName": "Ryan", "userNickname": "Rhinoc", "enterpriseName": "Tutti",
+			},
+		},
+	}
+	result, err := runStandardACPSetupTest(t, transport, "oauth-personal")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Status != StandardACPSetupReady || len(result.AuthMethods) != 1 || result.AuthMethods[0].ID != "oauth-personal" {
+		t.Fatalf("setup result = %#v", result)
+	}
+	if result.Account == nil || result.Account.ID != "user-1" || result.Account.DisplayName != "Rhinoc" ||
+		result.Account.AuthMethodID != "oauth-personal" || result.Account.Organization != "Tutti" {
+		t.Fatalf("authenticated account = %#v", result.Account)
+	}
+	if got := transport.conn.authenticatedMethodID(); got != "oauth-personal" {
+		t.Fatalf("authenticated method id = %q", got)
+	}
+	if containsString(transport.specs[0].Env, "NO_BROWSER=1") {
+		t.Fatal("interactive authenticate must allow the runtime to open a browser")
+	}
+}
+
+func TestRunStandardACPSetupRejectsUnadvertisedMethod(t *testing.T) {
+	t.Parallel()
+
+	transport := newStandardACPTransport("Example Agent", "setup-session")
+	transport.conn.authMethods = []map[string]any{{"id": "oauth", "name": "OAuth"}}
+	_, err := runStandardACPSetupTest(t, transport, "attacker-method")
+	if !errors.Is(err, ErrACPAuthMethodUnavailable) {
+		t.Fatalf("error = %v, want ErrACPAuthMethodUnavailable", err)
+	}
+	if got := transport.conn.authenticatedMethodID(); got != "" {
+		t.Fatalf("authenticated method id = %q", got)
+	}
+}
+
+func TestRunStandardACPSetupPreservesExplicitAuthenticationFailure(t *testing.T) {
+	t.Parallel()
+
+	transport := newStandardACPTransport("Example Agent", "setup-session")
+	transport.conn.authMethods = []map[string]any{{"id": "oauth", "name": "OAuth"}}
+	transport.conn.authenticateError = &acpError{
+		Code:    -32000,
+		Message: "This account is not supported by this client",
+	}
+	result, err := runStandardACPSetupTest(t, transport, "oauth")
+	if err == nil || !strings.Contains(err.Error(), "This account is not supported by this client") {
+		t.Fatalf("error = %v, want provider authentication failure", err)
+	}
+	if result.Status != StandardACPSetupAuthRequired || len(result.AuthMethods) != 1 {
+		t.Fatalf("setup result = %#v", result)
+	}
+}
+
+func runStandardACPSetupTest(t *testing.T, transport *standardACPTransport, methodID string) (StandardACPSetupResult, error) {
+	t.Helper()
+	return RunStandardACPSetup(
+		context.Background(),
+		StandardACPAdapterConfig{Provider: "acp:example", Name: "example-acp", Command: []string{"example", "--acp"}},
+		transport,
+		LegacyHostMetadata(),
+		standardTestSession("acp:example"),
+		methodID,
+	)
+}
+
 func TestCursorAdapterStartMapsPermissionTiersToACPModes(t *testing.T) {
 	t.Parallel()
 
@@ -2947,6 +3025,10 @@ type standardACPConnection struct {
 	omitAssistantTextInPromptResults bool
 	setConfigOptionSnapshots         []map[string]any
 	configOptions                    []map[string]any
+	authMethods                      []map[string]any
+	authenticateResult               map[string]any
+	authenticateError                *acpError
+	requireAuthentication            bool
 }
 
 func (c *standardACPConnection) Send(data []byte) error {
@@ -2987,6 +3069,9 @@ func (c *standardACPConnection) Send(data []byte) error {
 			if len(sessionCapabilities) > 0 {
 				result["sessionCapabilities"] = sessionCapabilities
 			}
+			if len(c.authMethods) > 0 {
+				result["authMethods"] = c.authMethods
+			}
 			c.sendJSON(map[string]any{
 				"jsonrpc": "2.0",
 				"id":      message.ID,
@@ -2999,13 +3084,25 @@ func (c *standardACPConnection) Send(data []byte) error {
 				} `json:"params"`
 			}
 			_ = json.Unmarshal([]byte(line), &request)
+			if c.authenticateError != nil {
+				c.sendJSON(map[string]any{
+					"jsonrpc": "2.0",
+					"id":      message.ID,
+					"error":   c.authenticateError,
+				})
+				continue
+			}
 			c.mu.Lock()
 			c.lastAuthenticatedMethodID = request.Params.MethodID
 			c.mu.Unlock()
+			result := c.authenticateResult
+			if result == nil {
+				result = map[string]any{}
+			}
 			c.sendJSON(map[string]any{
 				"jsonrpc": "2.0",
 				"id":      message.ID,
-				"result":  map[string]any{},
+				"result":  result,
 			})
 		case acpMethodNewSession:
 			var request struct {
@@ -3017,6 +3114,13 @@ func (c *standardACPConnection) Send(data []byte) error {
 				c.lastNewSessionParams = maps.Clone(request.Params)
 			}
 			c.mu.Unlock()
+			if c.requireAuthentication && c.authenticatedMethodID() == "" {
+				c.sendJSON(map[string]any{
+					"jsonrpc": "2.0", "id": message.ID,
+					"error": map[string]any{"code": -32000, "message": "authentication required"},
+				})
+				continue
+			}
 			if c.commandUpdateOnNewSession {
 				c.sendAvailableCommandsUpdate()
 			}

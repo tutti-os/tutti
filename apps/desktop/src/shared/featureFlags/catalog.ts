@@ -10,6 +10,14 @@ export const WORKSPACE_STANDALONE_AGENT_MODE_FLAG =
   "workspace.standaloneAgentMode";
 export const AGENT_REFERENCE_PROVENANCE_FILTER_FLAG =
   "agent.referenceProvenanceFilter";
+export const AGENT_EXTENSION_GEMINI_FLAG = "agent.extension.gemini";
+export const AGENT_EXTENSION_CODEBUDDY_FLAG = "agent.extension.codebuddy";
+export const AGENT_EXTENSION_ACTIVATION_FLAGS = [
+  AGENT_EXTENSION_GEMINI_FLAG,
+  AGENT_EXTENSION_CODEBUDDY_FLAG
+] as const;
+export type AgentExtensionActivationFlag =
+  (typeof AGENT_EXTENSION_ACTIVATION_FLAGS)[number];
 
 export interface FeatureFlagDefinition {
   key: string;
@@ -20,6 +28,16 @@ export interface FeatureFlagDefinition {
 }
 
 export const FEATURE_FLAG_DEFINITIONS: readonly FeatureFlagDefinition[] = [
+  {
+    key: AGENT_EXTENSION_GEMINI_FLAG,
+    default: false,
+    group: "developer"
+  },
+  {
+    key: AGENT_EXTENSION_CODEBUDDY_FLAG,
+    default: false,
+    group: "developer"
+  },
   {
     key: AGENT_REFERENCE_PROVENANCE_FILTER_FLAG,
     default: false,

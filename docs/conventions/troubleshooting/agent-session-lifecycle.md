@@ -910,6 +910,40 @@ Turn state, loading, cancel, restore, file-change undo, rail projection, event u
   [agentGuiConversationProjectResolver.ts](../../../packages/agent/gui/agent-gui/agentGuiNode/model/agentGuiConversationProjectResolver.ts)
   [useAgentGuiConversationList.ts](../../../packages/agent/gui/contexts/workspace/presentation/renderer/agentGuiConversationList/useAgentGuiConversationList.ts)
 
+### Extension history becomes non-resumable after daemon restart
+
+- Symptom:
+  An Agent Extension conversation works until `tuttid` restarts. Its history
+  remains visible, but AgentGUI says it cannot resume on this device and only
+  offers continuing through an `@` mention.
+- Quick checks:
+  Confirm the persisted session still has `provider_session_id` and
+  `agent_target_id`. If the Target remains enabled and names a fixed extension
+  installation, compare list-time `resumable` calculation with the actual
+  Resume path. An empty process-local adapter registry after restart is not
+  evidence that the session cannot be restored.
+- Root cause:
+  Dynamic Agent Extension adapters are created on demand and cached only for
+  the daemon lifetime. Computing `resumable` from that cache maps restart state
+  to a false domain result before Resume can re-resolve the persisted Target.
+- Fix:
+  At the service boundary, re-derive `ProviderTargetRef` from the persisted
+  session's enabled `agentTargetId`. At the runtime boundary, validate the
+  provider, Target, and fixed installation binding; when a dynamic resolver is
+  configured, treat that authorized binding as eligible for a Resume attempt.
+  Keep installation validation and ACP `session/load` in the actual Resume
+  path. Never use an open provider id or adapter-cache presence as launch
+  authority.
+- Validation:
+  Start from a controller with no cached extension adapter. Assert a persisted
+  Target-bound session is resumable, malformed or mismatched bindings fail
+  closed, and the eligibility check does not launch the provider. Then run
+  `go test ./packages/agent/daemon/runtime ./services/tuttid/service/agent`.
+- References:
+  [controller_session_registry.go](../../../packages/agent/daemon/runtime/controller_session_registry.go)
+  [service_session.go](../../../services/tuttid/service/agent/service_session.go)
+  [agent-extensions.md](../../architecture/agent-extensions.md)
+
 ### Agent session restore breaks when durable snapshot ownership is split
 
 - Symptom:

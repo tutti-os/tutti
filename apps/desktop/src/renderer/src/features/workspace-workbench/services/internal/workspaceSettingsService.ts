@@ -77,6 +77,10 @@ import type {
   WorkspaceManagedModelProviderFeedbackKind,
   WorkspaceManagedModelProviderID
 } from "../workspaceSettingsTypes.ts";
+import {
+  createWorkspaceFeatureFlagSettings,
+  type WorkspaceFeatureFlagSettings
+} from "./workspaceFeatureFlagSettings.ts";
 
 const managedModelProviderIDs: WorkspaceManagedModelProviderID[] = [
   "agnes",
@@ -107,6 +111,7 @@ export class WorkspaceSettingsService implements IWorkspaceSettingsService {
 
   private readonly dependencies: WorkspaceSettingsServiceDependencies;
   private readonly desktopPreferences: DesktopPreferencesService;
+  private readonly featureFlagSettings: WorkspaceFeatureFlagSettings;
   private readonly notifications: NotificationService;
   private readonly reporterService: Pick<ReporterService, "trackEvents"> | null;
   private readonly appCenterService: Pick<
@@ -132,6 +137,11 @@ export class WorkspaceSettingsService implements IWorkspaceSettingsService {
   ) {
     this.dependencies = dependencies;
     this.desktopPreferences = desktopPreferences;
+    this.featureFlagSettings = createWorkspaceFeatureFlagSettings({
+      desktopPreferences,
+      notifications,
+      refreshAgentTargets: () => this.refreshAgentTargetConsumers()
+    });
     this.notifications = notifications;
     this.reporterService = reporterService;
     this.appCenterService = appCenterService;
@@ -558,29 +568,7 @@ export class WorkspaceSettingsService implements IWorkspaceSettingsService {
   }
 
   async changeFeatureFlags(flags: DesktopFeatureFlags): Promise<void> {
-    if (
-      desktopFeatureFlagsEqual(
-        this.desktopPreferences.store.featureFlags,
-        flags
-      ) ||
-      (this.desktopPreferences.store.changingFeatureFlags !== null &&
-        desktopFeatureFlagsEqual(
-          this.desktopPreferences.store.changingFeatureFlags,
-          flags
-        ))
-    ) {
-      return;
-    }
-
-    try {
-      await this.desktopPreferences.setFeatureFlags(flags);
-    } catch {
-      this.notifications.error({
-        title: createActiveTranslator().t(
-          "workspace.settings.lab.preferencesSaveFailed"
-        )
-      });
-    }
+    await this.featureFlagSettings.change(flags);
   }
 
   async changeWorkspaceUiMode(mode: DesktopWorkspaceUiMode): Promise<void> {

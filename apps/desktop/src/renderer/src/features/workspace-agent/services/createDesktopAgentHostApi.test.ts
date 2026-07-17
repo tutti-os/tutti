@@ -1,7 +1,10 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import type { AgentHostInputApi } from "@tutti-os/agent-gui";
-import type { TuttidClient } from "@tutti-os/client-tuttid-ts";
+import type {
+  AgentTargetSetupSnapshot,
+  TuttidClient
+} from "@tutti-os/client-tuttid-ts";
 import type {
   DesktopHostFilesApi,
   DesktopPlatformApi,
@@ -12,7 +15,10 @@ import type {
   DesktopTerminalDiagnosticPayload,
   DesktopTerminalStreamUrlRequest
 } from "@shared/contracts/ipc";
-import { createDesktopAgentHostApi } from "./createDesktopAgentHostApi.ts";
+import {
+  createDesktopAgentHostApi,
+  projectDesktopAgentTargetSetupSnapshot
+} from "./createDesktopAgentHostApi.ts";
 import { WorkspaceAgentActivityService } from "./internal/workspaceAgentActivityService.ts";
 import type { IWorkspaceUserProjectService } from "../../workspace-user-project/index.ts";
 
@@ -104,6 +110,107 @@ test("desktop agent host api does not inject legacy agent data host apis", () =>
 
   assert.equal(api.agentSessions, undefined);
   assert.equal("workspaceAgents" in api, false);
+});
+
+test("desktop agent host api reuses one target setup watch per target", () => {
+  const api = createAgentHostApi();
+  const setup = api.agentTargetSetup;
+  assert.ok(setup);
+
+  const first = setup.watch({ agentTargetId: "extension:gemini" });
+  const same = setup.watch({ agentTargetId: " extension:gemini " });
+  const other = setup.watch({ agentTargetId: "extension:codebuddy" });
+
+  assert.equal(first, same);
+  assert.notEqual(first, other);
+});
+
+test("desktop agent host api explicitly projects daemon target setup snapshots", () => {
+  const snapshot: AgentTargetSetupSnapshot = {
+    workspaceId: "workspace-transport-only",
+    agentTargetId: "extension:gemini",
+    status: "installing",
+    runtimeSource: "managed",
+    runtimeVersion: "1.2.3",
+    reason: "runtime update required",
+    authMethods: [
+      {
+        id: "oauth-personal",
+        name: "Log in with Google",
+        description: "Personal account"
+      }
+    ],
+    account: {
+      id: "account-1",
+      displayName: "Rhinoc",
+      authMethodId: "oauth-personal",
+      organization: "Tutti"
+    },
+    plan: {
+      agentTargetId: "extension:gemini",
+      extensionInstallationId: "gemini-installation",
+      agentKey: "gemini",
+      extensionVersion: "2.0.0",
+      runtimeKind: "npm",
+      platform: "darwin-arm64",
+      runner: "pnpm",
+      packageName: "@tutti-os/gemini-agent",
+      packageVersion: "1.2.3",
+      installRoot: "/state/runtimes/gemini/1.2.3",
+      installCommand: ["pnpm", "add"],
+      executable: "gemini",
+      launchArgs: ["--acp"],
+      planDigest: "a".repeat(64)
+    },
+    action: {
+      actionId: "action-1",
+      clientActionId: "client-action-1",
+      kind: "install",
+      status: "running",
+      phase: "installing",
+      errorCode: null,
+      errorMessage: null,
+      createdAtUnixMs: 100,
+      updatedAtUnixMs: 200
+    }
+  };
+
+  assert.deepEqual(projectDesktopAgentTargetSetupSnapshot(snapshot), {
+    agentTargetId: "extension:gemini",
+    status: "installing",
+    runtimeSource: "managed",
+    runtimeVersion: "1.2.3",
+    reason: "runtime update required",
+    authMethods: [
+      {
+        id: "oauth-personal",
+        name: "Log in with Google",
+        description: "Personal account"
+      }
+    ],
+    account: {
+      id: "account-1",
+      displayName: "Rhinoc",
+      authMethodId: "oauth-personal",
+      organization: "Tutti"
+    },
+    plan: {
+      packageName: "@tutti-os/gemini-agent",
+      packageVersion: "1.2.3",
+      runner: "pnpm",
+      planDigest: "a".repeat(64),
+      installRoot: "/state/runtimes/gemini/1.2.3"
+    },
+    action: {
+      actionId: "action-1",
+      clientActionId: "client-action-1",
+      kind: "install",
+      status: "running",
+      phase: "installing",
+      errorCode: null,
+      errorMessage: null
+    }
+  });
 });
 
 test("desktop agent host api remembers the default project selection per workspace", async () => {

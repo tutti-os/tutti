@@ -1,4 +1,5 @@
 import {
+  authenticateAgentTargetRuntime,
   addWorkspaceIssueContextRefs,
   addWorkspaceIssueTaskContextRefs,
   checkUserProjectPath,
@@ -26,6 +27,7 @@ import {
   getAccountUserInfo,
   dismissAccountRegistrationCreditsReward,
   getHealth,
+  getAgentTargetSetup,
   getStartupWorkspace,
   listAgentTargets,
   getWorkspaceFileTreeSnapshot,
@@ -49,6 +51,7 @@ import {
   listWorkspaceFileDirectory,
   listWorkspaceRecentFiles,
   listWorkspaces,
+  installAgentTargetRuntime,
   logoutAccount,
   copyWorkspaceFileEntry,
   moveWorkspaceFileEntry,
@@ -120,6 +123,35 @@ export function createTuttidClient(
           path: { agentTargetID }
         }),
         "Agent target visibility update failed."
+      );
+    },
+    async getAgentTargetSetup(workspaceID, agentTargetID) {
+      return unwrapData(
+        await getAgentTargetSetup({
+          client,
+          path: { workspaceID, agentTargetID }
+        }),
+        "Agent target setup request failed."
+      );
+    },
+    async installAgentTargetRuntime(workspaceID, agentTargetID, request) {
+      return unwrapData(
+        await installAgentTargetRuntime({
+          client,
+          path: { workspaceID, agentTargetID },
+          body: request
+        }),
+        "Agent target runtime install request failed."
+      );
+    },
+    async authenticateAgentTargetRuntime(workspaceID, agentTargetID, request) {
+      return unwrapData(
+        await authenticateAgentTargetRuntime({
+          client,
+          path: { workspaceID, agentTargetID },
+          body: request
+        }),
+        "Agent target runtime authentication request failed."
       );
     },
     async startAccountLogin() {

@@ -1,6 +1,7 @@
 package agentruntime
 
 import (
+	"errors"
 	"testing"
 
 	agentsessionstore "github.com/tutti-os/tutti/packages/agent/daemon/activity"
@@ -9,6 +10,13 @@ import (
 func TestVisibleFailureCodeClassifiesDeadlineExceededAsRequestTimedOut(t *testing.T) {
 	if got := visibleFailureCode("context deadline exceeded"); got != "request_timed_out" {
 		t.Fatalf("visibleFailureCode() = %q, want request_timed_out", got)
+	}
+}
+
+func TestIsAuthenticationRequiredClassifiesGeminiMissingAPIKey(t *testing.T) {
+	err := errors.New("Gemini API key is missing or not configured")
+	if !IsAuthenticationRequired(err) {
+		t.Fatalf("IsAuthenticationRequired(%q) = false, want true", err)
 	}
 }
 

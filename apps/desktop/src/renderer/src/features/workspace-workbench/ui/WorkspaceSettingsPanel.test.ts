@@ -11,6 +11,13 @@ const source = readFileSync(
   ),
   "utf8"
 );
+const developerSource = readFileSync(
+  resolve(
+    dirname(fileURLToPath(import.meta.url)),
+    "WorkspaceDeveloperSettingsSection.tsx"
+  ),
+  "utf8"
+);
 const defaultProvidersSource = readFileSync(
   resolve(
     dirname(fileURLToPath(import.meta.url)),
@@ -20,11 +27,14 @@ const defaultProvidersSource = readFileSync(
 );
 
 test("workspace settings developer panel exposes analytics debug switch only when available", () => {
-  assert.match(source, /useAnalyticsDebugPreferenceService/);
-  assert.match(source, /analyticsDebugAvailable \? \(/);
-  assert.match(source, /<Switch\s/s);
-  assert.match(source, /checked=\{analyticsDebugEnabled\}/);
-  assert.match(source, /onCheckedChange=\{onAnalyticsDebugEnabledChange\}/);
+  assert.match(developerSource, /useAnalyticsDebugPreferenceService/);
+  assert.match(developerSource, /analyticsDebugAvailable \? \(/);
+  assert.match(developerSource, /<Switch\s/s);
+  assert.match(developerSource, /checked=\{analyticsDebugEnabled\}/);
+  assert.match(
+    developerSource,
+    /onCheckedChange=\{onAnalyticsDebugEnabledChange\}/
+  );
 });
 
 test("workspace settings panel lists appearance below general", () => {
@@ -36,32 +46,16 @@ test("workspace settings panel lists appearance below general", () => {
 
 test("workspace settings gates account behind Tutti Agent Switch", () => {
   assert.match(source, /settingsState\.tuttiAgentSwitchEnabled/);
-  assert.match(source, /workspace\.settings\.developer\.tuttiAgentSwitchLabel/);
   assert.match(
-    source,
+    developerSource,
+    /workspace\.settings\.developer\.tuttiAgentSwitchLabel/
+  );
+  assert.match(
+    developerSource,
     /settingsService\.setTuttiAgentSwitchEnabled\(enabled\)/
   );
   assert.match(source, /settingsState\.activeSection === "account"/);
   assert.match(source, /<WorkspaceAccountSettingsSection \/>/);
-});
-
-test("workspace settings serializes feature flag updates from the pending snapshot", () => {
-  assert.match(
-    source,
-    /const pendingFeatureFlags =\s*desktopPreferencesState\.changingFeatureFlags \?\?\s*desktopPreferencesState\.featureFlags/
-  );
-  assert.match(
-    source,
-    /onLabEnabledChange[\s\S]*changeFeatureFlags\(\{\s*\.\.\.pendingFeatureFlags,\s*\[LAB_ENABLED_FLAG\]: enabled/
-  );
-  assert.match(
-    source,
-    /onReferenceProvenanceFilterEnabledChange[\s\S]*changeFeatureFlags\(\{\s*\.\.\.pendingFeatureFlags,\s*\[AGENT_REFERENCE_PROVENANCE_FILTER_FLAG\]: enabled/
-  );
-  assert.equal(
-    (source.match(/disabled=\{featureFlagsUpdating\}/g) ?? []).length,
-    2
-  );
 });
 
 test("workspace settings agent panel lists agent controls", () => {
@@ -379,44 +373,43 @@ test("workspace settings app source control lives in developer settings", () => 
   const appsSectionStart = source.indexOf(
     "function WorkspaceAppsSettingsSection"
   );
-  const developerSectionStart = source.indexOf(
+  const developerSectionStart = developerSource.indexOf(
     "function WorkspaceDeveloperSettingsSection"
   );
-  const controlStart = source.indexOf("function AppCatalogChannelControl");
+  const controlStart = developerSource.indexOf(
+    "function AppCatalogChannelControl"
+  );
 
   assert.ok(appsSectionStart >= 0);
-  assert.ok(developerSectionStart > appsSectionStart);
+  assert.ok(developerSectionStart >= 0);
   assert.ok(controlStart > developerSectionStart);
-  assert.doesNotMatch(
-    source.slice(appsSectionStart, developerSectionStart),
-    /appCatalogChannel/
-  );
+  assert.doesNotMatch(source.slice(appsSectionStart), /appCatalogChannel/);
   assert.match(
-    source.slice(developerSectionStart, controlStart),
+    developerSource.slice(developerSectionStart, controlStart),
     /<AppCatalogChannelControl/
   );
 });
 
 test("workspace settings release channel control lives in developer settings", () => {
-  const developerSectionStart = source.indexOf(
+  const developerSectionStart = developerSource.indexOf(
     "function WorkspaceDeveloperSettingsSection"
   );
-  const controlStart = source.indexOf("function ReleaseChannelControl");
-  const agentSectionStart = source.indexOf(
-    "function WorkspaceAgentSettingsSection"
+  const controlStart = developerSource.indexOf(
+    "function ReleaseChannelControl"
   );
   const generalSectionStart = source.indexOf(
     "function WorkspaceGeneralSettingsSection"
   );
   const generalSection = source.slice(generalSectionStart, source.length);
-  const developerSection = source.slice(developerSectionStart, controlStart);
 
   assert.ok(generalSectionStart >= 0);
   assert.ok(developerSectionStart >= 0);
   assert.ok(controlStart > developerSectionStart);
-  assert.ok(agentSectionStart > controlStart);
   assert.doesNotMatch(generalSection, /releaseChannelLabel/);
-  assert.match(developerSection, /<ReleaseChannelControl/);
+  assert.match(
+    developerSource.slice(developerSectionStart, controlStart),
+    /<ReleaseChannelControl/
+  );
 });
 
 test("workspace managed provider API key is masked until toggled visible", () => {

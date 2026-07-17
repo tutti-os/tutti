@@ -65,6 +65,7 @@ type AgentExtensionSource struct {
 	ReleaseIndexURL  string
 	SigningKeyID     string
 	SigningPublicKey string
+	LocalPackageDir  string
 	Enabled          bool
 }
 
@@ -165,20 +166,20 @@ func ResolveAppVersion() string {
 
 func ResolveAgentExtensionSources() []AgentExtensionSource {
 	result := make([]AgentExtensionSource, 0, len(generatedDefaults.AgentExtensions.Sources))
+	development := resolveTuttiEnv() == "development"
 	for _, source := range generatedDefaults.AgentExtensions.Sources {
-		enabled := source.Enabled
-		envName := "TUTTI_AGENT_EXTENSION_" + strings.ToUpper(strings.ReplaceAll(source.Key, "-", "_")) + "_ENABLED"
-		if value := strings.TrimSpace(os.Getenv(envName)); value != "" {
-			if parsed, err := strconv.ParseBool(value); err == nil {
-				enabled = parsed
-			}
+		envPrefix := "TUTTI_AGENT_EXTENSION_" + strings.ToUpper(strings.ReplaceAll(source.Key, "-", "_"))
+		localPackageDir := ""
+		if development {
+			localPackageDir = strings.TrimSpace(os.Getenv(envPrefix + "_PACKAGE_DIR"))
 		}
 		result = append(result, AgentExtensionSource{
 			Key:              source.Key,
 			ReleaseIndexURL:  source.ReleaseIndexURL,
 			SigningKeyID:     source.SigningKeyID,
 			SigningPublicKey: source.SigningPublicKey,
-			Enabled:          enabled,
+			LocalPackageDir:  localPackageDir,
+			Enabled:          source.Enabled,
 		})
 	}
 	return result

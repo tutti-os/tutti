@@ -31,6 +31,43 @@ export const enAgentGui = {
   providerGatePendingInstall: "Connecting…",
   providerGatePendingLogin: "Opening sign in…",
   providerGatePendingRefresh: "Checking…",
+  targetSetupTitle: "Set up {{provider}}",
+  targetSetupDescription:
+    "Use a compatible local runtime, or let Tutti install the pinned runtime.",
+  targetSetupAuthRequired:
+    "Runtime is installed and responds over ACP, but authentication is required.",
+  targetSetupReady:
+    "Runtime detected. You can check it again or sign in again.",
+  targetSetupOpen: "Open setup",
+  targetSetupRemaining: "Complete the remaining steps to use {{provider}}.",
+  targetSetupComplete: "{{provider}} is ready.",
+  targetSetupLoggedInAccount: "Signed-in account",
+  targetSetupStage: {
+    detect: "Detect runtime",
+    install: "Install runtime",
+    login: "Sign in"
+  },
+  targetSetupChecking: "Checking local and Tutti-managed runtimes…",
+  targetSetupInstall: "Install runtime",
+  targetSetupStarting: "Starting installation…",
+  targetSetupAuthMethod: "Sign-in method",
+  targetSetupAuthenticate: "Continue to sign in",
+  targetSetupReauthenticate: "Sign in again",
+  targetSetupAuthStarting: "Opening sign in…",
+  targetSetupAuthFailed: "Authentication did not complete",
+  targetSetupNoAuthMethods:
+    "No supported sign-in method was reported. Check the runtime again.",
+  targetSetupRetry: "Check again",
+  targetSetupFailed: "Runtime setup failed",
+  targetSetupPhase: {
+    preparing: "Preparing installation…",
+    installing: "Installing pinned runtime…",
+    verifying: "Verifying runtime version…",
+    probing: "Checking ACP compatibility…",
+    activating: "Activating managed runtime…",
+    authenticating: "Waiting for authentication…",
+    complete: "Installation complete"
+  },
   collaboratorSessionReadOnlyPlaceholder:
     "This session belongs to another user and cannot be replied to directly",
   send: "Send",

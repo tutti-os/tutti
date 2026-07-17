@@ -9,8 +9,6 @@ import {
   useState
 } from "react";
 import { TooltipProvider } from "@tutti-os/ui-system";
-import { openAgentEnvPanel } from "../../shared/agentEnv/agentEnvPanelStore";
-import { resolveAgentGUIProviderCatalogIdentity } from "../../providerIdentityCatalog";
 import { openWorkspaceSettingsPanel } from "../../shared/workspaceSettingsPanel/workspaceSettingsPanelStore";
 import { SettingsLinedIcon } from "../../app/renderer/components/icons/SettingsLinedIcon";
 import {
@@ -38,6 +36,10 @@ import {
 } from "./view/AgentGUIDetailPane";
 import { AgentGUIRenameConversationDialog } from "./view/AgentGUIRenameConversationDialog";
 import { AgentGUIReferencePickerSurface } from "./view/AgentGUIReferencePickerSurface";
+import {
+  AgentTargetSetupRoot,
+  useAgentTargetSetupRoot
+} from "./view/AgentTargetSetupRoot";
 import { useAgentGUIWorkspaceReferencePicker } from "./view/useAgentGUIWorkspaceReferencePicker";
 import type { AgentGUINodeViewProps } from "./view/AgentGUINodeView.types";
 import { useAgentGUINodeEngagement } from "./engagement/useAgentGUINodeEngagement";
@@ -421,9 +423,6 @@ export function AgentGUINodeView({
     viewModel.rail.conversationFilter.kind === "all" ||
     viewModel.rail.selectedAgentTarget?.disabled !== true;
   const shouldShowProviderRailConfigMenu = shouldShowProviderRailConfigButton;
-  const environmentSetupVisible = !!resolveAgentGUIProviderCatalogIdentity(
-    effectiveRailConfigProvider ?? ""
-  );
   const effectiveProviderAuthAccountLabel = useMemo(() => {
     const provider =
       (effectiveRailConfigProvider ?? viewModel.shell.data.provider)?.trim() ??
@@ -449,11 +448,17 @@ export function AgentGUINodeView({
         viewModel.rail.selectedAgentTarget.targetId?.trim() ||
         null
       : null;
-  const openAgentEnvSetup = useCallback(() => {
-    // In the "All" filter there is no single rail provider; pass it through as
-    // null so the env panel host falls back to the default provider.
-    openAgentEnvPanel({ provider: effectiveRailConfigProvider, focus: null });
-  }, [effectiveRailConfigProvider]);
+  const {
+    controller: targetSetupController,
+    environmentSetupVisible,
+    homeTargetProjection,
+    openAgentEnvSetup
+  } = useAgentTargetSetupRoot({
+    activeConversationId: viewModel.rail.activeConversationId,
+    agentTargets: viewModel.rail.agentTargets,
+    environmentProvider: effectiveRailConfigProvider,
+    selectedAgentTarget: viewModel.rail.selectedAgentTarget
+  });
   const openAgentSettings = useCallback(() => {
     openWorkspaceSettingsPanel({ section: "agent" });
   }, []);
@@ -562,221 +567,230 @@ export function AgentGUINodeView({
 
   const content = (
     <AgentTargetPresentationProvider agentTargets={agentTargetPresentations}>
-      <div
-        ref={layoutElementRef}
-        className={styles.layout}
-        data-agent-gui-preview={previewMode ? "true" : undefined}
-        data-rail-resizing={isRailResizing ? "true" : undefined}
-        inert={previewMode ? true : undefined}
-        style={layoutStyle}
-      >
-        {showProviderRail ? (
+      <AgentTargetSetupRoot controller={targetSetupController}>
+        <div
+          ref={layoutElementRef}
+          className={styles.layout}
+          data-agent-gui-preview={previewMode ? "true" : undefined}
+          data-rail-resizing={isRailResizing ? "true" : undefined}
+          inert={previewMode ? true : undefined}
+          style={layoutStyle}
+        >
+          {showProviderRail ? (
+            <aside
+              className={`${styles.providerRailPanel} nodrag tsh-desktop-no-drag`}
+              aria-label={labels.providerSwitchLabel}
+              aria-hidden={conversationRailCollapsed ? "true" : undefined}
+              inert={conversationRailCollapsed ? true : undefined}
+            >
+              <AgentGUIProviderRail
+                activeConversation={viewModel.rail.activeConversation}
+                activeConversationId={viewModel.rail.activeConversationId}
+                conversationFilter={viewModel.rail.conversationFilter}
+                conversations={viewModel.rail.conversations}
+                labels={labels}
+                previewMode={previewMode}
+                selectedAgentTarget={viewModel.rail.selectedAgentTarget}
+                agentTargets={viewModel.rail.agentTargets}
+                agentTargetsLoading={viewModel.rail.agentTargetsLoading}
+                providerRailMode={viewModel.rail.providerRailMode}
+                renderProviderRailEmpty={renderProviderRailEmpty}
+                providerRailAllPresentation={providerRailAllPresentation}
+                comingSoonProviders={viewModel.rail.comingSoonProviders}
+                managerOpen={providerManagerOpen}
+                onManagerOpenChange={setProviderManagerOpen}
+                onSelectHomeComposerAgentTarget={
+                  actions.selectHomeComposerAgentTarget
+                }
+                onSelectConversationFilterTarget={
+                  actions.selectConversationFilterTarget
+                }
+                onUpdateConversationFilter={actions.updateConversationFilter}
+                onRequestComposerFocus={requestComposerFocus}
+              />
+              {renderSidebarFooter ? (
+                <div
+                  className={`${styles.providerRailFooter} ${styles.providerRailSidebarFooter} nodrag tsh-desktop-no-drag`}
+                  data-testid="agent-gui-sidebar-footer-slot"
+                >
+                  {renderSidebarFooter({
+                    currentUserId: viewModel.shell.currentUserId,
+                    activeConversation: viewModel.rail.activeConversation
+                  })}
+                </div>
+              ) : null}
+              {shouldShowProviderRailConfigButton ? (
+                <div
+                  className={`${styles.providerRailFooter} ${styles.providerRailConfigFooter} nodrag tsh-desktop-no-drag`}
+                  data-testid="agent-gui-config-footer"
+                >
+                  {shouldShowProviderRailConfigMenu ? (
+                    <AgentGUIConfigMenu
+                      environmentSetupVisible={environmentSetupVisible}
+                      labels={labels}
+                      previewMode={previewMode}
+                      providerScopedActionsVisible={
+                        viewModel.rail.conversationFilter.kind !== "all"
+                      }
+                      slashStatusLimits={effectiveRailSlashStatusLimits}
+                      slashStatusLimitsLoading={slashStatusLimitsLoading}
+                      slashStatusUsageCapturedAtUnixMs={
+                        slashStatusUsageCapturedAtUnixMs
+                      }
+                      slashStatusUsageDidFail={slashStatusUsageDidFail}
+                      slashStatusUsageAttempted={slashStatusUsageAttempted}
+                      provider={effectiveRailConfigProvider}
+                      providerAuthAccountLabel={
+                        effectiveProviderAuthAccountLabel
+                      }
+                      onAgentConfigMenuOpen={onAgentConfigMenuOpen}
+                      onAgentUsageRefresh={onAgentUsageRefresh}
+                      onOpenAgentManager={() => setProviderManagerOpen(true)}
+                      onOpenAgentEnvSetup={openAgentEnvSetup}
+                      onOpenAgentSettings={openAgentSettings}
+                    />
+                  ) : (
+                    <button
+                      type="button"
+                      aria-label={labels.agentSettingsMenu}
+                      className={`${styles.providerRailConfigButton} nodrag tsh-desktop-no-drag`}
+                      title={labels.agentSettingsMenu}
+                      disabled={previewMode}
+                      onClick={openAgentSettings}
+                    >
+                      <SettingsLinedIcon
+                        aria-hidden="true"
+                        width={18}
+                        height={18}
+                      />
+                    </button>
+                  )}
+                </div>
+              ) : null}
+            </aside>
+          ) : null}
           <aside
-            className={`${styles.providerRailPanel} nodrag tsh-desktop-no-drag`}
-            aria-label={labels.providerSwitchLabel}
+            id="agent-gui-conversation-rail"
+            className={`${styles.railPanel}${
+              conversationRailCollapsed ? ` ${styles.railPanelCollapsed}` : ""
+            }`}
             aria-hidden={conversationRailCollapsed ? "true" : undefined}
             inert={conversationRailCollapsed ? true : undefined}
           >
-            <AgentGUIProviderRail
-              activeConversation={viewModel.rail.activeConversation}
-              activeConversationId={viewModel.rail.activeConversationId}
-              conversationFilter={viewModel.rail.conversationFilter}
+            <AgentGUIConversationRailController
+              {...conversationRailStoreState}
               conversations={viewModel.rail.conversations}
-              labels={labels}
-              previewMode={previewMode}
-              selectedAgentTarget={viewModel.rail.selectedAgentTarget}
-              agentTargets={viewModel.rail.agentTargets}
-              agentTargetsLoading={viewModel.rail.agentTargetsLoading}
-              providerRailMode={viewModel.rail.providerRailMode}
-              renderProviderRailEmpty={renderProviderRailEmpty}
-              providerRailAllPresentation={providerRailAllPresentation}
-              comingSoonProviders={viewModel.rail.comingSoonProviders}
-              managerOpen={providerManagerOpen}
-              onManagerOpenChange={setProviderManagerOpen}
-              onSelectHomeComposerAgentTarget={
-                actions.selectHomeComposerAgentTarget
-              }
-              onSelectConversationFilterTarget={
-                actions.selectConversationFilterTarget
-              }
-              onUpdateConversationFilter={actions.updateConversationFilter}
-              onRequestComposerFocus={requestComposerFocus}
-            />
-            {renderSidebarFooter ? (
-              <div
-                className={`${styles.providerRailFooter} ${styles.providerRailSidebarFooter} nodrag tsh-desktop-no-drag`}
-                data-testid="agent-gui-sidebar-footer-slot"
-              >
-                {renderSidebarFooter({
-                  currentUserId: viewModel.shell.currentUserId,
-                  activeConversation: viewModel.rail.activeConversation
-                })}
-              </div>
-            ) : null}
-            {shouldShowProviderRailConfigButton ? (
-              <div
-                className={`${styles.providerRailFooter} ${styles.providerRailConfigFooter} nodrag tsh-desktop-no-drag`}
-                data-testid="agent-gui-config-footer"
-              >
-                {shouldShowProviderRailConfigMenu ? (
-                  <AgentGUIConfigMenu
-                    environmentSetupVisible={environmentSetupVisible}
+              userProjects={viewModel.rail.userProjects}
+              workspaceId={viewModel.shell.workspaceId}
+              footer={
+                accountMenuState?.user ? (
+                  <AgentGUIAccountRailMenu
+                    accountMenuState={accountMenuState}
                     labels={labels}
                     previewMode={previewMode}
-                    providerScopedActionsVisible={
-                      viewModel.rail.conversationFilter.kind !== "all"
-                    }
-                    slashStatusLimits={effectiveRailSlashStatusLimits}
-                    slashStatusLimitsLoading={slashStatusLimitsLoading}
-                    slashStatusUsageCapturedAtUnixMs={
-                      slashStatusUsageCapturedAtUnixMs
-                    }
-                    slashStatusUsageDidFail={slashStatusUsageDidFail}
-                    slashStatusUsageAttempted={slashStatusUsageAttempted}
-                    provider={effectiveRailConfigProvider}
-                    providerAuthAccountLabel={effectiveProviderAuthAccountLabel}
-                    onAgentConfigMenuOpen={onAgentConfigMenuOpen}
-                    onAgentUsageRefresh={onAgentUsageRefresh}
-                    onOpenAgentManager={() => setProviderManagerOpen(true)}
-                    onOpenAgentEnvSetup={openAgentEnvSetup}
-                    onOpenAgentSettings={openAgentSettings}
                   />
-                ) : (
-                  <button
-                    type="button"
-                    aria-label={labels.agentSettingsMenu}
-                    className={`${styles.providerRailConfigButton} nodrag tsh-desktop-no-drag`}
-                    title={labels.agentSettingsMenu}
-                    disabled={previewMode}
-                    onClick={openAgentSettings}
-                  >
-                    <SettingsLinedIcon
-                      aria-hidden="true"
-                      width={18}
-                      height={18}
-                    />
-                  </button>
-                )}
-              </div>
-            ) : null}
+                ) : null
+              }
+            />
           </aside>
-        ) : null}
-        <aside
-          id="agent-gui-conversation-rail"
-          className={`${styles.railPanel}${
-            conversationRailCollapsed ? ` ${styles.railPanelCollapsed}` : ""
-          }`}
-          aria-hidden={conversationRailCollapsed ? "true" : undefined}
-          inert={conversationRailCollapsed ? true : undefined}
-        >
-          <AgentGUIConversationRailController
-            {...conversationRailStoreState}
-            conversations={viewModel.rail.conversations}
-            userProjects={viewModel.rail.userProjects}
-            workspaceId={viewModel.shell.workspaceId}
-            footer={
-              accountMenuState?.user ? (
-                <AgentGUIAccountRailMenu
-                  accountMenuState={accountMenuState}
-                  labels={labels}
-                  previewMode={previewMode}
-                />
-              ) : null
+          <div
+            id="agent-gui-conversation-rail-resize"
+            className={
+              conversationRailCollapsed
+                ? `${styles.railResizeHandle} ${styles.railResizeHandleCollapsed} nodrag pointer-events-none opacity-0`
+                : `${styles.railResizeHandle} nodrag`
             }
+            role="separator"
+            aria-label={labels.conversationRailResizeAria}
+            aria-hidden={conversationRailCollapsed ? "true" : undefined}
+            aria-orientation="vertical"
+            aria-valuemin={conversationRailMinWidthPx}
+            aria-valuemax={conversationRailMaxWidthPx}
+            aria-valuenow={
+              conversationRailCollapsed
+                ? undefined
+                : visualConversationRailWidthPx
+            }
+            data-resizing={isRailResizing ? "true" : undefined}
+            data-testid="agent-gui-conversation-rail-resize-handle"
+            tabIndex={conversationRailCollapsed ? -1 : 0}
+            onBlur={() => endConversationRailResize()}
+            onKeyDown={handleConversationRailResizeKeyDown}
+            onPointerCancel={endConversationRailResize}
+            onPointerDown={handleConversationRailResizePointerDown}
+            onLostPointerCapture={endConversationRailResize}
+            onPointerMove={handleConversationRailResizePointerMove}
+            onPointerUp={endConversationRailResize}
           />
-        </aside>
-        <div
-          id="agent-gui-conversation-rail-resize"
-          className={
-            conversationRailCollapsed
-              ? `${styles.railResizeHandle} ${styles.railResizeHandleCollapsed} nodrag pointer-events-none opacity-0`
-              : `${styles.railResizeHandle} nodrag`
-          }
-          role="separator"
-          aria-label={labels.conversationRailResizeAria}
-          aria-hidden={conversationRailCollapsed ? "true" : undefined}
-          aria-orientation="vertical"
-          aria-valuemin={conversationRailMinWidthPx}
-          aria-valuemax={conversationRailMaxWidthPx}
-          aria-valuenow={
-            conversationRailCollapsed
-              ? undefined
-              : visualConversationRailWidthPx
-          }
-          data-resizing={isRailResizing ? "true" : undefined}
-          data-testid="agent-gui-conversation-rail-resize-handle"
-          tabIndex={conversationRailCollapsed ? -1 : 0}
-          onBlur={() => endConversationRailResize()}
-          onKeyDown={handleConversationRailResizeKeyDown}
-          onPointerCancel={endConversationRailResize}
-          onPointerDown={handleConversationRailResizePointerDown}
-          onLostPointerCapture={endConversationRailResize}
-          onPointerMove={handleConversationRailResizePointerMove}
-          onPointerUp={endConversationRailResize}
-        />
 
-        <section id="agent-gui-detail" className={styles.detailPanel}>
-          <AgentGUIDetailPane
-            viewModel={viewModel}
-            referenceProvenanceFilter={referenceProvenanceFilter}
-            composerEngagement={composerEngagement}
-            actions={actions}
-            labels={labels}
-            uiLanguage={uiLanguage}
-            hideDetailHeader={conversationRailCollapsed}
-            isActive={isActive}
-            workspaceReferencePickerOpen={workspaceReferencePickerOpen}
-            composerFocusRequestSequence={detailComposerFocusRequestSequence}
-            slashStatusLimits={slashStatusLimits}
-            slashStatusLimitsLoading={slashStatusLimitsLoading}
-            slashStatusLimitsUnavailable={slashStatusLimitsUnavailable}
-            onSlashStatusOpen={onSlashStatusOpen}
-            onLinkAction={onLinkAction}
-            onHandoffConversation={onHandoffConversation}
-            capabilityMenuState={capabilityMenuState}
-            onCapabilitySettingsRequest={onCapabilitySettingsRequest}
-            onAgentProviderLogin={onAgentProviderLogin}
-            onRequestWorkspaceReferences={requestWorkspaceReferences}
-            resolveDroppedFileReferences={resolveDroppedFileReferences}
-            selectProjectDirectory={selectProjectDirectory}
-            onRequestGitBranches={onRequestGitBranches}
-            onRequestComposerFocus={requestComposerFocus}
-            contextMentionProviders={contextMentionProviders}
-            workspaceAppIcons={effectiveWorkspaceAppIcons}
-            workspaceUserProjectI18n={workspaceUserProjectI18n}
-            renderProviderUnavailableState={renderProviderUnavailableState}
-            previewMode={previewMode}
-          />
-        </section>
-      </div>
-      <AgentGUIReferencePickerSurface
-        aggregator={referenceSourceAggregator}
-        copy={workspaceFileReferenceCopy ?? fallbackWorkspaceFileReferenceCopy}
-        fileAdapter={workspaceFileReferenceAdapter}
-        fileManagerCopy={workspaceFileManagerCopy}
-        initialPath={viewModel.composer.composerSettings.selectedProjectPath}
-        initialTarget={workspaceReferencePickerTarget}
-        isNodeSelectable={isWorkspaceReferencePickerNodeSelectable}
-        open={workspaceReferencePickerOpen}
-        provenanceFilter={referenceProvenanceFilter}
-        resolveEntryIconUrl={resolveWorkspaceReferenceEntryIconUrl}
-        workspaceId={viewModel.shell.workspaceId}
-        onClose={closeWorkspaceReferencePicker}
-        onConfirm={confirmWorkspaceReferencePicker}
-        onConfirmBundles={confirmWorkspaceReferenceBundles}
-      />
-      <AgentGUIRenameConversationDialog
-        conversation={renameConversationTarget}
-        open={renameConversationDialogOpen && renameConversationTarget !== null}
-        labels={labels}
-        onOpenChange={(open) => {
-          setRenameConversationDialogOpen(open);
-          if (!open) {
-            setRenameConversationTarget(null);
+          <section id="agent-gui-detail" className={styles.detailPanel}>
+            <AgentGUIDetailPane
+              viewModel={viewModel}
+              homeTargetProjection={homeTargetProjection}
+              referenceProvenanceFilter={referenceProvenanceFilter}
+              composerEngagement={composerEngagement}
+              actions={actions}
+              labels={labels}
+              uiLanguage={uiLanguage}
+              hideDetailHeader={conversationRailCollapsed}
+              isActive={isActive}
+              workspaceReferencePickerOpen={workspaceReferencePickerOpen}
+              composerFocusRequestSequence={detailComposerFocusRequestSequence}
+              slashStatusLimits={slashStatusLimits}
+              slashStatusLimitsLoading={slashStatusLimitsLoading}
+              slashStatusLimitsUnavailable={slashStatusLimitsUnavailable}
+              onSlashStatusOpen={onSlashStatusOpen}
+              onLinkAction={onLinkAction}
+              onHandoffConversation={onHandoffConversation}
+              capabilityMenuState={capabilityMenuState}
+              onCapabilitySettingsRequest={onCapabilitySettingsRequest}
+              onAgentProviderLogin={onAgentProviderLogin}
+              onRequestWorkspaceReferences={requestWorkspaceReferences}
+              resolveDroppedFileReferences={resolveDroppedFileReferences}
+              selectProjectDirectory={selectProjectDirectory}
+              onRequestGitBranches={onRequestGitBranches}
+              onRequestComposerFocus={requestComposerFocus}
+              contextMentionProviders={contextMentionProviders}
+              workspaceAppIcons={effectiveWorkspaceAppIcons}
+              workspaceUserProjectI18n={workspaceUserProjectI18n}
+              renderProviderUnavailableState={renderProviderUnavailableState}
+              previewMode={previewMode}
+            />
+          </section>
+        </div>
+        <AgentGUIReferencePickerSurface
+          aggregator={referenceSourceAggregator}
+          copy={
+            workspaceFileReferenceCopy ?? fallbackWorkspaceFileReferenceCopy
           }
-        }}
-        onRename={actions.renameConversation}
-      />
+          fileAdapter={workspaceFileReferenceAdapter}
+          fileManagerCopy={workspaceFileManagerCopy}
+          initialPath={viewModel.composer.composerSettings.selectedProjectPath}
+          initialTarget={workspaceReferencePickerTarget}
+          isNodeSelectable={isWorkspaceReferencePickerNodeSelectable}
+          open={workspaceReferencePickerOpen}
+          provenanceFilter={referenceProvenanceFilter}
+          resolveEntryIconUrl={resolveWorkspaceReferenceEntryIconUrl}
+          workspaceId={viewModel.shell.workspaceId}
+          onClose={closeWorkspaceReferencePicker}
+          onConfirm={confirmWorkspaceReferencePicker}
+          onConfirmBundles={confirmWorkspaceReferenceBundles}
+        />
+        <AgentGUIRenameConversationDialog
+          conversation={renameConversationTarget}
+          open={
+            renameConversationDialogOpen && renameConversationTarget !== null
+          }
+          labels={labels}
+          onOpenChange={(open) => {
+            setRenameConversationDialogOpen(open);
+            if (!open) {
+              setRenameConversationTarget(null);
+            }
+          }}
+          onRename={actions.renameConversation}
+        />
+      </AgentTargetSetupRoot>
     </AgentTargetPresentationProvider>
   );
 

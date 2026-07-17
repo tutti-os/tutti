@@ -1,6 +1,11 @@
-import type { TuttidClient } from "@tutti-os/client-tuttid-ts";
 import type {
+  AgentTargetSetupSnapshot,
+  TuttidClient
+} from "@tutti-os/client-tuttid-ts";
+import type {
+  AgentHostAgentTargetSetupSnapshot,
   AgentHostInputApi,
+  AgentHostAgentTargetSetupWatch,
   AgentHostApplyWorkspaceGitPatchInput,
   AgentHostSelectFilesInput,
   AgentProviderProbeListInput,
@@ -15,6 +20,7 @@ import type {
   DesktopRuntimeApi
 } from "@preload/types";
 import { pathFromFileReadPayload } from "./internal/desktopAgentHostProjection.ts";
+import { createDesktopAgentTargetSetupWatch } from "./internal/desktopAgentTargetSetupWatch.ts";
 import {
   DesktopWorkspaceUserProjectService,
   type IWorkspaceUserProjectService
@@ -45,6 +51,53 @@ interface AgentHostUserProjectCompat {
   updatedAtUnixMs?: number;
 }
 
+// workspaceId and action timestamps remain daemon transport/audit metadata;
+// Agent GUI Host API intentionally does not expose them.
+export function projectDesktopAgentTargetSetupSnapshot(
+  snapshot: AgentTargetSetupSnapshot
+): AgentHostAgentTargetSetupSnapshot {
+  return {
+    agentTargetId: snapshot.agentTargetId,
+    status: snapshot.status,
+    runtimeSource: snapshot.runtimeSource,
+    runtimeVersion: snapshot.runtimeVersion,
+    reason: snapshot.reason,
+    authMethods: snapshot.authMethods.map((method) => ({
+      id: method.id,
+      name: method.name,
+      description: method.description ?? null
+    })),
+    account: snapshot.account
+      ? {
+          id: snapshot.account.id,
+          displayName: snapshot.account.displayName,
+          authMethodId: snapshot.account.authMethodId,
+          organization: snapshot.account.organization ?? null
+        }
+      : null,
+    plan: snapshot.plan
+      ? {
+          packageName: snapshot.plan.packageName,
+          packageVersion: snapshot.plan.packageVersion,
+          runner: snapshot.plan.runner,
+          planDigest: snapshot.plan.planDigest,
+          installRoot: snapshot.plan.installRoot
+        }
+      : null,
+    action: snapshot.action
+      ? {
+          actionId: snapshot.action.actionId,
+          clientActionId: snapshot.action.clientActionId,
+          kind: snapshot.action.kind,
+          status: snapshot.action.status,
+          phase: snapshot.action.phase,
+          errorCode: snapshot.action.errorCode ?? null,
+          errorMessage: snapshot.action.errorMessage ?? null
+        }
+      : null
+  };
+}
+
 export function createDesktopAgentHostApi({
   hostFilesApi,
   tuttidClient,
@@ -63,6 +116,44 @@ export function createDesktopAgentHostApi({
       platformApi,
       workspaceId
     });
+  const agentTargetSetupWatches = new Map<
+    string,
+    AgentHostAgentTargetSetupWatch
+  >();
+  const getAgentTargetSetup = async (payload: { agentTargetId: string }) =>
+    projectDesktopAgentTargetSetupSnapshot(
+      await tuttidClient.getAgentTargetSetup(workspaceId, payload.agentTargetId)
+    );
+  const installAgentTargetRuntime = async (payload: {
+    agentTargetId: string;
+    planDigest: string;
+    clientActionId: string;
+  }) =>
+    projectDesktopAgentTargetSetupSnapshot(
+      await tuttidClient.installAgentTargetRuntime(
+        workspaceId,
+        payload.agentTargetId,
+        {
+          planDigest: payload.planDigest,
+          clientActionId: payload.clientActionId
+        }
+      )
+    );
+  const authenticateAgentTargetRuntime = async (payload: {
+    agentTargetId: string;
+    methodId: string;
+    clientActionId: string;
+  }) =>
+    projectDesktopAgentTargetSetupSnapshot(
+      await tuttidClient.authenticateAgentTargetRuntime(
+        workspaceId,
+        payload.agentTargetId,
+        {
+          methodId: payload.methodId,
+          clientActionId: payload.clientActionId
+        }
+      )
+    );
   const api = {
     meta: {
       allowWhatsNewInTests: false,
@@ -109,6 +200,31 @@ export function createDesktopAgentHostApi({
     },
     account: {
       batchGetUserInfo: () => Promise.resolve({ users: [] })
+    },
+    agentTargetSetup: {
+      watch: (payload: { agentTargetId: string }) => {
+        const agentTargetId = payload.agentTargetId.trim();
+        const existing = agentTargetSetupWatches.get(agentTargetId);
+        if (existing) return existing;
+        const watch = createDesktopAgentTargetSetupWatch({
+          agentTargetId,
+          get: () => getAgentTargetSetup({ agentTargetId }),
+          install: ({ planDigest, clientActionId }) =>
+            installAgentTargetRuntime({
+              agentTargetId,
+              planDigest,
+              clientActionId
+            }),
+          authenticate: ({ methodId, clientActionId }) =>
+            authenticateAgentTargetRuntime({
+              agentTargetId,
+              methodId,
+              clientActionId
+            })
+        });
+        agentTargetSetupWatches.set(agentTargetId, watch);
+        return watch;
+      }
     },
     workspaceAgentProbes: {
       list: (payload: AgentProviderProbeListInput) =>

@@ -1276,6 +1276,84 @@ invalid_grant`. Search `tuttid.log` for
   [composer_options.go](../../../services/tuttid/service/agent/composer_options.go)
   [AgentGUINodeView.tsx](../../../packages/agent/gui/agent-gui/agentGuiNode/AgentGUINodeView.tsx)
 
+### Extension login returns to the login button without an error
+
+- Symptom:
+  Target setup opens the browser and waits for authentication, then silently
+  returns to `auth_required`. The runtime detection row may appear to restart
+  during each progress poll, and a pending `Ready` row can look like an
+  incorrect success state while login is still running.
+- Quick checks:
+  Inspect the setup snapshot's durable `action.status`, `errorCode`, and
+  `errorMessage`, then correlate its timestamp with the ACP `authenticate`
+  request in the daemon log. A successful browser callback does not prove that
+  the runtime accepted the account; the ACP response remains authoritative.
+- Root cause:
+  Setup polling reused the foreground refresh state, so every background
+  request set the whole panel to loading. Explicit ACP authentication failures
+  were also normalized into a successful `auth_required` probe result, losing
+  the provider error before the durable action was written. AgentGUI then
+  rendered errors only for top-level setup failure, not a failed authenticate
+  action. The terminal `Ready` row could never become successful because the
+  setup dialog closes as soon as the authoritative snapshot becomes ready.
+- Fix:
+  Keep background polling non-disruptive, preserve errors from explicit ACP
+  `authenticate` calls, and show failed/interrupted action details in both the
+  existing host toast and the setup dialog while keeping retry available. Fire
+  the toast only when the current action moves from running to failed so polling
+  cannot repeat it and restoring an old failure cannot replay it. Do not render
+  a terminal readiness row that only exists while setup is non-ready.
+- Validation:
+  Cover background polling without detection loading, an ACP authenticate
+  rejection retaining provider text through the durable setup action, one toast
+  per current-action failure, the persistent GUI failure presentation, and
+  absence of the misleading pending readiness row.
+  Run Agent daemon, setup service, AgentGUI, desktop watcher, i18n, typecheck,
+  and desktop build checks.
+- References:
+  [standard_acp_setup.go](../../../packages/agent/daemon/runtime/standard_acp_setup.go)
+  [setup.go](../../../services/tuttid/service/agentextension/setup.go)
+  [AgentTargetSetupGate.tsx](../../../packages/agent/gui/agent-gui/agentGuiNode/view/AgentTargetSetupGate.tsx)
+  [agentTargetSetupNotificationController.ts](../../../packages/agent/gui/shared/agentEnv/agentTargetSetupNotificationController.ts)
+
+### Vertex setup reports ready but the first prompt cannot load credentials
+
+- Symptom:
+  Selecting Gemini `vertex-ai` completes Target setup and creates a session,
+  but the first prompt fails with `Could not load the default credentials` or
+  reports missing `GOOGLE_CLOUD_PROJECT`, `GOOGLE_CLOUD_LOCATION`, or an API
+  key. The empty-home setup gate is gone, leaving no obvious way to change the
+  login method.
+- Quick checks:
+  Correlate the durable authenticate action with ACP traffic. If
+  `authenticate` returns an empty result and `session/new` succeeds, but the
+  later formal `session/prompt` returns the credential error, setup observed a
+  runtime false positive rather than losing the selected method.
+- Root cause:
+  Gemini can defer Vertex ADC and project/location validation until a real
+  prompt. ACP exposes no credential-validation request stronger than the
+  runtime's own `authenticate` plus `session/new`, so setup cannot prove request
+  usability without sending user-visible work. Extension Target setup was also
+  mounted only in empty-home state, unlike the persistent built-in provider
+  environment entry.
+- Fix:
+  Classify the formal prompt's credential error as an authentication failure
+  and feed it into Target setup detection. Override a later otherwise-ready ACP
+  probe to `auth_required`. Expose the same Target setup dialog from the
+  selected provider's config menu in both ready and non-ready states, permit
+  explicit re-authentication from ready, and reuse one Target watch across the
+  two UI hosts.
+- Validation:
+  Cover the real Vertex ADC error text, auth invalidation overriding a ready
+  probe, re-authentication clearing invalidation, ready-state auth method
+  selection, and one cached desktop watch per Target. Do not add a hidden
+  synthetic prompt to setup.
+- References:
+  [agent_run_outcome_reporter.go](../../../services/tuttid/agent_run_outcome_reporter.go)
+  [setup.go](../../../services/tuttid/service/agentextension/setup.go)
+  [AgentGUINodeView.tsx](../../../packages/agent/gui/agent-gui/agentGuiNode/AgentGUINodeView.tsx)
+  [AgentTargetSetupGate.tsx](../../../packages/agent/gui/agent-gui/agentGuiNode/view/AgentTargetSetupGate.tsx)
+
 ### Extension messages appear sent but show no running or failure state
 
 - Symptom:

@@ -283,6 +283,13 @@ func validateInstalledProfiles(root string, manifest Manifest) error {
 			return fmt.Errorf("installed extension profile %s must use %s", file, schema)
 		}
 	}
+	var discovery DiscoveryProfile
+	if err := readJSON(filepath.Join(root, filepath.FromSlash(manifest.Profiles.Discovery)), &discovery); err != nil {
+		return err
+	}
+	if err := validateDiscoveryProfile(discovery); err != nil {
+		return err
+	}
 	installation := Installation{PackageDir: root, Manifest: manifest}
 	if _, _, err := loadComposerModes(installation); err != nil {
 		return err

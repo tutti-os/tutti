@@ -15,6 +15,7 @@
     "./agent-message-center": "./agent-message-center/index.ts",
     "./agent-conversation": "./agent-conversation/index.ts",
     "./agent-env": "./shared/agentEnv/index.ts",
+    "./agent-env-ui": "./shared/agentEnv/ui.ts",
     "./workspace-settings-panel": "./shared/workspaceSettingsPanel/workspaceSettingsPanelStore.ts",
     "./context-mention-palette": "./context-mention-palette/index.ts",
     "./context-mention-provider": "./agent-gui/agentGuiNode/agentContextMentionProvider.ts",
@@ -149,6 +150,10 @@
         "types": "./dist/agent-env/index.d.ts",
         "import": "./dist/agent-env/index.js"
       },
+      "./agent-env-ui": {
+        "types": "./dist/agent-env/ui.d.ts",
+        "import": "./dist/agent-env/ui.js"
+      },
       "./context-mention-palette": {
         "types": "./dist/context-mention-palette/index.d.ts",
         "import": "./dist/context-mention-palette/index.js"
@@ -244,6 +249,9 @@
         ],
         "agent-env": [
           "./dist/agent-env/index.d.ts"
+        ],
+        "agent-env-ui": [
+          "./dist/agent-env/ui.d.ts"
         ],
         "context-mention-palette": [
           "./dist/context-mention-palette/index.d.ts"

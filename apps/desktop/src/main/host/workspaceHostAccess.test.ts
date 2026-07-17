@@ -23,11 +23,20 @@ function createAdapters(
 function createTransportClient(
   overrides: Partial<TuttidClient> = {}
 ): TuttidClient {
-  return {
+  const client: TuttidClient = {
     async listAgentTargets() {
       throw new Error("not used");
     },
     async setSystemAgentTargetEnabled() {
+      throw new Error("not used");
+    },
+    async getAgentTargetSetup() {
+      throw new Error("not used");
+    },
+    async installAgentTargetRuntime() {
+      throw new Error("not used");
+    },
+    async authenticateAgentTargetRuntime() {
       throw new Error("not used");
     },
     async startAccountLogin() {
@@ -441,9 +450,9 @@ function createTransportClient(
     async trackEvents() {},
     async useUserProject() {
       throw new Error("not used");
-    },
-    ...overrides
+    }
   };
+  return Object.assign(client, overrides);
 }
 
 test("workspace host access delegates workspace window handoff", async () => {

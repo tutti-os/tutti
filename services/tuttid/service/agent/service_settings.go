@@ -191,7 +191,7 @@ func (s *Service) updatePersistedSessionSettings(
 	}
 	return s.withProtocolV2TurnState(ctx, workspaceID, sessionFromPersisted(
 		updated,
-		persistedSessionCanResume(s.controller(), updated),
+		s.persistedSessionCanResume(ctx, updated),
 	))
 }
 

@@ -142,6 +142,7 @@ export type AgentHostWorkspaceApi = AgentHostRecord & {
 export interface AgentHostInputApi {
   account?: AgentHostAccountApi;
   agentSessions?: AgentHostAgentSessionsApi;
+  agentTargetSetup?: AgentHostAgentTargetSetupApi;
   clipboard: AgentHostClipboardApi;
   debug?: AgentHostDebugApi;
   filesystem: AgentHostFilesystemApi;
@@ -168,6 +169,88 @@ export type AgentHostWorkspaceAgentProbesApi = AgentHostRecord & {
   list: (
     input: AgentHostListWorkspaceAgentProbesInput
   ) => AgentHostAsyncResult<AgentHostWorkspaceAgentProbesResult>;
+};
+
+export interface AgentHostAgentTargetInstallPlan {
+  packageName: string;
+  packageVersion: string;
+  runner: "npm" | "pnpm" | "uv";
+  planDigest: string;
+  installRoot: string;
+}
+
+export interface AgentHostAgentTargetSetupAction {
+  actionId: string;
+  clientActionId: string;
+  kind: "install" | "authenticate";
+  status: "queued" | "running" | "succeeded" | "failed" | "interrupted";
+  phase:
+    | "preparing"
+    | "installing"
+    | "verifying"
+    | "probing"
+    | "activating"
+    | "authenticating"
+    | "complete";
+  errorCode: string | null;
+  errorMessage: string | null;
+}
+
+export interface AgentHostAgentTargetSetupSnapshot {
+  agentTargetId: string;
+  status:
+    | "ready"
+    | "auth_required"
+    | "not_installed"
+    | "installing"
+    | "authenticating"
+    | "failed";
+  runtimeSource: "local" | "managed" | null;
+  runtimeVersion: string | null;
+  reason: string | null;
+  authMethods: AgentHostAgentTargetAuthMethod[];
+  account: AgentHostAgentTargetAuthenticatedAccount | null;
+  plan: AgentHostAgentTargetInstallPlan | null;
+  action: AgentHostAgentTargetSetupAction | null;
+}
+
+export interface AgentHostAgentTargetAuthenticatedAccount {
+  id: string;
+  displayName: string;
+  authMethodId: string;
+  organization: string | null;
+}
+
+export interface AgentHostAgentTargetAuthMethod {
+  id: string;
+  name: string;
+  description?: string | null;
+}
+
+export interface AgentHostAgentTargetSetupState {
+  snapshot: AgentHostAgentTargetSetupSnapshot | null;
+  loading: boolean;
+  failed: boolean;
+}
+
+export interface AgentHostAgentTargetSetupWatch {
+  getSnapshot: () => AgentHostAgentTargetSetupState;
+  subscribe: (
+    listener: (state: AgentHostAgentTargetSetupState) => void
+  ) => AgentHostUnsubscribe;
+  install: (input: {
+    planDigest: string;
+    clientActionId: string;
+  }) => AgentHostAsyncResult<void>;
+  authenticate: (input: {
+    methodId: string;
+    clientActionId: string;
+  }) => AgentHostAsyncResult<void>;
+  refresh: () => AgentHostAsyncResult<void>;
+}
+
+export type AgentHostAgentTargetSetupApi = AgentHostRecord & {
+  watch: (input: { agentTargetId: string }) => AgentHostAgentTargetSetupWatch;
 };
 
 export type AgentProviderProbeListInput =
@@ -243,6 +326,7 @@ export type AgentHostAgentSessionsApi = AgentHostRecord & {
 
 export interface AgentHostRuntimeApi {
   account?: AgentHostAccountApi;
+  agentTargetSetup?: AgentHostAgentTargetSetupApi;
   clipboard: AgentHostClipboardApi;
   debug?: AgentHostDebugApi;
   filesystem: AgentHostFilesystemApi;
@@ -261,6 +345,7 @@ export function toAgentHostRuntimeApi(
 ): AgentHostRuntimeApi {
   return {
     account: hostApi.account,
+    agentTargetSetup: hostApi.agentTargetSetup,
     clipboard: hostApi.clipboard,
     debug: hostApi.debug,
     filesystem: hostApi.filesystem,

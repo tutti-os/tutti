@@ -1,6 +1,9 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
+  AGENT_EXTENSION_ACTIVATION_FLAGS,
+  AGENT_EXTENSION_CODEBUDDY_FLAG,
+  AGENT_EXTENSION_GEMINI_FLAG,
   AGENT_REFERENCE_PROVENANCE_FILTER_FLAG,
   isFeatureEnabled,
   labFeatureDefinitions,
@@ -9,6 +12,16 @@ import {
   withDesktopWorkspaceUiMode,
   WORKSPACE_STANDALONE_AGENT_MODE_FLAG
 } from "./catalog.ts";
+
+test("Agent Extension activation flags stay catalog-driven", () => {
+  assert.deepEqual(AGENT_EXTENSION_ACTIVATION_FLAGS, [
+    AGENT_EXTENSION_GEMINI_FLAG,
+    AGENT_EXTENSION_CODEBUDDY_FLAG
+  ]);
+  for (const flag of AGENT_EXTENSION_ACTIVATION_FLAGS) {
+    assert.equal(isFeatureEnabled({}, flag), false);
+  }
+});
 
 test("isFeatureEnabled falls back to catalog default when key absent", () => {
   assert.equal(isFeatureEnabled({}, LAB_ENABLED_FLAG), false);

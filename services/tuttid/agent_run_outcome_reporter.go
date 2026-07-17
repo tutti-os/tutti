@@ -105,6 +105,8 @@ func messageLooksLikeAuthFailure(status string, payload map[string]any) bool {
 		"not logged in",
 		"please run /login",
 		"invalid api key",
+		"could not load the default credentials",
+		"api key is missing or not configured",
 	} {
 		if strings.Contains(lower, marker) {
 			return true

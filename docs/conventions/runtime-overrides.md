@@ -92,38 +92,53 @@ Use the owner documents linked below for detailed behavior. This file exists to 
 
 ## Agent Runtime Diagnostics
 
-Agent Extension source feature gates use
-`TUTTI_AGENT_EXTENSION_<KEY>_ENABLED`. The configured Gemini source therefore
-uses `TUTTI_AGENT_EXTENSION_GEMINI_ENABLED`, and the configured CodeBuddy
-source uses `TUTTI_AGENT_EXTENSION_CODEBUDDY_ENABLED`. Boolean values accepted by Go's
-`strconv.ParseBool` override the generated default; invalid values leave the
-generated default unchanged. A disabled source never downloads or registers
-its Agent Target.
+Agent Extension source activation is not an environment override. Desktop
+Developer settings persist `agent.extension.<key>` in the generic feature flag
+map; `tuttid` reconciles the matching configured source after that preference
+changes. `TUTTI_AGENT_EXTENSION_<KEY>_ENABLED` is not read.
 
-| Variable                               | Owner document                                                                        | Purpose                                                                                          |
-| -------------------------------------- | ------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------ |
-| `TUTTI_AGENT_CONTEXT_CONFIG`           | [Local State Storage](./local-state-storage.md)                                       | Overrides the migrated agent context config path for tests and diagnostics.                      |
-| `TUTTI_AGENT_CWD`                      | This document                                                                         | Mirrors the prepared agent runtime working directory for diagnostics.                            |
-| `TUTTI_AGENT_SESSION_ID`               | This document                                                                         | Identifies the caller agent session for CLI invoke context and agent runtime logs.               |
-| `TUTTI_AGENT_ROUTING`                  | This document                                                                         | Marks provider subprocesses launched through the migrated agent routing path.                    |
-| `TUTTI_ACP_TOOL_DEBUG`                 | This document                                                                         | Enables verbose migrated ACP tool-call normalization diagnostics.                                |
-| `TUTTI_CLAUDE_SDK_SIDECAR_COMMAND`     | This document                                                                         | Overrides the command used by tuttid to launch the Claude SDK sidecar.                           |
-| `TUTTI_CLAUDE_SDK_SIDECAR_ENTRY_PATH`  | This document                                                                         | Internal packaged-desktop handoff pointing tuttid at the vendored Claude SDK sidecar entry.      |
-| `TUTTI_CLAUDE_SDK_SIDECAR_TEST_DRIVER` | This document                                                                         | Enables the deterministic Claude SDK sidecar test driver instead of the real SDK query loop.     |
-| `TUTTI_CLAUDE_AUTH_REFRESH_DEBUG`      | This document                                                                         | Explicitly enables sanitized Claude credential-refresh diagnostics; disabled by default.         |
-| `CLAUDE_CONFIG_DIR`                    | This document                                                                         | Selects Claude's native user configuration and credential directory; unset uses Claude defaults. |
-| `CLAUDE_CODE_EXECUTABLE`               | This document                                                                         | Selects the Claude executable passed to the Claude Agent SDK.                                    |
-| `ANTHROPIC_API_KEY`                    | This document                                                                         | Supplies Anthropic API-key authentication to Claude without modifying user config files.         |
-| `ANTHROPIC_AUTH_TOKEN`                 | This document                                                                         | Supplies Anthropic bearer-token authentication to Claude.                                        |
-| `ANTHROPIC_BASE_URL`                   | This document                                                                         | Selects a Claude-compatible Anthropic endpoint.                                                  |
-| `ANTHROPIC_API_BASE_URL`               | This document                                                                         | Preserves the alternate Anthropic endpoint variable supported by Claude tooling.                 |
-| `ANTHROPIC_MODEL`                      | This document                                                                         | Preserves Claude's native default-model override.                                                |
-| `ANTHROPIC_DEFAULT_OPUS_MODEL`         | This document                                                                         | Preserves Claude's native Opus alias override.                                                   |
-| `ANTHROPIC_DEFAULT_SONNET_MODEL`       | This document                                                                         | Preserves Claude's native Sonnet alias override.                                                 |
-| `ANTHROPIC_DEFAULT_HAIKU_MODEL`        | This document                                                                         | Preserves Claude's native Haiku alias override.                                                  |
-| `TUTTI_MOCK_AGENT_UNBOUND`             | This document                                                                         | Forces Codex unbound and Claude Code auth-required for onboarding diagnostics.                   |
-| `TUTTI_WORKSPACE_ID`                   | This document                                                                         | Supplies a workspace id to migrated agent context readers when no input id is provided.          |
-| `TUTTI_AGENT_NPM_REGISTRY`             | [Tutti Agent Readiness Bootstrap](../architecture/tutti-agent-readiness-bootstrap.md) | Pins managed agent npm installation to one registry with no fallback.                            |
+Local Agent Extension package testing uses
+`TUTTI_AGENT_EXTENSION_<KEY>_PACKAGE_DIR`. It is accepted only when
+`TUTTI_ENV` resolves to `development` and must point at an unpacked package
+directory containing
+`tutti.agent.json`. The daemon snapshots validated package bytes into
+development state instead of reading mutable repository files at runtime.
+The override selects package bytes but does not enable its source; use the
+matching Developer setting. Production ignores the variable and still requires
+the configured signed HTTPS release.
+
+Example:
+
+```sh
+TUTTI_AGENT_EXTENSION_CODEBUDDY_PACKAGE_DIR=/path/to/build/tutti-agent/package \
+  make dev-gui
+```
+
+| Variable                                  | Owner document                                                                        | Purpose                                                                                          |
+| ----------------------------------------- | ------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------ |
+| `TUTTI_AGENT_CONTEXT_CONFIG`              | [Local State Storage](./local-state-storage.md)                                       | Overrides the migrated agent context config path for tests and diagnostics.                      |
+| `TUTTI_AGENT_EXTENSION_<KEY>_PACKAGE_DIR` | [Agent Extensions](../architecture/agent-extensions.md)                               | Selects a validated local package snapshot in development; does not enable the source.           |
+| `TUTTI_AGENT_CWD`                         | This document                                                                         | Mirrors the prepared agent runtime working directory for diagnostics.                            |
+| `TUTTI_AGENT_SESSION_ID`                  | This document                                                                         | Identifies the caller agent session for CLI invoke context and agent runtime logs.               |
+| `TUTTI_AGENT_ROUTING`                     | This document                                                                         | Marks provider subprocesses launched through the migrated agent routing path.                    |
+| `TUTTI_ACP_TOOL_DEBUG`                    | This document                                                                         | Enables verbose migrated ACP tool-call normalization diagnostics.                                |
+| `TUTTI_CLAUDE_SDK_SIDECAR_COMMAND`        | This document                                                                         | Overrides the command used by tuttid to launch the Claude SDK sidecar.                           |
+| `TUTTI_CLAUDE_SDK_SIDECAR_ENTRY_PATH`     | This document                                                                         | Internal packaged-desktop handoff pointing tuttid at the vendored Claude SDK sidecar entry.      |
+| `TUTTI_CLAUDE_SDK_SIDECAR_TEST_DRIVER`    | This document                                                                         | Enables the deterministic Claude SDK sidecar test driver instead of the real SDK query loop.     |
+| `TUTTI_CLAUDE_AUTH_REFRESH_DEBUG`         | This document                                                                         | Explicitly enables sanitized Claude credential-refresh diagnostics; disabled by default.         |
+| `CLAUDE_CONFIG_DIR`                       | This document                                                                         | Selects Claude's native user configuration and credential directory; unset uses Claude defaults. |
+| `CLAUDE_CODE_EXECUTABLE`                  | This document                                                                         | Selects the Claude executable passed to the Claude Agent SDK.                                    |
+| `ANTHROPIC_API_KEY`                       | This document                                                                         | Supplies Anthropic API-key authentication to Claude without modifying user config files.         |
+| `ANTHROPIC_AUTH_TOKEN`                    | This document                                                                         | Supplies Anthropic bearer-token authentication to Claude.                                        |
+| `ANTHROPIC_BASE_URL`                      | This document                                                                         | Selects a Claude-compatible Anthropic endpoint.                                                  |
+| `ANTHROPIC_API_BASE_URL`                  | This document                                                                         | Preserves the alternate Anthropic endpoint variable supported by Claude tooling.                 |
+| `ANTHROPIC_MODEL`                         | This document                                                                         | Preserves Claude's native default-model override.                                                |
+| `ANTHROPIC_DEFAULT_OPUS_MODEL`            | This document                                                                         | Preserves Claude's native Opus alias override.                                                   |
+| `ANTHROPIC_DEFAULT_SONNET_MODEL`          | This document                                                                         | Preserves Claude's native Sonnet alias override.                                                 |
+| `ANTHROPIC_DEFAULT_HAIKU_MODEL`           | This document                                                                         | Preserves Claude's native Haiku alias override.                                                  |
+| `TUTTI_MOCK_AGENT_UNBOUND`                | This document                                                                         | Forces Codex unbound and Claude Code auth-required for onboarding diagnostics.                   |
+| `TUTTI_WORKSPACE_ID`                      | This document                                                                         | Supplies a workspace id to migrated agent context readers when no input id is provided.          |
+| `TUTTI_AGENT_NPM_REGISTRY`                | [Tutti Agent Readiness Bootstrap](../architecture/tutti-agent-readiness-bootstrap.md) | Pins managed agent npm installation to one registry with no fallback.                            |
 
 Claude Code always uses the SDK sidecar runtime. Provider availability checks
 the `claude` CLI plus the Claude SDK sidecar entry and Node runtime.

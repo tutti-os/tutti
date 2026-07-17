@@ -61,6 +61,6 @@ func (s *Service) UpdateTitle(ctx context.Context, workspaceID string, agentSess
 	}
 	return sessionFromPersisted(
 		persisted,
-		persistedSessionCanResume(s.controller(), persisted),
+		s.persistedSessionCanResume(ctx, persisted),
 	), nil
 }

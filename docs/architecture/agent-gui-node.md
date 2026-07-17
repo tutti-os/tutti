@@ -650,6 +650,30 @@ label the setup affordance as `Connect`, but the host action should still
 dispatch the provider's `login` operation when that is the daemon-reported
 action.
 
+Declarative Agent Extension setup is owned by the exact selected Target. One
+Target-scoped controller owns its host watch, snapshot, dialog state, pending
+action, auth selection, and failure notification; the empty-home gate and
+config menu consume that controller instead of opening parallel polls. Target
+changes reset transient UI state. On empty home, the visible-target projection
+resolves the effective selected Target once; composer UI and setup controller
+consume that same exact Target, including hidden-selected fallback. Desktop
+explicitly projects generated daemon setup snapshots into the minimal Host UI
+shape and drops workspace and action timestamp transport metadata. The Dialog
+remains mounted through controlled close/ready transitions so document locks
+are released correctly.
+
+A ready setup dialog renders the normalized signed-in account and an explicit
+re-authentication action. The auth-method selector appears only while
+authentication is required; re-authentication reuses the account's method when
+that method is still advertised by the runtime.
+
+Setup gates only the empty new-conversation surface. It never replaces active
+or historical conversations, never opens merely because Target selection
+changed, and never branches on provider name. The daemon-authored plan,
+install/auth lifecycle, persistence, trust checks, account projection, and ACP
+auth invalidation rules are defined once in
+[Agent Extensions](./agent-extensions.md#target-managed-runtime-setup).
+
 UI-local state may include draft text, selected panel, rail layout, open menus,
 scroll position, and temporary presentation focus. UI-local state must not own
 session lifecycle, turn lifecycle, queue delivery, or durable workflow status.
@@ -2653,12 +2677,20 @@ other desktop feature orchestration:
 
 - `@tutti-os/agent-gui` owns the pure setup flow and i18n-agnostic view model in
   `shared/agentEnv`.
+- The public `agent-env` subpath remains React-free so desktop Node tests and
+  orchestration can consume setup logic. Shared Dialog/step presentation is
+  exported separately through `agent-env-ui`.
 - Desktop owns `agentEnvWizardStore`, `agentEnvWizardController`, and
   `useAgentEnvWizard`; these subscribe to the provider-status service, dedupe
   per-open automatic actions, and coordinate anomaly reporting and progressive
   reveal.
 - `AgentEnvPanel` subscribes and renders. It must not duplicate readiness
   detection, installation, login, or reporting workflows in React effects.
+- Agent Target runtime setup failure notifications follow the same boundary: a
+  React-free notification controller detects the current action's
+  running-to-failed transition and emits one semantic event; the component only
+  localizes that event and forwards it to the host toast capability. Historical
+  failed actions initialize controller state without replaying a toast.
 
 The provider-status service remains the source of truth for installed,
 authenticated, network, and active-action state. Wizard-local state is

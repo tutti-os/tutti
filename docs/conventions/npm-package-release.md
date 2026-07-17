@@ -226,6 +226,7 @@ The stable package entrypoints are:
 @tutti-os/agent-gui
 @tutti-os/agent-gui/agent-conversation
 @tutti-os/agent-gui/agent-env
+@tutti-os/agent-gui/agent-env-ui
 @tutti-os/agent-gui/agent-message-center
 @tutti-os/agent-gui/context-mention-palette
 @tutti-os/agent-gui/i18n

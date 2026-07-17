@@ -826,6 +826,12 @@ export const en = {
         fileDefaultOpenersDescription:
           "Choose what opens first when a workspace file is activated by extension.",
         fileDefaultOpenersLabel: "Default file openers",
+        codebuddyAgentDescription:
+          "Show CodeBuddy Code across Tutti. Disabled by default while Agent Extensions are in preview.",
+        codebuddyAgentLabel: "Enable CodeBuddy Code Agent",
+        geminiAgentDescription:
+          "Show Gemini CLI across Tutti. Disabled by default while Agent Extensions are in preview.",
+        geminiAgentLabel: "Enable Gemini CLI Agent",
         labVisibilityDescription:
           "Shows experimental controls in a separate Settings tab.",
         labVisibilityLabel: "Show Lab tab",

@@ -253,7 +253,10 @@ export function mapAgentTargetPresentationsToAgents(
       iconUrl: target.iconUrl,
       ...(target.heroImageUrl ? { heroImageUrl: target.heroImageUrl } : {}),
       availability: target.availability,
-      provider: target.provider as AgentGUIProvider
+      provider: target.provider as AgentGUIProvider,
+      ...(target.launchRefType === "agent_extension"
+        ? { setupKind: "target_runtime" as const }
+        : {})
     }));
 }
 

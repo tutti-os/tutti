@@ -6,6 +6,11 @@ import type { DesktopThemeState } from "@shared/theme";
 import type { IDesktopPreferencesService } from "../../../desktop-preferences/services/desktopPreferencesService.interface.ts";
 import type { DesktopPreferencesReadableStoreState } from "../../../desktop-preferences/services/desktopPreferencesTypes.ts";
 import type { ReporterEventInput } from "../../../analytics/services/reporterService.interface.ts";
+import {
+  AGENT_EXTENSION_ACTIVATION_FLAGS,
+  AGENT_EXTENSION_GEMINI_FLAG,
+  LAB_ENABLED_FLAG
+} from "../../../../../../shared/featureFlags/catalog.ts";
 import type { DesktopWorkspaceSettingsClient } from "./adapters/desktopWorkspaceSettingsClient.ts";
 import { WorkspaceSettingsService } from "./workspaceSettingsService.ts";
 
@@ -968,6 +973,65 @@ test("WorkspaceSettingsService changes workspace UI mode without replacing other
     { mode: "agent", workspaceId: "workspace-1" }
   ]);
 });
+
+for (const flag of AGENT_EXTENSION_ACTIVATION_FLAGS) {
+  test(`WorkspaceSettingsService refreshes Agent Targets after changing ${flag}`, async () => {
+    assert.deepEqual(
+      await changeFeatureFlagsAndRecordEffects({ next: { [flag]: true } }),
+      ["save", "refresh"]
+    );
+  });
+}
+
+test("WorkspaceSettingsService does not refresh Agent Targets after changing an ordinary flag", async () => {
+  assert.deepEqual(
+    await changeFeatureFlagsAndRecordEffects({
+      next: { [LAB_ENABLED_FLAG]: true }
+    }),
+    ["save"]
+  );
+});
+
+test("WorkspaceSettingsService compares Agent Extension activation against pending flags", async () => {
+  assert.deepEqual(
+    await changeFeatureFlagsAndRecordEffects({
+      changing: { [AGENT_EXTENSION_GEMINI_FLAG]: true },
+      next: {
+        [AGENT_EXTENSION_GEMINI_FLAG]: true,
+        [LAB_ENABLED_FLAG]: true
+      }
+    }),
+    ["save"]
+  );
+});
+
+async function changeFeatureFlagsAndRecordEffects(input: {
+  changing?: Record<string, boolean>;
+  next: Record<string, boolean>;
+}): Promise<string[]> {
+  const effects: string[] = [];
+  const service = new WorkspaceSettingsService(
+    {
+      client: createWorkspaceSettingsClient({}),
+      onAgentTargetsChanged: async () => {
+        effects.push("refresh");
+      }
+    },
+    createDesktopPreferencesService({
+      onSetFeatureFlags: async (flags) => {
+        effects.push("save");
+        return flags;
+      },
+      state: createPreferencesState({
+        changingFeatureFlags: input.changing ?? null,
+        featureFlags: {}
+      })
+    })
+  );
+
+  await service.changeFeatureFlags(input.next);
+  return effects;
+}
 
 test("WorkspaceSettingsService refreshes App Center after changing catalog channel", async () => {
   const refreshedWorkspaceIDs: string[] = [];

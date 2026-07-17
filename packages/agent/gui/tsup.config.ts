@@ -14,6 +14,7 @@ export default defineConfig({
     "agent-message-center/index": "agent-message-center/index.ts",
     "agent-conversation/index": "agent-conversation/index.ts",
     "agent-env/index": "shared/agentEnv/index.ts",
+    "agent-env/ui": "shared/agentEnv/ui.ts",
     "context-mention-palette/index": "context-mention-palette/index.ts",
     "context-mention-provider":
       "agent-gui/agentGuiNode/agentContextMentionProvider.ts",

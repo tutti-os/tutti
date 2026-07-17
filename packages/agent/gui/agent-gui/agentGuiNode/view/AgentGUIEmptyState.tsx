@@ -44,6 +44,7 @@ import type {
 } from "../AgentGUINodeView";
 import type { ChromeLabels } from "./AgentGUIDetailHeader";
 import { AgentGUIEmptyHeroCarouselStage } from "./AgentGUIEmptyHeroCarouselStage";
+import { AgentTargetSetupGate } from "./AgentTargetSetupGate.tsx";
 import styles from "../AgentGUINode.styles";
 
 export interface AgentGUIProviderIconPresentation {
@@ -151,35 +152,39 @@ export const AgentGUIEmptyHomePane = memo(function AgentGUIEmptyHomePane({
       onProviderSelect={onProviderSelect}
       providerSelectLabel={labels.providerSwitchLabel}
     >
-      {providerReadinessGate ? (
-        <AgentGUIProviderReadinessGatePane
-          provider={provider}
-          gate={providerReadinessGate}
-          showAllProviders={showAllProviders}
-          emptyLabel={emptyLabel}
-          agentTargets={agentTargets}
-          avatarPresentations={avatarPresentations}
-          carouselMountedExternally={carouselMountedExternally}
-          onProviderSelect={onProviderSelect}
-          providerLabel={providerLabel}
-          providerSelectLabel={labels.providerSwitchLabel}
-          selectedAgentTarget={selectedAgentTarget}
-          labels={labels}
-        />
-      ) : (
-        <AgentGUIEmptyHeroPane
-          {...heroProps}
-          provider={provider}
-          emptyLabel={emptyLabel}
-          emptyProvider={providerLabel}
-          avatarPresentations={avatarPresentations}
-          carouselMountedExternally={carouselMountedExternally}
-          onProviderSelect={onProviderSelect}
-          agentTargets={agentTargets}
-          selectedAgentTarget={selectedAgentTarget}
-          providerSelectLabel={labels.providerSwitchLabel}
-        />
-      )}
+      <AgentTargetSetupGate
+        carouselMountedExternally={carouselMountedExternally}
+      >
+        {providerReadinessGate ? (
+          <AgentGUIProviderReadinessGatePane
+            provider={provider}
+            gate={providerReadinessGate}
+            showAllProviders={showAllProviders}
+            emptyLabel={emptyLabel}
+            agentTargets={agentTargets}
+            avatarPresentations={avatarPresentations}
+            carouselMountedExternally={carouselMountedExternally}
+            onProviderSelect={onProviderSelect}
+            providerLabel={providerLabel}
+            providerSelectLabel={labels.providerSwitchLabel}
+            selectedAgentTarget={selectedAgentTarget}
+            labels={labels}
+          />
+        ) : (
+          <AgentGUIEmptyHeroPane
+            {...heroProps}
+            provider={provider}
+            emptyLabel={emptyLabel}
+            emptyProvider={providerLabel}
+            avatarPresentations={avatarPresentations}
+            carouselMountedExternally={carouselMountedExternally}
+            onProviderSelect={onProviderSelect}
+            agentTargets={agentTargets}
+            selectedAgentTarget={selectedAgentTarget}
+            providerSelectLabel={labels.providerSwitchLabel}
+          />
+        )}
+      </AgentTargetSetupGate>
     </AgentGUIEmptyHeroCarouselStage>
   );
 });

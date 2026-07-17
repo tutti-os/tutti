@@ -11,9 +11,9 @@ import {
 import {
   stageRemediation,
   type AgentEnvWizardViewModel,
-  type CodexSetupStepStatus,
   type StageDetailToken
 } from "@tutti-os/agent-gui/agent-env";
+import { AgentSetupStepIcon } from "@tutti-os/agent-gui/agent-env-ui";
 import { useTranslation } from "@renderer/i18n";
 import type { AgentEnvWizardActions } from "./useAgentEnvWizard";
 import {
@@ -21,28 +21,6 @@ import {
   doneStageLabel,
   renderStageDetail
 } from "./agentEnvPanelText";
-
-function StepStatusIcon({
-  status
-}: {
-  status: CodexSetupStepStatus;
-}): JSX.Element {
-  if (status === "ok") {
-    return <SuccessFilledIcon className="size-4 text-[var(--tutti-purple)]" />;
-  }
-  if (status === "running") {
-    return <LoadingIcon className="size-4 animate-spin" />;
-  }
-  if (status === "error") {
-    return <WarningFilledIcon className="size-4 text-[var(--state-danger)]" />;
-  }
-  return (
-    <span
-      aria-hidden="true"
-      className="size-4 rounded-full border border-[var(--border-1)]"
-    />
-  );
-}
 
 function latestLogLine(log: string[]): string | null {
   for (let index = log.length - 1; index >= 0; index -= 1) {
@@ -151,7 +129,7 @@ export function AgentEnvSetupTrack({
                     }`}
                   />
                 ) : (
-                  <StepStatusIcon status={stage.status} />
+                  <AgentSetupStepIcon status={stage.status} />
                 )}
               </span>
               <span className="min-w-0 flex-1">

@@ -13,6 +13,9 @@ import type {
   AppReferenceSearchRequest,
   AppReferenceSearchResponse,
   AgentProviderStatusListResponse,
+  AgentTargetSetupSnapshot,
+  AuthenticateAgentTargetRuntimeRequest,
+  InstallAgentTargetRuntimeRequest,
   WorkspaceAgentTurnCancelResponse,
   ClearWorkspaceAgentSessionsResponse,
   GoalControlWorkspaceAgentSessionResponse,
@@ -154,6 +157,20 @@ export interface TuttidClient {
     agentTargetID: string,
     enabled: boolean
   ): Promise<AgentTarget>;
+  getAgentTargetSetup(
+    workspaceID: string,
+    agentTargetID: string
+  ): Promise<AgentTargetSetupSnapshot>;
+  installAgentTargetRuntime(
+    workspaceID: string,
+    agentTargetID: string,
+    request: InstallAgentTargetRuntimeRequest
+  ): Promise<AgentTargetSetupSnapshot>;
+  authenticateAgentTargetRuntime(
+    workspaceID: string,
+    agentTargetID: string,
+    request: AuthenticateAgentTargetRuntimeRequest
+  ): Promise<AgentTargetSetupSnapshot>;
   startAccountLogin(): Promise<AccountLoginStartResponse>;
   getAccountLoginStatus(attemptID: string): Promise<AccountLoginStatusResponse>;
   getAccountUserInfo(): Promise<AccountUserInfo | null>;

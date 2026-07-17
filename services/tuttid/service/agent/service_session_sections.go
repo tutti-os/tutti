@@ -562,7 +562,7 @@ func (s *Service) sessionsFromActivity(ctx context.Context, workspaceID string, 
 		persisted := persistedSessionFromActivity(session)
 		result = append(result, sessionFromPersisted(
 			persisted,
-			persistedSessionCanResume(s.controller(), persisted),
+			s.persistedSessionCanResume(ctx, persisted),
 		))
 	}
 	return s.withProtocolV2TurnStates(ctx, workspaceID, result)

@@ -556,7 +556,7 @@ func (s *Service) get(ctx context.Context, workspaceID string, agentSessionID st
 			}
 			return s.withProtocolV2TurnState(ctx, workspaceID, sessionFromPersisted(
 				persisted,
-				persistedSessionCanResume(s.controller(), persisted),
+				s.persistedSessionCanResume(ctx, persisted),
 			))
 		}
 	}
@@ -655,7 +655,7 @@ func (s *Service) UpdatePin(ctx context.Context, workspaceID string, agentSessio
 	}
 	return sessionFromPersisted(
 		persisted,
-		persistedSessionCanResume(s.controller(), persisted),
+		s.persistedSessionCanResume(ctx, persisted),
 	), nil
 }
 

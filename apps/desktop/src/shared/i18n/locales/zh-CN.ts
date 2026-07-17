@@ -784,6 +784,12 @@ export const zhCN = {
         fileDefaultOpenersDescription:
           "按文件后缀选择工作区文件激活时优先使用的打开方式",
         fileDefaultOpenersLabel: "默认文件打开方式",
+        codebuddyAgentDescription:
+          "在 Tutti 中显示 CodeBuddy Code，Agent Extension 预览期间默认关闭",
+        codebuddyAgentLabel: "启用 CodeBuddy Code Agent",
+        geminiAgentDescription:
+          "在 Tutti 中显示 Gemini CLI，Agent Extension 预览期间默认关闭",
+        geminiAgentLabel: "启用 Gemini CLI Agent",
         labVisibilityDescription: "在独立设置页中显示实验性控制项",
         labVisibilityLabel: "显示实验室页",
         logMissing: "暂无文件",

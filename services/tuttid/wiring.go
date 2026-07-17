@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net"
@@ -15,6 +16,8 @@ import (
 	runtimeprep "github.com/tutti-os/tutti/packages/agent/runtimeprep"
 	workspaceissues "github.com/tutti-os/tutti/packages/workspace/issues"
 	tuttiapi "github.com/tutti-os/tutti/services/tuttid/api"
+	preferencesbiz "github.com/tutti-os/tutti/services/tuttid/biz/preferences"
+	agentextensiondata "github.com/tutti-os/tutti/services/tuttid/data/agentextension"
 	workspacedata "github.com/tutti-os/tutti/services/tuttid/data/workspace"
 	tuttiserver "github.com/tutti-os/tutti/services/tuttid/server"
 	accountservice "github.com/tutti-os/tutti/services/tuttid/service/account"
@@ -52,6 +55,7 @@ type tuttiWiring struct {
 	analyticsReporter   reporterservice.Reporter
 	browserService      *browsersvc.Service
 	computerService     *computersvc.Service
+	agentTargetSetup    *agentextensionservice.SetupService
 	agentRuntime        *agentdaemon.Runtime
 	providerAuthWatcher *agentservice.ProviderAuthWatcher
 }
@@ -156,6 +160,14 @@ func (w *tuttiWiring) buildWorkspaceModule(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
+	agentTargetSetup, ok := api.AgentTargetSetupService.(*agentextensionservice.SetupService)
+	if !ok {
+		agentRuntime.Close()
+		providerAuthWatcher.Close()
+		return errors.New("agent target setup service wiring is invalid")
+	}
+	w.agentTargetSetup = agentTargetSetup
+	w.agentRuntime = agentRuntime
 	w.providerAuthWatcher = providerAuthWatcher
 
 	analyticsConfig := tuttitypes.ResolveAnalyticsConfig()
@@ -172,7 +184,6 @@ func (w *tuttiWiring) buildWorkspaceModule(ctx context.Context) error {
 	w.analyticsReporter = analyticsReporter
 	w.api = api
 	w.appCenterService = appCenterService
-	w.agentRuntime = agentRuntime
 	return nil
 }
 
@@ -234,10 +245,33 @@ func buildDaemonAPI(ctx context.Context, store workspacedata.CatalogStore, analy
 	agentTargets := agenttargetservice.Service{
 		Store: agentTargetStore,
 	}
+	agentRuntimeDir, err := tuttitypes.DefaultAgentRuntimeDir()
+	if err != nil {
+		return tuttiapi.DaemonAPI{}, nil, nil, nil, fmt.Errorf("resolve agent runtime directory: %w", err)
+	}
+	agentExtensionBinDir, err := tuttitypes.DefaultAgentExecutableDir()
+	if err != nil {
+		return tuttiapi.DaemonAPI{}, nil, nil, nil, fmt.Errorf("resolve agent extension executable directory: %w", err)
+	}
+	agentExtensionStateDir := tuttitypes.DefaultStateDir()
+	agentSetupDiscovery := agentextensiondata.NewFileSetupDiscoveryDirectory(agentExtensionStateDir)
 	agentExtensionManager := &agentextensionservice.Manager{
-		Sources:  tuttitypes.ResolveAgentExtensionSources(),
-		StateDir: tuttitypes.DefaultStateDir(),
-		Store:    agentTargetStore,
+		Sources:           tuttitypes.ResolveAgentExtensionSources(),
+		RuntimeInstallDir: agentRuntimeDir,
+		RuntimeBinDir:     agentExtensionBinDir,
+		Store:             agentTargetStore,
+		Installations:     agentextensiondata.NewFileInstallationStore(agentExtensionStateDir),
+		Discovery:         agentSetupDiscovery,
+		Preferences:       preferencesStore,
+	}
+	preferences.AfterPut = func(ctx context.Context, previous, current preferencesbiz.DesktopPreferences) {
+		for _, reconcileErr := range agentExtensionManager.ReconcileDesktopPreferencesChange(ctx, previous, current) {
+			payload, _ := json.Marshal(map[string]string{"error": reconcileErr.Error()})
+			slog.Warn("agent_extension.reconcile_failed", "payload", string(payload))
+		}
+	}
+	agentTargetInstallPlans := agentextensionservice.InstallPlanService{
+		Manager: agentExtensionManager, Workspaces: store, Targets: agentTargetStore,
 	}
 	agentTargets.AvailabilityResolver = agentExtensionManager
 	for _, reconcileErr := range agentExtensionManager.Reconcile(ctx) {
@@ -262,10 +296,11 @@ func buildDaemonAPI(ctx context.Context, store workspacedata.CatalogStore, analy
 	// probe (List side) — see agentRunOutcomeReporter.
 	runOutcomes := agentstatusservice.NewRunOutcomeStore()
 	agentStatusService := agentstatusservice.Service{
-		AnalyticsReporter: analyticsReporter,
-		ManagedRuntime:    managedRuntimeResolver,
-		RunOutcomes:       runOutcomes,
-		StatusCache:       agentstatusservice.NewProviderStatusCache(),
+		AnalyticsReporter:    analyticsReporter,
+		ManagedRuntime:       managedRuntimeResolver,
+		ClaudeCodeRuntimeDir: filepath.Join(agentRuntimeDir, "claude-code"),
+		RunOutcomes:          runOutcomes,
+		StatusCache:          agentstatusservice.NewProviderStatusCache(),
 	}
 	accountService := accountservice.NewService("")
 	agentProcessTransport := agentdaemon.NewLocalProcessTransport()
@@ -273,6 +308,13 @@ func buildDaemonAPI(ctx context.Context, store workspacedata.CatalogStore, analy
 		ClientInfo:       agentdaemon.ClientInfo{Name: "tutti-desktop", Title: "Tutti", Version: "0.1.0"},
 		WorkspaceEnvName: "TUTTI_WORKSPACE_ID", OpenClawSessionKeyPrefix: "agent:main:tsh-",
 	}
+	agentTargetSetup := agentextensionservice.NewSetupService(context.Background())
+	agentTargetSetup.Plans = agentTargetInstallPlans
+	agentTargetSetup.Transport = agentProcessTransport
+	agentTargetSetup.Host = agentHostMetadata
+	agentTargetSetup.Actions = agentextensiondata.NewFileSetupActionStore(agentExtensionStateDir)
+	agentTargetSetup.Discovery = agentSetupDiscovery
+	agentTargetSetup.AuthInvalidation = runOutcomes
 	agentRuntime, err := agentdaemon.NewRuntime(agentdaemon.Config{
 		Reporter: agentRunOutcomeReporter{
 			inner: agentActivityProjection,
@@ -533,6 +575,7 @@ func buildDaemonAPI(ctx context.Context, store workspacedata.CatalogStore, analy
 		AccountService:            accountService,
 		UserProjectService:        userProjectService,
 		AgentTargetService:        agentTargets,
+		AgentTargetSetupService:   agentTargetSetup,
 		PreferencesService:        preferences,
 		ManagedCredentialsService: managedCredentials,
 		EventStreamService:        events,
@@ -562,6 +605,7 @@ func (w *tuttiWiring) Close() error {
 		return nil
 	}
 
+	var closeErr error
 	if w.appCenterService != nil && w.appCenterService.Runner != nil {
 		w.appCenterService.Runner.StopAll(context.Background())
 	}
@@ -577,12 +621,16 @@ func (w *tuttiWiring) Close() error {
 	if w.providerAuthWatcher != nil {
 		w.providerAuthWatcher.Close()
 	}
+	if w.agentTargetSetup != nil {
+		if err := w.agentTargetSetup.Close(); err != nil {
+			closeErr = err
+		}
+	}
 	if w.agentRuntime != nil {
 		w.agentRuntime.Close()
 	}
-	var closeErr error
 	if w.analyticsReporter != nil {
-		if err := w.analyticsReporter.Close(); err != nil {
+		if err := w.analyticsReporter.Close(); err != nil && closeErr == nil {
 			closeErr = err
 		}
 	}

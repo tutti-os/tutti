@@ -1526,6 +1526,7 @@ func TestServiceImportsExternalAgentSessionsByProject(t *testing.T) {
 
 	runtime := newFakeRuntime()
 	service := newIsolatedAgentService(runtime)
+	service.AgentTargetStore = fakeAgentTargetStore{targets: defaultTestAgentTargets()}
 	projection := NewActivityProjection(store)
 	service.SessionReader = projection
 	service.MessageReader = projection
@@ -6937,6 +6938,8 @@ func TestServiceListMessagesValidatesInputs(t *testing.T) {
 type fakeRuntime struct {
 	mu                     sync.Mutex
 	nextID                 int
+	canResumeCalls         []RuntimeResumeInput
+	canResumeHook          func(RuntimeResumeInput) bool
 	cancelCalls            []RuntimeCancelInput
 	cancelResult           RuntimeCancelResult
 	cancelResultSet        bool
@@ -7338,7 +7341,11 @@ func (f *fakeRuntime) Close(_ context.Context, input RuntimeCloseInput) error {
 	return nil
 }
 
-func (*fakeRuntime) CanResume(input RuntimeResumeInput) bool {
+func (f *fakeRuntime) CanResume(input RuntimeResumeInput) bool {
+	f.canResumeCalls = append(f.canResumeCalls, input)
+	if f.canResumeHook != nil {
+		return f.canResumeHook(input)
+	}
 	return strings.TrimSpace(input.Provider) != ""
 }
 

@@ -526,6 +526,132 @@ paths:
           $ref: "#/components/responses/PreferencesOperationError"
         "503":
           $ref: "#/components/responses/ServiceUnavailableError"
+  /v1/workspaces/{workspaceID}/agent-targets/{agentTargetID}/setup:
+    parameters:
+      - $ref: "#/components/parameters/WorkspaceID"
+      - name: agentTargetID
+        in: path
+        required: true
+        schema:
+          type: string
+          minLength: 1
+    get:
+      operationId: getAgentTargetSetup
+      tags:
+        - agent-target
+      summary: Resolve Agent Target setup state
+      description: >
+        Prefers a compatible local runtime. Otherwise returns a daemon-derived
+        installation plan and any durable install action for the fixed Target.
+        The managed runtime is installed under the user's stable ~/.local data
+        root and is reused across workspaces. Clients cannot submit runner args,
+        package identity, executable paths, or installation roots.
+      responses:
+        "200":
+          description: Target setup state
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentTargetSetupSnapshot"
+        "400":
+          $ref: "#/components/responses/InvalidRequestError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "404":
+          $ref: "#/components/responses/WorkspaceNotFoundError"
+        "405":
+          $ref: "#/components/responses/MethodNotAllowedError"
+        "502":
+          $ref: "#/components/responses/WorkspaceOperationError"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailableError"
+  /v1/workspaces/{workspaceID}/agent-targets/{agentTargetID}/setup/install:
+    parameters:
+      - $ref: "#/components/parameters/WorkspaceID"
+      - name: agentTargetID
+        in: path
+        required: true
+        schema:
+          type: string
+          minLength: 1
+    post:
+      operationId: installAgentTargetRuntime
+      tags:
+        - agent-target
+      summary: Start an Agent Target runtime installation
+      description: >
+        Recomputes the trusted installation plan, verifies its digest, then
+        starts or returns the durable idempotent action identified by
+        clientActionId. The daemon owns all executable arguments and paths.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/InstallAgentTargetRuntimeRequest"
+      responses:
+        "200":
+          description: Current Target setup state
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentTargetSetupSnapshot"
+        "400":
+          $ref: "#/components/responses/InvalidRequestError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "404":
+          $ref: "#/components/responses/WorkspaceNotFoundError"
+        "405":
+          $ref: "#/components/responses/MethodNotAllowedError"
+        "502":
+          $ref: "#/components/responses/WorkspaceOperationError"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailableError"
+  /v1/workspaces/{workspaceID}/agent-targets/{agentTargetID}/setup/authenticate:
+    parameters:
+      - $ref: "#/components/parameters/WorkspaceID"
+      - name: agentTargetID
+        in: path
+        required: true
+        schema:
+          type: string
+          minLength: 1
+    post:
+      operationId: authenticateAgentTargetRuntime
+      tags:
+        - agent-target
+      summary: Authenticate an Agent Target runtime
+      description: >
+        Validates methodId against auth methods returned by a fresh ACP
+        initialize, calls ACP authenticate, then requires session/new to
+        succeed before reporting ready. The durable action is idempotent by
+        clientActionId and never stores credentials.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AuthenticateAgentTargetRuntimeRequest"
+      responses:
+        "200":
+          description: Current Target setup state
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentTargetSetupSnapshot"
+        "400":
+          $ref: "#/components/responses/InvalidRequestError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "404":
+          $ref: "#/components/responses/WorkspaceNotFoundError"
+        "405":
+          $ref: "#/components/responses/MethodNotAllowedError"
+        "502":
+          $ref: "#/components/responses/WorkspaceOperationError"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailableError"
   /v1/workspaces:
     get:
       operationId: listWorkspaces
@@ -4767,6 +4893,10 @@ components:
         - system
         - dark
         - light
+      x-enum-varnames:
+        - DesktopThemeSourceSystem
+        - DesktopThemeSourceDark
+        - DesktopThemeSourceLight
     DesktopSleepPreventionMode:
       type: string
       enum:
@@ -5146,6 +5276,267 @@ components:
         enabled:
           type: boolean
           x-go-type: "*bool"
+    AgentTargetInstallPlan:
+      type: object
+      additionalProperties: false
+      required:
+        - agentTargetId
+        - extensionInstallationId
+        - agentKey
+        - extensionVersion
+        - runtimeKind
+        - platform
+        - runner
+        - packageName
+        - packageVersion
+        - installRoot
+        - installCommand
+        - executable
+        - launchArgs
+        - planDigest
+      properties:
+        agentTargetId:
+          type: string
+          minLength: 1
+        extensionInstallationId:
+          type: string
+          minLength: 1
+        agentKey:
+          type: string
+          minLength: 1
+        extensionVersion:
+          type: string
+          minLength: 1
+        runtimeKind:
+          type: string
+          minLength: 1
+        platform:
+          type: string
+          minLength: 1
+        runner:
+          type: string
+          enum:
+            - npm
+            - pnpm
+            - uv
+        packageName:
+          type: string
+          minLength: 1
+        packageVersion:
+          type: string
+          minLength: 1
+        installRoot:
+          type: string
+          minLength: 1
+        installCommand:
+          type: array
+          minItems: 1
+          items:
+            type: string
+            minLength: 1
+        executable:
+          type: string
+          minLength: 1
+        launchArgs:
+          type: array
+          items:
+            type: string
+        planDigest:
+          type: string
+          pattern: "^[a-f0-9]{64}$"
+    AgentTargetSetupStatus:
+      type: string
+      enum:
+        - ready
+        - auth_required
+        - not_installed
+        - installing
+        - authenticating
+        - failed
+    AgentTargetRuntimeSource:
+      type: string
+      enum:
+        - local
+        - managed
+      x-enum-varnames:
+        - AgentTargetRuntimeSourceLocal
+        - AgentTargetRuntimeSourceManaged
+    AgentTargetSetupActionKind:
+      type: string
+      enum:
+        - install
+        - authenticate
+      x-enum-varnames:
+        - AgentTargetSetupActionKindInstall
+        - AgentTargetSetupActionKindAuthenticate
+    AgentTargetSetupActionStatus:
+      type: string
+      enum:
+        - queued
+        - running
+        - succeeded
+        - failed
+        - interrupted
+    AgentTargetSetupActionPhase:
+      type: string
+      enum:
+        - preparing
+        - installing
+        - verifying
+        - probing
+        - activating
+        - authenticating
+        - complete
+    AgentTargetSetupAction:
+      type: object
+      additionalProperties: false
+      required:
+        - actionId
+        - clientActionId
+        - kind
+        - status
+        - phase
+        - createdAtUnixMs
+        - updatedAtUnixMs
+      properties:
+        actionId:
+          type: string
+          minLength: 1
+        clientActionId:
+          type: string
+          minLength: 1
+        kind:
+          $ref: "#/components/schemas/AgentTargetSetupActionKind"
+        status:
+          $ref: "#/components/schemas/AgentTargetSetupActionStatus"
+        phase:
+          $ref: "#/components/schemas/AgentTargetSetupActionPhase"
+        errorCode:
+          type: string
+          nullable: true
+        errorMessage:
+          type: string
+          nullable: true
+        createdAtUnixMs:
+          type: integer
+          format: int64
+        updatedAtUnixMs:
+          type: integer
+          format: int64
+    AgentTargetAuthenticatedAccount:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - displayName
+        - authMethodId
+      properties:
+        id:
+          type: string
+          minLength: 1
+        displayName:
+          type: string
+          minLength: 1
+        authMethodId:
+          type: string
+          minLength: 1
+        organization:
+          type: string
+          nullable: true
+    AgentTargetSetupSnapshot:
+      type: object
+      additionalProperties: false
+      required:
+        - workspaceId
+        - agentTargetId
+        - status
+        - runtimeSource
+        - runtimeVersion
+        - reason
+        - authMethods
+        - account
+        - plan
+        - action
+      properties:
+        workspaceId:
+          type: string
+          minLength: 1
+        agentTargetId:
+          type: string
+          minLength: 1
+        status:
+          $ref: "#/components/schemas/AgentTargetSetupStatus"
+        runtimeSource:
+          allOf:
+            - $ref: "#/components/schemas/AgentTargetRuntimeSource"
+          nullable: true
+        runtimeVersion:
+          type: string
+          nullable: true
+        reason:
+          type: string
+          nullable: true
+        authMethods:
+          type: array
+          items:
+            $ref: "#/components/schemas/AgentTargetAuthMethod"
+        account:
+          allOf:
+            - $ref: "#/components/schemas/AgentTargetAuthenticatedAccount"
+          nullable: true
+        plan:
+          allOf:
+            - $ref: "#/components/schemas/AgentTargetInstallPlan"
+          nullable: true
+        action:
+          allOf:
+            - $ref: "#/components/schemas/AgentTargetSetupAction"
+          nullable: true
+    AgentTargetAuthMethod:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - name
+      properties:
+        id:
+          type: string
+          minLength: 1
+        name:
+          type: string
+          minLength: 1
+        description:
+          type: string
+          nullable: true
+    InstallAgentTargetRuntimeRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - planDigest
+        - clientActionId
+      properties:
+        planDigest:
+          type: string
+          pattern: "^[a-f0-9]{64}$"
+        clientActionId:
+          type: string
+          minLength: 1
+          maxLength: 128
+    AuthenticateAgentTargetRuntimeRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - methodId
+        - clientActionId
+      properties:
+        methodId:
+          type: string
+          minLength: 1
+          maxLength: 128
+        clientActionId:
+          type: string
+          minLength: 1
+          maxLength: 128
     ListWorkspacesResponse:
       type: object
       additionalProperties: false

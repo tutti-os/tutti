@@ -75,7 +75,7 @@ func (s *Service) listFilteredSortedSessions(ctx context.Context, workspaceID st
 				}
 				sessionByID[strings.TrimSpace(session.ID)] = sessionFromPersisted(
 					session,
-					persistedSessionCanResume(s.controller(), session),
+					s.persistedSessionCanResume(ctx, session),
 				)
 			}
 		}

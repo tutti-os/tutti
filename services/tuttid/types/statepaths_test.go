@@ -38,6 +38,38 @@ func TestDefaultStateDirUsesProductionDirectory(t *testing.T) {
 	}
 }
 
+func TestDefaultAgentRuntimeDir(t *testing.T) {
+	homeDir := t.TempDir()
+	t.Setenv("HOME", homeDir)
+	t.Setenv("TUTTI_ENV", "development")
+	t.Setenv("TUTTI_STATE_DIR", t.TempDir())
+
+	got, err := DefaultAgentRuntimeDir()
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := filepath.Join(homeDir, ".local", "share", "tutti", "agent-runtimes")
+	if got != want {
+		t.Fatalf("DefaultAgentRuntimeDir() = %q, want %q", got, want)
+	}
+}
+
+func TestDefaultAgentExecutableDir(t *testing.T) {
+	homeDir := t.TempDir()
+	t.Setenv("HOME", homeDir)
+	t.Setenv("TUTTI_ENV", "development")
+	t.Setenv("TUTTI_STATE_DIR", t.TempDir())
+
+	got, err := DefaultAgentExecutableDir()
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := filepath.Join(homeDir, ".local", "bin")
+	if got != want {
+		t.Fatalf("DefaultAgentExecutableDir() = %q, want %q", got, want)
+	}
+}
+
 func TestTuttidDerivedPathsUseDevelopmentRoot(t *testing.T) {
 	homeDir := t.TempDir()
 	t.Setenv("HOME", homeDir)

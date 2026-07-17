@@ -91,6 +91,33 @@ func TestServiceGetReturnsStoredDesktopPreferences(t *testing.T) {
 	}
 }
 
+func TestServicePutNotifiesAfterPutWithPreviousAndCurrentPreferences(t *testing.T) {
+	store := &preferencesStoreStub{getResult: preferencesbiz.DesktopPreferences{
+		FeatureFlags: map[string]bool{"agent.extension.gemini": false},
+	}}
+	var previous, current preferencesbiz.DesktopPreferences
+	service := Service{
+		Store: store,
+		AfterPut: func(_ context.Context, before, after preferencesbiz.DesktopPreferences) {
+			previous = before
+			current = after
+		},
+	}
+
+	_, err := service.Put(context.Background(), PutInput{
+		FeatureFlags: map[string]bool{"agent.extension.gemini": true},
+	})
+	if err != nil {
+		t.Fatalf("Put() error = %v", err)
+	}
+	if previous.FeatureFlags["agent.extension.gemini"] {
+		t.Fatalf("previous feature flags = %#v", previous.FeatureFlags)
+	}
+	if !current.FeatureFlags["agent.extension.gemini"] {
+		t.Fatalf("current feature flags = %#v", current.FeatureFlags)
+	}
+}
+
 func TestServicePutTrimsDesktopPreferences(t *testing.T) {
 	t.Parallel()
 

@@ -116,6 +116,7 @@ export interface AgentGUIAgent {
   owner?: AgentGUIAgentOwner | null;
   availability: AgentGUIAgentAvailability;
   provider: AgentGUIProvider;
+  setupKind?: "target_runtime" | null;
 }
 
 export type AgentGUIAgentDirectoryStatus =

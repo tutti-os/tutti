@@ -138,7 +138,11 @@ func (s Service) EnsureClaudeCodeBinary(ctx context.Context) (ClaudeCodeBinarySt
 	}
 
 	stateRoot := s.claudeCodeStateRoot()
-	finalPath := filepath.Join(stateRoot, "versions", descriptor.ClaudeVersion, descriptor.BinaryName)
+	runtimeRoot, err := s.claudeCodeRuntimeRoot()
+	if err != nil {
+		return ClaudeCodeBinaryStatus{}, err
+	}
+	finalPath := filepath.Join(runtimeRoot, "versions", descriptor.ClaudeVersion, descriptor.BinaryName)
 	if claudeBinaryReady(finalPath, descriptor) {
 		if err := writeClaudeCodePointer(stateRoot, descriptor, finalPath); err != nil {
 			return ClaudeCodeBinaryStatus{}, err
@@ -185,7 +189,7 @@ func (s Service) EnsureClaudeCodeBinary(ctx context.Context) (ClaudeCodeBinarySt
 	if err := writeClaudeCodePointer(stateRoot, descriptor, finalPath); err != nil {
 		return ClaudeCodeBinaryStatus{}, err
 	}
-	cleanupClaudeCodeVersions(stateRoot, descriptor.ClaudeVersion)
+	cleanupClaudeCodeVersions(runtimeRoot, descriptor.ClaudeVersion)
 	return ClaudeCodeBinaryStatus{Path: finalPath, Version: descriptor.ClaudeVersion, Source: source}, nil
 }
 
@@ -439,6 +443,14 @@ func (s Service) claudeCodeStateRoot() string {
 		stateDir = tuttitypes.DefaultStateDir()
 	}
 	return filepath.Join(stateDir, filepath.FromSlash(claudeCodeStateRelDir))
+}
+
+func (s Service) claudeCodeRuntimeRoot() (string, error) {
+	root := strings.TrimSpace(s.ClaudeCodeRuntimeDir)
+	if root == "" {
+		return "", errors.New("claude code runtime directory is required")
+	}
+	return root, nil
 }
 
 func writeClaudeCodePointer(stateRoot string, descriptor claudeSDKRuntimeDescriptor, executable string) error {

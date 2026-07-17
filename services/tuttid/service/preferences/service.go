@@ -17,6 +17,7 @@ type DesktopPreferencesPublisher interface {
 type Service struct {
 	Store     workspacedata.PreferencesStore
 	Publisher DesktopPreferencesPublisher
+	AfterPut  func(context.Context, preferencesbiz.DesktopPreferences, preferencesbiz.DesktopPreferences)
 }
 
 type PutInput struct {
@@ -110,6 +111,9 @@ func (s Service) Put(ctx context.Context, input PutInput) (preferencesbiz.Deskto
 	})
 	if err != nil {
 		return preferencesbiz.DesktopPreferences{}, err
+	}
+	if s.AfterPut != nil {
+		s.AfterPut(ctx, stored, preferences)
 	}
 	if s.Publisher != nil {
 		_ = s.Publisher.PublishDesktopPreferencesUpdated(ctx, preferences)
