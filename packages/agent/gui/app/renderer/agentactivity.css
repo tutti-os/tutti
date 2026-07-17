@@ -4763,7 +4763,7 @@ aside.workspace-agents-status-panel
   --agent-gui-workbench-header-traffic-light-gap: 8px;
   --agent-gui-workbench-header-traffic-light-size: 12px;
   --agent-gui-workbench-header-title-max-width: calc(100% - 32px);
-  --agent-gui-workbench-header-text: var(--text-secondary);
+  --agent-gui-workbench-header-text: var(--text-primary);
   --agent-gui-workbench-header-muted: var(--text-secondary);
   --agent-gui-workbench-header-divider: color-mix(
     in srgb,
