@@ -132,6 +132,10 @@ export interface AgentGUIViewLabels {
   tuttiModePlanBanner: TuttiPlanReviewBannerLabels;
   tuttiModePlanSendAccept: string;
   tuttiModePlanSendRequestChanges: string;
+  /** Auto feedback for an empty send after the intensity diverged. */
+  tuttiModePlanReplanFeedback: (from: string, to: string) => string;
+  /** Appended to typed feedback when the intensity diverged. */
+  tuttiModePlanReplanFeedbackSuffix: (to: string) => string;
   tuttiModePlanLoadFailed: string;
   tuttiModePlanRetry: string;
   planModeDescription?: string;

@@ -1,9 +1,11 @@
-import { memo, useMemo } from "react";
+import { memo, useId, useMemo } from "react";
+import { Sparkles } from "lucide-react";
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
+  Switch,
   cn
 } from "@tutti-os/ui-system";
 import { Button } from "../../../app/renderer/components/ui/button";
@@ -317,6 +319,7 @@ export const AgentGUIEmptyHeroPane = memo(function AgentGUIEmptyHeroPane({
           />
         ) : null}
         <AgentComposer {...composerProps} />
+        <AgentGUIEmptyHeroTuttiToggle composerProps={composerProps} />
         <AgentHomeSuggestions
           categories={suggestions}
           onSelectSuggestion={onSelectSuggestion}
@@ -327,6 +330,71 @@ export const AgentGUIEmptyHeroPane = memo(function AgentGUIEmptyHeroPane({
     </div>
   );
 });
+
+/**
+ * Prominent Tutti mode entry on the new-conversation hero. It drives the same
+ * pre-session draft path as the /tutti slash command (the composer badge
+ * lights up in sync, and the first message carries the activation into the
+ * created session), so this is purely an additional, discoverable switch.
+ */
+export function AgentGUIEmptyHeroTuttiToggle({
+  composerProps
+}: {
+  composerProps: AgentComposerProps;
+}): React.JSX.Element | null {
+  const switchId = useId();
+  const onTuttiModeChange = composerProps.onTuttiModeChange;
+  if (!onTuttiModeChange) {
+    return null;
+  }
+  const active = composerProps.tuttiModeActive === true;
+  const updating = composerProps.tuttiModeUpdating === true;
+  const label = composerProps.labels.tuttiModeLabel;
+  const description = composerProps.labels.tuttiModeDescription;
+  return (
+    <label
+      className={cn(
+        "mx-auto flex w-full max-w-[560px] items-center gap-2.5 rounded-xl border px-3 py-2 transition-colors",
+        active
+          ? "border-[var(--tutti-purple)] bg-[color-mix(in_srgb,var(--tutti-purple)_8%,transparent)]"
+          : "border-[var(--line-2)] hover:border-[var(--tutti-purple)]",
+        updating ? "cursor-wait opacity-70" : "cursor-pointer"
+      )}
+      htmlFor={switchId}
+      title={description}
+      data-testid="agent-gui-hero-tutti-toggle"
+    >
+      <Sparkles
+        aria-hidden
+        className={cn(
+          "size-4 shrink-0",
+          active
+            ? "text-[var(--tutti-purple)]"
+            : "text-[var(--agent-gui-text-secondary)]"
+        )}
+      />
+      <span className="flex min-w-0 flex-1 flex-col text-left">
+        <span className="text-[13px] font-medium text-[var(--text-primary)]">
+          {label}
+        </span>
+        {description ? (
+          <span className="truncate text-[11px] text-[var(--agent-gui-text-tertiary)]">
+            {description}
+          </span>
+        ) : null}
+      </span>
+      <Switch
+        id={switchId}
+        size="sm"
+        checked={active}
+        disabled={updating}
+        aria-label={label}
+        data-testid="agent-gui-hero-tutti-toggle-switch"
+        onCheckedChange={(checked) => onTuttiModeChange(checked)}
+      />
+    </label>
+  );
+}
 
 interface AgentGUIProviderReadinessGatePaneProps {
   provider: AgentGUINodeViewModel["shell"]["data"]["provider"];

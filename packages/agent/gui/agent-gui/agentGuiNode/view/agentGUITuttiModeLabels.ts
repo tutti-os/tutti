@@ -9,6 +9,8 @@ type AgentGUITuttiModeLabels = Pick<
   | "tuttiModePlanLoadFailed"
   | "tuttiModePlanPanel"
   | "tuttiModePlanRetry"
+  | "tuttiModePlanReplanFeedback"
+  | "tuttiModePlanReplanFeedbackSuffix"
   | "tuttiModePlanSendAccept"
   | "tuttiModePlanSendRequestChanges"
   | "tuttiModeUpdateFailed"
@@ -45,12 +47,17 @@ export function agentGUITuttiModeLabels(
     tuttiModePlanBanner: {
       title: t("agentHost.agentGui.tuttiModePlan.taskReview"),
       hint: t("agentHost.agentGui.tuttiModePlan.reviewHint"),
+      hintReplan: t("agentHost.agentGui.tuttiModePlan.reviewHintReplan"),
       cancel: t("agentHost.agentGui.tuttiModePlan.cancel")
     },
     tuttiModePlanSendAccept: t("agentHost.agentGui.tuttiModePlan.sendAccept"),
     tuttiModePlanSendRequestChanges: t(
       "agentHost.agentGui.tuttiModePlan.sendRequestChanges"
     ),
+    tuttiModePlanReplanFeedback: (from, to) =>
+      t("agentHost.agentGui.tuttiModePlan.replanFeedback", { from, to }),
+    tuttiModePlanReplanFeedbackSuffix: (to) =>
+      t("agentHost.agentGui.tuttiModePlan.replanFeedbackSuffix", { to }),
     tuttiModePlanLoadFailed: t("agentHost.agentGui.tuttiModePlan.loadFailed"),
     tuttiModePlanRetry: t("agentHost.agentGui.tuttiModePlan.retry")
   };
