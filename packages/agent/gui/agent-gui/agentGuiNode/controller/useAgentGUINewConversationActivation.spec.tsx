@@ -1,9 +1,12 @@
 import { act, renderHook } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
+import type { AgentActivityComposerOptions } from "@tutti-os/agent-activity-core";
 import { createLocalAgentGUIAgentTarget } from "../../../agentTargets";
 import type { AgentActivityRuntime } from "../../../agentActivityRuntime";
 import type { AgentGUINodeData } from "../../../types";
 import type { useAgentGUIActivation } from "./useAgentGUIActivation";
+import type { UseAgentGUINewConversationActivationInput } from "./agentGuiNewConversationActivation.types";
+import { nodeDefaultDraftKey } from "./agentGuiController.composerHelpers";
 import { useAgentGUINewConversationActivation } from "./useAgentGUINewConversationActivation";
 
 describe("useAgentGUINewConversationActivation", () => {
@@ -21,6 +24,7 @@ describe("useAgentGUINewConversationActivation", () => {
       (input: {
         agentSessionId: string;
         initialTuttiModeActivation?: {
+          orchestrationIntensity?: number;
           source: "slash_command";
           status: "active";
         };
@@ -55,7 +59,7 @@ describe("useAgentGUINewConversationActivation", () => {
       getSnapshot: () => ({
         tuttiModeActivation: {
           draftsByKey: {
-            [tuttiModeDraftKey]: { active: true }
+            [tuttiModeDraftKey]: { active: true, orchestrationIntensity: 80 }
           }
         }
       })
@@ -161,6 +165,7 @@ describe("useAgentGUINewConversationActivation", () => {
     });
     expect(activate.mock.calls[0]?.[0]).toMatchObject({
       initialTuttiModeActivation: {
+        orchestrationIntensity: 80,
         source: "slash_command",
         status: "active"
       },
@@ -193,5 +198,191 @@ describe("useAgentGUINewConversationActivation", () => {
       id: secondSessionId
     });
     expect(persistActiveConversation).toHaveBeenLastCalledWith(secondSessionId);
+  });
+
+  describe("model binding on create", () => {
+    function makeHarness(overrides: {
+      composerOptions?: AgentActivityComposerOptions | null;
+      draftModelSettings?: {
+        model?: string | null;
+        modelPlanId?: string | null;
+      };
+      lastActiveModelByProvider?: UseAgentGUINewConversationActivationInput["lastActiveModelByProviderRef"]["current"];
+    }) {
+      const target = createLocalAgentGUIAgentTarget("codex");
+      const agentTargetId = target.agentTargetId!;
+      const draftSettings = overrides.draftModelSettings
+        ? {
+            [nodeDefaultDraftKey("codex", agentTargetId)]:
+              overrides.draftModelSettings
+          }
+        : {};
+      const data: AgentGUINodeData = {
+        agentTargetId,
+        lastActiveAgentSessionId: null,
+        provider: "codex"
+      };
+      const activate = vi.fn(
+        (input: { agentSessionId: string }) =>
+          `activation:${input.agentSessionId}`
+      );
+      const activation = {
+        activate,
+        clearFailure: vi.fn(),
+        markFailed: vi.fn(),
+        unactivate: vi.fn(),
+        stateFor: vi.fn(() => "inactive" as const),
+        errorFor: vi.fn(() => null),
+        codeFor: vi.fn(() => null)
+      } as unknown as ReturnType<typeof useAgentGUIActivation>;
+      const { result } = renderHook(() =>
+        useAgentGUINewConversationActivation({
+          getCachedComposerOptions: () => overrides.composerOptions ?? null,
+          selectedAgentTargetRef: { current: target },
+          selectedComposerTargetDataRef: {
+            current: {
+              agentTargetId,
+              data,
+              provider: "codex",
+              targetId: target.targetId
+            }
+          },
+          agentTargetsProvidedRef: { current: true },
+          selectedAgentTargetIsExplicitRef: { current: true },
+          setDetailError: vi.fn(),
+          isCreatingConversationRef: { current: false },
+          onDataChangeRef: { current: vi.fn() },
+          selectedProjectPathRef: { current: null },
+          draftByScopeKeyRef: { current: {} },
+          submittedDraftSnapshotsRef: { current: {} },
+          draftSettingsBySessionIdRef: { current: draftSettings },
+          agentActivityRuntime: {
+            getSnapshot: () => ({ sessions: [] })
+          } as unknown as AgentActivityRuntime,
+          workspaceId: "workspace-1",
+          activeConversationIdRef: { current: null },
+          isComposerHomeRef: { current: true },
+          conversationsRef: { current: [] },
+          activeSessionState: null,
+          lastActiveModelByProviderRef: {
+            current: overrides.lastActiveModelByProvider ?? {}
+          },
+          sessionEngine: {
+            getSnapshot: () => ({ tuttiModeActivation: { draftsByKey: {} } })
+          } as never,
+          tuttiModeDraftKey: "agent-gui:node-1:tutti-mode:home",
+          conversationListQuery: null,
+          currentUserId: "user-1",
+          persistActiveConversation: vi.fn(),
+          setActiveConversationId: vi.fn(),
+          setIntent: vi.fn(),
+          setIsComposerHome: vi.fn(),
+          setIsLoadingMessages: vi.fn(),
+          activation,
+          isCurrentConversation: () => false,
+          isConversationStale: () => false,
+          loadSelectedConversationMessages: vi.fn(),
+          loadSessionState: vi.fn(),
+          syncConversationListProjection: vi.fn(),
+          data,
+          defaultReasoningEffort: "medium",
+          refreshMessagesFromSnapshot: vi.fn()
+        })
+      );
+      const start = () => {
+        act(() => {
+          result.current([{ type: "text", text: "hello" }]);
+        });
+        return activate.mock.calls[0]?.[0] as
+          | { settings?: Record<string, unknown> }
+          | undefined;
+      };
+      return { start };
+    }
+
+    function codexOptions(models: string[]): AgentActivityComposerOptions {
+      return {
+        provider: "codex",
+        capabilities: null,
+        models: models.map((value) => ({ value, label: value })),
+        reasoningEfforts: [],
+        speeds: [],
+        skills: [],
+        behavior: {} as AgentActivityComposerOptions["behavior"],
+        loadedAtUnixMs: 1
+      };
+    }
+
+    it("drops a bare cross-plan model remembered for the provider when options are unavailable", () => {
+      const { start } = makeHarness({
+        composerOptions: null,
+        lastActiveModelByProvider: {
+          codex: { model: "x-ai/grok-4.5", modelPlanId: null }
+        }
+      });
+      const call = start();
+      expect(call?.settings?.model ?? null).toBe(null);
+      expect(call?.settings?.modelPlanId ?? null).toBe(null);
+    });
+
+    it("inherits the remembered plan model as a {model, modelPlanId} pair", () => {
+      const { start } = makeHarness({
+        composerOptions: null,
+        lastActiveModelByProvider: {
+          codex: { model: "x-ai/grok-4.5", modelPlanId: "mp-relay" }
+        }
+      });
+      const call = start();
+      expect(call?.settings).toMatchObject({
+        model: "x-ai/grok-4.5",
+        modelPlanId: "mp-relay"
+      });
+    });
+
+    it("drops a bare draft model that options cannot verify", () => {
+      const { start } = makeHarness({
+        composerOptions: null,
+        draftModelSettings: { model: "x-ai/grok-4.5" }
+      });
+      const call = start();
+      expect(call?.settings?.model ?? null).toBe(null);
+    });
+
+    it("keeps a draft plan model pair without composer options", () => {
+      const { start } = makeHarness({
+        composerOptions: null,
+        draftModelSettings: {
+          model: "x-ai/grok-4.5",
+          modelPlanId: "mp-relay"
+        }
+      });
+      const call = start();
+      expect(call?.settings).toMatchObject({
+        model: "x-ai/grok-4.5",
+        modelPlanId: "mp-relay"
+      });
+    });
+
+    it("keeps a bare model verified against loaded provider options", () => {
+      const { start } = makeHarness({
+        composerOptions: codexOptions(["gpt-5.3-codex"]),
+        lastActiveModelByProvider: {
+          codex: { model: "gpt-5.3-codex", modelPlanId: null }
+        }
+      });
+      const call = start();
+      expect(call?.settings?.model).toBe("gpt-5.3-codex");
+    });
+
+    it("drops a bare model rejected by loaded provider options", () => {
+      const { start } = makeHarness({
+        composerOptions: codexOptions(["gpt-5.3-codex"]),
+        lastActiveModelByProvider: {
+          codex: { model: "x-ai/grok-4.5", modelPlanId: null }
+        }
+      });
+      const call = start();
+      expect(call?.settings?.model ?? null).toBe(null);
+    });
   });
 });

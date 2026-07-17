@@ -73,6 +73,8 @@ export interface AgentComposerProps {
   tuttiModeActive?: boolean;
   /** Blocks submission/removal while activation CAS or creation is unresolved. */
   tuttiModeUpdating?: boolean;
+  /** Effective Tutti orchestration intensity (0-100) shown in the budget popup. */
+  tuttiModeOrchestrationIntensity?: number;
   placeholder: string;
   composerSettings: AgentGUIComposerSettingsVM;
   queueStatus?: AgentGUIQueueStatus;
@@ -151,6 +153,13 @@ export interface AgentComposerProps {
     planModeLabel: string;
     tuttiModeLabel: string;
     tuttiModeDescription: string;
+    tuttiModeRemove: string;
+    tuttiBudgetTitle: string;
+    tuttiBudgetIntensityLabel: string;
+    tuttiBudgetIntensityMin: string;
+    tuttiBudgetIntensityMax: string;
+    tuttiBudgetConfirm: string;
+    tuttiBudgetCancel: string;
     planModeDescription?: string;
     planModeOnLabel: string;
     planModeOffLabel: string;
@@ -321,6 +330,8 @@ export interface AgentComposerProps {
   /** Re-issues the composer-options load from the error-state affordance. */
   onRetryComposerOptions?: () => void;
   onTuttiModeChange?: (active: boolean) => void;
+  /** Commits a confirmed Tutti budget popup orchestration-intensity draft. */
+  onTuttiModeOrchestrationIntensityChange?: (value: number) => void;
   onPlanIssueBudgetPresetChange?: (preset: PlanIssueBudgetPreset) => void;
   capabilityMenuState?: AgentComposerCapabilityMenuState;
   onCapabilitySettingsRequest?: (

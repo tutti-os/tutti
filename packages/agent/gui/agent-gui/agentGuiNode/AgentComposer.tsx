@@ -114,6 +114,7 @@ export function AgentComposer(props: AgentComposerProps): React.JSX.Element {
     submitDisabled,
     tuttiModeActive = false,
     tuttiModeUpdating = false,
+    tuttiModeOrchestrationIntensity = 50,
     placeholder,
     composerSettings,
     selectedAgentTarget = null,
@@ -143,6 +144,7 @@ export function AgentComposer(props: AgentComposerProps): React.JSX.Element {
     onDraftContentChange,
     onSettingsChange,
     onTuttiModeChange = () => {},
+    onTuttiModeOrchestrationIntensityChange = () => {},
     capabilityMenuState,
     onSubmit,
     onSubmitGuidance,
@@ -723,8 +725,12 @@ export function AgentComposer(props: AgentComposerProps): React.JSX.Element {
       isPlanModeActive={composerSettings.draftSettings.planMode}
       isTuttiModeActive={tuttiModeActive}
       isTuttiModeUpdating={tuttiModeUpdating}
+      tuttiModeOrchestrationIntensity={tuttiModeOrchestrationIntensity}
       onClearPlanMode={() => onSettingsChange({ planMode: false })}
       onClearTuttiMode={() => onTuttiModeChange(false)}
+      onTuttiModeOrchestrationIntensityChange={
+        onTuttiModeOrchestrationIntensityChange
+      }
       isPromptTipOverflowing={isPromptTipOverflowing}
     />
   );

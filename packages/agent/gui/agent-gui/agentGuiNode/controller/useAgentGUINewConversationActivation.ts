@@ -1,6 +1,7 @@
 import {
   selectLatestActivationForSession,
-  selectTuttiModeDraftIsActive
+  selectTuttiModeDraftIsActive,
+  selectTuttiModeDraftOrchestrationIntensity
 } from "@tutti-os/agent-activity-core";
 import { useCallback } from "react";
 import { translate } from "../../../i18n/index";
@@ -16,11 +17,12 @@ import {
 } from "../model/agentComposerDraft";
 import { readNodeDefaultDraftSettings } from "./agentGuiController.composerHelpers";
 import {
+  enforceComposerModelBindingForCreate,
   resolveComposerSettingsPresentation,
   sanitizeComposerSettingsForTarget
 } from "./agentGuiController.composerPresentation";
 import {
-  resolveSameProviderActiveSessionModel,
+  resolveSameProviderActiveSessionModelBinding,
   toRuntimeSendContent
 } from "./agentGuiController.draftMessageHelpers";
 import {
@@ -157,9 +159,12 @@ export function useAgentGUINewConversationActivation(
             currentActiveConversationId
           )
         : null;
-      const inheritedModel =
+      // Inherit the previous model only as a full {model, modelPlanId}
+      // binding; a bare id stripped of its plan is exactly the cross-plan
+      // leak that fails provider-native creates.
+      const inheritedBinding =
         normalizeOptionalText(overriddenInitialSettings.model) === null
-          ? (resolveSameProviderActiveSessionModel({
+          ? (resolveSameProviderActiveSessionModelBinding({
               activeProvider: currentActiveConversation?.provider ?? null,
               agentSessionId: currentActiveConversationId,
               provider,
@@ -167,25 +172,28 @@ export function useAgentGUINewConversationActivation(
               sessionState: activeSessionState,
               workspaceId
             }) ??
-            normalizeOptionalText(
-              lastActiveModelByProviderRef.current[provider]
-            ))
+            lastActiveModelByProviderRef.current[provider] ??
+            null)
           : null;
-      const settings = sanitizeComposerSettingsForTarget({
-        settings:
-          inheritedModel === null
-            ? {
-                ...overriddenInitialSettings,
-                ...submitOptions?.requiredSettingsPatch
-              }
-            : {
-                ...overriddenInitialSettings,
-                model: inheritedModel,
-                ...submitOptions?.requiredSettingsPatch
-              },
-        target: targetData,
-        options: snapshotComposerOptions
-      });
+      const settings = enforceComposerModelBindingForCreate(
+        sanitizeComposerSettingsForTarget({
+          settings:
+            inheritedBinding === null
+              ? {
+                  ...overriddenInitialSettings,
+                  ...submitOptions?.requiredSettingsPatch
+                }
+              : {
+                  ...overriddenInitialSettings,
+                  model: inheritedBinding.model,
+                  modelPlanId: inheritedBinding.modelPlanId,
+                  ...submitOptions?.requiredSettingsPatch
+                },
+          target: targetData,
+          options: snapshotComposerOptions
+        }),
+        snapshotComposerOptions
+      );
       const prewarmedSessionId =
         normalizedInitialContent.length > 0 &&
         snapshotComposerOptions?.behavior?.prewarmDraftSession === true
@@ -226,6 +234,11 @@ export function useAgentGUINewConversationActivation(
         sessionEngine.getSnapshot(),
         tuttiModeDraftKey
       );
+      const initialTuttiModeOrchestrationIntensity =
+        selectTuttiModeDraftOrchestrationIntensity(
+          sessionEngine.getSnapshot(),
+          tuttiModeDraftKey
+        );
       const requestId = activation.activate({
         mode: "new",
         agentSessionId,
@@ -244,7 +257,13 @@ export function useAgentGUINewConversationActivation(
           ? {
               initialTuttiModeActivation: {
                 source: "slash_command" as const,
-                status: "active" as const
+                status: "active" as const,
+                ...(initialTuttiModeOrchestrationIntensity === null
+                  ? {}
+                  : {
+                      orchestrationIntensity:
+                        initialTuttiModeOrchestrationIntensity
+                    })
               },
               tuttiModeDraftKey
             }

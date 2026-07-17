@@ -6,6 +6,7 @@ import {
   buildNodeDefaultComposerSettings,
   slashCommandPoliciesEqual,
   nodeDataFromComposerSettings,
+  pairedComposerSettingsPatch,
   permissionModeOptions,
   providerSkillsFromComposerOptions,
   readNodeDefaultDraftSettings,
@@ -232,6 +233,29 @@ describe("model reasoning options", () => {
         { value: "high", label: "High" },
         { value: "xhigh", label: "X High" }
       ]
+    });
+  });
+});
+
+describe("paired composer settings patch", () => {
+  it("clears the plan binding when a model is set without one", () => {
+    // Model and modelPlanId travel as one identity: a native-model selection
+    // must not silently keep a stale plan binding from the previous draft.
+    expect(pairedComposerSettingsPatch({ model: "gpt-5.3-codex" })).toEqual({
+      model: "gpt-5.3-codex",
+      modelPlanId: null
+    });
+  });
+
+  it("keeps explicit pairs and non-model patches untouched", () => {
+    expect(
+      pairedComposerSettingsPatch({
+        model: "x-ai/grok-4.5",
+        modelPlanId: "mp-relay"
+      })
+    ).toEqual({ model: "x-ai/grok-4.5", modelPlanId: "mp-relay" });
+    expect(pairedComposerSettingsPatch({ reasoningEffort: "high" })).toEqual({
+      reasoningEffort: "high"
     });
   });
 });

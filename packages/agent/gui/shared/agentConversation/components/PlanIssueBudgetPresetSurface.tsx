@@ -1,4 +1,4 @@
-import { Checkbox, Input, Slider } from "@tutti-os/ui-system";
+import { Slider } from "@tutti-os/ui-system";
 import {
   autoTokenBudget,
   type PlanIssueBudgetPreset
@@ -7,9 +7,6 @@ import {
 export interface PlanIssueBudgetPresetLabels {
   reasoning: string;
   orchestration: string;
-  budgetAuto: string;
-  budgetFixed: string;
-  tokenBudget: string;
 }
 
 export function PlanIssueBudgetPresetSurface({
@@ -65,48 +62,6 @@ export function PlanIssueBudgetPresetSurface({
           })
         }
       />
-      <label className="flex items-center gap-2 text-[12px] text-[var(--text-secondary)]">
-        <Checkbox
-          checked={preset.budget.mode === "auto"}
-          disabled={disabled}
-          onCheckedChange={(checked) => {
-            const mode = checked === true ? "auto" : "fixed";
-            onChange({
-              ...preset,
-              budget: {
-                ...preset.budget,
-                mode,
-                tokenLimit:
-                  mode === "auto"
-                    ? autoTokenBudget(taskCount, preset.executionProfile)
-                    : Math.max(1, preset.budget.tokenLimit)
-              }
-            });
-          }}
-        />
-        {preset.budget.mode === "auto" ? labels.budgetAuto : labels.budgetFixed}
-      </label>
-      <label className="grid gap-1 text-[12px] text-[var(--text-secondary)]">
-        <span>{labels.tokenBudget}</span>
-        <Input
-          disabled={disabled || preset.budget.mode === "auto"}
-          min={1}
-          type="number"
-          value={preset.budget.tokenLimit}
-          onChange={(event) =>
-            onChange({
-              ...preset,
-              budget: {
-                ...preset.budget,
-                tokenLimit: Math.max(
-                  1,
-                  Number.parseInt(event.currentTarget.value, 10) || 1
-                )
-              }
-            })
-          }
-        />
-      </label>
     </div>
   );
 }

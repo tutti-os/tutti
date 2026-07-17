@@ -22,6 +22,7 @@ import {
   nodeDataFromComposerSettings,
   nodeDefaultDraftKey,
   normalizePermissionModeId,
+  pairedComposerSettingsPatch,
   readNodeDefaultDraftSettings,
   resolveEffectiveComposerSettings
 } from "./agentGuiController.composerHelpers";
@@ -36,7 +37,7 @@ import {
 import {
   composerDefaultsPatchFromSettings,
   composerOptionsForTarget,
-  rememberComposerDefaultsFields,
+  sessionComposerSettingsPersistence,
   type AgentGUIRememberComposerDefaultsInput
 } from "./agentGuiController.providerHelpers";
 import type { useAgentGUIActivation } from "./useAgentGUIActivation";
@@ -105,10 +106,12 @@ export function useAgentGUIComposerSettingsActions(
   const updateComposerSettings = useCallback(
     (nextSettings: Partial<AgentSessionComposerSettings>) => {
       // Values pass through unclamped: the toggle visibility is capability
-      // gated and the daemon clamps persisted settings per provider.
-      const supportedNextSettings: Partial<AgentSessionComposerSettings> = {
-        ...nextSettings
-      };
+      // gated and the daemon clamps persisted settings per provider. Model
+      // patches are normalized to full {model, modelPlanId} pairs first.
+      const supportedNextSettings: Partial<AgentSessionComposerSettings> =
+        pairedComposerSettingsPatch({
+          ...nextSettings
+        });
       const agentSessionId = activeConversationIdRef.current;
       if (!agentSessionId) {
         const targetData = selectedComposerTargetDataRef.current;
@@ -345,40 +348,34 @@ export function useAgentGUIComposerSettingsActions(
         // default for this agent target. Only the fields the user changed
         // are passed; the consumer merges them field-wise so untouched
         // remembered fields stay intact, and explicit clears propagate as
-        // null tombstones.
+        // null tombstones. The session's effective plan binding rides along:
+        // plan-scoped models are excluded from the (plan-blind) remembered
+        // defaults, and node defaults always receive the model together with
+        // its plan binding so no cross-plan pair can be assembled by merging.
+        const persistence = sessionComposerSettingsPersistence({
+          currentModelPlanId,
+          sessionSettingsPatch,
+          storedNodeDefaults: readNodeDefaultDraftSettings({
+            data: dataRef.current,
+            defaultReasoningEffort,
+            drafts: draftSettingsBySessionIdRef.current
+          })
+        });
         void onRememberComposerDefaultsRef.current?.({
           agentTargetId: normalizeOptionalText(dataRef.current.agentTargetId),
           provider: dataRef.current.provider,
-          defaults: composerDefaultsPatchFromSettings(
-            sessionSettingsPatch,
-            sessionSettingsPatch
-          )
+          defaults: persistence.rememberedDefaults
         });
         // The node-level default drafts take precedence over the remembered
         // preferences on the read path, so sync the durable fields into them
         // as well or this node's next composer would keep showing its stale
         // draft.
-        const durableNodeDefaultsPatch: Partial<AgentSessionComposerSettings> =
-          {};
-        for (const field of rememberComposerDefaultsFields) {
-          if (sessionSettingsPatch[field] !== undefined) {
-            durableNodeDefaultsPatch[field] = sessionSettingsPatch[field];
-          }
-        }
-        if (Object.keys(durableNodeDefaultsPatch).length > 0) {
+        if (persistence.nodeDefaults) {
+          const nextNodeDefaults = persistence.nodeDefaults;
           const defaultDraftKey = nodeDefaultDraftKey(
             dataRef.current.provider,
             dataRef.current.agentTargetId
           );
-          const storedNodeDefaults = readNodeDefaultDraftSettings({
-            data: dataRef.current,
-            defaultReasoningEffort,
-            drafts: draftSettingsBySessionIdRef.current
-          });
-          const nextNodeDefaults = {
-            ...storedNodeDefaults,
-            ...durableNodeDefaultsPatch
-          };
           draftSettingsBySessionIdRef.current = {
             ...draftSettingsBySessionIdRef.current,
             [defaultDraftKey]: nextNodeDefaults

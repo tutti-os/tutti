@@ -1,5 +1,8 @@
-import { renderHook } from "@testing-library/react";
-import type { AgentActivityComposerOptions } from "@tutti-os/agent-activity-core";
+import { renderHook, waitFor } from "@testing-library/react";
+import type {
+  AgentActivityComposerOptions,
+  AgentActivityModelPlanSummary
+} from "@tutti-os/agent-activity-core";
 import { describe, expect, it, vi } from "vitest";
 import type { AgentActivityRuntime } from "../../../agentActivityRuntime";
 import type { AgentGUINodeData } from "../../../types";
@@ -139,6 +142,121 @@ describe("useAgentGUIComposerPresentation", () => {
     expect(
       result.current.stableComposerSettings.selectedReasoningEffortValue
     ).toBeNull();
+  });
+
+  describe("aggregated model plans in the model list", () => {
+    const relayPlan: AgentActivityModelPlanSummary = {
+      id: "mp-relay",
+      name: "中转接入点",
+      protocol: "openai",
+      enabled: true,
+      status: "ready",
+      models: [{ id: "x-ai/grok-4.5", name: "Grok 4.5" }],
+      defaultModel: "x-ai/grok-4.5"
+    };
+    const data: AgentGUINodeData = {
+      provider: "codex",
+      agentTargetId: "local:codex",
+      lastActiveAgentSessionId: null
+    };
+    const target: AgentGUIComposerTargetData = {
+      agentTargetId: "local:codex",
+      data,
+      provider: "codex",
+      targetId: "local:codex"
+    };
+    const codexOptions = (
+      overrides: Partial<AgentActivityComposerOptions> = {}
+    ): AgentActivityComposerOptions =>
+      ({
+        provider: "codex",
+        capabilities: null,
+        models: [{ value: "gpt-5.3-codex", label: "GPT-5.3 Codex" }],
+        reasoningEfforts: [],
+        speeds: [],
+        modelConfigurable: true,
+        skills: [],
+        behavior: {} as AgentActivityComposerOptions["behavior"],
+        loadedAtUnixMs: 1,
+        ...overrides
+      }) as AgentActivityComposerOptions;
+    const renderPresentation = (options: AgentActivityComposerOptions | null) =>
+      renderHook(() =>
+        useAgentGUIComposerPresentation({
+          activeConversation: null,
+          activeConversationId: null,
+          activeEngineSession: null,
+          activeSessionState: null,
+          agentActivityRuntime: {
+            projectPathIsRemote: false,
+            listModelPlans: vi.fn(async () => ({ plans: [relayPlan] }))
+          } as unknown as AgentActivityRuntime,
+          composerSupport: composerSettingsSupportFromOptions(options, null),
+          composerOptionsLoading: false,
+          composerTargetProvider: "codex",
+          data,
+          defaultReasoningEffort: "high",
+          draftSettingsBySessionId: {},
+          draftSettingsBySessionIdRef: { current: {} },
+          onDataChangeRef: { current: vi.fn() },
+          normalizedProviderTargets: [],
+          providerComposerOptions: options,
+          selectedComposerTargetData: target,
+          selectedProjectPath: null,
+          setDraftSettingsBySessionId: vi.fn(),
+          workspaceId: "workspace-1"
+        })
+      );
+
+    it("keeps provider-native models alongside compatible plan models", async () => {
+      const { result } = renderPresentation(codexOptions());
+      await waitFor(() => {
+        expect(
+          result.current.stableComposerSettings.availableModels.length
+        ).toBeGreaterThan(1);
+      });
+      const values = result.current.stableComposerSettings.availableModels.map(
+        (option) => option.value
+      );
+      expect(values).toContain("gpt-5.3-codex");
+      expect(
+        values.some((value) => value.startsWith("model-plan:mp-relay:"))
+      ).toBe(true);
+    });
+
+    it("keeps the aggregate-only list for plan-bound targets", async () => {
+      const { result } = renderPresentation(
+        codexOptions({
+          models: [{ value: "x-ai/grok-4.5", label: "Grok 4.5" }],
+          modelPlan: { id: "mp-relay", name: "中转接入点" }
+        })
+      );
+      await waitFor(() => {
+        expect(
+          result.current.stableComposerSettings.availableModels.length
+        ).toBeGreaterThan(0);
+      });
+      const values = result.current.stableComposerSettings.availableModels.map(
+        (option) => option.value
+      );
+      expect(values.every((value) => value.startsWith("model-plan:"))).toBe(
+        true
+      );
+    });
+
+    it("stays in the loading state while options are absent even with plan entries", async () => {
+      const { result } = renderPresentation(null);
+      // Model support is unknown until options arrive: the menu must read as
+      // loading with no selectable entries rather than presenting a
+      // plan-model-only list as if it were the provider's catalog.
+      await waitFor(() => {
+        expect(result.current.modelPlans.length).toBeGreaterThan(0);
+      });
+      expect(result.current.stableComposerSettings.isSettingsLoading).toBe(
+        true
+      );
+      expect(result.current.stableComposerSettings.availableModels).toEqual([]);
+    });
   });
 
   it("surfaces a failed options load as an error state instead of loading", () => {

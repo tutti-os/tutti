@@ -89,6 +89,40 @@ test("Tutti mode update command preserves the canonical CAS revision", async () 
   });
 });
 
+test("Tutti mode update command forwards the orchestration intensity", async () => {
+  const controller = new AbortController();
+  let received: unknown;
+  await executeWorkspaceAgentTuttiModeUpdateCommand(
+    {
+      updateTuttiModeActivation: async (input) => {
+        received = input;
+        return {} as never;
+      }
+    },
+    {
+      agentSessionId: "session-1",
+      commandId: "tutti-1",
+      expectedRevision: 3,
+      orchestrationIntensity: 90,
+      source: "slash_command",
+      status: "active",
+      type: "tuttiMode/update",
+      workspaceId: "workspace-1"
+    } satisfies TuttiModeActivationUpdateCommand,
+    controller.signal
+  );
+
+  assert.deepEqual(received, {
+    agentSessionId: "session-1",
+    expectedRevision: 3,
+    orchestrationIntensity: 90,
+    signal: controller.signal,
+    source: "slash_command",
+    status: "active",
+    workspaceId: "workspace-1"
+  });
+});
+
 function promptCommand(
   requiredSettingsPatch: NonNullable<
     PromptQueueSendCommand["requiredSettingsPatch"]

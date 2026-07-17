@@ -437,6 +437,7 @@ test("desktop agent activity adapter creates, projects, and revision-updates the
       activationId: "activation-1",
       createdAtUnixMs: 10,
       id: "revision-1",
+      orchestrationIntensity: 80,
       revision: 1,
       source: "slash_command" as const,
       status: "active" as const
@@ -452,6 +453,7 @@ test("desktop agent activity adapter creates, projects, and revision-updates the
       activationId: "activation-1",
       createdAtUnixMs: 20,
       id: "revision-2",
+      orchestrationIntensity: 25,
       revision: 2,
       source: "badge_remove" as const,
       status: "inactive" as const
@@ -493,21 +495,28 @@ test("desktop agent activity adapter creates, projects, and revision-updates the
     agentTargetId: "local:codex",
     clientSubmitId: "submit-tutti",
     initialTuttiModeActivation: {
+      orchestrationIntensity: 80,
       source: "slash_command",
       status: "active"
     },
     workspaceId
   });
   assert.deepEqual(createBodies[0]?.initialTuttiModeActivation, {
+    orchestrationIntensity: 80,
     source: "slash_command",
     status: "active"
   });
   assert.deepEqual(created.tuttiModeActivation, activeActivation);
+  assert.equal(
+    created.tuttiModeActivation?.currentRevision.orchestrationIntensity,
+    80
+  );
 
   const controller = new AbortController();
   const updated = await adapter.updateTuttiModeActivation({
     agentSessionId: "agent-session-1",
     expectedRevision: 1,
+    orchestrationIntensity: 25,
     signal: controller.signal,
     source: "badge_remove",
     status: "inactive",
@@ -517,6 +526,7 @@ test("desktop agent activity adapter creates, projects, and revision-updates the
     agentSessionId: "agent-session-1",
     request: {
       expectedRevision: 1,
+      orchestrationIntensity: 25,
       source: "badge_remove",
       status: "inactive"
     },
@@ -526,6 +536,21 @@ test("desktop agent activity adapter creates, projects, and revision-updates the
   assert.deepEqual(updated, {
     activation: inactiveActivation,
     changed: true
+  });
+
+  // null/缺省的 intensity 不进 HTTP body(daemon 保持当前值)。
+  await adapter.updateTuttiModeActivation({
+    agentSessionId: "agent-session-1",
+    expectedRevision: 2,
+    orchestrationIntensity: null,
+    source: "badge_remove",
+    status: "inactive",
+    workspaceId
+  });
+  assert.deepEqual((updateCall as { request?: unknown }).request, {
+    expectedRevision: 2,
+    source: "badge_remove",
+    status: "inactive"
   });
 });
 

@@ -172,7 +172,15 @@ export function useAgentGUIConversationSelectionController(
         // arrives, the old persisted id is not a new external selection.
         return;
       }
-      failedActivationRollbackSessionIdRef.current = null;
+      // Only a different, real external selection retires the suppression.
+      // The rollback's own empty echo must keep it armed: persistence echoes
+      // can interleave (null from the rollback clear, then a stale failed id
+      // from the optimistic select), and re-adopting the failed id ping-pongs
+      // the composer between home and the dead session until React aborts the
+      // whole tree with "Maximum update depth exceeded" (P0 black screen).
+      if (externalId) {
+        failedActivationRollbackSessionIdRef.current = null;
+      }
     }
     if (externalId === (activeConversationIdRef.current ?? "")) return;
     if (!externalId) {
@@ -208,6 +216,19 @@ export function useAgentGUIConversationSelectionController(
       setIsLoadingMessages(false);
       setDetailError(null);
       loadDraftComposerOptions();
+      return;
+    }
+    // Never re-adopt a session whose latest activation is a failed create.
+    // Its persisted id can outlive the rollback (stale persistence echoes,
+    // remounts), and selecting it would immediately roll back again.
+    const latestExternalActivation = selectLatestActivationForSession(
+      sessionEngine.getSnapshot(),
+      externalId
+    );
+    if (
+      latestExternalActivation?.mode === "new" &&
+      latestExternalActivation.status === "failed"
+    ) {
       return;
     }
     setIntent((current) => {

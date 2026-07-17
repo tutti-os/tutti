@@ -195,6 +195,31 @@ export function sanitizeComposerSettingsForTarget(input: {
   return sanitizeComposerSettingsForOptions(input.settings, input.options);
 }
 
+/**
+ * Last gate before a session create leaves the GUI. A model may only travel
+ * either as a {model, modelPlanId} pair (the daemon validates plan
+ * membership and protocol) or as a bare id verifiable against the loaded
+ * provider options. Unverifiable bare ids — options missing/failed, or a
+ * model outside the advertised list — are dropped so the daemon falls back
+ * to its default instead of rejecting the create (fail-safe: better no model
+ * than a wrong one).
+ */
+export function enforceComposerModelBindingForCreate(
+  settings: AgentSessionComposerSettings,
+  options: AgentActivityComposerOptions | null
+): AgentSessionComposerSettings {
+  const model = normalizeOptionalText(settings.model);
+  const modelPlanId = normalizeOptionalText(settings.modelPlanId);
+  if (!model || modelPlanId) {
+    return settings;
+  }
+  const verified =
+    options !== null &&
+    (options.models.length === 0 ||
+      options.models.some((option) => option.value === model));
+  return verified ? settings : { ...settings, model: null, modelPlanId: null };
+}
+
 export function resolvePresentedComposerSettings(input: {
   homeSettings: AgentSessionComposerSettings;
   optimisticSettings: AgentSessionComposerSettings | null;

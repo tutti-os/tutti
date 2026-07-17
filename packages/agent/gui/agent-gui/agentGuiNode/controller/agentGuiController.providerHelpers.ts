@@ -128,6 +128,16 @@ export function composerDefaultsPatchFromSettings(
   const patch: AgentGUIComposerDefaults = {};
   for (const field of rememberComposerDefaultsFields) {
     if (touched[field] === undefined) continue;
+    // The persisted defaults schema stores a bare model id with no plan
+    // binding. A plan-scoped model must never be remembered bare: after a
+    // reload it would seed provider-native drafts with a model the provider
+    // cannot run (cross-plan leak into create).
+    if (
+      field === "model" &&
+      normalizeOptionalText(finalSettings.modelPlanId) !== null
+    ) {
+      continue;
+    }
     const touchedValue = normalizeOptionalText(touched[field]);
     const finalValue = normalizeOptionalText(finalSettings[field]);
     if (touchedValue !== null && finalValue === null) continue;
@@ -147,6 +157,50 @@ export function isLoadingSentinelAgentGUIAgentTarget(
   target: Pick<AgentGUIAgentTarget, "ref">
 ): boolean {
   return target.ref.kind === "loading";
+}
+
+/**
+ * Derives what an in-session settings change persists beyond the session:
+ * the daemon-remembered defaults patch (which cannot carry a plan binding,
+ * so plan-scoped models are skipped) and the node-default draft update
+ * (which can, so model changes always land there as a full
+ * {model, modelPlanId} pair — never merged bare over a stored binding from
+ * another plan).
+ */
+export function sessionComposerSettingsPersistence(input: {
+  /** Effective plan binding of the session when the patch has no key. */
+  currentModelPlanId: string | null;
+  sessionSettingsPatch: AgentSessionComposerSettings;
+  storedNodeDefaults: AgentSessionComposerSettings;
+}): {
+  rememberedDefaults: AgentGUIComposerDefaults | null;
+  nodeDefaults: AgentSessionComposerSettings | null;
+} {
+  const patch = input.sessionSettingsPatch;
+  const effectiveModelPlanId =
+    patch.modelPlanId !== undefined
+      ? normalizeOptionalText(patch.modelPlanId)
+      : input.currentModelPlanId;
+  const rememberedDefaults = composerDefaultsPatchFromSettings(patch, {
+    ...patch,
+    modelPlanId: effectiveModelPlanId
+  });
+  const durablePatch: Partial<AgentSessionComposerSettings> = {};
+  for (const field of rememberComposerDefaultsFields) {
+    if (patch[field] !== undefined) {
+      durablePatch[field] = patch[field];
+    }
+  }
+  if (durablePatch.model !== undefined) {
+    durablePatch.modelPlanId = effectiveModelPlanId;
+  }
+  if (Object.keys(durablePatch).length === 0) {
+    return { rememberedDefaults, nodeDefaults: null };
+  }
+  return {
+    rememberedDefaults,
+    nodeDefaults: { ...input.storedNodeDefaults, ...durablePatch }
+  };
 }
 
 export function composerTargetDataFromProviderTarget(input: {

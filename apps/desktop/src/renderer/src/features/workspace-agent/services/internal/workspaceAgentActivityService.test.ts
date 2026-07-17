@@ -755,6 +755,7 @@ test("WorkspaceAgentActivityService reconciles the session when Tutti activation
       currentRevision: {
         activationId: "activation-1",
         createdAtUnixMs: 10,
+        orchestrationIntensity: 50,
         revision: 1,
         source: "slash_command",
         status: "active"

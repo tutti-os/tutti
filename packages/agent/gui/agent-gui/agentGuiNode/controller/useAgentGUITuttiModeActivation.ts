@@ -79,15 +79,44 @@ export function useAgentGUITuttiModeActivation({
     if (presentation.updateStatus !== "failed") return;
     setActive(!presentation.active);
   }, [presentation.active, presentation.updateStatus, setActive]);
+  const setOrchestrationIntensity = useCallback(
+    (value: number): void => {
+      const agentSessionId = activeConversationId?.trim() ?? "";
+      if (!agentSessionId) {
+        engine.dispatch({
+          active: true,
+          draftKey,
+          occurredAtUnixMs: Date.now(),
+          orchestrationIntensity: value,
+          type: "tuttiMode/draftSet"
+        });
+        return;
+      }
+      commandSequenceRef.current += 1;
+      const requestedAtUnixMs = Date.now();
+      engine.dispatch({
+        agentSessionId,
+        commandId: `tutti-mode:${workspaceId}:${agentSessionId}:${requestedAtUnixMs}:${commandSequenceRef.current}`,
+        orchestrationIntensity: value,
+        requestedAtUnixMs,
+        source: "slash_command",
+        status: "active",
+        type: "tuttiMode/updateRequested",
+        workspaceId
+      });
+    },
+    [activeConversationId, draftKey, engine, workspaceId]
+  );
 
   return useMemo(
     () => ({
       ...presentation,
       retry,
       setActive,
+      setOrchestrationIntensity,
       updatePending
     }),
-    [presentation, retry, setActive, updatePending]
+    [presentation, retry, setActive, setOrchestrationIntensity, updatePending]
   );
 }
 

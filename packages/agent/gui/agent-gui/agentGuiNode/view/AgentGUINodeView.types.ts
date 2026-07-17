@@ -119,6 +119,13 @@ export interface AgentGUIViewLabels {
   normalModeDescription?: string;
   tuttiModeLabel: string;
   tuttiModeDescription: string;
+  tuttiModeRemove: string;
+  tuttiBudgetTitle: string;
+  tuttiBudgetIntensityLabel: string;
+  tuttiBudgetIntensityMin: string;
+  tuttiBudgetIntensityMax: string;
+  tuttiBudgetConfirm: string;
+  tuttiBudgetCancel: string;
   tuttiModeUpdateFailed: string;
   tuttiModeUpdateUncertain: string;
   tuttiModePlanPanel: TuttiModePlanPanelLabels;
@@ -498,6 +505,7 @@ export interface AgentGUINodeViewProps {
     /** Re-issues the composer-options load after a terminal error state. */
     retryComposerOptions: () => void;
     setTuttiModeActive: (active: boolean) => void;
+    setTuttiModeOrchestrationIntensity: (value: number) => void;
     retryTuttiModeActivation: () => void;
     updatePlanIssueBudgetPreset: (preset: PlanIssueBudgetPreset) => void;
     selectHomeComposerAgentTarget: (input: {

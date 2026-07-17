@@ -227,6 +227,9 @@ export const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
     actions.retryComposerOptions
   );
   const setTuttiModeActive = useStableEventCallback(actions.setTuttiModeActive);
+  const setTuttiModeOrchestrationIntensity = useStableEventCallback(
+    actions.setTuttiModeOrchestrationIntensity
+  );
   const updatePlanIssueBudgetPreset = useStableEventCallback(
     actions.updatePlanIssueBudgetPreset
   );
@@ -421,6 +424,8 @@ export const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
       submitDisabled: submitDisabled || timelineInteractionLocked,
       tuttiModeActive: viewModel.composer.isTuttiModeActive,
       tuttiModeUpdating: viewModel.composer.isTuttiModeUpdating,
+      tuttiModeOrchestrationIntensity:
+        viewModel.composer.tuttiModeOrchestrationIntensity,
       composerSettings: viewModel.composer.composerSettings,
       queueStatus: viewModel.composer.queueStatus,
       queuedPrompts: viewModel.composer.queuedPrompts,
@@ -456,6 +461,8 @@ export const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
       onSettingsChange: updateComposerSettings,
       onRetryComposerOptions: retryComposerOptions,
       onTuttiModeChange: setTuttiModeActive,
+      onTuttiModeOrchestrationIntensityChange:
+        setTuttiModeOrchestrationIntensity,
       onPlanIssueBudgetPresetChange: updatePlanIssueBudgetPreset,
       onSubmit: submitPromptAndScrollToBottom,
       onSubmitGuidance: submitGuidancePromptAndScrollToBottom,
@@ -514,6 +521,7 @@ export const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
       slashStatus,
       submitDisabled,
       setTuttiModeActive,
+      setTuttiModeOrchestrationIntensity,
       submitInteractivePrompt,
       submitPromptAndScrollToBottom,
       submitGuidancePromptAndScrollToBottom,
@@ -542,6 +550,7 @@ export const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
       viewModel.composer.isInterrupting,
       viewModel.composer.isTuttiModeActive,
       viewModel.composer.isTuttiModeUpdating,
+      viewModel.composer.tuttiModeOrchestrationIntensity,
       viewModel.interaction.isRespondingApproval,
       viewModel.composer.promptImagesSupported,
       viewModel.composer.queueStatus,
@@ -711,6 +720,7 @@ export const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
             {tuttiModePlanPanels.panels.map((panel) => (
               <TuttiModePlanPanel
                 key={panel.id}
+                assignmentCatalog={tuttiModePlanPanels.assignmentCatalog}
                 labels={labels.tuttiModePlanPanel}
                 panel={panel}
                 submitting={

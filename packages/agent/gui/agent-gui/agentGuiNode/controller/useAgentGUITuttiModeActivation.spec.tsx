@@ -152,6 +152,7 @@ describe("useAgentGUITuttiModeActivation", () => {
           currentRevision: {
             activationId: "activation-1",
             createdAtUnixMs: 1,
+            orchestrationIntensity: 50,
             revision: 1,
             source: "slash_command",
             status: "active"
@@ -216,6 +217,110 @@ describe("useAgentGUITuttiModeActivation", () => {
       status: "inactive",
       type: "tuttiMode/update"
     });
+  });
+
+  it("defaults orchestration intensity to 50 and stores a pre-session choice on the draft", () => {
+    const { engine } = createTestEngine();
+    const draftKey = resolveAgentGUITuttiModeDraftKey("node-1");
+    const { result } = renderHook(() =>
+      useAgentGUITuttiModeActivation({
+        activeConversationId: null,
+        draftKey,
+        engine,
+        workspaceId: "workspace-1"
+      })
+    );
+
+    expect(result.current.orchestrationIntensity).toBe(50);
+
+    act(() => result.current.setOrchestrationIntensity(80));
+
+    expect(result.current.active).toBe(true);
+    expect(result.current.orchestrationIntensity).toBe(80);
+    expect(
+      engine.getSnapshot().tuttiModeActivation.draftsByKey[draftKey]
+    ).toMatchObject({ active: true, orchestrationIntensity: 80 });
+  });
+
+  it("resets the draft intensity when Tutti is toggled off and on before a session exists", () => {
+    const { engine } = createTestEngine();
+    const draftKey = resolveAgentGUITuttiModeDraftKey("node-1");
+    const { result } = renderHook(() =>
+      useAgentGUITuttiModeActivation({
+        activeConversationId: null,
+        draftKey,
+        engine,
+        workspaceId: "workspace-1"
+      })
+    );
+
+    act(() => result.current.setOrchestrationIntensity(80));
+    act(() => result.current.setActive(false));
+    act(() => result.current.setActive(true));
+
+    expect(result.current.orchestrationIntensity).toBe(50);
+    act(() => result.current.setOrchestrationIntensity(30));
+    expect(result.current.orchestrationIntensity).toBe(30);
+  });
+
+  it("dispatches a same-status intensity update for an existing session", () => {
+    const { commands, engine } = createTestEngine();
+    engine.dispatch({
+      session: normalizeAgentActivitySession({
+        activeTurnId: null,
+        agentSessionId: "session-1",
+        cwd: "/workspace",
+        latestTurnInteractions: [],
+        pendingInteractions: [],
+        provider: "codex",
+        settings: {},
+        title: "Session",
+        tuttiModeActivation: {
+          agentSessionId: "session-1",
+          createdAtUnixMs: 1,
+          currentRevision: {
+            activationId: "activation-1",
+            createdAtUnixMs: 1,
+            orchestrationIntensity: 40,
+            revision: 1,
+            source: "slash_command",
+            status: "active"
+          },
+          id: "activation-1",
+          status: "active",
+          updatedAtUnixMs: 1,
+          workspaceId: "workspace-1"
+        },
+        updatedAtUnixMs: 1,
+        workspaceId: "workspace-1"
+      }),
+      type: "session/upserted"
+    });
+    const { result } = renderHook(() =>
+      useAgentGUITuttiModeActivation({
+        activeConversationId: "session-1",
+        draftKey: resolveAgentGUITuttiModeDraftKey("node-1"),
+        engine,
+        workspaceId: "workspace-1"
+      })
+    );
+
+    expect(result.current.orchestrationIntensity).toBe(40);
+
+    act(() => result.current.setOrchestrationIntensity(90));
+
+    expect(commands).toHaveLength(1);
+    expect(commands[0]).toMatchObject({
+      agentSessionId: "session-1",
+      expectedRevision: 1,
+      orchestrationIntensity: 90,
+      source: "slash_command",
+      status: "active",
+      type: "tuttiMode/update",
+      workspaceId: "workspace-1"
+    });
+    expect(result.current.orchestrationIntensity).toBe(90);
+    expect(result.current.updatePending).toBe(true);
   });
 });
 

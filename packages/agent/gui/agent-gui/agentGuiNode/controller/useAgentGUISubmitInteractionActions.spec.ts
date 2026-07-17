@@ -117,6 +117,58 @@ describe("new-conversation home draft lifecycle", () => {
   });
 });
 
+describe("plan-session staged model boundary", () => {
+  it("starts a new session when a native model is staged on a plan session", () => {
+    const goalControl = vi.fn(async () => undefined);
+    const { input } = createGoalControlInput(goalControl as never);
+    const stagedNativeSettings = {
+      model: "gpt-5.3-codex",
+      modelPlanId: null,
+      reasoningEffort: null,
+      speed: null,
+      planMode: false,
+      browserUse: true,
+      computerUse: true,
+      permissionModeId: null
+    };
+    const startConversation = vi.fn((..._args: unknown[]) => ({
+      agentSessionId: "session-2",
+      requestId: "activation:session-2"
+    }));
+    const setDraftSettingsBySessionId = vi.fn();
+    const executePrompt = vi.fn();
+    const boundaryInput = {
+      ...(input as unknown as Record<string, unknown>),
+      activeCanonicalComposerSettings: {
+        model: "x-ai/grok-4.5",
+        modelPlanId: "mp-relay"
+      },
+      draftSettingsBySessionIdRef: {
+        current: { "session-1": stagedNativeSettings }
+      },
+      executePromptRef: { current: executePrompt },
+      setDraftSettingsBySessionId,
+      startConversation
+    } as unknown as Parameters<typeof useAgentGUISubmitInteractionActions>[0];
+    const { result } = renderHook(() =>
+      useAgentGUISubmitInteractionActions(boundaryInput)
+    );
+
+    act(() => {
+      result.current.submitPrompt([{ type: "text", text: "hello" }]);
+    });
+
+    // Leaving the plan is a session boundary: the staged native settings must
+    // ride a new session create instead of silently falling back into the
+    // plan-endpointed session (where the native model can never apply).
+    expect(startConversation).toHaveBeenCalledTimes(1);
+    expect(startConversation.mock.calls[0]?.[3]).toEqual(stagedNativeSettings);
+    expect(setDraftSettingsBySessionId).toHaveBeenCalledWith(
+      expect.not.objectContaining({ "session-1": expect.anything() })
+    );
+  });
+});
+
 describe("goal controls", () => {
   it("clears through the control API without creating a prompt submit", async () => {
     const goalControl = vi.fn(async () => undefined);
