@@ -56,6 +56,8 @@ func TestRenderTuttiModeHostContextCarriesWorkedWorkflowExamples(t *testing.T) {
 		"permissionModeId: bypassPermissions",
 		"parallelizable: true",
 		"set `parallelizable: true` on a task that can safely run alongside",
+		"autoAccept: true",
+		"set `autoAccept: true` on a task whose completed result needs no human review gate",
 		"end the turn as soon as propose returns a workflowId",
 		"`tutti plan revise --workflow-id <workflowId> --file <absolute path> --request-id <new id>`",
 		"`tutti issue topic list --json`",

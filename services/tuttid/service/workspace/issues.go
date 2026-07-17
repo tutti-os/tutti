@@ -29,6 +29,18 @@ type IssueManagerService struct {
 	// TaskWorktreeRoot overrides where per-run task worktrees are created;
 	// empty falls back to <state dir>/task-worktrees.
 	TaskWorktreeRoot string
+	// CompletionNotifier hands control back to the planning conversation once
+	// every task of a tutti-mode-plan Issue is completed and accepted.
+	CompletionNotifier TuttiPlanIssueCompletionNotifier
+}
+
+type TuttiPlanIssueCompletionNotifier interface {
+	NotifyTuttiPlanIssueCompleted(
+		ctx context.Context,
+		workspaceID string,
+		issue workspaceissues.Issue,
+		tasks []workspaceissues.Task,
+	)
 }
 
 type IssueManagerEventPublisher interface {
@@ -173,6 +185,7 @@ func (s IssueManagerService) CreateIssueFromPlan(ctx context.Context, workspaceI
 			ExecutionDirectory: task.ExecutionDirectory,
 			DependencyTaskIDs:  task.DependencyTaskIDs,
 			Parallelizable:     task.Parallelizable,
+			AutoAccept:         task.AutoAccept,
 		})
 	}
 	issue, tasks, err := s.domainService().CreateIssueWithTasks(ctx, workspaceissues.CreateIssueWithTasksInput{
@@ -369,6 +382,7 @@ func (s IssueManagerService) CreateTask(ctx context.Context, workspaceID string,
 			ExecutionDirectory: input.ExecutionDirectory,
 			DependencyTaskIDs:  input.DependencyTaskIDs,
 			Parallelizable:     input.Parallelizable,
+			AutoAccept:         input.AutoAccept,
 		}},
 	})
 	if err != nil {
@@ -406,6 +420,7 @@ func (s IssueManagerService) CreateTasks(ctx context.Context, workspaceID string
 			ExecutionDirectory: task.ExecutionDirectory,
 			DependencyTaskIDs:  task.DependencyTaskIDs,
 			Parallelizable:     task.Parallelizable,
+			AutoAccept:         task.AutoAccept,
 		})
 	}
 	tasks, err := s.domainService().CreateTasks(ctx, workspaceissues.CreateTasksInput{
@@ -491,6 +506,8 @@ func (s IssueManagerService) UpdateTask(ctx context.Context, workspaceID string,
 		HasDependencyTaskIDs:  input.HasDependencyTaskIDs,
 		Parallelizable:        input.Parallelizable,
 		HasParallelizable:     input.HasParallelizable,
+		AutoAccept:            input.AutoAccept,
+		HasAutoAccept:         input.HasAutoAccept,
 		AcceptanceState:       input.AcceptanceState,
 		HasAcceptanceState:    input.HasAcceptanceState,
 		AcceptanceSummary:     input.AcceptanceSummary,
@@ -508,8 +525,41 @@ func (s IssueManagerService) UpdateTask(ctx context.Context, workspaceID string,
 	})
 	if task.Status == workspaceissues.StatusCompleted && task.AcceptanceState == workspaceissues.AcceptanceUserAccepted {
 		s.dispatchEligibleIssueTasks(ctx, workspaceID, issueID)
+		s.notifyTuttiPlanIssueCompletedBestEffort(ctx, workspaceID, issueID)
+	}
+	// A rework (back to not_started) re-opens the execution frontier; without
+	// this the rejected head of a sequential Issue waits for an unrelated event.
+	if input.HasStatus && task.Status == workspaceissues.StatusNotStarted {
+		s.dispatchEligibleIssueTasks(ctx, workspaceID, issueID)
 	}
 	return task, nil
+}
+
+// notifyTuttiPlanIssueCompletedBestEffort hands control back to the planning
+// conversation once every task of a tutti-mode-plan Issue is completed and
+// user-accepted. The acceptance that crosses the finish line triggers it —
+// including programmatic auto-accepts.
+func (s IssueManagerService) notifyTuttiPlanIssueCompletedBestEffort(ctx context.Context, workspaceID string, issueID string) {
+	if s.CompletionNotifier == nil {
+		return
+	}
+	detail, err := s.domainService().GetIssueDetail(ctx, workspaceID, issueID)
+	if err != nil ||
+		detail.Issue.PlanningSource != workspaceissues.PlanningSourceTuttiModePlan ||
+		strings.TrimSpace(detail.Issue.SourceSessionID) == "" ||
+		len(detail.Tasks) == 0 {
+		return
+	}
+	for _, task := range detail.Tasks {
+		if task.Status == workspaceissues.StatusCanceled {
+			continue
+		}
+		if task.Status != workspaceissues.StatusCompleted ||
+			task.AcceptanceState != workspaceissues.AcceptanceUserAccepted {
+			return
+		}
+	}
+	s.CompletionNotifier.NotifyTuttiPlanIssueCompleted(ctx, workspaceID, detail.Issue, detail.Tasks)
 }
 
 func (s IssueManagerService) DeleteTask(ctx context.Context, workspaceID string, issueID string, taskID string) (bool, error) {
@@ -626,6 +676,21 @@ func (s IssueManagerService) CompleteRun(ctx context.Context, workspaceID string
 		RunID:       run.RunID,
 		ChangeKind:  eventstreamservice.WorkspaceIssueChangeRunCompleted,
 	})
+	// A task the plan review marked auto-accept skips the human gate: its
+	// successful completion is accepted programmatically, which advances
+	// dispatch and the whole-issue completion check through the same path a
+	// manual acceptance takes.
+	if run.Status == workspaceissues.StatusCompleted {
+		if taskDetail, taskErr := s.domainService().GetTaskDetail(ctx, workspaceID, issueID, taskID); taskErr == nil &&
+			taskDetail.Task.AutoAccept && taskDetail.Task.Status == workspaceissues.StatusPendingAcceptance {
+			if _, acceptErr := s.UpdateTask(ctx, workspaceID, issueID, taskID, UpdateIssueManagerTaskInput{
+				Status:    string(workspaceissues.StatusCompleted),
+				HasStatus: true,
+			}); acceptErr == nil {
+				return workspaceissues.RunDetail{Run: run, Outputs: outputs}, nil
+			}
+		}
+	}
 	// Parallel Issues keep their bounded workspace slots full as independent
 	// runs settle. Sequential successors still remain gated on user acceptance.
 	s.dispatchEligibleIssueTasks(ctx, workspaceID, issueID)

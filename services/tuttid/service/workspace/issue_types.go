@@ -90,6 +90,7 @@ type CreateIssueManagerTaskInput struct {
 	ExecutionDirectory string
 	DependencyTaskIDs  []string
 	Parallelizable     bool
+	AutoAccept         bool
 }
 
 type CreateIssueManagerTaskItemInput struct {
@@ -106,6 +107,7 @@ type CreateIssueManagerTaskItemInput struct {
 	ExecutionDirectory string
 	DependencyTaskIDs  []string
 	Parallelizable     bool
+	AutoAccept         bool
 }
 
 type CreateIssueManagerTasksInput struct {
@@ -137,6 +139,8 @@ type UpdateIssueManagerTaskInput struct {
 	HasDependencyTaskIDs  bool
 	Parallelizable        bool
 	HasParallelizable     bool
+	AutoAccept            bool
+	HasAutoAccept         bool
 	AcceptanceState       string
 	HasAcceptanceState    bool
 	AcceptanceSummary     string

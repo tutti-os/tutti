@@ -85,4 +85,7 @@ func applyTaskAssignmentOverride(task *PlanTask, override workflowbiz.TaskAssign
 	if override.Parallelizable != nil {
 		task.Parallelizable = *override.Parallelizable
 	}
+	if override.AutoAccept != nil {
+		task.AutoAccept = *override.AutoAccept
+	}
 }

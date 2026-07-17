@@ -3921,6 +3921,7 @@ type CreateIssueManagerRunRequest struct {
 // CreateIssueManagerTaskRequest defines model for CreateIssueManagerTaskRequest.
 type CreateIssueManagerTaskRequest struct {
 	AgentTargetId      *string               `json:"agentTargetId,omitempty"`
+	AutoAccept         *bool                 `json:"autoAccept,omitempty"`
 	Content            *string               `json:"content,omitempty"`
 	DependencyTaskIds  *[]string             `json:"dependencyTaskIds,omitempty"`
 	DueAtUnix          *int64                `json:"dueAtUnix,omitempty"`
@@ -4708,7 +4709,10 @@ type IssueManagerTask struct {
 	AcceptanceSummary string                      `json:"acceptanceSummary"`
 
 	// AgentTargetId Opaque WorkspaceAgent assignment. Empty means not assigned yet.
-	AgentTargetId      string   `json:"agentTargetId"`
+	AgentTargetId string `json:"agentTargetId"`
+
+	// AutoAccept Bypasses the human acceptance gate: a successful completion is accepted automatically and dispatch advances.
+	AutoAccept         bool     `json:"autoAccept"`
 	Content            string   `json:"content"`
 	CreatedAtUnix      int64    `json:"createdAtUnix"`
 	CreatorAvatarUrl   string   `json:"creatorAvatarUrl"`
@@ -5368,7 +5372,10 @@ type TuttiModePlanExecutionMode string
 
 // TuttiModePlanTask defines model for TuttiModePlanTask.
 type TuttiModePlanTask struct {
-	AgentTargetId      *string  `json:"agentTargetId"`
+	AgentTargetId *string `json:"agentTargetId"`
+
+	// AutoAccept Bypasses the human acceptance gate: a successful completion is accepted automatically and dispatch advances. Persisted onto the materialized Issue task.
+	AutoAccept         bool     `json:"autoAccept"`
 	Content            string   `json:"content"`
 	DependsOn          []string `json:"dependsOn"`
 	ExecutionDirectory *string  `json:"executionDirectory"`
@@ -5409,6 +5416,7 @@ type UpdateIssueManagerTaskRequest struct {
 	AcceptanceState    *IssueManagerAcceptanceState `json:"acceptanceState,omitempty"`
 	AcceptanceSummary  *string                      `json:"acceptanceSummary,omitempty"`
 	AgentTargetId      *string                      `json:"agentTargetId,omitempty"`
+	AutoAccept         *bool                        `json:"autoAccept,omitempty"`
 	Content            *string                      `json:"content,omitempty"`
 	DependencyTaskIds  *[]string                    `json:"dependencyTaskIds,omitempty"`
 	DueAtUnix          *int64                       `json:"dueAtUnix,omitempty"`
@@ -6634,8 +6642,11 @@ type WorkspaceWorkflowStatus string
 // WorkspaceWorkflowTaskAssignment User-owned per-task assignment override recorded with an accepted task review decision. Null fields keep the plan document value; empty strings clear it.
 type WorkspaceWorkflowTaskAssignment struct {
 	AgentTargetId *string `json:"agentTargetId,omitempty"`
-	Model         *string `json:"model,omitempty"`
-	ModelPlanId   *string `json:"modelPlanId,omitempty"`
+
+	// AutoAccept Overrides the plan document's per-task acceptance bypass; null keeps it.
+	AutoAccept  *bool   `json:"autoAccept,omitempty"`
+	Model       *string `json:"model,omitempty"`
+	ModelPlanId *string `json:"modelPlanId,omitempty"`
 
 	// Parallelizable Overrides the plan document's per-task parallel opt-in; null keeps it.
 	Parallelizable   *bool   `json:"parallelizable,omitempty"`

@@ -39,6 +39,7 @@ export interface TuttiModePlanPanelLabels {
   permissionMode: string;
   reasoningEffort: string;
   parallelizable: string;
+  autoAccept: string;
   notSpecified: string;
   assignmentOptionsLoading: string;
 }
@@ -176,6 +177,11 @@ function TaskAssignmentSummary({
       label: labels.parallelizable,
       tone: "accent" as const,
       value: task.parallelizable ? labels.parallelizable : null
+    },
+    {
+      label: labels.autoAccept,
+      tone: "success" as const,
+      value: task.autoAccept ? labels.autoAccept : null
     }
   ].filter((chip) => chip.value !== null);
   if (chips.length === 0) {
