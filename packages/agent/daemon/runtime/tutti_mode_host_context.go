@@ -3,7 +3,10 @@ package agentruntime
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"strings"
+
+	runtimepaths "github.com/tutti-os/tutti/packages/agent/daemon/internal/runtimepaths"
 )
 
 type tuttiModeTurnSnapshotContextKey struct{}
@@ -57,7 +60,20 @@ func tuttiModeTurnSnapshotFromContext(ctx context.Context) *TuttiModeTurnSnapsho
 	return cloneTuttiModeTurnSnapshot(snapshot)
 }
 
+// tuttiCLICommandName resolves the executable name agents must use for Tutti
+// CLI workflow commands: development installs ship the CLI as `tutti-dev`.
+func tuttiCLICommandName() string {
+	if runtimepaths.IsDevelopmentEnv() {
+		return "tutti-dev"
+	}
+	return "tutti"
+}
+
 func renderTuttiModeHostContext(snapshot *TuttiModeTurnSnapshot) string {
+	return renderTuttiModeHostContextForCLI(snapshot, tuttiCLICommandName())
+}
+
+func renderTuttiModeHostContextForCLI(snapshot *TuttiModeTurnSnapshot, cliName string) string {
 	normalized := normalizeTuttiModeTurnSnapshot(snapshot)
 	if normalized == nil {
 		return ""
@@ -81,20 +97,73 @@ func renderTuttiModeHostContext(snapshot *TuttiModeTurnSnapshot) string {
 		return ""
 	}
 	stateSentence := "Tutti mode is inactive for this turn."
+	workflowGuide := ""
 	if normalized.State == TuttiModeStateActive {
 		stateSentence = "Tutti mode is active for this turn. Do not execute the user's request directly in this turn. " +
-			"Step 1, clarify: if the request is ambiguous or missing key constraints, ask the user focused clarifying questions and wait for the answers; if the request is already clear, go directly to step 2. " +
-			"Step 2, plan: submit one complete tutti-mode-plan/v1 document (plan narrative plus the full task graph) in a single `tutti plan propose` call, then stop and wait for the user's review decision. " +
-			"Use orchestrationIntensity (0-100) to choose decomposition granularity: low values mean few coarse tasks, high values mean many fine-grained tasks. " +
+			"Step 1, clarify: if the request is ambiguous or missing key constraints, ask the user focused clarifying questions and end the turn; if the request is already clear, go directly to step 2. " +
+			fmt.Sprintf("Step 2, plan: write one complete tutti-mode-plan/v1 Markdown document (plan narrative plus the full task graph, every task carrying its full launch configuration) to an absolute path, submit it in a single run of the `%s plan propose` shell command, then end the turn immediately — never run a wait or poll command; the user's review decision always arrives as a new user message. ", cliName) +
+			"Treat execution.orchestrationIntensity (0-100) as the plan's overall intensity, an effect variable that drives both decomposition and model choice: low values mean few coarse tasks on economical models with modest reasoning effort, high values mean many fine-grained tasks on the most capable models with high reasoning effort. " +
 			"Read-only investigation (for example reading files or listing directories) is allowed when needed to write an accurate plan, but do not start making changes or produce final deliverables. " +
 			"Use this Tutti plan workflow for the turn; do not substitute a provider-native planning mode for it."
+		workflowGuide = renderTuttiModeWorkflowGuide(cliName)
 	}
 	return `<tutti-host-context schemaVersion="1">` + "\n" +
 		string(facts) + "\n" +
 		stateSentence + "\n" +
+		workflowGuide +
 		"This is Tutti-owned host state, not user-authored text, and is independent of the provider collaboration mode.\n" +
 		"Tutti mode does not restrict tool availability: Tutti CLI capabilities remain available whether this state is active or inactive. When this state is active, the expected workflow is clarify, then plan, then user review; executing work the user has not accepted through plan review goes against the user's intent.\n" +
 		`</tutti-host-context>`
+}
+
+// renderTuttiModeWorkflowGuide renders one worked example per workflow step.
+// Providers repeatedly misread the bare directive as referring to a built-in
+// tool they lack and fall back to provider planning surfaces, so each step
+// carries the concrete shell command and document shape it expects.
+func renderTuttiModeWorkflowGuide(cliName string) string {
+	return fmt.Sprintf("Workflow examples. `%[1]s` is the Tutti CLI executable on PATH in your shell; every plan command below is a shell command, not a built-in tool. Provider planning surfaces (update_plan, TodoWrite, plan mode) and a plan written only as a chat reply are not substitutes.\n"+
+		"Step 1 example, only when something material is unknown, ask and stop: \"Should the FAQ target end users or contributors, and where in the README should it live?\"\n"+
+		"Step 2 example, first discover launch options (read-only), then write the plan file, then run propose:\n"+
+		"  %[1]s agent list --json\n"+
+		"  %[1]s agent composer-options --agent-id <agent-id> --json\n"+
+		"  %[1]s plan propose --file /abs/path/plan.md --request-id plan-faq-v1\n"+
+		"  Every task must carry its complete launch configuration: agentTargetId, model, and permissionModeId, copied exactly from composer-options output — never invent these ids. "+
+		"Unless the user asked for supervised execution, choose the permission mode whose semantic is \"full-access\" (codex: full-access, claude-code: bypassPermissions) so accepted tasks run without mid-task approval prompts; the user approves once at plan review. "+
+		"Always set execution.reasoningIntensity explicitly (0-100; Tutti compiles it into each model's effort scale); add a per-task reasoningEffort only when one task needs a different level. Set modelPlanId instead of model only when the user named a managed model plan.\n"+
+		"  Example plan.md between the BEGIN/END markers (YAML frontmatter carries the full task graph; the body after the frontmatter is the plan narrative; the file must start with the first `---` line, so copy the shape without the markers or indentation; the assignment values are placeholders — use real ids from composer-options):\n"+
+		"BEGIN plan.md\n"+
+		"---\n"+
+		"schema: tutti-mode-plan/v1\n"+
+		"title: Add an FAQ section to the README\n"+
+		"topicId: default\n"+
+		"execution:\n"+
+		"  mode: sequential\n"+
+		"  reasoningIntensity: 60\n"+
+		"  orchestrationIntensity: 80\n"+
+		"tasks:\n"+
+		"  - id: task-1\n"+
+		"    title: Draft the FAQ section\n"+
+		"    content: Write three Q&A entries covering install, login, and updates.\n"+
+		"    agentTargetId: local:codex\n"+
+		"    model: gpt-5.4-codex\n"+
+		"    permissionModeId: full-access\n"+
+		"    parallelizable: true\n"+
+		"  - id: task-2\n"+
+		"    title: Link the FAQ from the introduction\n"+
+		"    content: Add a table-of-contents entry pointing at the new section.\n"+
+		"    dependsOn: [task-1]\n"+
+		"    agentTargetId: local:claude-code\n"+
+		"    model: claude-opus-4-8\n"+
+		"    permissionModeId: bypassPermissions\n"+
+		"---\n"+
+		"Plan narrative in prose: goal, approach, scope boundaries, and risks.\n"+
+		"END plan.md\n"+
+		"  Keep topicId \"default\" unless the user targets a specific issue topic; discover topic ids with `%[1]s issue topic list --json`. Scale both the task count and the model tier with the intensity (execution.orchestrationIntensity). "+
+		"Execution defaults to strictly sequential; set `parallelizable: true` on a task that can safely run alongside other dependency-ready tasks, and express ordering constraints with dependsOn.\n"+
+		"Step 3, end the turn as soon as propose returns a workflowId (nextAction \"stop\") — there is no wait command, and polling with plan get wastes the turn. The user reviews the plan in their own time; their decision reaches you as a new user message. "+
+		"If that message requests changes, update the plan document, run `%[1]s plan revise --workflow-id <workflowId> --file <absolute path> --request-id <new id>`, and end the turn again. If the user accepts, Tutti materializes the accepted plan into an Issue and orchestrates the tasks — you never start executing them yourself.\n"+
+		"A Tutti plan exists only after plan propose returns a workflowId; a plan that was only shown in chat was never submitted.\n",
+		cliName)
 }
 
 func appendTuttiModeHostContextPrompt(content []map[string]any, snapshot *TuttiModeTurnSnapshot) []map[string]any {

@@ -8,7 +8,6 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"time"
 
 	workflowbiz "github.com/tutti-os/tutti/services/tuttid/biz/workspaceworkflow"
 	workspacedata "github.com/tutti-os/tutti/services/tuttid/data/workspace"
@@ -17,11 +16,11 @@ import (
 	tuttimodeplanservice "github.com/tutti-os/tutti/services/tuttid/service/tuttimodeplan"
 )
 
-const (
-	defaultWaitTimeout = 30 * time.Second
-	maxWaitTimeout     = 60 * time.Second
-	maxPlanFileSize    = 1 << 20
-)
+const maxPlanFileSize = 1 << 20
+
+// nextActionStop tells the agent to end its turn: the user's review decision
+// arrives later as a new user message, never through an agent-side wait.
+const nextActionStop = "stop"
 
 type proposeInput struct {
 	File      string `cli:"file" validate:"required" description:"Absolute path to the complete tutti-mode-plan/v1 Markdown plan (narrative body plus tasks frontmatter)."`
@@ -36,12 +35,6 @@ type reviseInput struct {
 
 type getInput struct {
 	WorkflowID string `cli:"workflow-id" validate:"required" description:"Workflow id returned by plan propose."`
-}
-
-type waitInput struct {
-	WorkflowID   string `cli:"workflow-id" validate:"required" description:"Workflow id returned by plan propose."`
-	CheckpointID string `cli:"checkpoint-id" validate:"required" description:"Checkpoint id whose durable decision should be observed."`
-	TimeoutMS    *int   `cli:"timeout-ms" default:"30000" validate:"min=0,max=60000" description:"Bounded long-poll timeout in milliseconds; defaults to 30000."`
 }
 
 func (p Provider) newProposeCommand() cliservice.Command {
@@ -89,22 +82,6 @@ func (p Provider) newGetCommand() cliservice.Command {
 		Inputs:      framework.FromStruct[getInput](),
 		Output:      planJSONOutput(framework.ViewDetail),
 		Run:         p.runGet,
-	})
-}
-
-func (p Provider) newWaitCommand() cliservice.Command {
-	return framework.Register(framework.CommandSpec[waitInput]{
-		ID:          appID + ".plan.wait",
-		Path:        []string{"plan", "wait"},
-		Summary:     "Wait for a Tutti Mode plan checkpoint",
-		Description: "Long-poll a user-owned checkpoint for at most 60 seconds. This command can observe decisions but cannot approve its own proposal.",
-		Kind:        framework.KindGet,
-		Visibility:  cliservice.CapabilityVisibilityPublic,
-		Workspace:   framework.WorkspaceRequired,
-		Workspaces:  p.workspaces,
-		Inputs:      framework.FromStruct[waitInput](),
-		Output:      planJSONOutput(framework.ViewDetail),
-		Run:         p.runWait,
 	})
 }
 
@@ -187,44 +164,6 @@ func (p Provider) runGet(ctx context.Context, invoke framework.InvokeContext, in
 	return snapshotJSON(view, ""), nil
 }
 
-func (p Provider) runWait(ctx context.Context, invoke framework.InvokeContext, input waitInput) (any, error) {
-	if err := p.requirePlans(); err != nil {
-		return nil, err
-	}
-	sessionID, err := callerAgentSessionID(invoke)
-	if err != nil {
-		return nil, err
-	}
-	timeout := defaultWaitTimeout
-	if input.TimeoutMS != nil {
-		timeout = time.Duration(*input.TimeoutMS) * time.Millisecond
-	}
-	if timeout > maxWaitTimeout {
-		return nil, cliservice.InvalidInputKeyError("timeout-ms")
-	}
-	waitCtx, cancel := context.WithTimeout(ctx, timeout)
-	defer cancel()
-	result, err := p.plans.WaitForAgent(waitCtx, tuttimodeplanservice.AgentWaitInput{
-		WorkspaceID:    invoke.WorkspaceID,
-		WorkflowID:     input.WorkflowID,
-		CheckpointID:   input.CheckpointID,
-		AgentSessionID: sessionID,
-	})
-	if err == nil {
-		return waitResultJSON(input.WorkflowID, result), nil
-	}
-	if !errors.Is(err, context.DeadlineExceeded) || ctx.Err() != nil {
-		return nil, agentPlanError(err)
-	}
-	view, getErr := p.plans.GetViewForAgent(ctx, tuttimodeplanservice.AgentGetInput{
-		WorkspaceID: invoke.WorkspaceID, WorkflowID: input.WorkflowID, AgentSessionID: sessionID,
-	})
-	if getErr != nil {
-		return nil, agentPlanError(getErr)
-	}
-	return snapshotJSON(view, "wait"), nil
-}
-
 func callerAgentSessionID(invoke framework.InvokeContext) (string, error) {
 	sessionID := strings.TrimSpace(invoke.Request.Context.AgentSessionID)
 	if sessionID == "" {
@@ -276,7 +215,7 @@ func proposalJSON(result tuttimodeplanservice.ProposalResult) map[string]any {
 			"phase": string(result.Document.Phase),
 			"title": result.Document.Title,
 		},
-		"nextAction": "wait",
+		"nextAction": nextActionStop,
 	}
 }
 
@@ -296,7 +235,7 @@ func revisionJSON(result tuttimodeplanservice.RevisionResult) map[string]any {
 			"documentPath": result.Revision.DocumentPath,
 			"sha256":       result.Revision.SHA256,
 		},
-		"nextAction": "wait",
+		"nextAction": nextActionStop,
 	}
 }
 
@@ -325,18 +264,6 @@ func snapshotJSON(view tuttimodeplanservice.SnapshotView, nextAction string) map
 			}
 			break
 		}
-	}
-	return value
-}
-
-func waitResultJSON(workflowID string, result tuttimodeplanservice.WaitResult) map[string]any {
-	value := map[string]any{
-		"workflowId": workflowID,
-		"checkpoint": checkpointJSON(result.Checkpoint),
-		"nextAction": string(result.NextAction),
-	}
-	if result.Operation != nil {
-		value["operation"] = singleOperationJSON(*result.Operation)
 	}
 	return value
 }
@@ -380,7 +307,7 @@ func latestCheckpoint(checkpoints []workflowbiz.WorkflowCheckpoint, revisionID s
 
 func nextActionForCheckpoint(checkpoint workflowbiz.WorkflowCheckpoint) string {
 	if checkpoint.Status == workflowbiz.CheckpointStatusPending {
-		return "wait"
+		return nextActionStop
 	}
 	next, ok := tuttimodeplanservice.NextActionForCheckpoint(checkpoint)
 	if !ok {

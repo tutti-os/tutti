@@ -319,6 +319,17 @@ export const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
   const cancelPendingPlan = useStableEventCallback((): void => {
     decidePendingPlan("canceled");
   });
+  // Turning Tutti mode off with a review still pending also cancels the
+  // checkpoint: the banner and composer decision semantics clear with it, and
+  // the agent continues naturally on the next message without plan context.
+  const setTuttiModeActiveAndSettleReview = useStableEventCallback(
+    (active: boolean): void => {
+      if (!active) {
+        decidePendingPlan("canceled");
+      }
+      setTuttiModeActive(active);
+    }
+  );
   const handleInterruptCurrentTurn = useCallback(() => {
     actions.interruptCurrentTurn(labels.noRunningResponse);
   }, [actions.interruptCurrentTurn, labels.noRunningResponse]);
@@ -588,7 +599,7 @@ export const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
       onDraftContentChange: updateDraftContent,
       onProjectPathChange: updateSelectedProjectPath,
       onSettingsChange: updateComposerSettings,
-      onTuttiModeChange: setTuttiModeActive,
+      onTuttiModeChange: setTuttiModeActiveAndSettleReview,
       onSubmit: submitPromptOrDecidePlan,
       onSubmitEmpty: planReviewSendActive ? acceptPendingPlan : undefined,
       onSubmitGuidance: submitGuidancePromptAndScrollToBottom,

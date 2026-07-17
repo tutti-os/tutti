@@ -12,8 +12,7 @@ import (
 const tuttiModePlanCapabilitiesFixture = `{"commands":[
   {"id":"tutti-mode-plan.plan.propose","path":["plan","propose"],"summary":"Propose a Tutti Mode plan","inputSchema":{"type":"object","required":["file","request-id"],"properties":{"file":{"type":"string","description":"Markdown proposal file."},"request-id":{"type":"string"}}},"output":{"defaultMode":"json","json":true},"source":{"kind":"builtin"}},
   {"id":"tutti-mode-plan.plan.revise","path":["plan","revise"],"summary":"Revise a Tutti Mode plan","inputSchema":{"type":"object","required":["workflow-id","file","request-id"],"properties":{"workflow-id":{"type":"string"},"file":{"type":"string"},"request-id":{"type":"string"}}},"output":{"defaultMode":"json","json":true},"source":{"kind":"builtin"}},
-  {"id":"tutti-mode-plan.plan.get","path":["plan","get"],"summary":"Get a Tutti Mode plan","inputSchema":{"type":"object","required":["workflow-id"],"properties":{"workflow-id":{"type":"string"}}},"output":{"defaultMode":"json","json":true},"source":{"kind":"builtin"}},
-  {"id":"tutti-mode-plan.plan.wait","path":["plan","wait"],"summary":"Wait for a Tutti Mode plan checkpoint","inputSchema":{"type":"object","required":["workflow-id","checkpoint-id"],"properties":{"workflow-id":{"type":"string"},"checkpoint-id":{"type":"string"},"timeout-ms":{"type":"integer","default":30000,"minimum":0,"maximum":60000}}},"output":{"defaultMode":"json","json":true},"source":{"kind":"builtin"}}
+  {"id":"tutti-mode-plan.plan.get","path":["plan","get"],"summary":"Get a Tutti Mode plan","inputSchema":{"type":"object","required":["workflow-id"],"properties":{"workflow-id":{"type":"string"}}},"output":{"defaultMode":"json","json":true},"source":{"kind":"builtin"}}
 ]}`
 
 func TestRunTuttiModePlanCommandsUseDynamicDaemonCapabilityProtocol(t *testing.T) {
@@ -40,12 +39,6 @@ func TestRunTuttiModePlanCommandsUseDynamicDaemonCapabilityProtocol(t *testing.T
 			commandID: "tutti-mode-plan.plan.get",
 			args:      []string{"plan", "get", "--workflow-id", "WF-1"},
 			wantInput: map[string]any{"workflow-id": "WF-1"},
-		},
-		{
-			name:      "wait",
-			commandID: "tutti-mode-plan.plan.wait",
-			args:      []string{"plan", "wait", "--workflow-id", "WF-1", "--checkpoint-id", "CP-1", "--timeout-ms", "30000"},
-			wantInput: map[string]any{"workflow-id": "WF-1", "checkpoint-id": "CP-1", "timeout-ms": "30000"},
 		},
 	}
 
@@ -97,7 +90,7 @@ func TestRunTuttiModePlanCommandsUseDynamicDaemonCapabilityProtocol(t *testing.T
 	}
 }
 
-func TestRunTuttiModePlanHelpAdvertisesWaitButNotDecisionMutation(t *testing.T) {
+func TestRunTuttiModePlanHelpAdvertisesNoWaitAndNoDecisionMutation(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		if r.URL.Path == "/v1/cli/capabilities" {
@@ -116,43 +109,16 @@ func TestRunTuttiModePlanHelpAdvertisesWaitButNotDecisionMutation(t *testing.T) 
 	}
 
 	output := stdout.String()
-	for _, expected := range []string{"propose", "revise", "get", "wait"} {
+	for _, expected := range []string{"propose", "revise", "get"} {
 		if !strings.Contains(output, expected) {
 			t.Fatalf("help is missing %q:\n%s", expected, output)
 		}
 	}
-	if strings.Contains(output, "decide") {
-		t.Fatalf("agent-facing CLI must not advertise checkpoint decisions:\n%s", output)
-	}
-}
-
-func TestRunTuttiModePlanWaitHelpDocumentsBoundedLongPoll(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		if r.URL.Path == "/v1/cli/capabilities" {
-			_, _ = w.Write([]byte(tuttiModePlanCapabilitiesFixture))
-			return
-		}
-		http.NotFound(w, r)
-	}))
-	defer server.Close()
-
-	writeEndpoint(t, server.URL, "token-1")
-	var stdout bytes.Buffer
-	var stderr bytes.Buffer
-	if code := runDefaultProgram(t, []string{"plan", "wait", "--help"}, &stdout, &stderr); code != 0 {
-		t.Fatalf("code = %d, stderr = %s", code, stderr.String())
-	}
-
-	output := stdout.String()
-	for _, expected := range []string{
-		"--workflow-id <value>",
-		"--checkpoint-id <value>",
-		"[--timeout-ms <value>]",
-		"Default: 30000",
-	} {
-		if !strings.Contains(output, expected) {
-			t.Fatalf("wait help is missing %q:\n%s", expected, output)
+	// The review decision reaches the agent as a new user message; the CLI
+	// must neither block on it (wait) nor make it (decide).
+	for _, forbidden := range []string{"wait", "decide"} {
+		if strings.Contains(output, forbidden) {
+			t.Fatalf("agent-facing CLI must not advertise %q:\n%s", forbidden, output)
 		}
 	}
 }

@@ -10,6 +10,7 @@ import (
 	workflowbiz "github.com/tutti-os/tutti/services/tuttid/biz/workspaceworkflow"
 	agentservice "github.com/tutti-os/tutti/services/tuttid/service/agent"
 	tuttimodeplanservice "github.com/tutti-os/tutti/services/tuttid/service/tuttimodeplan"
+	tuttitypes "github.com/tutti-os/tutti/services/tuttid/types"
 )
 
 const tuttiModePlanFeedbackDispatchTimeout = 2 * time.Minute
@@ -97,22 +98,34 @@ func (d *tuttiModePlanFeedbackDispatcher) dispatch(input tuttimodeplanservice.Pl
 }
 
 func tuttiModePlanFeedbackPrompt(input tuttimodeplanservice.PlanRevisionFeedbackInput) string {
+	return tuttiModePlanFeedbackPromptForCLI(input, tuttiModePlanCLICommandName())
+}
+
+// tuttiModePlanCLICommandName mirrors the CLI shim name provisioned for
+// agents: development installs expose the Tutti CLI as `tutti-dev`.
+func tuttiModePlanCLICommandName() string {
+	if tuttitypes.IsDevelopmentEnv() {
+		return "tutti-dev"
+	}
+	return "tutti"
+}
+
+func tuttiModePlanFeedbackPromptForCLI(input tuttimodeplanservice.PlanRevisionFeedbackInput, cliName string) string {
 	return fmt.Sprintf(`The user reviewed your Tutti Mode plan and requested changes.
 
-Workflow ID: %s
-Rejected checkpoint ID: %s
+Workflow ID: %[1]s
+Rejected checkpoint ID: %[2]s
 
 User feedback:
-%s
+%[3]s
 
-Revise the plan now:
-1. Update the complete tutti-mode-plan/v1 Markdown document (plan narrative plus the full task graph in the tasks frontmatter) to address the feedback.
-2. Submit it with: tutti plan revise --workflow-id %s --file <absolute path to the updated document> --request-id <new stable id>
-3. Observe the new review decision with: tutti plan wait --workflow-id %s --checkpoint-id <checkpoint id returned by revise>`,
+Revise the plan now. Every command below is a %[4]s shell command, not a built-in tool; do not answer with update_plan, TodoWrite, or a chat-only plan.
+1. Update the complete tutti-mode-plan/v1 Markdown document (plan narrative plus the full task graph in the tasks frontmatter) to address the feedback. Keep every task's launch configuration complete: agentTargetId, model, and permissionModeId, with execution.reasoningIntensity set.
+2. Submit it with: %[4]s plan revise --workflow-id %[1]s --file <absolute path to the updated document> --request-id <new stable id>
+3. End the turn as soon as revise succeeds — never run a wait or poll command. The user's next review decision arrives as a new user message, exactly like this one.`,
 		input.WorkflowID,
 		input.CheckpointID,
 		strings.TrimSpace(input.Feedback),
-		input.WorkflowID,
-		input.WorkflowID,
+		cliName,
 	)
 }
