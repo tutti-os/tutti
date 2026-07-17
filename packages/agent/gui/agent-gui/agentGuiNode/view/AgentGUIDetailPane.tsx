@@ -305,6 +305,11 @@ export const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
       source: "tutti-plan-issue-panel"
     });
   });
+  const jumpToPlanIssuePanel = useStableEventCallback((): void => {
+    timelineRef.current
+      ?.querySelector('[data-testid="tutti-plan-issue-panel"]')
+      ?.scrollIntoView({ behavior: "smooth", block: "start" });
+  });
   // Turning Tutti mode off with a review still pending also cancels the
   // checkpoint: the banner and composer decision semantics clear with it, and
   // the agent continues naturally on the next message without plan context.
@@ -956,6 +961,28 @@ export const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
           tuttiPlanReviewLabels={labels.tuttiModePlanBanner}
           onCancelTuttiPlanReview={cancelPendingPlan}
           onTuttiPlanReviewIntensityChange={setTuttiModeOrchestrationIntensity}
+          tuttiPlanIssueStatus={
+            planIssue && !pendingPlanPanel
+              ? {
+                  title: planIssue.title,
+                  running: planIssue.tasks.filter(
+                    (task) => task.status === "running"
+                  ).length,
+                  pendingAcceptance: planIssue.tasks.filter(
+                    (task) => task.status === "pending_acceptance"
+                  ).length,
+                  failed: planIssue.tasks.filter(
+                    (task) => task.status === "failed"
+                  ).length,
+                  done: planIssue.tasks.filter(
+                    (task) => task.status === "completed"
+                  ).length,
+                  total: planIssue.tasks.length
+                }
+              : null
+          }
+          tuttiPlanIssueStripLabels={labels.tuttiModePlanIssueStrip}
+          onJumpToTuttiPlanIssue={jumpToPlanIssuePanel}
         />
       ) : null}
     </main>

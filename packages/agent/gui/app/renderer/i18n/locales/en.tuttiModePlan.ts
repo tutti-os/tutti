@@ -40,5 +40,10 @@ export const enTuttiModePlan = {
   issueStatusPendingAcceptance: "In review",
   issueStatusCompleted: "Done",
   issueStatusFailed: "Failed",
-  issueStatusCanceled: "Canceled"
+  issueStatusCanceled: "Canceled",
+  issueStripRunning: "{{count}} subtasks running",
+  issueStripPending: "{{count}} awaiting acceptance",
+  issueStripFailed: "{{count}} failed",
+  issueStripDone: "{{done}}/{{total}} done",
+  issueStripJump: "View the subtask board"
 } as const;
