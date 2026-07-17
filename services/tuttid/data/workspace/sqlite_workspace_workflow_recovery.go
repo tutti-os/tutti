@@ -15,7 +15,7 @@ func (s *SQLiteStore) ListRecoverableCreateIssueOperations(ctx context.Context) 
 SELECT
   o.workspace_id, o.workflow_id, w.source_session_id,
   c.checkpoint_id, c.kind, c.revision_id, c.status, c.decided_by,
-  c.decision_reason, c.created_at_unix_ms, c.updated_at_unix_ms, c.decided_at_unix_ms,
+  c.decision_reason, c.task_assignments, c.created_at_unix_ms, c.updated_at_unix_ms, c.decided_at_unix_ms,
   o.operation_id, o.kind, o.status, o.revision_id, o.issue_id,
   o.error_code, o.error_message, o.created_at_unix_ms, o.updated_at_unix_ms,
   o.started_at_unix_ms, o.completed_at_unix_ms
@@ -40,10 +40,11 @@ ORDER BY o.created_at_unix_ms ASC, o.workspace_id ASC, o.workflow_id ASC, o.oper
 		var item RecoverableCreateIssueOperation
 		var checkpointCreated, checkpointUpdated, checkpointDecided int64
 		var operationCreated, operationUpdated, operationStarted, operationCompleted int64
+		var encodedAssignments string
 		if err := rows.Scan(
 			&item.WorkspaceID, &item.Operation.WorkflowID, &item.SourceSessionID,
 			&item.Checkpoint.ID, &item.Checkpoint.Kind, &item.Checkpoint.RevisionID,
-			&item.Checkpoint.Status, &item.Checkpoint.DecidedBy, &item.Checkpoint.DecisionReason,
+			&item.Checkpoint.Status, &item.Checkpoint.DecidedBy, &item.Checkpoint.DecisionReason, &encodedAssignments,
 			&checkpointCreated, &checkpointUpdated, &checkpointDecided,
 			&item.Operation.ID, &item.Operation.Kind, &item.Operation.Status,
 			&item.Operation.RevisionID, &item.Operation.IssueID, &item.Operation.ErrorCode,
@@ -51,6 +52,9 @@ ORDER BY o.created_at_unix_ms ASC, o.workspace_id ASC, o.workflow_id ASC, o.oper
 			&operationStarted, &operationCompleted,
 		); err != nil {
 			return nil, fmt.Errorf("scan recoverable create_issue operation: %w", err)
+		}
+		if item.Checkpoint.TaskAssignments, err = decodeWorkflowTaskAssignments(encodedAssignments); err != nil {
+			return nil, err
 		}
 		item.Checkpoint.WorkflowID = item.Operation.WorkflowID
 		item.Checkpoint.CreatedAt = time.UnixMilli(checkpointCreated).UTC()
@@ -64,6 +68,41 @@ ORDER BY o.created_at_unix_ms ASC, o.workspace_id ASC, o.workflow_id ASC, o.oper
 	}
 	if err := rows.Err(); err != nil {
 		return nil, fmt.Errorf("iterate recoverable create_issue operations: %w", err)
+	}
+	return result, nil
+}
+
+// ListPendingConfigurationReviewCheckpoints returns every non-terminal
+// workflow whose current pending checkpoint is a legacy configuration review.
+// The single-review flow retires these at daemon startup.
+func (s *SQLiteStore) ListPendingConfigurationReviewCheckpoints(ctx context.Context) ([]PendingConfigurationReviewCheckpoint, error) {
+	if s == nil || s.writeDB == nil {
+		return nil, errors.New("workspace database is not initialized")
+	}
+	rows, err := s.writeDB.QueryContext(ctx, `
+SELECT c.workspace_id, c.workflow_id, c.checkpoint_id
+FROM workspace_workflow_checkpoints c
+JOIN workspace_workflows w
+  ON w.workspace_id = c.workspace_id AND w.workflow_id = c.workflow_id
+ AND w.current_revision_id = c.revision_id
+WHERE c.kind = 'configuration_review' AND c.status = 'pending'
+  AND w.status IN ('pending_review', 'in_progress')
+ORDER BY c.created_at_unix_ms ASC, c.workspace_id ASC, c.workflow_id ASC, c.checkpoint_id ASC
+`)
+	if err != nil {
+		return nil, fmt.Errorf("list pending configuration review checkpoints: %w", err)
+	}
+	defer rows.Close()
+	result := make([]PendingConfigurationReviewCheckpoint, 0)
+	for rows.Next() {
+		var item PendingConfigurationReviewCheckpoint
+		if err := rows.Scan(&item.WorkspaceID, &item.WorkflowID, &item.CheckpointID); err != nil {
+			return nil, fmt.Errorf("scan pending configuration review checkpoint: %w", err)
+		}
+		result = append(result, item)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate pending configuration review checkpoints: %w", err)
 	}
 	return result, nil
 }

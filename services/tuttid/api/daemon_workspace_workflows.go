@@ -85,12 +85,13 @@ func (api DaemonAPI) DecideWorkspaceWorkflowCheckpoint(ctx context.Context, requ
 		reason = *request.Body.Reason
 	}
 	_, err := api.TuttiModePlanService.Decide(ctx, tuttimodeplanservice.DecideInput{
-		WorkspaceID:    request.WorkspaceID,
-		WorkflowID:     request.WorkflowID.String(),
-		CheckpointID:   request.CheckpointID.String(),
-		Decision:       workflowbiz.CheckpointStatus(request.Body.Decision),
-		DecidedBy:      request.Body.DecidedBy,
-		DecisionReason: reason,
+		WorkspaceID:     request.WorkspaceID,
+		WorkflowID:      request.WorkflowID.String(),
+		CheckpointID:    request.CheckpointID.String(),
+		Decision:        workflowbiz.CheckpointStatus(request.Body.Decision),
+		DecidedBy:       request.Body.DecidedBy,
+		DecisionReason:  reason,
+		TaskAssignments: workflowTaskAssignmentsFromGenerated(request.Body.TaskAssignments),
 	})
 	if err != nil {
 		return decideWorkspaceWorkflowError(err), nil
@@ -259,6 +260,24 @@ func generatedWorkspaceWorkflowSnapshot(view tuttimodeplanservice.SnapshotView) 
 	return result, nil
 }
 
+func workflowTaskAssignmentsFromGenerated(values *[]tuttigenerated.WorkspaceWorkflowTaskAssignment) []workflowbiz.TaskAssignment {
+	if values == nil || len(*values) == 0 {
+		return nil
+	}
+	result := make([]workflowbiz.TaskAssignment, 0, len(*values))
+	for _, value := range *values {
+		result = append(result, workflowbiz.TaskAssignment{
+			TaskID:           value.TaskId,
+			AgentTargetID:    value.AgentTargetId,
+			ModelPlanID:      value.ModelPlanId,
+			Model:            value.Model,
+			PermissionModeID: value.PermissionModeId,
+			ReasoningEffort:  value.ReasoningEffort,
+		})
+	}
+	return result
+}
+
 func validateFiniteWorkflowBudget(budget tuttimodeplanservice.PlanBudget) error {
 	if math.IsNaN(budget.QuotaWaterlinePercent) || math.IsInf(budget.QuotaWaterlinePercent, 0) {
 		return fmt.Errorf("invalid persisted workflow quota waterline percentage")
@@ -308,6 +327,8 @@ func generatedTuttiModePlanTask(task tuttimodeplanservice.PlanTask) tuttigenerat
 		AgentTargetId:      stringPointerIfNotBlank(task.AgentTargetID),
 		ModelPlanId:        stringPointerIfNotBlank(task.ModelPlanID),
 		Model:              stringPointerIfNotBlank(task.Model),
+		PermissionModeId:   stringPointerIfNotBlank(task.PermissionModeID),
+		ReasoningEffort:    stringPointerIfNotBlank(task.ReasoningEffort),
 		ExecutionDirectory: stringPointerIfNotBlank(task.ExecutionDirectory),
 		DependsOn:          append([]string{}, task.DependsOn...),
 	}

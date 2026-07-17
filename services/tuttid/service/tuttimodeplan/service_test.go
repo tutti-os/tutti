@@ -12,7 +12,7 @@ import (
 	workspacedata "github.com/tutti-os/tutti/services/tuttid/data/workspace"
 )
 
-func TestServiceProposePersistsConfigurationRevisionAndReviewCheckpoint(t *testing.T) {
+func TestServiceProposePersistsPlanRevisionAndSingleTaskReviewCheckpoint(t *testing.T) {
 	t.Parallel()
 
 	now := time.UnixMilli(1_700_000_000_000).UTC()
@@ -25,7 +25,7 @@ func TestServiceProposePersistsConfigurationRevisionAndReviewCheckpoint(t *testi
 		SourceTurnID:     " turn-1 ",
 		SourceToolCallID: " tool-1 ",
 		RequestID:        " request-1 ",
-		Markdown:         configurationMarkdown("Initial proposal"),
+		Markdown:         taskGraphMarkdown("Initial proposal"),
 	})
 	if err != nil {
 		t.Fatalf("Propose() error = %v", err)
@@ -41,13 +41,13 @@ func TestServiceProposePersistsConfigurationRevisionAndReviewCheckpoint(t *testi
 	if len(result.Snapshot.Revisions) != 1 || result.Snapshot.Revisions[0].Sequence != 1 || result.Snapshot.Revisions[0].ProducedByTurnID != "turn-1" {
 		t.Fatalf("revisions = %#v", result.Snapshot.Revisions)
 	}
-	if len(result.Snapshot.Checkpoints) != 1 || result.Snapshot.Checkpoints[0].Kind != workflowbiz.CheckpointKindConfigurationReview || result.Snapshot.Checkpoints[0].Status != workflowbiz.CheckpointStatusPending {
+	if len(result.Snapshot.Checkpoints) != 1 || result.Snapshot.Checkpoints[0].Kind != workflowbiz.CheckpointKindTaskReview || result.Snapshot.Checkpoints[0].Status != workflowbiz.CheckpointStatusPending {
 		t.Fatalf("checkpoints = %#v", result.Snapshot.Checkpoints)
 	}
 	if len(result.Snapshot.TurnLinks) != 1 || result.Snapshot.TurnLinks[0].Relation != workflowbiz.TurnRelationSource {
 		t.Fatalf("turn links = %#v", result.Snapshot.TurnLinks)
 	}
-	if result.Document.Phase != PhaseConfiguration || result.Document.Title != "Initial proposal" {
+	if result.Document.Phase != PhaseTaskGraph || result.Document.Title != "Initial proposal" || len(result.Document.Tasks) == 0 {
 		t.Fatalf("document = %#v", result.Document)
 	}
 	if result.Snapshot.Revisions[0].DocumentPath == "" || result.Snapshot.Revisions[0].SHA256 == "" {
@@ -58,7 +58,7 @@ func TestServiceProposePersistsConfigurationRevisionAndReviewCheckpoint(t *testi
 	}
 }
 
-func TestServiceProposeRejectsTaskGraphAsInitialRevision(t *testing.T) {
+func TestServiceProposeRejectsConfigurationOnlyDocument(t *testing.T) {
 	t.Parallel()
 
 	store := newMemoryWorkflowStore()
@@ -68,13 +68,32 @@ func TestServiceProposeRejectsTaskGraphAsInitialRevision(t *testing.T) {
 		SourceSessionID: "session-1",
 		SourceTurnID:    "turn-1",
 		RequestID:       "request-1",
-		Markdown:        taskGraphMarkdown("Premature graph"),
+		Markdown:        configurationMarkdown("Two-phase configuration"),
 	})
 	if !errors.Is(err, ErrInvalidTransition) {
 		t.Fatalf("Propose() error = %v, want ErrInvalidTransition", err)
 	}
 	if len(store.snapshots) != 0 {
 		t.Fatalf("proposal persisted after invalid transition: %#v", store.snapshots)
+	}
+}
+
+func TestServiceProposeDefaultsOmittedPhaseToTaskGraph(t *testing.T) {
+	t.Parallel()
+
+	store := newMemoryWorkflowStore()
+	service := newTestService(t, store, time.UnixMilli(1_700_000_000_000).UTC(), "workflow-1", "revision-1", "checkpoint-1")
+	result, err := service.Propose(context.Background(), ProposeInput{
+		WorkspaceID:     "workspace-1",
+		SourceSessionID: "session-1",
+		RequestID:       "request-1",
+		Markdown:        planMarkdownWithoutPhase("Phaseless plan"),
+	})
+	if err != nil {
+		t.Fatalf("Propose() error = %v", err)
+	}
+	if result.Document.Phase != PhaseTaskGraph || result.Snapshot.Checkpoints[0].Kind != workflowbiz.CheckpointKindTaskReview {
+		t.Fatalf("result = %#v", result)
 	}
 }
 
@@ -88,7 +107,7 @@ func TestServiceProposeAllowsSessionOnlyProvenanceBeforeTurnIsObservable(t *test
 		WorkspaceID:     "workspace-1",
 		SourceSessionID: "session-1",
 		RequestID:       "request-1",
-		Markdown:        configurationMarkdown("Session provenance"),
+		Markdown:        taskGraphMarkdown("Session provenance"),
 	})
 	if err != nil {
 		t.Fatalf("Propose() error = %v", err)
@@ -110,7 +129,7 @@ func TestServicePublishesDurableWorkflowInvalidationAfterProposalCommit(t *testi
 		WorkspaceID:     "workspace-1",
 		SourceSessionID: "session-1",
 		RequestID:       "request-1",
-		Markdown:        configurationMarkdown("Event proposal"),
+		Markdown:        taskGraphMarkdown("Event proposal"),
 	}); err != nil {
 		t.Fatalf("Propose() error = %v", err)
 	}
@@ -132,7 +151,7 @@ func TestServiceProposeMutationReplayIsIdempotentWithoutMakingContentIdentity(t 
 		WorkspaceID:     "workspace-1",
 		SourceSessionID: "session-1",
 		RequestID:       "proposal-request-1",
-		Markdown:        configurationMarkdown("Replay-safe proposal"),
+		Markdown:        taskGraphMarkdown("Replay-safe proposal"),
 	}
 
 	first, err := service.Propose(context.Background(), input)
@@ -151,7 +170,7 @@ func TestServiceProposeMutationReplayIsIdempotentWithoutMakingContentIdentity(t 
 	}
 
 	conflict := input
-	conflict.Markdown = configurationMarkdown("Different content under the same request")
+	conflict.Markdown = taskGraphMarkdown("Different content under the same request")
 	if _, err := service.Propose(context.Background(), conflict); !errors.Is(err, ErrMutationConflict) {
 		t.Fatalf("conflicting Propose() error = %v, want ErrMutationConflict", err)
 	}
@@ -176,7 +195,7 @@ func TestServiceGetViewLoadsVerifiedRevisionDocumentsForRecovery(t *testing.T) {
 		WorkspaceID:     "workspace-1",
 		SourceSessionID: "session-1",
 		RequestID:       "request-1",
-		Markdown:        configurationMarkdown("Recovered proposal"),
+		Markdown:        taskGraphMarkdown("Recovered proposal"),
 	}); err != nil {
 		t.Fatalf("Propose() error = %v", err)
 	}
@@ -208,7 +227,7 @@ func TestServiceAgentWorkflowAccessIsScopedToSourceSession(t *testing.T) {
 		WorkspaceID:     "workspace-1",
 		SourceSessionID: "session-1",
 		RequestID:       "request-1",
-		Markdown:        configurationMarkdown("Scoped proposal"),
+		Markdown:        taskGraphMarkdown("Scoped proposal"),
 	}); err != nil {
 		t.Fatalf("Propose() error = %v", err)
 	}
@@ -225,7 +244,7 @@ func TestServiceAgentWorkflowAccessIsScopedToSourceSession(t *testing.T) {
 	}
 	if _, err := service.ReviseFromAgent(context.Background(), AgentReviseInput{
 		WorkspaceID: "workspace-1", WorkflowID: "workflow-1", AgentSessionID: "session-2", RequestID: "request-2",
-		Markdown: configurationMarkdown("Unauthorized revision"),
+		Markdown: taskGraphMarkdown("Unauthorized revision"),
 	}); !errors.Is(err, workspacedata.ErrWorkspaceWorkflowNotFound) {
 		t.Fatalf("ReviseFromAgent(other session) error = %v, want not found", err)
 	}
@@ -313,20 +332,36 @@ func TestServiceReviseEnforcesPhaseStateMachine(t *testing.T) {
 		wantErr        error
 	}{
 		{
-			name:           "pending configuration may be superseded by configuration",
+			name:           "pending configuration no longer accepts configuration revisions",
 			checkpointKind: workflowbiz.CheckpointKindConfigurationReview,
 			status:         workflowbiz.CheckpointStatusPending,
 			workflowStatus: workflowbiz.WorkflowStatusPendingReview,
 			markdown:       configurationMarkdown("Refined configuration"),
-			wantKind:       workflowbiz.CheckpointKindConfigurationReview,
+			wantErr:        ErrInvalidTransition,
 		},
 		{
-			name:           "rejected configuration accepts revised configuration",
+			name:           "rejected configuration no longer accepts configuration revisions",
 			checkpointKind: workflowbiz.CheckpointKindConfigurationReview,
 			status:         workflowbiz.CheckpointStatusRejected,
 			workflowStatus: workflowbiz.WorkflowStatusInProgress,
 			markdown:       configurationMarkdown("Addressed feedback"),
-			wantKind:       workflowbiz.CheckpointKindConfigurationReview,
+			wantErr:        ErrInvalidTransition,
+		},
+		{
+			name:           "pending task review may be superseded by a replacement plan",
+			checkpointKind: workflowbiz.CheckpointKindTaskReview,
+			status:         workflowbiz.CheckpointStatusPending,
+			workflowStatus: workflowbiz.WorkflowStatusPendingReview,
+			markdown:       taskGraphMarkdown("Superseding plan"),
+			wantKind:       workflowbiz.CheckpointKindTaskReview,
+		},
+		{
+			name:           "rejected task review accepts a revised plan",
+			checkpointKind: workflowbiz.CheckpointKindTaskReview,
+			status:         workflowbiz.CheckpointStatusRejected,
+			workflowStatus: workflowbiz.WorkflowStatusInProgress,
+			markdown:       taskGraphMarkdown("Addressed review feedback"),
+			wantKind:       workflowbiz.CheckpointKindTaskReview,
 		},
 		{
 			name:           "accepted configuration advances to task graph",
@@ -395,14 +430,14 @@ func TestServiceReviseRetriesAfterMetadataCommitFailureWithoutRevisionFileConfli
 	now := time.UnixMilli(1_700_000_000_000).UTC()
 	store := newMemoryWorkflowStore()
 	store.snapshots[workflowStoreKey("workspace-1", "workflow-1")] = workflowSnapshotFixture(
-		workflowbiz.CheckpointKindConfigurationReview,
+		workflowbiz.CheckpointKindTaskReview,
 		workflowbiz.CheckpointStatusRejected,
 		workflowbiz.WorkflowStatusInProgress,
 		now,
 	)
 	store.appendFailures = 1
 	service := newTestService(t, store, now.Add(time.Minute), "revision-2", "checkpoint-2", "revision-3", "checkpoint-3")
-	markdown := configurationMarkdown("Retryable revision")
+	markdown := taskGraphMarkdown("Retryable revision")
 
 	if _, err := service.Revise(context.Background(), ReviseInput{
 		WorkspaceID: "workspace-1",
@@ -432,7 +467,7 @@ func TestServiceReviseMutationReplayIsIdempotentWithoutBanningIntentionalReapply
 	now := time.UnixMilli(1_700_000_000_000).UTC()
 	store := newMemoryWorkflowStore()
 	store.snapshots[workflowStoreKey("workspace-1", "workflow-1")] = workflowSnapshotFixture(
-		workflowbiz.CheckpointKindConfigurationReview,
+		workflowbiz.CheckpointKindTaskReview,
 		workflowbiz.CheckpointStatusPending,
 		workflowbiz.WorkflowStatusPendingReview,
 		now,
@@ -444,7 +479,7 @@ func TestServiceReviseMutationReplayIsIdempotentWithoutBanningIntentionalReapply
 		WorkspaceID: "workspace-1",
 		WorkflowID:  "workflow-1",
 		RequestID:   "revision-request-1",
-		Markdown:    configurationMarkdown("Replay-safe revision"),
+		Markdown:    taskGraphMarkdown("Replay-safe revision"),
 	}
 
 	first, err := service.Revise(context.Background(), input)
@@ -463,7 +498,7 @@ func TestServiceReviseMutationReplayIsIdempotentWithoutBanningIntentionalReapply
 	}
 
 	conflict := input
-	conflict.Markdown = configurationMarkdown("Different content under the same request")
+	conflict.Markdown = taskGraphMarkdown("Different content under the same request")
 	if _, err := service.Revise(context.Background(), conflict); !errors.Is(err, ErrMutationConflict) {
 		t.Fatalf("conflicting Revise() error = %v, want ErrMutationConflict", err)
 	}
@@ -1265,6 +1300,10 @@ func configurationMarkdown(title string) []byte {
 	return []byte("---\nschema: tutti-mode-plan/v1\nphase: configuration\ntitle: " + title + "\ntopicId: topic-1\nexecution:\n  mode: sequential\n  reasoningIntensity: 50\n  orchestrationIntensity: 50\nbudget:\n  mode: auto\n  tokenLimit: 0\n  quotaWaterlinePercent: 0\n---\nConfiguration narrative\n")
 }
 
+func planMarkdownWithoutPhase(title string) []byte {
+	return []byte("---\nschema: tutti-mode-plan/v1\ntitle: " + title + "\ntopicId: topic-1\nexecution:\n  mode: sequential\n  reasoningIntensity: 50\n  orchestrationIntensity: 50\nbudget:\n  mode: auto\n  tokenLimit: 0\n  quotaWaterlinePercent: 0\ntasks:\n  - id: task-1\n    title: Implement task\n    priority: medium\n---\nPlan narrative with tasks\n")
+}
+
 func taskGraphMarkdown(title string) []byte {
 	return []byte("---\nschema: tutti-mode-plan/v1\nphase: task_graph\ntitle: " + title + "\ntopicId: topic-1\nexecution:\n  mode: sequential\n  reasoningIntensity: 50\n  orchestrationIntensity: 50\nbudget:\n  mode: auto\n  tokenLimit: 0\n  quotaWaterlinePercent: 0\ntasks:\n  - id: task-1\n    title: Implement task\n    priority: medium\n---\nTask graph narrative\n")
 }
@@ -1558,6 +1597,29 @@ func (store *memoryWorkflowStore) appendWorkspaceWorkflowPlanRevisionLocked(inpu
 	return nil
 }
 
+func (store *memoryWorkflowStore) ListPendingConfigurationReviewCheckpoints(_ context.Context) ([]workspacedata.PendingConfigurationReviewCheckpoint, error) {
+	store.mu.Lock()
+	defer store.mu.Unlock()
+	result := make([]workspacedata.PendingConfigurationReviewCheckpoint, 0)
+	for _, snapshot := range store.snapshots {
+		if snapshot.Workflow.Status != workflowbiz.WorkflowStatusPendingReview &&
+			snapshot.Workflow.Status != workflowbiz.WorkflowStatusInProgress {
+			continue
+		}
+		checkpoint, found := checkpointForRevision(snapshot.Checkpoints, snapshot.Workflow.CurrentRevisionID)
+		if !found || checkpoint.Kind != workflowbiz.CheckpointKindConfigurationReview ||
+			checkpoint.Status != workflowbiz.CheckpointStatusPending {
+			continue
+		}
+		result = append(result, workspacedata.PendingConfigurationReviewCheckpoint{
+			WorkspaceID:  snapshot.Workflow.WorkspaceID,
+			WorkflowID:   snapshot.Workflow.ID,
+			CheckpointID: checkpoint.ID,
+		})
+	}
+	return result, nil
+}
+
 func (store *memoryWorkflowStore) ListRecoverableCreateIssueOperations(_ context.Context) ([]workspacedata.RecoverableCreateIssueOperation, error) {
 	store.mu.Lock()
 	defer store.mu.Unlock()
@@ -1622,6 +1684,7 @@ func (store *memoryWorkflowStore) DecideWorkspaceWorkflowCheckpoint(_ context.Co
 		checkpoint.Status = input.Decision
 		checkpoint.DecidedBy = input.DecidedBy
 		checkpoint.DecisionReason = input.DecisionReason
+		checkpoint.TaskAssignments = append([]workflowbiz.TaskAssignment(nil), input.TaskAssignments...)
 		checkpoint.DecidedAt = input.DecidedAt
 		checkpoint.UpdatedAt = input.DecidedAt
 		snapshot.Workflow.Status = input.WorkflowStatus
@@ -1750,4 +1813,277 @@ func (materializer *controlledConcurrentIssueMaterializer) MaterializeIssue(_ co
 		return "", errors.New("temporary concurrent failure")
 	}
 	return "issue-1", nil
+}
+
+type recordingFeedbackDispatcher struct {
+	mu     sync.Mutex
+	inputs []PlanRevisionFeedbackInput
+}
+
+func (dispatcher *recordingFeedbackDispatcher) DispatchPlanRevisionFeedback(_ context.Context, input PlanRevisionFeedbackInput) error {
+	dispatcher.mu.Lock()
+	defer dispatcher.mu.Unlock()
+	dispatcher.inputs = append(dispatcher.inputs, input)
+	return nil
+}
+
+func (dispatcher *recordingFeedbackDispatcher) recorded() []PlanRevisionFeedbackInput {
+	dispatcher.mu.Lock()
+	defer dispatcher.mu.Unlock()
+	return append([]PlanRevisionFeedbackInput(nil), dispatcher.inputs...)
+}
+
+func TestServiceDecideRejectionDispatchesFeedbackToSourceSession(t *testing.T) {
+	t.Parallel()
+
+	now := time.UnixMilli(1_700_000_000_000).UTC()
+	store := newMemoryWorkflowStore()
+	store.snapshots[workflowStoreKey("workspace-1", "workflow-1")] = workflowSnapshotFixture(
+		workflowbiz.CheckpointKindTaskReview,
+		workflowbiz.CheckpointStatusPending,
+		workflowbiz.WorkflowStatusPendingReview,
+		now,
+	)
+	dispatcher := &recordingFeedbackDispatcher{}
+	service := newTestService(t, store, now.Add(time.Minute), "operation-1")
+	service.FeedbackDispatcher = dispatcher
+
+	result, err := service.Decide(context.Background(), DecideInput{
+		WorkspaceID:    "workspace-1",
+		WorkflowID:     "workflow-1",
+		CheckpointID:   "checkpoint-1",
+		Decision:       workflowbiz.CheckpointStatusRejected,
+		DecidedBy:      "user-1",
+		DecisionReason: "Split task one into smaller steps",
+	})
+	if err != nil || !result.Changed {
+		t.Fatalf("Decide() result=%#v error=%v", result, err)
+	}
+	inputs := dispatcher.recorded()
+	if len(inputs) != 1 {
+		t.Fatalf("dispatched feedback = %#v, want exactly one", inputs)
+	}
+	if inputs[0].WorkflowID != "workflow-1" || inputs[0].CheckpointID != "checkpoint-1" ||
+		inputs[0].SourceSessionID != "session-1" || inputs[0].Feedback != "Split task one into smaller steps" {
+		t.Fatalf("dispatched feedback input = %#v", inputs[0])
+	}
+
+	// A replay of the identical rejected decision must not dispatch again.
+	if _, err := service.Decide(context.Background(), DecideInput{
+		WorkspaceID:    "workspace-1",
+		WorkflowID:     "workflow-1",
+		CheckpointID:   "checkpoint-1",
+		Decision:       workflowbiz.CheckpointStatusRejected,
+		DecidedBy:      "user-1",
+		DecisionReason: "Split task one into smaller steps",
+	}); err != nil {
+		t.Fatalf("replayed Decide() error = %v", err)
+	}
+	if replayInputs := dispatcher.recorded(); len(replayInputs) != 1 {
+		t.Fatalf("replayed rejection dispatched again: %#v", replayInputs)
+	}
+}
+
+func TestServiceDecideAcceptDoesNotDispatchFeedback(t *testing.T) {
+	t.Parallel()
+
+	now := time.UnixMilli(1_700_000_000_000).UTC()
+	store := newMemoryWorkflowStore()
+	service := newTestService(t, store, now.Add(time.Minute), "operation-1")
+	documentPath, digest, err := service.Revisions.Write("workflow-1", taskGraphMarkdown("Accepted plan"))
+	if err != nil {
+		t.Fatalf("write plan: %v", err)
+	}
+	snapshot := workflowSnapshotFixture(
+		workflowbiz.CheckpointKindTaskReview,
+		workflowbiz.CheckpointStatusPending,
+		workflowbiz.WorkflowStatusPendingReview,
+		now,
+	)
+	snapshot.Revisions[0].DocumentPath = documentPath
+	snapshot.Revisions[0].SHA256 = digest
+	store.snapshots[workflowStoreKey("workspace-1", "workflow-1")] = snapshot
+	dispatcher := &recordingFeedbackDispatcher{}
+	service.FeedbackDispatcher = dispatcher
+	service.IssueMaterializer = &recordingIssueMaterializer{issueID: "issue-1"}
+
+	if _, err := service.Decide(context.Background(), DecideInput{
+		WorkspaceID:  "workspace-1",
+		WorkflowID:   "workflow-1",
+		CheckpointID: "checkpoint-1",
+		Decision:     workflowbiz.CheckpointStatusAccepted,
+		DecidedBy:    "user-1",
+	}); err != nil {
+		t.Fatalf("Decide() error = %v", err)
+	}
+	if inputs := dispatcher.recorded(); len(inputs) != 0 {
+		t.Fatalf("accept dispatched feedback: %#v", inputs)
+	}
+}
+
+func stringPointer(value string) *string {
+	return &value
+}
+
+func TestServiceDecideAcceptRecordsTaskAssignmentsAndMergesActionableItems(t *testing.T) {
+	t.Parallel()
+
+	now := time.UnixMilli(1_700_000_000_000).UTC()
+	store := newMemoryWorkflowStore()
+	service := newTestService(t, store, now.Add(time.Minute), "operation-1")
+	documentPath, digest, err := service.Revisions.Write("workflow-1", taskGraphMarkdown("Assignable plan"))
+	if err != nil {
+		t.Fatalf("write plan: %v", err)
+	}
+	snapshot := workflowSnapshotFixture(
+		workflowbiz.CheckpointKindTaskReview,
+		workflowbiz.CheckpointStatusPending,
+		workflowbiz.WorkflowStatusPendingReview,
+		now,
+	)
+	snapshot.Revisions[0].DocumentPath = documentPath
+	snapshot.Revisions[0].SHA256 = digest
+	store.snapshots[workflowStoreKey("workspace-1", "workflow-1")] = snapshot
+	materializer := &recordingIssueMaterializer{issueID: "issue-1"}
+	service.IssueMaterializer = materializer
+
+	result, err := service.Decide(context.Background(), DecideInput{
+		WorkspaceID:  "workspace-1",
+		WorkflowID:   "workflow-1",
+		CheckpointID: "checkpoint-1",
+		Decision:     workflowbiz.CheckpointStatusAccepted,
+		DecidedBy:    "user-1",
+		TaskAssignments: []workflowbiz.TaskAssignment{{
+			TaskID:           "task-1",
+			AgentTargetID:    stringPointer("agent-x"),
+			ModelPlanID:      stringPointer("plan-x"),
+			Model:            stringPointer("model-x"),
+			PermissionModeID: stringPointer("mode-x"),
+			ReasoningEffort:  stringPointer("high"),
+		}},
+	})
+	if err != nil {
+		t.Fatalf("Decide() error = %v", err)
+	}
+	if len(result.Checkpoint.TaskAssignments) != 1 || result.Checkpoint.TaskAssignments[0].TaskID != "task-1" {
+		t.Fatalf("checkpoint assignments = %#v", result.Checkpoint.TaskAssignments)
+	}
+	if len(materializer.inputs) != 1 || len(materializer.inputs[0].ActionableItems) != 1 {
+		t.Fatalf("materializer inputs = %#v", materializer.inputs)
+	}
+	task := materializer.inputs[0].ActionableItems[0].Task
+	if task.AgentTargetID != "agent-x" || task.ModelPlanID != "plan-x" || task.Model != "model-x" ||
+		task.PermissionModeID != "mode-x" || task.ReasoningEffort != "high" {
+		t.Fatalf("materialized task did not merge overrides: %#v", task)
+	}
+
+	view, err := service.GetView(context.Background(), GetInput{WorkspaceID: "workspace-1", WorkflowID: "workflow-1"})
+	if err != nil {
+		t.Fatalf("GetView() error = %v", err)
+	}
+	if len(view.ActionableItems) != 1 || view.ActionableItems[0].Task.ReasoningEffort != "high" ||
+		view.ActionableItems[0].Task.PermissionModeID != "mode-x" {
+		t.Fatalf("actionable items = %#v", view.ActionableItems)
+	}
+}
+
+func TestServiceDecideRejectsInvalidTaskAssignments(t *testing.T) {
+	t.Parallel()
+
+	now := time.UnixMilli(1_700_000_000_000).UTC()
+	store := newMemoryWorkflowStore()
+	service := newTestService(t, store, now.Add(time.Minute), "operation-1")
+	documentPath, digest, err := service.Revisions.Write("workflow-1", taskGraphMarkdown("Guarded plan"))
+	if err != nil {
+		t.Fatalf("write plan: %v", err)
+	}
+	snapshot := workflowSnapshotFixture(
+		workflowbiz.CheckpointKindTaskReview,
+		workflowbiz.CheckpointStatusPending,
+		workflowbiz.WorkflowStatusPendingReview,
+		now,
+	)
+	snapshot.Revisions[0].DocumentPath = documentPath
+	snapshot.Revisions[0].SHA256 = digest
+	store.snapshots[workflowStoreKey("workspace-1", "workflow-1")] = snapshot
+
+	if _, err := service.Decide(context.Background(), DecideInput{
+		WorkspaceID:  "workspace-1",
+		WorkflowID:   "workflow-1",
+		CheckpointID: "checkpoint-1",
+		Decision:     workflowbiz.CheckpointStatusAccepted,
+		DecidedBy:    "user-1",
+		TaskAssignments: []workflowbiz.TaskAssignment{{
+			TaskID: "task-unknown",
+		}},
+	}); !errors.Is(err, ErrInvalidDecision) {
+		t.Fatalf("Decide(unknown task assignment) error = %v, want ErrInvalidDecision", err)
+	}
+	if _, err := service.Decide(context.Background(), DecideInput{
+		WorkspaceID:    "workspace-1",
+		WorkflowID:     "workflow-1",
+		CheckpointID:   "checkpoint-1",
+		Decision:       workflowbiz.CheckpointStatusRejected,
+		DecidedBy:      "user-1",
+		DecisionReason: "feedback",
+		TaskAssignments: []workflowbiz.TaskAssignment{{
+			TaskID: "task-1",
+		}},
+	}); !errors.Is(err, ErrInvalidDecision) {
+		t.Fatalf("Decide(assignments with rejection) error = %v, want ErrInvalidDecision", err)
+	}
+	if checkpoint := store.snapshots[workflowStoreKey("workspace-1", "workflow-1")].Checkpoints[0]; checkpoint.Status != workflowbiz.CheckpointStatusPending {
+		t.Fatalf("invalid assignments mutated checkpoint: %#v", checkpoint)
+	}
+}
+
+func TestServiceRetireConfigurationReviewWorkflowsCancelsLegacyPending(t *testing.T) {
+	t.Parallel()
+
+	now := time.UnixMilli(1_700_000_000_000).UTC()
+	store := newMemoryWorkflowStore()
+	legacy := workflowSnapshotFixture(
+		workflowbiz.CheckpointKindConfigurationReview,
+		workflowbiz.CheckpointStatusPending,
+		workflowbiz.WorkflowStatusPendingReview,
+		now,
+	)
+	store.snapshots[workflowStoreKey("workspace-1", "workflow-1")] = legacy
+	current := workflowSnapshotFixture(
+		workflowbiz.CheckpointKindTaskReview,
+		workflowbiz.CheckpointStatusPending,
+		workflowbiz.WorkflowStatusPendingReview,
+		now,
+	)
+	current.Workflow.ID = "workflow-2"
+	current.Plan.WorkflowID = "workflow-2"
+	for index := range current.Revisions {
+		current.Revisions[index].WorkflowID = "workflow-2"
+	}
+	for index := range current.Checkpoints {
+		current.Checkpoints[index].WorkflowID = "workflow-2"
+	}
+	current.TurnLinks = nil
+	store.snapshots[workflowStoreKey("workspace-1", "workflow-2")] = current
+	service := newTestService(t, store, now.Add(time.Minute))
+
+	if err := service.RetireConfigurationReviewWorkflows(context.Background()); err != nil {
+		t.Fatalf("RetireConfigurationReviewWorkflows() error = %v", err)
+	}
+	retired := store.snapshots[workflowStoreKey("workspace-1", "workflow-1")]
+	if retired.Workflow.Status != workflowbiz.WorkflowStatusCanceled ||
+		retired.Checkpoints[0].Status != workflowbiz.CheckpointStatusCanceled ||
+		retired.Checkpoints[0].DecidedBy != "tutti" {
+		t.Fatalf("legacy workflow not retired: %#v", retired)
+	}
+	untouched := store.snapshots[workflowStoreKey("workspace-1", "workflow-2")]
+	if untouched.Workflow.Status != workflowbiz.WorkflowStatusPendingReview ||
+		untouched.Checkpoints[0].Status != workflowbiz.CheckpointStatusPending {
+		t.Fatalf("single-review workflow was touched: %#v", untouched)
+	}
+
+	// A second pass observes nothing pending and stays a no-op.
+	if err := service.RetireConfigurationReviewWorkflows(context.Background()); err != nil {
+		t.Fatalf("second RetireConfigurationReviewWorkflows() error = %v", err)
+	}
 }

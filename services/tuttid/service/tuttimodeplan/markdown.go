@@ -60,6 +60,8 @@ type PlanTask struct {
 	AgentTargetID      string   `yaml:"agentTargetId"`
 	ModelPlanID        string   `yaml:"modelPlanId"`
 	Model              string   `yaml:"model"`
+	PermissionModeID   string   `yaml:"permissionModeId"`
+	ReasoningEffort    string   `yaml:"reasoningEffort"`
 	ExecutionDirectory string   `yaml:"executionDirectory"`
 	DependsOn          []string `yaml:"dependsOn"`
 }
@@ -119,6 +121,11 @@ func normalizeAndValidatePlanDocument(document *PlanDocument) error {
 	document.Title = strings.TrimSpace(document.Title)
 	document.TopicID = strings.TrimSpace(document.TopicID)
 	document.Phase = PlanPhase(strings.ToLower(strings.TrimSpace(string(document.Phase))))
+	if document.Phase == "" {
+		// The single-review flow submits one complete plan-plus-task-graph
+		// document; phase is retained for legacy revision files only.
+		document.Phase = PhaseTaskGraph
+	}
 	document.Execution.Mode = strings.ToLower(strings.TrimSpace(document.Execution.Mode))
 	document.Budget.Mode = strings.ToLower(strings.TrimSpace(document.Budget.Mode))
 	if document.Title == "" || document.TopicID == "" || strings.TrimSpace(document.Body) == "" {
@@ -131,7 +138,7 @@ func normalizeAndValidatePlanDocument(document *PlanDocument) error {
 		}
 	case PhaseTaskGraph:
 		if len(document.Tasks) == 0 {
-			return fmt.Errorf("%w: task graph revisions require at least one task", ErrInvalidTaskGraph)
+			return fmt.Errorf("%w: the plan document requires at least one task in tasks", ErrInvalidTaskGraph)
 		}
 	default:
 		return fmt.Errorf("%w: phase must be configuration or task_graph", ErrInvalidPlanMarkdown)
@@ -163,6 +170,8 @@ func normalizeAndValidatePlanDocument(document *PlanDocument) error {
 		task.AgentTargetID = strings.TrimSpace(task.AgentTargetID)
 		task.ModelPlanID = strings.TrimSpace(task.ModelPlanID)
 		task.Model = strings.TrimSpace(task.Model)
+		task.PermissionModeID = strings.TrimSpace(task.PermissionModeID)
+		task.ReasoningEffort = strings.TrimSpace(task.ReasoningEffort)
 		task.ExecutionDirectory = strings.TrimSpace(task.ExecutionDirectory)
 		if task.ID == "" || task.Title == "" {
 			return fmt.Errorf("%w: every task requires id and title", ErrInvalidTaskGraph)

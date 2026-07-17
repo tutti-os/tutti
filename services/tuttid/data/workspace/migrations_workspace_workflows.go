@@ -126,3 +126,42 @@ INSERT INTO tuttid_schema_migrations (id, applied_at_unix_ms)
 	}
 	return nil
 }
+
+func (s *SQLiteStore) applyWorkspaceWorkflowTaskAssignmentsV4(ctx context.Context) error {
+	applied, err := s.hasMigration(ctx, schemaMigrationWorkspaceWorkflowTaskAssignmentsV4)
+	if err != nil || applied {
+		return err
+	}
+	tx, err := s.writeDB.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin workspace workflow task assignments v4 migration: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+	var count int
+	if err := tx.QueryRowContext(ctx, `
+SELECT COUNT(*)
+FROM pragma_table_info('workspace_workflow_checkpoints')
+WHERE name = 'task_assignments'
+`).Scan(&count); err != nil {
+		return fmt.Errorf("inspect workspace workflow checkpoint task assignments column: %w", err)
+	}
+	if count == 0 {
+		// JSON array of user-owned per-task assignment overrides recorded with
+		// an accepted task review decision. Empty means no overrides.
+		if _, err := tx.ExecContext(ctx, `
+ALTER TABLE workspace_workflow_checkpoints
+  ADD COLUMN task_assignments TEXT NOT NULL DEFAULT ''`); err != nil {
+			return fmt.Errorf("add workspace workflow checkpoint task assignments: %w", err)
+		}
+	}
+	if _, err := tx.ExecContext(ctx, `
+INSERT INTO tuttid_schema_migrations (id, applied_at_unix_ms)
+VALUES (?, ?)
+`, schemaMigrationWorkspaceWorkflowTaskAssignmentsV4, unixMs(time.Now().UTC())); err != nil {
+		return fmt.Errorf("record workspace workflow task assignments v4 migration: %w", err)
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit workspace workflow task assignments v4 migration: %w", err)
+	}
+	return nil
+}

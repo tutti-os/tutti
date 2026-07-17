@@ -4424,6 +4424,9 @@ type DecideWorkspaceWorkflowCheckpointRequest struct {
 	DecidedBy string                                           `json:"decidedBy"`
 	Decision  DecideWorkspaceWorkflowCheckpointRequestDecision `json:"decision"`
 	Reason    *string                                          `json:"reason,omitempty"`
+
+	// TaskAssignments Optional per-task assignment overrides. Only valid when accepting a task review checkpoint; recorded durably with the decision and merged into the materialized Issue tasks.
+	TaskAssignments *[]WorkspaceWorkflowTaskAssignment `json:"taskAssignments,omitempty"`
 }
 
 // DecideWorkspaceWorkflowCheckpointRequestDecision defines model for DecideWorkspaceWorkflowCheckpointRequest.Decision.
@@ -5752,6 +5755,9 @@ type TuttiModeActivation struct {
 
 // TuttiModeActivationIntent defines model for TuttiModeActivationIntent.
 type TuttiModeActivationIntent struct {
+	// OrchestrationIntensity Optional orchestration intensity carried with the initial activation. Omitted uses the daemon default.
+	OrchestrationIntensity *int `json:"orchestrationIntensity,omitempty"`
+
 	// Source User-visible interaction that created this activation revision.
 	Source TuttiModeActivationSource `json:"source"`
 	Status TuttiModeActivationStatus `json:"status"`
@@ -5768,7 +5774,10 @@ type TuttiModeActivationRevision struct {
 	ActivationId    openapi_types.UUID `json:"activationId"`
 	CreatedAtUnixMs int64              `json:"createdAtUnixMs"`
 	Id              openapi_types.UUID `json:"id"`
-	Revision        int64              `json:"revision"`
+
+	// OrchestrationIntensity Session-scoped orchestration intensity captured with this activation revision. Higher values ask the planning agent for finer-grained task decomposition.
+	OrchestrationIntensity int   `json:"orchestrationIntensity"`
+	Revision               int64 `json:"revision"`
 
 	// Source User-visible interaction that created this activation revision.
 	Source TuttiModeActivationSource `json:"source"`
@@ -5821,15 +5830,21 @@ type TuttiModePlanExecutionMode string
 
 // TuttiModePlanTask defines model for TuttiModePlanTask.
 type TuttiModePlanTask struct {
-	AgentTargetId      *string                   `json:"agentTargetId"`
-	Content            string                    `json:"content"`
-	DependsOn          []string                  `json:"dependsOn"`
-	ExecutionDirectory *string                   `json:"executionDirectory"`
-	Id                 string                    `json:"id"`
-	Model              *string                   `json:"model"`
-	ModelPlanId        *string                   `json:"modelPlanId"`
-	Priority           TuttiModePlanTaskPriority `json:"priority"`
-	Title              string                    `json:"title"`
+	AgentTargetId      *string  `json:"agentTargetId"`
+	Content            string   `json:"content"`
+	DependsOn          []string `json:"dependsOn"`
+	ExecutionDirectory *string  `json:"executionDirectory"`
+	Id                 string   `json:"id"`
+	Model              *string  `json:"model"`
+	ModelPlanId        *string  `json:"modelPlanId"`
+
+	// PermissionModeId Task-level permission mode applied when the materialized Issue task launches.
+	PermissionModeId *string                   `json:"permissionModeId"`
+	Priority         TuttiModePlanTaskPriority `json:"priority"`
+
+	// ReasoningEffort Task-level reasoning effort applied when the materialized Issue task launches.
+	ReasoningEffort *string `json:"reasoningEffort"`
+	Title           string  `json:"title"`
 }
 
 // TuttiModePlanTaskPriority defines model for TuttiModePlanTask.Priority.
@@ -5876,6 +5891,9 @@ type UpdateIssueManagerTopicRequest struct {
 type UpdateTuttiModeActivationRequest struct {
 	// ExpectedRevision Optional optimistic-concurrency guard. Zero means no activation revision exists yet.
 	ExpectedRevision *int64 `json:"expectedRevision,omitempty"`
+
+	// OrchestrationIntensity Optional orchestration intensity persisted with the appended activation revision. Omitted keeps the current value, or the daemon default for the first revision.
+	OrchestrationIntensity *int `json:"orchestrationIntensity,omitempty"`
 
 	// Source User-visible interaction that created this activation revision.
 	Source TuttiModeActivationSource `json:"source"`
@@ -7154,6 +7172,16 @@ type WorkspaceWorkflowSnapshot struct {
 
 // WorkspaceWorkflowStatus defines model for WorkspaceWorkflowStatus.
 type WorkspaceWorkflowStatus string
+
+// WorkspaceWorkflowTaskAssignment User-owned per-task assignment override recorded with an accepted task review decision. Null fields keep the plan document value; empty strings clear it.
+type WorkspaceWorkflowTaskAssignment struct {
+	AgentTargetId    *string `json:"agentTargetId,omitempty"`
+	Model            *string `json:"model,omitempty"`
+	ModelPlanId      *string `json:"modelPlanId,omitempty"`
+	PermissionModeId *string `json:"permissionModeId,omitempty"`
+	ReasoningEffort  *string `json:"reasoningEffort,omitempty"`
+	TaskId           string  `json:"taskId"`
+}
 
 // WorkspaceWorkflowTurnLink defines model for WorkspaceWorkflowTurnLink.
 type WorkspaceWorkflowTurnLink struct {

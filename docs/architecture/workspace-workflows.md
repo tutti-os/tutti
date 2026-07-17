@@ -184,20 +184,23 @@ provider-native capabilities; it never turns those capabilities into a gate.
 ## Markdown Revision Contract
 
 Every proposal file uses the `tutti-mode-plan/v1` schema: YAML frontmatter
-followed by a non-empty Markdown body. The initial revision must use
-`phase: configuration` and must not contain tasks. After configuration is
-accepted, the next revision must use `phase: task_graph` and contain a valid,
-acyclic task graph. Rejected revisions may be replaced only by a new immutable
-revision of the same phase.
+followed by a non-empty Markdown body. The flow is single-shot: every revision
+is one complete document containing the plan narrative (body) plus the full
+task graph (`tasks` frontmatter, at least one task, acyclic). `phase` may be
+omitted and defaults to `task_graph`. `phase: configuration` remains parseable
+only so legacy revision files stay readable; new configuration-phase proposals
+and revisions are rejected. Rejected revisions are replaced by a new complete
+immutable revision.
 
 The frontmatter owns:
 
 - title and workspace topic ID;
 - sequential or parallel execution mode;
 - Issue-level reasoning and orchestration intensity;
-- auto or fixed token budget and quota waterline;
-- for `task_graph`, task IDs, content, priority, assignment, model,
-  execution directory, and dependencies.
+- auto or fixed token budget and quota waterline (the token limit is dormant
+  and no longer surfaced in UI);
+- task IDs, content, priority, assignment (agent target, model plan, model,
+  permission mode, reasoning effort), execution directory, and dependencies.
 
 Files live under:
 
@@ -218,24 +221,36 @@ directly.
 ## State And Decision Flow
 
 ```text
-Agent: tutti plan propose --file <configuration.md> --request-id <stable-id>
-  -> daemon commits workflow + revision + pending configuration checkpoint
+Agent: tutti plan propose --file <plan.md> --request-id <stable-id>
+  (plan.md = complete narrative + full task graph in one document)
+  -> daemon commits workflow + revision + the single pending task review
   -> daemon publishes workspace.workflow.updated
   -> AgentGUI pulls the authoritative session-scoped pending snapshot
-  -> user accepts, rejects with feedback, or cancels through HTTP
+  -> user accepts (optionally with per-task assignment overrides),
+     rejects with feedback, or cancels through HTTP
   -> Agent observes the durable result with tutti plan wait/get
 
-configuration accepted
-  -> checkpoint decision + generate_task_graph operation commit atomically
-  -> Agent appends a task_graph revision with tutti plan revise --request-id <stable-id>
+review rejected ("request changes")
+  -> the rejection commits durably with its create_revision operation
+  -> the daemon dispatches a feedback turn to the source Agent session
+     containing the feedback and revise instructions (best-effort; the
+     committed rejection never depends on dispatch)
+  -> Agent appends a complete replacement plan with tutti plan revise
   -> revision append atomically completes that exact pending operation
-  -> user reviews the new checkpoint
+  -> the panel refreshes onto the new pending review
 
-task graph accepted
-  -> daemon derives ActionableItems
+review accepted
+  -> the decision durably records any per-task assignment overrides
+  -> daemon derives ActionableItems (document values merged with overrides)
   -> deterministic create_issue operation materializes one Issue and its tasks
   -> operation succeeds with issueId and CLI reports issue_created
 ```
+
+Legacy two-phase workflows are retired at daemon startup: a one-shot scan
+cancels every non-terminal workflow whose current pending checkpoint is a
+configuration review (actor `tutti`). Historical accepted configuration
+checkpoints may still advance to a task-graph revision, but new
+configuration-phase revisions are rejected.
 
 The user-facing HTTP decision endpoint is the sole approval boundary. Agent
 CLI commands can observe a decision but cannot approve their own proposal.
@@ -288,15 +303,16 @@ failures are recorded on that operation and do not block recovery of later
 workflows; startup fails only when the scan fails or a durable operation outcome
 cannot be written. No background workflow worker is started.
 
-The workflow service owns the transition policy:
+The workflow service owns the transition policy. The single active checkpoint
+kind is the task review; the configuration-review rows below are legacy-only
+(retired at startup, cancel remains valid):
 
-| Checkpoint           | Decision | Durable result                                                | Agent next action                                |
-| -------------------- | -------- | ------------------------------------------------------------- | ------------------------------------------------ |
-| Configuration review | Accept   | workflow becomes in progress; `generate_task_graph` operation | generate and append a task graph                 |
-| Configuration review | Reject   | workflow remains in progress; feedback is stored              | revise configuration                             |
-| Task review          | Accept   | workflow becomes accepted; `create_issue` operation           | `issue_created` after successful materialization |
-| Task review          | Reject   | workflow remains in progress; feedback is stored              | revise task graph                                |
-| Either review        | Cancel   | workflow becomes canceled                                     | stop                                             |
+| Checkpoint                    | Decision | Durable result                                                                    | Agent next action                                |
+| ----------------------------- | -------- | --------------------------------------------------------------------------------- | ------------------------------------------------ |
+| Task review                   | Accept   | workflow becomes accepted; overrides recorded; `create_issue` operation           | `issue_created` after successful materialization |
+| Task review                   | Reject   | workflow remains in progress; feedback stored; feedback turn dispatched to source | revise the complete plan                         |
+| Task review                   | Cancel   | workflow becomes canceled                                                         | stop                                             |
+| Configuration review (legacy) | Cancel   | workflow becomes canceled                                                         | stop                                             |
 
 Source Agent Session deletion is another workflow transition owned by this
 service. The policy cancels only `pending_review` or `in_progress` workflows,
@@ -359,14 +375,23 @@ resume/get, settings, title, visibility, pin, and list paths. A mutation must
 not return a hand-built partial Session, because an authoritative client upsert
 would otherwise interpret an omitted activation as removal and clear the badge.
 
-The GUI panel displays only the current revision and its current pending
-checkpoint. Before acceptance it exposes every Issue materialization input in
-that revision: execution mode, reasoning and orchestration intensity, token
-budget and quota waterline, plus each task's ID, content, priority, Agent
-target, model plan, model, execution directory, and dependency IDs. Accept,
-reject, and cancel post the decision to the daemon; rejection feedback is
-mandatory. Closing the app does not discard the review: the next mount
-reconstructs it from the daemon snapshot.
+The GUI panel displays only the current revision and its single pending task
+review. Before acceptance it exposes every Issue materialization input in that
+revision: execution mode, reasoning and orchestration intensity, quota
+waterline (the token limit is dormant and hidden), plus each task's ID,
+content, priority, execution directory, and dependency IDs. Each task's
+assignment (Agent target, model plan, model, permission mode, reasoning
+effort) is editable in place through host-supplied option catalogs; the edits
+travel with the accept decision as per-task overrides and are durably recorded
+on the checkpoint. Accept, reject, and cancel post the decision to the daemon;
+rejection feedback is mandatory. Closing the app does not discard the review:
+the next mount reconstructs it from the daemon snapshot.
+
+The Tutti activation additionally carries a session-scoped orchestration
+intensity (0-100). The composer's Tutti Budget popup persists it as a new
+activation revision; each turn's frozen snapshot copies it, and the Tutti Host
+Context exposes it so the planning Agent chooses decomposition granularity
+from it.
 
 ## Issue Projection
 

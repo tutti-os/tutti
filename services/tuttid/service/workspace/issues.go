@@ -165,6 +165,8 @@ func (s IssueManagerService) CreateIssueFromPlan(ctx context.Context, workspaceI
 			AgentTargetID:      task.AgentTargetID,
 			ModelPlanID:        task.ModelPlanID,
 			Model:              task.Model,
+			PermissionModeID:   task.PermissionModeID,
+			ReasoningEffort:    task.ReasoningEffort,
 			ExecutionDirectory: task.ExecutionDirectory,
 			DependencyTaskIDs:  task.DependencyTaskIDs,
 		})
@@ -394,6 +396,8 @@ func (s IssueManagerService) CreateTasks(ctx context.Context, workspaceID string
 			AgentTargetID:      task.AgentTargetID,
 			ModelPlanID:        task.ModelPlanID,
 			Model:              task.Model,
+			PermissionModeID:   task.PermissionModeID,
+			ReasoningEffort:    task.ReasoningEffort,
 			ExecutionDirectory: task.ExecutionDirectory,
 			DependencyTaskIDs:  task.DependencyTaskIDs,
 		})

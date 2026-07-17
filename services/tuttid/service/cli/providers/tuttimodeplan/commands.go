@@ -24,7 +24,7 @@ const (
 )
 
 type proposeInput struct {
-	File      string `cli:"file" validate:"required" description:"Absolute path to the tutti-mode-plan/v1 Markdown proposal file."`
+	File      string `cli:"file" validate:"required" description:"Absolute path to the complete tutti-mode-plan/v1 Markdown plan (narrative body plus tasks frontmatter)."`
 	RequestID string `cli:"request-id" validate:"required" description:"Stable mutation id. Reuse it when retrying this proposal; use a new value for an intentional new proposal."`
 }
 
@@ -49,7 +49,7 @@ func (p Provider) newProposeCommand() cliservice.Command {
 		ID:          appID + ".plan.propose",
 		Path:        []string{"plan", "propose"},
 		Summary:     "Propose a Tutti Mode plan",
-		Description: "Create a durable Tutti-owned workflow from a configuration-phase Markdown revision and open a user review checkpoint.",
+		Description: "Create a durable Tutti-owned workflow from one complete tutti-mode-plan/v1 Markdown document (plan narrative plus the full task graph in the tasks frontmatter) and open the single user review checkpoint.",
 		Kind:        framework.KindAction,
 		Visibility:  cliservice.CapabilityVisibilityPublic,
 		Workspace:   framework.WorkspaceRequired,
@@ -65,7 +65,7 @@ func (p Provider) newReviseCommand() cliservice.Command {
 		ID:          appID + ".plan.revise",
 		Path:        []string{"plan", "revise"},
 		Summary:     "Revise a Tutti Mode plan",
-		Description: "Append an immutable Markdown revision to an existing Tutti-owned workflow and create its next review checkpoint.",
+		Description: "Append an immutable replacement plan document (narrative plus full task graph) after the user requests changes, creating the next review checkpoint.",
 		Kind:        framework.KindAction,
 		Visibility:  cliservice.CapabilityVisibilityPublic,
 		Workspace:   framework.WorkspaceRequired,

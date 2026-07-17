@@ -590,6 +590,8 @@ type CreateSessionResult struct {
 type TuttiModeActivationIntent struct {
 	State  string
 	Source string
+	// OrchestrationIntensity is optional; nil uses the daemon default.
+	OrchestrationIntensity *int
 }
 
 type SessionSkillBundle struct {

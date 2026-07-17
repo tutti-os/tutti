@@ -124,6 +124,74 @@ VALUES (?, ?)
 	return nil
 }
 
+func (s *SQLiteStore) applyTuttiModeOrchestrationIntensityV3(ctx context.Context) error {
+	applied, err := s.hasMigration(ctx, schemaMigrationTuttiModeOrchestrationIntensityV3)
+	if err != nil || applied {
+		return err
+	}
+	tx, err := s.writeDB.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin Tutti mode orchestration intensity v3 migration: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+	revisionExists, err := tuttiModeColumnExistsTx(ctx, tx, "tutti_mode_activation_revisions", "orchestration_intensity")
+	if err != nil {
+		return err
+	}
+	if !revisionExists {
+		// Revisions are always configured rows, so old rows adopt the default
+		// planning strength directly.
+		if _, err := tx.ExecContext(ctx, `
+ALTER TABLE tutti_mode_activation_revisions
+  ADD COLUMN orchestration_intensity INTEGER NOT NULL DEFAULT 50
+  CHECK (orchestration_intensity BETWEEN 0 AND 100)`); err != nil {
+			return fmt.Errorf("add Tutti mode activation revision orchestration intensity: %w", err)
+		}
+	}
+	snapshotExists, err := tuttiModeColumnExistsTx(ctx, tx, "tutti_mode_turn_snapshots", "orchestration_intensity")
+	if err != nil {
+		return err
+	}
+	if !snapshotExists {
+		// Snapshots include the canonical unconfigured row shape, which must stay
+		// all-zero; configured legacy rows are then upgraded to the default.
+		if _, err := tx.ExecContext(ctx, `
+ALTER TABLE tutti_mode_turn_snapshots
+  ADD COLUMN orchestration_intensity INTEGER NOT NULL DEFAULT 0
+  CHECK (orchestration_intensity BETWEEN 0 AND 100)`); err != nil {
+			return fmt.Errorf("add Tutti mode turn snapshot orchestration intensity: %w", err)
+		}
+		if _, err := tx.ExecContext(ctx, `
+UPDATE tutti_mode_turn_snapshots
+SET orchestration_intensity = 50
+WHERE activation_id != ''`); err != nil {
+			return fmt.Errorf("backfill Tutti mode turn snapshot orchestration intensity: %w", err)
+		}
+	}
+	if _, err := tx.ExecContext(ctx, `
+INSERT INTO tuttid_schema_migrations (id, applied_at_unix_ms)
+VALUES (?, ?)
+`, schemaMigrationTuttiModeOrchestrationIntensityV3, unixMs(time.Now().UTC())); err != nil {
+		return fmt.Errorf("record Tutti mode orchestration intensity v3 migration: %w", err)
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit Tutti mode orchestration intensity v3 migration: %w", err)
+	}
+	return nil
+}
+
+func tuttiModeColumnExistsTx(ctx context.Context, tx *sql.Tx, tableName, columnName string) (bool, error) {
+	var count int
+	if err := tx.QueryRowContext(ctx, `
+SELECT COUNT(*)
+FROM pragma_table_info(?)
+WHERE name = ?
+`, tableName, columnName).Scan(&count); err != nil {
+		return false, fmt.Errorf("inspect %s column %s: %w", tableName, columnName, err)
+	}
+	return count > 0, nil
+}
+
 func tuttiModeTurnSnapshotColumnExistsTx(ctx context.Context, tx *sql.Tx, columnName string) (bool, error) {
 	var count int
 	if err := tx.QueryRowContext(ctx, `

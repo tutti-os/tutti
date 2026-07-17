@@ -83,6 +83,8 @@ export interface TuttiModePlanTask {
   agentTargetId?: string | null;
   modelPlanId?: string | null;
   model?: string | null;
+  permissionModeId?: string | null;
+  reasoningEffort?: string | null;
   executionDirectory?: string | null;
   dependsOn: string[];
 }
@@ -136,6 +138,8 @@ export interface TuttiModePlanPanelTaskViewModel {
   agentTargetId: string | null;
   modelPlanId: string | null;
   model: string | null;
+  permissionModeId: string | null;
+  reasoningEffort: string | null;
   executionDirectory: string | null;
   dependsOn: string[];
 }
@@ -190,14 +194,14 @@ function currentCheckpoint(
   return checkpoints.at(-1) ?? null;
 }
 
+// The single-review flow renders only the task review over a complete plan
+// document. Legacy two-phase configuration checkpoints are retired by the
+// daemon at startup and never projected.
 function reviewKindMatchesDocument(
   kind: TuttiModePlanCheckpointKind,
   phase: TuttiModePlanDocument["phase"]
 ): boolean {
-  return (
-    (kind === "configuration_review" && phase === "configuration") ||
-    (kind === "task_review" && phase === "task_graph")
-  );
+  return kind === "task_review" && phase === "task_graph";
 }
 
 function panelState(
@@ -235,6 +239,8 @@ function projectTask(
     agentTargetId: nullableString(task.agentTargetId),
     modelPlanId: nullableString(task.modelPlanId),
     model: nullableString(task.model),
+    permissionModeId: nullableString(task.permissionModeId),
+    reasoningEffort: nullableString(task.reasoningEffort),
     executionDirectory: nullableString(task.executionDirectory),
     dependsOn: [...task.dependsOn]
   };

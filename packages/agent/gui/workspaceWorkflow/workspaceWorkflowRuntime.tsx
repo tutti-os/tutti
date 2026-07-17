@@ -23,6 +23,15 @@ export type TuttiModePlanReviewInvalidation =
   | TuttiModePlanReviewUpdate
   | TuttiModePlanReviewConnectionRestored;
 
+export interface TuttiModePlanTaskAssignmentInput {
+  taskId: string;
+  agentTargetId?: string | null;
+  modelPlanId?: string | null;
+  model?: string | null;
+  permissionModeId?: string | null;
+  reasoningEffort?: string | null;
+}
+
 export interface TuttiModePlanReviewDecisionInput {
   workspaceId: string;
   workflowId: string;
@@ -30,6 +39,40 @@ export interface TuttiModePlanReviewDecisionInput {
   decision: "accepted" | "rejected" | "canceled";
   decidedBy: string;
   reason?: string | null;
+  /** Per-task overrides; only meaningful with an accepted task review. */
+  taskAssignments?: readonly TuttiModePlanTaskAssignmentInput[];
+}
+
+export interface TuttiModePlanAssignmentAgentOption {
+  agentTargetId: string;
+  label: string;
+}
+
+export interface TuttiModePlanAssignmentAgentDetail {
+  /** Provider-native models usable without a model plan. */
+  models: readonly string[];
+  modelPlans: readonly {
+    modelPlanId: string;
+    label: string;
+    models: readonly string[];
+  }[];
+  permissionModes: readonly { id: string; label: string }[];
+  reasoningEfforts: readonly string[];
+}
+
+/**
+ * Option catalogs for per-task assignment editing. The desktop host reuses
+ * its agent directory and composer capability catalogs; the panel never
+ * hardcodes providers or modes.
+ */
+export interface TuttiModePlanAssignmentOptionsSource {
+  listAgents(input: {
+    workspaceId: string;
+  }): Promise<readonly TuttiModePlanAssignmentAgentOption[]>;
+  loadAgentOptions(input: {
+    workspaceId: string;
+    agentTargetId: string;
+  }): Promise<TuttiModePlanAssignmentAgentDetail>;
 }
 
 export interface TuttiModePlanReviewRuntime {
@@ -42,6 +85,8 @@ export interface TuttiModePlanReviewRuntime {
     workspaceId: string,
     listener: (update: TuttiModePlanReviewInvalidation) => void
   ): () => void;
+  /** Optional; the panel degrades to read-only assignment display without it. */
+  assignmentOptions?: TuttiModePlanAssignmentOptionsSource;
 }
 
 const TuttiModePlanReviewRuntimeContext =

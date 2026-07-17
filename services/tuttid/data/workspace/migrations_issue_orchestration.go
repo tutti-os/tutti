@@ -231,3 +231,43 @@ INSERT INTO tuttid_schema_migrations (id, applied_at_unix_ms)
 	}
 	return nil
 }
+
+// applyWorkspaceIssuesV12 reintroduces task-level launch overrides for the
+// Tutti Mode plan review: a per-task permission mode and reasoning effort.
+// Empty values inherit the target default and the Issue-level intensity.
+func (s *SQLiteStore) applyWorkspaceIssuesV12(ctx context.Context) error {
+	applied, err := s.hasMigration(ctx, schemaMigrationWorkspaceIssuesV12)
+	if err != nil {
+		return err
+	}
+	if applied {
+		return nil
+	}
+	columns := []struct {
+		name       string
+		definition string
+	}{
+		{"permission_mode_id", "TEXT NOT NULL DEFAULT ''"},
+		{"reasoning_effort", "TEXT NOT NULL DEFAULT ''"},
+	}
+	for _, column := range columns {
+		hasColumn, err := s.hasColumn(ctx, "workspace_issue_tasks", column.name)
+		if err != nil {
+			return err
+		}
+		if hasColumn {
+			continue
+		}
+		statement := fmt.Sprintf("ALTER TABLE workspace_issue_tasks ADD COLUMN %s %s;", column.name, column.definition)
+		if _, err := s.writeDB.ExecContext(ctx, statement); err != nil {
+			return fmt.Errorf("add workspace_issue_tasks.%s: %w", column.name, err)
+		}
+	}
+	if _, err := s.writeDB.ExecContext(ctx, `
+INSERT INTO tuttid_schema_migrations (id, applied_at_unix_ms)
+  VALUES (?, ?);
+`, schemaMigrationWorkspaceIssuesV12, unixMs(time.Now().UTC())); err != nil {
+		return fmt.Errorf("record workspace issue task launch overrides migration: %w", err)
+	}
+	return nil
+}

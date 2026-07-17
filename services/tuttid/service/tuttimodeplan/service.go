@@ -40,6 +40,7 @@ type Store interface {
 	RetryWorkspaceWorkflowOperation(context.Context, workspacedata.RetryWorkspaceWorkflowOperationInput) (workflowbiz.WorkflowOperation, bool, error)
 	CompleteWorkspaceWorkflowOperation(context.Context, workspacedata.CompleteWorkspaceWorkflowOperationInput) (workflowbiz.WorkflowOperation, bool, error)
 	ListRecoverableCreateIssueOperations(context.Context) ([]workspacedata.RecoverableCreateIssueOperation, error)
+	ListPendingConfigurationReviewCheckpoints(context.Context) ([]workspacedata.PendingConfigurationReviewCheckpoint, error)
 }
 
 // SourceSessionDeletionStore executes a service-authorized transaction
@@ -80,12 +81,29 @@ type MaterializeIssueInput struct {
 	ActionableItems []ActionableItem
 }
 
+// FeedbackDispatcher lets the daemon composition drive the source Agent
+// session after the user requests changes on the single review checkpoint.
+// The decision itself stays durable regardless of dispatch outcome.
+type FeedbackDispatcher interface {
+	DispatchPlanRevisionFeedback(context.Context, PlanRevisionFeedbackInput) error
+}
+
+type PlanRevisionFeedbackInput struct {
+	WorkspaceID     string
+	WorkflowID      string
+	CheckpointID    string
+	RevisionID      string
+	SourceSessionID string
+	Feedback        string
+}
+
 type Service struct {
 	Store                  Store
 	SourceSessionDeletions SourceSessionDeletionStore
 	Revisions              RevisionContentStore
 	Publisher              Publisher
 	IssueMaterializer      IssueMaterializer
+	FeedbackDispatcher     FeedbackDispatcher
 	Now                    func() time.Time
 	NewID                  func() string
 	WaitInterval           time.Duration
@@ -153,6 +171,9 @@ type DecideInput struct {
 	Decision       workflowbiz.CheckpointStatus
 	DecidedBy      string
 	DecisionReason string
+	// TaskAssignments carries user-owned per-task overrides. It is only valid
+	// when accepting a task review checkpoint.
+	TaskAssignments []workflowbiz.TaskAssignment
 }
 
 type NextAction string
@@ -228,8 +249,8 @@ func (s *Service) Propose(ctx context.Context, input ProposeInput) (ProposalResu
 	if err != nil {
 		return ProposalResult{}, err
 	}
-	if document.Phase != PhaseConfiguration {
-		return ProposalResult{}, fmt.Errorf("%w: the initial revision must be configuration", ErrInvalidTransition)
+	if document.Phase != PhaseTaskGraph {
+		return ProposalResult{}, fmt.Errorf("%w: the proposal must contain the complete plan narrative and task graph in one document", ErrInvalidTransition)
 	}
 
 	now := s.now()
@@ -271,7 +292,7 @@ func (s *Service) Propose(ctx context.Context, input ProposeInput) (ProposalResu
 	checkpoint := workflowbiz.WorkflowCheckpoint{
 		ID:         checkpointID,
 		WorkflowID: workflowID,
-		Kind:       workflowbiz.CheckpointKindConfigurationReview,
+		Kind:       workflowbiz.CheckpointKindTaskReview,
 		RevisionID: revisionID,
 		Status:     workflowbiz.CheckpointStatusPending,
 		CreatedAt:  now,
@@ -493,10 +514,16 @@ func (s *Service) Decide(ctx context.Context, input DecideInput) (DecisionResult
 	if err != nil {
 		return DecisionResult{}, err
 	}
+	assignments, err := s.validatedDecisionTaskAssignments(input, snapshot, checkpoint)
+	if err != nil {
+		return DecisionResult{}, err
+	}
 	if checkpoint.Status != workflowbiz.CheckpointStatusPending {
 		if checkpoint.Status != input.Decision {
 			return DecisionResult{}, ErrDecisionConflict
 		}
+		// A replayed decision keeps the durable assignments recorded with the
+		// original decision; late-supplied overrides are ignored.
 		operation, ensureErr := s.ensureAndExecuteDecisionOperation(ctx, input.WorkspaceID, snapshot, checkpoint, operationKind)
 		if ensureErr != nil {
 			return DecisionResult{}, ensureErr
@@ -519,6 +546,7 @@ func (s *Service) Decide(ctx context.Context, input DecideInput) (DecisionResult
 		Decision:                  input.Decision,
 		DecidedBy:                 input.DecidedBy,
 		DecisionReason:            input.DecisionReason,
+		TaskAssignments:           assignments,
 		DecidedAt:                 now,
 		WorkflowStatus:            workflowStatus,
 		Operation:                 pendingOperation,
@@ -555,12 +583,68 @@ func (s *Service) Decide(ctx context.Context, input DecideInput) (DecisionResult
 	if err != nil {
 		return DecisionResult{}, err
 	}
+	if changed && decided.Status == workflowbiz.CheckpointStatusRejected &&
+		decided.Kind == workflowbiz.CheckpointKindTaskReview && s.FeedbackDispatcher != nil {
+		// The rejection is already durable. Dispatch failure must not turn the
+		// committed decision into an apparent error; the Agent can still
+		// observe the rejection through plan get/wait.
+		_ = s.FeedbackDispatcher.DispatchPlanRevisionFeedback(ctx, PlanRevisionFeedbackInput{
+			WorkspaceID:     input.WorkspaceID,
+			WorkflowID:      input.WorkflowID,
+			CheckpointID:    decided.ID,
+			RevisionID:      decided.RevisionID,
+			SourceSessionID: snapshot.Workflow.SourceSessionID,
+			Feedback:        input.DecisionReason,
+		})
+	}
 	return DecisionResult{
 		Checkpoint: decided,
 		Changed:    changed,
 		NextAction: nextActionAfterOperation(nextAction, operation),
 		Operation:  operation,
 	}, nil
+}
+
+// validatedDecisionTaskAssignments enforces the accept-only, task-review-only
+// scope of per-task overrides and verifies every override targets a task in
+// the current revision document.
+func (s *Service) validatedDecisionTaskAssignments(
+	input DecideInput,
+	snapshot workflowbiz.Snapshot,
+	checkpoint workflowbiz.WorkflowCheckpoint,
+) ([]workflowbiz.TaskAssignment, error) {
+	assignments, err := workflowbiz.NormalizeTaskAssignments(input.TaskAssignments)
+	if err != nil {
+		return nil, fmt.Errorf("%w: %v", ErrInvalidDecision, err)
+	}
+	if len(assignments) == 0 {
+		return nil, nil
+	}
+	if input.Decision != workflowbiz.CheckpointStatusAccepted || checkpoint.Kind != workflowbiz.CheckpointKindTaskReview {
+		return nil, fmt.Errorf("%w: task assignments are only valid when accepting a task review", ErrInvalidDecision)
+	}
+	revision, found := revisionByID(snapshot.Revisions, checkpoint.RevisionID)
+	if !found {
+		return nil, ErrCheckpointMissing
+	}
+	raw, err := s.Revisions.Read(snapshot.Workflow.ID, revision.DocumentPath, revision.SHA256)
+	if err != nil {
+		return nil, err
+	}
+	document, err := ParsePlanMarkdown(raw)
+	if err != nil {
+		return nil, err
+	}
+	knownTasks := make(map[string]struct{}, len(document.Tasks))
+	for _, task := range document.Tasks {
+		knownTasks[task.ID] = struct{}{}
+	}
+	for _, assignment := range assignments {
+		if _, ok := knownTasks[assignment.TaskID]; !ok {
+			return nil, fmt.Errorf("%w: task assignment references unknown task %q", ErrInvalidDecision, assignment.TaskID)
+		}
+	}
+	return assignments, nil
 }
 
 func (s *Service) Wait(ctx context.Context, input WaitInput) (WaitResult, error) {
@@ -648,98 +732,4 @@ func (s *Service) newID() string {
 		return strings.TrimSpace(s.NewID())
 	}
 	return uuid.NewString()
-}
-
-func validateRevisionPhase(checkpoint workflowbiz.WorkflowCheckpoint, phase PlanPhase) error {
-	switch checkpoint.Kind {
-	case workflowbiz.CheckpointKindConfigurationReview:
-		if checkpoint.Status == workflowbiz.CheckpointStatusAccepted {
-			if phase == PhaseTaskGraph {
-				return nil
-			}
-			return fmt.Errorf("%w: accepted configuration must advance to task_graph", ErrInvalidTransition)
-		}
-		if checkpoint.Status == workflowbiz.CheckpointStatusPending || checkpoint.Status == workflowbiz.CheckpointStatusRejected || checkpoint.Status == workflowbiz.CheckpointStatusSuperseded {
-			if phase == PhaseConfiguration {
-				return nil
-			}
-		}
-	case workflowbiz.CheckpointKindTaskReview:
-		if checkpoint.Status == workflowbiz.CheckpointStatusPending || checkpoint.Status == workflowbiz.CheckpointStatusRejected || checkpoint.Status == workflowbiz.CheckpointStatusSuperseded {
-			if phase == PhaseTaskGraph {
-				return nil
-			}
-		}
-	}
-	return fmt.Errorf("%w: %s checkpoint in %s cannot accept %s", ErrInvalidTransition, checkpoint.Kind, checkpoint.Status, phase)
-}
-
-func checkpointKindForPhase(phase PlanPhase) workflowbiz.CheckpointKind {
-	if phase == PhaseTaskGraph {
-		return workflowbiz.CheckpointKindTaskReview
-	}
-	return workflowbiz.CheckpointKindConfigurationReview
-}
-
-func checkpointForRevision(checkpoints []workflowbiz.WorkflowCheckpoint, revisionID string) (workflowbiz.WorkflowCheckpoint, bool) {
-	for index := len(checkpoints) - 1; index >= 0; index-- {
-		if checkpoints[index].RevisionID == revisionID {
-			return checkpoints[index], true
-		}
-	}
-	return workflowbiz.WorkflowCheckpoint{}, false
-}
-
-func checkpointByID(checkpoints []workflowbiz.WorkflowCheckpoint, checkpointID string) (workflowbiz.WorkflowCheckpoint, bool) {
-	for _, checkpoint := range checkpoints {
-		if checkpoint.ID == checkpointID {
-			return checkpoint, true
-		}
-	}
-	return workflowbiz.WorkflowCheckpoint{}, false
-}
-
-func nextRevisionSequence(revisions []workflowbiz.PlanRevision) int {
-	sequence := 0
-	for _, revision := range revisions {
-		if revision.Sequence > sequence {
-			sequence = revision.Sequence
-		}
-	}
-	return sequence + 1
-}
-
-func isTerminalWorkflow(status workflowbiz.WorkflowStatus) bool {
-	switch status {
-	case workflowbiz.WorkflowStatusAccepted,
-		workflowbiz.WorkflowStatusCompleted,
-		workflowbiz.WorkflowStatusFailed,
-		workflowbiz.WorkflowStatusCanceled:
-		return true
-	default:
-		return false
-	}
-}
-
-func decisionTransition(kind workflowbiz.CheckpointKind, decision workflowbiz.CheckpointStatus) (NextAction, workflowbiz.WorkflowStatus, workflowbiz.OperationKind, error) {
-	if decision == workflowbiz.CheckpointStatusCanceled {
-		return NextActionCanceled, workflowbiz.WorkflowStatusCanceled, "", nil
-	}
-	switch kind {
-	case workflowbiz.CheckpointKindConfigurationReview:
-		switch decision {
-		case workflowbiz.CheckpointStatusAccepted:
-			return NextActionGenerateTaskGraph, workflowbiz.WorkflowStatusInProgress, workflowbiz.OperationKindGenerateTaskGraph, nil
-		case workflowbiz.CheckpointStatusRejected:
-			return NextActionReviseConfiguration, workflowbiz.WorkflowStatusInProgress, workflowbiz.OperationKindCreateRevision, nil
-		}
-	case workflowbiz.CheckpointKindTaskReview:
-		switch decision {
-		case workflowbiz.CheckpointStatusAccepted:
-			return NextActionCreateIssue, workflowbiz.WorkflowStatusAccepted, workflowbiz.OperationKindCreateIssue, nil
-		case workflowbiz.CheckpointStatusRejected:
-			return NextActionReviseTaskGraph, workflowbiz.WorkflowStatusInProgress, workflowbiz.OperationKindCreateRevision, nil
-		}
-	}
-	return "", "", "", fmt.Errorf("%w: %s checkpoint cannot transition to %s", ErrInvalidDecision, kind, decision)
 }

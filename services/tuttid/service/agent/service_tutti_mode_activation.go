@@ -39,10 +39,11 @@ func (s *Service) applyInitialTuttiModeActivation(ctx context.Context, workspace
 		return fmt.Errorf("%w: Tutti mode activation service is unavailable", ErrInvalidArgument)
 	}
 	_, err := s.TuttiModeActivations.Set(ctx, tuttimodeactivationservice.SetInput{
-		WorkspaceID:    workspaceID,
-		AgentSessionID: agentSessionID,
-		State:          tuttimodeactivationbiz.State(strings.TrimSpace(intent.State)),
-		Source:         tuttimodeactivationbiz.Source(strings.TrimSpace(intent.Source)),
+		WorkspaceID:            workspaceID,
+		AgentSessionID:         agentSessionID,
+		State:                  tuttimodeactivationbiz.State(strings.TrimSpace(intent.State)),
+		Source:                 tuttimodeactivationbiz.Source(strings.TrimSpace(intent.Source)),
+		OrchestrationIntensity: intent.OrchestrationIntensity,
 	})
 	return err
 }
@@ -168,11 +169,12 @@ func (s *Service) deleteTuttiModeActivationSessionState(ctx context.Context, wor
 
 func runtimeTuttiModeTurnSnapshot(snapshot tuttimodeactivationbiz.TurnSnapshot) *TuttiModeTurnSnapshot {
 	return &TuttiModeTurnSnapshot{
-		ActivationID: strings.TrimSpace(snapshot.ActivationID),
-		RevisionID:   strings.TrimSpace(snapshot.RevisionID),
-		Revision:     snapshot.Revision,
-		State:        string(snapshot.State),
-		Source:       string(snapshot.Source),
+		ActivationID:           strings.TrimSpace(snapshot.ActivationID),
+		RevisionID:             strings.TrimSpace(snapshot.RevisionID),
+		Revision:               snapshot.Revision,
+		State:                  string(snapshot.State),
+		Source:                 string(snapshot.Source),
+		OrchestrationIntensity: snapshot.OrchestrationIntensity,
 	}
 }
 
