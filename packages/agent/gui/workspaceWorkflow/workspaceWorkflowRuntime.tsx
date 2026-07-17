@@ -61,6 +61,40 @@ export interface TuttiModePlanAssignmentAgentDetail {
   reasoningEfforts: readonly string[];
 }
 
+export interface TuttiPlanIssueTaskSnapshot {
+  taskId: string;
+  title: string;
+  content: string;
+  status: string;
+  sortIndex: number;
+  parallelizable: boolean;
+  dependencyTaskIds: string[];
+}
+
+/** Read-only snapshot of the Issue a session's accepted plan materialized. */
+export interface TuttiPlanIssueSnapshot {
+  issueId: string;
+  topicId: string;
+  title: string;
+  tasks: TuttiPlanIssueTaskSnapshot[];
+}
+
+/**
+ * Read-only source for the embedded plan-issue panel in the conversation.
+ * The host resolves "the Issue this session's accepted plan created" and
+ * relays live issue updates; all mutations stay in the Issue Manager.
+ */
+export interface TuttiPlanIssueSource {
+  getSessionPlanIssue(input: {
+    workspaceId: string;
+    sourceSessionId: string;
+  }): Promise<TuttiPlanIssueSnapshot | null>;
+  subscribeIssueUpdates(
+    workspaceId: string,
+    listener: (update: { issueId: string }) => void
+  ): () => void;
+}
+
 /**
  * Option catalogs for per-task assignment editing. The desktop host reuses
  * its agent directory and composer capability catalogs; the panel never
@@ -88,6 +122,8 @@ export interface TuttiModePlanReviewRuntime {
   ): () => void;
   /** Optional; the panel degrades to read-only assignment display without it. */
   assignmentOptions?: TuttiModePlanAssignmentOptionsSource;
+  /** Optional; without it the embedded plan-issue panel never renders. */
+  planIssues?: TuttiPlanIssueSource;
 }
 
 const TuttiModePlanReviewRuntimeContext =

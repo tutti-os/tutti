@@ -23,5 +23,18 @@ export const zhCNTuttiModePlan = {
   assignmentOptionsLoading: "选项加载中...",
   notSpecified: "未指定",
   loadFailed: "无法加载 Tutti mode plan",
-  retry: "重试"
+  retry: "重试",
+  issueOpen: "打开 Issue",
+  issueListView: "列表",
+  issueBoardView: "看板",
+  issueSummary: "{{done}}/{{total}} 已完成 · {{running}} 运行中",
+  issueDependencies: "依赖",
+  issueStageParallel: "阶段 {{index}} · 并行 ×{{count}}",
+  issueStageSequential: "阶段 {{index}} · 串行",
+  issueStatusNotStarted: "待开始",
+  issueStatusRunning: "运行中",
+  issueStatusPendingAcceptance: "待验收",
+  issueStatusCompleted: "已完成",
+  issueStatusFailed: "失败",
+  issueStatusCanceled: "已取消"
 } as const;

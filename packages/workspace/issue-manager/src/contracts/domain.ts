@@ -128,6 +128,8 @@ export interface IssueManagerTaskSummary {
   model?: string;
   executionDirectory?: string;
   dependencyTaskIds?: string[];
+  /** Per-task parallel opt-in recorded at Tutti plan review. */
+  parallelizable?: boolean;
   acceptanceState?: IssueManagerAcceptanceState;
   acceptanceSummary?: string;
   createdAtUnix?: number;
