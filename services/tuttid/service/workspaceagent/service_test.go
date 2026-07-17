@@ -199,6 +199,8 @@ func TestServiceLogsWorkspaceAgentLifecycleEvents(t *testing.T) {
 		AgentID:              created.Agent.ID,
 		Name:                 "Builder v2",
 		HarnessAgentTargetID: "local:codex",
+		ModelPlanID:          "mp-one",
+		DefaultModel:         "gpt-5",
 		Enabled:              true,
 	}); err != nil {
 		t.Fatalf("Update() error = %v", err)
@@ -223,6 +225,20 @@ func TestServiceLogsWorkspaceAgentLifecycleEvents(t *testing.T) {
 	updatedRecord := handler.findEvent("workspace_agent.updated")
 	if updatedRecord["revision"] != "2" {
 		t.Fatalf("updated log revision = %v", updatedRecord)
+	}
+	// The deleted event must carry the full pre-delete configuration; a
+	// zero-value audit row cannot attribute later ingestion-side reference
+	// drops to the concrete configuration that disappeared.
+	deletedRecord := handler.findEvent("workspace_agent.deleted")
+	if deletedRecord["harness_agent_target_id"] != "local:codex" ||
+		deletedRecord["model_plan_id"] != "mp-one" ||
+		deletedRecord["enabled"] != "true" ||
+		deletedRecord["revision"] != "2" {
+		t.Fatalf("deleted log configuration = %v", deletedRecord)
+	}
+
+	if err := service.Delete(context.Background(), "ws", created.Agent.ID); !errors.Is(err, workspacedata.ErrWorkspaceAgentNotFound) {
+		t.Fatalf("Delete() missing agent error = %v, want not found", err)
 	}
 }
 

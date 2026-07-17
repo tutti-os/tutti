@@ -45,15 +45,9 @@ export function createWorkspaceSettingsAgentsState(): WorkspaceSettingsWorkspace
     deletingAgentID: null,
     draft: null,
     feedback: null,
-    capabilityCatalog: [],
-    capabilityCatalogHarnessTargetID: null,
-    capabilityCatalogLoadFailed: false,
-    capabilityCatalogLoading: false,
     harnessTargets: [],
     loadFailed: false,
     loading: false,
-    generating: false,
-    recommendingFallback: false,
     saving: false
   };
 }

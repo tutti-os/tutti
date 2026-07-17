@@ -82,10 +82,7 @@ export interface IWorkspaceAgentsController {
   cancelDeleteAgent(): void;
   cancelDraft(): void;
   confirmDeleteAgent(agentID: string): Promise<void>;
-  addRecommendedFallback(): Promise<void>;
-  generateDraft(): Promise<void>;
   refresh(): Promise<void>;
-  refreshCapabilityCatalog(): Promise<void>;
   requestDeleteAgent(agentID: string): void;
   saveDraft(): Promise<void>;
   updateDraft(patch: Partial<WorkspaceAgentDraft>): void;

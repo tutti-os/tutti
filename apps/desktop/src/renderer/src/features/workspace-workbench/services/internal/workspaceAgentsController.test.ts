@@ -1,20 +1,16 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import type {
-  AgentProviderComposerOptionsResponse,
-  AgentTarget,
-  AutomationRule,
-  WorkspaceAgentDraftGeneration
-} from "@tutti-os/client-tuttid-ts";
+import type { AgentTarget } from "@tutti-os/client-tuttid-ts";
 import type { WorkspaceAgentDefinition } from "../workspaceSettingsTypes.ts";
 import {
   parseWorkspaceAgentList,
   WorkspaceAgentsController,
+  workspaceAgentDraftToPutInput,
   type WorkspaceAgentsControllerDependencies
 } from "./workspaceAgentsController.ts";
 import { createWorkspaceSettingsStore } from "./workspaceSettingsStore.ts";
 
-test("workspace agents controller loads explicit Agents and system Harnesses", async () => {
+test("workspace agents controller loads explicit Agents and system runtimes", async () => {
   const store = createWorkspaceSettingsStore();
   store.workspaceID = "workspace-1";
   const controller = new WorkspaceAgentsController({
@@ -76,7 +72,7 @@ test("workspace agents controller ignores a stale workspace refresh", async () =
   );
 });
 
-test("workspace agents controller creates one Agent from the complete draft", async () => {
+test("workspace agents controller creates one Agent from the simplified draft", async () => {
   const store = createWorkspaceSettingsStore();
   store.workspaceID = "workspace-1";
   store.agents.harnessTargets = [
@@ -99,10 +95,7 @@ test("workspace agents controller creates one Agent from the complete draft", as
           instructions: input.instructions,
           modelPlanId: input.modelPlanId,
           name: input.name,
-          permissions: input.permissions,
-          purpose: input.purpose,
-          skills: input.skills,
-          tools: input.tools
+          purpose: input.purpose
         });
       }
     }),
@@ -116,14 +109,9 @@ test("workspace agents controller creates one Agent from the complete draft", as
     callConditions: "Before release\nBefore release\nOn architecture risk",
     defaultModel: "gpt-5",
     instructions: "Review carefully",
-    modelFallbacks: [],
     modelPlanId: "plan-1",
     name: "Reviewer",
-    permissions: "workspace.read\nworkspace.read\nnetwork.read",
-    purpose: "Review changes",
-    capabilitiesExplicit: true,
-    skills: "react\na11y",
-    tools: "terminal\nbrowser"
+    purpose: "Review changes"
   });
 
   await controller.saveDraft();
@@ -131,7 +119,7 @@ test("workspace agents controller creates one Agent from the complete draft", as
   assert.deepEqual(requests, [
     {
       callConditions: ["Before release", "On architecture risk"],
-      capabilitiesExplicit: true,
+      capabilitiesExplicit: false,
       defaultModel: "gpt-5",
       enabled: true,
       harnessAgentTargetId: "local:codex",
@@ -139,10 +127,10 @@ test("workspace agents controller creates one Agent from the complete draft", as
       modelFallbacks: [],
       modelPlanId: "plan-1",
       name: "Reviewer",
-      permissions: ["workspace.read", "network.read"],
+      permissions: [],
       purpose: "Review changes",
-      skills: ["react", "a11y"],
-      tools: ["terminal", "browser"]
+      skills: [],
+      tools: []
     }
   ]);
   assert.equal(store.agents.draft, null);
@@ -150,107 +138,45 @@ test("workspace agents controller creates one Agent from the complete draft", as
   assert.equal(directoryRefreshes, 1);
 });
 
-test("workspace agents controller generates into the form without persisting", async () => {
+test("saving an Agent with dormant explicit configuration returns it to neutral values", async () => {
   const store = createWorkspaceSettingsStore();
   store.workspaceID = "workspace-1";
-  let generationInput: unknown;
-  let agentWrites = 0;
+  store.agents.agents = [
+    createWorkspaceAgent({
+      capabilitiesExplicit: true,
+      modelFallbacks: [{ modelPlanId: "plan-fallback", model: "gpt-backup" }],
+      permissions: ["workspace.write"],
+      skills: ["react"],
+      tools: ["terminal"]
+    })
+  ];
+  const requests: unknown[] = [];
   const controller = new WorkspaceAgentsController({
     client: createClient({
-      createWorkspaceAgent: async () => {
-        agentWrites += 1;
+      updateWorkspaceAgent: async (_workspaceID, _agentID, input) => {
+        requests.push(input);
         return createWorkspaceAgent();
-      },
-      generateWorkspaceAgentDraft: async (_workspaceID, input) => {
-        generationInput = input;
-        return createGeneratedDraft();
       }
     }),
     store
   });
-  controller.beginDraft();
-  controller.updateDraft({
-    defaultModel: "gpt-5",
-    generationRequirements: "Review releases",
-    harnessAgentTargetId: "local:codex",
-    modelPlanId: "plan-1"
-  });
 
-  await controller.generateDraft();
-
-  assert.deepEqual(generationInput, {
-    harnessAgentTargetId: "local:codex",
-    model: "gpt-5",
-    modelPlanId: "plan-1",
-    requirements: "Review releases"
-  });
-  assert.equal(agentWrites, 0);
-  assert.equal(store.agents.draft?.name, "Release Reviewer");
-  assert.equal(store.agents.draft?.instructions, "Review evidence.");
-  assert.equal(store.agents.draft?.callConditions, "Use before a release.");
-  assert.equal(store.agents.draft?.generatedAutomationRules.length, 1);
-  assert.equal(store.agents.draft?.capabilitiesExplicit, true);
-});
-
-test("workspace agents controller saves generated automation suggestions disabled", async () => {
-  const store = createWorkspaceSettingsStore();
-  store.workspaceID = "workspace-1";
-  store.agents.harnessTargets = [
-    {
-      enabled: true,
-      id: "local:codex",
-      name: "Codex",
-      provider: "codex"
-    }
-  ];
-  const ruleWrites: unknown[] = [];
-  const controller = new WorkspaceAgentsController({
-    client: createClient({
-      createAutomationRule: async (_workspaceID, input) => {
-        ruleWrites.push(input);
-        return createAutomationRule(input);
-      },
-      createWorkspaceAgent: async (_workspaceID, input) =>
-        createWorkspaceAgent({
-          id: "workspace-agent:generated",
-          agentTargetId: "workspace-agent:generated",
-          name: input.name,
-          purpose: input.purpose
-        })
-    }),
-    store
-  });
-  controller.beginDraft();
-  controller.updateDraft({
-    modelPlanId: "plan-1",
-    name: "Release Reviewer",
-    purpose: "Review release readiness"
-  });
-  controller.updateDraft({
-    generatedAutomationRules: createGeneratedDraft().automationRules
-  });
-
+  controller.beginEditAgent("workspace-agent:1");
   await controller.saveDraft();
 
-  assert.equal(ruleWrites.length, 1);
-  assert.deepEqual(ruleWrites[0], {
-    action: "consult",
-    budget: { maxRunsPerSession: 1, maxTotalTokensPerSession: 50000 },
-    enabled: false,
-    name: "Completion review",
-    permissions: { allowedTools: [], permissionModeId: null },
-    prompt: "Return VERDICT: PASS or VERDICT: FAIL.",
-    sourceWorkspaceAgentId: "workspace-agent:generated",
-    target: {
-      kind: "model",
-      model: "gpt-5",
-      modelPlanId: "plan-1",
-      requiredCapabilities: []
-    },
-    trigger: "on_task_complete"
-  });
-  assert.equal(store.agents.draft, null);
-  assert.equal(store.automationRules.rules[0]?.enabled, false);
+  assert.equal(requests.length, 1);
+  const request = requests[0] as {
+    capabilitiesExplicit: boolean;
+    modelFallbacks: unknown[];
+    permissions: string[];
+    skills: string[];
+    tools: string[];
+  };
+  assert.equal(request.capabilitiesExplicit, false);
+  assert.deepEqual(request.modelFallbacks, []);
+  assert.deepEqual(request.permissions, []);
+  assert.deepEqual(request.skills, []);
+  assert.deepEqual(request.tools, []);
 });
 
 test("workspace agents controller sends null model fields when an edit clears its plan", async () => {
@@ -397,84 +323,35 @@ test("workspace agents controller does not apply a stale delete to a new workspa
   assert.equal(directoryRefreshes, 0);
 });
 
-test("workspace agents controller adds the daemon recommended compatible fallback", async () => {
-  const store = createWorkspaceSettingsStore();
-  store.workspaceID = "workspace-1";
-  store.modelPlans.plans = [
-    {
-      id: "plan-primary",
-      workspaceId: "workspace-1",
-      revision: 1,
-      name: "Primary",
-      templateKind: "custom",
-      billingMode: "api_metered",
-      protocol: "openai",
-      hasApiKey: true,
-      models: [
-        {
-          id: "vision-primary",
-          name: "Vision Primary",
-          capabilities: ["vision", "reasoning"]
-        }
-      ],
-      defaultModel: "vision-primary",
-      enabled: true,
-      status: "ready",
-      detection: { stages: [] },
-      firstUse: { status: "completed" },
-      createdAt: "2026-07-12T00:00:00Z",
-      updatedAt: "2026-07-12T00:00:00Z"
-    }
-  ];
-  let recommendationInput: unknown;
-  const controller = new WorkspaceAgentsController({
-    client: createClient({
-      recommendWorkspaceModels: async (_workspaceID, input) => {
-        recommendationInput = input;
-        return [
-          {
-            planId: "plan-primary",
-            planName: "Primary",
-            billingMode: "api_metered",
-            modelId: "vision-primary",
-            modelName: "Vision Primary",
-            capabilities: ["vision", "reasoning"],
-            status: "ready",
-            rank: 1,
-            reasons: ["status:ready"]
-          },
-          {
-            planId: "plan-fallback",
-            planName: "Fallback",
-            billingMode: "api_metered",
-            modelId: "vision-fallback",
-            modelName: "Vision Fallback",
-            capabilities: ["vision", "reasoning"],
-            status: "ready",
-            rank: 2,
-            reasons: ["status:ready"]
-          }
-        ];
-      }
+test("workspaceAgentDraftToPutInput always sends the dormant contract fields as neutral values", () => {
+  assert.deepEqual(
+    workspaceAgentDraftToPutInput({
+      agentId: null,
+      name: " Reviewer ",
+      purpose: " Reviews changes ",
+      harnessAgentTargetId: " local:codex ",
+      modelPlanId: "",
+      defaultModel: "",
+      instructions: "",
+      callConditions: "",
+      enabled: true
     }),
-    store
-  });
-  controller.beginDraft();
-  controller.updateDraft({
-    defaultModel: "vision-primary",
-    modelPlanId: "plan-primary"
-  });
-
-  await controller.addRecommendedFallback();
-
-  assert.deepEqual(recommendationInput, {
-    limit: 100,
-    requiredCapabilities: ["vision", "reasoning"]
-  });
-  assert.deepEqual(store.agents.draft?.modelFallbacks, [
-    { modelPlanId: "plan-fallback", model: "vision-fallback" }
-  ]);
-  assert.equal(store.agents.feedback, null);
+    {
+      callConditions: [],
+      capabilitiesExplicit: false,
+      defaultModel: null,
+      enabled: true,
+      harnessAgentTargetId: "local:codex",
+      instructions: "",
+      modelFallbacks: [],
+      modelPlanId: null,
+      name: "Reviewer",
+      permissions: [],
+      purpose: "Reviews changes",
+      skills: [],
+      tools: []
+    }
+  );
 });
 
 test("parseWorkspaceAgentList trims, removes blanks, and keeps stable uniqueness", () => {
@@ -484,144 +361,16 @@ test("parseWorkspaceAgentList trims, removes blanks, and keeps stable uniqueness
   ]);
 });
 
-test("workspace agents controller loads the selected Harness capability catalog", async () => {
-  const store = createWorkspaceSettingsStore();
-  store.workspaceID = "workspace-1";
-  store.agents.harnessTargets = [
-    { enabled: true, id: "local:codex", name: "Codex", provider: "codex" }
-  ];
-  const requests: unknown[] = [];
-  const controller = new WorkspaceAgentsController({
-    client: createClient({
-      getAgentProviderComposerOptions: async (
-        workspaceID,
-        provider,
-        agentTargetID
-      ) => {
-        requests.push({ agentTargetID, provider, workspaceID });
-        return createComposerOptions();
-      }
-    }),
-    store
-  });
-
-  controller.beginDraft();
-  await controller.refreshCapabilityCatalog();
-
-  assert.deepEqual(requests.at(-1), {
-    agentTargetID: "local:codex",
-    provider: "codex",
-    workspaceID: "workspace-1"
-  });
-  assert.deepEqual(
-    store.agents.capabilityCatalog.map((option) => option.id),
-    ["skill:reviewer", "connector:github"]
-  );
-  assert.equal(store.agents.capabilityCatalogLoadFailed, false);
-});
-
 function createClient(
   overrides: Partial<WorkspaceAgentsControllerDependencies["client"]> = {}
 ): WorkspaceAgentsControllerDependencies["client"] {
   return {
-    createAutomationRule: async (_workspaceID, input) =>
-      createAutomationRule(input),
     createWorkspaceAgent: async () => createWorkspaceAgent(),
     deleteWorkspaceAgent: async () => undefined,
-    getAgentProviderComposerOptions: async () => createComposerOptions(),
     listAgentTargets: async () => [],
     listWorkspaceAgents: async () => [],
-    generateWorkspaceAgentDraft: async () => createGeneratedDraft(),
-    recommendWorkspaceModels: async () => [],
     updateWorkspaceAgent: async () => createWorkspaceAgent(),
     ...overrides
-  };
-}
-
-function createGeneratedDraft(): WorkspaceAgentDraftGeneration {
-  return {
-    automationRules: [
-      {
-        action: "consult",
-        maxRunsPerSession: 1,
-        maxTotalTokensPerSession: 50000,
-        model: "gpt-5",
-        modelPlanId: "plan-1",
-        name: "Completion review",
-        prompt: "Return VERDICT: PASS or VERDICT: FAIL.",
-        trigger: "on_task_complete"
-      }
-    ],
-    callConditions: ["Use before a release."],
-    instructions: "Review evidence.",
-    name: "Release Reviewer",
-    purpose: "Review release readiness",
-    skills: ["code-review"],
-    usage: { inputTokens: 20, outputTokens: 10 },
-    usedModel: "gpt-5",
-    usedModelPlanId: "plan-1"
-  };
-}
-
-function createComposerOptions(): AgentProviderComposerOptionsResponse {
-  const emptyConfig = {
-    configurable: false,
-    currentValue: "",
-    defaultValue: "",
-    options: []
-  };
-  return {
-    behavior: {
-      collapseModelOptionsToLatest: false,
-      modelOptionsAuthoritative: false,
-      planModeExclusiveWithPermissionMode: false,
-      prewarmDraftSession: false,
-      refreshModelOptionsAfterSettings: false
-    },
-    capabilityCatalog: [
-      {
-        id: "connector:github",
-        invocation: "promptItem",
-        kind: "connector",
-        label: "GitHub",
-        name: "github",
-        status: "available"
-      },
-      {
-        id: "skill:reviewer",
-        invocation: "promptItem",
-        kind: "skill",
-        label: "Reviewer",
-        name: "reviewer",
-        status: "available"
-      }
-    ],
-    effectiveSettings: {},
-    modelConfig: emptyConfig,
-    permissionConfig: {
-      configurable: false,
-      defaultValue: "",
-      modes: []
-    },
-    provider: "codex",
-    reasoningConfig: emptyConfig,
-    runtimeContext: {},
-    skills: []
-  };
-}
-
-function createAutomationRule(
-  input: Parameters<
-    WorkspaceAgentsControllerDependencies["client"]["createAutomationRule"]
-  >[1]
-): AutomationRule {
-  return {
-    ...input,
-    createdAt: "2026-07-12T00:00:00Z",
-    id: "automation-rule:generated",
-    sourceWorkspaceAgentId: input.sourceWorkspaceAgentId ?? null,
-    updatedAt: "2026-07-12T00:00:00Z",
-    workspaceId: "workspace-1"
   };
 }
 
@@ -650,7 +399,7 @@ function createWorkspaceAgent(
 ): WorkspaceAgentDefinition {
   return {
     agentTargetId: "workspace-agent:1",
-    capabilitiesExplicit: true,
+    capabilitiesExplicit: false,
     callConditions: ["Use when a review is needed"],
     createdAt: "2026-07-12T00:00:00Z",
     defaultModel: "gpt-5",
@@ -666,12 +415,12 @@ function createWorkspaceAgent(
     instructions: "Review carefully",
     modelPlanId: "plan-1",
     name: "Reviewer",
-    permissions: ["workspace.read"],
+    permissions: [],
     purpose: "Review changes",
     revision: 1,
-    skills: ["react"],
+    skills: [],
     source: "user",
-    tools: ["terminal"],
+    tools: [],
     updatedAt: "2026-07-12T00:00:00Z",
     workspaceId: "workspace-1",
     ...overrides,

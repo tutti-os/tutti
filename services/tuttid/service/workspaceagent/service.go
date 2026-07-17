@@ -232,24 +232,21 @@ func putCapabilitySelections(input PutInput, explicit bool) ([]string, []string)
 }
 
 func (s *Service) Delete(ctx context.Context, workspaceID string, agentID string) error {
-	if s.Store == nil {
-		return errors.New("workspace agent store is not configured")
+	existing, err := s.get(ctx, workspaceID, agentID)
+	if err != nil {
+		return err
 	}
-	workspaceID = strings.TrimSpace(workspaceID)
-	agentID = strings.TrimSpace(agentID)
-	if workspaceID == "" || agentID == "" {
-		return fmt.Errorf("%w: workspace id and agent id are required", ErrInvalidInput)
-	}
-	if err := s.Store.DeleteWorkspaceAgent(ctx, workspaceID, agentID); err != nil {
+	if err := s.Store.DeleteWorkspaceAgent(ctx, existing.WorkspaceID, existing.ID); err != nil {
 		return err
 	}
 	// Deletion is deliberately not blocked by existing session references:
 	// stale ids degrade gracefully in the GUI (composer options settle into a
 	// recoverable error, and session ingestion drops the dangling reference
 	// with a diagnostic). This audit event is what ties those later
-	// "agent_target_id.dropped" ingestion warnings back to a user action.
-	logWorkspaceAgentLifecycle("deleted", workspaceagentbiz.Agent{WorkspaceID: workspaceID, ID: agentID})
-	s.publishConfigurationChanged(ctx, workspaceagentbiz.Agent{WorkspaceID: workspaceID, ID: agentID}, "", true)
+	// "agent_target_id.dropped" ingestion warnings back to a user action, so
+	// it logs the full pre-delete configuration rather than a zero-value row.
+	logWorkspaceAgentLifecycle("deleted", existing)
+	s.publishConfigurationChanged(ctx, existing, "", true)
 	return nil
 }
 

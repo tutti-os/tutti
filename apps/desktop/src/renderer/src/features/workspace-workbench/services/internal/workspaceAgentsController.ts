@@ -14,13 +14,9 @@ export interface WorkspaceAgentsControllerDependencies {
   client: Pick<
     DesktopWorkspaceSettingsClient,
     | "createWorkspaceAgent"
-    | "createAutomationRule"
     | "deleteWorkspaceAgent"
-    | "generateWorkspaceAgentDraft"
-    | "getAgentProviderComposerOptions"
     | "listAgentTargets"
     | "listWorkspaceAgents"
-    | "recommendWorkspaceModels"
     | "updateWorkspaceAgent"
   >;
   onWorkspaceAgentsChanged?: () => void | Promise<void>;
@@ -30,11 +26,10 @@ export interface WorkspaceAgentsControllerDependencies {
 /**
  * Owns settings interaction state for explicit workspace Agent definitions.
  * The daemon remains authoritative for validation, migration, revisions, and
- * the Harness + ModelPlan runtime mapping.
+ * the Agent Runtime + ModelPlan runtime mapping.
  */
 export class WorkspaceAgentsController implements IWorkspaceAgentsController {
   private readonly dependencies: WorkspaceAgentsControllerDependencies;
-  private capabilityRefreshSequence = 0;
   private refreshSequence = 0;
 
   constructor(dependencies: WorkspaceAgentsControllerDependencies) {
@@ -50,7 +45,6 @@ export class WorkspaceAgentsController implements IWorkspaceAgentsController {
   }
 
   reset(): void {
-    this.capabilityRefreshSequence += 1;
     this.refreshSequence += 1;
     this.store.agents = createWorkspaceSettingsAgentsState();
   }
@@ -115,20 +109,12 @@ export class WorkspaceAgentsController implements IWorkspaceAgentsController {
       harnessAgentTargetId: harness?.id ?? "",
       modelPlanId: "",
       defaultModel: "",
-      modelFallbacks: [],
       instructions: "",
       callConditions: "",
-      capabilitiesExplicit: false,
-      skills: "",
-      tools: "",
-      permissions: "",
-      enabled: true,
-      generationRequirements: "",
-      generatedAutomationRules: []
+      enabled: true
     };
     this.state.feedback = null;
     this.state.confirmingDeleteAgentID = null;
-    void this.refreshCapabilityCatalog();
   }
 
   beginEditAgent(agentID: string): void {
@@ -141,233 +127,19 @@ export class WorkspaceAgentsController implements IWorkspaceAgentsController {
     this.state.draft = workspaceAgentToDraft(agent);
     this.state.feedback = null;
     this.state.confirmingDeleteAgentID = null;
-    void this.refreshCapabilityCatalog();
   }
 
   updateDraft(patch: Partial<WorkspaceAgentDraft>): void {
     if (!this.state.draft) {
       return;
     }
-    const invalidatesGeneratedRules =
-      (patch.harnessAgentTargetId !== undefined &&
-        patch.harnessAgentTargetId !== this.state.draft.harnessAgentTargetId) ||
-      (patch.modelPlanId !== undefined &&
-        patch.modelPlanId !== this.state.draft.modelPlanId) ||
-      (patch.defaultModel !== undefined &&
-        patch.defaultModel !== this.state.draft.defaultModel);
-    const changesHarness =
-      patch.harnessAgentTargetId !== undefined &&
-      patch.harnessAgentTargetId !== this.state.draft.harnessAgentTargetId;
-    this.state.draft = {
-      ...this.state.draft,
-      ...patch,
-      ...(changesHarness
-        ? {
-            capabilitiesExplicit: false,
-            skills: "",
-            tools: ""
-          }
-        : {}),
-      ...(invalidatesGeneratedRules ? { generatedAutomationRules: [] } : {})
-    };
+    this.state.draft = { ...this.state.draft, ...patch };
     this.state.feedback = null;
-    if (changesHarness) {
-      this.state.capabilityCatalog = [];
-      this.state.capabilityCatalogHarnessTargetID = null;
-      void this.refreshCapabilityCatalog();
-    }
   }
 
   cancelDraft(): void {
-    this.capabilityRefreshSequence += 1;
     this.state.draft = null;
     this.state.feedback = null;
-    this.state.capabilityCatalog = [];
-    this.state.capabilityCatalogHarnessTargetID = null;
-    this.state.capabilityCatalogLoadFailed = false;
-    this.state.capabilityCatalogLoading = false;
-  }
-
-  async refreshCapabilityCatalog(): Promise<void> {
-    const workspaceID = this.store.workspaceID;
-    const state = this.state;
-    const harnessTargetID = state.draft?.harnessAgentTargetId.trim() ?? "";
-    const harness = state.harnessTargets.find(
-      (target) => target.id === harnessTargetID
-    );
-    if (!workspaceID || !state.draft || !harnessTargetID || !harness) {
-      state.capabilityCatalog = [];
-      state.capabilityCatalogHarnessTargetID = null;
-      state.capabilityCatalogLoadFailed = false;
-      state.capabilityCatalogLoading = false;
-      return;
-    }
-    const refreshSequence = ++this.capabilityRefreshSequence;
-    state.capabilityCatalogLoading = true;
-    state.capabilityCatalogLoadFailed = false;
-    try {
-      const options =
-        await this.dependencies.client.getAgentProviderComposerOptions(
-          workspaceID,
-          harness.provider,
-          harnessTargetID
-        );
-      if (
-        refreshSequence !== this.capabilityRefreshSequence ||
-        workspaceID !== this.store.workspaceID ||
-        state !== this.state ||
-        state.draft?.harnessAgentTargetId.trim() !== harnessTargetID
-      ) {
-        return;
-      }
-      state.capabilityCatalog = [...options.capabilityCatalog].sort(
-        (left, right) =>
-          workspaceAgentCapabilityKindRank(left.kind) -
-            workspaceAgentCapabilityKindRank(right.kind) ||
-          left.label.localeCompare(right.label)
-      );
-      state.capabilityCatalogHarnessTargetID = harnessTargetID;
-    } catch {
-      if (
-        refreshSequence === this.capabilityRefreshSequence &&
-        workspaceID === this.store.workspaceID &&
-        state === this.state &&
-        state.draft?.harnessAgentTargetId.trim() === harnessTargetID
-      ) {
-        state.capabilityCatalog = [];
-        state.capabilityCatalogHarnessTargetID = harnessTargetID;
-        state.capabilityCatalogLoadFailed = true;
-      }
-    } finally {
-      if (
-        refreshSequence === this.capabilityRefreshSequence &&
-        workspaceID === this.store.workspaceID &&
-        state === this.state
-      ) {
-        state.capabilityCatalogLoading = false;
-      }
-    }
-  }
-
-  async addRecommendedFallback(): Promise<void> {
-    const workspaceID = this.store.workspaceID;
-    const state = this.state;
-    const draft = state.draft;
-    if (!workspaceID || !draft?.modelPlanId || state.recommendingFallback) {
-      return;
-    }
-    const primaryPlan = this.store.modelPlans.plans.find(
-      (plan) => plan.id === draft.modelPlanId
-    );
-    const primaryModelID =
-      draft.defaultModel || primaryPlan?.defaultModel || "";
-    const requiredCapabilities =
-      primaryPlan?.models.find((model) => model.id === primaryModelID)
-        ?.capabilities ?? [];
-
-    state.recommendingFallback = true;
-    state.feedback = null;
-    try {
-      const recommendations =
-        await this.dependencies.client.recommendWorkspaceModels(workspaceID, {
-          limit: 100,
-          requiredCapabilities: [...requiredCapabilities]
-        });
-      const recommendation = recommendations.find(
-        (candidate) =>
-          candidate.planId !== draft.modelPlanId &&
-          !draft.modelFallbacks.some(
-            (fallback) =>
-              fallback.modelPlanId === candidate.planId &&
-              (fallback.model ?? "") === candidate.modelId
-          )
-      );
-      if (
-        workspaceID !== this.store.workspaceID ||
-        state !== this.state ||
-        state.draft !== draft
-      ) {
-        return;
-      }
-      if (!recommendation) {
-        state.feedback = { kind: "noRecommendation" };
-        return;
-      }
-      state.draft = {
-        ...draft,
-        modelFallbacks: [
-          ...draft.modelFallbacks,
-          {
-            modelPlanId: recommendation.planId,
-            model: recommendation.modelId
-          }
-        ]
-      };
-    } catch {
-      if (
-        workspaceID === this.store.workspaceID &&
-        state === this.state &&
-        state.draft === draft
-      ) {
-        state.feedback = { kind: "recommendFailed" };
-      }
-    } finally {
-      state.recommendingFallback = false;
-    }
-  }
-
-  async generateDraft(): Promise<void> {
-    const workspaceID = this.store.workspaceID;
-    const state = this.state;
-    const draft = state.draft;
-    if (!workspaceID || !draft || state.generating) {
-      return;
-    }
-    if (!draft.harnessAgentTargetId.trim() || !draft.modelPlanId.trim()) {
-      state.feedback = { kind: "generationRequiresPlan" };
-      return;
-    }
-    state.generating = true;
-    state.feedback = null;
-    try {
-      const generated =
-        await this.dependencies.client.generateWorkspaceAgentDraft(
-          workspaceID,
-          {
-            harnessAgentTargetId: draft.harnessAgentTargetId.trim(),
-            model: draft.defaultModel.trim() || null,
-            modelPlanId: draft.modelPlanId.trim(),
-            requirements: draft.generationRequirements.trim()
-          }
-        );
-      if (
-        workspaceID !== this.store.workspaceID ||
-        state !== this.state ||
-        state.draft !== draft
-      ) {
-        return;
-      }
-      state.draft = {
-        ...draft,
-        capabilitiesExplicit: true,
-        generatedAutomationRules: generated.automationRules,
-        instructions: generated.instructions,
-        callConditions: generated.callConditions.join("\n"),
-        name: generated.name,
-        purpose: generated.purpose,
-        skills: generated.skills.join("\n")
-      };
-    } catch {
-      if (
-        workspaceID === this.store.workspaceID &&
-        state === this.state &&
-        state.draft === draft
-      ) {
-        state.feedback = { kind: "generateFailed" };
-      }
-    } finally {
-      state.generating = false;
-    }
   }
 
   async saveDraft(): Promise<void> {
@@ -400,55 +172,9 @@ export class WorkspaceAgentsController implements IWorkspaceAgentsController {
       }
       this.upsertAgent(state, saved);
       await this.refreshAgentDirectory();
-      let pendingRules = [...draft.generatedAutomationRules];
-      let persistedDraft: WorkspaceAgentDraft = {
-        ...draft,
-        agentId: saved.id,
-        generatedAutomationRules: pendingRules
-      };
-      while (pendingRules.length > 0) {
-        const suggestion = pendingRules[0];
-        if (!suggestion) break;
-        try {
-          const createdRule =
-            await this.dependencies.client.createAutomationRule(workspaceID, {
-              action: "consult",
-              budget: {
-                maxRunsPerSession: suggestion.maxRunsPerSession,
-                maxTotalTokensPerSession: suggestion.maxTotalTokensPerSession
-              },
-              enabled: false,
-              name: suggestion.name,
-              permissions: { allowedTools: [], permissionModeId: null },
-              prompt: suggestion.prompt,
-              sourceWorkspaceAgentId: saved.id,
-              target: {
-                kind: "model",
-                model: suggestion.model ?? null,
-                modelPlanId: suggestion.modelPlanId,
-                requiredCapabilities: []
-              },
-              trigger: suggestion.trigger
-            });
-          this.upsertAutomationRule(createdRule);
-          pendingRules = pendingRules.slice(1);
-          persistedDraft = {
-            ...persistedDraft,
-            generatedAutomationRules: pendingRules
-          };
-        } catch {
-          if (workspaceID === this.store.workspaceID && state === this.state) {
-            state.draft = persistedDraft;
-            state.feedback = { kind: "generatedRulesSaveFailed" };
-          }
-          return;
-        }
-      }
       if (state.draft === draft) {
         state.draft = null;
         state.feedback = null;
-        state.capabilityCatalog = [];
-        state.capabilityCatalogHarnessTargetID = null;
       }
     } catch {
       if (
@@ -520,16 +246,6 @@ export class WorkspaceAgentsController implements IWorkspaceAgentsController {
     );
   }
 
-  private upsertAutomationRule(
-    rule: WorkspaceSettingsStoreState["automationRules"]["rules"][number]
-  ): void {
-    const rules = this.store.automationRules.rules;
-    const exists = rules.some((candidate) => candidate.id === rule.id);
-    this.store.automationRules.rules = exists
-      ? rules.map((candidate) => (candidate.id === rule.id ? rule : candidate))
-      : [...rules, rule];
-  }
-
   private async refreshAgentDirectory(): Promise<void> {
     try {
       await this.dependencies.onWorkspaceAgentsChanged?.();
@@ -540,6 +256,12 @@ export class WorkspaceAgentsController implements IWorkspaceAgentsController {
   }
 }
 
+/**
+ * The editor no longer exposes failover chains, capability allowlists, or
+ * permission overrides, so every save writes their neutral values: an empty
+ * fallback chain and automatic capability sync. Saving an Agent that carried
+ * an explicit allowlist intentionally returns it to automatic mode.
+ */
 export function workspaceAgentDraftToPutInput(
   draft: Readonly<WorkspaceAgentDraft>
 ): PutWorkspaceAgentInput {
@@ -549,16 +271,13 @@ export function workspaceAgentDraftToPutInput(
     harnessAgentTargetId: draft.harnessAgentTargetId.trim(),
     modelPlanId: draft.modelPlanId.trim() || null,
     defaultModel: draft.defaultModel.trim() || null,
-    modelFallbacks: draft.modelFallbacks.map((fallback) => ({
-      modelPlanId: fallback.modelPlanId.trim(),
-      model: fallback.model?.trim() || null
-    })),
+    modelFallbacks: [],
     instructions: draft.instructions.trim(),
     callConditions: parseWorkspaceAgentList(draft.callConditions),
-    capabilitiesExplicit: draft.capabilitiesExplicit,
-    skills: parseWorkspaceAgentList(draft.skills),
-    tools: parseWorkspaceAgentList(draft.tools),
-    permissions: parseWorkspaceAgentList(draft.permissions),
+    capabilitiesExplicit: false,
+    skills: [],
+    tools: [],
+    permissions: [],
     enabled: draft.enabled
   };
 }
@@ -587,32 +306,8 @@ function workspaceAgentToDraft(
     harnessAgentTargetId: agent.harness.agentTargetId,
     modelPlanId: agent.modelPlanId ?? "",
     defaultModel: agent.defaultModel ?? "",
-    modelFallbacks: agent.modelFallbacks.map((fallback) => ({ ...fallback })),
     instructions: agent.instructions ?? "",
     callConditions: agent.callConditions.join("\n"),
-    capabilitiesExplicit: agent.capabilitiesExplicit,
-    skills: agent.skills.join("\n"),
-    tools: agent.tools.join("\n"),
-    permissions: agent.permissions.join("\n"),
-    enabled: agent.enabled,
-    generationRequirements: "",
-    generatedAutomationRules: []
+    enabled: agent.enabled
   };
-}
-
-function workspaceAgentCapabilityKindRank(kind: string): number {
-  switch (kind) {
-    case "skill":
-      return 0;
-    case "plugin":
-      return 1;
-    case "connector":
-      return 2;
-    case "mcpServer":
-      return 3;
-    case "mcpTool":
-      return 4;
-    default:
-      return 5;
-  }
 }
