@@ -274,9 +274,22 @@ describe("AgentQueuedPromptPanel", () => {
       "data-agent-mention-href",
       "mention://workspace-app/ai-media-canvas?workspaceId=workspace-1"
     );
+    const image = mention?.querySelector(
+      '[data-agent-mention-app-icon="true"] img'
+    );
+    expect(image).toHaveAttribute("src", iconUrl);
+    expect(
+      mention?.querySelector('[data-agent-mention-fallback-icon="true"]')
+    ).not.toBeInTheDocument();
+
+    fireEvent.error(image!);
+
     expect(
       mention?.querySelector('[data-agent-mention-app-icon="true"] img')
-    ).toHaveAttribute("src", iconUrl);
+    ).not.toBeInTheDocument();
+    expect(
+      mention?.querySelector('[data-agent-mention-fallback-icon="true"]')
+    ).toBeInTheDocument();
     expect(mention).toHaveTextContent("AI Media Canvas");
     expect(screen.queryByText(/mention:\/\/workspace-app/)).toBeNull();
   });

@@ -394,6 +394,7 @@ export function AgentMentionNodeView(props: NodeViewProps): JSX.Element {
   const withTooltipProvider = useContext(AgentMentionTooltipProviderContext);
   const mention = mentionViewModel(node.attrs ?? {}, t);
   const [isEditable, setIsEditable] = useState(editor.isEditable);
+  const [failedIconUrl, setFailedIconUrl] = useState<string>();
   const extensionOptions = extension.options as {
     removeActionAriaLabel?: string;
   };
@@ -461,11 +462,11 @@ export function AgentMentionNodeView(props: NodeViewProps): JSX.Element {
             data-agent-mention-app-icon="true"
             data-workspace-app-icon="true"
           >
-            {mention.iconUrl ? (
+            {mention.iconUrl && failedIconUrl !== mention.iconUrl ? (
               <img
                 src={mention.iconUrl}
                 alt=""
-                className={`size-full object-cover transition-opacity ${
+                className={`col-start-1 row-start-1 size-full object-cover transition-opacity ${
                   isEditable
                     ? "group-hover:opacity-0 group-focus-within:opacity-0"
                     : ""
@@ -473,14 +474,18 @@ export function AgentMentionNodeView(props: NodeViewProps): JSX.Element {
                 decoding="async"
                 loading="lazy"
                 draggable={false}
+                onError={() => {
+                  setFailedIconUrl(mention.iconUrl);
+                }}
               />
             ) : (
               <span
-                className={`tsh-agent-object-token__kind-icon size-4 transition-opacity ${
+                className={`tsh-agent-object-token__kind-icon col-start-1 row-start-1 size-4 transition-opacity ${
                   isEditable
                     ? "group-hover:opacity-0 group-focus-within:opacity-0"
                     : ""
                 }`}
+                data-agent-mention-fallback-icon="true"
               />
             )}
             {isEditable ? (
