@@ -6,9 +6,9 @@ toolchain go1.24.5
 
 require (
 	github.com/google/uuid v1.6.0
-	github.com/tutti-os/tutti/packages/agent/activity-replication v0.0.0
-	github.com/tutti-os/tutti/packages/agent/daemon v0.0.0
-	github.com/tutti-os/tutti/packages/agent/store-sqlite/canonical v0.0.0
+	github.com/tutti-os/tutti/packages/agent/activity-replication v0.0.120
+	github.com/tutti-os/tutti/packages/agent/daemon v0.0.120
+	github.com/tutti-os/tutti/packages/agent/store-sqlite/canonical v0.0.120
 	modernc.org/sqlite v1.45.0
 )
 
@@ -23,9 +23,3 @@ require (
 	modernc.org/mathutil v1.7.1 // indirect
 	modernc.org/memory v1.11.0 // indirect
 )
-
-replace github.com/tutti-os/tutti/packages/agent/daemon => ../daemon
-
-replace github.com/tutti-os/tutti/packages/agent/activity-replication => ../activity-replication
-
-replace github.com/tutti-os/tutti/packages/agent/store-sqlite/canonical => ./canonical
