@@ -85,6 +85,14 @@ export function AgentGUIVinylPlayer({
         <span />
         <span>◦</span>
       </div>
+      {selectedAgent?.badge?.iconUrl ? (
+        <span
+          className="agent-gui-vinyl-player__owner-badge"
+          data-agent-owner-badge="true"
+        >
+          <img src={selectedAgent.badge.iconUrl} alt="" draggable={false} />
+        </span>
+      ) : null}
     </div>
   );
 }

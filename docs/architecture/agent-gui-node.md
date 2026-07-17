@@ -3282,8 +3282,13 @@ window boundary.
 
 The public directory entry owns its presentation and availability:
 
-- render `agents[].name` and `agents[].iconUrl` as the primary identity
-- render `owner.avatarUrl` separately as an ownership badge
+- keep `agents[].name` as the Agent name and `owner.name` as a separate owner
+  identity; AgentGUI composes their localized shared-Agent label at render time
+  so constrained lists can truncate only the owner while preserving the Agent
+  name suffix
+- render `agents[].iconUrl` as the primary identity and `owner.avatarUrl`
+  separately as an ownership badge, including on the selected center item in
+  the new-session carousel
 - preserve host array order; normalization keeps the first valid occurrence of
   each `agentTargetId`
 - use `availability.status` for ready, checking, coming-soon, install, login,

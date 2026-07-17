@@ -383,6 +383,7 @@ export const zhCNAgentGui = {
   conversationFilterAll: "全部",
   ...zhCNAgentGuiProviderIdentity,
   providerSwitchLabel: "切换 Provider",
+  sharedAgentOwnerSeparator: " 的 ",
   handoffConversation: "Handoff",
   handoffConversationTooltip: "交接给其他 Agent",
   handoffConversationMenu: "选择要交接的 Agent",

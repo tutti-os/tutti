@@ -10039,6 +10039,31 @@ html[data-theme="light"] [data-message-center-item-id].agent-gui-edge-glow {
   box-shadow: inset 0 2px 5px rgb(0 0 0 / 30%);
 }
 
+/* Match the WebGL carousel's historical BADGE_DIAMETER (0.36) and
+   BADGE_OFFSET (0.4): the selected DOM player must keep the same owner-marker
+   geometry as the records that move into and out of the center slot. */
+.agent-gui-vinyl-player__owner-badge {
+  position: absolute;
+  right: -8%;
+  bottom: -8%;
+  z-index: 5;
+  box-sizing: border-box;
+  display: grid;
+  width: 36%;
+  aspect-ratio: 1;
+  place-items: center;
+  overflow: hidden;
+  border: 8px solid var(--background-fronted);
+  border-radius: 999px;
+  background: var(--background-fronted);
+}
+
+.agent-gui-vinyl-player__owner-badge > img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
 .agent-gui-node__empty-hero-carousel:has(:focus-visible) {
   border-radius: 12px;
   box-shadow: 0 0 0 1.5px var(--tutti-purple);

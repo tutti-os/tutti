@@ -171,6 +171,7 @@ export interface AgentGUIViewLabels {
   conversationFilterClaudeCode: string;
   conversationFilterTutti: string;
   providerSwitchLabel: string;
+  sharedAgentOwnerSeparator: string;
   startConversation: string;
   selectConversation: string;
   loadingConversations: string;

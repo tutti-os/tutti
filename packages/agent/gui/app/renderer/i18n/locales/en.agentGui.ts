@@ -416,6 +416,7 @@ export const enAgentGui = {
   conversationFilterAll: "All",
   ...enAgentGuiProviderIdentity,
   providerSwitchLabel: "Switch provider",
+  sharedAgentOwnerSeparator: "'s ",
   handoffConversation: "Handoff",
   handoffConversationTooltip: "Hand off to another agent",
   handoffConversationMenu: "Choose an agent for handoff",

@@ -359,6 +359,9 @@ export function useAgentGUIViewLabels(input: {
       ),
       conversationFilterTutti: t("agentHost.agentGui.conversationFilterTutti"),
       providerSwitchLabel: t("agentHost.agentGui.providerSwitchLabel"),
+      sharedAgentOwnerSeparator: t(
+        "agentHost.agentGui.sharedAgentOwnerSeparator"
+      ),
       loadingConversation: t("agentHost.agentGui.loadingConversation"),
       scrollToBottom: t("agentHost.agentGui.scrollToBottom"),
       fallbackAgentTitle,
