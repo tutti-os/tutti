@@ -41,6 +41,7 @@ import type {
   TuttiPlanIssuePanelLabels
 } from "../../../workspaceWorkflow";
 import type { TuttiPlanReviewBannerLabels } from "../TuttiPlanReviewBanner";
+import type { TuttiPlanIssueStatusStripLabels } from "../TuttiPlanIssueStatusStrip";
 
 export type AgentMentionReferenceTargetResolver = (
   item: AgentContextMentionItem
@@ -140,6 +141,7 @@ export interface AgentGUIViewLabels {
   tuttiModePlanPanel: TuttiModePlanPanelLabels;
   tuttiModePlanBanner: TuttiPlanReviewBannerLabels;
   tuttiModePlanIssuePanel: TuttiPlanIssuePanelLabels;
+  tuttiModePlanIssueStrip: TuttiPlanIssueStatusStripLabels;
   tuttiModePlanSendAccept: string;
   tuttiModePlanSendRequestChanges: string;
   /** Auto feedback for an empty send after the intensity diverged. */

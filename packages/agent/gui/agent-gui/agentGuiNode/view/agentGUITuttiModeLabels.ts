@@ -7,6 +7,7 @@ type AgentGUITuttiModeLabels = Pick<
   | "tuttiModeLabel"
   | "tuttiModePlanBanner"
   | "tuttiModePlanIssuePanel"
+  | "tuttiModePlanIssueStrip"
   | "tuttiModePlanLoadFailed"
   | "tuttiModePlanPanel"
   | "tuttiModePlanRetry"
@@ -94,6 +95,17 @@ export function agentGUITuttiModeLabels(
       ),
       statusFailed: t("agentHost.agentGui.tuttiModePlan.issueStatusFailed"),
       statusCanceled: t("agentHost.agentGui.tuttiModePlan.issueStatusCanceled")
+    },
+    tuttiModePlanIssueStrip: {
+      running: (count) =>
+        t("agentHost.agentGui.tuttiModePlan.issueStripRunning", { count }),
+      pendingAcceptance: (count) =>
+        t("agentHost.agentGui.tuttiModePlan.issueStripPending", { count }),
+      failed: (count) =>
+        t("agentHost.agentGui.tuttiModePlan.issueStripFailed", { count }),
+      done: (done, total) =>
+        t("agentHost.agentGui.tuttiModePlan.issueStripDone", { done, total }),
+      jump: t("agentHost.agentGui.tuttiModePlan.issueStripJump")
     },
     tuttiModePlanLoadFailed: t("agentHost.agentGui.tuttiModePlan.loadFailed"),
     tuttiModePlanRetry: t("agentHost.agentGui.tuttiModePlan.retry")

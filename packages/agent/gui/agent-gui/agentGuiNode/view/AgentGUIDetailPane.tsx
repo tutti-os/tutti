@@ -248,6 +248,11 @@ export const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
       source: "tutti-plan-issue-panel"
     });
   });
+  const jumpToPlanIssuePanel = useStableEventCallback((): void => {
+    timelineRef.current
+      ?.querySelector('[data-testid="tutti-plan-issue-panel"]')
+      ?.scrollIntoView({ behavior: "smooth", block: "start" });
+  });
   const handleInterruptCurrentTurn = useCallback(() => {
     actions.interruptCurrentTurn(labels.noRunningResponse);
   }, [actions.interruptCurrentTurn, labels.noRunningResponse]);
@@ -805,6 +810,28 @@ export const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
           tuttiPlanReviewLabels={labels.tuttiModePlanBanner}
           onCancelTuttiPlanReview={cancelPendingPlan}
           onTuttiPlanReviewIntensityChange={setTuttiModeOrchestrationIntensity}
+          tuttiPlanIssueStatus={
+            planIssue && !pendingPlanPanel
+              ? {
+                  title: planIssue.title,
+                  running: planIssue.tasks.filter(
+                    (task) => task.status === "running"
+                  ).length,
+                  pendingAcceptance: planIssue.tasks.filter(
+                    (task) => task.status === "pending_acceptance"
+                  ).length,
+                  failed: planIssue.tasks.filter(
+                    (task) => task.status === "failed"
+                  ).length,
+                  done: planIssue.tasks.filter(
+                    (task) => task.status === "completed"
+                  ).length,
+                  total: planIssue.tasks.length
+                }
+              : null
+          }
+          tuttiPlanIssueStripLabels={labels.tuttiModePlanIssueStrip}
+          onJumpToTuttiPlanIssue={jumpToPlanIssuePanel}
         />
       ) : null}
     </main>
