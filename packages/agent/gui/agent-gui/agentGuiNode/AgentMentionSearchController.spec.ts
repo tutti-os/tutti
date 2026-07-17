@@ -563,10 +563,17 @@ describe("AgentMentionSearchController", () => {
     expect(queryIssues).not.toHaveBeenCalled();
   });
 
-  it("groups session mentions in provenance catalog order", async () => {
+  it("groups session mentions by member across agent targets", async () => {
     const controller = new AgentMentionSearchController({
       querySessions: vi.fn().mockResolvedValue({
         sessions: [
+          {
+            agentSessionId: "session-local-claude",
+            agentTargetId: "claude-main",
+            provider: "claude-code",
+            title: "Local Claude build",
+            userId: "user-1"
+          },
           ...Array.from({ length: 31 }, (_, index) => ({
             agentSessionId: `session-local-${index}`,
             agentTargetId: "codex-main",
@@ -596,13 +603,26 @@ describe("AgentMentionSearchController", () => {
     controller.setProvenanceCatalog({
       enabledDimensions: ["agent"],
       agentOptions: [
-        { id: "codex-main", label: "Me · Codex" },
+        {
+          id: "codex-main",
+          label: "Me · Codex",
+          parentMemberId: "user-1"
+        },
+        {
+          id: "claude-main",
+          label: "Me · Claude Code",
+          parentMemberId: "user-1"
+        },
         {
           id: "shared-agent:shared-codex",
-          label: "Lin · Codex"
+          label: "Lin · Codex",
+          parentMemberId: "user-2"
         }
       ],
-      memberOptions: []
+      memberOptions: [
+        { id: "user-1", label: "Me" },
+        { id: "user-2", label: "Lin" }
+      ]
     });
 
     controller.updateQuery({
@@ -617,17 +637,18 @@ describe("AgentMentionSearchController", () => {
         filter: "session",
         groups: [
           {
-            id: "agent:codex-main",
-            label: "Me · Codex",
+            id: "member:user-1",
+            label: "Me",
             items: expect.arrayContaining([
-              expect.objectContaining({ targetId: "session-local-0" })
+              expect.objectContaining({ targetId: "session-local-0" }),
+              expect.objectContaining({ targetId: "session-local-claude" })
             ]),
-            totalCount: 31,
+            totalCount: 32,
             hasMore: true
           },
           {
-            id: "agent:shared-agent%3Ashared-codex",
-            label: "Lin · Codex",
+            id: "member:user-2",
+            label: "Lin",
             items: [expect.objectContaining({ targetId: "session-shared" })]
           },
           {
@@ -640,11 +661,11 @@ describe("AgentMentionSearchController", () => {
         ]
       })
     );
-    controller.expandGroup("agent:codex-main");
+    controller.expandGroup("member:user-1");
     expect(
       (
         states.at(-1) as { groups: Array<{ id: string; items: unknown[] }> }
-      ).groups.find((group) => group.id === "agent:codex-main")?.items
+      ).groups.find((group) => group.id === "member:user-1")?.items
     ).toHaveLength(20);
     controller.setProvenanceFilter({
       agentTargetIds: ["shared-agent:shared-codex"],
@@ -655,7 +676,7 @@ describe("AgentMentionSearchController", () => {
         status: "ready",
         groups: [
           {
-            id: "agent:shared-agent%3Ashared-codex",
+            id: "member:user-2",
             items: [expect.objectContaining({ targetId: "session-shared" })]
           }
         ]

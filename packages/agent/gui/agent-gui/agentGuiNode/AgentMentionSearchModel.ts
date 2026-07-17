@@ -192,7 +192,6 @@ function buildAgentProvenanceGroups(input: {
     input.provenanceCatalog.agentOptions.map((option) => option.id)
   );
   const catalogGroups = agentProvenanceGroupSpecs(
-    input.currentFilter,
     input.provenanceCatalog
   ).flatMap((group) => {
     const items = sourceItems.filter((item) => {
@@ -253,22 +252,11 @@ function buildAgentProvenanceGroups(input: {
   ];
 }
 
-function agentProvenanceGroupSpecs(
-  currentFilter: AgentMentionFilterId,
-  catalog: ReferenceProvenanceCatalog
-): Array<{
+function agentProvenanceGroupSpecs(catalog: ReferenceProvenanceCatalog): Array<{
   id: AgentMentionGroupId;
   label: string;
   agentTargetIds: ReadonlySet<string>;
 }> {
-  if (currentFilter === "session") {
-    return catalog.agentOptions.map((option) => ({
-      id: agentProvenanceMentionGroupId(option.id),
-      label: option.label,
-      agentTargetIds: new Set([option.id])
-    }));
-  }
-
   const groupedAgentTargetIds = new Set<string>();
   const memberGroups = catalog.memberOptions.flatMap((member) => {
     const agentTargetIds = catalog.agentOptions.flatMap((option) =>

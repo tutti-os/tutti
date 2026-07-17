@@ -3551,13 +3551,13 @@ provenance-aware generated-file provider for either active dimension, even when
 the ordinary generated-files group is otherwise disabled. Generated-file and
 picker result groups remain source-owned. The Agent Session and Agent target
 `@` lists are the exceptions when a host injects an Agent provenance catalog.
-Session rows group by exact `agentTargetId` in Agent catalog order. Agent target
-rows use each Agent option's `parentMemberId` to group under the matching Member
-catalog entry, so one member's targets share a group while filtering still uses
-the individual target ids. Collaboration hosts should build this catalog from
-the complete Agent directory, using `AgentGUIAgent.owner.userId` for shared
-targets, rather than deriving ownership only from sessions; targets without
-history must still join their owner's group. Hosts that omit a matching Member entry retain the
+Session and Agent target rows use each Agent option's `parentMemberId` to group
+under the matching Member catalog entry, so one member's sessions and targets
+share a group across Agent targets while filtering still uses the individual
+target ids. Collaboration hosts should build this catalog from the complete
+Agent directory, using `AgentGUIAgent.owner.userId` for shared targets, rather
+than deriving ownership only from sessions; targets without history must still
+join their owner's group. Hosts that omit a matching Member entry retain the
 per-Agent group. AgentGUI does not synthesize owner-aware row labels because
 that presentation remains host-owned. Rows outside the catalog remain visible
 in stable uncatalogued groups only while no explicit Agent filter is selected.
