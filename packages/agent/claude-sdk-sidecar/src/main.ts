@@ -87,6 +87,17 @@ export async function handleRequest(
         emit({ id, type: "ok", payload: { canceled } });
         return;
       }
+      case "stop_task": {
+        const payload = request.payload ?? {};
+        const session = requireSession(stringValue(payload.agentSessionId));
+        const stopped = await session.stopTask(
+          stringValue(payload.taskId),
+          stringValue(payload.toolCallId) ||
+            stringValue(payload.parentToolUseId)
+        );
+        emit({ id, type: "ok", payload: { stopped } });
+        return;
+      }
       case "submit_interactive": {
         const payload = request.payload ?? {};
         const session = requireSession(stringValue(payload.agentSessionId));

@@ -14,6 +14,7 @@ import { stringValue } from "./runtimeValues.ts";
 export type ClaudeQueryRuntime = AsyncIterable<SDKMessage> & {
   initializationResult?: () => Promise<unknown>;
   interrupt?: () => Promise<void>;
+  stopTask?: (taskId: string) => Promise<void>;
   setPermissionMode?: (mode: PermissionMode) => Promise<void>;
   setModel?: (model?: string) => Promise<void>;
   applyFlagSettings?: (settings: PendingFlagSettings) => Promise<void>;

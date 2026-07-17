@@ -191,6 +191,112 @@ export function fakeTimedOutDelegatedTaskQuery(
   };
 }
 
+export function fakeBackgroundBashAndSubagentQuery(
+  prompt: AsyncIterable<SDKUserMessage>
+): AsyncIterable<SDKMessage> & {
+  interrupt: () => Promise<void>;
+  close: () => void;
+} {
+  let releaseHold: () => void = () => {};
+  const hold = new Promise<void>((resolve) => {
+    releaseHold = resolve;
+  });
+  return {
+    async *[Symbol.asyncIterator]() {
+      const firstPrompt = await prompt[Symbol.asyncIterator]().next();
+      const promptMessage = firstPrompt.value as SDKUserMessage & {
+        uuid?: string;
+      };
+      yield {
+        ...promptMessage,
+        uuid: promptMessage.uuid,
+        type: "user",
+        parent_tool_use_id: null,
+        session_id: "provider-session-1"
+      } as SDKMessage;
+      yield delegatedAgentToolUse("toolu-agent", "Slow child");
+      yield delegatedAgentToolResult("toolu-agent", "agent-1");
+      yield {
+        type: "system",
+        subtype: "task_started",
+        task_id: "task-1",
+        agent_id: "agent-1",
+        description: "Slow child"
+      } as unknown as SDKMessage;
+      yield {
+        type: "result",
+        subtype: "success"
+      } as unknown as SDKMessage;
+      // A run_in_background Bash announces itself only through the task
+      // system, after the provider turn already settled.
+      yield {
+        type: "system",
+        subtype: "task_started",
+        task_id: "bs-1",
+        tool_use_id: "toolu-bash",
+        description: "sleep 60"
+      } as unknown as SDKMessage;
+      yield {
+        type: "system",
+        subtype: "task_notification",
+        task_id: "task-1",
+        status: "completed",
+        summary: "Child done"
+      } as unknown as SDKMessage;
+      yield {
+        type: "system",
+        subtype: "task_notification",
+        task_id: "bs-1",
+        status: "completed",
+        summary: "Command done"
+      } as unknown as SDKMessage;
+      await hold;
+    },
+    async interrupt() {
+      releaseHold();
+    },
+    close() {
+      releaseHold();
+    }
+  };
+}
+
+export function fakeStoppableDelegatedTaskQuery(
+  prompt: AsyncIterable<SDKUserMessage>,
+  onStopTask: (taskId: string) => void
+): AsyncIterable<SDKMessage> & {
+  stopTask: (taskId: string) => Promise<void>;
+  close: () => void;
+} {
+  let releaseStop: (taskId: string) => void = () => {};
+  const stopped = new Promise<string>((resolve) => {
+    releaseStop = resolve;
+  });
+  return {
+    async *[Symbol.asyncIterator]() {
+      yield* fakeDelegatedTaskQuery(prompt, { skipNotification: true });
+      const taskId = await stopped;
+      if (!taskId) {
+        return;
+      }
+      yield {
+        type: "system",
+        subtype: "task_notification",
+        task_id: taskId,
+        status: "stopped",
+        summary: "Task stopped by user"
+      } as unknown as SDKMessage;
+    },
+    async stopTask(taskId: string) {
+      onStopTask(taskId);
+      releaseStop(taskId);
+    },
+    close() {
+      releaseStop("");
+    }
+  };
+}
+
 export function fakeGuidedDelegatedContinuationQuery(
   prompt: AsyncIterable<SDKUserMessage>
 ): AsyncIterable<SDKMessage> & { close: () => void } {

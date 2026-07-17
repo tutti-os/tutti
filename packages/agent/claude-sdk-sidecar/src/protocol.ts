@@ -5,6 +5,7 @@ export type ClaudeSDKSidecarRequestType =
   | "exec"
   | "guide"
   | "cancel"
+  | "stop_task"
   | "submit_interactive"
   | "interactive_disposition"
   | "apply_settings"
@@ -71,6 +72,7 @@ const REQUEST_TYPES = new Set<ClaudeSDKSidecarRequestType>([
   "exec",
   "guide",
   "cancel",
+  "stop_task",
   "submit_interactive",
   "interactive_disposition",
   "apply_settings",

@@ -24,6 +24,7 @@ export class TurnLifecycle {
   private readonly continuationStartTimeoutMs: number;
   private active: RuntimeTurn | undefined;
   private activeIdValue = "";
+  private lastTurnIdValue = "";
   private pendingOrphanCount = 0;
   private cancelledValue = false;
   private completedTurnCount = 0;
@@ -48,6 +49,15 @@ export class TurnLifecycle {
 
   get activeId(): string {
     return this.activeIdValue;
+  }
+
+  /**
+   * The most recent turn id, kept after the turn settles. Lets late background
+   * task events (which often arrive after the provider turn ended) attribute
+   * to the turn that launched them instead of being dropped.
+   */
+  get lastTurnId(): string {
+    return this.activeIdValue || this.lastTurnIdValue;
   }
 
   get activeTurn(): RuntimeTurn | undefined {
@@ -280,6 +290,7 @@ export class TurnLifecycle {
     }
     this.active = turn;
     this.activeIdValue = turn.turnId;
+    this.lastTurnIdValue = turn.turnId;
     this.cancelledValue = false;
     this.pendingOrphanCount = 0;
     this.onActivate();
