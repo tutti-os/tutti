@@ -3668,6 +3668,16 @@ Agent window host routes must honor that validation intent and surface the same
 localized missing-target feedback instead of opening an empty files surface or
 silently doing nothing.
 
+Bare HTTP links use the GFM literal-autolink parser, but transcript rendering
+also repairs CJK sentence punctuation boundaries after Markdown parsing because
+the upstream GFM boundary set is ASCII-oriented. This repair applies only to
+literal autolinks and must preserve explicit Markdown links, angle autolinks,
+code, and intentionally authored Unicode link destinations. Streaming and
+settled transcript rendering must use the same boundary transform so an href
+does not change when a turn finishes. Raw CJK punctuation in a literal autolink
+is a sentence boundary; a URL that intentionally contains that punctuation must
+percent-encode it or use an explicit Markdown link destination.
+
 Provider host-app-context prompts should mirror that contract: when agents
 reference code or workspace files in responses, instruct them to emit Markdown
 links with filename labels and absolute filesystem targets such as
