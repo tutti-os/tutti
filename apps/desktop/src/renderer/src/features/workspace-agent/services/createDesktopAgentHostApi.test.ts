@@ -195,6 +195,9 @@ test("desktop agent host api delegates user project calls to the workspace user 
       calls.push({ input: path, method: "isNoProjectPath" });
       return path.includes("session-");
     },
+    async moveProject(input) {
+      calls.push({ input, method: "moveProject" });
+    },
     rememberNoProjectPath(path) {
       calls.push({ input: path, method: "rememberNoProjectPath" });
     },
@@ -244,6 +247,10 @@ test("desktop agent host api delegates user project calls to the workspace user 
   const prepared = await api.userProjects.prepareSelection?.({
     projectLocked: true,
     selectedPath: "/workspace/listed"
+  });
+  await api.userProjects.move({
+    beforeProjectId: "project-listed",
+    projectId: "project-used"
   });
   await api.userProjects.remove?.({ path: "/workspace/listed" });
   const listener = () => {};
@@ -309,6 +316,13 @@ test("desktop agent host api delegates user project calls to the workspace user 
         selectedPath: "/workspace/listed"
       },
       method: "prepareSelection"
+    },
+    {
+      input: {
+        beforeProjectId: "project-listed",
+        projectId: "project-used"
+      },
+      method: "moveProject"
     },
     { input: "/workspace/listed", method: "removeProjectPath" },
     { input: listener, method: "subscribe" },

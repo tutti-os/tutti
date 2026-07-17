@@ -3535,6 +3535,12 @@ type LoadLocalWorkspaceAppRequest struct {
 	SourceDir      string `json:"sourceDir"`
 }
 
+// MoveUserProjectRequest defines model for MoveUserProjectRequest.
+type MoveUserProjectRequest struct {
+	BeforeProjectId *string `json:"beforeProjectId"`
+	ProjectId       string  `json:"projectId"`
+}
+
 // MoveWorkspaceFileEntryRequest defines model for MoveWorkspaceFileEntryRequest.
 type MoveWorkspaceFileEntryRequest struct {
 	Path                string `json:"path"`
@@ -5106,6 +5112,9 @@ type UseUserProjectJSONRequestBody = UseUserProjectRequest
 
 // CheckUserProjectPathJSONRequestBody defines body for CheckUserProjectPath for application/json ContentType.
 type CheckUserProjectPathJSONRequestBody = CheckUserProjectPathRequest
+
+// MoveUserProjectJSONRequestBody defines body for MoveUserProject for application/json ContentType.
+type MoveUserProjectJSONRequestBody = MoveUserProjectRequest
 
 // CreateWorkspaceJSONRequestBody defines body for CreateWorkspace for application/json ContentType.
 type CreateWorkspaceJSONRequestBody = CreateWorkspaceRequest

@@ -1,0 +1,21 @@
+{
+  "$schema": "../../schemas/core/event-definition.schema.json",
+  "topic": "user.project.updated",
+  "version": 1,
+  "direction": "server->client",
+  "owner": "core",
+  "scope": "global",
+  "payloadSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "required": ["projects"],
+    "properties": {
+      "projects": {
+        "type": "array",
+        "items": {
+          "$ref": "../../schemas/topics/user/user-project.schema.json"
+        }
+      }
+    }
+  }
+}

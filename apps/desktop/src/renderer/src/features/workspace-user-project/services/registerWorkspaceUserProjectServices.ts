@@ -1,5 +1,8 @@
 import type { ServiceRegistry } from "@tutti-os/infra/di";
-import type { TuttidClient } from "@tutti-os/client-tuttid-ts";
+import type {
+  TuttidClient,
+  TuttidEventStreamClient
+} from "@tutti-os/client-tuttid-ts";
 import type { NotificationService } from "@tutti-os/ui-notifications";
 import type { DesktopHostFilesApi, DesktopPlatformApi } from "@preload/types";
 import { DesktopWorkspaceUserProjectService } from "./internal/desktopWorkspaceUserProjectService.ts";
@@ -14,9 +17,11 @@ export interface WorkspaceUserProjectServiceRegistrationInput {
     "createUserDocumentsProjectDirectory" | "selectDirectory"
   >;
   tuttidClient: TuttidClient;
+  eventStreamClient: TuttidEventStreamClient;
   notifications?: NotificationService;
   platformApi: Pick<DesktopPlatformApi, "homeDirectory" | "os">;
   workspaceId: string;
+  logDiagnostic?: (payload: unknown) => void;
 }
 
 export function registerWorkspaceUserProjectServices(

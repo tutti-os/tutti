@@ -1078,6 +1078,37 @@ test("workspace app external bridge invokes user project list without activation
   ]);
 });
 
+test("workspace app external bridge invokes user project move without activation", async () => {
+  const calls: Array<{ channel: string; payload?: unknown }> = [];
+  const bridge = createWorkspaceAppExternalBridge({
+    appContext: {
+      async get() {
+        return { locale: "en" };
+      },
+      subscribe() {
+        throw new Error("unexpected subscribe");
+      }
+    },
+    isUserActivationActive: () => false,
+    send: unexpectedSend,
+    async invoke<TResult>(channel: string, payload?: unknown) {
+      calls.push({ channel, payload });
+      return undefined as TResult;
+    }
+  });
+
+  await bridge.userProjects.move({
+    beforeProjectId: null,
+    projectId: "project-alpha"
+  });
+  assert.deepEqual(calls, [
+    {
+      channel: workspaceAppExternalChannels.userProjectsMove,
+      payload: { beforeProjectId: null, projectId: "project-alpha" }
+    }
+  ]);
+});
+
 test("workspace app external bridge invokes user project snapshot reads without activation", async () => {
   const calls: Array<{ channel: string; payload?: unknown }> = [];
   const snapshot = {

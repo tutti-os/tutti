@@ -139,6 +139,8 @@ export function createDesktopAgentHostApi({
           )
         };
       },
+      move: (payload: { beforeProjectId: string | null; projectId: string }) =>
+        userProjectService.moveProject(payload),
       prepareSelection: async (payload: {
         projectLocked: boolean;
         selectedPath: string | null;

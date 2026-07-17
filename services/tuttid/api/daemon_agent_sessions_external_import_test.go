@@ -5,7 +5,6 @@ import (
 	"testing"
 
 	tuttigenerated "github.com/tutti-os/tutti/services/tuttid/api/generated"
-	userprojectbiz "github.com/tutti-os/tutti/services/tuttid/biz/userproject"
 	agentservice "github.com/tutti-os/tutti/services/tuttid/service/agent"
 	userprojectservice "github.com/tutti-os/tutti/services/tuttid/service/userproject"
 )
@@ -72,12 +71,12 @@ func TestImportExternalSessionsForwardsArchivePath(t *testing.T) {
 }
 
 func TestRegisterExternalImportUserProjectsPreservesInputOrderInLastUsedTimes(t *testing.T) {
-	var inputs []userprojectservice.UseInput
+	var input userprojectservice.UseManyInput
 	api := DaemonAPI{
 		UserProjectService: stubUserProjectService{
-			useFn: func(_ context.Context, input userprojectservice.UseInput) (userprojectbiz.Project, error) {
-				inputs = append(inputs, input)
-				return userprojectbiz.Project{Path: input.Path}, nil
+			useManyFn: func(_ context.Context, value userprojectservice.UseManyInput) []error {
+				input = value
+				return make([]error, len(value.Paths))
 			},
 		},
 	}
@@ -89,10 +88,10 @@ func TestRegisterExternalImportUserProjectsPreservesInputOrderInLastUsedTimes(t 
 	if len(errors) != 0 {
 		t.Fatalf("registration errors = %#v, want none", errors)
 	}
-	if len(registered) != 2 || len(inputs) != 2 {
-		t.Fatalf("registered = %#v inputs = %#v, want two projects", registered, inputs)
+	if len(registered) != 2 || len(input.Paths) != 2 {
+		t.Fatalf("registered = %#v input = %#v, want two projects", registered, input)
 	}
-	if inputs[0].LastUsedAtUnixMS <= inputs[1].LastUsedAtUnixMS {
-		t.Fatalf("last used times = [%d, %d], want first input newer", inputs[0].LastUsedAtUnixMS, inputs[1].LastUsedAtUnixMS)
+	if input.Paths[0] != "/workspace/newer" || input.Paths[1] != "/workspace/older" {
+		t.Fatalf("registration paths = %#v, want input order", input.Paths)
 	}
 }

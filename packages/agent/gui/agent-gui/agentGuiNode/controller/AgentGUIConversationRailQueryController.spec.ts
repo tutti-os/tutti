@@ -411,6 +411,84 @@ describe("AgentGUIConversationRailQueryController", () => {
     engine.dispose();
   });
 
+  it("does not reload section pages when user projects only reorder", async () => {
+    const engine = createTestAgentSessionEngine();
+    const listSessionSections = vi.fn<
+      NonNullable<ConversationRailQueryRuntime["listSessionSections"]>
+    >(async (input) => ({
+      sections: [],
+      workspaceId: input.workspaceId
+    }));
+    const controller = new AgentGUIConversationRailQueryController({
+      engine,
+      getActiveConversationId: () => null,
+      runtime: {
+        listSessionSections,
+        listSessionSectionPage: async (input) => ({
+          hasMore: false,
+          kind: "conversations",
+          sectionKey: input.sectionKey,
+          sessions: [],
+          totalCount: 0
+        })
+      },
+      workspaceId: "test-workspace"
+    });
+    const alpha = {
+      id: "alpha",
+      label: "Alpha",
+      path: "/alpha",
+      sectionKey: "project:/alpha"
+    };
+    const beta = {
+      id: "beta",
+      label: "Beta",
+      path: "/beta",
+      sectionKey: "project:/beta"
+    };
+    const scope = {
+      conversationFilter: { kind: "all" } as const,
+      previewMode: false,
+      sectionAgentTargetFallbackId: null,
+      userProjects: [alpha, beta]
+    };
+
+    controller.configure(scope);
+    const detach = controller.attach();
+    await vi.waitFor(() =>
+      expect(listSessionSections).toHaveBeenCalledTimes(1)
+    );
+    await vi.waitFor(() =>
+      expect(controller.getSnapshot().runtimeRailSectionsPending).toBe(false)
+    );
+
+    controller.configure({ ...scope, userProjects: [beta, alpha] });
+
+    expect(listSessionSections).toHaveBeenCalledTimes(1);
+    expect(controller.getSnapshot().runtimeRailSectionsPending).toBe(false);
+    expect(controller.isInteractionLocked()).toBe(false);
+
+    controller.configure({
+      ...scope,
+      userProjects: [
+        beta,
+        alpha,
+        {
+          id: "gamma",
+          label: "Gamma",
+          path: "/gamma",
+          sectionKey: "project:/gamma"
+        }
+      ]
+    });
+    await vi.waitFor(() =>
+      expect(listSessionSections).toHaveBeenCalledTimes(2)
+    );
+
+    detach();
+    engine.dispose();
+  });
+
   it("keeps the committed snapshot when targeted membership refresh fails", async () => {
     const engine = createTestAgentSessionEngine();
     const session = normalizeAgentActivitySession({

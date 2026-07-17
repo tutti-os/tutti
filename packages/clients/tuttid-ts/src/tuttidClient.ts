@@ -40,6 +40,7 @@ import {
   listCliCapabilities,
   listWorkspaceAppMentionCandidates,
   listUserProjects,
+  moveUserProject,
   listWorkspaceIssues,
   listWorkspaceIssueTopics,
   listWorkspaceIssueRuns,
@@ -595,6 +596,13 @@ export function createTuttidClient(
     async listUserProjects() {
       const response = await listUserProjects({ client });
       return unwrapData(response, "List user projects failed.");
+    },
+    async moveUserProject(request) {
+      const response = await moveUserProject({
+        client,
+        body: request
+      });
+      return unwrapData(response, "Move user project failed.");
     },
     async deleteUserProject(request) {
       const response = await deleteUserProject({

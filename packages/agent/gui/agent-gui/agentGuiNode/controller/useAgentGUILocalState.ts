@@ -13,7 +13,10 @@ import type {
   AgentGUIProjectConversationDeleteTarget,
   SubmittedDraftSnapshot
 } from "../model/agentGuiNodeTypes";
-import { readAgentGUIUserProjectSnapshot } from "./agentGuiController.interactiveHelpers";
+import {
+  readAgentGUIUserProjectMutationPending,
+  readAgentGUIUserProjectSnapshot
+} from "./agentGuiController.interactiveHelpers";
 import type { ConversationIntent } from "./useAgentConversationSelection";
 
 interface UseAgentGUILocalStateInput {
@@ -28,6 +31,8 @@ export function useAgentGUILocalState({
   const [userProjects, setUserProjects] = useState<AgentHostUserProject[]>(() =>
     readAgentGUIUserProjectSnapshot(userProjectsApi)
   );
+  const [isUserProjectMutationPending, setIsUserProjectMutationPending] =
+    useState(() => readAgentGUIUserProjectMutationPending(userProjectsApi));
   const [activeConversationId, setActiveConversationId] = useState<
     string | null
   >(data.lastActiveAgentSessionId);
@@ -97,6 +102,7 @@ export function useAgentGUILocalState({
     isDeletingConversation,
     isDeletingProjectConversations,
     isLoadingMessages,
+    isUserProjectMutationPending,
     listError,
     optimisticGoalControl,
     pendingDeleteConversation,
@@ -114,6 +120,7 @@ export function useAgentGUILocalState({
     setIsDeletingConversation,
     setIsDeletingProjectConversations,
     setIsLoadingMessages,
+    setIsUserProjectMutationPending,
     setListError,
     setOptimisticGoalControl,
     setPendingDeleteConversation,

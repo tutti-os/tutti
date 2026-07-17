@@ -93,6 +93,7 @@ export function useAgentGUIViewModel(
       candidate.operations.goalClearNoticeSequence,
       candidate.operations.isDeletingConversation,
       candidate.operations.isDeletingProjectConversations,
+      candidate.operations.isUserProjectMutationPending,
       candidate.operations.pendingDeleteConversation,
       candidate.operations.pendingDeleteProjectConversations
     ]

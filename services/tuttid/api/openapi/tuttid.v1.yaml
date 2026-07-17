@@ -353,7 +353,7 @@ paths:
       operationId: listUserProjects
       tags:
         - user-project
-      summary: List recently used user project directories
+      summary: List user project directories in durable order
       responses:
         "200":
           description: User project list
@@ -401,7 +401,7 @@ paths:
       operationId: deleteUserProject
       tags:
         - user-project
-      summary: Remove a user project directory from the recent project list
+      summary: Remove a user project directory from the ordered project list
       requestBody:
         required: true
         content:
@@ -440,6 +440,35 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/UserProjectPathCheckResponse"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "400":
+          $ref: "#/components/responses/InvalidRequestError"
+        "405":
+          $ref: "#/components/responses/MethodNotAllowedError"
+        "502":
+          $ref: "#/components/responses/PreferencesOperationError"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailableError"
+  /v1/user-projects/move:
+    post:
+      operationId: moveUserProject
+      tags:
+        - user-project
+      summary: Move a user project within the global project order
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MoveUserProjectRequest"
+      responses:
+        "200":
+          description: Complete ordered user project list
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserProjectListResponse"
         "401":
           $ref: "#/components/responses/UnauthorizedError"
         "400":
@@ -8755,6 +8784,20 @@ components:
       properties:
         path:
           type: string
+          minLength: 1
+    MoveUserProjectRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - projectId
+        - beforeProjectId
+      properties:
+        projectId:
+          type: string
+          minLength: 1
+        beforeProjectId:
+          type: string
+          nullable: true
           minLength: 1
     CheckUserProjectPathRequest:
       type: object

@@ -975,6 +975,7 @@ function createDependenciesStub(): {
       scanWorkspaceExternalAgentSessionImports: fail,
       importWorkspaceExternalAgentSessions: fail,
       listUserProjects: fail,
+      moveUserProject: fail,
       deleteUserProject: fail,
       checkUserProjectPath: fail,
       listWorkspaceIssues: fail,

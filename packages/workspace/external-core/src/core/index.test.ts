@@ -12,6 +12,7 @@ import {
   normalizeTuttiExternalReferenceOpenInput,
   normalizeTuttiExternalSettingsOpenInput,
   normalizeTuttiExternalUserProjectCreateInput,
+  normalizeTuttiExternalUserProjectMoveInput,
   normalizeTuttiExternalUserProjectPathInput,
   normalizeTuttiExternalUserProjectRememberDefaultSelectionInput,
   normalizeTuttiExternalUserProjectSelectionPreparationInput,
@@ -406,6 +407,20 @@ test("normalizes user project inputs", () => {
     }
   );
   assert.deepEqual(
+    normalizeTuttiExternalUserProjectMoveInput({
+      beforeProjectId: " before ",
+      projectId: " project "
+    }),
+    { beforeProjectId: "before", projectId: "project" }
+  );
+  assert.deepEqual(
+    normalizeTuttiExternalUserProjectMoveInput({
+      beforeProjectId: null,
+      projectId: "project"
+    }),
+    { beforeProjectId: null, projectId: "project" }
+  );
+  assert.deepEqual(
     normalizeTuttiExternalUserProjectRememberDefaultSelectionInput({
       path: "   "
     }),
@@ -433,6 +448,18 @@ test("rejects invalid user project inputs", () => {
   assert.throws(
     () => normalizeTuttiExternalUserProjectPathInput({ path: "" }, "checkPath"),
     /path is required/
+  );
+  assert.throws(
+    () => normalizeTuttiExternalUserProjectMoveInput({ projectId: "project" }),
+    /beforeProjectId is required/
+  );
+  assert.throws(
+    () =>
+      normalizeTuttiExternalUserProjectMoveInput({
+        beforeProjectId: "",
+        projectId: "project"
+      }),
+    /beforeProjectId is required/
   );
 });
 

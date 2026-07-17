@@ -200,6 +200,10 @@ export type AgentHostUserProjectsApi = AgentHostRecord & {
   list: () => AgentHostAsyncResult<{
     projects: AgentHostUserProject[];
   }>;
+  move: (input: {
+    beforeProjectId: string | null;
+    projectId: string;
+  }) => AgentHostAsyncResult<void>;
   subscribe?: (listener: () => void) => AgentHostUnsubscribe;
   prepareSelection?: (input: {
     projectLocked: boolean;

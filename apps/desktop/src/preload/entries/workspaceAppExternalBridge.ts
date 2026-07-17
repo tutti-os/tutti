@@ -100,6 +100,7 @@ export const workspaceAppExternalChannels = {
     "workspace-app-user-projects:get-default-selection",
   userProjectsGetSnapshot: "workspace-app-user-projects:get-snapshot",
   userProjectsList: "workspace-app-user-projects:list",
+  userProjectsMove: "workspace-app-user-projects:move",
   userProjectsPrepareSelection: "workspace-app-user-projects:prepare-selection",
   userProjectsRefresh: "workspace-app-user-projects:refresh",
   userProjectsRememberDefaultSelection:
@@ -279,6 +280,12 @@ export function createWorkspaceAppExternalBridge(
       list() {
         return dependencies.invoke<{ projects: WorkspaceUserProject[] }>(
           workspaceAppExternalChannels.userProjectsList
+        );
+      },
+      move(input) {
+        return dependencies.invoke<void>(
+          workspaceAppExternalChannels.userProjectsMove,
+          input
         );
       },
       prepareSelection(input: WorkspaceUserProjectSelectionPreparationInput) {

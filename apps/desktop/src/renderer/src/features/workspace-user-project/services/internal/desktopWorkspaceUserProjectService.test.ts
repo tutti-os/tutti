@@ -426,6 +426,229 @@ test("workspace user project service reports directory selection failures throug
   ]);
 });
 
+test("workspace user project service moves optimistically and confirms from the response snapshot", async () => {
+  const response = createDeferred<{ projects: TuttidUserProject[] }>();
+  let moveCalls = 0;
+  const alpha = createProject({ id: "alpha", path: "/workspace/alpha" });
+  const beta = createProject({ id: "beta", path: "/workspace/beta" });
+  const service = createService({
+    tuttidClient: createTuttidClient({
+      async listUserProjects() {
+        return { projects: [alpha, beta] };
+      },
+      async moveUserProject() {
+        moveCalls += 1;
+        return response.promise;
+      }
+    })
+  });
+  await service.ensureLoaded();
+
+  const moving = service.moveProject({
+    beforeProjectId: "alpha",
+    projectId: "beta"
+  });
+  assert.deepEqual(
+    service.store.projects.map((project) => project.id),
+    ["beta", "alpha"]
+  );
+  assert.equal(service.store.isMutationPending, true);
+  assert.equal(service.store.isLoading, false);
+  await assert.rejects(
+    service.moveProject({ beforeProjectId: null, projectId: "alpha" }),
+    /mutation is already in progress/
+  );
+  assert.equal(moveCalls, 1);
+
+  response.resolve({ projects: [beta, alpha] });
+  await moving;
+  assert.equal(service.store.isMutationPending, false);
+  assert.deepEqual(
+    service.store.projects.map((project) => project.id),
+    ["beta", "alpha"]
+  );
+});
+
+test("workspace user project service keeps optimistic order after a move failure", async () => {
+  const diagnostics: unknown[] = [];
+  let listCalls = 0;
+  const alpha = createProject({ id: "alpha", path: "/workspace/alpha" });
+  const beta = createProject({ id: "beta", path: "/workspace/beta" });
+  const service = createService({
+    logDiagnostic: (payload) => diagnostics.push(payload),
+    tuttidClient: createTuttidClient({
+      async listUserProjects() {
+        listCalls += 1;
+        return { projects: [alpha, beta] };
+      },
+      async moveUserProject() {
+        throw new Error("move unavailable");
+      }
+    })
+  });
+  await service.ensureLoaded();
+
+  await assert.rejects(
+    service.moveProject({ beforeProjectId: "alpha", projectId: "beta" }),
+    /move unavailable/
+  );
+  assert.deepEqual(
+    service.store.projects.map((project) => project.id),
+    ["beta", "alpha"]
+  );
+  assert.equal(service.store.error, null);
+  assert.equal(listCalls, 1);
+  assert.equal(diagnostics.length, 1);
+});
+
+test("workspace user project service applies global events and reconciles a differing event after move success", async () => {
+  const events = createUserProjectEventStream();
+  const response = createDeferred<{ projects: TuttidUserProject[] }>();
+  const alpha = createProject({ id: "alpha", path: "/workspace/alpha" });
+  const beta = createProject({ id: "beta", path: "/workspace/beta" });
+  const gamma = createProject({ id: "gamma", path: "/workspace/gamma" });
+  let listCalls = 0;
+  const service = createService({
+    eventStreamClient: events.client,
+    tuttidClient: createTuttidClient({
+      async listUserProjects() {
+        listCalls += 1;
+        return {
+          projects: listCalls === 1 ? [alpha, beta] : [gamma, beta, alpha]
+        };
+      },
+      async moveUserProject() {
+        return response.promise;
+      }
+    })
+  });
+  await service.ensureLoaded();
+  events.emit([beta, alpha]);
+  assert.deepEqual(
+    service.store.projects.map((project) => project.id),
+    ["beta", "alpha"]
+  );
+
+  const moving = service.moveProject({
+    beforeProjectId: "beta",
+    projectId: "alpha"
+  });
+  events.emit([gamma, alpha, beta]);
+  response.resolve({ projects: [alpha, beta] });
+  await moving;
+  assert.equal(listCalls, 2);
+  assert.deepEqual(
+    service.store.projects.map((project) => project.id),
+    ["gamma", "beta", "alpha"]
+  );
+});
+
+test("workspace user project service keeps an event received during move reconciliation refresh", async () => {
+  const events = createUserProjectEventStream();
+  const moveResponse = createDeferred<{ projects: TuttidUserProject[] }>();
+  const refreshResponse = createDeferred<{ projects: TuttidUserProject[] }>();
+  const alpha = createProject({ id: "alpha", path: "/workspace/alpha" });
+  const beta = createProject({ id: "beta", path: "/workspace/beta" });
+  const gamma = createProject({ id: "gamma", path: "/workspace/gamma" });
+  const delta = createProject({ id: "delta", path: "/workspace/delta" });
+  let listCalls = 0;
+  const service = createService({
+    eventStreamClient: events.client,
+    tuttidClient: createTuttidClient({
+      async listUserProjects() {
+        listCalls += 1;
+        return listCalls === 1
+          ? { projects: [alpha, beta] }
+          : refreshResponse.promise;
+      },
+      async moveUserProject() {
+        return moveResponse.promise;
+      }
+    })
+  });
+  await service.ensureLoaded();
+
+  const moving = service.moveProject({
+    beforeProjectId: "alpha",
+    projectId: "beta"
+  });
+  events.emit([gamma, beta, alpha]);
+  moveResponse.resolve({ projects: [beta, alpha] });
+  while (listCalls < 2) await Promise.resolve();
+  events.emit([delta, gamma, beta, alpha]);
+  refreshResponse.resolve({ projects: [gamma, beta, alpha] });
+  await moving;
+
+  assert.equal(listCalls, 2);
+  assert.deepEqual(
+    service.store.projects.map((project) => project.id),
+    ["delta", "gamma", "beta", "alpha"]
+  );
+});
+
+test("workspace user project authoritative events and moves supersede stale loading", async () => {
+  const events = createUserProjectEventStream();
+  const staleList = createDeferred<{ projects: TuttidUserProject[] }>();
+  const moveResponse = createDeferred<{ projects: TuttidUserProject[] }>();
+  const alpha = createProject({ id: "alpha", path: "/workspace/alpha" });
+  const beta = createProject({ id: "beta", path: "/workspace/beta" });
+  const service = createService({
+    eventStreamClient: events.client,
+    tuttidClient: createTuttidClient({
+      async listUserProjects() {
+        return staleList.promise;
+      },
+      async moveUserProject() {
+        return moveResponse.promise;
+      }
+    })
+  });
+
+  const loading = service.refresh();
+  await Promise.resolve();
+  assert.equal(service.store.isLoading, true);
+  events.emit([alpha, beta]);
+  assert.equal(service.store.isLoading, false);
+
+  const moving = service.moveProject({
+    beforeProjectId: "alpha",
+    projectId: "beta"
+  });
+  assert.equal(service.store.isLoading, false);
+  staleList.resolve({ projects: [alpha] });
+  await loading;
+  assert.deepEqual(
+    service.store.projects.map((project) => project.id),
+    ["beta", "alpha"]
+  );
+  moveResponse.resolve({ projects: [beta, alpha] });
+  await moving;
+});
+
+test("workspace user project service exposes deletion as a shared mutation lock", async () => {
+  const deletion = createDeferred<void>();
+  const service = createService({
+    tuttidClient: createTuttidClient({
+      async deleteUserProject() {
+        return deletion.promise;
+      }
+    })
+  });
+  service.store.projects = [
+    createProject({ id: "alpha", path: "/workspace/alpha" })
+  ];
+
+  const removing = service.removeProjectPath("/workspace/alpha");
+  assert.equal(service.store.isMutationPending, true);
+  await assert.rejects(
+    service.moveProject({ beforeProjectId: null, projectId: "alpha" }),
+    /mutation is already in progress/
+  );
+  deletion.resolve();
+  await removing;
+  assert.equal(service.store.isMutationPending, false);
+});
+
 function createService(
   overrides: {
     hostFilesApi?: DesktopWorkspaceUserProjectServiceTestHostFilesApi;
@@ -433,17 +656,41 @@ function createService(
     notifications?: NotificationService;
     platformApi?: DesktopWorkspaceUserProjectServiceTestPlatformApi;
     workspaceId?: string;
+    eventStreamClient?: ConstructorParameters<
+      typeof DesktopWorkspaceUserProjectService
+    >[0]["eventStreamClient"];
+    logDiagnostic?: (payload: unknown) => void;
   } = {}
 ): DesktopWorkspaceUserProjectService {
   return new DesktopWorkspaceUserProjectService({
     hostFilesApi: overrides.hostFilesApi ?? createHostFilesApi(),
     tuttidClient: overrides.tuttidClient ?? createTuttidClient(),
     notifications: overrides.notifications,
+    eventStreamClient: overrides.eventStreamClient,
+    logDiagnostic: overrides.logDiagnostic,
     platformApi: overrides.platformApi ?? createPlatformApi(),
     workspaceId:
       overrides.workspaceId ??
       `workspace-user-project-service-test-${Math.random()}`
   });
+}
+
+function createUserProjectEventStream() {
+  let listener: ((event: any) => void) | null = null;
+  return {
+    client: {
+      async connect() {},
+      subscribe(_topic: string, next: (event: any) => void) {
+        listener = next;
+        return () => {
+          listener = null;
+        };
+      }
+    },
+    emit(projects: TuttidUserProject[]) {
+      listener?.({ payload: { projects } });
+    }
+  };
 }
 
 type DesktopWorkspaceUserProjectServiceTestHostFilesApi = Pick<
@@ -456,6 +703,7 @@ type DesktopWorkspaceUserProjectServiceTestTuttidClient = Pick<
   | "checkUserProjectPath"
   | "deleteUserProject"
   | "listUserProjects"
+  | "moveUserProject"
   | "useUserProject"
 >;
 
@@ -490,6 +738,9 @@ function createTuttidClient(
       };
     },
     async listUserProjects() {
+      return { projects: [] };
+    },
+    async moveUserProject() {
       return { projects: [] };
     },
     async deleteUserProject() {},

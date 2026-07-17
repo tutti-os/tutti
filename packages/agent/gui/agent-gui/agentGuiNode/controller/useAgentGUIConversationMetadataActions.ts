@@ -83,6 +83,34 @@ export function useAgentGUIConversationMetadataActions(
     [agentHostApi.toast, agentHostApi.userProjects, setUserProjectsSnapshot]
   );
 
+  const moveProject = useCallback(
+    async (projectId: string, beforeProjectId: string | null) => {
+      const move = agentHostApi.userProjects?.move;
+      if (!move) return;
+      agentHostApi.debug?.logRuntimeDiagnostics?.({
+        beforeProjectId,
+        phase: "move_user_project_requested",
+        projectId
+      });
+      try {
+        await move({ beforeProjectId, projectId });
+        agentHostApi.debug?.logRuntimeDiagnostics?.({
+          beforeProjectId,
+          phase: "move_user_project_succeeded",
+          projectId
+        });
+      } catch (error) {
+        agentHostApi.debug?.logRuntimeDiagnostics?.({
+          beforeProjectId,
+          error: getAgentGUIErrorMessage(error),
+          phase: "move_user_project_failed",
+          projectId
+        });
+      }
+    },
+    [agentHostApi.debug, agentHostApi.userProjects]
+  );
+
   const toggleConversationPinned = useCallback(
     (agentSessionId: string, pinned: boolean) => {
       const normalizedAgentSessionId = agentSessionId.trim();
@@ -161,6 +189,7 @@ export function useAgentGUIConversationMetadataActions(
   );
 
   return {
+    moveProject,
     removeProject,
     toggleConversationPinned,
     markConversationUnread,

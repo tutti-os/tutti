@@ -990,6 +990,61 @@ test("shared tuttid client deletes user projects with bearer auth", async () => 
   assert.deepEqual(requestBody, { path: "/workspace/app" });
 });
 
+test("shared tuttid client moves user projects with bearer auth", async () => {
+  let authorizationHeader = "";
+  let requestMethod = "";
+  let requestPath = "";
+  let requestBody: unknown;
+
+  const client = createTuttidClient({
+    auth: "desktop-session-token",
+    fetch: async (input, init) => {
+      const request =
+        input instanceof Request ? input : new Request(input, init);
+      authorizationHeader = request.headers.get("authorization") ?? "";
+      requestMethod = request.method;
+      requestPath = new URL(request.url).pathname;
+      requestBody = await request.json();
+
+      return Response.json({
+        projects: [
+          {
+            createdAtUnixMs: 1,
+            id: "project-2",
+            label: "Second",
+            path: "/workspace/second",
+            updatedAtUnixMs: 1
+          },
+          {
+            createdAtUnixMs: 1,
+            id: "project-1",
+            label: "First",
+            path: "/workspace/first",
+            updatedAtUnixMs: 1
+          }
+        ]
+      });
+    }
+  });
+
+  const response = await client.moveUserProject({
+    beforeProjectId: "project-1",
+    projectId: "project-2"
+  });
+
+  assert.equal(authorizationHeader, "Bearer desktop-session-token");
+  assert.equal(requestMethod, "POST");
+  assert.equal(requestPath, "/v1/user-projects/move");
+  assert.deepEqual(requestBody, {
+    beforeProjectId: "project-1",
+    projectId: "project-2"
+  });
+  assert.deepEqual(
+    response.projects.map((project) => project.id),
+    ["project-2", "project-1"]
+  );
+});
+
 test("shared tuttid client tracks analytics events with bearer auth", async () => {
   let authorizationHeader = "";
   let requestMethod = "";

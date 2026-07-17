@@ -237,6 +237,9 @@ export function WorkspaceAppExternalBridge({
           return userProjectsApi.getSnapshot?.();
         case "userProjects.list":
           return userProjectsApi.list();
+        case "userProjects.move":
+          await userProjectsApi.move?.(request.input);
+          return undefined;
         case "userProjects.prepareSelection":
           return userProjectsApi.prepareSelection?.(request.input);
         case "userProjects.refresh":

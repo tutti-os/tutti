@@ -5,6 +5,7 @@ import {
 import { TooltipProvider } from "@tutti-os/ui-system";
 import {
   act,
+  fireEvent,
   render,
   renderHook,
   screen,
@@ -17,13 +18,91 @@ import {
   type AgentActivityRuntime,
   type AgentActivityRuntimeListSessionsPageInput
 } from "../../../agentActivityRuntime";
+import type { AgentHostUserProjectsApi } from "../../../host/agentHostApi";
 import { createTestAgentSessionEngine } from "../../../shared/testing/createTestAgentSessionEngine";
+import type { AgentGUINodeData } from "../../../types";
 import { useAgentGUIConversationRailQuery } from "./useAgentGUIConversationRailQuery";
+import { useAgentGUILocalState } from "./useAgentGUILocalState";
+import {
+  projectDragAutoScrollDelta,
+  useAgentGUIProjectDrag
+} from "./useAgentGUIProjectDrag";
 import { AgentGUIConversationRailPane } from "../view/AgentGUIConversationRailPane";
 import type { AgentGUIViewLabels } from "../view/AgentGUINodeView.types";
 import { createDefaultWorkspaceUserProjectI18nRuntime } from "@tutti-os/workspace-user-project/i18n";
 
 describe("useAgentGUIConversationRailQuery search", () => {
+  it("commits the latest dragover target even before React renders it", async () => {
+    const projects = ["Alpha", "Beta", "Gamma"].map((label) => ({
+      id: label.toLowerCase(),
+      label,
+      path: `/workspace/${label.toLowerCase()}`,
+      sectionKey: `project:/workspace/${label.toLowerCase()}`
+    }));
+    const moveProject = vi.fn(() => Promise.resolve());
+    const header = document.createElement("div");
+    const icon = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+    icon.dataset.projectDragIcon = "true";
+    header.append(icon);
+    document.body.append(header);
+    const dataTransfer = {
+      dropEffect: "none",
+      effectAllowed: "none",
+      setData() {},
+      setDragImage() {}
+    };
+    const event = {
+      clientY: 0,
+      currentTarget: header,
+      dataTransfer,
+      preventDefault: vi.fn(),
+      target: header
+    } as unknown as React.DragEvent<HTMLElement>;
+    const alphaSection = {
+      id: projects[0]?.sectionKey ?? "",
+      items: [],
+      kind: "project" as const,
+      label: "Alpha",
+      project: projects[0] ?? null
+    };
+    const gammaSection = {
+      id: projects[2]?.sectionKey ?? "",
+      items: [],
+      kind: "project" as const,
+      label: "Gamma",
+      project: projects[2] ?? null
+    };
+    const { result } = renderHook(() =>
+      useAgentGUIProjectDrag({
+        disabled: false,
+        onMoveProject: moveProject,
+        scrollViewportRef: { current: null },
+        userProjects: projects
+      })
+    );
+
+    act(() => result.current.start(alphaSection, event));
+    const updateTargetBeforeRender = result.current.updateTarget;
+    const dropBeforeRender = result.current.drop;
+    await act(async () => {
+      updateTargetBeforeRender(gammaSection, "after", event);
+      await dropBeforeRender(event);
+    });
+
+    expect(moveProject).toHaveBeenCalledWith("alpha", null);
+
+    act(() => result.current.start(gammaSection, event));
+    const updateTopTargetBeforeRender = result.current.updateTarget;
+    const dropAtTopBeforeRender = result.current.drop;
+    await act(async () => {
+      updateTopTargetBeforeRender(alphaSection, "before", event);
+      await dropAtTopBeforeRender(event);
+    });
+
+    expect(moveProject).toHaveBeenNthCalledWith(2, "gamma", "alpha");
+    header.remove();
+  });
+
   it("marks a newly rendered target unresolved before its controller effect settles", async () => {
     const engine = createTestAgentSessionEngine("workspace-1");
     const sectionResolvers: Array<() => void> = [];
@@ -358,6 +437,7 @@ describe("useAgentGUIConversationRailQuery search", () => {
             onCreateConversation={() => {}}
             onMarkConversationUnread={() => {}}
             onRemoveProject={() => {}}
+            onMoveProject={async () => {}}
             onRequestDeleteConversation={() => {}}
             onRequestRenameConversation={() => {}}
             onSelectConversation={() => {}}
@@ -384,7 +464,7 @@ describe("useAgentGUIConversationRailQuery search", () => {
     expect(railCommitCount).toBe(previousRailCommitCount);
   });
 
-  it("keeps empty section chrome visible when the first membership request fails", async () => {
+  it("keeps preloaded service projects ordered, visible, and draggable during local search fallback", async () => {
     const engine = createTestAgentSessionEngine("workspace-1");
     const runtime = {
       getSessionEngine: () => engine,
@@ -395,19 +475,158 @@ describe("useAgentGUIConversationRailQuery search", () => {
         throw new Error("section membership unavailable");
       }
     } as unknown as AgentActivityRuntime;
-    const userProjects = [
-      {
-        id: "workspace-project",
-        label: "Workspace",
-        path: "/workspace",
-        sectionKey: "project:/workspace",
-        createdAtUnixMs: 1,
-        updatedAtUnixMs: 1,
-        lastUsedAtUnixMs: 1
+    const userProjectsApi = {
+      service: {
+        getSnapshot: () => ({
+          error: null,
+          initialized: true,
+          isLoading: false,
+          projects: [
+            {
+              id: "workspace-project",
+              label: "Workspace",
+              path: "/workspace",
+              sectionKey: "project:/workspace",
+              createdAtUnixMs: 1,
+              updatedAtUnixMs: 1,
+              lastUsedAtUnixMs: 1
+            },
+            {
+              id: "other-project",
+              label: "Other",
+              path: "/other",
+              sectionKey: "project:/other",
+              createdAtUnixMs: 1,
+              updatedAtUnixMs: 1,
+              lastUsedAtUnixMs: 1
+            }
+          ],
+          revision: 1
+        })
       }
-    ];
+    } as AgentHostUserProjectsApi;
 
     function RailHarness(): React.JSX.Element {
+      const { userProjects } = useAgentGUILocalState({
+        data: { lastActiveAgentSessionId: null } as AgentGUINodeData,
+        userProjectsApi
+      });
+      const railQuery = useAgentGUIConversationRailQuery({
+        activeConversationId: null,
+        conversationFilter: { kind: "all" },
+        conversationQuery: "does-not-match",
+        previewMode: false,
+        sectionAgentTargetFallbackId: null,
+        userProjects,
+        workspaceId: "workspace-1"
+      });
+      return (
+        <AgentGUIConversationRailPane
+          revealRequest={null}
+          activeConversation={null}
+          activeConversationId={null}
+          agentTargets={[]}
+          agentTargetsLoading={false}
+          conversationFilter={{ kind: "all" }}
+          conversationQuery="does-not-match"
+          conversations={[]}
+          createConversationDisabled={false}
+          isCollapsed={false}
+          isDeletingConversation={false}
+          isDeletingProjectConversations={false}
+          isLoadingConversations={false}
+          labels={RAIL_LABELS}
+          pendingDeleteConversationId={null}
+          previewMode={false}
+          railQuery={railQuery}
+          sectionAgentTargetFallbackId={null}
+          uiLanguage="en"
+          userProjects={userProjects}
+          workspaceId="workspace-1"
+          workspaceUserProjectI18n={RAIL_PROJECT_I18N}
+          onCancelDeleteConversation={() => {}}
+          onConfirmDeleteConversation={() => {}}
+          onConfirmDeleteConversations={() => {}}
+          onConfirmDeleteProjectConversations={async () => []}
+          onConversationQueryChange={() => {}}
+          onCreateConversation={() => {}}
+          onMarkConversationUnread={() => {}}
+          onRemoveProject={() => {}}
+          onMoveProject={async () => {}}
+          onRequestDeleteConversation={() => {}}
+          onRequestRenameConversation={() => {}}
+          onSelectConversation={() => {}}
+          onSelectConversationFilterTarget={() => {}}
+          onToggleConversationPinned={() => {}}
+          onUpdateConversationFilter={() => {}}
+        />
+      );
+    }
+
+    render(
+      <AgentActivityRuntimeProvider runtime={runtime}>
+        <TooltipProvider>
+          <RailHarness />
+        </TooltipProvider>
+      </AgentActivityRuntimeProvider>
+    );
+
+    const workspaceTitle = await screen.findByText("Workspace");
+    const otherTitle = screen.getByText("Other");
+    expect(
+      workspaceTitle.compareDocumentPosition(otherTitle) &
+        Node.DOCUMENT_POSITION_FOLLOWING
+    ).toBeTruthy();
+    const workspaceSection = workspaceTitle.closest("section");
+    expect(workspaceSection).toBeTruthy();
+    const workspaceHeader = workspaceSection?.firstElementChild;
+    expect(workspaceHeader).toBeTruthy();
+    expect((workspaceHeader as HTMLElement).draggable).toBe(true);
+    expect(screen.queryByText("Conversations")).toBeNull();
+    expect(screen.queryByText("Conversation unavailable")).toBeNull();
+  });
+
+  it("drags a project header to the end without reordering until drop", async () => {
+    const animationFrames: FrameRequestCallback[] = [];
+    const requestAnimationFrame = vi
+      .spyOn(window, "requestAnimationFrame")
+      .mockImplementation((callback) => {
+        animationFrames.push(callback);
+        return animationFrames.length;
+      });
+    const cancelAnimationFrame = vi
+      .spyOn(window, "cancelAnimationFrame")
+      .mockImplementation(() => {});
+    const engine = createTestAgentSessionEngine("workspace-1");
+    const runtime = {
+      getSessionEngine: () => engine,
+      async listSessionSections() {
+        throw new Error("section membership unavailable");
+      },
+      async listSessionSectionPage() {
+        throw new Error("section membership unavailable");
+      }
+    } as unknown as AgentActivityRuntime;
+    const userProjects = ["Alpha", "Beta", "Gamma"].map((label) => ({
+      createdAtUnixMs: 1,
+      id: label.toLowerCase(),
+      label,
+      lastUsedAtUnixMs: 1,
+      path: `/workspace/${label.toLowerCase()}`,
+      sectionKey: `project:/workspace/${label.toLowerCase()}`,
+      updatedAtUnixMs: 1
+    }));
+    let resolveMoveProject!: () => void;
+    const moveProjectPromise = new Promise<void>((resolve) => {
+      resolveMoveProject = resolve;
+    });
+    const moveProject = vi.fn(() => moveProjectPromise);
+
+    function RailHarness({
+      isMutationPending = false
+    }: {
+      isMutationPending?: boolean;
+    }): React.JSX.Element {
       const railQuery = useAgentGUIConversationRailQuery({
         activeConversationId: null,
         conversationFilter: { kind: "all" },
@@ -432,6 +651,7 @@ describe("useAgentGUIConversationRailQuery search", () => {
           isDeletingConversation={false}
           isDeletingProjectConversations={false}
           isLoadingConversations={false}
+          isUserProjectMutationPending={isMutationPending}
           labels={RAIL_LABELS}
           pendingDeleteConversationId={null}
           previewMode={false}
@@ -448,6 +668,7 @@ describe("useAgentGUIConversationRailQuery search", () => {
           onConversationQueryChange={() => {}}
           onCreateConversation={() => {}}
           onMarkConversationUnread={() => {}}
+          onMoveProject={moveProject}
           onRemoveProject={() => {}}
           onRequestDeleteConversation={() => {}}
           onRequestRenameConversation={() => {}}
@@ -459,22 +680,162 @@ describe("useAgentGUIConversationRailQuery search", () => {
       );
     }
 
-    render(
+    const rendered = render(
       <AgentActivityRuntimeProvider runtime={runtime}>
         <TooltipProvider>
           <RailHarness />
         </TooltipProvider>
       </AgentActivityRuntimeProvider>
     );
+    const alphaSection = (await screen.findByText("Alpha")).closest("section");
+    const gammaSection = screen.getByText("Gamma").closest("section");
+    const conversationsSection = screen
+      .getByText("Conversations")
+      .closest("section");
+    const alphaHeader = alphaSection?.firstElementChild as HTMLElement;
+    const gammaHeader = gammaSection?.firstElementChild as HTMLElement;
+    const setDragImage = vi.fn();
+    const dataTransfer = {
+      dropEffect: "none",
+      effectAllowed: "none",
+      setData() {},
+      setDragImage
+    };
+    expect(
+      conversationsSection?.getAttribute("data-project-dragging")
+    ).toBeNull();
 
-    await screen.findByText("Workspace");
-    expect(screen.getByText("Conversations")).toBeTruthy();
-    expect(screen.getAllByText("No conversations")).toHaveLength(2);
-    expect(screen.queryByText("Conversation unavailable")).toBeNull();
+    const alphaToggle = alphaHeader.querySelector("button") as HTMLElement;
+    const moreButton = screen.getAllByRole("button", {
+      name: "Project actions"
+    })[0] as HTMLElement;
+    fireEvent.pointerDown(moreButton, { button: 0, ctrlKey: false });
+    const removeMenuItem = await screen.findByText("Remove");
+    expect(alphaHeader.draggable).toBe(false);
+    fireEvent.click(removeMenuItem);
+    await screen.findByText("Remove project?");
+    expect(alphaHeader.draggable).toBe(false);
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    await waitFor(() =>
+      expect(screen.queryByText("Remove project?")).toBeNull()
+    );
+    expect(alphaHeader.draggable).toBe(true);
+
+    fireEvent.click(alphaToggle);
+    expect(alphaToggle.getAttribute("aria-expanded")).toBe("false");
+    const alphaAction = alphaHeader.querySelector(
+      "[data-project-drag-block] button"
+    ) as HTMLElement;
+    fireEvent.dragStart(alphaAction, { dataTransfer });
+    expect(alphaSection?.getAttribute("data-project-dragging")).toBeNull();
+
+    fireEvent.dragStart(alphaHeader, { dataTransfer });
+    expect(alphaSection?.getAttribute("data-project-dragging")).toBe("true");
+    expect(alphaSection?.getAttribute("data-collapsed")).toBe("true");
+    const dragImage = setDragImage.mock.calls[0]?.[0] as HTMLElement;
+    expect(dragImage.querySelectorAll("svg")).toHaveLength(1);
+    expect(dragImage.querySelector("[data-project-drag-icon]")).toBeTruthy();
+    expect(dragImage.textContent).toBe("Alpha");
+    expect(
+      [...document.querySelectorAll('section[data-kind="project"]')].map(
+        (section) =>
+          section.querySelector("[class*=conversation-section-label]")
+            ?.textContent
+      )
+    ).toEqual(["Alpha", "Beta", "Gamma"]);
+    const viewports = [
+      ...document.querySelectorAll<HTMLElement>(
+        '[data-slot="scroll-area-viewport"]'
+      )
+    ];
+    for (const viewport of viewports) {
+      viewport.scrollTop = 100;
+      vi.spyOn(viewport, "getBoundingClientRect").mockReturnValue({
+        bottom: 200,
+        height: 200,
+        left: 0,
+        right: 100,
+        top: 0,
+        width: 100,
+        x: 0,
+        y: 0,
+        toJSON: () => ({})
+      });
+    }
+    animationFrames.length = 0;
+    const currentGammaHeader = screen.getByText("Gamma").closest("section")
+      ?.firstElementChild as HTMLElement;
+    fireEvent.dragOver(currentGammaHeader, { clientY: 1, dataTransfer });
+    expect(animationFrames.length).toBeGreaterThan(0);
+    expect(projectDragAutoScrollDelta(1, { bottom: 200, top: 0 })).toBeLessThan(
+      0
+    );
+    expect(
+      projectDragAutoScrollDelta(199, { bottom: 200, top: 0 })
+    ).toBeGreaterThan(0);
+    expect(gammaSection?.getAttribute("data-project-drop-indicator")).toBe(
+      "after"
+    );
+    fireEvent.drop(gammaHeader, { dataTransfer });
+    await waitFor(() =>
+      expect(moveProject).toHaveBeenCalledWith("alpha", null)
+    );
+    expect(
+      [...document.querySelectorAll('section[data-kind="project"]')].every(
+        (section) => !(section.firstElementChild as HTMLElement).draggable
+      )
+    ).toBe(true);
+    resolveMoveProject();
+    await waitFor(() => expect(alphaHeader.draggable).toBe(true));
+    expect(alphaSection?.getAttribute("data-project-dragging")).toBeNull();
+    expect(dragImage.isConnected).toBe(false);
+    expect(cancelAnimationFrame).toHaveBeenCalled();
+
+    fireEvent.dragStart(alphaHeader, { dataTransfer });
+    const outsideImage = setDragImage.mock.calls.at(-1)?.[0] as HTMLElement;
+    fireEvent.drop(document, { dataTransfer });
+    expect(outsideImage.isConnected).toBe(false);
+
+    fireEvent.dragStart(alphaHeader, { dataTransfer });
+    const dragEndImage = setDragImage.mock.calls.at(-1)?.[0] as HTMLElement;
+    fireEvent.dragEnd(alphaHeader, { dataTransfer });
+    expect(dragEndImage.isConnected).toBe(false);
+
+    rendered.rerender(
+      <AgentActivityRuntimeProvider runtime={runtime}>
+        <TooltipProvider>
+          <RailHarness isMutationPending />
+        </TooltipProvider>
+      </AgentActivityRuntimeProvider>
+    );
+    const lockedHeader = screen.getByText("Alpha").closest("section")
+      ?.firstElementChild as HTMLElement;
+    expect(lockedHeader.draggable).toBe(false);
+    const dragImageCallCount = setDragImage.mock.calls.length;
+    fireEvent.dragStart(lockedHeader, { dataTransfer });
+    expect(setDragImage).toHaveBeenCalledTimes(dragImageCallCount);
+
+    rendered.rerender(
+      <AgentActivityRuntimeProvider runtime={runtime}>
+        <TooltipProvider>
+          <RailHarness />
+        </TooltipProvider>
+      </AgentActivityRuntimeProvider>
+    );
+    const unlockedHeader = screen.getByText("Alpha").closest("section")
+      ?.firstElementChild as HTMLElement;
+    fireEvent.dragStart(unlockedHeader, { dataTransfer });
+    const unmountImage = setDragImage.mock.calls.at(-1)?.[0] as HTMLElement;
+    rendered.unmount();
+    expect(unmountImage.isConnected).toBe(false);
+    requestAnimationFrame.mockRestore();
+    cancelAnimationFrame.mockRestore();
   });
 });
 
 const RAIL_LABELS = {
+  batchDeleteProjectSessions: "Delete conversations",
+  cancel: "Cancel",
   conversationUnavailable: "Conversation unavailable",
   conversationsSectionMoreActions: "Conversation actions",
   deleteSession: "Delete",
@@ -489,7 +850,12 @@ const RAIL_LABELS = {
   pinSession: "Pin",
   projectRailCreateProject: "Create project",
   projectRailLinkExistingProject: "Link project",
+  projectSectionMoreActions: "Project actions",
+  projectSectionViewFiles: "View files",
   renameSession: "Rename",
+  removeProject: "Remove",
+  removeProjectConfirmDescription: (label: string) => `Remove ${label}`,
+  removeProjectConfirmTitle: "Remove project?",
   retrySearch: "Retry",
   searchFailed: "Search failed",
   searchNoConversations: "No search results",

@@ -33,12 +33,6 @@ export function preserveConversationRailSectionTemplates(input: {
     existingById.delete(sectionKey);
   }
 
-  for (const section of input.sections) {
-    if (section.kind !== "project" || !existingById.has(section.id)) continue;
-    result.push(section);
-    existingById.delete(section.id);
-  }
-
   const conversations = existingById.get("conversations");
   result.push(
     conversations ?? {
@@ -49,12 +43,5 @@ export function preserveConversationRailSectionTemplates(input: {
       items: []
     }
   );
-  existingById.delete("conversations");
-
-  for (const section of input.sections) {
-    if (!existingById.has(section.id)) continue;
-    result.push(section);
-    existingById.delete(section.id);
-  }
   return result;
 }

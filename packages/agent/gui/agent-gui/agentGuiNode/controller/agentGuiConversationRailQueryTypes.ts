@@ -5,6 +5,7 @@ import type { AgentGUINodeViewModel } from "../model/agentGuiNodeTypes";
 import type { AgentGuiScheduler } from "../agentGuiScheduler";
 import type { ConversationRailDiagnosticLogger } from "./agentGuiConversationRailDiagnostics";
 import type { CachedConversationRailQuery } from "./agentGuiConversationRailQueryCache";
+import { userProjectCollectionKey } from "./agentGuiConversationRailQueryScope";
 
 export interface ConversationRailQueryScope {
   conversationFilter: AgentGUINodeViewModel["rail"]["conversationFilter"];
@@ -45,9 +46,7 @@ export function resolveConversationRailQueryScope(
     scope.conversationFilter.kind === "agentTarget"
       ? scope.conversationFilter.agentTargetId.trim()
       : (scope.sectionAgentTargetFallbackId?.trim() ?? "");
-  const projectPaths = scope.userProjects
-    .map((project) => project.path.trim())
-    .filter(Boolean);
+  const projectCollectionKey = userProjectCollectionKey(scope.userProjects);
   return {
     agentTargetId,
     scopeKey: JSON.stringify([
@@ -57,7 +56,7 @@ export function resolveConversationRailQueryScope(
         : "all",
       scope.previewMode,
       agentTargetId,
-      JSON.stringify(projectPaths)
+      projectCollectionKey
     ])
   };
 }

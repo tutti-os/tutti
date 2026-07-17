@@ -2,6 +2,7 @@ import type { WorkspaceFileReference } from "@tutti-os/workspace-file-reference/
 import type {
   WorkspaceUserProject,
   WorkspaceUserProjectDefaultSelection,
+  WorkspaceUserProjectMoveInput,
   WorkspaceUserProjectPathCheck,
   WorkspaceUserProjectSelectionPreparation,
   WorkspaceUserProjectSelectionPreparationInput,
@@ -310,6 +311,7 @@ export interface TuttiExternalBridge {
     getDefaultSelection(): Promise<WorkspaceUserProjectDefaultSelection | null>;
     getSnapshot(): Promise<WorkspaceUserProjectServiceSnapshot>;
     list(): Promise<{ projects: WorkspaceUserProject[] }>;
+    move(input: WorkspaceUserProjectMoveInput): Promise<void>;
     prepareSelection(
       input: WorkspaceUserProjectSelectionPreparationInput
     ): Promise<WorkspaceUserProjectSelectionPreparation>;
@@ -399,6 +401,13 @@ export type TuttiExternalRendererRequest =
   | {
       appId: string;
       operation: "userProjects.list";
+      requestId: string;
+      workspaceId: string;
+    }
+  | {
+      appId: string;
+      input: WorkspaceUserProjectMoveInput;
+      operation: "userProjects.move";
       requestId: string;
       workspaceId: string;
     }

@@ -1518,6 +1518,7 @@ function createWorkspaceUserProjectService(
     isNoProjectPath() {
       return false;
     },
+    async moveProject() {},
     rememberNoProjectPath() {},
     async prepareSelection() {
       return {

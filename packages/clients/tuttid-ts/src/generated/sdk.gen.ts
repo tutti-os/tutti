@@ -295,6 +295,9 @@ import type {
   LogoutAccountData,
   LogoutAccountErrors,
   LogoutAccountResponses,
+  MoveUserProjectData,
+  MoveUserProjectErrors,
+  MoveUserProjectResponses,
   MoveWorkspaceFileEntryData,
   MoveWorkspaceFileEntryErrors,
   MoveWorkspaceFileEntryResponses,
@@ -707,7 +710,7 @@ export const putDesktopPreferences = <ThrowOnError extends boolean = false>(
   });
 
 /**
- * Remove a user project directory from the recent project list
+ * Remove a user project directory from the ordered project list
  */
 export const deleteUserProject = <ThrowOnError extends boolean = false>(
   options: Options<DeleteUserProjectData, ThrowOnError>
@@ -727,7 +730,7 @@ export const deleteUserProject = <ThrowOnError extends boolean = false>(
   });
 
 /**
- * List recently used user project directories
+ * List user project directories in durable order
  */
 export const listUserProjects = <ThrowOnError extends boolean = false>(
   options?: Options<ListUserProjectsData, ThrowOnError>
@@ -775,6 +778,26 @@ export const checkUserProjectPath = <ThrowOnError extends boolean = false>(
   >({
     security: [{ scheme: "bearer", type: "http" }],
     url: "/v1/user-projects/check",
+    ...options,
+    headers: {
+      "Content-Type": "application/json",
+      ...options.headers
+    }
+  });
+
+/**
+ * Move a user project within the global project order
+ */
+export const moveUserProject = <ThrowOnError extends boolean = false>(
+  options: Options<MoveUserProjectData, ThrowOnError>
+) =>
+  (options.client ?? client).post<
+    MoveUserProjectResponses,
+    MoveUserProjectErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/v1/user-projects/move",
     ...options,
     headers: {
       "Content-Type": "application/json",

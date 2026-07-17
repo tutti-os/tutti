@@ -183,6 +183,7 @@ export function AgentGUINodeView({
     actions.toggleConversationPinned
   );
   const removeProject = useStableEventCallback(actions.removeProject);
+  const moveProject = useStableEventCallback(actions.moveProject);
   const confirmDeleteProjectConversations = useStableEventCallback(
     actions.confirmDeleteProjectConversations
   );
@@ -480,6 +481,8 @@ export function AgentGUINodeView({
       isDeletingConversation: viewModel.operations.isDeletingConversation,
       isDeletingProjectConversations:
         viewModel.operations.isDeletingProjectConversations,
+      isUserProjectMutationPending:
+        viewModel.operations.isUserProjectMutationPending,
       labels,
       workspaceUserProjectI18n,
       uiLanguage,
@@ -497,6 +500,7 @@ export function AgentGUINodeView({
       onToggleConversationPinned: toggleConversationPinned,
       onMarkConversationUnread: actions.markConversationUnread,
       onRemoveProject: removeProject,
+      onMoveProject: moveProject,
       onConfirmDeleteProjectConversations: confirmDeleteProjectConversations,
       onConfirmDeleteConversations: confirmDeleteConversations,
       onRequestDeleteConversation: requestDeleteConversation,
@@ -521,6 +525,7 @@ export function AgentGUINodeView({
       actions.updateConversationFilter,
       previewMode,
       removeProject,
+      moveProject,
       requestCreateConversation,
       requestDeleteConversation,
       requestRenameConversation,
@@ -537,6 +542,7 @@ export function AgentGUINodeView({
       viewModel.rail.activeConversationId,
       viewModel.operations.isDeletingConversation,
       viewModel.operations.isDeletingProjectConversations,
+      viewModel.operations.isUserProjectMutationPending,
       viewModel.rail.isLoadingConversations,
       viewModel.operations.pendingDeleteConversation?.id,
       workspaceUserProjectI18n
