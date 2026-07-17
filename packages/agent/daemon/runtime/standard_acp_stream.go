@@ -22,7 +22,7 @@ func (a *standardACPAdapter) handleACPMessage(
 	emit EventSink,
 	emitCommands CommandSnapshotSink,
 ) ([]activityshared.Event, error) {
-	slog.Info("agent session ACP handle message",
+	slog.Debug("agent session ACP handle message",
 		"event", "agent_session.acp.handle_message",
 		"provider", a.config.provider,
 		"adapter", a.config.adapterName,
@@ -59,17 +59,19 @@ func (a *standardACPAdapter) handleACPMessage(
 		}
 		a.emitConfigOptionsUpdate(session, message.Params)
 		events := standardACPUpdateEvents(a.config, session, turnID, message.Params, normalizer)
-		slog.Info("agent session ACP update projected events",
-			"event", "agent_session.acp.handle_message.update",
-			"provider", a.config.provider,
-			"adapter", a.config.adapterName,
-			"room_id", session.RoomID,
-			"agent_session_id", session.AgentSessionID,
-			"provider_session_id", session.ProviderSessionID,
-			"turn_id", turnID,
-			"event_count", len(events),
-			"event_type_counts", activityEventTypeCounts(events),
-		)
+		if slog.Default().Enabled(ctx, slog.LevelDebug) {
+			slog.Debug("agent session ACP update projected events",
+				"event", "agent_session.acp.handle_message.update",
+				"provider", a.config.provider,
+				"adapter", a.config.adapterName,
+				"room_id", session.RoomID,
+				"agent_session_id", session.AgentSessionID,
+				"provider_session_id", session.ProviderSessionID,
+				"turn_id", turnID,
+				"event_count", len(events),
+				"event_type_counts", activityEventTypeCounts(events),
+			)
+		}
 		if len(events) > 0 {
 			if emit == nil || hasACPCurrentModeUpdatedEvent(events) {
 				a.emitSessionEvents(session.AgentSessionID, events)

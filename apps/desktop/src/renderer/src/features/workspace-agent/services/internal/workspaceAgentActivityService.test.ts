@@ -1006,15 +1006,21 @@ test("WorkspaceAgentActivityService fetches detail before combined message recon
   ]);
   assert.equal(session?.activeTurn, null);
   assert.equal(session?.latestTurn?.phase, "settled");
+  const reconcileDiagnostics = diagnostics.filter(
+    (
+      entry
+    ): entry is {
+      details: { traceEvent?: string };
+      event: string;
+      level?: string;
+    } =>
+      typeof entry === "object" &&
+      entry !== null &&
+      (entry as { event?: unknown }).event === "agent.activity.reconcile.trace"
+  );
+  assert.ok(reconcileDiagnostics.every((entry) => entry.level === "debug"));
   assert.deepEqual(
-    diagnostics
-      .filter(
-        (entry): entry is { details: { traceEvent?: string }; event: string } =>
-          typeof entry === "object" &&
-          entry !== null &&
-          (entry as { event?: unknown }).event ===
-            "agent.activity.reconcile.trace"
-      )
+    reconcileDiagnostics
       .map((entry) => entry.details.traceEvent)
       .filter(
         (traceEvent) =>

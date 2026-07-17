@@ -41,10 +41,6 @@ import {
 } from "./agentGuiController.promptHelpers";
 import { promptRequestId } from "./agentGuiController.diagnostics";
 import { reportAgentGUIRenderStateDiagnostic } from "./agentGuiController.reporting";
-import {
-  maxFiniteMessageVersion,
-  minFiniteMessageVersion
-} from "./useAgentConversationMessagePaging";
 
 interface CurrentValue<T> {
   current: T;
@@ -288,8 +284,6 @@ export function useAgentGUISessionPresentation(
   );
 
   useEffect(() => {
-    const firstVersion = minFiniteMessageVersion(input.activeMessages);
-    const lastVersion = maxFiniteMessageVersion(input.activeMessages);
     const diagnosticKey = [
       input.activeConversationId ?? "",
       input.activeConversation?.status ?? "",
@@ -308,10 +302,7 @@ export function useAgentGUISessionPresentation(
       activeSubmitBlocked ? "submit-blocked" : "submit-open",
       input.pendingApproval?.requestId ?? "",
       promptRequestId(pendingInteractivePrompt) ?? "",
-      input.conversation?.rows.length ?? "",
-      input.conversation?.sourceDetail.turns.length ?? "",
-      firstVersion ?? "",
-      lastVersion ?? "",
+      input.conversation?.activity.status ?? "",
       input.isCreatingConversation ? "creating" : "",
       input.isLoadingMessages ? "loading-messages" : "",
       input.isSubmitting ? "submitting" : "",
@@ -347,7 +338,6 @@ export function useAgentGUISessionPresentation(
     activeSubmitBlocked,
     canQueueWhileBusy,
     canSubmit,
-    hasSentUserMessage,
     input.activeConversation,
     input.activeConversationId,
     input.activeEngineActiveTurn,
@@ -355,7 +345,6 @@ export function useAgentGUISessionPresentation(
     input.activeEngineLatestTurn,
     input.activeEngineSession,
     input.activeLiveState,
-    input.activeMessages,
     input.activeSessionState,
     input.activityDisplayStatus,
     input.agentActivityRuntime,

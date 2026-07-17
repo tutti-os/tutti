@@ -500,7 +500,7 @@ func (c *acpClient) dispatchLine(line []byte) {
 		}
 		if benignACPStdoutLine(line) {
 			c.resetStdoutProtocolErrors()
-			slog.Warn("agent session ACP stdout ignored provider log line",
+			slog.Debug("agent session ACP stdout ignored provider log line",
 				"event", "agent_session.acp.stdout.provider_log",
 				"message", truncateACPLogValue(string(line), 1200),
 			)
@@ -515,7 +515,7 @@ func (c *acpClient) dispatchLine(line []byte) {
 		return
 	}
 	c.resetStdoutProtocolErrors()
-	slog.Info("agent session ACP stdout",
+	slog.Debug("agent session ACP stdout",
 		"event", "agent_session.acp.stdout",
 		"method", message.Method,
 		"id", strings.TrimSpace(string(message.ID)),
@@ -614,7 +614,7 @@ func benignACPStdoutLine(line []byte) bool {
 }
 
 func (c *acpClient) dispatchMessage(message acpMessage) {
-	slog.Info("agent session ACP message received",
+	slog.Debug("agent session ACP message received",
 		"event", "agent_session.acp.message.received",
 		"method", message.Method,
 		"id", strings.TrimSpace(string(message.ID)),

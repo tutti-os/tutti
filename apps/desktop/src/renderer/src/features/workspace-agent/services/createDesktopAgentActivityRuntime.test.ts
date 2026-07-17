@@ -53,6 +53,49 @@ test("desktop agent activity runtime forwards package diagnostics to renderer di
   ]);
 });
 
+test("desktop agent activity runtime keeps successful message reads at debug", async () => {
+  const rendererDiagnostics: Array<{ event: string; level?: string }> = [];
+  const service = createWorkspaceAgentActivityService();
+  service.listSessionMessages = async () => ({
+    hasMore: false,
+    latestVersion: 0,
+    messages: []
+  });
+  const runtime = createDesktopAgentActivityRuntime(service, {
+    runtimeApi: {
+      async logRendererDiagnostic(payload) {
+        rendererDiagnostics.push(payload);
+      },
+      async logTerminalDiagnostic() {}
+    }
+  });
+
+  await runtime.listSessionMessages({
+    agentSessionId: "session-1",
+    workspaceId: "workspace-1"
+  });
+
+  assert.deepEqual(rendererDiagnostics, [
+    {
+      details: {
+        afterVersion: null,
+        agentSessionId: "session-1",
+        beforeVersion: null,
+        cache: null,
+        hasMore: false,
+        lastMessage: null,
+        latestVersion: 0,
+        messageCount: 0,
+        order: null
+      },
+      event: "agent.gui.runtime.messages.resolved",
+      level: "debug",
+      source: "agent-gui",
+      workspaceId: "workspace-1"
+    }
+  ]);
+});
+
 test("desktop agent activity runtime hides prompt uploads without archive support", () => {
   const runtime = createDesktopAgentActivityRuntime(
     createWorkspaceAgentActivityService()

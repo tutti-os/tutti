@@ -260,7 +260,7 @@ export abstract class WorkspaceAgentActivityReconcileBridge {
             ...(input.fields ?? {})
           },
           event: "agent.activity.reconcile.trace",
-          level: "info",
+          level: "debug",
           workspaceId: input.workspaceId
         })
         .catch((error: unknown) => {

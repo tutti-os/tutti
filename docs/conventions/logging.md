@@ -153,6 +153,26 @@ Default:
 
 - `TUTTI_DESKTOP_LOG_LEVEL` unset behaves as `info`
 
+### Hot-Path Diagnostics
+
+Streaming events, polling loops, renderer snapshots, and transport frames are
+hot paths. Their successful per-event diagnostics belong at `debug`; the
+default `info` level should contain a bounded summary per turn, short time
+window, or semantic state transition.
+
+Rules:
+
+- aggregate repeated success events and retain counts plus stable correlation
+  fields in the summary
+- keep failures, dropped data, and rare lifecycle transitions visible at
+  `warn` or `error`
+- exclude cursors, timestamps, token/message versions, and elapsed time from
+  change-detection signatures unless that value is the state being diagnosed
+- log a periodic poll at `info` or `warn` only when its semantic result changes;
+  unchanged results belong at `debug`
+- desktop file writes must stay ordered without performing one synchronous
+  filesystem write on the Electron main thread per line
+
 ## Rotation
 
 Both daemon and desktop main now follow the same rotation convention:

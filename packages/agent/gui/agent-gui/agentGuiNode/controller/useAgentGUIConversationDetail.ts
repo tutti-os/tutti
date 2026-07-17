@@ -44,10 +44,7 @@ import {
   EMPTY_AGENT_COMPOSER_DRAFT,
   readAgentComposerDraftContent
 } from "./agentGuiController.draftMessageHelpers";
-import {
-  maxFiniteMessageVersion,
-  minFiniteMessageVersion
-} from "./useAgentConversationMessagePaging";
+import { minFiniteMessageVersion } from "./useAgentConversationMessagePaging";
 import { resolveAgentComposerDraftScopeKey } from "../model/agentComposerDraftScope";
 import { agentComposerDraftPrompt } from "../model/agentComposerDraft";
 
@@ -218,7 +215,6 @@ export function useAgentGUIConversationDetail(
       return;
     }
     const firstVersion = minFiniteMessageVersion(input.activeMessages);
-    const lastVersion = maxFiniteMessageVersion(input.activeMessages);
     const diagnosticKey = [
       input.activeConversationId,
       input.activeMessages.length,
@@ -226,7 +222,6 @@ export function useAgentGUIConversationDetail(
       conversation.sourceDetail.turns.length,
       conversation.rows.length,
       firstVersion ?? "",
-      lastVersion ?? "",
       input.activeSessionView?.hasOlderMessages ? "1" : "0",
       input.activeSessionView?.isLoadingOlderMessages ? "1" : "0"
     ].join(":");

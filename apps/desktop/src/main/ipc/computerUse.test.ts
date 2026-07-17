@@ -116,6 +116,8 @@ test("computer use status checks emit diagnostic logs", () => {
   );
   assert.match(computerUseSource, /computer use permission status checked/);
   assert.match(computerUseSource, /summarizeComputerUseStatusForLog/);
+  assert.match(computerUseSource, /lastComputerUseStatusLogSignature/);
+  assert.match(computerUseSource, /logger\.debug\.bind\(logger\)/);
 });
 
 test("computer use status checks coalesce concurrent subprocess spawns", () => {

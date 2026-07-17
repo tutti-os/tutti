@@ -140,7 +140,7 @@ export function createDesktopAgentActivityRuntime(
         order: input.order ?? null
       },
       event: "agent.gui.runtime.messages.resolved",
-      level: "info",
+      level: "debug",
       workspaceId: input.workspaceId
     });
   };

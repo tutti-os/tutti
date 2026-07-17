@@ -1314,23 +1314,36 @@ Turn state, loading, cancel, restore, file-change undo, rail projection, event u
   `agent.gui.node.render_state_changed` lines before blaming one visible click.
   Runtime event emissions should appear as
   `runtime.events_emitted.summary`/`runtime.async_events_emitted.summary`;
-  successful inline reconciles should appear as `inline.applied.summary`.
-  If the old per-event names dominate a new log, the running app is stale.
+  the old `runtime.events_emitted`/`runtime.async_events_emitted` names must not
+  appear at the default level. Successful reconcile steps, message-page reads,
+  ACP transport frames, and unchanged CuaDriver polls should appear only when
+  debug logging is enabled. A streaming message-version change alone must not
+  emit `agent.gui.node.render_state_changed` or
+  `agent.gui.runtime.snapshot_changed`.
 - Root cause:
   Per-token runtime events and renderer inline reconcile commits can produce
   thousands of diagnostic writes. Those writes compete with rendering and also
   inflate trace/log exports enough to obscure the actual session-switch work.
+  A later AgentGUI refactor can reintroduce this problem by replacing turn
+  summaries with per-batch logs or by adding message cursors to diagnostic
+  change keys.
 - Fix:
-  Keep success-path diagnostics aggregated by turn or short time window. Reserve
-  per-event logging for failures or rare state transitions.
+  Aggregate runtime emissions once per turn. Keep successful reconcile,
+  message-page, and ACP frame diagnostics at debug. Build renderer snapshot and
+  render-state keys from semantic lifecycle/interaction state rather than
+  streaming cursors. Log unchanged permission-poll results at debug, and keep
+  desktop log writes ordered through the asynchronous file writer.
 - Validation:
-  Reproduce a streaming turn and confirm the high-volume success paths collapse
-  to summary entries while `inline.not_applied` and submit failures still retain
-  event-level detail.
+  Reproduce a streaming turn at the default info level. Confirm each turn has
+  at most one runtime emission summary, semantic render/snapshot diagnostics do
+  not advance for token-only updates, and reconcile/ACP frame diagnostics are
+  absent. Repeat with debug enabled when per-frame evidence is needed. Submit,
+  reconcile, and protocol failures must remain visible.
 - References:
-  [controller.go](../../../packages/agent/daemon/runtime/controller.go)
-  [workspaceAgentActivityService.ts](../../../apps/desktop/src/renderer/src/features/workspace-agent/services/internal/workspaceAgentActivityService.ts)
-  [useAgentGUINodeController.ts](../../../packages/agent/gui/agent-gui/agentGuiNode/controller/useAgentGUINodeController.ts)
+  [controller_turn_exec.go](../../../packages/agent/daemon/runtime/controller_turn_exec.go)
+  [workspaceAgentActivityReconcileBridge.ts](../../../apps/desktop/src/renderer/src/features/workspace-agent/services/internal/workspaceAgentActivityReconcileBridge.ts)
+  [desktopAgentRuntimeStateDiagnostics.ts](../../../apps/desktop/src/renderer/src/features/workspace-agent/services/desktopAgentRuntimeStateDiagnostics.ts)
+  [useAgentGUISessionPresentation.ts](../../../packages/agent/gui/agent-gui/agentGuiNode/controller/useAgentGUISessionPresentation.ts)
 
 ### Claude export leaks hidden data, flattens branches, or resumes as Claude Code
 
