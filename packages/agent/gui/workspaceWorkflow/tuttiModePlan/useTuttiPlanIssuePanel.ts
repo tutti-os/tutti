@@ -1,6 +1,7 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useOptionalTuttiModePlanReviewRuntime } from "../workspaceWorkflowRuntime";
 import type { TuttiPlanIssueSnapshot } from "../workspaceWorkflowRuntime";
+import type { TuttiPlanIssueTaskDecision } from "./TuttiPlanIssuePanel";
 
 interface PlanIssueState {
   issue: TuttiPlanIssueSnapshot | null;
@@ -8,15 +9,21 @@ interface PlanIssueState {
 }
 
 /**
- * Read-only view of the Issue a session's accepted Tutti plan materialized.
- * Loads on mount and refreshes on workspace issue updates; all mutations stay
- * in the Issue Manager (the embedded panel is display + jump only).
+ * Live view of the Issue a session's accepted Tutti plan materialized. Loads
+ * on mount and refreshes on workspace issue updates. The only mutation the
+ * embed owns is the acceptance decision (accept / rework) on a pending task;
+ * everything else stays in the Issue Manager.
  */
 export function useTuttiPlanIssuePanel(input: {
   enabled?: boolean;
   sourceSessionId: string | null;
   workspaceId: string;
-}): { issue: TuttiPlanIssueSnapshot | null } {
+}): {
+  issue: TuttiPlanIssueSnapshot | null;
+  decideTask:
+    | ((taskId: string, decision: TuttiPlanIssueTaskDecision) => Promise<void>)
+    | null;
+} {
   const runtime = useOptionalTuttiModePlanReviewRuntime();
   const source = runtime?.planIssues ?? null;
   const enabled = input.enabled ?? true;
@@ -82,5 +89,27 @@ export function useTuttiPlanIssuePanel(input: {
     };
   }, [scopeKey, source, sourceSessionId, workspaceId]);
 
-  return { issue: state.scopeKey === scopeKey ? state.issue : null };
+  const issue = state.scopeKey === scopeKey ? state.issue : null;
+  const issueId = issue?.issueId ?? "";
+  const decideTask = useCallback(
+    async (
+      taskId: string,
+      decision: TuttiPlanIssueTaskDecision
+    ): Promise<void> => {
+      if (!source || !issueId) return;
+      // The daemon publishes workspace.issue.updated for the transition, so
+      // the subscription above refreshes the snapshot without a manual poke.
+      if (decision === "accept") {
+        await source.acceptTask({ workspaceId, issueId, taskId });
+        return;
+      }
+      await source.rejectTask({ workspaceId, issueId, taskId });
+    },
+    [issueId, source, workspaceId]
+  );
+
+  return {
+    issue,
+    decideTask: source && issueId ? decideTask : null
+  };
 }

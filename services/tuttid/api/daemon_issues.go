@@ -407,6 +407,8 @@ func (api DaemonAPI) UpdateWorkspaceIssueTask(ctx context.Context, request tutti
 		HasDependencyTaskIDs:  request.Body.DependencyTaskIds != nil,
 		Parallelizable:        request.Body.Parallelizable != nil && *request.Body.Parallelizable,
 		HasParallelizable:     request.Body.Parallelizable != nil,
+		AutoAccept:            request.Body.AutoAccept != nil && *request.Body.AutoAccept,
+		HasAutoAccept:         request.Body.AutoAccept != nil,
 		AcceptanceState:       optionalAcceptanceState(request.Body.AcceptanceState),
 		HasAcceptanceState:    request.Body.AcceptanceState != nil,
 		AcceptanceSummary:     optionalString(request.Body.AcceptanceSummary),
@@ -665,6 +667,7 @@ func issueManagerCreateTaskInputFromGenerated(item tuttigenerated.CreateIssueMan
 		ExecutionDirectory: optionalString(item.ExecutionDirectory),
 		DependencyTaskIDs:  issueManagerOptionalStringSlice(item.DependencyTaskIds),
 		Parallelizable:     item.Parallelizable != nil && *item.Parallelizable,
+		AutoAccept:         item.AutoAccept != nil && *item.AutoAccept,
 	}
 }
 

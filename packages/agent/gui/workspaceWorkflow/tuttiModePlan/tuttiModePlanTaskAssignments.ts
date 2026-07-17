@@ -14,6 +14,8 @@ export interface TuttiModePlanTaskAssignmentDraft {
   reasoningEffort?: string;
   /** Per-task parallel opt-in; undefined keeps the plan document value. */
   parallelizable?: boolean;
+  /** Per-task acceptance bypass; undefined keeps the plan document value. */
+  autoAccept?: boolean;
 }
 
 export type TuttiModePlanTaskAssignmentDrafts = Readonly<
@@ -44,14 +46,17 @@ export function mergeTaskAssignmentDraft(
           reasoningEffort: "",
           ...(current.parallelizable !== undefined
             ? { parallelizable: current.parallelizable }
+            : {}),
+          ...(current.autoAccept !== undefined
+            ? { autoAccept: current.autoAccept }
             : {})
         }
       : { ...current, ...patch };
   return { ...drafts, [taskId]: next };
 }
 
-/** The toggle state a parallel switch should display: draft wins. */
-export function effectiveTaskParallelizable(
+/** The state a boolean toggle (parallel, auto-accept) displays: draft wins. */
+export function effectiveTaskFlag(
   draftValue: boolean | undefined,
   documentValue: boolean
 ): boolean {
@@ -105,6 +110,10 @@ export function taskAssignmentInputsFromDrafts(
     }
     if (draft.parallelizable !== undefined) {
       input.parallelizable = draft.parallelizable;
+      touched = true;
+    }
+    if (draft.autoAccept !== undefined) {
+      input.autoAccept = draft.autoAccept;
       touched = true;
     }
     if (touched) inputs.push(input);

@@ -3215,6 +3215,10 @@ export type TuttiModePlanTask = {
    * Opts this task out of the sequential default so it may run alongside other ready tasks. Persisted onto the materialized Issue task.
    */
   parallelizable: boolean;
+  /**
+   * Bypasses the human acceptance gate: a successful completion is accepted automatically and dispatch advances. Persisted onto the materialized Issue task.
+   */
+  autoAccept: boolean;
 };
 
 export type TuttiModePlanDocument = {
@@ -3320,6 +3324,10 @@ export type WorkspaceWorkflowTaskAssignment = {
    * Overrides the plan document's per-task parallel opt-in; null keeps it.
    */
   parallelizable?: boolean | null;
+  /**
+   * Overrides the plan document's per-task acceptance bypass; null keeps it.
+   */
+  autoAccept?: boolean | null;
 };
 
 export type DecideWorkspaceWorkflowCheckpointRequest = {
@@ -3523,6 +3531,10 @@ export type IssueManagerTask = {
    * Opts this task out of the Issue's sequential default so it may run alongside other dependency-ready tasks. False keeps strict sequential ordering.
    */
   parallelizable: boolean;
+  /**
+   * Bypasses the human acceptance gate: a successful completion is accepted automatically and dispatch advances.
+   */
+  autoAccept: boolean;
   acceptanceState: IssueManagerAcceptanceState;
   acceptanceSummary: string;
   creatorUserId: string;
@@ -3797,6 +3809,7 @@ export type CreateIssueManagerTaskRequest = {
   executionDirectory?: string;
   dependencyTaskIds?: Array<string>;
   parallelizable?: boolean;
+  autoAccept?: boolean;
 };
 
 export type CreateIssueManagerTasksRequest = {
@@ -3816,6 +3829,7 @@ export type UpdateIssueManagerTaskRequest = {
   executionDirectory?: string;
   dependencyTaskIds?: Array<string>;
   parallelizable?: boolean;
+  autoAccept?: boolean;
   acceptanceState?: IssueManagerAcceptanceState;
   acceptanceSummary?: string;
 };

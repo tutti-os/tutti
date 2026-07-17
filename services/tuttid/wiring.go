@@ -546,6 +546,9 @@ func buildDaemonAPI(ctx context.Context, store workspacedata.CatalogStore, analy
 		ModelPlanReader:     modelPlansStore,
 		AutomationRules:     automationRules,
 		PlanningTimeline:    agentservice.IssuePlanningTimelineReporter{Projection: agentActivityProjection},
+		CompletionNotifier: &tuttiPlanIssueCompletionDispatcher{
+			Agents: agentSessionService,
+		},
 	}
 	tuttiModePlans := &tuttimodeplanservice.Service{
 		Store:                  workflowStore,

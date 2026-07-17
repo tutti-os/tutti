@@ -68,6 +68,11 @@ type PlanTask struct {
 	// may propose it, the reviewer may override it, and it persists onto the
 	// materialized Issue task. Omitted means false (strictly sequential).
 	Parallelizable bool `yaml:"parallelizable"`
+	// AutoAccept lets the planning agent mark a task whose completed result
+	// needs no human review gate: on successful completion the daemon accepts
+	// it automatically and dispatch advances. Omitted means false (the user
+	// accepts each task by hand).
+	AutoAccept bool `yaml:"autoAccept"`
 }
 
 func ParsePlanMarkdown(raw []byte) (PlanDocument, error) {

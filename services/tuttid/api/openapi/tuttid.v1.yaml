@@ -13157,6 +13157,7 @@ components:
         - executionDirectory
         - dependsOn
         - parallelizable
+        - autoAccept
       properties:
         id:
           type: string
@@ -13204,6 +13205,12 @@ components:
             Opts this task out of the sequential default so it may run
             alongside other ready tasks. Persisted onto the materialized
             Issue task.
+        autoAccept:
+          type: boolean
+          description: >-
+            Bypasses the human acceptance gate: a successful completion is
+            accepted automatically and dispatch advances. Persisted onto the
+            materialized Issue task.
     TuttiModePlanDocument:
       type: object
       additionalProperties: false
@@ -13546,6 +13553,10 @@ components:
           type: boolean
           nullable: true
           description: Overrides the plan document's per-task parallel opt-in; null keeps it.
+        autoAccept:
+          type: boolean
+          nullable: true
+          description: Overrides the plan document's per-task acceptance bypass; null keeps it.
     DecideWorkspaceWorkflowCheckpointRequest:
       type: object
       additionalProperties: false

@@ -1382,6 +1382,7 @@ components:
         - executionDirectory
         - dependencyTaskIds
         - parallelizable
+        - autoAccept
         - acceptanceState
         - acceptanceSummary
         - creatorUserId
@@ -1434,6 +1435,11 @@ components:
             Opts this task out of the Issue's sequential default so it may run
             alongside other dependency-ready tasks. False keeps strict
             sequential ordering.
+        autoAccept:
+          type: boolean
+          description: >-
+            Bypasses the human acceptance gate: a successful completion is
+            accepted automatically and dispatch advances.
         acceptanceState:
           $ref: "#/components/schemas/IssueManagerAcceptanceState"
         acceptanceSummary:
@@ -2073,6 +2079,8 @@ components:
             minLength: 1
         parallelizable:
           type: boolean
+        autoAccept:
+          type: boolean
     CreateIssueManagerTasksRequest:
       type: object
       additionalProperties: false
@@ -2117,6 +2125,8 @@ components:
             type: string
             minLength: 1
         parallelizable:
+          type: boolean
+        autoAccept:
           type: boolean
         acceptanceState:
           $ref: "#/components/schemas/IssueManagerAcceptanceState"
