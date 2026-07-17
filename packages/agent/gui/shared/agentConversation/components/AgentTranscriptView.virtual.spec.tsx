@@ -1,4 +1,10 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import {
+  act,
+  fireEvent,
+  render,
+  screen,
+  waitFor
+} from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { normalizeAgentActivitySession } from "@tutti-os/agent-activity-core";
 import type { AgentConversationVM } from "../contracts/agentConversationVM";
@@ -145,11 +151,10 @@ describe("AgentTranscriptView virtual rendering", () => {
       })
     );
 
-    await waitFor(() => {
-      expect(
-        screen.getByRole("button", { name: "Thought process" })
-      ).toBeTruthy();
-    });
+    await flushCollapsibleRevealFrames();
+    expect(
+      screen.getByRole("button", { name: "Thought process" })
+    ).toBeTruthy();
     expect(
       document.querySelector("[data-agent-transcript-virtual-turn='turn-10']")
     ).toBeTruthy();
@@ -509,6 +514,19 @@ function conversationWithCollapsibleTurns(
       }))
     }
   };
+}
+
+async function flushCollapsibleRevealFrames(): Promise<void> {
+  await flushAnimationFrame();
+  await flushAnimationFrame();
+}
+
+async function flushAnimationFrame(): Promise<void> {
+  await act(async () => {
+    await new Promise<void>((resolve) => {
+      requestAnimationFrame(() => resolve());
+    });
+  });
 }
 
 function messageRow(

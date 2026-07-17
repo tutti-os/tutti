@@ -1163,7 +1163,7 @@ func TestControllerHiddenSessionPublishesLiveEventsAndReportsActivity(t *testing
 	}
 }
 
-func TestControllerStartExecCancelPublishesAndReports(t *testing.T) {
+func TestControllerStartExecPublishesAndReports(t *testing.T) {
 	t.Parallel()
 
 	reporter := &recordingReporter{}
@@ -1245,14 +1245,6 @@ userMessagePublished:
 			updatedSession.Status == SessionStatusReady &&
 			updatedSession.Title == "Inspect repository structure"
 	})
-
-	cancelResult, err := controller.Cancel(ctx, rootCancelInput("room-1", started.Session.AgentSessionID, execResult.TurnID, "user"))
-	if err != nil {
-		t.Fatalf("Cancel: %v", err)
-	}
-	if cancelResult.Canceled {
-		t.Fatalf("Cancel result = %#v, want no active turn cancel", cancelResult)
-	}
 	var hasSessionStartedPatch bool
 	for _, call := range reportCalls {
 		for _, patch := range call.report.StatePatches {

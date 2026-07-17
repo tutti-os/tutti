@@ -49,7 +49,8 @@ func (a *CodexAppServerAdapter) appServerServerRequest(
 	if len(events) > 0 {
 		emit(events)
 	}
-	go a.respondAppServerServerRequest(ctx, client, eventSession, eventTurnID, child, message, params, pending, emit)
+	processingTurn := a.activeTurnForNormalizer(session.AgentSessionID, normalizer)
+	go a.respondAppServerServerRequest(ctx, client, eventSession, eventTurnID, child, message, params, pending, processingTurn, emit)
 	return nil, nil
 }
 
@@ -79,6 +80,7 @@ func (*CodexAppServerAdapter) respondAppServerServerRequest(
 	message acpMessage,
 	params map[string]any,
 	pending *pendingInteractiveRequest,
+	processingTurn *codexAppServerActiveTurn,
 	emit EventSink,
 ) {
 	if pending == nil {
@@ -108,6 +110,14 @@ func (*CodexAppServerAdapter) respondAppServerServerRequest(
 			emit(resolved)
 		}
 		return
+	}
+	// A provider may complete the turn immediately after accepting this
+	// response. Serialize the acknowledgement and its resolution events with
+	// turn finalization so call.completed cannot arrive after the terminal event
+	// and get dropped by the turn's closed-event guard.
+	if processingTurn != nil {
+		processingTurn.processMu.Lock()
+		defer processingTurn.processMu.Unlock()
 	}
 	result, responseErr := appServerApprovalResult(message.Method, params, selection)
 	if err := client.Respond(ctx, message.ID, result, responseErr); err != nil {

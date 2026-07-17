@@ -301,6 +301,11 @@ provider request
 
 `call.started` / `call.completed` / `call.failed` continue to own historical
 tool-call messages, but they never create or restore an actionable Interaction.
+When acknowledging an interactive response can make the provider immediately
+settle its Turn, the adapter must serialize that acknowledgement and the
+matching call-resolution event with Turn finalization. The terminal Turn event
+must not overtake `call.completed` or `call.failed` and close the event stream
+before the historical call row resolves.
 Likewise, a runtime session snapshot may describe provider-local execution
 state but must not enrich a report with an Interaction transition. Runtime
 reports may submit only `pending` and `superseded`; `answered` belongs solely to
