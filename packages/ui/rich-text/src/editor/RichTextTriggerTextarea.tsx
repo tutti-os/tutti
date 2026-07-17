@@ -11,12 +11,13 @@ import {
 } from "react";
 import { ViewportMenuSurface } from "@tutti-os/ui-system/components";
 import { cn } from "@tutti-os/ui-system/utils";
-import { createRichTextTriggerRegistry } from "../plugins/triggerRegistry.ts";
+import { useEffectiveRichTextMentionService } from "./RichTextMentionServiceProvider.tsx";
 import { renderRichTextTriggerInsertResult } from "../plugins/trigger.ts";
 import type {
   RichTextTriggerProvider,
   RichTextTriggerQueryMatch
 } from "../types/trigger.ts";
+import type { RichTextMentionService } from "../service/index.ts";
 import {
   findRichTextTriggerQuery,
   queryRichTextTriggerMatches
@@ -41,7 +42,9 @@ import type { CSSProperties } from "react";
 export interface RichTextTriggerTextareaProps {
   value: string;
   onChange: (value: string) => void;
+  /** @deprecated Prefer mentionService or RichTextMentionServiceProvider. */
   triggerProviders?: readonly RichTextTriggerProvider[];
+  mentionService?: RichTextMentionService;
   placeholder?: string;
   disabled?: boolean;
   className?: string;
@@ -58,7 +61,8 @@ export interface RichTextTriggerTextareaProps {
 export function RichTextTriggerTextarea({
   value,
   onChange,
-  triggerProviders = [],
+  triggerProviders,
+  mentionService,
   placeholder,
   disabled = false,
   className,
@@ -93,10 +97,10 @@ export function RichTextTriggerTextarea({
     useState<CSSProperties | null>(null);
   const pendingSelectionRef = useRef<number | null>(null);
   const suppressPastedAtQueryRef = useRef(false);
-  const registry = useMemo(
-    () => createRichTextTriggerRegistry(triggerProviders),
-    [triggerProviders]
-  );
+  const registry = useEffectiveRichTextMentionService({
+    mentionService,
+    triggerProviders
+  });
   const activeTriggerConfigs = useMemo(
     () => registry.listTriggerConfigs(),
     [registry]

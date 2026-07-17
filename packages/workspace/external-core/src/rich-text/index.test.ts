@@ -3,6 +3,7 @@ import test from "node:test";
 import {
   createTuttiExternalAtRichTextTriggerProvider,
   createTuttiExternalAtRichTextTriggerProviders,
+  createTuttiExternalRichTextMentionService,
   queryTuttiExternalAtRichTextTriggerItems
 } from "./index.ts";
 import type {
@@ -173,6 +174,188 @@ test("uses mention presentation icons when thumbnailUrl is absent", () => {
   assert.equal(
     provider.getItemIconUrl?.(item),
     "https://example.test/icon.png"
+  );
+});
+
+test("uses exact host resolve when the optional bridge capability exists", async () => {
+  const provider = createTuttiExternalAtRichTextTriggerProvider({
+    providerId: "workspace-app",
+    getBridge: () => ({
+      at: {
+        query: () => [],
+        resolve(input) {
+          assert.deepEqual(input, {
+            providerId: "workspace-app",
+            entityId: "canvas",
+            scope: { workspaceId: "workspace-1" }
+          });
+          return {
+            label: "Canvas",
+            presentation: { iconUrl: "canvas.png" }
+          };
+        }
+      }
+    })
+  });
+
+  assert.deepEqual(
+    await provider.resolveMention?.({
+      providerId: "workspace-app",
+      entityId: "canvas",
+      label: "Old canvas",
+      scope: { workspaceId: "workspace-1" }
+    }),
+    { label: "Canvas", presentation: { iconUrl: "canvas.png" } }
+  );
+});
+
+test("falls back to an exact identity and scope match on old hosts", async () => {
+  const calls: TuttiExternalAtQueryInput[] = [];
+  const provider = createTuttiExternalAtRichTextTriggerProvider({
+    providerId: "workspace-app",
+    bridge: {
+      at: {
+        query(input) {
+          calls.push(input);
+          return [
+            createQueryResult("workspace-app", "canvas", "Wrong scope", {
+              insert: {
+                kind: "mention",
+                mention: {
+                  entityId: "canvas",
+                  label: "Wrong scope",
+                  scope: { workspaceId: "workspace-2" }
+                }
+              }
+            }),
+            createQueryResult("workspace-app", "canvas", "Canvas", {
+              insert: {
+                kind: "mention",
+                mention: {
+                  entityId: "canvas",
+                  label: "Canvas",
+                  scope: { workspaceId: "workspace-1" },
+                  presentation: { iconUrl: "canvas.png" }
+                }
+              }
+            })
+          ];
+        }
+      }
+    }
+  });
+
+  const resolved = await provider.resolveMention?.({
+    providerId: "workspace-app",
+    entityId: "canvas",
+    label: "Old canvas",
+    scope: { workspaceId: "workspace-1" }
+  });
+  assert.deepEqual(calls, [
+    { keyword: "Old canvas", maxResults: 50, providers: ["workspace-app"] }
+  ]);
+  assert.deepEqual(resolved, {
+    label: "Canvas",
+    presentation: { iconUrl: "canvas.png" }
+  });
+});
+
+test("old host resolution retries with an empty keyword after a label miss", async () => {
+  const calls: TuttiExternalAtQueryInput[] = [];
+  const provider = createTuttiExternalAtRichTextTriggerProvider({
+    providerId: "workspace-app",
+    bridge: {
+      at: {
+        query(input) {
+          calls.push(input);
+          return input.keyword
+            ? []
+            : [
+                createQueryResult("workspace-app", "canvas", "Renamed", {
+                  insert: {
+                    kind: "mention",
+                    mention: {
+                      entityId: "canvas",
+                      label: "Renamed",
+                      scope: { workspaceId: "workspace-1" }
+                    }
+                  }
+                })
+              ];
+        }
+      }
+    }
+  });
+
+  assert.deepEqual(
+    await provider.resolveMention?.({
+      providerId: "workspace-app",
+      entityId: "canvas",
+      label: "Old canvas",
+      scope: { workspaceId: "workspace-1" }
+    }),
+    { label: "Renamed", presentation: undefined }
+  );
+  assert.deepEqual(calls, [
+    { keyword: "Old canvas", maxResults: 50, providers: ["workspace-app"] },
+    { keyword: "", maxResults: 50, providers: ["workspace-app"] }
+  ]);
+});
+
+test("external service invalidates from bridge events and unsubscribes", async () => {
+  let listener:
+    | ((event: { providerIds?: readonly ["workspace-app"] }) => void)
+    | undefined;
+  let unsubscribeCalls = 0;
+  let icon = "first.png";
+  const service = createTuttiExternalRichTextMentionService({
+    providerIds: ["workspace-app"],
+    getBridge: () => ({
+      at: {
+        query: () => [],
+        resolve: () => ({ presentation: { iconUrl: icon } }),
+        subscribe(nextListener) {
+          listener = nextListener;
+          return () => {
+            unsubscribeCalls += 1;
+          };
+        }
+      }
+    })
+  });
+  const mention = {
+    providerId: "workspace-app",
+    entityId: "canvas",
+    label: "Canvas"
+  };
+  await service.resolve(mention);
+  icon = "second.png";
+  listener?.({ providerIds: ["workspace-app"] });
+  await service.resolve(mention);
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  assert.equal(
+    service.getSnapshot(mention).resolved?.presentation?.iconUrl,
+    "second.png"
+  );
+  service.dispose();
+  service.dispose();
+  assert.equal(unsubscribeCalls, 1);
+});
+
+test("external service getBridge remains SSR-safe when unavailable", async () => {
+  const service = createTuttiExternalRichTextMentionService({
+    getBridge: () => undefined,
+    providerIds: ["workspace-app"]
+  });
+  assert.equal(
+    (
+      await service.resolve({
+        providerId: "workspace-app",
+        entityId: "canvas",
+        label: "Canvas"
+      })
+    ).state,
+    "missing"
   );
 });
 

@@ -54,6 +54,9 @@ import type {
   TuttiExternalPdfPrintHtmlResult,
   TuttiExternalReferenceOpenInput,
   TuttiExternalRendererRequest,
+  TuttiExternalAtResolveResult,
+  TuttiExternalAtResolveInput,
+  TuttiExternalAtInvalidation,
   TuttiExternalSettingsOpenInput,
   TuttiExternalUserProjectCreateInput,
   TuttiExternalUserProjectPathInput,
@@ -94,6 +97,7 @@ export const desktopIpcChannels = {
   appExternal: {
     activityReportActive: "workspace-app-activity:report-active",
     atQuery: "workspace-app-at:query",
+    atResolve: "workspace-app-at:resolve",
     filesOpen: "workspace-app-files:open",
     filesSelect: "workspace-app-files:select",
     filesUploadCancel: "workspace-app-files:upload-cancel",
@@ -619,6 +623,7 @@ export type DesktopIpcResult<TResult> =
 
 export type DesktopWorkspaceAppExternalRendererResult =
   | TuttiExternalAtQueryResult[]
+  | TuttiExternalAtResolveResult
   | TuttiExternalFileSelectResult
   | WorkspaceUserProject
   | WorkspaceUserProjectDefaultSelection
@@ -636,6 +641,11 @@ export interface DesktopWorkspaceAppExternalRendererResponse {
 }
 
 export type DesktopWorkspaceAppExternalRendererEvent =
+  | {
+      invalidation: TuttiExternalAtInvalidation;
+      type: "at.invalidated";
+      workspaceId: string;
+    }
   | {
       snapshot: WorkspaceUserProjectServiceSnapshot;
       type: "userProjects.changed";
@@ -830,6 +840,7 @@ export interface DesktopInvokePayloadByChannel {
   [desktopIpcChannels.appContext.get]: undefined;
   [desktopIpcChannels.appExternal.activityReportActive]: undefined;
   [desktopIpcChannels.appExternal.atQuery]: TuttiExternalAtQueryInput;
+  [desktopIpcChannels.appExternal.atResolve]: TuttiExternalAtResolveInput;
   [desktopIpcChannels.appExternal.filesOpen]: TuttiExternalFileOpenInput;
   [desktopIpcChannels.appExternal.filesSelect]: TuttiExternalFileSelectInput;
   [desktopIpcChannels.appExternal
@@ -985,6 +996,8 @@ export interface DesktopInvokeResultByChannel {
   [desktopIpcChannels.appContext.get]: DesktopWorkspaceAppContext;
   [desktopIpcChannels.appExternal.activityReportActive]: void;
   [desktopIpcChannels.appExternal.atQuery]: TuttiExternalAtQueryResult[];
+  [desktopIpcChannels.appExternal
+    .atResolve]: TuttiExternalAtResolveResult | null;
   [desktopIpcChannels.appExternal.filesOpen]: void;
   [desktopIpcChannels.appExternal.filesSelect]: TuttiExternalFileSelectResult;
   [desktopIpcChannels.appExternal.filesUploadCancel]: void;

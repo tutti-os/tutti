@@ -76,7 +76,9 @@ import type { RichTextTriggerProvider } from "@tutti-os/ui-rich-text/types";
 import { tuttiExternalAtProviderIds } from "@tutti-os/workspace-external-core/core";
 import type {
   TuttiExternalAtQueryInput,
-  TuttiExternalAtQueryResult
+  TuttiExternalAtQueryResult,
+  TuttiExternalAtResolveInput,
+  TuttiExternalAtResolveResult
 } from "@tutti-os/workspace-external-core/contracts";
 import type { WorkspaceFileReferenceAdapter } from "@tutti-os/workspace-file-reference/contracts";
 import type { WorkspaceUserProjectApi } from "@tutti-os/workspace-user-project/contracts";
@@ -287,28 +289,10 @@ export class WorkspaceWorkbenchHostService implements IWorkspaceWorkbenchHostSer
         ? input.query.providers
         : tuttiExternalAtProviderIds
     );
-    const richTextCapabilities = [...providerIds].filter(
-      (providerId) => providerId !== "agent-generated-file"
+    const providers = this.createWorkspaceAppExternalAtProviders(
+      providerIds,
+      input.workspaceId
     );
-    const providers: RichTextTriggerProvider[] = [
-      ...this.dependencies.richTextAtService.getProviders({
-        capabilities: richTextCapabilities,
-        surface: "workspace-app-external",
-        target: "workspace-app",
-        workspaceId: input.workspaceId
-      })
-    ];
-    if (providerIds.has("agent-generated-file")) {
-      const agentGeneratedFileProvider =
-        createDesktopAgentGeneratedFileMentionProvider({
-          agentActivityRuntime: this.dependencies.workspaceAgentActivityService,
-          workspaceId: input.workspaceId
-        });
-      providers.push({
-        ...agentGeneratedFileProvider,
-        trigger: "@"
-      });
-    }
     const registry = createRichTextTriggerRegistry(providers);
     const matches = await registry.query({
       keyword: input.query.keyword,
@@ -325,6 +309,55 @@ export class WorkspaceWorkbenchHostService implements IWorkspaceWorkbenchHostSer
       .filter(
         (result): result is TuttiExternalAtQueryResult => result !== null
       );
+  }
+
+  async resolveWorkspaceAppExternalAt(input: {
+    mention: TuttiExternalAtResolveInput;
+    workspaceId: string;
+  }): Promise<TuttiExternalAtResolveResult | null> {
+    const providers = this.createWorkspaceAppExternalAtProviders(
+      new Set([input.mention.providerId]),
+      input.workspaceId
+    );
+    const provider = providers.find(
+      (candidate) => candidate.id === input.mention.providerId
+    );
+    if (!provider?.resolveMention) return null;
+    return provider.resolveMention({
+      providerId: input.mention.providerId,
+      entityId: input.mention.entityId,
+      label: "",
+      scope: {
+        ...input.mention.scope,
+        workspaceId: input.workspaceId
+      }
+    });
+  }
+
+  private createWorkspaceAppExternalAtProviders(
+    providerIds: ReadonlySet<(typeof tuttiExternalAtProviderIds)[number]>,
+    workspaceId: string
+  ): RichTextTriggerProvider[] {
+    const richTextCapabilities = [...providerIds].filter(
+      (providerId) => providerId !== "agent-generated-file"
+    );
+    const providers: RichTextTriggerProvider[] = [
+      ...this.dependencies.richTextAtService.getProviders({
+        capabilities: richTextCapabilities,
+        surface: "workspace-app-external",
+        target: "workspace-app",
+        workspaceId
+      })
+    ];
+    if (providerIds.has("agent-generated-file")) {
+      const agentGeneratedFileProvider =
+        createDesktopAgentGeneratedFileMentionProvider({
+          agentActivityRuntime: this.dependencies.workspaceAgentActivityService,
+          workspaceId
+        });
+      providers.push({ ...agentGeneratedFileProvider, trigger: "@" });
+    }
+    return providers;
   }
 
   onOpenFileRequest(

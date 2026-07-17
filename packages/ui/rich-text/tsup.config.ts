@@ -10,6 +10,7 @@ export default defineConfig({
     "core/index": "src/core/index.ts",
     "editor/index": "src/editor/index.ts",
     "plugins/index": "src/plugins/index.ts",
+    "service/index": "src/service/index.ts",
     "types/index": "src/types/index.ts"
   },
   format: ["esm"],

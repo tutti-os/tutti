@@ -4,7 +4,10 @@ import type {
   DesktopWorkspaceAppContext,
   DesktopWorkspaceAppExternalRendererEvent
 } from "../../shared/contracts/ipc";
-import type { TuttiExternalWorkspaceOpenRouteIntent } from "@tutti-os/workspace-external-core/contracts";
+import type {
+  TuttiExternalAtInvalidation,
+  TuttiExternalWorkspaceOpenRouteIntent
+} from "@tutti-os/workspace-external-core/contracts";
 import { createWorkspaceAppExternalBridge } from "./workspaceAppExternalBridge.ts";
 import { installWorkspaceAppInteractionForwarding } from "./workspaceAppInteractionForwarding.ts";
 import { installWorkspaceAppLinkInterception } from "./workspaceAppLinks.ts";
@@ -59,6 +62,9 @@ function installWorkspaceAppMainFrameBridge(): void {
   const launchIntentListeners = new Set<
     (intent: TuttiExternalWorkspaceOpenRouteIntent) => void
   >();
+  const atInvalidationListeners = new Set<
+    (event: TuttiExternalAtInvalidation) => void
+  >();
   const userProjectSnapshots = createWorkspaceAppUserProjectSnapshotBridge();
   let cachedContext: DesktopWorkspaceAppContext | null = null;
   let pendingContext: Promise<DesktopWorkspaceAppContext> | null = null;
@@ -110,6 +116,12 @@ function installWorkspaceAppMainFrameBridge(): void {
     send(channel, payload) {
       ipcRenderer.send(channel, payload);
     },
+    subscribeToAtInvalidations(listener) {
+      atInvalidationListeners.add(listener);
+      return () => {
+        atInvalidationListeners.delete(listener);
+      };
+    },
     subscribeToWorkspaceLaunchIntents(listener) {
       launchIntentListeners.add(listener);
       return () => {
@@ -141,6 +153,12 @@ function installWorkspaceAppMainFrameBridge(): void {
       }
       if (payload.type === "userProjects.changed") {
         userProjectSnapshots.publish(payload.snapshot);
+        return;
+      }
+      if (payload.type === "at.invalidated") {
+        for (const listener of atInvalidationListeners) {
+          listener(payload.invalidation);
+        }
         return;
       }
       if (payload.type === "workspace.launchIntent") {
@@ -220,10 +238,14 @@ function isWorkspaceAppExternalRendererEvent(
   const record = value as Record<string, unknown>;
   if (record.type !== "userProjects.changed") {
     return (
-      record.type === "workspace.launchIntent" &&
-      typeof record.workspaceId === "string" &&
-      typeof record.appId === "string" &&
-      isWorkspaceAppOpenRouteIntent(record.intent)
+      (record.type === "workspace.launchIntent" &&
+        typeof record.workspaceId === "string" &&
+        typeof record.appId === "string" &&
+        isWorkspaceAppOpenRouteIntent(record.intent)) ||
+      (record.type === "at.invalidated" &&
+        typeof record.workspaceId === "string" &&
+        typeof record.invalidation === "object" &&
+        record.invalidation !== null)
     );
   }
   if (typeof record.workspaceId !== "string") {

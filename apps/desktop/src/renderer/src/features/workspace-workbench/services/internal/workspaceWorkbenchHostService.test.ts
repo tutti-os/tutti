@@ -270,3 +270,10 @@ test("workspace app external at query preserves explicit provider filters", () =
     /input\.query\.providers !== undefined\s+\?\s+input\.query\.providers\s+:\s+tuttiExternalAtProviderIds/
   );
 });
+
+test("workspace app external at resolve overrides caller workspace scope", () => {
+  assert.match(
+    workspaceWorkbenchHostServiceSource,
+    /resolveWorkspaceAppExternalAt\([\s\S]*?scope: \{[\s\S]*?\.\.\.input\.mention\.scope,[\s\S]*?workspaceId: input\.workspaceId[\s\S]*?\}/
+  );
+});

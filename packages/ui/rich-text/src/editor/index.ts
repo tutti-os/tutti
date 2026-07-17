@@ -22,6 +22,13 @@ export {
   type RichTextReadonlyWorkspaceReference
 } from "./RichTextReadonlyContent.tsx";
 export {
+  RichTextMentionServiceProvider,
+  useEffectiveRichTextMentionService,
+  useResolvedRichTextMention,
+  useRichTextMentionService,
+  type RichTextMentionServiceProviderProps
+} from "./RichTextMentionServiceProvider.tsx";
+export {
   findRichTextTriggerQuery,
   isRichTextTriggerPrefixBoundary,
   queryRichTextTriggerMatches,

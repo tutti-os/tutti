@@ -21,3 +21,4 @@ export {
   type RichTextI18nKey,
   type RichTextI18nRuntime
 } from "./i18n/index.ts";
+export * from "./service/index.ts";

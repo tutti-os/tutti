@@ -1,9 +1,15 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import test from "node:test";
 import {
   createWorkspaceAppUserActiveTrackEvent,
   workspaceAppUserActiveEventName
 } from "./workspaceAppActivityAnalytics.ts";
+
+const workspaceAppContextSource = readFileSync(
+  new URL("./workspaceAppContext.ts", import.meta.url),
+  "utf8"
+);
 
 test("workspace app user active event uses host-owned app context", () => {
   assert.deepEqual(
@@ -22,5 +28,12 @@ test("workspace app user active event uses host-owned app context", () => {
         workspace_id: "workspace-1"
       }
     }
+  );
+});
+
+test("workspace app at resolution is scoped by the registered guest context", () => {
+  assert.match(
+    workspaceAppContextSource,
+    /appExternal\.atResolve,[\s\S]*?requireWorkspaceAppGuestContext\(event\.sender\)[\s\S]*?normalizeTuttiExternalAtResolveInput\(payload\)[\s\S]*?appId: context\.appID,[\s\S]*?operation: "at\.resolve",[\s\S]*?workspaceId: context\.workspaceID/
   );
 });

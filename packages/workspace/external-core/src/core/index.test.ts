@@ -2,6 +2,8 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   normalizeTuttiExternalAtQueryInput,
+  normalizeTuttiExternalAtResolveInput,
+  normalizeTuttiExternalAtInvalidation,
   normalizeTuttiExternalBrowserOpenUrlInput,
   normalizeTuttiExternalFileOpenInput,
   normalizeTuttiExternalFileSelectInput,
@@ -55,6 +57,57 @@ test("rejects unsupported at providers", () => {
         providers: ["file", "not-supported"]
       }),
     /unsupported provider/
+  );
+});
+
+test("normalizes exact at resolve identity and invalidation", () => {
+  assert.deepEqual(
+    normalizeTuttiExternalAtResolveInput({
+      providerId: "workspace-app",
+      entityId: " canvas ",
+      scope: { workspaceId: "workspace-1" }
+    }),
+    {
+      providerId: "workspace-app",
+      entityId: "canvas",
+      scope: { workspaceId: "workspace-1" }
+    }
+  );
+  assert.deepEqual(
+    normalizeTuttiExternalAtInvalidation({
+      providerIds: ["workspace-app", "workspace-app"],
+      entityIds: [" canvas ", "canvas"],
+      revision: 2
+    }),
+    {
+      providerIds: ["workspace-app"],
+      entityIds: ["canvas"],
+      revision: 2
+    }
+  );
+});
+
+test("rejects malformed at resolve identity and invalidation", () => {
+  assert.throws(
+    () =>
+      normalizeTuttiExternalAtResolveInput({
+        providerId: "unknown",
+        entityId: "canvas"
+      }),
+    /providerId is unsupported/
+  );
+  assert.throws(
+    () =>
+      normalizeTuttiExternalAtResolveInput({
+        providerId: "workspace-app",
+        entityId: "canvas",
+        scope: { workspaceId: 1 }
+      }),
+    /scope must contain string values/
+  );
+  assert.throws(
+    () => normalizeTuttiExternalAtInvalidation({ revision: Number.NaN }),
+    /revision must be finite/
   );
 });
 
