@@ -39,5 +39,10 @@ export const zhCNTuttiModePlan = {
   issueStatusPendingAcceptance: "待验收",
   issueStatusCompleted: "已完成",
   issueStatusFailed: "失败",
-  issueStatusCanceled: "已取消"
+  issueStatusCanceled: "已取消",
+  issueStripRunning: "{{count}} 个子任务进行中",
+  issueStripPending: "{{count}} 待验收",
+  issueStripFailed: "{{count}} 失败",
+  issueStripDone: "{{done}}/{{total}} 已完成",
+  issueStripJump: "查看子任务面板"
 } as const;
