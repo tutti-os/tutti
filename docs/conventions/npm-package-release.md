@@ -216,6 +216,14 @@ following:
   unless that dependency is an intentional part of the public contract
 - a consumer-facing build emits or copies the asset only when the consumer
   explicitly imports the asset subpath
+- packed JavaScript does not contain raw XML SVG data URLs; SVGs interpolated
+  into CSS `url(...)` values must be emitted as files or encoded into a
+  CSS-safe data URL
+
+Do not use a workspace application build as the only validation for asset
+changes. Workspace exports can point at source while published exports point at
+`dist`, so the two paths may apply different asset transforms. The packed
+tarball is the consumer contract.
 
 ## Package Entrypoints
 
