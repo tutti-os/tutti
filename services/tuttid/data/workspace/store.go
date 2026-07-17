@@ -40,6 +40,9 @@ type WorkbenchStore interface {
 
 type AgentActivityStore interface {
 	agentactivitybiz.Repository
+	CheckpointRuntimeOperation(context.Context, agentactivitybiz.CheckpointRuntimeOperationInput) (agentactivitybiz.RuntimeOperation, bool, error)
+	CompletePlanDecisionRuntimeOperation(context.Context, agentactivitybiz.CompletePlanDecisionRuntimeOperationInput) (agentactivitybiz.RuntimeOperationCompletion, bool, error)
+	FindTurnByClientSubmitID(context.Context, string, string, string) (string, bool, error)
 	PrepareGoalControlOperation(context.Context, agentactivitybiz.GoalControlOperationPrepare) (agentactivitybiz.GoalControlOperation, agentactivitybiz.SessionGoalState, bool, error)
 	GetGoalControlAudit(context.Context, string, string, string) (agentactivitybiz.Message, bool, error)
 	MarkGoalControlOperationDispatched(context.Context, string, string, int64) (agentactivitybiz.GoalControlOperation, bool, error)

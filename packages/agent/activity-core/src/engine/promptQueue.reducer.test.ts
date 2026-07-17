@@ -315,6 +315,39 @@ test("send failure stays blocked until send-now retry clears it", () => {
   assert.equal(retried.commands[0]?.type, "queue/sendPrompt");
 });
 
+test("no-active-turn send failure reconciles before retrying queued prompt", () => {
+  const available = canonicalLifecycle("settled", 1);
+  const sending = reduce(
+    createInitialPromptQueueState(),
+    enqueue("prompt-1"),
+    available
+  );
+  const failed = reduce(
+    sending.state,
+    commandResult(
+      commandId(sending.commands[0]),
+      "queue/sendPrompt",
+      "failed",
+      { errorReason: "agent.no_active_turn" }
+    ),
+    available
+  );
+  assert.equal(failed.commands.length, 1);
+  assert.equal(failed.commands[0]?.type, "session/reconcile");
+  assert.equal(
+    failed.state.recordsBySessionId["session-1"]?.failedPromptId,
+    null
+  );
+  assert.equal(failed.state.recordsBySessionId["session-1"]?.inFlight, null);
+
+  const reconciled = reduce(
+    failed.state,
+    turnUpserted(settledTurn("turn-2", 2)),
+    canonicalLifecycle("settled", 2, "turn-2")
+  );
+  assert.equal(reconciled.commands[0]?.type, "queue/sendPrompt");
+});
+
 test("timeout confirmation waits for its exact canonical turn to settle", () => {
   const available = canonicalLifecycle("settled", 1, "turn-0");
   const first = reduce(
@@ -628,9 +661,19 @@ const submitDiagnostics = {
 function commandResult(
   commandId: string,
   commandType: EngineCommandResultIntent["commandType"],
-  outcome: EngineCommandResultIntent["outcome"]
+  outcome: EngineCommandResultIntent["outcome"],
+  options: Pick<
+    EngineCommandResultIntent,
+    "errorCode" | "errorMessage" | "errorReason"
+  > = {}
 ): EngineCommandResultIntent {
-  return { type: "engine/commandResult", commandId, commandType, outcome };
+  return {
+    type: "engine/commandResult",
+    commandId,
+    commandType,
+    outcome,
+    ...options
+  };
 }
 
 function commandId(command: EngineCommand | undefined): string {

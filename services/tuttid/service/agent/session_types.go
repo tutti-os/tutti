@@ -37,6 +37,7 @@ type Service struct {
 	RuntimeOperationEventPublisher RuntimeOperationEventPublisher
 	RuntimeOperationClock          func() time.Time
 	RuntimeOperationOwner          string
+	StaleTurnSettler               agenthost.StaleTurnSettler
 	GoalOperationOwner             string
 	GoalOperationClock             func() time.Time
 	GoalOperationAttemptTimeout    time.Duration

@@ -5,6 +5,7 @@ import (
 	"log/slog"
 	"strings"
 
+	agenthost "github.com/tutti-os/tutti/packages/agent/host"
 	agentactivitybiz "github.com/tutti-os/tutti/services/tuttid/biz/agentactivity"
 )
 
@@ -55,68 +56,35 @@ func (s *Service) CancelTurn(ctx context.Context, workspaceID string, agentSessi
 		"turnId", turnID,
 	)
 
-	turn, found, err := s.lookupPersistedTurn(ctx, workspaceID, agentSessionID, turnID)
-	if err != nil {
-		return CancelTurnResult{}, err
-	}
-	if !found {
-		session, err := s.get(ctx, workspaceID, agentSessionID, false)
-		if err != nil {
-			return CancelTurnResult{}, err
-		}
-		return CancelTurnResult{
-			Session: session,
-			Reason:  CancelTurnReasonNotFound,
-		}, nil
-	}
-	if turn.Phase == agentactivitybiz.TurnPhaseSettled {
-		session, err := s.get(ctx, workspaceID, agentSessionID, false)
-		if err != nil {
-			return CancelTurnResult{}, err
-		}
-		return CancelTurnResult{
-			Session: session,
-			Turn:    &turn,
-			Reason:  CancelTurnReasonAlreadySettled,
-		}, nil
-	}
-
-	route, err := s.resolveRuntimeControlRoute(ctx, workspaceID, agentSessionID)
-	if err != nil {
-		return CancelTurnResult{}, err
-	}
-	targets, err := s.cancelTargetsForTurn(ctx, workspaceID, route, turnID)
-	if err != nil {
-		return CancelTurnResult{}, err
-	}
-	operation, err := s.prepareCancelRuntimeOperation(ctx, workspaceID, agentSessionID, turnID, route.RootAgentSessionID, targets)
-	if err != nil {
-		return CancelTurnResult{}, err
-	}
-	completedOperation, err := s.processRuntimeOperation(ctx, operation, false)
+	hostResult, err := s.applicationHost(serviceHostPreparation{service: s}).CancelTurn(ctx, agenthost.CancelTurnInput{
+		WorkspaceID: workspaceID, AgentSessionID: agentSessionID, TurnID: turnID,
+	})
 	if err != nil {
 		return CancelTurnResult{}, normalizeRuntimeError(err)
 	}
-	runtimeCanceled := completedOperation.Result == agentactivitybiz.RuntimeOperationResultCanceled
-
 	session, err := s.Get(ctx, workspaceID, agentSessionID)
 	if err != nil {
 		return CancelTurnResult{}, err
 	}
 	result := CancelTurnResult{
 		Session:  session,
-		Canceled: runtimeCanceled,
+		Canceled: hostResult.Operation.Status == agentactivitybiz.RuntimeOperationStatusCompleted && hostResult.Operation.Result == agentactivitybiz.RuntimeOperationResultCanceled,
 		Reason:   CancelTurnReasonAlreadySettled,
+	}
+	switch hostResult.State {
+	case agenthost.CancelStateNotFound:
+		result.Reason = CancelTurnReasonNotFound
+	case agenthost.CancelStateSettled:
+		if result.Canceled {
+			result.Reason = CancelTurnReasonTurnCanceled
+		}
+	}
+	if hostResult.Turn != nil {
+		turn := *hostResult.Turn
+		result.Turn = &turn
 	}
 	if result.Canceled {
 		result.Reason = CancelTurnReasonTurnCanceled
-	}
-	settled, ok, err := s.lookupPersistedTurn(ctx, workspaceID, agentSessionID, turnID)
-	if err != nil {
-		return CancelTurnResult{}, err
-	}
-	if ok {
-		result.Turn = &settled
 	}
 	return result, nil
 }

@@ -283,6 +283,35 @@ type CancelTurnInput struct {
 	Reason         string
 }
 
+type CancelState string
+
+const (
+	CancelStateNotFound       CancelState = "not_found"
+	CancelStateAlreadySettled CancelState = "already_settled"
+	CancelStateRequested      CancelState = "cancel_requested"
+	CancelStateSettled        CancelState = "settled"
+)
+
+// CancelTurnResult keeps durable intent acceptance, provider confirmation,
+// and canonical settlement separate. Adapters must not infer a terminal
+// canceled turn merely from IntentAccepted.
+type CancelTurnResult struct {
+	Canonical         storesqlite.Session
+	Turn              *storesqlite.Turn
+	Operation         storesqlite.RuntimeOperation
+	State             CancelState
+	IntentAccepted    bool
+	ProviderConfirmed bool
+	Settled           bool
+	Outcome           string
+}
+
+type SubmitInteractiveResult struct {
+	Canonical   storesqlite.Session
+	Operation   storesqlite.RuntimeOperation
+	Disposition RuntimeInteractiveDisposition
+}
+
 type UpdateTitleInput struct {
 	WorkspaceID    string
 	AgentSessionID string

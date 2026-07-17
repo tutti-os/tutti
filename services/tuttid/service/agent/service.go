@@ -23,7 +23,7 @@ var (
 	ErrPromptImageUnsupported           = errors.New("agent prompt image input is unsupported")
 	ErrSessionNoActiveTurn              = errors.New("agent session has no active turn")
 	ErrSessionNotFound                  = agenthost.ErrSessionNotFound
-	ErrRuntimeSessionDisconnected       = errors.New("agent runtime session is disconnected")
+	ErrRuntimeSessionDisconnected       = agenthost.ErrRuntimeSessionDisconnected
 	ErrInteractiveRequestNotLive        = errors.New("interactive request is no longer live")
 	ErrInteractiveAlreadyAnswered       = errors.New("interactive request has already been answered")
 	ErrSkillBundleUnavailable           = errors.New("agent skill bundle renderer is unavailable")
@@ -563,22 +563,13 @@ func (s *Service) cleanupRuntime(ctx context.Context, workspaceID string, agentS
 }
 
 func (s *Service) SubmitInteractive(ctx context.Context, workspaceID string, agentSessionID string, requestID string, input SubmitInteractiveInput) (Session, error) {
-	route, err := s.resolveRuntimeControlRoute(ctx, strings.TrimSpace(workspaceID), strings.TrimSpace(agentSessionID))
-	if err != nil {
-		return Session{}, err
-	}
-	operation, err := s.prepareInteractiveRuntimeOperation(
+	_, err := s.applicationHost(serviceHostPreparation{service: s}).SubmitInteractive(
 		ctx,
-		strings.TrimSpace(workspaceID),
-		strings.TrimSpace(agentSessionID),
-		strings.TrimSpace(requestID),
+		agenthost.SessionRef{WorkspaceID: workspaceID, AgentSessionID: agentSessionID},
+		requestID,
 		input,
-		route.RootAgentSessionID,
 	)
 	if err != nil {
-		return Session{}, err
-	}
-	if _, err := s.processRuntimeOperation(ctx, operation, false); err != nil {
 		return Session{}, normalizeRuntimeError(err)
 	}
 	return s.Get(ctx, workspaceID, agentSessionID)
@@ -605,11 +596,4 @@ func (s *Service) Subscribe(ctx context.Context, input StreamInput) (EventStream
 
 func (s *Service) controller() RuntimeController {
 	return s.Runtime
-}
-
-func optionalInputString(input *string) string {
-	if input == nil {
-		return ""
-	}
-	return strings.TrimSpace(*input)
 }

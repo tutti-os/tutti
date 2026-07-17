@@ -61,6 +61,9 @@ export function promptQueueReducer(
   if (intent.type === "submit/requested" && intent.routing === "immediate") {
     return reduced;
   }
+  if (isNoActiveTurnSendFailure(intent)) {
+    return reduced;
+  }
   return drainAffectedSessions(
     reduced,
     affectedSessionIds(state, intent, context),
@@ -405,6 +408,17 @@ function settleQueueCommand(
       state: replaceRecord(state, agentSessionId, record)
     };
   }
+  if (isNoActiveTurnSendFailure(intent)) {
+    return {
+      commands: [reconcileCommand(agentSessionId, current.workspaceId, intent)],
+      state: replaceRecord(state, agentSessionId, {
+        ...current,
+        failedPromptId: null,
+        failureMessage: null,
+        inFlight: null
+      })
+    };
+  }
   return result(
     replaceRecord(state, agentSessionId, {
       ...current,
@@ -428,6 +442,16 @@ function reconcileCommand(
     type: "session/reconcile",
     workspaceId
   };
+}
+
+function isNoActiveTurnSendFailure(intent: EngineIntent): boolean {
+  return (
+    intent.type === "engine/commandResult" &&
+    intent.commandType === "queue/sendPrompt" &&
+    intent.outcome === "failed" &&
+    (intent.errorReason?.trim() === "agent.no_active_turn" ||
+      intent.errorCode?.trim() === "agent.no_active_turn")
+  );
 }
 
 function confirmDeliveredPrompts(

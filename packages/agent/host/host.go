@@ -14,6 +14,12 @@ type Config struct {
 	SessionLocker      SessionLocker
 	RuntimeStartGate   RuntimeStartGate
 	LifecycleObserver  LifecycleObserver
+	RuntimeOperations  RuntimeOperationStore
+	OperationEvents    RuntimeOperationEventPublisher
+	OperationOwner     string
+	Scheduler          Scheduler
+	StartupRecovery    StartupRecoveryPort
+	StaleTurnSettler   StaleTurnSettler
 }
 
 type Host struct {
@@ -25,6 +31,12 @@ type Host struct {
 	locker      SessionLocker
 	startupGate RuntimeStartGate
 	observer    LifecycleObserver
+	operations  RuntimeOperationStore
+	events      RuntimeOperationEventPublisher
+	owner       string
+	scheduler   Scheduler
+	recovery    StartupRecoveryPort
+	staleTurns  StaleTurnSettler
 }
 
 func New(config Config) *Host {
@@ -32,7 +44,10 @@ func New(config Config) *Host {
 		store: config.CanonicalStore, runtime: config.Runtime,
 		preparation: config.RuntimePreparation, attachments: config.Attachments,
 		clock: config.Clock, locker: config.SessionLocker, startupGate: config.RuntimeStartGate,
-		observer: config.LifecycleObserver,
+		observer:   config.LifecycleObserver,
+		operations: config.RuntimeOperations, events: config.OperationEvents,
+		owner: config.OperationOwner, scheduler: config.Scheduler,
+		recovery: config.StartupRecovery, staleTurns: config.StaleTurnSettler,
 	}
 }
 

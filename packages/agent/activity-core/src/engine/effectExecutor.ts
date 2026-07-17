@@ -162,6 +162,7 @@ function commandCorrelationFields(command: EngineExternalCommand): {
 
 function engineCommandErrorFields(error: unknown): {
   errorCode?: string;
+  errorReason?: string;
   errorMessage: string;
 } {
   const record =
@@ -169,6 +170,7 @@ function engineCommandErrorFields(error: unknown): {
       ? (error as Record<string, unknown>)
       : null;
   const code = typeof record?.code === "string" ? record.code.trim() : "";
+  const reason = typeof record?.reason === "string" ? record.reason.trim() : "";
   const message =
     error instanceof Error
       ? error.message
@@ -177,6 +179,7 @@ function engineCommandErrorFields(error: unknown): {
         : String(error);
   return {
     ...(code ? { errorCode: code } : {}),
+    ...(reason ? { errorReason: reason } : {}),
     errorMessage: message
   };
 }

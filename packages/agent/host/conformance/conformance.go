@@ -41,10 +41,11 @@ type InteractionSeed struct {
 }
 
 type Fixture struct {
-	Session          *SessionSeed
-	Turn             *TurnSeed
-	Interaction      *InteractionSeed
-	PreparedSubmitID string
+	Session            *SessionSeed
+	Turn               *TurnSeed
+	Interaction        *InteractionSeed
+	PreparedSubmitID   string
+	RecoverInteractive bool
 }
 
 type SessionObservation struct {
@@ -85,6 +86,7 @@ type Metrics struct {
 	LastInteractiveRequestID string
 	LastInitialTitle         string
 	LastResumeRecreate       bool
+	RecoverySteps            []string
 }
 
 // Driver adapts one host implementation to the shared lifecycle scenarios.
@@ -99,6 +101,7 @@ type Driver interface {
 	SubmitInteractive(context.Context, agenthost.SessionRef, string, agenthost.SubmitInteractiveInput) (SessionObservation, error)
 	SubmitPlanDecision(context.Context, agenthost.SessionRef, string, string, agenthost.SubmitPlanDecisionInput) (OperationObservation, error)
 	UpdateTitle(context.Context, agenthost.UpdateTitleInput) (SessionObservation, error)
+	Recover(context.Context) error
 	Metrics() Metrics
 }
 
@@ -136,6 +139,17 @@ func SubmissionFenceScenarios() []Scenario {
 
 func TitlePolicyScenarios() []Scenario {
 	return []Scenario{{Name: "clear canonical title", run: runClearCanonicalTitle}}
+}
+
+func CoordinatorScenarios() []Scenario {
+	result := make([]Scenario, 0, 4)
+	for _, scenario := range Scenarios() {
+		switch scenario.Name {
+		case "exact turn cancel", "interactive response", "plan decision":
+			result = append(result, scenario)
+		}
+	}
+	return append(result, Scenario{Name: "recover operations before stale turns", run: runRecoveryOrder})
 }
 
 // ApplicationCoreScenarios are the create/resume/send/title scenarios owned by
@@ -468,6 +482,33 @@ func runClearCanonicalTitle(ctx context.Context, driver Driver) error {
 	}
 	if session.Title != "" {
 		return fmt.Errorf("cleared title=%q", session.Title)
+	}
+	return nil
+}
+
+func runRecoveryOrder(ctx context.Context, driver Driver) error {
+	fixture := liveSessionFixture("session-recovery", "turn-recovery")
+	fixture.Turn = &TurnSeed{TurnID: "turn-recovery", Phase: canonical.TurnPhaseWaiting}
+	fixture.Interaction = &InteractionSeed{
+		RequestID: "request-recovery", TurnID: "turn-recovery",
+		Kind: canonical.InteractionKindApproval, Status: canonical.InteractionStatusPending,
+	}
+	fixture.RecoverInteractive = true
+	if err := driver.Reset(ctx, fixture); err != nil {
+		return err
+	}
+	if err := driver.Recover(ctx); err != nil {
+		return fmt.Errorf("recover host: %w", err)
+	}
+	steps := driver.Metrics().RecoverySteps
+	want := []string{"runtime_requeue", "runtime_complete", "stale_settle"}
+	if len(steps) != len(want) {
+		return fmt.Errorf("recovery steps=%v, want %v", steps, want)
+	}
+	for index := range want {
+		if steps[index] != want[index] {
+			return fmt.Errorf("recovery steps=%v, want %v", steps, want)
+		}
 	}
 	return nil
 }

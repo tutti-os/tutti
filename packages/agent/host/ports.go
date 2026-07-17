@@ -14,11 +14,13 @@ type CanonicalSessionStore interface {
 	RollbackRuntimeSessionInitialization(context.Context, string, string) (bool, error)
 	InitializeRuntimeSession(context.Context, ProviderRuntimeSession) (storesqlite.Session, error)
 	UpdateSessionTitle(context.Context, string, string, string) (storesqlite.Session, bool, error)
+	ListChildSessions(context.Context, string, string) ([]storesqlite.Session, error)
 }
 
 type CanonicalTurnStore interface {
 	GetTurn(context.Context, string, string, string) (storesqlite.Turn, bool, error)
 	FindTurnByClientSubmitID(context.Context, string, string, string) (string, bool, error)
+	ListSessionInteractions(context.Context, storesqlite.ListSessionInteractionsInput) ([]storesqlite.Interaction, error)
 }
 
 type CanonicalSubmitClaimStore interface {
@@ -48,10 +50,44 @@ type RuntimeController interface {
 	ValidatePromptContent(context.Context, RuntimeExecInput) error
 	Cancel(context.Context, RuntimeCancelInput) (RuntimeCancelResult, error)
 	SubmitInteractive(context.Context, RuntimeSubmitInteractiveInput) (RuntimeSubmitInteractiveResult, error)
+	InteractiveDisposition(workspaceID, rootAgentSessionID, agentSessionID, turnID, requestID string) RuntimeInteractiveDisposition
 	UpdateSettings(context.Context, RuntimeUpdateSettingsInput) error
 	SetTitle(context.Context, RuntimeSetTitleInput) (ProviderRuntimeSession, error)
 	SetVisible(context.Context, RuntimeSetVisibleInput) (ProviderRuntimeSession, error)
 	Close(context.Context, RuntimeCloseInput) error
+}
+
+// RuntimeOperationStore is the complete durable coordinator boundary. Keeping
+// every transition on one port prevents adapters from reimplementing only the
+// transport-facing half of the state machine.
+type RuntimeOperationStore interface {
+	PrepareRuntimeOperation(context.Context, storesqlite.RuntimeOperationPrepare) (storesqlite.RuntimeOperation, bool, error)
+	GetRuntimeOperation(context.Context, string, string) (storesqlite.RuntimeOperation, bool, error)
+	ListClaimableRuntimeOperations(context.Context, storesqlite.ListClaimableRuntimeOperationsInput) ([]storesqlite.RuntimeOperation, error)
+	ClaimRuntimeOperationLease(context.Context, storesqlite.ClaimRuntimeOperationLeaseInput) (storesqlite.RuntimeOperation, bool, error)
+	ReleaseOrFailRuntimeOperation(context.Context, storesqlite.ReleaseOrFailRuntimeOperationInput) (storesqlite.RuntimeOperation, bool, error)
+	CheckpointRuntimeOperation(context.Context, storesqlite.CheckpointRuntimeOperationInput) (storesqlite.RuntimeOperation, bool, error)
+	RequeueLeasedRuntimeOperationsOnStartup(context.Context, int64) (int64, error)
+	CompleteInteractiveRuntimeOperation(context.Context, storesqlite.CompleteInteractiveRuntimeOperationInput) (storesqlite.RuntimeOperationCompletion, bool, error)
+	CompleteCancelRuntimeOperation(context.Context, storesqlite.CompleteCancelRuntimeOperationInput) (storesqlite.RuntimeOperationCompletion, bool, error)
+	CompletePlanDecisionRuntimeOperation(context.Context, storesqlite.CompletePlanDecisionRuntimeOperationInput) (storesqlite.RuntimeOperationCompletion, bool, error)
+	ListPendingRuntimeOperationEvents(context.Context, string, int) ([]storesqlite.RuntimeOperationEvent, error)
+	MarkRuntimeOperationEventPublished(context.Context, string, int64, int64) (bool, error)
+}
+
+type RuntimeOperationEventPublisher interface {
+	PublishRuntimeOperationEvent(context.Context, storesqlite.RuntimeOperationEvent) error
+}
+
+// StartupRecoveryPort temporarily hosts durable recovery participants that
+// move into Host in later extraction slices. Host owns their ordering relative
+// to runtime operations and stale-turn settlement.
+type StartupRecoveryPort interface {
+	RecoverBeforeStaleTurnSettlement(context.Context) error
+}
+
+type StaleTurnSettler interface {
+	SettleStaleTurnsOnStartup(context.Context) error
 }
 
 type RuntimePreparationInput struct {

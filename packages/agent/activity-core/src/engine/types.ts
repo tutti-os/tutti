@@ -78,6 +78,7 @@ export interface EngineCommandResultIntent {
   outcome: EngineCommandOutcome;
   value?: unknown;
   errorCode?: string;
+  errorReason?: string;
   errorMessage?: string;
 }
 

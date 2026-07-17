@@ -373,6 +373,7 @@ func buildDaemonAPI(ctx context.Context, store workspacedata.CatalogStore, analy
 	agentSessionService.SubmitClaimStore = agentActivityRepo
 	agentSessionService.RuntimeOperationEventPublisher = agentActivityProjection
 	agentSessionService.RuntimeOperationOwner = uuid.NewString()
+	agentSessionService.StaleTurnSettler = agentActivityProjection
 	agentSessionService.GoalOperationOwner = uuid.NewString()
 	goalReconcileInbox, ok := agentActivityRepo.(interface {
 		agentservice.GoalReconcileInboxStore
@@ -400,19 +401,10 @@ func buildDaemonAPI(ctx context.Context, store workspacedata.CatalogStore, analy
 	agentSessionService.AvailabilityChecker = agentservice.AgentStatusProviderAvailabilityChecker{
 		Service: &agentStatusService,
 	}
-	// Recover durable runtime intents before generic stale-turn settlement so
-	// an acknowledged cancel keeps its canceled outcome across restart.
-	if err := agentSessionService.RecoverRuntimeOperations(ctx); err != nil {
-		return tuttiapi.DaemonAPI{}, nil, nil, nil, fmt.Errorf("recover agent runtime operations: %w", err)
-	}
-	if err := agentSessionService.RecoverGoalOperations(ctx); err != nil {
-		return tuttiapi.DaemonAPI{}, nil, nil, nil, fmt.Errorf("recover agent goal operations: %w", err)
-	}
-	if err := agentSessionService.RecoverGoalReconcileInbox(ctx); err != nil {
-		return tuttiapi.DaemonAPI{}, nil, nil, nil, fmt.Errorf("recover agent goal reconcile inbox: %w", err)
-	}
-	if err := agentActivityProjection.SettleStaleTurnsOnStartup(ctx); err != nil {
-		return tuttiapi.DaemonAPI{}, nil, nil, nil, fmt.Errorf("settle stale agent turns on startup: %w", err)
+	// Host fixes startup order: durable runtime operations first, remaining
+	// durable coordinators next, and only then unrecoverable stale turns.
+	if err := agentSessionService.Recover(ctx); err != nil {
+		return tuttiapi.DaemonAPI{}, nil, nil, nil, fmt.Errorf("recover agent host: %w", err)
 	}
 	go agentSessionService.RunRuntimeOperationWorker(ctx)
 	go agentSessionService.RunGoalOperationWorker(ctx)
