@@ -48,6 +48,8 @@ interface Input {
   onInterruptCurrentTurn: () => void;
   isSelectedProjectMissing: boolean;
   submitDisabled: boolean;
+  /** Keeps the send button live on an empty draft (empty-send override). */
+  allowEmptySubmit: boolean;
   labels: AgentComposerProps["labels"];
   activePromptTip: AgentComposerPromptTip | null;
   promptTipRef: RefObject<HTMLSpanElement | null>;
@@ -82,6 +84,7 @@ export function useComposerPresentation(input: Input) {
     onInterruptCurrentTurn,
     isSelectedProjectMissing,
     submitDisabled,
+    allowEmptySubmit,
     labels,
     activePromptTip,
     promptTipRef,
@@ -120,10 +123,11 @@ export function useComposerPresentation(input: Input) {
         ? "loading"
         : "send";
   const sendButtonBusy = isSendingTurn && !isQueueMode;
+  const emptyDraftBlocksSend = !hasDraftContent && !allowEmptySubmit;
   const sendDisabledReasons = [
     isSelectedProjectMissing ? "project_missing" : null,
     submitDisabled ? "submit_disabled" : null,
-    !hasDraftContent ? "draft_empty" : null,
+    emptyDraftBlocksSend ? "draft_empty" : null,
     hasUploadingDraftImages ? "image_uploading" : null,
     hasFailedDraftImages ? "image_upload_failed" : null,
     hasUploadingDraftFiles ? "file_uploading" : null,
@@ -264,7 +268,7 @@ export function useComposerPresentation(input: Input) {
       disabled={
         isSelectedProjectMissing ||
         submitDisabled ||
-        !hasDraftContent ||
+        emptyDraftBlocksSend ||
         hasUploadingDraftImages ||
         hasFailedDraftImages ||
         hasUploadingDraftFiles ||

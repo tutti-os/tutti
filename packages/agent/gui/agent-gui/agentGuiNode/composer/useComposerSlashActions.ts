@@ -65,6 +65,7 @@ type Props = Pick<
   | "onDraftContentChange"
   | "onSettingsChange"
   | "onSubmit"
+  | "onSubmitEmpty"
   | "onSubmitGuidance"
   | "onCapabilitySettingsRequest"
   | "onSlashStatusOpen"
@@ -124,6 +125,7 @@ export function useComposerSlashActions(input: UseComposerSlashActionsInput) {
     onDraftContentChange,
     onSettingsChange,
     onSubmit,
+    onSubmitEmpty,
     onSubmitGuidance,
     onCapabilitySettingsRequest,
     onTuttiModeActivate,
@@ -449,6 +451,12 @@ export function useComposerSlashActions(input: UseComposerSlashActionsInput) {
         largeTexts: currentDraftLargeTexts
       });
       if (!agentComposerDraftHasContent(nextDraftContent)) {
+        // Empty-send override (e.g. plan review accept): only for a plain
+        // send, never for guidance, and only after the guards above agreed
+        // a submit is currently allowed at all.
+        if (options?.guidance !== true) {
+          onSubmitEmpty?.();
+        }
         return;
       }
       if (currentDraftImages.length > 0 && !promptImagesSupported) {

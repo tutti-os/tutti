@@ -1,5 +1,5 @@
 import "@testing-library/jest-dom/vitest";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import {
   TuttiModePlanPanel,
@@ -12,23 +12,12 @@ const labels: TuttiModePlanPanelLabels = {
   mode: "Tutti mode plan",
   taskReview: "Plan review",
   pending: "Needs review",
-  accept: "Accept",
-  requestChanges: "Request changes",
-  cancel: "Cancel plan",
-  feedbackPlaceholder: "Describe what should change",
-  submitFeedback: "Send feedback",
-  feedbackRequired: "Add feedback before requesting changes",
   tasks: "Tasks",
-  execution: "Execution",
-  budget: "Budget",
-  orchestrationIntensity: "Orchestration intensity",
-  quotaWaterline: "Quota waterline",
   priority: "Priority",
   priorityHigh: "High",
   priorityMedium: "Medium",
   priorityLow: "Low",
   agentTarget: "Agent",
-  modelPlan: "Model plan",
   model: "Model",
   permissionMode: "Permission mode",
   reasoningEffort: "Reasoning effort",
@@ -123,88 +112,48 @@ function assignmentCatalog(
 }
 
 describe("TuttiModePlanPanel", () => {
-  it("hides the execution mode badge and the retired token limit", () => {
+  it("hides plan internals: execution/budget cards, task metadata, decisions", () => {
     render(
-      <TuttiModePlanPanel
-        labels={labels}
-        panel={panel}
-        submitting={false}
-        onDecide={vi.fn().mockResolvedValue(undefined)}
-      />
+      <TuttiModePlanPanel labels={labels} panel={panel} submitting={false} />
     );
 
+    // Execution / budget tuning happens by re-planning, not on the card.
+    expect(screen.queryByText("Execution")).not.toBeInTheDocument();
+    expect(screen.queryByText("Budget")).not.toBeInTheDocument();
     expect(screen.queryByText("Sequential")).not.toBeInTheDocument();
-    expect(screen.queryByText("sequential")).not.toBeInTheDocument();
-    expect(screen.queryByText("Token limit")).not.toBeInTheDocument();
-    expect(screen.queryByText("12,000")).not.toBeInTheDocument();
-    expect(screen.getByText("Quota waterline")).toBeInTheDocument();
-    expect(screen.getByText("15%")).toBeInTheDocument();
+    expect(screen.queryByText("Quota waterline")).not.toBeInTheDocument();
+    expect(screen.queryByText("15%")).not.toBeInTheDocument();
+    // Task ID / execution directory / dependencies stay out of the card.
+    expect(screen.queryByText("/workspace/implement")).not.toBeInTheDocument();
+    expect(screen.queryByText("foundation")).not.toBeInTheDocument();
+    // Decisions live in the composer now — no footer buttons.
+    expect(
+      screen.queryByRole("button", { name: "Accept" })
+    ).not.toBeInTheDocument();
   });
 
-  it("shows every assignment read-only without an assignment catalog", () => {
+  it("shows specified assignments read-only without an assignment catalog", () => {
     render(
-      <TuttiModePlanPanel
-        labels={labels}
-        panel={panel}
-        submitting={false}
-        onDecide={vi.fn().mockResolvedValue(undefined)}
-      />
+      <TuttiModePlanPanel labels={labels} panel={panel} submitting={false} />
     );
 
-    expect(screen.queryByText("Reasoning intensity")).not.toBeInTheDocument();
-    expect(screen.getByText("Orchestration intensity")).toBeInTheDocument();
-    // No live host value: the slider falls back to the plan snapshot and
-    // stays a disabled display.
-    const slider = screen.getByRole("slider", {
-      name: "Orchestration intensity"
-    });
-    expect(slider).toHaveAttribute("aria-valuenow", "60");
-    expect(slider).toHaveAttribute("aria-disabled", "true");
-    expect(screen.getAllByText("High").length).toBeGreaterThan(0);
     expect(screen.getByText("codex-agent")).toBeInTheDocument();
-    expect(screen.getByText("model-plan-pro")).toBeInTheDocument();
     expect(screen.getByText("gpt-5.6-sol")).toBeInTheDocument();
     expect(screen.getByText("acceptEdits")).toBeInTheDocument();
     expect(screen.getByText("high")).toBeInTheDocument();
-    // Task ID / execution directory / dependencies are plan internals and
-    // stay out of the review card.
-    expect(screen.queryByText("implement")).not.toBeInTheDocument();
-    expect(screen.queryByText("/workspace/implement")).not.toBeInTheDocument();
-    expect(screen.queryByText("foundation")).not.toBeInTheDocument();
+    // Model plans never surface on tasks — plans enter via agent config.
+    expect(screen.queryByText("model-plan-pro")).not.toBeInTheDocument();
   });
 
-  it("binds the orchestration slider to the live session intensity", () => {
-    const onOrchestrationIntensityChange = vi.fn();
-    render(
-      <TuttiModePlanPanel
-        labels={labels}
-        orchestrationIntensity={80}
-        panel={panel}
-        submitting={false}
-        onDecide={vi.fn().mockResolvedValue(undefined)}
-        onOrchestrationIntensityChange={onOrchestrationIntensityChange}
-      />
-    );
-
-    const slider = screen.getByRole("slider", {
-      name: "Orchestration intensity"
-    });
-    // The live badge value wins over the plan snapshot (60).
-    expect(slider).toHaveAttribute("aria-valuenow", "80");
-
-    fireEvent.keyDown(slider, { key: "ArrowRight" });
-
-    expect(onOrchestrationIntensityChange).toHaveBeenCalledWith(81);
-  });
-
-  it("renders per-task assignment selectors when the catalog is loaded", () => {
+  it("renders per-task assignment selectors without a model plan select", () => {
     render(
       <TuttiModePlanPanel
         assignmentCatalog={assignmentCatalog()}
+        assignmentDrafts={{}}
         labels={labels}
         panel={panel}
         submitting={false}
-        onDecide={vi.fn().mockResolvedValue(undefined)}
+        onAssignmentDraftChange={vi.fn()}
       />
     );
 
@@ -212,20 +161,19 @@ describe("TuttiModePlanPanel", () => {
       screen.getByTestId("tutti-plan-task-assignment-implement")
     ).toBeInTheDocument();
     expect(screen.getByLabelText("Agent")).toBeInTheDocument();
-    expect(screen.getByLabelText("Model plan")).toBeInTheDocument();
     expect(screen.getByLabelText("Model")).toBeInTheDocument();
     expect(screen.getByLabelText("Permission mode")).toBeInTheDocument();
     expect(screen.getByLabelText("Reasoning effort")).toBeInTheDocument();
+    expect(screen.queryByLabelText("Model plan")).not.toBeInTheDocument();
   });
 
-  it("stays read-only for non-actionable panels even with a catalog", () => {
+  it("stays read-only without a host-owned draft store", () => {
     render(
       <TuttiModePlanPanel
         assignmentCatalog={assignmentCatalog()}
         labels={labels}
-        panel={{ ...panel, state: "accepted", actionable: false }}
+        panel={panel}
         submitting={false}
-        onDecide={vi.fn().mockResolvedValue(undefined)}
       />
     );
 
@@ -234,63 +182,20 @@ describe("TuttiModePlanPanel", () => {
     ).not.toBeInTheDocument();
   });
 
-  it("submits acceptance against the durable checkpoint identity", async () => {
-    const onDecide = vi.fn().mockResolvedValue(undefined);
+  it("stays read-only for non-actionable panels even with a catalog", () => {
     render(
       <TuttiModePlanPanel
+        assignmentCatalog={assignmentCatalog()}
+        assignmentDrafts={{}}
         labels={labels}
-        panel={panel}
+        panel={{ ...panel, state: "accepted", actionable: false }}
         submitting={false}
-        onDecide={onDecide}
+        onAssignmentDraftChange={vi.fn()}
       />
     );
 
-    fireEvent.click(screen.getByRole("button", { name: "Accept" }));
-
-    await waitFor(() =>
-      expect(onDecide).toHaveBeenCalledWith({
-        workflowId: "workflow-1",
-        checkpointId: "checkpoint-1",
-        decision: "accepted",
-        reason: undefined,
-        taskAssignments: undefined
-      })
-    );
-  });
-
-  it("requires explicit feedback before rejecting a plan", async () => {
-    const onDecide = vi.fn().mockResolvedValue(undefined);
-    render(
-      <TuttiModePlanPanel
-        labels={labels}
-        panel={panel}
-        submitting={false}
-        onDecide={onDecide}
-      />
-    );
-
-    fireEvent.click(screen.getByRole("button", { name: "Request changes" }));
-    fireEvent.click(screen.getByRole("button", { name: "Send feedback" }));
-
-    expect(screen.getByRole("alert")).toHaveTextContent(
-      "Add feedback before requesting changes"
-    );
-    expect(onDecide).not.toHaveBeenCalled();
-
-    fireEvent.change(
-      screen.getByPlaceholderText("Describe what should change"),
-      { target: { value: "Split implementation from verification" } }
-    );
-    fireEvent.click(screen.getByRole("button", { name: "Send feedback" }));
-
-    await waitFor(() =>
-      expect(onDecide).toHaveBeenCalledWith({
-        workflowId: "workflow-1",
-        checkpointId: "checkpoint-1",
-        decision: "rejected",
-        reason: "Split implementation from verification",
-        taskAssignments: undefined
-      })
-    );
+    expect(
+      screen.queryByTestId("tutti-plan-task-assignment-implement")
+    ).not.toBeInTheDocument();
   });
 });

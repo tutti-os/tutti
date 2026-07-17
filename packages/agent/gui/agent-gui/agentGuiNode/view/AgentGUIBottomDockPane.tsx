@@ -10,6 +10,10 @@ import {
   isGoalBannerVisible,
   type AgentGoalBannerLabels
 } from "../AgentGoalBanner";
+import {
+  TuttiPlanReviewBanner,
+  type TuttiPlanReviewBannerLabels
+} from "../TuttiPlanReviewBanner";
 import type {
   AgentGUINodeViewModel,
   AgentGUISessionChrome
@@ -52,6 +56,10 @@ interface AgentGUIBottomDockPaneProps {
   onSubmitBottomDockInteractivePrompt: AgentGUINodeViewProps["actions"]["submitInteractivePrompt"];
   onGoalControl: AgentGUINodeViewProps["actions"]["goalControl"];
   goalPauseSupported: boolean;
+  /** Pending Tutti plan review shown as a banner directly above the composer. */
+  tuttiPlanReview: { planTitle: string; submitting: boolean } | null;
+  tuttiPlanReviewLabels: TuttiPlanReviewBannerLabels;
+  onCancelTuttiPlanReview: () => void;
 }
 
 export const AgentGUIBottomDockPane = memo(function AgentGUIBottomDockPane({
@@ -76,7 +84,10 @@ export const AgentGUIBottomDockPane = memo(function AgentGUIBottomDockPane({
   onContinueInNewConversation,
   onSubmitBottomDockInteractivePrompt,
   onGoalControl,
-  goalPauseSupported
+  goalPauseSupported,
+  tuttiPlanReview,
+  tuttiPlanReviewLabels,
+  onCancelTuttiPlanReview
 }: AgentGUIBottomDockPaneProps): React.JSX.Element {
   "use memo";
   const previewMode = composerProps.previewMode === true;
@@ -167,6 +178,14 @@ export const AgentGUIBottomDockPane = memo(function AgentGUIBottomDockPane({
             goalPauseSupported ? () => onGoalControl("resume") : undefined
           }
           onClearGoal={() => onGoalControl("clear")}
+        />
+      ) : null}
+      {tuttiPlanReview ? (
+        <TuttiPlanReviewBanner
+          labels={tuttiPlanReviewLabels}
+          planTitle={tuttiPlanReview.planTitle}
+          submitting={tuttiPlanReview.submitting}
+          onCancel={onCancelTuttiPlanReview}
         />
       ) : null}
       {bottomDockReplacementPrompt ? (
