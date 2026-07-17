@@ -101,7 +101,7 @@ test("standalone Agent opens files like Finder and routes links into the right s
   assert.match(standaloneWindowSource, /workspaceFilePreviewMode: "canvas"/);
   assert.match(
     standaloneLaunchRoutingSource,
-    /runDesktopAgentGUILinkAction\(action,[\s\S]*?launchWorkspaceFiles: \(\{ path, validateExists \}\) =>[\s\S]*?openFileInSidebar\(path, validateExists\)/
+    /runStandaloneAgentLinkAction\(action,[\s\S]*?launchWorkspaceFiles: \(\{ path, validateExists \}\) =>[\s\S]*?openFileInSidebar\(path, validateExists\)/
   );
   assert.match(
     standaloneWindowSource,
@@ -109,12 +109,13 @@ test("standalone Agent opens files like Finder and routes links into the right s
   );
   assert.match(
     standaloneLaunchRoutingSource,
-    /openBrowserUrl: async \(\{ url \}\) => \{[\s\S]*?await openExternalUrl\(url\);[\s\S]*?return true;/
+    /openExternalUrl,[\s\S]*?runtimeApi,[\s\S]*?workspaceId/
   );
   assert.doesNotMatch(
     standaloneLaunchRoutingSource,
     /openBrowserUrl: \(\) => false/
   );
+  assert.match(standaloneWindowSource, /runtimeApi: desktopApi\.runtime/);
   assert.match(
     standaloneWindowSource,
     /validateExists &&[\s\S]*?workspaceFileManagerService\.entryExists\([\s\S]*?showWorkspaceFileMissingToast\(\)/
