@@ -64,6 +64,10 @@ type PlanTask struct {
 	ReasoningEffort    string   `yaml:"reasoningEffort"`
 	ExecutionDirectory string   `yaml:"executionDirectory"`
 	DependsOn          []string `yaml:"dependsOn"`
+	// Parallelizable opts one task out of the sequential default: the agent
+	// may propose it, the reviewer may override it, and it persists onto the
+	// materialized Issue task. Omitted means false (strictly sequential).
+	Parallelizable bool `yaml:"parallelizable"`
 }
 
 func ParsePlanMarkdown(raw []byte) (PlanDocument, error) {

@@ -133,6 +133,8 @@ export interface AgentGUIViewLabels {
   tuttiModeUpdateUncertain: string;
   tuttiModePlanPanel: TuttiModePlanPanelLabels;
   tuttiModePlanBanner: TuttiPlanReviewBannerLabels;
+  tuttiModePlanSendAccept: string;
+  tuttiModePlanSendRequestChanges: string;
   tuttiModePlanLoadFailed: string;
   tuttiModePlanRetry: string;
   planModeDescription?: string;

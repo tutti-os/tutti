@@ -21,6 +21,7 @@ const labels: TuttiModePlanPanelLabels = {
   model: "Model",
   permissionMode: "Permission mode",
   reasoningEffort: "Reasoning effort",
+  parallelizable: "Parallel",
   notSpecified: "Not specified",
   assignmentOptionsLoading: "Loading options..."
 };
@@ -79,7 +80,8 @@ const panel: TuttiModePlanPanelViewModel = {
       permissionModeId: "acceptEdits",
       reasoningEffort: "high",
       executionDirectory: "/workspace/implement",
-      dependsOn: ["foundation", "contract-tests"]
+      dependsOn: ["foundation", "contract-tests"],
+      parallelizable: true
     }
   ]
 };
@@ -141,6 +143,7 @@ describe("TuttiModePlanPanel", () => {
     expect(screen.getByText("gpt-5.6-sol")).toBeInTheDocument();
     expect(screen.getByText("acceptEdits")).toBeInTheDocument();
     expect(screen.getByText("high")).toBeInTheDocument();
+    expect(screen.getByText("Parallel")).toBeInTheDocument();
     // Model plans never surface on tasks — plans enter via agent config.
     expect(screen.queryByText("model-plan-pro")).not.toBeInTheDocument();
   });
@@ -165,6 +168,10 @@ describe("TuttiModePlanPanel", () => {
     expect(screen.getByLabelText("Permission mode")).toBeInTheDocument();
     expect(screen.getByLabelText("Reasoning effort")).toBeInTheDocument();
     expect(screen.queryByLabelText("Model plan")).not.toBeInTheDocument();
+    // The parallel opt-in renders as a pressed toggle seeded from the plan.
+    expect(
+      screen.getByTestId("tutti-plan-task-parallel-toggle-implement")
+    ).toHaveAttribute("aria-pressed", "true");
   });
 
   it("stays read-only without a host-owned draft store", () => {

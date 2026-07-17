@@ -89,6 +89,7 @@ type CreateIssueManagerTaskInput struct {
 	ReasoningEffort    string
 	ExecutionDirectory string
 	DependencyTaskIDs  []string
+	Parallelizable     bool
 }
 
 type CreateIssueManagerTaskItemInput struct {
@@ -104,6 +105,7 @@ type CreateIssueManagerTaskItemInput struct {
 	ReasoningEffort    string
 	ExecutionDirectory string
 	DependencyTaskIDs  []string
+	Parallelizable     bool
 }
 
 type CreateIssueManagerTasksInput struct {
@@ -133,6 +135,8 @@ type UpdateIssueManagerTaskInput struct {
 	HasExecutionDirectory bool
 	DependencyTaskIDs     []string
 	HasDependencyTaskIDs  bool
+	Parallelizable        bool
+	HasParallelizable     bool
 	AcceptanceState       string
 	HasAcceptanceState    bool
 	AcceptanceSummary     string

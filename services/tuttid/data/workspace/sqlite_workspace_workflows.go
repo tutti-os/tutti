@@ -393,6 +393,7 @@ type workflowTaskAssignmentRecord struct {
 	Model            *string `json:"model,omitempty"`
 	PermissionModeID *string `json:"permissionModeId,omitempty"`
 	ReasoningEffort  *string `json:"reasoningEffort,omitempty"`
+	Parallelizable   *bool   `json:"parallelizable,omitempty"`
 }
 
 func encodeWorkflowTaskAssignments(values []workflowbiz.TaskAssignment) (string, error) {
@@ -412,6 +413,7 @@ func encodeWorkflowTaskAssignments(values []workflowbiz.TaskAssignment) (string,
 			Model:            value.Model,
 			PermissionModeID: value.PermissionModeID,
 			ReasoningEffort:  value.ReasoningEffort,
+			Parallelizable:   value.Parallelizable,
 		})
 	}
 	encoded, err := json.Marshal(records)
@@ -439,6 +441,7 @@ func decodeWorkflowTaskAssignments(encoded string) ([]workflowbiz.TaskAssignment
 			Model:            record.Model,
 			PermissionModeID: record.PermissionModeID,
 			ReasoningEffort:  record.ReasoningEffort,
+			Parallelizable:   record.Parallelizable,
 		})
 	}
 	return workflowbiz.NormalizeTaskAssignments(values)

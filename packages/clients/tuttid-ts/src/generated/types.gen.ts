@@ -3211,6 +3211,10 @@ export type TuttiModePlanTask = {
   reasoningEffort: string | null;
   executionDirectory: string | null;
   dependsOn: Array<string>;
+  /**
+   * Opts this task out of the sequential default so it may run alongside other ready tasks. Persisted onto the materialized Issue task.
+   */
+  parallelizable: boolean;
 };
 
 export type TuttiModePlanDocument = {
@@ -3312,6 +3316,10 @@ export type WorkspaceWorkflowTaskAssignment = {
   model?: string | null;
   permissionModeId?: string | null;
   reasoningEffort?: string | null;
+  /**
+   * Overrides the plan document's per-task parallel opt-in; null keeps it.
+   */
+  parallelizable?: boolean | null;
 };
 
 export type DecideWorkspaceWorkflowCheckpointRequest = {
@@ -3511,6 +3519,10 @@ export type IssueManagerTask = {
   model: string;
   executionDirectory: string;
   dependencyTaskIds: Array<string>;
+  /**
+   * Opts this task out of the Issue's sequential default so it may run alongside other dependency-ready tasks. False keeps strict sequential ordering.
+   */
+  parallelizable: boolean;
   acceptanceState: IssueManagerAcceptanceState;
   acceptanceSummary: string;
   creatorUserId: string;
@@ -3784,6 +3796,7 @@ export type CreateIssueManagerTaskRequest = {
   model?: string;
   executionDirectory?: string;
   dependencyTaskIds?: Array<string>;
+  parallelizable?: boolean;
 };
 
 export type CreateIssueManagerTasksRequest = {
@@ -3802,6 +3815,7 @@ export type UpdateIssueManagerTaskRequest = {
   model?: string;
   executionDirectory?: string;
   dependencyTaskIds?: Array<string>;
+  parallelizable?: boolean;
   acceptanceState?: IssueManagerAcceptanceState;
   acceptanceSummary?: string;
 };

@@ -169,6 +169,7 @@ func (s IssueManagerService) CreateIssueFromPlan(ctx context.Context, workspaceI
 			ReasoningEffort:    task.ReasoningEffort,
 			ExecutionDirectory: task.ExecutionDirectory,
 			DependencyTaskIDs:  task.DependencyTaskIDs,
+			Parallelizable:     task.Parallelizable,
 		})
 	}
 	issue, tasks, err := s.domainService().CreateIssueWithTasks(ctx, workspaceissues.CreateIssueWithTasksInput{
@@ -364,6 +365,7 @@ func (s IssueManagerService) CreateTask(ctx context.Context, workspaceID string,
 			Model:              input.Model,
 			ExecutionDirectory: input.ExecutionDirectory,
 			DependencyTaskIDs:  input.DependencyTaskIDs,
+			Parallelizable:     input.Parallelizable,
 		}},
 	})
 	if err != nil {
@@ -400,6 +402,7 @@ func (s IssueManagerService) CreateTasks(ctx context.Context, workspaceID string
 			ReasoningEffort:    task.ReasoningEffort,
 			ExecutionDirectory: task.ExecutionDirectory,
 			DependencyTaskIDs:  task.DependencyTaskIDs,
+			Parallelizable:     task.Parallelizable,
 		})
 	}
 	tasks, err := s.domainService().CreateTasks(ctx, workspaceissues.CreateTasksInput{
@@ -483,6 +486,8 @@ func (s IssueManagerService) UpdateTask(ctx context.Context, workspaceID string,
 		HasExecutionDirectory: input.HasExecutionDirectory,
 		DependencyTaskIDs:     input.DependencyTaskIDs,
 		HasDependencyTaskIDs:  input.HasDependencyTaskIDs,
+		Parallelizable:        input.Parallelizable,
+		HasParallelizable:     input.HasParallelizable,
 		AcceptanceState:       input.AcceptanceState,
 		HasAcceptanceState:    input.HasAcceptanceState,
 		AcceptanceSummary:     input.AcceptanceSummary,

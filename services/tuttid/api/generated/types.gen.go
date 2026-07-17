@@ -4286,6 +4286,7 @@ type CreateIssueManagerTaskRequest struct {
 	ExecutionDirectory *string               `json:"executionDirectory,omitempty"`
 	Model              *string               `json:"model,omitempty"`
 	ModelPlanId        *string               `json:"modelPlanId,omitempty"`
+	Parallelizable     *bool                 `json:"parallelizable,omitempty"`
 	Priority           *IssueManagerPriority `json:"priority,omitempty"`
 	TaskId             *string               `json:"taskId,omitempty"`
 	Title              string                `json:"title"`
@@ -5097,14 +5098,17 @@ type IssueManagerTask struct {
 	Model string `json:"model"`
 
 	// ModelPlanId Explicit Plan assignment. Empty delegates to the WorkspaceAgent default.
-	ModelPlanId   string               `json:"modelPlanId"`
-	Priority      IssueManagerPriority `json:"priority"`
-	SortIndex     int                  `json:"sortIndex"`
-	Status        IssueManagerStatus   `json:"status"`
-	TaskId        string               `json:"taskId"`
-	Title         string               `json:"title"`
-	UpdatedAtUnix int64                `json:"updatedAtUnix"`
-	WorkspaceId   string               `json:"workspaceId"`
+	ModelPlanId string `json:"modelPlanId"`
+
+	// Parallelizable Opts this task out of the Issue's sequential default so it may run alongside other dependency-ready tasks. False keeps strict sequential ordering.
+	Parallelizable bool                 `json:"parallelizable"`
+	Priority       IssueManagerPriority `json:"priority"`
+	SortIndex      int                  `json:"sortIndex"`
+	Status         IssueManagerStatus   `json:"status"`
+	TaskId         string               `json:"taskId"`
+	Title          string               `json:"title"`
+	UpdatedAtUnix  int64                `json:"updatedAtUnix"`
+	WorkspaceId    string               `json:"workspaceId"`
 }
 
 // IssueManagerTaskContextRef defines model for IssueManagerTaskContextRef.
@@ -5781,6 +5785,9 @@ type TuttiModePlanTask struct {
 	Model              *string  `json:"model"`
 	ModelPlanId        *string  `json:"modelPlanId"`
 
+	// Parallelizable Opts this task out of the sequential default so it may run alongside other ready tasks. Persisted onto the materialized Issue task.
+	Parallelizable bool `json:"parallelizable"`
+
 	// PermissionModeId Task-level permission mode applied when the materialized Issue task launches.
 	PermissionModeId *string                   `json:"permissionModeId"`
 	Priority         TuttiModePlanTaskPriority `json:"priority"`
@@ -5817,6 +5824,7 @@ type UpdateIssueManagerTaskRequest struct {
 	ExecutionDirectory *string                      `json:"executionDirectory,omitempty"`
 	Model              *string                      `json:"model,omitempty"`
 	ModelPlanId        *string                      `json:"modelPlanId,omitempty"`
+	Parallelizable     *bool                        `json:"parallelizable,omitempty"`
 	Priority           *IssueManagerPriority        `json:"priority,omitempty"`
 	SortIndex          *int                         `json:"sortIndex,omitempty"`
 	Status             *IssueManagerStatus          `json:"status,omitempty"`
@@ -7082,9 +7090,12 @@ type WorkspaceWorkflowStatus string
 
 // WorkspaceWorkflowTaskAssignment User-owned per-task assignment override recorded with an accepted task review decision. Null fields keep the plan document value; empty strings clear it.
 type WorkspaceWorkflowTaskAssignment struct {
-	AgentTargetId    *string `json:"agentTargetId,omitempty"`
-	Model            *string `json:"model,omitempty"`
-	ModelPlanId      *string `json:"modelPlanId,omitempty"`
+	AgentTargetId *string `json:"agentTargetId,omitempty"`
+	Model         *string `json:"model,omitempty"`
+	ModelPlanId   *string `json:"modelPlanId,omitempty"`
+
+	// Parallelizable Overrides the plan document's per-task parallel opt-in; null keeps it.
+	Parallelizable   *bool   `json:"parallelizable,omitempty"`
 	PermissionModeId *string `json:"permissionModeId,omitempty"`
 	ReasoningEffort  *string `json:"reasoningEffort,omitempty"`
 	TaskId           string  `json:"taskId"`

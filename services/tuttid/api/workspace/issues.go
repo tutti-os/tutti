@@ -152,6 +152,7 @@ func GeneratedIssueManagerTaskFromDomain(item workspaceissues.Task) tuttigenerat
 		Model:              item.Model,
 		ExecutionDirectory: item.ExecutionDirectory,
 		DependencyTaskIds:  append([]string(nil), item.DependencyTaskIDs...),
+		Parallelizable:     item.Parallelizable,
 		AcceptanceState:    tuttigenerated.IssueManagerAcceptanceState(item.AcceptanceState),
 		AcceptanceSummary:  item.AcceptanceSummary,
 		CreatedAtUnix:      unixSecondsFromMillis(item.CreatedAtUnixMS),
