@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"slices"
@@ -5336,6 +5337,35 @@ func TestServiceDeletesPersistedSession(t *testing.T) {
 	}
 	if _, err := service.Get(context.Background(), "ws-1", "session-1"); err != ErrSessionNotFound {
 		t.Fatalf("Get after delete error = %v, want %v", err, ErrSessionNotFound)
+	}
+}
+
+func TestServiceGetReturnsLiveSessionWithoutLegacySessionReader(t *testing.T) {
+	runtime := newFakeRuntime()
+	runtime.sessions["ws-1:session-1"] = ProviderRuntimeSession{
+		ID: "session-1", WorkspaceID: "ws-1", Provider: "codex", Title: "Live session",
+	}
+	service := newIsolatedAgentService(runtime)
+	service.TurnStore = failingTurnStore{sessionMissing: true}
+
+	session, err := service.Get(context.Background(), "ws-1", "session-1")
+	if err != nil {
+		t.Fatalf("Get() error = %v", err)
+	}
+	if session.ID != "session-1" || value(session.Title) != "Live session" {
+		t.Fatalf("Get() session = %#v, want live runtime observation", session)
+	}
+}
+
+func TestServiceDeleteNormalizesWrappedRuntimeSessionNotFound(t *testing.T) {
+	runtime := newFakeRuntime()
+	runtime.sessions["ws-1:session-1"] = ProviderRuntimeSession{ID: "session-1", WorkspaceID: "ws-1"}
+	runtime.closeErr = fmt.Errorf("runtime close: %w", ErrSessionNotFound)
+	service := newIsolatedAgentService(runtime)
+
+	_, err := service.Delete(context.Background(), "ws-1", "session-1")
+	if err != ErrSessionNotFound {
+		t.Fatalf("Delete() error = %v, want canonical ErrSessionNotFound", err)
 	}
 }
 

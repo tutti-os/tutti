@@ -27,11 +27,11 @@ func (a serviceHostStore) GetSession(ctx context.Context, workspaceID, sessionID
 			return session, ok, err
 		}
 	}
-	// Runtime-only Service configurations predate the canonical store port and
-	// remain useful to isolated consumers and tests. Once either durable reader
-	// is configured, absence is authoritative and must never fall back to a
-	// provider observation.
-	if a.service.SessionReader == nil && a.service.TurnStore == nil {
+	// Service configurations without the legacy SessionReader have always
+	// allowed a live provider session to supply the session observation. A
+	// TurnStore may still be present for turn lifecycle operations, so its
+	// absence must not suppress that established fallback.
+	if a.service.SessionReader == nil {
 		if session, ok := a.service.controller().Session(workspaceID, sessionID); ok {
 			activeTurnID := ""
 			if session.TurnLifecycle != nil && session.TurnLifecycle.ActiveTurnID != nil {
@@ -353,7 +353,7 @@ func (a serviceHostRuntime) SetVisible(ctx context.Context, input RuntimeSetVisi
 	return a.service.controller().SetVisible(ctx, input)
 }
 func (a serviceHostRuntime) Close(ctx context.Context, input RuntimeCloseInput) error {
-	return a.service.controller().Close(ctx, input)
+	return normalizeRuntimeError(a.service.controller().Close(ctx, input))
 }
 
 type serviceHostGoalRuntime struct{ service *Service }
