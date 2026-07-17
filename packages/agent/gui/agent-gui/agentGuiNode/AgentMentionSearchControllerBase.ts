@@ -103,6 +103,7 @@ export class AgentMentionSearchControllerBase {
   protected currentFileSearchLimit: number;
   protected currentIssueSearchLimit: number;
   protected agentGeneratedBrowsePath: string | null = null;
+  protected workspaceFileBrowsePaths: string[] = [];
   protected rawGroups: AgentMentionRawGroups = emptyAgentMentionRawGroups();
   protected issueTopicGroups: AgentMentionIssueTopicGroup[] | null = null;
   protected state: AgentMentionSearchState = {
@@ -482,6 +483,7 @@ export class AgentMentionSearchControllerBase {
     providerId: string;
     workspaceId: string;
     currentUserId: string;
+    directoryPath?: string;
     query: string;
     limit?: number;
     sessionCwd?: string;
@@ -503,6 +505,7 @@ export class AgentMentionSearchControllerBase {
               provider,
               workspaceId: input.workspaceId,
               currentUserId: input.currentUserId,
+              directoryPath: input.directoryPath,
               query: input.query,
               limit: input.limit,
               sectionKey: input.sectionKey ?? this.currentSectionKey,
@@ -655,6 +658,10 @@ export class AgentMentionSearchControllerBase {
 
   protected resetAgentGeneratedBrowsePath(): void {
     this.agentGeneratedBrowsePath = null;
+  }
+
+  protected resetWorkspaceFileBrowsePaths(): void {
+    this.workspaceFileBrowsePaths = [];
   }
 
   protected resetTotalCounts(): void {

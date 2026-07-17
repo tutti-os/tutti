@@ -119,8 +119,8 @@ export function useComposerMentionActions(input: Input) {
     (entry: AgentContextMentionItem): void => {
       if (
         entry.kind === "file" &&
-        entry.mentionNavigation === "agent-generated-folder-back" &&
-        mentionControllerRef.current?.selectAgentGeneratedMentionItem(entry)
+        entry.mentionNavigation &&
+        mentionControllerRef.current?.selectFileMentionNavigationItem(entry)
       ) {
         return;
       }
@@ -230,19 +230,20 @@ export function useComposerMentionActions(input: Input) {
   const navigateFileMentionHierarchy = useCallback(
     (delta: 1 | -1): boolean => {
       if (delta === -1) {
-        return (
-          mentionControllerRef.current?.exitAgentGeneratedBrowse() ?? false
-        );
+        return mentionControllerRef.current?.exitFileMentionBrowse() ?? false;
       }
       const item = createFileMentionPaletteAdapter().selectedItem;
       if (!item || item.kind !== "file") {
         return false;
       }
-      if (item.mentionNavigation !== "agent-generated-folder") {
+      if (
+        item.mentionNavigation !== "agent-generated-folder" &&
+        item.mentionNavigation !== "workspace-folder"
+      ) {
         return false;
       }
       return (
-        mentionControllerRef.current?.selectAgentGeneratedMentionItem(item) ??
+        mentionControllerRef.current?.selectFileMentionNavigationItem(item) ??
         false
       );
     },
@@ -251,7 +252,7 @@ export function useComposerMentionActions(input: Input) {
 
   const navigateIntoFileMentionItem = useCallback(
     (item: AgentContextMentionItem): void => {
-      mentionControllerRef.current?.selectAgentGeneratedMentionItem(item);
+      mentionControllerRef.current?.selectFileMentionNavigationItem(item);
     },
     []
   );

@@ -88,7 +88,7 @@ function createAgentGeneratedFolderBackItem(
     kind: "file",
     href: "",
     path: browsePath,
-    name: translate("agentHost.agentGui.mentionAgentGeneratedFolderBack"),
+    name: translate("agentHost.agentGui.mentionFolderBack"),
     entryKind: "unknown",
     directoryPath: parentAgentGeneratedDirectoryPath(browsePath),
     mentionNavigation: "agent-generated-folder-back"

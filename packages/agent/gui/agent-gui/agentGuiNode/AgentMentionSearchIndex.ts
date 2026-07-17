@@ -1,6 +1,9 @@
 import { resolveAgentMentionFileThumbnailUrl } from "../shared/mentionFilePresentation";
 import type { AgentContextMentionItem } from "./agentRichText/agentFileMentionExtension";
-import type { AgentContextMentionProvider } from "./agentContextMentionProvider";
+import type {
+  AgentContextMentionProvider,
+  AgentContextMentionQueryInput
+} from "./agentContextMentionProvider";
 import type { AgentMentionProviderQueryDiagnostic } from "./agentMentionSearchDiagnostics";
 import {
   emptyAgentMentionRawGroups,
@@ -32,6 +35,7 @@ export interface AgentMentionProviderQueryInput {
   providerId: string;
   workspaceId: string;
   currentUserId: string;
+  directoryPath?: string;
   query: string;
   limit?: number;
   sessionCwd?: string;
@@ -219,6 +223,7 @@ export async function queryAgentMentionProviderItems(input: {
   provider: AgentContextMentionProvider;
   workspaceId: string;
   currentUserId: string;
+  directoryPath?: string;
   query: string;
   limit?: number;
   sessionCwd: string;
@@ -226,7 +231,7 @@ export async function queryAgentMentionProviderItems(input: {
   abortSignal: AbortSignal;
   provenanceFilter: ReferenceProvenanceFilter | null;
 }): Promise<AgentContextMentionItem[]> {
-  const items = await input.provider.query({
+  const queryInput: AgentContextMentionQueryInput = {
     keyword: input.query,
     maxResults: input.limit,
     abortSignal: input.abortSignal,
@@ -241,7 +246,14 @@ export async function queryAgentMentionProviderItems(input: {
         referenceProvenanceFilter: input.provenanceFilter ?? undefined
       }
     }
-  });
+  };
+  const items =
+    input.directoryPath && input.provider.queryDirectory
+      ? await input.provider.queryDirectory({
+          ...queryInput,
+          directoryPath: input.directoryPath
+        })
+      : await input.provider.query(queryInput);
   if (input.abortSignal.aborted) {
     return [];
   }
@@ -393,6 +405,7 @@ async function mapProviderItemsToAgentMentionItems(input: {
         insertResult: input.provider.toInsertResult(item),
         label: input.provider.getItemLabel(item),
         providerId: input.provider.id,
+        directory: input.provider.getItemDirectory?.(item) ?? null,
         subtitle: input.provider.getItemSubtitle?.(item) ?? "",
         workspaceId: input.workspaceId
       });

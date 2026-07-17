@@ -17,6 +17,18 @@ export type AgentContextMentionQueryInput = RichTextTriggerQueryInput & {
   trigger: "@";
 };
 
+export interface AgentContextMentionDirectoryDescriptor {
+  /** Canonical provider-owned directory path used for child queries. */
+  path: string;
+  /** Number of direct children when the provider can determine it. */
+  childCount?: number | null;
+}
+
+export type AgentContextMentionDirectoryQueryInput =
+  AgentContextMentionQueryInput & {
+    directoryPath: string;
+  };
+
 export type AgentContextMentionInsertResult = RichTextTriggerInsertResult;
 
 export type AgentContextMentionProvider<TItem = any> = Omit<
@@ -24,4 +36,12 @@ export type AgentContextMentionProvider<TItem = any> = Omit<
   "trigger"
 > & {
   trigger: "@";
+  /** Optional hierarchy contract for file providers. */
+  getItemDirectory?(
+    item: TItem
+  ): AgentContextMentionDirectoryDescriptor | null | undefined;
+  /** Lists the direct children of one directory without overloading keyword search. */
+  queryDirectory?(
+    input: AgentContextMentionDirectoryQueryInput
+  ): Promise<readonly TItem[]> | readonly TItem[];
 };

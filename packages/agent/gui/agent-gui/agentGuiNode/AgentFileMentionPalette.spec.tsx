@@ -31,7 +31,7 @@ vi.mock("../../i18n/index", async () => {
     "agentHost.agentGui.mentionGroupOpenedFiles": "我打开的文件",
     "agentHost.agentGui.mentionGroupAgentGeneratedFiles":
       "近期 Agent 生成的文件",
-    "agentHost.agentGui.mentionAgentGeneratedFolderBack": "返回",
+    "agentHost.agentGui.mentionFolderBack": "返回",
     "agentHost.agentGui.mentionNoMatchingFiles": "没有匹配到文件",
     "agentHost.roomIssueNode.issueStatusNotStarted": "待开始",
     "agentHost.roomIssueNode.issueStatusRunning": "执行中",
@@ -1181,90 +1181,96 @@ describe("AgentFileMentionPalette", () => {
     expect(backIcon?.querySelector("svg")).not.toBeNull();
   });
 
-  it("enters agent generated folders from the row arrow without selecting the row", () => {
-    const folderItem = {
-      kind: "file" as const,
-      href: "",
-      path: "/workspace/demo/agentGuiNode",
-      name: "agentGuiNode",
-      entryKind: "directory",
-      directoryPath: "/workspace/demo",
-      mentionNavigation: "agent-generated-folder" as const,
-      childCount: 5
-    } satisfies AgentContextMentionItem;
-    const state: AgentMentionSearchState = {
-      status: "ready",
-      query: "",
-      mode: "browse",
-      filter: "file",
-      categories: [],
-      groups: [
-        {
-          id: "agent_generated_files",
-          items: [folderItem],
-          totalCount: 1,
-          visibleCount: 1,
-          hasMore: false
-        }
-      ],
-      error: null
-    };
-    const onNavigateIntoItem = vi.fn();
-    const onSelectItem = vi.fn();
+  it.each([
+    ["agent generated", "agent_generated_files", "agent-generated-folder"],
+    ["workspace", "opened_files", "workspace-folder"]
+  ] as const)(
+    "enters %s folders from the row arrow without selecting the row",
+    (_label, groupId, mentionNavigation) => {
+      const folderItem = {
+        kind: "file" as const,
+        href: "",
+        path: "/workspace/demo/agentGuiNode",
+        name: "agentGuiNode",
+        entryKind: "directory",
+        directoryPath: "/workspace/demo",
+        mentionNavigation,
+        childCount: 5
+      } satisfies AgentContextMentionItem;
+      const state: AgentMentionSearchState = {
+        status: "ready",
+        query: "",
+        mode: "browse",
+        filter: "file",
+        categories: [],
+        groups: [
+          {
+            id: groupId,
+            items: [folderItem],
+            totalCount: 1,
+            visibleCount: 1,
+            hasMore: false
+          }
+        ],
+        error: null
+      };
+      const onNavigateIntoItem = vi.fn();
+      const onSelectItem = vi.fn();
 
-    render(
-      <AgentFileMentionPalette
-        state={state}
-        highlightedKey="agent_generated_files:file:/workspace/demo/agentGuiNode"
-        label="mention palette"
-        loadingLabel="loading"
-        emptyLabel="empty"
-        errorLabel="error"
-        tabHintLabel="hint"
-        maxHeightPx={320}
-        onHighlightChange={vi.fn()}
-        onSelectItem={onSelectItem}
-        onSelectCategory={vi.fn()}
-        onSelectFilter={vi.fn()}
-        onExpandGroup={vi.fn()}
-        onNavigateIntoItem={onNavigateIntoItem}
-      />
-    );
+      render(
+        <AgentFileMentionPalette
+          state={state}
+          highlightedKey={`${groupId}:file:/workspace/demo/agentGuiNode`}
+          label="mention palette"
+          loadingLabel="loading"
+          emptyLabel="empty"
+          errorLabel="error"
+          tabHintLabel="hint"
+          maxHeightPx={320}
+          onHighlightChange={vi.fn()}
+          onSelectItem={onSelectItem}
+          onSelectCategory={vi.fn()}
+          onSelectFilter={vi.fn()}
+          onExpandGroup={vi.fn()}
+          onNavigateIntoItem={onNavigateIntoItem}
+        />
+      );
 
-    const folderRow = screen
-      .getByText("agentGuiNode")
-      .closest('[data-agent-file-mention="true"]');
-    const enterButton = screen.getByRole("button", { name: "进入文件夹" });
-    const fileCount = folderRow?.querySelector(
-      ".rich-text-at-mention-row__file-count"
-    );
+      const folderRow = screen
+        .getByText("agentGuiNode")
+        .closest('[data-agent-file-mention="true"]');
+      const enterButton = screen.getByRole("button", { name: "进入文件夹" });
+      const fileCount = folderRow?.querySelector(
+        ".rich-text-at-mention-row__file-count"
+      );
 
-    expect(folderRow).toHaveAttribute(
-      "data-agent-mention-navigation",
-      "agent-generated-folder"
-    );
-    expect(fileCount).not.toBeNull();
-    if (!fileCount) {
-      throw new Error("Expected the generated-folder file count");
+      expect(folderRow).toHaveAttribute(
+        "data-agent-mention-navigation",
+        mentionNavigation
+      );
+      expect(fileCount).not.toBeNull();
+      if (!fileCount) {
+        throw new Error("Expected the folder child count");
+      }
+      expect(
+        fileCount.compareDocumentPosition(enterButton) &
+          Node.DOCUMENT_POSITION_FOLLOWING
+      ).toBeTruthy();
+      expect(enterButton).toHaveAttribute(
+        "data-agent-mention-navigate-into",
+        "true"
+      );
+
+      fireEvent.click(enterButton);
+
+      expect(onNavigateIntoItem).toHaveBeenCalledWith(folderItem);
+      expect(onSelectItem).not.toHaveBeenCalled();
+
+      fireEvent.click(folderRow!);
+
+      expect(onSelectItem).toHaveBeenCalledWith(folderItem);
     }
-    expect(
-      fileCount.compareDocumentPosition(enterButton) &
-        Node.DOCUMENT_POSITION_FOLLOWING
-    ).toBeTruthy();
-    expect(enterButton).toHaveAttribute(
-      "data-agent-mention-navigate-into",
-      "true"
-    );
-
-    fireEvent.click(enterButton);
-
-    expect(onNavigateIntoItem).toHaveBeenCalledWith(folderItem);
-    expect(onSelectItem).not.toHaveBeenCalled();
-
-    fireEvent.click(folderRow!);
-
-    expect(onSelectItem).toHaveBeenCalledWith(folderItem);
-  });
+  );
 
   it("renders image mention rows with thumbnails instead of default file icons", () => {
     const state: AgentMentionSearchState = {
