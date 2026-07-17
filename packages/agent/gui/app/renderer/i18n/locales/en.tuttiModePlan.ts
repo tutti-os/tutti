@@ -16,7 +16,6 @@ export const enTuttiModePlan = {
   reasoningIntensity: "Reasoning intensity",
   orchestrationIntensity: "Orchestration intensity",
   quotaWaterline: "Quota waterline",
-  taskId: "Task ID",
   priority: "Priority",
   priorityHigh: "High",
   priorityMedium: "Medium",
@@ -27,10 +26,7 @@ export const enTuttiModePlan = {
   permissionMode: "Permission mode",
   reasoningEffort: "Reasoning effort",
   assignmentOptionsLoading: "Loading options...",
-  executionDirectory: "Execution directory",
-  dependencies: "Dependencies",
   notSpecified: "Not specified",
-  none: "None",
   loadFailed: "Tutti mode plans could not be loaded",
   retry: "Try again"
 } as const;

@@ -26,7 +26,6 @@ const labels: TuttiModePlanPanelLabels = {
   reasoningIntensity: "Reasoning intensity",
   orchestrationIntensity: "Orchestration intensity",
   quotaWaterline: "Quota waterline",
-  taskId: "Task ID",
   priority: "Priority",
   priorityHigh: "High",
   priorityMedium: "Medium",
@@ -36,10 +35,7 @@ const labels: TuttiModePlanPanelLabels = {
   model: "Model",
   permissionMode: "Permission mode",
   reasoningEffort: "Reasoning effort",
-  executionDirectory: "Execution directory",
-  dependencies: "Dependencies",
   notSpecified: "Not specified",
-  none: "None",
   assignmentOptionsLoading: "Loading options..."
 };
 
@@ -148,7 +144,7 @@ describe("TuttiModePlanPanel", () => {
     expect(screen.getByText("15%")).toBeInTheDocument();
   });
 
-  it("shows every materialization input read-only without an assignment catalog", () => {
+  it("shows every assignment read-only without an assignment catalog", () => {
     render(
       <TuttiModePlanPanel
         labels={labels}
@@ -168,9 +164,11 @@ describe("TuttiModePlanPanel", () => {
     expect(screen.getByText("gpt-5.6-sol")).toBeInTheDocument();
     expect(screen.getByText("acceptEdits")).toBeInTheDocument();
     expect(screen.getByText("high")).toBeInTheDocument();
-    expect(screen.getByText("/workspace/implement")).toBeInTheDocument();
-    expect(screen.getByText("foundation")).toBeInTheDocument();
-    expect(screen.getByText("contract-tests")).toBeInTheDocument();
+    // Task ID / execution directory / dependencies are plan internals and
+    // stay out of the review card.
+    expect(screen.queryByText("implement")).not.toBeInTheDocument();
+    expect(screen.queryByText("/workspace/implement")).not.toBeInTheDocument();
+    expect(screen.queryByText("foundation")).not.toBeInTheDocument();
   });
 
   it("renders per-task assignment selectors when the catalog is loaded", () => {
