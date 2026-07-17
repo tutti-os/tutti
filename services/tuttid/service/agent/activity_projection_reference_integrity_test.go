@@ -35,7 +35,7 @@ func TestActivityProjectionPreservesWorkspaceScopedAgentIDOnlyInOwningWorkspace(
 	if err := store.PutWorkspaceAgent(ctx, workspaceagentbiz.Agent{
 		ID: agentID, WorkspaceID: "ws-1", Name: "Writer",
 		HarnessAgentTargetID: agenttargetbiz.IDLocalCodex,
-		Enabled:              true, Source: workspaceagentbiz.SourceUser, Revision: 1,
+		Source:               workspaceagentbiz.SourceUser, Revision: 1,
 		CreatedAt: now, UpdatedAt: now,
 	}); err != nil {
 		t.Fatalf("PutWorkspaceAgent() error = %v", err)

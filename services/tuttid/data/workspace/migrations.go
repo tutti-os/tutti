@@ -61,6 +61,7 @@ const schemaMigrationWorkspaceAgentsV1 = "workspace_agents_v1"
 const schemaMigrationWorkspaceAgentsV2 = "workspace_agents_model_fallbacks_v1"
 const schemaMigrationWorkspaceAgentsV3 = "workspace_agents_call_conditions_v1"
 const schemaMigrationWorkspaceAgentsV4 = "workspace_agents_capability_selection_v1"
+const schemaMigrationWorkspaceAgentsV5 = "workspace_agents_contract_cleanup_v1"
 const schemaMigrationCollabRunsV1 = "collab_runs_v1"
 const schemaMigrationCollabRunsRetryV1 = "collab_runs_retry_v1"
 const schemaMigrationCollabRunsUsageV1 = "collab_runs_usage_v1"
@@ -279,6 +280,9 @@ INSERT OR IGNORE INTO tuttid_schema_migrations (id, applied_at_unix_ms)
 		return err
 	}
 	if err := s.applyWorkspaceAgentsV4(ctx); err != nil {
+		return err
+	}
+	if err := s.applyWorkspaceAgentsV5(ctx); err != nil {
 		return err
 	}
 	if err := s.applyCollabRunsV1(ctx); err != nil {

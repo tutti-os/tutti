@@ -28,7 +28,10 @@ test("automation rules controller loads workspace rules and the merged target di
       listWorkspaceAgents: async () => [
         createWorkspaceAgent({ id: "workspace-agent:writer", name: "Writer" }),
         createWorkspaceAgent({
-          enabled: false,
+          harness: {
+            agentTargetId: "local:gone",
+            available: false
+          },
           id: "workspace-agent:off",
           name: "Off"
         })
@@ -403,7 +406,7 @@ function createWorkspaceAgent(
     callConditions: [],
     capabilitiesExplicit: false,
     createdAt: "2026-07-12T00:00:00Z",
-    enabled: true,
+    description: "",
     harness: {
       agentTargetId: "local:codex",
       available: true,
@@ -415,8 +418,6 @@ function createWorkspaceAgent(
     instructions: "",
     modelFallbacks: [],
     name: "Writer",
-    permissions: [],
-    purpose: "",
     revision: 1,
     skills: [],
     source: "user",

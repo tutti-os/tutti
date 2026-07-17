@@ -91,11 +91,10 @@ test("workspace agents controller creates one Agent from the simplified draft", 
         requests.push(input);
         return createWorkspaceAgent({
           defaultModel: input.defaultModel,
-          enabled: input.enabled,
+          description: input.description,
           instructions: input.instructions,
           modelPlanId: input.modelPlanId,
-          name: input.name,
-          purpose: input.purpose
+          name: input.name
         });
       }
     }),
@@ -108,10 +107,10 @@ test("workspace agents controller creates one Agent from the simplified draft", 
   controller.updateDraft({
     callConditions: "Before release\nBefore release\nOn architecture risk",
     defaultModel: "gpt-5",
+    description: "Review changes",
     instructions: "Review carefully",
     modelPlanId: "plan-1",
-    name: "Reviewer",
-    purpose: "Review changes"
+    name: "Reviewer"
   });
 
   await controller.saveDraft();
@@ -121,14 +120,12 @@ test("workspace agents controller creates one Agent from the simplified draft", 
       callConditions: ["Before release", "On architecture risk"],
       capabilitiesExplicit: false,
       defaultModel: "gpt-5",
-      enabled: true,
+      description: "Review changes",
       harnessAgentTargetId: "local:codex",
       instructions: "Review carefully",
       modelFallbacks: [],
       modelPlanId: "plan-1",
       name: "Reviewer",
-      permissions: [],
-      purpose: "Review changes",
       skills: [],
       tools: []
     }
@@ -138,14 +135,13 @@ test("workspace agents controller creates one Agent from the simplified draft", 
   assert.equal(directoryRefreshes, 1);
 });
 
-test("saving an Agent with dormant explicit configuration returns it to neutral values", async () => {
+test("saving an Agent passes its dormant configuration through unchanged", async () => {
   const store = createWorkspaceSettingsStore();
   store.workspaceID = "workspace-1";
   store.agents.agents = [
     createWorkspaceAgent({
       capabilitiesExplicit: true,
       modelFallbacks: [{ modelPlanId: "plan-fallback", model: "gpt-backup" }],
-      permissions: ["workspace.write"],
       skills: ["react"],
       tools: ["terminal"]
     })
@@ -168,15 +164,15 @@ test("saving an Agent with dormant explicit configuration returns it to neutral 
   const request = requests[0] as {
     capabilitiesExplicit: boolean;
     modelFallbacks: unknown[];
-    permissions: string[];
     skills: string[];
     tools: string[];
   };
-  assert.equal(request.capabilitiesExplicit, false);
-  assert.deepEqual(request.modelFallbacks, []);
-  assert.deepEqual(request.permissions, []);
-  assert.deepEqual(request.skills, []);
-  assert.deepEqual(request.tools, []);
+  assert.equal(request.capabilitiesExplicit, true);
+  assert.deepEqual(request.modelFallbacks, [
+    { modelPlanId: "plan-fallback", model: "gpt-backup" }
+  ]);
+  assert.deepEqual(request.skills, ["react"]);
+  assert.deepEqual(request.tools, ["terminal"]);
 });
 
 test("workspace agents controller sends null model fields when an edit clears its plan", async () => {
@@ -190,7 +186,6 @@ test("workspace agents controller sends null model fields when an edit clears it
         requests.push(input);
         return createWorkspaceAgent({
           defaultModel: null,
-          enabled: false,
           modelPlanId: null
         });
       }
@@ -201,7 +196,6 @@ test("workspace agents controller sends null model fields when an edit clears it
   controller.beginEditAgent("workspace-agent:1");
   controller.updateDraft({
     defaultModel: "",
-    enabled: false,
     modelPlanId: ""
   });
   await controller.saveDraft();
@@ -209,12 +203,10 @@ test("workspace agents controller sends null model fields when an edit clears it
   assert.equal(requests.length, 1);
   const request = requests[0] as {
     defaultModel: string | null;
-    enabled: boolean;
     modelPlanId: string | null;
   };
   assert.equal(request.defaultModel, null);
   assert.equal(request.modelPlanId, null);
-  assert.equal(request.enabled, false);
 });
 
 test("workspace agents controller does not apply a stale save to a new workspace", async () => {
@@ -323,33 +315,36 @@ test("workspace agents controller does not apply a stale delete to a new workspa
   assert.equal(directoryRefreshes, 0);
 });
 
-test("workspaceAgentDraftToPutInput always sends the dormant contract fields as neutral values", () => {
+test("workspaceAgentDraftToPutInput passes dormant contract fields through verbatim", () => {
   assert.deepEqual(
     workspaceAgentDraftToPutInput({
       agentId: null,
       name: " Reviewer ",
-      purpose: " Reviews changes ",
+      description: " Reviews changes ",
       harnessAgentTargetId: " local:codex ",
       modelPlanId: "",
       defaultModel: "",
       instructions: "",
       callConditions: "",
-      enabled: true
+      dormant: {
+        capabilitiesExplicit: true,
+        modelFallbacks: [{ modelPlanId: "plan-fallback", model: "gpt-backup" }],
+        skills: ["react"],
+        tools: ["terminal"]
+      }
     }),
     {
       callConditions: [],
-      capabilitiesExplicit: false,
+      capabilitiesExplicit: true,
       defaultModel: null,
-      enabled: true,
+      description: "Reviews changes",
       harnessAgentTargetId: "local:codex",
       instructions: "",
-      modelFallbacks: [],
+      modelFallbacks: [{ modelPlanId: "plan-fallback", model: "gpt-backup" }],
       modelPlanId: null,
       name: "Reviewer",
-      permissions: [],
-      purpose: "Reviews changes",
-      skills: [],
-      tools: []
+      skills: ["react"],
+      tools: ["terminal"]
     }
   );
 });
@@ -403,7 +398,7 @@ function createWorkspaceAgent(
     callConditions: ["Use when a review is needed"],
     createdAt: "2026-07-12T00:00:00Z",
     defaultModel: "gpt-5",
-    enabled: true,
+    description: "Review changes",
     harness: {
       agentTargetId: "local:codex",
       available: true,
@@ -415,8 +410,6 @@ function createWorkspaceAgent(
     instructions: "Review carefully",
     modelPlanId: "plan-1",
     name: "Reviewer",
-    permissions: [],
-    purpose: "Review changes",
     revision: 1,
     skills: [],
     source: "user",

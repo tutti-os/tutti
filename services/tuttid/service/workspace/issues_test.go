@@ -227,7 +227,6 @@ func TestIssueManagerServiceValidatesWorkspaceAgentAssignmentThroughOwner(t *tes
 				WorkspaceID:          "workspace-agent-assignment",
 				Name:                 "Writer",
 				HarnessAgentTargetID: targets[0].ID,
-				Enabled:              true,
 				Source:               workspaceagentbiz.SourceUser,
 				Revision:             1,
 			},

@@ -134,7 +134,6 @@ interface AssignmentAgentDirectoryEntry {
 
 function workspaceAgentIsSelectable(agent: WorkspaceAgent): boolean {
   return (
-    agent.enabled &&
     agent.harness.available &&
     agent.harness.enabled !== false &&
     Boolean(agent.harness.provider)

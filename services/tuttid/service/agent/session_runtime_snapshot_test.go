@@ -48,12 +48,11 @@ func TestSessionRuntimeSnapshotIsVersionedAndRedactionSafe(t *testing.T) {
 		WorkspaceAgentRevision:    3,
 		HarnessAgentTargetID:      "local:codex",
 		AgentName:                 "Focused Writer",
-		AgentPurpose:              "Make narrow repository changes.",
+		AgentDescription:          "Make narrow repository changes.",
 		AgentInstructions:         "Use the repository conventions.",
 		AgentCapabilitiesExplicit: true,
 		AgentSkills:               []string{"go", "tests"},
 		AgentTools:                []string{"shell"},
-		AgentPermissions:          []string{"workspace-write"},
 		Model:                     &model,
 		PermissionModeID:          &permissionMode,
 	}, "codex", resolution)
@@ -81,14 +80,48 @@ func TestSessionRuntimeSnapshotIsVersionedAndRedactionSafe(t *testing.T) {
 	if snapshot.ModelPlanID != "mp-1" || snapshot.ModelPlanRevision != 7 || snapshot.Model != "gpt-new" || snapshot.ModelFingerprint == "" {
 		t.Fatalf("snapshot model identity = %#v", snapshot)
 	}
-	if snapshot.Instructions == "" || len(snapshot.Skills) != 2 || len(snapshot.Tools) != 1 || len(snapshot.Permissions) != 1 {
+	if snapshot.Instructions == "" || len(snapshot.Skills) != 2 || len(snapshot.Tools) != 1 {
 		t.Fatalf("snapshot agent definition = %#v", snapshot)
 	}
 	if !snapshot.CapabilitiesExplicit {
 		t.Fatal("snapshot lost explicit capability selection")
 	}
-	if snapshot.Name != "Focused Writer" || snapshot.Purpose != "Make narrow repository changes." {
-		t.Fatalf("snapshot name/purpose = %q/%q", snapshot.Name, snapshot.Purpose)
+	if snapshot.Name != "Focused Writer" || snapshot.Description != "Make narrow repository changes." {
+		t.Fatalf("snapshot name/description = %q/%q", snapshot.Name, snapshot.Description)
+	}
+}
+
+// Sessions created before the Wave 4-2 contract cleanup persisted the Agent
+// description under the retired purpose key. Their durable snapshots must
+// keep resuming without a rewrite.
+func TestSessionRuntimeSnapshotReadsLegacyPurposeKeyAsDescription(t *testing.T) {
+	t.Parallel()
+
+	plan := snapshotTestPlan(7, "https://old-relay.example/v1", "sk-old-secret")
+	resolution, err := resolveProvidedModelPlan("codex", "workspace-agent:writer", plan, "gpt-new", "gpt-new")
+	if err != nil {
+		t.Fatalf("resolveProvidedModelPlan() error = %v", err)
+	}
+	model := "gpt-new"
+	contextPayload := runtimeContextWithSessionRuntimeSnapshot(nil, CreateSessionInput{
+		AgentTargetID:          "workspace-agent:writer",
+		WorkspaceAgentRevision: 3,
+		HarnessAgentTargetID:   "local:codex",
+		AgentName:              "Focused Writer",
+		Model:                  &model,
+	}, "codex", resolution)
+	legacy := contextPayload[sessionRuntimeSnapshotContextKey].(map[string]any)
+	legacy["agentDefinition"] = map[string]any{
+		"name":    "Focused Writer",
+		"purpose": "Legacy purpose text.",
+	}
+
+	snapshot, exists, err := sessionRuntimeSnapshotFromContext(contextPayload)
+	if err != nil || !exists {
+		t.Fatalf("sessionRuntimeSnapshotFromContext() = %#v, %v, exists=%v", snapshot, err, exists)
+	}
+	if snapshot.Description != "Legacy purpose text." {
+		t.Fatalf("snapshot description = %q, want legacy purpose fallback", snapshot.Description)
 	}
 }
 
@@ -157,7 +190,7 @@ func TestPrepareRuntimeForResumeUsesExactModelPlanRevision(t *testing.T) {
 		WorkspaceAgentRevision: 4,
 		HarnessAgentTargetID:   "local:codex",
 		AgentName:              "Old Writer",
-		AgentPurpose:           "Use the original purpose.",
+		AgentDescription:       "Use the original description.",
 		AgentInstructions:      "old instructions",
 		AgentSkills:            []string{"old-skill"},
 		Model:                  &model,
@@ -184,8 +217,8 @@ func TestPrepareRuntimeForResumeUsesExactModelPlanRevision(t *testing.T) {
 	if preparedInput.AgentInstructions != "old instructions" || len(preparedInput.AgentSkills) != 1 || preparedInput.AgentSkills[0] != "old-skill" {
 		t.Fatalf("prepared agent definition = %#v", preparedInput)
 	}
-	if preparedInput.AgentName != "Old Writer" || preparedInput.AgentPurpose != "Use the original purpose." {
-		t.Fatalf("prepared name/purpose = %q/%q", preparedInput.AgentName, preparedInput.AgentPurpose)
+	if preparedInput.AgentName != "Old Writer" || preparedInput.AgentDescription != "Use the original description." {
+		t.Fatalf("prepared name/description = %q/%q", preparedInput.AgentName, preparedInput.AgentDescription)
 	}
 }
 

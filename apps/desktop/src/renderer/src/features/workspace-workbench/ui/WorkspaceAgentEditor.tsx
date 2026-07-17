@@ -33,9 +33,9 @@ const textareaClass =
 
 /**
  * Simplified Agent editor: name, Agent Runtime, model plan + default model,
- * description, and behavior text. Failover chains, capability allowlists,
- * generation, and permission overrides are intentionally not configurable
- * here anymore; saving returns those contract fields to neutral values.
+ * description, and behavior text. Dormant contract fields (failover chain,
+ * capability allowlists) have no surface here; the draft passes their stored
+ * values through so saving never clears them.
  */
 export function WorkspaceAgentEditor({
   agent,
@@ -254,14 +254,18 @@ export function WorkspaceAgentEditor({
 
       <label className="flex flex-col gap-1.5">
         <span className="text-[11px] font-medium text-[var(--text-secondary)]">
-          {t("workspace.settings.apps.agents.purposeLabel")}
+          {t("workspace.settings.apps.agents.descriptionLabel")}
         </span>
         <Input
           className={workspaceSettingsInputClass}
-          placeholder={t("workspace.settings.apps.agents.purposePlaceholder")}
+          placeholder={t(
+            "workspace.settings.apps.agents.descriptionPlaceholder"
+          )}
           type="text"
-          value={draft.purpose}
-          onChange={(event) => onUpdate({ purpose: event.currentTarget.value })}
+          value={draft.description}
+          onChange={(event) =>
+            onUpdate({ description: event.currentTarget.value })
+          }
         />
       </label>
 

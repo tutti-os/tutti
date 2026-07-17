@@ -16,54 +16,8 @@ type WorkspaceAgentService interface {
 	List(context.Context, string) ([]workspaceagentbiz.View, error)
 	Get(context.Context, string, string) (workspaceagentbiz.View, error)
 	Create(context.Context, workspaceagentservice.PutInput) (workspaceagentbiz.View, error)
-	GenerateConfiguration(context.Context, workspaceagentservice.GenerateInput) (workspaceagentservice.GeneratedConfiguration, error)
 	Update(context.Context, workspaceagentservice.PutInput) (workspaceagentbiz.View, error)
 	Delete(context.Context, string, string) error
-}
-
-func (api DaemonAPI) GenerateWorkspaceAgentDraft(ctx context.Context, request tuttigenerated.GenerateWorkspaceAgentDraftRequestObject) (tuttigenerated.GenerateWorkspaceAgentDraftResponseObject, error) {
-	if api.WorkspaceAgentService == nil {
-		return tuttigenerated.GenerateWorkspaceAgentDraft503JSONResponse{
-			ServiceUnavailableErrorJSONResponse: workspaceAgentServiceUnavailable(),
-		}, nil
-	}
-	if request.Body == nil {
-		return tuttigenerated.GenerateWorkspaceAgentDraft400JSONResponse{
-			InvalidRequestErrorJSONResponse: invalidRequestError(apierrors.EmptyBody()),
-		}, nil
-	}
-	generated, err := api.WorkspaceAgentService.GenerateConfiguration(ctx, workspaceagentservice.GenerateInput{
-		WorkspaceID:          request.WorkspaceID,
-		HarnessAgentTargetID: request.Body.HarnessAgentTargetId,
-		ModelPlanID:          request.Body.ModelPlanId,
-		Model:                stringValue(request.Body.Model),
-		Requirements:         request.Body.Requirements,
-	})
-	if err != nil {
-		switch {
-		case errors.Is(err, workspaceagentservice.ErrGenerationUnavailable):
-			return tuttigenerated.GenerateWorkspaceAgentDraft503JSONResponse{
-				ServiceUnavailableErrorJSONResponse: workspaceAgentServiceUnavailable(),
-			}, nil
-		case errors.Is(err, workspacedata.ErrWorkspaceNotFound),
-			errors.Is(err, workspacedata.ErrAgentTargetNotFound),
-			errors.Is(err, workspacedata.ErrModelPlanNotFound):
-			return tuttigenerated.GenerateWorkspaceAgentDraft404JSONResponse{
-				WorkspaceNotFoundErrorJSONResponse: workspaceAgentDependencyNotFoundError(err),
-			}, nil
-		case isInvalidWorkspaceAgentError(err),
-			errors.Is(err, workspaceagentservice.ErrHarnessDisabled),
-			errors.Is(err, workspaceagentservice.ErrPlanNotUsable):
-			return tuttigenerated.GenerateWorkspaceAgentDraft400JSONResponse{
-				InvalidRequestErrorJSONResponse: invalidWorkspaceAgentRequest(err),
-			}, nil
-		default:
-			return tuttigenerated.GenerateWorkspaceAgentDraft502JSONResponse{
-				WorkspaceOperationErrorJSONResponse: workspaceOperationError(apierrors.WorkspaceOperationFailed(apierrors.WithCause(err))),
-			}, nil
-		}
-	}
-	return tuttigenerated.GenerateWorkspaceAgentDraft200JSONResponse(generatedWorkspaceAgentDraft(generated)), nil
 }
 
 func (api DaemonAPI) ListWorkspaceAgents(ctx context.Context, request tuttigenerated.ListWorkspaceAgentsRequestObject) (tuttigenerated.ListWorkspaceAgentsResponseObject, error) {
@@ -214,7 +168,7 @@ func workspaceAgentPutInput(workspaceID string, agentID string, body tuttigenera
 		WorkspaceID:          workspaceID,
 		AgentID:              agentID,
 		Name:                 body.Name,
-		Purpose:              body.Purpose,
+		Description:          body.Description,
 		HarnessAgentTargetID: body.HarnessAgentTargetId,
 		ModelPlanID:          stringValue(body.ModelPlanId),
 		DefaultModel:         stringValue(body.DefaultModel),
@@ -224,8 +178,6 @@ func workspaceAgentPutInput(workspaceID string, agentID string, body tuttigenera
 		CapabilitiesExplicit: body.CapabilitiesExplicit,
 		Skills:               append([]string(nil), body.Skills...),
 		Tools:                append([]string(nil), body.Tools...),
-		Permissions:          append([]string(nil), body.Permissions...),
-		Enabled:              body.Enabled,
 	}
 }
 
@@ -236,7 +188,7 @@ func generatedWorkspaceAgent(view workspaceagentbiz.View) tuttigenerated.Workspa
 		AgentTargetId: agent.ID,
 		WorkspaceId:   agent.WorkspaceID,
 		Name:          agent.Name,
-		Purpose:       agent.Purpose,
+		Description:   agent.Description,
 		Harness: tuttigenerated.WorkspaceAgentHarness{
 			AgentTargetId: view.Harness.AgentTargetID,
 			Available:     view.Harness.Available,
@@ -246,9 +198,7 @@ func generatedWorkspaceAgent(view workspaceagentbiz.View) tuttigenerated.Workspa
 		CapabilitiesExplicit: agent.CapabilitiesExplicit,
 		Skills:               append([]string{}, agent.Skills...),
 		Tools:                append([]string{}, agent.Tools...),
-		Permissions:          append([]string{}, agent.Permissions...),
 		ModelFallbacks:       generatedWorkspaceAgentModelRefs(agent.ModelFallbacks),
-		Enabled:              agent.Enabled,
 		Source:               tuttigenerated.WorkspaceAgentSource(agent.Source),
 		Revision:             agent.Revision,
 		CreatedAt:            agent.CreatedAt,
@@ -268,39 +218,6 @@ func generatedWorkspaceAgent(view workspaceagentbiz.View) tuttigenerated.Workspa
 		result.Harness.Enabled = boolPointer(view.Harness.Enabled)
 	}
 	return result
-}
-
-func generatedWorkspaceAgentDraft(generated workspaceagentservice.GeneratedConfiguration) tuttigenerated.WorkspaceAgentDraftGeneration {
-	rules := make([]tuttigenerated.WorkspaceAgentGeneratedAutomationRule, 0, len(generated.AutomationRules))
-	for _, rule := range generated.AutomationRules {
-		item := tuttigenerated.WorkspaceAgentGeneratedAutomationRule{
-			Action:                   tuttigenerated.WorkspaceAgentGeneratedAutomationRuleAction(rule.Action),
-			MaxRunsPerSession:        rule.MaxRunsPerSession,
-			MaxTotalTokensPerSession: rule.MaxTotalTokensPerSession,
-			ModelPlanId:              rule.ModelPlanID,
-			Name:                     rule.Name,
-			Prompt:                   rule.Prompt,
-			Trigger:                  tuttigenerated.AutomationRuleTrigger(rule.Trigger),
-		}
-		if rule.Model != "" {
-			item.Model = stringPointer(rule.Model)
-		}
-		rules = append(rules, item)
-	}
-	return tuttigenerated.WorkspaceAgentDraftGeneration{
-		AutomationRules: rules,
-		CallConditions:  append([]string{}, generated.CallConditions...),
-		Instructions:    generated.Instructions,
-		Name:            generated.Name,
-		Purpose:         generated.Purpose,
-		Skills:          append([]string{}, generated.Skills...),
-		Usage: tuttigenerated.WorkspaceAgentGenerationUsage{
-			InputTokens:  generated.Usage.InputTokens,
-			OutputTokens: generated.Usage.OutputTokens,
-		},
-		UsedModel:       generated.UsedModel,
-		UsedModelPlanId: generated.UsedModelPlanID,
-	}
 }
 
 func bizWorkspaceAgentModelRefs(values *[]tuttigenerated.WorkspaceAgentModelRef) []workspaceagentbiz.ModelRef {

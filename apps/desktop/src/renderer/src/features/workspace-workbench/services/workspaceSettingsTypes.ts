@@ -99,19 +99,30 @@ export type WorkspaceAgentDefinition =
 /**
  * Local edit buffer for the simplified Agent editor: name, Agent Runtime,
  * plan + default model, description, and behavior text. Dormant contract
- * fields (fallback chain, capability allowlists, permission overrides) are
- * no longer editable and always save back to their neutral values.
+ * fields (fallback chain, capability allowlists) are not editable; the draft
+ * carries the stored values through opaquely so saving never clears them.
  */
 export interface WorkspaceAgentDraft {
   agentId: string | null;
   name: string;
-  purpose: string;
+  description: string;
   harnessAgentTargetId: string;
   modelPlanId: string;
   defaultModel: string;
   instructions: string;
   callConditions: string;
-  enabled: boolean;
+  dormant: WorkspaceAgentDormantFields;
+}
+
+/**
+ * Dormant WorkspaceAgent contract fields preserved verbatim between load and
+ * save. They have no editor surface; the daemon remains their authority.
+ */
+export interface WorkspaceAgentDormantFields {
+  readonly capabilitiesExplicit: boolean;
+  readonly modelFallbacks: WorkspaceAgentDefinition["modelFallbacks"];
+  readonly skills: readonly string[];
+  readonly tools: readonly string[];
 }
 
 export type WorkspaceAgentFeedbackKind =

@@ -39,9 +39,6 @@ function createTransportClient(
     async createWorkspaceAgent() {
       throw new Error("not used");
     },
-    async generateWorkspaceAgentDraft() {
-      throw new Error("not used");
-    },
     async updateWorkspaceAgent() {
       throw new Error("not used");
     },

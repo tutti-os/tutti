@@ -14,7 +14,6 @@ func TestNormalizeCanonicalizesLists(t *testing.T) {
 		HarnessAgentTargetID: " local:codex ",
 		Skills:               []string{" review ", "review", ""},
 		Tools:                nil,
-		Permissions:          []string{"workspace-write", " workspace-write "},
 		Source:               SourceUser,
 		Revision:             1,
 	})
@@ -29,9 +28,6 @@ func TestNormalizeCanonicalizesLists(t *testing.T) {
 	}
 	if agent.Tools == nil || len(agent.Tools) != 0 {
 		t.Fatalf("Normalize() tools = %#v, want non-nil empty", agent.Tools)
-	}
-	if len(agent.Permissions) != 1 || agent.Permissions[0] != "workspace-write" {
-		t.Fatalf("Normalize() permissions = %#v", agent.Permissions)
 	}
 }
 

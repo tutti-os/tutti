@@ -888,22 +888,22 @@ func (e CollaborationRunAdoption) Valid() bool {
 
 // Defines values for CollaborationRunMode.
 const (
-	CollaborationRunModeConsult  CollaborationRunMode = "consult"
-	CollaborationRunModeDelegate CollaborationRunMode = "delegate"
-	CollaborationRunModeFork     CollaborationRunMode = "fork"
-	CollaborationRunModeHandoff  CollaborationRunMode = "handoff"
+	Consult  CollaborationRunMode = "consult"
+	Delegate CollaborationRunMode = "delegate"
+	Fork     CollaborationRunMode = "fork"
+	Handoff  CollaborationRunMode = "handoff"
 )
 
 // Valid indicates whether the value is a known member of the CollaborationRunMode enum.
 func (e CollaborationRunMode) Valid() bool {
 	switch e {
-	case CollaborationRunModeConsult:
+	case Consult:
 		return true
-	case CollaborationRunModeDelegate:
+	case Delegate:
 		return true
-	case CollaborationRunModeFork:
+	case Fork:
 		return true
-	case CollaborationRunModeHandoff:
+	case Handoff:
 		return true
 	default:
 		return false
@@ -2080,21 +2080,6 @@ func (e WorkspaceAgentCompletedCommandStatus) Valid() bool {
 	case WorkspaceAgentCompletedCommandStatusCompleted:
 		return true
 	case WorkspaceAgentCompletedCommandStatusFailed:
-		return true
-	default:
-		return false
-	}
-}
-
-// Defines values for WorkspaceAgentGeneratedAutomationRuleAction.
-const (
-	WorkspaceAgentGeneratedAutomationRuleActionConsult WorkspaceAgentGeneratedAutomationRuleAction = "consult"
-)
-
-// Valid indicates whether the value is a known member of the WorkspaceAgentGeneratedAutomationRuleAction enum.
-func (e WorkspaceAgentGeneratedAutomationRuleAction) Valid() bool {
-	switch e {
-	case WorkspaceAgentGeneratedAutomationRuleActionConsult:
 		return true
 	default:
 		return false
@@ -3967,7 +3952,7 @@ type AutomationRuleTarget struct {
 	// RequiredCapabilities Retired consult-era field; always empty.
 	RequiredCapabilities []string `json:"requiredCapabilities"`
 
-	// WorkspaceAgentId Target Agent that receives the automated follow-up session. Accepts a WorkspaceAgent id or a built-in Harness AgentTarget id; the Agent must be enabled and launchable.
+	// WorkspaceAgentId Target Agent that receives the automated follow-up session. Accepts a WorkspaceAgent id or a built-in Harness AgentTarget id; the Agent must be launchable.
 	WorkspaceAgentId *string `json:"workspaceAgentId,omitempty"`
 }
 
@@ -4767,18 +4752,6 @@ type FixWorkspaceAppFactoryJobRequest struct {
 	Prompt string `json:"prompt"`
 }
 
-// GenerateWorkspaceAgentDraftRequest defines model for GenerateWorkspaceAgentDraftRequest.
-type GenerateWorkspaceAgentDraftRequest struct {
-	HarnessAgentTargetId string `json:"harnessAgentTargetId"`
-
-	// Model Defaults to the selected ModelPlan default model.
-	Model       *string `json:"model,omitempty"`
-	ModelPlanId string  `json:"modelPlanId"`
-
-	// Requirements Optional user guidance. An empty value asks for a generally useful configuration for the selected Harness.
-	Requirements string `json:"requirements"`
-}
-
 // GetAgentProviderComposerOptionsRequest defines model for GetAgentProviderComposerOptionsRequest.
 type GetAgentProviderComposerOptionsRequest struct {
 	// AgentTargetId Agent target whose provider and runtime context the composer options resolve against. Optional; when omitted the provider path parameter is used directly.
@@ -5528,19 +5501,17 @@ type PutModelPolicyRequest struct {
 type PutWorkspaceAgentRequest struct {
 	CallConditions []string `json:"callConditions"`
 
-	// CapabilitiesExplicit When true, Skills and tools are an explicit allowlist, including the ability to select none. Omit on update to preserve the stored mode; new Agents default to automatic compatible capabilities.
+	// CapabilitiesExplicit Dormant contract field without an editor surface. When true, Skills and tools are an explicit allowlist, including the ability to select none. Omit on update to preserve the stored mode; new Agents default to automatic compatible capabilities.
 	CapabilitiesExplicit *bool   `json:"capabilitiesExplicit,omitempty"`
 	DefaultModel         *string `json:"defaultModel,omitempty"`
-	Enabled              bool    `json:"enabled"`
+	Description          string  `json:"description"`
 	HarnessAgentTargetId string  `json:"harnessAgentTargetId"`
 	Instructions         string  `json:"instructions"`
 
-	// ModelFallbacks Ordered fallback Plan/model references. Omit or pass an empty array to disable failover.
+	// ModelFallbacks Dormant contract field without an editor surface. Ordered fallback Plan/model references. Omit or pass an empty array to disable failover; pass the stored value through to preserve it.
 	ModelFallbacks *[]WorkspaceAgentModelRef `json:"modelFallbacks,omitempty"`
 	ModelPlanId    *string                   `json:"modelPlanId,omitempty"`
 	Name           string                    `json:"name"`
-	Permissions    []string                  `json:"permissions"`
-	Purpose        string                    `json:"purpose"`
 	Skills         []string                  `json:"skills"`
 	Tools          []string                  `json:"tools"`
 }
@@ -6002,23 +5973,23 @@ type WorkspaceAgent struct {
 	// CallConditions Explicit, user-editable conditions that explain when another Agent or user should invoke this Agent.
 	CallConditions []string `json:"callConditions"`
 
-	// CapabilitiesExplicit False keeps Skills and tools synchronized with all capabilities compatible with the selected Harness. True makes the Skills and tools arrays an explicit allowlist; empty arrays then mean none.
-	CapabilitiesExplicit bool                  `json:"capabilitiesExplicit"`
-	CreatedAt            time.Time             `json:"createdAt"`
-	DefaultModel         *string               `json:"defaultModel,omitempty"`
-	Enabled              bool                  `json:"enabled"`
-	Harness              WorkspaceAgentHarness `json:"harness"`
+	// CapabilitiesExplicit Dormant contract field without an editor surface. False keeps Skills and tools synchronized with all capabilities compatible with the selected Harness. True makes the Skills and tools arrays an explicit allowlist; empty arrays then mean none.
+	CapabilitiesExplicit bool      `json:"capabilitiesExplicit"`
+	CreatedAt            time.Time `json:"createdAt"`
+	DefaultModel         *string   `json:"defaultModel,omitempty"`
+
+	// Description Short human-readable description shown with the Agent in directories and cards.
+	Description string                `json:"description"`
+	Harness     WorkspaceAgentHarness `json:"harness"`
 
 	// Id Opaque Agent option id. New ids use the workspace-agent prefix and may be passed to workspace Agent session APIs.
 	Id           string `json:"id"`
 	Instructions string `json:"instructions"`
 
-	// ModelFallbacks Ordered, explicit fallback chain used only when starting a new session and the primary Plan/model is not usable. Credentials remain daemon-owned.
+	// ModelFallbacks Dormant contract field without an editor surface. Ordered, explicit fallback chain used only when starting a new session and the primary Plan/model is not usable. Credentials remain daemon-owned.
 	ModelFallbacks []WorkspaceAgentModelRef `json:"modelFallbacks"`
 	ModelPlanId    *string                  `json:"modelPlanId,omitempty"`
 	Name           string                   `json:"name"`
-	Permissions    []string                 `json:"permissions"`
-	Purpose        string                   `json:"purpose"`
 	Revision       int64                    `json:"revision"`
 	Skills         []string                 `json:"skills"`
 
@@ -6081,36 +6052,6 @@ type WorkspaceAgentCompletedCommandKind string
 // WorkspaceAgentCompletedCommandStatus defines model for WorkspaceAgentCompletedCommand.Status.
 type WorkspaceAgentCompletedCommandStatus string
 
-// WorkspaceAgentDraftGeneration defines model for WorkspaceAgentDraftGeneration.
-type WorkspaceAgentDraftGeneration struct {
-	AutomationRules []WorkspaceAgentGeneratedAutomationRule `json:"automationRules"`
-	CallConditions  []string                                `json:"callConditions"`
-	Instructions    string                                  `json:"instructions"`
-	Name            string                                  `json:"name"`
-	Purpose         string                                  `json:"purpose"`
-	Skills          []string                                `json:"skills"`
-	Usage           WorkspaceAgentGenerationUsage           `json:"usage"`
-	UsedModel       string                                  `json:"usedModel"`
-	UsedModelPlanId string                                  `json:"usedModelPlanId"`
-}
-
-// WorkspaceAgentGeneratedAutomationRule defines model for WorkspaceAgentGeneratedAutomationRule.
-type WorkspaceAgentGeneratedAutomationRule struct {
-	Action                   WorkspaceAgentGeneratedAutomationRuleAction `json:"action"`
-	MaxRunsPerSession        int                                         `json:"maxRunsPerSession"`
-	MaxTotalTokensPerSession int64                                       `json:"maxTotalTokensPerSession"`
-	Model                    *string                                     `json:"model,omitempty"`
-	ModelPlanId              string                                      `json:"modelPlanId"`
-	Name                     string                                      `json:"name"`
-	Prompt                   string                                      `json:"prompt"`
-
-	// Trigger Lifecycle outcome that evaluates the rule. A failed-turn rule can escalate to a stronger Agent as a bounded rescue attempt; automated outcomes never final-accept the source task.
-	Trigger AutomationRuleTrigger `json:"trigger"`
-}
-
-// WorkspaceAgentGeneratedAutomationRuleAction defines model for WorkspaceAgentGeneratedAutomationRule.Action.
-type WorkspaceAgentGeneratedAutomationRuleAction string
-
 // WorkspaceAgentGeneratedFileEntry defines model for WorkspaceAgentGeneratedFileEntry.
 type WorkspaceAgentGeneratedFileEntry struct {
 	Label string `json:"label"`
@@ -6123,12 +6064,6 @@ type WorkspaceAgentGeneratedFileListResponse struct {
 	HasMore     bool                               `json:"hasMore"`
 	NextCursor  *string                            `json:"nextCursor,omitempty"`
 	WorkspaceId string                             `json:"workspaceId"`
-}
-
-// WorkspaceAgentGenerationUsage defines model for WorkspaceAgentGenerationUsage.
-type WorkspaceAgentGenerationUsage struct {
-	InputTokens  int64 `json:"inputTokens"`
-	OutputTokens int64 `json:"outputTokens"`
 }
 
 // WorkspaceAgentHarness defines model for WorkspaceAgentHarness.
@@ -7617,9 +7552,6 @@ type InstallAgentTargetRuntimeJSONRequestBody = InstallAgentTargetRuntimeRequest
 
 // CreateWorkspaceAgentJSONRequestBody defines body for CreateWorkspaceAgent for application/json ContentType.
 type CreateWorkspaceAgentJSONRequestBody = PutWorkspaceAgentRequest
-
-// GenerateWorkspaceAgentDraftJSONRequestBody defines body for GenerateWorkspaceAgentDraft for application/json ContentType.
-type GenerateWorkspaceAgentDraftJSONRequestBody = GenerateWorkspaceAgentDraftRequest
 
 // UpdateWorkspaceAgentJSONRequestBody defines body for UpdateWorkspaceAgent for application/json ContentType.
 type UpdateWorkspaceAgentJSONRequestBody = PutWorkspaceAgentRequest

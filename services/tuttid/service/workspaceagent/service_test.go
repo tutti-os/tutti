@@ -189,7 +189,6 @@ func TestServiceLogsWorkspaceAgentLifecycleEvents(t *testing.T) {
 		HarnessAgentTargetID: "local:codex",
 		ModelPlanID:          "mp-one",
 		DefaultModel:         "gpt-5",
-		Enabled:              true,
 	})
 	if err != nil {
 		t.Fatalf("Create() error = %v", err)
@@ -201,7 +200,6 @@ func TestServiceLogsWorkspaceAgentLifecycleEvents(t *testing.T) {
 		HarnessAgentTargetID: "local:codex",
 		ModelPlanID:          "mp-one",
 		DefaultModel:         "gpt-5",
-		Enabled:              true,
 	}); err != nil {
 		t.Fatalf("Update() error = %v", err)
 	}
@@ -232,7 +230,6 @@ func TestServiceLogsWorkspaceAgentLifecycleEvents(t *testing.T) {
 	deletedRecord := handler.findEvent("workspace_agent.deleted")
 	if deletedRecord["harness_agent_target_id"] != "local:codex" ||
 		deletedRecord["model_plan_id"] != "mp-one" ||
-		deletedRecord["enabled"] != "true" ||
 		deletedRecord["revision"] != "2" {
 		t.Fatalf("deleted log configuration = %v", deletedRecord)
 	}
@@ -249,14 +246,12 @@ func TestServiceCreateAndResolve(t *testing.T) {
 	view, err := service.Create(context.Background(), PutInput{
 		WorkspaceID:          "ws",
 		Name:                 " Builder ",
-		Purpose:              "Implement safely",
+		Description:          "Implement safely",
 		HarnessAgentTargetID: "local:codex",
 		ModelPlanID:          "mp-one",
 		Instructions:         " Keep changes focused. ",
 		Skills:               []string{"go", " go "},
 		Tools:                []string{"git"},
-		Permissions:          []string{"workspace-write"},
-		Enabled:              true,
 	})
 	if err != nil {
 		t.Fatalf("Create() error = %v", err)
@@ -295,7 +290,6 @@ func TestServiceUpdateReplacesAndIncrementsRevision(t *testing.T) {
 		ModelPlanID:          "mp-one",
 		DefaultModel:         "gpt-5",
 		Skills:               []string{"go"},
-		Enabled:              true,
 	})
 	if err != nil {
 		t.Fatalf("Create() error = %v", err)
@@ -305,7 +299,6 @@ func TestServiceUpdateReplacesAndIncrementsRevision(t *testing.T) {
 		AgentID:              created.Agent.ID,
 		Name:                 "Builder v2",
 		HarnessAgentTargetID: "local:codex",
-		Enabled:              false,
 	})
 	if err != nil {
 		t.Fatalf("Update() error = %v", err)
@@ -313,11 +306,11 @@ func TestServiceUpdateReplacesAndIncrementsRevision(t *testing.T) {
 	if updated.Agent.Revision != 2 || updated.Agent.ModelPlanID != "" || updated.Agent.DefaultModel != "" {
 		t.Fatalf("Update() replacement = %#v", updated.Agent)
 	}
-	if updated.Agent.Skills == nil || len(updated.Agent.Skills) != 0 || updated.Agent.Enabled {
-		t.Fatalf("Update() lists/enabled = %#v", updated.Agent)
+	if updated.Agent.Skills == nil || len(updated.Agent.Skills) != 0 {
+		t.Fatalf("Update() lists = %#v", updated.Agent)
 	}
-	if _, err := service.Resolve(context.Background(), "ws", created.Agent.ID); !errors.Is(err, ErrAgentDisabled) {
-		t.Fatalf("Resolve() disabled error = %v", err)
+	if _, err := service.Resolve(context.Background(), "ws", created.Agent.ID); err != nil {
+		t.Fatalf("Resolve() after update error = %v", err)
 	}
 }
 
@@ -329,7 +322,6 @@ func TestServiceUpdateInvalidatesWithoutResetWhenModelSelectionIsUnchanged(t *te
 		HarnessAgentTargetID: "local:codex",
 		ModelPlanID:          "mp-one",
 		DefaultModel:         "gpt-5",
-		Enabled:              true,
 	})
 	if err != nil {
 		t.Fatalf("Create() error = %v", err)
@@ -344,7 +336,6 @@ func TestServiceUpdateInvalidatesWithoutResetWhenModelSelectionIsUnchanged(t *te
 		ModelPlanID:          "mp-one",
 		DefaultModel:         "gpt-5",
 		Instructions:         "New instructions",
-		Enabled:              true,
 	})
 	if err != nil {
 		t.Fatalf("Update() error = %v", err)
@@ -369,14 +360,13 @@ func TestServiceRejectsHarnessPlanProtocolMismatch(t *testing.T) {
 		Name:                 "Wrong",
 		HarnessAgentTargetID: "local:codex",
 		ModelPlanID:          "mp-anthropic",
-		Enabled:              true,
 	})
 	if !errors.Is(err, ErrHarnessPlanProtocolMismatch) {
 		t.Fatalf("Create() error = %v, want protocol mismatch", err)
 	}
 }
 
-func TestServiceRejectsEnabledAgentWithDisabledRuntimeDependencies(t *testing.T) {
+func TestServiceRejectsAgentWithDisabledRuntimeDependencies(t *testing.T) {
 	service, _ := testWorkspaceAgentService()
 	service.Targets = staticTargets{
 		"local:codex": {
@@ -392,7 +382,6 @@ func TestServiceRejectsEnabledAgentWithDisabledRuntimeDependencies(t *testing.T)
 		WorkspaceID:          "ws",
 		Name:                 "Unavailable harness",
 		HarnessAgentTargetID: "local:codex",
-		Enabled:              true,
 	})
 	if !errors.Is(err, ErrHarnessDisabled) {
 		t.Fatalf("Create() disabled harness error = %v", err)
@@ -412,7 +401,6 @@ func TestServiceRejectsEnabledAgentWithDisabledRuntimeDependencies(t *testing.T)
 		Name:                 "Unavailable plan",
 		HarnessAgentTargetID: "local:codex",
 		ModelPlanID:          "mp-one",
-		Enabled:              true,
 	})
 	if !errors.Is(err, ErrPlanNotUsable) {
 		t.Fatalf("Create() disabled plan error = %v", err)
@@ -439,7 +427,6 @@ func TestServiceResolveUsesExplicitFallbackForNewSession(t *testing.T) {
 		ModelFallbacks: []workspaceagentbiz.ModelRef{{
 			ModelPlanID: "mp-fallback",
 		}},
-		Enabled: true,
 	})
 	if err != nil {
 		t.Fatalf("Create() error = %v", err)
@@ -469,7 +456,6 @@ func TestServiceGetKeepsMissingHarnessRepairable(t *testing.T) {
 		WorkspaceID:          "ws",
 		Name:                 "Repair me",
 		HarnessAgentTargetID: "local:gone",
-		Enabled:              true,
 		Source:               workspaceagentbiz.SourceUser,
 		Revision:             1,
 		CreatedAt:            now,
@@ -496,7 +482,6 @@ func TestServiceListsWorkspaceAgentModelPlanReferences(t *testing.T) {
 		Name:                 "Builder",
 		HarnessAgentTargetID: "local:codex",
 		ModelPlanID:          "mp-one",
-		Enabled:              true,
 	})
 	if err != nil {
 		t.Fatalf("Create() error = %v", err)
@@ -517,7 +502,6 @@ func TestServiceResolvesWorkspaceAgentDefaultsForPlanChangeEvents(t *testing.T) 
 		Name:                 "Builder",
 		HarnessAgentTargetID: "local:codex",
 		ModelPlanID:          "mp-one",
-		Enabled:              true,
 	})
 	if err != nil {
 		t.Fatalf("Create() error = %v", err)
@@ -532,12 +516,11 @@ func TestServiceResolvesWorkspaceAgentDefaultsForPlanChangeEvents(t *testing.T) 
 }
 
 func TestServiceValidatesAutomationAgentReferenceStrictly(t *testing.T) {
-	service, _ := testWorkspaceAgentService()
+	service, store := testWorkspaceAgentService()
 	created, err := service.Create(context.Background(), PutInput{
 		WorkspaceID:          "ws",
 		Name:                 "Reviewer",
 		HarnessAgentTargetID: "local:codex",
-		Enabled:              true,
 	})
 	if err != nil {
 		t.Fatalf("Create() error = %v", err)
@@ -545,18 +528,22 @@ func TestServiceValidatesAutomationAgentReferenceStrictly(t *testing.T) {
 	if err := service.ValidateAutomationAgentReference(context.Background(), "ws", created.Agent.ID); err != nil {
 		t.Fatalf("ValidateAutomationAgentReference() error = %v", err)
 	}
-	_, err = service.Update(context.Background(), PutInput{
+	// The strict boundary still rejects an Agent whose Harness is unlaunchable.
+	now := time.Unix(1700000000, 0).UTC()
+	if err := store.PutWorkspaceAgent(context.Background(), workspaceagentbiz.Agent{
+		ID:                   "workspace-agent:gone",
 		WorkspaceID:          "ws",
-		AgentID:              created.Agent.ID,
-		Name:                 "Reviewer",
-		HarnessAgentTargetID: "local:codex",
-		Enabled:              false,
-	})
-	if err != nil {
-		t.Fatalf("Update() error = %v", err)
+		Name:                 "Missing harness",
+		HarnessAgentTargetID: "local:gone",
+		Source:               workspaceagentbiz.SourceUser,
+		Revision:             1,
+		CreatedAt:            now,
+		UpdatedAt:            now,
+	}); err != nil {
+		t.Fatalf("PutWorkspaceAgent() error = %v", err)
 	}
-	if err := service.ValidateAutomationAgentReference(context.Background(), "ws", created.Agent.ID); !errors.Is(err, ErrAgentDisabled) {
-		t.Fatalf("ValidateAutomationAgentReference() error = %v, want ErrAgentDisabled", err)
+	if err := service.ValidateAutomationAgentReference(context.Background(), "ws", "workspace-agent:gone"); !errors.Is(err, ErrHarnessUnavailable) {
+		t.Fatalf("ValidateAutomationAgentReference() error = %v, want ErrHarnessUnavailable", err)
 	}
 }
 

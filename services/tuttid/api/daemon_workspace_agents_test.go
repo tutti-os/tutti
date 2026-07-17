@@ -15,7 +15,6 @@ type stubWorkspaceAgentService struct {
 	view        workspaceagentbiz.View
 	err         error
 	createdWith workspaceagentservice.PutInput
-	generated   workspaceagentservice.GeneratedConfiguration
 }
 
 func (s *stubWorkspaceAgentService) List(context.Context, string) ([]workspaceagentbiz.View, error) {
@@ -34,10 +33,6 @@ func (s *stubWorkspaceAgentService) Create(_ context.Context, input workspaceage
 	return s.view, s.err
 }
 
-func (s *stubWorkspaceAgentService) GenerateConfiguration(context.Context, workspaceagentservice.GenerateInput) (workspaceagentservice.GeneratedConfiguration, error) {
-	return s.generated, s.err
-}
-
 func (s *stubWorkspaceAgentService) Update(_ context.Context, _ workspaceagentservice.PutInput) (workspaceagentbiz.View, error) {
 	return s.view, s.err
 }
@@ -53,14 +48,12 @@ func testWorkspaceAgentView() workspaceagentbiz.View {
 			ID:                   "workspace-agent:one",
 			WorkspaceID:          "ws",
 			Name:                 "Builder",
-			Purpose:              "Build",
+			Description:          "Build",
 			HarnessAgentTargetID: "local:codex",
 			Instructions:         "Focus",
 			CallConditions:       []string{"When implementation is needed"},
 			Skills:               []string{"go"},
 			Tools:                []string{},
-			Permissions:          []string{"workspace-write"},
-			Enabled:              true,
 			Source:               workspaceagentbiz.SourceUser,
 			Revision:             1,
 			CreatedAt:            now,
@@ -84,14 +77,12 @@ func TestCreateWorkspaceAgentMapsRequestAndProjection(t *testing.T) {
 		WorkspaceID: "ws",
 		Body: &tuttigenerated.PutWorkspaceAgentRequest{
 			Name:                 "Builder",
-			Purpose:              "Build",
+			Description:          "Build",
 			HarnessAgentTargetId: "local:codex",
 			Instructions:         "Focus",
 			CallConditions:       []string{"When implementation is needed"},
 			Skills:               []string{"go"},
 			Tools:                []string{},
-			Permissions:          []string{"workspace-write"},
-			Enabled:              true,
 		},
 	})
 	if err != nil {
@@ -107,7 +98,7 @@ func TestCreateWorkspaceAgentMapsRequestAndProjection(t *testing.T) {
 	if created.Harness.Provider == nil || *created.Harness.Provider != "codex" || created.Harness.IconKey == nil {
 		t.Fatalf("CreateWorkspaceAgent() harness = %#v", created.Harness)
 	}
-	if service.createdWith.HarnessAgentTargetID != "local:codex" || !service.createdWith.Enabled {
+	if service.createdWith.HarnessAgentTargetID != "local:codex" || service.createdWith.Description != "Build" {
 		t.Fatalf("CreateWorkspaceAgent() input = %#v", service.createdWith)
 	}
 	if len(service.createdWith.CallConditions) != 1 || len(created.CallConditions) != 1 {
@@ -130,46 +121,5 @@ func TestGetWorkspaceAgentReturnsSpecificNotFoundCode(t *testing.T) {
 	}
 	if notFound.Error.Code != tuttigenerated.WorkspaceAgentNotFound {
 		t.Fatalf("GetWorkspaceAgent() code = %q", notFound.Error.Code)
-	}
-}
-
-func TestGenerateWorkspaceAgentDraftProjectsModelAndDisabledRuleSuggestion(t *testing.T) {
-	api := DaemonAPI{WorkspaceAgentService: &stubWorkspaceAgentService{generated: workspaceagentservice.GeneratedConfiguration{
-		Name:            "Reviewer",
-		Purpose:         "Review releases",
-		Instructions:    "Review evidence.",
-		CallConditions:  []string{"Before release"},
-		Skills:          []string{"code-review"},
-		UsedModelPlanID: "plan-1",
-		UsedModel:       "gpt-5",
-		Usage:           workspaceagentservice.GenerationUsage{InputTokens: 20, OutputTokens: 10},
-		AutomationRules: []workspaceagentservice.GeneratedAutomationRule{{
-			Name:                     "Completion review",
-			Trigger:                  "on_task_complete",
-			Action:                   "consult",
-			ModelPlanID:              "plan-1",
-			Model:                    "gpt-5",
-			Prompt:                   "Review and return VERDICT: PASS or VERDICT: FAIL.",
-			MaxRunsPerSession:        1,
-			MaxTotalTokensPerSession: 50000,
-		}},
-	}}}
-	response, err := api.GenerateWorkspaceAgentDraft(context.Background(), tuttigenerated.GenerateWorkspaceAgentDraftRequestObject{
-		WorkspaceID: "ws",
-		Body: &tuttigenerated.GenerateWorkspaceAgentDraftRequest{
-			HarnessAgentTargetId: "local:codex",
-			ModelPlanId:          "plan-1",
-			Requirements:         "release review",
-		},
-	})
-	if err != nil {
-		t.Fatalf("GenerateWorkspaceAgentDraft() error = %v", err)
-	}
-	generated, ok := response.(tuttigenerated.GenerateWorkspaceAgentDraft200JSONResponse)
-	if !ok {
-		t.Fatalf("GenerateWorkspaceAgentDraft() response = %T", response)
-	}
-	if generated.UsedModelPlanId != "plan-1" || generated.UsedModel != "gpt-5" || len(generated.AutomationRules) != 1 {
-		t.Fatalf("generated = %#v", generated)
 	}
 }

@@ -37,13 +37,12 @@ type sessionRuntimeSnapshot struct {
 	ModelFingerprint         string
 	ModelDefaultModel        string
 	Name                     string
-	Purpose                  string
+	Description              string
 	Instructions             string
 	CallConditions           []string
 	CapabilitiesExplicit     bool
 	Skills                   []string
 	Tools                    []string
-	Permissions              []string
 	EffectiveConfig          map[string]any
 }
 
@@ -88,8 +87,8 @@ func runtimeContextWithSessionRuntimeSnapshot(
 	if name := strings.TrimSpace(input.AgentName); name != "" {
 		agentDefinition["name"] = name
 	}
-	if purpose := strings.TrimSpace(input.AgentPurpose); purpose != "" {
-		agentDefinition["purpose"] = purpose
+	if description := strings.TrimSpace(input.AgentDescription); description != "" {
+		agentDefinition["description"] = description
 	}
 	if instructions := strings.TrimSpace(input.AgentInstructions); instructions != "" {
 		agentDefinition["instructions"] = instructions
@@ -105,9 +104,6 @@ func runtimeContextWithSessionRuntimeSnapshot(
 	}
 	if tools := normalizedSnapshotStrings(input.AgentTools); len(tools) > 0 {
 		agentDefinition["tools"] = tools
-	}
-	if permissions := normalizedSnapshotStrings(input.AgentPermissions); len(permissions) > 0 {
-		agentDefinition["permissions"] = permissions
 	}
 	if len(agentDefinition) > 0 {
 		snapshot["agentDefinition"] = agentDefinition
@@ -170,13 +166,12 @@ func sessionRuntimeSnapshotFromContext(runtimeContext map[string]any) (sessionRu
 		ModelFingerprint:         snapshotString(configuration["fingerprint"]),
 		ModelDefaultModel:        snapshotString(configuration["defaultModel"]),
 		Name:                     snapshotNestedString(payload, "agentDefinition", "name"),
-		Purpose:                  snapshotNestedString(payload, "agentDefinition", "purpose"),
+		Description:              snapshotAgentDefinitionDescription(payload),
 		Instructions:             snapshotNestedString(payload, "agentDefinition", "instructions"),
 		CallConditions:           snapshotNestedStrings(payload, "agentDefinition", "callConditions"),
 		CapabilitiesExplicit:     snapshotNestedBool(payload, "agentDefinition", "capabilitiesExplicit"),
 		Skills:                   snapshotNestedStrings(payload, "agentDefinition", "skills"),
 		Tools:                    snapshotNestedStrings(payload, "agentDefinition", "tools"),
-		Permissions:              snapshotNestedStrings(payload, "agentDefinition", "permissions"),
 		EffectiveConfig:          snapshotMap(payload["effectiveConfig"]),
 	}
 	if revision, ok := snapshotInt64(payload["workspaceAgentRevision"]); ok {
@@ -201,6 +196,17 @@ func sessionRuntimeSnapshotFromContext(runtimeContext map[string]any) (sessionRu
 		return sessionRuntimeSnapshot{}, true, fmt.Errorf("%w: model configuration source is invalid", ErrSessionRuntimeSnapshotUnavailable)
 	}
 	return snapshot, true, nil
+}
+
+// snapshotAgentDefinitionDescription reads the retained description text.
+// Snapshots written before the Wave 4-2 contract cleanup stored it under the
+// retired purpose key; durable session records keep resuming through the
+// fallback read.
+func snapshotAgentDefinitionDescription(payload map[string]any) string {
+	if description := snapshotNestedString(payload, "agentDefinition", "description"); description != "" {
+		return description
+	}
+	return snapshotNestedString(payload, "agentDefinition", "purpose")
 }
 
 func snapshotNestedBool(payload map[string]any, parent string, key string) bool {

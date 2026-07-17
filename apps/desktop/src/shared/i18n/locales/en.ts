@@ -804,7 +804,7 @@ export const en = {
           emptyDescription:
             "Add an Agent to map an Agent Runtime and model plan into a reusable conversation option.",
           emptyTitle: "No workspace Agents yet",
-          enabled: "Ready",
+          ready: "Ready",
           harnessLabel: "Agent Runtime",
           harnessUnavailable: "Agent Runtime unavailable",
           behaviorDetailsTitle: "Instructions and call conditions",
@@ -823,8 +823,8 @@ export const en = {
           noModelPlan: "Agent Runtime default models",
           onePerLine: "One entry per line",
           planDefaultModel: "Plan default",
-          purposeLabel: "Description",
-          purposePlaceholder:
+          descriptionLabel: "Description",
+          descriptionPlaceholder:
             "Describe this Agent's responsibilities and when to use it.",
           requiredFields: "Enter a name and choose an Agent Runtime.",
           retry: "Try again",

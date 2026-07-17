@@ -69,9 +69,6 @@ export function WorkspaceAutomationRuleEditor({
   onUpdate
 }: WorkspaceAutomationRuleEditorProps) {
   const { t } = useTranslation();
-  const sourceAgents = agents.filter(
-    (agent) => agent.enabled || agent.id === draft.sourceWorkspaceAgentId
-  );
   // A stored target that no longer resolves stays visible under its raw id
   // so editing never silently retargets the rule.
   const staleTarget =
@@ -191,7 +188,7 @@ export function WorkspaceAutomationRuleEditor({
               <SelectItem value={NO_SOURCE_VALUE}>
                 {t("workspace.settings.apps.automationRules.allAgents")}
               </SelectItem>
-              {sourceAgents.map((agent) => (
+              {agents.map((agent) => (
                 <SelectItem key={agent.id} value={agent.id}>
                   {agent.name}
                 </SelectItem>

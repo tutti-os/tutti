@@ -206,11 +206,10 @@ func TestWorkspaceAgentDefinitionIsAppendedToRuntimePolicy(t *testing.T) {
 		AgentSessionID:    "session-1",
 		Provider:          "codex",
 		AgentName:         "Careful Reviewer",
-		AgentPurpose:      "Catch correctness regressions.",
+		AgentDescription:  "Catch correctness regressions.",
 		AgentInstructions: "Review changes before editing.",
 		AgentSkills:       []string{"host/reviewer"},
 		AgentTools:        []string{"browser"},
-		AgentPermissions:  []string{"workspace-write"},
 	})
 	for _, want := range []string{
 		"# Workspace Agent Configuration",
@@ -219,7 +218,6 @@ func TestWorkspaceAgentDefinitionIsAppendedToRuntimePolicy(t *testing.T) {
 		"Review changes before editing.",
 		"`host/reviewer`",
 		"`browser`",
-		"`workspace-write`",
 		"cannot override its security",
 	} {
 		if !strings.Contains(policy, want) {

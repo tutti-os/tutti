@@ -24,7 +24,7 @@ const (
 	SourceLegacyBinding = "legacy_binding"
 
 	maxNameLength         = 120
-	maxPurposeLength      = 1000
+	maxDescriptionLength  = 1000
 	maxInstructionsLength = 100000
 )
 
@@ -36,7 +36,7 @@ type Agent struct {
 	ID                   string     `json:"id"`
 	WorkspaceID          string     `json:"workspaceId"`
 	Name                 string     `json:"name"`
-	Purpose              string     `json:"purpose"`
+	Description          string     `json:"description"`
 	HarnessAgentTargetID string     `json:"harnessAgentTargetId"`
 	ModelPlanID          string     `json:"modelPlanId,omitempty"`
 	DefaultModel         string     `json:"defaultModel,omitempty"`
@@ -46,8 +46,6 @@ type Agent struct {
 	CapabilitiesExplicit bool       `json:"capabilitiesExplicit"`
 	Skills               []string   `json:"skills"`
 	Tools                []string   `json:"tools"`
-	Permissions          []string   `json:"permissions"`
-	Enabled              bool       `json:"enabled"`
 	Source               string     `json:"source"`
 	Revision             int64      `json:"revision"`
 	CreatedAt            time.Time  `json:"createdAt"`
@@ -93,7 +91,7 @@ func Normalize(agent Agent) (Agent, error) {
 	agent.ID = strings.TrimSpace(agent.ID)
 	agent.WorkspaceID = strings.TrimSpace(agent.WorkspaceID)
 	agent.Name = strings.TrimSpace(agent.Name)
-	agent.Purpose = strings.TrimSpace(agent.Purpose)
+	agent.Description = strings.TrimSpace(agent.Description)
 	agent.HarnessAgentTargetID = strings.TrimSpace(agent.HarnessAgentTargetID)
 	agent.ModelPlanID = strings.TrimSpace(agent.ModelPlanID)
 	agent.DefaultModel = strings.TrimSpace(agent.DefaultModel)
@@ -103,7 +101,6 @@ func Normalize(agent Agent) (Agent, error) {
 	agent.CallConditions = NormalizeStringList(agent.CallConditions)
 	agent.Skills = NormalizeStringList(agent.Skills)
 	agent.Tools = NormalizeStringList(agent.Tools)
-	agent.Permissions = NormalizeStringList(agent.Permissions)
 
 	switch {
 	case agent.ID == "":
@@ -114,8 +111,8 @@ func Normalize(agent Agent) (Agent, error) {
 		return Agent{}, fmt.Errorf("%w: name is required", ErrInvalidAgent)
 	case utf8.RuneCountInString(agent.Name) > maxNameLength:
 		return Agent{}, fmt.Errorf("%w: name is too long", ErrInvalidAgent)
-	case utf8.RuneCountInString(agent.Purpose) > maxPurposeLength:
-		return Agent{}, fmt.Errorf("%w: purpose is too long", ErrInvalidAgent)
+	case utf8.RuneCountInString(agent.Description) > maxDescriptionLength:
+		return Agent{}, fmt.Errorf("%w: description is too long", ErrInvalidAgent)
 	case utf8.RuneCountInString(agent.Instructions) > maxInstructionsLength:
 		return Agent{}, fmt.Errorf("%w: instructions are too long", ErrInvalidAgent)
 	case agent.HarnessAgentTargetID == "":
@@ -157,7 +154,6 @@ func Clone(agent Agent) Agent {
 	agent.CallConditions = append([]string(nil), agent.CallConditions...)
 	agent.Skills = append([]string(nil), agent.Skills...)
 	agent.Tools = append([]string(nil), agent.Tools...)
-	agent.Permissions = append([]string(nil), agent.Permissions...)
 	agent.ModelFallbacks = append([]ModelRef(nil), agent.ModelFallbacks...)
 	if agent.Skills == nil {
 		agent.Skills = []string{}
@@ -167,9 +163,6 @@ func Clone(agent Agent) Agent {
 	}
 	if agent.Tools == nil {
 		agent.Tools = []string{}
-	}
-	if agent.Permissions == nil {
-		agent.Permissions = []string{}
 	}
 	if agent.ModelFallbacks == nil {
 		agent.ModelFallbacks = []ModelRef{}

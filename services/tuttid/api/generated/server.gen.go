@@ -245,9 +245,6 @@ type ServerInterface interface {
 	// Create one selectable workspace Agent
 	// (POST /v1/workspaces/{workspaceID}/agents)
 	CreateWorkspaceAgent(w http.ResponseWriter, r *http.Request, workspaceID WorkspaceID)
-	// Generate a reviewable workspace Agent configuration draft
-	// (POST /v1/workspaces/{workspaceID}/agents/generate-draft)
-	GenerateWorkspaceAgentDraft(w http.ResponseWriter, r *http.Request, workspaceID WorkspaceID)
 	// Delete one workspace Agent configuration
 	// (DELETE /v1/workspaces/{workspaceID}/agents/{workspaceAgentID})
 	DeleteWorkspaceAgent(w http.ResponseWriter, r *http.Request, workspaceID WorkspaceID, workspaceAgentID WorkspaceAgentID)
@@ -3492,38 +3489,6 @@ func (siw *ServerInterfaceWrapper) CreateWorkspaceAgent(w http.ResponseWriter, r
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.CreateWorkspaceAgent(w, r, workspaceID)
-	}))
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		handler = middleware(handler)
-	}
-
-	handler.ServeHTTP(w, r)
-}
-
-// GenerateWorkspaceAgentDraft operation middleware
-func (siw *ServerInterfaceWrapper) GenerateWorkspaceAgentDraft(w http.ResponseWriter, r *http.Request) {
-
-	var err error
-	_ = err
-
-	// ------------- Path parameter "workspaceID" -------------
-	var workspaceID WorkspaceID
-
-	err = runtime.BindStyledParameterWithOptions("simple", "workspaceID", r.PathValue("workspaceID"), &workspaceID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: ""})
-	if err != nil {
-		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "workspaceID", Err: err})
-		return
-	}
-
-	ctx := r.Context()
-
-	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
-
-	r = r.WithContext(ctx)
-
-	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.GenerateWorkspaceAgentDraft(w, r, workspaceID)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -8987,7 +8952,6 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/workspaces/{workspaceID}/agent-targets/{agentTargetID}/setup/install", wrapper.InstallAgentTargetRuntime)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/workspaces/{workspaceID}/agents", wrapper.ListWorkspaceAgents)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/workspaces/{workspaceID}/agents", wrapper.CreateWorkspaceAgent)
-	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/workspaces/{workspaceID}/agents/generate-draft", wrapper.GenerateWorkspaceAgentDraft)
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/v1/workspaces/{workspaceID}/agents/{workspaceAgentID}", wrapper.DeleteWorkspaceAgent)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/workspaces/{workspaceID}/agents/{workspaceAgentID}", wrapper.GetWorkspaceAgent)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/v1/workspaces/{workspaceID}/agents/{workspaceAgentID}", wrapper.UpdateWorkspaceAgent)
@@ -16926,123 +16890,6 @@ type CreateWorkspaceAgent503JSONResponse struct {
 }
 
 func (response CreateWorkspaceAgent503JSONResponse) VisitCreateWorkspaceAgentResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(503)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type GenerateWorkspaceAgentDraftRequestObject struct {
-	WorkspaceID WorkspaceID `json:"workspaceID"`
-	Body        *GenerateWorkspaceAgentDraftJSONRequestBody
-}
-
-type GenerateWorkspaceAgentDraftResponseObject interface {
-	VisitGenerateWorkspaceAgentDraftResponse(w http.ResponseWriter) error
-}
-
-type GenerateWorkspaceAgentDraft200JSONResponse WorkspaceAgentDraftGeneration
-
-func (response GenerateWorkspaceAgentDraft200JSONResponse) VisitGenerateWorkspaceAgentDraftResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(200)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type GenerateWorkspaceAgentDraft400JSONResponse struct {
-	InvalidRequestErrorJSONResponse
-}
-
-func (response GenerateWorkspaceAgentDraft400JSONResponse) VisitGenerateWorkspaceAgentDraftResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(400)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type GenerateWorkspaceAgentDraft401JSONResponse struct{ UnauthorizedErrorJSONResponse }
-
-func (response GenerateWorkspaceAgentDraft401JSONResponse) VisitGenerateWorkspaceAgentDraftResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(401)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type GenerateWorkspaceAgentDraft404JSONResponse struct {
-	WorkspaceNotFoundErrorJSONResponse
-}
-
-func (response GenerateWorkspaceAgentDraft404JSONResponse) VisitGenerateWorkspaceAgentDraftResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(404)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type GenerateWorkspaceAgentDraft405JSONResponse struct {
-	MethodNotAllowedErrorJSONResponse
-}
-
-func (response GenerateWorkspaceAgentDraft405JSONResponse) VisitGenerateWorkspaceAgentDraftResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(405)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type GenerateWorkspaceAgentDraft502JSONResponse struct {
-	WorkspaceOperationErrorJSONResponse
-}
-
-func (response GenerateWorkspaceAgentDraft502JSONResponse) VisitGenerateWorkspaceAgentDraftResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(502)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type GenerateWorkspaceAgentDraft503JSONResponse struct {
-	ServiceUnavailableErrorJSONResponse
-}
-
-func (response GenerateWorkspaceAgentDraft503JSONResponse) VisitGenerateWorkspaceAgentDraftResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response); err != nil {
@@ -31759,9 +31606,6 @@ type StrictServerInterface interface {
 	// Create one selectable workspace Agent
 	// (POST /v1/workspaces/{workspaceID}/agents)
 	CreateWorkspaceAgent(ctx context.Context, request CreateWorkspaceAgentRequestObject) (CreateWorkspaceAgentResponseObject, error)
-	// Generate a reviewable workspace Agent configuration draft
-	// (POST /v1/workspaces/{workspaceID}/agents/generate-draft)
-	GenerateWorkspaceAgentDraft(ctx context.Context, request GenerateWorkspaceAgentDraftRequestObject) (GenerateWorkspaceAgentDraftResponseObject, error)
 	// Delete one workspace Agent configuration
 	// (DELETE /v1/workspaces/{workspaceID}/agents/{workspaceAgentID})
 	DeleteWorkspaceAgent(ctx context.Context, request DeleteWorkspaceAgentRequestObject) (DeleteWorkspaceAgentResponseObject, error)
@@ -34398,41 +34242,6 @@ func (sh *strictHandler) CreateWorkspaceAgent(w http.ResponseWriter, r *http.Req
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(CreateWorkspaceAgentResponseObject); ok {
 		if err := validResponse.VisitCreateWorkspaceAgentResponse(w); err != nil {
-			sh.options.ResponseErrorHandlerFunc(w, r, err)
-		}
-	} else if response != nil {
-		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
-	}
-}
-
-// GenerateWorkspaceAgentDraft operation middleware
-func (sh *strictHandler) GenerateWorkspaceAgentDraft(w http.ResponseWriter, r *http.Request, workspaceID WorkspaceID) {
-	var request GenerateWorkspaceAgentDraftRequestObject
-
-	request.WorkspaceID = workspaceID
-
-	var body GenerateWorkspaceAgentDraftJSONRequestBody
-	decoder := json.NewDecoder(r.Body)
-	decoder.DisallowUnknownFields()
-	if err := decoder.Decode(&body); err != nil {
-		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
-		return
-	}
-	request.Body = &body
-
-	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
-		return sh.ssi.GenerateWorkspaceAgentDraft(ctx, request.(GenerateWorkspaceAgentDraftRequestObject))
-	}
-	for _, middleware := range sh.middlewares {
-		handler = middleware(handler, "GenerateWorkspaceAgentDraft")
-	}
-
-	response, err := handler(r.Context(), w, r, request)
-
-	if err != nil {
-		sh.options.ResponseErrorHandlerFunc(w, r, err)
-	} else if validResponse, ok := response.(GenerateWorkspaceAgentDraftResponseObject); ok {
-		if err := validResponse.VisitGenerateWorkspaceAgentDraftResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

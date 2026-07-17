@@ -17,13 +17,31 @@ and not the provider executable itself:
 
 ```text
 Harness AgentTarget
-  + primary ModelPlan / default model / explicit fallback chain
-  + name / purpose / instructions / call conditions
-  + Skills / tools / permissions
+  + primary ModelPlan / default model
+  + name / description / instructions / call conditions
+  + dormant contract fields: explicit fallback chain, Skills/tools allowlist
   = WorkspaceAgent (opaque Agent option id)
   -> AgentGUI directory and navigation
   -> SessionRuntimeSnapshot
 ```
+
+The Wave 4-2 contract cleanup (feedback 2-1/2-6/2-8/2-9) reshaped this
+contract:
+
+- `purpose` was renamed to `description` (OpenAPI, daemon, and storage; the
+  `workspace_agents_contract_cleanup_v1` migration copies stored purpose text
+  into the new `description` column).
+- The per-Agent `enabled` switch was retired. Every stored Agent is treated
+  as launchable; only Harness/Plan availability gates Resolve. The migration
+  normalizes legacy `enabled = 0` rows to enabled.
+- `permissions` (free-form permission overrides) was deleted end to end:
+  OpenAPI, daemon model, launch chain, runtime policy, and snapshot writes.
+  The migration clears stored overrides. Old session snapshots that carry a
+  `permissions` key are simply ignored on read.
+- The assisted draft-generation endpoint and its schemas were deleted.
+- `modelFallbacks`, `capabilitiesExplicit`, `skills`, and `tools` remain in
+  the contract as dormant fields (no editor surface). The Desktop editor
+  passes their stored values through on save instead of clearing them.
 
 The objects have separate ownership:
 
@@ -51,33 +69,17 @@ create the Harness × Plan Cartesian product; Agent creation is an explicit
 user action.
 
 Every Agent update increments `revision`. The Desktop `AgentsService` loads
-the current workspace directory and projects each enabled Agent into an
-`AgentGUIAgent` using the Agent id unchanged. Multiple Agents may share one
-provider and remain independently selectable, filterable, and cacheable.
+the current workspace directory and projects each Agent whose Harness is
+available into an `AgentGUIAgent` using the Agent id unchanged. Multiple
+Agents may share one provider and remain independently selectable,
+filterable, and cacheable.
 
 System AgentTargets stay available as the Harness catalog and as a legacy
 session fallback. They are not the new Agent CRUD entity.
 
-### Assisted Agent Draft Generation
-
-Workspace Settings can ask one selected enabled ModelPlan/model to generate an
-editable Agent draft, with or without supplemental requirements. The daemon
-uses the selected Harness only for compatibility validation and invokes the
-selected Plan/model directly with a tool-free, strict JSON response contract.
-The response carries the generated name, purpose, instructions, call
-conditions, suggested Skills, bounded consult-rule suggestions, and the exact
-Plan/model and token usage used for generation. Credentials are never returned.
-
-Generation is preview-only. Desktop discloses the Plan/model before the call,
-fills the ordinary Agent form, and keeps generated call conditions in their
-own editable, durable Agent field. It does not
-create or update an Agent until the user saves. Generated automation suggestions
-are shown separately and are created only with that save; every suggestion is
-forced to `consult`, keeps the selected Plan/model, has a bounded run/token
-budget, and starts disabled. A partial rule-save failure retains only the
-unsaved suggestions for an explicit retry and does not duplicate rules that
-were already created. Paid consult/delegate/upgrade behavior is never enabled
-by generation.
+Assisted Agent draft generation was removed with the Wave 4-2 contract
+cleanup (feedback 2-1): the `generate-draft` endpoint, its schemas, the
+daemon generation service, and the Desktop entry point no longer exist.
 
 ## Runtime Resolution And Configuration Propagation
 
@@ -86,7 +88,6 @@ New-session resolution is workspace-aware:
 ```text
 workspace-agent id
   -> WorkspaceAgent.Resolve(workspace, id)
-  -> validate enabled Agent
   -> validate enabled Harness target
   -> try primary, then ordered explicit fallback Plan/model routes
   -> validate current Plan enablement, protocol, and model
@@ -96,12 +97,12 @@ workspace-agent id
 ```
 
 The runtime system prompt appends WorkspaceAgent instructions and records its
-configured Skill/tool/permission profile without allowing it to override
-Tutti security or routing policy. A non-empty Agent Skill selection filters
-host/user Skill sources while retaining daemon capability-pack Skills required
-for Tutti routing. Structured permission and browser/computer capability
-settings remain daemon-enforced; free-form labels are never treated as new
-authority by themselves.
+configured Skill/tool profile without allowing it to override Tutti security
+or routing policy. A non-empty Agent Skill selection filters host/user Skill
+sources while retaining daemon capability-pack Skills required for Tutti
+routing. Structured permission and browser/computer capability settings
+remain daemon-enforced; free-form labels are never treated as new authority
+by themselves.
 
 Composer options resolve the WorkspaceAgent's Harness and ModelPlan directly.
 They do not look for a legacy binding whose key happens to equal the new Agent
@@ -121,7 +122,9 @@ The session runtime context contains a versioned, redaction-safe snapshot:
 - WorkspaceAgent id and revision
 - Harness AgentTarget id and provider
 - ModelPlan id, immutable revision, model, and safe fingerprint
-- Agent instructions, call conditions, Skills, tools, and permissions
+- Agent description, instructions, call conditions, Skills, and tools
+  (pre-cleanup snapshots stored the description under `purpose`; reads fall
+  back to that key, and stale `permissions` keys are ignored)
 - effective non-secret composer settings
 
 API keys and endpoint secrets never enter session runtime context, events,

@@ -147,12 +147,10 @@ function WorkspaceAgentRow({
   const deleting = agentsState.deletingAgentID === agent.id;
   const harnessAvailable =
     agent.harness.available && agent.harness.enabled !== false;
-  const tone = !harnessAvailable ? "red" : agent.enabled ? "green" : "neutral";
-  const statusLabel = !harnessAvailable
-    ? t("workspace.settings.apps.agents.harnessUnavailable")
-    : agent.enabled
-      ? t("workspace.settings.apps.agents.enabled")
-      : t("workspace.settings.apps.agents.disabled");
+  const tone = harnessAvailable ? "green" : "red";
+  const statusLabel = harnessAvailable
+    ? t("workspace.settings.apps.agents.ready")
+    : t("workspace.settings.apps.agents.harnessUnavailable");
 
   return (
     <section className="flex w-full flex-col gap-3 rounded-[10px] border border-[var(--border-1)] bg-[var(--transparency-block)] p-4">
@@ -174,9 +172,9 @@ function WorkspaceAgentRow({
               </span>
             ) : null}
           </div>
-          {agent.purpose ? (
+          {agent.description ? (
             <p className="m-0 mt-1 text-[12px] leading-[1.4] text-[var(--text-secondary)]">
-              {agent.purpose}
+              {agent.description}
             </p>
           ) : null}
         </div>

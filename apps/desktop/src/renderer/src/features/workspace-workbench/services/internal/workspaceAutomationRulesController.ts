@@ -360,7 +360,6 @@ interface AutomationDirectoryTarget {
 }
 
 interface AutomationDirectoryAgent {
-  readonly enabled: boolean;
   readonly harness: {
     readonly available: boolean;
     readonly enabled?: boolean | null;
@@ -372,7 +371,6 @@ interface AutomationDirectoryAgent {
 
 function workspaceAgentIsSelectable(agent: AutomationDirectoryAgent): boolean {
   return (
-    agent.enabled &&
     agent.harness.available &&
     agent.harness.enabled !== false &&
     Boolean(agent.harness.provider)

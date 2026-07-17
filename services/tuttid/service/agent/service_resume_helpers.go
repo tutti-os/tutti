@@ -92,14 +92,13 @@ func (s *Service) prepareRuntimeForResume(ctx context.Context, session Persisted
 	input.HarnessAgentTargetID = snapshot.HarnessAgentTargetID
 	input.WorkspaceAgentRevision = snapshot.WorkspaceAgentRevision
 	input.AgentName = snapshot.Name
-	input.AgentPurpose = snapshot.Purpose
+	input.AgentDescription = snapshot.Description
 	input.AgentDefaultModel = snapshot.ModelDefaultModel
 	input.AgentInstructions = snapshot.Instructions
 	input.AgentCallConditions = append([]string(nil), snapshot.CallConditions...)
 	input.AgentCapabilitiesExplicit = snapshot.CapabilitiesExplicit || len(snapshot.Skills) > 0 || len(snapshot.Tools) > 0
 	input.AgentSkills = append([]string(nil), snapshot.Skills...)
 	input.AgentTools = append([]string(nil), snapshot.Tools...)
-	input.AgentPermissions = append([]string(nil), snapshot.Permissions...)
 	if err := s.applyHarnessFromSessionRuntimeSnapshot(ctx, snapshot, &input); err != nil {
 		return preparedRuntime{}, err
 	}

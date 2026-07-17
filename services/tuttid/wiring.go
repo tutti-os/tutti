@@ -338,7 +338,6 @@ func buildDaemonAPI(ctx context.Context, store workspacedata.CatalogStore, analy
 		Bindings:               modelplanservice.CompositeAgentTargetBindingResolver{modelBindings, workspaceAgents},
 		ConfigurationPublisher: modelConfigurationPublisher,
 	}
-	workspaceAgents.Completer = modelPlans
 	collabRunsStore, _ := store.(workspacedata.CollaborationRunsStore)
 	collabRuns := &collabrunservice.Service{
 		Store:     collabRunsStore,
