@@ -129,7 +129,7 @@ func TestTokenSaverSourceKindIsOfficial(t *testing.T) {
 		t.Error("tutti-injected should be an official sourceKind")
 	}
 
-	// Verify hiddenTuttiProviderSkills contains all 7 entries
+	// Verify hiddenTuttiProviderSkills contains all expected entries
 	expectedHidden := map[string]bool{
 		"tutti-cli":     false,
 		"issue-manager": false,
@@ -138,14 +138,16 @@ func TestTokenSaverSourceKindIsOfficial(t *testing.T) {
 		"reference":     false,
 		"browser-use":   false,
 		"computer-use":  false,
+		"tutti-workspace-app-factory": false,
+		"tutti-agent-workspace-app":   false,
 	}
 	for name := range expectedHidden {
 		if _, ok := hiddenTuttiProviderSkills[name]; !ok {
 			t.Errorf("hiddenTuttiProviderSkills missing %q", name)
 		}
 	}
-	if len(hiddenTuttiProviderSkills) != 7 {
-		t.Errorf("hiddenTuttiProviderSkills has %d entries, want 7", len(hiddenTuttiProviderSkills))
+	if len(hiddenTuttiProviderSkills) != len(expectedHidden) {
+		t.Errorf("hiddenTuttiProviderSkills has %d entries, want %d", len(hiddenTuttiProviderSkills), len(expectedHidden))
 	}
 }
 
