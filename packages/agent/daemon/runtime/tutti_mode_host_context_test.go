@@ -52,13 +52,25 @@ func TestRenderTuttiModeHostContextCarriesTypedActiveState(t *testing.T) {
 		`"revisionId":"revision-7"`,
 		`"revision":7`,
 		`"state":"active"`,
-		"Prefer Tutti's native workflow capabilities",
-		"combine them freely with provider-native capabilities",
+		"Do not execute the user's request directly in this turn.",
+		"ask the user focused clarifying questions",
+		"single `tutti plan propose` call",
+		"wait for the user's review decision",
+		"Read-only investigation",
+		"do not substitute a provider-native planning mode",
 		"independent of the provider collaboration mode",
 		"Tutti CLI capabilities remain available",
 	} {
 		if !strings.Contains(contextText, expected) {
 			t.Fatalf("host context = %q, want %q", contextText, expected)
+		}
+	}
+	for _, forbidden := range []string{
+		"expresses a user preference",
+		"not a permission or capability gate",
+	} {
+		if strings.Contains(contextText, forbidden) {
+			t.Fatalf("host context = %q, must not contain retired advisory wording %q", contextText, forbidden)
 		}
 	}
 }
@@ -88,6 +100,15 @@ func TestRenderTuttiModeHostContextCarriesExplicitInactiveState(t *testing.T) {
 	} {
 		if !strings.Contains(contextText, expected) {
 			t.Fatalf("inactive host context = %q, want %q", contextText, expected)
+		}
+	}
+	for _, forbidden := range []string{
+		"Do not execute the user's request directly",
+		"tutti plan propose",
+		"clarifying questions",
+	} {
+		if strings.Contains(contextText, forbidden) {
+			t.Fatalf("inactive host context = %q, must not contain active-only directive %q", contextText, forbidden)
 		}
 	}
 }
