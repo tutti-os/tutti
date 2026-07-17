@@ -698,6 +698,9 @@ func initIssueTaskGitRepo(t *testing.T) string {
 		{"commit", "--allow-empty", "-m", "init"},
 	} {
 		command := exec.Command("git", append([]string{"-C", dir}, args...)...)
+		// The push hook exports GIT_DIR to the real repository; without the
+		// scrub these commands would commit onto the branch being pushed.
+		command.Env = gitEnvironmentWithoutRepoOverrides()
 		if output, err := command.CombinedOutput(); err != nil {
 			t.Fatalf("git %v error = %v: %s", args, err, output)
 		}
