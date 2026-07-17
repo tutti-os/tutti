@@ -255,6 +255,13 @@
   （不支持的 provider 綁任何方案都會被拒），非過濾 bug。
 - 建議：若未來 cursor/opencode 支持注入，需在 provider catalog 聲明
   `modelPlanProtocol` 並重新生成目錄，前端無需再改。
+- 已解決（opencode 部分）：opencode 已聲明 `modelPlanProtocol: openai` +
+  `CapabilityModelPlanBinding`，目錄已重新生成，綁定下拉自動出現 openai 方案。
+  注入鏈為 runtimeprep `OpenCodePreparer`（會話級 `opencode.json` provider 塊
+  `@ai-sdk/openai-compatible` + `OPENCODE_CONFIG` + `TUTTI_MODEL_PLAN_API_KEY`
+  env 引用），composer 模型值採 `tutti-model-plan/<model>` 命名空間
+  （registry 策略 `ModelPlanModelAddressing: provider_prefixed`）。cursor 仍
+  未聲明協議，維持原狀。
 
 ## Wave 3-④（Tutti Mode 交互：Budget popup / 單次流程 / 任務級指派）
 

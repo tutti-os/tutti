@@ -272,7 +272,8 @@ func (s *Service) modelEndpointFromSessionRuntimeSnapshot(
 		Protocol: string(plan.Protocol),
 		BaseURL:  plan.BaseURL,
 		APIKey:   plan.APIKey,
-		Model:    effectiveModel,
+		Model:    planModelComposerValue(snapshot.Provider, planModelIDFromComposerValue(snapshot.Provider, effectiveModel)),
+		Models:   modelEndpointModels(plan.Models),
 	}, nil
 }
 
