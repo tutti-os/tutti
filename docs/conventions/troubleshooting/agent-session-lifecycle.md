@@ -805,14 +805,18 @@ Turn state, loading, cancel, restore, file-change undo, rail projection, event u
   [sessionEntities.reducer.ts](../../../packages/agent/activity-core/src/engine/sessionEntities.reducer.ts)
   [service_session_sections.go](../../../services/tuttid/service/agent/service_session_sections.go)
 
-### Agent GUI no-project sessions appear under a user project
+### Agent GUI sessions appear under the wrong user project
 
 - Symptom:
   A conversation started with the "No project" selection appears in the Agent
   GUI rail under a parent user-project group such as the user's home directory.
   Imported Codex or Claude Code conversations with `cwd` equal to `$HOME`, and
   claude.ai data-export conversations that have no cwd at all, can show the
-  same symptom even though the user never selected a project.
+  same symptom even though the user never selected a project. A related nested-
+  project variant shows an imported conversation under a broad parent folder
+  while its explicitly selected child-project section says `No chats yet`.
+  Switching provider filters may briefly retain the previous scope's row before
+  the exact persisted membership makes the child section empty again.
 - Quick checks:
   Inspect the session `cwd` from the activity snapshot. Generated no-project
   sessions should carry `runtimeContext.noProject: true` in the daemon report
@@ -826,6 +830,10 @@ Turn state, loading, cancel, restore, file-change undo, rail projection, event u
   recognizes `Documents/tutti/session-<uuid>`. Codex external history can also
   record its own scratch cwd under
   `Documents/Codex/<yyyy-mm-dd>/<conversation>`.
+  For the nested-project variant, compare `cwd`, `rail_project_path`, and
+  `rail_section_key` in `workspace_agent_sessions`. If the cwd is inside a
+  registered child project but the persisted key names an ancestor, check
+  whether that child was registered only after the original import completed.
 - Root cause:
   Rail membership is classified once by the daemon when the session is first
   persisted, using `cwd`, runtime no-project markers, and current user projects.
@@ -838,6 +846,10 @@ Turn state, loading, cancel, restore, file-change undo, rail projection, event u
   rebuilding `runtimeContext` from only `cwd`, title, permissions, and visibility,
   or replacing it wholesale with `StateAdapter` output, drops launch-scoped
   markers such as `noProject` before durable rail classification runs.
+  For project-backed import, registering user projects only after valid session
+  writes creates another ordering trap: the store may see an existing parent
+  project but not the selected child while assigning the session's first,
+  normally immutable rail key.
 - Fix:
   Build runtime state from a clone of the session launch `RuntimeContext`, overlay
   canonical session fields, and merge provider `StateAdapter` context as a patch
@@ -848,9 +860,15 @@ Turn state, loading, cancel, restore, file-change undo, rail projection, event u
   `services/tuttid/data/workspace` classifier. Migration and session-state
   upsert should both use that classifier, matching exact user projects first,
   then preserving no-project/provider scratch cwd shapes as conversations, then
-  applying longest parent-project matches. Do not rederive historical rail
-  assignment from the current user-project list or a later cwd observation;
-  preserve every valid existing rail key unconditionally. A successful Create
+  applying longest parent-project matches. Project-backed external import must
+  pass its exact matched selection into the initial session report, independent
+  of whether API-level project registration has completed. The store validates
+  that this is an imported, project-backed session whose cwd is contained by the
+  selected path. An idempotent re-import may repair only Chats or an ancestor
+  assignment to that explicit descendant; it must not infer a migration from
+  the current project inventory or move an ordinary runtime session. Apart from
+  this evidence-backed import correction, preserve valid existing rail keys
+  across later cwd and project-list changes. A successful Create
   response must synchronously read back the persisted session and its nonblank
   key rather than racing the runtime's asynchronous activity reporter. AgentGUI
   must project sessions only by exact key equality and must not retain a cwd-based
@@ -860,6 +878,7 @@ Turn state, loading, cancel, restore, file-change undo, rail projection, event u
   `pnpm --filter @tutti-os/agent-gui test -- agent-gui/agentGuiNode/model/agentGuiConversationModel.spec.ts`,
   `cd packages/agent/daemon && go test ./runtime`,
   `cd services/tuttid && go test ./service/agent ./api -run 'ExternalImport|ParseCodex|ParseClaude'`,
+  `go test ./packages/agent/store-sqlite -run 'ImportedRail|ClassifiesRail'`,
   `node --import ./test/register-asset-stub.mjs --test --experimental-strip-types ./src/renderer/src/features/workspace-user-project/services/internal/desktopWorkspaceUserProjectService.test.ts`
   from `apps/desktop`, then run `pnpm check:changed`.
 - References:
@@ -867,6 +886,8 @@ Turn state, loading, cancel, restore, file-change undo, rail projection, event u
   [controller_state_test.go](../../../packages/agent/daemon/runtime/controller_state_test.go)
   [external_import_parse.go](../../../services/tuttid/service/agent/external_import_parse.go)
   [external_import_projects.go](../../../services/tuttid/service/agent/external_import_projects.go)
+  [external_import.go](../../../services/tuttid/service/agent/external_import.go)
+  [rail.go](../../../packages/agent/store-sqlite/rail.go)
   [agentGuiConversationModel.ts](../../../packages/agent/gui/agent-gui/agentGuiNode/model/agentGuiConversationModel.ts)
   [desktopWorkspaceUserProjectService.ts](../../../apps/desktop/src/renderer/src/features/workspace-user-project/services/internal/desktopWorkspaceUserProjectService.ts)
   [agentGuiConversationProjectResolver.ts](../../../packages/agent/gui/agent-gui/agentGuiNode/model/agentGuiConversationProjectResolver.ts)

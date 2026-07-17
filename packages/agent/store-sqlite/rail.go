@@ -52,18 +52,62 @@ func (s *Store) resolveAgentSessionRailSectionTx(
 	agentSessionID string,
 	finalCWD string,
 	runtimeContext map[string]any,
+	importProjectPath string,
 ) (RailSection, error) {
 	existingRail, err := getExistingAgentSessionRailSectionTx(ctx, tx, workspaceID, agentSessionID)
 	if err != nil {
 		return RailSection{}, err
 	}
+	importRail, hasImportRail := importedAgentSessionRailSection(
+		finalCWD,
+		runtimeContext,
+		importProjectPath,
+	)
 	// Rail membership is assigned when the session is first persisted and is
 	// immutable afterwards. Runtime cwd changes must not silently move an
-	// existing conversation between rail sections.
+	// existing conversation between rail sections. Historical imports may
+	// repair an older ancestor assignment when the same import supplies its
+	// exact selected project path.
 	if existingRail.Found && existingRail.Valid {
+		if hasImportRail && shouldRepairImportedAgentSessionRailSection(existingRail.Section, importRail) {
+			return importRail, nil
+		}
 		return existingRail.Section, nil
 	}
+	if hasImportRail {
+		return importRail, nil
+	}
 	return s.classifyAgentSessionRailSectionTx(ctx, tx, finalCWD, runtimeContext)
+}
+
+func importedAgentSessionRailSection(
+	cwd string,
+	runtimeContext map[string]any,
+	projectPath string,
+) (RailSection, bool) {
+	if !runtimeContextBool(runtimeContext["imported"]) || isAgentSessionNoProjectRuntimeContext(runtimeContext) {
+		return RailSection{}, false
+	}
+	projectPath = NormalizeProjectPath(projectPath)
+	if projectPath == "" || !agentSessionRailPathContains(projectPath, cwd) {
+		return RailSection{}, false
+	}
+	return RailSection{
+		Kind:        RailSectionKindProject,
+		ProjectPath: projectPath,
+		Key:         RailSectionKeyForProject(projectPath),
+	}, true
+}
+
+func shouldRepairImportedAgentSessionRailSection(existing RailSection, requested RailSection) bool {
+	if existing.Key == requested.Key {
+		return false
+	}
+	if existing.Kind == RailSectionKindConversations {
+		return true
+	}
+	return existing.Kind == RailSectionKindProject &&
+		agentSessionRailPathContains(existing.ProjectPath, requested.ProjectPath)
 }
 
 func getExistingAgentSessionRailSectionTx(

@@ -632,6 +632,91 @@ func TestServiceImportExternalSessionsOmitsProjectsWithoutValidSessions(t *testi
 	}
 }
 
+func TestServiceImportExternalSessionsRepairsSelectedNestedProjectRailMembership(t *testing.T) {
+	ctx := context.Background()
+	store := openAgentServiceSQLiteStore(t)
+	if err := store.Create(ctx, workspacebiz.Summary{ID: "ws-1", Name: "Workspace One"}); err != nil {
+		t.Fatalf("Create workspace error = %v", err)
+	}
+	root := t.TempDir()
+	parentProject := filepath.Join(root, "dev")
+	nestedProject := filepath.Join(parentProject, "kage")
+	if err := os.MkdirAll(nestedProject, 0o755); err != nil {
+		t.Fatalf("create nested project error = %v", err)
+	}
+	if canonical, ok := canonicalExistingDir(parentProject); ok {
+		parentProject = canonical
+	}
+	if canonical, ok := canonicalExistingDir(nestedProject); ok {
+		nestedProject = canonical
+	}
+	if _, err := store.PutUserProject(ctx, userprojectbiz.Project{
+		ID:    "parent-project",
+		Path:  parentProject,
+		Label: "dev",
+	}); err != nil {
+		t.Fatalf("PutUserProject(parent) error = %v", err)
+	}
+
+	codexHome := filepath.Join(root, "codex-home")
+	t.Setenv("CODEX_HOME", codexHome)
+	t.Setenv("CLAUDE_CONFIG_DIR", filepath.Join(root, "claude-home"))
+	now := time.Now().UTC().Format(time.RFC3339Nano)
+	writeAgentServiceJSONL(t, filepath.Join(codexHome, "sessions", "nested.jsonl"),
+		map[string]any{
+			"timestamp": now,
+			"type":      "session_meta",
+			"payload":   map[string]any{"id": "nested-session", "cwd": nestedProject},
+		},
+		map[string]any{"timestamp": now, "type": "response_item", "payload": map[string]any{
+			"type": "message", "id": "nested-message", "role": "user",
+			"content": []any{map[string]any{"type": "input_text", "text": "Nested prompt"}},
+		}},
+	)
+	legacy, err := store.ReportSessionState(ctx, agentactivitybiz.SessionStateReport{
+		WorkspaceID:      "ws-1",
+		AgentSessionID:   externalImportedSessionID("codex", "nested-session"),
+		Origin:           WorkspaceAgentSessionOriginImported,
+		Provider:         "codex",
+		RuntimeContext:   map[string]any{"imported": true},
+		Cwd:              nestedProject,
+		Title:            "Nested prompt",
+		Status:           "completed",
+		CurrentPhase:     "completed",
+		OccurredAtUnixMS: time.Now().UTC().UnixMilli(),
+	})
+	if err != nil {
+		t.Fatalf("ReportSessionState(legacy parent membership) error = %v", err)
+	}
+	if legacy.Session.RailSectionKey != "project:"+parentProject {
+		t.Fatalf("legacy railSectionKey = %q, want parent before reimport", legacy.Session.RailSectionKey)
+	}
+
+	service := newIsolatedAgentService(newFakeRuntime())
+	projection := NewActivityProjection(store)
+	service.SessionReader = projection
+	service.MessageReader = projection
+	service.ExternalImportStore = store
+
+	result, err := service.ImportExternalSessions(ctx, "ws-1", ExternalImportInput{
+		Projects: []ExternalImportProjectSelection{{Path: nestedProject}},
+	})
+	if err != nil {
+		t.Fatalf("ImportExternalSessions error = %v", err)
+	}
+	if result.ImportedSessions != 1 {
+		t.Fatalf("import result = %#v, want one imported session", result)
+	}
+	persisted, ok, err := store.GetSession(ctx, "ws-1", externalImportedSessionID("codex", "nested-session"))
+	if err != nil || !ok {
+		t.Fatalf("GetSession() ok=%v error=%v", ok, err)
+	}
+	wantSectionKey := "project:" + nestedProject
+	if persisted.RailSectionKey != wantSectionKey {
+		t.Fatalf("railSectionKey = %q, want selected nested project %q", persisted.RailSectionKey, wantSectionKey)
+	}
+}
+
 // TestServiceImportExternalSessionsOmitsProjectWhenOnlySessionFailsToImport
 // covers the case where a project's only session is a real, valid import
 // candidate but the store write itself fails (a transient error, a write

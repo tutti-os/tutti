@@ -64,7 +64,7 @@ func (s *Service) ImportExternalSessions(ctx context.Context, workspaceID string
 		if !selected {
 			continue
 		}
-		importedMessages, imported, err := s.importExternalSession(ctx, workspaceID, session)
+		importedMessages, imported, err := s.importExternalSession(ctx, workspaceID, session, projectPath)
 		if err != nil {
 			result.Errors = append(result.Errors, ExternalImportError{
 				Provider:   session.Provider,
@@ -409,7 +409,12 @@ func parseExternalProviderJSONL(descriptor providerregistry.ProviderDescriptor, 
 	return session, ok, err
 }
 
-func (s *Service) importExternalSession(ctx context.Context, workspaceID string, session externalImportedSession) (int, bool, error) {
+func (s *Service) importExternalSession(
+	ctx context.Context,
+	workspaceID string,
+	session externalImportedSession,
+	projectPath string,
+) (int, bool, error) {
 	agentSessionID := externalImportedSessionID(session.Provider, session.ProviderSessionID)
 	existingIDs, sessionExists, err := s.existingExternalImportMessageIDs(ctx, workspaceID, agentSessionID)
 	if err != nil {
@@ -452,6 +457,7 @@ func (s *Service) importExternalSession(ctx context.Context, workspaceID string,
 		Settings:          externalImportedSessionSettings(session),
 		RuntimeContext:    runtimeContext,
 		Cwd:               session.Cwd,
+		ImportProjectPath: projectPath,
 		Title:             session.Title,
 		Status:            "completed",
 		CurrentPhase:      "completed",

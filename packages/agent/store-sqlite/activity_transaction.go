@@ -139,6 +139,7 @@ func (s *Store) upsertAgentSessionTx(
 		agentSessionID,
 		session.CWD,
 		session.RuntimeContext,
+		input.ImportProjectPath,
 	)
 	if err != nil {
 		return false, false, 0, Session{}, err

@@ -1509,6 +1509,18 @@ session id. Persist them in the no-project Chats section with
 presentation, but AgentGUI must keep the imported history read-only and route
 continued work through the existing "continue in a new conversation" flow.
 
+For a project-backed external import, the exact project selection matched by
+the import service is authoritative rail-classification input. It must reach
+the activity store with the session report before the API registers successful
+projects in the user-project inventory; otherwise an already registered parent
+project can capture a nested session permanently. The store accepts this hint
+only for imported, project-backed sessions and verifies that the selected path
+contains the imported cwd. Ordinary runtime-session membership remains
+immutable. Re-importing the same historical session may repair only a Chats or
+ancestor-project assignment to that explicit descendant selection; it must not
+reclassify from the current user-project inventory or move a correctly assigned
+child session back to a parent.
+
 ### Conversation List Loading
 
 ```text
@@ -1563,9 +1575,10 @@ visible from the current section inventory even when no exact membership rows
 exist or the initial membership request fails; preserving that chrome must not
 place any session into it. The daemon assigns the key before Create succeeds
 and treats it as immutable session identity metadata; later cwd observations do
-not move the session to another rail section. Removing a project removes that
-rail section from the section list; re-adding the same path reveals historical
-sessions with the same section key.
+not move the session to another rail section. The sole correction path is the
+explicit external-import selection repair described above. Removing a project
+removes that rail section from the section list; re-adding the same path reveals
+historical sessions with the same section key.
 The daemon first-page reader is a required production repository seam, not an
 optional fast path with a per-section fallback. Its SQLite query must be driven
 by the requested section keys: ordinary branches use the rail-section page

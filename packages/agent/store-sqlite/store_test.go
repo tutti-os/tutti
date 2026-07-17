@@ -860,6 +860,132 @@ func TestStoreClassifiesRailSectionsWithInjectedProjectPaths(t *testing.T) {
 	}
 }
 
+func TestStoreImportedRailUsesSelectedNestedProjectAndRepairsAncestor(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	parent := filepath.Join(root, "dev")
+	nested := filepath.Join(parent, "kage")
+	if err := mkdirAll(nested); err != nil {
+		t.Fatalf("mkdir nested project error = %v", err)
+	}
+	parent = NormalizeProjectPath(parent)
+	nested = NormalizeProjectPath(nested)
+	projects := &staticProjectPaths{paths: []string{parent}}
+	store := openTestStore(t, testOptions(projects))
+	ctx := context.Background()
+	importedContext := map[string]any{"imported": true}
+
+	initial, err := store.ReportSessionState(ctx, SessionStateReport{
+		WorkspaceID:       "ws-import-rail",
+		AgentSessionID:    "selected-nested",
+		Origin:            "WORKSPACE_AGENT_SESSION_ORIGIN_IMPORTED",
+		Provider:          "codex",
+		RuntimeContext:    importedContext,
+		Cwd:               nested,
+		ImportProjectPath: nested,
+		Status:            "completed",
+		OccurredAtUnixMS:  100,
+	})
+	if err != nil {
+		t.Fatalf("ReportSessionState(selected nested) error = %v", err)
+	}
+	wantNestedKey := RailSectionKeyForProject(nested)
+	if initial.Session.RailSectionKey != wantNestedKey {
+		t.Fatalf("selected nested rail key = %q, want %q", initial.Session.RailSectionKey, wantNestedKey)
+	}
+
+	legacy, err := store.ReportSessionState(ctx, SessionStateReport{
+		WorkspaceID:      "ws-import-rail",
+		AgentSessionID:   "legacy-parent",
+		Origin:           "WORKSPACE_AGENT_SESSION_ORIGIN_IMPORTED",
+		Provider:         "codex",
+		RuntimeContext:   importedContext,
+		Cwd:              nested,
+		Status:           "completed",
+		OccurredAtUnixMS: 100,
+	})
+	if err != nil {
+		t.Fatalf("ReportSessionState(legacy parent) error = %v", err)
+	}
+	if legacy.Session.RailSectionKey != RailSectionKeyForProject(parent) {
+		t.Fatalf("legacy rail key = %q, want parent before repair", legacy.Session.RailSectionKey)
+	}
+
+	repaired, err := store.ReportSessionState(ctx, SessionStateReport{
+		WorkspaceID:       "ws-import-rail",
+		AgentSessionID:    "legacy-parent",
+		Origin:            "WORKSPACE_AGENT_SESSION_ORIGIN_IMPORTED",
+		Provider:          "codex",
+		RuntimeContext:    importedContext,
+		Cwd:               nested,
+		ImportProjectPath: nested,
+		Status:            "completed",
+		OccurredAtUnixMS:  50,
+	})
+	if err != nil {
+		t.Fatalf("ReportSessionState(repair nested) error = %v", err)
+	}
+	if repaired.Session.RailSectionKey != wantNestedKey {
+		t.Fatalf("repaired rail key = %q, want %q", repaired.Session.RailSectionKey, wantNestedKey)
+	}
+
+	preserved, err := store.ReportSessionState(ctx, SessionStateReport{
+		WorkspaceID:       "ws-import-rail",
+		AgentSessionID:    "legacy-parent",
+		Origin:            "WORKSPACE_AGENT_SESSION_ORIGIN_IMPORTED",
+		Provider:          "codex",
+		RuntimeContext:    importedContext,
+		Cwd:               nested,
+		ImportProjectPath: parent,
+		Status:            "completed",
+		OccurredAtUnixMS:  300,
+	})
+	if err != nil {
+		t.Fatalf("ReportSessionState(preserve nested) error = %v", err)
+	}
+	if preserved.Session.RailSectionKey != wantNestedKey {
+		t.Fatalf("ancestor reimport rail key = %q, want existing nested %q", preserved.Session.RailSectionKey, wantNestedKey)
+	}
+
+	ordinary, err := store.ReportSessionState(ctx, SessionStateReport{
+		WorkspaceID:       "ws-import-rail",
+		AgentSessionID:    "ordinary-runtime",
+		Origin:            "runtime",
+		Provider:          "codex",
+		RuntimeContext:    map[string]any{"imported": false},
+		Cwd:               nested,
+		ImportProjectPath: nested,
+		Status:            "completed",
+		OccurredAtUnixMS:  100,
+	})
+	if err != nil {
+		t.Fatalf("ReportSessionState(ordinary runtime) error = %v", err)
+	}
+	wantParentKey := RailSectionKeyForProject(parent)
+	if ordinary.Session.RailSectionKey != wantParentKey {
+		t.Fatalf("ordinary runtime rail key = %q, want injected parent %q", ordinary.Session.RailSectionKey, wantParentKey)
+	}
+
+	noProject, err := store.ReportSessionState(ctx, SessionStateReport{
+		WorkspaceID:       "ws-import-rail",
+		AgentSessionID:    "no-project-import",
+		Origin:            "WORKSPACE_AGENT_SESSION_ORIGIN_IMPORTED",
+		Provider:          "codex",
+		RuntimeContext:    map[string]any{"externalImportNoProject": true, "imported": true},
+		Cwd:               nested,
+		ImportProjectPath: nested,
+		Status:            "completed",
+		OccurredAtUnixMS:  100,
+	})
+	if err != nil {
+		t.Fatalf("ReportSessionState(no-project import) error = %v", err)
+	}
+	if noProject.Session.RailSectionKey != RailSectionKeyConversations {
+		t.Fatalf("no-project import rail key = %q, want conversations", noProject.Session.RailSectionKey)
+	}
+}
+
 func TestStoreListSessionSectionFiltersHiddenSessionsBeforePagination(t *testing.T) {
 	t.Parallel()
 

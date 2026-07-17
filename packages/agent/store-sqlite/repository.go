@@ -422,14 +422,17 @@ type SessionStateReport struct {
 	Settings             map[string]any
 	RuntimeContext       map[string]any
 	Cwd                  string
-	Title                string
-	Status               string
-	CurrentPhase         string
-	LastError            string
-	OccurredAtUnixMS     int64
-	StartedAtUnixMS      int64
-	EndedAtUnixMS        int64
-	CreatedAtUnixMS      int64
+	// ImportProjectPath is the canonical selected project for a historical
+	// import. The store accepts it only for imported, project-backed sessions.
+	ImportProjectPath string
+	Title             string
+	Status            string
+	CurrentPhase      string
+	LastError         string
+	OccurredAtUnixMS  int64
+	StartedAtUnixMS   int64
+	EndedAtUnixMS     int64
+	CreatedAtUnixMS   int64
 }
 
 type StateReportResult struct {
