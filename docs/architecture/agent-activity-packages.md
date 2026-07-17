@@ -395,8 +395,11 @@ storage message row id are removed.
 
 Message `turnId` is explicitly nullable. Runtime execution messages should use
 the exact durable Turn id. Historical import must preserve authoritative native
-provider boundaries when they exist: for Codex, `task_started` and
-`task_complete` provide the authoritative Turn timing, while
+provider boundaries when they exist: for Codex, `task_started` provides the
+authoritative Turn start, while `task_complete` and `turn_aborted` provide its
+terminal timing and outcome. A user-authored Codex `turn_aborted` normalizes to
+the canonical `canceled` outcome; `interrupted` remains available for
+provider-loss and recovery settlements that must not be attributed to the user.
 `turn_context.turn_id` binds the intervening transcript messages to that native
 Turn. A started Turn without its native completion event remains turnless in a
 static import snapshot; the importer must not prematurely settle it from its

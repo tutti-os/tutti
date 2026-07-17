@@ -252,7 +252,15 @@ owns inter-Turn spacing. A group without canonical timing renders through the
 legacy flat-row path, preserving direct-row DOM adjacency, CSS selectors, and
 virtualized spacing. Failed, canceled, interrupted, visible-error,
 generated-image, or final-text-free Turns fail open so important output is
-never hidden. Manual disclosure state is UI-local, keyed by session and Turn,
+never hidden. A settled canceled Turn freezes its canonical duration and
+does not use the ordinary completed-Turn total. Its localized stop attribution
+comes from canonical Turn provenance: a Turn with `legacy_unknown` origin uses
+neutral historical wording such as `The task stopped after 1m 23s`, while every
+other canonical origin uses the user-stop label such as `You stopped the task
+after 1m 23s`. This decision is per Turn, so a new `user_prompt` Turn created in
+Tutti after an imported session resumes still receives the user-stop label. The
+GUI must not inspect provider payloads or infer attribution from session-level
+import state. Manual disclosure state is UI-local, keyed by session and Turn,
 and may survive conversation switches while the Agent panel remains mounted;
 it is not persisted or written back to the engine.
 

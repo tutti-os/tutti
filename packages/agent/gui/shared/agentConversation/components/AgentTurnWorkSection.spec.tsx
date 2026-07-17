@@ -13,10 +13,20 @@ vi.mock("../../../i18n/index", async (importOriginal) => {
   return {
     ...actual,
     useTranslation: () => ({
-      t: (key: string, options?: Record<string, unknown>) =>
-        key === "agentHost.agentGui.turnProcessedSeconds"
-          ? `Processed for ${String(options?.seconds)}s`
-          : key
+      t: (key: string, options?: Record<string, unknown>) => {
+        if (key === "agentHost.agentGui.turnProcessedSeconds") {
+          return `Processed for ${String(options?.seconds)}s`;
+        }
+        if (key === "agentHost.agentGui.turnStoppedMinutesSeconds") {
+          return `You stopped the task after ${String(options?.minutes)}m ${String(options?.seconds)}s`;
+        }
+        if (
+          key === "agentHost.agentGui.turnHistoricallyStoppedMinutesSeconds"
+        ) {
+          return `The task stopped after ${String(options?.minutes)}m ${String(options?.seconds)}s`;
+        }
+        return key;
+      }
     })
   };
 });
@@ -164,6 +174,49 @@ describe("AgentTurnWorkSection", () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  it("shows when the user stopped a canceled turn", () => {
+    render(
+      <AgentTurnWorkSection
+        group={turnGroup()}
+        sessionId="session-1"
+        turn={canonicalTurn({
+          phase: "settled",
+          outcome: "canceled",
+          settledAtUnixMs: 88_000
+        })}
+        isActiveTurn={false}
+        disclosureStore={disclosureStore}
+        renderRow={(row, rowIndex) => (
+          <div key={`${row.id}:${rowIndex}`}>{row.id}</div>
+        )}
+      />
+    );
+
+    expect(screen.getByText("You stopped the task after 1m 23s")).toBeTruthy();
+  });
+
+  it("uses neutral attribution for a canceled imported turn", () => {
+    render(
+      <AgentTurnWorkSection
+        group={turnGroup()}
+        sessionId="session-1"
+        turn={canonicalTurn({
+          origin: "legacy_unknown",
+          phase: "settled",
+          outcome: "canceled",
+          settledAtUnixMs: 88_000
+        })}
+        isActiveTurn={false}
+        disclosureStore={disclosureStore}
+        renderRow={(row, rowIndex) => (
+          <div key={`${row.id}:${rowIndex}`}>{row.id}</div>
+        )}
+      />
+    );
+
+    expect(screen.getByText("The task stopped after 1m 23s")).toBeTruthy();
   });
 
   it("renders interleaved turn rows in their original chronology", () => {

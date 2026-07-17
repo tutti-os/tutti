@@ -522,6 +522,14 @@ export const enAgentGui = {
   turnTotalSeconds: "Total {{seconds}}s",
   turnTotalMinutes: "Total {{minutes}}m",
   turnTotalMinutesSeconds: "Total {{minutes}}m {{seconds}}s",
+  turnStoppedSeconds: "You stopped the task after {{seconds}}s",
+  turnStoppedMinutes: "You stopped the task after {{minutes}}m",
+  turnStoppedMinutesSeconds:
+    "You stopped the task after {{minutes}}m {{seconds}}s",
+  turnHistoricallyStoppedSeconds: "The task stopped after {{seconds}}s",
+  turnHistoricallyStoppedMinutes: "The task stopped after {{minutes}}m",
+  turnHistoricallyStoppedMinutesSeconds:
+    "The task stopped after {{minutes}}m {{seconds}}s",
   expandTurnWork: "Expand task details",
   collapseTurnWork: "Collapse task details",
   agentTargetRequired:

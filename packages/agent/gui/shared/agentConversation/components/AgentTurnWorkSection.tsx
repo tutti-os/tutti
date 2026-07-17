@@ -8,6 +8,7 @@ import { useElapsedSeconds } from "./useElapsedSeconds";
 import {
   formatAgentTurnDuration,
   type AgentTurnDuration,
+  type AgentTurnStopPresentation,
   type AgentTurnTiming,
   type AgentTurnWorkSectionModel,
   type AgentTurnWorkSectionRow
@@ -62,7 +63,10 @@ export function AgentTurnWorkSection({
         className="flex min-h-6 items-center gap-0.5 text-[12px] text-[var(--text-tertiary)]"
         data-agent-turn-work-header={turnKey}
       >
-        <AgentTurnDurationLabel timing={model.timing} />
+        <AgentTurnDurationLabel
+          timing={model.timing}
+          stopPresentation={model.stopPresentation}
+        />
         {model.collapseEligible ? (
           <BareIconButton
             size="sm"
@@ -120,9 +124,11 @@ function renderRows(
 }
 
 function AgentTurnDurationLabel({
-  timing
+  timing,
+  stopPresentation
 }: {
   timing: AgentTurnTiming;
+  stopPresentation: AgentTurnStopPresentation;
 }): JSX.Element {
   const { t } = useTranslation();
   const liveElapsedSeconds = useElapsedSeconds(
@@ -130,18 +136,76 @@ function AgentTurnDurationLabel({
   );
   const elapsedSeconds =
     timing.kind === "live" ? (liveElapsedSeconds ?? 0) : timing.elapsedSeconds;
-  return <span>{translateDuration(t, timing.kind, elapsedSeconds)}</span>;
+  return (
+    <span>
+      {translateDuration(t, timing.kind, elapsedSeconds, stopPresentation)}
+    </span>
+  );
 }
 
 function translateDuration(
   t: ReturnType<typeof useTranslation>["t"],
   kind: AgentTurnTiming["kind"],
-  elapsedSeconds: number
+  elapsedSeconds: number,
+  stopPresentation: AgentTurnStopPresentation
 ): string {
   const duration = formatAgentTurnDuration(elapsedSeconds);
+  if (kind === "settled" && stopPresentation) {
+    return translateStoppedDuration(t, duration, stopPresentation);
+  }
   return kind === "live"
     ? translateLiveDuration(t, duration)
     : translateSettledDuration(t, duration);
+}
+
+function translateStoppedDuration(
+  t: ReturnType<typeof useTranslation>["t"],
+  duration: AgentTurnDuration,
+  presentation: Exclude<AgentTurnStopPresentation, null>
+): string {
+  return presentation === "historical"
+    ? translateHistoricalStoppedDuration(t, duration)
+    : translateUserStoppedDuration(t, duration);
+}
+
+function translateUserStoppedDuration(
+  t: ReturnType<typeof useTranslation>["t"],
+  duration: AgentTurnDuration
+): string {
+  if (duration.kind === "seconds") {
+    return t("agentHost.agentGui.turnStoppedSeconds", {
+      seconds: duration.seconds
+    });
+  }
+  if (duration.kind === "minutes") {
+    return t("agentHost.agentGui.turnStoppedMinutes", {
+      minutes: duration.minutes
+    });
+  }
+  return t("agentHost.agentGui.turnStoppedMinutesSeconds", {
+    minutes: duration.minutes,
+    seconds: duration.seconds
+  });
+}
+
+function translateHistoricalStoppedDuration(
+  t: ReturnType<typeof useTranslation>["t"],
+  duration: AgentTurnDuration
+): string {
+  if (duration.kind === "seconds") {
+    return t("agentHost.agentGui.turnHistoricallyStoppedSeconds", {
+      seconds: duration.seconds
+    });
+  }
+  if (duration.kind === "minutes") {
+    return t("agentHost.agentGui.turnHistoricallyStoppedMinutes", {
+      minutes: duration.minutes
+    });
+  }
+  return t("agentHost.agentGui.turnHistoricallyStoppedMinutesSeconds", {
+    minutes: duration.minutes,
+    seconds: duration.seconds
+  });
 }
 
 function translateLiveDuration(

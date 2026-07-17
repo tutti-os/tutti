@@ -781,6 +781,57 @@ func TestServiceImportExternalCodexSessionRepairsNativeTurnIdentity(t *testing.T
 	}
 }
 
+func TestServiceImportExternalSessionPersistsUserCanceledTurnOutcome(t *testing.T) {
+	ctx := context.Background()
+	store := openAgentServiceSQLiteStore(t)
+	if err := store.Create(ctx, workspacebiz.Summary{ID: "ws-1", Name: "Workspace One"}); err != nil {
+		t.Fatalf("Create workspace error = %v", err)
+	}
+	startedAt := time.Date(2026, time.July, 17, 10, 0, 0, 0, time.UTC)
+	interruptedAt := startedAt.Add(83 * time.Second)
+	session := externalImportedSession{
+		Provider:          "codex",
+		ProviderSessionID: "interrupted-session",
+		SourcePath:        filepath.Join(t.TempDir(), "rollout.jsonl"),
+		Cwd:               t.TempDir(),
+		Title:             "Run the task",
+		StartedAtUnixMS:   startedAt.UnixMilli(),
+		UpdatedAtUnixMS:   interruptedAt.UnixMilli(),
+		Turns: []externalImportedTurn{{
+			TurnID:          "turn-1",
+			Outcome:         agentactivitybiz.TurnOutcomeCanceled,
+			StartedAtUnixMS: startedAt.UnixMilli(),
+			SettledAtUnixMS: interruptedAt.UnixMilli(),
+		}},
+		Messages: []externalImportedMessage{{
+			RawID:             "user-1",
+			TurnID:            "turn-1",
+			Role:              "user",
+			Kind:              "text",
+			Status:            "completed",
+			Text:              "Run the task",
+			OccurredAtUnixMS:  startedAt.Add(time.Second).UnixMilli(),
+			StartedAtUnixMS:   startedAt.Add(time.Second).UnixMilli(),
+			CompletedAtUnixMS: startedAt.Add(time.Second).UnixMilli(),
+		}},
+	}
+
+	service := newIsolatedAgentService(newFakeRuntime())
+	service.ExternalImportStore = store
+	if _, _, err := service.importExternalSession(ctx, "ws-1", session, session.Cwd); err != nil {
+		t.Fatalf("importExternalSession error = %v", err)
+	}
+
+	agentSessionID := externalImportedSessionID("codex", "interrupted-session")
+	turns, err := store.ListSessionTurns(ctx, "ws-1", agentSessionID)
+	if err != nil {
+		t.Fatalf("ListSessionTurns error = %v", err)
+	}
+	if len(turns) != 1 || turns[0].Outcome != agentactivitybiz.TurnOutcomeCanceled {
+		t.Fatalf("turns = %#v, want one canceled turn", turns)
+	}
+}
+
 func TestServiceImportExternalSessionsRepairsSelectedNestedProjectRailMembership(t *testing.T) {
 	ctx := context.Background()
 	store := openAgentServiceSQLiteStore(t)

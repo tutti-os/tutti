@@ -350,6 +350,51 @@ describe("agentTurnWorkSectionModel", () => {
     expect(model.sections).toHaveLength(1);
     expect(model.sections[0]?.kind).toBe("visible");
   });
+
+  it.each([
+    ["user_prompt", "user"],
+    ["goal_arm", "user"],
+    ["goal_continuation", "user"],
+    ["provider_initiated", "user"],
+    ["legacy_unknown", "historical"]
+  ] as const)(
+    "uses %s provenance to derive the %s canceled-turn presentation",
+    (origin, stopPresentation) => {
+      const model = buildAgentTurnWorkSectionModel(
+        turnGroup([userRow(), assistantRow()]),
+        canonicalTurn({
+          origin,
+          phase: "settled",
+          outcome: "canceled",
+          settledAtUnixMs: 88_000
+        })
+      );
+
+      expect(model.timing).toEqual({
+        kind: "settled",
+        elapsedSeconds: 83
+      });
+      expect(model.stopPresentation).toBe(stopPresentation);
+      expect(model.collapseEligible).toBe(false);
+    }
+  );
+
+  it.each(["completed", "failed", "interrupted"] as const)(
+    "does not attribute a %s turn to a user stop",
+    (outcome) => {
+      const model = buildAgentTurnWorkSectionModel(
+        turnGroup([userRow(), assistantRow()]),
+        canonicalTurn({
+          origin: "user_prompt",
+          phase: "settled",
+          outcome,
+          settledAtUnixMs: 88_000
+        })
+      );
+
+      expect(model.stopPresentation).toBeNull();
+    }
+  );
 });
 
 function canonicalTurn(

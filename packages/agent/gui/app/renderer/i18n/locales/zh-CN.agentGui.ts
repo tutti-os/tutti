@@ -484,6 +484,13 @@ export const zhCNAgentGui = {
   turnTotalSeconds: "总用时 {{seconds}} 秒",
   turnTotalMinutes: "总用时 {{minutes}} 分钟",
   turnTotalMinutesSeconds: "总用时 {{minutes}} 分 {{seconds}} 秒",
+  turnStoppedSeconds: "您于 {{seconds}}s 后终止任务",
+  turnStoppedMinutes: "您于 {{minutes}}m 后终止任务",
+  turnStoppedMinutesSeconds: "您于 {{minutes}}m {{seconds}}s 后终止任务",
+  turnHistoricallyStoppedSeconds: "任务于 {{seconds}}s 后终止",
+  turnHistoricallyStoppedMinutes: "任务于 {{minutes}}m 后终止",
+  turnHistoricallyStoppedMinutesSeconds:
+    "任务于 {{minutes}}m {{seconds}}s 后终止",
   expandTurnWork: "展开任务详情",
   collapseTurnWork: "收起任务详情",
   agentTargetRequired: "请先选择可用的 Agent 目标。",

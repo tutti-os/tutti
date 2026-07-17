@@ -14,6 +14,8 @@ export type AgentTurnDuration =
   | { kind: "minutes"; minutes: number }
   | { kind: "minutes-seconds"; minutes: number; seconds: number };
 
+export type AgentTurnStopPresentation = "user" | "historical" | null;
+
 export type AgentTurnWorkSectionRow =
   AgentTranscriptTurnGroup["rows"][number] & {
     renderKey?: string;
@@ -26,6 +28,7 @@ export interface AgentTurnWorkSectionSegment {
 
 export interface AgentTurnWorkSectionModel {
   timing: AgentTurnTiming;
+  stopPresentation: AgentTurnStopPresentation;
   leadingRows: AgentTurnWorkSectionRow[];
   sections: AgentTurnWorkSectionSegment[];
   collapseEligible: boolean;
@@ -109,6 +112,12 @@ export function buildAgentTurnWorkSectionModel(
 
   return {
     timing,
+    stopPresentation:
+      turn?.outcome === "canceled"
+        ? turn.origin === "legacy_unknown"
+          ? "historical"
+          : "user"
+        : null,
     leadingRows,
     sections,
     collapseEligible

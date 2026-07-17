@@ -126,6 +126,7 @@ type externalImportedMessage struct {
 
 type externalImportedTurn struct {
 	TurnID          string
+	Outcome         string
 	StartedAtUnixMS int64
 	SettledAtUnixMS int64
 }

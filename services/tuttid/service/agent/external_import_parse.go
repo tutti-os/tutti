@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"github.com/tutti-os/tutti/packages/agent/daemon/providerregistry"
+	agentactivitybiz "github.com/tutti-os/tutti/services/tuttid/biz/agentactivity"
 	agentproviderbiz "github.com/tutti-os/tutti/services/tuttid/biz/agentprovider"
 )
 
@@ -69,8 +70,20 @@ func parseCodexJSONL(path string, reader io.Reader) (externalImportedSession, bo
 			case "task_complete":
 				if turnID != "" {
 					turn := ensureExternalImportedTurn(&session, turnIndexByID, turnID)
+					turn.Outcome = agentactivitybiz.TurnOutcomeCompleted
 					if turn.SettledAtUnixMS <= 0 || (timestamp > 0 && timestamp < turn.SettledAtUnixMS) {
 						turn.SettledAtUnixMS = timestamp
+					}
+				}
+			case "turn_aborted":
+				if turnID != "" {
+					turn := ensureExternalImportedTurn(&session, turnIndexByID, turnID)
+					turn.Outcome = agentactivitybiz.TurnOutcomeCanceled
+					if turn.SettledAtUnixMS <= 0 || (timestamp > 0 && timestamp < turn.SettledAtUnixMS) {
+						turn.SettledAtUnixMS = timestamp
+					}
+					if activeTurnID == turnID {
+						activeTurnID = ""
 					}
 				}
 			case "user_message":
@@ -390,7 +403,8 @@ func normalizeExternalImportedTurns(turns []externalImportedTurn, messages []ext
 	normalized := make([]externalImportedTurn, 0, len(turns))
 	for _, turn := range turns {
 		turn.TurnID = strings.TrimSpace(turn.TurnID)
-		if turn.TurnID == "" || turn.StartedAtUnixMS <= 0 || turn.SettledAtUnixMS < turn.StartedAtUnixMS {
+		turn.Outcome = strings.TrimSpace(turn.Outcome)
+		if turn.TurnID == "" || !isExternalImportedTurnOutcome(turn.Outcome) || turn.StartedAtUnixMS <= 0 || turn.SettledAtUnixMS < turn.StartedAtUnixMS {
 			continue
 		}
 		turnIndexByID[turn.TurnID] = len(normalized)
@@ -414,6 +428,10 @@ func normalizeExternalImportedTurns(turns []externalImportedTurn, messages []ext
 		result = append(result, turn)
 	}
 	return result
+}
+
+func isExternalImportedTurnOutcome(outcome string) bool {
+	return outcome == agentactivitybiz.TurnOutcomeCompleted || outcome == agentactivitybiz.TurnOutcomeCanceled
 }
 
 // resolveExternalImportSessionCwd resolves a session's recorded working

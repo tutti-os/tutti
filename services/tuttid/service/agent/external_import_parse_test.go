@@ -228,6 +228,60 @@ func TestParseCodexJSONLPreservesNativeTurnBoundaries(t *testing.T) {
 	}
 }
 
+func TestParseCodexJSONLPreservesUserAbortedTurnBoundary(t *testing.T) {
+	cwd := t.TempDir()
+	startedAt := time.Date(2026, time.July, 17, 10, 0, 0, 0, time.UTC)
+	interruptedAt := startedAt.Add(83 * time.Second)
+	session, ok, err := parseCodexJSONL(
+		filepath.Join(cwd, "rollout.jsonl"),
+		strings.NewReader(testAgentJSONL(t,
+			map[string]any{
+				"timestamp": startedAt.Add(-time.Second).Format(time.RFC3339Nano),
+				"type":      "session_meta",
+				"payload":   map[string]any{"id": "codex-interrupted", "cwd": cwd},
+			},
+			map[string]any{
+				"timestamp": startedAt.Format(time.RFC3339Nano),
+				"type":      "event_msg",
+				"payload":   map[string]any{"type": "task_started", "turn_id": "turn-1"},
+			},
+			map[string]any{
+				"timestamp": startedAt.Add(time.Millisecond).Format(time.RFC3339Nano),
+				"type":      "turn_context",
+				"payload":   map[string]any{"turn_id": "turn-1"},
+			},
+			map[string]any{
+				"timestamp": startedAt.Add(time.Second).Format(time.RFC3339Nano),
+				"type":      "response_item",
+				"payload": map[string]any{
+					"type": "message", "id": "user-1", "role": "user",
+					"content": []any{map[string]any{"type": "input_text", "text": "Run the task"}},
+				},
+			},
+			map[string]any{
+				"timestamp": interruptedAt.Format(time.RFC3339Nano),
+				"type":      "event_msg",
+				"payload": map[string]any{
+					"type": "turn_aborted", "turn_id": "turn-1", "reason": "interrupted",
+				},
+			},
+		)),
+	)
+	if err != nil || !ok {
+		t.Fatalf("parseCodexJSONL ok=%v err=%v", ok, err)
+	}
+	if len(session.Turns) != 1 {
+		t.Fatalf("turns = %#v, want one interrupted turn", session.Turns)
+	}
+	turn := session.Turns[0]
+	if turn.TurnID != "turn-1" || turn.Outcome != "canceled" {
+		t.Fatalf("turn = %#v, want canceled turn-1", turn)
+	}
+	if turn.StartedAtUnixMS != startedAt.UnixMilli() || turn.SettledAtUnixMS != interruptedAt.UnixMilli() {
+		t.Fatalf("turn timing = %d..%d, want %d..%d", turn.StartedAtUnixMS, turn.SettledAtUnixMS, startedAt.UnixMilli(), interruptedAt.UnixMilli())
+	}
+}
+
 func TestParseCodexJSONLPreservesToolCallStructure(t *testing.T) {
 	cwd := t.TempDir()
 	session, ok, err := parseCodexJSONL(

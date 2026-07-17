@@ -480,7 +480,7 @@ func (s *Service) importExternalSession(
 				AgentSessionID:   agentSessionID,
 				TurnID:           turn.TurnID,
 				Phase:            agentactivitybiz.TurnPhaseSettled,
-				Outcome:          agentactivitybiz.TurnOutcomeCompleted,
+				Outcome:          turn.Outcome,
 				Origin:           agentactivitybiz.TurnOriginLegacyUnknown,
 				StartedAtUnixMS:  turn.StartedAtUnixMS,
 				SettledAtUnixMS:  turn.SettledAtUnixMS,
