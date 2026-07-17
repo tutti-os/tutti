@@ -68,7 +68,11 @@ func composerModelOptionsFromCatalog(ctx context.Context, catalog AgentModelCata
 	}
 	selected := strings.TrimSpace(selectedModel)
 	if selected != "" && !containsModelOption(options, selected) {
-		options = append(options, ComposerConfigOptionValue{ID: selected, Label: selected, Value: selected})
+		// The requested model is kept selectable even when the catalog does not
+		// contain it, but the entry is provenance-marked: it mirrors the request
+		// and is not catalog testimony (create validation runs against the raw
+		// catalog and would reject it).
+		options = append(options, ComposerConfigOptionValue{ID: selected, Label: selected, Value: selected, Requested: true})
 	}
 	projection := composerModelCatalogProjection{
 		DefaultModel:      defaultModel,

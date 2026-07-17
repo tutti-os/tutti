@@ -1743,6 +1743,10 @@ export type AgentProviderComposerConfigOptionValue = {
   label: string;
   description?: string;
   supportsImageInput?: boolean;
+  /**
+   * True when the entry mirrors the requested/current selection instead of the provider catalog (warm-catalog append of the requested model, selected-model bootstrap echo). Clients keep such entries selectable but must not treat them as proof the provider can run the model; create validation runs against the raw catalog only.
+   */
+  requested?: boolean;
 };
 
 export type AgentProviderComposerConfig = {

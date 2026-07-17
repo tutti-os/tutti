@@ -1191,10 +1191,16 @@ test("desktop agent activity adapter ignores legacy runtime model and reasoning 
     provider: "codex"
   });
 
-  assert.deepEqual(options.models, [{ value: "gpt-5.4", label: "gpt-5.4" }]);
+  assert.deepEqual(options.models, [
+    { value: "gpt-5.5", label: "GPT-5.5" },
+    // The current value is not in the advertised list; the projection keeps
+    // it selectable but marks it requested-origin (not catalog testimony).
+    { value: "gpt-5.4", label: "gpt-5.4", requested: true }
+  ]);
   assert.deepEqual(options.reasoningEfforts, [
-    { value: "low", label: "Low" },
-    { value: "ultra", label: "Ultra" }
+    { value: "medium", label: "中" },
+    { value: "ultra", label: "Ultra" },
+    { value: "high", label: "high", requested: true }
   ]);
 });
 

@@ -168,6 +168,10 @@ func generatedComposerConfigOption(config agentservice.ComposerConfigOption) tut
 		if option.SupportsImageInput != nil {
 			resultOption.SupportsImageInput = option.SupportsImageInput
 		}
+		if option.Requested {
+			requested := true
+			resultOption.Requested = &requested
+		}
 		result.Options = append(result.Options, resultOption)
 	}
 	return result

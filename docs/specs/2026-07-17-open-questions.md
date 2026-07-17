@@ -664,3 +664,108 @@
 - 影響：歷史上被停用的目標 Agent 在遷移後重新變為可觸發——這正是 2-8
   「移除開關」的預期語義（不存在停用態）；如需臨時停用某 Agent 的自動化，
   正規做法是停用規則本身（AutomationRule.enabled 保留）。
+
+## Wave 4-⑤（P1 回派：純內建 Codex 首頁裸方案模型 create 400——Wave 3 門禁漏網路徑）
+
+### W4⑤-1 W2⑤-3 的「models 名單為空放行」例外撤銷（門禁語義修訂）
+
+- 根因（live 復現定位 + 對抗 review 修正）：Wave 3 的 create 門禁
+  `enforceComposerModelBindingForCreate` 的「視為已驗證」漏網窗口：
+  (a) options 已載入但 `models` 名單為空——W2⑤-3 第 2 條的顯式例外；
+  (b) **請求模型被播種進名單的自我引用**，且有**兩層播種**：
+  bootstrap 冷載時 `composerSelectedModelOptions(effectiveSettings.Model)`
+  把請求模型回作唯一選項（composer_options.go:225、480），而 **settled
+  warm 目錄**投影同樣把不在目錄裡的請求模型 append 進多條目名單
+  （composer_model_options.go 的 `selected != "" && !containsModelOption →
+append`）；desktop 投影還有第三層 GUI 自身的
+  `appendCurrentOption`（agentComposerOptionsProjection.ts）。GUI 拿這些
+  名單驗證「模型在不在名單裡」是循環論證。
+- **正確的 400 敘事（review 修正）**：純冷載窗口本身不產生 400——目錄冷時
+  create 校驗 `availableComposerModelsForValidation` !ok 即跳過
+  （model_validation.go:52，fail-open）。live 的 400 必然發生在「create 時
+  daemon 目錄已 warm」：warm 多條目名單含 append 的毒模型 → 門禁 verified →
+  payload 帶裸模型 → create 校驗只對原始目錄（不含 append）→ 400。
+  codex/opencode/tutti-agent（UsesModelCatalog）同病；claude-code 無恙
+  （authoritative + 校驗 fail-open + 自定義模型是產品行為）。
+- 修訂決策：裸模型必須被**正面驗證**才放行。名單條目引入 **provenance
+  契約**（本輪已做，daemon+GUI 雙側）：daemon 對「鏡像請求」的條目顯式標記
+  `requested: true`（settled warm append 與 bootstrap 回聲兩處；
+  ComposerConfigOptionValue.Requested → runtimeContext configOptions
+  `requested` 鍵 + OpenAPI `AgentProviderComposerConfigOptionValue.requested`
+  可選欄位，已 regen Go/TS 生成物；desktop `appendCurrentOption` 同樣自標）。
+  GUI 三態判定只拿**非 requested 條目**當目錄證詞：options 缺失/
+  `modelOptionsLoading`/剔除後空名單一律 unverifiable → create 摘除模型
+  （daemon 用默認）；「單條目且鏡像 effectiveSettings.model」啟發式保留，
+  僅作為對「未帶標記的舊快照」的向後兼容兜底。W2⑤-3 的空名單放行例外
+  就此撤銷。完整 {model, modelPlanId} pair 照舊放行（daemon
+  `applyRequestedModelPlan` 全量校驗）。claude-code 的 static 自定義模型
+  append（composer_live_model_discovery.go `staticClaudeComposerModelOptions`）
+  **刻意不標記**——那是「配置的自定義模型應可選」的產品行為，標記會讓 GUI
+  摘除合法自定義模型。
+- 契約鏈路核查：composer options 僅經 HTTP GetComposerOptions 傳輸，
+  不經 push 事件（activity.updated.event.json 無 configOptions/modelConfig
+  欄位），無 event schema strict gate 風險；runtimeContext 為
+  additionalProperties:true 自由形態，configOptions 的 `requested` 鍵
+  無需 schema 變更。
+
+### W4⑤-2 首頁默認新增「目錄證詞正面拒絕即回落」策略（與 sanitize 非權威語義並存）
+
+- 決策：純 provider 首頁的 composer 默認經
+  `enforceComposerModelBindingForHomeDefaults`——settled 目錄證詞（剔除
+  requested 條目後的名單）**正面拒絕**的裸模型不採納（顯示與存量 draft
+  同步回落 null → provider 默認），並作用在分層合併結果上。
+- 機制修正（review 回派）：preloaded 層復活的依據不是「daemon per-target
+  prefs 被污染」——純 provider 目標的 GetComposerOptions 對 model 從不回
+  持久化偏好，`effectiveSettings.model` 永遠只是**請求的回聲**（daemon 只
+  回填 permissionModeId/browserUse/computerUse 類偏好）。復活環是：污染的
+  node defaults 被帶進 options 請求 → 響應 effectiveSettings + append 條目
+  鏡像它 → preloaded 層把它填回顯示。回落寫回 node defaults 切斷的正是
+  這個自我固化環（下輪請求不再帶毒模型）。
+- 表述修正（review 回派）：上一版「顯示≠提交、無 400」只對 provenance
+  契約落地後成立；**修復前的 warm 窗口**（append 未標記）顯示與 create
+  同時被騙，400 照發——這正是 F1 主窗口。本輪 provenance 落地後，warm
+  名單裡的毒模型條目帶 `requested: true`，顯示端（rejected → 回落）與
+  create 端（非目錄證詞 → 摘除）雙雙封住；殘留風險僅剩「舊快照無標記 +
+  多條目 warm 名單」的滾動升級窗口（GUI 啟發式只覆蓋單條目回聲）。
+- 與既有語義的邊界：`sanitizeComposerSettingsForOptions` 的
+  `modelOptionsAuthoritative` 契約（非權威 provider 保留名單外模型）**原樣
+  保留**——首頁默認策略是「跨會話撿回來的默認值」的採納規則，不改變
+  sanitize 的通用清理語義。
+- 已知取捨：unverifiable 窗口首頁**不摘除**存量默認——避免瞬態載入態
+  破壞性覆寫合法記憶模型；create 門禁仍拒發。若需求方要求顯示也嚴格，
+  需先解決「窗口內無可靠 provider 默認可展示」的 UX 語義。
+
+### W4⑤-4（F2）unverifiable 窗口內合法記憶模型被靜默換成 daemon 默認（行為取捨，記錄）
+
+- 現象：options 未載入/`modelOptionsLoading`/目錄證詞為空的秒級窗口內
+  submit，create 門禁會把**合法的**裸記憶模型（如 gpt-5.6-sol）一併摘除，
+  會話以 daemon 默認模型創建，無任何提示。
+- 取捨依據：fail-safe 原則（寧可不帶不可帶錯）+ 窗口極短（options 載入
+  完成即恢復）；替代方案（阻塞 submit 等 options、或帶模型讓 daemon 裁決）
+  各有更差的 UX/一致性代價。記錄待需求方裁決是否需要「已回落默認模型」的
+  輕提示。
+
+### W4⑤-5（F3）真單模型 provider 的回聲兜底啟發式誤判（多數無害，記錄）
+
+- 現象：GUI 對「未帶 requested 標記的單條目名單且鏡像 effectiveSettings」
+  的向後兼容啟發式，會把**真的只有一個目錄模型且被選中**的 provider 判為
+  unverifiable——該裸模型在 create 時被摘除，daemon 回落默認（通常就是
+  同一個模型），故多數無害。provenance 契約全面落地（所有響應帶標記）後
+  可考慮移除該啟發式，屆時單條目未標記名單即為真目錄。
+
+### W4⑤-3 方案會話是否應寫 provider lastActive 桶（產品語義，待裁決）
+
+- 現狀：`useAgentGUISessionPresentation` 把活躍會話的 {model, modelPlanId}
+  成對寫入 **provider 鍵**的 lastActive 桶；純 provider 首頁 create 時若無
+  自身默認會繼承該 pair（Wave 3 語義），帶 planId 的 create 由 daemon
+  `applyRequestedModelPlan` 校驗放行——即**純內建首頁的新會話可能靜默走
+  方案端點**（計費/配額歸方案）。這是 Wave 3 的既定繼承語義，本輪未動。
+- 殘留寫入路徑：**建立於 modelPlanId 落庫之前的老方案會話**，其 runtime
+  snapshot 無 ModelPlanID（session_runtime_snapshot.go 的 stamp 是後來
+  引入的），resume 後 session state settings 只有裸 model → lastActive 桶
+  被寫入裸方案模型。本輪修復後該裸 id 在 create/首頁均無害（unverifiable/
+  rejected 摘除），但桶本身仍髒。
+- 待裁決：(a) 方案會話是否根本不該寫 provider 桶（改寫 target 級桶或
+  丟棄）；(b) 純 provider 首發繼承 pair 是否需要顯式 UI 提示（「將經
+  <方案名> 計費」）；(c) daemon 是否應在 resume 老會話時按 target 綁定
+  回填 modelPlanId（消滅裸寫入源頭）。
