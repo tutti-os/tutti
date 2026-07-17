@@ -769,3 +769,22 @@ append`）；desktop 投影還有第三層 GUI 自身的
   丟棄）；(b) 純 provider 首發繼承 pair 是否需要顯式 UI 提示（「將經
   <方案名> 計費」）；(c) daemon 是否應在 resume 老會話時按 target 綁定
   回填 modelPlanId（消滅裸寫入源頭）。
+
+## 主線 GUI 走查觀察（Wave 4，P3 級，未修）
+
+### W4-GUI-1 「打开新窗口」點擊後所有桌面窗口關閉（單次觀察，未復現）
+
+- 問題：在 view=agent 的主窗口點擊頂欄「打开新窗口」按鈕後約 2 秒，
+  desktop log 出現 "all desktop windows closed"，所有窗口消失
+  （Electron 主進程存活）。
+- 疑似關聯：時序上緊隨其後（同一分鐘）曾有第二個 dev 實例嘗試啟動失敗，
+  可能相關（單實例鎖/窗口接管競態）。
+- 影響：dev-only 環境噪聲較大，單次觀察先記錄。
+- 建議：若再現，查 applicationMenu/workspaceWindow 的新窗口打開路徑。
+
+### W4-GUI-2 「全部」分欄下「新建会话」按鈕禁用
+
+- 問題：Agent 目錄左欄選中「全部」過濾器時，頂部與項目行的「新建会话」
+  均為 disabled，需先切到具體 provider 分欄才能新建。
+- 建議：若是「創建需要明確 provider 上下文」的有意設計，應在 hover
+  tooltip 說明；否則可默認落到默認 Provider。
