@@ -27,8 +27,10 @@ Ownership is split as follows:
 - `services/tuttid/data/workspace` stores workflow metadata in SQLite. Plan
   content is kept in immutable files under the Tutti state directory.
 - `services/tuttid/service/cli/providers/tuttimodeplan` exposes Agent-callable
-  propose, revise, get, and bounded wait commands. It deliberately exposes no
-  decision command.
+  propose, revise, and get commands. It deliberately exposes no decision
+  command and no wait/poll command: the agent's turn ends after propose or
+  revise, and the user's review decision reaches the agent as a new user
+  message.
 - `packages/agent/gui/workspaceWorkflow` renders the daemon snapshot and sends
   user decisions through the desktop runtime adapter. It contains no workflow
   business state machine.
@@ -104,7 +106,7 @@ only indirectly through its source Turn provenance; it never changes the
 badge.
 
 The Agent CLI runtime context supplies `AgentSessionID` as the workflow
-association and isolation key. `plan revise`, `plan get`, and `plan wait`
+association and isolation key. `plan revise` and `plan get`
 require the same caller session as the workflow's `sourceSessionId`; a mismatch
 is deliberately reported as not found. This is a local capability boundary,
 not a claim that an environment variable is a malicious-client authentication
@@ -181,7 +183,23 @@ effort. An active snapshot is a directive, not a suggestion: the Agent must
 not execute the user's request directly in that turn. It first asks focused
 clarifying questions when the request is ambiguous or missing key
 constraints, then submits one complete tutti-mode-plan/v1 document through a
-single `tutti plan propose` call and waits for the user's review decision.
+single run of the `tutti plan propose` shell command and then ends the turn
+immediately — there is no wait command, and the user's review decision
+always arrives as a new user message. Because providers repeatedly misread
+the bare directive as a built-in tool they lack and fall back to provider
+planning surfaces (`update_plan`, TodoWrite, chat-only Markdown plans), the
+active context also carries one worked example per workflow step: the
+resolved CLI executable name (`tutti-dev` on development installs), the
+exact `plan propose` / `plan revise` command lines, and a minimal
+valid plan document showing the frontmatter task graph. The guide requires a
+complete launch configuration on every task — `agentTargetId`, `model`, and
+`permissionModeId` copied from `agent composer-options` output, never
+invented — plus an explicit `execution.reasoningIntensity`. Unless the user
+asks for supervised execution, the guide directs agents to the permission
+mode whose semantic is `full-access` (codex `full-access`, claude-code
+`bypassPermissions`): the user's approval happens once at plan review, so
+accepted tasks must not stall on mid-task approval prompts. The same
+resolved CLI name is used by the plan-revision feedback prompt.
 Read-only investigation is allowed while writing the plan; provider-native
 planning modes must not substitute for the Tutti plan workflow. Activation
 still does not gate tool availability—Tutti CLI capabilities remain available
@@ -233,9 +251,12 @@ Agent: tutti plan propose --file <plan.md> --request-id <stable-id>
   -> daemon commits workflow + revision + the single pending task review
   -> daemon publishes workspace.workflow.updated
   -> AgentGUI pulls the authoritative session-scoped pending snapshot
+  -> Agent's turn ends with the propose response (nextAction "stop")
   -> user accepts (optionally with per-task assignment overrides),
-     rejects with feedback, or cancels through HTTP
-  -> Agent observes the durable result with tutti plan wait/get
+     rejects with feedback, or cancels through HTTP; turning Tutti mode
+     off with a review still pending cancels the checkpoint the same way
+  -> the decision reaches the Agent as a new user message when follow-up
+     work is needed; there is no agent-side wait
 
 review rejected ("request changes")
   -> the rejection commits durably with its create_revision operation
@@ -286,10 +307,10 @@ and operation kind. The Issue ID is also deterministic for the workflow. Its
 reserved namespace and identity constructor live in the daemon-owned
 `workspaceworkflow` business model; the reusable workspace Issue package only
 validates generic Issue semantics and does not know Tutti workflow identity.
-This allows retries and waiters to converge on the existing operation or Issue
+This allows retries to converge on the existing operation or Issue
 instead of duplicating a side effect. A failed `create_issue` operation is
 requeued through a compare-and-set transition to the same pending operation
-when `decide` is replayed or `wait` observes it. The retry clears stale error
+when `decide` is replayed. The retry clears stale error
 and completion fields; the idempotent Issue materializer then converges on the
 same Issue ID.
 
