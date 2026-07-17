@@ -11,6 +11,7 @@ import {
   CardFooter,
   CardHeader,
   CardTitle,
+  Slider,
   Textarea,
   cn
 } from "@tutti-os/ui-system";
@@ -43,10 +44,7 @@ export interface TuttiModePlanPanelLabels {
   feedbackRequired: string;
   tasks: string;
   execution: string;
-  executionSequential: string;
-  executionParallel: string;
   budget: string;
-  reasoningIntensity: string;
   orchestrationIntensity: string;
   quotaWaterline: string;
   priority: string;
@@ -65,12 +63,20 @@ export interface TuttiModePlanPanelLabels {
 export function TuttiModePlanPanel({
   assignmentCatalog,
   labels,
+  orchestrationIntensity,
   panel,
   submitting,
-  onDecide
+  onDecide,
+  onOrchestrationIntensityChange
 }: {
   assignmentCatalog?: TuttiModePlanAssignmentCatalog | null;
   labels: TuttiModePlanPanelLabels;
+  /**
+   * Live session value backing the composer's Tutti badge popover; the panel
+   * slider reads and writes the same setting so the two stay in sync. Omit to
+   * fall back to the plan document's snapshot, read-only.
+   */
+  orchestrationIntensity?: number | null;
   panel: TuttiModePlanPanelViewModel;
   submitting: boolean;
   onDecide(input: {
@@ -80,16 +86,13 @@ export function TuttiModePlanPanel({
     taskAssignments?: readonly TuttiModePlanTaskAssignmentInput[];
     workflowId: string;
   }): Promise<void>;
+  onOrchestrationIntensityChange?(value: number): void;
 }): React.JSX.Element {
   const [requestingChanges, setRequestingChanges] = useState(false);
   const [feedback, setFeedback] = useState("");
   const [feedbackMissing, setFeedbackMissing] = useState(false);
   const [assignmentDrafts, setAssignmentDrafts] =
     useState<TuttiModePlanTaskAssignmentDrafts>({});
-  const executionLabel =
-    panel.execution.mode === "sequential"
-      ? labels.executionSequential
-      : labels.executionParallel;
   // Editing needs the loaded agent directory; before that (or without a host
   // catalog at all) tasks stay read-only.
   const editable = assignmentCatalog?.agents != null && panel.actionable;
@@ -141,18 +144,18 @@ export function TuttiModePlanPanel({
               <h4 className="text-xs font-medium text-foreground">
                 {labels.execution}
               </h4>
-              <Badge variant="secondary">{executionLabel}</Badge>
             </div>
-            <dl className="grid gap-2 text-xs">
-              <DefinitionItem
-                label={labels.reasoningIntensity}
-                value={`${panel.execution.reasoningIntensity} / 100`}
-              />
-              <DefinitionItem
-                label={labels.orchestrationIntensity}
-                value={`${panel.execution.orchestrationIntensity} / 100`}
-              />
-            </dl>
+            <OrchestrationIntensityField
+              label={labels.orchestrationIntensity}
+              value={
+                orchestrationIntensity ?? panel.execution.orchestrationIntensity
+              }
+              onChange={
+                panel.actionable && !submitting
+                  ? onOrchestrationIntensityChange
+                  : undefined
+              }
+            />
           </section>
           <section className="grid gap-3 rounded-md border border-border/70 bg-muted/30 p-3">
             <div className="flex flex-wrap items-center justify-between gap-2">
@@ -276,6 +279,53 @@ export function TuttiModePlanPanel({
         </Button>
       </CardFooter>
     </Card>
+  );
+}
+
+/**
+ * Orchestration-intensity slider mirroring the composer's Tutti budget
+ * popover row (label left, tabular value right, slider below). The local
+ * draft only covers mid-drag rendering: committed values echo back
+ * synchronously through the activation engine, so the draft clears on
+ * commit. Without an `onChange` the slider is a disabled display.
+ */
+function OrchestrationIntensityField({
+  label,
+  value,
+  onChange
+}: {
+  label: string;
+  value: number;
+  onChange?: ((value: number) => void) | undefined;
+}): React.JSX.Element {
+  const [dragValue, setDragValue] = useState<number | null>(null);
+  const displayValue = dragValue ?? value;
+  return (
+    <div className="nodrag grid gap-1.5 text-xs">
+      <div className="flex items-center justify-between gap-2">
+        <span className="text-muted-foreground">{label}</span>
+        <span
+          className="tabular-nums text-foreground"
+          data-tutti-plan-orchestration-intensity-value="true"
+        >
+          {displayValue}
+        </span>
+      </div>
+      <Slider
+        aria-label={label}
+        disabled={onChange === undefined}
+        max={100}
+        min={0}
+        step={1}
+        value={[displayValue]}
+        onValueChange={(values) => setDragValue(values[0] ?? null)}
+        onValueCommit={(values) => {
+          setDragValue(null);
+          const next = values[0];
+          if (next !== undefined) onChange?.(next);
+        }}
+      />
+    </div>
   );
 }
 
