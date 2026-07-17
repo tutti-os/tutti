@@ -16,7 +16,6 @@ export const zhCNTuttiModePlan = {
   reasoningIntensity: "推理强度",
   orchestrationIntensity: "编排强度",
   quotaWaterline: "配额水位线",
-  taskId: "任务 ID",
   priority: "优先级",
   priorityHigh: "高",
   priorityMedium: "中",
@@ -27,10 +26,7 @@ export const zhCNTuttiModePlan = {
   permissionMode: "权限模式",
   reasoningEffort: "推理强度",
   assignmentOptionsLoading: "选项加载中...",
-  executionDirectory: "执行目录",
-  dependencies: "依赖任务",
   notSpecified: "未指定",
-  none: "无",
   loadFailed: "无法加载 Tutti mode plan",
   retry: "重试"
 } as const;

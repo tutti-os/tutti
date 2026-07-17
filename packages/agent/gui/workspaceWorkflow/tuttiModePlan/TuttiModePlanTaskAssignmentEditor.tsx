@@ -3,8 +3,9 @@ import {
   SelectContent,
   SelectItem,
   SelectTrigger,
-  SelectValue
+  cn
 } from "@tutti-os/ui-system";
+import composerStyles from "../../agent-gui/agentGuiNode/AgentGUINode.styles";
 import type { TuttiModePlanAssignmentCatalog } from "./useTuttiModePlanPanels";
 import type { TuttiModePlanPanelTaskViewModel } from "./tuttiModePlanPanelProjection";
 import {
@@ -33,9 +34,34 @@ function fromSelectValue(value: string): string {
 }
 
 /**
- * Per-task assignment selectors for the single review checkpoint. Option
- * catalogs are agent-scoped and supplied by the host; the editor only chooses
- * among them and reports draft edits upward.
+ * Mirrors the composer permission-mode trigger tones so the plan panel's
+ * permission controls pick up the same accent/success/warning colors.
+ */
+export function permissionModeAssignmentTone(
+  value: string | null | undefined
+): "accent" | "success" | "warning" | undefined {
+  switch (value?.trim().toLowerCase().replace(/\s+/g, "-") || undefined) {
+    case "read-only":
+    case "readonly":
+    case "ask-for-approval":
+      return "success";
+    case "auto":
+    case "default":
+    case "accept-edits":
+    case "acceptedits":
+      return "accent";
+    case "full-access":
+    case "bypasspermissions":
+      return "warning";
+    default:
+      return undefined;
+  }
+}
+
+/**
+ * Per-task assignment selectors for the single review checkpoint, rendered as
+ * one composer-styled row. Option catalogs are agent-scoped and supplied by
+ * the host; the editor only chooses among them and reports draft edits upward.
  */
 export function TuttiModePlanTaskAssignmentEditor({
   catalog,
@@ -83,163 +109,231 @@ export function TuttiModePlanTaskAssignmentEditor({
     ? selectedPlan.models
     : (agentDetail?.models ?? []);
   const detailPending = Boolean(agentValue) && !agentDetail;
+  const agentLabel = agentValue
+    ? ((catalog.agents ?? []).find(
+        (agent) => agent.agentTargetId === agentValue
+      )?.label ?? agentValue)
+    : null;
 
   return (
     <div
-      className="mt-3 grid gap-x-4 gap-y-2 border-t border-border/70 pt-3 sm:grid-cols-2"
+      className="mt-3 flex flex-wrap items-center gap-0.5 border-t border-border/70 pt-2"
       data-testid={`tutti-plan-task-assignment-${task.id}`}
     >
-      <AssignmentField label={labels.agentTarget}>
-        <Select
-          disabled={disabled}
-          value={toSelectValue(agentValue)}
-          onValueChange={(value) => {
-            const nextAgent = fromSelectValue(value);
-            if (nextAgent) catalog.loadAgentOptions(nextAgent);
-            onEdit({ agentTargetId: nextAgent });
-          }}
-        >
-          <SelectTrigger
-            aria-label={labels.agentTarget}
-            className="h-8 w-full text-xs"
-          >
-            <SelectValue placeholder={labels.notSpecified} />
-          </SelectTrigger>
-          <SelectContent className="nodrag">
-            <SelectItem value={CLEAR_VALUE}>{labels.notSpecified}</SelectItem>
-            {(catalog.agents ?? []).map((agent) => (
-              <SelectItem key={agent.agentTargetId} value={agent.agentTargetId}>
-                {agent.label}
-              </SelectItem>
-            ))}
-            {agentValue &&
-            !(catalog.agents ?? []).some(
-              (agent) => agent.agentTargetId === agentValue
-            ) ? (
-              <SelectItem value={agentValue}>{agentValue}</SelectItem>
-            ) : null}
-          </SelectContent>
-        </Select>
-      </AssignmentField>
-      <AssignmentField label={labels.modelPlan}>
-        <AssignmentValueSelect
-          ariaLabel={labels.modelPlan}
-          disabled={disabled || !agentValue || detailPending}
-          notSpecifiedLabel={labels.notSpecified}
-          options={(agentDetail?.modelPlans ?? []).map((plan) => ({
-            label: plan.label,
-            value: plan.modelPlanId
-          }))}
-          pending={detailPending}
-          pendingLabel={labels.assignmentOptionsLoading}
-          value={planValue}
-          onChange={(value) => onEdit({ modelPlanId: value, model: "" })}
+      <Select
+        disabled={disabled}
+        value={toSelectValue(agentValue)}
+        onValueChange={(value) => {
+          const nextAgent = fromSelectValue(value);
+          if (nextAgent) catalog.loadAgentOptions(nextAgent);
+          onEdit({ agentTargetId: nextAgent });
+        }}
+      >
+        <AssignmentSelectTrigger
+          fieldLabel={labels.agentTarget}
+          value={agentLabel}
         />
-      </AssignmentField>
-      <AssignmentField label={labels.model}>
-        <AssignmentValueSelect
-          ariaLabel={labels.model}
-          disabled={disabled || !agentValue || detailPending}
-          notSpecifiedLabel={labels.notSpecified}
-          options={modelOptions.map((model) => ({
-            label: model,
-            value: model
-          }))}
-          pending={detailPending}
-          pendingLabel={labels.assignmentOptionsLoading}
-          value={modelValue}
-          onChange={(value) => onEdit({ model: value })}
-        />
-      </AssignmentField>
-      <AssignmentField label={labels.permissionMode}>
-        <AssignmentValueSelect
-          ariaLabel={labels.permissionMode}
-          disabled={disabled || !agentValue || detailPending}
-          notSpecifiedLabel={labels.notSpecified}
-          options={(agentDetail?.permissionModes ?? []).map((mode) => ({
-            label: mode.label,
-            value: mode.id
-          }))}
-          pending={detailPending}
-          pendingLabel={labels.assignmentOptionsLoading}
-          value={permissionValue}
-          onChange={(value) => onEdit({ permissionModeId: value })}
-        />
-      </AssignmentField>
-      <AssignmentField label={labels.reasoningEffort}>
-        <AssignmentValueSelect
-          ariaLabel={labels.reasoningEffort}
-          disabled={disabled || !agentValue || detailPending}
-          notSpecifiedLabel={labels.notSpecified}
-          options={(agentDetail?.reasoningEfforts ?? []).map((effort) => ({
-            label: effort,
-            value: effort
-          }))}
-          pending={detailPending}
-          pendingLabel={labels.assignmentOptionsLoading}
-          value={effortValue}
-          onChange={(value) => onEdit({ reasoningEffort: value })}
-        />
-      </AssignmentField>
+        <AssignmentSelectContent>
+          <AssignmentSelectItem value={CLEAR_VALUE}>
+            {labels.notSpecified}
+          </AssignmentSelectItem>
+          {(catalog.agents ?? []).map((agent) => (
+            <AssignmentSelectItem
+              key={agent.agentTargetId}
+              value={agent.agentTargetId}
+            >
+              {agent.label}
+            </AssignmentSelectItem>
+          ))}
+          {agentValue &&
+          !(catalog.agents ?? []).some(
+            (agent) => agent.agentTargetId === agentValue
+          ) ? (
+            <AssignmentSelectItem value={agentValue}>
+              {agentValue}
+            </AssignmentSelectItem>
+          ) : null}
+        </AssignmentSelectContent>
+      </Select>
+      <AssignmentValueSelect
+        disabled={disabled || !agentValue || detailPending}
+        fieldLabel={labels.modelPlan}
+        notSpecifiedLabel={labels.notSpecified}
+        options={(agentDetail?.modelPlans ?? []).map((plan) => ({
+          label: plan.label,
+          value: plan.modelPlanId
+        }))}
+        pending={detailPending}
+        pendingLabel={labels.assignmentOptionsLoading}
+        value={planValue}
+        onChange={(value) => onEdit({ modelPlanId: value, model: "" })}
+      />
+      <AssignmentValueSelect
+        disabled={disabled || !agentValue || detailPending}
+        fieldLabel={labels.model}
+        notSpecifiedLabel={labels.notSpecified}
+        options={modelOptions.map((model) => ({
+          label: model,
+          value: model
+        }))}
+        pending={detailPending}
+        pendingLabel={labels.assignmentOptionsLoading}
+        value={modelValue}
+        onChange={(value) => onEdit({ model: value })}
+      />
+      <AssignmentValueSelect
+        disabled={disabled || !agentValue || detailPending}
+        fieldLabel={labels.permissionMode}
+        notSpecifiedLabel={labels.notSpecified}
+        options={(agentDetail?.permissionModes ?? []).map((mode) => ({
+          label: mode.label,
+          value: mode.id
+        }))}
+        pending={detailPending}
+        pendingLabel={labels.assignmentOptionsLoading}
+        tone={permissionModeAssignmentTone(permissionValue)}
+        value={permissionValue}
+        onChange={(value) => onEdit({ permissionModeId: value })}
+      />
+      <AssignmentValueSelect
+        disabled={disabled || !agentValue || detailPending}
+        fieldLabel={labels.reasoningEffort}
+        notSpecifiedLabel={labels.notSpecified}
+        options={(agentDetail?.reasoningEfforts ?? []).map((effort) => ({
+          label: effort,
+          value: effort
+        }))}
+        pending={detailPending}
+        pendingLabel={labels.assignmentOptionsLoading}
+        value={effortValue}
+        onChange={(value) => onEdit({ reasoningEffort: value })}
+      />
     </div>
   );
 }
 
-function AssignmentField({
-  children,
-  label
+function AssignmentSelectTrigger({
+  fieldLabel,
+  pending = false,
+  pendingLabel,
+  tone,
+  value
+}: {
+  fieldLabel: string;
+  pending?: boolean;
+  pendingLabel?: string;
+  tone?: "accent" | "success" | "warning" | undefined;
+  value: string | null;
+}): React.JSX.Element {
+  const placeholder = pending && pendingLabel ? pendingLabel : fieldLabel;
+  return (
+    <SelectTrigger
+      aria-label={fieldLabel}
+      title={fieldLabel}
+      data-permission-tone={value !== null ? tone : undefined}
+      className={cn(
+        "w-auto max-w-full",
+        composerStyles.composerMenuTrigger,
+        pending && "animate-pulse"
+      )}
+    >
+      <span className="flex min-w-0 flex-1 items-center">
+        <span
+          className={cn(
+            "truncate",
+            value === null && "text-[var(--agent-gui-text-tertiary)]"
+          )}
+        >
+          {value ?? placeholder}
+        </span>
+      </span>
+    </SelectTrigger>
+  );
+}
+
+function AssignmentSelectContent({
+  children
 }: {
   children: React.ReactNode;
-  label: string;
 }): React.JSX.Element {
   return (
-    <div className="grid gap-1 text-xs">
-      <span className="text-muted-foreground">{label}</span>
+    <SelectContent
+      className={cn(
+        "nodrag",
+        composerStyles.composerMenuContent,
+        "min-w-[190px]"
+      )}
+    >
       {children}
-    </div>
+    </SelectContent>
+  );
+}
+
+function AssignmentSelectItem({
+  children,
+  value
+}: {
+  children: React.ReactNode;
+  value: string;
+}): React.JSX.Element {
+  return (
+    <SelectItem className={composerStyles.composerMenuItem} value={value}>
+      {children}
+    </SelectItem>
   );
 }
 
 function AssignmentValueSelect({
-  ariaLabel,
   disabled,
+  fieldLabel,
   notSpecifiedLabel,
   onChange,
   options,
   pending,
   pendingLabel,
+  tone,
   value
 }: {
-  ariaLabel: string;
   disabled: boolean;
+  fieldLabel: string;
   notSpecifiedLabel: string;
   onChange(value: string): void;
   options: readonly { label: string; value: string }[];
   pending: boolean;
   pendingLabel: string;
+  tone?: "accent" | "success" | "warning" | undefined;
   value: string;
 }): React.JSX.Element {
   const known = options.some((option) => option.value === value);
+  const selectedLabel = value
+    ? (options.find((option) => option.value === value)?.label ?? value)
+    : null;
   return (
     <Select
       disabled={disabled}
       value={toSelectValue(value)}
       onValueChange={(next) => onChange(fromSelectValue(next))}
     >
-      <SelectTrigger aria-label={ariaLabel} className="h-8 w-full text-xs">
-        <SelectValue placeholder={pending ? pendingLabel : notSpecifiedLabel} />
-      </SelectTrigger>
-      <SelectContent className="nodrag">
-        <SelectItem value={CLEAR_VALUE}>{notSpecifiedLabel}</SelectItem>
+      <AssignmentSelectTrigger
+        fieldLabel={fieldLabel}
+        pending={pending}
+        pendingLabel={pendingLabel}
+        tone={tone}
+        value={selectedLabel}
+      />
+      <AssignmentSelectContent>
+        <AssignmentSelectItem value={CLEAR_VALUE}>
+          {notSpecifiedLabel}
+        </AssignmentSelectItem>
         {options.map((option) => (
-          <SelectItem key={option.value} value={option.value}>
+          <AssignmentSelectItem key={option.value} value={option.value}>
             {option.label}
-          </SelectItem>
+          </AssignmentSelectItem>
         ))}
         {value && !known ? (
-          <SelectItem value={value}>{value}</SelectItem>
+          <AssignmentSelectItem value={value}>{value}</AssignmentSelectItem>
         ) : null}
-      </SelectContent>
+      </AssignmentSelectContent>
     </Select>
   );
 }
