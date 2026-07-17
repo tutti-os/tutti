@@ -23,6 +23,7 @@ const schemaMigrationWorkspaceAgentsV1 = "workspace_agents_v1"
 const schemaMigrationWorkspaceAgentsV2 = "workspace_agents_model_fallbacks_v1"
 const schemaMigrationWorkspaceAgentsV3 = "workspace_agents_call_conditions_v1"
 const schemaMigrationWorkspaceAgentsV4 = "workspace_agents_capability_selection_v1"
+const schemaMigrationWorkspaceIssuesV12 = "workspace_issue_tasks_launch_overrides_v1"
 const schemaMigrationDesktopPreferencesV1 = "desktop_preferences_v1"
 const schemaMigrationDesktopPreferencesAgentDockLayoutV1 = "desktop_preferences_agent_dock_layout_v1"
 const schemaMigrationDesktopPreferencesSleepPreventionModeV1 = "desktop_preferences_sleep_prevention_mode_v1"
@@ -68,6 +69,8 @@ const schemaMigrationWorkspaceWorkflowMutationsV2 = "workspace_workflow_mutation
 const schemaMigrationWorkspaceWorkflowRevisionPathReuseV3 = "workspace_workflow_revision_path_reuse_v3"
 const schemaMigrationTuttiModeActivationsV1 = "tutti_mode_activations_v1"
 const schemaMigrationTuttiModeTurnDispatchV2 = "tutti_mode_turn_dispatch_v2"
+const schemaMigrationTuttiModeOrchestrationIntensityV3 = "tutti_mode_orchestration_intensity_v3"
+const schemaMigrationWorkspaceWorkflowTaskAssignmentsV4 = "workspace_workflow_task_assignments_v4"
 
 func (s *SQLiteStore) Migrate(ctx context.Context) error {
 	if s == nil || s.writeDB == nil {
@@ -130,6 +133,10 @@ INSERT OR IGNORE INTO tuttid_schema_migrations (id, applied_at_unix_ms)
 	}
 
 	if err := s.applyWorkspaceIssuesV5(ctx); err != nil {
+		return err
+	}
+
+	if err := s.applyWorkspaceIssuesV12(ctx); err != nil {
 		return err
 	}
 
@@ -302,6 +309,12 @@ INSERT OR IGNORE INTO tuttid_schema_migrations (id, applied_at_unix_ms)
 		return err
 	}
 	if err := s.applyTuttiModeTurnDispatchV2(ctx); err != nil {
+		return err
+	}
+	if err := s.applyTuttiModeOrchestrationIntensityV3(ctx); err != nil {
+		return err
+	}
+	if err := s.applyWorkspaceWorkflowTaskAssignmentsV4(ctx); err != nil {
 		return err
 	}
 	return s.openReadPool(ctx)
@@ -683,6 +696,54 @@ INSERT INTO tuttid_schema_migrations (id, applied_at_unix_ms)
 		return fmt.Errorf("migrate workspace database for issue manager v2: %w", err)
 	}
 
+	return nil
+}
+
+// applyWorkspaceIssuesV12 introduces the task-level assignment and launch
+// override fields recorded from the Tutti Mode plan review: per-task agent
+// target, model plan, model, execution directory, dependency graph, permission
+// mode, and reasoning effort. Empty values inherit the target default and the
+// Issue-level intensity. The migration is additive so existing local Issue
+// Manager data remains valid.
+func (s *SQLiteStore) applyWorkspaceIssuesV12(ctx context.Context) error {
+	applied, err := s.hasMigration(ctx, schemaMigrationWorkspaceIssuesV12)
+	if err != nil {
+		return err
+	}
+	if applied {
+		return nil
+	}
+	columns := []struct {
+		name       string
+		definition string
+	}{
+		{"agent_target_id", "TEXT NOT NULL DEFAULT ''"},
+		{"model_plan_id", "TEXT NOT NULL DEFAULT ''"},
+		{"model", "TEXT NOT NULL DEFAULT ''"},
+		{"execution_directory", "TEXT NOT NULL DEFAULT ''"},
+		{"dependency_task_ids_json", "TEXT NOT NULL DEFAULT '[]'"},
+		{"permission_mode_id", "TEXT NOT NULL DEFAULT ''"},
+		{"reasoning_effort", "TEXT NOT NULL DEFAULT ''"},
+	}
+	for _, column := range columns {
+		hasColumn, err := s.hasColumn(ctx, "workspace_issue_tasks", column.name)
+		if err != nil {
+			return err
+		}
+		if hasColumn {
+			continue
+		}
+		statement := fmt.Sprintf("ALTER TABLE workspace_issue_tasks ADD COLUMN %s %s;", column.name, column.definition)
+		if _, err := s.writeDB.ExecContext(ctx, statement); err != nil {
+			return fmt.Errorf("add workspace_issue_tasks.%s: %w", column.name, err)
+		}
+	}
+	if _, err := s.writeDB.ExecContext(ctx, `
+INSERT INTO tuttid_schema_migrations (id, applied_at_unix_ms)
+  VALUES (?, ?);
+`, schemaMigrationWorkspaceIssuesV12, unixMs(time.Now().UTC())); err != nil {
+		return fmt.Errorf("record workspace issue task launch overrides migration: %w", err)
+	}
 	return nil
 }
 

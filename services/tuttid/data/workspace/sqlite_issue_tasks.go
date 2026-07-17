@@ -3,6 +3,7 @@ package workspace
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
@@ -123,27 +124,11 @@ WHERE workspace_id = ? AND issue_id = ?
 			return nil, workspaceissues.ErrInvalidArgument
 		}
 		task.SortIndex = nextSortIndex + index
-		result, err := tx.ExecContext(ctx, `
-INSERT INTO workspace_issue_tasks (
-  task_id, issue_id, workspace_id, title, content, search_text, status,
-  priority, sort_index, due_at_unix_ms, creator_user_id, creator_display_name,
-  creator_avatar_url, latest_run_id, created_at_unix_ms, updated_at_unix_ms
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-`, task.TaskID, task.IssueID, task.WorkspaceID, task.Title, task.Content, task.SearchText,
-			string(task.Status), string(task.Priority), task.SortIndex, task.DueAtUnixMS, task.CreatorUserID,
-			task.CreatorDisplayName, task.CreatorAvatarURL, task.LatestRunID, task.CreatedAtUnixMS, task.UpdatedAtUnixMS)
+		createdTask, err := insertWorkspaceIssueTask(ctx, tx, task)
 		if err != nil {
-			if isSQLiteUniqueConstraintError(err) {
-				return nil, workspaceissues.ErrTaskAlreadyExists
-			}
-			return nil, fmt.Errorf("append workspace issue task: %w", err)
+			return nil, err
 		}
-		id, err := result.LastInsertId()
-		if err != nil {
-			return nil, fmt.Errorf("read appended workspace issue task id: %w", err)
-		}
-		task.ID = uint64(id)
-		created = append(created, task)
+		created = append(created, createdTask)
 	}
 
 	if err := tx.Commit(); err != nil {
@@ -151,6 +136,39 @@ INSERT INTO workspace_issue_tasks (
 	}
 
 	return created, nil
+}
+
+func insertWorkspaceIssueTask(ctx context.Context, execer workspaceIssueExecer, task workspaceissues.Task) (workspaceissues.Task, error) {
+	dependencyTaskIDsJSON, err := json.Marshal(task.DependencyTaskIDs)
+	if err != nil {
+		return workspaceissues.Task{}, fmt.Errorf("encode workspace issue task dependencies: %w", err)
+	}
+	result, err := execer.ExecContext(ctx, `
+INSERT INTO workspace_issue_tasks (
+  task_id, issue_id, workspace_id, title, content, search_text, status,
+  priority, sort_index, due_at_unix_ms, agent_target_id, model_plan_id, model,
+  permission_mode_id, reasoning_effort,
+  execution_directory, dependency_task_ids_json,
+  creator_user_id, creator_display_name,
+  creator_avatar_url, latest_run_id, created_at_unix_ms, updated_at_unix_ms
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+`, task.TaskID, task.IssueID, task.WorkspaceID, task.Title, task.Content, task.SearchText,
+		string(task.Status), string(task.Priority), task.SortIndex, task.DueAtUnixMS, task.AgentTargetID,
+		task.ModelPlanID, task.Model, task.PermissionModeID, task.ReasoningEffort,
+		task.ExecutionDirectory, string(dependencyTaskIDsJSON), task.CreatorUserID,
+		task.CreatorDisplayName, task.CreatorAvatarURL, task.LatestRunID, task.CreatedAtUnixMS, task.UpdatedAtUnixMS)
+	if err != nil {
+		if isSQLiteUniqueConstraintError(err) {
+			return workspaceissues.Task{}, workspaceissues.ErrTaskAlreadyExists
+		}
+		return workspaceissues.Task{}, fmt.Errorf("append workspace issue task: %w", err)
+	}
+	id, err := result.LastInsertId()
+	if err != nil {
+		return workspaceissues.Task{}, fmt.Errorf("read appended workspace issue task id: %w", err)
+	}
+	task.ID = uint64(id)
+	return task, nil
 }
 
 func (s *SQLiteStore) GetTask(ctx context.Context, workspaceID string, issueID string, taskID string) (workspaceissues.Task, error) {
@@ -178,13 +196,24 @@ func (s *SQLiteStore) UpdateTask(ctx context.Context, task workspaceissues.Task)
 		return workspaceissues.Task{}, err
 	}
 
+	dependencyTaskIDsJSON, err := json.Marshal(task.DependencyTaskIDs)
+	if err != nil {
+		return workspaceissues.Task{}, fmt.Errorf("encode workspace issue task dependencies: %w", err)
+	}
 	result, err := s.writeDB.ExecContext(ctx, `
 UPDATE workspace_issue_tasks
 SET title = ?, content = ?, search_text = ?, status = ?, priority = ?,
-    sort_index = ?, due_at_unix_ms = ?, latest_run_id = ?, updated_at_unix_ms = ?
+    sort_index = ?, due_at_unix_ms = ?, agent_target_id = ?, model_plan_id = ?,
+    model = ?, permission_mode_id = ?, reasoning_effort = ?, execution_directory = ?,
+    dependency_task_ids_json = ?,
+    latest_run_id = ?, updated_at_unix_ms = ?
 WHERE workspace_id = ? AND issue_id = ? AND task_id = ?
 `, task.Title, task.Content, task.SearchText, string(task.Status), string(task.Priority),
-		task.SortIndex, task.DueAtUnixMS, task.LatestRunID, task.UpdatedAtUnixMS, task.WorkspaceID, task.IssueID, task.TaskID)
+		task.SortIndex, task.DueAtUnixMS, task.AgentTargetID, task.ModelPlanID, task.Model,
+		task.PermissionModeID, task.ReasoningEffort,
+		task.ExecutionDirectory, string(dependencyTaskIDsJSON),
+		task.LatestRunID, task.UpdatedAtUnixMS,
+		task.WorkspaceID, task.IssueID, task.TaskID)
 	if err != nil {
 		return workspaceissues.Task{}, fmt.Errorf("update workspace issue task: %w", err)
 	}

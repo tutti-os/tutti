@@ -97,6 +97,8 @@ type CreateIssueManagerTaskItemInput struct {
 	AgentTargetID      string
 	ModelPlanID        string
 	Model              string
+	PermissionModeID   string
+	ReasoningEffort    string
 	ExecutionDirectory string
 	DependencyTaskIDs  []string
 }
@@ -256,6 +258,8 @@ func (s IssueManagerService) CreateIssueFromPlan(ctx context.Context, workspaceI
 			AgentTargetID:      task.AgentTargetID,
 			ModelPlanID:        task.ModelPlanID,
 			Model:              task.Model,
+			PermissionModeID:   task.PermissionModeID,
+			ReasoningEffort:    task.ReasoningEffort,
 			ExecutionDirectory: task.ExecutionDirectory,
 			DependencyTaskIDs:  task.DependencyTaskIDs,
 		})
@@ -414,11 +418,18 @@ func (s IssueManagerService) CreateTasks(ctx context.Context, workspaceID string
 	items := make([]workspaceissues.CreateTaskItemInput, 0, len(input.Tasks))
 	for _, task := range input.Tasks {
 		items = append(items, workspaceissues.CreateTaskItemInput{
-			TaskID:      task.TaskID,
-			Title:       task.Title,
-			Content:     task.Content,
-			Priority:    task.Priority,
-			DueAtUnixMS: task.DueAtUnixMS,
+			TaskID:             task.TaskID,
+			Title:              task.Title,
+			Content:            task.Content,
+			Priority:           task.Priority,
+			DueAtUnixMS:        task.DueAtUnixMS,
+			AgentTargetID:      task.AgentTargetID,
+			ModelPlanID:        task.ModelPlanID,
+			Model:              task.Model,
+			PermissionModeID:   task.PermissionModeID,
+			ReasoningEffort:    task.ReasoningEffort,
+			ExecutionDirectory: task.ExecutionDirectory,
+			DependencyTaskIDs:  task.DependencyTaskIDs,
 		})
 	}
 	tasks, err := s.domainService().CreateTasks(ctx, workspaceissues.CreateTasksInput{

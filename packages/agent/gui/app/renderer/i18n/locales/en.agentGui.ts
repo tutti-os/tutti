@@ -272,6 +272,13 @@ export const enAgentGui = {
   tuttiModeLabel: "Tutti",
   tuttiModeDescription:
     "Ask the agent to prefer Tutti's native workflow capabilities",
+  tuttiModeRemove: "Turn off Tutti mode",
+  tuttiBudgetTitle: "Tutti orchestration",
+  tuttiBudgetIntensityLabel: "Orchestration intensity",
+  tuttiBudgetIntensityMin: "Minimal",
+  tuttiBudgetIntensityMax: "Maximal",
+  tuttiBudgetConfirm: "Confirm",
+  tuttiBudgetCancel: "Cancel",
   tuttiModeUpdateFailed: "Tutti mode couldn't be updated. Try again.",
   tuttiModeUpdateUncertain:
     "Tutti mode is still being reconciled. Try again after it finishes.",

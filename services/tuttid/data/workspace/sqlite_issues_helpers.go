@@ -3,6 +3,7 @@ package workspace
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
@@ -282,15 +283,25 @@ func scanWorkspaceIssueTask(scanner issueScanner) (workspaceissues.Task, error) 
 	var id int64
 	var status string
 	var priority string
+	var dependencyTaskIDsJSON string
 	err := scanner.Scan(
 		&id, &item.TaskID, &item.IssueID, &item.WorkspaceID, &item.Title, &item.Content,
 		&item.SearchText, &status, &priority, &item.SortIndex, &item.DueAtUnixMS,
+		&item.AgentTargetID, &item.ModelPlanID, &item.Model,
+		&item.PermissionModeID, &item.ReasoningEffort,
+		&item.ExecutionDirectory, &dependencyTaskIDsJSON,
 		&item.CreatorUserID, &item.CreatorDisplayName, &item.CreatorAvatarURL,
 		&item.LatestRunID, &item.CreatedAtUnixMS, &item.UpdatedAtUnixMS,
 	)
 	item.ID = uint64(id)
 	item.Status = workspaceissues.Status(status)
 	item.Priority = workspaceissues.Priority(priority)
+	if err == nil {
+		err = json.Unmarshal([]byte(dependencyTaskIDsJSON), &item.DependencyTaskIDs)
+	}
+	if item.DependencyTaskIDs == nil {
+		item.DependencyTaskIDs = []string{}
+	}
 	return item, err
 }
 

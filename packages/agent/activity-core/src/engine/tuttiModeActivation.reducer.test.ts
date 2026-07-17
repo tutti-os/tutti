@@ -74,6 +74,7 @@ test("home Tutti intent transfers to an optimistic session and clears only after
       currentRevision: {
         activationId: "activation-1",
         createdAtUnixMs: 15,
+        orchestrationIntensity: 50,
         revision: 1,
         source: "badge_remove",
         status: "inactive"
@@ -345,6 +346,7 @@ test("existing-session toggle uses the canonical revision and reconciles from th
     currentRevision: {
       activationId: "activation-1",
       createdAtUnixMs: 110,
+      orchestrationIntensity: 50,
       revision: 4,
       source: "badge_remove",
       status: "inactive"
@@ -427,6 +429,7 @@ test("canonical null and inactive projections remain inactive after reload", () 
       currentRevision: {
         activationId: "activation-1",
         createdAtUnixMs: 20,
+        orchestrationIntensity: 50,
         revision: 4,
         source: "badge_remove",
         status: "inactive"
@@ -600,6 +603,7 @@ test("semantic revision evidence settles an uncertain update", () => {
       currentRevision: {
         activationId: "activation-1",
         createdAtUnixMs: 110,
+        orchestrationIntensity: 50,
         revision: 4,
         source: "badge_remove",
         status: "inactive"
@@ -674,6 +678,353 @@ test("the owned reconcile result makes an unresolved update retryable", () => {
   );
 });
 
+test("draftSet stores a validated orchestration intensity and re-set with a different intensity updates the active draft", () => {
+  let state = createInitialTuttiModeActivationState();
+  state = reduce(state, {
+    active: true,
+    draftKey: "node-1:home",
+    occurredAtUnixMs: 10,
+    orchestrationIntensity: 70,
+    type: "tuttiMode/draftSet"
+  }).state;
+  assert.equal(state.draftsByKey["node-1:home"]?.orchestrationIntensity, 70);
+
+  // 同 active + 同 intensity → unchanged(引用相等)。
+  const unchangedResult = reduce(state, {
+    active: true,
+    draftKey: "node-1:home",
+    occurredAtUnixMs: 20,
+    orchestrationIntensity: 70,
+    type: "tuttiMode/draftSet"
+  });
+  assert.equal(unchangedResult.state, state);
+
+  // 缺省 intensity 保留既有值。
+  const preserved = reduce(state, {
+    active: true,
+    draftKey: "node-1:home",
+    occurredAtUnixMs: 25,
+    type: "tuttiMode/draftSet"
+  });
+  assert.equal(preserved.state, state);
+
+  // 已 active 但 intensity 不同 → 更新 draft record。
+  state = reduce(state, {
+    active: true,
+    draftKey: "node-1:home",
+    occurredAtUnixMs: 30,
+    orchestrationIntensity: 20,
+    type: "tuttiMode/draftSet"
+  }).state;
+  assert.equal(state.draftsByKey["node-1:home"]?.orchestrationIntensity, 20);
+
+  // 非法值(非整数/越界)归一化为 null。
+  state = reduce(state, {
+    active: true,
+    draftKey: "node-1:home",
+    occurredAtUnixMs: 40,
+    orchestrationIntensity: 250,
+    type: "tuttiMode/draftSet"
+  }).state;
+  assert.equal(state.draftsByKey["node-1:home"]?.orchestrationIntensity, null);
+});
+
+test("pending create copies the draft's orchestration intensity when the intent lacks it", () => {
+  let state = createInitialTuttiModeActivationState();
+  state = reduce(state, {
+    active: true,
+    draftKey: "node-1:home",
+    occurredAtUnixMs: 10,
+    orchestrationIntensity: 80,
+    type: "tuttiMode/draftSet"
+  }).state;
+  state = reduce(state, {
+    agentSessionId: "session-1",
+    agentTargetId: "target-1",
+    clientSubmitId: "submit-1",
+    expiresAtUnixMs: 1_000,
+    initialTuttiModeActivation: {
+      source: "slash_command",
+      status: "active"
+    },
+    mode: "new",
+    requestedAtUnixMs: 20,
+    requestId: "activation-1",
+    tuttiModeDraftKey: "node-1:home",
+    type: "activation/requested",
+    workspaceId: "workspace-1"
+  }).state;
+
+  assert.equal(
+    state.pendingCreatesBySessionId["session-1"]?.initialActivation
+      .orchestrationIntensity,
+    80
+  );
+  assert.equal(
+    selectTuttiModeActivationPresentation(
+      engineState(state),
+      "session-1",
+      "node-1:home"
+    ).orchestrationIntensity,
+    80
+  );
+});
+
+test("pending create prefers the intent-carried orchestration intensity over the draft's", () => {
+  let state = createInitialTuttiModeActivationState();
+  state = reduce(state, {
+    active: true,
+    draftKey: "node-1:home",
+    occurredAtUnixMs: 10,
+    orchestrationIntensity: 80,
+    type: "tuttiMode/draftSet"
+  }).state;
+  state = reduce(state, {
+    agentSessionId: "session-1",
+    agentTargetId: "target-1",
+    clientSubmitId: "submit-1",
+    expiresAtUnixMs: 1_000,
+    initialTuttiModeActivation: {
+      orchestrationIntensity: 30,
+      source: "slash_command",
+      status: "active"
+    },
+    mode: "new",
+    requestedAtUnixMs: 20,
+    requestId: "activation-1",
+    tuttiModeDraftKey: "node-1:home",
+    type: "activation/requested",
+    workspaceId: "workspace-1"
+  }).state;
+
+  assert.equal(
+    state.pendingCreatesBySessionId["session-1"]?.initialActivation
+      .orchestrationIntensity,
+    30
+  );
+});
+
+test("same-status update with a different orchestration intensity proceeds and settles on the matching revision", () => {
+  const canonical = session(activeActivation());
+  let state = reduce(
+    createInitialTuttiModeActivationState(),
+    { session: canonical, type: "session/upserted" },
+    { "session-1": canonical }
+  ).state;
+
+  const requested = reduce(
+    state,
+    {
+      agentSessionId: "session-1",
+      commandId: "tutti-mode-1",
+      orchestrationIntensity: 90,
+      requestedAtUnixMs: 100,
+      source: "slash_command",
+      status: "active",
+      type: "tuttiMode/updateRequested",
+      workspaceId: "workspace-1"
+    },
+    { "session-1": canonical }
+  );
+  state = requested.state;
+
+  assert.deepEqual(requested.commands, [
+    {
+      agentSessionId: "session-1",
+      commandId: "tutti-mode-1",
+      expectedRevision: 3,
+      orchestrationIntensity: 90,
+      source: "slash_command",
+      status: "active",
+      timeoutMs: 15_000,
+      type: "tuttiMode/update",
+      workspaceId: "workspace-1"
+    }
+  ]);
+  assert.equal(
+    state.updatesBySessionId["session-1"]?.orchestrationIntensity,
+    90
+  );
+  assert.equal(
+    selectTuttiModeActivationPresentation(
+      engineState(state),
+      "session-1",
+      "node-1:home"
+    ).orchestrationIntensity,
+    90
+  );
+
+  // 返回的 activation intensity 不匹配 → 结果无效,进入 uncertain。
+  const staleIntensity = activeActivation({
+    currentRevision: {
+      activationId: "activation-1",
+      createdAtUnixMs: 110,
+      orchestrationIntensity: 50,
+      revision: 4,
+      source: "slash_command",
+      status: "active"
+    },
+    updatedAtUnixMs: 110
+  });
+  const mismatched = reduce(
+    state,
+    {
+      commandId: "tutti-mode-1",
+      commandType: "tuttiMode/update",
+      outcome: "succeeded",
+      type: "engine/commandResult",
+      value: { activation: staleIntensity, changed: true }
+    },
+    { "session-1": canonical }
+  );
+  assert.equal(
+    mismatched.state.updatesBySessionId["session-1"]?.updateStatus,
+    "uncertain"
+  );
+
+  // intensity 匹配 → 正常结清并采纳 activation。
+  const applied = activeActivation({
+    currentRevision: {
+      activationId: "activation-1",
+      createdAtUnixMs: 110,
+      orchestrationIntensity: 90,
+      revision: 4,
+      source: "slash_command",
+      status: "active"
+    },
+    updatedAtUnixMs: 110
+  });
+  state = reduce(
+    state,
+    {
+      commandId: "tutti-mode-1",
+      commandType: "tuttiMode/update",
+      outcome: "succeeded",
+      type: "engine/commandResult",
+      value: { activation: applied, changed: true }
+    },
+    { "session-1": canonical }
+  ).state;
+  assert.equal(state.updatesBySessionId["session-1"], undefined);
+  assert.equal(
+    state.activationsBySessionId["session-1"]?.currentRevision
+      .orchestrationIntensity,
+    90
+  );
+});
+
+test("same-status update with an equal or absent orchestration intensity keeps the early-clear behavior", () => {
+  const canonical = session(activeActivation());
+  const base = reduce(
+    createInitialTuttiModeActivationState(),
+    { session: canonical, type: "session/upserted" },
+    { "session-1": canonical }
+  ).state;
+
+  for (const orchestrationIntensity of [undefined, null, 50]) {
+    const result = reduce(
+      base,
+      {
+        agentSessionId: "session-1",
+        commandId: "tutti-mode-1",
+        ...(orchestrationIntensity === undefined
+          ? {}
+          : { orchestrationIntensity }),
+        requestedAtUnixMs: 100,
+        source: "slash_command",
+        status: "active",
+        type: "tuttiMode/updateRequested",
+        workspaceId: "workspace-1"
+      },
+      { "session-1": canonical }
+    );
+    assert.deepEqual(result.commands, []);
+    assert.equal(result.state.updatesBySessionId["session-1"], undefined);
+  }
+});
+
+test("hydration settles an intensity update only when the canonical revision carries the requested intensity", () => {
+  const canonical = session(activeActivation());
+  let state = reduce(
+    createInitialTuttiModeActivationState(),
+    { session: canonical, type: "session/upserted" },
+    { "session-1": canonical }
+  ).state;
+  state = reduce(
+    state,
+    {
+      agentSessionId: "session-1",
+      commandId: "tutti-mode-1",
+      orchestrationIntensity: 90,
+      requestedAtUnixMs: 100,
+      source: "slash_command",
+      status: "active",
+      type: "tuttiMode/updateRequested",
+      workspaceId: "workspace-1"
+    },
+    { "session-1": canonical }
+  ).state;
+  state = reduce(
+    state,
+    {
+      commandId: "tutti-mode-1",
+      commandType: "tuttiMode/update",
+      outcome: "timedOut",
+      type: "engine/commandResult"
+    },
+    { "session-1": canonical }
+  ).state;
+
+  // 新 revision 但 intensity 仍是旧值 → 不算语义应用。
+  const staleIntensity = session(
+    activeActivation({
+      currentRevision: {
+        activationId: "activation-1",
+        createdAtUnixMs: 110,
+        orchestrationIntensity: 50,
+        revision: 4,
+        source: "slash_command",
+        status: "active"
+      },
+      updatedAtUnixMs: 110
+    })
+  );
+  state = reduce(
+    state,
+    { session: staleIntensity, type: "session/upserted" },
+    { "session-1": staleIntensity }
+  ).state;
+  assert.equal(
+    state.updatesBySessionId["session-1"]?.updateStatus,
+    "uncertain"
+  );
+
+  const applied = session(
+    activeActivation({
+      currentRevision: {
+        activationId: "activation-1",
+        createdAtUnixMs: 120,
+        orchestrationIntensity: 90,
+        revision: 5,
+        source: "slash_command",
+        status: "active"
+      },
+      updatedAtUnixMs: 120
+    })
+  );
+  state = reduce(
+    state,
+    { session: applied, type: "session/upserted" },
+    { "session-1": applied }
+  ).state;
+  assert.equal(state.updatesBySessionId["session-1"], undefined);
+  assert.equal(
+    state.activationsBySessionId["session-1"]?.currentRevision
+      .orchestrationIntensity,
+    90
+  );
+});
+
 function reduce(
   state: ReturnType<typeof createInitialTuttiModeActivationState>,
   intent: Parameters<typeof tuttiModeActivationReducer>[1],
@@ -718,6 +1069,7 @@ function activeActivation(
     currentRevision: {
       activationId: "activation-1",
       createdAtUnixMs: 10,
+      orchestrationIntensity: 50,
       revision: 3,
       source: "slash_command",
       status: "active"

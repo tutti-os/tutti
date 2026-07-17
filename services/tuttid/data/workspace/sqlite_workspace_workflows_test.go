@@ -3,6 +3,7 @@ package workspace
 import (
 	"context"
 	"errors"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -75,7 +76,7 @@ func TestSQLiteStoreCreatesWorkspaceWorkflowProposalAtomically(t *testing.T) {
 	if len(snapshot.Revisions) != 1 || snapshot.Revisions[0] != aggregate.Revision {
 		t.Fatalf("revisions = %#v, want initial revision", snapshot.Revisions)
 	}
-	if len(snapshot.Checkpoints) != 1 || snapshot.Checkpoints[0] != aggregate.Checkpoint {
+	if len(snapshot.Checkpoints) != 1 || !reflect.DeepEqual(snapshot.Checkpoints[0], aggregate.Checkpoint) {
 		t.Fatalf("checkpoints = %#v, want initial checkpoint", snapshot.Checkpoints)
 	}
 	if len(snapshot.TurnLinks) != 1 || snapshot.TurnLinks[0] != aggregate.TurnLinks[0] {

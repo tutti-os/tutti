@@ -96,8 +96,9 @@ func tuttiModeActivationIntentFromGenerated(input *tuttigenerated.TuttiModeActiv
 		return nil, err
 	}
 	return &agentservice.TuttiModeActivationIntent{
-		State:  string(input.Status),
-		Source: string(input.Source),
+		State:                  string(input.Status),
+		Source:                 string(input.Source),
+		OrchestrationIntensity: input.OrchestrationIntensity,
 	}, nil
 }
 

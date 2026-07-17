@@ -28,9 +28,13 @@ func (s *SQLiteStore) DecideWorkspaceWorkflowCheckpoint(
 	}
 	defer func() { _ = tx.Rollback() }()
 
+	encodedAssignments, err := encodeWorkflowTaskAssignments(input.TaskAssignments)
+	if err != nil {
+		return workflowbiz.WorkflowCheckpoint{}, false, err
+	}
 	result, err := tx.ExecContext(ctx, `
 UPDATE workspace_workflow_checkpoints
-SET status = ?, decided_by = ?, decision_reason = ?, updated_at_unix_ms = ?, decided_at_unix_ms = ?
+SET status = ?, decided_by = ?, decision_reason = ?, task_assignments = ?, updated_at_unix_ms = ?, decided_at_unix_ms = ?
 WHERE workspace_id = ? AND workflow_id = ? AND checkpoint_id = ?
   AND revision_id = ? AND status = ?
   AND EXISTS (
@@ -38,7 +42,7 @@ WHERE workspace_id = ? AND workflow_id = ? AND checkpoint_id = ?
     WHERE workspace_id = ? AND workflow_id = ?
       AND current_revision_id = ? AND status = ?
   )
-`, input.Decision, input.DecidedBy, input.DecisionReason, unixMs(input.DecidedAt), unixMs(input.DecidedAt),
+`, input.Decision, input.DecidedBy, input.DecisionReason, encodedAssignments, unixMs(input.DecidedAt), unixMs(input.DecidedAt),
 		input.WorkspaceID, input.WorkflowID, input.CheckpointID, input.ExpectedCurrentRevisionID, input.ExpectedStatus,
 		input.WorkspaceID, input.WorkflowID, input.ExpectedCurrentRevisionID, input.ExpectedWorkflowStatus)
 	if err != nil {

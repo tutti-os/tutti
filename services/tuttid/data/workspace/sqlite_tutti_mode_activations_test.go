@@ -298,3 +298,81 @@ ALTER TABLE tutti_mode_turn_snapshots DROP COLUMN accepted_at_unix_ms;
 		t.Fatalf("migration marker present=%v error=%v", applied, err)
 	}
 }
+
+func TestSQLiteStoreTuttiModeActivationOrchestrationIntensityRevisions(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	store := openTestSQLiteStore(t)
+	if err := store.Create(ctx, workspacebiz.Summary{ID: "ws-intensity", Name: "Intensity"}); err != nil {
+		t.Fatal(err)
+	}
+	now := time.UnixMilli(1_700_000_000_000).UTC()
+
+	// First activation without an explicit slider value adopts the default.
+	first, changed, err := store.SetTuttiModeActivation(ctx, SetTuttiModeActivationInput{
+		WorkspaceID: "ws-intensity", AgentSessionID: "session-1",
+		ActivationID: "activation-1", RevisionID: "revision-1",
+		State: activationbiz.StateActive, Source: activationbiz.SourceSlashCommand, ChangedAt: now,
+	})
+	if err != nil || !changed || first.CurrentRevision.OrchestrationIntensity != activationbiz.DefaultOrchestrationIntensity {
+		t.Fatalf("first SetTuttiModeActivation() activation=%#v changed=%v err=%v", first, changed, err)
+	}
+
+	// An intensity-only change appends a new revision while state stays active.
+	eighty := 80
+	second, changed, err := store.SetTuttiModeActivation(ctx, SetTuttiModeActivationInput{
+		WorkspaceID: "ws-intensity", AgentSessionID: "session-1",
+		ActivationID: "unused", RevisionID: "revision-2",
+		State: activationbiz.StateActive, Source: activationbiz.SourceSlashCommand,
+		OrchestrationIntensity: &eighty, ChangedAt: now.Add(time.Second),
+	})
+	if err != nil || !changed || second.CurrentRevision.Revision != 2 || second.CurrentRevision.OrchestrationIntensity != 80 {
+		t.Fatalf("intensity SetTuttiModeActivation() activation=%#v changed=%v err=%v", second, changed, err)
+	}
+
+	// The same intensity again is an idempotent no-op.
+	repeat, changed, err := store.SetTuttiModeActivation(ctx, SetTuttiModeActivationInput{
+		WorkspaceID: "ws-intensity", AgentSessionID: "session-1",
+		ActivationID: "unused", RevisionID: "revision-3",
+		State: activationbiz.StateActive, Source: activationbiz.SourceSlashCommand,
+		OrchestrationIntensity: &eighty, ChangedAt: now.Add(2 * time.Second),
+	})
+	if err != nil || changed || repeat.CurrentRevision.Revision != 2 {
+		t.Fatalf("repeat SetTuttiModeActivation() activation=%#v changed=%v err=%v", repeat, changed, err)
+	}
+
+	// Omitting the intensity keeps the last persisted value across a state flip.
+	inactive, changed, err := store.SetTuttiModeActivation(ctx, SetTuttiModeActivationInput{
+		WorkspaceID: "ws-intensity", AgentSessionID: "session-1",
+		ActivationID: "unused", RevisionID: "revision-4",
+		State: activationbiz.StateInactive, Source: activationbiz.SourceBadgeRemove, ChangedAt: now.Add(3 * time.Second),
+	})
+	if err != nil || !changed || inactive.CurrentRevision.OrchestrationIntensity != 80 {
+		t.Fatalf("inactive SetTuttiModeActivation() activation=%#v changed=%v err=%v", inactive, changed, err)
+	}
+
+	// The bound turn snapshot carries the exact revision intensity.
+	snapshot, created, err := store.PutTuttiModeTurnSnapshot(ctx, "ws-intensity", "session-1", "turn-1", activationbiz.TurnSnapshot{
+		ActivationID: "activation-1", RevisionID: "revision-2", Revision: 2,
+		State: activationbiz.StateActive, Source: activationbiz.SourceSlashCommand,
+		OrchestrationIntensity: 80,
+	}, now.Add(4*time.Second))
+	if err != nil || !created || snapshot.OrchestrationIntensity != 80 {
+		t.Fatalf("PutTuttiModeTurnSnapshot() snapshot=%#v created=%v err=%v", snapshot, created, err)
+	}
+	read, found, err := store.GetTuttiModeTurnSnapshot(ctx, "ws-intensity", "session-1", "turn-1")
+	if err != nil || !found || read.OrchestrationIntensity != 80 {
+		t.Fatalf("GetTuttiModeTurnSnapshot() snapshot=%#v found=%v err=%v", read, found, err)
+	}
+
+	// Out-of-range values fail closed.
+	invalid := 101
+	if _, _, err := store.SetTuttiModeActivation(ctx, SetTuttiModeActivationInput{
+		WorkspaceID: "ws-intensity", AgentSessionID: "session-1",
+		ActivationID: "unused", RevisionID: "revision-5",
+		State: activationbiz.StateActive, Source: activationbiz.SourceSlashCommand,
+		OrchestrationIntensity: &invalid, ChangedAt: now.Add(5 * time.Second),
+	}); err == nil {
+		t.Fatal("SetTuttiModeActivation(101) error = nil, want validation failure")
+	}
+}

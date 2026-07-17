@@ -9,6 +9,8 @@ export interface TuttiModeDraftIntentRecord {
   active: true;
   draftKey: string;
   occurredAtUnixMs: number;
+  /** null = 未选择,交给 daemon 默认值。 */
+  orchestrationIntensity: number | null;
   source: "slash_command";
 }
 
@@ -32,6 +34,7 @@ export interface TuttiModeActivationUpdateRecord {
   errorCode: string | null;
   errorMessage: string | null;
   expectedRevision: number | null;
+  orchestrationIntensity: number | null;
   reconcileCommandId: string | null;
   requestedAtUnixMs: number;
   source: AgentActivityTuttiModeActivationSource;
@@ -56,12 +59,14 @@ export interface TuttiModeDraftSetIntent {
   active: boolean;
   draftKey: string;
   occurredAtUnixMs: number;
+  orchestrationIntensity?: number | null;
 }
 
 export interface TuttiModeActivationUpdateRequestedIntent {
   type: "tuttiMode/updateRequested";
   agentSessionId: string;
   commandId: string;
+  orchestrationIntensity?: number | null;
   requestedAtUnixMs: number;
   source: AgentActivityTuttiModeActivationSource;
   status: AgentActivityTuttiModeActivationStatus;
@@ -77,6 +82,7 @@ export interface TuttiModeActivationUpdateCommand {
   agentSessionId: string;
   commandId: string;
   expectedRevision?: number;
+  orchestrationIntensity?: number;
   source: AgentActivityTuttiModeActivationSource;
   status: AgentActivityTuttiModeActivationStatus;
   timeoutMs?: number;

@@ -126,6 +126,12 @@ type Task struct {
 	AgentTargetID      string
 	ModelPlanID        string
 	Model              string
+	// PermissionModeID and ReasoningEffort are task-level launch overrides
+	// recorded from the Tutti Mode plan review. Empty inherits the target's
+	// composer default (permission mode) or the Issue-level reasoning
+	// intensity compilation (reasoning effort).
+	PermissionModeID   string
+	ReasoningEffort    string
 	ExecutionDirectory string
 	DependencyTaskIDs  []string
 	CreatedAtUnixMS    int64

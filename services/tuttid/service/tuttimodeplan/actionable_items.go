@@ -32,6 +32,10 @@ func ProjectActionableItems(view SnapshotView) []ActionableItem {
 	if !ok || checkpoint.Kind != workflowbiz.CheckpointKindTaskReview || checkpoint.Status != workflowbiz.CheckpointStatusAccepted {
 		return nil
 	}
+	overrides := make(map[string]workflowbiz.TaskAssignment, len(checkpoint.TaskAssignments))
+	for _, assignment := range checkpoint.TaskAssignments {
+		overrides[assignment.TaskID] = assignment
+	}
 	for _, revision := range view.Revisions {
 		if revision.Revision.ID != currentRevisionID || revision.Document.Phase != PhaseTaskGraph {
 			continue
@@ -40,6 +44,9 @@ func ProjectActionableItems(view SnapshotView) []ActionableItem {
 		for index, task := range revision.Document.Tasks {
 			clonedTask := task
 			clonedTask.DependsOn = append([]string(nil), task.DependsOn...)
+			if override, ok := overrides[task.ID]; ok {
+				applyTaskAssignmentOverride(&clonedTask, override)
+			}
 			items = append(items, ActionableItem{
 				ID:               fmt.Sprintf("%s/%s/%s", view.Workflow.ID, revision.Revision.ID, task.ID),
 				SourceWorkflowID: view.Workflow.ID,
@@ -54,4 +61,25 @@ func ProjectActionableItems(view SnapshotView) []ActionableItem {
 		return items
 	}
 	return nil
+}
+
+// applyTaskAssignmentOverride merges one user-owned decision override into a
+// plan task. Nil fields keep the document value; non-nil values replace it,
+// including an explicit empty string that clears the assignment.
+func applyTaskAssignmentOverride(task *PlanTask, override workflowbiz.TaskAssignment) {
+	if override.AgentTargetID != nil {
+		task.AgentTargetID = *override.AgentTargetID
+	}
+	if override.ModelPlanID != nil {
+		task.ModelPlanID = *override.ModelPlanID
+	}
+	if override.Model != nil {
+		task.Model = *override.Model
+	}
+	if override.PermissionModeID != nil {
+		task.PermissionModeID = *override.PermissionModeID
+	}
+	if override.ReasoningEffort != nil {
+		task.ReasoningEffort = *override.ReasoningEffort
+	}
 }

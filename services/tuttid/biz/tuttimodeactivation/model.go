@@ -12,6 +12,17 @@ import (
 
 var ErrInvalidActivation = errors.New("invalid Tutti mode activation")
 
+// DefaultOrchestrationIntensity mirrors the Issue-domain default so an
+// activation without an explicit slider interaction still carries a usable
+// planning strength.
+const DefaultOrchestrationIntensity = 50
+
+// IsOrchestrationIntensity reports whether the value is inside the inclusive
+// 0-100 slider range.
+func IsOrchestrationIntensity(value int) bool {
+	return value >= 0 && value <= 100
+}
+
 type State string
 
 const (
@@ -40,7 +51,10 @@ type Revision struct {
 	Revision     int64
 	State        State
 	Source       Source
-	CreatedAt    time.Time
+	// OrchestrationIntensity is the session-scoped planning strength captured
+	// with this revision. It evolves through ordinary activation revisions.
+	OrchestrationIntensity int
+	CreatedAt              time.Time
 }
 
 type Activation struct {
@@ -61,6 +75,9 @@ type TurnSnapshot struct {
 	Revision     int64
 	State        State
 	Source       Source
+	// OrchestrationIntensity is copied from the exact activation revision the
+	// turn observed. The canonical unconfigured snapshot uses zero.
+	OrchestrationIntensity int
 }
 
 type ChangeKind string
@@ -119,6 +136,9 @@ func NormalizeRevision(value Revision) (Revision, error) {
 	if value.State == StateInactive && value.Source != SourceBadgeRemove {
 		return Revision{}, fmt.Errorf("%w: inactive state must originate from badge removal", ErrInvalidActivation)
 	}
+	if !IsOrchestrationIntensity(value.OrchestrationIntensity) {
+		return Revision{}, fmt.Errorf("%w: orchestration intensity must be between 0 and 100", ErrInvalidActivation)
+	}
 	value.CreatedAt = value.CreatedAt.UTC()
 	return value, nil
 }
@@ -129,7 +149,7 @@ func NormalizeTurnSnapshot(value TurnSnapshot) (TurnSnapshot, error) {
 	value.State = State(strings.TrimSpace(string(value.State)))
 	value.Source = Source(strings.TrimSpace(string(value.Source)))
 	if value.ActivationID == "" && value.RevisionID == "" && value.Revision == 0 {
-		if value.State == StateInactive && value.Source == "" {
+		if value.State == StateInactive && value.Source == "" && value.OrchestrationIntensity == 0 {
 			return value, nil
 		}
 		return TurnSnapshot{}, fmt.Errorf("%w: unconfigured snapshot must be explicitly inactive", ErrInvalidActivation)
@@ -146,6 +166,9 @@ func NormalizeTurnSnapshot(value TurnSnapshot) (TurnSnapshot, error) {
 	if value.State == StateInactive && value.Source != SourceBadgeRemove {
 		return TurnSnapshot{}, fmt.Errorf("%w: inactive snapshot must originate from badge removal", ErrInvalidActivation)
 	}
+	if !IsOrchestrationIntensity(value.OrchestrationIntensity) {
+		return TurnSnapshot{}, fmt.Errorf("%w: orchestration intensity must be between 0 and 100", ErrInvalidActivation)
+	}
 	return value, nil
 }
 
@@ -154,10 +177,11 @@ func SnapshotFromActivation(value *Activation) TurnSnapshot {
 		return TurnSnapshot{State: StateInactive}
 	}
 	return TurnSnapshot{
-		ActivationID: value.ID,
-		RevisionID:   value.CurrentRevision.ID,
-		Revision:     value.CurrentRevision.Revision,
-		State:        value.CurrentRevision.State,
-		Source:       value.CurrentRevision.Source,
+		ActivationID:           value.ID,
+		RevisionID:             value.CurrentRevision.ID,
+		Revision:               value.CurrentRevision.Revision,
+		State:                  value.CurrentRevision.State,
+		Source:                 value.CurrentRevision.Source,
+		OrchestrationIntensity: value.CurrentRevision.OrchestrationIntensity,
 	}
 }

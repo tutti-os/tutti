@@ -2,12 +2,43 @@ package tuttimodeplan
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 
 	workflowbiz "github.com/tutti-os/tutti/services/tuttid/biz/workspaceworkflow"
 	workspacedata "github.com/tutti-os/tutti/services/tuttid/data/workspace"
 )
+
+// RetireConfigurationReviewWorkflows is the daemon-startup one-shot migration
+// for the retired two-phase flow. Every non-terminal workflow whose current
+// pending checkpoint is a legacy configuration review is canceled through the
+// ordinary decision path, so events, operations, and idempotency behave like
+// any user cancel. Dev-environment pending workflows are explicitly safe to
+// cancel; the Agent observes NextActionCanceled through plan get/wait.
+func (s *Service) RetireConfigurationReviewWorkflows(ctx context.Context) error {
+	if err := s.ready(); err != nil {
+		return err
+	}
+	items, err := s.Store.ListPendingConfigurationReviewCheckpoints(ctx)
+	if err != nil {
+		return err
+	}
+	var failures []error
+	for _, item := range items {
+		if _, decideErr := s.Decide(ctx, DecideInput{
+			WorkspaceID:    item.WorkspaceID,
+			WorkflowID:     item.WorkflowID,
+			CheckpointID:   item.CheckpointID,
+			Decision:       workflowbiz.CheckpointStatusCanceled,
+			DecidedBy:      "tutti",
+			DecisionReason: "configuration review retired by the single-review flow",
+		}); decideErr != nil {
+			failures = append(failures, fmt.Errorf("retire configuration review %s/%s: %w", item.WorkflowID, item.CheckpointID, decideErr))
+		}
+	}
+	return errors.Join(failures...)
+}
 
 // RecoverCreateIssueOperations performs the daemon-startup one-shot recovery
 // for accepted task graphs whose deterministic create_issue operation did not

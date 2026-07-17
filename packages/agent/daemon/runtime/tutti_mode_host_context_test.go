@@ -11,11 +11,35 @@ import (
 
 func testActiveTuttiModeSnapshot() *TuttiModeTurnSnapshot {
 	return &TuttiModeTurnSnapshot{
-		ActivationID: "activation-1",
-		RevisionID:   "revision-7",
-		Revision:     7,
-		State:        TuttiModeStateActive,
-		Source:       "slash_command",
+		ActivationID:           "activation-1",
+		RevisionID:             "revision-7",
+		Revision:               7,
+		State:                  TuttiModeStateActive,
+		Source:                 "slash_command",
+		OrchestrationIntensity: 80,
+	}
+}
+
+func TestRenderTuttiModeHostContextCarriesOrchestrationIntensity(t *testing.T) {
+	t.Parallel()
+	contextText := renderTuttiModeHostContext(testActiveTuttiModeSnapshot())
+	for _, expected := range []string{
+		`"orchestrationIntensity":80`,
+		"decomposition granularity",
+		"single `tutti plan propose` call",
+	} {
+		if !strings.Contains(contextText, expected) {
+			t.Fatalf("host context = %q, want %q", contextText, expected)
+		}
+	}
+}
+
+func TestRenderTuttiModeHostContextRejectsOutOfRangeOrchestrationIntensity(t *testing.T) {
+	t.Parallel()
+	snapshot := testActiveTuttiModeSnapshot()
+	snapshot.OrchestrationIntensity = 101
+	if got := renderTuttiModeHostContext(snapshot); got != "" {
+		t.Fatalf("host context = %q, want empty for out-of-range intensity", got)
 	}
 }
 

@@ -70,11 +70,12 @@ func (api DaemonAPI) UpdateWorkspaceAgentSessionTuttiModeActivation(ctx context.
 		return writeUpdateTuttiModeActivationError(err), nil
 	}
 	result, err := api.TuttiModeActivationService.Set(ctx, tuttimodeactivationservice.SetInput{
-		WorkspaceID:      workspaceID,
-		AgentSessionID:   agentSessionID,
-		State:            tuttimodeactivationbiz.State(request.Body.Status),
-		Source:           tuttimodeactivationbiz.Source(request.Body.Source),
-		ExpectedRevision: request.Body.ExpectedRevision,
+		WorkspaceID:            workspaceID,
+		AgentSessionID:         agentSessionID,
+		State:                  tuttimodeactivationbiz.State(request.Body.Status),
+		Source:                 tuttimodeactivationbiz.Source(request.Body.Source),
+		OrchestrationIntensity: request.Body.OrchestrationIntensity,
+		ExpectedRevision:       request.Body.ExpectedRevision,
 	})
 	if err != nil {
 		return writeUpdateTuttiModeActivationError(err), nil
@@ -123,12 +124,13 @@ func generatedTuttiModeActivation(value *tuttimodeactivationbiz.Activation) (*tu
 		CreatedAtUnixMs: value.CreatedAt.UnixMilli(),
 		UpdatedAtUnixMs: value.UpdatedAt.UnixMilli(),
 		CurrentRevision: tuttigenerated.TuttiModeActivationRevision{
-			Id:              revisionID,
-			ActivationId:    revisionActivationID,
-			Revision:        value.CurrentRevision.Revision,
-			Status:          tuttigenerated.TuttiModeActivationStatus(value.CurrentRevision.State),
-			Source:          tuttigenerated.TuttiModeActivationSource(value.CurrentRevision.Source),
-			CreatedAtUnixMs: value.CurrentRevision.CreatedAt.UnixMilli(),
+			Id:                     revisionID,
+			ActivationId:           revisionActivationID,
+			Revision:               value.CurrentRevision.Revision,
+			Status:                 tuttigenerated.TuttiModeActivationStatus(value.CurrentRevision.State),
+			Source:                 tuttigenerated.TuttiModeActivationSource(value.CurrentRevision.Source),
+			OrchestrationIntensity: value.CurrentRevision.OrchestrationIntensity,
+			CreatedAtUnixMs:        value.CurrentRevision.CreatedAt.UnixMilli(),
 		},
 	}, nil
 }

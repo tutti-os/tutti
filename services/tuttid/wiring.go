@@ -608,6 +608,10 @@ func buildDaemonAPI(ctx context.Context, store workspacedata.CatalogStore, analy
 		Revisions:              workspacedata.WorkflowRevisionFiles{StateDir: tuttitypes.DefaultStateDir()},
 		Publisher:              eventstreamservice.WorkspaceWorkflowPublisher{Service: events},
 		IssueMaterializer:      tuttimodeplanservice.WorkspaceIssueMaterializer{Issues: &issueService},
+		FeedbackDispatcher: &tuttiModePlanFeedbackDispatcher{
+			Agents:    agentSessionService,
+			TurnLinks: workflowStore,
+		},
 	}
 	if sourceSessionDeletionStore != nil {
 		agentSessionService.SourceSessionDeletions = tuttiModePlans
@@ -618,6 +622,16 @@ func buildDaemonAPI(ctx context.Context, store workspacedata.CatalogStore, analy
 	// background worker; deterministic Issue materialization makes retries
 	// converge after a response or process loss.
 	if workflowStore != nil {
+		// The single-review flow retired the two-phase configuration
+		// checkpoint. Cancel any legacy pending configuration reviews first so
+		// stale review panels cannot reappear alongside the new flow. A
+		// failure to retire one legacy row must not block daemon startup; the
+		// next boot retries the remaining pending rows idempotently.
+		if err := tuttiModePlans.RetireConfigurationReviewWorkflows(ctx); err != nil {
+			slog.Warn("retire legacy Tutti Mode configuration reviews failed",
+				"event", "tutti_mode_plan.configuration_review_retirement_failed",
+				"error", err)
+		}
 		if err := tuttiModePlans.RecoverCreateIssueOperations(ctx); err != nil {
 			return tuttiapi.DaemonAPI{}, nil, nil, nil, fmt.Errorf("recover Tutti Mode plan operations: %w", err)
 		}

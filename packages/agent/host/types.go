@@ -161,11 +161,12 @@ type CapabilityReference struct {
 // TuttiModeTurnSnapshot is the immutable activation revision observed by one
 // turn. It is an execution input, not a reconstruction from capability refs.
 type TuttiModeTurnSnapshot struct {
-	ActivationID string
-	RevisionID   string
-	Revision     int64
-	State        string
-	Source       string
+	ActivationID           string
+	RevisionID             string
+	Revision               int64
+	State                  string
+	Source                 string
+	OrchestrationIntensity int
 }
 
 type RuntimeExecResult struct {

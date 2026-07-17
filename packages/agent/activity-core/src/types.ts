@@ -476,6 +476,7 @@ export interface AgentActivityTuttiModeActivationRevision {
   revision: number;
   status: AgentActivityTuttiModeActivationStatus;
   source: AgentActivityTuttiModeActivationSource;
+  orchestrationIntensity: number;
   createdAtUnixMs: number;
 }
 
@@ -492,6 +493,7 @@ export interface AgentActivityTuttiModeActivation {
 export interface AgentActivityInitialTuttiModeActivation {
   status: "active";
   source: "slash_command";
+  orchestrationIntensity?: number | null;
 }
 
 export interface AgentActivityCreateSessionInput {
@@ -522,6 +524,7 @@ export interface AgentActivityUpdateTuttiModeActivationInput {
   agentSessionId: string;
   status: AgentActivityTuttiModeActivationStatus;
   source: AgentActivityTuttiModeActivationSource;
+  orchestrationIntensity?: number | null;
   expectedRevision?: number | null;
   signal?: AbortSignal;
 }

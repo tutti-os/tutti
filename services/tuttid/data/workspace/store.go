@@ -197,7 +197,10 @@ type SetTuttiModeActivationInput struct {
 	ExpectedRevision *int64
 	State            activationbiz.State
 	Source           activationbiz.Source
-	ChangedAt        time.Time
+	// OrchestrationIntensity is optional. Nil keeps the current revision's
+	// value, or the default planning strength for a first revision.
+	OrchestrationIntensity *int
+	ChangedAt              time.Time
 }
 
 type AppendWorkspaceWorkflowPlanRevisionInput struct {
@@ -240,6 +243,14 @@ type RecoverableCreateIssueOperation struct {
 	Operation       workflowbiz.WorkflowOperation
 }
 
+// PendingConfigurationReviewCheckpoint identifies one legacy two-phase
+// workflow whose pending configuration review must be retired at startup.
+type PendingConfigurationReviewCheckpoint struct {
+	WorkspaceID  string
+	WorkflowID   string
+	CheckpointID string
+}
+
 // AppendWorkspaceWorkflowOperationCompletion closes the exact Agent follow-up
 // operation whose output is the newly appended revision. The append and
 // completion share one SQLite transaction so a revision cannot be committed
@@ -261,9 +272,11 @@ type DecideWorkspaceWorkflowCheckpointInput struct {
 	Decision                  workflowbiz.CheckpointStatus
 	DecidedBy                 string
 	DecisionReason            string
-	DecidedAt                 time.Time
-	WorkflowStatus            workflowbiz.WorkflowStatus
-	Operation                 *workflowbiz.WorkflowOperation
+	// TaskAssignments records user-owned per-task overrides with the decision.
+	TaskAssignments []workflowbiz.TaskAssignment
+	DecidedAt       time.Time
+	WorkflowStatus  workflowbiz.WorkflowStatus
+	Operation       *workflowbiz.WorkflowOperation
 }
 
 type CompleteWorkspaceWorkflowOperationInput struct {

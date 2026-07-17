@@ -223,11 +223,12 @@ func runtimeTuttiModeSnapshotFromService(
 		return nil
 	}
 	return &agentruntime.TuttiModeTurnSnapshot{
-		ActivationID: snapshot.ActivationID,
-		RevisionID:   snapshot.RevisionID,
-		Revision:     snapshot.Revision,
-		State:        snapshot.State,
-		Source:       snapshot.Source,
+		ActivationID:           snapshot.ActivationID,
+		RevisionID:             snapshot.RevisionID,
+		Revision:               snapshot.Revision,
+		State:                  snapshot.State,
+		Source:                 snapshot.Source,
+		OrchestrationIntensity: snapshot.OrchestrationIntensity,
 	}
 }
 

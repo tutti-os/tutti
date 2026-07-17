@@ -1,7 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import type {
-  TuttidClient,
   TuttidEventStreamClient,
   WorkspaceWorkflowSnapshot,
   WorkspaceWorkflowUpdatedEventV1
@@ -35,7 +34,7 @@ const snapshot: WorkspaceWorkflowSnapshot = {
       createdAtUnixMs: 1,
       document: {
         schema: "tutti-mode-plan/v1",
-        phase: "configuration",
+        phase: "task_graph",
         title: "Review",
         topicId: "topic-1",
         markdownBody: "Body",
@@ -49,7 +48,21 @@ const snapshot: WorkspaceWorkflowSnapshot = {
           tokenLimit: 0,
           quotaWaterlinePercent: 0
         },
-        tasks: []
+        tasks: [
+          {
+            id: "task-1",
+            title: "Implement",
+            content: "",
+            priority: "medium",
+            agentTargetId: null,
+            modelPlanId: null,
+            model: null,
+            permissionModeId: null,
+            reasoningEffort: null,
+            executionDirectory: null,
+            dependsOn: []
+          }
+        ]
       }
     }
   ],
@@ -57,7 +70,7 @@ const snapshot: WorkspaceWorkflowSnapshot = {
     {
       id: "checkpoint-1",
       workflowId: "workflow-1",
-      kind: "configuration_review",
+      kind: "task_review",
       revisionId: "revision-1",
       status: "pending",
       decidedBy: null,
@@ -100,23 +113,23 @@ test("desktop workflow runtime pulls pending state and forwards user decisions",
   const calls: unknown[] = [];
   const runtime = createDesktopTuttiModePlanReviewRuntime({
     tuttidClient: {
-      async listPendingWorkspaceWorkflows(workspaceId, sourceSessionId) {
+      async listPendingWorkspaceWorkflows(
+        workspaceId: string,
+        sourceSessionId: string
+      ) {
         calls.push(["list", workspaceId, sourceSessionId]);
         return [snapshot];
       },
       async decideWorkspaceWorkflowCheckpoint(
-        workspaceId,
-        workflowId,
-        checkpointId,
-        request
+        workspaceId: string,
+        workflowId: string,
+        checkpointId: string,
+        request: unknown
       ) {
         calls.push(["decide", workspaceId, workflowId, checkpointId, request]);
         return snapshot;
       }
-    } satisfies Pick<
-      TuttidClient,
-      "listPendingWorkspaceWorkflows" | "decideWorkspaceWorkflowCheckpoint"
-    >,
+    } as never,
     eventStreamClient: null
   });
 
@@ -138,6 +151,23 @@ test("desktop workflow runtime pulls pending state and forwards user decisions",
     }),
     undefined
   );
+  await runtime.decide({
+    workspaceId: "workspace-1",
+    workflowId: "workflow-1",
+    checkpointId: "checkpoint-1",
+    decision: "accepted",
+    decidedBy: "user-1",
+    taskAssignments: [
+      {
+        taskId: "task-1",
+        agentTargetId: "agent-1",
+        modelPlanId: "",
+        model: "",
+        permissionModeId: "",
+        reasoningEffort: ""
+      }
+    ]
+  });
   assert.deepEqual(calls, [
     ["list", "workspace-1", "session-1"],
     [
@@ -148,10 +178,211 @@ test("desktop workflow runtime pulls pending state and forwards user decisions",
       {
         decision: "rejected",
         decidedBy: "user-1",
-        reason: "Revise the task graph"
+        reason: "Revise the task graph",
+        taskAssignments: undefined
+      }
+    ],
+    [
+      "decide",
+      "workspace-1",
+      "workflow-1",
+      "checkpoint-1",
+      {
+        decision: "accepted",
+        decidedBy: "user-1",
+        reason: undefined,
+        taskAssignments: [
+          {
+            taskId: "task-1",
+            agentTargetId: "agent-1",
+            modelPlanId: "",
+            model: "",
+            permissionModeId: "",
+            reasoningEffort: ""
+          }
+        ]
       }
     ]
   ]);
+});
+
+test("desktop workflow runtime builds agent-scoped assignment option catalogs", async () => {
+  const runtime = createDesktopTuttiModePlanReviewRuntime({
+    tuttidClient: {
+      async listPendingWorkspaceWorkflows() {
+        return [];
+      },
+      async decideWorkspaceWorkflowCheckpoint() {
+        return snapshot;
+      },
+      async listAgentTargets() {
+        return {
+          defaultAgentTargetId: "codex",
+          targets: [
+            {
+              id: "codex",
+              provider: "codex",
+              launchRef: { type: "builtin", value: "codex" },
+              name: "Codex",
+              enabled: true,
+              source: "system",
+              sortOrder: 1,
+              createdAtUnixMs: 1,
+              updatedAtUnixMs: 1
+            },
+            {
+              id: "disabled-agent",
+              provider: "codex",
+              launchRef: { type: "builtin", value: "codex" },
+              name: "Disabled",
+              enabled: false,
+              source: "system",
+              sortOrder: 2,
+              createdAtUnixMs: 1,
+              updatedAtUnixMs: 1
+            }
+          ]
+        } as never;
+      },
+      async listWorkspaceAgents(workspaceId: string) {
+        assert.equal(workspaceId, "workspace-1");
+        return {
+          agents: [
+            {
+              id: "workspace-agent:openrouter",
+              agentTargetId: "workspace-agent:openrouter",
+              workspaceId,
+              name: "OpenRouter",
+              purpose: "",
+              enabled: true,
+              harness: {
+                agentTargetId: "codex",
+                available: true,
+                enabled: true,
+                provider: "codex"
+              },
+              modelFallbacks: []
+            },
+            {
+              id: "workspace-agent:disabled",
+              agentTargetId: "workspace-agent:disabled",
+              workspaceId,
+              name: "Disabled workspace agent",
+              purpose: "",
+              enabled: false,
+              harness: {
+                agentTargetId: "codex",
+                available: true,
+                enabled: true,
+                provider: "codex"
+              },
+              modelFallbacks: []
+            },
+            {
+              id: "workspace-agent:broken-harness",
+              agentTargetId: "workspace-agent:broken-harness",
+              workspaceId,
+              name: "Broken harness agent",
+              purpose: "",
+              enabled: true,
+              harness: {
+                agentTargetId: "gone",
+                available: false,
+                enabled: true,
+                provider: "codex"
+              },
+              modelFallbacks: []
+            }
+          ]
+        } as never;
+      },
+      async getAgentProviderComposerOptions(
+        provider: string,
+        request?: { agentTargetId?: string }
+      ) {
+        assert.equal(provider, "codex");
+        assert.equal(request?.agentTargetId, "workspace-agent:openrouter");
+        return {
+          modelConfig: {
+            configurable: true,
+            options: [{ id: "gpt", value: "gpt-5.4", label: "GPT-5.4" }]
+          },
+          permissionConfig: {
+            configurable: true,
+            modes: [{ id: "auto", label: "Auto", semantic: "auto" }]
+          },
+          reasoningConfig: {
+            configurable: true,
+            options: [{ id: "high", value: "high", label: "High" }]
+          }
+        } as never;
+      },
+      async listWorkspaceModelPlans(workspaceId: string) {
+        assert.equal(workspaceId, "workspace-1");
+        return {
+          plans: [
+            {
+              id: "plan-openai",
+              name: "OpenAI plan",
+              protocol: "openai",
+              enabled: true,
+              status: "ready",
+              models: [{ id: "gpt-5.4", name: "GPT-5.4" }]
+            },
+            {
+              id: "plan-anthropic",
+              name: "Anthropic plan",
+              protocol: "anthropic",
+              enabled: true,
+              status: "ready",
+              models: [{ id: "claude", name: "Claude" }]
+            },
+            {
+              id: "plan-disabled",
+              name: "Disabled plan",
+              protocol: "openai",
+              enabled: false,
+              status: "ready",
+              models: [{ id: "gpt-5.4", name: "GPT-5.4" }]
+            }
+          ]
+        } as never;
+      }
+    } as never,
+    eventStreamClient: null
+  });
+
+  const agents = await runtime.assignmentOptions!.listAgents({
+    workspaceId: "workspace-1"
+  });
+  // Built-in Harness targets and enabled workspace Agents coexist; disabled
+  // or harness-broken workspace Agents stay out (P1 regression anchor).
+  assert.deepEqual(agents, [
+    { agentTargetId: "codex", label: "Codex" },
+    { agentTargetId: "workspace-agent:openrouter", label: "OpenRouter" }
+  ]);
+
+  const detail = await runtime.assignmentOptions!.loadAgentOptions({
+    workspaceId: "workspace-1",
+    agentTargetId: "workspace-agent:openrouter"
+  });
+  assert.deepEqual(detail.models, ["gpt-5.4"]);
+  assert.deepEqual(detail.modelPlans, [
+    { modelPlanId: "plan-openai", label: "OpenAI plan", models: ["gpt-5.4"] }
+  ]);
+  assert.deepEqual(detail.permissionModes, [{ id: "auto", label: "Auto" }]);
+  assert.deepEqual(detail.reasoningEfforts, ["high"]);
+
+  const unknown = await runtime.assignmentOptions!.loadAgentOptions({
+    workspaceId: "workspace-1",
+    agentTargetId: "missing"
+  });
+  assert.deepEqual(unknown, {
+    models: [],
+    modelPlans: [],
+    permissionModes: [],
+    reasoningEfforts: []
+  });
 });
 
 test("desktop workflow runtime scopes workflow events to the workspace", async () => {
@@ -181,10 +412,7 @@ test("desktop workflow runtime scopes workflow events to the workspace", async (
     "connect" | "subscribe" | "subscribeConnectionState"
   >;
   const runtime = createDesktopTuttiModePlanReviewRuntime({
-    tuttidClient: {} as Pick<
-      TuttidClient,
-      "listPendingWorkspaceWorkflows" | "decideWorkspaceWorkflowCheckpoint"
-    >,
+    tuttidClient: {} as never,
     eventStreamClient
   });
   const updates: unknown[] = [];
@@ -248,10 +476,7 @@ test("desktop workflow runtime invalidates current scopes on every connected sta
     "connect" | "subscribe" | "subscribeConnectionState"
   >;
   const runtime = createDesktopTuttiModePlanReviewRuntime({
-    tuttidClient: {} as Pick<
-      TuttidClient,
-      "listPendingWorkspaceWorkflows" | "decideWorkspaceWorkflowCheckpoint"
-    >,
+    tuttidClient: {} as never,
     eventStreamClient
   });
   const invalidations: unknown[] = [];

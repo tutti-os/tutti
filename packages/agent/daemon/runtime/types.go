@@ -152,6 +152,9 @@ type TuttiModeTurnSnapshot struct {
 	Revision     int64
 	State        string
 	Source       string
+	// OrchestrationIntensity is the user-selected planning strength (0-100)
+	// captured by the exact activation revision this turn observed.
+	OrchestrationIntensity int
 }
 
 type CancelInput struct {

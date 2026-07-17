@@ -4,7 +4,7 @@ import {
   type TuttiModePlanReviewSnapshot
 } from "./tuttiModePlanPanelProjection";
 
-function configurationSnapshot(
+function planSnapshot(
   overrides: Partial<TuttiModePlanReviewSnapshot> = {}
 ): TuttiModePlanReviewSnapshot {
   return {
@@ -33,7 +33,7 @@ function configurationSnapshot(
         createdAtUnixMs: 110,
         document: {
           schema: "tutti-mode-plan/v1",
-          phase: "configuration",
+          phase: "task_graph",
           title: "Ship the workflow",
           topicId: "topic-1",
           markdownBody: "## Goal\n\nShip the durable workflow safely.",
@@ -47,7 +47,34 @@ function configurationSnapshot(
             tokenLimit: 120_000,
             quotaWaterlinePercent: 15
           },
-          tasks: []
+          tasks: [
+            {
+              id: "design",
+              title: "Design",
+              content: "Define contracts",
+              priority: "high",
+              agentTargetId: "local:codex",
+              modelPlanId: "model-plan-1",
+              model: "gpt-5.4",
+              permissionModeId: "acceptEdits",
+              reasoningEffort: "high",
+              executionDirectory: "packages/agent/gui",
+              dependsOn: []
+            },
+            {
+              id: "build",
+              title: "Build",
+              content: "Implement the contracts",
+              priority: "medium",
+              agentTargetId: null,
+              modelPlanId: null,
+              model: null,
+              permissionModeId: null,
+              reasoningEffort: null,
+              executionDirectory: null,
+              dependsOn: ["design"]
+            }
+          ]
         }
       }
     ],
@@ -55,7 +82,7 @@ function configurationSnapshot(
       {
         id: "checkpoint-1",
         workflowId: "workflow-1",
-        kind: "configuration_review",
+        kind: "task_review",
         revisionId: "revision-1",
         status: "pending",
         decidedBy: null,
@@ -70,15 +97,15 @@ function configurationSnapshot(
 }
 
 describe("projectTuttiModePlanPanel", () => {
-  it("projects a pending configuration review from durable workflow state", () => {
-    expect(projectTuttiModePlanPanel(configurationSnapshot())).toEqual({
+  it("projects the single pending plan review from durable workflow state", () => {
+    expect(projectTuttiModePlanPanel(planSnapshot())).toEqual({
       id: "workflow-1:checkpoint-1",
       workflowId: "workflow-1",
       workspaceId: "workspace-1",
       sourceSessionId: "session-1",
       sourceTurnId: "turn-1",
       sourceToolCallId: "tool-call-1",
-      reviewKind: "configuration_review",
+      reviewKind: "task_review",
       state: "pending",
       actionable: true,
       title: "Ship the workflow",
@@ -113,65 +140,65 @@ describe("projectTuttiModePlanPanel", () => {
         tokenLimit: 120_000,
         quotaWaterlinePercent: 15
       },
-      tasks: []
+      tasks: [
+        {
+          ordinal: 1,
+          id: "design",
+          title: "Design",
+          content: "Define contracts",
+          priority: "high",
+          agentTargetId: "local:codex",
+          modelPlanId: "model-plan-1",
+          model: "gpt-5.4",
+          permissionModeId: "acceptEdits",
+          reasoningEffort: "high",
+          executionDirectory: "packages/agent/gui",
+          dependsOn: []
+        },
+        {
+          ordinal: 2,
+          id: "build",
+          title: "Build",
+          content: "Implement the contracts",
+          priority: "medium",
+          agentTargetId: null,
+          modelPlanId: null,
+          model: null,
+          permissionModeId: null,
+          reasoningEffort: null,
+          executionDirectory: null,
+          dependsOn: ["design"]
+        }
+      ]
     });
   });
 
-  it("projects only the current task-graph revision and keeps dependency identity", () => {
-    const snapshot = configurationSnapshot();
+  it("never projects a legacy configuration review", () => {
+    const legacy = planSnapshot();
+    legacy.revisions[0]!.document.phase = "configuration";
+    legacy.revisions[0]!.document.tasks = [];
+    legacy.checkpoints[0] = {
+      ...legacy.checkpoints[0]!,
+      kind: "configuration_review"
+    };
+
+    expect(projectTuttiModePlanPanel(legacy)).toBeNull();
+  });
+
+  it("projects only the current revision", () => {
+    const snapshot = planSnapshot();
     snapshot.workflow.currentRevisionId = "revision-2";
     snapshot.revisions = [
       ...snapshot.revisions,
       {
+        ...snapshot.revisions[0]!,
         id: "revision-2",
-        workflowId: "workflow-1",
         sequence: 2,
-        schemaVersion: "tutti-mode-plan/v1",
-        documentPath: `tutti-mode-plans/workflow-1/revisions/${"b".repeat(64)}.md`,
-        sha256:
-          "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
         producedByTurnId: "turn-2",
         createdAtUnixMs: 210,
         document: {
-          schema: "tutti-mode-plan/v1",
-          phase: "task_graph",
-          title: "Ship the workflow",
-          topicId: "topic-1",
-          markdownBody: "## Tasks\n\nImplement and verify the workflow.",
-          execution: {
-            mode: "parallel",
-            reasoningIntensity: 80,
-            orchestrationIntensity: 90
-          },
-          budget: {
-            mode: "auto",
-            tokenLimit: 200_000,
-            quotaWaterlinePercent: 10
-          },
-          tasks: [
-            {
-              id: "design",
-              title: "Design",
-              content: "Define contracts",
-              priority: "high",
-              agentTargetId: "local:codex",
-              modelPlanId: "model-plan-1",
-              model: "gpt-5.4",
-              executionDirectory: "packages/agent/gui",
-              dependsOn: []
-            },
-            {
-              id: "build",
-              title: "Build",
-              content: "Implement the contracts",
-              priority: "medium",
-              agentTargetId: null,
-              modelPlanId: null,
-              model: null,
-              executionDirectory: null,
-              dependsOn: ["design"]
-            }
-          ]
+          ...snapshot.revisions[0]!.document,
+          markdownBody: "## Tasks\n\nImplement and verify the workflow."
         }
       }
     ];
@@ -206,21 +233,7 @@ describe("projectTuttiModePlanPanel", () => {
       checkpoint: {
         id: "checkpoint-2",
         decisionReason: "Ready to execute"
-      },
-      tasks: [
-        {
-          ordinal: 1,
-          id: "design",
-          dependsOn: [],
-          agentTargetId: "local:codex"
-        },
-        {
-          ordinal: 2,
-          id: "build",
-          dependsOn: ["design"],
-          agentTargetId: null
-        }
-      ]
+      }
     });
   });
 
@@ -233,7 +246,7 @@ describe("projectTuttiModePlanPanel", () => {
   ] as const)(
     "maps checkpoint status %s to panel state %s",
     (checkpointStatus, panelState, actionable) => {
-      const snapshot = configurationSnapshot();
+      const snapshot = planSnapshot();
       snapshot.checkpoints[0] = {
         ...snapshot.checkpoints[0]!,
         status: checkpointStatus
@@ -247,7 +260,7 @@ describe("projectTuttiModePlanPanel", () => {
   );
 
   it("uses the newest checkpoint for the current immutable revision", () => {
-    const snapshot = configurationSnapshot();
+    const snapshot = planSnapshot();
     snapshot.checkpoints.push({
       ...snapshot.checkpoints[0]!,
       id: "checkpoint-2",
@@ -267,30 +280,28 @@ describe("projectTuttiModePlanPanel", () => {
   });
 
   it("fails closed when the current revision or its matching review is missing", () => {
-    const missingRevision = configurationSnapshot();
+    const missingRevision = planSnapshot();
     missingRevision.workflow.currentRevisionId = "revision-missing";
     expect(projectTuttiModePlanPanel(missingRevision)).toBeNull();
 
-    const missingCheckpoint = configurationSnapshot();
+    const missingCheckpoint = planSnapshot();
     missingCheckpoint.checkpoints = [];
     expect(projectTuttiModePlanPanel(missingCheckpoint)).toBeNull();
   });
 
   it("fails closed when durable checkpoint kind and parsed Markdown phase disagree", () => {
-    const snapshot = configurationSnapshot();
-    snapshot.checkpoints[0] = {
-      ...snapshot.checkpoints[0]!,
-      kind: "task_review"
-    };
+    const snapshot = planSnapshot();
+    snapshot.revisions[0]!.document.phase = "configuration";
+    snapshot.revisions[0]!.document.tasks = [];
 
     expect(projectTuttiModePlanPanel(snapshot)).toBeNull();
   });
 
   it("does not derive a panel from transcript markers or agent interactions", () => {
     const nonTuttiSnapshot = {
-      ...configurationSnapshot(),
+      ...planSnapshot(),
       workflow: {
-        ...configurationSnapshot().workflow,
+        ...planSnapshot().workflow,
         type: "provider_plan"
       },
       transcript: "<!-- legacy-provider-plan -->",
@@ -301,12 +312,12 @@ describe("projectTuttiModePlanPanel", () => {
   });
 
   it("does not expose mutable arrays from the source snapshot", () => {
-    const snapshot = configurationSnapshot();
+    const snapshot = planSnapshot();
     const panel = projectTuttiModePlanPanel(snapshot);
     expect(panel).not.toBeNull();
 
     panel?.tasks.push({
-      ordinal: 1,
+      ordinal: 3,
       id: "local-only",
       title: "Local only",
       content: "",
@@ -314,10 +325,12 @@ describe("projectTuttiModePlanPanel", () => {
       agentTargetId: null,
       modelPlanId: null,
       model: null,
+      permissionModeId: null,
+      reasoningEffort: null,
       executionDirectory: null,
       dependsOn: []
     });
 
-    expect(snapshot.revisions[0]?.document.tasks).toEqual([]);
+    expect(snapshot.revisions[0]?.document.tasks).toHaveLength(2);
   });
 });

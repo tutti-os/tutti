@@ -25,7 +25,9 @@ last_activity_at_unix_ms, created_at_unix_ms, updated_at_unix_ms`
 
 const taskSelectColumns = `
 id, task_id, issue_id, workspace_id, title, content, search_text, status,
-priority, sort_index, due_at_unix_ms, creator_user_id, creator_display_name,
+priority, sort_index, due_at_unix_ms, agent_target_id, model_plan_id, model,
+permission_mode_id, reasoning_effort,
+execution_directory, dependency_task_ids_json, creator_user_id, creator_display_name,
 creator_avatar_url, latest_run_id, created_at_unix_ms, updated_at_unix_ms`
 
 const runSelectColumns = `

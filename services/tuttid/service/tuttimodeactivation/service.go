@@ -47,11 +47,15 @@ type Service struct {
 }
 
 type SetInput struct {
-	WorkspaceID      string
-	AgentSessionID   string
-	State            activationbiz.State
-	Source           activationbiz.Source
-	ExpectedRevision *int64
+	WorkspaceID    string
+	AgentSessionID string
+	State          activationbiz.State
+	Source         activationbiz.Source
+	// OrchestrationIntensity is optional. Nil keeps the current revision's
+	// value (or the default for the first revision); a value appends a new
+	// revision when it differs from the current one.
+	OrchestrationIntensity *int
+	ExpectedRevision       *int64
 }
 
 type SetResult struct {
@@ -106,16 +110,20 @@ func (s *Service) Set(ctx context.Context, input SetInput) (SetResult, error) {
 		input.State == activationbiz.StateInactive && input.Source != activationbiz.SourceBadgeRemove {
 		return SetResult{}, fmt.Errorf("%w: status and source do not describe one user activation transition", ErrInvalidInput)
 	}
+	if input.OrchestrationIntensity != nil && !activationbiz.IsOrchestrationIntensity(*input.OrchestrationIntensity) {
+		return SetResult{}, fmt.Errorf("%w: orchestration intensity must be between 0 and 100", ErrInvalidInput)
+	}
 	now := s.now()
 	activation, changed, err := s.Store.SetTuttiModeActivation(ctx, workspacedata.SetTuttiModeActivationInput{
-		WorkspaceID:      workspaceID,
-		AgentSessionID:   agentSessionID,
-		ActivationID:     s.newID(),
-		RevisionID:       s.newID(),
-		ExpectedRevision: cloneInt64Pointer(input.ExpectedRevision),
-		State:            input.State,
-		Source:           input.Source,
-		ChangedAt:        now,
+		WorkspaceID:            workspaceID,
+		AgentSessionID:         agentSessionID,
+		ActivationID:           s.newID(),
+		RevisionID:             s.newID(),
+		ExpectedRevision:       cloneInt64Pointer(input.ExpectedRevision),
+		State:                  input.State,
+		Source:                 input.Source,
+		OrchestrationIntensity: cloneIntPointer(input.OrchestrationIntensity),
+		ChangedAt:              now,
 	})
 	if errors.Is(err, workspacedata.ErrTuttiModeActivationRevisionConflict) {
 		return SetResult{}, ErrRevisionConflict
@@ -296,6 +304,14 @@ func cloneActivation(value activationbiz.Activation) *activationbiz.Activation {
 }
 
 func cloneInt64Pointer(value *int64) *int64 {
+	if value == nil {
+		return nil
+	}
+	cloned := *value
+	return &cloned
+}
+
+func cloneIntPointer(value *int) *int {
 	if value == nil {
 		return nil
 	}

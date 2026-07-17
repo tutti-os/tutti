@@ -51,6 +51,8 @@ func (materializer WorkspaceIssueMaterializer) MaterializeIssue(
 			AgentTargetID:      item.Task.AgentTargetID,
 			ModelPlanID:        item.Task.ModelPlanID,
 			Model:              item.Task.Model,
+			PermissionModeID:   item.Task.PermissionModeID,
+			ReasoningEffort:    item.Task.ReasoningEffort,
 			ExecutionDirectory: item.Task.ExecutionDirectory,
 			DependencyTaskIDs:  append([]string(nil), item.Task.DependsOn...),
 		})
@@ -150,6 +152,8 @@ func materializedIssueMatches(existing workspaceissues.IssueDetail, input Materi
 			strings.TrimSpace(actual.AgentTargetID) != strings.TrimSpace(expected.AgentTargetID) ||
 			strings.TrimSpace(actual.ModelPlanID) != strings.TrimSpace(expected.ModelPlanID) ||
 			strings.TrimSpace(actual.Model) != strings.TrimSpace(expected.Model) ||
+			strings.TrimSpace(actual.PermissionModeID) != strings.TrimSpace(expected.PermissionModeID) ||
+			strings.TrimSpace(actual.ReasoningEffort) != strings.TrimSpace(expected.ReasoningEffort) ||
 			strings.TrimSpace(actual.ExecutionDirectory) != strings.TrimSpace(expected.ExecutionDirectory) ||
 			!slices.Equal(actual.DependencyTaskIDs, workspaceissues.NormalizeDependencyTaskIDs(expected.DependsOn)) {
 			return false

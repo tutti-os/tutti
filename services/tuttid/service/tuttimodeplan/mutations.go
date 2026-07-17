@@ -59,12 +59,16 @@ func (s *Service) proposalResultFromMutation(
 	if err != nil {
 		return ProposalResult{}, err
 	}
-	revision, checkpoint, document, err := s.mutationRevisionResult(snapshot, mutation)
+	revision, _, document, err := s.mutationRevisionResult(snapshot, mutation)
 	if err != nil {
 		return ProposalResult{}, err
 	}
-	if revision.Sequence != 1 || checkpoint.Kind != workflowbiz.CheckpointKindConfigurationReview {
-		return ProposalResult{}, fmt.Errorf("%w: proposal mutation does not reference an initial configuration review", ErrInvalidTransition)
+	// The checkpoint binding to the revision is already verified inside
+	// mutationRevisionResult. Legacy two-phase proposals recorded a
+	// configuration review, so replay accepts either review kind as long as
+	// it is the initial revision.
+	if revision.Sequence != 1 {
+		return ProposalResult{}, fmt.Errorf("%w: proposal mutation does not reference an initial revision", ErrInvalidTransition)
 	}
 	return ProposalResult{
 		Snapshot:  snapshot,

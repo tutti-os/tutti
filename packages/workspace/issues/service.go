@@ -74,22 +74,36 @@ type UpdateIssueInput struct {
 }
 
 type CreateTaskInput struct {
-	TaskID      string
-	IssueID     string
-	WorkspaceID string
-	ActorUserID string
-	Title       string
-	Content     string
-	Priority    string
-	DueAtUnixMS int64
+	TaskID             string
+	IssueID            string
+	WorkspaceID        string
+	ActorUserID        string
+	Title              string
+	Content            string
+	Priority           string
+	DueAtUnixMS        int64
+	AgentTargetID      string
+	ModelPlanID        string
+	Model              string
+	PermissionModeID   string
+	ReasoningEffort    string
+	ExecutionDirectory string
+	DependencyTaskIDs  []string
 }
 
 type CreateTaskItemInput struct {
-	TaskID      string
-	Title       string
-	Content     string
-	Priority    string
-	DueAtUnixMS int64
+	TaskID             string
+	Title              string
+	Content            string
+	Priority           string
+	DueAtUnixMS        int64
+	AgentTargetID      string
+	ModelPlanID        string
+	Model              string
+	PermissionModeID   string
+	ReasoningEffort    string
+	ExecutionDirectory string
+	DependencyTaskIDs  []string
 }
 
 type CreateTasksInput struct {

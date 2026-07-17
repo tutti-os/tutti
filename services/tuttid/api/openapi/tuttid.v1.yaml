@@ -10444,6 +10444,7 @@ components:
         - revision
         - status
         - source
+        - orchestrationIntensity
         - createdAtUnixMs
       properties:
         id:
@@ -10460,6 +10461,14 @@ components:
           $ref: "#/components/schemas/TuttiModeActivationStatus"
         source:
           $ref: "#/components/schemas/TuttiModeActivationSource"
+        orchestrationIntensity:
+          type: integer
+          minimum: 0
+          maximum: 100
+          description: >-
+            Session-scoped orchestration intensity captured with this
+            activation revision. Higher values ask the planning agent for
+            finer-grained task decomposition.
         createdAtUnixMs:
           type: integer
           format: int64
@@ -10508,6 +10517,14 @@ components:
           $ref: "#/components/schemas/TuttiModeActivationStatus"
         source:
           $ref: "#/components/schemas/TuttiModeActivationSource"
+        orchestrationIntensity:
+          type: integer
+          nullable: true
+          minimum: 0
+          maximum: 100
+          description: >-
+            Optional orchestration intensity carried with the initial
+            activation. Omitted uses the daemon default.
     TuttiModeActivationResponse:
       type: object
       additionalProperties: false
@@ -10530,6 +10547,15 @@ components:
           $ref: "#/components/schemas/TuttiModeActivationStatus"
         source:
           $ref: "#/components/schemas/TuttiModeActivationSource"
+        orchestrationIntensity:
+          type: integer
+          nullable: true
+          minimum: 0
+          maximum: 100
+          description: >-
+            Optional orchestration intensity persisted with the appended
+            activation revision. Omitted keeps the current value, or the
+            daemon default for the first revision.
         expectedRevision:
           type: integer
           format: int64
@@ -13352,6 +13378,8 @@ components:
         - agentTargetId
         - modelPlanId
         - model
+        - permissionModeId
+        - reasoningEffort
         - executionDirectory
         - dependsOn
       properties:
@@ -13378,6 +13406,14 @@ components:
         model:
           type: string
           nullable: true
+        permissionModeId:
+          type: string
+          nullable: true
+          description: Task-level permission mode applied when the materialized Issue task launches.
+        reasoningEffort:
+          type: string
+          nullable: true
+          description: Task-level reasoning effort applied when the materialized Issue task launches.
         executionDirectory:
           type: string
           nullable: true
@@ -13697,6 +13733,34 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/WorkspaceWorkflowSnapshot"
+    WorkspaceWorkflowTaskAssignment:
+      type: object
+      additionalProperties: false
+      description: >-
+        User-owned per-task assignment override recorded with an accepted task
+        review decision. Null fields keep the plan document value; empty
+        strings clear it.
+      required:
+        - taskId
+      properties:
+        taskId:
+          type: string
+          minLength: 1
+        agentTargetId:
+          type: string
+          nullable: true
+        modelPlanId:
+          type: string
+          nullable: true
+        model:
+          type: string
+          nullable: true
+        permissionModeId:
+          type: string
+          nullable: true
+        reasoningEffort:
+          type: string
+          nullable: true
     DecideWorkspaceWorkflowCheckpointRequest:
       type: object
       additionalProperties: false
@@ -13716,6 +13780,15 @@ components:
         reason:
           type: string
           nullable: true
+        taskAssignments:
+          type: array
+          nullable: true
+          description: >-
+            Optional per-task assignment overrides. Only valid when accepting
+            a task review checkpoint; recorded durably with the decision and
+            merged into the materialized Issue tasks.
+          items:
+            $ref: "#/components/schemas/WorkspaceWorkflowTaskAssignment"
     CreateWorkspaceRequest:
       type: object
       additionalProperties: false

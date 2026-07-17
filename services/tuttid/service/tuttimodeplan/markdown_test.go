@@ -153,3 +153,56 @@ func TestParsePlanMarkdownRejectsNonFiniteQuotaWaterline(t *testing.T) {
 		})
 	}
 }
+
+func TestParsePlanMarkdownDefaultsOmittedPhaseToTaskGraph(t *testing.T) {
+	document, err := ParsePlanMarkdown([]byte(`---
+schema: tutti-mode-plan/v1
+title: Single review plan
+topicId: default
+tasks:
+  - id: only
+    title: Do the work
+---
+Narrative body.
+`))
+	if err != nil {
+		t.Fatalf("ParsePlanMarkdown() error = %v", err)
+	}
+	if document.Phase != PhaseTaskGraph {
+		t.Fatalf("Phase = %q, want %q", document.Phase, PhaseTaskGraph)
+	}
+}
+
+func TestParsePlanMarkdownRequiresTasksWhenPhaseOmitted(t *testing.T) {
+	_, err := ParsePlanMarkdown([]byte(`---
+schema: tutti-mode-plan/v1
+title: Single review plan
+topicId: default
+---
+Narrative body without tasks.
+`))
+	if !errors.Is(err, ErrInvalidTaskGraph) {
+		t.Fatalf("ParsePlanMarkdown() error = %v, want ErrInvalidTaskGraph", err)
+	}
+}
+
+func TestParsePlanMarkdownParsesTaskLaunchOverrides(t *testing.T) {
+	document, err := ParsePlanMarkdown([]byte(`---
+schema: tutti-mode-plan/v1
+title: Launch override plan
+topicId: default
+tasks:
+  - id: only
+    title: Do the work
+    permissionModeId: " acceptEdits "
+    reasoningEffort: " high "
+---
+Narrative body.
+`))
+	if err != nil {
+		t.Fatalf("ParsePlanMarkdown() error = %v", err)
+	}
+	if document.Tasks[0].PermissionModeID != "acceptEdits" || document.Tasks[0].ReasoningEffort != "high" {
+		t.Fatalf("task overrides = %#v", document.Tasks[0])
+	}
+}

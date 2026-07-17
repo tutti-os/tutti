@@ -13,11 +13,18 @@ import {
   CardTitle,
   Textarea
 } from "@tutti-os/ui-system";
+import type { TuttiModePlanTaskAssignmentInput } from "../workspaceWorkflowRuntime";
 import type { TuttiModePlanPanelViewModel } from "./tuttiModePlanPanelProjection";
+import type { TuttiModePlanAssignmentCatalog } from "./useTuttiModePlanPanels";
+import { TuttiModePlanTaskAssignmentEditor } from "./TuttiModePlanTaskAssignmentEditor";
+import {
+  mergeTaskAssignmentDraft,
+  taskAssignmentInputsFromDrafts,
+  type TuttiModePlanTaskAssignmentDrafts
+} from "./tuttiModePlanTaskAssignments";
 
 export interface TuttiModePlanPanelLabels {
   mode: string;
-  configurationReview: string;
   taskReview: string;
   pending: string;
   accept: string;
@@ -31,11 +38,8 @@ export interface TuttiModePlanPanelLabels {
   executionSequential: string;
   executionParallel: string;
   budget: string;
-  budgetAuto: string;
-  budgetFixed: string;
   reasoningIntensity: string;
   orchestrationIntensity: string;
-  tokenLimit: string;
   quotaWaterline: string;
   taskId: string;
   priority: string;
@@ -45,18 +49,23 @@ export interface TuttiModePlanPanelLabels {
   agentTarget: string;
   modelPlan: string;
   model: string;
+  permissionMode: string;
+  reasoningEffort: string;
   executionDirectory: string;
   dependencies: string;
   notSpecified: string;
   none: string;
+  assignmentOptionsLoading: string;
 }
 
 export function TuttiModePlanPanel({
+  assignmentCatalog,
   labels,
   panel,
   submitting,
   onDecide
 }: {
+  assignmentCatalog?: TuttiModePlanAssignmentCatalog | null;
   labels: TuttiModePlanPanelLabels;
   panel: TuttiModePlanPanelViewModel;
   submitting: boolean;
@@ -64,32 +73,38 @@ export function TuttiModePlanPanel({
     checkpointId: string;
     decision: "accepted" | "rejected" | "canceled";
     reason?: string | null;
+    taskAssignments?: readonly TuttiModePlanTaskAssignmentInput[];
     workflowId: string;
   }): Promise<void>;
 }): React.JSX.Element {
   const [requestingChanges, setRequestingChanges] = useState(false);
   const [feedback, setFeedback] = useState("");
   const [feedbackMissing, setFeedbackMissing] = useState(false);
-  const reviewLabel =
-    panel.reviewKind === "configuration_review"
-      ? labels.configurationReview
-      : labels.taskReview;
+  const [assignmentDrafts, setAssignmentDrafts] =
+    useState<TuttiModePlanTaskAssignmentDrafts>({});
   const executionLabel =
     panel.execution.mode === "sequential"
       ? labels.executionSequential
       : labels.executionParallel;
-  const budgetLabel =
-    panel.budget.mode === "auto" ? labels.budgetAuto : labels.budgetFixed;
+  // Editing needs the loaded agent directory; before that (or without a host
+  // catalog at all) tasks stay read-only.
+  const editable = assignmentCatalog?.agents != null && panel.actionable;
   const decide = (
     decision: "accepted" | "rejected" | "canceled",
     reason?: string
-  ) =>
-    onDecide({
+  ) => {
+    const taskAssignments =
+      decision === "accepted"
+        ? taskAssignmentInputsFromDrafts(assignmentDrafts, panel.tasks)
+        : [];
+    return onDecide({
       workflowId: panel.workflowId,
       checkpointId: panel.checkpoint.id,
       decision,
-      reason
+      reason,
+      taskAssignments: taskAssignments.length > 0 ? taskAssignments : undefined
     });
+  };
 
   return (
     <Card
@@ -100,7 +115,9 @@ export function TuttiModePlanPanel({
         <div className="flex flex-wrap items-center gap-2">
           <Badge variant="accent">{labels.mode}</Badge>
           <Badge variant="pending">{labels.pending}</Badge>
-          <span className="text-xs text-muted-foreground">{reviewLabel}</span>
+          <span className="text-xs text-muted-foreground">
+            {labels.taskReview}
+          </span>
         </div>
         <CardTitle>{panel.title}</CardTitle>
         <CardDescription>{panel.topicId}</CardDescription>
@@ -138,13 +155,8 @@ export function TuttiModePlanPanel({
               <h4 className="text-xs font-medium text-foreground">
                 {labels.budget}
               </h4>
-              <Badge variant="secondary">{budgetLabel}</Badge>
             </div>
             <dl className="grid gap-2 text-xs">
-              <DefinitionItem
-                label={labels.tokenLimit}
-                value={panel.budget.tokenLimit.toLocaleString()}
-              />
               <DefinitionItem
                 label={labels.quotaWaterline}
                 value={`${panel.budget.quotaWaterlinePercent}%`}
@@ -183,25 +195,6 @@ export function TuttiModePlanPanel({
                       monospace
                     />
                     <DefinitionItem
-                      label={labels.priority}
-                      value={priorityLabel(labels, task.priority)}
-                    />
-                    <DefinitionItem
-                      label={labels.agentTarget}
-                      value={task.agentTargetId ?? labels.notSpecified}
-                      monospace={task.agentTargetId !== null}
-                    />
-                    <DefinitionItem
-                      label={labels.modelPlan}
-                      value={task.modelPlanId ?? labels.notSpecified}
-                      monospace={task.modelPlanId !== null}
-                    />
-                    <DefinitionItem
-                      label={labels.model}
-                      value={task.model ?? labels.notSpecified}
-                      monospace={task.model !== null}
-                    />
-                    <DefinitionItem
                       label={labels.executionDirectory}
                       value={task.executionDirectory ?? labels.notSpecified}
                       monospace={task.executionDirectory !== null}
@@ -225,6 +218,48 @@ export function TuttiModePlanPanel({
                       </dd>
                     </div>
                   </dl>
+                  {editable && assignmentCatalog ? (
+                    <TuttiModePlanTaskAssignmentEditor
+                      catalog={assignmentCatalog}
+                      disabled={submitting}
+                      draft={assignmentDrafts[task.id] ?? {}}
+                      labels={labels}
+                      task={task}
+                      onEdit={(patch) =>
+                        setAssignmentDrafts((current) =>
+                          mergeTaskAssignmentDraft(current, task.id, patch)
+                        )
+                      }
+                    />
+                  ) : (
+                    <dl className="mt-3 grid gap-x-4 gap-y-2 border-t border-border/70 pt-3 text-xs sm:grid-cols-2">
+                      <DefinitionItem
+                        label={labels.agentTarget}
+                        value={task.agentTargetId ?? labels.notSpecified}
+                        monospace={task.agentTargetId !== null}
+                      />
+                      <DefinitionItem
+                        label={labels.modelPlan}
+                        value={task.modelPlanId ?? labels.notSpecified}
+                        monospace={task.modelPlanId !== null}
+                      />
+                      <DefinitionItem
+                        label={labels.model}
+                        value={task.model ?? labels.notSpecified}
+                        monospace={task.model !== null}
+                      />
+                      <DefinitionItem
+                        label={labels.permissionMode}
+                        value={task.permissionModeId ?? labels.notSpecified}
+                        monospace={task.permissionModeId !== null}
+                      />
+                      <DefinitionItem
+                        label={labels.reasoningEffort}
+                        value={task.reasoningEffort ?? labels.notSpecified}
+                        monospace={task.reasoningEffort !== null}
+                      />
+                    </dl>
+                  )}
                 </li>
               ))}
             </ol>

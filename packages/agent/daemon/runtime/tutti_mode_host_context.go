@@ -13,16 +13,20 @@ func normalizeTuttiModeTurnSnapshot(snapshot *TuttiModeTurnSnapshot) *TuttiModeT
 		return nil
 	}
 	normalized := &TuttiModeTurnSnapshot{
-		ActivationID: strings.TrimSpace(snapshot.ActivationID),
-		RevisionID:   strings.TrimSpace(snapshot.RevisionID),
-		Revision:     snapshot.Revision,
-		State:        strings.ToLower(strings.TrimSpace(snapshot.State)),
-		Source:       strings.TrimSpace(snapshot.Source),
+		ActivationID:           strings.TrimSpace(snapshot.ActivationID),
+		RevisionID:             strings.TrimSpace(snapshot.RevisionID),
+		Revision:               snapshot.Revision,
+		State:                  strings.ToLower(strings.TrimSpace(snapshot.State)),
+		Source:                 strings.TrimSpace(snapshot.Source),
+		OrchestrationIntensity: snapshot.OrchestrationIntensity,
 	}
 	if normalized.ActivationID == "" || normalized.RevisionID == "" || normalized.Revision < 1 {
 		return nil
 	}
 	if normalized.State != TuttiModeStateActive && normalized.State != TuttiModeStateInactive {
+		return nil
+	}
+	if normalized.OrchestrationIntensity < 0 || normalized.OrchestrationIntensity > 100 {
 		return nil
 	}
 	return normalized
@@ -59,24 +63,27 @@ func renderTuttiModeHostContext(snapshot *TuttiModeTurnSnapshot) string {
 		return ""
 	}
 	facts, err := json.Marshal(struct {
-		ActivationID string `json:"activationId"`
-		RevisionID   string `json:"revisionId"`
-		Revision     int64  `json:"revision"`
-		State        string `json:"state"`
-		Source       string `json:"source,omitempty"`
+		ActivationID           string `json:"activationId"`
+		RevisionID             string `json:"revisionId"`
+		Revision               int64  `json:"revision"`
+		State                  string `json:"state"`
+		Source                 string `json:"source,omitempty"`
+		OrchestrationIntensity int    `json:"orchestrationIntensity"`
 	}{
-		ActivationID: normalized.ActivationID,
-		RevisionID:   normalized.RevisionID,
-		Revision:     normalized.Revision,
-		State:        normalized.State,
-		Source:       normalized.Source,
+		ActivationID:           normalized.ActivationID,
+		RevisionID:             normalized.RevisionID,
+		Revision:               normalized.Revision,
+		State:                  normalized.State,
+		Source:                 normalized.Source,
+		OrchestrationIntensity: normalized.OrchestrationIntensity,
 	})
 	if err != nil {
 		return ""
 	}
 	stateSentence := "Tutti mode is inactive for this turn."
 	if normalized.State == TuttiModeStateActive {
-		stateSentence = "Tutti mode is active for this turn. Prefer Tutti's native workflow capabilities when they fit the user's request; combine them freely with provider-native capabilities."
+		stateSentence = "Tutti mode is active for this turn. Prefer Tutti's native workflow capabilities when they fit the user's request; combine them freely with provider-native capabilities. " +
+			"When you produce a Tutti Mode plan, submit one complete tutti-mode-plan/v1 document (plan narrative plus the full task graph) in a single `tutti plan propose` call, and use orchestrationIntensity (0-100) to choose decomposition granularity: low values mean few coarse tasks, high values mean many fine-grained tasks."
 	}
 	return `<tutti-host-context schemaVersion="1">` + "\n" +
 		string(facts) + "\n" +
