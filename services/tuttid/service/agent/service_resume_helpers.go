@@ -41,14 +41,3 @@ func (s *Service) ensureRuntimeSessionResult(
 	})
 	return ensuredRuntimeSession{Session: session}, err
 }
-
-func (s *Service) ensureRuntimeSessionResultLocked(
-	ctx context.Context,
-	workspaceID string,
-	agentSessionID string,
-) (ensuredRuntimeSession, error) {
-	ref := agenthost.SessionRef{WorkspaceID: workspaceID, AgentSessionID: agentSessionID}
-	ctx = withServiceHeldSessionLock(ctx, s, ref)
-	session, err := s.ApplicationHost().EnsureRuntimeSession(ctx, ref)
-	return ensuredRuntimeSession{Session: session}, err
-}

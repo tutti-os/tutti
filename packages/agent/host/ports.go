@@ -37,6 +37,15 @@ type CanonicalStore interface {
 	CanonicalSubmitClaimStore
 }
 
+// SessionManagementStore is the narrow canonical mutation surface for session
+// metadata commands. It stays separate from lifecycle storage so read/create
+// consumers are not forced to implement unrelated mutations.
+type SessionManagementStore interface {
+	UpdateSessionSettings(context.Context, string, string, ComposerSettings) (storesqlite.Session, bool, error)
+	UpdateSessionPinned(context.Context, string, string, bool) (storesqlite.Session, bool, error)
+	DeleteSession(context.Context, string, string) (bool, error)
+}
+
 // RuntimeController is the provider-neutral live-runtime surface needed by
 // create, resume, send, exact cancel, interactive, plan, title, and visibility
 // workflows. Process transport and provider implementations stay behind it.
@@ -166,6 +175,14 @@ type RuntimeCleanupInput struct {
 type RuntimePreparationPort interface {
 	Prepare(context.Context, RuntimePreparationInput) (PreparedRuntime, error)
 	Cleanup(context.Context, RuntimeCleanupInput) error
+}
+
+// SettingsPolicy keeps provider-specific model, reasoning, and speed
+// normalization in adapters while Host owns the application decision between
+// a durable historical update and a live runtime update.
+type SettingsPolicy interface {
+	NormalizePersistedSettings(context.Context, storesqlite.Session, ComposerSettings, ComposerSettingsPatch) ComposerSettings
+	NormalizeRuntimeSettingsPatch(context.Context, ProviderRuntimeSession, ComposerSettingsPatch) ComposerSettingsPatch
 }
 
 type AttachmentMaterializer interface {

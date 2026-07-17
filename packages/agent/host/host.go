@@ -7,8 +7,10 @@ import (
 
 type Config struct {
 	CanonicalStore       CanonicalStore
+	SessionManagement    SessionManagementStore
 	Runtime              RuntimeController
 	RuntimePreparation   RuntimePreparationPort
+	SettingsPolicy       SettingsPolicy
 	Attachments          AttachmentMaterializer
 	Clock                Clock
 	SessionLocker        SessionLocker
@@ -34,8 +36,10 @@ type Config struct {
 
 type Host struct {
 	store                CanonicalStore
+	sessionManagement    SessionManagementStore
 	runtime              RuntimeController
 	preparation          RuntimePreparationPort
+	settingsPolicy       SettingsPolicy
 	attachments          AttachmentMaterializer
 	clock                Clock
 	locker               SessionLocker
@@ -65,8 +69,8 @@ func New(config Config) *Host {
 		goalActor = NewGoalActor()
 	}
 	host := &Host{
-		store: config.CanonicalStore, runtime: config.Runtime,
-		preparation: config.RuntimePreparation, attachments: config.Attachments,
+		store: config.CanonicalStore, sessionManagement: config.SessionManagement, runtime: config.Runtime,
+		preparation: config.RuntimePreparation, settingsPolicy: config.SettingsPolicy, attachments: config.Attachments,
 		clock: config.Clock, locker: config.SessionLocker, startupGate: config.RuntimeStartGate,
 		observer: config.LifecycleObserver, commitObserver: config.CommitObserver,
 		operations: config.RuntimeOperations, events: config.OperationEvents,

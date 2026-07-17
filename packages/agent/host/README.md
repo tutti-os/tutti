@@ -2,7 +2,8 @@
 
 `packages/agent/host` is the provider-neutral application boundary for
 canonical agent session and turn lifecycle orchestration. The package now owns
-the create, resume, send, durable submit-claim, canonical title, cancel,
+the create, resume, send, durable submit-claim, canonical title, session read,
+settings, pin, delete, cancel,
 interactive response, plan decision, durable runtime-operation, and complete
 goal-control/reconcile application core. `tuttid` routes those commands through
 `Host`; transport and HTTP shapes remain unchanged.
@@ -33,6 +34,15 @@ durable runtime operations, then goal operations and the goal reconcile inbox,
 and only then settles unrecoverable stale turns. Configuring a goal store
 without its runtime or inbox consumer fails recovery with
 `ErrGoalConsumerUnavailable` instead of silently accumulating work.
+
+`GetSession` reads canonical truth plus an optional live runtime observation
+without starting a provider. `UpdateSettings` serializes with runtime resume:
+historical sessions persist settings only, while live sessions update the
+runtime. Provider-specific model, reasoning, and speed normalization stays
+behind `SettingsPolicy`. `UpdatePin` mutates canonical metadata only.
+`DeleteSession` closes a live runtime before writing the canonical tombstone;
+authorization, shared bindings, transport DTOs, and local view cleanup remain
+adapter responsibilities.
 
 Adapters retain authorization and identity, transport, runtime process or VM
 selection, desktop APIs, attachment ingress, and cloud inbox/outbox behavior.

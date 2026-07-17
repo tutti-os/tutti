@@ -26,6 +26,8 @@ type SessionSeed struct {
 	Origin                  string
 	Deleted                 bool
 	ExternalResumeSupported *bool
+	Settings                agenthost.ComposerSettings
+	Pinned                  bool
 }
 
 type TurnSeed struct {
@@ -57,6 +59,9 @@ type SessionObservation struct {
 	Title             string
 	ActiveTurnID      string
 	Resumable         bool
+	Settings          agenthost.ComposerSettings
+	Pinned            bool
+	Live              bool
 }
 
 type SendObservation struct {
@@ -94,6 +99,7 @@ type Metrics struct {
 	CancelCalls              int
 	InteractiveCalls         int
 	UpdateSettingsCalls      int
+	CloseCalls               int
 	GoalControlCalls         int
 	GoalReconcileCalls       int
 	RuntimeOperationCommits  int
@@ -119,6 +125,10 @@ type Driver interface {
 	SubmitInteractive(context.Context, agenthost.SessionRef, string, agenthost.SubmitInteractiveInput) (SessionObservation, error)
 	SubmitPlanDecision(context.Context, agenthost.SessionRef, string, string, agenthost.SubmitPlanDecisionInput) (OperationObservation, error)
 	UpdateTitle(context.Context, agenthost.UpdateTitleInput) (SessionObservation, error)
+	GetSession(context.Context, agenthost.SessionRef) (SessionObservation, error)
+	UpdateSettings(context.Context, agenthost.UpdateSettingsInput) (SessionObservation, error)
+	UpdatePin(context.Context, agenthost.UpdatePinInput) (SessionObservation, error)
+	DeleteSession(context.Context, agenthost.SessionRef) (agenthost.DeleteSessionResult, error)
 	GoalControl(context.Context, agenthost.GoalControlInput) (GoalObservation, error)
 	GetGoalState(context.Context, agenthost.SessionRef) (GoalObservation, error)
 	ReconcileGoal(context.Context, agenthost.SessionRef) (GoalObservation, error)
@@ -142,6 +152,10 @@ func Scenarios() []Scenario {
 		{Name: "interactive response", run: runInteractiveResponse},
 		{Name: "plan decision", run: runPlanDecision},
 		{Name: "initial title cas", run: runInitialTitleCAS},
+		{Name: "get session", run: runGetSession},
+		{Name: "historical and live settings", run: runHistoricalAndLiveSettings},
+		{Name: "pin session", run: runPinSession},
+		{Name: "delete session", run: runDeleteSession},
 	}
 }
 
@@ -523,6 +537,111 @@ func runClearCanonicalTitle(ctx context.Context, driver Driver) error {
 	}
 	if session.Title != "" {
 		return fmt.Errorf("cleared title=%q", session.Title)
+	}
+	return nil
+}
+
+func runGetSession(ctx context.Context, driver Driver) error {
+	fixture := liveSessionFixture("session-get", "")
+	fixture.Session.Title = "canonical title"
+	fixture.Session.Settings = agenthost.ComposerSettings{Model: "model-a", PermissionModeID: "auto", Speed: "standard"}
+	fixture.Session.Pinned = true
+	if err := driver.Reset(ctx, fixture); err != nil {
+		return err
+	}
+	result, err := driver.GetSession(ctx, agenthost.SessionRef{WorkspaceID: "workspace-1", AgentSessionID: "session-get"})
+	if err != nil {
+		return fmt.Errorf("get session: %w", err)
+	}
+	if result.SessionID != "session-get" || result.Title != "canonical title" || !result.Live || !result.Pinned ||
+		result.Settings.Model != "model-a" || result.Settings.PermissionModeID != "auto" {
+		return fmt.Errorf("get session=%#v", result)
+	}
+	return nil
+}
+
+func runHistoricalAndLiveSettings(ctx context.Context, driver Driver) error {
+	historical := Fixture{Session: &SessionSeed{
+		WorkspaceID: "workspace-1", AgentSessionID: "session-settings-history", Provider: "claude-code",
+		ProviderSessionID: "provider-settings-history", Cwd: "/workspace",
+		Settings: agenthost.ComposerSettings{Model: "model-a", PermissionModeID: "review"},
+	}}
+	if err := driver.Reset(ctx, historical); err != nil {
+		return err
+	}
+	permissionMode := "acceptEdits"
+	result, err := driver.UpdateSettings(ctx, agenthost.UpdateSettingsInput{
+		WorkspaceID: "workspace-1", AgentSessionID: "session-settings-history",
+		Settings: agenthost.ComposerSettingsPatch{PermissionModeID: &permissionMode},
+	})
+	if err != nil {
+		return fmt.Errorf("update historical settings: %w", err)
+	}
+	if result.Live || result.Settings.Model != "model-a" || result.Settings.PermissionModeID != "acceptEdits" ||
+		driver.Metrics().UpdateSettingsCalls != 0 || driver.Metrics().ResumeCalls != 0 {
+		return fmt.Errorf("historical settings=%#v metrics=%#v", result, driver.Metrics())
+	}
+
+	live := liveSessionFixture("session-settings-live", "")
+	live.Session.Settings = agenthost.ComposerSettings{Model: "model-a", PermissionModeID: "review"}
+	if err := driver.Reset(ctx, live); err != nil {
+		return err
+	}
+	planMode := true
+	result, err = driver.UpdateSettings(ctx, agenthost.UpdateSettingsInput{
+		WorkspaceID: "workspace-1", AgentSessionID: "session-settings-live",
+		Settings: agenthost.ComposerSettingsPatch{PlanMode: &planMode},
+	})
+	if err != nil {
+		return fmt.Errorf("update live settings: %w", err)
+	}
+	if !result.Live || !result.Settings.PlanMode || result.Settings.Model != "model-a" ||
+		driver.Metrics().UpdateSettingsCalls != 1 {
+		return fmt.Errorf("live settings=%#v metrics=%#v", result, driver.Metrics())
+	}
+	return nil
+}
+
+func runPinSession(ctx context.Context, driver Driver) error {
+	if err := driver.Reset(ctx, Fixture{Session: &SessionSeed{
+		WorkspaceID: "workspace-1", AgentSessionID: "session-pin", Provider: "codex", Cwd: "/workspace",
+	}}); err != nil {
+		return err
+	}
+	result, err := driver.UpdatePin(ctx, agenthost.UpdatePinInput{
+		WorkspaceID: "workspace-1", AgentSessionID: "session-pin", Pinned: true,
+	})
+	if err != nil {
+		return fmt.Errorf("pin session: %w", err)
+	}
+	if !result.Pinned {
+		return fmt.Errorf("pinned session=%#v", result)
+	}
+	result, err = driver.UpdatePin(ctx, agenthost.UpdatePinInput{
+		WorkspaceID: "workspace-1", AgentSessionID: "session-pin", Pinned: false,
+	})
+	if err != nil {
+		return fmt.Errorf("unpin session: %w", err)
+	}
+	if result.Pinned {
+		return fmt.Errorf("unpinned session=%#v", result)
+	}
+	return nil
+}
+
+func runDeleteSession(ctx context.Context, driver Driver) error {
+	if err := driver.Reset(ctx, liveSessionFixture("session-delete", "")); err != nil {
+		return err
+	}
+	result, err := driver.DeleteSession(ctx, agenthost.SessionRef{WorkspaceID: "workspace-1", AgentSessionID: "session-delete"})
+	if err != nil {
+		return fmt.Errorf("delete session: %w", err)
+	}
+	if !result.Deleted || !result.RuntimeClosed || !result.CanonicalRemoved || driver.Metrics().CloseCalls != 1 {
+		return fmt.Errorf("delete result=%#v metrics=%#v", result, driver.Metrics())
+	}
+	if _, err := driver.GetSession(ctx, agenthost.SessionRef{WorkspaceID: "workspace-1", AgentSessionID: "session-delete"}); !errors.Is(err, agenthost.ErrSessionNotFound) {
+		return fmt.Errorf("get deleted session error=%v", err)
 	}
 	return nil
 }

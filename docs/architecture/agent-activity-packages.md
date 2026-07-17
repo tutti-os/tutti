@@ -61,6 +61,13 @@ hooks. The `conformance` subpackage owns reusable typed lifecycle scenarios so
 the legacy `tuttid` service, the extracted Host, and downstream adapters can be
 checked against the same behavior baseline.
 
+Session read and metadata commands follow the same boundary. `GetSession`
+returns canonical truth with an optional live observation. Settings updates
+are serialized with resume and split between historical persistence and live
+runtime mutation; provider normalization stays in an adapter policy. Pin and
+canonical delete are Host commands, while authorization, transport DTOs,
+shared bindings, and local view cleanup remain adapter-owned.
+
 `store-sqlite` owns the transaction implementation. Its caller-owned
 `TransactionParticipant` seam lets an adapter append a durable outbox marker
 to the same transaction as runtime/goal operation intent, canonical facts, and

@@ -256,6 +256,32 @@ func serviceSessionWithPersistedFreshness(session ProviderRuntimeSession, persis
 	return service
 }
 
+func (s *Service) projectHostSessionResult(
+	ctx context.Context,
+	canonical agentactivitybiz.Session,
+	runtime ProviderRuntimeSession,
+	live bool,
+	requireRailSection bool,
+) (Session, error) {
+	persisted := persistedSessionFromHost(canonical)
+	if requireRailSection && s.SessionReader != nil {
+		if err := validatePersistedRailSectionKey(persisted); err != nil {
+			return Session{}, err
+		}
+	}
+	var result Session
+	if live {
+		resumable := s.controller().CanResume(runtimeResumeInputFromRuntimeSession(runtime))
+		result = serviceSession(runtime, resumable)
+		if s.SessionReader != nil {
+			result = serviceSessionWithPersistedFreshness(runtime, persisted, resumable)
+		}
+	} else {
+		result = sessionFromPersisted(persisted, s.persistedSessionCanResume(ctx, persisted))
+	}
+	return s.withProtocolV2TurnState(ctx, canonical.WorkspaceID, result)
+}
+
 func persistedSessionIsNewerThanRuntime(persisted PersistedSession, session ProviderRuntimeSession) bool {
 	persistedUpdatedAtUnixMS := firstNonZeroInt64(persisted.LastEventUnixMS, persisted.UpdatedAtUnixMS)
 	return persistedUpdatedAtUnixMS > 0 &&

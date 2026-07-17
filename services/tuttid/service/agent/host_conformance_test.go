@@ -285,7 +285,11 @@ func (d *legacyHostConformanceDriver) Reset(_ context.Context, fixture hostconfo
 	if kind == "" {
 		kind = agentactivitybiz.SessionKindRoot
 	}
-	settings := ComposerSettings{PlanMode: true}
+	settings := seed.Settings
+	if settings.Model == "" && settings.PermissionModeID == "" && !settings.PlanMode &&
+		settings.BrowserUse == nil && settings.ComputerUse == nil && settings.ReasoningEffort == "" && settings.Speed == "" {
+		settings.PlanMode = true
+	}
 	runtimeContext := map[string]any{"tuttiInitialTitleEstablished": seed.InitialTitleEstablished}
 	if seed.ExternalResumeSupported != nil {
 		runtimeContext["externalImportResumeSupported"] = *seed.ExternalResumeSupported
@@ -297,6 +301,7 @@ func (d *legacyHostConformanceDriver) Reset(_ context.Context, fixture hostconfo
 		Metadata:               agentactivitybiz.SessionMetadata{Visible: true, Capabilities: []string{}},
 		InternalRuntimeContext: runtimeContext,
 		Title:                  seed.Title, ActiveTurnID: seed.ActiveTurnID,
+		PinnedAtUnixMS:  boolUnixMS(seed.Pinned),
 		CreatedAtUnixMS: 1, UpdatedAtUnixMS: 2, LastEventUnixMS: 2,
 	}
 	d.sessions.sessions[seed.WorkspaceID+":"+seed.AgentSessionID] = persisted
@@ -321,7 +326,7 @@ func (d *legacyHostConformanceDriver) Reset(_ context.Context, fixture hostconfo
 			ID: seed.AgentSessionID, WorkspaceID: seed.WorkspaceID, Provider: seed.Provider,
 			ProviderSessionID: seed.ProviderSessionID, Cwd: seed.Cwd, Status: "ready",
 			Settings: &settings, Title: seed.Title, InitialTitleEstablished: seed.InitialTitleEstablished,
-			Visible: true, CreatedAtUnixMS: 1, UpdatedAtUnixMS: 2,
+			Visible: true, PinnedAtUnixMS: boolUnixMS(seed.Pinned), CreatedAtUnixMS: 1, UpdatedAtUnixMS: 2,
 		}
 	}
 	if fixture.Turn != nil {
@@ -541,6 +546,60 @@ func (d *legacyHostConformanceDriver) UpdateTitle(ctx context.Context, input age
 	return legacyHostSessionObservation(session), err
 }
 
+func (d *legacyHostConformanceDriver) GetSession(ctx context.Context, ref agenthost.SessionRef) (hostconformance.SessionObservation, error) {
+	if d.directHost {
+		result, err := d.service.ApplicationHost().GetSession(ctx, ref)
+		if err != nil {
+			return hostconformance.SessionObservation{}, err
+		}
+		session, err := d.service.projectHostSessionResult(ctx, result.Canonical, result.Session, result.Live, false)
+		return legacyHostSessionObservationWithLive(session, result.Live), err
+	}
+	session, err := d.service.Get(ctx, ref.WorkspaceID, ref.AgentSessionID)
+	_, live := d.runtime.Session(ref.WorkspaceID, ref.AgentSessionID)
+	return legacyHostSessionObservationWithLive(session, live), err
+}
+
+func (d *legacyHostConformanceDriver) UpdateSettings(ctx context.Context, input agenthost.UpdateSettingsInput) (hostconformance.SessionObservation, error) {
+	if d.directHost {
+		result, err := d.service.ApplicationHost().UpdateSettings(ctx, input)
+		if err != nil {
+			return hostconformance.SessionObservation{}, err
+		}
+		session, err := d.service.projectHostSessionResult(ctx, result.Canonical, result.Session, result.Live, false)
+		return legacyHostSessionObservationWithLive(session, result.Live), err
+	}
+	session, err := d.service.UpdateSettings(ctx, input.WorkspaceID, input.AgentSessionID, input.Settings)
+	_, live := d.runtime.Session(input.WorkspaceID, input.AgentSessionID)
+	return legacyHostSessionObservationWithLive(session, live), err
+}
+
+func (d *legacyHostConformanceDriver) UpdatePin(ctx context.Context, input agenthost.UpdatePinInput) (hostconformance.SessionObservation, error) {
+	if d.directHost {
+		result, err := d.service.ApplicationHost().UpdatePin(ctx, input)
+		if err != nil {
+			return hostconformance.SessionObservation{}, err
+		}
+		session, err := d.service.projectHostSessionResult(ctx, result.Canonical, result.Session, result.Live, false)
+		return legacyHostSessionObservationWithLive(session, result.Live), err
+	}
+	session, err := d.service.UpdatePin(ctx, input.WorkspaceID, input.AgentSessionID, input.Pinned)
+	_, live := d.runtime.Session(input.WorkspaceID, input.AgentSessionID)
+	return legacyHostSessionObservationWithLive(session, live), err
+}
+
+func (d *legacyHostConformanceDriver) DeleteSession(ctx context.Context, ref agenthost.SessionRef) (agenthost.DeleteSessionResult, error) {
+	if d.directHost {
+		return d.service.ApplicationHost().DeleteSession(ctx, ref)
+	}
+	_, live := d.runtime.Session(ref.WorkspaceID, ref.AgentSessionID)
+	_, persisted := d.sessions.GetSession(ref.WorkspaceID, ref.AgentSessionID)
+	deleted, err := d.service.Delete(ctx, ref.WorkspaceID, ref.AgentSessionID)
+	return agenthost.DeleteSessionResult{
+		Deleted: deleted, RuntimeClosed: live && deleted, CanonicalRemoved: persisted && deleted,
+	}, err
+}
+
 func (d *legacyHostConformanceDriver) GoalControl(ctx context.Context, input agenthost.GoalControlInput) (hostconformance.GoalObservation, error) {
 	if d.directHost {
 		result, err := d.service.ApplicationHost().GoalControl(ctx, input)
@@ -605,6 +664,7 @@ func (d *legacyHostConformanceDriver) Metrics() hostconformance.Metrics {
 		StartCalls: len(d.runtime.startCalls), ResumeCalls: len(d.runtime.resumeCalls),
 		ExecCalls: len(d.runtime.execCalls), CancelCalls: len(d.runtime.cancelCalls),
 		InteractiveCalls: len(d.runtime.submitInteractiveCalls), UpdateSettingsCalls: len(d.runtime.updateSettingsCalls),
+		CloseCalls:       len(d.runtime.closeCalls),
 		GoalControlCalls: len(d.runtime.goalControlCalls), GoalReconcileCalls: len(d.runtime.goalReconcileCalls),
 		RecoverySteps: append([]string(nil), (*d.recoverySteps)...),
 	}
@@ -810,8 +870,24 @@ func (s *legacyHostConformanceTurnStore) ListPendingInteractionsBySession(_ cont
 }
 
 func legacyHostSessionObservation(session Session) hostconformance.SessionObservation {
+	return legacyHostSessionObservationWithLive(session, false)
+}
+
+func legacyHostSessionObservationWithLive(session Session, live bool) hostconformance.SessionObservation {
+	settings := ComposerSettings{}
+	if session.Settings != nil {
+		settings = *session.Settings
+	}
 	return hostconformance.SessionObservation{
 		SessionID: session.ID, ProviderSessionID: session.ProviderSessionID,
 		Title: value(session.Title), ActiveTurnID: session.ActiveTurnID, Resumable: session.Resumable,
+		Settings: settings, Pinned: session.PinnedAtUnixMS > 0, Live: live,
 	}
+}
+
+func boolUnixMS(value bool) int64 {
+	if value {
+		return 1
+	}
+	return 0
 }

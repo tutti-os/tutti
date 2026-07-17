@@ -7538,6 +7538,33 @@ func (f *fakeSessionReader) UpdateSessionTitle(_ context.Context, workspaceID st
 	return session, true, nil
 }
 
+func (f *fakeSessionReader) UpdateSessionSettings(_ context.Context, workspaceID string, agentSessionID string, settings ComposerSettings) (PersistedSession, bool, error) {
+	key := workspaceID + ":" + agentSessionID
+	session, ok := f.sessions[key]
+	if !ok {
+		return PersistedSession{}, false, nil
+	}
+	session.Settings = settings
+	session.UpdatedAtUnixMS = time.Now().UnixMilli()
+	f.sessions[key] = session
+	return session, true, nil
+}
+
+func (f *fakeSessionReader) UpdateSessionPinned(_ context.Context, workspaceID string, agentSessionID string, pinned bool) (PersistedSession, bool, error) {
+	key := workspaceID + ":" + agentSessionID
+	session, ok := f.sessions[key]
+	if !ok {
+		return PersistedSession{}, false, nil
+	}
+	session.PinnedAtUnixMS = 0
+	if pinned {
+		session.PinnedAtUnixMS = time.Now().UnixMilli()
+	}
+	session.UpdatedAtUnixMS = time.Now().UnixMilli()
+	f.sessions[key] = session
+	return session, true, nil
+}
+
 func (f fakeSessionReader) DeleteSession(_ context.Context, workspaceID string, agentSessionID string) (bool, error) {
 	key := workspaceID + ":" + agentSessionID
 	if _, ok := f.sessions[key]; !ok {
