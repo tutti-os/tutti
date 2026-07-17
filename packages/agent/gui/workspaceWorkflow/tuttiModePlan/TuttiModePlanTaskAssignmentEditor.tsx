@@ -4,6 +4,7 @@ import {
   SelectContent,
   SelectItem,
   SelectTrigger,
+  Switch,
   cn
 } from "@tutti-os/ui-system";
 import composerStyles from "../../agent-gui/agentGuiNode/AgentGUINode.styles";
@@ -197,22 +198,28 @@ export function TuttiModePlanTaskAssignmentEditor({
         value={effortValue}
         onChange={(value) => onEdit({ reasoningEffort: value })}
       />
-      <button
-        type="button"
-        disabled={disabled}
-        aria-pressed={parallelizable}
-        aria-label={labels.parallelizable}
+      <label
+        className={cn(
+          "flex min-h-[28px] w-auto shrink-0 items-center gap-1.5 px-2 text-[13px]",
+          disabled
+            ? "cursor-not-allowed text-[var(--agent-gui-text-tertiary)]"
+            : "cursor-pointer text-[var(--agent-gui-text-secondary)]"
+        )}
+        htmlFor={`tutti-plan-task-parallel-${task.id}`}
         title={labels.parallelizable}
-        data-permission-tone={parallelizable ? "accent" : undefined}
-        data-testid={`tutti-plan-task-parallel-toggle-${task.id}`}
-        className={cn("w-auto max-w-full", composerStyles.composerMenuTrigger)}
-        onClick={() => onEdit({ parallelizable: !parallelizable })}
       >
-        <span className="flex min-w-0 items-center gap-1.5">
-          <Split aria-hidden className="size-3.5 shrink-0" />
-          <span className="min-w-0 truncate">{labels.parallelizable}</span>
-        </span>
-      </button>
+        <Split aria-hidden className="size-3.5 shrink-0" />
+        <span className="min-w-0 truncate">{labels.parallelizable}</span>
+        <Switch
+          id={`tutti-plan-task-parallel-${task.id}`}
+          size="sm"
+          checked={parallelizable}
+          disabled={disabled}
+          aria-label={labels.parallelizable}
+          data-testid={`tutti-plan-task-parallel-toggle-${task.id}`}
+          onCheckedChange={(checked) => onEdit({ parallelizable: checked })}
+        />
+      </label>
     </div>
   );
 }

@@ -168,10 +168,12 @@ describe("TuttiModePlanPanel", () => {
     expect(screen.getByLabelText("Permission mode")).toBeInTheDocument();
     expect(screen.getByLabelText("Reasoning effort")).toBeInTheDocument();
     expect(screen.queryByLabelText("Model plan")).not.toBeInTheDocument();
-    // The parallel opt-in renders as a pressed toggle seeded from the plan.
-    expect(
-      screen.getByTestId("tutti-plan-task-parallel-toggle-implement")
-    ).toHaveAttribute("aria-pressed", "true");
+    // The parallel opt-in renders as a checked switch seeded from the plan.
+    const parallelSwitch = screen.getByTestId(
+      "tutti-plan-task-parallel-toggle-implement"
+    );
+    expect(parallelSwitch).toHaveAttribute("role", "switch");
+    expect(parallelSwitch).toHaveAttribute("aria-checked", "true");
   });
 
   it("stays read-only without a host-owned draft store", () => {
