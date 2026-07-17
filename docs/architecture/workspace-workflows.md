@@ -54,7 +54,7 @@ Agent invocation never fabricates a slash-command activation.
 | `WorkspaceWorkflow`         | SQLite                                       | Tutti-owned lifecycle root. It belongs to one workspace, records its source Agent session and any trusted turn/tool-call provenance available at creation, and points to the current revision.                                         |
 | `TuttiModePlan`             | SQLite                                       | Type-specific one-to-one marker for a `WorkspaceWorkflow`. It does not contain plan text.                                                                                                                                              |
 | `PlanRevision`              | SQLite metadata plus immutable Markdown file | Append-only version of the proposal. Metadata records sequence, schema, path, SHA-256, and producing turn.                                                                                                                             |
-| `WorkflowCheckpoint`        | SQLite                                       | A user-owned decision gate bound to exactly one revision. Configuration and task-graph reviews are separate checkpoint kinds.                                                                                                          |
+| `WorkflowCheckpoint`        | SQLite                                       | A user-owned decision gate bound to exactly one revision. The task review is the only active checkpoint kind; the configuration-review kind survives solely as legacy vocabulary on retired workflows.                                 |
 | `WorkflowTurnLink`          | SQLite                                       | Optional provenance link from a workflow to source, decomposition, revision, or feedback turns.                                                                                                                                        |
 | `WorkflowOperation`         | SQLite                                       | Idempotent record of a downstream side effect such as generating a task graph, creating a revision, or creating an Issue. A successful Issue operation stores the Issue ID.                                                            |
 | `WorkflowMutation`          | SQLite                                       | Durable caller mutation ledger for propose/revise response-loss recovery. Its scoped request ID is the identity; the input SHA-256 detects conflicting reuse, and the row points to the committed workflow/revision/checkpoint result. |
@@ -233,8 +233,9 @@ Agent: tutti plan propose --file <plan.md> --request-id <stable-id>
 review rejected ("request changes")
   -> the rejection commits durably with its create_revision operation
   -> the daemon dispatches a feedback turn to the source Agent session
-     containing the feedback and revise instructions (best-effort; the
-     committed rejection never depends on dispatch)
+     containing the feedback and revise instructions, idempotent through a
+     checkpoint-scoped clientSubmitId and linked back as a feedback turn
+     (best-effort; the committed rejection never depends on dispatch)
   -> Agent appends a complete replacement plan with tutti plan revise
   -> revision append atomically completes that exact pending operation
   -> the panel refreshes onto the new pending review
@@ -304,7 +305,7 @@ workflows; startup fails only when the scan fails or a durable operation outcome
 cannot be written. No background workflow worker is started.
 
 The workflow service owns the transition policy. The single active checkpoint
-kind is the task review; the configuration-review rows below are legacy-only
+kind is the task review; the configuration-review row below is legacy-only
 (retired at startup, cancel remains valid):
 
 | Checkpoint                    | Decision | Durable result                                                                    | Agent next action                                |
@@ -388,10 +389,10 @@ rejection feedback is mandatory. Closing the app does not discard the review:
 the next mount reconstructs it from the daemon snapshot.
 
 The Tutti activation additionally carries a session-scoped orchestration
-intensity (0-100). The composer's Tutti Budget popup persists it as a new
-activation revision; each turn's frozen snapshot copies it, and the Tutti Host
-Context exposes it so the planning Agent chooses decomposition granularity
-from it.
+intensity (0-100, default 50). The composer's Tutti Budget popup persists it
+as a new activation revision; each turn's frozen snapshot copies it, and the
+Tutti Host Context exposes it so the planning Agent chooses decomposition
+granularity from it.
 
 ## Issue Projection
 
@@ -399,7 +400,12 @@ Accepting a current task graph synchronously asks the daemon-owned Issue
 materializer to create an Issue from the derived `ActionableItem`s. It maps
 the Markdown execution profile, budget, assignments, model choices,
 directories, and dependency graph into the Issue Manager contract and records
-`planningSource = tutti_mode_plan`.
+`planningSource = tutti_mode_plan`. Per-task assignments (agent target, model
+plan, model, permission mode, reasoning effort) persist on the materialized
+Issue tasks and are honored at launch: an explicit reasoning effort wins over
+the Issue-inherited intensity, and an explicit permission mode launches
+strictly—an unsupported or stale mode fails the run instead of silently
+broadening to the provider default.
 
 The workflow remains the review and provenance record; the Issue becomes the
 execution record. No renderer or Agent turn recreates the graph, and no Agent
