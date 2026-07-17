@@ -11,12 +11,20 @@ import {
   CardFooter,
   CardHeader,
   CardTitle,
-  Textarea
+  Textarea,
+  cn
 } from "@tutti-os/ui-system";
+import composerStyles from "../../agent-gui/agentGuiNode/AgentGUINode.styles";
 import type { TuttiModePlanTaskAssignmentInput } from "../workspaceWorkflowRuntime";
-import type { TuttiModePlanPanelViewModel } from "./tuttiModePlanPanelProjection";
+import type {
+  TuttiModePlanPanelTaskViewModel,
+  TuttiModePlanPanelViewModel
+} from "./tuttiModePlanPanelProjection";
 import type { TuttiModePlanAssignmentCatalog } from "./useTuttiModePlanPanels";
-import { TuttiModePlanTaskAssignmentEditor } from "./TuttiModePlanTaskAssignmentEditor";
+import {
+  TuttiModePlanTaskAssignmentEditor,
+  permissionModeAssignmentTone
+} from "./TuttiModePlanTaskAssignmentEditor";
 import {
   mergeTaskAssignmentDraft,
   taskAssignmentInputsFromDrafts,
@@ -41,7 +49,6 @@ export interface TuttiModePlanPanelLabels {
   reasoningIntensity: string;
   orchestrationIntensity: string;
   quotaWaterline: string;
-  taskId: string;
   priority: string;
   priorityHigh: string;
   priorityMedium: string;
@@ -51,10 +58,7 @@ export interface TuttiModePlanPanelLabels {
   model: string;
   permissionMode: string;
   reasoningEffort: string;
-  executionDirectory: string;
-  dependencies: string;
   notSpecified: string;
-  none: string;
   assignmentOptionsLoading: string;
 }
 
@@ -188,36 +192,6 @@ export function TuttiModePlanPanel({
                       {task.content}
                     </p>
                   ) : null}
-                  <dl className="mt-3 grid gap-x-4 gap-y-2 border-t border-border/70 pt-3 text-xs sm:grid-cols-2">
-                    <DefinitionItem
-                      label={labels.taskId}
-                      value={task.id}
-                      monospace
-                    />
-                    <DefinitionItem
-                      label={labels.executionDirectory}
-                      value={task.executionDirectory ?? labels.notSpecified}
-                      monospace={task.executionDirectory !== null}
-                    />
-                    <div className="grid gap-1 sm:col-span-2">
-                      <dt className="text-muted-foreground">
-                        {labels.dependencies}
-                      </dt>
-                      <dd className="flex flex-wrap gap-1 text-foreground">
-                        {task.dependsOn.length > 0
-                          ? task.dependsOn.map((dependency) => (
-                              <Badge
-                                key={dependency}
-                                variant="outline"
-                                className="font-mono"
-                              >
-                                {dependency}
-                              </Badge>
-                            ))
-                          : labels.none}
-                      </dd>
-                    </div>
-                  </dl>
                   {editable && assignmentCatalog ? (
                     <TuttiModePlanTaskAssignmentEditor
                       catalog={assignmentCatalog}
@@ -232,33 +206,7 @@ export function TuttiModePlanPanel({
                       }
                     />
                   ) : (
-                    <dl className="mt-3 grid gap-x-4 gap-y-2 border-t border-border/70 pt-3 text-xs sm:grid-cols-2">
-                      <DefinitionItem
-                        label={labels.agentTarget}
-                        value={task.agentTargetId ?? labels.notSpecified}
-                        monospace={task.agentTargetId !== null}
-                      />
-                      <DefinitionItem
-                        label={labels.modelPlan}
-                        value={task.modelPlanId ?? labels.notSpecified}
-                        monospace={task.modelPlanId !== null}
-                      />
-                      <DefinitionItem
-                        label={labels.model}
-                        value={task.model ?? labels.notSpecified}
-                        monospace={task.model !== null}
-                      />
-                      <DefinitionItem
-                        label={labels.permissionMode}
-                        value={task.permissionModeId ?? labels.notSpecified}
-                        monospace={task.permissionModeId !== null}
-                      />
-                      <DefinitionItem
-                        label={labels.reasoningEffort}
-                        value={task.reasoningEffort ?? labels.notSpecified}
-                        monospace={task.reasoningEffort !== null}
-                      />
-                    </dl>
+                    <TaskAssignmentSummary labels={labels} task={task} />
                   )}
                 </li>
               ))}
@@ -333,23 +281,63 @@ export function TuttiModePlanPanel({
 
 function DefinitionItem({
   label,
-  value,
-  monospace = false
+  value
 }: {
   label: string;
   value: string;
-  monospace?: boolean;
 }): React.JSX.Element {
   return (
     <div className="grid gap-1">
       <dt className="text-muted-foreground">{label}</dt>
-      <dd
-        className={
-          monospace ? "break-all font-mono text-foreground" : "text-foreground"
-        }
-      >
-        {value}
-      </dd>
+      <dd className="text-foreground">{value}</dd>
+    </div>
+  );
+}
+
+/**
+ * Read-only counterpart of the assignment editor row: the same composer-styled
+ * single line, showing only the assignments the plan actually specifies.
+ */
+function TaskAssignmentSummary({
+  labels,
+  task
+}: {
+  labels: TuttiModePlanPanelLabels;
+  task: TuttiModePlanPanelTaskViewModel;
+}): React.JSX.Element | null {
+  const chips: {
+    label: string;
+    tone?: "accent" | "success" | "warning" | undefined;
+    value: string | null;
+  }[] = [
+    { label: labels.agentTarget, value: task.agentTargetId },
+    { label: labels.modelPlan, value: task.modelPlanId },
+    { label: labels.model, value: task.model },
+    {
+      label: labels.permissionMode,
+      tone: permissionModeAssignmentTone(task.permissionModeId),
+      value: task.permissionModeId
+    },
+    { label: labels.reasoningEffort, value: task.reasoningEffort }
+  ].filter((chip) => chip.value !== null);
+  if (chips.length === 0) {
+    return null;
+  }
+  return (
+    <div className="mt-3 flex flex-wrap items-center gap-0.5 border-t border-border/70 pt-2">
+      {chips.map((chip) => (
+        <span
+          key={chip.label}
+          title={chip.label}
+          data-permission-tone={chip.tone}
+          className={cn(
+            "w-auto max-w-full",
+            composerStyles.composerMenuTrigger
+          )}
+        >
+          <span className="min-w-0 truncate">{chip.value}</span>
+        </span>
+      ))}
     </div>
   );
 }

@@ -48,7 +48,6 @@ export function agentGUITuttiModeLabels(
         "agentHost.agentGui.tuttiModePlan.orchestrationIntensity"
       ),
       quotaWaterline: t("agentHost.agentGui.tuttiModePlan.quotaWaterline"),
-      taskId: t("agentHost.agentGui.tuttiModePlan.taskId"),
       priority: t("agentHost.agentGui.tuttiModePlan.priority"),
       priorityHigh: t("agentHost.agentGui.tuttiModePlan.priorityHigh"),
       priorityMedium: t("agentHost.agentGui.tuttiModePlan.priorityMedium"),
@@ -61,12 +60,7 @@ export function agentGUITuttiModeLabels(
       assignmentOptionsLoading: t(
         "agentHost.agentGui.tuttiModePlan.assignmentOptionsLoading"
       ),
-      executionDirectory: t(
-        "agentHost.agentGui.tuttiModePlan.executionDirectory"
-      ),
-      dependencies: t("agentHost.agentGui.tuttiModePlan.dependencies"),
-      notSpecified: t("agentHost.agentGui.tuttiModePlan.notSpecified"),
-      none: t("agentHost.agentGui.tuttiModePlan.none")
+      notSpecified: t("agentHost.agentGui.tuttiModePlan.notSpecified")
     },
     tuttiModePlanLoadFailed: t("agentHost.agentGui.tuttiModePlan.loadFailed"),
     tuttiModePlanRetry: t("agentHost.agentGui.tuttiModePlan.retry")
