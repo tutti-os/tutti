@@ -192,19 +192,6 @@ func stringPointer(value string) *string {
 	return &value
 }
 
-func cloneMetadata(metadata map[string]any) map[string]any {
-	if len(metadata) == 0 {
-		return nil
-	}
-	cloned := make(map[string]any, len(metadata))
-	for key, value := range metadata {
-		if trimmed := strings.TrimSpace(key); trimmed != "" {
-			cloned[trimmed] = value
-		}
-	}
-	return cloned
-}
-
 func normalizeRuntimeError(err error) error {
 	if errors.Is(err, ErrSessionNotFound) {
 		return ErrSessionNotFound

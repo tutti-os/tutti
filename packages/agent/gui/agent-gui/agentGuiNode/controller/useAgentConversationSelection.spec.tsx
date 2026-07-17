@@ -9,13 +9,17 @@ describe("useAgentConversationSelection", () => {
     const markPending = vi.fn();
     const reload = vi.fn();
     const setLoading = vi.fn();
+    const requestReveal = vi.fn();
     const { result } = renderHook(() =>
       useAgentConversationSelection({
         activation: {
           forget: vi.fn(),
           isPending: () => false
         },
-        conversations: { contains: () => true },
+        conversations: {
+          agentTargetIdFor: () => "local:codex",
+          contains: () => true
+        },
         detail: {
           isHydrated: () => false,
           markPending,
@@ -26,6 +30,10 @@ describe("useAgentConversationSelection", () => {
         isMounted: () => true,
         onMissingConversationListQuery: vi.fn(),
         persistence: { update: vi.fn() },
+        rail: {
+          clearRevealRequest: vi.fn(),
+          requestReveal
+        },
         selection: {
           clearDetailError: vi.fn(),
           getActiveSessionId: () => active.current,
@@ -38,7 +46,11 @@ describe("useAgentConversationSelection", () => {
       })
     );
 
-    act(() => result.current.selectConversation("historical-session"));
+    act(() =>
+      result.current.selectConversation("historical-session", {
+        reveal: "external-open"
+      })
+    );
 
     expect(markPending).toHaveBeenCalledWith("historical-session");
     expect(setLoading).not.toHaveBeenCalled();
@@ -46,6 +58,10 @@ describe("useAgentConversationSelection", () => {
       reloadConversations: true,
       reloadDetail: true
     });
+    expect(requestReveal).toHaveBeenCalledWith(
+      "historical-session",
+      "external-open"
+    );
   });
 
   it("reuses cached detail when selecting another hydrated session", () => {
@@ -64,7 +80,10 @@ describe("useAgentConversationSelection", () => {
           forget: vi.fn(),
           isPending: () => false
         },
-        conversations: { contains: () => true },
+        conversations: {
+          agentTargetIdFor: () => "local:codex",
+          contains: () => true
+        },
         detail: {
           isHydrated: () => true,
           markPending,
@@ -78,6 +97,10 @@ describe("useAgentConversationSelection", () => {
           update: (updater) => {
             updater(data);
           }
+        },
+        rail: {
+          clearRevealRequest: vi.fn(),
+          requestReveal: vi.fn()
         },
         selection: {
           clearDetailError: vi.fn(),
@@ -112,7 +135,10 @@ describe("useAgentConversationSelection", () => {
           forget: vi.fn(),
           isPending: (agentSessionId) => agentSessionId === "session-a"
         },
-        conversations: { contains: () => true },
+        conversations: {
+          agentTargetIdFor: () => "local:codex",
+          contains: () => true
+        },
         detail: {
           isHydrated: () => false,
           markPending: vi.fn(),
@@ -123,6 +149,10 @@ describe("useAgentConversationSelection", () => {
         isMounted: () => true,
         onMissingConversationListQuery: vi.fn(),
         persistence: { update: vi.fn() },
+        rail: {
+          clearRevealRequest: vi.fn(),
+          requestReveal: vi.fn()
+        },
         selection: {
           clearDetailError: vi.fn(),
           getActiveSessionId: () => active.current,

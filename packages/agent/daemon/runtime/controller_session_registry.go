@@ -118,6 +118,9 @@ func (c *Controller) Sessions(roomID string) []Session {
 		if strings.TrimSpace(session.RoomID) != roomID {
 			continue
 		}
+		if c.provisionalSessions[key] {
+			continue
+		}
 		session = c.reconcileSessionStatusLocked(key, session)
 		c.sessions[key] = session
 		result = append(result, session)

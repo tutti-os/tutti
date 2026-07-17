@@ -102,6 +102,7 @@ interface Props {
 
 export function AgentComposerView(input: Props): React.JSX.Element {
   const {
+    provider,
     slashStatus = null,
     usage = null,
     draftContent,
@@ -130,6 +131,7 @@ export function AgentComposerView(input: Props): React.JSX.Element {
     selectProjectDirectory,
     onProjectPathChange = () => {},
     onSettingsChange,
+    onLinkAction,
     onSubmit,
     onProviderSelect,
     onHandoffConversation,
@@ -560,6 +562,7 @@ export function AgentComposerView(input: Props): React.JSX.Element {
           </Popover>
           <ComposerFooter
             labels={labels}
+            provider={provider}
             composerSettings={composerSettings}
             usage={usage}
             previewMode={previewMode}
@@ -588,6 +591,7 @@ export function AgentComposerView(input: Props): React.JSX.Element {
             selectedProviderLabel={selectedProviderLabel}
             providerMenuTargets={providerMenuTargets}
             onProviderSelect={onProviderSelect}
+            onLinkAction={onLinkAction}
             onRequestWorkspaceReferences={onRequestWorkspaceReferences}
             onWorkspaceReferencePicker={handleWorkspaceReferencePicker}
             onMentionPaletteButton={handleMentionPaletteButton}

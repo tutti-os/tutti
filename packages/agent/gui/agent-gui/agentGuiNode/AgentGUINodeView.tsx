@@ -478,6 +478,7 @@ export function AgentGUINodeView({
     () => ({
       activeConversation: viewModel.rail.activeConversation,
       activeConversationId: viewModel.rail.activeConversationId,
+      revealRequest: viewModel.rail.revealRequest,
       pendingDeleteConversationId:
         viewModel.operations.pendingDeleteConversation?.id ?? null,
       isLoadingConversations: viewModel.rail.isLoadingConversations,
@@ -533,6 +534,7 @@ export function AgentGUINodeView({
       sectionAgentTargetFallbackId,
       viewModel.rail.agentTargets,
       viewModel.rail.agentTargetsLoading,
+      viewModel.rail.revealRequest,
       toggleConversationPinned,
       uiLanguage,
       viewModel.rail.conversationFilter,

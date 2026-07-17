@@ -14,6 +14,7 @@ import {
 } from "./agentGuiController.draftMessageHelpers";
 import {
   resolveConversationSummaryById,
+  type AgentGUIConversationSelectionOptions,
   type ConversationIntent
 } from "./useAgentConversationSelection";
 
@@ -30,7 +31,7 @@ interface UseAgentGUIConversationRoutingInput {
   previewMode: boolean;
   selectConversation(
     agentSessionId: string,
-    options?: { reloadConversations?: boolean }
+    options?: AgentGUIConversationSelectionOptions
   ): void;
   sessionEngine: AgentSessionEngine;
   setIntent: Dispatch<SetStateAction<ConversationIntent>>;
@@ -128,7 +129,10 @@ export function useAgentGUIConversationRouting(
       const requestedId = pendingOpenSessionRequest!.agentSessionId.trim();
       if (!hasLoadedConversations) return;
       pendingOpenSessionRequestRef.current = null;
-      selectConversation(requestedId, { reloadConversations: false });
+      selectConversation(requestedId, {
+        reloadConversations: false,
+        reveal: "external-open"
+      });
       ensureTransientOpenSessionConversation(requestedId);
       return;
     }

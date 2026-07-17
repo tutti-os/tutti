@@ -51,6 +51,11 @@ import { StandaloneAgentToolSidebarPicker } from "./StandaloneAgentToolSidebarPi
 
 export type { StandaloneAgentFileOpenRequest } from "./StandaloneAgentToolSidebarPanel.tsx";
 const standaloneAgentToolPanelContentMountDelayMs = 80;
+// Conservative fallback reserve for the collapsed tool-action cluster (a few
+// icon buttons plus the header's right inset). It keeps the window title from
+// sliding under the buttons before the actions node is measured, or if a
+// ResizeObserver is unavailable.
+const standaloneAgentCollapsedToolActionsWidthPx = 132;
 
 interface StandaloneAgentToolSidebarProps {
   activityService: WorkspaceAgentActivityService;
@@ -152,6 +157,39 @@ export function StandaloneAgentToolSidebar({
   const activeTabId = state.activeTabId;
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [isEmptySidebarClosing, setIsEmptySidebarClosing] = useState(false);
+  // When the sidebar is closed the tool actions collapse to a small button
+  // cluster, but that cluster is absolutely positioned against the window's
+  // right edge, so the title cannot reserve space for it automatically. Measure
+  // its rendered width and feed it back into the header inset so the title
+  // truncates before it can slide underneath the buttons. A callback ref (not a
+  // static ref + effect) is used because the actions node only mounts once the
+  // window content finishes loading, so the observer must attach whenever the
+  // node itself appears rather than on a render-state dependency. While the
+  // sidebar is open the panel width already reserves the trailing space, so the
+  // measured width is only applied in the closed state.
+  const toolActionsResizeObserverRef = useRef<ResizeObserver | null>(null);
+  const [toolActionsWidth, setToolActionsWidth] = useState(
+    standaloneAgentCollapsedToolActionsWidthPx
+  );
+  const measureToolActions = useCallback((node: HTMLDivElement | null) => {
+    toolActionsResizeObserverRef.current?.disconnect();
+    toolActionsResizeObserverRef.current = null;
+    if (!node) {
+      return;
+    }
+    const update = (): void => {
+      const measured = node.getBoundingClientRect().width;
+      if (measured > 0) {
+        setToolActionsWidth(measured);
+      }
+    };
+    update();
+    if (typeof ResizeObserver !== "undefined") {
+      const observer = new ResizeObserver(update);
+      observer.observe(node);
+      toolActionsResizeObserverRef.current = observer;
+    }
+  }, []);
   const isEmptySidebar = isSidebarOpen && state.mountedTabs.length === 0;
   const isEmptySidebarSurface =
     (isSidebarOpen || isEmptySidebarClosing) && state.mountedTabs.length === 0;
@@ -486,7 +524,7 @@ export function StandaloneAgentToolSidebar({
           {
             "--agent-gui-tool-sidebar-layout-width": isSidebarOpen
               ? `${activePanelLayoutWidth}px`
-              : "0px"
+              : `${toolActionsWidth}px`
           } as CSSProperties
         }
       >
@@ -496,6 +534,7 @@ export function StandaloneAgentToolSidebar({
               "nodrag flex h-[var(--agent-gui-workbench-header-height,44px)] min-w-0 max-w-full shrink-0 items-center pr-[var(--agent-gui-workbench-header-padding-x)] [-webkit-app-region:no-drag]",
               isSidebarOpen && "border-b border-[var(--border-1)]"
             )}
+            ref={measureToolActions}
             data-standalone-agent-tool-sidebar-header="true"
             style={
               isSidebarOpen

@@ -330,8 +330,8 @@ dock-entry reuse for AgentGUI, otherwise it collapses into the normal
 restore/focus behavior instead of opening a fresh Agent window.
 Unified dock and launchpad chrome should keep the generic Agent title and
 generic Agent artwork instead of provider-branded entries. Workbench Agent node
-headers show the generic Agent title while the conversation rail is expanded;
-standalone native Agent window headers omit that redundant app title. When the
+headers and standalone native Agent window headers both show the generic Agent
+title while the conversation rail is expanded. When the
 conversation rail is collapsed, the title area shows the active conversation's
 agent icon and conversation title as soon as a local session id exists. The
 engine-owned optimistic title bridges conversation-title persistence; the
@@ -383,9 +383,41 @@ create/send commands. Once a session is active, the composer agent select is
 display-only and must not switch the running session. The conversation rail
 agent grid is a navigation surface: clicking an agent scopes the visible rail
 list by its exact `agentTargetId`. If the active conversation belongs to that
-target, it remains active. Otherwise the click enters that agent's empty home
-composer; it must not implicitly activate another matching history item.
+target, it remains active. Otherwise the click restores the last conversation
+that this AgentGUI node or standalone Agent window activated for that exact
+target. This memory is keyed by `agentTargetId` in node-local state; it must not
+come from a workspace-global recent conversation or group targets by provider.
+If no remembered conversation exists, or canonical state proves that the
+remembered session was deleted or belongs to another target, the click enters
+that agent's empty home composer. A remembered bounded-history session may be
+activated before its rail row is loaded, then reconciled through the normal
+session-authoritative detail path.
 Empty-home rail clicks may also sync the home composer launch target.
+The conversation rail keeps one in-memory view scope for each exact target and
+the all-target view. Returning to a visited scope restores its scroll offset,
+collapsed project sections, and per-section visible item limits only after the
+query controller confirms that the rendered memberships belong to that exact
+scope. The rendered request scope is synchronous view intent, while the query
+controller snapshot supplies resolved-scope evidence. Readiness must compare
+those identities during render instead of waiting for passive controller
+configuration; otherwise a layout effect can restore and record the new
+scope's scroll position against the previous scope's DOM. A committed stale
+membership snapshot for the resolved scope is ready for restoration while its
+background revalidation is pending; only an initial load with no committed
+membership blocks restoration. Search is a transient
+navigation mode: each changed query starts at the top and exiting search
+restores the underlying target scope without retaining one permanent view-state
+entry per query string.
+Scope restoration takes precedence over active-session reveal. A first visit
+may reveal its active session, but `activeConversationId` is selection truth,
+not an implicit DOM scroll command. Rail row clicks and provider session
+restoration never scroll again; the clicked row is already visible and the
+restored provider owns its remembered offset. Only explicit reveal intents,
+currently external session opens and newly created sessions, may reveal a row
+in an already settled scope. These view scopes and reveal intents belong to the
+mounted AgentGUI node's React conversation-list
+module. They are not persisted node data, engine state, query-controller data,
+or a module-global store.
 In an active session, the composer footer may replace the display-only provider
 select with a handoff affordance. Handoff is a workbench launch, not an
 in-session provider switch: AgentGUI serializes the active session as a single
@@ -496,6 +528,16 @@ When an empty composer has an `agentTargetId`, model, permission, reasoning,
 and speed options are target-scoped. Do not fall back to provider-level options
 for that target; a missing target-scoped option snapshot should remain a
 loading/missing state until the target options arrive.
+An explicit permission choice from the currently rendered target-scoped menu
+must also survive a concurrent options refresh. The settings action may use a
+runtime options snapshot to clean up older stored defaults, but it must not
+erase the user's current or just-selected permission merely because that
+snapshot lags the menu render. Unrelated patches such as clearing plan mode must
+not mutate permission as collateral cleanup; the daemon remains the authority
+that validates provider settings.
+Controlled permission selects may emit a transient empty value while closing or
+restoring focus. This is presentation state, not a user request to clear the
+permission default, and must be rejected at the selection boundary.
 Providers whose model catalog exists only after runtime session bootstrap must
 declare hidden live-model probing and its cache scope in their provider
 descriptor. The daemon may
@@ -3659,6 +3701,17 @@ selection carries retry intent instead of being silently dropped. That retry
 merges the unresolved in-flight patch, any queued patch, and the latest selection
 in that order, so the newest value wins without losing settings that the daemon
 may not have applied before the timeout.
+
+Provider-specific safety confirmation belongs at the composer setting selection
+boundary, before the settings change reaches the engine. Selecting Codex
+`full-access` opens a localized warning and must not dispatch a settings change
+until the user confirms; canceling preserves the previous selection. Confirmation
+still dispatches exactly one ordinary settings patch, so the engine and daemon do
+not acquire a second safety-dialog state machine. Other providers' modes continue
+to follow their provider contracts without inheriting this Codex-specific gate.
+The warning's safety-reference link uses the host link-action boundary. Workspace
+surfaces may route it to their Browser node; the standalone Agent window must fall
+back to the desktop external-browser bridge rather than silently dropping the URL.
 
 The daemon selects the mutation path from session liveness. A live session
 updates through its provider adapter. A historical session updates the durable

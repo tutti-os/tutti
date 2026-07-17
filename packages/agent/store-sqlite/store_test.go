@@ -319,11 +319,11 @@ func TestStoreReportAndListSessionLifecycle(t *testing.T) {
 	}
 
 	blankRenamed, ok, err := store.UpdateSessionTitle(ctx, "ws-1", "session-1", "   ")
-	if err != nil || ok {
-		t.Fatalf("UpdateSessionTitle(blank) = %#v ok=%v error=%v, want no update", blankRenamed, ok, err)
+	if err != nil || !ok || blankRenamed.Title != "" || blankRenamed.InternalRuntimeContext["tuttiInitialTitleEstablished"] != true {
+		t.Fatalf("UpdateSessionTitle(blank) = %#v ok=%v error=%v, want cleared canonical title", blankRenamed, ok, err)
 	}
 	sessionAfterBlankTitle, ok, err := store.GetSession(ctx, "ws-1", "session-1")
-	if err != nil || !ok || sessionAfterBlankTitle.Title != "final" {
+	if err != nil || !ok || sessionAfterBlankTitle.Title != "" {
 		t.Fatalf("GetSession() after blank title = %#v ok=%v error=%v", sessionAfterBlankTitle, ok, err)
 	}
 

@@ -15,6 +15,7 @@ import type {
 import { type AgentGUIComposerTargetData } from "./agentGuiController.composerPresentation";
 import type { useAgentGUIActivation } from "./useAgentGUIActivation";
 import type { ConversationIntent } from "./useAgentConversationSelection";
+import type { AgentGUIConversationRailRevealReason } from "../model/agentGuiConversationRailViewState";
 
 export interface UseAgentGUINewConversationActivationInput {
   getCachedComposerOptions: () =>
@@ -45,7 +46,14 @@ export interface UseAgentGUINewConversationActivationInput {
   sessionEngine: AgentSessionEngine;
   conversationListQuery: AgentGUIConversationListQuery | null;
   currentUserId: string | null | undefined;
-  persistActiveConversation: (agentSessionId: string | null) => void;
+  persistActiveConversation: (
+    agentSessionId: string | null,
+    agentTargetId?: string | null
+  ) => void;
+  requestRailReveal(
+    agentSessionId: string,
+    reason: AgentGUIConversationRailRevealReason
+  ): void;
   setActiveConversationId: Dispatch<SetStateAction<string | null>>;
   setIntent: Dispatch<SetStateAction<ConversationIntent>>;
   setIsComposerHome: Dispatch<SetStateAction<boolean>>;

@@ -1,15 +1,19 @@
 import {
   isPendingActivationViable,
+  selectEngineSession,
   selectEngineSessionDetailHydrated,
   selectLatestActivationForSession,
   type AgentSessionEngine,
   type PendingActivationIntentRecord
 } from "@tutti-os/agent-activity-core";
 import type { Dispatch, RefObject, SetStateAction } from "react";
-import { useEffect } from "react";
+import { useCallback, useEffect } from "react";
 import type { AgentActivityRuntime } from "../../../agentActivityRuntime";
 import { translate } from "../../../i18n/index";
 import type { AgentGUINodeData } from "../../../types";
+import type { AgentGUIConversationSummary } from "../model/agentGuiConversationModel";
+import type { AgentGUIConversationRailRevealReason } from "../model/agentGuiConversationRailViewState";
+import { forgetAgentGUISessionMemories } from "../model/agentGuiSessionNavigationMemory";
 import {
   reportAgentGUIActiveConversationCleared,
   reportAgentGUIConversationListProjectionSkipped
@@ -20,6 +24,7 @@ import {
   type useAgentGUIActivation
 } from "./useAgentGUIActivation";
 import {
+  resolveConversationSummaryById,
   useAgentConversationSelection,
   type ConversationIntent
 } from "./useAgentConversationSelection";
@@ -40,6 +45,7 @@ interface UseAgentGUIConversationSelectionControllerInput {
     { isUnread?: boolean } | undefined
   >;
   conversationIdsRef: RefObject<Set<string>>;
+  conversationsRef: RefObject<AgentGUIConversationSummary[]>;
   conversationListQuery: unknown | null;
   currentUserId: string | null | undefined;
   data: AgentGUINodeData;
@@ -64,6 +70,12 @@ interface UseAgentGUIConversationSelectionControllerInput {
   setIntent: Dispatch<SetStateAction<ConversationIntent>>;
   setIsComposerHome: Dispatch<SetStateAction<boolean>>;
   setIsLoadingMessages: Dispatch<SetStateAction<boolean>>;
+  clearRailRevealRequest(): void;
+  requestRailReveal(
+    agentSessionId: string,
+    reason: AgentGUIConversationRailRevealReason
+  ): void;
+  transientConversation: AgentGUIConversationSummary | null;
   workspaceId: string;
 }
 
@@ -71,9 +83,9 @@ export function clearFailedAgentGUIActivationSelection(
   current: AgentGUINodeData,
   failedAgentSessionId: string
 ): AgentGUINodeData {
-  return current.lastActiveAgentSessionId?.trim() ===
-    failedAgentSessionId.trim()
-    ? { ...current, lastActiveAgentSessionId: null }
+  const normalized = failedAgentSessionId.trim();
+  return normalized
+    ? forgetAgentGUISessionMemories(current, new Set([normalized]))
     : current;
 }
 
@@ -88,6 +100,7 @@ export function useAgentGUIConversationSelectionController(
     agentActivityRuntime,
     attentionReadRecordsBySessionId,
     conversationIdsRef,
+    conversationsRef,
     conversationListQuery,
     currentUserId,
     data,
@@ -105,6 +118,9 @@ export function useAgentGUIConversationSelectionController(
     setIntent,
     setIsComposerHome,
     setIsLoadingMessages,
+    clearRailRevealRequest,
+    requestRailReveal,
+    transientConversation,
     workspaceId
   } = input;
 
@@ -131,6 +147,7 @@ export function useAgentGUIConversationSelectionController(
       isComposerHomeRef.current = true;
       setIsComposerHome(true);
       setIntent({ tag: "home" });
+      clearRailRevealRequest();
       onDataChangeRef.current((current) =>
         clearFailedAgentGUIActivationSelection(
           current,
@@ -157,6 +174,7 @@ export function useAgentGUIConversationSelectionController(
     activeConversationId,
     activePendingActivation,
     attentionReadRecordsBySessionId,
+    clearRailRevealRequest,
     currentUserId,
     sessionEngine
   ]);
@@ -196,6 +214,7 @@ export function useAgentGUIConversationSelectionController(
       setActiveConversationId(null);
       setIsLoadingMessages(false);
       setDetailError(null);
+      clearRailRevealRequest();
       loadDraftComposerOptions();
       return;
     }
@@ -227,6 +246,26 @@ export function useAgentGUIConversationSelectionController(
         )
     },
     conversations: {
+      agentTargetIdFor: (agentSessionId) => {
+        const state = sessionEngine.getSnapshot();
+        const sessionAgentTargetId =
+          selectEngineSession(state, agentSessionId)?.agentTargetId?.trim() ??
+          "";
+        if (sessionAgentTargetId) return sessionAgentTargetId;
+        const activationAgentTargetId =
+          selectLatestActivationForSession(
+            state,
+            agentSessionId
+          )?.agentTargetId?.trim() ?? "";
+        if (activationAgentTargetId) return activationAgentTargetId;
+        return (
+          resolveConversationSummaryById(
+            conversationsRef.current,
+            agentSessionId,
+            transientConversation
+          )?.agentTargetId?.trim() || null
+        );
+      },
       contains: (agentSessionId) =>
         conversationIdsRef.current.has(agentSessionId)
     },
@@ -277,6 +316,10 @@ export function useAgentGUIConversationSelectionController(
       });
     },
     persistence: { update: (updater) => onDataChangeRef.current(updater) },
+    rail: {
+      clearRevealRequest: clearRailRevealRequest,
+      requestReveal: requestRailReveal
+    },
     selection: {
       clearDetailError: () => setDetailError(null),
       getActiveSessionId: () => activeConversationIdRef.current,
@@ -292,5 +335,28 @@ export function useAgentGUIConversationSelectionController(
     }
   });
 
-  return selection;
+  const removeConversations = useCallback(
+    (conversationIds: readonly string[]) => {
+      const removedIds = new Set(
+        conversationIds
+          .map((agentSessionId) => agentSessionId.trim())
+          .filter(Boolean)
+      );
+      for (const agentSessionId of conversationIds) {
+        sessionEngine.dispatch({
+          type: "session/removed",
+          agentSessionId
+        });
+      }
+      if (removedIds.size === 0) return;
+      onDataChangeRef.current((current) => {
+        const next = forgetAgentGUISessionMemories(current, removedIds);
+        dataRef.current = next;
+        return next;
+      });
+    },
+    [dataRef, onDataChangeRef, sessionEngine]
+  );
+
+  return { ...selection, removeConversations };
 }

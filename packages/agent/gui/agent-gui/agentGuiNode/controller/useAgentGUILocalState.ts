@@ -1,8 +1,12 @@
-import { useRef, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import type { AgentHostUserProject } from "../../../host/agentHostApi";
 import type { AgentSessionComposerSettings } from "../../../shared/agentSessionTypes";
 import type { AgentGUINodeData } from "../../../types";
 import type { AgentGUIConversationSummary } from "../model/agentGuiConversationModel";
+import type {
+  AgentGUIConversationRailRevealReason,
+  AgentGUIConversationRailRevealRequest
+} from "../model/agentGuiConversationRailViewState";
 import type {
   AgentComposerDraft,
   AgentGUIOptimisticGoalControl,
@@ -62,9 +66,28 @@ export function useAgentGUILocalState({
   const [goalClearNoticeSequence, setGoalClearNoticeSequence] = useState(0);
   const [optimisticGoalControl, setOptimisticGoalControl] =
     useState<AgentGUIOptimisticGoalControl | null>(null);
+  const railRevealRevisionRef = useRef(0);
+  const [railRevealRequest, setRailRevealRequest] =
+    useState<AgentGUIConversationRailRevealRequest | null>(null);
+  const clearRailRevealRequest = useCallback(() => {
+    setRailRevealRequest(null);
+  }, []);
+  const requestRailReveal = useCallback(
+    (agentSessionId: string, reason: AgentGUIConversationRailRevealReason) => {
+      const normalized = agentSessionId.trim();
+      if (!normalized) return;
+      setRailRevealRequest({
+        agentSessionId: normalized,
+        reason,
+        revision: ++railRevealRevisionRef.current
+      });
+    },
+    []
+  );
 
   return {
     activeConversationId,
+    clearRailRevealRequest,
     detailError,
     draftByScopeKey,
     draftSettingsBySessionId,
@@ -78,6 +101,8 @@ export function useAgentGUILocalState({
     optimisticGoalControl,
     pendingDeleteConversation,
     pendingDeleteProjectConversations,
+    railRevealRequest,
+    requestRailReveal,
     selectedProjectPath,
     setActiveConversationId,
     setDetailError,

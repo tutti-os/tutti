@@ -5,6 +5,7 @@ const GO_MODULE_ROOTS = [
   "apps/cli",
   "packages/agent/activity-replication",
   "packages/agent/daemon",
+  "packages/agent/host",
   "packages/agent/runtimeprep",
   "packages/agent/store-sqlite",
   "packages/agent/store-sqlite/canonical",

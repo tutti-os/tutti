@@ -41,6 +41,7 @@ export interface AgentGuiWorkbenchNodeState {
   conversationRailCollapsed?: boolean | null;
   conversationRailWidthPx?: number | null;
   lastActiveAgentSessionId: string | null;
+  lastActiveAgentSessionIdByAgentTargetId?: Record<string, string> | null;
   provider: AgentGuiWorkbenchProvider;
 }
 
@@ -49,6 +50,7 @@ export interface AgentGuiWorkbenchState {
   conversationRailCollapsed?: boolean | null;
   conversationRailWidthPx?: number | null;
   lastActiveAgentSessionId: string | null;
+  lastActiveAgentSessionIdByAgentTargetId?: Record<string, string> | null;
 }
 
 export interface AgentGuiWorkbenchWorkspaceState {

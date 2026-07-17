@@ -39,6 +39,7 @@ interface StandaloneAgentLaunchRoutingInput {
   headerProvider: DesktopAgentGUIProvider;
   homeDirectory: string;
   hostWindowApi: Pick<DesktopHostWindowApi, "openAgentWindow">;
+  openExternalUrl(url: string): Promise<void>;
   openFileInSidebar(
     path: string,
     validateExists?: boolean
@@ -58,6 +59,7 @@ export function useStandaloneAgentLaunchRouting({
   headerProvider,
   homeDirectory,
   hostWindowApi,
+  openExternalUrl,
   openFileInSidebar,
   setActivation,
   setNodeState,
@@ -164,13 +166,21 @@ export function useStandaloneAgentLaunchRouting({
           return true;
         },
         launchGroupChat: () => false,
-        openBrowserUrl: () => false,
+        openBrowserUrl: async ({ url }) => {
+          try {
+            await openExternalUrl(url);
+            return true;
+          } catch {
+            return false;
+          }
+        },
         workspaceId
       });
     },
     [
       homeDirectory,
       openFileInSidebar,
+      openExternalUrl,
       workspaceAgentActivityService,
       workspaceAppCenterService,
       workspaceId

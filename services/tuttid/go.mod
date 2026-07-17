@@ -11,6 +11,7 @@ require (
 	github.com/klauspost/compress v1.17.7
 	github.com/oapi-codegen/runtime v1.4.1
 	github.com/tutti-os/tutti/packages/agent/daemon v0.0.0
+	github.com/tutti-os/tutti/packages/agent/host v0.0.0
 	github.com/tutti-os/tutti/packages/agent/runtimeprep v0.0.0
 	github.com/tutti-os/tutti/packages/agent/store-sqlite v0.0.0
 	github.com/tutti-os/tutti/packages/agent/store-sqlite/canonical v0.0.0
@@ -32,7 +33,11 @@ replace github.com/tutti-os/tutti/packages/events/stream-go => ../../packages/ev
 
 replace github.com/tutti-os/tutti/packages/workbench/service => ../../packages/workbench/service
 
+replace github.com/tutti-os/tutti/packages/agent/activity-replication => ../../packages/agent/activity-replication
+
 replace github.com/tutti-os/tutti/packages/agent/daemon => ../../packages/agent/daemon
+
+replace github.com/tutti-os/tutti/packages/agent/host => ../../packages/agent/host
 
 replace github.com/tutti-os/tutti/packages/agent/runtimeprep => ../../packages/agent/runtimeprep
 

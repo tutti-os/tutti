@@ -2,6 +2,7 @@ package agent
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"strings"
 	"time"
@@ -199,6 +200,14 @@ func (p *ActivityProjection) ReportSessionState(
 	ctx context.Context,
 	input agentsessionstore.ReportSessionStateInput,
 ) (agentsessionstore.ReportSessionStateReply, error) {
+	return p.reportSessionState(ctx, input, true)
+}
+
+func (p *ActivityProjection) reportSessionState(
+	ctx context.Context,
+	input agentsessionstore.ReportSessionStateInput,
+	notify bool,
+) (agentsessionstore.ReportSessionStateReply, error) {
 	if p == nil || p.repo == nil {
 		return agentsessionstore.ReportSessionStateReply{}, nil
 	}
@@ -265,8 +274,10 @@ func (p *ActivityProjection) ReportSessionState(
 		LastEventAtUnixMS: result.LastEventUnixMS,
 		RequestBodyBytes:  result.RequestBodyBytes,
 	}
-	p.publishPersistedTurnState(ctx, input, activityResult)
-	if result.Accepted {
+	if notify {
+		p.publishPersistedTurnState(ctx, input, activityResult)
+	}
+	if notify && result.Accepted {
 		p.publishActivityUpdated(
 			ctx,
 			input.WorkspaceID,
@@ -283,7 +294,9 @@ func (p *ActivityProjection) ReportSessionState(
 			p.reportFailedRuntimeNodeResult(ctx, input)
 		}
 	}
-	p.observeSessionState(ctx, input, reply)
+	if notify {
+		p.observeSessionState(ctx, input, reply)
+	}
 	return reply, nil
 }
 
@@ -591,6 +604,19 @@ func (p *ActivityProjection) DeleteSession(ctx context.Context, workspaceID stri
 		p.publishActivityUpdated(ctx, workspaceID, agentSessionID, "session_deleted", activitySessionDeletedEventPayload(workspaceID, agentSessionID))
 	}
 	return removed, nil
+}
+
+func (p *ActivityProjection) RollbackRuntimeSessionInitialization(ctx context.Context, workspaceID string, agentSessionID string) (bool, error) {
+	if p == nil || p.repo == nil {
+		return false, nil
+	}
+	rollbacker, ok := p.repo.(interface {
+		RollbackRuntimeSessionInitialization(context.Context, string, string) (bool, error)
+	})
+	if !ok {
+		return false, fmt.Errorf("agent activity repository cannot roll back runtime session initialization")
+	}
+	return rollbacker.RollbackRuntimeSessionInitialization(ctx, strings.TrimSpace(workspaceID), strings.TrimSpace(agentSessionID))
 }
 
 func (p *ActivityProjection) ListSessionSectionDeletionCandidates(

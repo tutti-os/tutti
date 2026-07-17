@@ -34,7 +34,13 @@ import type {
   AgentGUIComposerSettingOption,
   AgentGUIComposerSettingsVM
 } from "./model/agentGuiNodeTypes";
-import { permissionModeSelectionPatch } from "./model/composerModeSelection";
+import type { WorkspaceLinkAction } from "../../actions/workspaceLinkActions";
+import { AgentFullAccessWarningDialog } from "./AgentFullAccessWarningDialog";
+import {
+  normalizePermissionModeSelection,
+  permissionModeSelectionPatch
+} from "./model/composerModeSelection";
+import { requiresFullAccessSafetyConfirmation } from "./model/agentPermissionModeSafetyPolicy";
 import {
   buildComposerModelMenuModel,
   type AgentComposerSettingsMenuLabels,
@@ -52,13 +58,17 @@ export {
 export function AgentPermissionModeDropdown({
   composerSettings,
   disabled = false,
+  onLinkAction,
   previewMode = false,
+  provider,
   labels,
   onSettingsChange
 }: {
   composerSettings: AgentGUIComposerSettingsVM;
   disabled?: boolean;
+  onLinkAction?: (action: WorkspaceLinkAction) => void;
   previewMode?: boolean;
+  provider: string;
   labels: Pick<
     AgentComposerSettingsMenuLabels,
     "permissionLabel" | "loadingOptions"
@@ -70,6 +80,9 @@ export function AgentPermissionModeDropdown({
 }): React.JSX.Element {
   "use memo";
   const [isSelectOpen, setIsSelectOpen] = useState(false);
+  const [pendingFullAccessModeId, setPendingFullAccessModeId] = useState<
+    string | null
+  >(null);
   // While the daemon's composer options load, the permission options are empty
   // and the trigger is disabled; surface a hover hint so the user knows it is
   // still loading rather than permanently unavailable.
@@ -102,7 +115,7 @@ export function AgentPermissionModeDropdown({
   const triggerTone = selectDisabled
     ? undefined
     : resolvePermissionModeTriggerTone(selectedValue);
-  const applyPermissionModeId = (permissionModeId: string): void => {
+  const commitPermissionModeId = (permissionModeId: string): void => {
     if (selectDisabled) {
       return;
     }
@@ -112,6 +125,19 @@ export function AgentPermissionModeDropdown({
           composerSettings.planExclusiveWithPermissionMode === true
       })
     );
+  };
+  const applyPermissionModeId = (rawPermissionModeId: string): void => {
+    const permissionModeId =
+      normalizePermissionModeSelection(rawPermissionModeId);
+    if (!permissionModeId) {
+      return;
+    }
+    if (requiresFullAccessSafetyConfirmation(provider, permissionModeId)) {
+      setIsSelectOpen(false);
+      setPendingFullAccessModeId(permissionModeId);
+      return;
+    }
+    commitPermissionModeId(permissionModeId);
   };
   const trigger = (
     <button
@@ -156,60 +182,79 @@ export function AgentPermissionModeDropdown({
   );
 
   return (
-    <Select
-      open={isSelectOpen}
-      value={selectedValue ?? undefined}
-      disabled={selectDisabled}
-      onOpenChange={setIsSelectOpen}
-      onValueChange={applyPermissionModeId}
-    >
-      {isLoading ? (
-        // The trigger is disabled while loading, so pointer events never reach
-        // it. Target the tooltip at a focusable wrapper span (Radix's pattern
-        // for disabled triggers) so hover/focus reliably surfaces the hint.
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <span className="inline-flex" tabIndex={0}>
-              {selectTrigger}
-            </span>
-          </TooltipTrigger>
-          <TooltipContent side="top">{labels.loadingOptions}</TooltipContent>
-        </Tooltip>
-      ) : (
-        selectTrigger
-      )}
-      {isSelectOpen ? (
-        <SelectContent
-          align="end"
-          side="top"
-          sideOffset={4}
-          collisionPadding={16}
-          className={cn(
-            styles.composerMenuContent,
-            "w-max min-w-[220px] max-w-[calc(100vw-32px)] data-[side=top]:!translate-y-0"
-          )}
-        >
-          {permissionOptions.map((option) => (
-            <SelectItem
-              key={option.value}
-              value={option.value}
-              disabled={selectDisabled}
-              className={cn(styles.composerMenuItem, "group/composer-option")}
-            >
-              <span className="flex min-w-0 items-center gap-1.5">
-                <span className="min-w-0 truncate">{option.label}</span>
-                {option.description ? (
-                  <ComposerOptionInfoTooltip
-                    description={option.description}
-                    tooltipsEnabled={!previewMode}
-                  />
-                ) : null}
+    <Fragment>
+      <Select
+        open={isSelectOpen}
+        value={selectedValue ?? undefined}
+        disabled={selectDisabled}
+        onOpenChange={setIsSelectOpen}
+        onValueChange={applyPermissionModeId}
+      >
+        {isLoading ? (
+          // The trigger is disabled while loading, so pointer events never reach
+          // it. Target the tooltip at a focusable wrapper span (Radix's pattern
+          // for disabled triggers) so hover/focus reliably surfaces the hint.
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <span className="inline-flex" tabIndex={0}>
+                {selectTrigger}
               </span>
-            </SelectItem>
-          ))}
-        </SelectContent>
-      ) : null}
-    </Select>
+            </TooltipTrigger>
+            <TooltipContent side="top">{labels.loadingOptions}</TooltipContent>
+          </Tooltip>
+        ) : (
+          selectTrigger
+        )}
+        {isSelectOpen ? (
+          <SelectContent
+            align="end"
+            side="top"
+            sideOffset={4}
+            collisionPadding={16}
+            className={cn(
+              styles.composerMenuContent,
+              "w-max min-w-[220px] max-w-[calc(100vw-32px)] data-[side=top]:!translate-y-0"
+            )}
+          >
+            {permissionOptions.map((option) => (
+              <SelectItem
+                key={option.value}
+                value={option.value}
+                disabled={selectDisabled}
+                className={cn(styles.composerMenuItem, "group/composer-option")}
+              >
+                <span className="flex min-w-0 items-center gap-1.5">
+                  <span className="min-w-0 truncate">{option.label}</span>
+                  {option.description ? (
+                    <ComposerOptionInfoTooltip
+                      description={option.description}
+                      tooltipsEnabled={!previewMode}
+                    />
+                  ) : null}
+                </span>
+              </SelectItem>
+            ))}
+          </SelectContent>
+        ) : null}
+      </Select>
+      <AgentFullAccessWarningDialog
+        onConfirm={() => {
+          if (!pendingFullAccessModeId) {
+            return;
+          }
+          const permissionModeId = pendingFullAccessModeId;
+          setPendingFullAccessModeId(null);
+          commitPermissionModeId(permissionModeId);
+        }}
+        onLinkAction={onLinkAction}
+        onOpenChange={(open) => {
+          if (!open) {
+            setPendingFullAccessModeId(null);
+          }
+        }}
+        open={pendingFullAccessModeId !== null}
+      />
+    </Fragment>
   );
 }
 

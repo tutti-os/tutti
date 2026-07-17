@@ -133,11 +133,25 @@ export function useAgentGUIComposerSettingsActions(
           snapshot: agentActivityRuntime.getSnapshot(workspaceId),
           target: targetData
         });
-        const targetSafeMerged = sanitizeComposerSettingsForTarget({
+        const sanitizedMerged = sanitizeComposerSettingsForTarget({
           settings: merged,
           target: targetData,
           options: snapshotComposerOptions
         });
+        // The runtime snapshot read here can lag the rendered target options
+        // while a refresh is in flight. It may clean up other stored defaults,
+        // but it must not erase the current permission as collateral damage
+        // from an unrelated patch (for example, clearing plan mode), nor erase
+        // an explicit permission selection before the daemon performs
+        // authoritative provider validation.
+        const targetSafeMerged = {
+          ...sanitizedMerged,
+          permissionModeId: normalizePermissionModeId(
+            supportedNextSettings.permissionModeId === undefined
+              ? merged.permissionModeId
+              : supportedNextSettings.permissionModeId
+          )
+        };
         draftSettingsBySessionIdRef.current = {
           ...draftSettingsBySessionIdRef.current,
           [defaultDraftKey]: targetSafeMerged

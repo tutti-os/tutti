@@ -33,6 +33,8 @@ jobs:
             packages/agent/activity-replication/go.mod
             packages/agent/daemon/go.mod
             packages/agent/daemon/go.sum
+            packages/agent/host/go.mod
+            packages/agent/host/go.sum
             packages/agent/runtimeprep/go.mod
             packages/agent/store-sqlite/go.mod
             packages/agent/store-sqlite/canonical/go.mod
@@ -226,6 +228,8 @@ jobs:
             packages/agent/activity-replication/go.mod
             packages/agent/daemon/go.mod
             packages/agent/daemon/go.sum
+            packages/agent/host/go.mod
+            packages/agent/host/go.sum
             packages/agent/runtimeprep/go.mod
             packages/agent/store-sqlite/go.mod
             packages/agent/store-sqlite/canonical/go.mod
@@ -277,6 +281,8 @@ jobs:
             go.work
             go.work.sum
             packages/agent/activity-replication/go.mod
+            packages/agent/host/go.mod
+            packages/agent/host/go.sum
             packages/agent/runtimeprep/go.mod
             packages/agent/store-sqlite/canonical/go.mod
             packages/appcli/core/go.mod

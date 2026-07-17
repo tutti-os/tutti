@@ -1,5 +1,6 @@
 import { renderHook } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
+import type { AgentGUINodeData } from "../../../types";
 import type { AgentGUIConversationSummary } from "../model/agentGuiConversationModel";
 import { useAgentGUIConversationPresentation } from "./useAgentGUIConversationPresentation";
 
@@ -167,6 +168,36 @@ describe("useAgentGUIConversationPresentation", () => {
     expect(rendered.result.current.activeConversation?.agentTargetId).toBe(
       "extension:missing"
     );
+  });
+
+  it("backfills target memory when canonical session metadata arrives", () => {
+    const conversation = createConversation();
+    const input = createInput(conversation);
+    let data: AgentGUINodeData = input.data;
+    input.previewMode = false;
+    input.dataRef = { current: data };
+    input.normalizedExplicitProviderTargets = [
+      {
+        agentTargetId: "target-1",
+        label: "Codex",
+        provider: "codex",
+        ref: { kind: "local", provider: "codex" },
+        targetId: "target-1"
+      }
+    ];
+    input.normalizedProviderTargets = input.normalizedExplicitProviderTargets;
+    input.onDataChangeRef = {
+      current: (updater) => {
+        data = updater(data);
+        input.dataRef.current = data;
+      }
+    };
+
+    renderHook(() => useAgentGUIConversationPresentation(input));
+
+    expect(data.lastActiveAgentSessionIdByAgentTargetId).toEqual({
+      "target-1": "session-1"
+    });
   });
 });
 

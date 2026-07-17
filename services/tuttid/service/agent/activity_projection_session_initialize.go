@@ -29,7 +29,10 @@ func (p *ActivityProjection) InitializeRuntimeSession(
 	if runtimeContext == nil {
 		runtimeContext = map[string]any{}
 	}
-	runtimeContext["visible"] = session.Visible
+	// A create-with-initial-input shell is durable only to reserve its immutable
+	// rail identity. Keep it hidden until the first Turn report atomically
+	// publishes the canonical session and Turn together.
+	runtimeContext["visible"] = session.Visible && !session.Provisional
 	settings := cloneComposerSettingsPointerValue(session.Settings)
 	occurredAtUnixMS := session.UpdatedAtUnixMS
 	if occurredAtUnixMS <= 0 {
@@ -39,7 +42,7 @@ func (p *ActivityProjection) InitializeRuntimeSession(
 		occurredAtUnixMS = time.Now().UnixMilli()
 	}
 
-	_, err := p.ReportSessionState(ctx, agentsessionstore.ReportSessionStateInput{
+	_, err := p.reportSessionState(ctx, agentsessionstore.ReportSessionStateInput{
 		WorkspaceID:    workspaceID,
 		AgentSessionID: agentSessionID,
 		AgentTargetID:  strings.TrimSpace(session.AgentTargetID),
@@ -70,7 +73,7 @@ func (p *ActivityProjection) InitializeRuntimeSession(
 			OccurredAtUnixMS:  occurredAtUnixMS,
 			StartedAtUnixMS:   session.CreatedAtUnixMS,
 		},
-	})
+	}, !session.Provisional)
 	if err != nil {
 		return PersistedSession{}, err
 	}

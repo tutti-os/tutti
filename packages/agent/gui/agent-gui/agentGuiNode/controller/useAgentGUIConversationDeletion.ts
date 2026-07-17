@@ -49,6 +49,7 @@ export interface UseAgentGUIConversationDeletionInput {
   setIntent: Dispatch<SetStateAction<ConversationIntent>>;
   setActiveConversationId: Dispatch<SetStateAction<string | null>>;
   persistActiveConversation: (agentSessionId: string | null) => void;
+  removeConversations: (agentSessionIds: readonly string[]) => void;
   agentHostApi: ReturnType<typeof useAgentHostApi>;
   workspaceId: string;
 }
@@ -74,6 +75,7 @@ export function useAgentGUIConversationDeletion(
     setIntent,
     setActiveConversationId,
     persistActiveConversation,
+    removeConversations,
     agentHostApi,
     workspaceId
   } = input;
@@ -127,6 +129,7 @@ export function useAgentGUIConversationDeletion(
         })
       )
       .then(() => {
+        removeConversations([target.id]);
         const deletedScopeKey = resolveAgentComposerDraftScopeKey({
           agentSessionId: target.id
         });
@@ -167,6 +170,7 @@ export function useAgentGUIConversationDeletion(
     isDeletingConversation,
     pendingDeleteConversation,
     persistActiveConversation,
+    removeConversations,
     sessionViewRef,
     setActiveConversationId,
     setDetailError,

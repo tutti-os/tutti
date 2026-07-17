@@ -304,6 +304,7 @@ Go linting uses `golangci-lint` across the repository's current Go modules.
 The current root entrypoint runs the linter from:
 
 - `packages/agent/activity-replication`
+- `packages/agent/host`
 - `packages/agent/store-sqlite/canonical`
 - `packages/appcli/core`
 - `packages/agent/runtimeprep`
@@ -322,6 +323,7 @@ satisfy the normal Go lint baseline.
 
 Changed-aware Go validation includes the nested
 `packages/agent/activity-replication`, `packages/agent/daemon`,
+`packages/agent/host`,
 `packages/agent/runtimeprep`, `packages/agent/store-sqlite`, and
 `packages/agent/store-sqlite/canonical` modules.
 Codex app-server protocol changes should also run

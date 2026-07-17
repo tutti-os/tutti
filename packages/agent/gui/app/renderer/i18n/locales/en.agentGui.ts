@@ -95,6 +95,23 @@ export const enAgentGui = {
   permissionModeReadOnly: "Ask for approval",
   permissionModeAuto: "Approve for me",
   permissionModeFullAccess: "Full access",
+  fullAccessWarning: {
+    title: "Enable full access?",
+    description:
+      "Full access lets Codex act on your computer without asking for approval.",
+    filesTitle: "Files and folders",
+    filesDescription:
+      "Read, create, modify, or delete files anywhere on this computer.",
+    commandsTitle: "Terminal commands",
+    commandsDescription: "Run commands and change system settings.",
+    internetTitle: "Internet access",
+    internetDescription: "Access websites and send data over the internet.",
+    riskDescription:
+      "Recent Codex releases, especially when using GPT-5.6 models, may go beyond your intent and accidentally delete or overwrite files. Only continue if you understand and accept this risk.",
+    learnMore: "Learn more",
+    cancel: "Cancel",
+    confirm: "Enable full access"
+  },
   permissionSemantics: {
     "ask-before-write": {
       label: "Ask for approval",

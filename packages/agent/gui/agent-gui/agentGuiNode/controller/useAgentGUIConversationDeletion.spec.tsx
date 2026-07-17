@@ -39,6 +39,7 @@ function createInput(agentActivityRuntime: AgentActivityRuntime) {
     isDeletingConversation: false,
     pendingDeleteConversation: targetConversation,
     persistActiveConversation: vi.fn(),
+    removeConversations: vi.fn(),
     sessionViewRef: (agentSessionId: string | null | undefined) => ({
       agentSessionId,
       origin: "local",
@@ -101,6 +102,9 @@ describe("useAgentGUIConversationDeletion", () => {
     await waitFor(() =>
       expect(input.deleteAgentSessionView).toHaveBeenCalledTimes(1)
     );
+    expect(input.removeConversations).toHaveBeenCalledWith([
+      targetConversation.id
+    ]);
   });
 
   it("keeps the committed home selection when deletion fails", async () => {
@@ -129,6 +133,7 @@ describe("useAgentGUIConversationDeletion", () => {
     expect(result.current.activeConversationId).toBeNull();
     expect(input.activeConversationIdRef.current).toBeNull();
     expect(input.deleteAgentSessionView).not.toHaveBeenCalled();
+    expect(input.removeConversations).not.toHaveBeenCalled();
     expect(input.setIsDeletingConversation).toHaveBeenLastCalledWith(false);
   });
 });

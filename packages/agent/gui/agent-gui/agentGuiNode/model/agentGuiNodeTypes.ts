@@ -17,6 +17,7 @@ import type {
   AgentGUIInteractivePrompt
 } from "./agentGuiConversationModel";
 import type { AgentGUIConversationFilter } from "./agentGuiConversationFilter";
+import type { AgentGUIConversationRailRevealRequest } from "./agentGuiConversationRailViewState";
 import type {
   AgentSessionCommand,
   AgentSessionComposerSettings,
@@ -329,6 +330,7 @@ export interface AgentGUIRailViewModel {
   userProjects: AgentGUIConversationUserProject[];
   activeConversation: AgentGUIConversationSummary | null;
   activeConversationId: string | null;
+  revealRequest: AgentGUIConversationRailRevealRequest | null;
   isLoadingConversations: boolean;
   listError: string | null;
 }

@@ -63,7 +63,7 @@ func (s *Store) UpdateSessionTitle(
 	workspaceID = strings.TrimSpace(workspaceID)
 	agentSessionID = strings.TrimSpace(agentSessionID)
 	title = strings.TrimSpace(title)
-	if workspaceID == "" || agentSessionID == "" || title == "" {
+	if workspaceID == "" || agentSessionID == "" {
 		return Session{}, false, nil
 	}
 
@@ -71,6 +71,11 @@ func (s *Store) UpdateSessionTitle(
 	result, err := s.db.ExecContext(ctx, `
 UPDATE workspace_agent_sessions
 SET title = ?,
+    internal_runtime_context_json = json_set(
+      internal_runtime_context_json,
+      '$.tuttiInitialTitleEstablished',
+      json('true')
+    ),
     updated_at_unix_ms = ?
 WHERE workspace_id = ? AND agent_session_id = ? AND deleted_at_unix_ms = 0
 `, title, now, workspaceID, agentSessionID)

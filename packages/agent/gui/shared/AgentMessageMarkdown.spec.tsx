@@ -1,5 +1,11 @@
 import "@testing-library/jest-dom/vitest";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import {
+  act,
+  fireEvent,
+  render,
+  screen,
+  waitFor
+} from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   AgentMessageMarkdown,
@@ -13,6 +19,7 @@ import {
 
 describe("AgentMessageMarkdown", () => {
   afterEach(() => {
+    vi.useRealTimers();
     resetCachedMarkdownImagesForTests();
   });
 
@@ -915,6 +922,7 @@ describe("AgentMessageMarkdown", () => {
   });
 
   it("copies and downloads a workspace markdown image from preview actions", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
     const readFile = vi.fn().mockResolvedValue({
       bytes: new Uint8Array([137, 80, 78, 71])
     });
@@ -997,6 +1005,13 @@ describe("AgentMessageMarkdown", () => {
     fireEvent.click(screen.getByRole("button", { name: "Download image" }));
     expect(clickDownload).toHaveBeenCalledTimes(1);
     expect(downloadedName).toMatch(/^dance-\d{8}-\d{6}-[a-z0-9]{4}\.png$/);
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1600);
+    });
+    expect(
+      document.querySelector('[data-tsh-image-copy-status="true"]')
+    ).toBeNull();
 
     clickDownload.mockRestore();
   });

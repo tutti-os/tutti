@@ -12,6 +12,113 @@ import type { useAgentGUIActivation } from "./useAgentGUIActivation";
 import { useAgentGUIComposerSettingsActions } from "./useAgentGUIComposerSettingsActions";
 
 describe("useAgentGUIComposerSettingsActions", () => {
+  it("preserves a home permission across explicit and unrelated patches with stale options", () => {
+    const sessionEngine = createAgentSessionEngine({
+      clock: { nowUnixMs: () => 1 },
+      commandPort: { execute: vi.fn() },
+      identity: { origin: "test", workspaceId: "workspace-1" },
+      scheduler: { schedule: () => ({ cancel() {} }) }
+    });
+    const data: AgentGUINodeData = {
+      agentTargetId: "local:codex",
+      lastActiveAgentSessionId: null,
+      provider: "codex",
+      composerOverridesByAgentTargetId: {
+        "local:codex": { permissionModeId: "auto" }
+      }
+    };
+    const onDataChange = vi.fn();
+    const onRememberComposerDefaults = vi.fn();
+    const draftSettingsBySessionIdRef: {
+      current: Record<string, AgentSessionComposerSettings>;
+    } = { current: {} };
+    const target = {
+      agentTargetId: "local:codex",
+      data,
+      provider: "codex" as const,
+      targetId: "local:codex"
+    };
+    const rendered = renderHook(() =>
+      useAgentGUIComposerSettingsActions({
+        activation: {
+          stateFor: vi.fn(() => "inactive" as const)
+        } as unknown as ReturnType<typeof useAgentGUIActivation>,
+        activeCanonicalComposerSettings: {},
+        activeConversationIdRef: { current: null },
+        activeEngineActiveTurn: null,
+        agentActivityRuntime: {
+          getSnapshot: () => ({
+            composerOptionsByTargetKey: {
+              "local:codex": {
+                behavior: { refreshModelOptionsAfterSettings: false },
+                models: [],
+                permissionConfig: {
+                  configurable: true,
+                  defaultValue: "auto",
+                  modes: [{ id: "auto", label: "Approve for me" }]
+                },
+                reasoningConfigurable: false,
+                reasoningEfforts: [],
+                speeds: []
+              }
+            }
+          }),
+          trackDraftComposerSettingsChange: vi.fn()
+        } as unknown as AgentActivityRuntime,
+        composerSupportPermissionModeChangeDeferred: false,
+        dataRef: { current: data },
+        defaultReasoningEffort: null,
+        draftSettingsBySessionIdRef,
+        loadDraftComposerOptions: vi.fn(),
+        onDataChangeRef: { current: onDataChange },
+        onRememberComposerDefaultsRef: {
+          current: onRememberComposerDefaults
+        },
+        onShowMessageRef: { current: vi.fn() },
+        selectedComposerTargetDataRef: { current: target },
+        sessionEngine,
+        setDraftSettingsBySessionId: vi.fn(),
+        updateComposerSettingsRef: { current: vi.fn() },
+        workspaceId: "workspace-1"
+      })
+    );
+
+    act(() => {
+      rendered.result.current.updateComposerSettings({
+        permissionModeId: "full-access"
+      });
+    });
+
+    expect(
+      draftSettingsBySessionIdRef.current[
+        "__agent_gui_node_defaults__:target:local:codex"
+      ]
+    ).toMatchObject({ permissionModeId: "full-access" });
+    expect(onRememberComposerDefaults).toHaveBeenCalledWith({
+      agentTargetId: "local:codex",
+      provider: "codex",
+      defaults: { permissionModeId: "full-access" }
+    });
+    const updateNode = onDataChange.mock.calls[0]?.[0] as
+      | ((current: AgentGUINodeData) => AgentGUINodeData)
+      | undefined;
+    expect(updateNode?.(data)).toMatchObject({
+      composerOverridesByAgentTargetId: {
+        "local:codex": { permissionModeId: "full-access" }
+      }
+    });
+
+    act(() => {
+      rendered.result.current.updateComposerSettings({ planMode: false });
+    });
+
+    expect(
+      draftSettingsBySessionIdRef.current[
+        "__agent_gui_node_defaults__:target:local:codex"
+      ]
+    ).toMatchObject({ permissionModeId: "full-access" });
+  });
+
   it("retries an unknown active-session update and remembers the explicit selection", () => {
     const execute = vi.fn(() => new Promise<unknown>(() => undefined));
     const sessionEngine = createAgentSessionEngine({

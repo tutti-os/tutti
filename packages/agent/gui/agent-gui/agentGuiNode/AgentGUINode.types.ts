@@ -189,6 +189,10 @@ function agentGuiStateEquals(
     (left.provider === right.provider &&
       (left.agentTargetId ?? null) === (right.agentTargetId ?? null) &&
       left.lastActiveAgentSessionId === right.lastActiveAgentSessionId &&
+      stringRecordsEqual(
+        left.lastActiveAgentSessionIdByAgentTargetId,
+        right.lastActiveAgentSessionIdByAgentTargetId
+      ) &&
       left.conversationRailWidthPx === right.conversationRailWidthPx &&
       left.conversationRailCollapsed === right.conversationRailCollapsed &&
       (left.composerOverrides?.model ?? null) ===
@@ -261,6 +265,20 @@ function composerOverridesByAgentTargetIdEqual(
     }
   }
   return true;
+}
+
+function stringRecordsEqual(
+  left: Record<string, string> | null | undefined,
+  right: Record<string, string> | null | undefined
+): boolean {
+  const leftKeys = Object.keys(left ?? {}).sort();
+  const rightKeys = Object.keys(right ?? {}).sort();
+  return (
+    leftKeys.length === rightKeys.length &&
+    leftKeys.every(
+      (key, index) => key === rightKeys[index] && left?.[key] === right?.[key]
+    )
+  );
 }
 
 export function areAgentGUINodePropsEqual(

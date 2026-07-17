@@ -37,6 +37,7 @@ import {
 
 interface Props {
   labels: AgentComposerProps["labels"];
+  provider: AgentComposerProps["provider"];
   composerSettings: AgentComposerProps["composerSettings"];
   usage: AgentComposerUsage | null;
   previewMode: boolean;
@@ -65,6 +66,7 @@ interface Props {
   selectedProviderLabel: string;
   providerMenuTargets: readonly AgentGUIAgentTarget[];
   onProviderSelect: AgentComposerProps["onProviderSelect"];
+  onLinkAction: AgentComposerProps["onLinkAction"];
   onRequestWorkspaceReferences: AgentComposerProps["onRequestWorkspaceReferences"];
   onWorkspaceReferencePicker: () => void;
   onMentionPaletteButton: () => void;
@@ -75,6 +77,7 @@ interface Props {
 
 export function ComposerFooter({
   labels,
+  provider,
   composerSettings,
   usage,
   previewMode,
@@ -103,6 +106,7 @@ export function ComposerFooter({
   selectedProviderLabel,
   providerMenuTargets,
   onProviderSelect,
+  onLinkAction,
   onRequestWorkspaceReferences,
   onWorkspaceReferencePicker: handleWorkspaceReferencePicker,
   onMentionPaletteButton: handleMentionPaletteButton,
@@ -457,7 +461,9 @@ export function ComposerFooter({
             <AgentPermissionModeDropdown
               composerSettings={composerSettings}
               disabled={permissionModeControlsDisabled}
+              onLinkAction={onLinkAction}
               previewMode={previewMode}
+              provider={provider}
               labels={{
                 permissionLabel: labels.permissionLabel,
                 loadingOptions: labels.loadingOptions

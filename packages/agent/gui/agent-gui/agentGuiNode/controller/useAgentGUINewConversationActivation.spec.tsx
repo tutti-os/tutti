@@ -39,6 +39,7 @@ describe("useAgentGUINewConversationActivation", () => {
     const setIntent = vi.fn();
     const setIsComposerHome = vi.fn();
     const persistActiveConversation = vi.fn();
+    const requestRailReveal = vi.fn();
     const { result } = renderHook(() =>
       useAgentGUINewConversationActivation({
         getCachedComposerOptions: () => null,
@@ -73,6 +74,7 @@ describe("useAgentGUINewConversationActivation", () => {
         conversationListQuery: null,
         currentUserId: "user-1",
         persistActiveConversation,
+        requestRailReveal,
         setActiveConversationId,
         setIntent,
         setIsComposerHome,
@@ -134,6 +136,13 @@ describe("useAgentGUINewConversationActivation", () => {
       tag: "active",
       id: secondSessionId
     });
-    expect(persistActiveConversation).toHaveBeenLastCalledWith(secondSessionId);
+    expect(persistActiveConversation).toHaveBeenLastCalledWith(
+      secondSessionId,
+      "local:codex"
+    );
+    expect(requestRailReveal).toHaveBeenLastCalledWith(
+      secondSessionId,
+      "created"
+    );
   });
 });

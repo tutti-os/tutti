@@ -30,6 +30,10 @@ describe("agent gui workbench state", () => {
           unsupported: { model: "ignored" }
         } as never,
         lastActiveAgentSessionId: "session-1",
+        lastActiveAgentSessionIdByAgentTargetId: {
+          " target-a ": " session-1 ",
+          empty: " "
+        },
         provider: "hermes"
       })
     ).toEqual({
@@ -41,7 +45,10 @@ describe("agent gui workbench state", () => {
       composerOverridesByProvider: {
         hermes: { permissionModeId: "read-only" }
       },
-      lastActiveAgentSessionId: "session-1"
+      lastActiveAgentSessionId: "session-1",
+      lastActiveAgentSessionIdByAgentTargetId: {
+        "target-a": "session-1"
+      }
     });
   });
 
@@ -60,13 +67,19 @@ describe("agent gui workbench state", () => {
         conversationRailCollapsed: true,
         conversationRailWidthPx: 360.4,
         agentTargetId: "shared-agent:agent-1",
-        lastActiveAgentSessionId: "session-1"
+        lastActiveAgentSessionId: "session-1",
+        lastActiveAgentSessionIdByAgentTargetId: {
+          "shared-agent:agent-1": "session-1"
+        }
       })
     ).toEqual({
       agentTargetId: "shared-agent:agent-1",
       conversationRailCollapsed: true,
       conversationRailWidthPx: 360,
-      lastActiveAgentSessionId: "session-1"
+      lastActiveAgentSessionId: "session-1",
+      lastActiveAgentSessionIdByAgentTargetId: {
+        "shared-agent:agent-1": "session-1"
+      }
     });
   });
 
@@ -127,6 +140,22 @@ describe("agent gui workbench state", () => {
         })
       )
     ).toBe(true);
+    expect(
+      areAgentGuiWorkbenchStatesEqual(
+        normalizeAgentGuiWorkbenchState({
+          lastActiveAgentSessionId: null,
+          lastActiveAgentSessionIdByAgentTargetId: {
+            "local:codex": "session-1"
+          }
+        }),
+        normalizeAgentGuiWorkbenchState({
+          lastActiveAgentSessionId: null,
+          lastActiveAgentSessionIdByAgentTargetId: {
+            "local:codex": "session-2"
+          }
+        })
+      )
+    ).toBe(false);
     expect(
       areAgentGuiWorkbenchStatesEqual(
         normalizeAgentGuiWorkbenchState(

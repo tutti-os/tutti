@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	agenthost "github.com/tutti-os/tutti/packages/agent/host"
 	agentactivitybiz "github.com/tutti-os/tutti/services/tuttid/biz/agentactivity"
 	preferencesbiz "github.com/tutti-os/tutti/services/tuttid/biz/preferences"
 )
@@ -62,7 +63,7 @@ func runtimeResumeInputFromPersistedSession(session PersistedSession) RuntimeRes
 	}
 }
 
-const WorkspaceAgentSessionOriginImported = "WORKSPACE_AGENT_SESSION_ORIGIN_IMPORTED"
+const WorkspaceAgentSessionOriginImported = agenthost.WorkspaceAgentSessionOriginImported
 
 func (s *Service) persistedSessionCanResume(ctx context.Context, session PersistedSession) bool {
 	controller := s.controller()
@@ -92,12 +93,7 @@ func (s *Service) persistedSessionCanResume(ctx context.Context, session Persist
 }
 
 func externalImportResumeSupported(runtimeContext map[string]any) bool {
-	value, exists := runtimeContext["externalImportResumeSupported"]
-	if !exists {
-		return true
-	}
-	supported, ok := value.(bool)
-	return ok && supported
+	return agenthost.ExternalImportResumeSupported(runtimeContext)
 }
 
 func serviceSession(session ProviderRuntimeSession, resumable bool) Session {

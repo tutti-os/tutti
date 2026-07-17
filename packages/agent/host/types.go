@@ -1,0 +1,310 @@
+package agenthost
+
+import storesqlite "github.com/tutti-os/tutti/packages/agent/store-sqlite"
+
+// SessionRef identifies one canonical session without carrying host transport
+// or authorization state.
+type SessionRef struct {
+	WorkspaceID    string
+	AgentSessionID string
+}
+
+type ComposerSettings struct {
+	Model            string
+	PermissionModeID string
+	PlanMode         bool
+	// BrowserUse is tri-state: nil means "use the default" (on), so the
+	// composer can distinguish an explicit opt-out from an unset value.
+	BrowserUse *bool
+	// ComputerUse is tri-state: nil means "use the default" (on), so the
+	// composer can distinguish an explicit opt-out from an unset value.
+	ComputerUse            *bool
+	ReasoningEffort        string
+	Speed                  string
+	ConversationDetailMode string
+}
+
+type ComposerSettingsPatch struct {
+	Model            *string
+	PermissionModeID *string
+	PlanMode         *bool
+	BrowserUse       *bool
+	ComputerUse      *bool
+	ReasoningEffort  *string
+	Speed            *string
+}
+
+// ProviderRuntimeSession is an adapter observation. Canonical Session, Turn,
+// and Interaction rows remain authoritative for durable lifecycle state.
+type ProviderRuntimeSession struct {
+	ID                      string
+	WorkspaceID             string
+	UserID                  string
+	AgentTargetID           string
+	Provider                string
+	ProviderSessionID       string
+	Cwd                     string
+	Env                     []string
+	Settings                *ComposerSettings
+	RuntimeContext          map[string]any
+	Status                  string
+	TurnLifecycle           *TurnLifecycle
+	SubmitAvailability      *SubmitAvailability
+	Visible                 bool
+	Title                   string
+	InitialTitleEstablished bool
+	Provisional             bool
+	LastError               string
+	PinnedAtUnixMS          int64
+	CreatedAtUnixMS         int64
+	UpdatedAtUnixMS         int64
+}
+
+type RuntimeStartInput struct {
+	WorkspaceID             string
+	AgentSessionID          string
+	AgentTargetID           string
+	Provider                string
+	Cwd                     string
+	Env                     []string
+	Title                   string
+	InitialTitleEstablished bool
+	PermissionModeID        string
+	Model                   string
+	PlanMode                bool
+	BrowserUse              *bool
+	ComputerUse             *bool
+	ProviderTargetRef       map[string]any
+	RuntimeContext          map[string]any
+	ReasoningEffort         string
+	Speed                   string
+	ConversationDetailMode  string
+	Visible                 *bool
+	Provisional             bool
+}
+
+type RuntimeResumeInput struct {
+	WorkspaceID            string
+	AgentSessionID         string
+	AgentTargetID          string
+	Provider               string
+	ProviderSessionID      string
+	Cwd                    string
+	Env                    []string
+	Title                  string
+	Status                 string
+	Settings               ComposerSettings
+	CreatedAtUnixMS        int64
+	UpdatedAtUnixMS        int64
+	Visible                *bool
+	RuntimeContext         map[string]any
+	ProviderTargetRef      map[string]any
+	Metadata               storesqlite.SessionMetadata
+	InternalRuntimeContext map[string]any
+	// RecreateIfMissing lets the runtime start a fresh provider session in place
+	// when the existing one can't be restored locally (imported conversations),
+	// instead of surfacing a non-recoverable restore error.
+	RecreateIfMissing bool
+}
+
+type RuntimeExecInput struct {
+	WorkspaceID      string
+	AgentSessionID   string
+	Content          []PromptContentBlock
+	DisplayPrompt    string
+	InitialTitle     string
+	InitialTitleBase string
+	Metadata         map[string]any
+	Guidance         bool
+}
+
+type RuntimeExecResult struct {
+	AgentSessionID     string
+	Status             string
+	TurnID             string
+	Accepted           bool
+	SessionStatus      string
+	TurnLifecycle      TurnLifecycle
+	SubmitAvailability SubmitAvailability
+}
+
+type CompletedCommand struct {
+	Kind   string
+	Status string
+}
+
+type SubmitAvailability struct {
+	State  string
+	Reason string
+}
+
+type TurnLifecycle struct {
+	ActiveTurnID     *string
+	Phase            string
+	Settling         bool
+	Outcome          *string
+	CompletedCommand *CompletedCommand
+}
+
+type RuntimeCancelInput struct {
+	WorkspaceID        string
+	RootAgentSessionID string
+	Targets            []RuntimeCancelTarget
+	Reason             string
+}
+
+type RuntimeCancelTarget struct {
+	AgentSessionID string
+	TurnID         string
+}
+
+type RuntimeCancelResult struct {
+	AgentSessionID   string
+	Canceled         bool
+	TargetAbsent     bool
+	ConfirmedTargets []RuntimeCancelTarget
+}
+
+type RuntimeCloseInput struct {
+	WorkspaceID    string
+	AgentSessionID string
+}
+
+type RuntimeSubmitInteractiveInput struct {
+	WorkspaceID        string
+	RootAgentSessionID string
+	AgentSessionID     string
+	TurnID             string
+	RequestID          string
+	Action             string
+	OptionID           string
+	Payload            map[string]any
+}
+
+type RuntimeSubmitInteractiveResult struct {
+	Disposition RuntimeInteractiveDisposition
+}
+
+type RuntimeInteractiveDisposition string
+
+const (
+	RuntimeInteractiveDispositionPending     RuntimeInteractiveDisposition = "pending"
+	RuntimeInteractiveDispositionResolving   RuntimeInteractiveDisposition = "resolving"
+	RuntimeInteractiveDispositionAnswered    RuntimeInteractiveDisposition = "answered"
+	RuntimeInteractiveDispositionSuperseded  RuntimeInteractiveDisposition = "superseded"
+	RuntimeInteractiveDispositionInterrupted RuntimeInteractiveDisposition = "interrupted"
+	RuntimeInteractiveDispositionUnknown     RuntimeInteractiveDisposition = "unknown"
+)
+
+type RuntimeUpdateSettingsInput struct {
+	WorkspaceID    string
+	AgentSessionID string
+	Settings       ComposerSettingsPatch
+}
+
+type RuntimeSetVisibleInput struct {
+	WorkspaceID    string
+	AgentSessionID string
+	Visible        bool
+}
+
+type RuntimeSetTitleInput struct {
+	WorkspaceID    string
+	AgentSessionID string
+	Title          string
+}
+
+type PromptContentBlock struct {
+	Type         string `json:"type"`
+	Text         string `json:"text,omitempty"`
+	MimeType     string `json:"mimeType,omitempty"`
+	Data         string `json:"data,omitempty"`
+	URL          string `json:"url,omitempty"`
+	AttachmentID string `json:"attachmentId,omitempty"`
+	Name         string `json:"name,omitempty"`
+	Path         string `json:"path,omitempty"`
+}
+
+type PromptAttachment struct {
+	AttachmentID string
+	MimeType     string
+	Data         string
+}
+
+// CreateSessionInput is the provider-neutral create contract. Adapter-only
+// import paths, workspace resolution, identity, and transport state are not
+// part of this type.
+type CreateSessionInput struct {
+	AgentSessionID         string
+	AgentTargetID          string
+	Provider               string
+	InitialContent         []PromptContentBlock
+	InitialDisplayPrompt   string
+	Metadata               map[string]any
+	Title                  *string
+	Cwd                    *string
+	PermissionModeID       *string
+	Model                  *string
+	PlanMode               *bool
+	BrowserUse             *bool
+	ComputerUse            *bool
+	ProviderTargetRef      map[string]any
+	ReasoningEffort        *string
+	RuntimeContext         map[string]any
+	Speed                  *string
+	ConversationDetailMode string
+	Visible                *bool
+}
+
+type SendInput struct {
+	Content       []PromptContentBlock
+	DisplayPrompt string
+	Metadata      map[string]any
+	Guidance      bool
+}
+
+type SubmitInteractiveInput struct {
+	TurnID   string
+	Action   *string
+	OptionID *string
+	Payload  map[string]any
+}
+
+type SubmitPlanDecisionInput struct {
+	PromptKind     string
+	Action         string
+	IdempotencyKey string
+}
+
+type CancelTurnInput struct {
+	WorkspaceID    string
+	AgentSessionID string
+	TurnID         string
+	Reason         string
+}
+
+type UpdateTitleInput struct {
+	WorkspaceID    string
+	AgentSessionID string
+	Title          string
+}
+
+type CreateSessionResult struct {
+	Session   ProviderRuntimeSession
+	Canonical storesqlite.Session
+	TurnID    string
+}
+
+type SendInputResult struct {
+	Session            ProviderRuntimeSession
+	Canonical          storesqlite.Session
+	Turn               *storesqlite.Turn
+	TurnID             string
+	TurnLifecycle      TurnLifecycle
+	SubmitAvailability SubmitAvailability
+}
+
+type UpdateTitleResult struct {
+	Session   ProviderRuntimeSession
+	Canonical storesqlite.Session
+}

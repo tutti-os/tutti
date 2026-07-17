@@ -80,6 +80,7 @@ export interface AgentGUIConversationRailQuerySnapshot {
   runtimeRailMemberships: ConversationRailSectionMembership[] | null;
   runtimeRailConversations: AgentGUIConversationSummary[];
   runtimeRailReconcilingSessionIds: readonly string[];
+  runtimeRailResolvedScopeKey: string | null;
   runtimeRailSectionsPending: boolean;
   sectionPageStates: ConversationRailQueryState["sectionPageStates"];
 }
@@ -112,6 +113,7 @@ export function buildConversationRailQuerySnapshot(input: {
     runtimeRailMemberships: input.queryState.sections,
     runtimeRailConversations: input.runtimeRailConversations,
     runtimeRailReconcilingSessionIds: input.queryState.reconcilingSessionIds,
+    runtimeRailResolvedScopeKey: input.queryState.resolvedScopeKey,
     runtimeRailSectionsPending: input.queryState.pending,
     sectionPageStates: input.queryState.sectionPageStates
   };

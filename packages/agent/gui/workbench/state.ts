@@ -34,6 +34,7 @@ export function createDefaultAgentGuiWorkbenchNodeState(
     conversationRailCollapsed: false,
     conversationRailWidthPx: null,
     lastActiveAgentSessionId: null,
+    lastActiveAgentSessionIdByAgentTargetId: null,
     provider
   };
 }
@@ -45,6 +46,10 @@ export function normalizeAgentGuiWorkbenchState(
     return createDefaultAgentGuiWorkbenchState();
   }
   const agentTargetId = normalizeOptionalNonEmptyString(state.agentTargetId);
+  const lastActiveAgentSessionIdByAgentTargetId =
+    normalizeAgentGuiWorkbenchLastActiveSessionByAgentTargetId(
+      state.lastActiveAgentSessionIdByAgentTargetId
+    );
   return {
     ...(agentTargetId ? { agentTargetId } : {}),
     conversationRailCollapsed: state.conversationRailCollapsed === true,
@@ -54,7 +59,10 @@ export function normalizeAgentGuiWorkbenchState(
     lastActiveAgentSessionId:
       typeof state.lastActiveAgentSessionId === "string"
         ? state.lastActiveAgentSessionId
-        : null
+        : null,
+    ...(lastActiveAgentSessionIdByAgentTargetId
+      ? { lastActiveAgentSessionIdByAgentTargetId }
+      : {})
   };
 }
 
@@ -82,13 +90,20 @@ export function projectAgentGuiWorkbenchState(
   state: AgentGuiWorkbenchNodeState
 ): AgentGuiWorkbenchState {
   const agentTargetId = normalizeOptionalNonEmptyString(state.agentTargetId);
+  const lastActiveAgentSessionIdByAgentTargetId =
+    normalizeAgentGuiWorkbenchLastActiveSessionByAgentTargetId(
+      state.lastActiveAgentSessionIdByAgentTargetId
+    );
   return {
     ...(agentTargetId ? { agentTargetId } : {}),
     conversationRailCollapsed: state.conversationRailCollapsed === true,
     conversationRailWidthPx: normalizeOptionalPositiveNumber(
       state.conversationRailWidthPx
     ),
-    lastActiveAgentSessionId: state.lastActiveAgentSessionId ?? null
+    lastActiveAgentSessionId: state.lastActiveAgentSessionId ?? null,
+    ...(lastActiveAgentSessionIdByAgentTargetId
+      ? { lastActiveAgentSessionIdByAgentTargetId }
+      : {})
   };
 }
 
@@ -100,7 +115,11 @@ export function areAgentGuiWorkbenchStatesEqual(
     (left.agentTargetId ?? null) === (right.agentTargetId ?? null) &&
     left.conversationRailCollapsed === right.conversationRailCollapsed &&
     left.conversationRailWidthPx === right.conversationRailWidthPx &&
-    left.lastActiveAgentSessionId === right.lastActiveAgentSessionId
+    left.lastActiveAgentSessionId === right.lastActiveAgentSessionId &&
+    stringRecordsEqual(
+      left.lastActiveAgentSessionIdByAgentTargetId,
+      right.lastActiveAgentSessionIdByAgentTargetId
+    )
   );
 }
 
@@ -141,6 +160,10 @@ export function normalizeAgentGuiWorkbenchNodeState(
       typeof persistedState.lastActiveAgentSessionId === "string"
         ? persistedState.lastActiveAgentSessionId
         : null,
+    lastActiveAgentSessionIdByAgentTargetId:
+      normalizeAgentGuiWorkbenchLastActiveSessionByAgentTargetId(
+        persistedState.lastActiveAgentSessionIdByAgentTargetId
+      ),
     provider
   };
 }
@@ -164,6 +187,10 @@ export function areAgentGuiWorkbenchNodeStatesEqual(
     left.conversationRailCollapsed === right.conversationRailCollapsed &&
     left.conversationRailWidthPx === right.conversationRailWidthPx &&
     left.lastActiveAgentSessionId === right.lastActiveAgentSessionId &&
+    stringRecordsEqual(
+      left.lastActiveAgentSessionIdByAgentTargetId,
+      right.lastActiveAgentSessionIdByAgentTargetId
+    ) &&
     left.provider === right.provider &&
     (left.agentTargetId ?? null) === (right.agentTargetId ?? null)
   );
@@ -388,6 +415,23 @@ function normalizeAgentGuiWorkbenchComposerOverridesByAgentTargetId(
   return Object.keys(result).length > 0 ? result : null;
 }
 
+function normalizeAgentGuiWorkbenchLastActiveSessionByAgentTargetId(
+  value: unknown
+): Record<string, string> | null {
+  if (!isRecord(value)) {
+    return null;
+  }
+  const result: Record<string, string> = {};
+  for (const [rawAgentTargetId, rawAgentSessionId] of Object.entries(value)) {
+    const agentTargetId = normalizeOptionalNonEmptyString(rawAgentTargetId);
+    const agentSessionId = normalizeOptionalNonEmptyString(rawAgentSessionId);
+    if (agentTargetId && agentSessionId) {
+      result[agentTargetId] = agentSessionId;
+    }
+  }
+  return Object.keys(result).length > 0 ? result : null;
+}
+
 function normalizeOptionalPositiveNumber(value: unknown): number | null {
   return typeof value === "number" && Number.isFinite(value) && value > 0
     ? Math.round(value)
@@ -437,6 +481,20 @@ function composerOverridesByAgentTargetIdEqual(
     (key, index) =>
       key === rightKeys[index] &&
       composerOverridesEqual(left?.[key], right?.[key])
+  );
+}
+
+function stringRecordsEqual(
+  left: Record<string, string> | null | undefined,
+  right: Record<string, string> | null | undefined
+): boolean {
+  const leftKeys = Object.keys(left ?? {}).sort();
+  const rightKeys = Object.keys(right ?? {}).sort();
+  return (
+    leftKeys.length === rightKeys.length &&
+    leftKeys.every(
+      (key, index) => key === rightKeys[index] && left?.[key] === right?.[key]
+    )
   );
 }
 

@@ -1,9 +1,6 @@
 # Agent GUI 架构收敛方案（历史记录）
 
-状态：已完成。2026-07-11 复核通过。
-
-本文只保留这次重构的背景、关键决策、迁移切片和退出标准，不再充当现行架构规范。
-原始规模快照、逐文件归属表和详细迁移清单可从 Git 历史读取。
+状态：架构重构完成（2026-07-11 复核）。本文只保留这次重构的背景、关键决策、迁移切片和退出标准，不再充当现行架构规范。原始规模快照、逐文件归属表和详细迁移清单可从 Git 历史读取。
 
 现行规范：
 
@@ -24,7 +21,7 @@
 6. dock、消息中心、通知等消费方各自推导 session 状态
 7. 架构约束主要是散文禁令，缺少类型和自动检查
 
-结果不是某个文件“太长”这么简单。文件过长只是职责、状态所有权和时序边界不清的可见症状。
+文件过长只是职责、状态所有权和时序边界不清的可见症状。
 
 ## 2. 决策
 
@@ -52,7 +49,7 @@
 - 是：属于 daemon 或工作区级会话引擎
 - 否：属于组件本地状态
 
-因此队列推进、乐观提交、运行时事件对账、当前 session/turn 投影属于引擎；滚动位置、输入焦点、临时展开状态属于组件。
+队列推进、乐观提交、运行时事件对账、当前 session/turn 投影属于引擎；滚动位置、输入焦点、临时展开状态属于组件。会话 Rail 的滚动、section 折叠和“显示更多”按 `workspaceId + agentTargetId/all` 记忆；搜索 query 只建立瞬时导航状态，不扩张永久 scope map。query controller 只报告当前请求 scope 是否已精确 resolved，不拥有 DOM 或滚动位置。`activeConversationId` 只表达选中事实；外部打开与新建会话通过显式 reveal intent 请求滚动，Rail 点击与 provider 恢复不发滚动命令。
 
 ### 2.3 单向数据流
 
@@ -180,97 +177,76 @@ Agent GUI 纵向拆分为：
 
 退出标准：生产路径只有一个事实源和一个对账路径。
 
-## 5. 关键状态机
+## 5. 完成快照
 
-### 5.1 Turn
+2026-07-11 实施快照：
+
+- 协议 P1-P3、provider descriptor、引擎骨架、切片 1 已完成
+- activation/submit/queue owner 已进入 engine，旧 overlay 符号扫描为零
+- 旧 `AgentHostWorkspaceAgentSession/Message/Timeline` 生产镜像已删除
+- generated-file mention provider 已通过 canonical selector 读取
+- 原巨石已拆到 800 行以内，会话列表旧 store 已退役
+- grouped props/view-model、纵向 view modules、渲染预算与低于 800 行的薄 controller 已落地
+- 切片 7 的镜像、过渡导出、旧事件与终值基线清理已完成
+- 唯一延后项是按客户端覆盖窗口删除私有持久化/launch migration reader；兼容读取不得重新进入公共写路径
+
+## 6. 关键状态机
+
+### 6.1 Turn
 
 ```text
 submitted -> running -> waiting -> running -> settling -> settled
                     \------------------------------/
 ```
 
-终态 outcome：`completed | failed | canceled | interrupted`。
+规则：
+
+- `pendingIntents` 是提交乐观消息、接受、确认、结果未知、失败与到期的单一事实源
+- controller 不把命令完成还原为 Promise 工作流
+- 激活与普通提交共用同一 prompt envelope
+- 乐观消息准入同时认文本与可渲染的结构化 `content`
+- 合成计划决策走 tuttid 语义 API 与 durable `plan_decision` saga
+- provider 原生 exit-plan 继续走 durable `interactive_response`
+- session read 契约不再暴露旧 `status/turnLifecycle/submitAvailability/lastError/runtimeContext`
+- 进程丢失后的未结算 turn 由 daemon 启动时统一收敛为 `settled/interrupted`
+
+### 6.2 Interaction
+
+```text
+pending -> answered
+        -> dismissed
+        -> superseded
+```
 
 规则：
 
-- outcome 只在 settled 时存在
-- interaction 必须归属具体 turn
-- cancel 与自然结束并发时，重复终结是幂等空操作
-- daemon 重启不能把未知的旧 turn 当作仍在运行
+- 每个 interaction 有独立 ID、类型、状态和所属 turn
+- 回答操作幂等，重复回答返回已处理状态
+- 新 turn 开始时按规则取代不再有效的 interaction
+- UI 只显示 selector 给出的 pending interaction
 
-### 5.2 乐观 intent
+### 6.3 Readiness / Setup
 
 ```text
-pending -> confirmed
-        -> rejected
-        -> expired
+unavailable -> needs_setup -> setting_up -> ready
+                         \-> failed
 ```
 
-每种 intent 必须声明：
+规则：
 
-- 稳定身份
-- 预期变化
-- daemon 确认条件
-- 拒绝或超时后的回滚/重拉动作
+- built-in provider 的 managed-environment wizard 只服务其拥有的内建 provider
+- Agent Extension setup 属于 Agent Target 生命周期，由 daemon 持久安装/setup 状态驱动
+- React 只读取 host API 快照、发起显式用户动作、渲染状态
+- provider 名称不得成为 readiness/setup 分支条件
 
-禁止用多个组件 `useEffect` 共同推断同一个 intent 是否完成。
+## 7. 静态护栏
 
-## 6. 验证矩阵
+保留以下只降不升预算：
 
-| 风险          | 必须覆盖                                           |
-| ------------- | -------------------------------------------------- |
-| reducer 时序  | 事件乱序、重复、确认前后交错、断线重连             |
-| turn 生命周期 | 正常结束、失败、取消竞态、daemon 重启 interrupted  |
-| interaction   | 审批/提问到达、回答、过期、turn 终结清理           |
-| 乐观状态      | 成功确认、拒绝、超时、全量重拉                     |
-| 多消费方      | Agent GUI、dock、通知对同一快照给出一致结果        |
-| provider 边界 | 新目标只依赖 descriptor/capability，无 UI 名称分支 |
-| 协议          | OpenAPI 生成产物无漂移，Go/TS 投影一致             |
-| 生命周期      | 面板卸载不停止工作区任务；工作区关闭释放订阅       |
+- 文件长度
+- React effect/ref 数量
+- provider 名称分支
+- view props 面积
+- 组件内 store 创建
 
-常用检查以根 `AGENTS.md` 为准。架构相关最小集合：
-
-```bash
-pnpm check:agent-activity-runtime-boundaries
-pnpm check:agent-provider-strategy-boundaries
-pnpm check:renderer-boundaries
-pnpm check:api-generated
-pnpm typecheck
-```
-
-## 7. 防回退规则
-
-以下约束应由类型、测试或静态检查执行，不继续扩写成逐缺陷散文：
-
-1. 跨层传输类型不得手写镜像
-2. React effect 不承担工作区业务编排
-3. UI 不按 provider 名称决定行为
-4. 同一事实不得存在多个可写 store
-5. selector 必须纯；事件交错必须能用 reducer 单测表达
-6. 新公共 props 和 view-model 字段需要明确模块所有者
-7. 超过 800 行先拆职责，再加功能
-8. 过渡双写、双读和预算必须带删除条件
-
-## 8. 风险决策
-
-| 风险                     | 决策                                            |
-| ------------------------ | ----------------------------------------------- |
-| 协议切换导致多层同时变化 | schema 先行，按生成类型逐层迁移                 |
-| 双写期形成永久兼容层     | 每个过渡 seam 写明单一删除门槛                  |
-| 引擎变成新巨石           | reducer、effect runner、selector、功能域分文件  |
-| 纵向模块复制规则         | 共享域 reducer/selector，不共享大 controller    |
-| 测试数量继续膨胀         | 优先状态表和边界测试，删除 provider/UI 重复矩阵 |
-| 文档再次膨胀             | 计划文档保留决策；现行规则只维护在耐久文档      |
-
-## 9. 完成记录
-
-重构完成后的结构性结果：
-
-- 工作区会话编排脱离 React 生命周期
-- Agent GUI 控制器降到仓库业务文件上限内，仅负责模块装配
-- Session/Turn/Interaction 的职责不再混载
-- 活动读取逻辑可供多个界面复用
-- provider 行为差异由 capability/descriptor 表达
-- 类型、边界检查和状态机测试承接原散文规则
-
-仍可能存在的后续工作不写进本历史计划。新工作应进入对应架构文档、spec 或独立实施计划，并带自己的退出标准。
+预算下降时可更新 baseline；预算上升必须先修源头，不能通过抬 baseline 合并。

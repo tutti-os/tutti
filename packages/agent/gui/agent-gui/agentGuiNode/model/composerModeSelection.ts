@@ -1,4 +1,17 @@
 /**
+ * Normalizes a value emitted by the permission select.
+ *
+ * Radix can emit an empty value while a controlled select closes and restores
+ * focus. That is transient UI state, not a user request to clear permissions.
+ */
+export function normalizePermissionModeSelection(
+  permissionModeId: string
+): string | null {
+  const normalized = permissionModeId.trim();
+  return normalized || null;
+}
+
+/**
  * Maps a permission-mode dropdown selection onto a settings patch.
  *
  * Plan mode is no longer a dropdown option — it is an independent toggle

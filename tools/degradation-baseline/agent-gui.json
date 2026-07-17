@@ -13,7 +13,7 @@
       "packages/agent/gui/agent-gui/agentGuiNode/agentRichText/AgentRichTextEditor.tsx": 6,
       "packages/agent/gui/agent-gui/agentGuiNode/composer/AgentComposerChrome.tsx": 8,
       "packages/agent/gui/agent-gui/agentGuiNode/view/AgentGUIConversationRailItem.tsx": 13,
-      "packages/agent/gui/agent-gui/agentGuiNode/view/AgentGUIConversationRailPane.tsx": 8,
+      "packages/agent/gui/agent-gui/agentGuiNode/view/AgentGUIConversationRailPane.tsx": 6,
       "packages/agent/gui/agent-gui/agentGuiNode/view/AgentGUIDetailPane.tsx": 9,
       "packages/agent/gui/agent-gui/agentGuiNode/view/AgentGUIProviderRail.tsx": 12,
       "packages/agent/gui/agent-message-center/WorkspaceAgentMessageCenterPanel.tsx": 22,

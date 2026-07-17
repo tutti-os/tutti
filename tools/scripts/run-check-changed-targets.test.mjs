@@ -40,6 +40,10 @@ describe("resolveGoModuleRoot", () => {
       "packages/agent/activity-replication"
     );
     assert.equal(
+      resolveGoModuleRoot("packages/agent/host/conformance/conformance.go"),
+      "packages/agent/host"
+    );
+    assert.equal(
       resolveGoModuleRoot("packages/agent/runtimeprep/preparer.go"),
       "packages/agent/runtimeprep"
     );

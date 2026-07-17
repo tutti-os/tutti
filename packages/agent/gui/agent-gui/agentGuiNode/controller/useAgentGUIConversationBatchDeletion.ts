@@ -47,6 +47,7 @@ export interface UseAgentGUIConversationBatchDeletionInput {
   setIsLoadingMessages: Dispatch<SetStateAction<boolean>>;
   setActiveConversationId: Dispatch<SetStateAction<string | null>>;
   persistActiveConversation: (agentSessionId: string | null) => void;
+  removeConversations: (agentSessionIds: readonly string[]) => void;
   workspaceId: string;
   setIsDeletingProjectConversations: Dispatch<SetStateAction<boolean>>;
   agentActivityRuntime: AgentActivityRuntime;
@@ -72,6 +73,7 @@ export function useAgentGUIConversationBatchDeletion(
     setIsLoadingMessages,
     setActiveConversationId,
     persistActiveConversation,
+    removeConversations,
     workspaceId,
     setIsDeletingProjectConversations,
     agentActivityRuntime,
@@ -204,9 +206,12 @@ export function useAgentGUIConversationBatchDeletion(
         workspaceId
       })
         .then((result) => {
-          finalizeConversationBatchDeletion(
-            new Set([...targetIds, ...result.removedSessionIds])
-          );
+          const removedIds = new Set([
+            ...targetIds,
+            ...result.removedSessionIds
+          ]);
+          removeConversations([...removedIds]);
+          finalizeConversationBatchDeletion(removedIds);
         })
         .catch((error) => {
           const message = getAgentGUIErrorMessage(error);
@@ -237,6 +242,7 @@ export function useAgentGUIConversationBatchDeletion(
       isDeletingProjectConversations,
       markSelectedConversationDetailPending,
       persistActiveConversation,
+      removeConversations,
       setActiveConversationId,
       setDetailError,
       setIntent,

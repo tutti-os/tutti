@@ -218,11 +218,13 @@ export function useAgentGUINodeController({
   });
   const {
     activeConversationId,
+    clearRailRevealRequest,
     draftByScopeKey,
     draftSettingsBySessionId,
     intent,
     isComposerHome,
     selectedProjectPath,
+    requestRailReveal,
     setActiveConversationId,
     setDetailError,
     setIntent,
@@ -496,7 +498,9 @@ export function useAgentGUINodeController({
     agentActivityRuntime,
     attentionReadRecordsBySessionId: attentionReadState.recordsBySessionId,
     conversationIdsRef,
+    conversationsRef,
     conversationListQuery,
+    clearRailRevealRequest,
     currentUserId,
     data,
     dataRef,
@@ -508,11 +512,13 @@ export function useAgentGUINodeController({
     onDataChangeRef,
     reloadSelectedConversationRef,
     sessionEngine,
+    requestRailReveal,
     setActiveConversationId,
     setDetailError,
     setIntent,
     setIsComposerHome,
     setIsLoadingMessages,
+    transientConversation,
     workspaceId
   });
   const persistActiveConversation =

@@ -376,7 +376,9 @@ func (a agentRuntimeAdapter) Start(ctx context.Context, input agentservice.Runti
 	if err != nil {
 		return agentservice.ProviderRuntimeSession{}, mapAgentRuntimeError(err)
 	}
-	return a.runtimeSessionWithState(result.Session), nil
+	session := a.runtimeSessionWithState(result.Session)
+	session.Provisional = input.Provisional
+	return session, nil
 }
 
 func (a agentRuntimeAdapter) Subscribe(workspaceID string, agentSessionID string) (<-chan agentservice.RuntimeStreamEvent, func(), bool) {

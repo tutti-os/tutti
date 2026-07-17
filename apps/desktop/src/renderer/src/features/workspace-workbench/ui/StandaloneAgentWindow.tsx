@@ -586,6 +586,7 @@ export function StandaloneAgentWindow({
     headerProvider,
     homeDirectory: desktopApi.platform.homeDirectory,
     hostWindowApi,
+    openExternalUrl: desktopApi.host.files.openExternal,
     openFileInSidebar,
     setActivation,
     setNodeState,
@@ -695,7 +696,8 @@ export function StandaloneAgentWindow({
             primaryAccessory={<AppUpdateStatus presentation="standalone" />}
             secondaryAccessory={isContentLoading ? null : toolActions}
             showConversationRailToggle={!isContentLoading}
-            showAppTitle={false}
+            showAppTitle
+            title={i18n.t("workspace.agentGui.fallbackAgentLabel")}
             windowActions={{
               close: () => {
                 void toolWorkbench.requestWindowClose();

@@ -12,6 +12,7 @@ const sharedConfigPath = join(
 );
 const goModuleRoots = [
   join(workspaceRoot, "packages", "agent", "activity-replication"),
+  join(workspaceRoot, "packages", "agent", "host"),
   join(workspaceRoot, "packages", "agent", "store-sqlite", "canonical"),
   join(workspaceRoot, "packages", "agent", "runtimeprep"),
   join(workspaceRoot, "packages", "appcli", "core"),

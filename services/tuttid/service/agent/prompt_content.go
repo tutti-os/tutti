@@ -400,19 +400,3 @@ func sanitizePathSegment(value string) (string, error) {
 	}
 	return value, nil
 }
-
-func promptImageOnlyDisplayText(content []PromptContentBlock) string {
-	count := 0
-	for _, block := range content {
-		if block.Type == "image" {
-			count++
-		}
-	}
-	if count == 1 {
-		return "[Image]"
-	}
-	if count > 1 {
-		return "[Images]"
-	}
-	return ""
-}

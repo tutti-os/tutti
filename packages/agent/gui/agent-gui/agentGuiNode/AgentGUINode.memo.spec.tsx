@@ -184,6 +184,34 @@ describe("AgentGUINode memoization", () => {
 
     expect(agentGuiNodeViewSpy).toHaveBeenCalledTimes(1);
   });
+
+  it("rerenders when per-target session memory changes", () => {
+    mockViewModel = createViewModel();
+    const props = createProps({
+      state: createState({
+        lastActiveAgentSessionIdByAgentTargetId: {
+          "local:codex": "session-1"
+        }
+      })
+    });
+    const { rerender } = render(<AgentGUINode {...props} />);
+
+    expect(agentGuiNodeViewSpy).toHaveBeenCalledTimes(1);
+    agentGuiNodeViewSpy.mockClear();
+
+    rerender(
+      <AgentGUINode
+        {...props}
+        state={createState({
+          lastActiveAgentSessionIdByAgentTargetId: {
+            "local:codex": "session-2"
+          }
+        })}
+      />
+    );
+
+    expect(agentGuiNodeViewSpy).toHaveBeenCalledTimes(1);
+  });
 });
 
 function createProps(

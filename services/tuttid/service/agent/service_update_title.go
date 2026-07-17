@@ -2,11 +2,12 @@ package agent
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
-	"unicode/utf8"
 
 	"github.com/tutti-os/tutti/packages/agent/daemon/titletext"
+	agenthost "github.com/tutti-os/tutti/packages/agent/host"
 )
 
 const MaxSessionTitleRunes = titletext.MaxSessionTitleRunes
@@ -24,35 +25,26 @@ func (s *Service) UpdateTitle(ctx context.Context, workspaceID string, agentSess
 	if workspaceID == "" || agentSessionID == "" {
 		return Session{}, ErrInvalidArgument
 	}
+	// The Host accepts an empty canonical title so adapters such as tsh can
+	// intentionally clear placeholders. The legacy tuttid API keeps its existing
+	// request validation until its transport contract explicitly opts in.
 	if title == "" {
 		return Session{}, fmt.Errorf("%w: title is required", ErrInvalidArgument)
 	}
-	if utf8.RuneCountInString(title) > MaxSessionTitleRunes {
-		return Session{}, ErrSessionTitleTooLong
-	}
-	updater, ok := s.SessionReader.(SessionTitleUpdater)
-	if !ok {
-		return Session{}, ErrSessionNotFound
-	}
-	persisted, updated, err := updater.UpdateSessionTitle(ctx, workspaceID, agentSessionID, title)
+	result, err := s.applicationHost(serviceHostPreparation{service: s}).UpdateTitle(ctx, agenthost.UpdateTitleInput{
+		WorkspaceID: workspaceID, AgentSessionID: agentSessionID, Title: title,
+	})
 	if err != nil {
+		if errors.Is(err, agenthost.ErrSessionTitleTooLong) {
+			return Session{}, ErrSessionTitleTooLong
+		}
 		return Session{}, err
 	}
-	if !updated {
-		return Session{}, ErrSessionNotFound
-	}
-	if _, ok := s.controller().Session(workspaceID, agentSessionID); ok {
-		runtime, err := s.controller().SetTitle(ctx, RuntimeSetTitleInput{
-			WorkspaceID:    workspaceID,
-			AgentSessionID: agentSessionID,
-			Title:          persisted.Title,
-		})
-		if err != nil {
-			return Session{}, err
-		}
+	persisted := persistedSessionFromHost(result.Canonical)
+	if strings.TrimSpace(result.Session.ID) != "" {
 		service := serviceSession(
-			runtime,
-			s.controller().CanResume(runtimeResumeInputFromRuntimeSession(runtime)),
+			result.Session,
+			s.controller().CanResume(runtimeResumeInputFromRuntimeSession(result.Session)),
 		)
 		merged := mergePersistedSessionState(service, persisted)
 		merged.Title = stringPointer(persisted.Title)

@@ -4833,10 +4833,22 @@ aside.workspace-agents-status-panel
  * collapsing the conversation rail must not pull them into the 720px content
  * cap. Let the primary row span the window and keep the same trailing inset as
  * the expanded detail row.
+ *
+ * The tool actions are absolutely positioned against the window's right edge,
+ * so they no longer occupy space in the flex row. In the collapsed primary row
+ * the title is preceded by the traffic lights and header chrome buttons, which
+ * means a max-width on the title alone cannot stop its right edge from sliding
+ * under those actions. Reserve the actions' width plus the normal inset as
+ * trailing padding on the row itself so the title flex-grows and truncates
+ * before it can reach them, regardless of what precedes it.
  */
 .agent-gui-workbench-header[data-agent-gui-standalone-window-header="true"][data-agent-gui-workbench-header-collapsed="true"]
   .agent-gui-workbench-header__primary {
   width: 100%;
+  padding-inline-end: calc(
+    var(--agent-gui-tool-sidebar-layout-width, 0px) +
+      var(--agent-gui-workbench-header-padding-x)
+  );
 }
 
 .agent-gui-workbench-header[data-agent-gui-standalone-window-header="true"]
@@ -5181,6 +5193,18 @@ aside.workspace-agents-status-panel
   flex: 1 1 0;
   min-width: 0;
   overflow: hidden;
+}
+
+/*
+ * In the collapsed primary row the trailing reserve is supplied by the row's
+ * own padding-inline-end (it has to account for the leading traffic lights and
+ * chrome buttons that a title-level max-width cannot see). Relax the shared
+ * max-width here so the reservation is not counted twice, which would strand
+ * the title far short of the actions.
+ */
+.agent-gui-workbench-header[data-agent-gui-standalone-window-header="true"][data-agent-gui-workbench-header-collapsed="true"]
+  .agent-gui-workbench-header__session-title {
+  max-width: 100%;
 }
 
 .agent-gui-workbench-header[data-agent-gui-standalone-window-header="true"]

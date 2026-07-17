@@ -1,9 +1,23 @@
 import { describe, expect, it } from "vitest";
 import {
+  normalizePermissionModeSelection,
   permissionModeSelectionPatch,
   resolvePermissionModeControlsDisabled,
   shouldRetrySessionSettingsUpdate
 } from "./composerModeSelection";
+
+describe("normalizePermissionModeSelection", () => {
+  it("rejects transient empty select values instead of clearing permission", () => {
+    expect(normalizePermissionModeSelection("")).toBeNull();
+    expect(normalizePermissionModeSelection("   ")).toBeNull();
+  });
+
+  it("normalizes a real permission mode id", () => {
+    expect(normalizePermissionModeSelection(" full-access ")).toBe(
+      "full-access"
+    );
+  });
+});
 
 describe("permissionModeSelectionPatch", () => {
   it("clears plan mode for mutually-exclusive providers (claude-code)", () => {

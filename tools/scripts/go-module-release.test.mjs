@@ -75,6 +75,29 @@ test("published store module resolves every internal dependency at the release v
   assert.doesNotMatch(released, /replace .*github\.com\/tutti-os\/tutti/);
 });
 
+test("published host contract contains only reusable agent package dependencies", async () => {
+  const source = await readFile(
+    join(workspaceRoot, "packages/agent/host/go.mod"),
+    "utf8"
+  );
+  const released = rewriteInternalGoModuleDependencies(source, "0.0.110");
+
+  for (const modulePath of [
+    "daemon",
+    "store-sqlite",
+    "store-sqlite/canonical"
+  ]) {
+    assert.match(
+      released,
+      new RegExp(
+        `github\\.com/tutti-os/tutti/packages/agent/${modulePath.replace("/", "\\/")} v0\\.0\\.110`
+      )
+    );
+  }
+  assert.doesNotMatch(released, /replace .*github\.com\/tutti-os\/tutti/);
+  assert.doesNotMatch(released, /services\/tuttid/);
+});
+
 test("leaves modules without internal dependencies byte-for-byte unchanged", () => {
   const source =
     "module example.test/standalone\n\nrequire example.test/api v1.2.3\n\n";

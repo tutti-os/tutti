@@ -67,6 +67,23 @@ session-level child summaries.
 - Validate: inject a database failure after provider success and confirm retry
   reaches one terminal operation without submitting the provider response twice.
 
+### Approved call remains waiting after the Turn completes
+
+- Symptom: the provider accepts an approval and completes the Turn, but the
+  historical approval row has no `call.completed` event or an adapter test
+  intermittently waits forever for that event.
+- Check: compare the write of the provider response, emission of the matching
+  call-resolution event, and handling of the provider's immediate Turn terminal.
+- Cause: provider acknowledgement and call resolution were not serialized with
+  Turn finalization. A fast terminal notification closed the event stream before
+  the response goroutine emitted `call.completed`.
+- Fix: hold the active Turn processing boundary across the response write and
+  call-resolution commit. Let the queued terminal notification finalize only
+  after that boundary is released.
+- Validate: use a transport that emits the terminal notification immediately
+  after receiving the approval response, then stress the test and assert the
+  call-resolution event always precedes the Turn terminal.
+
 ### Claude SDK ExitPlanMode is reported as interrupted after plan completion
 
 - Symptom: the plan is visible, but the approval row becomes interrupted or

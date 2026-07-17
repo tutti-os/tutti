@@ -158,6 +158,10 @@ func (s *SQLiteStore) SessionDeleted(ctx context.Context, workspaceID string, ag
 	return s.agentReadStore().SessionDeleted(ctx, workspaceID, agentSessionID)
 }
 
+func (s *SQLiteStore) RollbackRuntimeSessionInitialization(ctx context.Context, workspaceID string, agentSessionID string) (bool, error) {
+	return s.agentStore().RollbackRuntimeSessionInitialization(ctx, workspaceID, agentSessionID)
+}
+
 func (s *SQLiteStore) ListSessions(ctx context.Context, workspaceID string) ([]agentactivitybiz.Session, bool, error) {
 	return s.agentReadStore().ListSessions(ctx, workspaceID)
 }

@@ -89,6 +89,21 @@ export const zhCNAgentGui = {
   permissionModeReadOnly: "请求批准",
   permissionModeAuto: "替我审批",
   permissionModeFullAccess: "完全访问权限",
+  fullAccessWarning: {
+    title: "确定启用完全访问权限吗？",
+    description: "完全访问权限允许 Codex 无需你的批准即可操作这台电脑。",
+    filesTitle: "文件和文件夹",
+    filesDescription: "读取、创建、修改或删除这台电脑上任意位置的文件。",
+    commandsTitle: "终端命令",
+    commandsDescription: "运行命令并更改系统设置。",
+    internetTitle: "互联网访问",
+    internetDescription: "访问网站并通过互联网发送数据。",
+    riskDescription:
+      "近期版本的 Codex，尤其在使用 GPT-5.6 系列模型时，可能会超出你的意图，误删或覆盖文件。仅在你理解并接受此风险时继续。",
+    learnMore: "了解详情",
+    cancel: "取消",
+    confirm: "启用完全访问权限"
+  },
   permissionSemantics: {
     "ask-before-write": {
       label: "请求批准",

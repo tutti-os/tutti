@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/tutti-os/tutti/packages/agent/daemon/providerregistry"
+	agenthost "github.com/tutti-os/tutti/packages/agent/host"
 	"github.com/tutti-os/tutti/services/tuttid/biz/agentprovider"
 	preferencesbiz "github.com/tutti-os/tutti/services/tuttid/biz/preferences"
 )
@@ -48,20 +49,7 @@ type ComposerConfigOptionValue struct {
 	SupportsImageInput *bool
 }
 
-type ComposerSettings struct {
-	Model            string
-	PermissionModeID string
-	PlanMode         bool
-	// BrowserUse is tri-state: nil means "use the default" (on), so the
-	// composer can distinguish an explicit opt-out from an unset value.
-	BrowserUse *bool
-	// ComputerUse is tri-state: nil means "use the default" (on), so the
-	// composer can distinguish an explicit opt-out from an unset value.
-	ComputerUse            *bool
-	ReasoningEffort        string
-	Speed                  string
-	ConversationDetailMode string
-}
+type ComposerSettings = agenthost.ComposerSettings
 
 type ComposerOptionsInput struct {
 	AgentTargetID            string

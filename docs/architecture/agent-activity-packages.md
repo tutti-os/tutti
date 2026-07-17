@@ -31,6 +31,9 @@ packages/agent/gui
 packages/agent/activity-replication
   github.com/tutti-os/tutti/packages/agent/activity-replication
 
+packages/agent/host
+  github.com/tutti-os/tutti/packages/agent/host
+
 packages/agent/store-sqlite
   github.com/tutti-os/tutti/packages/agent/store-sqlite
 
@@ -44,6 +47,22 @@ origin, interaction-kind, and interaction-status definitions rather than
 redeclaring them.
 
 ## Responsibilities
+
+### `packages/agent/host`
+
+`host` is the provider-neutral Go application boundary for canonical agent
+session and turn lifecycle work. It owns lifecycle input/result contracts,
+narrow canonical-store and runtime ports, runtime preparation and attachment
+materialization ports, clock and scheduler ports, and post-commit observer
+hooks. The `conformance` subpackage owns reusable typed lifecycle scenarios so
+the legacy `tuttid` service, the extracted Host, and downstream adapters can be
+checked against the same behavior baseline.
+
+The module does not own transport, authorization, room or device identity,
+process or VM implementations, HTTP/OpenAPI shapes, Electron integration, or
+control-plane DTOs. `tuttid` remains the production implementation until the
+later extraction slices explicitly switch its wiring; introducing this module
+does not change production routing.
 
 ### `packages/agent/activity-replication`
 
@@ -301,6 +320,11 @@ provider request
 
 `call.started` / `call.completed` / `call.failed` continue to own historical
 tool-call messages, but they never create or restore an actionable Interaction.
+When acknowledging an interactive response can make the provider immediately
+settle its Turn, the adapter must serialize that acknowledgement and the
+matching call-resolution event with Turn finalization. The terminal Turn event
+must not overtake `call.completed` or `call.failed` and close the event stream
+before the historical call row resolves.
 Likewise, a runtime session snapshot may describe provider-local execution
 state but must not enrich a report with an Interaction transition. Runtime
 reports may submit only `pending` and `superseded`; `answered` belongs solely to
