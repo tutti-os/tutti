@@ -26,6 +26,9 @@ type IssueManagerService struct {
 	ModelPlanReader     IssueModelPlanReader
 	AutomationRules     IssueAutomationRuleReader
 	PlanningTimeline    IssuePlanningTimelineReporter
+	// TaskWorktreeRoot overrides where per-run task worktrees are created;
+	// empty falls back to <state dir>/task-worktrees.
+	TaskWorktreeRoot string
 }
 
 type IssueManagerEventPublisher interface {

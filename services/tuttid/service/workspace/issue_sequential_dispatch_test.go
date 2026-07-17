@@ -4,6 +4,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
+	"os/exec"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -705,5 +708,194 @@ func TestIssueTaskLaunchFailsClosedOnUnsupportedPermissionMode(t *testing.T) {
 	if settled.LatestRun == nil || settled.LatestRun.Status != workspaceissues.StatusFailed ||
 		!strings.Contains(settled.LatestRun.ErrorMessage, "unsupported permission mode") {
 		t.Fatalf("latest run = %#v, want failed run carrying the strict rejection", settled.LatestRun)
+	}
+}
+
+func initIssueTaskGitRepo(t *testing.T) string {
+	t.Helper()
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git is unavailable in this environment")
+	}
+	dir := t.TempDir()
+	for _, args := range [][]string{
+		{"init", "--initial-branch=main"},
+		{"config", "user.email", "test@example.com"},
+		{"config", "user.name", "Test"},
+		{"commit", "--allow-empty", "-m", "init"},
+	} {
+		command := exec.Command("git", append([]string{"-C", dir}, args...)...)
+		if output, err := command.CombinedOutput(); err != nil {
+			t.Fatalf("git %v error = %v: %s", args, err, output)
+		}
+	}
+	return dir
+}
+
+func newParallelizableDispatchService(t *testing.T, workspaceID string) (IssueManagerService, *sequentialSessionCreatorRecorder, string) {
+	t.Helper()
+	ctx := context.Background()
+	store := openIssueServiceStore(t)
+	if err := store.Create(ctx, workspacebiz.Summary{ID: workspaceID, Name: "Workspace"}); err != nil {
+		t.Fatalf("Create() workspace error = %v", err)
+	}
+	for _, target := range agenttargetbiz.DefaultSystemTargets(time.Now().UnixMilli()) {
+		if _, err := store.PutAgentTarget(ctx, target); err != nil {
+			t.Fatalf("PutAgentTarget(%q) error = %v", target.ID, err)
+		}
+	}
+	creator := &sequentialSessionCreatorRecorder{}
+	worktreeRoot := t.TempDir()
+	service := IssueManagerService{
+		AgentSessionCreator: creator,
+		Store:               store,
+		AgentTargetReader:   store,
+		TaskWorktreeRoot:    worktreeRoot,
+	}
+	return service, creator, worktreeRoot
+}
+
+func acceptIssueTask(t *testing.T, service IssueManagerService, workspaceID string, issueID string, taskID string) {
+	t.Helper()
+	ctx := context.Background()
+	detail, err := service.GetIssueDetail(ctx, workspaceID, issueID)
+	if err != nil {
+		t.Fatalf("GetIssueDetail() error = %v", err)
+	}
+	for _, task := range detail.Tasks {
+		if task.TaskID != taskID {
+			continue
+		}
+		if _, err := service.CompleteRun(ctx, workspaceID, issueID, taskID, task.LatestRunID, CompleteIssueManagerRunInput{
+			Status: string(workspaceissues.StatusCompleted),
+		}); err != nil {
+			t.Fatalf("CompleteRun(%q) error = %v", taskID, err)
+		}
+		if _, err := service.UpdateTask(ctx, workspaceID, issueID, taskID, UpdateIssueManagerTaskInput{
+			Status:    string(workspaceissues.StatusCompleted),
+			HasStatus: true,
+		}); err != nil {
+			t.Fatalf("UpdateTask(accept %q) error = %v", taskID, err)
+		}
+		return
+	}
+	t.Fatalf("task %q not found", taskID)
+}
+
+func TestSequentialIssueRunsParallelizableTasksInIsolatedWorktrees(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	repo := initIssueTaskGitRepo(t)
+	service, creator, worktreeRoot := newParallelizableDispatchService(t, "ws-par-worktree")
+	if _, err := service.CreateIssueFromPlan(ctx, "ws-par-worktree", CreateIssueManagerIssueFromPlanInput{
+		Issue: CreateIssueManagerIssueInput{
+			IssueID:             "issue-worktree",
+			TopicID:             workspaceissues.DefaultTopicID,
+			Title:               "Worktree issue",
+			PlanningSource:      string(workspaceissues.PlanningSourceTraditionalPlan),
+			SequentialExecution: true,
+		},
+		Tasks: []CreateIssueManagerTaskItemInput{
+			{TaskID: "p1", Title: "First parallel", AgentTargetID: agenttargetbiz.IDLocalCodex, ExecutionDirectory: repo, Parallelizable: true},
+			{TaskID: "p2", Title: "Second parallel", AgentTargetID: agenttargetbiz.IDLocalCodex, ExecutionDirectory: repo, Parallelizable: true},
+		},
+	}); err != nil {
+		t.Fatalf("CreateIssueFromPlan() error = %v", err)
+	}
+	if len(creator.inputs) != 2 {
+		t.Fatalf("dispatches = %d, want both parallelizable tasks launched together", len(creator.inputs))
+	}
+	cwds := map[string]bool{}
+	for _, input := range creator.inputs {
+		if input.Cwd == nil || *input.Cwd == "" {
+			t.Fatalf("launch cwd missing: %#v", input)
+		}
+		cwd := *input.Cwd
+		if cwd == repo {
+			t.Fatalf("launch reused the shared checkout %q instead of a worktree", cwd)
+		}
+		if !strings.HasPrefix(cwd, worktreeRoot) {
+			t.Fatalf("worktree %q is outside the configured root %q", cwd, worktreeRoot)
+		}
+		if _, err := os.Stat(filepath.Join(cwd, ".git")); err != nil {
+			t.Fatalf("worktree %q is not a linked checkout: %v", cwd, err)
+		}
+		cwds[cwd] = true
+		prompt := creator.inputs[0].InitialContent[0].Text
+		if !strings.Contains(prompt, "dedicated git worktree") || !strings.Contains(prompt, "Do not push") {
+			t.Fatalf("prompt lacks worktree isolation contract: %q", prompt)
+		}
+	}
+	if len(cwds) != 2 {
+		t.Fatalf("worktree cwds = %v, want two distinct directories", cwds)
+	}
+}
+
+func TestSequentialIssueDegradesSharedNonGitParallelizableTasksToExclusive(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	shared := t.TempDir()
+	service, creator, _ := newParallelizableDispatchService(t, "ws-par-degrade")
+	if _, err := service.CreateIssueFromPlan(ctx, "ws-par-degrade", CreateIssueManagerIssueFromPlanInput{
+		Issue: CreateIssueManagerIssueInput{
+			IssueID:             "issue-degrade",
+			TopicID:             workspaceissues.DefaultTopicID,
+			Title:               "Degrade issue",
+			PlanningSource:      string(workspaceissues.PlanningSourceTraditionalPlan),
+			SequentialExecution: true,
+		},
+		Tasks: []CreateIssueManagerTaskItemInput{
+			{TaskID: "p1", Title: "First", AgentTargetID: agenttargetbiz.IDLocalCodex, ExecutionDirectory: shared, Parallelizable: true},
+			{TaskID: "p2", Title: "Second", AgentTargetID: agenttargetbiz.IDLocalCodex, ExecutionDirectory: shared, Parallelizable: true},
+		},
+	}); err != nil {
+		t.Fatalf("CreateIssueFromPlan() error = %v", err)
+	}
+	if len(creator.inputs) != 1 {
+		t.Fatalf("dispatches = %d, want exclusive degradation for a shared non-git directory", len(creator.inputs))
+	}
+	if creator.inputs[0].Cwd == nil || *creator.inputs[0].Cwd != shared {
+		t.Fatalf("exclusive launch cwd = %#v, want the shared directory", creator.inputs[0].Cwd)
+	}
+	acceptIssueTask(t, service, "ws-par-degrade", "issue-degrade", "p1")
+	if len(creator.inputs) != 2 {
+		t.Fatalf("dispatches after acceptance = %d, want the successor", len(creator.inputs))
+	}
+}
+
+func TestSequentialIssueExclusiveTaskWaitsForParallelizableBatch(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	repo := initIssueTaskGitRepo(t)
+	service, creator, _ := newParallelizableDispatchService(t, "ws-par-barrier")
+	if _, err := service.CreateIssueFromPlan(ctx, "ws-par-barrier", CreateIssueManagerIssueFromPlanInput{
+		Issue: CreateIssueManagerIssueInput{
+			IssueID:             "issue-barrier",
+			TopicID:             workspaceissues.DefaultTopicID,
+			Title:               "Barrier issue",
+			PlanningSource:      string(workspaceissues.PlanningSourceTraditionalPlan),
+			SequentialExecution: true,
+		},
+		Tasks: []CreateIssueManagerTaskItemInput{
+			{TaskID: "p1", Title: "First parallel", AgentTargetID: agenttargetbiz.IDLocalCodex, ExecutionDirectory: repo, Parallelizable: true},
+			{TaskID: "p2", Title: "Second parallel", AgentTargetID: agenttargetbiz.IDLocalCodex, ExecutionDirectory: repo, Parallelizable: true},
+			{TaskID: "s3", Title: "Exclusive", AgentTargetID: agenttargetbiz.IDLocalCodex, ExecutionDirectory: repo},
+		},
+	}); err != nil {
+		t.Fatalf("CreateIssueFromPlan() error = %v", err)
+	}
+	if len(creator.inputs) != 2 {
+		t.Fatalf("initial dispatches = %d, want only the parallelizable batch", len(creator.inputs))
+	}
+	acceptIssueTask(t, service, "ws-par-barrier", "issue-barrier", "p1")
+	if len(creator.inputs) != 2 {
+		t.Fatalf("dispatches with p2 still live = %d, exclusive task must wait", len(creator.inputs))
+	}
+	acceptIssueTask(t, service, "ws-par-barrier", "issue-barrier", "p2")
+	if len(creator.inputs) != 3 {
+		t.Fatalf("dispatches after batch drained = %d, want the exclusive task", len(creator.inputs))
+	}
+	exclusive := creator.inputs[2]
+	if exclusive.Cwd == nil || *exclusive.Cwd != repo {
+		t.Fatalf("exclusive launch cwd = %#v, want the base checkout", exclusive.Cwd)
 	}
 }

@@ -23,10 +23,13 @@ type agentSessionCreator interface {
 // counted before every dispatch pass.
 const maxWorkspaceParallelIssueRuns = 4
 
-// dispatchEligibleIssueTasks advances one sequential Task or every isolated,
-// dependency-ready parallel Task. The user's execution choice is durable on
-// the Issue, and dependency, acceptance, and budget checks are repeated at the
-// daemon boundary before every launch.
+// dispatchEligibleIssueTasks advances the Issue's execution frontier. A
+// sequential Issue runs one exclusive Task at a time, except that Tasks the
+// plan review marked parallelizable may run alongside each other (each in an
+// isolated per-run worktree when they share a checkout). A parallel Issue
+// dispatches every isolated, dependency-ready Task. The user's execution
+// choice is durable on the Issue, and dependency, acceptance, and budget
+// checks are repeated at the daemon boundary before every launch.
 func (s IssueManagerService) dispatchEligibleIssueTasks(ctx context.Context, workspaceID, issueID string) {
 	if s.AgentSessionCreator == nil {
 		return
@@ -38,12 +41,16 @@ func (s IssueManagerService) dispatchEligibleIssueTasks(ctx context.Context, wor
 	if detail.Issue.Budget.Status != workspaceissues.BudgetStatusActive {
 		return
 	}
+	inflight := 0
 	for _, task := range detail.Tasks {
 		switch task.Status {
 		case workspaceissues.StatusFailed:
 			return
 		case workspaceissues.StatusRunning, workspaceissues.StatusPendingAcceptance:
-			if detail.Issue.SequentialExecution {
+			inflight++
+			// A live exclusive task keeps the sequential Issue exclusive;
+			// live parallelizable tasks only block other exclusive launches.
+			if detail.Issue.SequentialExecution && !task.Parallelizable {
 				return
 			}
 		}
@@ -63,12 +70,9 @@ func (s IssueManagerService) dispatchEligibleIssueTasks(ctx context.Context, wor
 		s.markIssueBudgetSoftLimited(ctx, detail.Issue)
 		return
 	}
-	parallelSlots := 1
-	if detail.Issue.ParallelExecution {
-		parallelSlots = min(maxWorkspaceParallelIssueRuns-len(running), budgetSlots)
-		if parallelSlots <= 0 {
-			return
-		}
+	concurrentSlots := min(maxWorkspaceParallelIssueRuns-len(running), budgetSlots)
+	if detail.Issue.ParallelExecution && concurrentSlots <= 0 {
+		return
 	}
 	tasks := append([]workspaceissues.Task(nil), detail.Tasks...)
 	sort.SliceStable(tasks, func(i, j int) bool {
@@ -81,6 +85,7 @@ func (s IssueManagerService) dispatchEligibleIssueTasks(ctx context.Context, wor
 	for _, task := range tasks {
 		byID[task.TaskID] = task
 	}
+	launchedConcurrent := 0
 	for _, task := range tasks {
 		if task.Status != workspaceissues.StatusNotStarted || strings.TrimSpace(task.AgentTargetID) == "" {
 			continue
@@ -96,25 +101,67 @@ func (s IssueManagerService) dispatchEligibleIssueTasks(ctx context.Context, wor
 		if !ready {
 			continue
 		}
-		s.startIssueTask(ctx, detail.Issue, task)
 		if detail.Issue.SequentialExecution {
-			return
+			isolation := issueTaskIsolation{}
+			concurrent := task.Parallelizable
+			if concurrent {
+				// A parallelizable task without a safe isolation story
+				// degrades to exclusive dispatch instead of trampling.
+				isolation, concurrent = s.sequentialTaskIsolation(detail.Issue, tasks, task)
+			}
+			if !concurrent {
+				// Exclusive task: launch only into an idle Issue, and bar
+				// everything behind it until it completes and is accepted.
+				if inflight == 0 && launchedConcurrent == 0 {
+					s.startIssueTask(ctx, detail.Issue, task, issueTaskIsolation{})
+				}
+				return
+			}
+			if concurrentSlots <= 0 {
+				return
+			}
+			s.startIssueTask(ctx, detail.Issue, task, isolation)
+			concurrentSlots--
+			launchedConcurrent++
+			continue
 		}
-		parallelSlots--
-		if parallelSlots <= 0 {
+		s.startIssueTask(ctx, detail.Issue, task, issueTaskIsolation{})
+		concurrentSlots--
+		if concurrentSlots <= 0 {
 			return
 		}
 	}
 }
 
-func (s IssueManagerService) startIssueTask(ctx context.Context, issue workspaceissues.Issue, task workspaceissues.Task) {
+func (s IssueManagerService) startIssueTask(ctx context.Context, issue workspaceissues.Issue, task workspaceissues.Task, isolation issueTaskIsolation) {
 	agentSessionID := uuid.NewString()
 	runID := uuid.NewString()
-	executionDirectory := strings.TrimSpace(task.ExecutionDirectory)
-	if executionDirectory == "" && s.AgentSessionReader != nil && strings.TrimSpace(issue.SourceSessionID) != "" {
-		if source, ok := s.AgentSessionReader.GetSession(issue.WorkspaceID, issue.SourceSessionID); ok {
-			executionDirectory = strings.TrimSpace(source.Cwd)
+	executionDirectory := s.resolveIssueTaskBaseDirectory(issue, task)
+	worktreeBranch := ""
+	worktreeBase := ""
+	if isolation.worktreeBase != "" {
+		worktreePath, branch, worktreeErr := s.createIssueTaskRunWorktree(ctx, isolation.worktreeBase, issue.IssueID, task.TaskID, runID)
+		if worktreeErr != nil {
+			// Surface the failed launch as a durable failed run, same as a
+			// failed session creation, so the Issue shows why nothing ran.
+			if run, err := s.CreateRun(ctx, issue.WorkspaceID, issue.IssueID, task.TaskID, CreateIssueManagerRunInput{
+				RunID:              runID,
+				AgentTargetID:      task.AgentTargetID,
+				AgentSessionID:     agentSessionID,
+				ExecutionDirectory: executionDirectory,
+				ModelPlanID:        task.ModelPlanID,
+				Model:              task.Model,
+			}); err == nil {
+				_, _ = s.CompleteRun(ctx, issue.WorkspaceID, issue.IssueID, task.TaskID, run.RunID, CompleteIssueManagerRunInput{
+					Status:       string(workspaceissues.StatusFailed),
+					ErrorMessage: worktreeErr.Error(),
+				})
+			}
+			return
 		}
+		worktreeBase = isolation.worktreeBase
+		worktreeBranch = branch
+		executionDirectory = worktreePath
 	}
 	run, err := s.CreateRun(ctx, issue.WorkspaceID, issue.IssueID, task.TaskID, CreateIssueManagerRunInput{
 		RunID:              runID,
@@ -176,7 +223,7 @@ func (s IssueManagerService) startIssueTask(ctx context.Context, issue workspace
 			agentSessionID,
 			issue.ExecutionProfile.OrchestrationIntensity,
 		),
-		InitialContent: []agentservice.PromptContentBlock{{Type: "text", Text: sequentialTaskPrompt(issue, task, executionDirectory)}},
+		InitialContent: []agentservice.PromptContentBlock{{Type: "text", Text: issueTaskPrompt(issue, task, executionDirectory, worktreeBase, worktreeBranch)}},
 		ClientSubmitID: "issue-run:" + run.RunID,
 		Metadata: map[string]any{
 			"collaborationRunId": collaborationRunID,
@@ -202,8 +249,8 @@ func (s IssueManagerService) startIssueTask(ctx context.Context, issue workspace
 	})
 }
 
-func sequentialTaskPrompt(issue workspaceissues.Issue, task workspaceissues.Task, executionDirectory string) string {
-	return fmt.Sprintf(`Execute this Issue task and report a concise result with validation evidence.
+func issueTaskPrompt(issue workspaceissues.Issue, task workspaceissues.Task, executionDirectory string, worktreeBase string, worktreeBranch string) string {
+	prompt := fmt.Sprintf(`Execute this Issue task and report a concise result with validation evidence.
 
 Issue: %s
 Issue plan:
@@ -222,6 +269,15 @@ Do not mark the task finally accepted. Completion enters pending acceptance; onl
 		task.Content,
 		firstNonEmptyText(executionDirectory, "."),
 	)
+	if worktreeBranch != "" {
+		prompt += fmt.Sprintf(`
+
+Isolation: your working directory is a dedicated git worktree of %s on branch %s; other tasks may run in parallel from the same checkout. Commit your work on this branch. Do not push, do not switch branches, and do not modify the base checkout.`,
+			worktreeBase,
+			worktreeBranch,
+		)
+	}
+	return prompt
 }
 
 func optionalTrimmedString(value string) *string {
