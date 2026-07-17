@@ -36,6 +36,7 @@
     "src/toolEvents.ts",
     "src/turnLifecycle.ts",
     "src/usage.ts",
+    "scripts/benchmark-model-discovery.mjs",
     "README.md"
   ],
   "publishConfig": {
@@ -48,6 +49,7 @@
   },
   "scripts": {
     "start": "node --experimental-strip-types ./src/main.ts",
+    "benchmark:model-discovery": "node ./scripts/benchmark-model-discovery.mjs",
     "build": "node -e \"process.stdout.write('claude-sdk-sidecar ships raw TypeScript; no build step\\n')\"",
     "test": "node --test --experimental-strip-types ./src/**/*.test.ts",
     "typecheck": "node ../../../tools/scripts/run-tsgo-typecheck.mjs"

@@ -4,6 +4,7 @@ import (
 	"context"
 	"strings"
 
+	"github.com/tutti-os/tutti/packages/agent/daemon/agentcatalog"
 	"github.com/tutti-os/tutti/packages/agent/daemon/providerregistry"
 	runtimeprep "github.com/tutti-os/tutti/packages/agent/runtimeprep"
 	"github.com/tutti-os/tutti/services/tuttid/biz/agentprovider"
@@ -156,14 +157,29 @@ func (s *Service) GetComposerOptions(ctx context.Context, input ComposerOptionsI
 	}
 	catalogProjection := composerModelCatalogProjection{}
 	catalogProjectionOK := false
-	if composerOptionsProviderUsesModelCatalog(provider) {
-		catalogProjection, catalogProjectionOK = composerModelOptionsFromCatalog(
-			ctx,
-			s.ModelCatalog,
-			provider,
-			input.Cwd,
-			settings.Model,
-		)
+	catalogSnapshot := agentcatalog.ResolveModelsResult{}
+	profile := composerProfileFor(provider)
+	if profile.ModelDiscovery.Enabled {
+		discoverySettings := settings
+		if strings.TrimSpace(discoverySettings.Model) == "" {
+			discoverySettings.Model = composerConfiguredDefaultModel(provider)
+		}
+		var catalogErr error
+		catalogSnapshot, catalogErr = s.resolveModelsFromCatalog(ctx, input, discoverySettings, "")
+		if catalogErr == nil && catalogSnapshot.Refreshing && len(catalogSnapshot.Value.Models) == 0 &&
+			profile.LiveModelDiscovery && profile.ModelDiscovery.FallbackKind != providerregistry.ModelFallbackKindClaudeAliases {
+			// Cursor/other live providers have no trustworthy static list. Until
+			// AgentGUI consumes pending metadata and schedules a reread, preserve
+			// the previous bounded wait behavior while joining the same flight.
+			catalogSnapshot, catalogErr = s.resolveModelsFromCatalog(ctx, input, discoverySettings, agentcatalog.ReadPolicyWait)
+		}
+		if catalogErr == nil {
+			selectedForProjection := settings.Model
+			if profile.Behavior.ModelOptionsAuthoritative {
+				selectedForProjection = ""
+			}
+			catalogProjection, catalogProjectionOK = catalogSnapshotProjection(catalogSnapshot, selectedForProjection)
+		}
 	}
 	defaultModel := composerConfiguredDefaultModel(provider)
 	if catalogProjectionOK && catalogProjection.DefaultModel != "" {
@@ -189,6 +205,13 @@ func (s *Service) GetComposerOptions(ctx context.Context, input ComposerOptionsI
 		"permissionModeId": nullableString(effectiveSettings.PermissionModeID),
 		"reasoningEffort":  nullableString(effectiveSettings.ReasoningEffort),
 		"speed":            nullableString(effectiveSettings.Speed),
+	}
+	if profile.ModelDiscovery.Enabled {
+		runtimeContext["modelCatalogFreshness"] = string(catalogSnapshot.Freshness)
+		runtimeContext["modelCatalogRefreshing"] = catalogSnapshot.Refreshing
+		if catalogSnapshot.ErrorCode != "" {
+			runtimeContext["modelCatalogErrorCode"] = catalogSnapshot.ErrorCode
+		}
 	}
 	if commands := s.composerCommandsFromRunningSession(
 		input.WorkspaceID,
@@ -253,7 +276,10 @@ func (s *Service) GetComposerOptions(ctx context.Context, input ComposerOptionsI
 		Behavior:           composerProfileFor(provider).Behavior,
 		SlashCommandPolicy: slashCommandPolicy,
 	}
-	if composerProfileFor(provider).LiveModelDiscovery ||
+	if catalogProjectionOK && profile.Behavior.ModelOptionsAuthoritative {
+		options = mergeComposerModelsIntoComposerOptions(options, catalogProjection.ModelOptions, catalogProjection.Source)
+	}
+	if (profile.LiveModelDiscovery && !profile.ModelDiscovery.Enabled) ||
 		providerTargetRefKind(input.providerTargetRef) == "agent_extension" {
 		var err error
 		options, err = s.mergeLiveComposerModelsForComposerOptions(ctx, input, effectiveSettings, options)

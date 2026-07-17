@@ -44,6 +44,22 @@ The full ownership and dependency rules are documented in
 - `@anthropic-ai/claude-agent-sdk`
 - `zod`
 
+## Model discovery benchmark
+
+Measure the same SDK initialization call used to populate Claude model options:
+
+```sh
+pnpm --filter @tutti-os/claude-sdk-sidecar benchmark:model-discovery -- \
+  --iterations 5 --cwd /path/to/workspace
+```
+
+Each iteration runs in a fresh Node process and reports SDK import, query
+construction, `initializationResult()`, same-process `reinitialize()`, and
+total process timings as newline-delimited JSON. Pass
+`--claude-bin /path/to/claude` to measure a provisioned Claude executable
+instead of the SDK-native optional dependency. The benchmark never submits a
+prompt and denies all tool calls.
+
 ## Environment propagation
 
 The sidecar is launched directly without a shell, so user shell hooks (such

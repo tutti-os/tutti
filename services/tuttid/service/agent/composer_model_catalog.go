@@ -31,6 +31,10 @@ func composerModelOptionsFromCatalog(ctx context.Context, catalog AgentModelCata
 		)
 		return composerModelCatalogProjection{}, false
 	}
+	return composerModelOptionsFromCatalogResult(result, selectedModel)
+}
+
+func composerModelOptionsFromCatalogResult(result AgentModelCatalogResult, selectedModel string) (composerModelCatalogProjection, bool) {
 	options := make([]ComposerConfigOptionValue, 0, len(result.Models)+1)
 	reasoningProfiles := make(map[string]composerModelReasoningProfile)
 	defaultModel := ""

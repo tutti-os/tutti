@@ -7,6 +7,7 @@ import (
 
 	"golang.org/x/sync/singleflight"
 
+	"github.com/tutti-os/tutti/packages/agent/daemon/agentcatalog"
 	runtimeprep "github.com/tutti-os/tutti/packages/agent/runtimeprep"
 	agentactivitybiz "github.com/tutti-os/tutti/services/tuttid/biz/agentactivity"
 	agenttargetbiz "github.com/tutti-os/tutti/services/tuttid/biz/agenttarget"
@@ -57,6 +58,8 @@ type Service struct {
 	providerAvailabilityCache      *providerAvailabilityCache
 	capabilityCatalogCache         *composerCapabilityCatalogCache
 	liveModelCache                 *composerLiveModelCache
+	modelCatalogCoordinator        *agentcatalog.Coordinator
+	modelCatalogCoordinatorMu      sync.Mutex
 	claudeStartupLock              *claudecodeservice.StartupGate
 	liveModelDiscoveryMu           sync.Mutex
 	liveModelDiscoveryAttempted    map[string]struct{}

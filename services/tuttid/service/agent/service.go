@@ -113,7 +113,7 @@ func (s *Service) Create(ctx context.Context, workspaceID string, input CreateSe
 	input.Model = s.resolveCreateSessionModel(ctx, provider, input.ProviderTargetRef, value(input.Cwd), input.Model)
 	nodeStartedAt := time.Now()
 	if providerTargetRefKind(input.ProviderTargetRef) != "agent_extension" {
-		if err := s.validateComposerModelForCreate(ctx, provider, workspaceID, value(input.Cwd), requestedModel); err != nil {
+		if err := s.validateComposerModelForCreate(ctx, provider, workspaceID, value(input.Cwd), input.AgentTargetID, requestedModel); err != nil {
 			s.reportAgentServiceNodeFailure(ctx, input.AgentSessionID, "session_create", "model_validated", provider, nodeStartedAt, err)
 			return Session{}, err
 		}

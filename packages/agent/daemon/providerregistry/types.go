@@ -338,6 +338,50 @@ type LiveModelDiscoveryDescriptor struct {
 	AccountScoped bool
 }
 
+// ModelResolverKind selects the provider-specific cold source behind the
+// shared catalog coordinator. Runtime processes remain host-owned.
+type ModelResolverKind string
+
+const (
+	ModelResolverKindCodexAppServer       ModelResolverKind = "codex_app_server"
+	ModelResolverKindOpenCodeCLI          ModelResolverKind = "opencode_cli"
+	ModelResolverKindTuttiAppServer       ModelResolverKind = "tutti_app_server"
+	ModelResolverKindHiddenRuntimeSession ModelResolverKind = "hidden_runtime_session"
+)
+
+type ModelDiscoveryScopeKind string
+
+const (
+	ModelDiscoveryScopeAccount  ModelDiscoveryScopeKind = "account"
+	ModelDiscoveryScopeProvider ModelDiscoveryScopeKind = "provider"
+	ModelDiscoveryScopeCWD      ModelDiscoveryScopeKind = "cwd"
+	ModelDiscoveryScopeTarget   ModelDiscoveryScopeKind = "target"
+)
+
+type ModelFallbackKind string
+
+const (
+	ModelFallbackKindClaudeAliases ModelFallbackKind = "claude_aliases"
+	ModelFallbackKindSelectedModel ModelFallbackKind = "selected_model"
+)
+
+// ModelDiscoveryDescriptor is the single policy read by catalog consumers.
+// ModelCatalog and LiveModelDiscovery remain temporary protocol projections
+// for existing resolver implementations; new orchestration must use this
+// descriptor instead of branching between those fields.
+type ModelDiscoveryDescriptor struct {
+	Enabled              bool
+	ColdResolverKind     ModelResolverKind
+	ReuseRuntimeSnapshot bool
+	RuntimeAuthoritative bool
+	HiddenProbe          bool
+	ScopeKind            ModelDiscoveryScopeKind
+	PersistLastGood      bool
+	FreshTTLSeconds      int
+	MaxStaleSeconds      int
+	FallbackKind         ModelFallbackKind
+}
+
 type ComposerBehaviorDescriptor struct {
 	CollapseModelOptionsToLatest        bool
 	ModelOptionsAuthoritative           bool
@@ -381,7 +425,10 @@ const (
 )
 
 type ComposerProfileDescriptor struct {
-	ModelSelection          bool
+	ModelSelection bool
+	ModelDiscovery ModelDiscoveryDescriptor
+	// Deprecated compatibility projections. Host orchestration reads
+	// ModelDiscovery; these identify the concrete existing resolver adapters.
 	ModelCatalog            ModelCatalogKind
 	ReasoningEffort         bool
 	ReasoningEffortValues   []string

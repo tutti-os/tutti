@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/tutti-os/tutti/packages/agent/daemon/agentcatalog"
 	"github.com/tutti-os/tutti/packages/agent/daemon/providerregistry"
 	"github.com/tutti-os/tutti/services/tuttid/biz/agentprovider"
 )
@@ -38,6 +39,7 @@ func (s *Service) validateComposerModelForCreate(
 	provider string,
 	workspaceID string,
 	cwd string,
+	agentTargetID string,
 	model string,
 ) error {
 	provider = agentprovider.Normalize(provider)
@@ -45,7 +47,7 @@ func (s *Service) validateComposerModelForCreate(
 	if model == "" {
 		return nil
 	}
-	availableModels, ok, err := s.availableComposerModelsForValidation(ctx, provider, workspaceID, cwd)
+	availableModels, ok, err := s.availableComposerModelsForValidationTarget(ctx, provider, workspaceID, cwd, agentTargetID)
 	if err != nil {
 		return err
 	}
@@ -64,15 +66,16 @@ func (s *Service) validateComposerModelForCreate(
 	}
 }
 
-func (s *Service) availableComposerModelsForValidation(
+func (s *Service) availableComposerModelsForValidationTarget(
 	ctx context.Context,
 	provider string,
 	workspaceID string,
 	cwd string,
+	agentTargetID string,
 ) ([]string, bool, error) {
 	provider = agentprovider.Normalize(provider)
 	profile := composerProfileFor(provider)
-	return s.availableComposerModelsForValidationProfile(ctx, provider, workspaceID, cwd, profile)
+	return s.availableComposerModelsForValidationProfileTarget(ctx, provider, workspaceID, cwd, agentTargetID, profile)
 }
 
 func (s *Service) availableComposerModelsForValidationProfile(
@@ -80,6 +83,17 @@ func (s *Service) availableComposerModelsForValidationProfile(
 	provider string,
 	workspaceID string,
 	cwd string,
+	profile composerProfile,
+) ([]string, bool, error) {
+	return s.availableComposerModelsForValidationProfileTarget(ctx, provider, workspaceID, cwd, "", profile)
+}
+
+func (s *Service) availableComposerModelsForValidationProfileTarget(
+	ctx context.Context,
+	provider string,
+	workspaceID string,
+	cwd string,
+	agentTargetID string,
 	profile composerProfile,
 ) ([]string, bool, error) {
 	switch profile.ModelCatalog {
@@ -99,35 +113,41 @@ func (s *Service) availableComposerModelsForValidationProfile(
 			ErrInvalidArgument,
 		)
 	}
+	if profile.ModelDiscovery.Enabled || profile.UsesModelCatalog {
+		readPolicy := agentcatalog.ReadPolicyInteractive
+		if profile.LiveModelDiscovery {
+			// Validation must never create a hidden Provider session. Composer is
+			// responsible for discovery; validation consumes that exact completed
+			// snapshot and retains the legacy cache only as a migration fallback.
+			readPolicy = agentcatalog.ReadPolicyCacheOnly
+		}
+		result, err := s.resolveModelsFromCatalogProfile(ctx, ComposerOptionsInput{Provider: provider, WorkspaceID: workspaceID, Cwd: cwd, AgentTargetID: agentTargetID}, ComposerSettings{}, readPolicy, profile)
+		if err == nil && result.Value.Complete {
+			values := make([]string, 0, len(result.Value.Models))
+			seen := make(map[string]struct{}, len(result.Value.Models))
+			for _, model := range result.Value.Models {
+				id := strings.TrimSpace(model.Value)
+				if id == "" {
+					continue
+				}
+				if _, ok := seen[id]; ok {
+					continue
+				}
+				seen[id] = struct{}{}
+				values = append(values, id)
+			}
+			return values, true, nil
+		}
+		if !profile.LiveModelDiscovery {
+			return nil, false, nil
+		}
+	}
 	if profile.LiveModelDiscovery {
 		models, ok := s.getLiveComposerModelOptions(provider, workspaceID, cwd, time.Now().UTC())
 		if !ok {
 			return nil, false, nil
 		}
 		return composerConfigOptionModelValues(models), true, nil
-	}
-	if profile.UsesModelCatalog {
-		if s.ModelCatalog == nil {
-			return nil, false, nil
-		}
-		result, err := s.ModelCatalog.ListModels(ctx, AgentModelCatalogInput{Provider: provider, Cwd: cwd})
-		if err != nil {
-			return nil, false, nil
-		}
-		values := make([]string, 0, len(result.Models))
-		seen := make(map[string]struct{}, len(result.Models))
-		for _, model := range result.Models {
-			id := strings.TrimSpace(model.ID)
-			if id == "" {
-				continue
-			}
-			if _, ok := seen[id]; ok {
-				continue
-			}
-			seen[id] = struct{}{}
-			values = append(values, id)
-		}
-		return values, true, nil
 	}
 	return nil, false, nil
 }
