@@ -5881,9 +5881,58 @@ aside.workspace-agents-status-panel
 }
 
 .agent-gui-node__conversation-section {
+  position: relative;
   display: grid;
   min-width: 0;
   max-width: 100%;
+}
+
+.agent-gui-node__conversation-section[data-project-dragging="true"] {
+  opacity: 0.42;
+}
+
+.agent-gui-node__conversation-section[data-project-drop-indicator]::before {
+  position: absolute;
+  right: 6px;
+  left: 6px;
+  z-index: 4;
+  height: 2px;
+  border-radius: 999px;
+  background: var(--agent-gui-accent);
+  content: "";
+  pointer-events: none;
+}
+
+.agent-gui-node__conversation-section[data-project-drop-indicator="before"]::before {
+  top: -1px;
+}
+
+.agent-gui-node__conversation-section[data-project-drop-indicator="after"]::before {
+  bottom: -1px;
+}
+
+.agent-gui-node__project-drag-image {
+  position: fixed;
+  top: -1000px;
+  left: -1000px;
+  display: flex;
+  max-width: 220px;
+  align-items: center;
+  gap: 7px;
+  border: 1px solid var(--border-subtle);
+  border-radius: 7px;
+  background: var(--agent-gui-surface-raised);
+  box-shadow: var(--shadow-elevated);
+  color: var(--text-primary);
+  padding: 7px 10px;
+  font-size: 12px;
+  pointer-events: none;
+}
+
+.agent-gui-node__project-drag-image > span:last-child {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .agent-gui-node__conversation-section + .agent-gui-node__conversation-section {

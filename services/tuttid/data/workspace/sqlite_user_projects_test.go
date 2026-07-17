@@ -2,13 +2,15 @@ package workspace
 
 import (
 	"context"
+	"errors"
+	"path/filepath"
 	"testing"
 	"time"
 
 	userprojectbiz "github.com/tutti-os/tutti/services/tuttid/biz/userproject"
 )
 
-func TestSQLiteStorePutUserProjectListsMostRecentlyUsedFirst(t *testing.T) {
+func TestSQLiteStorePutUserProjectKeepsDurableOrderWhenReused(t *testing.T) {
 	ctx := context.Background()
 	store := openTestSQLiteStore(t)
 
@@ -61,8 +63,121 @@ func TestSQLiteStorePutUserProjectListsMostRecentlyUsedFirst(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ListUserProjects() after reuse error = %v", err)
 	}
-	if projects[0].ID != first.ID || projects[1].ID != second.ID {
-		t.Fatalf("ListUserProjects() after reuse order = [%q, %q], want first then second", projects[0].ID, projects[1].ID)
+	if projects[0].ID != second.ID || projects[1].ID != first.ID {
+		t.Fatalf("ListUserProjects() after reuse order = [%q, %q], want second then first", projects[0].ID, projects[1].ID)
+	}
+}
+
+func TestSQLiteStoreUserProjectOrderMigrationPreservesLegacyVisualOrder(t *testing.T) {
+	ctx := context.Background()
+	dbPath := filepath.Join(t.TempDir(), "legacy-user-projects.db")
+	store, err := OpenSQLiteStore(dbPath)
+	if err != nil {
+		t.Fatalf("OpenSQLiteStore() error = %v", err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+	if _, err := store.writeDB.ExecContext(ctx, `
+CREATE TABLE tuttid_schema_migrations (
+  id TEXT PRIMARY KEY,
+  applied_at_unix_ms INTEGER NOT NULL
+);
+CREATE TABLE user_projects (
+  id TEXT PRIMARY KEY,
+  path TEXT NOT NULL UNIQUE,
+  label TEXT NOT NULL,
+  created_at_unix_ms INTEGER NOT NULL,
+  updated_at_unix_ms INTEGER NOT NULL,
+  last_used_at_unix_ms INTEGER NOT NULL DEFAULT 0
+);
+INSERT INTO tuttid_schema_migrations (id, applied_at_unix_ms) VALUES ('user_projects_v1', 1);
+INSERT INTO user_projects (id, path, label, created_at_unix_ms, updated_at_unix_ms, last_used_at_unix_ms) VALUES
+  ('beta', '/workspace/beta', 'Beta', 1, 20, 100),
+  ('alpha', '/workspace/alpha', 'Alpha', 1, 10, 100),
+  ('gamma', '/workspace/gamma', 'Gamma', 1, 30, 90);
+`); err != nil {
+		t.Fatalf("seed legacy user projects: %v", err)
+	}
+	if err := store.Migrate(ctx); err != nil {
+		t.Fatalf("Migrate() error = %v", err)
+	}
+	projects, err := store.ListUserProjects(ctx)
+	if err != nil {
+		t.Fatalf("ListUserProjects() error = %v", err)
+	}
+	assertUserProjectOrder(t, projects, []string{"beta", "alpha", "gamma"})
+}
+
+func TestSQLiteStoreMoveAndDeleteUserProjectsRewriteContinuousOrder(t *testing.T) {
+	ctx := context.Background()
+	store := openTestSQLiteStore(t)
+	for _, project := range []userprojectbiz.Project{
+		{ID: "alpha", Path: "/workspace/alpha", Label: "alpha"},
+		{ID: "beta", Path: "/workspace/beta", Label: "beta"},
+		{ID: "gamma", Path: "/workspace/gamma", Label: "gamma"},
+	} {
+		if _, err := store.PutUserProject(ctx, project); err != nil {
+			t.Fatalf("PutUserProject(%s) error = %v", project.ID, err)
+		}
+	}
+
+	beforeAlpha := "alpha"
+	projects, err := store.MoveUserProject(ctx, "beta", &beforeAlpha)
+	if err != nil {
+		t.Fatalf("MoveUserProject() error = %v", err)
+	}
+	assertUserProjectOrder(t, projects, []string{"gamma", "beta", "alpha"})
+
+	beforeBeta := "beta"
+	projects, err = store.MoveUserProject(ctx, "beta", &beforeBeta)
+	if err != nil {
+		t.Fatalf("MoveUserProject(self) error = %v", err)
+	}
+	assertUserProjectOrder(t, projects, []string{"gamma", "beta", "alpha"})
+
+	projects, err = store.MoveUserProject(ctx, "gamma", nil)
+	if err != nil {
+		t.Fatalf("MoveUserProject(to end) error = %v", err)
+	}
+	assertUserProjectOrder(t, projects, []string{"beta", "alpha", "gamma"})
+
+	unknownBefore := "unknown"
+	if _, err := store.MoveUserProject(ctx, "beta", &unknownBefore); !errors.Is(err, ErrUserProjectNotFound) {
+		t.Fatalf("MoveUserProject(unknown before) error = %v, want ErrUserProjectNotFound", err)
+	}
+	projects, err = store.ListUserProjects(ctx)
+	if err != nil {
+		t.Fatalf("ListUserProjects() after rejected move error = %v", err)
+	}
+	assertUserProjectOrder(t, projects, []string{"beta", "alpha", "gamma"})
+
+	if err := store.DeleteUserProject(ctx, "beta"); err != nil {
+		t.Fatalf("DeleteUserProject() error = %v", err)
+	}
+	projects, err = store.ListUserProjects(ctx)
+	if err != nil {
+		t.Fatalf("ListUserProjects() error = %v", err)
+	}
+	assertUserProjectOrder(t, projects, []string{"alpha", "gamma"})
+	for index, project := range projects {
+		if project.SortOrder != index {
+			t.Fatalf("project %s sort order = %d, want %d", project.ID, project.SortOrder, index)
+		}
+	}
+
+	if _, err := store.MoveUserProject(ctx, "unknown", nil); !errors.Is(err, ErrUserProjectNotFound) {
+		t.Fatalf("MoveUserProject(unknown) error = %v, want ErrProjectNotFound", err)
+	}
+}
+
+func assertUserProjectOrder(t *testing.T, projects []userprojectbiz.Project, want []string) {
+	t.Helper()
+	if len(projects) != len(want) {
+		t.Fatalf("projects length = %d, want %d", len(projects), len(want))
+	}
+	for index, id := range want {
+		if projects[index].ID != id || projects[index].SortOrder != index {
+			t.Fatalf("project[%d] = %#v, want id=%s sortOrder=%d", index, projects[index], id, index)
+		}
 	}
 }
 

@@ -12,6 +12,7 @@ export type BusinessEventTopic =
   | "analytics.debug.reported"
   | "preferences.desktop.update.requested"
   | "preferences.desktop.updated"
+  | "user.project.updated"
   | "workspace.app.updated"
   | "workspace.appfactory.job.updated"
   | "workspace.issue.updated"
@@ -137,6 +138,16 @@ export interface PreferencesDesktopPreferencesV1 {
     enabled: boolean;
     shortcutPreset: "commandArrows" | "commandShiftArrows";
   };
+}
+
+export interface UserUserProjectV1 {
+  id: string;
+  path: string;
+  label: string;
+  sectionKey: string;
+  createdAtUnixMs: number;
+  updatedAtUnixMs: number;
+  lastUsedAtUnixMs: number;
 }
 
 export interface WorkspaceWorkspaceAppFactoryJobV1 {
@@ -364,6 +375,10 @@ export interface PreferencesDesktopUpdatedPayloadV1 {
   preferences: PreferencesDesktopPreferencesV1;
 }
 
+export interface UserProjectUpdatedPayloadV1 {
+  projects: readonly UserUserProjectV1[];
+}
+
 export interface WorkspaceAppUpdatedPayloadV1 {
   app: WorkspaceWorkspaceAppV1;
 }
@@ -430,6 +445,12 @@ export type PreferencesDesktopUpdatedEventV1 = BusinessEventEnvelopeV1<
   1
 >;
 
+export type UserProjectUpdatedEventV1 = BusinessEventEnvelopeV1<
+  "user.project.updated",
+  UserProjectUpdatedPayloadV1,
+  1
+>;
+
 export type WorkspaceAppUpdatedEventV1 = BusinessEventEnvelopeV1<
   "workspace.app.updated",
   WorkspaceAppUpdatedPayloadV1,
@@ -462,6 +483,7 @@ export type ServerToClientEventTopic =
   | "agent.model.catalog.invalidated"
   | "analytics.debug.reported"
   | "preferences.desktop.updated"
+  | "user.project.updated"
   | "workspace.app.updated"
   | "workspace.appfactory.job.updated"
   | "workspace.issue.updated"
@@ -474,6 +496,7 @@ export type ServerToClientEventV1 =
   | AgentModelCatalogInvalidatedEventV1
   | AnalyticsDebugReportedEventV1
   | PreferencesDesktopUpdatedEventV1
+  | UserProjectUpdatedEventV1
   | WorkspaceAppUpdatedEventV1
   | WorkspaceAppfactoryJobUpdatedEventV1
   | WorkspaceIssueUpdatedEventV1

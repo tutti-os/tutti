@@ -3,7 +3,6 @@ package api
 import (
 	"context"
 	"strings"
-	"time"
 
 	tuttigenerated "github.com/tutti-os/tutti/services/tuttid/api/generated"
 	"github.com/tutti-os/tutti/services/tuttid/apierrors"
@@ -135,21 +134,23 @@ func (api DaemonAPI) registerExternalImportUserProjects(
 	}
 	result := make([]agentservice.ExternalImportProjectSelection, 0, len(projects))
 	failures := make([]agentservice.ExternalImportError, 0)
-	lastUsedAtUnixMS := time.Now().UTC().UnixMilli() + int64(len(projects))
+	paths := make([]string, len(projects))
+	for index, project := range projects {
+		paths[index] = strings.TrimSpace(project.Path)
+	}
+	registrationErrors := api.UserProjectService.UseMany(ctx, userprojectservice.UseManyInput{Paths: paths})
 	for index, project := range projects {
 		path := strings.TrimSpace(project.Path)
-		if path == "" {
-			failures = append(failures, agentservice.ExternalImportError{Message: "project path is empty"})
-			continue
-		}
-		if _, err := api.UserProjectService.Use(ctx, userprojectservice.UseInput{
-			Path:             path,
-			LastUsedAtUnixMS: lastUsedAtUnixMS - int64(index),
-		}); err != nil {
-			failures = append(failures, agentservice.ExternalImportError{
+		if err := registrationErrors[index]; err != nil {
+			failure := agentservice.ExternalImportError{
 				SourcePath: path,
 				Message:    err.Error(),
-			})
+			}
+			if path == "" {
+				failure.SourcePath = ""
+				failure.Message = "project path is empty"
+			}
+			failures = append(failures, failure)
 			continue
 		}
 		result = append(result, project)

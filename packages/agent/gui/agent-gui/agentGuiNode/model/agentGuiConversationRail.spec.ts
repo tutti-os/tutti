@@ -584,6 +584,42 @@ describe("projectConversationRailSearchSections", () => {
       "project:/workspace"
     ]);
   });
+
+  it("keeps every project template visible when search matches no rows", () => {
+    const groups = projectConversationRailSearchSections({
+      conversations: [],
+      labels: railLabels,
+      sections: [
+        {
+          id: "project:/b",
+          kind: "project",
+          label: "B",
+          project: {
+            id: "b",
+            label: "B",
+            path: "/b",
+            sectionKey: "project:/b"
+          },
+          items: []
+        },
+        ...section([]),
+        {
+          id: "conversations",
+          kind: "conversations",
+          label: "Conversations",
+          project: null,
+          items: []
+        }
+      ]
+    });
+
+    expect(groups.map((group) => group.id)).toEqual([
+      "project:/b",
+      "project:/workspace",
+      "conversations"
+    ]);
+    expect(groups.every((group) => group.items.length === 0)).toBe(true);
+  });
 });
 
 describe("projectConversationRailSectionsByExactKey", () => {
@@ -639,6 +675,34 @@ describe("projectConversationRailSectionsByExactKey", () => {
       ["project:/workspace", ["exact-project"]],
       ["project:/empty", []],
       ["conversations", ["general"]]
+    ]);
+  });
+
+  it("keeps empty user-project templates when filtering loaded rows", () => {
+    const groups = projectConversationRailSectionsByExactKey({
+      conversations: [],
+      labels: railLabels,
+      userProjects: [
+        {
+          id: "workspace",
+          label: "Workspace",
+          path: "/workspace",
+          sectionKey: "project:/workspace"
+        },
+        {
+          id: "empty",
+          label: "Empty",
+          path: "/empty",
+          sectionKey: "project:/empty"
+        }
+      ],
+      includeEmptySections: false
+    });
+
+    expect(groups.map((group) => group.id)).toEqual([
+      "project:/workspace",
+      "project:/empty",
+      "conversations"
     ]);
   });
 });
@@ -702,6 +766,64 @@ describe("preserveConversationRailSectionTemplates", () => {
       ["project:/workspace", ["exact"]],
       ["project:/empty", []],
       ["conversations", []]
+    ]);
+  });
+
+  it("drops project templates outside userProjects and keeps fixed sections", () => {
+    const pinned = {
+      ...conversation("pinned"),
+      pinnedAtUnixMs: 2
+    };
+    const groups = preserveConversationRailSectionTemplates({
+      labels: railLabels,
+      sections: [
+        {
+          id: "pinned",
+          kind: "pinned",
+          label: "Pinned",
+          project: null,
+          items: [pinned]
+        },
+        ...section([conversation("known")]),
+        {
+          id: "project:/removed",
+          kind: "project",
+          label: "Removed",
+          project: {
+            id: "removed",
+            label: "Removed",
+            path: "/removed",
+            sectionKey: "project:/removed"
+          },
+          items: [
+            {
+              ...conversation("removed"),
+              railSectionKey: "project:/removed"
+            }
+          ]
+        },
+        {
+          id: "conversations",
+          kind: "conversations",
+          label: "Conversations",
+          project: null,
+          items: []
+        }
+      ],
+      userProjects: [
+        {
+          id: "workspace",
+          label: "Workspace",
+          path: "/workspace",
+          sectionKey: "project:/workspace"
+        }
+      ]
+    });
+
+    expect(groups.map((group) => group.id)).toEqual([
+      "pinned",
+      "project:/workspace",
+      "conversations"
     ]);
   });
 });

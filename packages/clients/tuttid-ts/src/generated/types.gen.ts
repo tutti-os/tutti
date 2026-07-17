@@ -2106,6 +2106,11 @@ export type DeleteUserProjectRequest = {
   path: string;
 };
 
+export type MoveUserProjectRequest = {
+  projectId: string;
+  beforeProjectId: string | null;
+};
+
 export type CheckUserProjectPathRequest = {
   path: string;
 };
@@ -3488,6 +3493,49 @@ export type CheckUserProjectPathResponses = {
 
 export type CheckUserProjectPathResponse =
   CheckUserProjectPathResponses[keyof CheckUserProjectPathResponses];
+
+export type MoveUserProjectData = {
+  body: MoveUserProjectRequest;
+  path?: never;
+  query?: never;
+  url: "/v1/user-projects/move";
+};
+
+export type MoveUserProjectErrors = {
+  /**
+   * Request payload or parameters are invalid
+   */
+  400: ApiErrorResponse;
+  /**
+   * Bearer token is missing or invalid
+   */
+  401: ApiErrorResponse;
+  /**
+   * HTTP method is not supported on this route
+   */
+  405: ApiErrorResponse;
+  /**
+   * Desktop preferences operation failed in an upstream adapter or command
+   */
+  502: ApiErrorResponse;
+  /**
+   * Required daemon service dependency is unavailable
+   */
+  503: ApiErrorResponse;
+};
+
+export type MoveUserProjectError =
+  MoveUserProjectErrors[keyof MoveUserProjectErrors];
+
+export type MoveUserProjectResponses = {
+  /**
+   * Complete ordered user project list
+   */
+  200: UserProjectListResponse;
+};
+
+export type MoveUserProjectResponse =
+  MoveUserProjectResponses[keyof MoveUserProjectResponses];
 
 export type AttachEventStreamData = {
   body?: never;

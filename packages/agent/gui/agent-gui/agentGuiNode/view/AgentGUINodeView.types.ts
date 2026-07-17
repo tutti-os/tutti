@@ -475,6 +475,10 @@ export interface AgentGUINodeViewProps {
       title: string
     ) => Promise<void>;
     removeProject: (path: string) => void;
+    moveProject: (
+      projectId: string,
+      beforeProjectId: string | null
+    ) => Promise<void>;
     confirmDeleteProjectConversations: (
       sectionKey?: string,
       agentTargetId?: string | null

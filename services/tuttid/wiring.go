@@ -345,7 +345,8 @@ func buildDaemonAPI(ctx context.Context, store workspacedata.CatalogStore, analy
 		return runtimeprep.ComputerUseDefaultEnabled() && computersvc.CheckReady() == nil
 	}
 	userProjectService := userprojectservice.Service{
-		Store: userProjectStore,
+		Store:     userProjectStore,
+		Publisher: eventstreamservice.UserProjectPublisher{Service: events},
 	}
 	agentRuntimeController := newAgentRuntimeAdapter(agentRuntime.Controller())
 	agentSessionService := agentservice.NewService(agentRuntimeController)

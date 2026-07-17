@@ -31,6 +31,7 @@ import {
   normalizeTuttiExternalReferenceOpenInput,
   normalizeTuttiExternalSettingsOpenInput,
   normalizeTuttiExternalUserProjectCreateInput,
+  normalizeTuttiExternalUserProjectMoveInput,
   normalizeTuttiExternalUserProjectPathInput,
   normalizeTuttiExternalUserProjectRememberDefaultSelectionInput,
   normalizeTuttiExternalUserProjectSelectionPreparationInput,
@@ -359,6 +360,20 @@ export function registerWorkspaceAppContextIpc(
       return requestWorkspaceAppExternalRenderer(context, {
         appId: context.appID,
         operation: "userProjects.list",
+        requestId: randomUUID(),
+        workspaceId: context.workspaceID
+      });
+    }
+  );
+  registerDesktopIpcHandler(
+    desktopIpcChannels.appExternal.userProjectsMove,
+    async (event, payload) => {
+      const context = requireWorkspaceAppGuestContext(event.sender);
+      const input = normalizeTuttiExternalUserProjectMoveInput(payload);
+      return requestWorkspaceAppExternalRenderer(context, {
+        appId: context.appID,
+        input,
+        operation: "userProjects.move",
         requestId: randomUUID(),
         workspaceId: context.workspaceID
       });

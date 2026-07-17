@@ -66,6 +66,7 @@ export function useAgentGUIControllerActions(
     actions.editQueuedPrompt
   );
   const removeProject = useStableControllerEventCallback(actions.removeProject);
+  const moveProject = useStableControllerEventCallback(actions.moveProject);
   const confirmDeleteProjectConversations = useStableControllerEventCallback(
     actions.confirmDeleteProjectConversations
   );
@@ -119,6 +120,7 @@ export function useAgentGUIControllerActions(
       removeQueuedPrompt,
       editQueuedPrompt,
       removeProject,
+      moveProject,
       confirmDeleteProjectConversations,
       confirmDeleteConversations,
       toggleConversationPinned,
@@ -143,6 +145,7 @@ export function useAgentGUIControllerActions(
       loadOlderConversationMessages,
       markConversationUnread,
       removeProject,
+      moveProject,
       removeQueuedPrompt,
       renameConversation,
       requestDeleteConversation,

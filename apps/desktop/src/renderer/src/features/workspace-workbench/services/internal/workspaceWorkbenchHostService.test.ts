@@ -258,6 +258,10 @@ test("workspace app external user project API exposes live project state", () =>
     workspaceAppExternalUserProjectApiSource,
     /subscribe: \(listener\) =>\s+service\.subscribe\(\(\) => \{\s+listener\(cloneWorkspaceUserProjectServiceSnapshot\(service\)\);/
   );
+  assert.match(
+    workspaceAppExternalUserProjectApiSource,
+    /move: \(input\) => service\.moveProject\(input\)/
+  );
 });
 
 test("workspace app external at query preserves explicit provider filters", () => {

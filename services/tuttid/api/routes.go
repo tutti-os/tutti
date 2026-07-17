@@ -129,26 +129,7 @@ func RegisterRoutes(mux *http.ServeMux, routes Routes) {
 
 	registerAgentTargetRoutes(mux, wrapper)
 
-	mux.HandleFunc("/v1/user-projects", func(w http.ResponseWriter, r *http.Request) {
-		switch r.Method {
-		case http.MethodGet:
-			wrapper.ListUserProjects(w, r)
-		case http.MethodPost:
-			wrapper.UseUserProject(w, r)
-		case http.MethodDelete:
-			wrapper.DeleteUserProject(w, r)
-		default:
-			tuttitypes.WriteMethodNotAllowed(w)
-		}
-	})
-
-	mux.HandleFunc("/v1/user-projects/check", func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodPost {
-			tuttitypes.WriteMethodNotAllowed(w)
-			return
-		}
-		wrapper.CheckUserProjectPath(w, r)
-	})
+	registerUserProjectRoutes(mux, wrapper)
 
 	mux.HandleFunc("/v1/events/ws", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet {

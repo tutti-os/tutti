@@ -38,6 +38,7 @@ const schemaMigrationDesktopPreferencesShowAppDeveloperSourcesV1 = "desktop_pref
 const schemaMigrationDesktopPreferencesAgentConversationDetailModeV1 = "desktop_preferences_agent_conversation_detail_mode_v1"
 const schemaMigrationDesktopPreferencesFeatureFlagsV1 = "desktop_preferences_feature_flags_v1"
 const schemaMigrationUserProjectsV1 = "user_projects_v1"
+const schemaMigrationUserProjectsV2 = "user_projects_v2"
 const schemaMigrationWorkspaceAppsV1 = "workspace_apps_v1"
 const schemaMigrationWorkspaceAppsV2 = "workspace_apps_v2"
 const schemaMigrationWorkspaceAppsV3 = "workspace_apps_v3"
@@ -166,6 +167,9 @@ INSERT OR IGNORE INTO tuttid_schema_migrations (id, applied_at_unix_ms)
 	}
 
 	if err := s.applyUserProjectsV1(ctx); err != nil {
+		return err
+	}
+	if err := s.applyUserProjectsV2(ctx); err != nil {
 		return err
 	}
 
@@ -610,6 +614,46 @@ INSERT INTO tuttid_schema_migrations (id, applied_at_unix_ms)
 		return fmt.Errorf("migrate workspace database for user projects: %w", err)
 	}
 
+	return nil
+}
+
+func (s *SQLiteStore) applyUserProjectsV2(ctx context.Context) error {
+	applied, err := s.hasMigration(ctx, schemaMigrationUserProjectsV2)
+	if err != nil {
+		return err
+	}
+	if applied {
+		return nil
+	}
+
+	tx, err := s.writeDB.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin user project order migration: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+	if _, err := tx.ExecContext(ctx, `ALTER TABLE user_projects ADD COLUMN sort_order INTEGER NOT NULL DEFAULT 0`); err != nil {
+		return fmt.Errorf("add user project sort order: %w", err)
+	}
+	if _, err := tx.ExecContext(ctx, `
+WITH ordered AS (
+  SELECT id, ROW_NUMBER() OVER (
+    ORDER BY last_used_at_unix_ms DESC, updated_at_unix_ms DESC, label ASC, id ASC
+  ) - 1 AS next_sort_order
+  FROM user_projects
+)
+UPDATE user_projects
+SET sort_order = (SELECT next_sort_order FROM ordered WHERE ordered.id = user_projects.id)
+`); err != nil {
+		return fmt.Errorf("backfill user project sort order: %w", err)
+	}
+	if _, err := tx.ExecContext(ctx, `
+INSERT INTO tuttid_schema_migrations (id, applied_at_unix_ms) VALUES (?, ?)
+`, schemaMigrationUserProjectsV2, unixMs(time.Now().UTC())); err != nil {
+		return fmt.Errorf("record user project order migration: %w", err)
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit user project order migration: %w", err)
+	}
 	return nil
 }
 

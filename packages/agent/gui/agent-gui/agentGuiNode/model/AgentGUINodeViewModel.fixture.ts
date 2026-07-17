@@ -93,6 +93,7 @@ export function groupAgentGUINodeViewModelFixture(
       goalClearNoticeSequence: flat.goalClearNoticeSequence ?? 0,
       isDeletingConversation: flat.isDeletingConversation,
       isDeletingProjectConversations: flat.isDeletingProjectConversations,
+      isUserProjectMutationPending: flat.isUserProjectMutationPending ?? false,
       pendingDeleteConversation: flat.pendingDeleteConversation,
       pendingDeleteProjectConversations: flat.pendingDeleteProjectConversations
     }

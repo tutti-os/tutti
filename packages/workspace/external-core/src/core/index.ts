@@ -23,7 +23,10 @@ import {
   type TuttiExternalWorkspaceFeature,
   type TuttiExternalWorkspaceOpenFeatureInput
 } from "../contracts/index.ts";
-import type { WorkspaceUserProjectSelectionPreparationInput } from "@tutti-os/workspace-user-project/contracts";
+import type {
+  WorkspaceUserProjectMoveInput,
+  WorkspaceUserProjectSelectionPreparationInput
+} from "@tutti-os/workspace-user-project/contracts";
 
 export {
   tuttiExternalAtProviderIds,
@@ -327,6 +330,31 @@ export function normalizeTuttiExternalUserProjectPathInput(
   }
   return {
     path: normalizeRequiredString(input.path, `userProjects.${operation} path`)
+  };
+}
+
+export function normalizeTuttiExternalUserProjectMoveInput(
+  input: unknown
+): WorkspaceUserProjectMoveInput {
+  if (!isRecord(input)) {
+    throw new Error("userProjects.move input must be an object.");
+  }
+  if (!("beforeProjectId" in input)) {
+    throw new Error("userProjects.move beforeProjectId is required.");
+  }
+  const projectId = normalizeRequiredString(
+    input.projectId,
+    "userProjects.move projectId"
+  );
+  if (input.beforeProjectId === null) {
+    return { beforeProjectId: null, projectId };
+  }
+  return {
+    beforeProjectId: normalizeRequiredString(
+      input.beforeProjectId,
+      "userProjects.move beforeProjectId"
+    ),
+    projectId
   };
 }
 

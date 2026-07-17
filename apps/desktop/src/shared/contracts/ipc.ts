@@ -64,6 +64,7 @@ import type {
 import type {
   WorkspaceUserProject,
   WorkspaceUserProjectDefaultSelection,
+  WorkspaceUserProjectMoveInput,
   WorkspaceUserProjectPathCheck,
   WorkspaceUserProjectSelectionPreparation,
   WorkspaceUserProjectSelectionPreparationInput,
@@ -113,6 +114,7 @@ export const desktopIpcChannels = {
       "workspace-app-user-projects:get-default-selection",
     userProjectsGetSnapshot: "workspace-app-user-projects:get-snapshot",
     userProjectsList: "workspace-app-user-projects:list",
+    userProjectsMove: "workspace-app-user-projects:move",
     userProjectsPrepareSelection:
       "workspace-app-user-projects:prepare-selection",
     userProjectsRefresh: "workspace-app-user-projects:refresh",
@@ -850,6 +852,8 @@ export interface DesktopInvokePayloadByChannel {
   [desktopIpcChannels.appExternal.userProjectsGetSnapshot]: undefined;
   [desktopIpcChannels.appExternal.userProjectsList]: undefined;
   [desktopIpcChannels.appExternal
+    .userProjectsMove]: WorkspaceUserProjectMoveInput;
+  [desktopIpcChannels.appExternal
     .userProjectsPrepareSelection]: WorkspaceUserProjectSelectionPreparationInput;
   [desktopIpcChannels.appExternal.userProjectsRefresh]: undefined;
   [desktopIpcChannels.appExternal
@@ -1004,6 +1008,7 @@ export interface DesktopInvokeResultByChannel {
   [desktopIpcChannels.appExternal.userProjectsList]: {
     projects: WorkspaceUserProject[];
   };
+  [desktopIpcChannels.appExternal.userProjectsMove]: void;
   [desktopIpcChannels.appExternal
     .userProjectsPrepareSelection]: WorkspaceUserProjectSelectionPreparation;
   [desktopIpcChannels.appExternal

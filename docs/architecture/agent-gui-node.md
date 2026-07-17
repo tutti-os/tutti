@@ -1629,6 +1629,22 @@ sections come from current `userProjects` and use the stable
 `project:/canonical/path` `sectionKey`; the Chats section uses
 `conversations`. This inventory is the durable registered-project list; rail
 loading must not probe project paths or implicitly remove unavailable folders.
+The daemon-owned `user_projects.sort_order` is the single global project order.
+New projects enter at the front, repeated use updates compatibility timestamps
+without moving them, and delete/move transactions rewrite a continuous order.
+Every renderer window mirrors the complete ordered snapshot in its one
+workspace-user-project service store. A drop updates that store optimistically,
+then `user.project.updated` broadcasts the committed complete snapshot to every
+window; project selectors, file-manager locations, AgentGUI, and workspace-app
+bridges consume that same store rather than keeping another persistent order.
+An event received while a move is in flight is held until the move response is
+reconciled, and a conflicting held snapshot triggers one authoritative refresh.
+The same renderer service snapshot owns `isMutationPending` for move and
+project removal. Every AgentGUI rail in that renderer subscribes to this flag
+and disables new project drags for the full mutation lifetime; per-Rail drag
+state is only transient interaction state, not the shared mutation lock.
+Move failures deliberately retain the current window's optimistic order until a
+later reload and produce diagnostics without user-visible error UI.
 Path availability and explicit removal belong to the user-project domain. The
 daemon pages sessions by `rail_section_key`, so AgentGUI
 must render returned section props and use backend `hasMore`/`nextCursor`
@@ -1681,8 +1697,11 @@ the search controller stores only result ids, cursor, and request state, then
 the rail joins those ids to canonical entities. It must not recreate the old
 conversation-summary cache. An initial backend-search failure renders a
 localized retry action; retry reissues the current target-scoped query instead
-of presenting the failure as an empty result. Search grouping renders only sections containing
-matching rows; empty user-project and Chats sections remain hidden. Hosts without `listSessionsPage`, including
+of presenting the failure as an empty result. Search and agent-target filtering
+retain every registered user-project title even when its filtered session items
+are empty, so the durable project order remains visible and draggable. Pinned
+stays above all projects and Chats stays after them. Hosts without
+`listSessionsPage`, including
 preview-only hosts, may fall back to local title filtering of loaded rows.
 Ordinary section pages and backend search pages share one deterministic order:
 `latestTurn.startedAtUnixMs DESC`, falling back to
@@ -1795,7 +1814,11 @@ response owns bootstrap membership and must upsert returned entities into the
 workspace engine before publishing membership ids. Once reconciliation is ready,
 later canonical membership mutations continue through the targeted refresh path.
 The aggregate first-page section query is reserved for workspace, rail filter,
-or user-project inventory changes. Session membership changes use only the
+or user-project inventory changes. Its user-project cache identity is based on
+the project set, not array order: a pure project reorder must not refetch section
+pages or enter loading because `userProjects` owns templates, labels, and order,
+while `sessionSections` owns only membership, counts, and pagination. Session
+membership changes use only the
 affected section/pinned first-page endpoints; Show more continues to use the
 same page endpoints with its cursor.
 Pending activation becoming canonical is one of those session membership

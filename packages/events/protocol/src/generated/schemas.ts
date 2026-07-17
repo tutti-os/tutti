@@ -349,6 +349,56 @@ export const preferencesDesktopPreferencesSchema = {
   }
 } as const;
 
+export const userUserProjectSchema = {
+  $schema: "https://json-schema.org/draft/2020-12/schema",
+  $id: "https://tutti.dev/schemas/events/topics/user/user-project.schema.json",
+  title: "UserProject",
+  type: "object",
+  additionalProperties: false,
+  required: [
+    "id",
+    "path",
+    "label",
+    "sectionKey",
+    "createdAtUnixMs",
+    "updatedAtUnixMs",
+    "lastUsedAtUnixMs"
+  ],
+  properties: {
+    id: {
+      type: "string",
+      minLength: 1
+    },
+    path: {
+      type: "string",
+      minLength: 1
+    },
+    label: {
+      type: "string",
+      minLength: 1
+    },
+    sectionKey: {
+      type: "string",
+      minLength: 1
+    },
+    createdAtUnixMs: {
+      type: "integer",
+      format: "int64",
+      minimum: 0
+    },
+    updatedAtUnixMs: {
+      type: "integer",
+      format: "int64",
+      minimum: 0
+    },
+    lastUsedAtUnixMs: {
+      type: "integer",
+      format: "int64",
+      minimum: 0
+    }
+  }
+} as const;
+
 export const workspaceWorkspaceAppFactoryJobSchema = {
   $schema: "https://json-schema.org/draft/2020-12/schema",
   $id: "https://tutti.dev/schemas/events/workspace/workspace-app-factory-job.schema.json",
@@ -2021,6 +2071,66 @@ export const preferencesDesktopUpdatedPayloadSchema = {
   }
 } as const;
 
+export const userProjectUpdatedPayloadSchema = {
+  type: "object",
+  additionalProperties: false,
+  required: ["projects"],
+  properties: {
+    projects: {
+      type: "array",
+      items: {
+        $schema: "https://json-schema.org/draft/2020-12/schema",
+        $id: "https://tutti.dev/schemas/events/topics/user/user-project.schema.json",
+        title: "UserProject",
+        type: "object",
+        additionalProperties: false,
+        required: [
+          "id",
+          "path",
+          "label",
+          "sectionKey",
+          "createdAtUnixMs",
+          "updatedAtUnixMs",
+          "lastUsedAtUnixMs"
+        ],
+        properties: {
+          id: {
+            type: "string",
+            minLength: 1
+          },
+          path: {
+            type: "string",
+            minLength: 1
+          },
+          label: {
+            type: "string",
+            minLength: 1
+          },
+          sectionKey: {
+            type: "string",
+            minLength: 1
+          },
+          createdAtUnixMs: {
+            type: "integer",
+            format: "int64",
+            minimum: 0
+          },
+          updatedAtUnixMs: {
+            type: "integer",
+            format: "int64",
+            minimum: 0
+          },
+          lastUsedAtUnixMs: {
+            type: "integer",
+            format: "int64",
+            minimum: 0
+          }
+        }
+      }
+    }
+  }
+} as const;
+
 export const workspaceAppUpdatedPayloadSchema = {
   type: "object",
   additionalProperties: false,
@@ -2768,6 +2878,7 @@ export const businessEventPayloadSchemas = {
   "preferences.desktop.update.requested":
     preferencesDesktopUpdateRequestedPayloadSchema,
   "preferences.desktop.updated": preferencesDesktopUpdatedPayloadSchema,
+  "user.project.updated": userProjectUpdatedPayloadSchema,
   "workspace.app.updated": workspaceAppUpdatedPayloadSchema,
   "workspace.appfactory.job.updated":
     workspaceAppfactoryJobUpdatedPayloadSchema,

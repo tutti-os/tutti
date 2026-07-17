@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	userprojectbiz "github.com/tutti-os/tutti/services/tuttid/biz/userproject"
+	workspacedata "github.com/tutti-os/tutti/services/tuttid/data/workspace"
 )
 
 func TestServiceUseNormalizesDirectoryAndPersistsRecentProject(t *testing.T) {
@@ -44,6 +45,26 @@ func TestServiceUseNormalizesDirectoryAndPersistsRecentProject(t *testing.T) {
 	}
 }
 
+func TestServiceUseDoesNotRollBackWhenPublishFails(t *testing.T) {
+	projectDir := filepath.Join(t.TempDir(), "tutti")
+	if err := os.MkdirAll(projectDir, 0o755); err != nil {
+		t.Fatalf("MkdirAll() error = %v", err)
+	}
+	store := &recordingUserProjectStore{
+		projects: []userprojectbiz.Project{{ID: "stored"}},
+	}
+	publisher := &recordingUserProjectPublisher{err: errors.New("event unavailable")}
+	service := Service{Store: store, Publisher: publisher}
+
+	project, err := service.Use(context.Background(), UseInput{Path: projectDir})
+	if err != nil {
+		t.Fatalf("Use() error = %v", err)
+	}
+	if store.put.Project.ID != project.ID || len(publisher.snapshots) != 1 {
+		t.Fatalf("project = %#v put = %#v snapshots = %#v", project, store.put.Project, publisher.snapshots)
+	}
+}
+
 func TestServiceUseRejectsInvalidPath(t *testing.T) {
 	service := Service{Store: &recordingUserProjectStore{}}
 
@@ -72,6 +93,31 @@ func TestServiceUseRejectsMissingOrFilePath(t *testing.T) {
 	}
 }
 
+func TestServiceUseManyPreservesInputOrderForFrontInsertion(t *testing.T) {
+	root := t.TempDir()
+	first := filepath.Join(root, "first")
+	second := filepath.Join(root, "second")
+	if err := os.MkdirAll(first, 0o755); err != nil {
+		t.Fatalf("MkdirAll(first) error = %v", err)
+	}
+	if err := os.MkdirAll(second, 0o755); err != nil {
+		t.Fatalf("MkdirAll(second) error = %v", err)
+	}
+	store := &recordingUserProjectStore{}
+	service := Service{Store: store}
+
+	errorsByIndex := service.UseMany(context.Background(), UseManyInput{Paths: []string{first, second}})
+	if len(errorsByIndex) != 2 || errorsByIndex[0] != nil || errorsByIndex[1] != nil {
+		t.Fatalf("UseMany() errors = %#v, want two nil entries", errorsByIndex)
+	}
+	if len(store.putProjects) != 2 || store.putProjects[0].Label != "second" || store.putProjects[1].Label != "first" {
+		t.Fatalf("put projects = %#v, want reverse writes for stable front insertion", store.putProjects)
+	}
+	if store.putProjects[1].LastUsedAtUnixMS <= store.putProjects[0].LastUsedAtUnixMS {
+		t.Fatalf("last used times = [%d, %d], want original first input newer", store.putProjects[0].LastUsedAtUnixMS, store.putProjects[1].LastUsedAtUnixMS)
+	}
+}
+
 func TestServiceDeleteNormalizesPathAndRemovesRecentProject(t *testing.T) {
 	ctx := context.Background()
 	root := t.TempDir()
@@ -92,6 +138,25 @@ func TestServiceDeleteNormalizesPathAndRemovesRecentProject(t *testing.T) {
 
 	if strings.Join(store.deletedPaths, ",") != expectedPath {
 		t.Fatalf("deleted paths = %#v, want %q", store.deletedPaths, expectedPath)
+	}
+}
+
+func TestServiceDeleteDoesNotRollBackWhenPublishFails(t *testing.T) {
+	projectDir := filepath.Join(t.TempDir(), "tutti")
+	if err := os.MkdirAll(projectDir, 0o755); err != nil {
+		t.Fatalf("MkdirAll() error = %v", err)
+	}
+	store := &recordingUserProjectStore{
+		projects: []userprojectbiz.Project{{ID: "remaining"}},
+	}
+	publisher := &recordingUserProjectPublisher{err: errors.New("event unavailable")}
+	service := Service{Store: store, Publisher: publisher}
+
+	if err := service.Delete(context.Background(), DeleteInput{Path: projectDir}); err != nil {
+		t.Fatalf("Delete() error = %v", err)
+	}
+	if len(store.deletedPaths) != 1 || len(publisher.snapshots) != 1 {
+		t.Fatalf("deleted paths = %#v snapshots = %#v", store.deletedPaths, publisher.snapshots)
 	}
 }
 
@@ -138,6 +203,33 @@ func TestServiceDeleteRejectsInvalidPath(t *testing.T) {
 	err := service.Delete(context.Background(), DeleteInput{Path: "   "})
 	if !errors.Is(err, ErrInvalidArgument) {
 		t.Fatalf("Delete() error = %v, want ErrInvalidArgument", err)
+	}
+}
+
+func TestServiceMovePublishesOrderedSnapshotAndIgnoresPublishFailure(t *testing.T) {
+	before := "alpha"
+	projects := []userprojectbiz.Project{{ID: "beta"}, {ID: "alpha"}}
+	store := &recordingUserProjectStore{projects: projects}
+	publisher := &recordingUserProjectPublisher{err: errors.New("event unavailable")}
+	service := Service{Store: store, Publisher: publisher}
+
+	moved, err := service.Move(context.Background(), MoveInput{
+		ProjectID:       "beta",
+		BeforeProjectID: &before,
+	})
+	if err != nil {
+		t.Fatalf("Move() error = %v", err)
+	}
+	if len(moved) != 2 || len(publisher.snapshots) != 1 || publisher.snapshots[0][0].ID != "beta" {
+		t.Fatalf("moved = %#v snapshots = %#v", moved, publisher.snapshots)
+	}
+}
+
+func TestServiceMoveRejectsUnknownProject(t *testing.T) {
+	store := &recordingUserProjectStore{moveErr: workspacedata.ErrUserProjectNotFound}
+	service := Service{Store: store}
+	if _, err := service.Move(context.Background(), MoveInput{ProjectID: "unknown"}); !errors.Is(err, ErrInvalidArgument) {
+		t.Fatalf("Move() error = %v, want ErrInvalidArgument", err)
 	}
 }
 
@@ -221,6 +313,8 @@ type recordingUserProjectStore struct {
 	put          struct {
 		Project userprojectbiz.Project
 	}
+	moveErr     error
+	putProjects []userprojectbiz.Project
 }
 
 func (s *recordingUserProjectStore) DeleteUserProject(_ context.Context, id string) error {
@@ -237,8 +331,23 @@ func (s *recordingUserProjectStore) ListUserProjects(context.Context) ([]userpro
 	return s.projects, nil
 }
 
+func (s *recordingUserProjectStore) MoveUserProject(_ context.Context, _ string, _ *string) ([]userprojectbiz.Project, error) {
+	return s.projects, s.moveErr
+}
+
+type recordingUserProjectPublisher struct {
+	err       error
+	snapshots [][]userprojectbiz.Project
+}
+
+func (p *recordingUserProjectPublisher) PublishUserProjectUpdated(_ context.Context, projects []userprojectbiz.Project) error {
+	p.snapshots = append(p.snapshots, append([]userprojectbiz.Project(nil), projects...))
+	return p.err
+}
+
 func (s *recordingUserProjectStore) PutUserProject(_ context.Context, project userprojectbiz.Project) (userprojectbiz.Project, error) {
 	s.put.Project = project
+	s.putProjects = append(s.putProjects, project)
 	return project, nil
 }
 

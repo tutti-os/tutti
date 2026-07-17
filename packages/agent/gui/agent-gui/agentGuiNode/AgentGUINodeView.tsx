@@ -10,7 +10,6 @@ import {
 } from "react";
 import { TooltipProvider } from "@tutti-os/ui-system";
 import { openWorkspaceSettingsPanel } from "../../shared/workspaceSettingsPanel/workspaceSettingsPanelStore";
-import { SettingsLinedIcon } from "../../app/renderer/components/icons/SettingsLinedIcon";
 import {
   AgentTargetPresentationProvider,
   type AgentMessageMarkdownAgentTarget
@@ -185,6 +184,7 @@ export function AgentGUINodeView({
     actions.toggleConversationPinned
   );
   const removeProject = useStableEventCallback(actions.removeProject);
+  const moveProject = useStableEventCallback(actions.moveProject);
   const confirmDeleteProjectConversations = useStableEventCallback(
     actions.confirmDeleteProjectConversations
   );
@@ -401,17 +401,15 @@ export function AgentGUINodeView({
   const effectiveConversationRailWidthPx = conversationRailCollapsed
     ? 0
     : visualConversationRailWidthPx;
-  const showProviderRail = true;
-  const renderProviderRail = showProviderRail && !conversationRailCollapsed;
+  const renderProviderRail = !conversationRailCollapsed;
 
   const layoutStyle = {
     "--agent-gui-conversation-rail-width": `${effectiveConversationRailWidthPx}px`,
     "--agent-gui-conversation-rail-content-width": `${visualConversationRailWidthPx}px`,
     "--agent-gui-detail-min-width": `${detailMinWidthPx}px`,
     "--agent-gui-provider-rail-width": renderProviderRail ? "52px" : "0px",
-    gridTemplateColumns: showProviderRail
-      ? "var(--agent-gui-provider-rail-width) var(--agent-gui-conversation-rail-width) minmax(var(--agent-gui-detail-min-width), 1fr)"
-      : "var(--agent-gui-conversation-rail-width) minmax(var(--agent-gui-detail-min-width), 1fr)"
+    gridTemplateColumns:
+      "var(--agent-gui-provider-rail-width) var(--agent-gui-conversation-rail-width) minmax(var(--agent-gui-detail-min-width), 1fr)"
   } as CSSProperties;
   const effectiveRailConfigProvider =
     railConfigProvider === undefined
@@ -422,7 +420,6 @@ export function AgentGUINodeView({
   const shouldShowProviderRailConfigButton =
     viewModel.rail.conversationFilter.kind === "all" ||
     viewModel.rail.selectedAgentTarget?.disabled !== true;
-  const shouldShowProviderRailConfigMenu = shouldShowProviderRailConfigButton;
   const effectiveProviderAuthAccountLabel = useMemo(() => {
     const provider =
       (effectiveRailConfigProvider ?? viewModel.shell.data.provider)?.trim() ??
@@ -485,6 +482,8 @@ export function AgentGUINodeView({
       isDeletingConversation: viewModel.operations.isDeletingConversation,
       isDeletingProjectConversations:
         viewModel.operations.isDeletingProjectConversations,
+      isUserProjectMutationPending:
+        viewModel.operations.isUserProjectMutationPending,
       labels,
       workspaceUserProjectI18n,
       uiLanguage,
@@ -502,6 +501,7 @@ export function AgentGUINodeView({
       onToggleConversationPinned: toggleConversationPinned,
       onMarkConversationUnread: actions.markConversationUnread,
       onRemoveProject: removeProject,
+      onMoveProject: moveProject,
       onConfirmDeleteProjectConversations: confirmDeleteProjectConversations,
       onConfirmDeleteConversations: confirmDeleteConversations,
       onRequestDeleteConversation: requestDeleteConversation,
@@ -526,6 +526,7 @@ export function AgentGUINodeView({
       actions.updateConversationFilter,
       previewMode,
       removeProject,
+      moveProject,
       requestCreateConversation,
       requestDeleteConversation,
       requestRenameConversation,
@@ -542,6 +543,7 @@ export function AgentGUINodeView({
       viewModel.rail.activeConversationId,
       viewModel.operations.isDeletingConversation,
       viewModel.operations.isDeletingProjectConversations,
+      viewModel.operations.isUserProjectMutationPending,
       viewModel.rail.isLoadingConversations,
       viewModel.operations.pendingDeleteConversation?.id,
       workspaceUserProjectI18n
@@ -578,99 +580,78 @@ export function AgentGUINodeView({
           inert={previewMode ? true : undefined}
           style={layoutStyle}
         >
-          {showProviderRail ? (
-            <aside
-              className={`${styles.providerRailPanel} nodrag tsh-desktop-no-drag`}
-              aria-label={labels.providerSwitchLabel}
-              aria-hidden={conversationRailCollapsed ? "true" : undefined}
-              inert={conversationRailCollapsed ? true : undefined}
-            >
-              <AgentGUIProviderRail
-                activeConversation={viewModel.rail.activeConversation}
-                activeConversationId={viewModel.rail.activeConversationId}
-                conversationFilter={viewModel.rail.conversationFilter}
-                conversations={viewModel.rail.conversations}
-                labels={labels}
-                previewMode={previewMode}
-                selectedAgentTarget={viewModel.rail.selectedAgentTarget}
-                agentTargets={viewModel.rail.agentTargets}
-                agentTargetsLoading={viewModel.rail.agentTargetsLoading}
-                providerRailMode={viewModel.rail.providerRailMode}
-                renderProviderRailEmpty={renderProviderRailEmpty}
-                providerRailAllPresentation={providerRailAllPresentation}
-                comingSoonProviders={viewModel.rail.comingSoonProviders}
-                managerOpen={providerManagerOpen}
-                onManagerOpenChange={setProviderManagerOpen}
-                onSelectHomeComposerAgentTarget={
-                  actions.selectHomeComposerAgentTarget
-                }
-                onSelectConversationFilterTarget={
-                  actions.selectConversationFilterTarget
-                }
-                onUpdateConversationFilter={actions.updateConversationFilter}
-                onRequestComposerFocus={requestComposerFocus}
-              />
-              {renderSidebarFooter ? (
-                <div
-                  className={`${styles.providerRailFooter} ${styles.providerRailSidebarFooter} nodrag tsh-desktop-no-drag`}
-                  data-testid="agent-gui-sidebar-footer-slot"
-                >
-                  {renderSidebarFooter({
-                    currentUserId: viewModel.shell.currentUserId,
-                    activeConversation: viewModel.rail.activeConversation
-                  })}
-                </div>
-              ) : null}
-              {shouldShowProviderRailConfigButton ? (
-                <div
-                  className={`${styles.providerRailFooter} ${styles.providerRailConfigFooter} nodrag tsh-desktop-no-drag`}
-                  data-testid="agent-gui-config-footer"
-                >
-                  {shouldShowProviderRailConfigMenu ? (
-                    <AgentGUIConfigMenu
-                      environmentSetupVisible={environmentSetupVisible}
-                      labels={labels}
-                      previewMode={previewMode}
-                      providerScopedActionsVisible={
-                        viewModel.rail.conversationFilter.kind !== "all"
-                      }
-                      slashStatusLimits={effectiveRailSlashStatusLimits}
-                      slashStatusLimitsLoading={slashStatusLimitsLoading}
-                      slashStatusUsageCapturedAtUnixMs={
-                        slashStatusUsageCapturedAtUnixMs
-                      }
-                      slashStatusUsageDidFail={slashStatusUsageDidFail}
-                      slashStatusUsageAttempted={slashStatusUsageAttempted}
-                      provider={effectiveRailConfigProvider}
-                      providerAuthAccountLabel={
-                        effectiveProviderAuthAccountLabel
-                      }
-                      onAgentConfigMenuOpen={onAgentConfigMenuOpen}
-                      onAgentUsageRefresh={onAgentUsageRefresh}
-                      onOpenAgentManager={() => setProviderManagerOpen(true)}
-                      onOpenAgentEnvSetup={openAgentEnvSetup}
-                      onOpenAgentSettings={openAgentSettings}
-                    />
-                  ) : (
-                    <button
-                      type="button"
-                      aria-label={labels.agentSettingsMenu}
-                      className={`${styles.providerRailConfigButton} nodrag tsh-desktop-no-drag`}
-                      title={labels.agentSettingsMenu}
-                      disabled={previewMode}
-                      onClick={openAgentSettings}
-                    >
-                      <SettingsLinedIcon
-                        aria-hidden="true"
-                        width={18}
-                        height={18}
-                      />
-                    </button>
-                  )}
-                </div>
-              ) : null}
-            </aside>
-          ) : null}
+          <aside
+            className={`${styles.providerRailPanel} nodrag tsh-desktop-no-drag`}
+            aria-label={labels.providerSwitchLabel}
+            aria-hidden={conversationRailCollapsed ? "true" : undefined}
+            inert={conversationRailCollapsed ? true : undefined}
+          >
+            <AgentGUIProviderRail
+              activeConversation={viewModel.rail.activeConversation}
+              activeConversationId={viewModel.rail.activeConversationId}
+              conversationFilter={viewModel.rail.conversationFilter}
+              conversations={viewModel.rail.conversations}
+              labels={labels}
+              previewMode={previewMode}
+              selectedAgentTarget={viewModel.rail.selectedAgentTarget}
+              agentTargets={viewModel.rail.agentTargets}
+              agentTargetsLoading={viewModel.rail.agentTargetsLoading}
+              providerRailMode={viewModel.rail.providerRailMode}
+              renderProviderRailEmpty={renderProviderRailEmpty}
+              providerRailAllPresentation={providerRailAllPresentation}
+              comingSoonProviders={viewModel.rail.comingSoonProviders}
+              managerOpen={providerManagerOpen}
+              onManagerOpenChange={setProviderManagerOpen}
+              onSelectHomeComposerAgentTarget={
+                actions.selectHomeComposerAgentTarget
+              }
+              onSelectConversationFilterTarget={
+                actions.selectConversationFilterTarget
+              }
+              onUpdateConversationFilter={actions.updateConversationFilter}
+              onRequestComposerFocus={requestComposerFocus}
+            />
+            {renderSidebarFooter ? (
+              <div
+                className={`${styles.providerRailFooter} ${styles.providerRailSidebarFooter} nodrag tsh-desktop-no-drag`}
+                data-testid="agent-gui-sidebar-footer-slot"
+              >
+                {renderSidebarFooter({
+                  currentUserId: viewModel.shell.currentUserId,
+                  activeConversation: viewModel.rail.activeConversation
+                })}
+              </div>
+            ) : null}
+            {shouldShowProviderRailConfigButton ? (
+              <div
+                className={`${styles.providerRailFooter} ${styles.providerRailConfigFooter} nodrag tsh-desktop-no-drag`}
+                data-testid="agent-gui-config-footer"
+              >
+                <AgentGUIConfigMenu
+                  environmentSetupVisible={environmentSetupVisible}
+                  labels={labels}
+                  previewMode={previewMode}
+                  providerScopedActionsVisible={
+                    viewModel.rail.conversationFilter.kind !== "all"
+                  }
+                  slashStatusLimits={effectiveRailSlashStatusLimits}
+                  slashStatusLimitsLoading={slashStatusLimitsLoading}
+                  slashStatusUsageCapturedAtUnixMs={
+                    slashStatusUsageCapturedAtUnixMs
+                  }
+                  slashStatusUsageDidFail={slashStatusUsageDidFail}
+                  slashStatusUsageAttempted={slashStatusUsageAttempted}
+                  provider={effectiveRailConfigProvider}
+                  providerAuthAccountLabel={effectiveProviderAuthAccountLabel}
+                  onAgentConfigMenuOpen={onAgentConfigMenuOpen}
+                  onAgentUsageRefresh={onAgentUsageRefresh}
+                  onOpenAgentManager={() => setProviderManagerOpen(true)}
+                  onOpenAgentEnvSetup={openAgentEnvSetup}
+                  onOpenAgentSettings={openAgentSettings}
+                />
+              </div>
+            ) : null}
+          </aside>
           <aside
             id="agent-gui-conversation-rail"
             className={`${styles.railPanel}${

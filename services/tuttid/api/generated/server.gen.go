@@ -76,10 +76,10 @@ type ServerInterface interface {
 	// Accept analytics events from approved local clients
 	// (POST /v1/track)
 	TrackEvents(w http.ResponseWriter, r *http.Request)
-	// Remove a user project directory from the recent project list
+	// Remove a user project directory from the ordered project list
 	// (DELETE /v1/user-projects)
 	DeleteUserProject(w http.ResponseWriter, r *http.Request)
-	// List recently used user project directories
+	// List user project directories in durable order
 	// (GET /v1/user-projects)
 	ListUserProjects(w http.ResponseWriter, r *http.Request)
 	// Record a user project directory usage
@@ -88,6 +88,9 @@ type ServerInterface interface {
 	// Check a user project directory path without recording usage
 	// (POST /v1/user-projects/check)
 	CheckUserProjectPath(w http.ResponseWriter, r *http.Request)
+	// Move a user project within the global project order
+	// (POST /v1/user-projects/move)
+	MoveUserProject(w http.ResponseWriter, r *http.Request)
 	// List registered workspaces
 	// (GET /v1/workspaces)
 	ListWorkspaces(w http.ResponseWriter, r *http.Request)
@@ -1109,6 +1112,26 @@ func (siw *ServerInterfaceWrapper) CheckUserProjectPath(w http.ResponseWriter, r
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.CheckUserProjectPath(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// MoveUserProject operation middleware
+func (siw *ServerInterfaceWrapper) MoveUserProject(w http.ResponseWriter, r *http.Request) {
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.MoveUserProject(w, r)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -6927,6 +6950,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/user-projects", wrapper.ListUserProjects)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/user-projects", wrapper.UseUserProject)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/user-projects/check", wrapper.CheckUserProjectPath)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/user-projects/move", wrapper.MoveUserProject)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/workspaces", wrapper.ListWorkspaces)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/workspaces", wrapper.CreateWorkspace)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/workspaces/startup", wrapper.GetStartupWorkspace)
@@ -9030,6 +9054,106 @@ type CheckUserProjectPath503JSONResponse struct {
 }
 
 func (response CheckUserProjectPath503JSONResponse) VisitCheckUserProjectPathResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type MoveUserProjectRequestObject struct {
+	Body *MoveUserProjectJSONRequestBody
+}
+
+type MoveUserProjectResponseObject interface {
+	VisitMoveUserProjectResponse(w http.ResponseWriter) error
+}
+
+type MoveUserProject200JSONResponse UserProjectListResponse
+
+func (response MoveUserProject200JSONResponse) VisitMoveUserProjectResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type MoveUserProject400JSONResponse struct {
+	InvalidRequestErrorJSONResponse
+}
+
+func (response MoveUserProject400JSONResponse) VisitMoveUserProjectResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type MoveUserProject401JSONResponse struct{ UnauthorizedErrorJSONResponse }
+
+func (response MoveUserProject401JSONResponse) VisitMoveUserProjectResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type MoveUserProject405JSONResponse struct {
+	MethodNotAllowedErrorJSONResponse
+}
+
+func (response MoveUserProject405JSONResponse) VisitMoveUserProjectResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(405)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type MoveUserProject502JSONResponse struct {
+	PreferencesOperationErrorJSONResponse
+}
+
+func (response MoveUserProject502JSONResponse) VisitMoveUserProjectResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(502)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type MoveUserProject503JSONResponse struct {
+	ServiceUnavailableErrorJSONResponse
+}
+
+func (response MoveUserProject503JSONResponse) VisitMoveUserProjectResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response); err != nil {
@@ -24023,10 +24147,10 @@ type StrictServerInterface interface {
 	// Accept analytics events from approved local clients
 	// (POST /v1/track)
 	TrackEvents(ctx context.Context, request TrackEventsRequestObject) (TrackEventsResponseObject, error)
-	// Remove a user project directory from the recent project list
+	// Remove a user project directory from the ordered project list
 	// (DELETE /v1/user-projects)
 	DeleteUserProject(ctx context.Context, request DeleteUserProjectRequestObject) (DeleteUserProjectResponseObject, error)
-	// List recently used user project directories
+	// List user project directories in durable order
 	// (GET /v1/user-projects)
 	ListUserProjects(ctx context.Context, request ListUserProjectsRequestObject) (ListUserProjectsResponseObject, error)
 	// Record a user project directory usage
@@ -24035,6 +24159,9 @@ type StrictServerInterface interface {
 	// Check a user project directory path without recording usage
 	// (POST /v1/user-projects/check)
 	CheckUserProjectPath(ctx context.Context, request CheckUserProjectPathRequestObject) (CheckUserProjectPathResponseObject, error)
+	// Move a user project within the global project order
+	// (POST /v1/user-projects/move)
+	MoveUserProject(ctx context.Context, request MoveUserProjectRequestObject) (MoveUserProjectResponseObject, error)
 	// List registered workspaces
 	// (GET /v1/workspaces)
 	ListWorkspaces(ctx context.Context, request ListWorkspacesRequestObject) (ListWorkspacesResponseObject, error)
@@ -25093,6 +25220,39 @@ func (sh *strictHandler) CheckUserProjectPath(w http.ResponseWriter, r *http.Req
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(CheckUserProjectPathResponseObject); ok {
 		if err := validResponse.VisitCheckUserProjectPathResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// MoveUserProject operation middleware
+func (sh *strictHandler) MoveUserProject(w http.ResponseWriter, r *http.Request) {
+	var request MoveUserProjectRequestObject
+
+	var body MoveUserProjectJSONRequestBody
+	decoder := json.NewDecoder(r.Body)
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.MoveUserProject(ctx, request.(MoveUserProjectRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "MoveUserProject")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(MoveUserProjectResponseObject); ok {
+		if err := validResponse.VisitMoveUserProjectResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

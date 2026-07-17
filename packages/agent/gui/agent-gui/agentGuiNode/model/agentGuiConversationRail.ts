@@ -412,7 +412,7 @@ export function projectConversationRailSectionsByExactKey(input: {
     conversations: input.conversations,
     labels: input.labels,
     sections,
-    includeEmptySections: input.includeEmptySections
+    includeEmptySections: true
   });
 }
 
@@ -505,7 +505,10 @@ export function projectConversationRailSearchSections(input: {
   labels: ConversationRailLabels;
   sections: readonly ConversationSection[];
 }): ConversationSection[] {
-  return projectConversationsByExactRailSectionKey(input);
+  return projectConversationsByExactRailSectionKey({
+    ...input,
+    includeEmptySections: true
+  });
 }
 
 export function stabilizeConversationSections(

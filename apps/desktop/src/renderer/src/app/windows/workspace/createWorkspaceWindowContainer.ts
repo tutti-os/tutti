@@ -169,6 +169,15 @@ export function createWorkspaceWindowContainer(): WorkspaceWindowContainerResult
     {
       hostFilesApi: desktopApi.host.files,
       tuttidClient,
+      eventStreamClient: tuttidEventStreamClient,
+      logDiagnostic: (payload) => {
+        void desktopApi.runtime.logTerminalDiagnostic({
+          details: { payload: JSON.stringify(payload).slice(0, 1000) },
+          event: "workspace.user-project.diagnostic",
+          level: "debug",
+          workspaceId: activeWorkspaceID
+        });
+      },
       notifications: notificationService,
       platformApi: desktopApi.platform,
       workspaceId: activeWorkspaceID

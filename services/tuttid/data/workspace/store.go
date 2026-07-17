@@ -17,6 +17,7 @@ var ErrWorkspaceNotFound = errors.New("workspace not found")
 var ErrWorkbenchSnapshotNotFound = errors.New("workspace workbench snapshot not found")
 var ErrWorkspaceAppNotFound = errors.New("workspace app not found")
 var ErrWorkspaceAppFactoryJobNotFound = errors.New("workspace app factory job not found")
+var ErrUserProjectNotFound = errors.New("user project not found")
 
 // ErrAgentTargetNotFound aliases the embedded agent store's sentinel so
 // existing errors.Is checks keep working across the delegation boundary.
@@ -86,6 +87,7 @@ type UserProjectStore interface {
 	DeleteUserProject(context.Context, string) error
 	DeleteUserProjectByPath(context.Context, string) error
 	ListUserProjects(context.Context) ([]userprojectbiz.Project, error)
+	MoveUserProject(context.Context, string, *string) ([]userprojectbiz.Project, error)
 	PutUserProject(context.Context, userprojectbiz.Project) (userprojectbiz.Project, error)
 	TouchUserProject(context.Context, string, int64) error
 }
