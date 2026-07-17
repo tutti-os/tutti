@@ -619,8 +619,10 @@ function MentionLink({
   // 标签截断时,hover 用设计系统 Tooltip 展示完整文本。trigger = 整个 chip(<a>),
   // 截断发生在内部 __main span,故在那上面测溢出。
   const tooltipText = mention.label;
+  const [failedIconUrl, setFailedIconUrl] = useState<string>();
   const { ref: mainRef, overflowing } =
     useTextOverflow<HTMLSpanElement>(tooltipText);
+
   const link = (
     <a
       {...props}
@@ -671,17 +673,23 @@ function MentionLink({
             mention.kind === "session" ? undefined : "true"
           }
         >
-          {mention.iconUrl ? (
+          {mention.iconUrl && failedIconUrl !== mention.iconUrl ? (
             <img
               src={mention.iconUrl}
               alt=""
-              className="h-full w-full object-cover"
+              className="col-start-1 row-start-1 h-full w-full object-cover"
               decoding="async"
               loading="lazy"
               draggable={false}
+              onError={() => {
+                setFailedIconUrl(mention.iconUrl);
+              }}
             />
           ) : (
-            <span className="tsh-agent-object-token__kind-icon h-4 w-4" />
+            <span
+              className="tsh-agent-object-token__kind-icon col-start-1 row-start-1 h-4 w-4"
+              data-agent-mention-fallback-icon="true"
+            />
           )}
         </span>
       ) : (

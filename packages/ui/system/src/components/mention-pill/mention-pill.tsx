@@ -71,6 +71,7 @@ function MentionPill({
       : mentionPillTokenByKind[kind];
   const dataKind = mentionPillDataKindByKind[kind];
   const normalizedIconUrl = iconUrl?.trim() ?? "";
+  const [failedIconUrl, setFailedIconUrl] = React.useState<string | null>(null);
   const iconSizeClassName = "size-4";
   const iconShellClassName = isFile ? "size-4" : "size-[18px]";
 
@@ -104,25 +105,29 @@ function MentionPill({
           iconShellClassName
         )}
       >
-        {normalizedIconUrl ? (
+        {normalizedIconUrl && failedIconUrl !== normalizedIconUrl ? (
           <img
             src={normalizedIconUrl}
             alt=""
             className={cn(
-              "size-full rounded-[3px] object-cover transition-opacity",
+              "col-start-1 row-start-1 size-full rounded-[3px] object-cover transition-opacity",
               removable && "group-hover:opacity-0 group-focus-within:opacity-0"
             )}
             decoding="async"
             loading="lazy"
             draggable={false}
+            onError={() => {
+              setFailedIconUrl(normalizedIconUrl);
+            }}
           />
         ) : (
           <Icon
             className={cn(
-              "text-current transition-opacity",
+              "col-start-1 row-start-1 text-current transition-opacity",
               removable && "group-hover:opacity-0 group-focus-within:opacity-0",
               iconSizeClassName
             )}
+            data-mention-pill-fallback-icon="true"
           />
         )}
         {removable ? (

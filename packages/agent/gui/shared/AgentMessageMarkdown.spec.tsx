@@ -1311,9 +1311,22 @@ describe("AgentMessageMarkdown", () => {
     expect(
       mention?.querySelector('[data-agent-mention-app-icon="true"]')
     ).toHaveClass("h-4", "w-4");
+    const image = mention?.querySelector(
+      '[data-agent-mention-app-icon="true"] img'
+    );
+    expect(image).toHaveAttribute("src", iconUrl);
+    expect(
+      mention?.querySelector('[data-agent-mention-fallback-icon="true"]')
+    ).not.toBeInTheDocument();
+
+    fireEvent.error(image!);
+
     expect(
       mention?.querySelector('[data-agent-mention-app-icon="true"] img')
-    ).toHaveAttribute("src", iconUrl);
+    ).not.toBeInTheDocument();
+    expect(
+      mention?.querySelector('[data-agent-mention-fallback-icon="true"]')
+    ).toBeInTheDocument();
     expect(mention).toHaveTextContent("Weather");
   });
 
