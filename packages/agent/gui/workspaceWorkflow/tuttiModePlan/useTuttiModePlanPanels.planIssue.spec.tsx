@@ -2,7 +2,7 @@ import "@testing-library/jest-dom/vitest";
 import { StrictMode } from "react";
 import { render, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
-import { useTuttiPlanIssuePanel } from "./useTuttiPlanIssuePanel";
+import { useTuttiModePlanPanels } from "./useTuttiModePlanPanels";
 import {
   TuttiModePlanReviewRuntimeProvider,
   type TuttiModePlanReviewRuntime,
@@ -71,14 +71,20 @@ function createHarness(): {
 }
 
 function Probe({ sessionId }: { sessionId: string }): React.JSX.Element {
-  const { issue } = useTuttiPlanIssuePanel({
+  const { planIssue } = useTuttiModePlanPanels({
+    decidedBy: "user-1",
     workspaceId: "workspace-1",
     sourceSessionId: sessionId
   });
-  return <div data-testid="probe">{issue ? issue.issueId : "none"}</div>;
+  return (
+    <div data-testid="probe">{planIssue ? planIssue.issueId : "none"}</div>
+  );
 }
 
-describe("useTuttiPlanIssuePanel", () => {
+// The plan-issue embed rides the review panels hook lifecycle (one scope, one
+// effect); these probes pin the load/refresh semantics the embedded panel
+// depends on.
+describe("useTuttiModePlanPanels plan issue embed", () => {
   it("surfaces the loaded issue under StrictMode double-mount", async () => {
     const harness = createHarness();
     render(
@@ -111,8 +117,6 @@ describe("useTuttiPlanIssuePanel", () => {
     await waitFor(() => expect(harness.loads.length).toBeGreaterThan(0));
     const pendingA = [...harness.loads];
 
-    // The rail settles on a different conversation before the first load
-    // resolves — the exact sequence observed in the desktop logs.
     view.rerender(
       <StrictMode>
         <TuttiModePlanReviewRuntimeProvider runtime={harness.runtime}>
@@ -124,7 +128,6 @@ describe("useTuttiPlanIssuePanel", () => {
     for (const load of pendingA) {
       load.resolve(snapshotFor(load.sessionId));
     }
-    // A load for the new scope must have been issued at all.
     await waitFor(() =>
       expect(
         harness.loads.filter((load) => load.sessionId === "session-b").length
