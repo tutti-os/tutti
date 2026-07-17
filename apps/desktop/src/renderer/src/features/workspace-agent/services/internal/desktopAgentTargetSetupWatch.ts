@@ -26,6 +26,12 @@ const EMPTY_STATE: AgentHostAgentTargetSetupState = {
   failed: false
 };
 
+function isPendingSetupStatus(
+  status: AgentHostAgentTargetSetupSnapshot["status"] | undefined
+): boolean {
+  return status === "installing" || status === "authenticating";
+}
+
 export function createDesktopAgentTargetSetupWatch(
   input: DesktopAgentTargetSetupWatchInput
 ): AgentHostAgentTargetSetupWatch {
@@ -45,11 +51,7 @@ export function createDesktopAgentTargetSetupWatch(
   };
   const schedulePoll = () => {
     cancelPoll();
-    if (
-      listeners.size === 0 ||
-      (state.snapshot?.status !== "installing" &&
-        state.snapshot?.status !== "authenticating")
-    )
+    if (listeners.size === 0 || !isPendingSetupStatus(state.snapshot?.status))
       return;
     // timing: daemon install is asynchronous; snapshot is its durable progress source.
     pollTimer = setTimeout(() => void requestSnapshot(false), pollIntervalMs);
@@ -69,6 +71,7 @@ export function createDesktopAgentTargetSetupWatch(
     } catch {
       if (currentRequestId === requestId) {
         publish({ ...state, loading: false, failed: true });
+        if (isPendingSetupStatus(state.snapshot?.status)) schedulePoll();
       }
     }
   };

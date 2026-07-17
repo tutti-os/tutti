@@ -33,6 +33,7 @@ Electron startup, daemon supervision, macOS packaging, updates, and performance 
 - [macOS Gatekeeper dialogs appear during Codex provider probing](./desktop-release.md#macos-gatekeeper-dialogs-appear-during-codex-provider-probing)
 - [Electron main/preload crashes on a workspace package `.ts` export](./desktop-release.md#electron-mainpreload-crashes-on-a-workspace-package-ts-export)
 - [Desktop restart leaves an orphan tuttid](./desktop-release.md#desktop-restart-leaves-an-orphan-tuttid)
+- [Switching agent permission mode flashes Checking for updates](./desktop-release.md#switching-agent-permission-mode-flashes-checking-for-updates)
 - [App update diagnostics flood with identical download progress states](./desktop-release.md#app-update-diagnostics-flood-with-identical-download-progress-states)
 - [macOS in-app update closes Tutti but does not install the new version](./desktop-release.md#macos-in-app-update-closes-tutti-but-does-not-install-the-new-version)
 - [Desktop Performance trace export runs out of memory](./desktop-release.md#desktop-performance-trace-export-runs-out-of-memory)

@@ -298,6 +298,38 @@ information is not available yet`, but `ps` or `lsof` still shows an older
   [tuttidManager.ts](../../../apps/desktop/src/main/daemon/tuttidManager.ts)
   [main.go](../../../services/tuttid/main.go)
 
+### Switching agent permission mode flashes Checking for updates
+
+- Symptom:
+  In a packaged build, changing composer permission mode (or other remembered
+  composer defaults) briefly shows the top-right **Checking for updates** /
+  **正在检查更新** badge. Rapid switches may spam updater checks in
+  `tutti-desktop.log` (`Checking for update` next to
+  `agent.gui.composer_defaults.remembered`). Local unpackaged dev usually hides
+  this because update checks are unsupported unless `TUTTI_APP_UPDATE_DEV` is set.
+- Quick checks:
+  Confirm packaged/`supportsUpdates`. Correlate
+  `agent.gui.composer_defaults.remembered` with
+  `checking for application updates` / `application updater static feed
+configured`. Verify `updateChannel` / `updatePolicy` did not change.
+- Root cause:
+  Remembering composer defaults writes desktop preferences and emits
+  `preferences.desktop.updated`. The main-process host preferences stream used
+  to call `updateService.configure()` on every preferences event; `configure()`
+  always runs a background update check and surfaces the checking status.
+- Fix:
+  Only call `updateService.configure()` when `updateChannel` or `updatePolicy`
+  actually changed. Other preference syncs (composer defaults, locale, rail,
+  theme) must not reconfigure the updater.
+- Validation:
+  In a packaged build, switch permission mode and confirm the update badge does
+  not appear and desktop logs do not emit a new update check. Cover
+  composer-default vs channel/policy changes in
+  `desktopHostPreferencesEventStream` tests.
+- References:
+  [desktopHostPreferencesEventStream.ts](../../../apps/desktop/src/main/desktopHostPreferencesEventStream.ts)
+  [appUpdateService.ts](../../../apps/desktop/src/main/update/appUpdateService.ts)
+
 ### App update diagnostics flood with identical download progress states
 
 - Symptom:
