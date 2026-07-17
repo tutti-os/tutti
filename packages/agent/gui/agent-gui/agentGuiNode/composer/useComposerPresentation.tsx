@@ -229,6 +229,13 @@ export function useComposerPresentation(input: Input) {
     [onSubmitInteractivePrompt]
   );
 
+  // While the empty-send override is active (plan review) the send button
+  // carries explicit decision copy: an empty draft accepts, typed feedback
+  // requests changes. Icon-only otherwise.
+  const planReviewSendLabel = allowEmptySubmit
+    ? ((hasDraftContent ? labels.sendRequestChanges : labels.sendAccept) ??
+      null)
+    : null;
   const composerActionButton = shouldShowStopButton ? (
     <button
       type="button"
@@ -257,6 +264,7 @@ export function useComposerPresentation(input: Input) {
       className={styles.composerSendButton}
       data-state={sendButtonState}
       data-disabled-reason={sendDisabledReasonKey || undefined}
+      data-plan-review-label={planReviewSendLabel ? "true" : undefined}
       disabled={
         isSelectedProjectMissing ||
         submitDisabled ||
@@ -269,8 +277,8 @@ export function useComposerPresentation(input: Input) {
         hasFailedDraftLargeTexts ||
         sendButtonBusy
       }
-      aria-label={labels.send}
-      title={labels.send}
+      aria-label={planReviewSendLabel ?? labels.send}
+      title={planReviewSendLabel ?? labels.send}
       aria-busy={sendButtonBusy}
     >
       {sendButtonBusy ? (
@@ -281,6 +289,16 @@ export function useComposerPresentation(input: Input) {
           trackColor="var(--transparency-hover)"
           testId="agent-gui-composer-send-spinner"
         />
+      ) : planReviewSendLabel ? (
+        <>
+          <span
+            className="min-w-0 truncate"
+            data-testid="agent-gui-composer-send-label"
+          >
+            {planReviewSendLabel}
+          </span>
+          <SendFilledIcon />
+        </>
       ) : (
         <SendFilledIcon />
       )}

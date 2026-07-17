@@ -111,6 +111,7 @@ type CreateTaskInput struct {
 	ReasoningEffort    string
 	ExecutionDirectory string
 	DependencyTaskIDs  []string
+	Parallelizable     bool
 }
 
 type CreateTaskItemInput struct {
@@ -126,6 +127,7 @@ type CreateTaskItemInput struct {
 	ReasoningEffort    string
 	ExecutionDirectory string
 	DependencyTaskIDs  []string
+	Parallelizable     bool
 }
 
 type CreateTasksInput struct {
@@ -162,6 +164,8 @@ type UpdateTaskInput struct {
 	HasExecutionDirectory bool
 	DependencyTaskIDs     []string
 	HasDependencyTaskIDs  bool
+	Parallelizable        bool
+	HasParallelizable     bool
 	AcceptanceState       string
 	HasAcceptanceState    bool
 	AcceptanceSummary     string

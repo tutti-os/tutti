@@ -9,6 +9,8 @@ type AgentGUITuttiModeLabels = Pick<
   | "tuttiModePlanLoadFailed"
   | "tuttiModePlanPanel"
   | "tuttiModePlanRetry"
+  | "tuttiModePlanSendAccept"
+  | "tuttiModePlanSendRequestChanges"
   | "tuttiModeUpdateFailed"
   | "tuttiModeUpdateUncertain"
 >;
@@ -34,6 +36,7 @@ export function agentGUITuttiModeLabels(
       model: t("agentHost.agentGui.tuttiModePlan.model"),
       permissionMode: t("agentHost.agentGui.tuttiModePlan.permissionMode"),
       reasoningEffort: t("agentHost.agentGui.tuttiModePlan.reasoningEffort"),
+      parallelizable: t("agentHost.agentGui.tuttiModePlan.parallelizable"),
       assignmentOptionsLoading: t(
         "agentHost.agentGui.tuttiModePlan.assignmentOptionsLoading"
       ),
@@ -44,6 +47,10 @@ export function agentGUITuttiModeLabels(
       hint: t("agentHost.agentGui.tuttiModePlan.reviewHint"),
       cancel: t("agentHost.agentGui.tuttiModePlan.cancel")
     },
+    tuttiModePlanSendAccept: t("agentHost.agentGui.tuttiModePlan.sendAccept"),
+    tuttiModePlanSendRequestChanges: t(
+      "agentHost.agentGui.tuttiModePlan.sendRequestChanges"
+    ),
     tuttiModePlanLoadFailed: t("agentHost.agentGui.tuttiModePlan.loadFailed"),
     tuttiModePlanRetry: t("agentHost.agentGui.tuttiModePlan.retry")
   };

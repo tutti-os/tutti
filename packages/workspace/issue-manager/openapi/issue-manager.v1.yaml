@@ -1380,6 +1380,7 @@ components:
         - model
         - executionDirectory
         - dependencyTaskIds
+        - parallelizable
         - acceptanceState
         - acceptanceSummary
         - creatorUserId
@@ -1426,6 +1427,12 @@ components:
           items:
             type: string
             minLength: 1
+        parallelizable:
+          type: boolean
+          description: >-
+            Opts this task out of the Issue's sequential default so it may run
+            alongside other dependency-ready tasks. False keeps strict
+            sequential ordering.
         acceptanceState:
           $ref: "#/components/schemas/IssueManagerAcceptanceState"
         acceptanceSummary:
@@ -2063,6 +2070,8 @@ components:
           items:
             type: string
             minLength: 1
+        parallelizable:
+          type: boolean
     CreateIssueManagerTasksRequest:
       type: object
       additionalProperties: false
@@ -2106,6 +2115,8 @@ components:
           items:
             type: string
             minLength: 1
+        parallelizable:
+          type: boolean
         acceptanceState:
           $ref: "#/components/schemas/IssueManagerAcceptanceState"
         acceptanceSummary:

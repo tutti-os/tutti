@@ -157,6 +157,10 @@ type Task struct {
 	ReasoningEffort    string
 	ExecutionDirectory string
 	DependencyTaskIDs  []string
+	// Parallelizable marks a task that may run alongside other ready tasks
+	// even when the Issue executes sequentially. False keeps the sequential
+	// default: the task waits for its predecessors in sort order.
+	Parallelizable     bool
 	AcceptanceState    AcceptanceState
 	AcceptanceSummary  string
 	CreatorUserID      string

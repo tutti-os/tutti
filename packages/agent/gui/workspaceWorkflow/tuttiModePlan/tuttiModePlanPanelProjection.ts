@@ -87,6 +87,7 @@ export interface TuttiModePlanTask {
   reasoningEffort?: string | null;
   executionDirectory?: string | null;
   dependsOn: string[];
+  parallelizable?: boolean;
 }
 
 export interface TuttiModePlanCheckpoint {
@@ -142,6 +143,7 @@ export interface TuttiModePlanPanelTaskViewModel {
   reasoningEffort: string | null;
   executionDirectory: string | null;
   dependsOn: string[];
+  parallelizable: boolean;
 }
 
 export interface TuttiModePlanPanelViewModel {
@@ -242,7 +244,8 @@ function projectTask(
     permissionModeId: nullableString(task.permissionModeId),
     reasoningEffort: nullableString(task.reasoningEffort),
     executionDirectory: nullableString(task.executionDirectory),
-    dependsOn: [...task.dependsOn]
+    dependsOn: [...task.dependsOn],
+    parallelizable: task.parallelizable === true
   };
 }
 
