@@ -129,6 +129,10 @@ Interpretation:
   insertion
 - `resolveMention` restores editor-only label or presentation data from the
   stored mention identity
+- readonly conversation surfaces pass the same providers to
+  `RichTextReadonlyContent.triggerProviders`; it calls `resolveMention` to
+  restore presentation such as app icons while keeping serialized Markdown
+  limited to durable identity and scope
 - group ids, labels, totals, and cursors are candidate-panel metadata only;
   they must not be copied into mention identity, href, or persisted scope
 
