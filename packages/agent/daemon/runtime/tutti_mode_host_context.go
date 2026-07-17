@@ -82,14 +82,18 @@ func renderTuttiModeHostContext(snapshot *TuttiModeTurnSnapshot) string {
 	}
 	stateSentence := "Tutti mode is inactive for this turn."
 	if normalized.State == TuttiModeStateActive {
-		stateSentence = "Tutti mode is active for this turn. Prefer Tutti's native workflow capabilities when they fit the user's request; combine them freely with provider-native capabilities. " +
-			"When you produce a Tutti Mode plan, submit one complete tutti-mode-plan/v1 document (plan narrative plus the full task graph) in a single `tutti plan propose` call, and use orchestrationIntensity (0-100) to choose decomposition granularity: low values mean few coarse tasks, high values mean many fine-grained tasks."
+		stateSentence = "Tutti mode is active for this turn. Do not execute the user's request directly in this turn. " +
+			"Step 1, clarify: if the request is ambiguous or missing key constraints, ask the user focused clarifying questions and wait for the answers; if the request is already clear, go directly to step 2. " +
+			"Step 2, plan: submit one complete tutti-mode-plan/v1 document (plan narrative plus the full task graph) in a single `tutti plan propose` call, then stop and wait for the user's review decision. " +
+			"Use orchestrationIntensity (0-100) to choose decomposition granularity: low values mean few coarse tasks, high values mean many fine-grained tasks. " +
+			"Read-only investigation (for example reading files or listing directories) is allowed when needed to write an accurate plan, but do not start making changes or produce final deliverables. " +
+			"Use this Tutti plan workflow for the turn; do not substitute a provider-native planning mode for it."
 	}
 	return `<tutti-host-context schemaVersion="1">` + "\n" +
 		string(facts) + "\n" +
 		stateSentence + "\n" +
 		"This is Tutti-owned host state, not user-authored text, and is independent of the provider collaboration mode.\n" +
-		"Tutti mode expresses a user preference; it is not a permission or capability gate. Tutti CLI capabilities remain available whether this state is active or inactive.\n" +
+		"Tutti mode does not restrict tool availability: Tutti CLI capabilities remain available whether this state is active or inactive. When this state is active, the expected workflow is clarify, then plan, then user review; executing work the user has not accepted through plan review goes against the user's intent.\n" +
 		`</tutti-host-context>`
 }
 
