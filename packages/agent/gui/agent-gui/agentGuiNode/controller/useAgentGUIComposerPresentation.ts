@@ -48,6 +48,7 @@ import {
   speedSelectionFromComposerOptions
 } from "./agentGuiController.composerHelpers";
 import {
+  enforceComposerModelBindingForHomeDefaults,
   isForegroundModelOptionsLoading,
   resolveComposerSettingsPresentation,
   sanitizeComposerSettingsForTarget,
@@ -130,13 +131,22 @@ export function useAgentGUIComposerPresentation(
       drafts: input.draftSettingsBySessionId
     })
   );
+  // Home defaults additionally refuse bare models the settled provider list
+  // rejects (a plan model leaked bare into a provider bucket must fall back
+  // to the provider default, not surface as the composer default). The
+  // write-back effect below persists this correction, which also stops the
+  // rejected model from riding along in composer-options requests where the
+  // daemon would echo it back as a selected-model-only bootstrap list.
   const targetSafeNodeDefaultSettings = useStableComposerSettings(
     input.activeConversationId === null
-      ? sanitizeComposerSettingsForTarget({
-          settings: storedNodeDefaultSettings,
-          target: input.selectedComposerTargetData,
-          options: input.providerComposerOptions
-        })
+      ? enforceComposerModelBindingForHomeDefaults(
+          sanitizeComposerSettingsForTarget({
+            settings: storedNodeDefaultSettings,
+            target: input.selectedComposerTargetData,
+            options: input.providerComposerOptions
+          }),
+          input.providerComposerOptions
+        )
       : storedNodeDefaultSettings
   );
   const homeComposerSettings = useStableComposerSettings(
@@ -195,15 +205,25 @@ export function useAgentGUIComposerPresentation(
   const activeConversationDraftSettings = input.activeConversationId
     ? (input.draftSettingsBySessionId[input.activeConversationId] ?? null)
     : null;
+  const presentedDraftSettings = resolveComposerSettingsPresentation({
+    active: input.activeConversationId !== null,
+    homeSettings: homeComposerSettings,
+    optimisticSettings: activeConversationDraftSettings,
+    options: input.providerComposerOptions,
+    permissionModeId: input.activeSessionState?.permissionModeId,
+    sessionSettings
+  });
+  // Layer resolution can resurrect a rejected bare model from the preloaded
+  // daemon effective settings (per-target prefs poisoned by the same leak),
+  // so the home policy is enforced on the merged result, not just the node
+  // defaults.
   const draftSettings = useStableComposerSettings(
-    resolveComposerSettingsPresentation({
-      active: input.activeConversationId !== null,
-      homeSettings: homeComposerSettings,
-      optimisticSettings: activeConversationDraftSettings,
-      options: input.providerComposerOptions,
-      permissionModeId: input.activeSessionState?.permissionModeId,
-      sessionSettings
-    })
+    input.activeConversationId === null
+      ? enforceComposerModelBindingForHomeDefaults(
+          presentedDraftSettings,
+          input.providerComposerOptions
+        )
+      : presentedDraftSettings
   );
   const persistedDraftModel = normalizeOptionalText(draftSettings.model);
   const usesPlaceholderDraftModel =

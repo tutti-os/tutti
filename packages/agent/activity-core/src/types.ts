@@ -151,6 +151,13 @@ export interface AgentActivityComposerSettingOption {
   label: string;
   description?: string;
   supportsImageInput?: boolean;
+  /**
+   * True when the entry mirrors the requested/current selection instead of
+   * the provider catalog (daemon warm-catalog append, selected-model
+   * bootstrap echo, GUI current-value append). Requested-origin entries stay
+   * selectable but are not testimony that the provider can run the model.
+   */
+  requested?: boolean;
 }
 
 export interface AgentActivityComposerCommandOption {

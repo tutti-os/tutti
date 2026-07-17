@@ -30,6 +30,7 @@ func composerModelConfig(provider string, selected string, options []ComposerCon
 			Value:              value,
 			Description:        strings.TrimSpace(option.Description),
 			SupportsImageInput: option.SupportsImageInput,
+			Requested:          option.Requested,
 		})
 	}
 	selected = strings.TrimSpace(selected)
@@ -98,7 +99,11 @@ func composerModelOptionsFromCatalog(ctx context.Context, catalog AgentModelCata
 	}
 	selected := strings.TrimSpace(selectedModel)
 	if selected != "" && !containsModelOption(options, selected) {
-		options = append(options, ComposerConfigOptionValue{ID: selected, Label: selected, Value: selected})
+		// The requested model is kept selectable even when the catalog does not
+		// contain it, but the entry is provenance-marked: it mirrors the request
+		// and is not catalog testimony (create validation runs against the raw
+		// catalog and would reject it).
+		options = append(options, ComposerConfigOptionValue{ID: selected, Label: selected, Value: selected, Requested: true})
 	}
 	projection := composerModelCatalogProjection{
 		ModelOptions:      options,
@@ -127,7 +132,9 @@ func composerSelectedModelOptions(model string) []ComposerConfigOptionValue {
 	if model == "" {
 		return []ComposerConfigOptionValue{}
 	}
-	return []ComposerConfigOptionValue{{ID: model, Label: model, Value: model}}
+	// Bootstrap echo: the sole entry mirrors the requested/effective settings,
+	// so it carries the requested provenance marker.
+	return []ComposerConfigOptionValue{{ID: model, Label: model, Value: model, Requested: true}}
 }
 
 func reasoningConfigOptionID(provider string) string {

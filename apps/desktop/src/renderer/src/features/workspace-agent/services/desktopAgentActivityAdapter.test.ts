@@ -1096,12 +1096,14 @@ test("desktop agent activity adapter normalizes legacy runtime config options", 
 
   assert.deepEqual(options.models, [
     { value: "gpt-5.5", label: "GPT-5.5" },
-    { value: "gpt-5.4", label: "gpt-5.4" }
+    // The current value is not in the advertised list; the projection keeps
+    // it selectable but marks it requested-origin (not catalog testimony).
+    { value: "gpt-5.4", label: "gpt-5.4", requested: true }
   ]);
   assert.deepEqual(options.reasoningEfforts, [
     { value: "medium", label: "中" },
     { value: "ultra", label: "Ultra" },
-    { value: "high", label: "high" }
+    { value: "high", label: "high", requested: true }
   ]);
 });
 

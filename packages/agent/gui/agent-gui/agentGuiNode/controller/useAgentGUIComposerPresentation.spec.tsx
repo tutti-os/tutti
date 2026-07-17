@@ -6,7 +6,9 @@ import type {
 import { describe, expect, it, vi } from "vitest";
 import type { AgentActivityRuntime } from "../../../agentActivityRuntime";
 import type { AgentGUINodeData } from "../../../types";
+import type { AgentSessionComposerSettings } from "../../../shared/agentSessionTypes";
 import { composerSettingsSupportFromOptions } from "../model/composerSettingsSupport";
+import { nodeDefaultDraftKey } from "./agentGuiController.composerHelpers";
 import type { AgentGUIComposerTargetData } from "./agentGuiController.composerPresentation";
 import { useAgentGUIComposerPresentation } from "./useAgentGUIComposerPresentation";
 
@@ -256,6 +258,173 @@ describe("useAgentGUIComposerPresentation", () => {
         true
       );
       expect(result.current.stableComposerSettings.availableModels).toEqual([]);
+    });
+  });
+
+  describe("home default model verification (pure provider target)", () => {
+    const data: AgentGUINodeData = {
+      provider: "codex",
+      agentTargetId: "local:codex",
+      lastActiveAgentSessionId: null
+    };
+    const target: AgentGUIComposerTargetData = {
+      agentTargetId: "local:codex",
+      data,
+      provider: "codex",
+      targetId: "local:codex"
+    };
+    const settledCodexOptions = (
+      overrides: Partial<AgentActivityComposerOptions> = {}
+    ): AgentActivityComposerOptions =>
+      ({
+        provider: "codex",
+        capabilities: null,
+        models: [
+          { value: "gpt-5.3-codex", label: "GPT-5.3 Codex" },
+          { value: "gpt-5.6-sol", label: "GPT-5.6 Sol" }
+        ],
+        reasoningEfforts: [],
+        speeds: [],
+        modelConfigurable: true,
+        skills: [],
+        behavior: {
+          collapseModelOptionsToLatest: false,
+          // codex is deliberately NOT modelOptionsAuthoritative; the home
+          // default policy must still refuse foreign bare models.
+          modelOptionsAuthoritative: false,
+          refreshModelOptionsAfterSettings: false,
+          prewarmDraftSession: false,
+          planModeExclusiveWithPermissionMode: false
+        },
+        loadedAtUnixMs: 1,
+        ...overrides
+      }) as AgentActivityComposerOptions;
+    const renderHome = (input: {
+      options: AgentActivityComposerOptions;
+      drafts?: Record<string, AgentSessionComposerSettings>;
+    }) => {
+      const drafts = input.drafts ?? {};
+      return renderHook(() =>
+        useAgentGUIComposerPresentation({
+          activeConversation: null,
+          activeConversationId: null,
+          activeEngineSession: null,
+          activeSessionState: null,
+          agentActivityRuntime: {
+            projectPathIsRemote: false
+          } as AgentActivityRuntime,
+          composerSupport: composerSettingsSupportFromOptions(
+            input.options,
+            null
+          ),
+          composerOptionsLoading: false,
+          composerTargetProvider: "codex",
+          data,
+          defaultReasoningEffort: "high",
+          draftSettingsBySessionId: drafts,
+          draftSettingsBySessionIdRef: { current: drafts },
+          onDataChangeRef: { current: vi.fn() },
+          normalizedProviderTargets: [],
+          providerComposerOptions: input.options,
+          selectedComposerTargetData: target,
+          selectedProjectPath: null,
+          setDraftSettingsBySessionId: vi.fn(),
+          workspaceId: "workspace-1"
+        })
+      );
+    };
+
+    // Live P1: a plan session leaked its bare model into the codex node
+    // defaults. The pure codex home composer displayed "x-ai/grok-4.5" and
+    // submitted it, and the daemon rejected the create with 400. The home
+    // default must never adopt a bare model that the settled provider-native
+    // list rejects — it falls back to the provider default instead.
+    it("does not adopt a bare plan model that settled provider options reject", () => {
+      const { result } = renderHome({
+        options: settledCodexOptions(),
+        drafts: {
+          [nodeDefaultDraftKey("codex", "local:codex")]: {
+            model: "x-ai/grok-4.5"
+          }
+        }
+      });
+      expect(result.current.stableComposerSettings.draftSettings.model).toBe(
+        null
+      );
+      expect(result.current.stableComposerSettings.selectedModelValue).toBe(
+        null
+      );
+    });
+
+    it("does not resurrect a rejected bare model from daemon effective settings", () => {
+      const { result } = renderHome({
+        options: settledCodexOptions({
+          effectiveSettings: { model: "x-ai/grok-4.5" }
+        })
+      });
+      expect(result.current.stableComposerSettings.draftSettings.model).toBe(
+        null
+      );
+    });
+
+    // Warm-catalog window: the daemon appends the requested model to the
+    // settled catalog projection (provenance-marked requested entry), so the
+    // list "contains" the poisoned model. It is not catalog testimony — the
+    // home default must still fall back.
+    it("does not adopt a bare plan model that rides the warm catalog only as a requested entry", () => {
+      const { result } = renderHome({
+        options: settledCodexOptions({
+          models: [
+            { value: "gpt-5.3-codex", label: "GPT-5.3 Codex" },
+            { value: "gpt-5.6-sol", label: "GPT-5.6 Sol" },
+            { value: "x-ai/grok-4.5", label: "x-ai/grok-4.5", requested: true }
+          ],
+          effectiveSettings: { model: "x-ai/grok-4.5" }
+        }),
+        drafts: {
+          [nodeDefaultDraftKey("codex", "local:codex")]: {
+            model: "x-ai/grok-4.5"
+          }
+        }
+      });
+      expect(result.current.stableComposerSettings.draftSettings.model).toBe(
+        null
+      );
+      expect(result.current.stableComposerSettings.selectedModelValue).toBe(
+        null
+      );
+    });
+
+    it("keeps a home default the settled provider options verify", () => {
+      const { result } = renderHome({
+        options: settledCodexOptions(),
+        drafts: {
+          [nodeDefaultDraftKey("codex", "local:codex")]: {
+            model: "gpt-5.6-sol"
+          }
+        }
+      });
+      expect(result.current.stableComposerSettings.draftSettings.model).toBe(
+        "gpt-5.6-sol"
+      );
+    });
+
+    it("keeps a paired plan model selection untouched", () => {
+      const { result } = renderHome({
+        options: settledCodexOptions(),
+        drafts: {
+          [nodeDefaultDraftKey("codex", "local:codex")]: {
+            model: "x-ai/grok-4.5",
+            modelPlanId: "mp-relay"
+          }
+        }
+      });
+      expect(result.current.stableComposerSettings.draftSettings.model).toBe(
+        "x-ai/grok-4.5"
+      );
+      expect(
+        result.current.stableComposerSettings.draftSettings.modelPlanId
+      ).toBe("mp-relay");
     });
   });
 

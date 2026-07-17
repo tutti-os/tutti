@@ -47,6 +47,12 @@ type ComposerConfigOptionValue struct {
 	Label              string
 	Value              string
 	SupportsImageInput *bool
+	// Requested marks an entry that mirrors the requested/current selection
+	// instead of the provider catalog (warm-catalog append of the requested
+	// model, selected-model bootstrap echo). Clients keep such entries
+	// selectable but must not treat them as proof the provider can run the
+	// model — create validation runs against the raw catalog only.
+	Requested bool
 }
 
 type ComposerSettings struct {

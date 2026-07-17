@@ -41,6 +41,11 @@ func composerConfigOptionValuesToRuntimeModelOptions(options []ComposerConfigOpt
 		if option.SupportsImageInput != nil {
 			entry["supportsImageInput"] = *option.SupportsImageInput
 		}
+		// Provenance for requested-origin entries (warm-catalog append,
+		// bootstrap echo): clients must not count them as catalog testimony.
+		if option.Requested {
+			entry["requested"] = true
+		}
 		result = append(result, entry)
 	}
 	return result

@@ -300,7 +300,10 @@ describe("useAgentGUINewConversationActivation", () => {
       return { start };
     }
 
-    function codexOptions(models: string[]): AgentActivityComposerOptions {
+    function codexOptions(
+      models: string[],
+      overrides: Partial<AgentActivityComposerOptions> = {}
+    ): AgentActivityComposerOptions {
       return {
         provider: "codex",
         capabilities: null,
@@ -309,7 +312,8 @@ describe("useAgentGUINewConversationActivation", () => {
         speeds: [],
         skills: [],
         behavior: {} as AgentActivityComposerOptions["behavior"],
-        loadedAtUnixMs: 1
+        loadedAtUnixMs: 1,
+        ...overrides
       };
     }
 
@@ -383,6 +387,91 @@ describe("useAgentGUINewConversationActivation", () => {
       });
       const call = start();
       expect(call?.settings?.model ?? null).toBe(null);
+    });
+
+    // Live P1 repro (plan session leaked "x-ai/grok-4.5" bare into the codex
+    // provider bucket, daemon restarted): while live model discovery has not
+    // filled the catalog, the daemon serves a selected-model-only bootstrap
+    // list that merely echoes the requested settings. A match against that
+    // echo is not evidence — the daemon later rejects the create with 400
+    // invalid model. The bare plan model must be dropped before create.
+    it("drops a bare plan model that only the daemon selected-model echo could verify", () => {
+      const { start } = makeHarness({
+        composerOptions: codexOptions(["x-ai/grok-4.5"], {
+          effectiveSettings: { model: "x-ai/grok-4.5" }
+        }),
+        lastActiveModelByProvider: {
+          codex: { model: "x-ai/grok-4.5", modelPlanId: null }
+        }
+      });
+      const call = start();
+      expect(call?.settings?.model ?? null).toBe(null);
+      expect(call?.settings?.modelPlanId ?? null).toBe(null);
+    });
+
+    it("drops a bare model when loaded provider options advertise no models", () => {
+      const { start } = makeHarness({
+        composerOptions: codexOptions([]),
+        lastActiveModelByProvider: {
+          codex: { model: "x-ai/grok-4.5", modelPlanId: null }
+        }
+      });
+      const call = start();
+      expect(call?.settings?.model ?? null).toBe(null);
+    });
+
+    it("drops a bare model while the model catalog is still loading", () => {
+      const { start } = makeHarness({
+        composerOptions: codexOptions(["x-ai/grok-4.5", "gpt-5.3-codex"], {
+          modelOptionsLoading: true
+        }),
+        lastActiveModelByProvider: {
+          codex: { model: "x-ai/grok-4.5", modelPlanId: null }
+        }
+      });
+      const call = start();
+      expect(call?.settings?.model ?? null).toBe(null);
+    });
+
+    // Warm-catalog window (the live P1 steady state): the daemon appends the
+    // requested model to the settled catalog projection when the catalog does
+    // not contain it (composer_model_options.go append + desktop
+    // appendCurrentOption), so the multi-entry list "contains" the poisoned
+    // model while create validation runs against the raw catalog and rejects
+    // it with 400. Requested-origin entries are provenance-marked and must
+    // not count as catalog testimony.
+    it("drops a bare plan model that rides the warm catalog only as a requested entry", () => {
+      const options = codexOptions(["gpt-5.3-codex", "gpt-5.6-sol"], {
+        effectiveSettings: { model: "x-ai/grok-4.5" }
+      });
+      options.models.push({
+        value: "x-ai/grok-4.5",
+        label: "x-ai/grok-4.5",
+        requested: true
+      });
+      const { start } = makeHarness({
+        composerOptions: options,
+        lastActiveModelByProvider: {
+          codex: { model: "x-ai/grok-4.5", modelPlanId: null }
+        }
+      });
+      const call = start();
+      expect(call?.settings?.model ?? null).toBe(null);
+      expect(call?.settings?.modelPlanId ?? null).toBe(null);
+    });
+
+    it("keeps a bare model the warm catalog genuinely contains alongside a requested duplicate marker", () => {
+      const options = codexOptions(["gpt-5.3-codex", "gpt-5.6-sol"], {
+        effectiveSettings: { model: "gpt-5.6-sol" }
+      });
+      const { start } = makeHarness({
+        composerOptions: options,
+        lastActiveModelByProvider: {
+          codex: { model: "gpt-5.6-sol", modelPlanId: null }
+        }
+      });
+      const call = start();
+      expect(call?.settings?.model).toBe("gpt-5.6-sol");
     });
   });
 });

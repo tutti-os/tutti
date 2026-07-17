@@ -388,7 +388,10 @@ function settingOptionsFromRawOptions(
       value: optionValue,
       label,
       ...(description ? { description } : {}),
-      ...(supportsImageInput !== undefined ? { supportsImageInput } : {})
+      ...(supportsImageInput !== undefined ? { supportsImageInput } : {}),
+      // Daemon provenance: the entry mirrors the requested selection (warm
+      // catalog append / bootstrap echo) and is not catalog testimony.
+      ...(record.requested === true ? { requested: true } : {})
     });
   }
   return options;
@@ -420,7 +423,13 @@ function appendCurrentOption(
   ) {
     return options;
   }
-  return [...options, { value: currentValue, label: currentValue }];
+  // This append mirrors the current selection so it stays selectable; mark
+  // it requested-origin — it is not evidence the provider catalog contains
+  // the model.
+  return [
+    ...options,
+    { value: currentValue, label: currentValue, requested: true }
+  ];
 }
 
 function permissionConfigFromValue(
