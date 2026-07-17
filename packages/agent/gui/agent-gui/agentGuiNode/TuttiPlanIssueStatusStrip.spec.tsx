@@ -36,6 +36,10 @@ describe("TuttiPlanIssueStatusStrip", () => {
       "2 subtasks running · 1 awaiting acceptance · 1/4 done"
     );
     expect(screen.getByText("Forest duo game")).toBeInTheDocument();
+    // Live work shows the spinner in place of the static list icon.
+    expect(
+      screen.getByTestId("agent-gui-tutti-plan-issue-strip-spinner")
+    ).toBeInTheDocument();
   });
 
   it("always keeps the done anchor even when nothing is live", () => {
@@ -56,6 +60,9 @@ describe("TuttiPlanIssueStatusStrip", () => {
     expect(
       screen.getByTestId("agent-gui-tutti-plan-issue-strip-summary")
     ).toHaveTextContent("4/4 done");
+    expect(
+      screen.queryByTestId("agent-gui-tutti-plan-issue-strip-spinner")
+    ).not.toBeInTheDocument();
   });
 
   it("jumps to the embedded panel on click", () => {

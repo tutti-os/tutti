@@ -1,5 +1,5 @@
 import type { JSX } from "react";
-import { ArrowUpRight, ListChecks } from "lucide-react";
+import { ArrowUpRight, ListChecks, LoaderCircle } from "lucide-react";
 import { cn } from "../../app/renderer/lib/utils";
 import styles from "./AgentGUIChrome.styles";
 
@@ -61,7 +61,15 @@ export function TuttiPlanIssueStatusStrip({
         <div className={styles.chromeMetaRow}>
           <div className={styles.chromeMessageSlot}>
             <span className={styles.chromeIcon}>
-              <ListChecks aria-hidden className="size-3.5" />
+              {counts.running > 0 ? (
+                <LoaderCircle
+                  aria-hidden
+                  className="size-3.5 animate-spin"
+                  data-testid="agent-gui-tutti-plan-issue-strip-spinner"
+                />
+              ) : (
+                <ListChecks aria-hidden className="size-3.5" />
+              )}
             </span>
             <p
               className={cn(styles.chromeMessage, styles.chromeNoticeMessage)}
