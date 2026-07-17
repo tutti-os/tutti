@@ -45,6 +45,24 @@ export function agentMentionFilterLabel(filter: AgentMentionFilterId): string {
   }
 }
 
+export function agentMentionErrorLabel(
+  filter: AgentMentionFilterId,
+  fileErrorLabel: string
+): string {
+  switch (filter) {
+    case "app":
+      return translate("agentHost.agentGui.mentionAppError");
+    case "agent":
+      return translate("agentHost.agentGui.mentionAgentError");
+    case "file":
+      return fileErrorLabel;
+    case "session":
+      return translate("agentHost.agentGui.mentionSessionError");
+    case "issue":
+      return translate("agentHost.agentGui.mentionIssueError");
+  }
+}
+
 export function agentMentionEmptyGroupLabel(
   groupId: AgentMentionGroupId,
   query: string

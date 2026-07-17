@@ -106,6 +106,15 @@ Catalog option identity is host-owned and normalized at the shared-package
 boundary. Agent options require a durable `agentTargetId`; product-local target
 ids are not provenance fallbacks. Filter cache keys use a collision-free
 semantic serialization of normalized dimensions, not delimiter-joined ids.
+The host's Agent Target directory is sufficient to publish Agent and Member
+groups. A historical session scan may add sources that are no longer in the
+current target directory, but its loading or failure state must not hide groups
+that the target directory can already prove.
+The historical session directory is a dedicated metadata-only contract: it may
+read the persisted title, ownership, target, status, and timestamps, but it
+must not load message payloads. Rich activity summaries use a separate
+contract; conversation content otherwise belongs to the per-session detail
+query after a user selects a session.
 Repeated injection of an equivalent filter is a no-op. A real filter change
 invalidates and aborts the active query before scheduling its replacement, so a
 late response cannot repopulate the picker with the previous constraint.
@@ -148,6 +157,9 @@ cache expires; they do not claim exhaustive history.
   filter.
 - Capture the provenance constraint with speculative preload and provider-query
   inputs; do not read mutable controller state after an async boundary.
+- Propagate each query controller's `AbortSignal` through host file adapters and
+  transports. A workspace- or room-global "latest request" controller must not
+  cancel independent pickers, AgentGUI windows, or file surfaces.
 - Append cursor pages without reordering already loaded entries.
 - Hide unavailable sources before rendering their tabs or sidebar groups.
 - Expose only running workspace apps in the app-artifact sidebar; installed or

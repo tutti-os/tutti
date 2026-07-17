@@ -2,12 +2,23 @@ import { describe, expect, it } from "vitest";
 import { translateInUiLanguage } from "../../i18n/index";
 import { setAgentGuiI18nTestLocale } from "../../i18n/testUtils";
 import {
+  agentMentionErrorLabel,
   agentMentionEmptyGroupLabel,
   agentMentionFilterLabel,
   agentMentionGroupLabel
 } from "./AgentMentionLabels";
 
 describe("AgentMentionLabels", () => {
+  it.each([
+    ["session", "Unable to search conversations."],
+    ["agent", "Unable to search agents."],
+    ["app", "Unable to search apps."],
+    ["issue", "Unable to search tasks."],
+    ["file", "host file error"]
+  ] as const)("uses a filter-specific error for %s", (filter, expected) => {
+    expect(agentMentionErrorLabel(filter, "host file error")).toBe(expected);
+  });
+
   it("localizes mention filters and groups for English", async () => {
     setAgentGuiI18nTestLocale("en");
 

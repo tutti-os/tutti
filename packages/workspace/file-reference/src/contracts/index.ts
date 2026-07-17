@@ -73,7 +73,10 @@ export interface WorkspaceFileReferenceAdapter {
     }
   ): Promise<WorkspaceFileReferenceTreeSnapshot>;
   listDirectory?(
-    input: WorkspaceFileReferenceScope & { path?: string | null }
+    input: WorkspaceFileReferenceScope & {
+      path?: string | null;
+      signal?: AbortSignal;
+    }
   ): Promise<WorkspaceFileReferenceDirectoryListing>;
   listRecentReferences?(
     input: WorkspaceFileReferenceScope & {

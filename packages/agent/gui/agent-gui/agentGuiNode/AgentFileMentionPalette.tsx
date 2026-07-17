@@ -25,6 +25,7 @@ import {
   resolveAgentMentionFileVisualKind
 } from "../shared/mentionFilePresentation";
 import {
+  agentMentionErrorLabel,
   agentMentionEmptyGroupLabel,
   agentMentionFilterLabel,
   agentMentionGroupLabel
@@ -300,7 +301,7 @@ export function AgentFileMentionPalette({
       labels={{
         loading: loadingLabel,
         empty: emptyLabelForShell,
-        error: errorLabel,
+        error: agentMentionErrorLabel(filter, errorLabel),
         tabHint: tabHintLabel,
         listbox: label
       }}
