@@ -147,6 +147,16 @@ Completion uses a three-step acceptance ladder:
 agent_claimed -> auto_checked -> user_accepted
 ```
 
+Issue runs settle live from the canonical root-turn settlement fan-out: the
+Issue-run observer sits on the opt-in settle list (root-provider-lifecycle
+adapters report no settled state patch, so the general session-state observers
+never see live settles) and matches the settled turn against the run's
+initiating `issue-run:<runID>` submit, so an unrelated turn settling in the
+delegate conversation can never complete the run. The fallback reconciler only
+declares a run dead when the session has been event-silent past the grace
+window — a streaming session with a lagging (empty) persisted active-turn id
+is alive, not abandoned.
+
 A successful Run moves its task to `pending_acceptance`/`agent_claimed`; it is
 only the executor's completion claim. Only an explicit user acceptance reaches
 `user_accepted` and closes the Task as `completed`. Failed Runs leave the task

@@ -1146,3 +1146,65 @@ func TestIntegrationTaskPromptCarriesDependencyWorktreeBranches(t *testing.T) {
 		t.Fatalf("integration prompt lacks dependency branch pointers: %q", prompt)
 	}
 }
+
+func TestAgentSettlementCompletesOnlyTheInitiatingTurnRun(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	service, creator, _ := newParallelizableDispatchService(t, "ws-turn-match")
+	resolver := issueRunTurnResolverStub{initiatingTurnByRunID: map[string]string{}}
+	service.RunTurnResolver = resolver
+	detail, err := service.CreateIssueFromPlan(ctx, "ws-turn-match", CreateIssueManagerIssueFromPlanInput{
+		Issue: CreateIssueManagerIssueInput{
+			IssueID:             "issue-turn-match",
+			TopicID:             workspaceissues.DefaultTopicID,
+			Title:               "Turn match issue",
+			PlanningSource:      string(workspaceissues.PlanningSourceTraditionalPlan),
+			SequentialExecution: true,
+		},
+		Tasks: []CreateIssueManagerTaskItemInput{
+			{TaskID: "task-1", Title: "Only", AgentTargetID: agenttargetbiz.IDLocalCodex},
+		},
+	})
+	if err != nil {
+		t.Fatalf("CreateIssueFromPlan() error = %v", err)
+	}
+	first := detail.Tasks[0]
+	resolver.initiatingTurnByRunID[first.LatestRunID] = "turn-brief"
+	sessionID := creator.inputs[0].AgentSessionID
+	outcome := "completed"
+	settledState := func(turnID string) agentsessionstore.ReportSessionStateInput {
+		return agentsessionstore.ReportSessionStateInput{
+			WorkspaceID:    "ws-turn-match",
+			AgentSessionID: sessionID,
+			State: agentsessionstore.WorkspaceAgentSessionStateUpdate{
+				TurnLifecycle: &agentsessionstore.WorkspaceAgentTurnLifecycle{Phase: "settled", Outcome: &outcome},
+				Turn: &agentsessionstore.WorkspaceAgentTurnStateUpdate{
+					TurnID:  turnID,
+					Phase:   "settled",
+					Outcome: outcome,
+				},
+			},
+		}
+	}
+
+	// A different turn settling in the delegate conversation (e.g. a human
+	// interjection) must not complete the run.
+	service.ObserveAgentSessionState(ctx, settledState("turn-interjection"), agentsessionstore.ReportSessionStateReply{})
+	after, err := service.GetIssueDetail(ctx, "ws-turn-match", detail.Issue.IssueID)
+	if err != nil {
+		t.Fatalf("GetIssueDetail() error = %v", err)
+	}
+	if after.Tasks[0].Status != workspaceissues.StatusRunning {
+		t.Fatalf("task status after unrelated settle = %q, want running", after.Tasks[0].Status)
+	}
+
+	// The run's own initiating turn settling completes it.
+	service.ObserveAgentSessionState(ctx, settledState("turn-brief"), agentsessionstore.ReportSessionStateReply{})
+	settled, err := service.GetIssueDetail(ctx, "ws-turn-match", detail.Issue.IssueID)
+	if err != nil {
+		t.Fatalf("GetIssueDetail() error = %v", err)
+	}
+	if settled.Tasks[0].Status != workspaceissues.StatusPendingAcceptance {
+		t.Fatalf("task status after initiating settle = %q, want pending_acceptance", settled.Tasks[0].Status)
+	}
+}

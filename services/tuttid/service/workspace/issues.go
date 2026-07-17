@@ -28,6 +28,16 @@ type IssueManagerService struct {
 	// CompletionNotifier hands control back to the planning conversation once
 	// every task of a tutti-mode-plan Issue is completed and accepted.
 	CompletionNotifier TuttiPlanIssueCompletionNotifier
+	// RunTurnResolver resolves which canonical turn a client submit id
+	// produced, so a settled turn is matched to the exact Issue run that
+	// initiated it before the run is completed from Agent state.
+	RunTurnResolver IssueRunTurnResolver
+}
+
+// IssueRunTurnResolver looks up the canonical turn created for a client
+// submit id (the Issue dispatcher stamps "issue-run:<runID>").
+type IssueRunTurnResolver interface {
+	FindTurnByClientSubmitID(ctx context.Context, workspaceID string, agentSessionID string, clientSubmitID string) (string, bool, error)
 }
 
 type TuttiPlanIssueCompletionNotifier interface {

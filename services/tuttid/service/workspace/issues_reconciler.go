@@ -164,6 +164,15 @@ func issueRunReconcileCompletion(run workspaceissues.Run, session agentservice.P
 	if strings.TrimSpace(session.ActiveTurnID) != "" {
 		return "", "", false
 	}
+	// The persisted active turn id lags the runtime (it is stamped
+	// asynchronously and can stay empty for a session created with an initial
+	// prompt), so an empty value is not proof of idleness. A session that
+	// streamed an event within the grace window is alive — reconciling here
+	// used to kill healthy runs seconds after their last stream chunk.
+	if session.LastEventUnixMS > 0 &&
+		nowUnixMS-session.LastEventUnixMS < defaultIssueRunReconcileGrace.Milliseconds() {
+		return "", "", false
+	}
 	if runIdleMS(run, nowUnixMS) >= defaultIssueRunReconcileGrace.Milliseconds() {
 		return workspaceissues.StatusFailed, "Agent session ended without reporting run completion.", true
 	}

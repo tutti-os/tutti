@@ -36,9 +36,24 @@ func (s IssueManagerService) ObserveAgentSessionState(ctx context.Context, input
 	}
 	usage := issueRunUsageFromRuntimeContext(input.State.RuntimeContext)
 	remainingQuota, hasRemainingQuota := issueRunRemainingQuota(input.State.RuntimeContext)
+	settledTurnID := ""
+	if input.State.Turn != nil {
+		settledTurnID = strings.TrimSpace(input.State.Turn.TurnID)
+	}
 	for _, run := range runs {
 		if strings.TrimSpace(run.AgentSessionID) != agentSessionID {
 			continue
+		}
+		// A delegate session can settle turns that are not the run's own
+		// brief (a human interjecting in its conversation, queued guidance).
+		// Match the settled turn against the run's initiating submit so only
+		// the run's terminal fact completes it; unresolvable lookups fall
+		// back to completing, which still beats the failure-biased reconciler.
+		if s.RunTurnResolver != nil && settledTurnID != "" {
+			initiatingTurnID, found, resolveErr := s.RunTurnResolver.FindTurnByClientSubmitID(ctx, workspaceID, agentSessionID, "issue-run:"+run.RunID)
+			if resolveErr == nil && found && strings.TrimSpace(initiatingTurnID) != settledTurnID {
+				continue
+			}
 		}
 		errorMessage := ""
 		if status != workspaceissues.StatusCompleted {
