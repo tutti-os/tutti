@@ -105,9 +105,12 @@ func (r CollaborationTimelineReporter) ReportCollaborationTimeline(ctx context.C
 			"estimatedMicros": run.Cost.EstimatedMicros,
 		}
 	}
+	// Session-level system annotation: deliberately no TurnID. Collaboration
+	// records are updated in place by MessageID and belong to no agent turn; a
+	// synthetic turn id would either be rejected while a real turn is live or
+	// wedge the session's active-turn slot when none is.
 	update := agentsessionstore.WorkspaceAgentSessionMessageUpdate{
 		MessageID:        "collab:" + run.ID,
-		TurnID:           "collab:" + run.ID,
 		Role:             "assistant",
 		Kind:             "collaboration",
 		Status:           status,

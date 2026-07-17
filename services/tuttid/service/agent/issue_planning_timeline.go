@@ -37,9 +37,12 @@ func (r IssuePlanningTimelineReporter) ReportIssuePlanningLink(
 	if occurredAt.IsZero() {
 		occurredAt = time.Now().UTC()
 	}
+	// Session-level system annotation: deliberately no TurnID. This entry does
+	// not belong to any agent turn (the source turn already settled when the
+	// user accepted), and a synthetic turn id would open a live turn record no
+	// terminal event ever settles — wedging the session's active-turn slot.
 	update := agentsessionstore.WorkspaceAgentSessionMessageUpdate{
 		MessageID:         "plan-issue:" + issueID,
-		TurnID:            "plan-issue:" + issueID,
 		Role:              "assistant",
 		Kind:              "text",
 		Status:            "completed",

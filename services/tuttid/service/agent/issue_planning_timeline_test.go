@@ -49,4 +49,13 @@ func TestIssuePlanningTimelineReporterLinksSourceSessionToIssue(t *testing.T) {
 		!strings.Contains(content, "workspaceId=ws-1") {
 		t.Fatalf("content = %q", content)
 	}
+	// The link is a session-level annotation: it must not mint a turn, and it
+	// must never occupy the session's live-turn slot (a synthetic live turn
+	// here wedged the GUI spinner and blocked later timeline reports).
+	if message.TurnID != "" {
+		t.Fatalf("message turn id = %q, want session-level (empty)", message.TurnID)
+	}
+	if _, exists, err := store.GetTurn(ctx, "ws-1", "session-1", "plan-issue:issue-1"); err != nil || exists {
+		t.Fatalf("synthetic turn exists = %v, err = %v; want absent", exists, err)
+	}
 }
