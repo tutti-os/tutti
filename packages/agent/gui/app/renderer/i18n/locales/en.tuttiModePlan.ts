@@ -4,8 +4,13 @@ export const enTuttiModePlan = {
   pending: "Needs review",
   cancel: "Cancel plan",
   reviewHint: "Send to accept · type feedback to request changes",
+  reviewHintReplan: "Intensity changed · send to re-plan at the new intensity",
   sendAccept: "Accept plan",
   sendRequestChanges: "Request changes",
+  replanFeedback:
+    "Intensity was adjusted from {{from}} to {{to}}. Re-plan at the new intensity: rescale the task decomposition granularity and each task's model/reasoning tier.",
+  replanFeedbackSuffix:
+    " (Intensity was adjusted to {{to}}; re-plan accordingly.)",
   tasks: "Tasks",
   priority: "Priority",
   priorityHigh: "High",

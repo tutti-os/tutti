@@ -237,6 +237,13 @@ export const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
       pendingPlanPanel.checkpoint.id;
   const planReviewSendActive =
     pendingPlanPanel !== null && !pendingPlanSubmitting;
+  // Once the session intensity diverges from the plan's snapshot, an empty
+  // send means "re-plan at the new intensity" instead of accepting; matching
+  // values (including adjusting back) restore accept semantics.
+  const planReviewIntensityDiverged =
+    pendingPlanPanel !== null &&
+    viewModel.composer.tuttiModeOrchestrationIntensity !==
+      pendingPlanPanel.execution.orchestrationIntensity;
   const decidePendingPlan = useStableEventCallback(
     (decision: "accepted" | "rejected" | "canceled", reason?: string): void => {
       if (!pendingPlanPanel || pendingPlanSubmitting) return;
@@ -257,6 +264,16 @@ export const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
     }
   );
   const acceptPendingPlan = useStableEventCallback((): void => {
+    if (planReviewIntensityDiverged && pendingPlanPanel) {
+      decidePendingPlan(
+        "rejected",
+        labels.tuttiModePlanReplanFeedback(
+          String(pendingPlanPanel.execution.orchestrationIntensity),
+          String(viewModel.composer.tuttiModeOrchestrationIntensity)
+        )
+      );
+      return;
+    }
     decidePendingPlan("accepted");
   });
   const cancelPendingPlan = useStableEventCallback((): void => {
@@ -376,10 +393,15 @@ export const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
     (...args: Parameters<typeof submitPrompt>): void => {
       const [content] = args;
       if (pendingPlanPanel && !pendingPlanSubmitting) {
-        const feedback = agentPromptContentDisplayText(content).trim();
+        let feedback = agentPromptContentDisplayText(content).trim();
         // Slash commands (e.g. the usage chip's "/compact") are never plan
         // feedback — let them flow through the normal submit path.
         if (feedback && !feedback.startsWith("/")) {
+          if (planReviewIntensityDiverged) {
+            feedback += labels.tuttiModePlanReplanFeedbackSuffix(
+              String(viewModel.composer.tuttiModeOrchestrationIntensity)
+            );
+          }
           decidePendingPlan("rejected", feedback);
           updateDraftContent(
             updateAgentComposerDraft(viewModel.composer.draftContent, {
@@ -564,6 +586,10 @@ export const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
       onPlanIssueBudgetPresetChange: updatePlanIssueBudgetPreset,
       onSubmit: submitPromptOrDecidePlan,
       onSubmitEmpty: planReviewSendActive ? acceptPendingPlan : undefined,
+      emptySubmitLabel:
+        planReviewSendActive && planReviewIntensityDiverged
+          ? labels.tuttiModePlanSendRequestChanges
+          : undefined,
       onSubmitGuidance: submitGuidancePromptAndScrollToBottom,
       onPromptImagesUnsupported: showPromptImagesUnsupported,
       onSendQueuedPromptNext: sendQueuedPromptNext,
@@ -624,6 +650,8 @@ export const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
       submitInteractivePrompt,
       submitPromptOrDecidePlan,
       planReviewSendActive,
+      planReviewIntensityDiverged,
+      labels.tuttiModePlanSendRequestChanges,
       acceptPendingPlan,
       submitGuidancePromptAndScrollToBottom,
       uiLanguage,
@@ -883,12 +911,15 @@ export const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
             pendingPlanPanel
               ? {
                   planTitle: pendingPlanPanel.title,
-                  submitting: pendingPlanSubmitting
+                  submitting: pendingPlanSubmitting,
+                  intensity: viewModel.composer.tuttiModeOrchestrationIntensity,
+                  intensityDiverged: planReviewIntensityDiverged
                 }
               : null
           }
           tuttiPlanReviewLabels={labels.tuttiModePlanBanner}
           onCancelTuttiPlanReview={cancelPendingPlan}
+          onTuttiPlanReviewIntensityChange={setTuttiModeOrchestrationIntensity}
         />
       ) : null}
     </main>
