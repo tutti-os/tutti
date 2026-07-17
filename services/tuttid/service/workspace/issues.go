@@ -6,6 +6,7 @@ import (
 	"time"
 
 	workspaceissues "github.com/tutti-os/tutti/packages/workspace/issues"
+	agenttargetbiz "github.com/tutti-os/tutti/services/tuttid/biz/agenttarget"
 	workflowbiz "github.com/tutti-os/tutti/services/tuttid/biz/workspaceworkflow"
 	agentservice "github.com/tutti-os/tutti/services/tuttid/service/agent"
 	eventstreamservice "github.com/tutti-os/tutti/services/tuttid/service/eventstream"
@@ -14,14 +15,38 @@ import (
 const issueManagerLocalActorUserID = "local"
 
 type IssueManagerService struct {
-	AgentSessionReader agentservice.SessionReader
-	Publisher          IssueManagerEventPublisher
-	RunReconcileQueue  *IssueRunReconcileQueue
-	Store              workspaceissues.Store
+	AgentSessionCreator agentSessionCreator
+	AgentSessionReader  agentservice.SessionReader
+	Publisher           IssueManagerEventPublisher
+	RunReconcileQueue   *IssueRunReconcileQueue
+	Store               workspaceissues.Store
+	AgentTargetReader   IssueAssignmentAgentTargetReader
+	PlanningTimeline    IssuePlanningTimelineReporter
+	// TaskWorktreeRoot overrides where per-run task worktrees are created;
+	// empty falls back to <state dir>/task-worktrees.
+	TaskWorktreeRoot string
 }
 
 type IssueManagerEventPublisher interface {
 	PublishWorkspaceIssueUpdated(context.Context, eventstreamservice.WorkspaceIssueUpdate) error
+}
+
+type IssuePlanningTimelineReporter interface {
+	ReportIssuePlanningLink(
+		context.Context,
+		string,
+		string,
+		string,
+		string,
+		string,
+		time.Time,
+	)
+}
+
+// IssueAssignmentAgentTargetReader resolves a task's assigned agent target at
+// dispatch time.
+type IssueAssignmentAgentTargetReader interface {
+	GetAgentTarget(context.Context, string) (agenttargetbiz.Target, error)
 }
 
 type ListIssueManagerItemsInput struct {
@@ -72,12 +97,18 @@ type UpdateIssueManagerTopicInput struct {
 }
 
 type UpdateIssueManagerIssueInput struct {
-	Title      string
-	HasTitle   bool
-	Content    string
-	HasContent bool
-	Status     string
-	HasStatus  bool
+	Title               string
+	HasTitle            bool
+	Content             string
+	HasContent          bool
+	Status              string
+	HasStatus           bool
+	DispatchPaused      bool
+	HasDispatchPaused   bool
+	ExecutionProfile    workspaceissues.ExecutionProfile
+	HasExecutionProfile bool
+	Budget              workspaceissues.Budget
+	HasBudget           bool
 }
 
 type CreateIssueManagerTaskInput struct {
@@ -110,20 +141,24 @@ type CreateIssueManagerTasksInput struct {
 }
 
 type UpdateIssueManagerTaskInput struct {
-	Title             string
-	HasTitle          bool
-	Content           string
-	HasContent        bool
-	Status            string
-	HasStatus         bool
-	Priority          string
-	HasPriority       bool
-	DueAtUnixMS       int64
-	HasDueAt          bool
-	SortIndex         int
-	HasSortIndex      bool
-	Parallelizable    bool
-	HasParallelizable bool
+	Title                string
+	HasTitle             bool
+	Content              string
+	HasContent           bool
+	Status               string
+	HasStatus            bool
+	Priority             string
+	HasPriority          bool
+	DueAtUnixMS          int64
+	HasDueAt             bool
+	SortIndex            int
+	HasSortIndex         bool
+	Parallelizable       bool
+	HasParallelizable    bool
+	AcceptanceState      string
+	HasAcceptanceState   bool
+	AcceptanceSummary    string
+	HasAcceptanceSummary bool
 }
 
 type AddIssueManagerContextRefsInput struct {
@@ -136,14 +171,19 @@ type CreateIssueManagerRunInput struct {
 	AgentProvider      string
 	AgentUserID        string
 	AgentSessionID     string
+	ModelPlanID        string
+	Model              string
 	ExecutionDirectory string
 }
 
 type CompleteIssueManagerRunInput struct {
-	Status       string
-	Summary      string
-	ErrorMessage string
-	Outputs      []workspaceissues.CompleteRunOutputInput
+	Status                   string
+	Summary                  string
+	ErrorMessage             string
+	Outputs                  []workspaceissues.CompleteRunOutputInput
+	Usage                    workspaceissues.TokenUsage
+	RemainingQuotaPercent    float64
+	HasRemainingQuotaPercent bool
 }
 
 func (s IssueManagerService) ListIssues(ctx context.Context, workspaceID string, input ListIssueManagerItemsInput) (workspaceissues.IssueList, error) {
@@ -251,6 +291,9 @@ func (s IssueManagerService) CreateIssueFromPlan(ctx context.Context, workspaceI
 	if reservedTuttiID != input.Issue.TuttiModeWorkflowOwned || tuttiPlanningSource != input.Issue.TuttiModeWorkflowOwned {
 		return workspaceissues.IssueDetail{}, workspaceissues.ErrInvalidArgument
 	}
+	if input.Issue.ParallelExecution && !parallelIssueTasksAreIsolated(input.Tasks) {
+		return workspaceissues.IssueDetail{}, workspaceissues.ErrInvalidArgument
+	}
 	taskItems := make([]workspaceissues.CreateTaskItemInput, 0, len(input.Tasks))
 	for _, task := range input.Tasks {
 		taskItems = append(taskItems, workspaceissues.CreateTaskItemInput{
@@ -304,6 +347,20 @@ func (s IssueManagerService) CreateIssueFromPlan(ctx context.Context, workspaceI
 			ChangeKind:  eventstreamservice.WorkspaceIssueChangeTaskCreated,
 		})
 	}
+	if s.PlanningTimeline != nil && strings.TrimSpace(issue.SourceSessionID) != "" {
+		s.PlanningTimeline.ReportIssuePlanningLink(
+			ctx,
+			issue.WorkspaceID,
+			issue.SourceSessionID,
+			issue.IssueID,
+			issue.TopicID,
+			issue.Title,
+			time.UnixMilli(issue.CreatedAtUnixMS).UTC(),
+		)
+	}
+	if input.Issue.SequentialExecution || input.Issue.ParallelExecution {
+		s.dispatchEligibleIssueTasks(ctx, workspaceID, issue.IssueID)
+	}
 	return s.GetIssueDetail(ctx, workspaceID, issue.IssueID)
 }
 
@@ -323,15 +380,21 @@ func (s IssueManagerService) SearchIssueOutputs(ctx context.Context, params work
 
 func (s IssueManagerService) UpdateIssue(ctx context.Context, workspaceID string, issueID string, input UpdateIssueManagerIssueInput) (workspaceissues.Issue, error) {
 	issue, err := s.domainService().UpdateIssue(ctx, workspaceissues.UpdateIssueInput{
-		IssueID:     issueID,
-		WorkspaceID: workspaceID,
-		ActorUserID: issueManagerLocalActorUserID,
-		Title:       input.Title,
-		HasTitle:    input.HasTitle,
-		Content:     input.Content,
-		HasContent:  input.HasContent,
-		Status:      input.Status,
-		HasStatus:   input.HasStatus,
+		IssueID:             issueID,
+		WorkspaceID:         workspaceID,
+		ActorUserID:         issueManagerLocalActorUserID,
+		Title:               input.Title,
+		HasTitle:            input.HasTitle,
+		Content:             input.Content,
+		HasContent:          input.HasContent,
+		Status:              input.Status,
+		HasStatus:           input.HasStatus,
+		DispatchPaused:      input.DispatchPaused,
+		HasDispatchPaused:   input.HasDispatchPaused,
+		ExecutionProfile:    input.ExecutionProfile,
+		HasExecutionProfile: input.HasExecutionProfile,
+		Budget:              input.Budget,
+		HasBudget:           input.HasBudget,
 	})
 	if err != nil {
 		return workspaceissues.Issue{}, err
@@ -341,6 +404,10 @@ func (s IssueManagerService) UpdateIssue(ctx context.Context, workspaceID string
 		IssueID:     issue.IssueID,
 		ChangeKind:  eventstreamservice.WorkspaceIssueChangeIssueUpdated,
 	})
+	if !issue.DispatchPaused && issue.Budget.Status == workspaceissues.BudgetStatusActive &&
+		(issue.SequentialExecution || issue.ParallelExecution) {
+		s.dispatchEligibleIssueTasks(ctx, workspaceID, issueID)
+	}
 	return issue, nil
 }
 
@@ -466,24 +533,28 @@ func (s IssueManagerService) GetTaskDetail(ctx context.Context, workspaceID stri
 
 func (s IssueManagerService) UpdateTask(ctx context.Context, workspaceID string, issueID string, taskID string, input UpdateIssueManagerTaskInput) (workspaceissues.Task, error) {
 	task, err := s.domainService().UpdateTask(ctx, workspaceissues.UpdateTaskInput{
-		TaskID:            taskID,
-		IssueID:           issueID,
-		WorkspaceID:       workspaceID,
-		ActorUserID:       issueManagerLocalActorUserID,
-		Title:             input.Title,
-		HasTitle:          input.HasTitle,
-		Content:           input.Content,
-		HasContent:        input.HasContent,
-		Status:            input.Status,
-		HasStatus:         input.HasStatus,
-		Priority:          input.Priority,
-		HasPriority:       input.HasPriority,
-		DueAtUnixMS:       input.DueAtUnixMS,
-		HasDueAt:          input.HasDueAt,
-		SortIndex:         input.SortIndex,
-		HasSortIndex:      input.HasSortIndex,
-		Parallelizable:    input.Parallelizable,
-		HasParallelizable: input.HasParallelizable,
+		TaskID:               taskID,
+		IssueID:              issueID,
+		WorkspaceID:          workspaceID,
+		ActorUserID:          issueManagerLocalActorUserID,
+		Title:                input.Title,
+		HasTitle:             input.HasTitle,
+		Content:              input.Content,
+		HasContent:           input.HasContent,
+		Status:               input.Status,
+		HasStatus:            input.HasStatus,
+		Priority:             input.Priority,
+		HasPriority:          input.HasPriority,
+		DueAtUnixMS:          input.DueAtUnixMS,
+		HasDueAt:             input.HasDueAt,
+		SortIndex:            input.SortIndex,
+		HasSortIndex:         input.HasSortIndex,
+		Parallelizable:       input.Parallelizable,
+		HasParallelizable:    input.HasParallelizable,
+		AcceptanceState:      input.AcceptanceState,
+		HasAcceptanceState:   input.HasAcceptanceState,
+		AcceptanceSummary:    input.AcceptanceSummary,
+		HasAcceptanceSummary: input.HasAcceptanceSummary,
 	})
 	if err != nil {
 		return workspaceissues.Task{}, err
@@ -494,6 +565,9 @@ func (s IssueManagerService) UpdateTask(ctx context.Context, workspaceID string,
 		TaskID:      task.TaskID,
 		ChangeKind:  eventstreamservice.WorkspaceIssueChangeTaskUpdated,
 	})
+	if task.Status == workspaceissues.StatusCompleted && task.AcceptanceState == workspaceissues.AcceptanceUserAccepted {
+		s.dispatchEligibleIssueTasks(ctx, workspaceID, issueID)
+	}
 	return task, nil
 }
 
@@ -551,6 +625,8 @@ func (s IssueManagerService) CreateRun(ctx context.Context, workspaceID string, 
 		AgentProvider:      input.AgentProvider,
 		AgentUserID:        input.AgentUserID,
 		AgentSessionID:     input.AgentSessionID,
+		ModelPlanID:        input.ModelPlanID,
+		Model:              input.Model,
 		ExecutionDirectory: input.ExecutionDirectory,
 	})
 	if err != nil {
@@ -573,15 +649,18 @@ func (s IssueManagerService) GetRunDetail(ctx context.Context, workspaceID strin
 
 func (s IssueManagerService) CompleteRun(ctx context.Context, workspaceID string, issueID string, taskID string, runID string, input CompleteIssueManagerRunInput) (workspaceissues.RunDetail, error) {
 	run, outputs, err := s.domainService().CompleteRun(ctx, workspaceissues.CompleteRunInput{
-		RunID:        runID,
-		TaskID:       taskID,
-		IssueID:      issueID,
-		WorkspaceID:  workspaceID,
-		ActorUserID:  issueManagerLocalActorUserID,
-		Status:       input.Status,
-		Summary:      input.Summary,
-		ErrorMessage: input.ErrorMessage,
-		Outputs:      input.Outputs,
+		RunID:                    runID,
+		TaskID:                   taskID,
+		IssueID:                  issueID,
+		WorkspaceID:              workspaceID,
+		ActorUserID:              issueManagerLocalActorUserID,
+		Status:                   input.Status,
+		Summary:                  input.Summary,
+		ErrorMessage:             input.ErrorMessage,
+		Outputs:                  input.Outputs,
+		Usage:                    input.Usage,
+		RemainingQuotaPercent:    input.RemainingQuotaPercent,
+		HasRemainingQuotaPercent: input.HasRemainingQuotaPercent,
 	})
 	if err != nil {
 		return workspaceissues.RunDetail{}, err
@@ -593,104 +672,10 @@ func (s IssueManagerService) CompleteRun(ctx context.Context, workspaceID string
 		RunID:       run.RunID,
 		ChangeKind:  eventstreamservice.WorkspaceIssueChangeRunCompleted,
 	})
+	// Parallel Issues keep their bounded workspace slots full as independent
+	// runs settle. Sequential successors still remain gated on user acceptance.
+	s.dispatchEligibleIssueTasks(ctx, workspaceID, issueID)
 	return workspaceissues.RunDetail{Run: run, Outputs: outputs}, nil
-}
-
-func (s IssueManagerService) applyVisibleIssueSubtaskCounts(ctx context.Context, list *workspaceissues.IssueList) error {
-	if list == nil || len(list.Items) == 0 {
-		return nil
-	}
-
-	service := s.domainService()
-	for index := range list.Items {
-		issue := &list.Items[index]
-		tasks, err := service.ListTasks(ctx, workspaceissues.TaskListFilter{
-			WorkspaceID: issue.WorkspaceID,
-			IssueID:     issue.IssueID,
-			ReturnAll:   true,
-		})
-		if err != nil {
-			return err
-		}
-		runs, err := service.ListRuns(ctx, issue.WorkspaceID, issue.IssueID, "")
-		if err != nil {
-			return err
-		}
-		var latestRun *workspaceissues.Run
-		if len(runs) > 0 {
-			latestRun = &runs[0]
-		}
-		applyVisibleIssueSubtaskCount(issue, tasks.Items, latestRun)
-	}
-	return nil
-}
-
-func applyVisibleIssueSubtaskCount(issue *workspaceissues.Issue, tasks []workspaceissues.Task, latestRun *workspaceissues.Run) {
-	if issue == nil {
-		return
-	}
-	counts := countVisibleIssueSubtaskStatuses(*issue, tasks, latestRun)
-	issue.TaskCount = counts.All
-	issue.NotStartedCount = counts.NotStarted
-	issue.RunningCount = counts.Running
-	issue.PendingAcceptanceCount = counts.PendingAcceptance
-	issue.CompletedCount = counts.Completed + counts.PendingAcceptance
-	issue.FailedCount = counts.Failed
-	issue.CanceledCount = counts.Canceled
-}
-
-func countVisibleIssueSubtaskStatuses(issue workspaceissues.Issue, tasks []workspaceissues.Task, latestRun *workspaceissues.Run) workspaceissues.StatusCounts {
-	hiddenTaskID := hiddenIssueRunTaskID(issue, tasks, latestRun)
-	var counts workspaceissues.StatusCounts
-	for _, task := range tasks {
-		if task.TaskID == hiddenTaskID {
-			continue
-		}
-		incrementIssueManagerStatusCount(&counts, task.Status)
-	}
-	return counts
-}
-
-func hiddenIssueRunTaskID(issue workspaceissues.Issue, tasks []workspaceissues.Task, latestRun *workspaceissues.Run) string {
-	if latestRun == nil {
-		return ""
-	}
-	taskID := strings.TrimSpace(latestRun.TaskID)
-	if taskID == "" {
-		return ""
-	}
-	issueTitle := strings.TrimSpace(issue.Title)
-	for _, task := range tasks {
-		if task.TaskID != taskID {
-			continue
-		}
-		taskTitle := strings.TrimSpace(task.Title)
-		if taskTitle != "" && taskTitle != issueTitle {
-			return ""
-		}
-		return taskID
-	}
-	return ""
-}
-
-func incrementIssueManagerStatusCount(counts *workspaceissues.StatusCounts, status workspaceissues.Status) {
-	counts.All++
-	switch status {
-	case workspaceissues.StatusNotStarted:
-		counts.NotStarted++
-	case workspaceissues.StatusRunning:
-		counts.Running++
-	case workspaceissues.StatusPendingAcceptance:
-		counts.PendingAcceptance++
-	case workspaceissues.StatusCompleted:
-		counts.Completed++
-	case workspaceissues.StatusFailed:
-		counts.Failed++
-	case workspaceissues.StatusCanceled:
-		counts.Canceled++
-	default:
-		counts.NotStarted++
-	}
 }
 
 func (s IssueManagerService) RemoveIssueContextRef(ctx context.Context, workspaceID string, issueID string, contextRefID string) (bool, error) {

@@ -40,7 +40,7 @@ func TestIssuePlanningTimelineReporterLinksSourceSessionToIssue(t *testing.T) {
 	}
 	message := page.Messages[0]
 	content, _ := message.Payload["content"].(string)
-	if message.MessageID != "plan-issue:issue-1" || message.Kind != "text" {
+	if message.MessageID != "plan-issue:issue-1" || message.Kind != "session_audit" {
 		t.Fatalf("message = %#v", message)
 	}
 	if !strings.Contains(content, "[@Plan \\[migration\\]]") ||

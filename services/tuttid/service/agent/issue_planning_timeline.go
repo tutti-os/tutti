@@ -44,7 +44,7 @@ func (r IssuePlanningTimelineReporter) ReportIssuePlanningLink(
 	update := agentsessionstore.WorkspaceAgentSessionMessageUpdate{
 		MessageID:         "plan-issue:" + issueID,
 		Role:              "assistant",
-		Kind:              "text",
+		Kind:              "session_audit",
 		Status:            "completed",
 		Payload:           map[string]any{"content": issuePlanningLinkMarkdown(workspaceID, issueID, topicID, title)},
 		OccurredAtUnixMS:  occurredAt.UnixMilli(),

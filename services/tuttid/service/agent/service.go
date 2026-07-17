@@ -74,6 +74,11 @@ func (s *Service) CreateWithResult(ctx context.Context, workspaceID string, inpu
 		return CreateSessionResult{}, err
 	}
 	input.ConversationDetailMode = preferencesbiz.NormalizeDesktopAgentConversationDetailMode(input.ConversationDetailMode)
+	requestedPermissionModeID := strings.TrimSpace(value(input.PermissionModeID))
+	if input.StrictPermissionMode && requestedPermissionModeID != "" &&
+		!permissionModeConfigHasModeID(permissionConfigForProvider(provider), requestedPermissionModeID) {
+		return CreateSessionResult{}, fmt.Errorf("%w: permission mode is unsupported by the workspace agent harness", ErrInvalidArgument)
+	}
 	normalizedPermissionModeID := normalizePermissionModeIDForLaunch(provider, input.ProviderTargetRef, value(input.PermissionModeID))
 	if normalizedPermissionModeID != "" {
 		input.PermissionModeID = &normalizedPermissionModeID

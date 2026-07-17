@@ -138,6 +138,24 @@ func CompileEstimatedRunTokenBudget(profile ExecutionProfile) int64 {
 	return 24_000 + int64(profile.ReasoningIntensity)*320 + int64(profile.OrchestrationIntensity)*160
 }
 
+// IssueBudgetAllowsNextAutomaticRun applies the pre-dispatch soft gate. It
+// reserves an estimated allowance instead of waiting until actual usage has
+// already crossed the limit, which makes the documented lower-intensity
+// recovery path meaningful.
+func IssueBudgetAllowsNextAutomaticRun(issue Issue) bool {
+	if issue.Budget.Status != BudgetStatusActive {
+		return false
+	}
+	if issue.Budget.HasRemainingQuota && issue.Budget.RemainingQuotaPercent <= issue.Budget.QuotaWaterlinePercent {
+		return false
+	}
+	if issue.Budget.TokenLimit <= 0 {
+		return true
+	}
+	remaining := issue.Budget.TokenLimit - issue.Budget.ConsumedTokens
+	return remaining >= CompileEstimatedRunTokenBudget(issue.ExecutionProfile)
+}
+
 // CompileAutoTokenBudgetWithHistory blends the deterministic scale/intensity
 // compiler with the observed total usage of comparable completed tasks. The
 // deterministic result remains the fallback and contributes half the result,
@@ -162,6 +180,29 @@ func CompileAutoTokenBudgetWithHistory(taskCount int, profile ExecutionProfile, 
 		return maximumAutoTokenBudget
 	}
 	return blended
+}
+
+func NormalizeAcceptanceState(raw string) (AcceptanceState, bool) {
+	switch AcceptanceState(strings.ToLower(strings.TrimSpace(raw))) {
+	case AcceptanceAgentClaimed, AcceptanceAutoChecked, AcceptanceUserAccepted:
+		return AcceptanceState(strings.ToLower(strings.TrimSpace(raw))), true
+	default:
+		return "", false
+	}
+}
+
+func CanTransitionAcceptance(current AcceptanceState, next AcceptanceState) bool {
+	if current == next {
+		return true
+	}
+	switch current {
+	case AcceptanceAgentClaimed:
+		return next == AcceptanceAutoChecked || next == AcceptanceUserAccepted
+	case AcceptanceAutoChecked:
+		return next == AcceptanceUserAccepted
+	default:
+		return false
+	}
 }
 
 func NormalizeDependencyTaskIDs(values []string) []string {
@@ -272,4 +313,18 @@ func firstNonEmpty(values ...string) string {
 		}
 	}
 	return ""
+}
+
+func NormalizeTokenUsage(value TokenUsage) (TokenUsage, bool) {
+	if value.InputTokens < 0 || value.OutputTokens < 0 || value.CacheReadTokens < 0 || value.CacheWriteTokens < 0 {
+		return TokenUsage{}, false
+	}
+	return value, true
+}
+
+func maxInt(left int, right int) int {
+	if left > right {
+		return left
+	}
+	return right
 }

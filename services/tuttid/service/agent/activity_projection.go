@@ -59,6 +59,20 @@ type SessionStateObserver interface {
 	ObserveAgentSessionState(context.Context, canonical.ReportSessionStateInput, canonical.ReportSessionStateReply)
 }
 
+// SessionStateObservers fans one session-state observation out to several
+// observers in order, so independent projections (app factory, Issue run
+// settlement) can share the single activity-projection hook.
+type SessionStateObservers []SessionStateObserver
+
+func (observers SessionStateObservers) ObserveAgentSessionState(ctx context.Context, input canonical.ReportSessionStateInput, reply canonical.ReportSessionStateReply) {
+	for _, observer := range observers {
+		if observer == nil {
+			continue
+		}
+		observer.ObserveAgentSessionState(ctx, input, reply)
+	}
+}
+
 type SessionMessageObserver interface {
 	ObserveAgentSessionMessages(context.Context, canonical.ReportSessionMessagesInput, canonical.ReportSessionMessagesReply)
 }
