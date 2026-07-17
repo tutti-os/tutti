@@ -159,10 +159,7 @@ export function TuttiPlanIssuePanel({
     (task) => task.status === "running"
   ).length;
   return (
-    <Card
-      className="mx-auto w-full max-w-[860px]"
-      data-testid="tutti-plan-issue-panel"
-    >
+    <Card className="w-full" data-testid="tutti-plan-issue-panel">
       <CardHeader className="gap-2">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div className="flex min-w-0 items-center gap-2">
@@ -353,7 +350,7 @@ function TuttiPlanIssueBoard({
           return (
             <div
               key={status}
-              className="min-h-[120px] rounded-lg border border-border/70 bg-muted/30 px-2 py-2"
+              className="min-h-[220px] rounded-lg border border-border/70 bg-muted/30 px-2 py-2"
               data-testid={`tutti-plan-issue-column-${status}`}
             >
               <div className="mb-1.5 flex items-center justify-between gap-2">
