@@ -579,26 +579,34 @@ function drainSession(
     lifecycle,
     agentSessionId
   );
-  if (
-    availability.state !== "available" &&
-    !(
-      head.guidance === true &&
-      availability.state === "blocked" &&
-      availability.reason === "active_turn"
-    )
-  ) {
+  // The guidance flag was resolved when the prompt entered the queue; whether
+  // it can steer is decided here, against the availability observed at drain
+  // time. A prompt queued as guidance behind a turn that has since settled is
+  // sent as a plain new-turn submit instead of a doomed steer.
+  const sendAsGuidance =
+    head.guidance === true &&
+    availability.state === "blocked" &&
+    availability.reason === "active_turn";
+  if (availability.state !== "available" && !sendAsGuidance) {
     return result(state);
   }
   const sequence = state.nextCommandSequence;
   const commandId = queueSendCommandId(record.agentSessionId, sequence);
   return {
-    commands: [sendCommandFromQueuedPrompt(record, head, commandId)],
+    commands: [
+      sendCommandFromQueuedPrompt(record, head, commandId, sendAsGuidance)
+    ],
     state: replaceRecord(
       { ...state, nextCommandSequence: sequence + 1 },
       record.agentSessionId,
       {
         ...record,
-        inFlight: { commandId, kind: "send", promptId: head.id }
+        inFlight: {
+          commandId,
+          ...(sendAsGuidance ? { guidance: true as const } : {}),
+          kind: "send",
+          promptId: head.id
+        }
       }
     )
   };
@@ -607,7 +615,8 @@ function drainSession(
 function sendCommandFromQueuedPrompt(
   record: PromptQueueRecord,
   head: PromptQueueRecord["prompts"][number],
-  commandId: string
+  commandId: string,
+  guidance: boolean
 ): Extract<EngineCommand, { type: "queue/sendPrompt" }> {
   return {
     agentSessionId: record.agentSessionId,
@@ -616,7 +625,7 @@ function sendCommandFromQueuedPrompt(
     clientSubmitId: head.clientSubmitId ?? head.id,
     content: head.runtimeContent ?? head.content,
     ...(head.displayPrompt ? { displayPrompt: head.displayPrompt } : {}),
-    ...(head.guidance === true ? { guidance: true } : {}),
+    ...(guidance ? { guidance: true } : {}),
     ...(head.submitDiagnostics
       ? { submitDiagnostics: head.submitDiagnostics }
       : {}),

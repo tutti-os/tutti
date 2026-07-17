@@ -106,6 +106,116 @@ test("send-now native guidance can send against a canonical active turn", () => 
   assert.equal(send(guided.commands[0]).guidance, true);
 });
 
+test("drain after settle strips a stale guidance flag from the queue head", () => {
+  const first = reduce(
+    createInitialPromptQueueState(),
+    enqueue("prompt-1"),
+    canonicalLifecycle("settled", 1, "turn-0")
+  );
+  assert.equal(send(first.commands[0]).promptId, "prompt-1");
+
+  // While prompt-1's turn runs, a second prompt is promoted to steer it.
+  const running = canonicalLifecycle("running", 2, "turn-1");
+  const queued = reduce(first.state, enqueue("prompt-2"), running);
+  const promoted = reduce(queued.state, sendNow("prompt-2"), running);
+  assert.deepEqual(promoted.commands, []);
+  assert.equal(
+    promoted.state.recordsBySessionId["session-1"]?.prompts[0]?.guidance,
+    true
+  );
+
+  const accepted = reduce(
+    promoted.state,
+    commandResult(
+      commandId(first.commands[0]),
+      "queue/sendPrompt",
+      "succeeded"
+    ),
+    running,
+    { sendValidation: validSend("turn-1", "running", 2) }
+  );
+  assert.deepEqual(accepted.commands, []);
+
+  // turn-1 settles before the promoted steer ever went out: it must drain as
+  // a plain new-turn send, not a doomed guidance request.
+  const settled = reduce(
+    accepted.state,
+    turnUpserted(settledTurn("turn-1", 3)),
+    canonicalLifecycle("settled", 3, "turn-1")
+  );
+  assert.equal(send(settled.commands[0]).promptId, "prompt-2");
+  assert.equal(send(settled.commands[0]).guidance, undefined);
+});
+
+test("no-active-turn guidance failure demotes the prompt and retries it as a new turn", () => {
+  const running = canonicalLifecycle("running", 1);
+  const queued = reduce(
+    createInitialPromptQueueState(),
+    enqueue("prompt-1"),
+    running
+  );
+  const guided = reduce(queued.state, sendNow("prompt-1"), running);
+  assert.equal(send(guided.commands[0]).guidance, true);
+  assert.equal(
+    guided.state.recordsBySessionId["session-1"]?.inFlight?.guidance,
+    true
+  );
+
+  const failed = reduce(
+    guided.state,
+    commandResult(
+      commandId(guided.commands[0]),
+      "queue/sendPrompt",
+      "failed",
+      {
+        errorMessage: "agent session has no active turn",
+        errorReason: "agent.no_active_turn"
+      }
+    ),
+    canonicalLifecycle("settled", 2)
+  );
+  const record = failed.state.recordsBySessionId["session-1"];
+  assert.equal(record?.failedPromptId, null);
+  assert.equal(record?.prompts.length, 1);
+  assert.equal(failed.commands.length, 1);
+  assert.equal(failed.commands[0]?.type, "session/reconcile");
+
+  // The retry drains on the next canonical update as a plain new-turn send —
+  // never as another doomed guidance request that would loop forever.
+  const retried = reduce(
+    failed.state,
+    turnUpserted(settledTurn("turn-2", 3)),
+    canonicalLifecycle("settled", 3, "turn-2")
+  );
+  assert.equal(send(retried.commands[0]).promptId, "prompt-1");
+  assert.equal(send(retried.commands[0]).guidance, undefined);
+});
+
+test("guidance failure without the no-active-turn reason still blocks the queue", () => {
+  const running = canonicalLifecycle("running", 1);
+  const queued = reduce(
+    createInitialPromptQueueState(),
+    enqueue("prompt-1"),
+    running
+  );
+  const guided = reduce(queued.state, sendNow("prompt-1"), running);
+  const failed = reduce(
+    guided.state,
+    commandResult(
+      commandId(guided.commands[0]),
+      "queue/sendPrompt",
+      "failed",
+      { errorMessage: "boom" }
+    ),
+    canonicalLifecycle("settled", 2)
+  );
+  assert.equal(
+    failed.state.recordsBySessionId["session-1"]?.failedPromptId,
+    "prompt-1"
+  );
+  assert.deepEqual(failed.commands, []);
+});
+
 test("cancel-then-send waits until validated cancellation updates canonical lifecycle", () => {
   const running = canonicalLifecycle("running", 1);
   let state = reduce(

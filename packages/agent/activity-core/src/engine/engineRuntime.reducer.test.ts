@@ -251,6 +251,72 @@ test("root reducer composes domain slices and commands", () => {
   ]);
 });
 
+test("submit during in-flight activation queues and drains once the session appears", () => {
+  // The session's create call has not resolved yet: nothing in sessionsById.
+  const submitted = rootEngineReducer(createInitialAgentSessionEngineState(), {
+    agentSessionId: "session-1",
+    clientSubmitId: "submit-1",
+    content: [{ type: "text", text: "steer me" }],
+    expiresAtUnixMs: 120_000,
+    requestedAtUnixMs: 1,
+    type: "submit/requested",
+    workspaceId: "workspace-1"
+  });
+  assert.ok(submitted.state.pendingIntents.submitsByClientSubmitId["submit-1"]);
+  assert.equal(
+    submitted.state.promptQueue.recordsBySessionId["session-1"]?.prompts[0]
+      ?.clientSubmitId,
+    "submit-1"
+  );
+  assert.equal(
+    submitted.commands.some((command) => command.type === "queue/sendPrompt"),
+    false
+  );
+
+  const activated = rootEngineReducer(submitted.state, {
+    sessions: [
+      {
+        activeTurnId: null,
+        agentSessionId: "session-1",
+        cwd: "/workspace",
+        latestTurnInteractions: [],
+        pendingInteractions: [],
+        provider: "codex",
+        title: "Session",
+        updatedAtUnixMs: 2,
+        workspaceId: "workspace-1"
+      }
+    ],
+    type: "session/snapshotReceived"
+  });
+  const send = activated.commands.find(
+    (command) => command.type === "queue/sendPrompt"
+  );
+  assert.equal(send?.type, "queue/sendPrompt");
+  assert.equal(
+    send?.type === "queue/sendPrompt" ? send.clientSubmitId : "",
+    "submit-1"
+  );
+});
+
+test("immediate-routing submit still requires a canonical session", () => {
+  const result = rootEngineReducer(createInitialAgentSessionEngineState(), {
+    agentSessionId: "session-1",
+    clientSubmitId: "submit-1",
+    content: [{ type: "text", text: "now" }],
+    expiresAtUnixMs: 120_000,
+    requestedAtUnixMs: 1,
+    routing: "immediate",
+    type: "submit/requested",
+    workspaceId: "workspace-1"
+  });
+  assert.deepEqual(result.commands, []);
+  assert.equal(
+    result.state.pendingIntents.submitsByClientSubmitId["submit-1"],
+    undefined
+  );
+});
+
 test("canceling a queued submit atomically removes queue and pending intent", () => {
   let state = createInitialAgentSessionEngineState();
   state = rootEngineReducer(state, {
@@ -438,7 +504,7 @@ test("later queued submit stays requested when its expiry follows the prior deli
   ]);
 });
 
-test("submit acceptance rejects unknown and cross-workspace canonical sessions atomically", () => {
+test("submit acceptance rejects cross-workspace canonical sessions atomically", () => {
   const submit = {
     agentSessionId: "session-1",
     clientSubmitId: "submit-1",
@@ -448,19 +514,6 @@ test("submit acceptance rejects unknown and cross-workspace canonical sessions a
     type: "submit/requested" as const,
     workspaceId: "workspace-1"
   };
-  const unknown = rootEngineReducer(
-    createInitialAgentSessionEngineState(),
-    submit
-  );
-  assert.equal(
-    unknown.state.pendingIntents.submitsByClientSubmitId["submit-1"],
-    undefined
-  );
-  assert.equal(
-    unknown.state.promptQueue.recordsBySessionId["session-1"],
-    undefined
-  );
-
   let state = rootEngineReducer(createInitialAgentSessionEngineState(), {
     sessions: [
       {

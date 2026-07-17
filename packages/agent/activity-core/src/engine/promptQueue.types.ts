@@ -21,6 +21,8 @@ export type PromptQueueSuspendReason = "user_stop";
 
 export interface PromptQueueInFlightCommand {
   commandId: string;
+  /** Set when the command was dispatched as an active-turn steer. */
+  guidance?: true;
   kind: "send";
   promptId: string;
   runtimeContent?: readonly AgentPromptContentBlock[];
