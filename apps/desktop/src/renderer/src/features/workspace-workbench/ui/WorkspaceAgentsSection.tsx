@@ -16,8 +16,8 @@ import { WorkspaceAgentEditor } from "./WorkspaceAgentEditor";
 
 /**
  * Manages the explicit workspace Agent directory. An Agent is a named,
- * selectable Harness + ModelPlan configuration, not a role binding on a fixed
- * provider entry.
+ * selectable Agent Runtime + ModelPlan configuration, not a role binding on
+ * a fixed provider entry.
  */
 export function WorkspaceAgentsSection() {
   const { t } = useTranslation();
@@ -87,28 +87,12 @@ export function WorkspaceAgentsSection() {
               <WorkspaceAgentEditor
                 key={agent.id}
                 agent={agent}
-                capabilityCatalog={agentsState.capabilityCatalog}
-                capabilityCatalogLoadFailed={
-                  agentsState.capabilityCatalogLoadFailed
-                }
-                capabilityCatalogLoading={agentsState.capabilityCatalogLoading}
                 draft={draft}
                 feedback={agentsState.feedback}
                 harnessTargets={agentsState.harnessTargets}
                 modelPlans={state.modelPlans.plans}
-                generating={agentsState.generating}
-                recommendingFallback={agentsState.recommendingFallback}
                 saving={agentsState.saving}
                 onCancel={() => service.agents.cancelDraft()}
-                onGenerate={() => {
-                  void service.agents.generateDraft();
-                }}
-                onRefreshCapabilityCatalog={() => {
-                  void service.agents.refreshCapabilityCatalog();
-                }}
-                onRecommendFallback={() => {
-                  void service.agents.addRecommendedFallback();
-                }}
                 onSave={() => {
                   void service.agents.saveDraft();
                 }}
@@ -130,28 +114,12 @@ export function WorkspaceAgentsSection() {
           {draft?.agentId === null ? (
             <WorkspaceAgentEditor
               agent={null}
-              capabilityCatalog={agentsState.capabilityCatalog}
-              capabilityCatalogLoadFailed={
-                agentsState.capabilityCatalogLoadFailed
-              }
-              capabilityCatalogLoading={agentsState.capabilityCatalogLoading}
               draft={draft}
               feedback={agentsState.feedback}
               harnessTargets={agentsState.harnessTargets}
               modelPlans={state.modelPlans.plans}
-              generating={agentsState.generating}
-              recommendingFallback={agentsState.recommendingFallback}
               saving={agentsState.saving}
               onCancel={() => service.agents.cancelDraft()}
-              onGenerate={() => {
-                void service.agents.generateDraft();
-              }}
-              onRefreshCapabilityCatalog={() => {
-                void service.agents.refreshCapabilityCatalog();
-              }}
-              onRecommendFallback={() => {
-                void service.agents.addRecommendedFallback();
-              }}
               onSave={() => {
                 void service.agents.saveDraft();
               }}

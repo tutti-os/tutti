@@ -751,47 +751,23 @@ export const en = {
         agents: {
           addAgent: "Add Agent",
           defaultModelLabel: "Default model",
-          addModelFallback: "Add fallback",
           delete: "Delete",
           deleteConfirm: "Delete this Agent?",
           deleteFailed: "Couldn't delete the Agent — try again.",
           deleting: "Deleting...",
           description:
-            "Create named Agent options by combining a Harness with a model plan, instructions, skills, tools, and permissions.",
+            "Create named Agent options by combining an Agent Runtime with a model plan and instructions.",
           disabled: "Disabled",
           edit: "Edit",
           editTitle: "Edit {{agent}}",
           editorDescription:
             "This configuration becomes one selectable Agent in new conversations.",
           emptyDescription:
-            "Add an Agent to map a Harness and model plan into a reusable conversation option.",
+            "Add an Agent to map an Agent Runtime and model plan into a reusable conversation option.",
           emptyTitle: "No workspace Agents yet",
           enabled: "Ready",
-          enabledLabel: "Available for new conversations",
-          generate: "Generate draft",
-          generateChoosePlan:
-            "Choose a compatible model plan before generating.",
-          generateFailed:
-            "Couldn't generate a valid draft. Check the selected plan and try again.",
-          generateModelDisclosure:
-            "Generation will use {{plan}} · {{model}}. Nothing is saved automatically.",
-          generateSafetyHint:
-            "The result fills this form for review. Suggested automations are saved disabled and never start paid actions automatically.",
-          generateTitle: "Generate configuration",
-          generatedCallConditionsTitle: "Call conditions",
-          generatedRuleDisabled: "saved disabled",
-          generatedRulesDescription:
-            "Review these bounded model-consult suggestions. Saving the Agent also saves them disabled under Automation rules.",
-          generatedRulesSaveFailed:
-            "The Agent was saved, but one or more generated automation suggestions could not be saved. Retry to save the remaining disabled suggestions.",
-          generatedRulesTitle: "Generated automation suggestions",
-          generating: "Generating...",
-          generationRequirementsPlaceholder:
-            "Optional: describe the role, workflow, quality bar, or special constraints.",
-          generationRequiresPlan:
-            "Choose a Harness and compatible model plan before generating.",
-          harnessLabel: "Harness",
-          harnessUnavailable: "Harness unavailable",
+          harnessLabel: "Agent Runtime",
+          harnessUnavailable: "Agent Runtime unavailable",
           behaviorDetailsTitle: "Instructions and call conditions",
           callConditionsLabel: "Call conditions",
           callConditionsPlaceholder:
@@ -799,67 +775,25 @@ export const en = {
           instructionsLabel: "Instructions",
           instructionsPlaceholder:
             "Describe how this Agent should approach its work.",
-          capabilitiesTitle: "Compatible capabilities",
-          capabilitiesAutomaticDescription:
-            "Automatically uses all Skills, plugins, and connectors compatible with this Harness.",
-          capabilitiesExplicitDescription:
-            "Only the checked capabilities are available to this Agent.",
-          capabilitiesLoading: "Loading compatible capabilities...",
-          capabilitiesLoadFailed:
-            "We couldn't load capabilities for this Harness.",
-          noCompatibleCapabilities:
-            "This Harness did not report any configurable capabilities.",
-          restoreAutomaticCapabilities: "Use automatic selection",
-          capabilityDetails: "Technical details",
-          capabilityGroups: {
-            skills: "Skills",
-            plugins: "Plugins",
-            connectors: "Connectors"
-          },
-          capabilityStatuses: {
-            available: "Available",
-            disabled: "Disabled",
-            authRequired: "Sign-in required",
-            setupRequired: "Setup required",
-            unsupported: "Unsupported"
-          },
-          advancedCapabilityIdsTitle: "Advanced capability IDs and permissions",
-          advancedCapabilityIdsDescription:
-            "Use manual IDs only for capabilities the Harness catalog cannot discover. Editing Skills or tools switches this Agent to an explicit allowlist.",
           loadFailed: "We couldn't load workspace Agents.",
           migrated: "Migrated from an earlier binding",
           modelPlanLabel: "Model plan",
-          modelFallbackDescription:
-            "Tried in this order only when a new conversation cannot use the primary plan. Running conversations never switch credentials.",
-          modelFallbackLabel: "Model failover chain",
-          noModelFallbackRecommendation:
-            "No additional healthy model matches the primary model's capabilities.",
-          recommendModelFallback: "Recommend",
-          recommendModelFallbackFailed:
-            "Couldn't recommend a fallback — try again.",
-          recommendingModelFallback: "Recommending...",
-          removeModelFallback: "Remove fallback",
           nameLabel: "Name",
           namePlaceholder: "Frontend reviewer",
-          noHarnesses: "No Harnesses are available",
-          noModelPlan: "Harness default models",
+          noHarnesses: "No Agent Runtimes are available",
+          noModelPlan: "Agent Runtime default models",
           onePerLine: "One entry per line",
-          permissionsLabel: "Permissions",
-          permissionsPlaceholder: "workspace.write\nnetwork.read",
           planDefaultModel: "Plan default",
-          purposeLabel: "Purpose",
-          purposePlaceholder: "Review UI changes for quality and accessibility",
-          requiredFields: "Enter a name and choose a Harness.",
+          purposeLabel: "Description",
+          purposePlaceholder:
+            "Describe this Agent's responsibilities and when to use it.",
+          requiredFields: "Enter a name and choose an Agent Runtime.",
           retry: "Try again",
           save: "Save Agent",
           saveFailed:
             "Couldn't save the Agent — check the fields and try again.",
           saving: "Saving...",
-          skillsLabel: "Skills",
-          skillsPlaceholder: "react-review\naccessibility",
-          title: "Agents",
-          toolsLabel: "Tools",
-          toolsPlaceholder: "terminal\nbrowser"
+          title: "Agents"
         },
         automationRules: {
           actions: {

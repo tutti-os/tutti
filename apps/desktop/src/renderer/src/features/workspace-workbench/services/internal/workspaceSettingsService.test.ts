@@ -784,9 +784,6 @@ function createWorkspaceSettingsClient(
       }
     }),
     listAgentTargets: async () => [],
-    getAgentProviderComposerOptions: async () => {
-      throw new Error("not used");
-    },
     listAutomationRules: async () => [],
     createAutomationRule: async () => {
       throw new Error("not used");
@@ -797,9 +794,6 @@ function createWorkspaceSettingsClient(
     deleteAutomationRule: async () => {},
     listWorkspaceAgents: async () => [],
     createWorkspaceAgent: async () => {
-      throw new Error("not used");
-    },
-    generateWorkspaceAgentDraft: async () => {
       throw new Error("not used");
     },
     updateWorkspaceAgent: async () => {
@@ -833,7 +827,6 @@ function createWorkspaceSettingsClient(
     openLogDirectory: async () => {},
     openLogFile: async () => {},
     listModelPlans: async () => [],
-    recommendWorkspaceModels: async () => [],
     createModelPlan: async () => {
       throw new Error("not used");
     },
