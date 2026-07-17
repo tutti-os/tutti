@@ -18,6 +18,20 @@ export type DesktopMinimizeAnimation =
 export const defaultDesktopMinimizeAnimation: DesktopMinimizeAnimation =
   "genie";
 
+export const desktopProxyModes = ["system", "manual"] as const;
+
+export type DesktopProxyMode = (typeof desktopProxyModes)[number];
+
+export interface DesktopProxySettings {
+  mode: DesktopProxyMode;
+  port: number;
+}
+
+export const defaultDesktopProxySettings: DesktopProxySettings = {
+  mode: "system",
+  port: 7890
+};
+
 export const desktopWorkbenchWindowSnappingShortcutPresets = [
   "commandArrows",
   "commandShiftArrows"
@@ -126,6 +140,45 @@ export function isDesktopMinimizeAnimation(
   return (
     typeof value === "string" &&
     desktopMinimizeAnimations.includes(value as DesktopMinimizeAnimation)
+  );
+}
+
+export function isDesktopProxyMode(value: unknown): value is DesktopProxyMode {
+  return (
+    typeof value === "string" &&
+    desktopProxyModes.includes(value as DesktopProxyMode)
+  );
+}
+
+export function normalizeDesktopProxySettings(
+  value: unknown
+): DesktopProxySettings {
+  if (!isRecord(value)) {
+    return { ...defaultDesktopProxySettings };
+  }
+  return {
+    mode: isDesktopProxyMode(value.mode)
+      ? value.mode
+      : defaultDesktopProxySettings.mode,
+    port:
+      typeof value.port === "number" &&
+      Number.isInteger(value.port) &&
+      value.port >= 1 &&
+      value.port <= 65535
+        ? value.port
+        : defaultDesktopProxySettings.port
+  };
+}
+
+export function desktopProxySettingsEqual(
+  left: DesktopProxySettings | null | undefined,
+  right: DesktopProxySettings | null | undefined
+): boolean {
+  const normalizedLeft = normalizeDesktopProxySettings(left);
+  const normalizedRight = normalizeDesktopProxySettings(right);
+  return (
+    normalizedLeft.mode === normalizedRight.mode &&
+    normalizedLeft.port === normalizedRight.port
   );
 }
 

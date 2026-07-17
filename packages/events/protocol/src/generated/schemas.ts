@@ -293,6 +293,22 @@ export const preferencesDesktopPreferencesSchema = {
       type: "string",
       enum: ["scale", "genie", "off"]
     },
+    proxy: {
+      type: "object",
+      additionalProperties: false,
+      required: ["mode", "port"],
+      properties: {
+        mode: {
+          type: "string",
+          enum: ["system", "manual"]
+        },
+        port: {
+          type: "integer",
+          minimum: 1,
+          maximum: 65535
+        }
+      }
+    },
     sleepPreventionMode: {
       type: "string",
       enum: ["never", "whileAgentRunning", "always"]
@@ -1604,6 +1620,22 @@ export const preferencesDesktopUpdateRequestedPayloadSchema = {
           type: "string",
           enum: ["scale", "genie", "off"]
         },
+        proxy: {
+          type: "object",
+          additionalProperties: false,
+          required: ["mode", "port"],
+          properties: {
+            mode: {
+              type: "string",
+              enum: ["system", "manual"]
+            },
+            port: {
+              type: "integer",
+              minimum: 1,
+              maximum: 65535
+            }
+          }
+        },
         sleepPreventionMode: {
           type: "string",
           enum: ["never", "whileAgentRunning", "always"]
@@ -1962,6 +1994,22 @@ export const preferencesDesktopUpdatedPayloadSchema = {
         minimizeAnimation: {
           type: "string",
           enum: ["scale", "genie", "off"]
+        },
+        proxy: {
+          type: "object",
+          additionalProperties: false,
+          required: ["mode", "port"],
+          properties: {
+            mode: {
+              type: "string",
+              enum: ["system", "manual"]
+            },
+            port: {
+              type: "integer",
+              minimum: 1,
+              maximum: 65535
+            }
+          }
         },
         sleepPreventionMode: {
           type: "string",

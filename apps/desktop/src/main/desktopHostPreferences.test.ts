@@ -4,7 +4,10 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 import type { PutDesktopPreferencesRequest } from "@tutti-os/client-tuttid-ts";
-import { defaultDesktopWorkbenchShortcuts } from "../shared/preferences/index.ts";
+import {
+  defaultDesktopProxySettings,
+  defaultDesktopWorkbenchShortcuts
+} from "../shared/preferences/index.ts";
 import { createDesktopHostPreferencesState } from "./desktopHostPreferences.ts";
 import type { DesktopLogger } from "./logging.ts";
 
@@ -72,6 +75,7 @@ test("createDesktopHostPreferencesState initializes missing preferences with dar
         },
         locale: "zh-CN",
         minimizeAnimation: "genie",
+        proxy: defaultDesktopProxySettings,
         sleepPreventionMode: "never",
         showAppDeveloperSources: false,
         themeSource: "dark",

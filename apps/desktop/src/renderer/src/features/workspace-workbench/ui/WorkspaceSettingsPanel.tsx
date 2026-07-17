@@ -98,6 +98,7 @@ import {
   type DesktopFileDefaultOpener,
   type DesktopFileDefaultOpenersByExtension,
   type DesktopMinimizeAnimation,
+  type DesktopProxySettings,
   type DesktopSleepPreventionMode,
   type DesktopUpdateChannel,
   type DesktopWorkbenchShortcuts,
@@ -128,6 +129,7 @@ import {
   WorkspaceSettingsActionButton,
   workspaceSettingsControlColumnClass
 } from "./WorkspaceSettingsActionButton";
+import { WorkspaceProxySettings } from "./WorkspaceProxySettings";
 import { CustomWallpaperImageError } from "../services/customWallpaper";
 import {
   customWorkspaceWallpaperId,
@@ -344,6 +346,7 @@ export function WorkspaceSettingsPanel({
                   desktopPreferencesState.changingFeatureFlags
                 }
                 changingLocale={desktopPreferencesState.changingLocale}
+                changingProxy={desktopPreferencesState.changingProxy}
                 changingSleepPreventionMode={
                   desktopPreferencesState.changingSleepPreventionMode
                 }
@@ -351,6 +354,9 @@ export function WorkspaceSettingsPanel({
                 locale={desktopPreferencesState.locale}
                 onLocaleChange={(nextLocale) => {
                   void settingsService.changeLocale(nextLocale);
+                }}
+                onProxyChange={(settings) => {
+                  void settingsService.changeProxy(settings);
                 }}
                 onSleepPreventionModeChange={(mode) => {
                   void settingsService.changeSleepPreventionMode(mode);
@@ -361,6 +367,7 @@ export function WorkspaceSettingsPanel({
                 sleepPreventionMode={
                   desktopPreferencesState.sleepPreventionMode
                 }
+                proxy={desktopPreferencesState.proxy}
               />
             ) : settingsState.activeSection === "agent" ? (
               <WorkspaceAgentSettingsSection
@@ -4025,23 +4032,29 @@ function WorkspaceAgentSettingsSection({
 function WorkspaceGeneralSettingsSection({
   changingFeatureFlags,
   changingLocale,
+  changingProxy,
   changingSleepPreventionMode,
   featureFlags,
   locale,
   onLocaleChange,
+  onProxyChange,
   onSleepPreventionModeChange,
   onWorkspaceUiModeChange,
-  sleepPreventionMode
+  sleepPreventionMode,
+  proxy
 }: {
   changingFeatureFlags: DesktopFeatureFlags | null;
   changingLocale: DesktopLocale | null;
+  changingProxy: DesktopProxySettings | null;
   changingSleepPreventionMode: DesktopSleepPreventionMode | null;
   featureFlags: DesktopFeatureFlags;
   locale: DesktopLocale;
   onLocaleChange: (locale: DesktopLocale) => void;
+  onProxyChange: (settings: DesktopProxySettings) => void;
   onSleepPreventionModeChange: (mode: DesktopSleepPreventionMode) => void;
   onWorkspaceUiModeChange: (mode: DesktopWorkspaceUiMode) => void;
   sleepPreventionMode: DesktopSleepPreventionMode;
+  proxy: DesktopProxySettings;
 }) {
   const { t } = useTranslation();
   const agentDiagnosticsReporting = useAgentDiagnosticsConsent();
@@ -4123,7 +4136,13 @@ function WorkspaceGeneralSettingsSection({
         </div>
       </div>
 
-      <div className="order-3 flex w-full items-center justify-between gap-4 max-[560px]:flex-col max-[560px]:items-stretch">
+      <WorkspaceProxySettings
+        changing={changingProxy}
+        settings={proxy}
+        onChange={onProxyChange}
+      />
+
+      <div className="order-4 flex w-full items-center justify-between gap-4 max-[560px]:flex-col max-[560px]:items-stretch">
         <div className="flex min-w-0 flex-1 flex-col gap-1 max-[560px]:w-full">
           <strong className="text-[13px] font-semibold text-[var(--text-primary)]">
             {t("workspace.settings.general.preventSleepLabel")}
@@ -4205,7 +4224,7 @@ function WorkspaceGeneralSettingsSection({
         </div>
       </div>
 
-      <div className="order-4 flex w-full items-center justify-between gap-4 max-[560px]:flex-col max-[560px]:items-stretch">
+      <div className="order-5 flex w-full items-center justify-between gap-4 max-[560px]:flex-col max-[560px]:items-stretch">
         <div className="flex min-w-0 flex-1 flex-col gap-1 max-[560px]:w-full">
           <strong className="text-[13px] font-semibold text-[var(--text-primary)]">
             {t("workspace.settings.general.agentDiagnosticsReportingLabel")}

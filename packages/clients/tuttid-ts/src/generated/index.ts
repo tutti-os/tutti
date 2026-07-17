@@ -465,6 +465,8 @@ export type {
   DesktopMinimizeAnimation,
   DesktopPreferences,
   DesktopPreferencesStateResponse,
+  DesktopProxyMode,
+  DesktopProxySettings,
   DesktopSleepPreventionMode,
   DesktopThemeSource,
   DesktopUpdateChannel,

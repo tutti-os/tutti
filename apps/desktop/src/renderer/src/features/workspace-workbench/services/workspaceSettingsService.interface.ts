@@ -19,6 +19,7 @@ import type {
   DesktopFeatureFlags,
   DesktopWorkspaceUiMode,
   DesktopMinimizeAnimation,
+  DesktopProxySettings,
   DesktopSleepPreventionMode,
   DesktopUpdateChannel,
   DesktopUpdatePolicy,
@@ -104,6 +105,7 @@ export interface IWorkspaceSettingsService {
   changeWorkspaceUiMode(mode: DesktopWorkspaceUiMode): Promise<void>;
   changeWorkbenchShortcuts(shortcuts: DesktopWorkbenchShortcuts): Promise<void>;
   changeMinimizeAnimation(animation: DesktopMinimizeAnimation): Promise<void>;
+  changeProxy(settings: DesktopProxySettings): Promise<void>;
   changeWorkbenchWindowSnapping(
     value: DesktopWorkbenchWindowSnapping
   ): Promise<void>;

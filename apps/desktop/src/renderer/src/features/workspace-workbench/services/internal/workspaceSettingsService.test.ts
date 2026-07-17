@@ -1377,6 +1377,7 @@ function createDesktopPreferencesService(input: {
     setLocale: input.onSetLocale ?? (async (locale) => locale),
     setMinimizeAnimation:
       input.onSetMinimizeAnimation ?? (async (animation) => animation),
+    setProxy: async (settings) => settings,
     setShowAppDeveloperSources: async (show) => show,
     setSleepPreventionMode:
       input.onSetSleepPreventionMode ?? (async (enabled) => enabled),
@@ -1436,7 +1437,9 @@ function createPreferencesState(
       enabled: false,
       shortcutPreset: "commandArrows"
     },
-    ...overrides
+    ...overrides,
+    changingProxy: overrides.changingProxy ?? null,
+    proxy: overrides.proxy ?? { mode: "system", port: 7890 }
   };
 }
 

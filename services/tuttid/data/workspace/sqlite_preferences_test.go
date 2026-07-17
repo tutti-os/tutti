@@ -61,6 +61,9 @@ func TestSQLiteStoreGetDesktopPreferencesDefaultsWhenUnset(t *testing.T) {
 	if preferences.UpdateChannel != "rc" {
 		t.Fatalf("GetDesktopPreferences() updateChannel = %q, want rc", preferences.UpdateChannel)
 	}
+	if preferences.Proxy.Mode != "system" || preferences.Proxy.Port != 7890 {
+		t.Fatalf("GetDesktopPreferences() proxy = %#v, want system/7890", preferences.Proxy)
+	}
 }
 
 func TestSQLiteStorePutDesktopPreferencesPersistsValue(t *testing.T) {
@@ -93,9 +96,13 @@ func TestSQLiteStorePutDesktopPreferencesPersistsValue(t *testing.T) {
 			"html": "fileViewer",
 			"pdf":  "defaultBrowser",
 		},
-		Initialized:         true,
-		Locale:              "zh-CN",
-		MinimizeAnimation:   "scale",
+		Initialized:       true,
+		Locale:            "zh-CN",
+		MinimizeAnimation: "scale",
+		Proxy: preferencesbiz.DesktopProxySettings{
+			Mode: "manual",
+			Port: 4567,
+		},
 		SleepPreventionMode: "whileAgentRunning",
 		ThemeSource:         "dark",
 		UpdateChannel:       "rc",
@@ -156,6 +163,9 @@ func TestSQLiteStorePutDesktopPreferencesPersistsValue(t *testing.T) {
 	}
 	if reloaded.UpdateChannel != "rc" {
 		t.Fatalf("GetDesktopPreferences() updateChannel = %q, want rc", reloaded.UpdateChannel)
+	}
+	if reloaded.Proxy.Mode != "manual" || reloaded.Proxy.Port != 4567 {
+		t.Fatalf("GetDesktopPreferences() proxy = %#v, want manual/4567", reloaded.Proxy)
 	}
 	codexDefaults := reloaded.AgentComposerDefaultsByProvider["codex"]
 	if codexDefaults.Model != "gpt-5" ||

@@ -12,6 +12,7 @@ import type {
   DesktopFeatureFlags,
   DesktopFileDefaultOpenersByExtension,
   DesktopMinimizeAnimation,
+  DesktopProxySettings,
   DesktopSleepPreventionMode,
   DesktopUpdateChannel,
   DesktopUpdatePolicy,
@@ -49,6 +50,7 @@ export interface IDesktopPreferencesService {
   setMinimizeAnimation(
     animation: DesktopMinimizeAnimation
   ): Promise<DesktopMinimizeAnimation>;
+  setProxy(settings: DesktopProxySettings): Promise<DesktopProxySettings>;
   setSleepPreventionMode(
     mode: DesktopSleepPreventionMode
   ): Promise<DesktopSleepPreventionMode>;

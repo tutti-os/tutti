@@ -128,6 +128,10 @@ export interface PreferencesDesktopPreferencesV1 {
   };
   locale: "en" | "zh-CN";
   minimizeAnimation: "scale" | "genie" | "off";
+  proxy?: {
+    mode: "system" | "manual";
+    port: number;
+  };
   sleepPreventionMode: "never" | "whileAgentRunning" | "always";
   showAppDeveloperSources: boolean;
   themeSource: "system" | "dark" | "light";

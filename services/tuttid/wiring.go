@@ -12,9 +12,11 @@ import (
 
 	"github.com/google/uuid"
 	agentdaemon "github.com/tutti-os/tutti/packages/agent/daemon"
+	runtimecmd "github.com/tutti-os/tutti/packages/agent/daemon/runtimecmd"
 	runtimeprep "github.com/tutti-os/tutti/packages/agent/runtimeprep"
 	workspaceissues "github.com/tutti-os/tutti/packages/workspace/issues"
 	tuttiapi "github.com/tutti-os/tutti/services/tuttid/api"
+	preferencesbiz "github.com/tutti-os/tutti/services/tuttid/biz/preferences"
 	workspacedata "github.com/tutti-os/tutti/services/tuttid/data/workspace"
 	tuttiserver "github.com/tutti-os/tutti/services/tuttid/server"
 	accountservice "github.com/tutti-os/tutti/services/tuttid/service/account"
@@ -66,6 +68,17 @@ type analyticsDebugEventStream interface {
 
 type analyticsDebugReportedPayload struct {
 	Events []analyticsDebugReportedEventPayload `json:"events"`
+}
+
+type desktopProxyRuntimeConfigurator struct{}
+
+func (desktopProxyRuntimeConfigurator) ConfigureDesktopProxy(settings preferencesbiz.DesktopProxySettings) {
+	settings = preferencesbiz.NormalizeDesktopProxySettings(settings)
+	if settings.Mode == "manual" {
+		runtimecmd.ConfigureUserProxy(fmt.Sprintf("http://127.0.0.1:%d", settings.Port))
+		return
+	}
+	runtimecmd.ConfigureUserProxy("")
 }
 
 type analyticsDebugReportedEventPayload struct {
@@ -230,6 +243,12 @@ func buildDaemonAPI(ctx context.Context, store workspacedata.CatalogStore, analy
 	preferences := preferencesservice.Service{
 		Store:     preferencesStore,
 		Publisher: eventstreamservice.DesktopPreferencesPublisher{Service: events},
+		Proxy:     desktopProxyRuntimeConfigurator{},
+	}
+	if preferencesStore != nil {
+		if err := preferences.ConfigureRuntime(ctx); err != nil {
+			return tuttiapi.DaemonAPI{}, nil, nil, nil, fmt.Errorf("configure desktop proxy runtime: %w", err)
+		}
 	}
 	agentTargets := agenttargetservice.Service{
 		Store: agentTargetStore,

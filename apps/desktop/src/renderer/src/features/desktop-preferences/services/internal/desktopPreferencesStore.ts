@@ -12,6 +12,7 @@ import type {
   DesktopFeatureFlags,
   DesktopFileDefaultOpenersByExtension,
   DesktopMinimizeAnimation,
+  DesktopProxySettings,
   DesktopSleepPreventionMode,
   DesktopUpdateChannel,
   DesktopUpdatePolicy,
@@ -36,6 +37,7 @@ export function createDesktopPreferencesStore(input: {
   fileDefaultOpenersByExtension: DesktopFileDefaultOpenersByExtension;
   locale: DesktopLocale;
   minimizeAnimation: DesktopMinimizeAnimation;
+  proxy: DesktopProxySettings;
   sleepPreventionMode: DesktopSleepPreventionMode;
   showAppDeveloperSources: boolean;
   theme: DesktopThemeState;
@@ -54,6 +56,7 @@ export function createDesktopPreferencesStore(input: {
     changingLocale: null,
     changingFeatureFlags: null,
     changingMinimizeAnimation: null,
+    changingProxy: null,
     changingSleepPreventionMode: null,
     changingShowAppDeveloperSources: null,
     changingThemeSource: null,
@@ -76,6 +79,7 @@ export function createDesktopPreferencesStore(input: {
     fileDefaultOpenersByExtension: input.fileDefaultOpenersByExtension,
     locale: input.locale,
     minimizeAnimation: input.minimizeAnimation,
+    proxy: input.proxy,
     sleepPreventionMode: input.sleepPreventionMode,
     showAppDeveloperSources: input.showAppDeveloperSources,
     theme: input.theme,

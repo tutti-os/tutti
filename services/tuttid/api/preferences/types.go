@@ -6,6 +6,7 @@ import (
 )
 
 func GeneratedDesktopPreferencesFromBiz(value preferencesbiz.DesktopPreferences) tuttigenerated.DesktopPreferences {
+	proxy := preferencesbiz.NormalizeDesktopProxySettings(value.Proxy)
 	windowSnapping := tuttigenerated.DesktopWorkbenchWindowSnapping{
 		Enabled:        value.WindowSnappingEnabled,
 		ShortcutPreset: tuttigenerated.DesktopWorkbenchWindowSnappingShortcutPreset(value.WindowSnappingShortcutPreset),
@@ -30,12 +31,16 @@ func GeneratedDesktopPreferencesFromBiz(value preferencesbiz.DesktopPreferences)
 		WorkbenchShortcuts:                          workbenchShortcuts,
 		Locale:                                      tuttigenerated.DesktopLocale(value.Locale),
 		MinimizeAnimation:                           tuttigenerated.DesktopMinimizeAnimation(value.MinimizeAnimation),
-		SleepPreventionMode:                         tuttigenerated.DesktopSleepPreventionMode(value.SleepPreventionMode),
-		ShowAppDeveloperSources:                     value.ShowAppDeveloperSources,
-		ThemeSource:                                 tuttigenerated.DesktopThemeSource(value.ThemeSource),
-		UpdateChannel:                               tuttigenerated.DesktopUpdateChannel(value.UpdateChannel),
-		UpdatePolicy:                                tuttigenerated.DesktopUpdatePolicy(value.UpdatePolicy),
-		WorkbenchWindowSnapping:                     &windowSnapping,
+		Proxy: &tuttigenerated.DesktopProxySettings{
+			Mode: tuttigenerated.DesktopProxyMode(proxy.Mode),
+			Port: proxy.Port,
+		},
+		SleepPreventionMode:     tuttigenerated.DesktopSleepPreventionMode(value.SleepPreventionMode),
+		ShowAppDeveloperSources: value.ShowAppDeveloperSources,
+		ThemeSource:             tuttigenerated.DesktopThemeSource(value.ThemeSource),
+		UpdateChannel:           tuttigenerated.DesktopUpdateChannel(value.UpdateChannel),
+		UpdatePolicy:            tuttigenerated.DesktopUpdatePolicy(value.UpdatePolicy),
+		WorkbenchWindowSnapping: &windowSnapping,
 	}
 }
 

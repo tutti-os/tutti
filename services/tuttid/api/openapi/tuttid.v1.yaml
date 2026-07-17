@@ -4767,6 +4767,10 @@ components:
         - system
         - dark
         - light
+      x-enum-varnames:
+        - DesktopThemeSourceSystem
+        - DesktopThemeSourceDark
+        - DesktopThemeSourceLight
     DesktopSleepPreventionMode:
       type: string
       enum:
@@ -4857,6 +4861,8 @@ components:
           $ref: "#/components/schemas/DesktopLocale"
         minimizeAnimation:
           $ref: "#/components/schemas/DesktopMinimizeAnimation"
+        proxy:
+          $ref: "#/components/schemas/DesktopProxySettings"
         sleepPreventionMode:
           $ref: "#/components/schemas/DesktopSleepPreventionMode"
         showAppDeveloperSources:
@@ -4991,6 +4997,11 @@ components:
         - defaultBrowser
         - fileViewer
         - system
+      x-enum-varnames:
+        - DesktopFileDefaultOpenerAppBrowser
+        - DesktopFileDefaultOpenerDefaultBrowser
+        - DesktopFileDefaultOpenerFileViewer
+        - DesktopFileDefaultOpenerSystem
     DesktopFileDefaultOpenersByExtension:
       type: object
       additionalProperties:
@@ -5001,6 +5012,28 @@ components:
         - scale
         - genie
         - off
+    DesktopProxySettings:
+      type: object
+      additionalProperties: false
+      required:
+        - mode
+        - port
+      properties:
+        mode:
+          $ref: "#/components/schemas/DesktopProxyMode"
+        port:
+          type: integer
+          minimum: 1
+          maximum: 65535
+          description: Local HTTP proxy port used when mode is manual.
+    DesktopProxyMode:
+      type: string
+      enum:
+        - system
+        - manual
+      x-enum-varnames:
+        - DesktopProxyModeSystem
+        - DesktopProxyModeManual
     DesktopPreferencesStateResponse:
       type: object
       additionalProperties: false

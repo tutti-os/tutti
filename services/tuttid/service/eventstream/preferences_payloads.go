@@ -17,6 +17,7 @@ type desktopPreferencesMutationPayload struct {
 		WorkbenchShortcuts                          desktopWorkbenchShortcutsPayload                          `json:"workbenchShortcuts"`
 		Locale                                      string                                                    `json:"locale"`
 		MinimizeAnimation                           string                                                    `json:"minimizeAnimation"`
+		Proxy                                       *desktopProxySettingsPayload                              `json:"proxy,omitempty"`
 		SleepPreventionMode                         string                                                    `json:"sleepPreventionMode"`
 		ShowAppDeveloperSources                     bool                                                      `json:"showAppDeveloperSources"`
 		ThemeSource                                 string                                                    `json:"themeSource"`
@@ -47,6 +48,7 @@ type desktopPreferencesSettingsPayload struct {
 	WorkbenchShortcuts                          desktopWorkbenchShortcutsPayload                          `json:"workbenchShortcuts"`
 	Locale                                      string                                                    `json:"locale"`
 	MinimizeAnimation                           string                                                    `json:"minimizeAnimation"`
+	Proxy                                       *desktopProxySettingsPayload                              `json:"proxy,omitempty"`
 	SleepPreventionMode                         string                                                    `json:"sleepPreventionMode"`
 	ShowAppDeveloperSources                     bool                                                      `json:"showAppDeveloperSources"`
 	ThemeSource                                 string                                                    `json:"themeSource"`
@@ -58,6 +60,11 @@ type desktopPreferencesSettingsPayload struct {
 type desktopWorkbenchWindowSnappingPayload struct {
 	Enabled        bool   `json:"enabled"`
 	ShortcutPreset string `json:"shortcutPreset"`
+}
+
+type desktopProxySettingsPayload struct {
+	Mode string `json:"mode"`
+	Port int    `json:"port"`
 }
 
 type desktopWorkbenchShortcutsPayload struct {

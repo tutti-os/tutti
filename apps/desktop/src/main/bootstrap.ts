@@ -42,6 +42,7 @@ import {
   registerTuttiAssetProtocolScheme
 } from "./host/tuttiAssetProtocol.ts";
 import { createWorkspaceFileIconCacheStore } from "./host/workspaceFileIconCacheStore.ts";
+import { createDesktopProxySessionController } from "./net/sessionProxy.ts";
 import {
   registerWorkspaceFileIconProtocol,
   registerWorkspaceFileIconProtocolScheme
@@ -183,6 +184,11 @@ export async function bootstrapDesktopApp(): Promise<void> {
     rendererUrl,
     workspaceAppPreloadPath
   });
+  const desktopProxySessionController =
+    await createDesktopProxySessionController();
+  await desktopProxySessionController.configure(
+    desktopAppServices.preferences.getProxySettings()
+  );
   const theme = applyDesktopThemeSource(
     desktopAppServices.preferences.getThemeSource()
   );
@@ -248,6 +254,8 @@ export async function bootstrapDesktopApp(): Promise<void> {
     workspaceLaunch: desktopAppServices.workspaceLaunch
   });
   const hostPreferencesEventStream = connectDesktopHostPreferencesEventStream({
+    applyProxySettings: (settings) =>
+      desktopProxySessionController.configure(settings),
     applyThemeSource: applyDesktopThemeSource,
     eventStreamClient: createDesktopHostPreferencesEventStreamClient(
       desktopAppServices.daemonEndpoint
@@ -288,6 +296,7 @@ export async function bootstrapDesktopApp(): Promise<void> {
     tuttid: desktopAppServices.tuttid,
     disposables: [
       hostPreferencesEventStream,
+      desktopProxySessionController,
       agentPowerSaveBlocker,
       {
         dispose() {

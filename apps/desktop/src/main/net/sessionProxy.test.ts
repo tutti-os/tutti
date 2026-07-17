@@ -1,6 +1,9 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { resolveShellProxyRules } from "./sessionProxy.ts";
+import {
+  resolveManualProxyRules,
+  resolveShellProxyRules
+} from "./sessionProxy.ts";
 
 test("resolveShellProxyRules prefers HTTPS proxy and carries NO_PROXY", () => {
   assert.deepEqual(
@@ -27,4 +30,12 @@ test("resolveShellProxyRules returns null without proxy vars", () => {
   assert.equal(resolveShellProxyRules({}), null);
   assert.equal(resolveShellProxyRules({ HTTPS_PROXY: "   " }), null);
   assert.equal(resolveShellProxyRules({ NO_PROXY: "localhost" }), null);
+});
+
+test("resolveManualProxyRules creates a loopback fixed proxy", () => {
+  assert.deepEqual(resolveManualProxyRules(7890), {
+    mode: "fixed_servers",
+    proxyRules: "http://127.0.0.1:7890",
+    proxyBypassRules: "<local>"
+  });
 });

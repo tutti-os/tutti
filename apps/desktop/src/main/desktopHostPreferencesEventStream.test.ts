@@ -4,7 +4,10 @@ import type {
   DesktopPreferencesStateResponse,
   TuttidEventStreamClient
 } from "@tutti-os/client-tuttid-ts";
-import { defaultDesktopWorkbenchShortcuts } from "../shared/preferences/index.ts";
+import {
+  defaultDesktopWorkbenchShortcuts,
+  type DesktopProxySettings
+} from "../shared/preferences/index.ts";
 import type { DesktopThemeSource } from "../shared/theme";
 import type { DesktopHostPreferencesState } from "./desktopHostPreferences";
 import type { DesktopLogger } from "./logging";
@@ -14,11 +17,15 @@ test("desktop host preferences follows authoritative preference events", async (
   const eventStreamClient = createFakeEventStreamClient();
   const preferences = createHostPreferencesState();
   const appliedThemeSources: DesktopThemeSource[] = [];
+  const appliedProxySettings: DesktopProxySettings[] = [];
   let backgroundSyncs = 0;
 
   const subscription = connectDesktopHostPreferencesEventStream({
     applyThemeSource(source) {
       appliedThemeSources.push(source);
+    },
+    applyProxySettings(settings) {
+      appliedProxySettings.push(settings);
     },
     eventStreamClient,
     logger: createLogger(),
@@ -48,6 +55,7 @@ test("desktop host preferences follows authoritative preference events", async (
       fileDefaultOpenersByExtension: { html: "defaultBrowser" },
       locale: "zh-CN",
       minimizeAnimation: "scale",
+      proxy: { mode: "manual", port: 4567 },
       sleepPreventionMode: "never",
       showAppDeveloperSources: false,
       themeSource: "dark",
@@ -65,6 +73,11 @@ test("desktop host preferences follows authoritative preference events", async (
   assert.equal(preferences.getBrowserUseConnectionMode(), "isolated");
   assert.equal(preferences.getDockPlacement(), "bottom");
   assert.equal(preferences.getSleepPreventionMode(), "never");
+  assert.deepEqual(preferences.getProxySettings(), {
+    mode: "manual",
+    port: 4567
+  });
+  assert.deepEqual(appliedProxySettings, [{ mode: "manual", port: 4567 }]);
   assert.equal(preferences.getThemeSource(), "dark");
   assert.deepEqual(appliedThemeSources, ["dark"]);
   assert.equal(backgroundSyncs, 1);
@@ -132,6 +145,7 @@ function createHostPreferencesState(): DesktopHostPreferencesState {
   let locale: DesktopPreferencesStateResponse["preferences"]["locale"] = "en";
   let minimizeAnimation: DesktopPreferencesStateResponse["preferences"]["minimizeAnimation"] =
     "scale";
+  let proxySettings: DesktopProxySettings = { mode: "system", port: 7890 };
   let sleepPreventionMode: DesktopPreferencesStateResponse["preferences"]["sleepPreventionMode"] =
     "never";
   let themeSource: DesktopThemeSource = "system";
@@ -167,6 +181,9 @@ function createHostPreferencesState(): DesktopHostPreferencesState {
     },
     getMinimizeAnimation() {
       return minimizeAnimation;
+    },
+    getProxySettings() {
+      return proxySettings;
     },
     getDefaultAgentProvider() {
       return defaultAgentProvider;
@@ -223,6 +240,9 @@ function createHostPreferencesState(): DesktopHostPreferencesState {
       }
       if (input.minimizeAnimation) {
         minimizeAnimation = input.minimizeAnimation;
+      }
+      if (input.proxy) {
+        proxySettings = input.proxy;
       }
       if (input.defaultAgentProvider) {
         defaultAgentProvider = input.defaultAgentProvider;

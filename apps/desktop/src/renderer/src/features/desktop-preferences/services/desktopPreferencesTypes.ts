@@ -12,6 +12,7 @@ import type {
   DesktopFeatureFlags,
   DesktopFileDefaultOpenersByExtension,
   DesktopMinimizeAnimation,
+  DesktopProxySettings,
   DesktopSleepPreventionMode,
   DesktopUpdateChannel,
   DesktopUpdatePolicy,
@@ -30,6 +31,7 @@ export interface DesktopPreferencesStoreState {
   changingLocale: DesktopLocale | null;
   changingFeatureFlags: DesktopFeatureFlags | null;
   changingMinimizeAnimation: DesktopMinimizeAnimation | null;
+  changingProxy: DesktopProxySettings | null;
   changingSleepPreventionMode: DesktopSleepPreventionMode | null;
   changingShowAppDeveloperSources: boolean | null;
   changingThemeSource: DesktopThemeSource | null;
@@ -49,6 +51,7 @@ export interface DesktopPreferencesStoreState {
   fileDefaultOpenersByExtension: DesktopFileDefaultOpenersByExtension;
   locale: DesktopLocale;
   minimizeAnimation: DesktopMinimizeAnimation;
+  proxy: DesktopProxySettings;
   sleepPreventionMode: DesktopSleepPreventionMode;
   showAppDeveloperSources: boolean;
   theme: DesktopThemeState;
@@ -68,6 +71,7 @@ export interface DesktopPreferencesReadableStoreState {
   readonly changingLocale: DesktopLocale | null;
   readonly changingFeatureFlags: DesktopFeatureFlags | null;
   readonly changingMinimizeAnimation: DesktopMinimizeAnimation | null;
+  readonly changingProxy: DesktopProxySettings | null;
   readonly changingSleepPreventionMode: DesktopSleepPreventionMode | null;
   readonly changingShowAppDeveloperSources: boolean | null;
   readonly changingThemeSource: DesktopThemeSource | null;
@@ -87,6 +91,7 @@ export interface DesktopPreferencesReadableStoreState {
   readonly fileDefaultOpenersByExtension: DesktopFileDefaultOpenersByExtension;
   readonly locale: DesktopLocale;
   readonly minimizeAnimation: DesktopMinimizeAnimation;
+  readonly proxy: DesktopProxySettings;
   readonly sleepPreventionMode: DesktopSleepPreventionMode;
   readonly showAppDeveloperSources: boolean;
   readonly theme: DesktopThemeState;

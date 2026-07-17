@@ -14,9 +14,14 @@ type DesktopPreferencesPublisher interface {
 	PublishDesktopPreferencesUpdated(context.Context, preferencesbiz.DesktopPreferences) error
 }
 
+type DesktopProxyConfigurator interface {
+	ConfigureDesktopProxy(preferencesbiz.DesktopProxySettings)
+}
+
 type Service struct {
 	Store     workspacedata.PreferencesStore
 	Publisher DesktopPreferencesPublisher
+	Proxy     DesktopProxyConfigurator
 }
 
 type PutInput struct {
@@ -38,6 +43,7 @@ type PutInput struct {
 	WorkbenchShortcuts                          preferencesbiz.DesktopWorkbenchShortcuts
 	Locale                                      string
 	MinimizeAnimation                           string
+	Proxy                                       *DesktopProxyInput
 	SleepPreventionMode                         string
 	ShowAppDeveloperSources                     bool
 	ThemeSource                                 string
@@ -49,6 +55,25 @@ type PutInput struct {
 type DesktopWindowSnappingInput struct {
 	Enabled        bool
 	ShortcutPreset string
+}
+
+type DesktopProxyInput struct {
+	Mode string
+	Port int
+}
+
+func (s Service) ConfigureRuntime(ctx context.Context) error {
+	if s.Store == nil {
+		return errors.New("desktop preferences store is not configured")
+	}
+	preferences, err := s.Store.GetDesktopPreferences(ctx)
+	if err != nil {
+		return err
+	}
+	if s.Proxy != nil {
+		s.Proxy.ConfigureDesktopProxy(preferencesbiz.NormalizeDesktopProxySettings(preferences.Proxy))
+	}
+	return nil
 }
 
 func (s Service) Get(ctx context.Context) (preferencesbiz.DesktopPreferences, error) {
@@ -70,6 +95,7 @@ func (s Service) Put(ctx context.Context, input PutInput) (preferencesbiz.Deskto
 	}
 
 	windowSnapping := resolveWindowSnapping(stored, input.WindowSnapping)
+	proxy := resolveProxy(stored, input.Proxy)
 
 	// A nil agent-target map means the client did not send the field (e.g. an
 	// older build) — keep the stored defaults instead of wiping them. An
@@ -100,6 +126,7 @@ func (s Service) Put(ctx context.Context, input PutInput) (preferencesbiz.Deskto
 		WorkbenchShortcuts:                          preferencesbiz.NormalizeDesktopWorkbenchShortcuts(input.WorkbenchShortcuts),
 		Locale:                                      strings.TrimSpace(input.Locale),
 		MinimizeAnimation:                           normalizeMinimizeAnimation(input.MinimizeAnimation),
+		Proxy:                                       proxy,
 		SleepPreventionMode:                         strings.TrimSpace(input.SleepPreventionMode),
 		ShowAppDeveloperSources:                     input.ShowAppDeveloperSources,
 		ThemeSource:                                 strings.TrimSpace(input.ThemeSource),
@@ -111,10 +138,23 @@ func (s Service) Put(ctx context.Context, input PutInput) (preferencesbiz.Deskto
 	if err != nil {
 		return preferencesbiz.DesktopPreferences{}, err
 	}
+	if s.Proxy != nil {
+		s.Proxy.ConfigureDesktopProxy(preferences.Proxy)
+	}
 	if s.Publisher != nil {
 		_ = s.Publisher.PublishDesktopPreferencesUpdated(ctx, preferences)
 	}
 	return preferences, nil
+}
+
+func resolveProxy(stored preferencesbiz.DesktopPreferences, input *DesktopProxyInput) preferencesbiz.DesktopProxySettings {
+	if input == nil {
+		return preferencesbiz.NormalizeDesktopProxySettings(stored.Proxy)
+	}
+	return preferencesbiz.NormalizeDesktopProxySettings(preferencesbiz.DesktopProxySettings{
+		Mode: input.Mode,
+		Port: input.Port,
+	})
 }
 
 func resolveWindowSnapping(stored preferencesbiz.DesktopPreferences, input *DesktopWindowSnappingInput) DesktopWindowSnappingInput {

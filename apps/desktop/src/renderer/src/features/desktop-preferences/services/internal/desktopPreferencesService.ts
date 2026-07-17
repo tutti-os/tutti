@@ -15,6 +15,7 @@ import {
   defaultDesktopFeatureFlags,
   defaultDesktopFileDefaultOpenersByExtension,
   defaultDesktopMinimizeAnimation,
+  defaultDesktopProxySettings,
   defaultDesktopShowAppDeveloperSources,
   defaultDesktopSleepPreventionMode,
   defaultDesktopUpdateChannel,
@@ -22,11 +23,13 @@ import {
   defaultDesktopWorkbenchShortcuts,
   defaultDesktopWorkbenchWindowSnapping,
   desktopFeatureFlagsEqual,
+  desktopProxySettingsEqual,
   mergeDesktopAgentComposerDefaultsByAgentTarget,
   mergeDesktopAgentGuiConversationRailCollapsedByProvider,
   normalizeDesktopAgentComposerDefaultsByAgentTarget,
   normalizeDesktopAgentConversationDetailMode,
   normalizeDesktopFeatureFlags,
+  normalizeDesktopProxySettings,
   normalizeDesktopFileDefaultOpenersByExtension,
   normalizeDesktopAgentGuiConversationRailCollapsedByProvider,
   normalizeDesktopWorkbenchShortcuts,
@@ -48,6 +51,7 @@ import {
   type DesktopFeatureFlags,
   type DesktopFileDefaultOpenersByExtension,
   type DesktopMinimizeAnimation,
+  type DesktopProxySettings,
   type DesktopSleepPreventionMode,
   type DesktopUpdateChannel,
   type DesktopUpdatePolicy,
@@ -91,6 +95,7 @@ export class DesktopPreferencesService implements IDesktopPreferencesService {
         defaultDesktopFileDefaultOpenersByExtension,
       locale: this.dependencies.initialLocale,
       minimizeAnimation: defaultDesktopMinimizeAnimation,
+      proxy: defaultDesktopProxySettings,
       sleepPreventionMode: defaultDesktopSleepPreventionMode,
       showAppDeveloperSources: defaultDesktopShowAppDeveloperSources,
       theme: this.dependencies.initialTheme,
@@ -444,6 +449,36 @@ export class DesktopPreferencesService implements IDesktopPreferencesService {
     }
   }
 
+  async setProxy(
+    settings: DesktopProxySettings
+  ): Promise<DesktopProxySettings> {
+    const nextSettings = normalizeDesktopProxySettings(settings);
+    if (
+      this.store.changingProxy &&
+      desktopProxySettingsEqual(this.store.changingProxy, nextSettings)
+    ) {
+      return nextSettings;
+    }
+
+    const previousSettings = this.store.proxy;
+    this.store.changingProxy = nextSettings;
+    this.store.proxy = nextSettings;
+    try {
+      const authoritativePreferences =
+        await this.dependencies.client.updateDesktopPreferences({
+          preferences: this.currentPreferences({ proxy: nextSettings })
+        });
+      return normalizeDesktopProxySettings(authoritativePreferences.proxy);
+    } catch (error) {
+      this.store.proxy = previousSettings;
+      throw error;
+    } finally {
+      if (desktopProxySettingsEqual(this.store.changingProxy, nextSettings)) {
+        this.store.changingProxy = null;
+      }
+    }
+  }
+
   async setWorkbenchWindowSnapping(
     value: DesktopWorkbenchWindowSnapping
   ): Promise<DesktopWorkbenchWindowSnapping> {
@@ -750,6 +785,7 @@ export class DesktopPreferencesService implements IDesktopPreferencesService {
     fileDefaultOpenersByExtension?: DesktopFileDefaultOpenersByExtension;
     locale: DesktopLocale;
     minimizeAnimation?: DesktopMinimizeAnimation;
+    proxy?: DesktopProxySettings;
     sleepPreventionMode: DesktopSleepPreventionMode;
     showAppDeveloperSources?: boolean;
     themeSource: DesktopThemeSource;
@@ -791,6 +827,7 @@ export class DesktopPreferencesService implements IDesktopPreferencesService {
     this.applyLocale(preferences.locale);
     this.store.minimizeAnimation =
       preferences.minimizeAnimation ?? defaultDesktopMinimizeAnimation;
+    this.store.proxy = normalizeDesktopProxySettings(preferences.proxy);
     this.store.sleepPreventionMode = preferences.sleepPreventionMode;
     this.store.showAppDeveloperSources =
       preferences.showAppDeveloperSources ??
@@ -829,6 +866,7 @@ export class DesktopPreferencesService implements IDesktopPreferencesService {
       fileDefaultOpenersByExtension: DesktopFileDefaultOpenersByExtension;
       locale: DesktopLocale;
       minimizeAnimation: DesktopMinimizeAnimation;
+      proxy: DesktopProxySettings;
       sleepPreventionMode: DesktopSleepPreventionMode;
       showAppDeveloperSources: boolean;
       themeSource: DesktopThemeSource;
@@ -852,6 +890,7 @@ export class DesktopPreferencesService implements IDesktopPreferencesService {
     fileDefaultOpenersByExtension: DesktopFileDefaultOpenersByExtension;
     locale: DesktopLocale;
     minimizeAnimation: DesktopMinimizeAnimation;
+    proxy?: DesktopProxySettings;
     sleepPreventionMode: DesktopSleepPreventionMode;
     showAppDeveloperSources: boolean;
     themeSource: DesktopThemeSource;
@@ -862,6 +901,10 @@ export class DesktopPreferencesService implements IDesktopPreferencesService {
   } {
     const hasWorkbenchWindowSnappingOverride =
       "workbenchWindowSnapping" in overrides;
+    const hasProxyOverride = "proxy" in overrides;
+    const proxy = normalizeDesktopProxySettings(
+      overrides.proxy ?? this.store.proxy
+    );
     const workbenchWindowSnapping = normalizeDesktopWorkbenchWindowSnapping(
       overrides.workbenchWindowSnapping ?? this.store.workbenchWindowSnapping
     );
@@ -906,6 +949,10 @@ export class DesktopPreferencesService implements IDesktopPreferencesService {
       locale: overrides.locale ?? this.store.locale,
       minimizeAnimation:
         overrides.minimizeAnimation ?? this.store.minimizeAnimation,
+      ...(hasProxyOverride ||
+      !desktopProxySettingsEqual(proxy, defaultDesktopProxySettings)
+        ? { proxy }
+        : {}),
       sleepPreventionMode:
         overrides.sleepPreventionMode ?? this.store.sleepPreventionMode,
       showAppDeveloperSources:
