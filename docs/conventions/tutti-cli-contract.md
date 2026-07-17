@@ -169,6 +169,16 @@ avoid target drift. `move-cursor` is deliberately target- and scope-less: it
 accepts agent-cursor screen points, not pixels copied from either screenshot
 surface.
 
+Pointer delivery is dispatch-only: pixel clicks post background CGEvents that
+cua-driver cannot verify, and Electron-based apps may drop them silently. The
+skill contract therefore prefers element-token actions (native `click` with an
+`element_token` from screenshot structured content), requires effect
+verification through a fresh screenshot rather than the agent-cursor overlay
+(a separate visual channel that can render offset after display-configuration
+changes), and escalates unresponsive background clicks via the native
+`delivery_mode: "foreground"` contract instead of repeating the same pixel
+click.
+
 Desktop automation follows each native cua-driver tool's real contract rather
 than a Tutti-wide scope model:
 

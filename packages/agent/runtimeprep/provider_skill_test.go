@@ -387,6 +387,10 @@ func TestRenderProviderSkillBundleGatesOptionalSkills(t *testing.T) {
 		"Desktop scrolling is not supported",
 		"computer move-cursor --x <screen-point-x> --y <screen-point-y>",
 		"`move-cursor` is scope-less",
+		"element_token",
+		"never driver-verified",
+		`"delivery_mode":"foreground"`,
+		"not evidence of where a click landed",
 	} {
 		if !strings.Contains(computerSkill.Content, want) {
 			t.Fatalf("computer skill missing %q: %q", want, computerSkill.Content)

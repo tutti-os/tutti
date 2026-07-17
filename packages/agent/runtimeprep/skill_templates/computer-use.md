@@ -27,6 +27,18 @@ Common forms:
 - `{{CLI_COMMAND}} computer scroll --pid <pid> --window-id <window-id> --x <n> --y <n> --direction <up|down|left|right> --amount <n>`
 - `{{CLI_COMMAND}} computer move-cursor --x <screen-point-x> --y <screen-point-y>`
 
+## Click Reliability
+
+Pixel clicks are posted as background CGEvents and are never driver-verified: a `✅ Posted click` result only confirms dispatch, not effect. Electron-based apps (Discord, Feishu, VS Code) frequently drop background synthetic clicks entirely.
+
+1. Prefer element actions over pixel coordinates. `screenshot --json` structured content lists interactive elements with an `element_token`; click through the native tool with that token:
+
+   `{{CLI_COMMAND}} computer tool call --name click --arguments-json '{"pid":<pid>,"element_token":"<token>"}' --json`
+
+2. Verify every click with a fresh `screenshot` of the target window. The blue agent cursor is a visual overlay on a separate channel — after a display-configuration change it can render at a fixed offset from the true event point, so its on-screen position is not evidence of where a click landed.
+
+3. If a background pixel click produced no visible change, do not re-click the same coordinates. Escalate delivery through the native `click` schema with `"delivery_mode":"foreground"` (briefly fronts the target window), or switch to the element-token path above.
+
 ## Native Driver Capabilities
 
 The native tool surface is the complete entry point for authorized cua-driver capabilities that have no stable alias. Discover the live contract instead of guessing arguments or assuming that different tools share a scope model:
