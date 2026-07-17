@@ -1,22 +1,16 @@
-import { useState } from "react";
 import ReactMarkdown from "react-markdown";
 import rehypeSanitize from "rehype-sanitize";
 import remarkGfm from "remark-gfm";
 import {
   Badge,
-  Button,
   Card,
   CardContent,
   CardDescription,
-  CardFooter,
   CardHeader,
   CardTitle,
-  Slider,
-  Textarea,
   cn
 } from "@tutti-os/ui-system";
 import composerStyles from "../../agent-gui/agentGuiNode/AgentGUINode.styles";
-import type { TuttiModePlanTaskAssignmentInput } from "../workspaceWorkflowRuntime";
 import type {
   TuttiModePlanPanelTaskViewModel,
   TuttiModePlanPanelViewModel
@@ -26,33 +20,21 @@ import {
   TuttiModePlanTaskAssignmentEditor,
   permissionModeAssignmentTone
 } from "./TuttiModePlanTaskAssignmentEditor";
-import {
-  mergeTaskAssignmentDraft,
-  taskAssignmentInputsFromDrafts,
-  type TuttiModePlanTaskAssignmentDrafts
+import type {
+  TuttiModePlanTaskAssignmentDraft,
+  TuttiModePlanTaskAssignmentDrafts
 } from "./tuttiModePlanTaskAssignments";
 
 export interface TuttiModePlanPanelLabels {
   mode: string;
   taskReview: string;
   pending: string;
-  accept: string;
-  requestChanges: string;
-  cancel: string;
-  feedbackPlaceholder: string;
-  submitFeedback: string;
-  feedbackRequired: string;
   tasks: string;
-  execution: string;
-  budget: string;
-  orchestrationIntensity: string;
-  quotaWaterline: string;
   priority: string;
   priorityHigh: string;
   priorityMedium: string;
   priorityLow: string;
   agentTarget: string;
-  modelPlan: string;
   model: string;
   permissionMode: string;
   reasoningEffort: string;
@@ -60,58 +42,37 @@ export interface TuttiModePlanPanelLabels {
   assignmentOptionsLoading: string;
 }
 
+/**
+ * Read-only review card for a pending Tutti mode plan. Decisions live in the
+ * composer (empty send accepts, typed feedback rejects, the review banner
+ * cancels), so the card carries no action buttons of its own; the only
+ * interactive piece is the per-task assignment row, whose drafts the host
+ * owns so an accept from the composer can include them.
+ */
 export function TuttiModePlanPanel({
   assignmentCatalog,
+  assignmentDrafts,
   labels,
-  orchestrationIntensity,
   panel,
   submitting,
-  onDecide,
-  onOrchestrationIntensityChange
+  onAssignmentDraftChange
 }: {
   assignmentCatalog?: TuttiModePlanAssignmentCatalog | null;
+  assignmentDrafts?: TuttiModePlanTaskAssignmentDrafts;
   labels: TuttiModePlanPanelLabels;
-  /**
-   * Live session value backing the composer's Tutti badge popover; the panel
-   * slider reads and writes the same setting so the two stay in sync. Omit to
-   * fall back to the plan document's snapshot, read-only.
-   */
-  orchestrationIntensity?: number | null;
   panel: TuttiModePlanPanelViewModel;
   submitting: boolean;
-  onDecide(input: {
-    checkpointId: string;
-    decision: "accepted" | "rejected" | "canceled";
-    reason?: string | null;
-    taskAssignments?: readonly TuttiModePlanTaskAssignmentInput[];
-    workflowId: string;
-  }): Promise<void>;
-  onOrchestrationIntensityChange?(value: number): void;
+  onAssignmentDraftChange?(
+    taskId: string,
+    patch: TuttiModePlanTaskAssignmentDraft
+  ): void;
 }): React.JSX.Element {
-  const [requestingChanges, setRequestingChanges] = useState(false);
-  const [feedback, setFeedback] = useState("");
-  const [feedbackMissing, setFeedbackMissing] = useState(false);
-  const [assignmentDrafts, setAssignmentDrafts] =
-    useState<TuttiModePlanTaskAssignmentDrafts>({});
-  // Editing needs the loaded agent directory; before that (or without a host
-  // catalog at all) tasks stay read-only.
-  const editable = assignmentCatalog?.agents != null && panel.actionable;
-  const decide = (
-    decision: "accepted" | "rejected" | "canceled",
-    reason?: string
-  ) => {
-    const taskAssignments =
-      decision === "accepted"
-        ? taskAssignmentInputsFromDrafts(assignmentDrafts, panel.tasks)
-        : [];
-    return onDecide({
-      workflowId: panel.workflowId,
-      checkpointId: panel.checkpoint.id,
-      decision,
-      reason,
-      taskAssignments: taskAssignments.length > 0 ? taskAssignments : undefined
-    });
-  };
+  // Editing needs the loaded agent directory plus a host-owned draft store;
+  // before that (or without a host catalog at all) tasks stay read-only.
+  const editable =
+    assignmentCatalog?.agents != null &&
+    panel.actionable &&
+    onAssignmentDraftChange !== undefined;
 
   return (
     <Card
@@ -137,39 +98,6 @@ export function TuttiModePlanPanel({
           >
             {panel.markdownBody}
           </ReactMarkdown>
-        </div>
-        <div className="grid gap-3 sm:grid-cols-2">
-          <section className="grid gap-3 rounded-md border border-border/70 bg-muted/30 p-3">
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <h4 className="text-xs font-medium text-foreground">
-                {labels.execution}
-              </h4>
-            </div>
-            <OrchestrationIntensityField
-              label={labels.orchestrationIntensity}
-              value={
-                orchestrationIntensity ?? panel.execution.orchestrationIntensity
-              }
-              onChange={
-                panel.actionable && !submitting
-                  ? onOrchestrationIntensityChange
-                  : undefined
-              }
-            />
-          </section>
-          <section className="grid gap-3 rounded-md border border-border/70 bg-muted/30 p-3">
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <h4 className="text-xs font-medium text-foreground">
-                {labels.budget}
-              </h4>
-            </div>
-            <dl className="grid gap-2 text-xs">
-              <DefinitionItem
-                label={labels.quotaWaterline}
-                value={`${panel.budget.quotaWaterlinePercent}%`}
-              />
-            </dl>
-          </section>
         </div>
         {panel.tasks.length > 0 ? (
           <section className="grid gap-2">
@@ -199,13 +127,11 @@ export function TuttiModePlanPanel({
                     <TuttiModePlanTaskAssignmentEditor
                       catalog={assignmentCatalog}
                       disabled={submitting}
-                      draft={assignmentDrafts[task.id] ?? {}}
+                      draft={assignmentDrafts?.[task.id] ?? {}}
                       labels={labels}
                       task={task}
                       onEdit={(patch) =>
-                        setAssignmentDrafts((current) =>
-                          mergeTaskAssignmentDraft(current, task.id, patch)
-                        )
+                        onAssignmentDraftChange?.(task.id, patch)
                       }
                     />
                   ) : (
@@ -216,131 +142,8 @@ export function TuttiModePlanPanel({
             </ol>
           </section>
         ) : null}
-        {requestingChanges ? (
-          <div className="grid gap-2">
-            <Textarea
-              aria-invalid={feedbackMissing || undefined}
-              value={feedback}
-              placeholder={labels.feedbackPlaceholder}
-              onChange={(event) => {
-                setFeedback(event.currentTarget.value);
-                setFeedbackMissing(false);
-              }}
-            />
-            {feedbackMissing ? (
-              <p className="text-xs text-destructive" role="alert">
-                {labels.feedbackRequired}
-              </p>
-            ) : null}
-          </div>
-        ) : null}
       </CardContent>
-      <CardFooter className="flex flex-wrap justify-end gap-2">
-        <Button
-          type="button"
-          variant="ghost"
-          disabled={submitting}
-          onClick={() => void decide("canceled")}
-        >
-          {labels.cancel}
-        </Button>
-        {requestingChanges ? (
-          <Button
-            type="button"
-            variant="secondary"
-            disabled={submitting}
-            onClick={() => {
-              const reason = feedback.trim();
-              if (!reason) {
-                setFeedbackMissing(true);
-                return;
-              }
-              void decide("rejected", reason);
-            }}
-          >
-            {labels.submitFeedback}
-          </Button>
-        ) : (
-          <Button
-            type="button"
-            variant="secondary"
-            disabled={submitting}
-            onClick={() => setRequestingChanges(true)}
-          >
-            {labels.requestChanges}
-          </Button>
-        )}
-        <Button
-          type="button"
-          disabled={submitting}
-          onClick={() => void decide("accepted")}
-        >
-          {labels.accept}
-        </Button>
-      </CardFooter>
     </Card>
-  );
-}
-
-/**
- * Orchestration-intensity slider mirroring the composer's Tutti budget
- * popover row (label left, tabular value right, slider below). The local
- * draft only covers mid-drag rendering: committed values echo back
- * synchronously through the activation engine, so the draft clears on
- * commit. Without an `onChange` the slider is a disabled display.
- */
-function OrchestrationIntensityField({
-  label,
-  value,
-  onChange
-}: {
-  label: string;
-  value: number;
-  onChange?: ((value: number) => void) | undefined;
-}): React.JSX.Element {
-  const [dragValue, setDragValue] = useState<number | null>(null);
-  const displayValue = dragValue ?? value;
-  return (
-    <div className="nodrag grid gap-1.5 text-xs">
-      <div className="flex items-center justify-between gap-2">
-        <span className="text-muted-foreground">{label}</span>
-        <span
-          className="tabular-nums text-foreground"
-          data-tutti-plan-orchestration-intensity-value="true"
-        >
-          {displayValue}
-        </span>
-      </div>
-      <Slider
-        aria-label={label}
-        disabled={onChange === undefined}
-        max={100}
-        min={0}
-        step={1}
-        value={[displayValue]}
-        onValueChange={(values) => setDragValue(values[0] ?? null)}
-        onValueCommit={(values) => {
-          setDragValue(null);
-          const next = values[0];
-          if (next !== undefined) onChange?.(next);
-        }}
-      />
-    </div>
-  );
-}
-
-function DefinitionItem({
-  label,
-  value
-}: {
-  label: string;
-  value: string;
-}): React.JSX.Element {
-  return (
-    <div className="grid gap-1">
-      <dt className="text-muted-foreground">{label}</dt>
-      <dd className="text-foreground">{value}</dd>
-    </div>
   );
 }
 
@@ -361,7 +164,6 @@ function TaskAssignmentSummary({
     value: string | null;
   }[] = [
     { label: labels.agentTarget, value: task.agentTargetId },
-    { label: labels.modelPlan, value: task.modelPlanId },
     { label: labels.model, value: task.model },
     {
       label: labels.permissionMode,

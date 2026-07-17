@@ -27,7 +27,10 @@ import type {
   AgentHomeSuggestionAction,
   AgentGUINodeViewModel
 } from "../model/agentGuiNodeTypes";
-import { updateAgentComposerDraft } from "../model/agentComposerDraft";
+import {
+  agentPromptContentDisplayText,
+  updateAgentComposerDraft
+} from "../model/agentComposerDraft";
 import { resolveAgentComposerDraftScopeKey } from "../model/agentComposerDraftScope";
 import { projectAgentGUIManagedHomeTargets } from "../model/agentGuiProviderRailOrder";
 import type {
@@ -59,7 +62,11 @@ import { useAgentGUIProviderRailPreferences } from "./useAgentGUIProviderRailPre
 import type { AgentGUIComposerEngagement } from "../engagement/agentGUIEngagement.types";
 import {
   TuttiModePlanPanel,
-  useTuttiModePlanPanels
+  mergeTaskAssignmentDraft,
+  taskAssignmentInputsFromDrafts,
+  useTuttiModePlanPanels,
+  type TuttiModePlanTaskAssignmentDraft,
+  type TuttiModePlanTaskAssignmentDrafts
 } from "../../../workspaceWorkflow";
 
 const AGENT_GUI_TIMELINE_SCROLL_AREA_CONTENT_STYLE: CSSProperties = {
@@ -199,6 +206,62 @@ export const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
     sourceSessionId: viewModel.rail.activeConversationId,
     decidedBy: viewModel.shell.currentUserId?.trim() || "local"
   });
+  // Assignment drafts are host-owned (keyed by panel id) so a composer-driven
+  // accept can carry them; the panel only renders and reports edits.
+  const [planAssignmentDrafts, setPlanAssignmentDrafts] = useState<
+    Readonly<Record<string, TuttiModePlanTaskAssignmentDrafts>>
+  >({});
+  const handlePlanAssignmentDraftChange = useStableEventCallback(
+    (
+      panelId: string,
+      taskId: string,
+      patch: TuttiModePlanTaskAssignmentDraft
+    ): void => {
+      setPlanAssignmentDrafts((current) => ({
+        ...current,
+        [panelId]: mergeTaskAssignmentDraft(
+          current[panelId] ?? {},
+          taskId,
+          patch
+        )
+      }));
+    }
+  );
+  // The composer decides the earliest actionable checkpoint (single-review
+  // flow: at most one is pending per session).
+  const pendingPlanPanel =
+    tuttiModePlanPanels.panels.find((panel) => panel.actionable) ?? null;
+  const pendingPlanSubmitting =
+    pendingPlanPanel !== null &&
+    tuttiModePlanPanels.submittingCheckpointId ===
+      pendingPlanPanel.checkpoint.id;
+  const planReviewSendActive =
+    pendingPlanPanel !== null && !pendingPlanSubmitting;
+  const decidePendingPlan = useStableEventCallback(
+    (decision: "accepted" | "rejected" | "canceled", reason?: string): void => {
+      if (!pendingPlanPanel || pendingPlanSubmitting) return;
+      const assignments =
+        decision === "accepted"
+          ? taskAssignmentInputsFromDrafts(
+              planAssignmentDrafts[pendingPlanPanel.id] ?? {},
+              pendingPlanPanel.tasks
+            )
+          : [];
+      void tuttiModePlanPanels.decide({
+        workflowId: pendingPlanPanel.workflowId,
+        checkpointId: pendingPlanPanel.checkpoint.id,
+        decision,
+        reason,
+        taskAssignments: assignments.length > 0 ? assignments : undefined
+      });
+    }
+  );
+  const acceptPendingPlan = useStableEventCallback((): void => {
+    decidePendingPlan("accepted");
+  });
+  const cancelPendingPlan = useStableEventCallback((): void => {
+    decidePendingPlan("canceled");
+  });
   const handleInterruptCurrentTurn = useCallback(() => {
     actions.interruptCurrentTurn(labels.noRunningResponse);
   }, [actions.interruptCurrentTurn, labels.noRunningResponse]);
@@ -293,6 +356,30 @@ export const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
       submitPrompt(...args);
     },
     [requestSubmittedPromptScrollToBottom, submitPrompt]
+  );
+  // While a plan review is pending the composer doubles as the decision
+  // surface: typed text becomes request-changes feedback (the daemon relays
+  // it to the agent), an empty send accepts. Normal sends resume once the
+  // checkpoint settles.
+  const submitPromptOrDecidePlan = useStableEventCallback(
+    (...args: Parameters<typeof submitPrompt>): void => {
+      const [content] = args;
+      if (pendingPlanPanel && !pendingPlanSubmitting) {
+        const feedback = agentPromptContentDisplayText(content).trim();
+        // Slash commands (e.g. the usage chip's "/compact") are never plan
+        // feedback — let them flow through the normal submit path.
+        if (feedback && !feedback.startsWith("/")) {
+          decidePendingPlan("rejected", feedback);
+          updateDraftContent(
+            updateAgentComposerDraft(viewModel.composer.draftContent, {
+              prompt: ""
+            })
+          );
+          return;
+        }
+      }
+      submitPromptAndScrollToBottom(...args);
+    }
   );
   const submitGuidancePromptAndScrollToBottom = useCallback(
     (...args: Parameters<typeof submitGuidancePrompt>): void => {
@@ -464,7 +551,8 @@ export const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
       onTuttiModeOrchestrationIntensityChange:
         setTuttiModeOrchestrationIntensity,
       onPlanIssueBudgetPresetChange: updatePlanIssueBudgetPreset,
-      onSubmit: submitPromptAndScrollToBottom,
+      onSubmit: submitPromptOrDecidePlan,
+      onSubmitEmpty: planReviewSendActive ? acceptPendingPlan : undefined,
       onSubmitGuidance: submitGuidancePromptAndScrollToBottom,
       onPromptImagesUnsupported: showPromptImagesUnsupported,
       onSendQueuedPromptNext: sendQueuedPromptNext,
@@ -523,7 +611,9 @@ export const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
       setTuttiModeActive,
       setTuttiModeOrchestrationIntensity,
       submitInteractivePrompt,
-      submitPromptAndScrollToBottom,
+      submitPromptOrDecidePlan,
+      planReviewSendActive,
+      acceptPendingPlan,
       submitGuidancePromptAndScrollToBottom,
       uiLanguage,
       stableLinkAction,
@@ -721,18 +811,15 @@ export const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
               <TuttiModePlanPanel
                 key={panel.id}
                 assignmentCatalog={tuttiModePlanPanels.assignmentCatalog}
+                assignmentDrafts={planAssignmentDrafts[panel.id] ?? {}}
                 labels={labels.tuttiModePlanPanel}
-                orchestrationIntensity={
-                  viewModel.composer.tuttiModeOrchestrationIntensity
-                }
                 panel={panel}
                 submitting={
                   tuttiModePlanPanels.submittingCheckpointId ===
                   panel.checkpoint.id
                 }
-                onDecide={tuttiModePlanPanels.decide}
-                onOrchestrationIntensityChange={
-                  setTuttiModeOrchestrationIntensity
+                onAssignmentDraftChange={(taskId, patch) =>
+                  handlePlanAssignmentDraftChange(panel.id, taskId, patch)
                 }
               />
             ))}
@@ -781,6 +868,16 @@ export const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
           }
           onGoalControl={goalControl}
           goalPauseSupported={viewModel.composer.goalPauseSupported}
+          tuttiPlanReview={
+            pendingPlanPanel
+              ? {
+                  planTitle: pendingPlanPanel.title,
+                  submitting: pendingPlanSubmitting
+                }
+              : null
+          }
+          tuttiPlanReviewLabels={labels.tuttiModePlanBanner}
+          onCancelTuttiPlanReview={cancelPendingPlan}
         />
       ) : null}
     </main>
