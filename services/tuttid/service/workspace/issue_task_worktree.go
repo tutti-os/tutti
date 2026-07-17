@@ -81,6 +81,31 @@ func (s IssueManagerService) sequentialTaskIsolation(
 	return issueTaskIsolation{worktreeBase: base}, true
 }
 
+// gitEnvironmentWithoutRepoOverrides returns the process environment minus
+// git's repository-location overrides. Git hooks (pre-push and friends) export
+// GIT_DIR/GIT_WORK_TREE/GIT_INDEX_FILE to their own repository; a subprocess
+// that inherits them silently ignores `-C <dir>` repo discovery and operates
+// on the hook's repository instead — which is how worktree tests running under
+// the push hook once committed stray "init" commits onto the real branch.
+func gitEnvironmentWithoutRepoOverrides() []string {
+	scrubbed := make([]string, 0, len(os.Environ()))
+	for _, entry := range os.Environ() {
+		key, _, _ := strings.Cut(entry, "=")
+		switch key {
+		case "GIT_DIR",
+			"GIT_WORK_TREE",
+			"GIT_INDEX_FILE",
+			"GIT_COMMON_DIR",
+			"GIT_OBJECT_DIRECTORY",
+			"GIT_ALTERNATE_OBJECT_DIRECTORIES",
+			"GIT_PREFIX":
+			continue
+		}
+		scrubbed = append(scrubbed, entry)
+	}
+	return scrubbed
+}
+
 func directoryIsGitRepo(dir string) bool {
 	if strings.TrimSpace(dir) == "" {
 		return false
@@ -116,6 +141,7 @@ func (s IssueManagerService) createIssueTaskRunWorktree(
 	worktreeCtx, cancel := context.WithTimeout(ctx, issueTaskWorktreeTimeout)
 	defer cancel()
 	command := exec.CommandContext(worktreeCtx, "git", "-C", baseDir, "worktree", "add", "-b", branch, path, "HEAD")
+	command.Env = gitEnvironmentWithoutRepoOverrides()
 	if output, err := command.CombinedOutput(); err != nil {
 		return "", "", fmt.Errorf("create task worktree: %v: %s", err, strings.TrimSpace(string(output)))
 	}
