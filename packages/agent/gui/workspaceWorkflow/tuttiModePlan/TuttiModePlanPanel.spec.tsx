@@ -20,10 +20,7 @@ const labels: TuttiModePlanPanelLabels = {
   feedbackRequired: "Add feedback before requesting changes",
   tasks: "Tasks",
   execution: "Execution",
-  executionSequential: "Sequential",
-  executionParallel: "Parallel",
   budget: "Budget",
-  reasoningIntensity: "Reasoning intensity",
   orchestrationIntensity: "Orchestration intensity",
   quotaWaterline: "Quota waterline",
   priority: "Priority",
@@ -126,7 +123,7 @@ function assignmentCatalog(
 }
 
 describe("TuttiModePlanPanel", () => {
-  it("localizes execution enum values and hides the retired token limit", () => {
+  it("hides the execution mode badge and the retired token limit", () => {
     render(
       <TuttiModePlanPanel
         labels={labels}
@@ -136,7 +133,7 @@ describe("TuttiModePlanPanel", () => {
       />
     );
 
-    expect(screen.getByText("Sequential")).toBeInTheDocument();
+    expect(screen.queryByText("Sequential")).not.toBeInTheDocument();
     expect(screen.queryByText("sequential")).not.toBeInTheDocument();
     expect(screen.queryByText("Token limit")).not.toBeInTheDocument();
     expect(screen.queryByText("12,000")).not.toBeInTheDocument();
@@ -154,10 +151,15 @@ describe("TuttiModePlanPanel", () => {
       />
     );
 
-    expect(screen.getByText("Reasoning intensity")).toBeInTheDocument();
-    expect(screen.getByText("70 / 100")).toBeInTheDocument();
+    expect(screen.queryByText("Reasoning intensity")).not.toBeInTheDocument();
     expect(screen.getByText("Orchestration intensity")).toBeInTheDocument();
-    expect(screen.getByText("60 / 100")).toBeInTheDocument();
+    // No live host value: the slider falls back to the plan snapshot and
+    // stays a disabled display.
+    const slider = screen.getByRole("slider", {
+      name: "Orchestration intensity"
+    });
+    expect(slider).toHaveAttribute("aria-valuenow", "60");
+    expect(slider).toHaveAttribute("aria-disabled", "true");
     expect(screen.getAllByText("High").length).toBeGreaterThan(0);
     expect(screen.getByText("codex-agent")).toBeInTheDocument();
     expect(screen.getByText("model-plan-pro")).toBeInTheDocument();
@@ -169,6 +171,30 @@ describe("TuttiModePlanPanel", () => {
     expect(screen.queryByText("implement")).not.toBeInTheDocument();
     expect(screen.queryByText("/workspace/implement")).not.toBeInTheDocument();
     expect(screen.queryByText("foundation")).not.toBeInTheDocument();
+  });
+
+  it("binds the orchestration slider to the live session intensity", () => {
+    const onOrchestrationIntensityChange = vi.fn();
+    render(
+      <TuttiModePlanPanel
+        labels={labels}
+        orchestrationIntensity={80}
+        panel={panel}
+        submitting={false}
+        onDecide={vi.fn().mockResolvedValue(undefined)}
+        onOrchestrationIntensityChange={onOrchestrationIntensityChange}
+      />
+    );
+
+    const slider = screen.getByRole("slider", {
+      name: "Orchestration intensity"
+    });
+    // The live badge value wins over the plan snapshot (60).
+    expect(slider).toHaveAttribute("aria-valuenow", "80");
+
+    fireEvent.keyDown(slider, { key: "ArrowRight" });
+
+    expect(onOrchestrationIntensityChange).toHaveBeenCalledWith(81);
   });
 
   it("renders per-task assignment selectors when the catalog is loaded", () => {

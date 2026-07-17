@@ -756,12 +756,18 @@ export const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
               <TuttiModePlanPanel
                 key={panel.id}
                 labels={labels.tuttiModePlanPanel}
+                orchestrationIntensity={
+                  viewModel.composer.tuttiModeOrchestrationIntensity
+                }
                 panel={panel}
                 submitting={
                   tuttiModePlanPanels.submittingCheckpointId ===
                   panel.checkpoint.id
                 }
                 onDecide={tuttiModePlanPanels.decide}
+                onOrchestrationIntensityChange={
+                  setTuttiModeOrchestrationIntensity
+                }
               />
             ))}
             {tuttiModePlanPanels.error ? (

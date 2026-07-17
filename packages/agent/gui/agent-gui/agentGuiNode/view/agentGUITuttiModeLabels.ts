@@ -34,16 +34,7 @@ export function agentGUITuttiModeLabels(
       feedbackRequired: t("agentHost.agentGui.tuttiModePlan.feedbackRequired"),
       tasks: t("agentHost.agentGui.tuttiModePlan.tasks"),
       execution: t("agentHost.agentGui.tuttiModePlan.execution"),
-      executionSequential: t(
-        "agentHost.agentGui.tuttiModePlan.executionSequential"
-      ),
-      executionParallel: t(
-        "agentHost.agentGui.tuttiModePlan.executionParallel"
-      ),
       budget: t("agentHost.agentGui.tuttiModePlan.budget"),
-      reasoningIntensity: t(
-        "agentHost.agentGui.tuttiModePlan.reasoningIntensity"
-      ),
       orchestrationIntensity: t(
         "agentHost.agentGui.tuttiModePlan.orchestrationIntensity"
       ),
