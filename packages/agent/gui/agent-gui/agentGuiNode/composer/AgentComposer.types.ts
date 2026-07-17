@@ -106,6 +106,13 @@ export interface AgentComposerProps {
   handoffMenuLabel?: string;
   labels: {
     send: string;
+    /**
+     * Plan-review send copy: with an empty-send override active the send
+     * button reads sendAccept on an empty draft and sendRequestChanges once
+     * feedback is typed, so the composer decision semantics stay legible.
+     */
+    sendAccept?: string;
+    sendRequestChanges?: string;
     modelLabel: string;
     modelSelectionLabel: string;
     modelContextWindowSuffix: string;

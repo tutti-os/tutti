@@ -289,7 +289,7 @@ func scanWorkspaceIssueTask(scanner issueScanner) (workspaceissues.Task, error) 
 		&item.SearchText, &status, &priority, &item.SortIndex, &item.DueAtUnixMS,
 		&item.AgentTargetID, &item.ModelPlanID, &item.Model,
 		&item.PermissionModeID, &item.ReasoningEffort,
-		&item.ExecutionDirectory, &dependencyTaskIDsJSON,
+		&item.ExecutionDirectory, &dependencyTaskIDsJSON, &item.Parallelizable,
 		&item.CreatorUserID, &item.CreatorDisplayName, &item.CreatorAvatarURL,
 		&item.LatestRunID, &item.CreatedAtUnixMS, &item.UpdatedAtUnixMS,
 	)

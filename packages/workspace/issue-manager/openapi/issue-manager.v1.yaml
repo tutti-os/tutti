@@ -1227,6 +1227,12 @@ components:
         - priority
         - sortIndex
         - dueAtUnix
+        - agentTargetId
+        - modelPlanId
+        - model
+        - executionDirectory
+        - dependencyTaskIds
+        - parallelizable
         - creatorUserId
         - creatorDisplayName
         - creatorAvatarUrl
@@ -1255,6 +1261,28 @@ components:
           type: integer
           format: int64
           minimum: 0
+        agentTargetId:
+          type: string
+          description: Opaque WorkspaceAgent assignment. Empty means not assigned yet.
+        modelPlanId:
+          type: string
+          description: Explicit Plan assignment. Empty delegates to the WorkspaceAgent default.
+        model:
+          type: string
+          description: Explicit model assignment. Empty delegates to the assigned Agent/Plan default.
+        executionDirectory:
+          type: string
+        dependencyTaskIds:
+          type: array
+          items:
+            type: string
+            minLength: 1
+        parallelizable:
+          type: boolean
+          description: >-
+            Opts this task out of the Issue's sequential default so it may run
+            alongside other dependency-ready tasks. False keeps strict
+            sequential ordering.
         creatorUserId:
           type: string
         creatorDisplayName:
@@ -1771,6 +1799,21 @@ components:
           type: integer
           format: int64
           minimum: 0
+        agentTargetId:
+          type: string
+        modelPlanId:
+          type: string
+        model:
+          type: string
+        executionDirectory:
+          type: string
+        dependencyTaskIds:
+          type: array
+          items:
+            type: string
+            minLength: 1
+        parallelizable:
+          type: boolean
     CreateIssueManagerTasksRequest:
       type: object
       additionalProperties: false
@@ -1801,6 +1844,8 @@ components:
         sortIndex:
           type: integer
           minimum: 0
+        parallelizable:
+          type: boolean
     AddIssueManagerContextRefItem:
       type: object
       additionalProperties: false

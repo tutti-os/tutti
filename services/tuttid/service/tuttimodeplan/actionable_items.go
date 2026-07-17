@@ -82,4 +82,7 @@ func applyTaskAssignmentOverride(task *PlanTask, override workflowbiz.TaskAssign
 	if override.ReasoningEffort != nil {
 		task.ReasoningEffort = *override.ReasoningEffort
 	}
+	if override.Parallelizable != nil {
+		task.Parallelizable = *override.Parallelizable
+	}
 }

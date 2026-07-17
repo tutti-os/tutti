@@ -12,6 +12,8 @@ export interface TuttiModePlanTaskAssignmentDraft {
   model?: string;
   permissionModeId?: string;
   reasoningEffort?: string;
+  /** Per-task parallel opt-in; undefined keeps the plan document value. */
+  parallelizable?: boolean;
 }
 
 export type TuttiModePlanTaskAssignmentDrafts = Readonly<
@@ -22,7 +24,8 @@ export type TuttiModePlanTaskAssignmentDrafts = Readonly<
  * Applies one field edit. Changing the Agent invalidates the dependent
  * selections (plan, model, permission mode, reasoning effort) because their
  * option catalogs are agent-scoped; they reset to an explicit clear so an
- * incompatible document value can never ride along silently.
+ * incompatible document value can never ride along silently. The parallel
+ * opt-in is agent-independent and survives an agent change.
  */
 export function mergeTaskAssignmentDraft(
   drafts: TuttiModePlanTaskAssignmentDrafts,
@@ -38,10 +41,21 @@ export function mergeTaskAssignmentDraft(
           modelPlanId: "",
           model: "",
           permissionModeId: "",
-          reasoningEffort: ""
+          reasoningEffort: "",
+          ...(current.parallelizable !== undefined
+            ? { parallelizable: current.parallelizable }
+            : {})
         }
       : { ...current, ...patch };
   return { ...drafts, [taskId]: next };
+}
+
+/** The toggle state a parallel switch should display: draft wins. */
+export function effectiveTaskParallelizable(
+  draftValue: boolean | undefined,
+  documentValue: boolean
+): boolean {
+  return draftValue ?? documentValue;
 }
 
 /** The value a selector should display: draft edit wins over document value. */
@@ -87,6 +101,10 @@ export function taskAssignmentInputsFromDrafts(
     }
     if (draft.reasoningEffort !== undefined) {
       input.reasoningEffort = draft.reasoningEffort;
+      touched = true;
+    }
+    if (draft.parallelizable !== undefined) {
+      input.parallelizable = draft.parallelizable;
       touched = true;
     }
     if (touched) inputs.push(input);

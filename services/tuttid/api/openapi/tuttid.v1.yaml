@@ -13382,6 +13382,7 @@ components:
         - reasoningEffort
         - executionDirectory
         - dependsOn
+        - parallelizable
       properties:
         id:
           type: string
@@ -13423,6 +13424,12 @@ components:
           items:
             type: string
             minLength: 1
+        parallelizable:
+          type: boolean
+          description: >-
+            Opts this task out of the sequential default so it may run
+            alongside other ready tasks. Persisted onto the materialized
+            Issue task.
     TuttiModePlanDocument:
       type: object
       additionalProperties: false
@@ -13761,6 +13768,10 @@ components:
         reasoningEffort:
           type: string
           nullable: true
+        parallelizable:
+          type: boolean
+          nullable: true
+          description: Overrides the plan document's per-task parallel opt-in; null keeps it.
     DecideWorkspaceWorkflowCheckpointRequest:
       type: object
       additionalProperties: false

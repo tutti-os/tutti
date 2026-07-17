@@ -165,6 +165,9 @@ type TaskAssignment struct {
 	Model            *string
 	PermissionModeID *string
 	ReasoningEffort  *string
+	// Parallelizable overrides the plan document's per-task parallel opt-in.
+	// Nil keeps the document value.
+	Parallelizable *bool
 }
 
 type WorkflowCheckpoint struct {

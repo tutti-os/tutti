@@ -38,6 +38,7 @@ export interface TuttiModePlanPanelLabels {
   model: string;
   permissionMode: string;
   reasoningEffort: string;
+  parallelizable: string;
   notSpecified: string;
   assignmentOptionsLoading: string;
 }
@@ -170,7 +171,12 @@ function TaskAssignmentSummary({
       tone: permissionModeAssignmentTone(task.permissionModeId),
       value: task.permissionModeId
     },
-    { label: labels.reasoningEffort, value: task.reasoningEffort }
+    { label: labels.reasoningEffort, value: task.reasoningEffort },
+    {
+      label: labels.parallelizable,
+      tone: "accent" as const,
+      value: task.parallelizable ? labels.parallelizable : null
+    }
   ].filter((chip) => chip.value !== null);
   if (chips.length === 0) {
     return null;

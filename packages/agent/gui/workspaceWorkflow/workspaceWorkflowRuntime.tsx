@@ -30,6 +30,7 @@ export interface TuttiModePlanTaskAssignmentInput {
   model?: string | null;
   permissionModeId?: string | null;
   reasoningEffort?: string | null;
+  parallelizable?: boolean | null;
 }
 
 export interface TuttiModePlanReviewDecisionInput {

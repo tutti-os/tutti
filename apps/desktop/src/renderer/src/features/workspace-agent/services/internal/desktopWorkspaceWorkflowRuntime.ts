@@ -78,7 +78,8 @@ function toReviewSnapshot(
           permissionModeId: task.permissionModeId,
           reasoningEffort: task.reasoningEffort,
           executionDirectory: task.executionDirectory,
-          dependsOn: [...task.dependsOn]
+          dependsOn: [...task.dependsOn],
+          parallelizable: task.parallelizable
         }))
       }
     })),
@@ -122,6 +123,10 @@ function toTaskAssignmentRequest(
     ...(assignment.reasoningEffort !== undefined &&
     assignment.reasoningEffort !== null
       ? { reasoningEffort: assignment.reasoningEffort }
+      : {}),
+    ...(assignment.parallelizable !== undefined &&
+    assignment.parallelizable !== null
+      ? { parallelizable: assignment.parallelizable }
       : {})
   }));
 }

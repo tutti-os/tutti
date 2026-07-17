@@ -89,6 +89,7 @@ type CreateTaskInput struct {
 	ReasoningEffort    string
 	ExecutionDirectory string
 	DependencyTaskIDs  []string
+	Parallelizable     bool
 }
 
 type CreateTaskItemInput struct {
@@ -104,6 +105,7 @@ type CreateTaskItemInput struct {
 	ReasoningEffort    string
 	ExecutionDirectory string
 	DependencyTaskIDs  []string
+	Parallelizable     bool
 }
 
 type CreateTasksInput struct {
@@ -114,22 +116,24 @@ type CreateTasksInput struct {
 }
 
 type UpdateTaskInput struct {
-	TaskID       string
-	IssueID      string
-	WorkspaceID  string
-	ActorUserID  string
-	Title        string
-	HasTitle     bool
-	Content      string
-	HasContent   bool
-	Status       string
-	HasStatus    bool
-	Priority     string
-	HasPriority  bool
-	DueAtUnixMS  int64
-	HasDueAt     bool
-	SortIndex    int
-	HasSortIndex bool
+	TaskID            string
+	IssueID           string
+	WorkspaceID       string
+	ActorUserID       string
+	Title             string
+	HasTitle          bool
+	Content           string
+	HasContent        bool
+	Status            string
+	HasStatus         bool
+	Priority          string
+	HasPriority       bool
+	DueAtUnixMS       int64
+	HasDueAt          bool
+	SortIndex         int
+	HasSortIndex      bool
+	Parallelizable    bool
+	HasParallelizable bool
 }
 
 type CreateRunInput struct {

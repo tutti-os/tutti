@@ -340,18 +340,20 @@ func (api DaemonAPI) UpdateWorkspaceIssueTask(ctx context.Context, request tutti
 	}
 
 	task, err := api.IssueService.UpdateTask(ctx, string(request.WorkspaceID), string(request.IssueID), string(request.TaskID), workspaceservice.UpdateIssueManagerTaskInput{
-		Title:        optionalString(request.Body.Title),
-		HasTitle:     request.Body.Title != nil,
-		Content:      optionalString(request.Body.Content),
-		HasContent:   request.Body.Content != nil,
-		Status:       optionalIssueManagerStatus(request.Body.Status),
-		HasStatus:    request.Body.Status != nil,
-		Priority:     optionalIssueManagerPriority(request.Body.Priority),
-		HasPriority:  request.Body.Priority != nil,
-		DueAtUnixMS:  optionalUnixMillis(request.Body.DueAtUnix),
-		HasDueAt:     request.Body.DueAtUnix != nil,
-		SortIndex:    optionalInt(request.Body.SortIndex),
-		HasSortIndex: request.Body.SortIndex != nil,
+		Title:             optionalString(request.Body.Title),
+		HasTitle:          request.Body.Title != nil,
+		Content:           optionalString(request.Body.Content),
+		HasContent:        request.Body.Content != nil,
+		Status:            optionalIssueManagerStatus(request.Body.Status),
+		HasStatus:         request.Body.Status != nil,
+		Priority:          optionalIssueManagerPriority(request.Body.Priority),
+		HasPriority:       request.Body.Priority != nil,
+		DueAtUnixMS:       optionalUnixMillis(request.Body.DueAtUnix),
+		HasDueAt:          request.Body.DueAtUnix != nil,
+		SortIndex:         optionalInt(request.Body.SortIndex),
+		HasSortIndex:      request.Body.SortIndex != nil,
+		Parallelizable:    request.Body.Parallelizable != nil && *request.Body.Parallelizable,
+		HasParallelizable: request.Body.Parallelizable != nil,
 	})
 	if err != nil {
 		return writeUpdateWorkspaceIssueTaskError(err), nil
@@ -562,6 +564,88 @@ func issueManagerTaskListInputFromGenerated(params tuttigenerated.ListWorkspaceI
 		input.SearchQuery = string(*params.SearchQuery)
 	}
 	return input
+}
+
+func issueManagerCreateIssueInputFromGenerated(item tuttigenerated.CreateIssueManagerIssueRequest) workspaceservice.CreateIssueManagerIssueInput {
+	return workspaceservice.CreateIssueManagerIssueInput{
+		IssueID:             optionalString(item.IssueId),
+		TopicID:             item.TopicId,
+		Title:               item.Title,
+		Content:             optionalString(item.Content),
+		PlanningSource:      optionalPlanningSource(item.PlanningSource),
+		SourceSessionID:     optionalString(item.SourceSessionId),
+		SequentialExecution: optionalBool(item.SequentialExecution),
+		ParallelExecution:   optionalBool(item.ParallelExecution),
+		ExecutionProfile:    issueManagerExecutionProfileFromGenerated(item.ExecutionProfile),
+		HasExecutionProfile: item.ExecutionProfile != nil,
+		Budget:              issueManagerBudgetFromGenerated(item.Budget),
+		HasBudget:           item.Budget != nil,
+	}
+}
+
+func issueManagerCreateTaskInputFromGenerated(item tuttigenerated.CreateIssueManagerTaskRequest) workspaceservice.CreateIssueManagerTaskItemInput {
+	return workspaceservice.CreateIssueManagerTaskItemInput{
+		TaskID:             optionalString(item.TaskId),
+		Title:              item.Title,
+		Content:            optionalString(item.Content),
+		Priority:           optionalIssueManagerPriority(item.Priority),
+		DueAtUnixMS:        optionalUnixMillis(item.DueAtUnix),
+		AgentTargetID:      optionalString(item.AgentTargetId),
+		ModelPlanID:        optionalString(item.ModelPlanId),
+		Model:              optionalString(item.Model),
+		ExecutionDirectory: optionalString(item.ExecutionDirectory),
+		DependencyTaskIDs:  issueManagerOptionalStringSlice(item.DependencyTaskIds),
+		Parallelizable:     item.Parallelizable != nil && *item.Parallelizable,
+	}
+}
+
+func issueManagerExecutionProfileFromGenerated(value *tuttigenerated.IssueManagerExecutionProfile) workspaceissues.ExecutionProfile {
+	if value == nil {
+		return workspaceissues.ExecutionProfile{}
+	}
+	return workspaceissues.ExecutionProfile{ReasoningIntensity: value.ReasoningIntensity, OrchestrationIntensity: value.OrchestrationIntensity}
+}
+
+func issueManagerBudgetFromGenerated(value *tuttigenerated.IssueManagerBudget) workspaceissues.Budget {
+	if value == nil {
+		return workspaceissues.Budget{}
+	}
+	return workspaceissues.Budget{Mode: workspaceissues.BudgetMode(value.Mode), TokenLimit: value.TokenLimit, ConsumedTokens: value.ConsumedTokens, QuotaWaterlinePercent: value.QuotaWaterlinePercent, RemainingQuotaPercent: optionalFloat64(value.RemainingQuotaPercent), HasRemainingQuota: value.RemainingQuotaPercent != nil, Status: workspaceissues.BudgetStatus(value.Status)}
+}
+
+func issueManagerTokenUsageFromGenerated(value *tuttigenerated.IssueManagerTokenUsage) workspaceissues.TokenUsage {
+	if value == nil {
+		return workspaceissues.TokenUsage{}
+	}
+	return workspaceissues.TokenUsage{InputTokens: value.InputTokens, OutputTokens: value.OutputTokens, CacheReadTokens: value.CacheReadTokens, CacheWriteTokens: value.CacheWriteTokens}
+}
+
+func issueManagerCostFromGenerated(value *tuttigenerated.IssueManagerCost) workspaceissues.Cost {
+	if value == nil {
+		return workspaceissues.Cost{}
+	}
+	return workspaceissues.Cost{Currency: value.Currency, EstimatedMicros: value.EstimatedMicros, ActualMicros: value.ActualMicros}
+}
+
+func optionalFloat64(value *float64) float64 {
+	if value == nil {
+		return 0
+	}
+	return *value
+}
+
+func issueManagerOptionalStringSlice(value *[]string) []string {
+	if value == nil {
+		return nil
+	}
+	return append([]string(nil), (*value)...)
+}
+
+func optionalPlanningSource(value *tuttigenerated.IssueManagerPlanningSource) string {
+	if value == nil {
+		return ""
+	}
+	return string(*value)
 }
 
 func issueManagerContextRefsInputFromGenerated(items []tuttigenerated.AddIssueManagerContextRefItem) []workspaceissues.AddContextRefInput {

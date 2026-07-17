@@ -1,3 +1,4 @@
+import { Split } from "lucide-react";
 import {
   Select,
   SelectContent,
@@ -10,6 +11,7 @@ import type { TuttiModePlanAssignmentCatalog } from "./useTuttiModePlanPanels";
 import type { TuttiModePlanPanelTaskViewModel } from "./tuttiModePlanPanelProjection";
 import {
   effectiveTaskAssignmentValue,
+  effectiveTaskParallelizable,
   type TuttiModePlanTaskAssignmentDraft
 } from "./tuttiModePlanTaskAssignments";
 
@@ -18,6 +20,7 @@ export interface TuttiModePlanTaskAssignmentEditorLabels {
   model: string;
   permissionMode: string;
   reasoningEffort: string;
+  parallelizable: string;
   notSpecified: string;
   assignmentOptionsLoading: string;
 }
@@ -94,6 +97,10 @@ export function TuttiModePlanTaskAssignmentEditor({
   const effortValue = effectiveTaskAssignmentValue(
     draft.reasoningEffort,
     task.reasoningEffort
+  );
+  const parallelizable = effectiveTaskParallelizable(
+    draft.parallelizable,
+    task.parallelizable
   );
   // Options for document-referenced agents are preloaded by the panels hook
   // alongside the snapshot refresh; user-driven agent changes trigger the
@@ -190,6 +197,22 @@ export function TuttiModePlanTaskAssignmentEditor({
         value={effortValue}
         onChange={(value) => onEdit({ reasoningEffort: value })}
       />
+      <button
+        type="button"
+        disabled={disabled}
+        aria-pressed={parallelizable}
+        aria-label={labels.parallelizable}
+        title={labels.parallelizable}
+        data-permission-tone={parallelizable ? "accent" : undefined}
+        data-testid={`tutti-plan-task-parallel-toggle-${task.id}`}
+        className={cn("w-auto max-w-full", composerStyles.composerMenuTrigger)}
+        onClick={() => onEdit({ parallelizable: !parallelizable })}
+      >
+        <span className="flex min-w-0 items-center gap-1.5">
+          <Split aria-hidden className="size-3.5 shrink-0" />
+          <span className="min-w-0 truncate">{labels.parallelizable}</span>
+        </span>
+      </button>
     </div>
   );
 }

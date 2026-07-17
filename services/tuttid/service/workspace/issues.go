@@ -81,11 +81,12 @@ type UpdateIssueManagerIssueInput struct {
 }
 
 type CreateIssueManagerTaskInput struct {
-	TaskID      string
-	Title       string
-	Content     string
-	Priority    string
-	DueAtUnixMS int64
+	TaskID         string
+	Title          string
+	Content        string
+	Priority       string
+	DueAtUnixMS    int64
+	Parallelizable bool
 }
 
 type CreateIssueManagerTaskItemInput struct {
@@ -101,6 +102,7 @@ type CreateIssueManagerTaskItemInput struct {
 	ReasoningEffort    string
 	ExecutionDirectory string
 	DependencyTaskIDs  []string
+	Parallelizable     bool
 }
 
 type CreateIssueManagerTasksInput struct {
@@ -108,18 +110,20 @@ type CreateIssueManagerTasksInput struct {
 }
 
 type UpdateIssueManagerTaskInput struct {
-	Title        string
-	HasTitle     bool
-	Content      string
-	HasContent   bool
-	Status       string
-	HasStatus    bool
-	Priority     string
-	HasPriority  bool
-	DueAtUnixMS  int64
-	HasDueAt     bool
-	SortIndex    int
-	HasSortIndex bool
+	Title             string
+	HasTitle          bool
+	Content           string
+	HasContent        bool
+	Status            string
+	HasStatus         bool
+	Priority          string
+	HasPriority       bool
+	DueAtUnixMS       int64
+	HasDueAt          bool
+	SortIndex         int
+	HasSortIndex      bool
+	Parallelizable    bool
+	HasParallelizable bool
 }
 
 type AddIssueManagerContextRefsInput struct {
@@ -262,6 +266,7 @@ func (s IssueManagerService) CreateIssueFromPlan(ctx context.Context, workspaceI
 			ReasoningEffort:    task.ReasoningEffort,
 			ExecutionDirectory: task.ExecutionDirectory,
 			DependencyTaskIDs:  task.DependencyTaskIDs,
+			Parallelizable:     task.Parallelizable,
 		})
 	}
 	issue, tasks, err := s.domainService().CreateIssueWithTasks(ctx, workspaceissues.CreateIssueWithTasksInput{
@@ -398,11 +403,12 @@ func (s IssueManagerService) ListTasks(ctx context.Context, workspaceID string, 
 func (s IssueManagerService) CreateTask(ctx context.Context, workspaceID string, issueID string, input CreateIssueManagerTaskInput) (workspaceissues.Task, error) {
 	tasks, err := s.CreateTasks(ctx, workspaceID, issueID, CreateIssueManagerTasksInput{
 		Tasks: []CreateIssueManagerTaskItemInput{{
-			TaskID:      input.TaskID,
-			Title:       input.Title,
-			Content:     input.Content,
-			Priority:    input.Priority,
-			DueAtUnixMS: input.DueAtUnixMS,
+			TaskID:         input.TaskID,
+			Title:          input.Title,
+			Content:        input.Content,
+			Priority:       input.Priority,
+			DueAtUnixMS:    input.DueAtUnixMS,
+			Parallelizable: input.Parallelizable,
 		}},
 	})
 	if err != nil {
@@ -430,6 +436,7 @@ func (s IssueManagerService) CreateTasks(ctx context.Context, workspaceID string
 			ReasoningEffort:    task.ReasoningEffort,
 			ExecutionDirectory: task.ExecutionDirectory,
 			DependencyTaskIDs:  task.DependencyTaskIDs,
+			Parallelizable:     task.Parallelizable,
 		})
 	}
 	tasks, err := s.domainService().CreateTasks(ctx, workspaceissues.CreateTasksInput{
@@ -459,22 +466,24 @@ func (s IssueManagerService) GetTaskDetail(ctx context.Context, workspaceID stri
 
 func (s IssueManagerService) UpdateTask(ctx context.Context, workspaceID string, issueID string, taskID string, input UpdateIssueManagerTaskInput) (workspaceissues.Task, error) {
 	task, err := s.domainService().UpdateTask(ctx, workspaceissues.UpdateTaskInput{
-		TaskID:       taskID,
-		IssueID:      issueID,
-		WorkspaceID:  workspaceID,
-		ActorUserID:  issueManagerLocalActorUserID,
-		Title:        input.Title,
-		HasTitle:     input.HasTitle,
-		Content:      input.Content,
-		HasContent:   input.HasContent,
-		Status:       input.Status,
-		HasStatus:    input.HasStatus,
-		Priority:     input.Priority,
-		HasPriority:  input.HasPriority,
-		DueAtUnixMS:  input.DueAtUnixMS,
-		HasDueAt:     input.HasDueAt,
-		SortIndex:    input.SortIndex,
-		HasSortIndex: input.HasSortIndex,
+		TaskID:            taskID,
+		IssueID:           issueID,
+		WorkspaceID:       workspaceID,
+		ActorUserID:       issueManagerLocalActorUserID,
+		Title:             input.Title,
+		HasTitle:          input.HasTitle,
+		Content:           input.Content,
+		HasContent:        input.HasContent,
+		Status:            input.Status,
+		HasStatus:         input.HasStatus,
+		Priority:          input.Priority,
+		HasPriority:       input.HasPriority,
+		DueAtUnixMS:       input.DueAtUnixMS,
+		HasDueAt:          input.HasDueAt,
+		SortIndex:         input.SortIndex,
+		HasSortIndex:      input.HasSortIndex,
+		Parallelizable:    input.Parallelizable,
+		HasParallelizable: input.HasParallelizable,
 	})
 	if err != nil {
 		return workspaceissues.Task{}, err

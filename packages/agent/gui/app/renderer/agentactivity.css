@@ -5817,6 +5817,22 @@ aside.workspace-agents-status-panel
   height: 18px;
 }
 
+/* Plan-review decision copy: the send button widens into a labeled pill
+   ("Accept plan" / "Request changes") while the empty-send override is on. */
+.agent-gui-node__composer-send-button[data-plan-review-label="true"] {
+  display: inline-flex;
+  width: auto;
+  min-width: 28px;
+  max-width: 220px;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 0 10px 0 12px;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1;
+}
+
 .agent-gui-node__composer-reference-trigger {
   min-width: 36px;
   min-height: 36px;

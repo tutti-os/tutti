@@ -24,6 +24,7 @@ const schemaMigrationWorkspaceAgentsV2 = "workspace_agents_model_fallbacks_v1"
 const schemaMigrationWorkspaceAgentsV3 = "workspace_agents_call_conditions_v1"
 const schemaMigrationWorkspaceAgentsV4 = "workspace_agents_capability_selection_v1"
 const schemaMigrationWorkspaceIssuesV12 = "workspace_issue_tasks_launch_overrides_v1"
+const schemaMigrationWorkspaceIssuesV13 = "workspace_issue_tasks_parallelizable_v1"
 const schemaMigrationDesktopPreferencesV1 = "desktop_preferences_v1"
 const schemaMigrationDesktopPreferencesAgentDockLayoutV1 = "desktop_preferences_agent_dock_layout_v1"
 const schemaMigrationDesktopPreferencesSleepPreventionModeV1 = "desktop_preferences_sleep_prevention_mode_v1"
@@ -137,6 +138,9 @@ INSERT OR IGNORE INTO tuttid_schema_migrations (id, applied_at_unix_ms)
 	}
 
 	if err := s.applyWorkspaceIssuesV12(ctx); err != nil {
+		return err
+	}
+	if err := s.applyWorkspaceIssuesV13(ctx); err != nil {
 		return err
 	}
 
@@ -743,6 +747,35 @@ INSERT INTO tuttid_schema_migrations (id, applied_at_unix_ms)
   VALUES (?, ?);
 `, schemaMigrationWorkspaceIssuesV12, unixMs(time.Now().UTC())); err != nil {
 		return fmt.Errorf("record workspace issue task launch overrides migration: %w", err)
+	}
+	return nil
+}
+
+// applyWorkspaceIssuesV13 records the per-task parallel opt-in from the Tutti
+// Mode plan review. Sequential stays the default: false means the task waits
+// for its predecessors, true lets it run alongside other ready tasks.
+func (s *SQLiteStore) applyWorkspaceIssuesV13(ctx context.Context) error {
+	applied, err := s.hasMigration(ctx, schemaMigrationWorkspaceIssuesV13)
+	if err != nil {
+		return err
+	}
+	if applied {
+		return nil
+	}
+	hasColumn, err := s.hasColumn(ctx, "workspace_issue_tasks", "parallelizable")
+	if err != nil {
+		return err
+	}
+	if !hasColumn {
+		if _, err := s.db.ExecContext(ctx, "ALTER TABLE workspace_issue_tasks ADD COLUMN parallelizable INTEGER NOT NULL DEFAULT 0;"); err != nil {
+			return fmt.Errorf("add workspace_issue_tasks.parallelizable: %w", err)
+		}
+	}
+	if _, err := s.db.ExecContext(ctx, `
+INSERT INTO tuttid_schema_migrations (id, applied_at_unix_ms)
+  VALUES (?, ?);
+`, schemaMigrationWorkspaceIssuesV13, unixMs(time.Now().UTC())); err != nil {
+		return fmt.Errorf("record workspace issue task parallelizable migration: %w", err)
 	}
 	return nil
 }

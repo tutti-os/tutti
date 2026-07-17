@@ -55,6 +55,7 @@ func (materializer WorkspaceIssueMaterializer) MaterializeIssue(
 			ReasoningEffort:    item.Task.ReasoningEffort,
 			ExecutionDirectory: item.Task.ExecutionDirectory,
 			DependencyTaskIDs:  append([]string(nil), item.Task.DependsOn...),
+			Parallelizable:     item.Task.Parallelizable,
 		})
 	}
 	detail, err := materializer.Issues.CreateIssueFromPlan(ctx, input.WorkspaceID, workspaceservice.CreateIssueManagerIssueFromPlanInput{
@@ -155,6 +156,7 @@ func materializedIssueMatches(existing workspaceissues.IssueDetail, input Materi
 			strings.TrimSpace(actual.PermissionModeID) != strings.TrimSpace(expected.PermissionModeID) ||
 			strings.TrimSpace(actual.ReasoningEffort) != strings.TrimSpace(expected.ReasoningEffort) ||
 			strings.TrimSpace(actual.ExecutionDirectory) != strings.TrimSpace(expected.ExecutionDirectory) ||
+			actual.Parallelizable != expected.Parallelizable ||
 			!slices.Equal(actual.DependencyTaskIDs, workspaceissues.NormalizeDependencyTaskIDs(expected.DependsOn)) {
 			return false
 		}

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   effectiveTaskAssignmentValue,
+  effectiveTaskParallelizable,
   mergeTaskAssignmentDraft,
   taskAssignmentInputsFromDrafts
 } from "./tuttiModePlanTaskAssignments";
@@ -21,6 +22,7 @@ function taskViewModel(
     reasoningEffort: null,
     executionDirectory: null,
     dependsOn: [],
+    parallelizable: false,
     ...overrides
   };
 }
@@ -48,6 +50,39 @@ describe("mergeTaskAssignmentDraft", () => {
       permissionModeId: "",
       reasoningEffort: ""
     });
+  });
+
+  it("keeps the agent-independent parallel opt-in across agent changes", () => {
+    let drafts = mergeTaskAssignmentDraft({}, "task-1", {
+      parallelizable: true
+    });
+    drafts = mergeTaskAssignmentDraft(drafts, "task-1", {
+      agentTargetId: "agent-2"
+    });
+    expect(drafts["task-1"]).toEqual({
+      agentTargetId: "agent-2",
+      modelPlanId: "",
+      model: "",
+      permissionModeId: "",
+      reasoningEffort: "",
+      parallelizable: true
+    });
+    expect(effectiveTaskParallelizable(undefined, true)).toBe(true);
+    expect(effectiveTaskParallelizable(false, true)).toBe(false);
+    const inputs = taskAssignmentInputsFromDrafts(drafts, [
+      taskViewModel({ id: "task-1" })
+    ]);
+    expect(inputs).toEqual([
+      {
+        taskId: "task-1",
+        agentTargetId: "agent-2",
+        modelPlanId: "",
+        model: "",
+        permissionModeId: "",
+        reasoningEffort: "",
+        parallelizable: true
+      }
+    ]);
   });
 
   it("keeps other fields when the same agent is re-selected", () => {

@@ -117,6 +117,12 @@ func GeneratedIssueManagerTaskFromDomain(item workspaceissues.Task) tuttigenerat
 		CreatorDisplayName: item.CreatorDisplayName,
 		CreatorAvatarUrl:   item.CreatorAvatarURL,
 		LatestRunId:        item.LatestRunID,
+		AgentTargetId:      item.AgentTargetID,
+		ModelPlanId:        item.ModelPlanID,
+		Model:              item.Model,
+		ExecutionDirectory: item.ExecutionDirectory,
+		DependencyTaskIds:  append([]string(nil), item.DependencyTaskIDs...),
+		Parallelizable:     item.Parallelizable,
 		CreatedAtUnix:      unixSecondsFromMillis(item.CreatedAtUnixMS),
 		UpdatedAtUnix:      unixSecondsFromMillis(item.UpdatedAtUnixMS),
 	}

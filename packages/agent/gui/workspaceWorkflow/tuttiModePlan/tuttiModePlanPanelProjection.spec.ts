@@ -59,7 +59,8 @@ function planSnapshot(
               permissionModeId: "acceptEdits",
               reasoningEffort: "high",
               executionDirectory: "packages/agent/gui",
-              dependsOn: []
+              dependsOn: [],
+              parallelizable: true
             },
             {
               id: "build",
@@ -153,7 +154,8 @@ describe("projectTuttiModePlanPanel", () => {
           permissionModeId: "acceptEdits",
           reasoningEffort: "high",
           executionDirectory: "packages/agent/gui",
-          dependsOn: []
+          dependsOn: [],
+          parallelizable: true
         },
         {
           ordinal: 2,
@@ -167,7 +169,8 @@ describe("projectTuttiModePlanPanel", () => {
           permissionModeId: null,
           reasoningEffort: null,
           executionDirectory: null,
-          dependsOn: ["design"]
+          dependsOn: ["design"],
+          parallelizable: false
         }
       ]
     });
@@ -328,7 +331,8 @@ describe("projectTuttiModePlanPanel", () => {
       permissionModeId: null,
       reasoningEffort: null,
       executionDirectory: null,
-      dependsOn: []
+      dependsOn: [],
+      parallelizable: false
     });
 
     expect(snapshot.revisions[0]?.document.tasks).toHaveLength(2);

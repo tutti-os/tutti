@@ -50,6 +50,7 @@ func (s Service) CreateTask(ctx context.Context, input CreateTaskInput) (Task, e
 			ReasoningEffort:    input.ReasoningEffort,
 			ExecutionDirectory: input.ExecutionDirectory,
 			DependencyTaskIDs:  input.DependencyTaskIDs,
+			Parallelizable:     input.Parallelizable,
 		}},
 	})
 	if err != nil {
@@ -100,6 +101,7 @@ func (s Service) CreateTasks(ctx context.Context, input CreateTasksInput) ([]Tas
 			ReasoningEffort:    strings.TrimSpace(item.ReasoningEffort),
 			ExecutionDirectory: strings.TrimSpace(item.ExecutionDirectory),
 			DependencyTaskIDs:  NormalizeDependencyTaskIDs(item.DependencyTaskIDs),
+			Parallelizable:     item.Parallelizable,
 			CreatorUserID:      actorUserID,
 			CreatedAtUnixMS:    now,
 			UpdatedAtUnixMS:    now,
@@ -170,6 +172,9 @@ func (s Service) UpdateTask(ctx context.Context, input UpdateTaskInput) (Task, e
 			return Task{}, ErrInvalidArgument
 		}
 		task.SortIndex = input.SortIndex
+	}
+	if input.HasParallelizable {
+		task.Parallelizable = input.Parallelizable
 	}
 	task.UpdatedAtUnixMS = s.nowUnixMS()
 	updated, err := store.UpdateTask(ctx, task)

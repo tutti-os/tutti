@@ -60,7 +60,8 @@ const snapshot: WorkspaceWorkflowSnapshot = {
             permissionModeId: null,
             reasoningEffort: null,
             executionDirectory: null,
-            dependsOn: []
+            dependsOn: [],
+            parallelizable: true
           }
         ]
       }
