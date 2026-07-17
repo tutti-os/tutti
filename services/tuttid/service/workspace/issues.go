@@ -37,6 +37,15 @@ type TuttiPlanIssueCompletionNotifier interface {
 		issue workspaceissues.Issue,
 		tasks []workspaceissues.Task,
 	)
+	// NotifyTuttiPlanIssueTaskFailed reports a failed task run back to the
+	// planning conversation so execution problems never leave it silent.
+	NotifyTuttiPlanIssueTaskFailed(
+		ctx context.Context,
+		workspaceID string,
+		issue workspaceissues.Issue,
+		task workspaceissues.Task,
+		run workspaceissues.Run,
+	)
 }
 
 type IssueManagerEventPublisher interface {
@@ -741,10 +750,36 @@ func (s IssueManagerService) CompleteRun(ctx context.Context, workspaceID string
 			}
 		}
 	}
+	// A failed run freezes the dispatch frontier; the planning conversation
+	// must hear about it instead of waiting in silence.
+	if run.Status == workspaceissues.StatusFailed {
+		s.notifyTuttiPlanIssueTaskFailedBestEffort(ctx, workspaceID, issueID, taskID, run)
+	}
 	// Parallel Issues keep their bounded workspace slots full as independent
 	// runs settle. Sequential successors still remain gated on user acceptance.
 	s.dispatchEligibleIssueTasks(ctx, workspaceID, issueID)
 	return workspaceissues.RunDetail{Run: run, Outputs: outputs}, nil
+}
+
+// notifyTuttiPlanIssueTaskFailedBestEffort reports a failed run of a
+// tutti-mode-plan Issue task back to the source conversation. The notifier
+// dedupes per run, so reconcile replays cannot spam the session.
+func (s IssueManagerService) notifyTuttiPlanIssueTaskFailedBestEffort(ctx context.Context, workspaceID string, issueID string, taskID string, run workspaceissues.Run) {
+	if s.CompletionNotifier == nil {
+		return
+	}
+	detail, err := s.domainService().GetIssueDetail(ctx, workspaceID, issueID)
+	if err != nil ||
+		detail.Issue.PlanningSource != workspaceissues.PlanningSourceTuttiModePlan ||
+		strings.TrimSpace(detail.Issue.SourceSessionID) == "" {
+		return
+	}
+	for _, task := range detail.Tasks {
+		if task.TaskID == taskID {
+			s.CompletionNotifier.NotifyTuttiPlanIssueTaskFailed(ctx, workspaceID, detail.Issue, task, run)
+			return
+		}
+	}
 }
 
 func (s IssueManagerService) RemoveIssueContextRef(ctx context.Context, workspaceID string, issueID string, contextRefID string) (bool, error) {

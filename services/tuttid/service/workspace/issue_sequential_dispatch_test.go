@@ -991,3 +991,84 @@ func TestReworkFromPendingAcceptanceRedispatchesSequentialHead(t *testing.T) {
 		t.Fatalf("reworked task status = %q, want running", updated.Tasks[0].Status)
 	}
 }
+
+type tuttiPlanNotifierRecorder struct {
+	completedIssueIDs []string
+	failedRunIDs      []string
+}
+
+func (r *tuttiPlanNotifierRecorder) NotifyTuttiPlanIssueCompleted(_ context.Context, _ string, issue workspaceissues.Issue, _ []workspaceissues.Task) {
+	r.completedIssueIDs = append(r.completedIssueIDs, issue.IssueID)
+}
+
+func (r *tuttiPlanNotifierRecorder) NotifyTuttiPlanIssueTaskFailed(_ context.Context, _ string, _ workspaceissues.Issue, _ workspaceissues.Task, run workspaceissues.Run) {
+	r.failedRunIDs = append(r.failedRunIDs, run.RunID)
+}
+
+func TestFailedRunNotifiesPlanningConversationAndReworkRedispatches(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	store := openIssueServiceStore(t)
+	if err := store.Create(ctx, workspacebiz.Summary{ID: "workspace-fail-notify", Name: "Fail notify"}); err != nil {
+		t.Fatalf("Create() workspace error = %v", err)
+	}
+	for _, target := range agenttargetbiz.DefaultSystemTargets(time.Now().UnixMilli()) {
+		if _, err := store.PutAgentTarget(ctx, target); err != nil {
+			t.Fatalf("PutAgentTarget(%q) error = %v", target.ID, err)
+		}
+	}
+	creator := &sequentialSessionCreatorRecorder{}
+	notifier := &tuttiPlanNotifierRecorder{}
+	service := IssueManagerService{
+		AgentSessionCreator: creator,
+		CompletionNotifier:  notifier,
+		Store:               store,
+		AgentTargetReader:   store,
+	}
+	detail, err := service.CreateIssueFromPlan(ctx, "workspace-fail-notify", CreateIssueManagerIssueFromPlanInput{
+		Issue: CreateIssueManagerIssueInput{
+			IssueID:                "tutti-mode-plan-fail-notify",
+			TopicID:                workspaceissues.DefaultTopicID,
+			Title:                  "Fail notify issue",
+			PlanningSource:         string(workspaceissues.PlanningSourceTuttiModePlan),
+			SourceSessionID:        "planning-session",
+			SequentialExecution:    true,
+			TuttiModeWorkflowOwned: true,
+		},
+		Tasks: []CreateIssueManagerTaskItemInput{
+			{TaskID: "task-1", Title: "Only", AgentTargetID: agenttargetbiz.IDLocalCodex},
+		},
+	})
+	if err != nil {
+		t.Fatalf("CreateIssueFromPlan() error = %v", err)
+	}
+	first := detail.Tasks[0]
+	if _, err := service.CompleteRun(ctx, "workspace-fail-notify", detail.Issue.IssueID, first.TaskID, first.LatestRunID, CompleteIssueManagerRunInput{
+		Status:       string(workspaceissues.StatusFailed),
+		ErrorMessage: "Agent session ended without reporting run completion.",
+	}); err != nil {
+		t.Fatalf("CompleteRun(failed) error = %v", err)
+	}
+	if len(notifier.failedRunIDs) != 1 || notifier.failedRunIDs[0] != first.LatestRunID {
+		t.Fatalf("failure notifications = %#v, want the failed run reported once", notifier.failedRunIDs)
+	}
+	if len(notifier.completedIssueIDs) != 0 {
+		t.Fatalf("completion notifications = %#v, want none", notifier.completedIssueIDs)
+	}
+	if _, err := service.UpdateTask(ctx, "workspace-fail-notify", detail.Issue.IssueID, first.TaskID, UpdateIssueManagerTaskInput{
+		Status:    string(workspaceissues.StatusNotStarted),
+		HasStatus: true,
+	}); err != nil {
+		t.Fatalf("UpdateTask(rework failed task) error = %v", err)
+	}
+	if len(creator.inputs) != 2 {
+		t.Fatalf("dispatches after rework of failed task = %d, want 2", len(creator.inputs))
+	}
+	updated, err := service.GetIssueDetail(ctx, "workspace-fail-notify", detail.Issue.IssueID)
+	if err != nil {
+		t.Fatalf("GetIssueDetail() error = %v", err)
+	}
+	if updated.Tasks[0].Status != workspaceissues.StatusRunning {
+		t.Fatalf("reworked task status = %q, want running", updated.Tasks[0].Status)
+	}
+}
