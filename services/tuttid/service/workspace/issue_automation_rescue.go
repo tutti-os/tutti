@@ -58,8 +58,11 @@ func (s IssueManagerService) BeginAutomationIssueRescue(
 
 	agentTargetID := strings.TrimSpace(input.TargetAgentTargetID)
 	provider := ""
-	modelPlanID := strings.TrimSpace(input.ModelPlanID)
-	model := strings.TrimSpace(input.Model)
+	// Automation launches always inherit the target Agent's model
+	// configuration; the retired consult-era plan/model overrides no longer
+	// travel on the rescue input.
+	modelPlanID := ""
+	model := ""
 	if strings.HasPrefix(agentTargetID, workspaceagentbiz.IDPrefix) && s.WorkspaceAgents != nil {
 		resolved, resolveErr := s.WorkspaceAgents.Resolve(ctx, workspaceID, agentTargetID)
 		if resolveErr != nil {

@@ -33,8 +33,8 @@ The objects have separate ownership:
 | `ModelPlan`              | Versioned endpoint, encrypted credential, protocol, and model catalog               |
 | `WorkspaceAgent`         | Named workspace configuration that references one Harness and an optional ModelPlan |
 | `SessionRuntimeSnapshot` | Immutable launch identity and non-secret effective configuration for one session    |
-| `AutomationRule`         | Optional lifecycle trigger plus one collaboration action and a bounded target       |
-| `CollaborationRun`       | Durable fact and usage record for consult/fork/delegate/handoff                     |
+| `AutomationRule`         | Optional lifecycle trigger that launches one bounded target-Agent session           |
+| `CollaborationRun`       | Durable fact and usage record for explicit user consult/fork/delegate/handoff       |
 
 `agentTargetId` remains the opaque AgentGUI/session identity field for
 compatibility, but a new `workspace-agent:*` value identifies a
@@ -190,47 +190,54 @@ both sides of that boundary.
 ## Automation Rules
 
 `AutomationRule` replaces the execution/planning/review role map for new
-workflows. It is action-centric:
+workflows. A triggered rule has exactly one behavior — launch a follow-up
+session — and the former consult/fork/delegate/handoff action split is
+retired from automation:
 
 ```text
 trigger: on_task_complete | on_task_failed
-action: consult | fork | delegate | handoff
 source: optional WorkspaceAgent scope
-target:
-  model -> ModelPlan + model + required capabilities
-  agent -> WorkspaceAgent
+target: WorkspaceAgent id or built-in Harness AgentTarget id
 permissions: permission mode + allowed-tool constraint
-budget: max runs and recorded consult tokens per rule + source session
+budget: max runs and recorded target-session tokens per rule + source session
+prompt: instruction placed in the launched session's first message
 ```
 
-Consult is always tool-free and targets a ModelPlan/model. Fork, delegate, and
-handoff target a WorkspaceAgent and start a new session through the normal
-session-create path, so Harness, Agent revision, Plan revision, permissions,
-and runtime preparation are identical to a user-created session.
+The launch goes through the normal session-create path, so Harness, Agent
+revision, Plan revision, permissions, and runtime preparation are identical
+to a user-created session. The rule's permission mode is applied strictly
+(fail-closed) and its allowed-tools list narrows, never widens, the target
+Agent's tool configuration. The first message is composed as rule prompt +
+`mention://agent-session/<id>?workspaceId=...` source mention + a short
+completed/failed event note; the target Agent reads source context through
+the mention instead of an inline transcript copy. Built-in Harness targets
+are always selectable, so automation works before any WorkspaceAgent exists.
 
-Automation-origin sessions carry the originating rule id and bounded depth in
-runtime context. Failure-triggered rescue may evaluate those sessions up to
-depth three. Completion does not evaluate ordinary rules; only the fixed Issue
-acceptance Review may run, and it records a candidate result without replacing
-user acceptance. Evaluation is deduplicated by workspace/session/rule/turn,
-runs asynchronously from activity persistence, applies per-session overrides,
-and checks run/token budgets before execution. Every action records a normal CollaborationRun with trigger source
-`automation`. Session-backed actions persist the running record before session
-creation so fast completion cannot race ahead of the ledger; target turn state
-then owns terminal status, duration, actual identity, and reported usage.
+Automation-origin sessions carry the originating rule id, source session id,
+and bounded depth in runtime context. Failure-triggered rescue may evaluate
+those sessions up to depth three. Completion never evaluates rules for
+automation-origin sessions; the consult-based fixed acceptance Review retired
+together with the action split. Evaluation is deduplicated by
+workspace/session/rule/turn, runs asynchronously from activity persistence,
+applies per-session overrides, and checks run/token budgets before execution.
+Every launch writes an `automation_rule_executions` row plus an
+`automation_rule.session_launched` audit log instead of a CollaborationRun;
+the row is persisted before session creation so a duplicate trigger delivery
+or restart can never double-launch, and the target session's terminal usage
+is settled into it once. CollaborationRun and the `@model` consult remain
+reserved for explicit user collaboration.
 
 `on_task_failed` is the bounded automatic rescue path. A user can target a
-stronger WorkspaceAgent with `delegate` or another explicit action while
-retaining the same per-source-session run/token limits and session override.
-A failed or interrupted source turn can trigger it; an automation-origin
-target may trigger the next configured rescue only below the daemon's depth
-limit.
+stronger Agent while retaining the same per-source-session run/token limits
+and session override. A failed or interrupted source turn can trigger it; an
+automation-origin target may trigger the next configured rescue only below
+the daemon's depth limit.
 
-Automation transfers a bounded user/assistant transcript from the source
-session to the selected model or WorkspaceAgent. This is intentional context
-sharing, not secret redaction: the rule target must be treated as a recipient
-of that conversation. ModelPlan credentials and endpoint configuration are
-never copied into the transcript or CollaborationRun.
+The launched session can read the source conversation through the session
+mention. This is intentional context sharing, not secret redaction: the rule
+target must be treated as a recipient of that conversation. ModelPlan
+credentials and endpoint configuration never enter the prompt or the
+execution ledger.
 
 The same WorkspaceAgent launch boundary serves explicit Composer `@Agent`
 requests. Manual launches require the user to choose Fork, Delegate, or
@@ -252,16 +259,17 @@ Budget enforcement currently has narrower semantics than a general cost cap:
 - each rule has an independent budget for each source session;
 - zero means the defaults (three runs and 200,000 recorded tokens), not
   unlimited;
-- run count covers consult/fork/delegate/handoff;
-- token usage is summed from matching CollaborationRuns. Consult and
-  fork/delegate/handoff account input, output, cache-read, and cache-write
-  tokens when the provider exposes those terminal counters; unavailable
-  counters remain zero and are not guessed;
-- the daemon checks the accumulated total before starting. It does not reserve
-  the next call's usage, cancel an in-flight call, or guarantee that the final
-  total stays below the threshold because input usage is not known in advance.
-  Consult requests at most the smaller of 2,048 output tokens and the remaining
-  recorded-token budget.
+- every launch attempt counts one run, including a failed launch;
+- token usage comes from the `automation_rule_executions` ledger: the target
+  session's reported input, output, cache-read, and cache-write counters are
+  settled into the execution row on its first terminal turn. Providers
+  report the most recent model request rather than a session cumulative
+  total, so the run cap is the effective guard; unavailable counters remain
+  zero and are not guessed;
+- the daemon checks the accumulated total before starting. It does not
+  reserve the next launch's usage, cancel an in-flight session, or guarantee
+  that the final total stays below the threshold because usage is not known
+  in advance.
 
 The public daemon contract exposes workspace rule CRUD at
 `/v1/workspaces/{workspaceID}/automation-rules` and session selection/disable
@@ -274,13 +282,15 @@ workspace-scoped `agent.automation.rules.changed` business event so clients can
 refresh the authoritative rule list without polling.
 
 Desktop Workspace Settings exposes the workspace CRUD contract directly. The
-editor offers the lifecycle trigger, collaboration action, optional source
-Agent, model or Agent target, capability constraints, narrowed permissions,
-prompt, and budgets without recreating execution/planning/review roles. A new
-draft starts disabled and uses the Review defaults of three runs and 200,000
-tokens per source session. A stored zero continues to mean those same daemon
-defaults. Consult requests always
-serialize empty tool permissions.
+editor offers the lifecycle trigger, optional source Agent, one target Agent
+(built-in Harness targets merged with enabled WorkspaceAgents, so the picker
+is never empty), narrowed permissions, prompt, and budgets without
+recreating execution/planning/review roles. The permission-mode and
+allowed-tools option catalogs load from the selected target's composer
+capability directory, and switching targets drops selections the new target
+does not offer. A new draft starts disabled and uses the defaults of three
+runs and 200,000 tokens per source session. A stored zero continues to mean
+those same daemon defaults.
 
 AgentGUI surfaces session-local rule selection through the shared
 `AgentActivityRuntime` list/get/set commands. A new-conversation choice is
@@ -294,11 +304,13 @@ The renderer never evaluates rules or keeps a host-specific override store.
 
 Legacy `modelpolicy` CRUD and acceptance state remain readable during
 migration. The legacy runtime review runner is disabled; the observer only
-maintains the compatibility `agent_claimed` acceptance record. Enabled review
-rules migrate into `on_task_complete -> consult` rules. Execution and planning
-role fields do not drive the new runtime and are not converted into implicit
-actions. The Plan/default model copied into a migrated WorkspaceAgent comes
-from its fixed-target binding, not from a model role.
+maintains the compatibility `agent_claimed` acceptance record. Execution and
+planning role fields do not drive the new runtime and are not converted into
+implicit rules. The Plan/default model copied into a migrated WorkspaceAgent
+comes from its fixed-target binding, not from a model role. The
+`automation_rules_v2` migration removes legacy model-target consult rows —
+they cannot express the single launch semantic — and clears the retired
+action discriminator on the surviving agent-target rows.
 
 ## Migration And Compatibility
 

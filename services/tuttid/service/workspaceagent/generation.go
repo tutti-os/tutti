@@ -47,9 +47,12 @@ type GenerateInput struct {
 }
 
 type GeneratedAutomationRule struct {
-	Name                     string
-	Trigger                  automationrulebiz.Trigger
-	Action                   automationrulebiz.Action
+	Name    string
+	Trigger automationrulebiz.Trigger
+	// Action is a dormant preview-contract literal. The automation domain
+	// retired its action split; generated consult suggestions remain
+	// advisory previews and are no longer creatable as automation rules.
+	Action                   string
 	ModelPlanID              string
 	Model                    string
 	Prompt                   string
@@ -207,7 +210,7 @@ func parseGeneratedConfiguration(raw string, plan modelplanbiz.Plan, model strin
 		rules = append(rules, GeneratedAutomationRule{
 			Name:                     name,
 			Trigger:                  trigger,
-			Action:                   automationrulebiz.ActionConsult,
+			Action:                   "consult",
 			ModelPlanID:              plan.ID,
 			Model:                    model,
 			Prompt:                   prompt,

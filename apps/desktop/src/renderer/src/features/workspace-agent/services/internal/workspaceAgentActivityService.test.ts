@@ -2394,8 +2394,7 @@ test("WorkspaceAgentActivityService exposes durable AutomationRule session overr
               id: "rule-review",
               name: "Review completed work",
               enabled: true,
-              trigger: "on_task_complete",
-              action: "consult"
+              trigger: "on_task_complete"
             }
           ]
         };
@@ -2429,7 +2428,9 @@ test("WorkspaceAgentActivityService exposes durable AutomationRule session overr
     {
       rules: [
         {
-          action: "consult",
+          // The retired action split no longer travels on the daemon
+          // contract; the runtime summary keeps an empty placeholder.
+          action: "",
           enabled: true,
           id: "rule-review",
           name: "Review completed work",

@@ -138,7 +138,7 @@ func (api DaemonAPI) SetAgentSessionAutomationRuleOverride(ctx context.Context, 
 func automationRulePutInput(workspaceID string, ruleID string, body tuttigenerated.PutAutomationRuleRequest) automationruleservice.PutRuleInput {
 	return automationruleservice.PutRuleInput{
 		WorkspaceID: workspaceID, RuleID: ruleID, Name: body.Name, Enabled: body.Enabled,
-		Trigger: automationrulebiz.Trigger(body.Trigger), Action: automationrulebiz.Action(body.Action),
+		Trigger:                automationrulebiz.Trigger(body.Trigger),
 		SourceWorkspaceAgentID: stringValue(body.SourceWorkspaceAgentId),
 		Target: automationrulebiz.Target{
 			Kind: automationrulebiz.TargetKind(body.Target.Kind), WorkspaceAgentID: stringValue(body.Target.WorkspaceAgentId),
@@ -158,7 +158,7 @@ func automationRulePutInput(workspaceID string, ruleID string, body tuttigenerat
 func generatedAutomationRule(rule automationrulebiz.Rule) tuttigenerated.AutomationRule {
 	result := tuttigenerated.AutomationRule{
 		Id: rule.ID, WorkspaceId: rule.WorkspaceID, Name: rule.Name, Enabled: rule.Enabled,
-		Trigger: tuttigenerated.AutomationRuleTrigger(rule.Trigger), Action: tuttigenerated.AutomationRuleAction(rule.Action), Prompt: rule.Prompt,
+		Trigger: tuttigenerated.AutomationRuleTrigger(rule.Trigger), Prompt: rule.Prompt,
 		Target: tuttigenerated.AutomationRuleTarget{
 			Kind: tuttigenerated.AutomationRuleTargetKind(rule.Target.Kind), RequiredCapabilities: append([]string{}, rule.Target.RequiredCapabilities...),
 		},

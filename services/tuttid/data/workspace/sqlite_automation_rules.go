@@ -60,6 +60,8 @@ func (s *SQLiteStore) CreateAutomationRule(ctx context.Context, rule automationr
 	if err != nil {
 		return fmt.Errorf("encode automation rule tools: %w", err)
 	}
+	// The action column is retired: automation has exactly one launch
+	// behavior, so rows no longer carry an action discriminator.
 	_, err = s.db.ExecContext(ctx, `
 INSERT INTO automation_rules (
   workspace_id, rule_id, name, enabled, trigger, action,
@@ -67,9 +69,9 @@ INSERT INTO automation_rules (
   model_plan_id, model, required_capabilities_json, permission_mode_id,
   allowed_tools_json, max_runs_per_session, max_total_tokens_per_session,
   prompt, legacy_policy_id, created_at_unix_ms, updated_at_unix_ms
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '', ?, ?)
+) VALUES (?, ?, ?, ?, ?, '', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '', ?, ?)
 `, normalized.WorkspaceID, normalized.ID, normalized.Name, boolInt(normalized.Enabled),
-		string(normalized.Trigger), string(normalized.Action), normalized.SourceWorkspaceAgentID,
+		string(normalized.Trigger), normalized.SourceWorkspaceAgentID,
 		string(normalized.Target.Kind), normalized.Target.WorkspaceAgentID,
 		normalized.Target.ModelPlanID, normalized.Target.Model, string(requiredCapabilities),
 		normalized.Permissions.PermissionModeID, string(allowedTools),
@@ -106,14 +108,14 @@ func (s *SQLiteStore) UpdateAutomationRule(ctx context.Context, rule automationr
 	}()
 	result, err := tx.ExecContext(ctx, `
 UPDATE automation_rules
-SET name = ?, enabled = ?, trigger = ?, action = ?,
+SET name = ?, enabled = ?, trigger = ?, action = '',
     source_workspace_agent_id = ?, target_kind = ?, target_workspace_agent_id = ?,
     model_plan_id = ?, model = ?, required_capabilities_json = ?,
     permission_mode_id = ?, allowed_tools_json = ?, max_runs_per_session = ?,
     max_total_tokens_per_session = ?, prompt = ?, legacy_policy_id = '',
     updated_at_unix_ms = ?
 WHERE workspace_id = ? AND rule_id = ?
-`, normalized.Name, boolInt(normalized.Enabled), string(normalized.Trigger), string(normalized.Action),
+`, normalized.Name, boolInt(normalized.Enabled), string(normalized.Trigger),
 		normalized.SourceWorkspaceAgentID, string(normalized.Target.Kind), normalized.Target.WorkspaceAgentID,
 		normalized.Target.ModelPlanID, normalized.Target.Model, string(requiredCapabilities),
 		normalized.Permissions.PermissionModeID, string(allowedTools), normalized.Budget.MaxRunsPerSession,
@@ -228,7 +230,7 @@ ON CONFLICT(workspace_id, agent_session_id) DO UPDATE SET
 }
 
 const automationRuleSelect = `
-SELECT workspace_id, rule_id, name, enabled, trigger, action,
+SELECT workspace_id, rule_id, name, enabled, trigger,
   source_workspace_agent_id, target_kind, target_workspace_agent_id,
   model_plan_id, model, required_capabilities_json, permission_mode_id,
   allowed_tools_json, max_runs_per_session, max_total_tokens_per_session,
@@ -239,10 +241,10 @@ FROM automation_rules
 func scanAutomationRule(row managedProviderScanner) (automationrulebiz.Rule, error) {
 	var rule automationrulebiz.Rule
 	var enabled int
-	var trigger, action, targetKind string
+	var trigger, targetKind string
 	var requiredCapabilitiesJSON, allowedToolsJSON string
 	var createdAtMS, updatedAtMS int64
-	if err := row.Scan(&rule.WorkspaceID, &rule.ID, &rule.Name, &enabled, &trigger, &action,
+	if err := row.Scan(&rule.WorkspaceID, &rule.ID, &rule.Name, &enabled, &trigger,
 		&rule.SourceWorkspaceAgentID, &targetKind, &rule.Target.WorkspaceAgentID,
 		&rule.Target.ModelPlanID, &rule.Target.Model, &requiredCapabilitiesJSON,
 		&rule.Permissions.PermissionModeID, &allowedToolsJSON,
@@ -258,7 +260,6 @@ func scanAutomationRule(row managedProviderScanner) (automationrulebiz.Rule, err
 	}
 	rule.Enabled = enabled != 0
 	rule.Trigger = automationrulebiz.Trigger(trigger)
-	rule.Action = automationrulebiz.Action(action)
 	rule.Target.Kind = automationrulebiz.TargetKind(targetKind)
 	rule.CreatedAt = time.UnixMilli(createdAtMS).UTC()
 	rule.UpdatedAt = time.UnixMilli(updatedAtMS).UTC()

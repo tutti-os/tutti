@@ -241,7 +241,6 @@ test("shared tuttid client unwraps workspace automation rule responses", async (
       return Response.json({
         rules: [
           {
-            action: "consult",
             budget: {
               maxRunsPerSession: 2,
               maxTotalTokensPerSession: 40000
@@ -253,9 +252,9 @@ test("shared tuttid client unwraps workspace automation rule responses", async (
             permissions: { allowedTools: [] },
             prompt: "Check correctness",
             target: {
-              kind: "model",
-              modelPlanId: "plan-1",
-              requiredCapabilities: ["reasoning"]
+              kind: "agent",
+              requiredCapabilities: [],
+              workspaceAgentId: "workspace-agent:reviewer"
             },
             trigger: "on_task_complete",
             updatedAt: "2026-07-12T00:00:00Z",
@@ -268,7 +267,7 @@ test("shared tuttid client unwraps workspace automation rule responses", async (
 
   const response = await client.listAutomationRules("workspace-1");
   assert.equal(response.rules[0]?.id, "automation-rule:one");
-  assert.equal(response.rules[0]?.target.kind, "model");
+  assert.equal(response.rules[0]?.target.kind, "agent");
   assert.equal(response.rules[0]?.budget.maxRunsPerSession, 2);
   assert.deepEqual(response, response satisfies ListAutomationRulesResponse);
 });
@@ -276,7 +275,6 @@ test("shared tuttid client unwraps workspace automation rule responses", async (
 test("shared tuttid client mutates automation rules and session overrides", async () => {
   const automationRuleID = "automation-rule:one";
   const request = {
-    action: "delegate",
     budget: {
       maxRunsPerSession: 1,
       maxTotalTokensPerSession: 50000

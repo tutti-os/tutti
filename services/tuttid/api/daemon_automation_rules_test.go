@@ -53,8 +53,7 @@ func TestUpdateAutomationRuleDelegatesExistenceCheckToService(t *testing.T) {
 		WorkspaceID: "ws", AutomationRuleID: "automation-rule:missing",
 		Body: &tuttigenerated.PutAutomationRuleRequest{
 			Name: "Missing", Trigger: tuttigenerated.AutomationRuleTriggerOnTaskComplete,
-			Action:      tuttigenerated.AutomationRuleActionConsult,
-			Target:      tuttigenerated.AutomationRuleTarget{Kind: tuttigenerated.AutomationRuleTargetKindModel, ModelPlanId: stringPointer("plan-1")},
+			Target:      tuttigenerated.AutomationRuleTarget{Kind: tuttigenerated.AutomationRuleTargetKindAgent, WorkspaceAgentId: stringPointer("workspace-agent:target")},
 			Permissions: tuttigenerated.AutomationRulePermissions{},
 			Budget:      tuttigenerated.AutomationRuleBudget{},
 		},
@@ -84,13 +83,12 @@ func (s *stubAutomationRuleService) SetSessionOverride(_ context.Context, overri
 func testAutomationRule() automationrulebiz.Rule {
 	now := time.Unix(1_700_000_000, 0).UTC()
 	return automationrulebiz.Rule{
-		ID: "automation-rule:one", WorkspaceID: "ws", Name: "Review completion", Enabled: true,
-		Trigger: automationrulebiz.TriggerOnTaskComplete, Action: automationrulebiz.ActionConsult,
+		ID: "automation-rule:one", WorkspaceID: "ws", Name: "Launch follow-up", Enabled: true,
+		Trigger: automationrulebiz.TriggerOnTaskComplete,
 		Target: automationrulebiz.Target{
-			Kind: automationrulebiz.TargetModel, ModelPlanID: "plan-1", Model: "reasoner",
-			RequiredCapabilities: []string{"reasoning"},
+			Kind: automationrulebiz.TargetAgent, WorkspaceAgentID: "workspace-agent:reviewer",
 		},
-		Permissions: automationrulebiz.PermissionPolicy{},
+		Permissions: automationrulebiz.PermissionPolicy{PermissionModeID: "workspace-write", AllowedTools: []string{"terminal"}},
 		Budget:      automationrulebiz.Budget{MaxRunsPerSession: 2, MaxTotalTokensPerSession: 40_000},
 		Prompt:      "Check correctness", CreatedAt: now, UpdatedAt: now,
 	}
@@ -102,14 +100,12 @@ func TestCreateAutomationRuleMapsRequestAndProjection(t *testing.T) {
 	response, err := api.CreateAutomationRule(context.Background(), tuttigenerated.CreateAutomationRuleRequestObject{
 		WorkspaceID: "ws",
 		Body: &tuttigenerated.PutAutomationRuleRequest{
-			Name: "Review completion", Enabled: true,
+			Name: "Launch follow-up", Enabled: true,
 			Trigger: tuttigenerated.AutomationRuleTriggerOnTaskComplete,
-			Action:  tuttigenerated.AutomationRuleActionConsult,
 			Target: tuttigenerated.AutomationRuleTarget{
-				Kind: tuttigenerated.AutomationRuleTargetKindModel, ModelPlanId: stringPointer("plan-1"),
-				RequiredCapabilities: []string{"reasoning"},
+				Kind: tuttigenerated.AutomationRuleTargetKindAgent, WorkspaceAgentId: stringPointer("workspace-agent:reviewer"),
 			},
-			Permissions: tuttigenerated.AutomationRulePermissions{AllowedTools: []string{}},
+			Permissions: tuttigenerated.AutomationRulePermissions{PermissionModeId: stringPointer("workspace-write"), AllowedTools: []string{"terminal"}},
 			Budget:      tuttigenerated.AutomationRuleBudget{MaxRunsPerSession: 2, MaxTotalTokensPerSession: 40_000},
 			Prompt:      "Check correctness",
 		},
@@ -121,10 +117,10 @@ func TestCreateAutomationRuleMapsRequestAndProjection(t *testing.T) {
 	if !ok {
 		t.Fatalf("CreateAutomationRule() response = %T", response)
 	}
-	if created.Id != "automation-rule:one" || created.Target.ModelPlanId == nil || *created.Target.ModelPlanId != "plan-1" {
+	if created.Id != "automation-rule:one" || created.Target.WorkspaceAgentId == nil || *created.Target.WorkspaceAgentId != "workspace-agent:reviewer" {
 		t.Fatalf("CreateAutomationRule() projection = %#v", created)
 	}
-	if service.putInput.Target.ModelPlanID != "plan-1" || service.putInput.Action != automationrulebiz.ActionConsult {
+	if service.putInput.Target.WorkspaceAgentID != "workspace-agent:reviewer" || service.putInput.Permissions.PermissionModeID != "workspace-write" {
 		t.Fatalf("CreateAutomationRule() input = %#v", service.putInput)
 	}
 }

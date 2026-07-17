@@ -61,7 +61,9 @@ export function createWorkspaceSettingsAutomationRulesState(): WorkspaceSettings
     loadFailed: false,
     loading: false,
     rules: [],
-    saving: false
+    saving: false,
+    targetCatalog: null,
+    targetOptions: []
   };
 }
 

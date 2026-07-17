@@ -281,13 +281,20 @@ a separate event and preserves an explicit home model.
 
 ## Automation Rules, Not Model Roles
 
-New behavior is action-centric. `AutomationRule` combines an explicit
-lifecycle trigger (`on_task_complete` or `on_task_failed`) with `consult`,
-`fork`, `delegate`, or `handoff`:
+`AutomationRule` combines an explicit lifecycle trigger (`on_task_complete`
+or `on_task_failed`) with exactly one behavior: launch a new session for the
+configured target Agent. The former consult/fork/delegate/handoff action
+split is retired from automation (the CollaborationRun infrastructure and the
+explicit `@model` consult remain for user-invoked collaboration):
 
-- `consult` targets a ModelPlan/model and is always tool-free;
-- `fork`, `delegate`, and `handoff` target a WorkspaceAgent and use its normal
-  Harness, Plan revision, instructions, skills, tools, and permissions;
+- the target accepts a WorkspaceAgent id or a built-in Harness AgentTarget
+  id, so a rule is configurable before any WorkspaceAgent exists;
+- the launched session uses the target's normal Harness, Plan revision,
+  instructions, skills, tools, and permissions, narrowed by the rule's
+  permission mode (strict/fail-closed) and allowed-tools constraint;
+- the first message is the rule prompt, a `mention://agent-session/...`
+  mention of the source session, and a short completed/failed event note —
+  context travels through the mention, not an inline transcript copy;
 - an optional source WorkspaceAgent scopes the rule without creating an
   execution/planning/review hierarchy;
 - per-session overrides may disable automation or select a subset of rules.
@@ -297,37 +304,38 @@ workspaces can configure conditional multi-level rescue by scoping successive
 rules to stronger or specialized source Agents. Runtime context carries the
 automation depth into every launched Session. Failure triggers may chain from
 an automation-origin Session, and the daemon stops before launching past depth
-three. Completed automation turns do not run ordinary completion rules; the
-only exception is an Issue's fixed acceptance Review, which records a
-candidate review result and still never accepts work for the user. Per-rule
-run/token budgets apply at every level. This boundary is deliberately finite
-and must not be replaced with unlimited recursive rescue.
+three. Completed automation turns never run completion rules; the
+consult-based fixed acceptance Review retired together with the action split.
+Per-rule run/token budgets apply at every level. This boundary is
+deliberately finite and must not be replaced with unlimited recursive rescue.
 
 Legacy `modelpolicy` CRUD and acceptance records remain readable for
 compatibility. The old runtime review runner is disabled; its observer only
-maintains the legacy `agent_claimed` acceptance state. Enabled legacy review
-rules migrate to `on_task_complete -> consult` AutomationRules. The former
-execution and planning role fields do not drive the new runtime and do not
-become implicit rules. A legacy binding's effective Plan/default model instead
-becomes the migrated WorkspaceAgent configuration.
+maintains the legacy `agent_claimed` acceptance state. The former execution
+and planning role fields do not drive the new runtime and do not become
+implicit rules. A legacy binding's effective Plan/default model instead
+becomes the migrated WorkspaceAgent configuration. The `automation_rules_v2`
+migration removes legacy model-target consult rows (they cannot express the
+launch semantic) and clears the retired action discriminator on the
+surviving agent-target rows.
 
 ### Current Token-Budget Semantics
 
 An AutomationRule budget is independent for each `(rule, source session)`.
-Zero values select the defaults: three runs and 200,000 recorded tokens. The
-run-count limit covers all actions. The token counter sums input, output,
-cache-read, and cache-write usage from matching CollaborationRuns; consult
-runs report all categories exposed by the provider, while
-fork/delegate/handoff begin as `running` and copy the same four categories from
-the target turn's terminal runtime state. Unavailable usage remains
-unknown/zero rather than being estimated.
+Zero values select the defaults: three runs and 200,000 recorded tokens.
+Every launch attempt (including a failed launch) counts one run in the
+durable `automation_rule_executions` ledger, which also anchors
+trigger-level dedup across restarts. When a launched target session settles
+its first terminal turn, the daemon copies the session's reported input,
+output, cache-read, and cache-write counters into the execution row once.
+Providers currently report the most recent model request, not a session
+cumulative total, so the run cap is the effective guard; unavailable usage
+remains zero rather than being estimated.
 
 Enforcement is a pre-run threshold check, not a reservation or hard streaming
-cap. A consult's requested output limit is the smaller of 2,048 and the
-remaining recorded-token budget. Input tokens can still take the cumulative
-total past `maxTotalTokensPerSession`; that total blocks the next matching run.
-The budget does not cancel an in-flight call and is not a currency/cost
-estimate.
+cap. Recorded totals can still pass `maxTotalTokensPerSession`; that total
+blocks the next matching run. The budget does not cancel an in-flight session
+and is not a currency/cost estimate.
 
 ## Collaboration Runs
 

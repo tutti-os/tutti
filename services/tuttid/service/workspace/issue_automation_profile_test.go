@@ -19,28 +19,17 @@ func (s issueAutomationRuleReaderStub) ListRules(context.Context, string) ([]aut
 }
 
 func TestIssueAutomationRuleOverrideCompilesOrchestrationIntensity(t *testing.T) {
-	review := automationrulebiz.Rule{
-		ID:      "review",
-		Enabled: true,
-		Trigger: automationrulebiz.TriggerOnTaskComplete,
-		Action:  automationrulebiz.ActionConsult,
-		Target:  automationrulebiz.Target{Kind: automationrulebiz.TargetModel},
-		Prompt:  "Return a final line of VERDICT: PASS or VERDICT: FAIL",
-	}
 	rescue := automationrulebiz.Rule{
 		ID:      "rescue",
 		Enabled: true,
 		Trigger: automationrulebiz.TriggerOnTaskFailed,
-		Action:  automationrulebiz.ActionDelegate,
-		Target:  automationrulebiz.Target{Kind: automationrulebiz.TargetAgent},
+		Target:  automationrulebiz.Target{Kind: automationrulebiz.TargetAgent, WorkspaceAgentID: "workspace-agent:stronger"},
 	}
 	ordinaryCompletion := automationrulebiz.Rule{
 		ID:      "ordinary-completion",
 		Enabled: true,
 		Trigger: automationrulebiz.TriggerOnTaskComplete,
-		Action:  automationrulebiz.ActionConsult,
-		Target:  automationrulebiz.Target{Kind: automationrulebiz.TargetModel},
-		Prompt:  "Summarize the result",
+		Target:  automationrulebiz.Target{Kind: automationrulebiz.TargetAgent, WorkspaceAgentID: "workspace-agent:summary"},
 	}
 	disabledRescue := rescue
 	disabledRescue.ID = "disabled-rescue"
@@ -49,7 +38,6 @@ func TestIssueAutomationRuleOverrideCompilesOrchestrationIntensity(t *testing.T)
 		rescue,
 		ordinaryCompletion,
 		disabledRescue,
-		review,
 	}}}
 
 	tests := []struct {
@@ -59,8 +47,10 @@ func TestIssueAutomationRuleOverrideCompilesOrchestrationIntensity(t *testing.T)
 		ruleIDs   []string
 	}{
 		{name: "minimal", intensity: 33, disabled: true},
-		{name: "review", intensity: 34, ruleIDs: []string{"review"}},
-		{name: "rescue", intensity: 67, ruleIDs: []string{"rescue", "review"}},
+		// The consult-based acceptance-review tier retired with the
+		// automation action split; medium intensity now disables automation.
+		{name: "medium", intensity: 34, disabled: true},
+		{name: "rescue", intensity: 67, ruleIDs: []string{"rescue"}},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {

@@ -15,8 +15,6 @@ type IssueRescueInput struct {
 	SourceSessionID     string
 	TargetSessionID     string
 	TargetAgentTargetID string
-	ModelPlanID         string
-	Model               string
 	ExecutionDirectory  string
 }
 

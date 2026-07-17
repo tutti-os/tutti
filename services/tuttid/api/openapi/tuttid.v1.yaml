@@ -6881,21 +6881,14 @@ components:
           type: string
     AutomationRuleTrigger:
       type: string
-      description: Lifecycle outcome that evaluates the rule. A failed-turn rule can delegate to a stronger WorkspaceAgent as a bounded escalation attempt; automated outcomes never final-accept the source task.
+      description: Lifecycle outcome that evaluates the rule. A failed-turn rule can escalate to a stronger Agent as a bounded rescue attempt; automated outcomes never final-accept the source task.
       enum:
         - on_task_complete
         - on_task_failed
-    AutomationRuleAction:
-      type: string
-      enum:
-        - consult
-        - fork
-        - delegate
-        - handoff
     AutomationRuleTargetKind:
       type: string
+      description: Every rule targets a launchable Agent. The legacy model kind retired with the consult action and no longer appears.
       enum:
-        - model
         - agent
     AutomationRuleTarget:
       type: object
@@ -6909,17 +6902,18 @@ components:
         workspaceAgentId:
           type: string
           nullable: true
-          description: Required for fork, delegate, and handoff. The Agent must be enabled and launchable.
+          description: Target Agent that receives the automated follow-up session. Accepts a WorkspaceAgent id or a built-in Harness AgentTarget id; the Agent must be enabled and launchable.
         modelPlanId:
           type: string
           nullable: true
-          description: Required for consult. The ModelPlan must be enabled.
+          description: Retired consult-era field; always empty. Launches inherit the target Agent's model configuration.
         model:
           type: string
           nullable: true
-          description: Optional consult model; defaults to the target ModelPlan default model.
+          description: Retired consult-era field; always empty.
         requiredCapabilities:
           type: array
+          description: Retired consult-era field; always empty.
           items:
             type: string
             minLength: 1
@@ -6928,7 +6922,7 @@ components:
       additionalProperties: false
       required:
         - allowedTools
-      description: Authority narrowing applied to automatically launched WorkspaceAgents. Consult is always tool-free and ignores these fields.
+      description: Authority narrowing applied to the automatically launched target session. The option catalogs follow the selected target Agent's capability directory.
       properties:
         permissionModeId:
           type: string
@@ -6956,13 +6950,13 @@ components:
     AutomationRule:
       type: object
       additionalProperties: false
+      description: One workspace automation rule. A triggered rule launches a new target-Agent session whose first message carries the rule prompt, a source-session mention, and a short event note.
       required:
         - id
         - workspaceId
         - name
         - enabled
         - trigger
-        - action
         - target
         - permissions
         - budget
@@ -6983,8 +6977,6 @@ components:
           type: boolean
         trigger:
           $ref: "#/components/schemas/AutomationRuleTrigger"
-        action:
-          $ref: "#/components/schemas/AutomationRuleAction"
         sourceWorkspaceAgentId:
           type: string
           nullable: true
@@ -7020,7 +7012,6 @@ components:
         - name
         - enabled
         - trigger
-        - action
         - target
         - permissions
         - budget
@@ -7034,8 +7025,6 @@ components:
           type: boolean
         trigger:
           $ref: "#/components/schemas/AutomationRuleTrigger"
-        action:
-          $ref: "#/components/schemas/AutomationRuleAction"
         sourceWorkspaceAgentId:
           type: string
           nullable: true

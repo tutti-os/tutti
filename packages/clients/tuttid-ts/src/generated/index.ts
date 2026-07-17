@@ -297,7 +297,6 @@ export type {
   AttachEventStreamErrors,
   AttachEventStreamResponses,
   AutomationRule,
-  AutomationRuleAction,
   AutomationRuleBudget,
   AutomationRuleId,
   AutomationRulePermissions,

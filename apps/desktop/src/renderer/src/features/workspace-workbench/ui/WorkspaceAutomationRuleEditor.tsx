@@ -1,5 +1,6 @@
 import {
   Button,
+  Checkbox,
   CloseIcon,
   Input,
   Select,
@@ -14,11 +15,11 @@ import { useTranslation } from "@renderer/i18n";
 import type { DesktopI18nKey } from "../../../../../shared/i18n/index.ts";
 import type {
   WorkspaceAgentDefinition,
-  WorkspaceAutomationRuleAction,
   WorkspaceAutomationRuleDraft,
   WorkspaceAutomationRuleFeedback,
   WorkspaceAutomationRuleTrigger,
-  WorkspaceModelPlan
+  WorkspaceAutomationTargetCatalog,
+  WorkspaceAutomationTargetOption
 } from "../services/workspaceSettingsTypes";
 import {
   workspaceSettingsInputClass,
@@ -28,63 +29,61 @@ import {
 
 const NO_SOURCE_VALUE = "__all_sources__";
 const NO_TARGET_AGENT_VALUE = "__no_target_agent__";
-const NO_PLAN_VALUE = "__no_plan__";
-const PLAN_DEFAULT_MODEL_VALUE = "__plan_default__";
+const DEFAULT_PERMISSION_MODE_VALUE = "__target_default__";
 const textareaClass =
   "min-h-[88px] resize-y border-[var(--border-1)] bg-[var(--transparency-block)] text-[13px] text-[var(--text-primary)] placeholder:text-[var(--text-tertiary)] hover:bg-[var(--transparency-hover)] focus-visible:border-[var(--border-focus)] focus-visible:ring-0";
 const selectContentStyle = { zIndex: "var(--z-panel-popover)" } as const;
-
-const actionLabelKeys: Record<WorkspaceAutomationRuleAction, DesktopI18nKey> = {
-  consult: "workspace.settings.apps.automationRules.actions.consult",
-  delegate: "workspace.settings.apps.automationRules.actions.delegate",
-  fork: "workspace.settings.apps.automationRules.actions.fork",
-  handoff: "workspace.settings.apps.automationRules.actions.handoff"
-};
-
-const automationRuleActions = [
-  "consult",
-  "fork",
-  "delegate",
-  "handoff"
-] as const satisfies readonly WorkspaceAutomationRuleAction[];
 
 export interface WorkspaceAutomationRuleEditorProps {
   agents: readonly WorkspaceAgentDefinition[];
   draft: Readonly<WorkspaceAutomationRuleDraft>;
   feedback: WorkspaceAutomationRuleFeedback | null;
-  modelPlans: readonly WorkspaceModelPlan[];
   saving: boolean;
+  targetCatalog: Readonly<WorkspaceAutomationTargetCatalog> | null;
+  targetOptions: readonly WorkspaceAutomationTargetOption[];
   onCancel: () => void;
+  onRetryTargetCatalog: () => void;
   onSave: () => void;
+  onSelectTarget: (targetAgentID: string) => void;
   onUpdate: (patch: Partial<WorkspaceAutomationRuleDraft>) => void;
 }
 
+/**
+ * Editor for one automation rule. A triggered rule always launches a new
+ * session for the selected target Agent with the source session mentioned,
+ * so the form is a single target plus permission narrowing — there is no
+ * action choice. Permission-mode and tool option catalogs follow the
+ * selected target Agent's capability directory.
+ */
 export function WorkspaceAutomationRuleEditor({
   agents,
   draft,
   feedback,
-  modelPlans,
   saving,
+  targetCatalog,
+  targetOptions,
   onCancel,
+  onRetryTargetCatalog,
   onSave,
+  onSelectTarget,
   onUpdate
 }: WorkspaceAutomationRuleEditorProps) {
   const { t } = useTranslation();
-  const consult = draft.action === "consult";
   const sourceAgents = agents.filter(
     (agent) => agent.enabled || agent.id === draft.sourceWorkspaceAgentId
   );
-  const targetAgents = agents.filter(
-    (agent) => agent.enabled || agent.id === draft.targetWorkspaceAgentId
-  );
-  const availablePlans = modelPlans.filter(
-    (plan) => plan.enabled || plan.id === draft.modelPlanId
-  );
-  const selectedPlan =
-    availablePlans.find((plan) => plan.id === draft.modelPlanId) ?? null;
-  const selectedModelKnown =
-    !draft.model ||
-    selectedPlan?.models.some((model) => model.id === draft.model) === true;
+  // A stored target that no longer resolves stays visible under its raw id
+  // so editing never silently retargets the rule.
+  const staleTarget =
+    draft.targetAgentId &&
+    !targetOptions.some((option) => option.id === draft.targetAgentId)
+      ? draft.targetAgentId
+      : null;
+  const catalogReady =
+    targetCatalog !== null &&
+    !targetCatalog.loading &&
+    !targetCatalog.loadFailed &&
+    targetCatalog.agentTargetId === draft.targetAgentId;
   const editing = draft.automationRuleId !== null;
 
   return (
@@ -167,37 +166,6 @@ export function WorkspaceAutomationRuleEditor({
 
         <label className="flex flex-col gap-1.5">
           <span className="text-[11px] font-medium text-[var(--text-secondary)]">
-            {t("workspace.settings.apps.automationRules.actionLabel")}
-          </span>
-          <Select
-            value={draft.action}
-            onValueChange={(value) =>
-              onUpdate({ action: value as WorkspaceAutomationRuleAction })
-            }
-          >
-            <SelectTrigger
-              aria-label={t(
-                "workspace.settings.apps.automationRules.actionLabel"
-              )}
-              className={workspaceSettingsSelectTriggerClass}
-            >
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent
-              className={workspaceSettingsSelectContentClass}
-              style={selectContentStyle}
-            >
-              {automationRuleActions.map((action) => (
-                <SelectItem key={action} value={action}>
-                  {t(actionLabelKeys[action])}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </label>
-
-        <label className="flex flex-col gap-1.5">
-          <span className="text-[11px] font-medium text-[var(--text-secondary)]">
             {t("workspace.settings.apps.automationRules.sourceAgentLabel")}
           </span>
           <Select
@@ -231,23 +199,111 @@ export function WorkspaceAutomationRuleEditor({
             </SelectContent>
           </Select>
         </label>
+
+        <label className="flex flex-col gap-1.5">
+          <span className="text-[11px] font-medium text-[var(--text-secondary)]">
+            {t("workspace.settings.apps.automationRules.targetAgentLabel")}
+          </span>
+          <Select
+            value={draft.targetAgentId || NO_TARGET_AGENT_VALUE}
+            onValueChange={(value) => {
+              if (value !== NO_TARGET_AGENT_VALUE) {
+                onSelectTarget(value);
+              }
+            }}
+          >
+            <SelectTrigger
+              aria-label={t(
+                "workspace.settings.apps.automationRules.targetAgentLabel"
+              )}
+              className={workspaceSettingsSelectTriggerClass}
+            >
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent
+              className={workspaceSettingsSelectContentClass}
+              style={selectContentStyle}
+            >
+              <SelectItem disabled value={NO_TARGET_AGENT_VALUE}>
+                {t("workspace.settings.apps.automationRules.chooseTargetAgent")}
+              </SelectItem>
+              {targetOptions.map((option) => (
+                <SelectItem key={option.id} value={option.id}>
+                  {option.name}
+                </SelectItem>
+              ))}
+              {staleTarget ? (
+                <SelectItem value={staleTarget}>{staleTarget}</SelectItem>
+              ) : null}
+            </SelectContent>
+          </Select>
+        </label>
       </div>
 
-      {consult ? (
-        <ConsultTargetFields
-          draft={draft}
-          modelPlans={availablePlans}
-          selectedModelKnown={selectedModelKnown}
-          selectedPlan={selectedPlan}
-          onUpdate={onUpdate}
-        />
-      ) : (
-        <AgentTargetFields
-          agents={targetAgents}
-          draft={draft}
-          onUpdate={onUpdate}
-        />
-      )}
+      <div className="grid grid-cols-2 gap-3 max-[640px]:grid-cols-1">
+        <label className="flex flex-col gap-1.5">
+          <span className="text-[11px] font-medium text-[var(--text-secondary)]">
+            {t("workspace.settings.apps.automationRules.permissionModeLabel")}
+          </span>
+          <Select
+            disabled={
+              !catalogReady || targetCatalog.permissionModes.length === 0
+            }
+            value={draft.permissionModeId || DEFAULT_PERMISSION_MODE_VALUE}
+            onValueChange={(value) =>
+              onUpdate({
+                permissionModeId:
+                  value === DEFAULT_PERMISSION_MODE_VALUE ? "" : value
+              })
+            }
+          >
+            <SelectTrigger
+              aria-label={t(
+                "workspace.settings.apps.automationRules.permissionModeLabel"
+              )}
+              className={workspaceSettingsSelectTriggerClass}
+            >
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent
+              className={workspaceSettingsSelectContentClass}
+              style={selectContentStyle}
+            >
+              <SelectItem value={DEFAULT_PERMISSION_MODE_VALUE}>
+                {t(
+                  "workspace.settings.apps.automationRules.permissionModeDefault"
+                )}
+              </SelectItem>
+              {catalogReady
+                ? targetCatalog.permissionModes.map((mode) => (
+                    <SelectItem key={mode.id} value={mode.id}>
+                      {mode.label}
+                    </SelectItem>
+                  ))
+                : null}
+            </SelectContent>
+          </Select>
+          <TargetCatalogStatus
+            targetCatalog={targetCatalog}
+            onRetry={onRetryTargetCatalog}
+          />
+        </label>
+
+        <div className="flex flex-col gap-1.5">
+          <span className="text-[11px] font-medium text-[var(--text-secondary)]">
+            {t("workspace.settings.apps.automationRules.allowedToolsLabel")}
+          </span>
+          <AllowedToolsSelection
+            catalogReady={catalogReady}
+            draft={draft}
+            targetCatalog={targetCatalog}
+            onUpdate={onUpdate}
+          />
+          <span className="text-[10px] leading-[1.3] text-[var(--text-tertiary)]">
+            {t("workspace.settings.apps.automationRules.allowedToolsHint")}
+          </span>
+        </div>
+      </div>
 
       <label className="flex flex-col gap-1.5">
         <span className="text-[11px] font-medium text-[var(--text-secondary)]">
@@ -335,221 +391,77 @@ export function WorkspaceAutomationRuleEditor({
   );
 }
 
-function ConsultTargetFields({
-  draft,
-  modelPlans,
-  selectedModelKnown,
-  selectedPlan,
-  onUpdate
+function TargetCatalogStatus({
+  targetCatalog,
+  onRetry
 }: {
-  draft: Readonly<WorkspaceAutomationRuleDraft>;
-  modelPlans: readonly WorkspaceModelPlan[];
-  selectedModelKnown: boolean;
-  selectedPlan: WorkspaceModelPlan | null;
-  onUpdate: (patch: Partial<WorkspaceAutomationRuleDraft>) => void;
+  targetCatalog: Readonly<WorkspaceAutomationTargetCatalog> | null;
+  onRetry: () => void;
 }) {
   const { t } = useTranslation();
-  return (
-    <div className="grid grid-cols-2 gap-3 max-[640px]:grid-cols-1">
-      <label className="flex flex-col gap-1.5">
-        <span className="text-[11px] font-medium text-[var(--text-secondary)]">
-          {t("workspace.settings.apps.automationRules.modelPlanLabel")}
-        </span>
-        <Select
-          value={draft.modelPlanId || NO_PLAN_VALUE}
-          onValueChange={(value) =>
-            onUpdate({
-              model: "",
-              modelPlanId: value === NO_PLAN_VALUE ? "" : value
-            })
-          }
-        >
-          <SelectTrigger
-            aria-label={t(
-              "workspace.settings.apps.automationRules.modelPlanLabel"
-            )}
-            className={workspaceSettingsSelectTriggerClass}
-          >
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent
-            className={workspaceSettingsSelectContentClass}
-            style={selectContentStyle}
-          >
-            <SelectItem disabled value={NO_PLAN_VALUE}>
-              {t("workspace.settings.apps.automationRules.chooseModelPlan")}
-            </SelectItem>
-            {modelPlans.map((plan) => (
-              <SelectItem key={plan.id} value={plan.id}>
-                {plan.name}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </label>
-
-      <label className="flex flex-col gap-1.5">
-        <span className="text-[11px] font-medium text-[var(--text-secondary)]">
-          {t("workspace.settings.apps.automationRules.modelLabel")}
-        </span>
-        <Select
-          disabled={!selectedPlan}
-          value={
-            draft.model && selectedModelKnown
-              ? draft.model
-              : PLAN_DEFAULT_MODEL_VALUE
-          }
-          onValueChange={(value) =>
-            onUpdate({
-              model: value === PLAN_DEFAULT_MODEL_VALUE ? "" : value
-            })
-          }
-        >
-          <SelectTrigger
-            aria-label={t("workspace.settings.apps.automationRules.modelLabel")}
-            className={workspaceSettingsSelectTriggerClass}
-          >
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent
-            className={workspaceSettingsSelectContentClass}
-            style={selectContentStyle}
-          >
-            <SelectItem value={PLAN_DEFAULT_MODEL_VALUE}>
-              {t("workspace.settings.apps.automationRules.planDefaultModel")}
-            </SelectItem>
-            {selectedPlan?.models.map((model) => (
-              <SelectItem key={model.id} value={model.id}>
-                {model.name || model.id}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </label>
-
-      <AutomationRuleListField
-        label={t(
-          "workspace.settings.apps.automationRules.requiredCapabilitiesLabel"
-        )}
-        placeholder={t(
-          "workspace.settings.apps.automationRules.requiredCapabilitiesPlaceholder"
-        )}
-        value={draft.requiredCapabilities}
-        onChange={(requiredCapabilities) => onUpdate({ requiredCapabilities })}
-      />
-      <div className="flex items-end">
-        <p className="m-0 pb-1 text-[11px] leading-[1.4] text-[var(--text-tertiary)]">
-          {t("workspace.settings.apps.automationRules.consultToolFree")}
-        </p>
-      </div>
-    </div>
-  );
-}
-
-function AgentTargetFields({
-  agents,
-  draft,
-  onUpdate
-}: {
-  agents: readonly WorkspaceAgentDefinition[];
-  draft: Readonly<WorkspaceAutomationRuleDraft>;
-  onUpdate: (patch: Partial<WorkspaceAutomationRuleDraft>) => void;
-}) {
-  const { t } = useTranslation();
-  return (
-    <div className="grid grid-cols-3 gap-3 max-[760px]:grid-cols-1">
-      <label className="flex flex-col gap-1.5">
-        <span className="text-[11px] font-medium text-[var(--text-secondary)]">
-          {t("workspace.settings.apps.automationRules.targetAgentLabel")}
-        </span>
-        <Select
-          value={draft.targetWorkspaceAgentId || NO_TARGET_AGENT_VALUE}
-          onValueChange={(value) => {
-            if (value !== NO_TARGET_AGENT_VALUE) {
-              onUpdate({ targetWorkspaceAgentId: value });
-            }
-          }}
-        >
-          <SelectTrigger
-            aria-label={t(
-              "workspace.settings.apps.automationRules.targetAgentLabel"
-            )}
-            className={workspaceSettingsSelectTriggerClass}
-          >
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent
-            className={workspaceSettingsSelectContentClass}
-            style={selectContentStyle}
-          >
-            <SelectItem disabled value={NO_TARGET_AGENT_VALUE}>
-              {t("workspace.settings.apps.automationRules.chooseTargetAgent")}
-            </SelectItem>
-            {agents.map((agent) => (
-              <SelectItem key={agent.id} value={agent.id}>
-                {agent.name}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </label>
-
-      <label className="flex flex-col gap-1.5">
-        <span className="text-[11px] font-medium text-[var(--text-secondary)]">
-          {t("workspace.settings.apps.automationRules.permissionModeLabel")}
-        </span>
-        <Input
-          className={workspaceSettingsInputClass}
-          placeholder={t(
-            "workspace.settings.apps.automationRules.permissionModePlaceholder"
-          )}
-          type="text"
-          value={draft.permissionModeId}
-          onChange={(event) =>
-            onUpdate({ permissionModeId: event.currentTarget.value })
-          }
-        />
-      </label>
-
-      <AutomationRuleListField
-        label={t("workspace.settings.apps.automationRules.allowedToolsLabel")}
-        placeholder={t(
-          "workspace.settings.apps.automationRules.allowedToolsPlaceholder"
-        )}
-        value={draft.allowedTools}
-        onChange={(allowedTools) => onUpdate({ allowedTools })}
-      />
-    </div>
-  );
-}
-
-function AutomationRuleListField({
-  label,
-  placeholder,
-  value,
-  onChange
-}: {
-  label: string;
-  placeholder: string;
-  value: string;
-  onChange: (value: string) => void;
-}) {
-  const { t } = useTranslation();
-  return (
-    <label className="flex flex-col gap-1.5">
-      <span className="text-[11px] font-medium text-[var(--text-secondary)]">
-        {label}
-      </span>
-      <Textarea
-        className={textareaClass}
-        placeholder={placeholder}
-        value={value}
-        onChange={(event) => onChange(event.currentTarget.value)}
-      />
+  if (targetCatalog?.loading) {
+    return (
       <span className="text-[10px] leading-[1.3] text-[var(--text-tertiary)]">
-        {t("workspace.settings.apps.automationRules.onePerLine")}
+        {t("workspace.settings.apps.automationRules.targetOptionsLoading")}
       </span>
-    </label>
+    );
+  }
+  if (targetCatalog?.loadFailed) {
+    return (
+      <span className="flex items-center gap-2 text-[10px] leading-[1.3] text-[var(--state-danger)]">
+        {t("workspace.settings.apps.automationRules.targetOptionsLoadFailed")}
+        <Button size="sm" type="button" variant="ghost" onClick={onRetry}>
+          {t("workspace.settings.apps.automationRules.retry")}
+        </Button>
+      </span>
+    );
+  }
+  return null;
+}
+
+function AllowedToolsSelection({
+  catalogReady,
+  draft,
+  targetCatalog,
+  onUpdate
+}: {
+  catalogReady: boolean;
+  draft: Readonly<WorkspaceAutomationRuleDraft>;
+  targetCatalog: Readonly<WorkspaceAutomationTargetCatalog> | null;
+  onUpdate: (patch: Partial<WorkspaceAutomationRuleDraft>) => void;
+}) {
+  const { t } = useTranslation();
+  if (!catalogReady || !targetCatalog || targetCatalog.tools.length === 0) {
+    return (
+      <p className="m-0 rounded-[6px] border border-dashed border-[var(--border-1)] px-2.5 py-2 text-[11px] leading-[1.4] text-[var(--text-tertiary)]">
+        {t("workspace.settings.apps.automationRules.toolsEmpty")}
+      </p>
+    );
+  }
+  const selected = new Set(draft.allowedTools);
+  return (
+    <div className="flex max-h-[132px] flex-col gap-1 overflow-y-auto rounded-[6px] border border-[var(--border-1)] p-2">
+      {targetCatalog.tools.map((tool) => (
+        <label
+          key={tool.id}
+          className="flex items-center gap-2 text-[12px] text-[var(--text-primary)]"
+        >
+          <Checkbox
+            checked={selected.has(tool.id)}
+            onCheckedChange={(checked) => {
+              const next = new Set(selected);
+              if (checked === true) {
+                next.add(tool.id);
+              } else {
+                next.delete(tool.id);
+              }
+              onUpdate({ allowedTools: [...next] });
+            }}
+          />
+          <span className="min-w-0 truncate">{tool.label}</span>
+        </label>
+      ))}
+    </div>
   );
 }
 

@@ -530,7 +530,7 @@ test("workspace model plan references cover Agents and automation rules", () => 
   assert.match(modelPlansSource, /referenceKinds\.automationRule/);
 });
 
-test("workspace automation editor exposes action targets and bounded authority", () => {
+test("workspace automation editor launches a single target with bounded authority", () => {
   const editorSource = readFileSync(
     resolve(
       dirname(fileURLToPath(import.meta.url)),
@@ -539,11 +539,17 @@ test("workspace automation editor exposes action targets and bounded authority",
     "utf8"
   );
 
-  assert.match(editorSource, /"consult",\s*"fork",\s*"delegate",\s*"handoff"/);
+  // The retired consult/fork/delegate/handoff action split must not return.
+  assert.doesNotMatch(editorSource, /"consult"|"fork"|"delegate"|"handoff"/);
+  assert.doesNotMatch(
+    editorSource,
+    /actionLabel|modelPlanId|requiredCapabilities/
+  );
   assert.match(editorSource, /draft\.sourceWorkspaceAgentId/);
-  assert.match(editorSource, /draft\.modelPlanId/);
-  assert.match(editorSource, /draft\.targetWorkspaceAgentId/);
-  assert.match(editorSource, /draft\.requiredCapabilities/);
+  assert.match(editorSource, /draft\.targetAgentId/);
+  assert.match(editorSource, /onSelectTarget/);
+  assert.match(editorSource, /targetCatalog\.permissionModes/);
+  assert.match(editorSource, /targetCatalog\.tools/);
   assert.match(editorSource, /draft\.permissionModeId/);
   assert.match(editorSource, /draft\.allowedTools/);
   assert.match(editorSource, /draft\.maxRunsPerSession/);

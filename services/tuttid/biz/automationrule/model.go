@@ -1,8 +1,10 @@
 // Package automationrule defines optional workspace automation that reacts to
-// agent-session lifecycle events and starts a collaboration action. Rules are
-// intentionally action-centric: model access belongs to ModelPlan and runtime
-// identity belongs to WorkspaceAgent; there are no execution/planning/review
-// model roles in this domain.
+// agent-session lifecycle events. A triggered rule has exactly one behavior:
+// it launches a new target-Agent session whose first message carries the rule
+// prompt, a source-session mention, and a short event note. The retired
+// consult/fork/delegate/handoff action split no longer exists in this domain;
+// model access belongs to ModelPlan and runtime identity belongs to
+// WorkspaceAgent or the built-in Harness catalog.
 package automationrule
 
 import (
@@ -24,72 +26,20 @@ const (
 	TriggerOnTaskFailed   Trigger = "on_task_failed"
 )
 
-// Action identifies the collaboration operation started by a rule.
-type Action string
-
-const (
-	ActionConsult  Action = "consult"
-	ActionFork     Action = "fork"
-	ActionDelegate Action = "delegate"
-	ActionHandoff  Action = "handoff"
-)
-
-func IsAction(value string) bool {
-	switch Action(strings.TrimSpace(value)) {
-	case ActionConsult, ActionFork, ActionDelegate, ActionHandoff:
-		return true
-	default:
-		return false
-	}
-}
-
-// IsAcceptanceReview reports whether a consult rule opts into the fixed
-// acceptance-review protocol. Requiring both verdict literals keeps ordinary
-// advisory consults from changing completion state.
-func IsAcceptanceReview(rule Rule) bool {
-	prompt := strings.ToUpper(strings.TrimSpace(rule.Prompt))
-	return rule.Trigger == TriggerOnTaskComplete &&
-		rule.Action == ActionConsult &&
-		rule.Target.Kind == TargetModel &&
-		strings.Contains(prompt, "VERDICT: PASS") &&
-		strings.Contains(prompt, "VERDICT: FAIL")
-}
-
-// ParseReviewVerdict accepts only the fixed final-line protocol. Missing,
-// ambiguous, or non-final verdict text is invalid and can never auto-check
-// work.
-func ParseReviewVerdict(resultText string) (passed bool, valid bool) {
-	lines := strings.Split(strings.TrimSpace(resultText), "\n")
-	for index := len(lines) - 1; index >= 0; index-- {
-		line := strings.ToUpper(strings.TrimSpace(lines[index]))
-		if line == "" {
-			continue
-		}
-		switch line {
-		case "VERDICT: PASS":
-			return true, true
-		case "VERDICT: FAIL":
-			return false, true
-		default:
-			return false, false
-		}
-	}
-	return false, false
-}
-
-// TargetKind distinguishes a direct model capability target from a runnable
-// WorkspaceAgent target. Consult is model-targeted and tool-free; fork,
-// delegate, and handoff target a WorkspaceAgent.
+// TargetKind is retained for the durable schema; every rule targets a
+// launchable Agent. The legacy "model" kind was retired with the consult
+// action and is rejected on write and normalization.
 type TargetKind string
 
 const (
-	TargetModel TargetKind = "model"
 	TargetAgent TargetKind = "agent"
 )
 
-// Target is the rule action destination. RequiredCapabilities constrain a
-// direct model target; WorkspaceAgent targets inherit their already validated
-// model configuration and may not declare a second capability contract.
+// Target is the rule launch destination. WorkspaceAgentID accepts either a
+// WorkspaceAgent id or a built-in Harness AgentTarget id; the launched
+// session inherits that Agent's validated model configuration. The remaining
+// fields are retired consult-era columns kept dormant for schema
+// compatibility and must stay empty.
 type Target struct {
 	Kind                 TargetKind `json:"kind"`
 	WorkspaceAgentID     string     `json:"workspaceAgentId,omitempty"`
@@ -98,9 +48,8 @@ type Target struct {
 	RequiredCapabilities []string   `json:"requiredCapabilities,omitempty"`
 }
 
-// PermissionPolicy controls the authority granted to an automatically
-// launched WorkspaceAgent. Consult actions never receive tools and therefore
-// ignore these fields.
+// PermissionPolicy controls the authority granted to the automatically
+// launched target session.
 type PermissionPolicy struct {
 	PermissionModeID string   `json:"permissionModeId,omitempty"`
 	AllowedTools     []string `json:"allowedTools,omitempty"`
@@ -139,7 +88,6 @@ type Rule struct {
 	Name        string
 	Enabled     bool
 	Trigger     Trigger
-	Action      Action
 	// SourceWorkspaceAgentID scopes the rule to sessions created from one
 	// WorkspaceAgent. Empty means every non-automation-origin session.
 	SourceWorkspaceAgentID string
@@ -149,6 +97,49 @@ type Rule struct {
 	Prompt                 string
 	CreatedAt              time.Time
 	UpdatedAt              time.Time
+}
+
+// ExecutionStatus is the terminal launch fact for one automation execution.
+type ExecutionStatus string
+
+const (
+	ExecutionLaunched     ExecutionStatus = "launched"
+	ExecutionLaunchFailed ExecutionStatus = "launch_failed"
+)
+
+// Execution is one durable automation launch attempt. It anchors trigger
+// dedup across daemon restarts and accumulates the target session's recorded
+// token usage for the per-source-session budget guard.
+type Execution struct {
+	WorkspaceID     string
+	RuleID          string
+	SourceSessionID string
+	TriggerID       string
+	TargetSessionID string
+	Status          ExecutionStatus
+	FailureReason   string
+	TotalTokens     int64
+	CreatedAt       time.Time
+	UpdatedAt       time.Time
+}
+
+// NormalizeExecution validates the identity fields required for durable
+// dedup and defaults the status to launched.
+func NormalizeExecution(execution Execution) (Execution, error) {
+	execution.WorkspaceID = strings.TrimSpace(execution.WorkspaceID)
+	execution.RuleID = strings.TrimSpace(execution.RuleID)
+	execution.SourceSessionID = strings.TrimSpace(execution.SourceSessionID)
+	execution.TriggerID = strings.TrimSpace(execution.TriggerID)
+	execution.TargetSessionID = strings.TrimSpace(execution.TargetSessionID)
+	execution.FailureReason = strings.TrimSpace(execution.FailureReason)
+	if execution.Status == "" {
+		execution.Status = ExecutionLaunched
+	}
+	if execution.WorkspaceID == "" || execution.RuleID == "" || execution.SourceSessionID == "" ||
+		execution.TriggerID == "" || execution.TargetSessionID == "" {
+		return Execution{}, fmt.Errorf("%w: execution identity fields are required", ErrInvalidRule)
+	}
+	return execution, nil
 }
 
 // SessionOverride applies only to future automation evaluations for one
@@ -173,7 +164,7 @@ func NormalizeSessionOverride(override SessionOverride) (SessionOverride, error)
 }
 
 // Normalize validates and canonicalizes a rule without consulting external
-// stores. Service-level validation resolves referenced plans and agents.
+// stores. Service-level validation resolves the referenced agents.
 func Normalize(rule Rule) (Rule, error) {
 	rule.ID = strings.TrimSpace(rule.ID)
 	rule.WorkspaceID = strings.TrimSpace(rule.WorkspaceID)
@@ -203,39 +194,20 @@ func Normalize(rule Rule) (Rule, error) {
 	if rule.Trigger != TriggerOnTaskComplete && rule.Trigger != TriggerOnTaskFailed {
 		return Rule{}, fmt.Errorf("%w: unsupported trigger", ErrInvalidRule)
 	}
-	if !IsAction(string(rule.Action)) {
-		return Rule{}, fmt.Errorf("%w: unsupported action", ErrInvalidRule)
-	}
 	if rule.Budget.MaxRunsPerSession < 0 || rule.Budget.MaxTotalTokensPerSession < 0 {
 		return Rule{}, fmt.Errorf("%w: budget values must not be negative", ErrInvalidRule)
 	}
-
-	switch rule.Action {
-	case ActionConsult:
-		if rule.Target.Kind == "" {
-			rule.Target.Kind = TargetModel
-		}
-		if rule.Target.Kind != TargetModel || rule.Target.ModelPlanID == "" {
-			return Rule{}, fmt.Errorf("%w: consult requires a model-plan target", ErrInvalidRule)
-		}
-		if rule.Target.WorkspaceAgentID != "" {
-			return Rule{}, fmt.Errorf("%w: consult cannot target a workspace agent", ErrInvalidRule)
-		}
-		// Consult is deliberately tool-free.
-		rule.Permissions = PermissionPolicy{}
-	default:
-		if rule.Target.Kind == "" {
-			rule.Target.Kind = TargetAgent
-		}
-		if rule.Target.Kind != TargetAgent || rule.Target.WorkspaceAgentID == "" {
-			return Rule{}, fmt.Errorf("%w: %s requires a workspace-agent target", ErrInvalidRule, rule.Action)
-		}
-		if rule.Target.ModelPlanID != "" || rule.Target.Model != "" {
-			return Rule{}, fmt.Errorf("%w: agent actions inherit the target agent model configuration", ErrInvalidRule)
-		}
-		if len(rule.Target.RequiredCapabilities) > 0 {
-			return Rule{}, fmt.Errorf("%w: agent actions inherit the target agent capabilities", ErrInvalidRule)
-		}
+	if rule.Target.Kind == "" {
+		rule.Target.Kind = TargetAgent
+	}
+	if rule.Target.Kind != TargetAgent || rule.Target.WorkspaceAgentID == "" {
+		return Rule{}, fmt.Errorf("%w: a target agent is required", ErrInvalidRule)
+	}
+	if rule.Target.ModelPlanID != "" || rule.Target.Model != "" {
+		return Rule{}, fmt.Errorf("%w: automation launches inherit the target agent model configuration", ErrInvalidRule)
+	}
+	if len(rule.Target.RequiredCapabilities) > 0 {
+		return Rule{}, fmt.Errorf("%w: automation launches inherit the target agent capabilities", ErrInvalidRule)
 	}
 	return rule, nil
 }
@@ -262,8 +234,8 @@ func normalizeStrings(values []string) []string {
 }
 
 // LegacyPolicyRuleID deterministically maps one legacy policy/binding pair to
-// its migrated action rule. The opaque hash keeps arbitrary legacy ids out of
-// HTTP path segments while making the migration idempotent.
+// its migrated rule. The opaque hash keeps arbitrary legacy ids out of HTTP
+// path segments while making the migration idempotent.
 func LegacyPolicyRuleID(workspaceID string, policyID string, sourceAgentID string) string {
 	digest := sha256.Sum256([]byte(strings.TrimSpace(workspaceID) + "\x00" + strings.TrimSpace(policyID) + "\x00" + strings.TrimSpace(sourceAgentID)))
 	return fmt.Sprintf("automation-rule:legacy:%x", digest[:12])

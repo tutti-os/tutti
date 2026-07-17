@@ -1,5 +1,7 @@
 // Package automationrule manages workspace automation rules and evaluates
-// them against durable agent-session lifecycle reports.
+// them against durable agent-session lifecycle reports. A triggered rule
+// launches one new target-Agent session; the retired consult/fork/delegate/
+// handoff action split no longer exists.
 package automationrule
 
 import (
@@ -14,6 +16,7 @@ import (
 	"time"
 
 	agentsessionstore "github.com/tutti-os/tutti/packages/agent/daemon/activity"
+	agenttargetbiz "github.com/tutti-os/tutti/services/tuttid/biz/agenttarget"
 	automationrulebiz "github.com/tutti-os/tutti/services/tuttid/biz/automationrule"
 	modelplanbiz "github.com/tutti-os/tutti/services/tuttid/biz/modelplan"
 	workspaceagentbiz "github.com/tutti-os/tutti/services/tuttid/biz/workspaceagent"
@@ -33,24 +36,30 @@ type Store interface {
 	PutAutomationRuleSessionOverride(context.Context, automationrulebiz.SessionOverride) error
 }
 
-type PlanReader interface {
-	GetModelPlan(context.Context, string, string) (modelplanbiz.Plan, error)
-}
-
 // AgentReferenceValidator lets the WorkspaceAgent service validate an opaque
-// target without coupling this package to its persistence implementation.
+// workspace-agent reference without coupling this package to its persistence
+// implementation.
 type AgentReferenceValidator interface {
 	ValidateAutomationAgentReference(context.Context, string, string) error
+}
+
+// AgentTargetReader resolves built-in Harness targets so a rule can always
+// select a built-in default Agent even when no WorkspaceAgent exists.
+type AgentTargetReader interface {
+	GetAgentTarget(context.Context, string) (agenttargetbiz.Target, error)
 }
 
 type Publisher interface {
 	PublishAutomationRulesChanged(workspaceID string)
 }
 
-// UsageReader reports prior runs attributed to one rule and source session.
-type UsageReader interface {
+// UsageLedger is the durable automation execution ledger. It answers the
+// dedup and budget guards for one rule and source session, and accumulates
+// the launched target session's recorded token usage.
+type UsageLedger interface {
 	AutomationRuleUsage(context.Context, string, string, string) (runs int, totalTokens int64, err error)
 	AutomationRuleExecutionExists(context.Context, string, string, string, string) (bool, error)
+	RecordAutomationTargetUsage(ctx context.Context, workspaceID string, targetSessionID string, totalTokens int64) error
 }
 
 type ExecutionInput struct {
@@ -62,58 +71,37 @@ type ExecutionInput struct {
 	// every automatically launched Agent in a bounded rescue chain.
 	AutomationDepth int
 	TriggerID       string
-	MaxOutputTokens int
 	SourceCwd       string
-	SourceContext   string
 }
 
 type ExecutionResult struct {
-	RunID       string
-	TotalTokens int64
-	ResultText  string
-	Failed      bool
+	TargetSessionID string
 }
 
-type ReviewOutcome struct {
-	WorkspaceID     string
-	SourceSessionID string
-	ReviewRunID     string
-	ResultText      string
-	Passed          bool
-	VerdictValid    bool
-}
-
-// ReviewOutcomeRecorder advances acceptance state after a fixed review
-// consult. It is separate from the executor so collaboration execution stays
-// reusable for ordinary advisory consult rules.
-type ReviewOutcomeRecorder interface {
-	RecordAutomationReviewOutcome(context.Context, ReviewOutcome) error
-}
-
-// Executor owns the concrete consult/session-launch mechanics. The daemon
-// wiring implements it with collabrun plus agent.Service.
+// Executor owns the concrete session-launch mechanics. The daemon wiring
+// implements it with agent.Service plus the durable execution ledger.
 type Executor interface {
 	ExecuteAutomationRule(context.Context, ExecutionInput) (ExecutionResult, error)
 }
 
-// ContextReader returns a bounded source-session transcript for an automated
-// action. It includes only user/assistant text; users should still treat rule
-// targets as recipients of that conversation content.
-type ContextReader interface {
-	AutomationSourceContext(context.Context, string, string) (cwd string, contextText string, err error)
+// SourceReader resolves the source session's working directory so the
+// launched follow-up session starts in the same project. Source conversation
+// content travels through the session mention, not through an inline
+// transcript copy.
+type SourceReader interface {
+	AutomationSourceCwd(context.Context, string, string) (string, error)
 }
 
 type Service struct {
-	Store          Store
-	Plans          PlanReader
-	Agents         AgentReferenceValidator
-	Publisher      Publisher
-	Usage          UsageReader
-	Executor       Executor
-	Context        ContextReader
-	ReviewOutcomes ReviewOutcomeRecorder
-	Now            func() time.Time
-	NewID          func() string
+	Store     Store
+	Agents    AgentReferenceValidator
+	Targets   AgentTargetReader
+	Publisher Publisher
+	Usage     UsageLedger
+	Executor  Executor
+	Sources   SourceReader
+	Now       func() time.Time
+	NewID     func() string
 
 	engine ruleEngine
 }
@@ -124,7 +112,6 @@ type PutRuleInput struct {
 	Name                   string
 	Enabled                bool
 	Trigger                automationrulebiz.Trigger
-	Action                 automationrulebiz.Action
 	SourceWorkspaceAgentID string
 	Target                 automationrulebiz.Target
 	Permissions            automationrulebiz.PermissionPolicy
@@ -205,7 +192,6 @@ func normalizeRule(input PutRuleInput, ruleID string, createdAt time.Time, updat
 		Name:                   input.Name,
 		Enabled:                input.Enabled,
 		Trigger:                input.Trigger,
-		Action:                 input.Action,
 		SourceWorkspaceAgentID: input.SourceWorkspaceAgentID,
 		Target:                 input.Target,
 		Permissions:            input.Permissions,
@@ -268,67 +254,34 @@ func (s *Service) validateReferences(ctx context.Context, rule automationrulebiz
 			return fmt.Errorf("%w: invalid source workspace agent: %w", ErrInvalidRuleInput, err)
 		}
 	}
-	if rule.Action != automationrulebiz.ActionConsult {
+	targetID := strings.TrimSpace(rule.Target.WorkspaceAgentID)
+	if strings.HasPrefix(targetID, workspaceagentbiz.IDPrefix) {
 		if s.Agents == nil {
 			return fmt.Errorf("%w: workspace agent validator is unavailable", ErrInvalidRuleInput)
 		}
-		if err := s.Agents.ValidateAutomationAgentReference(ctx, rule.WorkspaceID, rule.Target.WorkspaceAgentID); err != nil {
+		if err := s.Agents.ValidateAutomationAgentReference(ctx, rule.WorkspaceID, targetID); err != nil {
 			return fmt.Errorf("%w: invalid target workspace agent: %w", ErrInvalidRuleInput, err)
 		}
 		return nil
 	}
-	if s.Plans == nil {
-		return fmt.Errorf("%w: model plan reader is unavailable", ErrInvalidRuleInput)
+	if s.Targets == nil {
+		return fmt.Errorf("%w: agent target reader is unavailable", ErrInvalidRuleInput)
 	}
-	plan, err := s.Plans.GetModelPlan(ctx, rule.WorkspaceID, rule.Target.ModelPlanID)
+	target, err := s.Targets.GetAgentTarget(ctx, targetID)
 	if err != nil {
-		return fmt.Errorf("%w: get target model plan: %w", ErrInvalidRuleInput, err)
+		return fmt.Errorf("%w: invalid target agent: %w", ErrInvalidRuleInput, err)
 	}
-	if !plan.Enabled {
-		return fmt.Errorf("%w: target model plan is disabled", ErrInvalidRuleInput)
-	}
-	modelID := strings.TrimSpace(rule.Target.Model)
-	if modelID == "" {
-		modelID = strings.TrimSpace(plan.DefaultModel)
-	}
-	if modelID == "" && len(plan.Models) > 0 {
-		modelID = strings.TrimSpace(plan.Models[0].ID)
-	}
-	if modelID == "" {
-		return fmt.Errorf("%w: target model is required", ErrInvalidRuleInput)
-	}
-	if len(plan.Models) > 0 && !modelplanbiz.ModelsContain(plan.Models, modelID) {
-		return fmt.Errorf("%w: target model is not in the model plan", ErrInvalidRuleInput)
-	}
-	if !modelHasCapabilities(plan.Models, modelID, rule.Target.RequiredCapabilities) {
-		return fmt.Errorf("%w: target model does not provide the required capabilities", ErrInvalidRuleInput)
+	if !target.Enabled {
+		return fmt.Errorf("%w: target agent is disabled", ErrInvalidRuleInput)
 	}
 	return nil
 }
 
-func modelHasCapabilities(models []modelplanbiz.Model, modelID string, required []string) bool {
-	if len(required) == 0 {
-		return true
-	}
-	for _, model := range models {
-		if strings.TrimSpace(model.ID) != modelID {
-			continue
-		}
-		available := make(map[string]struct{}, len(model.Capabilities))
-		for _, capability := range model.Capabilities {
-			available[strings.TrimSpace(capability)] = struct{}{}
-		}
-		for _, capability := range required {
-			if _, ok := available[strings.TrimSpace(capability)]; !ok {
-				return false
-			}
-		}
-		return true
-	}
-	return false
-}
-
-// ListModelPlanReferences implements the model-plan deletion guard.
+// ListModelPlanReferences implements the model-plan deletion guard for the
+// composite reference resolver. Automation rules can no longer reference a
+// plan — Normalize rejects plan targets on write and the automation_rules_v2
+// migration cleared the stored plan columns — so this reports an empty list
+// and exists for contract stability with the other plan consumers.
 func (s *Service) ListModelPlanReferences(ctx context.Context, workspaceID string, planID string) ([]modelplanbiz.Reference, error) {
 	if s == nil || s.Store == nil {
 		return nil, errors.New("automation rule store is unavailable")
@@ -343,7 +296,7 @@ func (s *Service) ListModelPlanReferences(ctx context.Context, workspaceID strin
 			Kind: modelplanbiz.ReferenceAutomationRule,
 			ID:   rule.ID,
 			Name: rule.Name,
-			Role: string(rule.Action),
+			Role: "automation",
 		})
 	}
 	return references, nil
@@ -380,14 +333,14 @@ type ruleEngine struct {
 
 const maxRememberedAutomationExecutions = 8192
 
-// Rescue chains may cross several purpose-built WorkspaceAgents, but must
-// remain finite even when a broad failure rule targets an Agent that fails in
-// the same way. Depth counts automatically launched Sessions, not model
-// consults (which do not create a child Session).
+// Rescue chains may cross several purpose-built Agents, but must remain
+// finite even when a broad failure rule targets an Agent that fails in the
+// same way. Depth counts automatically launched Sessions.
 const maxAutomationRescueDepth = 3
 
-// ObserveAgentSessionState evaluates completed- and failed-turn rules. Concrete model
-// calls and agent launches run asynchronously so activity persistence is never
+// ObserveAgentSessionState evaluates completed- and failed-turn rules and
+// settles the recorded token usage of automation-origin target sessions.
+// Concrete launches run asynchronously so activity persistence is never
 // blocked by automation.
 func (s *Service) ObserveAgentSessionState(ctx context.Context, input agentsessionstore.ReportSessionStateInput, _ agentsessionstore.ReportSessionStateReply) {
 	if s == nil || s.Store == nil || s.Executor == nil {
@@ -397,18 +350,26 @@ func (s *Service) ObserveAgentSessionState(ctx context.Context, input agentsessi
 	if !ok {
 		return
 	}
-	automationDepth, automationOrigin := automationOriginDepth(input.State.RuntimeContext)
-	if automationOrigin && trigger == automationrulebiz.TriggerOnTaskFailed && automationDepth >= maxAutomationRescueDepth {
-		return
-	}
 	workspaceID := strings.TrimSpace(input.WorkspaceID)
 	sessionID := strings.TrimSpace(input.AgentSessionID)
+	if workspaceID == "" || sessionID == "" {
+		return
+	}
+	automationDepth, automationOrigin := automationOriginDepth(input.State.RuntimeContext)
+	if automationOrigin {
+		s.recordTargetUsage(ctx, workspaceID, sessionID, input.State.RuntimeContext)
+		// Automation-origin completions never trigger further completion
+		// rules; only bounded failure rescue may continue the chain.
+		if trigger == automationrulebiz.TriggerOnTaskComplete {
+			return
+		}
+		if automationDepth >= maxAutomationRescueDepth {
+			return
+		}
+	}
 	sourceAgentID := strings.TrimSpace(input.State.AgentTargetID)
 	if sourceAgentID == "" {
 		sourceAgentID = strings.TrimSpace(input.AgentTargetID)
-	}
-	if workspaceID == "" || sessionID == "" {
-		return
 	}
 	rules, err := s.effectiveRules(ctx, workspaceID, sessionID)
 	if err != nil {
@@ -420,12 +381,6 @@ func (s *Service) ObserveAgentSessionState(ctx context.Context, input agentsessi
 		if !rule.Enabled || rule.Trigger != trigger {
 			continue
 		}
-		// A successful rescue may still need the fixed acceptance Review that
-		// returns its Task to the user's acceptance flow. Other completion
-		// automations do not recurse from automation-origin Sessions.
-		if automationOrigin && trigger == automationrulebiz.TriggerOnTaskComplete && !automationrulebiz.IsAcceptanceReview(rule) {
-			continue
-		}
 		if !automationRuleMatchesSource(workspaceID, rule.SourceWorkspaceAgentID, sourceAgentID) {
 			continue
 		}
@@ -435,6 +390,64 @@ func (s *Service) ObserveAgentSessionState(ctx context.Context, input agentsessi
 		}
 		go s.runRule(key, workspaceID, sessionID, sourceAgentID, automationDepth, turnID, rule)
 	}
+}
+
+// recordTargetUsage settles the launched session's recorded token counters
+// into the execution ledger so the per-source-session token budget keeps
+// counting real usage after CollaborationRun bookkeeping was retired for
+// automation.
+func (s *Service) recordTargetUsage(ctx context.Context, workspaceID string, targetSessionID string, runtimeContext map[string]any) {
+	if s.Usage == nil {
+		return
+	}
+	totalTokens := automationUsageTotalTokens(runtimeContext)
+	if totalTokens <= 0 {
+		return
+	}
+	if err := s.Usage.RecordAutomationTargetUsage(ctx, workspaceID, targetSessionID, totalTokens); err != nil {
+		slog.Warn("automation target usage settlement failed",
+			"event", "automation_rule.target_usage_settle_failed",
+			"workspace_id", workspaceID,
+			"agent_session_id", targetSessionID,
+			"error", err)
+	}
+}
+
+func automationUsageTotalTokens(runtimeContext map[string]any) int64 {
+	usage, _ := runtimeContext["usage"].(map[string]any)
+	if len(usage) == 0 {
+		return 0
+	}
+	total := usageCounterTotal(usage)
+	if total == 0 {
+		if last, ok := usage["last"].(map[string]any); ok {
+			total = usageCounterTotal(last)
+		}
+	}
+	return total
+}
+
+func usageCounterTotal(payload map[string]any) int64 {
+	return usageInt64(payload, "inputTokens", "input_tokens") +
+		usageInt64(payload, "outputTokens", "output_tokens") +
+		usageInt64(payload, "cacheReadTokens", "cache_read_tokens", "cachedInputTokens", "cached_input_tokens", "cacheReadInputTokens", "cache_read_input_tokens") +
+		usageInt64(payload, "cacheWriteTokens", "cache_write_tokens", "cacheCreationInputTokens", "cache_creation_input_tokens")
+}
+
+func usageInt64(payload map[string]any, keys ...string) int64 {
+	for _, key := range keys {
+		switch value := payload[key].(type) {
+		case int:
+			return int64(value)
+		case int32:
+			return int64(value)
+		case int64:
+			return value
+		case float64:
+			return int64(value)
+		}
+	}
+	return 0
 }
 
 func automationRuleMatchesSource(workspaceID string, configuredSourceAgentID string, sessionSourceAgentID string) bool {
@@ -520,7 +533,6 @@ func (s *Service) runRule(key string, workspaceID string, sessionID string, sour
 	}()
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 	defer cancel()
-	maxOutputTokens := 2048
 	if s.Usage != nil {
 		exists, err := s.Usage.AutomationRuleExecutionExists(ctx, workspaceID, sessionID, rule.ID, triggerID)
 		if err != nil {
@@ -539,49 +551,26 @@ func (s *Service) runRule(key string, workspaceID string, sessionID string, sour
 			slog.Info("automation rule budget exhausted", "event", "automation_rule.budget_exhausted", "rule_id", rule.ID, "runs", runs, "total_tokens", tokens)
 			return
 		}
-		if remaining := rule.Budget.EffectiveMaxTotalTokens() - tokens; remaining < int64(maxOutputTokens) {
-			maxOutputTokens = int(remaining)
-		}
 	}
-	cwd, sourceContext := "", ""
-	if s.Context != nil {
+	cwd := ""
+	if s.Sources != nil {
 		var err error
-		cwd, sourceContext, err = s.Context.AutomationSourceContext(ctx, workspaceID, sessionID)
+		cwd, err = s.Sources.AutomationSourceCwd(ctx, workspaceID, sessionID)
 		if err != nil {
-			slog.Warn("automation rule source context failed", "event", "automation_rule.context_failed", "rule_id", rule.ID, "error", err)
+			slog.Warn("automation rule source lookup failed", "event", "automation_rule.source_failed", "rule_id", rule.ID, "error", err)
 			return
 		}
 	}
-	result, err := s.Executor.ExecuteAutomationRule(ctx, ExecutionInput{
+	if _, err := s.Executor.ExecuteAutomationRule(ctx, ExecutionInput{
 		Rule:            rule,
 		WorkspaceID:     workspaceID,
 		SourceSessionID: sessionID,
 		SourceAgentID:   sourceAgentID,
 		AutomationDepth: automationDepth,
 		TriggerID:       triggerID,
-		MaxOutputTokens: maxOutputTokens,
 		SourceCwd:       cwd,
-		SourceContext:   sourceContext,
-	})
-	if err != nil {
+	}); err != nil {
 		slog.Warn("automation rule execution failed", "event", "automation_rule.execute_failed", "rule_id", rule.ID, "error", err)
-		return
-	}
-	if s.ReviewOutcomes != nil && automationrulebiz.IsAcceptanceReview(rule) {
-		passed, valid := automationrulebiz.ParseReviewVerdict(result.ResultText)
-		if result.Failed {
-			passed, valid = false, false
-		}
-		if err := s.ReviewOutcomes.RecordAutomationReviewOutcome(ctx, ReviewOutcome{
-			WorkspaceID:     workspaceID,
-			SourceSessionID: sessionID,
-			ReviewRunID:     result.RunID,
-			ResultText:      result.ResultText,
-			Passed:          passed,
-			VerdictValid:    valid,
-		}); err != nil {
-			slog.Warn("automation review outcome persistence failed", "event", "automation_rule.review_outcome_failed", "rule_id", rule.ID, "error", err)
-		}
 	}
 }
 

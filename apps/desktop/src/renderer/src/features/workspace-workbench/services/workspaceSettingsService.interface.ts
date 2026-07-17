@@ -95,7 +95,9 @@ export interface IWorkspaceAutomationRulesController {
   confirmDeleteRule(automationRuleID: string): Promise<void>;
   refresh(): Promise<void>;
   requestDeleteRule(automationRuleID: string): void;
+  retryTargetCatalog(): Promise<void>;
   saveDraft(): Promise<void>;
+  selectDraftTarget(targetAgentID: string): Promise<void>;
   updateDraft(patch: Partial<WorkspaceAutomationRuleDraft>): void;
 }
 

@@ -7,16 +7,13 @@ import (
 	automationrulebiz "github.com/tutti-os/tutti/services/tuttid/biz/automationrule"
 )
 
-const (
-	issueOrchestrationReviewThreshold = 34
-	issueOrchestrationRescueThreshold = 67
-)
+const issueOrchestrationRescueThreshold = 67
 
 // IssueAutomationRuleReader supplies the workspace rules that may be compiled
 // into an Issue-run Session. The Issue execution profile is authoritative:
-// low intensity disables automatic collaboration, medium intensity enables
-// fixed acceptance Review rules, and high intensity additionally enables
-// bounded failure-rescue rules.
+// only high orchestration intensity enables bounded failure-rescue rules.
+// The consult-based acceptance-review tier retired together with the
+// automation action split, so lower intensities disable automation entirely.
 type IssueAutomationRuleReader interface {
 	ListRules(context.Context, string) ([]automationrulebiz.Rule, error)
 }
@@ -32,7 +29,7 @@ func (s IssueManagerService) issueAutomationRuleOverride(
 		AgentSessionID: agentSessionID,
 		Disabled:       true,
 	}
-	if orchestrationIntensity < issueOrchestrationReviewThreshold || s.AutomationRules == nil {
+	if orchestrationIntensity < issueOrchestrationRescueThreshold || s.AutomationRules == nil {
 		return override
 	}
 	rules, err := s.AutomationRules.ListRules(ctx, issueWorkspaceID)
@@ -43,8 +40,7 @@ func (s IssueManagerService) issueAutomationRuleOverride(
 		if !rule.Enabled {
 			continue
 		}
-		if automationrulebiz.IsAcceptanceReview(rule) ||
-			orchestrationIntensity >= issueOrchestrationRescueThreshold && rule.Trigger == automationrulebiz.TriggerOnTaskFailed {
+		if rule.Trigger == automationrulebiz.TriggerOnTaskFailed {
 			override.RuleIDs = append(override.RuleIDs, rule.ID)
 		}
 	}

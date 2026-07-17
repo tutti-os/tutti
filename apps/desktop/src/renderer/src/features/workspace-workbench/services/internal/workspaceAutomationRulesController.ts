@@ -2,6 +2,7 @@ import type { IWorkspaceAutomationRulesController } from "../workspaceSettingsSe
 import type {
   WorkspaceAutomationRule,
   WorkspaceAutomationRuleDraft,
+  WorkspaceAutomationTargetOption,
   WorkspaceSettingsStoreState
 } from "../workspaceSettingsTypes.ts";
 import type {
@@ -18,7 +19,10 @@ export interface WorkspaceAutomationRulesControllerDependencies {
     DesktopWorkspaceSettingsClient,
     | "createAutomationRule"
     | "deleteAutomationRule"
+    | "getAutomationTargetCatalog"
+    | "listAgentTargets"
     | "listAutomationRules"
+    | "listWorkspaceAgents"
     | "updateAutomationRule"
   >;
   store: WorkspaceSettingsStoreState;
@@ -26,11 +30,15 @@ export interface WorkspaceAutomationRulesControllerDependencies {
 
 /**
  * Owns presentation interaction state for daemon-owned AutomationRules. Rule
- * validation and execution remain authoritative in tuttid.
+ * validation and execution remain authoritative in tuttid. The target
+ * directory always merges built-in Harness targets with enabled
+ * WorkspaceAgents, and the permission/tool option catalogs follow the
+ * selected target's composer capability directory.
  */
 export class WorkspaceAutomationRulesController implements IWorkspaceAutomationRulesController {
   private readonly dependencies: WorkspaceAutomationRulesControllerDependencies;
   private refreshSequence = 0;
+  private catalogSequence = 0;
 
   constructor(dependencies: WorkspaceAutomationRulesControllerDependencies) {
     this.dependencies = dependencies;
@@ -46,6 +54,7 @@ export class WorkspaceAutomationRulesController implements IWorkspaceAutomationR
 
   reset(): void {
     this.refreshSequence += 1;
+    this.catalogSequence += 1;
     this.store.automationRules = createWorkspaceSettingsAutomationRulesState();
   }
 
@@ -59,8 +68,11 @@ export class WorkspaceAutomationRulesController implements IWorkspaceAutomationR
     state.loading = true;
     state.loadFailed = false;
     try {
-      const rules =
-        await this.dependencies.client.listAutomationRules(workspaceID);
+      const [rules, targets, agents] = await Promise.all([
+        this.dependencies.client.listAutomationRules(workspaceID),
+        this.dependencies.client.listAgentTargets(),
+        this.dependencies.client.listWorkspaceAgents(workspaceID)
+      ]);
       if (
         refreshSequence !== this.refreshSequence ||
         workspaceID !== this.store.workspaceID
@@ -68,6 +80,10 @@ export class WorkspaceAutomationRulesController implements IWorkspaceAutomationR
         return;
       }
       state.rules = rules;
+      state.targetOptions = buildWorkspaceAutomationTargetDirectory(
+        targets,
+        agents
+      );
     } catch {
       if (
         refreshSequence === this.refreshSequence &&
@@ -86,25 +102,23 @@ export class WorkspaceAutomationRulesController implements IWorkspaceAutomationR
   }
 
   beginDraft(): void {
+    const defaultTarget = this.state.targetOptions[0]?.id ?? "";
     this.state.draft = {
-      action: "consult",
-      allowedTools: "",
+      allowedTools: [],
       automationRuleId: null,
       enabled: false,
       maxRunsPerSession: String(defaultMaxRunsPerSession),
       maxTotalTokensPerSession: String(defaultMaxTotalTokensPerSession),
-      model: "",
-      modelPlanId: "",
       name: "",
       permissionModeId: "",
       prompt: "",
-      requiredCapabilities: "",
       sourceWorkspaceAgentId: "",
-      targetWorkspaceAgentId: "",
+      targetAgentId: defaultTarget,
       trigger: "on_task_complete"
     };
     this.state.feedback = null;
     this.state.confirmingDeleteRuleID = null;
+    void this.loadTargetCatalog(defaultTarget);
   }
 
   beginEditRule(automationRuleID: string): void {
@@ -117,6 +131,7 @@ export class WorkspaceAutomationRulesController implements IWorkspaceAutomationR
     this.state.draft = workspaceAutomationRuleToDraft(rule);
     this.state.feedback = null;
     this.state.confirmingDeleteRuleID = null;
+    void this.loadTargetCatalog(this.state.draft.targetAgentId);
   }
 
   updateDraft(patch: Partial<WorkspaceAutomationRuleDraft>): void {
@@ -127,9 +142,115 @@ export class WorkspaceAutomationRulesController implements IWorkspaceAutomationR
     this.state.feedback = null;
   }
 
+  async selectDraftTarget(targetAgentID: string): Promise<void> {
+    const draft = this.state.draft;
+    if (!draft || draft.targetAgentId === targetAgentID) {
+      return;
+    }
+    // Keep current selections until the new catalog answers, then drop the
+    // values the new target does not offer.
+    this.state.draft = { ...draft, targetAgentId: targetAgentID };
+    this.state.feedback = null;
+    await this.loadTargetCatalog(targetAgentID);
+  }
+
+  async retryTargetCatalog(): Promise<void> {
+    const targetAgentID = this.state.draft?.targetAgentId ?? "";
+    await this.loadTargetCatalog(targetAgentID);
+  }
+
+  private async loadTargetCatalog(targetAgentID: string): Promise<void> {
+    const workspaceID = this.store.workspaceID;
+    const state = this.state;
+    const catalogSequence = ++this.catalogSequence;
+    if (!workspaceID || !targetAgentID) {
+      state.targetCatalog = null;
+      return;
+    }
+    const provider =
+      state.targetOptions.find((option) => option.id === targetAgentID)
+        ?.provider ?? "";
+    if (!provider) {
+      state.targetCatalog = {
+        agentTargetId: targetAgentID,
+        loadFailed: true,
+        loading: false,
+        permissionModes: [],
+        tools: []
+      };
+      return;
+    }
+    state.targetCatalog = {
+      agentTargetId: targetAgentID,
+      loadFailed: false,
+      loading: true,
+      permissionModes: [],
+      tools: []
+    };
+    try {
+      const catalog = await this.dependencies.client.getAutomationTargetCatalog(
+        workspaceID,
+        provider,
+        targetAgentID
+      );
+      if (
+        catalogSequence !== this.catalogSequence ||
+        workspaceID !== this.store.workspaceID
+      ) {
+        return;
+      }
+      state.targetCatalog = {
+        agentTargetId: targetAgentID,
+        loadFailed: false,
+        loading: false,
+        permissionModes: catalog.permissionModes,
+        tools: catalog.tools
+      };
+      this.pruneDraftForCatalog(targetAgentID);
+    } catch {
+      if (
+        catalogSequence === this.catalogSequence &&
+        workspaceID === this.store.workspaceID
+      ) {
+        state.targetCatalog = {
+          agentTargetId: targetAgentID,
+          loadFailed: true,
+          loading: false,
+          permissionModes: [],
+          tools: []
+        };
+      }
+    }
+  }
+
+  /** Drops selected values the freshly loaded target catalog does not offer. */
+  private pruneDraftForCatalog(targetAgentID: string): void {
+    const draft = this.state.draft;
+    const catalog = this.state.targetCatalog;
+    if (!draft || !catalog || draft.targetAgentId !== targetAgentID) {
+      return;
+    }
+    const permissionModeIds = new Set(
+      catalog.permissionModes.map((mode) => mode.id)
+    );
+    const toolIds = new Set(catalog.tools.map((tool) => tool.id));
+    const permissionModeId = permissionModeIds.has(draft.permissionModeId)
+      ? draft.permissionModeId
+      : "";
+    const allowedTools = draft.allowedTools.filter((tool) => toolIds.has(tool));
+    if (
+      permissionModeId === draft.permissionModeId &&
+      allowedTools.length === draft.allowedTools.length
+    ) {
+      return;
+    }
+    this.state.draft = { ...draft, allowedTools, permissionModeId };
+  }
+
   cancelDraft(): void {
     this.state.draft = null;
     this.state.feedback = null;
+    this.state.targetCatalog = null;
   }
 
   async saveDraft(): Promise<void> {
@@ -138,12 +259,7 @@ export class WorkspaceAutomationRulesController implements IWorkspaceAutomationR
     if (!workspaceID || !draft || this.state.saving) {
       return;
     }
-    if (
-      !draft.name.trim() ||
-      (draft.action === "consult"
-        ? !draft.modelPlanId.trim()
-        : !draft.targetWorkspaceAgentId.trim())
-    ) {
+    if (!draft.name.trim() || !draft.targetAgentId.trim()) {
       this.state.feedback = { kind: "requiredFields" };
       return;
     }
@@ -236,6 +352,72 @@ export class WorkspaceAutomationRulesController implements IWorkspaceAutomationR
   }
 }
 
+interface AutomationDirectoryTarget {
+  readonly enabled: boolean;
+  readonly id: string;
+  readonly name: string;
+  readonly provider: string;
+}
+
+interface AutomationDirectoryAgent {
+  readonly enabled: boolean;
+  readonly harness: {
+    readonly available: boolean;
+    readonly enabled?: boolean | null;
+    readonly provider?: string | null;
+  };
+  readonly id: string;
+  readonly name: string;
+}
+
+function workspaceAgentIsSelectable(agent: AutomationDirectoryAgent): boolean {
+  return (
+    agent.enabled &&
+    agent.harness.available &&
+    agent.harness.enabled !== false &&
+    Boolean(agent.harness.provider)
+  );
+}
+
+/**
+ * Built-in Harness targets and enabled WorkspaceAgents coexist in the
+ * automation target directory, mirroring the Tutti Mode assignment
+ * directory: built-ins keep their placement so a rule is always
+ * configurable, and WorkspaceAgents are appended, deduped by id.
+ */
+export function buildWorkspaceAutomationTargetDirectory(
+  targets: readonly AutomationDirectoryTarget[],
+  agents: readonly AutomationDirectoryAgent[]
+): WorkspaceAutomationTargetOption[] {
+  const options: WorkspaceAutomationTargetOption[] = [];
+  const seen = new Set<string>();
+  for (const target of targets) {
+    if (!target.enabled || seen.has(target.id)) {
+      continue;
+    }
+    seen.add(target.id);
+    options.push({
+      id: target.id,
+      kind: "builtin",
+      name: target.name,
+      provider: target.provider
+    });
+  }
+  for (const agent of agents) {
+    if (!workspaceAgentIsSelectable(agent) || seen.has(agent.id)) {
+      continue;
+    }
+    seen.add(agent.id);
+    options.push({
+      id: agent.id,
+      kind: "workspaceAgent",
+      name: agent.name,
+      provider: agent.harness.provider ?? ""
+    });
+  }
+  return options;
+}
+
 export function workspaceAutomationRuleDraftToPutInput(
   draft: Readonly<WorkspaceAutomationRuleDraft>
 ): PutAutomationRuleInput | null {
@@ -247,50 +429,23 @@ export function workspaceAutomationRuleDraftToPutInput(
     return null;
   }
 
-  const consult = draft.action === "consult";
   return {
-    action: draft.action,
     budget: { maxRunsPerSession, maxTotalTokensPerSession },
     enabled: draft.enabled,
     name: draft.name.trim(),
     permissions: {
-      allowedTools: consult
-        ? []
-        : parseWorkspaceAutomationRuleList(draft.allowedTools),
-      permissionModeId: consult ? null : draft.permissionModeId.trim() || null
+      allowedTools: [...draft.allowedTools],
+      permissionModeId: draft.permissionModeId.trim() || null
     },
     prompt: draft.prompt.trim(),
     sourceWorkspaceAgentId: draft.sourceWorkspaceAgentId.trim() || null,
-    target: consult
-      ? {
-          kind: "model",
-          model: draft.model.trim() || null,
-          modelPlanId: draft.modelPlanId.trim(),
-          requiredCapabilities: parseWorkspaceAutomationRuleList(
-            draft.requiredCapabilities
-          )
-        }
-      : {
-          kind: "agent",
-          requiredCapabilities: [],
-          workspaceAgentId: draft.targetWorkspaceAgentId.trim()
-        },
+    target: {
+      kind: "agent",
+      requiredCapabilities: [],
+      workspaceAgentId: draft.targetAgentId.trim()
+    },
     trigger: draft.trigger
   };
-}
-
-export function parseWorkspaceAutomationRuleList(value: string): string[] {
-  const seen = new Set<string>();
-  const result: string[] = [];
-  for (const line of value.split(/\r?\n/u)) {
-    const item = line.trim();
-    if (!item || seen.has(item)) {
-      continue;
-    }
-    seen.add(item);
-    result.push(item);
-  }
-  return result;
 }
 
 function parseNonNegativeInteger(value: string): number | null {
@@ -306,20 +461,16 @@ function workspaceAutomationRuleToDraft(
   rule: WorkspaceAutomationRule
 ): WorkspaceAutomationRuleDraft {
   return {
-    action: rule.action,
-    allowedTools: rule.permissions.allowedTools.join("\n"),
+    allowedTools: [...rule.permissions.allowedTools],
     automationRuleId: rule.id,
     enabled: rule.enabled,
     maxRunsPerSession: String(rule.budget.maxRunsPerSession),
     maxTotalTokensPerSession: String(rule.budget.maxTotalTokensPerSession),
-    model: rule.target.model ?? "",
-    modelPlanId: rule.target.modelPlanId ?? "",
     name: rule.name,
     permissionModeId: rule.permissions.permissionModeId ?? "",
     prompt: rule.prompt,
-    requiredCapabilities: rule.target.requiredCapabilities.join("\n"),
     sourceWorkspaceAgentId: rule.sourceWorkspaceAgentId ?? "",
-    targetWorkspaceAgentId: rule.target.workspaceAgentId ?? "",
+    targetAgentId: rule.target.workspaceAgentId ?? "",
     trigger: rule.trigger
   };
 }

@@ -1,33 +1,21 @@
 import { Button, DeleteIcon, EditIcon, StatusDot } from "@tutti-os/ui-system";
 import { useTranslation } from "@renderer/i18n";
-import type { DesktopI18nKey } from "../../../../../shared/i18n/index.ts";
 import type {
   WorkspaceAgentDefinition,
   WorkspaceAutomationRule,
-  WorkspaceAutomationRuleAction,
-  WorkspaceModelPlan,
   WorkspaceSettingsAutomationRulesSnapshotState
 } from "../services/workspaceSettingsTypes";
 import { useWorkspaceSettingsService } from "./useWorkspaceSettingsService";
 
-const actionLabelKeys: Record<WorkspaceAutomationRuleAction, DesktopI18nKey> = {
-  consult: "workspace.settings.apps.automationRules.actions.consult",
-  delegate: "workspace.settings.apps.automationRules.actions.delegate",
-  fork: "workspace.settings.apps.automationRules.actions.fork",
-  handoff: "workspace.settings.apps.automationRules.actions.handoff"
-};
-
 export interface WorkspaceAutomationRuleRowProps {
   agents: readonly WorkspaceAgentDefinition[];
   automationRulesState: WorkspaceSettingsAutomationRulesSnapshotState;
-  modelPlans: readonly WorkspaceModelPlan[];
   rule: WorkspaceAutomationRule;
 }
 
 export function WorkspaceAutomationRuleRow({
   agents,
   automationRulesState,
-  modelPlans,
   rule
 }: WorkspaceAutomationRuleRowProps) {
   const { t } = useTranslation();
@@ -38,18 +26,12 @@ export function WorkspaceAutomationRuleRow({
   const sourceAgent = agents.find(
     (agent) => agent.id === rule.sourceWorkspaceAgentId
   );
-  const targetAgent = agents.find(
-    (agent) => agent.id === rule.target.workspaceAgentId
-  );
-  const targetPlan = modelPlans.find(
-    (plan) => plan.id === rule.target.modelPlanId
-  );
+  const targetID = rule.target.workspaceAgentId ?? "";
   const targetLabel =
-    rule.action === "consult"
-      ? [targetPlan?.name ?? rule.target.modelPlanId, rule.target.model]
-          .filter(Boolean)
-          .join(" · ")
-      : (targetAgent?.name ?? rule.target.workspaceAgentId ?? "");
+    automationRulesState.targetOptions.find((option) => option.id === targetID)
+      ?.name ??
+    agents.find((agent) => agent.id === targetID)?.name ??
+    targetID;
 
   return (
     <section className="flex w-full flex-col gap-3 rounded-[10px] border border-[var(--border-1)] bg-[var(--transparency-block)] p-4">
@@ -66,9 +48,6 @@ export function WorkspaceAutomationRuleRow({
                   ? t("workspace.settings.apps.automationRules.enabled")
                   : t("workspace.settings.apps.automationRules.disabled")}
               </span>
-            </span>
-            <span className="text-[10px] text-[var(--text-tertiary)]">
-              {t(actionLabelKeys[rule.action])}
             </span>
           </div>
           {rule.prompt ? (
