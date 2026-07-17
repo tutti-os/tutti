@@ -141,12 +141,21 @@ ID.
 Historical pull and realtime push are distinct engine inputs. Workspace/session
 list pulls dispatch `session/snapshotReceived`; these hydrate history without
 creating unread completion attention. Realtime `message_update` events may fold
-their normalized append-only messages inline. Realtime turn, interaction, and
-legacy state invalidations perform an authoritative session pull, then dispatch
-`session/upserted` followed by `turn/upserted` for the realtime turn. The desktop
-bridge keeps the one-shot realtime provenance outside reducer state while that
-pull is in flight. `AgentActivitySnapshot` is a memoized projection of the
-engine state, not a separately mutable controller snapshot.
+their normalized versioned mutable message snapshots inline only when the unseen
+event versions continue from the cached high-water mark. A gap at that boundary
+means a mutable message snapshot may have been missed: the bridge must leave the
+cache at its pre-gap cursor and request an authoritative incremental pull. A
+recovered event-stream connection must also incrementally reconcile every
+session whose messages are already hydrated, so a missed final mutation does not
+depend on a later event to expose the gap. Do not require the rows already
+present in a current snapshot to be internally contiguous, because updating one
+`messageId` replaces its earlier version. Realtime turn,
+interaction, and legacy state invalidations perform an authoritative session
+pull, then dispatch `session/upserted` followed by `turn/upserted` for the
+realtime turn. The desktop bridge keeps the one-shot realtime provenance outside
+reducer state while that pull is in flight. `AgentActivitySnapshot` is a
+memoized projection of the engine state, not a separately mutable controller
+snapshot.
 
 The workspace list is root-only. After a successful workspace reconcile, the
 engine requests a state detail reconcile for every active root session. Session
@@ -2260,7 +2269,8 @@ contract from the ACP path.
 
 ```text
 agent.activity.updated
-  -> message_update parses and batches append-only messages inline
+  -> continuous message_update versions batch mutable snapshots inline
+  -> a version gap or recovered connection triggers authoritative message reconcile
   -> turn_update / interaction_update triggers authoritative session reconcile
   -> legacy state_patch triggers authoritative state reconcile
   -> live reconcile dispatches session/upserted then turn/upserted
@@ -2272,8 +2282,8 @@ agent.activity.updated
   -> AgentGUINodeView renders the new view model
 ```
 
-Only append-only `message_update` payloads use the inline fast path. Turn,
-interaction, and state changes reconcile through the authoritative session
+Only continuous versioned `message_update` payloads use the inline fast path.
+Turn, interaction, and state changes reconcile through the authoritative session
 endpoint so `activeTurnId`, pending interactions, and turn provenance stay
 consistent. UI code should debug both the event payload and the reconcile fetch
 before treating a missing transcript row as a rendering-only bug.

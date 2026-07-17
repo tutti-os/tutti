@@ -595,6 +595,300 @@ test("WorkspaceAgentActivityService starts session-event streams and preserves u
   assert.deepEqual(await receivedTurnEvent, turnEvent);
 });
 
+test("WorkspaceAgentActivityService reconciles a realtime message version gap before advancing the cursor", async () => {
+  const listenersByTopic = new Map<string, (event: unknown) => void>();
+  const messageRequests: Array<Record<string, unknown>> = [];
+  const diagnostics: Array<{
+    details?: Record<string, unknown>;
+    event?: string;
+  }> = [];
+  const session = workspaceAgentSession({ status: "completed" });
+  const userMessage = {
+    agentSessionId: "session-1",
+    kind: "text",
+    messageId: "user-1",
+    occurredAtUnixMs: 1,
+    payload: { text: "Please investigate" },
+    role: "user",
+    status: "completed",
+    turnId: "turn-1",
+    version: 1
+  };
+  const runningCompaction = {
+    agentSessionId: "session-1",
+    kind: "text",
+    messageId: "compaction:turn-1",
+    occurredAtUnixMs: 2,
+    payload: {
+      noticeCommand: "compact",
+      noticeCommandStatus: "running",
+      text: "Compacting context.",
+      title: "Compacting context."
+    },
+    role: "assistant",
+    semantics: {
+      noticeCommand: "compact",
+      noticeCommandStatus: "running"
+    },
+    status: "completed",
+    turnId: "turn-1",
+    version: 2
+  };
+  const completedCompaction = {
+    ...runningCompaction,
+    occurredAtUnixMs: 3,
+    payload: {
+      noticeCommand: "compact",
+      noticeCommandStatus: "completed",
+      text: "Context compacted.",
+      title: "Context compacted."
+    },
+    semantics: {
+      noticeCommand: "compact",
+      noticeCommandStatus: "completed"
+    },
+    version: 3
+  };
+  const laterAssistantMessage = {
+    agentSessionId: "session-1",
+    kind: "text",
+    messageId: "assistant-later",
+    occurredAtUnixMs: 4,
+    payload: { text: "Later output" },
+    role: "assistant",
+    status: "completed",
+    turnId: "turn-1",
+    version: 4
+  };
+  const service = new WorkspaceAgentActivityService({
+    eventStreamClient: {
+      connect: async () => {},
+      dispose: () => {},
+      publishIntent: async () => {},
+      subscribe: (topic: string, listener: (event: unknown) => void) => {
+        listenersByTopic.set(topic, listener);
+        return () => {};
+      },
+      subscribeConnectionState: () => () => {}
+    } as never,
+    tuttidClient: {
+      getWorkspaceAgentSession: async () => ({
+        session,
+        childSessions: [],
+        turns: []
+      }),
+      listWorkspaceAgentSessionMessages: async (
+        _workspaceId: string,
+        _agentSessionId: string,
+        request: Record<string, unknown>
+      ) => {
+        messageRequests.push(request);
+        return messageRequests.length === 1
+          ? {
+              hasMore: false,
+              latestVersion: 2,
+              messages: [userMessage, runningCompaction]
+            }
+          : {
+              hasMore: false,
+              latestVersion: 4,
+              messages: [completedCompaction, laterAssistantMessage]
+            };
+      },
+      listWorkspaceAgentSessions: async () => ({
+        hasMore: false,
+        sessions: [session],
+        workspaceId: "ws-1"
+      })
+    } as unknown as TuttidClient,
+    runtimeApi: {
+      logTerminalDiagnostic: async (payload) => {
+        diagnostics.push(payload);
+      }
+    }
+  });
+
+  await service.load("ws-1");
+  await service.listSessionMessages({
+    agentSessionId: "session-1",
+    workspaceId: "ws-1"
+  });
+  assert.equal(
+    service
+      .getSnapshot("ws-1")
+      .sessionMessagesById["session-1"]?.find(
+        (message) => message.messageId === "compaction:turn-1"
+      )?.semantics?.noticeCommandStatus,
+    "running"
+  );
+
+  const activityUpdated = listenersByTopic.get("agent.activity.updated");
+  assert.ok(activityUpdated);
+  activityUpdated({
+    payload: {
+      agentSessionId: "session-1",
+      data: {
+        acceptedCount: 1,
+        agentSessionId: "session-1",
+        eventType: "message_update",
+        latestVersion: 4,
+        messages: [laterAssistantMessage],
+        workspaceId: "ws-1"
+      },
+      eventType: "message_update",
+      workspaceId: "ws-1"
+    }
+  });
+
+  for (let attempt = 0; attempt < 10 && messageRequests.length < 2; attempt++) {
+    await new Promise((resolve) => setImmediate(resolve));
+  }
+  await new Promise((resolve) => setImmediate(resolve));
+
+  assert.equal(messageRequests.length, 2);
+  assert.equal(messageRequests[1]?.afterVersion, 2);
+  assert.equal(
+    service
+      .getSnapshot("ws-1")
+      .sessionMessagesById["session-1"]?.find(
+        (message) => message.messageId === "compaction:turn-1"
+      )?.semantics?.noticeCommandStatus,
+    "completed"
+  );
+  assert.ok(
+    diagnostics.some(
+      (entry) =>
+        entry.event === "agent.activity.reconcile.trace" &&
+        entry.details?.traceEvent === "realtime.message_version_gap_detected" &&
+        entry.details.cachedVersion === 2 &&
+        entry.details.firstUnseenVersion === 4
+    )
+  );
+});
+
+test("WorkspaceAgentActivityService reconciles cached messages after reconnect without waiting for another event", async () => {
+  let connectionListener:
+    | ((state: "connected" | "disconnected") => void)
+    | undefined;
+  const messageRequests: Array<Record<string, unknown>> = [];
+  const session = workspaceAgentSession({ status: "completed" });
+  const userMessage = {
+    agentSessionId: "session-1",
+    kind: "text",
+    messageId: "user-1",
+    occurredAtUnixMs: 1,
+    payload: { text: "Please investigate" },
+    role: "user",
+    status: "completed",
+    turnId: "turn-1",
+    version: 1
+  };
+  const runningCompaction = {
+    agentSessionId: "session-1",
+    kind: "text",
+    messageId: "compaction:turn-1",
+    occurredAtUnixMs: 2,
+    payload: {
+      noticeCommand: "compact",
+      noticeCommandStatus: "running"
+    },
+    role: "assistant",
+    semantics: {
+      noticeCommand: "compact",
+      noticeCommandStatus: "running"
+    },
+    status: "completed",
+    turnId: "turn-1",
+    version: 2
+  };
+  const completedCompaction = {
+    ...runningCompaction,
+    occurredAtUnixMs: 3,
+    payload: {
+      noticeCommand: "compact",
+      noticeCommandStatus: "completed"
+    },
+    semantics: {
+      noticeCommand: "compact",
+      noticeCommandStatus: "completed"
+    },
+    version: 3
+  };
+  const service = new WorkspaceAgentActivityService({
+    eventStreamClient: {
+      connect: async () => {},
+      dispose: () => {},
+      publishIntent: async () => {},
+      subscribe: () => () => {},
+      subscribeConnectionState: (
+        listener: (state: "connected" | "disconnected") => void
+      ) => {
+        connectionListener = listener;
+        return () => {};
+      }
+    } as never,
+    tuttidClient: {
+      getWorkspaceAgentSession: async () => ({
+        session,
+        childSessions: [],
+        turns: []
+      }),
+      listWorkspaceAgentSessionMessages: async (
+        _workspaceId: string,
+        _agentSessionId: string,
+        request: Record<string, unknown>
+      ) => {
+        messageRequests.push(request);
+        return messageRequests.length === 1
+          ? {
+              hasMore: false,
+              latestVersion: 2,
+              messages: [userMessage, runningCompaction]
+            }
+          : {
+              hasMore: false,
+              latestVersion: 3,
+              messages: [completedCompaction]
+            };
+      },
+      listWorkspaceAgentSessions: async () => ({
+        hasMore: false,
+        sessions: [session],
+        workspaceId: "ws-1"
+      })
+    } as unknown as TuttidClient,
+    runtimeApi: { logTerminalDiagnostic: async () => {} }
+  });
+
+  await service.load("ws-1");
+  await service.listSessionMessages({
+    agentSessionId: "session-1",
+    workspaceId: "ws-1"
+  });
+  assert.ok(connectionListener);
+  connectionListener("connected");
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(messageRequests.length, 1);
+
+  connectionListener("disconnected");
+  connectionListener("connected");
+  for (let attempt = 0; attempt < 10 && messageRequests.length < 2; attempt++) {
+    await new Promise((resolve) => setImmediate(resolve));
+  }
+  await new Promise((resolve) => setImmediate(resolve));
+
+  assert.equal(messageRequests.length, 2);
+  assert.equal(messageRequests[1]?.afterVersion, 2);
+  assert.equal(
+    service
+      .getSnapshot("ws-1")
+      .sessionMessagesById["session-1"]?.find(
+        (message) => message.messageId === "compaction:turn-1"
+      )?.semantics?.noticeCommandStatus,
+    "completed"
+  );
+});
+
 test("WorkspaceAgentActivityService dispose releases every event stream subscription", () => {
   const activeSubscriptions = new Set<symbol>();
   const subscribe = () => {

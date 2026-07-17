@@ -1842,6 +1842,53 @@ Turn state, loading, cancel, restore, file-change undo, rail projection, event u
   [messageRouter.ts](../../../packages/agent/claude-sdk-sidecar/src/messageRouter.ts)
   [sessionRuntime.session.test.ts](../../../packages/agent/claude-sdk-sidecar/src/sessionRuntime.session.test.ts)
 
+### AgentGUI compaction timer keeps running after compaction completed
+
+- Symptom:
+  AgentGUI continues to show an increasing `Compacting context` duration after
+  the provider finished compaction. The durable compaction message and Turn are
+  already terminal, but the mounted renderer still projects the earlier
+  `noticeCommandStatus=running` snapshot.
+- Quick checks:
+  Compare the message-list requests in desktop reconcile diagnostics with the
+  durable message versions. If the renderer pulled a running compaction at
+  version N, missed its terminal update at N+1, then next requested
+  `afterVersion` at a much higher value, the local cache advanced across a
+  version hole. Confirm that the terminal row uses the same `messageId`; a new
+  compaction row or a timer-specific state bug is a different failure.
+- Root cause:
+  The realtime bridge treated the maximum version of materialized message rows
+  as a contiguous acknowledged change cursor. After an event-stream loss, it
+  applied a later inline message and advanced that maximum past the missed
+  terminal mutation. Every later `afterVersion` pull then started beyond the
+  mutation, so the authoritative completed snapshot could never repair the
+  cached running snapshot. The timer correctly kept rendering the stale running
+  lifecycle.
+- Fix:
+  Before folding realtime messages inline, compare only their unseen versions
+  with the cached high-water boundary. If the first unseen version is not the
+  next cursor, do not apply any of that event's messages; retain the old cursor
+  and request an authoritative incremental reconcile. After a disconnected
+  event stream reconnects, also incrementally reconcile every session whose
+  messages are already cached; otherwise a missed final mutation has no later
+  event that can reveal its gap. Do not require the materialized cache itself to
+  contain every historical cursor value, because mutable message rows replace
+  older versions.
+- Validation:
+  Cache a user message and a running compaction, omit the next terminal
+  compaction mutation, then deliver a later assistant message. Assert that the
+  later message is not applied inline, reconciliation requests from the
+  pre-gap cursor, and the stable compaction `messageId` becomes completed from
+  the authoritative response. Also cover valid snapshot gaps already present in
+  the cache plus duplicate and stale event delivery. Finally, omit the terminal
+  mutation as the last event, disconnect and reconnect without another activity
+  event, and verify the reconnect reconcile retrieves it from the pre-disconnect
+  cursor.
+- References:
+  [workspaceAgentActivityReconcileBridge.ts](../../../apps/desktop/src/renderer/src/features/workspace-agent/services/internal/workspaceAgentActivityReconcileBridge.ts)
+  [workspaceAgentActivityReconcileMessages.ts](../../../apps/desktop/src/renderer/src/features/workspace-agent/services/internal/workspaceAgentActivityReconcileMessages.ts)
+  [agent-gui-node.md](../../architecture/agent-gui-node.md)
+
 ### AgentActivity replication repeatedly rejects message batches as invalid
 
 - Symptom:

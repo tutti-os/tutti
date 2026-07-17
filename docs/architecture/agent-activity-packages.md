@@ -571,10 +571,12 @@ invocation. UI packages must keep `provider` as the real provider identity and
 must not synthesize providers for shared or remote targets.
 
 The desktop service owns the event-stream connection. Its reconcile bridge
-maps normalized events to engine intents: append-only messages are folded
-inline, while turn, interaction, and state changes schedule authoritative HTTP
-reconciliation through the engine command port. UI consumers never retain a
-second per-session stream or merge canonical entities themselves.
+maps normalized events to engine intents: continuous versions of mutable message
+snapshots are folded inline, while a message-version gap or recovered connection
+schedules authoritative incremental message reconciliation through the engine
+command port. Turn, interaction, and state changes also schedule their
+authoritative HTTP reconciliation through that port. UI consumers never retain
+a second per-session stream or merge canonical entities themselves.
 
 Hosts may accept older provider/runtime reports with missing transcript
 ownership or ordering fields, but those gaps must be filled before events enter
