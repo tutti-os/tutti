@@ -177,9 +177,16 @@ uses a coordinator-owned synthetic message. These fallbacks are transport
 details, not user-authored messages: Tutti's visible user message, prompt
 preview, and activity transcript remain unchanged. The context explicitly
 distinguishes Tutti activation from provider Default/Plan mode and reasoning
-effort. An active snapshot asks the Agent to prefer Tutti's native workflow
-capabilities when they fit while still allowing free composition with
-provider-native capabilities; it never turns those capabilities into a gate.
+effort. An active snapshot is a directive, not a suggestion: the Agent must
+not execute the user's request directly in that turn. It first asks focused
+clarifying questions when the request is ambiguous or missing key
+constraints, then submits one complete tutti-mode-plan/v1 document through a
+single `tutti plan propose` call and waits for the user's review decision.
+Read-only investigation is allowed while writing the plan; provider-native
+planning modes must not substitute for the Tutti plan workflow. Activation
+still does not gate tool availability—Tutti CLI capabilities remain available
+whether the state is active or inactive—but executing work the user has not
+accepted through plan review goes against the user's intent.
 
 ## Markdown Revision Contract
 

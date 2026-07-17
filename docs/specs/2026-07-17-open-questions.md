@@ -356,6 +356,26 @@
   (b) codex home 的聚合模型菜單在 options 未載入時只展示方案模型，無任何
   provider 原生模型可選。兩者建議回派給 ⑤/模型綁定 owner。
 
+### W3④-7 Host Context active 語義改判：建議式 → 強制 clarify→plan→review
+
+- 問題：原 active 態 Host Context 為建議式（"Prefer Tutti's native workflow
+  capabilities when they fit"），且自帶弱化聲明（"expresses a user
+  preference; it is not a permission or capability gate"）。live 復現：
+  codex + intensity 100 收到「幫我分析倉庫」直接開工，完全跳過規劃。
+- 用戶決策（2026-07-17）：強制引導——「如果用戶啟用了 Tutti mode，那就一定
+  要澄清需求，並進入 Tutti mode plan」。舊建議式立場作廢。
+- 新語義（`renderTuttiModeHostContext` active 分支）：本 turn 禁止直接執行
+  用戶請求；第一步在請求含糊/缺關鍵約束時先提聚焦澄清問題並等待回答（清晰
+  則跳過）；第二步以單次 `tutti plan propose` 提交完整 tutti-mode-plan/v1
+  後等待用戶 review 決定；orchestrationIntensity 仍作拆解粒度指引；允許
+  只讀調查（讀文件/查目錄）但不得開始改動或產出最終交付物；明示不要用
+  provider 原生規劃模式替代 Tutti plan 工作流（呼應 W3-GUI-5 的 EnterPlanMode
+  誤用）。保留「不限制工具可用性」事實陳述，但補充「未經 review 接受的計畫
+  就直接執行違背用戶意圖」；inactive 態文案不變。
+- 殘留風險：這仍是文案級引導，依賴模型服從（強模型可靠、弱模型未驗證）。
+  若後續發現弱模型仍繞過規劃直接執行，下一步是 daemon 確定性門禁：active
+  態的首個 turn 由 daemon 直接路由進 plan 工作流，而非依賴提示詞。
+
 ## Wave 4-③（自動化規則重構：單一動作語義 + 目標/權限/工具目錄）
 
 ### W4③-1 action 欄位選「移除」：OpenAPI + biz 全退役，v2 遷移歸一存量
