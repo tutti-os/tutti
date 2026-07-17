@@ -1,40 +1,52 @@
 package api_test
 
 import (
+	"os"
 	"testing"
 
 	"github.com/tutti-os/tutti/packages/agent/store-sqlite/canonical"
 	tuttigenerated "github.com/tutti-os/tutti/services/tuttid/api/generated"
+	"gopkg.in/yaml.v3"
 )
 
 func TestGeneratedActivityVocabularyMatchesCanonicalStore(t *testing.T) {
 	t.Parallel()
 
-	assertSameVocabulary(t, "turn phase", []string{
-		string(tuttigenerated.WorkspaceAgentTurnPhaseSubmitted),
-		string(tuttigenerated.WorkspaceAgentTurnPhaseRunning),
-		string(tuttigenerated.WorkspaceAgentTurnPhaseWaiting),
-		string(tuttigenerated.WorkspaceAgentTurnPhaseSettling),
-		string(tuttigenerated.WorkspaceAgentTurnPhaseSettled),
-	}, []string{
-		canonical.TurnPhaseSubmitted,
-		canonical.TurnPhaseRunning,
-		canonical.TurnPhaseWaiting,
-		canonical.TurnPhaseSettling,
-		canonical.TurnPhaseSettled,
-	})
+	vocabulary := loadOpenAPIActivityVocabulary(t)
+	assertSameVocabulary(t, "turn phase", vocabulary["WorkspaceAgentTurnPhase"], canonical.TurnPhases())
+	assertSameVocabulary(t, "turn outcome", vocabulary["WorkspaceAgentTurnOutcome"], canonical.TurnOutcomes())
+	for _, value := range vocabulary["WorkspaceAgentTurnPhase"] {
+		if !tuttigenerated.WorkspaceAgentTurnPhase(value).Valid() {
+			t.Errorf("generated turn phase rejected OpenAPI value %q", value)
+		}
+	}
+	for _, value := range vocabulary["WorkspaceAgentTurnOutcome"] {
+		if !tuttigenerated.WorkspaceAgentTurnOutcome(value).Valid() {
+			t.Errorf("generated turn outcome rejected OpenAPI value %q", value)
+		}
+	}
+}
 
-	assertSameVocabulary(t, "turn outcome", []string{
-		string(tuttigenerated.Completed),
-		string(tuttigenerated.Failed),
-		string(tuttigenerated.Canceled),
-		string(tuttigenerated.Interrupted),
-	}, []string{
-		canonical.TurnOutcomeCompleted,
-		canonical.TurnOutcomeFailed,
-		canonical.TurnOutcomeCanceled,
-		canonical.TurnOutcomeInterrupted,
-	})
+func loadOpenAPIActivityVocabulary(t *testing.T) map[string][]string {
+	t.Helper()
+	raw, err := os.ReadFile("openapi/tuttid.v1.yaml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var document struct {
+		Components struct {
+			Schemas map[string]struct {
+				Enum []string `yaml:"enum"`
+			} `yaml:"schemas"`
+		} `yaml:"components"`
+	}
+	if err := yaml.Unmarshal(raw, &document); err != nil {
+		t.Fatal(err)
+	}
+	return map[string][]string{
+		"WorkspaceAgentTurnPhase":   document.Components.Schemas["WorkspaceAgentTurnPhase"].Enum,
+		"WorkspaceAgentTurnOutcome": document.Components.Schemas["WorkspaceAgentTurnOutcome"].Enum,
+	}
 }
 
 func assertSameVocabulary(t *testing.T, name string, generated, canonicalValues []string) {

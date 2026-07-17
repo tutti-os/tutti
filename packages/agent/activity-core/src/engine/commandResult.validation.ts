@@ -41,22 +41,31 @@ export function validateCancelResult(
     return { kind: "invalid", reason: "cancel_result_malformed" };
   }
   const turn = response.turn;
+  const exactTurn =
+    turn?.agentSessionId === expected.agentSessionId &&
+    turn.turnId === expected.turnId;
+  const cancelRequested =
+    cancel.canceled === false &&
+    cancel.reason === "cancel_requested" &&
+    exactTurn &&
+    turn.phase === "settling" &&
+    turn.outcome == null;
   const canceled =
     cancel.canceled === true &&
     cancel.reason === "turn_canceled" &&
-    turn?.agentSessionId === expected.agentSessionId &&
-    turn.turnId === expected.turnId &&
+    exactTurn &&
     turn.phase === "settled" &&
     turn.outcome === "canceled";
   const alreadySettled =
     cancel.canceled === false &&
     cancel.reason === "already_settled" &&
-    expected.currentTurn?.phase === "settled";
+    ((exactTurn && turn.phase === "settled" && turn.outcome !== null) ||
+      expected.currentTurn?.phase === "settled");
   const targetAbsent =
     cancel.canceled === false &&
     cancel.reason === "not_found" &&
     expected.currentTurn === null;
-  return canceled || alreadySettled || targetAbsent
+  return cancelRequested || canceled || alreadySettled || targetAbsent
     ? { kind: "valid", response: response as AgentActivityTurnCancelResponse }
     : { kind: "invalid", reason: "cancel_target_mismatch" };
 }

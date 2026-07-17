@@ -1192,6 +1192,13 @@ keeps a workspace/session-scoped `awaitingTurn` cancel until the first canonical
 Turn arrives. That transition then emits an exact `turn/cancel`; a bounded
 expiry removes the detached operation so a later, unrelated Turn cannot be
 canceled. Empty reconcile snapshots must preserve this detached operation.
+An adapter may durably accept that exact-turn cancel before the Turn reaches a
+terminal outcome. It returns the official `cancel_requested` result with the
+same Turn projected in `settling` phase; the engine keeps cancellation in its
+`accepted` operation state and the GUI continues to present stopping until an
+authoritative settled Turn clears it. Acceptance must never be rewritten as
+`turn_canceled` or `already_settled`, and a transport failure must remain a
+failed command rather than manufacturing terminal state.
 When request cancellation causes create to fail, daemon rollback uses a bounded
 context detached from the canceled request so provisional runtime state is
 still closed and removed.

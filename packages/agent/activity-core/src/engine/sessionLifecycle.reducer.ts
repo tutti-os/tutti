@@ -548,6 +548,7 @@ function settleCancel(
   const targetGone =
     response?.cancel.reason === "not_found" ||
     response?.cancel.reason === "already_settled";
+  const cancelAccepted = response.cancel.reason === "cancel_requested";
   const target = targetId
     ? next.turnsById[canonicalTurnKey(id, targetId)]
     : null;
@@ -565,7 +566,14 @@ function settleCancel(
   }
   next = setOperation(next, id, {
     ...operation,
-    cancel: initialCancel(),
+    cancel: cancelAccepted
+      ? {
+          ...operation.cancel,
+          errorCode: null,
+          errorMessage: null,
+          status: "accepted"
+        }
+      : initialCancel(),
     operationError: null
   });
   const commands: EngineCommand[] =

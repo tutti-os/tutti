@@ -319,7 +319,9 @@ export function useAgentGUIConversationDetail(
       (input.activeConversationId !== null ? input.activeEngineError : null),
     hasProviderSessionNotFoundError,
     isCancelPending: input.activeCancelStatus === "awaitingTurn",
-    isInterrupting: input.activeCancelStatus === "requested",
+    isInterrupting:
+      input.activeCancelStatus === "requested" ||
+      input.activeCancelStatus === "accepted",
     pendingApproval: hasProviderSessionNotFoundError
       ? null
       : rawPendingApproval,

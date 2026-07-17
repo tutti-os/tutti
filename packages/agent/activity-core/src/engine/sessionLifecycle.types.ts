@@ -10,6 +10,7 @@ export type SessionCancelStatus =
   | "idle"
   | "awaitingTurn"
   | "requested"
+  | "accepted"
   | "unknown"
   | "failed";
 

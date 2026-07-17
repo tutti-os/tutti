@@ -245,7 +245,9 @@ export function selectEngineCancelPending(
 ): boolean {
   const id = agentSessionId?.trim() ?? "";
   const status = state.sessionLifecycle.operationBySessionId[id]?.cancel.status;
-  return status === "requested" || status === "awaitingTurn";
+  return (
+    status === "requested" || status === "accepted" || status === "awaitingTurn"
+  );
 }
 
 export function selectEngineCancelState(

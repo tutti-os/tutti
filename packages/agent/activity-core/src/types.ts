@@ -723,7 +723,11 @@ export interface AgentActivitySessionUsage {
 export interface AgentActivityTurnCancelResponse {
   cancel: {
     canceled: boolean;
-    reason: "turn_canceled" | "already_settled" | "not_found";
+    reason:
+      | "cancel_requested"
+      | "turn_canceled"
+      | "already_settled"
+      | "not_found";
   };
   turn?: AgentActivityTurn;
 }

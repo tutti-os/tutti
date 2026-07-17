@@ -10,8 +10,8 @@ func TestClosedVocabularyValidation(t *testing.T) {
 		values []string
 		known  func(string) bool
 	}{
-		{"turn phase", []string{TurnPhaseSubmitted, TurnPhaseRunning, TurnPhaseWaiting, TurnPhaseSettling, TurnPhaseSettled}, IsKnownTurnPhase},
-		{"turn outcome", []string{TurnOutcomeCompleted, TurnOutcomeFailed, TurnOutcomeCanceled, TurnOutcomeInterrupted}, IsKnownTurnOutcome},
+		{"turn phase", TurnPhases(), IsKnownTurnPhase},
+		{"turn outcome", TurnOutcomes(), IsKnownTurnOutcome},
 		{"turn origin", []string{TurnOriginUserPrompt, TurnOriginGoalArm, TurnOriginGoalContinuation, TurnOriginProviderInitiated, TurnOriginLegacyUnknown}, IsKnownTurnOrigin},
 		{"interaction kind", []string{InteractionKindApproval, InteractionKindQuestion, InteractionKindPlan}, IsKnownInteractionKind},
 		{"interaction status", []string{InteractionStatusPending, InteractionStatusAnswered, InteractionStatusSuperseded}, IsKnownInteractionStatus},
@@ -25,5 +25,18 @@ func TestClosedVocabularyValidation(t *testing.T) {
 		if test.known("unknown") {
 			t.Errorf("%s validator accepted unknown value", test.name)
 		}
+	}
+}
+
+func TestClosedTurnVocabularyReturnsCopies(t *testing.T) {
+	phases := TurnPhases()
+	outcomes := TurnOutcomes()
+	phases[0] = "mutated"
+	outcomes[0] = "mutated"
+	if TurnPhases()[0] != TurnPhaseSubmitted {
+		t.Fatal("TurnPhases exposed mutable canonical storage")
+	}
+	if TurnOutcomes()[0] != TurnOutcomeCompleted {
+		t.Fatal("TurnOutcomes exposed mutable canonical storage")
 	}
 }

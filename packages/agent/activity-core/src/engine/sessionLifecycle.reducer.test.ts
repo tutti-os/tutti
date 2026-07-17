@@ -19,7 +19,10 @@ import {
   selectEngineTurn
 } from "./sessionLifecycle.selectors.ts";
 import { createInitialAgentSessionEngineState } from "./rootReducer.ts";
-import { validateSendInputResult } from "./commandResult.validation.ts";
+import {
+  validateCancelResult,
+  validateSendInputResult
+} from "./commandResult.validation.ts";
 
 test("snapshot decomposes protocol v2 session and turn entities", () => {
   const result = reduce(createInitialSessionLifecycleState(), {
@@ -827,6 +830,98 @@ test("idempotent not-found cancel clears only its target and requests reconcile"
       workspaceId: "workspace-1"
     }
   ]);
+});
+
+test("durably accepted cancel stays pending until the canonical turn settles", () => {
+  let state = reduce(createInitialSessionLifecycleState(), {
+    type: "session/snapshotReceived",
+    sessions: [session(activeTurn(2), 2)]
+  }).state;
+  state = reduce(state, {
+    type: "session/cancelRequested",
+    workspaceId: "workspace-1",
+    agentSessionId: "session-1",
+    awaitingTurnExpiresAtUnixMs: 30_000,
+    commandId: "cancel-1"
+  }).state;
+  const settlingTurn: AgentActivityTurn = {
+    ...activeTurn(3),
+    phase: "settling"
+  };
+  const value = {
+    cancel: { canceled: false as const, reason: "cancel_requested" as const },
+    turn: settlingTurn
+  };
+  const accepted = sessionLifecycleReducer(
+    state,
+    {
+      type: "engine/commandResult",
+      commandId: "cancel-1",
+      commandType: "turn/cancel",
+      outcome: "succeeded",
+      value
+    },
+    {
+      queueSendNowRequiresCancel: false,
+      cancelResultValidation: validateCancelResult(value, {
+        agentSessionId: "session-1",
+        currentTurn: activeTurn(2),
+        turnId: "turn-1",
+        workspaceMatches: true
+      })
+    }
+  );
+  assert.equal(
+    accepted.state.operationBySessionId["session-1"]?.cancel.status,
+    "accepted"
+  );
+  assert.equal(
+    accepted.state.turnsById[canonicalTurnKey("session-1", "turn-1")]?.phase,
+    "settling"
+  );
+  assert.equal(
+    accepted.state.sessionsById["session-1"]?.activeTurnId,
+    "turn-1"
+  );
+
+  const settled = reduce(accepted.state, {
+    type: "turn/upserted",
+    turn: {
+      ...settlingTurn,
+      phase: "settled",
+      outcome: "canceled",
+      settledAtUnixMs: 4,
+      updatedAtUnixMs: 4
+    }
+  });
+  assert.equal(
+    settled.state.operationBySessionId["session-1"]?.cancel.status,
+    "idle"
+  );
+});
+
+test("already-settled cancel result may carry the exact raced terminal turn", () => {
+  const turn = {
+    ...activeTurn(3),
+    phase: "settled" as const,
+    outcome: "completed" as const,
+    settledAtUnixMs: 3
+  };
+  assert.equal(
+    validateCancelResult(
+      {
+        cancel: { canceled: false, reason: "already_settled" },
+        turn
+      },
+      {
+        agentSessionId: "session-1",
+        currentTurn: activeTurn(2),
+        turnId: "turn-1",
+        workspaceMatches: true
+      }
+    ).kind,
+    "valid"
+  );
 });
 
 test("authoritative settled state clears a cancel timeout failure", () => {

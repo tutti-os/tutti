@@ -23,6 +23,22 @@ const (
 	TurnOutcomeInterrupted = "interrupted"
 )
 
+var (
+	turnPhases = [...]string{
+		TurnPhaseSubmitted,
+		TurnPhaseRunning,
+		TurnPhaseWaiting,
+		TurnPhaseSettling,
+		TurnPhaseSettled,
+	}
+	turnOutcomes = [...]string{
+		TurnOutcomeCompleted,
+		TurnOutcomeFailed,
+		TurnOutcomeCanceled,
+		TurnOutcomeInterrupted,
+	}
+)
+
 const (
 	TurnOriginUserPrompt        = "user_prompt"
 	TurnOriginGoalArm           = "goal_arm"
@@ -49,21 +65,33 @@ const (
 )
 
 func IsKnownTurnPhase(phase string) bool {
-	switch phase {
-	case TurnPhaseSubmitted, TurnPhaseRunning, TurnPhaseWaiting, TurnPhaseSettling, TurnPhaseSettled:
-		return true
-	default:
-		return false
+	for _, known := range turnPhases {
+		if phase == known {
+			return true
+		}
 	}
+	return false
 }
 
 func IsKnownTurnOutcome(outcome string) bool {
-	switch outcome {
-	case TurnOutcomeCompleted, TurnOutcomeFailed, TurnOutcomeCanceled, TurnOutcomeInterrupted:
-		return true
-	default:
-		return false
+	for _, known := range turnOutcomes {
+		if outcome == known {
+			return true
+		}
 	}
+	return false
+}
+
+// TurnPhases returns the complete closed phase vocabulary. Callers receive a
+// copy so the canonical package remains the only owner of the set.
+func TurnPhases() []string {
+	return append([]string(nil), turnPhases[:]...)
+}
+
+// TurnOutcomes returns the complete closed outcome vocabulary. Callers receive
+// a copy so the canonical package remains the only owner of the set.
+func TurnOutcomes() []string {
+	return append([]string(nil), turnOutcomes[:]...)
 }
 
 func IsKnownTurnOrigin(origin string) bool {
