@@ -50,6 +50,8 @@ interface Input {
   submitDisabled: boolean;
   /** Keeps the send button live on an empty draft (empty-send override). */
   allowEmptySubmit: boolean;
+  /** Overrides the empty-draft send copy (falls back to labels.sendAccept). */
+  emptySubmitLabel?: string;
   labels: AgentComposerProps["labels"];
   activePromptTip: AgentComposerPromptTip | null;
   promptTipRef: RefObject<HTMLSpanElement | null>;
@@ -85,6 +87,7 @@ export function useComposerPresentation(input: Input) {
     isSelectedProjectMissing,
     submitDisabled,
     allowEmptySubmit,
+    emptySubmitLabel,
     labels,
     activePromptTip,
     promptTipRef,
@@ -241,8 +244,9 @@ export function useComposerPresentation(input: Input) {
   // carries explicit decision copy: an empty draft accepts, typed feedback
   // requests changes. Icon-only otherwise.
   const planReviewSendLabel = allowEmptySubmit
-    ? ((hasDraftContent ? labels.sendRequestChanges : labels.sendAccept) ??
-      null)
+    ? ((hasDraftContent
+        ? labels.sendRequestChanges
+        : (emptySubmitLabel ?? labels.sendAccept)) ?? null)
     : null;
   const composerActionButton = shouldShowStopButton ? (
     <button
