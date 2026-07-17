@@ -575,8 +575,10 @@ Turn state, loading, cancel, restore, file-change undo, rail projection, event u
   entity-plus-membership snapshot, retain its previous committed value while
   targeted reads run, and publish the complete next value once. The view must
   not subscribe to live engine rows separately or keep stale section snapshots.
-  Keep the committed projection on targeted failure and lock membership actions
-  until a scoped authoritative refresh succeeds. Do not call
+  Do not inspect mutation history from the Rail; compare canonical membership
+  before and after each engine notification. Keep the committed snapshot on
+  targeted failure and lock membership actions until a scoped authoritative
+  refresh succeeds. Do not call
   `listSessionSections` or workspace `load` from delete, pin/unpin, or rename.
   Lock scope-sensitive actions only while displayed membership belongs to a
   different or unresolved scope; do not patch daemon-owned membership locally.

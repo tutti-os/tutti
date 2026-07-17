@@ -771,8 +771,10 @@ pin 镜像、canonical-to-Host 投影与合成 `session_update` 已删除。
 实体统一 upsert 到 engine，view 通过纯投影 join，不保留第二份 summary cache。
 Pin 与 delete 已收进 engine mutation reducer/command loop；desktop facade 只
 dispatch 并等待 mutation selector，transport 只从 command port 执行。Rail query
-对外发布 engine 会话投影与 daemon membership 组成的单一不可变快照，受影响页面
-全部返回后一次提交，view 不再单独订阅 live engine entity 或保存 stale section。
+对外发布 engine 会话摘要与 daemon membership 组成的单一不可变快照；snapshot
+本身就是 committed value，受影响页面返回前保持不变，全部返回后从最新 engine
+state 与 resolved membership 重建一次。Rail 不读取 mutation history，view 不再
+单独订阅 live engine entity 或保存 stale section。
 搜索同样遵守该终态：desktop 通过可选 `listSessionsPage` 对 daemon 的完整可见
 session 集合执行 target-scoped、cursor-paged 查询；controller 只保存结果 id、
 cursor 与请求状态，返回实体写入同一个 workspace engine。预览或未提供该能力的

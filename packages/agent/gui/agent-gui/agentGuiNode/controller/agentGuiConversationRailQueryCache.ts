@@ -8,6 +8,7 @@ import type {
   WorkspaceQueryCacheEntry
 } from "../../../shared/query/workspaceQueryCache";
 import {
+  mergeConversationRailSessionIds,
   projectRuntimeSectionsToConversationRailMemberships,
   type ConversationRailQueryState,
   type ConversationRailSectionPageState
@@ -156,6 +157,33 @@ export function updateConversationRailSectionPageState<T>(
   const next = new Map(current);
   next.set(sectionId, value);
   return next;
+}
+
+export function appendConversationRailSectionPage(input: {
+  page: AgentActivityRuntimeSessionPage;
+  queryState: ConversationRailQueryState;
+  sectionId: string;
+}): ConversationRailQueryState {
+  return {
+    ...input.queryState,
+    sectionPageStates: updateConversationRailSectionPageState(
+      input.queryState.sectionPageStates,
+      input.sectionId,
+      conversationRailPageState(input.page)
+    ),
+    sections:
+      input.queryState.sections?.map((section) =>
+        section.id === input.sectionId
+          ? {
+              ...section,
+              sessionIds: mergeConversationRailSessionIds(
+                section.sessionIds,
+                input.page.sessions.map((session) => session.agentSessionId)
+              )
+            }
+          : section
+      ) ?? null
+  };
 }
 
 function conversationRailPageState(page: {

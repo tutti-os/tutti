@@ -1643,9 +1643,10 @@ stale sections. A targeted failure keeps the committed snapshot and locks
 membership-sensitive actions until an authoritative scoped refresh succeeds.
 This derived committed snapshot is not a writable session cache; canonical
 entities remain engine-owned and query state still stores only ids, cursor, and
-totals. Controller attach resynchronizes mutation status from the current engine
-snapshot and invalidates interrupted projection work before bootstrap; mutation
-completion while the panel is detached must not preserve an old in-flight lock.
+totals. The controller never reads engine mutation history. Attach compares the
+current canonical membership with its last observed records and invalidates
+interrupted draft query work before bootstrap; canonical changes completed while
+the panel is detached must be revalidated without preserving an old lock.
 Targeted revalidation must not fall back to `listSessionSections` or a
 workspace activity `load`. A
 scope change may also keep the previous page visible to avoid destructive

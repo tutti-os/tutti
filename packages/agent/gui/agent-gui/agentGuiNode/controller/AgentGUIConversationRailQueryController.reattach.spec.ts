@@ -1,9 +1,4 @@
-import {
-  dispatchSessionMutation,
-  normalizeAgentActivitySession,
-  selectSessionMutation,
-  type EngineCommandPort
-} from "@tutti-os/agent-activity-core";
+import { normalizeAgentActivitySession } from "@tutti-os/agent-activity-core";
 import { describe, expect, it, vi } from "vitest";
 import { createTestAgentSessionEngine } from "../../../shared/testing/createTestAgentSessionEngine";
 import {
@@ -12,7 +7,7 @@ import {
 } from "./AgentGUIConversationRailQueryController";
 
 describe("AgentGUIConversationRailQueryController reattach", () => {
-  it("resynchronizes a mutation that completes while detached", async () => {
+  it("recovers an interrupted draft from an authoritative scoped refresh", async () => {
     const session = normalizeAgentActivitySession({
       activeTurnId: null,
       agentSessionId: "session-1",
@@ -26,57 +21,41 @@ describe("AgentGUIConversationRailQueryController reattach", () => {
       updatedAtUnixMs: 1,
       workspaceId: "test-workspace"
     });
-    let resolvePin: (value: unknown) => void = () => {};
-    const commandPort: EngineCommandPort = {
-      execute(command) {
-        if (command.type === "sessions/delete") {
-          return Promise.resolve({
-            removedMessages: 0,
-            removedSessionIds: [...command.agentSessionIds],
-            removedSessions: command.agentSessionIds.length
-          });
-        }
-        if (command.type !== "session/setPinned") {
-          return Promise.resolve({ ok: true });
-        }
-        return new Promise((resolve) => {
-          resolvePin = resolve;
-        });
-      }
-    };
-    const engine = createTestAgentSessionEngine("test-workspace", commandPort);
+    const engine = createTestAgentSessionEngine();
     const pinnedSession = {
       ...session,
       pinnedAtUnixMs: 10,
       updatedAtUnixMs: 2
     };
-    const listPinnedSessionsPage = vi.fn(async () => ({
-      hasMore: false,
-      sessions: [pinnedSession],
-      totalCount: 1
-    }));
-    const listSessionSectionPage = vi.fn(async (input) => ({
-      hasMore: false,
-      kind: "conversations" as const,
-      sectionKey: input.sectionKey,
-      sessions: [],
-      totalCount: 0
-    }));
+    const listPinnedSessionsPage = vi.fn(() => new Promise<never>(() => {}));
+    const listSessionSectionPage = vi.fn(() => new Promise<never>(() => {}));
+    let firstPagesRequestCount = 0;
     const runtime: ConversationRailQueryRuntime = {
       listPinnedSessionsPage,
       listSessionSectionPage,
-      listSessionSections: async (input) => ({
-        sections: [
-          {
-            hasMore: false,
-            kind: "conversations",
-            sectionKey: "conversations",
-            sessions: [session],
-            totalCount: 1
-          }
-        ],
-        workspaceId: input.workspaceId
-      })
+      listSessionSections: async (input) => {
+        firstPagesRequestCount += 1;
+        return {
+          pinned:
+            firstPagesRequestCount > 1
+              ? {
+                  hasMore: false,
+                  sessions: [pinnedSession],
+                  totalCount: 1
+                }
+              : undefined,
+          sections: [
+            {
+              hasMore: false,
+              kind: "conversations",
+              sectionKey: "conversations",
+              sessions: firstPagesRequestCount > 1 ? [] : [session],
+              totalCount: firstPagesRequestCount > 1 ? 0 : 1
+            }
+          ],
+          workspaceId: input.workspaceId
+        };
+      }
     };
     const controller = new AgentGUIConversationRailQueryController({
       engine,
@@ -95,37 +74,20 @@ describe("AgentGUIConversationRailQueryController reattach", () => {
       expect(controller.getSnapshot().runtimeRailSectionsPending).toBe(false)
     );
 
-    engine.dispatch({
-      agentSessionId: "session-1",
-      mutationId: "pin-1",
-      pinned: true,
-      type: "session/pinRequested",
-      workspaceId: "test-workspace"
-    });
+    engine.dispatch({ session: pinnedSession, type: "session/upserted" });
+    await vi.waitFor(() =>
+      expect(listPinnedSessionsPage).toHaveBeenCalledTimes(1)
+    );
+    expect(listSessionSectionPage).toHaveBeenCalledTimes(1);
     expect(controller.isInteractionLocked()).toBe(true);
     detach();
-    resolvePin({ session: pinnedSession });
-    await vi.waitFor(() =>
-      expect(selectSessionMutation(engine.getSnapshot(), "pin-1")?.status).toBe(
-        "succeeded"
-      )
-    );
-    for (let index = 0; index < 129; index += 1) {
-      await dispatchSessionMutation(engine, {
-        agentSessionIds: [`detached-session-${index}`],
-        mutationId: `detached-delete-${index}`,
-        type: "sessions/deleteRequested",
-        workspaceId: "test-workspace"
-      });
-    }
-    expect(selectSessionMutation(engine.getSnapshot(), "pin-1")).toBeNull();
 
     const detachAgain = controller.attach();
+    expect(controller.isInteractionLocked()).toBe(true);
     await vi.waitFor(() =>
       expect(controller.isInteractionLocked()).toBe(false)
     );
-    expect(listPinnedSessionsPage).toHaveBeenCalledTimes(1);
-    expect(listSessionSectionPage).toHaveBeenCalledTimes(1);
+    expect(firstPagesRequestCount).toBe(2);
     expect(
       controller.getSnapshot().runtimeRailConversations[0]?.pinnedAtUnixMs
     ).toBe(10);

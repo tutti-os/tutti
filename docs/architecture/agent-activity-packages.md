@@ -178,16 +178,17 @@ drain. The desktop activity facade may await that engine record, but its command
 port is the only transport executor. Settled mutation records use a bounded
 window; they are workflow evidence, not an unbounded history store.
 When one of those canonical commits changes page membership, the rail query
-controller opens a projection transaction and reloads only the affected first
-pages. Its public snapshot contains both derived engine conversations and daemon
-membership. It retains the previous immutable snapshot while the exact page
-requests are pending, then publishes the new entity projection and membership
-together. The view has no independent engine subscription or stale-page cache.
-A failed targeted read leaves the committed projection visible and locks
+controller reloads only the affected first pages. Its public snapshot contains
+both derived engine conversations and daemon membership. The snapshot itself is
+the committed value: the controller keeps it unchanged while draft page requests
+are pending, then rebuilds and publishes it once from the latest engine state and
+resolved membership. The controller does not inspect engine mutation records.
+The view has no independent engine subscription or stale-page cache. A failed
+targeted read leaves the committed snapshot visible and locks
 membership-sensitive actions until an authoritative scoped refresh succeeds.
-Attach resynchronizes mutation status from the current engine snapshot and
-invalidates interrupted projection work before bootstrap, so a command that
-settles while every panel is closed cannot leave a remounted rail locked.
+Attach compares current canonical membership with the last observed membership
+and invalidates interrupted draft work before bootstrap, so changes completed
+while every panel is closed are revalidated without mutation-history coupling.
 Section first-page reloads should be tied to workspace, rail filter, user
 project, or session membership changes.
 Historical rows already owned by loaded section pages can be absent from a

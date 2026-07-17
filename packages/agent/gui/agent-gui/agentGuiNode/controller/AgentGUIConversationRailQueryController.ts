@@ -27,6 +27,7 @@ import {
 } from "../model/agentGuiConversationRail";
 import { projectConversationRailMembershipRecords } from "../model/agentGuiConversationRailMembershipRecords";
 import {
+  appendConversationRailSectionPage,
   applyCachedConversationRailQuery,
   cachedConversationRailQueryFromFirstPages,
   replaceConversationRailFirstPages,
@@ -35,7 +36,8 @@ import {
   type CachedConversationRailQuery
 } from "./agentGuiConversationRailQueryCache";
 import {
-  buildConversationRailQuerySnapshot,
+  appendConversationSearchPage,
+  createConversationRailQuerySnapshotSelector,
   EMPTY_CONVERSATION_SEARCH_QUERY_STATE,
   EMPTY_CONVERSATION_RAIL_QUERY_STATE,
   type AgentGUIConversationRailQuerySnapshot
@@ -46,7 +48,6 @@ import type {
   ConversationRailQueryScope
 } from "./agentGuiConversationRailQueryTypes";
 import { resolveConversationRailQueryScope } from "./agentGuiConversationRailQueryTypes";
-import { ConversationRailProjectionTransaction } from "./ConversationRailProjectionTransaction";
 import { AgentGUIConversationRailTargetedPageRefresher } from "./AgentGUIConversationRailTargetedPageRefresher";
 export type { AgentGUIConversationRailQuerySnapshot } from "./agentGuiConversationRailQuerySnapshot";
 export type {
@@ -56,11 +57,12 @@ export type {
 const SECTION_PAGE_SIZE = 5;
 export const CONVERSATION_SEARCH_DEBOUNCE_MS = 300;
 type Listener = (snapshot: AgentGUIConversationRailQuerySnapshot) => void;
+type PublicationRefreshState = "idle" | "pending" | "failed";
 export class AgentGUIConversationRailQueryController {
   readonly getSnapshot = (): AgentGUIConversationRailQuerySnapshot =>
     this.snapshot;
   readonly isInteractionLocked = (): boolean =>
-    this.projectionTransaction.isOpen ||
+    this.publicationBlocked() ||
     (this.queryState.pending &&
       this.queryState.resolvedScopeKey !== this.railSectionQueryKey &&
       !(this.searchQuery && this.snapshot.railSearch.enabled));
@@ -97,7 +99,10 @@ export class AgentGUIConversationRailQueryController {
   private searchRequestSequence = 0;
   private attached = false;
   private ingestingSessions = false;
-  private readonly projectionTransaction: ConversationRailProjectionTransaction;
+  private sectionPublicationState: PublicationRefreshState = "idle";
+  private searchPublicationState: PublicationRefreshState = "idle";
+  private readonly selectSnapshot =
+    createConversationRailQuerySnapshotSelector();
   private previousMembershipRecords: ReturnType<
     typeof projectConversationRailMembershipRecords
   >;
@@ -130,30 +135,30 @@ export class AgentGUIConversationRailQueryController {
     this.scheduler = input.scheduler ?? agentGuiScheduler;
     this.workspaceId = input.workspaceId;
     const initialEngineState = this.engine.getSnapshot();
-    this.projectionTransaction = new ConversationRailProjectionTransaction(
-      initialEngineState
-    );
     this.targetedPageRefresher =
       new AgentGUIConversationRailTargetedPageRefresher({
         onResolved: (pages) => {
-          this.projectionTransaction.targetedResolved();
           this.upsertSessions(pages.flatMap(({ page }) => page.sessions));
           this.queryState = replaceConversationRailFirstPages({
             pages,
             queryState: this.queryState
           });
           this.writeCurrentQueryCache();
-          this.tryCommitProjection(undefined, true);
+          this.sectionPublicationState = "idle";
+          this.publishIfReady(undefined, true);
         },
         onFailed: () => {
-          this.projectionTransaction.targetedFailed();
+          this.sectionPublicationState = "failed";
+          if (this.railSectionQueryKey) {
+            this.sessionSectionsQueryCache.invalidate(this.railSectionQueryKey);
+          }
         },
         runtime: this.runtime,
         workspaceId: this.workspaceId
       });
     this.previousMembershipRecords =
       projectConversationRailMembershipRecords(initialEngineState);
-    this.emit();
+    this.publish(initialEngineState, true);
   }
   attach(): () => void {
     if (this.attached) return () => {};
@@ -161,16 +166,12 @@ export class AgentGUIConversationRailQueryController {
     this.unsubscribeEngine = this.engine.subscribe((state) => {
       this.handleEngineState(state);
     });
-    this.projectionTransaction.resetTargetedFailure();
-    this.projectionTransaction.searchResolved();
     const engineState = this.engine.getSnapshot();
-    if (this.projectionTransaction.resyncMutations(engineState))
-      this.emit(true);
     this.handleEngineState(engineState);
-    if (this.scope && !this.projectionTransaction.hasTargetedWork) {
+    if (this.scope && this.sectionPublicationState !== "pending") {
       this.refreshFirstPages("attach");
     }
-    if (this.searchQuery && !this.projectionTransaction.hasSearchWork) {
+    if (this.searchQuery && this.searchPublicationState !== "pending") {
       this.requestSearch();
     }
     return () => this.detach();
@@ -194,13 +195,13 @@ export class AgentGUIConversationRailQueryController {
     if (!scopeChanged) return;
     this.cancelPagingRequests();
     this.targetedPageRefresher.cancel();
-    this.projectionTransaction.resetTargetedFailure();
+    this.resetPublication();
     this.queryState = {
       ...this.queryState,
       pending: this.runtimeSectionsEnabled(),
       reconcilingSessionIds: []
     };
-    this.emit(true);
+    this.publish(undefined, true);
     if (this.attached) this.refreshFirstPages("scope_change");
     if (this.searchQuery) this.requestSearch();
   }
@@ -217,6 +218,7 @@ export class AgentGUIConversationRailQueryController {
     if (
       this.scope?.previewMode ||
       !scopeKey ||
+      this.publicationBlocked() ||
       this.queryState.pending ||
       this.queryState.resolvedScopeKey !== scopeKey
     ) {
@@ -250,7 +252,7 @@ export class AgentGUIConversationRailQueryController {
         { ...currentPageState, isLoading: true }
       )
     };
-    this.emit();
+    this.publishIfReady(undefined, true);
     const request =
       membership.kind === "pinned"
         ? this.runtime.listPinnedSessionsPage!({
@@ -277,33 +279,13 @@ export class AgentGUIConversationRailQueryController {
           return;
         }
         this.upsertSessions(page.sessions);
-        this.queryState = {
-          ...this.queryState,
-          sectionPageStates: updateConversationRailSectionPageState(
-            this.queryState.sectionPageStates,
-            section.id,
-            {
-              hasMore: page.hasMore,
-              isLoading: false,
-              nextCursor: page.nextCursor ?? null,
-              totalCount: page.totalCount
-            }
-          ),
-          sections:
-            this.queryState.sections?.map((candidate) =>
-              candidate.id === section.id
-                ? {
-                    ...candidate,
-                    sessionIds: mergeConversationRailSessionIds(
-                      candidate.sessionIds,
-                      page.sessions.map((session) => session.agentSessionId)
-                    )
-                  }
-                : candidate
-            ) ?? null
-        };
+        this.queryState = appendConversationRailSectionPage({
+          page,
+          queryState: this.queryState,
+          sectionId: section.id
+        });
         this.writeCurrentQueryCache();
-        this.emit();
+        this.publishIfReady(undefined, true);
       })
       .catch(() => {
         if (
@@ -321,7 +303,7 @@ export class AgentGUIConversationRailQueryController {
           )
         };
         this.writeCurrentQueryCache();
-        this.emit();
+        this.publishIfReady(undefined, true);
       })
       .finally(() => {
         if (this.pagingAbortControllers.get(section.id) === abortController) {
@@ -334,6 +316,7 @@ export class AgentGUIConversationRailQueryController {
     if (
       !this.searchEnabled() ||
       !listSessionsPage ||
+      this.publicationBlocked() ||
       this.searchState.pending ||
       this.searchState.loadingMore ||
       !this.searchState.hasMore ||
@@ -348,7 +331,7 @@ export class AgentGUIConversationRailQueryController {
     this.searchAbortController?.abort();
     this.searchAbortController = abortController;
     this.searchState = { ...this.searchState, loadingMore: true };
-    this.emit();
+    this.publishIfReady(undefined, true);
     void listSessionsPage({
       agentTargetId: this.sectionAgentTargetId || undefined,
       cursor: this.searchState.nextCursor ?? undefined,
@@ -365,18 +348,8 @@ export class AgentGUIConversationRailQueryController {
           return;
         }
         this.upsertSessions(page.sessions);
-        this.searchState = {
-          ...this.searchState,
-          failed: false,
-          hasMore: page.hasMore,
-          loadingMore: false,
-          nextCursor: page.nextCursor ?? null,
-          sessionIds: mergeConversationRailSessionIds(
-            this.searchState.sessionIds,
-            page.sessions.map((session) => session.agentSessionId)
-          )
-        };
-        this.emit();
+        this.searchState = appendConversationSearchPage(this.searchState, page);
+        this.publishIfReady(undefined, true);
       })
       .catch(() => {
         if (
@@ -390,7 +363,7 @@ export class AgentGUIConversationRailQueryController {
           failed: true,
           loadingMore: false
         };
-        this.emit();
+        this.publishIfReady(undefined, true);
       });
   };
   readonly retrySearchResults = (): void => {
@@ -403,13 +376,12 @@ export class AgentGUIConversationRailQueryController {
       this.previousMembershipRecords = next;
       return;
     }
-    if (this.projectionTransaction.observeMutations(state)) this.emit(true);
     if (
       !this.runtimeSectionsEnabled() ||
       state.engineRuntime.workspaceReconcile.status === "loading"
     ) {
       this.previousMembershipRecords = next;
-      this.tryCommitProjection(state);
+      this.publishIfReady(state);
       return;
     }
     const plan = planRuntimeRailMembershipRefresh({
@@ -422,10 +394,9 @@ export class AgentGUIConversationRailQueryController {
     });
     this.previousMembershipRecords = next;
     if (plan.kind !== "refresh_pages") {
-      this.tryCommitProjection(state);
+      this.publishIfReady(state);
       return;
     }
-    if (this.projectionTransaction.begin()) this.emit(true);
     if (plan.pageIds.length > 0 && this.railSectionQueryKey) {
       this.sessionSectionsQueryCache.invalidate(this.railSectionQueryKey);
     }
@@ -439,13 +410,13 @@ export class AgentGUIConversationRailQueryController {
     if (plan.refreshSearch) this.requestSearch(true);
     if (plan.pageIds.length > 0) {
       this.cancelPagingRequests();
-      this.projectionTransaction.targetedStarted();
+      this.sectionPublicationState = "pending";
       this.targetedPageRefresher.refresh({
         agentTargetId: this.sectionAgentTargetId,
         pageIds: plan.pageIds
       });
     }
-    this.tryCommitProjection(state);
+    this.publishIfReady(state);
   }
   private refreshFirstPages(
     refreshReason: ConversationRailRefreshReason
@@ -454,8 +425,12 @@ export class AgentGUIConversationRailQueryController {
     const scopeKey = this.railSectionQueryKey;
     if (!this.runtimeSectionsEnabled() || !listSections || !scopeKey) {
       this.queryState = EMPTY_CONVERSATION_RAIL_QUERY_STATE;
-      this.tryCommitProjection(undefined, true);
+      this.sectionPublicationState = "idle";
+      this.publishIfReady(undefined, true);
       return;
+    }
+    if (this.publicationBlocked()) {
+      this.sectionPublicationState = "pending";
     }
     const cached = this.sessionSectionsQueryCache.read(scopeKey);
     const cacheApplyStartedAt =
@@ -464,7 +439,7 @@ export class AgentGUIConversationRailQueryController {
         : null;
     if (cached && this.queryState.resolvedScopeKey !== scopeKey) {
       this.applyCachedFirstPages(cached);
-      this.emit();
+      this.publishIfReady(undefined, true);
     }
     if (
       cached &&
@@ -482,6 +457,8 @@ export class AgentGUIConversationRailQueryController {
         sectionCount: cached.value.sectionCount,
         status: "ready"
       });
+      this.sectionPublicationState = "idle";
+      this.publishIfReady(undefined, true);
       return;
     }
     const cacheStatus = cached ? "stale" : "miss";
@@ -497,7 +474,7 @@ export class AgentGUIConversationRailQueryController {
       ...this.queryState,
       pending: true
     };
-    this.emit();
+    this.publishIfReady(undefined, true);
     void this.sessionSectionsQueryCache
       .request(scopeKey, async () => {
         const page = await listSections({
@@ -519,9 +496,9 @@ export class AgentGUIConversationRailQueryController {
           return;
         }
         const requestResolvedAt = this.diagnosticNow();
-        this.applyCachedFirstPages(entry);
-        this.projectionTransaction.resetTargetedFailure();
-        this.tryCommitProjection(undefined, true);
+      this.applyCachedFirstPages(entry);
+      this.sectionPublicationState = "idle";
+      this.publishIfReady(undefined, true);
         const completedAt = this.diagnosticNow();
         this.providerSwitchDiagnostics.complete(scopeKey, {
           cacheStatus,
@@ -591,7 +568,11 @@ export class AgentGUIConversationRailQueryController {
               sectionPageStates: new Map(),
               sections: []
             };
-        this.emit();
+        if (this.publicationBlocked()) {
+          this.sectionPublicationState = "failed";
+        } else {
+          this.publish(undefined, true);
+        }
       });
   }
   private applyCachedFirstPages(
@@ -609,7 +590,7 @@ export class AgentGUIConversationRailQueryController {
       scopeKey: this.railSectionQueryKey
     });
   }
-  private requestSearch(mutationRefresh = false): void {
+  private requestSearch(membershipRefresh = false): void {
     this.clearSearchDebounceTimer();
     this.searchRequestKey =
       this.searchEnabled() && this.searchQuery
@@ -625,28 +606,23 @@ export class AgentGUIConversationRailQueryController {
     this.searchAbortController = null;
     const listSessionsPage = this.runtime.listSessionsPage;
     if (!this.searchRequestKey || !listSessionsPage) {
-      if (this.projectionTransaction.isOpen) {
-        this.projectionTransaction.searchResolved();
-      } else {
-        this.projectionTransaction.clearSearchPending();
-      }
+      this.searchPublicationState = "idle";
       this.searchState = EMPTY_CONVERSATION_SEARCH_QUERY_STATE;
-      this.tryCommitProjection(undefined, true);
+      this.publishIfReady(undefined, true);
       return;
     }
     const requestKey = this.searchRequestKey;
     const query = this.searchQuery;
-    const tracksProjection =
-      mutationRefresh || this.projectionTransaction.isOpen;
+    const tracksPublication = membershipRefresh || this.publicationBlocked();
     const abortController = new AbortController();
     this.searchAbortController = abortController;
-    if (tracksProjection) this.projectionTransaction.searchStarted();
+    if (tracksPublication) this.searchPublicationState = "pending";
     this.searchState = {
       ...EMPTY_CONVERSATION_SEARCH_QUERY_STATE,
       pending: true,
       requestKey
     };
-    this.emit();
+    this.publishIfReady(undefined, true);
     void listSessionsPage({
       agentTargetId: this.sectionAgentTargetId || undefined,
       limit: 100,
@@ -673,11 +649,11 @@ export class AgentGUIConversationRailQueryController {
           resolvedQuery: query,
           sessionIds: page.sessions.map((session) => session.agentSessionId)
         };
-        if (tracksProjection) {
-          this.projectionTransaction.searchResolved();
-          this.tryCommitProjection();
+        if (tracksPublication) {
+          this.searchPublicationState = "idle";
+          this.publishIfReady(undefined, true);
         } else {
-          this.emit();
+          this.publishIfReady(undefined, true);
         }
       })
       .catch(() => {
@@ -694,10 +670,11 @@ export class AgentGUIConversationRailQueryController {
           requestKey,
           resolvedQuery: query
         };
-        if (tracksProjection) {
-          this.projectionTransaction.searchFailed();
+        if (tracksPublication) {
+          this.searchPublicationState = "failed";
+        } else {
+          this.publishIfReady(undefined, true);
         }
-        this.emit();
       });
   }
   private scheduleSearch(): void {
@@ -711,7 +688,7 @@ export class AgentGUIConversationRailQueryController {
     }
 
     this.searchRequestKey = null;
-    this.emit();
+    this.publishIfReady(undefined, true);
     this.searchDebounceTask = this.scheduler.schedule(
       CONVERSATION_SEARCH_DEBOUNCE_MS,
       () => {
@@ -720,12 +697,10 @@ export class AgentGUIConversationRailQueryController {
       }
     );
   }
-
   private clearSearchDebounceTimer(): void {
     this.searchDebounceTask?.cancel();
     this.searchDebounceTask = null;
   }
-
   private upsertSessions(sessions: readonly AgentActivitySession[]): void {
     if (sessions.length === 0) return;
     this.ingestingSessions = true;
@@ -738,7 +713,6 @@ export class AgentGUIConversationRailQueryController {
       );
     }
   }
-
   private runtimeSectionsEnabled(): boolean {
     return Boolean(
       !this.scope?.previewMode &&
@@ -750,29 +724,49 @@ export class AgentGUIConversationRailQueryController {
   private searchEnabled(): boolean {
     return Boolean(!this.scope?.previewMode && this.runtime.listSessionsPage);
   }
-  private tryCommitProjection(
+
+  private publishIfReady(
     state: AgentSessionEngineState = this.engine.getSnapshot(),
-    publishQueryUpdate = false
+    force = false
   ): void {
-    const result = this.projectionTransaction.commit(state);
-    if (result !== "blocked" && (publishQueryUpdate || result === "changed")) {
-      this.emit();
-    }
+    if (this.publicationBlocked()) return;
+    this.publish(state, force);
   }
-  private emit(force = false): void {
-    if (this.projectionTransaction.isOpen && !force) return;
-    this.snapshot = buildConversationRailQuerySnapshot({
-      queryState: this.queryState,
-      runtimeRailConversations:
-        this.projectionTransaction.committedConversations,
-      runtimeSectionsEnabled: this.runtimeSectionsEnabled(),
-      searchEnabled: this.searchEnabled(),
-      searchQuery: this.searchQuery,
-      searchRequestKey: this.searchRequestKey,
-      searchState: this.searchState
-    });
+
+  private publish(
+    state: AgentSessionEngineState = this.engine.getSnapshot(),
+    force = false
+  ): void {
+    const snapshot = this.selectSnapshot(
+      {
+        engineState: state,
+        queryState: this.queryState,
+        runtimeSectionsEnabled: this.runtimeSectionsEnabled(),
+        searchEnabled: this.searchEnabled(),
+        searchQuery: this.searchQuery,
+        searchRequestKey: this.searchRequestKey,
+        searchState: this.searchState
+      },
+      this.snapshot,
+      force
+    );
+    if (snapshot === this.snapshot) return;
+    this.snapshot = snapshot;
     for (const listener of this.listeners) listener(this.snapshot);
   }
+
+  private resetPublication(): void {
+    this.sectionPublicationState = "idle";
+    this.searchPublicationState = "idle";
+  }
+
+  private publicationBlocked(): boolean {
+    return (
+      this.sectionPublicationState !== "idle" ||
+      this.searchPublicationState !== "idle"
+    );
+  }
+
   private cancelPagingRequests(incrementSequence = true): void {
     if (incrementSequence) this.pagingRequestSequence += 1;
     for (const controller of this.pagingAbortControllers.values()) {
@@ -787,11 +781,17 @@ export class AgentGUIConversationRailQueryController {
     this.unsubscribeEngine = null;
     this.cancelPagingRequests();
     this.targetedPageRefresher.cancel();
-    if (this.projectionTransaction.isOpen && this.railSectionQueryKey) {
+    if (this.publicationBlocked() && this.railSectionQueryKey) {
       this.sessionSectionsQueryCache.invalidate(this.railSectionQueryKey);
     }
-    this.projectionTransaction.resetTargetedFailure();
-    this.projectionTransaction.searchResolved();
+    if (this.publicationBlocked()) {
+      if (this.sectionPublicationState === "pending") {
+        this.sectionPublicationState = "failed";
+      }
+      if (this.searchPublicationState === "pending") {
+        this.searchPublicationState = "failed";
+      }
+    }
     this.clearSearchDebounceTimer();
     this.searchRequestSequence += 1;
     this.searchAbortController?.abort();

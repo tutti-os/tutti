@@ -2,6 +2,16 @@ import type {
   ConversationRailQueryState,
   ConversationRailSectionMembership
 } from "../model/agentGuiConversationRail";
+import {
+  selectWorkspaceAgentConsumerSessions,
+  type AgentSessionEngineState
+} from "@tutti-os/agent-activity-core";
+import { projectCanonicalAgentGUIConversationSummaries } from "../../../contexts/workspace/presentation/renderer/agentGuiConversationList/useAgentGuiConversationList";
+import { createAgentGUIConversationRailTitlePromptSelector } from "../../../shared/agentConversationRailTitlePromptSelector";
+import {
+  conversationSummariesRenderEqual,
+  mergeConversationRailSessionIds
+} from "../model/agentGuiConversationRail";
 import type { AgentGUIConversationSummary } from "../model/agentGuiConversationModel";
 
 export const EMPTY_CONVERSATION_RAIL_QUERY_STATE: ConversationRailQueryState = {
@@ -34,6 +44,27 @@ export const EMPTY_CONVERSATION_SEARCH_QUERY_STATE: ConversationSearchQueryState
     resolvedQuery: "",
     sessionIds: []
   };
+
+export function appendConversationSearchPage(
+  state: ConversationSearchQueryState,
+  page: {
+    hasMore: boolean;
+    nextCursor?: string | null;
+    sessions: readonly { agentSessionId: string }[];
+  }
+): ConversationSearchQueryState {
+  return {
+    ...state,
+    failed: false,
+    hasMore: page.hasMore,
+    loadingMore: false,
+    nextCursor: page.nextCursor ?? null,
+    sessionIds: mergeConversationRailSessionIds(
+      state.sessionIds,
+      page.sessions.map((session) => session.agentSessionId)
+    )
+  };
+}
 
 export interface AgentGUIConversationRailQuerySnapshot {
   railSearch: {
@@ -83,5 +114,41 @@ export function buildConversationRailQuerySnapshot(input: {
     runtimeRailReconcilingSessionIds: input.queryState.reconcilingSessionIds,
     runtimeRailSectionsPending: input.queryState.pending,
     sectionPageStates: input.queryState.sectionPageStates
+  };
+}
+
+export function createConversationRailQuerySnapshotSelector(): (
+  input: Omit<
+    Parameters<typeof buildConversationRailQuerySnapshot>[0],
+    "runtimeRailConversations"
+  > & { engineState: AgentSessionEngineState },
+  previous: AgentGUIConversationRailQuerySnapshot | undefined,
+  force?: boolean
+) => AgentGUIConversationRailQuerySnapshot {
+  const selectRailTitlePrompts =
+    createAgentGUIConversationRailTitlePromptSelector();
+  return (input, previous, force = false) => {
+    const runtimeRailConversations =
+      projectCanonicalAgentGUIConversationSummaries(
+        selectWorkspaceAgentConsumerSessions(input.engineState),
+        selectRailTitlePrompts(input.engineState)
+      );
+    if (
+      !force &&
+      previous?.runtimeRailConversations.length ===
+        runtimeRailConversations.length &&
+      previous.runtimeRailConversations.every((conversation, index) =>
+        conversationSummariesRenderEqual(
+          conversation,
+          runtimeRailConversations[index]!
+        )
+      )
+    ) {
+      return previous;
+    }
+    return buildConversationRailQuerySnapshot({
+      ...input,
+      runtimeRailConversations
+    });
   };
 }

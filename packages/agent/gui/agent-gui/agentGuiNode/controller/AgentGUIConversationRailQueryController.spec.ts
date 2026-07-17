@@ -157,7 +157,7 @@ describe("AgentGUIConversationRailQueryController", () => {
     }
   });
 
-  it("publishes pin and delete projections only after affected pages resolve", async () => {
+  it("publishes pin and delete snapshots only after affected pages resolve", async () => {
     const engine = createTestAgentSessionEngine();
     const session = normalizeAgentActivitySession({
       activeTurnId: null,
@@ -394,7 +394,7 @@ describe("AgentGUIConversationRailQueryController", () => {
     engine.dispose();
   });
 
-  it("keeps the committed projection when targeted membership refresh fails", async () => {
+  it("keeps the committed snapshot when targeted membership refresh fails", async () => {
     const engine = createTestAgentSessionEngine();
     const session = normalizeAgentActivitySession({
       activeTurnId: null,
