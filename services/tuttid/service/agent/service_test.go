@@ -633,6 +633,154 @@ func TestServiceImportExternalSessionsOmitsProjectsWithoutValidSessions(t *testi
 	}
 }
 
+func TestServiceImportExternalCodexSessionRepairsNativeTurnIdentity(t *testing.T) {
+	ctx := context.Background()
+	store := openAgentServiceSQLiteStore(t)
+	if err := store.Create(ctx, workspacebiz.Summary{ID: "ws-1", Name: "Workspace One"}); err != nil {
+		t.Fatalf("Create workspace error = %v", err)
+	}
+	root := t.TempDir()
+	project := filepath.Join(root, "project")
+	if err := os.MkdirAll(project, 0o755); err != nil {
+		t.Fatalf("create project error = %v", err)
+	}
+	if canonical, ok := canonicalExistingDir(project); ok {
+		project = canonical
+	}
+	codexHome := filepath.Join(root, "codex-home")
+	t.Setenv("CODEX_HOME", codexHome)
+	t.Setenv("CLAUDE_CONFIG_DIR", filepath.Join(root, "claude-home"))
+	startedAt := time.Date(2026, time.July, 17, 10, 0, 0, 0, time.UTC)
+	settledAt := startedAt.Add(12 * time.Second)
+	writeAgentServiceJSONL(t, filepath.Join(codexHome, "sessions", "native-turn.jsonl"),
+		map[string]any{
+			"timestamp": startedAt.Add(-time.Second).Format(time.RFC3339Nano),
+			"type":      "session_meta",
+			"payload":   map[string]any{"id": "native-turn-session", "cwd": project},
+		},
+		map[string]any{
+			"timestamp": startedAt.Format(time.RFC3339Nano),
+			"type":      "event_msg",
+			"payload":   map[string]any{"type": "task_started", "turn_id": "native-turn-1"},
+		},
+		map[string]any{
+			"timestamp": startedAt.Add(time.Millisecond).Format(time.RFC3339Nano),
+			"type":      "turn_context",
+			"payload":   map[string]any{"turn_id": "native-turn-1", "model": "gpt-5.4"},
+		},
+		map[string]any{
+			"timestamp": startedAt.Add(2 * time.Millisecond).Format(time.RFC3339Nano),
+			"type":      "response_item",
+			"payload": map[string]any{
+				"type": "message", "id": "user-1", "role": "user",
+				"content": []any{map[string]any{"type": "input_text", "text": "Inspect the repository"}},
+			},
+		},
+		map[string]any{
+			"timestamp": settledAt.Add(-time.Second).Format(time.RFC3339Nano),
+			"type":      "response_item",
+			"payload": map[string]any{
+				"type": "message", "id": "assistant-1", "role": "assistant",
+				"content": []any{map[string]any{"type": "output_text", "text": "Inspection complete"}},
+			},
+		},
+		map[string]any{
+			"timestamp": settledAt.Format(time.RFC3339Nano),
+			"type":      "event_msg",
+			"payload":   map[string]any{"type": "task_complete", "turn_id": "native-turn-1"},
+		},
+	)
+
+	agentSessionID := externalImportedSessionID("codex", "native-turn-session")
+	if _, err := store.ReportSessionState(ctx, agentactivitybiz.SessionStateReport{
+		WorkspaceID:       "ws-1",
+		AgentSessionID:    agentSessionID,
+		Origin:            WorkspaceAgentSessionOriginImported,
+		Provider:          "codex",
+		ProviderSessionID: "native-turn-session",
+		RuntimeContext:    map[string]any{"imported": true},
+		Cwd:               project,
+		Title:             "Inspect the repository",
+		Status:            "completed",
+		CurrentPhase:      "completed",
+		OccurredAtUnixMS:  settledAt.UnixMilli(),
+	}); err != nil {
+		t.Fatalf("seed imported session error = %v", err)
+	}
+	legacyMessages := []agentactivitybiz.MessageUpdate{
+		{
+			MessageID:         externalImportedMessageID("codex", "native-turn-session", "user-1", 0),
+			Role:              "user",
+			Kind:              "text",
+			Status:            "completed",
+			Payload:           map[string]any{"text": "Inspect the repository"},
+			OccurredAtUnixMS:  startedAt.Add(2 * time.Millisecond).UnixMilli(),
+			StartedAtUnixMS:   startedAt.Add(2 * time.Millisecond).UnixMilli(),
+			CompletedAtUnixMS: startedAt.Add(2 * time.Millisecond).UnixMilli(),
+		},
+		{
+			MessageID:         externalImportedMessageID("codex", "native-turn-session", "assistant-1", 1),
+			Role:              "assistant",
+			Kind:              "text",
+			Status:            "completed",
+			Payload:           map[string]any{"text": "Inspection complete"},
+			OccurredAtUnixMS:  settledAt.Add(-time.Second).UnixMilli(),
+			StartedAtUnixMS:   settledAt.Add(-time.Second).UnixMilli(),
+			CompletedAtUnixMS: settledAt.Add(-time.Second).UnixMilli(),
+		},
+	}
+	if _, err := store.ReportSessionMessages(ctx, agentactivitybiz.SessionMessageReport{
+		WorkspaceID:      "ws-1",
+		AgentSessionID:   agentSessionID,
+		Origin:           WorkspaceAgentSessionOriginImported,
+		Provider:         "codex",
+		HistoricalImport: true,
+		Messages:         legacyMessages,
+	}); err != nil {
+		t.Fatalf("seed turnless imported messages error = %v", err)
+	}
+
+	service := newIsolatedAgentService(newFakeRuntime())
+	projection := NewActivityProjection(store)
+	service.SessionReader = projection
+	service.MessageReader = projection
+	service.ExternalImportStore = store
+	if _, err := service.ImportExternalSessions(ctx, "ws-1", ExternalImportInput{
+		Projects: []ExternalImportProjectSelection{{Path: project, SessionIDs: []string{agentSessionID}}},
+	}); err != nil {
+		t.Fatalf("ImportExternalSessions error = %v", err)
+	}
+
+	turns, err := store.ListSessionTurns(ctx, "ws-1", agentSessionID)
+	if err != nil {
+		t.Fatalf("ListSessionTurns error = %v", err)
+	}
+	if len(turns) != 1 {
+		t.Fatalf("turns = %#v, want one native Codex turn", turns)
+	}
+	turn := turns[0]
+	if turn.TurnID != "native-turn-1" || turn.Phase != agentactivitybiz.TurnPhaseSettled || turn.Outcome != agentactivitybiz.TurnOutcomeCompleted {
+		t.Fatalf("turn = %#v, want settled completed native turn", turn)
+	}
+	if turn.StartedAtUnixMS != startedAt.UnixMilli() || turn.SettledAtUnixMS != settledAt.UnixMilli() {
+		t.Fatalf("turn timing = %d..%d, want %d..%d", turn.StartedAtUnixMS, turn.SettledAtUnixMS, startedAt.UnixMilli(), settledAt.UnixMilli())
+	}
+	page, ok, err := store.ListSessionMessages(ctx, agentactivitybiz.ListSessionMessagesInput{
+		WorkspaceID: "ws-1", AgentSessionID: agentSessionID, Limit: 10,
+	})
+	if err != nil || !ok {
+		t.Fatalf("ListSessionMessages ok=%v error=%v", ok, err)
+	}
+	if len(page.Messages) != 2 {
+		t.Fatalf("messages = %#v, want two repaired messages without duplicates", page.Messages)
+	}
+	for _, message := range page.Messages {
+		if message.TurnID != "native-turn-1" {
+			t.Fatalf("message %q turnId = %q, want native-turn-1", message.MessageID, message.TurnID)
+		}
+	}
+}
+
 func TestServiceImportExternalSessionsRepairsSelectedNestedProjectRailMembership(t *testing.T) {
 	ctx := context.Background()
 	store := openAgentServiceSQLiteStore(t)

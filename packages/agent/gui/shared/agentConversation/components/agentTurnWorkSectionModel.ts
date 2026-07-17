@@ -91,7 +91,11 @@ export function buildAgentTurnWorkSectionModel(
   const leadingRowCount = countLeadingUserRows(group.rows);
   const leadingRows = group.rows.slice(0, leadingRowCount);
   const finalTarget = findFinalAssistantTextTarget(group.rows);
-  const sections = buildOrderedSections(group.rows, leadingRowCount);
+  const sections = buildOrderedSections(
+    group.rows,
+    leadingRowCount,
+    finalTarget
+  );
   const hasHiddenWork = sections.some(
     (section) => section.kind === "work" && section.rows.length > 0
   );
@@ -123,13 +127,18 @@ function countLeadingUserRows(
 
 function buildOrderedSections(
   rows: readonly AgentTurnWorkSectionRow[],
-  startIndex: number
+  startIndex: number,
+  finalTarget: { rowIndex: number; messageIndex: number } | null
 ): AgentTurnWorkSectionSegment[] {
   const sections: AgentTurnWorkSectionSegment[] = [];
   for (let rowIndex = startIndex; rowIndex < rows.length; rowIndex += 1) {
     const entry = rows[rowIndex]!;
     if (entry.row.kind === "message" && entry.row.speaker === "assistant") {
-      appendAssistantMessageSections(sections, entry);
+      if (finalTarget?.rowIndex === rowIndex) {
+        appendFinalAssistantSections(sections, entry, finalTarget.messageIndex);
+      } else {
+        appendSectionRow(sections, "work", entry);
+      }
       continue;
     }
     appendSectionRow(
@@ -141,48 +150,40 @@ function buildOrderedSections(
   return sections;
 }
 
-function appendAssistantMessageSections(
+function appendFinalAssistantSections(
   sections: AgentTurnWorkSectionSegment[],
-  sourceEntry: AgentTurnWorkSectionRow
+  sourceEntry: AgentTurnWorkSectionRow,
+  finalMessageIndex: number
 ): void {
   const sourceRow = sourceEntry.row as AgentMessageRowVM;
-  const parts: Array<{
-    kind: AgentTurnWorkSectionSegment["kind"];
-    messages: AgentMessageContentVM[];
-    thinking: AgentMessageRowVM["thinking"];
-  }> = [];
+  const messagesBeforeFinal = sourceRow.messages.slice(0, finalMessageIndex);
+  const messagesAfterFinal = sourceRow.messages.slice(finalMessageIndex + 1);
 
-  if (sourceRow.thinking.length > 0) {
-    parts.push({ kind: "work", messages: [], thinking: sourceRow.thinking });
-  }
-
-  for (const message of sourceRow.messages) {
-    const kind = isExplicitWorkMessage(message) ? "work" : "visible";
-    const previous = parts.at(-1);
-    if (previous?.kind === kind && previous.thinking.length === 0) {
-      previous.messages.push(message);
-      continue;
-    }
-    parts.push({ kind, messages: [message], thinking: [] });
-  }
-
-  if (parts.length === 0) {
-    appendSectionRow(sections, "visible", sourceEntry);
-    return;
-  }
-
-  if (parts.length === 1 && sourceRow.thinking.length === 0) {
-    appendSectionRow(sections, parts[0]!.kind, sourceEntry);
-    return;
-  }
-
-  parts.forEach((part, partIndex) => {
-    appendSectionRow(sections, part.kind, {
+  if (sourceRow.thinking.length > 0 || messagesBeforeFinal.length > 0) {
+    appendSectionRow(sections, "work", {
       ...sourceEntry,
-      renderKey: `${sourceRow.id}:turn-${part.kind}-${partIndex}`,
-      row: cloneAssistantRow(sourceRow, part.messages, part.thinking)
+      renderKey: `${sourceRow.id}:turn-work-before`,
+      row: cloneAssistantRow(sourceRow, messagesBeforeFinal, sourceRow.thinking)
     });
+  }
+
+  appendSectionRow(sections, "visible", {
+    ...sourceEntry,
+    renderKey: `${sourceRow.id}:turn-final`,
+    row: cloneAssistantRow(
+      sourceRow,
+      [sourceRow.messages[finalMessageIndex]!],
+      []
+    )
   });
+
+  if (messagesAfterFinal.length > 0) {
+    appendSectionRow(sections, "work", {
+      ...sourceEntry,
+      renderKey: `${sourceRow.id}:turn-work-after`,
+      row: cloneAssistantRow(sourceRow, messagesAfterFinal, [])
+    });
+  }
 }
 
 function appendSectionRow(
@@ -246,13 +247,6 @@ function isExplicitWorkRow(row: AgentTurnWorkSectionRow["row"]): boolean {
     row.kind === "tool-group" ||
     row.kind === "turn-summary" ||
     row.kind === "processing"
-  );
-}
-
-function isExplicitWorkMessage(message: AgentMessageContentVM): boolean {
-  return (
-    message.presentationKind === "specific-progress" ||
-    message.presentationKind === "turn-boundary"
   );
 }
 

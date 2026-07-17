@@ -394,9 +394,20 @@ never be applied as a partial Session entity. The old public `state_patch` and
 storage message row id are removed.
 
 Message `turnId` is explicitly nullable. Runtime execution messages should use
-the exact durable Turn id, while historical imports without trustworthy
-provider turn boundaries stay session-scoped (`turnId = null`); import must not
-manufacture one live synthetic Turn per transcript message.
+the exact durable Turn id. Historical import must preserve authoritative native
+provider boundaries when they exist: for Codex, `task_started` and
+`task_complete` provide the authoritative Turn timing, while
+`turn_context.turn_id` binds the intervening transcript messages to that native
+Turn. A started Turn without its native completion event remains turnless in a
+static import snapshot; the importer must not prematurely settle it from its
+latest visible message. Re-import may enrich an existing turnless message in
+place when its stable provider message id now resolves to that exact completed
+native Turn, but it must not replace an already assigned Turn identity.
+Histories without trustworthy provider turn boundaries stay session-scoped
+(`turnId = null`); import must not infer timing from visible transcript rows or
+manufacture one synthetic Turn per message. Turn duration and transcript
+disclosure therefore consume the same canonical Turn projection for both live
+and imported sessions.
 
 It should not know how a host connects to `tuttid`, opens SSE streams, resolves
 workspace paths, or talks to Electron.

@@ -96,6 +96,7 @@ type externalImportedSession struct {
 	StartedAtUnixMS  int64
 	UpdatedAtUnixMS  int64
 	Messages         []externalImportedMessage
+	Turns            []externalImportedTurn
 	// Model and ReasoningEffort capture the provider-reported model/effort the
 	// local CLI was actually using (Codex `turn_context.model`/`effort`,
 	// Claude Code `message.model`) so imported sessions preserve the user's
@@ -112,6 +113,7 @@ type externalImportedSession struct {
 type externalImportedMessage struct {
 	RawID             string
 	MessageIDSeed     string
+	TurnID            string
 	Role              string
 	Kind              string
 	Status            string
@@ -120,6 +122,12 @@ type externalImportedMessage struct {
 	OccurredAtUnixMS  int64
 	StartedAtUnixMS   int64
 	CompletedAtUnixMS int64
+}
+
+type externalImportedTurn struct {
+	TurnID          string
+	StartedAtUnixMS int64
+	SettledAtUnixMS int64
 }
 
 type externalScanData struct {

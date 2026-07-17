@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 	"unicode/utf8"
 )
 
@@ -102,6 +103,128 @@ func TestParseCodexJSONLCapturesLatestModelAndEffortFromTurnContext(t *testing.T
 	}
 	if session.ReasoningEffort != "xhigh" {
 		t.Fatalf("reasoningEffort = %q, want latest turn_context effort", session.ReasoningEffort)
+	}
+}
+
+func TestParseCodexJSONLPreservesNativeTurnBoundaries(t *testing.T) {
+	cwd := t.TempDir()
+	firstStart := time.Date(2026, time.July, 17, 10, 0, 0, 0, time.UTC)
+	firstSettled := firstStart.Add(12 * time.Second)
+	secondStart := firstStart.Add(time.Minute)
+	secondSettled := secondStart.Add(25 * time.Second)
+	thirdStart := secondStart.Add(time.Minute)
+	session, ok, err := parseCodexJSONL(
+		filepath.Join(cwd, "rollout.jsonl"),
+		strings.NewReader(testAgentJSONL(t,
+			map[string]any{
+				"timestamp": firstStart.Add(-time.Second).Format(time.RFC3339Nano),
+				"type":      "session_meta",
+				"payload":   map[string]any{"id": "codex-turns", "cwd": cwd},
+			},
+			map[string]any{
+				"timestamp": firstStart.Format(time.RFC3339Nano),
+				"type":      "event_msg",
+				"payload":   map[string]any{"type": "task_started", "turn_id": "turn-1"},
+			},
+			map[string]any{
+				"timestamp": firstStart.Add(10 * time.Millisecond).Format(time.RFC3339Nano),
+				"type":      "turn_context",
+				"payload":   map[string]any{"turn_id": "turn-1"},
+			},
+			map[string]any{
+				"timestamp": firstStart.Add(time.Second).Format(time.RFC3339Nano),
+				"type":      "response_item",
+				"payload": map[string]any{
+					"type": "message", "id": "user-1", "role": "user",
+					"content": []any{map[string]any{"type": "input_text", "text": "First prompt"}},
+				},
+			},
+			map[string]any{
+				"timestamp": firstStart.Add(5 * time.Second).Format(time.RFC3339Nano),
+				"type":      "turn_context",
+				"payload":   map[string]any{"turn_id": "turn-1"},
+			},
+			map[string]any{
+				"timestamp": firstStart.Add(10 * time.Second).Format(time.RFC3339Nano),
+				"type":      "response_item",
+				"payload": map[string]any{
+					"type": "message", "id": "assistant-1", "role": "assistant",
+					"content": []any{map[string]any{"type": "output_text", "text": "First answer"}},
+				},
+			},
+			map[string]any{
+				"timestamp": firstSettled.Format(time.RFC3339Nano),
+				"type":      "event_msg",
+				"payload":   map[string]any{"type": "task_complete", "turn_id": "turn-1"},
+			},
+			map[string]any{
+				"timestamp": secondStart.Format(time.RFC3339Nano),
+				"type":      "event_msg",
+				"payload":   map[string]any{"type": "task_started", "turn_id": "turn-2"},
+			},
+			map[string]any{
+				"timestamp": secondStart.Add(10 * time.Millisecond).Format(time.RFC3339Nano),
+				"type":      "turn_context",
+				"payload":   map[string]any{"turn_id": "turn-2"},
+			},
+			map[string]any{
+				"timestamp": secondStart.Add(time.Second).Format(time.RFC3339Nano),
+				"type":      "response_item",
+				"payload": map[string]any{
+					"type": "message", "id": "user-2", "role": "user",
+					"content": []any{map[string]any{"type": "input_text", "text": "Second prompt"}},
+				},
+			},
+			map[string]any{
+				"timestamp": secondStart.Add(20 * time.Second).Format(time.RFC3339Nano),
+				"type":      "response_item",
+				"payload": map[string]any{
+					"type": "message", "id": "assistant-2", "role": "assistant",
+					"content": []any{map[string]any{"type": "output_text", "text": "Second answer"}},
+				},
+			},
+			map[string]any{
+				"timestamp": secondSettled.Format(time.RFC3339Nano),
+				"type":      "event_msg",
+				"payload":   map[string]any{"type": "task_complete", "turn_id": "turn-2"},
+			},
+			map[string]any{
+				"timestamp": thirdStart.Format(time.RFC3339Nano),
+				"type":      "event_msg",
+				"payload":   map[string]any{"type": "task_started", "turn_id": "turn-3"},
+			},
+			map[string]any{
+				"timestamp": thirdStart.Add(10 * time.Millisecond).Format(time.RFC3339Nano),
+				"type":      "turn_context",
+				"payload":   map[string]any{"turn_id": "turn-3"},
+			},
+			map[string]any{
+				"timestamp": thirdStart.Add(time.Second).Format(time.RFC3339Nano),
+				"type":      "response_item",
+				"payload": map[string]any{
+					"type": "message", "id": "user-3", "role": "user",
+					"content": []any{map[string]any{"type": "input_text", "text": "Still running"}},
+				},
+			},
+		)),
+	)
+	if err != nil || !ok {
+		t.Fatalf("parseCodexJSONL ok=%v err=%v", ok, err)
+	}
+	if len(session.Turns) != 2 {
+		t.Fatalf("turns = %#v, want two native turns", session.Turns)
+	}
+	if session.Turns[0].TurnID != "turn-1" || session.Turns[0].StartedAtUnixMS != firstStart.UnixMilli() || session.Turns[0].SettledAtUnixMS != firstSettled.UnixMilli() {
+		t.Fatalf("first turn = %#v", session.Turns[0])
+	}
+	if session.Turns[1].TurnID != "turn-2" || session.Turns[1].StartedAtUnixMS != secondStart.UnixMilli() || session.Turns[1].SettledAtUnixMS != secondSettled.UnixMilli() {
+		t.Fatalf("second turn = %#v", session.Turns[1])
+	}
+	wantTurnIDs := []string{"turn-1", "turn-1", "turn-2", "turn-2", ""}
+	for index, message := range session.Messages {
+		if message.TurnID != wantTurnIDs[index] {
+			t.Fatalf("message %d turnId = %q, want %q", index, message.TurnID, wantTurnIDs[index])
+		}
 	}
 }
 

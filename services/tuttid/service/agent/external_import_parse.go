@@ -16,6 +16,8 @@ import (
 
 func parseCodexJSONL(path string, reader io.Reader) (externalImportedSession, bool, error) {
 	session := externalImportedSession{Provider: agentproviderbiz.Codex, SourcePath: path}
+	activeTurnID := ""
+	turnIndexByID := map[string]int{}
 	err := readJSONLLines(reader, func(index int, raw map[string]any) {
 		timestamp := unixMSFromAny(raw["timestamp"])
 		switch stringField(raw, "type") {
@@ -40,20 +42,44 @@ func parseCodexJSONL(path string, reader io.Reader) (externalImportedSession, bo
 			if effort := stringField(payload, "effort"); effort != "" {
 				session.ReasoningEffort = effort
 			}
+			if turnID := strings.TrimSpace(firstNonEmptyString(stringField(payload, "turn_id"), stringField(payload, "turnId"))); turnID != "" {
+				activeTurnID = turnID
+				ensureExternalImportedTurn(&session, turnIndexByID, turnID)
+			}
 		case "response_item":
 			payload := mapField(raw, "payload")
 			message := codexMessageFromPayload(payload, index, timestamp)
 			if externalImportedMessageHasContent(message) {
+				message.TurnID = activeTurnID
 				session.Messages = append(session.Messages, message)
 			}
 		case "event_msg":
 			payload := mapField(raw, "payload")
-			if stringField(payload, "type") == "user_message" {
+			eventType := stringField(payload, "type")
+			turnID := strings.TrimSpace(firstNonEmptyString(stringField(payload, "turn_id"), stringField(payload, "turnId")))
+			switch eventType {
+			case "task_started":
+				if turnID != "" {
+					activeTurnID = turnID
+					turn := ensureExternalImportedTurn(&session, turnIndexByID, turnID)
+					if turn.StartedAtUnixMS <= 0 || (timestamp > 0 && timestamp < turn.StartedAtUnixMS) {
+						turn.StartedAtUnixMS = timestamp
+					}
+				}
+			case "task_complete":
+				if turnID != "" {
+					turn := ensureExternalImportedTurn(&session, turnIndexByID, turnID)
+					if turn.SettledAtUnixMS <= 0 || (timestamp > 0 && timestamp < turn.SettledAtUnixMS) {
+						turn.SettledAtUnixMS = timestamp
+					}
+				}
+			case "user_message":
 				messageText := externalContentText(payload["message"])
 				session.Title = firstNonEmptyString(session.Title, messageText)
 				if text, ok := externalImportDisplayTextCandidate(session.Provider, messageText); ok {
 					session.EventUserMessage = externalImportedMessage{
 						RawID:             "event:" + strconv.Itoa(index),
+						TurnID:            activeTurnID,
 						Role:              "user",
 						Kind:              "text",
 						Status:            "completed",
@@ -70,6 +96,17 @@ func parseCodexJSONL(path string, reader io.Reader) (externalImportedSession, bo
 		return externalImportedSession{}, false, err
 	}
 	return normalizeExternalParsedSession(session)
+}
+
+func ensureExternalImportedTurn(session *externalImportedSession, turnIndexByID map[string]int, turnID string) *externalImportedTurn {
+	if index, ok := turnIndexByID[turnID]; ok {
+		return &session.Turns[index]
+	}
+	turnIndexByID[turnID] = len(session.Turns)
+	session.Turns = append(session.Turns, externalImportedTurn{
+		TurnID: turnID,
+	})
+	return &session.Turns[len(session.Turns)-1]
 }
 
 func codexMessageFromPayload(payload map[string]any, index int, timestamp int64) externalImportedMessage {
@@ -341,10 +378,42 @@ func normalizeExternalParsedSession(session externalImportedSession) (externalIm
 		}
 	}
 	session.Messages = messages
+	session.Turns = normalizeExternalImportedTurns(session.Turns, messages)
 	session.StartedAtUnixMS = firstExternalMessageUnixMS(messages)
 	session.UpdatedAtUnixMS = lastExternalMessageUnixMS(messages)
 	session.Title = resolveExternalSessionTitle(session.Provider, session.SummaryTitle, session.Title, messages)
 	return session, true, nil
+}
+
+func normalizeExternalImportedTurns(turns []externalImportedTurn, messages []externalImportedMessage) []externalImportedTurn {
+	turnIndexByID := make(map[string]int, len(turns))
+	normalized := make([]externalImportedTurn, 0, len(turns))
+	for _, turn := range turns {
+		turn.TurnID = strings.TrimSpace(turn.TurnID)
+		if turn.TurnID == "" || turn.StartedAtUnixMS <= 0 || turn.SettledAtUnixMS < turn.StartedAtUnixMS {
+			continue
+		}
+		turnIndexByID[turn.TurnID] = len(normalized)
+		normalized = append(normalized, turn)
+	}
+	messageCountByTurn := make(map[string]int, len(normalized))
+	for index := range messages {
+		message := &messages[index]
+		turnIndex, ok := turnIndexByID[strings.TrimSpace(message.TurnID)]
+		if !ok {
+			message.TurnID = ""
+			continue
+		}
+		messageCountByTurn[normalized[turnIndex].TurnID]++
+	}
+	result := normalized[:0]
+	for _, turn := range normalized {
+		if messageCountByTurn[turn.TurnID] == 0 {
+			continue
+		}
+		result = append(result, turn)
+	}
+	return result
 }
 
 // resolveExternalImportSessionCwd resolves a session's recorded working

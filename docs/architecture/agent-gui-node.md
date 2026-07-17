@@ -230,18 +230,20 @@ Once the Turn settles, `activeTurnId` clears and its duration freezes at
 `settledAtUnixMs`, so time spent waiting for the user's next ordinary prompt is
 not added to the completed Turn. That second-level state stays inside the
 duration label so transcript rows do not re-render on every tick. A successfully
-completed Turn may start with tool calls, thinking, progress, and file summaries
-collapsed when the projection has a distinct final assistant text target
-independent of copy availability. Work classification is an explicit allowlist:
-thinking, tool groups, specific progress or turn-boundary messages, transient
-processing, and file summaries may collapse. Ordinary assistant content and
-every user message remain visible, including earlier assistant replies and
-mid-Turn user guidance before a later final answer. The disclosure model
-partitions that Turn in source order rather than globally separating user and
-agent rows: only the initial contiguous user prompt stays above the duration
-header, while the remaining visible and work segments retain their authoritative
-chronology. Split presentation rows keep their canonical row identity and use
-separate render keys.
+completed Turn may start with tool calls, thinking, progress, file summaries,
+and intermediate assistant replies collapsed when the projection has a distinct
+final assistant text target independent of copy availability. Assistant
+classification is target-based: only that final text target remains visible,
+while earlier assistant rows and assistant content before or after the target in
+the same row belong to the collapsible work. Every user message remains visible,
+including mid-Turn guidance before a later final answer. Non-assistant work rows
+remain an explicit allowlist of tool groups, transient processing, and file
+summaries so unknown row kinds fail open. The disclosure model partitions that
+Turn in source order rather than globally separating user and agent rows: only
+the initial contiguous user prompt stays above the duration header, while the
+remaining visible and work segments retain their authoritative chronology.
+Split presentation rows keep their canonical row identity and use separate
+render keys.
 
 Turn disclosure is a capability branch, not a transcript-wide container
 replacement. Only a Turn with valid canonical timing enters the Turn-level
