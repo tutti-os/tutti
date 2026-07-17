@@ -61,18 +61,18 @@ description: Internal Tutti CLI.
 	})
 
 	triggers := composerSkillOptionTriggers(options)
-	want := []string{"$architecture-review", "$caveman", "$lark-doc", "$imagegen"}
+	want := []string{"$imagegen", "$architecture-review", "$caveman", "$lark-doc"}
 	if !equalStringSlices(triggers, want) {
 		t.Fatalf("triggers = %#v, want %#v", triggers, want)
 	}
-	if options[0].SourceKind != "project" || options[1].SourceKind != "personal" || options[2].SourceKind != "personal" || options[3].SourceKind != "system" {
+	if options[0].SourceKind != "system" || options[1].SourceKind != "project" || options[2].SourceKind != "personal" || options[3].SourceKind != "personal" {
 		t.Fatalf("source kinds = %#v", options)
 	}
-	if options[1].Description != "Ultra-compressed communication mode. Use when the user asks to be brief." {
-		t.Fatalf("codex personal description = %q", options[1].Description)
+	if options[2].Description != "Ultra-compressed communication mode. Use when the user asks to be brief." {
+		t.Fatalf("codex personal description = %q", options[2].Description)
 	}
-	if options[2].Description != "Work with Lark documents. Search and edit cloud docs." {
-		t.Fatalf("folded description = %q", options[2].Description)
+	if options[3].Description != "Work with Lark documents. Search and edit cloud docs." {
+		t.Fatalf("folded description = %q", options[3].Description)
 	}
 }
 
