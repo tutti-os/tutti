@@ -466,7 +466,81 @@
 - 建議：若未來接入不帶 turn id 的 provider，應在 adapter 層合成穩定
   turn id，而非依賴時間戳兜底。
 
-## 主線 GUI 走查觀察（Wave 3-④ e2e，追加）
+### W4③-10 P0 事後修復：live 完全不觸發——測試形狀 vs live 形狀的系統性 gap
+
+- 現象：GUI 實測規則零觸發、`automation_rule_executions` 空表、tuttid.log
+  無任何 automation 日誌——單測全綠、兩輪對抗 review 通過之後。
+- 根因：`automationTriggerFromState` 只認 State 上的
+  `TurnLifecycle{phase:settled,outcome}` / `Turn{phase:settled,outcome}`，但
+  **所有三大 live adapter（codex app-server、Claude SDK、standard ACP）都是
+  root-provider-lifecycle 形態**：終局事實只以
+  `RootProviderTurn{phase:completed}` patch 上報（reporter_state.go 對
+  EventRootProviderTurnCompleted 明確不產生 Turn/TurnLifecycle patch），
+  canonical settled+outcome 是 store 在 `applyRootProviderTurnTransitionTx` /
+  `reconcileRootTurnAfterChildTerminalTx` 聚合中**自己寫出來的**，從不出現在
+  任何送達 SessionStateObservers 的 State 裡。觀察者在入口 `!ok` 靜默返回，
+  故零日誌。
+- 為什麼單測漏掉：所有 ObserveAgentSessionState 測試都手工構造
+  `TurnLifecycle{ActiveTurnID:&id, Phase:"settled", Outcome:&outcome}`——一個
+  「順著判別條件的實現」再造出來的形狀（連 ActiveTurnID 都違反 ADR 0008
+  「settled 後 ActiveTurnID 為空」的快照契約），而不是重放任何 adapter 的
+  真實 patch 序列。測試證明了「判別函數對它自己期望的形狀有效」，沒有證明
+  「live 上存在會產生這個形狀的上游」。
+- 為什麼兩輪對抗 review 也漏掉：review 的證據面停在 automationrule 包內
+  （判別條件 vs biz 語義 vs 預算/dedup），沒有向下追問「settled+outcome 的
+  State 是誰、在哪條 live 路徑上發出來的」。而倉庫內同形狀消費者（issue run
+  observer、collabrun settlement、modelpolicy acceptance）全都長期存在同款
+  判別，形成「大家都這麼讀所以形狀一定會來」的錯誤共識；唯一真正把 canonical
+  settle 餵給觀察者的先例（`SettleStaleTurnsOnStartup` 的合成輸入）只覆蓋
+  啟動重建路徑，正常 settle 路徑從 protocol v2 起就沒有等價物。
+- 修復（修在正確的層）：projection 在 canonical root turn settle 提交點
+  （`observeRootTurnSettled`，覆蓋正常聚合、子會話 drain、cancel 三條路徑）
+  合成與 stale-startup 同款的 settled State 輸入，fan-out 給**專用 opt-in
+  觀察者清單**（`SetRootTurnSettleStateObserver`，本波僅掛 automationRules，
+  見 W4③-11），附 session 的 agentTargetID/runtimeContext（保住來源匹配、
+  rescue 深度與 usage settle-once）；session 讀取失敗/缺行時**放棄本次
+  fan-out**（runtimeContext 裡的 automation-origin 標記是鏈式防護唯一斷路器，
+  少送優於送錯，durable dedup 保證只是漏一次觸發）。交付語義為
+  at-least-once（cancel AlreadySettled 重疊、outbox publish-再-mark 重試），
+  觀察者必須自帶冪等。並補 child-session 守衛（codex collab 子線程自己的
+  settled patch 不評估規則）。判別條件本身不動。
+- 附註（review #5）：合成路徑使用的 `JoinSessionRuntimeContext` 是 panic
+  包裝（session_metadata.go:231-237）；輸入是同一 store 剛 split 過的行，
+  實際不可達，與既有讀路徑（service_session.go:38,42）同險級，記錄備查。
+- 判別性測試教訓：red→green 測試必須**重放 live patch 形狀**（running Turn
+  patch → 純 RootProviderTurn completed patch，經真實 sqlite store + 真實
+  projection），而不是直接構造判別函數期待的 State。凡是「觀察者判別 State
+  形狀」的新消費者，都應以這條 integration 路徑為模板取證上游真實形狀。
+
+### W4③-11 settle fan-out 僅 opt-in 給 automationrule；其餘同形狀消費者維持 live 現狀
+
+- 現狀：canonical root-turn settle 的合成觀察走**專用清單**
+  （wiring `SetRootTurnSettleStateObserver`，只註冊 automationRules），不餵
+  wiring 547 的全量 SessionStateObservers。issue-run settlement
+  （issue_run_observer.go）、collabrun 卡片 settle（collabrun/service.go
+  collaborationSettlement）、modelpolicy 驗收自動升級（review_engine.go）、
+  appFactory 終態處理在 live 依然收不到 turn settle——**歷史如此**（它們
+  判別的 settled State 形狀從 protocol v2 起就沒有 live 生產者），本修復
+  不改變其行為。
+- 為什麼不一併復活：對抗 review 發現 issue-run 觀察者有真實回歸——live 上
+  Issue run 完結歷來靠 agent 自報 CompleteRun + 閒置 grace reconciler
+  （issues_reconciler.go:118-172）兜底，天然容忍多輪會話；觀察者路徑零容忍，
+  plan/goal/prompt-queue 的多輪會話會在**首輪** turn settle 就被標成
+  completed（無 outputs），工作還在跑。其餘消費者亦各有未裁決語義
+  （collabrun 卡片何時算 settle、modelpolicy 是否應在每輪完成都上驗收梯）。
+- 後續：任一消費者要復活，須先逐個裁決語義（多輪、cancel、automation-origin
+  的處理），再掛入專用清單並自帶冪等（交付是 at-least-once）。
+
+### W4③-12 殘餘 child 被 cancel 時 root 以 completed settle，Stop 手勢可觸發 on_task_complete（待裁決）
+
+- 邊角（review #4）：provider root turn 已以 outcome=completed 完結、但仍有
+  child 在跑（canonical root 轉 waiting）時，用戶 Stop 取消殘餘 child →
+  `reconcileRootTurnAfterChildTerminalTx`（root_turn_completion.go:162-173）
+  用**記錄在案的 RootProviderTurnOutcome=completed** settle root——用戶的
+  取消手勢在此場景會觸發 on_task_complete 自動化規則。
+- 評估：這是 store 既有的 root outcome 語義（provider 事實優先），非本波
+  引入；觸發一次且被 dedup 約束。是否應以「用戶意圖」（interrupted/canceled）
+  覆蓋 outcome、或在自動化判別側對此類 settle 降級，留待需求方裁決。
 
 ### W3-GUI-4 Agent 缺乏 plan 文檔格式規格來源，被遺留舊格式檔誤導
 

@@ -350,6 +350,13 @@ func (s *Service) ObserveAgentSessionState(ctx context.Context, input agentsessi
 	if !ok {
 		return
 	}
+	// Automation rules are defined over root Sessions. Child sessions (for
+	// example codex collab threads) report their own settled turns through
+	// the same state pipeline, and the root's canonical settlement arrives
+	// separately via the projection's root-turn observation.
+	if automationStateIsChildSession(input.State) {
+		return
+	}
 	workspaceID := strings.TrimSpace(input.WorkspaceID)
 	sessionID := strings.TrimSpace(input.AgentSessionID)
 	if workspaceID == "" || sessionID == "" {
@@ -572,6 +579,13 @@ func (s *Service) runRule(key string, workspaceID string, sessionID string, sour
 	}); err != nil {
 		slog.Warn("automation rule execution failed", "event", "automation_rule.execute_failed", "rule_id", rule.ID, "error", err)
 	}
+}
+
+func automationStateIsChildSession(state agentsessionstore.WorkspaceAgentSessionStateUpdate) bool {
+	if strings.EqualFold(strings.TrimSpace(state.Kind), "child") {
+		return true
+	}
+	return strings.TrimSpace(state.ParentAgentSessionID) != ""
 }
 
 func automationTriggerFromState(state agentsessionstore.WorkspaceAgentSessionStateUpdate) (automationrulebiz.Trigger, bool) {
