@@ -212,6 +212,45 @@ func modelPlanProtocolForProvider(provider string) (modelplanbiz.Protocol, bool)
 	return modelplanbiz.Protocol(protocol), ok
 }
 
+// planModelComposerValue renders a plan-domain model id as the composer and
+// session-settings value for one provider, dispatching on the registry-declared
+// model addressing strategy. Provider-prefixed runtimes (OpenCode) resolve
+// models against the session-scoped provider config injected by runtimeprep,
+// so their values carry the injected provider namespace; every other provider
+// consumes raw plan model ids.
+func planModelComposerValue(provider string, modelID string) string {
+	if agentprovider.ModelPlanModelAddressingProviderPrefixed(provider) {
+		return runtimeprep.OpenCodePlanModelValue(modelID)
+	}
+	return strings.TrimSpace(modelID)
+}
+
+// planModelIDFromComposerValue maps a composer/settings model value back to
+// the plan-domain model id (inverse of planModelComposerValue). Values without
+// the injected namespace pass through unchanged, so raw ids stay valid.
+func planModelIDFromComposerValue(provider string, value string) string {
+	if agentprovider.ModelPlanModelAddressingProviderPrefixed(provider) {
+		return runtimeprep.OpenCodePlanModelID(value)
+	}
+	return strings.TrimSpace(value)
+}
+
+// modelEndpointModels projects the plan's model list into the redaction-safe
+// endpoint DTO so provider preparers can materialize a full session catalog.
+func modelEndpointModels(models []modelplanbiz.Model) []runtimeprep.ModelEndpointModel {
+	if len(models) == 0 {
+		return nil
+	}
+	endpointModels := make([]runtimeprep.ModelEndpointModel, 0, len(models))
+	for _, model := range models {
+		endpointModels = append(endpointModels, runtimeprep.ModelEndpointModel{
+			ID:   model.ID,
+			Name: model.Name,
+		})
+	}
+	return endpointModels
+}
+
 // resolveModelPlanEndpoint resolves the injected endpoint for one session
 // launch plus the plan's model list for validation. It returns nil when the
 // target has no usable plan binding.
@@ -276,14 +315,15 @@ func (s *Service) resolveModelPlan(ctx context.Context, workspaceID string, agen
 		)
 		return providerNative
 	}
-	model := resolvePlanSessionModel(plan, binding, requestedModel)
+	model := resolvePlanSessionModel(plan, binding, planModelIDFromComposerValue(provider, requestedModel))
 	return modelPlanResolution{
 		Endpoint: &runtimeprep.ModelEndpointConfig{
 			PlanName: plan.Name,
 			Protocol: string(plan.Protocol),
 			BaseURL:  plan.BaseURL,
 			APIKey:   plan.APIKey,
-			Model:    model,
+			Model:    planModelComposerValue(provider, model),
+			Models:   modelEndpointModels(plan.Models),
 		},
 		Models:             modelplanbiz.CloneModels(plan.Models),
 		ModelConfiguration: newModelPlanModelConfiguration(provider, agentTargetID, binding, plan),
@@ -294,7 +334,7 @@ func (s *Service) resolveModelPlan(ctx context.Context, workspaceID string, agen
 // bound plan does not expose. An empty request always resolves to the plan
 // default.
 func validateModelAgainstPlan(provider string, requestedModel string, planModels []modelplanbiz.Model) error {
-	requestedModel = strings.TrimSpace(requestedModel)
+	requestedModel = planModelIDFromComposerValue(provider, requestedModel)
 	if requestedModel == "" || modelplanbiz.ModelsContain(planModels, requestedModel) {
 		return nil
 	}
@@ -349,7 +389,10 @@ func (s *Service) registerPendingPlanFirstUse(workspaceID string, agentSessionID
 	runtime.pending[pendingPlanFirstUseKey(workspaceID, agentSessionID)] = pendingPlanFirstUse{
 		PlanID:        strings.TrimSpace(modelPlanID),
 		AgentTargetID: strings.TrimSpace(agentTargetID),
-		Model:         endpoint.Model,
+		// The marker records the plan-domain model id; composer values may
+		// carry a provider namespace (OpenCode), which strips as a no-op for
+		// raw ids.
+		Model: runtimeprep.OpenCodePlanModelID(endpoint.Model),
 	}
 }
 
@@ -443,7 +486,7 @@ func pendingPlanFirstUseFromSnapshot(snapshot sessionRuntimeSnapshot) (pendingPl
 	value := pendingPlanFirstUse{
 		PlanID:        strings.TrimSpace(snapshot.ModelPlanID),
 		AgentTargetID: strings.TrimSpace(snapshot.AgentTargetID),
-		Model:         strings.TrimSpace(snapshot.Model),
+		Model:         runtimeprep.OpenCodePlanModelID(snapshot.Model),
 	}
 	if value.Model == "" {
 		value.Model = strings.TrimSpace(snapshot.ModelDefaultModel)
@@ -474,10 +517,11 @@ func applyResolvedModelPlanComposerOverlay(options ComposerOptions, resolution m
 	planModels := resolution.Models
 	modelOptions := make([]ComposerConfigOptionValue, 0, len(planModels))
 	for _, model := range planModels {
+		value := planModelComposerValue(options.Provider, model.ID)
 		modelOptions = append(modelOptions, ComposerConfigOptionValue{
-			ID:          model.ID,
+			ID:          value,
 			Label:       model.Name,
-			Value:       model.ID,
+			Value:       value,
 			Description: endpoint.PlanName,
 		})
 	}
@@ -574,14 +618,15 @@ func resolveProvidedModelPlan(provider string, agentTargetID string, plan modelp
 		return modelPlanResolution{}, err
 	}
 	binding := modelbindingbiz.Binding{DefaultModel: strings.TrimSpace(configuredDefaultModel)}
-	model := resolvePlanSessionModel(plan, binding, requestedModel)
+	model := resolvePlanSessionModel(plan, binding, planModelIDFromComposerValue(provider, requestedModel))
 	return modelPlanResolution{
 		Endpoint: &runtimeprep.ModelEndpointConfig{
 			PlanName: plan.Name,
 			Protocol: string(plan.Protocol),
 			BaseURL:  plan.BaseURL,
 			APIKey:   plan.APIKey,
-			Model:    model,
+			Model:    planModelComposerValue(provider, model),
+			Models:   modelEndpointModels(plan.Models),
 		},
 		Models:             modelplanbiz.CloneModels(plan.Models),
 		ModelConfiguration: newModelPlanModelConfiguration(provider, agentTargetID, binding, plan),

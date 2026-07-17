@@ -248,6 +248,7 @@ func TestResolveModelPlanProtocolUsesProviderStrategy(t *testing.T) {
 		{provider: "codex", want: ModelPlanProtocolOpenAI, wantOK: true},
 		{provider: "Claude Code", want: ModelPlanProtocolAnthropic, wantOK: true},
 		{provider: "tutti-agent", want: ModelPlanProtocolOpenAI, wantOK: true},
+		{provider: "opencode", want: ModelPlanProtocolOpenAI, wantOK: true},
 		{provider: "cursor", want: "", wantOK: false},
 		{provider: "acp:custom", want: "", wantOK: false},
 	}
@@ -255,6 +256,25 @@ func TestResolveModelPlanProtocolUsesProviderStrategy(t *testing.T) {
 		got, ok := ResolveModelPlanProtocol(test.provider)
 		if got != test.want || ok != test.wantOK {
 			t.Errorf("ResolveModelPlanProtocol(%q) = %q, %v; want %q, %v", test.provider, got, ok, test.want, test.wantOK)
+		}
+	}
+}
+
+func TestResolveModelPlanModelAddressingUsesProviderStrategy(t *testing.T) {
+	tests := []struct {
+		provider string
+		want     ModelPlanModelAddressing
+		wantOK   bool
+	}{
+		{provider: "opencode", want: ModelPlanModelAddressingProviderPrefixed, wantOK: true},
+		{provider: "codex", want: "", wantOK: false},
+		{provider: "Claude Code", want: "", wantOK: false},
+		{provider: "acp:custom", want: "", wantOK: false},
+	}
+	for _, test := range tests {
+		got, ok := ResolveModelPlanModelAddressing(test.provider)
+		if got != test.want || ok != test.wantOK {
+			t.Errorf("ResolveModelPlanModelAddressing(%q) = %q, %v; want %q, %v", test.provider, got, ok, test.want, test.wantOK)
 		}
 	}
 }

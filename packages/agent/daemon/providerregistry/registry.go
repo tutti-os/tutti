@@ -73,6 +73,18 @@ func ResolveModelPlanProtocol(value string) (ModelPlanProtocol, bool) {
 	return protocol, protocol != ""
 }
 
+// ResolveModelPlanModelAddressing returns the composer/settings addressing a
+// migrated provider runtime declares for bound plan models. The empty value
+// (raw plan model ids) resolves as unset.
+func ResolveModelPlanModelAddressing(value string) (ModelPlanModelAddressing, bool) {
+	index, ok := providerDescriptorIndex[normalize(value)]
+	if !ok {
+		return "", false
+	}
+	addressing := migratedDescriptors[index].Runtime.Endpoint.ModelPlanModelAddressing
+	return addressing, addressing != ""
+}
+
 // NativeSubscriptionTarget is the credential-free local runtime route used to
 // validate one official subscription protocol.
 type NativeSubscriptionTarget struct {
@@ -300,6 +312,14 @@ func Validate(descriptor ProviderDescriptor) error {
 	case "", ModelPlanProtocolAnthropic, ModelPlanProtocolOpenAI:
 	default:
 		return fmt.Errorf("provider %q model plan protocol %q is unsupported", providerID, descriptor.Runtime.Endpoint.ModelPlanProtocol)
+	}
+	switch descriptor.Runtime.Endpoint.ModelPlanModelAddressing {
+	case "", ModelPlanModelAddressingProviderPrefixed:
+	default:
+		return fmt.Errorf("provider %q model plan model addressing %q is unsupported", providerID, descriptor.Runtime.Endpoint.ModelPlanModelAddressing)
+	}
+	if descriptor.Runtime.Endpoint.ModelPlanModelAddressing != "" && descriptor.Runtime.Endpoint.ModelPlanProtocol == "" {
+		return fmt.Errorf("provider %q model plan model addressing requires a model plan protocol", providerID)
 	}
 	if descriptor.Runtime.Endpoint.NativeSubscription && descriptor.Runtime.Endpoint.ModelPlanProtocol == "" {
 		return fmt.Errorf("provider %q native subscription requires a model plan protocol", providerID)
