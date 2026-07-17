@@ -1609,6 +1609,7 @@ export type {
   WorkspaceWorkflowPlanRevision,
   WorkspaceWorkflowSnapshot,
   WorkspaceWorkflowStatus,
+  WorkspaceWorkflowTaskAssignment,
   WorkspaceWorkflowTurnLink,
   WriteWorkspaceFileTextData,
   WriteWorkspaceFileTextError,

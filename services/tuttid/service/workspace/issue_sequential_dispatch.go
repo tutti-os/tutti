@@ -154,10 +154,22 @@ func (s IssueManagerService) startIssueTask(ctx context.Context, issue workspace
 	model := optionalTrimmedString(task.Model)
 	modelPlanID := optionalTrimmedString(task.ModelPlanID)
 	cwd := optionalTrimmedString(executionDirectory)
+	// Task-level launch overrides recorded from the Tutti Mode plan review.
+	// An explicit reasoning effort wins over the Issue-inherited intensity;
+	// an explicit permission mode wins over the target's composer default.
+	// The permission mode the user confirmed in the review panel must never
+	// silently broaden: an unsupported/stale explicit mode fails the launch
+	// (run lands failed) instead of degrading to the provider default, per
+	// the unattended-automation StrictPermissionMode precedent.
+	reasoningEffort := optionalTrimmedString(task.ReasoningEffort)
+	permissionModeID := optionalTrimmedString(task.PermissionModeID)
 	_, err = s.AgentSessionCreator.Create(ctx, issue.WorkspaceID, agentservice.CreateSessionInput{
-		AgentSessionID:     agentSessionID,
-		AgentTargetID:      task.AgentTargetID,
-		ReasoningIntensity: &run.ReasoningIntensity,
+		AgentSessionID:       agentSessionID,
+		AgentTargetID:        task.AgentTargetID,
+		ReasoningIntensity:   &run.ReasoningIntensity,
+		ReasoningEffort:      reasoningEffort,
+		PermissionModeID:     permissionModeID,
+		StrictPermissionMode: permissionModeID != nil,
 		AutomationRuleOverride: s.issueAutomationRuleOverride(
 			ctx,
 			issue.WorkspaceID,

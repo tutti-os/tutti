@@ -155,6 +155,18 @@ func IsCheckpointDecision(value CheckpointStatus) bool {
 	}
 }
 
+// TaskAssignment is one user-owned per-task assignment override recorded
+// durably with an accepted task review decision. Nil fields keep the plan
+// document value; empty strings explicitly clear it.
+type TaskAssignment struct {
+	TaskID           string
+	AgentTargetID    *string
+	ModelPlanID      *string
+	Model            *string
+	PermissionModeID *string
+	ReasoningEffort  *string
+}
+
 type WorkflowCheckpoint struct {
 	ID             string
 	WorkflowID     string
@@ -163,9 +175,11 @@ type WorkflowCheckpoint struct {
 	Status         CheckpointStatus
 	DecidedBy      string
 	DecisionReason string
-	CreatedAt      time.Time
-	UpdatedAt      time.Time
-	DecidedAt      time.Time
+	// TaskAssignments is recorded only on an accepted task review decision.
+	TaskAssignments []TaskAssignment
+	CreatedAt       time.Time
+	UpdatedAt       time.Time
+	DecidedAt       time.Time
 }
 
 type OperationKind string
@@ -381,12 +395,53 @@ func NormalizePlanRevision(value PlanRevision) (PlanRevision, error) {
 	return value, nil
 }
 
+// NormalizeTaskAssignments validates and canonicalizes per-task overrides.
+// Task IDs must be unique and non-empty; nil override fields stay nil while
+// non-nil values are trimmed (an explicit empty string clears the field).
+func NormalizeTaskAssignments(values []TaskAssignment) ([]TaskAssignment, error) {
+	if len(values) == 0 {
+		return nil, nil
+	}
+	seen := make(map[string]struct{}, len(values))
+	result := make([]TaskAssignment, 0, len(values))
+	for _, value := range values {
+		value.TaskID = strings.TrimSpace(value.TaskID)
+		if value.TaskID == "" {
+			return nil, fmt.Errorf("%w: task assignment requires a task id", ErrInvalidWorkflow)
+		}
+		if _, exists := seen[value.TaskID]; exists {
+			return nil, fmt.Errorf("%w: duplicate task assignment for %q", ErrInvalidWorkflow, value.TaskID)
+		}
+		seen[value.TaskID] = struct{}{}
+		value.AgentTargetID = trimStringPointer(value.AgentTargetID)
+		value.ModelPlanID = trimStringPointer(value.ModelPlanID)
+		value.Model = trimStringPointer(value.Model)
+		value.PermissionModeID = trimStringPointer(value.PermissionModeID)
+		value.ReasoningEffort = trimStringPointer(value.ReasoningEffort)
+		result = append(result, value)
+	}
+	return result, nil
+}
+
+func trimStringPointer(value *string) *string {
+	if value == nil {
+		return nil
+	}
+	trimmed := strings.TrimSpace(*value)
+	return &trimmed
+}
+
 func NormalizeCheckpoint(value WorkflowCheckpoint) (WorkflowCheckpoint, error) {
 	value.ID = strings.TrimSpace(value.ID)
 	value.WorkflowID = strings.TrimSpace(value.WorkflowID)
 	value.RevisionID = strings.TrimSpace(value.RevisionID)
 	value.DecidedBy = strings.TrimSpace(value.DecidedBy)
 	value.DecisionReason = strings.TrimSpace(value.DecisionReason)
+	normalizedAssignments, err := NormalizeTaskAssignments(value.TaskAssignments)
+	if err != nil {
+		return WorkflowCheckpoint{}, err
+	}
+	value.TaskAssignments = normalizedAssignments
 	if value.ID == "" || value.WorkflowID == "" || value.RevisionID == "" || !IsCheckpointKind(value.Kind) || !IsCheckpointStatus(value.Status) {
 		return WorkflowCheckpoint{}, fmt.Errorf("%w: invalid workflow checkpoint", ErrInvalidWorkflow)
 	}

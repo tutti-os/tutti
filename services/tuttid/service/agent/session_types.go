@@ -482,6 +482,9 @@ type TuttiModeTurnSnapshot struct {
 	Revision     int64
 	State        string
 	Source       string
+	// OrchestrationIntensity is the planning strength captured by the exact
+	// activation revision this turn observed.
+	OrchestrationIntensity int
 }
 
 type RuntimeExecResult struct {
@@ -684,6 +687,8 @@ type CreateSessionInput struct {
 type TuttiModeActivationIntent struct {
 	State  string
 	Source string
+	// OrchestrationIntensity is optional; nil uses the daemon default.
+	OrchestrationIntensity *int
 }
 
 type SessionSkillBundle struct {

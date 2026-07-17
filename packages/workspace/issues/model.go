@@ -135,20 +135,26 @@ type Issue struct {
 }
 
 type Task struct {
-	ID                 uint64
-	TaskID             string
-	IssueID            string
-	WorkspaceID        string
-	Title              string
-	Content            string
-	SearchText         string
-	Status             Status
-	Priority           Priority
-	SortIndex          int
-	DueAtUnixMS        int64
-	AgentTargetID      string
-	ModelPlanID        string
-	Model              string
+	ID            uint64
+	TaskID        string
+	IssueID       string
+	WorkspaceID   string
+	Title         string
+	Content       string
+	SearchText    string
+	Status        Status
+	Priority      Priority
+	SortIndex     int
+	DueAtUnixMS   int64
+	AgentTargetID string
+	ModelPlanID   string
+	Model         string
+	// PermissionModeID and ReasoningEffort are task-level launch overrides
+	// recorded from the Tutti Mode plan review. Empty inherits the target's
+	// composer default (permission mode) or the Issue-level reasoning
+	// intensity compilation (reasoning effort).
+	PermissionModeID   string
+	ReasoningEffort    string
 	ExecutionDirectory string
 	DependencyTaskIDs  []string
 	AcceptanceState    AcceptanceState

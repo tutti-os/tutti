@@ -3,6 +3,7 @@ package workspace
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
@@ -163,7 +164,7 @@ SELECT
   w.source_turn_id, w.source_tool_call_id, w.status, w.current_revision_id,
   w.created_at_unix_ms, w.updated_at_unix_ms,
   c.checkpoint_id, c.kind, c.revision_id, c.status, c.decided_by,
-  c.decision_reason, c.created_at_unix_ms, c.updated_at_unix_ms, c.decided_at_unix_ms,
+  c.decision_reason, c.task_assignments, c.created_at_unix_ms, c.updated_at_unix_ms, c.decided_at_unix_ms,
   r.revision_sequence, r.schema_version, r.document_path, r.sha256,
   r.produced_by_turn_id, r.created_at_unix_ms
 FROM workspace_workflows w
@@ -187,6 +188,7 @@ ORDER BY c.created_at_unix_ms ASC, c.checkpoint_id ASC
 		var workflowCreated, workflowUpdated int64
 		var checkpointCreated, checkpointUpdated, checkpointDecided int64
 		var revisionCreated int64
+		var encodedAssignments string
 		item.Workflow.WorkspaceID = workspaceID
 		item.Workflow.SourceSessionID = sourceSessionID
 		if err := rows.Scan(
@@ -194,12 +196,15 @@ ORDER BY c.created_at_unix_ms ASC, c.checkpoint_id ASC
 			&item.Workflow.SourceTurnID, &item.Workflow.SourceToolCallID, &item.Workflow.Status, &item.Workflow.CurrentRevisionID,
 			&workflowCreated, &workflowUpdated,
 			&item.Checkpoint.ID, &item.Checkpoint.Kind, &item.Checkpoint.RevisionID, &item.Checkpoint.Status,
-			&item.Checkpoint.DecidedBy, &item.Checkpoint.DecisionReason,
+			&item.Checkpoint.DecidedBy, &item.Checkpoint.DecisionReason, &encodedAssignments,
 			&checkpointCreated, &checkpointUpdated, &checkpointDecided,
 			&item.Revision.Sequence, &item.Revision.SchemaVersion, &item.Revision.DocumentPath,
 			&item.Revision.SHA256, &item.Revision.ProducedByTurnID, &revisionCreated,
 		); err != nil {
 			return nil, fmt.Errorf("scan pending workflow checkpoint: %w", err)
+		}
+		if item.Checkpoint.TaskAssignments, err = decodeWorkflowTaskAssignments(encodedAssignments); err != nil {
+			return nil, err
 		}
 		item.Workflow.CreatedAt = time.UnixMilli(workflowCreated).UTC()
 		item.Workflow.UpdatedAt = time.UnixMilli(workflowUpdated).UTC()
@@ -361,18 +366,82 @@ INSERT INTO workspace_workflow_plan_revisions (
 }
 
 func insertWorkflowCheckpoint(ctx context.Context, executor workflowSQLExecutor, workspaceID string, checkpoint workflowbiz.WorkflowCheckpoint) error {
-	_, err := executor.ExecContext(ctx, `
+	encodedAssignments, err := encodeWorkflowTaskAssignments(checkpoint.TaskAssignments)
+	if err != nil {
+		return err
+	}
+	_, err = executor.ExecContext(ctx, `
 INSERT INTO workspace_workflow_checkpoints (
   workspace_id, workflow_id, checkpoint_id, kind, revision_id, status,
-  decided_by, decision_reason, created_at_unix_ms, updated_at_unix_ms, decided_at_unix_ms
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  decided_by, decision_reason, task_assignments, created_at_unix_ms, updated_at_unix_ms, decided_at_unix_ms
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 `, workspaceID, checkpoint.WorkflowID, checkpoint.ID, checkpoint.Kind, checkpoint.RevisionID,
-		checkpoint.Status, checkpoint.DecidedBy, checkpoint.DecisionReason,
+		checkpoint.Status, checkpoint.DecidedBy, checkpoint.DecisionReason, encodedAssignments,
 		unixMs(checkpoint.CreatedAt), unixMs(checkpoint.UpdatedAt), unixMsOrZero(checkpoint.DecidedAt))
 	if err != nil {
 		return fmt.Errorf("insert workspace workflow checkpoint: %w", err)
 	}
 	return nil
+}
+
+// workflowTaskAssignmentRecord is the durable JSON shape for one per-task
+// assignment override. Pointer fields keep the null-versus-empty distinction.
+type workflowTaskAssignmentRecord struct {
+	TaskID           string  `json:"taskId"`
+	AgentTargetID    *string `json:"agentTargetId,omitempty"`
+	ModelPlanID      *string `json:"modelPlanId,omitempty"`
+	Model            *string `json:"model,omitempty"`
+	PermissionModeID *string `json:"permissionModeId,omitempty"`
+	ReasoningEffort  *string `json:"reasoningEffort,omitempty"`
+}
+
+func encodeWorkflowTaskAssignments(values []workflowbiz.TaskAssignment) (string, error) {
+	normalized, err := workflowbiz.NormalizeTaskAssignments(values)
+	if err != nil {
+		return "", err
+	}
+	if len(normalized) == 0 {
+		return "", nil
+	}
+	records := make([]workflowTaskAssignmentRecord, 0, len(normalized))
+	for _, value := range normalized {
+		records = append(records, workflowTaskAssignmentRecord{
+			TaskID:           value.TaskID,
+			AgentTargetID:    value.AgentTargetID,
+			ModelPlanID:      value.ModelPlanID,
+			Model:            value.Model,
+			PermissionModeID: value.PermissionModeID,
+			ReasoningEffort:  value.ReasoningEffort,
+		})
+	}
+	encoded, err := json.Marshal(records)
+	if err != nil {
+		return "", fmt.Errorf("encode workflow task assignments: %w", err)
+	}
+	return string(encoded), nil
+}
+
+func decodeWorkflowTaskAssignments(encoded string) ([]workflowbiz.TaskAssignment, error) {
+	encoded = strings.TrimSpace(encoded)
+	if encoded == "" {
+		return nil, nil
+	}
+	var records []workflowTaskAssignmentRecord
+	if err := json.Unmarshal([]byte(encoded), &records); err != nil {
+		return nil, fmt.Errorf("decode workflow task assignments: %w", err)
+	}
+	values := make([]workflowbiz.TaskAssignment, 0, len(records))
+	for _, record := range records {
+		values = append(values, workflowbiz.TaskAssignment{
+			TaskID:           record.TaskID,
+			AgentTargetID:    record.AgentTargetID,
+			ModelPlanID:      record.ModelPlanID,
+			Model:            record.Model,
+			PermissionModeID: record.PermissionModeID,
+			ReasoningEffort:  record.ReasoningEffort,
+		})
+	}
+	return workflowbiz.NormalizeTaskAssignments(values)
 }
 
 func insertWorkflowTurnLink(ctx context.Context, executor workflowSQLExecutor, workspaceID string, link workflowbiz.WorkflowTurnLink) error {
@@ -459,7 +528,7 @@ ORDER BY revision_sequence ASC
 
 func listWorkflowCheckpoints(ctx context.Context, queryer workflowSQLQueryer, workspaceID string, workflowID string) ([]workflowbiz.WorkflowCheckpoint, error) {
 	rows, err := queryer.QueryContext(ctx, `
-SELECT checkpoint_id, kind, revision_id, status, decided_by, decision_reason,
+SELECT checkpoint_id, kind, revision_id, status, decided_by, decision_reason, task_assignments,
        created_at_unix_ms, updated_at_unix_ms, decided_at_unix_ms
 FROM workspace_workflow_checkpoints
 WHERE workspace_id = ? AND workflow_id = ?
@@ -543,7 +612,7 @@ type workflowRowScanner interface {
 
 func getWorkflowCheckpoint(ctx context.Context, queryer workflowSQLQueryer, workspaceID string, workflowID string, checkpointID string) (workflowbiz.WorkflowCheckpoint, error) {
 	row := queryer.QueryRowContext(ctx, `
-SELECT checkpoint_id, kind, revision_id, status, decided_by, decision_reason,
+SELECT checkpoint_id, kind, revision_id, status, decided_by, decision_reason, task_assignments,
        created_at_unix_ms, updated_at_unix_ms, decided_at_unix_ms
 FROM workspace_workflow_checkpoints
 WHERE workspace_id = ? AND workflow_id = ? AND checkpoint_id = ?
@@ -558,11 +627,17 @@ WHERE workspace_id = ? AND workflow_id = ? AND checkpoint_id = ?
 func scanWorkflowCheckpoint(scanner workflowRowScanner, workflowID string) (workflowbiz.WorkflowCheckpoint, error) {
 	var checkpoint workflowbiz.WorkflowCheckpoint
 	var createdAt, updatedAt, decidedAt int64
+	var encodedAssignments string
 	checkpoint.WorkflowID = workflowID
 	if err := scanner.Scan(&checkpoint.ID, &checkpoint.Kind, &checkpoint.RevisionID, &checkpoint.Status,
-		&checkpoint.DecidedBy, &checkpoint.DecisionReason, &createdAt, &updatedAt, &decidedAt); err != nil {
+		&checkpoint.DecidedBy, &checkpoint.DecisionReason, &encodedAssignments, &createdAt, &updatedAt, &decidedAt); err != nil {
 		return workflowbiz.WorkflowCheckpoint{}, err
 	}
+	assignments, err := decodeWorkflowTaskAssignments(encodedAssignments)
+	if err != nil {
+		return workflowbiz.WorkflowCheckpoint{}, err
+	}
+	checkpoint.TaskAssignments = assignments
 	checkpoint.CreatedAt = time.UnixMilli(createdAt).UTC()
 	checkpoint.UpdatedAt = time.UnixMilli(updatedAt).UTC()
 	checkpoint.DecidedAt = optionalUnixMs(decidedAt)

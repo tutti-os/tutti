@@ -1967,6 +1967,10 @@ export type TuttiModeActivationRevision = {
   revision: number;
   status: TuttiModeActivationStatus;
   source: TuttiModeActivationSource;
+  /**
+   * Session-scoped orchestration intensity captured with this activation revision. Higher values ask the planning agent for finer-grained task decomposition.
+   */
+  orchestrationIntensity: number;
   createdAtUnixMs: number;
 };
 
@@ -1983,6 +1987,10 @@ export type TuttiModeActivation = {
 export type TuttiModeActivationIntent = {
   status: TuttiModeActivationStatus;
   source: TuttiModeActivationSource;
+  /**
+   * Optional orchestration intensity carried with the initial activation. Omitted uses the daemon default.
+   */
+  orchestrationIntensity?: number | null;
 };
 
 export type TuttiModeActivationResponse = {
@@ -1995,6 +2003,10 @@ export type TuttiModeActivationResponse = {
 export type UpdateTuttiModeActivationRequest = {
   status: TuttiModeActivationStatus;
   source: TuttiModeActivationSource;
+  /**
+   * Optional orchestration intensity persisted with the appended activation revision. Omitted keeps the current value, or the daemon default for the first revision.
+   */
+  orchestrationIntensity?: number | null;
   /**
    * Optional optimistic-concurrency guard. Zero means no activation revision exists yet.
    */
@@ -3009,6 +3021,14 @@ export type TuttiModePlanTask = {
   agentTargetId: string | null;
   modelPlanId: string | null;
   model: string | null;
+  /**
+   * Task-level permission mode applied when the materialized Issue task launches.
+   */
+  permissionModeId: string | null;
+  /**
+   * Task-level reasoning effort applied when the materialized Issue task launches.
+   */
+  reasoningEffort: string | null;
   executionDirectory: string | null;
   dependsOn: Array<string>;
 };
@@ -3102,10 +3122,26 @@ export type WorkspaceWorkflowListResponse = {
   workflows: Array<WorkspaceWorkflowSnapshot>;
 };
 
+/**
+ * User-owned per-task assignment override recorded with an accepted task review decision. Null fields keep the plan document value; empty strings clear it.
+ */
+export type WorkspaceWorkflowTaskAssignment = {
+  taskId: string;
+  agentTargetId?: string | null;
+  modelPlanId?: string | null;
+  model?: string | null;
+  permissionModeId?: string | null;
+  reasoningEffort?: string | null;
+};
+
 export type DecideWorkspaceWorkflowCheckpointRequest = {
   decision: "accepted" | "rejected" | "canceled";
   decidedBy: string;
   reason?: string | null;
+  /**
+   * Optional per-task assignment overrides. Only valid when accepting a task review checkpoint; recorded durably with the decision and merged into the materialized Issue tasks.
+   */
+  taskAssignments?: Array<WorkspaceWorkflowTaskAssignment> | null;
 };
 
 export type CreateWorkspaceRequest = {

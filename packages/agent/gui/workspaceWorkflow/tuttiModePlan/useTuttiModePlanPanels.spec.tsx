@@ -44,7 +44,7 @@ function snapshot(sourceSessionId: string): TuttiModePlanReviewSnapshot {
         createdAtUnixMs: 100,
         document: {
           schema: "tutti-mode-plan/v1",
-          phase: "configuration",
+          phase: "task_graph",
           title: `Plan ${suffix}`,
           topicId: "topic-1",
           markdownBody: "## Goal\n\nShip safely",
@@ -58,7 +58,15 @@ function snapshot(sourceSessionId: string): TuttiModePlanReviewSnapshot {
             tokenLimit: 80_000,
             quotaWaterlinePercent: 10
           },
-          tasks: []
+          tasks: [
+            {
+              id: `task-${suffix}`,
+              title: "Implement",
+              content: "",
+              priority: "medium",
+              dependsOn: []
+            }
+          ]
         }
       }
     ],
@@ -66,7 +74,7 @@ function snapshot(sourceSessionId: string): TuttiModePlanReviewSnapshot {
       {
         id: `checkpoint-${suffix}`,
         workflowId,
-        kind: "configuration_review",
+        kind: "task_review",
         revisionId,
         status: "pending",
         createdAtUnixMs: 110,
@@ -248,5 +256,104 @@ describe("useTuttiModePlanPanels", () => {
       sourceSessionId: "session-a",
       workspaceId: "workspace-1"
     });
+  });
+
+  it("keeps the assignment catalog across a revision_created refresh", async () => {
+    let invalidationListener:
+      | Parameters<TuttiModePlanReviewRuntime["subscribe"]>[1]
+      | undefined;
+    const listAgents = vi.fn(() =>
+      Promise.resolve([{ agentTargetId: "codex", label: "Codex" }])
+    );
+    const loadAgentOptions = vi.fn(() =>
+      Promise.resolve({
+        models: ["gpt-5.4"],
+        modelPlans: [],
+        permissionModes: [{ id: "auto", label: "Auto" }],
+        reasoningEfforts: ["high"]
+      })
+    );
+    const runtime: TuttiModePlanReviewRuntime = {
+      listPending: vi.fn(() => Promise.resolve([snapshot("session-a")])),
+      decide: vi.fn(),
+      subscribe: vi.fn((_workspaceId, listener) => {
+        invalidationListener = listener;
+        return () => undefined;
+      }),
+      assignmentOptions: { listAgents, loadAgentOptions }
+    };
+    const rendered = renderPanels(runtime);
+    await act(async () => undefined);
+    expect(rendered.result.current.assignmentCatalog.agents).toEqual([
+      { agentTargetId: "codex", label: "Codex" }
+    ]);
+
+    // "Request changes" -> agent revises -> revision_created invalidation.
+    await act(async () => {
+      invalidationListener?.({
+        kind: "workflow_updated",
+        workspaceId: "workspace-1",
+        workflowId: "workflow-a",
+        sourceSessionId: "session-a",
+        checkpointId: "checkpoint-a2",
+        changeKind: "revision_created"
+      });
+    });
+    await act(async () => undefined);
+
+    // The new revision panel must keep a usable catalog: agents stay loaded
+    // and the directory is not refetched redundantly.
+    expect(rendered.result.current.assignmentCatalog.agents).toEqual([
+      { agentTargetId: "codex", label: "Codex" }
+    ]);
+    expect(listAgents).toHaveBeenCalledTimes(1);
+  });
+
+  it("retries a failed assignment directory load on the next refresh", async () => {
+    let invalidationListener:
+      | Parameters<TuttiModePlanReviewRuntime["subscribe"]>[1]
+      | undefined;
+    const listAgents = vi
+      .fn<() => Promise<readonly { agentTargetId: string; label: string }[]>>()
+      .mockRejectedValueOnce(new Error("directory unavailable"))
+      .mockResolvedValue([{ agentTargetId: "codex", label: "Codex" }]);
+    const runtime: TuttiModePlanReviewRuntime = {
+      listPending: vi.fn(() => Promise.resolve([snapshot("session-a")])),
+      decide: vi.fn(),
+      subscribe: vi.fn((_workspaceId, listener) => {
+        invalidationListener = listener;
+        return () => undefined;
+      }),
+      assignmentOptions: {
+        listAgents,
+        loadAgentOptions: vi.fn(() =>
+          Promise.resolve({
+            models: [],
+            modelPlans: [],
+            permissionModes: [],
+            reasoningEfforts: []
+          })
+        )
+      }
+    };
+    const rendered = renderPanels(runtime);
+    await act(async () => undefined);
+    expect(rendered.result.current.assignmentCatalog.agents).toBeNull();
+
+    await act(async () => {
+      invalidationListener?.({
+        kind: "workflow_updated",
+        workspaceId: "workspace-1",
+        workflowId: "workflow-a",
+        sourceSessionId: "session-a",
+        checkpointId: "checkpoint-a2",
+        changeKind: "revision_created"
+      });
+    });
+    await act(async () => undefined);
+
+    expect(rendered.result.current.assignmentCatalog.agents).toEqual([
+      { agentTargetId: "codex", label: "Codex" }
+    ]);
   });
 });

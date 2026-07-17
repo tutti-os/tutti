@@ -107,6 +107,8 @@ type CreateTaskInput struct {
 	AgentTargetID      string
 	ModelPlanID        string
 	Model              string
+	PermissionModeID   string
+	ReasoningEffort    string
 	ExecutionDirectory string
 	DependencyTaskIDs  []string
 }
@@ -120,6 +122,8 @@ type CreateTaskItemInput struct {
 	AgentTargetID      string
 	ModelPlanID        string
 	Model              string
+	PermissionModeID   string
+	ReasoningEffort    string
 	ExecutionDirectory string
 	DependencyTaskIDs  []string
 }

@@ -83,7 +83,17 @@ function setDraft(
     return { commands: NO_COMMANDS, state: { ...state, draftsByKey } };
   }
   const current = state.draftsByKey[draftKey];
-  if (current?.active) return unchanged(state);
+  // undefined 保留既有强度;显式 null/非法值归一化为 null(daemon 默认)。
+  const orchestrationIntensity =
+    intent.orchestrationIntensity === undefined
+      ? (current?.orchestrationIntensity ?? null)
+      : normalizeOrchestrationIntensity(intent.orchestrationIntensity);
+  if (
+    current?.active &&
+    current.orchestrationIntensity === orchestrationIntensity
+  ) {
+    return unchanged(state);
+  }
   return {
     commands: NO_COMMANDS,
     state: {
@@ -94,6 +104,7 @@ function setDraft(
           active: true,
           draftKey,
           occurredAtUnixMs: intent.occurredAtUnixMs,
+          orchestrationIntensity,
           source: "slash_command"
         }
       }
@@ -114,7 +125,13 @@ function trackPendingCreate(
   }
   const agentSessionId = intent.agentSessionId.trim();
   const draftKey = intent.tuttiModeDraftKey.trim();
-  if (!agentSessionId || !state.draftsByKey[draftKey]) return unchanged(state);
+  const draft = state.draftsByKey[draftKey];
+  if (!agentSessionId || !draft) return unchanged(state);
+  // Intent 自带的强度优先;缺省时把 draft 上暂存的强度带进 create 意图。
+  const orchestrationIntensity =
+    normalizeOrchestrationIntensity(
+      intent.initialTuttiModeActivation.orchestrationIntensity
+    ) ?? draft.orchestrationIntensity;
   return {
     commands: NO_COMMANDS,
     state: {
@@ -124,7 +141,10 @@ function trackPendingCreate(
         [agentSessionId]: {
           agentSessionId,
           draftKey,
-          initialActivation: { ...intent.initialTuttiModeActivation },
+          initialActivation: {
+            ...intent.initialTuttiModeActivation,
+            orchestrationIntensity
+          },
           reconcileCommandId: null,
           requestId: intent.requestId,
           workspaceId: intent.workspaceId
@@ -215,7 +235,15 @@ function requestUpdate(
     return unchanged(state);
   }
   const activation = state.activationsBySessionId[agentSessionId] ?? null;
-  if (activation?.status === intent.status) {
+  const orchestrationIntensity = normalizeOrchestrationIntensity(
+    intent.orchestrationIntensity
+  );
+  if (
+    activation?.status === intent.status &&
+    (orchestrationIntensity === null ||
+      orchestrationIntensity ===
+        activation.currentRevision.orchestrationIntensity)
+  ) {
     return clearUpdate(state, agentSessionId);
   }
   const expectedRevision = activation?.currentRevision.revision ?? null;
@@ -225,6 +253,7 @@ function requestUpdate(
     errorCode: null,
     errorMessage: null,
     expectedRevision,
+    orchestrationIntensity,
     reconcileCommandId: null,
     requestedAtUnixMs: intent.requestedAtUnixMs,
     source: intent.source,
@@ -238,6 +267,7 @@ function requestUpdate(
         agentSessionId,
         commandId,
         ...(expectedRevision === null ? {} : { expectedRevision }),
+        ...(orchestrationIntensity === null ? {} : { orchestrationIntensity }),
         source: intent.source,
         status: intent.status,
         timeoutMs: UPDATE_TIMEOUT_MS,
@@ -489,7 +519,10 @@ function updateSemanticallyApplied(
     activation &&
     activation.status === update.status &&
     activation.currentRevision.status === update.status &&
-    activation.currentRevision.revision > (update.expectedRevision ?? 0)
+    activation.currentRevision.revision > (update.expectedRevision ?? 0) &&
+    (update.orchestrationIntensity === null ||
+      activation.currentRevision.orchestrationIntensity ===
+        update.orchestrationIntensity)
   );
 }
 
@@ -555,7 +588,10 @@ function validUpdateResult(
     candidate.agentSessionId === entry.agentSessionId &&
     candidate.status === entry.status &&
     candidate.currentRevision?.status === entry.status &&
-    Number.isInteger(candidate.currentRevision?.revision)
+    Number.isInteger(candidate.currentRevision?.revision) &&
+    (entry.orchestrationIntensity === null ||
+      candidate.currentRevision?.orchestrationIntensity ===
+        entry.orchestrationIntensity)
     ? { activation: candidate }
     : null;
 }
@@ -598,6 +634,17 @@ function sameActivation(
       left?.status === right?.status &&
       left?.currentRevision.revision === right?.currentRevision.revision)
   );
+}
+
+function normalizeOrchestrationIntensity(
+  value: number | null | undefined
+): number | null {
+  return typeof value === "number" &&
+    Number.isInteger(value) &&
+    value >= 0 &&
+    value <= 100
+    ? value
+    : null;
 }
 
 function unchanged(

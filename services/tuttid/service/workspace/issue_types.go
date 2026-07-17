@@ -85,6 +85,8 @@ type CreateIssueManagerTaskInput struct {
 	AgentTargetID      string
 	ModelPlanID        string
 	Model              string
+	PermissionModeID   string
+	ReasoningEffort    string
 	ExecutionDirectory string
 	DependencyTaskIDs  []string
 }
@@ -98,6 +100,8 @@ type CreateIssueManagerTaskItemInput struct {
 	AgentTargetID      string
 	ModelPlanID        string
 	Model              string
+	PermissionModeID   string
+	ReasoningEffort    string
 	ExecutionDirectory string
 	DependencyTaskIDs  []string
 }

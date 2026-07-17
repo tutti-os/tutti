@@ -563,3 +563,147 @@ func TestIssueExplicitPauseBlocksOnlyFutureDispatchAndResumeContinues(t *testing
 		t.Fatalf("dispatches after resume = %d, want 2", len(creator.inputs))
 	}
 }
+
+type strictPermissionSessionCreator struct {
+	inputs         []agentservice.CreateSessionInput
+	supportedModes map[string]struct{}
+}
+
+func (r *strictPermissionSessionCreator) Create(_ context.Context, _ string, input agentservice.CreateSessionInput) (agentservice.Session, error) {
+	r.inputs = append(r.inputs, input)
+	if input.StrictPermissionMode && input.PermissionModeID != nil {
+		if _, ok := r.supportedModes[*input.PermissionModeID]; !ok {
+			return agentservice.Session{}, fmt.Errorf("unsupported permission mode %q", *input.PermissionModeID)
+		}
+	}
+	return agentservice.Session{ID: input.AgentSessionID, AgentTargetID: input.AgentTargetID, Provider: "codex"}, nil
+}
+
+func TestIssueTaskLaunchAppliesTaskLevelOverridesWithStrictPermissionMode(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	store := openIssueServiceStore(t)
+	if err := store.Create(ctx, workspacebiz.Summary{ID: "workspace-strict-overrides", Name: "Strict overrides"}); err != nil {
+		t.Fatalf("Create() workspace error = %v", err)
+	}
+	for _, target := range agenttargetbiz.DefaultSystemTargets(time.Now().UnixMilli()) {
+		if _, err := store.PutAgentTarget(ctx, target); err != nil {
+			t.Fatalf("PutAgentTarget(%q) error = %v", target.ID, err)
+		}
+	}
+	creator := &strictPermissionSessionCreator{supportedModes: map[string]struct{}{"acceptEdits": {}}}
+	service := IssueManagerService{
+		AgentSessionCreator: creator,
+		Store:               store,
+		AgentTargetReader:   store,
+	}
+
+	if _, err := service.CreateIssueFromPlan(ctx, "workspace-strict-overrides", CreateIssueManagerIssueFromPlanInput{
+		Issue: CreateIssueManagerIssueInput{
+			IssueID:             "issue-with-overrides",
+			TopicID:             workspaceissues.DefaultTopicID,
+			Title:               "Task-level overrides",
+			PlanningSource:      string(workspaceissues.PlanningSourceTraditionalPlan),
+			SequentialExecution: true,
+		},
+		Tasks: []CreateIssueManagerTaskItemInput{{
+			TaskID:           "task-with-overrides",
+			Title:            "Overridden launch",
+			AgentTargetID:    agenttargetbiz.IDLocalCodex,
+			PermissionModeID: "acceptEdits",
+			ReasoningEffort:  "high",
+		}},
+	}); err != nil {
+		t.Fatalf("CreateIssueFromPlan(overrides) error = %v", err)
+	}
+	if len(creator.inputs) != 1 {
+		t.Fatalf("dispatches = %d, want 1", len(creator.inputs))
+	}
+	launch := creator.inputs[0]
+	if launch.PermissionModeID == nil || *launch.PermissionModeID != "acceptEdits" || !launch.StrictPermissionMode {
+		t.Fatalf("launch permission mode = %#v strict=%v, want strict explicit acceptEdits", launch.PermissionModeID, launch.StrictPermissionMode)
+	}
+	if launch.ReasoningEffort == nil || *launch.ReasoningEffort != "high" {
+		t.Fatalf("launch reasoning effort = %#v, want explicit high", launch.ReasoningEffort)
+	}
+
+	// A task without an explicit permission mode keeps the provider-default
+	// resolution and must not opt into strict rejection.
+	if _, err := service.CreateIssueFromPlan(ctx, "workspace-strict-overrides", CreateIssueManagerIssueFromPlanInput{
+		Issue: CreateIssueManagerIssueInput{
+			IssueID:             "issue-without-overrides",
+			TopicID:             workspaceissues.DefaultTopicID,
+			Title:               "Default launch",
+			PlanningSource:      string(workspaceissues.PlanningSourceTraditionalPlan),
+			SequentialExecution: true,
+		},
+		Tasks: []CreateIssueManagerTaskItemInput{{
+			TaskID:        "task-without-overrides",
+			Title:         "Default launch",
+			AgentTargetID: agenttargetbiz.IDLocalCodex,
+		}},
+	}); err != nil {
+		t.Fatalf("CreateIssueFromPlan(defaults) error = %v", err)
+	}
+	if len(creator.inputs) != 2 {
+		t.Fatalf("dispatches = %d, want 2", len(creator.inputs))
+	}
+	if creator.inputs[1].PermissionModeID != nil || creator.inputs[1].StrictPermissionMode {
+		t.Fatalf("default launch = %#v strict=%v, want no explicit mode and no strict flag", creator.inputs[1].PermissionModeID, creator.inputs[1].StrictPermissionMode)
+	}
+}
+
+func TestIssueTaskLaunchFailsClosedOnUnsupportedPermissionMode(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	store := openIssueServiceStore(t)
+	if err := store.Create(ctx, workspacebiz.Summary{ID: "workspace-strict-reject", Name: "Strict reject"}); err != nil {
+		t.Fatalf("Create() workspace error = %v", err)
+	}
+	for _, target := range agenttargetbiz.DefaultSystemTargets(time.Now().UnixMilli()) {
+		if _, err := store.PutAgentTarget(ctx, target); err != nil {
+			t.Fatalf("PutAgentTarget(%q) error = %v", target.ID, err)
+		}
+	}
+	creator := &strictPermissionSessionCreator{supportedModes: map[string]struct{}{"acceptEdits": {}}}
+	service := IssueManagerService{
+		AgentSessionCreator: creator,
+		Store:               store,
+		AgentTargetReader:   store,
+	}
+
+	detail, err := service.CreateIssueFromPlan(ctx, "workspace-strict-reject", CreateIssueManagerIssueFromPlanInput{
+		Issue: CreateIssueManagerIssueInput{
+			IssueID:             "issue-strict-reject",
+			TopicID:             workspaceissues.DefaultTopicID,
+			Title:               "Stale permission mode",
+			PlanningSource:      string(workspaceissues.PlanningSourceTraditionalPlan),
+			SequentialExecution: true,
+		},
+		Tasks: []CreateIssueManagerTaskItemInput{{
+			TaskID:           "task-strict-reject",
+			Title:            "Launch with stale mode",
+			AgentTargetID:    agenttargetbiz.IDLocalCodex,
+			PermissionModeID: "bogus-mode",
+		}},
+	})
+	if err != nil {
+		t.Fatalf("CreateIssueFromPlan() error = %v", err)
+	}
+	if len(creator.inputs) != 1 || !creator.inputs[0].StrictPermissionMode {
+		t.Fatalf("launch inputs = %#v, want one strict launch attempt", creator.inputs)
+	}
+
+	settled, err := service.GetIssueDetail(ctx, "workspace-strict-reject", detail.Issue.IssueID)
+	if err != nil {
+		t.Fatalf("GetIssueDetail() error = %v", err)
+	}
+	task := settled.Tasks[0]
+	if task.Status == workspaceissues.StatusRunning {
+		t.Fatalf("task status = %q, want fail-closed launch instead of a silently downgraded running session", task.Status)
+	}
+	if settled.LatestRun == nil || settled.LatestRun.Status != workspaceissues.StatusFailed ||
+		!strings.Contains(settled.LatestRun.ErrorMessage, "unsupported permission mode") {
+		t.Fatalf("latest run = %#v, want failed run carrying the strict rejection", settled.LatestRun)
+	}
+}

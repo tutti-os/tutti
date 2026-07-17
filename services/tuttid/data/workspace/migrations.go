@@ -24,6 +24,7 @@ const schemaMigrationWorkspaceIssuesV8 = "workspace_issues_parallel_execution_v1
 const schemaMigrationWorkspaceIssuesV9 = "workspace_issues_dispatch_paused_v1"
 const schemaMigrationWorkspaceIssuesV10 = "workspace_issues_collaboration_usage_v1"
 const schemaMigrationWorkspaceIssuesV11 = "workspace_issues_tutti_mode_plan_source_v1"
+const schemaMigrationWorkspaceIssuesV12 = "workspace_issue_tasks_launch_overrides_v1"
 const schemaMigrationDesktopPreferencesV1 = "desktop_preferences_v1"
 const schemaMigrationDesktopPreferencesAgentDockLayoutV1 = "desktop_preferences_agent_dock_layout_v1"
 const schemaMigrationDesktopPreferencesSleepPreventionModeV1 = "desktop_preferences_sleep_prevention_mode_v1"
@@ -68,6 +69,8 @@ const schemaMigrationWorkspaceWorkflowMutationsV2 = "workspace_workflow_mutation
 const schemaMigrationWorkspaceWorkflowRevisionPathReuseV3 = "workspace_workflow_revision_path_reuse_v3"
 const schemaMigrationTuttiModeActivationsV1 = "tutti_mode_activations_v1"
 const schemaMigrationTuttiModeTurnDispatchV2 = "tutti_mode_turn_dispatch_v2"
+const schemaMigrationTuttiModeOrchestrationIntensityV3 = "tutti_mode_orchestration_intensity_v3"
+const schemaMigrationWorkspaceWorkflowTaskAssignmentsV4 = "workspace_workflow_task_assignments_v4"
 
 func (s *SQLiteStore) Migrate(ctx context.Context) error {
 	if s == nil || s.db == nil {
@@ -152,6 +155,9 @@ INSERT OR IGNORE INTO tuttid_schema_migrations (id, applied_at_unix_ms)
 		return err
 	}
 	if err := s.applyWorkspaceIssuesV11(ctx); err != nil {
+		return err
+	}
+	if err := s.applyWorkspaceIssuesV12(ctx); err != nil {
 		return err
 	}
 
@@ -299,7 +305,13 @@ INSERT OR IGNORE INTO tuttid_schema_migrations (id, applied_at_unix_ms)
 	if err := s.applyTuttiModeActivationsV1(ctx); err != nil {
 		return err
 	}
-	return s.applyTuttiModeTurnDispatchV2(ctx)
+	if err := s.applyTuttiModeTurnDispatchV2(ctx); err != nil {
+		return err
+	}
+	if err := s.applyTuttiModeOrchestrationIntensityV3(ctx); err != nil {
+		return err
+	}
+	return s.applyWorkspaceWorkflowTaskAssignmentsV4(ctx)
 }
 
 func (s *SQLiteStore) applyWorkspacesV2(ctx context.Context) error {
