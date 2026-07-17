@@ -59,7 +59,10 @@ func TestInstallPlanServiceBuildsDeterministicTargetScopedPlan(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	wantRoot := filepath.Join(runtimeInstallDir, "gemini", "1.0.0")
+	if plan.RuntimeIdentity == "" {
+		t.Fatalf("plan runtime identity is empty: %#v", plan)
+	}
+	wantRoot := filepath.Join(runtimeInstallDir, "gemini", plan.RuntimeIdentity)
 	wantInstallCommand := []string{"npm", "install", "--prefix", wantRoot, "@google/gemini-cli@0.50.0"}
 	if plan.InstallRoot != wantRoot || !reflect.DeepEqual(plan.InstallCommand, wantInstallCommand) {
 		t.Fatalf("plan scope/command = %#v", plan)
@@ -86,8 +89,45 @@ func TestInstallPlanServiceBuildsDeterministicTargetScopedPlan(t *testing.T) {
 		t.Fatal("target-managed plan changed across workspaces")
 	}
 
-	if _, err := buildInstallPlan("extension:gemini", t.TempDir(), runtimeInstallDir, installation); !errors.Is(err, ErrInvalidInstallPlanRequest) {
+	if err := validateManagedRuntimeRoot(t.TempDir(), runtimeInstallDir, installation.AgentKey, plan.RuntimeIdentity); !errors.Is(err, ErrInvalidInstallPlanRequest) {
 		t.Fatalf("invalid managed install root error = %v", err)
+	}
+}
+
+func TestInstallPlanServiceReusesRuntimeIdentityAcrossExtensionVersions(t *testing.T) {
+	stateDir := t.TempDir()
+	runtimeInstallDir := filepath.Join(t.TempDir(), ".local", "share", "tutti", "agent-runtimes")
+	manager := &Manager{Installations: agentextensiondata.NewFileInstallationStore(stateDir), RuntimeInstallDir: runtimeInstallDir}
+	first, err := manager.install(Release{AgentKey: "gemini", Version: "1.0.0"}, testPackageZIP(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	nextManifest := testManifest()
+	nextManifest.Version = "1.0.1"
+	second, err := manager.install(Release{AgentKey: "gemini", Version: "1.0.1"}, testPackageZIPFor(
+		t,
+		nextManifest,
+		`{"schemaVersion":"tutti.agent.discovery.v1","candidates":[{"binaryNames":["gemini"],"version":{"args":["--version"],"constraint":">=0.50.0 <1.0.0"},"launchArgs":["--acp"],"probe":{"kind":"acp-initialize","timeoutMs":5000}}]}`,
+	))
+	if err != nil {
+		t.Fatal(err)
+	}
+	firstPlan, err := buildInstallPlan("extension:gemini", runtimeInstallDir, first)
+	if err != nil {
+		t.Fatal(err)
+	}
+	secondPlan, err := buildInstallPlan("extension:gemini", runtimeInstallDir, second)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if firstPlan.RuntimeIdentity != secondPlan.RuntimeIdentity || firstPlan.InstallRoot != secondPlan.InstallRoot {
+		t.Fatalf("runtime identity changed across extension metadata update: first=%#v second=%#v", firstPlan, secondPlan)
+	}
+	if firstPlan.ExtensionInstallationID == secondPlan.ExtensionInstallationID {
+		t.Fatalf("fixture did not create distinct extension installations: %q", firstPlan.ExtensionInstallationID)
+	}
+	if firstPlan.PlanDigest == secondPlan.PlanDigest {
+		t.Fatal("plan digest did not retain extension installation binding")
 	}
 }
 

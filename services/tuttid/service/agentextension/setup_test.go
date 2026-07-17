@@ -61,8 +61,8 @@ func TestAgentTargetSetupInstallsGenericExtensionRuntime(t *testing.T) {
 		t.Fatalf("resolve user executable entry %q: %v", userEntry, err)
 	}
 	wantEntry := filepath.Join(
-		service.Plans.Manager.RuntimeInstallDir,
-		"generic", "1.0.0", "node_modules", "@example", "generic-agent", "bin", "generic-agent",
+		initial.Plan.InstallRoot,
+		"node_modules", "@example", "generic-agent", "bin", "generic-agent",
 	)
 	resolvedWantEntry, err := filepath.EvalSymlinks(wantEntry)
 	if err != nil {
@@ -91,6 +91,87 @@ func TestAgentTargetSetupInstallsGenericExtensionRuntime(t *testing.T) {
 		if !environmentPathWithin(runner.env, key, runner.cwd) {
 			t.Fatalf("installer environment %s is not isolated under %q: %v", key, runner.cwd, runner.env)
 		}
+	}
+}
+
+func TestAgentTargetSetupReusesManagedRuntimeAcrossExtensionVersions(t *testing.T) {
+	t.Setenv("PATH", t.TempDir())
+	runner := &fixtureInstallRunner{binary: "generic-agent", packageName: "@example/generic-agent", version: "1.2.3"}
+	service, targetID := setupFixture(
+		t, "generic", "Generic Agent", "@example/generic-agent", "1.2.3", "generic-agent", ">=1.2.3 <2.0.0",
+		runner, &probeTransport{},
+	)
+	initial, err := service.GetSetup(context.Background(), InstallPlanInput{WorkspaceID: "workspace-1", AgentTargetID: targetID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := service.Install(context.Background(), InstallInput{
+		WorkspaceID: "workspace-1", AgentTargetID: targetID,
+		PlanDigest: initial.Plan.PlanDigest, ClientActionID: "first-install",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	firstReady := waitForSetupStatus(t, service, targetID, SetupReady)
+	if firstReady.RuntimeSource != "managed" {
+		t.Fatalf("first ready setup = %#v", firstReady)
+	}
+	var legacyActivation managedRuntimeActivation
+	if err := readJSON(filepath.Join(initial.Plan.InstallRoot, "activation.json"), &legacyActivation); err != nil {
+		t.Fatal(err)
+	}
+	legacyActivation.RuntimeIdentity = ""
+	if err := writeJSONAtomic(filepath.Join(initial.Plan.InstallRoot, "activation.json"), legacyActivation); err != nil {
+		t.Fatal(err)
+	}
+	legacyRoot := filepath.Join(service.Plans.Manager.RuntimeInstallDir, "generic", "1.0.0")
+	if err := os.Rename(initial.Plan.InstallRoot, legacyRoot); err != nil {
+		t.Fatal(err)
+	}
+
+	manifest := testManifest()
+	manifest.AgentKey = "generic"
+	manifest.Version = "1.0.1"
+	manifest.Name = "Generic Agent"
+	manifest.Runtime.Install.Args = []string{"install", "--prefix", "${installRoot}", "@example/generic-agent@1.2.3"}
+	manifest.Runtime.Launch.Executable = "${installRoot}/node_modules/.bin/generic-agent"
+	discovery := `{"schemaVersion":"tutti.agent.discovery.v1","candidates":[{"binaryNames":["generic-agent"],"version":{"args":["--version"],"constraint":">=1.2.3 <2.0.0"},"launchArgs":["--acp"],"probe":{"kind":"acp-initialize","timeoutMs":5000}}]}`
+	next, err := service.Plans.Manager.install(Release{AgentKey: "generic", Version: "1.0.1"}, testPackageZIPFor(t, manifest, discovery))
+	if err != nil {
+		t.Fatal(err)
+	}
+	launchRef, err := agenttargetbiz.CanonicalLaunchRefJSON(next.Provider, agenttargetbiz.LaunchRef{
+		Type: agenttargetbiz.LaunchRefTypeAgentExtension, ExtensionInstallationID: next.ID,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	store := service.Plans.Targets.(*targetStoreStub)
+	target := store.targets[targetID]
+	target.LaunchRefJSON = launchRef
+	store.targets[targetID] = target
+
+	snapshot, err := service.GetSetup(context.Background(), InstallPlanInput{WorkspaceID: "workspace-1", AgentTargetID: targetID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if snapshot.Status != SetupReady || snapshot.RuntimeSource != "managed" || snapshot.RuntimeVersion != "1.2.3" {
+		t.Fatalf("reused runtime setup = %#v", snapshot)
+	}
+	if _, err := os.Stat(filepath.Join(initial.Plan.InstallRoot, "activation.json")); err != nil {
+		t.Fatalf("adopted runtime root is unavailable: %v", err)
+	}
+	if _, err := os.Stat(legacyRoot); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("legacy runtime root was not adopted away: %v", err)
+	}
+	if runner.calls != 1 {
+		t.Fatalf("runtime was reinstalled after extension metadata update: calls=%d", runner.calls)
+	}
+	nextPlan, err := service.Plans.GetInstallPlan(context.Background(), InstallPlanInput{WorkspaceID: "workspace-1", AgentTargetID: targetID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if nextPlan.InstallRoot != initial.Plan.InstallRoot || nextPlan.RuntimeIdentity != initial.Plan.RuntimeIdentity {
+		t.Fatalf("runtime identity changed across extension versions: first=%#v next=%#v", initial.Plan, nextPlan)
 	}
 }
 
@@ -130,7 +211,7 @@ func TestAgentTargetSetupDoesNotOverwriteUserExecutable(t *testing.T) {
 	if string(content) != "user-owned\n" {
 		t.Fatalf("user executable was overwritten: %q", content)
 	}
-	if _, err := os.Stat(filepath.Join(service.Plans.Manager.RuntimeInstallDir, "generic", "1.0.0")); !errors.Is(err, os.ErrNotExist) {
+	if _, err := os.Stat(initial.Plan.InstallRoot); !errors.Is(err, os.ErrNotExist) {
 		t.Fatalf("failed activation left managed runtime behind: %v", err)
 	}
 }
@@ -284,7 +365,7 @@ func TestAgentTargetSetupRejectsManagedRuntimeBinaryReplacement(t *testing.T) {
 		t.Fatal(err)
 	}
 	ready := waitForSetupStatus(t, service, targetID, SetupReady)
-	root := filepath.Join(service.Plans.Manager.RuntimeInstallDir, "gemini", "1.0.0")
+	root := initial.Plan.InstallRoot
 	var activation managedRuntimeActivation
 	if err := readJSON(filepath.Join(root, "activation.json"), &activation); err != nil {
 		t.Fatal(err)
