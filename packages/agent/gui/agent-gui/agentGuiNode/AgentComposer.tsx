@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type HTMLAttributes } from "react";
+import { useEffect, useRef, useState } from "react";
 import type {
   AgentComposerDraft,
   AgentComposerDraftFile,
@@ -49,20 +49,6 @@ import {
 import type { AgentGUIComposerContentType } from "./engagement/agentGUIEngagement.types";
 
 export { formatSlashStatusTokenCount };
-
-type DotLottieElementProps = HTMLAttributes<HTMLElement> & {
-  autoplay?: boolean;
-  loop?: boolean;
-  src?: string;
-};
-
-declare module "react" {
-  namespace JSX {
-    interface IntrinsicElements {
-      "dotlottie-wc": DotLottieElementProps;
-    }
-  }
-}
 
 const DOCK_COMPOSER_INPUT_MIN_HEIGHT = 56;
 const DOCK_COMPOSER_TEXT_LINE_HEIGHT = 24;

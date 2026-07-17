@@ -31,6 +31,7 @@ import {
 } from "../../../shared/managedAgentIcons";
 import { resolveAgentGUIProviderCatalogIdentity } from "../../../providerIdentityCatalog";
 import { resolveProviderIconAsset } from "../../../providerIconAssets";
+import handoffClapAnimationUrl from "../../../app/renderer/assets/animations/handoff-clap.png";
 import handoffLinedIconUrl from "../../../app/renderer/assets/icons/handoff-lined.svg";
 import {
   USAGE_CRITICAL_PERCENT,
@@ -38,23 +39,6 @@ import {
 } from "../model/agentUsageThresholds";
 
 const USAGE_POPOVER_HOVER_DELAY_MS = 120;
-const HANDOFF_LOTTIE_PLAYER_SCRIPT_SRC =
-  "https://unpkg.com/@lottiefiles/dotlottie-wc@0.9.14/dist/dotlottie-wc.js";
-const HANDOFF_LOTTIE_ANIMATION_SRC =
-  "https://lottie.host/03d75946-52e5-4ccf-97df-174919a13ced/Av6piqVmPa.lottie";
-
-type DotLottieElementProps = React.HTMLAttributes<HTMLElement> & {
-  autoplay?: boolean;
-  loop?: boolean;
-  src?: string;
-};
-declare module "react" {
-  namespace JSX {
-    interface IntrinsicElements {
-      "dotlottie-wc": DotLottieElementProps;
-    }
-  }
-}
 
 type AgentUsageChipLevel = "normal" | "warning" | "critical";
 
@@ -413,49 +397,23 @@ export function AgentComposerMaskIcon({
 
 export const HANDOFF_SELECT_IDLE_VALUE = "__agent-handoff-idle__";
 
-function createHandoffLottiePlayerLoader(): () => Promise<boolean> {
-  let loadPromise: Promise<boolean> | null = null;
+function AgentComposerHandoffAnimation(): JSX.Element {
+  const [isLoaded, setIsLoaded] = useState(false);
 
-  return function loadHandoffLottiePlayer(): Promise<boolean> {
-    if (typeof window === "undefined" || typeof document === "undefined") {
-      return Promise.resolve(false);
-    }
-    if (window.customElements?.get("dotlottie-wc")) {
-      return Promise.resolve(true);
-    }
-    if (loadPromise) {
-      return loadPromise;
-    }
-
-    loadPromise = new Promise((resolve) => {
-      const existingScript = document.querySelector<HTMLScriptElement>(
-        'script[data-agent-gui-handoff-lottie="true"]'
-      );
-      const script = existingScript ?? document.createElement("script");
-
-      const handleLoad = () => {
-        resolve(Boolean(window.customElements?.get("dotlottie-wc")));
-      };
-      const handleError = () => {
-        resolve(false);
-      };
-
-      script.addEventListener("load", handleLoad, { once: true });
-      script.addEventListener("error", handleError, { once: true });
-
-      if (!existingScript) {
-        script.dataset.agentGuiHandoffLottie = "true";
-        script.src = HANDOFF_LOTTIE_PLAYER_SCRIPT_SRC;
-        script.type = "module";
-        document.head.append(script);
-      }
-    });
-
-    return loadPromise;
-  };
+  return (
+    <img
+      alt=""
+      aria-hidden="true"
+      className={styles.composerHandoffAnimatedIcon}
+      data-active={isLoaded ? "true" : undefined}
+      draggable={false}
+      src={handoffClapAnimationUrl}
+      onLoad={() => {
+        setIsLoaded(true);
+      }}
+    />
+  );
 }
-
-const loadHandoffLottiePlayer = createHandoffLottiePlayerLoader();
 
 export function AgentComposerHandoffIcon({
   disabled,
@@ -464,32 +422,14 @@ export function AgentComposerHandoffIcon({
   disabled: boolean;
   isPlaying: boolean;
 }): JSX.Element {
-  const [isLottieReady, setIsLottieReady] = useState(false);
-  const shouldLoadAnimation = !disabled && isPlaying;
-
-  useEffect(() => {
-    if (!shouldLoadAnimation) {
-      return;
-    }
-    let isMounted = true;
-    void loadHandoffLottiePlayer().then((isReady) => {
-      if (isMounted) {
-        setIsLottieReady(isReady);
-      }
-    });
-    return () => {
-      isMounted = false;
-    };
-  }, [shouldLoadAnimation]);
-
-  const shouldShowAnimation = shouldLoadAnimation && isLottieReady;
+  const shouldPlayAnimation = !disabled && isPlaying;
 
   return (
     <span
       aria-hidden="true"
       className={styles.composerHandoffIcon}
       data-disabled={disabled ? "true" : undefined}
-      data-playing={shouldShowAnimation ? "true" : undefined}
+      data-playing={shouldPlayAnimation ? "true" : undefined}
     >
       <span
         className={styles.composerHandoffStaticIcon}
@@ -504,15 +444,7 @@ export function AgentComposerHandoffIcon({
           maskSize: "contain"
         }}
       />
-      {shouldShowAnimation ? (
-        <dotlottie-wc
-          autoplay
-          className={styles.composerHandoffAnimatedIcon}
-          data-active="true"
-          loop
-          src={HANDOFF_LOTTIE_ANIMATION_SRC}
-        />
-      ) : null}
+      {shouldPlayAnimation ? <AgentComposerHandoffAnimation /> : null}
     </span>
   );
 }

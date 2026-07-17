@@ -21,7 +21,7 @@
       "packages/agent/gui/shared/AgentMessageMarkdown.tsx": 7,
       "packages/agent/gui/shared/agentConversation/components/AgentTranscriptView.tsx": 10
     },
-    "effectCount": 149,
+    "effectCount": 148,
     "fileLines": {
       "packages/agent/gui/app/renderer/i18n/locales/en.ts": 1893,
       "packages/agent/gui/app/renderer/i18n/locales/zh-CN.ts": 1773

@@ -8764,7 +8764,9 @@ html[data-theme="light"] [data-message-center-item-id].agent-gui-edge-glow {
   opacity: 1;
 }
 
-.agent-gui-node__composer-handoff-icon[data-playing="true"]
+.agent-gui-node__composer-handoff-icon:has(
+    .agent-gui-node__composer-handoff-icon-animated[data-active="true"]
+  )
   .agent-gui-node__composer-handoff-icon-static {
   opacity: 0;
 }
@@ -8772,7 +8774,7 @@ html[data-theme="light"] [data-message-center-item-id].agent-gui-edge-glow {
 .agent-gui-node__composer-handoff-icon-animated {
   position: absolute;
   inset: 0;
-  filter: var(--agent-gui-handoff-lottie-filter, none);
+  filter: var(--agent-gui-handoff-animation-filter, none);
   opacity: 0;
   pointer-events: none;
 }
@@ -8787,13 +8789,13 @@ html[data-theme="light"] [data-message-center-item-id].agent-gui-edge-glow {
 }
 
 :root[data-theme="dark"] .agent-gui-node__composer-handoff-icon-animated {
-  --agent-gui-handoff-lottie-filter: brightness(0) invert(1);
+  --agent-gui-handoff-animation-filter: brightness(0) invert(1);
 }
 
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"])
     .agent-gui-node__composer-handoff-icon-animated {
-    --agent-gui-handoff-lottie-filter: brightness(0) invert(1);
+    --agent-gui-handoff-animation-filter: brightness(0) invert(1);
   }
 }
 
