@@ -873,3 +873,121 @@ func TestSequentialIssueExclusiveTaskWaitsForParallelizableBatch(t *testing.T) {
 		t.Fatalf("exclusive launch cwd = %#v, want the base checkout", exclusive.Cwd)
 	}
 }
+
+func TestAutoAcceptTaskCompletionAdvancesDispatchWithoutHumanGate(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	store := openIssueServiceStore(t)
+	if err := store.Create(ctx, workspacebiz.Summary{ID: "workspace-auto-accept", Name: "Auto accept"}); err != nil {
+		t.Fatalf("Create() workspace error = %v", err)
+	}
+	for _, target := range agenttargetbiz.DefaultSystemTargets(time.Now().UnixMilli()) {
+		if _, err := store.PutAgentTarget(ctx, target); err != nil {
+			t.Fatalf("PutAgentTarget(%q) error = %v", target.ID, err)
+		}
+	}
+	creator := &sequentialSessionCreatorRecorder{}
+	service := IssueManagerService{
+		AgentSessionCreator: creator,
+		Store:               store,
+		AgentTargetReader:   store,
+	}
+	detail, err := service.CreateIssueFromPlan(ctx, "workspace-auto-accept", CreateIssueManagerIssueFromPlanInput{
+		Issue: CreateIssueManagerIssueInput{
+			IssueID:             "issue-auto-accept",
+			TopicID:             workspaceissues.DefaultTopicID,
+			Title:               "Auto accept issue",
+			PlanningSource:      string(workspaceissues.PlanningSourceTraditionalPlan),
+			SourceSessionID:     "planning-session",
+			SequentialExecution: true,
+		},
+		Tasks: []CreateIssueManagerTaskItemInput{
+			{TaskID: "task-1", Title: "First", AgentTargetID: agenttargetbiz.IDLocalCodex, AutoAccept: true},
+			{TaskID: "task-2", Title: "Second", AgentTargetID: agenttargetbiz.IDLocalCodex, DependencyTaskIDs: []string{"task-1"}},
+		},
+	})
+	if err != nil {
+		t.Fatalf("CreateIssueFromPlan() error = %v", err)
+	}
+	first := detail.Tasks[0]
+	if _, err := service.CompleteRun(ctx, "workspace-auto-accept", detail.Issue.IssueID, first.TaskID, first.LatestRunID, CompleteIssueManagerRunInput{
+		Status: string(workspaceissues.StatusCompleted),
+	}); err != nil {
+		t.Fatalf("CompleteRun() error = %v", err)
+	}
+	if len(creator.inputs) != 2 {
+		t.Fatalf("dispatches after auto-accepted completion = %d, want 2", len(creator.inputs))
+	}
+	updated, err := service.GetIssueDetail(ctx, "workspace-auto-accept", detail.Issue.IssueID)
+	if err != nil {
+		t.Fatalf("GetIssueDetail() error = %v", err)
+	}
+	if updated.Tasks[0].Status != workspaceissues.StatusCompleted ||
+		updated.Tasks[0].AcceptanceState != workspaceissues.AcceptanceUserAccepted {
+		t.Fatalf("auto-accepted task = %#v, want completed and user_accepted", updated.Tasks[0])
+	}
+	if updated.Tasks[1].Status != workspaceissues.StatusRunning {
+		t.Fatalf("second task status = %q, want running", updated.Tasks[1].Status)
+	}
+}
+
+func TestReworkFromPendingAcceptanceRedispatchesSequentialHead(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	store := openIssueServiceStore(t)
+	if err := store.Create(ctx, workspacebiz.Summary{ID: "workspace-rework", Name: "Rework"}); err != nil {
+		t.Fatalf("Create() workspace error = %v", err)
+	}
+	for _, target := range agenttargetbiz.DefaultSystemTargets(time.Now().UnixMilli()) {
+		if _, err := store.PutAgentTarget(ctx, target); err != nil {
+			t.Fatalf("PutAgentTarget(%q) error = %v", target.ID, err)
+		}
+	}
+	creator := &sequentialSessionCreatorRecorder{}
+	service := IssueManagerService{
+		AgentSessionCreator: creator,
+		Store:               store,
+		AgentTargetReader:   store,
+	}
+	detail, err := service.CreateIssueFromPlan(ctx, "workspace-rework", CreateIssueManagerIssueFromPlanInput{
+		Issue: CreateIssueManagerIssueInput{
+			IssueID:             "issue-rework",
+			TopicID:             workspaceissues.DefaultTopicID,
+			Title:               "Rework issue",
+			PlanningSource:      string(workspaceissues.PlanningSourceTraditionalPlan),
+			SourceSessionID:     "planning-session",
+			SequentialExecution: true,
+		},
+		Tasks: []CreateIssueManagerTaskItemInput{
+			{TaskID: "task-1", Title: "Only", AgentTargetID: agenttargetbiz.IDLocalCodex},
+		},
+	})
+	if err != nil {
+		t.Fatalf("CreateIssueFromPlan() error = %v", err)
+	}
+	first := detail.Tasks[0]
+	if _, err := service.CompleteRun(ctx, "workspace-rework", detail.Issue.IssueID, first.TaskID, first.LatestRunID, CompleteIssueManagerRunInput{
+		Status: string(workspaceissues.StatusCompleted),
+	}); err != nil {
+		t.Fatalf("CompleteRun() error = %v", err)
+	}
+	if len(creator.inputs) != 1 {
+		t.Fatalf("dispatches while pending acceptance = %d, want 1", len(creator.inputs))
+	}
+	if _, err := service.UpdateTask(ctx, "workspace-rework", detail.Issue.IssueID, first.TaskID, UpdateIssueManagerTaskInput{
+		Status:    string(workspaceissues.StatusNotStarted),
+		HasStatus: true,
+	}); err != nil {
+		t.Fatalf("UpdateTask(rework) error = %v", err)
+	}
+	if len(creator.inputs) != 2 {
+		t.Fatalf("dispatches after rework = %d, want 2", len(creator.inputs))
+	}
+	updated, err := service.GetIssueDetail(ctx, "workspace-rework", detail.Issue.IssueID)
+	if err != nil {
+		t.Fatalf("GetIssueDetail() error = %v", err)
+	}
+	if updated.Tasks[0].Status != workspaceissues.StatusRunning {
+		t.Fatalf("reworked task status = %q, want running", updated.Tasks[0].Status)
+	}
+}

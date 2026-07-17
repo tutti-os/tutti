@@ -224,12 +224,20 @@ export const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
     submittedPromptScrollConversationRef,
     viewModel
   });
-  // Embedded read-only issue panel view for the materialized plan issue.
-  const planIssue = useTuttiPlanIssuePanel({
-    enabled: !previewMode,
-    workspaceId: viewModel.shell.workspaceId,
-    sourceSessionId: viewModel.rail.activeConversationId
-  }).issue;
+  // Embedded issue panel view for the materialized plan issue; the acceptance
+  // gate (accept / rework on pending tasks) settles inline here.
+  const { issue: planIssue, decideTask: planIssueDecideTask } =
+    useTuttiPlanIssuePanel({
+      enabled: !previewMode,
+      workspaceId: viewModel.shell.workspaceId,
+      sourceSessionId: viewModel.rail.activeConversationId
+    });
+  const decidePlanIssueTask = useStableEventCallback(
+    (taskId: string, decision: "accept" | "rework"): Promise<void> =>
+      planIssueDecideTask
+        ? planIssueDecideTask(taskId, decision)
+        : Promise.resolve()
+  );
   const openPlanIssue = useStableEventCallback((): void => {
     if (!planIssue) return;
     stableLinkAction?.({
@@ -734,6 +742,9 @@ export const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
                 issue={planIssue}
                 labels={labels.tuttiModePlanIssuePanel}
                 onOpenIssue={stableLinkAction ? openPlanIssue : undefined}
+                onDecideTask={
+                  planIssueDecideTask ? decidePlanIssueTask : undefined
+                }
               />
             ) : null}
             {tuttiModePlanPanels.error ? (

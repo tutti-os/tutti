@@ -30,6 +30,7 @@ func TestHostContextExamplePlanDocumentParses(t *testing.T) {
 		"    agentTargetId: local:claude-code\n" +
 		"    model: claude-opus-4-8\n" +
 		"    permissionModeId: bypassPermissions\n" +
+		"    autoAccept: true\n" +
 		"---\n" +
 		"Plan narrative in prose: goal, approach, scope boundaries, and risks.\n"
 	document, err := ParsePlanMarkdown([]byte(example))
@@ -53,6 +54,9 @@ func TestHostContextExamplePlanDocumentParses(t *testing.T) {
 	}
 	if !first.Parallelizable || second.Parallelizable {
 		t.Fatalf("parallelizable flags = %v/%v, want true/false", first.Parallelizable, second.Parallelizable)
+	}
+	if first.AutoAccept || !second.AutoAccept {
+		t.Fatalf("autoAccept flags = %v/%v, want false/true", first.AutoAccept, second.AutoAccept)
 	}
 	if second.AgentTargetID != "local:claude-code" || second.Model != "claude-opus-4-8" || second.PermissionModeID != "bypassPermissions" {
 		t.Fatalf("task-2 launch configuration = %#v", second)

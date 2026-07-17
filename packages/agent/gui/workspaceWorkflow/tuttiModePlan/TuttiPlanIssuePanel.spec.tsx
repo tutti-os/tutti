@@ -1,5 +1,5 @@
 import "@testing-library/jest-dom/vitest";
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import {
   TuttiPlanIssuePanel,
@@ -13,6 +13,9 @@ const labels: TuttiPlanIssuePanelLabels = {
   listView: "List",
   boardView: "Board",
   parallelizable: "Parallel",
+  autoAccept: "Auto-accept",
+  accept: "Accept",
+  rework: "Rework",
   dependencies: "Depends",
   stageParallel: (index, count) => `Stage ${index} · parallel ×${count}`,
   stageSequential: (index) => `Stage ${index} · sequential`,
@@ -38,6 +41,7 @@ const issue: TuttiPlanIssueSnapshot = {
       status: "completed",
       sortIndex: 1,
       parallelizable: true,
+      autoAccept: false,
       dependencyTaskIds: []
     },
     {
@@ -47,6 +51,7 @@ const issue: TuttiPlanIssueSnapshot = {
       status: "running",
       sortIndex: 2,
       parallelizable: true,
+      autoAccept: true,
       dependencyTaskIds: []
     },
     {
@@ -56,6 +61,7 @@ const issue: TuttiPlanIssueSnapshot = {
       status: "not_started",
       sortIndex: 3,
       parallelizable: false,
+      autoAccept: false,
       dependencyTaskIds: ["p1", "p2"]
     }
   ]
@@ -128,5 +134,75 @@ describe("TuttiPlanIssuePanel", () => {
     );
     fireEvent.click(screen.getByTestId("tutti-plan-issue-open"));
     expect(onOpenIssue).toHaveBeenCalledTimes(1);
+  });
+
+  it("shows the auto-accept chip on flagged tasks", () => {
+    render(
+      <TuttiPlanIssuePanel
+        issue={issue}
+        labels={labels}
+        onOpenIssue={vi.fn()}
+      />
+    );
+    expect(screen.getAllByText("Auto-accept").length).toBeGreaterThan(0);
+  });
+
+  it("settles the acceptance gate inline for pending tasks", async () => {
+    const pendingIssue: TuttiPlanIssueSnapshot = {
+      ...issue,
+      tasks: [
+        {
+          taskId: "gate",
+          title: "Review me",
+          content: "",
+          status: "pending_acceptance",
+          sortIndex: 1,
+          parallelizable: false,
+          autoAccept: false,
+          dependencyTaskIds: []
+        }
+      ]
+    };
+    const onDecideTask = vi.fn().mockResolvedValue(undefined);
+    render(
+      <TuttiPlanIssuePanel
+        issue={pendingIssue}
+        labels={labels}
+        onDecideTask={onDecideTask}
+      />
+    );
+
+    fireEvent.click(screen.getByTestId("tutti-plan-issue-accept-gate"));
+    expect(onDecideTask).toHaveBeenCalledWith("gate", "accept");
+    // In-flight decision disables both buttons until the promise settles.
+    expect(screen.getByTestId("tutti-plan-issue-rework-gate")).toBeDisabled();
+    await waitFor(() =>
+      expect(screen.getByTestId("tutti-plan-issue-rework-gate")).toBeEnabled()
+    );
+
+    fireEvent.click(screen.getByTestId("tutti-plan-issue-rework-gate"));
+    expect(onDecideTask).toHaveBeenCalledWith("gate", "rework");
+  });
+
+  it("keeps pending tasks display-only without a decision callback", () => {
+    const pendingIssue: TuttiPlanIssueSnapshot = {
+      ...issue,
+      tasks: [
+        {
+          taskId: "gate",
+          title: "Review me",
+          content: "",
+          status: "pending_acceptance",
+          sortIndex: 1,
+          parallelizable: false,
+          autoAccept: false,
+          dependencyTaskIds: []
+        }
+      ]
+    };
+    render(<TuttiPlanIssuePanel issue={pendingIssue} labels={labels} />);
+    expect(
+      screen.queryByTestId("tutti-plan-issue-accept-gate")
+    ).not.toBeInTheDocument();
   });
 });

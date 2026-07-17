@@ -26,6 +26,7 @@ const schemaMigrationWorkspaceIssuesV12 = "workspace_issue_tasks_launch_override
 const schemaMigrationWorkspaceIssuesV13 = "workspace_issue_tasks_parallelizable_v1"
 const schemaMigrationWorkspaceIssuesV14 = "workspace_issues_plan_origin_v1"
 const schemaMigrationWorkspaceIssuesV15 = "workspace_issues_execution_lifecycle_v1"
+const schemaMigrationWorkspaceIssuesV16 = "workspace_issue_tasks_auto_accept_v1"
 const schemaMigrationDesktopPreferencesV1 = "desktop_preferences_v1"
 const schemaMigrationDesktopPreferencesAgentDockLayoutV1 = "desktop_preferences_agent_dock_layout_v1"
 const schemaMigrationDesktopPreferencesSleepPreventionModeV1 = "desktop_preferences_sleep_prevention_mode_v1"
@@ -148,6 +149,9 @@ INSERT OR IGNORE INTO tuttid_schema_migrations (id, applied_at_unix_ms)
 		return err
 	}
 	if err := s.applyWorkspaceIssuesV15(ctx); err != nil {
+		return err
+	}
+	if err := s.applyWorkspaceIssuesV16(ctx); err != nil {
 		return err
 	}
 

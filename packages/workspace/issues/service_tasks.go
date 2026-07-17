@@ -51,6 +51,7 @@ func (s Service) CreateTask(ctx context.Context, input CreateTaskInput) (Task, e
 			ExecutionDirectory: input.ExecutionDirectory,
 			DependencyTaskIDs:  input.DependencyTaskIDs,
 			Parallelizable:     input.Parallelizable,
+			AutoAccept:         input.AutoAccept,
 		}},
 	})
 	if err != nil {
@@ -141,6 +142,7 @@ func (s Service) buildTasks(issue Issue, actorUserID string, items []CreateTaskI
 			ExecutionDirectory: strings.TrimSpace(item.ExecutionDirectory),
 			DependencyTaskIDs:  NormalizeDependencyTaskIDs(item.DependencyTaskIDs),
 			Parallelizable:     item.Parallelizable,
+			AutoAccept:         item.AutoAccept,
 			AcceptanceState:    AcceptanceAgentClaimed,
 			CreatorUserID:      actorUserID,
 			CreatedAtUnixMS:    now,
@@ -205,6 +207,9 @@ func (s Service) UpdateTask(ctx context.Context, input UpdateTaskInput) (Task, e
 	}
 	if input.HasParallelizable {
 		task.Parallelizable = input.Parallelizable
+	}
+	if input.HasAutoAccept {
+		task.AutoAccept = input.AutoAccept
 	}
 	if task.AcceptanceState == "" {
 		if task.Status == StatusCompleted || task.Status == StatusPendingAcceptance {

@@ -112,6 +112,7 @@ type CreateTaskInput struct {
 	ExecutionDirectory string
 	DependencyTaskIDs  []string
 	Parallelizable     bool
+	AutoAccept         bool
 }
 
 type CreateTaskItemInput struct {
@@ -128,6 +129,7 @@ type CreateTaskItemInput struct {
 	ExecutionDirectory string
 	DependencyTaskIDs  []string
 	Parallelizable     bool
+	AutoAccept         bool
 }
 
 type CreateTasksInput struct {
@@ -156,6 +158,8 @@ type UpdateTaskInput struct {
 	HasSortIndex         bool
 	Parallelizable       bool
 	HasParallelizable    bool
+	AutoAccept           bool
+	HasAutoAccept        bool
 	AcceptanceState      string
 	HasAcceptanceState   bool
 	AcceptanceSummary    string

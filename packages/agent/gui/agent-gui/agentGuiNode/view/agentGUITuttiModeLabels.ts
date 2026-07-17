@@ -40,6 +40,7 @@ export function agentGUITuttiModeLabels(
       permissionMode: t("agentHost.agentGui.tuttiModePlan.permissionMode"),
       reasoningEffort: t("agentHost.agentGui.tuttiModePlan.reasoningEffort"),
       parallelizable: t("agentHost.agentGui.tuttiModePlan.parallelizable"),
+      autoAccept: t("agentHost.agentGui.tuttiModePlan.autoAccept"),
       assignmentOptionsLoading: t(
         "agentHost.agentGui.tuttiModePlan.assignmentOptionsLoading"
       ),
@@ -64,6 +65,9 @@ export function agentGUITuttiModeLabels(
       listView: t("agentHost.agentGui.tuttiModePlan.issueListView"),
       boardView: t("agentHost.agentGui.tuttiModePlan.issueBoardView"),
       parallelizable: t("agentHost.agentGui.tuttiModePlan.parallelizable"),
+      autoAccept: t("agentHost.agentGui.tuttiModePlan.autoAccept"),
+      accept: t("agentHost.agentGui.tuttiModePlan.issueAccept"),
+      rework: t("agentHost.agentGui.tuttiModePlan.issueRework"),
       dependencies: t("agentHost.agentGui.tuttiModePlan.issueDependencies"),
       stageParallel: (index, count) =>
         t("agentHost.agentGui.tuttiModePlan.issueStageParallel", {

@@ -1,4 +1,4 @@
-import { Split } from "lucide-react";
+import { CheckCheck, Split } from "lucide-react";
 import {
   Select,
   SelectContent,
@@ -12,7 +12,7 @@ import type { TuttiModePlanAssignmentCatalog } from "./useTuttiModePlanPanels";
 import type { TuttiModePlanPanelTaskViewModel } from "./tuttiModePlanPanelProjection";
 import {
   effectiveTaskAssignmentValue,
-  effectiveTaskParallelizable,
+  effectiveTaskFlag,
   type TuttiModePlanTaskAssignmentDraft
 } from "./tuttiModePlanTaskAssignments";
 
@@ -22,6 +22,7 @@ export interface TuttiModePlanTaskAssignmentEditorLabels {
   permissionMode: string;
   reasoningEffort: string;
   parallelizable: string;
+  autoAccept: string;
   notSpecified: string;
   assignmentOptionsLoading: string;
 }
@@ -99,10 +100,11 @@ export function TuttiModePlanTaskAssignmentEditor({
     draft.reasoningEffort,
     task.reasoningEffort
   );
-  const parallelizable = effectiveTaskParallelizable(
+  const parallelizable = effectiveTaskFlag(
     draft.parallelizable,
     task.parallelizable
   );
+  const autoAccept = effectiveTaskFlag(draft.autoAccept, task.autoAccept);
   // Options for document-referenced agents are preloaded by the panels hook
   // alongside the snapshot refresh; user-driven agent changes trigger the
   // (deduplicated) load from the change handler, so no component effect is
@@ -218,6 +220,28 @@ export function TuttiModePlanTaskAssignmentEditor({
           aria-label={labels.parallelizable}
           data-testid={`tutti-plan-task-parallel-toggle-${task.id}`}
           onCheckedChange={(checked) => onEdit({ parallelizable: checked })}
+        />
+      </label>
+      <label
+        className={cn(
+          "flex min-h-[28px] w-auto shrink-0 items-center gap-1.5 px-2 text-[13px]",
+          disabled
+            ? "cursor-not-allowed text-[var(--agent-gui-text-tertiary)]"
+            : "cursor-pointer text-[var(--agent-gui-text-secondary)]"
+        )}
+        htmlFor={`tutti-plan-task-auto-accept-${task.id}`}
+        title={labels.autoAccept}
+      >
+        <CheckCheck aria-hidden className="size-3.5 shrink-0" />
+        <span className="min-w-0 truncate">{labels.autoAccept}</span>
+        <Switch
+          id={`tutti-plan-task-auto-accept-${task.id}`}
+          size="sm"
+          checked={autoAccept}
+          disabled={disabled}
+          aria-label={labels.autoAccept}
+          data-testid={`tutti-plan-task-auto-accept-toggle-${task.id}`}
+          onCheckedChange={(checked) => onEdit({ autoAccept: checked })}
         />
       </label>
     </div>

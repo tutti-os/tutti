@@ -161,7 +161,8 @@ func renderTuttiModeWorkflowGuide(cliName string) string {
 		"Plan narrative in prose: goal, approach, scope boundaries, and risks.\n"+
 		"END plan.md\n"+
 		"  Keep topicId \"default\" unless the user targets a specific issue topic; discover topic ids with `%[1]s issue topic list --json`. Scale both the task count and the model tier with the intensity (execution.orchestrationIntensity). "+
-		"Execution defaults to strictly sequential; set `parallelizable: true` on a task that can safely run alongside other dependency-ready tasks, and express ordering constraints with dependsOn.\n"+
+		"Execution defaults to strictly sequential; set `parallelizable: true` on a task that can safely run alongside other dependency-ready tasks, and express ordering constraints with dependsOn. "+
+		"Each completed task normally stops for the user's acceptance before successors start; set `autoAccept: true` on a task whose completed result needs no human review gate so execution flows on unattended.\n"+
 		"Step 3, end the turn as soon as propose returns a workflowId (nextAction \"stop\") — there is no wait command, and polling with plan get wastes the turn. The user reviews the plan in their own time; their decision reaches you as a new user message. "+
 		"If that message requests changes, update the plan document, run `%[1]s plan revise --workflow-id <workflowId> --file <absolute path> --request-id <new id>`, and end the turn again. If the user accepts, Tutti materializes the accepted plan into an Issue and orchestrates the tasks — you never start executing them yourself.\n"+
 		"A Tutti plan exists only after plan propose returns a workflowId; a plan that was only shown in chat was never submitted.\n",

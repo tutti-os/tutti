@@ -12,6 +12,9 @@ export interface TuttiPlanIssuePanelLabels {
   listView: string;
   boardView: string;
   parallelizable: string;
+  autoAccept: string;
+  accept: string;
+  rework: string;
   dependencies: string;
   stageParallel: (index: string, count: string) => string;
   stageSequential: (index: string) => string;
@@ -108,22 +111,49 @@ export function groupTuttiPlanIssueTasksIntoStages(
   return stages;
 }
 
+/** The acceptance decision the embedded panel can settle on one task. */
+export type TuttiPlanIssueTaskDecision = "accept" | "rework";
+
 /**
- * Embedded read-only "issue panel view" for the source conversation: once the
- * accepted plan materialized an Issue, the conversation shows its subtasks as
- * a live board/list. All mutations happen in the Issue Manager — the panel is
- * display plus a jump into the full Issue surface.
+ * Embedded "issue panel view" for the source conversation: once the accepted
+ * plan materialized an Issue, the conversation shows its subtasks as a live
+ * board/list. The acceptance gate closes here too — pending tasks offer
+ * accept/rework inline — while all other mutations stay in the Issue Manager;
+ * a jump into the full Issue surface remains one click away.
  */
 export function TuttiPlanIssuePanel({
   issue,
   labels,
-  onOpenIssue
+  onOpenIssue,
+  onDecideTask
 }: {
   issue: TuttiPlanIssueSnapshot;
   labels: TuttiPlanIssuePanelLabels;
   onOpenIssue?: () => void;
+  onDecideTask?: (
+    taskId: string,
+    decision: TuttiPlanIssueTaskDecision
+  ) => Promise<void>;
 }): React.JSX.Element {
   const [viewMode, setViewMode] = useState<TuttiPlanIssueViewMode>("board");
+  const [decidingTaskIds, setDecidingTaskIds] = useState<readonly string[]>([]);
+  const decideTask = onDecideTask
+    ? (taskId: string, decision: TuttiPlanIssueTaskDecision): void => {
+        setDecidingTaskIds((current) =>
+          current.includes(taskId) ? current : [...current, taskId]
+        );
+        void onDecideTask(taskId, decision)
+          .catch(() => {
+            // Best-effort mutation; the live issue stream re-syncs status and
+            // the buttons return for a retry.
+          })
+          .finally(() => {
+            setDecidingTaskIds((current) =>
+              current.filter((id) => id !== taskId)
+            );
+          });
+      }
+    : undefined;
   const done = issue.tasks.filter((task) => task.status === "completed").length;
   const running = issue.tasks.filter(
     (task) => task.status === "running"
@@ -188,9 +218,19 @@ export function TuttiPlanIssuePanel({
       </CardHeader>
       <CardContent>
         {viewMode === "board" ? (
-          <TuttiPlanIssueBoard issue={issue} labels={labels} />
+          <TuttiPlanIssueBoard
+            issue={issue}
+            labels={labels}
+            decideTask={decideTask}
+            decidingTaskIds={decidingTaskIds}
+          />
         ) : (
-          <TuttiPlanIssueList issue={issue} labels={labels} />
+          <TuttiPlanIssueList
+            issue={issue}
+            labels={labels}
+            decideTask={decideTask}
+            decidingTaskIds={decidingTaskIds}
+          />
         )}
       </CardContent>
     </Card>
@@ -205,7 +245,7 @@ function TaskStructureChips({
   task: TuttiPlanIssueTaskSnapshot;
 }): React.JSX.Element | null {
   const dependencies = task.dependencyTaskIds.filter((id) => id.trim() !== "");
-  if (!task.parallelizable && dependencies.length === 0) {
+  if (!task.parallelizable && !task.autoAccept && dependencies.length === 0) {
     return null;
   }
   return (
@@ -213,6 +253,11 @@ function TaskStructureChips({
       {task.parallelizable ? (
         <span className="shrink-0 rounded-full border border-[color-mix(in_srgb,var(--tutti-purple)_36%,transparent)] px-1.5 text-[10px] leading-4 text-[var(--tutti-purple)]">
           {labels.parallelizable}
+        </span>
+      ) : null}
+      {task.autoAccept ? (
+        <span className="shrink-0 rounded-full border border-[color-mix(in_srgb,var(--state-success)_42%,transparent)] px-1.5 text-[10px] leading-4 text-[var(--state-success)]">
+          {labels.autoAccept}
         </span>
       ) : null}
       {dependencies.length > 0 ? (
@@ -227,12 +272,57 @@ function TaskStructureChips({
   );
 }
 
+function TaskDecisionActions({
+  labels,
+  task,
+  decideTask,
+  deciding
+}: {
+  labels: TuttiPlanIssuePanelLabels;
+  task: TuttiPlanIssueTaskSnapshot;
+  decideTask?: (taskId: string, decision: TuttiPlanIssueTaskDecision) => void;
+  deciding: boolean;
+}): React.JSX.Element | null {
+  if (!decideTask || task.status !== "pending_acceptance") {
+    return null;
+  }
+  return (
+    <span className="flex shrink-0 items-center gap-1">
+      <Button
+        type="button"
+        size="sm"
+        className="h-6 bg-[var(--tutti-purple)] px-2 text-[11px] text-white hover:bg-[color-mix(in_srgb,var(--tutti-purple)_85%,black)]"
+        disabled={deciding}
+        data-testid={`tutti-plan-issue-accept-${task.taskId}`}
+        onClick={() => decideTask(task.taskId, "accept")}
+      >
+        {labels.accept}
+      </Button>
+      <Button
+        type="button"
+        size="sm"
+        variant="secondary"
+        className="h-6 px-2 text-[11px]"
+        disabled={deciding}
+        data-testid={`tutti-plan-issue-rework-${task.taskId}`}
+        onClick={() => decideTask(task.taskId, "rework")}
+      >
+        {labels.rework}
+      </Button>
+    </span>
+  );
+}
+
 function TuttiPlanIssueBoard({
   issue,
-  labels
+  labels,
+  decideTask,
+  decidingTaskIds
 }: {
   issue: TuttiPlanIssueSnapshot;
   labels: TuttiPlanIssuePanelLabels;
+  decideTask?: (taskId: string, decision: TuttiPlanIssueTaskDecision) => void;
+  decidingTaskIds: readonly string[];
 }): React.JSX.Element {
   const groups = new Map<BoardStatus, TuttiPlanIssueTaskSnapshot[]>();
   for (const task of issue.tasks) {
@@ -289,6 +379,14 @@ function TuttiPlanIssueBoard({
                     <span className="mt-1 block empty:hidden">
                       <TaskStructureChips labels={labels} task={task} />
                     </span>
+                    <span className="mt-1.5 block empty:hidden">
+                      <TaskDecisionActions
+                        labels={labels}
+                        task={task}
+                        decideTask={decideTask}
+                        deciding={decidingTaskIds.includes(task.taskId)}
+                      />
+                    </span>
                   </div>
                 ))}
               </div>
@@ -302,10 +400,14 @@ function TuttiPlanIssueBoard({
 
 function TuttiPlanIssueList({
   issue,
-  labels
+  labels,
+  decideTask,
+  decidingTaskIds
 }: {
   issue: TuttiPlanIssueSnapshot;
   labels: TuttiPlanIssuePanelLabels;
+  decideTask?: (taskId: string, decision: TuttiPlanIssueTaskDecision) => void;
+  decidingTaskIds: readonly string[];
 }): React.JSX.Element {
   const showStages = issue.tasks.some((task) => task.parallelizable);
   const stages = showStages
@@ -348,15 +450,23 @@ function TuttiPlanIssueList({
                     </p>
                   ) : null}
                 </div>
-                <span className="flex shrink-0 items-center gap-1.5 text-[11px] text-muted-foreground">
-                  <span
-                    aria-hidden
-                    className={cn(
-                      "size-1.5 rounded-full",
-                      statusDotClassName(status)
-                    )}
+                <span className="flex shrink-0 items-center gap-2">
+                  <TaskDecisionActions
+                    labels={labels}
+                    task={task}
+                    decideTask={decideTask}
+                    deciding={decidingTaskIds.includes(task.taskId)}
                   />
-                  {statusLabel(labels, status)}
+                  <span className="flex shrink-0 items-center gap-1.5 text-[11px] text-muted-foreground">
+                    <span
+                      aria-hidden
+                      className={cn(
+                        "size-1.5 rounded-full",
+                        statusDotClassName(status)
+                      )}
+                    />
+                    {statusLabel(labels, status)}
+                  </span>
                 </span>
               </div>
             );

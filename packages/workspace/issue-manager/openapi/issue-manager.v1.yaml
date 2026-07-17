@@ -1019,6 +1019,13 @@ components:
       enum:
         - active
         - soft_limited
+    IssueManagerAcceptanceState:
+      type: string
+      description: Three-step completion ladder. Only user_accepted closes a successful task.
+      enum:
+        - agent_claimed
+        - auto_checked
+        - user_accepted
     IssueManagerExecutionProfile:
       type: object
       additionalProperties: false
@@ -1298,6 +1305,9 @@ components:
         - executionDirectory
         - dependencyTaskIds
         - parallelizable
+        - autoAccept
+        - acceptanceState
+        - acceptanceSummary
         - creatorUserId
         - creatorDisplayName
         - creatorAvatarUrl
@@ -1348,6 +1358,15 @@ components:
             Opts this task out of the Issue's sequential default so it may run
             alongside other dependency-ready tasks. False keeps strict
             sequential ordering.
+        autoAccept:
+          type: boolean
+          description: >-
+            Bypasses the human acceptance gate: a successful completion is
+            accepted automatically and dispatch advances.
+        acceptanceState:
+          $ref: "#/components/schemas/IssueManagerAcceptanceState"
+        acceptanceSummary:
+          type: string
         creatorUserId:
           type: string
         creatorDisplayName:
@@ -1893,6 +1912,8 @@ components:
             minLength: 1
         parallelizable:
           type: boolean
+        autoAccept:
+          type: boolean
     CreateIssueManagerTasksRequest:
       type: object
       additionalProperties: false
@@ -1925,6 +1946,12 @@ components:
           minimum: 0
         parallelizable:
           type: boolean
+        autoAccept:
+          type: boolean
+        acceptanceState:
+          $ref: "#/components/schemas/IssueManagerAcceptanceState"
+        acceptanceSummary:
+          type: string
     AddIssueManagerContextRefItem:
       type: object
       additionalProperties: false

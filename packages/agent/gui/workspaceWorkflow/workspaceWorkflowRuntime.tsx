@@ -31,6 +31,7 @@ export interface TuttiModePlanTaskAssignmentInput {
   permissionModeId?: string | null;
   reasoningEffort?: string | null;
   parallelizable?: boolean | null;
+  autoAccept?: boolean | null;
 }
 
 export interface TuttiModePlanReviewDecisionInput {
@@ -68,6 +69,7 @@ export interface TuttiPlanIssueTaskSnapshot {
   status: string;
   sortIndex: number;
   parallelizable: boolean;
+  autoAccept: boolean;
   dependencyTaskIds: string[];
 }
 
@@ -93,6 +95,18 @@ export interface TuttiPlanIssueSource {
     workspaceId: string,
     listener: (update: { issueId: string }) => void
   ): () => void;
+  /** Accepts a pending-acceptance task (the human gate) from the embed. */
+  acceptTask(input: {
+    workspaceId: string;
+    issueId: string;
+    taskId: string;
+  }): Promise<void>;
+  /** Sends a pending-acceptance task back to rework (re-dispatch). */
+  rejectTask(input: {
+    workspaceId: string;
+    issueId: string;
+    taskId: string;
+  }): Promise<void>;
 }
 
 /**

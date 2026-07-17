@@ -436,6 +436,18 @@ the Issue-inherited intensity, and an explicit permission mode launches
 strictly—an unsupported or stale mode fails the run instead of silently
 broadening to the provider default.
 
+After acceptance the source conversation embeds a live "issue panel view"
+(board/list) of the materialized Issue, fed by the same workspace issue events
+the Issue Manager consumes. The embed surfaces per-task structure
+(parallelizable, auto-accept, dependencies) and settles the acceptance gate
+inline: a `pending_acceptance` task offers accept/rework, which the desktop
+adapter posts as the thin `UpdateTask` status transitions the Issue Manager
+already owns. Everything else stays a jump into the full Issue surface. Tasks
+flagged `autoAccept` (a durable Issue task field the planning agent proposes
+and the review can toggle) bypass that gate, and once every non-canceled task
+is completed and accepted the daemon sends one completion message back to the
+source session so control returns to the main conversation.
+
 The workflow remains the review and provenance record; the Issue becomes the
 execution record. No renderer or Agent turn recreates the graph, and no Agent
 is instructed to issue a second create call. If materialization fails, the

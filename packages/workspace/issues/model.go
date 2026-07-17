@@ -163,7 +163,11 @@ type Task struct {
 	// Parallelizable marks a task that may run alongside other ready tasks
 	// even when the Issue executes sequentially. False keeps the sequential
 	// default: the task waits for its predecessors in sort order.
-	Parallelizable    bool
+	Parallelizable bool
+	// AutoAccept bypasses the human acceptance gate: a successful run
+	// completion is accepted automatically and dispatch advances. False keeps
+	// the default pending-acceptance stop.
+	AutoAccept        bool
 	AcceptanceState   AcceptanceState
 	AcceptanceSummary string
 	CreatedAtUnixMS   int64

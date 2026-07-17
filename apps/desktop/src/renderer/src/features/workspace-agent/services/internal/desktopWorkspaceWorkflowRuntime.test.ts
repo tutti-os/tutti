@@ -61,7 +61,8 @@ const snapshot: WorkspaceWorkflowSnapshot = {
             reasoningEffort: null,
             executionDirectory: null,
             dependsOn: [],
-            parallelizable: true
+            parallelizable: true,
+            autoAccept: true
           }
         ]
       }

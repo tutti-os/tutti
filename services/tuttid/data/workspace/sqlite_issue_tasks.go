@@ -148,14 +148,14 @@ INSERT INTO workspace_issue_tasks (
   task_id, issue_id, workspace_id, title, content, search_text, status,
   priority, sort_index, due_at_unix_ms, agent_target_id, model_plan_id, model,
   permission_mode_id, reasoning_effort,
-  execution_directory, dependency_task_ids_json, parallelizable,
+  execution_directory, dependency_task_ids_json, parallelizable, auto_accept,
   acceptance_state, acceptance_summary, creator_user_id, creator_display_name,
   creator_avatar_url, latest_run_id, created_at_unix_ms, updated_at_unix_ms
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 `, task.TaskID, task.IssueID, task.WorkspaceID, task.Title, task.Content, task.SearchText,
 		string(task.Status), string(task.Priority), task.SortIndex, task.DueAtUnixMS, task.AgentTargetID,
 		task.ModelPlanID, task.Model, task.PermissionModeID, task.ReasoningEffort,
-		task.ExecutionDirectory, string(dependencyTaskIDsJSON), task.Parallelizable,
+		task.ExecutionDirectory, string(dependencyTaskIDsJSON), task.Parallelizable, task.AutoAccept,
 		string(task.AcceptanceState), task.AcceptanceSummary, task.CreatorUserID,
 		task.CreatorDisplayName, task.CreatorAvatarURL, task.LatestRunID, task.CreatedAtUnixMS, task.UpdatedAtUnixMS)
 	if err != nil {
@@ -206,13 +206,13 @@ UPDATE workspace_issue_tasks
 SET title = ?, content = ?, search_text = ?, status = ?, priority = ?,
     sort_index = ?, due_at_unix_ms = ?, agent_target_id = ?, model_plan_id = ?,
     model = ?, permission_mode_id = ?, reasoning_effort = ?, execution_directory = ?,
-    dependency_task_ids_json = ?, parallelizable = ?, acceptance_state = ?, acceptance_summary = ?,
+    dependency_task_ids_json = ?, parallelizable = ?, auto_accept = ?, acceptance_state = ?, acceptance_summary = ?,
     latest_run_id = ?, updated_at_unix_ms = ?
 WHERE workspace_id = ? AND issue_id = ? AND task_id = ?
 `, task.Title, task.Content, task.SearchText, string(task.Status), string(task.Priority),
 		task.SortIndex, task.DueAtUnixMS, task.AgentTargetID, task.ModelPlanID, task.Model,
 		task.PermissionModeID, task.ReasoningEffort,
-		task.ExecutionDirectory, string(dependencyTaskIDsJSON), task.Parallelizable,
+		task.ExecutionDirectory, string(dependencyTaskIDsJSON), task.Parallelizable, task.AutoAccept,
 		string(task.AcceptanceState), task.AcceptanceSummary, task.LatestRunID, task.UpdatedAtUnixMS,
 		task.WorkspaceID, task.IssueID, task.TaskID)
 	if err != nil {

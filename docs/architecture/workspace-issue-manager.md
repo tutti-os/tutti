@@ -141,6 +141,30 @@ timeline. Tutti Mode Plan additionally keeps its durable workflow, immutable
 revisions, checkpoints, and the operation's `issueId`; those records represent
 review provenance and do not compete with the Issue as the execution entity.
 
+Completion uses a three-step acceptance ladder:
+
+```text
+agent_claimed -> auto_checked -> user_accepted
+```
+
+A successful Run moves its task to `pending_acceptance`/`agent_claimed`; it is
+only the executor's completion claim. Only an explicit user acceptance reaches
+`user_accepted` and closes the Task as `completed`. Failed Runs leave the task
+retryable and do not satisfy dependencies. Repeated terminal completion and
+review settlement are idempotent.
+
+Two adjacent flows reuse this ladder without weakening it. A task whose
+durable `autoAccept` flag is set (proposed by the planning agent, adjustable
+in plan review) skips the human gate: run completion is accepted
+programmatically through the same `UpdateTask` path a manual acceptance takes,
+so dispatch advance and the whole-issue completion check stay identical.
+Sending a `pending_acceptance` task back to `not_started` (rework) resets its
+acceptance to `agent_claimed` and immediately re-opens the dispatch frontier —
+the daemon re-dispatches without waiting for an unrelated event. When every
+non-canceled task of a `tutti_mode_plan` Issue is `completed`/`user_accepted`,
+the daemon notifies the source conversation once (deduped per Issue) so the
+planning agent resumes with a verification/summary turn.
+
 The npm package name should be `@tutti-os/workspace-issue-manager`.
 It participates in the shared public npm release group documented in
 [npm Package Release](../conventions/npm-package-release.md).

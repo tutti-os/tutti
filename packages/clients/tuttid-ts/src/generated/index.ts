@@ -899,6 +899,7 @@ export type {
   InvokeCliCommandErrors,
   InvokeCliCommandResponse,
   InvokeCliCommandResponses,
+  IssueManagerAcceptanceState,
   IssueManagerBudget,
   IssueManagerBudgetMode,
   IssueManagerBudgetStatus,

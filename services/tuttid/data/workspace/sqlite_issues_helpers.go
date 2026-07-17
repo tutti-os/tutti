@@ -318,7 +318,7 @@ func scanWorkspaceIssueTask(scanner issueScanner) (workspaceissues.Task, error) 
 		&item.AgentTargetID, &item.ModelPlanID, &item.Model,
 		&item.PermissionModeID, &item.ReasoningEffort,
 		&item.ExecutionDirectory, &dependencyTaskIDsJSON, &item.Parallelizable,
-		&acceptanceState, &item.AcceptanceSummary,
+		&item.AutoAccept, &acceptanceState, &item.AcceptanceSummary,
 		&item.CreatorUserID, &item.CreatorDisplayName, &item.CreatorAvatarURL,
 		&item.LatestRunID, &item.CreatedAtUnixMS, &item.UpdatedAtUnixMS,
 	)

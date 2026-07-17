@@ -30,6 +30,7 @@ export interface DesktopTuttiModePlanReviewRuntimeInput {
     | "listWorkspaceIssues"
     | "listWorkspaceIssueTopics"
     | "getWorkspaceIssueDetail"
+    | "updateWorkspaceIssueTask"
   >;
   eventStreamClient?: Pick<
     TuttidEventStreamClient,
@@ -84,7 +85,8 @@ function toReviewSnapshot(
           reasoningEffort: task.reasoningEffort,
           executionDirectory: task.executionDirectory,
           dependsOn: [...task.dependsOn],
-          parallelizable: task.parallelizable
+          parallelizable: task.parallelizable,
+          autoAccept: task.autoAccept
         }))
       }
     })),
@@ -132,6 +134,9 @@ function toTaskAssignmentRequest(
     ...(assignment.parallelizable !== undefined &&
     assignment.parallelizable !== null
       ? { parallelizable: assignment.parallelizable }
+      : {}),
+    ...(assignment.autoAccept !== undefined && assignment.autoAccept !== null
+      ? { autoAccept: assignment.autoAccept }
       : {})
   }));
 }
@@ -388,6 +393,7 @@ function createPlanIssueSource(
           status: task.status,
           sortIndex: task.sortIndex,
           parallelizable: task.parallelizable === true,
+          autoAccept: task.autoAccept === true,
           dependencyTaskIds: [...task.dependencyTaskIds]
         }))
       };
@@ -401,6 +407,24 @@ function createPlanIssueSource(
           listener({ issueId: event.payload.issueId });
         },
         { scope: { workspaceId } }
+      );
+    },
+    // Acceptance decisions are thin status transitions; tuttid owns the
+    // acceptance-state machine, dispatch advance, and completion notification.
+    async acceptTask({ workspaceId, issueId, taskId }): Promise<void> {
+      await input.tuttidClient.updateWorkspaceIssueTask(
+        workspaceId,
+        issueId,
+        taskId,
+        { status: "completed" }
+      );
+    },
+    async rejectTask({ workspaceId, issueId, taskId }): Promise<void> {
+      await input.tuttidClient.updateWorkspaceIssueTask(
+        workspaceId,
+        issueId,
+        taskId,
+        { status: "not_started" }
       );
     }
   };

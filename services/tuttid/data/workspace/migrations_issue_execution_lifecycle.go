@@ -56,3 +56,32 @@ INSERT INTO tuttid_schema_migrations (id, applied_at_unix_ms)
 	}
 	return nil
 }
+
+// applyWorkspaceIssuesV16 records the per-task acceptance bypass from the
+// Tutti Mode plan review. False keeps the default human acceptance gate;
+// true auto-accepts a successful completion so dispatch advances unattended.
+func (s *SQLiteStore) applyWorkspaceIssuesV16(ctx context.Context) error {
+	applied, err := s.hasMigration(ctx, schemaMigrationWorkspaceIssuesV16)
+	if err != nil {
+		return err
+	}
+	if applied {
+		return nil
+	}
+	hasColumn, err := s.hasColumn(ctx, "workspace_issue_tasks", "auto_accept")
+	if err != nil {
+		return err
+	}
+	if !hasColumn {
+		if _, err := s.writeDB.ExecContext(ctx, "ALTER TABLE workspace_issue_tasks ADD COLUMN auto_accept INTEGER NOT NULL DEFAULT 0;"); err != nil {
+			return fmt.Errorf("add workspace_issue_tasks.auto_accept: %w", err)
+		}
+	}
+	if _, err := s.writeDB.ExecContext(ctx, `
+INSERT INTO tuttid_schema_migrations (id, applied_at_unix_ms)
+  VALUES (?, ?);
+`, schemaMigrationWorkspaceIssuesV16, unixMs(time.Now().UTC())); err != nil {
+		return fmt.Errorf("record workspace issue task auto accept migration: %w", err)
+	}
+	return nil
+}

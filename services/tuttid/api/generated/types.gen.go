@@ -1390,6 +1390,27 @@ func (e HealthStatusResponseStatus) Valid() bool {
 	}
 }
 
+// Defines values for IssueManagerAcceptanceState.
+const (
+	AgentClaimed IssueManagerAcceptanceState = "agent_claimed"
+	AutoChecked  IssueManagerAcceptanceState = "auto_checked"
+	UserAccepted IssueManagerAcceptanceState = "user_accepted"
+)
+
+// Valid indicates whether the value is a known member of the IssueManagerAcceptanceState enum.
+func (e IssueManagerAcceptanceState) Valid() bool {
+	switch e {
+	case AgentClaimed:
+		return true
+	case AutoChecked:
+		return true
+	case UserAccepted:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for IssueManagerBudgetMode.
 const (
 	IssueManagerBudgetModeAuto  IssueManagerBudgetMode = "auto"
@@ -4289,6 +4310,7 @@ type CreateIssueManagerRunRequest struct {
 // CreateIssueManagerTaskRequest defines model for CreateIssueManagerTaskRequest.
 type CreateIssueManagerTaskRequest struct {
 	AgentTargetId      *string               `json:"agentTargetId,omitempty"`
+	AutoAccept         *bool                 `json:"autoAccept,omitempty"`
 	Content            *string               `json:"content,omitempty"`
 	DependencyTaskIds  *[]string             `json:"dependencyTaskIds,omitempty"`
 	DueAtUnix          *int64                `json:"dueAtUnix,omitempty"`
@@ -4811,6 +4833,9 @@ type InstallWorkspaceAppRequest struct {
 	RestartRunning *bool `json:"restartRunning,omitempty"`
 }
 
+// IssueManagerAcceptanceState Three-step completion ladder. Only user_accepted closes a successful task.
+type IssueManagerAcceptanceState string
+
 // IssueManagerBudget defines model for IssueManagerBudget.
 type IssueManagerBudget struct {
 	ConsumedTokens int64                  `json:"consumedTokens"`
@@ -5045,8 +5070,15 @@ type IssueManagerStatusFilter string
 
 // IssueManagerTask defines model for IssueManagerTask.
 type IssueManagerTask struct {
+	// AcceptanceState Three-step completion ladder. Only user_accepted closes a successful task.
+	AcceptanceState   IssueManagerAcceptanceState `json:"acceptanceState"`
+	AcceptanceSummary string                      `json:"acceptanceSummary"`
+
 	// AgentTargetId Opaque WorkspaceAgent assignment. Empty means not assigned yet.
-	AgentTargetId      string   `json:"agentTargetId"`
+	AgentTargetId string `json:"agentTargetId"`
+
+	// AutoAccept Bypasses the human acceptance gate: a successful completion is accepted automatically and dispatch advances.
+	AutoAccept         bool     `json:"autoAccept"`
 	Content            string   `json:"content"`
 	CreatedAtUnix      int64    `json:"createdAtUnix"`
 	CreatorAvatarUrl   string   `json:"creatorAvatarUrl"`
@@ -5716,7 +5748,10 @@ type TuttiModePlanExecutionMode string
 
 // TuttiModePlanTask defines model for TuttiModePlanTask.
 type TuttiModePlanTask struct {
-	AgentTargetId      *string  `json:"agentTargetId"`
+	AgentTargetId *string `json:"agentTargetId"`
+
+	// AutoAccept Bypasses the human acceptance gate: a successful completion is accepted automatically and dispatch advances. Persisted onto the materialized Issue task.
+	AutoAccept         bool     `json:"autoAccept"`
 	Content            string   `json:"content"`
 	DependsOn          []string `json:"dependsOn"`
 	ExecutionDirectory *string  `json:"executionDirectory"`
@@ -5755,13 +5790,17 @@ type UpdateIssueManagerIssueRequest struct {
 
 // UpdateIssueManagerTaskRequest defines model for UpdateIssueManagerTaskRequest.
 type UpdateIssueManagerTaskRequest struct {
-	Content        *string               `json:"content,omitempty"`
-	DueAtUnix      *int64                `json:"dueAtUnix,omitempty"`
-	Parallelizable *bool                 `json:"parallelizable,omitempty"`
-	Priority       *IssueManagerPriority `json:"priority,omitempty"`
-	SortIndex      *int                  `json:"sortIndex,omitempty"`
-	Status         *IssueManagerStatus   `json:"status,omitempty"`
-	Title          *string               `json:"title,omitempty"`
+	// AcceptanceState Three-step completion ladder. Only user_accepted closes a successful task.
+	AcceptanceState   *IssueManagerAcceptanceState `json:"acceptanceState,omitempty"`
+	AcceptanceSummary *string                      `json:"acceptanceSummary,omitempty"`
+	AutoAccept        *bool                        `json:"autoAccept,omitempty"`
+	Content           *string                      `json:"content,omitempty"`
+	DueAtUnix         *int64                       `json:"dueAtUnix,omitempty"`
+	Parallelizable    *bool                        `json:"parallelizable,omitempty"`
+	Priority          *IssueManagerPriority        `json:"priority,omitempty"`
+	SortIndex         *int                         `json:"sortIndex,omitempty"`
+	Status            *IssueManagerStatus          `json:"status,omitempty"`
+	Title             *string                      `json:"title,omitempty"`
 }
 
 // UpdateIssueManagerTopicRequest defines model for UpdateIssueManagerTopicRequest.
@@ -7001,8 +7040,11 @@ type WorkspaceWorkflowStatus string
 // WorkspaceWorkflowTaskAssignment User-owned per-task assignment override recorded with an accepted task review decision. Null fields keep the plan document value; empty strings clear it.
 type WorkspaceWorkflowTaskAssignment struct {
 	AgentTargetId *string `json:"agentTargetId,omitempty"`
-	Model         *string `json:"model,omitempty"`
-	ModelPlanId   *string `json:"modelPlanId,omitempty"`
+
+	// AutoAccept Overrides the plan document's per-task acceptance bypass; null keeps it.
+	AutoAccept  *bool   `json:"autoAccept,omitempty"`
+	Model       *string `json:"model,omitempty"`
+	ModelPlanId *string `json:"modelPlanId,omitempty"`
 
 	// Parallelizable Overrides the plan document's per-task parallel opt-in; null keeps it.
 	Parallelizable   *bool   `json:"parallelizable,omitempty"`

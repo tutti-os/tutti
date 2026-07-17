@@ -335,20 +335,26 @@ func (api DaemonAPI) UpdateWorkspaceIssueTask(ctx context.Context, request tutti
 	}
 
 	task, err := api.IssueService.UpdateTask(ctx, string(request.WorkspaceID), string(request.IssueID), string(request.TaskID), workspaceservice.UpdateIssueManagerTaskInput{
-		Title:             optionalString(request.Body.Title),
-		HasTitle:          request.Body.Title != nil,
-		Content:           optionalString(request.Body.Content),
-		HasContent:        request.Body.Content != nil,
-		Status:            optionalIssueManagerStatus(request.Body.Status),
-		HasStatus:         request.Body.Status != nil,
-		Priority:          optionalIssueManagerPriority(request.Body.Priority),
-		HasPriority:       request.Body.Priority != nil,
-		DueAtUnixMS:       optionalUnixMillis(request.Body.DueAtUnix),
-		HasDueAt:          request.Body.DueAtUnix != nil,
-		SortIndex:         optionalInt(request.Body.SortIndex),
-		HasSortIndex:      request.Body.SortIndex != nil,
-		Parallelizable:    request.Body.Parallelizable != nil && *request.Body.Parallelizable,
-		HasParallelizable: request.Body.Parallelizable != nil,
+		Title:                optionalString(request.Body.Title),
+		HasTitle:             request.Body.Title != nil,
+		Content:              optionalString(request.Body.Content),
+		HasContent:           request.Body.Content != nil,
+		Status:               optionalIssueManagerStatus(request.Body.Status),
+		HasStatus:            request.Body.Status != nil,
+		Priority:             optionalIssueManagerPriority(request.Body.Priority),
+		HasPriority:          request.Body.Priority != nil,
+		DueAtUnixMS:          optionalUnixMillis(request.Body.DueAtUnix),
+		HasDueAt:             request.Body.DueAtUnix != nil,
+		SortIndex:            optionalInt(request.Body.SortIndex),
+		HasSortIndex:         request.Body.SortIndex != nil,
+		Parallelizable:       request.Body.Parallelizable != nil && *request.Body.Parallelizable,
+		HasParallelizable:    request.Body.Parallelizable != nil,
+		AutoAccept:           request.Body.AutoAccept != nil && *request.Body.AutoAccept,
+		HasAutoAccept:        request.Body.AutoAccept != nil,
+		AcceptanceState:      optionalAcceptanceState(request.Body.AcceptanceState),
+		HasAcceptanceState:   request.Body.AcceptanceState != nil,
+		AcceptanceSummary:    optionalString(request.Body.AcceptanceSummary),
+		HasAcceptanceSummary: request.Body.AcceptanceSummary != nil,
 	})
 	if err != nil {
 		return writeUpdateWorkspaceIssueTaskError(err), nil
@@ -677,6 +683,13 @@ func optionalIssueManagerStatus(value *tuttigenerated.IssueManagerStatus) string
 }
 
 func optionalIssueManagerPriority(value *tuttigenerated.IssueManagerPriority) string {
+	if value == nil {
+		return ""
+	}
+	return string(*value)
+}
+
+func optionalAcceptanceState(value *tuttigenerated.IssueManagerAcceptanceState) string {
 	if value == nil {
 		return ""
 	}
