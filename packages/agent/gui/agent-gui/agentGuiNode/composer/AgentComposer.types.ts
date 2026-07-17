@@ -317,6 +317,12 @@ export interface AgentComposerProps {
     displayPrompt?: string,
     options?: AgentComposerSubmitOptions
   ) => void;
+  /**
+   * When set, an empty-draft send is enabled and routed here instead of being
+   * blocked (e.g. Tutti plan review: empty send = accept). Typed sends keep
+   * flowing through onSubmit.
+   */
+  onSubmitEmpty?: () => void;
   onSubmitGuidance?: (
     content: AgentPromptContentBlock[],
     displayPrompt?: string,

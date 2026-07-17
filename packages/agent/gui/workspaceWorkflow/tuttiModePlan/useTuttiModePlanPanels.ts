@@ -50,6 +50,13 @@ function emptyAssignmentState(scopeKey: string): AssignmentCatalogState {
   return { agents: null, optionsByAgentId: {}, scopeKey };
 }
 
+const EMPTY_AGENT_DETAIL: TuttiModePlanAssignmentAgentDetail = {
+  models: [],
+  modelPlans: [],
+  permissionModes: [],
+  reasoningEfforts: []
+};
+
 export function useTuttiModePlanPanels(input: {
   decidedBy: string;
   /** Passive previews keep the hook mounted without starting transport work. */
@@ -119,7 +126,23 @@ export function useTuttiModePlanPanels(input: {
           );
         })
         .catch(() => {
+          // Allow a later explicit agent re-selection to retry the load, but
+          // settle the entry with an empty catalog so selectors degrade to
+          // the current values instead of wedging on the loading placeholder.
           assignmentRequestsRef.current.delete(trimmed);
+          if (activeScopeRef.current !== capturedScope) return;
+          setAssignmentState((current) =>
+            current.scopeKey === capturedScope &&
+            current.optionsByAgentId[trimmed] === undefined
+              ? {
+                  ...current,
+                  optionsByAgentId: {
+                    ...current.optionsByAgentId,
+                    [trimmed]: EMPTY_AGENT_DETAIL
+                  }
+                }
+              : current
+          );
         });
     },
     [assignmentSource, scopeKey, workspaceId]

@@ -37,6 +37,7 @@ import type {
 import type { AgentGUIEngagementEventSink } from "../engagement/agentGUIEngagement.types";
 import type { OpenAgentEnvPanelInput } from "../../../shared/agentEnv";
 import type { TuttiModePlanPanelLabels } from "../../../workspaceWorkflow";
+import type { TuttiPlanReviewBannerLabels } from "../TuttiPlanReviewBanner";
 
 export type AgentMentionReferenceTargetResolver = (
   item: AgentContextMentionItem
@@ -128,6 +129,7 @@ export interface AgentGUIViewLabels {
   tuttiModeUpdateFailed: string;
   tuttiModeUpdateUncertain: string;
   tuttiModePlanPanel: TuttiModePlanPanelLabels;
+  tuttiModePlanBanner: TuttiPlanReviewBannerLabels;
   tuttiModePlanLoadFailed: string;
   tuttiModePlanRetry: string;
   planModeDescription?: string;

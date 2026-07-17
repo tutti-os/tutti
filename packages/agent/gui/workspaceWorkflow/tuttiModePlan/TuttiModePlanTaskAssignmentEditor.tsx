@@ -15,7 +15,6 @@ import {
 
 export interface TuttiModePlanTaskAssignmentEditorLabels {
   agentTarget: string;
-  modelPlan: string;
   model: string;
   permissionMode: string;
   reasoningEffort: string;
@@ -62,6 +61,11 @@ export function permissionModeAssignmentTone(
  * Per-task assignment selectors for the single review checkpoint, rendered as
  * one composer-styled row. Option catalogs are agent-scoped and supplied by
  * the host; the editor only chooses among them and reports draft edits upward.
+ *
+ * Model plans are deliberately not exposed here: a plan enters orchestration
+ * by configuring an agent target bound to it, so the row offers only agent /
+ * model / permission mode / reasoning effort. An explicit model choice clears
+ * any document-stamped plan pin so the two can never contradict.
  */
 export function TuttiModePlanTaskAssignmentEditor({
   catalog,
@@ -82,10 +86,6 @@ export function TuttiModePlanTaskAssignmentEditor({
     draft.agentTargetId,
     task.agentTargetId
   );
-  const planValue = effectiveTaskAssignmentValue(
-    draft.modelPlanId,
-    task.modelPlanId
-  );
   const modelValue = effectiveTaskAssignmentValue(draft.model, task.model);
   const permissionValue = effectiveTaskAssignmentValue(
     draft.permissionModeId,
@@ -102,12 +102,7 @@ export function TuttiModePlanTaskAssignmentEditor({
   const agentDetail = agentValue
     ? (catalog.optionsByAgentId[agentValue] ?? null)
     : null;
-  const selectedPlan =
-    agentDetail?.modelPlans.find((plan) => plan.modelPlanId === planValue) ??
-    null;
-  const modelOptions = selectedPlan
-    ? selectedPlan.models
-    : (agentDetail?.models ?? []);
+  const modelOptions = agentDetail?.models ?? [];
   const detailPending = Boolean(agentValue) && !agentDetail;
   const agentLabel = agentValue
     ? ((catalog.agents ?? []).find(
@@ -157,19 +152,6 @@ export function TuttiModePlanTaskAssignmentEditor({
       </Select>
       <AssignmentValueSelect
         disabled={disabled || !agentValue || detailPending}
-        fieldLabel={labels.modelPlan}
-        notSpecifiedLabel={labels.notSpecified}
-        options={(agentDetail?.modelPlans ?? []).map((plan) => ({
-          label: plan.label,
-          value: plan.modelPlanId
-        }))}
-        pending={detailPending}
-        pendingLabel={labels.assignmentOptionsLoading}
-        value={planValue}
-        onChange={(value) => onEdit({ modelPlanId: value, model: "" })}
-      />
-      <AssignmentValueSelect
-        disabled={disabled || !agentValue || detailPending}
         fieldLabel={labels.model}
         notSpecifiedLabel={labels.notSpecified}
         options={modelOptions.map((model) => ({
@@ -179,7 +161,7 @@ export function TuttiModePlanTaskAssignmentEditor({
         pending={detailPending}
         pendingLabel={labels.assignmentOptionsLoading}
         value={modelValue}
-        onChange={(value) => onEdit({ model: value })}
+        onChange={(value) => onEdit({ model: value, modelPlanId: "" })}
       />
       <AssignmentValueSelect
         disabled={disabled || !agentValue || detailPending}
