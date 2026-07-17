@@ -27,6 +27,11 @@ import {
 import { IssueManagerTaskListLoadingState } from "../panel/IssueManagerPanelSurface.tsx";
 import { issueManagerStatusBadgeVariant } from "../status/IssueManagerStatusBadge.ts";
 import { IssueManagerSubtaskBoard } from "./IssueManagerSubtaskBoard.tsx";
+import {
+  IssueManagerTaskStructureChips,
+  groupIssueManagerTasksIntoStages,
+  issueManagerTasksHaveParallelStructure
+} from "./IssueManagerTaskStructure.tsx";
 import type { IssueManagerLatestRunStatusRenderer } from "../../latestRunStatusRenderer.ts";
 import type { IssueManagerController } from "../../react/index.ts";
 import type { IssueManagerI18nRuntime } from "../../../i18n/issueManagerI18n.ts";
@@ -428,27 +433,50 @@ function IssueManagerSubtaskList({
   selectedTaskId: string | null;
   tasks: readonly IssueManagerTaskSummary[];
 }): JSX.Element {
+  // Stage headers only appear once parallelism is in play; a plain
+  // sequential Issue keeps the flat list.
+  const showStages = issueManagerTasksHaveParallelStructure(tasks);
+  const stages = showStages
+    ? groupIssueManagerTasksIntoStages(tasks)
+    : [{ kind: "sequential" as const, tasks: [...tasks] }];
   return (
     <div className="overflow-hidden rounded-lg border border-[var(--line-2)] bg-transparent">
-      {tasks.map((task) => (
-        <button
-          className={cn(
-            "flex w-full items-start justify-between gap-4 border-b border-[var(--line-2)] px-4 py-3 text-left transition-colors last:border-b-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/25 focus-visible:ring-inset",
-            selectedTaskId === task.taskId
-              ? "bg-transparency-actived"
-              : "bg-transparent hover:bg-transparency-hover"
-          )}
-          key={task.taskId}
-          type="button"
-          onClick={(event) => onSelectTask(event, task, "detail_subtasks")}
-        >
-          <IssueManagerSubtaskListContent copy={copy} task={task} />
-          <span className="shrink-0 text-[11px] font-normal text-[var(--text-secondary)]">
-            {formatIssueManagerTimestamp(
-              task.createdAtUnix ?? task.updatedAtUnix
-            ) || ""}
-          </span>
-        </button>
+      {stages.map((stage, stageIndex) => (
+        <div key={`stage-${stageIndex}`}>
+          {showStages ? (
+            <div
+              className="border-b border-[var(--line-2)] bg-[color-mix(in_srgb,var(--text-secondary)_6%,transparent)] px-4 py-1 text-[10px] font-medium text-[var(--text-tertiary)]"
+              data-issue-manager-subtask-stage={stage.kind}
+            >
+              {copy.t(
+                stage.kind === "parallel"
+                  ? "labels.stageParallel"
+                  : "labels.stageSequential",
+                { count: stage.tasks.length, index: stageIndex + 1 }
+              )}
+            </div>
+          ) : null}
+          {stage.tasks.map((task) => (
+            <button
+              className={cn(
+                "flex w-full items-start justify-between gap-4 border-b border-[var(--line-2)] px-4 py-3 text-left transition-colors last:border-b-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/25 focus-visible:ring-inset",
+                selectedTaskId === task.taskId
+                  ? "bg-transparency-actived"
+                  : "bg-transparent hover:bg-transparency-hover"
+              )}
+              key={task.taskId}
+              type="button"
+              onClick={(event) => onSelectTask(event, task, "detail_subtasks")}
+            >
+              <IssueManagerSubtaskListContent copy={copy} task={task} />
+              <span className="shrink-0 text-[11px] font-normal text-[var(--text-secondary)]">
+                {formatIssueManagerTimestamp(
+                  task.createdAtUnix ?? task.updatedAtUnix
+                ) || ""}
+              </span>
+            </button>
+          ))}
+        </div>
       ))}
     </div>
   );
@@ -472,6 +500,7 @@ function IssueManagerSubtaskListContent({
         <Badge variant={issueManagerStatusBadgeVariant(task.status)}>
           {resolveIssueManagerStatusLabel(copy, task.status)}
         </Badge>
+        <IssueManagerTaskStructureChips copy={copy} task={task} />
       </div>
       <p className="mt-2 line-clamp-2 text-[11px] font-normal leading-[1.5] text-[var(--text-secondary)]">
         {summarizeIssueManagerContent(

@@ -6,6 +6,7 @@ type AgentGUITuttiModeLabels = Pick<
   | "tuttiModeDescription"
   | "tuttiModeLabel"
   | "tuttiModePlanBanner"
+  | "tuttiModePlanIssuePanel"
   | "tuttiModePlanLoadFailed"
   | "tuttiModePlanPanel"
   | "tuttiModePlanRetry"
@@ -58,6 +59,38 @@ export function agentGUITuttiModeLabels(
       t("agentHost.agentGui.tuttiModePlan.replanFeedback", { from, to }),
     tuttiModePlanReplanFeedbackSuffix: (to) =>
       t("agentHost.agentGui.tuttiModePlan.replanFeedbackSuffix", { to }),
+    tuttiModePlanIssuePanel: {
+      openIssue: t("agentHost.agentGui.tuttiModePlan.issueOpen"),
+      listView: t("agentHost.agentGui.tuttiModePlan.issueListView"),
+      boardView: t("agentHost.agentGui.tuttiModePlan.issueBoardView"),
+      parallelizable: t("agentHost.agentGui.tuttiModePlan.parallelizable"),
+      dependencies: t("agentHost.agentGui.tuttiModePlan.issueDependencies"),
+      stageParallel: (index, count) =>
+        t("agentHost.agentGui.tuttiModePlan.issueStageParallel", {
+          count,
+          index
+        }),
+      stageSequential: (index) =>
+        t("agentHost.agentGui.tuttiModePlan.issueStageSequential", { index }),
+      summary: (done, total, running) =>
+        t("agentHost.agentGui.tuttiModePlan.issueSummary", {
+          done,
+          running,
+          total
+        }),
+      statusNotStarted: t(
+        "agentHost.agentGui.tuttiModePlan.issueStatusNotStarted"
+      ),
+      statusRunning: t("agentHost.agentGui.tuttiModePlan.issueStatusRunning"),
+      statusPendingAcceptance: t(
+        "agentHost.agentGui.tuttiModePlan.issueStatusPendingAcceptance"
+      ),
+      statusCompleted: t(
+        "agentHost.agentGui.tuttiModePlan.issueStatusCompleted"
+      ),
+      statusFailed: t("agentHost.agentGui.tuttiModePlan.issueStatusFailed"),
+      statusCanceled: t("agentHost.agentGui.tuttiModePlan.issueStatusCanceled")
+    },
     tuttiModePlanLoadFailed: t("agentHost.agentGui.tuttiModePlan.loadFailed"),
     tuttiModePlanRetry: t("agentHost.agentGui.tuttiModePlan.retry")
   };

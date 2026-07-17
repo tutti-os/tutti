@@ -59,9 +59,11 @@ import { useAgentGUIDetailModel } from "./useAgentGUIDetailModel";
 import type { AgentGUIComposerEngagement } from "../engagement/agentGUIEngagement.types";
 import {
   TuttiModePlanPanel,
+  TuttiPlanIssuePanel,
   mergeTaskAssignmentDraft,
   taskAssignmentInputsFromDrafts,
   useTuttiModePlanPanels,
+  useTuttiPlanIssuePanel,
   type TuttiModePlanTaskAssignmentDraft,
   type TuttiModePlanTaskAssignmentDrafts
 } from "../../../workspaceWorkflow";
@@ -275,6 +277,22 @@ export const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
   });
   const cancelPendingPlan = useStableEventCallback((): void => {
     decidePendingPlan("canceled");
+  });
+  // Embedded read-only issue panel view for the materialized plan issue.
+  const planIssue = useTuttiPlanIssuePanel({
+    enabled: !previewMode,
+    workspaceId: viewModel.shell.workspaceId,
+    sourceSessionId: viewModel.rail.activeConversationId
+  }).issue;
+  const openPlanIssue = useStableEventCallback((): void => {
+    if (!planIssue) return;
+    stableLinkAction?.({
+      type: "open-workspace-issue",
+      workspaceId: viewModel.shell.workspaceId,
+      issueId: planIssue.issueId,
+      topicId: planIssue.topicId || null,
+      source: "tutti-plan-issue-panel"
+    });
   });
   // Turning Tutti mode off with a review still pending also cancels the
   // checkpoint: the banner and composer decision semantics clear with it, and
@@ -853,6 +871,13 @@ export const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
                 }
               />
             ))}
+            {planIssue && !pendingPlanPanel ? (
+              <TuttiPlanIssuePanel
+                issue={planIssue}
+                labels={labels.tuttiModePlanIssuePanel}
+                onOpenIssue={stableLinkAction ? openPlanIssue : undefined}
+              />
+            ) : null}
             {tuttiModePlanPanels.error ? (
               <div
                 className="mx-auto flex w-full max-w-[860px] items-center justify-between gap-3 rounded-md border border-border bg-card px-4 py-3 text-sm text-muted-foreground"
