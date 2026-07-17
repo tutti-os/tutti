@@ -75,7 +75,6 @@ export function WorkbenchHost({
   const missionControlMode = missionControl?.mode ?? null;
   const missionControlNodeIds = missionControl?.nodeIds;
   const missionControlClose = missionControl?.onRequestClose ?? noop;
-  const missionControlRequestMode = missionControl?.onRequestMode;
   const missionControlEnabled =
     missionControlMode !== null || onMissionControlAdapterReady !== undefined;
   const {
@@ -126,8 +125,7 @@ export function WorkbenchHost({
     adapter: missionControlAdapter,
     mode: missionControlMode,
     nodeIds: missionControlNodeIds,
-    onRequestClose: missionControlClose,
-    onRequestMode: missionControlRequestMode
+    onRequestClose: missionControlClose
   });
   const missionControlPresence =
     useWorkbenchMissionControlPresence(missionControlState);

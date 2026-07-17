@@ -567,7 +567,6 @@ export interface WorkbenchHostMissionControlProps {
   mode: WorkbenchMissionControlMode | null;
   nodeIds?: readonly string[];
   onRequestClose: () => void;
-  onRequestMode?: (mode: WorkbenchMissionControlMode) => void;
 }
 
 export interface WorkbenchHostMissionControlOpenRequest {

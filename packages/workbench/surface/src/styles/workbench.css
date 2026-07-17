@@ -660,18 +660,6 @@
   color: var(--text-disabled);
 }
 
-.workbench-mission-control__layout-mode-button {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  height: 32px;
-  padding: 0 12px;
-  color: var(--text-primary);
-  font-size: 14px;
-  line-height: 20px;
-  white-space: nowrap;
-}
-
 .workbench-mission-control__layout-hint {
   min-height: 32px;
   display: inline-flex;

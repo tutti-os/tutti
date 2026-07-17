@@ -54,10 +54,7 @@ import {
   registerWorkspaceBrowserLaunchHandler,
   type WorkspaceBrowserLaunchRequest
 } from "../services/workspaceBrowserLaunchCoordinator.ts";
-import {
-  isWorkspaceMissionControlActivateShortcut,
-  isWorkspaceMissionControlLayoutShortcut
-} from "../services/workspaceMissionControlShortcut.ts";
+import { isWorkspaceMissionControlLayoutShortcut } from "../services/workspaceMissionControlShortcut.ts";
 import {
   registerWorkspaceFilesLaunchHandler,
   workspaceFilesLaunchTypeId,
@@ -633,28 +630,17 @@ function ReadyWorkspaceWorkbenchWithSession({
     }
 
     const handleKeyDown = (event: KeyboardEvent): void => {
-      if (!isWorkspaceMissionControlActivateShortcut(event)) {
-        if (!isWorkspaceMissionControlLayoutShortcut(event)) {
-          return;
-        }
-
-        event.preventDefault();
-        if (runtime.missionControl.mode === "layout") {
-          runtime.missionControl.close();
-          return;
-        }
-
-        runtime.missionControl.open("layout", "keyboard");
+      if (!isWorkspaceMissionControlLayoutShortcut(event)) {
         return;
       }
 
       event.preventDefault();
-      if (runtime.missionControl.mode === "activate") {
+      if (runtime.missionControl.mode === "layout") {
         runtime.missionControl.close();
         return;
       }
 
-      runtime.missionControl.open("activate", "keyboard");
+      runtime.missionControl.open("layout", "keyboard");
     };
 
     window.addEventListener("keydown", handleKeyDown);
@@ -743,8 +729,7 @@ function ReadyWorkspaceWorkbenchWithSession({
         missionControl={{
           mode: runtime.missionControl.mode,
           nodeIds: runtime.missionControl.nodeIds ?? undefined,
-          onRequestClose: runtime.missionControl.close,
-          onRequestMode: (mode) => runtime.missionControl.open(mode, "button")
+          onRequestClose: runtime.missionControl.close
         }}
         minimizeAnimation={runtime.minimizeAnimation}
         nodes={hostInput.nodes}

@@ -50,8 +50,8 @@ export function WorkspaceMissionControlActions({
         label={t("workspace.workbenchDesktop.missionControl.layoutTrigger")}
         shortcutLabel={t(
           isDarwin
-            ? "workspace.workbenchDesktop.missionControl.activateShortcutMac"
-            : "workspace.workbenchDesktop.missionControl.activateShortcutDefault"
+            ? "workspace.workbenchDesktop.missionControl.layoutShortcutMac"
+            : "workspace.workbenchDesktop.missionControl.layoutShortcutDefault"
         )}
         unavailableLabel={t(
           "workspace.workbenchDesktop.missionControl.unavailableTrigger"
@@ -61,7 +61,7 @@ export function WorkspaceMissionControlActions({
             missionControl.close();
             return;
           }
-          missionControl.open("activate", "button");
+          missionControl.open("layout", "button");
         }}
       >
         <AppWindowIcon className="size-4" />
