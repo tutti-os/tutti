@@ -4,11 +4,13 @@ import type {
   AgentActivitySnapshot
 } from "@tutti-os/agent-activity-core";
 import {
+  composerDefaultsPatchFromSettings,
   composerOptionsForTarget,
   composerOptionsLoadFailedForTarget,
   composerOptionsLoadingForTarget,
   composerTargetDataFromProviderTarget,
-  resolveAgentGUIProviderRailTargetSelection
+  resolveAgentGUIProviderRailTargetSelection,
+  sessionComposerSettingsPersistence
 } from "./agentGuiController.providerHelpers";
 import type { AgentGUIComposerTargetData } from "./agentGuiController.composerPresentation";
 import type { AgentGUIConversationSummary } from "../model/agentGuiConversationModel";
@@ -135,6 +137,101 @@ describe("composer target data from provider target", () => {
       }
     });
     expect(targetData.agentTargetId).toBe("local:codex");
+  });
+});
+
+describe("composer defaults remember patch", () => {
+  it("never remembers a plan model as a bare model id", () => {
+    // Persisted composer defaults cannot carry modelPlanId (fixed daemon
+    // schema); remembering the bare id would leak a plan-scoped model into
+    // plain provider sessions after reload.
+    expect(
+      composerDefaultsPatchFromSettings(
+        { model: "x-ai/grok-4.5", modelPlanId: "mp-relay" },
+        {
+          model: "x-ai/grok-4.5",
+          modelPlanId: "mp-relay",
+          reasoningEffort: "high"
+        }
+      )
+    ).toEqual(null);
+    expect(
+      composerDefaultsPatchFromSettings(
+        { model: "x-ai/grok-4.5", modelPlanId: "mp-relay", speed: "fast" },
+        {
+          model: "x-ai/grok-4.5",
+          modelPlanId: "mp-relay",
+          speed: "fast"
+        }
+      )
+    ).toEqual({ speed: "fast" });
+  });
+
+  it("still remembers native model selections", () => {
+    expect(
+      composerDefaultsPatchFromSettings(
+        { model: "gpt-5.3-codex", modelPlanId: null },
+        { model: "gpt-5.3-codex", modelPlanId: null }
+      )
+    ).toEqual({ model: "gpt-5.3-codex" });
+  });
+});
+
+describe("active-session settings persistence", () => {
+  it("does not remember a same-plan model switch as a bare default", () => {
+    // The patch has no modelPlanId key (same-plan switches skip staging), so
+    // the plan binding must come from the session, not from the patch shape.
+    const persistence = sessionComposerSettingsPersistence({
+      currentModelPlanId: "mp-relay",
+      sessionSettingsPatch: { model: "x-ai/grok-4.6" },
+      storedNodeDefaults: { model: null, modelPlanId: null }
+    });
+    expect(persistence.rememberedDefaults).toEqual(null);
+    expect(persistence.nodeDefaults).toMatchObject({
+      model: "x-ai/grok-4.6",
+      modelPlanId: "mp-relay"
+    });
+  });
+
+  it("never merges a model into node defaults holding another plan's binding", () => {
+    const persistence = sessionComposerSettingsPersistence({
+      currentModelPlanId: null,
+      sessionSettingsPatch: { model: "gpt-5.3-codex" },
+      storedNodeDefaults: { model: "x-ai/grok-4.5", modelPlanId: "mp-other" }
+    });
+    expect(persistence.rememberedDefaults).toEqual({
+      model: "gpt-5.3-codex"
+    });
+    expect(persistence.nodeDefaults).toMatchObject({
+      model: "gpt-5.3-codex",
+      modelPlanId: null
+    });
+  });
+
+  it("leaves the stored plan binding alone for non-model patches", () => {
+    const persistence = sessionComposerSettingsPersistence({
+      currentModelPlanId: null,
+      sessionSettingsPatch: { reasoningEffort: "high" },
+      storedNodeDefaults: { model: "x-ai/grok-4.5", modelPlanId: "mp-other" }
+    });
+    expect(persistence.rememberedDefaults).toEqual({
+      reasoningEffort: "high"
+    });
+    expect(persistence.nodeDefaults).toMatchObject({
+      model: "x-ai/grok-4.5",
+      modelPlanId: "mp-other",
+      reasoningEffort: "high"
+    });
+  });
+
+  it("returns no node defaults when nothing durable changed", () => {
+    const persistence = sessionComposerSettingsPersistence({
+      currentModelPlanId: null,
+      sessionSettingsPatch: { planMode: true },
+      storedNodeDefaults: { model: null, modelPlanId: null }
+    });
+    expect(persistence.rememberedDefaults).toEqual(null);
+    expect(persistence.nodeDefaults).toEqual(null);
   });
 });
 

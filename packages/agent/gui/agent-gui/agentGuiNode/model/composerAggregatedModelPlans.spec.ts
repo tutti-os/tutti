@@ -205,4 +205,38 @@ describe("composerModelPlanRequiresNewSession", () => {
       })
     ).toBe(true);
   });
+
+  it("treats a staged native selection on a plan session as a session boundary", () => {
+    // Staged drafts always carry an explicit plan decision (null = native).
+    // Leaving the plan is as much an endpoint change as switching plans; a
+    // false here strands the staged draft forever (submit keeps reusing the
+    // plan session and the native model never applies).
+    expect(
+      composerModelPlanRequiresNewSession({
+        activeSettings: { modelPlanId: "plan-1", model: "x-ai/grok-4.5" },
+        draftSettings: { modelPlanId: null, model: "gpt-5.3-codex" }
+      })
+    ).toBe(true);
+  });
+
+  it("ignores drafts without an explicit plan decision", () => {
+    expect(
+      composerModelPlanRequiresNewSession({
+        activeSettings: { modelPlanId: "plan-1", model: "x-ai/grok-4.5" },
+        draftSettings: { model: "gpt-5.3-codex" }
+      })
+    ).toBe(false);
+    expect(
+      composerModelPlanRequiresNewSession({
+        activeSettings: { model: "gpt-a" },
+        draftSettings: { modelPlanId: null, model: "gpt-b" }
+      })
+    ).toBe(false);
+    expect(
+      composerModelPlanRequiresNewSession({
+        activeSettings: { modelPlanId: "plan-1", model: "gpt-a" },
+        draftSettings: null
+      })
+    ).toBe(false);
+  });
 });

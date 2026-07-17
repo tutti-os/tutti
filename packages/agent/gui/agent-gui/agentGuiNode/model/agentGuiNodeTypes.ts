@@ -403,6 +403,8 @@ export interface AgentGUIComposerViewModel {
   canSubmit: boolean;
   isTuttiModeActive: boolean;
   isTuttiModeUpdating: boolean;
+  /** Effective Tutti orchestration intensity (0-100) for the budget popup. */
+  tuttiModeOrchestrationIntensity: number;
   tuttiModeUpdateStatus:
     | "idle"
     | "pending_create"

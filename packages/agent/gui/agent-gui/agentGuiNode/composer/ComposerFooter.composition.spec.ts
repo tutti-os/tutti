@@ -44,4 +44,13 @@ describe("ComposerFooter trigger composition", () => {
     expect(source).toContain("isTuttiModeActive ?");
     expect(source).toContain("disabled={isTuttiModeUpdating}");
   });
+
+  it("opens the Tutti budget popup from the badge and clears the mode only via the inline remove button", () => {
+    expect(source).toContain("<TuttiBudgetPopover");
+    expect(source).toContain('data-agent-tutti-mode-remove="true"');
+    expect(source).toContain("onClick={onClearTuttiMode}");
+    // The badge itself must trigger the popup, not remove the mode: the only
+    // onClearTuttiMode wiring lives on the dedicated remove button.
+    expect(source.match(/onClearTuttiMode\}/gu)).toHaveLength(1);
+  });
 });

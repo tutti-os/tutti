@@ -62,6 +62,9 @@ export function useAgentGUIControllerActions(
   const setTuttiModeActive = useStableControllerEventCallback(
     actions.setTuttiModeActive
   );
+  const setTuttiModeOrchestrationIntensity = useStableControllerEventCallback(
+    actions.setTuttiModeOrchestrationIntensity
+  );
   const retryTuttiModeActivation = useStableControllerEventCallback(
     actions.retryTuttiModeActivation
   );
@@ -133,6 +136,7 @@ export function useAgentGUIControllerActions(
       updateComposerSettings,
       retryComposerOptions,
       setTuttiModeActive,
+      setTuttiModeOrchestrationIntensity,
       retryTuttiModeActivation,
       updatePlanIssueBudgetPreset,
       sendQueuedPromptNext,
@@ -184,6 +188,7 @@ export function useAgentGUIControllerActions(
       updateComposerSettings,
       retryComposerOptions,
       setTuttiModeActive,
+      setTuttiModeOrchestrationIntensity,
       retryTuttiModeActivation,
       updatePlanIssueBudgetPreset,
       updateConversationFilter,

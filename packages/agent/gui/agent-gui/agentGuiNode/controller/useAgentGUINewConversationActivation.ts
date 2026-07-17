@@ -1,7 +1,8 @@
 import {
   isPendingActivationViable,
   selectLatestActivationForSession,
-  selectTuttiModeDraftIsActive
+  selectTuttiModeDraftIsActive,
+  selectTuttiModeDraftOrchestrationIntensity
 } from "@tutti-os/agent-activity-core";
 import { useCallback } from "react";
 import { translate } from "../../../i18n/index";
@@ -16,10 +17,19 @@ import {
   textPromptContent
 } from "../model/agentComposerDraft";
 import { readNodeDefaultDraftSettings } from "./agentGuiController.composerHelpers";
-import { toRuntimeSendContent } from "./agentGuiController.draftMessageHelpers";
+import {
+  enforceComposerModelBindingForCreate,
+  resolveComposerSettingsPresentation,
+  sanitizeComposerSettingsForTarget
+} from "./agentGuiController.composerPresentation";
+import {
+  resolveSameProviderActiveSessionModelBinding,
+  toRuntimeSendContent
+} from "./agentGuiController.draftMessageHelpers";
 import {
   createAgentGUIConversationId,
-  normalizeOptionalPrompt
+  normalizeOptionalPrompt,
+  normalizeOptionalText
 } from "./agentGuiController.promptHelpers";
 import {
   agentSubmitTraceDiagnostics,
@@ -27,6 +37,7 @@ import {
   reportAgentSubmitTraceDiagnostic
 } from "./agentGuiController.reporting";
 import { draftAgentSessionIdFromComposerOptions } from "./agentGuiController.stableHelpers";
+import { resolveConversationSummaryById } from "./useAgentConversationSelection";
 import {
   type AgentGUINewConversationActivationResult,
   type UseAgentGUINewConversationActivationInput
@@ -54,7 +65,9 @@ export function useAgentGUINewConversationActivation(
     workspaceId,
     activeConversationIdRef,
     isComposerHomeRef,
+    conversationsRef,
     activeSessionState,
+    lastActiveModelByProviderRef,
     sessionEngine,
     tuttiModeDraftKey,
     activation,
@@ -138,11 +151,61 @@ export function useAgentGUINewConversationActivation(
         typeof initialTurnExpectedOrSettings === "object"
           ? initialTurnExpectedOrSettings
           : undefined;
-      const settings = {
-        ...initialNodeSettings,
-        ...settingsOverride,
-        ...submitOptions?.requiredSettingsPatch
-      };
+      const targetSafeInitialSettings = sanitizeComposerSettingsForTarget({
+        settings: initialNodeSettings,
+        target: targetData,
+        options: snapshotComposerOptions
+      });
+      const initialSettings = resolveComposerSettingsPresentation({
+        active: false,
+        homeSettings: targetSafeInitialSettings,
+        options: snapshotComposerOptions
+      });
+      const overriddenInitialSettings = settingsOverride
+        ? { ...initialSettings, ...settingsOverride }
+        : initialSettings;
+      const currentActiveConversationId = activeConversationIdRef.current;
+      const currentActiveConversation = currentActiveConversationId
+        ? resolveConversationSummaryById(
+            conversationsRef.current,
+            currentActiveConversationId
+          )
+        : null;
+      // Inherit the previous model only as a full {model, modelPlanId}
+      // binding; a bare id stripped of its plan is exactly the cross-plan
+      // leak that fails provider-native creates.
+      const inheritedBinding =
+        normalizeOptionalText(overriddenInitialSettings.model) === null
+          ? (resolveSameProviderActiveSessionModelBinding({
+              activeProvider: currentActiveConversation?.provider ?? null,
+              agentSessionId: currentActiveConversationId,
+              provider,
+              runtime: agentActivityRuntime,
+              sessionState: activeSessionState,
+              workspaceId
+            }) ??
+            lastActiveModelByProviderRef.current[provider] ??
+            null)
+          : null;
+      const settings = enforceComposerModelBindingForCreate(
+        sanitizeComposerSettingsForTarget({
+          settings:
+            inheritedBinding === null
+              ? {
+                  ...overriddenInitialSettings,
+                  ...submitOptions?.requiredSettingsPatch
+                }
+              : {
+                  ...overriddenInitialSettings,
+                  model: inheritedBinding.model,
+                  modelPlanId: inheritedBinding.modelPlanId,
+                  ...submitOptions?.requiredSettingsPatch
+                },
+          target: targetData,
+          options: snapshotComposerOptions
+        }),
+        snapshotComposerOptions
+      );
       const prewarmedSessionId =
         normalizedInitialContent.length > 0 &&
         snapshotComposerOptions?.behavior?.prewarmDraftSession === true
@@ -185,6 +248,11 @@ export function useAgentGUINewConversationActivation(
         sessionEngine.getSnapshot(),
         tuttiModeDraftKey
       );
+      const initialTuttiModeOrchestrationIntensity =
+        selectTuttiModeDraftOrchestrationIntensity(
+          sessionEngine.getSnapshot(),
+          tuttiModeDraftKey
+        );
       const requestId = activation.activate({
         mode: "new",
         agentSessionId,
@@ -204,7 +272,13 @@ export function useAgentGUINewConversationActivation(
           ? {
               initialTuttiModeActivation: {
                 source: "slash_command" as const,
-                status: "active" as const
+                status: "active" as const,
+                ...(initialTuttiModeOrchestrationIntensity === null
+                  ? {}
+                  : {
+                      orchestrationIntensity:
+                        initialTuttiModeOrchestrationIntensity
+                    })
               },
               tuttiModeDraftKey
             }

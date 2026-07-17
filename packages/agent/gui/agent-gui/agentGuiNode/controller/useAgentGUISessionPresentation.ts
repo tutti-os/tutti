@@ -34,13 +34,15 @@ import type {
 import { composerSettingsSupportFromOptions } from "../model/composerSettingsSupport";
 import {
   agentActivityDisplayStatusBusy,
-  conversationBusyStatus
+  conversationBusyStatus,
+  type AgentGUIComposerModelBinding
 } from "./agentGuiController.draftMessageHelpers";
 import { unresolvedOptimisticGoalControl } from "./agentGuiOptimisticGoal";
 import { isNonRetryableResumeErrorCode } from "./agentGuiController.errors";
 import { projectAgentGUIMessagesToTimelineItems } from "./agentGuiController.promptHelpers";
 import { promptRequestId } from "./agentGuiController.diagnostics";
 import { reportAgentGUIRenderStateDiagnostic } from "./agentGuiController.reporting";
+import { normalizeOptionalText } from "./agentGuiController.promptHelpers";
 
 interface CurrentValue<T> {
   current: T;
@@ -74,6 +76,9 @@ interface UseAgentGUISessionPresentationInput {
   isLoadingMessages: boolean;
   isRespondingToInteraction: boolean;
   isSubmitting: boolean;
+  lastActiveModelByProviderRef: CurrentValue<
+    Record<string, AgentGUIComposerModelBinding>
+  >;
   lastRenderStateDiagnosticKeyRef: CurrentValue<string | null>;
   pendingApproval: AgentApprovalItemVM | null;
   planIssueAssignmentCatalog: PlanOrchestrationCatalog;
@@ -138,6 +143,51 @@ export function useAgentGUISessionPresentation(
       : null;
   const pendingInteractivePrompt =
     input.serverInteractivePrompt ?? planImplementationPrompt;
+
+  useEffect(() => {
+    const provider = normalizeOptionalText(
+      input.activeEngineSession?.provider ?? input.activeConversation?.provider
+    );
+    if (provider === null) return;
+    // Remember the model together with its plan binding: a plan-scoped model
+    // id remembered bare would later be inherited by a plain provider create
+    // and rejected by the daemon (cross-plan model leak).
+    const stateModel = normalizeOptionalText(
+      input.activeSessionState?.settings?.model
+    );
+    const binding: AgentGUIComposerModelBinding | null =
+      stateModel !== null
+        ? {
+            model: stateModel,
+            modelPlanId: normalizeOptionalText(
+              input.activeSessionState?.settings?.modelPlanId
+            )
+          }
+        : normalizeOptionalText(input.activeEngineSession?.settings?.model) !==
+            null
+          ? {
+              model: normalizeOptionalText(
+                input.activeEngineSession?.settings?.model
+              )!,
+              modelPlanId: normalizeOptionalText(
+                input.activeEngineSession?.settings?.modelPlanId
+              )
+            }
+          : null;
+    if (binding === null) return;
+    input.lastActiveModelByProviderRef.current = {
+      ...input.lastActiveModelByProviderRef.current,
+      [provider]: binding
+    };
+  }, [
+    input.activeConversation?.provider,
+    input.activeEngineSession?.provider,
+    input.activeEngineSession?.settings?.model,
+    input.activeEngineSession?.settings?.modelPlanId,
+    input.activeSessionState?.settings?.model,
+    input.activeSessionState?.settings?.modelPlanId,
+    input.lastActiveModelByProviderRef
+  ]);
 
   const activeHasPendingSubmittedTurn = Boolean(
     input.activeConversationId && input.activeLatestPendingSubmitTurnId

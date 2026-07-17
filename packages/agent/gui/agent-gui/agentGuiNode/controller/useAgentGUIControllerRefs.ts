@@ -6,6 +6,7 @@ import type { AgentPromptContentBlock } from "../../../shared/contracts/dto";
 import type { AgentGUINodeData, AgentGUIAgentTarget } from "../../../types";
 import type { AgentComposerDraft } from "../model/agentGuiNodeTypes";
 import type { AgentComposerSubmitOptions } from "../composer/AgentComposer.types";
+import type { AgentGUIComposerModelBinding } from "./agentGuiController.draftMessageHelpers";
 import type { AgentGUIConversationSummary } from "../model/agentGuiConversationModel";
 import type { AgentGUIComposerTargetData } from "./agentGuiController.composerPresentation";
 import type { AgentGUIOpenSessionRequest } from "./agentGuiController.draftMessageHelpers";
@@ -86,6 +87,9 @@ export function useAgentGUIControllerRefs(
       }),
       reloaded: () => {}
     });
+  const lastActiveModelByProviderRef = useRef<
+    Record<string, AgentGUIComposerModelBinding>
+  >({});
   const conversationIdsRef = useRef(
     new Set(input.conversations.map((conversation) => conversation.id))
   );
@@ -166,6 +170,7 @@ export function useAgentGUIControllerRefs(
     isCreatingConversationRef,
     isMountedRef,
     isNoProjectPathRef,
+    lastActiveModelByProviderRef,
     lastRenderStateDiagnosticKeyRef,
     loadDraftComposerOptionsRef,
     onDataChangeRef,

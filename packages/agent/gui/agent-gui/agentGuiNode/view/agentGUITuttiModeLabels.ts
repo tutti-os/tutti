@@ -22,9 +22,6 @@ export function agentGUITuttiModeLabels(
     tuttiModeUpdateUncertain: t("agentHost.agentGui.tuttiModeUpdateUncertain"),
     tuttiModePlanPanel: {
       mode: t("agentHost.agentGui.tuttiModePlan.mode"),
-      configurationReview: t(
-        "agentHost.agentGui.tuttiModePlan.configurationReview"
-      ),
       taskReview: t("agentHost.agentGui.tuttiModePlan.taskReview"),
       pending: t("agentHost.agentGui.tuttiModePlan.pending"),
       accept: t("agentHost.agentGui.tuttiModePlan.accept"),
@@ -44,15 +41,12 @@ export function agentGUITuttiModeLabels(
         "agentHost.agentGui.tuttiModePlan.executionParallel"
       ),
       budget: t("agentHost.agentGui.tuttiModePlan.budget"),
-      budgetAuto: t("agentHost.agentGui.tuttiModePlan.budgetAuto"),
-      budgetFixed: t("agentHost.agentGui.tuttiModePlan.budgetFixed"),
       reasoningIntensity: t(
         "agentHost.agentGui.tuttiModePlan.reasoningIntensity"
       ),
       orchestrationIntensity: t(
         "agentHost.agentGui.tuttiModePlan.orchestrationIntensity"
       ),
-      tokenLimit: t("agentHost.agentGui.tuttiModePlan.tokenLimit"),
       quotaWaterline: t("agentHost.agentGui.tuttiModePlan.quotaWaterline"),
       taskId: t("agentHost.agentGui.tuttiModePlan.taskId"),
       priority: t("agentHost.agentGui.tuttiModePlan.priority"),
@@ -62,6 +56,11 @@ export function agentGUITuttiModeLabels(
       agentTarget: t("agentHost.agentGui.tuttiModePlan.agentTarget"),
       modelPlan: t("agentHost.agentGui.tuttiModePlan.modelPlan"),
       model: t("agentHost.agentGui.tuttiModePlan.model"),
+      permissionMode: t("agentHost.agentGui.tuttiModePlan.permissionMode"),
+      reasoningEffort: t("agentHost.agentGui.tuttiModePlan.reasoningEffort"),
+      assignmentOptionsLoading: t(
+        "agentHost.agentGui.tuttiModePlan.assignmentOptionsLoading"
+      ),
       executionDirectory: t(
         "agentHost.agentGui.tuttiModePlan.executionDirectory"
       ),

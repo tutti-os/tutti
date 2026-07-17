@@ -4,6 +4,7 @@ import type {
   AgentActivityMessage,
   AgentActivitySession
 } from "@tutti-os/agent-activity-core";
+import type { AgentActivityRuntime } from "../../../agentActivityRuntime";
 import { translate } from "../../../i18n/index";
 import type {
   AgentSessionComposerSettings,
@@ -112,6 +113,61 @@ export function composerSettingsFromPendingRecord(
     settings.permissionModeId = value.permissionModeId;
   }
   return settings;
+}
+
+/**
+ * A remembered model always travels with its plan binding: a plan-scoped
+ * model id is meaningless (and rejected by the daemon) without the plan that
+ * provides its endpoint.
+ */
+export interface AgentGUIComposerModelBinding {
+  model: string;
+  modelPlanId: string | null;
+}
+
+export function resolveSameProviderActiveSessionModelBinding(input: {
+  activeProvider?: string | null;
+  agentSessionId?: string | null;
+  provider: string;
+  runtime: AgentActivityRuntime;
+  sessionState?: { settings?: AgentSessionComposerSettings | null } | null;
+  workspaceId: string;
+}): AgentGUIComposerModelBinding | null {
+  const agentSessionId = normalizeOptionalText(input.agentSessionId);
+  if (agentSessionId === null) {
+    return null;
+  }
+  const runtimeSession =
+    input.runtime
+      .getSnapshot(input.workspaceId)
+      .sessions.find(
+        (candidate) => candidate.agentSessionId.trim() === agentSessionId
+      ) ?? null;
+  const activeProvider =
+    normalizeOptionalText(runtimeSession?.provider) ??
+    normalizeOptionalText(input.activeProvider);
+  if (activeProvider !== input.provider) {
+    return null;
+  }
+  const stateModel = normalizeOptionalText(input.sessionState?.settings?.model);
+  if (stateModel !== null) {
+    return {
+      model: stateModel,
+      modelPlanId: normalizeOptionalText(
+        input.sessionState?.settings?.modelPlanId
+      )
+    };
+  }
+  const sessionModel =
+    normalizeOptionalText(runtimeSession?.settings?.model) ??
+    normalizeOptionalText(runtimeSession?.model);
+  if (sessionModel === null) {
+    return null;
+  }
+  return {
+    model: sessionModel,
+    modelPlanId: normalizeOptionalText(runtimeSession?.settings?.modelPlanId)
+  };
 }
 
 export function normalizeAgentGUIOpenSessionRequest(

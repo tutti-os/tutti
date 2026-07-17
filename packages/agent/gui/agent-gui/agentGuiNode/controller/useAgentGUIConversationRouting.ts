@@ -154,6 +154,22 @@ export function useAgentGUIConversationRouting(
       }
     }
 
+    // A session whose latest activation is a failed create must never be
+    // re-adopted through routing. The failure rollback owns its reset; if the
+    // demotion below re-requested it (or a stale persisted echo re-selected
+    // it), select -> rollback -> demote would ping-pong the composer between
+    // home and the dead session every commit until React aborts the tree with
+    // "Maximum update depth exceeded" (P0 renderer black screen).
+    const isFailedCreateSessionId = (id: string): boolean => {
+      const latestActivation = selectLatestActivationForSession(
+        sessionEngine.getSnapshot(),
+        id
+      );
+      return (
+        latestActivation?.mode === "new" && latestActivation.status === "failed"
+      );
+    };
+
     switch (intent.tag) {
       case "home":
         return;
@@ -165,10 +181,15 @@ export function useAgentGUIConversationRouting(
         // list absence must not demote it into the requested/fallback flow.
         if (activeConversationIdRef.current === intent.id) return;
         if (!hasLoadedConversations) return;
+        if (isFailedCreateSessionId(intent.id)) return;
         setIntent({ tag: "requested", id: intent.id });
         return;
       case "requested":
         if (!hasLoadedConversations) return;
+        if (isFailedCreateSessionId(intent.id)) {
+          setIntent({ tag: "home" });
+          return;
+        }
         // Persisted/external selection is authoritative. The bounded list may
         // not contain it after restart, so activate it and reconcile detail
         // instead of replacing it with the first visible rail row.

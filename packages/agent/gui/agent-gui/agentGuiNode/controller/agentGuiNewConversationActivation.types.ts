@@ -13,6 +13,7 @@ import type {
   SubmittedDraftSnapshot
 } from "../model/agentGuiNodeTypes";
 import { type AgentGUIComposerTargetData } from "./agentGuiController.composerPresentation";
+import type { AgentGUIComposerModelBinding } from "./agentGuiController.draftMessageHelpers";
 import type { useAgentGUIActivation } from "./useAgentGUIActivation";
 import type { ConversationIntent } from "./useAgentConversationSelection";
 import type { AgentGUIConversationRailRevealReason } from "../model/agentGuiConversationRailViewState";
@@ -42,6 +43,9 @@ export interface UseAgentGUINewConversationActivationInput {
   isComposerHomeRef: RefObject<boolean>;
   conversationsRef: RefObject<AgentGUIConversationSummary[]>;
   activeSessionState: AgentSessionState | null;
+  lastActiveModelByProviderRef: RefObject<
+    Record<string, AgentGUIComposerModelBinding>
+  >;
   sessionEngine: AgentSessionEngine;
   tuttiModeDraftKey: string;
   conversationListQuery: AgentGUIConversationListQuery | null;

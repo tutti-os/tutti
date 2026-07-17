@@ -66,6 +66,7 @@ test("WorkspaceAgentActivityMutationOperations sends existing-session Tutti acti
     currentRevision: {
       activationId: "activation-1",
       createdAtUnixMs: 20,
+      orchestrationIntensity: 50,
       revision: 2,
       source: "badge_remove" as const,
       status: "inactive" as const

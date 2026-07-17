@@ -384,14 +384,21 @@ export function useAgentGUIComposerPresentation(
       modelSwitchTakesEffectNextTurn:
         input.activeConversationId !== null &&
         input.composerSupport.modelSwitch,
-      availableModels:
-        input.composerSupport.model && aggregateModelOptions.length > 0
-          ? aggregateModelOptions
-          : input.composerSupport.model &&
-              hasOptionsSource &&
-              activeSessionModelSelection !== null
+      availableModels: (() => {
+        if (!input.composerSupport.model) return [];
+        const nativeModelOptions =
+          hasOptionsSource && activeSessionModelSelection !== null
             ? activeSessionModelSelection.options
-            : [],
+            : [];
+        if (aggregateModelOptions.length === 0) return nativeModelOptions;
+        // Plan-bound targets advertise the bound plan's models as their
+        // native list; the aggregate view already covers them. For plain
+        // provider targets the aggregate must extend — never replace — the
+        // provider-native models (feedback: codex home lost its own models).
+        return input.providerComposerOptions?.modelPlan
+          ? aggregateModelOptions
+          : [...nativeModelOptions, ...aggregateModelOptions];
+      })(),
       availableReasoningEfforts:
         input.composerSupport.reasoning &&
         hasOptionsSource &&

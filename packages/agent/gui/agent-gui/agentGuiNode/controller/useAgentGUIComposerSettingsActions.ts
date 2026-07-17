@@ -20,8 +20,10 @@ import {
 } from "../../../shared/agentConversation/planImplementationPresentation";
 import {
   cloneComposerSettings,
+  nodeDataFromComposerSettings,
   nodeDefaultDraftKey,
   normalizePermissionModeId,
+  pairedComposerSettingsPatch,
   readNodeDefaultDraftSettings,
   resolveEffectiveComposerSettings
 } from "./agentGuiController.composerHelpers";
@@ -49,7 +51,8 @@ import {
   composerOptionsForTarget,
   rememberComposerDefaultsFields,
   type AgentGUIRememberComposerDefaultsInput,
-  type AgentGUIRememberComposerDefaultsResult
+  type AgentGUIRememberComposerDefaultsResult,
+  sessionComposerSettingsPersistence
 } from "./agentGuiController.providerHelpers";
 import type { useAgentGUIActivation } from "./useAgentGUIActivation";
 import { useStableControllerEventCallback } from "./agentGuiController.stableHelpers";
@@ -110,6 +113,7 @@ export function useAgentGUIComposerSettingsActions(
     draftSettingsBySessionIdRef,
     isMountedRef,
     loadDraftComposerOptions,
+    onDataChangeRef,
     onComposerDefaultsAuthorityReloadedRef,
     onRememberComposerDefaultsRef,
     onShowMessageRef,
@@ -169,10 +173,12 @@ export function useAgentGUIComposerSettingsActions(
   const updateComposerSettings = useCallback(
     (nextSettings: Partial<AgentSessionComposerSettings>) => {
       // Values pass through unclamped: the toggle visibility is capability
-      // gated and the daemon clamps persisted settings per provider.
-      const supportedNextSettings: Partial<AgentSessionComposerSettings> = {
-        ...nextSettings
-      };
+      // gated and the daemon clamps persisted settings per provider. Model
+      // patches are normalized to full {model, modelPlanId} pairs first.
+      const supportedNextSettings: Partial<AgentSessionComposerSettings> =
+        pairedComposerSettingsPatch({
+          ...nextSettings
+        });
       // Persistent selections only originate from rendered menu values. A
       // transient empty select value during options refresh is not a user
       // intent and must not clear either the optimistic draft or defaults.
@@ -452,6 +458,50 @@ export function useAgentGUIComposerSettingsActions(
         Object.keys(sessionSettingsPatch).length > 0 &&
         (canonicalSession !== null || isPreActivationSession)
       ) {
+        // A switch inside an active session also becomes the remembered
+        // default for this agent target. Only the fields the user changed
+        // are passed; the consumer merges them field-wise so untouched
+        // remembered fields stay intact, and explicit clears propagate as
+        // null tombstones. The session's effective plan binding rides along:
+        // plan-scoped models are excluded from the (plan-blind) remembered
+        // defaults, and node defaults always receive the model together with
+        // its plan binding so no cross-plan pair can be assembled by merging.
+        const persistence = sessionComposerSettingsPersistence({
+          currentModelPlanId,
+          sessionSettingsPatch,
+          storedNodeDefaults: readNodeDefaultDraftSettings({
+            data: dataRef.current,
+            defaultReasoningEffort,
+            drafts: draftSettingsBySessionIdRef.current
+          })
+        });
+        void onRememberComposerDefaultsRef.current?.({
+          agentTargetId: normalizeOptionalText(dataRef.current.agentTargetId),
+          provider: dataRef.current.provider,
+          defaults: persistence.rememberedDefaults
+        });
+        // The node-level default drafts take precedence over the remembered
+        // preferences on the read path, so sync the durable fields into them
+        // as well or this node's next composer would keep showing its stale
+        // draft.
+        if (persistence.nodeDefaults) {
+          const nextNodeDefaults = persistence.nodeDefaults;
+          const defaultDraftKey = nodeDefaultDraftKey(
+            dataRef.current.provider,
+            dataRef.current.agentTargetId
+          );
+          draftSettingsBySessionIdRef.current = {
+            ...draftSettingsBySessionIdRef.current,
+            [defaultDraftKey]: nextNodeDefaults
+          };
+          setDraftSettingsBySessionId((current) => ({
+            ...current,
+            [defaultDraftKey]: nextNodeDefaults
+          }));
+          onDataChangeRef.current((current) =>
+            nodeDataFromComposerSettings(current, nextNodeDefaults)
+          );
+        }
         if (isPreActivationSession) {
           sessionEngine.dispatch({
             type: "activation/settingsPatched",

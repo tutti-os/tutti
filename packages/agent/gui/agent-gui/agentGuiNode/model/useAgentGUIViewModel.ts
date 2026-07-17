@@ -68,6 +68,7 @@ export function useAgentGUIViewModel(
       candidate.composer.promptImagesSupported,
       candidate.composer.queueStatus,
       candidate.composer.queuedPrompts,
+      candidate.composer.tuttiModeOrchestrationIntensity,
       candidate.composer.tuttiModeUpdateStatus
     ]
   );

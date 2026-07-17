@@ -1837,15 +1837,14 @@ describe("AgentInteractivePromptSurface", () => {
       </AgentActivityHostProvider>
     );
 
-    expect(screen.getByRole("spinbutton")).toHaveValue(64_000);
+    // The token-limit UI is dormant: the budget stays in the data model and
+    // recalibrates silently, without a visible spinbutton editor.
+    expect(screen.queryByRole("spinbutton")).toBeNull();
     fireEvent.keyDown(
       screen.getByRole("slider", { name: "Reasoning intensity" }),
       { key: "ArrowRight" }
     );
 
-    await waitFor(() =>
-      expect(screen.getByRole("spinbutton")).toHaveValue(1_032_000)
-    );
     expect(estimateAutoTokenBudget).toHaveBeenCalledWith({
       executionProfile: {
         reasoningIntensity: 51,
@@ -1860,6 +1859,8 @@ describe("AgentInteractivePromptSurface", () => {
       ]
     });
 
+    // Flush the resolved host estimate into state before submitting.
+    await act(async () => {});
     fireEvent.click(
       screen.getByTestId("agent-plan-implementation-create-issue")
     );

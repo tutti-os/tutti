@@ -389,6 +389,21 @@ export function normalizePermissionModeId(
   return normalizeOptionalText(value);
 }
 
+/**
+ * Model and modelPlanId form one selection identity. A patch that sets a
+ * model without naming a plan is a provider-native selection and must clear
+ * any previously staged plan binding, otherwise a stale {plan, native model}
+ * mix reaches the daemon and fails validation.
+ */
+export function pairedComposerSettingsPatch<
+  T extends Partial<AgentSessionComposerSettings>
+>(patch: T): T {
+  if (patch.model !== undefined && patch.modelPlanId === undefined) {
+    return { ...patch, modelPlanId: null };
+  }
+  return patch;
+}
+
 export function cloneComposerSettings(
   settings: AgentSessionComposerSettings | null
 ): AgentSessionComposerSettings | null {

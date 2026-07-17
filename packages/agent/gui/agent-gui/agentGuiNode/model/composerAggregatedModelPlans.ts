@@ -79,8 +79,15 @@ export function composerModelPlanRequiresNewSession(input: {
   activeSettings: AgentSessionComposerSettings;
   draftSettings: AgentSessionComposerSettings | null;
 }): boolean {
-  const draftModelPlanID = input.draftSettings?.modelPlanId?.trim() ?? "";
-  if (!draftModelPlanID) return false;
+  // Staged plan decisions are always explicit: a plan id, or null for a
+  // native selection. Both directions across the plan boundary change the
+  // session's endpoint, so leaving a plan (explicit null on a plan session)
+  // requires a new session just like switching plans. An absent key means no
+  // plan decision was staged at all.
+  if (!input.draftSettings || input.draftSettings.modelPlanId === undefined) {
+    return false;
+  }
+  const draftModelPlanID = input.draftSettings.modelPlanId?.trim() ?? "";
   return draftModelPlanID !== (input.activeSettings.modelPlanId?.trim() ?? "");
 }
 
