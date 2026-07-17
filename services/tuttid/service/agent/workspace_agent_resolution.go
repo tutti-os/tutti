@@ -44,7 +44,7 @@ func (s *Service) resolveWorkspaceAgentLaunch(
 	input.WorkspaceAgentRevision = resolved.Agent.Revision
 	input.HarnessAgentTargetID = target.ID
 	input.AgentName = resolved.Agent.Name
-	input.AgentPurpose = resolved.Agent.Purpose
+	input.AgentDescription = resolved.Agent.Description
 	input.AgentDefaultModel = resolved.Agent.DefaultModel
 	input.AgentInstructions = resolved.Agent.Instructions
 	input.AgentCallConditions = append([]string(nil), resolved.Agent.CallConditions...)
@@ -55,8 +55,7 @@ func (s *Service) resolveWorkspaceAgentLaunch(
 		input.AgentTools,
 		input.AgentCapabilitiesExplicit,
 	)
-	input.AgentPermissions = append([]string(nil), resolved.Agent.Permissions...)
-	applyWorkspaceAgentCapabilityDefaults(provider, input)
+	applyWorkspaceAgentCapabilityDefaults(input)
 	if resolved.ModelPlan != nil {
 		plan := *resolved.ModelPlan
 		input.ResolvedModelPlan = &plan
@@ -100,19 +99,9 @@ func constrainWorkspaceAgentTools(configured []string, restriction []string, cap
 	return result, true
 }
 
-func applyWorkspaceAgentCapabilityDefaults(provider string, input *CreateSessionInput) {
+func applyWorkspaceAgentCapabilityDefaults(input *CreateSessionInput) {
 	if input == nil {
 		return
-	}
-	if strings.TrimSpace(value(input.PermissionModeID)) == "" {
-		config := permissionConfigForProvider(provider)
-		for _, raw := range input.AgentPermissions {
-			candidate := workspaceAgentPermissionModeID(raw)
-			if permissionModeConfigHasModeID(config, candidate) {
-				input.PermissionModeID = &candidate
-				break
-			}
-		}
 	}
 	// A non-empty tools list is an explicit WorkspaceAgent capability set. It
 	// therefore controls optional daemon tools unless the caller supplied a
@@ -137,16 +126,6 @@ func workspaceAgentToolsControlDaemonCapabilities(values []string) bool {
 		}
 	}
 	return false
-}
-
-func workspaceAgentPermissionModeID(value string) string {
-	value = strings.TrimSpace(value)
-	for _, prefix := range []string{"permissionModeId:", "permission-mode:", "permission_mode:"} {
-		if strings.HasPrefix(value, prefix) {
-			return strings.TrimSpace(strings.TrimPrefix(value, prefix))
-		}
-	}
-	return value
 }
 
 func workspaceAgentHasTool(values []string, candidates ...string) bool {

@@ -161,7 +161,7 @@ func TestAutomationRulesMigrationRetiresConsultRowsAndKeepsAgentLaunches(t *test
 	// Reset to a pre-v1 state, then replay v1 (which backfills a legacy
 	// consult row) plus a surviving agent-target row, and verify v2
 	// normalizes storage to the single launch semantic.
-	if _, err := store.db.ExecContext(ctx, `DELETE FROM tuttid_schema_migrations WHERE id IN (?, ?, ?, ?, ?, ?)`, schemaMigrationWorkspaceAgentsV1, schemaMigrationWorkspaceAgentsV2, schemaMigrationWorkspaceAgentsV3, schemaMigrationWorkspaceAgentsV4, schemaMigrationAutomationRulesV1, schemaMigrationAutomationRulesV2); err != nil {
+	if _, err := store.db.ExecContext(ctx, `DELETE FROM tuttid_schema_migrations WHERE id IN (?, ?, ?, ?, ?, ?, ?)`, schemaMigrationWorkspaceAgentsV1, schemaMigrationWorkspaceAgentsV2, schemaMigrationWorkspaceAgentsV3, schemaMigrationWorkspaceAgentsV4, schemaMigrationWorkspaceAgentsV5, schemaMigrationAutomationRulesV1, schemaMigrationAutomationRulesV2); err != nil {
 		t.Fatalf("reset migration markers error = %v", err)
 	}
 	if _, err := store.db.ExecContext(ctx, `DROP TABLE workspace_agents; DROP TABLE automation_rule_session_overrides; DROP TABLE automation_rules; DROP TABLE automation_rule_executions;`); err != nil {
@@ -178,6 +178,9 @@ func TestAutomationRulesMigrationRetiresConsultRowsAndKeepsAgentLaunches(t *test
 	}
 	if err := store.applyWorkspaceAgentsV4(ctx); err != nil {
 		t.Fatalf("applyWorkspaceAgentsV4() error = %v", err)
+	}
+	if err := store.applyWorkspaceAgentsV5(ctx); err != nil {
+		t.Fatalf("applyWorkspaceAgentsV5() error = %v", err)
 	}
 	if err := store.applyAutomationRulesV1(ctx); err != nil {
 		t.Fatalf("applyAutomationRulesV1() error = %v", err)

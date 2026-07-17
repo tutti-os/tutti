@@ -314,16 +314,14 @@ export function mapWorkspaceAgentsToAgents(
     const availability =
       options.isAgentTargetProviderGated?.(provider) === true
         ? ({ status: "coming_soon" } as const)
-        : !agent.enabled ||
-            !agent.harness.available ||
-            agent.harness.enabled === false
+        : !agent.harness.available || agent.harness.enabled === false
           ? ({ status: "unavailable" } as const)
           : ({ status: "ready" } as const);
     return [
       {
         agentTargetId: agent.id,
         availability,
-        description: agent.purpose || null,
+        description: agent.description || null,
         iconUrl:
           options.resolveAgentTargetIconUrl?.({
             iconKey: agent.harness.iconKey?.trim() || null,

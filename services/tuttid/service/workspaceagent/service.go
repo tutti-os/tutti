@@ -19,12 +19,10 @@ import (
 	workspacebiz "github.com/tutti-os/tutti/services/tuttid/biz/workspace"
 	workspaceagentbiz "github.com/tutti-os/tutti/services/tuttid/biz/workspaceagent"
 	workspacedata "github.com/tutti-os/tutti/services/tuttid/data/workspace"
-	modelplanservice "github.com/tutti-os/tutti/services/tuttid/service/modelplan"
 )
 
 var (
 	ErrInvalidInput                = errors.New("invalid workspace agent input")
-	ErrAgentDisabled               = errors.New("workspace agent is disabled")
 	ErrHarnessUnavailable          = errors.New("workspace agent harness is unavailable")
 	ErrHarnessDisabled             = errors.New("workspace agent harness is disabled")
 	ErrPlanNotUsable               = errors.New("workspace agent model plan is not usable")
@@ -56,12 +54,6 @@ type ConfigurationChangePublisher interface {
 	PublishAgentModelConfigurationChanged(context.Context, string, []string, map[string]string, bool) error
 }
 
-// ConfigurationCompleter performs the one explicitly selected, tool-free
-// model call used to generate a reviewable Agent draft.
-type ConfigurationCompleter interface {
-	Complete(context.Context, modelplanservice.CompletionRequest) (modelplanservice.CompletionResult, error)
-}
-
 // Service owns the WorkspaceAgent aggregate. Resolve is intentionally a
 // strict runtime boundary, while List/Get remain repair-friendly when a
 // referenced Harness target has disappeared.
@@ -71,7 +63,6 @@ type Service struct {
 	Plans      PlanResolver
 	Workspaces WorkspaceResolver
 	Publisher  ConfigurationChangePublisher
-	Completer  ConfigurationCompleter
 	Now        func() time.Time
 	NewID      func() string
 }
@@ -80,7 +71,7 @@ type PutInput struct {
 	WorkspaceID          string
 	AgentID              string
 	Name                 string
-	Purpose              string
+	Description          string
 	HarnessAgentTargetID string
 	ModelPlanID          string
 	DefaultModel         string
@@ -90,8 +81,6 @@ type PutInput struct {
 	CapabilitiesExplicit *bool
 	Skills               []string
 	Tools                []string
-	Permissions          []string
-	Enabled              bool
 }
 
 func (s *Service) List(ctx context.Context, workspaceID string) ([]workspaceagentbiz.View, error) {
@@ -140,7 +129,7 @@ func (s *Service) Create(ctx context.Context, input PutInput) (workspaceagentbiz
 		ID:                   s.newID(),
 		WorkspaceID:          workspaceID,
 		Name:                 input.Name,
-		Purpose:              input.Purpose,
+		Description:          input.Description,
 		HarnessAgentTargetID: input.HarnessAgentTargetID,
 		ModelPlanID:          input.ModelPlanID,
 		DefaultModel:         input.DefaultModel,
@@ -150,8 +139,6 @@ func (s *Service) Create(ctx context.Context, input PutInput) (workspaceagentbiz
 		CapabilitiesExplicit: capabilitiesExplicit,
 		Skills:               skills,
 		Tools:                tools,
-		Permissions:          input.Permissions,
-		Enabled:              input.Enabled,
 		Source:               workspaceagentbiz.SourceUser,
 		Revision:             1,
 		CreatedAt:            now,
@@ -179,7 +166,7 @@ func (s *Service) Update(ctx context.Context, input PutInput) (workspaceagentbiz
 	}
 	updated := existing
 	updated.Name = input.Name
-	updated.Purpose = input.Purpose
+	updated.Description = input.Description
 	updated.HarnessAgentTargetID = input.HarnessAgentTargetID
 	updated.ModelPlanID = input.ModelPlanID
 	updated.DefaultModel = input.DefaultModel
@@ -188,8 +175,6 @@ func (s *Service) Update(ctx context.Context, input PutInput) (workspaceagentbiz
 	updated.CallConditions = input.CallConditions
 	updated.CapabilitiesExplicit = putCapabilitiesExplicit(input, existing.CapabilitiesExplicit)
 	updated.Skills, updated.Tools = putCapabilitySelections(input, updated.CapabilitiesExplicit)
-	updated.Permissions = input.Permissions
-	updated.Enabled = input.Enabled
 	updated.Revision++
 	updated.UpdatedAt = s.now()
 	normalized, err := workspaceagentbiz.Normalize(updated)
@@ -251,15 +236,12 @@ func (s *Service) Delete(ctx context.Context, workspaceID string, agentID string
 }
 
 // Resolve returns the exact WorkspaceAgent-owned runtime configuration. It is
-// strict: disabled Agents, missing/disabled Harnesses, and disabled plans are
-// rejected before a process starts.
+// strict: missing/disabled Harnesses and disabled plans are rejected before a
+// process starts.
 func (s *Service) Resolve(ctx context.Context, workspaceID string, agentID string) (workspaceagentbiz.Resolved, error) {
 	agent, err := s.get(ctx, workspaceID, agentID)
 	if err != nil {
 		return workspaceagentbiz.Resolved{}, err
-	}
-	if !agent.Enabled {
-		return workspaceagentbiz.Resolved{}, ErrAgentDisabled
 	}
 	if s.Targets == nil {
 		return workspaceagentbiz.Resolved{}, errors.New("workspace agent target resolver is not configured")
@@ -345,7 +327,7 @@ func (s *Service) ResolveBoundAgentTargetDefaultModels(ctx context.Context, work
 	}
 	for _, agent := range agents {
 		defaultModel := ""
-		if agent.Enabled && s.Targets != nil {
+		if s.Targets != nil {
 			target, targetErr := s.Targets.GetAgentTarget(ctx, agent.HarnessAgentTargetID)
 			if targetErr == nil {
 				_, defaultModel, _ = s.resolveModelRoute(ctx, agent, target)
@@ -357,7 +339,7 @@ func (s *Service) ResolveBoundAgentTargetDefaultModels(ctx context.Context, work
 }
 
 // ValidateAutomationAgentReference is the strict AutomationRule reference
-// boundary. A rule cannot target a disabled or otherwise unlaunchable Agent.
+// boundary. A rule cannot target an unlaunchable Agent.
 func (s *Service) ValidateAutomationAgentReference(ctx context.Context, workspaceID string, agentID string) error {
 	_, err := s.Resolve(ctx, workspaceID, agentID)
 	return err
@@ -398,7 +380,7 @@ func (s *Service) validateReferences(ctx context.Context, agent workspaceagentbi
 	if err != nil {
 		return fmt.Errorf("%w: invalid harness target: %v", ErrHarnessUnavailable, err)
 	}
-	if agent.Enabled && !target.Enabled {
+	if !target.Enabled {
 		return ErrHarnessDisabled
 	}
 	if agent.ModelPlanID == "" {
@@ -413,7 +395,7 @@ func (s *Service) validateReferences(ctx context.Context, agent workspaceagentbi
 		if err != nil {
 			return err
 		}
-		if agent.Enabled && !plan.Enabled {
+		if !plan.Enabled {
 			return fmt.Errorf("%w: model plan %s is disabled", ErrPlanNotUsable, ref.ModelPlanID)
 		}
 		if err := validateHarnessPlan(target, plan, ref.Model); err != nil {
@@ -483,7 +465,7 @@ func effectiveModel(configured string, plan modelplanbiz.Plan) string {
 }
 
 func (s *Service) configurationDefaultModel(ctx context.Context, agent workspaceagentbiz.Agent) string {
-	if !agent.Enabled || s.Plans == nil || strings.TrimSpace(agent.ModelPlanID) == "" {
+	if s.Plans == nil || strings.TrimSpace(agent.ModelPlanID) == "" {
 		return ""
 	}
 	if s.Targets == nil {
@@ -545,7 +527,6 @@ func logWorkspaceAgentLifecycle(action string, agent workspaceagentbiz.Agent) {
 		"workspace_agent_id", agent.ID,
 		"harness_agent_target_id", agent.HarnessAgentTargetID,
 		"model_plan_id", agent.ModelPlanID,
-		"enabled", agent.Enabled,
 		"revision", agent.Revision,
 	)
 }

@@ -887,7 +887,6 @@ function createDependenciesStub(): {
       listAgentTargets: fail,
       listWorkspaceAgents: fail,
       createWorkspaceAgent: fail,
-      generateWorkspaceAgentDraft: fail,
       updateWorkspaceAgent: fail,
       deleteWorkspaceAgent: fail,
       listAutomationRules: fail,

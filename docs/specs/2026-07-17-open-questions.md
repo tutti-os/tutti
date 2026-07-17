@@ -205,6 +205,9 @@
 - 影響：契約與 UI 語義暫時錯位（purpose 承載描述文案）。
 - 建議：契約清理波把 `purpose` 重命名/合併為 `description`（OpenAPI +
   daemon + 存儲 + 遷移），或直接刪除並將描述併入 instructions 首段。
+- **已解決（Wave 4-②）**：採重命名方案。`purpose` → `description` 全鏈路落地
+  （OpenAPI、daemon、存儲遷移 `workspace_agents_contract_cleanup_v1` 拷貝
+  存量數據、desktop 服務層與 i18n key `descriptionLabel`）。
 
 ### W3②-2 保存即歸位：故障轉移鏈/能力白名單/權限覆寫在下次保存時清空
 
@@ -220,6 +223,11 @@
   且無 UI 告知。
 - 建議：若需求方希望「僅隱藏不清除」，改為 draft 透傳存量值即可（一行改
   `workspaceAgentDraftToPutInput`）；contract 清理波刪欄位時此分歧自然消失。
+- **已解決（Wave 4-②）**：分歧消解。`permissions` 已全鏈路刪除（不再存在
+  「保存清空」問題）；dormant 欄位（`modelFallbacks`、`capabilitiesExplicit`/
+  `skills`/`tools`）改為 draft 透傳——`WorkspaceAgentDraft.dormant` 承載存量值,
+  `workspaceAgentDraftToPutInput` 原樣回發，保存不再破壞 dormant 數據
+  （新增回歸測試覆蓋）。
 
 ### W3②-3 「允許用於新對話」開關移除後，存量停用 Agent 無 UI 復啟路徑
 
@@ -232,6 +240,11 @@
 - 建議：契約清理波（D1 對 2-8 是全鏈路刪除）直接退役 enabled 欄位，
   daemon 遷移將存量 false 歸一為 true；屆時 Resolve 的 ErrAgentDisabled
   分支同步刪除。
+- **已解決（Wave 4-②）**：按建議執行。`enabled` 從 OpenAPI/daemon 移除，
+  遷移把存量 false 歸一為 true（物理列保留），`ErrAgentDisabled` 與
+  Resolve/validateReferences 的 enabled 分支全部刪除；卡片「已停用」狀態點
+  與 `agents.enabled` i18n key 退役（綠點語義改為「Runtime 可用」，key 改名
+  `agents.ready`）。
 
 ### W3②-4 方案下拉對「無 modelPlanProtocol 的 Runtime」只保留當前選中項
 
@@ -472,3 +485,108 @@
   糾正）；期間退出原生 plan mode 需要用戶審批，流程卡住。
 - 建議：Host Context 的 active 語句明示「使用 tutti plan propose CLI，
   不要使用 EnterPlanMode/原生規劃工具」。
+
+## Wave 4-②（契約清理：2-1 / 2-6 / 2-8 / 2-9 + dormant 透傳）
+
+### W4②-1 欄位映射裁定：2-7 dormant vs 2-9 刪除
+
+- 問題：spec 2-7「兼容能力（Skills/插件/連接器選擇）」與 2-9「高級能力與 ID
+  與權限」未逐欄位對應到 WorkspaceAgent OpenAPI schema。
+- 裁定：
+  - `capabilitiesExplicit` / `skills` / `tools` → **2-7，dormant 保留**。
+    依據：2-7 原文點名「Skills/插件/連接器選擇」，`tools` 存儲值正是
+    capabilityCatalog 條目 id（plugin/connector/mcp\*，W4③-4 同源），
+    `capabilitiesExplicit` 是該白名單機制的開關，三者是同一機制。
+  - `permissions` → **2-9，全鏈路刪除**（任務書明示）。
+  - 2-9 的「ID」指編輯器的只讀 Agent ID 展示區（W3-② 已拆 UI）；`id` /
+    `agentTargetId` 是結構性身份，不屬可刪契約面，契約無對應刪除項。
+  - `modelFallbacks` → 2-5 dormant（既定）；`enabled` → 2-8 刪除（既定）。
+- 影響：2-9 在契約層的淨刪除面 = `permissions` 一個欄位 + generation 端點簇
+  （2-1）+ `enabled`（2-8）+ `purpose` 重命名（2-6）。
+
+### W4②-2 tools 歸 dormant ⇒ constrainWorkspaceAgentTools 交集邏輯保留
+
+- 決策：`tools` 屬 2-7 dormant，因此 workspace_agent_resolution.go 的
+  constrainWorkspaceAgentTools（自動化規則 allowedTools 與 WorkspaceAgent
+  存量 tools 求交集、只窄不寬）**原樣保留**，繼續讀存量數據；未改
+  runtimeprep 語義，automationrule 測試不受影響。
+- 備選（未採納）：若 tools 改判 2-9 刪除，規則工具將直通 runtimeprep（與
+  內建 target 一致），需刻意重定義「規則允許工具 = 精確生效集」語義並改
+  daemon_executor 測試。記錄於此供需求方覆核。
+
+### W4②-3 permissions 刪除連帶：權限模式推導路徑退役
+
+- 現狀：舊鏈路允許在 permissions 裡寫 `permissionModeId:<id>` 由 daemon 在
+  launch 時推導默認權限模式（applyWorkspaceAgentCapabilityDefaults）。
+- 決策：隨 `permissions` 全鏈路刪除，該推導分支與
+  workspaceAgentPermissionModeID 助手一併刪除。權限模式的正規來源維持:
+  composer 顯式選擇 / 自動化規則 permissionModeId / provider 默認。
+- 影響：歷史上依賴該旁路的 Agent（若有）launch 後回落 provider 默認權限
+  模式；W3-② 已確認編輯器從未暴露過此欄位的結構化輸入。
+
+### W4②-4 runtime snapshot 的 purpose 鍵向後兼容讀
+
+- 問題：session runtime snapshot 是 durable 會話數據，舊會話的
+  `agentDefinition.purpose` / `agentDefinition.permissions` 鍵無法遷移。
+- 決策：新快照寫 `description` 鍵；讀取側 `description` 優先、回退
+  `purpose`（TestSessionRuntimeSnapshotReadsLegacyPurposeKeyAsDescription
+  錨定）；`permissions` 鍵讀取直接忽略（map 解析天然容忍多餘鍵），不做
+  快照重寫、不升 snapshot version（純增量兼容）。
+- 影響：舊會話 resume 全程無感；composer options runtimeContext 的
+  `workspaceAgent.purpose` 鍵同步改名 `description`（全倉 grep 無 TS 消費者，
+  屬 ephemeral 投影非 durable 數據）。
+
+### W4②-5 存儲遷移形狀：加列拷貝 + 常量歸一,物理列不重建
+
+- 遷移 `workspace_agents_contract_cleanup_v1`（applyWorkspaceAgentsV5）：
+  `ADD COLUMN description` + `description = purpose` 拷貝（保數據）;
+  `enabled <> 1` 歸一為 1；`permissions_json` 清為 `[]`。
+- 沿用 W4③-1 automation_rules_v2 先例：`purpose`/`enabled`/`permissions_json`
+  物理列保留（SQLite 刪列需重建表），新代碼不再讀寫（INSERT 靠列默認值）。
+  `purpose` 列拷貝後保留原文（利於降級可讀），但此後不再更新——降級舊
+  daemon 會讀到陳舊 purpose,dev-only 可接受。
+- 升級方向（review 回派補記）：舊 client → 新 daemon 滾動升級窗口內，舊
+  desktop 的 PUT 仍發 `purpose` 欄位——新 daemon 的 workspaceAgentPutInput
+  只讀 `body.Description`，Go json 解碼忽略未知欄位，該次保存會把
+  description 存成空串，舊文案丟失（僅該行、僅該次編輯）。dev-only 可接受，
+  記錄備查。
+- 遷移重入（review 回派補記）：V5 自身的重入路徑（marker 已寫後再調
+  applyWorkspaceAgentsV5）無直接測試，靠 `hasMigration` 守衛短路——與
+  V2-V4 同構模式，風險極低，記錄備查。
+- 判別性測試：TestWorkspaceAgentsMigrationBackfillsLegacyBindingIdempotently
+  擴展覆蓋「pre-v5 存量（purpose 文本 + enabled=0 + permissions 覆寫）升級後
+  description 就位、retired 列歸一」；enabled=false 行升級後 Resolve 可過由
+  服務層測試（Resolve 已無 enabled 分支）+ 存儲歸一共同保證。
+
+### W4②-6 遺留索引：idx_workspace_agents_directory 前綴仍是退役的 enabled
+
+- 現狀：V1 建的 `idx_workspace_agents_directory` 索引前綴為
+  `enabled DESC`（migrations_workspace_agents.go），本波列表查詢改為
+  `ORDER BY updated_at_unix_ms DESC, name ASC, agent_id ASC` 後不再匹配該
+  索引前綴（enabled 遷移後恆為 1,前綴實際退化為常量）。
+- 影響：workspace 級 Agent 目錄規模極小，無實際性能影響；純遺留。
+- 建議：未來需要重建 workspace_agents 表或索引時順手改建為
+  `(workspace_id, updated_at_unix_ms DESC, name ASC)`，本波不動。
+
+### W4②-7 「已停用」狀態語義收斂與生成殘留清理
+
+- 狀態點：Agent 卡片二態化——Runtime 可用（綠 `agents.ready`）/ Runtime
+  不可用（紅 `harnessUnavailable`）；「已停用（灰）」隨 enabled 退役。
+  `agents.disabled` key 保留：編輯器內建 Runtime 目錄的停用後綴仍在用
+  （那是 AgentTarget.enabled,另一概念，W4③-5 的 validateReferences 依賴，
+  未動）。
+- 2-1 生成鏈全刪清單：OpenAPI `generate-draft` path + 4 個 schema、
+  `service/workspaceagent/generation.go`(+test)、API handler 與
+  GenerateConfiguration 接口、wiring Completer 注入、tuttid-ts client 方法、
+  desktop 各 stub。W4③-7 記錄的「dormant 生成契約」隨之出清。
+- 附帶：generation schema 刪除後 oapi-codegen 的枚舉去衝突前綴消失，
+  `CollaborationRunModeConsult` 等常量重命名為 `Consult` 等（生成器行為，
+  collabrun 語義零改動，daemon_collab_runs.go 一處引用同步改名）。
+
+### W4②-8 ValidateAutomationAgentReference 失去 disabled 拒絕分支
+
+- 現狀：自動化規則保存時對 workspace-agent 目標的嚴格校驗原有三類拒絕:
+  Agent disabled / Harness 不可用 / Plan 不可用。enabled 退役後餘兩類。
+- 影響：歷史上被停用的目標 Agent 在遷移後重新變為可觸發——這正是 2-8
+  「移除開關」的預期語義（不存在停用態）；如需臨時停用某 Agent 的自動化，
+  正規做法是停用規則本身（AutomationRule.enabled 保留）。

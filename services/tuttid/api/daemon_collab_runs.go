@@ -59,7 +59,7 @@ func (api DaemonAPI) CreateCollaborationRun(ctx context.Context, request tuttige
 	}
 	var run collabrunbiz.Run
 	var err error
-	if request.Body.Mode == tuttigenerated.CollaborationRunModeConsult {
+	if request.Body.Mode == tuttigenerated.Consult {
 		maxTokens := 0
 		if request.Body.MaxTokens != nil {
 			maxTokens = *request.Body.MaxTokens

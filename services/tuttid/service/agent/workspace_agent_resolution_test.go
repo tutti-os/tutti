@@ -34,13 +34,12 @@ func TestResolveCreateSessionLaunchHydratesWorkspaceAgentRuntimeConfiguration(t 
 				ID:                   "workspace-agent:writer",
 				WorkspaceID:          "ws",
 				Name:                 "Focused Writer",
-				Purpose:              "Make narrow code changes.",
+				Description:          "Make narrow code changes.",
 				HarnessAgentTargetID: "local:codex",
 				Instructions:         "Keep changes focused.",
 				CapabilitiesExplicit: true,
 				Skills:               []string{"go"},
 				Tools:                []string{"shell"},
-				Permissions:          []string{"workspace-write"},
 				Revision:             3,
 			},
 			HarnessTarget: agenttargetbiz.Target{
@@ -69,14 +68,14 @@ func TestResolveCreateSessionLaunchHydratesWorkspaceAgentRuntimeConfiguration(t 
 	if input.ResolvedModelPlan == nil || input.ResolvedModelPlan.Revision != 4 || value(input.Model) != "gpt-5" {
 		t.Fatalf("resolveCreateSessionLaunch() model = %#v / %q", input.ResolvedModelPlan, value(input.Model))
 	}
-	if input.AgentInstructions != "Keep changes focused." || len(input.AgentSkills) != 1 || len(input.AgentTools) != 1 || len(input.AgentPermissions) != 1 {
+	if input.AgentInstructions != "Keep changes focused." || len(input.AgentSkills) != 1 || len(input.AgentTools) != 1 {
 		t.Fatalf("resolveCreateSessionLaunch() Agent definition = %#v", input)
 	}
 	if !input.AgentCapabilitiesExplicit {
 		t.Fatal("resolveCreateSessionLaunch() lost explicit capability selection")
 	}
-	if input.AgentName != "Focused Writer" || input.AgentPurpose != "Make narrow code changes." {
-		t.Fatalf("resolveCreateSessionLaunch() name/purpose = %q/%q", input.AgentName, input.AgentPurpose)
+	if input.AgentName != "Focused Writer" || input.AgentDescription != "Make narrow code changes." {
+		t.Fatalf("resolveCreateSessionLaunch() name/description = %q/%q", input.AgentName, input.AgentDescription)
 	}
 	if input.BrowserUse == nil || *input.BrowserUse || input.ComputerUse == nil || *input.ComputerUse {
 		t.Fatalf("resolveCreateSessionLaunch() capability defaults = browser %#v computer %#v, want explicit false", input.BrowserUse, input.ComputerUse)
@@ -110,14 +109,13 @@ func TestResolveCreateSessionLaunchPreservesExplicitWorkspaceAgentModel(t *testi
 	}
 }
 
-func TestResolveWorkspaceAgentLaunchAppliesPermissionAndAutomationToolRestriction(t *testing.T) {
+func TestResolveWorkspaceAgentLaunchAppliesAutomationToolRestriction(t *testing.T) {
 	service := &Service{
 		WorkspaceAgentResolver: staticWorkspaceAgentResolver{resolved: workspaceagentbiz.Resolved{
 			Agent: workspaceagentbiz.Agent{
-				ID:          "workspace-agent:operator",
-				Revision:    2,
-				Tools:       []string{"browser", "computer", "shell"},
-				Permissions: []string{"permissionModeId:full-access"},
+				ID:       "workspace-agent:operator",
+				Revision: 2,
+				Tools:    []string{"browser", "computer", "shell"},
 			},
 			HarnessTarget: agenttargetbiz.Target{
 				ID:            "local:codex",
@@ -139,9 +137,6 @@ func TestResolveWorkspaceAgentLaunchAppliesPermissionAndAutomationToolRestrictio
 	}
 	if len(input.AgentTools) != 1 || input.AgentTools[0] != "browser" {
 		t.Fatalf("AgentTools = %#v, want browser intersection", input.AgentTools)
-	}
-	if value(input.PermissionModeID) != "full-access" {
-		t.Fatalf("PermissionModeID = %q, want full-access", value(input.PermissionModeID))
 	}
 	if input.BrowserUse == nil || !*input.BrowserUse || input.ComputerUse == nil || *input.ComputerUse {
 		t.Fatalf("capability defaults = browser %#v computer %#v", input.BrowserUse, input.ComputerUse)
@@ -201,7 +196,7 @@ func TestApplyWorkspaceAgentCapabilityDefaultsIgnoresCatalogIDs(t *testing.T) {
 		AgentCapabilitiesExplicit: true,
 		AgentTools:                []string{"connector:github"},
 	}
-	applyWorkspaceAgentCapabilityDefaults("codex", &input)
+	applyWorkspaceAgentCapabilityDefaults(&input)
 	if input.BrowserUse != nil || input.ComputerUse != nil {
 		t.Fatalf("catalog ids changed daemon capabilities: browser=%#v computer=%#v", input.BrowserUse, input.ComputerUse)
 	}

@@ -253,8 +253,7 @@ test("desktop workflow runtime builds agent-scoped assignment option catalogs", 
               agentTargetId: "workspace-agent:openrouter",
               workspaceId,
               name: "OpenRouter",
-              purpose: "",
-              enabled: true,
+              description: "",
               harness: {
                 agentTargetId: "codex",
                 available: true,
@@ -264,16 +263,15 @@ test("desktop workflow runtime builds agent-scoped assignment option catalogs", 
               modelFallbacks: []
             },
             {
-              id: "workspace-agent:disabled",
-              agentTargetId: "workspace-agent:disabled",
+              id: "workspace-agent:harness-off",
+              agentTargetId: "workspace-agent:harness-off",
               workspaceId,
-              name: "Disabled workspace agent",
-              purpose: "",
-              enabled: false,
+              name: "Disabled harness agent",
+              description: "",
               harness: {
                 agentTargetId: "codex",
                 available: true,
-                enabled: true,
+                enabled: false,
                 provider: "codex"
               },
               modelFallbacks: []
@@ -283,8 +281,7 @@ test("desktop workflow runtime builds agent-scoped assignment option catalogs", 
               agentTargetId: "workspace-agent:broken-harness",
               workspaceId,
               name: "Broken harness agent",
-              purpose: "",
-              enabled: true,
+              description: "",
               harness: {
                 agentTargetId: "gone",
                 available: false,
@@ -355,8 +352,9 @@ test("desktop workflow runtime builds agent-scoped assignment option catalogs", 
   const agents = await runtime.assignmentOptions!.listAgents({
     workspaceId: "workspace-1"
   });
-  // Built-in Harness targets and enabled workspace Agents coexist; disabled
-  // or harness-broken workspace Agents stay out (P1 regression anchor).
+  // Built-in Harness targets and launchable workspace Agents coexist;
+  // harness-disabled or harness-broken workspace Agents stay out
+  // (P1 regression anchor).
   assert.deepEqual(agents, [
     { agentTargetId: "codex", label: "Codex" },
     { agentTargetId: "workspace-agent:openrouter", label: "OpenRouter" }

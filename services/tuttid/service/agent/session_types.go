@@ -620,14 +620,13 @@ type CreateSessionInput struct {
 	WorkspaceAgentRevision    int64
 	HarnessAgentTargetID      string
 	AgentName                 string
-	AgentPurpose              string
+	AgentDescription          string
 	AgentDefaultModel         string
 	AgentInstructions         string
 	AgentCallConditions       []string
 	AgentCapabilitiesExplicit bool
 	AgentSkills               []string
 	AgentTools                []string
-	AgentPermissions          []string
 	// AutomationRuleOverride is persisted after the runtime session starts but
 	// before its initial turn executes, so the first completion observes the
 	// session-local rule selection. Nil inherits enabled workspace rules.

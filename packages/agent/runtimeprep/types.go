@@ -34,12 +34,11 @@ type PrepareInput struct {
 	// immutable WorkspaceAgent revision selected for this session. They are
 	// non-secret and may be materialized into provider instructions.
 	AgentName                 string
-	AgentPurpose              string
+	AgentDescription          string
 	AgentInstructions         string
 	AgentCapabilitiesExplicit bool
 	AgentSkills               []string
 	AgentTools                []string
-	AgentPermissions          []string
 	ExtraSkills               []ProviderSkillBundle
 	Metadata                  map[string]any
 	// ModelEndpoint routes the session through a managed model access plan
@@ -79,12 +78,11 @@ type PrepareContext struct {
 	ReasoningEffort           string
 	ConversationDetailMode    string
 	AgentName                 string
-	AgentPurpose              string
+	AgentDescription          string
 	AgentInstructions         string
 	AgentCapabilitiesExplicit bool
 	AgentSkills               []string
 	AgentTools                []string
-	AgentPermissions          []string
 }
 
 func prepareContext(input PrepareInput) PrepareContext {
@@ -95,12 +93,11 @@ func prepareContext(input PrepareInput) PrepareContext {
 		PermissionModeID: input.PermissionModeID, PlanMode: input.PlanMode,
 		BrowserUse: input.BrowserUse, ComputerUse: input.ComputerUse, Model: input.Model,
 		ReasoningEffort: input.ReasoningEffort, ConversationDetailMode: input.ConversationDetailMode,
-		AgentName: input.AgentName, AgentPurpose: input.AgentPurpose,
+		AgentName: input.AgentName, AgentDescription: input.AgentDescription,
 		AgentInstructions:         input.AgentInstructions,
 		AgentCapabilitiesExplicit: input.AgentCapabilitiesExplicit,
 		AgentSkills:               append([]string(nil), input.AgentSkills...),
 		AgentTools:                append([]string(nil), input.AgentTools...),
-		AgentPermissions:          append([]string(nil), input.AgentPermissions...),
 	}
 }
 
@@ -112,12 +109,11 @@ func (input PrepareContext) instructionInput() PrepareInput {
 		PermissionModeID: input.PermissionModeID, PlanMode: input.PlanMode,
 		BrowserUse: input.BrowserUse, ComputerUse: input.ComputerUse, Model: input.Model,
 		ReasoningEffort: input.ReasoningEffort, ConversationDetailMode: input.ConversationDetailMode,
-		AgentName: input.AgentName, AgentPurpose: input.AgentPurpose,
+		AgentName: input.AgentName, AgentDescription: input.AgentDescription,
 		AgentInstructions:         input.AgentInstructions,
 		AgentCapabilitiesExplicit: input.AgentCapabilitiesExplicit,
 		AgentSkills:               append([]string(nil), input.AgentSkills...),
 		AgentTools:                append([]string(nil), input.AgentTools...),
-		AgentPermissions:          append([]string(nil), input.AgentPermissions...),
 	}
 }
 

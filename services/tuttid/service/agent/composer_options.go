@@ -274,7 +274,7 @@ func (s *Service) GetComposerOptions(ctx context.Context, input ComposerOptionsI
 			"revision":             launchInput.WorkspaceAgentRevision,
 			"harnessId":            launchInput.HarnessAgentTargetID,
 			"name":                 strings.TrimSpace(launchInput.AgentName),
-			"purpose":              strings.TrimSpace(launchInput.AgentPurpose),
+			"description":          strings.TrimSpace(launchInput.AgentDescription),
 			"capabilitiesExplicit": launchInput.AgentCapabilitiesExplicit,
 			"skills":               append([]string(nil), launchInput.AgentSkills...),
 			"tools":                append([]string(nil), launchInput.AgentTools...),

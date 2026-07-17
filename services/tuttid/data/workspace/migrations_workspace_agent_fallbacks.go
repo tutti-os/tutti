@@ -68,6 +68,49 @@ VALUES (?, ?)
 	return nil
 }
 
+// applyWorkspaceAgentsV5 is the Wave 4-2 contract cleanup migration. It
+// renames the user-facing purpose text into the retained description field,
+// retires the per-Agent enabled switch by normalizing every stored row to
+// enabled, and clears retired permission overrides. The legacy purpose,
+// enabled, and permissions_json columns stay in place physically (SQLite
+// column drops rebuild the table) but are no longer read or written.
+func (s *SQLiteStore) applyWorkspaceAgentsV5(ctx context.Context) error {
+	applied, err := s.hasMigration(ctx, schemaMigrationWorkspaceAgentsV5)
+	if err != nil {
+		return err
+	}
+	if applied {
+		return nil
+	}
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin workspace agent contract cleanup migration: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+	if _, err := tx.ExecContext(ctx, `
+ALTER TABLE workspace_agents
+  ADD COLUMN description TEXT NOT NULL DEFAULT '';
+
+UPDATE workspace_agents SET description = purpose;
+
+UPDATE workspace_agents SET enabled = 1 WHERE enabled <> 1;
+
+UPDATE workspace_agents SET permissions_json = '[]' WHERE permissions_json <> '[]';
+`); err != nil {
+		return fmt.Errorf("apply workspace agent contract cleanup: %w", err)
+	}
+	if _, err := tx.ExecContext(ctx, `
+INSERT INTO tuttid_schema_migrations (id, applied_at_unix_ms)
+VALUES (?, ?)
+`, schemaMigrationWorkspaceAgentsV5, unixMs(time.Now().UTC())); err != nil {
+		return fmt.Errorf("record workspace agent contract cleanup migration: %w", err)
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit workspace agent contract cleanup migration: %w", err)
+	}
+	return nil
+}
+
 func (s *SQLiteStore) applyWorkspaceAgentsV4(ctx context.Context) error {
 	applied, err := s.hasMigration(ctx, schemaMigrationWorkspaceAgentsV4)
 	if err != nil {

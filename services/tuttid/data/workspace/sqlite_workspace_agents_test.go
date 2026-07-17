@@ -25,7 +25,7 @@ func TestSQLiteStoreWorkspaceAgentRoundTrip(t *testing.T) {
 		ID:                   "workspace-agent:one",
 		WorkspaceID:          "ws-agents",
 		Name:                 "Reviewer",
-		Purpose:              "Review changes",
+		Description:          "Review changes",
 		HarnessAgentTargetID: agenttargetbiz.IDLocalCodex,
 		ModelPlanID:          "mp-one",
 		DefaultModel:         "gpt-5",
@@ -38,8 +38,6 @@ func TestSQLiteStoreWorkspaceAgentRoundTrip(t *testing.T) {
 		CapabilitiesExplicit: true,
 		Skills:               []string{"review", " review "},
 		Tools:                []string{"git"},
-		Permissions:          []string{"workspace-read"},
-		Enabled:              true,
 		Source:               workspaceagentbiz.SourceUser,
 		Revision:             3,
 		CreatedAt:            now,
@@ -53,7 +51,7 @@ func TestSQLiteStoreWorkspaceAgentRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetWorkspaceAgent() error = %v", err)
 	}
-	if loaded.Name != "Reviewer" || loaded.Revision != 3 || loaded.DefaultModel != "gpt-5" {
+	if loaded.Name != "Reviewer" || loaded.Revision != 3 || loaded.DefaultModel != "gpt-5" || loaded.Description != "Review changes" {
 		t.Fatalf("GetWorkspaceAgent() = %#v", loaded)
 	}
 	if len(loaded.Skills) != 1 || loaded.Skills[0] != "review" {
@@ -124,7 +122,7 @@ func TestWorkspaceAgentsMigrationBackfillsLegacyBindingIdempotently(t *testing.T
 		t.Fatalf("PutAgentModelBinding() error = %v", err)
 	}
 
-	if _, err := store.db.ExecContext(ctx, `DELETE FROM tuttid_schema_migrations WHERE id IN (?, ?, ?, ?)`, schemaMigrationWorkspaceAgentsV1, schemaMigrationWorkspaceAgentsV2, schemaMigrationWorkspaceAgentsV3, schemaMigrationWorkspaceAgentsV4); err != nil {
+	if _, err := store.db.ExecContext(ctx, `DELETE FROM tuttid_schema_migrations WHERE id IN (?, ?, ?, ?, ?)`, schemaMigrationWorkspaceAgentsV1, schemaMigrationWorkspaceAgentsV2, schemaMigrationWorkspaceAgentsV3, schemaMigrationWorkspaceAgentsV4, schemaMigrationWorkspaceAgentsV5); err != nil {
 		t.Fatalf("reset workspace agent migration error = %v", err)
 	}
 	if _, err := store.db.ExecContext(ctx, `DROP TABLE workspace_agents`); err != nil {
@@ -144,6 +142,14 @@ func TestWorkspaceAgentsMigrationBackfillsLegacyBindingIdempotently(t *testing.T
 	}
 	if err := store.applyWorkspaceAgentsV4(ctx); err != nil {
 		t.Fatalf("applyWorkspaceAgentsV4() error = %v", err)
+	}
+	// Pre-v5 rows carry the retired configuration surface: purpose text, a
+	// manual disable, and permission overrides.
+	if _, err := store.db.ExecContext(ctx, `UPDATE workspace_agents SET purpose = 'Review changes', enabled = 0, permissions_json = '["workspace-write"]'`); err != nil {
+		t.Fatalf("seed pre-v5 workspace agent columns error = %v", err)
+	}
+	if err := store.applyWorkspaceAgentsV5(ctx); err != nil {
+		t.Fatalf("applyWorkspaceAgentsV5() error = %v", err)
 	}
 	if err := store.applyWorkspaceAgentsV1(ctx); err != nil {
 		t.Fatalf("applyWorkspaceAgentsV1() idempotent error = %v", err)
@@ -168,5 +174,18 @@ func TestWorkspaceAgentsMigrationBackfillsLegacyBindingIdempotently(t *testing.T
 	}
 	if agent.ModelPlanID != "mp-legacy" || agent.DefaultModel != "gpt-5" || agent.Revision != 1 {
 		t.Fatalf("backfilled model config = %#v", agent)
+	}
+	// V5 renames purpose data into the retained description field and
+	// normalizes retired columns to their neutral values.
+	if agent.Description != "Review changes" {
+		t.Fatalf("v5 migration description = %q, want migrated purpose text", agent.Description)
+	}
+	var enabled int
+	var permissionsJSON string
+	if err := store.db.QueryRowContext(ctx, `SELECT enabled, permissions_json FROM workspace_agents WHERE agent_id = ?`, agent.ID).Scan(&enabled, &permissionsJSON); err != nil {
+		t.Fatalf("read retired workspace agent columns error = %v", err)
+	}
+	if enabled != 1 || permissionsJSON != "[]" {
+		t.Fatalf("v5 migration retired columns = enabled %d permissions %q, want 1 and []", enabled, permissionsJSON)
 	}
 }

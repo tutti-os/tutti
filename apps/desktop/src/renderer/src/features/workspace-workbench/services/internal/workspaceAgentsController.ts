@@ -105,13 +105,13 @@ export class WorkspaceAgentsController implements IWorkspaceAgentsController {
     this.state.draft = {
       agentId: null,
       name: "",
-      purpose: "",
+      description: "",
       harnessAgentTargetId: harness?.id ?? "",
       modelPlanId: "",
       defaultModel: "",
       instructions: "",
       callConditions: "",
-      enabled: true
+      dormant: neutralWorkspaceAgentDormantFields()
     };
     this.state.feedback = null;
     this.state.confirmingDeleteAgentID = null;
@@ -257,28 +257,25 @@ export class WorkspaceAgentsController implements IWorkspaceAgentsController {
 }
 
 /**
- * The editor no longer exposes failover chains, capability allowlists, or
- * permission overrides, so every save writes their neutral values: an empty
- * fallback chain and automatic capability sync. Saving an Agent that carried
- * an explicit allowlist intentionally returns it to automatic mode.
+ * The editor does not expose failover chains or capability allowlists. The
+ * draft passes the stored dormant values through verbatim, so saving an
+ * Agent never clears configuration the editor cannot show (W3(2)-2).
  */
 export function workspaceAgentDraftToPutInput(
   draft: Readonly<WorkspaceAgentDraft>
 ): PutWorkspaceAgentInput {
   return {
     name: draft.name.trim(),
-    purpose: draft.purpose.trim(),
+    description: draft.description.trim(),
     harnessAgentTargetId: draft.harnessAgentTargetId.trim(),
     modelPlanId: draft.modelPlanId.trim() || null,
     defaultModel: draft.defaultModel.trim() || null,
-    modelFallbacks: [],
+    modelFallbacks: [...draft.dormant.modelFallbacks],
     instructions: draft.instructions.trim(),
     callConditions: parseWorkspaceAgentList(draft.callConditions),
-    capabilitiesExplicit: false,
-    skills: [],
-    tools: [],
-    permissions: [],
-    enabled: draft.enabled
+    capabilitiesExplicit: draft.dormant.capabilitiesExplicit,
+    skills: [...draft.dormant.skills],
+    tools: [...draft.dormant.tools]
   };
 }
 
@@ -302,12 +299,26 @@ function workspaceAgentToDraft(
   return {
     agentId: agent.id,
     name: agent.name,
-    purpose: agent.purpose ?? "",
+    description: agent.description ?? "",
     harnessAgentTargetId: agent.harness.agentTargetId,
     modelPlanId: agent.modelPlanId ?? "",
     defaultModel: agent.defaultModel ?? "",
     instructions: agent.instructions ?? "",
     callConditions: agent.callConditions.join("\n"),
-    enabled: agent.enabled
+    dormant: {
+      capabilitiesExplicit: agent.capabilitiesExplicit,
+      modelFallbacks: agent.modelFallbacks,
+      skills: agent.skills,
+      tools: agent.tools
+    }
+  };
+}
+
+function neutralWorkspaceAgentDormantFields(): WorkspaceAgentDraft["dormant"] {
+  return {
+    capabilitiesExplicit: false,
+    modelFallbacks: [],
+    skills: [],
+    tools: []
   };
 }

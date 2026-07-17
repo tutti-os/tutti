@@ -241,14 +241,14 @@ test("desktop agents service projects explicit workspace Agents as opaque AgentG
   const agents = mapWorkspaceAgentsToAgents(
     [
       createWorkspaceAgent({
+        description: "Review changes",
         id: "workspace-agent:reviewer",
-        name: "Reviewer",
-        purpose: "Review changes"
+        name: "Reviewer"
       }),
       createWorkspaceAgent({
+        description: "Implement changes",
         id: "workspace-agent:builder",
-        name: "Builder",
-        purpose: "Implement changes"
+        name: "Builder"
       })
     ],
     {
@@ -474,7 +474,7 @@ function createWorkspaceAgent(
   return {
     agentTargetId: id,
     createdAt: "2026-07-12T00:00:00Z",
-    enabled: true,
+    description: "",
     harness: {
       agentTargetId: "local:codex",
       available: true,
@@ -486,8 +486,6 @@ function createWorkspaceAgent(
     id,
     instructions: "",
     name,
-    permissions: [],
-    purpose: "",
     revision: 1,
     skills: [],
     source: "user",

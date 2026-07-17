@@ -198,7 +198,7 @@ test("shared tuttid client unwraps workspace Agent directory responses", async (
           {
             agentTargetId: "workspace-agent:reviewer",
             createdAt: "2026-07-12T00:00:00Z",
-            enabled: true,
+            description: "Review changes",
             harness: {
               agentTargetId: "local:codex",
               available: true,
@@ -209,8 +209,6 @@ test("shared tuttid client unwraps workspace Agent directory responses", async (
             id: "workspace-agent:reviewer",
             instructions: "Review carefully",
             name: "Reviewer",
-            permissions: ["workspace.read"],
-            purpose: "Review changes",
             revision: 1,
             skills: ["react"],
             source: "user",
@@ -394,13 +392,11 @@ test("shared tuttid client creates, updates, and deletes workspace Agents", asyn
   const request = {
     callConditions: ["Before release"],
     defaultModel: "gpt-5",
-    enabled: true,
+    description: "Review changes",
     harnessAgentTargetId: "local:codex",
     instructions: "Review carefully",
     modelPlanId: "plan-1",
     name: "Reviewer",
-    permissions: ["workspace.read"],
-    purpose: "Review changes",
     skills: ["react"],
     tools: ["terminal"]
   };
@@ -431,7 +427,7 @@ test("shared tuttid client creates, updates, and deletes workspace Agents", asyn
         callConditions: request.callConditions,
         createdAt: "2026-07-12T00:00:00Z",
         defaultModel: request.defaultModel,
-        enabled: request.enabled,
+        description: request.description,
         harness: {
           agentTargetId: request.harnessAgentTargetId,
           available: true,
@@ -443,8 +439,6 @@ test("shared tuttid client creates, updates, and deletes workspace Agents", asyn
         instructions: request.instructions,
         modelPlanId: request.modelPlanId,
         name: request.name,
-        permissions: request.permissions,
-        purpose: request.purpose,
         revision: httpRequest.method === "POST" ? 1 : 2,
         skills: request.skills,
         source: "user",
@@ -466,58 +460,6 @@ test("shared tuttid client creates, updates, and deletes workspace Agents", asyn
   assert.equal(updated.revision, 2);
   assert.equal(deleted.workspaceAgentId, created.id);
   assert.deepEqual(methods, ["POST", "PUT", "DELETE"]);
-});
-
-test("shared tuttid client generates a reviewable workspace Agent draft", async () => {
-  const client = createTuttidClient({
-    fetch: async (input, init) => {
-      const request =
-        input instanceof Request ? input : new Request(input, init);
-      assert.equal(
-        new URL(request.url).pathname,
-        "/v1/workspaces/workspace-1/agents/generate-draft"
-      );
-      assert.equal(request.method, "POST");
-      assert.deepEqual(await request.json(), {
-        harnessAgentTargetId: "local:codex",
-        modelPlanId: "plan-1",
-        model: "gpt-5",
-        requirements: "Review releases"
-      });
-      return Response.json({
-        automationRules: [
-          {
-            action: "consult",
-            maxRunsPerSession: 1,
-            maxTotalTokensPerSession: 50000,
-            model: "gpt-5",
-            modelPlanId: "plan-1",
-            name: "Completion review",
-            prompt: "Return VERDICT: PASS or VERDICT: FAIL.",
-            trigger: "on_task_complete"
-          }
-        ],
-        callConditions: ["Before release"],
-        instructions: "Review evidence.",
-        name: "Release Reviewer",
-        purpose: "Review release readiness",
-        skills: ["code-review"],
-        usage: { inputTokens: 20, outputTokens: 10 },
-        usedModel: "gpt-5",
-        usedModelPlanId: "plan-1"
-      });
-    }
-  });
-
-  const generated = await client.generateWorkspaceAgentDraft("workspace-1", {
-    harnessAgentTargetId: "local:codex",
-    modelPlanId: "plan-1",
-    model: "gpt-5",
-    requirements: "Review releases"
-  });
-
-  assert.equal(generated.name, "Release Reviewer");
-  assert.equal(generated.automationRules[0]?.action, "consult");
 });
 
 test("shared tuttid client updates system agent target visibility", async () => {

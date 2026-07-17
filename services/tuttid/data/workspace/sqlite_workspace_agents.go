@@ -19,13 +19,13 @@ func (s *SQLiteStore) ListWorkspaceAgents(ctx context.Context, workspaceID strin
 		return nil, errors.New("workspace database is not initialized")
 	}
 	rows, err := s.db.QueryContext(ctx, `
-SELECT workspace_id, agent_id, name, purpose, harness_agent_target_id,
+SELECT workspace_id, agent_id, name, description, harness_agent_target_id,
        model_plan_id, default_model, instructions, call_conditions_json, capabilities_explicit, skills_json, tools_json,
-       permissions_json, model_fallbacks_json, enabled, source, revision, created_at_unix_ms,
+       model_fallbacks_json, source, revision, created_at_unix_ms,
        updated_at_unix_ms
 FROM workspace_agents
 WHERE workspace_id = ?
-ORDER BY enabled DESC, updated_at_unix_ms DESC, name ASC, agent_id ASC
+ORDER BY updated_at_unix_ms DESC, name ASC, agent_id ASC
 `, workspaceID)
 	if err != nil {
 		return nil, fmt.Errorf("list workspace agents: %w", err)
@@ -69,9 +69,9 @@ func (s *SQLiteStore) GetWorkspaceAgent(ctx context.Context, workspaceID string,
 		return workspaceagentbiz.Agent{}, errors.New("workspace database is not initialized")
 	}
 	row := s.db.QueryRowContext(ctx, `
-SELECT workspace_id, agent_id, name, purpose, harness_agent_target_id,
+SELECT workspace_id, agent_id, name, description, harness_agent_target_id,
        model_plan_id, default_model, instructions, call_conditions_json, capabilities_explicit, skills_json, tools_json,
-       permissions_json, model_fallbacks_json, enabled, source, revision, created_at_unix_ms,
+       model_fallbacks_json, source, revision, created_at_unix_ms,
        updated_at_unix_ms
 FROM workspace_agents
 WHERE workspace_id = ? AND agent_id = ?
@@ -102,10 +102,6 @@ func (s *SQLiteStore) PutWorkspaceAgent(ctx context.Context, agent workspaceagen
 	if err != nil {
 		return fmt.Errorf("encode workspace agent tools: %w", err)
 	}
-	permissionsJSON, err := encodeWorkspaceAgentStrings(normalized.Permissions)
-	if err != nil {
-		return fmt.Errorf("encode workspace agent permissions: %w", err)
-	}
 	modelFallbacksJSON, err := json.Marshal(normalized.ModelFallbacks)
 	if err != nil {
 		return fmt.Errorf("encode workspace agent model fallbacks: %w", err)
@@ -116,14 +112,14 @@ func (s *SQLiteStore) PutWorkspaceAgent(ctx context.Context, agent workspaceagen
 	}
 	_, err = s.db.ExecContext(ctx, `
 INSERT INTO workspace_agents (
-  workspace_id, agent_id, name, purpose, harness_agent_target_id,
+  workspace_id, agent_id, name, description, harness_agent_target_id,
   model_plan_id, default_model, instructions, call_conditions_json, capabilities_explicit, skills_json, tools_json,
-  permissions_json, model_fallbacks_json, enabled, source, revision, created_at_unix_ms,
+  model_fallbacks_json, source, revision, created_at_unix_ms,
   updated_at_unix_ms
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 ON CONFLICT(workspace_id, agent_id) DO UPDATE SET
   name = excluded.name,
-  purpose = excluded.purpose,
+  description = excluded.description,
   harness_agent_target_id = excluded.harness_agent_target_id,
   model_plan_id = excluded.model_plan_id,
   default_model = excluded.default_model,
@@ -132,16 +128,14 @@ ON CONFLICT(workspace_id, agent_id) DO UPDATE SET
   capabilities_explicit = excluded.capabilities_explicit,
   skills_json = excluded.skills_json,
   tools_json = excluded.tools_json,
-  permissions_json = excluded.permissions_json,
   model_fallbacks_json = excluded.model_fallbacks_json,
-  enabled = excluded.enabled,
   source = excluded.source,
   revision = excluded.revision,
   updated_at_unix_ms = excluded.updated_at_unix_ms
-`, normalized.WorkspaceID, normalized.ID, normalized.Name, normalized.Purpose,
+`, normalized.WorkspaceID, normalized.ID, normalized.Name, normalized.Description,
 		normalized.HarnessAgentTargetID, normalized.ModelPlanID, normalized.DefaultModel,
-		normalized.Instructions, callConditionsJSON, normalized.CapabilitiesExplicit, skillsJSON, toolsJSON, permissionsJSON, string(modelFallbacksJSON),
-		normalized.Enabled, normalized.Source, normalized.Revision,
+		normalized.Instructions, callConditionsJSON, normalized.CapabilitiesExplicit, skillsJSON, toolsJSON, string(modelFallbacksJSON),
+		normalized.Source, normalized.Revision,
 		unixMs(normalized.CreatedAt), unixMs(normalized.UpdatedAt))
 	if err != nil {
 		return fmt.Errorf("put workspace agent: %w", err)
@@ -175,7 +169,6 @@ func scanWorkspaceAgent(row managedProviderScanner) (workspaceagentbiz.Agent, er
 	var skillsJSON string
 	var callConditionsJSON string
 	var toolsJSON string
-	var permissionsJSON string
 	var modelFallbacksJSON string
 	var createdAtUnixMS int64
 	var updatedAtUnixMS int64
@@ -183,7 +176,7 @@ func scanWorkspaceAgent(row managedProviderScanner) (workspaceagentbiz.Agent, er
 		&agent.WorkspaceID,
 		&agent.ID,
 		&agent.Name,
-		&agent.Purpose,
+		&agent.Description,
 		&agent.HarnessAgentTargetID,
 		&agent.ModelPlanID,
 		&agent.DefaultModel,
@@ -192,9 +185,7 @@ func scanWorkspaceAgent(row managedProviderScanner) (workspaceagentbiz.Agent, er
 		&agent.CapabilitiesExplicit,
 		&skillsJSON,
 		&toolsJSON,
-		&permissionsJSON,
 		&modelFallbacksJSON,
-		&agent.Enabled,
 		&agent.Source,
 		&agent.Revision,
 		&createdAtUnixMS,
@@ -210,9 +201,6 @@ func scanWorkspaceAgent(row managedProviderScanner) (workspaceagentbiz.Agent, er
 	}
 	if err := decodeWorkspaceAgentStrings(toolsJSON, &agent.Tools); err != nil {
 		return workspaceagentbiz.Agent{}, fmt.Errorf("decode workspace agent tools: %w", err)
-	}
-	if err := decodeWorkspaceAgentStrings(permissionsJSON, &agent.Permissions); err != nil {
-		return workspaceagentbiz.Agent{}, fmt.Errorf("decode workspace agent permissions: %w", err)
 	}
 	if err := json.Unmarshal([]byte(modelFallbacksJSON), &agent.ModelFallbacks); err != nil {
 		return workspaceagentbiz.Agent{}, fmt.Errorf("decode workspace agent model fallbacks: %w", err)

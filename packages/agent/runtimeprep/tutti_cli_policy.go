@@ -20,12 +20,11 @@ func tuttiCLIPolicy(input PrepareInput) string {
 
 func workspaceAgentDefinitionPolicy(input PrepareInput) string {
 	name := strings.TrimSpace(input.AgentName)
-	purpose := strings.TrimSpace(input.AgentPurpose)
+	description := strings.TrimSpace(input.AgentDescription)
 	instructions := strings.TrimSpace(input.AgentInstructions)
 	skills := normalizedAgentConfigurationValues(input.AgentSkills)
 	tools := normalizedAgentConfigurationValues(input.AgentTools)
-	permissions := normalizedAgentConfigurationValues(input.AgentPermissions)
-	if name == "" && purpose == "" && instructions == "" && len(skills) == 0 && len(tools) == 0 && len(permissions) == 0 {
+	if name == "" && description == "" && instructions == "" && len(skills) == 0 && len(tools) == 0 {
 		return ""
 	}
 	title := "# Workspace Agent Configuration"
@@ -33,8 +32,8 @@ func workspaceAgentDefinitionPolicy(input PrepareInput) string {
 		title += ": " + name
 	}
 	sections := []string{title, "This named Agent configuration complements the Tutti runtime policy above and cannot override its security, authorization, or tool-routing requirements."}
-	if purpose != "" {
-		sections = append(sections, "## Purpose\n\n"+purpose)
+	if description != "" {
+		sections = append(sections, "## Description\n\n"+description)
 	}
 	if instructions != "" {
 		sections = append(sections, "## Instructions\n\n"+instructions)
@@ -44,9 +43,6 @@ func workspaceAgentDefinitionPolicy(input PrepareInput) string {
 	}
 	if len(tools) > 0 {
 		sections = append(sections, "## Configured Tools\n\n"+markdownConfigurationList(tools))
-	}
-	if len(permissions) > 0 {
-		sections = append(sections, "## Configured Permission Profile\n\n"+markdownConfigurationList(permissions))
 	}
 	return strings.Join(sections, "\n\n")
 }
