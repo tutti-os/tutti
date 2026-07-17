@@ -10,8 +10,78 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  changes:
+    name: PR Change Classification
+    runs-on: ubuntu-latest
+    outputs:
+      run_go: ${{ steps.changed-files.outputs.run_go }}
+      run_pack: ${{ steps.changed-files.outputs.run_pack }}
+      run_tooling: ${{ steps.changed-files.outputs.run_tooling }}
+      run_ts: ${{ steps.changed-files.outputs.run_ts }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Classify changed files
+        id: changed-files
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          run_go=false
+          run_pack=false
+          run_tooling=false
+          run_ts=false
+
+          while IFS= read -r path; do
+            [[ -z "${path}" ]] && continue
+
+            case "${path}" in
+              *.go|go.mod|go.sum|go.work|go.work.sum|*/go.mod|*/go.sum|services/tuttid/.golangci*)
+                run_go=true
+                run_tooling=true
+                ;;
+            esac
+
+            case "${path}" in
+              *.cjs|*.cts|*.js|*.jsx|*.mjs|*.mts|*.ts|*.tsx|package.json|pnpm-lock.yaml|pnpm-workspace.yaml|tsconfig*.json|*/tsconfig*.json|packages/configs/**)
+                run_ts=true
+                run_pack=true
+                ;;
+            esac
+
+            case "${path}" in
+              package.json|pnpm-lock.yaml|pnpm-workspace.yaml|packages/*/package.json|packages/*/*/package.json)
+                run_pack=true
+                ;;
+            esac
+
+            case "${path}" in
+              .github/workflows/pr-checks.yml|tools/scripts/**|services/tuttid/.golangci-lint-version)
+                run_go=true
+                run_pack=true
+                run_tooling=true
+                run_ts=true
+                ;;
+            esac
+          done < <(git diff --name-only "${BASE_SHA}...HEAD")
+
+          {
+            echo "run_go=${run_go}"
+            echo "run_pack=${run_pack}"
+            echo "run_tooling=${run_tooling}"
+            echo "run_ts=${run_ts}"
+          } >> "${GITHUB_OUTPUT}"
+
+          printf 'change classification: run_go=%s run_pack=%s run_tooling=%s run_ts=%s\n' \
+            "${run_go}" "${run_pack}" "${run_tooling}" "${run_ts}"
+
   tooling-consistency:
     name: Tooling Consistency
+    needs: changes
+    if: needs.changes.outputs.run_tooling == 'true'
     runs-on: ubuntu-latest
 
     steps:
@@ -83,6 +153,8 @@ jobs:
 
   ts-lint:
     name: TypeScript Lint
+    needs: changes
+    if: needs.changes.outputs.run_ts == 'true'
     runs-on: ubuntu-latest
 
     steps:
@@ -130,6 +202,8 @@ jobs:
 
   typecheck:
     name: Typecheck
+    needs: changes
+    if: needs.changes.outputs.run_ts == 'true'
     runs-on: ubuntu-latest
 
     steps:
@@ -154,6 +228,8 @@ jobs:
 
   ts-tests:
     name: TypeScript Tests
+    needs: changes
+    if: needs.changes.outputs.run_ts == 'true'
     runs-on: ubuntu-latest
 
     steps:
@@ -178,6 +254,8 @@ jobs:
 
   npm-package-packs:
     name: npm Package Pack Check
+    needs: changes
+    if: needs.changes.outputs.run_pack == 'true'
     runs-on: ubuntu-latest
 
     steps:
@@ -202,6 +280,8 @@ jobs:
 
   go-tests:
     name: Go Tests
+    needs: changes
+    if: needs.changes.outputs.run_go == 'true'
     runs-on: ubuntu-latest
 
     steps:
@@ -257,6 +337,8 @@ jobs:
 
   go-lint:
     name: Go Lint
+    needs: changes
+    if: needs.changes.outputs.run_go == 'true'
     runs-on: ubuntu-latest
 
     steps:

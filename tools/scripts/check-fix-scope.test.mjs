@@ -5,6 +5,7 @@ import {
   evaluateFixScope,
   fixScopeChangedLineThreshold,
   hasFixScopeJustification,
+  isImplementationNumstatPath,
   isFixTitle,
   sumNumstatChangedLines
 } from "./check-fix-scope.mjs";
@@ -19,10 +20,40 @@ test("recognizes conventional fix titles", () => {
   assert.equal(isFixTitle("prefix: not a fix"), false);
 });
 
-test("sums numstat additions and deletions and skips binary entries", () => {
+test("classifies implementation paths for fix-scope line counts", () => {
+  assert.equal(
+    isImplementationNumstatPath("services/tuttid/service/a.go"),
+    true
+  );
+  assert.equal(isImplementationNumstatPath("apps/desktop/src/a.tsx"), true);
+  assert.equal(isImplementationNumstatPath("docs/architecture/a.md"), false);
+  assert.equal(isImplementationNumstatPath("README.md"), false);
+  assert.equal(
+    isImplementationNumstatPath("services/tuttid/service/a_test.go"),
+    false
+  );
+  assert.equal(
+    isImplementationNumstatPath("packages/agent/gui/a.spec.tsx"),
+    false
+  );
+  assert.equal(
+    isImplementationNumstatPath("packages/agent/gui/__snapshots__/a.snap"),
+    false
+  );
+  assert.equal(
+    isImplementationNumstatPath("services/tuttid/api/generated/types.gen.go"),
+    false
+  );
+});
+
+test("sums implementation additions and deletions and skips binary/support entries", () => {
   const numstat = [
     "10\t2\tpackages/agent/gui/a.ts",
     "0\t5\tpackages/agent/gui/b.ts",
+    "100\t20\tdocs/architecture/agent-extensions.md",
+    "30\t10\tpackages/agent/gui/a.spec.tsx",
+    "40\t8\tservices/tuttid/service/a_test.go",
+    "50\t4\tservices/tuttid/api/generated/types.gen.go",
     "-\t-\tassets/icon.png",
     "not a numstat line"
   ].join("\n");

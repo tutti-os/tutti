@@ -32,6 +32,16 @@ Repository entrypoints:
 
 `pnpm check:full` remains the full local and CI validation command and includes linting and typechecking.
 
+The pull-request workflow classifies changed files inline before running
+expensive validation jobs. TypeScript and JavaScript paths select TypeScript
+lint, typecheck, tests, and package packing; Go paths select Go tests and Go
+lint; package manifest and lockfile paths select package packing; CI and
+repository tooling paths conservatively select all affected lanes. Documentation
+only changes therefore skip code validation while still producing workflow check
+results through job-level conditions. Do not use workflow-level `paths-ignore`
+for this gate because missing required checks can leave documentation-only PRs
+waiting on branch protection.
+
 Validation runners that spawn nested pnpm commands should read the root
 `packageManager` field and invoke that pinned version through Corepack. Do not
 let runner-spawned lanes resolve a bare `pnpm` from `PATH`, because local
@@ -241,8 +251,10 @@ delivered with each feature-module slice.
 
 Fix-scope is soft-gated in pull-request CI by
 `tools/scripts/check-fix-scope.mjs`: a fix-titled PR changing more than 300
-lines must answer "what is the root cause" and "why can this not be fixed at
-a lower layer" in the PR description.
+implementation lines must answer "what is the root cause" and "why can this
+not be fixed at a lower layer" in the PR description. The count excludes docs,
+tests, fixtures, snapshots, and generated artifacts so the gate stays focused
+on production fix surface area.
 
 Electron `main` and `preload` runtime import graphs are checked by `pnpm check:electron-runtime-boundaries`.
 That script is intentionally narrow: it ignores type-only imports and test files, then follows reachable runtime imports to catch React/TSX leaks and Electron-externalized workspace packages that still resolve to raw source files.
