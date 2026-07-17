@@ -60,6 +60,88 @@ func (d *tuttiPlanIssueCompletionDispatcher) NotifyTuttiPlanIssueCompleted(
 	go d.dispatch(workspaceID, issue, tasks)
 }
 
+// NotifyTuttiPlanIssueTaskFailed reports one failed task run back to the
+// planning conversation. Deduped per run so reconcile replays stay quiet; a
+// genuine retry produces a new run and therefore a new report.
+func (d *tuttiPlanIssueCompletionDispatcher) NotifyTuttiPlanIssueTaskFailed(
+	_ context.Context,
+	workspaceID string,
+	issue workspaceissues.Issue,
+	task workspaceissues.Task,
+	run workspaceissues.Run,
+) {
+	if d == nil || d.Agents == nil {
+		return
+	}
+	d.mu.Lock()
+	if d.dispatched == nil {
+		d.dispatched = map[string]struct{}{}
+	}
+	key := workspaceID + "/run-failed/" + run.RunID
+	if _, exists := d.dispatched[key]; exists {
+		d.mu.Unlock()
+		return
+	}
+	d.dispatched[key] = struct{}{}
+	d.mu.Unlock()
+	send := func() {
+		ctx, cancel := context.WithTimeout(context.Background(), tuttiPlanIssueCompletionDispatchTimeout)
+		defer cancel()
+		result, err := d.Agents.SendInput(ctx, workspaceID, issue.SourceSessionID, agentservice.SendInput{
+			Content: []agentservice.PromptContentBlock{{
+				Type: "text",
+				Text: tuttiPlanIssueTaskFailedPrompt(issue, task, run),
+			}},
+			ClientSubmitID: "tutti-plan-issue-task-failed:" + run.RunID,
+			Metadata: map[string]any{
+				"tuttiModePlanIssueId": issue.IssueID,
+			},
+		})
+		if err != nil {
+			slog.Warn("tutti mode plan issue task failure dispatch failed",
+				"event", "tutti_mode_plan.issue_task_failure_dispatch_failed",
+				"workspaceId", workspaceID,
+				"issueId", issue.IssueID,
+				"taskId", task.TaskID,
+				"runId", run.RunID,
+				"sourceSessionId", issue.SourceSessionID,
+				"error", err)
+			return
+		}
+		slog.Info("tutti mode plan issue task failure dispatched",
+			"event", "tutti_mode_plan.issue_task_failure_dispatched",
+			"workspaceId", workspaceID,
+			"issueId", issue.IssueID,
+			"taskId", task.TaskID,
+			"runId", run.RunID,
+			"turnId", strings.TrimSpace(result.TurnID))
+	}
+	if d.Synchronous {
+		send()
+		return
+	}
+	go send()
+}
+
+func tuttiPlanIssueTaskFailedPrompt(issue workspaceissues.Issue, task workspaceissues.Task, run workspaceissues.Run) string {
+	reason := strings.TrimSpace(run.ErrorMessage)
+	if reason == "" {
+		reason = "The run ended without a reported reason."
+	}
+	return fmt.Sprintf(`A task of your accepted Tutti Mode plan failed, and dispatch is paused until it is resolved.
+
+Issue: %s
+Failed task: %s (%s)
+Reason: %s
+
+Inspect what went wrong (the Issue records the run and any outputs), then tell the user what happened and recommend a next step in this conversation. The user can send the task back to rework from the issue panel; do not silently re-run anything yourself.`,
+		issue.Title,
+		task.TaskID,
+		strings.TrimSpace(task.Title),
+		reason,
+	)
+}
+
 func (d *tuttiPlanIssueCompletionDispatcher) dispatch(
 	workspaceID string,
 	issue workspaceissues.Issue,

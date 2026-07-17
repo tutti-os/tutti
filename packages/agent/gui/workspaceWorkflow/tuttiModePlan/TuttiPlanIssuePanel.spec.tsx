@@ -184,6 +184,37 @@ describe("TuttiPlanIssuePanel", () => {
     expect(onDecideTask).toHaveBeenCalledWith("gate", "rework");
   });
 
+  it("offers only rework on a failed task to re-open dispatch", () => {
+    const failedIssue: TuttiPlanIssueSnapshot = {
+      ...issue,
+      tasks: [
+        {
+          taskId: "boom",
+          title: "Broke",
+          content: "",
+          status: "failed",
+          sortIndex: 1,
+          parallelizable: false,
+          autoAccept: false,
+          dependencyTaskIds: []
+        }
+      ]
+    };
+    const onDecideTask = vi.fn().mockResolvedValue(undefined);
+    render(
+      <TuttiPlanIssuePanel
+        issue={failedIssue}
+        labels={labels}
+        onDecideTask={onDecideTask}
+      />
+    );
+    expect(
+      screen.queryByTestId("tutti-plan-issue-accept-boom")
+    ).not.toBeInTheDocument();
+    fireEvent.click(screen.getByTestId("tutti-plan-issue-rework-boom"));
+    expect(onDecideTask).toHaveBeenCalledWith("boom", "rework");
+  });
+
   it("keeps pending tasks display-only without a decision callback", () => {
     const pendingIssue: TuttiPlanIssueSnapshot = {
       ...issue,

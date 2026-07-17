@@ -283,21 +283,27 @@ function TaskDecisionActions({
   decideTask?: (taskId: string, decision: TuttiPlanIssueTaskDecision) => void;
   deciding: boolean;
 }): React.JSX.Element | null {
-  if (!decideTask || task.status !== "pending_acceptance") {
+  // pending_acceptance is the human gate (accept or rework); a failed task
+  // freezes dispatch, so it offers rework to re-open the frontier inline.
+  const canAccept = task.status === "pending_acceptance";
+  const canRework = canAccept || task.status === "failed";
+  if (!decideTask || !canRework) {
     return null;
   }
   return (
     <span className="flex shrink-0 items-center gap-1">
-      <Button
-        type="button"
-        size="sm"
-        className="h-6 bg-[var(--tutti-purple)] px-2 text-[11px] text-white hover:bg-[color-mix(in_srgb,var(--tutti-purple)_85%,black)]"
-        disabled={deciding}
-        data-testid={`tutti-plan-issue-accept-${task.taskId}`}
-        onClick={() => decideTask(task.taskId, "accept")}
-      >
-        {labels.accept}
-      </Button>
+      {canAccept ? (
+        <Button
+          type="button"
+          size="sm"
+          className="h-6 bg-[var(--tutti-purple)] px-2 text-[11px] text-white hover:bg-[color-mix(in_srgb,var(--tutti-purple)_85%,black)]"
+          disabled={deciding}
+          data-testid={`tutti-plan-issue-accept-${task.taskId}`}
+          onClick={() => decideTask(task.taskId, "accept")}
+        >
+          {labels.accept}
+        </Button>
+      ) : null}
       <Button
         type="button"
         size="sm"
