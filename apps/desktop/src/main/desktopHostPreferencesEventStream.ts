@@ -3,6 +3,7 @@ import {
   type TuttidEventStreamClient
 } from "@tutti-os/client-tuttid-ts";
 import type { DesktopThemeSource } from "../shared/theme/index.ts";
+import type { DesktopProxySettings } from "../shared/preferences/index.ts";
 import type { DesktopHostPreferencesState } from "./desktopHostPreferences.ts";
 import type { DesktopLogger } from "./logging.ts";
 import type { AppUpdateService } from "./update/appUpdateService.ts";
@@ -17,6 +18,7 @@ export interface DesktopHostPreferencesEventStream {
 
 export interface DesktopHostPreferencesEventStreamDependencies {
   applyThemeSource: (source: DesktopThemeSource) => unknown;
+  applyProxySettings?: (settings: DesktopProxySettings) => Promise<void> | void;
   eventStreamClient: TuttidEventStreamClient;
   logger: DesktopLogger;
   preferences: DesktopHostPreferencesState;
@@ -57,6 +59,7 @@ export function connectDesktopHostPreferencesEventStream(
         featureFlags: nextPreferences.featureFlags,
         locale: nextPreferences.locale,
         minimizeAnimation: nextPreferences.minimizeAnimation,
+        proxy: nextPreferences.proxy,
         sleepPreventionMode: nextPreferences.sleepPreventionMode,
         themeSource: nextPreferences.themeSource,
         updateChannel: nextPreferences.updateChannel,
@@ -64,6 +67,16 @@ export function connectDesktopHostPreferencesEventStream(
         workbenchShortcuts: nextPreferences.workbenchShortcuts,
         workbenchWindowSnapping: nextPreferences.workbenchWindowSnapping
       });
+
+      if (nextPreferences.proxy && deps.applyProxySettings) {
+        void Promise.resolve(
+          deps.applyProxySettings(nextPreferences.proxy)
+        ).catch((error: unknown) => {
+          deps.logger.warn("failed to apply desktop proxy preferences", {
+            error: error instanceof Error ? error.message : String(error)
+          });
+        });
+      }
 
       void deps.updateService
         ?.configure({

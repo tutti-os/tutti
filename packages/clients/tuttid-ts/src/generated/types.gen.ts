@@ -339,6 +339,7 @@ export type DesktopPreferences = {
   workbenchShortcuts: DesktopWorkbenchShortcuts;
   locale: DesktopLocale;
   minimizeAnimation: DesktopMinimizeAnimation;
+  proxy?: DesktopProxySettings;
   sleepPreventionMode: DesktopSleepPreventionMode;
   showAppDeveloperSources: boolean;
   themeSource: DesktopThemeSource;
@@ -425,6 +426,16 @@ export type DesktopFileDefaultOpenersByExtension = {
 };
 
 export type DesktopMinimizeAnimation = "scale" | "genie" | "off";
+
+export type DesktopProxySettings = {
+  mode: DesktopProxyMode;
+  /**
+   * Local HTTP proxy port used when mode is manual.
+   */
+  port: number;
+};
+
+export type DesktopProxyMode = "system" | "manual";
 
 export type DesktopPreferencesStateResponse = {
   initialized: boolean;

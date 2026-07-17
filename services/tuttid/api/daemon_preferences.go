@@ -216,6 +216,48 @@ func (api DaemonAPI) PutDesktopPreferences(ctx context.Context, request tuttigen
 		}, nil
 	}
 
+	var proxy *preferencesservice.DesktopProxyInput
+	if request.Body.Preferences.Proxy != nil {
+		proxyMode := strings.TrimSpace(string(request.Body.Preferences.Proxy.Mode))
+		if proxyMode == "" {
+			return tuttigenerated.PutDesktopPreferences400JSONResponse{
+				InvalidRequestErrorJSONResponse: invalidRequestError(
+					apierrors.InvalidRequest(
+						apierrors.ReasonMissingDesktopProxyMode,
+						apierrors.WithDeveloperMessage("desktop proxy mode is required when provided"),
+						apierrors.WithParams(map[string]any{"field": "preferences.proxy.mode"}),
+					),
+				),
+			}, nil
+		}
+		if !preferencesbiz.IsDesktopProxyMode(proxyMode) {
+			return tuttigenerated.PutDesktopPreferences400JSONResponse{
+				InvalidRequestErrorJSONResponse: invalidRequestError(
+					apierrors.InvalidRequest(
+						apierrors.ReasonUnsupportedDesktopProxyMode,
+						apierrors.WithDeveloperMessage("desktop proxy mode is unsupported"),
+						apierrors.WithParams(map[string]any{"field": "preferences.proxy.mode"}),
+					),
+				),
+			}, nil
+		}
+		if request.Body.Preferences.Proxy.Port < 1 || request.Body.Preferences.Proxy.Port > 65535 {
+			return tuttigenerated.PutDesktopPreferences400JSONResponse{
+				InvalidRequestErrorJSONResponse: invalidRequestError(
+					apierrors.InvalidRequest(
+						apierrors.ReasonInvalidDesktopProxyPort,
+						apierrors.WithDeveloperMessage("desktop proxy port must be between 1 and 65535"),
+						apierrors.WithParams(map[string]any{"field": "preferences.proxy.port"}),
+					),
+				),
+			}, nil
+		}
+		proxy = &preferencesservice.DesktopProxyInput{
+			Mode: proxyMode,
+			Port: request.Body.Preferences.Proxy.Port,
+		}
+	}
+
 	sleepPreventionMode := strings.TrimSpace(string(request.Body.Preferences.SleepPreventionMode))
 	if sleepPreventionMode == "" {
 		return tuttigenerated.PutDesktopPreferences400JSONResponse{
@@ -419,6 +461,7 @@ func (api DaemonAPI) PutDesktopPreferences(ctx context.Context, request tuttigen
 		},
 		Locale:                  locale,
 		MinimizeAnimation:       minimizeAnimation,
+		Proxy:                   proxy,
 		SleepPreventionMode:     sleepPreventionMode,
 		ShowAppDeveloperSources: request.Body.Preferences.ShowAppDeveloperSources,
 		ThemeSource:             themeSource,

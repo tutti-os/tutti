@@ -521,6 +521,30 @@ test("DesktopPreferencesService publishes prevent sleep preference writes", asyn
   service.dispose();
 });
 
+test("DesktopPreferencesService publishes global proxy preference writes", async () => {
+  const client = createDesktopPreferencesClient({});
+  const service = new DesktopPreferencesService({
+    applyLocale() {},
+    applyTheme() {},
+    client,
+    initialLocale: "en",
+    initialTheme: { appearance: "light", source: "system" },
+    resolveTheme
+  });
+
+  await settle();
+  const saved = service.setProxy({ mode: "manual", port: 4567 });
+  assert.deepEqual(client.updatedRequests.at(-1)?.proxy, {
+    mode: "manual",
+    port: 4567
+  });
+  client.emitDesktopPreferencesUpdated(client.updatedRequests.at(-1)!);
+  assert.deepEqual(await saved, { mode: "manual", port: 4567 });
+  assert.deepEqual(service.store.proxy, { mode: "manual", port: 4567 });
+
+  service.dispose();
+});
+
 test("DesktopPreferencesService publishes update preference writes", async () => {
   const client = createDesktopPreferencesClient({});
 
@@ -1342,6 +1366,8 @@ function createDesktopPreferencesClient(
           pendingUpdate.request.dockPlacement !== preferences.dockPlacement ||
           pendingUpdate.request.sleepPreventionMode !==
             preferences.sleepPreventionMode ||
+          JSON.stringify(pendingUpdate.request.proxy) !==
+            JSON.stringify(preferences.proxy) ||
           pendingUpdate.request.showAppDeveloperSources !==
             preferences.showAppDeveloperSources ||
           pendingUpdate.request.themeSource !== preferences.themeSource ||

@@ -162,6 +162,46 @@ INSERT INTO tuttid_schema_migrations (id, applied_at_unix_ms)
 	return nil
 }
 
+func (s *SQLiteStore) applyDesktopPreferencesProxyV1(ctx context.Context) error {
+	applied, err := s.hasMigration(ctx, schemaMigrationDesktopPreferencesProxyV1)
+	if err != nil {
+		return err
+	}
+	if applied {
+		return nil
+	}
+
+	columns := []struct {
+		name       string
+		definition string
+	}{
+		{"proxy_mode", "TEXT NOT NULL DEFAULT 'system'"},
+		{"proxy_port", "INTEGER NOT NULL DEFAULT 7890"},
+	}
+	for _, column := range columns {
+		hasColumn, err := s.hasColumn(ctx, "desktop_preferences", column.name)
+		if err != nil {
+			return err
+		}
+		if hasColumn {
+			continue
+		}
+		if _, err := s.writeDB.ExecContext(ctx, fmt.Sprintf(`
+ALTER TABLE desktop_preferences
+  ADD COLUMN %s %s;`, column.name, column.definition)); err != nil {
+			return fmt.Errorf("migrate workspace database for desktop proxy preference %s: %w", column.name, err)
+		}
+	}
+	_, err = s.writeDB.ExecContext(ctx, `
+INSERT INTO tuttid_schema_migrations (id, applied_at_unix_ms)
+  VALUES (?, ?);
+`, schemaMigrationDesktopPreferencesProxyV1, unixMs(time.Now().UTC()))
+	if err != nil {
+		return fmt.Errorf("record desktop proxy preferences migration: %w", err)
+	}
+	return nil
+}
+
 func (s *SQLiteStore) applyDesktopPreferencesShowAppDeveloperSourcesV1(ctx context.Context) error {
 	applied, err := s.hasMigration(ctx, schemaMigrationDesktopPreferencesShowAppDeveloperSourcesV1)
 	if err != nil {

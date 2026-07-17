@@ -18,6 +18,14 @@ type preferencesPublisherStub struct {
 	err       error
 }
 
+type proxyConfiguratorStub struct {
+	settings []preferencesbiz.DesktopProxySettings
+}
+
+func (s *proxyConfiguratorStub) ConfigureDesktopProxy(settings preferencesbiz.DesktopProxySettings) {
+	s.settings = append(s.settings, settings)
+}
+
 func (s preferencesStoreStub) GetDesktopPreferences(context.Context) (preferencesbiz.DesktopPreferences, error) {
 	return s.getResult, nil
 }
@@ -91,14 +99,36 @@ func TestServiceGetReturnsStoredDesktopPreferences(t *testing.T) {
 	}
 }
 
+func TestServiceConfigureRuntimeAppliesStoredProxy(t *testing.T) {
+	t.Parallel()
+
+	proxy := &proxyConfiguratorStub{}
+	service := Service{
+		Store: &preferencesStoreStub{
+			getResult: preferencesbiz.DesktopPreferences{
+				Proxy: preferencesbiz.DesktopProxySettings{Mode: "manual", Port: 3128},
+			},
+		},
+		Proxy: proxy,
+	}
+	if err := service.ConfigureRuntime(context.Background()); err != nil {
+		t.Fatalf("ConfigureRuntime() error = %v", err)
+	}
+	if len(proxy.settings) != 1 || proxy.settings[0].Mode != "manual" || proxy.settings[0].Port != 3128 {
+		t.Fatalf("configured proxy = %#v, want manual/3128", proxy.settings)
+	}
+}
+
 func TestServicePutTrimsDesktopPreferences(t *testing.T) {
 	t.Parallel()
 
 	store := &preferencesStoreStub{}
 	publisher := &preferencesPublisherStub{}
+	proxy := &proxyConfiguratorStub{}
 	service := Service{
 		Store:     store,
 		Publisher: publisher,
+		Proxy:     proxy,
 	}
 
 	preferences, err := service.Put(context.Background(), PutInput{
@@ -129,8 +159,12 @@ func TestServicePutTrimsDesktopPreferences(t *testing.T) {
 			"txt":     "unknown",
 			"_tmp":    "system",
 		},
-		Locale:              " zh-CN ",
-		MinimizeAnimation:   "scale",
+		Locale:            " zh-CN ",
+		MinimizeAnimation: "scale",
+		Proxy: &DesktopProxyInput{
+			Mode: " manual ",
+			Port: 4567,
+		},
 		SleepPreventionMode: "whileAgentRunning",
 		ThemeSource:         " dark ",
 		UpdateChannel:       " rc ",
@@ -171,6 +205,12 @@ func TestServicePutTrimsDesktopPreferences(t *testing.T) {
 	}
 	if store.putInput.UpdatePolicy != "auto" {
 		t.Fatalf("stored updatePolicy = %q, want auto", store.putInput.UpdatePolicy)
+	}
+	if store.putInput.Proxy.Mode != "manual" || store.putInput.Proxy.Port != 4567 {
+		t.Fatalf("stored proxy = %#v, want manual/4567", store.putInput.Proxy)
+	}
+	if len(proxy.settings) != 1 || proxy.settings[0] != store.putInput.Proxy {
+		t.Fatalf("configured proxy = %#v, want stored proxy", proxy.settings)
 	}
 	if store.putInput.FileDefaultOpenersByExtension["html"] != "fileViewer" ||
 		store.putInput.FileDefaultOpenersByExtension["pdf"] != "defaultBrowser" ||

@@ -23,6 +23,7 @@ import {
   defaultDesktopFeatureFlags,
   defaultDesktopFileDefaultOpenersByExtension,
   defaultDesktopMinimizeAnimation,
+  defaultDesktopProxySettings,
   defaultDesktopShowAppDeveloperSources,
   defaultDesktopSleepPreventionMode,
   defaultDesktopUpdateChannel,
@@ -33,6 +34,7 @@ import {
   desktopWorkbenchShortcutsEqual,
   isDesktopMinimizeAnimation,
   normalizeDesktopFeatureFlags,
+  normalizeDesktopProxySettings,
   normalizeDesktopWorkbenchShortcuts,
   normalizeDesktopWorkbenchWindowSnapping,
   desktopWorkbenchWindowSnappingEqual,
@@ -45,6 +47,7 @@ import {
   type DesktopFeatureFlags,
   type DesktopFileDefaultOpenersByExtension,
   type DesktopMinimizeAnimation,
+  type DesktopProxySettings,
   type DesktopSleepPreventionMode,
   type DesktopUpdateChannel,
   type DesktopUpdatePolicy,
@@ -75,6 +78,7 @@ export interface DesktopHostPreferencesState {
   getFileDefaultOpenersByExtension(): DesktopFileDefaultOpenersByExtension;
   getLocale(): DesktopLocale;
   getMinimizeAnimation(): DesktopMinimizeAnimation;
+  getProxySettings(): DesktopProxySettings;
   getSleepPreventionMode(): DesktopSleepPreventionMode;
   getThemeSource(): DesktopThemeSource;
   getUpdateChannel(): DesktopUpdateChannel;
@@ -95,6 +99,7 @@ export interface DesktopHostPreferencesState {
     fileDefaultOpenersByExtension?: DesktopFileDefaultOpenersByExtension;
     locale?: DesktopLocale;
     minimizeAnimation?: DesktopMinimizeAnimation;
+    proxy?: DesktopProxySettings;
     sleepPreventionMode?: DesktopSleepPreventionMode;
     themeSource?: DesktopThemeSource;
     updateChannel?: DesktopUpdateChannel;
@@ -154,6 +159,7 @@ export async function createDesktopHostPreferencesState(
   )
     ? initialPreferences.minimizeAnimation
     : defaultDesktopMinimizeAnimation;
+  let proxySettings = normalizeDesktopProxySettings(initialPreferences.proxy);
   let sleepPreventionMode = initialPreferences.sleepPreventionMode;
   let themeSource = initialPreferences.themeSource;
   let updateChannel = initialPreferences.updateChannel;
@@ -203,6 +209,9 @@ export async function createDesktopHostPreferencesState(
     getMinimizeAnimation() {
       return minimizeAnimation;
     },
+    getProxySettings() {
+      return proxySettings;
+    },
     getSleepPreventionMode() {
       return sleepPreventionMode;
     },
@@ -243,6 +252,7 @@ export async function createDesktopHostPreferencesState(
         fileDefaultOpenersByExtension;
       const previousLocale = locale;
       const previousMinimizeAnimation = minimizeAnimation;
+      const previousProxySettings = proxySettings;
       const previousSleepPreventionMode = sleepPreventionMode;
       const previousThemeSource = themeSource;
       const previousUpdateChannel = updateChannel;
@@ -328,6 +338,9 @@ export async function createDesktopHostPreferencesState(
       if (input.minimizeAnimation) {
         minimizeAnimation = input.minimizeAnimation;
       }
+      if (input.proxy) {
+        proxySettings = normalizeDesktopProxySettings(input.proxy);
+      }
       if (input.sleepPreventionMode) {
         sleepPreventionMode = input.sleepPreventionMode;
       }
@@ -383,6 +396,8 @@ export async function createDesktopHostPreferencesState(
           previousFileDefaultOpenersByExtension ||
         locale !== previousLocale ||
         minimizeAnimation !== previousMinimizeAnimation ||
+        proxySettings.mode !== previousProxySettings.mode ||
+        proxySettings.port !== previousProxySettings.port ||
         sleepPreventionMode !== previousSleepPreventionMode ||
         themeSource !== previousThemeSource ||
         updateChannel !== previousUpdateChannel ||
@@ -446,6 +461,7 @@ async function resolveInitialDesktopPreferences(
             defaultDesktopFileDefaultOpenersByExtension,
           locale: options.fallbackLocale,
           minimizeAnimation: defaultDesktopMinimizeAnimation,
+          proxy: defaultDesktopProxySettings,
           showAppDeveloperSources: defaultDesktopShowAppDeveloperSources,
           sleepPreventionMode: defaultDesktopSleepPreventionMode,
           themeSource: defaultDesktopThemeSource,
@@ -474,6 +490,7 @@ async function resolveInitialDesktopPreferences(
         defaultDesktopFileDefaultOpenersByExtension,
       locale: options.fallbackLocale,
       minimizeAnimation: defaultDesktopMinimizeAnimation,
+      proxy: defaultDesktopProxySettings,
       showAppDeveloperSources: defaultDesktopShowAppDeveloperSources,
       sleepPreventionMode: defaultDesktopSleepPreventionMode,
       themeSource: defaultDesktopThemeSource,

@@ -694,6 +694,19 @@ export const en = {
         },
         preventSleepSaveFailed:
           "We couldn't update the sleep prevention setting right now.",
+        proxyLabel: "Network proxy",
+        proxyDescription:
+          "Applies to Tutti, daemon requests, browser sessions, and newly launched agents and terminals. Local addresses bypass the proxy.",
+        proxyModeLabel: "Proxy mode",
+        proxyModeOptions: {
+          system: "Use system proxy",
+          manual: "Use local proxy port"
+        },
+        proxyPortLabel: "Local proxy port",
+        proxyPortInvalid: "Enter a port from 1 to 65535.",
+        proxyApply: "Apply proxy",
+        proxyApplying: "Applying…",
+        proxySaveFailed: "We couldn't update the proxy setting right now.",
         updateChannelSaveFailed:
           "We couldn't update the release channel right now.",
         updatePolicySaveFailed: "We couldn't update the update mode right now.",

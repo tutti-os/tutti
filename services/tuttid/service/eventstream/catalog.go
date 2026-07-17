@@ -364,6 +364,14 @@ func validateDesktopPreferencesUpdateRequestedPayload(payload []byte) error {
 	if !preferencesbiz.IsDesktopMinimizeAnimation(decoded.MinimizeAnimation) {
 		return fmt.Errorf("preferences.minimizeAnimation is unsupported")
 	}
+	if decoded.Proxy != nil {
+		if !preferencesbiz.IsDesktopProxyMode(decoded.Proxy.Mode) {
+			return fmt.Errorf("preferences.proxy.mode is unsupported")
+		}
+		if decoded.Proxy.Port < 1 || decoded.Proxy.Port > 65535 {
+			return fmt.Errorf("preferences.proxy.port is unsupported")
+		}
+	}
 	if decoded.SleepPreventionMode == "" {
 		return fmt.Errorf("preferences.sleepPreventionMode is required")
 	}
@@ -455,6 +463,14 @@ func validateDesktopPreferencesUpdatedPayload(payload []byte) error {
 	}
 	if !preferencesbiz.IsDesktopMinimizeAnimation(decoded.Preferences.MinimizeAnimation) {
 		return fmt.Errorf("preferences.minimizeAnimation is unsupported")
+	}
+	if decoded.Preferences.Proxy != nil {
+		if !preferencesbiz.IsDesktopProxyMode(decoded.Preferences.Proxy.Mode) {
+			return fmt.Errorf("preferences.proxy.mode is unsupported")
+		}
+		if decoded.Preferences.Proxy.Port < 1 || decoded.Preferences.Proxy.Port > 65535 {
+			return fmt.Errorf("preferences.proxy.port is unsupported")
+		}
 	}
 	if decoded.Preferences.SleepPreventionMode == "" {
 		return fmt.Errorf("preferences.sleepPreventionMode is required")

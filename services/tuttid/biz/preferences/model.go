@@ -22,6 +22,8 @@ const (
 	DefaultDesktopBrowserUseConnectionMode    = "isolated"
 	DefaultDesktopLocale                      = "en"
 	DefaultDesktopMinimizeAnimation           = "scale"
+	DefaultDesktopProxyMode                   = "system"
+	DefaultDesktopProxyPort                   = 7890
 	DefaultDesktopSleepPreventionMode         = "never"
 	DefaultDesktopShowAppDeveloperSources     = false
 	DefaultDesktopThemeSource                 = "dark"
@@ -65,6 +67,7 @@ type DesktopPreferences struct {
 	Initialized                                 bool
 	Locale                                      string
 	MinimizeAnimation                           string
+	Proxy                                       DesktopProxySettings
 	SleepPreventionMode                         string
 	ShowAppDeveloperSources                     bool
 	ThemeSource                                 string
@@ -101,6 +104,11 @@ type DesktopWorkbenchShortcuts struct {
 	NewSameTypeWindow    string
 }
 
+type DesktopProxySettings struct {
+	Mode string
+	Port int
+}
+
 func DefaultDesktopPreferences() DesktopPreferences {
 	return DesktopPreferences{
 		AgentComposerDefaultsByProvider:             map[string]AgentComposerDefaults{},
@@ -120,9 +128,13 @@ func DefaultDesktopPreferences() DesktopPreferences {
 			"shtml": "appBrowser",
 			"xhtml": "appBrowser",
 		},
-		Initialized:                  false,
-		Locale:                       DefaultDesktopLocale,
-		MinimizeAnimation:            DefaultDesktopMinimizeAnimation,
+		Initialized:       false,
+		Locale:            DefaultDesktopLocale,
+		MinimizeAnimation: DefaultDesktopMinimizeAnimation,
+		Proxy: DesktopProxySettings{
+			Mode: DefaultDesktopProxyMode,
+			Port: DefaultDesktopProxyPort,
+		},
 		SleepPreventionMode:          DefaultDesktopSleepPreventionMode,
 		ShowAppDeveloperSources:      DefaultDesktopShowAppDeveloperSources,
 		ThemeSource:                  DefaultDesktopThemeSource,
@@ -230,6 +242,27 @@ func IsDesktopDockPlacement(value string) bool {
 func IsDesktopMinimizeAnimation(value string) bool {
 	switch value {
 	case "scale", "genie", "off":
+		return true
+	default:
+		return false
+	}
+}
+
+func NormalizeDesktopProxySettings(value DesktopProxySettings) DesktopProxySettings {
+	mode := strings.TrimSpace(value.Mode)
+	if !IsDesktopProxyMode(mode) {
+		mode = DefaultDesktopProxyMode
+	}
+	port := value.Port
+	if port < 1 || port > 65535 {
+		port = DefaultDesktopProxyPort
+	}
+	return DesktopProxySettings{Mode: mode, Port: port}
+}
+
+func IsDesktopProxyMode(value string) bool {
+	switch value {
+	case "system", "manual":
 		return true
 	default:
 		return false

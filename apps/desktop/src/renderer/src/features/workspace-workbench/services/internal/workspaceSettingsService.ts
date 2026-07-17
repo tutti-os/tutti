@@ -14,6 +14,7 @@ import type {
   DesktopFeatureFlags,
   DesktopWorkspaceUiMode,
   DesktopMinimizeAnimation,
+  DesktopProxySettings,
   DesktopSleepPreventionMode,
   DesktopUpdateChannel,
   DesktopUpdatePolicy,
@@ -672,6 +673,18 @@ export class WorkspaceSettingsService implements IWorkspaceSettingsService {
       this.notifications.error({
         title: createActiveTranslator().t(
           "workspace.settings.general.preventSleepSaveFailed"
+        )
+      });
+    }
+  }
+
+  async changeProxy(settings: DesktopProxySettings): Promise<void> {
+    try {
+      await this.desktopPreferences.setProxy(settings);
+    } catch {
+      this.notifications.error({
+        title: createActiveTranslator().t(
+          "workspace.settings.general.proxySaveFailed"
         )
       });
     }
@@ -1385,6 +1398,7 @@ const noopDesktopPreferencesStore: DesktopPreferencesReadableStoreState = {
   changingFeatureFlags: null,
   changingLocale: null,
   changingMinimizeAnimation: null,
+  changingProxy: null,
   changingSleepPreventionMode: null,
   changingShowAppDeveloperSources: null,
   changingThemeSource: null,
@@ -1398,6 +1412,7 @@ const noopDesktopPreferencesStore: DesktopPreferencesReadableStoreState = {
   fileDefaultOpenersByExtension: {},
   locale: "en",
   minimizeAnimation: defaultDesktopMinimizeAnimation,
+  proxy: { mode: "system", port: 7890 },
   sleepPreventionMode: "never",
   showAppDeveloperSources: false,
   theme: createNoopTheme("dark"),
@@ -1442,6 +1457,9 @@ const noopDesktopPreferences: DesktopPreferencesService = {
   },
   setMinimizeAnimation(animation) {
     return Promise.resolve(animation);
+  },
+  setProxy(settings) {
+    return Promise.resolve(settings);
   },
   setWorkbenchShortcuts(shortcuts) {
     return Promise.resolve(shortcuts);

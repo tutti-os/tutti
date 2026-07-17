@@ -22,6 +22,7 @@ func (p DesktopPreferencesPublisher) PublishDesktopPreferencesUpdated(ctx contex
 	if p.Service == nil {
 		return nil
 	}
+	proxy := preferencesbiz.NormalizeDesktopProxySettings(preferences.Proxy)
 	payload, err := json.Marshal(desktopPreferencesUpdatedPayload{
 		Initialized: preferences.Initialized,
 		Preferences: desktopPreferencesSettingsPayload{
@@ -49,8 +50,12 @@ func (p DesktopPreferencesPublisher) PublishDesktopPreferencesUpdated(ctx contex
 				NewAgentConversation: shortcutPointerFromBiz(preferences.WorkbenchShortcuts.NewAgentConversation),
 				NewSameTypeWindow:    shortcutPointerFromBiz(preferences.WorkbenchShortcuts.NewSameTypeWindow),
 			},
-			Locale:                  preferences.Locale,
-			MinimizeAnimation:       preferences.MinimizeAnimation,
+			Locale:            preferences.Locale,
+			MinimizeAnimation: preferences.MinimizeAnimation,
+			Proxy: &desktopProxySettingsPayload{
+				Mode: proxy.Mode,
+				Port: proxy.Port,
+			},
 			SleepPreventionMode:     preferences.SleepPreventionMode,
 			ShowAppDeveloperSources: preferences.ShowAppDeveloperSources,
 			ThemeSource:             preferences.ThemeSource,
@@ -95,6 +100,7 @@ func NewPreferencesDesktopUpdateRequestedHandler(mutator PreferencesMutator) Int
 			WorkbenchShortcuts:                          decoded.WorkbenchShortcuts,
 			Locale:                                      decoded.Locale,
 			MinimizeAnimation:                           decoded.MinimizeAnimation,
+			Proxy:                                       decoded.Proxy,
 			SleepPreventionMode:                         decoded.SleepPreventionMode,
 			ShowAppDeveloperSources:                     decoded.ShowAppDeveloperSources,
 			ThemeSource:                                 decoded.ThemeSource,
@@ -125,6 +131,7 @@ type decodedDesktopPreferencesMutationPayload struct {
 	WorkbenchShortcuts                          preferencesbiz.DesktopWorkbenchShortcuts
 	Locale                                      string
 	MinimizeAnimation                           string
+	Proxy                                       *preferencesservice.DesktopProxyInput
 	SleepPreventionMode                         string
 	ShowAppDeveloperSources                     bool
 	ThemeSource                                 string
@@ -143,6 +150,13 @@ func decodeDesktopPreferencesMutationPayload(payload []byte) (decodedDesktopPref
 		windowSnapping = &preferencesservice.DesktopWindowSnappingInput{
 			Enabled:        decoded.Preferences.WorkbenchWindowSnapping.Enabled,
 			ShortcutPreset: decoded.Preferences.WorkbenchWindowSnapping.ShortcutPreset,
+		}
+	}
+	var proxy *preferencesservice.DesktopProxyInput
+	if decoded.Preferences.Proxy != nil {
+		proxy = &preferencesservice.DesktopProxyInput{
+			Mode: decoded.Preferences.Proxy.Mode,
+			Port: decoded.Preferences.Proxy.Port,
 		}
 	}
 
@@ -173,6 +187,7 @@ func decodeDesktopPreferencesMutationPayload(payload []byte) (decodedDesktopPref
 		},
 		Locale:                  decoded.Preferences.Locale,
 		MinimizeAnimation:       decoded.Preferences.MinimizeAnimation,
+		Proxy:                   proxy,
 		SleepPreventionMode:     decoded.Preferences.SleepPreventionMode,
 		ShowAppDeveloperSources: decoded.Preferences.ShowAppDeveloperSources,
 		ThemeSource:             decoded.Preferences.ThemeSource,

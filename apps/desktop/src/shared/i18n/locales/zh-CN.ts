@@ -655,6 +655,19 @@ export const zhCN = {
           whileAgentRunning: "仅 Agent 运行时防止休眠"
         },
         preventSleepSaveFailed: "暂时无法更新防止休眠设置",
+        proxyLabel: "网络代理",
+        proxyDescription:
+          "全局应用于 Tutti、后台服务请求、浏览器会话，以及之后启动的 Agent 和终端；本地地址不会经过代理",
+        proxyModeLabel: "代理模式",
+        proxyModeOptions: {
+          system: "使用系统代理",
+          manual: "使用本地代理端口"
+        },
+        proxyPortLabel: "本地代理端口",
+        proxyPortInvalid: "请输入 1 到 65535 之间的端口",
+        proxyApply: "应用代理",
+        proxyApplying: "正在应用…",
+        proxySaveFailed: "暂时无法更新代理设置",
         updateChannelSaveFailed: "暂时无法更新发布渠道",
         updatePolicySaveFailed: "暂时无法更新更新方式",
         versionLabel: "桌面版本"

@@ -32,7 +32,7 @@ import (
 //
 // Effective precedence, everywhere (spawned agents and in-process clients):
 //
-//	session-explicit env > process env (incl. the user's shell env, when the
+//	user-configured desktop proxy > session-explicit env > process env (incl. the user's shell env, when the
 //	desktop forwards it) > macOS system proxy > direct
 //
 // Out of scope, deliberately: SOCKS proxies and PAC resolution (scutil only
@@ -49,6 +49,26 @@ const noProxyDefault = "localhost,127.0.0.1,::1,.local"
 // detected system proxy is broken but direct connections work.
 const disableProxyAutodetectEnvKey = "TUTTI_DISABLE_PROXY_AUTODETECT"
 
+var configuredUserProxy = struct {
+	sync.RWMutex
+	url string
+}{}
+
+// ConfigureUserProxy sets a user-owned fixed proxy URL for every daemon HTTP
+// client and subsequently spawned child process. Passing an empty URL restores
+// the automatic environment/system proxy behavior.
+func ConfigureUserProxy(rawURL string) {
+	configuredUserProxy.Lock()
+	configuredUserProxy.url = strings.TrimSpace(rawURL)
+	configuredUserProxy.Unlock()
+}
+
+func userProxyURL() string {
+	configuredUserProxy.RLock()
+	defer configuredUserProxy.RUnlock()
+	return configuredUserProxy.url
+}
+
 func proxyAutodetectDisabled() bool {
 	value := strings.TrimSpace(os.Getenv(disableProxyAutodetectEnvKey))
 	return value == "1" || strings.EqualFold(value, "true")
@@ -58,6 +78,14 @@ func proxyAutodetectDisabled() bool {
 // macOS system proxy, but only for keys not already present (case-insensitive)
 // in env, so explicit user/session settings always win.
 func (r Resolver) injectSystemProxyEnv(env []string) []string {
+	if manualProxy := userProxyURL(); manualProxy != "" {
+		env = setEnvValue(env, "HTTPS_PROXY", manualProxy)
+		env = setEnvValue(env, "HTTP_PROXY", manualProxy)
+		if _, exists := envValueFrom(env, "NO_PROXY"); !exists {
+			env = append(env, "NO_PROXY="+noProxyDefault)
+		}
+		return env
+	}
 	if proxyAutodetectDisabled() {
 		return env
 	}
@@ -100,6 +128,14 @@ func InjectSystemProxyEnv(env []string) []string {
 func DynamicProxyFunc() func(*http.Request) (*url.URL, error) {
 	return func(req *http.Request) (*url.URL, error) {
 		cfg := httpproxy.FromEnvironment()
+		if manualProxy := userProxyURL(); manualProxy != "" {
+			cfg.HTTPSProxy = manualProxy
+			cfg.HTTPProxy = manualProxy
+			if cfg.NoProxy == "" {
+				cfg.NoProxy = noProxyDefault
+			}
+			return cfg.ProxyFunc()(req.URL)
+		}
 		if !proxyAutodetectDisabled() {
 			mergeSystemProxy(cfg, Resolver{}.systemProxyEnv())
 		}
@@ -113,6 +149,9 @@ func DynamicProxyFunc() func(*http.Request) (*url.URL, error) {
 // stripped. Startup/diagnostic logging only; it answers "did requests on this
 // machine go through a proxy" without another capture round-trip.
 func EffectiveProxySummary() (source string, host string) {
+	if manualProxy := userProxyURL(); manualProxy != "" {
+		return "user", proxyHostForLog(manualProxy)
+	}
 	fromEnv := httpproxy.FromEnvironment()
 	if raw := firstNonEmptyString(fromEnv.HTTPSProxy, fromEnv.HTTPProxy); raw != "" {
 		return "env", proxyHostForLog(raw)

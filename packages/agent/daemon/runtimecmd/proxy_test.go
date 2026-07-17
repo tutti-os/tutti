@@ -144,6 +144,44 @@ func TestEnvNoProxyWhenScutilUnavailable(t *testing.T) {
 	}
 }
 
+func TestConfiguredUserProxyOverridesEnvironmentAndSystemProxy(t *testing.T) {
+	ConfigureUserProxy("http://127.0.0.1:4567")
+	t.Cleanup(func() { ConfigureUserProxy("") })
+
+	resolver := Resolver{
+		Environ: func() []string {
+			return []string{"https_proxy=http://shell-proxy:1080"}
+		},
+		HomeDir:     func() (string, error) { return t.TempDir(), nil },
+		ScutilProxy: func() (string, bool) { return scutilProxyEnabled, true },
+	}
+	env := resolver.Env(nil)
+	if got := envValue(env, "HTTPS_PROXY"); got != "http://127.0.0.1:4567" {
+		t.Fatalf("HTTPS_PROXY = %q, want configured user proxy", got)
+	}
+	if got := envValue(env, "HTTP_PROXY"); got != "http://127.0.0.1:4567" {
+		t.Fatalf("HTTP_PROXY = %q, want configured user proxy", got)
+	}
+	if got := envValue(env, "NO_PROXY"); got != noProxyDefault {
+		t.Fatalf("NO_PROXY = %q, want %q", got, noProxyDefault)
+	}
+
+	request, err := http.NewRequest(http.MethodGet, "https://api.anthropic.com/v1", nil)
+	if err != nil {
+		t.Fatalf("NewRequest: %v", err)
+	}
+	got, err := DynamicProxyFunc()(request)
+	if err != nil {
+		t.Fatalf("proxy func err = %v", err)
+	}
+	if got == nil || got.Host != "127.0.0.1:4567" {
+		t.Fatalf("proxy = %v, want configured user proxy", got)
+	}
+	if source, host := EffectiveProxySummary(); source != "user" || host != "127.0.0.1:4567" {
+		t.Fatalf("EffectiveProxySummary() = %q/%q, want user/127.0.0.1:4567", source, host)
+	}
+}
+
 func proxyFor(t *testing.T, cfg *httpproxy.Config, rawURL string) *url.URL {
 	t.Helper()
 	target, err := url.Parse(rawURL)

@@ -92,6 +92,9 @@ function createHostServices(): DesktopHostServices {
       getMinimizeAnimation() {
         return "scale";
       },
+      getProxySettings() {
+        return { mode: "system", port: 7890 };
+      },
       getSleepPreventionMode() {
         return "never";
       },

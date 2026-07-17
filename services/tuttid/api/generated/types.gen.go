@@ -841,6 +841,24 @@ func (e DesktopMinimizeAnimation) Valid() bool {
 	}
 }
 
+// Defines values for DesktopProxyMode.
+const (
+	DesktopProxyModeManual DesktopProxyMode = "manual"
+	DesktopProxyModeSystem DesktopProxyMode = "system"
+)
+
+// Valid indicates whether the value is a known member of the DesktopProxyMode enum.
+func (e DesktopProxyMode) Valid() bool {
+	switch e {
+	case DesktopProxyModeManual:
+		return true
+	case DesktopProxyModeSystem:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for DesktopSleepPreventionMode.
 const (
 	Always            DesktopSleepPreventionMode = "always"
@@ -3066,6 +3084,7 @@ type DesktopPreferences struct {
 	FileDefaultOpenersByExtension               DesktopFileDefaultOpenersByExtension               `json:"fileDefaultOpenersByExtension"`
 	Locale                                      DesktopLocale                                      `json:"locale"`
 	MinimizeAnimation                           DesktopMinimizeAnimation                           `json:"minimizeAnimation"`
+	Proxy                                       *DesktopProxySettings                              `json:"proxy,omitempty"`
 	ShowAppDeveloperSources                     bool                                               `json:"showAppDeveloperSources"`
 	SleepPreventionMode                         DesktopSleepPreventionMode                         `json:"sleepPreventionMode"`
 	ThemeSource                                 DesktopThemeSource                                 `json:"themeSource"`
@@ -3079,6 +3098,17 @@ type DesktopPreferences struct {
 type DesktopPreferencesStateResponse struct {
 	Initialized bool               `json:"initialized"`
 	Preferences DesktopPreferences `json:"preferences"`
+}
+
+// DesktopProxyMode defines model for DesktopProxyMode.
+type DesktopProxyMode string
+
+// DesktopProxySettings defines model for DesktopProxySettings.
+type DesktopProxySettings struct {
+	Mode DesktopProxyMode `json:"mode"`
+
+	// Port Local HTTP proxy port used when mode is manual.
+	Port int `json:"port"`
 }
 
 // DesktopSleepPreventionMode defines model for DesktopSleepPreventionMode.
