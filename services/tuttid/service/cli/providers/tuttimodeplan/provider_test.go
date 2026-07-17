@@ -7,7 +7,6 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
-	"time"
 
 	workflowbiz "github.com/tutti-os/tutti/services/tuttid/biz/workspaceworkflow"
 	workspacedata "github.com/tutti-os/tutti/services/tuttid/data/workspace"
@@ -20,8 +19,6 @@ type recordingPlans struct {
 	proposeInput     tuttimodeplanservice.ProposeInput
 	reviseInput      tuttimodeplanservice.AgentReviseInput
 	getInput         tuttimodeplanservice.AgentGetInput
-	waitInput        tuttimodeplanservice.AgentWaitInput
-	waitForCtx       bool
 	getForAgentError error
 }
 
@@ -63,22 +60,12 @@ func (plans *recordingPlans) GetViewForAgent(_ context.Context, input tuttimodep
 	}, nil
 }
 
-func (plans *recordingPlans) WaitForAgent(ctx context.Context, input tuttimodeplanservice.AgentWaitInput) (tuttimodeplanservice.WaitResult, error) {
-	plans.waitInput = input
-	if plans.waitForCtx {
-		<-ctx.Done()
-		return tuttimodeplanservice.WaitResult{}, ctx.Err()
-	}
-	return tuttimodeplanservice.WaitResult{}, nil
-}
-
 func TestProviderExposesOnlyAgentProposalObservationCommands(t *testing.T) {
 	commands := NewProvider(nil, &recordingPlans{}).Commands()
 	wantIDs := []string{
 		"tutti-mode-plan.plan.propose",
 		"tutti-mode-plan.plan.revise",
 		"tutti-mode-plan.plan.get",
-		"tutti-mode-plan.plan.wait",
 	}
 	if len(commands) != len(wantIDs) {
 		t.Fatalf("commands = %#v", commands)
@@ -90,16 +77,17 @@ func TestProviderExposesOnlyAgentProposalObservationCommands(t *testing.T) {
 		if command.Capability.Visibility != cliservice.CapabilityVisibilityPublic {
 			t.Fatalf("command[%d].visibility = %q", index, command.Capability.Visibility)
 		}
+		// The review decision reaches the agent as a new user message; no
+		// wait/poll capability may reappear in this catalog.
+		if strings.Contains(command.Capability.ID, "wait") {
+			t.Fatalf("command[%d].id = %q, wait capability is retired", index, command.Capability.ID)
+		}
 	}
 	for _, index := range []int{0, 1} {
 		properties := commands[index].Capability.InputSchema["properties"].(map[string]any)
 		if _, exists := properties["request-id"]; !exists {
 			t.Fatalf("command[%d] request-id schema = %#v", index, properties)
 		}
-	}
-	waitProperties := commands[3].Capability.InputSchema["properties"].(map[string]any)
-	if waitProperties["timeout-ms"].(map[string]any)["default"] != int64(30000) {
-		t.Fatalf("timeout schema = %#v", waitProperties["timeout-ms"])
 	}
 }
 
@@ -123,33 +111,11 @@ func TestRunProposeUsesAgentSessionWithoutInventingToolCallProvenance(t *testing
 	if plans.proposeInput.WorkspaceID != "workspace-1" || plans.proposeInput.SourceSessionID != "session-1" || plans.proposeInput.RequestID != "proposal-request-1" || plans.proposeInput.SourceToolCallID != "" || string(plans.proposeInput.Markdown) != string(markdown) {
 		t.Fatalf("propose input = %#v", plans.proposeInput)
 	}
-	if result.(map[string]any)["nextAction"] != "wait" {
+	if result.(map[string]any)["nextAction"] != nextActionStop {
 		t.Fatalf("result = %#v", result)
 	}
 	if result.(map[string]any)["requestId"] != "proposal-request-1" || result.(map[string]any)["replayed"] != false {
 		t.Fatalf("mutation result = %#v", result)
-	}
-}
-
-func TestRunWaitReturnsRecoverablePendingStateAtBoundedTimeout(t *testing.T) {
-	plans := &recordingPlans{waitForCtx: true}
-	timeoutMS := 1
-	result, err := NewProvider(nil, plans).runWait(context.Background(), framework.InvokeContext{
-		WorkspaceID: "workspace-1",
-		Request:     cliservice.InvokeRequest{Context: cliservice.InvokeContext{AgentSessionID: "session-1"}},
-	}, waitInput{
-		WorkflowID:   "workflow-1",
-		CheckpointID: "checkpoint-1",
-		TimeoutMS:    &timeoutMS,
-	})
-	if err != nil {
-		t.Fatalf("runWait() error = %v", err)
-	}
-	if plans.waitInput.WorkflowID != "workflow-1" || plans.waitInput.AgentSessionID != "session-1" || plans.getInput.AgentSessionID != "session-1" || result.(map[string]any)["nextAction"] != "wait" {
-		t.Fatalf("wait input/result = %#v / %#v", plans.waitInput, result)
-	}
-	if timeoutMS > int(maxWaitTimeout/time.Millisecond) {
-		t.Fatal("test timeout exceeds provider maximum")
 	}
 }
 
@@ -167,10 +133,6 @@ func TestAgentPlanCommandsRequireAndPropagateCallerSession(t *testing.T) {
 		},
 		"get": func() error {
 			_, err := provider.runGet(context.Background(), missingSession, getInput{WorkflowID: "workflow-1"})
-			return err
-		},
-		"wait": func() error {
-			_, err := provider.runWait(context.Background(), missingSession, waitInput{WorkflowID: "workflow-1", CheckpointID: "checkpoint-1"})
 			return err
 		},
 	} {
@@ -194,11 +156,8 @@ func TestAgentPlanCommandsRequireAndPropagateCallerSession(t *testing.T) {
 	if _, err := provider.runGet(context.Background(), invoke, getInput{WorkflowID: "workflow-1"}); err != nil {
 		t.Fatalf("runGet() error = %v", err)
 	}
-	if _, err := provider.runWait(context.Background(), invoke, waitInput{WorkflowID: "workflow-1", CheckpointID: "checkpoint-1"}); err != nil {
-		t.Fatalf("runWait() error = %v", err)
-	}
-	if plans.reviseInput.AgentSessionID != "session-1" || plans.reviseInput.RequestID != "revision-request-1" || plans.getInput.AgentSessionID != "session-1" || plans.waitInput.AgentSessionID != "session-1" {
-		t.Fatalf("caller session was not propagated: revise=%#v get=%#v wait=%#v", plans.reviseInput, plans.getInput, plans.waitInput)
+	if plans.reviseInput.AgentSessionID != "session-1" || plans.reviseInput.RequestID != "revision-request-1" || plans.getInput.AgentSessionID != "session-1" {
+		t.Fatalf("caller session was not propagated: revise=%#v get=%#v", plans.reviseInput, plans.getInput)
 	}
 }
 

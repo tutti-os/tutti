@@ -22,15 +22,81 @@ func testActiveTuttiModeSnapshot() *TuttiModeTurnSnapshot {
 
 func TestRenderTuttiModeHostContextCarriesOrchestrationIntensity(t *testing.T) {
 	t.Parallel()
-	contextText := renderTuttiModeHostContext(testActiveTuttiModeSnapshot())
+	contextText := renderTuttiModeHostContextForCLI(testActiveTuttiModeSnapshot(), "tutti")
 	for _, expected := range []string{
 		`"orchestrationIntensity":80`,
-		"decomposition granularity",
-		"single `tutti plan propose` call",
+		"drives both decomposition and model choice",
+		"`tutti plan propose` shell command",
+		"Scale both the task count and the model tier with the intensity",
 	} {
 		if !strings.Contains(contextText, expected) {
 			t.Fatalf("host context = %q, want %q", contextText, expected)
 		}
+	}
+}
+
+func TestRenderTuttiModeHostContextCarriesWorkedWorkflowExamples(t *testing.T) {
+	t.Parallel()
+	contextText := renderTuttiModeHostContextForCLI(testActiveTuttiModeSnapshot(), "tutti")
+	for _, expected := range []string{
+		"every plan command below is a shell command, not a built-in tool",
+		"update_plan, TodoWrite, plan mode",
+		"tutti agent list --json",
+		"tutti agent composer-options --agent-id <agent-id> --json",
+		"tutti plan propose --file /abs/path/plan.md --request-id plan-faq-v1",
+		"complete launch configuration: agentTargetId, model, and permissionModeId",
+		"never invent these ids",
+		"semantic is \"full-access\" (codex: full-access, claude-code: bypassPermissions)",
+		"the user approves once at plan review",
+		"Always set execution.reasoningIntensity explicitly",
+		"schema: tutti-mode-plan/v1",
+		"topicId: default",
+		"reasoningIntensity: 60",
+		"dependsOn: [task-1]",
+		"permissionModeId: bypassPermissions",
+		"parallelizable: true",
+		"set `parallelizable: true` on a task that can safely run alongside",
+		"end the turn as soon as propose returns a workflowId",
+		"`tutti plan revise --workflow-id <workflowId> --file <absolute path> --request-id <new id>`",
+		"`tutti issue topic list --json`",
+		"a plan that was only shown in chat was never submitted",
+	} {
+		if !strings.Contains(contextText, expected) {
+			t.Fatalf("host context = %q, want %q", contextText, expected)
+		}
+	}
+	for _, forbidden := range []string{"plan wait", "plan-wait"} {
+		if strings.Contains(contextText, forbidden) {
+			t.Fatalf("host context = %q, must not instruct a wait command (%q)", contextText, forbidden)
+		}
+	}
+}
+
+func TestRenderTuttiModeHostContextUsesResolvedCLICommandName(t *testing.T) {
+	t.Parallel()
+	contextText := renderTuttiModeHostContextForCLI(testActiveTuttiModeSnapshot(), "tutti-dev")
+	for _, expected := range []string{
+		"`tutti-dev plan propose` shell command",
+		"tutti-dev plan propose --file /abs/path/plan.md",
+		"`tutti-dev plan revise --workflow-id",
+	} {
+		if !strings.Contains(contextText, expected) {
+			t.Fatalf("host context = %q, want %q", contextText, expected)
+		}
+	}
+	if strings.Contains(contextText, "`tutti plan propose`") {
+		t.Fatalf("host context = %q, must not fall back to the production CLI name", contextText)
+	}
+}
+
+func TestTuttiCLICommandNameFollowsEnvironment(t *testing.T) {
+	t.Setenv("TUTTI_ENV", "")
+	if got := tuttiCLICommandName(); got != "tutti" {
+		t.Fatalf("cli command name = %q, want tutti", got)
+	}
+	t.Setenv("TUTTI_ENV", "dev")
+	if got := tuttiCLICommandName(); got != "tutti-dev" {
+		t.Fatalf("cli command name = %q, want tutti-dev", got)
 	}
 }
 
@@ -45,7 +111,7 @@ func TestRenderTuttiModeHostContextRejectsOutOfRangeOrchestrationIntensity(t *te
 
 func TestRenderTuttiModeHostContextCarriesTypedActiveState(t *testing.T) {
 	t.Parallel()
-	contextText := renderTuttiModeHostContext(testActiveTuttiModeSnapshot())
+	contextText := renderTuttiModeHostContextForCLI(testActiveTuttiModeSnapshot(), "tutti")
 	for _, expected := range []string{
 		"<tutti-host-context",
 		`"activationId":"activation-1"`,
@@ -54,8 +120,9 @@ func TestRenderTuttiModeHostContextCarriesTypedActiveState(t *testing.T) {
 		`"state":"active"`,
 		"Do not execute the user's request directly in this turn.",
 		"ask the user focused clarifying questions",
-		"single `tutti plan propose` call",
-		"wait for the user's review decision",
+		"`tutti plan propose` shell command",
+		"end the turn immediately",
+		"review decision always arrives as a new user message",
 		"Read-only investigation",
 		"do not substitute a provider-native planning mode",
 		"independent of the provider collaboration mode",
@@ -104,8 +171,10 @@ func TestRenderTuttiModeHostContextCarriesExplicitInactiveState(t *testing.T) {
 	}
 	for _, forbidden := range []string{
 		"Do not execute the user's request directly",
-		"tutti plan propose",
+		"plan propose",
 		"clarifying questions",
+		"Workflow examples",
+		"update_plan",
 	} {
 		if strings.Contains(contextText, forbidden) {
 			t.Fatalf("inactive host context = %q, must not contain active-only directive %q", contextText, forbidden)

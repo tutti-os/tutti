@@ -271,8 +271,8 @@ export const enAgentGui = {
   tuttiModeDescription:
     "Ask the agent to prefer Tutti's native workflow capabilities",
   tuttiModeRemove: "Turn off Tutti mode",
-  tuttiBudgetTitle: "Tutti orchestration",
-  tuttiBudgetIntensityLabel: "Orchestration intensity",
+  tuttiBudgetTitle: "Tutti intensity",
+  tuttiBudgetIntensityLabel: "Intensity",
   tuttiBudgetIntensityMin: "Minimal",
   tuttiBudgetIntensityMax: "Maximal",
   tuttiBudgetConfirm: "Confirm",

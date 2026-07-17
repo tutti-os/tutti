@@ -16,7 +16,6 @@ type Plans interface {
 	Propose(context.Context, tuttimodeplanservice.ProposeInput) (tuttimodeplanservice.ProposalResult, error)
 	ReviseFromAgent(context.Context, tuttimodeplanservice.AgentReviseInput) (tuttimodeplanservice.RevisionResult, error)
 	GetViewForAgent(context.Context, tuttimodeplanservice.AgentGetInput) (tuttimodeplanservice.SnapshotView, error)
-	WaitForAgent(context.Context, tuttimodeplanservice.AgentWaitInput) (tuttimodeplanservice.WaitResult, error)
 }
 
 type Provider struct {
@@ -32,12 +31,14 @@ func (Provider) AppID() string {
 	return appID
 }
 
+// Commands deliberately exposes no wait/poll capability: an agent's turn ends
+// after propose/revise, and the user's review decision comes back as a new
+// user message (feedback dispatch), never as something the agent blocks on.
 func (p Provider) Commands() []cliservice.Command {
 	return []cliservice.Command{
 		p.newProposeCommand(),
 		p.newReviseCommand(),
 		p.newGetCommand(),
-		p.newWaitCommand(),
 	}
 }
 
