@@ -198,7 +198,7 @@ func TestDefaultPreparerCodexWritesInstructionsSkillManifestAndEnv(t *testing.T)
 	if grillMeInfo.Mode()&os.ModeSymlink == 0 {
 		t.Fatalf("grill-me skill mode = %v, want symlink", grillMeInfo.Mode())
 	}
-	if _, err := os.Lstat(filepath.Join(codexHome, "skills", ".system")); !os.IsNotExist(err) {
+	if _, err := os.Lstat(filepath.Join(codexHome, "skills", ".system", "hidden")); !os.IsNotExist(err) {
 		t.Fatalf("hidden system skill exposed, err = %v", err)
 	}
 	if _, err := os.Lstat(filepath.Join(codexHome, "skills", "invalid")); !os.IsNotExist(err) {
