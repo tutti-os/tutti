@@ -549,6 +549,7 @@ func buildDaemonAPI(ctx context.Context, store workspacedata.CatalogStore, analy
 		CompletionNotifier: &tuttiPlanIssueCompletionDispatcher{
 			Agents: agentSessionService,
 		},
+		RunTurnResolver: agentActivityRepo,
 	}
 	tuttiModePlans := &tuttimodeplanservice.Service{
 		Store:                  workflowStore,
@@ -655,12 +656,16 @@ func buildDaemonAPI(ctx context.Context, store workspacedata.CatalogStore, analy
 	agentActivityProjection.SetSessionStateObserver(agentservice.SessionStateObservers{appFactoryService, agentSessionService, &issueService, modelPolicies, automationRules, collabRuns})
 	// Canonical root-turn settlements (root-provider aggregation, child-drain
 	// reconcile, cancel) fan out at-least-once to this dedicated opt-in list
-	// only. Automation rules are the only consumer cleared for it today: the
-	// general session-state observers historically never received live turn
-	// settles, and each needs its own semantic ruling before opting in
-	// (W4③-11 — the Issue-run observer, for example, would complete
-	// multi-turn runs on their first settled turn).
-	agentActivityProjection.SetRootTurnSettleStateObserver(agentservice.SessionStateObservers{automationRules})
+	// only. Each consumer needs its own semantic ruling before opting in
+	// (W4③-11). Cleared so far: automation rules (durable execution-ledger
+	// dedup) and the Issue-run observer (it matches the settled turn against
+	// the run's initiating "issue-run:<runID>" submit, so an unrelated turn
+	// settling in a delegate session can never complete the run, and repeated
+	// terminal completion is idempotent). Without the Issue-run observer here,
+	// codex delegate runs never settle live — root-provider-lifecycle adapters
+	// report no settled state patch — and the failure-biased fallback
+	// reconciler was marking successfully completed tasks as failed.
+	agentActivityProjection.SetRootTurnSettleStateObserver(agentservice.SessionStateObservers{automationRules, &issueService})
 	if _, err := appFactoryService.ReconcileInterruptedJobs(ctx); err != nil {
 		agentRuntime.Close()
 		return tuttiapi.DaemonAPI{}, nil, nil, nil, fmt.Errorf("reconcile interrupted app factory jobs: %w", err)
