@@ -162,10 +162,19 @@ and immutable plan revision into the session runtime snapshot.
 Rules:
 
 - Protocol compatibility is explicit in the canonical provider-registry
-  runtime endpoint strategy: `codex`/`tutti-agent` consume `openai` plans and
-  `claude-code` consumes `anthropic` plans. The generated AgentGUI catalog
-  mirrors that strategy for Desktop filtering. Providers without a declared
-  protocol receive no endpoint injection and expose no model-plan binding UI.
+  runtime endpoint strategy: `codex`/`tutti-agent`/`opencode` consume `openai`
+  plans and `claude-code` consumes `anthropic` plans. The generated AgentGUI
+  catalog mirrors that strategy for Desktop filtering. Providers without a
+  declared protocol receive no endpoint injection and expose no model-plan
+  binding UI.
+- Model addressing is a second registry strategy
+  (`ModelPlanModelAddressing`): OpenCode declares `provider_prefixed`, so its
+  composer/settings values carry the injected `tutti-model-plan/<model>`
+  namespace resolved against the session-scoped `opencode.json` provider block
+  that runtimeprep writes (`OPENCODE_CONFIG` + `{env:TUTTI_MODEL_PLAN_API_KEY}`
+  reference; the key itself travels only in the session environment). All
+  other providers consume raw plan model ids; validation and first-use markers
+  strip the namespace back to plan-domain ids.
 - A WorkspaceAgent resolves its primary Plan/model and then only its explicitly
   configured ordered `modelFallbacks`. Missing, disabled, protocol-mismatched,
   or model-incompatible candidates are skipped. There is no arbitrary
