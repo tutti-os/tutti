@@ -20,6 +20,10 @@ export type IssueManagerPlanningSource =
   | "traditional_plan";
 export type IssueManagerBudgetMode = "auto" | "fixed";
 export type IssueManagerBudgetStatus = "active" | "soft_limited";
+export type IssueManagerAcceptanceState =
+  | "agent_claimed"
+  | "auto_checked"
+  | "user_accepted";
 
 export interface IssueManagerExecutionProfile {
   reasoningIntensity: number;
@@ -100,6 +104,15 @@ export interface IssueManagerTaskSummary {
   creatorDisplayName?: string;
   creatorAvatarUrl?: string;
   latestRunId?: string;
+  agentTargetId?: string;
+  modelPlanId?: string;
+  model?: string;
+  executionDirectory?: string;
+  dependencyTaskIds?: string[];
+  /** Per-task parallel opt-in recorded at Tutti plan review. */
+  parallelizable?: boolean;
+  acceptanceState?: IssueManagerAcceptanceState;
+  acceptanceSummary?: string;
   createdAtUnix?: number;
   updatedAtUnix?: number;
 }

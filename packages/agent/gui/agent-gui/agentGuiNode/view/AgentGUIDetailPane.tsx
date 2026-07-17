@@ -54,7 +54,11 @@ import { useAgentGUIDetailScroll } from "./useAgentGUIDetailScroll";
 import { useAgentGUIDetailModel } from "./useAgentGUIDetailModel";
 import { useAgentGUIPlanReviewControls } from "./useAgentGUIPlanReviewControls";
 import type { AgentGUIComposerEngagement } from "../engagement/agentGUIEngagement.types";
-import { TuttiModePlanPanel } from "../../../workspaceWorkflow";
+import {
+  TuttiModePlanPanel,
+  TuttiPlanIssuePanel,
+  useTuttiPlanIssuePanel
+} from "../../../workspaceWorkflow";
 
 const AGENT_GUI_TIMELINE_SCROLL_AREA_CONTENT_STYLE: CSSProperties = {
   width: "100%",
@@ -219,6 +223,22 @@ export const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
     previewMode,
     submittedPromptScrollConversationRef,
     viewModel
+  });
+  // Embedded read-only issue panel view for the materialized plan issue.
+  const planIssue = useTuttiPlanIssuePanel({
+    enabled: !previewMode,
+    workspaceId: viewModel.shell.workspaceId,
+    sourceSessionId: viewModel.rail.activeConversationId
+  }).issue;
+  const openPlanIssue = useStableEventCallback((): void => {
+    if (!planIssue) return;
+    stableLinkAction?.({
+      type: "open-workspace-issue",
+      workspaceId: viewModel.shell.workspaceId,
+      issueId: planIssue.issueId,
+      topicId: planIssue.topicId || null,
+      source: "tutti-plan-issue-panel"
+    });
   });
   const handleInterruptCurrentTurn = useCallback(() => {
     actions.interruptCurrentTurn(labels.noRunningResponse);
@@ -709,6 +729,13 @@ export const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
                 }
               />
             ))}
+            {planIssue && !pendingPlanPanel ? (
+              <TuttiPlanIssuePanel
+                issue={planIssue}
+                labels={labels.tuttiModePlanIssuePanel}
+                onOpenIssue={stableLinkAction ? openPlanIssue : undefined}
+              />
+            ) : null}
             {tuttiModePlanPanels.error ? (
               <div
                 className="mx-auto flex w-full max-w-[860px] items-center justify-between gap-3 rounded-md border border-border bg-card px-4 py-3 text-sm text-muted-foreground"

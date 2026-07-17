@@ -12,7 +12,9 @@ import type {
   TuttiModePlanAssignmentOptionsSource,
   TuttiModePlanReviewSnapshot,
   TuttiModePlanReviewRuntime,
-  TuttiModePlanTaskAssignmentInput
+  TuttiModePlanTaskAssignmentInput,
+  TuttiPlanIssueSnapshot,
+  TuttiPlanIssueSource
 } from "@tutti-os/agent-gui";
 import { resolveAgentGUIProviderCatalogIdentity } from "@tutti-os/agent-gui/provider-catalog";
 
@@ -25,6 +27,9 @@ export interface DesktopTuttiModePlanReviewRuntimeInput {
     | "listWorkspaceAgents"
     | "getAgentProviderComposerOptions"
     | "listModelPlans"
+    | "listWorkspaceIssues"
+    | "listWorkspaceIssueTopics"
+    | "getWorkspaceIssueDetail"
   >;
   eventStreamClient?: Pick<
     TuttidEventStreamClient,
@@ -329,6 +334,74 @@ export function createDesktopTuttiModePlanReviewRuntime(
       };
     },
 
-    assignmentOptions: createAssignmentOptionsSource(input.tuttidClient)
+    assignmentOptions: createAssignmentOptionsSource(input.tuttidClient),
+    planIssues: createPlanIssueSource(input)
+  };
+}
+
+// Read-only source for the conversation's embedded plan-issue panel: resolve
+// "the tutti-mode-plan Issue this session produced" from the issue list and
+// relay live issue updates. Mutations stay in the Issue Manager.
+function createPlanIssueSource(
+  input: DesktopTuttiModePlanReviewRuntimeInput
+): TuttiPlanIssueSource {
+  return {
+    async getSessionPlanIssue({
+      workspaceId,
+      sourceSessionId
+    }): Promise<TuttiPlanIssueSnapshot | null> {
+      // Issue listing is topic-scoped; sweep every topic for the newest
+      // tutti-mode-plan Issue this session produced.
+      const topics =
+        await input.tuttidClient.listWorkspaceIssueTopics(workspaceId);
+      const candidates = (
+        await Promise.all(
+          topics.topics.map(async (topic) => {
+            const list = await input.tuttidClient.listWorkspaceIssues(
+              workspaceId,
+              { pageSize: 100, topicId: topic.topicId }
+            );
+            return list.issues;
+          })
+        )
+      ).flat();
+      const match = candidates
+        .filter(
+          (issue) =>
+            issue.planningSource === "tutti_mode_plan" &&
+            issue.sourceSessionId === sourceSessionId
+        )
+        .sort((left, right) => right.updatedAtUnix - left.updatedAtUnix)[0];
+      if (!match) return null;
+      const detail = await input.tuttidClient.getWorkspaceIssueDetail(
+        workspaceId,
+        match.issueId
+      );
+      return {
+        issueId: detail.issue.issueId,
+        topicId: detail.issue.topicId,
+        title: detail.issue.title,
+        tasks: detail.tasks.map((task) => ({
+          taskId: task.taskId,
+          title: task.title,
+          content: task.content,
+          status: task.status,
+          sortIndex: task.sortIndex,
+          parallelizable: task.parallelizable === true,
+          dependencyTaskIds: [...task.dependencyTaskIds]
+        }))
+      };
+    },
+    subscribeIssueUpdates(workspaceId, listener) {
+      const eventStreamClient = input.eventStreamClient;
+      if (!eventStreamClient) return () => undefined;
+      return eventStreamClient.subscribe(
+        "workspace.issue.updated",
+        (event) => {
+          listener({ issueId: event.payload.issueId });
+        },
+        { scope: { workspaceId } }
+      );
+    }
   };
 }

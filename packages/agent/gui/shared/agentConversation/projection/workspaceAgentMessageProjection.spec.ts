@@ -6,7 +6,10 @@ import {
 } from "@tutti-os/agent-activity-core";
 import type { WorkspaceAgentActivityCard } from "../../workspaceAgentActivityListViewModel";
 import { mergeWorkspaceAgentActivityDurableAndOverlayMessages } from "../../workspaceAgentMessageOverlay";
-import { projectWorkspaceAgentMessagesToConversationVM } from "./workspaceAgentMessageProjection";
+import {
+  projectWorkspaceAgentMessagesToConversationVM,
+  projectWorkspaceAgentMessagesToTimelineItems
+} from "./workspaceAgentMessageProjection";
 
 describe("projectWorkspaceAgentMessagesToConversationVM", () => {
   it("prefers canonical browser element prompt content over a lossy provider echo", () => {
@@ -1230,6 +1233,34 @@ function session(
     ...canonical
   });
 }
+
+it("hides tutti-plan issue dispatch delegate cards but keeps other collaborations", () => {
+  const items = projectWorkspaceAgentMessagesToTimelineItems([
+    message({
+      messageId: "collab:cr-plan",
+      version: 1,
+      kind: "collaboration",
+      turnId: "",
+      payload: {
+        mode: "delegate",
+        triggerReason: "issue:tutti-mode-plan-wf-1/task:t1/run:r1"
+      }
+    }),
+    message({
+      messageId: "collab:cr-manual",
+      version: 2,
+      kind: "collaboration",
+      turnId: "",
+      payload: { mode: "consult", triggerReason: "user" }
+    })
+  ]);
+
+  const collaborationItems = items.filter(
+    (item) => item.itemType === "collaboration"
+  );
+  expect(collaborationItems).toHaveLength(1);
+  expect(collaborationItems[0]?.eventId).toBe("collab:cr-manual");
+});
 
 function message(
   overrides: Partial<AgentActivityMessage> & { id?: number }

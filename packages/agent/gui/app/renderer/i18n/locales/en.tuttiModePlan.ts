@@ -24,5 +24,18 @@ export const enTuttiModePlan = {
   assignmentOptionsLoading: "Loading options...",
   notSpecified: "Not specified",
   loadFailed: "Tutti mode plans could not be loaded",
-  retry: "Try again"
+  retry: "Try again",
+  issueOpen: "Open Issue",
+  issueListView: "List",
+  issueBoardView: "Board",
+  issueSummary: "{{done}}/{{total}} done · {{running}} running",
+  issueDependencies: "Depends",
+  issueStageParallel: "Stage {{index}} · parallel ×{{count}}",
+  issueStageSequential: "Stage {{index}} · sequential",
+  issueStatusNotStarted: "Todo",
+  issueStatusRunning: "Running",
+  issueStatusPendingAcceptance: "In review",
+  issueStatusCompleted: "Done",
+  issueStatusFailed: "Failed",
+  issueStatusCanceled: "Canceled"
 } as const;

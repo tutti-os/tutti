@@ -36,7 +36,10 @@ import type {
 } from "../model/agentGuiNodeTypes";
 import type { AgentGUIEngagementEventSink } from "../engagement/agentGUIEngagement.types";
 import type { OpenAgentEnvPanelInput } from "../../../shared/agentEnv";
-import type { TuttiModePlanPanelLabels } from "../../../workspaceWorkflow";
+import type {
+  TuttiModePlanPanelLabels,
+  TuttiPlanIssuePanelLabels
+} from "../../../workspaceWorkflow";
 import type { TuttiPlanReviewBannerLabels } from "../TuttiPlanReviewBanner";
 
 export type AgentMentionReferenceTargetResolver = (
@@ -136,6 +139,7 @@ export interface AgentGUIViewLabels {
   tuttiModeUpdateUncertain: string;
   tuttiModePlanPanel: TuttiModePlanPanelLabels;
   tuttiModePlanBanner: TuttiPlanReviewBannerLabels;
+  tuttiModePlanIssuePanel: TuttiPlanIssuePanelLabels;
   tuttiModePlanSendAccept: string;
   tuttiModePlanSendRequestChanges: string;
   /** Auto feedback for an empty send after the intensity diverged. */
