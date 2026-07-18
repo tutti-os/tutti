@@ -1,14 +1,24 @@
-import { memo, type ReactNode, type JSX } from "react";
+import { memo, type ReactNode, type JSX, type Ref } from "react";
 import type { WorkspaceLinkAction } from "../../../contexts/workspace/presentation/renderer/actions/workspaceLinkActions";
 import type { AgentMessageMarkdownWorkspaceAppIcon } from "../../AgentMessageMarkdown";
 import type { AgentConversationVM } from "../contracts/agentConversationVM";
 import type { AgentCollaborationVM } from "../contracts/agentCollaborationVM";
 import { AgentTranscriptSkeleton } from "./AgentTranscriptSkeleton";
-import { AgentTranscriptView } from "./AgentTranscriptView";
+import {
+  AgentTranscriptView,
+  type AgentTranscriptAttachmentLocator,
+  type AgentTranscriptTurnAttachment
+} from "./AgentTranscriptView";
 import type { AgentGUIProviderSkillOption } from "../../../agent-gui/agentGuiNode/model/agentGuiNodeTypes";
 
 interface AgentConversationFlowProps {
   conversation: AgentConversationVM | null;
+  turnAttachments?: readonly AgentTranscriptTurnAttachment[];
+  turnAttachmentLocatorRef?: Ref<AgentTranscriptAttachmentLocator>;
+  onTurnAttachmentVisibilityChange?: (
+    attachmentId: string,
+    visible: boolean
+  ) => void;
   isLoading: boolean;
   loadingLabel: string;
   loadingTestId?: string;
@@ -32,6 +42,9 @@ interface AgentConversationFlowProps {
 
 export const AgentConversationFlow = memo(function AgentConversationFlow({
   conversation,
+  turnAttachments,
+  turnAttachmentLocatorRef,
+  onTurnAttachmentVisibilityChange,
   isLoading,
   loadingLabel,
   loadingTestId,
@@ -53,13 +66,19 @@ export const AgentConversationFlow = memo(function AgentConversationFlow({
     );
   }
 
-  if (!conversation || conversation.rows.length === 0) {
+  if (
+    !conversation ||
+    (conversation.rows.length === 0 && !turnAttachments?.length)
+  ) {
     return <>{empty}</>;
   }
 
   return (
     <AgentTranscriptView
       conversation={conversation}
+      turnAttachments={turnAttachments}
+      turnAttachmentLocatorRef={turnAttachmentLocatorRef}
+      onTurnAttachmentVisibilityChange={onTurnAttachmentVisibilityChange}
       onLinkAction={onLinkAction}
       onReviseCollaboration={onReviseCollaboration}
       onAuthLogin={onAuthLogin}

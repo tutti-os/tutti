@@ -57,8 +57,7 @@ import { useAgentGUIDetailScroll } from "./useAgentGUIDetailScroll";
 import { useAgentGUIDetailModel } from "./useAgentGUIDetailModel";
 import { useAgentGUIProviderRailPreferences } from "./useAgentGUIProviderRailPreferences";
 import type { AgentGUIComposerEngagement } from "../engagement/agentGUIEngagement.types";
-import { AgentGUITuttiPlanTimelineSection } from "./AgentGUITuttiPlanTimelineSection";
-import { useAgentGUITuttiPlanReview } from "./useAgentGUITuttiPlanReview";
+import { useAgentGUITuttiPlanTimelineAttachments } from "./useAgentGUITuttiPlanTimelineAttachments";
 
 const AGENT_GUI_TIMELINE_SCROLL_AREA_CONTENT_STYLE: CSSProperties = {
   width: "100%",
@@ -305,16 +304,16 @@ export const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
     actions.submitInteractivePrompt
   );
   const stableLinkAction = useOptionalStableEventCallback(onLinkAction);
-  const tuttiPlan = useAgentGUITuttiPlanReview({
+  const tuttiPlanTimeline = useAgentGUITuttiPlanTimelineAttachments({
     viewModel,
     previewMode,
     labels,
-    timelineRef,
     stableLinkAction,
     setTuttiModeActive: actions.setTuttiModeActive,
     updateDraftContent: actions.updateDraftContent,
     submitPromptPassthrough: submitPromptAndScrollToBottom
   });
+  const tuttiPlan = tuttiPlanTimeline.review;
   const stableRequestWorkspaceReferences = useOptionalStableEventCallback(
     onRequestWorkspaceReferences
   );
@@ -718,6 +717,11 @@ export const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
           <>
             <AgentGUIConversationTimelinePane
               conversation={conversation}
+              turnAttachments={tuttiPlanTimeline.turnAttachments}
+              turnAttachmentLocatorRef={tuttiPlanTimeline.locatorRef}
+              onTurnAttachmentVisibilityChange={
+                tuttiPlanTimeline.onVisibilityChange
+              }
               isLoading={showTimelineSkeleton}
               isLoadingOlderMessages={viewModel.detail.isLoadingOlderMessages}
               loadingLabel={labels.loadingConversation}
@@ -729,13 +733,6 @@ export const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
               workspaceAppIcons={workspaceAppIcons}
               previewMode={previewMode}
               labels={conversationFlowLabels}
-            />
-            <AgentGUITuttiPlanTimelineSection
-              labels={labels}
-              review={tuttiPlan}
-              onOpenIssue={
-                stableLinkAction ? tuttiPlan.openPlanIssue : undefined
-              }
             />
           </>
         )}
@@ -770,7 +767,7 @@ export const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
           tuttiPlanReviewLabels={labels.tuttiModePlanBanner}
           onCancelTuttiPlanReview={tuttiPlan.cancelPendingPlan}
           onTuttiPlanReviewIntensityChange={setTuttiModeOrchestrationIntensity}
-          tuttiPlanIssueStatus={tuttiPlan.tuttiPlanIssueStatus}
+          tuttiPlanIssueStatus={tuttiPlanTimeline.dockIssueStatus}
           tuttiPlanIssueStripLabels={labels.tuttiModePlanIssueStrip}
           onJumpToTuttiPlanIssue={tuttiPlan.jumpToPlanIssuePanel}
         />

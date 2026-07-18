@@ -2019,14 +2019,22 @@ below them. Missing or not-yet-loaded anchors degrade to the transcript tail.
 The attachment renders inside the Turn's virtual item so dynamic measurement
 includes its height; locating an unmounted attachment first scrolls the Turn
 group into the virtual window and then focuses the attachment. The composer
-dock may show an Issue summary only while that attachment is outside the
-viewport and the Issue still has running, pending-acceptance, or failed work.
+dock shows the Issue summary strip whenever the attachment is outside the
+viewport — regardless of task-state mix — because in a long conversation the
+strip is the only affordance leading back to the board.
 
 Desktop resolves the accepted Issue from the source Session's authoritative
-workflow snapshots: the latest succeeded `create_issue` operation supplies the
-Issue ID and the workflow supplies the stable identity and Turn anchor. It must
-not rediscover this relationship by sweeping Issue topics or matching mutable
-Issue list metadata.
+workflow snapshots: the newest `create_issue` operation outcome decides what
+renders. A succeeded operation supplies the Issue ID; a durably failed one
+renders a failure card at the same `workflow:<workflowId>` identity and anchor
+(there is no pending checkpoint and no Issue in that state, so silence would
+hide the failure entirely). Desktop must not rediscover this relationship by
+sweeping Issue topics or matching mutable Issue list metadata.
+
+A plan proposed mid-turn announces itself through one `workspace.workflow.updated`
+event; if that single event is lost, no later signal re-reads review state.
+The active conversation's working→settled transition is the read-repair point:
+it triggers a non-destructive re-read of pending reviews and the plan Issue.
 
 Desktop owns only the transport adapter:
 

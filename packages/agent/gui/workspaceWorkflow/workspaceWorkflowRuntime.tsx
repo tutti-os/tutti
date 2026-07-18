@@ -75,11 +75,30 @@ export interface TuttiPlanIssueTaskSnapshot {
 
 /** Read-only snapshot of the Issue a session's accepted plan materialized. */
 export interface TuttiPlanIssueSnapshot {
+  workflowId: string;
+  sourceTurnId: string | null;
   issueId: string;
   topicId: string;
   title: string;
   tasks: TuttiPlanIssueTaskSnapshot[];
 }
+
+/**
+ * An accepted plan whose create_issue operation durably failed. The
+ * conversation must surface this instead of rendering nothing: there is no
+ * pending checkpoint (the review panel is gone) and no Issue (the issue panel
+ * never appears), so silence would hide the failure entirely.
+ */
+export interface TuttiPlanIssueMaterializationFailure {
+  workflowId: string;
+  sourceTurnId: string | null;
+  errorMessage: string | null;
+}
+
+export type TuttiPlanIssueQueryResult =
+  | { kind: "issue"; issue: TuttiPlanIssueSnapshot }
+  | ({ kind: "materialization_failed" } & TuttiPlanIssueMaterializationFailure)
+  | null;
 
 /**
  * Read-only source for the embedded plan-issue panel in the conversation.
@@ -90,7 +109,7 @@ export interface TuttiPlanIssueSource {
   getSessionPlanIssue(input: {
     workspaceId: string;
     sourceSessionId: string;
-  }): Promise<TuttiPlanIssueSnapshot | null>;
+  }): Promise<TuttiPlanIssueQueryResult>;
   subscribeIssueUpdates(
     workspaceId: string,
     listener: (update: { issueId: string }) => void
