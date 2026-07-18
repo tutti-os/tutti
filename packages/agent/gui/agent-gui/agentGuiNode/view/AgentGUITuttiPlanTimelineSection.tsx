@@ -45,6 +45,11 @@ export function AgentGUITuttiPlanTimelineSection({
               ? review.decidePlanIssueTask
               : undefined
           }
+          onCancelExecution={
+            review.planIssueCancelAvailable
+              ? review.cancelPlanIssueExecution
+              : undefined
+          }
         />
       ) : null}
       {panels.error ? (

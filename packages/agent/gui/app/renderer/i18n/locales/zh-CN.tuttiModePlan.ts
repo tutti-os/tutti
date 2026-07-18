@@ -26,6 +26,7 @@ export const zhCNTuttiModePlan = {
   loadFailed: "无法加载 Tutti mode plan",
   retry: "重试",
   issueOpen: "打开 Issue",
+  issueStopExecution: "停止",
   issueListView: "列表",
   issueBoardView: "看板",
   issueSummary: "{{done}}/{{total}} 已完成 · {{running}} 运行中",
