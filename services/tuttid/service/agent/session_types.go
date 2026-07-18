@@ -40,6 +40,7 @@ type Service struct {
 	TuttiModeActivations           TuttiModeActivationCoordinator
 	SourceSessionDeletions         SourceSessionDeletionCoordinator
 	SessionDeletionEvents          SessionDeletionEventPublisher
+	TurnCancelObserver             TurnCancelObserver
 	RuntimeOperationClock          func() time.Time
 	RuntimeOperationOwner          string
 	SessionDirectoryAllocator      SessionDirectoryAllocator

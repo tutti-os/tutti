@@ -34,6 +34,9 @@ import type {
   CancelWorkspaceAppUploadData,
   CancelWorkspaceAppUploadErrors,
   CancelWorkspaceAppUploadResponses,
+  CancelWorkspaceIssueExecutionData,
+  CancelWorkspaceIssueExecutionErrors,
+  CancelWorkspaceIssueExecutionResponses,
   CheckUserProjectPathData,
   CheckUserProjectPathErrors,
   CheckUserProjectPathResponses,
@@ -3957,6 +3960,26 @@ export const removeWorkspaceIssueContextRef = <
   >({
     security: [{ scheme: "bearer", type: "http" }],
     url: "/v1/workspaces/{workspaceID}/issues/{issueID}/context-refs/{contextRefID}",
+    ...options
+  });
+
+/**
+ * Stop one issue-manager issue's execution
+ *
+ * Durably pauses future task dispatch, cancels the live agent turn of every running run's session, and settles those runs as canceled. Idempotent.
+ */
+export const cancelWorkspaceIssueExecution = <
+  ThrowOnError extends boolean = false
+>(
+  options: Options<CancelWorkspaceIssueExecutionData, ThrowOnError>
+) =>
+  (options.client ?? client).post<
+    CancelWorkspaceIssueExecutionResponses,
+    CancelWorkspaceIssueExecutionErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/v1/workspaces/{workspaceID}/issues/{issueID}/cancel-execution",
     ...options
   });
 

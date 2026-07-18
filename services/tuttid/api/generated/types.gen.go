@@ -3606,6 +3606,12 @@ type AutomationRuleTargetKind string
 // AutomationRuleTrigger Lifecycle outcome that evaluates the rule. A failed-turn rule can escalate to a stronger Agent as a bounded rescue attempt; automated outcomes never final-accept the source task.
 type AutomationRuleTrigger string
 
+// CancelIssueManagerExecutionResponse defines model for CancelIssueManagerExecutionResponse.
+type CancelIssueManagerExecutionResponse struct {
+	// CanceledRunCount Number of running runs this call settled as canceled.
+	CanceledRunCount int `json:"canceledRunCount"`
+}
+
 // CheckUserProjectPathRequest defines model for CheckUserProjectPathRequest.
 type CheckUserProjectPathRequest struct {
 	Path string `json:"path"`
