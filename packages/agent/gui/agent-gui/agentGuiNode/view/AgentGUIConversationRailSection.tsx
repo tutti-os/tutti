@@ -6,6 +6,7 @@ import type { AgentGUIConversationRailLabels } from "./agentGUIConversationRailL
 import type { AgentGUIProjectActionDialog } from "./AgentGUIConversationRailPane";
 import { AgentGUIConversationRailItem } from "./AgentGUIConversationRailItem";
 import { AgentGUIConversationRailSectionHeader } from "./AgentGUIConversationRailSectionHeader";
+import { AgentGUIConversationRailSectionPresentationProvider } from "./agentGUIConversationRailSectionPresentationContext";
 import { insertConversationRailSectionOverlay } from "../model/agentGuiConversationRail";
 import { AGENT_GUI_CONVERSATION_RAIL_SECTION_PAGE_SIZE } from "../model/agentGuiConversationRailViewState";
 import {
@@ -302,33 +303,36 @@ export const AgentGUIConversationRailSection = memo(
         data-project-dragging={projectDragging ? "true" : undefined}
         data-project-drop-indicator={projectDropIndicator ?? undefined}
       >
-        <AgentGUIConversationRailSectionHeader
+        <AgentGUIConversationRailSectionPresentationProvider
           batchDeletionDisabled={batchDeletionDisabled}
-          canCreateConversation={canCreateConversationFromSection}
-          createConversationDisabled={createConversationDisabled}
-          createConversationLabel={createConversationLabel}
-          hasProjectPath={hasProjectPath}
-          isProjectActionLocked={projectActionLocked}
-          isSectionCollapsed={isSectionCollapsed}
-          kind={section.kind}
-          labels={labels}
-          onCreateConversation={handleCreateConversation}
-          onOpenProjectFiles={handleOpenProjectFiles}
-          onProjectDragEnd={handleProjectDragEnd}
-          onProjectDragOver={handleProjectDragOver}
-          onProjectDragStart={handleProjectDragStart}
-          onProjectDrop={handleProjectDrop}
-          onProjectMenuOpenChange={handleProjectMenuOpenChange}
-          onRemoveProject={handleRemoveProject}
-          onRequestBatchDeletion={handleRequestBatchDeletion}
-          onToggleCollapsed={handleToggleCollapsed}
-          onToggleProjectPinned={handleToggleProjectPinned}
-          previewMode={previewMode}
+          projectActionLocked={projectActionLocked}
           projectDragDisabled={projectDragDisabled}
-          projectPinned={projectPinned}
-          sectionLabel={section.label}
-          toggleProjectPinnedDisabled={!projectId || projectActionLocked}
-        />
+        >
+          <AgentGUIConversationRailSectionHeader
+            canCreateConversation={canCreateConversationFromSection}
+            createConversationDisabled={createConversationDisabled}
+            createConversationLabel={createConversationLabel}
+            hasProjectId={Boolean(projectId)}
+            hasProjectPath={hasProjectPath}
+            isSectionCollapsed={isSectionCollapsed}
+            kind={section.kind}
+            labels={labels}
+            onCreateConversation={handleCreateConversation}
+            onOpenProjectFiles={handleOpenProjectFiles}
+            onProjectDragEnd={handleProjectDragEnd}
+            onProjectDragOver={handleProjectDragOver}
+            onProjectDragStart={handleProjectDragStart}
+            onProjectDrop={handleProjectDrop}
+            onProjectMenuOpenChange={handleProjectMenuOpenChange}
+            onRemoveProject={handleRemoveProject}
+            onRequestBatchDeletion={handleRequestBatchDeletion}
+            onToggleCollapsed={handleToggleCollapsed}
+            onToggleProjectPinned={handleToggleProjectPinned}
+            previewMode={previewMode}
+            projectPinned={projectPinned}
+            sectionLabel={section.label}
+          />
+        </AgentGUIConversationRailSectionPresentationProvider>
         <div
           className={styles.conversationSectionItems}
           aria-hidden={isSectionCollapsed ? "true" : undefined}

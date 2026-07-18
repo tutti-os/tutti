@@ -533,8 +533,12 @@
   section even though only one or two rows changed visually. If every section
   owns closed Tooltip/Popper/Dropdown/ContextMenu content, that upstream
   invalidation also executes thousands of invisible primitive components. A
-  measurement effect that includes the state it writes in its dependencies can
-  repeat the resulting layout read once more.
+  changing lock, drag-disabled, or batch-disabled prop on one memoized section
+  header has the same effect: React must execute the whole header and its
+  mounted Radix trigger tree even when only one native attribute or one open
+  menu item changes. A combined Context object merely moves that fan-out from
+  props to every Context consumer. A measurement effect that includes the state
+  it writes in its dependencies can repeat the resulting layout read once more.
 - Fix:
   Stabilize the value at the ownership boundary, or remove derived presentation
   values from bidirectional state. For external/workbench state, only sync
@@ -558,6 +562,14 @@
   object. Keep menu root and trigger mounted, while rendering portaled menu
   content only during its view-local open state. Do not move disclosure into a
   controller/store or copy Session/project semantics to obtain this isolation.
+  Split large headers into stable identity, create-action, menu, and frame
+  render islands. Project frequently changing derived booleans through
+  separate primitive view Contexts so project drag state reaches only the
+  native draggable frame, project action lock reaches only its trigger and open
+  project menu, and batch deletion state reaches only open menu content. Keep
+  event-time lock readers as the action-delivery guard; Context is only the
+  current presentation projection. Closed menus should have no batch-state
+  consumer.
   Remove a measured state value from an effect dependency when the effect only
   writes, but never reads, that value.
   During Rail reconciliation, expose a stable lock reader so
@@ -585,11 +597,14 @@
   projects only into its owning section. Then recapture the same interaction
   without React Profiler instrumentation before claiming timing improvement.
   Add a render-budget test proving item replacement does not rerender stable
-  section chrome. For lazy menu content, test pointer/context-menu opening,
-  keyboard-origin focus, Escape dismissal, action delivery, and event-time lock
-  rejection. Add a composition regression test for shared Tooltip/Dropdown
-  actions and manually create a new conversation, since an empty-to-populated
-  Rail transition can be the first time the faulty trigger mounts.
+  section chrome, including an item-empty transition that changes batch-action
+  availability. While a menu is open, assert lock changes still update its
+  trigger and disabled items. For lazy menu content, test pointer/context-menu
+  opening, keyboard-origin focus, Escape dismissal, action delivery, and
+  event-time lock rejection. Add a composition regression test for shared
+  Tooltip/Dropdown actions and manually create a new conversation, since an
+  empty-to-populated Rail transition can be the first time the faulty trigger
+  mounts.
 - References:
   [main.tsx](../../../apps/desktop/src/renderer/src/main.tsx)
   [whyDidYouRender.ts](../../../apps/desktop/src/renderer/src/lib/whyDidYouRender.ts)

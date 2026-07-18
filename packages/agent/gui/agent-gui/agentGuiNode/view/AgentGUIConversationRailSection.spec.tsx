@@ -84,16 +84,64 @@ describe("AgentGUIConversationRailSection project pin presentation", () => {
     expect(onProjectMenuOpenChange).toHaveBeenNthCalledWith(1, true);
     expect(onProjectMenuOpenChange).toHaveBeenLastCalledWith(false);
   });
+
+  it("updates only open menu availability when section locks change", async () => {
+    const onToggleProjectPinned = vi.fn(() => Promise.resolve());
+    const initialInput = {
+      hasMore: true,
+      pinnedAtUnixMs: 0,
+      onToggleProjectPinned
+    };
+    const { rerender } = renderProjectSection(initialInput);
+    const projectActionsButton = screen.getByRole("button", {
+      name: "Project actions"
+    });
+
+    fireEvent.pointerDown(projectActionsButton, { button: 0, ctrlKey: false });
+    const deleteItem = await screen.findByRole("menuitem", {
+      name: "Delete sessions"
+    });
+    expect(deleteItem).not.toHaveAttribute("data-disabled");
+
+    rerender(
+      renderProjectSectionElement({
+        ...initialInput,
+        projectActionLocked: true,
+        searchActive: true
+      })
+    );
+
+    expect(projectActionsButton).toBeDisabled();
+    expect(deleteItem).toHaveAttribute("data-disabled");
+    expect(
+      screen.getByRole("menuitem", { name: "Pin project" })
+    ).toHaveAttribute("data-disabled");
+    expect(
+      screen.getByRole("menuitem", { name: "Remove project" })
+    ).toHaveAttribute("data-disabled");
+  });
 });
 
 function renderProjectSection(input: {
+  hasMore?: boolean;
   pinnedAtUnixMs: number;
   searchActive?: boolean;
   projectActionLocked?: boolean;
   onProjectMenuOpenChange?: (open: boolean) => void;
   onToggleProjectPinned: (projectId: string, pinned: boolean) => Promise<void>;
 }) {
-  return render(
+  return render(renderProjectSectionElement(input));
+}
+
+function renderProjectSectionElement(input: {
+  hasMore?: boolean;
+  pinnedAtUnixMs: number;
+  searchActive?: boolean;
+  projectActionLocked?: boolean;
+  onProjectMenuOpenChange?: (open: boolean) => void;
+  onToggleProjectPinned: (projectId: string, pinned: boolean) => Promise<void>;
+}) {
+  return (
     <TooltipProvider>
       <AgentGUIConversationRailSection
         activeConversation={null}
@@ -130,8 +178,8 @@ function renderProjectSection(input: {
             sectionKey: "project:/alpha"
           }
         }}
-        sectionHasMore={false}
-        sectionTotalCount={0}
+        sectionHasMore={input.hasMore ?? false}
+        sectionTotalCount={input.hasMore ? 1 : 0}
         uiLanguage="en"
         visibleItemLimit={5}
         workspaceId="workspace-1"

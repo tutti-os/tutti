@@ -44,6 +44,15 @@ describe("AgentGUIConversationRailSection render budget", () => {
 
     expect(headerRenderSpy).toHaveBeenCalledTimes(1);
     expect(requestSectionBatchDeletion).toHaveBeenCalledWith(nextSection);
+
+    rerender(
+      renderSectionElement({
+        ...nextSection,
+        items: []
+      })
+    );
+
+    expect(headerRenderSpy).toHaveBeenCalledTimes(1);
   });
 });
 
