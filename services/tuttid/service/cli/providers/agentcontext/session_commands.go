@@ -3,6 +3,7 @@ package agentcontext
 import (
 	"context"
 	"encoding/base64"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -50,6 +51,15 @@ type sendInput struct {
 	Guidance  bool     `cli:"guidance" description:"Send this prompt as guidance to the currently active turn instead of starting a new turn."`
 	Images    []string `cli:"image" description:"Image file to attach to this prompt. May be passed multiple times."`
 	Prompt    string   `cli:"prompt" validate:"required"`
+}
+
+type respondInput struct {
+	SessionID string `cli:"session-id" validate:"required" description:"Agent session id containing the pending interaction."`
+	RequestID string `cli:"request-id" validate:"required" description:"Pending interaction request id."`
+	Action    string `cli:"action" description:"Provider action id to submit."`
+	Option    string `cli:"option" description:"Provider option id to submit."`
+	Payload   string `cli:"payload" description:"JSON object payload to submit."`
+	Semantic  string `cli:"semantic" description:"Resolve one uniquely matching action semantic from the pending interaction."`
 }
 
 type sessionActionResult struct {
@@ -302,6 +312,75 @@ func (p Provider) runSend(ctx context.Context, invoke framework.InvokeContext, i
 	}
 	session := result.Session
 	return sessionActionResult{Session: session, WaitAfterVersion: &waitAfterVersion}, nil
+}
+
+func (p Provider) newRespondCommand() cliservice.Command {
+	return framework.Register(framework.CommandSpec[respondInput]{
+		ID:          appID + ".agent.respond",
+		Path:        []string{"agent", "respond"},
+		Summary:     "Respond to a pending agent interaction",
+		Description: "Answer a pending agent approval or input request by action, option, payload, or self-described semantic.",
+		Kind:        framework.KindAction,
+		Workspace:   framework.WorkspaceRequired,
+		Workspaces:  p.workspaces,
+		Inputs:      framework.FromStruct[respondInput](),
+		Output: framework.OutputSpec{
+			DefaultMode: cliservice.OutputModeJSON,
+			DefaultView: framework.ViewSummary,
+			JSON:        true,
+			JSONViews: map[framework.OutputView]func(any) map[string]any{
+				framework.ViewSummary: func(result any) map[string]any {
+					responded := result.(agentservice.RespondResult)
+					return map[string]any{
+						"requestId": responded.RequestID, "turnId": responded.TurnID,
+						"disposition": string(responded.Disposition),
+					}
+				},
+			},
+		},
+		Run: p.runRespond,
+	})
+}
+
+func (p Provider) runRespond(ctx context.Context, invoke framework.InvokeContext, input respondInput) (any, error) {
+	if err := p.requireSessions(); err != nil {
+		return nil, err
+	}
+	if strings.TrimSpace(input.Action) != "" && strings.TrimSpace(input.Semantic) != "" {
+		return nil, fmt.Errorf("%w: action and semantic are mutually exclusive", cliservice.ErrInvalidInput)
+	}
+	var payload map[string]any
+	payloadProvided := strings.TrimSpace(input.Payload) != ""
+	if payloadProvided {
+		if err := json.Unmarshal([]byte(input.Payload), &payload); err != nil || payload == nil {
+			return nil, fmt.Errorf("%w: payload must be a JSON object", cliservice.ErrInvalidInput)
+		}
+	}
+	if strings.TrimSpace(input.Action) == "" && strings.TrimSpace(input.Option) == "" &&
+		strings.TrimSpace(input.Semantic) == "" && !payloadProvided {
+		return nil, fmt.Errorf("%w: provide action, option, payload, or semantic", cliservice.ErrInvalidInput)
+	}
+	result, err := p.sessions.Respond(ctx, agentservice.RespondInput{
+		WorkspaceID: invoke.WorkspaceID, AgentSessionID: input.SessionID, RequestID: input.RequestID,
+		Action: optionalStringPointer(input.Action), OptionID: optionalStringPointer(input.Option),
+		Payload: payload, Semantic: input.Semantic,
+	})
+	if err != nil {
+		if isRespondInputError(err) {
+			return nil, fmt.Errorf("%w: %v", cliservice.ErrInvalidInput, err)
+		}
+		return nil, err
+	}
+	return result, nil
+}
+
+func isRespondInputError(err error) bool {
+	return errors.Is(err, agentservice.ErrInvalidArgument) ||
+		errors.Is(err, agentservice.ErrInteractionRequestNotFound) ||
+		errors.Is(err, agentservice.ErrInteractionRequestNotPending) ||
+		errors.Is(err, agentservice.ErrInteractionRequestAmbiguous) ||
+		errors.Is(err, agentservice.ErrInteractionSemanticNotFound) ||
+		errors.Is(err, agentservice.ErrInteractionSemanticAmbiguous)
 }
 
 func promptContentFromCLIInput(prompt string, imagePaths []string) ([]agentservice.PromptContentBlock, error) {

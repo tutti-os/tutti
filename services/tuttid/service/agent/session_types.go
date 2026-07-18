@@ -507,6 +507,28 @@ type PromptAttachment = agenthost.PromptAttachment
 type SubmitInteractiveInput = agenthost.SubmitInteractiveInput
 type SubmitPlanDecisionInput = agenthost.SubmitPlanDecisionInput
 
+type InteractionAction struct {
+	ID       string
+	Label    string
+	Semantic string
+}
+
+type RespondInput struct {
+	WorkspaceID    string
+	AgentSessionID string
+	RequestID      string
+	Action         *string
+	OptionID       *string
+	Payload        map[string]any
+	Semantic       string
+}
+
+type RespondResult struct {
+	RequestID   string
+	TurnID      string
+	Disposition RuntimeInteractiveDisposition
+}
+
 type StreamInput struct {
 	WorkspaceID    string
 	AgentSessionID string
@@ -537,11 +559,28 @@ const (
 type WaitResult struct {
 	Session        Session
 	Messages       []SessionMessage
+	FinalMessage   *WaitFinalMessage
+	Interactions   []WaitInteraction
 	LatestVersion  uint64
 	HasMore        bool
 	Reason         WaitReason
 	TimedOut       bool
 	EffectiveAfter uint64
+}
+
+type WaitFinalMessage struct {
+	TurnID string
+	Text   string
+}
+
+type WaitInteraction struct {
+	RequestID      string
+	TurnID         string
+	Kind           string
+	ToolName       string
+	Actions        []InteractionAction
+	InputSummary   string
+	InputTruncated bool
 }
 
 type StreamEvent struct {

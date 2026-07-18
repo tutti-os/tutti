@@ -2,9 +2,11 @@ package agent
 
 import (
 	"context"
+	"strings"
 	"sync"
 	"testing"
 	"time"
+	"unicode/utf8"
 
 	agentactivitybiz "github.com/tutti-os/tutti/services/tuttid/biz/agentactivity"
 )
@@ -15,6 +17,8 @@ type waitRuntime struct {
 	mu                sync.RWMutex
 	subscribeStarted  chan struct{}
 	unsubscribeCalled bool
+	interactionInput  map[string]any
+	interactionMeta   map[string]any
 }
 
 func newWaitRuntime() *waitRuntime {
@@ -73,11 +77,16 @@ func (r *waitRuntime) persistedTurn(workspaceID string, sessionID string) (agent
 	case "preparing":
 		phase = agentactivitybiz.TurnPhaseSubmitted
 	}
+	outcome := ""
+	if session.TurnLifecycle.Outcome != nil {
+		outcome = *session.TurnLifecycle.Outcome
+	}
 	return agentactivitybiz.Turn{
 		WorkspaceID:    workspaceID,
 		AgentSessionID: sessionID,
 		TurnID:         turnID,
 		Phase:          phase,
+		Outcome:        outcome,
 	}, true
 }
 
@@ -98,6 +107,9 @@ func (r *waitRuntime) pendingInteractions(workspaceID string, sessionID string) 
 		RequestID:      "wait-request",
 		Kind:           kind,
 		Status:         agentactivitybiz.InteractionStatusPending,
+		ToolName:       "Approval",
+		Input:          clonePayload(r.interactionInput),
+		Metadata:       clonePayload(r.interactionMeta),
 	}}
 }
 
@@ -123,10 +135,32 @@ func (r *waitRuntime) GetSession(_ context.Context, workspaceID string, sessionI
 	turn, hasTurn := r.persistedTurn(workspaceID, sessionID)
 	_, found := r.runtimeSession(workspaceID, sessionID)
 	result := agentactivitybiz.Session{WorkspaceID: workspaceID, ID: sessionID}
-	if hasTurn {
+	if hasTurn && turn.Phase != agentactivitybiz.TurnPhaseSettled {
 		result.ActiveTurnID = turn.TurnID
 	}
+	if sessionID == "child-1" {
+		result.Kind = agentactivitybiz.SessionKindChild
+		result.RootAgentSessionID = "root-1"
+	}
 	return result, found, nil
+}
+
+func (r *waitRuntime) SubmitInteractive(ctx context.Context, input RuntimeSubmitInteractiveInput) (RuntimeSubmitInteractiveResult, error) {
+	result, err := r.fakeRuntime.SubmitInteractive(ctx, input)
+	if err != nil {
+		return result, err
+	}
+	session, ok := r.runtimeSession(input.WorkspaceID, input.AgentSessionID)
+	if !ok || session.TurnLifecycle == nil {
+		return result, nil
+	}
+	outcome := agentactivitybiz.TurnOutcomeCompleted
+	session.Status = "completed"
+	session.TurnLifecycle.Phase = agentactivitybiz.TurnPhaseSettled
+	session.TurnLifecycle.Outcome = &outcome
+	session.UpdatedAtUnixMS = time.Now().UnixMilli()
+	r.setSession(session)
+	return result, nil
 }
 
 func (r *waitRuntime) ListSessionInteractions(_ context.Context, input agentactivitybiz.ListSessionInteractionsInput) ([]agentactivitybiz.Interaction, error) {
@@ -182,6 +216,128 @@ func (r *waitMessageReader) ListSessionMessages(input agentactivitybiz.ListSessi
 
 func uint64Ptr(value uint64) *uint64 {
 	return &value
+}
+
+func TestWaitRespondChildInteractionAndReturnFinalMessage(t *testing.T) {
+	runtime := newWaitRuntime()
+	turnID := "child-turn-1"
+	runtime.sessions["ws-1:root-1"] = ProviderRuntimeSession{
+		ID: "root-1", WorkspaceID: "ws-1", Provider: "codex", Status: "working",
+		Visible: true, CreatedAtUnixMS: time.Now().Add(-time.Minute).UnixMilli(), UpdatedAtUnixMS: time.Now().UnixMilli(),
+	}
+	runtime.sessions["ws-1:child-1"] = ProviderRuntimeSession{
+		ID: "child-1", WorkspaceID: "ws-1", Provider: "codex", Status: "waiting",
+		TurnLifecycle: &TurnLifecycle{ActiveTurnID: &turnID, Phase: "waiting_approval"},
+		Visible:       true, CreatedAtUnixMS: time.Now().Add(-time.Minute).UnixMilli(), UpdatedAtUnixMS: time.Now().UnixMilli(),
+	}
+	runtime.interactionInput = map[string]any{"command": strings.Repeat("echo tutti; ", 300)}
+	runtime.interactionMeta = map[string]any{"actions": []any{
+		map[string]any{"id": "approve", "label": "Approve", "semantic": "approve"},
+		map[string]any{"id": "deny", "label": "Deny", "semantic": "deny"},
+	}}
+	finalText := strings.Repeat("full result ", 400)
+	reader := &waitMessageReader{list: func(input agentactivitybiz.ListSessionMessagesInput) (SessionMessagesPage, bool) {
+		session, _ := runtime.runtimeSession(input.WorkspaceID, input.AgentSessionID)
+		settled := session.TurnLifecycle != nil && session.TurnLifecycle.Phase == agentactivitybiz.TurnPhaseSettled
+		latest := uint64(10)
+		if settled {
+			latest = 11
+		}
+		switch {
+		case input.Order == agentactivitybiz.MessageOrderDesc && input.Limit == 1:
+			return SessionMessagesPage{AgentSessionID: input.AgentSessionID, LatestVersion: latest}, true
+		case input.Order == agentactivitybiz.MessageOrderDesc && input.Limit == defaultWaitMessageLimit:
+			return SessionMessagesPage{AgentSessionID: input.AgentSessionID, LatestVersion: latest}, true
+		case input.Order == agentactivitybiz.MessageOrderDesc && input.Limit == defaultListMessagesLimit && input.TurnID == turnID:
+			return SessionMessagesPage{AgentSessionID: input.AgentSessionID, LatestVersion: latest, Messages: []SessionMessage{{
+				AgentSessionID: input.AgentSessionID, TurnID: turnID, MessageID: "assistant-final",
+				Role: "assistant", Kind: "text", Status: "completed", Payload: map[string]any{"content": finalText}, Version: 11,
+			}}}, true
+		default:
+			t.Fatalf("unexpected ListSessionMessages input: %#v", input)
+			return SessionMessagesPage{}, false
+		}
+	}}
+	service := newIsolatedAgentService(runtime)
+	service.TurnStore = runtime
+	service.MessageReader = reader
+	service.RuntimeOperationStore = &runtimeOperationMemoryStore{}
+
+	waiting, err := service.Wait(context.Background(), WaitInput{WorkspaceID: "ws-1", AgentSessionID: "child-1"})
+	if err != nil {
+		t.Fatalf("initial Wait() error = %v", err)
+	}
+	if waiting.Reason != WaitReasonWaitingApproval || len(waiting.Interactions) != 1 {
+		t.Fatalf("initial wait = %#v", waiting)
+	}
+	interaction := waiting.Interactions[0]
+	if interaction.RequestID != "wait-request" || interaction.TurnID != turnID || interaction.ToolName != "Approval" ||
+		len(interaction.Actions) != 2 || interaction.Actions[0].Semantic != "approve" ||
+		!interaction.InputTruncated || len([]byte(interaction.InputSummary)) > waitInteractionInputSummaryLimit {
+		t.Fatalf("wait interaction = %#v", interaction)
+	}
+
+	responded, err := service.Respond(context.Background(), RespondInput{
+		WorkspaceID: "ws-1", AgentSessionID: "child-1", RequestID: interaction.RequestID, Semantic: "approve",
+	})
+	if err != nil {
+		t.Fatalf("Respond() error = %v", err)
+	}
+	if responded.TurnID != turnID || responded.Disposition != RuntimeInteractiveDispositionAnswered {
+		t.Fatalf("respond result = %#v", responded)
+	}
+	if len(runtime.submitInteractiveCalls) != 1 || runtime.submitInteractiveCalls[0].RootAgentSessionID != "root-1" ||
+		runtime.submitInteractiveCalls[0].AgentSessionID != "child-1" || runtime.submitInteractiveCalls[0].TurnID != turnID ||
+		runtime.submitInteractiveCalls[0].Action != "approve" {
+		t.Fatalf("runtime submit calls = %#v", runtime.submitInteractiveCalls)
+	}
+
+	completed, err := service.Wait(context.Background(), WaitInput{WorkspaceID: "ws-1", AgentSessionID: "child-1"})
+	if err != nil {
+		t.Fatalf("completed Wait() error = %v", err)
+	}
+	if completed.Reason != WaitReasonCompleted || completed.FinalMessage == nil ||
+		completed.FinalMessage.TurnID != turnID || completed.FinalMessage.Text != finalText {
+		t.Fatalf("completed wait = %#v", completed)
+	}
+}
+
+func TestFinalAssistantMessageScansOlderTurnPagesWithoutTruncating(t *testing.T) {
+	fullText := strings.Repeat("complete result ", 500)
+	reader := &waitMessageReader{list: func(input agentactivitybiz.ListSessionMessagesInput) (SessionMessagesPage, bool) {
+		switch input.BeforeVersion {
+		case 0:
+			return SessionMessagesPage{AgentSessionID: input.AgentSessionID, HasMore: true, Messages: []SessionMessage{{
+				TurnID: "turn-1", MessageID: "tool-late", Role: "tool", Kind: "call", Version: 101,
+			}}}, true
+		case 101:
+			return SessionMessagesPage{AgentSessionID: input.AgentSessionID, Messages: []SessionMessage{{
+				TurnID: "turn-1", MessageID: "assistant-final", Role: "assistant", Kind: "text",
+				Payload: map[string]any{"content": fullText}, Version: 100,
+			}}}, true
+		default:
+			t.Fatalf("unexpected before version %d", input.BeforeVersion)
+			return SessionMessagesPage{}, false
+		}
+	}}
+	service := newIsolatedAgentService(newFakeRuntime())
+	service.MessageReader = reader
+	message, err := service.finalAssistantMessage(context.Background(), "ws-1", "session-1", Session{
+		LatestTurn: &agentactivitybiz.Turn{TurnID: "turn-1", Phase: agentactivitybiz.TurnPhaseSettled, Outcome: agentactivitybiz.TurnOutcomeFailed},
+	})
+	if err != nil {
+		t.Fatalf("finalAssistantMessage() error = %v", err)
+	}
+	if message == nil || message.TurnID != "turn-1" || message.Text != fullText {
+		t.Fatalf("final message = %#v", message)
+	}
+}
+
+func TestWaitInteractionInputSummaryTruncatesOnUTF8Boundary(t *testing.T) {
+	summary, truncated := waitInteractionInputSummary(map[string]any{"question": strings.Repeat("界", 1000)})
+	if !truncated || len([]byte(summary)) > waitInteractionInputSummaryLimit || !utf8.ValidString(summary) {
+		t.Fatalf("summary bytes=%d truncated=%v valid=%v", len([]byte(summary)), truncated, utf8.ValidString(summary))
+	}
 }
 
 func TestWaitSkipMessagesReturnsOnlyStopPointMetadata(t *testing.T) {

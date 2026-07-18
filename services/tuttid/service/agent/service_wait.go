@@ -2,13 +2,16 @@ package agent
 
 import (
 	"context"
+	"encoding/json"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	agentactivitybiz "github.com/tutti-os/tutti/services/tuttid/biz/agentactivity"
 )
 
 const defaultWaitMessageLimit = 20
+const waitInteractionInputSummaryLimit = 2 * 1024
 
 func (s *Service) Wait(ctx context.Context, input WaitInput) (WaitResult, error) {
 	workspaceID := strings.TrimSpace(input.WorkspaceID)
@@ -202,7 +205,7 @@ func (s *Service) waitResult(
 	if err != nil {
 		return WaitResult{}, err
 	}
-	return WaitResult{
+	result := WaitResult{
 		Session:        cloneSession(session),
 		Messages:       messages,
 		LatestVersion:  latestVersion,
@@ -210,7 +213,117 @@ func (s *Service) waitResult(
 		Reason:         reason,
 		TimedOut:       timedOut,
 		EffectiveAfter: effectiveAfter,
-	}, nil
+	}
+	if !timedOut && (reason == WaitReasonCompleted || reason == WaitReasonFailed) {
+		finalMessage, err := s.finalAssistantMessage(ctx, workspaceID, agentSessionID, session)
+		if err != nil {
+			return WaitResult{}, err
+		}
+		result.FinalMessage = finalMessage
+	}
+	if !timedOut && (reason == WaitReasonWaitingApproval || reason == WaitReasonWaitingInput) {
+		result.Interactions = waitInteractions(session.PendingInteractions)
+	}
+	return result, nil
+}
+
+func (s *Service) finalAssistantMessage(
+	ctx context.Context,
+	workspaceID string,
+	agentSessionID string,
+	session Session,
+) (*WaitFinalMessage, error) {
+	if session.LatestTurn == nil {
+		return nil, nil
+	}
+	turnID := strings.TrimSpace(session.LatestTurn.TurnID)
+	if turnID == "" {
+		return nil, nil
+	}
+	var beforeVersion uint64
+	for {
+		page, err := s.ListMessages(ctx, workspaceID, agentSessionID, ListMessagesInput{
+			TurnID: turnID, BeforeVersion: beforeVersion, Limit: defaultListMessagesLimit,
+			Order: agentactivitybiz.MessageOrderDesc,
+		})
+		if err != nil {
+			return nil, err
+		}
+		for _, message := range page.Messages {
+			if !strings.EqualFold(strings.TrimSpace(message.Role), "assistant") || !strings.EqualFold(strings.TrimSpace(message.Kind), "text") {
+				continue
+			}
+			if text, ok := assistantMessageText(message.Payload); ok {
+				return &WaitFinalMessage{TurnID: turnID, Text: text}, nil
+			}
+		}
+		if !page.HasMore || len(page.Messages) == 0 {
+			return nil, nil
+		}
+		beforeVersion = page.Messages[len(page.Messages)-1].Version
+		if beforeVersion == 0 {
+			return nil, nil
+		}
+	}
+}
+
+func assistantMessageText(payload map[string]any) (string, bool) {
+	if text, ok := payload["text"].(string); ok && strings.TrimSpace(text) != "" {
+		return text, true
+	}
+	if content, ok := payload["content"].(string); ok && strings.TrimSpace(content) != "" {
+		return content, true
+	}
+	blocks, ok := payload["content"].([]any)
+	if !ok {
+		return "", false
+	}
+	parts := make([]string, 0, len(blocks))
+	for _, block := range blocks {
+		item, ok := block.(map[string]any)
+		if !ok {
+			continue
+		}
+		text, ok := item["text"].(string)
+		if ok && strings.TrimSpace(text) != "" {
+			parts = append(parts, text)
+		}
+	}
+	if len(parts) == 0 {
+		return "", false
+	}
+	return strings.Join(parts, "\n"), true
+}
+
+func waitInteractions(interactions []agentactivitybiz.Interaction) []WaitInteraction {
+	result := make([]WaitInteraction, 0, len(interactions))
+	for _, interaction := range interactions {
+		if interaction.Status != agentactivitybiz.InteractionStatusPending {
+			continue
+		}
+		summary, truncated := waitInteractionInputSummary(interaction.Input)
+		result = append(result, WaitInteraction{
+			RequestID: strings.TrimSpace(interaction.RequestID), TurnID: strings.TrimSpace(interaction.TurnID),
+			Kind: strings.TrimSpace(interaction.Kind), ToolName: strings.TrimSpace(interaction.ToolName),
+			Actions: interactionActions(interaction), InputSummary: summary, InputTruncated: truncated,
+		})
+	}
+	return result
+}
+
+func waitInteractionInputSummary(input map[string]any) (string, bool) {
+	encoded, err := json.Marshal(input)
+	if err != nil {
+		return "{}", false
+	}
+	if len(encoded) <= waitInteractionInputSummaryLimit {
+		return string(encoded), false
+	}
+	end := waitInteractionInputSummaryLimit
+	for end > 0 && !utf8.Valid(encoded[:end]) {
+		end--
+	}
+	return string(encoded[:end]), true
 }
 
 func (s *Service) latestSessionVersion(ctx context.Context, workspaceID string, agentSessionID string) (uint64, error) {

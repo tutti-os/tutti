@@ -26,6 +26,11 @@ var (
 	ErrRuntimeSessionDisconnected       = agenthost.ErrRuntimeSessionDisconnected
 	ErrInteractiveRequestNotLive        = errors.New("interactive request is no longer live")
 	ErrInteractiveAlreadyAnswered       = errors.New("interactive request has already been answered")
+	ErrInteractionRequestNotFound       = errors.New("agent interaction request was not found")
+	ErrInteractionRequestNotPending     = errors.New("agent interaction request is not pending")
+	ErrInteractionRequestAmbiguous      = errors.New("agent interaction request is ambiguous")
+	ErrInteractionSemanticNotFound      = errors.New("agent interaction semantic was not found")
+	ErrInteractionSemanticAmbiguous     = errors.New("agent interaction semantic is ambiguous")
 	ErrSkillBundleUnavailable           = errors.New("agent skill bundle renderer is unavailable")
 	ErrSessionSettingsRequireNewSession = errors.New("agent session settings update requires a new session to preserve context")
 	ErrSubmitDeliveryUnknown            = agenthost.ErrSubmitDeliveryUnknown

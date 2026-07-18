@@ -35,10 +35,8 @@ func (a *ClaudeCodeSDKAdapter) SubmitInteractive(ctx context.Context, session Se
 	providerAgentSessionID := a.claudeSDKAdapterSessionID(adapterSession, session.AgentSessionID)
 
 	optionID := strings.TrimSpace(input.OptionID)
-	if optionID == "" && input.Payload != nil {
-		optionID = strings.TrimSpace(asString(input.Payload["optionId"]))
-	}
 	if pending.callType == "approval" {
+		optionID = interactiveApprovalOptionID(input)
 		if optionID == "" {
 			return SubmitInteractiveResult{}, errors.New("interactive option id is required")
 		}

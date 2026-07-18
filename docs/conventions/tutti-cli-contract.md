@@ -155,16 +155,30 @@ recovery.
 `agent wait --json` is the blocking progress helper for launched or continued
 agent sessions. It should wait for the next meaningful stop point such as turn
 completion, failure, cancellation, waiting for approval, waiting for user
-input, or timeout. Its JSON result should stay narrow: compact session status,
-wait reason, latest version, effective wait cursor, and timeout flag. It must
-not return execution messages, pagination state, or a full transcript; callers
-that need broader context should follow with `agent session-summary`. Keep
-message window controls such as `limit` out of the public wait command shape.
+input, or timeout. Its JSON result stays narrow: compact session status, wait
+reason, latest version, effective wait cursor, and timeout flag. A completed or
+failed turn additionally returns its last assistant text as `finalMessage`
+with the owning `turnId`; an approval or input stop additionally returns the
+pending `interactions` with self-described actions and a JSON input summary of
+at most 2 KiB. It must not return execution-message pagination or a full
+transcript; callers that need broader context should follow with
+`agent session-summary`. Keep message window controls such as `limit` out of
+the public wait command shape, and keep timeout output free of result or
+interaction detail.
 When a caller continues an existing session with `agent send`, the send action
 should return a `waitAfterVersion` cursor, and the next wait call should pass
 that cursor as `agent wait --after-version <waitAfterVersion> ...` so the wait
 blocks for the new stop point instead of immediately replaying the previous
 session stop state.
+
+`agent respond --json` answers one pending interaction selected by
+`--session-id` and `--request-id`. `--action`, `--option`, and object-valued
+`--payload` map directly to the Host interactive input. `--semantic` is a thin
+shortcut that resolves exactly one matching `actions[].semantic` from the
+stored interaction; the CLI must not keep a provider-to-semantic mapping.
+Unknown or non-pending requests and missing or ambiguous semantics are invalid
+input errors. The result exposes the request and turn ids plus the Host
+disposition (`answered` or `superseded`).
 
 `agent turn-resources --json` is the narrow helper for looking up resources from
 one explicit session turn. It requires `--session-id` and `--turn-id`, filters at
@@ -244,6 +258,7 @@ Examples:
 
 - `issue list`
 - `agent session-summary`
+- `agent respond`
 - `topic-id`
 - `wait`
 - `page-size`
