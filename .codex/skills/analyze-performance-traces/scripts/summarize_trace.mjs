@@ -1,0 +1,313 @@
+#!/usr/bin/env node
+
+import { createReadStream, statSync } from "node:fs";
+import { basename, resolve } from "node:path";
+
+const { tracePath, top, minMs } = parseArguments(process.argv.slice(2));
+const absoluteTracePath = resolve(tracePath);
+const minimumDurationUs = minMs * 1_000;
+const threadNames = new Map();
+const nameStats = new Map();
+const threadStats = new Map();
+const frameSignals = new Map();
+const longestEvents = [];
+let eventCount = 0;
+let completeEventCount = 0;
+let longEventCount = 0;
+let earliestTimestampUs = Number.POSITIVE_INFINITY;
+let latestTimestampUs = Number.NEGATIVE_INFINITY;
+
+await streamTraceEvents(absoluteTracePath, processEvent);
+
+const summary = {
+  file: basename(absoluteTracePath),
+  fileBytes: statSync(absoluteTracePath).size,
+  traceDurationMs:
+    Number.isFinite(earliestTimestampUs) && Number.isFinite(latestTimestampUs)
+      ? round((latestTimestampUs - earliestTimestampUs) / 1_000)
+      : null,
+  eventCount,
+  completeEventCount,
+  longEventThresholdMs: minMs,
+  longEventCount,
+  threads: [...threadNames.entries()]
+    .map(([key, name]) => ({ key, name }))
+    .sort((left, right) => left.key.localeCompare(right.key)),
+  topThreadsByInclusiveDuration: topEntries(threadStats, top).map(
+    ([key, stats]) => ({
+      key,
+      name: threadNames.get(key) ?? null,
+      count: stats.count,
+      totalMs: round(stats.totalUs / 1_000),
+      maxMs: round(stats.maxUs / 1_000)
+    })
+  ),
+  topEventNamesByInclusiveDuration: topEntries(nameStats, top).map(
+    ([name, stats]) => ({
+      name,
+      count: stats.count,
+      totalMs: round(stats.totalUs / 1_000),
+      maxMs: round(stats.maxUs / 1_000)
+    })
+  ),
+  frameSignals: [...frameSignals.entries()]
+    .map(([name, count]) => ({ name, count }))
+    .sort((left, right) => right.count - left.count),
+  longestEvents: longestEvents.map((event) => ({
+    ...event,
+    threadName: threadNames.get(event.thread) ?? null
+  })),
+  cautions: [
+    "Durations are inclusive and nested events may overlap.",
+    "Development profiler and extension overhead may not represent production.",
+    "Use timestamps and stacks to prove causality before editing code."
+  ]
+};
+
+process.stdout.write(`${JSON.stringify(summary, null, 2)}\n`);
+
+function processEvent(event) {
+  eventCount += 1;
+  const thread = `${event.pid ?? "?"}:${event.tid ?? "?"}`;
+  if (
+    event.ph === "M" &&
+    event.name === "thread_name" &&
+    typeof event.args?.name === "string"
+  ) {
+    threadNames.set(thread, event.args.name);
+  }
+
+  const timestampUs = finiteNumber(event.ts);
+  const durationUs = finiteNumber(event.dur) ?? 0;
+  const name = typeof event.name === "string" ? event.name : "<unnamed>";
+  if (/frame/i.test(name)) {
+    frameSignals.set(name, (frameSignals.get(name) ?? 0) + 1);
+  }
+  if (event.ph !== "X" || durationUs <= 0) return;
+
+  completeEventCount += 1;
+  if (timestampUs !== null) {
+    earliestTimestampUs = Math.min(earliestTimestampUs, timestampUs);
+    latestTimestampUs = Math.max(latestTimestampUs, timestampUs + durationUs);
+  }
+  updateDurationStats(nameStats, name, durationUs);
+  updateDurationStats(threadStats, thread, durationUs);
+  if (durationUs < minimumDurationUs) return;
+
+  longEventCount += 1;
+  longestEvents.push({
+    name,
+    category: typeof event.cat === "string" ? event.cat : null,
+    durationMs: round(durationUs / 1_000),
+    timestampMs: timestampUs === null ? null : round(timestampUs / 1_000),
+    thread,
+    details: collectEventDetails(event.args),
+    sourceHints: collectSourceHints(event.args)
+  });
+  longestEvents.sort((left, right) => right.durationMs - left.durationMs);
+  if (longestEvents.length > top) longestEvents.length = top;
+}
+
+function collectEventDetails(value) {
+  const allowedKeys = new Set([
+    "className",
+    "dirtyObjects",
+    "eventType",
+    "frame",
+    "functionName",
+    "id",
+    "nodeId",
+    "nodeName",
+    "reason",
+    "scriptName",
+    "totalObjects",
+    "type",
+    "url"
+  ]);
+  const details = {};
+  visit(value, "args", 0);
+  return details;
+
+  function visit(entry, path, depth) {
+    if (
+      depth > 7 ||
+      entry === null ||
+      entry === undefined ||
+      Object.keys(details).length >= 16
+    ) {
+      return;
+    }
+    if (Array.isArray(entry)) {
+      for (let index = 0; index < entry.length; index += 1) {
+        visit(entry[index], `${path}[${index}]`, depth + 1);
+      }
+      return;
+    }
+    if (typeof entry !== "object") return;
+    for (const [key, child] of Object.entries(entry)) {
+      const childPath = `${path}.${key}`;
+      if (
+        allowedKeys.has(key) &&
+        (typeof child === "string" || typeof child === "number")
+      ) {
+        details[childPath] =
+          typeof child === "string" ? child.slice(0, 300) : child;
+      }
+      visit(child, childPath, depth + 1);
+    }
+  }
+}
+
+function updateDurationStats(target, key, durationUs) {
+  const stats = target.get(key) ?? { count: 0, totalUs: 0, maxUs: 0 };
+  stats.count += 1;
+  stats.totalUs += durationUs;
+  stats.maxUs = Math.max(stats.maxUs, durationUs);
+  target.set(key, stats);
+}
+
+function topEntries(stats, limit) {
+  return [...stats.entries()]
+    .sort((left, right) => right[1].totalUs - left[1].totalUs)
+    .slice(0, limit);
+}
+
+function collectSourceHints(value) {
+  const hints = new Set();
+  visit(value, 0);
+  return [...hints].slice(0, 8);
+
+  function visit(entry, depth) {
+    if (depth > 7 || entry === null || entry === undefined || hints.size >= 8) {
+      return;
+    }
+    if (Array.isArray(entry)) {
+      for (const item of entry) visit(item, depth + 1);
+      return;
+    }
+    if (typeof entry !== "object") return;
+
+    const functionName = textValue(entry.functionName ?? entry.name);
+    const url = textValue(entry.url ?? entry.scriptName);
+    const line = finiteNumber(entry.lineNumber);
+    const column = finiteNumber(entry.columnNumber);
+    if (url) {
+      hints.add(
+        `${functionName ? `${functionName} ` : ""}${url}${
+          line === null ? "" : `:${line + 1}`
+        }${column === null ? "" : `:${column + 1}`}`
+      );
+    }
+    for (const child of Object.values(entry)) visit(child, depth + 1);
+  }
+}
+
+async function streamTraceEvents(path, onEvent) {
+  const marker = '"traceEvents"';
+  let state = "search-marker";
+  let searchTail = "";
+  let objectText = "";
+  let depth = 0;
+  let inString = false;
+  let escaped = false;
+
+  for await (const chunk of createReadStream(path, { encoding: "utf8" })) {
+    consume(chunk);
+    if (state === "done") break;
+  }
+  if (state === "search-marker" || state === "wait-array") {
+    throw new Error('Trace JSON does not contain a "traceEvents" array');
+  }
+  if (objectText) throw new Error("Trace ended inside a trace event");
+
+  function consume(chunk) {
+    let text = chunk;
+    if (state === "search-marker") {
+      const candidate = searchTail + text;
+      const markerIndex = candidate.indexOf(marker);
+      if (markerIndex < 0) {
+        searchTail = candidate.slice(-marker.length);
+        return;
+      }
+      text = candidate.slice(markerIndex + marker.length);
+      searchTail = "";
+      state = "wait-array";
+    }
+    if (state === "wait-array") {
+      const arrayIndex = text.indexOf("[");
+      if (arrayIndex < 0) return;
+      text = text.slice(arrayIndex + 1);
+      state = "read-array";
+    }
+    if (state !== "read-array") return;
+
+    for (const character of text) {
+      if (!objectText) {
+        if (character === "{") {
+          objectText = character;
+          depth = 1;
+          inString = false;
+          escaped = false;
+        } else if (character === "]") {
+          state = "done";
+          return;
+        }
+        continue;
+      }
+
+      objectText += character;
+      if (inString) {
+        if (escaped) escaped = false;
+        else if (character === "\\") escaped = true;
+        else if (character === '"') inString = false;
+        continue;
+      }
+      if (character === '"') inString = true;
+      else if (character === "{" || character === "[") depth += 1;
+      else if (character === "}" || character === "]") depth -= 1;
+
+      if (depth === 0) {
+        onEvent(JSON.parse(objectText));
+        objectText = "";
+      }
+    }
+  }
+}
+
+function parseArguments(args) {
+  if (args.length === 0 || args.includes("--help")) {
+    process.stderr.write(
+      "Usage: summarize_trace.mjs TRACE.json [--top N] [--min-ms N]\n"
+    );
+    process.exit(args.includes("--help") ? 0 : 1);
+  }
+  let top = 30;
+  let minMs = 16;
+  for (let index = 1; index < args.length; index += 1) {
+    if (args[index] === "--top") top = positiveNumber(args[++index], "--top");
+    else if (args[index] === "--min-ms") {
+      minMs = positiveNumber(args[++index], "--min-ms");
+    } else throw new Error(`Unknown argument: ${args[index]}`);
+  }
+  return { tracePath: args[0], top, minMs };
+}
+
+function positiveNumber(value, flag) {
+  const number = Number(value);
+  if (!Number.isFinite(number) || number <= 0) {
+    throw new Error(`${flag} requires a positive number`);
+  }
+  return number;
+}
+
+function finiteNumber(value) {
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+
+function textValue(value) {
+  return typeof value === "string" && value.trim() ? value.trim() : null;
+}
+
+function round(value) {
+  return Math.round(value * 1_000) / 1_000;
+}
