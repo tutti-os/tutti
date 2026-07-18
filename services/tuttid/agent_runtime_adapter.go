@@ -121,6 +121,7 @@ func (a agentRuntimeAdapter) CanResume(input agentservice.RuntimeResumeInput) bo
 	return a.controller.CanResume(agentruntime.ResumeInput{
 		RoomID:            input.WorkspaceID,
 		AgentSessionID:    input.AgentSessionID,
+		AgentTargetID:     input.AgentTargetID,
 		Provider:          input.Provider,
 		ProviderSessionID: input.ProviderSessionID,
 		CWD:               input.Cwd,

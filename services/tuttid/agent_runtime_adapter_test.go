@@ -10,6 +10,12 @@ import (
 	agentservice "github.com/tutti-os/tutti/services/tuttid/service/agent"
 )
 
+type unavailableAgentExtensionResumeResolver struct{}
+
+func (unavailableAgentExtensionResumeResolver) ResolveAdapter(context.Context, agentruntime.AdapterResolveInput) (agentruntime.Adapter, error) {
+	return nil, errors.New("adapter resolution must not run during resume eligibility checks")
+}
+
 func TestMapAgentRuntimeErrorPreservesInteractiveRecoveryCodes(t *testing.T) {
 	tests := []struct {
 		runtimeErr error
@@ -23,6 +29,27 @@ func TestMapAgentRuntimeErrorPreservesInteractiveRecoveryCodes(t *testing.T) {
 		if err := mapAgentRuntimeError(test.runtimeErr); !errors.Is(err, test.serviceErr) {
 			t.Fatalf("mapAgentRuntimeError(%v) = %v, want %v", test.runtimeErr, err, test.serviceErr)
 		}
+	}
+}
+
+func TestAgentRuntimeAdapterCanResumePreservesExtensionTargetBinding(t *testing.T) {
+	controller := agentruntime.NewControllerWithAdapterResolver(nil, nil, unavailableAgentExtensionResumeResolver{})
+	adapter := newAgentRuntimeAdapter(controller)
+
+	if !adapter.CanResume(agentservice.RuntimeResumeInput{
+		WorkspaceID:       "workspace-1",
+		AgentSessionID:    "session-1",
+		AgentTargetID:     "extension:codebuddy",
+		Provider:          "acp:codebuddy",
+		ProviderSessionID: "provider-session-1",
+		ProviderTargetRef: map[string]any{
+			"kind":                    "agent_extension",
+			"provider":                "acp:codebuddy",
+			"targetId":                "extension:codebuddy",
+			"extensionInstallationId": "codebuddy@1.0.0",
+		},
+	}) {
+		t.Fatal("CanResume() = false, want authorized extension session to remain resumable across the tuttid runtime adapter")
 	}
 }
 
