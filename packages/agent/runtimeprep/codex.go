@@ -129,6 +129,9 @@ func exposeUserCodexFiles(codexHome string) error {
 			}
 		}
 	}
+	if err := exposeUserCodexModelsCache(codexHome, userCodexHome); err != nil {
+		return err
+	}
 	if err := exposeUserCodexPluginState(codexHome, userCodexHome); err != nil {
 		return err
 	}

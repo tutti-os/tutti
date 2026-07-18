@@ -20,6 +20,9 @@ func TestDefaultPreparerCodexWritesInstructionsSkillManifestAndEnv(t *testing.T)
 	if err := os.WriteFile(filepath.Join(userCodexHome, "auth.json"), []byte(`{"token":"test"}`), 0o600); err != nil {
 		t.Fatal(err)
 	}
+	if err := os.WriteFile(filepath.Join(userCodexHome, "models_cache.json"), []byte(`{"models":["cached"]}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
 	userCodexConfig := strings.Join([]string{
 		`notify = ["say", "done"]`,
 		`model_provider = "proxy"`,
@@ -119,6 +122,49 @@ func TestDefaultPreparerCodexWritesInstructionsSkillManifestAndEnv(t *testing.T)
 	}
 	if _, err := os.Lstat(filepath.Join(codexHome, "auth.json")); err != nil {
 		t.Fatalf("codex auth not exposed: %v", err)
+	}
+	modelsCachePath := filepath.Join(codexHome, "models_cache.json")
+	modelsCacheInfo, err := os.Lstat(modelsCachePath)
+	if err != nil {
+		t.Fatalf("codex models cache not exposed: %v", err)
+	}
+	if modelsCacheInfo.Mode()&os.ModeSymlink == 0 {
+		t.Fatalf("codex models cache should be a symlink, got mode %v", modelsCacheInfo.Mode())
+	}
+	modelsCacheTarget, err := os.Readlink(modelsCachePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := filepath.Join(userCodexHome, "models_cache.json"); modelsCacheTarget != want {
+		t.Fatalf("codex models cache symlink target = %q, want %q", modelsCacheTarget, want)
+	}
+	if err := os.WriteFile(modelsCachePath, []byte(`{"models":["refreshed"]}`), 0o600); err != nil {
+		t.Fatalf("refresh run-scoped codex models cache: %v", err)
+	}
+	sharedModelsCache, err := os.ReadFile(filepath.Join(userCodexHome, "models_cache.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, want := string(sharedModelsCache), `{"models":["refreshed"]}`; got != want {
+		t.Fatalf("shared codex models cache = %q, want %q", got, want)
+	}
+	secondPrepared, err := NewDefaultPreparer(t.TempDir()).Prepare(t.Context(), PrepareInput{
+		WorkspaceID:    "workspace-1",
+		AgentSessionID: "session-2",
+		AgentTargetID:  "local:codex",
+		Provider:       "codex",
+		Cwd:            cwd,
+	})
+	if err != nil {
+		t.Fatalf("prepare second Codex session: %v", err)
+	}
+	secondModelsCachePath := filepath.Join(envValue(secondPrepared.Env, "CODEX_HOME"), "models_cache.json")
+	secondModelsCache, err := os.ReadFile(secondModelsCachePath)
+	if err != nil {
+		t.Fatalf("read second session Codex models cache: %v", err)
+	}
+	if got, want := string(secondModelsCache), `{"models":["refreshed"]}`; got != want {
+		t.Fatalf("second session Codex models cache = %q, want %q", got, want)
 	}
 	catalogLink, err := os.Lstat(filepath.Join(codexHome, "cc-switch-model-catalog.json"))
 	if err != nil {
@@ -328,6 +374,69 @@ func TestDefaultPreparerCodexWritesInstructionsSkillManifestAndEnv(t *testing.T)
 	}
 	if envValue(prepared.Env, "TUTTI_WORKSPACE_ID") != "workspace-1" {
 		t.Fatalf("prepared env = %#v, want workspace id", prepared.Env)
+	}
+}
+
+func TestExposeUserCodexModelsCacheSharesFirstRefreshAcrossSessions(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	userCodexHome := filepath.Join(home, ".codex")
+	firstCodexHome := t.TempDir()
+	if err := exposeUserCodexModelsCache(firstCodexHome, userCodexHome); err != nil {
+		t.Fatal(err)
+	}
+
+	firstCachePath := filepath.Join(firstCodexHome, "models_cache.json")
+	info, err := os.Lstat(firstCachePath)
+	if err != nil {
+		t.Fatalf("first session models cache link missing: %v", err)
+	}
+	if info.Mode()&os.ModeSymlink == 0 {
+		t.Fatalf("first session models cache mode = %v, want symlink", info.Mode())
+	}
+	if _, err := os.Stat(filepath.Join(userCodexHome, "models_cache.json")); !os.IsNotExist(err) {
+		t.Fatalf("shared models cache should not exist before first provider refresh, err = %v", err)
+	}
+	if err := os.WriteFile(firstCachePath, []byte(`{"models":["first-refresh"]}`), 0o600); err != nil {
+		t.Fatalf("write first session models cache: %v", err)
+	}
+
+	secondCodexHome := t.TempDir()
+	if err := exposeUserCodexModelsCache(secondCodexHome, userCodexHome); err != nil {
+		t.Fatal(err)
+	}
+	secondCache, err := os.ReadFile(filepath.Join(secondCodexHome, "models_cache.json"))
+	if err != nil {
+		t.Fatalf("read second session models cache: %v", err)
+	}
+	if got, want := string(secondCache), `{"models":["first-refresh"]}`; got != want {
+		t.Fatalf("second session models cache = %q, want %q", got, want)
+	}
+}
+
+func TestExposeUserCodexModelsCachePreservesExistingRunCache(t *testing.T) {
+	userCodexHome := filepath.Join(t.TempDir(), ".codex")
+	codexHome := t.TempDir()
+	target := filepath.Join(codexHome, "models_cache.json")
+	if err := os.WriteFile(target, []byte(`{"models":["session-local"]}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := exposeUserCodexModelsCache(codexHome, userCodexHome); err != nil {
+		t.Fatal(err)
+	}
+	info, err := os.Lstat(target)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !info.Mode().IsRegular() || info.Mode()&os.ModeSymlink != 0 {
+		t.Fatalf("existing run cache mode = %v, want regular file", info.Mode())
+	}
+	content, err := os.ReadFile(target)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, want := string(content), `{"models":["session-local"]}`; got != want {
+		t.Fatalf("existing run cache = %q, want %q", got, want)
 	}
 }
 

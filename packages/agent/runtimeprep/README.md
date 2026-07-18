@@ -34,6 +34,14 @@ prepared, err := preparer.Prepare(ctx, runtimeprep.PrepareInput{
 process environment. `Cleanup` removes only paths recorded in the session
 manifest or the session-scoped runtime root.
 
+Codex preparation keeps session state isolated under the run-scoped
+`CODEX_HOME`, while linking its writable `models_cache.json` to the provider
+user's process-default `~/.codex/models_cache.json`. The link may initially be
+dangling: the first Codex refresh creates the shared VM- or host-local cache,
+and later sessions reuse it. Hosts must therefore run preparation with `HOME`
+set to the provider user's stable local Home, never a session runtime directory
+or a remote filesystem projection.
+
 ## Capability Packs
 
 A deployment capability resolves once into its policy, skills, and environment
