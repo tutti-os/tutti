@@ -160,7 +160,8 @@ function reduceQueueOwnedState(
 
 function enqueuePrompt(
   state: PromptQueueState,
-  intent: Extract<PromptQueueIntent, { type: "queue/enqueued" }>
+  intent: Extract<PromptQueueIntent, { type: "queue/enqueued" }>,
+  options?: { insertAtFront?: boolean }
 ): EngineReducerResult<PromptQueueState> {
   const agentSessionId = intent.agentSessionId.trim();
   const workspaceId = intent.workspaceId.trim();
@@ -175,7 +176,9 @@ function enqueuePrompt(
   return result(
     replaceRecord(state, agentSessionId, {
       ...current,
-      prompts: [...current.prompts, prompt]
+      prompts: options?.insertAtFront
+        ? [prompt, ...current.prompts]
+        : [...current.prompts, prompt]
     })
   );
 }
@@ -204,33 +207,44 @@ function enqueueSubmit(
     current?.deliveryBarrierTurnId ||
     availability.state !== "available"
   );
+  // An ordinary submit that resumes a queue the user just explicitly
+  // stopped is the user's next instruction, not a continuation of whatever
+  // was already queued before the stop: it jumps ahead of that stale
+  // backlog instead of preserving FIFO order behind it.
+  const resumingFromUserStop = current?.suspendReason === "user_stop";
   const resumed = resumeQueue(state, agentSessionId);
-  return enqueuePrompt(resumed.state, {
-    agentSessionId,
-    prompt: {
-      clientSubmitId: intent.clientSubmitId,
-      content: intent.content,
-      createdAtUnixMs: intent.requestedAtUnixMs,
-      ...(intent.displayPrompt ? { displayPrompt: intent.displayPrompt } : {}),
-      id: intent.clientSubmitId,
-      ...clonePromptRequiredSettingsPatch(intent.requiredSettingsPatch),
-      submitDiagnostics: {
-        ...(intent.submitDiagnostics ?? {}),
-        blockCount:
-          intent.submitDiagnostics?.blockCount ?? intent.content.length,
-        queued: visibleInQueue,
-        submittedAtUnixMs:
-          intent.submitDiagnostics?.submittedAtUnixMs ??
-          intent.requestedAtUnixMs
+  return enqueuePrompt(
+    resumed.state,
+    {
+      agentSessionId,
+      prompt: {
+        clientSubmitId: intent.clientSubmitId,
+        content: intent.content,
+        createdAtUnixMs: intent.requestedAtUnixMs,
+        ...(intent.displayPrompt
+          ? { displayPrompt: intent.displayPrompt }
+          : {}),
+        id: intent.clientSubmitId,
+        ...clonePromptRequiredSettingsPatch(intent.requiredSettingsPatch),
+        submitDiagnostics: {
+          ...(intent.submitDiagnostics ?? {}),
+          blockCount:
+            intent.submitDiagnostics?.blockCount ?? intent.content.length,
+          queued: visibleInQueue,
+          submittedAtUnixMs:
+            intent.submitDiagnostics?.submittedAtUnixMs ??
+            intent.requestedAtUnixMs
+        },
+        ...(intent.runtimeContent
+          ? { runtimeContent: intent.runtimeContent }
+          : {}),
+        visibleInQueue
       },
-      ...(intent.runtimeContent
-        ? { runtimeContent: intent.runtimeContent }
-        : {}),
-      visibleInQueue
+      type: "queue/enqueued",
+      workspaceId: intent.workspaceId
     },
-    type: "queue/enqueued",
-    workspaceId: intent.workspaceId
-  });
+    { insertAtFront: resumingFromUserStop }
+  );
 }
 
 function sendCommandFromImmediateSubmit(

@@ -615,7 +615,7 @@ export function useAgentGUISubmitInteractionActions(
         agentSessionId,
         normalizedContent,
         displayPromptText,
-        { sendNow: true }
+        { sendNow: true, trackDraft: true }
       );
     },
     [

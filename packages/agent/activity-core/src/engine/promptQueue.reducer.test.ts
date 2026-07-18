@@ -327,7 +327,11 @@ test("user stop suspension blocks drain until explicit resume", () => {
   assert.equal(resumed.commands[0]?.type, "queue/sendPrompt");
 });
 
-test("ordinary submit resumes a paused queue and preserves FIFO", () => {
+test("ordinary submit resuming a user-stopped queue jumps ahead of the stale backlog", () => {
+  // The user explicitly stopped the turn, then typed and sent something new.
+  // That new prompt is the user's next instruction, not a continuation of
+  // whatever was already queued before the stop — it must not sit behind a
+  // backlog the user just interrupted.
   const available = canonicalLifecycle("settled", 2);
   let state = reduce(
     createInitialPromptQueueState(),
@@ -344,7 +348,28 @@ test("ordinary submit resumes a paused queue and preserves FIFO", () => {
     canonicalLifecycle("running", 1)
   ).state;
   const submitted = reduce(state, submit("prompt-2"), available);
-  assert.equal(send(submitted.commands[0]).promptId, "prompt-1");
+  assert.equal(send(submitted.commands[0]).promptId, "prompt-2");
+  assert.deepEqual(
+    submitted.state.recordsBySessionId["session-1"]?.prompts.map(
+      (prompt) => prompt.id
+    ),
+    ["prompt-2", "prompt-1"]
+  );
+});
+
+test("ordinary submit while the queue is merely busy (not user-stopped) preserves FIFO", () => {
+  // Contrast with the user-stop case above: an ordinary submit that lands
+  // while the queue is simply waiting on availability (no suspension at all)
+  // still appends behind whatever is already queued.
+  const running = canonicalLifecycle("running", 1);
+  const first = reduce(
+    createInitialPromptQueueState(),
+    enqueue("prompt-1"),
+    running
+  );
+  assert.deepEqual(first.commands, []);
+  const submitted = reduce(first.state, submit("prompt-2"), running);
+  assert.deepEqual(submitted.commands, []);
   assert.deepEqual(
     submitted.state.recordsBySessionId["session-1"]?.prompts.map(
       (prompt) => prompt.id
