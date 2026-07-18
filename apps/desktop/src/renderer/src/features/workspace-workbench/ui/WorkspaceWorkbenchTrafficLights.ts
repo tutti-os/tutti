@@ -39,6 +39,7 @@ export function WorkspaceWorkbenchTrafficLights({
         "group/traffic-lights inline-flex shrink-0 items-center gap-2",
         className
       ),
+      "data-workbench-window-controls": "true",
       onDoubleClick: (event: MouseEvent<HTMLDivElement>) =>
         event.stopPropagation(),
       onPointerDown: (event: MouseEvent<HTMLDivElement>) =>
@@ -95,6 +96,7 @@ function WorkspaceWorkbenchTrafficLightButton({
           "group-hover/traffic-lights:before:bg-[#28c840] group-focus-within/traffic-lights:before:bg-[#28c840]"
       ),
       "data-workspace-workbench-traffic-light": tone,
+      title: label,
       type: "button",
       onClick: (event: MouseEvent<HTMLButtonElement>) => {
         event.stopPropagation();

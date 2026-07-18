@@ -1,6 +1,11 @@
 import {
   useCallback,
   useEffect,
+  useId,
+  useRef,
+  useState,
+  type FocusEvent,
+  type PointerEvent,
   type CSSProperties,
   type ReactNode
 } from "react";
@@ -44,6 +49,7 @@ import type {
 import type { WorkbenchWindowChromeI18nRuntime } from "./workbenchWindowI18n.ts";
 
 export interface WorkbenchSurfaceProps<TData = unknown> {
+  autoHideChrome?: WorkbenchAutoHideChromeConfig;
   captureNodePreviewImage?: (
     node: WorkbenchNode<TData>
   ) => Promise<string | null> | string | null;
@@ -82,6 +88,13 @@ export interface WorkbenchSurfaceProps<TData = unknown> {
   windowChromeI18n?: WorkbenchWindowChromeI18nRuntime;
 }
 
+export interface WorkbenchAutoHideChromeConfig {
+  collapseDelayMs?: number;
+  dockHandleLabel: string;
+  fullscreenWindowControlsInset?: number;
+  topHandleLabel: string;
+}
+
 export interface WorkbenchWindowManagementConfig {
   edgeSnapEnabled?: boolean;
   shortcutPreset?: WorkbenchWindowManagementShortcutPreset | null;
@@ -101,6 +114,7 @@ export interface WorkbenchSurfaceWallpaper {
 }
 
 export function WorkbenchSurface<TData>({
+  autoHideChrome,
   captureNodePreviewImage,
   className,
   controller,
@@ -137,6 +151,7 @@ export function WorkbenchSurface<TData>({
   return (
     <WorkbenchProvider controller={controller}>
       <WorkbenchSurfaceInner
+        autoHideChrome={autoHideChrome}
         captureNodePreviewImage={captureNodePreviewImage}
         className={className}
         debugDiagnostics={debugDiagnostics}
@@ -174,6 +189,7 @@ export function WorkbenchSurface<TData>({
 }
 
 function WorkbenchSurfaceInner<TData>({
+  autoHideChrome,
   captureNodePreviewImage,
   className,
   debugDiagnostics,
@@ -207,6 +223,16 @@ function WorkbenchSurfaceInner<TData>({
   windowChromeI18n
 }: Omit<WorkbenchSurfaceProps<TData>, "controller">) {
   const controller = useWorkbenchController<TData>();
+  const topChromeRegion = useWorkbenchAutoHideRegion({
+    collapseDelayMs: autoHideChrome?.collapseDelayMs,
+    enabled: autoHideChrome !== undefined
+  });
+  const dockRegion = useWorkbenchAutoHideRegion({
+    collapseDelayMs: autoHideChrome?.collapseDelayMs,
+    enabled: autoHideChrome !== undefined
+  });
+  const topChromeId = useId();
+  const dockId = useId();
   const onSizeChange = useCallback(
     (size: { width: number; height: number }) => {
       controller.commands.setSurfaceSize(size);
@@ -251,7 +277,17 @@ function WorkbenchSurfaceInner<TData>({
       className={["workbench-surface", className].filter(Boolean).join(" ")}
       data-mission-control-phase={missionControlPhase ?? "closed"}
       data-presentation-mode={presentation?.mode ?? "default"}
+      data-workbench-auto-hide-chrome={
+        autoHideChrome === undefined ? "disabled" : "enabled"
+      }
       data-workbench-interactive={interactive ? "true" : "false"}
+      style={
+        autoHideChrome?.fullscreenWindowControlsInset
+          ? ({
+              "--workbench-fullscreen-window-controls-inset": `${autoHideChrome.fullscreenWindowControlsInset}px`
+            } as CSSProperties)
+          : undefined
+      }
     >
       {wallpaper ? (
         <div
@@ -261,7 +297,27 @@ function WorkbenchSurfaceInner<TData>({
         />
       ) : null}
       {renderTopChrome ? (
-        <div className="workbench-surface__top-chrome">{renderTopChrome()}</div>
+        <div
+          id={topChromeId}
+          className="workbench-surface__top-chrome"
+          data-auto-hide-state={topChromeRegion.state}
+          inert={topChromeRegion.state === "hidden" ? true : undefined}
+          onBlurCapture={topChromeRegion.onBlurCapture}
+          onFocusCapture={topChromeRegion.onFocusCapture}
+          onPointerEnter={topChromeRegion.onPointerEnter}
+          onPointerLeave={topChromeRegion.onPointerLeave}
+        >
+          {renderTopChrome()}
+        </div>
+      ) : null}
+      {renderTopChrome && autoHideChrome !== undefined ? (
+        <WorkbenchAutoHideHandle
+          controls={topChromeId}
+          edge="top"
+          expanded={topChromeRegion.state === "expanded"}
+          label={autoHideChrome.topHandleLabel}
+          onReveal={topChromeRegion.reveal}
+        />
       ) : null}
       {renderBackdrop ? renderBackdrop() : null}
       {presentation?.mode === "mission-control" ? null : (
@@ -283,6 +339,21 @@ function WorkbenchSurfaceInner<TData>({
         windowChromeI18n={windowChromeI18n}
       />
       <WorkbenchDockFrame
+        autoHide={
+          autoHideChrome === undefined
+            ? undefined
+            : {
+                controls: dockId,
+                expanded: dockRegion.state === "expanded",
+                handleLabel: autoHideChrome.dockHandleLabel,
+                onBlurCapture: dockRegion.onBlurCapture,
+                onFocusCapture: dockRegion.onFocusCapture,
+                onPointerEnter: dockRegion.onPointerEnter,
+                onPointerLeave: dockRegion.onPointerLeave,
+                onReveal: dockRegion.reveal,
+                regionId: dockId
+              }
+        }
         dockPlacement={dockPlacement}
         genie={genie}
         interactive={interactive}
@@ -297,6 +368,102 @@ function WorkbenchSurfaceInner<TData>({
       {genie.genieLayer}
     </div>
   );
+}
+
+function WorkbenchAutoHideHandle({
+  controls,
+  edge,
+  expanded,
+  label,
+  onReveal
+}: {
+  controls: string;
+  edge: "bottom" | "left" | "top";
+  expanded: boolean;
+  label: string;
+  onReveal: () => void;
+}) {
+  if (expanded) {
+    return null;
+  }
+
+  return (
+    <button
+      aria-controls={controls}
+      aria-expanded="false"
+      aria-label={label}
+      className="workbench-auto-hide-handle"
+      data-edge={edge}
+      title={label}
+      type="button"
+      onClick={onReveal}
+    >
+      <span className="workbench-auto-hide-handle__label">{label}</span>
+    </button>
+  );
+}
+
+function useWorkbenchAutoHideRegion(input: {
+  collapseDelayMs?: number;
+  enabled: boolean;
+}) {
+  const [expanded, setExpanded] = useState(!input.enabled);
+  const collapseTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const collapseDelayMs = input.collapseDelayMs ?? 650;
+  const revealGraceMs = Math.max(collapseDelayMs, 1_600);
+
+  const cancelCollapse = useCallback(() => {
+    if (collapseTimerRef.current === null) {
+      return;
+    }
+    clearTimeout(collapseTimerRef.current);
+    collapseTimerRef.current = null;
+  }, []);
+  const scheduleCollapseAfter = useCallback(
+    (delayMs: number) => {
+      cancelCollapse();
+      if (!input.enabled) {
+        return;
+      }
+      collapseTimerRef.current = setTimeout(() => {
+        collapseTimerRef.current = null;
+        setExpanded(false);
+      }, delayMs);
+    },
+    [cancelCollapse, input.enabled]
+  );
+  const scheduleCollapse = useCallback(() => {
+    scheduleCollapseAfter(collapseDelayMs);
+  }, [collapseDelayMs, scheduleCollapseAfter]);
+
+  useEffect(() => {
+    cancelCollapse();
+    setExpanded(!input.enabled);
+  }, [cancelCollapse, input.enabled]);
+  useEffect(() => cancelCollapse, [cancelCollapse]);
+
+  return {
+    state: expanded ? ("expanded" as const) : ("hidden" as const),
+    reveal() {
+      cancelCollapse();
+      setExpanded(true);
+      scheduleCollapseAfter(revealGraceMs);
+    },
+    onBlurCapture(event: FocusEvent<HTMLElement>) {
+      if (
+        event.relatedTarget instanceof Node &&
+        event.currentTarget.contains(event.relatedTarget)
+      ) {
+        return;
+      }
+      scheduleCollapse();
+    },
+    onFocusCapture: cancelCollapse,
+    onPointerEnter: cancelCollapse,
+    onPointerLeave(_event: PointerEvent<HTMLElement>) {
+      scheduleCollapse();
+    }
+  };
 }
 
 function resolveWorkbenchSurfaceWallpaperBackgroundSize(

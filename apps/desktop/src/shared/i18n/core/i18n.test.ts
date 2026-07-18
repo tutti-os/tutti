@@ -127,7 +127,10 @@ test("app i18n runtime keeps package defaults and lets host overrides win", () =
     "Project files"
   );
   assert.equal(runtime.t("workspaceFileManager.uploadLabel"), "Send");
-  assert.equal(runtime.t("workbenchHost.actions.close"), "Close");
+  assert.equal(
+    runtime.t("workbenchHost.actions.close"),
+    "Close workbench window"
+  );
   assert.equal(
     runtime.t("workbenchWindowChrome.enterFullscreen"),
     "Expand window"

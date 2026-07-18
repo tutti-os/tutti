@@ -64,6 +64,22 @@ The consuming host should own:
 This keeps the shared package thin and stable while still reducing repeated UI
 work for hosts.
 
+## Auto-Hide Chrome
+
+`workbench-surface` owns the mechanics for optional top-chrome and Dock
+auto-hide behavior. A host may enable the mode and supply localized handle
+labels; the surface then keeps independent reveal state for the top chrome and
+Dock, leaves a keyboard-accessible edge handle while either region is hidden,
+and retracts an expanded region after pointer and keyboard focus leave it.
+
+The consuming host remains responsible for deciding when the mode is enabled
+and for changing its layout constraints. Tutti's desktop host exposes it as an
+experimental preference and removes the normal top/Dock safe areas while it is
+enabled so maximized workbench windows can use the complete surface. On macOS,
+the desktop host must keep fullscreen workbench controls visually separated
+from the native application traffic lights and explain the two control scopes
+to the user.
+
 ## Core Model
 
 The dock should be modeled as a host-level collection of dock entries rather

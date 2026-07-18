@@ -25,3 +25,26 @@ test("workspace workbench safe area follows dock placement", () => {
     }
   });
 });
+
+test("auto-hide chrome gives workbench windows the complete surface", () => {
+  const expected = {
+    minWidth: 280,
+    minHeight: 160,
+    surfacePadding: 0,
+    safeArea: {
+      top: 0,
+      right: 0,
+      bottom: 0,
+      left: 0
+    }
+  };
+
+  assert.deepEqual(
+    resolveWorkspaceWorkbenchLayoutConstraints("bottom", true),
+    expected
+  );
+  assert.deepEqual(
+    resolveWorkspaceWorkbenchLayoutConstraints("left", true),
+    expected
+  );
+});

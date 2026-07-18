@@ -20,8 +20,8 @@ export const tuttiI18nModule = createScopedLocaleObjectsI18nModuleManifest({
 
 const workbenchHostEn = {
   actions: {
-    close: "Close",
-    minimize: "Minimize"
+    close: "Close workbench window",
+    minimize: "Minimize workbench window"
   },
   closeWindow: "Close {{title}}",
   dockContextMenu: {
@@ -50,8 +50,8 @@ const workbenchHostEn = {
 
 const workbenchHostZhCN = {
   actions: {
-    close: "关闭",
-    minimize: "最小化"
+    close: "关闭工作台窗口",
+    minimize: "最小化工作台窗口"
   },
   closeWindow: "关闭 {{title}}",
   dockContextMenu: {
