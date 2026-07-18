@@ -59,6 +59,18 @@ export interface WorkspaceCustomWallpaperSnapshot {
   thumbnailUrl: string | null;
 }
 
+export interface WorkspaceDockRetentionService {
+  dispose(): void;
+  getRevision(): number;
+  readRetainedByEntryId(workspaceId: string): Readonly<Record<string, boolean>>;
+  setRetained(
+    workspaceId: string,
+    entryId: string,
+    retained: boolean
+  ): Promise<void>;
+  subscribe(listener: () => void): () => void;
+}
+
 export interface WorkspaceOnboardingAutoOpenDiagnostic {
   details?: Record<string, unknown>;
   event: string;
@@ -147,6 +159,7 @@ export interface WorkspaceWorkbenchHostSessionBinding {
 
 export interface IWorkspaceWorkbenchHostService {
   readonly _serviceBrand: undefined;
+  readonly dockRetention: WorkspaceDockRetentionService;
 
   approveWindowClose(): Promise<void>;
   openHostSession(workspaceId: string): WorkspaceWorkbenchHostSessionBinding;

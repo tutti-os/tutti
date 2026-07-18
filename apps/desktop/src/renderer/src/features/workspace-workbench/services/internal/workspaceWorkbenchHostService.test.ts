@@ -92,10 +92,26 @@ test("workspace workbench host delegates workspace lifecycle to the DI coordinat
   assert.match(workspaceWorkbenchSource, /key=\{hostSession\.bindingId\}/);
 });
 
-test("workspace workbench host releases owned wallpaper URLs on disposal", () => {
+test("workspace workbench host releases owned resources on disposal", () => {
   assert.match(
     workspaceWorkbenchHostServiceSource,
-    /dispose\(\): void \{\s+this\.wallpaperListeners\.clear\(\);\s+this\.clearCustomWallpaperUrls\(\);\s+\}/
+    /dispose\(\): void \{\s+this\.dockRetention\.dispose\(\);\s+this\.wallpaperListeners\.clear\(\);\s+this\.clearCustomWallpaperUrls\(\);\s+\}/
+  );
+});
+
+test("workspace dock retention is persisted through workbench product metadata", () => {
+  assert.match(
+    readFileSync(
+      new URL("./workspaceDockRetentionController.ts", import.meta.url),
+      "utf8"
+    ),
+    /saveProductMetadata\(\s+workspaceId,\s+writeWorkspaceDockRetentionToSnapshot\(snapshot, retainedByEntryId\),\s+"dock"\s+\)/
+  );
+  assert.match(workspaceWorkbenchShellHookSource, /dockRetention\.subscribe/);
+  assert.match(workspaceWorkbenchSource, /runtime\.setDockEntryRetained/);
+  assert.doesNotMatch(
+    workspaceWorkbenchSource,
+    /temporaryDockRetentionByEntryId/
   );
 });
 

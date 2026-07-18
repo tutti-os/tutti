@@ -120,8 +120,7 @@ import {
   openWorkspaceWorkbenchSameTypeWindowShortcut
 } from "../services/workspaceWorkbenchShortcutActions.ts";
 
-const temporaryWorkspaceAppDockRetentionActionPrefix =
-  "temporary-workspace-app-dock-retention:";
+const workspaceDockRetentionActionPrefix = "workspace-dock-retention:";
 
 interface WorkspaceWorkbenchProps {
   enableWindowCloseGuard: boolean;
@@ -284,8 +283,6 @@ function ReadyWorkspaceWorkbenchWithSession({
   const hostInput = runtime.hostInput;
   const [workbenchHost, setWorkbenchHost] =
     useState<WorkbenchHostHandle | null>(null);
-  const [temporaryDockRetentionByEntryId, setTemporaryDockRetentionByEntryId] =
-    useState<Record<string, boolean>>({});
   const [launchpadOpen, setLaunchpadOpen] = useState(false);
   const [launchpadOpenTrigger, setLaunchpadOpenTrigger] =
     useState<WorkspaceLaunchpadOpenTrigger>("dock");
@@ -337,31 +334,21 @@ function ReadyWorkspaceWorkbenchWithSession({
         setLaunchpadOpen(true);
         return;
       }
-      if (
-        request.actionId.startsWith(
-          temporaryWorkspaceAppDockRetentionActionPrefix
-        )
-      ) {
-        const entry = findTemporaryDockRetentionEntry({
+      if (request.actionId.startsWith(workspaceDockRetentionActionPrefix)) {
+        const entry = findWorkspaceDockRetentionEntry({
           contributions: hostInput.contributions,
           dockEntries: hostInput.dockEntries,
           entryId: request.entryId
         });
-        setTemporaryDockRetentionByEntryId((current) => {
-          const retained =
-            current[request.entryId] ??
-            (entry
-              ? resolveTemporaryDockRetentionDefault({
-                  appCenterService,
-                  entry
-                })
-              : false);
-          return {
-            ...current,
-            [request.entryId]: !retained
-          };
-        });
-        return;
+        const retained =
+          runtime.dockRetentionByEntryId[request.entryId] ??
+          (entry
+            ? resolveWorkspaceDockRetentionDefault({
+                appCenterService,
+                entry
+              })
+            : false);
+        return runtime.setDockEntryRetained(request.entryId, !retained);
       }
       return hostInput.onDockEntryAction?.(request);
     },
@@ -369,30 +356,32 @@ function ReadyWorkspaceWorkbenchWithSession({
       appCenterService,
       hostInput.contributions,
       hostInput.dockEntries,
-      hostInput.onDockEntryAction
+      hostInput.onDockEntryAction,
+      runtime.dockRetentionByEntryId,
+      runtime.setDockEntryRetained
     ]
   );
   const contributions = useMemo(
     () =>
       hostInput.contributions?.map((contribution) =>
-        resolveTemporaryDockRetentionContribution({
+        resolveWorkspaceDockRetentionContribution({
           appCenterService,
           contribution,
-          retainedByEntryId: temporaryDockRetentionByEntryId
+          retainedByEntryId: runtime.dockRetentionByEntryId
         })
       ),
-    [appCenterService, hostInput.contributions, temporaryDockRetentionByEntryId]
+    [appCenterService, hostInput.contributions, runtime.dockRetentionByEntryId]
   );
   const dockEntries = useMemo(
     () =>
       hostInput.dockEntries?.map((entry) =>
-        resolveTemporaryDockRetentionEntry({
+        resolveWorkspaceDockRetentionEntry({
           appCenterService,
           entry,
-          retainedByEntryId: temporaryDockRetentionByEntryId
+          retainedByEntryId: runtime.dockRetentionByEntryId
         })
       ),
-    [appCenterService, hostInput.dockEntries, temporaryDockRetentionByEntryId]
+    [appCenterService, hostInput.dockEntries, runtime.dockRetentionByEntryId]
   );
   const onDockEntryClick = useCallback(
     (request: Parameters<NonNullable<typeof hostInput.onDockEntryClick>>[0]) =>
@@ -896,7 +885,7 @@ function ReadyWorkspaceWorkbenchWithSession({
   );
 }
 
-function resolveTemporaryDockRetentionEntry({
+function resolveWorkspaceDockRetentionEntry({
   appCenterService,
   entry,
   retainedByEntryId
@@ -913,18 +902,18 @@ function resolveTemporaryDockRetentionEntry({
   }
   const retained =
     retainedByEntryId[entry.id] ??
-    resolveTemporaryDockRetentionDefault({ appCenterService, entry });
+    resolveWorkspaceDockRetentionDefault({ appCenterService, entry });
   return {
     ...entry,
     dockRetention: {
-      actionId: `${temporaryWorkspaceAppDockRetentionActionPrefix}${encodeURIComponent(entry.id)}`,
+      actionId: `${workspaceDockRetentionActionPrefix}${encodeURIComponent(entry.id)}`,
       retained
     },
     visibility: retained ? "always" : "when-open"
   };
 }
 
-function resolveTemporaryDockRetentionContribution({
+function resolveWorkspaceDockRetentionContribution({
   appCenterService,
   contribution,
   retainedByEntryId
@@ -939,7 +928,7 @@ function resolveTemporaryDockRetentionContribution({
   return {
     ...contribution,
     dockEntries: contribution.dockEntries.map((entry) =>
-      resolveTemporaryDockRetentionEntry({
+      resolveWorkspaceDockRetentionEntry({
         appCenterService,
         entry,
         retainedByEntryId
@@ -948,7 +937,7 @@ function resolveTemporaryDockRetentionContribution({
   };
 }
 
-function resolveTemporaryDockRetentionDefault({
+function resolveWorkspaceDockRetentionDefault({
   appCenterService,
   entry
 }: {
@@ -960,7 +949,7 @@ function resolveTemporaryDockRetentionDefault({
   return app?.installed ?? (entry.visibility ?? "always") === "always";
 }
 
-function findTemporaryDockRetentionEntry({
+function findWorkspaceDockRetentionEntry({
   contributions,
   dockEntries,
   entryId

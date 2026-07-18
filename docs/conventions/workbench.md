@@ -77,6 +77,11 @@ Rules:
   render data before persistence
 - adapter-specific durable state should remain behind generic contract fields
   unless the adapter detail is part of the shared snapshot contract
+- desktop-owned workspace Dock retention is product metadata in the workspace
+  Workbench snapshot. Preserve explicit `false` values as user choices instead
+  of re-deriving them from app installation state after reload, and merge this
+  metadata through the repository's product-owner path so ordinary host saves
+  cannot overwrite it
 
 Breaking migration rule:
 
