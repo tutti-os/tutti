@@ -347,15 +347,20 @@ export function useConversationActionGroups({
 
   const groups = useMemo(() => {
     const clipboardUnavailable =
-      typeof agentHostApi?.clipboard?.writeText !== "function" ||
-      !agentActivityRuntime;
+      typeof agentHostApi?.clipboard?.writeText !== "function";
     const copyItem = (
       action: AgentGUIConversationCopyAction,
       icon: ReactNode,
       label: string,
       disabled = false
     ): ConversationActionEntry => ({
-      disabled: clipboardUnavailable || disabled,
+      // copy-reference builds the mention link synchronously from the
+      // conversation identity; only copy-markdown reads history through the
+      // runtime, so only it is gated on runtime presence.
+      disabled:
+        clipboardUnavailable ||
+        (action === "copy-markdown" && !agentActivityRuntime) ||
+        disabled,
       icon,
       id: action,
       label,
