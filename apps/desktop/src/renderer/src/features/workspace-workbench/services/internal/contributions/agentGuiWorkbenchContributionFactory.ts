@@ -33,7 +33,7 @@ type AgentGuiWorkbenchContributionContext = Pick<
 export const agentGuiWorkbenchContributionFactory: DesktopWorkbenchContributionFactory<AgentGuiWorkbenchContributionContext> =
   {
     id: "workspace-agent-gui",
-    order: 25,
+    order: -10,
     create(context) {
       return createWorkspaceAgentGuiContribution({
         agentProviderStatusService: context.agentProviderStatusService,

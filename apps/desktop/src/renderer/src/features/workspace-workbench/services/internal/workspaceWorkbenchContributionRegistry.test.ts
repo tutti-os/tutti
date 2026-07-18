@@ -25,7 +25,7 @@ test("Tutti workbench product profile keeps its product, scope, factory ids, and
     {
       exportName: "filesWorkbenchContributionFactory",
       id: "workspace-files",
-      order: 10
+      order: -5
     },
     {
       exportName: "filePreviewWorkbenchContributionFactory",
@@ -45,7 +45,7 @@ test("Tutti workbench product profile keeps its product, scope, factory ids, and
     {
       exportName: "agentGuiWorkbenchContributionFactory",
       id: "workspace-agent-gui",
-      order: 25
+      order: -10
     },
     {
       exportName: "issueManagerWorkbenchContributionFactory",
@@ -95,12 +95,12 @@ test("Tutti workbench product profile keeps its product, scope, factory ids, and
   assert.deepEqual(
     registry.contributions.map(({ id }) => id),
     [
-      "workspace-issue-manager",
+      "workspace-agent-gui",
       "workspace-files",
+      "workspace-issue-manager",
       "workspace-file-preview",
       "workspace-app-center",
       "workspace-browser",
-      "workspace-agent-gui",
       "workspace-terminal"
     ]
   );
