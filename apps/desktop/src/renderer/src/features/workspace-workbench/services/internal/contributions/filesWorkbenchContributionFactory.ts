@@ -20,7 +20,7 @@ type FilesWorkbenchContributionContext = Pick<
 export const filesWorkbenchContributionFactory: DesktopWorkbenchContributionFactory<FilesWorkbenchContributionContext> =
   {
     id: "workspace-files",
-    order: 10,
+    order: -5,
     create(context) {
       const filesLabel = context.i18n.t(
         workspaceWorkbenchDesktopI18nKeys.nodes.files
