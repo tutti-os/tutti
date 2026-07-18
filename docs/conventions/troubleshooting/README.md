@@ -59,6 +59,7 @@ React rendering, Workbench state, external stores, input composition, and UI per
 - [Inline custom-header menu is clipped to the Workbench title bar](./workbench-renderer.md#inline-custom-header-menu-is-clipped-to-the-workbench-title-bar)
 - [Dialog action reacts to Enter but ignores pointer clicks](./workbench-renderer.md#dialog-action-reacts-to-enter-but-ignores-pointer-clicks)
 - [Daemon validation error appears as untranslated developer text](./workbench-renderer.md#daemon-validation-error-appears-as-untranslated-developer-text)
+- [Mask-backed icon renders as a solid color block](./workbench-renderer.md#mask-backed-icon-renders-as-a-solid-color-block)
 
 ## [Workspace Apps And Files](./workspace-apps-files.md)
 

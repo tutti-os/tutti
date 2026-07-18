@@ -6571,10 +6571,12 @@ button.agent-gui-node__conversation-section-toggle:hover
   height: 14px;
   color: var(--text-tertiary);
   background-color: currentColor;
-  mask: var(--agent-gui-conversation-provider-icon-url) center / contain
-    no-repeat;
-  -webkit-mask: var(--agent-gui-conversation-provider-icon-url) center / contain
-    no-repeat;
+  mask-position: center;
+  mask-repeat: no-repeat;
+  mask-size: contain;
+  -webkit-mask-position: center;
+  -webkit-mask-repeat: no-repeat;
+  -webkit-mask-size: contain;
 }
 
 .agent-gui-node__conversation-title-mention-icon {
