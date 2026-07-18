@@ -73,7 +73,7 @@ func (s *SQLiteStore) agentReadStore() *agentstore.Store {
 // or database) the store is currently running on.
 type userProjectPathsQuerier struct{}
 
-func (userProjectPathsQuerier) ProjectPaths(ctx context.Context, q agentstore.Querier) ([]string, error) {
+func (userProjectPathsQuerier) ProjectPaths(ctx context.Context, q agentstore.Querier, _ string) ([]string, error) {
 	rows, err := q.QueryContext(ctx, `
 SELECT path
 FROM user_projects

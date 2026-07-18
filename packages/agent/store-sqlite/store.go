@@ -21,7 +21,7 @@ type Querier interface {
 // sessions into rail sections. Hosts typically back this with their own
 // project table in the same database.
 type ProjectPathsQuerier interface {
-	ProjectPaths(ctx context.Context, q Querier) ([]string, error)
+	ProjectPaths(ctx context.Context, q Querier, workspaceID string) ([]string, error)
 }
 
 // Options injects the host concerns the store was decoupled from. Every
@@ -33,8 +33,8 @@ type Options struct {
 	// rows for it (and before generated-file listings). It must return an
 	// error for unknown workspaces; nil disables validation.
 	WorkspaceExists func(ctx context.Context, workspaceID string) error
-	// ProjectPaths supplies project roots for rail section classification;
-	// nil classifies every session into the conversations section.
+	// ProjectPaths supplies workspace-scoped project roots for rail section
+	// classification; nil classifies every session into the conversations section.
 	ProjectPaths ProjectPathsQuerier
 	// NormalizeTarget canonicalizes agent targets on write and on read;
 	// nil stores and returns targets verbatim.

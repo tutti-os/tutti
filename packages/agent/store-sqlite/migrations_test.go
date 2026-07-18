@@ -632,12 +632,15 @@ INSERT INTO workspace_agent_sessions (workspace_id, agent_session_id, provider, 
 VALUES
   ('ws-rail-backfill', 'session-project', 'codex', ?, '{}', 1, 1),
   ('ws-rail-backfill', 'session-no-project', 'codex', ?, '{"externalImportNoProject":true}', 1, 1),
-  ('ws-rail-backfill', 'session-conversations', 'codex', ?, '{}', 1, 1);
-`, repoSubdir, repoSubdir, otherDir); err != nil {
+  ('ws-rail-backfill', 'session-conversations', 'codex', ?, '{}', 1, 1),
+  ('ws-without-project', 'session-same-cwd', 'codex', ?, '{}', 1, 1);
+`, repoSubdir, repoSubdir, otherDir, repoSubdir); err != nil {
 		t.Fatalf("insert pre-rail sessions: %v", err)
 	}
 
-	store := New(db, testOptions(&staticProjectPaths{paths: []string{repo}}))
+	store := New(db, testOptions(&staticProjectPaths{pathsByWorkspace: map[string][]string{
+		"ws-rail-backfill": {repo},
+	}}))
 	ctx := context.Background()
 	if err := store.Migrate(ctx); err != nil {
 		t.Fatalf("Migrate() error = %v", err)
@@ -660,5 +663,15 @@ WHERE workspace_id = 'ws-rail-backfill' AND agent_session_id = ?
 		if key != wantKey {
 			t.Fatalf("rail key for %s = %q, want %q", sessionID, key, wantKey)
 		}
+	}
+	var otherWorkspaceKey string
+	if err := db.QueryRowContext(ctx, `
+SELECT rail_section_key FROM workspace_agent_sessions
+WHERE workspace_id = 'ws-without-project' AND agent_session_id = 'session-same-cwd'
+`).Scan(&otherWorkspaceKey); err != nil {
+		t.Fatalf("read other workspace rail key: %v", err)
+	}
+	if otherWorkspaceKey != RailSectionKeyConversations {
+		t.Fatalf("other workspace rail key = %q, want conversations", otherWorkspaceKey)
 	}
 }

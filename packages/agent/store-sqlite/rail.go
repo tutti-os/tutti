@@ -35,10 +35,11 @@ type existingAgentSessionRailSection struct {
 func (s *Store) classifyAgentSessionRailSectionTx(
 	ctx context.Context,
 	tx *sql.Tx,
+	workspaceID string,
 	cwd string,
 	runtimeContext map[string]any,
 ) (RailSection, error) {
-	projects, err := s.listRailProjectPaths(ctx, tx)
+	projects, err := s.listRailProjectPaths(ctx, tx, workspaceID)
 	if err != nil {
 		return RailSection{}, err
 	}
@@ -77,7 +78,7 @@ func (s *Store) resolveAgentSessionRailSectionTx(
 	if hasImportRail {
 		return importRail, nil
 	}
-	return s.classifyAgentSessionRailSectionTx(ctx, tx, finalCWD, runtimeContext)
+	return s.classifyAgentSessionRailSectionTx(ctx, tx, workspaceID, finalCWD, runtimeContext)
 }
 
 func importedAgentSessionRailSection(
@@ -172,11 +173,11 @@ func ClassifyRailSection(
 	return conversationsAgentSessionRailSection()
 }
 
-func (s *Store) listRailProjectPaths(ctx context.Context, q Querier) ([]string, error) {
+func (s *Store) listRailProjectPaths(ctx context.Context, q Querier, workspaceID string) ([]string, error) {
 	if s.opts.ProjectPaths == nil {
 		return nil, nil
 	}
-	return s.opts.ProjectPaths.ProjectPaths(ctx, q)
+	return s.opts.ProjectPaths.ProjectPaths(ctx, q, strings.TrimSpace(workspaceID))
 }
 
 func normalizeRailProjectPaths(paths []string) []string {

@@ -58,12 +58,6 @@ CREATE INDEX IF NOT EXISTS idx_workspace_agent_sessions_rail_section_page
 }
 
 func (s *Store) backfillAgentSessionRailSections(ctx context.Context) error {
-	projects, err := s.listRailProjectPaths(ctx, s.db)
-	if err != nil {
-		return err
-	}
-	projects = normalizeRailProjectPaths(projects)
-
 	rows, err := s.db.QueryContext(ctx, `
 SELECT workspace_id, agent_session_id, cwd, runtime_context_json
 FROM workspace_agent_sessions
@@ -74,12 +68,13 @@ WHERE rail_section_key = ?
 	}
 	defer rows.Close()
 
-	type railBackfill struct {
+	type railCandidate struct {
 		WorkspaceID    string
 		AgentSessionID string
-		Section        RailSection
+		CWD            string
+		RuntimeContext map[string]any
 	}
-	backfills := make([]railBackfill, 0)
+	candidates := make([]railCandidate, 0)
 	for rows.Next() {
 		var workspaceID string
 		var agentSessionID string
@@ -92,14 +87,11 @@ WHERE rail_section_key = ?
 		if err != nil {
 			return fmt.Errorf("decode workspace agent session runtime context for rail section backfill: %w", err)
 		}
-		section := ClassifyRailSection(cwd, runtimeContext, projects)
-		if section.Kind != RailSectionKindProject {
-			continue
-		}
-		backfills = append(backfills, railBackfill{
+		candidates = append(candidates, railCandidate{
 			WorkspaceID:    workspaceID,
 			AgentSessionID: agentSessionID,
-			Section:        section,
+			CWD:            cwd,
+			RuntimeContext: runtimeContext,
 		})
 	}
 	if err := rows.Err(); err != nil {
@@ -107,6 +99,33 @@ WHERE rail_section_key = ?
 	}
 	if err := rows.Close(); err != nil {
 		return fmt.Errorf("close workspace agent sessions rail section backfill rows: %w", err)
+	}
+
+	type railBackfill struct {
+		WorkspaceID    string
+		AgentSessionID string
+		Section        RailSection
+	}
+	projectsByWorkspace := make(map[string][]string)
+	backfills := make([]railBackfill, 0, len(candidates))
+	for _, candidate := range candidates {
+		projects, found := projectsByWorkspace[candidate.WorkspaceID]
+		if !found {
+			projects, err = s.listRailProjectPaths(ctx, s.db, candidate.WorkspaceID)
+			if err != nil {
+				return err
+			}
+			projects = normalizeRailProjectPaths(projects)
+			projectsByWorkspace[candidate.WorkspaceID] = projects
+		}
+		section := ClassifyRailSection(candidate.CWD, candidate.RuntimeContext, projects)
+		if section.Kind == RailSectionKindProject {
+			backfills = append(backfills, railBackfill{
+				WorkspaceID:    candidate.WorkspaceID,
+				AgentSessionID: candidate.AgentSessionID,
+				Section:        section,
+			})
+		}
 	}
 
 	for _, backfill := range backfills {

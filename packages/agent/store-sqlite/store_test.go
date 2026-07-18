@@ -20,10 +20,14 @@ const (
 )
 
 type staticProjectPaths struct {
-	paths []string
+	paths            []string
+	pathsByWorkspace map[string][]string
 }
 
-func (s *staticProjectPaths) ProjectPaths(context.Context, Querier) ([]string, error) {
+func (s *staticProjectPaths) ProjectPaths(_ context.Context, _ Querier, workspaceID string) ([]string, error) {
+	if paths, found := s.pathsByWorkspace[workspaceID]; found {
+		return append([]string(nil), paths...), nil
+	}
 	return append([]string(nil), s.paths...), nil
 }
 
@@ -857,6 +861,44 @@ func TestStoreClassifiesRailSectionsWithInjectedProjectPaths(t *testing.T) {
 	}
 	if len(conversationsPage.Sessions) != 1 || conversationsPage.Sessions[0].ID != "session-other" || conversationsPage.Sessions[0].RailSectionKey != RailSectionKeyConversations {
 		t.Fatalf("conversations page = %#v, want session-other", conversationsPage.Sessions)
+	}
+}
+
+func TestStoreScopesInjectedProjectPathsByWorkspace(t *testing.T) {
+	t.Parallel()
+
+	repo := filepath.Join(t.TempDir(), "repo")
+	if err := mkdirAll(repo); err != nil {
+		t.Fatalf("mkdir repo error = %v", err)
+	}
+	projects := &staticProjectPaths{pathsByWorkspace: map[string][]string{
+		"ws-with-project": {repo},
+	}}
+	store := openTestStore(t, testOptions(projects))
+	ctx := context.Background()
+
+	for _, workspaceID := range []string{"ws-with-project", "ws-without-project"} {
+		if _, err := store.ReportSessionState(ctx, SessionStateReport{
+			WorkspaceID: workspaceID, AgentSessionID: "session-1", Origin: "runtime",
+			Provider: "codex", Cwd: repo, Status: "completed", OccurredAtUnixMS: 100,
+		}); err != nil {
+			t.Fatalf("ReportSessionState(%s) error = %v", workspaceID, err)
+		}
+	}
+
+	withProject, found, err := store.GetSession(ctx, "ws-with-project", "session-1")
+	if err != nil || !found {
+		t.Fatalf("GetSession(ws-with-project) found=%v error=%v", found, err)
+	}
+	if want := RailSectionKeyForProject(repo); withProject.RailSectionKey != want {
+		t.Fatalf("ws-with-project rail key = %q, want %q", withProject.RailSectionKey, want)
+	}
+	withoutProject, found, err := store.GetSession(ctx, "ws-without-project", "session-1")
+	if err != nil || !found {
+		t.Fatalf("GetSession(ws-without-project) found=%v error=%v", found, err)
+	}
+	if withoutProject.RailSectionKey != RailSectionKeyConversations {
+		t.Fatalf("ws-without-project rail key = %q, want conversations", withoutProject.RailSectionKey)
 	}
 }
 
