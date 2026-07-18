@@ -9442,7 +9442,7 @@ html[data-theme="light"] [data-message-center-item-id].agent-gui-edge-glow {
   width: 32px;
   height: 32px;
   place-items: center;
-  overflow: hidden;
+  overflow: visible;
   border: 2px solid transparent;
   border-radius: 8px;
   background: transparent;
@@ -9499,7 +9499,7 @@ html[data-theme="light"] [data-message-center-item-id].agent-gui-edge-glow {
 .agent-gui-node__provider-rail-avatar-image {
   width: 28px;
   height: 28px;
-  border-radius: 0;
+  border-radius: 6px;
   object-fit: contain;
 }
 
