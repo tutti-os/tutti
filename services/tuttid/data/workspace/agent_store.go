@@ -24,7 +24,7 @@ var _ AgentActivityStore = (*SQLiteStore)(nil)
 const legacyIDLocalCodex = "local-codex"
 const legacyIDLocalClaudeCode = "local-claude-code"
 
-func newAgentStore(db *sql.DB) *agentstore.Store {
+func newAgentStore(db *sql.DB, participant agentstore.TransactionParticipant) *agentstore.Store {
 	return agentstore.New(db, agentstore.Options{
 		WorkspaceExists: func(ctx context.Context, workspaceID string) error {
 			return ensureWorkspaceExistsOn(ctx, db, workspaceID)
@@ -38,6 +38,7 @@ func newAgentStore(db *sql.DB) *agentstore.Store {
 			legacyIDLocalClaudeCode: agenttargetbiz.IDLocalClaudeCode,
 		},
 		TargetIDBackfillByProvider: defaultTargetIDBackfillByProvider(),
+		TransactionParticipant:     participant,
 	})
 }
 
@@ -337,6 +338,46 @@ func (s *SQLiteStore) AcceptSubmitClaim(ctx context.Context, workspaceID, agentS
 
 func (s *SQLiteStore) DeleteSubmitClaim(ctx context.Context, workspaceID, agentSessionID, clientSubmitID string) (bool, error) {
 	return s.agentStore().DeleteSubmitClaim(ctx, workspaceID, agentSessionID, clientSubmitID)
+}
+
+func (s *SQLiteStore) CreateEventSubscription(ctx context.Context, input agentstore.CreateEventSubscriptionInput) (agentstore.EventSubscription, bool, error) {
+	return s.agentStore().CreateEventSubscription(ctx, input)
+}
+
+func (s *SQLiteStore) GetEventSubscription(ctx context.Context, workspaceID, subscriptionID string) (agentstore.EventSubscription, bool, error) {
+	return s.agentReadStore().GetEventSubscription(ctx, workspaceID, subscriptionID)
+}
+
+func (s *SQLiteStore) ListEventSubscriptions(ctx context.Context, workspaceID, subscriberAgentSessionID string) ([]agentstore.EventSubscription, error) {
+	return s.agentReadStore().ListEventSubscriptions(ctx, workspaceID, subscriberAgentSessionID)
+}
+
+func (s *SQLiteStore) CancelEventSubscription(ctx context.Context, workspaceID, subscriptionID, subscriberAgentSessionID string, now int64) (agentstore.EventSubscription, bool, error) {
+	return s.agentStore().CancelEventSubscription(ctx, workspaceID, subscriptionID, subscriberAgentSessionID, now)
+}
+
+func (s *SQLiteStore) GetEventDeliveryBySubscription(ctx context.Context, workspaceID, subscriptionID string) (agentstore.EventDelivery, bool, error) {
+	return s.agentReadStore().GetEventDeliveryBySubscription(ctx, workspaceID, subscriptionID)
+}
+
+func (s *SQLiteStore) ListClaimableEventDeliveries(ctx context.Context, now int64, limit int) ([]agentstore.EventDelivery, error) {
+	return s.agentReadStore().ListClaimableEventDeliveries(ctx, now, limit)
+}
+
+func (s *SQLiteStore) ClaimEventDelivery(ctx context.Context, input agentstore.ClaimEventDeliveryInput) (agentstore.EventDelivery, bool, error) {
+	return s.agentStore().ClaimEventDelivery(ctx, input)
+}
+
+func (s *SQLiteStore) CompleteEventDelivery(ctx context.Context, deliveryID, leaseOwner string, now int64) (agentstore.EventDelivery, bool, error) {
+	return s.agentStore().CompleteEventDelivery(ctx, deliveryID, leaseOwner, now)
+}
+
+func (s *SQLiteStore) ReleaseEventDelivery(ctx context.Context, input agentstore.ReleaseEventDeliveryInput) (agentstore.EventDelivery, bool, error) {
+	return s.agentStore().ReleaseEventDelivery(ctx, input)
+}
+
+func (s *SQLiteStore) RequeueLeasedEventDeliveriesOnStartup(ctx context.Context, now int64) (int64, error) {
+	return s.agentStore().RequeueLeasedEventDeliveriesOnStartup(ctx, now)
 }
 
 func (s *SQLiteStore) GetRuntimeOperation(ctx context.Context, workspaceID string, operationID string) (agentactivitybiz.RuntimeOperation, bool, error) {

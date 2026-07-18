@@ -19,6 +19,7 @@ Stable change rules live in [Conventions](../conventions/README.md).
 - [Agent Account And Commerce](./agent-account-and-commerce.md)
 - [Agent Activity Packages](./agent-activity-packages.md)
 - [Agent Extensions](./agent-extensions.md)
+- [Agent Event Subscriptions](./agent-event-subscriptions.md)
 - [Agent Reference Sources](./agent-reference-sources.md)
 - [Agent Runtime Preparation](./agent-runtime-preparation.md)
 - [Agent GUI Node](./agent-gui-node.md)

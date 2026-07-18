@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 
+	agenthost "github.com/tutti-os/tutti/packages/agent/host"
 	agentactivitybiz "github.com/tutti-os/tutti/services/tuttid/biz/agentactivity"
 	"github.com/tutti-os/tutti/services/tuttid/biz/agentgui"
 	agenttargetbiz "github.com/tutti-os/tutti/services/tuttid/biz/agenttarget"
@@ -31,6 +32,9 @@ type AgentSessions interface {
 	Respond(context.Context, agentservice.RespondInput) (agentservice.RespondResult, error)
 	SendInput(context.Context, string, string, agentservice.SendInput) (agentservice.SendInputResult, error)
 	Wait(context.Context, agentservice.WaitInput) (agentservice.WaitResult, error)
+	CreateEventSubscription(context.Context, agenthost.CreateEventSubscriptionInput) (agentservice.EventSubscription, error)
+	ListEventSubscriptions(context.Context, string, string) ([]agentservice.EventSubscription, error)
+	CancelEventSubscription(context.Context, string, string, string) (agentservice.EventSubscription, error)
 }
 
 type AgentGUILaunchPublisher interface {
@@ -107,6 +111,10 @@ func (p Provider) Commands() []cliservice.Command {
 		p.newSessionSummaryCommand(),
 		p.newTurnResourcesCommand(),
 		p.newActivePeersCommand(),
+		p.newEventTypesCommand(),
+		p.newEventSubscriptionCreateCommand(),
+		p.newEventSubscriptionsCommand(),
+		p.newEventSubscriptionCancelCommand(),
 	}
 }
 

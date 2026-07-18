@@ -389,6 +389,12 @@ func buildDaemonAPI(ctx context.Context, store workspacedata.CatalogStore, analy
 	agentSessionService.SubmitClaimStore = agentActivityRepo
 	agentSessionService.RuntimeOperationEventPublisher = agentActivityProjection
 	agentSessionService.RuntimeOperationOwner = uuid.NewString()
+	eventSubscriptionStore, ok := agentActivityRepo.(agenthost.EventSubscriptionStore)
+	if !ok {
+		return tuttiapi.DaemonAPI{}, nil, nil, nil, fmt.Errorf("agent event subscription store is unavailable")
+	}
+	agentSessionService.EventSubscriptionStore = eventSubscriptionStore
+	agentSessionService.EventDeliveryOwner = uuid.NewString()
 	agentSessionService.StaleTurnSettler = agentActivityProjection
 	agentSessionService.GoalOperationOwner = uuid.NewString()
 	goalReconcileInbox, ok := agentActivityRepo.(interface {

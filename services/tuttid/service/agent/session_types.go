@@ -38,6 +38,8 @@ type Service struct {
 	GoalReconcileInboxStore        GoalReconcileInboxStore
 	SubmitClaimStore               SubmitClaimStore
 	RuntimeOperationEventPublisher RuntimeOperationEventPublisher
+	EventSubscriptionStore         agenthost.EventSubscriptionStore
+	EventDeliveryOwner             string
 	RuntimeOperationClock          func() time.Time
 	RuntimeOperationOwner          string
 	StaleTurnSettler               agenthost.StaleTurnSettler
