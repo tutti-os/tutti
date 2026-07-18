@@ -100,8 +100,6 @@ export function useTuttiModePlanPanels(input: {
   resolvePlanIssueTaskSession:
     | ((taskId: string) => Promise<{ agentSessionId: string } | null>)
     | null;
-  /** Non-destructive re-read of panels and plan issue; keeps current state. */
-  refetch(): void;
   retry(): void;
   submittingCheckpointId: string | null;
 } {
@@ -124,10 +122,7 @@ export function useTuttiModePlanPanels(input: {
       : "";
   const activeScopeRef = useRef("");
   const assignmentRequestsRef = useRef(new Set<string>());
-  const refetchRef = useRef<{
-    refresh: () => void;
-    refreshPlanIssue: () => void;
-  } | null>(null);
+  const planIssueRefreshRef = useRef<(() => void) | null>(null);
 
   const assignmentSource = runtime?.assignmentOptions ?? null;
 
@@ -326,10 +321,7 @@ export function useTuttiModePlanPanels(input: {
         });
     };
     refreshPlanIssue();
-    refetchRef.current = {
-      refresh: () => void refresh(),
-      refreshPlanIssue
-    };
+    planIssueRefreshRef.current = refreshPlanIssue;
     const unsubscribe =
       enabled && runtime && workspaceId && sourceSessionId
         ? runtime.subscribe(workspaceId, (update) => {
@@ -355,7 +347,7 @@ export function useTuttiModePlanPanels(input: {
           })
         : undefined;
     return () => {
-      refetchRef.current = null;
+      planIssueRefreshRef.current = null;
       unsubscribe?.();
       unsubscribePlanIssue?.();
       if (activeScopeRef.current === scopeKey) {
@@ -413,7 +405,7 @@ export function useTuttiModePlanPanels(input: {
         // create_issue operation, so this read observes the materialized
         // Issue immediately — the accepted review panel hands over to the
         // issue panel in place without waiting for an event round-trip.
-        refetchRef.current?.refreshPlanIssue();
+        planIssueRefreshRef.current?.();
       } catch (error) {
         if (activeScopeRef.current === capturedScope) {
           setState((current) => ({ ...current, error }));
@@ -537,11 +529,6 @@ export function useTuttiModePlanPanels(input: {
     () => setRetrySequence((current) => current + 1),
     []
   );
-  const refetch = useCallback(() => {
-    refetchRef.current?.refresh();
-    refetchRef.current?.refreshPlanIssue();
-  }, []);
-
   return useMemo(
     () => ({
       assignmentCatalog,
@@ -554,7 +541,6 @@ export function useTuttiModePlanPanels(input: {
       decidePlanIssueTask,
       cancelPlanIssueExecution,
       resolvePlanIssueTaskSession,
-      refetch,
       retry,
       submittingCheckpointId: visibleState.submittingCheckpointId
     }),
@@ -564,7 +550,6 @@ export function useTuttiModePlanPanels(input: {
       decide,
       decidePlanIssueTask,
       panels,
-      refetch,
       resolvePlanIssueTaskSession,
       retry,
       visiblePlanIssue,
