@@ -91,8 +91,6 @@ interface Props {
   setIsSelectedProjectMissing: Dispatch<SetStateAction<boolean>>;
   setIsPaletteOpen: Dispatch<SetStateAction<boolean>>;
   setHighlightedIndex: Dispatch<SetStateAction<number>>;
-  isHandoffIconPlaying: boolean;
-  setIsHandoffIconPlaying: Dispatch<SetStateAction<boolean>>;
   isGoalModeActive: boolean;
   isPromptTipOverflowing: boolean;
 }
@@ -583,8 +581,6 @@ export function AgentComposerView(input: Props): React.JSX.Element {
             handoffDisabled={handoffDisabled}
             effectiveHandoffLabel={effectiveHandoffLabel}
             effectiveHandoffMenuLabel={effectiveHandoffMenuLabel}
-            isHandoffIconPlaying={input.isHandoffIconPlaying}
-            setIsHandoffIconPlaying={input.setIsHandoffIconPlaying}
             handoffMenuTargets={handoffMenuTargets}
             onHandoffConversation={onHandoffConversation}
             showProviderSelect={showProviderSelect}

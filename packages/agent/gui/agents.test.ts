@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   normalizeAgentGUIAgents,
-  projectAgentGUIAgentsToInternalTargets,
+  projectAgentGUIAgentsToTargets,
   resolveAgentGUISelectedDirectoryAgent
 } from "./agents";
 import type { AgentGUIAgent } from "./types";
@@ -69,9 +69,9 @@ describe("normalizeAgentGUIAgents", () => {
   });
 });
 
-describe("projectAgentGUIAgentsToInternalTargets", () => {
+describe("projectAgentGUIAgentsToTargets", () => {
   it("preserves explicit ownership independently from owner presentation", () => {
-    const [target] = projectAgentGUIAgentsToInternalTargets([
+    const [target] = projectAgentGUIAgentsToTargets([
       createAgent("agent-a", {
         owner: { name: "Current User", avatarUrl: "app://owner.png" },
         ownership: "self"
@@ -86,7 +86,7 @@ describe("projectAgentGUIAgentsToInternalTargets", () => {
   });
 
   it("projects the mask icon independently from the canonical icon", () => {
-    const [target] = projectAgentGUIAgentsToInternalTargets([
+    const [target] = projectAgentGUIAgentsToTargets([
       createAgent("agent-a", {
         maskIconUrl: "app://agents/agent-a-mask.png"
       })
@@ -99,7 +99,7 @@ describe("projectAgentGUIAgentsToInternalTargets", () => {
   });
 
   it("preserves availability separately from disabled interaction state", () => {
-    const [target] = projectAgentGUIAgentsToInternalTargets([
+    const [target] = projectAgentGUIAgentsToTargets([
       createAgent("agent-a", {
         availability: { status: "unavailable", reason: "Offline" }
       })

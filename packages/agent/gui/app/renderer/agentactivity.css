@@ -8737,6 +8737,7 @@ html[data-theme="light"] [data-message-center-item-id].agent-gui-edge-glow {
   align-items: center;
   justify-content: center;
   color: var(--text-secondary);
+  contain: layout paint;
 }
 
 .agent-gui-node__composer-handoff-icon[data-playing="true"] {
@@ -8770,10 +8771,12 @@ html[data-theme="light"] [data-message-center-item-id].agent-gui-edge-glow {
   position: absolute;
   inset: 0;
   /* Match the APNG's padded 44px canvas to the static icon's visual size. */
-  transform: scale(1.3);
+  transform: translateZ(0) scale(1.3);
   filter: var(--agent-gui-handoff-animation-filter, none);
   opacity: 0;
   pointer-events: none;
+  backface-visibility: hidden;
+  will-change: opacity, transform;
 }
 
 .agent-gui-node__composer-handoff-icon-animated[data-active="true"] {
@@ -8783,6 +8786,16 @@ html[data-theme="light"] [data-message-center-item-id].agent-gui-edge-glow {
 .agent-gui-node__composer-handoff-icon[data-disabled="true"]
   .agent-gui-node__composer-handoff-icon-animated {
   opacity: 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .agent-gui-node__composer-handoff-icon-animated {
+    display: none;
+  }
+
+  .agent-gui-node__composer-handoff-icon-static {
+    opacity: 1 !important;
+  }
 }
 
 :root[data-theme="dark"] .agent-gui-node__composer-handoff-icon-animated {

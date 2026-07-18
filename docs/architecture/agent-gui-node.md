@@ -311,6 +311,13 @@ bridge is the serialization owner: workspace apps must not read host paths,
 register an Electron-only asset protocol, or re-encode the icon. Remote and
 already-inline extension icons retain their authoritative URL.
 
+Handoff target menus are an AgentGUI presentation contract. The shared
+`AgentHandoffMenu` renders exact `agentTargetId` rows, ownership metadata, and
+temporary disclosure/icon-motion state; a host supplies its authoritative
+ready target projection and retains launch orchestration in `onSelect`. Host
+surfaces must not reconstruct a second handoff row model or infer target
+identity from provider.
+
 For a signed Agent Extension, package `icon` is the primary identity and
 optional package `maskIcon` is the conversation-row glyph. All assets remain
 pinned to the verified active installation.

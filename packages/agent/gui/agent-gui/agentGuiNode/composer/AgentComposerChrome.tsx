@@ -403,6 +403,7 @@ function AgentComposerHandoffAnimation(): JSX.Element {
       aria-hidden="true"
       className={styles.composerHandoffAnimatedIcon}
       data-active={isLoaded ? "true" : undefined}
+      decoding="async"
       draggable={false}
       src={handoffClapAnimationUrl}
       onLoad={() => {

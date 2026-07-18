@@ -265,6 +265,12 @@ owner identity. Entries without explicit ownership remain unclassified; AgentGUI
 does not infer ownership from `owner.name`, `owner.avatarUrl`, or other
 presentation metadata.
 
+Host-owned task or activity surfaces can render the same target picker with
+`AgentHandoffMenu`. Pass the authoritative ready `AgentGUIAgentTarget` entries
+and keep launch orchestration in the host's `onSelect` callback; the shared
+component owns only menu disclosure, ownership presentation, and handoff-icon
+motion.
+
 The old public `providerTargets`, `providerRailMode`, provider-target renderers,
 and `defaultProviderTargetId` contract is intentionally unsupported. Workbench
 state hydration performs a one-time read of legacy `providerTargetId` into

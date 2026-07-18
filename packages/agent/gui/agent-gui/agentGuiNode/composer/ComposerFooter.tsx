@@ -1,4 +1,4 @@
-import { type Dispatch, type ReactNode, type SetStateAction } from "react";
+import { type ReactNode } from "react";
 import { ListChecks, Target, X } from "lucide-react";
 import {
   Select,
@@ -25,16 +25,14 @@ import type {
   AgentComposerUsage
 } from "./AgentComposer.types";
 import {
-  AgentComposerHandoffIcon,
   AgentComposerMaskIcon,
   AgentUsageChip,
-  HANDOFF_SELECT_IDLE_VALUE,
   composerStyles,
   resolveComposerProviderTargetIconUrl,
   workspaceReferenceOptionValue,
   workspaceReferenceSelectValue
 } from "./AgentComposerChrome";
-import { resolveHandoffTargetOwnershipLabel } from "./handoffTargetPresentation";
+import { AgentHandoffMenu } from "./AgentHandoffMenu";
 
 interface Props {
   labels: AgentComposerProps["labels"];
@@ -56,8 +54,6 @@ interface Props {
   handoffDisabled: boolean;
   effectiveHandoffLabel: string;
   effectiveHandoffMenuLabel: string;
-  isHandoffIconPlaying: boolean;
-  setIsHandoffIconPlaying: Dispatch<SetStateAction<boolean>>;
   handoffMenuTargets: readonly AgentGUIAgentTarget[];
   onHandoffConversation?: (target: AgentGUIAgentTarget) => void;
   showProviderSelect: boolean;
@@ -96,8 +92,6 @@ export function ComposerFooter({
   handoffDisabled,
   effectiveHandoffLabel,
   effectiveHandoffMenuLabel,
-  isHandoffIconPlaying,
-  setIsHandoffIconPlaying,
   handoffMenuTargets,
   onHandoffConversation,
   showProviderSelect,
@@ -218,109 +212,21 @@ export function ComposerFooter({
             </TooltipProvider>
           </div>
           {showHandoffSelect ? (
-            <Select
-              value={HANDOFF_SELECT_IDLE_VALUE}
+            <AgentHandoffMenu
               disabled={handoffDisabled}
-              onValueChange={(nextTargetId) => {
-                const target = handoffMenuTargets.find(
-                  (candidate) => candidate.targetId === nextTargetId
-                );
-                if (!target || target.disabled === true) {
-                  return;
-                }
+              labels={{
+                action: effectiveHandoffLabel,
+                menu: effectiveHandoffMenuLabel,
+                self: labels.handoffTargetSelf,
+                shared: labels.handoffTargetShared,
+                tooltip: labels.handoffConversationTooltip
+              }}
+              targets={handoffMenuTargets}
+              triggerLabel={effectiveHandoffLabel}
+              onSelect={(target) => {
                 onHandoffConversation?.(target);
               }}
-            >
-              <SelectTrigger
-                size="sm"
-                aria-label={effectiveHandoffLabel}
-                title={labels.handoffConversationTooltip}
-                onBlur={() => {
-                  setIsHandoffIconPlaying(false);
-                }}
-                onFocus={() => {
-                  setIsHandoffIconPlaying(true);
-                }}
-                onMouseEnter={() => {
-                  setIsHandoffIconPlaying(true);
-                }}
-                onMouseLeave={() => {
-                  setIsHandoffIconPlaying(false);
-                }}
-                className={cn(
-                  styles.composerMenuTrigger,
-                  styles.composerProviderSelect,
-                  styles.composerHandoffTrigger,
-                  "w-auto max-w-[180px] [&>svg:last-child]:hidden"
-                )}
-              >
-                <span className="flex min-w-0 items-center gap-1.5">
-                  <AgentComposerHandoffIcon
-                    disabled={handoffDisabled}
-                    isPlaying={isHandoffIconPlaying}
-                  />
-                  <span className="min-w-0 truncate">
-                    {effectiveHandoffLabel}
-                  </span>
-                </span>
-              </SelectTrigger>
-              <SelectContent
-                align="start"
-                className={cn(
-                  styles.composerMenuContent,
-                  styles.composerHandoffMenuContent,
-                  "min-w-[190px]"
-                )}
-                aria-label={effectiveHandoffMenuLabel}
-              >
-                {handoffMenuTargets.map((target) => {
-                  const ownershipLabel = resolveHandoffTargetOwnershipLabel(
-                    target,
-                    {
-                      self: labels.handoffTargetSelf,
-                      shared: labels.handoffTargetShared
-                    }
-                  );
-                  return (
-                    <SelectItem
-                      key={`${target.provider}:${target.targetId}`}
-                      value={target.targetId}
-                      className={cn(styles.composerMenuItem, "gap-2 py-1.5")}
-                      disabled={target.disabled === true}
-                    >
-                      <span className="flex min-w-0 items-center gap-2">
-                        <span className="relative size-5 shrink-0">
-                          <img
-                            alt=""
-                            aria-hidden="true"
-                            className="size-5 rounded-[4px]"
-                            src={resolveComposerProviderTargetIconUrl(target)}
-                          />
-                          {target.badge?.iconUrl ? (
-                            <img
-                              alt=""
-                              aria-hidden="true"
-                              className="absolute -bottom-0.5 -right-0.5 size-2.5 rounded-full border border-[var(--background-fronted)] bg-[var(--background-fronted)] object-cover"
-                              src={target.badge.iconUrl}
-                            />
-                          ) : null}
-                        </span>
-                        <span className="flex min-w-0 flex-col gap-0.5">
-                          <span className="min-w-0 truncate">
-                            {target.label}
-                          </span>
-                          {ownershipLabel ? (
-                            <span className="min-w-0 truncate text-[11px] leading-none text-[var(--agent-gui-text-secondary)]">
-                              {ownershipLabel}
-                            </span>
-                          ) : null}
-                        </span>
-                      </span>
-                    </SelectItem>
-                  );
-                })}
-              </SelectContent>
-            </Select>
+            />
           ) : showProviderSelect && selectedProviderSwitchTarget ? (
             <Select
               value={selectedProviderSwitchTarget.targetId}
