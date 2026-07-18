@@ -32,6 +32,7 @@ import type {
   CreateIssueManagerRunRequest,
   CreateIssueManagerTaskRequest,
   CreateIssueManagerTasksRequest,
+  CancelIssueManagerExecutionResponse,
   CreateIssueManagerTopicRequest,
   CreateWorkspaceAgentSessionRequest,
   CreateWorkspaceAppFactoryJobRequest,
@@ -699,6 +700,10 @@ export interface TuttidClient
     taskID: string,
     request: UpdateIssueManagerTaskRequest
   ): Promise<IssueManagerTask>;
+  cancelWorkspaceIssueExecution(
+    workspaceID: string,
+    issueID: string
+  ): Promise<CancelIssueManagerExecutionResponse>;
   putWorkspaceWorkbench(
     workspaceID: string,
     snapshot: WorkbenchSnapshot

@@ -23,6 +23,13 @@ type TurnStore interface {
 	ListPendingInteractionsBySession(context.Context, string, []string) (map[string][]agentactivitybiz.Interaction, error)
 }
 
+// TurnCancelObserver is notified after CancelTurn actually canceled a live
+// turn. The Issue manager uses it to cascade a user's stop on a planning
+// conversation to every running task run that conversation orchestrates.
+type TurnCancelObserver interface {
+	ObserveUserTurnCanceled(ctx context.Context, workspaceID string, agentSessionID string)
+}
+
 type CancelTurnReason string
 
 const (
@@ -147,6 +154,12 @@ func (s *Service) CancelTurn(ctx context.Context, workspaceID string, agentSessi
 	}
 	if result.Canceled {
 		result.Reason = CancelTurnReasonTurnCanceled
+		if s.TurnCancelObserver != nil {
+			// Cascade asynchronously so cancel latency never depends on how many
+			// delegate runs are in flight; the cascade is a no-op for sessions
+			// that do not orchestrate an Issue.
+			go s.TurnCancelObserver.ObserveUserTurnCanceled(context.WithoutCancel(ctx), workspaceID, agentSessionID)
+		}
 	}
 	return result, nil
 }

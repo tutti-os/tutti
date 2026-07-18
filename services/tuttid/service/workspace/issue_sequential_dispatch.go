@@ -23,14 +23,15 @@ type agentSessionCreator interface {
 // counted before every dispatch pass.
 const maxWorkspaceParallelIssueRuns = 4
 
-// dispatchEligibleIssueTasks advances the Issue's execution frontier. A
-// sequential Issue runs one exclusive Task at a time, except that Tasks the
-// plan review marked parallelizable may run alongside each other (each in an
-// isolated per-run worktree when they share a checkout). A parallel Issue
-// dispatches every isolated, dependency-ready Task. The user's execution
-// choice is durable on the Issue, and dependency, acceptance, and budget
-// checks are repeated at the daemon boundary before every launch.
-func (s IssueManagerService) dispatchEligibleIssueTasks(ctx context.Context, workspaceID, issueID string) {
+// dispatchEligibleIssueTasksLocked advances the Issue's execution frontier;
+// the caller holds the Issue mutation lock. A sequential Issue runs one
+// exclusive Task at a time, except that Tasks the plan review marked
+// parallelizable may run alongside each other (each in an isolated per-run
+// worktree when they share a checkout). A parallel Issue dispatches every
+// isolated, dependency-ready Task. The user's execution choice is durable on
+// the Issue, and dependency, acceptance, and budget checks are repeated at
+// the daemon boundary before every launch.
+func (s IssueManagerService) dispatchEligibleIssueTasksLocked(ctx context.Context, workspaceID, issueID string) {
 	if s.AgentSessionCreator == nil {
 		return
 	}
@@ -188,7 +189,7 @@ func (s IssueManagerService) startIssueTask(ctx context.Context, issue workspace
 		if worktreeErr != nil {
 			// Surface the failed launch as a durable failed run, same as a
 			// failed session creation, so the Issue shows why nothing ran.
-			if run, err := s.CreateRun(ctx, issue.WorkspaceID, issue.IssueID, task.TaskID, CreateIssueManagerRunInput{
+			if run, err := s.createRunLocked(ctx, issue.WorkspaceID, issue.IssueID, task.TaskID, CreateIssueManagerRunInput{
 				RunID:              runID,
 				AgentTargetID:      task.AgentTargetID,
 				AgentSessionID:     agentSessionID,
@@ -196,7 +197,7 @@ func (s IssueManagerService) startIssueTask(ctx context.Context, issue workspace
 				ModelPlanID:        task.ModelPlanID,
 				Model:              task.Model,
 			}); err == nil {
-				_, _ = s.CompleteRun(ctx, issue.WorkspaceID, issue.IssueID, task.TaskID, run.RunID, CompleteIssueManagerRunInput{
+				_, _ = s.completeRunLocked(ctx, issue.WorkspaceID, issue.IssueID, task.TaskID, run.RunID, CompleteIssueManagerRunInput{
 					Status:       string(workspaceissues.StatusFailed),
 					ErrorMessage: worktreeErr.Error(),
 				})
@@ -207,7 +208,7 @@ func (s IssueManagerService) startIssueTask(ctx context.Context, issue workspace
 		worktreeBranch = branch
 		executionDirectory = worktreePath
 	}
-	run, err := s.CreateRun(ctx, issue.WorkspaceID, issue.IssueID, task.TaskID, CreateIssueManagerRunInput{
+	run, err := s.createRunLocked(ctx, issue.WorkspaceID, issue.IssueID, task.TaskID, CreateIssueManagerRunInput{
 		RunID:              runID,
 		AgentTargetID:      task.AgentTargetID,
 		AgentSessionID:     agentSessionID,
@@ -233,7 +234,7 @@ func (s IssueManagerService) startIssueTask(ctx context.Context, issue workspace
 			TriggerReason:       "issue:" + issue.IssueID + "/task:" + task.TaskID + "/run:" + run.RunID,
 		})
 		if collaborationErr != nil {
-			_, _ = s.CompleteRun(ctx, issue.WorkspaceID, issue.IssueID, task.TaskID, run.RunID, CompleteIssueManagerRunInput{
+			_, _ = s.completeRunLocked(ctx, issue.WorkspaceID, issue.IssueID, task.TaskID, run.RunID, CompleteIssueManagerRunInput{
 				Status:       string(workspaceissues.StatusFailed),
 				ErrorMessage: collaborationErr.Error(),
 			})
@@ -287,7 +288,7 @@ func (s IssueManagerService) startIssueTask(ctx context.Context, issue workspace
 			FailureReason: err.Error(),
 		})
 	}
-	_, _ = s.CompleteRun(ctx, issue.WorkspaceID, issue.IssueID, task.TaskID, run.RunID, CompleteIssueManagerRunInput{
+	_, _ = s.completeRunLocked(ctx, issue.WorkspaceID, issue.IssueID, task.TaskID, run.RunID, CompleteIssueManagerRunInput{
 		Status:       string(workspaceissues.StatusFailed),
 		ErrorMessage: err.Error(),
 	})
