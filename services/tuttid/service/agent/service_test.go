@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"slices"
@@ -15,9 +16,11 @@ import (
 	agentsessionstore "github.com/tutti-os/tutti/packages/agent/daemon/activity"
 	"github.com/tutti-os/tutti/packages/agent/daemon/providerregistry"
 	"github.com/tutti-os/tutti/packages/agent/daemon/titletext"
+	agenthost "github.com/tutti-os/tutti/packages/agent/host"
 	runtimeprep "github.com/tutti-os/tutti/packages/agent/runtimeprep"
 	agentactivitybiz "github.com/tutti-os/tutti/services/tuttid/biz/agentactivity"
 	agenttargetbiz "github.com/tutti-os/tutti/services/tuttid/biz/agenttarget"
+	preferencesbiz "github.com/tutti-os/tutti/services/tuttid/biz/preferences"
 	userprojectbiz "github.com/tutti-os/tutti/services/tuttid/biz/userproject"
 	workspacebiz "github.com/tutti-os/tutti/services/tuttid/biz/workspace"
 	workspacedata "github.com/tutti-os/tutti/services/tuttid/data/workspace"
@@ -62,6 +65,47 @@ func TestServiceCreatesAndListsSessions(t *testing.T) {
 	}
 	if got.ID != session.ID {
 		t.Fatalf("got session ID = %q, want %q", got.ID, session.ID)
+	}
+}
+
+func TestServiceCreateInheritsTargetComposerDefaultsAndExplicitOverridesWin(t *testing.T) {
+	runtime := newFakeRuntime()
+	service := newTestService(runtime)
+	service.AgentComposerDefaultsReader = fakeAgentComposerDefaultsReader{
+		agenttargetbiz.IDLocalCodex: {
+			Model:            "gpt-5",
+			PermissionModeID: "full-access",
+			ReasoningEffort:  "high",
+			Speed:            "fast",
+		},
+	}
+	explicitModel := "gpt-5-codex"
+	if _, err := service.Create(context.Background(), "ws-defaults", CreateSessionInput{
+		AgentSessionID: "12121212-1212-4121-8121-121212121212",
+		AgentTargetID:  agenttargetbiz.IDLocalCodex,
+		Model:          &explicitModel,
+	}); err != nil {
+		t.Fatalf("Create() error = %v", err)
+	}
+	if len(runtime.startCalls) != 1 {
+		t.Fatalf("start calls = %d", len(runtime.startCalls))
+	}
+	started := runtime.startCalls[0]
+	if started.Model != explicitModel || started.PermissionModeID != "full-access" || started.ReasoningEffort != "high" || started.Speed != "fast" {
+		t.Fatalf("runtime start = %#v", started)
+	}
+}
+
+func TestServiceApplicationHostUsesConfiguredSingleton(t *testing.T) {
+	service := newTestService(newFakeRuntime())
+	host := NewApplicationHost(service)
+	service.SetApplicationHost(host)
+
+	if got := service.ApplicationHost(); got != host {
+		t.Fatalf("ApplicationHost() = %p, want configured host %p", got, host)
+	}
+	if got := service.ApplicationHost(); got != host {
+		t.Fatalf("second ApplicationHost() = %p, want configured host %p", got, host)
 	}
 }
 
@@ -4512,6 +4556,14 @@ func TestActivityProjectionPreservesMixedMessageAuditOrder(t *testing.T) {
 func TestActivityProjectionPublishesDeletedEventsForClearedSessions(t *testing.T) {
 	repo := &activityProjectionRepoStub{
 		clearResult: agentactivitybiz.ClearSessionsResult{
+			TransactionID: "tx-clear",
+			CommitDelta: agentactivitybiz.TransactionDelta{
+				TransactionID: "tx-clear",
+				Mutations: []agentactivitybiz.TransactionMutation{
+					{WorkspaceID: "ws-1", AgentSessionID: "session-1", EntityKind: agentactivitybiz.MutationEntitySession, EntityID: "session-1", Operation: "delete"},
+					{WorkspaceID: "ws-1", AgentSessionID: "session-2", EntityKind: agentactivitybiz.MutationEntitySession, EntityID: "session-2", Operation: "delete"},
+				},
+			},
 			RemovedMessages:   5,
 			RemovedSessions:   2,
 			RemovedSessionIDs: []string{"session-1", "session-2"},
@@ -5317,6 +5369,35 @@ func TestServiceDeletesPersistedSession(t *testing.T) {
 	}
 }
 
+func TestServiceGetReturnsLiveSessionWithoutLegacySessionReader(t *testing.T) {
+	runtime := newFakeRuntime()
+	runtime.sessions["ws-1:session-1"] = ProviderRuntimeSession{
+		ID: "session-1", WorkspaceID: "ws-1", Provider: "codex", Title: "Live session",
+	}
+	service := newIsolatedAgentService(runtime)
+	service.TurnStore = failingTurnStore{sessionMissing: true}
+
+	session, err := service.Get(context.Background(), "ws-1", "session-1")
+	if err != nil {
+		t.Fatalf("Get() error = %v", err)
+	}
+	if session.ID != "session-1" || value(session.Title) != "Live session" {
+		t.Fatalf("Get() session = %#v, want live runtime observation", session)
+	}
+}
+
+func TestServiceDeleteNormalizesWrappedRuntimeSessionNotFound(t *testing.T) {
+	runtime := newFakeRuntime()
+	runtime.sessions["ws-1:session-1"] = ProviderRuntimeSession{ID: "session-1", WorkspaceID: "ws-1"}
+	runtime.closeErr = fmt.Errorf("runtime close: %w", ErrSessionNotFound)
+	service := newIsolatedAgentService(runtime)
+
+	_, err := service.Delete(context.Background(), "ws-1", "session-1")
+	if err != ErrSessionNotFound {
+		t.Fatalf("Delete() error = %v, want canonical ErrSessionNotFound", err)
+	}
+}
+
 func TestServiceDeleteClosesRuntimeSession(t *testing.T) {
 	runtime := newFakeRuntime()
 	service := newTestService(runtime)
@@ -5473,8 +5554,11 @@ type recordingGoalAuditPublisher struct {
 	audits []agentactivitybiz.Message
 }
 
-func (p *recordingGoalAuditPublisher) PublishGoalControlAudit(_ context.Context, _ string, _ string, audit agentactivitybiz.Message) {
-	p.audits = append(p.audits, audit)
+func (p *recordingGoalAuditPublisher) ObserveCommitted(_ context.Context, delta agenthost.CommittedDelta) error {
+	if delta.GoalOperation != nil && delta.GoalOperation.Audit != nil {
+		p.audits = append(p.audits, *delta.GoalOperation.Audit)
+	}
+	return nil
 }
 
 func (*recordingGoalStateStore) CompleteGoalControlOperation(context.Context, agentactivitybiz.GoalControlOperationComplete) (agentactivitybiz.GoalControlOperation, agentactivitybiz.SessionGoalState, bool, error) {
@@ -5537,27 +5621,6 @@ func (*recordingGoalStateStore) RequeueLeasedGoalControlOperationsOnStartup(cont
 	return 0, nil
 }
 
-func TestRetryRecoveredGoalOperationPreservesRepairEvidence(t *testing.T) {
-	store := &recordingGoalStateStore{}
-	service := newIsolatedAgentService(newFakeRuntime())
-	service.GoalStateStore = store
-	op := agentactivitybiz.GoalControlOperation{
-		OperationID: "repair-op", WorkspaceID: "ws", AgentSessionID: "session", GoalRevision: 2,
-		LeaseOwner: service.goalOperationOwner(), RepairEpoch: 3, Attempt: 1,
-		Evidence: map[string]any{"repair": map[string]any{"repairId": "incident-1"}},
-	}
-	if err := service.retryRecoveredGoalOperation(context.Background(), op, context.DeadlineExceeded); err != nil {
-		t.Fatal(err)
-	}
-	if len(store.released) != 1 {
-		t.Fatalf("release inputs = %#v", store.released)
-	}
-	repair, ok := store.released[0].Evidence["repair"].(map[string]any)
-	if !ok || repair["repairId"] != "incident-1" {
-		t.Fatalf("release evidence = %#v", store.released)
-	}
-}
-
 func TestServiceTypedGoalUsesDurableSagaBeforeTurnSubmit(t *testing.T) {
 	runtime := newFakeRuntime()
 	runtime.sessions["ws-typed:session-typed"] = ProviderRuntimeSession{
@@ -5577,7 +5640,7 @@ func TestServiceTypedGoalUsesDurableSagaBeforeTurnSubmit(t *testing.T) {
 	}
 	service := newIsolatedAgentService(runtime)
 	service.GoalStateStore = store
-	service.GoalAuditPublisher = publisher
+	service.CommitObserver = publisher
 
 	result, err := service.SendInput(context.Background(), "ws-typed", "session-typed", SendInput{
 		Content:  TextPromptContent("/goal ship it"),
@@ -5680,7 +5743,7 @@ func TestGoalActorSlowRevisionOneResultCannotOverwriteRevisionTwoClear(t *testin
 	if len(calls) != 2 || calls[0].Action != "set" || calls[1].Action != "clear" {
 		t.Fatalf("provider calls before worker=%#v, want no synchronous compensation", calls)
 	}
-	if err := service.StepGoalOperationWorker(ctx, false); err != nil {
+	if err := service.ApplicationHost().StepGoalOperationWorker(ctx, false); err != nil {
 		t.Fatalf("run durable repair: %v", err)
 	}
 	state, found, err = store.GetSessionGoalState(ctx, "ws-goal-actor", "session-goal-actor")
@@ -5741,7 +5804,7 @@ func TestGoalActorAmbiguousOldErrorSchedulesDurableRepairOfNewerRevision(t *test
 	if err != nil || !found || state.Revision != 2 || state.PendingOperationID == "" || state.SyncStatus != agentactivitybiz.GoalSyncStatusPending {
 		t.Fatalf("durable repair state=%#v found=%v err=%v", state, found, err)
 	}
-	if err := service.StepGoalOperationWorker(ctx, false); err != nil {
+	if err := service.ApplicationHost().StepGoalOperationWorker(ctx, false); err != nil {
 		t.Fatalf("repair ambiguous old result: %v", err)
 	}
 	state, found, err = store.GetSessionGoalState(ctx, "ws-goal-error", "session-goal-error")
@@ -5793,7 +5856,7 @@ func TestGoalRecoveryDoesNotReplayAcceptedClaudeSet(t *testing.T) {
 	service.GoalStateStore = store
 	service.GoalOperationOwner = "goal-recovery-worker"
 	service.GoalOperationClock = func() time.Time { return time.UnixMilli(6000) }
-	if err := service.StepGoalOperationWorker(ctx, true); err != nil {
+	if err := service.ApplicationHost().StepGoalOperationWorker(ctx, true); err != nil {
 		t.Fatalf("recover accepted Claude set: %v", err)
 	}
 	if len(runtime.goalControlCalls) != 0 {
@@ -5814,14 +5877,14 @@ func TestGoalRecoveryPolicyIsCapabilityDrivenAndMissingResolverFailsClosed(t *te
 	runtime.goalRecoveryPolicyHook = func(context.Context, RuntimeGoalControlInput) (RuntimeGoalRecoveryPolicy, error) {
 		return RuntimeGoalRecoveryPolicy{QuerySupported: true, ReplaySetAfterRestart: true}, nil
 	}
-	policy, err := resolveRuntimeGoalRecoveryPolicy(context.Background(), runtime, RuntimeGoalControlInput{})
+	policy, err := agenthost.ResolveRuntimeGoalRecoveryPolicy(context.Background(), runtime, RuntimeGoalControlInput{})
 	if err != nil || !policy.QuerySupported || !policy.ReplaySetAfterRestart {
 		t.Fatalf("adapter policy=%#v err=%v", policy, err)
 	}
 	// Embedding only the mandatory controller contract deliberately hides the
 	// optional resolver, modeling an unknown/older provider adapter.
 	unknown := struct{ RuntimeController }{RuntimeController: runtime}
-	policy, err = resolveRuntimeGoalRecoveryPolicy(context.Background(), unknown, RuntimeGoalControlInput{})
+	policy, err = agenthost.ResolveRuntimeGoalRecoveryPolicy(context.Background(), unknown, RuntimeGoalControlInput{})
 	if err != nil || policy.QuerySupported || policy.ReplaySetAfterRestart {
 		t.Fatalf("missing-resolver policy must fail closed: %#v err=%v", policy, err)
 	}
@@ -5863,7 +5926,7 @@ func TestGoalRecoveryTimeoutThenRestartDoesNotReplayClaudeSet(t *testing.T) {
 	service.GoalOperationAttemptTimeout = 25 * time.Millisecond
 	service.GoalOperationMaxAttempts = 1
 	started := time.Now()
-	if err := service.StepGoalOperationWorker(ctx, false); err != nil {
+	if err := service.ApplicationHost().StepGoalOperationWorker(ctx, false); err != nil {
 		t.Fatalf("timeout attempt: %v", err)
 	}
 	if elapsed := time.Since(started); elapsed > time.Second {
@@ -5875,7 +5938,7 @@ func TestGoalRecoveryTimeoutThenRestartDoesNotReplayClaudeSet(t *testing.T) {
 		t.Fatalf("timed out operation=%#v found=%v err=%v", op, found, err)
 	}
 	nowMS = op.NextAttemptAtMS
-	if err := service.StepGoalOperationWorker(ctx, false); err != nil {
+	if err := service.ApplicationHost().StepGoalOperationWorker(ctx, false); err != nil {
 		t.Fatalf("startup recovery: %v", err)
 	}
 	op, found, err = store.GetGoalControlOperation(ctx, "ws-goal-timeout", "goal-timeout-set")
@@ -5938,7 +6001,7 @@ func TestGoalRepairSetTimeoutThenRestartDoesNotReplayClaudeSet(t *testing.T) {
 	service.GoalOperationClock = func() time.Time { return time.UnixMilli(nowMS) }
 	service.GoalOperationAttemptTimeout = 25 * time.Millisecond
 	service.GoalOperationMaxAttempts = 1
-	if err := service.StepGoalOperationWorker(ctx, false); err != nil {
+	if err := service.ApplicationHost().StepGoalOperationWorker(ctx, false); err != nil {
 		t.Fatal(err)
 	}
 	repair, found, err := store.GetGoalControlOperation(ctx, "ws-repair-set-timeout", repair.OperationID)
@@ -5946,7 +6009,7 @@ func TestGoalRepairSetTimeoutThenRestartDoesNotReplayClaudeSet(t *testing.T) {
 		t.Fatalf("timed out repair=%#v found=%v err=%v", repair, found, err)
 	}
 	nowMS = repair.NextAttemptAtMS
-	if err := service.StepGoalOperationWorker(ctx, false); err != nil {
+	if err := service.ApplicationHost().StepGoalOperationWorker(ctx, false); err != nil {
 		t.Fatal(err)
 	}
 	repair, found, err = store.GetGoalControlOperation(ctx, "ws-repair-set-timeout", repair.OperationID)
@@ -5985,12 +6048,12 @@ func TestGoalClearRepeatedTimeoutEventuallyFails(t *testing.T) {
 	service.GoalOperationClock = func() time.Time { return time.UnixMilli(now) }
 	service.GoalOperationAttemptTimeout = 20 * time.Millisecond
 	service.GoalOperationMaxAttempts = 1
-	if err := service.StepGoalOperationWorker(ctx, false); err != nil {
+	if err := service.ApplicationHost().StepGoalOperationWorker(ctx, false); err != nil {
 		t.Fatal(err)
 	}
 	op, _, _ := store.GetGoalControlOperation(ctx, "ws-clear-timeout", "clear-timeout")
 	now = op.NextAttemptAtMS
-	if err := service.StepGoalOperationWorker(ctx, false); err != nil {
+	if err := service.ApplicationHost().StepGoalOperationWorker(ctx, false); err != nil {
 		t.Fatal(err)
 	}
 	op, _, _ = store.GetGoalControlOperation(ctx, "ws-clear-timeout", "clear-timeout")
@@ -6022,7 +6085,7 @@ func TestGoalRuntimeUnavailableKeepsPreparedUntilFirstProviderDispatch(t *testin
 	service.GoalOperationClock = func() time.Time { return time.UnixMilli(now) }
 	service.GoalOperationAttemptTimeout = 20 * time.Millisecond
 	service.GoalOperationMaxAttempts = 1
-	if err := service.StepGoalOperationWorker(ctx, false); err != nil {
+	if err := service.ApplicationHost().StepGoalOperationWorker(ctx, false); err != nil {
 		t.Fatal(err)
 	}
 	op, _, _ := store.GetGoalControlOperation(ctx, "ws-runtime-late", "late")
@@ -6031,7 +6094,7 @@ func TestGoalRuntimeUnavailableKeepsPreparedUntilFirstProviderDispatch(t *testin
 	}
 	runtime.sessions["ws-runtime-late:s"] = ProviderRuntimeSession{ID: "s", Provider: "claude-code", Status: "ready"}
 	now = op.NextAttemptAtMS
-	if err := service.StepGoalOperationWorker(ctx, false); err != nil {
+	if err := service.ApplicationHost().StepGoalOperationWorker(ctx, false); err != nil {
 		t.Fatal(err)
 	}
 	op, _, _ = store.GetGoalControlOperation(ctx, "ws-runtime-late", "late")
@@ -6042,7 +6105,7 @@ func TestGoalRuntimeUnavailableKeepsPreparedUntilFirstProviderDispatch(t *testin
 		t.Fatalf("recovered submission metadata=%#v", runtime.goalControlCalls[0].SubmissionMetadata)
 	}
 	now = op.NextAttemptAtMS
-	if err := service.StepGoalOperationWorker(ctx, false); err != nil {
+	if err := service.ApplicationHost().StepGoalOperationWorker(ctx, false); err != nil {
 		t.Fatal(err)
 	}
 	op, _, _ = store.GetGoalControlOperation(ctx, "ws-runtime-late", "late")
@@ -6099,7 +6162,7 @@ func TestGoalRecoveryProviderQueryAndApplyTimeoutReleaseLease(t *testing.T) {
 			service.GoalOperationAttemptTimeout = 25 * time.Millisecond
 			service.GoalOperationMaxAttempts = 1
 			started := time.Now()
-			if err := service.StepGoalOperationWorker(ctx, false); err != nil {
+			if err := service.ApplicationHost().StepGoalOperationWorker(ctx, false); err != nil {
 				t.Fatalf("worker timeout: %v", err)
 			}
 			if elapsed := time.Since(started); elapsed > time.Second {
@@ -6113,7 +6176,7 @@ func TestGoalRecoveryProviderQueryAndApplyTimeoutReleaseLease(t *testing.T) {
 			}
 			if phase == "apply" {
 				nowMS = op.NextAttemptAtMS
-				if err := service.StepGoalOperationWorker(ctx, false); err != nil {
+				if err := service.ApplicationHost().StepGoalOperationWorker(ctx, false); err != nil {
 					t.Fatal(err)
 				}
 				op, _, _ = store.GetGoalControlOperation(ctx, workspaceID, operationID)
@@ -6157,7 +6220,7 @@ func TestGoalRecoveryStartupBudgetBoundsHangingProvider(t *testing.T) {
 	service.GoalOperationAttemptTimeout = time.Second
 	service.GoalOperationRecoveryBudget = 40 * time.Millisecond
 	started := time.Now()
-	if err := service.RecoverGoalOperations(ctx); err != nil {
+	if err := service.ApplicationHost().RecoverGoalOperations(ctx); err != nil {
 		t.Fatal(err)
 	}
 	if elapsed := time.Since(started); elapsed > time.Second {
@@ -6202,7 +6265,7 @@ func TestAcceptedClaudeGoalExpiresWithoutProviderReplay(t *testing.T) {
 	service.GoalStateStore = store
 	service.GoalOperationOwner = "goal-accepted-worker"
 	service.GoalOperationClock = func() time.Time { return time.UnixMilli(130_000) }
-	if err := service.StepGoalOperationWorker(ctx, false); err != nil {
+	if err := service.ApplicationHost().StepGoalOperationWorker(ctx, false); err != nil {
 		t.Fatal(err)
 	}
 	op, found, err := store.GetGoalControlOperation(ctx, "ws-goal-accepted-age", "goal-accepted-age")
@@ -6238,7 +6301,7 @@ func TestAcceptedClaudeClearExpiresWhenLifecycleEvidenceIsLost(t *testing.T) {
 	service.GoalStateStore = store
 	service.GoalOperationOwner = "clear-age-worker"
 	service.GoalOperationClock = func() time.Time { return time.UnixMilli(130_000) }
-	if err := service.StepGoalOperationWorker(ctx, false); err != nil {
+	if err := service.ApplicationHost().StepGoalOperationWorker(ctx, false); err != nil {
 		t.Fatal(err)
 	}
 	op, found, err := store.GetGoalControlOperation(ctx, "ws-clear-age", "clear-age")
@@ -6355,20 +6418,20 @@ func TestParseTypedGoalControlUsesSemanticContentAndUnicodeWhitespace(t *testing
 		name          string
 		content       string
 		displayPrompt string
-		want          typedGoalControl
+		want          agenthost.TypedGoalControl
 		wantOK        bool
 	}{
-		{name: "space", content: "/goal clear", want: typedGoalControl{Action: "clear"}, wantOK: true},
-		{name: "tab", content: "/goal\tclear", want: typedGoalControl{Action: "clear"}, wantOK: true},
-		{name: "newline", content: "/goal\nship it", want: typedGoalControl{Action: "set", Objective: "ship it"}, wantOK: true},
-		{name: "unicode space", content: "/goal\u3000ship it", want: typedGoalControl{Action: "set", Objective: "ship it"}, wantOK: true},
-		{name: "display cannot hide control", content: "/goal clear", displayPrompt: "clear chip", want: typedGoalControl{Action: "clear"}, wantOK: true},
+		{name: "space", content: "/goal clear", want: agenthost.TypedGoalControl{Action: "clear"}, wantOK: true},
+		{name: "tab", content: "/goal\tclear", want: agenthost.TypedGoalControl{Action: "clear"}, wantOK: true},
+		{name: "newline", content: "/goal\nship it", want: agenthost.TypedGoalControl{Action: "set", Objective: "ship it"}, wantOK: true},
+		{name: "unicode space", content: "/goal\u3000ship it", want: agenthost.TypedGoalControl{Action: "set", Objective: "ship it"}, wantOK: true},
+		{name: "display cannot hide control", content: "/goal clear", displayPrompt: "clear chip", want: agenthost.TypedGoalControl{Action: "clear"}, wantOK: true},
 		{name: "display cannot create control", content: "ordinary prompt", displayPrompt: "/goal clear", wantOK: false},
 		{name: "bare goal is not a mutation", content: "/goal", wantOK: false},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			got, ok := parseTypedGoalControl(TextPromptContent(test.content), test.displayPrompt, false)
+			got, ok := agenthost.ParseTypedGoalControl(TextPromptContent(test.content), false)
 			if ok != test.wantOK || got != test.want {
 				t.Fatalf("parseTypedGoalControl()=(%#v,%v), want (%#v,%v)", got, ok, test.want, test.wantOK)
 			}
@@ -6971,6 +7034,12 @@ type fakeAgentTargetStore struct {
 	targets map[string]agenttargetbiz.Target
 }
 
+type fakeAgentComposerDefaultsReader map[string]preferencesbiz.AgentComposerDefaults
+
+func (f fakeAgentComposerDefaultsReader) GetAgentComposerDefaultsForTarget(_ context.Context, agentTargetID string) (preferencesbiz.AgentComposerDefaults, error) {
+	return f[strings.TrimSpace(agentTargetID)], nil
+}
+
 func (f fakeAgentTargetStore) GetAgentTarget(_ context.Context, id string) (agenttargetbiz.Target, error) {
 	if f.err != nil {
 		return agenttargetbiz.Target{}, f.err
@@ -7331,14 +7400,16 @@ func (f *fakeRuntime) GoalRecoveryPolicy(ctx context.Context, input RuntimeGoalC
 
 func (f *fakeRuntime) Close(_ context.Context, input RuntimeCloseInput) error {
 	f.closeCalls = append(f.closeCalls, input)
+	err := f.closeErr
+	if err == nil {
+		delete(f.sessions, input.WorkspaceID+":"+input.AgentSessionID)
+	}
+	// Hooks observe completion, so publish them only after the fake's state is
+	// fully updated. Tests use this callback as the synchronization boundary.
 	if f.closeHook != nil {
 		f.closeHook(input)
 	}
-	if f.closeErr != nil {
-		return f.closeErr
-	}
-	delete(f.sessions, input.WorkspaceID+":"+input.AgentSessionID)
-	return nil
+	return err
 }
 
 func (f *fakeRuntime) CanResume(input RuntimeResumeInput) bool {
@@ -7532,6 +7603,33 @@ func (f *fakeSessionReader) UpdateSessionTitle(_ context.Context, workspaceID st
 	return session, true, nil
 }
 
+func (f *fakeSessionReader) UpdateSessionSettings(_ context.Context, workspaceID string, agentSessionID string, settings ComposerSettings) (PersistedSession, bool, error) {
+	key := workspaceID + ":" + agentSessionID
+	session, ok := f.sessions[key]
+	if !ok {
+		return PersistedSession{}, false, nil
+	}
+	session.Settings = settings
+	session.UpdatedAtUnixMS = time.Now().UnixMilli()
+	f.sessions[key] = session
+	return session, true, nil
+}
+
+func (f *fakeSessionReader) UpdateSessionPinned(_ context.Context, workspaceID string, agentSessionID string, pinned bool) (PersistedSession, bool, error) {
+	key := workspaceID + ":" + agentSessionID
+	session, ok := f.sessions[key]
+	if !ok {
+		return PersistedSession{}, false, nil
+	}
+	session.PinnedAtUnixMS = 0
+	if pinned {
+		session.PinnedAtUnixMS = time.Now().UnixMilli()
+	}
+	session.UpdatedAtUnixMS = time.Now().UnixMilli()
+	f.sessions[key] = session
+	return session, true, nil
+}
+
 func (f fakeSessionReader) DeleteSession(_ context.Context, workspaceID string, agentSessionID string) (bool, error) {
 	key := workspaceID + ":" + agentSessionID
 	if _, ok := f.sessions[key]; !ok {
@@ -7631,6 +7729,7 @@ func (f fakeAgentTargetLookup) GetAgentTarget(_ context.Context, id string) (age
 type activityProjectionRepoStub struct {
 	clearResult    agentactivitybiz.ClearSessionsResult
 	settleStaleErr error
+	settlements    []agentactivitybiz.StaleTurnSettlement
 	stateResult    agentactivitybiz.StateReportResult
 	stateInput     agentactivitybiz.SessionStateReport
 	messageInput   agentactivitybiz.SessionMessageReport
@@ -7651,8 +7750,8 @@ func (r *activityProjectionRepoStub) ClearSessions(context.Context, string) (age
 	return r.clearResult, nil
 }
 
-func (*activityProjectionRepoStub) DeleteSession(context.Context, string, string) (bool, error) {
-	return false, nil
+func (*activityProjectionRepoStub) DeleteSessionWithCommit(context.Context, string, string) (agentactivitybiz.DeleteSessionResult, error) {
+	return agentactivitybiz.DeleteSessionResult{}, nil
 }
 
 func (*activityProjectionRepoStub) GetSession(context.Context, string, string) (agentactivitybiz.Session, bool, error) {
@@ -7827,7 +7926,7 @@ func (*activityProjectionRepoStub) RecordTurnTransition(_ context.Context, trans
 }
 
 func (r *activityProjectionRepoStub) SettleStaleTurns(context.Context) ([]agentactivitybiz.StaleTurnSettlement, error) {
-	return nil, r.settleStaleErr
+	return append([]agentactivitybiz.StaleTurnSettlement(nil), r.settlements...), r.settleStaleErr
 }
 
 func (*activityProjectionRepoStub) UpsertInteraction(_ context.Context, upsert agentactivitybiz.InteractionUpsert) (agentactivitybiz.Interaction, agentactivitybiz.InteractionTransitionResult, error) {

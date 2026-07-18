@@ -32,7 +32,8 @@ describe("agentGuiConversationModel", () => {
     ).toEqual({
       id: "app",
       path: "/workspace/app",
-      label: "App"
+      label: "App",
+      pinnedAtUnixMs: 0
     });
   });
 
@@ -44,7 +45,8 @@ describe("agentGuiConversationModel", () => {
     ).toEqual({
       id: "app",
       path: "/workspace/app",
-      label: "App"
+      label: "App",
+      pinnedAtUnixMs: 0
     });
   });
 
@@ -58,7 +60,8 @@ describe("agentGuiConversationModel", () => {
     ).toEqual({
       id: "web",
       path: "/workspace/app/packages/web",
-      label: "Web"
+      label: "Web",
+      pinnedAtUnixMs: 0
     });
   });
 
@@ -83,7 +86,8 @@ describe("agentGuiConversationModel", () => {
     ).toEqual({
       id: "root",
       path: "/",
-      label: "Root"
+      label: "Root",
+      pinnedAtUnixMs: 0
     });
   });
 
@@ -111,7 +115,8 @@ describe("agentGuiConversationModel", () => {
     ).toEqual({
       id: "repo",
       path: "/repo",
-      label: "Repo"
+      label: "Repo",
+      pinnedAtUnixMs: 0
     });
   });
 
@@ -131,7 +136,8 @@ describe("agentGuiConversationModel", () => {
     ).toEqual({
       id: "odd",
       path: "/Users/local/Documents/tutti/session-44444444-4444-4444-8444-444444444444",
-      label: "Odd project"
+      label: "Odd project",
+      pinnedAtUnixMs: 0
     });
   });
 
@@ -385,7 +391,8 @@ describe("agentGuiConversationModel", () => {
         archivePathReads += 1;
         return "/workspace/archive";
       },
-      label: "Archive"
+      label: "Archive",
+      pinnedAtUnixMs: 0
     };
 
     expect(
@@ -426,7 +433,8 @@ describe("agentGuiConversationModel", () => {
         project: {
           id: "app",
           path: "/workspace/app",
-          label: "App"
+          label: "App",
+          pinnedAtUnixMs: 0
         }
       })
     ]);
@@ -1701,6 +1709,7 @@ function userProject(id: string, path: string, label: string) {
   return {
     id,
     path,
-    label
+    label,
+    pinnedAtUnixMs: 0
   };
 }

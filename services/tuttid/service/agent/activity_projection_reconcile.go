@@ -3,9 +3,9 @@ package agent
 import (
 	"context"
 	"errors"
-	"fmt"
 	"log/slog"
-	"time"
+
+	agenthost "github.com/tutti-os/tutti/packages/agent/host"
 )
 
 // SettleStaleTurnsOnStartup is the daemon-start reconciliation of protocol v2
@@ -34,18 +34,6 @@ func (p *ActivityProjection) SettleStaleTurnsOnStartup(ctx context.Context) erro
 		"event", "workspace.agent_turn.stale_settled",
 		"count", len(settlements),
 	)
-
-	now := time.Now().UnixMilli()
-	for _, settlement := range settlements {
-		turn, ok, err := p.repo.GetTurn(ctx, settlement.WorkspaceID, settlement.AgentSessionID, settlement.TurnID)
-		if err != nil {
-			return fmt.Errorf("read startup-settled turn %s: %w", settlement.TurnID, err)
-		}
-		if !ok {
-			return fmt.Errorf("startup-settled turn %s is unavailable", settlement.TurnID)
-		}
-		p.publishActivityUpdated(ctx, settlement.WorkspaceID, settlement.AgentSessionID, "turn_update",
-			activityTurnUpdateEventPayload(settlement.WorkspaceID, settlement.AgentSessionID, turn, now))
-	}
+	agenthost.NotifyCommitted(ctx, p, agenthost.StaleTurnSettlementDelta(settlements))
 	return nil
 }

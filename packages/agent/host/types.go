@@ -318,6 +318,18 @@ type UpdateTitleInput struct {
 	Title          string
 }
 
+type UpdateSettingsInput struct {
+	WorkspaceID    string
+	AgentSessionID string
+	Settings       ComposerSettingsPatch
+}
+
+type UpdatePinInput struct {
+	WorkspaceID    string
+	AgentSessionID string
+	Pinned         bool
+}
+
 type CreateSessionResult struct {
 	Session     ProviderRuntimeSession
 	Canonical   storesqlite.Session
@@ -340,6 +352,33 @@ type SendInputResult struct {
 type UpdateTitleResult struct {
 	Session   ProviderRuntimeSession
 	Canonical storesqlite.Session
+}
+
+// GetSessionResult carries canonical truth together with an optional live
+// runtime observation. Adapters remain responsible for transport DTOs and
+// presentation-only derived fields.
+type GetSessionResult struct {
+	Session   ProviderRuntimeSession
+	Canonical storesqlite.Session
+	Live      bool
+}
+
+type UpdateSettingsResult struct {
+	Session   ProviderRuntimeSession
+	Canonical storesqlite.Session
+	Live      bool
+}
+
+type UpdatePinResult struct {
+	Session   ProviderRuntimeSession
+	Canonical storesqlite.Session
+	Live      bool
+}
+
+type DeleteSessionResult struct {
+	Deleted          bool
+	RuntimeClosed    bool
+	CanonicalRemoved bool
 }
 
 type RuntimeGoalControlInput struct {

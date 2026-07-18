@@ -34,9 +34,6 @@ func (p *ActivityProjection) publishPersistedTurnState(
 	if result.RootTurnAccepted {
 		p.publishActivityUpdated(ctx, input.WorkspaceID, result.RootTurn.AgentSessionID, "turn_update",
 			activityTurnUpdateEventPayload(input.WorkspaceID, result.RootTurn.AgentSessionID, result.RootTurn, input.State.OccurredAtUnixMS))
-		if result.RootTurn.Phase == agentactivitybiz.TurnPhaseSettled {
-			p.observeRootTurnSettled(ctx, input.WorkspaceID, result.RootTurn.AgentSessionID, result.RootTurn)
-		}
 	}
 	if result.InteractionResult == agentactivitybiz.InteractionTransitionApplied {
 		p.publishActivityUpdated(ctx, input.WorkspaceID, input.AgentSessionID, "interaction_update",

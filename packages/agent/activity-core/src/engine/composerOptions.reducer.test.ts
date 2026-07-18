@@ -257,3 +257,43 @@ test("provider invalidation matches the active request instead of stale options"
   }).state;
   assert.equal(state.entriesByTargetKey["target-1"]?.loadingSignature, null);
 });
+
+test("target invalidation only clears the exact target and is harmless when repeated", () => {
+  let state = composerOptionsReducer(
+    createInitialComposerOptionsState(),
+    loadRequest()
+  ).state;
+  state = composerOptionsReducer(state, {
+    ...loadRequest(),
+    commandId: "cmd-2",
+    targetKey: "target-2"
+  }).state;
+  state = composerOptionsReducer(state, {
+    type: "engine/commandResult",
+    commandId: "cmd-1",
+    commandType: "composerOptions/load",
+    correlationId: "target-1",
+    outcome: "succeeded",
+    value: options()
+  }).state;
+  state = composerOptionsReducer(state, {
+    type: "engine/commandResult",
+    commandId: "cmd-2",
+    commandType: "composerOptions/load",
+    correlationId: "target-2",
+    outcome: "succeeded",
+    value: options()
+  }).state;
+
+  state = composerOptionsReducer(state, {
+    type: "composerOptions/invalidated",
+    targetKeys: ["target-1"]
+  }).state;
+  assert.equal(state.entriesByTargetKey["target-1"]?.settledSignature, null);
+  assert.notEqual(state.entriesByTargetKey["target-2"]?.settledSignature, null);
+  const repeated = composerOptionsReducer(state, {
+    type: "composerOptions/invalidated",
+    targetKeys: ["target-1"]
+  }).state;
+  assert.equal(repeated.entriesByTargetKey["target-1"]?.settledSignature, null);
+});

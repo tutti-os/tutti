@@ -6,10 +6,17 @@ This spec covers provider-native child agents only:
 
 - Codex app-server multi-agent child threads.
 - Claude Code SDK `Task` / subagent sessions and turns.
+- Claude Code SDK task-system background work that is not a subagent launch,
+  such as `run_in_background` Bash shells. It follows the same child contract:
+  it gates the root turn, projects as a child, and is individually cancelable.
 - ACP providers that expose an equivalent nested/background agent concept.
 
 It does not cover Tutti launching another top-level AgentGUI session with
 `tutti-dev agent start`, handoff mentions, or another Codex/Claude Code process.
+A background command that merely tracks such a top-level session (for example
+`tutti agent wait` running in a background shell) is itself SDK task-system
+work and is covered: the tracked session stays out of scope, but the tracking
+task holds the root turn open for exactly as long as the wait runs.
 
 ## Product Contract
 
@@ -329,6 +336,12 @@ The fan-out target set is decided before entering the provider runtime:
   its root-query cancel primitive when the target set includes the root; that
   native operation covers the Task executions in the same query. Standard ACP
   remains root-only until a provider explicitly supports child sessions.
+- A Claude child-only target set does not interrupt the root query. The adapter
+  resolves each child to its SDK task identity (task id, agent id, or launching
+  tool-use id alias) and issues the SDK's targeted `stopTask`; the root provider
+  turn and every other task keep running. A target whose task is unknown or
+  already terminal is an idempotent no-op: it is simply not confirmed, and the
+  durable operation records it through the generic unconfirmed path.
 
 When a Codex target set includes the root, the adapter stops the root provider
 turn before waiting on child-thread interrupts. This closes the source of new
@@ -525,6 +538,21 @@ Mapping:
 - A foreground `Task` may settle its child turn from the terminal parent tool
   result. An async/background `Task` does not settle from the launch tool
   result; it waits for the matching task lifecycle terminal.
+- SDK task-system work that has no subagent launch result — most importantly a
+  `run_in_background` Bash shell — announces itself only through `task_started`
+  carrying a `tool_use_id` and `task_id`. The sidecar registers such an
+  unclaimed task as delegated child work keyed by that launching tool-use id,
+  so it gates the root turn, counts in the final-child continuation gate, and
+  can be stopped individually. A task event without a launching tool-use id is
+  not registered this way: it may be a racing alias for a not-yet-registered
+  subagent launch, and binding it would poison the alias maps.
+- Background task lifecycle events frequently arrive after the launching root
+  provider turn already reached its terminal. The sidecar attributes them to
+  the most recent turn instead of dropping them for lack of an active turn id.
+- A terminal `task_notification` for a task the current sidecar instance never
+  saw start — typically a task launched before a sidecar restart and reported
+  as `stopped` on the next prompt — is registered and settled in one step so
+  the child reaches a terminal state instead of the notice being dropped.
 - `parent_tool_use_id` is the canonical child scope marker for nested messages.
 - `taskId` and `agentId` are aliases. They must bind back to the existing child
   session/turn, never to "the only running task" when that would cross-bind
@@ -569,6 +597,10 @@ Mapping:
   `services/tuttid` root gate then remains unchanged: it observes a running
   provider turn when the last child becomes terminal and keeps the canonical
   root active.
+- A `stopped` task terminal is the exception: a user-initiated stop needs no
+  model follow-up, so the sidecar does not open the synthetic provider turn for
+  it. The child settles, and the root gate resolves from the ordinary
+  provider/child state without a reserved continuation or its timeout.
 - Opening at the notification boundary reserves the provider lifecycle; it
   does not claim that Claude has already emitted assistant output. The sidecar
   waits at most 30 seconds for the first root stream or assistant event. Once

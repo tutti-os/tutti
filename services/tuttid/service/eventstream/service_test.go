@@ -16,6 +16,15 @@ type preferencesMutatorStub struct {
 	result preferencesbiz.DesktopPreferences
 }
 
+type agentComposerDefaultsPatcherStub struct {
+	inputs []preferencesservice.PatchAgentComposerDefaultsForTargetInput
+}
+
+func (s *agentComposerDefaultsPatcherStub) PatchAgentComposerDefaultsForTarget(_ context.Context, input preferencesservice.PatchAgentComposerDefaultsForTargetInput) (preferencesbiz.AgentComposerDefaults, error) {
+	s.inputs = append(s.inputs, input)
+	return preferencesbiz.AgentComposerDefaults{}, nil
+}
+
 func (s *preferencesMutatorStub) Put(_ context.Context, input preferencesservice.PutInput) (preferencesbiz.DesktopPreferences, error) {
 	s.inputs = append(s.inputs, input)
 	return s.result, nil
@@ -382,6 +391,48 @@ func TestPreferencesIntentHandlerUsesAuthoritativeMutationPath(t *testing.T) {
 	}
 	if mutator.inputs[0].WindowSnapping != nil {
 		t.Fatalf("mutator window snapping = %#v, want nil", mutator.inputs[0].WindowSnapping)
+	}
+}
+
+func TestAgentComposerDefaultsPatchIntentUsesDedicatedMutationAndTargetInvalidation(t *testing.T) {
+	t.Parallel()
+
+	service := NewService(DefaultCatalog(), nil)
+	patcher := &agentComposerDefaultsPatcherStub{}
+	service.RegisterIntentHandler(
+		TopicPreferencesAgentComposerDefaultsPatchRequested,
+		NewPreferencesAgentComposerDefaultsPatchRequestedHandler(patcher),
+	)
+	if err := service.PublishFromClient(context.Background(), ClientEvent{
+		Topic:   TopicPreferencesAgentComposerDefaultsPatchRequested,
+		Payload: []byte(`{"agentTargetId":"local:opencode","patch":{"permissionModeId":"full-access"},"clientMutationId":"mutation-1"}`),
+	}); err != nil {
+		t.Fatalf("PublishFromClient() error = %v", err)
+	}
+	if len(patcher.inputs) != 1 || patcher.inputs[0].AgentTargetID != "local:opencode" {
+		t.Fatalf("patch inputs = %#v", patcher.inputs)
+	}
+	permission := patcher.inputs[0].Patch[preferencesbiz.AgentComposerDefaultsFieldPermissionModeID]
+	if permission == nil || *permission != "full-access" {
+		t.Fatalf("patch = %#v", patcher.inputs[0].Patch)
+	}
+
+	session := service.OpenSession()
+	t.Cleanup(func() { service.CloseSession(session) })
+	if err := service.Subscribe(session, []string{TopicPreferencesAgentComposerDefaultsChanged}, EventScope{}); err != nil {
+		t.Fatalf("Subscribe() error = %v", err)
+	}
+	publisher := DesktopPreferencesPublisher{Service: service}
+	if err := publisher.PublishAgentComposerDefaultsChanged(context.Background(), "local:opencode"); err != nil {
+		t.Fatalf("PublishAgentComposerDefaultsChanged() error = %v", err)
+	}
+	event := receiveEvent(t, session)
+	var payload map[string]any
+	if err := json.Unmarshal(event.Payload, &payload); err != nil {
+		t.Fatalf("decode invalidation: %v", err)
+	}
+	if len(payload) != 1 || payload["agentTargetId"] != "local:opencode" {
+		t.Fatalf("invalidation payload = %#v", payload)
 	}
 }
 

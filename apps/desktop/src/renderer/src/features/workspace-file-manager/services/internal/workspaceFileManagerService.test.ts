@@ -670,7 +670,8 @@ test("desktop workspace file locations include projects and local entries", () =
       {
         id: "project-1",
         label: "Repo (/Users/local/repo)",
-        path: "/Users/local/repo"
+        path: "/Users/local/repo",
+        pinnedAtUnixMs: 0
       }
     ]
   });
@@ -979,6 +980,7 @@ function createDependenciesStub(): {
       importWorkspaceExternalAgentSessions: fail,
       listUserProjects: fail,
       moveUserProject: fail,
+      pinUserProject: fail,
       deleteUserProject: fail,
       checkUserProjectPath: fail,
       listWorkspaceIssues: fail,

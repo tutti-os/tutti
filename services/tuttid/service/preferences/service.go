@@ -14,10 +14,25 @@ type DesktopPreferencesPublisher interface {
 	PublishDesktopPreferencesUpdated(context.Context, preferencesbiz.DesktopPreferences) error
 }
 
+type AgentComposerDefaultsPublisher interface {
+	PublishAgentComposerDefaultsChanged(context.Context, string) error
+}
+
+type AgentComposerDefaultsPatchValidator interface {
+	ValidateAgentComposerDefaultsPatch(context.Context, string, preferencesbiz.AgentComposerDefaultsPatch) error
+}
+
 type Service struct {
-	Store     workspacedata.PreferencesStore
-	Publisher DesktopPreferencesPublisher
-	AfterPut  func(context.Context, preferencesbiz.DesktopPreferences, preferencesbiz.DesktopPreferences)
+	Store                          workspacedata.PreferencesStore
+	Publisher                      DesktopPreferencesPublisher
+	AfterPut                       func(context.Context, preferencesbiz.DesktopPreferences, preferencesbiz.DesktopPreferences)
+	AgentComposerDefaultsPublisher AgentComposerDefaultsPublisher
+	AgentComposerDefaultsValidator AgentComposerDefaultsPatchValidator
+}
+
+type PatchAgentComposerDefaultsForTargetInput struct {
+	AgentTargetID string
+	Patch         preferencesbiz.AgentComposerDefaultsPatch
 }
 
 type PutInput struct {
@@ -60,6 +75,54 @@ func (s Service) Get(ctx context.Context) (preferencesbiz.DesktopPreferences, er
 	return s.Store.GetDesktopPreferences(ctx)
 }
 
+func (s Service) GetAgentComposerDefaultsForTarget(
+	ctx context.Context,
+	agentTargetID string,
+) (preferencesbiz.AgentComposerDefaults, error) {
+	stored, err := s.Get(ctx)
+	if err != nil {
+		return preferencesbiz.AgentComposerDefaults{}, err
+	}
+	return stored.AgentComposerDefaultsByAgentTarget[strings.TrimSpace(agentTargetID)], nil
+}
+
+func (s Service) PatchAgentComposerDefaultsForTarget(
+	ctx context.Context,
+	input PatchAgentComposerDefaultsForTargetInput,
+) (preferencesbiz.AgentComposerDefaults, error) {
+	if s.Store == nil {
+		return preferencesbiz.AgentComposerDefaults{}, errors.New("desktop preferences store is not configured")
+	}
+	agentTargetID := strings.TrimSpace(input.AgentTargetID)
+	if agentTargetID == "" {
+		return preferencesbiz.AgentComposerDefaults{}, errors.New("agent target id is required")
+	}
+	patch, err := normalizeAgentComposerDefaultsPatch(input.Patch)
+	if err != nil {
+		return preferencesbiz.AgentComposerDefaults{}, err
+	}
+	if s.AgentComposerDefaultsValidator == nil {
+		return preferencesbiz.AgentComposerDefaults{}, errors.New("agent composer defaults validator is not configured")
+	}
+	if err := s.AgentComposerDefaultsValidator.ValidateAgentComposerDefaultsPatch(ctx, agentTargetID, patch); err != nil {
+		return preferencesbiz.AgentComposerDefaults{}, err
+	}
+	patchStore, ok := s.Store.(workspacedata.AgentComposerDefaultsPatchStore)
+	if !ok {
+		return preferencesbiz.AgentComposerDefaults{}, errors.New("agent composer defaults patch store is not configured")
+	}
+	defaults, err := patchStore.PatchAgentComposerDefaultsForTarget(ctx, agentTargetID, patch)
+	if err != nil {
+		return preferencesbiz.AgentComposerDefaults{}, err
+	}
+	if s.AgentComposerDefaultsPublisher != nil {
+		if err := s.AgentComposerDefaultsPublisher.PublishAgentComposerDefaultsChanged(ctx, agentTargetID); err != nil {
+			return preferencesbiz.AgentComposerDefaults{}, err
+		}
+	}
+	return defaults, nil
+}
+
 func (s Service) Put(ctx context.Context, input PutInput) (preferencesbiz.DesktopPreferences, error) {
 	if s.Store == nil {
 		return preferencesbiz.DesktopPreferences{}, errors.New("desktop preferences store is not configured")
@@ -72,21 +135,15 @@ func (s Service) Put(ctx context.Context, input PutInput) (preferencesbiz.Deskto
 
 	windowSnapping := resolveWindowSnapping(stored, input.WindowSnapping)
 
-	// A nil agent-target map means the client did not send the field (e.g. an
-	// older build) — keep the stored defaults instead of wiping them. An
-	// explicit empty map still clears everything.
-	agentComposerDefaultsByAgentTarget := input.AgentComposerDefaultsByAgentTarget
-	if agentComposerDefaultsByAgentTarget == nil {
-		agentComposerDefaultsByAgentTarget = stored.AgentComposerDefaultsByAgentTarget
-	}
-
 	preferences, err := s.Store.PutDesktopPreferences(ctx, preferencesbiz.DesktopPreferences{
 		// The legacy provider-keyed defaults are frozen: client input is
 		// ignored so nothing writes the old field anymore; the stored value
 		// is only kept for downgrade compatibility and should pass through
 		// unchanged.
-		AgentComposerDefaultsByProvider:             stored.AgentComposerDefaultsByProvider,
-		AgentComposerDefaultsByAgentTarget:          normalizeAgentComposerDefaultsByAgentTarget(agentComposerDefaultsByAgentTarget),
+		AgentComposerDefaultsByProvider: stored.AgentComposerDefaultsByProvider,
+		// Target defaults are frozen on the full preferences mutation. Only the
+		// dedicated daemon-side field patch may change this map.
+		AgentComposerDefaultsByAgentTarget:          stored.AgentComposerDefaultsByAgentTarget,
 		AgentGUIConversationRailCollapsedByProvider: normalizeAgentGUIConversationRailCollapsedByProvider(input.AgentGUIConversationRailCollapsedByProvider),
 		AgentConversationDetailMode:                 preferencesbiz.NormalizeDesktopAgentConversationDetailMode(input.AgentConversationDetailMode),
 		AgentDockLayout:                             normalizeAgentDockLayout(input.AgentDockLayout),
@@ -119,6 +176,35 @@ func (s Service) Put(ctx context.Context, input PutInput) (preferencesbiz.Deskto
 		_ = s.Publisher.PublishDesktopPreferencesUpdated(ctx, preferences)
 	}
 	return preferences, nil
+}
+
+func normalizeAgentComposerDefaultsPatch(
+	input preferencesbiz.AgentComposerDefaultsPatch,
+) (preferencesbiz.AgentComposerDefaultsPatch, error) {
+	if len(input) == 0 {
+		return nil, errors.New("agent composer defaults patch is empty")
+	}
+	result := make(preferencesbiz.AgentComposerDefaultsPatch, len(input))
+	for field, value := range input {
+		switch field {
+		case preferencesbiz.AgentComposerDefaultsFieldModel,
+			preferencesbiz.AgentComposerDefaultsFieldPermissionModeID,
+			preferencesbiz.AgentComposerDefaultsFieldReasoningEffort,
+			preferencesbiz.AgentComposerDefaultsFieldSpeed:
+		default:
+			return nil, errors.New("agent composer defaults patch contains an unsupported field")
+		}
+		if value == nil {
+			result[field] = nil
+			continue
+		}
+		normalized := strings.TrimSpace(*value)
+		if normalized == "" {
+			return nil, errors.New("agent composer defaults patch values must be non-empty or null")
+		}
+		result[field] = &normalized
+	}
+	return result, nil
 }
 
 func resolveWindowSnapping(stored preferencesbiz.DesktopPreferences, input *DesktopWindowSnappingInput) DesktopWindowSnappingInput {
@@ -212,29 +298,4 @@ func normalizeAgentGUIConversationRailCollapsedByProvider(input map[string]bool)
 		result[normalizedProvider] = collapsed
 	}
 	return result
-}
-
-func normalizeAgentComposerDefaultsByAgentTarget(input map[string]preferencesbiz.AgentComposerDefaults) map[string]preferencesbiz.AgentComposerDefaults {
-	result := map[string]preferencesbiz.AgentComposerDefaults{}
-	for agentTargetID, defaults := range input {
-		normalizedAgentTargetID := strings.TrimSpace(agentTargetID)
-		if normalizedAgentTargetID == "" {
-			continue
-		}
-		normalizedDefaults := normalizeAgentComposerDefaults(defaults)
-		if normalizedDefaults.IsZero() {
-			continue
-		}
-		result[normalizedAgentTargetID] = normalizedDefaults
-	}
-	return result
-}
-
-func normalizeAgentComposerDefaults(defaults preferencesbiz.AgentComposerDefaults) preferencesbiz.AgentComposerDefaults {
-	return preferencesbiz.AgentComposerDefaults{
-		Model:            strings.TrimSpace(defaults.Model),
-		PermissionModeID: strings.TrimSpace(defaults.PermissionModeID),
-		ReasoningEffort:  strings.TrimSpace(defaults.ReasoningEffort),
-		Speed:            strings.TrimSpace(defaults.Speed),
-	}
 }

@@ -36,18 +36,7 @@ func (s *Service) ensureRuntimeSessionResult(
 			return ensuredRuntimeSession{}, ErrSessionNotFound
 		}
 	}
-	session, err := s.applicationHost(serviceHostPreparation{service: s}).EnsureRuntimeSession(ctx, agenthost.SessionRef{
-		WorkspaceID: workspaceID, AgentSessionID: agentSessionID,
-	})
-	return ensuredRuntimeSession{Session: session}, err
-}
-
-func (s *Service) ensureRuntimeSessionResultLocked(
-	ctx context.Context,
-	workspaceID string,
-	agentSessionID string,
-) (ensuredRuntimeSession, error) {
-	session, err := s.applicationHostLocked(serviceHostPreparation{service: s}).EnsureRuntimeSession(ctx, agenthost.SessionRef{
+	session, err := s.ApplicationHost().EnsureRuntimeSession(ctx, agenthost.SessionRef{
 		WorkspaceID: workspaceID, AgentSessionID: agentSessionID,
 	})
 	return ensuredRuntimeSession{Session: session}, err

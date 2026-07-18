@@ -21,6 +21,14 @@ import type {
 import type { DesktopThemeSource, DesktopThemeState } from "@shared/theme";
 import type { DesktopPreferencesReadableStoreState } from "./desktopPreferencesTypes.ts";
 
+export type DesktopAgentComposerDefaultsField =
+  keyof DesktopAgentComposerDefaultsPatch;
+
+export interface DesktopAgentComposerDefaultsPatchResult {
+  acknowledgedFields: DesktopAgentComposerDefaultsField[];
+  supersededFields: DesktopAgentComposerDefaultsField[];
+}
+
 export interface IDesktopPreferencesService {
   readonly _serviceBrand: undefined;
   readonly store: DesktopPreferencesReadableStoreState;
@@ -67,7 +75,7 @@ export interface IDesktopPreferencesService {
   rememberAgentComposerDefaultsForAgentTarget(
     agentTargetId: string,
     defaults: DesktopAgentComposerDefaultsPatch | null
-  ): Promise<void>;
+  ): Promise<DesktopAgentComposerDefaultsPatchResult>;
   rememberAgentGuiConversationRailCollapsed(
     provider: DesktopAgentProvider,
     collapsed: boolean

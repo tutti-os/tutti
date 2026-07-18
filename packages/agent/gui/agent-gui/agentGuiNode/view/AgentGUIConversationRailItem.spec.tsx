@@ -69,7 +69,7 @@ describe("AgentGUIConversationRailItem interaction lock", () => {
     }
   );
 
-  it("keeps the file marker for a projected file reference", () => {
+  it("keeps a projected file reference as @ text without a mention icon", () => {
     const { container } = renderRailItem({
       isRailInteractionLocked: () => false,
       item: {
@@ -82,9 +82,13 @@ describe("AgentGUIConversationRailItem interaction lock", () => {
       container.querySelector(
         '[data-agent-gui-conversation-title-mention-icon="file"]'
       )
-    ).not.toBeNull();
-    expect(container.textContent).toContain("notes.md inspect");
-    expect(container.textContent).not.toContain("@notes.md inspect");
+    ).toBeNull();
+    expect(
+      container.querySelectorAll(
+        "[data-agent-gui-conversation-title-mention-icon]"
+      )
+    ).toHaveLength(0);
+    expect(container.textContent).toContain("@notes.md inspect");
   });
 
   it("leaves an ordinary conversation row unchanged", () => {

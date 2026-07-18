@@ -8,10 +8,7 @@ import {
   parseInlineActivityMessages,
   selectEngineSession
 } from "@tutti-os/agent-activity-core";
-import type {
-  WorkspaceAgentActivityEnsureSessionSynchronizedInput,
-  WorkspaceAgentModelCatalogInvalidatedEvent
-} from "../workspaceAgentActivityService.interface.ts";
+import type { WorkspaceAgentActivityEnsureSessionSynchronizedInput } from "../workspaceAgentActivityService.interface.ts";
 import type { WorkspaceAgentSessionEngineHost } from "./workspaceAgentSessionEngineHost.ts";
 import {
   agentActivitySessionReconcileDiagnosticDetails,
@@ -25,12 +22,16 @@ import {
   agentActivitySessionFromTuttidSession,
   agentActivityTurnFromTuttidTurn
 } from "../desktopAgentActivityAdapter.ts";
-import { reconcileAgentSessionMessagePages } from "./workspaceAgentActivityReconcileMessages.ts";
+import {
+  analyzeInlineMessageVersionContinuity,
+  reconcileAgentSessionMessagePages
+} from "./workspaceAgentActivityReconcileMessages.ts";
 import type {
   AgentActivitySessionDetail,
   WorkspaceAgentActivityBridgeEvent,
   WorkspaceAgentActivityReconcileDependencies
 } from "./workspaceAgentActivityReconcileTypes.ts";
+import { WorkspaceAgentComposerOptionsInvalidationCoordinator } from "./workspaceAgentComposerOptionsInvalidationCoordinator.ts";
 
 export abstract class WorkspaceAgentActivityReconcileBridge {
   private readonly reconcileDependencies: WorkspaceAgentActivityReconcileDependencies;
@@ -46,9 +47,10 @@ export abstract class WorkspaceAgentActivityReconcileBridge {
     string,
     Set<(event: unknown) => void>
   >();
-  private readonly modelCatalogInvalidatedListeners = new Set<
-    (event: WorkspaceAgentModelCatalogInvalidatedEvent) => void
-  >();
+  private readonly composerOptionsInvalidation =
+    new WorkspaceAgentComposerOptionsInvalidationCoordinator(() =>
+      this.entries.values()
+    );
   private readonly latestStateEventBySessionKey = new Map<
     string,
     { data: unknown; eventType: "state_patch" }
@@ -56,6 +58,8 @@ export abstract class WorkspaceAgentActivityReconcileBridge {
   private readonly eventStreamDisposables: Array<() => void> = [];
   private disposed = false;
   private eventStreamStarted = false;
+  private eventStreamConnectionState: "connected" | "disconnected" | null =
+    null;
 
   protected constructor(
     dependencies: WorkspaceAgentActivityReconcileDependencies
@@ -145,15 +149,14 @@ export abstract class WorkspaceAgentActivityReconcileBridge {
     return () => listeners?.delete(listener);
   }
 
-  onModelCatalogInvalidated(
-    listener: (event: WorkspaceAgentModelCatalogInvalidatedEvent) => void
-  ): () => void {
-    if (this.disposed) {
-      return () => {};
-    }
-    this.modelCatalogInvalidatedListeners.add(listener);
-    return () => this.modelCatalogInvalidatedListeners.delete(listener);
-  }
+  readonly onModelCatalogInvalidated =
+    this.composerOptionsInvalidation.onModelCatalogInvalidated.bind(
+      this.composerOptionsInvalidation
+    );
+  readonly onComposerDefaultsInvalidated =
+    this.composerOptionsInvalidation.onComposerDefaultsInvalidated.bind(
+      this.composerOptionsInvalidation
+    );
 
   dispose(): void {
     if (this.disposed) {
@@ -168,7 +171,7 @@ export abstract class WorkspaceAgentActivityReconcileBridge {
       dispose();
     }
     this.sessionEventListenersByWorkspaceId.clear();
-    this.modelCatalogInvalidatedListeners.clear();
+    this.composerOptionsInvalidation.dispose();
     this.snapshotProjectors.clear();
     this.liveReconcileSessionKeys.clear();
     this.liveReconcileInFlightSessionKeys.clear();
@@ -386,23 +389,6 @@ export abstract class WorkspaceAgentActivityReconcileBridge {
     for (const listener of listeners) listener(event);
   }
 
-  private handleModelCatalogInvalidated(
-    event: WorkspaceAgentModelCatalogInvalidatedEvent
-  ): void {
-    for (const entry of this.entries.values()) {
-      entry.engine.dispatch({
-        providers: event.providers,
-        type: "composerOptions/invalidated"
-      });
-    }
-    for (const listener of this.modelCatalogInvalidatedListeners) {
-      listener({
-        providers: [...event.providers],
-        occurredAtUnixMs: event.occurredAtUnixMs
-      });
-    }
-  }
-
   private subscribeWorkspaceEventStream(workspaceId: string): void {
     const eventStreamClient = this.reconcileDependencies.eventStreamClient;
     if (!eventStreamClient) return;
@@ -424,23 +410,22 @@ export abstract class WorkspaceAgentActivityReconcileBridge {
     if (!eventStreamClient || this.eventStreamStarted) return;
     this.eventStreamStarted = true;
     this.eventStreamDisposables.push(
-      eventStreamClient.subscribe(
-        "agent.model.catalog.invalidated",
-        (event) => {
-          this.handleModelCatalogInvalidated({
-            providers: [...event.payload.providers],
-            occurredAtUnixMs: event.payload.occurredAtUnixMs
-          });
-        }
-      ),
+      ...this.composerOptionsInvalidation.subscribe(eventStreamClient),
       eventStreamClient.subscribeConnectionState((state) => {
         if (state !== "connected" && state !== "disconnected") return;
+        const recoveredFromDisconnect =
+          this.eventStreamConnectionState === "disconnected" &&
+          state === "connected";
+        this.eventStreamConnectionState = state;
         for (const [workspaceId, entry] of this.entries) {
           entry.engine.dispatch({
             status: state,
             type: "engine/connectionChanged",
             workspaceId
           });
+          if (recoveredFromDisconnect) {
+            this.reconcileCachedSessionMessagesAfterReconnect(workspaceId);
+          }
         }
       })
     );
@@ -451,6 +436,25 @@ export abstract class WorkspaceAgentActivityReconcileBridge {
         level: "warn"
       });
     });
+  }
+
+  private reconcileCachedSessionMessagesAfterReconnect(
+    workspaceId: string
+  ): void {
+    const messagesBySessionId =
+      this.activitySnapshot(workspaceId).sessionMessagesById;
+    for (const [agentSessionId, messages] of Object.entries(
+      messagesBySessionId
+    )) {
+      if (messages.length === 0) continue;
+      this.entry(workspaceId).engine.dispatch({
+        agentSessionId,
+        needsMessages: true,
+        needsState: false,
+        type: "session/reconcileRequested",
+        workspaceId
+      });
+    }
   }
 
   private async reconcileAgentActivityUpdate(
@@ -501,7 +505,16 @@ export abstract class WorkspaceAgentActivityReconcileBridge {
     }
     const hasCachedSession = this.hasCachedSession(workspaceId, agentSessionId);
     const messages = parseInlineActivityMessages(input);
-    if (messages.length > 0) {
+    const cachedMessages =
+      this.activitySnapshot(workspaceId).sessionMessagesById[agentSessionId] ??
+      [];
+    const inlineContinuity = analyzeInlineMessageVersionContinuity(
+      cachedMessages,
+      messages
+    );
+    const canApplyInlineMessages =
+      messages.length > 0 && inlineContinuity.continuous;
+    if (canApplyInlineMessages) {
       this.entry(workspaceId).engine.dispatch(
         {
           messages,
@@ -513,6 +526,13 @@ export abstract class WorkspaceAgentActivityReconcileBridge {
       for (const message of messages) {
         this.emitSessionEvent(workspaceId, hostMessageEventFromCore(message));
       }
+    } else if (messages.length > 0) {
+      this.reportReconcileTrace({
+        agentSessionId,
+        traceEvent: "realtime.message_version_gap_detected",
+        workspaceId,
+        fields: { ...inlineContinuity }
+      });
     }
     if (
       input.eventType === "turn_update" ||
@@ -520,7 +540,7 @@ export abstract class WorkspaceAgentActivityReconcileBridge {
     ) {
       this.markNextReconcileLive(workspaceId, agentSessionId);
     }
-    const inlineApplied = hasCachedSession && messages.length > 0;
+    const inlineApplied = hasCachedSession && canApplyInlineMessages;
     this.entry(workspaceId).engine.dispatch({
       agentSessionId,
       eventType: input.eventType,

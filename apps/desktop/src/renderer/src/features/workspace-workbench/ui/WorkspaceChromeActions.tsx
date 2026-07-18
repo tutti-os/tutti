@@ -5,7 +5,6 @@ import type { WorkbenchMissionControlMode } from "@tutti-os/workbench-surface";
 import {
   AppWindowIcon,
   Button,
-  OverviewLayoutIcon,
   SettingsIcon,
   ShortcutBadge,
   Tooltip,
@@ -46,9 +45,9 @@ export function WorkspaceMissionControlActions({
   return (
     <div className="flex items-center gap-1">
       <WorkspaceMissionControlAction
-        active={missionControl.isOpen && missionControl.mode === "activate"}
+        active={missionControl.isOpen}
         disabled={!missionControl.canOpen}
-        label={t("workspace.workbenchDesktop.missionControl.activateTrigger")}
+        label={t("workspace.workbenchDesktop.missionControl.layoutTrigger")}
         shortcutLabel={t(
           isDarwin
             ? "workspace.workbenchDesktop.missionControl.activateShortcutMac"
@@ -58,33 +57,11 @@ export function WorkspaceMissionControlActions({
           "workspace.workbenchDesktop.missionControl.unavailableTrigger"
         )}
         onClick={() => {
-          if (missionControl.isOpen && missionControl.mode === "activate") {
+          if (missionControl.isOpen) {
             missionControl.close();
             return;
           }
           missionControl.open("activate", "button");
-        }}
-      >
-        <OverviewLayoutIcon className="size-4" />
-      </WorkspaceMissionControlAction>
-      <WorkspaceMissionControlAction
-        active={missionControl.isOpen && missionControl.mode === "layout"}
-        disabled={!missionControl.canOpen}
-        label={t("workspace.workbenchDesktop.missionControl.layoutTrigger")}
-        shortcutLabel={t(
-          isDarwin
-            ? "workspace.workbenchDesktop.missionControl.layoutShortcutMac"
-            : "workspace.workbenchDesktop.missionControl.layoutShortcutDefault"
-        )}
-        unavailableLabel={t(
-          "workspace.workbenchDesktop.missionControl.unavailableTrigger"
-        )}
-        onClick={() => {
-          if (missionControl.isOpen && missionControl.mode === "layout") {
-            missionControl.close();
-            return;
-          }
-          missionControl.open("layout", "button");
         }}
       >
         <AppWindowIcon className="size-4" />

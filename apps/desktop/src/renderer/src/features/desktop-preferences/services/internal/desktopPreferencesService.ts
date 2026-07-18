@@ -1,10 +1,11 @@
 import type { DesktopLocale } from "@shared/i18n";
 import type { DesktopThemeSource, DesktopThemeState } from "@shared/theme";
 import type { IDesktopPreferencesService } from "../desktopPreferencesService.interface.ts";
+import type { DesktopAgentComposerDefaultsPatchResult } from "../desktopPreferencesService.interface.ts";
 import type { DesktopPreferencesClient } from "./adapters/desktopPreferencesClient.ts";
 import { createDesktopPreferencesStore } from "./desktopPreferencesStore.ts";
+import { AgentComposerDefaultsPatchCoordinator } from "./agentComposerDefaultsPatchCoordinator.ts";
 import {
-  desktopAgentComposerDefaultsByAgentTargetEqual,
   desktopAgentGuiConversationRailCollapsedByProviderEqual,
   defaultDesktopAgentProvider,
   defaultDesktopAgentConversationDetailMode,
@@ -22,7 +23,6 @@ import {
   defaultDesktopWorkbenchShortcuts,
   defaultDesktopWorkbenchWindowSnapping,
   desktopFeatureFlagsEqual,
-  mergeDesktopAgentComposerDefaultsByAgentTarget,
   mergeDesktopAgentGuiConversationRailCollapsedByProvider,
   normalizeDesktopAgentComposerDefaultsByAgentTarget,
   normalizeDesktopAgentConversationDetailMode,
@@ -70,11 +70,17 @@ export class DesktopPreferencesService implements IDesktopPreferencesService {
   readonly store;
 
   private readonly dependencies: DesktopPreferencesServiceDependencies;
+  private readonly agentComposerDefaultsPatchCoordinator: AgentComposerDefaultsPatchCoordinator;
   private readonly unsubscribePreferencesUpdates: () => void;
   private disposed = false;
 
   constructor(dependencies: DesktopPreferencesServiceDependencies) {
     this.dependencies = dependencies;
+    this.agentComposerDefaultsPatchCoordinator =
+      new AgentComposerDefaultsPatchCoordinator({
+        publish: (input) =>
+          this.dependencies.client.patchAgentComposerDefaultsForTarget(input)
+      });
     this.store = createDesktopPreferencesStore({
       agentComposerDefaultsByProvider: {},
       agentComposerDefaultsByAgentTarget: {},
@@ -110,6 +116,7 @@ export class DesktopPreferencesService implements IDesktopPreferencesService {
 
   dispose(): void {
     this.disposed = true;
+    this.agentComposerDefaultsPatchCoordinator.dispose();
     this.unsubscribePreferencesUpdates();
     this.dependencies.client.dispose();
   }
@@ -627,36 +634,11 @@ export class DesktopPreferencesService implements IDesktopPreferencesService {
   async rememberAgentComposerDefaultsForAgentTarget(
     agentTargetId: string,
     defaults: DesktopAgentComposerDefaultsPatch | null
-  ): Promise<void> {
-    const previousDefaultsByAgentTarget =
-      this.store.agentComposerDefaultsByAgentTarget;
-    const nextDefaultsByAgentTarget =
-      mergeDesktopAgentComposerDefaultsByAgentTarget(
-        previousDefaultsByAgentTarget,
-        agentTargetId,
-        defaults
-      );
-    if (
-      desktopAgentComposerDefaultsByAgentTargetEqual(
-        previousDefaultsByAgentTarget,
-        nextDefaultsByAgentTarget
-      )
-    ) {
-      return;
-    }
-
-    this.store.agentComposerDefaultsByAgentTarget = nextDefaultsByAgentTarget;
-    try {
-      await this.dependencies.client.updateDesktopPreferences({
-        preferences: this.currentPreferences({
-          agentComposerDefaultsByAgentTarget: nextDefaultsByAgentTarget
-        })
-      });
-    } catch (error) {
-      this.store.agentComposerDefaultsByAgentTarget =
-        previousDefaultsByAgentTarget;
-      throw error;
-    }
+  ): Promise<DesktopAgentComposerDefaultsPatchResult> {
+    return this.agentComposerDefaultsPatchCoordinator.patch(
+      agentTargetId,
+      defaults
+    );
   }
 
   async rememberAgentGuiConversationRailCollapsed(
@@ -817,7 +799,6 @@ export class DesktopPreferencesService implements IDesktopPreferencesService {
 
   private currentPreferences(
     overrides: Partial<{
-      agentComposerDefaultsByAgentTarget: DesktopAgentComposerDefaultsByAgentTarget;
       agentGuiConversationRailCollapsedByProvider: DesktopAgentGuiConversationRailCollapsedByProvider;
       agentConversationDetailMode: DesktopAgentConversationDetailMode;
       appCatalogChannel: DesktopAppCatalogChannel;
@@ -839,7 +820,7 @@ export class DesktopPreferencesService implements IDesktopPreferencesService {
     }> = {}
   ): {
     agentComposerDefaultsByProvider: DesktopAgentComposerDefaultsByProvider;
-    agentComposerDefaultsByAgentTarget: DesktopAgentComposerDefaultsByAgentTarget;
+    agentComposerDefaultsByAgentTarget?: DesktopAgentComposerDefaultsByAgentTarget;
     agentGuiConversationRailCollapsedByProvider: DesktopAgentGuiConversationRailCollapsedByProvider;
     agentConversationDetailMode: DesktopAgentConversationDetailMode;
     agentDockLayout: "unified";
@@ -869,11 +850,6 @@ export class DesktopPreferencesService implements IDesktopPreferencesService {
       // Keep the required wire-contract field, but stop round-tripping the
       // frozen legacy provider-keyed defaults through renderer state.
       agentComposerDefaultsByProvider: {},
-      agentComposerDefaultsByAgentTarget:
-        normalizeDesktopAgentComposerDefaultsByAgentTarget(
-          overrides.agentComposerDefaultsByAgentTarget ??
-            this.store.agentComposerDefaultsByAgentTarget
-        ),
       agentGuiConversationRailCollapsedByProvider:
         normalizeDesktopAgentGuiConversationRailCollapsedByProvider(
           overrides.agentGuiConversationRailCollapsedByProvider ??

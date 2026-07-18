@@ -14,7 +14,7 @@ type GoalStateSessionResult struct {
 }
 
 func (s *Service) GetGoalState(ctx context.Context, workspaceID, agentSessionID string) (GoalStateSessionResult, error) {
-	result, err := s.applicationHost(serviceHostPreparation{service: s}).GetGoalState(ctx, agenthost.SessionRef{
+	result, err := s.ApplicationHost().GetGoalState(ctx, agenthost.SessionRef{
 		WorkspaceID: strings.TrimSpace(workspaceID), AgentSessionID: strings.TrimSpace(agentSessionID),
 	})
 	if err != nil {
@@ -25,7 +25,7 @@ func (s *Service) GetGoalState(ctx context.Context, workspaceID, agentSessionID 
 }
 
 func (s *Service) ReconcileGoal(ctx context.Context, workspaceID, agentSessionID string) (GoalStateSessionResult, error) {
-	result, err := s.applicationHost(serviceHostPreparation{service: s}).ReconcileGoal(ctx, agenthost.SessionRef{
+	result, err := s.ApplicationHost().ReconcileGoal(ctx, agenthost.SessionRef{
 		WorkspaceID: strings.TrimSpace(workspaceID), AgentSessionID: strings.TrimSpace(agentSessionID),
 	})
 	if err != nil {

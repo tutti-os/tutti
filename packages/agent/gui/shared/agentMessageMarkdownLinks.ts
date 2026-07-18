@@ -397,10 +397,13 @@ type MentionKind =
 export interface ParsedMentionLink {
   agentProviderId?: string;
   appId?: string;
+  entityId: string;
   kind: MentionKind;
   label: string;
   iconUrl?: string;
+  providerId: string;
   referenceSource?: string;
+  scope?: Readonly<Record<string, string>>;
   /** 引用文件数量(workspace-reference 专用,来自 href 的 count 参数)。 */
   fileCount?: number;
 }
@@ -451,13 +454,19 @@ export function parseMentionLink(
   const label =
     rawLabel.trim().replace(/^@+/, "").trim() ||
     (kind === "workspace-app-factory" ? appFactoryFallbackLabel : "");
+  const identity = {
+    entityId,
+    providerId: mention.providerId,
+    ...(mention.scope ? { scope: mention.scope } : {})
+  };
   if (kind === "pasted-text") {
-    return { kind, label };
+    return { ...identity, kind, label };
   }
   if (kind === "workspace-app" || kind === "workspace-app-factory") {
     const appId = kind === "workspace-app" ? entityId : "";
     const workspaceId = mention.scope?.workspaceId?.trim() || "";
     return {
+      ...identity,
       kind,
       ...(kind === "workspace-app" ? { appId } : {}),
       label,
@@ -482,6 +491,7 @@ export function parseMentionLink(
     const agentProviderId = target?.provider?.trim() || undefined;
     const targetLabel = target?.name?.trim() || label;
     return {
+      ...identity,
       agentProviderId,
       kind,
       label: targetLabel,
@@ -501,6 +511,7 @@ export function parseMentionLink(
       ? agentTargetId.slice("local:".length).trim()
       : "";
     return {
+      ...identity,
       kind,
       label,
       iconUrl:
@@ -520,6 +531,7 @@ export function parseMentionLink(
           })
         : undefined;
     return {
+      ...identity,
       kind,
       label,
       iconUrl: mention.scope?.icon?.trim() || appIconUrl,
@@ -529,11 +541,13 @@ export function parseMentionLink(
   }
   if (kind === "workspace-issue") {
     return {
+      ...identity,
       kind,
       label
     };
   }
   return {
+    ...identity,
     kind,
     label
   };

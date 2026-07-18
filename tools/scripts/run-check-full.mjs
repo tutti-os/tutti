@@ -49,6 +49,10 @@ const phases = [
         script: "check:agent-activity-runtime-boundaries"
       },
       {
+        label: "agent-host-boundary",
+        script: "check:agent-host-boundary"
+      },
+      {
         label: "agent-gui-degradation",
         script: "check:agent-gui-degradation"
       }

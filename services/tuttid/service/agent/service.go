@@ -58,6 +58,9 @@ func (s *Service) Create(ctx context.Context, workspaceID string, input CreateSe
 	}
 	input.Provider = provider
 	input.ProviderTargetRef = launch.ProviderTargetRef
+	if err := s.applyCreateSessionComposerDefaults(ctx, &input); err != nil {
+		return Session{}, err
+	}
 	input.ConversationDetailMode = preferencesbiz.NormalizeDesktopAgentConversationDetailMode(input.ConversationDetailMode)
 	normalizedPermissionModeID := normalizePermissionModeIDForLaunch(provider, input.ProviderTargetRef, value(input.PermissionModeID))
 	if normalizedPermissionModeID != "" {
@@ -108,6 +111,14 @@ func (s *Service) Create(ctx context.Context, workspaceID string, input CreateSe
 	logAgentSubmitTrace("service.create.cwd_resolved", workspaceID, input.AgentSessionID, input.Metadata, map[string]any{
 		"cwd": cwd,
 	})
+	if providerTargetRefKind(input.ProviderTargetRef) == "agent_extension" {
+		nodeStartedAt = time.Now()
+		if err := s.validateExtensionComposerSettingsForCreate(ctx, workspaceID, cwd, input); err != nil {
+			s.reportAgentServiceNodeFailure(ctx, input.AgentSessionID, "session_create", "settings_validated", provider, nodeStartedAt, err)
+			return Session{}, err
+		}
+		s.reportAgentServiceNodeSuccess(ctx, input.AgentSessionID, "session_create", "settings_validated", provider, nodeStartedAt)
+	}
 	nodeStartedAt = time.Now()
 	prepared, err := s.prepareRuntime(ctx, workspaceID, cwd, input)
 	if err != nil {
@@ -116,6 +127,7 @@ func (s *Service) Create(ctx context.Context, workspaceID string, input CreateSe
 	}
 	s.reportAgentServiceNodeSuccess(ctx, input.AgentSessionID, "session_create", "runtime_prepared", provider, nodeStartedAt)
 	logAgentSubmitTrace("service.create.runtime_prepared", workspaceID, input.AgentSessionID, input.Metadata, map[string]any{"cwd": prepared.Cwd, "env_count": len(prepared.Env)})
+	ctx = withServicePreparedRuntime(ctx, s, prepared)
 	runtimeSettings := ComposerSettings{
 		Model:            clampComposerModelForLaunch(provider, input.ProviderTargetRef, value(input.Model)),
 		PermissionModeID: value(input.PermissionModeID),
@@ -140,7 +152,7 @@ func (s *Service) Create(ctx context.Context, workspaceID string, input CreateSe
 		ConversationDetailMode: input.ConversationDetailMode, Visible: input.Visible,
 	}
 	logAgentSubmitTrace("service.create.runtime_start_requested", workspaceID, input.AgentSessionID, input.Metadata, nil)
-	hostResult, err := s.applicationHost(serviceHostPreparation{service: s, prepared: &prepared}).CreateSession(ctx, workspaceID, hostInput)
+	hostResult, err := s.ApplicationHost().CreateSession(ctx, workspaceID, hostInput)
 	if err != nil {
 		return Session{}, err
 	}
@@ -168,6 +180,29 @@ func (s *Service) Create(ctx context.Context, workspaceID string, input CreateSe
 		persistedSession,
 		s.controller().CanResume(runtimeResumeInputFromRuntimeSession(session)),
 	), nil
+}
+
+func (s *Service) applyCreateSessionComposerDefaults(ctx context.Context, input *CreateSessionInput) error {
+	if input == nil || s.AgentComposerDefaultsReader == nil {
+		return nil
+	}
+	defaults, err := s.AgentComposerDefaultsReader.GetAgentComposerDefaultsForTarget(ctx, input.AgentTargetID)
+	if err != nil {
+		return fmt.Errorf("get agent composer defaults for create: %w", err)
+	}
+	if input.Model == nil && strings.TrimSpace(defaults.Model) != "" {
+		input.Model = stringPointer(defaults.Model)
+	}
+	if input.PermissionModeID == nil && strings.TrimSpace(defaults.PermissionModeID) != "" {
+		input.PermissionModeID = stringPointer(defaults.PermissionModeID)
+	}
+	if input.ReasoningEffort == nil && strings.TrimSpace(defaults.ReasoningEffort) != "" {
+		input.ReasoningEffort = stringPointer(defaults.ReasoningEffort)
+	}
+	if input.Speed == nil && strings.TrimSpace(defaults.Speed) != "" {
+		input.Speed = stringPointer(defaults.Speed)
+	}
+	return nil
 }
 
 func normalizePermissionModeIDForLaunch(provider string, providerTargetRef map[string]any, value string) string {
@@ -397,88 +432,27 @@ func (s *Service) LocalAttachmentPath(ctx context.Context, workspaceID string, a
 }
 
 func (s *Service) get(ctx context.Context, workspaceID string, agentSessionID string, _ bool) (Session, error) {
-	if s.SessionReader != nil {
-		deleted, err := s.SessionReader.SessionDeleted(ctx, workspaceID, agentSessionID)
-		if err != nil {
+	result, err := s.ApplicationHost().GetSession(ctx, agenthost.SessionRef{
+		WorkspaceID: workspaceID, AgentSessionID: agentSessionID,
+	})
+	if err != nil {
+		return Session{}, err
+	}
+	persisted := persistedSessionFromHost(result.Canonical)
+	if !result.Live && s.SessionReader != nil && isStaleHiddenLiveModelDiscoverySession(persisted) {
+		if _, err := s.Delete(ctx, workspaceID, agentSessionID); err != nil && !errors.Is(err, ErrSessionNotFound) {
 			return Session{}, err
 		}
-		if deleted {
-			return Session{}, ErrSessionNotFound
-		}
+		return Session{}, ErrSessionNotFound
 	}
-	session, ok := s.controller().Session(workspaceID, agentSessionID)
-	if ok {
-		resumable := s.controller().CanResume(runtimeResumeInputFromRuntimeSession(session))
-		service := serviceSession(session, resumable)
-		if s.SessionReader != nil {
-			persisted, ok := s.SessionReader.GetSession(workspaceID, agentSessionID)
-			if !ok {
-				return Session{}, errors.New("live workspace agent session has no persisted session")
-			}
-			if err := validatePersistedRailSectionKey(persisted); err != nil {
-				return Session{}, err
-			}
-			service = serviceSessionWithPersistedFreshness(session, persisted, resumable)
-		}
-		return s.withProtocolV2TurnState(ctx, workspaceID, service)
-	}
-	if s.SessionReader != nil {
-		if persisted, ok := s.SessionReader.GetSession(workspaceID, agentSessionID); ok {
-			if err := validatePersistedRailSectionKey(persisted); err != nil {
-				return Session{}, err
-			}
-			if isStaleHiddenLiveModelDiscoverySession(persisted) {
-				if _, err := s.Delete(ctx, workspaceID, agentSessionID); err != nil && !errors.Is(err, ErrSessionNotFound) {
-					return Session{}, err
-				}
-				return Session{}, ErrSessionNotFound
-			}
-			return s.withProtocolV2TurnState(ctx, workspaceID, sessionFromPersisted(
-				persisted,
-				s.persistedSessionCanResume(ctx, persisted),
-			))
-		}
-	}
-	return Session{}, ErrSessionNotFound
+	return s.projectHostSessionResult(ctx, result.Canonical, result.Session, result.Live, true)
 }
 
 func (s *Service) Delete(ctx context.Context, workspaceID string, agentSessionID string) (bool, error) {
-	workspaceID = strings.TrimSpace(workspaceID)
-	agentSessionID = strings.TrimSpace(agentSessionID)
-	if workspaceID == "" || agentSessionID == "" {
-		return false, ErrInvalidArgument
-	}
-	runtimeClosed := false
-	if _, ok := s.controller().Session(workspaceID, agentSessionID); ok {
-		if err := s.controller().Close(ctx, RuntimeCloseInput{
-			WorkspaceID:    workspaceID,
-			AgentSessionID: agentSessionID,
-		}); err != nil {
-			return false, normalizeRuntimeError(err)
-		}
-		runtimeClosed = true
-	}
-	deleter, ok := s.SessionReader.(SessionDeleter)
-	if !ok {
-		if runtimeClosed {
-			if err := s.cleanupRuntime(ctx, workspaceID, agentSessionID); err != nil {
-				return false, err
-			}
-			return true, nil
-		}
-		return false, ErrSessionNotFound
-	}
-	removed, err := deleter.DeleteSession(ctx, workspaceID, agentSessionID)
-	if err != nil {
-		return false, err
-	}
-	if !removed && !runtimeClosed {
-		return false, ErrSessionNotFound
-	}
-	if err := s.cleanupRuntime(ctx, workspaceID, agentSessionID); err != nil {
-		return false, err
-	}
-	return removed || runtimeClosed, nil
+	result, err := s.ApplicationHost().DeleteSession(ctx, agenthost.SessionRef{
+		WorkspaceID: workspaceID, AgentSessionID: agentSessionID,
+	})
+	return result.Deleted, err
 }
 
 func (s *Service) Clear(ctx context.Context, workspaceID string) (ClearSessionsResult, error) {
@@ -507,24 +481,17 @@ func (s *Service) Clear(ctx context.Context, workspaceID string) (ClearSessionsR
 func (s *Service) UpdatePin(ctx context.Context, workspaceID string, agentSessionID string, pinned bool) (Session, error) {
 	workspaceID = strings.TrimSpace(workspaceID)
 	agentSessionID = strings.TrimSpace(agentSessionID)
-	if workspaceID == "" || agentSessionID == "" {
-		return Session{}, ErrInvalidArgument
-	}
-	updater, ok := s.SessionReader.(SessionPinUpdater)
-	if !ok {
-		return Session{}, ErrSessionNotFound
-	}
-	persisted, updated, err := updater.UpdateSessionPinned(ctx, workspaceID, agentSessionID, pinned)
+	result, err := s.ApplicationHost().UpdatePin(ctx, agenthost.UpdatePinInput{
+		WorkspaceID: workspaceID, AgentSessionID: agentSessionID, Pinned: pinned,
+	})
 	if err != nil {
 		return Session{}, err
 	}
-	if !updated {
-		return Session{}, ErrSessionNotFound
-	}
-	if runtime, ok := s.controller().Session(workspaceID, agentSessionID); ok {
+	persisted := persistedSessionFromHost(result.Canonical)
+	if result.Live {
 		service := serviceSession(
-			runtime,
-			s.controller().CanResume(runtimeResumeInputFromRuntimeSession(runtime)),
+			result.Session,
+			s.controller().CanResume(runtimeResumeInputFromRuntimeSession(result.Session)),
 		)
 		return s.withProtocolV2TurnState(
 			ctx,
@@ -549,7 +516,7 @@ func (s *Service) cleanupRuntime(ctx context.Context, workspaceID string, agentS
 }
 
 func (s *Service) SubmitInteractive(ctx context.Context, workspaceID string, agentSessionID string, requestID string, input SubmitInteractiveInput) (Session, error) {
-	_, err := s.applicationHost(serviceHostPreparation{service: s}).SubmitInteractive(
+	_, err := s.ApplicationHost().SubmitInteractive(
 		ctx,
 		agenthost.SessionRef{WorkspaceID: workspaceID, AgentSessionID: agentSessionID},
 		requestID,

@@ -28,7 +28,11 @@ vi.mock("./agent-gui/agentGuiNode/AgentGUINode", async () => {
 
   return {
     AgentGUINode: (props: {
-      hostCapabilities: { disabledHomeSuggestions?: readonly string[] };
+      hostCapabilities: {
+        agentTargets?: readonly { agentTargetId?: string }[];
+        disabledHomeSuggestions?: readonly string[];
+        handoffAgentTargets?: readonly { agentTargetId?: string }[];
+      };
     }) => {
       const { t } = useTranslation();
       const activityRuntime = useOptionalAgentActivityRuntime();
@@ -43,6 +47,20 @@ vi.mock("./agent-gui/agentGuiNode/AgentGUINode", async () => {
           <div data-testid="agent-gui-disabled-suggestions-probe">
             {JSON.stringify(
               props.hostCapabilities.disabledHomeSuggestions ?? []
+            )}
+          </div>
+          <div data-testid="agent-gui-directory-targets-probe">
+            {JSON.stringify(
+              props.hostCapabilities.agentTargets?.map(
+                (target) => target.agentTargetId
+              ) ?? []
+            )}
+          </div>
+          <div data-testid="agent-gui-handoff-targets-probe">
+            {JSON.stringify(
+              props.hostCapabilities.handoffAgentTargets?.map(
+                (target) => target.agentTargetId
+              ) ?? []
             )}
           </div>
           <Tooltip>
@@ -105,4 +123,44 @@ describe("AgentGUI i18n", () => {
       screen.getByTestId("agent-gui-disabled-suggestions-probe")
     ).toHaveTextContent('["meet-tutti","import-session"]');
   });
+
+  it("keeps the runtime directory separate from the handoff launch directory", () => {
+    render(
+      <AgentGUI
+        {...createAgentGUIProps("en")}
+        agentDirectory={{
+          agents: [agent("local-codex", "codex")],
+          capturedAtUnixMs: null,
+          error: null,
+          status: "ready"
+        }}
+        handoffAgentDirectory={{
+          agents: [
+            agent("local-codex", "codex"),
+            agent("shared-agent:claude", "claude-code")
+          ],
+          capturedAtUnixMs: null,
+          error: null,
+          status: "ready"
+        }}
+      />
+    );
+
+    expect(
+      screen.getByTestId("agent-gui-directory-targets-probe")
+    ).toHaveTextContent('["local-codex"]');
+    expect(
+      screen.getByTestId("agent-gui-handoff-targets-probe")
+    ).toHaveTextContent('["local-codex","shared-agent:claude"]');
+  });
 });
+
+function agent(agentTargetId: string, provider: string) {
+  return {
+    agentTargetId,
+    name: agentTargetId,
+    iconUrl: `/${agentTargetId}.png`,
+    availability: { status: "ready" as const },
+    provider
+  };
+}

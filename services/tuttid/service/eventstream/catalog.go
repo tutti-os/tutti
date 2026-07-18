@@ -12,16 +12,18 @@ import (
 )
 
 const (
-	TopicAnalyticsDebugReported                = "analytics.debug.reported"
-	TopicAgentActivityUpdated                  = "agent.activity.updated"
-	TopicAgentModelCatalogInvalidated          = "agent.model.catalog.invalidated"
-	TopicPreferencesDesktopUpdateRequested     = "preferences.desktop.update.requested"
-	TopicPreferencesDesktopUpdated             = "preferences.desktop.updated"
-	TopicUserProjectUpdated                    = "user.project.updated"
-	TopicWorkspaceIssueUpdated                 = "workspace.issue.updated"
-	TopicWorkspaceAppFactoryJobUpdated         = "workspace.appfactory.job.updated"
-	TopicWorkspaceAppUpdated                   = "workspace.app.updated"
-	TopicWorkspaceWorkbenchNodeLaunchRequested = "workspace.workbench.node.launch.requested"
+	TopicAnalyticsDebugReported                         = "analytics.debug.reported"
+	TopicAgentActivityUpdated                           = "agent.activity.updated"
+	TopicAgentModelCatalogInvalidated                   = "agent.model.catalog.invalidated"
+	TopicPreferencesAgentComposerDefaultsChanged        = "preferences.agent.composer.defaults.changed"
+	TopicPreferencesAgentComposerDefaultsPatchRequested = "preferences.agent.composer.defaults.patch.requested"
+	TopicPreferencesDesktopUpdateRequested              = "preferences.desktop.update.requested"
+	TopicPreferencesDesktopUpdated                      = "preferences.desktop.updated"
+	TopicUserProjectUpdated                             = "user.project.updated"
+	TopicWorkspaceIssueUpdated                          = "workspace.issue.updated"
+	TopicWorkspaceAppFactoryJobUpdated                  = "workspace.appfactory.job.updated"
+	TopicWorkspaceAppUpdated                            = "workspace.app.updated"
+	TopicWorkspaceWorkbenchNodeLaunchRequested          = "workspace.workbench.node.launch.requested"
 )
 
 // Direction, ValidationCode and ValidationError now live in stream-go and are
@@ -82,7 +84,7 @@ func NewStaticCatalog(definitions []TopicDefinition) StaticCatalog {
 }
 
 func DefaultCatalog() StaticCatalog {
-	return NewStaticCatalog([]TopicDefinition{
+	definitions := []TopicDefinition{
 		{
 			Name:               TopicAnalyticsDebugReported,
 			ClientCanPublish:   false,
@@ -113,31 +115,14 @@ func DefaultCatalog() StaticCatalog {
 				DirectionServerToClient: validateAgentModelCatalogInvalidatedPayload,
 			},
 		},
-		{
-			Name:               TopicPreferencesDesktopUpdateRequested,
-			ClientCanPublish:   true,
-			ClientCanSubscribe: false,
-			Version:            1,
-			directions:         []Direction{DirectionClientToServer},
-			validators: map[Direction]PayloadValidator{
-				DirectionClientToServer: validateDesktopPreferencesUpdateRequestedPayload,
-			},
-		},
-		{
-			Name:               TopicPreferencesDesktopUpdated,
-			ClientCanPublish:   false,
-			ClientCanSubscribe: true,
-			Version:            1,
-			directions:         []Direction{DirectionServerToClient},
-			validators: map[Direction]PayloadValidator{
-				DirectionServerToClient: validateDesktopPreferencesUpdatedPayload,
-			},
-		},
+	}
+	definitions = append(definitions, preferencesTopicDefinitions()...)
+	definitions = append(definitions, []TopicDefinition{
 		{
 			Name:               TopicUserProjectUpdated,
 			ClientCanPublish:   false,
 			ClientCanSubscribe: true,
-			Version:            1,
+			Version:            2,
 			directions:         []Direction{DirectionServerToClient},
 			validators: map[Direction]PayloadValidator{
 				DirectionServerToClient: validateUserProjectUpdatedPayload,
@@ -183,7 +168,8 @@ func DefaultCatalog() StaticCatalog {
 				DirectionServerToClient: validateWorkspaceWorkbenchNodeLaunchRequestedPayload,
 			},
 		},
-	})
+	}...)
+	return NewStaticCatalog(definitions)
 }
 
 func (c StaticCatalog) Topic(topic string) (TopicDefinition, bool) {
@@ -542,59 +528,6 @@ func validateAgentModelCatalogInvalidatedPayload(payload []byte) error {
 	}
 	if decoded.OccurredAtUnixMS <= 0 {
 		return fmt.Errorf("occurredAtUnixMs is required")
-	}
-	return nil
-}
-
-func validateUserProjectUpdatedPayload(payload []byte) error {
-	var decoded struct {
-		Projects *[]struct {
-			ID               string `json:"id"`
-			Path             string `json:"path"`
-			Label            string `json:"label"`
-			SectionKey       string `json:"sectionKey"`
-			CreatedAtUnixMS  *int64 `json:"createdAtUnixMs"`
-			UpdatedAtUnixMS  *int64 `json:"updatedAtUnixMs"`
-			LastUsedAtUnixMS *int64 `json:"lastUsedAtUnixMs"`
-		} `json:"projects"`
-	}
-	if err := decodeJSONStrict(payload, &decoded); err != nil {
-		return fmt.Errorf("decode payload: %w", err)
-	}
-	if decoded.Projects == nil {
-		return fmt.Errorf("projects is required")
-	}
-	for index, project := range *decoded.Projects {
-		if strings.TrimSpace(project.ID) == "" {
-			return fmt.Errorf("projects[%d].id is required", index)
-		}
-		if strings.TrimSpace(project.Path) == "" {
-			return fmt.Errorf("projects[%d].path is required", index)
-		}
-		if strings.TrimSpace(project.Label) == "" {
-			return fmt.Errorf("projects[%d].label is required", index)
-		}
-		if strings.TrimSpace(project.SectionKey) == "" {
-			return fmt.Errorf("projects[%d].sectionKey is required", index)
-		}
-		if project.CreatedAtUnixMS == nil {
-			return fmt.Errorf("projects[%d].createdAtUnixMs is required", index)
-		}
-		if *project.CreatedAtUnixMS < 0 {
-			return fmt.Errorf("projects[%d].createdAtUnixMs must not be negative", index)
-		}
-		if project.UpdatedAtUnixMS == nil {
-			return fmt.Errorf("projects[%d].updatedAtUnixMs is required", index)
-		}
-		if *project.UpdatedAtUnixMS < 0 {
-			return fmt.Errorf("projects[%d].updatedAtUnixMs must not be negative", index)
-		}
-		if project.LastUsedAtUnixMS == nil {
-			return fmt.Errorf("projects[%d].lastUsedAtUnixMs is required", index)
-		}
-		if *project.LastUsedAtUnixMS < 0 {
-			return fmt.Errorf("projects[%d].lastUsedAtUnixMs must not be negative", index)
-		}
 	}
 	return nil
 }

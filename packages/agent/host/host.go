@@ -7,13 +7,16 @@ import (
 
 type Config struct {
 	CanonicalStore       CanonicalStore
+	SessionManagement    SessionManagementStore
 	Runtime              RuntimeController
 	RuntimePreparation   RuntimePreparationPort
+	SettingsPolicy       SettingsPolicy
 	Attachments          AttachmentMaterializer
 	Clock                Clock
 	SessionLocker        SessionLocker
 	RuntimeStartGate     RuntimeStartGate
 	LifecycleObserver    LifecycleObserver
+	CommitObserver       CommitObserver
 	RuntimeOperations    RuntimeOperationStore
 	OperationEvents      RuntimeOperationEventPublisher
 	OperationOwner       string
@@ -21,7 +24,6 @@ type Config struct {
 	StaleTurnSettler     StaleTurnSettler
 	GoalStore            GoalStateStore
 	GoalRuntime          GoalRuntimeController
-	GoalAudits           GoalAuditPublisher
 	GoalInbox            GoalReconcileInboxStore
 	GoalOwner            string
 	GoalClock            Clock
@@ -34,13 +36,16 @@ type Config struct {
 
 type Host struct {
 	store                CanonicalStore
+	sessionManagement    SessionManagementStore
 	runtime              RuntimeController
 	preparation          RuntimePreparationPort
+	settingsPolicy       SettingsPolicy
 	attachments          AttachmentMaterializer
 	clock                Clock
 	locker               SessionLocker
 	startupGate          RuntimeStartGate
 	observer             LifecycleObserver
+	commitObserver       CommitObserver
 	operations           RuntimeOperationStore
 	events               RuntimeOperationEventPublisher
 	owner                string
@@ -48,7 +53,6 @@ type Host struct {
 	staleTurns           StaleTurnSettler
 	goals                GoalStateStore
 	goalRuntime          GoalRuntimeController
-	goalAudits           GoalAuditPublisher
 	goalInbox            GoalReconcileInboxStore
 	goalOwner            string
 	goalClock            Clock
@@ -64,20 +68,26 @@ func New(config Config) *Host {
 	if goalActor == nil {
 		goalActor = NewGoalActor()
 	}
-	return &Host{
-		store: config.CanonicalStore, runtime: config.Runtime,
-		preparation: config.RuntimePreparation, attachments: config.Attachments,
+	host := &Host{
+		store: config.CanonicalStore, sessionManagement: config.SessionManagement, runtime: config.Runtime,
+		preparation: config.RuntimePreparation, settingsPolicy: config.SettingsPolicy, attachments: config.Attachments,
 		clock: config.Clock, locker: config.SessionLocker, startupGate: config.RuntimeStartGate,
-		observer:   config.LifecycleObserver,
+		observer: config.LifecycleObserver, commitObserver: config.CommitObserver,
 		operations: config.RuntimeOperations, events: config.OperationEvents,
 		owner: config.OperationOwner, scheduler: config.Scheduler, staleTurns: config.StaleTurnSettler,
-		goals: config.GoalStore, goalRuntime: config.GoalRuntime,
-		goalAudits: config.GoalAudits, goalInbox: config.GoalInbox,
+		goals: config.GoalStore, goalRuntime: config.GoalRuntime, goalInbox: config.GoalInbox,
 		goalOwner: config.GoalOwner, goalClock: config.GoalClock,
 		goalAttemptTimeout: config.GoalAttemptTimeout, goalRecoveryBudget: config.GoalRecoveryBudget,
 		goalMaxAttempts: config.GoalMaxAttempts, goalDispatchDeadline: config.GoalDispatchDeadline,
 		goalActor: goalActor,
 	}
+	if host.operations != nil && host.commitObserver != nil {
+		host.operations = &observedRuntimeOperationStore{RuntimeOperationStore: host.operations, host: host}
+	}
+	if host.goals != nil && host.commitObserver != nil {
+		host.goals = &observedGoalStateStore{GoalStateStore: host.goals, host: host}
+	}
+	return host
 }
 
 func (h *Host) observeStep(ctx context.Context, flow, name, sessionID, provider string, startedAt time.Time, err error) {

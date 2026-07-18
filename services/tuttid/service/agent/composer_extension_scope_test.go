@@ -145,6 +145,28 @@ func TestExtensionCapabilitiesRemainUnknownWithoutLiveRuntimeFacts(t *testing.T)
 
 func TestExtensionCreatePreservesSignedSemanticAndLiveReasoningSelections(t *testing.T) {
 	runtime := newFakeRuntime()
+	runtime.startHook = func(input RuntimeStartInput, session ProviderRuntimeSession) ProviderRuntimeSession {
+		if input.Visible == nil || *input.Visible {
+			return session
+		}
+		runtimeContext := clonePayload(session.RuntimeContext)
+		runtimeContext["configOptions"] = []any{
+			map[string]any{
+				"id": "model-choice",
+				"options": []any{
+					map[string]any{"value": "example-pro", "name": "Example Pro"},
+				},
+			},
+			map[string]any{
+				"id": "thought-level",
+				"options": []any{
+					map[string]any{"value": "deep", "name": "Deep"},
+				},
+			},
+		}
+		session.RuntimeContext = runtimeContext
+		return session
+	}
 	service := newIsolatedAgentService(runtime)
 	service.AgentTargetStore = fakeAgentTargetStore{targets: map[string]agenttargetbiz.Target{
 		"extension:example": {
@@ -153,6 +175,15 @@ func TestExtensionCreatePreservesSignedSemanticAndLiveReasoningSelections(t *tes
 			LaunchRefJSON: `{"type":"agent_extension","extensionInstallationId":"example@1.0.0"}`,
 		},
 	}}
+	service.ExtensionComposerProfiles = extensionComposerProfileResolverStub{
+		profile: ExtensionComposerProfile{
+			ModelConfigOptionID:     "model-choice",
+			ReasoningConfigOptionID: "thought-level",
+			PermissionModes: []ExtensionComposerPermissionMode{
+				{RuntimeID: "full-access", Semantic: PermissionModeSemanticFullAccess},
+			},
+		},
+	}
 	permission := "full-access"
 	reasoning := "deep"
 	model := "example-pro"
@@ -167,10 +198,11 @@ func TestExtensionCreatePreservesSignedSemanticAndLiveReasoningSelections(t *tes
 	if err != nil {
 		t.Fatalf("Create() error = %v", err)
 	}
-	if len(runtime.startCalls) != 1 {
-		t.Fatalf("start calls = %#v, want one", runtime.startCalls)
+	visibleStarts := visibleRuntimeStarts(runtime.startCalls)
+	if len(visibleStarts) != 1 {
+		t.Fatalf("visible start calls = %#v, want one", visibleStarts)
 	}
-	started := runtime.startCalls[0]
+	started := visibleStarts[0]
 	if started.PermissionModeID != permission || started.ReasoningEffort != reasoning || started.Model != model {
 		t.Fatalf("start settings = permission %q reasoning %q model %q", started.PermissionModeID, started.ReasoningEffort, started.Model)
 	}

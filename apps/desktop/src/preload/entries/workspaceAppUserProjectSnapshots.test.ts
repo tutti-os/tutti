@@ -11,7 +11,8 @@ const baseSnapshot: WorkspaceUserProjectServiceSnapshot = {
     {
       id: "repo",
       label: "repo",
-      path: "/workspace/repo"
+      path: "/workspace/repo",
+      pinnedAtUnixMs: 0
     }
   ],
   revision: 1
@@ -54,7 +55,8 @@ test("workspace app user project snapshots avoid replaying stale cached state", 
       {
         id: "next",
         label: "next",
-        path: "/workspace/next"
+        path: "/workspace/next",
+        pinnedAtUnixMs: 1
       }
     ],
     revision: 2

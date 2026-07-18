@@ -81,9 +81,8 @@ func (api DaemonAPI) GetAgentProviderComposerOptions(ctx context.Context, reques
 		input.Cwd = optionalStringValue(request.Body.Cwd)
 		input.WorkspaceID = optionalStringValue(request.Body.WorkspaceId)
 	}
-	input.Settings = api.composerDefaultsForProvider(ctx, input.Provider)
 	if request.Body != nil && request.Body.Settings != nil {
-		input.Settings = mergeComposerSettings(input.Settings, composerSettingsFromGenerated(*request.Body.Settings))
+		input.Settings = composerSettingsFromGenerated(*request.Body.Settings)
 	}
 	if request.Body != nil && request.Body.Locale != nil {
 		input.Locale = string(*request.Body.Locale)
@@ -444,25 +443,6 @@ func composerSettingsFromGenerated(settings tuttigenerated.AgentSessionComposerS
 	}
 }
 
-func (api DaemonAPI) composerDefaultsForProvider(ctx context.Context, provider string) agentservice.ComposerSettings {
-	if api.PreferencesService == nil {
-		return agentservice.ComposerSettings{}
-	}
-	preferences, err := api.PreferencesService.Get(ctx)
-	if err != nil {
-		return agentservice.ComposerSettings{}
-	}
-	// Legacy provider-keyed defaults were copied onto local agent target ids
-	// by a one-time sqlite data migration, so this lookup covers old data too.
-	defaults := preferences.AgentComposerDefaultsByAgentTarget[preferencesbiz.LocalAgentTargetIDForProvider(provider)]
-	return agentservice.ComposerSettings{
-		Model:            defaults.Model,
-		PermissionModeID: defaults.PermissionModeID,
-		ReasoningEffort:  defaults.ReasoningEffort,
-		Speed:            defaults.Speed,
-	}
-}
-
 func (api DaemonAPI) composerDefaultLocale(ctx context.Context) string {
 	if api.PreferencesService == nil {
 		return ""
@@ -483,25 +463,6 @@ func (api DaemonAPI) agentConversationDetailMode(ctx context.Context) string {
 		return preferencesbiz.DefaultDesktopAgentConversationDetailMode
 	}
 	return preferencesbiz.NormalizeDesktopAgentConversationDetailMode(preferences.AgentConversationDetailMode)
-}
-
-func mergeComposerSettings(base agentservice.ComposerSettings, override agentservice.ComposerSettings) agentservice.ComposerSettings {
-	if strings.TrimSpace(override.Model) != "" {
-		base.Model = override.Model
-	}
-	if strings.TrimSpace(override.PermissionModeID) != "" {
-		base.PermissionModeID = override.PermissionModeID
-	}
-	if override.PlanMode {
-		base.PlanMode = override.PlanMode
-	}
-	if strings.TrimSpace(override.ReasoningEffort) != "" {
-		base.ReasoningEffort = override.ReasoningEffort
-	}
-	if strings.TrimSpace(override.Speed) != "" {
-		base.Speed = override.Speed
-	}
-	return base
 }
 
 func composerSettingsPatchFromGenerated(settings tuttigenerated.AgentSessionComposerSettings) agentservice.ComposerSettingsPatch {

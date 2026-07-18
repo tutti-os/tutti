@@ -1,7 +1,7 @@
 {
   "$schema": "../../schemas/core/event-definition.schema.json",
   "topic": "user.project.updated",
-  "version": 1,
+  "version": 2,
   "direction": "server->client",
   "owner": "core",
   "scope": "global",

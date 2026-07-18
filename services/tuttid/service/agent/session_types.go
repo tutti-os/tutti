@@ -11,6 +11,7 @@ import (
 	runtimeprep "github.com/tutti-os/tutti/packages/agent/runtimeprep"
 	agentactivitybiz "github.com/tutti-os/tutti/services/tuttid/biz/agentactivity"
 	agenttargetbiz "github.com/tutti-os/tutti/services/tuttid/biz/agenttarget"
+	preferencesbiz "github.com/tutti-os/tutti/services/tuttid/biz/preferences"
 	userprojectbiz "github.com/tutti-os/tutti/services/tuttid/biz/userproject"
 	claudecodeservice "github.com/tutti-os/tutti/services/tuttid/service/claudecode"
 	reporterservice "github.com/tutti-os/tutti/services/tuttid/service/reporter"
@@ -31,7 +32,7 @@ type Service struct {
 	TurnStore                      TurnStore
 	RuntimeOperationStore          RuntimeOperationStore
 	GoalStateStore                 GoalStateStore
-	GoalAuditPublisher             GoalAuditPublisher
+	CommitObserver                 agenthost.CommitObserver
 	GoalReconcileInboxStore        GoalReconcileInboxStore
 	SubmitClaimStore               SubmitClaimStore
 	RuntimeOperationEventPublisher RuntimeOperationEventPublisher
@@ -50,6 +51,7 @@ type Service struct {
 	ComputerUseAvailable           func() bool
 	CapabilityLister               ComposerCapabilityLister
 	ExtensionComposerProfiles      ExtensionComposerProfileResolver
+	AgentComposerDefaultsReader    AgentComposerDefaultsReader
 	ProviderAvailabilityCacheTTL   time.Duration
 	CapabilityCatalogCacheTTL      time.Duration
 	LiveModelCacheTTL              time.Duration
@@ -67,8 +69,8 @@ type Service struct {
 	liveModelDiscoveryGroup        singleflight.Group
 	sessionSettingsMu              sync.Mutex
 	sessionSettingsLocks           map[string]*serviceSessionSettingsLock
-	goalActorOnce                  sync.Once
-	goalActor                      *agenthost.GoalActor
+	applicationHostMu              sync.Mutex
+	applicationHost                *agenthost.Host
 	generatedFilesCacheMu          sync.Mutex
 	generatedFilesCache            map[string]generatedFilesCacheEntry
 	// liveModelPersistedScanMissAtUnixMS memoizes, per live-model cache key,
@@ -77,7 +79,6 @@ type Service struct {
 	liveModelPersistedScanMissAtUnixMS map[string]int64
 }
 
-type GoalAuditPublisher = agenthost.GoalAuditPublisher
 type GoalReconcileInboxStore = agenthost.GoalReconcileInboxStore
 
 type SubmitClaimStore interface {
@@ -111,6 +112,10 @@ type SessionDirectoryAllocator interface {
 
 type AgentTargetStore interface {
 	GetAgentTarget(context.Context, string) (agenttargetbiz.Target, error)
+}
+
+type AgentComposerDefaultsReader interface {
+	GetAgentComposerDefaultsForTarget(context.Context, string) (preferencesbiz.AgentComposerDefaults, error)
 }
 
 type ComposerCapabilityLister interface {

@@ -1012,14 +1012,20 @@ test("shared tuttid client moves user projects with bearer auth", async () => {
             createdAtUnixMs: 1,
             id: "project-2",
             label: "Second",
+            lastUsedAtUnixMs: 1,
             path: "/workspace/second",
+            pinnedAtUnixMs: 0,
+            sectionKey: "project:/workspace/second",
             updatedAtUnixMs: 1
           },
           {
             createdAtUnixMs: 1,
             id: "project-1",
             label: "First",
+            lastUsedAtUnixMs: 1,
             path: "/workspace/first",
+            pinnedAtUnixMs: 0,
+            sectionKey: "project:/workspace/first",
             updatedAtUnixMs: 1
           }
         ]
@@ -1043,6 +1049,50 @@ test("shared tuttid client moves user projects with bearer auth", async () => {
     response.projects.map((project) => project.id),
     ["project-2", "project-1"]
   );
+});
+
+test("shared tuttid client pins user projects with bearer auth", async () => {
+  let authorizationHeader = "";
+  let requestMethod = "";
+  let requestPath = "";
+  let requestBody: unknown;
+
+  const client = createTuttidClient({
+    auth: "desktop-session-token",
+    fetch: async (input, init) => {
+      const request =
+        input instanceof Request ? input : new Request(input, init);
+      authorizationHeader = request.headers.get("authorization") ?? "";
+      requestMethod = request.method;
+      requestPath = new URL(request.url).pathname;
+      requestBody = await request.json();
+      return Response.json({
+        projects: [
+          {
+            createdAtUnixMs: 1,
+            id: "project-1",
+            label: "First",
+            lastUsedAtUnixMs: 1,
+            path: "/workspace/first",
+            pinnedAtUnixMs: 2,
+            sectionKey: "project:/workspace/first",
+            updatedAtUnixMs: 2
+          }
+        ]
+      });
+    }
+  });
+
+  const response = await client.pinUserProject({
+    pinned: true,
+    projectId: "project-1"
+  });
+
+  assert.equal(authorizationHeader, "Bearer desktop-session-token");
+  assert.equal(requestMethod, "POST");
+  assert.equal(requestPath, "/v1/user-projects/pin");
+  assert.deepEqual(requestBody, { pinned: true, projectId: "project-1" });
+  assert.equal(response.projects[0]?.pinnedAtUnixMs, 2);
 });
 
 test("shared tuttid client tracks analytics events with bearer auth", async () => {

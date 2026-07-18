@@ -45,7 +45,8 @@ import {
   EMPTY_AGENT_GUI_MESSAGES,
   composerTargetDataFromProviderTarget,
   isExplicitAgentGUIAgentTarget,
-  type AgentGUIRememberComposerDefaultsInput
+  type AgentGUIRememberComposerDefaultsInput,
+  type AgentGUIRememberComposerDefaultsResult
 } from "./agentGuiController.providerHelpers";
 import { reportAgentGUIActiveConversationCleared } from "./agentGuiController.reporting";
 import { useAgentGUIActivation } from "./useAgentGUIActivation";
@@ -118,6 +119,8 @@ interface UseAgentGUINodeControllerInput {
   data: AgentGUINodeData;
   agentTargets?: readonly AgentGUIAgentTarget[];
   agentTargetsLoading?: boolean;
+  handoffAgentTargets?: readonly AgentGUIAgentTarget[];
+  handoffAgentTargetsLoading?: boolean;
   providerRailMode?: AgentGUIProviderRailMode;
   comingSoonProviders?: readonly AgentGUIProvider[];
   providerReadinessGates?: Partial<
@@ -133,7 +136,7 @@ interface UseAgentGUINodeControllerInput {
   ) => void;
   onRememberComposerDefaults?: (
     input: AgentGUIRememberComposerDefaultsInput
-  ) => void | Promise<void>;
+  ) => void | Promise<AgentGUIRememberComposerDefaultsResult>;
   onShowMessage?: (
     message: string,
     tone?: "info" | "warning" | "error"
@@ -143,6 +146,10 @@ interface UseAgentGUINodeControllerInput {
 export type { AgentGUIOpenSessionRequest } from "./agentGuiController.draftMessageHelpers";
 export type { AgentGUIPrefillPromptRequest } from "./useAgentGUIConversationHome";
 export type { AgentGUIComposerAppendRequest } from "./useAgentGUIComposerAppendRequest";
+export type {
+  AgentGUIRememberComposerDefaultsInput,
+  AgentGUIRememberComposerDefaultsResult
+} from "./agentGuiController.providerHelpers";
 
 export function useAgentGUINodeController({
   workspaceId,
@@ -152,6 +159,8 @@ export function useAgentGUINodeController({
   data,
   agentTargets,
   agentTargetsLoading = false,
+  handoffAgentTargets,
+  handoffAgentTargetsLoading = false,
   providerRailMode = "catalog",
   comingSoonProviders,
   providerReadinessGates = null,
@@ -189,7 +198,9 @@ export function useAgentGUINodeController({
     providerRailMode,
     providerReadinessGates,
     agentTargets,
-    agentTargetsLoading
+    agentTargetsLoading,
+    handoffAgentTargets,
+    handoffAgentTargetsLoading
   });
   const {
     effectiveSelectedProviderTarget,
@@ -358,6 +369,7 @@ export function useAgentGUINodeController({
     isMountedRef,
     loadDraftComposerOptionsRef,
     onDataChangeRef,
+    onComposerDefaultsAuthorityReloadedRef,
     pendingOpenSessionRequestRef,
     reloadSelectedConversationRef,
     selectedComposerTargetDataRef,
@@ -554,6 +566,7 @@ export function useAgentGUINodeController({
           createdAtUnixMs?: number;
           updatedAtUnixMs?: number;
           lastUsedAtUnixMs?: number | null;
+          pinnedAtUnixMs: number;
         };
       }
     ) => {
@@ -625,33 +638,35 @@ export function useAgentGUINodeController({
     workspaceId
   });
 
-  const { loadDraftComposerOptions } = useAgentGUIComposerOptionsSync({
-    activeConversationId,
-    activeConversationIdRef,
-    agentActivityRuntime,
-    composerTargetData,
-    conversationFilter,
-    currentUserId,
-    data,
-    dataRef,
-    defaultReasoningEffort,
-    draftSettingsBySessionIdRef,
-    isComposerHome,
-    isComposerHomeRef,
-    isCreatingConversation,
-    loadDraftComposerOptionsRef,
-    loadSessionState,
-    previewMode,
-    providerComposerOptions,
-    reloadSelectedConversation,
-    selectedComposerTargetDataRef,
-    selectedProjectPath,
-    selectedProjectPathRef,
-    sessionEngine,
-    syncConversationListProjection,
-    workspaceId,
-    workspacePath
-  });
+  const { loadDraftComposerOptions, reloadComposerOptionsForTarget } =
+    useAgentGUIComposerOptionsSync({
+      activeConversationId,
+      activeConversationIdRef,
+      agentActivityRuntime,
+      composerTargetData,
+      conversationFilter,
+      currentUserId,
+      data,
+      dataRef,
+      defaultReasoningEffort,
+      draftSettingsBySessionIdRef,
+      isComposerHome,
+      isComposerHomeRef,
+      isCreatingConversation,
+      loadDraftComposerOptionsRef,
+      loadSessionState,
+      onComposerDefaultsAuthorityReloadedRef,
+      previewMode,
+      providerComposerOptions,
+      reloadSelectedConversation,
+      selectedComposerTargetDataRef,
+      selectedProjectPath,
+      selectedProjectPathRef,
+      sessionEngine,
+      syncConversationListProjection,
+      workspaceId,
+      workspacePath
+    });
   const operationActions = useAgentGUIOperationActions({
     ...providerCatalogSelection,
     ...localState,
@@ -677,6 +692,7 @@ export function useAgentGUINodeController({
     isExplicitAgentGUIAgentTarget,
     isRespondingToInteraction: activeRelatedIsRespondingToInteraction,
     loadDraftComposerOptions,
+    reloadComposerOptionsForTarget,
     normalizedExplicitProviderTargets,
     normalizedProviderTargets,
     planActionsRef,

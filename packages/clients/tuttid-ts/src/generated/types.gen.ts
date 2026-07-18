@@ -2087,7 +2087,8 @@ export type UserProject = {
   sectionKey: string;
   createdAtUnixMs: number;
   updatedAtUnixMs: number;
-  lastUsedAtUnixMs?: number;
+  lastUsedAtUnixMs: number;
+  pinnedAtUnixMs: number;
 };
 
 export type UserProjectListResponse = {
@@ -2109,6 +2110,11 @@ export type DeleteUserProjectRequest = {
 export type MoveUserProjectRequest = {
   projectId: string;
   beforeProjectId: string | null;
+};
+
+export type PinUserProjectRequest = {
+  projectId: string;
+  pinned: boolean;
 };
 
 export type CheckUserProjectPathRequest = {
@@ -3536,6 +3542,49 @@ export type MoveUserProjectResponses = {
 
 export type MoveUserProjectResponse =
   MoveUserProjectResponses[keyof MoveUserProjectResponses];
+
+export type PinUserProjectData = {
+  body: PinUserProjectRequest;
+  path?: never;
+  query?: never;
+  url: "/v1/user-projects/pin";
+};
+
+export type PinUserProjectErrors = {
+  /**
+   * Request payload or parameters are invalid
+   */
+  400: ApiErrorResponse;
+  /**
+   * Bearer token is missing or invalid
+   */
+  401: ApiErrorResponse;
+  /**
+   * HTTP method is not supported on this route
+   */
+  405: ApiErrorResponse;
+  /**
+   * Desktop preferences operation failed in an upstream adapter or command
+   */
+  502: ApiErrorResponse;
+  /**
+   * Required daemon service dependency is unavailable
+   */
+  503: ApiErrorResponse;
+};
+
+export type PinUserProjectError =
+  PinUserProjectErrors[keyof PinUserProjectErrors];
+
+export type PinUserProjectResponses = {
+  /**
+   * Complete ordered user project list
+   */
+  200: UserProjectListResponse;
+};
+
+export type PinUserProjectResponse =
+  PinUserProjectResponses[keyof PinUserProjectResponses];
 
 export type AttachEventStreamData = {
   body?: never;

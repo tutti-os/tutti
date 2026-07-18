@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"strings"
 
 	agentservice "github.com/tutti-os/tutti/services/tuttid/service/agent"
 	agentextensionservice "github.com/tutti-os/tutti/services/tuttid/service/agentextension"
@@ -30,8 +31,8 @@ func (r agentExtensionComposerProfileResolver) ResolveExtensionComposerProfile(
 	result.PermissionModes = make([]agentservice.ExtensionComposerPermissionMode, 0, len(profile.PermissionModes))
 	for _, mode := range profile.PermissionModes {
 		result.PermissionModes = append(result.PermissionModes, agentservice.ExtensionComposerPermissionMode{
-			RuntimeID: mode.RuntimeID,
-			Semantic:  agentservice.PermissionModeSemantic(mode.Semantic),
+			RuntimeID: strings.TrimSpace(mode.RuntimeID),
+			Semantic:  agentservice.PermissionModeSemantic(strings.TrimSpace(mode.Semantic)),
 		})
 	}
 	if profile.Skills != nil {

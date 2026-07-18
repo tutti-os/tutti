@@ -47,12 +47,14 @@ describe("AgentGUI user-project snapshot projection", () => {
               id: "beta",
               label: "Beta",
               path: "/workspace/beta",
+              pinnedAtUnixMs: 20,
               sectionKey: "project:/workspace/beta"
             },
             {
               id: "alpha",
               label: "Alpha",
               path: "/workspace/alpha",
+              pinnedAtUnixMs: 0,
               sectionKey: "project:/workspace/alpha"
             }
           ],
@@ -85,13 +87,44 @@ describe("AgentGUI user-project snapshot projection", () => {
   it("treats a section-key-only change as a new AgentGUI snapshot", () => {
     expect(
       areAgentGUIUserProjectsEqual(
-        [{ id: "alpha", label: "Alpha", path: "/alpha" }],
         [
           {
             id: "alpha",
             label: "Alpha",
             path: "/alpha",
+            pinnedAtUnixMs: 0
+          }
+        ],
+        [
+          {
+            id: "alpha",
+            label: "Alpha",
+            path: "/alpha",
+            pinnedAtUnixMs: 0,
             sectionKey: "project:/alpha"
+          }
+        ]
+      )
+    ).toBe(false);
+  });
+
+  it("treats a pin-state-only change as a new AgentGUI snapshot", () => {
+    expect(
+      areAgentGUIUserProjectsEqual(
+        [
+          {
+            id: "alpha",
+            label: "Alpha",
+            path: "/alpha",
+            pinnedAtUnixMs: 0
+          }
+        ],
+        [
+          {
+            id: "alpha",
+            label: "Alpha",
+            path: "/alpha",
+            pinnedAtUnixMs: 10
           }
         ]
       )
@@ -104,6 +137,7 @@ describe("AgentGUI user-project snapshot projection", () => {
         id: "alpha",
         label: "Alpha",
         path: "/alpha",
+        pinnedAtUnixMs: 0,
         sectionKey: "project:/alpha"
       })
     ).toEqual([
@@ -111,6 +145,7 @@ describe("AgentGUI user-project snapshot projection", () => {
         id: "alpha",
         label: "Alpha",
         path: "/alpha",
+        pinnedAtUnixMs: 0,
         sectionKey: "project:/alpha"
       }
     ]);

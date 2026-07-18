@@ -4,6 +4,7 @@ export interface WorkspaceUserProject {
   label: string;
   lastUsedAtUnixMs?: number | null;
   path: string;
+  pinnedAtUnixMs: number;
   sectionKey?: string;
   updatedAtUnixMs?: number;
 }
@@ -20,6 +21,11 @@ export interface WorkspaceUserProjectDefaultSelection {
 
 export interface WorkspaceUserProjectMoveInput {
   beforeProjectId: string | null;
+  projectId: string;
+}
+
+export interface WorkspaceUserProjectPinInput {
+  pinned: boolean;
   projectId: string;
 }
 
@@ -96,6 +102,7 @@ export interface WorkspaceUserProjectService {
   getSnapshot?(): WorkspaceUserProjectServiceSnapshot;
   isNoProjectPath?(path: string): boolean;
   moveProject?(input: WorkspaceUserProjectMoveInput): Promise<void> | void;
+  pinProject?(input: WorkspaceUserProjectPinInput): Promise<void> | void;
   rememberNoProjectPath?(path: string | null | undefined): void;
   prepareSelection(
     input: WorkspaceUserProjectSelectionPreparationInput

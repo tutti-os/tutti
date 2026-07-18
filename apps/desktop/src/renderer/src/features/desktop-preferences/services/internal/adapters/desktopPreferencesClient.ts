@@ -14,11 +14,17 @@ import {
   normalizeDesktopWorkbenchShortcuts,
   normalizeDesktopWorkbenchWindowSnapping
 } from "../../../../../../../shared/preferences/index.ts";
+import type { DesktopAgentComposerDefaultsPatch } from "../../../../../../../shared/preferences/index.ts";
 
 export interface DesktopPreferencesClient {
   connect(): Promise<void>;
   dispose(): void;
   getDesktopPreferences(): Promise<DesktopPreferencesStateResponse>;
+  patchAgentComposerDefaultsForTarget(input: {
+    agentTargetId: string;
+    clientMutationId: string;
+    patch: DesktopAgentComposerDefaultsPatch;
+  }): Promise<void>;
   updateDesktopPreferences(
     request: PutDesktopPreferencesRequest
   ): Promise<PutDesktopPreferencesRequest["preferences"]>;
@@ -74,6 +80,12 @@ export function createDesktopPreferencesClient(
     },
     getDesktopPreferences() {
       return tuttidClient.getDesktopPreferences();
+    },
+    patchAgentComposerDefaultsForTarget(input) {
+      return eventStreamClient.publishIntent(
+        "preferences.agent.composer.defaults.patch.requested",
+        input
+      );
     },
     async updateDesktopPreferences(request) {
       const key = createPreferencesKey(request.preferences);
@@ -235,9 +247,6 @@ function createPreferencesKey(
     // agentComposerDefaultsByProvider is deliberately excluded: the daemon
     // freezes that legacy field (client input is ignored), so including it
     // would make authoritative responses never match pending updates.
-    stableAgentComposerDefaultsByAgentTargetKey(
-      preferences.agentComposerDefaultsByAgentTarget
-    ),
     stableAgentGuiConversationRailCollapsedByProviderKey(
       preferences.agentGuiConversationRailCollapsedByProvider
     ),
@@ -273,12 +282,6 @@ function preferencesEqual(
   return (
     // agentComposerDefaultsByProvider is deliberately excluded (frozen
     // server-side; see createPreferencesKey).
-    stableAgentComposerDefaultsByAgentTargetKey(
-      left.agentComposerDefaultsByAgentTarget
-    ) ===
-      stableAgentComposerDefaultsByAgentTargetKey(
-        right.agentComposerDefaultsByAgentTarget
-      ) &&
     stableAgentGuiConversationRailCollapsedByProviderKey(
       left.agentGuiConversationRailCollapsedByProvider
     ) ===
@@ -334,44 +337,6 @@ const desktopAgentProviderKeys = [
   "openclaw"
 ] as const;
 
-function stableAgentComposerDefaultsByAgentTargetKey(value: unknown): string {
-  if (!value || typeof value !== "object") {
-    return "{}";
-  }
-  const input = value as Record<string, unknown>;
-  const output: Record<string, Record<string, string>> = {};
-  for (const agentTargetId of Object.keys(input).sort()) {
-    const normalizedAgentTargetId = normalizeOptionalText(agentTargetId);
-    if (!normalizedAgentTargetId) {
-      continue;
-    }
-    const normalizedDefaults = stableAgentComposerDefaultsEntry(
-      input[agentTargetId]
-    );
-    if (normalizedDefaults) {
-      output[normalizedAgentTargetId] = normalizedDefaults;
-    }
-  }
-  return JSON.stringify(output);
-}
-
-function stableAgentComposerDefaultsEntry(
-  defaults: unknown
-): Record<string, string> | null {
-  if (!defaults || typeof defaults !== "object") {
-    return null;
-  }
-  const fields = defaults as Record<string, unknown>;
-  const normalizedDefaults: Record<string, string> = {};
-  for (const key of ["model", "permissionModeId", "reasoningEffort", "speed"]) {
-    const normalized = normalizeOptionalText(fields[key]);
-    if (normalized) {
-      normalizedDefaults[key] = normalized;
-    }
-  }
-  return Object.keys(normalizedDefaults).length > 0 ? normalizedDefaults : null;
-}
-
 function stableAgentGuiConversationRailCollapsedByProviderKey(
   value: unknown
 ): string {
@@ -421,8 +386,4 @@ function stableDesktopFeatureFlagsKey(value: unknown): string {
 
 function stableDesktopWorkbenchShortcutsKey(value: unknown): string {
   return JSON.stringify(normalizeDesktopWorkbenchShortcuts(value));
-}
-
-function normalizeOptionalText(value: unknown): string | null {
-  return typeof value === "string" ? value.trim() || null : null;
 }

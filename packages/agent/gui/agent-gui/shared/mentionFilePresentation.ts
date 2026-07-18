@@ -16,7 +16,10 @@ export function resolveAgentMentionFileVisualKind(input: {
   name?: string | null;
   path?: string | null;
 }): AgentMentionFileVisualKind {
-  if (input.mentionNavigation === "agent-generated-folder-back") {
+  if (
+    input.mentionNavigation === "agent-generated-folder-back" ||
+    input.mentionNavigation === "workspace-folder-back"
+  ) {
     return "back";
   }
   if (input.entryKind === "directory") {

@@ -3,7 +3,27 @@ package providerregistry
 import (
 	"slices"
 	"testing"
+
+	canonical "github.com/tutti-os/tutti/packages/agent/store-sqlite/canonical"
 )
+
+func TestMigratedProviderIdentityAndPlanStrategyMatchCanonicalContract(t *testing.T) {
+	for _, descriptor := range Migrated() {
+		identity, found := canonical.FindProviderIdentity(descriptor.Identity.ID)
+		if !found {
+			t.Fatalf("provider %q missing canonical identity", descriptor.Identity.ID)
+		}
+		if descriptor.Identity.ID != identity.ID || descriptor.Identity.DisplayName != identity.DisplayName ||
+			descriptor.Identity.IconKey != identity.IconKey || descriptor.Identity.LocaleKey != identity.LocaleKey ||
+			!slices.Equal(descriptor.Identity.Aliases, identity.Aliases) {
+			t.Fatalf("provider %q identity drifted from canonical: %#v != %#v", descriptor.Identity.ID, descriptor.Identity, identity)
+		}
+		strategy, found := canonical.ProviderPlanDecisionStrategy(descriptor.Identity.ID)
+		if !found || descriptor.ComposerProfile.PlanDecisionStrategy != strategy {
+			t.Fatalf("provider %q plan strategy = %q; canonical = %q, %v", descriptor.Identity.ID, descriptor.ComposerProfile.PlanDecisionStrategy, strategy, found)
+		}
+	}
+}
 
 func TestMigratedCodexDescriptorIsComplete(t *testing.T) {
 	if err := ValidateMigrated(); err != nil {

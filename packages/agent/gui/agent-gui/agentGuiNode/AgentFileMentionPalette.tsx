@@ -279,11 +279,11 @@ export function AgentFileMentionPalette({
       highlightedKey={highlightedKey}
       getItemKey={agentMentionItemKey}
       isItemDisabled={isAgentMentionItemDisabled}
-      renderItem={(item, { group }) =>
+      renderItem={(item) =>
         renderMentionRow(agentMentionItemToRowItem(item), {
           classNames: AGENT_MENTION_ROW_CLASS_NAMES,
           dataAttributeMode: "agent",
-          ...(onNavigateIntoItem && canNavigateIntoMentionItem(item, group)
+          ...(onNavigateIntoItem && canNavigateIntoMentionItem(item)
             ? {
                 onNavigateInto: () => onNavigateIntoItem(item),
                 navigateIntoLabel
@@ -462,11 +462,12 @@ function agentMentionItemToRowItem(
       name: item.name,
       path: item.path
     });
+    const isNavigableFolder =
+      item.mentionNavigation === "agent-generated-folder" ||
+      item.mentionNavigation === "workspace-folder";
     const childCountLabel =
-      item.mentionNavigation === "agent-generated-folder" &&
-      typeof item.childCount === "number" &&
-      item.childCount > 0
-        ? translate("agentHost.agentGui.mentionAgentGeneratedFolderFileCount", {
+      isNavigableFolder && typeof item.childCount === "number"
+        ? translate("agentHost.agentGui.mentionFolderChildCount", {
             count: item.childCount
           })
         : null;
@@ -579,14 +580,11 @@ function isReferenceableMentionItem(item: AgentContextMentionItem): boolean {
   return false;
 }
 
-function canNavigateIntoMentionItem(
-  item: AgentContextMentionItem,
-  group: AgentMentionGroup
-): boolean {
+function canNavigateIntoMentionItem(item: AgentContextMentionItem): boolean {
   return (
-    group.id === "agent_generated_files" &&
     item.kind === "file" &&
-    item.mentionNavigation === "agent-generated-folder"
+    (item.mentionNavigation === "agent-generated-folder" ||
+      item.mentionNavigation === "workspace-folder")
   );
 }
 

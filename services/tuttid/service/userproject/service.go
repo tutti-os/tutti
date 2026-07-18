@@ -47,6 +47,11 @@ type MoveInput struct {
 	BeforeProjectID *string
 }
 
+type PinInput struct {
+	ProjectID string
+	Pinned    bool
+}
+
 type CheckPathInput struct {
 	Path string
 }
@@ -173,12 +178,33 @@ func (s Service) Move(ctx context.Context, input MoveInput) ([]userprojectbiz.Pr
 	}
 	projects, err := s.Store.MoveUserProject(ctx, projectID, beforeProjectID)
 	if err != nil {
-		if errors.Is(err, workspacedata.ErrUserProjectNotFound) {
+		if errors.Is(err, workspacedata.ErrUserProjectNotFound) || errors.Is(err, workspacedata.ErrUserProjectPartitionMismatch) {
 			return nil, ErrInvalidArgument
 		}
 		return nil, err
 	}
 	if s.Publisher != nil {
+		_ = s.Publisher.PublishUserProjectUpdated(ctx, projects)
+	}
+	return projects, nil
+}
+
+func (s Service) Pin(ctx context.Context, input PinInput) ([]userprojectbiz.Project, error) {
+	if s.Store == nil {
+		return nil, errors.New("user project store is not configured")
+	}
+	projectID := strings.TrimSpace(input.ProjectID)
+	if projectID == "" {
+		return nil, ErrInvalidArgument
+	}
+	projects, changed, err := s.Store.PinUserProject(ctx, projectID, input.Pinned)
+	if err != nil {
+		if errors.Is(err, workspacedata.ErrUserProjectNotFound) {
+			return nil, ErrInvalidArgument
+		}
+		return nil, err
+	}
+	if changed && s.Publisher != nil {
 		_ = s.Publisher.PublishUserProjectUpdated(ctx, projects)
 	}
 	return projects, nil

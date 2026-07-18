@@ -1,5 +1,8 @@
 import type { ConversationSection } from "../agentGuiNodeViewConversation";
-import type { ConversationRailLabels } from "./agentGuiConversationRail";
+import {
+  partitionConversationRailUserProjects,
+  type ConversationRailLabels
+} from "./agentGuiConversationRail";
 import type { AgentGUINodeViewModel } from "./agentGuiNodeTypes";
 
 export function preserveConversationRailSectionTemplates(input: {
@@ -18,7 +21,9 @@ export function preserveConversationRailSectionTemplates(input: {
   existingById.delete("pinned");
 
   const projectSectionKeys = new Set<string>();
-  for (const project of input.userProjects) {
+  for (const project of partitionConversationRailUserProjects(
+    input.userProjects
+  )) {
     const sectionKey = project.sectionKey?.trim() ?? "";
     if (!sectionKey || projectSectionKeys.has(sectionKey)) continue;
     projectSectionKeys.add(sectionKey);

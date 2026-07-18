@@ -160,7 +160,6 @@ export function useComposerSlashActions(input: UseComposerSlashActionsInput) {
   const settingsControlsDisabled =
     isSendingTurn || isSubmittingPrompt || showStopButton;
   const permissionModeControlsDisabled = resolvePermissionModeControlsDisabled({
-    changeDuringTurnSupported: composerSettings.permissionModeChangeDuringTurn,
     isSendingTurn,
     isSubmittingPrompt,
     showStopButton

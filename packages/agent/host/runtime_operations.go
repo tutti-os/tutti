@@ -378,8 +378,12 @@ func (h *Host) validateRecoveryConfiguration() error {
 }
 
 func (h *Host) RunRuntimeOperationWorker(ctx context.Context) {
+	_ = h.runRuntimeOperationWorker(ctx)
+}
+
+func (h *Host) runRuntimeOperationWorker(ctx context.Context) error {
 	if h == nil {
-		return
+		return nil
 	}
 	if h.scheduler == nil {
 		ticker := time.NewTicker(runtimeOperationWorkerInterval)
@@ -387,7 +391,7 @@ func (h *Host) RunRuntimeOperationWorker(ctx context.Context) {
 		for {
 			select {
 			case <-ctx.Done():
-				return
+				return ctx.Err()
 			case <-ticker.C:
 				if err := h.StepRuntimeOperationWorker(ctx, false); err != nil {
 					logRuntimeOperationFailure(storesqlite.RuntimeOperation{}, err)
@@ -397,7 +401,10 @@ func (h *Host) RunRuntimeOperationWorker(ctx context.Context) {
 	}
 	for {
 		if err := h.scheduler.Sleep(ctx, runtimeOperationWorkerInterval); err != nil {
-			return
+			if ctx.Err() != nil {
+				return ctx.Err()
+			}
+			return fmt.Errorf("runtime operation worker scheduler: %w", err)
 		}
 		if err := h.StepRuntimeOperationWorker(ctx, false); err != nil {
 			logRuntimeOperationFailure(storesqlite.RuntimeOperation{}, err)

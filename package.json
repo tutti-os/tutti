@@ -28,6 +28,7 @@
     "check:agent-gui-degradation": "node ./tools/scripts/check-agent-gui-degradation.mjs",
     "check:agent-gui-degradation:staged": "node ./tools/scripts/check-agent-gui-degradation.mjs --staged",
     "check:agent-gui-provider-catalog-generated": "node ./tools/scripts/check-agent-gui-provider-catalog.mjs",
+    "check:agent-host-boundary": "node ./tools/scripts/check-agent-host-boundary.mjs",
     "check:agent-provider-strategy-boundaries": "node ./tools/scripts/check-agent-provider-strategy-boundaries.mjs",
     "check:codexproto-generated": "node ./tools/scripts/check-codexproto-generated.mjs",
     "check:defaults-generated": "node ./tools/scripts/generate-defaults.mjs --check",

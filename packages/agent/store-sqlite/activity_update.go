@@ -28,7 +28,17 @@ func (s *Store) UpdateSessionPinned(
 	if pinned {
 		pinnedAtUnixMS = now
 	}
-	result, err := s.db.ExecContext(ctx, `
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return Session{}, false, err
+	}
+	committed := false
+	defer func() {
+		if !committed {
+			_ = tx.Rollback()
+		}
+	}()
+	result, err := tx.ExecContext(ctx, `
 UPDATE workspace_agent_sessions
 SET pinned_at_unix_ms = ?,
     updated_at_unix_ms = ?
@@ -42,12 +52,25 @@ WHERE workspace_id = ? AND agent_session_id = ? AND deleted_at_unix_ms = 0
 		return Session{}, false, err
 	}
 	if !updated {
+		if _, err := s.commitTransaction(ctx, tx, workspaceID, nil); err != nil {
+			return Session{}, false, err
+		}
+		committed = true
 		return Session{}, false, nil
 	}
+	delta, err := s.commitTransaction(ctx, tx, workspaceID, []TransactionMutation{
+		transactionMutation(workspaceID, agentSessionID, MutationEntitySession, agentSessionID, "upsert", now),
+	})
+	if err != nil {
+		return Session{}, false, err
+	}
+	committed = true
 	session, ok, err := s.GetSession(ctx, workspaceID, agentSessionID)
 	if err != nil {
 		return Session{}, false, err
 	}
+	session.CommitTransactionID = delta.TransactionID
+	session.CommitDelta = delta
 	return session, ok, nil
 }
 
@@ -68,7 +91,17 @@ func (s *Store) UpdateSessionTitle(
 	}
 
 	now := unixMs(time.Now().UTC())
-	result, err := s.db.ExecContext(ctx, `
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return Session{}, false, err
+	}
+	committed := false
+	defer func() {
+		if !committed {
+			_ = tx.Rollback()
+		}
+	}()
+	result, err := tx.ExecContext(ctx, `
 UPDATE workspace_agent_sessions
 SET title = ?,
     internal_runtime_context_json = json_set(
@@ -87,12 +120,25 @@ WHERE workspace_id = ? AND agent_session_id = ? AND deleted_at_unix_ms = 0
 		return Session{}, false, err
 	}
 	if !updated {
+		if _, err := s.commitTransaction(ctx, tx, workspaceID, nil); err != nil {
+			return Session{}, false, err
+		}
+		committed = true
 		return Session{}, false, nil
 	}
+	delta, err := s.commitTransaction(ctx, tx, workspaceID, []TransactionMutation{
+		transactionMutation(workspaceID, agentSessionID, MutationEntitySession, agentSessionID, "upsert", now),
+	})
+	if err != nil {
+		return Session{}, false, err
+	}
+	committed = true
 	session, ok, err := s.GetSession(ctx, workspaceID, agentSessionID)
 	if err != nil {
 		return Session{}, false, err
 	}
+	session.CommitTransactionID = delta.TransactionID
+	session.CommitDelta = delta
 	return session, ok, nil
 }
 
@@ -117,7 +163,17 @@ func (s *Store) UpdateSessionSettings(
 	}
 
 	now := unixMs(time.Now().UTC())
-	result, err := s.db.ExecContext(ctx, `
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return Session{}, false, err
+	}
+	committed := false
+	defer func() {
+		if !committed {
+			_ = tx.Rollback()
+		}
+	}()
+	result, err := tx.ExecContext(ctx, `
 UPDATE workspace_agent_sessions
 SET model = ?,
     settings_json = ?,
@@ -132,11 +188,24 @@ WHERE workspace_id = ? AND agent_session_id = ? AND deleted_at_unix_ms = 0
 		return Session{}, false, err
 	}
 	if !updated {
+		if _, err := s.commitTransaction(ctx, tx, workspaceID, nil); err != nil {
+			return Session{}, false, err
+		}
+		committed = true
 		return Session{}, false, nil
 	}
+	delta, err := s.commitTransaction(ctx, tx, workspaceID, []TransactionMutation{
+		transactionMutation(workspaceID, agentSessionID, MutationEntitySession, agentSessionID, "upsert", now),
+	})
+	if err != nil {
+		return Session{}, false, err
+	}
+	committed = true
 	session, ok, err := s.GetSession(ctx, workspaceID, agentSessionID)
 	if err != nil {
 		return Session{}, false, err
 	}
+	session.CommitTransactionID = delta.TransactionID
+	session.CommitDelta = delta
 	return session, ok, nil
 }

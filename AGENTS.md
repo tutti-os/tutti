@@ -24,12 +24,53 @@ Read the closest `AGENTS.md` before editing:
 
 Use this root file for repository-wide defaults only. Area-specific files win.
 
+Route agent application-core requests to `packages/agent/host` first. If a
+request mentions agent session, turn, goal, or runtime-operation lifecycle,
+creation, resume, send, cancel, recovery, or the agent host boundary, read
+`packages/agent/host/README.md` and the `Agent Host Boundary` section below
+before planning or editing, then the nearest area `AGENTS.md`.
+
 Also route by module name, not only by path. If a request mentions AgentGUI,
 AgentGuiNode, Agent GUI, the agent conversation module, agent composer,
 workspace agent timeline, agent approvals, or interactive agent prompts, read
 `docs/architecture/agent-gui-node.md` first, then
 `packages/agent/gui/AGENTS.md`, before planning or editing, even when no file
 path is supplied.
+
+## Agent Host Boundary
+
+Agent application-core lifecycle semantics have a single owner:
+`packages/agent/host`. That package owns when a session, turn, goal, or
+runtime-operation is created, when it may be sent, when it reaches a terminal
+state, and how it is recovered. `services/tuttid/service/agent` and other Host
+consumers such as tsh `cmd/desktopd` are adapter surfaces that translate
+HTTP, query, composer, analytics, transport, and provider-preparation concerns
+and delegate lifecycle through `ApplicationHost()`.
+
+Before adding or changing agent behavior, answer the decision rule:
+
+> Does this change define or change the lifecycle semantics of a
+> session/turn/goal/runtime-operation (when it is created, when it may be sent,
+> when it is terminal, how it is recovered)?
+>
+> - Yes -> it must live in `packages/agent/host` (tuttid and tsh write only
+>   delegate/adapter code).
+> - No (transport, DTO, query, presentation, product policy) -> adapter.
+> - Unsure -> answer in the PR description: "Does tsh (or another Host consumer)
+>   also need this behavior?" If yes, it belongs in Host.
+
+New lifecycle semantics must first gain a scenario in
+`packages/agent/host/conformance`; scenarios may only program against the Host
+contract. When a consumer finds a missing Host capability, add the Host API in
+`packages/agent/host` and release it, rather than reimplementing it in the
+adapter. The `GetSession`, `UpdateSettings`, `UpdatePin`, and `DeleteSession`
+APIs were added to Host this way (PR #1329) after tsh's cutover surfaced them,
+instead of being reimplemented in tsh.
+
+`services/tuttid/service/agent/AGENTS.md` records the adapter-only rules for
+that directory, and `pnpm check:agent-host-boundary` ratchets against new
+`*Coordinator`/`*Worker`/`*Actor` orchestration surfaces landing in the
+adapter.
 
 ## Contribution Workflow
 

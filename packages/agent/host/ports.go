@@ -4,7 +4,6 @@ import (
 	"context"
 	"time"
 
-	agentactivity "github.com/tutti-os/tutti/packages/agent/daemon/activity"
 	storesqlite "github.com/tutti-os/tutti/packages/agent/store-sqlite"
 )
 
@@ -36,6 +35,15 @@ type CanonicalStore interface {
 	CanonicalSessionStore
 	CanonicalTurnStore
 	CanonicalSubmitClaimStore
+}
+
+// SessionManagementStore is the narrow canonical mutation surface for session
+// metadata commands. It stays separate from lifecycle storage so read/create
+// consumers are not forced to implement unrelated mutations.
+type SessionManagementStore interface {
+	UpdateSessionSettings(context.Context, string, string, ComposerSettings) (storesqlite.Session, bool, error)
+	UpdateSessionPinned(context.Context, string, string, bool) (storesqlite.Session, bool, error)
+	DeleteSession(context.Context, string, string) (bool, error)
 }
 
 // RuntimeController is the provider-neutral live-runtime surface needed by
@@ -112,10 +120,6 @@ type GoalReconcileInboxStore interface {
 	RequeueLeasedGoalReconcileInboxOnStartup(context.Context, int64) (int64, error)
 }
 
-type GoalAuditPublisher interface {
-	PublishGoalControlAudit(context.Context, string, string, storesqlite.Message)
-}
-
 type GoalRuntimeController interface {
 	GoalControl(context.Context, RuntimeGoalControlInput) (RuntimeGoalControlResult, error)
 }
@@ -173,6 +177,14 @@ type RuntimePreparationPort interface {
 	Cleanup(context.Context, RuntimeCleanupInput) error
 }
 
+// SettingsPolicy keeps provider-specific model, reasoning, and speed
+// normalization in adapters while Host owns the application decision between
+// a durable historical update and a live runtime update.
+type SettingsPolicy interface {
+	NormalizePersistedSettings(context.Context, storesqlite.Session, ComposerSettings, ComposerSettingsPatch) ComposerSettings
+	NormalizeRuntimeSettingsPatch(context.Context, ProviderRuntimeSession, ComposerSettingsPatch) ComposerSettingsPatch
+}
+
 type AttachmentMaterializer interface {
 	PersistRequestContent(workspaceID string, agentSessionID string, content []PromptContentBlock) ([]PromptContentBlock, error)
 	HydrateRuntimeContent(workspaceID string, agentSessionID string, content []PromptContentBlock) ([]PromptContentBlock, error)
@@ -214,11 +226,9 @@ type LifecycleObserver interface {
 	ObserveLifecycleStep(context.Context, LifecycleStep)
 }
 
-// CommitObserver is a post-commit wake surface. Implementations must not treat
-// it as a durable fact carrier; reliable work is read back from canonical
-// storage after the wake.
+// CommitObserver is the single post-commit wake surface. Implementations must
+// not treat it as a durable fact carrier; reliable work is read back from
+// canonical storage after the wake.
 type CommitObserver interface {
-	ObserveAgentSessionState(context.Context, agentactivity.ReportSessionStateInput, agentactivity.ReportSessionStateReply)
-	ObserveAgentSessionMessages(context.Context, agentactivity.ReportSessionMessagesInput, agentactivity.ReportSessionMessagesReply)
-	ObserveRootTurnSettled(context.Context, string, string, storesqlite.Turn)
+	ObserveCommitted(context.Context, CommittedDelta) error
 }

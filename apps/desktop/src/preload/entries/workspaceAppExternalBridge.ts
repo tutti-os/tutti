@@ -7,6 +7,9 @@ import type {
 import type {
   TuttiExternalAtQueryInput,
   TuttiExternalAtQueryResult,
+  TuttiExternalAtInvalidation,
+  TuttiExternalAtResolveInput,
+  TuttiExternalAtResolveResult,
   TuttiExternalBridge,
   TuttiExternalFileOpenInput,
   TuttiExternalFileSelectInput,
@@ -55,6 +58,9 @@ export interface WorkspaceAppExternalBridgeDependencies {
   subscribeToUserProjects?(
     listener: (snapshot: WorkspaceUserProjectServiceSnapshot) => void
   ): () => void;
+  subscribeToAtInvalidations?(
+    listener: (event: TuttiExternalAtInvalidation) => void
+  ): () => void;
   subscribeToWorkspaceLaunchIntents?(
     listener: (intent: TuttiExternalWorkspaceOpenRouteIntent) => void
   ): () => void;
@@ -83,6 +89,7 @@ export interface WorkspaceAppUploadXMLHttpRequest {
 export const workspaceAppExternalChannels = {
   activityReportActive: "workspace-app-activity:report-active",
   atQuery: "workspace-app-at:query",
+  atResolve: "workspace-app-at:resolve",
   browserOpenUrl: "workspace-app:open-url",
   filesOpen: "workspace-app-files:open",
   filesSelect: "workspace-app-files:select",
@@ -148,6 +155,15 @@ export function createWorkspaceAppExternalBridge(
           workspaceAppExternalChannels.atQuery,
           input
         );
+      },
+      resolve(input: TuttiExternalAtResolveInput) {
+        return dependencies.invoke<TuttiExternalAtResolveResult | null>(
+          workspaceAppExternalChannels.atResolve,
+          input
+        );
+      },
+      subscribe(listener) {
+        return dependencies.subscribeToAtInvalidations?.(listener) ?? noop;
       }
     },
     files: {

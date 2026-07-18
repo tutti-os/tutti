@@ -10,7 +10,9 @@ trusted app APIs may read or update host workspace state directly.
 `window.tuttiExternal` currently exposes:
 
 - `app.getContext()` and `app.subscribe()` for host workspace/app context.
-- `at.query()` for host-provided mention candidates.
+- `at.query()` for host-provided mention candidates, plus optional
+  `at.resolve()` and `at.subscribe()` for exact mention hydration and dirty
+  invalidation.
 - `files.select()` for user-activated workspace file picking.
 - `files.open()` for user-activated host opening/revealing of a known workspace file path.
 - `files.upload()` for trusted app upload of a browser `File`/`Blob` into the
@@ -28,23 +30,34 @@ trusted app APIs may read or update host workspace state directly.
 
 ## Rich Text At Providers
 
-Workspace apps that use `@tutti-os/ui-rich-text` can adapt host mention
-candidates from `window.tuttiExternal.at.query()` directly into rich-text trigger
-providers:
+Workspace apps that use `@tutti-os/ui-rich-text` should create one mention
+service at the app root:
 
 ```ts
-import { createTuttiExternalAtRichTextTriggerProviders } from "@tutti-os/workspace-external-core/rich-text";
+import { createTuttiExternalRichTextMentionService } from "@tutti-os/workspace-external-core/rich-text";
 
-const triggerProviders = createTuttiExternalAtRichTextTriggerProviders({
-  bridge: window.tuttiExternal,
+const mentionService = createTuttiExternalRichTextMentionService({
+  getBridge: () => window.tuttiExternal,
   providerIds: ["workspace-app", "agent-session", "agent-generated-file"]
 });
 ```
 
-Each external at provider becomes one `RichTextTriggerProvider` with the same
-provider id. This keeps rich-text categories and sections aligned with the host
-contract, while the app still owns local-only mention sources, caching policy,
-i18n labels, palette categories, row rendering, and insertion side effects.
+Pass that instance to `RichTextMentionServiceProvider` and dispose it with the
+app root. App-local providers can be supplied once through
+`appLocalProviders`; leaf inputs and message lists should not recreate adapters.
+
+The adapter feature-detects optional bridge methods. New hosts use exact
+`at.resolve()` and `at.subscribe()`. On an older query-only host, resolution
+first queries by the persisted fallback label, then uses a bounded empty-keyword
+query and exact provider/entity/scope match. The service TTL supplies eventual
+refresh for hosts or provider sources without a real-time dirty event. The existing
+`createTuttiExternalAtRichTextTriggerProviders` factory remains available for
+older bundles.
+
+Provider ids and palette sections stay aligned with the host contract. The app
+still owns local-only mention sources, i18n labels, palette categories, row
+rendering, and insertion side effects; the shared service owns caching and
+invalidation.
 
 See `@tutti-os/ui-rich-text` for the generic trigger-provider and at-panel
 contracts.

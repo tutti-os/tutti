@@ -104,6 +104,7 @@ export interface AgentActivityRuntimeUserProject {
   label: string;
   lastUsedAtUnixMs?: number;
   path: string;
+  pinnedAtUnixMs: number;
   sectionKey: string;
   updatedAtUnixMs: number;
 }

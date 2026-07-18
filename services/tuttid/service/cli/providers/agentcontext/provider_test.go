@@ -812,7 +812,7 @@ func TestStartCommandRequiresOneSelectorAndPrompt(t *testing.T) {
 	}
 }
 
-func TestStartCommandUsesComposerDefaults(t *testing.T) {
+func TestStartCommandLeavesComposerDefaultsToAgentService(t *testing.T) {
 	sessions := &fakeAgentSessions{}
 	command := newTestCodexStartCommand(NewProviderWithLaunchPublisher(
 		fakeWorkspaceCatalog{startup: workspacebiz.Summary{ID: "workspace-1"}},
@@ -835,14 +835,14 @@ func TestStartCommandUsesComposerDefaults(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("Handler: %v", err)
 	}
-	if sessions.createInput.Model == nil || *sessions.createInput.Model != "gpt-5.5" {
-		t.Fatalf("Model = %#v, want composer default", sessions.createInput.Model)
+	if sessions.createInput.Model != nil {
+		t.Fatalf("Model = %#v, want nil for daemon inheritance", sessions.createInput.Model)
 	}
-	if sessions.createInput.PermissionModeID == nil || *sessions.createInput.PermissionModeID != "full-access" {
-		t.Fatalf("PermissionModeID = %#v, want composer default", sessions.createInput.PermissionModeID)
+	if sessions.createInput.PermissionModeID != nil {
+		t.Fatalf("PermissionModeID = %#v, want nil for daemon inheritance", sessions.createInput.PermissionModeID)
 	}
-	if sessions.createInput.ReasoningEffort == nil || *sessions.createInput.ReasoningEffort != "high" {
-		t.Fatalf("ReasoningEffort = %#v, want composer default", sessions.createInput.ReasoningEffort)
+	if sessions.createInput.ReasoningEffort != nil {
+		t.Fatalf("ReasoningEffort = %#v, want nil for daemon inheritance", sessions.createInput.ReasoningEffort)
 	}
 	if sessions.createInput.ConversationDetailMode != preferencesbiz.DesktopAgentConversationDetailModeGeneral {
 		t.Fatalf("ConversationDetailMode = %q, want general", sessions.createInput.ConversationDetailMode)
@@ -939,7 +939,7 @@ func TestComposerOptionsCommandCanDisableCapabilityCatalog(t *testing.T) {
 	}
 }
 
-func TestComposerOptionsCommandUsesComposerDefaultsFromPreferences(t *testing.T) {
+func TestComposerOptionsCommandLeavesComposerDefaultsToAgentService(t *testing.T) {
 	sessions := &fakeAgentSessions{}
 	command := NewProviderWithAgentTargets(
 		fakeWorkspaceCatalog{startup: workspacebiz.Summary{ID: "workspace-1"}},
@@ -968,9 +968,9 @@ func TestComposerOptionsCommandUsesComposerDefaultsFromPreferences(t *testing.T)
 	if err != nil {
 		t.Fatalf("Handler: %v", err)
 	}
-	if sessions.composerInput.Settings.Model != "gpt-5" ||
-		sessions.composerInput.Settings.PermissionModeID != "full-access" ||
-		sessions.composerInput.Settings.ReasoningEffort != "high" ||
+	if sessions.composerInput.Settings.Model != "" ||
+		sessions.composerInput.Settings.PermissionModeID != "" ||
+		sessions.composerInput.Settings.ReasoningEffort != "" ||
 		sessions.composerInput.Settings.ConversationDetailMode != "" {
 		t.Fatalf("composer input = %#v", sessions.composerInput)
 	}
@@ -1517,7 +1517,7 @@ func TestAgentStartCommandAllowsOmittedModel(t *testing.T) {
 	}
 }
 
-func TestAgentStartCommandUsesComposerDefaults(t *testing.T) {
+func TestAgentStartCommandLeavesComposerDefaultsToAgentService(t *testing.T) {
 	sessions := &fakeAgentSessions{}
 	command := newTestCodexStartCommand(NewProviderWithLaunchPublisher(
 		fakeWorkspaceCatalog{startup: workspacebiz.Summary{ID: "workspace-1"}},
@@ -1540,14 +1540,14 @@ func TestAgentStartCommandUsesComposerDefaults(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("Handler: %v", err)
 	}
-	if sessions.createInput.Model == nil || *sessions.createInput.Model != "gpt-5.5" {
-		t.Fatalf("Model = %#v, want composer default", sessions.createInput.Model)
+	if sessions.createInput.Model != nil {
+		t.Fatalf("Model = %#v, want nil for daemon inheritance", sessions.createInput.Model)
 	}
-	if sessions.createInput.PermissionModeID == nil || *sessions.createInput.PermissionModeID != "full-access" {
-		t.Fatalf("PermissionModeID = %#v, want composer default", sessions.createInput.PermissionModeID)
+	if sessions.createInput.PermissionModeID != nil {
+		t.Fatalf("PermissionModeID = %#v, want nil for daemon inheritance", sessions.createInput.PermissionModeID)
 	}
-	if sessions.createInput.ReasoningEffort == nil || *sessions.createInput.ReasoningEffort != "high" {
-		t.Fatalf("ReasoningEffort = %#v, want composer default", sessions.createInput.ReasoningEffort)
+	if sessions.createInput.ReasoningEffort != nil {
+		t.Fatalf("ReasoningEffort = %#v, want nil for daemon inheritance", sessions.createInput.ReasoningEffort)
 	}
 	if sessions.createInput.ConversationDetailMode != preferencesbiz.DesktopAgentConversationDetailModeGeneral {
 		t.Fatalf("ConversationDetailMode = %q, want general", sessions.createInput.ConversationDetailMode)

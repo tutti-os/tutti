@@ -111,7 +111,7 @@ func (api DaemonAPI) GetWorkspaceAppFactoryAgentTargetComposerOptions(ctx contex
 	}
 	settings := agentservice.ComposerSettings{}
 	if request.Body != nil && request.Body.Settings != nil {
-		settings = mergeComposerSettings(settings, composerSettingsFromGenerated(*request.Body.Settings))
+		settings = composerSettingsFromGenerated(*request.Body.Settings)
 	}
 	locale := api.composerDefaultLocale(ctx)
 	if request.Body != nil && request.Body.Locale != nil {

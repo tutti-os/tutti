@@ -39,8 +39,7 @@ import {
 } from "./desktopAgentGUIWorkbenchDiagnostics.ts";
 import {
   hasDesktopAgentGUIConversationRailCollapsedState,
-  resolveDesktopAgentGUIProviderForAgentTarget,
-  withDesktopAgentGUIProviderComposerDefaults
+  resolveDesktopAgentGUIProviderForAgentTarget
 } from "./desktopAgentGUIWorkbenchStateHelpers.ts";
 import { useDesktopAgentProbes } from "./useDesktopAgentProbes.ts";
 import {
@@ -172,13 +171,6 @@ function DesktopAgentGUISurfaceImpl({
       ),
     [agents, provider, workbenchAgentTargetId]
   );
-  // Remembered defaults are keyed by agent target id; the daemon overlays
-  // legacy provider-keyed entries onto local target ids at read time.
-  const providerComposerDefaults = workbenchAgentTargetId
-    ? (desktopPreferencesState.agentComposerDefaultsByAgentTarget[
-        workbenchAgentTargetId
-      ] ?? null)
-    : null;
   const hasExplicitConversationRailCollapsedState =
     hasDesktopAgentGUIConversationRailCollapsedState(surface.state);
   const preferredConversationRailCollapsed =
@@ -186,8 +178,8 @@ function DesktopAgentGUISurfaceImpl({
     desktopPreferencesState.agentGuiConversationRailCollapsedByProvider[
       nodeProvider
     ] === true;
-  // Derive node state from the workbench store plus provider-default overlay;
-  // there is no local mirror or two-way binding.
+  // Persisted composer defaults are read through target-scoped composer
+  // options. Workbench state only carries the local draft and session route.
   const nodeState = useMemo(() => {
     const baseState = normalizeDesktopAgentGUINodeState(
       workbenchState,
@@ -198,18 +190,12 @@ function DesktopAgentGUISurfaceImpl({
       preferredConversationRailCollapsed
         ? { ...baseState, conversationRailCollapsed: true }
         : baseState;
-    const nextState = withDesktopAgentGUIProviderComposerDefaults(
-      railState,
-      nodeProvider,
-      providerComposerDefaults
-    );
-    return nextState;
+    return railState;
   }, [
     hasExplicitConversationRailCollapsedState,
     preferredConversationRailCollapsed,
     workbenchState,
-    nodeProvider,
-    providerComposerDefaults
+    nodeProvider
   ]);
   const nodeStateRef = useRef(nodeState);
   nodeStateRef.current = nodeState;
@@ -529,26 +515,17 @@ function DesktopAgentGUISurfaceImpl({
       if (previewMode || !agentTargetId || !defaults) {
         return;
       }
-      void desktopPreferencesService
+      return desktopPreferencesService
         .rememberAgentComposerDefaultsForAgentTarget(agentTargetId, defaults)
-        .then(() => {
-          logAgentComposerDefaultsDiagnostic({
-            defaults,
-            event: "agent.gui.composer_defaults.remembered",
-            provider: defaultsProvider,
-            runtimeApi,
-            workspaceId
-          });
-        })
         .catch((error) => {
           logAgentComposerDefaultsDiagnostic({
-            defaults,
+            agentTargetId,
             error,
-            event: "agent.gui.composer_defaults.remember_failed",
             provider: defaultsProvider,
             runtimeApi,
             workspaceId
           });
+          throw error;
         });
     },
     [desktopPreferencesService, previewMode, runtimeApi, workspaceId]

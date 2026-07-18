@@ -164,6 +164,87 @@ test("workspace app external bridge invokes at query without user activation", a
   ]);
 });
 
+test("workspace app external bridge resolves mentions without user activation", async () => {
+  const calls: Array<{ channel: string; payload?: unknown }> = [];
+  const bridge = createWorkspaceAppExternalBridge({
+    appContext: {
+      async get() {
+        return { locale: "en" };
+      },
+      subscribe() {
+        throw new Error("unexpected subscribe");
+      }
+    },
+    isUserActivationActive: () => false,
+    send: unexpectedSend,
+    async invoke<TResult>(channel: string, payload?: unknown) {
+      calls.push({ channel, payload });
+      return {
+        label: "Canvas",
+        presentation: { iconUrl: "tutti://app-icon/canvas" }
+      } as TResult;
+    }
+  });
+
+  assert.deepEqual(
+    await bridge.at.resolve?.({
+      providerId: "workspace-app",
+      entityId: "canvas",
+      scope: { workspaceId: "untrusted-workspace" }
+    }),
+    {
+      label: "Canvas",
+      presentation: { iconUrl: "tutti://app-icon/canvas" }
+    }
+  );
+  assert.deepEqual(calls, [
+    {
+      channel: workspaceAppExternalChannels.atResolve,
+      payload: {
+        providerId: "workspace-app",
+        entityId: "canvas",
+        scope: { workspaceId: "untrusted-workspace" }
+      }
+    }
+  ]);
+});
+
+test("workspace app external bridge subscribes to mention invalidation", () => {
+  let publish:
+    | ((event: { providerIds?: readonly ["workspace-app"] }) => void)
+    | undefined;
+  let unsubscribed = false;
+  const bridge = createWorkspaceAppExternalBridge({
+    appContext: {
+      async get() {
+        return { locale: "en" };
+      },
+      subscribe() {
+        throw new Error("unexpected subscribe");
+      }
+    },
+    isUserActivationActive: () => false,
+    send: unexpectedSend,
+    subscribeToAtInvalidations(listener) {
+      publish = listener;
+      return () => {
+        unsubscribed = true;
+      };
+    },
+    async invoke() {
+      throw new Error("unexpected invoke");
+    }
+  });
+  const events: unknown[] = [];
+
+  const unsubscribe = bridge.at.subscribe?.((event) => events.push(event));
+  publish?.({ providerIds: ["workspace-app"] });
+  unsubscribe?.();
+
+  assert.deepEqual(events, [{ providerIds: ["workspace-app"] }]);
+  assert.equal(unsubscribed, true);
+});
+
 test("workspace app external bridge reports active without user activation", async () => {
   const calls: Array<{ channel: string; payload?: unknown }> = [];
   const bridge = createWorkspaceAppExternalBridge({
@@ -1062,14 +1143,29 @@ test("workspace app external bridge invokes user project list without activation
     async invoke<TResult>(channel: string, payload?: unknown) {
       calls.push({ channel, payload });
       return {
-        projects: [{ id: "repo", label: "repo", path: "/workspace/repo" }]
+        projects: [
+          {
+            id: "repo",
+            label: "repo",
+            path: "/workspace/repo",
+            pinnedAtUnixMs: 0
+          }
+        ]
       } as TResult;
     }
   });
 
   assert.deepEqual(await bridge.userProjects.list(), {
-    projects: [{ id: "repo", label: "repo", path: "/workspace/repo" }]
+    projects: [
+      {
+        id: "repo",
+        label: "repo",
+        path: "/workspace/repo",
+        pinnedAtUnixMs: 0
+      }
+    ]
   });
+  assert.equal("pin" in bridge.userProjects, false);
   assert.deepEqual(calls, [
     {
       channel: workspaceAppExternalChannels.userProjectsList,
@@ -1115,7 +1211,14 @@ test("workspace app external bridge invokes user project snapshot reads without 
     error: null,
     initialized: true,
     isLoading: false,
-    projects: [{ id: "repo", label: "repo", path: "/workspace/repo" }],
+    projects: [
+      {
+        id: "repo",
+        label: "repo",
+        path: "/workspace/repo",
+        pinnedAtUnixMs: 0
+      }
+    ],
     revision: 3
   };
   const bridge = createWorkspaceAppExternalBridge({
@@ -1154,7 +1257,14 @@ test("workspace app external bridge subscribes to user project snapshots", () =>
     error: null,
     initialized: true,
     isLoading: false,
-    projects: [{ id: "repo", label: "repo", path: "/workspace/repo" }],
+    projects: [
+      {
+        id: "repo",
+        label: "repo",
+        path: "/workspace/repo",
+        pinnedAtUnixMs: 0
+      }
+    ],
     revision: 3
   };
   const snapshots: unknown[] = [];

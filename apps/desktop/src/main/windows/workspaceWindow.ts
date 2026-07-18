@@ -66,6 +66,22 @@ const agentWindowMinWidthPx = 420;
 const agentWindowMinHeightPx = 520;
 const agentWindowWorkAreaScale = 0.9;
 const agentWindowDuplicateOffsetPx = 25;
+const linuxWindowResizeSettleDelayMs = 150;
+
+function sendWorkspaceWindowLayout(workspaceWindow: BrowserWindow): void {
+  if (
+    workspaceWindow.isDestroyed() ||
+    workspaceWindow.webContents.isDestroyed()
+  ) {
+    return;
+  }
+
+  workspaceWindow.webContents.send(desktopIpcChannels.host.window.layout, {
+    compactTitlebar: workspaceWindow.isFullScreen(),
+    maximized: workspaceWindow.isMaximized() || workspaceWindow.isFullScreen()
+  });
+}
+
 export function createWorkspaceWindow(
   options: CreateWorkspaceWindowOptions
 ): BrowserWindow {
@@ -212,22 +228,17 @@ export function createWorkspaceWindow(
     workspaceWindows.unregister(workspaceWindow);
   });
 
-  if (process.platform === "darwin") {
-    let resizeLayoutTimer: ReturnType<typeof setTimeout> | null = null;
-    const sendHostWindowLayout = () => {
-      if (
-        workspaceWindow.isDestroyed() ||
-        workspaceWindow.webContents.isDestroyed()
-      ) {
-        return;
-      }
+  const sendHostWindowLayout = () => {
+    sendWorkspaceWindowLayout(workspaceWindow);
+  };
+  workspaceWindow.on("maximize", sendHostWindowLayout);
+  workspaceWindow.on("unmaximize", sendHostWindowLayout);
+  workspaceWindow.on("enter-full-screen", sendHostWindowLayout);
+  workspaceWindow.on("leave-full-screen", sendHostWindowLayout);
+  workspaceWindow.webContents.on("did-finish-load", sendHostWindowLayout);
 
-      workspaceWindow.webContents.send(desktopIpcChannels.host.window.layout, {
-        compactTitlebar: workspaceWindow.isFullScreen(),
-        maximized:
-          workspaceWindow.isMaximized() || workspaceWindow.isFullScreen()
-      });
-    };
+  if (process.platform === "linux") {
+    let resizeLayoutTimer: ReturnType<typeof setTimeout> | null = null;
     const scheduleHostWindowLayout = () => {
       if (resizeLayoutTimer !== null) {
         clearTimeout(resizeLayoutTimer);
@@ -236,16 +247,20 @@ export function createWorkspaceWindow(
       resizeLayoutTimer = setTimeout(() => {
         resizeLayoutTimer = null;
         sendHostWindowLayout();
-      }, 50);
+      }, linuxWindowResizeSettleDelayMs);
     };
 
-    workspaceWindow.on("maximize", sendHostWindowLayout);
-    workspaceWindow.on("unmaximize", sendHostWindowLayout);
-    workspaceWindow.on("enter-full-screen", sendHostWindowLayout);
-    workspaceWindow.on("leave-full-screen", sendHostWindowLayout);
     workspaceWindow.on("resize", scheduleHostWindowLayout);
-    workspaceWindow.webContents.on("did-finish-load", sendHostWindowLayout);
+    workspaceWindow.once("closed", () => {
+      if (resizeLayoutTimer !== null) {
+        clearTimeout(resizeLayoutTimer);
+      }
+    });
+  } else {
+    workspaceWindow.on("resized", sendHostWindowLayout);
+  }
 
+  if (process.platform === "darwin") {
     const sendHostWindowMinimizeState = (minimized: boolean) => {
       if (
         workspaceWindow.isDestroyed() ||

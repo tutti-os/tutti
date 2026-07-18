@@ -8,7 +8,7 @@ import (
 	"fmt"
 	"strings"
 
-	agentactivityprojection "github.com/tutti-os/tutti/packages/agent/daemon/activity/projection"
+	agentactivityprojection "github.com/tutti-os/tutti/packages/agent/store-sqlite/canonical"
 )
 
 const sessionGoalStateSelectSQL = `
@@ -69,7 +69,7 @@ func (s *Store) PrepareGoalControlOperation(ctx context.Context, input GoalContr
 		if existing.AgentSessionID != input.AgentSessionID || existing.Action != input.Action || existing.Objective != input.Objective || existing.ClientSubmitID != input.ClientSubmitID {
 			return GoalControlOperation{}, SessionGoalState{}, false, ErrGoalOperationConflict
 		}
-		if err := tx.Commit(); err != nil {
+		if _, err := s.commitTransaction(ctx, tx, input.WorkspaceID, nil); err != nil {
 			return GoalControlOperation{}, SessionGoalState{}, false, err
 		}
 		committed = true
@@ -152,7 +152,7 @@ INSERT INTO workspace_agent_goal_control_operations (
 		input.OccurredAtUnixMS, input.OccurredAtUnixMS, input.ClientSubmitID); err != nil {
 		return GoalControlOperation{}, SessionGoalState{}, false, fmt.Errorf("insert goal control operation: %w", err)
 	}
-	if _, accepted, err := s.upsertAgentMessageTx(
+	auditMessage, accepted, err := s.upsertAgentMessageTx(
 		ctx,
 		tx,
 		input.WorkspaceID,
@@ -160,7 +160,8 @@ INSERT INTO workspace_agent_goal_control_operations (
 		goalControlAuditMessageUpdate(input, revision),
 		input.OccurredAtUnixMS,
 		false,
-	); err != nil {
+	)
+	if err != nil {
 		return GoalControlOperation{}, SessionGoalState{}, false, fmt.Errorf("insert goal control audit: %w", err)
 	} else if !accepted {
 		return GoalControlOperation{}, SessionGoalState{}, false, errors.New("goal control audit was not accepted")
@@ -173,10 +174,19 @@ INSERT INTO workspace_agent_goal_control_operations (
 	if err != nil {
 		return GoalControlOperation{}, SessionGoalState{}, false, err
 	}
-	if err := tx.Commit(); err != nil {
+	delta, err := s.commitTransaction(ctx, tx, input.WorkspaceID, []TransactionMutation{
+		transactionMutation(input.WorkspaceID, input.AgentSessionID, MutationEntityGoalState, input.AgentSessionID, "upsert", revision),
+		transactionMutation(input.WorkspaceID, input.AgentSessionID, MutationEntityGoalOperation, input.OperationID, "prepare", op.UpdatedAtUnixMS),
+		transactionMutation(input.WorkspaceID, input.AgentSessionID, MutationEntityMessage, auditMessage.MessageID, "insert", int64(auditMessage.Version)),
+	})
+	if err != nil {
 		return GoalControlOperation{}, SessionGoalState{}, false, fmt.Errorf("commit goal control operation: %w", err)
 	}
 	committed = true
+	op.CommitTransactionID = delta.TransactionID
+	op.CommitDelta = delta
+	state.CommitTransactionID = delta.TransactionID
+	state.CommitDelta = delta
 	return op, state, true, nil
 }
 
@@ -243,9 +253,19 @@ WHERE workspace_id = ? AND agent_session_id = ? AND pending_operation_id = ?
 			return GoalControlOperation{}, false, fmt.Errorf("mark goal state applying: %w", err)
 		}
 	}
-	if err := tx.Commit(); err != nil {
+	mutations := []TransactionMutation{}
+	if changed > 0 {
+		mutations = append(mutations,
+			transactionMutation(workspaceID, op.AgentSessionID, MutationEntityGoalOperation, operationID, "dispatch", op.UpdatedAtUnixMS),
+			transactionMutation(workspaceID, op.AgentSessionID, MutationEntityGoalState, op.AgentSessionID, "upsert", op.GoalRevision),
+		)
+	}
+	delta, err := s.commitTransaction(ctx, tx, workspaceID, mutations)
+	if err != nil {
 		return GoalControlOperation{}, false, err
 	}
+	op.CommitTransactionID = delta.TransactionID
+	op.CommitDelta = delta
 	return op, changed > 0, nil
 }
 
@@ -271,13 +291,13 @@ func (s *Store) AcknowledgeGoalControlOperation(ctx context.Context, input GoalC
 		return GoalControlOperation{}, SessionGoalState{}, false, err
 	}
 	if op.Status != GoalOperationStatusDispatched || state.PendingOperationID != input.OperationID {
-		if err := tx.Commit(); err != nil {
+		if _, err := s.commitTransaction(ctx, tx, input.WorkspaceID, nil); err != nil {
 			return GoalControlOperation{}, SessionGoalState{}, false, err
 		}
 		return op, state, false, nil
 	}
 	if op.RepairRequired && input.RepairEpoch != op.RepairEpoch {
-		if err := tx.Commit(); err != nil {
+		if _, err := s.commitTransaction(ctx, tx, input.WorkspaceID, nil); err != nil {
 			return GoalControlOperation{}, SessionGoalState{}, false, err
 		}
 		return op, state, false, nil
@@ -309,9 +329,17 @@ WHERE workspace_id = ? AND agent_session_id = ? AND pending_operation_id = ?
 	if err != nil {
 		return GoalControlOperation{}, SessionGoalState{}, false, err
 	}
-	if err := tx.Commit(); err != nil {
+	delta, err := s.commitTransaction(ctx, tx, input.WorkspaceID, []TransactionMutation{
+		transactionMutation(input.WorkspaceID, op.AgentSessionID, MutationEntityGoalOperation, op.OperationID, "acknowledge", op.UpdatedAtUnixMS),
+		transactionMutation(input.WorkspaceID, op.AgentSessionID, MutationEntityGoalState, op.AgentSessionID, "upsert", state.Revision),
+	})
+	if err != nil {
 		return GoalControlOperation{}, SessionGoalState{}, false, err
 	}
+	op.CommitTransactionID = delta.TransactionID
+	op.CommitDelta = delta
+	state.CommitTransactionID = delta.TransactionID
+	state.CommitDelta = delta
 	return op, state, true, nil
 }
 
@@ -334,13 +362,13 @@ func (s *Store) CompleteGoalControlOperation(ctx context.Context, input GoalCont
 		return GoalControlOperation{}, SessionGoalState{}, false, err
 	}
 	if op.Status == GoalOperationStatusCompleted || op.Status == GoalOperationStatusFailed || op.Status == GoalOperationStatusSuperseded {
-		if err := tx.Commit(); err != nil {
+		if _, err := s.commitTransaction(ctx, tx, input.WorkspaceID, nil); err != nil {
 			return GoalControlOperation{}, SessionGoalState{}, false, err
 		}
 		return op, state, false, nil
 	}
 	if op.RepairRequired && input.RepairEpoch != op.RepairEpoch {
-		if err := tx.Commit(); err != nil {
+		if _, err := s.commitTransaction(ctx, tx, input.WorkspaceID, nil); err != nil {
 			return GoalControlOperation{}, SessionGoalState{}, false, err
 		}
 		return op, state, false, nil
@@ -390,9 +418,17 @@ WHERE workspace_id = ? AND agent_session_id = ? AND pending_operation_id = ?
 	if err != nil {
 		return GoalControlOperation{}, SessionGoalState{}, false, err
 	}
-	if err := tx.Commit(); err != nil {
+	delta, err := s.commitTransaction(ctx, tx, input.WorkspaceID, []TransactionMutation{
+		transactionMutation(input.WorkspaceID, op.AgentSessionID, MutationEntityGoalOperation, op.OperationID, "complete", op.UpdatedAtUnixMS),
+		transactionMutation(input.WorkspaceID, op.AgentSessionID, MutationEntityGoalState, op.AgentSessionID, "upsert", state.Revision),
+	})
+	if err != nil {
 		return GoalControlOperation{}, SessionGoalState{}, false, err
 	}
+	op.CommitTransactionID = delta.TransactionID
+	op.CommitDelta = delta
+	state.CommitTransactionID = delta.TransactionID
+	state.CommitDelta = delta
 	return op, state, true, nil
 }
 
@@ -515,7 +551,16 @@ WHERE workspace_id = ? AND operation_id = ? AND goal_revision = ? AND status IN 
 		}
 		updated, _, err := getSessionGoalStateTx(ctx, tx, input.WorkspaceID, input.AgentSessionID)
 		if err == nil {
-			err = tx.Commit()
+			mutations := []TransactionMutation{
+				transactionMutation(input.WorkspaceID, input.AgentSessionID, MutationEntityGoalState, input.AgentSessionID, "reconcile", updated.Revision),
+			}
+			if completePending {
+				mutations = append(mutations, transactionMutation(input.WorkspaceID, input.AgentSessionID, MutationEntityGoalOperation, expectedPending, "complete", input.OccurredAtUnixMS))
+			}
+			var delta TransactionDelta
+			delta, err = s.commitTransaction(ctx, tx, input.WorkspaceID, mutations)
+			updated.CommitTransactionID = delta.TransactionID
+			updated.CommitDelta = delta
 		} else {
 			_ = tx.Rollback()
 		}
@@ -752,83 +797,4 @@ func scanGoalControlOperation(row *sql.Row) (GoalControlOperation, bool, error) 
 	op.Evidence, _ = unmarshalJSONMap(evidenceJSON)
 	op.RepairRequired = repairRequired != 0
 	return op, true, nil
-}
-
-func isKnownGoalControlAction(action string) bool {
-	switch action {
-	case "pause", "resume", "clear", "set", "reconcile":
-		return true
-	default:
-		return false
-	}
-}
-
-func goalStateConverged(desired, observed map[string]any, tombstoned bool) bool {
-	if tombstoned {
-		return len(observed) == 0
-	}
-	if len(desired) == 0 || len(observed) == 0 {
-		return len(desired) == 0 && len(observed) == 0
-	}
-	if strings.TrimSpace(asJSONMapString(desired, "objective")) != strings.TrimSpace(asJSONMapString(observed, "objective")) {
-		return false
-	}
-	desiredStatus := strings.TrimSpace(asJSONMapString(desired, "status"))
-	observedStatus := strings.TrimSpace(asJSONMapString(observed, "status"))
-	if desiredStatus == observedStatus {
-		return true
-	}
-	// Provider lifecycle is orthogonal to control convergence. A provider may
-	// finish or limit the same objective without undoing the active control
-	// command that selected it.
-	if desiredStatus == "active" {
-		switch observedStatus {
-		case "complete", "completed", "blocked", "limited", "failed":
-			return true
-		}
-	}
-	return false
-}
-
-func providerPhaseForCompletion(succeeded bool) string {
-	if succeeded {
-		return GoalProviderPhaseApplied
-	}
-	return GoalProviderPhaseUnknown
-}
-
-func asJSONMapString(value map[string]any, key string) string {
-	text, _ := value[key].(string)
-	return text
-}
-
-func nullableJSONMap(value map[string]any) any {
-	if len(value) == 0 {
-		return nil
-	}
-	encoded, _ := marshalJSONMap(value)
-	return encoded
-}
-
-func marshalJSONMapOrEmpty(value map[string]any) string {
-	encoded, err := marshalJSONMap(value)
-	if err != nil || strings.TrimSpace(encoded) == "" {
-		return "{}"
-	}
-	return encoded
-}
-
-func unmarshalNullableJSONMap(value sql.NullString) map[string]any {
-	if !value.Valid || strings.TrimSpace(value.String) == "" {
-		return nil
-	}
-	decoded, _ := unmarshalJSONMap(value.String)
-	return decoded
-}
-
-func boolInt(value bool) int {
-	if value {
-		return 1
-	}
-	return 0
 }

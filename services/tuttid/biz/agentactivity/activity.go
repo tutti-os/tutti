@@ -10,10 +10,15 @@ import (
 type Repository = agentstore.Repository
 
 type ClearSessionsResult = agentstore.ClearSessionsResult
+type DeleteSessionResult = agentstore.DeleteSessionResult
 type ListSessionSectionDeletionCandidatesInput = agentstore.ListSessionSectionDeletionCandidatesInput
 type SessionSectionDeletionCandidates = agentstore.SessionSectionDeletionCandidates
 type DeleteSessionsBatchInput = agentstore.DeleteSessionsBatchInput
 type DeleteSessionsBatchResult = agentstore.DeleteSessionsBatchResult
+type TransactionDelta = agentstore.TransactionDelta
+type TransactionMutation = agentstore.TransactionMutation
+
+const MutationEntitySession = agentstore.MutationEntitySession
 
 type MessageOrder = agentstore.MessageOrder
 

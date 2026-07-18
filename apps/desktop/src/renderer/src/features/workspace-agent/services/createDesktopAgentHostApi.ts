@@ -6,6 +6,7 @@ import type {
   AgentHostAgentTargetSetupSnapshot,
   AgentHostInputApi,
   AgentHostAgentTargetSetupWatch,
+  AgentHostUserProject,
   AgentHostApplyWorkspaceGitPatchInput,
   AgentHostSelectFilesInput,
   AgentProviderProbeListInput,
@@ -39,16 +40,6 @@ interface CreateDesktopAgentHostApiInput {
   workspaceAgentActivityService: IWorkspaceAgentActivityService;
   workspaceUserProjectService?: IWorkspaceUserProjectService;
   workspaceId: string;
-}
-
-interface AgentHostUserProjectCompat {
-  createdAtUnixMs?: number;
-  id: string;
-  label: string;
-  lastUsedAtUnixMs?: number;
-  path: string;
-  sectionKey?: string;
-  updatedAtUnixMs?: number;
 }
 
 // workspaceId and action timestamps remain daemon transport/audit metadata;
@@ -97,7 +88,6 @@ export function projectDesktopAgentTargetSetupSnapshot(
       : null
   };
 }
-
 export function createDesktopAgentHostApi({
   hostFilesApi,
   tuttidClient,
@@ -257,6 +247,8 @@ export function createDesktopAgentHostApi({
       },
       move: (payload: { beforeProjectId: string | null; projectId: string }) =>
         userProjectService.moveProject(payload),
+      pin: (payload: { pinned: boolean; projectId: string }) =>
+        userProjectService.pinProject(payload),
       prepareSelection: async (payload: {
         projectLocked: boolean;
         selectedPath: string | null;
@@ -279,15 +271,29 @@ export function createDesktopAgentHostApi({
     // The desktop host forwards daemon business events the Agent GUI event bus
     // understands. Today that is the model-catalog invalidation broadcast; the
     // GUI reacts by force-reloading composer options and session state.
-    onHostEvent: (listener: (event: unknown) => void) =>
-      agentActivityService.onModelCatalogInvalidated((event) => {
-        listener({
-          scope: "global",
-          type: "agent-model-catalog-invalidated",
-          providers: event.providers,
-          occurredAtUnixMs: event.occurredAtUnixMs
+    onHostEvent: (listener: (event: unknown) => void) => {
+      const disposeModelCatalog =
+        agentActivityService.onModelCatalogInvalidated((event) => {
+          listener({
+            scope: "global",
+            type: "agent-model-catalog-invalidated",
+            providers: event.providers,
+            occurredAtUnixMs: event.occurredAtUnixMs
+          });
         });
-      }),
+      const disposeComposerDefaults =
+        agentActivityService.onComposerDefaultsInvalidated((event) => {
+          listener({
+            agentTargetId: event.agentTargetId,
+            scope: "global",
+            type: "agent-composer-defaults-invalidated"
+          });
+        });
+      return () => {
+        disposeModelCatalog();
+        disposeComposerDefaults();
+      };
+    },
     persistence: {
       readWorkspaceAgentReadState: readDesktopWorkspaceAgentReadState,
       writeWorkspaceAgentReadState: writeDesktopWorkspaceAgentReadState
@@ -400,7 +406,7 @@ function logAgentGitPatchDiagnostic(
 
 function toAgentHostUserProject(
   project: WorkspaceUserProject
-): AgentHostUserProjectCompat {
+): AgentHostUserProject {
   const { lastUsedAtUnixMs, ...rest } = project;
   return lastUsedAtUnixMs == null ? rest : { ...rest, lastUsedAtUnixMs };
 }

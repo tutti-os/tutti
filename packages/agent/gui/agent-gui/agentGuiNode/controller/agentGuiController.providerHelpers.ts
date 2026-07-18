@@ -95,6 +95,14 @@ export const rememberComposerDefaultsFields = [
   "speed"
 ] as const;
 
+export type AgentGUIComposerDefaultsField =
+  (typeof rememberComposerDefaultsFields)[number];
+
+export interface AgentGUIRememberComposerDefaultsResult {
+  acknowledgedFields: AgentGUIComposerDefaultsField[];
+  supersededFields: AgentGUIComposerDefaultsField[];
+}
+
 export function composerDefaultsPatchFromSettings(
   touched: Partial<AgentSessionComposerSettings>,
   finalSettings: AgentSessionComposerSettings
@@ -103,11 +111,44 @@ export function composerDefaultsPatchFromSettings(
   for (const field of rememberComposerDefaultsFields) {
     if (touched[field] === undefined) continue;
     const touchedValue = normalizeOptionalText(touched[field]);
+    if (touchedValue === null) continue;
     const finalValue = normalizeOptionalText(finalSettings[field]);
-    if (touchedValue !== null && finalValue === null) continue;
+    if (finalValue === null) continue;
     patch[field] = finalValue;
   }
   return Object.keys(patch).length > 0 ? patch : null;
+}
+
+export function overlayComposerDefaults(
+  base: AgentSessionComposerSettings,
+  optimistic: AgentSessionComposerSettings | null | undefined
+): AgentSessionComposerSettings {
+  if (!optimistic) return base;
+  const result = { ...base };
+  for (const field of rememberComposerDefaultsFields) {
+    const value = normalizeOptionalText(optimistic[field]);
+    if (value !== null) {
+      Object.assign(result, { [field]: value });
+    }
+  }
+  return result;
+}
+
+export function withoutAcknowledgedComposerDefaults(
+  settings: AgentSessionComposerSettings,
+  acknowledged: AgentGUIComposerDefaults
+): AgentSessionComposerSettings {
+  const result = { ...settings };
+  for (const field of rememberComposerDefaultsFields) {
+    const acknowledgedValue = normalizeOptionalText(acknowledged[field]);
+    if (
+      acknowledgedValue !== null &&
+      normalizeOptionalText(result[field]) === acknowledgedValue
+    ) {
+      delete result[field];
+    }
+  }
+  return result;
 }
 
 export function composerTargetDataFromProviderTarget(input: {

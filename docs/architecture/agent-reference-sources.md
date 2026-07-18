@@ -58,6 +58,22 @@ shared `ReferenceListBackend` / `createReferenceListSource` protocol. Local
 files wrap `WorkspaceFileReferenceAdapter` directly. Open, reveal, open-with,
 and preview operations remain source-owned and are delegated back to the host.
 
+### Composer Mention Directory Navigation
+
+The compact AgentGUI `@` palette uses `AgentContextMentionProvider` instead of
+the full reference picker, but it preserves the same ownership boundary. A file
+provider that supports directory browsing exposes both `getItemDirectory()`
+and `queryDirectory()`. The descriptor supplies the provider-owned canonical
+directory path and, when known, its direct-child count; `queryDirectory()`
+lists that directory's direct children without overloading keyword search.
+
+AgentGUI owns only the ephemeral browse stack and turns those provider results
+into enter/back navigation rows. The palette renders the supplied count and
+navigation affordance, but does not infer hierarchy from a path, a trailing
+separator, cached tree depth, or already loaded rows. Search results remain
+ordinary insertable mentions unless the provider explicitly marks them as
+navigable directories.
+
 ## Search Relevance
 
 The daemon-backed source owns the ranked order for a non-empty local-file
@@ -140,6 +156,8 @@ cache expires; they do not claim exhaustive history.
 
 - Route every operation by `sourceId`; reject unknown sources.
 - Never derive hierarchy by splitting an opaque `nodeId`.
+- Never derive composer-folder child counts from the currently loaded mention
+  rows; directory providers own that count and the corresponding child query.
 - Keep node ids stable across repeated listings so selection and pagination can
   deduplicate safely.
 - Preserve source relevance order for search results; browsing order and search

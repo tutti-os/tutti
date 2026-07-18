@@ -42,6 +42,9 @@ export function normalizeAgentGUIAgents(
             }
           }
         : {}),
+      ...(agent.ownership === "self" || agent.ownership === "shared"
+        ? { ownership: agent.ownership }
+        : {}),
       availability: {
         status: normalizeAgentGUIAgentAvailabilityStatus(
           agent.availability.status
@@ -113,6 +116,7 @@ export function projectAgentGUIAgentsToInternalTargets(
         }
       : {}),
     ...(agent.owner?.name ? { ownerLabel: agent.owner.name } : {}),
+    ...(agent.ownership ? { ownership: agent.ownership } : {}),
     ...(agent.availability.status !== "ready" && !agent.setupKind
       ? { disabled: true }
       : {}),

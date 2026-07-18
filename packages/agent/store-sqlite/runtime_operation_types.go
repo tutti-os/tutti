@@ -33,24 +33,28 @@ var (
 )
 
 type RuntimeOperation struct {
-	OperationID       string
-	WorkspaceID       string
-	AgentSessionID    string
-	Kind              string
-	Status            string
-	Result            string
-	TurnID            string
-	RequestID         string
-	Payload           map[string]any
-	LeaseOwner        string
-	LeaseExpiresAtMS  int64
-	NextAttemptAtMS   int64
-	Attempt           int
-	Version           int64
-	LastError         string
-	CreatedAtUnixMS   int64
-	UpdatedAtUnixMS   int64
-	CompletedAtUnixMS int64
+	// CommitTransactionID is populated only on a successful mutation return;
+	// it is not persisted as operation state.
+	CommitTransactionID string           `json:"-"`
+	CommitDelta         TransactionDelta `json:"-"`
+	OperationID         string
+	WorkspaceID         string
+	AgentSessionID      string
+	Kind                string
+	Status              string
+	Result              string
+	TurnID              string
+	RequestID           string
+	Payload             map[string]any
+	LeaseOwner          string
+	LeaseExpiresAtMS    int64
+	NextAttemptAtMS     int64
+	Attempt             int
+	Version             int64
+	LastError           string
+	CreatedAtUnixMS     int64
+	UpdatedAtUnixMS     int64
+	CompletedAtUnixMS   int64
 }
 
 type RuntimeOperationPrepare struct {
@@ -145,6 +149,8 @@ type RuntimeOperationEvent struct {
 }
 
 type RuntimeOperationCompletion struct {
-	Operation RuntimeOperation
-	Event     RuntimeOperationEvent
+	TransactionID string           `json:"-"`
+	CommitDelta   TransactionDelta `json:"-"`
+	Operation     RuntimeOperation
+	Event         RuntimeOperationEvent
 }

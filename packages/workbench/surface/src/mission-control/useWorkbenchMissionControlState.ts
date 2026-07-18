@@ -44,6 +44,7 @@ export interface WorkbenchMissionControlState {
   canUsePreset(preset: WorkbenchLayoutPreset): boolean;
   mode: WorkbenchMissionControlMode;
   presentation: WorkbenchSurfacePresentation;
+  requestMode(mode: WorkbenchMissionControlMode): void;
   selectedCount: number;
 }
 
@@ -51,12 +52,14 @@ export function useWorkbenchMissionControlState<TData>({
   adapter,
   mode,
   nodeIds,
-  onRequestClose
+  onRequestClose,
+  onRequestMode
 }: {
   adapter: WorkbenchMissionControlAdapter<TData> | null;
   mode: WorkbenchMissionControlMode | null;
   nodeIds?: readonly string[];
   onRequestClose: () => void;
+  onRequestMode?: (mode: WorkbenchMissionControlMode) => void;
 }): WorkbenchMissionControlState | null {
   const isActive = mode !== null && adapter !== null;
   const snapshot = useExternalStoreSnapshot(
@@ -232,6 +235,16 @@ export function useWorkbenchMissionControlState<TData>({
     [applyLayoutAndClose, canApplyPreset, orderedSelectedNodeIds]
   );
 
+  const requestMode = useCallback(
+    (nextMode: WorkbenchMissionControlMode) => {
+      if (nextMode === mode) {
+        return;
+      }
+      onRequestMode?.(nextMode);
+    },
+    [mode, onRequestMode]
+  );
+
   const presentation = useMemo<WorkbenchSurfacePresentation | null>(
     () =>
       mode === null
@@ -287,6 +300,7 @@ export function useWorkbenchMissionControlState<TData>({
             canUsePreset,
             mode,
             presentation,
+            requestMode,
             selectedCount: orderedSelectedNodeIds.length
           },
     [
@@ -295,7 +309,8 @@ export function useWorkbenchMissionControlState<TData>({
       canUsePreset,
       mode,
       orderedSelectedNodeIds.length,
-      presentation
+      presentation,
+      requestMode
     ]
   );
 }

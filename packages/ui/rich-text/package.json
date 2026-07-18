@@ -12,6 +12,7 @@
     "./core": "./src/core/index.ts",
     "./editor": "./src/editor/index.ts",
     "./plugins": "./src/plugins/index.ts",
+    "./service": "./src/service/index.ts",
     "./types": "./src/types/index.ts"
   },
   "files": [
@@ -88,6 +89,11 @@
         "import": "./dist/plugins/index.js",
         "default": "./dist/plugins/index.js"
       },
+      "./service": {
+        "types": "./dist/service/index.d.ts",
+        "import": "./dist/service/index.js",
+        "default": "./dist/service/index.js"
+      },
       "./types": {
         "types": "./dist/types/index.d.ts",
         "import": "./dist/types/index.js",
@@ -111,6 +117,9 @@
         ],
         "plugins": [
           "./dist/plugins/index.d.ts"
+        ],
+        "service": [
+          "./dist/service/index.d.ts"
         ],
         "types": [
           "./dist/types/index.d.ts"

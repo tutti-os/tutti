@@ -28,6 +28,7 @@ func (p UserProjectPublisher) PublishUserProjectUpdated(ctx context.Context, pro
 			CreatedAtUnixMs:  project.CreatedAtUnixMS,
 			UpdatedAtUnixMs:  project.UpdatedAtUnixMS,
 			LastUsedAtUnixMs: project.LastUsedAtUnixMS,
+			PinnedAtUnixMs:   project.PinnedAtUnixMS,
 		})
 	}
 

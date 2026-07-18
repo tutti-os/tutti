@@ -1,17 +1,19 @@
 package providerregistry
 
+import canonical "github.com/tutti-os/tutti/packages/agent/store-sqlite/canonical"
+
 // This file owns the descriptors shared by the remaining provider families.
 
 const (
-	CursorProviderID     = "cursor"
+	CursorProviderID     = canonical.CursorProviderID
 	CursorTargetID       = "local:cursor"
-	TuttiAgentProviderID = "tutti-agent"
+	TuttiAgentProviderID = canonical.TuttiAgentProviderID
 	TuttiAgentTargetID   = "local:tutti-agent"
-	NexightProviderID    = "nexight"
+	NexightProviderID    = canonical.NexightProviderID
 	NexightTargetID      = "local:nexight"
-	HermesProviderID     = "hermes"
+	HermesProviderID     = canonical.HermesProviderID
 	HermesTargetID       = "local:hermes"
-	OpenClawProviderID   = "openclaw"
+	OpenClawProviderID   = canonical.OpenClawProviderID
 	OpenClawTargetID     = "local:openclaw"
 )
 
@@ -19,7 +21,7 @@ const temporarilyUnsupportedReason = "provider_temporarily_unsupported"
 
 func cursorDescriptor() ProviderDescriptor {
 	return ProviderDescriptor{
-		Identity: IdentityDescriptor{ID: CursorProviderID, DisplayName: "Cursor", IconKey: "cursor", LocaleKey: "agentHost.agentGui.conversationFilterCursor", Aliases: []string{"cursor-agent", "cursor agent", "cursor-cli"}},
+		Identity: canonicalProviderIdentity(CursorProviderID),
 		Runtime: RuntimeDescriptor{
 			Kind: RuntimeKindStandardACP, Name: "cursor-acp", Command: []string{"cursor-agent", "acp"},
 			AuthRequiredMessage: "Cursor ACP requires authentication; run `cursor-agent login` (or set CURSOR_API_KEY) on the host, then retry this session.",
@@ -60,7 +62,7 @@ func cursorDescriptor() ProviderDescriptor {
 
 func tuttiAgentDescriptor() ProviderDescriptor {
 	return ProviderDescriptor{
-		Identity: IdentityDescriptor{ID: TuttiAgentProviderID, DisplayName: "Tutti Agent", IconKey: "tutti", LocaleKey: "agentHost.agentGui.conversationFilterTutti", Aliases: []string{"tutti agent"}},
+		Identity: canonicalProviderIdentity(TuttiAgentProviderID),
 		Runtime:  RuntimeDescriptor{Kind: RuntimeKindCodexAppServer, Name: "tutti-agent-app-server", Command: []string{"tutti-agent", "app-server"}, ClientInfoName: "tutti_agent", AuthRequiredMessage: "Tutti Agent requires authentication. Sign in to Tutti on this device (or run `tutti-agent login`), then retry this session."},
 		Status: StatusDescriptor{
 			Kind: StatusKindGenericCLI, AuthOutputParserKind: AuthOutputParserKindCodex, AuthMarkerParserKind: AuthMarkerParserKindTuttiToken, AuthCommandRunnerKind: AuthCommandRunnerKindGeneric, StaticSpecResolverKind: StaticSpecResolverKindGeneric, BinaryNames: []string{"tutti-agent"}, AdapterBinaryNames: []string{"tutti-agent"}, AuthStatusCommand: []string{"login", "status"}, AuthMarkerPaths: []string{"~/.tutti-agent/auth.json"}, LoginArgs: []string{"login"}, LoginActionKind: StatusActionKindDaemon,
@@ -79,7 +81,7 @@ func tuttiAgentDescriptor() ProviderDescriptor {
 }
 
 func nexightDescriptor() ProviderDescriptor {
-	descriptor := unsupportedACPDescriptor(NexightProviderID, NexightTargetID, "Nexight", "tutti", "agentHost.agentGui.conversationFilterNexight", []string{"tutti"}, RuntimeDescriptor{
+	descriptor := unsupportedACPDescriptor(NexightProviderID, NexightTargetID, RuntimeDescriptor{
 		Kind: RuntimeKindStandardACP, Name: "nexight-acp", Command: []string{"nexight-acp"}, AuthRequiredMessage: "Nexight ACP requires authentication in the runtime VM. Sync the Nexight host credentials, then retry this session.",
 		StandardACP: StandardACPRuntimeDescriptor{AdapterStrategy: StandardACPAdapterStrategyNexight, PermissionModes: []RuntimePermissionModeDescriptor{{InputID: "read-only", RuntimeID: "read-only"}, {InputID: "auto", RuntimeID: "auto"}, {InputID: "full-access", RuntimeID: "full-access"}}, DeriveImageInputFromPrompt: true, DeriveCapabilitiesFromCommands: []string{CapabilityCompact}},
 	}, StatusDescriptor{Kind: StatusKindGenericCLI, BinaryNames: []string{"nexight"}, AdapterBinaryNames: []string{"nexight-acp"}, AuthMarkerPaths: []string{"~/.nexight/auth.json", "~/.tutti/nexight/auth.json"}, LoginArgs: []string{"login"}}, ComposerProfileDescriptor{
@@ -90,7 +92,7 @@ func nexightDescriptor() ProviderDescriptor {
 }
 
 func hermesDescriptor() ProviderDescriptor {
-	descriptor := unsupportedACPDescriptor(HermesProviderID, HermesTargetID, "Hermes Agent", "hermes", "agentHost.agentGui.conversationFilterHermes", []string{"hermes-agent", "hermes agent"}, RuntimeDescriptor{
+	descriptor := unsupportedACPDescriptor(HermesProviderID, HermesTargetID, RuntimeDescriptor{
 		Kind: RuntimeKindStandardACP, Name: "hermes-acp", Command: []string{"hermes", "acp"}, AuthRequiredMessage: "Hermes ACP requires authentication in the runtime VM; ensure Hermes host credentials are synced before starting Agent GUI",
 		StandardACP: StandardACPRuntimeDescriptor{AdapterStrategy: StandardACPAdapterStrategyGeneric, PermissionModes: []RuntimePermissionModeDescriptor{{InputID: "yolo", RuntimeID: "yolo"}}, DefaultPermissionModeRuntimeID: "yolo", StartupDiagnostics: true, DeriveImageInputFromPrompt: true, DeriveCapabilitiesFromCommands: []string{CapabilityCompact}},
 	}, StatusDescriptor{Kind: StatusKindGenericCLI, BinaryNames: []string{"hermes"}, AuthMarkerPaths: []string{"~/.hermes/auth.json", "~/.config/hermes/auth.json"}, LoginArgs: []string{"login"}}, ComposerProfileDescriptor{
@@ -105,7 +107,7 @@ func hermesDescriptor() ProviderDescriptor {
 }
 
 func openClawDescriptor() ProviderDescriptor {
-	descriptor := unsupportedACPDescriptor(OpenClawProviderID, OpenClawTargetID, "OpenClaw", "openclaw", "agentHost.agentGui.conversationFilterOpenClaw", []string{"open-claw"}, RuntimeDescriptor{
+	descriptor := unsupportedACPDescriptor(OpenClawProviderID, OpenClawTargetID, RuntimeDescriptor{
 		Kind: RuntimeKindStandardACP, Name: "openclaw-acp", Command: []string{"openclaw", "acp", "-v"}, AuthRequiredMessage: "OpenClaw ACP requires authentication in the runtime VM; ensure OpenClaw host credentials are synced before starting Agent GUI",
 		StandardACP: StandardACPRuntimeDescriptor{AdapterStrategy: StandardACPAdapterStrategyOpenClaw, DeriveImageInputFromPrompt: true, DeriveCapabilitiesFromCommands: []string{CapabilityCompact}},
 	}, StatusDescriptor{
@@ -121,14 +123,14 @@ func openClawDescriptor() ProviderDescriptor {
 	return descriptor
 }
 
-func unsupportedACPDescriptor(providerID string, targetID string, displayName string, iconKey string, localeKey string, aliases []string, runtime RuntimeDescriptor, status StatusDescriptor, composer ComposerProfileDescriptor, sortOrder int) ProviderDescriptor {
+func unsupportedACPDescriptor(providerID string, targetID string, runtime RuntimeDescriptor, status StatusDescriptor, composer ComposerProfileDescriptor, sortOrder int) ProviderDescriptor {
 	status.SupportStatus = "unsupported"
 	status.DisabledReasonCode = temporarilyUnsupportedReason
 	status.AuthMarkerParserKind = AuthMarkerParserKindFileExists
 	status.AuthCommandRunnerKind = AuthCommandRunnerKindGeneric
 	status.StaticSpecResolverKind = StaticSpecResolverKindGeneric
 	return ProviderDescriptor{
-		Identity: IdentityDescriptor{ID: providerID, DisplayName: displayName, IconKey: iconKey, LocaleKey: localeKey, Aliases: aliases}, Runtime: runtime, Status: status, ComposerProfile: composer,
+		Identity: canonicalProviderIdentity(providerID), Runtime: runtime, Status: status, ComposerProfile: composer,
 		Target:  TargetDescriptor{ID: targetID, LaunchRefType: TargetLaunchRefTypeLocalCLI, Enabled: false, SortOrder: sortOrder},
 		Events:  EventsDescriptor{Enabled: true, TurnLifecycleProjection: TurnLifecycleProjectionExplicit},
 		Sidecar: SidecarDescriptor{ExecutionEnvironment: SidecarExecutionEnvironmentLocalIPC},

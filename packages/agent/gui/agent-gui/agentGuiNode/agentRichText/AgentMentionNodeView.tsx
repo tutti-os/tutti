@@ -8,10 +8,7 @@ import {
   type ReactNode
 } from "react";
 import { NodeViewWrapper, type NodeViewProps } from "@tiptap/react";
-import {
-  MentionPill,
-  TruncatingPillLabel
-} from "@tutti-os/ui-system/components";
+import { MentionPill } from "@tutti-os/ui-system/components";
 import { CloseIcon } from "@tutti-os/ui-system/icons";
 import { useTranslation } from "../../../i18n/index";
 import {
@@ -450,57 +447,32 @@ export function AgentMentionNodeView(props: NodeViewProps): JSX.Element {
         data-agent-mention-icon-url={mention.iconUrl}
         data-agent-mention-kind={mention.kind}
       >
-        <span
-          className="group relative top-0 inline-flex max-w-[min(100%,var(--agent-mention-max-width,16rem))] cursor-pointer items-center gap-1 overflow-hidden rounded-[4px] border border-transparent bg-transparent px-1 py-0 align-middle text-[13px] font-medium leading-6 text-[var(--agent-gui-mention-app-color,var(--tutti-purple))] no-underline transition-colors hover:border-transparent hover:bg-[color-mix(in_srgb,currentColor_12%,transparent)]"
+        <MentionPill
+          aria-label={mention.ariaLabel}
+          className="top-0 h-6 max-w-[min(100%,var(--agent-mention-max-width,16rem))] py-0 align-middle leading-6"
           data-agent-mention-kind={mention.kind}
-          data-slot="mention-pill"
-        >
-          <span
-            aria-hidden={isEditable ? undefined : true}
-            className="relative grid size-4 shrink-0 place-items-center overflow-hidden rounded-[4px] bg-block"
-            data-agent-mention-app-icon="true"
-            data-workspace-app-icon="true"
-          >
-            {mention.iconUrl ? (
-              <img
-                src={mention.iconUrl}
-                alt=""
-                className={`size-full object-cover transition-opacity ${
-                  isEditable
-                    ? "group-hover:opacity-0 group-focus-within:opacity-0"
-                    : ""
-                }`}
-                decoding="async"
-                loading="lazy"
-                draggable={false}
-              />
-            ) : (
-              <span
-                className={`tsh-agent-object-token__kind-icon size-4 transition-opacity ${
-                  isEditable
-                    ? "group-hover:opacity-0 group-focus-within:opacity-0"
-                    : ""
-                }`}
-              />
-            )}
-            {isEditable ? (
-              <button
-                aria-label={removeActionAriaLabel}
-                className="absolute left-1/2 top-1/2 inline-flex size-5 -translate-x-1/2 -translate-y-1/2 items-center justify-center text-[var(--text-secondary)] opacity-0 transition-opacity hover:text-[var(--text-primary)] focus-visible:opacity-100 group-hover:opacity-100"
-                type="button"
-                onMouseDown={handleRemove}
-              >
-                <CloseIcon className="size-3.5" />
-              </button>
-            ) : null}
-          </span>
-          <TruncatingPillLabel
-            tooltip={mention.label}
-            withTooltipProvider={withTooltipProvider}
-          >
-            {mention.label}
-          </TruncatingPillLabel>
-        </span>
+          iconUrl={mention.iconUrl}
+          iconContainerProps={{
+            "data-agent-mention-app-icon":
+              mention.kind === "agent-target" ? undefined : "true",
+            "data-agent-mention-session-icon":
+              mention.kind === "agent-target" ? "true" : undefined,
+            "data-workspace-app-icon":
+              mention.kind === "agent-target" ? undefined : "true"
+          }}
+          kind={mention.kind === "agent-target" ? "session" : "app"}
+          label={mention.label}
+          removable={isEditable}
+          removeButtonProps={
+            isEditable
+              ? {
+                  "aria-label": removeActionAriaLabel,
+                  onMouseDown: handleRemove
+                }
+              : undefined
+          }
+          withTooltipProvider={withTooltipProvider}
+        />
       </NodeViewWrapper>
     );
   }

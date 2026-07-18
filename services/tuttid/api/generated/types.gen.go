@@ -3824,6 +3824,12 @@ type PermissionModeOption struct {
 // PermissionModeSemantic defines model for PermissionModeSemantic.
 type PermissionModeSemantic string
 
+// PinUserProjectRequest defines model for PinUserProjectRequest.
+type PinUserProjectRequest struct {
+	Pinned    bool   `json:"pinned"`
+	ProjectId string `json:"projectId"`
+}
+
 // PreflightUploadWorkspaceFilesRequest defines model for PreflightUploadWorkspaceFilesRequest.
 type PreflightUploadWorkspaceFilesRequest struct {
 	SourcePaths         []string `json:"sourcePaths"`
@@ -4054,8 +4060,9 @@ type UserProject struct {
 	CreatedAtUnixMs  int64  `json:"createdAtUnixMs"`
 	Id               string `json:"id"`
 	Label            string `json:"label"`
-	LastUsedAtUnixMs *int64 `json:"lastUsedAtUnixMs,omitempty"`
+	LastUsedAtUnixMs int64  `json:"lastUsedAtUnixMs"`
 	Path             string `json:"path"`
+	PinnedAtUnixMs   int64  `json:"pinnedAtUnixMs"`
 	SectionKey       string `json:"sectionKey"`
 	UpdatedAtUnixMs  int64  `json:"updatedAtUnixMs"`
 }
@@ -5374,6 +5381,9 @@ type CheckUserProjectPathJSONRequestBody = CheckUserProjectPathRequest
 
 // MoveUserProjectJSONRequestBody defines body for MoveUserProject for application/json ContentType.
 type MoveUserProjectJSONRequestBody = MoveUserProjectRequest
+
+// PinUserProjectJSONRequestBody defines body for PinUserProject for application/json ContentType.
+type PinUserProjectJSONRequestBody = PinUserProjectRequest
 
 // CreateWorkspaceJSONRequestBody defines body for CreateWorkspace for application/json ContentType.
 type CreateWorkspaceJSONRequestBody = CreateWorkspaceRequest

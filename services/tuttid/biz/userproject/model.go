@@ -10,6 +10,7 @@ type Project struct {
 	CreatedAtUnixMS  int64
 	UpdatedAtUnixMS  int64
 	LastUsedAtUnixMS int64
+	PinnedAtUnixMS   int64
 	SortOrder        int
 }
 

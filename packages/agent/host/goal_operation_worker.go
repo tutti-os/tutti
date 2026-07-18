@@ -330,12 +330,16 @@ func (h *Host) goalOperationDispatchDeadline() time.Duration {
 }
 
 func (h *Host) RunGoalOperationWorker(ctx context.Context) {
+	_ = h.runGoalOperationWorker(ctx)
+}
+
+func (h *Host) runGoalOperationWorker(ctx context.Context) error {
 	ticker := time.NewTicker(goalOperationWorkerInterval)
 	defer ticker.Stop()
 	for {
 		select {
 		case <-ctx.Done():
-			return
+			return ctx.Err()
 		case <-ticker.C:
 			if err := h.StepGoalOperationWorker(ctx, false); err != nil {
 				slog.Error("agent goal operation worker step failed", "event", "agent_goal_operation.worker_step_failed", "error", err.Error())

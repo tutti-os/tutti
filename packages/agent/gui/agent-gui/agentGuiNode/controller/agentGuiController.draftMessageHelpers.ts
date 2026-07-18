@@ -4,7 +4,6 @@ import type {
   AgentActivityMessage,
   AgentActivitySession
 } from "@tutti-os/agent-activity-core";
-import { type AgentActivityRuntime } from "../../../agentActivityRuntime";
 import { translate } from "../../../i18n/index";
 import type {
   AgentSessionComposerSettings,
@@ -33,10 +32,7 @@ import {
   readNodeDefaultDraftSettings,
   resolveEffectiveComposerSettings
 } from "./agentGuiController.composerHelpers";
-import {
-  sanitizeComposerSettingsForTarget,
-  type AgentGUIComposerTargetData
-} from "./agentGuiController.composerPresentation";
+import type { AgentGUIComposerTargetData } from "./agentGuiController.composerPresentation";
 import {
   normalizeOptionalText,
   stringPayloadValue
@@ -113,36 +109,6 @@ export function composerSettingsFromPendingRecord(
     settings.permissionModeId = value.permissionModeId;
   }
   return settings;
-}
-
-export function resolveSameProviderActiveSessionModel(input: {
-  activeProvider?: string | null;
-  agentSessionId?: string | null;
-  provider: string;
-  runtime: AgentActivityRuntime;
-  sessionState?: { settings?: AgentSessionComposerSettings | null } | null;
-  workspaceId: string;
-}): string | null {
-  const agentSessionId = normalizeOptionalText(input.agentSessionId);
-  if (agentSessionId === null) {
-    return null;
-  }
-  const runtimeSession =
-    input.runtime
-      .getSnapshot(input.workspaceId)
-      .sessions.find(
-        (candidate) => candidate.agentSessionId.trim() === agentSessionId
-      ) ?? null;
-  const activeProvider =
-    normalizeOptionalText(runtimeSession?.provider) ??
-    normalizeOptionalText(input.activeProvider);
-  if (activeProvider !== input.provider) {
-    return null;
-  }
-  return (
-    normalizeOptionalText(input.sessionState?.settings?.model) ??
-    normalizeOptionalText(runtimeSession?.model)
-  );
 }
 
 export function normalizeAgentGUIOpenSessionRequest(
@@ -342,16 +308,8 @@ export function resolvePromptImageSelectedModel(input: {
     defaultReasoningEffort: input.defaultReasoningEffort,
     drafts: input.draftSettingsBySessionId
   });
-  const targetSafeNodeDefaultSettings =
-    input.activeConversationId === null
-      ? sanitizeComposerSettingsForTarget({
-          settings: storedNodeDefaultSettings,
-          target: input.selectedComposerTargetData,
-          options: input.providerComposerOptions
-        })
-      : storedNodeDefaultSettings;
   const homeComposerSettings = resolveEffectiveComposerSettings({
-    settings: targetSafeNodeDefaultSettings
+    settings: storedNodeDefaultSettings
   });
   const activeConversationDraftSettings = input.activeConversationId
     ? (input.draftSettingsBySessionId[input.activeConversationId] ?? null)

@@ -5,6 +5,7 @@ import {
   rootEngineReducer
 } from "./rootReducer.ts";
 import {
+  selectEngineSessionOperationError,
   selectEngineSubmitAvailability,
   selectEngineSessionDeleted,
   selectRootAgentSessionIdsWithPendingInteractions,
@@ -12,6 +13,45 @@ import {
   selectWorkspaceAgentConsumerSession,
   selectWorkspaceAgentRootConversationSessions
 } from "./sessionLifecycle.selectors.ts";
+
+test("session operation errors do not fall back to canonical Turn errors", () => {
+  let state = rootEngineReducer(createInitialAgentSessionEngineState(), {
+    sessions: [
+      {
+        activeTurn: {
+          agentSessionId: "session-1",
+          error: { message: "Selected model is at capacity" },
+          origin: "user_prompt",
+          phase: "running",
+          startedAtUnixMs: 10,
+          turnId: "turn-1",
+          updatedAtUnixMs: 20
+        },
+        activeTurnId: "turn-1",
+        agentSessionId: "session-1",
+        cwd: "/workspace",
+        latestTurnInteractions: [],
+        pendingInteractions: [],
+        provider: "codex",
+        title: "Canonical session",
+        workspaceId: "workspace-1"
+      }
+    ],
+    type: "session/snapshotReceived"
+  }).state;
+
+  assert.equal(selectEngineSessionOperationError(state, "session-1"), null);
+
+  state = rootEngineReducer(state, {
+    agentSessionId: "session-1",
+    errorMessage: "Settings update failed",
+    type: "session/errorRecorded"
+  }).state;
+  assert.equal(
+    selectEngineSessionOperationError(state, "session-1"),
+    "Settings update failed"
+  );
+});
 
 test("deleted session selector normalizes ids and hides tombstone storage", () => {
   const state = rootEngineReducer(createInitialAgentSessionEngineState(), {

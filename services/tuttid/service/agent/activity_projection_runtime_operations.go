@@ -40,7 +40,6 @@ func (p *ActivityProjection) PublishRuntimeOperationEvent(
 			}
 		}
 	case agentactivitybiz.RuntimeOperationEventTurnCanceled:
-		rootAgentSessionID := payloadString(event.Payload, "rootAgentSessionId")
 		targets, _ := event.Payload["targets"].([]any)
 		published := 0
 		for _, rawTarget := range targets {
@@ -68,9 +67,6 @@ func (p *ActivityProjection) PublishRuntimeOperationEvent(
 			); err != nil {
 				return err
 			}
-			if agentSessionID == rootAgentSessionID && turn.Phase == agentactivitybiz.TurnPhaseSettled {
-				p.observeRootTurnSettled(ctx, event.WorkspaceID, agentSessionID, turn)
-			}
 			published++
 		}
 		if rawRoot, ok := event.Payload["reconciledRoot"].(map[string]any); ok {
@@ -92,7 +88,6 @@ func (p *ActivityProjection) PublishRuntimeOperationEvent(
 			); err != nil {
 				return err
 			}
-			p.observeRootTurnSettled(ctx, event.WorkspaceID, agentSessionID, turn)
 			published++
 		}
 		if published == 0 {

@@ -501,6 +501,151 @@ test("workspace user project service keeps optimistic order after a move failure
   assert.equal(diagnostics.length, 1);
 });
 
+test("workspace user project service pins optimistically and confirms from the response snapshot", async () => {
+  const response = createDeferred<{ projects: TuttidUserProject[] }>();
+  const pinned = createProject({
+    id: "pinned",
+    path: "/workspace/pinned",
+    pinnedAtUnixMs: 10,
+    updatedAtUnixMs: 10
+  });
+  const ordinary = createProject({
+    id: "ordinary",
+    lastUsedAtUnixMs: 7,
+    path: "/workspace/ordinary"
+  });
+  const authoritativeOrdinary = {
+    ...ordinary,
+    pinnedAtUnixMs: 30,
+    updatedAtUnixMs: 30
+  };
+  const service = createService({
+    now: () => 20,
+    tuttidClient: createTuttidClient({
+      async listUserProjects() {
+        return { projects: [pinned, ordinary] };
+      },
+      async pinUserProject(input) {
+        assert.deepEqual(input, { pinned: true, projectId: "ordinary" });
+        return response.promise;
+      }
+    })
+  });
+  await service.ensureLoaded();
+
+  const pinning = service.pinProject({
+    pinned: true,
+    projectId: "ordinary"
+  });
+  assert.equal(service.store.isMutationPending, true);
+  assert.deepEqual(
+    service.store.projects.map((project) => project.id),
+    ["ordinary", "pinned"]
+  );
+  assert.equal(service.store.projects[0]?.pinnedAtUnixMs, 20);
+  assert.equal(service.store.projects[0]?.updatedAtUnixMs, 20);
+  assert.equal(service.store.projects[0]?.lastUsedAtUnixMs, 7);
+  await assert.rejects(
+    service.removeProjectPath("/workspace/pinned"),
+    /mutation is already in progress/
+  );
+
+  response.resolve({ projects: [authoritativeOrdinary, pinned] });
+  await pinning;
+  assert.equal(service.store.isMutationPending, false);
+  assert.deepEqual(service.store.projects, [authoritativeOrdinary, pinned]);
+});
+
+test("workspace user project service keeps optimistic unpin state after failure", async () => {
+  const diagnostics: unknown[] = [];
+  const workspaceId = "workspace-pin-failure";
+  const first = createProject({
+    id: "first",
+    path: "/workspace/first",
+    pinnedAtUnixMs: 20
+  });
+  const second = createProject({
+    id: "second",
+    lastUsedAtUnixMs: 9,
+    path: "/workspace/second",
+    pinnedAtUnixMs: 10
+  });
+  const ordinary = createProject({
+    id: "ordinary",
+    path: "/workspace/ordinary"
+  });
+  const service = createService({
+    logDiagnostic: (payload) => diagnostics.push(payload),
+    now: () => 40,
+    workspaceId,
+    tuttidClient: createTuttidClient({
+      async listUserProjects() {
+        return { projects: [first, second, ordinary] };
+      },
+      async pinUserProject() {
+        throw new Error("pin unavailable");
+      }
+    })
+  });
+  await service.ensureLoaded();
+
+  await assert.rejects(
+    service.pinProject({ pinned: false, projectId: "second" }),
+    /pin unavailable/
+  );
+  assert.deepEqual(
+    service.store.projects.map((project) => project.id),
+    ["first", "second", "ordinary"]
+  );
+  assert.equal(service.store.projects[1]?.pinnedAtUnixMs, 0);
+  assert.equal(service.store.projects[1]?.updatedAtUnixMs, 40);
+  assert.equal(service.store.projects[1]?.lastUsedAtUnixMs, 9);
+  assert.equal(service.store.error, null);
+  assert.deepEqual(diagnostics, [
+    {
+      error: "pin unavailable",
+      event: "user_project_pin_failed",
+      workspaceId
+    }
+  ]);
+});
+
+test("workspace user project service reconciles a conflicting event after pin success", async () => {
+  const events = createUserProjectEventStream();
+  const response = createDeferred<{ projects: TuttidUserProject[] }>();
+  const alpha = createProject({ id: "alpha", path: "/workspace/alpha" });
+  const beta = createProject({ id: "beta", path: "/workspace/beta" });
+  const pinnedBeta = { ...beta, pinnedAtUnixMs: 20, updatedAtUnixMs: 20 };
+  const gamma = createProject({ id: "gamma", path: "/workspace/gamma" });
+  let listCalls = 0;
+  const service = createService({
+    eventStreamClient: events.client,
+    tuttidClient: createTuttidClient({
+      async listUserProjects() {
+        listCalls += 1;
+        return {
+          projects: listCalls === 1 ? [alpha, beta] : [pinnedBeta, gamma, alpha]
+        };
+      },
+      async pinUserProject() {
+        return response.promise;
+      }
+    })
+  });
+  await service.ensureLoaded();
+
+  const pinning = service.pinProject({ pinned: true, projectId: "beta" });
+  events.emit([pinnedBeta, gamma, alpha]);
+  response.resolve({ projects: [pinnedBeta, alpha] });
+  await pinning;
+
+  assert.equal(listCalls, 2);
+  assert.deepEqual(
+    service.store.projects.map((project) => project.id),
+    ["beta", "gamma", "alpha"]
+  );
+});
+
 test("workspace user project service applies global events and reconciles a differing event after move success", async () => {
   const events = createUserProjectEventStream();
   const response = createDeferred<{ projects: TuttidUserProject[] }>();
@@ -644,8 +789,59 @@ test("workspace user project service exposes deletion as a shared mutation lock"
     service.moveProject({ beforeProjectId: null, projectId: "alpha" }),
     /mutation is already in progress/
   );
+  await assert.rejects(
+    service.pinProject({ pinned: true, projectId: "alpha" }),
+    /mutation is already in progress/
+  );
+  await assert.rejects(
+    service.registerProjectPath("/workspace/beta"),
+    /mutation is already in progress/
+  );
+  await assert.rejects(
+    service.createProject("beta"),
+    /mutation is already in progress/
+  );
   deletion.resolve();
   await removing;
+  assert.equal(service.store.isMutationPending, false);
+});
+
+test("workspace user project service exposes create and register as shared mutations", async () => {
+  const registration = createDeferred<TuttidUserProject>();
+  const directoryCreation = createDeferred<{ path: string }>();
+  const service = createService({
+    hostFilesApi: createHostFilesApi({
+      async createUserDocumentsProjectDirectory() {
+        return directoryCreation.promise;
+      }
+    }),
+    tuttidClient: createTuttidClient({
+      async useUserProject() {
+        return registration.promise;
+      }
+    })
+  });
+
+  const registering = service.registerProjectPath("/workspace/registered");
+  assert.equal(service.store.isMutationPending, true);
+  await assert.rejects(
+    service.createProject("created"),
+    /mutation is already in progress/
+  );
+  registration.resolve(
+    createProject({ id: "registered", path: "/workspace/registered" })
+  );
+  await registering;
+  assert.equal(service.store.isMutationPending, false);
+
+  const creating = service.createProject("created");
+  assert.equal(service.store.isMutationPending, true);
+  await assert.rejects(
+    service.registerProjectPath("/workspace/other"),
+    /mutation is already in progress/
+  );
+  directoryCreation.resolve({ path: "/workspace/created" });
+  await creating;
   assert.equal(service.store.isMutationPending, false);
 });
 
@@ -655,6 +851,7 @@ function createService(
     tuttidClient?: DesktopWorkspaceUserProjectServiceTestTuttidClient;
     notifications?: NotificationService;
     platformApi?: DesktopWorkspaceUserProjectServiceTestPlatformApi;
+    now?: () => number;
     workspaceId?: string;
     eventStreamClient?: ConstructorParameters<
       typeof DesktopWorkspaceUserProjectService
@@ -668,6 +865,7 @@ function createService(
     notifications: overrides.notifications,
     eventStreamClient: overrides.eventStreamClient,
     logDiagnostic: overrides.logDiagnostic,
+    now: overrides.now,
     platformApi: overrides.platformApi ?? createPlatformApi(),
     workspaceId:
       overrides.workspaceId ??
@@ -704,6 +902,7 @@ type DesktopWorkspaceUserProjectServiceTestTuttidClient = Pick<
   | "deleteUserProject"
   | "listUserProjects"
   | "moveUserProject"
+  | "pinUserProject"
   | "useUserProject"
 >;
 
@@ -743,6 +942,9 @@ function createTuttidClient(
     async moveUserProject() {
       return { projects: [] };
     },
+    async pinUserProject() {
+      return { projects: [] };
+    },
     async deleteUserProject() {},
     async useUserProject(input) {
       return createProject({ path: input.path });
@@ -772,6 +974,8 @@ function createProject(
     path,
     updatedAtUnixMs: 1,
     ...overrides,
+    lastUsedAtUnixMs: overrides.lastUsedAtUnixMs ?? 1,
+    pinnedAtUnixMs: overrides.pinnedAtUnixMs ?? 0,
     sectionKey: overrides.sectionKey ?? `project:${path}`
   };
 }

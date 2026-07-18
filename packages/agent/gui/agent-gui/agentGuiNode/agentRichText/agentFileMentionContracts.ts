@@ -3,7 +3,9 @@ import type { Editor, Range } from "@tiptap/core";
 export type AgentFileMentionKind = "file" | "directory" | "unknown";
 export type AgentMentionFileNavigationAction =
   | "agent-generated-folder"
-  | "agent-generated-folder-back";
+  | "agent-generated-folder-back"
+  | "workspace-folder"
+  | "workspace-folder-back";
 export type AgentMentionScope = "my_sessions" | "collab_sessions";
 export type AgentMentionKind =
   | "file"

@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	agentsessionstore "github.com/tutti-os/tutti/packages/agent/daemon/activity"
+	agenthost "github.com/tutti-os/tutti/packages/agent/host"
 	agentactivitybiz "github.com/tutti-os/tutti/services/tuttid/biz/agentactivity"
 )
 
@@ -17,23 +18,32 @@ func TestPublishPersistedTurnStateObservesOnlyCanonicalSettlement(t *testing.T) 
 		WorkspaceID: "ws-1", AgentSessionID: "root",
 	}
 
-	projection.publishPersistedTurnState(context.Background(), input, agentactivitybiz.ActivityStateReportResult{
-		RootTurnAccepted: true,
-		RootTurn: agentactivitybiz.Turn{
-			AgentSessionID: "root", TurnID: "goal-turn", Phase: agentactivitybiz.TurnPhaseWaiting,
-		},
-	})
+	if err := projection.ObserveCommitted(context.Background(), agenthost.CommittedDelta{
+		ActivityState: &agenthost.ActivityStateCommitted{Input: input, Result: agentactivitybiz.ActivityStateReportResult{
+			RootTurnAccepted: true,
+			RootTurn: agentactivitybiz.Turn{
+				AgentSessionID: "root", TurnID: "goal-turn", Phase: agentactivitybiz.TurnPhaseWaiting,
+			},
+		}},
+	}); err != nil {
+		t.Fatalf("observe waiting commit: %v", err)
+	}
 	if len(observer.turns) != 0 {
 		t.Fatalf("waiting root turn released runtime slot: %#v", observer.turns)
 	}
 
-	projection.publishPersistedTurnState(context.Background(), input, agentactivitybiz.ActivityStateReportResult{
-		RootTurnAccepted: true,
-		RootTurn: agentactivitybiz.Turn{
-			AgentSessionID: "root", TurnID: "goal-turn", Phase: agentactivitybiz.TurnPhaseSettled,
-			Outcome: agentactivitybiz.TurnOutcomeCompleted,
-		},
-	})
+	settled := agentactivitybiz.Turn{
+		AgentSessionID: "root", TurnID: "goal-turn", Phase: agentactivitybiz.TurnPhaseSettled,
+		Outcome: agentactivitybiz.TurnOutcomeCompleted,
+	}
+	if err := projection.ObserveCommitted(context.Background(), agenthost.CommittedDelta{
+		ActivityState: &agenthost.ActivityStateCommitted{Input: input, Result: agentactivitybiz.ActivityStateReportResult{
+			RootTurnAccepted: true, RootTurn: settled,
+		}},
+		RootTurnsSettled: []agenthost.RootTurnSettled{{WorkspaceID: "ws-1", AgentSessionID: "root", Turn: settled}},
+	}); err != nil {
+		t.Fatalf("observe settled commit: %v", err)
+	}
 	if len(observer.turns) != 1 || observer.turns[0].TurnID != "goal-turn" || observer.turns[0].Outcome != agentactivitybiz.TurnOutcomeCompleted {
 		t.Fatalf("canonical settlement observations = %#v", observer.turns)
 	}

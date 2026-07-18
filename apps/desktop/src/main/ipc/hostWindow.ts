@@ -195,13 +195,11 @@ export function registerHostWindowIpc(deps: HostWindowIpcDependencies): void {
         requestedWidth: input.width,
         workArea
       });
-      ownerWindow.setContentBounds(
-        nextBounds,
-        shouldAnimateStandaloneAgentWindowResize(
-          process.platform,
-          input.animate === true
-        )
+      const animate = shouldAnimateStandaloneAgentWindowResize(
+        process.platform,
+        input.animate === true
       );
+      ownerWindow.setContentBounds(nextBounds, animate);
       return { width: ownerWindow.getContentBounds().width };
     }
   );

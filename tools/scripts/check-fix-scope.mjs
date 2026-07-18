@@ -22,11 +22,47 @@ export function isFixTitle(title) {
   return fixTitlePattern.test((title ?? "").trim());
 }
 
+export function isImplementationNumstatPath(path) {
+  const normalized = (path ?? "").replaceAll("\\", "/");
+  if (normalized === "") {
+    return false;
+  }
+  if (
+    normalized.startsWith("docs/") ||
+    normalized.startsWith(".github/") ||
+    normalized.endsWith(".md") ||
+    normalized.endsWith(".mdx")
+  ) {
+    return false;
+  }
+  if (
+    /(^|\/)(testdata|fixtures|__fixtures__|__snapshots__)\//u.test(
+      normalized
+    ) ||
+    /(^|\/)[^/]+\.(?:test|spec)\.[^/]+$/u.test(normalized) ||
+    /(^|\/)[^/]+_test\.go$/u.test(normalized) ||
+    /(^|\/)[^/]+\.snap$/u.test(normalized)
+  ) {
+    return false;
+  }
+  if (
+    /(^|\/)(generated|dist|build)\//u.test(normalized) ||
+    /(^|\/)[^/]+\.gen\.[^/]+$/u.test(normalized) ||
+    /(^|\/)[^/]+_generated\.go$/u.test(normalized)
+  ) {
+    return false;
+  }
+  return true;
+}
+
 export function sumNumstatChangedLines(numstatOutput) {
   let total = 0;
   for (const line of numstatOutput.split("\n")) {
-    const match = /^(\d+|-)\t(\d+|-)\t/.exec(line);
+    const match = /^(\d+|-)\t(\d+|-)\t(.+)$/.exec(line);
     if (!match) {
+      continue;
+    }
+    if (!isImplementationNumstatPath(match[3])) {
       continue;
     }
     if (match[1] !== "-") {

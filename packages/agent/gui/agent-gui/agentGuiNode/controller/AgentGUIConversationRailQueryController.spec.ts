@@ -438,12 +438,14 @@ describe("AgentGUIConversationRailQueryController", () => {
       id: "alpha",
       label: "Alpha",
       path: "/alpha",
+      pinnedAtUnixMs: 0,
       sectionKey: "project:/alpha"
     };
     const beta = {
       id: "beta",
       label: "Beta",
       path: "/beta",
+      pinnedAtUnixMs: 0,
       sectionKey: "project:/beta"
     };
     const scope = {
@@ -477,6 +479,7 @@ describe("AgentGUIConversationRailQueryController", () => {
           id: "gamma",
           label: "Gamma",
           path: "/gamma",
+          pinnedAtUnixMs: 0,
           sectionKey: "project:/gamma"
         }
       ]

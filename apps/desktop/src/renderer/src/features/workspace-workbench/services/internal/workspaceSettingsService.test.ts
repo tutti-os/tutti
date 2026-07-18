@@ -1421,7 +1421,10 @@ function createDesktopPreferencesService(input: {
   return {
     _serviceBrand: undefined,
     store: input.state,
-    rememberAgentComposerDefaultsForAgentTarget: async () => {},
+    rememberAgentComposerDefaultsForAgentTarget: async () => ({
+      acknowledgedFields: [],
+      supersededFields: []
+    }),
     rememberAgentGuiConversationRailCollapsed: async () => {},
     setAppCatalogChannel:
       input.onSetAppCatalogChannel ?? (async (channel) => channel),

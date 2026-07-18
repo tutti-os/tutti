@@ -4,6 +4,43 @@
 
 Turn state, loading, cancel, restore, file-change undo, rail projection, event updates, imports, and performance.
 
+### AgentGUI rail shows a failed Turn but the detail has no error
+
+- Symptom:
+  The AgentGUI rail marks a conversation failed, but opening the conversation
+  shows only the preceding tool or assistant rows. Reloading the session does
+  not reveal why the Turn failed.
+- Quick checks:
+  Inspect the canonical Turn snapshot before debugging React state. Confirm the
+  owning Turn is terminal with `outcome = failed` or `interrupted` and has a
+  non-empty `error.message`. Then inspect that Turn's timeline messages for a
+  structured `visibleError` or a plain assistant message with the same error
+  text.
+- Root cause:
+  Turn outcome and error are durable canonical state, while provider transcript
+  messages are optional evidence. If detail rendering only projects transcript
+  messages, a runtime that settles `AgentActivityTurn.error` without emitting a
+  visible-error message leaves the rail and detail inconsistent. Reading only
+  the active Turn also loses the error as soon as settlement clears
+  `activeTurnId`.
+- Fix:
+  Reconcile terminal `AgentActivityTurn.error` in the shared transcript
+  projection by exact `turnId`. Reuse a structured visible error, upgrade a
+  matching plain assistant failure, or synthesize one view-only row with a
+  stable `(agentSessionId, turnId)` identity. Do not restore session
+  `lastError`, let session-operation selectors fall back to Turn errors,
+  reinterpret a successful attach as activation failure, persist a duplicate
+  message, or add component-local failure state.
+- Validation:
+  Cover a failed Turn with no provider error message, a matching plain failure,
+  and an existing structured visible error. The first must render one fallback
+  row and the latter two must remain single rows. Verify the result from both a
+  live snapshot and rebuilt session history.
+- References:
+  [workspaceAgentTurnErrorProjection.ts](../../../packages/agent/gui/shared/workspaceAgentTurnErrorProjection.ts)
+  [workspaceAgentTimelineCanonical.ts](../../../packages/agent/gui/shared/workspaceAgentTimelineCanonical.ts)
+  [agent-gui-node.md](../../architecture/agent-gui-node.md)
+
 ### Codex WebSocket reconnect rejects a long prompt metadata header
 
 - Symptom:
@@ -640,8 +677,7 @@ Turn state, loading, cancel, restore, file-change undo, rail projection, event u
 
 - Symptom:
   A user selects a different AgentGUI model, but the next provider call still
-  uses the previous model. Logs may show
-  `agent.gui.composer_defaults.remembered` for the new model while
+  uses the previous model. The target-default patch may be acknowledged while
   `workspace_agent_sessions.settings_json`, `runtimeContext.model`, or
   app-server `turn/start` still show the old model. For an Agent Extension, the
   selected model may also change back to Auto as soon as a new session is
@@ -653,8 +689,10 @@ Turn state, loading, cancel, restore, file-change undo, rail projection, event u
   `workspace.agent_session.settings.update_requested`,
   `agent_session.settings.update.requested`,
   `agent_session.app_server.settings.applied`, and
-  `agent_session.app_server.turn_start.params`. If only the defaults event is
-  present, the UI changed the target default draft, not the active session. If
+  `agent_session.app_server.turn_start.params`. Also distinguish the dedicated
+  defaults patch intent from the Session update. If only the defaults ack is
+  present, the UI remembered a future target default but did not update the
+  active Session. If
   daemon settings update completed but `turn_start.params.model` is old or
   empty, inspect the app-server adapter path. If persistence and the provider
   request both contain the selected model but the daemon session response omits
@@ -662,7 +700,7 @@ Turn state, loading, cancel, restore, file-change undo, rail projection, event u
   renderer selector.
 - Root cause:
   AgentGUI has two distinct composer surfaces. The target home composer writes
-  remembered defaults and node drafts. An active conversation composer must
+  remembered defaults and a sparse local display draft. An active conversation composer must
   additionally call `updateSessionSettings`; Codex app-server providers then
   apply model changes as per-turn overrides on the next `turn/start`, not to an
   already-running turn. If the daemon applies the settings but the update
@@ -675,7 +713,7 @@ Turn state, loading, cancel, restore, file-change undo, rail projection, event u
   produces an empty built-in provider, clamps the model, and makes the UI
   correctly render Auto from an already-corrupted session projection.
 - Fix:
-  Preserve the default-draft path, but make active-session model changes
+  Preserve the dedicated target-default patch path, but make active-session model changes
   observable at every layer. Do not conclude that a provider ignored the model
   until the logs show the active session settings update reached the daemon and
   the following `turn/start` carried the requested model. Keep closed
@@ -699,6 +737,64 @@ Turn state, loading, cancel, restore, file-change undo, rail projection, event u
   [service_session.go](../../../services/tuttid/service/agent/service_session.go)
   [controller.go](../../../packages/agent/daemon/runtime/controller.go)
   [codex_appserver_adapter.go](../../../packages/agent/daemon/runtime/codex_appserver_adapter.go)
+
+### AgentGUI shows the selected settings but a new session does not inherit them
+
+- Symptom:
+  The home composer continues to show the selected model, permission,
+  reasoning effort, or speed, but closing the Agent window, opening another
+  window, restarting Tutti, or creating a Session restores an older value. A
+  running Session may still use the selected value, which can make the problem
+  look provider-specific.
+- Quick checks:
+  Start with the exact `agentTargetId`, not only the provider. Confirm the
+  `preferences.agent.composer.defaults.patch.requested` intent receives an ack,
+  then inspect
+  `desktop_preferences.agent_composer_defaults_by_agent_target_json` for that
+  target and field. Confirm a
+  `preferences.agent.composer.defaults.changed` event carries only the same
+  target id. Finally request target-scoped composer options and verify
+  `effectiveSettings`, then create a Session without explicit overrides and
+  inspect the daemon's resolved create settings. For an Agent Extension model,
+  confirm the daemon first observed that value in a live catalog for the exact
+  target; a catalog observed only for another target cannot validate the patch.
+- Root cause:
+  Target defaults and current Session settings are separate durable concerns.
+  The renderer's home draft can display an optimistic selection even when a
+  defaults write failed. Conversely, a Session settings update can succeed
+  while the future-default patch fails. A stale renderer preferences snapshot
+  must never be merged and written back as the defaults map; options snapshots
+  must never sanitize a newly selected menu value before persistence.
+- Fix:
+  Keep `rememberAgentComposerDefaultsForAgentTarget` on the dedicated patch
+  intent. Merge its sparse fields only in the tuttid SQLite transaction, publish
+  target invalidation after success, and reread defaults through
+  composer-options. Keep Create Session inheritance in `agent.Service.Create`;
+  callers pass only explicit overrides. Do not repair this with debounce,
+  localStorage, node/workbench overlays, or another full preferences write.
+  Do not add workspace/cwd to the target-default patch. Extension model
+  validation uses the daemon-observed last-known-good catalog for the exact
+  target. Its evidence survives the workspace/cwd display-cache TTL and is
+  cleared by explicit provider invalidation; Create performs the separate
+  actual-workspace/cwd validation.
+- Validation:
+  Change different fields from two windows and confirm both survive. Repeat the
+  same SET, then change the same field again and confirm daemon acceptance order
+  determines the result. Force an options refresh with an older permission or
+  model list and confirm the explicit selection remains visible and is still
+  patched. Exercise A-to-B-to-A on one field and confirm only the exact latest
+  generation can leave the optimistic layer. Fail the first options reload
+  after a successful patch, then confirm a later successful target invalidation
+  read converges the acknowledged draft. Reopen the window and restart the app;
+  `effectiveSettings` and a new Session must resolve the remembered values.
+  Open a historical Session and confirm its settings do not change future
+  defaults.
+- References:
+  [service.go](../../../services/tuttid/service/preferences/service.go)
+  [sqlite_preferences.go](../../../services/tuttid/data/workspace/sqlite_preferences.go)
+  [composer_options.go](../../../services/tuttid/service/agent/composer_options.go)
+  [desktopPreferencesService.ts](../../../apps/desktop/src/renderer/src/features/desktop-preferences/services/internal/desktopPreferencesService.ts)
+  [useAgentGUIComposerSettingsActions.ts](../../../packages/agent/gui/agent-gui/agentGuiNode/controller/useAgentGUIComposerSettingsActions.ts)
 
 ### Historical AgentGUI permission changes time out or stop responding
 
@@ -1841,6 +1937,53 @@ Turn state, loading, cancel, restore, file-change undo, rail projection, event u
   [compaction.ts](../../../packages/agent/claude-sdk-sidecar/src/compaction.ts)
   [messageRouter.ts](../../../packages/agent/claude-sdk-sidecar/src/messageRouter.ts)
   [sessionRuntime.session.test.ts](../../../packages/agent/claude-sdk-sidecar/src/sessionRuntime.session.test.ts)
+
+### AgentGUI compaction timer keeps running after compaction completed
+
+- Symptom:
+  AgentGUI continues to show an increasing `Compacting context` duration after
+  the provider finished compaction. The durable compaction message and Turn are
+  already terminal, but the mounted renderer still projects the earlier
+  `noticeCommandStatus=running` snapshot.
+- Quick checks:
+  Compare the message-list requests in desktop reconcile diagnostics with the
+  durable message versions. If the renderer pulled a running compaction at
+  version N, missed its terminal update at N+1, then next requested
+  `afterVersion` at a much higher value, the local cache advanced across a
+  version hole. Confirm that the terminal row uses the same `messageId`; a new
+  compaction row or a timer-specific state bug is a different failure.
+- Root cause:
+  The realtime bridge treated the maximum version of materialized message rows
+  as a contiguous acknowledged change cursor. After an event-stream loss, it
+  applied a later inline message and advanced that maximum past the missed
+  terminal mutation. Every later `afterVersion` pull then started beyond the
+  mutation, so the authoritative completed snapshot could never repair the
+  cached running snapshot. The timer correctly kept rendering the stale running
+  lifecycle.
+- Fix:
+  Before folding realtime messages inline, compare only their unseen versions
+  with the cached high-water boundary. If the first unseen version is not the
+  next cursor, do not apply any of that event's messages; retain the old cursor
+  and request an authoritative incremental reconcile. After a disconnected
+  event stream reconnects, also incrementally reconcile every session whose
+  messages are already cached; otherwise a missed final mutation has no later
+  event that can reveal its gap. Do not require the materialized cache itself to
+  contain every historical cursor value, because mutable message rows replace
+  older versions.
+- Validation:
+  Cache a user message and a running compaction, omit the next terminal
+  compaction mutation, then deliver a later assistant message. Assert that the
+  later message is not applied inline, reconciliation requests from the
+  pre-gap cursor, and the stable compaction `messageId` becomes completed from
+  the authoritative response. Also cover valid snapshot gaps already present in
+  the cache plus duplicate and stale event delivery. Finally, omit the terminal
+  mutation as the last event, disconnect and reconnect without another activity
+  event, and verify the reconnect reconcile retrieves it from the pre-disconnect
+  cursor.
+- References:
+  [workspaceAgentActivityReconcileBridge.ts](../../../apps/desktop/src/renderer/src/features/workspace-agent/services/internal/workspaceAgentActivityReconcileBridge.ts)
+  [workspaceAgentActivityReconcileMessages.ts](../../../apps/desktop/src/renderer/src/features/workspace-agent/services/internal/workspaceAgentActivityReconcileMessages.ts)
+  [agent-gui-node.md](../../architecture/agent-gui-node.md)
 
 ### AgentActivity replication repeatedly rejects message batches as invalid
 

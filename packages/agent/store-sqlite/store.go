@@ -52,6 +52,11 @@ type Options struct {
 	// TargetIDBackfillByProvider maps a provider to the agent target ID
 	// assigned to its sessions that predate target tracking.
 	TargetIDBackfillByProvider map[string]string
+	// TransactionParticipant joins host-owned durable markers to canonical
+	// writes. The participant runs before commit through a restricted writer;
+	// returning an error rolls back both the canonical facts and participant
+	// writes. It must not perform network IO or other non-transactional work.
+	TransactionParticipant TransactionParticipant
 }
 
 // Store is the SQLite implementation of Repository plus agent target

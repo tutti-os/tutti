@@ -46,7 +46,7 @@ func TestServiceUpdatePinReturnsFreshPersistedVersionAndLiveTurn(t *testing.T) {
 	}
 	service := newIsolatedAgentService(runtime)
 	service.SessionReader = reader
-	service.TurnStore = failingTurnStore{
+	turnStore := &workspaceRecordingTurnStore{failingTurnStore: failingTurnStore{
 		latestTurn: turn,
 		session: agentactivitybiz.Session{
 			ID:           "session-1",
@@ -54,9 +54,10 @@ func TestServiceUpdatePinReturnsFreshPersistedVersionAndLiveTurn(t *testing.T) {
 			ActiveTurnID: "turn-1",
 		},
 		turn: turn,
-	}
+	}}
+	service.TurnStore = turnStore
 
-	session, err := service.UpdatePin(context.Background(), "ws-1", "session-1", true)
+	session, err := service.UpdatePin(context.Background(), " ws-1 ", " session-1 ", true)
 	if err != nil {
 		t.Fatalf("UpdatePin returned error: %v", err)
 	}
@@ -68,6 +69,14 @@ func TestServiceUpdatePinReturnsFreshPersistedVersionAndLiveTurn(t *testing.T) {
 	}
 	if session.ActiveTurnID != "turn-1" || session.ActiveTurn == nil || session.ActiveTurn.TurnID != "turn-1" {
 		t.Fatalf("UpdatePin active turn = %#v id=%q, want turn-1", session.ActiveTurn, session.ActiveTurnID)
+	}
+	if len(turnStore.workspaceIDs) == 0 {
+		t.Fatal("UpdatePin did not query canonical turn state")
+	}
+	for _, workspaceID := range turnStore.workspaceIDs {
+		if workspaceID != "ws-1" {
+			t.Fatalf("UpdatePin turn-state workspace id = %q, want normalized ws-1", workspaceID)
+		}
 	}
 
 	reader.updatedAtUnixMS = 250
@@ -103,6 +112,26 @@ func TestMergePersistedSessionStateDoesNotRegressNewerRuntimeVersion(t *testing.
 type pinUpdateSessionReader struct {
 	*fakeSessionReader
 	updatedAtUnixMS int64
+}
+
+type workspaceRecordingTurnStore struct {
+	failingTurnStore
+	workspaceIDs []string
+}
+
+func (s *workspaceRecordingTurnStore) GetLatestTurn(ctx context.Context, workspaceID string, agentSessionID string) (agentactivitybiz.Turn, bool, error) {
+	s.workspaceIDs = append(s.workspaceIDs, workspaceID)
+	return s.failingTurnStore.GetLatestTurn(ctx, workspaceID, agentSessionID)
+}
+
+func (s *workspaceRecordingTurnStore) ListLatestTurnInteractions(ctx context.Context, workspaceID string, agentSessionIDs []string) (map[string][]agentactivitybiz.Interaction, error) {
+	s.workspaceIDs = append(s.workspaceIDs, workspaceID)
+	return s.failingTurnStore.ListLatestTurnInteractions(ctx, workspaceID, agentSessionIDs)
+}
+
+func (s *workspaceRecordingTurnStore) GetSession(ctx context.Context, workspaceID string, agentSessionID string) (agentactivitybiz.Session, bool, error) {
+	s.workspaceIDs = append(s.workspaceIDs, workspaceID)
+	return s.failingTurnStore.GetSession(ctx, workspaceID, agentSessionID)
 }
 
 func (r *pinUpdateSessionReader) UpdateSessionPinned(

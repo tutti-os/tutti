@@ -66,8 +66,17 @@ describe("useAgentGUINewConversationActivation", () => {
         activeConversationIdRef,
         isComposerHomeRef,
         conversationsRef: { current: [] },
-        activeSessionState: null,
-        lastActiveModelByProviderRef: { current: {} },
+        activeSessionState: {
+          agentSessionId: "historical-session",
+          agentTargetId,
+          permissionModeId: "full-access",
+          provider: "codex",
+          resumable: true,
+          settings: { model: "historical-model" },
+          status: "ready",
+          updatedAtUnixMs: 1,
+          workspaceId: "workspace-1"
+        } as never,
         sessionEngine: {
           getSnapshot: () => ({})
         } as never,
@@ -117,7 +126,9 @@ describe("useAgentGUINewConversationActivation", () => {
     expect(activate.mock.calls[0]?.[0].settings).toMatchObject({
       computerUse: true
     });
+    expect(activate.mock.calls[0]?.[0].settings).not.toHaveProperty("model");
     expect(activate.mock.calls[1]?.[0].optimisticTitle).toBe("second");
+    expect(activate.mock.calls[1]?.[0].settings).toEqual({});
     expect(firstSessionId).toBeTruthy();
     expect(secondSessionId).toBeTruthy();
     expect(secondSessionId).not.toBe(firstSessionId);

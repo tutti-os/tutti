@@ -27,6 +27,8 @@ type AgentGUIPublicHostCapabilities = Omit<
   AgentGUINodeProps["hostCapabilities"],
   | "agentTargets"
   | "agentTargetsLoading"
+  | "handoffAgentTargets"
+  | "handoffAgentTargetsLoading"
   | "providerRailAllPresentation"
   | "providerRailMode"
   | "disabledHomeSuggestions"
@@ -42,6 +44,11 @@ export interface AgentGUIProps extends Omit<
   "hostCapabilities" | "renderSlots"
 > {
   agentDirectory: AgentGUIAgentDirectorySnapshot;
+  /**
+   * Host-owned launch catalog for conversation handoff. When omitted, handoff
+   * uses `agentDirectory`, preserving the single-runtime host contract.
+   */
+  handoffAgentDirectory?: AgentGUIAgentDirectorySnapshot;
   allAgentsPresentation?: AgentGUIAllAgentsPresentation | null;
   renderAgentsEmpty?: AgentGUIAgentsEmptyRenderer;
   agentActivityRuntime: AgentActivityRuntime;
@@ -58,6 +65,7 @@ export const AgentGUI = memo(function AgentGUI({
   agentActivityRuntime,
   agentHostApi,
   agentDirectory,
+  handoffAgentDirectory,
   allAgentsPresentation = null,
   renderAgentsEmpty,
   disabled,
@@ -66,6 +74,11 @@ export const AgentGUI = memo(function AgentGUI({
   ...props
 }: AgentGUIProps): JSX.Element {
   const normalizedAgents = normalizeAgentGUIAgents(agentDirectory.agents);
+  const effectiveHandoffAgentDirectory =
+    handoffAgentDirectory ?? agentDirectory;
+  const normalizedHandoffAgents = normalizeAgentGUIAgents(
+    effectiveHandoffAgentDirectory.agents
+  );
   const hostCapabilities = props.hostCapabilities;
   const renderSlots = props.renderSlots;
   const nodeProps: AgentGUINodeProps = {
@@ -77,6 +90,13 @@ export const AgentGUI = memo(function AgentGUI({
         agentDirectory.agents.length === 0 &&
         (agentDirectory.status === "idle" ||
           agentDirectory.status === "loading"),
+      handoffAgentTargets: projectAgentGUIAgentsToInternalTargets(
+        normalizedHandoffAgents
+      ),
+      handoffAgentTargetsLoading:
+        effectiveHandoffAgentDirectory.agents.length === 0 &&
+        (effectiveHandoffAgentDirectory.status === "idle" ||
+          effectiveHandoffAgentDirectory.status === "loading"),
       disabledHomeSuggestions: disabled,
       providerRailAllPresentation: allAgentsPresentation ?? null,
       providerRailMode: "exact"

@@ -335,13 +335,22 @@ export function useAgentGUIProviderHome(input: UseAgentGUIProviderHomeInput) {
   ]);
 
   const selectConversationFilterTarget = useCallback(
-    (selection: {
-      provider: AgentGUIProvider;
-      agentTargetId?: string | null;
-    }) => {
+    (selection: { provider: AgentGUIProvider; agentTargetId: string }) => {
       const current = inputRef.current;
+      const agentTargetId = selection.agentTargetId.trim();
+      if (!agentTargetId) {
+        reportAgentGUIConversationFilterTargetUnresolved({
+          provider: selection.provider,
+          agentTargetId: null,
+          providerTargetCount: current.normalizedProviderTargets.length,
+          reason: "unresolved",
+          runtime: current.agentActivityRuntime,
+          workspaceId: current.workspaceId
+        });
+        return;
+      }
       const nextTarget = resolveAgentGUIAgentTarget({
-        agentTargetId: selection.agentTargetId,
+        agentTargetId,
         defaultAgentTargetId: current.defaultAgentTargetId,
         provider: selection.provider,
         agentTargets: current.normalizedProviderTargets,
@@ -350,7 +359,7 @@ export function useAgentGUIProviderHome(input: UseAgentGUIProviderHomeInput) {
       if (!nextTarget) {
         reportAgentGUIConversationFilterTargetUnresolved({
           provider: selection.provider,
-          agentTargetId: selection.agentTargetId ?? null,
+          agentTargetId,
           providerTargetCount: current.normalizedProviderTargets.length,
           reason: "unresolved",
           runtime: current.agentActivityRuntime,
@@ -359,10 +368,7 @@ export function useAgentGUIProviderHome(input: UseAgentGUIProviderHomeInput) {
         return;
       }
       current.clearRailRevealRequest();
-      const agentTargetId = nextTarget.agentTargetId?.trim() ?? "";
-      const nextFilter = agentTargetId
-        ? { kind: "agentTarget" as const, agentTargetId }
-        : { kind: "all" as const };
+      const nextFilter = { kind: "agentTarget" as const, agentTargetId };
       current.setConversationFilter(nextFilter);
       const activeId = current.activeConversationIdRef.current;
       const activeSummary = resolveConversationSummaryById(
@@ -405,7 +411,10 @@ export function useAgentGUIProviderHome(input: UseAgentGUIProviderHomeInput) {
         targetAgentTargetId: agentTargetId || null
       });
       if (rememberedSelection.kind === "restore") {
-        selectHomeComposerAgentTarget(selection);
+        selectHomeComposerAgentTarget({
+          provider: nextTarget.provider,
+          agentTargetId
+        });
         current.selectConversation(rememberedSelection.agentSessionId, {
           reloadConversations: false
         });
@@ -421,7 +430,10 @@ export function useAgentGUIProviderHome(input: UseAgentGUIProviderHomeInput) {
           staleIds
         );
       }
-      selectHomeComposerAgentTarget(selection);
+      selectHomeComposerAgentTarget({
+        provider: nextTarget.provider,
+        agentTargetId
+      });
     },
     [selectHomeComposerAgentTarget]
   );
@@ -455,7 +467,7 @@ export function useAgentGUIProviderHome(input: UseAgentGUIProviderHomeInput) {
     if (!target) return;
     selectHomeComposerAgentTarget({
       provider: target.provider,
-      agentTargetId: target.targetId
+      agentTargetId: filterAgentTargetId
     });
   }, [
     input.activeConversationId,

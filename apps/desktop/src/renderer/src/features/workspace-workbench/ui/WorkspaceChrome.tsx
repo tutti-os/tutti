@@ -142,6 +142,13 @@ export function WorkspaceChrome({
         <div
           className="flex items-center justify-end gap-2 justify-self-end [-webkit-app-region:no-drag]"
           data-workbench-wallpaper-appearance={wallpaperAppearance}
+          // 顶栏元素始终保持白色，不随亮暗模式 / 壁纸明暗切换
+          style={
+            {
+              "--workbench-chrome-foreground": "var(--white-stationary)",
+              "--workbench-chrome-active-foreground": "var(--white-stationary)"
+            } as React.CSSProperties
+          }
         >
           {headerSlot ? <div className="min-w-0">{headerSlot}</div> : null}
           <WorkspaceFeedbackGroupPopover />

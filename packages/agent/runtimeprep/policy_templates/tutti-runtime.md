@@ -54,7 +54,7 @@
 - Before starting or messaging another agent, follow `$tutti-handoff`.
 - After `agent start`, prefer `{{CLI_COMMAND}} agent wait --session-id <session-id> --json`.
 - After `agent send`, prefer `{{CLI_COMMAND}} agent wait --session-id <session-id> --json`.
-- `agent wait` does not fetch execution messages; use `{{CLI_COMMAND}} agent session-summary --session-id <session-id> --json` only for the full compact context helper or turn discovery. Ask for the task prompt, not a provider or model.
+- `agent wait` does not fetch execution messages; use `{{CLI_COMMAND}} agent session-summary --session-id <session-id> --json` only for the full compact context helper or turn discovery — never as a progress poll on a running session. Ask for the task prompt, not a provider or model.
 
 ### Image Context
 

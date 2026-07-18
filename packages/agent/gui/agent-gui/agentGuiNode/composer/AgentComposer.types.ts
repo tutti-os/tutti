@@ -121,6 +121,7 @@ export interface AgentComposerProps {
     permissionModeReadOnly: string;
     permissionModeAuto: string;
     permissionModeFullAccess: string;
+    permissionModeChangeUnavailableDuringTurn: string;
     modelDescriptions: {
       frontierComplexCoding: string;
       everydayCoding: string;
@@ -234,6 +235,8 @@ export interface AgentComposerProps {
     handoffConversation: string;
     handoffConversationTooltip: string;
     handoffConversationMenu: string;
+    handoffTargetSelf: string;
+    handoffTargetShared: string;
     providerSwitchLabel: string;
     projectLocked: string;
     projectMissingDescription: string;

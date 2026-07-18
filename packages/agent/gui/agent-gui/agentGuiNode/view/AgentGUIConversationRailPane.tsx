@@ -30,6 +30,8 @@ import {
   projectConversationRailSearchSections,
   projectConversationRailSectionsWithActiveConversation,
   projectConversationRailSectionsWithTransientConversations,
+  conversationRailSectionHeaderVisibility,
+  isConversationRailProjectPinned,
   resolveConversationRailActiveConversation,
   stabilizeConversationSectionItems,
   stabilizeConversationSections
@@ -105,6 +107,7 @@ export interface AgentGUIConversationRailControllerProps {
     projectId: string,
     beforeProjectId: string | null
   ) => Promise<void>;
+  onToggleProjectPinned: (projectId: string, pinned: boolean) => Promise<void>;
   onConfirmDeleteProjectConversations: (
     sectionKey?: string,
     agentTargetId?: string | null
@@ -187,6 +190,7 @@ export const AgentGUIConversationRailPane = memo(
     selectProjectDirectory,
     onRemoveProject,
     onMoveProject,
+    onToggleProjectPinned,
     onConfirmDeleteProjectConversations,
     onConfirmDeleteConversations,
     onRequestDeleteConversation,
@@ -405,6 +409,16 @@ export const AgentGUIConversationRailPane = memo(
       userProjects
     ]);
     const groupedConversations = groupedConversationResult.groups;
+    const appendProjectRailHeader =
+      groupedConversations.length > 0 &&
+      !groupedConversations.some(
+        (section) =>
+          section.kind !== "pinned" &&
+          !(
+            section.kind === "project" &&
+            isConversationRailProjectPinned(section.project)
+          )
+      );
     const railViewScopeKey = agentGUIConversationRailViewScopeKey({
       conversationFilter,
       sectionAgentTargetFallbackId,
@@ -588,11 +602,13 @@ export const AgentGUIConversationRailPane = memo(
                 const projectLabel =
                   section.kind === "project" ? section.label : "";
                 const isProjectSection = section.kind === "project";
-                const showProjectRailHeader =
-                  !conversationQuery.trim() &&
-                  section.kind !== "pinned" &&
-                  (sectionIndex === 0 ||
-                    groupedConversations[sectionIndex - 1]?.kind === "pinned");
+                const {
+                  showPinnedHeader: showPinnedProjectHeader,
+                  showProjectsHeader: showProjectRailHeader
+                } = conversationRailSectionHeaderVisibility(
+                  groupedConversations,
+                  sectionIndex
+                );
                 const isSectionCollapsed =
                   isProjectSection &&
                   railViewState.collapsedSectionIds.has(section.id);
@@ -644,9 +660,16 @@ export const AgentGUIConversationRailPane = memo(
                     sectionPageState?.hasMore === true);
                 return (
                   <Fragment key={section.id}>
+                    {showPinnedProjectHeader ? (
+                      <div className={styles.pinnedProjectRailHeader}>
+                        {labels.sectionPinned}
+                      </div>
+                    ) : null}
                     {showProjectRailHeader ? (
                       <AgentGUIProjectRailHeader
-                        disabled={railInteractionsLocked}
+                        disabled={
+                          railInteractionsLocked || isUserProjectMutationPending
+                        }
                         labels={labels}
                         selectProjectDirectory={selectProjectDirectory}
                         workspaceUserProjectI18n={workspaceUserProjectI18n}
@@ -674,6 +697,9 @@ export const AgentGUIConversationRailPane = memo(
                           : (sectionPageState?.isLoading ?? false)
                       }
                       isRailInteractionLocked={isInteractionLocked}
+                      isProjectActionLocked={() =>
+                        isInteractionLocked() || isUserProjectMutationPending
+                      }
                       projectDragDisabled={projectDragLocked}
                       projectDragging={
                         projectDragState !== null &&
@@ -717,6 +743,7 @@ export const AgentGUIConversationRailPane = memo(
                       }
                       setPendingProjectAction={setPendingProjectAction}
                       onToggleConversationPinned={onToggleConversationPinned}
+                      onToggleProjectPinned={onToggleProjectPinned}
                       onMarkConversationUnread={onMarkConversationUnread}
                       onOpenProjectFiles={onOpenProjectFiles}
                       onOpenConversationWindow={onOpenConversationWindow}
@@ -743,6 +770,16 @@ export const AgentGUIConversationRailPane = memo(
                   </Fragment>
                 );
               })}
+              {appendProjectRailHeader ? (
+                <AgentGUIProjectRailHeader
+                  disabled={
+                    railInteractionsLocked || isUserProjectMutationPending
+                  }
+                  labels={labels}
+                  selectProjectDirectory={selectProjectDirectory}
+                  workspaceUserProjectI18n={workspaceUserProjectI18n}
+                />
+              ) : null}
             </fieldset>
           )}
         </ScrollArea>

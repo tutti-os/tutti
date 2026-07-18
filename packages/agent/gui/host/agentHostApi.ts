@@ -261,6 +261,7 @@ export interface AgentHostUserProject {
   id: string;
   path: string;
   label: string;
+  pinnedAtUnixMs: number;
   sectionKey?: string;
   createdAtUnixMs?: number;
   updatedAtUnixMs?: number;
@@ -283,8 +284,12 @@ export type AgentHostUserProjectsApi = AgentHostRecord & {
   list: () => AgentHostAsyncResult<{
     projects: AgentHostUserProject[];
   }>;
-  move: (input: {
+  move?: (input: {
     beforeProjectId: string | null;
+    projectId: string;
+  }) => AgentHostAsyncResult<void>;
+  pin: (input: {
+    pinned: boolean;
     projectId: string;
   }) => AgentHostAsyncResult<void>;
   subscribe?: (listener: () => void) => AgentHostUnsubscribe;

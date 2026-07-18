@@ -121,32 +121,19 @@ func (p Provider) runStart(ctx context.Context, invoke framework.InvokeContext, 
 	if err != nil {
 		return nil, err
 	}
-	defaults := p.composerDefaultsForAgent(ctx, agentTargetID)
-	model := input.Model
-	if strings.TrimSpace(model) == "" {
-		model = defaults.Model
-	}
-	permissionModeID := input.PermissionMode
-	if strings.TrimSpace(permissionModeID) == "" {
-		permissionModeID = defaults.PermissionModeID
-	}
-	reasoningEffort := input.ReasoningEffort
-	if strings.TrimSpace(reasoningEffort) == "" {
-		reasoningEffort = defaults.ReasoningEffort
-	}
 	session, err := p.sessions.Create(ctx, invoke.WorkspaceID, agentservice.CreateSessionInput{
 		Provider:               provider,
 		AgentTargetID:          agentTargetID,
 		Cwd:                    optionalStringPointer(cwd),
 		InitialContent:         initialContent,
 		InitialDisplayPrompt:   input.DisplayPrompt,
-		Model:                  optionalStringPointer(model),
-		PermissionModeID:       optionalStringPointer(permissionModeID),
-		ReasoningEffort:        optionalStringPointer(reasoningEffort),
+		Model:                  optionalStringPointer(input.Model),
+		PermissionModeID:       optionalStringPointer(input.PermissionMode),
+		ReasoningEffort:        optionalStringPointer(input.ReasoningEffort),
 		Speed:                  optionalStringPointer(input.Speed),
 		Title:                  optionalStringPointer(input.Title),
 		Visible:                hiddenVisibleOverride(input.Hidden),
-		ConversationDetailMode: defaults.ConversationDetailMode,
+		ConversationDetailMode: p.composerConversationDetailMode(ctx),
 	})
 	if err != nil {
 		return nil, err
@@ -159,6 +146,17 @@ func (p Provider) runStart(ctx context.Context, invoke framework.InvokeContext, 
 		launchRequested = true
 	}
 	return sessionActionResult{Session: session, LaunchRequested: launchRequested}, nil
+}
+
+func (p Provider) composerConversationDetailMode(ctx context.Context) string {
+	if p.preferences == nil {
+		return ""
+	}
+	preferences, err := p.preferences.Get(ctx)
+	if err != nil {
+		return ""
+	}
+	return preferences.AgentConversationDetailMode
 }
 
 func hiddenVisibleOverride(hidden bool) *bool {

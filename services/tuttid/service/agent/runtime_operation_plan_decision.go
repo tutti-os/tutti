@@ -15,7 +15,7 @@ func (s *Service) SubmitPlanDecision(
 	requestID string,
 	input SubmitPlanDecisionInput,
 ) (agentactivitybiz.RuntimeOperation, error) {
-	return s.applicationHost(serviceHostPreparation{service: s}).SubmitPlanDecision(
+	return s.ApplicationHost().SubmitPlanDecision(
 		ctx,
 		agenthost.SessionRef{WorkspaceID: workspaceID, AgentSessionID: agentSessionID},
 		turnID,

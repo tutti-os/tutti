@@ -1,19 +1,15 @@
 package providerregistry
 
+import canonical "github.com/tutti-os/tutti/packages/agent/store-sqlite/canonical"
+
 const (
-	OpenCodeProviderID = "opencode"
+	OpenCodeProviderID = canonical.OpenCodeProviderID
 	OpenCodeTargetID   = "local:opencode"
 )
 
 func openCodeDescriptor() ProviderDescriptor {
 	return ProviderDescriptor{
-		Identity: IdentityDescriptor{
-			ID:          OpenCodeProviderID,
-			DisplayName: "OpenCode",
-			IconKey:     "opencode",
-			LocaleKey:   "agentHost.agentGui.conversationFilterOpenCode",
-			Aliases:     []string{"open-code", "open code", "opencode-ai", "opencode_ai"},
-		},
+		Identity: canonicalProviderIdentity(OpenCodeProviderID),
 		Runtime: RuntimeDescriptor{
 			Kind:                RuntimeKindStandardACP,
 			Name:                "opencode-acp",

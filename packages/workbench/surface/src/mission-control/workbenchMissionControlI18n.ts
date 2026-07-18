@@ -21,6 +21,7 @@ export const tuttiI18nModule = createScopedLocaleObjectsI18nModuleManifest({
 });
 
 const workbenchMissionControlEn = {
+  layoutModeTrigger: "Quick layout",
   layoutSelectionHint: "Select multiple windows to arrange",
   noAvailableLayout: "No layout fits the selected windows",
   presetActions: {
@@ -35,6 +36,7 @@ const workbenchMissionControlEn = {
 } as const satisfies I18nDictionary;
 
 const workbenchMissionControlZhCN = {
+  layoutModeTrigger: "快速布局",
   layoutSelectionHint: "请选择多个你要整理布局的窗口",
   noAvailableLayout: "当前没有可用布局",
   presetActions: {
@@ -49,6 +51,7 @@ const workbenchMissionControlZhCN = {
 } as const satisfies I18nDictionary;
 
 export type WorkbenchMissionControlI18nKey =
+  | "layoutModeTrigger"
   | "layoutSelectionHint"
   | "noAvailableLayout"
   | "presetActions.arrangeOnce"

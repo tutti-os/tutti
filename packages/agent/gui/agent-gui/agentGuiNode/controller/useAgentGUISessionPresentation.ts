@@ -35,10 +35,7 @@ import {
 } from "./agentGuiController.draftMessageHelpers";
 import { unresolvedOptimisticGoalControl } from "./agentGuiOptimisticGoal";
 import { isNonRetryableResumeErrorCode } from "./agentGuiController.errors";
-import {
-  normalizeOptionalText,
-  projectAgentGUIMessagesToTimelineItems
-} from "./agentGuiController.promptHelpers";
+import { projectAgentGUIMessagesToTimelineItems } from "./agentGuiController.promptHelpers";
 import { promptRequestId } from "./agentGuiController.diagnostics";
 import { reportAgentGUIRenderStateDiagnostic } from "./agentGuiController.reporting";
 import {
@@ -78,7 +75,6 @@ interface UseAgentGUISessionPresentationInput {
   isLoadingMessages: boolean;
   isRespondingToInteraction: boolean;
   isSubmitting: boolean;
-  lastActiveModelByProviderRef: CurrentValue<Record<string, string>>;
   lastRenderStateDiagnosticKeyRef: CurrentValue<string | null>;
   pendingApproval: AgentApprovalItemVM | null;
   planImplementationTurnIdRef: CurrentValue<string | null>;
@@ -134,27 +130,6 @@ export function useAgentGUISessionPresentation(
       : null;
   const pendingInteractivePrompt =
     input.serverInteractivePrompt ?? planImplementationPrompt;
-
-  useEffect(() => {
-    const provider = normalizeOptionalText(
-      input.activeEngineSession?.provider ?? input.activeConversation?.provider
-    );
-    if (provider === null) return;
-    const model =
-      normalizeOptionalText(input.activeSessionState?.settings?.model) ??
-      normalizeOptionalText(input.activeEngineSession?.settings?.model);
-    if (model === null) return;
-    input.lastActiveModelByProviderRef.current = {
-      ...input.lastActiveModelByProviderRef.current,
-      [provider]: model
-    };
-  }, [
-    input.activeConversation?.provider,
-    input.activeEngineSession?.provider,
-    input.activeEngineSession?.settings?.model,
-    input.activeSessionState?.settings?.model,
-    input.lastActiveModelByProviderRef
-  ]);
 
   const activeHasPendingSubmittedTurn = Boolean(
     input.activeConversationId && input.activeLatestPendingSubmitTurnId

@@ -37,6 +37,7 @@ describe("useAgentGUIConversationRailQuery search", () => {
       id: label.toLowerCase(),
       label,
       path: `/workspace/${label.toLowerCase()}`,
+      pinnedAtUnixMs: 0,
       sectionKey: `project:/workspace/${label.toLowerCase()}`
     }));
     const moveProject = vi.fn(() => Promise.resolve());
@@ -100,6 +101,85 @@ describe("useAgentGUIConversationRailQuery search", () => {
     });
 
     expect(moveProject).toHaveBeenNthCalledWith(2, "gamma", "alpha");
+    header.remove();
+  });
+
+  it("rejects cross-partition drops and resolves the end of the pinned partition as null", async () => {
+    const projects = [
+      {
+        id: "alpha",
+        label: "Alpha",
+        path: "/alpha",
+        pinnedAtUnixMs: 20,
+        sectionKey: "project:/alpha"
+      },
+      {
+        id: "beta",
+        label: "Beta",
+        path: "/beta",
+        pinnedAtUnixMs: 10,
+        sectionKey: "project:/beta"
+      },
+      {
+        id: "gamma",
+        label: "Gamma",
+        path: "/gamma",
+        pinnedAtUnixMs: 0,
+        sectionKey: "project:/gamma"
+      }
+    ];
+    const moveProject = vi.fn(() => Promise.resolve());
+    const header = document.createElement("div");
+    const folderIcon = document.createElementNS(
+      "http://www.w3.org/2000/svg",
+      "svg"
+    );
+    folderIcon.dataset.projectDragIcon = "true";
+    header.append(folderIcon);
+    document.body.append(header);
+    const dataTransfer = {
+      dropEffect: "none",
+      effectAllowed: "none",
+      setData() {},
+      setDragImage: vi.fn()
+    };
+    const event = {
+      clientY: 0,
+      currentTarget: header,
+      dataTransfer,
+      preventDefault: vi.fn(),
+      target: header
+    } as unknown as React.DragEvent<HTMLElement>;
+    const sectionFor = (index: number) => ({
+      id: projects[index]?.sectionKey ?? "",
+      items: [],
+      kind: "project" as const,
+      label: projects[index]?.label ?? "",
+      project: projects[index] ?? null
+    });
+    const { result } = renderHook(() =>
+      useAgentGUIProjectDrag({
+        disabled: false,
+        onMoveProject: moveProject,
+        scrollViewportRef: { current: null },
+        userProjects: projects
+      })
+    );
+
+    act(() => result.current.start(sectionFor(0), event));
+    const dragImage = dataTransfer.setDragImage.mock
+      .calls[0]?.[0] as HTMLElement;
+    expect(dragImage.querySelectorAll("svg")).toHaveLength(1);
+    act(() => result.current.updateTarget(sectionFor(2), "before", event));
+    expect(dataTransfer.dropEffect).toBe("none");
+    expect(result.current.dragState?.indicator).toBeNull();
+    await act(async () => result.current.drop(event));
+    expect(moveProject).not.toHaveBeenCalled();
+
+    act(() => result.current.start(sectionFor(0), event));
+    act(() => result.current.updateTarget(sectionFor(1), "after", event));
+    await act(async () => result.current.drop(event));
+    expect(moveProject).toHaveBeenCalledWith("alpha", null);
     header.remove();
   });
 
@@ -443,6 +523,7 @@ describe("useAgentGUIConversationRailQuery search", () => {
             onSelectConversation={() => {}}
             onSelectConversationFilterTarget={() => {}}
             onToggleConversationPinned={() => {}}
+            onToggleProjectPinned={async () => {}}
             onUpdateConversationFilter={() => {}}
           />
         </Profiler>
@@ -489,7 +570,8 @@ describe("useAgentGUIConversationRailQuery search", () => {
               sectionKey: "project:/workspace",
               createdAtUnixMs: 1,
               updatedAtUnixMs: 1,
-              lastUsedAtUnixMs: 1
+              lastUsedAtUnixMs: 1,
+              pinnedAtUnixMs: 10
             },
             {
               id: "other-project",
@@ -498,7 +580,8 @@ describe("useAgentGUIConversationRailQuery search", () => {
               sectionKey: "project:/other",
               createdAtUnixMs: 1,
               updatedAtUnixMs: 1,
-              lastUsedAtUnixMs: 1
+              lastUsedAtUnixMs: 1,
+              pinnedAtUnixMs: 5
             }
           ],
           revision: 1
@@ -558,6 +641,7 @@ describe("useAgentGUIConversationRailQuery search", () => {
           onSelectConversation={() => {}}
           onSelectConversationFilterTarget={() => {}}
           onToggleConversationPinned={() => {}}
+          onToggleProjectPinned={async () => {}}
           onUpdateConversationFilter={() => {}}
         />
       );
@@ -573,10 +657,23 @@ describe("useAgentGUIConversationRailQuery search", () => {
 
     const workspaceTitle = await screen.findByText("Workspace");
     const otherTitle = screen.getByText("Other");
+    const pinnedTitle = screen.getByText("Pinned");
+    const projectTitle = screen.getByText("Project");
+    expect(
+      pinnedTitle.compareDocumentPosition(workspaceTitle) &
+        Node.DOCUMENT_POSITION_FOLLOWING
+    ).toBeTruthy();
     expect(
       workspaceTitle.compareDocumentPosition(otherTitle) &
         Node.DOCUMENT_POSITION_FOLLOWING
     ).toBeTruthy();
+    expect(
+      otherTitle.compareDocumentPosition(projectTitle) &
+        Node.DOCUMENT_POSITION_FOLLOWING
+    ).toBeTruthy();
+    expect(
+      screen.getByRole("combobox", { name: "Project unavailable" })
+    ).toBeInTheDocument();
     const workspaceSection = workspaceTitle.closest("section");
     expect(workspaceSection).toBeTruthy();
     const workspaceHeader = workspaceSection?.firstElementChild;
@@ -613,6 +710,7 @@ describe("useAgentGUIConversationRailQuery search", () => {
       label,
       lastUsedAtUnixMs: 1,
       path: `/workspace/${label.toLowerCase()}`,
+      pinnedAtUnixMs: 0,
       sectionKey: `project:/workspace/${label.toLowerCase()}`,
       updatedAtUnixMs: 1
     }));
@@ -675,6 +773,7 @@ describe("useAgentGUIConversationRailQuery search", () => {
           onSelectConversation={() => {}}
           onSelectConversationFilterTarget={() => {}}
           onToggleConversationPinned={() => {}}
+          onToggleProjectPinned={async () => {}}
           onUpdateConversationFilter={() => {}}
         />
       );
@@ -852,6 +951,9 @@ const RAIL_LABELS = {
   projectRailLinkExistingProject: "Link project",
   projectSectionMoreActions: "Project actions",
   projectSectionViewFiles: "View files",
+  pinProject: "Pin project",
+  unpinProject: "Unpin project",
+  pinnedProjectAccessibleName: (label: string) => `Pinned project: ${label}`,
   renameSession: "Rename",
   removeProject: "Remove",
   removeProjectConfirmDescription: (label: string) => `Remove ${label}`,

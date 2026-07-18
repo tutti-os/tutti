@@ -10,10 +10,7 @@ import {
   projectDesktopAgentGUIWorkbenchState,
   type DesktopAgentGUINodeState
 } from "./desktopAgentGUINodeState.ts";
-import {
-  resolveDesktopAgentGUIProviderForAgentTarget,
-  withDesktopAgentGUIProviderComposerDefaults
-} from "./ui/desktopAgentGUIWorkbenchStateHelpers.ts";
+import { resolveDesktopAgentGUIProviderForAgentTarget } from "./ui/desktopAgentGUIWorkbenchStateHelpers.ts";
 
 test("desktop agent gui node state preserves open valid providers", () => {
   assert.equal(
@@ -162,31 +159,6 @@ test("desktop agent gui workbench state ignores composer overrides by agent targ
   assert.equal("composerOverridesByAgentTargetId" in workbenchState, false);
 });
 
-test("desktop agent gui composer defaults are agent target keyed", () => {
-  const state = withDesktopAgentGUIProviderComposerDefaults(
-    {
-      ...createDefaultDesktopAgentGUINodeState("codex"),
-      agentTargetId: "local:codex"
-    },
-    "codex",
-    {
-      model: "gpt-5",
-      permissionModeId: "auto",
-      reasoningEffort: "high"
-    }
-  );
-
-  assert.deepEqual(state.composerOverridesByAgentTargetId, {
-    "local:codex": {
-      model: "gpt-5",
-      permissionModeId: "auto",
-      reasoningEffort: "high"
-    }
-  });
-  assert.equal(state.composerOverridesByProvider, null);
-  assert.equal(state.composerOverrides, null);
-});
-
 test("desktop agent gui target state resolves composer defaults from the target provider", () => {
   assert.equal(
     resolveDesktopAgentGUIProviderForAgentTarget(
@@ -217,29 +189,6 @@ test("desktop agent gui target state resolves composer defaults from the target 
     ),
     "codex"
   );
-});
-
-test("desktop agent gui target defaults do not use the fallback dock provider", () => {
-  const state = withDesktopAgentGUIProviderComposerDefaults(
-    {
-      ...createDefaultDesktopAgentGUINodeState("claude-code"),
-      agentTargetId: "local:claude-code"
-    },
-    "claude-code",
-    {
-      model: "default",
-      permissionModeId: "default",
-      reasoningEffort: "high"
-    }
-  );
-
-  assert.deepEqual(state.composerOverridesByAgentTargetId, {
-    "local:claude-code": {
-      model: "default",
-      permissionModeId: "default",
-      reasoningEffort: "high"
-    }
-  });
 });
 
 test("desktop agent gui node state normalizes partial runtime data", () => {

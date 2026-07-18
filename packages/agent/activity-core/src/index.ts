@@ -127,7 +127,7 @@ export {
   selectEngineSessionDeleted,
   selectEngineSessionIsRespondingToInteraction,
   selectEngineSessionSettingsUpdate,
-  selectEngineSessionError,
+  selectEngineSessionOperationError,
   selectEngineSessionOperation,
   selectEngineSubmitAvailability,
   selectEngineTurnsForSession,
@@ -299,7 +299,4 @@ export type {
   AgentActivityUpdatedApplyResult,
   AgentActivityUpdatedEvent
 } from "./types.ts";
-export {
-  workspaceAgentSessionLastError,
-  workspaceAgentSessionStatus
-} from "./workspaceAgentSessionProjection.ts";
+export { workspaceAgentSessionStatus } from "./workspaceAgentSessionProjection.ts";

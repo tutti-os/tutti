@@ -41,6 +41,10 @@ Decide from the user's intent how results should return, before starting anythin
 - Fetch (results must come back): read the peer session with `{{CLI_COMMAND}} agent session-summary --session-id <session-id> --json` instead of starting new work there. When you delegate work whose output you must consume, request machine-consumable output, then use the retrieved result to continue the current task — retrieval is not complete until the result is applied.
 - Collaborate (parallel work with a peer): state each side's boundary in the handoff prompt, keep outputs mergeable, and do not edit the files the peer session is working on while it runs.
 
+## Wait Discipline After Delegating
+
+Once work is delegated, trust the executor. Act only at stop points — where `{{CLI_COMMAND}} agent wait` returns with a non-timeout reason. Between stop points nothing is actionable: do not poll `agent session-summary` for progress, do not read or relay partial outputs, and do not broadcast status updates — progress snapshots are context noise that crowds out what you will need at the real stop point, and the user can watch the session live in its own UI. Loop on bounded waits instead: `agent wait` with a timeout returns `timedOut` plus `latestVersion`, which increments with every message — if `latestVersion` is unchanged across several consecutive waits, the session may be stuck; surface that to the user rather than digging into its messages. `agent session-summary` is a context-recovery tool for when you must consume or continue the work, not a progress poll.
+
 ## Handle Launch Failures
 
 After starting or messaging an agent, confirm it succeeded (session id / ack) and report it. If starting fails or the selected agent is unavailable, report the selected agent id and failure reason, refresh the current catalog with `{{CLI_COMMAND}} agent list --json`, then offer retrying, another currently available agent, or doing the work here yourself. If messaging an existing session fails, report that session id and failure reason. Do not silently do the task yourself, and do not silently drop it.

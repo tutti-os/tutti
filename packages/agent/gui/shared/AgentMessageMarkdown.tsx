@@ -8,7 +8,6 @@ import {
   useMemo,
   useState
 } from "react";
-import { FileText } from "lucide-react";
 import { useTranslation } from "../i18n/index";
 import { cn } from "../app/renderer/lib/utils";
 import ReactMarkdown from "react-markdown";
@@ -21,13 +20,8 @@ import {
   resolveWorkspaceFileExtension,
   workspaceFileName as basenameWorkspacePath
 } from "@tutti-os/workspace-file-manager/services";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-  useTextOverflow
-} from "@tutti-os/ui-system/components";
+import { MentionPill } from "@tutti-os/ui-system/components";
+import { useResolvedRichTextMention } from "@tutti-os/ui-rich-text/editor";
 import {
   resolveWorkspaceLinkAction,
   type WorkspaceLinkAction,
@@ -616,12 +610,31 @@ function MentionLink({
   previewMode: boolean;
 }): JSX.Element {
   "use memo";
-  // 标签截断时,hover 用设计系统 Tooltip 展示完整文本。trigger = 整个 chip(<a>),
-  // 截断发生在内部 __main span,故在那上面测溢出。
-  const tooltipText = mention.label;
-  const { ref: mainRef, overflowing } =
-    useTextOverflow<HTMLSpanElement>(tooltipText);
-  const link = (
+  const snapshot = useResolvedRichTextMention({
+    providerId: mention.providerId,
+    entityId: mention.entityId,
+    label: mention.label,
+    scope: mention.scope
+  });
+  const resolved = snapshot.state === "ready" ? snapshot.resolved : undefined;
+  const label = resolved?.label?.trim() || mention.label;
+  const presentation = resolved?.presentation;
+  const iconUrl =
+    presentation?.iconUrl?.trim() ||
+    presentation?.thumbnailUrl?.trim() ||
+    presentation?.agentIconUrl?.trim() ||
+    mention.iconUrl;
+  const pillKind =
+    mention.kind === "workspace-issue" || mention.referenceSource === "task"
+      ? "issue"
+      : mention.kind === "session" || mention.kind === "agent-target"
+        ? "session"
+        : mention.kind === "pasted-text"
+          ? "file"
+          : "app";
+  const usesSessionIcon = mention.kind === "session";
+
+  return (
     <a
       {...props}
       className={cn(
@@ -630,11 +643,11 @@ function MentionLink({
       )}
       data-agent-file-mention="true"
       data-agent-link-href={href}
-      data-agent-mention-icon-url={mention.iconUrl}
+      data-agent-mention-icon-url={iconUrl}
       data-agent-mention-href={href}
       data-agent-mention-kind={mention.kind}
       data-agent-reference-source={mention.referenceSource}
-      aria-label={mention.label}
+      aria-label={label}
       role="link"
       tabIndex={0}
       onClick={(event) => {
@@ -647,71 +660,26 @@ function MentionLink({
         activateMarkdownLinkFromKey(event, href, onLinkClick);
       }}
     >
-      {mention.kind === "pasted-text" ? (
-        <span
-          className="grid h-4 w-4 shrink-0 place-items-center text-[var(--text-tertiary)]"
-          aria-hidden="true"
-        >
-          <FileText size={14} strokeWidth={2} />
-        </span>
-      ) : mention.kind === "workspace-app" ||
-        mention.kind === "workspace-reference" ||
-        mention.kind === "agent-target" ||
-        (mention.kind === "session" && mention.iconUrl) ? (
-        <span
-          className="grid h-4 w-4 shrink-0 place-items-center overflow-hidden rounded-[4px] bg-block"
-          aria-hidden="true"
-          data-agent-mention-app-icon={
-            mention.kind === "session" ? undefined : "true"
-          }
-          data-agent-mention-session-icon={
-            mention.kind === "session" ? "true" : undefined
-          }
-          data-workspace-app-icon={
-            mention.kind === "session" ? undefined : "true"
-          }
-        >
-          {mention.iconUrl ? (
-            <img
-              src={mention.iconUrl}
-              alt=""
-              className="h-full w-full object-cover"
-              decoding="async"
-              loading="lazy"
-              draggable={false}
-            />
-          ) : (
-            <span className="tsh-agent-object-token__kind-icon h-4 w-4" />
-          )}
-        </span>
-      ) : (
-        <span className="tsh-agent-object-token__kind" aria-hidden="true">
-          <span
-            className="tsh-agent-object-token__kind-icon"
-            aria-hidden="true"
-          />
-        </span>
-      )}
-      <span className="tsh-agent-object-token__main" ref={mainRef}>
-        {mention.label}
-      </span>
+      <MentionPill
+        className="top-0 max-w-full"
+        iconUrl={iconUrl}
+        iconContainerProps={{
+          className: "h-4 w-4",
+          "data-agent-mention-app-icon": usesSessionIcon ? undefined : "true",
+          "data-agent-mention-session-icon": usesSessionIcon
+            ? "true"
+            : undefined,
+          "data-workspace-app-icon": usesSessionIcon ? undefined : "true"
+        }}
+        fallbackIconProps={{
+          "data-agent-mention-fallback-icon": "true"
+        }}
+        kind={pillKind}
+        label={<span className="tsh-agent-object-token__main">{label}</span>}
+        removable={false}
+        tooltipEnabled={!previewMode}
+        withTooltipProvider={!previewMode}
+      />
     </a>
-  );
-
-  if (previewMode) {
-    return link;
-  }
-
-  return (
-    <TooltipProvider delayDuration={200}>
-      <Tooltip>
-        <TooltipTrigger asChild>{link}</TooltipTrigger>
-        {overflowing ? (
-          <TooltipContent className="max-w-[min(420px,calc(100vw-32px))] whitespace-normal text-left [overflow-wrap:anywhere]">
-            {tooltipText}
-          </TooltipContent>
-        ) : null}
-      </Tooltip>
-    </TooltipProvider>
   );
 }

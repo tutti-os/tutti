@@ -65,7 +65,7 @@ func (s *Store) PrepareRuntimeOperation(ctx context.Context, input RuntimeOperat
 		if existing.TurnID != input.TurnID || existing.RequestID != input.RequestID || !jsonMapsEqual(existing.Payload, input.Payload) {
 			return RuntimeOperation{}, false, ErrRuntimeOperationConflict
 		}
-		if err := tx.Commit(); err != nil {
+		if _, err := s.commitTransaction(ctx, tx, input.WorkspaceID, nil); err != nil {
 			return RuntimeOperation{}, false, fmt.Errorf("commit duplicate runtime operation prepare: %w", err)
 		}
 		committed = true
@@ -94,10 +94,15 @@ INSERT INTO workspace_agent_runtime_operations (
 	if err != nil {
 		return RuntimeOperation{}, false, err
 	}
-	if err := tx.Commit(); err != nil {
+	delta, err := s.commitTransaction(ctx, tx, input.WorkspaceID, []TransactionMutation{
+		transactionMutation(input.WorkspaceID, input.AgentSessionID, MutationEntityRuntimeOperation, input.OperationID, "prepare", op.Version),
+	})
+	if err != nil {
 		return RuntimeOperation{}, false, fmt.Errorf("commit runtime operation prepare: %w", err)
 	}
 	committed = true
+	op.CommitTransactionID = delta.TransactionID
+	op.CommitDelta = delta
 	return op, true, nil
 }
 
@@ -190,7 +195,17 @@ func (s *Store) ReleaseOrFailRuntimeOperation(ctx context.Context, input Release
 	} else if input.NextAttemptAtMS <= input.NowUnixMS {
 		return RuntimeOperation{}, false, errors.New("runtime operation retry time must be after release time")
 	}
-	result, err := s.db.ExecContext(ctx, `
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return RuntimeOperation{}, false, err
+	}
+	committed := false
+	defer func() {
+		if !committed {
+			_ = tx.Rollback()
+		}
+	}()
+	result, err := tx.ExecContext(ctx, `
 UPDATE workspace_agent_runtime_operations
 SET status = ?, result = ?, lease_owner = NULL, lease_expires_at_unix_ms = NULL,
     next_attempt_at_unix_ms = ?, version = version + 1, last_error = ?, updated_at_unix_ms = ?
@@ -204,10 +219,28 @@ WHERE workspace_id = ? AND operation_id = ? AND status = ? AND lease_owner = ?
 	if err != nil {
 		return RuntimeOperation{}, false, err
 	}
-	op, found, err := s.GetRuntimeOperation(ctx, input.WorkspaceID, input.OperationID)
+	op, found, err := getRuntimeOperationTx(ctx, tx, input.WorkspaceID, input.OperationID)
 	if err != nil || !found {
 		return op, false, err
 	}
+	mutations := []TransactionMutation{}
+	if changed {
+		operation := "release"
+		if input.Fail {
+			operation = "fail"
+		}
+		mutations = append(mutations, transactionMutation(
+			op.WorkspaceID, op.AgentSessionID, MutationEntityRuntimeOperation,
+			op.OperationID, operation, op.Version,
+		))
+	}
+	delta, err := s.commitTransaction(ctx, tx, op.WorkspaceID, mutations)
+	if err != nil {
+		return RuntimeOperation{}, false, err
+	}
+	committed = true
+	op.CommitTransactionID = delta.TransactionID
+	op.CommitDelta = delta
 	return op, changed, nil
 }
 
@@ -261,14 +294,16 @@ WHERE workspace_id = ? AND operation_id = ? AND status = ? AND lease_owner = ?
 	if err != nil {
 		return RuntimeOperation{}, false, err
 	}
+	var pendingEvent RuntimeOperationEvent
 	if payloadString(current.Payload, "step") != "send_dispatched" && payloadString(input.Payload, "step") == "send_dispatched" {
 		if err := insertPlanDecisionUnknownNoticeTx(ctx, tx, current, input.NowUnixMS); err != nil {
 			return RuntimeOperation{}, false, err
 		}
-		if _, err := insertRuntimeOperationEventTx(ctx, tx, current, RuntimeOperationEventPlanDecisionPending, map[string]any{
+		pendingEvent, err = insertRuntimeOperationEventTx(ctx, tx, current, RuntimeOperationEventPlanDecisionPending, map[string]any{
 			"turnId": current.TurnID, "requestId": current.RequestID,
 			"noticeMessageId": planDecisionNoticeMessageID(current.OperationID),
-		}, input.NowUnixMS); err != nil {
+		}, input.NowUnixMS)
+		if err != nil {
 			return RuntimeOperation{}, false, err
 		}
 	}
@@ -276,10 +311,30 @@ WHERE workspace_id = ? AND operation_id = ? AND status = ? AND lease_owner = ?
 	if err != nil || !found {
 		return op, false, err
 	}
-	if err := tx.Commit(); err != nil {
+	mutations := []TransactionMutation{
+		transactionMutation(input.WorkspaceID, op.AgentSessionID, MutationEntityRuntimeOperation, input.OperationID, "checkpoint", op.Version),
+	}
+	if pendingEvent.ID > 0 {
+		messageID := planDecisionNoticeMessageID(op.OperationID)
+		message, found, err := getAgentMessageForUpdate(ctx, tx, input.WorkspaceID, op.AgentSessionID, messageID)
+		if err != nil {
+			return RuntimeOperation{}, false, err
+		}
+		if !found {
+			return RuntimeOperation{}, false, ErrRuntimeOperationSubjectState
+		}
+		mutations = append(mutations,
+			transactionMutation(input.WorkspaceID, op.AgentSessionID, MutationEntityMessage, messageID, "upsert", int64(message.Version)),
+			transactionMutation(input.WorkspaceID, op.AgentSessionID, MutationEntityRuntimeEvent, fmt.Sprint(pendingEvent.ID), "insert", pendingEvent.ID),
+		)
+	}
+	delta, err := s.commitTransaction(ctx, tx, input.WorkspaceID, mutations)
+	if err != nil {
 		return RuntimeOperation{}, false, fmt.Errorf("commit runtime operation checkpoint: %w", err)
 	}
 	committed = true
+	op.CommitTransactionID = delta.TransactionID
+	op.CommitDelta = delta
 	return op, changed, nil
 }
 

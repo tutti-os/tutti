@@ -8,6 +8,7 @@ import type { AgentContextMentionItem } from "./agentRichText/agentFileMentionEx
 import type { AgentContextMentionProvider } from "./agentContextMentionProvider";
 import {
   buildBrowseCategories,
+  FILE_PROVIDER_ID,
   WORKSPACE_ISSUE_PROVIDER_ID,
   type AgentMentionFilterId,
   type AgentMentionGroupId,
@@ -31,6 +32,7 @@ import type {
   ReferenceProvenanceFilter
 } from "@tutti-os/workspace-file-reference/contracts";
 import { referenceProvenanceFilterCacheKey } from "@tutti-os/workspace-file-reference/core";
+import { presentWorkspaceFileDirectoryMentionItems } from "./agentMentionWorkspaceFilesPresentation";
 
 export type {
   AgentMentionBrowseCategory,
@@ -109,6 +111,7 @@ export class AgentMentionSearchController extends AgentMentionSearchControllerBa
     this.cancelIssueLoadMoreRequests();
     const requestId = ++this.requestId;
     this.resetAgentGeneratedBrowsePath();
+    this.resetWorkspaceFileBrowsePaths();
     this.resetExpandedCounts();
     this.resetSearchLimits();
     this.resetRawGroups();
@@ -166,6 +169,7 @@ export class AgentMentionSearchController extends AgentMentionSearchControllerBa
     this.cancelIssueLoadMoreRequests();
     const requestId = ++this.requestId;
     this.resetAgentGeneratedBrowsePath();
+    this.resetWorkspaceFileBrowsePaths();
     this.resetExpandedCounts();
     this.resetSearchLimits();
     this.resetRawGroups();
@@ -325,7 +329,7 @@ export class AgentMentionSearchController extends AgentMentionSearchControllerBa
     this.setFilter(category);
   }
 
-  selectAgentGeneratedMentionItem(item: AgentContextMentionItem): boolean {
+  selectFileMentionNavigationItem(item: AgentContextMentionItem): boolean {
     if (item.kind !== "file" || !item.mentionNavigation) {
       return false;
     }
@@ -359,13 +363,26 @@ export class AgentMentionSearchController extends AgentMentionSearchControllerBa
       });
       return true;
     }
+    if (item.mentionNavigation === "workspace-folder") {
+      const path = item.path.trim();
+      if (!path || this.currentFilter !== "file" || this.currentQuery) {
+        return false;
+      }
+      this.workspaceFileBrowsePaths.push(path);
+      this.loadWorkspaceFileDirectory(path);
+      return true;
+    }
+    if (item.mentionNavigation === "workspace-folder-back") {
+      return this.exitWorkspaceFileBrowse();
+    }
     return false;
   }
 
-  exitAgentGeneratedBrowse(): boolean {
-    if (!this.agentGeneratedBrowsePath) {
-      return false;
+  exitFileMentionBrowse(): boolean {
+    if (this.workspaceFileBrowsePaths.length > 0) {
+      return this.exitWorkspaceFileBrowse();
     }
+    if (!this.agentGeneratedBrowsePath) return false;
     this.resetAgentGeneratedBrowsePath();
     this.setState({
       status: this.state.status === "loading" ? "loading" : "ready",
@@ -377,6 +394,90 @@ export class AgentMentionSearchController extends AgentMentionSearchControllerBa
       error: null
     });
     return true;
+  }
+
+  private exitWorkspaceFileBrowse(): boolean {
+    if (this.workspaceFileBrowsePaths.length === 0) {
+      return false;
+    }
+    this.workspaceFileBrowsePaths.pop();
+    const parentPath = this.workspaceFileBrowsePaths.at(-1);
+    if (parentPath) {
+      this.loadWorkspaceFileDirectory(parentPath);
+      return true;
+    }
+    this.startBrowseModeFetch("file");
+    return true;
+  }
+
+  private loadWorkspaceFileDirectory(directoryPath: string): void {
+    this.clearTimer();
+    this.abortActiveRequest();
+    this.cancelIssueLoadMoreRequests();
+    const requestId = ++this.requestId;
+    const workspaceId = this.activeWorkspaceId;
+    this.setState({
+      status: "loading",
+      query: "",
+      mode: "browse",
+      filter: this.currentFilter,
+      categories: buildBrowseCategories(),
+      groups: this.groupsFromRawGroups(),
+      error: null
+    });
+    const abortSignal = this.beginActiveRequest();
+    const diagnostics: AgentMentionProviderQueryDiagnostic[] = [];
+    void this.queryProviderMentionItemsById({
+      abortSignal,
+      diagnostics,
+      directoryPath,
+      providerId: FILE_PROVIDER_ID,
+      workspaceId,
+      currentUserId: this.currentUserId,
+      query: "",
+      provenanceFilter: this.currentProvenanceFilter
+    })
+      .then((items) => {
+        if (
+          !this.canApply(requestId, workspaceId, "", "file") ||
+          this.workspaceFileBrowsePaths.at(-1) !== directoryPath
+        ) {
+          return;
+        }
+        this.rawGroups.opened_files = presentWorkspaceFileDirectoryMentionItems(
+          {
+            browsePath: directoryPath,
+            items
+          }
+        );
+        this.totalCounts.opened_files = this.rawGroups.opened_files.length;
+        this.setState({
+          status: "ready",
+          query: "",
+          mode: "browse",
+          filter: "file",
+          categories: buildBrowseCategories(),
+          groups: this.groupsFromRawGroups(),
+          error: null
+        });
+      })
+      .catch((error) => {
+        if (
+          !this.canApply(requestId, workspaceId, "", "file") ||
+          this.workspaceFileBrowsePaths.at(-1) !== directoryPath
+        ) {
+          return;
+        }
+        this.setState({
+          status: "error",
+          query: "",
+          mode: "browse",
+          filter: "file",
+          categories: buildBrowseCategories(),
+          groups: this.groupsFromRawGroups(),
+          error: error instanceof Error ? error.message : String(error)
+        });
+      });
   }
 
   expandGroup(groupId: AgentMentionGroupId): void {
@@ -462,6 +563,7 @@ export class AgentMentionSearchController extends AgentMentionSearchControllerBa
     this.requestId += 1;
     this.currentFilter = DEFAULT_AGENT_MENTION_FILTER;
     this.resetAgentGeneratedBrowsePath();
+    this.resetWorkspaceFileBrowsePaths();
     this.resetExpandedCounts();
     this.resetSearchLimits();
     this.resetRawGroups();

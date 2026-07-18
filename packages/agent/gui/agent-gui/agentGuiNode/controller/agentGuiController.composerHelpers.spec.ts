@@ -384,9 +384,6 @@ describe("target-keyed composer defaults", () => {
           }
         }
       })
-    ).toMatchObject({
-      model: "target-model",
-      permissionModeId: null
-    });
+    ).toEqual({});
   });
 });

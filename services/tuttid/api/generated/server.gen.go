@@ -88,9 +88,12 @@ type ServerInterface interface {
 	// Check a user project directory path without recording usage
 	// (POST /v1/user-projects/check)
 	CheckUserProjectPath(w http.ResponseWriter, r *http.Request)
-	// Move a user project within the global project order
+	// Move a user project within its pinned or unpinned partition
 	// (POST /v1/user-projects/move)
 	MoveUserProject(w http.ResponseWriter, r *http.Request)
+	// Pin or unpin a user project
+	// (POST /v1/user-projects/pin)
+	PinUserProject(w http.ResponseWriter, r *http.Request)
 	// List registered workspaces
 	// (GET /v1/workspaces)
 	ListWorkspaces(w http.ResponseWriter, r *http.Request)
@@ -1132,6 +1135,26 @@ func (siw *ServerInterfaceWrapper) MoveUserProject(w http.ResponseWriter, r *htt
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.MoveUserProject(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PinUserProject operation middleware
+func (siw *ServerInterfaceWrapper) PinUserProject(w http.ResponseWriter, r *http.Request) {
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PinUserProject(w, r)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -6951,6 +6974,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/user-projects", wrapper.UseUserProject)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/user-projects/check", wrapper.CheckUserProjectPath)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/user-projects/move", wrapper.MoveUserProject)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/user-projects/pin", wrapper.PinUserProject)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/workspaces", wrapper.ListWorkspaces)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/workspaces", wrapper.CreateWorkspace)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/workspaces/startup", wrapper.GetStartupWorkspace)
@@ -9154,6 +9178,106 @@ type MoveUserProject503JSONResponse struct {
 }
 
 func (response MoveUserProject503JSONResponse) VisitMoveUserProjectResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PinUserProjectRequestObject struct {
+	Body *PinUserProjectJSONRequestBody
+}
+
+type PinUserProjectResponseObject interface {
+	VisitPinUserProjectResponse(w http.ResponseWriter) error
+}
+
+type PinUserProject200JSONResponse UserProjectListResponse
+
+func (response PinUserProject200JSONResponse) VisitPinUserProjectResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PinUserProject400JSONResponse struct {
+	InvalidRequestErrorJSONResponse
+}
+
+func (response PinUserProject400JSONResponse) VisitPinUserProjectResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PinUserProject401JSONResponse struct{ UnauthorizedErrorJSONResponse }
+
+func (response PinUserProject401JSONResponse) VisitPinUserProjectResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PinUserProject405JSONResponse struct {
+	MethodNotAllowedErrorJSONResponse
+}
+
+func (response PinUserProject405JSONResponse) VisitPinUserProjectResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(405)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PinUserProject502JSONResponse struct {
+	PreferencesOperationErrorJSONResponse
+}
+
+func (response PinUserProject502JSONResponse) VisitPinUserProjectResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(502)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PinUserProject503JSONResponse struct {
+	ServiceUnavailableErrorJSONResponse
+}
+
+func (response PinUserProject503JSONResponse) VisitPinUserProjectResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response); err != nil {
@@ -24159,9 +24283,12 @@ type StrictServerInterface interface {
 	// Check a user project directory path without recording usage
 	// (POST /v1/user-projects/check)
 	CheckUserProjectPath(ctx context.Context, request CheckUserProjectPathRequestObject) (CheckUserProjectPathResponseObject, error)
-	// Move a user project within the global project order
+	// Move a user project within its pinned or unpinned partition
 	// (POST /v1/user-projects/move)
 	MoveUserProject(ctx context.Context, request MoveUserProjectRequestObject) (MoveUserProjectResponseObject, error)
+	// Pin or unpin a user project
+	// (POST /v1/user-projects/pin)
+	PinUserProject(ctx context.Context, request PinUserProjectRequestObject) (PinUserProjectResponseObject, error)
 	// List registered workspaces
 	// (GET /v1/workspaces)
 	ListWorkspaces(ctx context.Context, request ListWorkspacesRequestObject) (ListWorkspacesResponseObject, error)
@@ -25253,6 +25380,39 @@ func (sh *strictHandler) MoveUserProject(w http.ResponseWriter, r *http.Request)
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(MoveUserProjectResponseObject); ok {
 		if err := validResponse.VisitMoveUserProjectResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// PinUserProject operation middleware
+func (sh *strictHandler) PinUserProject(w http.ResponseWriter, r *http.Request) {
+	var request PinUserProjectRequestObject
+
+	var body PinUserProjectJSONRequestBody
+	decoder := json.NewDecoder(r.Body)
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.PinUserProject(ctx, request.(PinUserProjectRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PinUserProject")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(PinUserProjectResponseObject); ok {
+		if err := validResponse.VisitPinUserProjectResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

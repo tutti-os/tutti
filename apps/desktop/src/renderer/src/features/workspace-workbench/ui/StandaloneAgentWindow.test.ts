@@ -9,6 +9,10 @@ const standaloneWindowSource = readFileSync(
   resolve(currentDirectory, "StandaloneAgentWindow.tsx"),
   "utf8"
 );
+const standaloneWindowLayoutSource = readFileSync(
+  resolve(currentDirectory, "useStandaloneAgentWindowLayout.ts"),
+  "utf8"
+);
 const standaloneWindowPanelHostsSource = readFileSync(
   resolve(currentDirectory, "StandaloneAgentWindowPanelHosts.tsx"),
   "utf8"
@@ -202,7 +206,22 @@ test("standalone Agent auto-hides the conversation rail below the standalone wid
 test("standalone Agent widens a narrow window before expanding the conversation rail", () => {
   assert.match(
     standaloneWindowSource,
-    /AGENT_GUI_EXPANDED_TARGET_WIDTH_PX[\s\S]*?frame\.width < 640[\s\S]*?resizeContentWidth\(\{\s*width: AGENT_GUI_EXPANDED_TARGET_WIDTH_PX\s*\}\)/
+    /frame\.width < 640[\s\S]*?resizeContentWidth\(AGENT_GUI_EXPANDED_TARGET_WIDTH_PX\)/
+  );
+});
+
+test("standalone Agent commits window frame only after host resize completion", () => {
+  assert.doesNotMatch(
+    `${standaloneWindowSource}\n${standaloneWindowLayoutSource}`,
+    /window\.addEventListener\("resize"/
+  );
+  assert.match(
+    standaloneWindowLayoutSource,
+    /const commitWindowFrame = useCallback\(\(\) => \{[\s\S]*?currentFrame\.width === nextFrame\.width[\s\S]*?currentFrame\.height === nextFrame\.height/
+  );
+  assert.match(
+    standaloneWindowLayoutSource,
+    /hostWindowApi\.onLayout\(\(\{ maximized \}\) => \{[\s\S]*?commitWindowFrame\(\);[\s\S]*?setIsWindowMaximized\(maximized\)/
   );
 });
 

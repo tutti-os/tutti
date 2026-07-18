@@ -38,6 +38,7 @@ import {
   visibleErrorFromPayload,
   withSourceTimelineItems
 } from "./workspaceAgentTimelineProjectionHelpers";
+import { projectCanonicalTurnErrors } from "./workspaceAgentTurnErrorProjection";
 
 export function buildCanonicalWorkspaceAgentDetailView({
   activity,
@@ -183,6 +184,18 @@ export function buildCanonicalWorkspaceAgentDetailView({
       turn.agentItems.push({ kind: "message", message });
     }
   }
+
+  projectCanonicalTurnErrors({
+    turns,
+    sessionTurns:
+      sessionTurns.length > 0
+        ? sessionTurns
+        : session.latestTurn
+          ? [session.latestTurn]
+          : [],
+    provider: session.provider,
+    agentSessionId: session.agentSessionId
+  });
 
   const visibleTurns = [...turns.values()].filter(
     (turn) => turn.userMessages.length > 0 || turn.agentItems.length > 0

@@ -101,6 +101,7 @@ const styles = {
     "agent-gui-node__conversation-section-pagination-button",
   conversationSectionToggle: "agent-gui-node__conversation-section-toggle",
   projectDragImage: "agent-gui-node__project-drag-image",
+  pinnedProjectRailHeader: "agent-gui-node__pinned-project-rail-header",
   conversationSelect: "agent-gui-node__conversation-select",
   conversationStatusGlyph: "agent-gui-node__conversation-status-glyph",
   conversationTime: "agent-gui-node__conversation-time",

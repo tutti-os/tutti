@@ -14,6 +14,55 @@ type PreferencesMutator interface {
 	Put(context.Context, preferencesservice.PutInput) (preferencesbiz.DesktopPreferences, error)
 }
 
+type AgentComposerDefaultsPatcher interface {
+	PatchAgentComposerDefaultsForTarget(context.Context, preferencesservice.PatchAgentComposerDefaultsForTargetInput) (preferencesbiz.AgentComposerDefaults, error)
+}
+
+func preferencesTopicDefinitions() []TopicDefinition {
+	return []TopicDefinition{
+		{
+			Name:               TopicPreferencesAgentComposerDefaultsChanged,
+			ClientCanPublish:   false,
+			ClientCanSubscribe: true,
+			Version:            1,
+			directions:         []Direction{DirectionServerToClient},
+			validators: map[Direction]PayloadValidator{
+				DirectionServerToClient: validateAgentComposerDefaultsChangedPayload,
+			},
+		},
+		{
+			Name:               TopicPreferencesAgentComposerDefaultsPatchRequested,
+			ClientCanPublish:   true,
+			ClientCanSubscribe: false,
+			Version:            1,
+			directions:         []Direction{DirectionClientToServer},
+			validators: map[Direction]PayloadValidator{
+				DirectionClientToServer: validateAgentComposerDefaultsPatchRequestedPayload,
+			},
+		},
+		{
+			Name:               TopicPreferencesDesktopUpdateRequested,
+			ClientCanPublish:   true,
+			ClientCanSubscribe: false,
+			Version:            1,
+			directions:         []Direction{DirectionClientToServer},
+			validators: map[Direction]PayloadValidator{
+				DirectionClientToServer: validateDesktopPreferencesUpdateRequestedPayload,
+			},
+		},
+		{
+			Name:               TopicPreferencesDesktopUpdated,
+			ClientCanPublish:   false,
+			ClientCanSubscribe: true,
+			Version:            1,
+			directions:         []Direction{DirectionServerToClient},
+			validators: map[Direction]PayloadValidator{
+				DirectionServerToClient: validateDesktopPreferencesUpdatedPayload,
+			},
+		},
+	}
+}
+
 type DesktopPreferencesPublisher struct {
 	Service *Service
 }
@@ -66,6 +115,40 @@ func (p DesktopPreferencesPublisher) PublishDesktopPreferencesUpdated(ctx contex
 		return fmt.Errorf("marshal desktop preferences updated payload: %w", err)
 	}
 	return p.Service.PublishFromServer(ctx, TopicPreferencesDesktopUpdated, payload)
+}
+
+func (p DesktopPreferencesPublisher) PublishAgentComposerDefaultsChanged(ctx context.Context, agentTargetID string) error {
+	if p.Service == nil {
+		return nil
+	}
+	payload, err := json.Marshal(agentComposerDefaultsChangedPayload{
+		AgentTargetID: agentTargetID,
+	})
+	if err != nil {
+		return fmt.Errorf("marshal agent composer defaults changed payload: %w", err)
+	}
+	return p.Service.PublishFromServer(ctx, TopicPreferencesAgentComposerDefaultsChanged, payload)
+}
+
+func NewPreferencesAgentComposerDefaultsPatchRequestedHandler(
+	patcher AgentComposerDefaultsPatcher,
+) IntentHandler {
+	return func(ctx context.Context, event ClientEvent) error {
+		if patcher == nil {
+			return fmt.Errorf("agent composer defaults patcher is not configured")
+		}
+		var decoded agentComposerDefaultsPatchRequestedPayload
+		if err := json.Unmarshal(event.Payload, &decoded); err != nil {
+			return fmt.Errorf("decode payload: %w", err)
+		}
+		if _, err := patcher.PatchAgentComposerDefaultsForTarget(ctx, preferencesservice.PatchAgentComposerDefaultsForTargetInput{
+			AgentTargetID: decoded.AgentTargetID,
+			Patch:         decoded.Patch,
+		}); err != nil {
+			return fmt.Errorf("patch agent composer defaults: %w", err)
+		}
+		return nil
+	}
 }
 
 func NewPreferencesDesktopUpdateRequestedHandler(mutator PreferencesMutator) IntentHandler {

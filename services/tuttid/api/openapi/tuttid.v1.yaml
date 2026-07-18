@@ -455,13 +455,42 @@ paths:
       operationId: moveUserProject
       tags:
         - user-project
-      summary: Move a user project within the global project order
+      summary: Move a user project within its pinned or unpinned partition
       requestBody:
         required: true
         content:
           application/json:
             schema:
               $ref: "#/components/schemas/MoveUserProjectRequest"
+      responses:
+        "200":
+          description: Complete ordered user project list
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserProjectListResponse"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "400":
+          $ref: "#/components/responses/InvalidRequestError"
+        "405":
+          $ref: "#/components/responses/MethodNotAllowedError"
+        "502":
+          $ref: "#/components/responses/PreferencesOperationError"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailableError"
+  /v1/user-projects/pin:
+    post:
+      operationId: pinUserProject
+      tags:
+        - user-project
+      summary: Pin or unpin a user project
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PinUserProjectRequest"
       responses:
         "200":
           description: Complete ordered user project list
@@ -9157,6 +9186,8 @@ components:
         - sectionKey
         - createdAtUnixMs
         - updatedAtUnixMs
+        - lastUsedAtUnixMs
+        - pinnedAtUnixMs
       properties:
         id:
           type: string
@@ -9179,6 +9210,10 @@ components:
           format: int64
           minimum: 0
         lastUsedAtUnixMs:
+          type: integer
+          format: int64
+          minimum: 0
+        pinnedAtUnixMs:
           type: integer
           format: int64
           minimum: 0
@@ -9232,6 +9267,18 @@ components:
           type: string
           nullable: true
           minLength: 1
+    PinUserProjectRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - projectId
+        - pinned
+      properties:
+        projectId:
+          type: string
+          minLength: 1
+        pinned:
+          type: boolean
     CheckUserProjectPathRequest:
       type: object
       additionalProperties: false

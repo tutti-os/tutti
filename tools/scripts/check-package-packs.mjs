@@ -8,6 +8,10 @@ import {
   workspaceRoot
 } from "./npm-release-packages.mjs";
 import { missingPackedRelativeImports } from "./package-pack-relative-imports.mjs";
+import {
+  packedFilesWithRawSvgDataUrls,
+  packedFilesWithRelativeSvgUrls
+} from "./package-pack-svg-data-urls.mjs";
 
 const forbiddenPrefixes = [
   "package/src/",
@@ -76,6 +80,24 @@ async function checkPackage(packageConfig, destination) {
     );
     for (const missingImport of missingImports) {
       violations.push(`missing runtime import ${missingImport}`);
+    }
+  }
+
+  if (packageConfig.name === "@tutti-os/agent-gui") {
+    const unpackedDirectory = join(destination, `${tarball}.unpacked`);
+    await mkdir(unpackedDirectory, { recursive: true });
+    execFileSync("tar", ["-xzf", tarballPath, "-C", unpackedDirectory]);
+    const rawSvgDataUrlFiles = await packedFilesWithRawSvgDataUrls(
+      join(unpackedDirectory, "package")
+    );
+    for (const file of rawSvgDataUrlFiles) {
+      violations.push(`raw SVG data URL in ${file}`);
+    }
+    const relativeSvgUrlFiles = await packedFilesWithRelativeSvgUrls(
+      join(unpackedDirectory, "package")
+    );
+    for (const file of relativeSvgUrlFiles) {
+      violations.push(`consumer-unresolvable relative SVG URL in ${file}`);
     }
   }
 

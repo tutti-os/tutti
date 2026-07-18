@@ -172,7 +172,6 @@ ON CONFLICT(id) DO UPDATE SET
   update_channel = excluded.update_channel,
   update_policy = excluded.update_policy,
   agent_composer_defaults_by_provider_json = excluded.agent_composer_defaults_by_provider_json,
-  agent_composer_defaults_by_agent_target_json = excluded.agent_composer_defaults_by_agent_target_json,
   agent_gui_conversation_rail_collapsed_by_provider_json = excluded.agent_gui_conversation_rail_collapsed_by_provider_json,
   file_default_openers_by_extension_json = excluded.file_default_openers_by_extension_json,
   app_catalog_channel = excluded.app_catalog_channel,
@@ -189,31 +188,101 @@ ON CONFLICT(id) DO UPDATE SET
 		return preferencesbiz.DesktopPreferences{}, fmt.Errorf("put desktop preferences: %w", err)
 	}
 
-	return preferencesbiz.DesktopPreferences{
-		AgentComposerDefaultsByProvider:             preferences.AgentComposerDefaultsByProvider,
-		AgentComposerDefaultsByAgentTarget:          preferences.AgentComposerDefaultsByAgentTarget,
-		AgentGUIConversationRailCollapsedByProvider: preferences.AgentGUIConversationRailCollapsedByProvider,
-		AgentConversationDetailMode:                 preferencesbiz.NormalizeDesktopAgentConversationDetailMode(preferences.AgentConversationDetailMode),
-		AgentDockLayout:                             preferencesbiz.NormalizeDesktopAgentDockLayout(preferences.AgentDockLayout),
-		AppCatalogChannel:                           preferences.AppCatalogChannel,
-		BrowserUseConnectionMode:                    preferences.BrowserUseConnectionMode,
-		DefaultAgentProvider:                        preferences.DefaultAgentProvider,
-		DockIconStyle:                               preferences.DockIconStyle,
-		DockPlacement:                               preferences.DockPlacement,
-		FeatureFlags:                                preferencesbiz.NormalizeDesktopFeatureFlags(preferences.FeatureFlags),
-		FileDefaultOpenersByExtension:               preferences.FileDefaultOpenersByExtension,
-		Initialized:                                 true,
-		Locale:                                      preferences.Locale,
-		MinimizeAnimation:                           preferences.MinimizeAnimation,
-		SleepPreventionMode:                         preferences.SleepPreventionMode,
-		ShowAppDeveloperSources:                     preferences.ShowAppDeveloperSources,
-		ThemeSource:                                 preferences.ThemeSource,
-		UpdateChannel:                               preferences.UpdateChannel,
-		UpdatePolicy:                                preferences.UpdatePolicy,
-		WindowSnappingEnabled:                       preferences.WindowSnappingEnabled,
-		WindowSnappingShortcutPreset:                preferences.WindowSnappingShortcutPreset,
-		WorkbenchShortcuts:                          preferencesbiz.NormalizeDesktopWorkbenchShortcuts(preferences.WorkbenchShortcuts),
-	}, nil
+	// Re-read after the write because the dedicated target-defaults patch may
+	// have committed between a full preferences caller's read and this update.
+	// The conflict clause deliberately preserves that column, so returning the
+	// input object here would publish a stale defaults snapshot.
+	return s.GetDesktopPreferences(ctx)
+}
+
+func (s *SQLiteStore) PatchAgentComposerDefaultsForTarget(
+	ctx context.Context,
+	agentTargetID string,
+	patch preferencesbiz.AgentComposerDefaultsPatch,
+) (preferencesbiz.AgentComposerDefaults, error) {
+	if s == nil || s.writeDB == nil {
+		return preferencesbiz.AgentComposerDefaults{}, errors.New("workspace database is not initialized")
+	}
+	agentTargetID = strings.TrimSpace(agentTargetID)
+	if agentTargetID == "" || len(patch) == 0 {
+		return preferencesbiz.AgentComposerDefaults{}, errors.New("agent composer defaults patch is empty")
+	}
+
+	tx, err := s.writeDB.BeginTx(ctx, nil)
+	if err != nil {
+		return preferencesbiz.AgentComposerDefaults{}, fmt.Errorf("begin agent composer defaults patch: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+	defaultPreferences := preferencesbiz.DefaultDesktopPreferences()
+	if _, err := tx.ExecContext(ctx, `
+INSERT INTO desktop_preferences (
+  id, locale, theme_source, dock_icon_style, updated_at_unix_ms
+)
+VALUES (?, ?, ?, ?, ?)
+ON CONFLICT(id) DO NOTHING
+`, desktopPreferencesRowID, defaultPreferences.Locale, defaultPreferences.ThemeSource, defaultPreferences.DockIconStyle, unixMs(time.Now().UTC())); err != nil {
+		return preferencesbiz.AgentComposerDefaults{}, fmt.Errorf("initialize desktop preferences for agent composer defaults patch: %w", err)
+	}
+
+	var raw string
+	if err := tx.QueryRowContext(ctx, `
+SELECT agent_composer_defaults_by_agent_target_json
+FROM desktop_preferences
+WHERE id = ?
+`, desktopPreferencesRowID).Scan(&raw); err != nil {
+		return preferencesbiz.AgentComposerDefaults{}, fmt.Errorf("read agent composer defaults for patch: %w", err)
+	}
+	defaultsByTarget, err := decodeAgentComposerDefaultsByProvider(raw)
+	if err != nil {
+		return preferencesbiz.AgentComposerDefaults{}, fmt.Errorf("decode agent composer defaults for patch: %w", err)
+	}
+	defaults := defaultsByTarget[agentTargetID]
+	for field, value := range patch {
+		next := ""
+		if value != nil {
+			next = strings.TrimSpace(*value)
+		}
+		switch field {
+		case preferencesbiz.AgentComposerDefaultsFieldModel:
+			defaults.Model = next
+		case preferencesbiz.AgentComposerDefaultsFieldPermissionModeID:
+			defaults.PermissionModeID = next
+		case preferencesbiz.AgentComposerDefaultsFieldReasoningEffort:
+			defaults.ReasoningEffort = next
+		case preferencesbiz.AgentComposerDefaultsFieldSpeed:
+			defaults.Speed = next
+		default:
+			return preferencesbiz.AgentComposerDefaults{}, fmt.Errorf("unsupported agent composer defaults field %q", field)
+		}
+	}
+	if defaults.IsZero() {
+		delete(defaultsByTarget, agentTargetID)
+	} else {
+		defaultsByTarget[agentTargetID] = defaults
+	}
+	encoded, err := encodeAgentComposerDefaultsByProvider(defaultsByTarget)
+	if err != nil {
+		return preferencesbiz.AgentComposerDefaults{}, fmt.Errorf("encode agent composer defaults patch: %w", err)
+	}
+	result, err := tx.ExecContext(ctx, `
+UPDATE desktop_preferences
+SET agent_composer_defaults_by_agent_target_json = ?, updated_at_unix_ms = ?
+WHERE id = ?
+`, encoded, unixMs(time.Now().UTC()), desktopPreferencesRowID)
+	if err != nil {
+		return preferencesbiz.AgentComposerDefaults{}, fmt.Errorf("write agent composer defaults patch: %w", err)
+	}
+	rows, err := result.RowsAffected()
+	if err != nil {
+		return preferencesbiz.AgentComposerDefaults{}, fmt.Errorf("count agent composer defaults patch rows: %w", err)
+	}
+	if rows != 1 {
+		return preferencesbiz.AgentComposerDefaults{}, errors.New("desktop preferences row is not initialized")
+	}
+	if err := tx.Commit(); err != nil {
+		return preferencesbiz.AgentComposerDefaults{}, fmt.Errorf("commit agent composer defaults patch: %w", err)
+	}
+	return defaults, nil
 }
 
 func decodeFileDefaultOpenersByExtension(raw string) (map[string]string, error) {

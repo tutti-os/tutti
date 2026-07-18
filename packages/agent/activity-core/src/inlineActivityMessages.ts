@@ -14,12 +14,13 @@ import type {
 /**
  * Parse the inline `messages` array carried by a realtime `message_update`
  * event into canonical {@link AgentActivityMessage} values. This is the only
- * inline delta the bridge applies without a follow-up pull: messages are
- * append-only and self-describing, so the engine's message reducer can fold
- * them (including alias-bucket collapse) on its own. Turn and interaction
- * deltas take the authoritative reconcile path instead, so their session-level
- * effects (activeTurnId, pending-interaction pruning) come from a full session
- * fetch rather than being reconstructed here.
+ * inline delta the bridge may apply without a follow-up pull: message snapshots
+ * are versioned and self-describing, so after the bridge verifies cursor
+ * continuity, the engine's version-guarded message reducer can fold them
+ * (including alias-bucket collapse) on its own. Turn and interaction deltas take
+ * the authoritative reconcile path instead, so their session-level effects
+ * (activeTurnId, pending-interaction pruning) come from a full session fetch
+ * rather than being reconstructed here.
  */
 export function parseInlineActivityMessages(
   event: AgentActivityUpdatedEvent

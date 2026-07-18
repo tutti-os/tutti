@@ -56,7 +56,7 @@ func (s *Service) CancelTurn(ctx context.Context, workspaceID string, agentSessi
 		"turnId", turnID,
 	)
 
-	hostResult, err := s.applicationHost(serviceHostPreparation{service: s}).CancelTurn(ctx, agenthost.CancelTurnInput{
+	hostResult, err := s.ApplicationHost().CancelTurn(ctx, agenthost.CancelTurnInput{
 		WorkspaceID: workspaceID, AgentSessionID: agentSessionID, TurnID: turnID,
 	})
 	if err != nil {

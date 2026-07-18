@@ -1,19 +1,16 @@
 package providerregistry
 
+import canonical "github.com/tutti-os/tutti/packages/agent/store-sqlite/canonical"
+
 const (
-	CodexProviderID = "codex"
+	CodexProviderID = canonical.CodexProviderID
 	CodexTargetID   = "local:codex"
 	CodexMinVersion = "0.126.0"
 )
 
 func codexDescriptor() ProviderDescriptor {
 	return ProviderDescriptor{
-		Identity: IdentityDescriptor{
-			ID:          CodexProviderID,
-			DisplayName: "Codex",
-			IconKey:     "codex",
-			LocaleKey:   "agentHost.agentGui.conversationFilterCodex",
-		},
+		Identity: canonicalProviderIdentity(CodexProviderID),
 		Runtime: RuntimeDescriptor{
 			Kind:                RuntimeKindCodexAppServer,
 			Name:                "codex-app-server",

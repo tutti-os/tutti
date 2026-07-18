@@ -1,6 +1,7 @@
 import { createRichTextMentionHref } from "@tutti-os/ui-rich-text/core";
 import { getOptionalAgentHostApi } from "../../agentActivityHost";
 import type { AgentContextMentionItem } from "./agentRichText/agentFileMentionExtension";
+import type { AgentContextMentionDirectoryDescriptor } from "./agentContextMentionProvider";
 import { normalizeAgentSessionMentionTitle } from "./agentRichText/agentFileMentionExtension";
 import type { AgentContextMentionInsertResult } from "./agentContextMentionProvider";
 import type { AgentMentionProviderQueryDiagnostic } from "./agentMentionSearchDiagnostics";
@@ -487,6 +488,7 @@ export function normalizeSessionMentionItems(input: {
 
 export function providerItemToAgentMentionItem(input: {
   currentUserId: string;
+  directory?: AgentContextMentionDirectoryDescriptor | null;
   providerId: string;
   insertResult: AgentContextMentionInsertResult;
   label: string;
@@ -499,13 +501,24 @@ export function providerItemToAgentMentionItem(input: {
   }
   if (input.insertResult.kind === "markdown-link") {
     const href = input.insertResult.href.trim();
+    const directoryPath = input.directory?.path.trim() ?? "";
     return {
       kind: "file",
       href,
-      path: href,
+      path: directoryPath || href,
       name: label,
-      entryKind: href.endsWith("/") ? "directory" : "unknown",
-      directoryPath: dirnameFromProviderWorkspaceFileHref(href)
+      entryKind: directoryPath || href.endsWith("/") ? "directory" : "unknown",
+      directoryPath: dirnameFromProviderWorkspaceFileHref(
+        directoryPath || href
+      ),
+      ...(directoryPath
+        ? {
+            childCount: normalizeMentionDirectoryChildCount(
+              input.directory?.childCount
+            ),
+            mentionNavigation: "workspace-folder" as const
+          }
+        : {})
     };
   }
   if (input.insertResult.kind !== "mention") {
@@ -524,6 +537,7 @@ export function providerItemToAgentMentionItem(input: {
     input.providerId === FILE_PROVIDER_ID ||
     input.providerId === AGENT_GENERATED_FILE_PROVIDER_ID
   ) {
+    const directoryPath = input.directory?.path.trim() ?? "";
     return {
       kind: "file",
       href: createRichTextMentionHref({
@@ -532,10 +546,21 @@ export function providerItemToAgentMentionItem(input: {
         label,
         scope
       }),
-      path: targetId,
+      path: directoryPath || targetId,
       name: label,
-      entryKind: targetId.endsWith("/") ? "directory" : "unknown",
-      directoryPath: dirnameFromProviderWorkspaceFileHref(targetId),
+      entryKind:
+        directoryPath || targetId.endsWith("/") ? "directory" : "unknown",
+      directoryPath: dirnameFromProviderWorkspaceFileHref(
+        directoryPath || targetId
+      ),
+      ...(directoryPath
+        ? {
+            childCount: normalizeMentionDirectoryChildCount(
+              input.directory?.childCount
+            ),
+            mentionNavigation: "workspace-folder" as const
+          }
+        : {}),
       thumbnailUrl: presentation.thumbnailUrl?.trim() || undefined
     };
   }
@@ -648,6 +673,15 @@ export function providerItemToAgentMentionItem(input: {
     };
   }
   return null;
+}
+
+function normalizeMentionDirectoryChildCount(
+  value: number | null | undefined
+): number | undefined {
+  if (typeof value !== "number" || !Number.isFinite(value) || value < 0) {
+    return undefined;
+  }
+  return Math.floor(value);
 }
 
 export function normalizeMentionScope(

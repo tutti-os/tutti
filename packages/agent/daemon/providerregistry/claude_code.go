@@ -1,19 +1,15 @@
 package providerregistry
 
+import canonical "github.com/tutti-os/tutti/packages/agent/store-sqlite/canonical"
+
 const (
-	ClaudeCodeProviderID = "claude-code"
+	ClaudeCodeProviderID = canonical.ClaudeCodeProviderID
 	ClaudeCodeTargetID   = "local:claude-code"
 )
 
 func claudeCodeDescriptor() ProviderDescriptor {
 	return ProviderDescriptor{
-		Identity: IdentityDescriptor{
-			ID:          ClaudeCodeProviderID,
-			DisplayName: "Claude Code",
-			IconKey:     "claude-code",
-			LocaleKey:   "agentHost.agentGui.conversationFilterClaudeCode",
-			Aliases:     []string{"claude", "claude code"},
-		},
+		Identity: canonicalProviderIdentity(ClaudeCodeProviderID),
 		Runtime: RuntimeDescriptor{
 			Kind: RuntimeKindClaudeSDK,
 			Name: "claude-agent-sdk",

@@ -3,6 +3,8 @@ package providerregistry
 import (
 	"fmt"
 	"strings"
+
+	canonical "github.com/tutti-os/tutti/packages/agent/store-sqlite/canonical"
 )
 
 var migratedDescriptors = []ProviderDescriptor{
@@ -19,6 +21,14 @@ var migratedDescriptors = []ProviderDescriptor{
 var providerDescriptorIndex = buildProviderDescriptorIndex(migratedDescriptors)
 
 var eventProviderIndex = buildEventProviderIndex(migratedDescriptors)
+
+func canonicalProviderIdentity(providerID string) IdentityDescriptor {
+	identity, ok := canonical.FindProviderIdentity(providerID)
+	if !ok {
+		panic("missing canonical provider identity: " + providerID)
+	}
+	return identity
+}
 
 // Migrated returns the complete provider descriptor catalog.
 func Migrated() []ProviderDescriptor {
@@ -608,42 +618,14 @@ func validateStandardACPRuntime(descriptor StandardACPRuntimeDescriptor) error {
 	return nil
 }
 
-// IsKnownCapability reports whether value is part of the canonical
-// provider/runtime/API capability vocabulary.
-var knownCapabilities = []string{
-	CapabilityImageInput,
-	CapabilityModelImageInputRequired,
-	CapabilitySkills,
-	CapabilityCompact,
-	CapabilityTokenUsage,
-	CapabilityRateLimits,
-	CapabilityPlanMode,
-	CapabilityInterrupt,
-	CapabilityActiveTurnGuidance,
-	CapabilityBrowserUse,
-	CapabilityComputerUse,
-	CapabilityGoalPause,
-	CapabilityPlanImplementation,
-	CapabilityPermissionModeChangeDuringTurn,
-	CapabilityPermissionModeChangeDeferred,
-	CapabilityReview,
-	CapabilityResumeRunningTurn,
-}
-
 // KnownCapabilities returns the ordered canonical capability vocabulary used
 // by provider descriptors, runtime projection, OpenAPI validation, and TS generation.
 func KnownCapabilities() []string {
-	return append([]string(nil), knownCapabilities...)
+	return canonical.KnownCapabilities()
 }
 
 func IsKnownCapability(value string) bool {
-	value = strings.TrimSpace(value)
-	for _, capability := range knownCapabilities {
-		if capability == value {
-			return true
-		}
-	}
-	return false
+	return canonical.IsKnownCapability(value)
 }
 
 func validateAuthWatch(descriptor AuthWatchDescriptor) error {

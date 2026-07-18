@@ -43,6 +43,7 @@ import {
   listWorkspaceAppMentionCandidates,
   listUserProjects,
   moveUserProject,
+  pinUserProject,
   listWorkspaceIssues,
   listWorkspaceIssueTopics,
   listWorkspaceIssueRuns,
@@ -635,6 +636,13 @@ export function createTuttidClient(
         body: request
       });
       return unwrapData(response, "Move user project failed.");
+    },
+    async pinUserProject(request) {
+      const response = await pinUserProject({
+        client,
+        body: request
+      });
+      return unwrapData(response, "Pin user project failed.");
     },
     async deleteUserProject(request) {
       const response = await deleteUserProject({

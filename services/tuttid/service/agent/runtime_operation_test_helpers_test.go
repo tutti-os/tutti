@@ -2,9 +2,12 @@ package agent
 
 import (
 	"strings"
+	"time"
 
 	"github.com/google/uuid"
 )
+
+const runtimeOperationLeaseDuration = 30 * time.Second
 
 func runtimeOperationID(workspaceID, agentSessionID, kind, subjectID string) string {
 	name := strings.Join([]string{

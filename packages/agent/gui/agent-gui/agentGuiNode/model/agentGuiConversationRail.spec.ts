@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { AgentGUIConversationSummary } from "./agentGuiConversationModel";
 import type { ConversationSection } from "../agentGuiNodeViewConversation";
 import {
+  conversationRailSectionHeaderVisibility,
   insertConversationRailSectionOverlay,
   conversationSummariesRenderEqual,
   isConversationRailInitialLoadPending,
@@ -21,6 +22,42 @@ const railLabels = {
   sectionConversations: "Conversations",
   sectionPinned: "Pinned"
 };
+
+describe("conversationRailSectionHeaderVisibility", () => {
+  it("keeps one Pinned title and places Projects before Chats when every project is pinned", () => {
+    const sections: ConversationSection[] = [
+      {
+        id: "project:/pinned",
+        items: [],
+        kind: "project",
+        label: "Pinned project",
+        project: {
+          id: "pinned-project",
+          label: "Pinned project",
+          path: "/pinned",
+          pinnedAtUnixMs: 10,
+          sectionKey: "project:/pinned"
+        }
+      },
+      {
+        id: "conversations",
+        items: [],
+        kind: "conversations",
+        label: "Chats",
+        project: null
+      }
+    ];
+
+    expect(conversationRailSectionHeaderVisibility(sections, 0)).toEqual({
+      showPinnedHeader: true,
+      showProjectsHeader: false
+    });
+    expect(conversationRailSectionHeaderVisibility(sections, 1)).toEqual({
+      showPinnedHeader: false,
+      showProjectsHeader: true
+    });
+  });
+});
 
 function conversation(
   id: string,
@@ -52,6 +89,7 @@ function section(
         id: "workspace",
         label: "Workspace",
         path: "/workspace",
+        pinnedAtUnixMs: 0,
         sectionKey: "project:/workspace"
       }
     }
@@ -274,6 +312,7 @@ describe("projectRuntimeSectionsToConversationRailMemberships", () => {
             id: "project-1",
             label: "Workspace",
             path: "/workspace",
+            pinnedAtUnixMs: 0,
             sectionKey: "project:authoritative",
             updatedAtUnixMs: 2
           }
@@ -282,6 +321,7 @@ describe("projectRuntimeSectionsToConversationRailMemberships", () => {
     });
 
     expect(memberships[0]?.project?.sectionKey).toBe("project:authoritative");
+    expect(memberships[0]?.project?.pinnedAtUnixMs).toBe(0);
   });
 });
 
@@ -429,6 +469,7 @@ describe("projectConversationRailSectionsWithActiveConversation", () => {
         id: "workspace",
         label: "Workspace",
         path: "/workspace",
+        pinnedAtUnixMs: 0,
         sectionKey: "project:/workspace"
       }
     };
@@ -449,6 +490,7 @@ describe("projectConversationRailSectionsWithActiveConversation", () => {
         id: "workspace",
         label: "Workspace",
         path: "/workspace",
+        pinnedAtUnixMs: 0,
         sectionKey: "project:/workspace"
       },
       railSectionKey: "conversations"
@@ -478,6 +520,7 @@ describe("projectConversationRailSectionsWithActiveConversation", () => {
         id: "other",
         label: "Other",
         path: "/other",
+        pinnedAtUnixMs: 0,
         sectionKey: "project:/other"
       },
       railSectionKey: "project:/other"
@@ -554,6 +597,7 @@ describe("projectConversationRailSearchSections", () => {
         id: "b",
         label: "B",
         path: "/b",
+        pinnedAtUnixMs: 0,
         sectionKey: "project:/b"
       }
     };
@@ -598,6 +642,7 @@ describe("projectConversationRailSearchSections", () => {
             id: "b",
             label: "B",
             path: "/b",
+            pinnedAtUnixMs: 0,
             sectionKey: "project:/b"
           },
           items: []
@@ -623,11 +668,55 @@ describe("projectConversationRailSearchSections", () => {
 });
 
 describe("projectConversationRailSectionsByExactKey", () => {
+  it("orders pinned sessions, pinned projects, ordinary projects, then Chats without duplicating sessions", () => {
+    const pinnedSession = {
+      ...conversation("pinned-session", 100),
+      project: null
+    };
+    const pinnedProject = {
+      id: "pinned-project",
+      label: "Pinned project",
+      path: "/pinned",
+      pinnedAtUnixMs: 90,
+      sectionKey: "project:/pinned"
+    };
+    const ordinaryProject = {
+      id: "ordinary-project",
+      label: "Ordinary project",
+      path: "/ordinary",
+      pinnedAtUnixMs: 0,
+      sectionKey: "project:/ordinary"
+    };
+    const pinnedProjectSession = {
+      ...conversation("pinned-project-session"),
+      project: pinnedProject,
+      railSectionKey: pinnedProject.sectionKey
+    };
+
+    const groups = projectConversationRailSectionsByExactKey({
+      conversations: [pinnedProjectSession, pinnedSession],
+      labels: railLabels,
+      userProjects: [ordinaryProject, pinnedProject],
+      includeEmptySections: true
+    });
+
+    expect(groups.map((group) => group.id)).toEqual([
+      "pinned",
+      "project:/pinned",
+      "project:/ordinary",
+      "conversations"
+    ]);
+    expect(
+      groups.flatMap((group) => group.items.map((item) => item.id))
+    ).toEqual(["pinned-session", "pinned-project-session"]);
+  });
+
   it("uses only exact backend keys and keeps empty authoritative sections", () => {
     const projectSummary = {
       id: "workspace",
       label: "Workspace",
       path: "/workspace",
+      pinnedAtUnixMs: 0,
       sectionKey: "project:/workspace"
     };
     const exactProject = {
@@ -660,6 +749,7 @@ describe("projectConversationRailSectionsByExactKey", () => {
           id: "empty",
           label: "Empty",
           path: "/empty",
+          pinnedAtUnixMs: 0,
           sectionKey: "project:/empty",
           createdAtUnixMs: 1,
           updatedAtUnixMs: 1,
@@ -687,12 +777,14 @@ describe("projectConversationRailSectionsByExactKey", () => {
           id: "workspace",
           label: "Workspace",
           path: "/workspace",
+          pinnedAtUnixMs: 0,
           sectionKey: "project:/workspace"
         },
         {
           id: "empty",
           label: "Empty",
           path: "/empty",
+          pinnedAtUnixMs: 0,
           sectionKey: "project:/empty"
         }
       ],
@@ -708,6 +800,35 @@ describe("projectConversationRailSectionsByExactKey", () => {
 });
 
 describe("preserveConversationRailSectionTemplates", () => {
+  it("stable-partitions pinned projects before ordinary projects", () => {
+    const groups = preserveConversationRailSectionTemplates({
+      labels: railLabels,
+      sections: [],
+      userProjects: [
+        {
+          id: "ordinary",
+          label: "Ordinary",
+          path: "/ordinary",
+          pinnedAtUnixMs: 0,
+          sectionKey: "project:/ordinary"
+        },
+        {
+          id: "pinned",
+          label: "Pinned project",
+          path: "/pinned",
+          pinnedAtUnixMs: 10,
+          sectionKey: "project:/pinned"
+        }
+      ]
+    });
+
+    expect(groups.map((group) => group.id)).toEqual([
+      "project:/pinned",
+      "project:/ordinary",
+      "conversations"
+    ]);
+  });
+
   it("keeps project and conversations sections visible when membership is empty", () => {
     const groups = preserveConversationRailSectionTemplates({
       labels: railLabels,
@@ -717,6 +838,7 @@ describe("preserveConversationRailSectionTemplates", () => {
           id: "workspace",
           label: "Workspace",
           path: "/workspace",
+          pinnedAtUnixMs: 0,
           sectionKey: "project:/workspace",
           createdAtUnixMs: 1,
           updatedAtUnixMs: 1,
@@ -743,6 +865,7 @@ describe("preserveConversationRailSectionTemplates", () => {
           id: "workspace",
           label: "Workspace",
           path: "/workspace",
+          pinnedAtUnixMs: 0,
           sectionKey: "project:/workspace",
           createdAtUnixMs: 1,
           updatedAtUnixMs: 1,
@@ -752,6 +875,7 @@ describe("preserveConversationRailSectionTemplates", () => {
           id: "empty",
           label: "Empty",
           path: "/empty",
+          pinnedAtUnixMs: 0,
           sectionKey: "project:/empty",
           createdAtUnixMs: 1,
           updatedAtUnixMs: 1,
@@ -793,6 +917,7 @@ describe("preserveConversationRailSectionTemplates", () => {
             id: "removed",
             label: "Removed",
             path: "/removed",
+            pinnedAtUnixMs: 0,
             sectionKey: "project:/removed"
           },
           items: [
@@ -815,6 +940,7 @@ describe("preserveConversationRailSectionTemplates", () => {
           id: "workspace",
           label: "Workspace",
           path: "/workspace",
+          pinnedAtUnixMs: 0,
           sectionKey: "project:/workspace"
         }
       ]
@@ -837,6 +963,7 @@ describe("resolveConversationRailActiveConversation", () => {
         id: "workspace",
         label: "Workspace",
         path: "/workspace",
+        pinnedAtUnixMs: 0,
         sectionKey: "project:/workspace"
       }
     };

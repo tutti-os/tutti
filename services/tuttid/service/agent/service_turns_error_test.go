@@ -150,6 +150,7 @@ type failingTurnStore struct {
 	latestTurn                 agentactivitybiz.Turn
 	listInteractionsErr        error
 	session                    agentactivitybiz.Session
+	sessionMissing             bool
 	turn                       agentactivitybiz.Turn
 	latestListCalls            *int
 	activeListCalls            *int
@@ -217,6 +218,9 @@ func (s failingTurnStore) GetTurn(context.Context, string, string, string) (agen
 }
 
 func (s failingTurnStore) GetSession(context.Context, string, string) (agentactivitybiz.Session, bool, error) {
+	if s.sessionMissing {
+		return agentactivitybiz.Session{}, false, nil
+	}
 	return s.session, true, nil
 }
 

@@ -33,6 +33,7 @@ import type {
   DesktopHostOpenAgentWindowInput,
   DesktopHostWindowCloseRequestPayload,
   DesktopHostWindowCloseRequestResolutionPayload,
+  DesktopHostWindowLayoutPayload,
   DesktopHostWindowResizeContentWidthInput,
   DesktopHostWindowResizeContentWidthResult,
   DesktopRendererDiagnosticPayload,
@@ -123,6 +124,9 @@ export interface DesktopHostWindowApi {
   openAgentWindow(input: DesktopHostOpenAgentWindowInput): Promise<void>;
   onCloseRequest(
     listener: (payload: DesktopHostWindowCloseRequestPayload) => void
+  ): () => void;
+  onLayout(
+    listener: (payload: DesktopHostWindowLayoutPayload) => void
   ): () => void;
   onQuitShortcutToast(listener: () => void): () => void;
   resolveCloseRequest(

@@ -31,7 +31,7 @@ func (s *Service) goalControl(
 	objective string,
 	submissionMetadata map[string]any,
 ) (GoalControlSessionResult, error) {
-	result, err := s.applicationHost(serviceHostPreparation{service: s}).GoalControl(ctx, agenthost.GoalControlInput{
+	result, err := s.ApplicationHost().GoalControl(ctx, agenthost.GoalControlInput{
 		WorkspaceID: strings.TrimSpace(workspaceID), AgentSessionID: strings.TrimSpace(agentSessionID),
 		Action: strings.TrimSpace(action), Objective: strings.TrimSpace(objective),
 		SubmissionMetadata: clonePayload(submissionMetadata),

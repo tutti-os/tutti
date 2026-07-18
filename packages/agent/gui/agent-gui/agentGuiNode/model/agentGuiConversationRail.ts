@@ -68,6 +68,53 @@ export interface ConversationRailDisplayProjection {
   sections: ConversationSection[];
 }
 
+export function isConversationRailProjectPinned(
+  project: ConversationSection["project"]
+): boolean {
+  return (project?.pinnedAtUnixMs ?? 0) > 0;
+}
+
+export function conversationRailSectionHeaderVisibility(
+  sections: readonly ConversationSection[],
+  sectionIndex: number
+): { showPinnedHeader: boolean; showProjectsHeader: boolean } {
+  const section = sections[sectionIndex];
+  if (!section) {
+    return { showPinnedHeader: false, showProjectsHeader: false };
+  }
+  const sectionIsPinnedProject =
+    section.kind === "project" &&
+    isConversationRailProjectPinned(section.project);
+  const precedingSections = sections.slice(0, sectionIndex);
+  return {
+    showPinnedHeader:
+      sectionIsPinnedProject &&
+      !precedingSections.some(
+        (candidate) =>
+          candidate.kind === "pinned" ||
+          (candidate.kind === "project" &&
+            isConversationRailProjectPinned(candidate.project))
+      ),
+    showProjectsHeader:
+      section.kind !== "pinned" &&
+      !sectionIsPinnedProject &&
+      !precedingSections.some(
+        (candidate) =>
+          candidate.kind === "project" &&
+          !isConversationRailProjectPinned(candidate.project)
+      )
+  };
+}
+
+export function partitionConversationRailUserProjects<
+  T extends { pinnedAtUnixMs: number }
+>(projects: readonly T[]): T[] {
+  return [
+    ...projects.filter((project) => project.pinnedAtUnixMs > 0),
+    ...projects.filter((project) => project.pinnedAtUnixMs <= 0)
+  ];
+}
+
 export function canonicalConversationRailSummaries(
   conversations: AgentGUINodeViewModel["rail"]["conversations"]
 ): AgentGUINodeViewModel["rail"]["conversations"] {
@@ -385,22 +432,22 @@ export function projectConversationRailSectionsByExactKey(input: {
   includeEmptySections?: boolean;
 }): ConversationSection[] {
   const seen = new Set<string>();
-  const sections: ConversationSection[] = input.userProjects.flatMap(
-    (project) => {
-      const sectionKey = project.sectionKey?.trim() ?? "";
-      if (!sectionKey || seen.has(sectionKey)) return [];
-      seen.add(sectionKey);
-      return [
-        {
-          id: sectionKey,
-          kind: "project" as const,
-          label: project.label,
-          project,
-          items: []
-        }
-      ];
-    }
-  );
+  const sections: ConversationSection[] = partitionConversationRailUserProjects(
+    input.userProjects
+  ).flatMap((project) => {
+    const sectionKey = project.sectionKey?.trim() ?? "";
+    if (!sectionKey || seen.has(sectionKey)) return [];
+    seen.add(sectionKey);
+    return [
+      {
+        id: sectionKey,
+        kind: "project" as const,
+        label: project.label,
+        project,
+        items: []
+      }
+    ];
+  });
   sections.push({
     id: "conversations",
     kind: "conversations",
@@ -452,6 +499,7 @@ export function projectRuntimeSectionsToConversationRailMemberships(input: {
           label: section.userProject.label,
           lastUsedAtUnixMs: section.userProject.lastUsedAtUnixMs,
           path: section.userProject.path,
+          pinnedAtUnixMs: section.userProject.pinnedAtUnixMs,
           sectionKey: section.userProject.sectionKey,
           updatedAtUnixMs: section.userProject.updatedAtUnixMs
         }
@@ -685,6 +733,7 @@ export function conversationProjectsRenderEqual(
         left.createdAtUnixMs === right.createdAtUnixMs &&
         left.updatedAtUnixMs === right.updatedAtUnixMs &&
         left.lastUsedAtUnixMs === right.lastUsedAtUnixMs &&
+        left.pinnedAtUnixMs === right.pinnedAtUnixMs &&
         left.sectionKey === right.sectionKey)
   );
 }

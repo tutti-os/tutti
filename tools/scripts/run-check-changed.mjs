@@ -162,6 +162,14 @@ function buildChangedLanes() {
     });
   }
 
+  if (changedFiles.some(isAgentHostBoundaryRelevant)) {
+    addLane({
+      key: "boundary:agent-host",
+      label: "boundary:agent-host",
+      command: [...pnpmCommand, "run", "check:agent-host-boundary"]
+    });
+  }
+
   if (
     changedFiles.some(
       (file) =>
@@ -574,6 +582,14 @@ export function isAgentActivityRuntimeBoundaryRelevant(file) {
     file === "tools/scripts/check-agent-activity-runtime-boundaries.mjs" ||
     file === "tools/scripts/check-agent-activity-runtime-boundaries.test.mjs" ||
     file.startsWith("tools/fixtures/agent-activity-runtime-boundaries/")
+  );
+}
+
+export function isAgentHostBoundaryRelevant(file) {
+  return (
+    file.startsWith("services/tuttid/service/agent/") ||
+    file === "tools/scripts/check-agent-host-boundary.mjs" ||
+    file === "tools/scripts/check-agent-host-boundary.test.mjs"
   );
 }
 

@@ -2,6 +2,7 @@ package workspace
 
 import (
 	"context"
+	"sync"
 	"testing"
 
 	preferencesbiz "github.com/tutti-os/tutti/services/tuttid/biz/preferences"
@@ -317,12 +318,12 @@ DELETE FROM tuttid_schema_migrations WHERE id = ?
 	}
 
 	// Re-running the backfill must not clobber newer agent-target data.
-	updated := preferences
-	updated.AgentComposerDefaultsByAgentTarget = map[string]preferencesbiz.AgentComposerDefaults{
-		"local:codex": {Model: "gpt-5-codex"},
-	}
-	if _, err := store.PutDesktopPreferences(context.Background(), updated); err != nil {
-		t.Fatalf("PutDesktopPreferences() error = %v", err)
+	model := "gpt-5-codex"
+	if _, err := store.PatchAgentComposerDefaultsForTarget(context.Background(), "local:codex", preferencesbiz.AgentComposerDefaultsPatch{
+		preferencesbiz.AgentComposerDefaultsFieldModel:            &model,
+		preferencesbiz.AgentComposerDefaultsFieldPermissionModeID: nil,
+	}); err != nil {
+		t.Fatalf("PatchAgentComposerDefaultsForTarget() error = %v", err)
 	}
 	if err := store.backfillAgentComposerDefaultsByAgentTarget(context.Background()); err != nil {
 		t.Fatalf("backfillAgentComposerDefaultsByAgentTarget() error = %v", err)
@@ -333,6 +334,124 @@ DELETE FROM tuttid_schema_migrations WHERE id = ?
 	}
 	if preferences.AgentComposerDefaultsByAgentTarget["local:codex"].Model != "gpt-5-codex" {
 		t.Fatalf("agent target defaults = %#v, want newer data preserved", preferences.AgentComposerDefaultsByAgentTarget)
+	}
+}
+
+func TestSQLiteStorePatchAgentComposerDefaultsForTargetMergesLatestFieldsAndPreservesPreferences(t *testing.T) {
+	t.Parallel()
+
+	store := openTestSQLiteStore(t)
+	ctx := context.Background()
+	stale := preferencesbiz.DefaultDesktopPreferences()
+	stale.Locale = "zh-CN"
+	stale.ThemeSource = "light"
+	if _, err := store.PutDesktopPreferences(ctx, stale); err != nil {
+		t.Fatalf("PutDesktopPreferences() error = %v", err)
+	}
+
+	permission := "full-access"
+	if _, err := store.PatchAgentComposerDefaultsForTarget(ctx, "local:opencode", preferencesbiz.AgentComposerDefaultsPatch{
+		preferencesbiz.AgentComposerDefaultsFieldPermissionModeID: &permission,
+	}); err != nil {
+		t.Fatalf("patch permission: %v", err)
+	}
+	model := "openai/gpt-5"
+	reasoning := "high"
+	speed := "fast"
+	if _, err := store.PatchAgentComposerDefaultsForTarget(ctx, "local:opencode", preferencesbiz.AgentComposerDefaultsPatch{
+		preferencesbiz.AgentComposerDefaultsFieldModel:           &model,
+		preferencesbiz.AgentComposerDefaultsFieldReasoningEffort: &reasoning,
+		preferencesbiz.AgentComposerDefaultsFieldSpeed:           &speed,
+	}); err != nil {
+		t.Fatalf("patch remaining fields: %v", err)
+	}
+	otherModel := "claude-sonnet-4"
+	if _, err := store.PatchAgentComposerDefaultsForTarget(ctx, "local:claude-code", preferencesbiz.AgentComposerDefaultsPatch{
+		preferencesbiz.AgentComposerDefaultsFieldModel: &otherModel,
+	}); err != nil {
+		t.Fatalf("patch other target: %v", err)
+	}
+
+	// A full preference update based on an older snapshot must not overwrite
+	// any target defaults committed after that snapshot was read.
+	stale.Locale = "en"
+	if _, err := store.PutDesktopPreferences(ctx, stale); err != nil {
+		t.Fatalf("put stale full preferences: %v", err)
+	}
+	got, err := store.GetDesktopPreferences(ctx)
+	if err != nil {
+		t.Fatalf("GetDesktopPreferences() error = %v", err)
+	}
+	opencode := got.AgentComposerDefaultsByAgentTarget["local:opencode"]
+	if opencode.Model != model || opencode.PermissionModeID != permission || opencode.ReasoningEffort != reasoning || opencode.Speed != speed {
+		t.Fatalf("opencode defaults = %#v", opencode)
+	}
+	if got.AgentComposerDefaultsByAgentTarget["local:claude-code"].Model != otherModel {
+		t.Fatalf("target defaults = %#v", got.AgentComposerDefaultsByAgentTarget)
+	}
+	if got.Locale != "en" || got.ThemeSource != "light" {
+		t.Fatalf("unrelated preferences locale=%q theme=%q", got.Locale, got.ThemeSource)
+	}
+
+	// Repeating a SET is naturally idempotent.
+	if _, err := store.PatchAgentComposerDefaultsForTarget(ctx, "local:opencode", preferencesbiz.AgentComposerDefaultsPatch{
+		preferencesbiz.AgentComposerDefaultsFieldPermissionModeID: &permission,
+	}); err != nil {
+		t.Fatalf("repeat permission patch: %v", err)
+	}
+}
+
+func TestSQLiteStorePatchAgentComposerDefaultsForTargetInitializesMissingPreferencesRow(t *testing.T) {
+	t.Parallel()
+
+	store := openTestSQLiteStore(t)
+	model := "gpt-5"
+	if _, err := store.PatchAgentComposerDefaultsForTarget(context.Background(), "local:codex", preferencesbiz.AgentComposerDefaultsPatch{
+		preferencesbiz.AgentComposerDefaultsFieldModel: &model,
+	}); err != nil {
+		t.Fatalf("PatchAgentComposerDefaultsForTarget() error = %v", err)
+	}
+	got, err := store.GetDesktopPreferences(context.Background())
+	if err != nil {
+		t.Fatalf("GetDesktopPreferences() error = %v", err)
+	}
+	if !got.Initialized || got.AgentComposerDefaultsByAgentTarget["local:codex"].Model != model {
+		t.Fatalf("preferences = %#v", got)
+	}
+}
+
+func TestSQLiteStorePatchAgentComposerDefaultsForTargetSerializesConcurrentFields(t *testing.T) {
+	t.Parallel()
+
+	store := openTestSQLiteStore(t)
+	permission := "full-access"
+	model := "gpt-5"
+	patches := []preferencesbiz.AgentComposerDefaultsPatch{
+		{preferencesbiz.AgentComposerDefaultsFieldPermissionModeID: &permission},
+		{preferencesbiz.AgentComposerDefaultsFieldModel: &model},
+	}
+	var wait sync.WaitGroup
+	errorsByPatch := make([]error, len(patches))
+	for index, patch := range patches {
+		wait.Add(1)
+		go func() {
+			defer wait.Done()
+			_, errorsByPatch[index] = store.PatchAgentComposerDefaultsForTarget(context.Background(), "local:codex", patch)
+		}()
+	}
+	wait.Wait()
+	for _, err := range errorsByPatch {
+		if err != nil {
+			t.Fatalf("concurrent patch error = %v", err)
+		}
+	}
+	got, err := store.GetDesktopPreferences(context.Background())
+	if err != nil {
+		t.Fatalf("GetDesktopPreferences() error = %v", err)
+	}
+	defaults := got.AgentComposerDefaultsByAgentTarget["local:codex"]
+	if defaults.Model != model || defaults.PermissionModeID != permission {
+		t.Fatalf("defaults = %#v", defaults)
 	}
 }
 

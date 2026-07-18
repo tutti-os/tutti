@@ -7,18 +7,22 @@ import { useAgentGUIProviderHome } from "./useAgentGUIProviderHome";
 
 describe("useAgentGUIProviderHome", () => {
   it("restores the selected target's last session in the current node", () => {
-    const codexTarget = target("codex", "local:codex");
-    const claudeTarget = target("claude-code", "local:claude-code");
+    const codexTarget = target("codex", "agent:codex", "provider-target:codex");
+    const claudeTarget = target(
+      "claude-code",
+      "agent:claude-code",
+      "provider-target:claude-code"
+    );
     const conversations = [
-      conversation("codex-session", "codex", "local:codex"),
-      conversation("claude-session", "claude-code", "local:claude-code")
+      conversation("codex-session", "codex", "agent:codex"),
+      conversation("claude-session", "claude-code", "agent:claude-code")
     ];
     let data: AgentGUINodeData = {
-      agentTargetId: "local:codex",
+      agentTargetId: "agent:codex",
       lastActiveAgentSessionId: "codex-session",
       lastActiveAgentSessionIdByAgentTargetId: {
-        "local:claude-code": "claude-session",
-        "local:codex": "codex-session"
+        "agent:claude-code": "claude-session",
+        "agent:codex": "codex-session"
       },
       provider: "codex"
     };
@@ -39,12 +43,12 @@ describe("useAgentGUIProviderHome", () => {
         clearRailRevealRequest: vi.fn(),
         conversationFilter: {
           kind: "agentTarget",
-          agentTargetId: "local:codex"
+          agentTargetId: "agent:codex"
         },
         conversationFilterRef: {
           current: {
             kind: "agentTarget",
-            agentTargetId: "local:codex"
+            agentTargetId: "agent:codex"
           }
         },
         conversationListInitialized: true,
@@ -52,7 +56,7 @@ describe("useAgentGUIProviderHome", () => {
         conversationsRef: { current: conversations },
         data,
         dataRef,
-        defaultAgentTargetId: "local:codex",
+        defaultAgentTargetId: "agent:codex",
         effectiveSelectedProviderTarget: codexTarget,
         firstReadyHomeComposerProviderTarget: codexTarget,
         homeComposerTargetOverride: null,
@@ -71,10 +75,10 @@ describe("useAgentGUIProviderHome", () => {
         providerReadinessGates: null,
         selectedComposerTargetDataRef: {
           current: {
-            agentTargetId: "local:codex",
+            agentTargetId: "agent:codex",
             data,
             provider: "codex",
-            targetId: "local:codex"
+            targetId: "provider-target:codex"
           }
         },
         selectConversation,
@@ -95,7 +99,7 @@ describe("useAgentGUIProviderHome", () => {
 
     act(() =>
       result.current.selectConversationFilterTarget({
-        agentTargetId: "local:claude-code",
+        agentTargetId: "  agent:claude-code  ",
         provider: "claude-code"
       })
     );
@@ -103,25 +107,43 @@ describe("useAgentGUIProviderHome", () => {
     expect(unactivate).toHaveBeenCalledWith("codex-session");
     expect(setConversationFilter).toHaveBeenCalledWith({
       kind: "agentTarget",
-      agentTargetId: "local:claude-code"
+      agentTargetId: "agent:claude-code"
     });
     expect(selectConversation).toHaveBeenCalledWith("claude-session", {
       reloadConversations: false
     });
     expect(data.lastActiveAgentSessionIdByAgentTargetId).toEqual({
-      "local:claude-code": "claude-session",
-      "local:codex": "codex-session"
+      "agent:claude-code": "claude-session",
+      "agent:codex": "codex-session"
     });
+    const filterCallCount = setConversationFilter.mock.calls.length;
+    const selectionCallCount = selectConversation.mock.calls.length;
+    const unactivateCallCount = unactivate.mock.calls.length;
+
+    act(() =>
+      result.current.selectConversationFilterTarget({
+        agentTargetId: "   ",
+        provider: "claude-code"
+      })
+    );
+
+    expect(setConversationFilter).toHaveBeenCalledTimes(filterCallCount);
+    expect(selectConversation).toHaveBeenCalledTimes(selectionCallCount);
+    expect(unactivate).toHaveBeenCalledTimes(unactivateCallCount);
   });
 });
 
-function target(provider: string, agentTargetId: string): AgentGUIAgentTarget {
+function target(
+  provider: string,
+  agentTargetId: string,
+  targetId: string
+): AgentGUIAgentTarget {
   return {
     agentTargetId,
     label: agentTargetId,
     provider,
     ref: { kind: "local", provider },
-    targetId: agentTargetId
+    targetId
   };
 }
 

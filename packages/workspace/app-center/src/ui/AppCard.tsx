@@ -37,6 +37,10 @@ import type {
   WorkspaceAppLocalRepairRequest
 } from "../contracts/host.ts";
 import { isCommunityRecommendedApp } from "../core/appCenterAppOrdering.ts";
+import {
+  resolveFactoryPublishActionKey,
+  type AppCenterFactoryPresentationMode
+} from "../core/appCenterFactoryPresentation.ts";
 import type { AppCenterI18nRuntime } from "../i18n/appCenterI18n.ts";
 import { isTextOverflowing } from "./appCardTextOverflow.ts";
 import { getAppInstallProgressRingPresentation } from "./appInstallProgressRing.ts";
@@ -75,7 +79,14 @@ export interface AppCenterFactoryProviderConfiguration {
   readonly reasoningEffortOptions: readonly AppCenterFactoryReasoningOption[];
 }
 
+export interface AppCenterAuthoringCapabilities {
+  readonly createApp?: boolean;
+  readonly importArchive?: boolean;
+  readonly loadUnpacked?: boolean;
+}
+
 export interface AppCenterHostActions {
+  readonly authoringCapabilities?: AppCenterAuthoringCapabilities;
   readonly cancelFactoryJob?: (jobId: string) => Promise<void> | void;
   readonly createFactoryJob?: (input: {
     agentTargetId: string;
@@ -140,6 +151,7 @@ export interface AppCardProps {
   readonly app: WorkspaceAppCardViewModel;
   readonly className?: string;
   readonly copy: AppCenterI18nRuntime;
+  readonly factoryPresentationMode?: AppCenterFactoryPresentationMode;
   readonly officialDeveloperIconUrl?: string | null;
   readonly showDeveloperSources?: boolean;
 }
@@ -149,6 +161,7 @@ export const AppCard = memo(function AppCard({
   app,
   className,
   copy,
+  factoryPresentationMode = "default",
   officialDeveloperIconUrl = null,
   showDeveloperSources = false
 }: AppCardProps): ReactElement {
@@ -273,6 +286,7 @@ export const AppCard = memo(function AppCard({
                 canPublishFactoryUpdate={canPublishFactoryUpdate}
                 communityDeveloper={communityDeveloper}
                 copy={copy}
+                factoryPresentationMode={factoryPresentationMode}
               />
             ) : null}
           </div>
@@ -705,7 +719,8 @@ function AppCardMoreActions({
   canOpenFactorySession,
   canPublishFactoryUpdate,
   communityDeveloper,
-  copy
+  copy,
+  factoryPresentationMode
 }: {
   readonly actions: AppCenterHostActions;
   readonly app: WorkspaceAppCardViewModel;
@@ -713,6 +728,7 @@ function AppCardMoreActions({
   readonly canPublishFactoryUpdate: boolean;
   readonly communityDeveloper: WorkspaceAppAuthorViewModel | null;
   readonly copy: AppCenterI18nRuntime;
+  readonly factoryPresentationMode: AppCenterFactoryPresentationMode;
 }): ReactElement {
   const menuItems: AppCenterActionMenuItem[] = [];
 
@@ -742,7 +758,9 @@ function AppCardMoreActions({
       attention: true,
       icon: <UploadIcon />,
       key: "publish",
-      label: copy.t("actions.publishAppUpdate"),
+      label: copy.t(
+        resolveFactoryPublishActionKey(factoryPresentationMode, true)
+      ),
       onSelect: () => {
         void actions.publishFactoryJob?.(app.factoryJobId ?? "");
       }

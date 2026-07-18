@@ -43,8 +43,8 @@ func TestCancelOutboxProjectsEveryRootAndChildTurn(t *testing.T) {
 	if turnError := rootTurnPayload["error"]; turnError != nil {
 		t.Fatalf("canceled root payload = %#v, want nil error", rootTurnPayload)
 	}
-	if len(observer.turns) != 1 || observer.turns[0].AgentSessionID != "root" || observer.turns[0].Outcome != agentactivitybiz.TurnOutcomeCanceled {
-		t.Fatalf("observed turns=%#v", observer.turns)
+	if len(observer.turns) != 0 {
+		t.Fatalf("outbox replay re-observed committed root turns=%#v", observer.turns)
 	}
 }
 
@@ -82,8 +82,8 @@ func TestCancelOutboxProjectsRootReconciledAfterChildCancel(t *testing.T) {
 	if len(publisher.events) != 2 || publisher.events[0].agentSessionID != "child" || publisher.events[1].agentSessionID != "root" {
 		t.Fatalf("events=%#v", publisher.events)
 	}
-	if len(observer.turns) != 1 || observer.turns[0].AgentSessionID != "root" || observer.turns[0].Outcome != agentactivitybiz.TurnOutcomeCompleted {
-		t.Fatalf("observed turns=%#v", observer.turns)
+	if len(observer.turns) != 0 {
+		t.Fatalf("outbox replay re-observed committed root turns=%#v", observer.turns)
 	}
 }
 

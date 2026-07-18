@@ -42,6 +42,7 @@ interface AgentGUIConversationRailSectionProps {
   isConversationSearchActive: boolean;
   isLoadingMoreConversations: boolean;
   isRailInteractionLocked: () => boolean;
+  isProjectActionLocked: () => boolean;
   projectDragDisabled: boolean;
   projectDragging: boolean;
   projectDropIndicator: "before" | "after" | null;
@@ -65,6 +66,7 @@ interface AgentGUIConversationRailSectionProps {
   onSelectConversation: (agentSessionId: string) => void;
   onLoadMoreConversations: (section: ConversationSection) => void;
   onToggleConversationPinned: (agentSessionId: string, pinned: boolean) => void;
+  onToggleProjectPinned: (projectId: string, pinned: boolean) => Promise<void>;
   onMarkConversationUnread: (agentSessionId: string) => void;
   onOpenProjectFiles?: ((action: WorkspaceLinkAction) => void) | null;
   onOpenConversationWindow?: (agentSessionId: string) => void;
@@ -105,6 +107,7 @@ export const AgentGUIConversationRailSection = memo(
     isConversationSearchActive,
     isLoadingMoreConversations,
     isRailInteractionLocked,
+    isProjectActionLocked,
     projectDragDisabled,
     projectDragging,
     projectDropIndicator,
@@ -125,6 +128,7 @@ export const AgentGUIConversationRailSection = memo(
     onRequestSectionBatchDeletion,
     setPendingProjectAction,
     onToggleConversationPinned,
+    onToggleProjectPinned,
     onMarkConversationUnread,
     onOpenProjectFiles,
     onOpenConversationWindow,
@@ -140,6 +144,8 @@ export const AgentGUIConversationRailSection = memo(
   }: AgentGUIConversationRailSectionProps): React.JSX.Element {
     "use memo";
     const isProjectSection = section.kind === "project";
+    const projectPinned = (section.project?.pinnedAtUnixMs ?? 0) > 0;
+    const projectId = section.project?.id?.trim() ?? "";
     const pageableItems = section.items.filter(
       (item) => item.projectionSource !== "pending_activation"
     );
@@ -271,6 +277,11 @@ export const AgentGUIConversationRailSection = memo(
               type="button"
               className={styles.conversationSectionToggle}
               aria-expanded={!isSectionCollapsed}
+              aria-label={
+                projectPinned
+                  ? labels.pinnedProjectAccessibleName(section.label)
+                  : section.label
+              }
               onClick={() => {
                 if (!isRailInteractionLocked()) {
                   onToggleProjectSectionCollapsed(section.id);
@@ -359,6 +370,7 @@ export const AgentGUIConversationRailSection = memo(
                           className={styles.conversationSectionMoreButton}
                           aria-label={labels.projectSectionMoreActions}
                           size="sm"
+                          disabled={isProjectActionLocked()}
                         >
                           <MoreHorizontalIcon aria-hidden="true" />
                         </BareIconButton>
@@ -377,6 +389,7 @@ export const AgentGUIConversationRailSection = memo(
                               className={styles.conversationSectionMoreButton}
                               aria-label={labels.projectSectionMoreActions}
                               size="sm"
+                              disabled={isProjectActionLocked()}
                             >
                               <MoreHorizontalIcon aria-hidden="true" />
                             </BareIconButton>
@@ -416,6 +429,20 @@ export const AgentGUIConversationRailSection = memo(
                     </DropdownMenuItem>
                     <DropdownMenuItem
                       className={`${styles.composerMenuItem} nodrag [-webkit-app-region:no-drag]`}
+                      disabled={!projectId || isProjectActionLocked()}
+                      onSelect={() => {
+                        if (!projectId || isProjectActionLocked()) return;
+                        void onToggleProjectPinned(projectId, !projectPinned);
+                      }}
+                    >
+                      <span>
+                        {projectPinned
+                          ? labels.unpinProject
+                          : labels.pinProject}
+                      </span>
+                    </DropdownMenuItem>
+                    <DropdownMenuItem
+                      className={`${styles.composerMenuItem} nodrag [-webkit-app-region:no-drag]`}
                       disabled={
                         isConversationSearchActive ||
                         (section.items.length === 0 && !sectionHasMore) ||
@@ -432,8 +459,9 @@ export const AgentGUIConversationRailSection = memo(
                     </DropdownMenuItem>
                     <DropdownMenuItem
                       className={`${styles.composerMenuItem} nodrag [-webkit-app-region:no-drag]`}
+                      disabled={isProjectActionLocked()}
                       onSelect={() => {
-                        if (isRailInteractionLocked()) return;
+                        if (isProjectActionLocked()) return;
                         const label = projectLabel || projectPath;
                         setPendingProjectAction({
                           kind: "remove",

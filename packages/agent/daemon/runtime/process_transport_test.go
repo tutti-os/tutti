@@ -82,6 +82,42 @@ func TestLocalProcessTransportFindsKnownNodeGlobalBin(t *testing.T) {
 	}
 }
 
+func TestLocalProcessTransportDeliversFinalStdoutBeforeExit(t *testing.T) {
+	shPath, err := exec.LookPath("sh")
+	if err != nil {
+		t.Skip("sh is unavailable")
+	}
+
+	conn, err := NewLocalProcessTransport().Start(context.Background(), ProcessSpec{
+		Command: []string{shPath, "-c", "printf 'final-output'"},
+	})
+	if err != nil {
+		t.Fatalf("start transport: %v", err)
+	}
+	defer func() {
+		_ = conn.Close()
+	}()
+
+	var stdout string
+	for {
+		frame, err := conn.Recv()
+		if err != nil {
+			t.Fatalf("recv frame: %v", err)
+		}
+		stdout += string(frame.Stdout)
+		if frame.ExitCode == nil {
+			continue
+		}
+		if *frame.ExitCode != 0 {
+			t.Fatalf("exit code = %d, want 0", *frame.ExitCode)
+		}
+		break
+	}
+	if stdout != "final-output" {
+		t.Fatalf("stdout before exit = %q, want final-output", stdout)
+	}
+}
+
 func TestLocalProcessTransportCloseKillsProcessAfterGracefulShutdownFails(t *testing.T) {
 	shPath, err := exec.LookPath("sh")
 	if err != nil {

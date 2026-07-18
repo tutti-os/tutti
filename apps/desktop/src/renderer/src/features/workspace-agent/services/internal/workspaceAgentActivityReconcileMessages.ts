@@ -14,6 +14,47 @@ interface ReconcileAgentSessionMessagePagesInput {
   workspaceId: string;
 }
 
+export interface InlineMessageVersionContinuity {
+  cachedVersion: number;
+  continuous: boolean;
+  firstUnseenVersion: number | null;
+  latestIncomingVersion: number;
+}
+
+/**
+ * Realtime messages may be folded directly only when they extend the cached
+ * per-session change cursor without a hole. Advancing the cache past a missed
+ * mutable snapshot would make every later `afterVersion` pull skip that
+ * snapshot forever, because message rows retain only their latest version.
+ */
+export function analyzeInlineMessageVersionContinuity(
+  cached: readonly AgentActivityMessage[],
+  incoming: readonly AgentActivityMessage[]
+): InlineMessageVersionContinuity {
+  const cachedVersion = latestMessageVersion(cached);
+  const incomingVersions = [
+    ...new Set(incoming.map((message) => message.version))
+  ].sort((left, right) => left - right);
+  const latestIncomingVersion = incomingVersions.at(-1) ?? 0;
+  const unseenVersions = incomingVersions.filter(
+    (version) => version > cachedVersion
+  );
+  const versionsAreValid = incomingVersions.every(
+    (version) => Number.isSafeInteger(version) && version > 0
+  );
+  const continuous =
+    versionsAreValid &&
+    unseenVersions.every(
+      (version, index) => version === cachedVersion + index + 1
+    );
+  return {
+    cachedVersion,
+    continuous,
+    firstUnseenVersion: unseenVersions[0] ?? null,
+    latestIncomingVersion
+  };
+}
+
 export async function reconcileAgentSessionMessagePages(
   input: ReconcileAgentSessionMessagePagesInput
 ): Promise<AgentActivityMessagePage> {
@@ -46,4 +87,13 @@ export async function reconcileAgentSessionMessagePages(
     ),
     messages: result.messages
   };
+}
+
+function latestMessageVersion(
+  messages: readonly AgentActivityMessage[]
+): number {
+  return messages.reduce(
+    (latest, message) => Math.max(latest, message.version),
+    0
+  );
 }

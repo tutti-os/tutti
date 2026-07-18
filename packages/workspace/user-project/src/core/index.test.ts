@@ -3,6 +3,7 @@ import test from "node:test";
 import {
   basenameWorkspaceUserProjectPath,
   getWorkspaceUserProjectErrorCode,
+  pinWorkspaceUserProjectOptimistically,
   prepareWorkspaceUserProjectSelection,
   resolveWorkspaceUserProjectDisplayLabel,
   stripAbsolutePathFromWorkspaceUserProjectLabel,
@@ -69,12 +70,14 @@ test("workspace user project upsert replaces by id or path", () => {
   const first = {
     id: "project-1",
     label: "tutti",
-    path: "/workspace/tutti"
+    path: "/workspace/tutti",
+    pinnedAtUnixMs: 10
   };
   const second = {
     id: "project-2",
     label: "automation",
-    path: "/workspace/automation"
+    path: "/workspace/automation",
+    pinnedAtUnixMs: 0
   };
 
   assert.deepEqual(upsertWorkspaceUserProject([], first), [first]);
@@ -101,6 +104,86 @@ test("workspace user project upsert replaces by id or path", () => {
         path: first.path
       }
     ]
+  );
+
+  assert.deepEqual(upsertWorkspaceUserProject([first], second), [
+    first,
+    second
+  ]);
+  const third = {
+    id: "project-3",
+    label: "third",
+    path: "/workspace/third",
+    pinnedAtUnixMs: 0
+  };
+  assert.deepEqual(upsertWorkspaceUserProject([first, second], third), [
+    first,
+    third,
+    second
+  ]);
+});
+
+test("workspace user project optimistic pinning moves within project partitions", () => {
+  const pinned = {
+    id: "pinned",
+    label: "Pinned",
+    path: "/workspace/pinned",
+    pinnedAtUnixMs: 5,
+    updatedAtUnixMs: 5
+  };
+  const alpha = {
+    id: "alpha",
+    label: "Alpha",
+    path: "/workspace/alpha",
+    pinnedAtUnixMs: 0,
+    updatedAtUnixMs: 1
+  };
+  const beta = {
+    id: "beta",
+    label: "Beta",
+    path: "/workspace/beta",
+    pinnedAtUnixMs: 0,
+    updatedAtUnixMs: 2
+  };
+
+  const afterPin = pinWorkspaceUserProjectOptimistically(
+    [pinned, alpha, beta],
+    {
+      pinned: true,
+      pinnedAtUnixMs: 20,
+      projectId: "beta",
+      updatedAtUnixMs: 20
+    }
+  );
+  assert.deepEqual(
+    afterPin.map((project) => project.id),
+    ["beta", "pinned", "alpha"]
+  );
+  assert.equal(afterPin[0]?.pinnedAtUnixMs, 20);
+  assert.equal(afterPin[0]?.updatedAtUnixMs, 20);
+
+  const afterUnpin = pinWorkspaceUserProjectOptimistically(afterPin, {
+    pinned: false,
+    pinnedAtUnixMs: 30,
+    projectId: "beta",
+    updatedAtUnixMs: 30
+  });
+  assert.deepEqual(
+    afterUnpin.map((project) => project.id),
+    ["pinned", "beta", "alpha"]
+  );
+  assert.equal(afterUnpin[1]?.pinnedAtUnixMs, 0);
+  assert.equal(afterUnpin[1]?.updatedAtUnixMs, 30);
+  assert.equal(afterUnpin[1]?.lastUsedAtUnixMs, undefined);
+
+  assert.deepEqual(
+    pinWorkspaceUserProjectOptimistically(afterUnpin, {
+      pinned: false,
+      pinnedAtUnixMs: 40,
+      projectId: "beta",
+      updatedAtUnixMs: 40
+    }),
+    afterUnpin
   );
 });
 
@@ -151,12 +234,14 @@ test("prepareWorkspaceUserProjectSelection resolves fallback decisions", async (
     {
       id: "project-alpha",
       label: "Alpha",
-      path: "/workspace/alpha"
+      path: "/workspace/alpha",
+      pinnedAtUnixMs: 0
     },
     {
       id: "project-beta",
       label: "Beta",
-      path: "/workspace/beta"
+      path: "/workspace/beta",
+      pinnedAtUnixMs: 0
     }
   ];
   const rememberedSelections: Array<{ path: string | null }> = [];
@@ -246,7 +331,8 @@ test("prepareWorkspaceUserProjectSelection preserves explicit no-project default
     {
       id: "project-alpha",
       label: "Alpha",
-      path: "/workspace/alpha"
+      path: "/workspace/alpha",
+      pinnedAtUnixMs: 0
     }
   ];
 
@@ -278,7 +364,8 @@ test("prepareWorkspaceUserProjectSelection treats no-project paths as present ro
     {
       id: "project-alpha",
       label: "Alpha",
-      path: "/workspace/alpha"
+      path: "/workspace/alpha",
+      pinnedAtUnixMs: 0
     }
   ];
   let checkPathCalls = 0;

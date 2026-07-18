@@ -323,6 +323,9 @@ function createWebHostApi(): DesktopHostApi {
       onCloseRequest() {
         return () => {};
       },
+      onLayout() {
+        return () => {};
+      },
       onQuitShortcutToast() {
         return () => {};
       },

@@ -135,7 +135,8 @@ export class SessionRuntime {
     this.activities = new ToolActivityProjector(
       () => this.turns.activeId,
       emit,
-      () => this.turns.expectSyntheticContinuation()
+      () => this.turns.expectSyntheticContinuation(),
+      () => this.turns.lastTurnId
     );
     this.compaction = new CompactionTracker({
       activeTurnId: () => this.turns.activeId,
@@ -422,6 +423,24 @@ export class SessionRuntime {
       this.turns.clearCancelled();
     }
     return hasActiveTurn;
+  }
+
+  async stopTask(taskId: string, parentToolUseId = ""): Promise<boolean> {
+    if (this.sessionClosed) {
+      return false;
+    }
+    const resolvedTaskId = this.activities.resolveDelegatedTaskIdForStop(
+      taskId,
+      parentToolUseId
+    );
+    const stopTask = this.query?.stopTask;
+    if (!resolvedTaskId || !stopTask) {
+      return false;
+    }
+    // The stopped task_notification that follows settles the task's activity
+    // state; no local bookkeeping happens here so a failed stop stays running.
+    await stopTask.call(this.query, resolvedTaskId);
+    return true;
   }
 
   async close(): Promise<void> {

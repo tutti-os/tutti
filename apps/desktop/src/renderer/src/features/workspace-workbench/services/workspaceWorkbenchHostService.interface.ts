@@ -40,7 +40,9 @@ import type {
 } from "@shared/contracts/ipc";
 import type {
   TuttiExternalAtQueryInput,
-  TuttiExternalAtQueryResult
+  TuttiExternalAtQueryResult,
+  TuttiExternalAtResolveInput,
+  TuttiExternalAtResolveResult
 } from "@tutti-os/workspace-external-core/contracts";
 import type { WorkspaceFileReferenceAdapter } from "@tutti-os/workspace-file-reference/contracts";
 import type { WorkspaceUserProjectApi } from "@tutti-os/workspace-user-project/contracts";
@@ -157,6 +159,10 @@ export interface IWorkspaceWorkbenchHostService {
     query: TuttiExternalAtQueryInput;
     workspaceId: string;
   }): Promise<TuttiExternalAtQueryResult[]>;
+  resolveWorkspaceAppExternalAt(input: {
+    mention: TuttiExternalAtResolveInput;
+    workspaceId: string;
+  }): Promise<TuttiExternalAtResolveResult | null>;
   onWindowCloseRequest(
     listener: (payload: DesktopHostWindowCloseRequestPayload) => void
   ): () => void;

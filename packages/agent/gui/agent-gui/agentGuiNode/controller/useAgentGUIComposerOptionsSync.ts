@@ -5,7 +5,7 @@ import {
 import type { RefObject } from "react";
 import { useCallback, useEffect, useRef } from "react";
 import type { AgentActivityRuntime } from "../../../agentActivityRuntime";
-import { subscribeCoalesced } from "../../../host/agentHostEventBus";
+import { subscribe, subscribeCoalesced } from "../../../host/agentHostEventBus";
 import type {
   AgentSessionComposerSettings,
   AgentSessionReasoningEffort
@@ -16,7 +16,12 @@ import {
   composerTargetDataForConversation,
   type AgentGUIComposerTargetData
 } from "./agentGuiController.composerPresentation";
-import { mergeAgentModelCatalogInvalidationEvents } from "./agentGuiController.providerHelpers";
+import {
+  composerDefaultsPatchFromSettings,
+  mergeAgentModelCatalogInvalidationEvents,
+  withoutAcknowledgedComposerDefaults
+} from "./agentGuiController.providerHelpers";
+import type { AgentGUIComposerDefaultsAuthorityReconciler } from "./agentGuiComposerDefaultsReconciliation";
 
 export function useAgentGUIComposerOptionsSync(input: {
   activeConversationId: string | null;
@@ -36,6 +41,7 @@ export function useAgentGUIComposerOptionsSync(input: {
   isCreatingConversation: boolean;
   loadDraftComposerOptionsRef: RefObject<() => void>;
   loadSessionState(agentSessionId: string, cause?: unknown): void;
+  onComposerDefaultsAuthorityReloadedRef: RefObject<AgentGUIComposerDefaultsAuthorityReconciler>;
   previewMode: boolean;
   providerComposerOptions:
     | { behavior?: { prewarmDraftSession?: boolean } | null }
@@ -58,27 +64,64 @@ export function useAgentGUIComposerOptionsSync(input: {
     input.isCreatingConversation
   );
   const loadComposerOptionsForTarget = useCallback(
-    (targetData: AgentGUIComposerTargetData, options?: { force?: boolean }) => {
-      if (input.isCreatingConversation || !targetData.agentTargetId) return;
-      const settings = readNodeDefaultDraftSettings({
-        data: targetData.data,
-        defaultReasoningEffort: input.defaultReasoningEffort,
-        drafts: input.draftSettingsBySessionIdRef.current
-      });
+    (
+      targetData: AgentGUIComposerTargetData,
+      options?: {
+        allowWhileCreating?: boolean;
+        excludePersistentDefaults?: boolean;
+        force?: boolean;
+        reconcileAcknowledgedDefaults?: boolean;
+        settings?: AgentSessionComposerSettings;
+      }
+    ): Promise<void> => {
+      if (
+        (input.isCreatingConversation && !options?.allowWhileCreating) ||
+        !targetData.agentTargetId
+      ) {
+        return Promise.resolve();
+      }
+      const localSettings =
+        options?.settings ??
+        readNodeDefaultDraftSettings({
+          data: targetData.data,
+          defaultReasoningEffort: input.defaultReasoningEffort,
+          drafts: input.draftSettingsBySessionIdRef.current
+        });
+      const authorityRead = options?.reconcileAcknowledgedDefaults
+        ? input.onComposerDefaultsAuthorityReloadedRef.current.prepareRead(
+            targetData,
+            localSettings
+          )
+        : { force: false, receipt: null, settings: localSettings };
+      const localDefaults = options?.excludePersistentDefaults
+        ? composerDefaultsPatchFromSettings(localSettings, localSettings)
+        : null;
+      const requestSettings = localDefaults
+        ? withoutAcknowledgedComposerDefaults(
+            authorityRead.settings,
+            localDefaults
+          )
+        : authorityRead.settings;
       const cwd =
         input.selectedProjectPathRef.current?.trim() ||
         input.workspacePath.trim() ||
         "";
-      void Promise.resolve(
+      return Promise.resolve(
         input.agentActivityRuntime.getComposerOptions({
           workspaceId: input.workspaceId,
           cwd,
-          force: options?.force,
+          force: options?.force || authorityRead.force ? true : undefined,
           provider: targetData.provider,
           agentTargetId: targetData.agentTargetId,
-          settings
+          settings: requestSettings
         })
-      ).catch(() => undefined);
+      ).then(() => {
+        if (options?.reconcileAcknowledgedDefaults) {
+          input.onComposerDefaultsAuthorityReloadedRef.current.reloaded(
+            authorityRead.receipt
+          );
+        }
+      });
     },
     [
       input.agentActivityRuntime,
@@ -90,22 +133,41 @@ export function useAgentGUIComposerOptionsSync(input: {
   );
   const loadDraftComposerOptions = useCallback(
     (options?: { force?: boolean }) => {
-      loadComposerOptionsForTarget(
+      void loadComposerOptionsForTarget(
         composerTargetDataForConversation({
           activeConversationId: input.activeConversationIdRef.current,
           data: input.dataRef.current,
           optimisticTarget: null,
           selectedTarget: input.selectedComposerTargetDataRef.current
         }),
-        options
-      );
+        {
+          ...options,
+          reconcileAcknowledgedDefaults:
+            input.activeConversationIdRef.current === null &&
+            input.isComposerHomeRef.current
+        }
+      ).catch(() => undefined);
     },
     [
       input.activeConversationIdRef,
       input.dataRef,
+      input.isComposerHomeRef,
       input.selectedComposerTargetDataRef,
       loadComposerOptionsForTarget
     ]
+  );
+  const reloadComposerOptionsForTarget = useCallback(
+    (reloadInput: {
+      settings: AgentSessionComposerSettings;
+      target: AgentGUIComposerTargetData;
+    }): Promise<void> =>
+      loadComposerOptionsForTarget(reloadInput.target, {
+        allowWhileCreating: true,
+        force: true,
+        reconcileAcknowledgedDefaults: true,
+        settings: reloadInput.settings
+      }),
+    [loadComposerOptionsForTarget]
   );
   input.loadDraftComposerOptionsRef.current = loadDraftComposerOptions;
 
@@ -142,6 +204,41 @@ export function useAgentGUIComposerOptionsSync(input: {
       }
     );
   }, [input.loadSessionState, input.previewMode, loadDraftComposerOptions]);
+
+  useEffect(() => {
+    if (input.previewMode) return undefined;
+    return subscribe("agent-composer-defaults-invalidated", (event) => {
+      const selectedTarget = composerTargetDataForConversation({
+        activeConversationId: input.activeConversationIdRef.current,
+        data: input.dataRef.current,
+        optimisticTarget: null,
+        selectedTarget: input.selectedComposerTargetDataRef.current
+      });
+      if (selectedTarget.agentTargetId !== event.agentTargetId) {
+        return;
+      }
+      const localIntent = readNodeDefaultDraftSettings({
+        data: selectedTarget.data,
+        defaultReasoningEffort: input.defaultReasoningEffort,
+        drafts: input.draftSettingsBySessionIdRef.current
+      });
+      // The target-only event is always a reread signal. Exclude local
+      // persistent intent from the request so effectiveSettings can reflect
+      // daemon authority, but do not retire that intent without its own ack.
+      void loadComposerOptionsForTarget(selectedTarget, {
+        allowWhileCreating: true,
+        excludePersistentDefaults: true,
+        force: true,
+        reconcileAcknowledgedDefaults: true,
+        settings: localIntent
+      }).catch(() => undefined);
+    });
+  }, [
+    input.defaultReasoningEffort,
+    input.onComposerDefaultsAuthorityReloadedRef,
+    input.previewMode,
+    loadComposerOptionsForTarget
+  ]);
 
   useEffect(() => {
     if (input.previewMode) return;
@@ -217,5 +314,5 @@ export function useAgentGUIComposerOptionsSync(input: {
     input.sessionEngine
   ]);
 
-  return { loadDraftComposerOptions };
+  return { loadDraftComposerOptions, reloadComposerOptionsForTarget };
 }

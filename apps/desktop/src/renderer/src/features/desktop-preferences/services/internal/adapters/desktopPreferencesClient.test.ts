@@ -32,6 +32,32 @@ test("desktop preferences client resolves writes from the authoritative event", 
   client.dispose();
 });
 
+test("desktop preferences client patches target defaults through the dedicated acknowledged intent", async () => {
+  const eventStreamClient = createFakeEventStreamClient();
+  const client = createDesktopPreferencesClient(
+    createFakeTuttidClient(),
+    eventStreamClient
+  );
+
+  await client.patchAgentComposerDefaultsForTarget({
+    agentTargetId: "local:opencode",
+    clientMutationId: "mutation-1",
+    patch: { permissionModeId: "full-access" }
+  });
+
+  assert.deepEqual(eventStreamClient.publishedIntents, [
+    {
+      payload: {
+        agentTargetId: "local:opencode",
+        clientMutationId: "mutation-1",
+        patch: { permissionModeId: "full-access" }
+      },
+      topic: "preferences.agent.composer.defaults.patch.requested"
+    }
+  ]);
+  client.dispose();
+});
+
 test("desktop preferences client accepts legacy dock layout responses for unified writes", async () => {
   const eventStreamClient = createFakeEventStreamClient();
   const client = createDesktopPreferencesClient(
@@ -103,6 +129,38 @@ test("desktop preferences client distinguishes agent GUI conversation rail prefe
     })
   );
 
+  client.dispose();
+});
+
+test("desktop preferences client does not gate full preference confirmation on target defaults snapshots", async () => {
+  const eventStreamClient = createFakeEventStreamClient();
+  const client = createDesktopPreferencesClient(
+    createFakeTuttidClient(),
+    eventStreamClient
+  );
+  const completion = client.updateDesktopPreferences(
+    createUpdateRequest({
+      agentComposerDefaultsByAgentTarget: {
+        "local:codex": { model: "stale-model" }
+      },
+      locale: "zh-CN"
+    })
+  );
+
+  eventStreamClient.emitDesktopPreferencesUpdated(
+    createStateResponse({
+      agentComposerDefaultsByAgentTarget: {
+        "local:codex": { model: "newer-model" }
+      },
+      locale: "zh-CN"
+    })
+  );
+
+  const authoritative = await completion;
+  assert.equal(
+    authoritative.agentComposerDefaultsByAgentTarget?.["local:codex"]?.model,
+    "newer-model"
+  );
   client.dispose();
 });
 
@@ -310,10 +368,7 @@ function createFakeEventStreamClient(): TuttidEventStreamClient & {
   emitDesktopPreferencesUpdated(
     payload: Extract<DesktopPreferencesStateResponse, { initialized: boolean }>
   ): void;
-  publishedIntents: Array<{
-    payload: PutDesktopPreferencesRequest;
-    topic: "preferences.desktop.update.requested";
-  }>;
+  publishedIntents: Array<{ payload: unknown; topic: string }>;
 } {
   const listeners = new Set<
     (event: {
@@ -327,10 +382,7 @@ function createFakeEventStreamClient(): TuttidEventStreamClient & {
       version: 1;
     }) => void
   >();
-  const publishedIntents: Array<{
-    payload: PutDesktopPreferencesRequest;
-    topic: "preferences.desktop.update.requested";
-  }> = [];
+  const publishedIntents: Array<{ payload: unknown; topic: string }> = [];
   let disposeCalls = 0;
 
   return {

@@ -24,6 +24,7 @@ Provider discovery, installation, authentication, models, configuration, and run
 - [Codex session fails with not connected when model_catalog_json is relative](./agent-provider-setup.md#codex-session-fails-with-not-connected-when-modelcatalogjson-is-relative)
 - [Codex custom model_provider mixes models, duplicates replies, or shows metadata warnings](./agent-provider-setup.md#codex-custom-modelprovider-mixes-models-duplicates-replies-or-shows-metadata-warnings)
 - [Claude SDK Grep or Glob unavailable despite Claude Code preset](./agent-provider-setup.md#claude-sdk-grep-or-glob-unavailable-despite-claude-code-preset)
+- [Provider process loses final stdout or a sidecar fails during startup](./agent-provider-setup.md#provider-process-loses-final-stdout-or-a-sidecar-fails-during-startup)
 - [Concurrent agent CLI installs corrupt shared npm global state](./agent-provider-setup.md#concurrent-agent-cli-installs-corrupt-shared-npm-global-state)
 - [Agent provider install looks idle while a non-Codex installer is running](./agent-provider-setup.md#agent-provider-install-looks-idle-while-a-non-codex-installer-is-running)
 - [Legacy Claude ACP adapter appears stale after external registry migration](./agent-provider-setup.md#legacy-claude-acp-adapter-appears-stale-after-external-registry-migration)
@@ -44,6 +45,7 @@ Provider discovery, installation, authentication, models, configuration, and run
 Turn state, loading, cancel, restore, rail projection, event updates, imports, and performance.
 
 - [AgentGUI turn actions return plain-text route 404s](./agent-session-lifecycle.md#agentgui-turn-actions-return-plain-text-route-404s)
+- [AgentGUI rail shows a failed Turn but the detail has no error](./agent-session-lifecycle.md#agentgui-rail-shows-a-failed-turn-but-the-detail-has-no-error)
 - [AgentGUI Stop reports no active turn after cancel succeeds](./agent-session-lifecycle.md#agentgui-stop-reports-no-active-turn-after-cancel-succeeds)
 - [AgentGUI send blocked by active_turn after settled snapshot](./agent-session-lifecycle.md#agentgui-send-blocked-by-activeturn-after-settled-snapshot)
 - [AgentGUI rejects a pasted image as unsupported before send](./agent-session-lifecycle.md#agentgui-rejects-a-pasted-image-as-unsupported-before-send)
@@ -51,6 +53,7 @@ Turn state, loading, cancel, restore, rail projection, event updates, imports, a
 - [Queued AgentGUI prompt stalls after no-active-turn failure](./agent-session-lifecycle.md#queued-agentgui-prompt-stalls-after-no-active-turn-failure)
 - [Agent session stays loading after a completed turn](./agent-session-lifecycle.md#agent-session-stays-loading-after-a-completed-turn)
 - [AgentGUI model switch changes defaults but not the active session](./agent-session-lifecycle.md#agentgui-model-switch-changes-defaults-but-not-the-active-session)
+- [AgentGUI shows the selected settings but a new session does not inherit them](./agent-session-lifecycle.md#agentgui-shows-the-selected-settings-but-a-new-session-does-not-inherit-them)
 - [Historical AgentGUI permission changes time out or stop responding](./agent-session-lifecycle.md#historical-agentgui-permission-changes-time-out-or-stop-responding)
 - [AgentGUI pin or unpin appears stuck for a live session](./agent-session-lifecycle.md#agentgui-pin-or-unpin-appears-stuck-for-a-live-session)
 - [Agent GUI provider tab shows fused or stale conversations](./agent-session-lifecycle.md#agent-gui-provider-tab-shows-fused-or-stale-conversations)
@@ -61,6 +64,7 @@ Turn state, loading, cancel, restore, rail projection, event updates, imports, a
 - [Agent activity live updates fail after event schema changes](./agent-session-lifecycle.md#agent-activity-live-updates-fail-after-event-schema-changes)
 - [AgentGUI file-change undo reports a generic failure](./agent-session-lifecycle.md#agentgui-file-change-undo-reports-a-generic-failure)
 - [Cursor deleted files appear as created or modified](./agent-session-lifecycle.md#cursor-deleted-files-appear-as-created-or-modified)
+- [AgentGUI compaction timer keeps running after compaction completed](./agent-session-lifecycle.md#agentgui-compaction-timer-keeps-running-after-compaction-completed)
 - [AgentActivity replication repeatedly rejects message batches as invalid](./agent-session-lifecycle.md#agentactivity-replication-repeatedly-rejects-message-batches-as-invalid)
 - [Remote agent cancel does not stop the local turn](./agent-session-lifecycle.md#remote-agent-cancel-does-not-stop-the-local-turn)
 - [Claude Code cancel leaves Write/tool cards stuck in progress](./agent-session-lifecycle.md#claude-code-cancel-leaves-writetool-cards-stuck-in-progress)

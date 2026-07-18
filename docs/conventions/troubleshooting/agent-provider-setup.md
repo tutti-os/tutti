@@ -622,6 +622,28 @@ file or directory`. If the CLI path exists but `codex app-server` cannot
   Assert the sidecar start payload carries `allowedTools: ["Grep", "Glob"]`,
   and typecheck against the local `@anthropic-ai/claude-agent-sdk` definitions.
 
+### Provider process loses final stdout or a sidecar fails during startup
+
+- Symptom:
+  A short-lived provider helper exits successfully but its final stdout frame is
+  absent, or a long-lived SDK sidecar intermittently appears to exit before its
+  startup response is consumed.
+- Root cause:
+  `os/exec.Cmd.StdoutPipe` and `StderrPipe` make pipe draining and `Cmd.Wait`
+  ordering the caller's responsibility. Waiting for readers before `Cmd.Wait`
+  makes process reaping depend on pipe EOF, while calling `Cmd.Wait` first can
+  close a short-lived process's pipes before its last bytes are delivered.
+- Fix:
+  Give `Cmd.Stdout` and `Cmd.Stderr` frame writers instead of managing
+  `StdoutPipe`/`StderrPipe` directly. `os/exec` then owns the copy goroutines and
+  `Cmd.Wait` returns only after the final writes complete, without delaying
+  startup-time streaming for a live sidecar.
+- Validation:
+  Run the local-process transport tests together with the Claude SDK sidecar
+  start, approval, and controller tests repeatedly. Keep explicit assertions
+  that final stdout arrives before the exit frame and that a live process can
+  exchange frames before it exits.
+
 ### Concurrent agent CLI installs corrupt shared npm global state
 
 - Symptom:

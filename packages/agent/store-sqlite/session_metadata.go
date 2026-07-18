@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/tutti-os/tutti/packages/agent/daemon/providerregistry"
+	canonical "github.com/tutti-os/tutti/packages/agent/store-sqlite/canonical"
 )
 
 type SessionMetadata struct {
@@ -52,7 +52,7 @@ func splitSessionRuntimeContext(runtimeContext map[string]any) (SessionMetadata,
 	seenCapabilities := map[string]struct{}{}
 	for _, raw := range jsonStringSlice(runtimeContext["capabilities"]) {
 		if value := strings.TrimSpace(raw); value != "" {
-			if !providerregistry.IsKnownCapability(value) {
+			if !canonical.IsKnownCapability(value) {
 				continue
 			}
 			if _, seen := seenCapabilities[value]; seen {
@@ -182,7 +182,7 @@ func unmarshalSessionMetadata(raw string) (SessionMetadata, error) {
 func validateSessionMetadata(value SessionMetadata) error {
 	seen := map[string]struct{}{}
 	for _, capability := range value.Capabilities {
-		if strings.TrimSpace(capability) != capability || !providerregistry.IsKnownCapability(capability) {
+		if strings.TrimSpace(capability) != capability || !canonical.IsKnownCapability(capability) {
 			return fmt.Errorf("unsupported session capability %q", capability)
 		}
 		if _, ok := seen[capability]; ok {

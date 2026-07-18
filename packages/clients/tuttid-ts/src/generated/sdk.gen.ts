@@ -313,6 +313,9 @@ import type {
   OpenWorkspaceData,
   OpenWorkspaceErrors,
   OpenWorkspaceResponses,
+  PinUserProjectData,
+  PinUserProjectErrors,
+  PinUserProjectResponses,
   PreflightUploadWorkspaceFilesData,
   PreflightUploadWorkspaceFilesErrors,
   PreflightUploadWorkspaceFilesResponses,
@@ -795,7 +798,7 @@ export const checkUserProjectPath = <ThrowOnError extends boolean = false>(
   });
 
 /**
- * Move a user project within the global project order
+ * Move a user project within its pinned or unpinned partition
  */
 export const moveUserProject = <ThrowOnError extends boolean = false>(
   options: Options<MoveUserProjectData, ThrowOnError>
@@ -807,6 +810,26 @@ export const moveUserProject = <ThrowOnError extends boolean = false>(
   >({
     security: [{ scheme: "bearer", type: "http" }],
     url: "/v1/user-projects/move",
+    ...options,
+    headers: {
+      "Content-Type": "application/json",
+      ...options.headers
+    }
+  });
+
+/**
+ * Pin or unpin a user project
+ */
+export const pinUserProject = <ThrowOnError extends boolean = false>(
+  options: Options<PinUserProjectData, ThrowOnError>
+) =>
+  (options.client ?? client).post<
+    PinUserProjectResponses,
+    PinUserProjectErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/v1/user-projects/pin",
     ...options,
     headers: {
       "Content-Type": "application/json",

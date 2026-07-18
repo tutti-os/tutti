@@ -23,6 +23,7 @@ import type { TuttiExternalFileOpenInput } from "@tutti-os/workspace-external-co
 import { resolveWorkspaceMentionLinkAction } from "@contexts/workspace/presentation/renderer/actions/workspaceLinkActions";
 import { runDesktopAgentGUILinkAction } from "@renderer/features/workspace-agent/services/desktopAgentGUILinkActions.ts";
 import { IWorkspaceAgentActivityService } from "@renderer/features/workspace-agent/services/workspaceAgentActivityService.interface.ts";
+import { IAgentsService } from "@renderer/features/workspace-agent/services/agentsService.interface.ts";
 import { useService } from "@tutti-os/infra/di";
 import { requestGroupChatLaunch } from "../services/groupChatLaunchCoordinator.ts";
 import { requestWorkspaceAgentGuiLaunch } from "@renderer/features/workspace-agent/services/workspaceAgentGuiLaunchCoordinator.ts";
@@ -83,10 +84,12 @@ export function WorkspaceAppExternalBridge({
 }: WorkspaceAppExternalBridgeProps): ReactElement | null {
   const hostService = useWorkspaceWorkbenchHostService();
   const { service: settingsService } = useWorkspaceSettingsService();
-  const { service: appCenterService } = useWorkspaceAppCenterService();
+  const { service: appCenterService, state: appCenterState } =
+    useWorkspaceAppCenterService();
   const workspaceAgentActivityService = useService(
     IWorkspaceAgentActivityService
   );
+  const agentsService = useService(IAgentsService);
   const { t } = useTranslation();
   const [pendingFileSelect, setPendingFileSelect] =
     useState<PendingFileSelect | null>(null);
@@ -142,6 +145,54 @@ export function WorkspaceAppExternalBridge({
     };
   }, [api, userProjectsApi, workspaceId]);
 
+  useEffect(() => {
+    if (!api) return;
+    api.sendEvent({
+      invalidation: {
+        providerIds: ["workspace-app"],
+        revision: appCenterState.revision
+      },
+      type: "at.invalidated",
+      workspaceId
+    });
+  }, [api, appCenterState.revision, workspaceId]);
+
+  useEffect(() => {
+    if (!api) return;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const unsubscribe = workspaceAgentActivityService.subscribe(
+      workspaceId,
+      () => {
+        clearTimeout(timer);
+        timer = setTimeout(() => {
+          timer = undefined;
+          api.sendEvent({
+            invalidation: {
+              providerIds: ["agent-session", "agent-generated-file"]
+            },
+            type: "at.invalidated",
+            workspaceId
+          });
+        }, 100);
+      }
+    );
+    return () => {
+      clearTimeout(timer);
+      unsubscribe();
+    };
+  }, [api, workspaceAgentActivityService, workspaceId]);
+
+  useEffect(() => {
+    if (!api) return;
+    return agentsService.subscribe(() => {
+      api.sendEvent({
+        invalidation: { providerIds: ["agent-target"] },
+        type: "at.invalidated",
+        workspaceId
+      });
+    });
+  }, [agentsService, api, workspaceId]);
+
   const resolvePendingFileSelect = useCallback(
     (refs: WorkspaceFileReference[]) => {
       const pending = pendingFileSelectRef.current;
@@ -177,6 +228,11 @@ export function WorkspaceAppExternalBridge({
         case "at.query":
           return hostService.queryWorkspaceAppExternalAt({
             query: request.input,
+            workspaceId
+          });
+        case "at.resolve":
+          return hostService.resolveWorkspaceAppExternalAt({
+            mention: request.input,
             workspaceId
           });
         case "files.select":

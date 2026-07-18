@@ -1453,7 +1453,10 @@ const noopDesktopPreferences: DesktopPreferencesService = {
     return Promise.resolve(policy);
   },
   rememberAgentComposerDefaultsForAgentTarget() {
-    return Promise.resolve();
+    return Promise.resolve({
+      acknowledgedFields: [],
+      supersededFields: []
+    });
   },
   rememberAgentGuiConversationRailCollapsed() {
     return Promise.resolve();

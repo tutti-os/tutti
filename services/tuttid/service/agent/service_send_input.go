@@ -21,7 +21,7 @@ func (s *Service) SendInput(ctx context.Context, workspaceID string, agentSessio
 	logAgentSubmitTrace("service.send.content_normalized", workspaceID, agentSessionID, input.Metadata, map[string]any{
 		"content_block_count": len(normalizedContent),
 	})
-	hostResult, err := s.applicationHost(serviceHostPreparation{service: s}).SendInput(ctx,
+	hostResult, err := s.ApplicationHost().SendInput(ctx,
 		agenthost.SessionRef{WorkspaceID: workspaceID, AgentSessionID: agentSessionID},
 		agenthost.SendInput{Content: normalizedContent, DisplayPrompt: input.DisplayPrompt, Metadata: input.Metadata, Guidance: input.Guidance},
 	)

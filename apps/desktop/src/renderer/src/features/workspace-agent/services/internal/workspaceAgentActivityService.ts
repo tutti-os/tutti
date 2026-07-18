@@ -15,7 +15,6 @@ import type {
 import type { DesktopHostFilesApi, DesktopRuntimeApi } from "@preload/types";
 import { agentActivitySessionFromTuttidSession } from "../desktopAgentActivityAdapter.ts";
 import {
-  agentSessionActivationError,
   normalizeComposerSettings,
   resolveComposerPermissionMode,
   resolveDesktopAgentGUIProvider
@@ -490,8 +489,6 @@ export class WorkspaceAgentActivityService
         fields: { activeTurnPhase: session.activeTurn?.phase ?? null }
       });
     }
-    const activationError = agentSessionActivationError(session);
-    const activationFailed = activationError !== undefined;
     reportAgentSubmitTraceDiagnostic(this.dependencies.runtimeApi, {
       agentSessionId: session.agentSessionId,
       clientSubmitId: input.mode === "new" ? input.clientSubmitId : null,
@@ -508,13 +505,8 @@ export class WorkspaceAgentActivityService
     return {
       activation: {
         mode: input.mode,
-        status: activationFailed
-          ? "failed"
-          : input.mode === "existing"
-            ? "already_attached"
-            : "attached"
+        status: input.mode === "existing" ? "already_attached" : "attached"
       },
-      ...(activationError ? { error: activationError } : {}),
       session
     };
   }

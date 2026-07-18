@@ -29,7 +29,7 @@ type DesktopAgentHostApiUnderTest = AgentHostInputApi & {
   userProjects: NonNullable<AgentHostInputApi["userProjects"]>;
 };
 
-test("desktop agent host api forwards model catalog invalidation as a host event", async () => {
+test("desktop agent host api forwards model catalog and target defaults invalidation as host events", async () => {
   const topicHandlers = new Map<string, (event: unknown) => void>();
   const tuttidClient = createTuttidClient();
   const activityService = new WorkspaceAgentActivityService({
@@ -80,11 +80,26 @@ test("desktop agent host api forwards model catalog invalidation as a host event
       occurredAtUnixMs: 4200
     }
   ]);
+  const defaultsInvalidationHandler = topicHandlers.get(
+    "preferences.agent.composer.defaults.changed"
+  );
+  assert.ok(
+    defaultsInvalidationHandler,
+    "expected target defaults topic subscription"
+  );
+  defaultsInvalidationHandler({
+    payload: { agentTargetId: "local:codex" }
+  });
+  assert.deepEqual(hostEvents.at(-1), {
+    agentTargetId: "local:codex",
+    scope: "global",
+    type: "agent-composer-defaults-invalidated"
+  });
   unsubscribe?.();
   invalidationHandler({
     payload: { providers: ["codex"], occurredAtUnixMs: 4300 }
   });
-  assert.equal(hostEvents.length, 1);
+  assert.equal(hostEvents.length, 2);
 });
 
 test("desktop agent host api writes images through the host clipboard", async () => {
@@ -252,6 +267,7 @@ test("desktop agent host api delegates user project calls to the workspace user 
         label: "Listed",
         lastUsedAtUnixMs: null,
         path: "/workspace/listed",
+        pinnedAtUnixMs: 10,
         updatedAtUnixMs: 1
       }
     ],
@@ -274,7 +290,8 @@ test("desktop agent host api delegates user project calls to the workspace user 
         id: "project-created",
         label: name,
         lastUsedAtUnixMs: null,
-        path: `/workspace/${name}`
+        path: `/workspace/${name}`,
+        pinnedAtUnixMs: 0
       };
     },
     async ensureLoaded() {
@@ -305,6 +322,9 @@ test("desktop agent host api delegates user project calls to the workspace user 
     async moveProject(input) {
       calls.push({ input, method: "moveProject" });
     },
+    async pinProject(input) {
+      calls.push({ input, method: "pinProject" });
+    },
     rememberNoProjectPath(path) {
       calls.push({ input: path, method: "rememberNoProjectPath" });
     },
@@ -316,7 +336,8 @@ test("desktop agent host api delegates user project calls to the workspace user 
       return {
         id: "project-used",
         label: "Used",
-        path
+        path,
+        pinnedAtUnixMs: 0
       };
     },
     async removeProjectPath(path) {
@@ -355,10 +376,11 @@ test("desktop agent host api delegates user project calls to the workspace user 
     projectLocked: true,
     selectedPath: "/workspace/listed"
   });
-  await api.userProjects.move({
+  await api.userProjects.move?.({
     beforeProjectId: "project-listed",
     projectId: "project-used"
   });
+  await api.userProjects.pin({ pinned: true, projectId: "project-listed" });
   await api.userProjects.remove?.({ path: "/workspace/listed" });
   const listener = () => {};
   const unsubscribe = api.userProjects.subscribe?.(listener);
@@ -371,6 +393,7 @@ test("desktop agent host api delegates user project calls to the workspace user 
         id: "project-listed",
         label: "Listed",
         path: "/workspace/listed",
+        pinnedAtUnixMs: 10,
         updatedAtUnixMs: 1
       }
     ]
@@ -379,13 +402,15 @@ test("desktop agent host api delegates user project calls to the workspace user 
   assert.deepEqual(created, {
     id: "project-created",
     label: "created",
-    path: "/workspace/created"
+    path: "/workspace/created",
+    pinnedAtUnixMs: 0
   });
   assert.equal("lastUsedAtUnixMs" in created!, false);
   assert.deepEqual(used, {
     id: "project-used",
     label: "Used",
-    path: "/workspace/used"
+    path: "/workspace/used",
+    pinnedAtUnixMs: 0
   });
   assert.deepEqual(prepared, {
     isSelectedPathMissing: false,
@@ -395,6 +420,7 @@ test("desktop agent host api delegates user project calls to the workspace user 
         id: "project-listed",
         label: "Listed",
         path: "/workspace/listed",
+        pinnedAtUnixMs: 10,
         updatedAtUnixMs: 1
       }
     ],
@@ -430,6 +456,10 @@ test("desktop agent host api delegates user project calls to the workspace user 
         projectId: "project-used"
       },
       method: "moveProject"
+    },
+    {
+      input: { pinned: true, projectId: "project-listed" },
+      method: "pinProject"
     },
     { input: "/workspace/listed", method: "removeProjectPath" },
     { input: listener, method: "subscribe" },
@@ -499,7 +529,9 @@ test("desktop agent host api reuses desktop host file operations", async () => {
           createdAtUnixMs: 1,
           id: "project-1",
           label: "Demo project",
+          lastUsedAtUnixMs: 1,
           path: payload.path,
+          pinnedAtUnixMs: 0,
           sectionKey: `project:${payload.path}`,
           updatedAtUnixMs: 1
         };
@@ -568,7 +600,9 @@ test("desktop agent host api reuses desktop host file operations", async () => {
     createdAtUnixMs: 1,
     id: "project-1",
     label: "Demo project",
+    lastUsedAtUnixMs: 1,
     path: "/Users/local/Documents/tutti/Demo project",
+    pinnedAtUnixMs: 0,
     sectionKey: "project:/Users/local/Documents/tutti/Demo project",
     updatedAtUnixMs: 1
   });
@@ -891,6 +925,9 @@ function createTuttidClient(
       };
     },
     async deleteUserProject() {},
+    async pinUserProject() {
+      return { projects: [] };
+    },
     async useUserProject(
       request: Parameters<TuttidClient["useUserProject"]>[0]
     ) {
@@ -899,6 +936,7 @@ function createTuttidClient(
         id: "project-1",
         label: "Project",
         path: request.path,
+        pinnedAtUnixMs: 0,
         updatedAtUnixMs: 1
       };
     },

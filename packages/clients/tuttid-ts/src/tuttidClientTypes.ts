@@ -79,6 +79,7 @@ import type {
   CopyWorkspaceFileEntryRequest,
   MoveWorkspaceFileEntryRequest,
   MoveUserProjectRequest,
+  PinUserProjectRequest,
   RenameWorkspaceFileEntryRequest,
   PrepareWorkspaceAppUploadRequest,
   PrepareWorkspaceAppUploadResponse,
@@ -629,6 +630,9 @@ export interface TuttidClient {
   listUserProjects(): Promise<UserProjectListResponse>;
   moveUserProject(
     request: MoveUserProjectRequest
+  ): Promise<UserProjectListResponse>;
+  pinUserProject(
+    request: PinUserProjectRequest
   ): Promise<UserProjectListResponse>;
   openWorkspace(workspaceID: string): Promise<WorkspaceSummary>;
   removeWorkspaceIssueContextRef(

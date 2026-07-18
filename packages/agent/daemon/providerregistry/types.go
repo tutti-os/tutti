@@ -1,5 +1,7 @@
 package providerregistry
 
+import canonical "github.com/tutti-os/tutti/packages/agent/store-sqlite/canonical"
+
 // RuntimeKind identifies the adapter family used to execute a provider. The
 // runtime package maps each kind to an adapter constructor; provider identity
 // must not be used as the constructor switch.
@@ -95,13 +97,7 @@ const (
 	StaticSpecResolverKindCursor      StaticSpecResolverKind = "cursor"
 )
 
-type IdentityDescriptor struct {
-	ID          string
-	DisplayName string
-	IconKey     string
-	LocaleKey   string
-	Aliases     []string
-}
+type IdentityDescriptor = canonical.ProviderIdentity
 
 type RuntimeDescriptor struct {
 	Kind                RuntimeKind
@@ -252,23 +248,23 @@ type ComposerConfigOptionIDs struct {
 // Canonical capability vocabulary shared by provider descriptors, daemon
 // runtime projections, and the generated/checked GUI mirror.
 const (
-	CapabilityImageInput                     = "imageInput"
-	CapabilityModelImageInputRequired        = "modelImageInputRequired"
-	CapabilitySkills                         = "skills"
-	CapabilityCompact                        = "compact"
-	CapabilityTokenUsage                     = "tokenUsage"
-	CapabilityRateLimits                     = "rateLimits"
-	CapabilityPlanMode                       = "planMode"
-	CapabilityInterrupt                      = "interrupt"
-	CapabilityActiveTurnGuidance             = "activeTurnGuidance"
-	CapabilityBrowserUse                     = "browserUse"
-	CapabilityComputerUse                    = "computerUse"
-	CapabilityGoalPause                      = "goalPause"
-	CapabilityPlanImplementation             = "planImplementation"
-	CapabilityPermissionModeChangeDuringTurn = "permissionModeChangeDuringTurn"
-	CapabilityPermissionModeChangeDeferred   = "permissionModeChangeDeferred"
-	CapabilityReview                         = "review"
-	CapabilityResumeRunningTurn              = "resumeRunningTurn"
+	CapabilityImageInput                     = canonical.CapabilityImageInput
+	CapabilityModelImageInputRequired        = canonical.CapabilityModelImageInputRequired
+	CapabilitySkills                         = canonical.CapabilitySkills
+	CapabilityCompact                        = canonical.CapabilityCompact
+	CapabilityTokenUsage                     = canonical.CapabilityTokenUsage
+	CapabilityRateLimits                     = canonical.CapabilityRateLimits
+	CapabilityPlanMode                       = canonical.CapabilityPlanMode
+	CapabilityInterrupt                      = canonical.CapabilityInterrupt
+	CapabilityActiveTurnGuidance             = canonical.CapabilityActiveTurnGuidance
+	CapabilityBrowserUse                     = canonical.CapabilityBrowserUse
+	CapabilityComputerUse                    = canonical.CapabilityComputerUse
+	CapabilityGoalPause                      = canonical.CapabilityGoalPause
+	CapabilityPlanImplementation             = canonical.CapabilityPlanImplementation
+	CapabilityPermissionModeChangeDuringTurn = canonical.CapabilityPermissionModeChangeDuringTurn
+	CapabilityPermissionModeChangeDeferred   = canonical.CapabilityPermissionModeChangeDeferred
+	CapabilityReview                         = canonical.CapabilityReview
+	CapabilityResumeRunningTurn              = canonical.CapabilityResumeRunningTurn
 )
 
 type SkillKind string
@@ -373,11 +369,11 @@ type SlashCommandPolicyDescriptor struct {
 	CommandCatalogAuthoritative bool
 }
 
-type PlanDecisionStrategy string
+type PlanDecisionStrategy = canonical.PlanDecisionStrategy
 
 const (
-	PlanDecisionStrategyNone            PlanDecisionStrategy = ""
-	PlanDecisionStrategyImplementPrompt PlanDecisionStrategy = "implement_prompt"
+	PlanDecisionStrategyNone            = canonical.PlanDecisionStrategyNone
+	PlanDecisionStrategyImplementPrompt = canonical.PlanDecisionStrategyImplementPrompt
 )
 
 type ComposerProfileDescriptor struct {

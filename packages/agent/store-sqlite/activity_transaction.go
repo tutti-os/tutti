@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"strings"
 
-	agentactivityprojection "github.com/tutti-os/tutti/packages/agent/daemon/activity/projection"
+	agentactivityprojection "github.com/tutti-os/tutti/packages/agent/store-sqlite/canonical"
 )
 
 func (s *Store) upsertAgentSession(
@@ -28,10 +28,17 @@ func (s *Store) upsertAgentSession(
 	if err != nil {
 		return false, false, 0, Session{}, err
 	}
-	if err := tx.Commit(); err != nil {
+	mutations := []TransactionMutation{}
+	if accepted {
+		mutations = append(mutations, transactionMutation(input.WorkspaceID, input.AgentSessionID, MutationEntitySession, input.AgentSessionID, "upsert", session.UpdatedAtUnixMS))
+	}
+	delta, err := s.commitTransaction(ctx, tx, input.WorkspaceID, mutations)
+	if err != nil {
 		return false, false, 0, Session{}, fmt.Errorf("commit workspace agent session state report: %w", err)
 	}
 	committed = true
+	session.CommitTransactionID = delta.TransactionID
+	session.CommitDelta = delta
 	return accepted, stateApplied, lastEventUnixMS, session, nil
 }
 

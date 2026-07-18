@@ -145,7 +145,8 @@ export function areAgentGUIUserProjectsEqual(
         project.id === candidate.id &&
         project.path === candidate.path &&
         project.label === candidate.label &&
-        project.sectionKey === candidate.sectionKey
+        project.sectionKey === candidate.sectionKey &&
+        project.pinnedAtUnixMs === candidate.pinnedAtUnixMs
       );
     })
   );
@@ -161,6 +162,7 @@ export function upsertAgentGUIUserProject(
     createdAtUnixMs?: number;
     updatedAtUnixMs?: number;
     lastUsedAtUnixMs?: number | null;
+    pinnedAtUnixMs: number;
   }
 ): AgentHostUserProject[] {
   const normalizedProject: AgentHostUserProject = {
@@ -174,6 +176,7 @@ export function upsertAgentGUIUserProject(
       : { lastUsedAtUnixMs: project.lastUsedAtUnixMs }),
     label: project.label,
     path: project.path,
+    pinnedAtUnixMs: project.pinnedAtUnixMs,
     ...(project.sectionKey === undefined
       ? {}
       : { sectionKey: project.sectionKey }),
@@ -209,6 +212,7 @@ export function readAgentGUIUserProjectSnapshot(
       : { lastUsedAtUnixMs: project.lastUsedAtUnixMs }),
     label: project.label,
     path: project.path,
+    pinnedAtUnixMs: project.pinnedAtUnixMs,
     ...(project.sectionKey === undefined
       ? {}
       : { sectionKey: project.sectionKey }),

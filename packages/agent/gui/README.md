@@ -160,6 +160,7 @@ export interface AgentGUIAgent {
     name?: string | null;
     avatarUrl?: string | null;
   } | null;
+  ownership?: "self" | "shared" | null;
   availability: {
     status:
       | "ready"
@@ -190,6 +191,9 @@ Agent names, primary icons, and optional home-carousel artwork come from
 `owner.avatarUrl` is rendered separately as an ownership badge. Invalid entries
 and duplicate `agentTargetId` values are discarded by
 `normalizeAgentGUIAgents`, with the first occurrence preserving host order.
+Hosts set `agents[].ownership` to `"self"` or `"shared"` from their authoritative
+directory or launch reference. Owner name and avatar are presentation metadata
+and do not determine ownership.
 
 With one agent, AgentGUI hides the aggregate `All` entry and renders that agent
 directly. With multiple agents, it shows `All` plus the host-ordered agent rail
@@ -226,6 +230,17 @@ use `renderAgentsEmpty` for a host-specific loaded-empty state. Use
 `renderAgentUnavailableState` or
 `renderAgentReadinessState` for host-specific availability presentation, and
 handle install/login/refresh requests through `onAgentAvailabilityAction`.
+
+Hosts that launch handoffs across session-runtime boundaries may also pass
+`handoffAgentDirectory`. Its ready entries populate only the active-conversation
+Handoff menu; the conversation rail, session queries, and empty composer remain
+owned by `agentDirectory`. When omitted, Handoff uses `agentDirectory`. Handoff
+rows keep the Agent name as the primary identity and render ownership separately:
+entries with `ownership: "self"` are labeled as the current user's Agent, while
+entries with `ownership: "shared"` are labeled as shared and show the available
+owner identity. Entries without explicit ownership remain unclassified; AgentGUI
+does not infer ownership from `owner.name`, `owner.avatarUrl`, or other
+presentation metadata.
 
 The old public `providerTargets`, `providerRailMode`, provider-target renderers,
 and `defaultProviderTargetId` contract is intentionally unsupported. Workbench

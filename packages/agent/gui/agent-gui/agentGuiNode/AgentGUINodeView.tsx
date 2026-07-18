@@ -185,6 +185,9 @@ export function AgentGUINodeView({
   );
   const removeProject = useStableEventCallback(actions.removeProject);
   const moveProject = useStableEventCallback(actions.moveProject);
+  const toggleProjectPinned = useStableEventCallback(
+    actions.toggleProjectPinned
+  );
   const confirmDeleteProjectConversations = useStableEventCallback(
     actions.confirmDeleteProjectConversations
   );
@@ -502,6 +505,7 @@ export function AgentGUINodeView({
       onMarkConversationUnread: actions.markConversationUnread,
       onRemoveProject: removeProject,
       onMoveProject: moveProject,
+      onToggleProjectPinned: toggleProjectPinned,
       onConfirmDeleteProjectConversations: confirmDeleteProjectConversations,
       onConfirmDeleteConversations: confirmDeleteConversations,
       onRequestDeleteConversation: requestDeleteConversation,
@@ -527,6 +531,7 @@ export function AgentGUINodeView({
       previewMode,
       removeProject,
       moveProject,
+      toggleProjectPinned,
       requestCreateConversation,
       requestDeleteConversation,
       requestRenameConversation,

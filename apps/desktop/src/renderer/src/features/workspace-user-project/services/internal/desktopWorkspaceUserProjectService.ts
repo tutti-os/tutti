@@ -6,13 +6,17 @@ import type { NotificationService } from "@tutti-os/ui-notifications";
 import type {
   WorkspaceUserProject,
   WorkspaceUserProjectDefaultSelection,
+  WorkspaceUserProjectPinInput,
   WorkspaceUserProjectPathCheck,
   WorkspaceUserProjectSelectionPreparation,
   WorkspaceUserProjectSelectionPreparationInput,
   WorkspaceUserProjectServiceSnapshot,
   WorkspaceUserProjectValtioStore
 } from "@tutti-os/workspace-user-project/contracts";
-import { upsertWorkspaceUserProject } from "@tutti-os/workspace-user-project/core";
+import {
+  pinWorkspaceUserProjectOptimistically,
+  upsertWorkspaceUserProject
+} from "@tutti-os/workspace-user-project/core";
 import { createWorkspaceUserProjectI18nRuntime } from "@tutti-os/workspace-user-project/i18n";
 import type { DesktopHostFilesApi, DesktopPlatformApi } from "@preload/types";
 import { proxy, snapshot, subscribe } from "valtio/vanilla";
@@ -31,12 +35,14 @@ export interface DesktopWorkspaceUserProjectServiceDependencies {
     | "deleteUserProject"
     | "listUserProjects"
     | "moveUserProject"
+    | "pinUserProject"
     | "useUserProject"
   >;
   eventStreamClient?: Pick<TuttidEventStreamClient, "connect" | "subscribe">;
   logDiagnostic?: (payload: unknown) => void;
   notifications?: NotificationService;
   platformApi: Pick<DesktopPlatformApi, "homeDirectory" | "os">;
+  now?: () => number;
   workspaceId: string;
 }
 
@@ -68,7 +74,7 @@ export class DesktopWorkspaceUserProjectService implements IWorkspaceUserProject
   private loadSequence = 0;
   private inflightLoad: Promise<void> | null = null;
   private refreshQueued = false;
-  private inflightMove: Promise<void> | null = null;
+  private inflightOrderingMutation: Promise<void> | null = null;
   private pendingProjectsEvent: WorkspaceUserProject[] | null = null;
 
   constructor(dependencies: DesktopWorkspaceUserProjectServiceDependencies) {
@@ -90,11 +96,18 @@ export class DesktopWorkspaceUserProjectService implements IWorkspaceUserProject
   }
 
   async createProject(name: string): Promise<WorkspaceUserProject> {
-    const directory =
-      await this.dependencies.hostFilesApi.createUserDocumentsProjectDirectory({
-        name
-      });
-    return this.registerProjectPath(directory.path);
+    this.beginMutation();
+    try {
+      const directory =
+        await this.dependencies.hostFilesApi.createUserDocumentsProjectDirectory(
+          {
+            name
+          }
+        );
+      return await this.registerProjectPathUnlocked(directory.path);
+    } finally {
+      this.finishMutation();
+    }
   }
 
   async ensureLoaded(): Promise<void> {
@@ -152,32 +165,57 @@ export class DesktopWorkspaceUserProjectService implements IWorkspaceUserProject
     projectId: string;
     beforeProjectId: string | null;
   }): Promise<void> {
-    if (this.store.isMutationPending) {
-      throw new Error("A user project mutation is already in progress.");
-    }
+    this.beginMutation();
     const optimisticProjects = moveProjectBefore(
       this.store.projects,
       input.projectId,
       input.beforeProjectId
     );
     this.supersedeLoad();
-    this.store.isMutationPending = true;
     this.store.projects = optimisticProjects;
     this.store.error = null;
     this.store.initialized = true;
     this.bumpRevision();
 
-    this.inflightMove = Promise.resolve();
+    this.inflightOrderingMutation = Promise.resolve();
     const move = this.confirmProjectMove(input);
-    this.inflightMove = move;
+    this.inflightOrderingMutation = move;
     try {
       await move;
     } finally {
-      if (this.inflightMove === move) {
-        this.inflightMove = null;
+      if (this.inflightOrderingMutation === move) {
+        this.inflightOrderingMutation = null;
       }
-      this.store.isMutationPending = false;
-      this.bumpRevision();
+      this.finishMutation();
+    }
+  }
+
+  async pinProject(input: WorkspaceUserProjectPinInput): Promise<void> {
+    this.beginMutation();
+    const now = Math.max(1, (this.dependencies.now ?? Date.now)());
+    this.supersedeLoad();
+    this.store.projects = pinWorkspaceUserProjectOptimistically(
+      this.store.projects,
+      {
+        ...input,
+        pinnedAtUnixMs: now,
+        updatedAtUnixMs: now
+      }
+    );
+    this.store.error = null;
+    this.store.initialized = true;
+    this.bumpRevision();
+
+    this.inflightOrderingMutation = Promise.resolve();
+    const pin = this.confirmProjectPin(input);
+    this.inflightOrderingMutation = pin;
+    try {
+      await pin;
+    } finally {
+      if (this.inflightOrderingMutation === pin) {
+        this.inflightOrderingMutation = null;
+      }
+      this.finishMutation();
     }
   }
 
@@ -258,6 +296,17 @@ export class DesktopWorkspaceUserProjectService implements IWorkspaceUserProject
   }
 
   async registerProjectPath(path: string): Promise<WorkspaceUserProject> {
+    this.beginMutation();
+    try {
+      return await this.registerProjectPathUnlocked(path);
+    } finally {
+      this.finishMutation();
+    }
+  }
+
+  private async registerProjectPathUnlocked(
+    path: string
+  ): Promise<WorkspaceUserProject> {
     const project = await this.dependencies.tuttidClient.useUserProject({
       path
     });
@@ -282,11 +331,7 @@ export class DesktopWorkspaceUserProjectService implements IWorkspaceUserProject
     if (!normalizedPath) {
       return;
     }
-    if (this.store.isMutationPending) {
-      throw new Error("A user project mutation is already in progress.");
-    }
-    this.store.isMutationPending = true;
-    this.bumpRevision();
+    this.beginMutation();
     try {
       await this.dependencies.tuttidClient.deleteUserProject({
         path: normalizedPath
@@ -306,8 +351,7 @@ export class DesktopWorkspaceUserProjectService implements IWorkspaceUserProject
         this.bumpRevision();
       }
     } finally {
-      this.store.isMutationPending = false;
-      this.bumpRevision();
+      this.finishMutation();
     }
   }
 
@@ -365,6 +409,19 @@ export class DesktopWorkspaceUserProjectService implements IWorkspaceUserProject
     this.store.revision += 1;
   }
 
+  private beginMutation(): void {
+    if (this.store.isMutationPending) {
+      throw new Error("A user project mutation is already in progress.");
+    }
+    this.store.isMutationPending = true;
+    this.bumpRevision();
+  }
+
+  private finishMutation(): void {
+    this.store.isMutationPending = false;
+    this.bumpRevision();
+  }
+
   private supersedeLoad(): void {
     this.loadSequence += 1;
     this.refreshQueued = false;
@@ -373,7 +430,7 @@ export class DesktopWorkspaceUserProjectService implements IWorkspaceUserProject
 
   private acceptProjectsEvent(projects: readonly WorkspaceUserProject[]): void {
     const nextProjects = projects.map((project) => ({ ...project }));
-    if (this.inflightMove) {
+    if (this.inflightOrderingMutation) {
       this.pendingProjectsEvent = nextProjects;
       return;
     }
@@ -397,11 +454,31 @@ export class DesktopWorkspaceUserProjectService implements IWorkspaceUserProject
     projectId: string;
     beforeProjectId: string | null;
   }): Promise<void> {
+    return this.confirmOrderingMutation(
+      () =>
+        this.dependencies.tuttidClient.moveUserProject({
+          beforeProjectId: input.beforeProjectId,
+          projectId: input.projectId
+        }),
+      "user_project_move_failed"
+    );
+  }
+
+  private async confirmProjectPin(
+    input: WorkspaceUserProjectPinInput
+  ): Promise<void> {
+    return this.confirmOrderingMutation(
+      () => this.dependencies.tuttidClient.pinUserProject(input),
+      "user_project_pin_failed"
+    );
+  }
+
+  private async confirmOrderingMutation(
+    request: () => Promise<{ projects: WorkspaceUserProject[] }>,
+    diagnosticEvent: string
+  ): Promise<void> {
     try {
-      const response = await this.dependencies.tuttidClient.moveUserProject({
-        beforeProjectId: input.beforeProjectId,
-        projectId: input.projectId
-      });
+      const response = await request();
       this.applyAuthoritativeProjects(response.projects);
       const pendingEvent = this.pendingProjectsEvent;
       this.pendingProjectsEvent = null;
@@ -424,7 +501,7 @@ export class DesktopWorkspaceUserProjectService implements IWorkspaceUserProject
       }
     } catch (error) {
       this.pendingProjectsEvent = null;
-      this.logDiagnostic("user_project_move_failed", error);
+      this.logDiagnostic(diagnosticEvent, error);
       throw error;
     }
   }
@@ -488,6 +565,7 @@ function areProjectSnapshotsEqual(
         project.id === candidate.id &&
         project.path === candidate.path &&
         project.label === candidate.label &&
+        project.pinnedAtUnixMs === candidate.pinnedAtUnixMs &&
         project.sectionKey === candidate.sectionKey &&
         project.createdAtUnixMs === candidate.createdAtUnixMs &&
         project.updatedAtUnixMs === candidate.updatedAtUnixMs &&

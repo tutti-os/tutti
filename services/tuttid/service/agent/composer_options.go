@@ -2,6 +2,7 @@ package agent
 
 import (
 	"context"
+	"fmt"
 	"strings"
 
 	"github.com/tutti-os/tutti/packages/agent/daemon/providerregistry"
@@ -141,6 +142,13 @@ func (s *Service) GetComposerOptions(ctx context.Context, input ComposerOptionsI
 	if provider == "" {
 		return ComposerOptions{}, ErrInvalidArgument
 	}
+	if agentTargetID != "" && s.AgentComposerDefaultsReader != nil {
+		defaults, err := s.AgentComposerDefaultsReader.GetAgentComposerDefaultsForTarget(ctx, agentTargetID)
+		if err != nil {
+			return ComposerOptions{}, fmt.Errorf("get agent composer defaults for options: %w", err)
+		}
+		input.Settings = mergeComposerSettingsWithDefaults(input.Settings, defaults)
+	}
 	settings := normalizeComposerSettingsForProvider(provider, ComposerSettings{
 		Model:            strings.TrimSpace(input.Settings.Model),
 		PermissionModeID: strings.TrimSpace(input.Settings.PermissionModeID),
@@ -188,6 +196,17 @@ func (s *Service) GetComposerOptions(ctx context.Context, input ComposerOptionsI
 	)
 	locale := normalizeComposerLocale(input.Locale)
 	permissionConfig := composerPermissionConfig(provider, effectiveSettings.PermissionModeID, locale)
+	if providerTargetRefKind(input.providerTargetRef) == "agent_extension" {
+		var err error
+		permissionConfig, err = s.extensionComposerPermissionConfig(
+			ctx,
+			input.providerTargetRef,
+			effectiveSettings.PermissionModeID,
+		)
+		if err != nil {
+			return ComposerOptions{}, err
+		}
+	}
 	modelOptions := s.enrichModelCapabilityOptions(ctx, provider, composerSelectedModelOptions(effectiveSettings.Model))
 	if composerProfileFor(provider).Behavior.ModelOptionsAuthoritative {
 		modelOptions = []ComposerConfigOptionValue{}
@@ -290,6 +309,25 @@ func (s *Service) GetComposerOptions(ctx context.Context, input ComposerOptionsI
 		options = applyExtensionComposerCapabilities(options, extensionProfile)
 	}
 	return options, nil
+}
+
+func mergeComposerSettingsWithDefaults(
+	requested ComposerSettings,
+	defaults preferencesbiz.AgentComposerDefaults,
+) ComposerSettings {
+	if strings.TrimSpace(requested.Model) == "" {
+		requested.Model = defaults.Model
+	}
+	if strings.TrimSpace(requested.PermissionModeID) == "" {
+		requested.PermissionModeID = defaults.PermissionModeID
+	}
+	if strings.TrimSpace(requested.ReasoningEffort) == "" {
+		requested.ReasoningEffort = defaults.ReasoningEffort
+	}
+	if strings.TrimSpace(requested.Speed) == "" {
+		requested.Speed = defaults.Speed
+	}
+	return requested
 }
 
 func composerOptionsIncludeCapabilityCatalog(input ComposerOptionsInput) bool {

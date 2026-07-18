@@ -34,6 +34,7 @@ import {
   workspaceReferenceOptionValue,
   workspaceReferenceSelectValue
 } from "./AgentComposerChrome";
+import { resolveHandoffTargetOwnershipLabel } from "./handoffTargetPresentation";
 
 interface Props {
   labels: AgentComposerProps["labels"];
@@ -272,24 +273,52 @@ export function ComposerFooter({
                 )}
                 aria-label={effectiveHandoffMenuLabel}
               >
-                {handoffMenuTargets.map((target) => (
-                  <SelectItem
-                    key={`${target.provider}:${target.targetId}`}
-                    value={target.targetId}
-                    className={cn(styles.composerMenuItem, "gap-2")}
-                    disabled={target.disabled === true}
-                  >
-                    <span className="flex min-w-0 items-center gap-1.5">
-                      <img
-                        alt=""
-                        aria-hidden="true"
-                        className="size-4 shrink-0 rounded-[4px]"
-                        src={resolveComposerProviderTargetIconUrl(target)}
-                      />
-                      <span className="min-w-0 truncate">{target.label}</span>
-                    </span>
-                  </SelectItem>
-                ))}
+                {handoffMenuTargets.map((target) => {
+                  const ownershipLabel = resolveHandoffTargetOwnershipLabel(
+                    target,
+                    {
+                      self: labels.handoffTargetSelf,
+                      shared: labels.handoffTargetShared
+                    }
+                  );
+                  return (
+                    <SelectItem
+                      key={`${target.provider}:${target.targetId}`}
+                      value={target.targetId}
+                      className={cn(styles.composerMenuItem, "gap-2 py-1.5")}
+                      disabled={target.disabled === true}
+                    >
+                      <span className="flex min-w-0 items-center gap-2">
+                        <span className="relative size-5 shrink-0">
+                          <img
+                            alt=""
+                            aria-hidden="true"
+                            className="size-5 rounded-[4px]"
+                            src={resolveComposerProviderTargetIconUrl(target)}
+                          />
+                          {target.badge?.iconUrl ? (
+                            <img
+                              alt=""
+                              aria-hidden="true"
+                              className="absolute -bottom-0.5 -right-0.5 size-2.5 rounded-full border border-[var(--background-fronted)] bg-[var(--background-fronted)] object-cover"
+                              src={target.badge.iconUrl}
+                            />
+                          ) : null}
+                        </span>
+                        <span className="flex min-w-0 flex-col gap-0.5">
+                          <span className="min-w-0 truncate">
+                            {target.label}
+                          </span>
+                          {ownershipLabel ? (
+                            <span className="min-w-0 truncate text-[11px] leading-none text-[var(--agent-gui-text-secondary)]">
+                              {ownershipLabel}
+                            </span>
+                          ) : null}
+                        </span>
+                      </span>
+                    </SelectItem>
+                  );
+                })}
               </SelectContent>
             </Select>
           ) : showProviderSelect && selectedProviderSwitchTarget ? (
@@ -461,6 +490,11 @@ export function ComposerFooter({
             <AgentPermissionModeDropdown
               composerSettings={composerSettings}
               disabled={permissionModeControlsDisabled}
+              disabledTooltip={
+                permissionModeControlsDisabled
+                  ? labels.permissionModeChangeUnavailableDuringTurn
+                  : undefined
+              }
               onLinkAction={onLinkAction}
               previewMode={previewMode}
               provider={provider}

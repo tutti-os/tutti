@@ -4,15 +4,18 @@ import {
   AgentMentionSearchController as BaseAgentMentionSearchController,
   MAX_BROWSE_CACHE_ENTRIES,
   preloadAgentMentionBrowse,
-  resetAgentMentionSearchBrowseCacheForTests
+  resetAgentMentionSearchBrowseCacheForTests,
+  type AgentMentionSearchState
 } from "./AgentMentionSearchController";
 import { issuePreviewText } from "./agentMentionSearchHelpers";
 import type { AgentContextMentionProvider } from "./agentContextMentionProvider";
 import { AGENT_CONTEXT_MENTION_PROVIDER_IDS } from "./agentContextMentionProvider";
 
 interface TestFileMentionItem {
+  childCount?: number;
   label: string;
   href: string;
+  kind?: "directory" | "file";
 }
 
 interface TestIssueMentionItem {
@@ -147,25 +150,39 @@ function createTestAgentGeneratedFileProvider(
 
 function createTestFileProvider(
   options: TestContextMentionProviderOptions
-): AgentContextMentionProvider<{ label: string; href: string }> {
+): AgentContextMentionProvider<TestFileMentionItem> {
+  const queryFiles = async (input: {
+    context: { metadata?: Readonly<Record<string, unknown>> };
+    directoryPath?: string;
+    keyword: string;
+    maxResults?: number;
+  }) => {
+    if (!options.queryFiles) {
+      return [];
+    }
+    const result = await options.queryFiles({
+      workspaceId: input.context?.metadata?.workspaceId,
+      query: input.keyword,
+      limit: input.maxResults,
+      includeKinds: ["file", "directory"],
+      directoryPath: input.directoryPath
+    });
+    return (result.entries ?? []).map((entry: any) => ({
+      childCount: entry.childCount,
+      label: entry.name,
+      href: entry.path,
+      kind: entry.kind
+    }));
+  };
   return {
     id: FILE_PROVIDER_ID,
     trigger: "@",
-    async query({ context, keyword, maxResults }) {
-      if (!options.queryFiles) {
-        return [];
-      }
-      const result = await options.queryFiles({
-        workspaceId: context?.metadata?.workspaceId,
-        query: keyword,
-        limit: maxResults,
-        includeKinds: ["file", "directory"]
-      });
-      return (result.entries ?? []).map((entry: any) => ({
-        label: entry.name,
-        href: entry.path
-      }));
-    },
+    query: queryFiles,
+    queryDirectory: queryFiles,
+    getItemDirectory: (item) =>
+      item.kind === "directory"
+        ? { childCount: item.childCount, path: item.href }
+        : null,
     getItemKey: (item) => item.href,
     getItemLabel: (item) => item.label,
     toInsertResult: (item) => ({
@@ -2505,9 +2522,9 @@ describe("AgentMentionSearchController", () => {
         (item) => item.mentionNavigation === "agent-generated-folder"
       );
     expect(folderItem).toBeDefined();
-    controller.selectAgentGeneratedMentionItem(
+    controller.selectFileMentionNavigationItem(
       folderItem as Parameters<
-        BaseAgentMentionSearchController["selectAgentGeneratedMentionItem"]
+        BaseAgentMentionSearchController["selectFileMentionNavigationItem"]
       >[0]
     );
 
@@ -2542,6 +2559,293 @@ describe("AgentMentionSearchController", () => {
         ]
       })
     );
+    setAgentGuiI18nTestLocale("en");
+  });
+
+  it("loads nested workspace folders with child counts and returns one level at a time", async () => {
+    setAgentGuiI18nTestLocale("zh-CN");
+    const queryFiles = vi.fn(
+      async ({ directoryPath }: { directoryPath?: string }) => {
+        if (directoryPath === "/workspace/src/components") {
+          return {
+            entries: [
+              {
+                path: "/workspace/src/components/Button.tsx",
+                name: "Button.tsx",
+                kind: "file"
+              }
+            ]
+          };
+        }
+        if (directoryPath === "/workspace/src") {
+          return {
+            entries: [
+              {
+                path: "/workspace/src/components",
+                name: "components",
+                kind: "directory",
+                childCount: 1
+              },
+              {
+                path: "/workspace/src/index.ts",
+                name: "index.ts",
+                kind: "file"
+              }
+            ]
+          };
+        }
+        return {
+          entries: [
+            {
+              path: "/workspace/src",
+              name: "src",
+              kind: "directory",
+              childCount: 2
+            }
+          ]
+        };
+      }
+    );
+    const controller = new AgentMentionSearchController({ queryFiles });
+    const states: AgentMentionSearchState[] = [];
+    controller.subscribe((state) => states.push(state));
+
+    controller.updateQuery({ workspaceId: "room-1", query: "" });
+    controller.setFilter("file");
+
+    await vi.waitFor(() =>
+      expect(states.at(-1)?.groups).toEqual([
+        expect.objectContaining({
+          id: "opened_files",
+          items: [
+            expect.objectContaining({
+              childCount: 2,
+              entryKind: "directory",
+              mentionNavigation: "workspace-folder",
+              path: "/workspace/src"
+            })
+          ]
+        }),
+        expect.objectContaining({ id: "agent_generated_files" })
+      ])
+    );
+
+    const rootFolder = states
+      .at(-1)
+      ?.groups.find((group) => group.id === "opened_files")
+      ?.items.at(0);
+    expect(rootFolder).toBeDefined();
+    expect(controller.selectFileMentionNavigationItem(rootFolder!)).toBe(true);
+
+    await vi.waitFor(() =>
+      expect(states.at(-1)?.groups[0]).toMatchObject({
+        id: "opened_files",
+        items: [
+          expect.objectContaining({
+            mentionNavigation: "workspace-folder-back",
+            name: "返回"
+          }),
+          expect.objectContaining({
+            childCount: 1,
+            mentionNavigation: "workspace-folder",
+            path: "/workspace/src/components"
+          }),
+          expect.objectContaining({ path: "/workspace/src/index.ts" })
+        ]
+      })
+    );
+
+    const nestedFolder = states
+      .at(-1)
+      ?.groups.find((group) => group.id === "opened_files")
+      ?.items.find(
+        (item) =>
+          item.kind === "file" && item.path === "/workspace/src/components"
+      );
+    expect(nestedFolder).toBeDefined();
+    expect(controller.selectFileMentionNavigationItem(nestedFolder!)).toBe(
+      true
+    );
+
+    await vi.waitFor(() =>
+      expect(states.at(-1)?.groups[0]?.items).toEqual([
+        expect.objectContaining({
+          mentionNavigation: "workspace-folder-back",
+          path: "/workspace/src/components"
+        }),
+        expect.objectContaining({
+          path: "/workspace/src/components/Button.tsx"
+        })
+      ])
+    );
+
+    expect(controller.exitFileMentionBrowse()).toBe(true);
+    await vi.waitFor(() =>
+      expect(states.at(-1)?.groups[0]?.items).toEqual([
+        expect.objectContaining({
+          mentionNavigation: "workspace-folder-back",
+          path: "/workspace/src"
+        }),
+        expect.objectContaining({ path: "/workspace/src/components" }),
+        expect.objectContaining({ path: "/workspace/src/index.ts" })
+      ])
+    );
+    expect(queryFiles).toHaveBeenCalledWith(
+      expect.objectContaining({ directoryPath: "/workspace/src/components" })
+    );
+    expect(queryFiles).toHaveBeenCalledWith(
+      expect.objectContaining({ directoryPath: "/workspace/src" })
+    );
+
+    controller.dispose();
+    setAgentGuiI18nTestLocale("en");
+  });
+
+  it("keeps workspace and agent-generated folder navigation independent", async () => {
+    setAgentGuiI18nTestLocale("zh-CN");
+    const queryFiles = vi.fn(
+      async ({ directoryPath }: { directoryPath?: string }) => ({
+        entries:
+          directoryPath === "/workspace/src"
+            ? [
+                {
+                  path: "/workspace/src/index.ts",
+                  name: "index.ts",
+                  kind: "file"
+                }
+              ]
+            : [
+                {
+                  path: "/workspace/src",
+                  name: "src",
+                  kind: "directory",
+                  childCount: 1
+                }
+              ]
+      })
+    );
+    const controller = new AgentMentionSearchController({
+      queryFiles,
+      queryAgentGeneratedFiles: vi.fn().mockResolvedValue({
+        entries: [
+          {
+            path: "/workspace/generated/app.js",
+            name: "app.js"
+          },
+          {
+            path: "/workspace/generated/index.html",
+            name: "index.html"
+          }
+        ]
+      })
+    });
+    const states: AgentMentionSearchState[] = [];
+    controller.subscribe((state) => states.push(state));
+
+    controller.updateQuery({ workspaceId: "room-1", query: "" });
+    controller.setFilter("file");
+
+    await vi.waitFor(() =>
+      expect(states.at(-1)?.groups).toEqual([
+        expect.objectContaining({
+          id: "opened_files",
+          items: [
+            expect.objectContaining({
+              mentionNavigation: "workspace-folder",
+              path: "/workspace/src"
+            })
+          ]
+        }),
+        expect.objectContaining({
+          id: "agent_generated_files",
+          items: [
+            expect.objectContaining({
+              mentionNavigation: "agent-generated-folder",
+              path: "/workspace/generated"
+            })
+          ]
+        })
+      ])
+    );
+
+    const workspaceFolder = states
+      .at(-1)
+      ?.groups.find((group) => group.id === "opened_files")
+      ?.items.find(
+        (item) =>
+          item.kind === "file" && item.mentionNavigation === "workspace-folder"
+      );
+    expect(workspaceFolder).toBeDefined();
+    expect(controller.selectFileMentionNavigationItem(workspaceFolder!)).toBe(
+      true
+    );
+
+    await vi.waitFor(() =>
+      expect(
+        states
+          .at(-1)
+          ?.groups.find((group) => group.id === "opened_files")
+          ?.items.at(0)
+      ).toMatchObject({ mentionNavigation: "workspace-folder-back" })
+    );
+
+    const generatedFolder = states
+      .at(-1)
+      ?.groups.find((group) => group.id === "agent_generated_files")
+      ?.items.find(
+        (item) =>
+          item.kind === "file" &&
+          item.mentionNavigation === "agent-generated-folder"
+      );
+    expect(generatedFolder).toBeDefined();
+    expect(controller.selectFileMentionNavigationItem(generatedFolder!)).toBe(
+      true
+    );
+
+    const bothNestedState = states.at(-1);
+    const workspaceBack = bothNestedState?.groups
+      .find((group) => group.id === "opened_files")
+      ?.items.find(
+        (item) =>
+          item.kind === "file" &&
+          item.mentionNavigation === "workspace-folder-back"
+      );
+    const generatedBack = bothNestedState?.groups
+      .find((group) => group.id === "agent_generated_files")
+      ?.items.find(
+        (item) =>
+          item.kind === "file" &&
+          item.mentionNavigation === "agent-generated-folder-back"
+      );
+    expect(workspaceBack).toBeDefined();
+    expect(generatedBack).toBeDefined();
+
+    expect(controller.selectFileMentionNavigationItem(workspaceBack!)).toBe(
+      true
+    );
+    await vi.waitFor(() =>
+      expect(
+        states
+          .at(-1)
+          ?.groups.find((group) => group.id === "opened_files")
+          ?.items.some(
+            (item) =>
+              item.kind === "file" &&
+              item.mentionNavigation === "workspace-folder-back"
+          )
+      ).toBe(false)
+    );
+    expect(
+      states
+        .at(-1)
+        ?.groups.find((group) => group.id === "agent_generated_files")
+        ?.items.at(0)
+    ).toMatchObject({ mentionNavigation: "agent-generated-folder-back" });
+
+    expect(controller.selectFileMentionNavigationItem(generatedBack!)).toBe(
+      true
+    );
+    controller.dispose();
     setAgentGuiI18nTestLocale("en");
   });
 

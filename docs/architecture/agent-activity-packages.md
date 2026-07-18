@@ -42,9 +42,12 @@ packages/agent/store-sqlite/canonical
 ```
 
 `packages/agent/store-sqlite/canonical` is the single authority for canonical
-activity contract vocabulary; other packages import its phase, outcome,
-origin, interaction-kind, and interaction-status definitions rather than
-redeclaring them.
+activity contracts. It owns phase, outcome, origin, interaction-kind and
+interaction-status vocabulary; pure activity projection snapshots and merge
+functions; commit-observer report types; and the provider identity,
+capability, and plan-decision vocabulary needed by canonical persistence.
+Daemon packages retain compatibility aliases, while runtime mechanics remain
+daemon-owned.
 
 ## Responsibilities
 
@@ -58,11 +61,36 @@ hooks. The `conformance` subpackage owns reusable typed lifecycle scenarios so
 the legacy `tuttid` service, the extracted Host, and downstream adapters can be
 checked against the same behavior baseline.
 
-The module does not own transport, authorization, room or device identity,
+Session read and metadata commands follow the same boundary. `GetSession`
+returns canonical truth with an optional live observation. Settings updates
+are serialized with resume and split between historical persistence and live
+runtime mutation; provider normalization stays in an adapter policy. Pin and
+canonical delete are Host commands, while authorization, transport DTOs,
+shared bindings, and local view cleanup remain adapter-owned.
+
+`store-sqlite` owns the transaction implementation. Its caller-owned
+`TransactionParticipant` seam lets an adapter append a durable outbox marker
+to the same transaction as runtime/goal operation intent, canonical facts, and
+non-re-derivable deletion tombstones without exposing `*sql.Tx` to Host domain
+code. The seam is reserved for facts that must commit or roll back together;
+re-derivable projection gates are repaired by consumers instead.
+
+After commit, Host emits typed `CommittedDelta` values through one
+`CommitObserver`. Activity state, messages, root settlement, runtime and goal
+operation milestones, projection-dirty identities, and canonical view
+invalidations all use that path. Observer failure cannot roll back an already
+committed command. Reliable delivery therefore depends on the durable marker,
+while event-stream publication and cache invalidation remain post-commit wake
+hints.
+
+The Host release module depends on `store-sqlite` and its `canonical` module,
+not on daemon, sidecar, or `tuttid` packages. It exposes `Run` to supervise the
+runtime-operation, goal-operation, and reconcile-inbox workers as one
+lifecycle, while retaining the individual worker entrypoints. The module does
+not own transport, authorization, room or device identity,
 process or VM implementations, HTTP/OpenAPI shapes, Electron integration, or
-control-plane DTOs. `tuttid` remains the production implementation until the
-later extraction slices explicitly switch its wiring; introducing this module
-does not change production routing.
+control-plane DTOs. `tuttid` production wiring delegates lifecycle decisions
+to Host and keeps only its adapter responsibilities.
 
 ### `packages/agent/activity-replication`
 
@@ -550,10 +578,12 @@ invocation. UI packages must keep `provider` as the real provider identity and
 must not synthesize providers for shared or remote targets.
 
 The desktop service owns the event-stream connection. Its reconcile bridge
-maps normalized events to engine intents: append-only messages are folded
-inline, while turn, interaction, and state changes schedule authoritative HTTP
-reconciliation through the engine command port. UI consumers never retain a
-second per-session stream or merge canonical entities themselves.
+maps normalized events to engine intents: continuous versions of mutable message
+snapshots are folded inline, while a message-version gap or recovered connection
+schedules authoritative incremental message reconciliation through the engine
+command port. Turn, interaction, and state changes also schedule their
+authoritative HTTP reconciliation through that port. UI consumers never retain
+a second per-session stream or merge canonical entities themselves.
 
 Hosts may accept older provider/runtime reports with missing transcript
 ownership or ordering fields, but those gaps must be filled before events enter

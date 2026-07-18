@@ -3,6 +3,7 @@ import type {
   WorkspaceUserProject,
   WorkspaceUserProjectDefaultSelection,
   WorkspaceUserProjectMoveInput,
+  WorkspaceUserProjectPinInput,
   WorkspaceUserProjectPathCheck,
   WorkspaceUserProjectSelectionPreparation,
   WorkspaceUserProjectSelectionPreparationInput,
@@ -22,6 +23,7 @@ export interface IWorkspaceUserProjectService {
   getSnapshot(): WorkspaceUserProjectServiceSnapshot;
   isNoProjectPath(path: string): boolean;
   moveProject(input: WorkspaceUserProjectMoveInput): Promise<void>;
+  pinProject(input: WorkspaceUserProjectPinInput): Promise<void>;
   rememberNoProjectPath(path: string | null | undefined): void;
   prepareSelection(
     input: WorkspaceUserProjectSelectionPreparationInput

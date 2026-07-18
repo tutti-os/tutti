@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
   normalizeAgentActivitySession,
-  type AgentActivitySession
+  type AgentActivitySession,
+  type AgentActivityTurn
 } from "@tutti-os/agent-activity-core";
 import type { WorkspaceAgentActivityTimelineItem } from "../../workspaceAgentTimelineTypes";
 import type { WorkspaceAgentActivityCard } from "../../workspaceAgentActivityListViewModel";
@@ -278,6 +279,156 @@ describe("projectWorkspaceAgentTimelineToConversationVM", () => {
       detail: "Config invalid",
       retryable: false
     });
+  });
+
+  it("projects a terminal canonical Turn error when the provider emitted no error message", () => {
+    const failed = failedTurn({
+      error: {
+        message: "Selected model is at capacity. Please try a different model."
+      }
+    });
+    const input = {
+      activity: activity(),
+      session: session({ latestTurn: failed }),
+      sessionTurns: [failed],
+      workspaceRoot: "/workspace/demo",
+      timelineItems: [timelineItems()[0]!]
+    };
+    const detail = buildCanonicalWorkspaceAgentDetailView(input);
+    const conversation = projectWorkspaceAgentTimelineToConversationVM(input);
+
+    expect(detail.turns[0]?.agentMessages).toEqual([
+      expect.objectContaining({
+        id: "turn-error:session-1:turn-1",
+        body: "Selected model is at capacity. Please try a different model.",
+        statusKind: "failed",
+        visibleError: {
+          code: null,
+          phase: "turn",
+          provider: "codex",
+          detail:
+            "Selected model is at capacity. Please try a different model.",
+          retryable: null
+        }
+      })
+    ]);
+    expect(
+      conversation.rows.flatMap((row) =>
+        row.kind === "message" && row.speaker === "assistant"
+          ? row.messages
+          : []
+      )
+    ).toEqual([
+      expect.objectContaining({
+        id: "turn-error:session-1:turn-1",
+        visibleError: expect.objectContaining({
+          detail: "Selected model is at capacity. Please try a different model."
+        })
+      })
+    ]);
+  });
+
+  it("upgrades a matching assistant failure instead of duplicating the Turn error", () => {
+    const failed = failedTurn({
+      error: { code: "provider_error", message: "Provider unavailable" }
+    });
+    const detail = buildCanonicalWorkspaceAgentDetailView({
+      activity: activity(),
+      session: session({ latestTurn: failed }),
+      sessionTurns: [failed],
+      workspaceRoot: "/workspace/demo",
+      timelineItems: [
+        timelineItems()[0]!,
+        {
+          ...timelineItems()[1]!,
+          content: "Provider unavailable",
+          status: "failed"
+        }
+      ]
+    });
+
+    expect(detail.turns[0]?.agentMessages).toHaveLength(1);
+    expect(detail.turns[0]?.agentMessages[0]).toEqual(
+      expect.objectContaining({
+        id: "event-2",
+        visibleError: expect.objectContaining({
+          code: "provider_error",
+          detail: "Provider unavailable"
+        })
+      })
+    );
+  });
+
+  it("keeps an existing structured visible error as the single Turn failure row", () => {
+    const failed = failedTurn({
+      error: { code: "provider_error", message: "Canonical provider failure" }
+    });
+    const detail = buildCanonicalWorkspaceAgentDetailView({
+      activity: activity(),
+      session: session({ latestTurn: failed }),
+      sessionTurns: [failed],
+      workspaceRoot: "/workspace/demo",
+      timelineItems: [
+        timelineItems()[0]!,
+        {
+          ...timelineItems()[1]!,
+          status: "failed",
+          content: "Provider request failed",
+          payload: {
+            kind: "agent_visible_error",
+            code: "provider_error",
+            phase: "run",
+            provider: "codex",
+            detail: "Provider request failed",
+            retryable: true
+          }
+        }
+      ]
+    });
+
+    expect(detail.turns[0]?.agentMessages).toHaveLength(1);
+    expect(detail.turns[0]?.agentMessages[0]?.id).toBe("event-2");
+    expect(detail.turns[0]?.agentMessages[0]?.visibleError?.detail).toBe(
+      "Provider request failed"
+    );
+  });
+
+  it("keeps a historical Turn error attached to its owning Turn", () => {
+    const failed = failedTurn();
+    const completed: AgentActivityTurn = {
+      ...failed,
+      error: null,
+      outcome: "completed",
+      turnId: "turn-2",
+      startedAtUnixMs: 20,
+      settledAtUnixMs: 30,
+      updatedAtUnixMs: 30
+    };
+    const detail = buildCanonicalWorkspaceAgentDetailView({
+      activity: activity(),
+      session: session({ latestTurn: completed }),
+      sessionTurns: [failed, completed],
+      workspaceRoot: "/workspace/demo",
+      timelineItems: [
+        timelineItems()[0]!,
+        {
+          ...timelineItems()[0]!,
+          id: 20,
+          seq: 20,
+          eventId: "event-20",
+          turnId: "turn-2",
+          content: "Try again",
+          occurredAtUnixMs: 20,
+          createdAtUnixMs: 20
+        }
+      ]
+    });
+
+    expect(detail.turns.map((turn) => turn.id)).toEqual(["turn-1", "turn-2"]);
+    expect(detail.turns[0]?.agentMessages[0]?.visibleError?.detail).toBe(
+      "Turn failed"
+    );
+    expect(detail.turns[1]?.agentMessages).toHaveLength(0);
   });
 
   it("projects transport notices without merging them into assistant content", () => {
@@ -640,6 +791,23 @@ function activeTurn(phase: "running" | "settled") {
     startedAtUnixMs: 1,
     turnId: "turn-1",
     updatedAtUnixMs: 10
+  };
+}
+
+function failedTurn(
+  overrides: Partial<AgentActivityTurn> = {}
+): AgentActivityTurn {
+  return {
+    agentSessionId: "session-1",
+    error: { message: "Turn failed" },
+    origin: "user_prompt",
+    outcome: "failed",
+    phase: "settled",
+    settledAtUnixMs: 10,
+    startedAtUnixMs: 1,
+    turnId: "turn-1",
+    updatedAtUnixMs: 10,
+    ...overrides
   };
 }
 

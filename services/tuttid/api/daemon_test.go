@@ -1888,14 +1888,14 @@ func TestDaemonAPIGeneratedRoutesGetAgentProviderComposerOptionsPassesAgentTarge
 	}
 }
 
-func TestDaemonAPIGeneratedRoutesGetAgentProviderComposerOptionsUsesPreferencesDefaults(t *testing.T) {
+func TestDaemonAPIGeneratedRoutesGetAgentProviderComposerOptionsLeavesTargetDefaultsToAgentService(t *testing.T) {
 	mux := http.NewServeMux()
 	RegisterRoutes(mux, NewRoutes(DaemonAPI{
 		AgentSessionService: stubAgentSessionService{
 			composerOptionsFn: func(_ context.Context, input agentservice.ComposerOptionsInput) (agentservice.ComposerOptions, error) {
-				if input.Settings.Model != "gpt-5" ||
-					input.Settings.PermissionModeID != "full-access" ||
-					input.Settings.ReasoningEffort != "high" {
+				if input.Settings.Model != "" ||
+					input.Settings.PermissionModeID != "" ||
+					input.Settings.ReasoningEffort != "" {
 					t.Fatalf("settings = %#v", input.Settings)
 				}
 				return agentservice.ComposerOptions{
@@ -1956,10 +1956,10 @@ func TestDaemonAPIGeneratedRoutesGetAgentProviderComposerOptionsUsesPreferencesD
 
 	var response tuttigenerated.AgentProviderComposerOptionsResponse
 	decodeGeneratedRouteResponse(t, recorder, &response)
-	if response.EffectiveSettings.PermissionModeId == nil || *response.EffectiveSettings.PermissionModeId != "full-access" {
+	if response.EffectiveSettings.PermissionModeId != nil {
 		t.Fatalf("effectiveSettings = %#v", response.EffectiveSettings)
 	}
-	if response.PermissionConfig.DefaultValue == nil || *response.PermissionConfig.DefaultValue != "full-access" {
+	if response.PermissionConfig.DefaultValue != nil {
 		t.Fatalf("permissionConfig = %#v", response.PermissionConfig)
 	}
 }

@@ -1455,6 +1455,7 @@ function userProject(
     id,
     label,
     path,
+    pinnedAtUnixMs: 0,
     sectionKey: `project:${path}`,
     updatedAtUnixMs: 1
   };
@@ -1466,6 +1467,7 @@ function agentGUIUserProject(project: WorkspaceUserProject): {
   label: string;
   lastUsedAtUnixMs?: number;
   path: string;
+  pinnedAtUnixMs: number;
   sectionKey?: string;
   updatedAtUnixMs?: number;
 } {
@@ -1479,6 +1481,7 @@ function agentGUIUserProject(project: WorkspaceUserProject): {
       ? { lastUsedAtUnixMs: project.lastUsedAtUnixMs }
       : {}),
     path: project.path,
+    pinnedAtUnixMs: project.pinnedAtUnixMs,
     ...(project.sectionKey === undefined
       ? {}
       : { sectionKey: project.sectionKey }),
@@ -1519,6 +1522,7 @@ function createWorkspaceUserProjectService(
       return false;
     },
     async moveProject() {},
+    async pinProject() {},
     rememberNoProjectPath() {},
     async prepareSelection() {
       return {
@@ -1719,6 +1723,9 @@ function createWorkspaceAgentActivityService(
       return () => {};
     },
     onModelCatalogInvalidated() {
+      return () => {};
+    },
+    onComposerDefaultsInvalidated() {
       return () => {};
     },
     ensureSessionSynchronized() {

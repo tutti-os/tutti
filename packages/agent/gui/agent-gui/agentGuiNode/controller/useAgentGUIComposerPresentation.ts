@@ -2,7 +2,7 @@ import type {
   AgentActivityComposerOptions,
   AgentActivitySession
 } from "@tutti-os/agent-activity-core";
-import { useEffect, useMemo, type Dispatch, type SetStateAction } from "react";
+import { useMemo, type Dispatch, type SetStateAction } from "react";
 import type { AgentActivityRuntime } from "../../../agentActivityRuntime";
 import type {
   AgentSessionComposerSettings,
@@ -19,23 +19,20 @@ import { composerSettingsSupportFromOptions } from "../model/composerSettingsSup
 import {
   cloneComposerSettings,
   modelSelectionFromComposerOptions,
-  nodeDataFromComposerSettings,
-  nodeDefaultDraftKey,
   normalizePermissionModeId,
   permissionConfigFromComposerOptions,
   permissionModeOptions,
   readNodeDefaultDraftSettings,
   reasoningSelectionFromComposerOptions,
-  sameComposerSettings,
   speedSelectionFromComposerOptions
 } from "./agentGuiController.composerHelpers";
 import {
   isForegroundModelOptionsLoading,
   resolveComposerSettingsPresentation,
-  sanitizeComposerSettingsForTarget,
   type AgentGUIComposerTargetData
 } from "./agentGuiController.composerPresentation";
 import { normalizeOptionalText } from "./agentGuiController.promptHelpers";
+import { overlayComposerDefaults } from "./agentGuiController.providerHelpers";
 import {
   useStableComposerSettings,
   useStableComposerSettingsVM
@@ -88,15 +85,7 @@ export function useAgentGUIComposerPresentation(
       drafts: input.draftSettingsBySessionId
     })
   );
-  const targetSafeNodeDefaultSettings = useStableComposerSettings(
-    input.activeConversationId === null
-      ? sanitizeComposerSettingsForTarget({
-          settings: storedNodeDefaultSettings,
-          target: input.selectedComposerTargetData,
-          options: input.providerComposerOptions
-        })
-      : storedNodeDefaultSettings
-  );
+  const targetSafeNodeDefaultSettings = storedNodeDefaultSettings;
   const homeComposerSettings = useStableComposerSettings(
     resolveComposerSettingsPresentation({
       active: false,
@@ -104,51 +93,6 @@ export function useAgentGUIComposerPresentation(
       options: input.providerComposerOptions
     })
   );
-
-  useEffect(() => {
-    if (
-      input.activeConversationId !== null ||
-      !input.selectedComposerTargetData.agentTargetId ||
-      !input.providerComposerOptions ||
-      sameComposerSettings(
-        storedNodeDefaultSettings,
-        targetSafeNodeDefaultSettings
-      )
-    ) {
-      return;
-    }
-    const targetDefaultDraftKey = nodeDefaultDraftKey(
-      input.selectedComposerTargetData.provider,
-      input.selectedComposerTargetData.agentTargetId
-    );
-    input.draftSettingsBySessionIdRef.current = {
-      ...input.draftSettingsBySessionIdRef.current,
-      [targetDefaultDraftKey]: targetSafeNodeDefaultSettings
-    };
-    input.setDraftSettingsBySessionId((current) => ({
-      ...current,
-      [targetDefaultDraftKey]: targetSafeNodeDefaultSettings
-    }));
-    input.onDataChangeRef.current((current) =>
-      nodeDataFromComposerSettings(
-        {
-          ...current,
-          provider: input.selectedComposerTargetData.provider,
-          agentTargetId: input.selectedComposerTargetData.agentTargetId
-        },
-        targetSafeNodeDefaultSettings
-      )
-    );
-  }, [
-    input.activeConversationId,
-    input.draftSettingsBySessionIdRef,
-    input.onDataChangeRef,
-    input.providerComposerOptions,
-    input.selectedComposerTargetData,
-    input.setDraftSettingsBySessionId,
-    storedNodeDefaultSettings,
-    targetSafeNodeDefaultSettings
-  ]);
 
   const activeConversationDraftSettings = input.activeConversationId
     ? (input.draftSettingsBySessionId[input.activeConversationId] ?? null)
@@ -173,10 +117,8 @@ export function useAgentGUIComposerPresentation(
   const draftModel = usesPlaceholderDraftModel
     ? (liveConfigModel ?? persistedDraftModel)
     : persistedDraftModel;
-  const draftReasoningEffort = (
-    input.composerSupport.reasoning
-      ? normalizeOptionalText(draftSettings.reasoningEffort)
-      : null
+  const draftReasoningEffort = normalizeOptionalText(
+    draftSettings.reasoningEffort
   ) as AgentSessionReasoningEffort | null;
   const draftSpeed = normalizeOptionalText(
     draftSettings.speed
@@ -190,7 +132,7 @@ export function useAgentGUIComposerPresentation(
       ),
     [draftModel, draftReasoningEffort, input.providerComposerOptions]
   );
-  const presentedReasoningEffort = activeSessionReasoningSelection
+  const optionsReasoningEffort = activeSessionReasoningSelection
     ? activeSessionReasoningSelection.currentValue
     : draftReasoningEffort;
   const activeSessionModelSelection = useMemo(
@@ -225,18 +167,39 @@ export function useAgentGUIComposerPresentation(
     const selectedPermissionModeValue =
       normalizePermissionModeId(draftSettings.permissionModeId) ??
       normalizePermissionModeId(permissionConfig?.defaultValue);
+    const protectedSettings = overlayComposerDefaults(
+      {
+        model: draftModel,
+        permissionModeId: selectedPermissionModeValue,
+        reasoningEffort: optionsReasoningEffort,
+        speed: draftSpeed
+      },
+      input.activeConversationId === null
+        ? input.selectedComposerTargetData.agentTargetId
+          ? storedNodeDefaultSettings
+          : null
+        : sessionSettings
+    );
+    const presentedModel = normalizeOptionalText(protectedSettings.model);
+    const presentedReasoningEffort = normalizeOptionalText(
+      protectedSettings.reasoningEffort
+    ) as AgentSessionReasoningEffort | null;
+    const presentedSpeed = normalizeOptionalText(
+      protectedSettings.speed
+    ) as AgentSessionSpeed | null;
+    const presentedPermissionMode = normalizePermissionModeId(
+      protectedSettings.permissionModeId
+    );
     return {
       sessionSettings,
       draftSettings: {
-        model: draftModel,
+        model: presentedModel,
         reasoningEffort: presentedReasoningEffort,
-        speed: draftSpeed,
+        speed: presentedSpeed,
         planMode: Boolean(draftSettings.planMode),
         browserUse: draftSettings.browserUse ?? true,
         computerUse: draftSettings.computerUse ?? true,
-        permissionModeId: normalizePermissionModeId(
-          draftSettings.permissionModeId
-        )
+        permissionModeId: presentedPermissionMode
       },
       supportsModel: input.composerSupport.model,
       supportsReasoningEffort: input.composerSupport.reasoning,
@@ -280,10 +243,10 @@ export function useAgentGUIComposerPresentation(
         sessionSettings === null &&
         supportsPermissionMode &&
         selectedPermissionModeValue === null,
-      selectedModelValue: draftModel,
+      selectedModelValue: presentedModel,
       selectedReasoningEffortValue: presentedReasoningEffort,
-      selectedSpeedValue: draftSpeed,
-      selectedPermissionModeValue,
+      selectedSpeedValue: presentedSpeed,
+      selectedPermissionModeValue: presentedPermissionMode,
       permissionConfig,
       selectedProjectPath:
         input.activeConversationId !== null
@@ -339,10 +302,12 @@ export function useAgentGUIComposerPresentation(
     input.composerOptionsLoading,
     input.composerTargetProvider,
     input.providerComposerOptions,
+    input.selectedComposerTargetData.agentTargetId,
     input.selectedProjectPath,
     input.userProjects,
-    presentedReasoningEffort,
-    sessionSettings
+    optionsReasoningEffort,
+    sessionSettings,
+    storedNodeDefaultSettings
   ]);
 
   return {

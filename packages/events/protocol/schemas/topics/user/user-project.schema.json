@@ -11,7 +11,8 @@
     "sectionKey",
     "createdAtUnixMs",
     "updatedAtUnixMs",
-    "lastUsedAtUnixMs"
+    "lastUsedAtUnixMs",
+    "pinnedAtUnixMs"
   ],
   "properties": {
     "id": { "type": "string", "minLength": 1 },
@@ -21,6 +22,11 @@
     "createdAtUnixMs": { "type": "integer", "format": "int64", "minimum": 0 },
     "updatedAtUnixMs": { "type": "integer", "format": "int64", "minimum": 0 },
     "lastUsedAtUnixMs": {
+      "type": "integer",
+      "format": "int64",
+      "minimum": 0
+    },
+    "pinnedAtUnixMs": {
       "type": "integer",
       "format": "int64",
       "minimum": 0

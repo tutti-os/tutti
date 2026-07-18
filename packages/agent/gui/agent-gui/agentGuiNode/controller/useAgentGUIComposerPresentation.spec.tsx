@@ -2,12 +2,153 @@ import { renderHook } from "@testing-library/react";
 import type { AgentActivityComposerOptions } from "@tutti-os/agent-activity-core";
 import { describe, expect, it, vi } from "vitest";
 import type { AgentActivityRuntime } from "../../../agentActivityRuntime";
+import type { AgentSessionComposerSettings } from "../../../shared/agentSessionTypes";
 import type { AgentGUINodeData } from "../../../types";
 import { composerSettingsSupportFromOptions } from "../model/composerSettingsSupport";
 import type { AgentGUIComposerTargetData } from "./agentGuiController.composerPresentation";
 import { useAgentGUIComposerPresentation } from "./useAgentGUIComposerPresentation";
 
 describe("useAgentGUIComposerPresentation", () => {
+  it("keeps all explicit home defaults above stale options, then yields to authority after retirement", () => {
+    const data: AgentGUINodeData = {
+      provider: "opencode",
+      agentTargetId: "local:opencode",
+      lastActiveAgentSessionId: null
+    };
+    const target: AgentGUIComposerTargetData = {
+      agentTargetId: "local:opencode",
+      data,
+      provider: "opencode",
+      targetId: "local:opencode"
+    };
+    const options: AgentActivityComposerOptions = {
+      provider: "opencode",
+      capabilities: null,
+      models: [{ value: "opencode/old-model", label: "Old model" }],
+      reasoningEfforts: [{ value: "low", label: "Low" }],
+      reasoningOptionsByModel: {
+        "opencode/old-model": {
+          defaultValue: "low",
+          options: [{ value: "low", label: "Low" }]
+        }
+      },
+      speeds: [{ value: "normal", label: "Normal" }],
+      modelConfigurable: true,
+      reasoningConfigurable: false,
+      skills: [],
+      behavior: {
+        collapseModelOptionsToLatest: false,
+        modelOptionsAuthoritative: false,
+        refreshModelOptionsAfterSettings: false,
+        prewarmDraftSession: false,
+        planModeExclusiveWithPermissionMode: false
+      },
+      loadedAtUnixMs: 1,
+      effectiveSettings: {
+        model: "opencode/old-model",
+        permissionModeId: "ask",
+        reasoningEffort: "low",
+        speed: "normal"
+      },
+      permissionConfig: {
+        configurable: true,
+        defaultValue: "ask",
+        modes: [{ id: "ask", label: "Ask" }]
+      }
+    };
+    const draftSettingsBySessionId = {
+      "__agent_gui_node_defaults__:target:local:opencode": {
+        model: "opencode/new-model",
+        permissionModeId: "full-access",
+        reasoningEffort: "high" as const,
+        speed: "fast" as const
+      }
+    };
+    const { result, rerender } = renderHook(
+      ({ currentOptions, drafts }) =>
+        useAgentGUIComposerPresentation({
+          activeConversation: null,
+          activeConversationId: null,
+          activeEngineSession: null,
+          activeSessionState: null,
+          agentActivityRuntime: {
+            projectPathIsRemote: false
+          } as AgentActivityRuntime,
+          composerSupport: {
+            ...composerSettingsSupportFromOptions(currentOptions, null),
+            reasoning: false
+          },
+          composerOptionsLoading: false,
+          composerTargetProvider: "opencode",
+          data,
+          defaultReasoningEffort: null,
+          draftSettingsBySessionId: drafts,
+          draftSettingsBySessionIdRef: { current: drafts },
+          onDataChangeRef: { current: vi.fn() },
+          providerComposerOptions: currentOptions,
+          selectedComposerTargetData: target,
+          selectedProjectPath: null,
+          userProjects: [],
+          setDraftSettingsBySessionId: vi.fn()
+        }),
+      {
+        initialProps: {
+          currentOptions: options,
+          drafts: draftSettingsBySessionId as Record<
+            string,
+            AgentSessionComposerSettings
+          >
+        }
+      }
+    );
+
+    expect(result.current.stableComposerSettings.draftSettings).toMatchObject({
+      model: "opencode/new-model",
+      permissionModeId: "full-access",
+      reasoningEffort: "high",
+      speed: "fast"
+    });
+    expect(result.current.stableComposerSettings).toMatchObject({
+      selectedModelValue: "opencode/new-model",
+      selectedPermissionModeValue: "full-access",
+      selectedReasoningEffortValue: "high",
+      selectedSpeedValue: "fast"
+    });
+
+    rerender({
+      currentOptions: {
+        ...options,
+        loadedAtUnixMs: 2,
+        models: [{ value: "opencode/authority-model", label: "Authority" }],
+        reasoningEfforts: [{ value: "medium", label: "Medium" }],
+        reasoningOptionsByModel: {
+          "opencode/authority-model": {
+            defaultValue: "medium",
+            options: [{ value: "medium", label: "Medium" }]
+          }
+        },
+        effectiveSettings: {
+          model: "opencode/authority-model",
+          permissionModeId: "sandbox",
+          reasoningEffort: "medium",
+          speed: "normal"
+        },
+        permissionConfig: {
+          configurable: true,
+          defaultValue: "sandbox",
+          modes: [{ id: "sandbox", label: "Sandbox" }]
+        }
+      },
+      drafts: {}
+    });
+    expect(result.current.stableComposerSettings).toMatchObject({
+      selectedModelValue: "opencode/authority-model",
+      selectedPermissionModeValue: "sandbox",
+      selectedReasoningEffortValue: "medium",
+      selectedSpeedValue: "normal"
+    });
+  });
+
   it("switches reasoning visibility and values with the selected model profile", () => {
     const data: AgentGUINodeData = {
       provider: "opencode",

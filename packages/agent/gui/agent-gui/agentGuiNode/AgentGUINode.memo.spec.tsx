@@ -50,6 +50,7 @@ vi.mock("./controller/useAgentGUINodeController", () => ({
       removeQueuedPrompt: vi.fn(),
       editQueuedPrompt: vi.fn(),
       removeProject: vi.fn(),
+      toggleProjectPinned: vi.fn(),
       confirmDeleteProjectConversations: vi.fn(),
       requestDeleteConversation: vi.fn(),
       retryActivation: vi.fn(),

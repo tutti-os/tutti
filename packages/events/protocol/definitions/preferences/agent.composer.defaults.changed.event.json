@@ -1,0 +1,20 @@
+{
+  "$schema": "../../schemas/core/event-definition.schema.json",
+  "topic": "preferences.agent.composer.defaults.changed",
+  "version": 1,
+  "direction": "server->client",
+  "owner": "core",
+  "scope": "desktop",
+  "payloadSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "required": ["agentTargetId"],
+    "properties": {
+      "agentTargetId": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 128
+      }
+    }
+  }
+}

@@ -29,15 +29,18 @@ export class ToolActivityProjector {
   private readonly activeTurnId: () => string;
   private readonly emit: ClaudeSDKSidecarEventEmitter;
   private readonly onFinalDelegatedTaskSettling: () => void;
+  private readonly lastTurnId: () => string;
 
   constructor(
     activeTurnId: () => string,
     emit: ClaudeSDKSidecarEventEmitter,
-    onFinalDelegatedTaskSettling: () => void = () => {}
+    onFinalDelegatedTaskSettling: () => void = () => {},
+    lastTurnId: () => string = activeTurnId
   ) {
     this.activeTurnId = activeTurnId;
     this.emit = emit;
     this.onFinalDelegatedTaskSettling = onFinalDelegatedTaskSettling;
+    this.lastTurnId = lastTurnId;
     this.taskPlan = new TaskPlanTracker(activeTurnId, emit);
     this.tools = new ToolEventProjector(
       (tool) => this.resolveToolEventTurnId(tool),
@@ -83,6 +86,21 @@ export class ToolActivityProjector {
     return latest;
   }
 
+  resolveDelegatedTaskIdForStop(
+    taskId: string,
+    parentToolUseId: string
+  ): string {
+    // Callers may only hold one identifier, and the daemon's child key can be
+    // the SDK task id, the agent id, or the launching tool use id; try all.
+    const parentByAlias = taskId
+      ? this.delegatedParentByAlias(taskId, taskId)
+      : "";
+    const task = parentByAlias
+      ? this.delegatedTasksByParentToolUseID.get(parentByAlias)
+      : this.delegatedTasksByParentToolUseID.get(parentToolUseId || taskId);
+    return task?.status === "running" ? (task.taskId ?? "") : "";
+  }
+
   handleTaskNotificationFromText(text: string): void {
     const parsed = parseTaskNotification(text);
     if (!parsed) {
@@ -98,7 +116,14 @@ export class ToolActivityProjector {
     subtype: "task_started" | "task_progress" | "task_notification",
     message: Record<string, unknown>
   ): void {
-    const task = this.resolveDelegatedTaskFromMessage(message);
+    // task_notification is included so a terminal notice for a task launched
+    // before a sidecar restart (reported e.g. as stopped on the next prompt)
+    // still settles a card instead of being dropped by the fresh instance.
+    const task =
+      this.resolveDelegatedTaskFromMessage(message) ??
+      (subtype === "task_started" || subtype === "task_notification"
+        ? this.rememberBackgroundTask(message)
+        : undefined);
     if (!task) {
       return;
     }
@@ -116,8 +141,13 @@ export class ToolActivityProjector {
       if (task.status !== "running") {
         return;
       }
-      this.prepareDelegatedTaskTerminal(task);
-      task.status = delegatedTaskStatus(message.status);
+      const status = delegatedTaskStatus(message.status);
+      // A user-initiated stop needs no model follow-up, so it must not open a
+      // synthetic continuation turn (which would time out and interrupt).
+      if (status !== "stopped") {
+        this.prepareDelegatedTaskTerminal(task);
+      }
+      task.status = status;
       this.emitDelegatedTaskLifecycleEvent("task_completed", task, message);
       this.emitDelegatedTaskParentUpdate(task, message);
       return;
@@ -211,13 +241,16 @@ export class ToolActivityProjector {
     if (!task) {
       return;
     }
-    this.prepareDelegatedTaskTerminal(task);
+    const status = delegatedTaskStatus(hookInput.status);
+    if (status !== "stopped") {
+      this.prepareDelegatedTaskTerminal(task);
+    }
     const taskId = stringValue(hookInput.task_id) || task.taskId;
     if (taskId && !task.taskId) {
       task.taskId = taskId;
       this.delegatedParentByTaskID.set(taskId, task.parentToolUseId);
     }
-    task.status = delegatedTaskStatus(hookInput.status);
+    task.status = status;
     task.subject = stringValue(hookInput.task_subject) || task.subject;
     task.description =
       stringValue(hookInput.task_description) || task.description;
@@ -263,8 +296,11 @@ export class ToolActivityProjector {
     if (!task || task.status !== "running") {
       return;
     }
-    this.prepareDelegatedTaskTerminal(task);
-    task.status = delegatedTaskStatus(message.status);
+    const status = delegatedTaskStatus(message.status);
+    if (status !== "stopped") {
+      this.prepareDelegatedTaskTerminal(task);
+    }
+    task.status = status;
     this.emitDelegatedTaskLifecycleEvent("task_completed", task, message);
     this.emitDelegatedTaskParentUpdate(task, message);
   }
@@ -367,6 +403,39 @@ export class ToolActivityProjector {
     if (agentId) {
       this.delegatedParentByAgentID.set(agentId, parentToolUseId);
     }
+  }
+
+  // Background launches the launch-result path does not register (most
+  // importantly `run_in_background` Bash) still announce themselves through
+  // the SDK task system. Registering them here puts them on the same
+  // delegated-task rails as background subagents, so they gate the root turn,
+  // show up as child sessions, and can be stopped individually — instead of
+  // running invisibly after the turn settled.
+  private rememberBackgroundTask(
+    message: Record<string, unknown>
+  ): DelegatedTaskState | undefined {
+    const parentToolUseId =
+      stringValue(message.tool_use_id) || stringValue(message.toolCallId);
+    const taskId = stringValue(message.task_id) || stringValue(message.taskId);
+    if (!parentToolUseId || !taskId) {
+      // Without a launching tool use id this could be a racing alias for a
+      // not-yet-registered subagent launch; binding it here would poison the
+      // alias maps, so leave it for the launch result to register.
+      return undefined;
+    }
+    const task: DelegatedTaskState = {
+      parentToolUseId,
+      // Background task_started frequently arrives after the launching
+      // provider turn already settled; fall back to that turn so lifecycle
+      // events are not dropped for lack of a turn id.
+      turnId: this.activeTurnId() || this.lastTurnId(),
+      input: {},
+      taskId,
+      status: "running"
+    };
+    this.delegatedTasksByParentToolUseID.set(parentToolUseId, task);
+    this.delegatedParentByTaskID.set(taskId, parentToolUseId);
+    return task;
   }
 
   private resolveDelegatedTaskFromMessage(

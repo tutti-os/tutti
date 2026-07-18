@@ -172,6 +172,29 @@ export function WorkbenchMissionControlOverlay({
       className="workbench-mission-control pointer-events-none absolute inset-0 overflow-hidden"
       data-phase={phase}
     >
+      {state.mode === "activate" ? (
+        <div className="workbench-mission-control__footer-shell pointer-events-none absolute inset-x-0 bottom-0 flex justify-center px-6 pb-6">
+          <div
+            className="workbench-mission-control__layout-dock desktop-dock-plate pointer-events-auto"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="workbench-mission-control__layout-dock-content">
+              <Button
+                className="workbench-mission-control__layout-mode-button"
+                type="button"
+                variant="ghost"
+                onClick={() => state.requestMode("layout")}
+              >
+                <AppWindowIcon
+                  aria-hidden
+                  className="workbench-mission-control__layout-glyph"
+                />
+                {i18n.t("layoutModeTrigger")}
+              </Button>
+            </div>
+          </div>
+        </div>
+      ) : null}
       {state.mode === "layout" ? (
         <div className="workbench-mission-control__footer-shell pointer-events-none absolute inset-x-0 bottom-0 flex justify-center px-6 pb-6">
           <div

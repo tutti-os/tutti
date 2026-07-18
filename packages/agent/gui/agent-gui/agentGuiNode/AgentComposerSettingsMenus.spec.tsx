@@ -160,6 +160,39 @@ describe("AgentPermissionModeDropdown", () => {
       screen.queryByRole("dialog", { name: "Enable full access?" })
     ).not.toBeInTheDocument();
   });
+
+  it("explains why permission changes are disabled during a running turn", async () => {
+    const onSettingsChange = vi.fn();
+    render(
+      <AgentPermissionModeDropdown
+        composerSettings={composerSettings()}
+        disabled
+        disabledTooltip="Permissions cannot change during a running turn"
+        provider="codex"
+        labels={{
+          loadingOptions: "Loading permission modes",
+          permissionLabel: "Permission mode"
+        }}
+        onSettingsChange={onSettingsChange}
+      />
+    );
+
+    const trigger = screen.getByRole("combobox", {
+      name: "Permission mode"
+    });
+    expect(trigger).toBeDisabled();
+
+    const tooltipTarget = trigger.parentElement;
+    expect(tooltipTarget).not.toBeNull();
+    fireEvent.pointerMove(tooltipTarget as HTMLElement, {
+      pointerType: "mouse"
+    });
+
+    expect(await screen.findByRole("tooltip")).toHaveTextContent(
+      "Permissions cannot change during a running turn"
+    );
+    expect(onSettingsChange).not.toHaveBeenCalled();
+  });
 });
 
 async function selectPermissionOption(optionName: string): Promise<void> {

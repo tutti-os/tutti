@@ -14,18 +14,27 @@ func (s *Store) DeleteSession(
 	workspaceID string,
 	agentSessionID string,
 ) (bool, error) {
+	result, err := s.DeleteSessionWithCommit(ctx, workspaceID, agentSessionID)
+	return result.RemovedSessions > 0, err
+}
+
+func (s *Store) DeleteSessionWithCommit(
+	ctx context.Context,
+	workspaceID string,
+	agentSessionID string,
+) (DeleteSessionResult, error) {
 	if s == nil || s.db == nil {
-		return false, errors.New("workspace database is not initialized")
+		return DeleteSessionResult{}, errors.New("workspace database is not initialized")
 	}
 	workspaceID = strings.TrimSpace(workspaceID)
 	agentSessionID = strings.TrimSpace(agentSessionID)
 	if workspaceID == "" || agentSessionID == "" {
-		return false, nil
+		return DeleteSessionResult{}, nil
 	}
 
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
-		return false, fmt.Errorf("begin delete workspace agent session: %w", err)
+		return DeleteSessionResult{}, fmt.Errorf("begin delete workspace agent session: %w", err)
 	}
 	committed := false
 	defer func() {
@@ -37,31 +46,35 @@ func (s *Store) DeleteSession(
 	now := unixMs(time.Now().UTC())
 	removedSessionIDs, err := expandSessionTreeIDsTx(ctx, tx, workspaceID, []string{agentSessionID})
 	if err != nil {
-		return false, err
+		return DeleteSessionResult{}, err
 	}
 	// Always clear exact provenance, including on an idempotent repeat. A
 	// delayed provider ACK may have raced the first soft-delete, and a reused
 	// session id must not inherit that orphan binding.
 	if err := deleteGoalProvenanceForSessionTx(ctx, tx, workspaceID, agentSessionID); err != nil {
-		return false, err
+		return DeleteSessionResult{}, err
 	}
 	for _, removedSessionID := range removedSessionIDs {
 		if err := deleteRuntimeOperationRecordsForSessionTx(ctx, tx, workspaceID, removedSessionID); err != nil {
-			return false, err
+			return DeleteSessionResult{}, err
 		}
 		if err := deleteGoalRecordsForSessionTx(ctx, tx, workspaceID, removedSessionID); err != nil {
-			return false, err
+			return DeleteSessionResult{}, err
 		}
 	}
-	_, removedSessions, err := deleteSessionTreeRowsTx(ctx, tx, workspaceID, removedSessionIDs, now)
+	removedMessages, removedSessions, err := deleteSessionTreeRowsTx(ctx, tx, workspaceID, removedSessionIDs, now)
 	if err != nil {
-		return false, err
+		return DeleteSessionResult{}, err
 	}
-	if err := tx.Commit(); err != nil {
-		return false, fmt.Errorf("commit delete workspace agent session: %w", err)
+	delta, err := s.commitTransaction(ctx, tx, workspaceID, sessionDeleteMutations(workspaceID, removedSessionIDs, now))
+	if err != nil {
+		return DeleteSessionResult{}, fmt.Errorf("commit delete workspace agent session: %w", err)
 	}
 	committed = true
-	return removedSessions > 0, nil
+	return DeleteSessionResult{
+		TransactionID: delta.TransactionID, CommitDelta: delta,
+		RemovedMessages: removedMessages, RemovedSessions: removedSessions, RemovedSessionIDs: removedSessionIDs,
+	}, nil
 }
 
 func (s *Store) DeleteSessionsBatch(
@@ -122,11 +135,14 @@ func (s *Store) DeleteSessionsBatch(
 	if err != nil {
 		return DeleteSessionsBatchResult{}, err
 	}
-	if err := tx.Commit(); err != nil {
+	delta, err := s.commitTransaction(ctx, tx, workspaceID, sessionDeleteMutations(workspaceID, removedSessionIDs, now))
+	if err != nil {
 		return DeleteSessionsBatchResult{}, fmt.Errorf("commit delete workspace agent sessions batch: %w", err)
 	}
 	committed = true
 	return DeleteSessionsBatchResult{
+		TransactionID:     delta.TransactionID,
+		CommitDelta:       delta,
 		RemovedMessages:   removedMessages,
 		RemovedSessions:   removedSessions,
 		RemovedSessionIDs: removedSessionIDs,
@@ -192,14 +208,17 @@ func (s *Store) ClearSessions(
 		}
 	}()
 
-	result, err := s.ClearSessionsTx(ctx, tx, workspaceID)
+	result, err := s.clearSessionsTx(ctx, tx, workspaceID)
 	if err != nil {
 		return ClearSessionsResult{}, err
 	}
-	if err := tx.Commit(); err != nil {
+	delta, err := s.commitTransaction(ctx, tx, workspaceID, sessionDeleteMutations(workspaceID, result.RemovedSessionIDs, unixMs(time.Now().UTC())))
+	if err != nil {
 		return ClearSessionsResult{}, fmt.Errorf("commit clear workspace agent sessions: %w", err)
 	}
 	committed = true
+	result.TransactionID = delta.TransactionID
+	result.CommitDelta = delta
 	return result, nil
 }
 
@@ -207,8 +226,27 @@ func (s *Store) ClearSessions(
 // the caller's transaction. Hosts that delete a workspace of their own and
 // need the agent-row cascade to be atomic with that deletion should run
 // both through one transaction via this method; the caller owns commit and
-// rollback.
+// rollback. The configured participant runs before return, so its marker is
+// governed by that same caller-owned commit.
 func (s *Store) ClearSessionsTx(
+	ctx context.Context,
+	tx *sql.Tx,
+	workspaceID string,
+) (ClearSessionsResult, error) {
+	result, err := s.clearSessionsTx(ctx, tx, workspaceID)
+	if err != nil {
+		return ClearSessionsResult{}, err
+	}
+	delta, err := s.participateTransaction(ctx, tx, workspaceID, sessionDeleteMutations(workspaceID, result.RemovedSessionIDs, unixMs(time.Now().UTC())))
+	if err != nil {
+		return ClearSessionsResult{}, err
+	}
+	result.TransactionID = delta.TransactionID
+	result.CommitDelta = delta
+	return result, nil
+}
+
+func (s *Store) clearSessionsTx(
 	ctx context.Context,
 	tx *sql.Tx,
 	workspaceID string,
@@ -292,6 +330,16 @@ WHERE workspace_id = ?
 		RemovedSessions:   int(removedSessions),
 		RemovedSessionIDs: removedSessionIDs,
 	}, nil
+}
+
+func sessionDeleteMutations(workspaceID string, sessionIDs []string, version int64) []TransactionMutation {
+	mutations := make([]TransactionMutation, 0, len(sessionIDs))
+	for _, agentSessionID := range sessionIDs {
+		mutations = append(mutations, transactionMutation(
+			workspaceID, agentSessionID, MutationEntitySession, agentSessionID, "delete", version,
+		))
+	}
+	return mutations
 }
 
 func listAgentSessionIDsTx(ctx context.Context, tx *sql.Tx, workspaceID string) ([]string, error) {

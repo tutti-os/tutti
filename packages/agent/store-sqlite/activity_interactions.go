@@ -33,7 +33,14 @@ func (s *Store) UpsertInteraction(ctx context.Context, upsert InteractionUpsert)
 	if err != nil {
 		return Interaction{}, InteractionTransitionConflict, err
 	}
-	if err := tx.Commit(); err != nil {
+	mutations := []TransactionMutation{}
+	if result == InteractionTransitionApplied {
+		mutations = append(mutations, transactionMutation(
+			interaction.WorkspaceID, interaction.AgentSessionID, MutationEntityInteraction,
+			interactionMutationEntityID(interaction.TurnID, interaction.RequestID), "upsert", interaction.UpdatedAtUnixMS,
+		))
+	}
+	if _, err := s.commitTransaction(ctx, tx, upsert.WorkspaceID, mutations); err != nil {
 		return Interaction{}, InteractionTransitionConflict, fmt.Errorf("commit workspace agent interaction upsert: %w", err)
 	}
 	committed = true

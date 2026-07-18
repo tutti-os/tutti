@@ -82,6 +82,18 @@ type AgentComposerDefaults struct {
 	Speed            string
 }
 
+const (
+	AgentComposerDefaultsFieldModel            = "model"
+	AgentComposerDefaultsFieldPermissionModeID = "permissionModeId"
+	AgentComposerDefaultsFieldReasoningEffort  = "reasoningEffort"
+	AgentComposerDefaultsFieldSpeed            = "speed"
+)
+
+// AgentComposerDefaultsPatch is a sparse field mutation. A present map key is
+// authoritative for that field; a nil value clears it, while an absent key is
+// left unchanged.
+type AgentComposerDefaultsPatch map[string]*string
+
 func (d AgentComposerDefaults) IsZero() bool {
 	return d.Model == "" && d.PermissionModeID == "" && d.ReasoningEffort == "" && d.Speed == ""
 }

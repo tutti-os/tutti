@@ -105,6 +105,162 @@ INSERT INTO user_projects (id, path, label, created_at_unix_ms, updated_at_unix_
 		t.Fatalf("ListUserProjects() error = %v", err)
 	}
 	assertUserProjectOrder(t, projects, []string{"beta", "alpha", "gamma"})
+	for _, project := range projects {
+		if project.PinnedAtUnixMS != 0 {
+			t.Fatalf("project %s pinnedAtUnixMS = %d, want 0", project.ID, project.PinnedAtUnixMS)
+		}
+	}
+}
+
+func TestSQLiteStoreUserProjectPinMigrationPreservesDurableOrder(t *testing.T) {
+	ctx := context.Background()
+	dbPath := filepath.Join(t.TempDir(), "ordered-user-projects.db")
+	store, err := OpenSQLiteStore(dbPath)
+	if err != nil {
+		t.Fatalf("OpenSQLiteStore() error = %v", err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+	if _, err := store.writeDB.ExecContext(ctx, `
+CREATE TABLE tuttid_schema_migrations (
+  id TEXT PRIMARY KEY,
+  applied_at_unix_ms INTEGER NOT NULL
+);
+CREATE TABLE user_projects (
+  id TEXT PRIMARY KEY,
+  path TEXT NOT NULL UNIQUE,
+  label TEXT NOT NULL,
+  created_at_unix_ms INTEGER NOT NULL,
+  updated_at_unix_ms INTEGER NOT NULL,
+  last_used_at_unix_ms INTEGER NOT NULL DEFAULT 0,
+  sort_order INTEGER NOT NULL DEFAULT 0
+);
+INSERT INTO tuttid_schema_migrations (id, applied_at_unix_ms) VALUES
+  ('user_projects_v1', 1),
+  ('user_projects_v2', 2);
+INSERT INTO user_projects (id, path, label, created_at_unix_ms, updated_at_unix_ms, last_used_at_unix_ms, sort_order) VALUES
+  ('older', '/workspace/older', 'Older', 1, 10, 10, 1),
+  ('newer', '/workspace/newer', 'Newer', 1, 20, 20, 0);
+`); err != nil {
+		t.Fatalf("seed ordered user projects: %v", err)
+	}
+	if err := store.Migrate(ctx); err != nil {
+		t.Fatalf("Migrate() error = %v", err)
+	}
+	projects, err := store.ListUserProjects(ctx)
+	if err != nil {
+		t.Fatalf("ListUserProjects() error = %v", err)
+	}
+	assertUserProjectOrder(t, projects, []string{"newer", "older"})
+	for _, project := range projects {
+		if project.PinnedAtUnixMS != 0 {
+			t.Fatalf("project %s pinnedAtUnixMS = %d, want 0", project.ID, project.PinnedAtUnixMS)
+		}
+	}
+}
+
+func TestSQLiteStorePinsAndMovesUserProjectsWithinPartitions(t *testing.T) {
+	ctx := context.Background()
+	store := openTestSQLiteStore(t)
+	for _, project := range []userprojectbiz.Project{
+		{ID: "alpha", Path: "/workspace/alpha", Label: "alpha"},
+		{ID: "beta", Path: "/workspace/beta", Label: "beta"},
+		{ID: "gamma", Path: "/workspace/gamma", Label: "gamma"},
+	} {
+		if _, err := store.PutUserProject(ctx, project); err != nil {
+			t.Fatalf("PutUserProject(%s) error = %v", project.ID, err)
+		}
+	}
+
+	projects, changed, err := store.PinUserProject(ctx, "beta", true)
+	if err != nil || !changed {
+		t.Fatalf("PinUserProject(beta) changed=%v error=%v", changed, err)
+	}
+	assertUserProjectOrder(t, projects, []string{"beta", "gamma", "alpha"})
+	betaPinnedAt := projects[0].PinnedAtUnixMS
+	betaUpdatedAt := projects[0].UpdatedAtUnixMS
+	betaLastUsedAt := projects[0].LastUsedAtUnixMS
+	if betaPinnedAt <= 0 {
+		t.Fatalf("beta pinnedAtUnixMS = %d, want > 0", betaPinnedAt)
+	}
+
+	projects, changed, err = store.PinUserProject(ctx, "beta", true)
+	if err != nil || changed {
+		t.Fatalf("PinUserProject(beta idempotent) changed=%v error=%v", changed, err)
+	}
+	assertUserProjectOrder(t, projects, []string{"beta", "gamma", "alpha"})
+	if projects[0].PinnedAtUnixMS != betaPinnedAt || projects[0].UpdatedAtUnixMS != betaUpdatedAt || projects[0].LastUsedAtUnixMS != betaLastUsedAt {
+		t.Fatalf("idempotent pin changed beta: %#v", projects[0])
+	}
+	usedBeta, err := store.PutUserProject(ctx, userprojectbiz.Project{ID: "beta", Path: "/workspace/beta", Label: "beta"})
+	if err != nil {
+		t.Fatalf("PutUserProject(beta reused) error = %v", err)
+	}
+	if usedBeta.PinnedAtUnixMS != betaPinnedAt || usedBeta.SortOrder != 0 {
+		t.Fatalf("reused beta = %#v, want pin and order preserved", usedBeta)
+	}
+
+	projects, changed, err = store.PinUserProject(ctx, "alpha", true)
+	if err != nil || !changed {
+		t.Fatalf("PinUserProject(alpha) changed=%v error=%v", changed, err)
+	}
+	assertUserProjectOrder(t, projects, []string{"alpha", "beta", "gamma"})
+	projects, err = store.MoveUserProject(ctx, "alpha", nil)
+	if err != nil {
+		t.Fatalf("MoveUserProject(alpha to pinned end) error = %v", err)
+	}
+	assertUserProjectOrder(t, projects, []string{"beta", "alpha", "gamma"})
+
+	beforeAlpha := "alpha"
+	if _, err := store.MoveUserProject(ctx, "gamma", &beforeAlpha); !errors.Is(err, ErrUserProjectPartitionMismatch) {
+		t.Fatalf("MoveUserProject(cross partition) error = %v, want ErrUserProjectPartitionMismatch", err)
+	}
+	projects, err = store.ListUserProjects(ctx)
+	if err != nil {
+		t.Fatalf("ListUserProjects() error = %v", err)
+	}
+	assertUserProjectOrder(t, projects, []string{"beta", "alpha", "gamma"})
+
+	if _, err := store.PutUserProject(ctx, userprojectbiz.Project{ID: "delta", Path: "/workspace/delta", Label: "delta"}); err != nil {
+		t.Fatalf("PutUserProject(delta) error = %v", err)
+	}
+	projects, err = store.ListUserProjects(ctx)
+	if err != nil {
+		t.Fatalf("ListUserProjects() error = %v", err)
+	}
+	assertUserProjectOrder(t, projects, []string{"beta", "alpha", "delta", "gamma"})
+	projects, err = store.MoveUserProject(ctx, "delta", nil)
+	if err != nil {
+		t.Fatalf("MoveUserProject(delta to unpinned end) error = %v", err)
+	}
+	assertUserProjectOrder(t, projects, []string{"beta", "alpha", "gamma", "delta"})
+
+	alphaLastUsedAt := projects[1].LastUsedAtUnixMS
+	projects, changed, err = store.PinUserProject(ctx, "alpha", false)
+	if err != nil || !changed {
+		t.Fatalf("PinUserProject(alpha false) changed=%v error=%v", changed, err)
+	}
+	assertUserProjectOrder(t, projects, []string{"beta", "alpha", "gamma", "delta"})
+	if projects[1].PinnedAtUnixMS != 0 || projects[1].LastUsedAtUnixMS != alphaLastUsedAt {
+		t.Fatalf("unpin alpha = %#v, want cleared pin and unchanged lastUsed", projects[1])
+	}
+	if err := store.DeleteUserProject(ctx, "alpha"); err != nil {
+		t.Fatalf("DeleteUserProject(alpha) error = %v", err)
+	}
+	readded, err := store.PutUserProject(ctx, userprojectbiz.Project{ID: "alpha", Path: "/workspace/alpha", Label: "alpha"})
+	if err != nil {
+		t.Fatalf("PutUserProject(alpha readded) error = %v", err)
+	}
+	if readded.PinnedAtUnixMS != 0 {
+		t.Fatalf("readded alpha pinnedAtUnixMS = %d, want 0", readded.PinnedAtUnixMS)
+	}
+	projects, err = store.ListUserProjects(ctx)
+	if err != nil {
+		t.Fatalf("ListUserProjects() error = %v", err)
+	}
+	assertUserProjectOrder(t, projects, []string{"beta", "alpha", "gamma", "delta"})
+	if _, _, err := store.PinUserProject(ctx, "unknown", true); !errors.Is(err, ErrUserProjectNotFound) {
+		t.Fatalf("PinUserProject(unknown) error = %v, want ErrUserProjectNotFound", err)
+	}
 }
 
 func TestSQLiteStoreMoveAndDeleteUserProjectsRewriteContinuousOrder(t *testing.T) {

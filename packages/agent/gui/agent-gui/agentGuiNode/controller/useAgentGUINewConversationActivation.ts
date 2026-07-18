@@ -14,18 +14,10 @@ import {
   textPromptContent
 } from "../model/agentComposerDraft";
 import { readNodeDefaultDraftSettings } from "./agentGuiController.composerHelpers";
-import {
-  resolveComposerSettingsPresentation,
-  sanitizeComposerSettingsForTarget
-} from "./agentGuiController.composerPresentation";
-import {
-  resolveSameProviderActiveSessionModel,
-  toRuntimeSendContent
-} from "./agentGuiController.draftMessageHelpers";
+import { toRuntimeSendContent } from "./agentGuiController.draftMessageHelpers";
 import {
   createAgentGUIConversationId,
-  normalizeOptionalPrompt,
-  normalizeOptionalText
+  normalizeOptionalPrompt
 } from "./agentGuiController.promptHelpers";
 import {
   agentSubmitTraceDiagnostics,
@@ -37,7 +29,6 @@ import {
   type AgentGUINewConversationActivationResult,
   type UseAgentGUINewConversationActivationInput
 } from "./agentGuiNewConversationActivation.types";
-import { resolveConversationSummaryById } from "./useAgentConversationSelection";
 import { resolveAgentComposerDraftScopeKey } from "../model/agentComposerDraftScope";
 import type { AgentComposerSubmitOptions } from "../composer/AgentComposer.types";
 
@@ -61,9 +52,7 @@ export function useAgentGUINewConversationActivation(
     workspaceId,
     activeConversationIdRef,
     isComposerHomeRef,
-    conversationsRef,
     activeSessionState,
-    lastActiveModelByProviderRef,
     sessionEngine,
     activation,
     currentUserId,
@@ -135,52 +124,12 @@ export function useAgentGUINewConversationActivation(
         drafts: draftSettingsBySessionIdRef.current
       });
       const snapshotComposerOptions = getCachedComposerOptions();
-      const targetSafeInitialSettings = sanitizeComposerSettingsForTarget({
-        settings: initialNodeSettings,
-        target: targetData,
-        options: snapshotComposerOptions
-      });
-      const initialSettings = resolveComposerSettingsPresentation({
-        active: false,
-        homeSettings: targetSafeInitialSettings,
-        options: snapshotComposerOptions
-      });
-      const currentActiveConversationId = activeConversationIdRef.current;
-      const currentActiveConversation = currentActiveConversationId
-        ? resolveConversationSummaryById(
-            conversationsRef.current,
-            currentActiveConversationId
-          )
-        : null;
-      const inheritedModel =
-        normalizeOptionalText(targetSafeInitialSettings.model) === null
-          ? (resolveSameProviderActiveSessionModel({
-              activeProvider: currentActiveConversation?.provider ?? null,
-              agentSessionId: currentActiveConversationId,
-              provider,
-              runtime: agentActivityRuntime,
-              sessionState: activeSessionState,
-              workspaceId
-            }) ??
-            normalizeOptionalText(
-              lastActiveModelByProviderRef.current[provider]
-            ))
-          : null;
-      const settings = sanitizeComposerSettingsForTarget({
-        settings:
-          inheritedModel === null
-            ? {
-                ...initialSettings,
-                ...submitOptions?.requiredSettingsPatch
-              }
-            : {
-                ...initialSettings,
-                model: inheritedModel,
-                ...submitOptions?.requiredSettingsPatch
-              },
-        target: targetData,
-        options: snapshotComposerOptions
-      });
+      // Only sparse, explicit home intent crosses Create. Target defaults and
+      // final provider validation are resolved from the latest daemon state.
+      const settings = {
+        ...initialNodeSettings,
+        ...submitOptions?.requiredSettingsPatch
+      };
       const prewarmedSessionId =
         normalizedInitialContent.length > 0 &&
         snapshotComposerOptions?.behavior?.prewarmDraftSession === true

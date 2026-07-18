@@ -15,6 +15,7 @@ export interface AgentGUIConversationProjectSummary {
   createdAtUnixMs?: number;
   updatedAtUnixMs?: number;
   lastUsedAtUnixMs?: number;
+  pinnedAtUnixMs: number;
 }
 
 export type AgentGUIConversationUserProject = Pick<
@@ -26,6 +27,7 @@ export type AgentGUIConversationUserProject = Pick<
   | "createdAtUnixMs"
   | "updatedAtUnixMs"
   | "lastUsedAtUnixMs"
+  | "pinnedAtUnixMs"
 >;
 
 export type AgentGUIConversationNoProjectPathResolver = (input: {
@@ -129,7 +131,8 @@ function agentGUIConversationProjectSummaryFromProject(
   const summary: AgentGUIConversationProjectSummary = {
     id: matchedProject.id,
     path: matchedProject.path,
-    label: resolveWorkspaceUserProjectDisplayLabel(matchedProject)
+    label: resolveWorkspaceUserProjectDisplayLabel(matchedProject),
+    pinnedAtUnixMs: matchedProject.pinnedAtUnixMs
   };
   if (matchedProject.sectionKey !== undefined) {
     summary.sectionKey = matchedProject.sectionKey;
@@ -185,9 +188,11 @@ function cachedAgentGUIConversationProjectSummary(
     summary.id,
     summary.path,
     summary.label,
+    summary.sectionKey ?? "",
     summary.createdAtUnixMs ?? "",
     summary.updatedAtUnixMs ?? "",
-    summary.lastUsedAtUnixMs ?? ""
+    summary.lastUsedAtUnixMs ?? "",
+    summary.pinnedAtUnixMs ?? ""
   ].join("\u001f");
   const cached = agentGUIConversationProjectSummaryCache.get(key);
   if (cached) {

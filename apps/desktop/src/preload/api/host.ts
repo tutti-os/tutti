@@ -222,6 +222,18 @@ export function createHostDesktopApi(): DesktopHostApi {
           );
         };
       },
+      onLayout(listener): () => void {
+        const handler = (_event: IpcRendererEvent, payload: unknown) => {
+          listener(payload as Parameters<typeof listener>[0]);
+        };
+        ipcRenderer.on(desktopIpcChannels.host.window.layout, handler);
+        return () => {
+          ipcRenderer.removeListener(
+            desktopIpcChannels.host.window.layout,
+            handler
+          );
+        };
+      },
       onQuitShortcutToast(listener): () => void {
         const handler = () => {
           listener();

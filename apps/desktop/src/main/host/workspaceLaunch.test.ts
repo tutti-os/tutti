@@ -425,6 +425,9 @@ function createTransportClient(
     async moveUserProject() {
       throw new Error("not used");
     },
+    async pinUserProject() {
+      throw new Error("not used");
+    },
     async deleteUserProject() {
       throw new Error("not used");
     },

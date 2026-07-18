@@ -13,6 +13,9 @@ import { TruncatingPillLabel } from "./truncating-pill-label";
 
 type MentionPillKind = "app" | "issue" | "session" | "file";
 type MentionPillFileKind = "file" | "folder";
+type MentionPillDataAttributes = {
+  [key: `data-${string}`]: string | number | boolean | undefined;
+};
 
 const mentionPillTokenByKind: Record<MentionPillKind, string> = {
   app: "var(--rich-text-folder)",
@@ -34,11 +37,14 @@ export interface MentionPillProps extends Omit<
 > {
   fileKind?: MentionPillFileKind;
   iconUrl?: string | null;
+  iconContainerProps?: React.ComponentProps<"span"> & MentionPillDataAttributes;
+  fallbackIconProps?: React.SVGProps<SVGSVGElement> & MentionPillDataAttributes;
   kind: MentionPillKind;
   label: React.ReactNode;
   removable?: boolean;
   removeButtonProps?: React.ComponentProps<"button">;
   summary?: React.ReactNode;
+  tooltipEnabled?: boolean;
   withTooltipProvider?: boolean;
 }
 
@@ -46,12 +52,15 @@ function MentionPill({
   className,
   fileKind = "file",
   iconUrl,
+  iconContainerProps,
+  fallbackIconProps,
   kind,
   label,
   removable = kind === "file",
   removeButtonProps,
   style,
   summary,
+  tooltipEnabled = true,
   withTooltipProvider = true,
   ...props
 }: MentionPillProps): React.JSX.Element {
@@ -71,8 +80,12 @@ function MentionPill({
       : mentionPillTokenByKind[kind];
   const dataKind = mentionPillDataKindByKind[kind];
   const normalizedIconUrl = iconUrl?.trim() ?? "";
+  const [failedIconUrl, setFailedIconUrl] = React.useState<string | null>(null);
   const iconSizeClassName = "size-4";
-  const iconShellClassName = isFile ? "size-4" : "size-[18px]";
+  // session mentions align their icon shell with the @agent (agent-target)
+  // mention, which uses a 16px (size-4) shell; other non-file kinds keep 18px.
+  const iconShellClassName =
+    isFile || kind === "session" ? "size-4" : "size-[18px]";
 
   // 超出最大展示宽度时,标签截断为省略号;溢出时 hover 弹设计系统 Tooltip 看完整文本。
   const tooltipText = [label, summary]
@@ -98,33 +111,40 @@ function MentionPill({
       {...props}
     >
       <span
+        {...iconContainerProps}
         aria-hidden={removable ? undefined : true}
         className={cn(
           "relative grid shrink-0 place-items-center",
-          iconShellClassName
+          iconShellClassName,
+          iconContainerProps?.className
         )}
       >
-        {normalizedIconUrl ? (
+        <Icon
+          {...fallbackIconProps}
+          className={cn(
+            "col-start-1 row-start-1 text-current transition-opacity",
+            removable && "group-hover:opacity-0 group-focus-within:opacity-0",
+            iconSizeClassName,
+            fallbackIconProps?.className
+          )}
+          data-mention-pill-fallback-icon="true"
+        />
+        {normalizedIconUrl && failedIconUrl !== normalizedIconUrl ? (
           <img
             src={normalizedIconUrl}
             alt=""
             className={cn(
-              "size-full rounded-[3px] object-cover transition-opacity",
+              "col-start-1 row-start-1 size-full rounded-[3px] object-cover transition-opacity",
               removable && "group-hover:opacity-0 group-focus-within:opacity-0"
             )}
             decoding="async"
             loading="lazy"
             draggable={false}
+            onError={() => {
+              setFailedIconUrl(normalizedIconUrl);
+            }}
           />
-        ) : (
-          <Icon
-            className={cn(
-              "text-current transition-opacity",
-              removable && "group-hover:opacity-0 group-focus-within:opacity-0",
-              iconSizeClassName
-            )}
-          />
-        )}
+        ) : null}
         {removable ? (
           <button
             aria-label={removeButtonProps?.["aria-label"]}
@@ -140,7 +160,7 @@ function MentionPill({
         ) : null}
       </span>
       <TruncatingPillLabel
-        tooltip={tooltipText}
+        tooltip={tooltipEnabled ? tooltipText : ""}
         withTooltipProvider={withTooltipProvider}
       >
         <span>{label}</span>

@@ -257,6 +257,7 @@ function inspectSvgAsset(relativePath) {
 
 function inspectCodeFile(relativePath, content) {
   inspectDevViteImports(relativePath, content);
+  inspectRichTextMentionBoundaries(relativePath, content);
 
   const lines = content.split("\n");
 
@@ -323,6 +324,57 @@ function inspectCodeFile(relativePath, content) {
         rule: "icon-import"
       });
     }
+  }
+}
+
+function inspectRichTextMentionBoundaries(relativePath, content) {
+  if (relativePath.startsWith("packages/ui/rich-text/src/service/")) {
+    for (const match of matchImportSpecifierLocations(content)) {
+      if (
+        match.specifier === "@tutti-os/workspace-external-core" ||
+        match.specifier.startsWith("@tutti-os/workspace-external-core/") ||
+        match.specifier.includes("apps/desktop") ||
+        /(?:^|\/)tsh(?:\/|$)/.test(match.specifier)
+      ) {
+        violations.push({
+          file: relativePath,
+          line: match.line,
+          message:
+            "ui-rich-text service must remain host agnostic; move host bridge imports into an adapter",
+          rule: "mention-service-host-import"
+        });
+      }
+    }
+  }
+
+  if (relativePath === "packages/agent/gui/shared/AgentMessageMarkdown.tsx") {
+    reportDirectMentionImages(relativePath, content, false);
+  }
+  if (
+    relativePath ===
+    "packages/agent/gui/agent-gui/agentGuiNode/agentRichText/AgentMentionNodeView.tsx"
+  ) {
+    reportDirectMentionImages(relativePath, content, true);
+  }
+}
+
+function reportDirectMentionImages(relativePath, content, allowFileThumbnail) {
+  for (const match of content.matchAll(/<img\b/g)) {
+    const index = match.index ?? 0;
+    const nearbyPrefix = content.slice(Math.max(0, index - 500), index);
+    if (
+      allowFileThumbnail &&
+      nearbyPrefix.includes('data-agent-mention-file-thumb="true"')
+    ) {
+      continue;
+    }
+    violations.push({
+      file: relativePath,
+      line: lineNumberAt(content, index),
+      message:
+        "AgentGUI mention icons must render through MentionPill so image failures keep a semantic fallback",
+      rule: "mention-icon-primitive"
+    });
   }
 }
 

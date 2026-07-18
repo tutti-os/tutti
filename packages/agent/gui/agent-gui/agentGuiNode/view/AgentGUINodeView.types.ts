@@ -102,6 +102,7 @@ export interface AgentGUIViewLabels {
   permissionModeReadOnly: string;
   permissionModeAuto: string;
   permissionModeFullAccess: string;
+  permissionModeChangeUnavailableDuringTurn: string;
   modelDescriptions: {
     frontierComplexCoding: string;
     everydayCoding: string;
@@ -171,6 +172,7 @@ export interface AgentGUIViewLabels {
   conversationFilterClaudeCode: string;
   conversationFilterTutti: string;
   providerSwitchLabel: string;
+  sharedAgentOwnerSeparator: string;
   startConversation: string;
   selectConversation: string;
   loadingConversations: string;
@@ -191,6 +193,9 @@ export interface AgentGUIViewLabels {
   projectSectionEdit: string;
   projectSectionMoreActions: string;
   projectSectionViewFiles: string;
+  pinProject: string;
+  unpinProject: string;
+  pinnedProjectAccessibleName: (projectLabel: string) => string;
   projectRailCreateProject: string;
   projectRailLinkExistingProject: string;
   removeProject: string;
@@ -354,6 +359,8 @@ export interface AgentGUIViewLabels {
   handoffConversation: string;
   handoffConversationTooltip: string;
   handoffConversationMenu: string;
+  handoffTargetSelf: string;
+  handoffTargetShared: string;
   projectLocked: string;
   projectMissingDescription: string;
   syncPending: string;
@@ -418,7 +425,7 @@ export interface AgentGUINodeViewProps {
     ) => void;
     selectConversationFilterTarget: (input: {
       provider: AgentGUIProvider;
-      agentTargetId?: string | null;
+      agentTargetId: string;
     }) => void;
     createConversation: (options?: {
       projectPath?: string | null;
@@ -479,6 +486,7 @@ export interface AgentGUINodeViewProps {
       projectId: string,
       beforeProjectId: string | null
     ) => Promise<void>;
+    toggleProjectPinned: (projectId: string, pinned: boolean) => Promise<void>;
     confirmDeleteProjectConversations: (
       sectionKey?: string,
       agentTargetId?: string | null

@@ -6,8 +6,8 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/tutti-os/tutti/packages/agent/daemon/providerregistry"
 	storesqlite "github.com/tutti-os/tutti/packages/agent/store-sqlite"
+	canonical "github.com/tutti-os/tutti/packages/agent/store-sqlite/canonical"
 )
 
 const planImplementationPrompt = "Implement the plan."
@@ -50,13 +50,13 @@ func (h *Host) SubmitPlanDecision(
 }
 
 func ValidatePlanDecisionStrategy(provider string, input SubmitPlanDecisionInput) error {
-	descriptor, ok := providerregistry.Find(provider)
+	strategy, ok := canonical.ProviderPlanDecisionStrategy(provider)
 	if !ok || strings.TrimSpace(input.IdempotencyKey) == "" {
 		return ErrInvalidArgument
 	}
 	switch strings.TrimSpace(input.PromptKind) {
 	case "plan-implementation":
-		if strings.TrimSpace(input.Action) != "implement" || descriptor.ComposerProfile.PlanDecisionStrategy != providerregistry.PlanDecisionStrategyImplementPrompt {
+		if strings.TrimSpace(input.Action) != "implement" || strategy != canonical.PlanDecisionStrategyImplementPrompt {
 			return ErrInvalidArgument
 		}
 	default:

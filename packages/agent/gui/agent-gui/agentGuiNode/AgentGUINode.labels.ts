@@ -212,6 +212,9 @@ export function useAgentGUIViewLabels(input: {
       permissionModeFullAccess: t(
         "agentHost.agentGui.permissionModeFullAccess"
       ),
+      permissionModeChangeUnavailableDuringTurn: t(
+        "agentHost.agentGui.permissionModeChangeUnavailableDuringTurn"
+      ),
       modelDescriptions: {
         frontierComplexCoding: t(
           "agentHost.agentGui.modelDescriptions.frontierComplexCoding"
@@ -359,6 +362,9 @@ export function useAgentGUIViewLabels(input: {
       ),
       conversationFilterTutti: t("agentHost.agentGui.conversationFilterTutti"),
       providerSwitchLabel: t("agentHost.agentGui.providerSwitchLabel"),
+      sharedAgentOwnerSeparator: t(
+        "agentHost.agentGui.sharedAgentOwnerSeparator"
+      ),
       loadingConversation: t("agentHost.agentGui.loadingConversation"),
       scrollToBottom: t("agentHost.agentGui.scrollToBottom"),
       fallbackAgentTitle,
@@ -373,6 +379,12 @@ export function useAgentGUIViewLabels(input: {
         "agentHost.agentGui.projectSectionMoreActions"
       ),
       projectSectionViewFiles: t("agentHost.agentGui.projectSectionViewFiles"),
+      pinProject: t("agentHost.agentGui.pinProject"),
+      unpinProject: t("agentHost.agentGui.unpinProject"),
+      pinnedProjectAccessibleName: (projectLabel: string) =>
+        t("agentHost.agentGui.pinnedProjectAccessibleName", {
+          project: projectLabel
+        }),
       projectRailCreateProject: t(
         "agentHost.agentGui.projectRailCreateProject"
       ),
@@ -704,7 +716,9 @@ export function useAgentGUIViewLabels(input: {
       handoffConversationTooltip: t(
         "agentHost.agentGui.handoffConversationTooltip"
       ),
-      handoffConversationMenu: t("agentHost.agentGui.handoffConversationMenu")
+      handoffConversationMenu: t("agentHost.agentGui.handoffConversationMenu"),
+      handoffTargetSelf: t("agentHost.agentGui.handoffTargetSelf"),
+      handoffTargetShared: t("agentHost.agentGui.handoffTargetShared")
     }),
     [
       displayProviderLabel,

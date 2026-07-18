@@ -14,10 +14,50 @@ export function upsertWorkspaceUserProject(
     (item) => item.id === project.id || item.path === project.path
   );
   if (existingIndex < 0) {
-    return [project, ...projects];
+    const insertionIndex =
+      project.pinnedAtUnixMs > 0
+        ? 0
+        : projects.findIndex((candidate) => candidate.pinnedAtUnixMs <= 0);
+    const next = [...projects];
+    next.splice(insertionIndex < 0 ? next.length : insertionIndex, 0, project);
+    return next;
   }
   const next = [...projects];
   next[existingIndex] = project;
+  return next;
+}
+
+export function pinWorkspaceUserProjectOptimistically(
+  projects: readonly WorkspaceUserProject[],
+  input: {
+    pinned: boolean;
+    pinnedAtUnixMs: number;
+    projectId: string;
+    updatedAtUnixMs: number;
+  }
+): WorkspaceUserProject[] {
+  const projectIndex = projects.findIndex(
+    (project) => project.id === input.projectId
+  );
+  if (projectIndex < 0) {
+    return [...projects];
+  }
+  const current = projects[projectIndex];
+  if (!current || current.pinnedAtUnixMs > 0 === input.pinned) {
+    return [...projects];
+  }
+
+  const next = [...projects];
+  next.splice(projectIndex, 1);
+  const project = {
+    ...current,
+    pinnedAtUnixMs: input.pinned ? Math.max(1, input.pinnedAtUnixMs) : 0,
+    updatedAtUnixMs: input.updatedAtUnixMs
+  };
+  const insertionIndex = input.pinned
+    ? 0
+    : next.findIndex((candidate) => candidate.pinnedAtUnixMs <= 0);
+  next.splice(insertionIndex < 0 ? next.length : insertionIndex, 0, project);
   return next;
 }
 

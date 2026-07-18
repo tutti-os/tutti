@@ -45,6 +45,23 @@ export interface TuttiExternalAtQueryResult {
   insert: TuttiExternalAtInsertResult;
 }
 
+export interface TuttiExternalAtResolveInput {
+  providerId: TuttiExternalAtProviderId;
+  entityId: string;
+  scope?: Readonly<Record<string, string>>;
+}
+
+export interface TuttiExternalAtResolveResult {
+  label?: string;
+  presentation?: TuttiExternalAtMentionPresentation;
+}
+
+export interface TuttiExternalAtInvalidation {
+  providerIds?: readonly TuttiExternalAtProviderId[];
+  entityIds?: readonly string[];
+  revision?: number;
+}
+
 export interface TuttiExternalAtMentionPresentation {
   agentProviderId?: string;
   agentIconUrl?: string;
@@ -268,6 +285,12 @@ export interface TuttiExternalBridge {
     query(
       input: TuttiExternalAtQueryInput
     ): Promise<TuttiExternalAtQueryResult[]>;
+    resolve?(
+      input: TuttiExternalAtResolveInput
+    ): Promise<TuttiExternalAtResolveResult | null>;
+    subscribe?(
+      listener: (event: TuttiExternalAtInvalidation) => void
+    ): () => void;
   };
   files: {
     select(
@@ -337,6 +360,13 @@ export interface TuttiExternalBridge {
 }
 
 export type TuttiExternalRendererRequest =
+  | {
+      appId: string;
+      input: TuttiExternalAtResolveInput;
+      operation: "at.resolve";
+      requestId: string;
+      workspaceId: string;
+    }
   | {
       appId: string;
       input: TuttiExternalAtQueryInput;

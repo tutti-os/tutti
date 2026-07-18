@@ -196,6 +196,7 @@ const emptyWorkspaceUserProjectServiceSnapshot = proxy({
   error: null,
   initialized: false,
   isLoading: false,
+  isMutationPending: false,
   projects: [],
   revision: 0
 });
@@ -310,6 +311,7 @@ export function WorkspaceUserProjectSelect({
   const disabled =
     disabledProp ||
     projectLocked ||
+    serviceSnapshot.isMutationPending === true ||
     (shouldDisableWhileLoading && isLoading) ||
     !effectiveApi;
   const hasProjectActions =
@@ -446,7 +448,8 @@ export function WorkspaceUserProjectSelect({
           ({
             id: path,
             label: path,
-            path
+            path,
+            pinnedAtUnixMs: 0
           } satisfies WorkspaceUserProject);
         setApiProjects((current) =>
           upsertWorkspaceUserProject(current, project)

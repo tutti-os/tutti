@@ -122,7 +122,7 @@ func (h *Host) goalControl(
 		operationID = uuid.NewString()
 		err := h.withGoalActor(ctx, workspaceID, agentSessionID, func(actorCtx context.Context) error {
 			now := h.goalOperationNow()
-			op, state, created, err := h.goals.PrepareGoalControlOperation(actorCtx, storesqlite.GoalControlOperationPrepare{
+			op, state, _, err := h.goals.PrepareGoalControlOperation(actorCtx, storesqlite.GoalControlOperationPrepare{
 				OperationID: operationID, WorkspaceID: workspaceID, AgentSessionID: agentSessionID,
 				Action: strings.TrimSpace(action), Objective: strings.TrimSpace(objective), ClientSubmitID: clientSubmitID,
 				OccurredAtUnixMS: now.UnixMilli(),
@@ -132,16 +132,6 @@ func (h *Host) goalControl(
 			}
 			goalRevision = op.GoalRevision
 			persistedState = &state
-			if created && h.goalAudits != nil {
-				audit, found, auditErr := h.goals.GetGoalControlAudit(actorCtx, workspaceID, agentSessionID, operationID)
-				if auditErr != nil {
-					return auditErr
-				}
-				if !found {
-					return errors.New("durable goal control audit disappeared after prepare")
-				}
-				h.goalAudits.PublishGoalControlAudit(actorCtx, workspaceID, agentSessionID, audit)
-			}
 			owner := h.goalOperationOwner()
 			if _, claimed, err := h.goals.ClaimGoalControlOperation(actorCtx, storesqlite.ClaimGoalControlOperationInput{
 				WorkspaceID: workspaceID, OperationID: operationID, LeaseOwner: owner,

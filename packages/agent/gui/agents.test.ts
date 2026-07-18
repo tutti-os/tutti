@@ -42,6 +42,7 @@ describe("normalizeAgentGUIAgents", () => {
         heroImageUrl: " app://agents/alice-hero.jpg ",
         description: " Shared agent ",
         owner: { name: " Owner ", avatarUrl: " app://owner.png " },
+        ownership: "shared",
         availability: { status: "unavailable", reason: " Offline " }
       }),
       createAgent("alice"),
@@ -58,6 +59,7 @@ describe("normalizeAgentGUIAgents", () => {
         heroImageUrl: "app://agents/alice-hero.jpg",
         description: "Shared agent",
         owner: { name: "Owner", avatarUrl: "app://owner.png" },
+        ownership: "shared",
         availability: { status: "unavailable", reason: "Offline" },
         provider: "codex"
       }
@@ -66,6 +68,21 @@ describe("normalizeAgentGUIAgents", () => {
 });
 
 describe("projectAgentGUIAgentsToInternalTargets", () => {
+  it("preserves explicit ownership independently from owner presentation", () => {
+    const [target] = projectAgentGUIAgentsToInternalTargets([
+      createAgent("agent-a", {
+        owner: { name: "Current User", avatarUrl: "app://owner.png" },
+        ownership: "self"
+      })
+    ]);
+
+    expect(target).toMatchObject({
+      ownership: "self",
+      ownerLabel: "Current User",
+      badge: { iconUrl: "app://owner.png" }
+    });
+  });
+
   it("preserves availability separately from disabled interaction state", () => {
     const [target] = projectAgentGUIAgentsToInternalTargets([
       createAgent("agent-a", {

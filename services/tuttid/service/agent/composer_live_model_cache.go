@@ -11,19 +11,23 @@ import (
 const defaultLiveModelCacheTTL = 10 * time.Minute
 
 type composerLiveModelCache struct {
-	mu      sync.Mutex
-	entries map[string]composerLiveModelCacheEntry
+	mu             sync.Mutex
+	entries        map[string]composerLiveModelCacheEntry
+	targetCatalogs map[string]composerLiveModelCacheEntry
 }
 
 type composerLiveModelCacheEntry struct {
+	agentTargetID  string
 	cachedAt       time.Time
 	options        []ComposerConfigOptionValue
+	provider       string
 	runtimeContext map[string]any
 }
 
 func newComposerLiveModelCache() *composerLiveModelCache {
 	return &composerLiveModelCache{
-		entries: make(map[string]composerLiveModelCacheEntry),
+		entries:        make(map[string]composerLiveModelCacheEntry),
+		targetCatalogs: make(map[string]composerLiveModelCacheEntry),
 	}
 }
 
@@ -48,16 +52,61 @@ func (c *composerLiveModelCache) get(key string, now time.Time, ttl time.Duratio
 	return cloneComposerConfigOptionValues(entry.options), true, false
 }
 
-func (c *composerLiveModelCache) set(key string, now time.Time, options []ComposerConfigOptionValue) {
+func (c *composerLiveModelCache) set(scope composerLiveModelScope, now time.Time, options []ComposerConfigOptionValue) {
 	if c == nil {
 		return
 	}
 	c.mu.Lock()
 	defer c.mu.Unlock()
+	key := scope.key()
 	entry := c.entries[key]
+	entry.agentTargetID = strings.TrimSpace(scope.agentTargetID)
 	entry.cachedAt = now
 	entry.options = cloneComposerConfigOptionValues(options)
+	entry.provider = agentprovider.NormalizeOpen(scope.provider)
 	c.entries[key] = entry
+	if entry.agentTargetID != "" {
+		// The scoped entry serves composer presentation and may expire. Keep a
+		// separate last-known-good target catalog for sparse defaults patches,
+		// which carry no workspace/cwd and therefore cannot safely rediscover
+		// the menu's descriptor at mutation time.
+		c.targetCatalogs[key] = entry
+	}
+}
+
+func (c *composerLiveModelCache) optionsForTarget(
+	provider string,
+	agentTargetID string,
+) ([]ComposerConfigOptionValue, bool) {
+	if c == nil {
+		return nil, false
+	}
+	provider = agentprovider.NormalizeOpen(provider)
+	agentTargetID = strings.TrimSpace(agentTargetID)
+	if provider == "" || agentTargetID == "" {
+		return nil, false
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	result := make([]ComposerConfigOptionValue, 0)
+	seen := make(map[string]struct{})
+	for _, entry := range c.targetCatalogs {
+		if entry.provider != provider || entry.agentTargetID != agentTargetID {
+			continue
+		}
+		for _, option := range entry.options {
+			value := strings.TrimSpace(option.Value)
+			if value == "" {
+				continue
+			}
+			if _, ok := seen[value]; ok {
+				continue
+			}
+			seen[value] = struct{}{}
+			result = append(result, option)
+		}
+	}
+	return cloneComposerConfigOptionValues(result), len(result) > 0
 }
 
 func (c *composerLiveModelCache) getRuntimeContext(key string, now time.Time, ttl time.Duration) (map[string]any, bool) {
@@ -100,6 +149,12 @@ func (c *composerLiveModelCache) invalidateProvider(provider string) int {
 	for key := range c.entries {
 		if strings.HasPrefix(key, prefix) {
 			delete(c.entries, key)
+			deleted++
+		}
+	}
+	for key := range c.targetCatalogs {
+		if strings.HasPrefix(key, prefix) {
+			delete(c.targetCatalogs, key)
 			deleted++
 		}
 	}
@@ -189,7 +244,22 @@ func (s *Service) setLiveComposerModelOptionsForScope(scope composerLiveModelSco
 	if len(options) == 0 {
 		return
 	}
-	s.liveComposerModelCache().set(scope.key(), now, options)
+	s.liveComposerModelCache().set(scope, now, options)
+}
+
+func (s *Service) liveComposerModelOptionsForTarget(
+	provider string,
+	agentTargetID string,
+) ([]ComposerConfigOptionValue, bool) {
+	// Defaults are target-scoped rather than workspace/cwd-scoped. Union only
+	// last-known-good catalogs the daemon actually observed for this exact
+	// target. Display cache TTL does not expire this validation evidence because
+	// the sparse patch has no scope with which to rediscover it. Create still
+	// validates the selected default against its actual caller scope.
+	return s.liveComposerModelCache().optionsForTarget(
+		provider,
+		agentTargetID,
+	)
 }
 
 func (s *Service) getComposerRuntimeContextForScope(scope composerLiveModelScope, now time.Time) (map[string]any, bool) {

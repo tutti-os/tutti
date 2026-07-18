@@ -35,7 +35,14 @@ func (s *Store) RecordTurnTransition(ctx context.Context, transition TurnTransit
 	if err != nil {
 		return Turn{}, false, err
 	}
-	if err := tx.Commit(); err != nil {
+	mutations := []TransactionMutation{}
+	if accepted {
+		mutations = append(mutations,
+			transactionMutation(turn.WorkspaceID, turn.AgentSessionID, MutationEntityTurn, turn.TurnID, "upsert", turn.UpdatedAtUnixMS),
+			transactionMutation(turn.WorkspaceID, turn.AgentSessionID, MutationEntitySession, turn.AgentSessionID, "upsert", turn.UpdatedAtUnixMS),
+		)
+	}
+	if _, err := s.commitTransaction(ctx, tx, transition.WorkspaceID, mutations); err != nil {
 		return Turn{}, false, fmt.Errorf("commit workspace agent turn transition: %w", err)
 	}
 	committed = true
@@ -391,7 +398,7 @@ ORDER BY workspace_id ASC, agent_session_id ASC, turn_id ASC
 	rows.Close()
 
 	if len(settlements) == 0 {
-		if err := tx.Commit(); err != nil {
+		if _, err := s.commitTransaction(ctx, tx, "", nil); err != nil {
 			return nil, fmt.Errorf("commit empty workspace agent stale turn settlement: %w", err)
 		}
 		committed = true
@@ -428,6 +435,10 @@ WHERE active_turn_id IS NOT NULL
 `, now, RuntimeOperationStatusPrepared, RuntimeOperationStatusLeased); err != nil {
 		return nil, fmt.Errorf("clear stale workspace agent session active turns: %w", err)
 	}
+	pendingInteractions, err := listStalePendingInteractionsTx(ctx, tx)
+	if err != nil {
+		return nil, err
+	}
 	if _, err := tx.ExecContext(ctx, `
 UPDATE workspace_agent_interactions AS i
 SET status = ?, updated_at_unix_ms = ?
@@ -443,23 +454,81 @@ WHERE status = ?
 		RuntimeOperationStatusPrepared, RuntimeOperationStatusLeased); err != nil {
 		return nil, fmt.Errorf("supersede stale workspace agent interactions: %w", err)
 	}
-	notifiedSessions := make(map[string]struct{}, len(settlements))
+	notifiedSessions := make(map[string]Message, len(settlements))
 	for _, settlement := range settlements {
 		key := settlement.WorkspaceID + "\x00" + settlement.AgentSessionID
 		if _, exists := notifiedSessions[key]; exists {
 			continue
 		}
-		notifiedSessions[key] = struct{}{}
-		if err := insertStaleTurnSystemMessageTx(ctx, tx, settlement, now); err != nil {
+		message, err := insertStaleTurnSystemMessageTx(ctx, tx, settlement, now)
+		if err != nil {
 			return nil, err
 		}
+		notifiedSessions[key] = message
 	}
 
-	if err := tx.Commit(); err != nil {
+	mutations := make([]TransactionMutation, 0, len(settlements)*3+len(pendingInteractions))
+	for _, settlement := range settlements {
+		mutations = append(mutations,
+			transactionMutation(settlement.WorkspaceID, settlement.AgentSessionID, MutationEntityTurn, settlement.TurnID, "settle", now),
+			transactionMutation(settlement.WorkspaceID, settlement.AgentSessionID, MutationEntitySession, settlement.AgentSessionID, "upsert", now),
+		)
+	}
+	for _, interaction := range pendingInteractions {
+		mutations = append(mutations, transactionMutation(
+			interaction.WorkspaceID, interaction.AgentSessionID, MutationEntityInteraction,
+			interactionMutationEntityID(interaction.TurnID, interaction.RequestID), "supersede", now,
+		))
+	}
+	for key, message := range notifiedSessions {
+		parts := strings.SplitN(key, "\x00", 2)
+		mutations = append(mutations, transactionMutation(
+			parts[0], message.AgentSessionID, MutationEntityMessage,
+			message.MessageID, "insert", int64(message.Version),
+		))
+	}
+	delta, err := s.commitTransaction(ctx, tx, "", mutations)
+	if err != nil {
 		return nil, fmt.Errorf("commit workspace agent stale turn settlement: %w", err)
 	}
 	committed = true
+	for index := range settlements {
+		settlements[index].TransactionID = delta.TransactionID
+		settlements[index].CommitDelta = delta
+	}
 	return settlements, nil
+}
+
+func listStalePendingInteractionsTx(ctx context.Context, tx *sql.Tx) ([]Interaction, error) {
+	rows, err := tx.QueryContext(ctx, `
+SELECT i.workspace_id, i.agent_session_id, i.turn_id, i.request_id
+FROM workspace_agent_interactions AS i
+WHERE i.status = ?
+  AND NOT EXISTS (
+    SELECT 1 FROM workspace_agent_runtime_operations AS op
+    WHERE op.workspace_id = i.workspace_id
+      AND op.agent_session_id = i.agent_session_id
+      AND op.turn_id = i.turn_id
+      AND op.status IN (?, ?)
+  )
+ORDER BY i.workspace_id, i.agent_session_id, i.turn_id, i.request_id
+`, InteractionStatusPending, RuntimeOperationStatusPrepared, RuntimeOperationStatusLeased)
+	if err != nil {
+		return nil, fmt.Errorf("list stale workspace agent interactions: %w", err)
+	}
+	defer rows.Close()
+	interactions := make([]Interaction, 0)
+	for rows.Next() {
+		var interaction Interaction
+		if err := rows.Scan(&interaction.WorkspaceID, &interaction.AgentSessionID, &interaction.TurnID, &interaction.RequestID); err != nil {
+			return nil, fmt.Errorf("scan stale workspace agent interaction: %w", err)
+		}
+		interactions = append(interactions, interaction)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate stale workspace agent interactions: %w", err)
+	}
+	return interactions, nil
 }
 
 func (*Store) upsertInteractionTx(

@@ -39,6 +39,7 @@ const schemaMigrationDesktopPreferencesAgentConversationDetailModeV1 = "desktop_
 const schemaMigrationDesktopPreferencesFeatureFlagsV1 = "desktop_preferences_feature_flags_v1"
 const schemaMigrationUserProjectsV1 = "user_projects_v1"
 const schemaMigrationUserProjectsV2 = "user_projects_v2"
+const schemaMigrationUserProjectsV3 = "user_projects_v3"
 const schemaMigrationWorkspaceAppsV1 = "workspace_apps_v1"
 const schemaMigrationWorkspaceAppsV2 = "workspace_apps_v2"
 const schemaMigrationWorkspaceAppsV3 = "workspace_apps_v3"
@@ -170,6 +171,9 @@ INSERT OR IGNORE INTO tuttid_schema_migrations (id, applied_at_unix_ms)
 		return err
 	}
 	if err := s.applyUserProjectsV2(ctx); err != nil {
+		return err
+	}
+	if err := s.applyUserProjectsV3(ctx); err != nil {
 		return err
 	}
 
@@ -653,6 +657,34 @@ INSERT INTO tuttid_schema_migrations (id, applied_at_unix_ms) VALUES (?, ?)
 	}
 	if err := tx.Commit(); err != nil {
 		return fmt.Errorf("commit user project order migration: %w", err)
+	}
+	return nil
+}
+
+func (s *SQLiteStore) applyUserProjectsV3(ctx context.Context) error {
+	applied, err := s.hasMigration(ctx, schemaMigrationUserProjectsV3)
+	if err != nil {
+		return err
+	}
+	if applied {
+		return nil
+	}
+
+	tx, err := s.writeDB.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin user project pin migration: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+	if _, err := tx.ExecContext(ctx, `ALTER TABLE user_projects ADD COLUMN pinned_at_unix_ms INTEGER NOT NULL DEFAULT 0`); err != nil {
+		return fmt.Errorf("add user project pinned timestamp: %w", err)
+	}
+	if _, err := tx.ExecContext(ctx, `
+INSERT INTO tuttid_schema_migrations (id, applied_at_unix_ms) VALUES (?, ?)
+`, schemaMigrationUserProjectsV3, unixMs(time.Now().UTC())); err != nil {
+		return fmt.Errorf("record user project pin migration: %w", err)
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit user project pin migration: %w", err)
 	}
 	return nil
 }

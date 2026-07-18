@@ -140,6 +140,32 @@ describe("composer target presentation", () => {
     });
   });
 
+  it("keeps every explicit optimistic default above a stale effective-settings snapshot", () => {
+    expect(
+      resolvePresentedComposerSettings({
+        sessionSettings: null,
+        optimisticSettings: {
+          model: "new-model",
+          permissionModeId: "full-access",
+          reasoningEffort: "high",
+          speed: "fast"
+        },
+        preloadedSettings: {
+          model: "old-model",
+          permissionModeId: "ask",
+          reasoningEffort: "low",
+          speed: "standard"
+        },
+        homeSettings: {}
+      })
+    ).toMatchObject({
+      model: "new-model",
+      permissionModeId: "full-access",
+      reasoningEffort: "high",
+      speed: "fast"
+    });
+  });
+
   it("does not turn an absent pre-session boolean into an explicit override", () => {
     const preloaded = effectiveComposerSettingsFromOptions({
       provider: "codex",

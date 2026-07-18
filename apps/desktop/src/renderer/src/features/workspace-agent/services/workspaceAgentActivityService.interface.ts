@@ -130,6 +130,10 @@ export interface WorkspaceAgentModelCatalogInvalidatedEvent {
   occurredAtUnixMs: number;
 }
 
+export interface WorkspaceAgentComposerDefaultsInvalidatedEvent {
+  agentTargetId: string;
+}
+
 export interface IWorkspaceAgentActivityService {
   readonly _serviceBrand: undefined;
 
@@ -211,6 +215,9 @@ export interface IWorkspaceAgentActivityService {
   ): () => void;
   onModelCatalogInvalidated(
     listener: (event: WorkspaceAgentModelCatalogInvalidatedEvent) => void
+  ): () => void;
+  onComposerDefaultsInvalidated(
+    listener: (event: WorkspaceAgentComposerDefaultsInvalidatedEvent) => void
   ): () => void;
   submitInteractive(
     input: AgentActivitySubmitInteractiveInput

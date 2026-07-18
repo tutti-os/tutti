@@ -22,6 +22,8 @@ import {
 } from "../../shared/contracts/ipc";
 import {
   normalizeTuttiExternalAtQueryInput,
+  normalizeTuttiExternalAtResolveInput,
+  normalizeTuttiExternalAtInvalidation,
   normalizeTuttiExternalFileOpenInput,
   normalizeTuttiExternalFileSelectInput,
   normalizeTuttiExternalFileUploadInput,
@@ -39,6 +41,7 @@ import {
 } from "@tutti-os/workspace-external-core/core";
 import type {
   TuttiExternalAtQueryResult,
+  TuttiExternalAtResolveResult,
   TuttiExternalFileOpenInput,
   TuttiExternalFileSelectResult,
   TuttiExternalManagedAiModel,
@@ -176,6 +179,23 @@ export function registerWorkspaceAppContextIpc(
           appId: context.appID,
           input,
           operation: "at.query",
+          requestId: randomUUID(),
+          workspaceId: context.workspaceID
+        }
+      );
+    }
+  );
+  registerDesktopIpcHandler(
+    desktopIpcChannels.appExternal.atResolve,
+    async (event, payload) => {
+      const context = requireWorkspaceAppGuestContext(event.sender);
+      const input = normalizeTuttiExternalAtResolveInput(payload);
+      return requestWorkspaceAppExternalRenderer<TuttiExternalAtResolveResult | null>(
+        context,
+        {
+          appId: context.appID,
+          input,
+          operation: "at.resolve",
           requestId: randomUUID(),
           workspaceId: context.workspaceID
         }
@@ -1379,6 +1399,14 @@ function isWorkspaceAppExternalRendererEvent(
       typeof value.appId === "string" &&
       isWorkspaceAppOpenRouteIntent(value.intent)
     );
+  }
+  if (value.type === "at.invalidated") {
+    try {
+      normalizeTuttiExternalAtInvalidation(value.invalidation);
+      return true;
+    } catch {
+      return false;
+    }
   }
   if (value.type !== "userProjects.changed") {
     return false;

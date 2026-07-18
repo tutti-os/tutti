@@ -6,8 +6,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
-
-	"github.com/tutti-os/tutti/packages/agent/daemon/titletext"
 )
 
 func (s *Store) applyWorkspaceAgentSessionTitlesV1(ctx context.Context) error {
@@ -51,7 +49,7 @@ WHERE title != ''
 			_ = rows.Close()
 			return fmt.Errorf("scan workspace agent session title for canonicalization: %w", err)
 		}
-		canonical := titletext.Normalize(value.title)
+		canonical := normalizeMigratedSessionTitle(value.title)
 		if canonical != value.title {
 			value.title = canonical
 			updates = append(updates, value)
@@ -136,7 +134,7 @@ WHERE s.deleted_at_unix_ms = 0
 			_ = rows.Close()
 			return fmt.Errorf("scan workspace agent session for initial title backfill: %w", err)
 		}
-		if titletext.IsLegacyPlaceholder(value.currentTitle, value.provider, value.targetName) {
+		if isLegacyMigratedSessionTitlePlaceholder(value.currentTitle, value.provider, value.targetName) {
 			candidates = append(candidates, value)
 		}
 	}
@@ -177,7 +175,7 @@ LIMIT 1
 		if err == nil {
 			prompt = workspaceAgentMessageVisibleText(payloadJSON)
 		}
-		value.currentTitle = titletext.DeriveInitial("", prompt)
+		value.currentTitle = deriveMigratedSessionTitle("", prompt)
 		updates = append(updates, value)
 	}
 

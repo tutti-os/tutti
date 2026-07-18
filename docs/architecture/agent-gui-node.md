@@ -141,12 +141,21 @@ ID.
 Historical pull and realtime push are distinct engine inputs. Workspace/session
 list pulls dispatch `session/snapshotReceived`; these hydrate history without
 creating unread completion attention. Realtime `message_update` events may fold
-their normalized append-only messages inline. Realtime turn, interaction, and
-legacy state invalidations perform an authoritative session pull, then dispatch
-`session/upserted` followed by `turn/upserted` for the realtime turn. The desktop
-bridge keeps the one-shot realtime provenance outside reducer state while that
-pull is in flight. `AgentActivitySnapshot` is a memoized projection of the
-engine state, not a separately mutable controller snapshot.
+their normalized versioned mutable message snapshots inline only when the unseen
+event versions continue from the cached high-water mark. A gap at that boundary
+means a mutable message snapshot may have been missed: the bridge must leave the
+cache at its pre-gap cursor and request an authoritative incremental pull. A
+recovered event-stream connection must also incrementally reconcile every
+session whose messages are already hydrated, so a missed final mutation does not
+depend on a later event to expose the gap. Do not require the rows already
+present in a current snapshot to be internally contiguous, because updating one
+`messageId` replaces its earlier version. Realtime turn,
+interaction, and legacy state invalidations perform an authoritative session
+pull, then dispatch `session/upserted` followed by `turn/upserted` for the
+realtime turn. The desktop bridge keeps the one-shot realtime provenance outside
+reducer state while that pull is in flight. `AgentActivitySnapshot` is a
+memoized projection of the engine state, not a separately mutable controller
+snapshot.
 
 The workspace list is root-only. After a successful workspace reconcile, the
 engine requests a state detail reconcile for every active root session. Session
@@ -397,6 +406,16 @@ remembered session was deleted or belongs to another target, the click enters
 that agent's empty home composer. A remembered bounded-history session may be
 activated before its rail row is loaded, then reconciled through the normal
 session-authoritative detail path.
+The provider rail tab selection indicator has exactly one owner:
+`conversationFilter`. `All` is selected only for the `all` scope, and an Agent
+tile is selected only when the filter's `agentTargetId` exactly matches that
+tile's trimmed canonical `agentTargetId`. Availability, `disabled`, the home
+composer's `selectedAgentTarget`, and active or historical conversation detail
+must not override that selection. They continue to own readiness, send/create
+gates, unavailable detail, and historical presentation independently. Rail
+scope actions fail closed when a compatibility target lacks a canonical
+`agentTargetId`; `targetId` and provider identity are not rail selection
+fallbacks.
 Empty-home rail clicks may also sync the home composer launch target.
 The conversation rail keeps one in-memory view scope for each exact target and
 the all-target view. Returning to a visited scope restores its scroll offset,
@@ -473,8 +492,21 @@ also embeds Issue Manager, it registers the workspace-scoped Issue Manager
 launch coordinator locally and translates issue links into the standard
 `open-workspace-issue` activation for its Tasks sidebar.
 The handoff menu is a launch surface, so its options must come from ready entries
-in the host-provided `agents` array. It must not synthesize a provider catalog
-or infer runnable agents from provider metadata.
+in the host-provided handoff Agent directory. `AgentGUI.handoffAgentDirectory`
+is independent from the runtime-owned `agentDirectory`: a host that separates
+local and shared session runtimes can keep the current rail bound to one runtime
+while offering both runtimes as launch targets. Omitting the handoff directory
+uses the runtime directory, preserving the single-runtime host contract. The
+handoff catalog must not change rail contents, session queries, or empty-home
+provider selection, and it must not synthesize a provider catalog or infer
+runnable agents from provider metadata. Handoff row presentation keeps the
+directory-owned Agent name unchanged and renders ownership as separate metadata:
+the host projects authoritative `ownership: "self" | "shared"` from its Agent
+directory or launch reference. Owner name, avatar, badge, and other presentation
+fields must never determine ownership. Targets without explicit ownership remain
+unclassified. Shared targets expose the available owner identity without
+mutating launch identity or display names, so duplicate Agent names remain
+distinguishable.
 When provider selection happens from the empty-home composer or title control
 while the rail is already scoped to a provider target in multi-provider scope,
 it must update the rail conversation filter to the matching agent target so the
@@ -533,16 +565,88 @@ When an empty composer has an `agentTargetId`, model, permission, reasoning,
 and speed options are target-scoped. Do not fall back to provider-level options
 for that target; a missing target-scoped option snapshot should remain a
 loading/missing state until the target options arrive.
-An explicit permission choice from the currently rendered target-scoped menu
-must also survive a concurrent options refresh. The settings action may use a
-runtime options snapshot to clean up older stored defaults, but it must not
-erase the user's current or just-selected permission merely because that
-snapshot lags the menu render. Unrelated patches such as clearing plan mode must
-not mutate permission as collateral cleanup; the daemon remains the authority
-that validates provider settings.
-Controlled permission selects may emit a transient empty value while closing or
-restoring focus. This is presentation state, not a user request to clear the
-permission default, and must be rejected at the selection boundary.
+
+Target composer defaults have one durable owner and one mutation path:
+
+```text
+explicit rendered-menu selection
+  -> optimistic home draft or active Session command
+  -> preferences.agent.composer.defaults.patch.requested
+  -> tuttid validates the Agent Target descriptor
+  -> transaction reads latest agent_composer_defaults_by_agent_target_json
+  -> merge only model / permissionModeId / reasoningEffort / speed
+  -> preferences.agent.composer.defaults.changed(agentTargetId)
+  -> clients invalidate and reload target-scoped composer options
+```
+
+The renderer must not merge this patch into a cached `DesktopPreferences` or
+publish `preferences.desktop.update.requested`. The full preferences mutation
+keeps the legacy defaults fields readable for migration and old clients, but it
+does not write target defaults. The changed event carries only
+`agentTargetId`; it is a reread signal, not a defaults snapshot, so duplicate or
+out-of-order invalidations are harmless.
+
+An Agent Extension model catalog can be workspace/cwd scoped even though the
+target-default patch intentionally is not. After target-scoped composer options
+observe a live catalog, tuttid records that authoritative catalog under the
+exact provider and `agentTargetId`. Extension model patches validate against
+the last-known-good union observed for that target across caller scopes.
+Workspace/cwd display cache entries may expire, but target validation evidence
+remains until explicit provider invalidation; catalogs from another target
+never qualify. Do not attach the last renderer cwd to the patch: two windows
+can use the same target in different projects. Create Session still revalidates
+the remembered model against the actual workspace/cwd descriptor before
+starting a visible runtime.
+
+`composer-options` owns capability lists and `effectiveSettings`. For a new
+home composer, those effective settings are the authoritative target defaults.
+The local target draft is only a sparse optimistic overlay for values the user
+explicitly selected. Workbench/node `composerOverrides` and desktop preference
+snapshots must not inject or reconstruct durable defaults. Before the first
+target options response, controls remain in their loading/unknown state.
+
+The same optimistic rule covers `model`, `permissionModeId`,
+`reasoningEffort`, and `speed` as one field set. A choice from the currently
+rendered menu stays above a stale options response and unrelated settings
+patches until authoritative state catches up. Options refresh may update
+capabilities and effective values, but it must not sanitize a just-selected
+value out of the local intent or persistence patch. Controlled selects may emit
+a transient empty value while closing or restoring focus; that is presentation
+state and is ignored for every persisted field. Final target/value validation
+belongs to tuttid.
+
+The mutation result correlates acknowledgement to the exact target, field, and
+local generation. A coordinator may settle an older request as superseded, but
+AgentGUI must not interpret that settlement as a daemon acknowledgement. On an
+exact acknowledgement, AgentGUI records the generation as awaiting authority,
+force-reloads target composer options without that generation's fields as
+request overrides, and removes only the still-current generation after a
+successful authoritative read. A newer choice for the same field therefore
+survives an older acknowledgement, including an A-to-B-to-A sequence. A failed
+mutation keeps the optimistic intent; a failed reload keeps the exact
+acknowledged generation pending so any later successful target-authority read
+can converge it. The target-only invalidation event has no mutation correlation
+and must never clear an unacknowledged intent by itself.
+
+Create Session sends only sparse explicit overrides. `Service.Create` reads the
+latest defaults for the exact `agentTargetId`, fills fields without explicit
+overrides, and then validates the final merged settings against that target's
+descriptor. Agent Extension targets use the same rule; an invisible discovery
+runtime may resolve a target-owned catalog, but unsupported settings must be
+rejected before the visible Session runtime starts. This makes Dock, standalone
+Agent windows, CLI, App Center, and other daemon callers share the same create
+semantics without a renderer cache or provider-keyed fallback.
+
+An explicit selection in an active Session has two independent effects: the
+`AgentSessionEngine` updates current Session settings, and the target-defaults
+patch remembers the value for future Sessions. Neither command rolls back the
+other. A current-Session failure silently restores canonical Session settings
+and is logged; a defaults failure keeps current behavior, retries with the
+latest per-field intent, and produces only safe diagnostics. A provider may
+return `settings_require_new_session` while the future-default patch succeeds.
+Opening or restoring history only reads that Session's persisted settings and
+never promotes them to defaults. Existing Full access confirmation remains the
+gate before either explicit command is emitted.
 Providers whose model catalog exists only after runtime session bootstrap must
 declare hidden live-model probing and its cache scope in their provider
 descriptor. The daemon may
@@ -826,19 +930,20 @@ also reserved by layout and does not change the native window bounds. Closing
 the panel restores the captured baseline width.
 Opening must be renderer-first: update the active panel immediately and defer
 the host-window resize request until the next animation frame. Do not await
-native IPC before showing the panel. Commit the sidebar's final layout width in
-one step; do not animate `width`, `flex-basis`, or another layout property,
-because that repeatedly reflows both the panel and the adjacent conversation.
+native IPC before showing the panel. The desktop host may coordinate the native
+window and sidebar width transition so opening and closing remain smooth, but
+intermediate native resize frames are host chrome and must not enter the shared
+AgentGUI surface context. CSS follows the live window bounds; React commits the
+final frame from the host's resize-completion event so the conversation subtree
+does not rerender on every native resize tick.
 When a tool switch resolves to the current native content width, the host-window
 resize request must be skipped; a previously clamped native width must also be
 treated as settled for the same target so tool switching does not cause a
 redundant resize pulse.
-The sidebar may animate only its fixed-size inner surface with a short
-right-to-left `transform` and opacity entrance. Files, Browser, Apps, and other expensive first-use
-bodies mount after that short compositor entrance, then remain mounted while
-hidden for instant later switches. Native bounds changes are applied without a
-parallel window animation. Respect `prefers-reduced-motion` by removing the
-inner entrance and the content-mount delay.
+Files, Browser, Apps, and other expensive first-use bodies mount after the
+sidebar entrance, then remain mounted while hidden for instant later switches.
+Respect `prefers-reduced-motion` by removing the native/sidebar transition,
+inner entrance, and content-mount delay.
 Lazy mounting also applies to module loading. The standalone shell may derive a
 small reminder count from the activity engine, but it must not statically import
 BrowserNode, TerminalNode, File Manager, App Center, or the full Message Center
@@ -1634,22 +1739,35 @@ sections come from current `userProjects` and use the stable
 `project:/canonical/path` `sectionKey`; the Chats section uses
 `conversations`. This inventory is the durable registered-project list; rail
 loading must not probe project paths or implicitly remove unavailable folders.
-The daemon-owned `user_projects.sort_order` is the single global project order.
-New projects enter at the front, repeated use updates compatibility timestamps
-without moving them, and delete/move transactions rewrite a continuous order.
+The daemon-owned `user_projects.sort_order` is the single global project order,
+partitioned by the required public `pinnedAtUnixMs` field: pinned projects come
+first, followed by ordinary projects. `sort_order` never crosses the daemon
+contract. Pin moves a project to the front of the pinned partition and updates
+`pinnedAtUnixMs` plus `updatedAtUnixMs`; unpin clears `pinnedAtUnixMs` and moves
+the project to the front of the ordinary partition. Same-state pin requests are
+strictly idempotent and publish no event. New or re-added projects enter at the
+front of the ordinary partition, repeated use updates compatibility timestamps
+without moving or changing pin state, and delete/move transactions rewrite one
+continuous order. Move is valid only within the source project's partition;
+`beforeProjectId=null` means that partition's end.
 Every renderer window mirrors the complete ordered snapshot in its one
 workspace-user-project service store. A drop updates that store optimistically,
 then `user.project.updated` broadcasts the committed complete snapshot to every
 window; project selectors, file-manager locations, AgentGUI, and workspace-app
 bridges consume that same store rather than keeping another persistent order.
-An event received while a move is in flight is held until the move response is
-reconciled, and a conflicting held snapshot triggers one authoritative refresh.
-The same renderer service snapshot owns `isMutationPending` for move and
-project removal. Every AgentGUI rail in that renderer subscribes to this flag
-and disables new project drags for the full mutation lifetime; per-Rail drag
-state is only transient interaction state, not the shared mutation lock.
-Move failures deliberately retain the current window's optimistic order until a
-later reload and produce diagnostics without user-visible error UI.
+The required pin field makes this the version 2 event contract; publishers and
+consumers must use that version rather than accepting a missing-field fallback.
+Pin/unpin uses the same optimistic snapshot and response reconciliation flow.
+An event received while a move or pin mutation is in flight is held until the
+response is reconciled, and a conflicting held snapshot triggers one
+authoritative refresh. The same renderer service snapshot owns
+`isMutationPending` for pin, move, project removal, creation, and association.
+Every AgentGUI rail in that renderer subscribes to this flag and disables those
+project mutations for the full mutation lifetime; per-Rail drag state is only
+transient interaction state, not the shared mutation lock. Pin and move failures
+deliberately retain the current window's optimistic order until a later
+authoritative event or reload and produce diagnostics without user-visible
+error UI.
 Path availability and explicit removal belong to the user-project domain. The
 daemon pages sessions by `rail_section_key`, so AgentGUI
 must render returned section props and use backend `hasMore`/`nextCursor`
@@ -1704,9 +1822,15 @@ conversation-summary cache. An initial backend-search failure renders a
 localized retry action; retry reissues the current target-scoped query instead
 of presenting the failure as an empty result. Search and agent-target filtering
 retain every registered user-project title even when its filtered session items
-are empty, so the durable project order remains visible and draggable. Pinned
-stays above all projects and Chats stays after them. Hosts without
-`listSessionsPage`, including
+are empty, so the durable project order remains visible and draggable. Rail
+composition is always pinned sessions, pinned project sections, ordinary
+project sections, then Chats. Pinned projects remain ordinary project-section
+models and keep their existing empty state. A conversation pinned independently
+appears only in the pinned-session region and is excluded from its project body;
+pinned-session Show more stays before pinned projects. The single pinned title
+is visible when either kind of pinned content exists, while the Projects title
+and add-project entry remain visible even when every project is pinned. Hosts
+without `listSessionsPage`, including
 preview-only hosts, may fall back to local title filtering of loaded rows.
 Ordinary section pages and backend search pages share one deterministic order:
 `latestTurn.startedAtUnixMs DESC`, falling back to
@@ -2236,7 +2360,8 @@ contract from the ACP path.
 
 ```text
 agent.activity.updated
-  -> message_update parses and batches append-only messages inline
+  -> continuous message_update versions batch mutable snapshots inline
+  -> a version gap or recovered connection triggers authoritative message reconcile
   -> turn_update / interaction_update triggers authoritative session reconcile
   -> legacy state_patch triggers authoritative state reconcile
   -> live reconcile dispatches session/upserted then turn/upserted
@@ -2248,8 +2373,8 @@ agent.activity.updated
   -> AgentGUINodeView renders the new view model
 ```
 
-Only append-only `message_update` payloads use the inline fast path. Turn,
-interaction, and state changes reconcile through the authoritative session
+Only continuous versioned `message_update` payloads use the inline fast path.
+Turn, interaction, and state changes reconcile through the authoritative session
 endpoint so `activeTurnId`, pending interactions, and turn provenance stay
 consistent. UI code should debug both the event payload and the reconcile fetch
 before treating a missing transcript row as a rendering-only bug.
@@ -2302,7 +2427,17 @@ completes. Outer status badges should keep authoritative non-error lifecycle
 states, but when the outer projection is `failed`, they should let the latest
 turn's message status clear or confirm that failure. Keep unrecoverable
 activation/resume failures session-scoped; keep ordinary historical turn
-failures on the transcript row that produced them.
+failures on the transcript row that produced them. A terminal
+`AgentActivityTurn.error` is authoritative even when the provider emitted no
+assistant error message. The shared transcript projection must attach that
+error to the exact `turnId`: reuse an existing structured visible-error
+message, upgrade a matching plain assistant failure, or create one view-only
+error row keyed by `(agentSessionId, turnId)`. That fallback row is derived
+state, not a durable message or a replacement session-level `lastError`.
+Engine selectors for session operation errors must never fall back to active or
+latest Turn errors. Likewise, a successful create/attach response remains an
+attached session even when its initial or historical Turn failed; activation
+failure must come from the activation operation itself, not from Turn outcome.
 
 ### Message Parsing And Rendering
 
@@ -2313,6 +2448,10 @@ AgentActivityMessage payloads
   -> shared/agentConversation/projection
   -> transcript rows, tool calls, plans, approvals, interactive prompts
   -> AgentConversationFlow inside AgentGUINodeView
+
+AgentActivityTurn.error
+  -> shared transcript projection, reconciled with message errors by turnId
+  -> one fallback visible-error row on the owning Turn when messages lack one
 ```
 
 Message parsing belongs in shared projection/model helpers. React components
@@ -2657,6 +2796,11 @@ User-visible rules:
 - Model, permission, plan mode, reasoning, speed, project, branch, prompt image,
   file mention, and skill/capability controls must read from composer settings
   and provider options. They should not be reconstructed from transcript rows.
+- Permission mode remains fixed for the lifetime of an active Turn. AgentGUI
+  disables the permission selector from prompt submission through every
+  non-settled phase (including waiting and interrupting), regardless of whether
+  the provider can apply permission changes live, and explains the lock on
+  hover/focus. The selector becomes available again only after the Turn settles.
 - Reasoning options are model capabilities, not provider-wide constants. The
   daemon model catalog must preserve each model's advertised effort values and
   default, pre-session composer options must use the selected model's catalog
@@ -3143,8 +3287,13 @@ window boundary.
 
 The public directory entry owns its presentation and availability:
 
-- render `agents[].name` and `agents[].iconUrl` as the primary identity
-- render `owner.avatarUrl` separately as an ownership badge
+- keep `agents[].name` as the Agent name and `owner.name` as a separate owner
+  identity; AgentGUI composes their localized shared-Agent label at render time
+  so constrained lists can truncate only the owner while preserving the Agent
+  name suffix
+- render `agents[].iconUrl` as the primary identity and `owner.avatarUrl`
+  separately as an ownership badge, including on the selected center item in
+  the new-session carousel
 - preserve host array order; normalization keeps the first valid occurrence of
   each `agentTargetId`
 - use `availability.status` for ready, checking, coming-soon, install, login,

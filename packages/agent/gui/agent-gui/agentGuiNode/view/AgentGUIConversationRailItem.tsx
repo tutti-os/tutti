@@ -4,8 +4,7 @@ import {
   useMemo,
   useRef,
   useState,
-  type CSSProperties,
-  type ReactNode
+  type CSSProperties
 } from "react";
 import { ExternalLink } from "lucide-react";
 import {
@@ -13,7 +12,6 @@ import {
   ContextMenuContent,
   ContextMenuItem,
   ContextMenuTrigger,
-  FileIcon,
   IssueIcon,
   NewWorkspaceLinedIcon,
   cn
@@ -40,10 +38,6 @@ import type { UiLanguage } from "../../../contexts/settings/domain/agentSettings
 import type { AgentGUIViewLabels } from "../AgentGUINodeView";
 import styles from "../AgentGUINode.styles";
 import { conversationPlainTitle } from "./agentGUIViewUtils";
-import {
-  isAgentGUIConversationTitleIconMentionKind,
-  type AgentGUIConversationTitleIconMentionKind
-} from "../../../shared/agentConversationTitleProjection";
 
 function agentGUIConversationIconUrl(
   provider: string | undefined,
@@ -69,9 +63,9 @@ function agentGUIConversationRailTitle(
   uiLanguage: UiLanguage
 ): string {
   const title = conversationPlainTitle(item, labels, uiLanguage);
-  return isAgentGUIConversationTitleIconMentionKind(
-    item.titleLeadingMentionKind
-  )
+  // Only the task kind renders a leading mention icon, so only its "@" prefix
+  // is dropped; every other kind (file included) keeps its plain "@" text.
+  return item.titleLeadingMentionKind === "task"
     ? title.replace(/^@\s*/, "")
     : title;
 }
@@ -304,9 +298,7 @@ export const AgentGUIConversationRailItem = memo(
                 }
               />
             ) : null}
-            {isAgentGUIConversationTitleIconMentionKind(
-              item.titleLeadingMentionKind
-            ) ? (
+            {item.titleLeadingMentionKind === "task" ? (
               <span
                 aria-hidden="true"
                 className={styles.conversationTitleMentionIcon}
@@ -314,9 +306,7 @@ export const AgentGUIConversationRailItem = memo(
                   item.titleLeadingMentionKind
                 }
               >
-                <ConversationTitleMentionIcon
-                  kind={item.titleLeadingMentionKind}
-                />
+                <IssueIcon />
               </span>
             ) : null}
             <span className={styles.conversationTitle}>
@@ -472,15 +462,6 @@ export const AgentGUIConversationRailItem = memo(
     );
   }
 );
-
-function ConversationTitleMentionIcon({
-  kind
-}: {
-  kind: AgentGUIConversationTitleIconMentionKind;
-}): ReactNode {
-  if (kind === "task") return <IssueIcon />;
-  return <FileIcon />;
-}
 
 export function AgentGUIProjectRailHeader({
   disabled,

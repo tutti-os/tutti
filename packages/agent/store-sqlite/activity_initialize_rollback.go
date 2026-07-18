@@ -14,7 +14,17 @@ func (s *Store) RollbackRuntimeSessionInitialization(ctx context.Context, worksp
 	if s == nil || s.db == nil || workspaceID == "" || agentSessionID == "" {
 		return false, nil
 	}
-	result, err := s.db.ExecContext(ctx, `
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return false, fmt.Errorf("begin rollback runtime session initialization: %w", err)
+	}
+	committed := false
+	defer func() {
+		if !committed {
+			_ = tx.Rollback()
+		}
+	}()
+	result, err := tx.ExecContext(ctx, `
 DELETE FROM workspace_agent_sessions
 WHERE workspace_id = ? AND agent_session_id = ? AND deleted_at_unix_ms = 0
   AND origin = 'WORKSPACE_AGENT_SESSION_ORIGIN_RUNTIME'
@@ -36,5 +46,17 @@ WHERE workspace_id = ? AND agent_session_id = ? AND deleted_at_unix_ms = 0
 	if err != nil {
 		return false, fmt.Errorf("rollback runtime session initialization: %w", err)
 	}
-	return rowsWereAffected(result, "rollback runtime session initialization")
+	removed, err := rowsWereAffected(result, "rollback runtime session initialization")
+	if err != nil {
+		return false, err
+	}
+	mutations := []TransactionMutation{}
+	if removed {
+		mutations = sessionDeleteMutations(workspaceID, []string{agentSessionID}, 0)
+	}
+	if _, err := s.commitTransaction(ctx, tx, workspaceID, mutations); err != nil {
+		return false, fmt.Errorf("commit rollback runtime session initialization: %w", err)
+	}
+	committed = true
+	return removed, nil
 }

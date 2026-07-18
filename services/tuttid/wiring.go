@@ -238,9 +238,11 @@ func buildDaemonAPI(ctx context.Context, store workspacedata.CatalogStore, analy
 	fileAdapter := workspacedata.LocalFilesAdapter{}
 
 	events := eventstreamservice.NewService(eventstreamservice.DefaultCatalog(), nil)
-	preferences := preferencesservice.Service{
-		Store:     preferencesStore,
-		Publisher: eventstreamservice.DesktopPreferencesPublisher{Service: events},
+	preferencesPublisher := eventstreamservice.DesktopPreferencesPublisher{Service: events}
+	preferences := &preferencesservice.Service{
+		Store:                          preferencesStore,
+		Publisher:                      preferencesPublisher,
+		AgentComposerDefaultsPublisher: preferencesPublisher,
 	}
 	agentTargets := agenttargetservice.Service{
 		Store: agentTargetStore,
@@ -284,6 +286,10 @@ func buildDaemonAPI(ctx context.Context, store workspacedata.CatalogStore, analy
 	events.RegisterIntentHandler(
 		eventstreamservice.TopicPreferencesDesktopUpdateRequested,
 		eventstreamservice.NewPreferencesDesktopUpdateRequestedHandler(preferences),
+	)
+	events.RegisterIntentHandler(
+		eventstreamservice.TopicPreferencesAgentComposerDefaultsPatchRequested,
+		eventstreamservice.NewPreferencesAgentComposerDefaultsPatchRequestedHandler(preferences),
 	)
 	agentActivityProjection := agentservice.NewActivityProjection(agentActivityRepo)
 	agentActivityProjection.SetAnalyticsReporter(analyticsReporter)
@@ -358,6 +364,8 @@ func buildDaemonAPI(ctx context.Context, store workspacedata.CatalogStore, analy
 	agentSessionService.ModelCatalog = agentModelCatalog
 	agentSessionService.ModelCapabilities = agentModelCapabilities
 	agentSessionService.AgentTargetStore = agentTargetStore
+	agentSessionService.AgentComposerDefaultsReader = preferences
+	preferences.AgentComposerDefaultsValidator = agentSessionService
 	agentSessionService.ExtensionComposerProfiles = agentExtensionComposerProfileResolver{
 		manager: agentExtensionManager,
 	}
@@ -369,7 +377,7 @@ func buildDaemonAPI(ctx context.Context, store workspacedata.CatalogStore, analy
 	agentSessionService.TurnStore = agentActivityRepo
 	agentSessionService.RuntimeOperationStore = agentActivityRepo
 	agentSessionService.GoalStateStore = agentActivityRepo
-	agentSessionService.GoalAuditPublisher = agentActivityProjection
+	agentSessionService.CommitObserver = agentActivityProjection
 	agentSessionService.SubmitClaimStore = agentActivityRepo
 	agentSessionService.RuntimeOperationEventPublisher = agentActivityProjection
 	agentSessionService.RuntimeOperationOwner = uuid.NewString()
@@ -401,14 +409,16 @@ func buildDaemonAPI(ctx context.Context, store workspacedata.CatalogStore, analy
 	agentSessionService.AvailabilityChecker = agentservice.AgentStatusProviderAvailabilityChecker{
 		Service: &agentStatusService,
 	}
+	agentHost := agentservice.NewApplicationHost(agentSessionService)
+	agentSessionService.SetApplicationHost(agentHost)
 	// Host fixes startup order: durable runtime operations first, then goal
 	// operations and reconcile inbox work, and only then stale turns.
-	if err := agentSessionService.Recover(ctx); err != nil {
+	if err := agentHost.Recover(ctx); err != nil {
 		return tuttiapi.DaemonAPI{}, nil, nil, nil, fmt.Errorf("recover agent host: %w", err)
 	}
-	go agentSessionService.RunRuntimeOperationWorker(ctx)
-	go agentSessionService.RunGoalOperationWorker(ctx)
-	go agentSessionService.RunGoalReconcileInboxWorker(ctx)
+	go agentHost.RunRuntimeOperationWorker(ctx)
+	go agentHost.RunGoalOperationWorker(ctx)
+	go agentHost.RunGoalReconcileInboxWorker(ctx)
 
 	workspaceService := workspaceservice.CatalogService{
 		Store:            store,

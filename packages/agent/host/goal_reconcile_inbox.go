@@ -154,12 +154,16 @@ func (h *Host) RecoverGoalReconcileInbox(ctx context.Context) error {
 }
 
 func (h *Host) RunGoalReconcileInboxWorker(ctx context.Context) {
+	_ = h.runGoalReconcileInboxWorker(ctx)
+}
+
+func (h *Host) runGoalReconcileInboxWorker(ctx context.Context) error {
 	ticker := time.NewTicker(time.Second)
 	defer ticker.Stop()
 	for {
 		select {
 		case <-ctx.Done():
-			return
+			return ctx.Err()
 		case <-ticker.C:
 			_ = h.StepGoalReconcileInboxWorker(ctx)
 		}

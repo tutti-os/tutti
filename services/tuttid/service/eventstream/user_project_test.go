@@ -29,6 +29,7 @@ func TestUserProjectPublisherPublishesCompleteOrderedGlobalSnapshot(t *testing.T
 			CreatedAtUnixMS:  10,
 			UpdatedAtUnixMS:  20,
 			LastUsedAtUnixMS: 30,
+			PinnedAtUnixMS:   40,
 			SortOrder:        0,
 		},
 		{
@@ -66,7 +67,7 @@ func TestUserProjectPublisherPublishesCompleteOrderedGlobalSnapshot(t *testing.T
 		t.Fatalf("project order = [%q, %q], want second then first", payload.Projects[0].Id, payload.Projects[1].Id)
 	}
 	first := payload.Projects[0]
-	if first.SectionKey != "project:/workspace/second" || first.CreatedAtUnixMs != 10 || first.UpdatedAtUnixMs != 20 || first.LastUsedAtUnixMs != 30 {
+	if first.SectionKey != "project:/workspace/second" || first.CreatedAtUnixMs != 10 || first.UpdatedAtUnixMs != 20 || first.LastUsedAtUnixMs != 30 || first.PinnedAtUnixMs != 40 {
 		t.Fatalf("first project = %#v, want complete generated snapshot", first)
 	}
 }
@@ -79,9 +80,10 @@ func TestUserProjectUpdatedCatalogStrictlyValidatesSnapshot(t *testing.T) {
 		"path":"/workspace/one",
 		"label":"one",
 		"sectionKey":"project:/workspace/one",
-		"createdAtUnixMs":0,
-		"updatedAtUnixMs":1,
-		"lastUsedAtUnixMs":2
+			"createdAtUnixMs":0,
+			"updatedAtUnixMs":1,
+			"lastUsedAtUnixMs":2,
+			"pinnedAtUnixMs":3
 	}`
 	tests := []struct {
 		name    string
@@ -96,7 +98,9 @@ func TestUserProjectUpdatedCatalogStrictlyValidatesSnapshot(t *testing.T) {
 		{name: "daemon sort order exposed", payload: `{"projects":[` + strings.TrimSuffix(validProject, "}") + `,"sortOrder":0}]}`},
 		{name: "blank id", payload: `{"projects":[` + strings.Replace(validProject, `"project-1"`, `" "`, 1) + `]}`},
 		{name: "missing timestamp", payload: `{"projects":[` + strings.Replace(validProject, `"createdAtUnixMs":0,`, "", 1) + `]}`},
+		{name: "missing pinned timestamp", payload: `{"projects":[` + strings.Replace(validProject, ",\n\t\t\t\"pinnedAtUnixMs\":3", "", 1) + `]}`},
 		{name: "negative timestamp", payload: `{"projects":[` + strings.Replace(validProject, `"createdAtUnixMs":0`, `"createdAtUnixMs":-1`, 1) + `]}`},
+		{name: "negative pinned timestamp", payload: `{"projects":[` + strings.Replace(validProject, `"pinnedAtUnixMs":3`, `"pinnedAtUnixMs":-1`, 1) + `]}`},
 	}
 
 	catalog := DefaultCatalog()

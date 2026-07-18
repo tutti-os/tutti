@@ -8,6 +8,7 @@ import (
 
 	agenthost "github.com/tutti-os/tutti/packages/agent/host"
 	storesqlite "github.com/tutti-os/tutti/packages/agent/store-sqlite"
+	"github.com/tutti-os/tutti/services/tuttid/biz/agentprovider"
 )
 
 type serviceHostStore struct{ service *Service }
@@ -26,11 +27,11 @@ func (a serviceHostStore) GetSession(ctx context.Context, workspaceID, sessionID
 			return session, ok, err
 		}
 	}
-	// Runtime-only Service configurations predate the canonical store port and
-	// remain useful to isolated consumers and tests. Once either durable reader
-	// is configured, absence is authoritative and must never fall back to a
-	// provider observation.
-	if a.service.SessionReader == nil && a.service.TurnStore == nil {
+	// Service configurations without the legacy SessionReader have always
+	// allowed a live provider session to supply the session observation. A
+	// TurnStore may still be present for turn lifecycle operations, so its
+	// absence must not suppress that established fallback.
+	if a.service.SessionReader == nil {
 		if session, ok := a.service.controller().Session(workspaceID, sessionID); ok {
 			activeTurnID := ""
 			if session.TurnLifecycle != nil && session.TurnLifecycle.ActiveTurnID != nil {
@@ -81,6 +82,32 @@ func (a serviceHostStore) UpdateSessionTitle(ctx context.Context, workspaceID, s
 	}
 	persisted, updated, err := updater.UpdateSessionTitle(ctx, workspaceID, sessionID, title)
 	return activitySessionFromPersisted(persisted), updated, err
+}
+
+func (a serviceHostStore) UpdateSessionSettings(ctx context.Context, workspaceID, sessionID string, settings agenthost.ComposerSettings) (storesqlite.Session, bool, error) {
+	updater, ok := a.service.SessionReader.(SessionSettingsUpdater)
+	if !ok {
+		return storesqlite.Session{}, false, nil
+	}
+	persisted, updated, err := updater.UpdateSessionSettings(ctx, workspaceID, sessionID, settings)
+	return activitySessionFromPersisted(persisted), updated, err
+}
+
+func (a serviceHostStore) UpdateSessionPinned(ctx context.Context, workspaceID, sessionID string, pinned bool) (storesqlite.Session, bool, error) {
+	updater, ok := a.service.SessionReader.(SessionPinUpdater)
+	if !ok {
+		return storesqlite.Session{}, false, nil
+	}
+	persisted, updated, err := updater.UpdateSessionPinned(ctx, workspaceID, sessionID, pinned)
+	return activitySessionFromPersisted(persisted), updated, err
+}
+
+func (a serviceHostStore) DeleteSession(ctx context.Context, workspaceID, sessionID string) (bool, error) {
+	deleter, ok := a.service.SessionReader.(SessionDeleter)
+	if !ok {
+		return false, nil
+	}
+	return deleter.DeleteSession(ctx, workspaceID, sessionID)
 }
 
 func (a serviceHostStore) ListChildSessions(ctx context.Context, workspaceID, sessionID string) ([]storesqlite.Session, error) {
@@ -142,13 +169,83 @@ func (a serviceHostStore) DeleteSubmitClaim(ctx context.Context, workspaceID, se
 }
 
 type serviceHostPreparation struct {
+	service *Service
+}
+
+type serviceHostSettingsPolicy struct{ service *Service }
+
+func (p serviceHostSettingsPolicy) NormalizePersistedSettings(
+	ctx context.Context,
+	session storesqlite.Session,
+	settings agenthost.ComposerSettings,
+	patch agenthost.ComposerSettingsPatch,
+) agenthost.ComposerSettings {
+	settings = normalizeObservedComposerSettingsForProvider(session.Provider, settings)
+	if patch.Model != nil || patch.ReasoningEffort != nil {
+		settings.ReasoningEffort = p.service.clampReasoningEffortForModel(
+			ctx,
+			session.Provider,
+			settings.Model,
+			settings.ReasoningEffort,
+		)
+	}
+	return settings
+}
+
+func (p serviceHostSettingsPolicy) NormalizeRuntimeSettingsPatch(
+	ctx context.Context,
+	session agenthost.ProviderRuntimeSession,
+	settings agenthost.ComposerSettingsPatch,
+) agenthost.ComposerSettingsPatch {
+	provider := strings.TrimSpace(session.Provider)
+	selectedModel := ""
+	selectedReasoningEffort := ""
+	if session.Settings != nil {
+		selectedModel = session.Settings.Model
+		selectedReasoningEffort = session.Settings.ReasoningEffort
+	}
+	if settings.Model != nil {
+		selectedModel = strings.TrimSpace(*settings.Model)
+	}
+	if settings.ReasoningEffort != nil {
+		selectedReasoningEffort = *settings.ReasoningEffort
+	}
+	// A live Codex-derived runtime owns the freshest per-model reasoning
+	// catalog. Other providers keep tuttid's established catalog policy.
+	if (settings.Model != nil || settings.ReasoningEffort != nil) &&
+		!composerProviderUsesModelReasoningCatalog(provider) {
+		clamped := strings.TrimSpace(selectedReasoningEffort)
+		if agentprovider.Normalize(provider) != "" {
+			clamped = p.service.clampReasoningEffortForModel(ctx, provider, selectedModel, selectedReasoningEffort)
+		}
+		if settings.ReasoningEffort != nil || clamped != selectedReasoningEffort {
+			settings.ReasoningEffort = &clamped
+		}
+	}
+	if settings.Speed != nil {
+		normalized := strings.TrimSpace(*settings.Speed)
+		if agentprovider.Normalize(provider) != "" {
+			normalized = normalizeSpeedForProvider(provider, normalized)
+		}
+		settings.Speed = &normalized
+	}
+	return settings
+}
+
+type servicePreparedRuntimeContext struct {
 	service  *Service
-	prepared *preparedRuntime
+	prepared preparedRuntime
+}
+
+type servicePreparedRuntimeContextKey struct{}
+
+func withServicePreparedRuntime(ctx context.Context, service *Service, prepared preparedRuntime) context.Context {
+	return context.WithValue(ctx, servicePreparedRuntimeContextKey{}, servicePreparedRuntimeContext{service: service, prepared: prepared})
 }
 
 func (a serviceHostPreparation) Prepare(ctx context.Context, input agenthost.RuntimePreparationInput) (agenthost.PreparedRuntime, error) {
-	if a.prepared != nil {
-		return agenthost.PreparedRuntime{Cwd: a.prepared.Cwd, Env: append([]string(nil), a.prepared.Env...)}, nil
+	if override, ok := ctx.Value(servicePreparedRuntimeContextKey{}).(servicePreparedRuntimeContext); ok && override.service == a.service {
+		return agenthost.PreparedRuntime{Cwd: override.prepared.Cwd, Env: append([]string(nil), override.prepared.Env...)}, nil
 	}
 	settings := input.Settings
 	persisted := PersistedSession{
@@ -186,7 +283,21 @@ func (a serviceHostPreparation) Cleanup(ctx context.Context, input agenthost.Run
 
 type serviceHostLocker struct{ service *Service }
 
+type serviceHeldSessionLock struct {
+	service *Service
+	ref     agenthost.SessionRef
+}
+
+type serviceHeldSessionLockContextKey struct{}
+
+func withServiceHeldSessionLock(ctx context.Context, service *Service, ref agenthost.SessionRef) context.Context {
+	return context.WithValue(ctx, serviceHeldSessionLockContextKey{}, serviceHeldSessionLock{service: service, ref: ref})
+}
+
 func (a serviceHostLocker) Acquire(ctx context.Context, ref agenthost.SessionRef) (func(), error) {
+	if held, ok := ctx.Value(serviceHeldSessionLockContextKey{}).(serviceHeldSessionLock); ok && held.service == a.service && held.ref == ref {
+		return func() {}, nil
+	}
 	return a.service.acquireSessionSettingsLock(ctx, ref.WorkspaceID, ref.AgentSessionID)
 }
 
@@ -242,7 +353,7 @@ func (a serviceHostRuntime) SetVisible(ctx context.Context, input RuntimeSetVisi
 	return a.service.controller().SetVisible(ctx, input)
 }
 func (a serviceHostRuntime) Close(ctx context.Context, input RuntimeCloseInput) error {
-	return a.service.controller().Close(ctx, input)
+	return normalizeRuntimeError(a.service.controller().Close(ctx, input))
 }
 
 type serviceHostGoalRuntime struct{ service *Service }
@@ -297,33 +408,76 @@ func (o serviceHostLifecycleObserver) ObserveLifecycleStep(ctx context.Context, 
 	o.service.reportAgentServiceNodeSuccess(ctx, step.AgentSessionID, step.Flow, step.Name, step.Provider, step.StartedAt)
 }
 
-func (s *Service) applicationHost(preparation serviceHostPreparation) *agenthost.Host {
-	return s.newApplicationHost(preparation, serviceHostLocker{service: s})
+type serviceHostCommitObserver struct{ service *Service }
+
+func (o serviceHostCommitObserver) ObserveCommitted(ctx context.Context, delta agenthost.CommittedDelta) error {
+	if o.service == nil || o.service.CommitObserver == nil {
+		return nil
+	}
+	return o.service.CommitObserver.ObserveCommitted(ctx, delta)
 }
 
-func (s *Service) applicationHostLocked(preparation serviceHostPreparation) *agenthost.Host {
-	return s.newApplicationHost(preparation, nil)
+type serviceHostRuntimeOperationEventPublisher struct{ service *Service }
+
+func (p serviceHostRuntimeOperationEventPublisher) PublishRuntimeOperationEvent(ctx context.Context, event storesqlite.RuntimeOperationEvent) error {
+	if p.service == nil || p.service.RuntimeOperationEventPublisher == nil {
+		return nil
+	}
+	return p.service.RuntimeOperationEventPublisher.PublishRuntimeOperationEvent(ctx, event)
 }
 
-func (s *Service) newApplicationHost(preparation serviceHostPreparation, locker agenthost.SessionLocker) *agenthost.Host {
-	s.goalActorOnce.Do(func() {
-		s.goalActor = agenthost.NewGoalActor()
-	})
+// NewApplicationHost composes the provider-neutral Host with tuttid-owned
+// adapters. Production wiring constructs exactly one Host and installs it on
+// Service; isolated package consumers may use ApplicationHost for lazy setup.
+func NewApplicationHost(s *Service) *agenthost.Host {
+	if s == nil {
+		return nil
+	}
 	return agenthost.New(agenthost.Config{
-		CanonicalStore: serviceHostStore{service: s}, Runtime: serviceHostRuntime{service: s},
-		RuntimePreparation: preparation, Attachments: s.PromptAttachmentStore,
-		Clock: serviceHostClock{service: s}, SessionLocker: locker,
+		CanonicalStore: serviceHostStore{service: s}, SessionManagement: serviceHostStore{service: s},
+		Runtime:            serviceHostRuntime{service: s},
+		RuntimePreparation: serviceHostPreparation{service: s}, Attachments: s.PromptAttachmentStore,
+		SettingsPolicy: serviceHostSettingsPolicy{service: s},
+		Clock:          serviceHostClock{service: s}, SessionLocker: serviceHostLocker{service: s},
 		RuntimeStartGate:  serviceHostStartupGate{service: s},
 		LifecycleObserver: serviceHostLifecycleObserver{service: s},
-		RuntimeOperations: s.RuntimeOperationStore, OperationEvents: s.RuntimeOperationEventPublisher,
+		CommitObserver:    serviceHostCommitObserver{service: s},
+		RuntimeOperations: s.RuntimeOperationStore, OperationEvents: serviceHostRuntimeOperationEventPublisher{service: s},
 		OperationOwner: s.RuntimeOperationOwner, StaleTurnSettler: s.StaleTurnSettler,
-		GoalStore: s.GoalStateStore, GoalRuntime: serviceHostGoalRuntime{service: s},
-		GoalAudits: s.GoalAuditPublisher, GoalInbox: s.GoalReconcileInboxStore,
+		GoalStore: s.GoalStateStore, GoalRuntime: serviceHostGoalRuntime{service: s}, GoalInbox: s.GoalReconcileInboxStore,
 		GoalOwner: s.GoalOperationOwner, GoalClock: serviceHostGoalClock{service: s},
 		GoalAttemptTimeout: s.GoalOperationAttemptTimeout, GoalRecoveryBudget: s.GoalOperationRecoveryBudget,
 		GoalMaxAttempts: s.GoalOperationMaxAttempts, GoalDispatchDeadline: s.GoalOperationDispatchDeadline,
-		GoalActor: s.goalActor,
+		GoalActor: agenthost.NewGoalActor(),
 	})
+}
+
+// SetApplicationHost installs the single production Host composed by wiring.
+func (s *Service) SetApplicationHost(host *agenthost.Host) {
+	if s == nil || host == nil {
+		panic("agent service requires an application host")
+	}
+	s.applicationHostMu.Lock()
+	defer s.applicationHostMu.Unlock()
+	if s.applicationHost != nil && s.applicationHost != host {
+		panic("agent service application host is already configured")
+	}
+	s.applicationHost = host
+}
+
+// ApplicationHost returns the configured Host. Lazy construction keeps
+// isolated service consumers and tests hermetic; production wiring always
+// installs its explicitly composed singleton before recovery or API serving.
+func (s *Service) ApplicationHost() *agenthost.Host {
+	if s == nil {
+		return nil
+	}
+	s.applicationHostMu.Lock()
+	defer s.applicationHostMu.Unlock()
+	if s.applicationHost == nil {
+		s.applicationHost = NewApplicationHost(s)
+	}
+	return s.applicationHost
 }
 
 func activitySessionFromPersisted(session PersistedSession) storesqlite.Session {

@@ -29,7 +29,7 @@ func TestPlanDecisionDuplicateAndDelayedConfirmationNeverResend(t *testing.T) {
 	store.confirmedTurnID = "implementation-turn"
 	now = now.Add(2 * time.Second)
 	service.RuntimeOperationClock = func() time.Time { return now }
-	if err := service.StepRuntimeOperationWorker(context.Background(), false); err != nil {
+	if err := service.ApplicationHost().StepRuntimeOperationWorker(context.Background(), false); err != nil {
 		t.Fatalf("worker error=%v", err)
 	}
 	if store.operation.Status != agentactivitybiz.RuntimeOperationStatusCompleted || len(runtime.execCalls) != 1 {
@@ -49,7 +49,7 @@ func TestPlanDecisionSendErrorStaysUnknownAndRecoveryDoesNotResend(t *testing.T)
 	runtime.execErr = nil
 	now = now.Add(2 * time.Second)
 	service.RuntimeOperationClock = func() time.Time { return now }
-	if err := service.StepRuntimeOperationWorker(context.Background(), false); err != nil {
+	if err := service.ApplicationHost().StepRuntimeOperationWorker(context.Background(), false); err != nil {
 		t.Fatalf("unconfirmed worker error=%v", err)
 	}
 	if len(runtime.execCalls) != 1 {
@@ -58,7 +58,7 @@ func TestPlanDecisionSendErrorStaysUnknownAndRecoveryDoesNotResend(t *testing.T)
 	store.confirmedTurnID = "implementation-turn"
 	now = now.Add(3 * time.Second)
 	service.RuntimeOperationClock = func() time.Time { return now }
-	if err := service.StepRuntimeOperationWorker(context.Background(), false); err != nil {
+	if err := service.ApplicationHost().StepRuntimeOperationWorker(context.Background(), false); err != nil {
 		t.Fatalf("confirmed worker error=%v", err)
 	}
 	if store.operation.Status != agentactivitybiz.RuntimeOperationStatusCompleted || len(runtime.execCalls) != 1 {
@@ -79,7 +79,7 @@ func TestPlanDecisionSettingsCheckpointCrashRepeatsOnlyIdempotentSetting(t *test
 	}
 	now = now.Add(runtimeOperationLeaseDuration)
 	service.RuntimeOperationClock = func() time.Time { return now }
-	if err := service.StepRuntimeOperationWorker(context.Background(), true); err != nil {
+	if err := service.ApplicationHost().StepRuntimeOperationWorker(context.Background(), true); err != nil {
 		t.Fatalf("recovery error=%v", err)
 	}
 	if len(runtime.updateSettingsCalls) != 2 || len(runtime.execCalls) != 1 {
@@ -146,7 +146,7 @@ func TestPlanDecisionOutboxPublishFailureReplaysWithoutRollingBackCompletion(t *
 	now = now.Add(2 * time.Second)
 	service.RuntimeOperationClock = func() time.Time { return now }
 	service.RuntimeOperationEventPublisher = runtimeOperationFailingPublisher{err: errors.New("event unavailable")}
-	if err := service.StepRuntimeOperationWorker(context.Background(), false); err == nil {
+	if err := service.ApplicationHost().StepRuntimeOperationWorker(context.Background(), false); err == nil {
 		t.Fatal("publish failure error=nil")
 	}
 	if store.operation.Status != agentactivitybiz.RuntimeOperationStatusCompleted || len(store.events) != 2 ||
@@ -157,7 +157,7 @@ func TestPlanDecisionOutboxPublishFailureReplaysWithoutRollingBackCompletion(t *
 	}
 	publisher := &planDecisionRecordingPublisher{}
 	service.RuntimeOperationEventPublisher = publisher
-	if err := service.StepRuntimeOperationWorker(context.Background(), false); err != nil {
+	if err := service.ApplicationHost().StepRuntimeOperationWorker(context.Background(), false); err != nil {
 		t.Fatal(err)
 	}
 	if publisher.calls != 2 || store.events[0].PublishedAtUnixMS == 0 || store.events[1].PublishedAtUnixMS == 0 {
@@ -188,7 +188,7 @@ func TestPlanDecisionRecoveryResumesDurableSessionBeforeSettings(t *testing.T) {
 	service.RuntimeOperationStore = store
 	service.RuntimeOperationOwner = "worker-a"
 	service.RuntimeOperationClock = func() time.Time { return now }
-	if err := service.StepRuntimeOperationWorker(context.Background(), true); err != nil {
+	if err := service.ApplicationHost().StepRuntimeOperationWorker(context.Background(), true); err != nil {
 		t.Fatalf("recovery error=%v", err)
 	}
 	if len(runtime.resumeCalls) != 1 || len(runtime.updateSettingsCalls) != 1 || len(runtime.execCalls) != 1 {
@@ -209,7 +209,7 @@ func TestCraftedInvalidPlanDecisionFailsBeforeProviderCalls(t *testing.T) {
 			"clientSubmitId": "plan-decision:" + operationID, "step": "prepared",
 		},
 	}
-	if err := service.StepRuntimeOperationWorker(context.Background(), false); err == nil {
+	if err := service.ApplicationHost().StepRuntimeOperationWorker(context.Background(), false); err == nil {
 		t.Fatal("invalid crafted operation error=nil")
 	}
 	if store.operation.Status != agentactivitybiz.RuntimeOperationStatusFailed || len(runtime.updateSettingsCalls) != 0 || len(runtime.execCalls) != 0 {

@@ -12,7 +12,7 @@ import {
   selectEngineSessionDeleted,
   selectEngineSessionDetailHydrated,
   selectEngineSessionDetailLoading,
-  selectEngineSessionError,
+  selectEngineSessionOperationError,
   selectEngineSessionIsRespondingToInteraction,
   selectEngineSessionReconcile,
   selectEngineSessionSettingsUpdate,
@@ -101,25 +101,33 @@ export function useAgentGUISessionEngineState(input: {
   const activeEngineLatestTurn = useEngineSelector(sessionEngine, (state) =>
     selectEngineLatestTurn(state, activeConversationId)
   );
+  const activeEngineSettingsUpdate = useEngineSelector(sessionEngine, (state) =>
+    selectEngineSessionSettingsUpdate(state, activeConversationId)
+  );
   const activeCanonicalComposerSettings = useMemo<AgentSessionComposerSettings>(
-    () => ({
-      model: activeEngineSession?.settings?.model ?? undefined,
-      permissionModeId:
-        activeEngineSession?.settings?.permissionModeId ?? undefined,
-      planMode: activeEngineSession?.settings?.planMode ?? undefined,
-      browserUse: activeEngineSession?.settings?.browserUse ?? undefined,
-      reasoningEffort:
-        (activeEngineSession?.settings?.reasoningEffort as
-          | AgentSessionReasoningEffort
-          | null
-          | undefined) ?? undefined,
-      speed:
-        (activeEngineSession?.settings?.speed as
-          | AgentSessionSpeed
-          | null
-          | undefined) ?? undefined
-    }),
-    [activeEngineSession?.settings]
+    () =>
+      mergeOptimisticSessionSettings(
+        {
+          model: activeEngineSession?.settings?.model ?? undefined,
+          permissionModeId:
+            activeEngineSession?.settings?.permissionModeId ?? undefined,
+          planMode: activeEngineSession?.settings?.planMode ?? undefined,
+          browserUse: activeEngineSession?.settings?.browserUse ?? undefined,
+          computerUse: activeEngineSession?.settings?.computerUse ?? undefined,
+          reasoningEffort:
+            (activeEngineSession?.settings?.reasoningEffort as
+              | AgentSessionReasoningEffort
+              | null
+              | undefined) ?? undefined,
+          speed:
+            (activeEngineSession?.settings?.speed as
+              | AgentSessionSpeed
+              | null
+              | undefined) ?? undefined
+        },
+        activeEngineSettingsUpdate
+      ),
+    [activeEngineSession?.settings, activeEngineSettingsUpdate]
   );
   const activeSessionState = useMemo<AgentSessionState | null>(() => {
     if (!activeEngineSession) return null;
@@ -150,8 +158,8 @@ export function useAgentGUISessionEngineState(input: {
     activeEngineActiveTurn,
     activeEngineSession
   ]);
-  const activeEngineLifecycleError = useEngineSelector(sessionEngine, (state) =>
-    selectEngineSessionError(state, activeConversationId)
+  const activeEngineOperationError = useEngineSelector(sessionEngine, (state) =>
+    selectEngineSessionOperationError(state, activeConversationId)
   );
   const activeEngineQueueError = useEngineSelector(sessionEngine, (state) =>
     selectEnginePromptQueueError(state, activeConversationId)
@@ -160,13 +168,9 @@ export function useAgentGUISessionEngineState(input: {
     sessionEngine,
     (state) => selectEngineInteractionResponseError(state, activeConversationId)
   );
-  const activeEngineSettingsUpdate = useEngineSelector(sessionEngine, (state) =>
-    selectEngineSessionSettingsUpdate(state, activeConversationId)
-  );
   const activeEngineError =
-    activeEngineLifecycleError ??
+    activeEngineOperationError ??
     activeEngineInteractionError ??
-    activeEngineSettingsUpdate?.errorMessage ??
     activeEngineQueueError;
   const isRespondingToInteraction = useEngineSelector(sessionEngine, (state) =>
     selectEngineSessionIsRespondingToInteraction(state, activeConversationId)
@@ -216,5 +220,48 @@ export function useAgentGUISessionEngineState(input: {
     hasUnconfirmedSubmit,
     isRespondingToInteraction,
     isSubmitting
+  };
+}
+
+function mergeOptimisticSessionSettings(
+  canonical: AgentSessionComposerSettings,
+  update: ReturnType<typeof selectEngineSessionSettingsUpdate>
+): AgentSessionComposerSettings {
+  if (
+    !update ||
+    (update.status !== "inFlight" && update.status !== "unknown")
+  ) {
+    return canonical;
+  }
+  const optimistic = {
+    ...(update.settings ?? {}),
+    ...(update.queuedSettings ?? {})
+  };
+  return {
+    ...canonical,
+    ...(typeof optimistic.model === "string"
+      ? { model: optimistic.model }
+      : {}),
+    ...(typeof optimistic.permissionModeId === "string"
+      ? { permissionModeId: optimistic.permissionModeId }
+      : {}),
+    ...(typeof optimistic.planMode === "boolean"
+      ? { planMode: optimistic.planMode }
+      : {}),
+    ...(typeof optimistic.browserUse === "boolean"
+      ? { browserUse: optimistic.browserUse }
+      : {}),
+    ...(typeof optimistic.computerUse === "boolean"
+      ? { computerUse: optimistic.computerUse }
+      : {}),
+    ...(typeof optimistic.reasoningEffort === "string"
+      ? {
+          reasoningEffort:
+            optimistic.reasoningEffort as AgentSessionReasoningEffort
+        }
+      : {}),
+    ...(typeof optimistic.speed === "string"
+      ? { speed: optimistic.speed as AgentSessionSpeed }
+      : {})
   };
 }

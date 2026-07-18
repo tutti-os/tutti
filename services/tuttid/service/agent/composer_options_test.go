@@ -2,9 +2,59 @@ package agent
 
 import (
 	"context"
+	"errors"
 	"slices"
 	"testing"
+
+	agenttargetbiz "github.com/tutti-os/tutti/services/tuttid/biz/agenttarget"
+	preferencesbiz "github.com/tutti-os/tutti/services/tuttid/biz/preferences"
 )
+
+func TestGetComposerOptionsUsesTargetDefaultsAndSparseRequestOverrides(t *testing.T) {
+	service := newTestService(newFakeRuntime())
+	service.AgentComposerDefaultsReader = fakeAgentComposerDefaultsReader{
+		agenttargetbiz.IDLocalCodex: {
+			Model:            "gpt-5",
+			PermissionModeID: "full-access",
+			ReasoningEffort:  "high",
+			Speed:            "fast",
+		},
+	}
+	options, err := service.GetComposerOptions(context.Background(), ComposerOptionsInput{
+		AgentTargetID: agenttargetbiz.IDLocalCodex,
+		Provider:      "codex",
+		Settings: ComposerSettings{
+			Model: "gpt-5-codex",
+		},
+	})
+	if err != nil {
+		t.Fatalf("GetComposerOptions() error = %v", err)
+	}
+	if options.EffectiveSettings.Model != "gpt-5-codex" ||
+		options.EffectiveSettings.PermissionModeID != "full-access" ||
+		options.EffectiveSettings.ReasoningEffort != "high" ||
+		options.EffectiveSettings.Speed != "fast" {
+		t.Fatalf("effective settings = %#v", options.EffectiveSettings)
+	}
+}
+
+func TestValidateAgentComposerDefaultsPatchRejectsUnknownTargetAndValue(t *testing.T) {
+	service := newTestService(newFakeRuntime())
+	unsupported := "not-a-permission"
+	err := service.ValidateAgentComposerDefaultsPatch(context.Background(), agenttargetbiz.IDLocalCodex, preferencesbiz.AgentComposerDefaultsPatch{
+		preferencesbiz.AgentComposerDefaultsFieldPermissionModeID: &unsupported,
+	})
+	if !errors.Is(err, ErrInvalidArgument) {
+		t.Fatalf("unsupported permission error = %v", err)
+	}
+	model := "gpt-5"
+	err = service.ValidateAgentComposerDefaultsPatch(context.Background(), "missing-target", preferencesbiz.AgentComposerDefaultsPatch{
+		preferencesbiz.AgentComposerDefaultsFieldModel: &model,
+	})
+	if !errors.Is(err, ErrInvalidArgument) {
+		t.Fatalf("missing target error = %v", err)
+	}
+}
 
 func TestComposerProviderCapabilitiesDefaults(t *testing.T) {
 	t.Parallel()

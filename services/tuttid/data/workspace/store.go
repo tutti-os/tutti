@@ -18,6 +18,7 @@ var ErrWorkbenchSnapshotNotFound = errors.New("workspace workbench snapshot not 
 var ErrWorkspaceAppNotFound = errors.New("workspace app not found")
 var ErrWorkspaceAppFactoryJobNotFound = errors.New("workspace app factory job not found")
 var ErrUserProjectNotFound = errors.New("user project not found")
+var ErrUserProjectPartitionMismatch = errors.New("user project move crosses pinned partition")
 
 // ErrAgentTargetNotFound aliases the embedded agent store's sentinel so
 // existing errors.Is checks keep working across the delegation boundary.
@@ -75,6 +76,10 @@ type PreferencesStore interface {
 	PutDesktopPreferences(context.Context, preferencesbiz.DesktopPreferences) (preferencesbiz.DesktopPreferences, error)
 }
 
+type AgentComposerDefaultsPatchStore interface {
+	PatchAgentComposerDefaultsForTarget(context.Context, string, preferencesbiz.AgentComposerDefaultsPatch) (preferencesbiz.AgentComposerDefaults, error)
+}
+
 type ManagedCredentialsStore interface {
 	DeleteManagedModelGrant(context.Context, string, string, string) error
 	DeleteManagedModelProviderConfig(context.Context, string, managedcredentialsbiz.ProviderID) error
@@ -91,6 +96,7 @@ type UserProjectStore interface {
 	DeleteUserProjectByPath(context.Context, string) error
 	ListUserProjects(context.Context) ([]userprojectbiz.Project, error)
 	MoveUserProject(context.Context, string, *string) ([]userprojectbiz.Project, error)
+	PinUserProject(context.Context, string, bool) ([]userprojectbiz.Project, bool, error)
 	PutUserProject(context.Context, userprojectbiz.Project) (userprojectbiz.Project, error)
 	TouchUserProject(context.Context, string, int64) error
 }

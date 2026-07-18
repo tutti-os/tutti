@@ -437,6 +437,7 @@ function createWorkspaceAgentActivityService(): IWorkspaceAgentActivityService {
     },
     onSessionEvent: () => () => {},
     onModelCatalogInvalidated: () => () => {},
+    onComposerDefaultsInvalidated: () => () => {},
     submitInteractive: async () => {
       throw new Error("not implemented");
     },

@@ -41,7 +41,7 @@ func TestSubmitInteractiveCompletionFailureIsRecoveredFromLeasedOperation(t *tes
 	runtime.interactiveDisposition = RuntimeInteractiveDispositionAnswered
 	delete(runtime.sessions, "ws-1:session-1")
 	now = now.Add(runtimeOperationLeaseDuration)
-	if err := service.StepRuntimeOperationWorker(context.Background(), false); err != nil {
+	if err := service.ApplicationHost().StepRuntimeOperationWorker(context.Background(), false); err != nil {
 		t.Fatalf("StepRuntimeOperationWorker() error = %v", err)
 	}
 	if store.operation.Status != agentactivitybiz.RuntimeOperationStatusCompleted || store.operation.Result != agentactivitybiz.RuntimeOperationResultAnswered {
@@ -71,7 +71,7 @@ func TestCancelCompletionFailureIsRecoveredFromLeasedOperation(t *testing.T) {
 
 	store.completeErr = nil
 	now = now.Add(runtimeOperationLeaseDuration)
-	if err := service.StepRuntimeOperationWorker(context.Background(), true); err != nil {
+	if err := service.ApplicationHost().StepRuntimeOperationWorker(context.Background(), true); err != nil {
 		t.Fatalf("recovery worker error = %v", err)
 	}
 	if store.operation.Status != agentactivitybiz.RuntimeOperationStatusCompleted || store.operation.Result != agentactivitybiz.RuntimeOperationResultCanceled {
@@ -255,7 +255,7 @@ func TestInlineOutboxPublishFailureDoesNotTurnCompletedAPIIntoFailure(t *testing
 	if len(store.events) != 1 || store.events[0].PublishedAtUnixMS != 0 {
 		t.Fatalf("outbox events = %#v, want one pending event", store.events)
 	}
-	if err := service.StepRuntimeOperationWorker(context.Background(), false); err == nil {
+	if err := service.ApplicationHost().StepRuntimeOperationWorker(context.Background(), false); err == nil {
 		t.Fatal("worker outbox publish error = nil")
 	}
 }
@@ -378,7 +378,7 @@ func TestStartupRecoveryRequeuesUnexpiredLeaseBeforeRecoveringCancel(t *testing.
 	service.RuntimeOperationClock = func() time.Time { return now }
 	service.TurnStore = runtimeOperationTurnStore("turn-1", "")
 
-	if err := service.RecoverRuntimeOperations(context.Background()); err != nil {
+	if err := service.ApplicationHost().RecoverRuntimeOperations(context.Background()); err != nil {
 		t.Fatalf("RecoverRuntimeOperations() error = %v", err)
 	}
 	if store.operation.Status != agentactivitybiz.RuntimeOperationStatusCompleted || store.operation.Result != agentactivitybiz.RuntimeOperationResultCanceled {

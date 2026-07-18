@@ -8,7 +8,6 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"github.com/tutti-os/tutti/packages/agent/daemon/titletext"
 	storesqlite "github.com/tutti-os/tutti/packages/agent/store-sqlite"
 )
 
@@ -89,7 +88,7 @@ func (h *Host) CreateSession(ctx context.Context, workspaceID string, input Crea
 		return h.runtime.Start(ctx, RuntimeStartInput{
 			WorkspaceID: workspaceID, AgentSessionID: input.AgentSessionID, AgentTargetID: input.AgentTargetID,
 			Provider: input.Provider, Cwd: prepared.Cwd, Env: append([]string(nil), prepared.Env...),
-			Title: value(input.Title), InitialTitleEstablished: titletext.Normalize(value(input.Title)) != "",
+			Title: value(input.Title), InitialTitleEstablished: NormalizeTitle(value(input.Title)) != "",
 			PermissionModeID: value(input.PermissionModeID), Model: value(input.Model), PlanMode: valueBool(input.PlanMode),
 			BrowserUse: input.BrowserUse, ComputerUse: input.ComputerUse,
 			ProviderTargetRef: cloneMap(firstMap(prepared.ProviderTargetRef, input.ProviderTargetRef)),
@@ -155,7 +154,7 @@ func (h *Host) CreateSession(ctx context.Context, workspaceID string, input Crea
 	displayPrompt := strings.TrimSpace(input.InitialDisplayPrompt)
 	initialTitle := ""
 	if !session.InitialTitleEstablished {
-		initialTitle = titletext.DeriveInitial(session.Title, firstNonEmpty(displayPrompt, promptText, preparedDisplay))
+		initialTitle = DeriveInitialTitle(session.Title, firstNonEmpty(displayPrompt, promptText, preparedDisplay))
 	}
 	startedAt = h.now()
 	execResult, err := h.runtime.Exec(ctx, RuntimeExecInput{
@@ -325,7 +324,7 @@ func (h *Host) SendInput(ctx context.Context, ref SessionRef, input SendInput) (
 	h.observeStep(ctx, "message_send", "prompt_prepared", ref.AgentSessionID, session.Provider, startedAt, nil)
 	displayPrompt, initialTitle := strings.TrimSpace(input.DisplayPrompt), ""
 	if !input.Guidance && !session.InitialTitleEstablished {
-		initialTitle = titletext.DeriveInitial(session.Title, firstNonEmpty(displayPrompt, promptText, preparedDisplay))
+		initialTitle = DeriveInitialTitle(session.Title, firstNonEmpty(displayPrompt, promptText, preparedDisplay))
 	}
 	startedAt = h.now()
 	releaseStartup, err := h.acquireStartup(ctx, session.Provider)
@@ -382,7 +381,7 @@ func (h *Host) UpdateTitle(ctx context.Context, input UpdateTitleInput) (UpdateT
 	if h == nil || h.store == nil || h.runtime == nil || input.WorkspaceID == "" || input.AgentSessionID == "" {
 		return UpdateTitleResult{}, ErrInvalidArgument
 	}
-	if utf8.RuneCountInString(input.Title) > titletext.MaxSessionTitleRunes {
+	if utf8.RuneCountInString(input.Title) > MaxSessionTitleRunes {
 		return UpdateTitleResult{}, ErrSessionTitleTooLong
 	}
 	canonicalSession, updated, err := h.store.UpdateSessionTitle(ctx, input.WorkspaceID, input.AgentSessionID, input.Title)

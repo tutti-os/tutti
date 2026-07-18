@@ -33,6 +33,8 @@ func (s *Store) ReportSessionState(
 		return StateReportResult{}, err
 	}
 	return StateReportResult{
+		TransactionID:   session.CommitTransactionID,
+		CommitDelta:     session.CommitDelta,
 		Accepted:        accepted,
 		StateApplied:    stateApplied,
 		LastEventUnixMS: lastEventUnixMS,
@@ -129,11 +131,41 @@ func (s *Store) ReportActivityState(
 			return ActivityStateReportResult{}, errors.New("workspace agent activity interaction transition conflicts with immutable identity")
 		}
 	}
-	if err := tx.Commit(); err != nil {
+	mutations := activityStateMutations(result)
+	delta, err := s.commitTransaction(ctx, tx, workspaceID, mutations)
+	if err != nil {
 		return ActivityStateReportResult{}, fmt.Errorf("commit workspace agent activity state report: %w", err)
 	}
 	committed = true
+	result.TransactionID = delta.TransactionID
+	result.CommitDelta = delta
+	result.State.TransactionID = delta.TransactionID
+	result.State.CommitDelta = delta
+	result.State.Session.CommitTransactionID = delta.TransactionID
+	result.State.Session.CommitDelta = delta
 	return result, nil
+}
+
+func activityStateMutations(result ActivityStateReportResult) []TransactionMutation {
+	mutations := make([]TransactionMutation, 0, 4)
+	if result.State.Accepted {
+		session := result.State.Session
+		mutations = append(mutations, transactionMutation(session.WorkspaceID, session.ID, MutationEntitySession, session.ID, "upsert", session.UpdatedAtUnixMS))
+	}
+	if result.TurnAccepted {
+		mutations = append(mutations, transactionMutation(result.Turn.WorkspaceID, result.Turn.AgentSessionID, MutationEntityTurn, result.Turn.TurnID, "upsert", result.Turn.UpdatedAtUnixMS))
+	}
+	if result.RootTurnAccepted {
+		mutations = append(mutations, transactionMutation(result.RootTurn.WorkspaceID, result.RootTurn.AgentSessionID, MutationEntityTurn, result.RootTurn.TurnID, "upsert", result.RootTurn.UpdatedAtUnixMS))
+	}
+	if result.InteractionResult == InteractionTransitionApplied {
+		mutations = append(mutations, transactionMutation(
+			result.Interaction.WorkspaceID, result.Interaction.AgentSessionID, MutationEntityInteraction,
+			interactionMutationEntityID(result.Interaction.TurnID, result.Interaction.RequestID),
+			"upsert", result.Interaction.UpdatedAtUnixMS,
+		))
+	}
+	return mutations
 }
 
 func turnTransitionAlreadyApplied(stored Turn, incoming TurnTransition) bool {
@@ -212,7 +244,7 @@ func (s *Store) ReportSessionMessages(
 		return MessageReportResult{}, err
 	}
 	if !accepted {
-		if err := tx.Commit(); err != nil {
+		if _, err := s.commitTransaction(ctx, tx, workspaceID, nil); err != nil {
 			return MessageReportResult{}, fmt.Errorf("commit ignored workspace agent message report: %w", err)
 		}
 		committed = true
@@ -238,9 +270,16 @@ func (s *Store) ReportSessionMessages(
 		result.Messages = append(result.Messages, acceptedMessage)
 	}
 
-	if err := tx.Commit(); err != nil {
+	mutations := make([]TransactionMutation, 0, len(result.Messages))
+	for _, message := range result.Messages {
+		mutations = append(mutations, transactionMutation(workspaceID, agentSessionID, MutationEntityMessage, message.MessageID, "upsert", int64(message.Version)))
+	}
+	delta, err := s.commitTransaction(ctx, tx, workspaceID, mutations)
+	if err != nil {
 		return MessageReportResult{}, fmt.Errorf("commit workspace agent message report: %w", err)
 	}
 	committed = true
+	result.TransactionID = delta.TransactionID
+	result.CommitDelta = delta
 	return result, nil
 }

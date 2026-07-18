@@ -49,6 +49,7 @@ export type {
   AgentGUIAgentAvailabilityAction,
   AgentGUIAgentAvailabilityStatus,
   AgentGUIAgentOwner,
+  AgentGUIAgentOwnership,
   AgentGUIHomeSuggestionId,
   AgentGUIAllAgentsPresentation,
   AgentGUIProvider,
@@ -130,6 +131,7 @@ export type {
   AgentHostInputApi,
   AgentHostSelectFilesInput,
   AgentHostRuntimeApi,
+  AgentHostUserProject,
   AgentProviderProbeListInput,
   AgentProviderProbeListResult
 } from "./host/agentHostApi";

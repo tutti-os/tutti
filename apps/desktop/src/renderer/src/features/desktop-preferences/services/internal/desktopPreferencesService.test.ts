@@ -116,6 +116,7 @@ test("DesktopPreferencesService keeps in-memory defaults when preferences are no
         updatePolicy: "prompt"
       }
     }),
+    patchAgentComposerDefaultsForTarget: async () => {},
     updateDesktopPreferences: async (request) => {
       updatedRequests.push(request.preferences);
       return request.preferences;
@@ -230,7 +231,6 @@ test("DesktopPreferencesService publishes locale writes and converges on the aut
   assert.deepEqual(client.updatedRequests, [
     {
       agentComposerDefaultsByProvider: {},
-      agentComposerDefaultsByAgentTarget: {},
       agentGuiConversationRailCollapsedByProvider: {},
       agentConversationDetailMode: "coding",
       agentDockLayout: "unified",
@@ -337,7 +337,6 @@ test("DesktopPreferencesService applies authoritative theme updates from the eve
   assert.deepEqual(client.updatedRequests, [
     {
       agentComposerDefaultsByProvider: {},
-      agentComposerDefaultsByAgentTarget: {},
       agentGuiConversationRailCollapsedByProvider: {},
       agentConversationDetailMode: "coding",
       agentDockLayout: "unified",
@@ -469,7 +468,6 @@ test("DesktopPreferencesService publishes prevent sleep preference writes", asyn
   assert.deepEqual(client.updatedRequests, [
     {
       agentComposerDefaultsByProvider: {},
-      agentComposerDefaultsByAgentTarget: {},
       agentGuiConversationRailCollapsedByProvider: {},
       agentConversationDetailMode: "coding",
       agentDockLayout: "unified",
@@ -542,7 +540,6 @@ test("DesktopPreferencesService publishes update preference writes", async () =>
   assert.deepEqual(client.updatedRequests, [
     {
       agentComposerDefaultsByProvider: {},
-      agentComposerDefaultsByAgentTarget: {},
       agentGuiConversationRailCollapsedByProvider: {},
       agentConversationDetailMode: "coding",
       agentDockLayout: "unified",
@@ -708,7 +705,6 @@ test("DesktopPreferencesService publishes dock placement preference writes", asy
   assert.deepEqual(client.updatedRequests, [
     {
       agentComposerDefaultsByProvider: {},
-      agentComposerDefaultsByAgentTarget: {},
       agentGuiConversationRailCollapsedByProvider: {},
       agentConversationDetailMode: "coding",
       agentDockLayout: "unified",
@@ -784,7 +780,6 @@ test("DesktopPreferencesService publishes workbench window snapping preference w
   assert.deepEqual(client.updatedRequests, [
     {
       agentComposerDefaultsByProvider: {},
-      agentComposerDefaultsByAgentTarget: {},
       agentGuiConversationRailCollapsedByProvider: {},
       agentConversationDetailMode: "coding",
       agentDockLayout: "unified",
@@ -1130,7 +1125,12 @@ test("DesktopPreferencesService rejects mismatched App Center source confirmatio
 });
 
 test("DesktopPreferencesService remembers agent composer defaults per agent target", async () => {
-  const client = createDesktopPreferencesClient({});
+  const patches: Array<{ agentTargetId: string; patch: unknown }> = [];
+  const client = createDesktopPreferencesClient({
+    patchAgentComposerDefaultsForTarget: async (input) => {
+      patches.push({ agentTargetId: input.agentTargetId, patch: input.patch });
+    }
+  });
   const service = new DesktopPreferencesService({
     applyLocale() {},
     applyTheme() {},
@@ -1144,7 +1144,7 @@ test("DesktopPreferencesService remembers agent composer defaults per agent targ
   });
   await settle();
 
-  const rememberPromise = service.rememberAgentComposerDefaultsForAgentTarget(
+  const firstResult = await service.rememberAgentComposerDefaultsForAgentTarget(
     " local:codex ",
     {
       model: " gpt-5 ",
@@ -1153,71 +1153,43 @@ test("DesktopPreferencesService remembers agent composer defaults per agent targ
       speed: " fast "
     }
   );
+  assert.deepEqual(firstResult, {
+    acknowledgedFields: [
+      "model",
+      "permissionModeId",
+      "reasoningEffort",
+      "speed"
+    ],
+    supersededFields: []
+  });
 
-  assert.deepEqual(client.updatedRequests.at(-1), {
-    agentComposerDefaultsByProvider: {},
-    agentComposerDefaultsByAgentTarget: {
-      "local:codex": {
+  assert.deepEqual(patches, [
+    {
+      agentTargetId: "local:codex",
+      patch: {
         model: "gpt-5",
         permissionModeId: "full-access",
         reasoningEffort: "high",
         speed: "fast"
       }
-    },
-    agentGuiConversationRailCollapsedByProvider: {},
-    agentConversationDetailMode: "coding",
-    agentDockLayout: "unified",
-    appCatalogChannel: "production",
-    browserUseConnectionMode: "isolated",
-    defaultAgentProvider: "codex",
-    featureFlags: {},
-    workbenchShortcuts: defaultDesktopWorkbenchShortcuts,
-    dockIconStyle: "default",
-    dockPlacement: "bottom",
-    fileDefaultOpenersByExtension: { html: "defaultBrowser" },
-    locale: "en",
-    minimizeAnimation: "scale",
-    sleepPreventionMode: "never",
-    showAppDeveloperSources: false,
-    themeSource: "system",
-    updateChannel: "stable",
-    updatePolicy: "prompt"
-  });
-  client.emitDesktopPreferencesUpdated(client.updatedRequests.at(-1)!);
-
-  await rememberPromise;
-  assert.deepEqual(service.store.agentComposerDefaultsByAgentTarget, {
-    "local:codex": {
-      model: "gpt-5",
-      permissionModeId: "full-access",
-      reasoningEffort: "high",
-      speed: "fast"
     }
-  });
+  ]);
+  assert.equal(client.updatedRequests.length, 0);
 
-  const partialRememberPromise =
-    service.rememberAgentComposerDefaultsForAgentTarget("local:codex", {
+  const secondResult =
+    await service.rememberAgentComposerDefaultsForAgentTarget("local:codex", {
       model: "gpt-5-codex",
-      // An explicit null clears the remembered value (user reset the field);
-      // untouched fields stay intact.
       speed: null
     });
-  const mergedRequest = client.updatedRequests.at(-1)!;
-  assert.deepEqual(mergedRequest.agentComposerDefaultsByAgentTarget, {
-    "local:codex": {
-      model: "gpt-5-codex",
-      permissionModeId: "full-access",
-      reasoningEffort: "high"
-    }
+  assert.deepEqual(secondResult, {
+    acknowledgedFields: ["model", "speed"],
+    supersededFields: []
   });
-  client.emitDesktopPreferencesUpdated(mergedRequest);
-
-  await partialRememberPromise;
-  assert.deepEqual(service.store.agentComposerDefaultsByAgentTarget, {
-    "local:codex": {
+  assert.deepEqual(patches.at(-1), {
+    agentTargetId: "local:codex",
+    patch: {
       model: "gpt-5-codex",
-      permissionModeId: "full-access",
-      reasoningEffort: "high"
+      speed: null
     }
   });
 
@@ -1246,7 +1218,6 @@ test("DesktopPreferencesService remembers agent GUI conversation rail collapsed 
 
   assert.deepEqual(client.updatedRequests.at(-1), {
     agentComposerDefaultsByProvider: {},
-    agentComposerDefaultsByAgentTarget: {},
     agentGuiConversationRailCollapsedByProvider: {
       codex: true
     },
@@ -1401,7 +1372,9 @@ function createDesktopPreferencesClient(
         listeners.delete(listener);
       };
     },
-    ...overrides
+    ...overrides,
+    patchAgentComposerDefaultsForTarget:
+      overrides.patchAgentComposerDefaultsForTarget ?? (async () => {})
   };
 }
 

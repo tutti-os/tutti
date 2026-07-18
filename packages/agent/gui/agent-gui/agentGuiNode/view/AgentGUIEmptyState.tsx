@@ -45,6 +45,10 @@ import type {
 import type { ChromeLabels } from "./AgentGUIDetailHeader";
 import { AgentGUIEmptyHeroCarouselStage } from "./AgentGUIEmptyHeroCarouselStage";
 import { AgentTargetSetupGate } from "./AgentTargetSetupGate.tsx";
+import {
+  AgentGUIAgentTargetName,
+  projectAgentGUIAgentTargetName
+} from "./AgentGUIAgentTargetName";
 import styles from "../AgentGUINode.styles";
 
 export interface AgentGUIProviderIconPresentation {
@@ -122,7 +126,12 @@ export const AgentGUIEmptyHomePane = memo(function AgentGUIEmptyHomePane({
 
   const runtimeProviderLabel =
     labels.emptyProviderForProvider?.(provider) ?? labels.emptyProvider ?? "";
-  const providerLabel = selectedAgentTarget?.label ?? runtimeProviderLabel;
+  const providerLabel = selectedAgentTarget
+    ? projectAgentGUIAgentTargetName({
+        ownerSeparator: labels.sharedAgentOwnerSeparator,
+        target: selectedAgentTarget
+      }).fullLabel
+    : runtimeProviderLabel;
   const baseLabel = labels.emptyForProvider?.(provider) ?? labels.empty;
   const emptyLabel = runtimeProviderLabel
     ? baseLabel.replace(runtimeProviderLabel, providerLabel)
@@ -182,6 +191,7 @@ export const AgentGUIEmptyHomePane = memo(function AgentGUIEmptyHomePane({
             agentTargets={agentTargets}
             selectedAgentTarget={selectedAgentTarget}
             providerSelectLabel={labels.providerSwitchLabel}
+            sharedAgentOwnerSeparator={labels.sharedAgentOwnerSeparator}
           />
         )}
       </AgentTargetSetupGate>
@@ -207,6 +217,7 @@ interface AgentGUIEmptyHeroPaneProps {
   chromeLabels: ChromeLabels;
   composerProps: AgentComposerProps;
   providerSelectLabel: string;
+  sharedAgentOwnerSeparator: string;
   suggestions: readonly AgentHomeSuggestionCategory[];
   suggestionsCloseLabel?: string;
   onSelectSuggestion: (prompt: string) => void;
@@ -231,6 +242,7 @@ export const AgentGUIEmptyHeroPane = memo(function AgentGUIEmptyHeroPane({
   chromeLabels,
   composerProps,
   providerSelectLabel,
+  sharedAgentOwnerSeparator,
   suggestions,
   suggestionsCloseLabel,
   onSelectSuggestion,
@@ -288,6 +300,7 @@ export const AgentGUIEmptyHeroPane = memo(function AgentGUIEmptyHeroPane({
             agentTargets={agentTargets}
             selectedAgentTarget={selectedAgentTarget}
             onProviderSelect={onProviderSelect}
+            sharedAgentOwnerSeparator={sharedAgentOwnerSeparator}
           />
         </h2>
         {inlineNoticeChrome ? (
@@ -345,6 +358,7 @@ interface AgentGUIProviderReadinessGatePaneProps {
     | "providerGatePendingInstall"
     | "providerGatePendingLogin"
     | "providerGatePendingRefresh"
+    | "sharedAgentOwnerSeparator"
   >;
 }
 
@@ -437,6 +451,7 @@ export const AgentGUIProviderReadinessGatePane = memo(
               agentTargets={agentTargets}
               selectedAgentTarget={selectedAgentTarget}
               onProviderSelect={onProviderSelect}
+              sharedAgentOwnerSeparator={labels.sharedAgentOwnerSeparator}
             />
           </h2>
           <p className={styles.emptyProviderGateDescription}>
@@ -568,7 +583,8 @@ function EmptyHeroTitle({
   providerSelectLabel,
   agentTargets = [],
   selectedAgentTarget = null,
-  onProviderSelect
+  onProviderSelect,
+  sharedAgentOwnerSeparator
 }: {
   label: string;
   providerLabel: string;
@@ -576,6 +592,7 @@ function EmptyHeroTitle({
   agentTargets?: readonly AgentGUIAgentTarget[];
   selectedAgentTarget?: AgentGUIAgentTarget | null;
   onProviderSelect?: AgentGUINodeViewProps["actions"]["selectHomeComposerAgentTarget"];
+  sharedAgentOwnerSeparator: string;
 }): React.JSX.Element {
   const providerStart = providerLabel ? label.indexOf(providerLabel) : -1;
 
@@ -616,11 +633,18 @@ function EmptyHeroTitle({
             title={providerSelectLabel}
             className={styles.emptyHeroProviderSelect}
           >
-            <span className={styles.emptyHeroProvider}>{providerName}</span>
+            <AgentGUIAgentTargetName
+              className={cn(styles.emptyHeroProvider, "max-w-[240px]")}
+              ownerSeparator={sharedAgentOwnerSeparator}
+              target={selectedAgentTarget}
+            />
           </SelectTrigger>
           <SelectContent
             align="center"
-            className={cn(styles.composerMenuContent, "min-w-[190px]")}
+            className={cn(
+              styles.composerMenuContent,
+              "min-w-[190px] max-w-[min(420px,calc(100vw-32px))]"
+            )}
           >
             {agentTargets.map((target) => (
               <SelectItem
@@ -640,12 +664,21 @@ function EmptyHeroTitle({
                       ).iconUrl
                     }
                   />
-                  <span className="min-w-0 truncate">{target.label}</span>
+                  <AgentGUIAgentTargetName
+                    ownerSeparator={sharedAgentOwnerSeparator}
+                    target={target}
+                  />
                 </span>
               </SelectItem>
             ))}
           </SelectContent>
         </Select>
+      ) : selectedAgentTarget ? (
+        <AgentGUIAgentTargetName
+          className={cn(styles.emptyHeroProvider, "max-w-[240px]")}
+          ownerSeparator={sharedAgentOwnerSeparator}
+          target={selectedAgentTarget}
+        />
       ) : (
         <span className={styles.emptyHeroProvider}>{providerName}</span>
       )}

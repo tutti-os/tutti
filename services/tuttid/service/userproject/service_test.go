@@ -233,6 +233,46 @@ func TestServiceMoveRejectsUnknownProject(t *testing.T) {
 	}
 }
 
+func TestServicePinPublishesOnlyChangedOrderedSnapshot(t *testing.T) {
+	projects := []userprojectbiz.Project{{ID: "pinned", PinnedAtUnixMS: 10}, {ID: "normal"}}
+	store := &recordingUserProjectStore{projects: projects, pinChanged: true}
+	publisher := &recordingUserProjectPublisher{err: errors.New("event unavailable")}
+	service := Service{Store: store, Publisher: publisher}
+
+	pinned, err := service.Pin(context.Background(), PinInput{ProjectID: "pinned", Pinned: true})
+	if err != nil {
+		t.Fatalf("Pin() error = %v", err)
+	}
+	if len(pinned) != 2 || store.pinInput.ProjectID != "pinned" || !store.pinInput.Pinned || len(publisher.snapshots) != 1 {
+		t.Fatalf("pinned=%#v input=%#v snapshots=%#v", pinned, store.pinInput, publisher.snapshots)
+	}
+
+	store.pinChanged = false
+	if _, err := service.Pin(context.Background(), PinInput{ProjectID: "pinned", Pinned: true}); err != nil {
+		t.Fatalf("Pin(idempotent) error = %v", err)
+	}
+	if len(publisher.snapshots) != 1 {
+		t.Fatalf("idempotent Pin published %d snapshots, want 1 total", len(publisher.snapshots))
+	}
+}
+
+func TestServicePinRejectsUnknownProject(t *testing.T) {
+	store := &recordingUserProjectStore{pinErr: workspacedata.ErrUserProjectNotFound}
+	service := Service{Store: store}
+	if _, err := service.Pin(context.Background(), PinInput{ProjectID: "unknown", Pinned: true}); !errors.Is(err, ErrInvalidArgument) {
+		t.Fatalf("Pin() error = %v, want ErrInvalidArgument", err)
+	}
+}
+
+func TestServiceMoveRejectsCrossPartition(t *testing.T) {
+	store := &recordingUserProjectStore{moveErr: workspacedata.ErrUserProjectPartitionMismatch}
+	service := Service{Store: store}
+	before := "pinned"
+	if _, err := service.Move(context.Background(), MoveInput{ProjectID: "normal", BeforeProjectID: &before}); !errors.Is(err, ErrInvalidArgument) {
+		t.Fatalf("Move() error = %v, want ErrInvalidArgument", err)
+	}
+}
+
 func TestServiceListReturnsRegisteredProjectsWithoutFilesystemPruning(t *testing.T) {
 	ctx := context.Background()
 	root := t.TempDir()
@@ -314,6 +354,9 @@ type recordingUserProjectStore struct {
 		Project userprojectbiz.Project
 	}
 	moveErr     error
+	pinErr      error
+	pinChanged  bool
+	pinInput    PinInput
 	putProjects []userprojectbiz.Project
 }
 
@@ -333,6 +376,11 @@ func (s *recordingUserProjectStore) ListUserProjects(context.Context) ([]userpro
 
 func (s *recordingUserProjectStore) MoveUserProject(_ context.Context, _ string, _ *string) ([]userprojectbiz.Project, error) {
 	return s.projects, s.moveErr
+}
+
+func (s *recordingUserProjectStore) PinUserProject(_ context.Context, projectID string, pinned bool) ([]userprojectbiz.Project, bool, error) {
+	s.pinInput = PinInput{ProjectID: projectID, Pinned: pinned}
+	return s.projects, s.pinChanged, s.pinErr
 }
 
 type recordingUserProjectPublisher struct {

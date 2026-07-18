@@ -2,7 +2,6 @@ package agentruntime
 
 import (
 	"context"
-	"fmt"
 	"strings"
 
 	activityshared "github.com/tutti-os/tutti/packages/agent/daemon/activity/events"
@@ -220,5 +219,39 @@ func (a *ClaudeCodeSDKAdapter) CancelTargets(ctx context.Context, rootSession Se
 			}, nil
 		}
 	}
-	return TargetedCancelResult{}, fmt.Errorf("claude SDK does not support canceling a child turn independently of its root turn")
+	return a.stopClaudeSDKChildTargets(ctx, rootSession, targets)
+}
+
+// stopClaudeSDKChildTargets stops individual background delegated tasks via
+// the SDK's targeted stopTask, leaving the root query and any other running
+// tasks untouched. The stopped task settles asynchronously through its own
+// task_notification, which projects the child turn canceled; a target whose
+// task is unknown or already settled is skipped, making the child cancel an
+// idempotent no-op (TargetAbsent) rather than an error.
+func (a *ClaudeCodeSDKAdapter) stopClaudeSDKChildTargets(ctx context.Context, rootSession Session, targets []CancelTarget) (TargetedCancelResult, error) {
+	adapterSession := a.getSession(rootSession.AgentSessionID)
+	if adapterSession == nil {
+		return TargetedCancelResult{}, ErrSessionDisconnected
+	}
+	confirmed := make([]CancelTarget, 0, len(targets))
+	for _, target := range targets {
+		a.mu.Lock()
+		child, ok := adapterSession.claudeSDKChildByAgentSessionID(target.AgentSessionID)
+		a.mu.Unlock()
+		if !ok {
+			continue
+		}
+		taskID := firstNonEmptyString(child.TaskID, child.AgentID, child.ParentToolUseID, child.Key)
+		if taskID == "" {
+			continue
+		}
+		stopped, err := a.StopTask(ctx, rootSession, taskID)
+		if err != nil {
+			return TargetedCancelResult{}, err
+		}
+		if stopped {
+			confirmed = append(confirmed, target)
+		}
+	}
+	return TargetedCancelResult{ConfirmedTargets: confirmed}, nil
 }

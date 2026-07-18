@@ -273,16 +273,17 @@ export function selectEngineHasPendingInteractions(
   return selectEnginePendingInteractions(state, agentSessionId).length > 0;
 }
 
-export function selectEngineSessionError(
+/**
+ * Returns only failures from session-scoped commands. Canonical Turn failures
+ * belong to the owning Turn and must not be promoted into session chrome.
+ */
+export function selectEngineSessionOperationError(
   state: AgentSessionEngineState,
   agentSessionId: string | null | undefined
 ): string | null {
   const id = agentSessionId?.trim() ?? "";
-  const record = state.sessionLifecycle.operationBySessionId[id];
   return (
-    record?.operationError ??
-    selectEngineActiveTurn(state, id)?.error?.message ??
-    null
+    state.sessionLifecycle.operationBySessionId[id]?.operationError ?? null
   );
 }
 

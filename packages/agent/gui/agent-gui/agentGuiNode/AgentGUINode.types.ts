@@ -28,7 +28,8 @@ import type {
 import type {
   AgentGUIOpenSessionRequest,
   AgentGUIPrefillPromptRequest,
-  AgentGUIRememberComposerDefaultsInput
+  AgentGUIRememberComposerDefaultsInput,
+  AgentGUIRememberComposerDefaultsResult
 } from "./controller/useAgentGUINodeController";
 import type {
   AgentGUISidebarFooterContext,
@@ -46,6 +47,7 @@ import type {
 } from "./AgentComposer";
 import type { AgentContextMentionProvider } from "./agentContextMentionProvider";
 import type { AgentMessageMarkdownWorkspaceAppIcon } from "../../shared/AgentMessageMarkdown";
+import type { RichTextMentionService } from "@tutti-os/ui-rich-text/service";
 import type { AgentGUIEngagementEventSink } from "./engagement/agentGUIEngagement.types";
 import type { AgentGUIComposerAppendRequest } from "./controller/useAgentGUIComposerAppendRequest";
 
@@ -119,6 +121,9 @@ export interface AgentGUINodeHostCapabilities {
   accountMenuState?: AgentGUIAccountMenuState | null;
   agentTargets?: readonly AgentGUIAgentTarget[];
   agentTargetsLoading?: boolean;
+  /** Launch-only targets for active-conversation handoff. */
+  handoffAgentTargets?: readonly AgentGUIAgentTarget[];
+  handoffAgentTargetsLoading?: boolean;
   providerRailAllPresentation?: AgentGUIProviderRailAllPresentation | null;
   providerRailMode?: AgentGUIProviderRailMode;
   comingSoonProviders?: readonly AgentGUIProvider[];
@@ -128,6 +133,7 @@ export interface AgentGUINodeHostCapabilities {
   defaultAgentTargetId?: string | null;
   providerAuthAccountLabels?: Partial<Record<string, string>>;
   contextMentionProviders?: readonly AgentContextMentionProvider[];
+  mentionService?: RichTextMentionService;
   workspaceAppIcons?: readonly AgentMessageMarkdownWorkspaceAppIcon[];
   disabledHomeSuggestions?: readonly AgentGUIHomeSuggestionId[];
 }
@@ -152,7 +158,7 @@ export interface AgentGUINodeHostActions {
   ) => void;
   onRememberComposerDefaults?: (
     input: AgentGUIRememberComposerDefaultsInput
-  ) => void | Promise<void>;
+  ) => void | Promise<AgentGUIRememberComposerDefaultsResult>;
   isMuted?: boolean;
   onMinimize?: () => void;
   onToggleMaximize?: () => void;
@@ -346,6 +352,8 @@ export function areAgentGUINodePropsEqual(
     pc.accountMenuState === nc.accountMenuState &&
     pc.agentTargets === nc.agentTargets &&
     pc.agentTargetsLoading === nc.agentTargetsLoading &&
+    pc.handoffAgentTargets === nc.handoffAgentTargets &&
+    pc.handoffAgentTargetsLoading === nc.handoffAgentTargetsLoading &&
     pc.providerRailAllPresentation?.iconUrl ===
       nc.providerRailAllPresentation?.iconUrl &&
     pc.providerRailMode === nc.providerRailMode &&
@@ -354,6 +362,7 @@ export function areAgentGUINodePropsEqual(
     pc.defaultAgentTargetId === nc.defaultAgentTargetId &&
     pc.providerAuthAccountLabels === nc.providerAuthAccountLabels &&
     pc.contextMentionProviders === nc.contextMentionProviders &&
+    pc.mentionService === nc.mentionService &&
     pc.workspaceAppIcons === nc.workspaceAppIcons &&
     pc.disabledHomeSuggestions === nc.disabledHomeSuggestions &&
     pa.onLinkAction === na.onLinkAction &&

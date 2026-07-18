@@ -322,7 +322,7 @@ func (s *Store) completeRuntimeOperation(ctx context.Context, workspaceID string
 		if err != nil {
 			return RuntimeOperationCompletion{}, false, err
 		}
-		if err := tx.Commit(); err != nil {
+		if _, err := s.commitTransaction(ctx, tx, workspaceID, nil); err != nil {
 			return RuntimeOperationCompletion{}, false, err
 		}
 		committed = true
@@ -357,11 +357,93 @@ WHERE workspace_id = ? AND operation_id = ? AND status = ? AND lease_owner = ?
 	if err != nil {
 		return RuntimeOperationCompletion{}, false, err
 	}
-	if err := tx.Commit(); err != nil {
+	mutations, err := runtimeOperationCompletionMutations(ctx, tx, op, event)
+	if err != nil {
+		return RuntimeOperationCompletion{}, false, err
+	}
+	delta, err := s.commitTransaction(ctx, tx, workspaceID, mutations)
+	if err != nil {
 		return RuntimeOperationCompletion{}, false, fmt.Errorf("commit runtime operation completion: %w", err)
 	}
 	committed = true
-	return RuntimeOperationCompletion{Operation: op, Event: event}, true, nil
+	op.CommitTransactionID = delta.TransactionID
+	op.CommitDelta = delta
+	return RuntimeOperationCompletion{TransactionID: delta.TransactionID, CommitDelta: delta, Operation: op, Event: event}, true, nil
+}
+
+func runtimeOperationCompletionMutations(ctx context.Context, tx *sql.Tx, op RuntimeOperation, event RuntimeOperationEvent) ([]TransactionMutation, error) {
+	mutations := []TransactionMutation{
+		transactionMutation(op.WorkspaceID, op.AgentSessionID, MutationEntityRuntimeOperation, op.OperationID, "complete", op.Version),
+		transactionMutation(op.WorkspaceID, op.AgentSessionID, MutationEntityRuntimeEvent, fmt.Sprint(event.ID), "insert", event.ID),
+	}
+	switch event.Kind {
+	case RuntimeOperationEventInteractiveCompleted:
+		mutations = append(mutations, transactionMutation(
+			op.WorkspaceID, op.AgentSessionID, MutationEntityInteraction,
+			interactionMutationEntityID(op.TurnID, op.RequestID), "upsert", op.UpdatedAtUnixMS,
+		))
+	case RuntimeOperationEventTurnCanceled:
+		if targets, ok := event.Payload["targets"].([]any); ok {
+			for _, raw := range targets {
+				target, _ := raw.(map[string]any)
+				sessionID, turnID := payloadString(target, "agentSessionId"), payloadString(target, "turnId")
+				mutations = append(mutations,
+					transactionMutation(op.WorkspaceID, sessionID, MutationEntityTurn, turnID, "upsert", op.UpdatedAtUnixMS),
+					transactionMutation(op.WorkspaceID, sessionID, MutationEntitySession, sessionID, "upsert", op.UpdatedAtUnixMS),
+				)
+				interactionMutations, err := canceledInteractionMutations(ctx, tx, op.WorkspaceID, sessionID, turnID, op.UpdatedAtUnixMS)
+				if err != nil {
+					return nil, err
+				}
+				mutations = append(mutations, interactionMutations...)
+			}
+		}
+		if root, ok := event.Payload["reconciledRoot"].(map[string]any); ok {
+			sessionID, turnID := payloadString(root, "agentSessionId"), payloadString(root, "turnId")
+			mutations = append(mutations,
+				transactionMutation(op.WorkspaceID, sessionID, MutationEntityTurn, turnID, "upsert", op.UpdatedAtUnixMS),
+				transactionMutation(op.WorkspaceID, sessionID, MutationEntitySession, sessionID, "upsert", op.UpdatedAtUnixMS),
+			)
+		}
+	case RuntimeOperationEventPlanDecisionCompleted:
+		messageID := planDecisionNoticeMessageID(op.OperationID)
+		message, found, err := getAgentMessageForUpdate(ctx, tx, op.WorkspaceID, op.AgentSessionID, messageID)
+		if err != nil {
+			return nil, err
+		}
+		if found {
+			mutations = append(mutations, transactionMutation(op.WorkspaceID, op.AgentSessionID, MutationEntityMessage, messageID, "upsert", int64(message.Version)))
+		}
+	}
+	return mutations, nil
+}
+
+func canceledInteractionMutations(ctx context.Context, tx *sql.Tx, workspaceID, agentSessionID, turnID string, updatedAt int64) ([]TransactionMutation, error) {
+	rows, err := tx.QueryContext(ctx, `
+SELECT request_id FROM workspace_agent_interactions
+WHERE workspace_id = ? AND agent_session_id = ? AND turn_id = ?
+  AND status = ? AND updated_at_unix_ms = ?
+ORDER BY request_id
+`, workspaceID, agentSessionID, turnID, InteractionStatusSuperseded, updatedAt)
+	if err != nil {
+		return nil, fmt.Errorf("list canceled runtime operation interactions: %w", err)
+	}
+	defer rows.Close()
+	mutations := make([]TransactionMutation, 0)
+	for rows.Next() {
+		var requestID string
+		if err := rows.Scan(&requestID); err != nil {
+			return nil, fmt.Errorf("scan canceled runtime operation interaction: %w", err)
+		}
+		mutations = append(mutations, transactionMutation(
+			workspaceID, agentSessionID, MutationEntityInteraction,
+			interactionMutationEntityID(turnID, requestID), "supersede", updatedAt,
+		))
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate canceled runtime operation interactions: %w", err)
+	}
+	return mutations, nil
 }
 
 func insertRuntimeOperationEventTx(ctx context.Context, tx *sql.Tx, op RuntimeOperation, kind string, payload map[string]any, now int64) (RuntimeOperationEvent, error) {

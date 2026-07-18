@@ -43,6 +43,14 @@ func registerUserProjectRoutes(mux *http.ServeMux, wrapper *tuttigenerated.Serve
 		}
 		wrapper.MoveUserProject(w, r)
 	})
+
+	mux.HandleFunc("/v1/user-projects/pin", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			tuttitypes.WriteMethodNotAllowed(w)
+			return
+		}
+		wrapper.PinUserProject(w, r)
+	})
 }
 
 // The generated Go pointer cannot distinguish an omitted required-nullable
