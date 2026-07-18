@@ -220,7 +220,11 @@ immutable revision.
 The frontmatter owns:
 
 - title and workspace topic ID;
-- sequential or parallel execution mode;
+- sequential or parallel execution mode — parallel mirrors the Issue Manager's
+  honest-parallelism gate at propose/revise ingress: every task must carry its
+  own unique absolute execution directory, or the document is rejected while
+  the agent can still fix it (never after acceptance, where the failed
+  `create_issue` operation would strand an accepted workflow);
 - Issue-level reasoning and orchestration intensity;
 - auto or fixed token budget and quota waterline (the token limit is dormant
   and no longer surfaced in UI);
