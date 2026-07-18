@@ -357,6 +357,14 @@ React effects are escape hatches for synchronizing with real external systems su
 
 When a component needs an effect to keep local state in sync with other state, prefer moving that flow into the owning service, reducer, selector, or a small subscription hook. UI event handlers should call service commands; they should not directly mutate stores or coordinate business workflows.
 
+Polling snapshots are events, not component lifecycle identities. A renderer
+feature that reacts to a request plus a polling service must keep the request
+session and its idempotency state in a window-scoped service/controller. Do not
+put an object derived from the latest polling snapshot into an effect dependency
+chain that attaches a workflow, resets session state, or starts an external
+command. Host-handle binding may use a lifecycle effect, but polling and render
+churn must be unable to replay the command.
+
 ## Renderer Render Stability Rule
 
 Treat render stability as a feature-boundary concern, not as a late micro-optimization pass.

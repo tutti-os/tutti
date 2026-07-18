@@ -1,73 +1,17 @@
-import { useCallback, useEffect, useMemo, useSyncExternalStore } from "react";
-import type { WorkspaceAgentProvider } from "@tutti-os/client-tuttid-ts";
+import { useMemo, useSyncExternalStore } from "react";
 import {
   buildAgentEnvWizardViewModel,
   readCodexSetupActiveAction,
-  useAgentEnvPanelRequest,
   type AgentEnvWizardViewModel,
   type StageActionId
 } from "@tutti-os/agent-gui/agent-env";
+import { useService } from "@tutti-os/infra/di";
+import type { WorkspaceAgentProvider } from "@tutti-os/client-tuttid-ts";
 import { useTranslation } from "@renderer/i18n";
-import type { IAgentProviderStatusService } from "../services/agentProviderStatusService.interface";
 import {
-  desktopManagedAgentDefaultProvider,
-  isDesktopManagedAgentProvider
-} from "../services/internal/desktopManagedAgentProviders.ts";
-import {
-  attachAgentEnvWizard,
-  restartAgentEnvWizardDetection
-} from "../services/internal/agentEnvWizardController.ts";
-import {
-  setWizardCopied,
-  setWizardReportState,
-  toggleWizardLog,
-  useAgentEnvWizardState,
-  type WizardReportState
-} from "../services/internal/agentEnvWizardStore.ts";
-import { useAccountService } from "../../workspace-workbench/ui/useAccountService.ts";
-import { isDesktopAgentAccountLoginAction } from "./desktopAgentAccountLoginAction.ts";
-
-function useStatusSnapshot(service: IAgentProviderStatusService) {
-  return useSyncExternalStore(
-    (l) => service.subscribe(l),
-    () => service.getSnapshot()
-  );
-}
-
-// Fire-and-forget service calls (runAction, reportEnvIssue) reject on failure;
-// the service already surfaces a user-facing notification, so here we only log
-// for diagnostics to avoid an unhandled promise rejection in the renderer.
-function logDetachedActionError(
-  action: string,
-  provider: string,
-  err: unknown
-): void {
-  console.warn(`[agent-env] ${action} failed`, provider, err);
-}
-
-function resolveActiveProvider(
-  requested: string | null,
-  defaultProvider: WorkspaceAgentProvider | null
-): { provider: WorkspaceAgentProvider; isSupported: boolean } {
-  // An explicit request is honored as-is — even when it names an unmanaged
-  // provider — so the panel can tell the user it is unsupported rather than
-  // silently switching them to a different agent (and running detect/install/
-  // login against the wrong provider). Only fall back to a managed default when
-  // no provider was requested at all (a casual "智能体环境" open).
-  if (requested) {
-    return {
-      provider: requested as WorkspaceAgentProvider,
-      isSupported: isDesktopManagedAgentProvider(requested)
-    };
-  }
-  if (defaultProvider && isDesktopManagedAgentProvider(defaultProvider)) {
-    return { provider: defaultProvider, isSupported: true };
-  }
-  return {
-    provider: desktopManagedAgentDefaultProvider,
-    isSupported: true
-  };
-}
+  IAgentEnvService,
+  type AgentEnvReportState
+} from "../services/agentEnvService.interface.ts";
 
 export interface AgentEnvWizardActions {
   redetect(): void;
@@ -76,83 +20,26 @@ export interface AgentEnvWizardActions {
   dismissReport(): void;
   copyManual(command: string): void;
   toggleLog(): void;
+  close(): void;
 }
 
-export function useAgentEnvWizard(input: {
-  service: IAgentProviderStatusService;
-  workspaceId: string;
-  workbenchHost?: unknown;
-}): {
+export function useAgentEnvWizard(): {
   open: boolean;
   provider: WorkspaceAgentProvider;
   isSupported: boolean;
   viewModel: AgentEnvWizardViewModel;
-  reportState: WizardReportState;
+  reportState: AgentEnvReportState;
   copied: boolean;
   logExpanded: boolean;
   actions: AgentEnvWizardActions;
 } {
-  const { service, workspaceId, workbenchHost } = input;
+  const service = useService(IAgentEnvService);
   const { t } = useTranslation();
-  const { service: accountService } = useAccountService();
-  const request = useAgentEnvPanelRequest();
-  const snapshot = useStatusSnapshot(service);
-  const wizard = useAgentEnvWizardState();
-
-  const { provider, isSupported } = useMemo(
-    () => resolveActiveProvider(request.provider, snapshot.defaultProvider),
-    [request.provider, snapshot.defaultProvider]
+  const snapshot = useSyncExternalStore(
+    (listener) => service.subscribe(listener),
+    () => service.getSnapshot(),
+    () => service.getSnapshot()
   );
-
-  const status = useMemo(
-    () => snapshot.statuses.find((s) => s.provider === provider) ?? null,
-    [snapshot.statuses, provider]
-  );
-
-  const runProviderAction = useCallback(
-    async (actionId: "install" | "login") => {
-      if (actionId === "login" && isDesktopAgentAccountLoginAction(status)) {
-        await accountService.startLogin();
-        return;
-      }
-      await service.runAction(provider, actionId, {
-        workbenchHost,
-        workspaceId
-      });
-    },
-    [accountService, service, provider, status, workbenchHost, workspaceId]
-  );
-
-  const attachParams = useMemo(
-    () => ({
-      service,
-      provider,
-      focus: request.focus,
-      requestSequence: request.requestSequence,
-      context: { workspaceId, workbenchHost },
-      runAction: runProviderAction
-    }),
-    [
-      service,
-      provider,
-      request.focus,
-      request.requestSequence,
-      workspaceId,
-      workbenchHost,
-      runProviderAction
-    ]
-  );
-
-  // Single lifecycle effect: synchronize the orchestrator with the open panel.
-  // An unsupported (unmanaged) provider never attaches — no detection, no
-  // auto-start — so the panel just shows the unsupported message.
-  useEffect(() => {
-    if (!request.open || !isSupported) {
-      return;
-    }
-    return attachAgentEnvWizard(attachParams);
-  }, [request.open, isSupported, attachParams]);
-
   const stageLabels = useMemo(
     () => ({
       detect: t("workspace.agentEnv.stageDetect"),
@@ -164,86 +51,47 @@ export function useAgentEnvWizard(input: {
     }),
     [t]
   );
-
   const viewModel = useMemo(
     () =>
       buildAgentEnvWizardViewModel({
-        provider,
-        status,
+        provider: snapshot.provider,
+        status: snapshot.status,
         isLoading: snapshot.isLoading,
-        activeAction: readCodexSetupActiveAction(status),
-        installActionPending: service.isActionPending(provider, "install"),
-        loginPending: service.isActionPending(provider, "login"),
-        revealIndex: wizard.revealIndex,
+        activeAction: readCodexSetupActiveAction(snapshot.status),
+        installActionPending: snapshot.installPending,
+        loginPending: snapshot.loginPending,
+        revealIndex: snapshot.revealIndex,
         stageLabels
       }),
-    [
-      provider,
-      status,
-      snapshot.isLoading,
-      snapshot.pendingActions,
-      service,
-      wizard.revealIndex,
-      stageLabels
-    ]
+    [snapshot, stageLabels]
   );
-
-  const redetect = useCallback(
-    () => restartAgentEnvWizardDetection(attachParams),
-    [attachParams]
-  );
-  const runStageAction = useCallback(
-    (actionId: StageActionId) => {
-      if (actionId === "redetect") {
-        restartAgentEnvWizardDetection(attachParams);
-        return;
-      }
-      void runProviderAction(actionId).catch((err) =>
-        logDetachedActionError(`runAction(${actionId})`, provider, err)
-      );
-    },
-    [attachParams, provider, runProviderAction]
-  );
-  const confirmReport = useCallback(() => {
-    service.setDiagnosticsConsent(true);
-    void service
-      .reportEnvIssue(provider)
-      .catch((err) => logDetachedActionError("reportEnvIssue", provider, err));
-    setWizardReportState("reported");
-  }, [service, provider]);
-  const dismissReport = useCallback(
-    () => setWizardReportState("dismissed"),
-    []
-  );
-  const copyManual = useCallback(async (command: string) => {
-    try {
-      await navigator.clipboard?.writeText(command);
-      setWizardCopied(true);
-    } catch {
-      setWizardCopied(false);
-    }
-  }, []);
-  const copyManualSync = useCallback(
-    (c: string) => void copyManual(c),
-    [copyManual]
-  );
-  const toggleLog = useCallback(toggleWizardLog, []);
 
   return {
-    open: request.open,
-    provider,
-    isSupported,
+    open: snapshot.open,
+    provider: snapshot.provider,
+    isSupported: snapshot.isSupported,
     viewModel,
-    reportState: wizard.reportState,
-    copied: wizard.copied,
-    logExpanded: wizard.logExpanded,
+    reportState: snapshot.reportState,
+    copied: snapshot.copied,
+    logExpanded: snapshot.logExpanded,
     actions: {
-      redetect,
-      runStageAction,
-      confirmReport,
-      dismissReport,
-      copyManual: copyManualSync,
-      toggleLog
+      redetect: () => service.redetect(),
+      runStageAction: (actionId) => {
+        void service.runStageAction(actionId).catch((error) => {
+          console.warn(
+            `[agent-env] runAction(${actionId}) failed`,
+            snapshot.provider,
+            error
+          );
+        });
+      },
+      confirmReport: () => service.confirmReport(),
+      dismissReport: () => service.dismissReport(),
+      copyManual: (command) => {
+        void service.copyManual(command);
+      },
+      toggleLog: () => service.toggleLog(),
+      close: () => service.close()
     }
   };
 }

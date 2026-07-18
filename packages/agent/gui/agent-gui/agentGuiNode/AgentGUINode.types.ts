@@ -52,6 +52,7 @@ import type { AgentContextMentionProvider } from "./agentContextMentionProvider"
 import type { AgentMessageMarkdownWorkspaceAppIcon } from "../../shared/AgentMessageMarkdown";
 import type { AgentGUIEngagementEventSink } from "./engagement/agentGUIEngagement.types";
 import type { AgentGUIComposerAppendRequest } from "./controller/useAgentGUIComposerAppendRequest";
+import type { OpenAgentEnvPanelInput } from "../../shared/agentEnv";
 
 export interface AgentGUINodeIdentity {
   nodeId: string;
@@ -149,6 +150,7 @@ export interface AgentGUINodeHostActions {
     capability: AgentComposerCapabilitySettingsTarget
   ) => void;
   onAgentProviderLogin?: (provider: AgentGUIProvider) => void;
+  onAgentEnvPanelOpen?: (input?: OpenAgentEnvPanelInput) => void;
   onOpenConversationWindow?: (agentSessionId: string) => void;
   onCreateIssueFromPlan?: (input: {
     agentSessionId: string;
@@ -396,6 +398,7 @@ export function areAgentGUINodePropsEqual(
     pa.onHandoffConversation === na.onHandoffConversation &&
     pa.onCapabilitySettingsRequest === na.onCapabilitySettingsRequest &&
     pa.onAgentProviderLogin === na.onAgentProviderLogin &&
+    pa.onAgentEnvPanelOpen === na.onAgentEnvPanelOpen &&
     pa.onOpenConversationWindow === na.onOpenConversationWindow &&
     pa.onClose === na.onClose &&
     pa.onResize === na.onResize &&

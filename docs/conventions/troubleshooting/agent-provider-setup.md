@@ -4,6 +4,46 @@
 
 Provider discovery, installation, authentication, models, configuration, and runtime reachability.
 
+### Clicking provider login repeatedly opens terminals and browser auth pages
+
+- Symptom:
+  One login click opens many terminal nodes and repeatedly launches the
+  provider's browser authentication page. The repeats may continue at the
+  provider-status polling interval and resume after reopening the app.
+- Quick checks:
+  Count `agent-provider.terminal-command.start` events for one provider and
+  compare their timestamps with provider status requests. If every status
+  snapshot is followed by another login command, inspect whether a React effect
+  reattaches the setup workflow when a status-derived callback changes identity.
+  Also check whether reattachment resets the request-sequence dedup marker and
+  whether login is excluded from pending/single-flight tracking.
+- Root cause:
+  The panel lifecycle and the setup workflow had competing ownership. A status
+  refresh replaced the status object, rebuilt the login callback, reran the
+  effect, reset wizard state, and accepted the same automatic login again. Each
+  command opened a new terminal; the CLI then opened another browser page. A
+  single terminal-handle map entry also allowed newer launches to overwrite the
+  only handle that could later be closed.
+- Fix:
+  Inject the panel-open host command into AgentGUI and let a window-scoped
+  Agent Env service/controller own the request session, automatic-action idempotency,
+  reveal/report state, and provider-status subscription. Route account and CLI
+  login through the provider-status service. Its per-provider login lifecycle
+  must reuse automatic requests, coalesce launches, replace an awaiting attempt
+  only for an explicit retry, reject stale terminal handles, and own one poll.
+  React should only subscribe and forward commands.
+- Validation:
+  Replay at least 60 provider-status ticks for one request and assert one
+  automatic login call. Cover rapid user clicks, explicit replacement, delayed
+  terminal resolution, account login without a terminal, timeout/dispose
+  cleanup, and a new request sequence. Verify one terminal and one browser page
+  for the original click.
+- References:
+  [agent-gui-node.md](../../architecture/agent-gui-node.md)
+  [desktop-layering.md](../desktop-layering.md)
+  [agentEnvService.ts](../../../apps/desktop/src/renderer/src/features/workspace-agent/services/internal/agentEnvService.ts)
+  [desktopAgentProviderLoginLifecycle.ts](../../../apps/desktop/src/renderer/src/features/workspace-agent/services/internal/desktopAgentProviderLoginLifecycle.ts)
+
 ### Codex `/status` shows a 5h limit for a weekly-only account window
 
 - Symptom:

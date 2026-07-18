@@ -88,7 +88,8 @@ test("runAction executes terminal commands and refreshes the provider status", a
     }
   ]);
   assert.deepEqual(statusCalls, [undefined, ["codex"]]);
-  assert.equal(pendingSnapshots.includes(true), false);
+  assert.equal(pendingSnapshots.includes(true), true);
+  assert.equal(service.isActionPending("codex", "login"), false);
 });
 
 test("refresh sends includeNetwork only when the caller opts in", async () => {
@@ -446,7 +447,7 @@ test("requestStatuses fires agent.env_detected once per detection outcome", asyn
   assert.equal(events[0]?.params?.availability_status, "ready");
 });
 
-test("runAction short-polls login status after sign-in and coalesces repeated login attempts", async () => {
+test("automatic login requests reuse one terminal and one status poll", async () => {
   const commands: AgentProviderTerminalCommand[] = [];
   const statusCalls: Array<readonly WorkspaceAgentProvider[] | undefined> = [];
   const pollScheduler = createManualPollScheduler();
@@ -472,7 +473,6 @@ test("runAction short-polls login status after sign-in and coalesces repeated lo
       snapshots: [
         createStatusResponse([authRequiredStatus]),
         createStatusResponse([authRequiredStatus]),
-        createStatusResponse([authRequiredStatus]),
         createStatusResponse([
           createProviderStatus({
             actions: [],
@@ -489,12 +489,12 @@ test("runAction short-polls login status after sign-in and coalesces repeated lo
   });
 
   await service.refresh();
-  await service.runAction("codex", "login");
-  await service.runAction("codex", "login");
-  await waitFor(() => statusCalls.length >= 3);
+  await service.runAction("codex", "login", { origin: "automatic" });
+  await service.runAction("codex", "login", { origin: "automatic" });
+  await waitFor(() => statusCalls.length >= 2);
 
   assert.equal(pollScheduler.pendingTimerCount(), 1);
-  assert.equal(commands.length, 2);
+  assert.equal(commands.length, 1);
 
   pollScheduler.runNext();
   await waitFor(
@@ -503,11 +503,155 @@ test("runAction short-polls login status after sign-in and coalesces repeated lo
 
   assert.equal(service.getStatus("codex")?.availability.status, "ready");
   assert.equal(pollScheduler.pendingTimerCount(), 0);
-  assert.deepEqual(statusCalls, [undefined, ["codex"], ["codex"], ["codex"]]);
+  assert.deepEqual(statusCalls, [undefined, ["codex"], ["codex"]]);
+});
+
+test("an explicit retry replaces the awaiting login terminal", async () => {
+  const pollScheduler = createManualPollScheduler();
+  const closed: number[] = [];
+  let launches = 0;
+  const authRequiredStatus = createProviderStatus({
+    actions: [
+      {
+        command: { cwd: "/workspace", input: "codex login\n" },
+        id: "login",
+        kind: "terminal_command"
+      }
+    ],
+    availability: "auth_required"
+  });
+  const service = new DesktopAgentProviderStatusService({
+    loginStatusPollScheduler: pollScheduler.scheduler,
+    tuttidClient: createTuttidClient({
+      snapshots: [
+        createStatusResponse([authRequiredStatus]),
+        createStatusResponse([authRequiredStatus]),
+        createStatusResponse([authRequiredStatus])
+      ]
+    }),
+    terminalCommandRunner: {
+      async runTerminalCommand() {
+        const launch = ++launches;
+        return { close: () => closed.push(launch) };
+      }
+    }
+  });
+
+  await service.refresh();
+  await service.runAction("codex", "login", { origin: "user" });
+  await service.runAction("codex", "login", { origin: "user" });
+
+  assert.equal(launches, 2);
+  assert.deepEqual(closed, [1]);
+  assert.equal(pollScheduler.pendingTimerCount(), 1);
+});
+
+test("rapid user retries reuse a login command that is still launching", async () => {
+  const terminalLaunch = createDeferred<{ close(): void }>();
+  let launches = 0;
+  const authRequiredStatus = createProviderStatus({
+    actions: [
+      {
+        command: { cwd: "/workspace", input: "codex login\n" },
+        id: "login",
+        kind: "terminal_command"
+      }
+    ],
+    availability: "auth_required"
+  });
+  const service = new DesktopAgentProviderStatusService({
+    tuttidClient: createTuttidClient({
+      snapshots: [
+        createStatusResponse([authRequiredStatus]),
+        createStatusResponse([authRequiredStatus])
+      ]
+    }),
+    terminalCommandRunner: {
+      async runTerminalCommand() {
+        launches += 1;
+        return terminalLaunch.promise;
+      }
+    }
+  });
+
+  await service.refresh();
+  const first = service.runAction("codex", "login", { origin: "user" });
+  await waitFor(() => launches === 1);
+  await service.runAction("codex", "login", { origin: "user" });
+  assert.equal(launches, 1);
+
+  terminalLaunch.resolve({ close() {} });
+  await first;
+});
+
+test("a terminal handle that resolves after dispose is closed as stale", async () => {
+  const terminalLaunch = createDeferred<{ close(): void }>();
+  let closed = 0;
+  const authRequiredStatus = createProviderStatus({
+    actions: [
+      {
+        command: { cwd: "/workspace", input: "codex login\n" },
+        id: "login",
+        kind: "terminal_command"
+      }
+    ],
+    availability: "auth_required"
+  });
+  const service = new DesktopAgentProviderStatusService({
+    tuttidClient: createTuttidClient({
+      snapshots: [createStatusResponse([authRequiredStatus])]
+    }),
+    terminalCommandRunner: {
+      async runTerminalCommand() {
+        return terminalLaunch.promise;
+      }
+    }
+  });
+
+  await service.refresh();
+  const login = service.runAction("codex", "login");
+  service.dispose();
+  terminalLaunch.resolve({ close: () => (closed += 1) });
+  await login;
+
+  assert.equal(closed, 1);
+});
+
+test("daemon login actions delegate to the account login port", async () => {
+  let accountLoginCalls = 0;
+  let terminalLaunches = 0;
+  const status = createProviderStatus({
+    actions: [{ id: "login", kind: "daemon_action" }],
+    availability: "auth_required",
+    provider: "tutti-agent"
+  });
+  const service = new DesktopAgentProviderStatusService({
+    accountLogin: {
+      async startLogin() {
+        accountLoginCalls += 1;
+      }
+    },
+    tuttidClient: createTuttidClient({
+      snapshots: [createStatusResponse([status])]
+    }),
+    terminalCommandRunner: {
+      async runTerminalCommand() {
+        terminalLaunches += 1;
+      }
+    }
+  });
+
+  await service.refresh();
+  await service.runAction("tutti-agent", "login", { origin: "automatic" });
+  await service.runAction("tutti-agent", "login", { origin: "automatic" });
+
+  assert.equal(accountLoginCalls, 1);
+  assert.equal(terminalLaunches, 0);
 });
 
 test("runAction stops login status polling after the default three minute window", async () => {
   const statusCalls: Array<readonly WorkspaceAgentProvider[] | undefined> = [];
+  let closed = 0;
   const pollScheduler = createManualPollScheduler();
   const authRequiredStatus = createProviderStatus({
     actions: [
@@ -534,7 +678,9 @@ test("runAction stops login status polling after the default three minute window
       ]
     }),
     terminalCommandRunner: {
-      async runTerminalCommand() {}
+      async runTerminalCommand() {
+        return { close: () => (closed += 1) };
+      }
     }
   });
 
@@ -554,6 +700,7 @@ test("runAction stops login status polling after the default three minute window
 
   assert.equal(statusCalls.length, 3);
   assert.equal(pollScheduler.pendingTimerCount(), 0);
+  assert.equal(closed, 1);
 });
 
 test("runAction installs providers silently and refreshes the status", async () => {

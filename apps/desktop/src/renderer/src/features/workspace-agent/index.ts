@@ -1,5 +1,6 @@
 export { registerWorkspaceAgentServices } from "./services/registerWorkspaceAgentServices";
 export { IAgentsService } from "./services/agentsService.interface";
+export { IAgentEnvService } from "./services/agentEnvService.interface";
 export { IAgentProviderStatusService } from "./services/agentProviderStatusService.interface";
 export { createDesktopAgentGUIWorkbenchHostInput } from "./services/createDesktopAgentGUIWorkbenchHostInput";
 export { preloadDesktopAgentGuiMentionBrowse } from "./services/preloadDesktopAgentGuiMentionBrowse";
@@ -35,11 +36,18 @@ export type {
   IAgentsService as AgentsService
 } from "./services/agentsService.interface";
 export type {
+  AgentProviderActionOrigin,
   AgentProviderStatusActionContext,
+  AgentProviderStatusActionOptions,
   AgentProviderStatusSnapshot,
   AgentProviderTerminalCommandRunner,
   IAgentProviderStatusService as AgentProviderStatusService
 } from "./services/agentProviderStatusService.interface";
+export type {
+  AgentEnvReportState,
+  AgentEnvSnapshot,
+  IAgentEnvService as AgentEnvService
+} from "./services/agentEnvService.interface";
 export type { IWorkspaceAgentActivityService as WorkspaceAgentActivityService } from "./services/workspaceAgentActivityService.interface";
 export type {
   IWorkspaceAgentPromptSessionService as WorkspaceAgentPromptSessionService,

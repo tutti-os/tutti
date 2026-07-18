@@ -1,4 +1,4 @@
-import type { AgentEnvPanelFocus } from "./agentEnvPanelStore";
+import type { AgentEnvPanelFocus } from "./agentEnvPanelActions";
 
 /**
  * Run-failure codes actually emitted by the daemon runtime classifier

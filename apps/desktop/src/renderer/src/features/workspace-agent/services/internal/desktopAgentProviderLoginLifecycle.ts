@@ -11,6 +11,7 @@ import {
   agentAnalyticsSuccessFields
 } from "../../../analytics/reporters/agent-error-fields.ts";
 import type { IReporterService } from "../../../analytics/services/reporterService.interface.ts";
+import type { AgentProviderActionOrigin } from "../agentProviderStatusService.interface";
 import type { AgentProviderTerminalCommandHandle } from "../agentProviderStatusService.interface";
 import type {
   AgentAnalyticsFlow,
@@ -28,7 +29,7 @@ export interface AgentProviderStatusPollScheduler {
 
 type AgentProviderStatusPollTimer = number | { unref?: () => void };
 
-export interface AgentProviderAccountLifecycleDependencies {
+export interface AgentProviderLoginLifecycleDependencies {
   loginStatusPollDurationMs?: number;
   loginStatusPollIntervalMs?: number;
   loginStatusPollScheduler?: AgentProviderStatusPollScheduler;
@@ -56,19 +57,23 @@ const defaultLoginStatusPollScheduler: AgentProviderStatusPollScheduler = {
   setTimeout: (callback, delayMs) => setTimeout(callback, delayMs)
 };
 
-export class DesktopAgentProviderAccountLifecycle {
-  private readonly dependencies: AgentProviderAccountLifecycleDependencies;
-  private readonly loginStatusPolls = new Map<
-    WorkspaceAgentProvider,
-    { deadlineMs: number; timer: AgentProviderStatusPollTimer | null }
-  >();
-  private readonly pendingLoginResults = new Set<WorkspaceAgentProvider>();
-  private readonly pendingLoginTerminals = new Map<
-    WorkspaceAgentProvider,
-    AgentProviderTerminalCommandHandle
-  >();
+interface ActiveLoginAttempt {
+  deadlineMs: number;
+  generation: number;
+  phase: "launching" | "awaiting-auth";
+  terminal: AgentProviderTerminalCommandHandle | null;
+  timer: AgentProviderStatusPollTimer | null;
+}
 
-  constructor(dependencies: AgentProviderAccountLifecycleDependencies) {
+export class DesktopAgentProviderLoginLifecycle {
+  private readonly dependencies: AgentProviderLoginLifecycleDependencies;
+  private readonly activeAttempts = new Map<
+    WorkspaceAgentProvider,
+    ActiveLoginAttempt
+  >();
+  private nextGeneration = 0;
+
+  constructor(dependencies: AgentProviderLoginLifecycleDependencies) {
     this.dependencies = dependencies;
   }
 
@@ -76,19 +81,56 @@ export class DesktopAgentProviderAccountLifecycle {
     return this.scheduler.now();
   }
 
-  registerLoginTerminal(
+  beginLogin(
     provider: WorkspaceAgentProvider,
-    terminal: AgentProviderTerminalCommandHandle | void
-  ): void {
-    if (terminal) {
-      this.pendingLoginTerminals.set(provider, terminal);
+    origin: AgentProviderActionOrigin
+  ):
+    | { kind: "reuse" }
+    | { generation: number; kind: "start"; replaced: boolean } {
+    const existing = this.activeAttempts.get(provider);
+    if (
+      existing &&
+      (origin === "automatic" || existing.phase === "launching")
+    ) {
+      return { kind: "reuse" };
     }
-    this.pendingLoginResults.add(provider);
-    this.startStatusPolling(provider);
+    const replaced = existing !== undefined;
+    if (existing) {
+      this.finishAttempt(provider, existing, true);
+    }
+    const generation = ++this.nextGeneration;
+    this.activeAttempts.set(provider, {
+      deadlineMs: this.scheduler.now() + this.pollDurationMs(),
+      generation,
+      phase: "launching",
+      terminal: null,
+      timer: null
+    });
+    return { generation, kind: "start", replaced };
   }
 
-  clearLoginTerminal(provider: WorkspaceAgentProvider): void {
-    this.pendingLoginTerminals.delete(provider);
+  registerLoginTerminal(
+    provider: WorkspaceAgentProvider,
+    generation: number,
+    terminal: AgentProviderTerminalCommandHandle | void
+  ): boolean {
+    const attempt = this.activeAttempts.get(provider);
+    if (!attempt || attempt.generation !== generation) {
+      terminal?.close();
+      return false;
+    }
+    attempt.phase = "awaiting-auth";
+    attempt.terminal = terminal ?? null;
+    this.scheduleStatusPoll(provider, attempt);
+    return true;
+  }
+
+  failLoginLaunch(provider: WorkspaceAgentProvider, generation: number): void {
+    const attempt = this.activeAttempts.get(provider);
+    if (!attempt || attempt.generation !== generation) {
+      return;
+    }
+    this.finishAttempt(provider, attempt, true);
   }
 
   async reportCompletedLoginResults(
@@ -96,14 +138,16 @@ export class DesktopAgentProviderAccountLifecycle {
   ): Promise<void> {
     for (const status of statuses) {
       if (
-        !this.pendingLoginResults.has(status.provider) ||
+        !this.activeAttempts.has(status.provider) ||
         status.availability.status !== "ready"
       ) {
         continue;
       }
-      this.pendingLoginResults.delete(status.provider);
-      this.stopStatusPolling(status.provider);
-      this.closePendingTerminal(status.provider);
+      const attempt = this.activeAttempts.get(status.provider);
+      if (!attempt) {
+        continue;
+      }
+      this.finishAttempt(status.provider, attempt, true);
       await this.dependencies.reportNodeResult({
         flow: "provider_setup",
         node: "login_ready_detected",
@@ -129,7 +173,7 @@ export class DesktopAgentProviderAccountLifecycle {
       if (previous?.availability.status === "ready") {
         continue;
       }
-      const becameReadyVia = this.pendingLoginResults.has(status.provider)
+      const becameReadyVia = this.activeAttempts.has(status.provider)
         ? "login"
         : previous
           ? "external"
@@ -191,21 +235,9 @@ export class DesktopAgentProviderAccountLifecycle {
     });
   }
 
-  private startStatusPolling(provider: WorkspaceAgentProvider): void {
-    const deadlineMs = this.scheduler.now() + this.pollDurationMs();
-    const existing = this.loginStatusPolls.get(provider);
-    if (existing) {
-      existing.deadlineMs = deadlineMs;
-      return;
-    }
-    const state = { deadlineMs, timer: null };
-    this.loginStatusPolls.set(provider, state);
-    this.scheduleStatusPoll(provider, state);
-  }
-
   private scheduleStatusPoll(
     provider: WorkspaceAgentProvider,
-    state: { deadlineMs: number; timer: AgentProviderStatusPollTimer | null }
+    state: ActiveLoginAttempt
   ): void {
     if (state.timer !== null) {
       return;
@@ -222,7 +254,7 @@ export class DesktopAgentProviderAccountLifecycle {
   }
 
   private async runStatusPoll(provider: WorkspaceAgentProvider): Promise<void> {
-    const state = this.loginStatusPolls.get(provider);
+    const state = this.activeAttempts.get(provider);
     if (!state || this.scheduler.now() >= state.deadlineMs) {
       this.reportLoginTimeout(provider);
       return;
@@ -236,8 +268,8 @@ export class DesktopAgentProviderAccountLifecycle {
       provider,
       success: true
     });
-    const current = this.loginStatusPolls.get(provider);
-    if (!current || !this.pendingLoginResults.has(provider)) {
+    const current = this.activeAttempts.get(provider);
+    if (!current || current.generation !== state.generation) {
       return;
     }
     if (this.scheduler.now() >= current.deadlineMs) {
@@ -248,12 +280,11 @@ export class DesktopAgentProviderAccountLifecycle {
   }
 
   private reportLoginTimeout(provider: WorkspaceAgentProvider): void {
-    const hadPendingResult = this.pendingLoginResults.delete(provider);
-    this.pendingLoginTerminals.delete(provider);
-    this.stopStatusPolling(provider);
-    if (!hadPendingResult) {
+    const attempt = this.activeAttempts.get(provider);
+    if (!attempt) {
       return;
     }
+    this.finishAttempt(provider, attempt, true);
     void this.reportLoginResult(
       provider,
       false,
@@ -263,24 +294,29 @@ export class DesktopAgentProviderAccountLifecycle {
     );
   }
 
-  private stopStatusPolling(provider: WorkspaceAgentProvider): void {
-    const state = this.loginStatusPolls.get(provider);
-    if (!state) {
-      return;
+  dispose(): void {
+    for (const [provider, attempt] of this.activeAttempts) {
+      this.finishAttempt(provider, attempt, true);
     }
-    if (state.timer !== null) {
-      this.scheduler.clearTimeout(state.timer);
-    }
-    this.loginStatusPolls.delete(provider);
   }
 
-  private closePendingTerminal(provider: WorkspaceAgentProvider): void {
-    const terminal = this.pendingLoginTerminals.get(provider);
-    if (!terminal) {
+  private finishAttempt(
+    provider: WorkspaceAgentProvider,
+    attempt: ActiveLoginAttempt,
+    closeTerminal: boolean
+  ): void {
+    if (this.activeAttempts.get(provider) !== attempt) {
       return;
     }
-    this.pendingLoginTerminals.delete(provider);
-    terminal.close();
+    this.activeAttempts.delete(provider);
+    if (attempt.timer !== null) {
+      this.scheduler.clearTimeout(attempt.timer);
+      attempt.timer = null;
+    }
+    if (closeTerminal) {
+      attempt.terminal?.close();
+    }
+    attempt.terminal = null;
   }
 
   private async reportProviderReady(

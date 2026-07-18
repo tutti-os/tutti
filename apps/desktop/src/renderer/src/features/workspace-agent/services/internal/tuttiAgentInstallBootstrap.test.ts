@@ -118,6 +118,7 @@ function createService(
 ): IAgentProviderStatusService {
   return {
     _serviceBrand: undefined,
+    dispose: () => {},
     ensureLoaded: async () => {
       await hooks.ensureLoaded?.();
       return {

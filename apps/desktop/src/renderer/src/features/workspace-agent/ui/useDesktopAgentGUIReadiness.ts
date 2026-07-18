@@ -31,7 +31,6 @@ import {
 } from "../services/internal/desktopManagedAgentProviders.ts";
 import { projectDesktopAgentProviderReadinessGates } from "../services/internal/desktopAgentProviderReadinessGate.ts";
 import { useAccountService } from "../../workspace-workbench/ui/useAccountService.ts";
-import { isDesktopAgentAccountLoginAction } from "./desktopAgentAccountLoginAction.ts";
 import {
   activeProviderNotReadyRecheckKey,
   shouldSuppressAgentProviderNotReadyProjection
@@ -64,7 +63,7 @@ export function useDesktopAgentGUIReadiness(input: {
     trackAgentProviderChatReady,
     workspaceId
   } = input;
-  const { service: accountService, state: accountState } = useAccountService();
+  const { state: accountState } = useAccountService();
   const previousAccountLoginStatusRef = useRef<string | null>(null);
   const previousAccountUserIdRef = useRef<string | null>(null);
   const [computerUseStatus, setComputerUseStatus] =
@@ -246,28 +245,12 @@ export function useDesktopAgentGUIReadiness(input: {
       if (!isDesktopManagedAgentProvider(loginProvider)) {
         return;
       }
-      if (
-        isDesktopAgentAccountLoginAction(
-          effectiveProviderStatusSnapshot.statuses.find(
-            (status) => status.provider === loginProvider
-          )
-        )
-      ) {
-        void accountService.startLogin();
-        return;
-      }
       void agentProviderStatusService?.runAction(loginProvider, "login", {
-        workbenchHost: host,
-        workspaceId
+        context: { workbenchHost: host, workspaceId },
+        origin: "user"
       });
     },
-    [
-      accountService,
-      agentProviderStatusService,
-      host,
-      effectiveProviderStatusSnapshot.statuses,
-      workspaceId
-    ]
+    [agentProviderStatusService, host, workspaceId]
   );
   const accountUserId = accountState.user?.user_id ?? null;
   useEffect(() => {
@@ -302,29 +285,12 @@ export function useDesktopAgentGUIReadiness(input: {
         void agentProviderStatusService?.refresh([actionProvider]);
         return;
       }
-      if (
-        action === "login" &&
-        isDesktopAgentAccountLoginAction(
-          effectiveProviderStatusSnapshot.statuses.find(
-            (status) => status.provider === actionProvider
-          )
-        )
-      ) {
-        void accountService.startLogin();
-        return;
-      }
       void agentProviderStatusService?.runAction(actionProvider, action, {
-        workbenchHost: host,
-        workspaceId
+        context: { workbenchHost: host, workspaceId },
+        origin: "user"
       });
     },
-    [
-      accountService,
-      agentProviderStatusService,
-      host,
-      effectiveProviderStatusSnapshot.statuses,
-      workspaceId
-    ]
+    [agentProviderStatusService, host, workspaceId]
   );
   const providerReadinessGates = useMemo(() => {
     if (previewMode) {

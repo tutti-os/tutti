@@ -487,6 +487,20 @@ label the setup affordance as `Connect`, but the host action should still
 dispatch the provider's `login` operation when that is the daemon-reported
 action.
 
+Agent environment setup is a window-scoped desktop workflow, not a React
+effect lifecycle. AgentGUI emits only a host-injected command to open the setup
+panel; it owns no request store. The desktop `AgentEnvService` owns that command
+and subscribes to the provider-status service, while its controller owns one setup session
+identified by request sequence and provider. Status polling may advance that
+session but must not recreate it, reset its presentation state, or replay an
+automatic install/login action. The provider-status service is the single
+action seam for both account-backed and terminal-backed login. Automatic login
+reuses an active attempt; an explicit retry may replace an awaiting terminal,
+but each provider has at most one active authentication poll and one current
+terminal handle. React subscribes to the service snapshot and forwards user
+commands. A host-binding effect is permitted only as an external Workbench
+handle lifecycle adapter and must not contain setup orchestration.
+
 UI-local state may include draft text, selected panel, rail layout, open menus,
 scroll position, and temporary presentation focus. UI-local state must not own
 session lifecycle, turn lifecycle, queue delivery, or durable workflow status.
@@ -1995,6 +2009,24 @@ invalidation signal. The panel posts accept, reject, or cancel to the daemon's
 checkpoint decision endpoint; rejection requires feedback. Closing or
 reopening the GUI reconstructs the panel from daemon state rather than from
 React state, the Agent transcript, or provider interactions.
+
+Workflow UI is a turn-anchored timeline attachment, not a transcript row or a
+tail sibling. `workflow:<workflowId>` is the stable attachment identity and the
+workflow's `sourceTurnId` anchors it after the last rendered group for that
+Turn. A pending review and its accepted materialized Issue therefore replace
+one another at the same timeline position while later Agent Turns continue
+below them. Missing or not-yet-loaded anchors degrade to the transcript tail.
+The attachment renders inside the Turn's virtual item so dynamic measurement
+includes its height; locating an unmounted attachment first scrolls the Turn
+group into the virtual window and then focuses the attachment. The composer
+dock may show an Issue summary only while that attachment is outside the
+viewport and the Issue still has running, pending-acceptance, or failed work.
+
+Desktop resolves the accepted Issue from the source Session's authoritative
+workflow snapshots: the latest succeeded `create_issue` operation supplies the
+Issue ID and the workflow supplies the stable identity and Turn anchor. It must
+not rediscover this relationship by sweeping Issue topics or matching mutable
+Issue list metadata.
 
 Desktop owns only the transport adapter:
 

@@ -3,6 +3,7 @@ import {
   Suspense,
   useCallback,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -26,6 +27,7 @@ import {
 import type { WorkbenchHostNodeBodyContext } from "@tutti-os/workbench-surface";
 import { createDesktopAgentGUIWorkbenchHostInput } from "@renderer/features/workspace-agent/services/createDesktopAgentGUIWorkbenchHostInput.ts";
 import { IAgentsService } from "@renderer/features/workspace-agent/services/agentsService.interface.ts";
+import { IAgentEnvService } from "@renderer/features/workspace-agent/services/agentEnvService.interface.ts";
 import type { DesktopAgentGUIPrefillPromptRequest } from "@renderer/features/workspace-agent/services/desktopAgentGUIPrefillPromptActivation.ts";
 import { isDesktopAgentGUIProvider } from "@renderer/features/workspace-agent/desktopAgentGUINodeState.ts";
 import {
@@ -112,6 +114,7 @@ export function StandaloneAgentWindow({
 }: StandaloneAgentWindowProps): ReactNode {
   const { i18n } = useTranslation();
   const agentsService = useService(IAgentsService);
+  const agentEnvService = useService(IAgentEnvService);
   const workspaceAppSurfaceHost = useService(IWorkspaceAppSurfaceHost);
   const workspaceFilePreviewSurfaceHost = useService(
     IWorkspaceFilePreviewSurfaceHost
@@ -426,6 +429,10 @@ export function StandaloneAgentWindow({
         }
       }),
     []
+  );
+  useLayoutEffect(
+    () => agentEnvService.bindWorkbenchHost(host),
+    [agentEnvService, host]
   );
   const context = useMemo<
     WorkbenchHostNodeBodyContext<DesktopAgentGUIWorkbenchState, null>
@@ -743,11 +750,7 @@ export function StandaloneAgentWindow({
       </StandaloneAgentToolSidebar>
       {panelHostsReady ? (
         <Suspense fallback={null}>
-          <LazyStandaloneAgentWindowPanelHosts
-            agentProviderStatusService={agentProviderStatusService}
-            host={host}
-            workspace={workspace}
-          />
+          <LazyStandaloneAgentWindowPanelHosts workspace={workspace} />
         </Suspense>
       ) : null}
       <WorkspaceAppExternalBridge

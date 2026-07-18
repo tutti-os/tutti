@@ -10,6 +10,7 @@ import {
 } from "react";
 import { AgentGUI } from "@tutti-os/agent-gui/agent-gui";
 import type { AgentGUIProps, AgentHostInputApi } from "@tutti-os/agent-gui";
+import { useService } from "@tutti-os/infra/di";
 import {
   AGENT_GUI_WORKBENCH_NEW_CONVERSATION_EVENT,
   type AgentGuiWorkbenchNewConversationDetail
@@ -66,6 +67,7 @@ export { DESKTOP_AGENT_GUI_CONVERSATION_RAIL_TOGGLE_EVENT } from "./desktopAgent
 export type { DesktopAgentGUIConversationRailToggleDetail } from "./desktopAgentGUIWorkbenchModel.ts";
 import { useDesktopAgentGUIContextMentions } from "./useDesktopAgentGUIContextMentions.ts";
 import { useDesktopAgentGUIReadiness } from "./useDesktopAgentGUIReadiness.ts";
+import { IAgentEnvService } from "../services/agentEnvService.interface.ts";
 import { preloadDesktopAgentGuiMentionBrowse } from "../services/preloadDesktopAgentGuiMentionBrowse.ts";
 import { DESKTOP_AGENT_GUI_CURRENT_USER_ID } from "../services/desktopAgentGuiIdentity.ts";
 import {
@@ -116,6 +118,7 @@ function DesktopAgentGUIWorkbenchBodyImpl({
   const { i18n, locale } = useTranslation();
   const { service: desktopPreferencesService, state: desktopPreferencesState } =
     useDesktopPreferencesService();
+  const agentEnvService = useService(IAgentEnvService);
   const {
     computerUseStatus,
     handleAgentProviderLogin,
@@ -686,6 +689,9 @@ function DesktopAgentGUIWorkbenchBodyImpl({
     }),
     [computerUseStatus, desktopPreferencesState.browserUseConnectionMode]
   );
+  const handleAgentEnvPanelOpen = useCallback<
+    NonNullable<AgentGUIProps["hostActions"]["onAgentEnvPanelOpen"]>
+  >((input) => agentEnvService.open(input), [agentEnvService]);
   const referenceProvenanceFilterEnabled =
     !previewMode &&
     isFeatureEnabled(
@@ -824,6 +830,9 @@ function DesktopAgentGUIWorkbenchBodyImpl({
           workspaceAppIcons
         }}
         hostActions={{
+          onAgentEnvPanelOpen: previewMode
+            ? undefined
+            : handleAgentEnvPanelOpen,
           onAgentProviderLogin:
             !previewMode && agentProviderStatusService
               ? handleAgentProviderLogin

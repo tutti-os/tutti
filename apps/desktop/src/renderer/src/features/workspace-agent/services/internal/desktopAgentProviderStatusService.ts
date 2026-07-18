@@ -8,6 +8,7 @@ import type { DesktopRuntimeApi } from "@preload/types";
 import type { IReporterService } from "../../../analytics/services/reporterService.interface.ts";
 import type {
   AgentProviderStatusActionContext,
+  AgentProviderStatusActionOptions,
   AgentProviderStatusSnapshot,
   AgentProviderTerminalCommandRunner,
   IAgentProviderStatusService
@@ -22,14 +23,20 @@ import { resolveDesktopErrorMessage } from "../../../../lib/desktopErrors.ts";
 import { AgentAnalyticsErrorCode } from "../../../analytics/reporters/agent-error-fields.ts";
 import { applyDesktopAgentProviderRuntimeProbeFallbacks } from "./desktopAgentProviderRuntimeProbeFallback.ts";
 import {
-  DesktopAgentProviderAccountLifecycle,
+  DesktopAgentProviderLoginLifecycle,
   type AgentProviderStatusPollScheduler
-} from "./desktopAgentProviderAccountLifecycle.ts";
+} from "./desktopAgentProviderLoginLifecycle.ts";
 import {
   resolveAgentProviderInstallErrorMessage,
   runInstalledProviderAction,
   shouldTrackPendingAction
 } from "./desktopAgentProviderInstall.ts";
+import {
+  normalizeAgentProviderActionOptions,
+  providerStatusRequestKey,
+  unrefAgentProviderTimer,
+  withAgentProviderRequestTimeout
+} from "./desktopAgentProviderStatusServiceSupport.ts";
 import { reconcileProviderStatuses } from "./desktopAgentProviderStatusCatalog.ts";
 import {
   DesktopAgentProviderStatusDiagnostics,
@@ -39,6 +46,7 @@ import {
 export type { DiagnosticsConsentStore } from "./desktopAgentProviderStatusDiagnostics.ts";
 
 export interface DesktopAgentProviderStatusServiceDependencies {
+  accountLogin?: { startLogin(): Promise<void> };
   loginStatusPollDurationMs?: number;
   loginStatusPollIntervalMs?: number;
   loginStatusPollScheduler?: AgentProviderStatusPollScheduler;
@@ -82,7 +90,7 @@ export class DesktopAgentProviderStatusService implements IAgentProviderStatusSe
     string,
     Promise<AgentProviderStatusListResponse | null>
   >();
-  private readonly accountLifecycle: DesktopAgentProviderAccountLifecycle;
+  private readonly loginLifecycle: DesktopAgentProviderLoginLifecycle;
   private readonly pendingActionStatusPolls = new Map<
     string,
     AgentProviderStatusPollTimer
@@ -111,7 +119,7 @@ export class DesktopAgentProviderStatusService implements IAgentProviderStatusSe
       reporterService: dependencies.reporterService,
       runtimeApi: dependencies.runtimeApi
     });
-    this.accountLifecycle = new DesktopAgentProviderAccountLifecycle({
+    this.loginLifecycle = new DesktopAgentProviderLoginLifecycle({
       loginStatusPollDurationMs: dependencies.loginStatusPollDurationMs,
       loginStatusPollIntervalMs: dependencies.loginStatusPollIntervalMs,
       loginStatusPollScheduler: dependencies.loginStatusPollScheduler,
@@ -206,7 +214,7 @@ export class DesktopAgentProviderStatusService implements IAgentProviderStatusSe
       request: input,
       requestId
     });
-    const request = withTimeout(
+    const request = withAgentProviderRequestTimeout(
       this.dependencies.tuttidClient.getAgentProviderStatuses(input),
       this.dependencies.requestTimeoutMs ?? defaultRequestTimeoutMs
     )
@@ -252,12 +260,12 @@ export class DesktopAgentProviderStatusService implements IAgentProviderStatusSe
           // Report provider_ready before reportCompletedLoginResults so the
           // pendingLoginResults set is still populated when we classify how a
           // provider became ready (login vs. already-ready vs. external).
-          this.accountLifecycle.reportProviderReadyTransitions(
+          this.loginLifecycle.reportProviderReadyTransitions(
             previousStatuses,
             reconciledStatuses
           );
           this.diagnostics.reportEnvDetectedChanges(reconciledStatuses);
-          void this.accountLifecycle.reportCompletedLoginResults(
+          void this.loginLifecycle.reportCompletedLoginResults(
             response.providers
           );
         }
@@ -323,12 +331,12 @@ export class DesktopAgentProviderStatusService implements IAgentProviderStatusSe
   async runAction(
     provider: WorkspaceAgentProvider,
     actionId: string,
-    context?: AgentProviderStatusActionContext
+    input:
+      | AgentProviderStatusActionOptions
+      | AgentProviderStatusActionContext = {}
   ): Promise<void> {
+    const options = normalizeAgentProviderActionOptions(input);
     const isLoginAction = actionId === "login";
-    if (isLoginAction) {
-      await this.accountLifecycle.reportLoginInitiated(provider);
-    }
 
     let action = this.findAction(provider, actionId);
     if (!action) {
@@ -337,7 +345,7 @@ export class DesktopAgentProviderStatusService implements IAgentProviderStatusSe
       if (!action) {
         this.notifyMissingAction(actionId);
         if (isLoginAction) {
-          await this.accountLifecycle.reportLoginResult(
+          await this.loginLifecycle.reportLoginResult(
             provider,
             false,
             "action_unavailable",
@@ -351,7 +359,7 @@ export class DesktopAgentProviderStatusService implements IAgentProviderStatusSe
     if (action.kind === "refresh") {
       await this.refresh([provider]);
       if (isLoginAction) {
-        await this.accountLifecycle.reportLoginResult(
+        await this.loginLifecycle.reportLoginResult(
           provider,
           false,
           "unsupported_action",
@@ -362,11 +370,33 @@ export class DesktopAgentProviderStatusService implements IAgentProviderStatusSe
       return;
     }
 
-    const trackPendingAction = shouldTrackPendingAction(action.id);
+    const loginAttempt = isLoginAction
+      ? this.loginLifecycle.beginLogin(provider, options.origin ?? "user")
+      : null;
+    if (loginAttempt?.kind === "reuse") {
+      this.diagnostics.logRendererDiagnostic(
+        "agent_provider_login.attempt_reused",
+        { origin: options.origin ?? "user", provider }
+      );
+      return;
+    }
+    if (loginAttempt?.kind === "start") {
+      this.diagnostics.logRendererDiagnostic(
+        loginAttempt.replaced
+          ? "agent_provider_login.attempt_replaced"
+          : "agent_provider_login.attempt_started",
+        { origin: options.origin ?? "user", provider }
+      );
+    }
+    const trackPendingAction =
+      shouldTrackPendingAction(action.id) || isLoginAction;
     if (trackPendingAction) {
       this.addPendingAction(provider, actionId);
     }
     try {
+      if (isLoginAction) {
+        await this.loginLifecycle.reportLoginInitiated(provider);
+      }
       if (action.id === "install") {
         await runInstalledProviderAction(
           this.dependencies.tuttidClient,
@@ -382,9 +412,28 @@ export class DesktopAgentProviderStatusService implements IAgentProviderStatusSe
         return;
       }
 
+      if (isLoginAction && action.kind === "daemon_action") {
+        if (!this.dependencies.accountLogin) {
+          throw new Error("Account login is unavailable.");
+        }
+        await this.dependencies.accountLogin.startLogin();
+        this.loginLifecycle.registerLoginTerminal(
+          provider,
+          loginAttempt?.kind === "start" ? loginAttempt.generation : 0,
+          undefined
+        );
+        return;
+      }
+
       if (!action.command) {
         if (isLoginAction) {
-          await this.accountLifecycle.reportLoginResult(
+          if (loginAttempt?.kind === "start") {
+            this.loginLifecycle.failLoginLaunch(
+              provider,
+              loginAttempt.generation
+            );
+          }
+          await this.loginLifecycle.reportLoginResult(
             provider,
             false,
             "command_missing",
@@ -395,21 +444,25 @@ export class DesktopAgentProviderStatusService implements IAgentProviderStatusSe
         return;
       }
 
-      const terminalLaunchStartedAt = this.accountLifecycle.now();
+      const terminalLaunchStartedAt = this.loginLifecycle.now();
       const terminal =
         await this.dependencies.terminalCommandRunner.runTerminalCommand(
           action.command,
-          context
+          options.context
         );
       if (isLoginAction) {
         await this.diagnostics.reportNodeResult({
-          durationMs: this.accountLifecycle.now() - terminalLaunchStartedAt,
+          durationMs: this.loginLifecycle.now() - terminalLaunchStartedAt,
           flow: "provider_setup",
           node: "login_terminal_launch",
           provider,
           success: true
         });
-        this.accountLifecycle.registerLoginTerminal(provider, terminal);
+        this.loginLifecycle.registerLoginTerminal(
+          provider,
+          loginAttempt?.kind === "start" ? loginAttempt.generation : 0,
+          terminal
+        );
       }
       void this.refresh([provider]);
     } catch (error) {
@@ -430,14 +483,19 @@ export class DesktopAgentProviderStatusService implements IAgentProviderStatusSe
         });
       }
       if (action.id === "login") {
-        this.accountLifecycle.clearLoginTerminal(provider);
+        if (loginAttempt?.kind === "start") {
+          this.loginLifecycle.failLoginLaunch(
+            provider,
+            loginAttempt.generation
+          );
+        }
         this.notifications.error({
           description: resolveDesktopErrorMessage(error, getActiveLocale()),
           title: translate(
             "workspace.workbenchDesktop.agentProviders.loginFailed"
           )
         });
-        await this.accountLifecycle.reportLoginResult(
+        await this.loginLifecycle.reportLoginResult(
           provider,
           false,
           "launch_failed",
@@ -651,7 +709,7 @@ export class DesktopAgentProviderStatusService implements IAgentProviderStatusSe
       void this.runPendingActionStatusPoll(provider, actionId);
     }, pendingInstallStatusPollIntervalMs);
     this.pendingActionStatusPolls.set(key, timer);
-    unrefPollTimer(timer);
+    unrefAgentProviderTimer(timer);
   }
 
   private async runPendingActionStatusPoll(
@@ -678,6 +736,15 @@ export class DesktopAgentProviderStatusService implements IAgentProviderStatusSe
     this.pendingActionStatusPolls.delete(key);
   }
 
+  dispose(): void {
+    this.loginLifecycle.dispose();
+    for (const timer of this.pendingActionStatusPolls.values()) {
+      this.loginStatusPollScheduler.clearTimeout(timer);
+    }
+    this.pendingActionStatusPolls.clear();
+    this.listeners.clear();
+  }
+
   getDiagnosticsConsent(): boolean {
     return this.diagnostics.getDiagnosticsConsent();
   }
@@ -700,23 +767,6 @@ function pendingActionKey(
   return `${provider}:${actionId}`;
 }
 
-function providerStatusRequestKey(input: {
-  providers?: readonly WorkspaceAgentProvider[];
-  includeNetwork?: boolean;
-}): string {
-  const providers = [...new Set(input.providers ?? [])].sort();
-  return JSON.stringify({
-    includeNetwork: input.includeNetwork === true,
-    providers: providers.length > 0 ? providers : null
-  });
-}
-
-function unrefPollTimer(timer: AgentProviderStatusPollTimer): void {
-  if (typeof timer === "object" && typeof timer.unref === "function") {
-    timer.unref();
-  }
-}
-
 // Avoid decorator syntax so the renderer Babel pass can parse this file.
 INotificationService(DesktopAgentProviderStatusService, undefined, 1);
 
@@ -728,20 +778,3 @@ const noopNotifications: NotificationService = {
   success() {},
   warning() {}
 };
-
-function withTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T> {
-  if (!Number.isFinite(timeoutMs) || timeoutMs <= 0) {
-    return promise;
-  }
-  let timeoutID: ReturnType<typeof setTimeout> | null = null;
-  const timeout = new Promise<never>((_, reject) => {
-    timeoutID = setTimeout(() => {
-      reject(new Error("Agent provider status request timed out."));
-    }, timeoutMs);
-  });
-  return Promise.race([promise, timeout]).finally(() => {
-    if (timeoutID) {
-      clearTimeout(timeoutID);
-    }
-  });
-}

@@ -9,7 +9,7 @@ import {
   useState
 } from "react";
 import { TooltipProvider } from "@tutti-os/ui-system";
-import { openAgentEnvPanel } from "../../shared/agentEnv/agentEnvPanelStore";
+import { AgentEnvPanelActionProvider } from "../../shared/agentEnv";
 import { resolveAgentGUIProviderCatalogIdentity } from "../../providerIdentityCatalog";
 import { openWorkspaceSettingsPanel } from "../../shared/workspaceSettingsPanel/workspaceSettingsPanelStore";
 import { SettingsLinedIcon } from "../../app/renderer/components/icons/SettingsLinedIcon";
@@ -100,6 +100,7 @@ export function AgentGUINodeView({
   accountMenuState = null,
   previewMode = false,
   onAgentProviderLogin,
+  onAgentEnvPanelOpen,
   actions,
   conversationRailCollapsed,
   conversationRailWidthPx,
@@ -452,8 +453,11 @@ export function AgentGUINodeView({
   const openAgentEnvSetup = useCallback(() => {
     // In the "All" filter there is no single rail provider; pass it through as
     // null so the env panel host falls back to the default provider.
-    openAgentEnvPanel({ provider: effectiveRailConfigProvider, focus: null });
-  }, [effectiveRailConfigProvider]);
+    onAgentEnvPanelOpen?.({
+      provider: effectiveRailConfigProvider,
+      focus: null
+    });
+  }, [effectiveRailConfigProvider, onAgentEnvPanelOpen]);
   const openAgentSettings = useCallback(() => {
     openWorkspaceSettingsPanel({ section: "agent" });
   }, []);
@@ -779,5 +783,14 @@ export function AgentGUINodeView({
     </AgentTargetPresentationProvider>
   );
 
-  return previewMode ? content : <TooltipProvider>{content}</TooltipProvider>;
+  const hostBoundContent = (
+    <AgentEnvPanelActionProvider openPanel={onAgentEnvPanelOpen}>
+      {content}
+    </AgentEnvPanelActionProvider>
+  );
+  return previewMode ? (
+    hostBoundContent
+  ) : (
+    <TooltipProvider>{hostBoundContent}</TooltipProvider>
+  );
 }

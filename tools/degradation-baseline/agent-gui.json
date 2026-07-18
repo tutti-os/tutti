@@ -29,7 +29,7 @@
     "goFileLengthExemptions": 2,
     "identityProviderBranches": 1,
     "moduleMutableGlobals": 6,
-    "overlayStores": 4,
+    "overlayStores": 3,
     "providerBranches": 1,
     "renderMirrorRefs": 8,
     "setTimeoutCount": 42,

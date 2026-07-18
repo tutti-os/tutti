@@ -42,6 +42,7 @@ import type {
 } from "../../../workspaceWorkflow";
 import type { TuttiPlanReviewBannerLabels } from "../TuttiPlanReviewBanner";
 import type { TuttiPlanIssueStatusStripLabels } from "../TuttiPlanIssueStatusStrip";
+import type { OpenAgentEnvPanelInput } from "../../../shared/agentEnv";
 
 export type AgentMentionReferenceTargetResolver = (
   item: AgentContextMentionItem
@@ -468,6 +469,7 @@ export interface AgentGUINodeViewProps {
   accountMenuState?: AgentGUIAccountMenuState | null;
   previewMode?: boolean;
   onAgentProviderLogin?: (provider?: string | null) => void;
+  onAgentEnvPanelOpen?: (input?: OpenAgentEnvPanelInput) => void;
   actions: {
     updateConversationFilter: (
       filter: AgentGUINodeViewModel["rail"]["conversationFilter"]

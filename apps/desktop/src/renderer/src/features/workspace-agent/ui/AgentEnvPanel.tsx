@@ -12,25 +12,13 @@ import {
   TooltipContent,
   TooltipTrigger
 } from "@tutti-os/ui-system";
-import { closeAgentEnvPanel } from "@tutti-os/agent-gui/agent-env";
 import { useTranslation } from "@renderer/i18n";
-import type { IAgentProviderStatusService } from "../services/agentProviderStatusService.interface";
 import { useAgentEnvWizard } from "./useAgentEnvWizard";
 import { AgentEnvSetupTrack } from "./AgentEnvSetupTrack";
 import { AgentEnvReportConsent } from "./AgentEnvReportConsent";
 import { resolveProviderLabel } from "./agentEnvPanelText";
 
-interface AgentEnvPanelProps {
-  agentProviderStatusService: IAgentProviderStatusService;
-  workspaceId: string;
-  workbenchHost?: unknown;
-}
-
-export function AgentEnvPanel({
-  agentProviderStatusService,
-  workspaceId,
-  workbenchHost
-}: AgentEnvPanelProps): JSX.Element | null {
+export function AgentEnvPanel(): JSX.Element | null {
   const { t } = useTranslation();
   const {
     open,
@@ -41,11 +29,7 @@ export function AgentEnvPanel({
     copied,
     logExpanded,
     actions
-  } = useAgentEnvWizard({
-    service: agentProviderStatusService,
-    workspaceId,
-    workbenchHost
-  });
+  } = useAgentEnvWizard();
   const providerLabel = resolveProviderLabel(provider);
 
   // Re-detect is disabled while an install runs (busy) or a detect is already in
@@ -92,7 +76,7 @@ export function AgentEnvPanel({
     <Dialog
       open={open}
       onOpenChange={(next) => {
-        if (!next) closeAgentEnvPanel();
+        if (!next) actions.close();
       }}
     >
       <DialogContent className="flex max-h-[min(640px,calc(100vh-32px))] flex-col gap-0 overflow-hidden bg-[var(--background-fronted)] p-0 sm:max-w-[560px]">

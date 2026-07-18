@@ -1,14 +1,12 @@
 export {
-  closeAgentEnvPanel,
-  getAgentEnvPanelStore,
-  openAgentEnvPanel,
-  useAgentEnvPanelRequest
-} from "./agentEnvPanelStore.ts";
+  AgentEnvPanelActionProvider,
+  useOpenAgentEnvPanel
+} from "./agentEnvPanelActions.ts";
 export type {
   AgentEnvPanelFocus,
-  AgentEnvPanelRequest,
+  OpenAgentEnvPanelAction,
   OpenAgentEnvPanelInput
-} from "./agentEnvPanelStore.ts";
+} from "./agentEnvPanelActions.ts";
 export {
   classifyFailedAgentMessage,
   resolveAgentErrorPresentation

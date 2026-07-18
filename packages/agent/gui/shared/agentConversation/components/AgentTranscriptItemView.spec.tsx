@@ -6,7 +6,7 @@ import {
   waitFor
 } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
-import { getAgentEnvPanelStore } from "../../agentEnv/agentEnvPanelStore";
+import { AgentEnvPanelActionProvider } from "../../agentEnv";
 import type { AgentActivityRuntime } from "../../../agentActivityRuntime";
 import { AgentMessageBlock } from "./AgentMessageBlock";
 import { AgentTranscriptItemView } from "./AgentTranscriptItemView";
@@ -565,14 +565,16 @@ describe("AgentTranscriptItemView render stability", () => {
   });
 
   it("shows local agent sign-in guidance for auth errors", () => {
-    getAgentEnvPanelStore().open = false;
+    const onOpenAgentEnvPanel = vi.fn();
     const { getByText } = render(
-      <AgentMessageBlock
-        workspaceRoot="/workspace/demo"
-        basePath="/workspace/demo"
-        row={assistantMessageRow(claudeCodeAuthErrorMessage())}
-        thinkingLabel="Thought process"
-      />
+      <AgentEnvPanelActionProvider openPanel={onOpenAgentEnvPanel}>
+        <AgentMessageBlock
+          workspaceRoot="/workspace/demo"
+          basePath="/workspace/demo"
+          row={assistantMessageRow(claudeCodeAuthErrorMessage())}
+          thinkingLabel="Thought process"
+        />
+      </AgentEnvPanelActionProvider>
     );
 
     expect(
@@ -582,10 +584,10 @@ describe("AgentTranscriptItemView render stability", () => {
       getByText("agentHost.agentGui.visibleErrorAuthRequiredLocalAgentHint")
     ).toBeTruthy();
     fireEvent.click(getByText("agentHost.agentGui.visibleErrorActionRelogin"));
-    const store = getAgentEnvPanelStore();
-    expect(store.open).toBe(true);
-    expect(store.provider).toBe("claude-code");
-    expect(store.focus).toBe("auth");
+    expect(onOpenAgentEnvPanel).toHaveBeenCalledWith({
+      provider: "claude-code",
+      focus: "auth"
+    });
   });
 
   it("renders transport retry notice details without the generic title", () => {

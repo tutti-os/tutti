@@ -62,19 +62,27 @@ export interface WorkspaceWorkbenchServiceRegistrationInput {
   onAgentTargetsChanged?: () => void | Promise<void>;
 }
 
+export interface WorkspaceAccountServiceRegistrationInput {
+  hostFilesApi: DesktopHostFilesApi;
+  tuttidClient: TuttidClient;
+}
+
+export function registerWorkspaceAccountService(
+  registry: ServiceRegistry,
+  input: WorkspaceAccountServiceRegistrationInput
+): IAccountService {
+  const accountService = new AccountService({
+    hostFilesApi: input.hostFilesApi,
+    tuttidClient: input.tuttidClient
+  });
+  registry.registerInstance(IAccountService, accountService);
+  return accountService;
+}
+
 export function registerWorkspaceWorkbenchServices(
   registry: ServiceRegistry,
   input: WorkspaceWorkbenchServiceRegistrationInput
 ): void {
-  registry.register(
-    IAccountService,
-    new SyncDescriptor(AccountService, [
-      {
-        hostFilesApi: input.hostFilesApi,
-        tuttidClient: input.tuttidClient
-      }
-    ])
-  );
   registry.register(
     IWorkbenchHostCoordinator,
     new SyncDescriptor(WorkbenchHostCoordinator)

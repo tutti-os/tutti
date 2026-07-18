@@ -1,4 +1,4 @@
-import type { AgentEnvPanelFocus } from "./agentEnvPanelStore";
+import type { AgentEnvPanelFocus } from "./agentEnvPanelActions";
 import type {
   CodexSetupPhase,
   CodexSetupStepStatus
