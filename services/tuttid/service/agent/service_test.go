@@ -134,7 +134,7 @@ func TestServiceCreateSynchronouslyPersistsRailSectionKey(t *testing.T) {
 	service.SessionInitializer = projection
 	service.SessionReader = projection
 
-	session, err := service.Create(ctx, "ws-rail-create", CreateSessionInput{
+	created, err := service.CreateWithResult(ctx, "ws-rail-create", CreateSessionInput{
 		AgentSessionID: "22222222-2222-4222-8222-222222222222",
 		AgentTargetID:  agenttargetbiz.IDLocalCodex,
 		Provider:       "codex",
@@ -142,7 +142,11 @@ func TestServiceCreateSynchronouslyPersistsRailSectionKey(t *testing.T) {
 		InitialContent: TextPromptContent("hello"),
 	})
 	if err != nil {
-		t.Fatalf("Create returned error: %v", err)
+		t.Fatalf("CreateWithResult returned error: %v", err)
+	}
+	session := created.Session
+	if created.TurnID != "turn-1" {
+		t.Fatalf("CreateWithResult turnId = %q, want turn-1", created.TurnID)
 	}
 	wantKey := userprojectbiz.SectionKeyFromPath(projectPath)
 	if session.RailSectionKey != wantKey {

@@ -192,7 +192,7 @@ func (s *Service) waitResult(
 ) (WaitResult, error) {
 	result := WaitResult{
 		Session: cloneSession(session), Reason: reason, TimedOut: timedOut,
-		EffectiveAfter: effectiveAfter,
+		EffectiveAfter: effectiveAfter, TurnID: waitResultTurnID(session, reason),
 	}
 	if messageLimit < 0 {
 		latestVersion, err := s.latestSessionVersion(ctx, workspaceID, agentSessionID)
@@ -225,6 +225,23 @@ func (s *Service) waitResult(
 		result.Interactions = waitInteractions(session.PendingInteractions)
 	}
 	return result, nil
+}
+
+func waitResultTurnID(session Session, reason WaitReason) string {
+	switch reason {
+	case WaitReasonWaiting, WaitReasonWaitingApproval, WaitReasonWaitingInput, WaitReasonTimeout:
+		if turnID := strings.TrimSpace(session.ActiveTurnID); turnID != "" {
+			return turnID
+		}
+		if session.ActiveTurn != nil {
+			return strings.TrimSpace(session.ActiveTurn.TurnID)
+		}
+	case WaitReasonCompleted, WaitReasonFailed, WaitReasonCanceled:
+		if session.LatestTurn != nil {
+			return strings.TrimSpace(session.LatestTurn.TurnID)
+		}
+	}
+	return ""
 }
 
 func (s *Service) finalAssistantMessage(

@@ -265,11 +265,15 @@ func waitJSONValue(result any) map[string]any {
 	waited := result.(waitCommandResult)
 	value := map[string]any{
 		"agentSessionId": waited.Result.Session.ID,
+		"turnId":         nil,
 		"session":        sessionSummaryValue(waited.Result.Session),
 		"latestVersion":  waited.Result.LatestVersion,
 		"effectiveAfter": waited.Result.EffectiveAfter,
 		"timedOut":       waited.Result.TimedOut,
 		"reason":         string(waited.Result.Reason),
+	}
+	if turnID := strings.TrimSpace(waited.Result.TurnID); turnID != "" {
+		value["turnId"] = turnID
 	}
 	if (waited.Result.Reason == agentservice.WaitReasonCompleted || waited.Result.Reason == agentservice.WaitReasonFailed) && waited.Result.FinalMessage != nil {
 		value["finalMessage"] = map[string]any{

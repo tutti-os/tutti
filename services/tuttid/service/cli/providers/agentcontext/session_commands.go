@@ -64,6 +64,7 @@ type respondInput struct {
 
 type sessionActionResult struct {
 	Session          agentservice.Session
+	TurnID           string
 	LaunchRequested  bool
 	WaitAfterVersion *uint64
 	Warnings         []cliservice.CommandWarning
@@ -135,7 +136,7 @@ func (p Provider) runStart(ctx context.Context, invoke framework.InvokeContext, 
 	if err != nil {
 		return nil, err
 	}
-	session, err := p.sessions.Create(ctx, invoke.WorkspaceID, agentservice.CreateSessionInput{
+	created, err := p.sessions.CreateWithResult(ctx, invoke.WorkspaceID, agentservice.CreateSessionInput{
 		Provider:               provider,
 		AgentTargetID:          agentTargetID,
 		Cwd:                    optionalStringPointer(cwd),
@@ -153,6 +154,7 @@ func (p Provider) runStart(ctx context.Context, invoke framework.InvokeContext, 
 	if err != nil {
 		return nil, err
 	}
+	session := created.Session
 	launchRequested := false
 	if input.Show {
 		if err := p.publishLaunchRequested(ctx, invoke.WorkspaceID, session, "start_show", invoke.Request.Context.Source); err != nil {
@@ -164,7 +166,10 @@ func (p Provider) runStart(ctx context.Context, invoke framework.InvokeContext, 
 	for _, warning := range session.Warnings {
 		warnings = append(warnings, cliservice.CommandWarning{Code: warning.Code, Message: warning.Message})
 	}
-	return sessionActionResult{Session: session, LaunchRequested: launchRequested, Warnings: warnings}, nil
+	return sessionActionResult{
+		Session: session, TurnID: strings.TrimSpace(created.TurnID),
+		LaunchRequested: launchRequested, Warnings: warnings,
+	}, nil
 }
 
 func (p Provider) composerConversationDetailMode(ctx context.Context) string {
@@ -311,7 +316,9 @@ func (p Provider) runSend(ctx context.Context, invoke framework.InvokeContext, i
 		return nil, err
 	}
 	session := result.Session
-	return sessionActionResult{Session: session, WaitAfterVersion: &waitAfterVersion}, nil
+	return sessionActionResult{
+		Session: session, TurnID: strings.TrimSpace(result.TurnID), WaitAfterVersion: &waitAfterVersion,
+	}, nil
 }
 
 func (p Provider) newRespondCommand() cliservice.Command {
@@ -489,6 +496,9 @@ func sessionActionOutputSpec() framework.OutputSpec {
 				value := map[string]any{
 					"launchRequested": action.LaunchRequested,
 					"session":         sessionActionValue(action.Session),
+				}
+				if turnID := strings.TrimSpace(action.TurnID); turnID != "" {
+					value["turnId"] = turnID
 				}
 				if action.WaitAfterVersion != nil {
 					value["waitAfterVersion"] = *action.WaitAfterVersion

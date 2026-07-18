@@ -109,7 +109,7 @@ func (f *fakeAgentSessions) CancelTurn(_ context.Context, workspaceID string, se
 	return agentservice.CancelTurnResult{Canceled: true, Reason: agentservice.CancelTurnReasonTurnCanceled}, nil
 }
 
-func (f *fakeAgentSessions) Create(_ context.Context, workspaceID string, input agentservice.CreateSessionInput) (agentservice.Session, error) {
+func (f *fakeAgentSessions) CreateWithResult(_ context.Context, workspaceID string, input agentservice.CreateSessionInput) (agentservice.CreateSessionResult, error) {
 	f.workspaceID = workspaceID
 	f.createCallCount++
 	f.createInput = input
@@ -132,7 +132,7 @@ func (f *fakeAgentSessions) Create(_ context.Context, workspaceID string, input 
 		session.Isolation = &agentservice.SessionIsolation{Mode: "worktree", WorktreePath: "/state/worktree", Branch: "tutti/SESSION-NEW", BaseCommit: "abc123"}
 		session.Warnings = []agentservice.SessionWarning{{Code: "worktree_base_dirty", Message: "dirty source"}}
 	}
-	return session, nil
+	return agentservice.CreateSessionResult{Session: session, TurnID: "turn-new"}, nil
 }
 
 func (f *fakeAgentSessions) Get(_ context.Context, workspaceID string, sessionID string) (agentservice.Session, error) {
@@ -343,6 +343,7 @@ func (f *fakeAgentSessions) SendInput(_ context.Context, workspaceID string, ses
 	f.sendInput = input
 	return agentservice.SendInputResult{
 		Session: agentservice.Session{ID: sessionID, Provider: "codex", ActiveTurnID: "turn-1", Visible: true},
+		TurnID:  "turn-1",
 	}, nil
 }
 
@@ -364,6 +365,7 @@ func (f *fakeAgentSessions) Wait(_ context.Context, input agentservice.WaitInput
 			ActiveTurnID: "turn-1",
 			Visible:      true,
 		},
+		TurnID: "turn-1",
 		Messages: []agentservice.SessionMessage{{
 			AgentSessionID: input.AgentSessionID,
 			MessageID:      "message-2",
@@ -782,6 +784,7 @@ func TestWaitCommandReturnsFinalMessageAndDetailedInteractions(t *testing.T) {
 	t.Run("completed", func(t *testing.T) {
 		sessions := &fakeAgentSessions{waitResult: agentservice.WaitResult{
 			Session:      agentservice.Session{ID: "SESSION-1", Provider: "codex", Visible: true},
+			TurnID:       "turn-1",
 			Reason:       agentservice.WaitReasonCompleted,
 			FinalMessage: &agentservice.WaitFinalMessage{TurnID: "turn-1", Text: strings.Repeat("complete ", 600)},
 		}}
@@ -793,6 +796,9 @@ func TestWaitCommandReturnsFinalMessageAndDetailedInteractions(t *testing.T) {
 			t.Fatalf("Handler: %v", err)
 		}
 		final := output.Value["finalMessage"].(map[string]any)
+		if output.Value["turnId"] != "turn-1" {
+			t.Fatalf("turnId = %#v, want turn-1", output.Value["turnId"])
+		}
 		if final["turnId"] != "turn-1" || final["text"] != sessions.waitResult.FinalMessage.Text {
 			t.Fatalf("finalMessage = %#v", final)
 		}
@@ -804,6 +810,7 @@ func TestWaitCommandReturnsFinalMessageAndDetailedInteractions(t *testing.T) {
 	t.Run("waiting approval", func(t *testing.T) {
 		sessions := &fakeAgentSessions{waitResult: agentservice.WaitResult{
 			Session: agentservice.Session{ID: "SESSION-1", Provider: "claude-code", Visible: true},
+			TurnID:  "turn-1",
 			Reason:  agentservice.WaitReasonWaitingApproval,
 			Interactions: []agentservice.WaitInteraction{{
 				RequestID: "request-1", TurnID: "turn-1", Kind: "approval", ToolName: "Approval",
@@ -820,6 +827,9 @@ func TestWaitCommandReturnsFinalMessageAndDetailedInteractions(t *testing.T) {
 		}
 		interactions := output.Value["interactions"].([]any)
 		interaction := interactions[0].(map[string]any)
+		if output.Value["turnId"] != "turn-1" {
+			t.Fatalf("turnId = %#v, want turn-1", output.Value["turnId"])
+		}
 		action := interaction["actions"].([]any)[0].(map[string]any)
 		input := interaction["input"].(map[string]any)
 		if interaction["requestId"] != "request-1" || interaction["toolName"] != "Approval" ||
@@ -846,6 +856,9 @@ func TestWaitCommandReturnsFinalMessageAndDetailedInteractions(t *testing.T) {
 			if _, ok := output.Value[key]; ok {
 				t.Fatalf("timeout output should omit %q: %#v", key, output.Value)
 			}
+		}
+		if output.Value["turnId"] != nil {
+			t.Fatalf("idle timeout turnId = %#v, want null", output.Value["turnId"])
 		}
 	})
 }
@@ -917,13 +930,14 @@ func TestStartCommandPassesDisplayPrompt(t *testing.T) {
 	sessions := &fakeAgentSessions{}
 	command := newTestCodexStartCommand(newTestProvider(fakeWorkspaceCatalog{startup: workspacebiz.Summary{ID: "workspace-1"}}, sessions))
 
-	_, err := command.Handler(context.Background(), cliservice.InvokeRequest{
+	output, err := command.Handler(context.Background(), cliservice.InvokeRequest{
 		Input: map[string]any{
 			"agent-id":       agenttargetbiz.IDLocalCodex,
 			"model":          "gpt-5",
 			"prompt":         "real automation prompt",
 			"display-prompt": "Run Automation",
 		},
+		OutputMode: cliservice.OutputModeJSON,
 	})
 	if err != nil {
 		t.Fatalf("Handler: %v", err)
@@ -936,6 +950,9 @@ func TestStartCommandPassesDisplayPrompt(t *testing.T) {
 	}
 	if sessions.createInput.AgentTargetID != agenttargetbiz.IDLocalCodex {
 		t.Fatalf("agent target id = %q, want %s", sessions.createInput.AgentTargetID, agenttargetbiz.IDLocalCodex)
+	}
+	if output.Value["turnId"] != "turn-new" {
+		t.Fatalf("output turnId = %#v, want turn-new", output.Value["turnId"])
 	}
 }
 
@@ -1864,6 +1881,9 @@ func TestSendCommandReturnsWaitAfterVersionInJSON(t *testing.T) {
 	}
 	if output.Value["waitAfterVersion"] != uint64(2) {
 		t.Fatalf("output = %#v", output.Value)
+	}
+	if output.Value["turnId"] != "turn-1" {
+		t.Fatalf("output turnId = %#v, want turn-1", output.Value["turnId"])
 	}
 }
 

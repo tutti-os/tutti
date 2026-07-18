@@ -126,6 +126,13 @@ published. Existing-session consumers must validate `agentTargetId` before
 sending or attaching; provider equality is not sufficient because several
 Agent Targets may share one provider.
 
+Agent submission actions also return the exact top-level `turnId` established
+or targeted by that command. `agent start` returns the initial Turn created for
+its prompt, and `agent send` returns the Turn created by a normal send or
+targeted by active-turn guidance. Callers must use this exact identity for
+`agent turn-resources` and later Turn-scoped operations instead of inferring it
+from `session.activeTurnId` or querying the transcript.
+
 Agent session detail JSON uses the same protocol-v2 entities as HTTP/OpenAPI:
 `activeTurnId`, `activeTurn`, `latestTurn`, and pending Interaction records.
 It must not expose the provider-runtime `turnLifecycle` or
@@ -155,16 +162,19 @@ recovery.
 `agent wait --json` is the blocking progress helper for launched or continued
 agent sessions. It should wait for the next meaningful stop point such as turn
 completion, failure, cancellation, waiting for approval, waiting for user
-input, or timeout. Its JSON result stays narrow: compact session status, wait
+input, or timeout. Its JSON result stays narrow: compact session status, the
+exact top-level `turnId` associated with the stop point when one exists, wait
 reason, latest version, effective wait cursor, and timeout flag. A completed or
-failed turn additionally returns its last assistant text as `finalMessage`
-with the owning `turnId`; an approval or input stop additionally returns the
-pending `interactions` with self-described actions and a JSON input summary of
-at most 2 KiB. It must not return execution-message pagination or a full
-transcript; callers that need broader context should follow with
-`agent session-summary`. Keep message window controls such as `limit` out of
-the public wait command shape, and keep timeout output free of result or
-interaction detail.
+failed turn additionally returns its last assistant text as `finalMessage`;
+that nested record repeats the owning `turnId` for local correlation. An
+approval or input stop additionally returns the pending `interactions` with
+self-described actions and a JSON input summary of at most 2 KiB. It must not
+reuse a historical settled Turn for an idle timeout: timeout carries a
+`turnId` only while a Turn is active. It must not return execution-message
+pagination or a full transcript; callers that need
+broader context should follow with `agent session-summary`. Keep message window
+controls such as `limit` out of the public wait command shape, and keep timeout
+output free of result or interaction detail.
 The wait implementation skips transcript pagination and performs result
 enrichment separately. New settled turns carry a durable final-assistant
 resolution marker and, when present at settlement, the exact message anchor.

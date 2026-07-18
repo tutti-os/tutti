@@ -1235,3 +1235,53 @@ func TestWaitClosedStreamDoesNotReturnStaleStop(t *testing.T) {
 		t.Fatalf("Wait() did not return")
 	}
 }
+
+func TestWaitResultTurnIDUsesTurnAssociatedWithStopReason(t *testing.T) {
+	t.Parallel()
+	for _, test := range []struct {
+		name    string
+		session Session
+		reason  WaitReason
+		want    string
+	}{
+		{
+			name: "waiting uses canonical active turn reference",
+			session: Session{
+				ActiveTurnID: "active-reference",
+				ActiveTurn:   &agentactivitybiz.Turn{TurnID: "active-reference"},
+				LatestTurn:   &agentactivitybiz.Turn{TurnID: "latest-turn"},
+			},
+			reason: WaitReasonWaitingInput,
+			want:   "active-reference",
+		},
+		{
+			name:    "active timeout uses embedded turn fallback",
+			session: Session{ActiveTurn: &agentactivitybiz.Turn{TurnID: "active-entity"}, LatestTurn: &agentactivitybiz.Turn{TurnID: "latest-turn"}},
+			reason:  WaitReasonTimeout,
+			want:    "active-entity",
+		},
+		{
+			name:    "completion uses latest settled turn",
+			session: Session{LatestTurn: &agentactivitybiz.Turn{TurnID: "latest-turn"}},
+			reason:  WaitReasonCompleted,
+			want:    "latest-turn",
+		},
+		{
+			name:    "idle timeout does not reuse historical turn",
+			session: Session{LatestTurn: &agentactivitybiz.Turn{TurnID: "historical-turn"}},
+			reason:  WaitReasonTimeout,
+		},
+		{
+			name:    "ready does not target a turn",
+			session: Session{LatestTurn: &agentactivitybiz.Turn{TurnID: "historical-turn"}},
+			reason:  WaitReasonReady,
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			if got := waitResultTurnID(test.session, test.reason); got != test.want {
+				t.Fatalf("waitResultTurnID() = %q, want %q", got, test.want)
+			}
+		})
+	}
+}

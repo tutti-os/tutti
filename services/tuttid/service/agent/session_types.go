@@ -485,6 +485,14 @@ type CreateSessionInput struct {
 	ExternalRolloutSourcePath string
 }
 
+// CreateSessionResult preserves the exact lifecycle identity returned by Host
+// for callers that need to correlate the initial submission. Create remains
+// the compatibility surface for consumers that only need the Session.
+type CreateSessionResult struct {
+	Session Session
+	TurnID  string
+}
+
 type SessionSkillBundle struct {
 	Name  string
 	Files map[string]string
@@ -558,6 +566,7 @@ const (
 
 type WaitResult struct {
 	Session        Session
+	TurnID         string
 	Messages       []SessionMessage
 	FinalMessage   *WaitFinalMessage
 	Interactions   []WaitInteraction

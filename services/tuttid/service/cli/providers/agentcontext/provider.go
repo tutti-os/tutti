@@ -16,7 +16,7 @@ const appID = "agent-context"
 
 type AgentSessions interface {
 	CancelTurn(context.Context, string, string, string) (agentservice.CancelTurnResult, error)
-	Create(context.Context, string, agentservice.CreateSessionInput) (agentservice.Session, error)
+	CreateWithResult(context.Context, string, agentservice.CreateSessionInput) (agentservice.CreateSessionResult, error)
 	Get(context.Context, string, string) (agentservice.Session, error)
 	GetComposerOptions(context.Context, agentservice.ComposerOptionsInput) (agentservice.ComposerOptions, error)
 	GetSkillBundle(context.Context, string, agentservice.SkillBundleInput) (agentservice.SkillBundle, error)
