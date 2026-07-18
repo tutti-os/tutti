@@ -321,6 +321,26 @@ export function createDesktopTuttiModePlanReviewRuntime(
         },
         { scope: { workspaceId } }
       );
+      // The daemon's canonical turn fan-out reports every root-turn
+      // settlement on the activity stream. Relay it as the plan read-repair
+      // trigger: a plan proposed mid-turn announces itself through one
+      // workflow event, and if that single event is dropped no later
+      // workflow signal re-reads review state.
+      const unsubscribeActivity = eventStreamClient.subscribe(
+        "agent.activity.updated",
+        (event) => {
+          const payload = event.payload;
+          if (payload.workspaceId.trim() !== workspaceId) return;
+          if (payload.eventType !== "turn_update") return;
+          if (payload.data.turn.phase !== "settled") return;
+          listener({
+            kind: "session_settled",
+            workspaceId,
+            sourceSessionId: payload.agentSessionId
+          });
+        },
+        { scope: { workspaceId } }
+      );
       const unsubscribeConnection = eventStreamClient.subscribeConnectionState(
         (state) => {
           if (state === "connected") {
@@ -338,6 +358,7 @@ export function createDesktopTuttiModePlanReviewRuntime(
 
       return () => {
         unsubscribe();
+        unsubscribeActivity();
         unsubscribeConnection();
       };
     },

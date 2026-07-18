@@ -43,6 +43,7 @@ function createHarness(): {
   loads: DeferredLoad[];
   emitIssueUpdate: (issueId: string) => void;
   emitWorkflowUpdate: (sourceSessionId: string) => void;
+  emitSessionSettled: (sourceSessionId: string) => void;
 } {
   const loads: DeferredLoad[] = [];
   const listeners = new Set<(update: { issueId: string }) => void>();
@@ -88,6 +89,15 @@ function createHarness(): {
           sourceSessionId,
           checkpointId: "checkpoint-1",
           changeKind: "operation_updated"
+        });
+      }
+    },
+    emitSessionSettled: (sourceSessionId) => {
+      for (const listener of workflowListeners) {
+        listener({
+          kind: "session_settled",
+          workspaceId: "workspace-1",
+          sourceSessionId
         });
       }
     }
@@ -157,6 +167,36 @@ describe("useTuttiModePlanPanels plan issue embed", () => {
 
     // Another session's workflow event must not trigger a read for this one.
     harness.emitWorkflowUpdate("session-b");
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(harness.loads.length).toBe(2);
+  });
+
+  it("re-reads the plan issue when this session's turn settles", async () => {
+    // A plan proposed mid-turn announces itself through one workflow event;
+    // if that single event is dropped, the host-relayed session_settled
+    // invalidation is the read-repair point.
+    const harness = createHarness();
+    render(
+      <TuttiModePlanReviewRuntimeProvider runtime={harness.runtime}>
+        <Probe sessionId="session-a" />
+      </TuttiModePlanReviewRuntimeProvider>
+    );
+    await waitFor(() => expect(harness.loads.length).toBe(1));
+    harness.loads[0]!.resolve(null);
+    harness.emitSessionSettled("session-a");
+    await waitFor(() => expect(harness.loads.length).toBe(2));
+    harness.loads[1]!.resolve({
+      kind: "issue",
+      issue: snapshotFor("session-a")
+    });
+    await waitFor(() =>
+      expect(screen.getByTestId("probe")).toHaveTextContent(
+        "tutti-mode-plan-session-a"
+      )
+    );
+
+    // Another session's settle must not trigger a read for this one.
+    harness.emitSessionSettled("session-b");
     await new Promise((resolve) => setTimeout(resolve, 20));
     expect(harness.loads.length).toBe(2);
   });

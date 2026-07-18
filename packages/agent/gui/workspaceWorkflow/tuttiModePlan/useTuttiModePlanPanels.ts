@@ -5,7 +5,11 @@ import type {
   TuttiModePlanAssignmentAgentOption,
   TuttiModePlanTaskAssignmentInput
 } from "../workspaceWorkflowRuntime";
-import type { TuttiPlanIssueSnapshot } from "../workspaceWorkflowRuntime";
+import type {
+  TuttiPlanIssueMaterializationFailure,
+  TuttiPlanIssueQueryResult,
+  TuttiPlanIssueSnapshot
+} from "../workspaceWorkflowRuntime";
 import type { TuttiPlanIssueTaskDecision } from "./TuttiPlanIssuePanel";
 import {
   projectTuttiModePlanPanel,
@@ -22,7 +26,7 @@ interface PanelState {
 }
 
 interface PlanIssueState {
-  issue: TuttiPlanIssueSnapshot | null;
+  result: TuttiPlanIssueQueryResult;
   scopeKey: string;
 }
 
@@ -84,6 +88,8 @@ export function useTuttiModePlanPanels(input: {
   panels: readonly TuttiModePlanPanelViewModel[];
   /** Live snapshot of the Issue this session's accepted plan materialized. */
   planIssue: TuttiPlanIssueSnapshot | null;
+  /** The accepted plan's durable create_issue failure, when no Issue exists. */
+  planIssueMaterializationFailure: TuttiPlanIssueMaterializationFailure | null;
   /** Accept/rework a pending task from the embedded panel; null until loaded. */
   decidePlanIssueTask:
     | ((taskId: string, decision: TuttiPlanIssueTaskDecision) => Promise<void>)
@@ -102,7 +108,7 @@ export function useTuttiModePlanPanels(input: {
   const [assignmentState, setAssignmentState] =
     useState<AssignmentCatalogState>(() => emptyAssignmentState(""));
   const [planIssueState, setPlanIssueState] = useState<PlanIssueState>({
-    issue: null,
+    result: null,
     scopeKey: ""
   });
   const requestSequenceRef = useRef(0);
@@ -116,6 +122,7 @@ export function useTuttiModePlanPanels(input: {
       : "";
   const activeScopeRef = useRef("");
   const assignmentRequestsRef = useRef(new Set<string>());
+  const planIssueRefreshRef = useRef<(() => void) | null>(null);
 
   const assignmentSource = runtime?.assignmentOptions ?? null;
 
@@ -277,7 +284,7 @@ export function useTuttiModePlanPanels(input: {
     activeScopeRef.current = scopeKey;
     assignmentRequestsRef.current = new Set<string>();
     setAssignmentState(emptyAssignmentState(scopeKey));
-    setPlanIssueState({ issue: null, scopeKey });
+    setPlanIssueState({ result: null, scopeKey });
     void refresh();
     const capturedScope = scopeKey;
     // The materialized plan Issue shares this scope's lifecycle: load with the
@@ -294,11 +301,11 @@ export function useTuttiModePlanPanels(input: {
       planIssueInFlight = true;
       void planIssueSource
         .getSessionPlanIssue({ workspaceId, sourceSessionId })
-        .then((issue) => {
+        .then((result) => {
           if (activeScopeRef.current !== capturedScope) return;
           setPlanIssueState((current) =>
             current.scopeKey === capturedScope
-              ? { issue, scopeKey: capturedScope }
+              ? { result, scopeKey: capturedScope }
               : current
           );
         })
@@ -314,6 +321,7 @@ export function useTuttiModePlanPanels(input: {
         });
     };
     refreshPlanIssue();
+    planIssueRefreshRef.current = refreshPlanIssue;
     const unsubscribe =
       enabled && runtime && workspaceId && sourceSessionId
         ? runtime.subscribe(workspaceId, (update) => {
@@ -322,6 +330,13 @@ export function useTuttiModePlanPanels(input: {
               update.sourceSessionId === sourceSessionId
             ) {
               void refresh();
+              // The workflow's operation_updated event is the authoritative
+              // "Issue materialized" signal: workspace.issue.updated fires
+              // during materialization, before the create_issue operation
+              // records its outcome, so a re-read triggered only by the issue
+              // event reliably finds no succeeded operation and leaves the
+              // panel invisible until a remount.
+              refreshPlanIssue();
             }
           })
         : undefined;
@@ -332,6 +347,7 @@ export function useTuttiModePlanPanels(input: {
           })
         : undefined;
     return () => {
+      planIssueRefreshRef.current = null;
       unsubscribe?.();
       unsubscribePlanIssue?.();
       if (activeScopeRef.current === scopeKey) {
@@ -385,6 +401,11 @@ export function useTuttiModePlanPanels(input: {
         });
         if (activeScopeRef.current !== capturedScope) return;
         await refresh();
+        // The decide response returns after the daemon completed the
+        // create_issue operation, so this read observes the materialized
+        // Issue immediately — the accepted review panel hands over to the
+        // issue panel in place without waiting for an event round-trip.
+        planIssueRefreshRef.current?.();
       } catch (error) {
         if (activeScopeRef.current === capturedScope) {
           setState((current) => ({ ...current, error }));
@@ -416,73 +437,126 @@ export function useTuttiModePlanPanels(input: {
     [visibleState.snapshots]
   );
 
+  const visiblePlanIssueResult =
+    planIssueState.scopeKey === scopeKey ? planIssueState.result : null;
   const visiblePlanIssue =
-    planIssueState.scopeKey === scopeKey ? planIssueState.issue : null;
-  const planIssueId = visiblePlanIssue?.issueId ?? "";
-  const decidePlanIssueTask =
-    planIssueSource && planIssueId
-      ? async (
-          taskId: string,
-          decision: TuttiPlanIssueTaskDecision
-        ): Promise<void> => {
-          // The daemon publishes workspace.issue.updated for the transition,
-          // so the subscription above refreshes without a manual poke.
-          if (decision === "accept") {
-            await planIssueSource.acceptTask({
-              workspaceId,
-              issueId: planIssueId,
-              taskId
-            });
-            return;
+    visiblePlanIssueResult?.kind === "issue"
+      ? visiblePlanIssueResult.issue
+      : null;
+  const visiblePlanIssueFailure = useMemo(
+    () =>
+      visiblePlanIssueResult?.kind === "materialization_failed"
+        ? {
+            workflowId: visiblePlanIssueResult.workflowId,
+            sourceTurnId: visiblePlanIssueResult.sourceTurnId,
+            errorMessage: visiblePlanIssueResult.errorMessage
           }
-          await planIssueSource.rejectTask({
-            workspaceId,
-            issueId: planIssueId,
-            taskId
-          });
-        }
-      : null;
+        : null,
+    [visiblePlanIssueResult]
+  );
+  const planIssueId = visiblePlanIssue?.issueId ?? "";
+  const decidePlanIssueTaskAction = useCallback(
+    async (
+      taskId: string,
+      decision: TuttiPlanIssueTaskDecision
+    ): Promise<void> => {
+      if (!planIssueSource || !planIssueId) return;
+      // The daemon publishes workspace.issue.updated for the transition, so
+      // the subscription above refreshes without a manual poke.
+      if (decision === "accept") {
+        await planIssueSource.acceptTask({
+          workspaceId,
+          issueId: planIssueId,
+          taskId
+        });
+        return;
+      }
+      await planIssueSource.rejectTask({
+        workspaceId,
+        issueId: planIssueId,
+        taskId
+      });
+    },
+    [planIssueId, planIssueSource, workspaceId]
+  );
+  const cancelPlanIssueExecutionAction =
+    useCallback(async (): Promise<void> => {
+      if (!planIssueSource || !planIssueId) return;
+      // Stop is one daemon-owned cascade: pause dispatch, cancel every running
+      // run. The issue-updated event refreshes the embed.
+      await planIssueSource.cancelExecution({
+        workspaceId,
+        issueId: planIssueId
+      });
+    }, [planIssueId, planIssueSource, workspaceId]);
+  const resolvePlanIssueTaskSessionAction = useCallback(
+    (taskId: string): Promise<{ agentSessionId: string } | null> => {
+      if (!planIssueSource || !planIssueId) return Promise.resolve(null);
+      return planIssueSource.resolveTaskSession({
+        workspaceId,
+        issueId: planIssueId,
+        taskId
+      });
+    },
+    [planIssueId, planIssueSource, workspaceId]
+  );
+  const decidePlanIssueTask =
+    planIssueSource && planIssueId ? decidePlanIssueTaskAction : null;
   const cancelPlanIssueExecution =
-    planIssueSource && planIssueId
-      ? async (): Promise<void> => {
-          // Stop is one daemon-owned cascade: pause dispatch, cancel every
-          // running run. The issue-updated event refreshes the embed.
-          await planIssueSource.cancelExecution({
-            workspaceId,
-            issueId: planIssueId
-          });
-        }
-      : null;
+    planIssueSource && planIssueId ? cancelPlanIssueExecutionAction : null;
   const resolvePlanIssueTaskSession =
-    planIssueSource && planIssueId
-      ? (taskId: string): Promise<{ agentSessionId: string } | null> =>
-          planIssueSource.resolveTaskSession({
-            workspaceId,
-            issueId: planIssueId,
-            taskId
-          })
-      : null;
+    planIssueSource && planIssueId ? resolvePlanIssueTaskSessionAction : null;
 
   const visibleAssignmentState =
     assignmentState.scopeKey === scopeKey
       ? assignmentState
       : emptyAssignmentState(scopeKey);
 
-  return {
-    assignmentCatalog: {
+  const assignmentCatalog = useMemo(
+    () => ({
       agents: assignmentSource ? visibleAssignmentState.agents : null,
       optionsByAgentId: visibleAssignmentState.optionsByAgentId,
       loadAgentOptions
-    },
-    decide,
-    error: visibleState.error,
-    loading: visibleState.loading,
-    panels,
-    planIssue: visiblePlanIssue,
-    decidePlanIssueTask,
-    cancelPlanIssueExecution,
-    resolvePlanIssueTaskSession,
-    retry: () => setRetrySequence((current) => current + 1),
-    submittingCheckpointId: visibleState.submittingCheckpointId
-  };
+    }),
+    [
+      assignmentSource,
+      loadAgentOptions,
+      visibleAssignmentState.agents,
+      visibleAssignmentState.optionsByAgentId
+    ]
+  );
+  const retry = useCallback(
+    () => setRetrySequence((current) => current + 1),
+    []
+  );
+  return useMemo(
+    () => ({
+      assignmentCatalog,
+      decide,
+      error: visibleState.error,
+      loading: visibleState.loading,
+      panels,
+      planIssue: visiblePlanIssue,
+      planIssueMaterializationFailure: visiblePlanIssueFailure,
+      decidePlanIssueTask,
+      cancelPlanIssueExecution,
+      resolvePlanIssueTaskSession,
+      retry,
+      submittingCheckpointId: visibleState.submittingCheckpointId
+    }),
+    [
+      assignmentCatalog,
+      cancelPlanIssueExecution,
+      decide,
+      decidePlanIssueTask,
+      panels,
+      resolvePlanIssueTaskSession,
+      retry,
+      visiblePlanIssue,
+      visiblePlanIssueFailure,
+      visibleState.error,
+      visibleState.loading,
+      visibleState.submittingCheckpointId
+    ]
+  );
 }

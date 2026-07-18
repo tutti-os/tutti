@@ -19,9 +19,22 @@ export interface TuttiModePlanReviewConnectionRestored {
   workspaceId: string;
 }
 
+/**
+ * A root turn of the source session settled. The host derives this from the
+ * daemon's canonical turn fan-out and relays it as a read-repair trigger: a
+ * plan proposed mid-turn announces itself through one workflow event, and if
+ * that single event is lost no later workflow signal re-reads review state.
+ */
+export interface TuttiModePlanReviewSessionSettled {
+  kind: "session_settled";
+  workspaceId: string;
+  sourceSessionId: string;
+}
+
 export type TuttiModePlanReviewInvalidation =
   | TuttiModePlanReviewUpdate
-  | TuttiModePlanReviewConnectionRestored;
+  | TuttiModePlanReviewConnectionRestored
+  | TuttiModePlanReviewSessionSettled;
 
 export interface TuttiModePlanTaskAssignmentInput {
   taskId: string;

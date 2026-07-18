@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import type {
+  AgentActivityUpdatedEventV1,
   TuttidEventStreamClient,
   WorkspaceWorkflowSnapshot,
   WorkspaceWorkflowUpdatedEventV1
@@ -411,23 +412,26 @@ test("desktop workflow runtime builds agent-scoped assignment option catalogs", 
   });
 });
 
-test("desktop workflow runtime scopes workflow events to the workspace", async () => {
+function createRecordingEventStreamClient(): {
+  eventStreamClient: Pick<
+    TuttidEventStreamClient,
+    "connect" | "subscribe" | "subscribeConnectionState"
+  >;
+  connectCount: () => number;
+  subscribedScopes: ReadonlyMap<string, unknown>;
+  emitWorkflowEvent: (event: WorkspaceWorkflowUpdatedEventV1) => void;
+  emitActivityEvent: (event: AgentActivityUpdatedEventV1) => void;
+} {
   let connectCount = 0;
-  let subscribedTopic = "";
-  let subscribedScope: unknown;
-  let eventListener:
-    | ((event: WorkspaceWorkflowUpdatedEventV1) => void)
-    | undefined;
+  const subscribedScopes = new Map<string, unknown>();
+  const listenersByTopic = new Map<string, (event: never) => void>();
   const eventStreamClient = {
     async connect() {
       connectCount += 1;
     },
     subscribe(topic, listener, options) {
-      subscribedTopic = topic;
-      eventListener = listener as (
-        event: WorkspaceWorkflowUpdatedEventV1
-      ) => void;
-      subscribedScope = options?.scope;
+      listenersByTopic.set(topic, listener as (event: never) => void);
+      subscribedScopes.set(topic, options?.scope);
       return () => undefined;
     },
     subscribeConnectionState() {
@@ -437,9 +441,33 @@ test("desktop workflow runtime scopes workflow events to the workspace", async (
     TuttidEventStreamClient,
     "connect" | "subscribe" | "subscribeConnectionState"
   >;
+  return {
+    eventStreamClient,
+    connectCount: () => connectCount,
+    subscribedScopes,
+    emitWorkflowEvent: (event) => {
+      (
+        listenersByTopic.get("workspace.workflow.updated") as
+          | ((event: WorkspaceWorkflowUpdatedEventV1) => void)
+          | undefined
+      )?.(event);
+    },
+    emitActivityEvent: (event) => {
+      (
+        listenersByTopic.get("agent.activity.updated") as
+          | ((event: AgentActivityUpdatedEventV1) => void)
+          | undefined
+      )?.(event);
+    }
+  };
+}
+
+test("desktop workflow runtime scopes workflow events to the workspace", async () => {
+  const stream = createRecordingEventStreamClient();
+  const eventListener = stream.emitWorkflowEvent;
   const runtime = createDesktopTuttiModePlanReviewRuntime({
     tuttidClient: {} as never,
-    eventStreamClient
+    eventStreamClient: stream.eventStreamClient
   });
   const updates: unknown[] = [];
 
@@ -471,9 +499,13 @@ test("desktop workflow runtime scopes workflow events to the workspace", async (
     }
   });
 
-  assert.equal(connectCount, 1);
-  assert.equal(subscribedTopic, "workspace.workflow.updated");
-  assert.deepEqual(subscribedScope, { workspaceId: "workspace-1" });
+  assert.equal(stream.connectCount(), 1);
+  assert.deepEqual(stream.subscribedScopes.get("workspace.workflow.updated"), {
+    workspaceId: "workspace-1"
+  });
+  assert.deepEqual(stream.subscribedScopes.get("agent.activity.updated"), {
+    workspaceId: "workspace-1"
+  });
   assert.deepEqual(updates, [
     {
       kind: "workflow_updated",
@@ -482,6 +514,65 @@ test("desktop workflow runtime scopes workflow events to the workspace", async (
       sourceSessionId: "session-1",
       checkpointId: "checkpoint-1",
       changeKind: "proposal_created"
+    }
+  ]);
+});
+
+test("desktop workflow runtime relays only settled turn updates as session_settled", async () => {
+  const stream = createRecordingEventStreamClient();
+  const runtime = createDesktopTuttiModePlanReviewRuntime({
+    tuttidClient: {} as never,
+    eventStreamClient: stream.eventStreamClient
+  });
+  const updates: unknown[] = [];
+
+  runtime.subscribe("workspace-1", (update) => updates.push(update));
+  await Promise.resolve();
+  const activityEvent = (
+    phase: "running" | "settled",
+    scopeWorkspaceId: string
+  ): AgentActivityUpdatedEventV1 => ({
+    id: `event-${phase}-${scopeWorkspaceId}`,
+    version: 2,
+    topic: "agent.activity.updated",
+    emittedAt: "2026-07-16T00:00:00.000Z",
+    scope: { workspaceId: scopeWorkspaceId },
+    payload: {
+      workspaceId: scopeWorkspaceId,
+      agentSessionId: "session-1",
+      eventType: "turn_update",
+      data: {
+        workspaceId: scopeWorkspaceId,
+        agentSessionId: "session-1",
+        eventType: "turn_update",
+        occurredAtUnixMs: 1,
+        activeTurnId: phase === "settled" ? null : "turn-1",
+        turn: {
+          turnId: "turn-1",
+          agentSessionId: "session-1",
+          phase,
+          outcome: phase === "settled" ? "completed" : null,
+          error: null,
+          fileChanges: null,
+          completedCommand: null,
+          startedAtUnixMs: 1,
+          settledAtUnixMs: phase === "settled" ? 2 : null,
+          updatedAtUnixMs: 2
+        }
+      }
+    }
+  });
+
+  // Mid-turn updates and other workspaces' settles must not fire read-repair.
+  stream.emitActivityEvent(activityEvent("running", "workspace-1"));
+  stream.emitActivityEvent(activityEvent("settled", "workspace-2"));
+  stream.emitActivityEvent(activityEvent("settled", "workspace-1"));
+
+  assert.deepEqual(updates, [
+    {
+      kind: "session_settled",
+      workspaceId: "workspace-1",
+      sourceSessionId: "session-1"
     }
   ]);
 });

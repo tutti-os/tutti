@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type RefObject } from "react";
+import { useState, type RefObject } from "react";
 import type { WorkspaceLinkAction } from "../../../actions/workspaceLinkActions";
 import {
   mergeTaskAssignmentDraft,
@@ -107,20 +107,6 @@ export function useAgentGUITuttiPlanReview(input: {
     sourceSessionId: viewModel.rail.activeConversationId,
     decidedBy: viewModel.shell.currentUserId?.trim() || "local"
   });
-  // A plan proposed mid-turn announces itself through one workflow event; if
-  // that single event is lost (reconnect gap, transient scope teardown), no
-  // later signal re-reads the review state and the panel stays invisible
-  // until a remount. The turn settling is the natural read-repair point.
-  const activeConversationWorking =
-    viewModel.rail.activeConversation?.status === "working";
-  const wasWorkingRef = useRef(false);
-  const refetchPlanPanels = tuttiModePlanPanels.refetch;
-  useEffect(() => {
-    if (wasWorkingRef.current && !activeConversationWorking) {
-      refetchPlanPanels();
-    }
-    wasWorkingRef.current = activeConversationWorking;
-  }, [activeConversationWorking, refetchPlanPanels]);
   // Assignment drafts are host-owned (keyed by panel id) so a composer-driven
   // accept can carry them; the panel only renders and reports edits.
   const [planAssignmentDrafts, setPlanAssignmentDrafts] = useState<
