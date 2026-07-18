@@ -170,9 +170,13 @@ export function WorkspaceSettingsTrigger({
       settingsPanelRequest.requestSequence;
     settingsService.openPanel(
       { id: workspace.id },
-      settingsPanelRequest.section
+      settingsPanelRequest.section || settingsPanelRequest.pane
         ? {
-            section: settingsPanelRequest.section as WorkspaceSettingsSectionID
+            section: settingsPanelRequest.section
+              ? (settingsPanelRequest.section as WorkspaceSettingsSectionID)
+              : undefined,
+            pane: settingsPanelRequest.pane ?? undefined,
+            provider: settingsPanelRequest.provider ?? undefined
           }
         : undefined
     );

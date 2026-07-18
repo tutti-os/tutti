@@ -446,6 +446,21 @@ export const zhCN = {
     },
     settings: {
       close: "关闭设置",
+      agent: {
+        agents: {
+          empty: "暂无可显示的 Agent。",
+          previewBadge: "预览",
+          moreFor: "{{agent}} 的更多选项",
+          previewHiddenHint:
+            "在实验室中开启 Preview Agents 即可管理 {{agent}}。",
+          showInSidebar: "在侧边栏显示",
+          showInSidebarFor: "在侧边栏显示 {{agent}}"
+        },
+        tabs: {
+          agents: "Agents",
+          general: "通用设置"
+        }
+      },
       appearance: {
         dockPlacementDescription: "控制工作区 dock 栏停靠的位置",
         dockPlacementLabel: "Dock 布局",
@@ -871,7 +886,7 @@ export const zhCN = {
         newSameTypeWindowShortcutLabel: "新建同类型窗口",
         preferencesSaveFailed: "暂时无法更新实验室设置",
         previewAgentsDescription:
-          "在 Agent 列表和 Agent 选择器中显示 Beta、Preview 和接入中的 Agent。",
+          "在 Agents 设置列表中显示 Beta、Preview 和接入中的 Agent（例如 Hermes）。",
         previewAgentsLabel: "Preview Agents",
         shortcutUnbound: "未绑定",
         workbenchShortcutsDescription: "启用可配置的工作台快捷键操作",

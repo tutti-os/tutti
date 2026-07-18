@@ -446,8 +446,13 @@ export function AgentGUINodeView({
     selectedAgentTarget: viewModel.rail.selectedAgentTarget
   });
   const openAgentSettings = useCallback(() => {
-    openWorkspaceSettingsPanel({ section: "agent" });
-  }, []);
+    // Provider-scoped config menu -> Agents tab, focusing this provider's row.
+    openWorkspaceSettingsPanel({
+      section: "agent",
+      pane: "agents",
+      provider: effectiveRailConfigProvider ?? undefined
+    });
+  }, [effectiveRailConfigProvider]);
   const [renameConversationTarget, setRenameConversationTarget] = useState<
     AgentGUINodeViewModel["rail"]["conversations"][number] | null
   >(null);
@@ -644,7 +649,6 @@ export function AgentGUINodeView({
                   providerAuthAccountLabel={effectiveProviderAuthAccountLabel}
                   onAgentConfigMenuOpen={onAgentConfigMenuOpen}
                   onAgentUsageRefresh={onAgentUsageRefresh}
-                  onOpenAgentManager={() => setProviderManagerOpen(true)}
                   onOpenAgentEnvSetup={openAgentEnvSetup}
                   onOpenAgentSettings={openAgentSettings}
                 />

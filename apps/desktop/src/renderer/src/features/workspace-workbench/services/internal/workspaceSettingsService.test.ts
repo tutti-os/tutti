@@ -1602,3 +1602,41 @@ async function waitFor(predicate: () => boolean): Promise<void> {
 
   assert.fail("Timed out waiting for condition");
 }
+
+test("WorkspaceSettingsService selects the agent sub-tab without side effects", () => {
+  const service = new WorkspaceSettingsService({
+    client: createWorkspaceSettingsClient({})
+  });
+  service.openPanel({ id: "workspace-1" });
+  assert.equal(service.store.agentTab, "general");
+  service.selectAgentTab("agents");
+  assert.equal(service.store.agentTab, "agents");
+  // Idempotent: selecting the same tab is a no-op.
+  service.selectAgentTab("agents");
+  assert.equal(service.store.agentTab, "agents");
+});
+
+test("WorkspaceSettingsService deep-links openPanel to the Agents tab and focuses a provider", () => {
+  const service = new WorkspaceSettingsService({
+    client: createWorkspaceSettingsClient({})
+  });
+  const before = service.store.agentFocusRequestID;
+  service.openPanel(
+    { id: "workspace-1" },
+    { pane: "agents", provider: "hermes" }
+  );
+  assert.equal(service.store.activeSection, "agent");
+  assert.equal(service.store.agentTab, "agents");
+  assert.equal(service.store.agentFocusProvider, "hermes");
+  assert.equal(service.store.agentFocusRequestID, before + 1);
+});
+
+test("WorkspaceSettingsService Agents deep-link works without a provider (blank focus)", () => {
+  const service = new WorkspaceSettingsService({
+    client: createWorkspaceSettingsClient({})
+  });
+  service.openPanel({ id: "workspace-1" }, { pane: "agents" });
+  assert.equal(service.store.activeSection, "agent");
+  assert.equal(service.store.agentTab, "agents");
+  assert.equal(service.store.agentFocusProvider, null);
+});

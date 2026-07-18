@@ -106,6 +106,8 @@ import {
   resolveDesktopWorkspaceUiMode
 } from "../../../../../shared/featureFlags/catalog.ts";
 import { resolveWorkspaceAgentGuiLabel } from "../services/workspaceAgentProviderCatalog";
+import { IAgentProviderStatusService } from "../../workspace-agent/services/agentProviderStatusService.interface.ts";
+import { WorkspaceAgentsSettingsTab } from "./WorkspaceAgentsSettingsTab.tsx";
 import {
   desktopThemeSources,
   type DesktopThemeAppearance,
@@ -189,6 +191,11 @@ export function WorkspaceSettingsPanel({
   const labSectionVisible =
     settingsState.developerPanelVisible &&
     isFeatureEnabled(pendingFeatureFlags, LAB_ENABLED_FLAG);
+  const previewAgentsEnabled = isFeatureEnabled(
+    pendingFeatureFlags,
+    LAB_PREVIEW_AGENTS_FLAG
+  );
+  const agentProviderStatusService = useService(IAgentProviderStatusService);
 
   useEffect(() => {
     if (settingsState.open) {
@@ -371,38 +378,86 @@ export function WorkspaceSettingsPanel({
                 }
               />
             ) : settingsState.activeSection === "agent" ? (
-              <WorkspaceAgentSettingsSection
-                agentConversationDetailMode={
-                  desktopPreferencesState.agentConversationDetailMode
-                }
-                browserUseConnectionMode={
-                  desktopPreferencesState.browserUseConnectionMode
-                }
-                changingAgentConversationDetailMode={
-                  desktopPreferencesState.changingAgentConversationDetailMode
-                }
-                changingDefaultAgentProvider={
-                  desktopPreferencesState.changingDefaultAgentProvider
-                }
-                changingBrowserUseConnectionMode={
-                  desktopPreferencesState.changingBrowserUseConnectionMode
-                }
-                defaultAgentProvider={
-                  desktopPreferencesState.defaultAgentProvider
-                }
-                focusedAnchor={settingsState.generalFocusAnchor}
-                focusRequestID={settingsState.generalFocusRequestID}
-                onBrowserUseConnectionModeChange={(mode) => {
-                  void settingsService.changeBrowserUseConnectionMode(mode);
-                }}
-                onAgentConversationDetailModeChange={(mode) => {
-                  void settingsService.changeAgentConversationDetailMode(mode);
-                }}
-                onDefaultAgentProviderChange={(provider) => {
-                  void settingsService.changeDefaultAgentProvider(provider);
-                }}
-                onOpenExternalAgentImport={onOpenExternalAgentImport}
-              />
+              <div className="flex min-h-0 flex-col gap-3">
+                <div
+                  aria-label={t("workspace.settings.nav.agent")}
+                  className="flex items-center gap-1 border-b border-[var(--border-1)]"
+                  role="tablist"
+                >
+                  {[
+                    {
+                      id: "general" as const,
+                      label: t("workspace.settings.agent.tabs.general")
+                    },
+                    {
+                      id: "agents" as const,
+                      label: t("workspace.settings.agent.tabs.agents")
+                    }
+                  ].map((tab) => {
+                    const active = settingsState.agentTab === tab.id;
+                    return (
+                      <button
+                        key={tab.id}
+                        aria-selected={active}
+                        className={cn(
+                          "-mb-px border-0 border-b-2 bg-transparent px-2 py-1.5 text-[13px] font-semibold leading-[1.35] outline-none transition-colors duration-150 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--border-focus)]",
+                          active
+                            ? "border-[var(--text-primary)] text-[var(--text-primary)]"
+                            : "border-transparent text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
+                        )}
+                        role="tab"
+                        type="button"
+                        onClick={() => settingsService.selectAgentTab(tab.id)}
+                      >
+                        {tab.label}
+                      </button>
+                    );
+                  })}
+                </div>
+                {settingsState.agentTab === "agents" ? (
+                  <WorkspaceAgentsSettingsTab
+                    agentProviderStatusService={agentProviderStatusService}
+                    focusProvider={settingsState.agentFocusProvider}
+                    focusRequestID={settingsState.agentFocusRequestID}
+                    previewEnabled={previewAgentsEnabled}
+                  />
+                ) : (
+                  <WorkspaceAgentSettingsSection
+                    agentConversationDetailMode={
+                      desktopPreferencesState.agentConversationDetailMode
+                    }
+                    browserUseConnectionMode={
+                      desktopPreferencesState.browserUseConnectionMode
+                    }
+                    changingAgentConversationDetailMode={
+                      desktopPreferencesState.changingAgentConversationDetailMode
+                    }
+                    changingDefaultAgentProvider={
+                      desktopPreferencesState.changingDefaultAgentProvider
+                    }
+                    changingBrowserUseConnectionMode={
+                      desktopPreferencesState.changingBrowserUseConnectionMode
+                    }
+                    defaultAgentProvider={
+                      desktopPreferencesState.defaultAgentProvider
+                    }
+                    focusedAnchor={settingsState.generalFocusAnchor}
+                    focusRequestID={settingsState.generalFocusRequestID}
+                    onBrowserUseConnectionModeChange={(mode) => {
+                      void settingsService.changeBrowserUseConnectionMode(mode);
+                    }}
+                    onAgentConversationDetailModeChange={(mode) => {
+                      void settingsService.changeAgentConversationDetailMode(
+                        mode
+                      );
+                    }}
+                    onDefaultAgentProviderChange={(provider) => {
+                      void settingsService.changeDefaultAgentProvider(provider);
+                    }}
+                    onOpenExternalAgentImport={onOpenExternalAgentImport}
+                  />
+                )}
+              </div>
             ) : settingsState.activeSection === "appearance" ? (
               <WorkspaceAppearanceSettingsSection
                 changingDockPlacement={

@@ -106,7 +106,11 @@ export function StandaloneAgentWindowPanelHosts({
           settingsPanelRequest.section === "agent"
             ? "general"
             : ((settingsPanelRequest.section ??
-                "general") as WorkspaceSettingsSectionID)
+                "general") as WorkspaceSettingsSectionID),
+        // openPanel forces the agent section when pane is "agents", so the
+        // section remap above does not swallow an Agents-tab deep link.
+        pane: settingsPanelRequest.pane ?? undefined,
+        provider: settingsPanelRequest.provider ?? undefined
       }
     );
   }, [settingsPanelRequest, workspace.id, workspaceSettingsService]);

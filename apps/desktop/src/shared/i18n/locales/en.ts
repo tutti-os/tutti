@@ -461,6 +461,21 @@ export const en = {
     },
     settings: {
       close: "Close settings",
+      agent: {
+        agents: {
+          empty: "No agents to show.",
+          previewBadge: "Preview",
+          moreFor: "More options for {{agent}}",
+          previewHiddenHint:
+            "Turn on Preview Agents in Labs to manage {{agent}}.",
+          showInSidebar: "Show in sidebar",
+          showInSidebarFor: "Show {{agent}} in the sidebar"
+        },
+        tabs: {
+          agents: "Agents",
+          general: "General Settings"
+        }
+      },
       appearance: {
         dockPlacementDescription:
           "Controls where the workspace dock is anchored",
@@ -921,7 +936,7 @@ export const en = {
         newSameTypeWindowShortcutLabel: "New same-type window",
         preferencesSaveFailed: "We couldn't update Lab preferences.",
         previewAgentsDescription:
-          "Show Beta, Preview, and in-progress agents in the Agents list and agent pickers.",
+          "Show Beta, Preview, and in-progress agents (e.g. Hermes) in the Agents settings list.",
         previewAgentsLabel: "Preview Agents",
         shortcutUnbound: "Unbound",
         workbenchShortcutsDescription:

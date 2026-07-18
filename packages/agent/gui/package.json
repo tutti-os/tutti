@@ -37,7 +37,8 @@
     "./workbench/browser-element-context": "./workbench/browser-element-context/index.ts",
     "./workbench/tool-sidebar": "./workbench/tool-sidebar/index.ts",
     "./workbench/types": "./workbench/types.ts",
-    "./styles.css": "./app/renderer/agentactivity.css"
+    "./styles.css": "./app/renderer/agentactivity.css",
+    "./agent-sidebar-preferences": "./agent-sidebar-preferences.ts"
   },
   "files": [
     "dist",
