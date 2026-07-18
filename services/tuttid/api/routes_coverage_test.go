@@ -18,7 +18,7 @@ func (m *recordingServeMux) HandleFunc(pattern string, _ func(http.ResponseWrite
 	m.patterns = append(m.patterns, pattern)
 }
 
-func (m *recordingServeMux) ServeHTTP(http.ResponseWriter, *http.Request) {}
+func (*recordingServeMux) ServeHTTP(http.ResponseWriter, *http.Request) {}
 
 // coverageStubRoutes satisfies Routes for registration only; no handler is
 // ever invoked, so the embedded nil ServerInterface is never dereferenced.
