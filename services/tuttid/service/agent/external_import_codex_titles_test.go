@@ -23,11 +23,11 @@ func TestScanExternalImportsAppliesCodexSQLiteTitle(t *testing.T) {
 
 	writeAgentServiceJSONL(t, filepath.Join(codexHome, "sessions", "codex-x.jsonl"),
 		map[string]any{
-			"timestamp": "2026-06-18T00:00:00Z",
+			"timestamp": "2026-07-15T00:00:00Z",
 			"type":      "session_meta",
 			"payload":   map[string]any{"id": "codex-x", "cwd": project},
 		},
-		map[string]any{"timestamp": "2026-06-18T00:00:01Z", "type": "response_item", "payload": map[string]any{
+		map[string]any{"timestamp": "2026-07-15T00:00:01Z", "type": "response_item", "payload": map[string]any{
 			"type": "message", "id": "codex-x-1", "role": "user",
 			"content": []any{map[string]any{"type": "input_text", "text": "First raw prompt"}},
 		}},

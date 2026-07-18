@@ -3227,7 +3227,7 @@ type ExternalAgentImportSession struct {
 	MessageCount        int                    `json:"messageCount"`
 	ProjectPath         string                 `json:"projectPath"`
 	Provider            WorkspaceAgentProvider `json:"provider"`
-	SourcePath          string                 `json:"sourcePath"`
+	SourcePath          *string                `json:"sourcePath,omitempty"`
 	Title               string                 `json:"title"`
 }
 

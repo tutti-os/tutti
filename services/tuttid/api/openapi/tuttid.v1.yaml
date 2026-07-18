@@ -8085,7 +8085,6 @@ components:
         - id
         - projectPath
         - provider
-        - sourcePath
         - title
         - messageCount
       properties:
@@ -8100,6 +8099,7 @@ components:
         sourcePath:
           type: string
           minLength: 1
+          nullable: true
         title:
           type: string
           minLength: 1

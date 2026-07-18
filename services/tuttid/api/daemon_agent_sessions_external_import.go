@@ -250,8 +250,12 @@ func generatedExternalImportSessions(sessions []agentservice.ExternalImportSessi
 			MessageCount: session.MessageCount,
 			ProjectPath:  strings.TrimSpace(session.ProjectPath),
 			Provider:     tuttigenerated.WorkspaceAgentProvider(session.Provider),
-			SourcePath:   strings.TrimSpace(session.SourcePath),
 			Title:        strings.TrimSpace(session.Title),
+		}
+		// Archive-only imports (e.g. ChatGPT) redact the local path, so only
+		// surface sourcePath when present. The contract marks it nullable.
+		if sourcePath := strings.TrimSpace(session.SourcePath); sourcePath != "" {
+			generated.SourcePath = &sourcePath
 		}
 		if session.LastUpdatedAtUnixMS > 0 {
 			generated.LastUpdatedAtUnixMs = &session.LastUpdatedAtUnixMS

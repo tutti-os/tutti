@@ -1722,7 +1722,7 @@ export type ExternalAgentImportSession = {
   id: string;
   projectPath: string;
   provider: WorkspaceAgentProvider;
-  sourcePath: string;
+  sourcePath?: string | null;
   title: string;
   messageCount: number;
   lastUpdatedAtUnixMs?: number | null;
