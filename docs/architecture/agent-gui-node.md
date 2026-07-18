@@ -571,4 +571,3 @@ Any change to an owner, data flow, public contract, or recurring trap requires d
 - [Desktop Layering](../conventions/desktop-layering.md)
 - [Agent Runtime Troubleshooting](../conventions/troubleshooting/agent-runtime.md)
 - [Agent GUI Refactor History](./agent-gui-refactor-plan.md)
-

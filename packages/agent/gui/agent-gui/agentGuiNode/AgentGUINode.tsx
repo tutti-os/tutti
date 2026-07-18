@@ -150,6 +150,7 @@ export const AgentGUINode = memo(function AgentGUINode({
     onLinkAction,
     onHandoffConversation,
     onCapabilitySettingsRequest,
+    onAgentEnvPanelOpen,
     onAgentProviderLogin,
     onAgentEnvPanelOpen,
     onOpenConversationWindow,
@@ -655,6 +656,7 @@ export const AgentGUINode = memo(function AgentGUINode({
               onHandoffConversation={onHandoffConversation}
               capabilityMenuState={capabilityMenuState}
               onCapabilitySettingsRequest={onCapabilitySettingsRequest}
+              onAgentEnvPanelOpen={onAgentEnvPanelOpen}
               onAgentProviderLogin={
                 onAgentProviderLogin ? handleAgentProviderLogin : undefined
               }

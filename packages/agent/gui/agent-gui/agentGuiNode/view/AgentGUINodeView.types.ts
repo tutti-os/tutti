@@ -43,6 +43,7 @@ import type {
 } from "../../../workspaceWorkflow";
 import type { TuttiPlanReviewBannerLabels } from "../TuttiPlanReviewBanner";
 import type { TuttiPlanIssueStatusStripLabels } from "../TuttiPlanIssueStatusStrip";
+import type { OpenAgentEnvPanelInput } from "../../../shared/agentEnv";
 
 export type AgentMentionReferenceTargetResolver = (
   item: AgentContextMentionItem

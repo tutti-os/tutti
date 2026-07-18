@@ -9,6 +9,7 @@ import {
   useState
 } from "react";
 import { TooltipProvider } from "@tutti-os/ui-system";
+import { AgentEnvPanelActionProvider } from "../../shared/agentEnv";
 import { openWorkspaceSettingsPanel } from "../../shared/workspaceSettingsPanel/workspaceSettingsPanelStore";
 import {
   AgentTargetPresentationProvider,
@@ -775,5 +776,14 @@ export function AgentGUINodeView({
     </AgentTargetPresentationProvider>
   );
 
-  return previewMode ? content : <TooltipProvider>{content}</TooltipProvider>;
+  const hostBoundContent = (
+    <AgentEnvPanelActionProvider openPanel={onAgentEnvPanelOpen}>
+      {content}
+    </AgentEnvPanelActionProvider>
+  );
+  return previewMode ? (
+    hostBoundContent
+  ) : (
+    <TooltipProvider>{hostBoundContent}</TooltipProvider>
+  );
 }

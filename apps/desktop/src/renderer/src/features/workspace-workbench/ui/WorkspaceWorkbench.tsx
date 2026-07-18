@@ -30,6 +30,7 @@ import { useWorkspaceCatalogService } from "@renderer/features/workspace-catalog
 import { AgentEnvPanel } from "@renderer/features/workspace-agent/ui/AgentEnvPanel.tsx";
 import { DesktopAgentProviderManageDialog } from "@renderer/features/workspace-agent/ui/DesktopAgentProviderManageDialog.tsx";
 import { IAgentProviderStatusService } from "@renderer/features/workspace-agent/services/agentProviderStatusService.interface.ts";
+import { IAgentEnvService } from "@renderer/features/workspace-agent/services/agentEnvService.interface.ts";
 import { IAgentsService } from "@renderer/features/workspace-agent/services/agentsService.interface.ts";
 import { IWorkspaceAgentActivityService } from "@renderer/features/workspace-agent/services/workspaceAgentActivityService.interface.ts";
 import { IAgentEnvService } from "@renderer/features/workspace-agent/services/agentEnvService.interface.ts";
@@ -226,6 +227,7 @@ function ReadyWorkspaceWorkbenchWithSession({
   hostSession: WorkspaceWorkbenchHostSessionBinding;
 }) {
   const { service: appCenterService } = useWorkspaceAppCenterService();
+  const agentEnvService = useService(IAgentEnvService);
   const agentsService = useService(IAgentsService);
   const workspaceAgentActivityService = useService(
     IWorkspaceAgentActivityService
@@ -284,6 +286,12 @@ function ReadyWorkspaceWorkbenchWithSession({
   const hostInput = runtime.hostInput;
   const [workbenchHost, setWorkbenchHost] =
     useState<WorkbenchHostHandle | null>(null);
+  useEffect(() => {
+    if (!workbenchHost) {
+      return;
+    }
+    return agentEnvService.bindWorkbenchHost(workbenchHost);
+  }, [agentEnvService, workbenchHost]);
   const [temporaryDockRetentionByEntryId, setTemporaryDockRetentionByEntryId] =
     useState<Record<string, boolean>>({});
   const [launchpadOpen, setLaunchpadOpen] = useState(false);
