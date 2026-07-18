@@ -83,6 +83,7 @@ export function useStableDesktopAgentGUIHostProps({
       composerAppend: nextRuntimeRequests.composerAppend,
       composerFocusSequence: nextRuntimeRequests.composerFocusSequence,
       newConversationSequence: nextRuntimeRequests.newConversationSequence,
+      sessionAction: nextRuntimeRequests.sessionAction,
       openSession: nextRuntimeRequests.openSession,
       prefillPrompt: nextRuntimeRequests.prefillPrompt,
       agentProbes: nextRuntimeRequests.agentProbes,

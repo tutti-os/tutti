@@ -515,7 +515,6 @@ describe("useAgentGUIConversationRailQuery search", () => {
             onConfirmDeleteProjectConversations={async () => []}
             onConversationQueryChange={() => {}}
             onCreateConversation={() => {}}
-            onMarkConversationUnread={() => {}}
             onRemoveProject={() => {}}
             onMoveProject={async () => {}}
             onRequestDeleteConversation={() => {}}
@@ -524,6 +523,7 @@ describe("useAgentGUIConversationRailQuery search", () => {
             onSelectConversationFilterTarget={() => {}}
             onToggleConversationPinned={() => {}}
             onToggleProjectPinned={async () => {}}
+            onMarkConversationUnread={() => {}}
             onUpdateConversationFilter={() => {}}
           />
         </Profiler>
@@ -633,7 +633,6 @@ describe("useAgentGUIConversationRailQuery search", () => {
           onConfirmDeleteProjectConversations={async () => []}
           onConversationQueryChange={() => {}}
           onCreateConversation={() => {}}
-          onMarkConversationUnread={() => {}}
           onRemoveProject={() => {}}
           onMoveProject={async () => {}}
           onRequestDeleteConversation={() => {}}
@@ -642,6 +641,7 @@ describe("useAgentGUIConversationRailQuery search", () => {
           onSelectConversationFilterTarget={() => {}}
           onToggleConversationPinned={() => {}}
           onToggleProjectPinned={async () => {}}
+          onMarkConversationUnread={() => {}}
           onUpdateConversationFilter={() => {}}
         />
       );
@@ -947,7 +947,6 @@ const RAIL_LABELS = {
   emptyProjectConversations: "No conversations",
   fallbackAgentTitle: "Agent",
   loadingConversations: "Loading conversations",
-  markSessionUnread: "Mark unread",
   newConversation: "New conversation",
   noConversations: "No conversations",
   openConversationWindow: "Open in window",

@@ -1700,6 +1700,14 @@ describe("agent GUI workbench contribution copy", () => {
   it("renders the expanded workbench header as a rail titlebar plus detail title", () => {
     const openDetachedWindow = vi.fn();
     const contribution = createTestAgentGuiWorkbenchContribution({
+      copy: {
+        sessionMenu: {
+          copyAsMarkdown: "Copy as Markdown",
+          copyAsReference: "Copy as reference",
+          moreSessionActions: "More session actions",
+          renameSession: "Rename session"
+        }
+      },
       onOpenDetachedWindow: openDetachedWindow,
       renderBody: () => null,
       resolveDockPopupIdentity: (state) =>
@@ -1795,6 +1803,12 @@ describe("agent GUI workbench contribution copy", () => {
     expect(
       screen.getByTestId("agent-gui-window-detail-title-icon")
     ).toHaveAttribute("src", "tutti-asset://agent/codex-session.png");
+    const sessionMenuTrigger = screen.getByTestId(
+      "agent-gui-session-menu-trigger"
+    );
+    expect(
+      screen.getByTestId("agent-gui-window-detail-title")
+    ).toContainElement(sessionMenuTrigger);
     expect(
       screen.queryByRole("button", { name: "window actions" })
     ).not.toBeInTheDocument();
@@ -1895,7 +1909,7 @@ describe("agent GUI workbench contribution copy", () => {
     const css = readFileSync(resolve("app/renderer/agentactivity.css"), "utf8");
 
     expect(css).toMatch(
-      /\.agent-gui-workbench-header__rich-title\s*{[^}]*display:\s*block;[^}]*width:\s*0;[^}]*height:\s*24px;[^}]*flex:\s*1 1 0;[^}]*overflow:\s*hidden;/s
+      /\.agent-gui-workbench-header__rich-title\s*{[^}]*display:\s*block;[^}]*width:\s*max-content;[^}]*max-width:\s*calc\(100% - 36px\);[^}]*height:\s*24px;[^}]*flex:\s*0 1 auto;[^}]*overflow:\s*hidden;/s
     );
     expect(css).toMatch(
       /\.agent-gui-workbench-header__rich-title > div,\s*\.agent-gui-workbench-header__rich-title \.ProseMirror\s*{[^}]*width:\s*100%;[^}]*height:\s*24px;[^}]*overflow:\s*visible;/s

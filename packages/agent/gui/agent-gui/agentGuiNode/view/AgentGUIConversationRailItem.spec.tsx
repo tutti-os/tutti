@@ -175,6 +175,51 @@ describe("AgentGUIConversationRailItem interaction lock", () => {
     );
   });
 
+  it("keeps pin and delete as direct row actions outside the menu", () => {
+    renderRailItem({ isRailInteractionLocked: () => false });
+
+    expect(screen.getByRole("button", { name: "Pin" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Delete" })).toBeTruthy();
+  });
+
+  it("uses the same shared actions for the more button and context menu", async () => {
+    renderRailItem({ isRailInteractionLocked: () => false });
+
+    fireEvent.pointerDown(
+      screen.getByRole("button", { name: "More actions" }),
+      { button: 0 }
+    );
+    for (const label of [
+      "Rename",
+      "Copy as Markdown",
+      "Copy as reference",
+      "Mark as unread"
+    ]) {
+      expect(await screen.findByRole("menuitem", { name: label })).toBeTruthy();
+    }
+    for (const label of ["Pin", "Delete", "Archive"]) {
+      expect(screen.queryByRole("menuitem", { name: label })).toBeNull();
+    }
+    fireEvent.keyDown(document.activeElement ?? document.body, {
+      key: "Escape"
+    });
+
+    fireEvent.contextMenu(
+      screen.getByTestId("agent-gui-conversation-item-session-1")
+    );
+    for (const label of [
+      "Rename",
+      "Copy as Markdown",
+      "Copy as reference",
+      "Mark as unread"
+    ]) {
+      expect(await screen.findByRole("menuitem", { name: label })).toBeTruthy();
+    }
+    for (const label of ["Pin", "Delete", "Archive"]) {
+      expect(screen.queryByRole("menuitem", { name: label })).toBeNull();
+    }
+  });
+
   it("keeps the focused trigger mounted and unmounts content after Escape", async () => {
     renderRailItem({ isRailInteractionLocked: () => false });
 
@@ -242,13 +287,13 @@ function renderRailItem(overrides: {
       workspaceId="workspace-1"
       onCancelDeleteConversation={() => {}}
       onConfirmDeleteConversation={() => {}}
-      onMarkConversationUnread={() => {}}
       onRequestDeleteConversation={() => {}}
       onRequestRenameConversation={
         overrides.onRequestRenameConversation ?? vi.fn()
       }
       onSelectConversation={overrides.onSelectConversation ?? vi.fn()}
       onToggleConversationPinned={() => {}}
+      onMarkConversationUnread={() => {}}
     />
   );
   return render(
@@ -263,11 +308,20 @@ function renderRailItem(overrides: {
 }
 
 const RAIL_ITEM_LABELS = {
-  copySessionLink: "Copy link",
+  copiedToClipboard: "Copied",
+  copyAsMarkdown: "Copy as Markdown",
+  copyAsReference: "Copy as reference",
+  copyFailed: "Copy failed",
+  conversationCopyFile: "File",
+  conversationCopyImage: "Image",
+  conversationCopyImagesOmitted: "{{count}} image(s) omitted",
+  conversationCopyMentionPrefix: "@",
+  conversationCopyPreviousMessages: "{{count}} previous messages",
   deleteSession: "Delete",
   deleteSessionConfirm: "Confirm delete",
   fallbackAgentTitle: "Agent",
-  markSessionUnread: "Mark unread",
+  markSessionUnread: "Mark as unread",
+  moreSessionActions: "More actions",
   openConversationWindow: "Open in window",
   pinSession: "Pin",
   relativeTimeDays: (value: number) => `${value} days`,
@@ -278,4 +332,4 @@ const RAIL_ITEM_LABELS = {
   relativeTimeYears: (value: number) => `${value} years`,
   renameSession: "Rename",
   unpinSession: "Unpin"
-} as AgentGUIViewLabels;
+} as unknown as AgentGUIViewLabels;

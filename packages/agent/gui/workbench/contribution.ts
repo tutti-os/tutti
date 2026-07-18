@@ -33,6 +33,17 @@ import type {
   AgentGuiWorkbenchState
 } from "./types.ts";
 import type { AgentGUIAgentDirectoryPort } from "../types.ts";
+import {
+  AGENT_GUI_WORKBENCH_SESSION_ACTION_EVENT,
+  dispatchAgentGuiWorkbenchSessionAction,
+  isAgentGuiWorkbenchSessionAction
+} from "./sessionActions.ts";
+import type {
+  AgentGuiWorkbenchSessionAction,
+  AgentGuiWorkbenchSessionActionDetail,
+  AgentGuiWorkbenchSessionActionRequest,
+  AgentGuiWorkbenchSessionMenuCopy
+} from "./sessionActions.ts";
 
 export const AGENT_GUI_WORKBENCH_CONVERSATION_RAIL_TOGGLE_EVENT =
   "tutti:agent-gui-workbench-conversation-rail-toggle";
@@ -57,6 +68,18 @@ export interface AgentGuiWorkbenchNewConversationDetail {
   instanceId: string;
 }
 
+export {
+  AGENT_GUI_WORKBENCH_SESSION_ACTION_EVENT,
+  dispatchAgentGuiWorkbenchSessionAction,
+  isAgentGuiWorkbenchSessionAction
+};
+export type {
+  AgentGuiWorkbenchSessionAction,
+  AgentGuiWorkbenchSessionActionDetail,
+  AgentGuiWorkbenchSessionActionRequest,
+  AgentGuiWorkbenchSessionMenuCopy
+};
+
 export type { AgentGuiWorkbenchConversationIdentity } from "./conversationIdentity.ts";
 
 export interface AgentGuiWorkbenchContributionCopy {
@@ -71,6 +94,7 @@ export interface AgentGuiWorkbenchContributionCopy {
   openDetachedWindow: string;
   restore: string;
   untitledConversation: string;
+  sessionMenu?: AgentGuiWorkbenchSessionMenuCopy | null;
 }
 
 export type AgentGuiWorkbenchContributionCopyOverrides =
@@ -291,6 +315,15 @@ export function createAgentGuiWorkbenchContribution(
               )
             );
           };
+          const announceSessionAction = (
+            action: AgentGuiWorkbenchSessionAction
+          ) => {
+            dispatchAgentGuiWorkbenchSessionAction({
+              action,
+              agentSessionId: workbenchState.lastActiveAgentSessionId,
+              instanceId
+            });
+          };
 
           const headerProps = {
             copy,
@@ -309,6 +342,7 @@ export function createAgentGuiWorkbenchContribution(
             },
             ...dragHandleProps,
             onCreateConversation: announceNewConversation,
+            onSessionAction: announceSessionAction,
             onOpenDetachedWindow: input.onOpenDetachedWindow
               ? selectedAgent
                 ? () => {

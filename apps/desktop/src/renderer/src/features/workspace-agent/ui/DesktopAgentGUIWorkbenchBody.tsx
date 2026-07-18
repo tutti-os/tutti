@@ -458,7 +458,10 @@ function DesktopAgentGUISurfaceImpl({
     previewMode
   ]);
 
-  const newConversationRequestSequence = useDesktopAgentGUIWorkbenchEvents({
+  const {
+    newConversationSequence: newConversationRequestSequence,
+    sessionActionRequest
+  } = useDesktopAgentGUIWorkbenchEvents({
     instanceId: surface.instanceId,
     onConversationRailToggle: (conversationRailCollapsed) => {
       handleUpdateNode((current) => ({
@@ -545,6 +548,7 @@ function DesktopAgentGUISurfaceImpl({
       toast: {
         error: Toast.Error,
         info: Toast.tips,
+        loading: Toast.Loading,
         success: Toast.Success
       }
     }),
@@ -645,6 +649,7 @@ function DesktopAgentGUISurfaceImpl({
       composerAppend: composerAppendRequest,
       composerFocusSequence: composerFocusRequestSequence,
       newConversationSequence: newConversationRequestSequence,
+      sessionAction: sessionActionRequest,
       openSession: openSessionRequest,
       prefillPrompt: prefillPromptRequest,
       agentProbes: workspaceAgentProbes,

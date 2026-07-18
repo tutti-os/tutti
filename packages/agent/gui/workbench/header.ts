@@ -23,6 +23,11 @@ import {
 import { CreateChatIcon } from "@tutti-os/ui-system/icons";
 import openLinkLinedIconUrl from "../app/renderer/assets/icons/open-link-lined.svg";
 import { useAgentGuiWorkbenchBodyRenderError } from "./bodyRenderErrorRegistry.ts";
+import { AgentGuiWorkbenchSessionMenu } from "./AgentGuiWorkbenchSessionMenu.tsx";
+import type {
+  AgentGuiWorkbenchSessionAction,
+  AgentGuiWorkbenchSessionMenuCopy
+} from "./sessionActions.ts";
 
 const LazyAgentRichTextReadonly = lazy(() =>
   import("../shared/AgentRichTextReadonly.tsx").then((module) => ({
@@ -52,6 +57,7 @@ export interface AgentGuiWorkbenchHeaderCopy {
   openDetachedWindow?: string;
   restore?: string;
   untitledConversation?: string;
+  sessionMenu?: AgentGuiWorkbenchSessionMenuCopy | null;
 }
 
 export interface AgentGuiWorkbenchHeaderProps extends HTMLAttributes<HTMLElement> {
@@ -73,6 +79,7 @@ export interface AgentGuiWorkbenchHeaderProps extends HTMLAttributes<HTMLElement
   nodeId: string;
   onCreateConversation?: () => void;
   onOpenDetachedWindow?: () => void;
+  onSessionAction?: (action: AgentGuiWorkbenchSessionAction) => void;
   onToggleConversationRail: (nextCollapsed: boolean) => void;
   showAppTitle?: boolean;
   showConversationRailToggle?: boolean;
@@ -104,6 +111,7 @@ export function AgentGuiWorkbenchHeader({
   nodeId,
   onCreateConversation,
   onOpenDetachedWindow,
+  onSessionAction,
   onToggleConversationRail,
   showAppTitle = true,
   showConversationRailToggle = true,
@@ -131,6 +139,13 @@ export function AgentGuiWorkbenchHeader({
   const hasExpandedIdentity = Boolean(
     collapsedTitle || sessionIconUrl || sessionIconFallbackUrl
   );
+  const sessionMenu =
+    onSessionAction && copy.sessionMenu && sessionTitle && !hasBodyRenderError
+      ? createElement(AgentGuiWorkbenchSessionMenu, {
+          copy: copy.sessionMenu,
+          onAction: onSessionAction
+        })
+      : null;
   const safeDisplayMode = displayMode ?? "floating";
   const safeWindowActions = windowActions ?? {
     close: () => undefined,
@@ -267,7 +282,8 @@ export function AgentGuiWorkbenchHeader({
                 className: "agent-gui-workbench-header__title-text"
               },
               collapsedTitle
-            )
+            ),
+            sessionMenu
           )
         : null,
       isConversationRailCollapsed && secondaryAccessory
@@ -326,7 +342,8 @@ export function AgentGuiWorkbenchHeader({
                         },
                         sessionTitle
                       )
-                    : null
+                    : null,
+                sessionMenu
               )
             : null,
           secondaryAccessory

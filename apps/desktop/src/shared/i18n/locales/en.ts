@@ -148,6 +148,12 @@ export const en = {
       openSessionUnavailableDescription:
         "This agent session no longer exists or cannot be opened.",
       openSessionUnavailableTitle: "Session unavailable",
+      sessionMenu: {
+        copyAsMarkdown: "Copy as Markdown",
+        copyAsReference: "Copy as reference",
+        moreActions: "More session actions",
+        rename: "Rename session"
+      },
       browserElementContext: {
         cancel: "Cancel element selection",
         failed: "Unable to add this page element to the Agent input",

@@ -13,6 +13,11 @@ export interface AgentGUIConversationRailInput {
   conversationFilter: AgentGUINodeViewModel["rail"]["conversationFilter"];
   conversationQuery: string;
   previewMode: boolean;
+  /**
+   * Lets the host subtree observe this controller's interaction lock (e.g.
+   * so header-dispatched session actions honor the same lock as the rail).
+   */
+  registerInteractionLockProbe?: (probe: (() => boolean) | null) => void;
   sectionAgentTargetFallbackId: string | null;
   userProjects: AgentGUINodeViewModel["rail"]["userProjects"];
   workspaceId: string;
@@ -23,6 +28,7 @@ export function useAgentGUIConversationRailQuery({
   conversationFilter,
   conversationQuery,
   previewMode,
+  registerInteractionLockProbe,
   sectionAgentTargetFallbackId,
   userProjects,
   workspaceId
@@ -45,7 +51,14 @@ export function useAgentGUIConversationRailQuery({
     [engine, runtime, workspaceId]
   );
 
-  useEffect(() => controller.attach(), [controller]);
+  useEffect(() => {
+    const detach = controller.attach();
+    registerInteractionLockProbe?.(controller.isInteractionLocked);
+    return () => {
+      registerInteractionLockProbe?.(null);
+      detach();
+    };
+  }, [controller, registerInteractionLockProbe]);
   useEffect(() => {
     controller.configure({
       conversationFilter,

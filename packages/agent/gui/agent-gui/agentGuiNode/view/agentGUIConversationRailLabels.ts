@@ -35,7 +35,25 @@ export function agentGUIConversationRailLabels(
     conversationsSectionMoreActions: t(
       "agentHost.agentGui.conversationsSectionMoreActions"
     ),
-    copySessionLink: t("agentHost.agentGui.copySessionLink"),
+    copiedToClipboard: t("agentHost.agentGui.copiedToClipboard"),
+    copyAsMarkdown: t("agentHost.agentGui.copyAsMarkdown"),
+    copyAsReference: t("agentHost.agentGui.copyAsReference"),
+    copyFailed: t("agentHost.agentGui.copyFailed"),
+    conversationCopyFile: t("agentHost.agentGui.conversationCopyFile"),
+    conversationCopyImage: t("agentHost.agentGui.conversationCopyImage"),
+    conversationCopyImagesOmitted: t(
+      "agentHost.agentGui.conversationCopyImagesOmitted"
+    ),
+    conversationCopyInProgress: t(
+      "agentHost.agentGui.conversationCopyInProgress"
+    ),
+    conversationCopyMentionPrefix: t(
+      "agentHost.agentGui.conversationCopyMentionPrefix"
+    ),
+    conversationCopyPreviousMessages: t(
+      "agentHost.agentGui.conversationCopyPreviousMessages"
+    ),
+    moreSessionActions: t("agentHost.agentGui.moreSessionActions"),
     deleteSession: t("agentHost.agentGui.deleteSession"),
     deleteSessionConfirm: t("agentHost.agentGui.deleteSessionConfirm"),
     emptyProjectConversations: t(
