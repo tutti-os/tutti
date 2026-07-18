@@ -6565,10 +6565,18 @@ button.agent-gui-node__conversation-section-toggle:hover
 }
 
 .agent-gui-node__conversation-provider-icon {
-  display: inline-block;
   flex: 0 0 14px;
   width: 14px;
   height: 14px;
+}
+
+.agent-gui-node__conversation-provider-image {
+  display: block;
+  object-fit: contain;
+}
+
+.agent-gui-node__conversation-provider-mask-icon {
+  display: inline-block;
   color: var(--text-tertiary);
   background-color: currentColor;
   mask-position: center;
