@@ -405,7 +405,10 @@ export function createAgentFileMentionExtension(
               .run();
           },
           render: () => ({
-            onStart: (props) => {
+            // Agent GUI owns candidate search outside Tiptap. Notify it before
+            // Suggestion awaits its intentionally empty `items()` result so a
+            // controlled editor remount cannot lose the activation callback.
+            onBeforeStart: (props) => {
               options.onSuggestionChange?.({
                 editor: props.editor,
                 range: props.range,
@@ -415,7 +418,7 @@ export function createAgentFileMentionExtension(
                 clientRect: props.clientRect
               });
             },
-            onUpdate: (props) => {
+            onBeforeUpdate: (props) => {
               options.onSuggestionChange?.({
                 editor: props.editor,
                 range: props.range,

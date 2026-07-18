@@ -1,8 +1,10 @@
-import { describe, expect, it } from "vitest";
-import type { Editor, Range } from "@tiptap/core";
+import { describe, expect, it, vi } from "vitest";
+import { Editor, type Range } from "@tiptap/core";
 import { Schema } from "@tiptap/pm/model";
+import StarterKit from "@tiptap/starter-kit";
 import {
   attrsToMentionItem,
+  createAgentFileMentionExtension,
   createAgentSessionMarkdownLink,
   createAgentSessionMentionHref,
   expandRangeOverMentionPlaceholder,
@@ -52,6 +54,28 @@ function editorForPlaceholder(text: string): { editor: Editor; range: Range } {
   const atPos = text.indexOf("@") + 1; // +1 for the paragraph open token
   return { editor, range: { from: atPos, to: atPos + 1 } };
 }
+
+describe("createAgentFileMentionExtension", () => {
+  it("notifies the external palette synchronously when an @ suggestion starts", () => {
+    const onSuggestionChange = vi.fn();
+    const editor = new Editor({
+      element: document.createElement("div"),
+      extensions: [
+        StarterKit,
+        createAgentFileMentionExtension({ onSuggestionChange })
+      ],
+      content: "<p></p>"
+    });
+
+    editor.commands.insertContent("@");
+
+    expect(onSuggestionChange).toHaveBeenCalledOnce();
+    expect(onSuggestionChange).toHaveBeenCalledWith(
+      expect.objectContaining({ query: "", text: "@" })
+    );
+    editor.destroy();
+  });
+});
 
 describe("parseAgentMentionMarkdown", () => {
   it("round-trips composer file identity and upload status", () => {
