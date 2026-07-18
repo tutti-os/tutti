@@ -27,6 +27,7 @@ type stubTuttiModePlanService struct {
 	getInput        tuttimodeplanservice.GetInput
 	listWorkspaceID string
 	listSessionID   string
+	listKind        string
 	decideInput     tuttimodeplanservice.DecideInput
 	decideFn        func(context.Context, tuttimodeplanservice.DecideInput) (tuttimodeplanservice.DecisionResult, error)
 }
@@ -39,6 +40,14 @@ func (service *stubTuttiModePlanService) GetView(_ context.Context, input tuttim
 func (service *stubTuttiModePlanService) ListPendingBySourceSession(_ context.Context, workspaceID string, sessionID string) ([]tuttimodeplanservice.SnapshotView, error) {
 	service.listWorkspaceID = workspaceID
 	service.listSessionID = sessionID
+	service.listKind = "pending"
+	return service.views, nil
+}
+
+func (service *stubTuttiModePlanService) ListBySourceSession(_ context.Context, workspaceID string, sessionID string) ([]tuttimodeplanservice.SnapshotView, error) {
+	service.listWorkspaceID = workspaceID
+	service.listSessionID = sessionID
+	service.listKind = "all"
 	return service.views, nil
 }
 
@@ -69,11 +78,35 @@ func TestListWorkspaceWorkflowsReturnsAuthoritativeMarkdownSnapshot(t *testing.T
 	if service.listWorkspaceID != "workspace-1" || service.listSessionID != "session-1" {
 		t.Fatalf("list inputs = %q/%q", service.listWorkspaceID, service.listSessionID)
 	}
+	if service.listKind != "all" {
+		t.Fatalf("list kind = %q, want all", service.listKind)
+	}
 	if len(result.Workflows) != 1 || result.Workflows[0].Revisions[0].Document.MarkdownBody != "Plan body\n" {
 		t.Fatalf("workflows = %#v", result.Workflows)
 	}
 	if len(result.Workflows[0].ActionableItems) != 1 || result.Workflows[0].ActionableItems[0].Id != testWorkflowID+"/"+testRevisionID+"/task-1" {
 		t.Fatalf("actionable items = %#v", result.Workflows[0].ActionableItems)
+	}
+}
+
+func TestListWorkspaceWorkflowsFiltersPendingWhenRequested(t *testing.T) {
+	service := &stubTuttiModePlanService{views: []tuttimodeplanservice.SnapshotView{workflowViewFixture()}}
+	status := tuttigenerated.Pending
+	response, err := (DaemonAPI{TuttiModePlanService: service}).ListWorkspaceWorkflows(context.Background(), tuttigenerated.ListWorkspaceWorkflowsRequestObject{
+		WorkspaceID: "workspace-1",
+		Params: tuttigenerated.ListWorkspaceWorkflowsParams{
+			SourceSessionId:  "session-1",
+			CheckpointStatus: &status,
+		},
+	})
+	if err != nil {
+		t.Fatalf("ListWorkspaceWorkflows() error = %v", err)
+	}
+	if _, ok := response.(tuttigenerated.ListWorkspaceWorkflows200JSONResponse); !ok {
+		t.Fatalf("response = %T", response)
+	}
+	if service.listKind != "pending" {
+		t.Fatalf("list kind = %q, want pending", service.listKind)
 	}
 }
 

@@ -7481,7 +7481,7 @@ type AttachWorkspaceTerminalParams struct {
 type ListWorkspaceWorkflowsParams struct {
 	SourceSessionId string `form:"sourceSessionId" json:"sourceSessionId"`
 
-	// CheckpointStatus Currently only pending checkpoints are listable.
+	// CheckpointStatus When omitted, returns every workflow for the source session. Pass pending to return only workflows with a pending checkpoint.
 	CheckpointStatus *ListWorkspaceWorkflowsParamsCheckpointStatus `form:"checkpointStatus,omitempty" json:"checkpointStatus,omitempty"`
 }
 

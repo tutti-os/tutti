@@ -372,10 +372,11 @@ The schema-first HTTP surface is:
   first activation;
 - `PUT /v1/workspaces/{workspaceID}/agent-sessions/{agentSessionID}/tutti-mode-activation`
   appends an idempotent, revision-checked active or inactive revision;
-- `GET /v1/workspaces/{workspaceID}/workflows?sourceSessionId=...` lists
-  recoverable pending workflows for one Agent session. The hand-written client
-  exposes this constrained operation as `listPendingWorkspaceWorkflows`, not
-  as an unconstrained generic list;
+- `GET /v1/workspaces/{workspaceID}/workflows?sourceSessionId=...` lists every
+  workflow for one Agent Session; adding `checkpointStatus=pending` narrows the
+  result to workflows with a pending checkpoint. The hand-written client
+  exposes these as `listWorkspaceWorkflows` and
+  `listPendingWorkspaceWorkflows` respectively;
 - `GET /v1/workspaces/{workspaceID}/workflows/{workflowID}` returns one full
   authoritative snapshot;
 - `POST /v1/workspaces/{workspaceID}/workflows/{workflowID}/checkpoints/{checkpointID}/decision`
