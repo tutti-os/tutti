@@ -470,6 +470,12 @@ type ServerInterface interface {
 	// Create one issue-manager issue
 	// (POST /v1/workspaces/{workspaceID}/issues)
 	CreateWorkspaceIssue(w http.ResponseWriter, r *http.Request, workspaceID WorkspaceID)
+	// Estimate the authoritative automatic token budget for a proposed Issue graph
+	// (POST /v1/workspaces/{workspaceID}/issues/auto-token-budget-estimate)
+	EstimateWorkspaceIssueAutoTokenBudget(w http.ResponseWriter, r *http.Request, workspaceID WorkspaceID)
+	// Create one executable Issue and its tasks from an Ultra or traditional Plan
+	// (POST /v1/workspaces/{workspaceID}/issues/from-plan)
+	CreateWorkspaceIssueFromPlan(w http.ResponseWriter, r *http.Request, workspaceID WorkspaceID)
 	// Delete one issue-manager issue
 	// (DELETE /v1/workspaces/{workspaceID}/issues/{issueID})
 	DeleteWorkspaceIssue(w http.ResponseWriter, r *http.Request, workspaceID WorkspaceID, issueID IssueManagerIssueID)
@@ -6622,6 +6628,70 @@ func (siw *ServerInterfaceWrapper) CreateWorkspaceIssue(w http.ResponseWriter, r
 	handler.ServeHTTP(w, r)
 }
 
+// EstimateWorkspaceIssueAutoTokenBudget operation middleware
+func (siw *ServerInterfaceWrapper) EstimateWorkspaceIssueAutoTokenBudget(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "workspaceID" -------------
+	var workspaceID WorkspaceID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "workspaceID", r.PathValue("workspaceID"), &workspaceID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "workspaceID", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.EstimateWorkspaceIssueAutoTokenBudget(w, r, workspaceID)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// CreateWorkspaceIssueFromPlan operation middleware
+func (siw *ServerInterfaceWrapper) CreateWorkspaceIssueFromPlan(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "workspaceID" -------------
+	var workspaceID WorkspaceID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "workspaceID", r.PathValue("workspaceID"), &workspaceID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "workspaceID", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CreateWorkspaceIssueFromPlan(w, r, workspaceID)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // DeleteWorkspaceIssue operation middleware
 func (siw *ServerInterfaceWrapper) DeleteWorkspaceIssue(w http.ResponseWriter, r *http.Request) {
 
@@ -9087,6 +9157,8 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPatch+" "+options.BaseURL+"/v1/workspaces/{workspaceID}/issue-topics/{topicID}", wrapper.UpdateWorkspaceIssueTopic)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/workspaces/{workspaceID}/issues", wrapper.ListWorkspaceIssues)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/workspaces/{workspaceID}/issues", wrapper.CreateWorkspaceIssue)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/workspaces/{workspaceID}/issues/auto-token-budget-estimate", wrapper.EstimateWorkspaceIssueAutoTokenBudget)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/workspaces/{workspaceID}/issues/from-plan", wrapper.CreateWorkspaceIssueFromPlan)
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/v1/workspaces/{workspaceID}/issues/{issueID}", wrapper.DeleteWorkspaceIssue)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/workspaces/{workspaceID}/issues/{issueID}", wrapper.GetWorkspaceIssueDetail)
 	m.HandleFunc(http.MethodPatch+" "+options.BaseURL+"/v1/workspaces/{workspaceID}/issues/{issueID}", wrapper.UpdateWorkspaceIssue)
@@ -25758,6 +25830,256 @@ func (response CreateWorkspaceIssue503JSONResponse) VisitCreateWorkspaceIssueRes
 	return err
 }
 
+type EstimateWorkspaceIssueAutoTokenBudgetRequestObject struct {
+	WorkspaceID WorkspaceID `json:"workspaceID"`
+	Body        *EstimateWorkspaceIssueAutoTokenBudgetJSONRequestBody
+}
+
+type EstimateWorkspaceIssueAutoTokenBudgetResponseObject interface {
+	VisitEstimateWorkspaceIssueAutoTokenBudgetResponse(w http.ResponseWriter) error
+}
+
+type EstimateWorkspaceIssueAutoTokenBudget200JSONResponse IssueManagerAutoTokenBudgetEstimate
+
+func (response EstimateWorkspaceIssueAutoTokenBudget200JSONResponse) VisitEstimateWorkspaceIssueAutoTokenBudgetResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type EstimateWorkspaceIssueAutoTokenBudget400JSONResponse struct {
+	InvalidRequestErrorJSONResponse
+}
+
+func (response EstimateWorkspaceIssueAutoTokenBudget400JSONResponse) VisitEstimateWorkspaceIssueAutoTokenBudgetResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type EstimateWorkspaceIssueAutoTokenBudget401JSONResponse struct{ UnauthorizedErrorJSONResponse }
+
+func (response EstimateWorkspaceIssueAutoTokenBudget401JSONResponse) VisitEstimateWorkspaceIssueAutoTokenBudgetResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type EstimateWorkspaceIssueAutoTokenBudget404JSONResponse struct {
+	WorkspaceNotFoundErrorJSONResponse
+}
+
+func (response EstimateWorkspaceIssueAutoTokenBudget404JSONResponse) VisitEstimateWorkspaceIssueAutoTokenBudgetResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type EstimateWorkspaceIssueAutoTokenBudget405JSONResponse struct {
+	MethodNotAllowedErrorJSONResponse
+}
+
+func (response EstimateWorkspaceIssueAutoTokenBudget405JSONResponse) VisitEstimateWorkspaceIssueAutoTokenBudgetResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(405)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type EstimateWorkspaceIssueAutoTokenBudget502JSONResponse struct {
+	WorkspaceOperationErrorJSONResponse
+}
+
+func (response EstimateWorkspaceIssueAutoTokenBudget502JSONResponse) VisitEstimateWorkspaceIssueAutoTokenBudgetResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(502)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type EstimateWorkspaceIssueAutoTokenBudget503JSONResponse struct {
+	ServiceUnavailableErrorJSONResponse
+}
+
+func (response EstimateWorkspaceIssueAutoTokenBudget503JSONResponse) VisitEstimateWorkspaceIssueAutoTokenBudgetResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateWorkspaceIssueFromPlanRequestObject struct {
+	WorkspaceID WorkspaceID `json:"workspaceID"`
+	Body        *CreateWorkspaceIssueFromPlanJSONRequestBody
+}
+
+type CreateWorkspaceIssueFromPlanResponseObject interface {
+	VisitCreateWorkspaceIssueFromPlanResponse(w http.ResponseWriter) error
+}
+
+type CreateWorkspaceIssueFromPlan201JSONResponse IssueManagerIssueDetailResponse
+
+func (response CreateWorkspaceIssueFromPlan201JSONResponse) VisitCreateWorkspaceIssueFromPlanResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(201)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateWorkspaceIssueFromPlan400JSONResponse struct {
+	InvalidRequestErrorJSONResponse
+}
+
+func (response CreateWorkspaceIssueFromPlan400JSONResponse) VisitCreateWorkspaceIssueFromPlanResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateWorkspaceIssueFromPlan401JSONResponse struct{ UnauthorizedErrorJSONResponse }
+
+func (response CreateWorkspaceIssueFromPlan401JSONResponse) VisitCreateWorkspaceIssueFromPlanResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateWorkspaceIssueFromPlan404JSONResponse struct {
+	WorkspaceNotFoundErrorJSONResponse
+}
+
+func (response CreateWorkspaceIssueFromPlan404JSONResponse) VisitCreateWorkspaceIssueFromPlanResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateWorkspaceIssueFromPlan405JSONResponse struct {
+	MethodNotAllowedErrorJSONResponse
+}
+
+func (response CreateWorkspaceIssueFromPlan405JSONResponse) VisitCreateWorkspaceIssueFromPlanResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(405)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateWorkspaceIssueFromPlan409JSONResponse struct {
+	WorkspaceIssueResourceExistsErrorJSONResponse
+}
+
+func (response CreateWorkspaceIssueFromPlan409JSONResponse) VisitCreateWorkspaceIssueFromPlanResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateWorkspaceIssueFromPlan502JSONResponse struct {
+	WorkspaceOperationErrorJSONResponse
+}
+
+func (response CreateWorkspaceIssueFromPlan502JSONResponse) VisitCreateWorkspaceIssueFromPlanResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(502)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateWorkspaceIssueFromPlan503JSONResponse struct {
+	ServiceUnavailableErrorJSONResponse
+}
+
+func (response CreateWorkspaceIssueFromPlan503JSONResponse) VisitCreateWorkspaceIssueFromPlanResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type DeleteWorkspaceIssueRequestObject struct {
 	WorkspaceID WorkspaceID         `json:"workspaceID"`
 	IssueID     IssueManagerIssueID `json:"issueID"`
@@ -32161,6 +32483,12 @@ type StrictServerInterface interface {
 	// Create one issue-manager issue
 	// (POST /v1/workspaces/{workspaceID}/issues)
 	CreateWorkspaceIssue(ctx context.Context, request CreateWorkspaceIssueRequestObject) (CreateWorkspaceIssueResponseObject, error)
+	// Estimate the authoritative automatic token budget for a proposed Issue graph
+	// (POST /v1/workspaces/{workspaceID}/issues/auto-token-budget-estimate)
+	EstimateWorkspaceIssueAutoTokenBudget(ctx context.Context, request EstimateWorkspaceIssueAutoTokenBudgetRequestObject) (EstimateWorkspaceIssueAutoTokenBudgetResponseObject, error)
+	// Create one executable Issue and its tasks from an Ultra or traditional Plan
+	// (POST /v1/workspaces/{workspaceID}/issues/from-plan)
+	CreateWorkspaceIssueFromPlan(ctx context.Context, request CreateWorkspaceIssueFromPlanRequestObject) (CreateWorkspaceIssueFromPlanResponseObject, error)
 	// Delete one issue-manager issue
 	// (DELETE /v1/workspaces/{workspaceID}/issues/{issueID})
 	DeleteWorkspaceIssue(ctx context.Context, request DeleteWorkspaceIssueRequestObject) (DeleteWorkspaceIssueResponseObject, error)
@@ -36919,6 +37247,76 @@ func (sh *strictHandler) CreateWorkspaceIssue(w http.ResponseWriter, r *http.Req
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(CreateWorkspaceIssueResponseObject); ok {
 		if err := validResponse.VisitCreateWorkspaceIssueResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// EstimateWorkspaceIssueAutoTokenBudget operation middleware
+func (sh *strictHandler) EstimateWorkspaceIssueAutoTokenBudget(w http.ResponseWriter, r *http.Request, workspaceID WorkspaceID) {
+	var request EstimateWorkspaceIssueAutoTokenBudgetRequestObject
+
+	request.WorkspaceID = workspaceID
+
+	var body EstimateWorkspaceIssueAutoTokenBudgetJSONRequestBody
+	decoder := json.NewDecoder(r.Body)
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.EstimateWorkspaceIssueAutoTokenBudget(ctx, request.(EstimateWorkspaceIssueAutoTokenBudgetRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "EstimateWorkspaceIssueAutoTokenBudget")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(EstimateWorkspaceIssueAutoTokenBudgetResponseObject); ok {
+		if err := validResponse.VisitEstimateWorkspaceIssueAutoTokenBudgetResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// CreateWorkspaceIssueFromPlan operation middleware
+func (sh *strictHandler) CreateWorkspaceIssueFromPlan(w http.ResponseWriter, r *http.Request, workspaceID WorkspaceID) {
+	var request CreateWorkspaceIssueFromPlanRequestObject
+
+	request.WorkspaceID = workspaceID
+
+	var body CreateWorkspaceIssueFromPlanJSONRequestBody
+	decoder := json.NewDecoder(r.Body)
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.CreateWorkspaceIssueFromPlan(ctx, request.(CreateWorkspaceIssueFromPlanRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "CreateWorkspaceIssueFromPlan")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(CreateWorkspaceIssueFromPlanResponseObject); ok {
+		if err := validResponse.VisitCreateWorkspaceIssueFromPlanResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

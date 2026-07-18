@@ -4004,6 +4004,12 @@ type AutomationRuleTargetKind string
 // AutomationRuleTrigger Lifecycle outcome that evaluates the rule. A failed-turn rule can delegate to a stronger WorkspaceAgent as a bounded escalation attempt; automated outcomes never final-accept the source task.
 type AutomationRuleTrigger string
 
+// CancelIssueManagerExecutionResponse defines model for CancelIssueManagerExecutionResponse.
+type CancelIssueManagerExecutionResponse struct {
+	// CanceledRunCount Number of running runs this call settled as canceled.
+	CanceledRunCount int `json:"canceledRunCount"`
+}
+
 // CheckUserProjectPathRequest defines model for CheckUserProjectPathRequest.
 type CheckUserProjectPathRequest struct {
 	Path string `json:"path"`
@@ -4274,6 +4280,12 @@ type CreateCollaborationRunRequest struct {
 	TargetSessionId     *string                       `json:"targetSessionId,omitempty"`
 	TriggerReason       *string                       `json:"triggerReason,omitempty"`
 	TriggerSource       CollaborationRunTriggerSource `json:"triggerSource"`
+}
+
+// CreateIssueManagerIssueFromPlanRequest defines model for CreateIssueManagerIssueFromPlanRequest.
+type CreateIssueManagerIssueFromPlanRequest struct {
+	Issue CreateIssueManagerIssueRequest  `json:"issue"`
+	Tasks []CreateIssueManagerTaskRequest `json:"tasks"`
 }
 
 // CreateIssueManagerIssueRequest defines model for CreateIssueManagerIssueRequest.
@@ -4684,6 +4696,12 @@ type DuplicateModelPlanRequest struct {
 	Name *string `json:"name,omitempty"`
 }
 
+// EstimateIssueManagerAutoTokenBudgetRequest defines model for EstimateIssueManagerAutoTokenBudgetRequest.
+type EstimateIssueManagerAutoTokenBudgetRequest struct {
+	ExecutionProfile IssueManagerExecutionProfile           `json:"executionProfile"`
+	Tasks            []IssueManagerAutoTokenBudgetTaskInput `json:"tasks"`
+}
+
 // ExportWorkspaceAppRequest defines model for ExportWorkspaceAppRequest.
 type ExportWorkspaceAppRequest struct {
 	DestinationPath string  `json:"destinationPath"`
@@ -4835,6 +4853,26 @@ type InstallWorkspaceAppRequest struct {
 
 // IssueManagerAcceptanceState Three-step completion ladder. Only user_accepted closes a successful task.
 type IssueManagerAcceptanceState string
+
+// IssueManagerAutoTokenBudgetEstimate defines model for IssueManagerAutoTokenBudgetEstimate.
+type IssueManagerAutoTokenBudgetEstimate struct {
+	// DeterministicTokenLimit Scale and intensity estimate before historical calibration.
+	DeterministicTokenLimit int64 `json:"deterministicTokenLimit"`
+
+	// HistoricalTokenEstimate Sum of comparable completed-run averages before headroom and blending.
+	HistoricalTokenEstimate int64 `json:"historicalTokenEstimate"`
+	MatchedTaskCount        int   `json:"matchedTaskCount"`
+
+	// TokenLimit Effective auto budget that Issue creation will compile for the same input.
+	TokenLimit int64 `json:"tokenLimit"`
+}
+
+// IssueManagerAutoTokenBudgetTaskInput defines model for IssueManagerAutoTokenBudgetTaskInput.
+type IssueManagerAutoTokenBudgetTaskInput struct {
+	AgentTargetId *string `json:"agentTargetId,omitempty"`
+	Model         *string `json:"model,omitempty"`
+	ModelPlanId   *string `json:"modelPlanId,omitempty"`
+}
 
 // IssueManagerBudget defines model for IssueManagerBudget.
 type IssueManagerBudget struct {
@@ -7653,6 +7691,12 @@ type UpdateWorkspaceIssueTopicJSONRequestBody = UpdateIssueManagerTopicRequest
 
 // CreateWorkspaceIssueJSONRequestBody defines body for CreateWorkspaceIssue for application/json ContentType.
 type CreateWorkspaceIssueJSONRequestBody = CreateIssueManagerIssueRequest
+
+// EstimateWorkspaceIssueAutoTokenBudgetJSONRequestBody defines body for EstimateWorkspaceIssueAutoTokenBudget for application/json ContentType.
+type EstimateWorkspaceIssueAutoTokenBudgetJSONRequestBody = EstimateIssueManagerAutoTokenBudgetRequest
+
+// CreateWorkspaceIssueFromPlanJSONRequestBody defines body for CreateWorkspaceIssueFromPlan for application/json ContentType.
+type CreateWorkspaceIssueFromPlanJSONRequestBody = CreateIssueManagerIssueFromPlanRequest
 
 // UpdateWorkspaceIssueJSONRequestBody defines body for UpdateWorkspaceIssue for application/json ContentType.
 type UpdateWorkspaceIssueJSONRequestBody = UpdateIssueManagerIssueRequest

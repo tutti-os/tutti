@@ -450,3 +450,33 @@ func writeCompleteWorkspaceIssueTaskRunError(err error) tuttigenerated.CompleteW
 		return tuttigenerated.CompleteWorkspaceIssueTaskRun502JSONResponse{WorkspaceOperationErrorJSONResponse: workspaceOperationError(protocolErr)}
 	}
 }
+
+func writeCreateWorkspaceIssueFromPlanError(err error) tuttigenerated.CreateWorkspaceIssueFromPlanResponseObject {
+	protocolErr := apierrors.Classify(err)
+	switch protocolErr.Code {
+	case tuttigenerated.InvalidRequest:
+		return tuttigenerated.CreateWorkspaceIssueFromPlan400JSONResponse{InvalidRequestErrorJSONResponse: invalidRequestError(protocolErr)}
+	case tuttigenerated.WorkspaceNotFound, tuttigenerated.WorkspaceIssueResourceNotFound:
+		return tuttigenerated.CreateWorkspaceIssueFromPlan404JSONResponse{WorkspaceNotFoundErrorJSONResponse: workspaceNotFoundError(protocolErr)}
+	case tuttigenerated.WorkspaceIssueResourceExists:
+		return tuttigenerated.CreateWorkspaceIssueFromPlan409JSONResponse{WorkspaceIssueResourceExistsErrorJSONResponse: workspaceIssueResourceExistsError(protocolErr)}
+	case tuttigenerated.ServiceUnavailable:
+		return tuttigenerated.CreateWorkspaceIssueFromPlan503JSONResponse{ServiceUnavailableErrorJSONResponse: serviceUnavailableError(protocolErr)}
+	default:
+		return tuttigenerated.CreateWorkspaceIssueFromPlan502JSONResponse{WorkspaceOperationErrorJSONResponse: workspaceOperationError(protocolErr)}
+	}
+}
+
+func writeEstimateWorkspaceIssueAutoTokenBudgetError(err error) tuttigenerated.EstimateWorkspaceIssueAutoTokenBudgetResponseObject {
+	protocolErr := apierrors.Classify(err)
+	switch protocolErr.Code {
+	case tuttigenerated.InvalidRequest:
+		return tuttigenerated.EstimateWorkspaceIssueAutoTokenBudget400JSONResponse{InvalidRequestErrorJSONResponse: invalidRequestError(protocolErr)}
+	case tuttigenerated.WorkspaceNotFound, tuttigenerated.WorkspaceIssueResourceNotFound:
+		return tuttigenerated.EstimateWorkspaceIssueAutoTokenBudget404JSONResponse{WorkspaceNotFoundErrorJSONResponse: workspaceNotFoundError(protocolErr)}
+	case tuttigenerated.ServiceUnavailable:
+		return tuttigenerated.EstimateWorkspaceIssueAutoTokenBudget503JSONResponse{ServiceUnavailableErrorJSONResponse: serviceUnavailableError(protocolErr)}
+	default:
+		return tuttigenerated.EstimateWorkspaceIssueAutoTokenBudget502JSONResponse{WorkspaceOperationErrorJSONResponse: workspaceOperationError(protocolErr)}
+	}
+}

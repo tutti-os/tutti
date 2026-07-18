@@ -113,6 +113,59 @@ func (api DaemonAPI) CreateWorkspaceIssue(ctx context.Context, request tuttigene
 	), nil
 }
 
+func (api DaemonAPI) CreateWorkspaceIssueFromPlan(ctx context.Context, request tuttigenerated.CreateWorkspaceIssueFromPlanRequestObject) (tuttigenerated.CreateWorkspaceIssueFromPlanResponseObject, error) {
+	if api.IssueService == nil {
+		return tuttigenerated.CreateWorkspaceIssueFromPlan503JSONResponse{ServiceUnavailableErrorJSONResponse: issueManagerServiceUnavailableError()}, nil
+	}
+	if request.Body == nil {
+		return tuttigenerated.CreateWorkspaceIssueFromPlan400JSONResponse{InvalidRequestErrorJSONResponse: issueManagerEmptyBodyError()}, nil
+	}
+	tasks := make([]workspaceservice.CreateIssueManagerTaskItemInput, 0, len(request.Body.Tasks))
+	for _, task := range request.Body.Tasks {
+		tasks = append(tasks, issueManagerCreateTaskInputFromGenerated(task))
+	}
+	detail, err := api.IssueService.CreateIssueFromPlan(ctx, string(request.WorkspaceID), workspaceservice.CreateIssueManagerIssueFromPlanInput{
+		Issue: issueManagerCreateIssueInputFromGenerated(request.Body.Issue),
+		Tasks: tasks,
+	})
+	if err != nil {
+		return writeCreateWorkspaceIssueFromPlanError(err), nil
+	}
+	return tuttigenerated.CreateWorkspaceIssueFromPlan201JSONResponse(
+		workspaceapi.GeneratedIssueManagerIssueDetailResponseFromDomain(detail),
+	), nil
+}
+
+func (api DaemonAPI) EstimateWorkspaceIssueAutoTokenBudget(ctx context.Context, request tuttigenerated.EstimateWorkspaceIssueAutoTokenBudgetRequestObject) (tuttigenerated.EstimateWorkspaceIssueAutoTokenBudgetResponseObject, error) {
+	if api.IssueService == nil {
+		return tuttigenerated.EstimateWorkspaceIssueAutoTokenBudget503JSONResponse{ServiceUnavailableErrorJSONResponse: issueManagerServiceUnavailableError()}, nil
+	}
+	if request.Body == nil {
+		return tuttigenerated.EstimateWorkspaceIssueAutoTokenBudget400JSONResponse{InvalidRequestErrorJSONResponse: issueManagerEmptyBodyError()}, nil
+	}
+	tasks := make([]workspaceservice.CreateIssueManagerTaskItemInput, 0, len(request.Body.Tasks))
+	for _, task := range request.Body.Tasks {
+		tasks = append(tasks, workspaceservice.CreateIssueManagerTaskItemInput{
+			AgentTargetID: optionalString(task.AgentTargetId),
+			ModelPlanID:   optionalString(task.ModelPlanId),
+			Model:         optionalString(task.Model),
+		})
+	}
+	estimate, err := api.IssueService.EstimateAutoTokenBudget(ctx, string(request.WorkspaceID), workspaceservice.EstimateIssueManagerAutoTokenBudgetInput{
+		ExecutionProfile: issueManagerExecutionProfileFromGenerated(&request.Body.ExecutionProfile),
+		Tasks:            tasks,
+	})
+	if err != nil {
+		return writeEstimateWorkspaceIssueAutoTokenBudgetError(err), nil
+	}
+	return tuttigenerated.EstimateWorkspaceIssueAutoTokenBudget200JSONResponse{
+		TokenLimit:              estimate.TokenLimit,
+		DeterministicTokenLimit: estimate.DeterministicTokenLimit,
+		HistoricalTokenEstimate: estimate.HistoricalTokenEstimate,
+		MatchedTaskCount:        estimate.MatchedHistoricalTaskCount,
+	}, nil
+}
+
 func (api DaemonAPI) RemoveWorkspaceIssueContextRef(ctx context.Context, request tuttigenerated.RemoveWorkspaceIssueContextRefRequestObject) (tuttigenerated.RemoveWorkspaceIssueContextRefResponseObject, error) {
 	if api.IssueService == nil {
 		return tuttigenerated.RemoveWorkspaceIssueContextRef503JSONResponse{ServiceUnavailableErrorJSONResponse: issueManagerServiceUnavailableError()}, nil

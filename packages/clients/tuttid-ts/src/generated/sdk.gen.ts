@@ -95,6 +95,9 @@ import type {
   CreateWorkspaceFileResponses,
   CreateWorkspaceIssueData,
   CreateWorkspaceIssueErrors,
+  CreateWorkspaceIssueFromPlanData,
+  CreateWorkspaceIssueFromPlanErrors,
+  CreateWorkspaceIssueFromPlanResponses,
   CreateWorkspaceIssueResponses,
   CreateWorkspaceIssueRunData,
   CreateWorkspaceIssueRunErrors,
@@ -172,6 +175,9 @@ import type {
   DuplicateModelPlanData,
   DuplicateModelPlanErrors,
   DuplicateModelPlanResponses,
+  EstimateWorkspaceIssueAutoTokenBudgetData,
+  EstimateWorkspaceIssueAutoTokenBudgetErrors,
+  EstimateWorkspaceIssueAutoTokenBudgetResponses,
   ExportWorkspaceAppData,
   ExportWorkspaceAppErrors,
   ExportWorkspaceAppResponses,
@@ -4033,6 +4039,54 @@ export const createWorkspaceIssue = <ThrowOnError extends boolean = false>(
   >({
     security: [{ scheme: "bearer", type: "http" }],
     url: "/v1/workspaces/{workspaceID}/issues",
+    ...options,
+    headers: {
+      "Content-Type": "application/json",
+      ...options.headers
+    }
+  });
+
+/**
+ * Create one executable Issue and its tasks from an Ultra or traditional Plan
+ *
+ * The returned Issue remains durable even when execution is started later. Task assignments and dependencies are validated as one graph before task execution can start.
+ */
+export const createWorkspaceIssueFromPlan = <
+  ThrowOnError extends boolean = false
+>(
+  options: Options<CreateWorkspaceIssueFromPlanData, ThrowOnError>
+) =>
+  (options.client ?? client).post<
+    CreateWorkspaceIssueFromPlanResponses,
+    CreateWorkspaceIssueFromPlanErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/v1/workspaces/{workspaceID}/issues/from-plan",
+    ...options,
+    headers: {
+      "Content-Type": "application/json",
+      ...options.headers
+    }
+  });
+
+/**
+ * Estimate the authoritative automatic token budget for a proposed Issue graph
+ *
+ * Uses the same scale, intensity, and comparable completed-run history compiler as Issue creation. No Issue or task is persisted.
+ */
+export const estimateWorkspaceIssueAutoTokenBudget = <
+  ThrowOnError extends boolean = false
+>(
+  options: Options<EstimateWorkspaceIssueAutoTokenBudgetData, ThrowOnError>
+) =>
+  (options.client ?? client).post<
+    EstimateWorkspaceIssueAutoTokenBudgetResponses,
+    EstimateWorkspaceIssueAutoTokenBudgetErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/v1/workspaces/{workspaceID}/issues/auto-token-budget-estimate",
     ...options,
     headers: {
       "Content-Type": "application/json",

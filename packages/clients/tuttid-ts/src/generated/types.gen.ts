@@ -3663,6 +3663,38 @@ export type IssueManagerIssueListResponse = {
   statusCounts: IssueManagerStatusCounts;
 };
 
+export type CreateIssueManagerIssueFromPlanRequest = {
+  issue: CreateIssueManagerIssueRequest;
+  tasks: Array<CreateIssueManagerTaskRequest>;
+};
+
+export type EstimateIssueManagerAutoTokenBudgetRequest = {
+  executionProfile: IssueManagerExecutionProfile;
+  tasks: Array<IssueManagerAutoTokenBudgetTaskInput>;
+};
+
+export type IssueManagerAutoTokenBudgetTaskInput = {
+  agentTargetId?: string;
+  modelPlanId?: string;
+  model?: string;
+};
+
+export type IssueManagerAutoTokenBudgetEstimate = {
+  /**
+   * Effective auto budget that Issue creation will compile for the same input.
+   */
+  tokenLimit: number;
+  /**
+   * Scale and intensity estimate before historical calibration.
+   */
+  deterministicTokenLimit: number;
+  /**
+   * Sum of comparable completed-run averages before headroom and blending.
+   */
+  historicalTokenEstimate: number;
+  matchedTaskCount: number;
+};
+
 export type IssueManagerIssueDetailResponse = {
   issue: IssueManagerIssue;
   tasks: Array<IssueManagerTask>;
@@ -12503,6 +12535,108 @@ export type CreateWorkspaceIssueResponses = {
 
 export type CreateWorkspaceIssueResponse =
   CreateWorkspaceIssueResponses[keyof CreateWorkspaceIssueResponses];
+
+export type CreateWorkspaceIssueFromPlanData = {
+  body: CreateIssueManagerIssueFromPlanRequest;
+  path: {
+    workspaceID: string;
+  };
+  query?: never;
+  url: "/v1/workspaces/{workspaceID}/issues/from-plan";
+};
+
+export type CreateWorkspaceIssueFromPlanErrors = {
+  /**
+   * Request payload or parameters are invalid
+   */
+  400: ApiErrorResponse;
+  /**
+   * Bearer token is missing or invalid
+   */
+  401: ApiErrorResponse;
+  /**
+   * Workspace id was not found
+   */
+  404: ApiErrorResponse;
+  /**
+   * HTTP method is not supported on this route
+   */
+  405: ApiErrorResponse;
+  /**
+   * Workspace issue-manager resource already exists
+   */
+  409: ApiErrorResponse;
+  /**
+   * Workspace operation failed in an upstream adapter or command
+   */
+  502: ApiErrorResponse;
+  /**
+   * Required daemon service dependency is unavailable
+   */
+  503: ApiErrorResponse;
+};
+
+export type CreateWorkspaceIssueFromPlanError =
+  CreateWorkspaceIssueFromPlanErrors[keyof CreateWorkspaceIssueFromPlanErrors];
+
+export type CreateWorkspaceIssueFromPlanResponses = {
+  /**
+   * Workspace issue and tasks created
+   */
+  201: IssueManagerIssueDetailResponse;
+};
+
+export type CreateWorkspaceIssueFromPlanResponse =
+  CreateWorkspaceIssueFromPlanResponses[keyof CreateWorkspaceIssueFromPlanResponses];
+
+export type EstimateWorkspaceIssueAutoTokenBudgetData = {
+  body: EstimateIssueManagerAutoTokenBudgetRequest;
+  path: {
+    workspaceID: string;
+  };
+  query?: never;
+  url: "/v1/workspaces/{workspaceID}/issues/auto-token-budget-estimate";
+};
+
+export type EstimateWorkspaceIssueAutoTokenBudgetErrors = {
+  /**
+   * Request payload or parameters are invalid
+   */
+  400: ApiErrorResponse;
+  /**
+   * Bearer token is missing or invalid
+   */
+  401: ApiErrorResponse;
+  /**
+   * Workspace id was not found
+   */
+  404: ApiErrorResponse;
+  /**
+   * HTTP method is not supported on this route
+   */
+  405: ApiErrorResponse;
+  /**
+   * Workspace operation failed in an upstream adapter or command
+   */
+  502: ApiErrorResponse;
+  /**
+   * Required daemon service dependency is unavailable
+   */
+  503: ApiErrorResponse;
+};
+
+export type EstimateWorkspaceIssueAutoTokenBudgetError =
+  EstimateWorkspaceIssueAutoTokenBudgetErrors[keyof EstimateWorkspaceIssueAutoTokenBudgetErrors];
+
+export type EstimateWorkspaceIssueAutoTokenBudgetResponses = {
+  /**
+   * Automatic token budget estimate
+   */
+  200: IssueManagerAutoTokenBudgetEstimate;
+};
+
+export type EstimateWorkspaceIssueAutoTokenBudgetResponse =
+  EstimateWorkspaceIssueAutoTokenBudgetResponses[keyof EstimateWorkspaceIssueAutoTokenBudgetResponses];
 
 export type SearchWorkspaceIssueReferencesData = {
   body: IssueManagerReferenceSearchRequest;
