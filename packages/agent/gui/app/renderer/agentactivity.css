@@ -8774,6 +8774,8 @@ html[data-theme="light"] [data-message-center-item-id].agent-gui-edge-glow {
 .agent-gui-node__composer-handoff-icon-animated {
   position: absolute;
   inset: 0;
+  /* Match the APNG's padded 44px canvas to the static icon's visual size. */
+  transform: scale(1.3);
   filter: var(--agent-gui-handoff-animation-filter, none);
   opacity: 0;
   pointer-events: none;
