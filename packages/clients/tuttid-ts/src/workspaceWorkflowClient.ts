@@ -1,6 +1,6 @@
 import {
   decideWorkspaceWorkflowCheckpoint,
-  listWorkspaceWorkflows
+  listWorkspaceWorkflows as listWorkspaceWorkflowsRequest
 } from "./generated/index.ts";
 import type { Client } from "./generated/client/index.ts";
 import { unwrapData } from "./tuttidClientResponse.ts";
@@ -8,7 +8,9 @@ import type { TuttidClient } from "./tuttidClientTypes.ts";
 
 type WorkspaceWorkflowClient = Pick<
   TuttidClient,
-  "decideWorkspaceWorkflowCheckpoint" | "listPendingWorkspaceWorkflows"
+  | "decideWorkspaceWorkflowCheckpoint"
+  | "listPendingWorkspaceWorkflows"
+  | "listWorkspaceWorkflows"
 >;
 
 export function createWorkspaceWorkflowClient(
@@ -16,13 +18,22 @@ export function createWorkspaceWorkflowClient(
 ): WorkspaceWorkflowClient {
   return {
     async listPendingWorkspaceWorkflows(workspaceID, sourceSessionID) {
-      const response = await listWorkspaceWorkflows({
+      const response = await listWorkspaceWorkflowsRequest({
         client,
         path: { workspaceID },
         query: {
           sourceSessionId: sourceSessionID,
           checkpointStatus: "pending"
         }
+      });
+      return unwrapData(response, "Workspace workflow list request failed.")
+        .workflows;
+    },
+    async listWorkspaceWorkflows(workspaceID, sourceSessionID) {
+      const response = await listWorkspaceWorkflowsRequest({
+        client,
+        path: { workspaceID },
+        query: { sourceSessionId: sourceSessionID }
       });
       return unwrapData(response, "Workspace workflow list request failed.")
         .workflows;

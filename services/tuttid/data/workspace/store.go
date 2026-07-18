@@ -166,6 +166,7 @@ type WorkspaceWorkflowsStore interface {
 	CreateWorkspaceWorkflowProposalWithMutation(context.Context, CreateWorkspaceWorkflowProposalMutationInput) (workflowbiz.WorkflowMutation, bool, error)
 	GetWorkspaceWorkflowMutation(context.Context, GetWorkspaceWorkflowMutationInput) (workflowbiz.WorkflowMutation, bool, error)
 	GetWorkspaceWorkflowSnapshot(context.Context, string, string) (workflowbiz.Snapshot, error)
+	ListWorkflowsBySourceSession(context.Context, string, string) ([]workflowbiz.Workflow, error)
 	ListPendingWorkflowCheckpointsBySourceSession(context.Context, string, string) ([]workflowbiz.PendingCheckpoint, error)
 	AppendWorkspaceWorkflowPlanRevision(context.Context, AppendWorkspaceWorkflowPlanRevisionInput) error
 	AppendWorkspaceWorkflowPlanRevisionWithMutation(context.Context, AppendWorkspaceWorkflowPlanRevisionMutationInput) (workflowbiz.WorkflowMutation, bool, error)

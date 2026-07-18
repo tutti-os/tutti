@@ -1832,7 +1832,7 @@ paths:
       operationId: listWorkspaceWorkflows
       tags:
         - workspace-workflow
-      summary: List recoverable Tutti-owned workflows for a source Agent session
+      summary: List Tutti-owned workflows for a source Agent session
       parameters:
         - name: sourceSessionId
           in: query
@@ -1847,7 +1847,7 @@ paths:
             type: string
             enum:
               - pending
-          description: Currently only pending checkpoints are listable.
+          description: When omitted, returns every workflow for the source session. Pass pending to return only workflows with a pending checkpoint.
       responses:
         "200":
           description: Matching authoritative workflow snapshots

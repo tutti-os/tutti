@@ -608,7 +608,7 @@ type ServerInterface interface {
 	// Persist one workspace workbench snapshot
 	// (PUT /v1/workspaces/{workspaceID}/workbench)
 	PutWorkspaceWorkbench(w http.ResponseWriter, r *http.Request, workspaceID WorkspaceID)
-	// List recoverable Tutti-owned workflows for a source Agent session
+	// List Tutti-owned workflows for a source Agent session
 	// (GET /v1/workspaces/{workspaceID}/workflows)
 	ListWorkspaceWorkflows(w http.ResponseWriter, r *http.Request, workspaceID WorkspaceID, params ListWorkspaceWorkflowsParams)
 	// Get one authoritative Tutti-owned workflow snapshot
@@ -32137,7 +32137,7 @@ type StrictServerInterface interface {
 	// Persist one workspace workbench snapshot
 	// (PUT /v1/workspaces/{workspaceID}/workbench)
 	PutWorkspaceWorkbench(ctx context.Context, request PutWorkspaceWorkbenchRequestObject) (PutWorkspaceWorkbenchResponseObject, error)
-	// List recoverable Tutti-owned workflows for a source Agent session
+	// List Tutti-owned workflows for a source Agent session
 	// (GET /v1/workspaces/{workspaceID}/workflows)
 	ListWorkspaceWorkflows(ctx context.Context, request ListWorkspaceWorkflowsRequestObject) (ListWorkspaceWorkflowsResponseObject, error)
 	// Get one authoritative Tutti-owned workflow snapshot

@@ -144,6 +144,56 @@ func (s *SQLiteStore) GetWorkspaceWorkflowSnapshot(ctx context.Context, workspac
 	return snapshot, nil
 }
 
+func (s *SQLiteStore) ListWorkflowsBySourceSession(
+	ctx context.Context,
+	workspaceID string,
+	sourceSessionID string,
+) ([]workflowbiz.Workflow, error) {
+	if s == nil || s.db == nil {
+		return nil, errors.New("workspace database is not initialized")
+	}
+	workspaceID = strings.TrimSpace(workspaceID)
+	sourceSessionID = strings.TrimSpace(sourceSessionID)
+	if workspaceID == "" || sourceSessionID == "" {
+		return nil, errors.New("workspace id and source session id are required")
+	}
+
+	rows, err := s.db.QueryContext(ctx, `
+SELECT workflow_id, workflow_type, owner, trigger_kind, source_turn_id,
+       source_tool_call_id, status, current_revision_id, created_at_unix_ms,
+       updated_at_unix_ms
+FROM workspace_workflows
+WHERE workspace_id = ? AND source_session_id = ?
+ORDER BY created_at_unix_ms ASC, workflow_id ASC
+`, workspaceID, sourceSessionID)
+	if err != nil {
+		return nil, fmt.Errorf("list workflows by source session: %w", err)
+	}
+	defer rows.Close()
+
+	result := make([]workflowbiz.Workflow, 0)
+	for rows.Next() {
+		var workflow workflowbiz.Workflow
+		var createdAt, updatedAt int64
+		workflow.WorkspaceID = workspaceID
+		workflow.SourceSessionID = sourceSessionID
+		if err := rows.Scan(
+			&workflow.ID, &workflow.Type, &workflow.Owner, &workflow.TriggerKind,
+			&workflow.SourceTurnID, &workflow.SourceToolCallID, &workflow.Status,
+			&workflow.CurrentRevisionID, &createdAt, &updatedAt,
+		); err != nil {
+			return nil, fmt.Errorf("scan workflow by source session: %w", err)
+		}
+		workflow.CreatedAt = time.UnixMilli(createdAt).UTC()
+		workflow.UpdatedAt = time.UnixMilli(updatedAt).UTC()
+		result = append(result, workflow)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate workflows by source session: %w", err)
+	}
+	return result, nil
+}
+
 func (s *SQLiteStore) ListPendingWorkflowCheckpointsBySourceSession(
 	ctx context.Context,
 	workspaceID string,

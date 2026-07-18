@@ -215,6 +215,14 @@ func TestServiceGetViewLoadsVerifiedRevisionDocumentsForRecovery(t *testing.T) {
 	if len(pending) != 1 || pending[0].Workflow.ID != "workflow-1" || pending[0].Revisions[0].Document.Title != "Recovered proposal" {
 		t.Fatalf("pending views = %#v", pending)
 	}
+
+	all, err := service.ListBySourceSession(context.Background(), "workspace-1", "session-1")
+	if err != nil {
+		t.Fatalf("ListBySourceSession() error = %v", err)
+	}
+	if len(all) != 1 || all[0].Workflow.ID != "workflow-1" || all[0].Revisions[0].Document.Title != "Recovered proposal" {
+		t.Fatalf("all views = %#v", all)
+	}
 }
 
 func TestServiceAgentWorkflowAccessIsScopedToSourceSession(t *testing.T) {
@@ -1507,6 +1515,18 @@ func (store *memoryWorkflowStore) ListPendingWorkflowCheckpointsBySourceSession(
 					result = append(result, workflowbiz.PendingCheckpoint{Workflow: snapshot.Workflow, Checkpoint: checkpoint, Revision: revision})
 				}
 			}
+		}
+	}
+	return result, nil
+}
+
+func (store *memoryWorkflowStore) ListWorkflowsBySourceSession(_ context.Context, workspaceID string, sourceSessionID string) ([]workflowbiz.Workflow, error) {
+	store.mu.Lock()
+	defer store.mu.Unlock()
+	result := make([]workflowbiz.Workflow, 0)
+	for _, snapshot := range store.snapshots {
+		if snapshot.Workflow.WorkspaceID == workspaceID && snapshot.Workflow.SourceSessionID == sourceSessionID {
+			result = append(result, snapshot.Workflow)
 		}
 	}
 	return result, nil

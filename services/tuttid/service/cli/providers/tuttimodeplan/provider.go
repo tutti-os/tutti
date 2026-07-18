@@ -18,13 +18,20 @@ type Plans interface {
 	GetViewForAgent(context.Context, tuttimodeplanservice.AgentGetInput) (tuttimodeplanservice.SnapshotView, error)
 }
 
+// ActiveTurns resolves the caller session's persisted active turn pointer so
+// propose can stamp the workflow with the turn it was created in.
+type ActiveTurns interface {
+	PersistedActiveTurnID(ctx context.Context, workspaceID string, agentSessionID string) (string, error)
+}
+
 type Provider struct {
 	workspaces cliservice.WorkspaceCatalog
 	plans      Plans
+	turns      ActiveTurns
 }
 
-func NewProvider(workspaces cliservice.WorkspaceCatalog, plans Plans) Provider {
-	return Provider{workspaces: workspaces, plans: plans}
+func NewProvider(workspaces cliservice.WorkspaceCatalog, plans Plans, turns ActiveTurns) Provider {
+	return Provider{workspaces: workspaces, plans: plans, turns: turns}
 }
 
 func (Provider) AppID() string {

@@ -87,3 +87,31 @@ func (s *Service) ListPendingBySourceSession(ctx context.Context, workspaceID st
 	}
 	return result, nil
 }
+
+func (s *Service) ListBySourceSession(ctx context.Context, workspaceID string, sourceSessionID string) ([]SnapshotView, error) {
+	if err := s.ready(); err != nil {
+		return nil, err
+	}
+	workspaceID = strings.TrimSpace(workspaceID)
+	sourceSessionID = strings.TrimSpace(sourceSessionID)
+	if workspaceID == "" || sourceSessionID == "" {
+		return nil, fmt.Errorf("%w: workspace and source session are required", ErrInvalidInput)
+	}
+	workflows, err := s.Store.ListWorkflowsBySourceSession(ctx, workspaceID, sourceSessionID)
+	if err != nil {
+		return nil, err
+	}
+	result := make([]SnapshotView, 0, len(workflows))
+	for _, workflow := range workflows {
+		workflowID := strings.TrimSpace(workflow.ID)
+		if workflowID == "" {
+			continue
+		}
+		view, viewErr := s.GetView(ctx, GetInput{WorkspaceID: workspaceID, WorkflowID: workflowID})
+		if viewErr != nil {
+			return nil, viewErr
+		}
+		result = append(result, view)
+	}
+	return result, nil
+}

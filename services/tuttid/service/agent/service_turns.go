@@ -162,6 +162,14 @@ func (s *Service) lookupPersistedTurn(ctx context.Context, workspaceID string, a
 	return turn, ok, nil
 }
 
+// PersistedActiveTurnID exposes the session's persisted active turn pointer
+// to collaborators outside the package (e.g. CLI capabilities invoked from
+// inside an agent turn that stamp durable records with their source turn).
+// It returns "" when the pointer is unset or the v2 store is not wired.
+func (s *Service) PersistedActiveTurnID(ctx context.Context, workspaceID string, agentSessionID string) (string, error) {
+	return s.persistedActiveTurnID(ctx, workspaceID, agentSessionID)
+}
+
 // persistedActiveTurnID reads the session's persisted active turn pointer.
 // It returns "" when the pointer is unset or the v2 store is not wired.
 func (s *Service) persistedActiveTurnID(ctx context.Context, workspaceID string, agentSessionID string) (string, error) {

@@ -515,6 +515,9 @@ function createTransportClient(
     async listPendingWorkspaceWorkflows() {
       throw new Error("not used");
     },
+    async listWorkspaceWorkflows() {
+      throw new Error("not used");
+    },
     async decideWorkspaceWorkflowCheckpoint() {
       throw new Error("not used");
     }

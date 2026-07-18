@@ -737,7 +737,7 @@ func buildDaemonAPI(ctx context.Context, store workspacedata.CatalogStore, analy
 			agentTargets,
 			preferences,
 		),
-		tuttimodeplancli.NewProvider(workspaceService, tuttiModePlans),
+		tuttimodeplancli.NewProvider(workspaceService, tuttiModePlans, agentSessionService),
 	}
 	if browserService != nil {
 		cliProviders = append(cliProviders, browsercli.NewProvider(workspaceService, browserService))
