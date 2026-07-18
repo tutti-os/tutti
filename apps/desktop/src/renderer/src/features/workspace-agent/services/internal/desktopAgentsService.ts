@@ -17,6 +17,7 @@ export interface DesktopAgentsServiceDependencies {
     iconKey: string | null;
     provider: string;
   }) => string;
+  isAgentTargetProviderGated?: (provider: string) => boolean;
   retryDelayMs?: number;
   setTimeout?: (
     callback: () => void,

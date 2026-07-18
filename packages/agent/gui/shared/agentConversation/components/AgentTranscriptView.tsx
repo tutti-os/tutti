@@ -376,6 +376,7 @@ export const AgentTranscriptView = memo(function AgentTranscriptView({
           row={row}
           labels={labels}
           onLinkAction={onLinkAction}
+          onReviseCollaboration={onReviseCollaboration}
           onAuthLogin={onAuthLogin}
           provider={provider}
           availableSkills={availableSkills}

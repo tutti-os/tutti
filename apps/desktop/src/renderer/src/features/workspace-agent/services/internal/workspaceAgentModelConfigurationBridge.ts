@@ -10,8 +10,8 @@ export function subscribeWorkspaceAgentModelConfigurationChanges(input: {
   >;
   sessionEngineHost: WorkspaceAgentSessionEngineHost | undefined;
   workspaceId: string;
-}): void {
-  input.eventStreamClient.subscribe(
+}): () => void {
+  return input.eventStreamClient.subscribe(
     "agent.model.configuration.changed",
     (event) => {
       const payload = event.payload;

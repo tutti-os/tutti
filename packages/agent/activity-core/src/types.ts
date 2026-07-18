@@ -17,6 +17,19 @@ export type {
   AgentActivityStartAgentCollaborationInput,
   AgentActivityStartModelConsultInput
 } from "./collaboration.types.ts";
+export type {
+  AgentActivityEventMessage,
+  AgentActivityEventTurn,
+  AgentActivityInteractionUpdatedEvent,
+  AgentActivityMessageUpdatedEvent,
+  AgentActivitySessionAuditEvent,
+  AgentActivitySessionDeletedEvent,
+  AgentActivitySessionEventEnvelope,
+  AgentActivitySessionReconcileRequiredEvent,
+  AgentActivityTurnUpdatedEvent,
+  AgentActivityUpdatedApplyResult,
+  AgentActivityUpdatedEvent
+} from "./events.types.ts";
 
 export type AgentActivityDisplayStatus =
   | "working"
@@ -342,144 +355,6 @@ export type AgentActivitySnapshotListener = (
   snapshot: AgentActivitySnapshot
 ) => void;
 
-export type AgentActivityUpdatedEvent =
-  | AgentActivitySessionReconcileRequiredEvent
-  | AgentActivitySessionDeletedEvent
-  | AgentActivitySessionAuditEvent
-  | AgentActivityMessageUpdatedEvent
-  | AgentActivityTurnUpdatedEvent
-  | AgentActivityInteractionUpdatedEvent;
-
-export interface AgentActivitySessionReconcileRequiredEvent {
-  workspaceId: string;
-  agentSessionId: string;
-  eventType: "session_reconcile_required";
-  data: {
-    workspaceId: string;
-    agentSessionId: string;
-    agentTargetId?: string;
-    eventType: "session_reconcile_required";
-    lastEventUnixMs: number;
-  };
-}
-
-export interface AgentActivitySessionDeletedEvent {
-  workspaceId: string;
-  agentSessionId: string;
-  eventType: "session_deleted";
-  data: {
-    workspaceId: string;
-    agentSessionId: string;
-    eventType: "session_deleted";
-    deletedAtUnixMs: number;
-  };
-}
-
-export interface AgentActivityMessageUpdatedEvent {
-  workspaceId: string;
-  agentSessionId: string;
-  eventType: "message_update";
-  data: {
-    workspaceId: string;
-    agentSessionId: string;
-    eventType: "message_update";
-    latestVersion: number;
-    acceptedCount: number;
-    messages: readonly AgentActivityEventMessage[];
-  };
-}
-
-export interface AgentActivitySessionAuditEvent {
-  workspaceId: string;
-  agentSessionId: string;
-  eventType: "session_audit";
-  data: {
-    workspaceId: string;
-    agentSessionId: string;
-    eventType: "session_audit";
-    audit: {
-      auditId: string;
-      role: string;
-      payload: Record<string, unknown>;
-      occurredAtUnixMs: number;
-      version: number;
-    };
-  };
-}
-
-export interface AgentActivityEventMessage {
-  agentSessionId: string;
-  kind: string;
-  messageId: string;
-  payload: Record<string, unknown>;
-  role: string;
-  version: number;
-  turnId: string | null;
-  status?: string;
-  sequence?: number;
-  occurredAtUnixMs: number;
-  startedAtUnixMs?: number;
-  completedAtUnixMs?: number;
-  createdAtUnixMs?: number;
-  updatedAtUnixMs?: number;
-}
-
-export interface AgentActivityTurnUpdatedEvent {
-  workspaceId: string;
-  agentSessionId: string;
-  eventType: "turn_update";
-  data: {
-    workspaceId: string;
-    agentSessionId: string;
-    eventType: "turn_update";
-    occurredAtUnixMs: number;
-    activeTurnId: string | null;
-    turn: AgentActivityEventTurn;
-  };
-}
-
-export interface AgentActivityEventTurn {
-  turnId: string;
-  agentSessionId: string;
-  capabilityRefs?: readonly AgentActivityCapabilityReference[];
-  phase: AgentActivityTurnPhase;
-  origin: AgentActivityTurnOrigin;
-  sourceGoalOperationId?: string | null;
-  sourceGoalRevision?: number | null;
-  sourceGoalRepairEpoch?: number | null;
-  outcome: AgentActivityTurnOutcome | null;
-  error: Record<string, unknown> | null;
-  fileChanges: unknown;
-  completedCommand: Record<string, unknown> | null;
-  startedAtUnixMs: number;
-  settledAtUnixMs: number | null;
-  updatedAtUnixMs: number;
-}
-
-export interface AgentActivityInteractionUpdatedEvent {
-  workspaceId: string;
-  agentSessionId: string;
-  eventType: "interaction_update";
-  data: {
-    workspaceId: string;
-    agentSessionId: string;
-    eventType: "interaction_update";
-    occurredAtUnixMs: number;
-    interaction: AgentActivityInteraction;
-  };
-}
-
-export type AgentActivitySessionEventEnvelope = Extract<
-  AgentActivityUpdatedEvent,
-  { eventType: "message_update" | "session_audit" }
->;
-
-export interface AgentActivityUpdatedApplyResult {
-  applied: boolean;
-  messages: AgentActivityMessage[];
-  session: AgentActivitySession | null;
-}
-
 export interface AgentActivityCapabilityReference {
   capability: "tutti";
   source: "slash_command";
@@ -688,104 +563,6 @@ export interface AgentActivitySetSessionPinnedInput {
   signal?: AbortSignal;
 }
 
-export type AgentActivityCollaborationMode =
-  | "consult"
-  | "fork"
-  | "delegate"
-  | "handoff";
-
-export type AgentActivityCollaborationTriggerSource =
-  | "user"
-  | "agent"
-  | "policy";
-
-export type AgentActivityCollaborationStatus =
-  | "running"
-  | "completed"
-  | "failed"
-  | "canceled";
-
-export type AgentActivityCollaborationAdoption =
-  | "pending"
-  | "adopted"
-  | "rejected"
-  | "not_applicable";
-
-export interface AgentActivityCollaborationUsage {
-  inputTokens: number;
-  outputTokens: number;
-}
-
-/**
- * One recorded collaboration run (model consult, fork, delegate, or handoff)
- * as returned by the host collaboration-run APIs. Timeline rendering reads the
- * durable "collaboration" message projection instead; this shape is the
- * command result contract.
- */
-export interface AgentActivityCollaborationRun {
-  id: string;
-  workspaceId: string;
-  mode: AgentActivityCollaborationMode | (string & {});
-  triggerSource: AgentActivityCollaborationTriggerSource | (string & {});
-  triggerReason?: string | null;
-  sourceSessionId?: string | null;
-  targetSessionId?: string | null;
-  targetAgentTargetId?: string | null;
-  modelPlanId?: string | null;
-  model?: string | null;
-  contextScope?: string | null;
-  resultText?: string | null;
-  failureReason?: string | null;
-  status: AgentActivityCollaborationStatus | (string & {});
-  adoption: AgentActivityCollaborationAdoption | (string & {});
-  usage?: AgentActivityCollaborationUsage | null;
-  durationMs?: number | null;
-  startedAtUnixMs?: number | null;
-  completedAtUnixMs?: number | null;
-}
-
-export interface AgentActivityStartModelConsultInput {
-  workspaceId: string;
-  agentSessionId: string;
-  modelPlanId: string;
-  model: string;
-  question: string;
-  contextText?: string | null;
-  signal?: AbortSignal;
-}
-
-export interface AgentActivitySetCollaborationAdoptionInput {
-  workspaceId: string;
-  agentSessionId: string;
-  runId: string;
-  adoption: Exclude<AgentActivityCollaborationAdoption, "not_applicable">;
-  signal?: AbortSignal;
-}
-
-export interface AgentActivityModelPlanModel {
-  id: string;
-  name: string;
-}
-
-/** Credential-free summary of one workspace model access plan. */
-export interface AgentActivityModelPlanSummary {
-  id: string;
-  name: string;
-  protocol: string;
-  enabled: boolean;
-  status: string;
-  models: AgentActivityModelPlanModel[];
-  defaultModel?: string | null;
-}
-
-export interface AgentActivityListModelPlansInput {
-  workspaceId: string;
-  signal?: AbortSignal;
-}
-
-export interface AgentActivityListModelPlansResult {
-  plans: AgentActivityModelPlanSummary[];
-}
 export type AgentActivityNeedsAttentionKind =
   | "permission"
   | "question"

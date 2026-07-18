@@ -16,9 +16,7 @@ import {
   type CliCapabilitiesResponse,
   type IssueManagerReferenceSearchResponse,
   type ListAgentTargetsResponse,
-  type ListAutomationRulesResponse,
   type ListWorkspacesResponse,
-  type PutAutomationRuleRequest,
   type WorkspaceFilePreviewResponse,
   type WorkspaceGitPatchSupportResponse,
   type WorkspaceGitPatchResponse

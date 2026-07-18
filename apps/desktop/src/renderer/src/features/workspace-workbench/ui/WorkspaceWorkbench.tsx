@@ -33,7 +33,6 @@ import { IAgentProviderStatusService } from "@renderer/features/workspace-agent/
 import { IAgentEnvService } from "@renderer/features/workspace-agent/services/agentEnvService.interface.ts";
 import { IAgentsService } from "@renderer/features/workspace-agent/services/agentsService.interface.ts";
 import { IWorkspaceAgentActivityService } from "@renderer/features/workspace-agent/services/workspaceAgentActivityService.interface.ts";
-import { IAgentEnvService } from "@renderer/features/workspace-agent/services/agentEnvService.interface.ts";
 import {
   registerWorkspaceAgentGuiLaunchHandler,
   requestWorkspaceAgentGuiLaunch
@@ -276,7 +275,6 @@ function ReadyWorkspaceWorkbenchWithSession({
     ]
   );
   useEffect(() => () => mentionService.dispose(), [mentionService]);
-  const agentEnvService = useService(IAgentEnvService);
   const agentProviderStatusService = useService(IAgentProviderStatusService);
   const runtime = useWorkspaceWorkbenchShellRuntime({
     enableWindowCloseGuard,

@@ -197,7 +197,6 @@ func TestAppServerTurnStartKeepsTuttiContextOutOfUserInput(t *testing.T) {
 		Session{Settings: &SessionSettings{Model: "gpt-test"}},
 		"thread-1",
 		[]PromptContentBlock{{Type: "text", Text: "what mode is active?"}},
-		"what mode is active?",
 		nil,
 		map[string]any{
 			"mode":                   "default",
@@ -210,10 +209,6 @@ func TestAppServerTurnStartKeepsTuttiContextOutOfUserInput(t *testing.T) {
 	input := payloadArray(params["input"])
 	if len(input) != 1 || asString(payloadObject(input[0])["text"]) != "what mode is active?" {
 		t.Fatalf("turn input = %#v", params["input"])
-	}
-	metadata, _ := params["responsesapiClientMetadata"].(map[string]string)
-	if metadata["user_prompt_preview"] != "what mode is active?" {
-		t.Fatalf("prompt preview = %#v", metadata)
 	}
 	collaboration := payloadObject(params["collaborationMode"])
 	settings := payloadObject(collaboration["settings"])
@@ -231,7 +226,6 @@ func TestAppServerTurnStartUsesProviderOnlyTuttiFallbackWithoutCollaborationMask
 		Session{Settings: &SessionSettings{Model: "gpt-test"}},
 		"thread-1",
 		[]PromptContentBlock{{Type: "text", Text: "what mode is active?"}},
-		"what mode is active?",
 		nil,
 		nil,
 		"gpt-test",
@@ -246,10 +240,6 @@ func TestAppServerTurnStartUsesProviderOnlyTuttiFallbackWithoutCollaborationMask
 	}
 	if params["collaborationMode"] != nil {
 		t.Fatalf("collaboration mode = %#v, want omitted without negotiated masks", params["collaborationMode"])
-	}
-	metadata, _ := params["responsesapiClientMetadata"].(map[string]string)
-	if metadata["user_prompt_preview"] != "what mode is active?" {
-		t.Fatalf("prompt preview = %#v", metadata)
 	}
 }
 

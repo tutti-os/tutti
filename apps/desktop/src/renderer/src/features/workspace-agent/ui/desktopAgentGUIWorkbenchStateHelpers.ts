@@ -1,4 +1,10 @@
-import { type DesktopAgentGUIProvider } from "../desktopAgentGUINodeState.ts";
+import type { DesktopAgentComposerDefaults } from "@shared/preferences";
+import {
+  normalizeDesktopAgentGUINodeState,
+  type DesktopAgentGUIComposerOverrides,
+  type DesktopAgentGUINodeState,
+  type DesktopAgentGUIProvider
+} from "../desktopAgentGUINodeState.ts";
 
 export function resolveDesktopAgentGUIProviderForAgentTarget(
   agentTargetId: string | null,
@@ -118,4 +124,23 @@ export function hasDesktopAgentGUIConversationRailCollapsedState(
     typeof (value as { conversationRailCollapsed?: unknown })
       .conversationRailCollapsed === "boolean"
   );
+}
+
+function desktopAgentComposerDefaultsToComposerOverrides(
+  defaults: DesktopAgentComposerDefaults
+): DesktopAgentGUIComposerOverrides | null {
+  const composerOverrides: DesktopAgentGUIComposerOverrides = {};
+  if (defaults.model?.trim()) {
+    composerOverrides.model = defaults.model.trim();
+  }
+  if (defaults.permissionModeId?.trim()) {
+    composerOverrides.permissionModeId = defaults.permissionModeId.trim();
+  }
+  if (defaults.reasoningEffort?.trim()) {
+    composerOverrides.reasoningEffort = defaults.reasoningEffort.trim();
+  }
+  if (defaults.speed?.trim()) {
+    composerOverrides.speed = defaults.speed.trim();
+  }
+  return Object.keys(composerOverrides).length > 0 ? composerOverrides : null;
 }

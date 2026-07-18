@@ -52,18 +52,36 @@ func generatedWorkspaceAgentTurn(turn agentactivitybiz.Turn) tuttigenerated.Work
 		value := turn.SettledAtUnixMS
 		settledAt = &value
 	}
+	var sourceGoalOperationID *string
+	if value := strings.TrimSpace(turn.SourceGoalOperationID); value != "" {
+		sourceGoalOperationID = &value
+	}
+	var sourceGoalRevision *int64
+	if turn.SourceGoalRevision > 0 {
+		value := turn.SourceGoalRevision
+		sourceGoalRevision = &value
+	}
+	var sourceGoalRepairEpoch *int64
+	if turn.SourceGoalRepairEpoch > 0 {
+		value := turn.SourceGoalRepairEpoch
+		sourceGoalRepairEpoch = &value
+	}
 	return tuttigenerated.WorkspaceAgentTurn{
-		AgentSessionId:   strings.TrimSpace(turn.AgentSessionID),
-		CapabilityRefs:   capabilityRefs,
-		CompletedCommand: completedCommand,
-		Error:            turnError,
-		FileChanges:      fileChanges,
-		Outcome:          outcome,
-		Phase:            tuttigenerated.WorkspaceAgentTurnPhase(turn.Phase),
-		SettledAtUnixMs:  settledAt,
-		StartedAtUnixMs:  turn.StartedAtUnixMS,
-		TurnId:           strings.TrimSpace(turn.TurnID),
-		UpdatedAtUnixMs:  turn.UpdatedAtUnixMS,
+		AgentSessionId:        strings.TrimSpace(turn.AgentSessionID),
+		CapabilityRefs:        capabilityRefs,
+		CompletedCommand:      completedCommand,
+		Error:                 turnError,
+		FileChanges:           fileChanges,
+		Origin:                tuttigenerated.WorkspaceAgentTurnOrigin(strings.TrimSpace(turn.Origin)),
+		Outcome:               outcome,
+		Phase:                 tuttigenerated.WorkspaceAgentTurnPhase(turn.Phase),
+		SettledAtUnixMs:       settledAt,
+		SourceGoalOperationId: sourceGoalOperationID,
+		SourceGoalRepairEpoch: sourceGoalRepairEpoch,
+		SourceGoalRevision:    sourceGoalRevision,
+		StartedAtUnixMs:       turn.StartedAtUnixMS,
+		TurnId:                strings.TrimSpace(turn.TurnID),
+		UpdatedAtUnixMs:       turn.UpdatedAtUnixMS,
 	}
 }
 

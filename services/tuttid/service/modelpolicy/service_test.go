@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	agentsessionstore "github.com/tutti-os/tutti/packages/agent/daemon/activity"
+	"github.com/tutti-os/tutti/packages/agent/store-sqlite/canonical"
 	modelbindingbiz "github.com/tutti-os/tutti/services/tuttid/biz/modelbinding"
 	modelpolicybiz "github.com/tutti-os/tutti/services/tuttid/biz/modelpolicy"
 	workspacedata "github.com/tutti-os/tutti/services/tuttid/data/workspace"
@@ -168,14 +168,14 @@ func newPolicyTestService(store *memoryPolicyStore) *Service {
 	}
 }
 
-func settledCompletedInput(turnID string) agentsessionstore.ReportSessionStateInput {
+func settledCompletedInput(turnID string) canonical.ReportSessionStateInput {
 	completed := "completed"
-	return agentsessionstore.ReportSessionStateInput{
+	return canonical.ReportSessionStateInput{
 		WorkspaceID:    "ws",
 		AgentSessionID: "session-1",
-		State: agentsessionstore.WorkspaceAgentSessionStateUpdate{
+		State: canonical.WorkspaceAgentSessionStateUpdate{
 			AgentTargetID: "local:codex",
-			TurnLifecycle: &agentsessionstore.WorkspaceAgentTurnLifecycle{
+			TurnLifecycle: &canonical.WorkspaceAgentTurnLifecycle{
 				ActiveTurnID: &turnID,
 				Phase:        "settled",
 				Outcome:      &completed,
@@ -231,7 +231,7 @@ func TestReviewRuleRunsAndMarksAutoChecked(t *testing.T) {
 		staticBudget{},
 	)
 
-	service.ObserveAgentSessionState(ctx, settledCompletedInput("turn-1"), agentsessionstore.ReportSessionStateReply{})
+	service.ObserveAgentSessionState(ctx, settledCompletedInput("turn-1"), canonical.ReportSessionStateReply{})
 	select {
 	case <-runner.done:
 	case <-time.After(5 * time.Second):
@@ -249,7 +249,7 @@ func TestReviewRuleRunsAndMarksAutoChecked(t *testing.T) {
 	}
 
 	// Same turn id does not re-trigger.
-	service.ObserveAgentSessionState(ctx, settledCompletedInput("turn-1"), agentsessionstore.ReportSessionStateReply{})
+	service.ObserveAgentSessionState(ctx, settledCompletedInput("turn-1"), canonical.ReportSessionStateReply{})
 	time.Sleep(50 * time.Millisecond)
 	if len(runner.inputs) != 1 {
 		t.Fatalf("same turn should not re-trigger: %#v", runner.inputs)
@@ -262,7 +262,7 @@ func TestCompletedTurnWithoutLegacyRunnerOnlyRecordsAcceptance(t *testing.T) {
 	ctx := context.Background()
 	service := newPolicyTestService(newMemoryPolicyStore())
 	service.Bindings = panicBindings{}
-	service.ObserveAgentSessionState(ctx, settledCompletedInput("turn-no-legacy-runner"), agentsessionstore.ReportSessionStateReply{})
+	service.ObserveAgentSessionState(ctx, settledCompletedInput("turn-no-legacy-runner"), canonical.ReportSessionStateReply{})
 	acceptance, ok, err := service.GetAcceptance(ctx, "ws", "session-1")
 	if err != nil || !ok || acceptance.State != modelpolicybiz.AcceptanceAgentClaimed {
 		t.Fatalf("acceptance = %#v ok=%v err=%v", acceptance, ok, err)
@@ -282,7 +282,7 @@ func TestReviewFailVerdictKeepsAgentClaimed(t *testing.T) {
 	}
 	service.ConfigureReviewAutomation(staticBindings{binding: modelbindingbiz.Binding{ModelPolicyID: policy.ID}}, nil, runner, staticBudget{})
 
-	service.ObserveAgentSessionState(ctx, settledCompletedInput("turn-9"), agentsessionstore.ReportSessionStateReply{})
+	service.ObserveAgentSessionState(ctx, settledCompletedInput("turn-9"), canonical.ReportSessionStateReply{})
 	select {
 	case <-runner.done:
 	case <-time.After(5 * time.Second):
@@ -303,7 +303,7 @@ func TestReviewBudgetExhaustedSkipsRun(t *testing.T) {
 	runner := &recordingRunner{result: ReviewConsultResult{RunID: "run-3", ResultText: "VERDICT: PASS"}}
 	service.ConfigureReviewAutomation(staticBindings{binding: modelbindingbiz.Binding{ModelPolicyID: policy.ID}}, nil, runner, staticBudget{runs: 2})
 
-	service.ObserveAgentSessionState(ctx, settledCompletedInput("turn-2"), agentsessionstore.ReportSessionStateReply{})
+	service.ObserveAgentSessionState(ctx, settledCompletedInput("turn-2"), canonical.ReportSessionStateReply{})
 	time.Sleep(100 * time.Millisecond)
 	if len(runner.inputs) != 0 {
 		t.Fatalf("budget-exhausted review should not run: %#v", runner.inputs)
@@ -326,7 +326,7 @@ func TestSessionOverrideDisablesAutomation(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("SetSessionOverride() error = %v", err)
 	}
-	service.ObserveAgentSessionState(ctx, settledCompletedInput("turn-3"), agentsessionstore.ReportSessionStateReply{})
+	service.ObserveAgentSessionState(ctx, settledCompletedInput("turn-3"), canonical.ReportSessionStateReply{})
 	time.Sleep(100 * time.Millisecond)
 	if len(runner.inputs) != 0 {
 		t.Fatalf("disabled session should not review: %#v", runner.inputs)
@@ -347,7 +347,7 @@ func TestUserAcceptanceIsSticky(t *testing.T) {
 		t.Fatalf("MarkUserAccepted() error = %v", err)
 	}
 	// A later completed turn without automation keeps user_accepted.
-	service.ObserveAgentSessionState(ctx, settledCompletedInput("turn-4"), agentsessionstore.ReportSessionStateReply{})
+	service.ObserveAgentSessionState(ctx, settledCompletedInput("turn-4"), canonical.ReportSessionStateReply{})
 	acceptance, ok, err := service.GetAcceptance(ctx, "ws", "session-1")
 	if err != nil || !ok || acceptance.State != modelpolicybiz.AcceptanceUserAccepted {
 		t.Fatalf("acceptance = %#v ok=%v err=%v", acceptance, ok, err)

@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	agentsessionstore "github.com/tutti-os/tutti/packages/agent/daemon/activity"
+	"github.com/tutti-os/tutti/packages/agent/store-sqlite/canonical"
 	agentactivitybiz "github.com/tutti-os/tutti/services/tuttid/biz/agentactivity"
 )
 
@@ -69,6 +70,7 @@ func (p *ActivityProjection) PublishRuntimeOperationEvent(
 			); err != nil {
 				return err
 			}
+			p.observeRootTurnSettledSessionState(ctx, event.WorkspaceID, agentSessionID, turn)
 			published++
 		}
 		if rawRoot, ok := event.Payload["reconciledRoot"].(map[string]any); ok {
@@ -90,6 +92,7 @@ func (p *ActivityProjection) PublishRuntimeOperationEvent(
 			); err != nil {
 				return err
 			}
+			p.observeRootTurnSettledSessionState(ctx, event.WorkspaceID, agentSessionID, turn)
 			published++
 		}
 		if published == 0 {
@@ -208,7 +211,7 @@ func (p *ActivityProjection) observeRootTurnSettledSessionState(
 	}
 	outcome := strings.TrimSpace(turn.Outcome)
 	agentTargetID := strings.TrimSpace(session.AgentTargetID)
-	state := agentsessionstore.WorkspaceAgentSessionStateUpdate{
+	state := canonical.WorkspaceAgentSessionStateUpdate{
 		Kind:          strings.TrimSpace(session.Kind),
 		AgentTargetID: agentTargetID,
 		Provider:      strings.TrimSpace(session.Provider),
@@ -218,11 +221,11 @@ func (p *ActivityProjection) observeRootTurnSettledSessionState(
 			session.InternalRuntimeContext,
 		),
 		LastError: strings.TrimSpace(turn.ErrorMessage),
-		TurnLifecycle: &agentsessionstore.WorkspaceAgentTurnLifecycle{
+		TurnLifecycle: &canonical.WorkspaceAgentTurnLifecycle{
 			Phase:   turn.Phase,
 			Outcome: &outcome,
 		},
-		Turn: &agentsessionstore.WorkspaceAgentTurnStateUpdate{
+		Turn: &canonical.WorkspaceAgentTurnStateUpdate{
 			TurnID:            turnID,
 			Phase:             turn.Phase,
 			Outcome:           outcome,
@@ -231,13 +234,13 @@ func (p *ActivityProjection) observeRootTurnSettledSessionState(
 		},
 		OccurredAtUnixMS: firstNonZeroInt64(turn.SettledAtUnixMS, turn.UpdatedAtUnixMS),
 	}
-	p.rootTurnSettleStateObserver.ObserveAgentSessionState(ctx, agentsessionstore.ReportSessionStateInput{
+	p.rootTurnSettleStateObserver.ObserveAgentSessionState(ctx, canonical.ReportSessionStateInput{
 		WorkspaceID:    workspaceID,
 		AgentSessionID: agentSessionID,
 		AgentTargetID:  agentTargetID,
 		SessionOrigin:  agentsessionstore.WorkspaceAgentSessionOriginRuntime,
 		State:          state,
-	}, agentsessionstore.ReportSessionStateReply{
+	}, canonical.ReportSessionStateReply{
 		Accepted:          true,
 		StateApplied:      true,
 		LastEventAtUnixMS: firstNonZeroInt64(turn.UpdatedAtUnixMS, turn.SettledAtUnixMS),

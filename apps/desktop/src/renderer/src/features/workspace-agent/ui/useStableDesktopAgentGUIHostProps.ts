@@ -43,6 +43,7 @@ export type DesktopAgentGUIHostProps = {
     | "onRememberComposerDefaults"
     | "onEngagementEvent"
     | "onOpenConversationWindow"
+    | "onCreateIssueFromPlan"
   >;
   renderSlots: Pick<AgentGUIProps["renderSlots"], "sidebarFooter">;
 };
@@ -114,7 +115,8 @@ export function useStableDesktopAgentGUIHostProps({
       onUpdateNode: nextHostActions.onUpdateNode,
       onRememberComposerDefaults: nextHostActions.onRememberComposerDefaults,
       onEngagementEvent: nextHostActions.onEngagementEvent,
-      onOpenConversationWindow: nextHostActions.onOpenConversationWindow
+      onOpenConversationWindow: nextHostActions.onOpenConversationWindow,
+      onCreateIssueFromPlan: nextHostActions.onCreateIssueFromPlan
     },
     renderSlots: {
       sidebarFooter: nextRenderSlots.sidebarFooter

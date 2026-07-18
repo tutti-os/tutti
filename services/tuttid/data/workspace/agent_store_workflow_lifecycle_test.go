@@ -158,7 +158,7 @@ func TestSQLiteStoreRollsBackSourceSessionDeletionWhenWorkflowTransitionFails(t 
 		t.Fatalf("SetTuttiModeActivation() changed=%v error=%v", changed, err)
 	}
 	createWorkflowProposalFixture(t, store, workspaceID, "workflow-1", now)
-	if _, err := store.db.ExecContext(ctx, `
+	if _, err := store.writeDB.ExecContext(ctx, `
 CREATE TRIGGER fail_source_session_workflow_cancel
 BEFORE UPDATE ON workspace_workflows
 BEGIN

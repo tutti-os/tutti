@@ -73,6 +73,7 @@ describe("clearFailedAgentGUIActivationSelection", () => {
         agentActivityRuntime: {} as AgentActivityRuntime,
         attentionReadRecordsBySessionId: {},
         conversationIdsRef: { current: new Set() },
+        conversationsRef: { current: [transientConversation] },
         conversationListQuery: {},
         currentUserId: null,
         data,
@@ -97,6 +98,9 @@ describe("clearFailedAgentGUIActivationSelection", () => {
           setIsComposerHome(next);
         },
         setIsLoadingMessages: vi.fn(),
+        clearRailRevealRequest: vi.fn(),
+        requestRailReveal: vi.fn(),
+        transientConversation,
         workspaceId: "workspace-1"
       });
       useAgentGUIConversationRouting({
@@ -118,7 +122,9 @@ describe("clearFailedAgentGUIActivationSelection", () => {
         },
         sessionEngine: {
           dispatch: vi.fn(),
-          getSnapshot: vi.fn(() => ({}))
+          getSnapshot: vi.fn(() => ({
+            pendingIntents: { activationsByRequestId: {} }
+          }))
         } as unknown as AgentSessionEngine,
         setIntent,
         transientConversation,
@@ -143,6 +149,9 @@ describe("clearFailedAgentGUIActivationSelection", () => {
     const failedAgentSessionId = "session-failed-echo";
     const onDataChange = vi.fn();
     const routeSelections = vi.fn();
+    const transientConversation = {
+      id: failedAgentSessionId
+    } as AgentGUIConversationSummary;
     const engineSnapshot = {
       pendingIntents: {
         activationsByRequestId: {
@@ -192,6 +201,7 @@ describe("clearFailedAgentGUIActivationSelection", () => {
           agentActivityRuntime: {} as AgentActivityRuntime,
           attentionReadRecordsBySessionId: {},
           conversationIdsRef: { current: new Set() },
+          conversationsRef: { current: [transientConversation] },
           conversationListQuery: {},
           currentUserId: null,
           data,
@@ -212,6 +222,9 @@ describe("clearFailedAgentGUIActivationSelection", () => {
           setIntent,
           setIsComposerHome,
           setIsLoadingMessages: vi.fn(),
+          clearRailRevealRequest: vi.fn(),
+          requestRailReveal: vi.fn(),
+          transientConversation,
           workspaceId: "workspace-1"
         });
         useAgentGUIConversationRouting({

@@ -9,7 +9,7 @@ type staticModelCatalog struct {
 	result AgentModelCatalogResult
 }
 
-func (c staticModelCatalog) ListModels(context.Context, string) (AgentModelCatalogResult, error) {
+func (c staticModelCatalog) ListModels(context.Context, AgentModelCatalogInput) (AgentModelCatalogResult, error) {
 	return c.result, nil
 }
 
@@ -28,7 +28,7 @@ func TestComposerModelOptionsFromCatalogMarksAppendedRequestedModel(t *testing.T
 		},
 	}}
 
-	projection, ok := composerModelOptionsFromCatalog(context.Background(), catalog, "codex", "x-ai/grok-4.5")
+	projection, ok := composerModelOptionsFromCatalog(context.Background(), catalog, "codex", "", "x-ai/grok-4.5")
 	if !ok {
 		t.Fatal("expected catalog projection")
 	}
@@ -52,7 +52,7 @@ func TestComposerModelOptionsFromCatalogDoesNotMarkCatalogSelection(t *testing.T
 		Models:   []AgentModelOption{{ID: "gpt-5.6-sol"}},
 	}}
 
-	projection, ok := composerModelOptionsFromCatalog(context.Background(), catalog, "codex", "gpt-5.6-sol")
+	projection, ok := composerModelOptionsFromCatalog(context.Background(), catalog, "codex", "", "gpt-5.6-sol")
 	if !ok {
 		t.Fatal("expected catalog projection")
 	}

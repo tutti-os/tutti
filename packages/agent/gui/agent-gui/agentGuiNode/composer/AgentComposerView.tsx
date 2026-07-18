@@ -35,10 +35,7 @@ import { AgentSlashCommandPalette } from "../AgentSlashCommandPalette";
 import { AgentSlashStatusPanel } from "../AgentSlashStatusPanel";
 import { AgentReviewPickerPanel } from "../AgentReviewPickerPanel";
 import { ComposerFloatingMenuSurface } from "../composerFloatingMenu/ComposerFloatingMenuSurface";
-import type {
-  AgentComposerExecutionMode,
-  AgentComposerProps
-} from "./AgentComposer.types";
+import type { AgentComposerProps } from "./AgentComposer.types";
 import {
   EMPTY_PROVIDER_SKILLS,
   EMPTY_WORKSPACE_APP_ICONS,

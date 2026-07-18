@@ -181,7 +181,8 @@ export class SessionRuntime {
         input.prompt,
         input.content,
         input.turnOrigin,
-        input.goal
+        input.goal,
+        input.hostContext
       )
     );
     this.router = new SDKMessageRouter({
@@ -261,10 +262,24 @@ export class SessionRuntime {
       return;
     }
     if (goal?.operationId && goal.revision > 0) {
-      this.goalExecQueue.accept({ turnId, prompt, content, turnOrigin, goal });
+      this.goalExecQueue.accept({
+        turnId,
+        prompt,
+        content,
+        turnOrigin,
+        hostContext,
+        goal
+      });
       return;
     }
-    this.dispatchExec(turnId, prompt, content, turnOrigin);
+    this.dispatchExec(
+      turnId,
+      prompt,
+      content,
+      turnOrigin,
+      undefined,
+      hostContext
+    );
   }
 
   private dispatchExec(
@@ -272,7 +287,8 @@ export class SessionRuntime {
     prompt: string,
     content?: unknown,
     turnOrigin?: string,
-    goal?: GoalCommandDispatch
+    goal?: GoalCommandDispatch,
+    hostContext = ""
   ): void {
     this.turns.closeSyntheticBeforeUserTurn();
     const turn: RuntimeTurn = {

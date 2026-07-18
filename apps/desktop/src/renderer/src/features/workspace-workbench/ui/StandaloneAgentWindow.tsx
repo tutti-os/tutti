@@ -38,11 +38,9 @@ import { IAgentsService } from "@renderer/features/workspace-agent/services/agen
 import { IAgentEnvService } from "@renderer/features/workspace-agent/services/agentEnvService.interface.ts";
 import type { IAgentProviderStatusService as AgentProviderStatusService } from "@renderer/features/workspace-agent/services/agentProviderStatusService.interface.ts";
 import type { IWorkspaceAgentActivityService as WorkspaceAgentActivityService } from "@renderer/features/workspace-agent/services/workspaceAgentActivityService.interface.ts";
-import { IAgentEnvService } from "@renderer/features/workspace-agent/services/agentEnvService.interface.ts";
 import type { DesktopAgentGUIPrefillPromptRequest } from "@renderer/features/workspace-agent/services/desktopAgentGUIPrefillPromptActivation.ts";
 import {
   desktopAgentGUIOpenSessionActivationType,
-  normalizeDesktopAgentGUIProvider,
   type DesktopAgentGUIProvider,
   type DesktopAgentGUIWorkbenchState
 } from "@renderer/features/workspace-agent/desktopAgentGUINodeState.ts";

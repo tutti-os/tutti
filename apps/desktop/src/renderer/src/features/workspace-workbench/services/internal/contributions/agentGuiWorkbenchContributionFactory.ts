@@ -17,6 +17,7 @@ type AgentGuiWorkbenchContributionContext = Pick<
   | "dockPreviewCache"
   | "eventStreamClient"
   | "hostFilesApi"
+  | "hostWindowApi"
   | "i18n"
   | "onCapabilitySettingsRequest"
   | "platformApi"

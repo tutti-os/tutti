@@ -124,7 +124,6 @@ function DesktopAgentGUISurfaceImpl({
   const readinessProvider =
     agents.find((agent) => agent.agentTargetId === requestedAgentTargetId)
       ?.provider ?? null;
-  const agentEnvService = useService(IAgentEnvService);
   const {
     computerUseStatus,
     handleAgentProviderLogin,
@@ -640,9 +639,6 @@ function DesktopAgentGUISurfaceImpl({
     },
     [agentActivityRuntime, i18n, workspaceId]
   );
-  const handleAgentEnvPanelOpen = useCallback<
-    NonNullable<AgentGUIProps["hostActions"]["onAgentEnvPanelOpen"]>
-  >((input) => agentEnvService.open(input), [agentEnvService]);
   const agentGUIHostProps = useStableDesktopAgentGUIHostProps({
     identity: {
       nodeId: surface.nodeId,
@@ -721,7 +717,37 @@ function DesktopAgentGUISurfaceImpl({
       onOpenConversationWindow:
         previewMode || !onOpenAgentConversationWindow
           ? undefined
-          : handleOpenConversationWindow
+          : handleOpenConversationWindow,
+      onCreateIssueFromPlan: previewMode
+        ? undefined
+        : async (request) => {
+            if (!onCreateIssueFromPlan) {
+              throw new Error(
+                i18n.t("workspace.agentGui.issueFromPlanUnavailable")
+              );
+            }
+            try {
+              const result = await onCreateIssueFromPlan(request);
+              Toast.tips(
+                i18n.t(
+                  request.creationOptions?.draft.planningSource ===
+                    "traditional_plan"
+                    ? "workspace.agentGui.issueFromTraditionalPlanCreated"
+                    : "workspace.agentGui.issueFromPlanCreated"
+                )
+              );
+              onLinkAction?.({
+                type: "open-workspace-issue",
+                workspaceId: request.workspaceId,
+                issueId: result.issueId,
+                topicId: result.topicId,
+                source: "agent-plan"
+              });
+              return result;
+            } catch {
+              throw new Error(i18n.t("workspace.agentGui.issueFromPlanFailed"));
+            }
+          }
     },
     renderSlots: {
       sidebarFooter: previewMode ? undefined : renderSidebarFooter

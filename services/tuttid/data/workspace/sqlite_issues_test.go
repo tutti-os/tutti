@@ -27,7 +27,7 @@ func TestSQLiteIssueStoreRejectsNonFinitePersistedBudgetOnRead(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CreateIssue() error = %v", err)
 	}
-	if _, err := store.db.ExecContext(ctx, `UPDATE workspace_issues SET budget_quota_waterline_percent = ? WHERE workspace_id = ? AND issue_id = ?`, math.Inf(1), "ws-nonfinite", issue.IssueID); err != nil {
+	if _, err := store.writeDB.ExecContext(ctx, `UPDATE workspace_issues SET budget_quota_waterline_percent = ? WHERE workspace_id = ? AND issue_id = ?`, math.Inf(1), "ws-nonfinite", issue.IssueID); err != nil {
 		t.Fatalf("corrupt persisted budget: %v", err)
 	}
 	if _, err := store.GetIssue(ctx, "ws-nonfinite", issue.IssueID); err == nil {

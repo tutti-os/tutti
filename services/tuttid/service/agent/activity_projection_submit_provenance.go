@@ -85,7 +85,7 @@ func (p *ActivityProjection) ReportSubmitProvenance(
 		return fmt.Errorf("atomic submit provenance did not preserve canonical message identity")
 	}
 
-	stateReply := agentsessionstore.ReportSessionStateReply{
+	stateReply := canonical.ReportSessionStateReply{
 		Accepted:          result.State.Accepted,
 		StateApplied:      result.State.StateApplied,
 		LastEventAtUnixMS: result.State.LastEventUnixMS,
@@ -115,7 +115,7 @@ func (p *ActivityProjection) ReportSubmitProvenance(
 		"messages":       activityMessagesEventPayload(result.Messages.Messages),
 		"workspaceId":    strings.TrimSpace(messageInput.WorkspaceID),
 	})
-	p.observeSessionMessages(ctx, messageInput, agentsessionstore.ReportSessionMessagesReply{
+	p.observeSessionMessages(ctx, messageInput, canonical.ReportSessionMessagesReply{
 		AcceptedCount: result.Messages.AcceptedCount,
 		LatestVersion: result.Messages.LatestVersion,
 	})

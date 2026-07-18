@@ -483,11 +483,22 @@ func RegisterRoutes(mux *http.ServeMux, routes Routes) {
 	})
 
 	mux.HandleFunc("/v1/workspaces/{workspaceID}/agent-sessions/{agentSessionID}/goal", func(w http.ResponseWriter, r *http.Request) {
+		switch r.Method {
+		case http.MethodGet:
+			wrapper.GetWorkspaceAgentSessionGoal(w, r)
+		case http.MethodPost:
+			wrapper.GoalControlWorkspaceAgentSession(w, r)
+		default:
+			tuttitypes.WriteMethodNotAllowed(w)
+		}
+	})
+
+	mux.HandleFunc("/v1/workspaces/{workspaceID}/agent-sessions/{agentSessionID}/goal/reconcile", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
 			tuttitypes.WriteMethodNotAllowed(w)
 			return
 		}
-		wrapper.GoalControlWorkspaceAgentSession(w, r)
+		wrapper.ReconcileWorkspaceAgentSessionGoal(w, r)
 	})
 
 	mux.HandleFunc("/v1/workspaces/{workspaceID}/agent-sessions/{agentSessionID}/input", func(w http.ResponseWriter, r *http.Request) {

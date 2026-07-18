@@ -134,6 +134,12 @@ func (a serviceHostStore) GetTurn(ctx context.Context, workspaceID, sessionID, t
 }
 
 func (a serviceHostStore) FindTurnByClientSubmitID(ctx context.Context, workspaceID, sessionID, clientSubmitID string) (string, bool, error) {
+	if a.service.SubmitClaimStore != nil {
+		turnID, found, err := a.service.SubmitClaimStore.FindTurnByClientSubmitID(ctx, workspaceID, sessionID, clientSubmitID)
+		if err != nil || found {
+			return turnID, found, err
+		}
+	}
 	if a.service.RuntimeOperationStore == nil {
 		return "", false, nil
 	}
@@ -334,10 +340,18 @@ func (a serviceHostRuntime) DurablyReportSubmitProvenance(ctx context.Context, i
 	reporter, ok := a.service.controller().(interface {
 		DurablyReportSubmitProvenance(context.Context, RuntimeSubmitProvenanceInput) error
 	})
-	if !ok {
-		return nil
+	if ok {
+		if err := reporter.DurablyReportSubmitProvenance(ctx, input); err != nil {
+			return err
+		}
 	}
-	return reporter.DurablyReportSubmitProvenance(ctx, input)
+	if !input.Guidance && a.service.TuttiModeActivations != nil {
+		_, err := a.service.TuttiModeActivations.AcceptTurnSnapshot(
+			ctx, input.WorkspaceID, input.AgentSessionID, input.TurnID,
+		)
+		return err
+	}
+	return nil
 }
 func (a serviceHostRuntime) ValidatePromptContent(ctx context.Context, input RuntimeExecInput) error {
 	return normalizeRuntimeError(a.service.controller().ValidatePromptContent(ctx, input))

@@ -22,7 +22,6 @@ import { agentActivitySessionFromTuttidSession } from "../desktopAgentActivityAd
 import { reportAgentSubmitTraceDiagnostic } from "../desktopAgentRuntimeSubmitDiagnostics.ts";
 import type { IWorkspaceAgentActivityService } from "../workspaceAgentActivityService.interface.ts";
 import {
-  agentSessionActivationError,
   normalizeComposerSettings,
   resolveComposerPermissionMode
 } from "./desktopAgentHostProjection.ts";
@@ -265,8 +264,6 @@ export class WorkspaceAgentActivityMutationOperations {
         fields: { activeTurnPhase: session.activeTurn?.phase ?? null }
       });
     }
-    const activationError = agentSessionActivationError(session);
-    const activationFailed = activationError !== undefined;
     reportAgentSubmitTraceDiagnostic(this.dependencies.runtimeApi, {
       agentSessionId: session.agentSessionId,
       clientSubmitId: input.mode === "new" ? input.clientSubmitId : null,
@@ -283,13 +280,8 @@ export class WorkspaceAgentActivityMutationOperations {
     return {
       activation: {
         mode: input.mode,
-        status: activationFailed
-          ? "failed"
-          : input.mode === "existing"
-            ? "already_attached"
-            : "attached"
+        status: input.mode === "existing" ? "already_attached" : "attached"
       },
-      ...(activationError ? { error: activationError } : {}),
       session
     };
   }
@@ -322,11 +314,15 @@ export class WorkspaceAgentActivityMutationOperations {
       provider: result.session.provider,
       submitDiagnostics: input.submitDiagnostics,
       workspaceId,
-      fields: {
-        turnOutcome: result.turn.outcome ?? null,
-        turnId: result.turnId,
-        turnPhase: result.turn.phase
-      }
+      fields:
+        result.kind === "goalControl"
+          ? { resultKind: "goalControl" }
+          : {
+              resultKind: "turn",
+              turnOutcome: result.turn.outcome ?? null,
+              turnId: result.turnId,
+              turnPhase: result.turn.phase
+            }
     });
     this.dependencies.upsertAuthoritativeSession(
       result.session,

@@ -16,7 +16,6 @@ import type {
   DesktopComputerUseStatus
 } from "@shared/contracts/ipc";
 import {
-  AddLinedIcon,
   AskLinedIcon,
   Button,
   CheckIcon,

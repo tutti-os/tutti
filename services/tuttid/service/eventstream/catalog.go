@@ -315,11 +315,6 @@ type agentActivityUpdatedPayload struct {
 	Data           json.RawMessage `json:"data"`
 }
 
-type agentModelCatalogInvalidatedPayload struct {
-	Providers        []string `json:"providers"`
-	OccurredAtUnixMS int64    `json:"occurredAtUnixMs"`
-}
-
 type workbenchNodeLaunchRequestedPayload struct {
 	WorkspaceID  string          `json:"workspaceId"`
 	TypeID       string          `json:"typeId"`

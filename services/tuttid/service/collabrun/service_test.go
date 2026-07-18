@@ -12,7 +12,7 @@ import (
 	"testing"
 	"time"
 
-	agentsessionstore "github.com/tutti-os/tutti/packages/agent/daemon/activity"
+	"github.com/tutti-os/tutti/packages/agent/store-sqlite/canonical"
 	collabrunbiz "github.com/tutti-os/tutti/services/tuttid/biz/collabrun"
 	modelplanbiz "github.com/tutti-os/tutti/services/tuttid/biz/modelplan"
 	workspacedata "github.com/tutti-os/tutti/services/tuttid/data/workspace"
@@ -719,11 +719,11 @@ func TestObserveAgentSessionStateSettlesTargetRunWithExecutionFacts(t *testing.T
 		t.Fatalf("RecordRun() error = %v", err)
 	}
 	outcome := "completed"
-	service.ObserveAgentSessionState(ctx, agentsessionstore.ReportSessionStateInput{
+	service.ObserveAgentSessionState(ctx, canonical.ReportSessionStateInput{
 		WorkspaceID:    "ws",
 		AgentSessionID: "session-target",
 		AgentTargetID:  "workspace-agent:actual",
-		State: agentsessionstore.WorkspaceAgentSessionStateUpdate{
+		State: canonical.WorkspaceAgentSessionStateUpdate{
 			Model: "model-actual",
 			RuntimeContext: map[string]any{
 				"usage": map[string]any{
@@ -736,8 +736,8 @@ func TestObserveAgentSessionStateSettlesTargetRunWithExecutionFacts(t *testing.T
 					"modelConfiguration": map[string]any{"modelPlanId": "plan-actual"},
 				},
 			},
-			TurnLifecycle: &agentsessionstore.WorkspaceAgentTurnLifecycle{Phase: "settled", Outcome: &outcome},
-			Turn: &agentsessionstore.WorkspaceAgentTurnStateUpdate{
+			TurnLifecycle: &canonical.WorkspaceAgentTurnLifecycle{Phase: "settled", Outcome: &outcome},
+			Turn: &canonical.WorkspaceAgentTurnStateUpdate{
 				TurnID:            "turn-1",
 				Phase:             "settled",
 				Outcome:           outcome,
@@ -745,7 +745,7 @@ func TestObserveAgentSessionStateSettlesTargetRunWithExecutionFacts(t *testing.T
 				CompletedAtUnixMS: 1700000002500,
 			},
 		},
-	}, agentsessionstore.ReportSessionStateReply{Accepted: true, StateApplied: true})
+	}, canonical.ReportSessionStateReply{Accepted: true, StateApplied: true})
 
 	settled, err := store.GetCollaborationRun(ctx, "ws", run.ID)
 	if err != nil {
@@ -762,14 +762,14 @@ func TestObserveAgentSessionStateSettlesTargetRunWithExecutionFacts(t *testing.T
 	}
 
 	failed := "failed"
-	service.ObserveAgentSessionState(ctx, agentsessionstore.ReportSessionStateInput{
+	service.ObserveAgentSessionState(ctx, canonical.ReportSessionStateInput{
 		WorkspaceID:    "ws",
 		AgentSessionID: "session-target",
-		State: agentsessionstore.WorkspaceAgentSessionStateUpdate{
+		State: canonical.WorkspaceAgentSessionStateUpdate{
 			LastError:     "late replay",
-			TurnLifecycle: &agentsessionstore.WorkspaceAgentTurnLifecycle{Phase: "settled", Outcome: &failed},
+			TurnLifecycle: &canonical.WorkspaceAgentTurnLifecycle{Phase: "settled", Outcome: &failed},
 		},
-	}, agentsessionstore.ReportSessionStateReply{Accepted: true, StateApplied: true})
+	}, canonical.ReportSessionStateReply{Accepted: true, StateApplied: true})
 	replayed, _ := store.GetCollaborationRun(ctx, "ws", run.ID)
 	if replayed.Status != collabrunbiz.StatusCompleted || replayed.FailureReason != "" {
 		t.Fatalf("replayed settlement changed terminal run = %#v", replayed)

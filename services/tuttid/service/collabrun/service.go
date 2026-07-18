@@ -17,7 +17,7 @@ import (
 	"sync"
 	"time"
 
-	agentsessionstore "github.com/tutti-os/tutti/packages/agent/daemon/activity"
+	"github.com/tutti-os/tutti/packages/agent/store-sqlite/canonical"
 	collabrunbiz "github.com/tutti-os/tutti/services/tuttid/biz/collabrun"
 	modelplanbiz "github.com/tutti-os/tutti/services/tuttid/biz/modelplan"
 	workspacedata "github.com/tutti-os/tutti/services/tuttid/data/workspace"
@@ -376,7 +376,7 @@ func (s *Service) SettleRun(ctx context.Context, workspaceID string, runID strin
 
 // ObserveAgentSessionState settles every running non-consult collaboration
 // linked to a target session when its turn reaches a terminal outcome.
-func (s *Service) ObserveAgentSessionState(ctx context.Context, input agentsessionstore.ReportSessionStateInput, _ agentsessionstore.ReportSessionStateReply) {
+func (s *Service) ObserveAgentSessionState(ctx context.Context, input canonical.ReportSessionStateInput, _ canonical.ReportSessionStateReply) {
 	status, outcome, startedAt, completedAt, ok := collaborationSettlement(input.State)
 	if !ok {
 		return
@@ -650,7 +650,7 @@ func shortFailureReason(value string, fallback string) string {
 	return value
 }
 
-func collaborationSettlement(state agentsessionstore.WorkspaceAgentSessionStateUpdate) (collabrunbiz.Status, string, time.Time, time.Time, bool) {
+func collaborationSettlement(state canonical.WorkspaceAgentSessionStateUpdate) (collabrunbiz.Status, string, time.Time, time.Time, bool) {
 	outcome := ""
 	var startedAtUnixMS int64
 	var completedAtUnixMS int64

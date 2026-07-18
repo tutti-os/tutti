@@ -108,7 +108,7 @@ func (s *SQLiteStore) applyAutomationRulesV2(ctx context.Context) error {
 	if applied {
 		return nil
 	}
-	tx, err := s.db.BeginTx(ctx, nil)
+	tx, err := s.writeDB.BeginTx(ctx, nil)
 	if err != nil {
 		return fmt.Errorf("begin automation rules v2 migration: %w", err)
 	}

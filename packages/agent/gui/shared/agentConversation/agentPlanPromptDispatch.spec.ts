@@ -108,6 +108,7 @@ describe("dispatchAgentPlanPromptAction", () => {
           latestTurn: {
             agentSessionId: "session-1",
             outcome: "completed",
+            origin: "user_prompt",
             phase: "settled",
             settledAtUnixMs: 2,
             startedAtUnixMs: 1,

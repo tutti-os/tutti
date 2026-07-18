@@ -77,6 +77,8 @@ test("tutti host context is a synthetic coordinator message before unchanged use
       "turn-1",
       "what mode is active?",
       undefined,
+      undefined,
+      undefined,
       "<tutti-host-context>active</tutti-host-context>"
     );
     await waitForEvent(events, "turn_completed");
@@ -166,6 +168,7 @@ async function waitForCondition(
 
 test("goal set scheduling ack followed by immediate clear coalesces before SDK activation", async () => {
   const events: Array<{ type: string; payload?: Record<string, unknown> }> = [];
+  const prompts: string[] = [];
   const restoreSink = withSidecarEventSinkForTest((event) =>
     events.push(event)
   );
@@ -185,7 +188,24 @@ test("goal set scheduling ack followed by immediate clear coalesces before SDK a
       },
       sidecarClaudeOptionsFromPayload({}),
       undefined,
-      ({ prompt }) => fakeSimpleResultQuery(prompt)
+      ({ prompt }) => ({
+        async *[Symbol.asyncIterator]() {
+          const iterator = prompt[Symbol.asyncIterator]();
+          for (let index = 0; index < 2; index += 1) {
+            const next = await iterator.next();
+            const message = next.value!;
+            prompts.push(userPromptText(message));
+            yield {
+              ...message,
+              type: "user",
+              parent_tool_use_id: null,
+              session_id: "provider-session-goal"
+            } as never;
+          }
+          yield { type: "result", subtype: "success" } as never;
+        },
+        close() {}
+      })
     );
 
     await session.start();
@@ -196,11 +216,18 @@ test("goal set scheduling ack followed by immediate clear coalesces before SDK a
       revision: 1,
       action: "set"
     });
-    session.exec("goal-clear-command", "/goal clear", undefined, undefined, {
-      operationId: "goal-op-clear",
-      revision: 2,
-      action: "clear"
-    });
+    session.exec(
+      "goal-clear-command",
+      "/goal clear",
+      undefined,
+      undefined,
+      {
+        operationId: "goal-op-clear",
+        revision: 2,
+        action: "clear"
+      },
+      "<tutti-host-context>goal-active</tutti-host-context>"
+    );
 
     await waitForEvent(events, "goal_command_started");
     await waitForEvent(events, "turn_completed");
@@ -222,6 +249,10 @@ test("goal set scheduling ack followed by immediate clear coalesces before SDK a
     );
     assert.equal(started?.payload?.operationId, "goal-op-clear");
     assert.equal(started?.payload?.revision, 2);
+    assert.deepEqual(prompts, [
+      "<tutti-host-context>goal-active</tutti-host-context>",
+      "/goal clear"
+    ]);
   } finally {
     restoreSink();
   }

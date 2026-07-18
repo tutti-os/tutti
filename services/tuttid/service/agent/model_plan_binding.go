@@ -10,8 +10,8 @@ import (
 	"strings"
 	"sync"
 
-	agentsessionstore "github.com/tutti-os/tutti/packages/agent/daemon/activity"
 	runtimeprep "github.com/tutti-os/tutti/packages/agent/runtimeprep"
+	"github.com/tutti-os/tutti/packages/agent/store-sqlite/canonical"
 	"github.com/tutti-os/tutti/services/tuttid/biz/agentprovider"
 	modelbindingbiz "github.com/tutti-os/tutti/services/tuttid/biz/modelbinding"
 	modelplanbiz "github.com/tutti-os/tutti/services/tuttid/biz/modelplan"
@@ -403,7 +403,7 @@ func pendingPlanFirstUseKey(workspaceID string, agentSessionID string) string {
 // ObserveAgentSessionState projects the first real Agent turn onto the
 // agent_runtime detection node. Success completes first use; a failed turn
 // records a retryable stage failure without preventing a later success.
-func (s *Service) ObserveAgentSessionState(ctx context.Context, input agentsessionstore.ReportSessionStateInput, _ agentsessionstore.ReportSessionStateReply) {
+func (s *Service) ObserveAgentSessionState(ctx context.Context, input canonical.ReportSessionStateInput, _ canonical.ReportSessionStateReply) {
 	if s == nil {
 		return
 	}
@@ -443,7 +443,7 @@ func (s *Service) ObserveAgentSessionState(ctx context.Context, input agentsessi
 	}
 }
 
-func modelPlanFirstUseSettledOutcome(state agentsessionstore.WorkspaceAgentSessionStateUpdate) (string, bool) {
+func modelPlanFirstUseSettledOutcome(state canonical.WorkspaceAgentSessionStateUpdate) (string, bool) {
 	outcome := ""
 	if lifecycle := state.TurnLifecycle; lifecycle != nil && strings.TrimSpace(lifecycle.Phase) == "settled" && lifecycle.Outcome != nil {
 		outcome = strings.TrimSpace(*lifecycle.Outcome)
@@ -463,7 +463,7 @@ func modelPlanFirstUseSettledOutcome(state agentsessionstore.WorkspaceAgentSessi
 // after a daemon restart. The immutable session snapshot contains only
 // redaction-safe Plan identity and model metadata; credentials remain in the
 // Plan revision store.
-func (s *Service) pendingPlanFirstUseFromDurableSession(input agentsessionstore.ReportSessionStateInput) (pendingPlanFirstUse, bool) {
+func (s *Service) pendingPlanFirstUseFromDurableSession(input canonical.ReportSessionStateInput) (pendingPlanFirstUse, bool) {
 	runtimeContext := input.State.RuntimeContext
 	if snapshot, exists, err := sessionRuntimeSnapshotFromContext(runtimeContext); err == nil && exists {
 		return pendingPlanFirstUseFromSnapshot(snapshot)
@@ -554,7 +554,7 @@ func applyResolvedModelPlanComposerOverlay(options ComposerOptions, resolution m
 // observers.
 type SessionStateObservers []SessionStateObserver
 
-func (observers SessionStateObservers) ObserveAgentSessionState(ctx context.Context, input agentsessionstore.ReportSessionStateInput, reply agentsessionstore.ReportSessionStateReply) {
+func (observers SessionStateObservers) ObserveAgentSessionState(ctx context.Context, input canonical.ReportSessionStateInput, reply canonical.ReportSessionStateReply) {
 	for _, observer := range observers {
 		if observer != nil {
 			observer.ObserveAgentSessionState(ctx, input, reply)

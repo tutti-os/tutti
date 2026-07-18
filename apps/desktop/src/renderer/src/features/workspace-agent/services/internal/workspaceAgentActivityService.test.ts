@@ -922,6 +922,10 @@ test("WorkspaceAgentActivityService starts session-event streams and preserves u
     },
     {
       scope: { workspaceId: "ws-1" },
+      topic: "workspace.tuttimode.updated"
+    },
+    {
+      scope: { workspaceId: "ws-1" },
       topic: "agent.model.configuration.changed"
     },
     {
@@ -1312,7 +1316,7 @@ test("WorkspaceAgentActivityService dispose releases every event stream subscrip
   });
 
   service.onSessionEvent("ws-1", () => {});
-  assert.equal(activeSubscriptions.size, 4);
+  assert.equal(activeSubscriptions.size, 6);
 
   service.dispose();
   service.dispose();
@@ -2652,6 +2656,7 @@ function workspaceAgentSession(overrides: {
     resumable: true,
     settings: overrides.settings ?? {},
     title: "Session 1",
+    tuttiModeActivation: null,
     updatedAtUnixMs,
     visible: true
   };
@@ -2691,35 +2696,6 @@ function planDecisionResponse(
       turnId: "turn-1",
       workspaceId: "ws-1"
     }
-  };
-}
-
-function wireEngineSession(phase: "running" | "settled") {
-  return {
-    ...workspaceAgentSession({
-      status: phase === "running" ? "working" : "completed",
-      updatedAt:
-        phase === "running"
-          ? "2026-07-11T00:00:01.000Z"
-          : "2026-07-11T00:00:02.000Z"
-    }),
-    activeTurnId: phase === "running" ? "turn-1" : null,
-    activeTurn:
-      phase === "running"
-        ? {
-            agentSessionId: "session-1",
-            completedCommand: null,
-            error: null,
-            fileChanges: null,
-            outcome: null,
-            phase: "running",
-            settledAtUnixMs: null,
-            startedAtUnixMs: 1,
-            turnId: "turn-1",
-            updatedAtUnixMs: 1
-          }
-        : null,
-    pendingInteractions: []
   };
 }
 

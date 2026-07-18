@@ -404,15 +404,17 @@ export abstract class WorkspaceAgentActivityReconcileBridge {
   }
 
   private subscribeWorkspaceEventStream(workspaceId: string): void {
-    subscribeWorkspaceAgentScopedEvents({
-      eventStreamClient: this.reconcileDependencies.eventStreamClient,
-      modelConfigurationChangedListeners:
-        this.modelConfigurationChangedListeners,
-      onAgentActivityUpdated: (event) =>
-        this.scheduleAgentActivityUpdate(event),
-      sessionEngineHost: this.entries.get(workspaceId),
-      workspaceId
-    });
+    this.eventStreamDisposables.push(
+      subscribeWorkspaceAgentScopedEvents({
+        eventStreamClient: this.reconcileDependencies.eventStreamClient,
+        modelConfigurationChangedListeners:
+          this.modelConfigurationChangedListeners,
+        onAgentActivityUpdated: (event) =>
+          this.scheduleAgentActivityUpdate(event),
+        sessionEngineHost: this.entries.get(workspaceId),
+        workspaceId
+      })
+    );
   }
 
   private startEventStreamConnection(): void {

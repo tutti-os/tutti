@@ -380,37 +380,40 @@ test("workspace settings window snapping is controlled by one dropdown", () => {
 });
 
 test("workspace settings app source control lives in developer settings", () => {
-  const developerSectionStart = source.indexOf(
+  const developerSectionStart = developerSource.indexOf(
     "function WorkspaceDeveloperSettingsSection"
   );
-  const controlStart = source.indexOf("function AppCatalogChannelControl");
+  const controlStart = developerSource.indexOf(
+    "function AppCatalogChannelControl"
+  );
 
   assert.ok(developerSectionStart >= 0);
   assert.ok(controlStart > developerSectionStart);
   assert.match(
-    source.slice(developerSectionStart, controlStart),
+    developerSource.slice(developerSectionStart, controlStart),
     /<AppCatalogChannelControl/
   );
 });
 
 test("workspace settings release channel control lives in developer settings", () => {
-  const developerSectionStart = source.indexOf(
+  const developerSectionStart = developerSource.indexOf(
     "function WorkspaceDeveloperSettingsSection"
   );
-  const controlStart = source.indexOf("function ReleaseChannelControl");
-  const agentSectionStart = source.indexOf(
-    "function WorkspaceAgentSettingsSection"
+  const controlStart = developerSource.indexOf(
+    "function ReleaseChannelControl"
   );
   const generalSectionStart = source.indexOf(
     "function WorkspaceGeneralSettingsSection"
   );
   const generalSection = source.slice(generalSectionStart, source.length);
-  const developerSection = source.slice(developerSectionStart, controlStart);
+  const developerSection = developerSource.slice(
+    developerSectionStart,
+    controlStart
+  );
 
   assert.ok(generalSectionStart >= 0);
   assert.ok(developerSectionStart >= 0);
   assert.ok(controlStart > developerSectionStart);
-  assert.ok(agentSectionStart > controlStart);
   assert.doesNotMatch(generalSection, /releaseChannelLabel/);
   assert.match(developerSection, /<ReleaseChannelControl/);
 });

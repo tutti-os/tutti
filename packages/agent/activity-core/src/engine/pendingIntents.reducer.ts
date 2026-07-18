@@ -11,13 +11,12 @@ import {
 import {
   confirmFromMessages,
   confirmFromSessions,
-  deleteSubmit,
   expireSubmit,
   removeSubmit,
   requestSubmit,
-  settleSubmitCommand,
-  submitExpiryId
+  settleSubmitCommand
 } from "./pendingSubmit.reducer.ts";
+import { removeSessionPendingIntents } from "./pendingSessionIntents.reducer.ts";
 import type {
   EngineCommand,
   EngineCommandResultIntent,
@@ -137,7 +136,7 @@ export function pendingIntentsReducer(
             dueAtUnixMs: intent.dueAtUnixMs
           });
     case "session/removed":
-      return removeSessionIntents(state, intent.agentSessionId);
+      return removeSessionPendingIntents(state, intent.agentSessionId);
     default:
       return unchanged(state);
   }
@@ -696,41 +695,6 @@ function removeActivation(
       { expiryId: activationExpiryId(id), type: "engine/cancelExpiry" }
     ],
     state: deleteActivation(state, id)
-  };
-}
-
-function removeSessionIntents(
-  state: PendingIntentsState,
-  agentSessionId: string
-): EngineReducerResult<PendingIntentsState> {
-  const submitIds = Object.values(state.submitsByClientSubmitId)
-    .filter((record) => record.agentSessionId === agentSessionId.trim())
-    .map((record) => record.clientSubmitId);
-  const activationIds = Object.values(state.activationsByRequestId)
-    .filter((record) => record.agentSessionId === agentSessionId.trim())
-    .map((record) => record.requestId);
-  const wasInactive = state.inactiveSessionIds[agentSessionId.trim()] === true;
-  if (submitIds.length === 0 && activationIds.length === 0 && !wasInactive) {
-    return unchanged(state);
-  }
-  return {
-    commands: [
-      ...submitIds.map((id) => ({
-        expiryId: submitExpiryId(id),
-        type: "engine/cancelExpiry" as const
-      })),
-      ...activationIds.map((id) => ({
-        expiryId: activationExpiryId(id),
-        type: "engine/cancelExpiry" as const
-      }))
-    ],
-    state: removeInactiveSession(
-      activationIds.reduce(
-        deleteActivation,
-        submitIds.reduce(deleteSubmit, state)
-      ),
-      agentSessionId
-    )
   };
 }
 

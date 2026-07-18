@@ -144,50 +144,38 @@ export function useAgentGUISessionPresentation(
   const pendingInteractivePrompt =
     input.serverInteractivePrompt ?? planImplementationPrompt;
 
-  useEffect(() => {
-    const provider = normalizeOptionalText(
-      input.activeEngineSession?.provider ?? input.activeConversation?.provider
-    );
-    if (provider === null) return;
-    // Remember the model together with its plan binding: a plan-scoped model
-    // id remembered bare would later be inherited by a plain provider create
-    // and rejected by the daemon (cross-plan model leak).
-    const stateModel = normalizeOptionalText(
-      input.activeSessionState?.settings?.model
-    );
-    const binding: AgentGUIComposerModelBinding | null =
-      stateModel !== null
+  const provider = normalizeOptionalText(
+    input.activeEngineSession?.provider ?? input.activeConversation?.provider
+  );
+  const stateModel = normalizeOptionalText(
+    input.activeSessionState?.settings?.model
+  );
+  const engineModel = normalizeOptionalText(
+    input.activeEngineSession?.settings?.model
+  );
+  const binding: AgentGUIComposerModelBinding | null =
+    stateModel !== null
+      ? {
+          model: stateModel,
+          modelPlanId: normalizeOptionalText(
+            input.activeSessionState?.settings?.modelPlanId
+          )
+        }
+      : engineModel !== null
         ? {
-            model: stateModel,
+            model: engineModel,
             modelPlanId: normalizeOptionalText(
-              input.activeSessionState?.settings?.modelPlanId
+              input.activeEngineSession?.settings?.modelPlanId
             )
           }
-        : normalizeOptionalText(input.activeEngineSession?.settings?.model) !==
-            null
-          ? {
-              model: normalizeOptionalText(
-                input.activeEngineSession?.settings?.model
-              )!,
-              modelPlanId: normalizeOptionalText(
-                input.activeEngineSession?.settings?.modelPlanId
-              )
-            }
-          : null;
-    if (binding === null) return;
+        : null;
+  // This render cache is read by later callbacks and does not drive rendering.
+  if (provider !== null && binding !== null) {
     input.lastActiveModelByProviderRef.current = {
       ...input.lastActiveModelByProviderRef.current,
       [provider]: binding
     };
-  }, [
-    input.activeConversation?.provider,
-    input.activeEngineSession?.provider,
-    input.activeEngineSession?.settings?.model,
-    input.activeEngineSession?.settings?.modelPlanId,
-    input.activeSessionState?.settings?.model,
-    input.activeSessionState?.settings?.modelPlanId,
-    input.lastActiveModelByProviderRef
-  ]);
+  }
 
   const activeHasPendingSubmittedTurn = Boolean(
     input.activeConversationId && input.activeLatestPendingSubmitTurnId

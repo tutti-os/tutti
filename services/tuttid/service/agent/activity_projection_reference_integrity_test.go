@@ -45,10 +45,10 @@ func TestActivityProjectionPreservesWorkspaceScopedAgentIDOnlyInOwningWorkspace(
 	projection.SetWorkspaceAgentTargetResolver(store)
 	for _, workspaceID := range []string{"ws-1", "ws-2"} {
 		sessionID := "session-" + workspaceID
-		if _, err := projection.ReportSessionState(ctx, agentsessionstore.ReportSessionStateInput{
+		if _, err := projection.ReportSessionState(ctx, canonical.ReportSessionStateInput{
 			WorkspaceID: workspaceID, AgentSessionID: sessionID,
 			SessionOrigin: agentsessionstore.WorkspaceAgentSessionOriginRuntime,
-			State: agentsessionstore.WorkspaceAgentSessionStateUpdate{
+			State: canonical.WorkspaceAgentSessionStateUpdate{
 				AgentTargetID: agentID, Provider: "codex", CurrentPhase: "idle", OccurredAtUnixMS: 1000,
 			},
 		}); err != nil {

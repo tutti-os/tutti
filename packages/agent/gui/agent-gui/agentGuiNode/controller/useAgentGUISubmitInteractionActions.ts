@@ -58,10 +58,6 @@ import {
 } from "./agentGuiSubmitInteractionContracts";
 import { useAgentGUIGoalControlActions } from "./useAgentGUIGoalControlActions";
 
-const ULTRA_PLAN_RUNTIME_INSTRUCTION = `You are in Tutti Ultra Plan mode. Do not implement the requested work or decompose it into Issue tasks in this turn. Produce only a thorough, reviewable plan narrative. The host will ask the user to confirm Issue-level reasoning, orchestration, and token-budget settings before a later Planning Agent turn creates the task graph.
-
-End the response with the exact HTML comment <!-- tutti-ultra-plan-v1 -->. Do not emit a tutti-issue-plan-v1 block yet. Never invent credentials, owner ids, provider account metadata, prices, Agents, Model Plans, or models.`;
-
 export function typedGoalControlFromComposer(
   content: AgentPromptContentBlock[],
   _displayPrompt?: string
@@ -465,11 +461,8 @@ export function useAgentGUISubmitInteractionActions(
           draftByScopeKeyRef.current[homeDraftKey] ?? emptyAgentComposerDraft()
         );
         const activationResult = startConversation(
-          effectiveContent,
-          displayPromptText ??
-            (ultraPlan
-              ? agentPromptContentDisplayText(normalizedContent)
-              : undefined),
+          normalizedContent,
+          displayPromptText,
           options,
           typedGoal ? false : undefined
         );

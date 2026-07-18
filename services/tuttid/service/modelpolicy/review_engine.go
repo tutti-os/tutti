@@ -7,7 +7,7 @@ import (
 	"sync"
 	"time"
 
-	agentsessionstore "github.com/tutti-os/tutti/packages/agent/daemon/activity"
+	"github.com/tutti-os/tutti/packages/agent/store-sqlite/canonical"
 	modelbindingbiz "github.com/tutti-os/tutti/services/tuttid/biz/modelbinding"
 	modelpolicybiz "github.com/tutti-os/tutti/services/tuttid/biz/modelpolicy"
 )
@@ -77,7 +77,7 @@ func (s *Service) ConfigureReviewAutomation(bindings BindingSource, sessions Ses
 // when the effective policy's fixed review rule allows, runs the automated
 // review asynchronously. Automated review can raise the ladder to
 // auto_checked only; user acceptance stays a user action.
-func (s *Service) ObserveAgentSessionState(ctx context.Context, input agentsessionstore.ReportSessionStateInput, _ agentsessionstore.ReportSessionStateReply) {
+func (s *Service) ObserveAgentSessionState(ctx context.Context, input canonical.ReportSessionStateInput, _ canonical.ReportSessionStateReply) {
 	if s == nil || s.Store == nil {
 		return
 	}

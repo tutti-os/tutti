@@ -236,7 +236,8 @@ export async function fetchAgentMentionFilterResult(input: {
       return {
         providerDiagnostics,
         rawGroups,
-        totalCounts: totalCountsFromRawGroups(rawGroups)
+        totalCounts: totalCountsFromRawGroups(rawGroups),
+        issueTopicGroups: null
       };
     }
   }

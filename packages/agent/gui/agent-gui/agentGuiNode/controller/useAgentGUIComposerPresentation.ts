@@ -304,9 +304,10 @@ export function useAgentGUIComposerPresentation(
     const selectedPermissionModeValue =
       normalizePermissionModeId(draftSettings.permissionModeId) ??
       normalizePermissionModeId(permissionConfig?.defaultValue);
-    const protectedSettings = overlayComposerDefaults(
+    const overlaidSettings = overlayComposerDefaults(
       {
         model: draftModel,
+        modelPlanId: draftModelPlanId,
         permissionModeId: selectedPermissionModeValue,
         reasoningEffort: optionsReasoningEffort,
         speed: draftSpeed
@@ -317,6 +318,13 @@ export function useAgentGUIComposerPresentation(
           : null
         : sessionSettings
     );
+    const protectedSettings =
+      input.activeConversationId === null
+        ? enforceComposerModelBindingForHomeDefaults(
+            overlaidSettings,
+            input.providerComposerOptions
+          )
+        : overlaidSettings;
     const presentedModel = normalizeOptionalText(protectedSettings.model);
     const presentedReasoningEffort = normalizeOptionalText(
       protectedSettings.reasoningEffort

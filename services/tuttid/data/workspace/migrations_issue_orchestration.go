@@ -288,11 +288,11 @@ func (s *SQLiteStore) applyWorkspaceIssuesV13(ctx context.Context) error {
 		return err
 	}
 	if !hasColumn {
-		if _, err := s.db.ExecContext(ctx, "ALTER TABLE workspace_issue_tasks ADD COLUMN parallelizable INTEGER NOT NULL DEFAULT 0;"); err != nil {
+		if _, err := s.writeDB.ExecContext(ctx, "ALTER TABLE workspace_issue_tasks ADD COLUMN parallelizable INTEGER NOT NULL DEFAULT 0;"); err != nil {
 			return fmt.Errorf("add workspace_issue_tasks.parallelizable: %w", err)
 		}
 	}
-	if _, err := s.db.ExecContext(ctx, `
+	if _, err := s.writeDB.ExecContext(ctx, `
 INSERT INTO tuttid_schema_migrations (id, applied_at_unix_ms)
   VALUES (?, ?);
 `, schemaMigrationWorkspaceIssuesV13, unixMs(time.Now().UTC())); err != nil {
@@ -317,11 +317,11 @@ func (s *SQLiteStore) applyWorkspaceIssuesV14(ctx context.Context) error {
 		return err
 	}
 	if !hasColumn {
-		if _, err := s.db.ExecContext(ctx, "ALTER TABLE workspace_issue_tasks ADD COLUMN auto_accept INTEGER NOT NULL DEFAULT 0;"); err != nil {
+		if _, err := s.writeDB.ExecContext(ctx, "ALTER TABLE workspace_issue_tasks ADD COLUMN auto_accept INTEGER NOT NULL DEFAULT 0;"); err != nil {
 			return fmt.Errorf("add workspace_issue_tasks.auto_accept: %w", err)
 		}
 	}
-	if _, err := s.db.ExecContext(ctx, `
+	if _, err := s.writeDB.ExecContext(ctx, `
 INSERT INTO tuttid_schema_migrations (id, applied_at_unix_ms)
   VALUES (?, ?);
 `, schemaMigrationWorkspaceIssuesV14, unixMs(time.Now().UTC())); err != nil {

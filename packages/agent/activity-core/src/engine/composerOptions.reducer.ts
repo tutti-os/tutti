@@ -273,10 +273,10 @@ function invalidate(
     : null;
   let entriesByTargetKey: Record<string, ComposerOptionsEntry> | null = null;
   for (const [targetKey, entry] of Object.entries(state.entriesByTargetKey)) {
-    const matches =
-      (providerSet === null && targetKeySet === null) ||
-      providerSet?.has(entry.provider) === true ||
-      targetKeySet?.has(targetKey) === true;
+    const matchesProvider =
+      providerSet === null || providerSet.has(entry.provider);
+    const matchesTarget = targetKeySet === null || targetKeySet.has(targetKey);
+    const matches = matchesProvider && matchesTarget;
     if (!matches) continue;
     entriesByTargetKey ??= { ...state.entriesByTargetKey };
     entriesByTargetKey[targetKey] = {

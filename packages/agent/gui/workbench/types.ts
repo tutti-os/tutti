@@ -71,4 +71,3 @@ export interface AgentGuiWorkbenchState {
 export interface AgentGuiWorkbenchWorkspaceState {
   workspaceId: string;
 }
-import type { AgentGUIModelConfigurationState } from "../types.ts";

@@ -25,7 +25,7 @@ func (s *SQLiteStore) RecordAutomationRuleExecution(ctx context.Context, executi
 	if updatedAt.IsZero() {
 		updatedAt = createdAt
 	}
-	if _, err := s.db.ExecContext(ctx, `
+	if _, err := s.writeDB.ExecContext(ctx, `
 INSERT INTO automation_rule_executions (
   workspace_id, rule_id, source_session_id, trigger_id, target_session_id,
   status, failure_reason, total_tokens, created_at_unix_ms, updated_at_unix_ms
@@ -41,7 +41,7 @@ INSERT INTO automation_rule_executions (
 // MarkAutomationRuleExecutionLaunchFailed keeps the failed launch row for
 // audit and dedup; a failed launch consumes the trigger rather than retrying.
 func (s *SQLiteStore) MarkAutomationRuleExecutionLaunchFailed(ctx context.Context, workspaceID string, targetSessionID string, failureReason string) error {
-	if _, err := s.db.ExecContext(ctx, `
+	if _, err := s.writeDB.ExecContext(ctx, `
 UPDATE automation_rule_executions
 SET status = ?, failure_reason = ?, updated_at_unix_ms = ?
 WHERE workspace_id = ? AND target_session_id = ?
@@ -53,7 +53,7 @@ WHERE workspace_id = ? AND target_session_id = ?
 }
 
 func (s *SQLiteStore) AutomationRuleExecutionExists(ctx context.Context, workspaceID string, sourceSessionID string, ruleID string, triggerID string) (bool, error) {
-	row := s.db.QueryRowContext(ctx, `
+	row := s.writeDB.QueryRowContext(ctx, `
 SELECT COUNT(*) FROM automation_rule_executions
 WHERE workspace_id = ? AND source_session_id = ? AND rule_id = ? AND trigger_id = ?
 `, strings.TrimSpace(workspaceID), strings.TrimSpace(sourceSessionID), strings.TrimSpace(ruleID), strings.TrimSpace(triggerID))
@@ -68,7 +68,7 @@ WHERE workspace_id = ? AND source_session_id = ? AND rule_id = ? AND trigger_id 
 // and sums the recorded target-session token totals for one rule and source
 // session.
 func (s *SQLiteStore) AutomationRuleUsage(ctx context.Context, workspaceID string, sourceSessionID string, ruleID string) (int, int64, error) {
-	row := s.db.QueryRowContext(ctx, `
+	row := s.writeDB.QueryRowContext(ctx, `
 SELECT COUNT(*), COALESCE(SUM(total_tokens), 0) FROM automation_rule_executions
 WHERE workspace_id = ? AND source_session_id = ? AND rule_id = ?
 `, strings.TrimSpace(workspaceID), strings.TrimSpace(sourceSessionID), strings.TrimSpace(ruleID))
@@ -88,7 +88,7 @@ func (s *SQLiteStore) RecordAutomationTargetUsage(ctx context.Context, workspace
 	if totalTokens < 0 {
 		return nil
 	}
-	if _, err := s.db.ExecContext(ctx, `
+	if _, err := s.writeDB.ExecContext(ctx, `
 UPDATE automation_rule_executions
 SET total_tokens = ?, updated_at_unix_ms = ?
 WHERE workspace_id = ? AND target_session_id = ? AND total_tokens = 0

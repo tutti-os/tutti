@@ -26,15 +26,29 @@ func submissionMetadata(metadata map[string]any, typedClientSubmitID string) map
 	return result
 }
 
-func (h *Host) prepareSubmitClaim(ctx context.Context, ref SessionRef, metadata map[string]any) (storesqlite.SubmitClaim, bool, error) {
+func (h *Host) prepareSubmitClaim(ctx context.Context, ref SessionRef, metadata map[string]any, canonicalTurnID string) (storesqlite.SubmitClaim, bool, error) {
 	clientID := legacyClientSubmitID(metadata)
 	if h == nil || h.store == nil || clientID == "" {
 		return storesqlite.SubmitClaim{}, false, nil
 	}
-	return h.store.PrepareSubmitClaim(ctx, storesqlite.SubmitClaimPrepare{
+	claim, created, err := h.store.PrepareSubmitClaim(ctx, storesqlite.SubmitClaimPrepare{
 		WorkspaceID: ref.WorkspaceID, AgentSessionID: ref.AgentSessionID,
-		ClientSubmitID: clientID, NowUnixMS: h.now().UnixMilli(),
+		ClientSubmitID: clientID, CanonicalTurnID: strings.TrimSpace(canonicalTurnID), NowUnixMS: h.now().UnixMilli(),
 	})
+	if err != nil || created || claim.Status != "prepared" {
+		return claim, created, err
+	}
+	turnID, found, err := h.store.FindTurnByClientSubmitID(ctx, ref.WorkspaceID, ref.AgentSessionID, clientID)
+	if err != nil || !found {
+		return claim, false, err
+	}
+	if strings.TrimSpace(turnID) != strings.TrimSpace(claim.CanonicalTurnID) {
+		return claim, false, storesqlite.ErrSubmitClaimTurnConflict
+	}
+	claim, _, err = h.store.AcceptSubmitClaim(
+		ctx, ref.WorkspaceID, ref.AgentSessionID, clientID, turnID, h.now().UnixMilli(),
+	)
+	return claim, false, err
 }
 
 func (h *Host) abandonSubmitClaim(ref SessionRef, clientID string) {

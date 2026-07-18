@@ -229,17 +229,12 @@ test("agent composer options keep requested-origin provenance on model entries",
   // current-value append carries the same marker for the same reason.
   const options = agentActivityComposerOptionsFromTuttidResult("codex", {
     effectiveSettings: { model: "x-ai/grok-4.5" },
-    runtimeContext: {
-      configOptions: [
-        {
-          id: "model",
-          currentValue: "x-ai/grok-4.5",
-          options: [
-            { name: "GPT-5.3 Codex", value: "gpt-5.3-codex" },
-            { name: "GPT-5.6 Sol", value: "gpt-5.6-sol" },
-            { name: "x-ai/grok-4.5", value: "x-ai/grok-4.5", requested: true }
-          ]
-        }
+    modelConfig: {
+      currentValue: "x-ai/grok-4.5",
+      options: [
+        { name: "GPT-5.3 Codex", value: "gpt-5.3-codex" },
+        { name: "GPT-5.6 Sol", value: "gpt-5.6-sol" },
+        { name: "x-ai/grok-4.5", value: "x-ai/grok-4.5", requested: true }
       ]
     }
   });

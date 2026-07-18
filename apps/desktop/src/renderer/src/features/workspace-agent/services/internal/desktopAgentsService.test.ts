@@ -12,8 +12,10 @@ test("desktop agents service publishes explicit idle, loading, and ready lifecyc
   const service = new DesktopAgentsService({
     now: () => 1780272000123,
     tuttidClient: {
-      listAgentTargets: () => request.promise
-    }
+      listAgentTargets: () => request.promise,
+      listWorkspaceAgents: async () => ({ agents: [] })
+    },
+    workspaceId: "workspace-1"
   });
   const snapshots: string[] = [];
   service.subscribe(() => {
@@ -64,8 +66,12 @@ test("desktop agents service publishes failures, retains cached data, and owns r
           throw new Error("directory unavailable");
         }
         return { targets: [target] };
+      },
+      async listWorkspaceAgents() {
+        return { agents: [] };
       }
-    }
+    },
+    workspaceId: "workspace-1"
   });
 
   const readySnapshot = await service.load();
@@ -89,8 +95,12 @@ test("desktop agents service hydrates a detached-window bootstrap snapshot befor
     tuttidClient: {
       async listAgentTargets() {
         return { targets: [] };
+      },
+      async listWorkspaceAgents() {
+        return { agents: [] };
       }
-    }
+    },
+    workspaceId: "workspace-1"
   });
   const target = createAgentTarget({
     id: "local:codex",
@@ -284,5 +294,3 @@ async function waitFor(predicate: () => boolean): Promise<void> {
   }
   assert.fail("condition was not reached");
 }
-
-

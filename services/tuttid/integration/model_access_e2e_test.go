@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	agentsessionstore "github.com/tutti-os/tutti/packages/agent/daemon/activity"
+	"github.com/tutti-os/tutti/packages/agent/store-sqlite/canonical"
 	collabrunbiz "github.com/tutti-os/tutti/services/tuttid/biz/collabrun"
 	modelplanbiz "github.com/tutti-os/tutti/services/tuttid/biz/modelplan"
 	modelpolicybiz "github.com/tutti-os/tutti/services/tuttid/biz/modelpolicy"
@@ -203,18 +203,18 @@ func TestModelAccessVerticalLoop(t *testing.T) {
 	// review consult and raises acceptance to auto_checked.
 	completed := "completed"
 	turnID := "turn-e2e-1"
-	policies.ObserveAgentSessionState(ctx, agentsessionstore.ReportSessionStateInput{
+	policies.ObserveAgentSessionState(ctx, canonical.ReportSessionStateInput{
 		WorkspaceID:    "ws-e2e",
 		AgentSessionID: "session-e2e",
-		State: agentsessionstore.WorkspaceAgentSessionStateUpdate{
+		State: canonical.WorkspaceAgentSessionStateUpdate{
 			AgentTargetID: "local:codex",
-			TurnLifecycle: &agentsessionstore.WorkspaceAgentTurnLifecycle{
+			TurnLifecycle: &canonical.WorkspaceAgentTurnLifecycle{
 				ActiveTurnID: &turnID,
 				Phase:        "settled",
 				Outcome:      &completed,
 			},
 		},
-	}, agentsessionstore.ReportSessionStateReply{})
+	}, canonical.ReportSessionStateReply{})
 
 	deadline := time.Now().Add(10 * time.Second)
 	for {
@@ -270,18 +270,18 @@ func TestModelAccessVerticalLoop(t *testing.T) {
 		t.Fatalf("SetSessionOverride() error = %v", err)
 	}
 	turn2 := "turn-e2e-2"
-	policies.ObserveAgentSessionState(ctx, agentsessionstore.ReportSessionStateInput{
+	policies.ObserveAgentSessionState(ctx, canonical.ReportSessionStateInput{
 		WorkspaceID:    "ws-e2e",
 		AgentSessionID: "session-e2e",
-		State: agentsessionstore.WorkspaceAgentSessionStateUpdate{
+		State: canonical.WorkspaceAgentSessionStateUpdate{
 			AgentTargetID: "local:codex",
-			TurnLifecycle: &agentsessionstore.WorkspaceAgentTurnLifecycle{
+			TurnLifecycle: &canonical.WorkspaceAgentTurnLifecycle{
 				ActiveTurnID: &turn2,
 				Phase:        "settled",
 				Outcome:      &completed,
 			},
 		},
-	}, agentsessionstore.ReportSessionStateReply{})
+	}, canonical.ReportSessionStateReply{})
 	time.Sleep(200 * time.Millisecond)
 	runs, err = collabRuns.ListRuns(ctx, "ws-e2e", "session-e2e", 0)
 	if err != nil {

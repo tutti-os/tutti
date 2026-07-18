@@ -45,8 +45,8 @@ type Service struct {
 	SubmitClaimStore               SubmitClaimStore
 	RuntimeOperationEventPublisher RuntimeOperationEventPublisher
 	AutomationRuleOverrides        AutomationRuleSessionOverrideWriter
-	TuttiModeActivations           TuttiModeActivationCoordinator
-	SourceSessionDeletions         SourceSessionDeletionCoordinator
+	TuttiModeActivations           TuttiModeActivationPort
+	SourceSessionDeletions         SourceSessionDeletionPort
 	SessionDeletionEvents          SessionDeletionEventPublisher
 	TurnCancelObserver             TurnCancelObserver
 	RuntimeOperationClock          func() time.Time
@@ -104,7 +104,7 @@ type AutomationRuleSessionOverrideWriter interface {
 	SetSessionOverride(context.Context, automationrulebiz.SessionOverride) (automationrulebiz.SessionOverride, error)
 }
 
-type TuttiModeActivationCoordinator interface {
+type TuttiModeActivationPort interface {
 	Get(context.Context, string, string) (*tuttimodeactivationbiz.Activation, error)
 	List(context.Context, string, []string) (map[string]tuttimodeactivationbiz.Activation, error)
 	Set(context.Context, tuttimodeactivationservice.SetInput) (tuttimodeactivationservice.SetResult, error)

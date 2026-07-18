@@ -13,6 +13,7 @@ import type { WorkspaceLinkAction } from "../../../actions/workspaceLinkActions"
 import type { UiLanguage } from "../../../contexts/settings/domain/agentSettings";
 import type { AgentMessageMarkdownWorkspaceAppIcon } from "../../../shared/AgentMessageMarkdown";
 import type { AgentCollaborationVM } from "../../../shared/agentConversation/contracts/agentCollaborationVM";
+import { latestAssistantMessageText } from "../../../shared/agentConversation/projection/agentConversationProjection";
 import { AGENT_GUI_WORKBENCH_OPEN_EXTERNAL_IMPORT_EVENT } from "../../../workbench/contribution";
 import { resolveAgentGuiWorkbenchProviderLabel } from "../../../workbench/providerCatalog";
 import type {

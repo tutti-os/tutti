@@ -259,7 +259,7 @@ func TestSQLiteStoreTuttiModeMigrationDoesNotBackfillTurnCapabilityRefs(t *testi
 		t.Fatal(err)
 	}
 	var count int
-	if err := store.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM tutti_mode_activations`).Scan(&count); err != nil {
+	if err := store.writeDB.QueryRowContext(ctx, `SELECT COUNT(*) FROM tutti_mode_activations`).Scan(&count); err != nil {
 		t.Fatal(err)
 	}
 	if count != 0 {
@@ -274,7 +274,7 @@ func TestSQLiteStoreTuttiModeTurnDispatchMigrationResumesPartialUpgrade(t *testi
 
 	// Simulate a process exit after the first v2 ALTER committed but before the
 	// second column and migration marker were durable.
-	if _, err := store.db.ExecContext(ctx, `
+	if _, err := store.writeDB.ExecContext(ctx, `
 DELETE FROM tuttid_schema_migrations WHERE id = ?;
 ALTER TABLE tutti_mode_turn_snapshots DROP COLUMN accepted_at_unix_ms;
 `, schemaMigrationTuttiModeTurnDispatchV2); err != nil {

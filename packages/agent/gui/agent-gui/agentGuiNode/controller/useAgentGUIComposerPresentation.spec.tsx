@@ -7,7 +7,6 @@ import { describe, expect, it, vi } from "vitest";
 import type { AgentActivityRuntime } from "../../../agentActivityRuntime";
 import type { AgentSessionComposerSettings } from "../../../shared/agentSessionTypes";
 import type { AgentGUINodeData } from "../../../types";
-import type { AgentSessionComposerSettings } from "../../../shared/agentSessionTypes";
 import { composerSettingsSupportFromOptions } from "../model/composerSettingsSupport";
 import { nodeDefaultDraftKey } from "./agentGuiController.composerHelpers";
 import type { AgentGUIComposerTargetData } from "./agentGuiController.composerPresentation";
@@ -90,6 +89,7 @@ describe("useAgentGUIComposerPresentation", () => {
           draftSettingsBySessionId: drafts,
           draftSettingsBySessionIdRef: { current: drafts },
           onDataChangeRef: { current: vi.fn() },
+          normalizedProviderTargets: [],
           providerComposerOptions: currentOptions,
           selectedComposerTargetData: target,
           selectedProjectPath: null,
@@ -108,13 +108,13 @@ describe("useAgentGUIComposerPresentation", () => {
     );
 
     expect(result.current.stableComposerSettings.draftSettings).toMatchObject({
-      model: "opencode/new-model",
+      model: null,
       permissionModeId: "full-access",
       reasoningEffort: "high",
       speed: "fast"
     });
     expect(result.current.stableComposerSettings).toMatchObject({
-      selectedModelValue: "opencode/new-model",
+      selectedModelValue: null,
       selectedPermissionModeValue: "full-access",
       selectedReasoningEffortValue: "high",
       selectedSpeedValue: "fast"
@@ -347,6 +347,7 @@ describe("useAgentGUIComposerPresentation", () => {
           providerComposerOptions: options,
           selectedComposerTargetData: target,
           selectedProjectPath: null,
+          userProjects: [],
           setDraftSettingsBySessionId: vi.fn(),
           workspaceId: "workspace-1"
         })
@@ -474,6 +475,7 @@ describe("useAgentGUIComposerPresentation", () => {
           providerComposerOptions: input.options,
           selectedComposerTargetData: target,
           selectedProjectPath: null,
+          userProjects: [],
           setDraftSettingsBySessionId: vi.fn(),
           workspaceId: "workspace-1"
         })
@@ -609,6 +611,7 @@ describe("useAgentGUIComposerPresentation", () => {
           providerComposerOptions: null,
           selectedComposerTargetData: target,
           selectedProjectPath: null,
+          userProjects: [],
           setDraftSettingsBySessionId: vi.fn()
         })
       );

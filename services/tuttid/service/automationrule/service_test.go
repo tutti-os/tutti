@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	agentsessionstore "github.com/tutti-os/tutti/packages/agent/daemon/activity"
+	"github.com/tutti-os/tutti/packages/agent/store-sqlite/canonical"
 	agenttargetbiz "github.com/tutti-os/tutti/services/tuttid/biz/agenttarget"
 	automationrulebiz "github.com/tutti-os/tutti/services/tuttid/biz/automationrule"
 	workspaceagentbiz "github.com/tutti-os/tutti/services/tuttid/biz/workspaceagent"
@@ -291,17 +291,17 @@ func TestObserveAgentSessionStateRunsOncePerRuleAndTurn(t *testing.T) {
 	service := &Service{Store: store, Executor: recordingExecutor{calls: calls}, Usage: staticUsage{}}
 	outcome := "completed"
 	turnID := "turn-1"
-	input := agentsessionstore.ReportSessionStateInput{
+	input := canonical.ReportSessionStateInput{
 		WorkspaceID:    "ws",
 		AgentSessionID: "session-1",
 		AgentTargetID:  "workspace-agent:source",
-		State: agentsessionstore.WorkspaceAgentSessionStateUpdate{
+		State: canonical.WorkspaceAgentSessionStateUpdate{
 			AgentTargetID: "workspace-agent:source",
-			TurnLifecycle: &agentsessionstore.WorkspaceAgentTurnLifecycle{ActiveTurnID: &turnID, Phase: "settled", Outcome: &outcome},
+			TurnLifecycle: &canonical.WorkspaceAgentTurnLifecycle{ActiveTurnID: &turnID, Phase: "settled", Outcome: &outcome},
 		},
 	}
-	service.ObserveAgentSessionState(context.Background(), input, agentsessionstore.ReportSessionStateReply{})
-	service.ObserveAgentSessionState(context.Background(), input, agentsessionstore.ReportSessionStateReply{})
+	service.ObserveAgentSessionState(context.Background(), input, canonical.ReportSessionStateReply{})
+	service.ObserveAgentSessionState(context.Background(), input, canonical.ReportSessionStateReply{})
 	select {
 	case call := <-calls:
 		if call.Rule.ID != "rule-1" || call.SourceAgentID != "workspace-agent:source" || call.TriggerID != "turn-1" {
@@ -323,12 +323,12 @@ func TestObserveAgentSessionStateRunsBoundedFailureRescueRule(t *testing.T) {
 	calls := make(chan ExecutionInput, 1)
 	service := &Service{Store: store, Executor: recordingExecutor{calls: calls}, Usage: staticUsage{}}
 	outcome, turnID := "failed", "turn-failed"
-	service.ObserveAgentSessionState(context.Background(), agentsessionstore.ReportSessionStateInput{
+	service.ObserveAgentSessionState(context.Background(), canonical.ReportSessionStateInput{
 		WorkspaceID: "ws", AgentSessionID: "session-1",
-		State: agentsessionstore.WorkspaceAgentSessionStateUpdate{
-			TurnLifecycle: &agentsessionstore.WorkspaceAgentTurnLifecycle{ActiveTurnID: &turnID, Phase: "settled", Outcome: &outcome},
+		State: canonical.WorkspaceAgentSessionStateUpdate{
+			TurnLifecycle: &canonical.WorkspaceAgentTurnLifecycle{ActiveTurnID: &turnID, Phase: "settled", Outcome: &outcome},
 		},
-	}, agentsessionstore.ReportSessionStateReply{})
+	}, canonical.ReportSessionStateReply{})
 	select {
 	case call := <-calls:
 		if call.Rule.Trigger != automationrulebiz.TriggerOnTaskFailed || call.Rule.Target.WorkspaceAgentID != "workspace-agent:stronger" {
@@ -374,12 +374,12 @@ func TestObserveAgentSessionStateHonorsBudget(t *testing.T) {
 	calls := make(chan ExecutionInput, 1)
 	service := &Service{Store: store, Executor: recordingExecutor{calls: calls}, Usage: staticUsage{runs: 1}}
 	outcome, turnID := "completed", "turn-1"
-	service.ObserveAgentSessionState(context.Background(), agentsessionstore.ReportSessionStateInput{
+	service.ObserveAgentSessionState(context.Background(), canonical.ReportSessionStateInput{
 		WorkspaceID: "ws", AgentSessionID: "session-budget",
-		State: agentsessionstore.WorkspaceAgentSessionStateUpdate{
-			TurnLifecycle: &agentsessionstore.WorkspaceAgentTurnLifecycle{ActiveTurnID: &turnID, Phase: "settled", Outcome: &outcome},
+		State: canonical.WorkspaceAgentSessionStateUpdate{
+			TurnLifecycle: &canonical.WorkspaceAgentTurnLifecycle{ActiveTurnID: &turnID, Phase: "settled", Outcome: &outcome},
 		},
-	}, agentsessionstore.ReportSessionStateReply{})
+	}, canonical.ReportSessionStateReply{})
 	select {
 	case call := <-calls:
 		t.Fatalf("unexpected execution = %#v", call)
@@ -398,9 +398,9 @@ func TestAutomationOriginCompletionNeverRecursesAndRecordsTargetUsage(t *testing
 		Usage:    staticUsage{recorded: recorded},
 	}
 	outcome, turnID := "completed", "turn-1"
-	service.ObserveAgentSessionState(context.Background(), agentsessionstore.ReportSessionStateInput{
+	service.ObserveAgentSessionState(context.Background(), canonical.ReportSessionStateInput{
 		WorkspaceID: "ws", AgentSessionID: "automation-target-session",
-		State: agentsessionstore.WorkspaceAgentSessionStateUpdate{
+		State: canonical.WorkspaceAgentSessionStateUpdate{
 			RuntimeContext: map[string]any{
 				"automation": map[string]any{"ruleId": "rule-1", "sourceSessionId": "session-src", "depth": 1},
 				"usage": map[string]any{
@@ -408,9 +408,9 @@ func TestAutomationOriginCompletionNeverRecursesAndRecordsTargetUsage(t *testing
 					"outputTokens": float64(300),
 				},
 			},
-			TurnLifecycle: &agentsessionstore.WorkspaceAgentTurnLifecycle{ActiveTurnID: &turnID, Phase: "settled", Outcome: &outcome},
+			TurnLifecycle: &canonical.WorkspaceAgentTurnLifecycle{ActiveTurnID: &turnID, Phase: "settled", Outcome: &outcome},
 		},
-	}, agentsessionstore.ReportSessionStateReply{})
+	}, canonical.ReportSessionStateReply{})
 	select {
 	case usage := <-recorded:
 		if usage.workspaceID != "ws" || usage.targetSessionID != "automation-target-session" || usage.totalTokens != 1500 {
@@ -434,17 +434,17 @@ func TestObserveAgentSessionStateAllowsOnlyBoundedFailureRescueChains(t *testing
 	outcome := "failed"
 
 	report := func(sessionID, turnID string, depth int) {
-		service.ObserveAgentSessionState(context.Background(), agentsessionstore.ReportSessionStateInput{
+		service.ObserveAgentSessionState(context.Background(), canonical.ReportSessionStateInput{
 			WorkspaceID: "ws", AgentSessionID: sessionID,
-			State: agentsessionstore.WorkspaceAgentSessionStateUpdate{
+			State: canonical.WorkspaceAgentSessionStateUpdate{
 				RuntimeContext: map[string]any{"automation": map[string]any{
 					"ruleId": "parent", "depth": depth,
 				}},
-				TurnLifecycle: &agentsessionstore.WorkspaceAgentTurnLifecycle{
+				TurnLifecycle: &canonical.WorkspaceAgentTurnLifecycle{
 					ActiveTurnID: &turnID, Phase: "settled", Outcome: &outcome,
 				},
 			},
-		}, agentsessionstore.ReportSessionStateReply{})
+		}, canonical.ReportSessionStateReply{})
 	}
 
 	report("rescue-level-1", "failed-1", 1)
@@ -492,12 +492,12 @@ func TestObserveAgentSessionStateSkipsPersistedExecution(t *testing.T) {
 		Usage:    staticUsage{exists: true},
 	}
 	outcome, turnID := "completed", "turn-1"
-	state := agentsessionstore.WorkspaceAgentSessionStateUpdate{
-		TurnLifecycle: &agentsessionstore.WorkspaceAgentTurnLifecycle{ActiveTurnID: &turnID, Phase: "settled", Outcome: &outcome},
+	state := canonical.WorkspaceAgentSessionStateUpdate{
+		TurnLifecycle: &canonical.WorkspaceAgentTurnLifecycle{ActiveTurnID: &turnID, Phase: "settled", Outcome: &outcome},
 	}
-	service.ObserveAgentSessionState(context.Background(), agentsessionstore.ReportSessionStateInput{
+	service.ObserveAgentSessionState(context.Background(), canonical.ReportSessionStateInput{
 		WorkspaceID: "ws", AgentSessionID: "session-1", State: state,
-	}, agentsessionstore.ReportSessionStateReply{})
+	}, canonical.ReportSessionStateReply{})
 	select {
 	case call := <-calls:
 		t.Fatalf("unexpected duplicate execution = %#v", call)

@@ -12,38 +12,43 @@ export function subscribeWorkspaceAgentScopedEvents(input: {
   onAgentActivityUpdated: (event: AgentActivityUpdatedEvent) => void;
   sessionEngineHost: WorkspaceAgentSessionEngineHost | undefined;
   workspaceId: string;
-}): void {
+}): () => void {
   const eventStreamClient = input.eventStreamClient;
-  if (!eventStreamClient) return;
+  if (!eventStreamClient) return () => {};
 
-  eventStreamClient.subscribe(
-    "agent.activity.updated",
-    (event) => {
-      const payload = event.payload;
-      if (payload.workspaceId.trim() !== input.workspaceId) return;
-      input.onAgentActivityUpdated(payload);
-    },
-    { scope: { workspaceId: input.workspaceId } }
-  );
-  eventStreamClient.subscribe(
-    "workspace.tuttimode.updated",
-    (event) => {
-      const agentSessionId = event.payload.agentSessionId.trim();
-      if (!agentSessionId) return;
-      input.sessionEngineHost?.engine.dispatch({
-        agentSessionId,
-        needsMessages: false,
-        needsState: true,
-        type: "session/reconcileRequested",
-        workspaceId: input.workspaceId
-      });
-    },
-    { scope: { workspaceId: input.workspaceId } }
-  );
-  subscribeWorkspaceAgentModelConfigurationChanges({
-    eventStreamClient,
-    listeners: input.modelConfigurationChangedListeners,
-    sessionEngineHost: input.sessionEngineHost,
-    workspaceId: input.workspaceId
-  });
+  const disposables = [
+    eventStreamClient.subscribe(
+      "agent.activity.updated",
+      (event) => {
+        const payload = event.payload;
+        if (payload.workspaceId.trim() !== input.workspaceId) return;
+        input.onAgentActivityUpdated(payload);
+      },
+      { scope: { workspaceId: input.workspaceId } }
+    ),
+    eventStreamClient.subscribe(
+      "workspace.tuttimode.updated",
+      (event) => {
+        const agentSessionId = event.payload.agentSessionId.trim();
+        if (!agentSessionId) return;
+        input.sessionEngineHost?.engine.dispatch({
+          agentSessionId,
+          needsMessages: false,
+          needsState: true,
+          type: "session/reconcileRequested",
+          workspaceId: input.workspaceId
+        });
+      },
+      { scope: { workspaceId: input.workspaceId } }
+    ),
+    subscribeWorkspaceAgentModelConfigurationChanges({
+      eventStreamClient,
+      listeners: input.modelConfigurationChangedListeners,
+      sessionEngineHost: input.sessionEngineHost,
+      workspaceId: input.workspaceId
+    })
+  ];
+  return () => {
+    for (const dispose of disposables) dispose();
+  };
 }

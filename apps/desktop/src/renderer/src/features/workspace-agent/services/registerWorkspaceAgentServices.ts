@@ -85,12 +85,6 @@ export function registerWorkspaceAgentServices(
     bindDesktopManagedAgentProviderVisibilityRefresh(
       agentProviderStatusService
     );
-  const agentEnvService = new AgentEnvService({
-    clipboard: input.clipboard,
-    providerStatusService: agentProviderStatusService,
-    workspaceId: input.workspaceId
-  });
-  registry.registerInstance(IAgentEnvService, agentEnvService);
   startManagedAgentInstallBootstraps(agentProviderStatusService);
   const agentsService = new DesktopAgentsService({
     resolveAgentTargetIconUrl: input.resolveAgentTargetIconUrl,

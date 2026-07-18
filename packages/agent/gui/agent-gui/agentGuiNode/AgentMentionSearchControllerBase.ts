@@ -65,6 +65,18 @@ import {
   type AgentGuiScheduledTask
 } from "./agentGuiScheduler";
 
+const RESETTABLE_MENTION_GROUP_IDS = [
+  "files",
+  "opened_files",
+  "agent_generated_files",
+  "my_sessions",
+  "collab_sessions",
+  "agents",
+  "apps",
+  "issues",
+  "models"
+] as const;
+
 export class AgentMentionSearchControllerBase {
   protected readonly contextMentionProviders: ReadonlyMap<
     string,
@@ -628,17 +640,7 @@ export class AgentMentionSearchControllerBase {
     for (const groupId of Object.keys(this.expandedCounts)) {
       delete this.expandedCounts[groupId as AgentMentionGroupId];
     }
-    for (const groupId of [
-      "files",
-      "opened_files",
-      "agent_generated_files",
-      "my_sessions",
-      "collab_sessions",
-      "agents",
-      "apps",
-      "issues",
-      "models"
-    ] as const) {
+    for (const groupId of RESETTABLE_MENTION_GROUP_IDS) {
       this.expandedCounts[groupId] = mentionGroupPageSize(
         this.currentFilter,
         groupId
@@ -666,17 +668,7 @@ export class AgentMentionSearchControllerBase {
   }
 
   protected resetTotalCounts(): void {
-    for (const groupId of [
-      "files",
-      "opened_files",
-      "agent_generated_files",
-      "my_sessions",
-      "collab_sessions",
-      "agents",
-      "apps",
-      "issues",
-      "models"
-    ] as const) {
+    for (const groupId of RESETTABLE_MENTION_GROUP_IDS) {
       delete this.totalCounts[groupId];
     }
   }

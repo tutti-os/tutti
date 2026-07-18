@@ -1,9 +1,12 @@
 import { act, renderHook } from "@testing-library/react";
+import type { AgentActivityComposerOptions } from "@tutti-os/agent-activity-core";
 import { describe, expect, it, vi } from "vitest";
 import { createLocalAgentGUIAgentTarget } from "../../../agentTargets";
 import type { AgentActivityRuntime } from "../../../agentActivityRuntime";
 import type { AgentGUINodeData } from "../../../types";
 import type { useAgentGUIActivation } from "./useAgentGUIActivation";
+import type { UseAgentGUINewConversationActivationInput } from "./agentGuiNewConversationActivation.types";
+import { nodeDefaultDraftKey } from "./agentGuiController.composerHelpers";
 import { useAgentGUINewConversationActivation } from "./useAgentGUINewConversationActivation";
 
 describe("useAgentGUINewConversationActivation", () => {
@@ -77,9 +80,13 @@ describe("useAgentGUINewConversationActivation", () => {
           updatedAtUnixMs: 1,
           workspaceId: "workspace-1"
         } as never,
+        lastActiveModelByProviderRef: { current: {} },
         sessionEngine: {
-          getSnapshot: () => ({})
+          getSnapshot: () => ({
+            tuttiModeActivation: { draftsByKey: {} }
+          })
         } as never,
+        tuttiModeDraftKey: "agent-gui:node-1:tutti-mode:home",
         conversationListQuery: null,
         currentUserId: "user-1",
         persistActiveConversation,
@@ -132,9 +139,15 @@ describe("useAgentGUINewConversationActivation", () => {
     expect(activate.mock.calls[0]?.[0].settings).toMatchObject({
       computerUse: true
     });
-    expect(activate.mock.calls[0]?.[0].settings).not.toHaveProperty("model");
+    expect(activate.mock.calls[0]?.[0].settings).toMatchObject({
+      model: null,
+      modelPlanId: null
+    });
     expect(activate.mock.calls[1]?.[0].optimisticTitle).toBe("second");
-    expect(activate.mock.calls[1]?.[0].settings).toEqual({});
+    expect(activate.mock.calls[1]?.[0].settings).toMatchObject({
+      model: "gpt-plan",
+      modelPlanId: "plan-2"
+    });
     expect(firstSessionId).toBeTruthy();
     expect(secondSessionId).toBeTruthy();
     expect(secondSessionId).not.toBe(firstSessionId);
@@ -240,6 +253,7 @@ describe("useAgentGUINewConversationActivation", () => {
           conversationListQuery: null,
           currentUserId: "user-1",
           persistActiveConversation: vi.fn(),
+          requestRailReveal: vi.fn(),
           setActiveConversationId: vi.fn(),
           setIntent: vi.fn(),
           setIsComposerHome: vi.fn(),

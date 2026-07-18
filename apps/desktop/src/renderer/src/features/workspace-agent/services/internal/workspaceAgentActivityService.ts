@@ -21,7 +21,6 @@ import {
 } from "@tutti-os/client-tuttid-ts";
 import type { DesktopHostFilesApi, DesktopRuntimeApi } from "@preload/types";
 import type { IReporterService } from "../../../analytics/services/reporterService.interface.ts";
-import { agentActivitySessionFromTuttidSession } from "../desktopAgentActivityAdapter.ts";
 import {
   normalizeComposerSettings,
   resolveDesktopAgentGUIProvider
@@ -41,7 +40,6 @@ import {
   agentActivitySessionReconcileDiagnosticDetails,
   normalizeWorkspaceId
 } from "./workspaceAgentActivityDiagnostics.ts";
-import { reportAgentSubmitTraceDiagnostic } from "../desktopAgentRuntimeSubmitDiagnostics.ts";
 import { WorkspaceAgentActivityAnalytics } from "./workspaceAgentActivityAnalytics.ts";
 import { WorkspaceAgentActivityQueryOperations } from "./workspaceAgentActivityQueryOperations.ts";
 import { WorkspaceAgentActivityImportOperations } from "./workspaceAgentActivityImportOperations.ts";
@@ -412,160 +410,14 @@ export class WorkspaceAgentActivityService
   async activateSession(
     input: Parameters<AgentActivityRuntime["activateSession"]>[0]
   ): ReturnType<IWorkspaceAgentActivityService["activateSession"]> {
-    const workspaceId = normalizeWorkspaceId(input.workspaceId);
-    const requestedAgentSessionId = input.agentSessionId.trim();
-    reportAgentSubmitTraceDiagnostic(this.dependencies.runtimeApi, {
-      agentSessionId: requestedAgentSessionId,
-      clientSubmitId: input.mode === "new" ? input.clientSubmitId : null,
-      event: "activity_service.activate.entered",
-      provider: null,
-      submitDiagnostics: input.submitDiagnostics,
-      workspaceId,
-      fields: { agentTargetId: input.agentTargetId ?? null, mode: input.mode }
-    });
-    if (input.mode === "new") {
-      reportAgentSubmitTraceDiagnostic(this.dependencies.runtimeApi, {
-        agentSessionId: requestedAgentSessionId,
-        clientSubmitId: input.clientSubmitId,
-        event: "activity_service.activate.cwd_resolve_requested",
-        provider: null,
-        submitDiagnostics: input.submitDiagnostics,
-        workspaceId
-      });
-    }
-    const resolvedCwd =
-      input.mode === "new"
-        ? await this.resolveWorkspaceAgentCwd({
-            agentSessionId: requestedAgentSessionId,
-            cwd: input.cwd,
-            workspaceId
-          })
-        : null;
-    if (input.mode === "new") {
-      reportAgentSubmitTraceDiagnostic(this.dependencies.runtimeApi, {
-        agentSessionId: requestedAgentSessionId,
-        clientSubmitId: input.clientSubmitId,
-        event: "activity_service.activate.cwd_resolved",
-        provider: null,
-        submitDiagnostics: input.submitDiagnostics,
-        workspaceId,
-        fields: {
-          agentTargetId: input.agentTargetId ?? null,
-          cwd: resolvedCwd?.cwd ?? null
-        }
-      });
-    }
-    let session: AgentActivitySession;
-    if (input.mode === "existing") {
-      session = await this.getSession(workspaceId, requestedAgentSessionId);
-    } else {
-      reportAgentSubmitTraceDiagnostic(this.dependencies.runtimeApi, {
-        agentSessionId: requestedAgentSessionId,
-        clientSubmitId: input.clientSubmitId,
-        event: "activity_service.activate.create_requested",
-        provider: null,
-        submitDiagnostics: input.submitDiagnostics,
-        workspaceId,
-        fields: { agentTargetId: input.agentTargetId ?? null }
-      });
-      session = await this.createSession({
-        clientSubmitId: input.clientSubmitId,
-        workspaceId,
-        agentSessionId: requestedAgentSessionId,
-        agentTargetId: input.agentTargetId,
-        automationRuleOverride: input.automationRuleOverride ?? null,
-        cwd: resolvedCwd?.cwd ?? null,
-        initialContent: input.initialContent ?? [],
-        initialDisplayPrompt: input.initialDisplayPrompt ?? null,
-        submitDiagnostics: input.submitDiagnostics,
-        model: input.settings?.model ?? null,
-        modelPlanId: input.settings?.modelPlanId ?? null,
-        planMode: input.settings?.planMode ?? null,
-        permissionModeId: resolveComposerPermissionMode(input.settings),
-        reasoningEffort: input.settings?.reasoningEffort ?? null,
-        ...(resolvedCwd?.noProject ? { noProject: true } : {}),
-        speed: input.settings?.speed ?? null,
-        title: input.title ?? null,
-        visible: input.visible ?? true,
-        signal: input.signal
-      });
-      reportAgentSubmitTraceDiagnostic(this.dependencies.runtimeApi, {
-        agentSessionId: session.agentSessionId,
-        clientSubmitId: input.clientSubmitId,
-        event: "activity_service.activate.create_resolved",
-        provider: session.provider,
-        submitDiagnostics: input.submitDiagnostics,
-        workspaceId,
-        fields: { activeTurnPhase: session.activeTurn?.phase ?? null }
-      });
-    }
-    reportAgentSubmitTraceDiagnostic(this.dependencies.runtimeApi, {
-      agentSessionId: session.agentSessionId,
-      clientSubmitId: input.mode === "new" ? input.clientSubmitId : null,
-      event: "activity_service.activate.resolved",
-      provider: session.provider,
-      submitDiagnostics: input.submitDiagnostics,
-      workspaceId,
-      fields: {
-        mode: input.mode,
-        activeTurnPhase: session.activeTurn?.phase ?? null,
-        latestTurnOutcome: session.latestTurn?.outcome ?? null
-      }
-    });
-    return {
-      activation: {
-        mode: input.mode,
-        status: input.mode === "existing" ? "already_attached" : "attached"
-      },
-      session
-    };
+    return this.mutationOperations.activateSession(input);
   }
 
   async sendInput(
     input: Parameters<AgentActivityAdapter["sendInput"]>[0]
   ): ReturnType<IWorkspaceAgentActivityService["sendInput"]> {
-    const workspaceId = normalizeWorkspaceId(input.workspaceId);
-    const agentSessionId = input.agentSessionId.trim();
-    reportAgentSubmitTraceDiagnostic(this.dependencies.runtimeApi, {
-      agentSessionId,
-      clientSubmitId: input.clientSubmitId,
-      event: "activity_service.send.entered",
-      submitDiagnostics: input.submitDiagnostics,
-      workspaceId
-    });
-    const entry = this.entry(workspaceId);
-    reportAgentSubmitTraceDiagnostic(this.dependencies.runtimeApi, {
-      agentSessionId,
-      clientSubmitId: input.clientSubmitId,
-      event: "activity_service.send.adapter_requested",
-      submitDiagnostics: input.submitDiagnostics,
-      workspaceId
-    });
-    const result = await entry.adapter.sendInput({
-      ...input,
-      workspaceId
-    });
-    reportAgentSubmitTraceDiagnostic(this.dependencies.runtimeApi, {
-      agentSessionId,
-      clientSubmitId: input.clientSubmitId,
-      event: "activity_service.send.adapter_resolved",
-      provider: result.session.provider,
-      submitDiagnostics: input.submitDiagnostics,
-      workspaceId,
-      fields:
-        result.kind === "goalControl"
-          ? { resultKind: "goalControl" }
-          : {
-              resultKind: "turn",
-              turnOutcome: result.turn.outcome ?? null,
-              turnId: result.turnId,
-              turnPhase: result.turn.phase
-            }
-    });
-    this.upsertAuthoritativeSession(result.session, "send_input_result");
-    return result;
+    return this.mutationOperations.sendInput(input);
   }
-
   async readSessionAttachment(input: {
     agentSessionId: string;
     attachmentId: string;

@@ -1332,8 +1332,7 @@ test("WorkspaceAppCenterService passes workspace id and prefers live composer mo
   ]);
   assert.deepEqual(configuration.modelOptions, [
     { label: "Default", value: "default" },
-    { label: "Sonnet", value: "sonnet" },
-    { label: "Haiku", value: "haiku" }
+    { label: "Sonnet", value: "sonnet" }
   ]);
   assert.equal(configuration.defaultModel, "sonnet");
 });

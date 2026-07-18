@@ -15,9 +15,54 @@ export function agentActivityComposerOptionsFromTuttidResult(
 ): AgentActivityComposerOptions {
   const result = recordValue(value);
   const runtimeContext = recordValue(result.runtimeContext);
-  const modelConfig = recordValue(result.modelConfig);
-  const reasoningConfig = recordValue(result.reasoningConfig);
-  const speedConfig = recordValue(result.speedConfig);
+  const legacyConfigOptions = Array.isArray(runtimeContext.configOptions)
+    ? runtimeContext.configOptions
+    : [];
+  const configFor = (ids: readonly string[], current: unknown) => {
+    const config = recordValue(current);
+    if (Object.keys(config).length === 0) return config;
+    const legacy = recordValue(
+      legacyConfigOptions.find((candidate) =>
+        ids.includes(normalizeText(recordValue(candidate).id) ?? "")
+      )
+    );
+    const legacyOptions = Array.isArray(legacy.options) ? legacy.options : [];
+    if (legacyOptions.length === 0) return config;
+    const configOptions = Array.isArray(config.options) ? config.options : [];
+    const typedByValue = new Map(
+      configOptions.flatMap((option) => {
+        const record = recordValue(option);
+        const value = normalizeText(record.value ?? record.id);
+        return value ? [[value, record] as const] : [];
+      })
+    );
+    const mergeTypedMetadata = (option: unknown): Record<string, unknown> => {
+      const legacyOption = recordValue(option);
+      if (Array.isArray(legacyOption.options)) {
+        return {
+          ...legacyOption,
+          options: legacyOption.options.map(mergeTypedMetadata)
+        };
+      }
+      const value = normalizeText(legacyOption.value ?? legacyOption.id);
+      const typed = value ? typedByValue.get(value) : undefined;
+      return typed ? { ...legacyOption, ...typed } : legacyOption;
+    };
+    return {
+      ...legacy,
+      ...config,
+      currentValue:
+        normalizeText(config.currentValue ?? config.current_value) ??
+        normalizeText(legacy.currentValue ?? legacy.current_value),
+      options: legacyOptions.map(mergeTypedMetadata)
+    };
+  };
+  const modelConfig = configFor(["model"], result.modelConfig);
+  const reasoningConfig = configFor(
+    ["reasoning", "reasoning_effort"],
+    result.reasoningConfig
+  );
+  const speedConfig = configFor(["speed"], result.speedConfig);
   const effectiveSettings = composerSettingsFromValue(result.effectiveSettings);
   const modelsFromConfig = settingOptionsFromComposerConfig(modelConfig);
   const reasoningEffortsFromConfig =

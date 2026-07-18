@@ -82,7 +82,7 @@ func (s *SQLiteStore) applyWorkspaceAgentsV5(ctx context.Context) error {
 	if applied {
 		return nil
 	}
-	tx, err := s.db.BeginTx(ctx, nil)
+	tx, err := s.writeDB.BeginTx(ctx, nil)
 	if err != nil {
 		return fmt.Errorf("begin workspace agent contract cleanup migration: %w", err)
 	}

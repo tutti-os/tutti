@@ -3,19 +3,10 @@ package agent
 import (
 	"context"
 	"strings"
-	"time"
 
-	agentsessionstore "github.com/tutti-os/tutti/packages/agent/daemon/activity"
 	agenthost "github.com/tutti-os/tutti/packages/agent/host"
 	"github.com/tutti-os/tutti/services/tuttid/biz/agentprovider"
 )
-
-type sessionStateReporter interface {
-	ReportSessionState(
-		context.Context,
-		agentsessionstore.ReportSessionStateInput,
-	) (agentsessionstore.ReportSessionStateReply, error)
-}
 
 func (s *Service) clampReasoningEffortForModel(
 	ctx context.Context,
@@ -108,27 +99,32 @@ func (s *Service) UpdateSettings(ctx context.Context, workspaceID string, agentS
 	defer release()
 	ref := agenthost.SessionRef{WorkspaceID: workspaceID, AgentSessionID: agentSessionID}
 	ctx = withServiceHeldSessionLock(ctx, s, ref)
-	ensured, err := s.ApplicationHost().EnsureRuntimeSession(ctx, ref)
+	observed, err := s.ApplicationHost().GetSession(ctx, ref)
 	if err != nil {
 		return Session{}, err
+	}
+	provider := strings.TrimSpace(observed.Canonical.Provider)
+	runtimeContext := observed.Canonical.InternalRuntimeContext
+	currentSettings := composerSettingsFromPayload(observed.Canonical.Settings)
+	if observed.Live {
+		provider = strings.TrimSpace(observed.Session.Provider)
+		runtimeContext = observed.Session.RuntimeContext
+		if observed.Session.Settings != nil {
+			currentSettings = *observed.Session.Settings
+		}
 	}
 	if settings.Model != nil {
 		if err := s.validateSessionModelAgainstRuntimeSnapshot(
 			ctx,
 			strings.TrimSpace(workspaceID),
-			ensured.RuntimeContext,
+			runtimeContext,
 			strings.TrimSpace(*settings.Model),
 		); err != nil {
 			return Session{}, err
 		}
 	}
-	provider := strings.TrimSpace(ensured.Provider)
-	selectedModel := ""
-	selectedReasoningEffort := ""
-	if ensured.Settings != nil {
-		selectedModel = ensured.Settings.Model
-		selectedReasoningEffort = ensured.Settings.ReasoningEffort
-	}
+	selectedModel := currentSettings.Model
+	selectedReasoningEffort := currentSettings.ReasoningEffort
 	if settings.Model != nil {
 		selectedModel = strings.TrimSpace(*settings.Model)
 	}
@@ -161,31 +157,4 @@ func (s *Service) UpdateSettings(ctx context.Context, workspaceID string, agentS
 		return Session{}, err
 	}
 	return s.projectHostSessionResult(ctx, result.Canonical, result.Session, result.Live, result.Live)
-}
-
-func (s *Service) persistUpdatedRuntimeSettings(ctx context.Context, workspaceID string, agentSessionID string) error {
-	reporter, ok := s.SessionReader.(sessionStateReporter)
-	if !ok {
-		return nil
-	}
-	session, ok := s.controller().Session(workspaceID, agentSessionID)
-	if !ok || session.Settings == nil {
-		return nil
-	}
-	_, err := reporter.ReportSessionState(ctx, agentsessionstore.ReportSessionStateInput{
-		WorkspaceID:    strings.TrimSpace(workspaceID),
-		AgentSessionID: strings.TrimSpace(agentSessionID),
-		SessionOrigin:  agentsessionstore.WorkspaceAgentSessionOriginRuntime,
-		State: agentsessionstore.WorkspaceAgentSessionStateUpdate{
-			AgentTargetID:     strings.TrimSpace(session.AgentTargetID),
-			Provider:          strings.TrimSpace(session.Provider),
-			ProviderSessionID: strings.TrimSpace(session.ProviderSessionID),
-			Model:             strings.TrimSpace(session.Settings.Model),
-			Settings:          composerSettingsToStatePayload(*session.Settings),
-			CWD:               strings.TrimSpace(session.Cwd),
-			Title:             strings.TrimSpace(session.Title),
-			OccurredAtUnixMS:  time.Now().UnixMilli(),
-		},
-	})
-	return err
 }

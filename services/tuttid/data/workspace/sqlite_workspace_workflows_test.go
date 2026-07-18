@@ -722,10 +722,10 @@ func TestWorkspaceWorkflowRevisionPathReuseMigrationUpgradesLocalV1Schema(t *tes
 		t.Fatalf("record legacy child operation: %v", err)
 	}
 
-	if _, err := store.db.ExecContext(ctx, "PRAGMA foreign_keys = OFF"); err != nil {
+	if _, err := store.writeDB.ExecContext(ctx, "PRAGMA foreign_keys = OFF"); err != nil {
 		t.Fatalf("disable foreign keys: %v", err)
 	}
-	if _, err := store.db.ExecContext(ctx, `
+	if _, err := store.writeDB.ExecContext(ctx, `
 CREATE TABLE workspace_workflow_plan_revisions_legacy (
   workspace_id TEXT NOT NULL,
   workflow_id TEXT NOT NULL,
@@ -749,7 +749,7 @@ DELETE FROM tuttid_schema_migrations WHERE id = ?;
 `, schemaMigrationWorkspaceWorkflowRevisionPathReuseV3); err != nil {
 		t.Fatalf("install legacy V1 revision schema: %v", err)
 	}
-	if _, err := store.db.ExecContext(ctx, "PRAGMA foreign_keys = ON"); err != nil {
+	if _, err := store.writeDB.ExecContext(ctx, "PRAGMA foreign_keys = ON"); err != nil {
 		t.Fatalf("restore foreign keys: %v", err)
 	}
 	if err := store.Migrate(ctx); err != nil {
@@ -769,7 +769,7 @@ DELETE FROM tuttid_schema_migrations WHERE id = ?;
 	if err != nil || !found || mutation.RevisionID != "revision-1" || mutation.CheckpointID != "checkpoint-1" {
 		t.Fatalf("preserved mutation = %#v found=%v error=%v", mutation, found, err)
 	}
-	foreignKeyRows, err := store.db.QueryContext(ctx, "PRAGMA foreign_key_check")
+	foreignKeyRows, err := store.writeDB.QueryContext(ctx, "PRAGMA foreign_key_check")
 	if err != nil {
 		t.Fatalf("foreign_key_check error = %v", err)
 	}
