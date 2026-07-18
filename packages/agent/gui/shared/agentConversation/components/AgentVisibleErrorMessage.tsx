@@ -111,7 +111,7 @@ export function AgentVisibleErrorMessage({
                 return;
               }
               if (focus) {
-                openAgentEnvPanel({
+                openAgentEnvPanel?.({
                   provider: error?.provider ?? null,
                   focus
                 });
