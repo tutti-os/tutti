@@ -4,6 +4,7 @@ import type {
 } from "../core/types.ts";
 import {
   resolveBrowserNavigationUrl,
+  resolveHostBrowserNavigationUrl,
   type BrowserNavigationUrlResolution
 } from "../core/url.ts";
 import type {
@@ -11,6 +12,15 @@ import type {
   BrowserGuestNativeImage,
   BrowserGuestWebContents
 } from "./types.ts";
+
+export function resolveOptionalBrowserNodeDesiredUrl(
+  url: string | undefined
+): string | undefined {
+  if (url === undefined) {
+    return undefined;
+  }
+  return resolveHostBrowserNavigationUrl(url).url ?? undefined;
+}
 
 const browserPreviewMaxWidth = 260;
 const browserPreviewMaxHeight = 170;

@@ -10,7 +10,10 @@ export {
   type BrowserNodeElectronMainChannels,
   type RegisterBrowserNodeElectronMainInput
 } from "./registerElectronMain.ts";
-export type { BrowserNodeElectronLogger } from "./types.ts";
+export type {
+  BrowserNodeChromeCookiePreparationResult,
+  BrowserNodeElectronLogger
+} from "./types.ts";
 export {
   applyBrowserGuestUserAgent,
   sanitizeBrowserGuestUserAgent

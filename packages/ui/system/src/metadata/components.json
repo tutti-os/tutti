@@ -2894,6 +2894,20 @@
       "iconVariant": "lined"
     },
     {
+      "id": "chrome-lined-icon",
+      "layer": "base",
+      "name": "ChromeIcon",
+      "export": "ChromeIcon",
+      "from": "@tutti-os/ui-system/icons",
+      "category": "icon",
+      "status": "stable",
+      "source": "src/icons/system-icons.tsx",
+      "description": "System icon for Google Chrome integrations.",
+      "useCases": ["Chrome profile import", "Chrome integrations"],
+      "migrationHints": [],
+      "iconVariant": "lined"
+    },
+    {
       "id": "capability-lined-icon",
       "layer": "base",
       "name": "CapabilityIcon",

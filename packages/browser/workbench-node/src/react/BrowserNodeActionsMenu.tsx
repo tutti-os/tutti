@@ -46,11 +46,13 @@ type BrowserNodeActionsMenuPanel =
   | "downloads";
 
 export function BrowserNodeActionsMenu({
+  allowChromeCookieImport = true,
   feature,
   nodeId,
   onOpenDevTools,
   runtime
 }: {
+  allowChromeCookieImport?: boolean;
   feature: BrowserNodeFeature;
   nodeId: string;
   onOpenDevTools?: () => void;
@@ -601,6 +603,7 @@ export function BrowserNodeActionsMenu({
         }}
       />
       <BrowserNodeSettingsDialog
+        allowChromeCookieImport={allowChromeCookieImport}
         devicePreset={devicePreset}
         downloadDirectory={downloadDirectory}
         feature={feature}

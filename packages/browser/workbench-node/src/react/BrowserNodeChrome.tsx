@@ -38,6 +38,7 @@ import {
 import { useBrowserNodeController } from "./useBrowserNodeController.ts";
 
 export interface BrowserNodeChromeProps {
+  allowChromeCookieImport?: boolean;
   className?: string;
   defaultActions?: ReactNode;
   defaultUrl: string;
@@ -94,6 +95,7 @@ export function BrowserNodeWorkbenchHeader({
 }
 
 export function BrowserNodeChrome({
+  allowChromeCookieImport = true,
   className,
   defaultActions,
   defaultUrl,
@@ -214,6 +216,7 @@ export function BrowserNodeChrome({
         <div className="min-w-8 flex-1 self-stretch" aria-hidden="true" />
       </div>
       <BrowserNodeHeader
+        allowChromeCookieImport={allowChromeCookieImport}
         defaultUrl={activeTab.defaultUrl}
         feature={feature}
         navigationActions={navigationActions}
@@ -225,12 +228,14 @@ export function BrowserNodeChrome({
 }
 
 export function BrowserNodeHeader({
+  allowChromeCookieImport = true,
   defaultUrl,
   feature,
   navigationActions,
   nodeId,
   onFocusRequest
 }: {
+  allowChromeCookieImport?: boolean;
   defaultUrl: string;
   feature: BrowserNodeFeature;
   navigationActions?: ReactNode;
@@ -314,6 +319,7 @@ export function BrowserNodeHeader({
       ) : null}
       {navigationActions}
       <BrowserNodeActionsMenu
+        allowChromeCookieImport={allowChromeCookieImport}
         feature={feature}
         nodeId={nodeId}
         onOpenDevTools={

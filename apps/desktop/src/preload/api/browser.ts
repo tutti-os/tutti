@@ -30,6 +30,12 @@ export function createBrowserDesktopApi(): DesktopBrowserApi {
         payload
       );
     },
+    cancelChromeCookieImport(payload) {
+      return invokeDesktopApi(
+        desktopIpcChannels.browser.cancelChromeCookieImport,
+        payload
+      );
+    },
     close(payload) {
       return invokeDesktopApi(desktopIpcChannels.browser.close, payload);
     },
@@ -42,9 +48,20 @@ export function createBrowserDesktopApi(): DesktopBrowserApi {
     findInPage(payload) {
       return invokeDesktopApi(desktopIpcChannels.browser.findInPage, payload);
     },
+    discoverChromeCookieProfiles() {
+      return invokeDesktopApi(
+        desktopIpcChannels.browser.discoverChromeCookieProfiles
+      );
+    },
     importCookies(payload) {
       return invokeDesktopApi(
         desktopIpcChannels.browser.importCookies,
+        payload
+      );
+    },
+    importChromeCookies(payload) {
+      return invokeDesktopApi(
+        desktopIpcChannels.browser.importChromeCookies,
         payload
       );
     },

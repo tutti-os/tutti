@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   importBrowserGuestCookies,
+  importPreparedBrowserGuestCookies,
   parseBrowserCookieImport
 } from "./cookieImport.ts";
 import type {
@@ -38,6 +39,43 @@ test("parses JSON Cookie exports without exposing values to diagnostics", () => 
         secure: true,
         url: "https://example.com/account",
         value: "secret"
+      }
+    ],
+    skipped: 1
+  });
+});
+
+test("preserves host-only session Cookies and Cookie value whitespace", () => {
+  const parsed = parseBrowserCookieImport(
+    JSON.stringify([
+      {
+        domain: "example.com",
+        hostOnly: true,
+        httpOnly: true,
+        name: "session",
+        sameSite: "lax",
+        secure: true,
+        value: "  secret value  "
+      },
+      {
+        domain: "example.com",
+        expirationDate: 1,
+        name: "expired",
+        value: "old"
+      }
+    ])
+  );
+
+  assert.deepEqual(parsed, {
+    cookies: [
+      {
+        httpOnly: true,
+        name: "session",
+        path: "/",
+        sameSite: "lax",
+        secure: true,
+        url: "https://example.com/",
+        value: "  secret value  "
       }
     ],
     skipped: 1
@@ -95,7 +133,84 @@ test("imports valid Cookies into only the active guest session", async () => {
     fileName: "cookies.json"
   });
 
-  assert.deepEqual(result, { canceled: false, imported: 1, skipped: 1 });
+  assert.deepEqual(result, {
+    canceled: false,
+    failed: 1,
+    imported: 1,
+    partial: true,
+    skipped: 0,
+    status: "completed"
+  });
   assert.equal(stored[0]?.name, "accepted");
   assert.equal(flushCalls, 1);
+});
+
+test("prepared Cookie import merges by Electron Cookie identity", async () => {
+  const values = new Map<string, string>();
+  const store = {
+    async set(cookie: BrowserGuestCookieDetails) {
+      values.set(
+        `${cookie.domain ?? new URL(cookie.url).hostname}|${cookie.path}|${cookie.name}`,
+        cookie.value
+      );
+    }
+  };
+
+  await importPreparedBrowserGuestCookies(store, {
+    cookies: [
+      {
+        domain: ".example.com",
+        name: "login",
+        path: "/",
+        url: "https://example.com/",
+        value: "old"
+      }
+    ],
+    skipped: 0
+  });
+  await importPreparedBrowserGuestCookies(store, {
+    cookies: [
+      {
+        domain: ".example.com",
+        name: "login",
+        path: "/",
+        url: "https://example.com/",
+        value: "new"
+      }
+    ],
+    skipped: 0
+  });
+
+  assert.equal(values.size, 1);
+  assert.equal(values.get(".example.com|/|login"), "new");
+});
+
+test("Cookie flush failure preserves completed writes as a partial result", async () => {
+  const result = await importPreparedBrowserGuestCookies(
+    {
+      async flushStore() {
+        throw new Error("flush failed");
+      },
+      async set() {}
+    },
+    {
+      cookies: [
+        {
+          name: "login",
+          url: "https://example.com/",
+          value: "ready"
+        }
+      ],
+      skipped: 0
+    }
+  );
+
+  assert.deepEqual(result, {
+    canceled: false,
+    failed: 1,
+    imported: 1,
+    partial: true,
+    skipped: 0,
+    status: "completed"
+  });
 });

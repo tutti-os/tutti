@@ -179,6 +179,32 @@ The package validates each entry and writes it only to the registered guest's
 Electron session Cookie store. Invalid or rejected entries are counted and
 skipped without logging their values.
 
+Hosts may additionally inject a renderer-safe Chrome Cookie capability. The
+Browser package owns its opaque Profile/display contracts, selection and
+prompt state model, normalized write aggregation, and same-`Electron.Session`
+Browser refresh behavior. A host adapter owns browser-specific discovery,
+absolute paths, database snapshots, OS credential access, decryption, and
+schema/integrity compatibility checks. Preparation must complete before the
+Browser package starts any Cookie write, so a host-level failure leaves the
+target session untouched. Cancellation is accepted only during preparation;
+after the first write begins, the operation completes and reports through the
+main-process result/notification path. Cookie values and credential material
+stay in the main process.
+
+Profile discovery may expose only opaque ids and renderer-safe display data.
+Desktop converts a validated, size-limited Profile picture into an image data
+URL; Chrome-internal avatar URIs and filesystem paths do not cross IPC. Import
+refresh additionally requires `sessionPartition === null`, so custom Workspace
+App Sessions are excluded even if a host accidentally shares an Electron
+Session object with an ordinary Browser.
+
+Tutti's first adapter supports macOS Chrome Stable at its standard User Data
+root and imports only ordinary, non-partitioned Cookies. It deliberately omits
+CHIPS, custom Chrome roots, non-Chrome Chromium browsers, incognito and Guest
+profiles, Workspace App sessions, and all non-Cookie browser data. The Desktop
+renderer supplies the global versioned prompt-dismissal adapter; the reusable
+package does not embed a Tutti preference key.
+
 ## Host Interface Shape
 
 The package should be configured through a host capability object. The exact

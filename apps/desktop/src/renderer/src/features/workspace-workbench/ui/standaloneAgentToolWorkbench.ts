@@ -14,6 +14,7 @@ import type {
   WorkbenchState
 } from "@tutti-os/workbench-surface";
 import { resolveWorkspaceBrowserSearchUrl } from "../services/workspaceBrowserSearch.ts";
+import { getDesktopChromeCookieImportPromptAdapter } from "../services/chromeCookieImportPrompt.ts";
 import type { StandaloneAgentSharedToolPanelId } from "./standaloneAgentToolSidebarModel.ts";
 
 export const standaloneAgentBrowserDefaultUrl = "https://www.google.com/";
@@ -76,6 +77,7 @@ export function createStandaloneAgentBrowserToolFeature(input: {
   nodeId: string;
 }): BrowserNodeFeature {
   return createBrowserNodeFeature({
+    chromeCookieImportPrompt: getDesktopChromeCookieImportPromptAdapter(),
     hostApi: createStandaloneAgentBrowserHostApi(
       input.browserApi,
       input.nodeId

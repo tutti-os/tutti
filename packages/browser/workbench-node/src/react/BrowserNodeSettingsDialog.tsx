@@ -12,15 +12,19 @@ import {
   SelectTrigger,
   SelectValue
 } from "@tutti-os/ui-system";
-import { useState } from "react";
+import { useEffect, useState, useSyncExternalStore } from "react";
 import type { JSX } from "react";
 import type { BrowserNodeFeature } from "../core/feature.ts";
 import type {
+  BrowserNodeCookieImportResult,
   BrowserNodeDevicePreset,
   BrowserNodeScreenshotMode
 } from "../core/types.ts";
+import { BrowserNodeChromeImportDialog } from "./BrowserNodeChromeImportDialog.tsx";
+import { browserNodeCookieImportFeedback } from "./chromeCookieImportUiModel.ts";
 
 interface BrowserNodeSettingsDialogProps {
+  allowChromeCookieImport: boolean;
   devicePreset: BrowserNodeDevicePreset;
   downloadDirectory: string | null;
   feature: BrowserNodeFeature;
@@ -37,6 +41,7 @@ interface BrowserNodeSettingsDialogProps {
 }
 
 export function BrowserNodeSettingsDialog({
+  allowChromeCookieImport,
   devicePreset,
   downloadDirectory,
   feature,
@@ -53,8 +58,33 @@ export function BrowserNodeSettingsDialog({
 }: BrowserNodeSettingsDialogProps): JSX.Element {
   const [cookieBusy, setCookieBusy] = useState(false);
   const [cookieStatus, setCookieStatus] = useState<string | null>(null);
+  const [chromeDialogOpen, setChromeDialogOpen] = useState(false);
   const [directoryBusy, setDirectoryBusy] = useState(false);
   const hostApi = feature.hostApi;
+  const chromeImport = feature.chromeCookieImport;
+  const chromeState = useSyncExternalStore(
+    chromeImport?.subscribe ?? emptySubscribe,
+    chromeImport?.getSnapshot ?? idleChromeSnapshot,
+    idleChromeSnapshot
+  );
+
+  useEffect(() => {
+    if (
+      open &&
+      allowChromeCookieImport &&
+      chromeImport &&
+      chromeState.status === "idle"
+    ) {
+      void chromeImport.discover();
+    }
+  }, [allowChromeCookieImport, chromeImport, chromeState.status, open]);
+
+  const showCookieResult = (result: BrowserNodeCookieImportResult): void => {
+    const feedback = browserNodeCookieImportFeedback(feature, result);
+    if (feedback) {
+      setCookieStatus(feedback.message);
+    }
+  };
 
   const importCookies = (): void => {
     if (!hostApi.importCookies) {
@@ -64,16 +94,7 @@ export function BrowserNodeSettingsDialog({
     setCookieStatus(null);
     void hostApi
       .importCookies({ nodeId })
-      .then((result) => {
-        if (!result.canceled) {
-          setCookieStatus(
-            feature.i18n.t("settings.importResult", {
-              imported: result.imported,
-              skipped: result.skipped
-            })
-          );
-        }
-      })
+      .then(showCookieResult)
       .catch((error: unknown) => {
         setCookieStatus(feature.i18n.t("settings.importFailed"));
         reportSettingsFailure(feature, nodeId, "import-cookies-failed", error);
@@ -217,17 +238,31 @@ export function BrowserNodeSettingsDialog({
               }
               label={feature.i18n.t("settings.cookiesLabel")}
             >
-              <Button
-                disabled={cookieBusy}
-                size="sm"
-                type="button"
-                variant="outline"
-                onClick={importCookies}
-              >
-                {cookieBusy
-                  ? feature.i18n.t("settings.importingCookies")
-                  : feature.i18n.t("settings.importCookies")}
-              </Button>
+              <div className="flex shrink-0 flex-col items-end gap-2">
+                {allowChromeCookieImport &&
+                chromeState.status === "available" &&
+                chromeState.profiles.length > 0 ? (
+                  <Button
+                    disabled={cookieBusy}
+                    size="sm"
+                    type="button"
+                    onClick={() => setChromeDialogOpen(true)}
+                  >
+                    {feature.i18n.t("chromeImport.fromChrome")}
+                  </Button>
+                ) : null}
+                <Button
+                  disabled={cookieBusy}
+                  size="sm"
+                  type="button"
+                  variant="outline"
+                  onClick={importCookies}
+                >
+                  {cookieBusy
+                    ? feature.i18n.t("settings.importingCookies")
+                    : feature.i18n.t("settings.importCookies")}
+                </Button>
+              </div>
             </SettingsSection>
           ) : null}
           {hostApi.clearBrowsingData ? (
@@ -256,6 +291,16 @@ export function BrowserNodeSettingsDialog({
           </Button>
         </DialogFooter>
       </DialogContent>
+      {allowChromeCookieImport && chromeState.status === "available" ? (
+        <BrowserNodeChromeImportDialog
+          feature={feature}
+          nodeId={nodeId}
+          open={chromeDialogOpen}
+          profiles={chromeState.profiles}
+          onOpenChange={setChromeDialogOpen}
+          onResult={showCookieResult}
+        />
+      ) : null}
     </Dialog>
   );
 }
@@ -305,14 +350,19 @@ function reportSettingsFailure(
   feature: BrowserNodeFeature,
   nodeId: string,
   event: string,
-  error: unknown
+  _error: unknown
 ): void {
   feature.reportDiagnostic?.({
-    details: {
-      error: error instanceof Error ? error.message : String(error),
-      nodeId
-    },
+    details: { nodeId },
     event,
     level: "warn"
   });
+}
+
+const idleChromeState = { status: "idle" } as const;
+function idleChromeSnapshot(): typeof idleChromeState {
+  return idleChromeState;
+}
+function emptySubscribe(): () => void {
+  return () => undefined;
 }

@@ -14,3 +14,13 @@ test("settings selects render their menus above the dialog", () => {
 
   assert.equal(dialogSelectMenus?.length, 2);
 });
+
+test("settings keeps Cookie file import as a fallback to Chrome import", () => {
+  const chromeIndex = source.indexOf("chromeImport.fromChrome");
+  const fileIndex = source.indexOf("settings.importCookies");
+
+  assert.ok(chromeIndex >= 0);
+  assert.ok(fileIndex > chromeIndex);
+  assert.match(source, /allowChromeCookieImport/);
+  assert.match(source, /chromeState\.profiles\.length > 0/);
+});

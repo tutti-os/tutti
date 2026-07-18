@@ -22,6 +22,9 @@ import type {
 } from "@tutti-os/client-tuttid-ts";
 import type {
   BrowserNodeActivationInput,
+  BrowserNodeChromeCookieImportInput,
+  BrowserNodeCancelChromeCookieImportInput,
+  BrowserNodeChromeProfileDiscoveryResult,
   BrowserNodeCookieImportResult,
   BrowserNodeDownloadDirectoryResult,
   BrowserNodeDownloadActionInput,
@@ -133,10 +136,13 @@ export const desktopIpcChannels = {
     capturePreview: "browser:capturePreview",
     chooseDownloadDirectory: "browser:chooseDownloadDirectory",
     clearBrowsingData: "browser:clearBrowsingData",
+    cancelChromeCookieImport: "browser:cancelChromeCookieImport",
     close: "browser:close",
     event: "browser:event",
     findInPage: "browser:findInPage",
+    discoverChromeCookieProfiles: "browser:discoverChromeCookieProfiles",
     importCookies: "browser:importCookies",
+    importChromeCookies: "browser:importChromeCookies",
     goBack: "browser:goBack",
     goForward: "browser:goForward",
     guestDiagnostic: "browser:guestDiagnostic",
@@ -878,9 +884,14 @@ export interface DesktopInvokePayloadByChannel {
   [desktopIpcChannels.browser.capturePreview]: BrowserNodeNodeIdInput;
   [desktopIpcChannels.browser.chooseDownloadDirectory]: BrowserNodeNodeIdInput;
   [desktopIpcChannels.browser.clearBrowsingData]: BrowserNodeNodeIdInput;
+  [desktopIpcChannels.browser
+    .cancelChromeCookieImport]: BrowserNodeCancelChromeCookieImportInput;
   [desktopIpcChannels.browser.close]: BrowserNodeNodeIdInput;
   [desktopIpcChannels.browser.findInPage]: BrowserNodeFindInPageInput;
+  [desktopIpcChannels.browser.discoverChromeCookieProfiles]: undefined;
   [desktopIpcChannels.browser.importCookies]: BrowserNodeNodeIdInput;
+  [desktopIpcChannels.browser
+    .importChromeCookies]: BrowserNodeChromeCookieImportInput;
   [desktopIpcChannels.browser.goBack]: BrowserNodeNodeIdInput;
   [desktopIpcChannels.browser.goForward]: BrowserNodeNodeIdInput;
   [desktopIpcChannels.browser.navigate]: BrowserNodeNavigateInput;
@@ -1037,9 +1048,14 @@ export interface DesktopInvokeResultByChannel {
   [desktopIpcChannels.browser
     .chooseDownloadDirectory]: BrowserNodeDownloadDirectoryResult;
   [desktopIpcChannels.browser.clearBrowsingData]: void;
+  [desktopIpcChannels.browser.cancelChromeCookieImport]: void;
   [desktopIpcChannels.browser.close]: void;
   [desktopIpcChannels.browser.findInPage]: void;
+  [desktopIpcChannels.browser
+    .discoverChromeCookieProfiles]: BrowserNodeChromeProfileDiscoveryResult;
   [desktopIpcChannels.browser.importCookies]: BrowserNodeCookieImportResult;
+  [desktopIpcChannels.browser
+    .importChromeCookies]: BrowserNodeCookieImportResult;
   [desktopIpcChannels.browser.goBack]: void;
   [desktopIpcChannels.browser.goForward]: void;
   [desktopIpcChannels.browser.navigate]: void;

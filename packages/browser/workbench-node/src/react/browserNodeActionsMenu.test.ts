@@ -17,6 +17,14 @@ const browserNodeChromeSource = readFileSync(
   resolve(currentDirectory, "BrowserNodeChrome.tsx"),
   "utf8"
 );
+const chromeProfileAvatarSource = readFileSync(
+  resolve(currentDirectory, "BrowserNodeChromeProfileAvatar.tsx"),
+  "utf8"
+);
+const chromeImportPromptSource = readFileSync(
+  resolve(currentDirectory, "BrowserNodeChromeImportPrompt.tsx"),
+  "utf8"
+);
 
 test("Browser Node actions render inline without a portal", () => {
   assert.match(actionsMenuSource, /<MenuSurface/);
@@ -61,6 +69,38 @@ test("Browser Node chrome keeps tabs above the address bar", () => {
   assert.ok(navigationIndex > tabStripIndex);
   assert.match(browserNodeChromeSource, /feature\.tabsStore\.addTab/);
   assert.match(browserNodeChromeSource, /closeBrowserNodeTab/);
+});
+
+test("Chrome import prompt occupies Browser content layout and excludes incognito", () => {
+  assert.match(browserNodeSource, /<BrowserNodeChromeImportPrompt/);
+  assert.match(
+    browserNodeSource,
+    /isChromeCookieImportEligible\(\{ sessionMode, sessionPartition \}\)/
+  );
+  assert.match(
+    browserNodeSource,
+    /<BrowserNodeChromeImportPrompt[\s\S]*?<div className="relative min-h-0 flex-1/
+  );
+});
+
+test("Chrome Profile avatar consumes the renderer-safe data URL contract", () => {
+  assert.match(
+    chromeProfileAvatarSource,
+    /chromeProfileAvatarDataUrl\(profile\)/
+  );
+  assert.match(chromeProfileAvatarSource, /src=\{avatarDataUrl\}/);
+  assert.match(chromeProfileAvatarSource, /<ChromeIcon/);
+});
+
+test("Chrome import prompt reports foreground aggregate results", () => {
+  assert.match(chromeImportPromptSource, /onResult=\{\(result\) =>/);
+  assert.match(
+    chromeImportPromptSource,
+    /browserNodeCookieImportFeedback\(feature, result\)/
+  );
+  for (const tone of ["success", "error", "warning"]) {
+    assert.match(chromeImportPromptSource, new RegExp(`toast\\.${tone}`));
+  }
 });
 
 test("Browser Node selected tab uses the fronted background and line-2 border", () => {

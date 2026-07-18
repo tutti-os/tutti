@@ -57,6 +57,23 @@ const browserNodeEn = {
       "Cookies, cache, and site storage for this browser profile will be removed. Other profiles are not affected.",
     title: "Clear browsing data?"
   },
+  chromeImport: {
+    cancel: "Cancel",
+    dialogDescription:
+      "Choose a Chrome profile. Tutti imports only login Cookies, not passwords, bookmarks, or history.",
+    dialogTitle: "Import login state from Chrome",
+    dismissTooltip: "Close and never show again",
+    fromChrome: "Import from Chrome",
+    import: "Import Cookies",
+    importing: "Importing…",
+    keychainFailed:
+      "Chrome Safe Storage access was not granted. Try again and allow Keychain access.",
+    promptDescription:
+      "Bring your signed-in website sessions into this browser. Only Cookies are imported.",
+    promptTitle: "Import login state from Chrome",
+    selectProfile: "Choose Profile",
+    snapshotFailed: "Close Chrome and try the import again."
+  },
   dockLabel: "Browser",
   downloads: {
     empty: "No downloads yet",
@@ -105,7 +122,12 @@ const browserNodeEn = {
     downloadLabel: "Download location",
     importCookies: "Import Cookie file",
     importFailed: "Cookie import failed.",
-    importResult: "Imported {{imported}}; skipped {{skipped}}.",
+    importResult:
+      "Imported {{imported}}; skipped {{skipped}}; failed {{failed}}.",
+    importPartialResult:
+      "Imported {{imported}}; skipped {{skipped}}; failed {{failed}}. Some Cookies could not be imported.",
+    importZeroResult:
+      "No Cookies were imported; skipped {{skipped}}; failed {{failed}}.",
     importingCookies: "Importing…",
     screenshotLabel: "Default screenshot",
     title: "Browser settings",
@@ -163,6 +185,21 @@ const browserNodeZhCN = {
       "将清除此浏览器资料中的 Cookie、缓存和网站存储，不会影响其他资料。",
     title: "清除浏览数据？"
   },
+  chromeImport: {
+    cancel: "取消",
+    dialogDescription:
+      "选择 Chrome Profile。Tutti 只导入登录 Cookie，不导入密码、书签或历史记录",
+    dialogTitle: "从 Chrome 导入登录状态",
+    dismissTooltip: "关闭且不再显示",
+    fromChrome: "从 Chrome 导入",
+    import: "导入 Cookie",
+    importing: "正在导入…",
+    keychainFailed: "未获准访问 Chrome 安全存储，请重试并允许钥匙串访问",
+    promptDescription: "将网站登录状态带入此浏览器，只会导入 Cookie",
+    promptTitle: "从 Chrome 导入登录状态",
+    selectProfile: "选择 Profile",
+    snapshotFailed: "请退出 Chrome 后重试导入"
+  },
   dockLabel: "浏览器",
   downloads: {
     empty: "暂无下载",
@@ -207,8 +244,12 @@ const browserNodeZhCN = {
     downloadDirectory: "系统下载文件夹",
     downloadLabel: "下载位置",
     importCookies: "导入 Cookie 文件",
-    importFailed: "Cookie 导入失败。",
-    importResult: "已导入 {{imported}} 项，跳过 {{skipped}} 项。",
+    importFailed: "Cookie 导入失败",
+    importResult:
+      "已导入 {{imported}} 项，跳过 {{skipped}} 项，失败 {{failed}} 项",
+    importPartialResult:
+      "已导入 {{imported}} 项，跳过 {{skipped}} 项，失败 {{failed}} 项，部分 Cookie 未能导入",
+    importZeroResult: "未导入 Cookie，跳过 {{skipped}} 项，失败 {{failed}} 项",
     importingCookies: "正在导入…",
     screenshotLabel: "默认截图方式",
     title: "浏览器设置",
@@ -259,6 +300,18 @@ export type BrowserNodeI18nKey =
   | "clearBrowsingData.confirm"
   | "clearBrowsingData.description"
   | "clearBrowsingData.title"
+  | "chromeImport.cancel"
+  | "chromeImport.dialogDescription"
+  | "chromeImport.dialogTitle"
+  | "chromeImport.dismissTooltip"
+  | "chromeImport.fromChrome"
+  | "chromeImport.import"
+  | "chromeImport.importing"
+  | "chromeImport.keychainFailed"
+  | "chromeImport.promptDescription"
+  | "chromeImport.promptTitle"
+  | "chromeImport.selectProfile"
+  | "chromeImport.snapshotFailed"
   | "dockLabel"
   | "downloads.empty"
   | "downloads.status.cancelled"
@@ -294,6 +347,8 @@ export type BrowserNodeI18nKey =
   | "settings.importCookies"
   | "settings.importFailed"
   | "settings.importResult"
+  | "settings.importPartialResult"
+  | "settings.importZeroResult"
   | "settings.importingCookies"
   | "settings.screenshotLabel"
   | "settings.title"

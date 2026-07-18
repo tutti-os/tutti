@@ -27,6 +27,8 @@ import {
   useBrowserNodeTabsState
 } from "./BrowserNodeChrome.tsx";
 import { BrowserNodeWebviewContext } from "./browserNodeWebviewContext.ts";
+import { BrowserNodeChromeImportPrompt } from "./BrowserNodeChromeImportPrompt.tsx";
+import { isChromeCookieImportEligible } from "./chromeCookieImportUiModel.ts";
 import {
   openBrowserNodeExternal,
   resolveBrowserNodeOpenExternalUrl
@@ -152,8 +154,8 @@ function TabbedBrowserNode({
   onFocusRequest,
   onNavigated,
   profileId,
-  sessionMode,
-  sessionPartition,
+  sessionMode = "shared",
+  sessionPartition = null,
   showHeader,
   syncDefaultUrl
 }: Omit<BrowserNodeProps, "tabs">): JSX.Element {
@@ -187,6 +189,10 @@ function TabbedBrowserNode({
       <div className="flex h-full min-h-0 flex-col overflow-hidden bg-[var(--background-panel)]">
         {showHeader ? (
           <BrowserNodeChrome
+            allowChromeCookieImport={isChromeCookieImportEligible({
+              sessionMode,
+              sessionPartition
+            })}
             defaultUrl={defaultUrl}
             feature={feature}
             navigationActions={navigationActions}
@@ -333,12 +339,19 @@ function BrowserNodeContent({
       <div className="flex h-full min-h-0 flex-col overflow-hidden bg-[var(--background-panel)]">
         {showHeader ? (
           <BrowserNodeHeader
+            allowChromeCookieImport={isChromeCookieImportEligible({
+              sessionMode,
+              sessionPartition
+            })}
             defaultUrl={defaultUrl}
             feature={feature}
             navigationActions={navigationActions}
             nodeId={nodeId}
             onFocusRequest={onFocusRequest}
           />
+        ) : null}
+        {isChromeCookieImportEligible({ sessionMode, sessionPartition }) ? (
+          <BrowserNodeChromeImportPrompt feature={feature} nodeId={nodeId} />
         ) : null}
         <div className="relative min-h-0 flex-1 overflow-hidden bg-[var(--background-panel)]">
           {shouldRenderWebview ? (

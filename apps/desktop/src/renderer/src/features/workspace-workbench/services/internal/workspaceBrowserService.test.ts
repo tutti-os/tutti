@@ -155,6 +155,42 @@ test("workspace browser service launches open-url once from the owning route", a
   ]);
 });
 
+test("workspace app Browser features do not inherit Chrome Cookie import", () => {
+  const browserApi = createBrowserNodeHostApi({
+    cancelChromeCookieImport: async () => undefined,
+    discoverChromeCookieProfiles: async () => ({
+      reason: "no-profiles",
+      status: "unavailable"
+    }),
+    importChromeCookies: async () => ({
+      canceled: false,
+      failed: 0,
+      imported: 0,
+      partial: false,
+      skipped: 0,
+      status: "completed"
+    })
+  });
+  const service = createWorkspaceBrowserService({ browserApi });
+  const ordinaryApi = service.createFeatureHostApi({
+    acceptsEvent: () => true,
+    source: "browser",
+    workspaceId: "workspace"
+  });
+  const workspaceAppApi = service.createFeatureHostApi({
+    acceptsEvent: () => true,
+    source: "workspace_app",
+    workspaceId: "workspace"
+  });
+
+  assert.equal(typeof ordinaryApi.discoverChromeCookieProfiles, "function");
+  assert.equal(typeof ordinaryApi.importChromeCookies, "function");
+  assert.equal(typeof ordinaryApi.cancelChromeCookieImport, "function");
+  assert.equal(workspaceAppApi.discoverChromeCookieProfiles, undefined);
+  assert.equal(workspaceAppApi.importChromeCookies, undefined);
+  assert.equal(workspaceAppApi.cancelChromeCookieImport, undefined);
+});
+
 function browserNodeOwnsEvent(event: BrowserNodeEvent): boolean {
   const nodeId = event.type === "open-url" ? event.sourceNodeId : event.nodeId;
   return nodeId.startsWith("browser:");
@@ -172,6 +208,7 @@ function createBrowserNodeHostApi(
   overrides: Partial<BrowserNodeHostApi> = {}
 ): BrowserNodeHostApi {
   return {
+    ...overrides,
     activate: overrides.activate ?? (() => Promise.resolve()),
     close: overrides.close ?? (() => Promise.resolve()),
     goBack: overrides.goBack ?? (() => Promise.resolve()),
