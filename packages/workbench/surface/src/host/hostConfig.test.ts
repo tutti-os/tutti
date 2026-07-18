@@ -70,6 +70,43 @@ test("resolveWorkbenchHostDockEntries merges dock entries without touching runti
   assert.deepEqual(resolved, [browserDockEntry, explicitDockEntry]);
 });
 
+test("resolveWorkbenchHostDockEntries applies presentation overrides without reordering merged entries", () => {
+  const browserDockEntry = createDockEntry("browser", "Browser");
+  const terminalDockEntry = createDockEntry("terminal", "Terminal");
+
+  const resolved = resolveWorkbenchHostDockEntries({
+    contributions: [
+      {
+        dockEntries: [browserDockEntry, terminalDockEntry],
+        id: "tools"
+      }
+    ],
+    dockEntryPresentationOverrides: {
+      browser: {
+        dockRetention: {
+          actionId: "dock-retention:browser",
+          retained: false
+        },
+        visibility: "when-open"
+      }
+    }
+  });
+
+  assert.deepEqual(
+    resolved.map((entry) => entry.id),
+    ["browser", "terminal"]
+  );
+  assert.deepEqual(resolved[0], {
+    ...browserDockEntry,
+    dockRetention: {
+      actionId: "dock-retention:browser",
+      retained: false
+    },
+    visibility: "when-open"
+  });
+  assert.equal(resolved[1], terminalDockEntry);
+});
+
 test("resolveWorkbenchHostRuntimeConfig supports contribution-only nodes", () => {
   const terminalNode = createNodeDefinition("terminal", "Terminal");
 

@@ -10,6 +10,10 @@ export function createWorkspaceDockRetentionController(
 ): WorkspaceDockRetentionService {
   const listeners = new Set<() => void>();
   const pendingByWorkspaceId = new Map<string, Map<string, boolean>>();
+  const retainedByWorkspaceId = new Map<
+    string,
+    Readonly<Record<string, boolean>>
+  >();
   const writeQueues = new Map<string, Promise<void>>();
   let revision = 0;
 
@@ -19,7 +23,38 @@ export function createWorkspaceDockRetentionController(
       listener();
     }
   };
-  const unsubscribeRepository = repository.subscribe(notify);
+
+  const resolveRetainedByEntryId = (workspaceId: string) => {
+    const persisted = readWorkspaceDockRetentionByEntryId(
+      repository.readCached(workspaceId)
+    );
+    const pending = pendingByWorkspaceId.get(workspaceId);
+    return pending
+      ? {
+          ...persisted,
+          ...Object.fromEntries(pending)
+        }
+      : persisted;
+  };
+  const refreshWorkspace = (workspaceId: string) => {
+    const current = retainedByWorkspaceId.get(workspaceId);
+    const next = resolveRetainedByEntryId(workspaceId);
+    if (current && hasEqualRetention(current, next)) {
+      return false;
+    }
+    retainedByWorkspaceId.set(workspaceId, next);
+    return true;
+  };
+  const refreshKnownWorkspaces = () => {
+    let changed = false;
+    for (const workspaceId of retainedByWorkspaceId.keys()) {
+      changed = refreshWorkspace(workspaceId) || changed;
+    }
+    if (changed) {
+      notify();
+    }
+  };
+  const unsubscribeRepository = repository.subscribe(refreshKnownWorkspaces);
 
   const clearPersistedChanges = (
     workspaceId: string,
@@ -62,38 +97,42 @@ export function createWorkspaceDockRetentionController(
       );
     } catch (error) {
       clearPersistedChanges(workspaceId, changes);
-      notify();
+      if (refreshWorkspace(workspaceId)) {
+        notify();
+      }
       throw error;
     }
 
     clearPersistedChanges(workspaceId, changes);
+    if (refreshWorkspace(workspaceId)) {
+      notify();
+    }
   };
 
   return {
     dispose() {
       unsubscribeRepository();
       listeners.clear();
+      pendingByWorkspaceId.clear();
+      retainedByWorkspaceId.clear();
+      writeQueues.clear();
     },
     getRevision() {
       return revision;
     },
     readRetainedByEntryId(workspaceId) {
-      const persisted = readWorkspaceDockRetentionByEntryId(
-        repository.readCached(workspaceId)
-      );
-      const pending = pendingByWorkspaceId.get(workspaceId);
-      return pending
-        ? {
-            ...persisted,
-            ...Object.fromEntries(pending)
-          }
-        : persisted;
+      if (!retainedByWorkspaceId.has(workspaceId)) {
+        refreshWorkspace(workspaceId);
+      }
+      return retainedByWorkspaceId.get(workspaceId) ?? {};
     },
     setRetained(workspaceId, entryId, retained) {
       const pending = pendingByWorkspaceId.get(workspaceId) ?? new Map();
       pending.set(entryId, retained);
       pendingByWorkspaceId.set(workspaceId, pending);
-      notify();
+      if (refreshWorkspace(workspaceId)) {
+        notify();
+      }
 
       const previousWrite = writeQueues.get(workspaceId) ?? Promise.resolve();
       const nextWrite = previousWrite
@@ -118,3 +157,15 @@ export function createWorkspaceDockRetentionController(
 }
 
 function noop(): void {}
+
+function hasEqualRetention(
+  left: Readonly<Record<string, boolean>>,
+  right: Readonly<Record<string, boolean>>
+): boolean {
+  const leftEntries = Object.entries(left);
+  const rightKeys = Object.keys(right);
+  return (
+    leftEntries.length === rightKeys.length &&
+    leftEntries.every(([entryId, retained]) => right[entryId] === retained)
+  );
+}
