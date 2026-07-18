@@ -9499,7 +9499,7 @@ html[data-theme="light"] [data-message-center-item-id].agent-gui-edge-glow {
 .agent-gui-node__provider-rail-avatar-image {
   width: 28px;
   height: 28px;
-  border-radius: 0;
+  border-radius: 6px;
   object-fit: contain;
 }
 

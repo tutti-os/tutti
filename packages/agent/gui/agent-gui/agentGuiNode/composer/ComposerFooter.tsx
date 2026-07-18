@@ -11,8 +11,8 @@ import {
   TooltipTrigger
 } from "@tutti-os/ui-system";
 import { cn } from "../../../app/renderer/lib/utils";
-import addLinedIconUrl from "../../../app/renderer/assets/icons/add-lined-bold.svg";
-import atLinedIconUrl from "../../../app/renderer/assets/icons/@-bold-lined.svg";
+import addLinedIconUrl from "../../../app/renderer/assets/icons/add-lined.svg";
+import atLinedIconUrl from "../../../app/renderer/assets/icons/@-lined.svg";
 import styles from "../AgentGUINode.styles";
 import {
   AgentModelReasoningDropdown,
