@@ -123,13 +123,13 @@ This appends a `Signed-off-by: Your Name <your@email>` line to the commit messag
 1. Fork the repository and create a branch from `main`. Suggested branch naming: `feat/...`, `fix/...`, `docs/...`
 2. Make your changes; keep each PR focused on a single concern
 3. Open a PR with a clear description of the motivation and changes
-4. CI runs TypeScript linting, Go linting, typechecking, tests, and tooling consistency checks; all checks must pass
+4. CI classifies the changed files and runs the relevant TypeScript, Go, package, and tooling checks; all selected checks must pass
 5. A maintainer reviews your PR; please respond to feedback and keep the conversation in the PR
 
 Local hooks use `husky`:
 
 - `pre-commit` runs staged formatting and UI-boundary checks
-- `pre-push` runs `pnpm check:full`
+- `pre-push` runs changed-aware push validation with `pnpm check:changed -- --push-ready`
 
 ## Pull Request Review Gate
 
