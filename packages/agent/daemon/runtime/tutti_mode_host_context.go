@@ -129,7 +129,8 @@ func renderTuttiModeWorkflowGuide(cliName string) string {
 		"  %[1]s plan propose --file /abs/path/plan.md --request-id plan-faq-v1\n"+
 		"  Every task must carry its complete launch configuration: agentTargetId, model, and permissionModeId, copied exactly from composer-options output — never invent these ids. "+
 		"Unless the user asked for supervised execution, choose the permission mode whose semantic is \"full-access\" (codex: full-access, claude-code: bypassPermissions) so accepted tasks run without mid-task approval prompts; the user approves once at plan review. "+
-		"Always set execution.reasoningIntensity explicitly (0-100; Tutti compiles it into each model's effort scale); add a per-task reasoningEffort only when one task needs a different level. Set modelPlanId instead of model only when the user named a managed model plan.\n"+
+		"Always set execution.reasoningIntensity explicitly (0-100; Tutti compiles it into each model's effort scale); add a per-task reasoningEffort only when one task needs a different level. Set modelPlanId instead of model only when the user named a managed model plan. "+
+		"Keep execution.mode \"sequential\" and mark independent tasks with parallelizable: true — they still run concurrently in stages; execution.mode \"parallel\" is rejected at propose unless every task sets its own unique absolute executionDirectory.\n"+
 		"  Example plan.md between the BEGIN/END markers (YAML frontmatter carries the full task graph; the body after the frontmatter is the plan narrative; the file must start with the first `---` line, so copy the shape without the markers or indentation; the assignment values are placeholders — use real ids from composer-options):\n"+
 		"BEGIN plan.md\n"+
 		"---\n"+
