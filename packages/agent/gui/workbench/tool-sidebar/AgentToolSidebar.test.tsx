@@ -177,22 +177,26 @@ describe("AgentToolSidebar", () => {
     ).toBeInTheDocument();
   });
 
-  it("keeps blank panel-header space draggable while controls remain interactive", () => {
+  it("routes host-owned panel-header drag gestures while controls remain interactive", () => {
+    const handleDoubleClick = vi.fn();
     const handlePointerDown = vi.fn();
     const { container } = render(
-      <div onPointerDown={handlePointerDown}>
-        <AgentToolSidebar
-          containerWidth={900}
-          copy={copy}
-          headerPlacement="panel"
-          panels={panels}
-          renderHeader={(actions) => <div>{actions}</div>}
-          renderPanel={({ tab }) => <div>{tab.panel} content</div>}
-          resizeContainerContentWidth={async (width) => ({ width })}
-        >
-          <main>Agent content</main>
-        </AgentToolSidebar>
-      </div>
+      <AgentToolSidebar
+        containerWidth={900}
+        copy={copy}
+        headerDrag={{
+          mode: "host",
+          onDoubleClick: handleDoubleClick,
+          onPointerDown: handlePointerDown
+        }}
+        headerPlacement="panel"
+        panels={panels}
+        renderHeader={(actions) => <div>{actions}</div>}
+        renderPanel={({ tab }) => <div>{tab.panel} content</div>}
+        resizeContainerContentWidth={async (width) => ({ width })}
+      >
+        <main>Agent content</main>
+      </AgentToolSidebar>
     );
 
     fireEvent.click(screen.getByLabelText("Open right panel"));
@@ -213,15 +217,35 @@ describe("AgentToolSidebar", () => {
       "true"
     );
     expect(header).not.toHaveClass("nodrag");
-    expect(header?.className).toContain("[-webkit-app-region:drag]");
+    expect(header?.className).toContain("[-webkit-app-region:no-drag]");
+    expect(header?.className).not.toContain("[-webkit-app-region:drag]");
     expect(tabList).not.toHaveClass("nodrag");
-    expect(tabList?.className).toContain("[-webkit-app-region:drag]");
+    expect(tabList?.className).not.toContain("[-webkit-app-region:drag]");
     expect(screen.getByRole("tab", { name: "Files" })).toHaveClass("nodrag");
     expect(toolbar).toHaveClass("nodrag");
 
-    handlePointerDown.mockClear();
     fireEvent.pointerDown(tabList as HTMLElement);
+    fireEvent.doubleClick(tabList as HTMLElement);
     expect(handlePointerDown).toHaveBeenCalledOnce();
+    expect(handleDoubleClick).toHaveBeenCalledOnce();
+
+    fireEvent.pointerDown(screen.getByRole("tab", { name: "Files" }));
+    fireEvent.doubleClick(screen.getByRole("tab", { name: "Files" }));
+    fireEvent.pointerDown(toolbar as HTMLElement);
+    fireEvent.doubleClick(toolbar as HTMLElement);
+
+    expect(handlePointerDown).toHaveBeenCalledOnce();
+    expect(handleDoubleClick).toHaveBeenCalledOnce();
+  });
+
+  it("keeps native-window header dragging as the default", () => {
+    const { container } = renderSidebar();
+    const header = container.querySelector(
+      '[data-standalone-agent-tool-sidebar-header="true"]'
+    );
+
+    expect(header?.className).toContain("[-webkit-app-region:drag]");
+    expect(header?.className).not.toContain("[-webkit-app-region:no-drag]");
   });
 });
 

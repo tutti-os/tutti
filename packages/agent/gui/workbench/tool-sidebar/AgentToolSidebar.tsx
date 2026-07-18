@@ -2,6 +2,8 @@ import {
   forwardRef,
   useImperativeHandle,
   type CSSProperties,
+  type MouseEventHandler,
+  type PointerEventHandler,
   type ReactNode
 } from "react";
 import { CloseIcon, cn } from "@tutti-os/ui-system";
@@ -27,10 +29,19 @@ export interface AgentToolSidebarHandle {
   openPanel(panel: AgentToolPanelId, resourceId?: string): string | null;
 }
 
+export type AgentToolSidebarHeaderDrag =
+  | { mode?: "native-window" }
+  | {
+      mode: "host";
+      onDoubleClick?: MouseEventHandler<HTMLDivElement>;
+      onPointerDown?: PointerEventHandler<HTMLDivElement>;
+    };
+
 export interface AgentToolSidebarProps {
   children: ReactNode;
   containerWidth: number;
   copy: AgentToolSidebarCopy;
+  headerDrag?: AgentToolSidebarHeaderDrag;
   headerPlacement?: "inline" | "external" | "panel";
   mainContentMinWidthPx?: number;
   panels: readonly AgentToolPanelDefinition[];
@@ -64,6 +75,7 @@ export const AgentToolSidebar = forwardRef<
     children,
     containerWidth,
     copy,
+    headerDrag,
     headerPlacement = "inline",
     mainContentMinWidthPx,
     panels: unfilteredPanels,
@@ -139,10 +151,37 @@ export const AgentToolSidebar = forwardRef<
     [addPanel, closePanel, closePanelTab, openPanel]
   );
 
+  const isHostHeaderDrag = headerDrag?.mode === "host";
+  const handleHeaderDoubleClick: MouseEventHandler<HTMLDivElement> = (
+    event
+  ) => {
+    if (isAgentToolSidebarHeaderControl(event.target)) {
+      event.stopPropagation();
+      return;
+    }
+    if (headerDrag?.mode === "host") {
+      headerDrag.onDoubleClick?.(event);
+    }
+  };
+  const handleHeaderPointerDown: PointerEventHandler<HTMLDivElement> = (
+    event
+  ) => {
+    if (isAgentToolSidebarHeaderControl(event.target)) {
+      event.stopPropagation();
+      return;
+    }
+    if (headerDrag?.mode === "host") {
+      headerDrag.onPointerDown?.(event);
+    }
+  };
+
   const toolActions = (
     <div
       className={cn(
-        "flex h-[var(--agent-gui-workbench-header-height,44px)] min-w-0 max-w-full shrink-0 cursor-grab items-center pr-[var(--agent-gui-workbench-header-padding-x)] active:cursor-grabbing [-webkit-app-region:drag]",
+        "flex h-[var(--agent-gui-workbench-header-height,44px)] min-w-0 max-w-full shrink-0 cursor-grab items-center pr-[var(--agent-gui-workbench-header-padding-x)] active:cursor-grabbing",
+        isHostHeaderDrag
+          ? "[-webkit-app-region:no-drag]"
+          : "[-webkit-app-region:drag]",
         isSidebarOpen && "border-b border-[var(--border-1)]"
       )}
       data-standalone-agent-tool-sidebar-drag-region="true"
@@ -153,6 +192,8 @@ export const AgentToolSidebar = forwardRef<
           ? { width: `${activePanelWidth}px`, maxWidth: "100%" }
           : undefined
       }
+      onDoubleClick={isHostHeaderDrag ? handleHeaderDoubleClick : undefined}
+      onPointerDown={isHostHeaderDrag ? handleHeaderPointerDown : undefined}
     >
       {activeTabId ? (
         <ToolSidebarTabBar
@@ -344,7 +385,7 @@ function ToolSidebarTabBar({
   return (
     <div
       aria-label={copy.tool}
-      className="flex h-[var(--agent-gui-workbench-header-height,44px)] min-w-0 flex-1 cursor-grab items-center gap-1 overflow-hidden px-2 active:cursor-grabbing [-webkit-app-region:drag]"
+      className="flex h-[var(--agent-gui-workbench-header-height,44px)] min-w-0 flex-1 cursor-grab items-center gap-1 overflow-hidden px-2 active:cursor-grabbing"
       data-standalone-agent-tool-tab-list="true"
       role="tablist"
     >
@@ -393,5 +434,14 @@ function ToolSidebarTabBar({
         })}
       </div>
     </div>
+  );
+}
+
+function isAgentToolSidebarHeaderControl(target: EventTarget | null): boolean {
+  return (
+    target instanceof Element &&
+    target.closest(
+      '.nodrag, button, a, input, textarea, select, option, [role="button"], [role="menuitem"], [contenteditable="true"]'
+    ) !== null
   );
 }
