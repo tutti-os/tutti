@@ -123,13 +123,13 @@ git commit -s -m "feat(scope): add something"
 1. Fork 儲存庫並從 `main` 建立分支。建議的分支命名：`feat/...`、`fix/...`、`docs/...`
 2. 完成你的變更；每個 PR 只聚焦一件事
 3. 送出 PR，清楚描述動機與變更內容
-4. CI 會執行 TypeScript lint、Go lint、型別檢查、測試和工具一致性檢查；所有檢查必須通過
+4. CI 會根據變更檔案執行相關的 TypeScript、Go、套件和工具檢查；所有選取的檢查必須通過
 5. 維護者會 review 你的 PR；請回應回饋，並把討論保留在 PR 中
 
 本機鉤子使用 `husky`：
 
 - `pre-commit` 執行暫存區格式化和 UI 邊界檢查
-- `pre-push` 執行 `pnpm check:full`
+- `pre-push` 透過 `pnpm check:changed -- --push-ready` 執行變更感知的推送檢查
 
 ## Pull Request 評審門禁
 

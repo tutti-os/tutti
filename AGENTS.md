@@ -141,7 +141,7 @@ Avoid full validation unless it is necessary for the risk or requested workflow.
 Local hooks use Husky.
 
 - `pre-commit`: `lint-staged`, staged Electron/UI/renderer boundary checks
-- `pre-push`: `pnpm check:full`
+- `pre-push`: `pnpm check:changed -- --push-ready`
 
 Prefer `pnpm check:changed` before broader validation during normal AI iteration. It runs selected lanes concurrently, prints compact summaries, and stores full logs under `.tmp/check-runs`; use `--tail-lines <n>` to tune failure tails.
 
