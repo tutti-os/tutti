@@ -17,6 +17,8 @@ import type {
 } from "@shared/contracts/ipc";
 import {
   AddLinedIcon,
+  ArrowLeftIcon,
+  ArrowRightIcon,
   AskLinedIcon,
   Button,
   CheckIcon,
@@ -99,6 +101,7 @@ import {
 import {
   isFeatureEnabled,
   LAB_ENABLED_FLAG,
+  LAB_PREVIEW_AGENTS_FLAG,
   LAB_WORKBENCH_SHORTCUTS_FLAG,
   resolveDesktopWorkspaceUiMode
 } from "../../../../../shared/featureFlags/catalog.ts";
@@ -1533,6 +1536,10 @@ function WorkspaceLabSettingsSection({
     pendingFeatureFlags,
     LAB_WORKBENCH_SHORTCUTS_FLAG
   );
+  const previewAgentsEnabled = isFeatureEnabled(
+    pendingFeatureFlags,
+    LAB_PREVIEW_AGENTS_FLAG
+  );
   const updateFeatureFlag = useCallback(
     (key: string, enabled: boolean) => {
       onFeatureFlagsChange({
@@ -1542,7 +1549,64 @@ function WorkspaceLabSettingsSection({
     },
     [featureFlags, onFeatureFlagsChange]
   );
-  const shortcutsDisabled = isUpdatingFlags || !workbenchShortcutsEnabled;
+
+  // The two shortcut bindings live on a secondary page reached from the Labs
+  // list; the toggle itself stays in the list. `labView` is a single-level
+  // secondary view (no navigation stack), mirroring the panel's other in-place
+  // view swaps. When the feature is turned off the secondary page becomes
+  // unreachable, so fall back to the list.
+  const [labView, setLabView] = useState<"root" | "workbenchShortcuts">("root");
+  useEffect(() => {
+    if (!workbenchShortcutsEnabled && labView === "workbenchShortcuts") {
+      setLabView("root");
+    }
+  }, [workbenchShortcutsEnabled, labView]);
+
+  if (labView === "workbenchShortcuts" && workbenchShortcutsEnabled) {
+    return (
+      <SettingsRows>
+        <div className="flex w-full items-center gap-2">
+          <Button
+            aria-label={t("workspace.settings.lab.backLabel")}
+            size="icon-sm"
+            title={t("workspace.settings.lab.backLabel")}
+            type="button"
+            variant="ghost"
+            onClick={() => setLabView("root")}
+          >
+            <ArrowLeftIcon aria-hidden="true" size={16} />
+          </Button>
+          <strong className="text-[13px] font-semibold text-[var(--text-primary)]">
+            {t("workspace.settings.lab.workbenchShortcutsLabel")}
+          </strong>
+        </div>
+
+        <WorkspaceLabShortcutRow
+          disabled={isUpdatingFlags}
+          label={t("workspace.settings.lab.newAgentConversationShortcutLabel")}
+          value={workbenchShortcuts.newAgentConversation}
+          onChange={(binding) => {
+            onWorkbenchShortcutsChange({
+              ...workbenchShortcuts,
+              newAgentConversation: binding
+            });
+          }}
+        />
+
+        <WorkspaceLabShortcutRow
+          disabled={isUpdatingFlags}
+          label={t("workspace.settings.lab.newSameTypeWindowShortcutLabel")}
+          value={workbenchShortcuts.newSameTypeWindow}
+          onChange={(binding) => {
+            onWorkbenchShortcutsChange({
+              ...workbenchShortcuts,
+              newSameTypeWindow: binding
+            });
+          }}
+        />
+      </SettingsRows>
+    );
+  }
 
   return (
     <SettingsRows>
@@ -1565,29 +1629,43 @@ function WorkspaceLabSettingsSection({
         />
       </div>
 
-      <WorkspaceLabShortcutRow
-        disabled={shortcutsDisabled}
-        label={t("workspace.settings.lab.newAgentConversationShortcutLabel")}
-        value={workbenchShortcuts.newAgentConversation}
-        onChange={(binding) => {
-          onWorkbenchShortcutsChange({
-            ...workbenchShortcuts,
-            newAgentConversation: binding
-          });
-        }}
-      />
+      {workbenchShortcutsEnabled ? (
+        <button
+          className="flex w-full items-center justify-between gap-4 rounded-md border-0 bg-transparent px-0 py-1 text-left outline-none transition-colors duration-150 hover:text-[var(--text-primary)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--border-focus)] disabled:opacity-70"
+          data-testid="workspace-settings-lab-configure-shortcuts"
+          disabled={isUpdatingFlags}
+          type="button"
+          onClick={() => setLabView("workbenchShortcuts")}
+        >
+          <span className="text-[13px] font-semibold text-[var(--text-primary)]">
+            {t("workspace.settings.lab.workbenchShortcutsManageLabel")}
+          </span>
+          <ArrowRightIcon
+            aria-hidden="true"
+            className="text-[var(--text-secondary)]"
+            size={16}
+          />
+        </button>
+      ) : null}
 
-      <WorkspaceLabShortcutRow
-        disabled={shortcutsDisabled}
-        label={t("workspace.settings.lab.newSameTypeWindowShortcutLabel")}
-        value={workbenchShortcuts.newSameTypeWindow}
-        onChange={(binding) => {
-          onWorkbenchShortcutsChange({
-            ...workbenchShortcuts,
-            newSameTypeWindow: binding
-          });
-        }}
-      />
+      <div className="flex w-full items-center justify-between gap-4 max-[560px]:flex-col max-[560px]:items-stretch">
+        <div className="flex min-w-0 flex-1 flex-col gap-1 max-[560px]:w-full">
+          <strong className="text-[13px] font-semibold text-[var(--text-primary)]">
+            {t("workspace.settings.lab.previewAgentsLabel")}
+          </strong>
+          <p className="m-0 text-[13px] leading-[1.3] text-[var(--text-secondary)]">
+            {t("workspace.settings.lab.previewAgentsDescription")}
+          </p>
+        </div>
+        <Switch
+          aria-label={t("workspace.settings.lab.previewAgentsLabel")}
+          checked={previewAgentsEnabled}
+          disabled={isUpdatingFlags}
+          onCheckedChange={(enabled) => {
+            updateFeatureFlag(LAB_PREVIEW_AGENTS_FLAG, enabled);
+          }}
+        />
+      </div>
     </SettingsRows>
   );
 }

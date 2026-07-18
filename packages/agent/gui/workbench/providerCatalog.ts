@@ -25,6 +25,16 @@ export const agentGuiWorkbenchDockSuppressedProviders = [
 export const agentGuiWorkbenchComingSoonProviders =
   [] as const satisfies readonly AgentGuiWorkbenchProvider[];
 
+// Preview/Beta/being-onboarded agents. These are gated behind the "Preview
+// Agents" Labs switch: selection surfaces (dock, launchpad, app center, the
+// Agents settings tab) only show them when the switch is on. Stable providers
+// are never in this list, so they always show regardless of the switch. This
+// is the single authoritative list; call sites consume the predicate rather
+// than branching on provider names.
+export const agentGuiWorkbenchPreviewProviders = [
+  "hermes"
+] as const satisfies readonly AgentGuiWorkbenchProvider[];
+
 const defaultDockProviderSet = new Set<AgentGuiWorkbenchProvider>(
   agentGuiWorkbenchDefaultDockProviders
 );
@@ -33,6 +43,9 @@ const dockSuppressedProviderSet = new Set<AgentGuiWorkbenchProvider>(
 );
 const comingSoonProviderSet = new Set<AgentGuiWorkbenchProvider>(
   agentGuiWorkbenchComingSoonProviders
+);
+const previewProviderSet = new Set<AgentGuiWorkbenchProvider>(
+  agentGuiWorkbenchPreviewProviders
 );
 const agentGuiWorkbenchLabelProviders = [
   ...agentGuiWorkbenchProviders,
@@ -71,6 +84,21 @@ export function isAgentGuiWorkbenchComingSoonProvider(
   provider: AgentGuiWorkbenchProvider
 ): boolean {
   return comingSoonProviderSet.has(provider);
+}
+
+export function isAgentGuiWorkbenchPreviewProvider(
+  provider: AgentGuiWorkbenchProvider
+): boolean {
+  return previewProviderSet.has(provider);
+}
+
+// Whether a provider should be shown given the current Preview-Agents switch.
+// Stable providers always show; preview providers show only when enabled.
+export function isAgentGuiWorkbenchProviderVisibleWithPreview(
+  provider: AgentGuiWorkbenchProvider,
+  previewAgentsEnabled: boolean
+): boolean {
+  return previewAgentsEnabled || !previewProviderSet.has(provider);
 }
 
 export function isAgentGuiWorkbenchProvider(

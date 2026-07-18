@@ -283,3 +283,40 @@ test("workspace managed provider model rows keep stable keys while editing", () 
     /key=\{`\$\{model\.provider\}:\$\{model\.id\}:\$\{index\}`\}/
   );
 });
+
+test("labs keeps the shortcut toggle in the list but moves shortcut config behind a secondary page", () => {
+  // Toggle stays in the Labs list.
+  assert.match(source, /LAB_WORKBENCH_SHORTCUTS_FLAG/);
+  // Secondary-page view state (single-level, no nav stack).
+  assert.match(
+    source,
+    /const \[labView, setLabView\] = useState<"root" \| "workbenchShortcuts">\("root"\)/
+  );
+  // Turning the feature off leaves the secondary page.
+  assert.match(
+    source,
+    /if \(!workbenchShortcutsEnabled && labView === "workbenchShortcuts"\) \{\s*setLabView\("root"\)/
+  );
+  // The "more" entry only shows when the toggle is on and opens the sub-page.
+  assert.match(
+    source,
+    /workbenchShortcutsEnabled \? \(\s*<button[\s\S]{0,400}workspace-settings-lab-configure-shortcuts[\s\S]{0,400}setLabView\("workbenchShortcuts"\)/
+  );
+  // The two shortcut rows render only inside the secondary page guard.
+  assert.match(
+    source,
+    /labView === "workbenchShortcuts" && workbenchShortcutsEnabled[\s\S]{0,1200}newAgentConversationShortcutLabel[\s\S]{0,600}newSameTypeWindowShortcutLabel/
+  );
+  // Back affordance on the secondary page.
+  assert.match(source, /workspace\.settings\.lab\.backLabel/);
+});
+
+test("labs exposes the Preview Agents switch (not Experimental)", () => {
+  assert.match(source, /LAB_PREVIEW_AGENTS_FLAG/);
+  assert.match(source, /workspace\.settings\.lab\.previewAgentsLabel/);
+  assert.match(
+    source,
+    /checked=\{previewAgentsEnabled\}[\s\S]{0,200}updateFeatureFlag\(LAB_PREVIEW_AGENTS_FLAG, enabled\)/
+  );
+  assert.doesNotMatch(source, /Experimental Agents/);
+});

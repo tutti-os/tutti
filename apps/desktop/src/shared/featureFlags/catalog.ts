@@ -6,6 +6,7 @@ import {
 
 export const LAB_ENABLED_FLAG = "lab.enabled";
 export const LAB_WORKBENCH_SHORTCUTS_FLAG = "lab.workbenchShortcuts";
+export const LAB_PREVIEW_AGENTS_FLAG = "lab.previewAgents";
 export const WORKSPACE_STANDALONE_AGENT_MODE_FLAG =
   "workspace.standaloneAgentMode";
 export const AGENT_REFERENCE_PROVENANCE_FILTER_FLAG =
@@ -71,6 +72,13 @@ export const FEATURE_FLAG_DEFINITIONS: readonly FeatureFlagDefinition[] = [
     group: "lab",
     labelKey: "workspaceSettings.lab.workbenchShortcuts.label",
     descriptionKey: "workspaceSettings.lab.workbenchShortcuts.description"
+  },
+  {
+    key: LAB_PREVIEW_AGENTS_FLAG,
+    default: false,
+    group: "lab",
+    labelKey: "workspaceSettings.lab.previewAgents.label",
+    descriptionKey: "workspaceSettings.lab.previewAgents.description"
   }
 ];
 

@@ -865,13 +865,18 @@ export const zhCN = {
         visibilityLabel: "显示开发者面板"
       },
       lab: {
+        backLabel: "返回",
         clearShortcutLabel: "清除 {{label}}",
         newAgentConversationShortcutLabel: "新建 Agent 对话",
         newSameTypeWindowShortcutLabel: "新建同类型窗口",
         preferencesSaveFailed: "暂时无法更新实验室设置",
+        previewAgentsDescription:
+          "在 Agent 列表和 Agent 选择器中显示 Beta、Preview 和接入中的 Agent。",
+        previewAgentsLabel: "Preview Agents",
         shortcutUnbound: "未绑定",
         workbenchShortcutsDescription: "启用可配置的工作台快捷键操作",
-        workbenchShortcutsLabel: "工作台快捷键"
+        workbenchShortcutsLabel: "工作台快捷键",
+        workbenchShortcutsManageLabel: "配置键盘快捷键"
       },
       title: "设置",
       trigger: "设置"

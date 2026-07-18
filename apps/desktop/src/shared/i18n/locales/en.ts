@@ -915,14 +915,19 @@ export const en = {
         visibilityLabel: "Show developer panel"
       },
       lab: {
+        backLabel: "Back",
         clearShortcutLabel: "Clear {{label}}",
         newAgentConversationShortcutLabel: "New Agent conversation",
         newSameTypeWindowShortcutLabel: "New same-type window",
         preferencesSaveFailed: "We couldn't update Lab preferences.",
+        previewAgentsDescription:
+          "Show Beta, Preview, and in-progress agents in the Agents list and agent pickers.",
+        previewAgentsLabel: "Preview Agents",
         shortcutUnbound: "Unbound",
         workbenchShortcutsDescription:
           "Enables configurable workbench shortcut actions.",
-        workbenchShortcutsLabel: "Workbench shortcuts"
+        workbenchShortcutsLabel: "Workbench shortcuts",
+        workbenchShortcutsManageLabel: "Configure keyboard shortcuts"
       },
       title: "Settings",
       trigger: "Settings"
